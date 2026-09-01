@@ -40,9 +40,9 @@ PCore_FreeDocument(doc);
 PCore_Shutdown();
 ```
 
-DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout，再 paint。HDC、viewport、滚动位置和失效区域始终属于宿主。
+DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout，再 paint。HDC、page-level viewport 和失效区域属于宿主；支持的嵌套 overflow 元素滚动位置由 Core retained，宿主通过公开 API 接线到窗口和脚本。
 
-布局成功后，`PCore_DocumentWidth` 和 `PCore_DocumentHeight` 返回最近一次 layout 的 page-level extent。宽度和高度包含页面内容溢出 viewport 的部分，至少不小于传入的 viewport；宿主据此决定是否显示横向/纵向滚动条、把 `(scroll_x, scroll_y)` clamp 到 client area，并把相同坐标传给 paint、命中测试和 native child 定位。Core 不创建滚动条，也不实现嵌套 `overflow` 容器的独立滚动。
+布局成功后，`PCore_DocumentWidth` 和 `PCore_DocumentHeight` 返回最近一次 layout 的 page-level extent。宽度和高度包含页面内容溢出 viewport 的部分，至少不小于传入的 viewport；宿主据此决定页面级滚动条、把 `(scroll_x, scroll_y)` clamp 到 client area，并把相同坐标传给 paint、命中测试和 native child 定位。对带有效 DOM `id` 的常见 block/replaced/flex box，Core 还保留 CSS `overflow` 滚动条及其位置：宿主可用 `PCore_NodeOverflowScrollToById` 设置并读取两个轴，也可用 `PCore_OverflowPointer` 转发文档坐标指针和 `PCore_OverflowScrollSnapshot` 取得最近的目标与位置。Core 不创建窗口；Browser/宿主负责把这些状态映射为脚本属性、事件和 WM 重绘。
 
 ## 资源获取
 
@@ -99,11 +99,15 @@ box 时返回 unavailable；成功返回的数值只在当前 document/layout �
 `PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH/HEIGHT`、
 `PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH/HEIGHT` 和
 `PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH/HEIGHT`。它们是最近一次成功 layout 的
-整数 CSS 像素；offset 尺寸包含 border，client 尺寸表示扣除预留 CSS scrollbar 后的
-padding 区域，scroll 尺寸包含有界后代内容 extent。该快照只对已布局的 block、
+整数 CSS 像素；offset 尺寸包含 border，client 尺寸表示 retained scrollport 的
+padding 区域（本实现的滚动条覆盖在边缘，不从 client 尺寸再扣除固定宽度），scroll
+尺寸包含有界后代内容 extent。该快照只对已布局的 block、
 replaced、常见 table/flex box 有效；inline/text、隐藏、无 box 或未完成 layout
-返回 unavailable。查询不会触发 relayout，也不实现 `scrollTop`/`scrollLeft` 或
-独立的 nested overflow 滚动。
+返回 unavailable。查询不会触发 relayout，也不会为没有 retained scrollbar 的元素伪造
+滚动范围。带有效 `id` 的支持 box 可以通过 `PCore_NodeOverflowScrollToById` 进行有界、
+立即生效的 `scrollLeft`/`scrollTop` 读写；关系 38/39 返回当前 CSS 像素偏移。该边界
+不包含 scroll chaining、`scrollIntoView()`、scroll-margin、平滑/惯性滚动或匿名目标的
+宿主指针同步。
 
 ### 单元素 `contenteditable`
 
@@ -158,7 +162,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 
 ## 宿主应负责什么
 
-- HWND、消息循环、DPI/旋转、scrollbar、invalid region 和 HDC；宿主在 layout 后读取 `PCore_DocumentWidth/Height`，维护 page-level `(scroll_x, scroll_y)`，并负责 clamp、滚动条消息和 native child reposition；
+- HWND、消息循环、DPI/旋转、invalid region 和 HDC；宿主在 layout 后读取 `PCore_DocumentWidth/Height`，维护 page-level `(scroll_x, scroll_y)`，并负责页面级 clamp、滚动条消息和 native child reposition；对于嵌套 overflow，宿主只把 WM 指针换算为 document 坐标，调用 `PCore_OverflowPointer`，用 `PCore_OverflowDirtyRect` 做局部失效，再把 `PCore_OverflowScrollSnapshot` 的目标/位置通知给 Browser。元素滚动位置、范围和 clamp 规则属于 Core，宿主不得维护第二份模型；
 - HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
 - native EDIT/SELECT/button/file picker 与 SIP/IME；
 - contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation，使用 Browser 的 selection callback 同步原生范围，并在原生范围改变后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`。无修饰鼠标拖选、Shift/方向键的 anchor 与默认消息跟踪，以及捕获/取消/焦点中断收尾也由宿主维护；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、所有权和 native default 包裹也由宿主维护。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型或重新派发 `selectionchange`；Range/Selection 对象、富文本和完整 IME 仍不在此边界内；
@@ -173,7 +177,7 @@ paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
 - 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
 - Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
 - 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；`PCore_PaintDocumentWithModal` 可按宿主提供的活动 id 在已 layout 的 `<dialog open>` 之上组合实体色遮罩与对话框重绘。Core 不自行决定初始焦点、背景点击或跨窗口焦点策略；脚本生命周期、活动 modal id 和实际关闭仍由 `positron_browser.dll` 提供。
-- Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。
+- Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。Browser 的 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 只覆盖有 id 的、已布局支持 box，并通过本页的 Core API 接线。
 - 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
 
 整体所有权见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。

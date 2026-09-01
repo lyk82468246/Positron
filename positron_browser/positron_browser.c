@@ -2081,6 +2081,54 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return pMetricNumber(this.__id,36);},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'scrollHeight',{get:function(){"
         "return pMetricNumber(this.__id,37);},enumerable:true});"
+        "var pElementScrollStates={};"
+        "function pElementScrollNumber(owner,relation){var value=pRectNumber("
+        "owner.__id,relation,0);return value===null||value<0?0:Math.floor(value);}"
+        "function pElementScrollState(owner){var state;"
+        "state=pElementScrollStates[owner.__id];if(!state){state={"
+        "x:pElementScrollNumber(owner,38),y:pElementScrollNumber(owner,39)};"
+        "pElementScrollStates[owner.__id]=state;}return state;}"
+        "function pElementScrollApply(owner,x,y,notify){var nx=Number(x);"
+        "var ny=Number(y);var state;var changed;var e;"
+        "if(!owner){return;}if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}"
+        "if(nx<0){nx=0;}if(ny<0){ny=0;}nx=Math.floor(nx);ny=Math.floor(ny);"
+        "state=pElementScrollStates[owner.__id];if(!state){state={x:nx,y:ny};"
+        "pElementScrollStates[owner.__id]=state;if(!notify||(nx===0&&ny===0)){return;}}"
+        "changed=state.x!==nx||state.y!==ny;state.x=nx;state.y=ny;"
+        "if(!changed||!notify){return;}e=new PEvent('scroll',{bubbles:false,"
+        "cancelable:false});e.isTrusted=false;owner.dispatchEvent(e);}"
+        "function pElementScrollRequest(owner,x,y){var nx=Number(x);var ny=Number(y);"
+        "var applied;var state;if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}"
+        "if(nx<0){nx=0;}if(ny<0){ny=0;}nx=Math.floor(nx);ny=Math.floor(ny);"
+        "state=pElementScrollState(owner);if(typeof g.__pcoreScroll!=='function'){return;}"
+        "try{applied=g.__pcoreScroll({id:owner.__id,x:nx,y:ny});}catch(scrollError){return;}"
+        "if(!applied||typeof applied.x!=='number'||typeof applied.y!=='number'){return;}"
+        "pElementScrollApply(owner,applied.x,applied.y,true);}"
+        "Object.defineProperty(PElement.prototype,'scrollLeft',{get:function(){"
+        "return pElementScrollNumber(this,38);},set:function(v){"
+        "pElementScrollRequest(this,v,pElementScrollNumber(this,39));},"
+        "enumerable:true,configurable:true});"
+        "Object.defineProperty(PElement.prototype,'scrollTop',{get:function(){"
+        "return pElementScrollNumber(this,39);},set:function(v){"
+        "pElementScrollRequest(this,pElementScrollNumber(this,38),v);},"
+        "enumerable:true,configurable:true});"
+        "PElement.prototype.scrollTo=function(x,y){var nx;var ny;var v;"
+        "if(arguments.length===1&&x&&typeof x==='object'){v=x.behavior;"
+        "if(v!==undefined&&v!=='auto'&&v!=='instant'){return;}"
+        "nx=x.left===undefined?this.scrollLeft:Number(x.left);"
+        "ny=x.top===undefined?this.scrollTop:Number(x.top);}else{nx=Number(x);ny=Number(y);}"
+        "pElementScrollRequest(this,nx,ny);};"
+        "PElement.prototype.scroll=function(x,y){this.scrollTo(x,y);};"
+        "PElement.prototype.scrollBy=function(x,y){var nx;var ny;var v;"
+        "if(arguments.length===1&&x&&typeof x==='object'){v=x.behavior;"
+        "if(v!==undefined&&v!=='auto'&&v!=='instant'){return;}"
+        "nx=Number(x.left);ny=Number(x.top);}else{nx=Number(x);ny=Number(y);}"
+        "if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}"
+        "pElementScrollRequest(this,this.scrollLeft+nx,this.scrollTop+ny);};"
+        "Object.defineProperty(g,'__pcoreElementScrollApplied',{value:function(id,x,y){"
+        "var owner;if(!g.document||typeof g.document.getElementById!=='function'){return;}"
+        "owner=g.document.getElementById(String(id||''));if(owner){"
+        "pElementScrollApply(owner,x,y,true);}},writable:false,configurable:false});"
         "function pRectViewport(id,index){var x;var y;var w;var h;var sx;var sy;"
         "x=pRectNumber(id,28,index);y=pRectNumber(id,29,index);"
         "w=pRectNumber(id,30,index);h=pRectNumber(id,31,index);"
@@ -6078,7 +6126,9 @@ static int p_browser_script_relation_is_count(unsigned int relation)
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_WIDTH ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_HEIGHT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_WIDTH ||
-            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_HEIGHT;
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_HEIGHT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_LEFT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_TOP;
 }
 
 static int p_browser_script_dom_get_relation(void *pw,
@@ -7188,6 +7238,7 @@ static int p_browser_script_scroll(void *pw,
     PBrowserScriptScrollInfo info;
     HANDLE root;
     HANDLE object;
+    const char *element_id;
     int out_x;
     int out_y;
     int result;
@@ -7205,6 +7256,9 @@ static int p_browser_script_scroll(void *pw,
     info.size = sizeof(info);
     info.scroll_x = PJson_GetInt(object, "x");
     info.scroll_y = PJson_GetInt(object, "y");
+    element_id = PJson_GetString(object, "id");
+    info.element_id = (element_id != NULL && element_id[0] != '\0') ?
+            element_id : NULL;
     if (info.scroll_x < 0 || info.scroll_y < 0) {
         PJson_Free(root);
         return p_browser_script_write_null(out_json, out_capacity,
@@ -11407,6 +11461,43 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
     }
     (void) PScript_Evaluate(session->runtime,
             "delete this.__pcoreScrollX;delete this.__pcoreScrollY;", -1);
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionNotifyElementScroll(HANDLE hSession,
+        const char *element_id, int scroll_x, int scroll_y)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    if (element_id == NULL || element_id[0] == '\0' || scroll_x < 0 ||
+            scroll_y < 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    rc = PScript_SetGlobalString(session->runtime, "__pcoreElementScrollId",
+            -1, element_id, -1);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_SetGlobalNumber(session->runtime,
+                "__pcoreElementScrollX", -1, (double) scroll_x);
+    }
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_SetGlobalNumber(session->runtime,
+                "__pcoreElementScrollY", -1, (double) scroll_y);
+    }
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_Evaluate(session->runtime,
+                "if(typeof __pcoreElementScrollApplied==='function')"
+                "{__pcoreElementScrollApplied(__pcoreElementScrollId,"
+                "__pcoreElementScrollX,__pcoreElementScrollY);};", -1);
+    }
+    (void) PScript_Evaluate(session->runtime,
+            "delete this.__pcoreElementScrollId;"
+            "delete this.__pcoreElementScrollX;"
+            "delete this.__pcoreElementScrollY;", -1);
     return rc;
 }
 

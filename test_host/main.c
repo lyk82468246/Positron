@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1146
+#define TEST_MAX_NUMBER 1147
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -13566,6 +13566,38 @@ static void pcore_invalidate_overflow(HWND hwnd)
     }
 }
 
+/* Forward the retained scrollbar position that Core selected during the
+ * latest pointer event. The Browser callback runs only from the window
+ * message path, never from inside the script scroll adapter, so this cannot
+ * recurse into the same pointer transaction. */
+static void pcore_browser_script_sync_overflow_scroll(void)
+{
+    char element_id[256];
+    int element_bytes;
+    int scroll_x;
+    int scroll_y;
+
+    if (g_render_doc == NULL || g_browser_script_session.session == NULL ||
+            g_browser_script_session.bridge == NULL ||
+            g_browser_script_session.document != g_render_doc ||
+            g_browser_script_session.bridge->document != g_render_doc) {
+        return;
+    }
+    memset(element_id, 0, sizeof(element_id));
+    element_bytes = 0;
+    scroll_x = 0;
+    scroll_y = 0;
+    if (PCore_OverflowScrollSnapshot(g_render_doc, element_id,
+            sizeof(element_id), &element_bytes, &scroll_x, &scroll_y) != 0 ||
+            element_bytes <= 0 || element_bytes >= (int) sizeof(element_id) ||
+            element_id[0] == '\0') {
+        return;
+    }
+    (void) PBrowser_ScriptSessionNotifyElementScroll(
+            g_browser_script_session.session, element_id, scroll_x,
+            scroll_y);
+}
+
 /* Bounded NUL-terminated string copy. */
 static void cstr_copy(char *d, int cap, const char *s)
 {
@@ -15436,6 +15468,23 @@ static int pcore_browser_script_scroll(void *pw,
             bridge->document == NULL || bridge->document != g_render_doc) {
         *out_x = info->scroll_x;
         *out_y = info->scroll_y;
+        return 0;
+    }
+    if (info->element_id != NULL && info->element_id[0] != '\0') {
+        rc = PCore_NodeOverflowScrollToById(bridge->document,
+                info->element_id, info->scroll_x, info->scroll_y,
+                out_x, out_y);
+        if (rc == 2) {
+            *out_x = 0;
+            *out_y = 0;
+            return 0;
+        }
+        if (rc != 0) {
+            return -1;
+        }
+        if (bridge->hwnd != NULL && IsWindow(bridge->hwnd)) {
+            pcore_invalidate_overflow(bridge->hwnd);
+        }
         return 0;
     }
     dpi = g_page_scroll_dpi;
@@ -22333,6 +22382,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                         doc_x, doc_y)) {
             g_overflow_pointer = 1;
             SetCapture(hwnd);
+            pcore_browser_script_sync_overflow_scroll();
             pcore_invalidate_overflow(hwnd);
             return 0;
         }
@@ -22516,6 +22566,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             int cy = (int) (short) HIWORD(lp);
             PCore_OverflowPointer(g_render_doc, PCORE_POINTER_MOVE,
                     cx + g_scroll_x, cy + g_scroll_y);
+            pcore_browser_script_sync_overflow_scroll();
             pcore_invalidate_overflow(hwnd);
             return 0;
         }
@@ -22544,6 +22595,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             if (g_render_doc != NULL) {
                 PCore_OverflowPointer(g_render_doc, PCORE_POINTER_UP,
                         cx + g_scroll_x, cy + g_scroll_y);
+                pcore_browser_script_sync_overflow_scroll();
             }
             g_overflow_pointer = 0;
             ReleaseCapture();
@@ -36508,6 +36560,273 @@ static BOOL test1146_browser_layout_metrics_contract(void)
     show_info(L"TEST 1146 OK",
             "Core exposes bounded block box dimensions and Browser maps them"
             " to read-only offset/client/scroll properties.");
+    return TRUE;
+}
+
+/* TEST 1147 - Element overflow scrolling is owned by Core and bridged to
+ * Browser properties, methods, events and host-originated pointer updates. */
+static BOOL test1147_browser_element_scroll_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<div id='clip'><div id='wide'>Wide content</div></div>"
+        "<script>window.__elementScrollReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0}"
+        "#clip{display:block;width:40px;height:30px;padding:3px;"
+        "border:2px solid #000;overflow:scroll}"
+        "#wide{display:block;width:120px;height:90px}";
+    static const char URL[] = "https://positron.local/element-scroll";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    char target_id[64];
+    int executed;
+    int ignored;
+    int relation_x;
+    int relation_y;
+    int actual_x;
+    int actual_y;
+    int snapshot_x;
+    int snapshot_y;
+    int snapshot_bytes;
+    int rect_x;
+    int rect_y;
+    int rect_w;
+    int rect_h;
+    int pointer_down;
+    int pointer_up;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    memset(target_id, 0, sizeof(target_id));
+    executed = -1;
+    ignored = -1;
+    relation_x = -1;
+    relation_y = -1;
+    actual_x = 0;
+    actual_y = 0;
+    snapshot_x = 0;
+    snapshot_y = 0;
+    snapshot_bytes = 0;
+    rect_x = 0;
+    rect_y = 0;
+    rect_w = 0;
+    rect_h = 0;
+    pointer_down = 0;
+    pointer_up = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        cstr_copy(error, sizeof(error),
+                "element scroll script bootstrap failed");
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/element-scroll.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 180, 120) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_X, 0, NULL, 0, NULL,
+                &rect_x) != 0 || PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_Y, 0, NULL, 0, NULL,
+                &rect_y) != 0 || PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_WIDTH, 0, NULL, 0, NULL,
+                &rect_w) != 0 || PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_RECT_HEIGHT, 0, NULL, 0, NULL,
+                &rect_h) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "element scroll fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        if (PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_SCROLL_LEFT, 0, NULL, 0,
+                NULL, &relation_x) != 0 ||
+                PCore_NodeRelationById(document, "clip",
+                PCORE_NODE_RELATION_LAYOUT_SCROLL_TOP, 0, NULL, 0,
+                NULL, &relation_y) != 0 || relation_x != 0 ||
+                relation_y != 0 || PCore_NodeOverflowScrollToById(document,
+                "clip", 20, 25, &actual_x, &actual_y) != 0 ||
+                actual_x < 1 || actual_y < 1 ||
+                PCore_NodeOverflowScrollToById(document, "clip", 0, 0,
+                &actual_x, &actual_y) != 0 || actual_x != 0 ||
+                actual_y != 0) {
+            _snprintf(error, sizeof(error) - 1,
+                    "Core scroll initial=%d,%d applied=%d,%d",
+                    relation_x, relation_y, actual_x, actual_y);
+            error[sizeof(error) - 1] = '\0';
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = PCore_DocumentWidth(document);
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 180;
+        g_view_h = 120;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        if (PBrowser_ScriptSessionNotifyResize(
+                g_browser_script_session.session, 180, 120, 1) !=
+                PSCRIPT_OK || pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('clip');"
+                "var events=0;var targetOk=true;"
+                "e.addEventListener('scroll',function(ev){events++;"
+                "targetOk=targetOk&&ev.target===e&&ev.currentTarget===e&&"
+                "ev.bubbles===false;});"
+                "var initial=e.scrollLeft===0&&e.scrollTop===0;"
+                "e.scrollTo(20,25);var moved=e.scrollLeft>=1&&"
+                "e.scrollTop>=1&&events===1;"
+                "e.scrollBy(-5,10);var by=e.scrollLeft===15&&"
+                "e.scrollTop===35&&events===2;"
+                "var mx=e.scrollWidth-e.clientWidth;"
+                "var my=e.scrollHeight-e.clientHeight;"
+                "e.scrollTo(9999,9999);var clampX=e.scrollLeft;var clampY=e.scrollTop;"
+                "var clamped=clampX===mx&&clampY===my;var before=events;"
+                "e.scrollTo({left:0,top:0,behavior:'smooth'});"
+                "var smoothRejected=events===before;"
+                "e.scrollLeft=7;var assigned=e.scrollLeft===7&&events===before+1;"
+                "var all=initial&&moved&&by&&clamped&&smoothRejected&&"
+                "assigned&&targetOk;return all?'true':('initial='+initial+"
+                "';moved='+moved+';by='+by+';clamped='+clamped+"
+                "';smooth='+smoothRejected+';assigned='+assigned+"
+                "';target='+targetOk+';x='+e.scrollLeft+';y='+e.scrollTop+"
+                "';mx='+mx+';my='+my+';clampX='+clampX+';clampY='+clampY+"
+                "';client='+e.clientWidth+','+e.clientHeight+';scroll='+"
+                "e.scrollWidth+','+e.scrollHeight+';events='+events);})();", -1,
+                error, sizeof(error)) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "element scroll browser evaluation failed");
+            ok = 0;
+        } else {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "element scroll properties or event ordering failed: %s",
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        if (PCore_NodeOverflowScrollToById(document, "clip", 3, 4,
+                &actual_x, &actual_y) != 0 || actual_x != 3 || actual_y != 4 ||
+                PBrowser_ScriptSessionNotifyElementScroll(
+                g_browser_script_session.session, "clip", 3, 4) !=
+                PSCRIPT_OK || pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('clip');"
+                "return String(e.scrollLeft===3&&e.scrollTop===4);})();",
+                -1, error, sizeof(error)) != 0 ||
+                (result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session)) == NULL ||
+                strcmp(result, "true") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "host element scroll notification failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        (void) PCore_NodeOverflowScrollToById(document, "clip", 0, 0,
+                &actual_x, &actual_y);
+        pointer_down = PCore_OverflowPointer(document, PCORE_POINTER_DOWN,
+                rect_x + rect_w - 8, rect_y + rect_h - 8);
+        snapshot_bytes = 0;
+        if (PCore_OverflowScrollSnapshot(document, target_id,
+                sizeof(target_id), &snapshot_bytes, &snapshot_x,
+                &snapshot_y) != 0 || strcmp(target_id, "clip") != 0) {
+            cstr_copy(error, sizeof(error),
+                    "overflow pointer target snapshot failed");
+            ok = 0;
+        }
+        pointer_up = PCore_OverflowPointer(document, PCORE_POINTER_UP,
+                rect_x + rect_w - 8, rect_y + rect_h - 8);
+        if (ok && (!pointer_down || !pointer_up ||
+                PBrowser_ScriptSessionNotifyElementScroll(
+                g_browser_script_session.session, target_id, snapshot_x,
+                snapshot_y) != PSCRIPT_OK ||
+                pcore_browser_script_session_evaluate(
+                "(function(){var e=document.getElementById('clip');"
+                "return String(e.scrollLeft===Number(e.scrollLeft)&&"
+                "e.scrollTop===Number(e.scrollTop));})();", -1, error,
+                sizeof(error)) != 0 ||
+                (result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session)) == NULL ||
+                strcmp(result, "true") != 0)) {
+            cstr_copy(error, sizeof(error),
+                    "overflow pointer/browser synchronization failed");
+            ok = 0;
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1147 FAIL", error[0] != '\0' ? error :
+                "element overflow scroll contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1147 OK",
+            "Core-owned nested overflow offsets bridge to Element scroll"
+            " methods/properties and host pointer snapshots dispatch one"
+            " deduplicated element scroll event.");
     return TRUE;
 }
 
@@ -94560,6 +94879,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1144: ok = test1144_browser_client_rects_contract(); break;
         case 1145: ok = test1145_browser_inline_client_rects_contract(); break;
         case 1146: ok = test1146_browser_layout_metrics_contract(); break;
+        case 1147: ok = test1147_browser_element_scroll_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

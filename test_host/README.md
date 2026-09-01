@@ -78,7 +78,7 @@ tests=13,20,27,999
 
 worker 收尾后、释放 request 前，宿主调用 `PBrowser_NavigationCleanupGetInfo` 读取 Browser 的清理快照。失败或被取代的 request 先取消剩余 pending 资源；成功 request 必须已有 committed candidate 和 READY resource gate。宿主只把 `decision`、终态、gate、pending、`can_release` 以及有界失败/fallback 观测复制到日志统计，然后销毁 candidate/resource handles；快照是调用方自己的值，不能借用 handle 内部存储。pending 工作或 committed/non-ready 不一致会保持 `can_release=0`，不会被当作成功提交。这个清理入口不拥有 worker、response、窗口或应用日志语义。
 
-History entry 的 viewport snapshot 也由 `positron_browser.dll` 持有。宿主在离开当前页面前调用 `PBrowser_HistorySetEntryScroll` 保存当前 `(scroll_x, scroll_y)`，在提交新文档或完成 history traversal 后用 `PBrowser_HistoryEntryScroll` 读取目标坐标，再读取 Core 的 page-level `PCore_DocumentWidth/Height`，根据 client area 调用自己的 scrollbar/HWND 逻辑对两个轴 clamp/apply。宿主不再维护第二份按 entry 保存的滚动数组；Browser 不访问窗口，也不替宿主决定坐标的物理单位。嵌套 overflow 容器仍不在此路径内。
+History entry 的 viewport snapshot 也由 `positron_browser.dll` 持有。宿主在离开当前页面前调用 `PBrowser_HistorySetEntryScroll` 保存当前 `(scroll_x, scroll_y)`，在提交新文档或完成 history traversal 后用 `PBrowser_HistoryEntryScroll` 读取目标坐标，再读取 Core 的 page-level `PCore_DocumentWidth/Height`，根据 client area 调用自己的 scrollbar/HWND 逻辑对两个轴 clamp/apply。宿主不再维护第二份按 entry 保存的滚动数组；Browser 不访问窗口，也不替宿主决定坐标的物理单位。元素 overflow 走下方的 Core/Browser 桥，不混入 history snapshot。
 
 如果当前脚本 session 的 `history.scrollRestoration` 为 `manual`，宿主通过
 `PBrowser_ScriptSessionGetScrollRestoration` 得到
@@ -114,9 +114,20 @@ DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM 
 
 ### Core 与 Browser callbacks
 
-宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态、文本、布局几何和可选原生选区。布局 callback 只转发 Core 已完成 layout 的 border-box union、有限 inline 行片段和六个布局尺寸快照；Browser 负责把它们转换为 `getBoundingClientRect()`、`getClientRects()` 以及只读尺寸 getter，宿主不复制 box tree 或实现第二份 box model。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
+宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态、文本、布局几何和可选原生选区。布局 callback 只转发 Core 已完成 layout 的 border-box union、有限 inline 行片段、六个布局尺寸快照和关系 38/39 的 retained overflow offset；Browser 负责把它们转换为 `getBoundingClientRect()`、`getClientRects()`、只读尺寸 getter 以及有 id 元素的滚动属性，宿主不复制 box tree 或实现第二份 box model。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
 
 callback 同步且不可重入。候选页面成功提交前，宿主必须在旧 document/session 仍有效时调用 `PBrowser_ScriptSessionDispatchPageTeardown`；它负责一次性的 `visibilitychange`→`pagehide`→`unload` 边界和页面队列清理。随后宿主停止新消息和事务，销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。失败候选不调用 teardown，旧页状态继续服务。
+
+### 元素 overflow 滚动
+
+宿主不拥有元素滚动状态。脚本 `Element.scrollTo()`/`scrollBy()` 由 Browser 的
+`PBrowserScriptScrollInfo.element_id` 转入 `PCore_NodeOverflowScrollToById()`；Core
+返回两个轴的 clamp 后 CSS 位置，宿主只负责按 dirty rect 重绘。WM 指针命中嵌套滚动条时，
+宿主调用 `PCore_OverflowPointer()`，随后用 `PCore_OverflowScrollSnapshot()` 读取目标
+id/位置，再调用 `PBrowser_ScriptSessionNotifyElementScroll()`。该通知更新脚本属性并
+去重派发目标元素的 `scroll`，不会再进入 scroll callback。没有稳定 id、没有 layout 或
+不支持的 smooth/scroll chaining 请求必须安全 no-op；这些限制属于公共 DLL 合同，不应由
+宿主 helper 绕过。
 
 ### Native EDIT/SELECT/button/file
 
@@ -130,7 +141,7 @@ WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser
 
 ### 绘制与交互
 
-Core 提供 layout、page-level extent、paint、link/control/fragment geometry 和可聚焦目标。宿主持有 scrollbar、DPI/旋转、HDC、native child reposition 和 `SetFocus`，并把同一 `(scroll_x, scroll_y)` 用于 paint、命中测试、fragment reveal 和 child reposition。几何或 document token 不一致时，操作应 fail closed 并等待下一次有效 layout。
+Core 提供 layout、page-level extent、paint、link/control/fragment geometry、可聚焦目标和支持 box 的 retained overflow offsets。宿主持有 page scrollbar、DPI/旋转、HDC、native child reposition 和 `SetFocus`，并把同一 `(scroll_x, scroll_y)` 用于 page paint、命中测试、fragment reveal 和 child reposition；元素 overflow 只按公开 pointer/dirty-rect/notification API 接线。几何或 document token 不一致时，操作应 fail closed 并等待下一次有效 layout。
 
 ## 自动与人工结果
 

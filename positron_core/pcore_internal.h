@@ -107,10 +107,17 @@ int pcore_box_layout_metrics_for_node(struct dom_document *doc,
         struct dom_node *node, int *offset_width, int *offset_height,
         int *client_width, int *client_height, int *scroll_width,
         int *scroll_height);
+/* Return or set retained CSS overflow offsets for one laid-out element. A
+ * requested axis of -1 leaves that axis unchanged; outputs are always CSS
+ * pixels. */
+int pcore_box_overflow_scroll_for_node(struct dom_document *doc,
+        struct dom_node *node, int requested_x, int requested_y,
+        int *scroll_x, int *scroll_y);
 
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;
 bool pcore_scrollbar_is_dragging(struct scrollbar *scrollbar);
+struct box *pcore_scrollbar_owner(struct scrollbar *scrollbar);
 void pcore_box_scrollbars_destroy(struct box *box);
 
 /* Intern the corestrings the ported NetSurf layout.c references. Call once

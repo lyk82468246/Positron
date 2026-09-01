@@ -101,6 +101,20 @@ bool pcore_scrollbar_is_dragging(struct scrollbar *scrollbar)
     return data != NULL && data->dragging;
 }
 
+/* The scrollbar ABI intentionally exposes opaque handles.  Core's pointer
+ * bridge needs the owning box only after a hit-test has selected a retained
+ * scrollbar, so keep that reverse mapping private to the DLL. */
+struct box *pcore_scrollbar_owner(struct scrollbar *scrollbar)
+{
+    struct pcore_scrollbar_data *data;
+
+    if (scrollbar == NULL) {
+        return NULL;
+    }
+    data = (struct pcore_scrollbar_data *) scrollbar_get_data(scrollbar);
+    return data != NULL ? data->box : NULL;
+}
+
 void pcore_box_scrollbars_destroy(struct box *box)
 {
     struct box *child;

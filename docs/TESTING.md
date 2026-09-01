@@ -176,10 +176,17 @@ nested overflow、pinch zoom、复杂字体度量或视觉像素精度。
 
 TEST1146 覆盖 Core 到 Browser 的布局尺寸快照：支持的 block box 暴露
 `offset*`、`client*` 与 `scroll*` 六个整数 CSS 像素 getter，offset/client 的
-border/padding/scrollbar 关系以及有界后代 extent 由离线夹具断言；Browser 还检查
-getter 为只读、descriptor 存在、隐藏元素安全返回 `0`，Core relation 与脚本值保持
-一致。该测试不证明 `scrollTop`/`scrollLeft`、独立 nested overflow、transforms、
-视觉像素或真实滚动条呈现。
+border/padding/retained-scrollport 关系以及有界后代 extent 由离线夹具断言；Browser
+还检查 getter 为只读、descriptor 存在、隐藏元素安全返回 `0`，Core relation 与脚本值
+保持一致。该测试不证明元素滚动操作或真实滚动条呈现。
+
+TEST1147 覆盖带 DOM `id` 的嵌套 overflow box：Core 的关系 38/39、按 id setter
+和非负 clamp 与 Browser 的 `scrollLeft`/`scrollTop`、`scrollTo()`、`scrollBy()`
+保持一致；脚本请求只接受 `auto`/`instant`，实际位置改变时目标元素收到一次非冒泡、
+不可取消的 `scroll` 事件。夹具还把 Core 的 retained scrollbar pointer snapshot
+通过宿主 adapter 送回 `PBrowser_ScriptSessionNotifyElementScroll()`，验证 host-driven
+位置同步和事件去重。它不证明完整滚动容器树、scroll chaining/anchoring、nested
+`scrollIntoView()`、smooth/inertia、匿名目标、触摸手势或滚动条视觉。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
@@ -324,6 +331,7 @@ RAPI 没有安全的通用远端终止语义。超时会保存可取得的日志
 
 - 字体 fallback、字形、抗锯齿、颜色和渐变；
 - 左右边距、居中容器、换行、表格、列表和滚动条观感；
+- 嵌套 overflow 的滚动条位置、内容裁剪、指针拖动、触摸滚动和不同 DPI 下的可视区域；
 - 真实触摸、链接命中、键盘焦点、滚动和后退；
 - SIP 候选词、IME composition、Unicode 与代理对输入；
 - 旋转、screen/DPI 差异和滚动位置保持；

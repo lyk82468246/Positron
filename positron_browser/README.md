@@ -47,7 +47,8 @@ history traversal 后自动应用 entry snapshot，`MANUAL` 则保留当前 view
 page 坐标交给宿主。宿主负责按当前 Core document extent 和 client area
 clamp，并通过 `out_x/out_y` 返回实际应用的坐标；候选 session 尚未提交时应
 只回显请求，不能改变旧页面。Browser 只在最终坐标改变时分发一次非冒泡的
-`scroll` 事件。
+`scroll` 事件。该 callback 结构末尾的 `element_id` 仅在 `Element.scrollTo()`/
+`scrollBy()` 请求中非空；为 `NULL` 时保持原有 page viewport 合同。
 
 宿主处理滚动条、触摸、键盘、resize 或 fragment reveal 后，应先把物理
 viewport 位置换算为 CSS page 坐标，再调用
@@ -105,19 +106,41 @@ relation callback 未注册时，查询失败；Browser 不触发 style/layout�
 style/layout，并按实际滚动位置调用 `PBrowser_ScriptSessionNotifyScroll`。
 
 该边界只覆盖 Core 已布局的普通 block 与 inline 行片段，不承诺 transforms、Range/
-Selection、独立 nested overflow scrolling、pinch zoom、平滑滚动或视觉像素精度。
+Selection、完整 nested overflow scrolling、pinch zoom、平滑滚动或视觉像素精度。
 
 #### 布局尺寸快照
 
 当宿主注册 DOM relation callback 后，Browser 为已布局的支持元素安装只读的
 `offsetWidth`、`offsetHeight`、`clientWidth`、`clientHeight`、`scrollWidth` 和
 `scrollHeight` getter。getter 每次从最近一次 Core layout 快照读取整数 CSS 像素：
-offset 包含 border，client 为扣除预留 CSS scrollbar 后的 padding 区域，scroll 包含
-有界后代内容 extent。Core 不提供快照时这些属性返回 `0`；它们不会触发 style/layout，
-也不会改变滚动位置。宿主仍须在 DOM/样式变化后自行重新 layout，并继续通过 page-level
-scroll callback 管理实际滚动。该桥不提供 `scrollTop`/`scrollLeft`、transforms、
-pinch zoom 或独立 nested overflow scrolling，inline/text/隐藏元素的零值不应被解释
-为可滚动的真实尺寸。
+offset 包含 border，client 为 retained scrollport 的 padding 区域（滚动条覆盖在边缘，
+不从 client 尺寸再扣除固定宽度），scroll 包含有界后代内容 extent。Core 不提供快照时
+这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。宿主仍须在 DOM/样式
+变化后自行重新 layout，并继续通过 page-level scroll callback 管理页面滚动。对于有有效
+DOM `id` 且存在 retained overflow scrollbar 的支持 box，Browser 还安装
+`scrollLeft`/`scrollTop` getter/setter、`scrollTo()`、`scroll()` 和 `scrollBy()`；请求
+通过 callback 的 `element_id` 交给 Core clamp，成功后只在实际位置改变时派发一次目标元素的
+非冒泡、不可取消 `scroll`。宿主的 WM 指针路径应调用
+`PBrowser_ScriptSessionNotifyElementScroll()` 同步 Core 位置。该桥不支持 scroll chaining、
+`scrollIntoView()` 的 nested reveal、scroll-margin、smooth/inertia 或无 id 目标。
+
+### 元素 overflow 滚动桥
+
+元素滚动是一个有界的 Core/Browser 组合，而不是宿主自己的第二套布局模型：
+
+- Core 对已布局的常见 block、replaced、flex box 保留 `overflow: scroll/auto` 的滚动条，
+  通过 relation 38/39 暴露当前 CSS 像素偏移，并由
+  `PCore_NodeOverflowScrollToById()` 执行两个轴的非负 clamp；
+- Browser 的 `Element.scrollLeft`/`scrollTop` 以及 `scrollTo()`/`scrollBy()` 只接受
+  `auto`/`instant`，把目标 id 和请求交给同一 scroll callback，再用 Core 返回的实际值
+  更新脚本状态；重复位置不产生事件；
+- 宿主收到 WM pointer 后调用 `PCore_OverflowPointer()`，按
+  `PCore_OverflowDirtyRect()` 做局部失效，并把 `PCore_OverflowScrollSnapshot()` 的
+  id/位置交给 `PBrowser_ScriptSessionNotifyElementScroll()`。后者只更新脚本状态和派发
+  去重事件，不会再次调用 scroll callback，因此不会递归；
+- 该能力要求目标有稳定 DOM `id` 和可用 layout。它不实现完整滚动容器树、滚动链、
+  scroll anchoring、`scrollIntoView()`/scroll-margin、平滑/惯性动画或匿名目标的宿主
+  归因。
 
 ### `Element.scrollIntoView()`
 
@@ -263,7 +286,7 @@ Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 di
 - 宿主处理指针时，可把 client 坐标换算为 document 坐标，用活动 id 对应的 Core 几何做有界命中测试：dialog 外部调用 `PBrowser_ScriptSessionRequestDialogClose`，内部继续交给普通控件命中；即使 `cancel` 阻止关闭，宿主也应消费这次 backdrop 点击。Browser 只提供生命周期桥，不自行读取窗口坐标。
 - 对 `method="dialog"` 的表单，宿主先让 Core 完成约束验证并解析最近祖先 dialog 与 submitter value，再派发可取消的 `submit`。事件允许默认动作后，调用 `PBrowser_ScriptSessionCloseDialogById` 可执行 `dialog.close(value)`：更新 `returnValue`、派发 `close`，不先派发 `cancel`，也不发起网络导航。显式点击、脚本 `click()` 和单行输入的隐式 Enter 可共用这条组合路径。
 
-这些方法属于 Browser 的脚本语义，不创建 HWND，也不直接绘制 top layer、backdrop 或系统模态窗口。宿主可把活动 id 同时交给 Core 的 `PCore_PaintDocumentWithModal`，由 Core 在普通文档绘制后组合有界实体色 backdrop 和指定 dialog 的重绘；Browser 仍只拥有生命周期状态。宿主必须自己决定初始焦点、native HWND 切换、nested scroll container 和焦点视觉，跨文档 modal 生命周期仍未覆盖。
+这些方法属于 Browser 的脚本语义，不创建 HWND，也不直接绘制 top layer、backdrop 或系统模态窗口。宿主可把活动 id 同时交给 Core 的 `PCore_PaintDocumentWithModal`，由 Core 在普通文档绘制后组合有界实体色 backdrop 和指定 dialog 的重绘；Browser 仍只拥有生命周期状态。宿主必须自己决定初始焦点、native HWND 切换和焦点视觉，并只把 nested overflow 的 WM 指针与失效接到 Core/Browser 的公开滚动桥，跨文档 modal 生命周期仍未覆盖。
 
 ### 单元素 `contenteditable`
 
@@ -535,11 +558,11 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
    Ex callbacks；
 4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；
-5. 把 WM 输入转换为 Browser typed transaction；
-6. 只在 Browser 允许默认动作后修改 Core/native 控件；
-7. mutation 后重新 layout/paint；
-8. 在导航或 fragment/traversal 改变页面前，把当前 viewport 写入对应 history entry；目标页面提交后读取目标 snapshot，并由宿主 clamp/apply；
-9. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
+  5. 把 WM 输入转换为 Browser typed transaction；嵌套 overflow 指针则按 Core 的 document-space 合同调用 `PCore_OverflowPointer`；
+  6. 只在 Browser 允许默认动作后修改 Core/native 控件；`Element.scrollTo()`/`scrollBy()` 的位置由 Core callback 返回；
+  7. mutation 或 overflow scroll 后重新 layout/paint，并用 dirty rect 限定失效；
+  8. 在导航或 fragment/traversal 改变页面前，把当前 viewport 写入对应 history entry；目标页面提交后读取目标 snapshot，并由宿主 clamp/apply；
+  9. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
 
 完整组合示例见 [`../test_host/`](../test_host/README.md)，但产品应用应根据自己的窗口、网络和安全策略实现 callbacks。
 
@@ -568,17 +591,19 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   按 id 资格与 focus node API 接线 native HWND 和 focus family。Ex 版本还支持默认
   focus 的 page-level viewport reveal 与 `focus({preventScroll:true})`，并把实际
   CSS scroll 坐标在 callback 返回后同步回脚本。不可用目标、对非当前目标的 blur，以及
-  注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family。nested overflow、scroll-margin、
+  注销后的方法都 fail closed/no-op；重复 focus 不重复派发 focus family。nested overflow reveal、scroll-margin、
   平滑/惯性滚动、完整焦点导航、初始焦点、focus ring 或跨窗口策略仍不在范围内。
 - `getBoundingClientRect()` 与 `getClientRects()` 只组合已有的 Core relation geometry
   片段快照；后者返回每次调用都新建、最多 16 个按行排列的正尺寸矩形，前者返回这些
   片段的 union。未布局、隐藏或非正尺寸时分别返回全零/空集合。它们不提供 transforms、
-  Range/Selection、nested overflow、pinch zoom、平滑滚动或视觉像素精度。
+  Range/Selection、完整 nested overflow scrolling、pinch zoom、平滑滚动或视觉像素精度。
 - `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
   `scrollWidth`/`scrollHeight` 只读回 Core 最近一次 layout 的有界尺寸快照，支持的
   block/replaced/table/flex box 返回整数 CSS 像素，未布局、隐藏、inline/text 或
-  不可用 box 返回 `0`。这些 getter 不触发 relayout、不提供 `scrollTop`/`scrollLeft`，
-  也不实现 transforms、pinch zoom 或独立 nested overflow scrolling。
+  不可用 box 返回 `0`。这些 getter 不触发 relayout；有 id 的支持 box 还可通过
+  `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 使用 Core 的 retained scrollbar。
+  不支持 scroll chaining、nested `scrollIntoView()`、scroll-margin、smooth/inertia、
+  transforms 或 pinch zoom。
 - `Element.scrollIntoView()` 只组合已有的 Core relation geometry 和 page-level scroll
   callback，支持有限的 block/inline 对齐与 `auto`/`instant` 行为；无 layout 或不支持的
   `smooth`/nested overflow 请求安全 no-op。宿主仍负责页面 extent、clamp、物理滚动和

@@ -28,6 +28,7 @@
 - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。
 - `details`/`summary`、`hidden` 等只有受限静态或交互子集；`dialog` 已有 Browser 脚本的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id、宿主驱动的 Escape 请求桥接和参考宿主的有界 backdrop 点击策略。Core/Browser 组合支持有 id 祖先 dialog 的显式、脚本和隐式 `method="dialog"` 提交，包括 validation、可取消 `submit`、submitter value 与直接 close；无 id、无祖先 dialog 或跨文档目标会 fail closed。宿主可以组合 Core 的 scoped focus snapshot 实现顺序 Tab/Shift+Tab 子树范围，并调用 `PCore_PaintDocumentWithModal` 得到实体色遮罩和指定 dialog 重绘；这不是 CSS `::backdrop`、透明合成或跨文档 top layer。Browser 不自动接管平台消息；宿主必须显式调用这些边界。
 - Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；`PCore_FocusTargetInfoWithin` 可按已知 DOM id 限定到一个祖先子树；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。完整浏览器焦点策略、自动初始焦点、动态焦点区域和跨窗口焦点仍未实现。
+- Core/Browser 对带 DOM `id` 的常见 block/replaced/flex overflow box 提供 retained scrollbar offset、`scrollLeft`/`scrollTop`、`scrollTo()`/`scrollBy()` 和宿主 pointer 同步；这只是有界的两个轴桥接，不能代表完整 CSS overflow 语义。client 尺寸是 retained scrollport 的 padding 区域，滚动条覆盖在边缘。
 - Browser script session 已能由宿主显式维护顶层窗口 focus/blur 状态，并让 `document.hasFocus()` 与去重后的 window 事件保持一致；这不等于完整浏览器焦点策略，native 控件焦点、焦点矩形、焦点陷阱和 OEM/跨窗口激活仍由宿主负责。
 - Core 的 `PCore_InteractionFocusElementId` 只报告当前交互状态中、带非空 UTF-8
   id 的焦点节点；没有焦点、没有 id、节点过时或缓冲不足时调用方必须按失败/回退
@@ -67,19 +68,23 @@
   触摸、键盘、resize 或 fragment reveal 后通知 Browser。`scrollIntoView()` 复用单元素
   `getBoundingClientRect()`，默认 start/nearest，支持 center、end 和 `false`，只接受
   `behavior` 的 `auto`/`instant`；无 layout/矩形或不支持的 smooth、scroll-margin、
-  嵌套 overflow 请求安全 no-op。该边界也不覆盖滚动锚定或平滑/惯性滚动。
+  nested `scrollIntoView()` 请求安全 no-op。带 id 的常见 overflow box 可使用
+  `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()`，由 Core callback clamp，并由宿主
+  的 pointer notification 同步；该边界不覆盖完整滚动链/锚定或平滑/惯性滚动。
 - 宿主完成 WM_SIZE 的 Core style/layout、page-level clamp 和 native child reposition 后可调用 `PBrowser_ScriptSessionNotifyResize`；该入口更新 `innerWidth`/`outerWidth`/`devicePixelRatio`、`screen` 宽高/方向和布局视口对应的 `visualViewport`，刷新每个 session 最多 64 个 `matchMedia()` 列表，并在匹配结果翻转时同步派发 `change`。同一 session 的 `screen.orientation` 对象保持身份稳定，方向翻转时再派发一次可信 `change`，随后按 visual viewport、window 顺序派发 `resize`；同方向尺寸变化不派发 orientation 事件。`visualViewport` 的 scale 固定为 1，offset 固定为 0，pageLeft/pageTop 与 page scroll 同步；它不替宿主运行 timer/animation frame，不支持完整媒体查询语法、pinch zoom 或嵌套 overflow，也不为视觉像素或真实旋转提供保证；超过 64 个媒体列表和 16 个 orientation 监听器只保留有界的已注册状态。
 - `Element.getBoundingClientRect()` 只在 Core 已完成 layout 且存在对应 box 时返回由
   片段组成的整数 CSS 像素 border-box union；未布局或不可用时为全零矩形。
   `getClientRects()` 每次新建最多 16 个按视觉行排列的正尺寸矩形；块级元素通常一个，
   inline flow 可有多个。两者都要求宿主在 layout 后同步 page scroll，不提供 transforms、
-  Range/Selection、独立 nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
+  Range/Selection、完整 nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
 - Browser 还可把 Core 的最近一次 layout 快照映射为只读的
   `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
   `scrollWidth`/`scrollHeight`。目前只承诺已布局的常见 block、replaced、table/flex
   box；inline/text、隐藏、未布局或无 box 时返回 `0`，查询不触发 relayout。offset、
-  client、scroll 的整数 CSS 像素定义不等于完整 CSSOM box model，仍不提供
-  `scrollTop`/`scrollLeft`、transforms、pinch zoom 或独立 nested overflow scrolling。
+  client、scroll 的整数 CSS 像素定义不等于完整 CSSOM box model。带 id 的常见
+  overflow box 另有 retained `scrollTop`/`scrollLeft`、`scrollTo()`/`scrollBy()` 桥，
+  但不提供 scroll chaining、nested `scrollIntoView()`、scroll-margin、smooth/inertia、
+  transforms 或 pinch zoom；没有 id、layout 或 retained scrollbar 时安全 no-op。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
 - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 26；Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement` 和 `HTMLElement.focus()`/`blur()` 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
@@ -96,7 +101,7 @@
   在 callback 返回后同步脚本滚动位置；无 id、disabled、hidden、stale、未布局、
   对非当前目标的 blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复
   派发 focus family。该桥不提供
-  完整 focus navigation、自动初始焦点、focus ring、nested overflow、scroll-margin、
+  完整 focus navigation、自动初始焦点、focus ring、nested overflow reveal、scroll-margin、
   平滑/惯性滚动、跨窗口策略或 OEM 控件视觉保证。
 - Browser session callback 同步且不可重入；宿主若在 callback 中销毁或重入 session，行为不受支持。
 - 该运行时不是完整浏览器安全沙箱，不能直接执行不可信互联网脚本并假定与现代浏览器等价隔离。
@@ -104,7 +109,7 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
-- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把物理坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主在 CSS page 坐标与物理坐标之间换算，并在物理滚动后用 notification 同步脚本偏移；有效变化会先派发 `visualViewport.scroll`，再派发 window `scroll`。脚本把 `history.scrollRestoration` 设为 `manual` 时，宿主会跳过自动 entry restore，但 fragment reveal 和显式滚动仍可执行。嵌套 overflow 容器的独立滚动、视觉 viewport 偏移、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
+- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把物理坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主在 CSS page 坐标与物理坐标之间换算，并在物理滚动后用 notification 同步脚本偏移；有效变化会先派发 `visualViewport.scroll`，再派发 window `scroll`。脚本把 `history.scrollRestoration` 设为 `manual` 时，宿主会跳过自动 entry restore，但 fragment reveal 和显式滚动仍可执行。元素 overflow 的 retained offset 不属于 history snapshot；完整滚动容器树、scroll chaining、视觉 viewport 偏移、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
 - 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - download、外部协议、权限、文件系统和应用跳转策略仍由宿主决定。
@@ -169,8 +174,13 @@
   它不证明 transforms、Range/Selection、nested overflow、pinch zoom、复杂字体度量或
   视觉像素精度。
 - TEST1146 覆盖支持 box 的六个布局尺寸 relation、Browser 只读 getter、边框/内边距/
-  scrollbar 的有界算术、后代 extent 和隐藏元素零值回退；它不证明完整 CSSOM、
-  `scrollTop`/`scrollLeft`、nested overflow scrolling 或真实滚动条视觉。
+  retained-scrollport 算术、后代 extent 和隐藏元素零值回退；它不证明元素滚动操作或
+  真实滚动条视觉。
+- TEST1147 覆盖带 id 的嵌套 overflow box：Core relation 38/39、按 id setter、两个轴
+  clamp、Browser `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()`、目标元素 scroll
+  事件去重，以及宿主 pointer snapshot→Browser notification 的同步。它不证明完整
+  滚动容器树、scroll chaining/anchoring、nested `scrollIntoView()`、smooth/inertia、
+  匿名目标、触摸手势或滚动条视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

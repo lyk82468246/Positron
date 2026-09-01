@@ -62,6 +62,7 @@
 #include "netsurf/layout.h"                  /* struct gui_layout_table */
 #include "content/handlers/html/private.h"   /* html_content (real NetSurf) */
 #include "content/handlers/html/layout.h"    /* layout_document */
+#include "content/handlers/html/box_manipulate.h" /* box_handle_scrollbars */
 #include "content/handlers/html/box_inspect.h" /* box_coords */
 #include "netsurf/content.h"                  /* content_redraw_data */
 #include "netsurf/bitmap.h"                   /* thin WM Imaging carrier */
@@ -3348,6 +3349,7 @@ typedef struct pcore_render {
     int           geometry_device_backed;
     int           geometry_dpi;
     struct scrollbar *active_scrollbar;
+    struct box   *overflow_target_box;
     int           active_scrollbar_x;
     int           active_scrollbar_y;
     int           overflow_dirty_valid;
@@ -12086,6 +12088,31 @@ static int pcore_box_metric_scroll_y(const struct box *box)
             (overflow == CSS_OVERFLOW_AUTO && box_vscrollbar_present(box));
 }
 
+/* Redraw normally materializes retained overflow scrollbars lazily. Script
+ * setters and relation reads may arrive before the first paint, so create the
+ * same bounded scrollbar pair at this product boundary instead of exposing a
+ * first-paint ordering dependency to Browser callers. */
+static int pcore_box_ensure_overflow_scrollbars(pcore_render *st,
+        struct box *box)
+{
+    int has_x;
+    int has_y;
+
+    if (st == NULL || box == NULL || box->style == NULL ||
+            box->parent == NULL || box->type == BOX_BR ||
+            box->type == BOX_TABLE || box->type == BOX_INLINE) {
+        return 0;
+    }
+    has_x = pcore_box_metric_scroll_x(box);
+    has_y = pcore_box_metric_scroll_y(box);
+    if (!has_x && !has_y) {
+        return 0;
+    }
+    return box_handle_scrollbars((struct content *) &st->content, box,
+            has_x, has_y) ==
+            NSERROR_OK ? 0 : 1;
+}
+
 static int pcore_box_metric_clamp(long value)
 {
     if (value <= 0) {
@@ -12104,6 +12131,16 @@ static int pcore_layout_dimension_to_css(pcore_render *st, int value)
         return value > 0 ? value : 0;
     }
     return pcore_box_metric_clamp(FIXTOINT(css_unit_device2css_px(
+            INTTOFIX(value), INTTOFIX(st->geometry_dpi))));
+}
+
+static int pcore_layout_dimension_to_device(pcore_render *st, int value)
+{
+    if (value <= 0 || st == NULL || !st->geometry_device_backed ||
+            st->geometry_dpi == 96) {
+        return value > 0 ? value : 0;
+    }
+    return pcore_box_metric_clamp(FIXTOINT(css_unit_css2device_px(
             INTTOFIX(value), INTTOFIX(st->geometry_dpi))));
 }
 
@@ -12162,10 +12199,12 @@ int pcore_box_layout_metrics_for_node(struct dom_document *doc,
             visible_height) {
         full_height = (long) box->descendant_y1 + box->padding[BOTTOM];
     }
-    client_w = visible_width -
-            (pcore_box_metric_scroll_y(box) ? SCROLLBAR_WIDTH : 0);
-    client_h = visible_height -
-            (pcore_box_metric_scroll_x(box) ? SCROLLBAR_WIDTH : 0);
+    /* NetSurf's retained scrollbar is painted over the edge of the box; its
+     * scroll model therefore uses the full padding viewport as visible_size.
+     * Keep client dimensions identical to that scrollport so
+     * scrollWidth-clientWidth is the actual retained scrollbar range. */
+    client_w = visible_width;
+    client_h = visible_height;
     if (client_w < 0) { client_w = 0; }
     if (client_h < 0) { client_h = 0; }
     if (full_width < client_w) { full_width = client_w; }
@@ -12196,6 +12235,88 @@ int pcore_box_layout_metrics_for_node(struct dom_document *doc,
                 pcore_box_metric_clamp(full_height));
     }
     return 0;
+}
+
+/* Return the retained overflow offsets for one element, or apply a
+ * non-negative CSS-pixel request before returning the clamped position. The
+ * box tree stores device pixels on high-DPI layouts, so conversion is kept at
+ * this private boundary and callers never observe device units. */
+int pcore_box_overflow_scroll_for_node(struct dom_document *doc,
+        struct dom_node *node, int requested_x, int requested_y,
+        int *scroll_x, int *scroll_y)
+{
+    pcore_render *st;
+    struct box *box;
+    int value;
+
+    if (scroll_x != NULL) {
+        *scroll_x = 0;
+    }
+    if (scroll_y != NULL) {
+        *scroll_y = 0;
+    }
+    if (doc == NULL || node == NULL || requested_x < -1 ||
+            requested_y < -1) {
+        return 1;
+    }
+    st = pcore_get_render(doc);
+    if (st == NULL || st->root_box == NULL) {
+        return 2;
+    }
+    box = pcore_box_for_any_node(st->root_box, node);
+    if (box == NULL) {
+        return 2;
+    }
+    if (pcore_box_ensure_overflow_scrollbars(st, box) != 0) {
+        return 1;
+    }
+    if (requested_x >= 0 && box->scroll_x != NULL) {
+        value = pcore_layout_dimension_to_device(st, requested_x);
+        scrollbar_set(box->scroll_x, value, false);
+    }
+    if (requested_y >= 0 && box->scroll_y != NULL) {
+        value = pcore_layout_dimension_to_device(st, requested_y);
+        scrollbar_set(box->scroll_y, value, false);
+    }
+    if (scroll_x != NULL && box->scroll_x != NULL) {
+        *scroll_x = pcore_layout_dimension_to_css(st,
+                scrollbar_get_offset(box->scroll_x));
+    }
+    if (scroll_y != NULL && box->scroll_y != NULL) {
+        *scroll_y = pcore_layout_dimension_to_css(st,
+                scrollbar_get_offset(box->scroll_y));
+    }
+    return 0;
+}
+
+PCORE_API int PCore_NodeOverflowScrollToById(HANDLE hDoc,
+        const char *element_id, int scroll_x, int scroll_y,
+        int *out_x, int *out_y)
+{
+    dom_document *doc;
+    dom_element *element;
+    int result;
+
+    if (out_x != NULL) {
+        *out_x = 0;
+    }
+    if (out_y != NULL) {
+        *out_y = 0;
+    }
+    if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            out_x == NULL || out_y == NULL || scroll_x < 0 ||
+            scroll_y < 0) {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    element = pcore_box_element_by_id(doc, element_id);
+    if (element == NULL) {
+        return 2;
+    }
+    result = pcore_box_overflow_scroll_for_node(doc,
+            (dom_node *) element, scroll_x, scroll_y, out_x, out_y);
+    dom_node_unref((dom_node *) element);
+    return result;
 }
 
 /* Resolve the first direct summary trigger of a details element. The
@@ -13158,6 +13279,70 @@ static struct scrollbar *pcore_scrollbar_at(struct box *box, int x, int y,
     return NULL;
 }
 
+static int pcore_overflow_copy_element_id(struct box *box, char *out_id,
+        int out_capacity, int *out_bytes)
+{
+    dom_string *name;
+    dom_string *value;
+    dom_node_type node_type;
+    const char *data;
+    size_t length;
+    size_t copy_length;
+    int result;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (out_id != NULL && out_capacity > 0) {
+        out_id[0] = '\0';
+    }
+    if (box == NULL || box->node == NULL || out_capacity < 0 ||
+            (out_id == NULL && out_capacity > 0)) {
+        return 1;
+    }
+    if (dom_node_get_node_type(box->node, &node_type) != DOM_NO_ERR ||
+            node_type != DOM_ELEMENT_NODE) {
+        return 2;
+    }
+    name = NULL;
+    value = NULL;
+    result = 1;
+    if (dom_string_create((const uint8_t *) "id", 2, &name) ==
+            DOM_NO_ERR && name != NULL &&
+            dom_element_get_attribute((dom_element *) box->node, name,
+            &value) == DOM_NO_ERR && value != NULL) {
+        data = dom_string_data(value);
+        length = dom_string_byte_length(value);
+        if ((data != NULL || length == 0) && length <= (size_t) INT_MAX) {
+            if (out_bytes != NULL) {
+                *out_bytes = (int) length;
+            }
+            if (length == 0) {
+                result = 2;
+            } else {
+                copy_length = length;
+                if (out_id != NULL && out_capacity > 0) {
+                    if (copy_length > (size_t) (out_capacity - 1)) {
+                        copy_length = (size_t) (out_capacity - 1);
+                    }
+                    if (copy_length > 0) {
+                        memcpy(out_id, data, copy_length);
+                    }
+                    out_id[copy_length] = '\0';
+                }
+                result = 0;
+            }
+        }
+    }
+    if (value != NULL) {
+        dom_string_unref(value);
+    }
+    if (name != NULL) {
+        dom_string_unref(name);
+    }
+    return result;
+}
+
 PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y)
 {
     pcore_render *st;
@@ -13173,6 +13358,7 @@ PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y)
         origin_x = 0;
         origin_y = 0;
         st->overflow_dirty_valid = 0;
+        st->overflow_target_box = NULL;
         scrollbar = pcore_scrollbar_at(st->root_box, x, y,
                 &origin_x, &origin_y, &st->overflow_dirty_x,
                 &st->overflow_dirty_y, &st->overflow_dirty_w,
@@ -13182,6 +13368,7 @@ PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y)
         }
         st->overflow_dirty_valid = 1;
         st->active_scrollbar = scrollbar;
+        st->overflow_target_box = pcore_scrollbar_owner(scrollbar);
         st->active_scrollbar_x = origin_x;
         st->active_scrollbar_y = origin_y;
         scrollbar_mouse_action(scrollbar, BROWSER_MOUSE_PRESS_1,
@@ -13225,6 +13412,43 @@ PCORE_API int PCore_OverflowDirtyRect(HANDLE hDoc,
     *w = st->overflow_dirty_w;
     *h = st->overflow_dirty_h;
     return 1;
+}
+
+PCORE_API int PCore_OverflowScrollSnapshot(HANDLE hDoc, char *element_id,
+        int element_capacity, int *element_bytes, int *scroll_x,
+        int *scroll_y)
+{
+    dom_document *doc;
+    pcore_render *st;
+    int result;
+
+    if (element_bytes != NULL) {
+        *element_bytes = 0;
+    }
+    if (scroll_x != NULL) {
+        *scroll_x = 0;
+    }
+    if (scroll_y != NULL) {
+        *scroll_y = 0;
+    }
+    if (element_capacity < 0 || (element_id == NULL && element_capacity > 0) ||
+            element_bytes == NULL || scroll_x == NULL || scroll_y == NULL ||
+            hDoc == NULL) {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    st = pcore_get_render(doc);
+    if (st == NULL || st->overflow_target_box == NULL) {
+        return 2;
+    }
+    result = pcore_overflow_copy_element_id(st->overflow_target_box,
+            element_id, element_capacity, element_bytes);
+    if (result != 0) {
+        return result;
+    }
+    result = pcore_box_overflow_scroll_for_node(doc,
+            st->overflow_target_box->node, -1, -1, scroll_x, scroll_y);
+    return result;
 }
 
 PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,

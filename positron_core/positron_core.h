@@ -331,9 +331,11 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * integer CSS-pixel width/height metrics for block, replaced and common
  * table/flex boxes. They are read-only snapshots from the last successful
  * layout; inline/text/hidden/unavailable boxes return unavailable. Offset
- * metrics include borders, client metrics include padding but exclude a
- * reserved CSS scrollbar, and scroll metrics include the bounded descendant
- * extent. They do not provide scrollTop/scrollLeft or force a re-layout.
+ * metrics include borders, client metrics include the retained scrollport's
+ * padding (the current scrollbar implementation overlays the edge rather
+ * than subtracting a fixed width), and scroll metrics include the bounded
+ * descendant extent. The overflow scroll relations below expose the current
+ * retained scroll offsets without forcing a re-layout.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
@@ -380,10 +382,22 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_CLIENT_HEIGHT  35u
 #define PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH   36u
 #define PCORE_NODE_RELATION_LAYOUT_SCROLL_HEIGHT  37u
+#define PCORE_NODE_RELATION_LAYOUT_SCROLL_LEFT    38u
+#define PCORE_NODE_RELATION_LAYOUT_SCROLL_TOP     39u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,
         int value_capacity, int *out_bytes, int *out_number);
+/* Set one element's retained CSS overflow position and return the actual
+ * clamped CSS-pixel position. The element must have a laid-out box; elements
+ * without a retained scrollbar are valid no-ops and return zero offsets.
+ * Coordinates are non-negative and use -1 only internally for a read
+ * snapshot; this public setter always applies both axes. It does not perform
+ * scroll chaining, smooth animation or a re-layout. Return 0 on success, 2
+ * when the element has no usable laid-out box, and 1 for invalid input. */
+PCORE_API int PCore_NodeOverflowScrollToById(HANDLE hDoc,
+        const char *element_id, int scroll_x, int scroll_y,
+        int *out_x, int *out_y);
 /* DOM-level form properties for script/runtime hosts. Value/defaultValue
  * support input, textarea and select.value; checked/defaultChecked support
  * input; selectedIndex supports select. These functions do not require a
@@ -1403,6 +1417,14 @@ PCORE_API int PCore_OverflowPointer(HANDLE hDoc, int action, int x, int y);
  * and its retained scrollbar, but excludes unrelated page content. */
 PCORE_API int PCore_OverflowDirtyRect(HANDLE hDoc,
         int *x, int *y, int *w, int *h);
+/* Return the id and current CSS-pixel offsets of the element whose retained
+ * overflow scrollbar most recently consumed PCore_OverflowPointer(). The
+ * id is copied using the usual probe/truncation contract (element_bytes
+ * excludes the trailing NUL). A return of 2 means that no id-addressable
+ * scrollbar target is pending; 1 is invalid input or a document failure. */
+PCORE_API int PCore_OverflowScrollSnapshot(HANDLE hDoc, char *element_id,
+        int element_capacity, int *element_bytes, int *scroll_x,
+        int *scroll_y);
 
 /* --- NetSurf layout/redraw port (milestone H) ----------------------- */
 

@@ -90,7 +90,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box union 和 inline 行片段快照，供 Browser 组合 `getBoundingClientRect()` 与 `getClientRects()`；
-- 为已布局的常见 block、replaced、table/flex box 提供最近一次 layout 的 offset、client 和 scroll 尺寸快照；这些是整数 CSS 像素的只读 relation，不触发 relayout，也不拥有嵌套滚动位置；
+- 为已布局的常见 block、replaced、table/flex box 提供最近一次 layout 的 offset、client 和 scroll 尺寸快照；这些是整数 CSS 像素的只读 relation，不触发 relayout；同时为支持的、有 DOM id 的 overflow box 保留滚动条位置，提供关系 38/39、按 id setter 和 pointer snapshot；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
@@ -110,7 +110,7 @@ Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/
 
 主文档必须先成功，样式表和 `@import` 在 style pass 中通常注册为 required，脚本与图片注册为 optional。宿主在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo`，一次读取独立 candidate result 与 resource gate；只有 `decision=PBROWSER_NAVIGATION_COMMIT_READY` 且 `can_commit` 非零时才可继续页面提交。required 失败、仍有 pending、资源取消或候选取消/过时时保留旧 document/session/history，不触发 teardown 或 swap。optional 失败可以继续提交，Core 按既定的 alt/src/default-style fallback 绘制。失败摘要最多 4 项且不含原始 URL，transport 失败每项最多 2 次重试（总计 3 次尝试），HTTP、resolve、budget、memory 和取消不重试；这些状态和计数由 Browser 提供，宿主只负责调度与日志。组合快照不合并两个 handle，也不替代 `PBrowser_NavigationCandidateMarkCommitted` 的最终重检。
 
-文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单和交互状态。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。`PCore_DocumentWidth`/`PCore_DocumentHeight` 只报告最近一次 layout 的 page-level extent；Core 不访问窗口、不创建滚动条，也不拥有宿主的 viewport offset。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
+文档 handle 拥有 DOM、computed styles、box tree、资源缓存、image carriers、表单、交互状态和支持 overflow box 的 retained scrollbar offset。释放文档会使从它借用的节点、字符串、资源字节和几何信息全部失效。`PCore_DocumentWidth`/`PCore_DocumentHeight` 只报告最近一次 layout 的 page-level extent；Core 不访问窗口、不创建窗口，但对支持的 nested overflow 元素拥有滚动位置与 clamp，宿主通过公开 API 接线。style/layout/paint 通常属于同一 UI 线程；不得在后台 worker 并发操作同一个文档。
 
 `PCore_ContentEditableTargetInfo` 是宿主的 native editing-host 快照：它只返回已布局、可见且带非空 id 的有效 editing host，按 DOM 顺序限制为每页 16 个，文本限制为 8192 个 UTF-8 字节。嵌套且仅继承编辑状态的后代归最近 editing host 所有，不会产生第二个窗口。快照的几何和字符串只在当前文档/layout 仍有效时使用；文档 mutation 或重排后宿主应重新枚举并重建窗口。
 
@@ -126,6 +126,7 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `scrollRestoration` 策略；
 - 浏览器 script session 与 bootstrap；
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
+- 浏览器脚本 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 的有界元素滚动桥：callback 的 `element_id` 把请求交给 Core，`PBrowser_ScriptSessionNotifyElementScroll` 接收宿主 pointer/其他物理路径的实际位置并去重派发目标元素 `scroll` 事件；
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
 - DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
@@ -140,24 +141,25 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   焦点边界解析目标、更新 native/Core 焦点并派发对应的 focus/blur 与
   focusin/focusout 事件。Ex 版本还把 `focus({preventScroll:true})` 和实际
   page-level scroll 坐标纳入同步结果，Browser 在 callback 返回后更新脚本 viewport。
-  未注册时不增加方法；注销后已安装方法保持安全 no-op；nested overflow 和
+  未注册时不增加方法；注销后已安装方法保持安全 no-op；nested overflow reveal 和
   smooth/inertial scrolling 不属于这条边界；
 - 页面级 `Element.scrollIntoView()`：Browser 复用 Core relation geometry 和现有
   page-level scroll callback，计算有限的 block/inline 对齐；宿主仍负责 clamp、
-  物理滚动、绘制和实际位置同步，不把 nested overflow 或 smooth scrolling 引入
-  Browser ABI；
+  物理滚动、绘制和实际位置同步；元素滚动桥不把 nested scroll chaining 或 smooth
+  scrolling 引入 Browser ABI；
 - `Element.getBoundingClientRect()` 与 `Element.getClientRects()` 共用 Core 的有界
   layout fragment relation。块级元素通常返回一个片段，inline flow 按视觉行返回最多
   16 个片段；前者计算这些片段的 viewport-relative union，后者每次新建 array-like
   集合并按索引和 `.item()` 暴露正尺寸矩形。未布局、隐藏、无可用 box 或非正尺寸时
   分别返回全零/空集合。两者都不暴露 Core box 指针，不提供 transforms、Range/Selection、
-  nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
+  完整 nested overflow 坐标、pinch zoom、平滑滚动或视觉像素精度。
 - 对支持的已布局元素，Browser 还通过同一 relation callback 暴露只读的
   `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
   `scrollWidth`/`scrollHeight`。这些 getter 只消费 Core 的整数 CSS 像素快照；
   callback 未注册、元素未布局、隐藏、inline/text 或没有可用 box 时返回 `0`，不会
-  复制 box model 或触发 relayout。`scrollTop`/`scrollLeft`、transforms、pinch zoom
-  和独立 nested overflow scrolling 仍由产品边界明确排除。
+  复制 box model 或触发 relayout。对有 id 的支持 box，Browser 另通过 scroll callback
+  接入 Core 的 retained `scrollTop`/`scrollLeft`；scroll chaining、nested
+  `scrollIntoView()`、transforms、pinch zoom 和平滑/惯性滚动仍由产品边界排除。
 - timer、animation frame、microtask、idle、message 和页面生命周期队列，以及初次完成加载后的 pageshow、可见性切换的 visibilitychange/pagehide/pageshow、宿主驱动的 document.hasFocus/window focus/blur、显式的 document teardown 与队列清理入口；
 - `PBrowser_ScriptSessionRunTaskCheckpoint` 提供统一的有界脚本任务检查点：按调用方选择的阶段以 timer → animation frame → message → idle 的固定顺序运行，并在每个阶段后排空一次 microtask；Browser 拥有顺序和队列预算，宿主提供单调时钟、idle deadline、message limit 和消息循环接线；
 - native EDIT/SELECT/button/file/disclosure 等平台控件事务状态。
@@ -171,15 +173,15 @@ CSS page 坐标，由宿主换算为 Core 的物理设备坐标，按当前 exte
 再把实际位置换回 CSS 坐标返回。`Element.scrollIntoView()` 只在 Browser 内用
 `getBoundingClientRect()` 的单元素矩形计算 page-level 的 block/inline 对齐，再复用
 同一个 scroll callback；默认是 block start、inline nearest，也支持有限的 center、end
-和 `false` 末端对齐。候选 session
-尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 scrollbar、触摸、键盘、
-resize 或 fragment reveal 后先把物理位置换算为 CSS page 坐标，再调用
-`PBrowser_ScriptSessionNotifyScroll`，Browser
-只更新脚本侧偏移并在实际变化时派发一次 visual viewport `scroll` 和一次 window
-`scroll`，不会重新调用 scroll callback。这让脚本 origin 与平台 origin 共用一份最终
-viewport，同时避免同步 callback 递归进入同一 runtime。对齐只覆盖当前页面视口；
-无 layout/矩形或不支持的 `smooth`、scroll-margin、nested overflow 请求由脚本安全
-no-op，Browser 不替宿主做 clamp、绘制或独立滚动容器管理。
+和 `false` 末端对齐。对 `Element.scrollTo()`/`scrollBy()`，同一个 callback 的末尾
+`element_id` 指向 Core 的有界 retained overflow box，返回值是两个轴的实际 clamp
+位置。候选 session 尚未提交时宿主只回显坐标，不能改变旧页面。宿主完成 page scrollbar、
+嵌套 overflow pointer、触摸、键盘、resize 或 fragment reveal 后，分别使用
+`PBrowser_ScriptSessionNotifyScroll` 或 `PBrowser_ScriptSessionNotifyElementScroll`
+同步 Browser；通知只更新脚本侧状态并在实际变化时派发一次对应的非冒泡 `scroll`，不会
+重新调用 callback。这让脚本 origin 与平台 origin 共用一份最终位置，同时避免同步
+callback 递归进入同一 runtime。无 layout/矩形或不支持的 `smooth`、scroll-margin、
+scroll chaining 请求由脚本安全 no-op，Browser 不替宿主做 clamp、绘制或窗口管理。
 
 窗口 resize 的边界也由 Browser 提供：宿主完成新的 Core style/layout、page-level
 clamp 和 native child reposition 后，调用
@@ -238,7 +240,7 @@ page-level viewport，`prevent_scroll` 为真时跳过这一步。Browser 等 ca
 stale、未布局或其他不符合 Core 资格的目标必须 no-op；重复 focus 不重复派发 focus
 family，但 Ex callback 仍可按默认规则 reveal 已聚焦且不可见的目标；对非当前目标的
 `blur()` 必须 no-op。该桥只覆盖 id-addressable 的有界目标，不提供完整
-focus navigation、自动初始焦点、焦点矩形、nested overflow、scroll-margin、平滑/惯性
+focus navigation、自动初始焦点、焦点矩形、nested overflow reveal、scroll-margin、平滑/惯性
 滚动、跨窗口策略或原生控件的 OEM 视觉保证。
 
 候选 handle 只表达产品层的 admission 状态，不拥有 response、资源事务、worker、窗口或 Core document。宿主在启动 worker 时创建 handle，在候选被新导航取代时请求取消并退休；worker 完成消息回到 UI 线程后，宿主以当前 generation 调用 `PBrowser_NavigationCandidateCanApply`，并在 layout/swap 前调用 `PBrowser_NavigationCommitGetInfo` 组合 candidate result 与资源 gate；只有组合快照 READY 且最终 candidate 重检通过才能运行页面提交，随后标记 committed 或 failed。worker 收尾后、销毁 candidate/resource handle 前，宿主先让失败或过时 request 的 pending 资源进入终态，再调用 `PBrowser_NavigationCleanupGetInfo`，把 `decision`、终态、gate、pending、`can_release` 和有界 failure/fallback 观测复制到自己的诊断存储；复制后的快照不借用 handle 内存。宿主写日志时调用 Browser 的结果快照，不自行根据 worker 标志重建分类。Browser 不强杀阻塞网络，也不执行 teardown 或 history commit。
@@ -259,13 +261,13 @@ focus navigation、自动初始焦点、焦点矩形、nested overflow、scroll-
 
 宿主拥有所有与具体应用或 Windows Mobile UI 绑定的行为：
 
-- 顶层窗口、消息循环、滚动条和 DPI/旋转通知；layout 后读取 Core 的 page-level width/height，维护两个轴的 viewport offset、clamp 和 native child reposition，并把新的物理 client area 按 DPI 换算后通知 Browser viewport；宿主还负责把每次 `WM_ACTIVATE` 映射为 Browser 的 window focus 通知，但不在宿主复制 `document.hasFocus()` 或 focus/blur 事件语义；
+- 顶层窗口、消息循环和 DPI/旋转通知；layout 后读取 Core 的 page-level width/height，维护两个轴的 viewport offset、clamp 和 native child reposition，并把新的物理 client area 按 DPI 换算后通知 Browser viewport。嵌套 overflow 的 WM 指针则换算为 document 坐标后交给 `PCore_OverflowPointer`，按 `PCore_OverflowDirtyRect` 失效，再把 `PCore_OverflowScrollSnapshot` 转发给 `PBrowser_ScriptSessionNotifyElementScroll`；元素滚动位置和范围不在宿主复制。宿主还负责把每次 `WM_ACTIVATE` 映射为 Browser 的 window focus 通知，但不在宿主复制 `document.hasFocus()` 或 focus/blur 事件语义；
 - native EDIT、COMBOBOX、按钮、文件选择器和 SIP/IME；contenteditable 的 WM EDIT 代理也由宿主创建、定位、销毁并跟踪其平台鼠标/键盘选区；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、写入和所有权也只属于宿主；
 - 后台线程、loading 状态与页面 swap；较新的导航可以取代仍在准备的候选，宿主为每个请求保存 Browser 的 candidate handle，以宿主 generation 计数器构造并门控 worker 完成、进度和提交消息，再让退休候选持有自己的线程、response、资源队列和脚本对象直到 worker 收尾；Browser handle 拥有该候选的 generation、取消请求、退休状态、提交资格和结果分类，宿主只拥有退休队列与平台回收，并通过 `PBrowser_NavigationCandidateGetResult` 把分类复制到应用日志；退休队列有固定上限，达到上限时新导航 fail closed 而不改变当前页；候选成功时先在旧 document/session 仍有效的窗口内调用 `PBrowser_ScriptSessionDispatchBeforeUnload`，按应用策略处理取消，再调用 Browser teardown、停止 native 回调、释放旧对象并提交新页；
 - DNS/TCP/TLS/HTTP 组合策略、worker、取消时机和资源调度；宿主通过 Browser 资源事务注册 URL 并提交 attempt/data/failure/cancel 结果，决定何时重试、何时运行 style/layout、何时提交页面。资源终态、成功字节、预算、required/optional gate、失败摘要和 fallback 计数由 Browser 拥有，宿主读取统计用于 loading、日志和应用策略，不复制第二份资源状态或数据；页面提交时由 Browser 的 `PBrowser_NavigationCommitGetInfo` 给出 candidate/resource 组合快照，宿主不复制其中的分类规则；
 - request 结束时的清理顺序仍由宿主编排：先 join worker，失败/过时 request 先取消 Browser 资源事务中的 pending 项，再读取 `PBrowser_NavigationCleanupGetInfo` 并复制有界结果，最后销毁 candidate/resource handle。该快照只提供 Browser-owned 状态，不改变 candidate state、不拥有宿主线程/response/窗口，也不把“可释放”误当成页面提交成功；
 - 新窗口、外部协议、下载和文件系统权限策略；
-- 把 Core 文档回调注册到 Browser session；
+- 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，宿主不复制 box tree 或滚动模型；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   并在需要脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
   宿主负责按 id 验证 Core 几何/资格、page-level scroll reveal、native HWND 切换、
@@ -308,7 +310,7 @@ focus navigation、自动初始焦点、焦点矩形、nested overflow、scroll-
 4. native Windows 消息先形成 typed event，再由 Browser 决定取消或允许默认动作；WM6 `EDIT` 可能在 `WM_CHAR` 默认处理完成前发送 `EN_CHANGE`，宿主必须在默认处理返回后读取最终值，避免把旧值提交为一次 mutation；`WM_PASTE`/`WM_CUT`/`WM_COPY` 只在可取得有界 `CF_UNICODETEXT` data 时进入 contenteditable 事务，折叠复制直接 no-op；
 5. Core 执行 DOM/form/default mutation；对 contenteditable，只有 `beforeinput` 未取消时才执行有界纯文本 mutation，Browser 的脚本 selection API 在可用时同步宿主原生选区；原生 WM EDIT 的无修饰 down/move/up 或 Shift/方向键默认处理返回后，宿主用短暂 anchor 计算方向，并在捕获/取消/焦点中断时收尾，再通知 Browser；paste/copy/cut 还必须在 native default 前完成 clipboard data 的格式和容量检查，且不得让宿主复制一份 Browser 的 Range/Selection 模型；
 6. Browser 派发 mutation 后的 `input`、`change`、focus、`selectionchange` 或 lifecycle 事件；原生选区通知必须先由 Browser 去重，不能由宿主和 Core 各发一次；
-7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；宿主的滚动条、触摸、键盘或 fragment reveal 更新 page offset 后调用 Browser 的 scroll notification，让脚本 `scrollX`/`scrollY` 与物理位置保持一致；WM_SIZE 完成新的 style/layout、clamp 和 native child reposition 后再调用 Browser 的 resize notification，让 `innerWidth`、DPR、稳定的 `screen.orientation` 和 window `resize` listener 看到同一快照；方向翻转时 orientation `change` 位于 visual/window `resize` 之前。
+7. 宿主按需重新 layout/paint；活动 modal 时先让 Core 画普通文档，再组合实体色 backdrop 和 dialog；宿主的 page scrollbar、触摸、键盘或 fragment reveal 更新 page offset 后调用 Browser 的 scroll notification，让脚本 `scrollX`/`scrollY` 与物理位置保持一致；嵌套 overflow 指针更新后通过 Core dirty rect 重绘，并用 element-scroll notification 同步目标元素和事件；WM_SIZE 完成新的 style/layout、clamp 和 native child reposition 后再调用 Browser 的 resize notification，让 `innerWidth`、DPR、稳定的 `screen.orientation` 和 window `resize` listener 看到同一快照；方向翻转时 orientation `change` 位于 visual/window `resize` 之前。
 8. 页面替换时先调用 Browser 的 cancelable `beforeunload` 门，再调用 page-teardown（visible 页面依次为 `visibilitychange`、`pagehide`、`unload`，并清理页面队列），最后销毁 session 与文档；被取消或失败的候选不得触发 teardown。Browser 不提供 prompt UI，宿主拥有继续/拒绝策略，脚本调用失败时必须 fail closed。
 
 事件顺序、取消和状态提交必须由产品层确定，不能依赖 test fixture 的偶然消息顺序。真实 SIP、OEM IME、系统 picker 和窗口创建仍需要设备人工验收。
@@ -361,6 +363,8 @@ focus navigation、自动初始焦点、焦点矩形、nested overflow、scroll-
 - TLS 1.3、HTTP/2、HTTP/3 或现代浏览器级网络栈；
 - 完整 WHATWG URL、DOM、HTML、CSSOM、Web API 或 ECMAScript host environment；
 - 完整 CSS Grid、任意 float/position/table 边界和桌面级字体排版；
+- 完整 nested overflow scroll tree、scroll chaining/anchoring、`scrollIntoView()` 容器遍历、
+  平滑/惯性滚动；当前只提供带 id 的常见 box 的 retained offset bridge；
 - 通用 ClipboardEvent、async clipboard、CF_TEXT/富文本转换或跨应用剪贴板格式互操作；当前宿主只提供有界 `CF_UNICODETEXT` contenteditable paste/copy/cut 接线；
 - 多窗口浏览器、完整现代 modal dialog/backdrop（仅支持有界实体色组合）或持久化浏览历史；
 - 在 DLL 内接管应用消息循环、系统 picker、OEM IME 或设备连接；

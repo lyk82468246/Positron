@@ -57,15 +57,19 @@ next699 补齐了基于 Core 单矩形快照的 `Element.getClientRects()` 回�
 个 viewport-relative 矩形，并以同一集合计算 `getBoundingClientRect()` union；TEST1144
 覆盖单矩形回归，TEST1145 覆盖窄容器多片段、索引顺序、identity 和 union。next701
 在同一 bridge 上补齐了已布局常见 box 的六个只读布局尺寸快照，TEST1146 覆盖 Core
-relation、Browser getter、边框/内边距/scrollbar 算术、后代 extent 和隐藏回退。下一条
-纵向能力是 next702，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能
-凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。嵌套 overflow 容器、Range/
-Selection、pinch zoom、平滑/惯性滚动和视觉猜测不得误写成已支持能力。
+relation、Browser getter、边框/内边距/retained-scrollport 算术、后代 extent 和隐藏回退。
+next702 已在 Core/Browser 中完成带 DOM id 的常见 overflow box retained 两轴滚动：
+关系 38/39、按 id setter、两轴 clamp、脚本 `scrollLeft`/`scrollTop`/`scrollTo()`/
+`scrollBy()`、目标元素事件去重和宿主 pointer snapshot 同步均有 TEST1147 覆盖。下一条
+纵向能力是 next703，仍须从源码、日志或截图固定一个新的可复现用户可见组合缺口；不能
+凭空扩张 ABI，也不能把页面业务规则塞回 `test_host`。完整滚动容器树、scroll chaining/
+anchoring、nested `scrollIntoView()`、Range/Selection、pinch zoom、平滑/惯性滚动和
+视觉猜测不得误写成已支持能力。
 
 优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next694、next695、next696、next697、next698、next699、next700 和 next701 的完成证据
-都包括定向自动断言、直接相邻回归和风险相称的设备门；下一批 next702 必须沿用同一
+next694、next695、next696、next697、next698、next699、next700、next701 和 next702 的完成证据
+都包括定向自动断言、直接相邻回归和风险相称的设备门；下一批 next703 必须沿用同一
 完成标准。
 视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
 严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
@@ -89,6 +93,9 @@ next694、next695、next696、next697、next698、next699、next700 和 next701 
 
 - 用真实页面缺口驱动 float、position、table、media、字体和复杂 inline 行为。
 - 优先修复严重错位、内容不可达、错误滚动和交互几何，不做脱离语料的全面 CSS 扩张。
+- 在继续扩展前，保持 next702 的边界：完整滚动容器树、scroll chaining/anchoring、
+  nested `scrollIntoView()`、smooth/inertia 和匿名目标不因一个带 id 的 retained offset
+  bridge 而被误称为已实现；真实滚动条裁剪和触摸视觉进入人工验收矩阵。
 - 继续降低深 DOM、资源树和重排路径的栈/heap 峰值，并为失败清理添加资源断言。
 - 建立多 viewport/DPI 截图基线，但把设备量化和字体差异与语义断言分开。
 

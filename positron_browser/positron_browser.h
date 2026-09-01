@@ -496,8 +496,8 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * box tree. LAYOUT_OFFSET_*, LAYOUT_CLIENT_* and LAYOUT_SCROLL_* relations are
  * integer CSS-pixel width/height snapshots for supported block, replaced,
  * table and flex boxes. They are read-only and unavailable until layout; the
- * Browser wrapper maps unavailable metrics to zero and does not implement
- * scrollTop/scrollLeft through this relation boundary. */
+ * Browser wrapper maps unavailable metrics to zero. The two scroll-offset
+ * relations are live retained CSS overflow positions. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -540,6 +540,8 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_HEIGHT  35u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_WIDTH   36u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_HEIGHT  37u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_LEFT    38u
+#define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLL_TOP     39u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;
@@ -1407,6 +1409,9 @@ typedef struct PBrowserScriptScrollInfo {
     unsigned long size;
     int scroll_x;
     int scroll_y;
+    /* Borrowed element id for an Element.scrollTo/scrollBy request. NULL
+     * denotes the page viewport and preserves the original callback ABI. */
+    const char *element_id;
 } PBrowserScriptScrollInfo;
 typedef int (*PBrowserScriptScrollFn)(void *pw,
         const PBrowserScriptScrollInfo *info, int *out_x, int *out_y);
@@ -1923,6 +1928,13 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterScrollCallbacks(
  * without recursion. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
         int scroll_x, int scroll_y);
+/* Synchronize a host-driven retained element overflow scroll into the Browser
+ * bootstrap. Coordinates are non-negative CSS pixels. The Browser updates
+ * the addressed element and dispatches one non-bubbling `scroll` event only
+ * when the effective pair changes; it never calls the host scroll callback
+ * again. Unknown ids are ignored. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyElementScroll(HANDLE hSession,
+        const char *element_id, int scroll_x, int scroll_y);
 /* Read the browser history scroll-restoration policy. The output is
  * PBROWSER_SCROLL_RESTORATION_AUTO (the default) or
  * PBROWSER_SCROLL_RESTORATION_MANUAL. A host should skip its automatic
