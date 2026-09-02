@@ -83,7 +83,9 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button
   控件会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中对应的 form，空值或
   无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档顺序包含这种跨树
-  显式关联的控件，但仍是每次查询生成的有界 snapshot；
+  显式关联的控件，但仍是每次查询生成的有界 snapshot。Core 的 validation、successful
+  control/multipart、dialog/default-submit、reset 和原生激活路径复用同一 owner 解析，
+  因此跨树控件不会只在 Browser 关系查询中出现；
 - form-control 的 effective-disabled relation（关系 44）：input、button、select、
   textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
   first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回
@@ -134,6 +136,12 @@ scroll-margin、平滑/惯性滚动或匿名目标的宿主指针归因。
 Core 持有控件值、checked/selected、effective-disabled（含 fieldset first-legend exemption
 和 optgroup→option 继承）、required/range/step/pattern/custom validity、submission、
 multipart、reset 和 successful controls 等产品语义。
+
+支持的控件统一按最近祖先 form 或显式 `form="id"` 解析 owner。这个解析同时服务
+`PCore_FormValidation*`、successful-control/urlencoded 或 multipart submission、
+`method="dialog"` 默认动作、reset 和按坐标的 submit/reset 激活；空值或无效目标没有
+owner，也不会回退到祖先。Browser 的 `Element.form`/`form.elements` 关系与这些 Core
+路径共享同一规则。
 
 脚本宿主可通过 `PCore_NodeCheckedById` 读取带 id 的 `input.checked` 或 `option.selected`
 实时状态；后者会随 `PCore_NodeSetSelectedIndexById`、`PCore_SelectSetOptionSelected`

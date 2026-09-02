@@ -54,8 +54,10 @@
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button，并按文档顺序纳入跨树
-  控件，但文档 mutation 后调用方仍应重新查询。完整 live HTMLFormControlsCollection、
-  所有 form-associated 元素、fieldset/object/image 归属和浏览器完整表单树规则仍未实现。
+  控件；validation、submission/multipart、dialog/default-submit、reset 和按坐标的
+  submit/reset 激活也复用这条 owner 规则，但文档 mutation 后调用方仍应重新查询。完整
+  live HTMLFormControlsCollection、所有 form-associated 元素、fieldset/object/image 归属
+  和浏览器完整表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -293,6 +295,15 @@
   `:placeholder-shown` 对 text-like input/textarea 的空 value、非空 placeholder、value/type/
   placeholder mutation、matches/closest/query 顺序和非法输入的有界映射。真实 native
   placeholder 绘制、SIP/IME、触摸、视觉和不同 DPI 仍进入累计人工清单。
+- TEST1170 是离线的 Core/Browser form-owner 夹具，无新增立即人工风险；自动门证明最近
+  祖先与显式 `form="id"` 归属、空值/无效目标不回退、跨树 `form.elements` 文档顺序、
+  namedItem、label association、mutation 后重查和旧 snapshot 保持。真实 native 表单
+  控件、SIP/IME、picker、触摸、视觉和不同 DPI 仍进入累计人工清单。
+- TEST1171 是离线的 Core form-owner 生命周期夹具，无新增立即人工风险；自动门证明
+  form 外的显式控件参与 validation、`reportValidity()` invalid-event 扫描、urlencoded
+  successful-control submission 和外部 submit/reset activation，reset 后初始值恢复且
+  required invalid 再次出现。multipart 以同一 owner 实现为基础，但本夹具不承诺 native
+  表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

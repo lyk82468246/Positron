@@ -46,6 +46,25 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
 int pcore_node_effectively_disabled(struct dom_node *node, bool *applies,
         bool *disabled);
 
+/* Resolve a supported form control's current owner from the DOM. A present
+ * `form` attribute sets *out_has_attribute even when its value is empty or
+ * invalid; in that case *out_owner remains NULL and no ancestor fallback is
+ * allowed. When the attribute is absent, the nearest ancestor form is
+ * returned. A non-NULL owner is retained for the caller. */
+int pcore_form_control_owner(struct dom_document *doc,
+        struct dom_node *control, struct dom_element **out_owner,
+        int *out_has_attribute);
+
+/* Visit supported input/select/textarea/button controls owned by `form` in
+ * document order. The visitor sees a retained node for the duration of its
+ * call and must not unref it. Return 0 to continue, a positive value to stop
+ * successfully, or a negative value to abort. The traversal returns zero for
+ * completion/early stop and non-zero for invalid input or DOM failure. */
+typedef int (*pcore_form_control_visit_fn)(struct dom_node *node, void *pw);
+int pcore_form_controls_visit(struct dom_document *doc,
+        struct dom_element *form, pcore_form_control_visit_fn visit,
+        void *pw);
+
 /* Resolve the effective contenteditable mode for a borrowed element node.
  * Unlike the public DOM query this helper does not consume the node
  * reference; it is used by layout/focus snapshots inside the core DLL. */

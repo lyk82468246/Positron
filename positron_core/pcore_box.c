@@ -7399,137 +7399,170 @@ static int pcore_form_append_button(pcore_form_buffer *buffer,
     return append;
 }
 
+typedef struct pcore_form_build_data_context {
+    dom_node *activated;
+    pcore_form_buffer *buffer;
+} pcore_form_build_data_context;
+
+static int pcore_form_build_data_visit(dom_node *node, void *pw)
+{
+    pcore_form_build_data_context *context;
+    int result;
+
+    context = (pcore_form_build_data_context *) pw;
+    if (context == NULL || context->buffer == NULL || node == NULL) {
+        return -1;
+    }
+    result = 1;
+    if (pcore_node_name_is(node, "input")) {
+        result = pcore_form_append_input(context->buffer,
+                (dom_html_input_element *) node, context->activated);
+    } else if (pcore_node_name_is(node, "textarea")) {
+        result = pcore_form_append_textarea(context->buffer,
+                (dom_html_text_area_element *) node);
+    } else if (pcore_node_name_is(node, "select")) {
+        result = pcore_form_append_select(context->buffer,
+                (dom_html_select_element *) node);
+    } else if (pcore_node_name_is(node, "button")) {
+        result = pcore_form_append_button(context->buffer,
+                (dom_html_button_element *) node, context->activated);
+    }
+    return result ? 0 : -1;
+}
+
 static int pcore_form_build_data(dom_html_form_element *form,
         dom_node *activated, pcore_form_buffer *buffer)
 {
-    dom_html_collection *elements;
-    dom_node *node;
-    uint32_t count;
-    uint32_t index;
+    dom_document *doc;
+    pcore_form_build_data_context context;
     int result;
 
-    elements = NULL;
-    node = NULL;
-    count = 0;
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
+    doc = NULL;
+    if (form == NULL || buffer == NULL ||
+            dom_node_get_owner_document((dom_node *) form, &doc) !=
+                    DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
         }
         return 0;
     }
-    result = 1;
-    for (index = 0; index < count && result; index++) {
-        node = NULL;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL) {
-            result = 0;
-        } else if (pcore_node_name_is(node, "input")) {
-            result = pcore_form_append_input(buffer,
-                    (dom_html_input_element *) node, activated);
-        } else if (pcore_node_name_is(node, "textarea")) {
-            result = pcore_form_append_textarea(buffer,
-                    (dom_html_text_area_element *) node);
-        } else if (pcore_node_name_is(node, "select")) {
-            result = pcore_form_append_select(buffer,
-                    (dom_html_select_element *) node);
-        } else if (pcore_node_name_is(node, "button")) {
-            result = pcore_form_append_button(buffer,
-                    (dom_html_button_element *) node, activated);
-        }
-        if (node != NULL) {
-            dom_node_unref(node);
-        }
-    }
-    dom_html_collection_unref(elements);
-    return result;
+    context.activated = activated;
+    context.buffer = buffer;
+    result = pcore_form_controls_visit(doc, (dom_element *) form,
+            pcore_form_build_data_visit, &context);
+    dom_node_unref((dom_node *) doc);
+    return result == 0;
 }
 
 static dom_html_form_element *pcore_control_form(struct form_control *control)
 {
-    dom_html_form_element *form;
+    dom_document *doc;
+    dom_element *owner;
+    int has_attribute;
+    int result;
 
-    form = NULL;
     if (control == NULL || control->node == NULL) {
         return NULL;
     }
-    if (pcore_node_name_is(control->node, "button")) {
-        dom_html_button_element_get_form(
-                (dom_html_button_element *) control->node, &form);
-    } else if (pcore_node_name_is(control->node, "input")) {
-        dom_html_input_element_get_form(
-                (dom_html_input_element *) control->node, &form);
-    } else if (pcore_node_name_is(control->node, "textarea")) {
-        dom_html_text_area_element_get_form(
-                (dom_html_text_area_element *) control->node, &form);
-    } else if (pcore_node_name_is(control->node, "select")) {
-        dom_html_select_element_get_form(
-                (dom_html_select_element *) control->node, &form);
+    doc = NULL;
+    owner = NULL;
+    has_attribute = 0;
+    if (dom_node_get_owner_document(control->node, &doc) != DOM_NO_ERR ||
+            doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
+        }
+        return NULL;
     }
-    return form;
+    result = pcore_form_control_owner(doc, control->node, &owner,
+            &has_attribute);
+    (void) has_attribute;
+    dom_node_unref((dom_node *) doc);
+    if (result != 0) {
+        if (owner != NULL) {
+            dom_node_unref((dom_node *) owner);
+        }
+        return NULL;
+    }
+    return (dom_html_form_element *) owner;
+}
+
+typedef struct pcore_form_first_submit_context {
+    dom_node *found;
+    int error;
+} pcore_form_first_submit_context;
+
+static int pcore_form_first_submit_visit(dom_node *node, void *pw)
+{
+    pcore_form_first_submit_context *context;
+    bool disabled;
+    int is_submit;
+
+    context = (pcore_form_first_submit_context *) pw;
+    if (context == NULL || node == NULL) {
+        return -1;
+    }
+    disabled = false;
+    is_submit = 0;
+    if (pcore_node_name_is(node, "input")) {
+        if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
+            context->error = 1;
+        } else if (!disabled && pcore_attr_value_is(node, "type",
+                "submit")) {
+            is_submit = 1;
+        }
+    } else if (pcore_node_name_is(node, "button")) {
+        if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
+            context->error = 1;
+        } else if (!disabled && !pcore_attr_value_is(node, "type", "reset") &&
+                !pcore_attr_value_is(node, "type", "button")) {
+            is_submit = 1;
+        }
+    }
+    if (context->error) {
+        return -1;
+    }
+    if (is_submit) {
+        context->found = dom_node_ref(node);
+        return 1;
+    }
+    return 0;
 }
 
 static dom_node *pcore_form_first_submit(dom_html_form_element *form,
         int *error)
 {
-    dom_html_collection *elements;
-    dom_node *node;
-    uint32_t count;
-    uint32_t index;
-    bool disabled;
-    int is_submit;
+    dom_document *doc;
+    pcore_form_first_submit_context context;
+    int result;
 
-    elements = NULL;
-    node = NULL;
-    count = 0;
+    if (error == NULL) {
+        return NULL;
+    }
     *error = 0;
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
+    context.found = NULL;
+    context.error = 0;
+    doc = NULL;
+    if (form == NULL ||
+            dom_node_get_owner_document((dom_node *) form, &doc) !=
+                    DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
         }
         *error = 1;
         return NULL;
     }
-    for (index = 0; index < count; index++) {
-        node = NULL;
-        disabled = false;
-        is_submit = 0;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL) {
-            *error = 1;
-            break;
+    result = pcore_form_controls_visit(doc, (dom_element *) form,
+            pcore_form_first_submit_visit, &context);
+    dom_node_unref((dom_node *) doc);
+    if (result != 0 || context.error) {
+        if (context.found != NULL) {
+            dom_node_unref(context.found);
+            context.found = NULL;
         }
-        if (pcore_node_name_is(node, "input")) {
-            if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
-                *error = 1;
-            } else if (!disabled &&
-                    pcore_attr_value_is(node, "type", "submit")) {
-                is_submit = 1;
-            }
-        } else if (pcore_node_name_is(node, "button")) {
-            if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
-                *error = 1;
-            } else if (!disabled &&
-                    !pcore_attr_value_is(node, "type", "reset") &&
-                    !pcore_attr_value_is(node, "type", "button")) {
-                is_submit = 1;
-            }
-        }
-        if (*error || is_submit) {
-            break;
-        }
-        dom_node_unref(node);
-        node = NULL;
+        *error = 1;
     }
-    dom_html_collection_unref(elements);
-    if (*error && node != NULL) {
-        dom_node_unref(node);
-        node = NULL;
-    }
-    return node;
+    return context.found;
 }
 
 static int pcore_public_control_kind(int gadget_type)
@@ -7555,26 +7588,64 @@ static void pcore_form_validation_init(PCoreFormValidationInfo *info)
     }
 }
 
+typedef struct pcore_radio_group_context {
+    dom_string *name;
+    int *checked_out;
+} pcore_radio_group_context;
+
+static int pcore_radio_group_visit(dom_node *node, void *pw)
+{
+    pcore_radio_group_context *context;
+    dom_string *other_name;
+    bool checked;
+
+    context = (pcore_radio_group_context *) pw;
+    if (context == NULL || context->name == NULL ||
+            context->checked_out == NULL || node == NULL) {
+        return -1;
+    }
+    if (!pcore_node_name_is(node, "input") ||
+            !pcore_attr_value_is(node, "type", "radio")) {
+        return 0;
+    }
+    other_name = NULL;
+    checked = false;
+    if (dom_html_input_element_get_name((dom_html_input_element *) node,
+            &other_name) != DOM_NO_ERR ||
+            dom_html_input_element_get_checked(
+            (dom_html_input_element *) node, &checked) != DOM_NO_ERR) {
+        if (other_name != NULL) {
+            dom_string_unref(other_name);
+        }
+        return -1;
+    }
+    if (other_name != NULL && dom_string_isequal(context->name,
+            other_name) && checked) {
+        *context->checked_out = 1;
+    }
+    if (other_name != NULL) {
+        dom_string_unref(other_name);
+    }
+    return *context->checked_out ? 1 : 0;
+}
+
 static int pcore_radio_group_checked(dom_html_form_element *form,
         dom_html_input_element *radio, int *checked_out)
 {
-    dom_html_collection *elements;
-    dom_node *node;
+    dom_document *doc;
     dom_string *name;
-    dom_string *other_name;
-    uint32_t count;
-    uint32_t index;
     bool checked;
+    pcore_radio_group_context context;
     int result;
 
-    elements = NULL;
-    node = NULL;
-    name = NULL;
-    other_name = NULL;
-    count = 0;
-    checked = false;
+    if (checked_out == NULL) {
+        return 0;
+    }
     *checked_out = 0;
-    if (dom_html_input_element_get_name(radio, &name) != DOM_NO_ERR ||
+    name = NULL;
+    checked = false;
+    if (radio == NULL ||
+            dom_html_input_element_get_name(radio, &name) != DOM_NO_ERR ||
             dom_html_input_element_get_checked(radio, &checked) !=
                     DOM_NO_ERR) {
         if (name != NULL) {
@@ -7589,50 +7660,23 @@ static int pcore_radio_group_checked(dom_html_form_element *form,
         }
         return 1;
     }
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
+    doc = NULL;
+    if (form == NULL ||
+            dom_node_get_owner_document((dom_node *) form, &doc) !=
+                    DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
         }
         dom_string_unref(name);
         return 0;
     }
-    result = 1;
-    for (index = 0; index < count && !*checked_out; index++) {
-        node = NULL;
-        other_name = NULL;
-        checked = false;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL) {
-            result = 0;
-        } else if (pcore_node_name_is(node, "input") &&
-                pcore_attr_value_is(node, "type", "radio")) {
-            if (dom_html_input_element_get_name(
-                    (dom_html_input_element *) node, &other_name) !=
-                            DOM_NO_ERR ||
-                    dom_html_input_element_get_checked(
-                    (dom_html_input_element *) node, &checked) !=
-                            DOM_NO_ERR) {
-                result = 0;
-            } else if (other_name != NULL &&
-                    dom_string_isequal(name, other_name) && checked) {
-                *checked_out = 1;
-            }
-        }
-        if (other_name != NULL) {
-            dom_string_unref(other_name);
-        }
-        if (node != NULL) {
-            dom_node_unref(node);
-        }
-        if (!result) {
-            break;
-        }
-    }
-    dom_html_collection_unref(elements);
+    context.name = name;
+    context.checked_out = checked_out;
+    result = pcore_form_controls_visit(doc, (dom_element *) form,
+            pcore_radio_group_visit, &context);
+    dom_node_unref((dom_node *) doc);
     dom_string_unref(name);
-    return result;
+    return result == 0;
 }
 
 static int pcore_required_select_missing(dom_html_select_element *select,
@@ -9550,26 +9594,33 @@ static int pcore_required_control_missing(dom_html_form_element *form,
 
 static dom_html_form_element *pcore_form_for_node(dom_node *node)
 {
-    dom_html_form_element *form;
+    dom_document *doc;
+    dom_element *owner;
+    int has_attribute;
+    int result;
 
-    form = NULL;
-    if (node == NULL) {
+    doc = NULL;
+    owner = NULL;
+    has_attribute = 0;
+    if (node == NULL ||
+            dom_node_get_owner_document(node, &doc) != DOM_NO_ERR ||
+            doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
+        }
         return NULL;
     }
-    if (pcore_node_name_is(node, "button")) {
-        dom_html_button_element_get_form(
-                (dom_html_button_element *) node, &form);
-    } else if (pcore_node_name_is(node, "input")) {
-        dom_html_input_element_get_form(
-                (dom_html_input_element *) node, &form);
-    } else if (pcore_node_name_is(node, "textarea")) {
-        dom_html_text_area_element_get_form(
-                (dom_html_text_area_element *) node, &form);
-    } else if (pcore_node_name_is(node, "select")) {
-        dom_html_select_element_get_form(
-                (dom_html_select_element *) node, &form);
+    result = pcore_form_control_owner(doc, node, &owner,
+            &has_attribute);
+    (void) has_attribute;
+    dom_node_unref((dom_node *) doc);
+    if (result != 0) {
+        if (owner != NULL) {
+            dom_node_unref((dom_node *) owner);
+        }
+        return NULL;
     }
-    return form;
+    return (dom_html_form_element *) owner;
 }
 
 /* Report whether a control participates in constraint validation. This is
@@ -9893,18 +9944,63 @@ PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
     return 0;
 }
 
+typedef struct pcore_form_validation_context {
+    dom_html_form_element *form;
+    pcore_render *st;
+    PCoreFormValidationInfo *info;
+} pcore_form_validation_context;
+
+static int pcore_form_validation_visit(dom_node *node, void *pw)
+{
+    pcore_form_validation_context *context;
+    struct box *box;
+    int kind;
+    int missing;
+    unsigned int flags;
+    int x;
+    int y;
+
+    context = (pcore_form_validation_context *) pw;
+    if (context == NULL || context->form == NULL ||
+            context->info == NULL || node == NULL) {
+        return -1;
+    }
+    kind = 0;
+    missing = 0;
+    flags = 0;
+    if (!pcore_required_control_missing(context->form, node, &kind,
+            &missing, &flags)) {
+        return -1;
+    }
+    if (missing || flags != 0) {
+        context->info->valid = 0;
+        context->info->invalid_count++;
+        if (context->info->invalid_count == 1) {
+            context->info->first_control_kind = kind;
+            context->info->first_flags = flags;
+            if (context->st != NULL) {
+                box = pcore_box_for_node(context->st->root_box, node);
+                if (box != NULL) {
+                    x = 0;
+                    y = 0;
+                    box_coords(box, &x, &y);
+                    context->info->first_x = x;
+                    context->info->first_y = y;
+                    context->info->first_width = box->width;
+                    context->info->first_height = box->height;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
         PCoreFormValidationInfo *out_info)
 {
     dom_element *element;
     dom_html_form_element *form;
-    dom_html_collection *elements;
-    dom_node *node;
-    uint32_t count;
-    uint32_t index;
-    int kind;
-    int missing;
-    unsigned int flags;
+    pcore_form_validation_context context;
     int result;
 
     if (out_info == NULL || hDoc == NULL || form_id == NULL ||
@@ -9922,45 +10018,62 @@ PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
         return 1;
     }
     form = (dom_html_form_element *) element;
-    elements = NULL;
-    count = 0;
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
-        }
-        dom_node_unref((dom_node *) element);
-        return 1;
-    }
-    result = 1;
-    for (index = 0; index < count; index++) {
-        node = NULL;
-        kind = 0;
-        missing = 0;
-        flags = 0;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL || !pcore_required_control_missing(form, node,
-                &kind, &missing, &flags)) {
-            if (node != NULL) {
-                dom_node_unref(node);
-            }
-            result = 0;
-            break;
-        }
-        if (missing || flags != 0) {
-            out_info->valid = 0;
-            out_info->invalid_count++;
-            if (out_info->invalid_count == 1) {
-                out_info->first_control_kind = kind;
-                out_info->first_flags = flags;
-            }
-        }
-        dom_node_unref(node);
-    }
-    dom_html_collection_unref(elements);
+    context.form = form;
+    context.st = NULL;
+    context.info = out_info;
+    result = pcore_form_controls_visit((dom_document *) hDoc, element,
+            pcore_form_validation_visit, &context);
     dom_node_unref((dom_node *) element);
-    return result ? 0 : 1;
+    return result == 0 ? 0 : 1;
+}
+
+typedef struct pcore_form_report_context {
+    dom_html_form_element *form;
+    char **invalid_ids;
+    size_t capacity;
+    uint32_t invalid_id_count;
+} pcore_form_report_context;
+
+static int pcore_form_report_visit(dom_node *node, void *pw)
+{
+    pcore_form_report_context *context;
+    dom_string *node_id;
+    int kind;
+    int missing;
+    unsigned int flags;
+
+    context = (pcore_form_report_context *) pw;
+    if (context == NULL || context->form == NULL ||
+            context->invalid_ids == NULL || node == NULL) {
+        return -1;
+    }
+    kind = 0;
+    missing = 0;
+    flags = 0;
+    if (!pcore_required_control_missing(context->form, node, &kind,
+            &missing, &flags)) {
+        return -1;
+    }
+    if (!missing && flags == 0) {
+        return 0;
+    }
+    node_id = pcore_event_element_id((dom_event_target *) node);
+    if (node_id != NULL && dom_string_byte_length(node_id) > 0) {
+        if ((size_t) context->invalid_id_count >= context->capacity) {
+            dom_string_unref(node_id);
+            return -1;
+        }
+        dom_string_unref(node_id);
+        context->invalid_ids[context->invalid_id_count] =
+                pcore_event_element_id_copy(node);
+        if (context->invalid_ids[context->invalid_id_count] == NULL) {
+            return -1;
+        }
+        context->invalid_id_count++;
+    } else if (node_id != NULL) {
+        dom_string_unref(node_id);
+    }
+    return 0;
 }
 
 PCORE_API int PCore_FormReportValidityById(HANDLE hDoc, const char *form_id,
@@ -9968,17 +10081,10 @@ PCORE_API int PCore_FormReportValidityById(HANDLE hDoc, const char *form_id,
 {
     dom_element *element;
     dom_html_form_element *form;
-    dom_html_collection *elements;
-    dom_node *node;
-    dom_string *node_id;
     char **invalid_ids;
-    uint32_t count;
     uint32_t index;
-    uint32_t invalid_id_count;
     size_t alloc_count;
-    int kind;
-    int missing;
-    unsigned int flags;
+    pcore_form_report_context context;
     int default_allowed;
     int dispatch_result;
     int result;
@@ -10000,86 +10106,39 @@ PCORE_API int PCore_FormReportValidityById(HANDLE hDoc, const char *form_id,
         return 1;
     }
     form = (dom_html_form_element *) element;
-    elements = NULL;
-    count = 0;
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
-        }
-        dom_node_unref((dom_node *) element);
-        return 1;
-    }
-    alloc_count = (size_t) count;
+    alloc_count = out_info->invalid_count > 0 ?
+            (size_t) out_info->invalid_count : 1;
     if (alloc_count == (size_t) -1 ||
             alloc_count + 1 > (size_t) -1 / sizeof(*invalid_ids)) {
-        dom_html_collection_unref(elements);
         dom_node_unref((dom_node *) element);
         return 1;
     }
     invalid_ids = (char **) calloc(alloc_count + 1,
             sizeof(*invalid_ids));
     if (invalid_ids == NULL) {
-        dom_html_collection_unref(elements);
         dom_node_unref((dom_node *) element);
         return 1;
     }
-    invalid_id_count = 0;
-    result = 0;
-    for (index = 0; index < count; index++) {
-        node = NULL;
-        kind = 0;
-        missing = 0;
-        flags = 0;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL || !pcore_required_control_missing(form, node,
-                &kind, &missing, &flags)) {
-            if (node != NULL) {
-                dom_node_unref(node);
-            }
-            result = 1;
-            break;
-        }
-        if (missing || flags != 0) {
-            node_id = pcore_event_element_id((dom_event_target *) node);
-            if (node_id != NULL && dom_string_byte_length(node_id) > 0) {
-                if (invalid_id_count >= count) {
-                    dom_string_unref(node_id);
-                    dom_node_unref(node);
-                    result = 1;
-                    break;
-                }
-                dom_string_unref(node_id);
-                invalid_ids[invalid_id_count] =
-                        pcore_event_element_id_copy(node);
-                if (invalid_ids[invalid_id_count] == NULL) {
-                    dom_node_unref(node);
-                    result = 1;
-                    break;
-                }
-                invalid_id_count++;
-            } else if (node_id != NULL) {
-                dom_string_unref(node_id);
-            }
-        }
-        dom_node_unref(node);
-    }
-    dom_html_collection_unref(elements);
+    context.form = form;
+    context.invalid_ids = invalid_ids;
+    context.capacity = alloc_count;
+    context.invalid_id_count = 0;
+    result = pcore_form_controls_visit((dom_document *) hDoc, element,
+            pcore_form_report_visit, &context);
     dom_node_unref((dom_node *) element);
     if (result != 0) {
-        for (index = 0; index < invalid_id_count; index++) {
+        for (index = 0; index < context.invalid_id_count; index++) {
             free(invalid_ids[index]);
         }
         free(invalid_ids);
         return 1;
     }
-    for (index = 0; index < invalid_id_count; index++) {
+    for (index = 0; index < context.invalid_id_count; index++) {
         default_allowed = 1;
         dispatch_result = PCore_EventDispatchToId(hDoc, invalid_ids[index],
                 "invalid", 0, 1, &default_allowed);
         if (dispatch_result < 0) {
-            for (; index < invalid_id_count; index++) {
+            for (; index < context.invalid_id_count; index++) {
                 free(invalid_ids[index]);
             }
             free(invalid_ids);
@@ -10097,16 +10156,9 @@ static int pcore_form_validate(pcore_render *st,
 {
     PCoreFormValidationInfo local_info;
     PCoreFormValidationInfo *info;
-    dom_html_collection *elements;
-    dom_node *node;
-    struct box *box;
-    uint32_t count;
-    uint32_t index;
-    int kind;
-    int missing;
-    unsigned int flags;
-    int x;
-    int y;
+    dom_document *doc;
+    pcore_form_validation_context context;
+    int result;
 
     info = (out_info != NULL) ? out_info : &local_info;
     pcore_form_validation_init(info);
@@ -10118,54 +10170,21 @@ static int pcore_form_validate(pcore_render *st,
              pcore_node_has_attr(activated, "formnovalidate"))) {
         return 1;
     }
-    elements = NULL;
-    node = NULL;
-    count = 0;
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
+    doc = NULL;
+    if (dom_node_get_owner_document((dom_node *) form, &doc) !=
+            DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
         }
         return 0;
     }
-    for (index = 0; index < count; index++) {
-        node = NULL;
-        kind = 0;
-        missing = 0;
-        flags = 0;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL ||
-                !pcore_required_control_missing(form, node,
-                        &kind, &missing, &flags)) {
-            if (node != NULL) {
-                dom_node_unref(node);
-            }
-            dom_html_collection_unref(elements);
-            return 0;
-        }
-        if (missing) {
-            info->valid = 0;
-            info->invalid_count++;
-            if (info->invalid_count == 1) {
-                info->first_control_kind = kind;
-                info->first_flags = flags;
-                box = pcore_box_for_node(st->root_box, node);
-                if (box != NULL) {
-                    x = 0;
-                    y = 0;
-                    box_coords(box, &x, &y);
-                    info->first_x = x;
-                    info->first_y = y;
-                    info->first_width = box->width;
-                    info->first_height = box->height;
-                }
-            }
-        }
-        dom_node_unref(node);
-    }
-    dom_html_collection_unref(elements);
-    return 1;
+    context.form = form;
+    context.st = st;
+    context.info = info;
+    result = pcore_form_controls_visit(doc, (dom_element *) form,
+            pcore_form_validation_visit, &context);
+    dom_node_unref((dom_node *) doc);
+    return result == 0 ? 1 : 0;
 }
 
 static int pcore_form_validate_default(pcore_render *st,
@@ -10684,51 +10703,59 @@ static int pcore_multipart_append_button(
     return result;
 }
 
+typedef struct pcore_multipart_parts_context {
+    dom_node *activated;
+    pcore_multipart_submission *submission;
+} pcore_multipart_parts_context;
+
+static int pcore_multipart_parts_visit(dom_node *node, void *pw)
+{
+    pcore_multipart_parts_context *context;
+    int result;
+
+    context = (pcore_multipart_parts_context *) pw;
+    if (context == NULL || context->submission == NULL || node == NULL) {
+        return -1;
+    }
+    result = 1;
+    if (pcore_node_name_is(node, "input")) {
+        result = pcore_multipart_append_input(context->submission,
+                (dom_html_input_element *) node, context->activated);
+    } else if (pcore_node_name_is(node, "textarea")) {
+        result = pcore_multipart_append_textarea(context->submission,
+                (dom_html_text_area_element *) node);
+    } else if (pcore_node_name_is(node, "select")) {
+        result = pcore_multipart_append_select(context->submission,
+                (dom_html_select_element *) node);
+    } else if (pcore_node_name_is(node, "button")) {
+        result = pcore_multipart_append_button(context->submission,
+                (dom_html_button_element *) node, context->activated);
+    }
+    return result ? 0 : -1;
+}
+
 static int pcore_multipart_build_parts(dom_html_form_element *form,
         dom_node *activated, pcore_multipart_submission *submission)
 {
-    dom_html_collection *elements;
-    dom_node *node;
-    uint32_t count;
-    uint32_t index;
+    dom_document *doc;
+    pcore_multipart_parts_context context;
     int result;
 
-    elements = NULL;
-    node = NULL;
-    count = 0;
-    if (dom_html_form_element_get_elements(form, &elements) != DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
+    doc = NULL;
+    if (form == NULL || submission == NULL ||
+            dom_node_get_owner_document((dom_node *) form, &doc) !=
+                    DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
         }
         return 0;
     }
-    result = 1;
-    for (index = 0; index < count && result; index++) {
-        node = NULL;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL) {
-            result = 0;
-        } else if (pcore_node_name_is(node, "input")) {
-            result = pcore_multipart_append_input(submission,
-                    (dom_html_input_element *) node, activated);
-        } else if (pcore_node_name_is(node, "textarea")) {
-            result = pcore_multipart_append_textarea(submission,
-                    (dom_html_text_area_element *) node);
-        } else if (pcore_node_name_is(node, "select")) {
-            result = pcore_multipart_append_select(submission,
-                    (dom_html_select_element *) node);
-        } else if (pcore_node_name_is(node, "button")) {
-            result = pcore_multipart_append_button(submission,
-                    (dom_html_button_element *) node, activated);
-        }
-        if (node != NULL) {
-            dom_node_unref(node);
-        }
-    }
-    dom_html_collection_unref(elements);
-    return result;
+    context.activated = activated;
+    context.submission = submission;
+    result = pcore_form_controls_visit(doc, (dom_element *) form,
+            pcore_multipart_parts_visit, &context);
+    dom_node_unref((dom_node *) doc);
+    return result == 0;
 }
 
 static dom_string *pcore_form_submission_action(
@@ -11641,51 +11668,58 @@ static int pcore_form_reset_select(dom_html_select_element *select)
     return result;
 }
 
-static int pcore_form_reset(dom_html_form_element *form)
+typedef struct pcore_form_reset_context {
+    int error;
+} pcore_form_reset_context;
+
+static int pcore_form_reset_visit(dom_node *node, void *pw)
 {
-    dom_html_collection *elements;
-    dom_node *node;
-    uint32_t count;
-    uint32_t index;
+    pcore_form_reset_context *context;
     int result;
 
-    elements = NULL;
-    node = NULL;
-    count = 0;
+    context = (pcore_form_reset_context *) pw;
+    if (context == NULL || node == NULL) {
+        return -1;
+    }
+    result = 0;
+    if (pcore_node_name_is(node, "input")) {
+        result = pcore_form_reset_input((dom_html_input_element *) node);
+    } else if (pcore_node_name_is(node, "textarea")) {
+        result = pcore_form_reset_textarea(
+                (dom_html_text_area_element *) node);
+    } else if (pcore_node_name_is(node, "select")) {
+        result = pcore_form_reset_select((dom_html_select_element *) node);
+    }
+    if (result != 0) {
+        context->error = 1;
+        return -1;
+    }
+    return 0;
+}
+
+static int pcore_form_reset(dom_html_form_element *form)
+{
+    dom_document *doc;
+    pcore_form_reset_context context;
+    int result;
+
     /* The host dispatches the cancelable reset event before calling this
      * state-only helper. Calling libdom's reset method here would emit a
      * second reset event after the host has already accepted the default. */
-    if (dom_html_form_element_get_elements(form, &elements) !=
-            DOM_NO_ERR ||
-            elements == NULL ||
-            dom_html_collection_get_length(elements, &count) != DOM_NO_ERR) {
-        if (elements != NULL) {
-            dom_html_collection_unref(elements);
+    doc = NULL;
+    if (form == NULL ||
+            dom_node_get_owner_document((dom_node *) form, &doc) !=
+                    DOM_NO_ERR || doc == NULL) {
+        if (doc != NULL) {
+            dom_node_unref((dom_node *) doc);
         }
         return 1;
     }
-    result = 0;
-    for (index = 0; index < count && !result; index++) {
-        node = NULL;
-        if (dom_html_collection_item(elements, index, &node) != DOM_NO_ERR ||
-                node == NULL) {
-            result = 1;
-        } else if (pcore_node_name_is(node, "input")) {
-            result = pcore_form_reset_input(
-                    (dom_html_input_element *) node);
-        } else if (pcore_node_name_is(node, "textarea")) {
-            result = pcore_form_reset_textarea(
-                    (dom_html_text_area_element *) node);
-        } else if (pcore_node_name_is(node, "select")) {
-            result = pcore_form_reset_select(
-                    (dom_html_select_element *) node);
-        }
-        if (node != NULL) {
-            dom_node_unref(node);
-        }
-    }
-    dom_html_collection_unref(elements);
-    return result;
+    context.error = 0;
+    result = pcore_form_controls_visit(doc, (dom_element *) form,
+            pcore_form_reset_visit, &context);
+    dom_node_unref((dom_node *) doc);
+    return result != 0 || context.error;
 }
 
 PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y)
@@ -11763,10 +11797,8 @@ static int pcore_same_radio_group(struct form_control *left,
             right->name == NULL || strcmp(left->name, right->name) != 0) {
         return 0;
     }
-    dom_html_input_element_get_form(
-            (dom_html_input_element *) left->node, &left_form);
-    dom_html_input_element_get_form(
-            (dom_html_input_element *) right->node, &right_form);
+    left_form = pcore_control_form(left);
+    right_form = pcore_control_form(right);
     same = (left_form == right_form) ? 1 : 0;
     if (left_form != NULL) {
         dom_node_unref((dom_node *) left_form);

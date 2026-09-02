@@ -1225,7 +1225,10 @@ PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
         const char *element_id, PCoreFormControlValidationInfo *out_info);
 
 /* Query the aggregate constraint state of the form named by form_id. This
- * is a DOM-only check and works before layout as well as after it. The
+ * is a DOM-only check and works before layout as well as after it. Controls
+ * use the shared owner rule: a supported control with form="id" belongs to
+ * that document form even when it is outside the form subtree; an empty or
+ * invalid target has no owner and does not fall back to an ancestor. The
  * form's novalidate attribute is intentionally ignored, matching the query
  * semantics of HTMLFormElement.checkValidity(); controls that do not
  * participate in constraint validation are skipped. The first invalid
@@ -1356,7 +1359,10 @@ PCORE_API int PCore_FormGetCustomValidityForTextarea(HANDLE hDoc,
                                     char *message, unsigned int capacity);
 
 /* Build the application/x-www-form-urlencoded successful-control set for a
- * submit button at a document-space point. method uses the
+ * submit button at a document-space point. The selected form and controls
+ * use the shared owner rule: form="id" can associate controls outside the
+ * form subtree, while an empty or invalid target contributes no control.
+ * method uses the
  * PCORE_FORM_METHOD_* constants. action/body receive UTF-8 and are
  * NUL-terminated when their capacities are positive.
  *
@@ -1456,7 +1462,9 @@ PCORE_API int PCore_MultipartPartInfo(HANDLE hSubmission,
 PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
 
 /* Perform the state portion of the default action for a reset button at a
- * document-space point. Initial values/checks/selections saved by libdom are
+ * document-space point. The reset button's form owner uses the same
+ * ancestor/explicit form="id" rule as validation and submission. Initial
+ * values/checks/selections saved by libdom are
  * restored in the DOM; the embedder dispatches any cancelable reset event
  * before calling this state-only helper. The embedder must re-layout afterward
  * so NetSurf gadgets and native controls are rebuilt from that state. Returns

@@ -222,6 +222,7 @@
 			</File>
 				<File RelativePath=".\pcore_plot_gdi.c"></File>
 				<File RelativePath=".\pcore_talloc.c"></File>
+				<File RelativePath=".\pcore_form.c"></File>
 				<File RelativePath=".\pcore_box.c"></File>
 				<File RelativePath=".\pcore_pattern.c"></File>
 				<File RelativePath="..\third_party\tiny-regex-c\re.c"></File>

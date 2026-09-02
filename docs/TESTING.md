@@ -353,6 +353,12 @@ TEST1170 覆盖 Core 显式 form-owner 到 Browser `Element.form`/`HTMLFormEleme
 mutation 后重新查询。旧集合保持 snapshot identity，不会原地变成 live collection；宿主
 只提供既有 DOM relation/attribute callback，不复制表单归属或集合规则。
 
+TEST1171 覆盖同一显式 form-owner 规则在 Core 生命周期中的消费：form 外的
+`form="primary"` input/textarea 被纳入 DOM-only validation、`reportValidity()` 的
+invalid-event 扫描、urlencoded successful-control 序列和按坐标的外部 submit/reset 激活；
+reset 恢复这些控件的初始值，空 required 值再次阻止提交，另一个 form 的控件不会混入。
+这是离线自动合同，不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

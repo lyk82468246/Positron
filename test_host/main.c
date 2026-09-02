@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1170
+#define TEST_MAX_NUMBER 1171
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -41858,6 +41858,172 @@ static BOOL test1170_browser_form_attribute_owner_contract(void)
             "secondary-button|true|true|true|inside|override|notes|missing|"
             "secondary-button|true|true|true|true|true|true", error,
             sizeof(error));
+}
+
+/* TEST 1171 - explicit form owners participate in Core form lifecycle. */
+static BOOL test1171_core_form_attribute_lifecycle_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='primary' action='/owner' "
+        "method='post'><input id='inside' name='inside' "
+        "value='inside-default'></form>"
+        "<input id='external' form='primary' name='external' required>"
+        "<textarea id='notes' form='primary' name='notes'>notes-default</textarea>"
+        "<button id='submit' type='submit' form='primary' name='go' "
+        "value='send'>Send</button>"
+        "<button id='reset' type='reset' form='primary'>Reset</button>"
+        "<form id='secondary'><input id='foreign' name='foreign' "
+        "value='foreign'></form></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#fff}"
+        "body{font:14px sans-serif;padding:8px}"
+        "input,textarea,button{display:block;margin:4px 0;width:180px}"
+        "textarea{height:36px}";
+    static const char EXPECTED_BODY[] =
+        "inside=inside-default&external=external-value&"
+        "notes=notes-default&go=send";
+    HANDLE document;
+    HANDLE sheet;
+    PCoreFormValidationInfo validation;
+    PCoreFormSubmissionInfo submission;
+    char action[64];
+    char body[512];
+    char external_value[64];
+    char notes_value[64];
+    char error[384];
+    int submit_x;
+    int submit_y;
+    int submit_w;
+    int submit_h;
+    int submit_kind;
+    int reset_x;
+    int reset_y;
+    int reset_w;
+    int reset_h;
+    int reset_kind;
+    int disabled;
+    int bytes;
+    int stage;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(&submission, 0, sizeof(submission));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    memset(external_value, 0, sizeof(external_value));
+    memset(notes_value, 0, sizeof(notes_value));
+    memset(error, 0, sizeof(error));
+    submit_x = 0;
+    submit_y = 0;
+    submit_w = 0;
+    submit_h = 0;
+    submit_kind = 0;
+    reset_x = 0;
+    reset_y = 0;
+    reset_w = 0;
+    reset_h = 0;
+    reset_kind = 0;
+    disabled = 0;
+    bytes = 0;
+    stage = 1;
+    ok = 1;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "http://positron.local/form-owner-lifecycle.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 480) != 0) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = 2;
+        if (PCore_FormValidationById(document, "primary", &validation) != 0 ||
+                validation.valid || validation.invalid_count != 1 ||
+                validation.first_control_kind != 3 ||
+                validation.first_flags != PCORE_VALIDITY_VALUE_MISSING ||
+                PCore_FormReportValidityById(document, "primary",
+                &validation) != 0 || validation.valid ||
+                validation.invalid_count != 1 ||
+                validation.first_control_kind != 3) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 3;
+        if (PCore_FormControlInfoById(document, "submit", &submit_x,
+                &submit_y, &submit_w, &submit_h, &submit_kind, NULL,
+                &disabled) != 0 || submit_kind != 7 || disabled ||
+                submit_w <= 0 || submit_h <= 0 ||
+                PCore_FormControlInfoById(document, "reset", &reset_x,
+                &reset_y, &reset_w, &reset_h, &reset_kind, NULL,
+                &disabled) != 0 || reset_kind != 8 || disabled ||
+                reset_w <= 0 || reset_h <= 0 ||
+                PCore_FormSubmissionAt(document,
+                submit_x + submit_w / 2, submit_y + submit_h / 2,
+                &submission, action, sizeof(action), body, sizeof(body)) !=
+                5) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 4;
+        if (PCore_NodeSetValueById(document, "external",
+                "external-value") != 0 ||
+                PCore_FormValidationById(document, "primary", &validation) !=
+                0 || !validation.valid || validation.invalid_count != 0 ||
+                PCore_FormSubmissionAt(document,
+                submit_x + submit_w / 2, submit_y + submit_h / 2,
+                &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+                submission.method != PCORE_FORM_METHOD_POST ||
+                strcmp(action, "/owner") != 0 ||
+                strcmp(body, EXPECTED_BODY) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 5;
+        if (PCore_NodeSetValueById(document, "notes", "notes-changed") != 0 ||
+                PCore_FormResetAt(document,
+                reset_x + reset_w / 2, reset_y + reset_h / 2) != 1 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_NodeValueById(document, "external", external_value,
+                sizeof(external_value), &bytes) != 0 ||
+                strcmp(external_value, "") != 0 || bytes != 0 ||
+                PCore_NodeValueById(document, "notes", notes_value,
+                sizeof(notes_value), &bytes) != 0 ||
+                strcmp(notes_value, "notes-default") != 0 ||
+                PCore_FormValidationById(document, "primary", &validation) !=
+                0 || validation.valid || validation.invalid_count != 1 ||
+                validation.first_flags != PCORE_VALIDITY_VALUE_MISSING) {
+            ok = 0;
+        }
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%d valid=%d count=%d kind=%d flags=%lu "
+                "submit=%d reset=%d action=%s body=%s external=%s notes=%s",
+                stage, validation.valid, validation.invalid_count,
+                validation.first_control_kind,
+                (unsigned long) validation.first_flags, submit_kind,
+                reset_kind, action, body, external_value, notes_value);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1171 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1171 OK",
+            "Explicit form owners now drive Core validation, invalid-event "
+            "reporting, successful-control submission, external submit/reset "
+            "activation and reset restoration.");
+    return TRUE;
 }
 
 static BOOL test12_render(void)
@@ -99967,6 +100133,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1168: ok = test1168_browser_selector_editable_state_contract(); break;
         case 1169: ok = test1169_browser_selector_placeholder_state_contract(); break;
         case 1170: ok = test1170_browser_form_attribute_owner_contract(); break;
+        case 1171: ok = test1171_core_form_attribute_lifecycle_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -70,8 +70,9 @@ tests=13,20,27,999
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
-  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询
-  （TEST1146–1170）；
+  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
+  以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费
+  （TEST1146–1171）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -239,6 +240,12 @@ TEST1170 断言 Core 的显式 form-owner 规则到 Browser `Element.form` 与
 返回受支持的 input/textarea/button 控件，`namedItem()`、label association 和 mutation
 后的重新查询保持一致。夹具还确认旧 snapshot 不被原地改写；宿主只提供既有 DOM relation/
 attribute callback，不复制 form-owner 或集合语义。
+
+TEST1171 断言 Core 的表单生命周期也复用显式 owner：form 外的 `form="primary"`
+input/textarea 参与 aggregate validation、`reportValidity()` 的 invalid-event 扫描、
+successful-control/urlencoded submission，以及外部 submit/reset button 的按坐标默认动作；
+reset 后初始值恢复并再次暴露 required invalid，另一个 form 的控件不会进入 body。宿主只
+提供布局、坐标和断言，不在 fixture 中复制 owner、validation、submission 或 reset 规则。
 
 ### Native EDIT/SELECT/button/file
 
