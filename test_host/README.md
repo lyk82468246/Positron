@@ -69,7 +69,7 @@ tests=13,20,27,999
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
-  伪类以及有界 `:not()`/`:is()`/`:where()`/`:lang()` 查询（TEST1146–1163）；
+  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()` 查询（TEST1146–1164）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -189,6 +189,13 @@ TEST1163 断言 Browser selector 的有界正向分组：`:is()` 与 `:where()` 
 逗号分隔的简单 compound 分支，并在类/属性 mutation 后实时更新。空分支、嵌套伪类、
 组合器、伪元素、未闭合或尾随逗号等不支持输入必须 fail closed；宿主只提供既有 DOM
 relation/attribute callback，不得复制分组解析或匹配规则。
+
+TEST1164 断言 Browser selector 的有界 `:has()`：最多 16 个相对简单 compound 分支
+可以从当前元素查找后代、直接子代、相邻兄弟或后续兄弟，并在 `matches()`、`closest()`、
+`querySelector()` 和 `querySelectorAll()` 中保持一致。夹具同时覆盖属性操作符、表单
+状态伪类、类/属性 mutation 和 64 步遍历预算；空分支、链式关系、未闭合或尾随逗号、
+伪元素等不支持输入必须 fail closed。宿主只提供既有 DOM relation/attribute callback，
+不得复制相对 selector 的解析或匹配规则。
 
 ### Native EDIT/SELECT/button/file
 

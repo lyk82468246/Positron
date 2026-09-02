@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1163
+#define TEST_MAX_NUMBER 1164
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -40091,6 +40091,220 @@ static BOOL test1163_browser_selector_group_contract(void)
     show_info(L"TEST 1163 OK",
             "Selector :is and :where use bounded positive grouping"
             " and fail closed for unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1164 - bounded relative :has() selector pseudo-class. */
+static BOOL test1164_browser_selector_has_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<section id='panel' class='panel'>"
+        "<div id='card' class='card' data-kind='item selected'>"
+        "<span id='badge' class='badge'>Badge</span>"
+        "</div>"
+        "<p id='copy' class='copy'>Copy</p>"
+        "<button id='action' class='action' disabled>Action</button>"
+        "</section>"
+        "<aside id='other'><span id='asideBadge' class='badge'>Aside</span></aside>"
+        "<script>window.selectorHasReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-has";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    char eval_error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    memset(eval_error, 0, sizeof(eval_error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector has script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 240;
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var panel=document.getElementById('panel');"
+            "var card=document.getElementById('card');"
+            "var badge=document.getElementById('badge');"
+            "var action=document.getElementById('action');"
+            "String(window.selectorHasReady===true)+'|' +"
+            "String(panel.matches(':has(.badge)'))+'|' +"
+            "String(panel.matches(':has(> .card)'))+'|' +"
+            "String(!panel.matches(':has(> .badge)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has descendant/child state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(card.matches(':has(+ .copy)'))+'|' +"
+            "String(card.matches(':has(~ button:disabled)'))+'|' +"
+            "String(card.matches(':has(~ button:enabled)'))+'|' +"
+            "String(badge.closest('section:has(> .card)')===panel)+'|' +"
+            "String(panel.matches(':has([class~=\"badge\"])'))+'|' +"
+            "String(panel.matches(':has(button:disabled)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|false|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has sibling/pseudo state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.querySelector('html:has(> body)')===document.documentElement)+'|' +"
+            "String(document.querySelectorAll('.card:has(+ .copy)').length===1)+'|' +"
+            "String(document.querySelectorAll('section:has(+ .copy)').length===0)+'|' +"
+            "String(document.querySelectorAll(':has(.badge)').length===5);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has query state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(panel.matches(':has()'))+'|' +"
+            "String(panel.matches(':has(> )'))+'|' +"
+            "String(panel.matches(':has(.badge, )'))+'|' +"
+            "String(panel.matches(':has(.badge .nested)'))+'|' +"
+            "String(panel.matches(':has(> .badge > span)'))+'|' +"
+            "String(document.querySelectorAll(':has(.badge,').length===0)+'|' +"
+            "String(document.querySelectorAll('::has(.badge)').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|false|false|false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has invalid state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(panel.matches(':has(.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.badge)'))+'|' +"
+            "String(panel.matches(':has(.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.missing,.badge,.missing)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has branch budget state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "badge.classList.remove('badge');"
+            "String(panel.matches(':has(.badge)'))+'|' +"
+            "String(panel.matches(':has(> .card)'))+'|' +"
+            "String(card.matches(':has(+ .copy)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has class mutation state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "badge.classList.add('badge');action.removeAttribute('disabled');"
+            "String(panel.matches(':has(.badge)'))+'|' +"
+            "String(card.matches(':has(~ button:disabled)'))+'|' +"
+            "String(card.matches(':has(~ button:enabled)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector has attribute mutation state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1164 FAIL", error[0] != '\0' ? error :
+                "selector has contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1164 OK",
+            "Selector :has uses bounded relative descendants and siblings"
+            " and fails closed for unsupported input.");
     return TRUE;
 }
 
@@ -98160,6 +98374,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1161: ok = test1161_browser_selector_target_contract(); break;
         case 1162: ok = test1162_browser_selector_lang_contract(); break;
         case 1163: ok = test1163_browser_selector_group_contract(); break;
+        case 1164: ok = test1164_browser_selector_has_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

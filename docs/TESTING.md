@@ -302,6 +302,13 @@ TEST1163 覆盖 Browser selector 的有界正向分组：`:is()` 与 `:where()` 
 查询与 `closest()`、类 mutation 后的实时结果，以及空分支、嵌套伪类、组合器、伪元素、
 未闭合和尾随逗号的 fail-closed 行为；不承诺完整 Selectors 语法或 specificity 计算。
 
+TEST1164 覆盖 Browser selector 的有界 `:has()`：每个伪类最多接受 16 个相对简单
+compound 分支，支持无前缀后代、`>` 直接子代、`+` 相邻兄弟和 `~` 后续兄弟关系；每个
+后代或兄弟遍历最多 64 步。`matches()`、`closest()`、`querySelector()` 和
+`querySelectorAll()` 使用同一实时结果，夹具还验证属性操作符、`button:disabled`、
+类/属性 mutation、分支数量上限和查询顺序。空分支、链式关系、伪元素、未闭合或尾随
+逗号等输入必须 fail closed；这不是完整 Selectors `:has()` 或任意相对 selector 语法。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
