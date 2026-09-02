@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1159
+#define TEST_MAX_NUMBER 1160
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -39271,6 +39271,167 @@ static BOOL test1159_browser_selector_focus_contract(void)
     show_info(L"TEST 1159 OK",
             "Selector :focus and :focus-within follow the active element"
             " through the existing bridge and fail closed when unsupported.");
+    return TRUE;
+}
+
+/* TEST 1160 - bounded link and any-link selector pseudo-classes. */
+static BOOL test1160_browser_selector_link_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<link id='headlink' rel='stylesheet' href='/theme.css'>"
+        "</head><body>"
+        "<a id='first' href='/first'>First</a>"
+        "<area id='hot' href='/hot' alt='Hot'>"
+        "<a id='empty' href=''>Empty</a>"
+        "<a id='plain'>Plain</a>"
+        "<div id='container'><span id='child'>Child</span></div>"
+        "<script>window.selectorReady=true;</script>"
+        "</body></html>";
+    static const char URL[] =
+        "https://positron.local/selector-link";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    executed = -1;
+    ignored = -1;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector link script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 240;
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var first=document.getElementById('first');"
+            "var hot=document.getElementById('hot');"
+            "var empty=document.getElementById('empty');"
+            "var plain=document.getElementById('plain');"
+            "var head=document.getElementById('headlink');"
+            "var container=document.getElementById('container');"
+            "String(first.matches(':link'))+'|'+"
+            "String(hot.matches(':any-link'))+'|'+"
+            "String(empty.matches(':link'))+'|'+"
+            "String(plain.matches(':link'))+'|'+"
+            "String(head.matches(':link'))+'|'+"
+            "String(document.querySelector(':link')===first)+'|'+"
+            "String(document.querySelectorAll(':link').length===3)+'|'+"
+            "String(document.querySelectorAll(':any-link').length===3)+'|'+"
+            "String(container.closest(':link')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|false|false|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial link selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "first.removeAttribute('href');"
+            "plain.setAttribute('href','/plain');"
+            "String(first.matches(':link'))+'|'+"
+            "String(plain.matches(':any-link'))+'|'+"
+            "String(hot.matches(':link'))+'|'+"
+            "String(document.querySelectorAll('a:link').length===2)+'|'+"
+            "String(document.querySelectorAll(':link').length===3)+'|'+"
+            "String(document.querySelectorAll(':link')[0]===hot)+'|'+"
+            "String(container.closest(':link')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|true|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "link selector mutation was not reflected: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(first.matches(':link(foo)'))+'|'+"
+            "String(plain.matches(':any-link(foo)'))+'|'+"
+            "String(first.matches('::link'))+'|'+"
+            "String(first.matches(':visited'))+'|'+"
+            "String(document.querySelectorAll(':link,').length===0)+'|'+"
+            "String(document.querySelector(':any-link(foo)')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|false|false|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unsupported link selector input was not rejected");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1160 FAIL", error[0] != '\0' ? error :
+                "selector link contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1160 OK",
+            "Selector :link and :any-link follow bounded anchor/area href"
+            " state and fail closed for unsupported input.");
     return TRUE;
 }
 
@@ -97336,6 +97497,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1157: ok = test1157_browser_selector_option_checked_contract(); break;
         case 1158: ok = test1158_browser_selector_validation_contract(); break;
         case 1159: ok = test1159_browser_selector_focus_contract(); break;
+        case 1160: ok = test1160_browser_selector_link_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

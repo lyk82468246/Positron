@@ -62,7 +62,7 @@
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
-- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、表单控件直接 `disabled` 属性对应的 `:disabled`/`:enabled`、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；`:not()` 只接受单一简单 compound 参数。该子集不推导 fieldset/optgroup 继承；`:hover`、`:active`、`:link`、`:visited` 等其他动态/链接伪类、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。
+- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、表单控件直接 `disabled` 属性对应的 `:disabled`/`:enabled`、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态只限带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性）；`:not()` 只接受单一简单 compound 参数。该子集不推导 fieldset/optgroup 继承；没有 visited-state 存储，因此 `:visited`、`:hover`、`:active` 等其他动态伪类、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的
   有限 block/inline 对齐，只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到
   真实 viewport；callback 和 `PBrowser_ScriptSessionNotifyScroll` 使用 CSS page 坐标，
@@ -243,6 +243,10 @@
   activeElement 初始空值、焦点切换、blur 清理、祖先范围、两种 query 以及带参数、伪元素
   和注销 callback 的 fail-closed 行为；真实 native focus、焦点矩形、键盘/SIP/IME、触摸
   和视觉仍属于宿主观察。
+- TEST1160 覆盖 Browser selector 对静态链接状态的 `:link`/`:any-link` 映射：带 `href`
+  属性的 `<a>`/`<area>`（包括空值）匹配、移除/新增属性后的实时查询、列表顺序和
+  `:visited`、带参数、伪元素及尾随逗号等不支持输入的 fail-closed 行为；真实链接
+  绘制、visited history、鼠标 hover/active 和导航仍属于宿主观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

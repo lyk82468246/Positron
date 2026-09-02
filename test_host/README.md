@@ -68,8 +68,8 @@ tests=13,20,27,999
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
-  属性操作符、结构伪类、表单状态、验证状态、焦点状态与有界 `:not()` 查询
-  （TEST1146–1159）；
+  属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接伪类与有界
+  `:not()` 查询（TEST1146–1160）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -165,7 +165,9 @@ option.selected 的 `option:checked` 映射、`selectedIndex` mutation、组合/
 不支持参数的回退；TEST1158 断言 Core validation 的 `:valid`/`:invalid`、form 聚合、
 value/custom validity mutation、非候选排除和不支持参数的回退；TEST1159 断言
 `:focus`/`:focus-within` 通过既有 activeElement/Core focus bridge 反映当前焦点、焦点
-切换和 blur 清理，并对带参数、伪元素和注销 callback 的输入 fail closed。宿主不得在
+切换和 blur 清理，并对带参数、伪元素和注销 callback 的输入 fail closed；TEST1160 断言
+`:link`/`:any-link` 对带 `href` 的 `<a>`/`<area>`（包括空值）的静态匹配、属性 mutation、
+查询顺序以及 `:visited`、带参数和伪元素等不支持输入的 fail closed。宿主不得在
 测试 helper 中复制 selector 解析或匹配规则；这些语义和固定预算都属于 Browser。
 
 ### Native EDIT/SELECT/button/file

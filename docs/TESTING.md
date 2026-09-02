@@ -274,6 +274,13 @@ activeElement，`:focus-within` 沿最多 64 层的已寻址祖先链匹配；�
 activeElement callback 的输入必须 fail closed。该测试复用既有 Core focus/activeElement
 桥，不改变宿主 native focus、焦点矩形或 OEM 输入行为。
 
+TEST1160 覆盖 Browser selector 对静态链接状态的有界映射：`:link`/`:any-link` 只匹配
+带 `href` 属性的 `<a>`/`<area>`，空属性值也算链接；移除或新增 `href` 后，
+`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 的结果与文档顺序
+必须立即更新。带参数、伪元素、`:visited` 和尾随逗号等不支持输入必须 fail closed。
+Browser 没有 visited-state 存储；真实链接绘制、hover/active、导航和历史样式仍属于
+宿主集成与人工观察。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
