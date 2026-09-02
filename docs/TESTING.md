@@ -296,6 +296,12 @@ TEST1162 覆盖 Browser selector 的有界 `:lang()`：当前元素及最多 64 
 空参数、语言标签列表、引号形式、伪元素和尾随逗号的 fail-closed 行为；它不实现完整
 BCP 47/namespace 语言解析，也不替代字体、布局或设备视觉验收。
 
+TEST1163 覆盖 Browser selector 的有界正向分组：`:is()` 与 `:where()` 接受最多 16 个
+逗号分隔的简单 compound 分支，并在 `matches()`、`closest()`、`querySelector()` 和
+`querySelectorAll()` 中保持同一匹配和文档顺序。夹具验证类/属性分支、子代组合、
+查询与 `closest()`、类 mutation 后的实时结果，以及空分支、嵌套伪类、组合器、伪元素、
+未闭合和尾随逗号的 fail-closed 行为；不承诺完整 Selectors 语法或 specificity 计算。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

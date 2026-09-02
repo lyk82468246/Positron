@@ -295,7 +295,8 @@ callback 参数和输出缓冲只在调用期间借用。
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
 直接表单状态、`:valid`/`:invalid`、`:focus`/`:focus-within`、静态的
 `:link`/`:any-link`、有界的 `:target` 和 `:lang`；`:not()` 只接受单一简单 compound
-参数，其他参数 fail closed。表单状态包括 input/option 的实时 `:checked`、直接
+参数，`:is()`/`:where()` 接受最多 16 个逗号分隔的简单 compound 分支；分支中的伪类、
+伪元素、组合器和不完整参数会 fail closed。表单状态包括 input/option 的实时 `:checked`、直接
 `disabled`/`required`，以及通过既有 validation callback 查询 `form`、input、select、
 textarea 的有效性。`:focus`/`:focus-within` 通过既有 activeElement callback 读取当前
 焦点；未注册或返回无效 id 时安全回退为不匹配。`:link`/`:any-link` 只匹配带有 `href`

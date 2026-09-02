@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1162
+#define TEST_MAX_NUMBER 1163
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -39889,6 +39889,208 @@ static BOOL test1162_browser_selector_lang_contract(void)
     show_info(L"TEST 1162 OK",
             "Selector :lang follows bounded inherited language attributes"
             " and fails closed for unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1163 - bounded positive selector grouping pseudo-classes. */
+static BOOL test1163_browser_selector_group_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<section id='panel' class='panel'>"
+        "<h1 id='title' class='title'>Title</h1>"
+        "<p id='copy' class='copy'>Copy</p>"
+        "<button id='action' class='action' data-role='primary'>Action</button>"
+        "</section>"
+        "<aside id='other'><span id='nested' class='copy'>Nested</span></aside>"
+        "<script>window.selectorGroupReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-group";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    char eval_error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(eval_error, 0, sizeof(eval_error));
+    executed = -1;
+    ignored = -1;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector group script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 240;
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var panel=document.getElementById('panel');"
+            "var title=document.getElementById('title');"
+            "var copy=document.getElementById('copy');"
+            "var action=document.getElementById('action');"
+            "String(title.matches(':is(h1,h2)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        if (error[0] != '\0') {
+            cstr_copy(eval_error, sizeof(eval_error), error);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "initial selector group state failed: %s (api=%s)",
+                result != NULL ? result : "<null>",
+                eval_error[0] != '\0' ? eval_error : "<none>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(copy.matches(':is(h1,h2)'))+'|' +"
+            "String(copy.matches('section:is(.panel,.card) > .copy'))+'|' +"
+            "String(title.matches(':where(#title,.missing)'))+'|' +"
+            "String(document.querySelector(':is(button,a)')===action)+'|' +"
+            "String(document.querySelectorAll(':is(.copy,.action)').length===3)+'|' +"
+            "String(panel.matches('section:is(.panel,.card)'))+'|' +"
+            "String(copy.closest('section:is(.panel,.card)')===panel)+'|' +"
+            "String(copy.closest('section:is(.panel,.card)')===null)+'|' +"
+            "String(title.matches(':is([class~=\"title\"],[data-role])'))+'|' +"
+            "String(title.matches(':is(h1, h2)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result,
+            "false|true|true|true|true|true|true|false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector group valid state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(title.matches(':is(h1,h2,h3,h4,h5,h6,h7,h8,h9,h10,h11,h12,h13,h14,h15,h16)'))+'|' +"
+            "String(title.matches(':is(h1,h2,h3,h4,h5,h6,h7,h8,h9,h10,h11,h12,h13,h14,h15,h16,h17)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector group budget state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(copy.matches(':is()'))+'|' +"
+            "String(copy.matches(':is(.copy,.))'))+'|' +"
+            "String(copy.matches(':where(.copy, .action > span)'))+'|' +"
+            "String(copy.matches(':is(:link,.copy)'))+'|' +"
+            "String(document.querySelectorAll(':is(.copy,').length===0)+'|' +"
+            "String(document.querySelectorAll('::is(.copy)').length===0)+'|' +"
+            "String(document.querySelectorAll(':where(.copy,)').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|false|false|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector group invalid state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "panel.classList.remove('panel');"
+            "String(copy.matches('section:is(.panel,.card) > .copy'))+'|' +"
+            "String(document.querySelectorAll(':is(.panel,.card)').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector group removal state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "panel.classList.add('card');"
+            "String(copy.matches('section:is(.panel,.card) > .copy'))+'|' +"
+            "String(document.querySelector(':is(.panel,.card)')===panel)+'|' +"
+            "String(title.matches(':where(.title,.copy)'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "selector group mutation state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1163 FAIL", error[0] != '\0' ? error :
+                "selector group contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1163 OK",
+            "Selector :is and :where use bounded positive grouping"
+            " and fail closed for unsupported input.");
     return TRUE;
 }
 
@@ -97957,6 +98159,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1160: ok = test1160_browser_selector_link_contract(); break;
         case 1161: ok = test1161_browser_selector_target_contract(); break;
         case 1162: ok = test1162_browser_selector_lang_contract(); break;
+        case 1163: ok = test1163_browser_selector_group_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

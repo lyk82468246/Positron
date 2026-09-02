@@ -36,8 +36,8 @@
 有限结构伪类、直接表单状态、option live selected 的 `:checked`、通过 validation
 callback 的 `:valid`/`:invalid`、通过 activeElement callback 的 `:focus`/`:focus-within`
 、静态的 `:link`/`:any-link`、当前 fragment 与元素 id 对齐的有界 `:target`、沿父链
-继承语言的有界 `:lang()` 以及单一
-简单 compound 参数的 `:not()`；对应自动合同见
+继承语言的有界 `:lang()`、单一简单 compound 参数的 `:not()` 以及最多 16 个简单
+compound 分支的 `:is()`/`:where()`；对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
@@ -71,7 +71,8 @@ SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严
   selector 的列表、四种关系组合器、六类属性操作符、有限结构伪类、表单状态伪类（含
   option live selected 的 `:checked`、validation `:valid`/`:invalid` 和 activeElement
   驱动的 `:focus`/`:focus-within`、静态链接 `:link`/`:any-link`、有界 `:target`、单一语言
-  标签的 `:lang()`）和单一简单 compound 参数的 `:not()`，完整 CSS Selectors 语法仍不作为默认目标。
+  标签的 `:lang()`、单一简单 compound 参数的 `:not()` 以及最多 16 个简单 compound
+  分支的 `:is()`/`:where()`，完整 CSS Selectors 语法仍不作为默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。
 - 保持浏览器 JavaScript 显式 opt-in，并持续验证关闭时不抓取或执行页面脚本。
