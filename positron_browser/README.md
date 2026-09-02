@@ -317,25 +317,20 @@ Browser 负责 JSON 参数、脚本对象形状、错误映射与同步 dispatch
 callback 参数和输出缓冲只在调用期间借用。
 
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
-有限表单状态、`:valid`/`:invalid`、`:focus`/`:focus-within`、静态的
-`:link`/`:any-link`、有界的 `:target` 和 `:lang`，以及可选 interaction callback 驱动的
-`:active`/`:hover`；`:not()` 只接受单一简单 compound
-参数，`:is()`/`:where()` 接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 接受最多
-16 个相对简单 compound 分支。`:has()` 分支只支持后代、直接子代、相邻兄弟和后续兄弟
-关系，每个后代/兄弟遍历最多 64 步；链式关系、空分支和不完整参数会 fail closed。表单
-状态包括 input/option 的实时 `:checked`、通过 Core 的 effective-disabled relation 查询
-`input`、`button`、`select`、`textarea`、`option`、`optgroup` 的 `:disabled`/`:enabled`
-（含 fieldset 的 first-legend exemption、optgroup 对 option 的继承；fieldset 自身仍按
-直接属性回退），以及通过既有 validation callback 查询 `form`、input、select、textarea 的
-有效性。`:focus`/`:focus-within`
-通过既有 activeElement callback 读取当前焦点；未注册或返回无效 id 时安全回退为不匹配。
-`:link`/`:any-link` 只匹配带有 `href` 属性的 `<a>`/`<area>`，属性值可以为空；Browser
-没有 visited-state 存储，因而 `:visited` 仍然不支持。`:target` 只在当前 URL fragment 经
-`decodeURIComponent` 后等于元素当前非空 `id` 时匹配；无 fragment、解码失败、仅有 `name`
-的 named anchor 或 stale 元素都 fail closed，不承诺 fragment 的视觉滚动。
-`:lang()` 只接受一个 ASCII 语言标签，按大小写不敏感的精确值或 `-` 子标签前缀匹配；语言
-从当前元素沿最多 64 层 `parentElement` 继承，元素的 `lang` 优先于 `xml:lang`，空值或非法
-标签不匹配。该有界实现不处理语言标签列表、引号形式或完整 BCP 47 规则。
+表单状态、`:valid`/`:invalid`、有界 `:in-range`/`:out-of-range`、`:focus`/`:focus-within`、
+静态 `:link`/`:any-link`、`:target`/`:lang` 和可选 interaction 的 `:active`/`:hover`。
+`:not()` 只接受单一简单 compound，`:is()`/`:where()` 与 `:has()` 各最多 16 个分支；
+`:has()` 仅支持后代/子代/兄弟关系，遍历最多 64 步，空分支、链式关系和不完整参数
+fail closed。表单状态包括 input/option 的实时 `:checked`、Core effective-disabled
+relation 的 `:disabled`/`:enabled`、直接 `required` 的 `:required`/`:optional`，以及
+validation callback 对 form、input、select、textarea 的有效性。
+范围伪类仅适用于带非空值和约束的 input `number`/`range`/`date`/`month`/`week`/`time`/
+`datetime-local`（range 默认范围也算）；underflow/overflow 才是 out-of-range，空值、
+bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 不匹配。
+`:focus`/`:focus-within` 读取 activeElement callback；`:link`/`:any-link` 只匹配带 `href`
+的 `<a>`/`<area>`；`:target` 只匹配 decoded fragment 对应的非空 id；`:lang` 只接受单一
+ASCII 标签并沿最多 64 层父链继承。未注册 callback、visited、伪元素、namespace、shadow
+DOM 和完整 Selectors 语法均不在范围内。
 
 ### `dialog` 生命周期
 
@@ -655,7 +650,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   尺寸 getter 不触发 relayout。`scrollIntoView()`、元素滚动和 page scroll 只支持文档化的
   有界路径，宿主负责 extent、clamp、物理滚动和 CSS/设备坐标换算；transforms、Range/
   Selection、pinch zoom、scroll-margin、smooth/inertia 和完整 nested scroll tree 不在范围内。
-- selector（含可选 interaction callback 驱动的 `:active`/`:hover`）、form validation、`dialog` 与 `contenteditable` 都是有界脚本/宿主组合；完整
+- selector、form validation、`dialog` 与 `contenteditable` 都是有界脚本/宿主组合；完整
   Selectors、backdrop 合成、Range/Selection、富文本、ClipboardEvent、async clipboard
   和完整 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。

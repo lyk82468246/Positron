@@ -69,7 +69,8 @@ tests=13,20,27,999
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
-  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover` 查询（TEST1146–1166）；
+  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
+  `:in-range`/`:out-of-range` 查询（TEST1146–1167）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -209,6 +210,13 @@ fieldset 的 first-legend exemption、disabled optgroup 对 option 的继承、f
 successful form submission 排除 disabled option 均由同一 fixture 验证。宿主只提供既有
 DOM relation/attribute callback 和 Core 表单 API，不复制 disabled 继承、selector 解析或
 提交规则；旧宿主未提供 relation 44 时 Browser 仍安全回退到直接属性。
+
+TEST1167 断言 Core 范围验证到 Browser selector 的有界映射：number/range/date/month/
+week/time/datetime-local 的非空、受约束 input 读取 underflow/overflow，形成互补的
+`:in-range`/`:out-of-range`；空值、bad/type mismatch、disabled/readonly、无范围限制、
+非 input 和 stepMismatch 单独的输入不进入 out-of-range。夹具覆盖 matches/closest/query、
+值和约束属性 mutation、顺序以及非法参数/伪元素/列表的 fail-closed；宿主只提供既有
+validation callback，不复制验证或 selector 规则。
 
 ### Native EDIT/SELECT/button/file
 

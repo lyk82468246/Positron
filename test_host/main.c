@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1166
+#define TEST_MAX_NUMBER 1167
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -40941,6 +40941,238 @@ static BOOL test1166_browser_selector_effective_disabled_contract(void)
     show_info(L"TEST 1166 OK",
             "Core effective disabled state now reaches Browser fieldset and "
             "optgroup selectors, option selection and form submission.");
+    return TRUE;
+}
+
+/* TEST 1167 - bounded range selector pseudo-classes. */
+static BOOL test1167_browser_selector_range_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form'>"
+        "<input id='inside' type='number' min='10' max='20' value='15'>"
+        "<input id='under' type='number' min='10' max='20' value='5'>"
+        "<input id='over' type='number' min='10' max='20' value='25'>"
+        "<input id='step' type='number' min='10' max='20' step='3' value='11'>"
+        "<input id='empty' type='number' min='10' max='20' value=''>"
+        "<input id='bad' type='number' min='10' max='20' value='oops'>"
+        "<input id='free' type='number' value='15'>"
+        "<input id='range' type='range' min='0' max='100' value='50'>"
+        "<input id='date-in' type='date' min='2024-01-01' "
+        "max='2024-12-31' value='2024-06-01'>"
+        "<input id='date-under' type='date' min='2024-01-01' "
+        "max='2024-12-31' value='2023-12-31'>"
+        "<input id='disabled' type='number' min='10' max='20' "
+        "value='15' disabled>"
+        "<input id='readonly' type='number' min='10' max='20' "
+        "value='15' readonly>"
+        "<input id='text' type='text' min='10' max='20' value='15'>"
+        "<div id='wrapper'><span id='plain'>plain</span></div>"
+        "<script>window.selectorRangeReady=true;</script>"
+        "</form></body></html>";
+    static const char URL[] =
+        "https://positron.local/selector-range";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFormControlValidationInfo validation;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(&validation, 0, sizeof(validation));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector range script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok &&
+            (PCore_FormControlValidationById(document, "under",
+            &validation) != 0 || validation.will_validate != 1 ||
+            validation.valid != 0 ||
+            (validation.flags & PCORE_VALIDITY_RANGE_UNDERFLOW) == 0 ||
+            PCore_FormControlValidationById(document, "over", &validation) !=
+            0 || validation.valid != 0 ||
+            (validation.flags & PCORE_VALIDITY_RANGE_OVERFLOW) == 0 ||
+            PCore_FormControlValidationById(document, "step", &validation) !=
+            0 || validation.valid != 0 ||
+            (validation.flags & PCORE_VALIDITY_STEP_MISMATCH) == 0 ||
+            PCore_FormControlValidationById(document, "bad", &validation) !=
+            0 || validation.valid != 0 ||
+            (validation.flags & PCORE_VALIDITY_BAD_INPUT) == 0 ||
+            PCore_FormControlValidationById(document, "disabled",
+            &validation) != 0 || validation.will_validate != 0 ||
+            PCore_FormControlValidationById(document, "readonly",
+            &validation) != 0 || validation.will_validate != 0)) {
+        cstr_copy(error, sizeof(error),
+                "Core range validation flags were not available");
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 420;
+        g_view_w = 260;
+        g_view_h = 420;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var inside=document.getElementById('inside');"
+            "var under=document.getElementById('under');"
+            "var over=document.getElementById('over');"
+            "var step=document.getElementById('step');"
+            "var empty=document.getElementById('empty');"
+            "var bad=document.getElementById('bad');"
+            "var free=document.getElementById('free');"
+            "var range=document.getElementById('range');"
+            "var dateIn=document.getElementById('date-in');"
+            "var dateUnder=document.getElementById('date-under');"
+            "var disabled=document.getElementById('disabled');"
+            "var readonly=document.getElementById('readonly');"
+            "var text=document.getElementById('text');"
+            "var wrapper=document.getElementById('wrapper');"
+            "var phase1=inside.matches(':in-range')&&"
+            "!inside.matches(':out-of-range')&&"
+            "under.matches(':out-of-range')&&!under.matches(':in-range')&&"
+            "over.matches(':out-of-range')&&!over.matches(':in-range')&&"
+            "step.matches(':in-range')&&!step.matches(':out-of-range')&&"
+            "!empty.matches(':in-range')&&!empty.matches(':out-of-range')&&"
+            "!bad.matches(':in-range')&&!bad.matches(':out-of-range')&&"
+            "!free.matches(':in-range')&&!free.matches(':out-of-range')&&"
+            "range.matches(':in-range')&&"
+            "dateIn.matches(':in-range')&&"
+            "dateUnder.matches(':out-of-range')&&"
+            "!disabled.matches(':in-range')&&!readonly.matches(':in-range')&&"
+            "!text.matches(':in-range')&&wrapper.closest(':in-range')===null;"
+            "String(phase1)+'|' +"
+            "String(document.querySelector(':in-range')===inside)+'|' +"
+            "String(document.querySelector(':out-of-range')===under)+'|' +"
+            "String(document.querySelectorAll('input:in-range').length===4)+'|' +"
+            "String(document.querySelectorAll('input:out-of-range').length===3)+'|' +"
+            "String(document.querySelectorAll(':in-range')[3]===dateIn)+'|' +"
+            "String(document.querySelectorAll(':out-of-range')[2]===dateUnder);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial range selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "under.value='15';over.min='30';over.max='40';over.value='35';"
+            "free.setAttribute('min','10');"
+            "String(under.matches(':in-range'))+'|' +"
+            "String(over.matches(':in-range'))+'|' +"
+            "String(free.matches(':in-range'))+'|' +"
+            "String(document.querySelectorAll(':out-of-range').length===1)+'|' +"
+            "String(document.querySelectorAll(':in-range').length===7);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "range selector value mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "inside.min='16';dateIn.max='2024-05-01';"
+            "step.step='2';"
+            "String(inside.matches(':out-of-range'))+'|' +"
+            "String(dateIn.matches(':out-of-range'))+'|' +"
+            "String(step.matches(':in-range'))+'|' +"
+            "String(step.matches(':out-of-range'))+'|' +"
+            "String(document.querySelectorAll('input:in-range').length===5)+'|' +"
+            "String(document.querySelectorAll('input:out-of-range').length===3);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "range selector constraint mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(inside.matches(':in-range(foo)'))+'|' +"
+            "String(inside.matches('::in-range'))+'|' +"
+            "String(document.querySelectorAll(':in-range,').length===0)+'|' +"
+            "String(document.querySelectorAll('input:out-of-range(foo)').length===0)+'|' +"
+            "String(wrapper.closest(':out-of-range')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|true|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unsupported range selector input was not rejected");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1167 FAIL", error[0] != '\0' ? error :
+                "range selector contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1167 OK",
+            "Selector :in-range and :out-of-range follow Core range"
+            " validation state, live value/constraint changes and fail-closed"
+            " unsupported input.");
     return TRUE;
 }
 
@@ -99013,6 +99245,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1164: ok = test1164_browser_selector_has_contract(); break;
         case 1165: ok = test1165_browser_selector_interaction_contract(); break;
         case 1166: ok = test1166_browser_selector_effective_disabled_contract(); break;
+        case 1167: ok = test1167_browser_selector_range_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

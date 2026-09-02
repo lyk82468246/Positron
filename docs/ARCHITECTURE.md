@@ -139,7 +139,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
 - 浏览器脚本 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 的有界元素滚动桥：callback 的 `element_id` 把请求交给 Core，`PBrowser_ScriptSessionNotifyElementScroll` 接收宿主 pointer/其他物理路径的实际位置并去重派发目标元素 `scroll` 事件；
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
-- DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；
+- DOM/属性/表单/validation adapter 的 JSON 与 typed dispatch；Browser selector 的
+  `:valid`/`:invalid` 和有界 `:in-range`/`:out-of-range` 都读取同一 Core validation
+  callback。范围伪类仅覆盖非空且受约束的 input `number`/`range`/`date`/`month`/`week`/
+  `time`/`datetime-local`；`range` 的默认范围也算受限范围，underflow/overflow 才是
+  out-of-range，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和
+  单独 stepMismatch 安全不匹配；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、element focus、window focus/blur、composition、click 和导航协调；
 - 可选的 `document.activeElement` 投影：宿主注册

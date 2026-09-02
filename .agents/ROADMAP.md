@@ -34,7 +34,7 @@
 `history.scrollRestoration`、页面生命周期、窗口焦点、activeElement、focus/autofocus、
 以及有界 selector 子集。selector 当前包含顶层列表、四种关系组合器、六类属性操作符、
 有限结构伪类、Core effective-disabled 表单状态、option live selected 的 `:checked`、通过 validation
-callback 的 `:valid`/`:invalid`、通过 activeElement callback 的 `:focus`/`:focus-within`
+callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`、通过 activeElement callback 的 `:focus`/`:focus-within`
 、静态的 `:link`/`:any-link`、当前 fragment 与元素 id 对齐的有界 `:target`、沿父链
 继承语言的有界 `:lang()`、单一简单 compound 参数的 `:not()` 以及最多 16 个简单
 compound 分支的 `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，
@@ -71,7 +71,7 @@ SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严
 - 依据 corpus 补齐高价值 DOM/Event/form/navigation 对象，不追求一次性完整 Web API。
 - 继续在 Browser 中按真实页面缺口扩展有界 selector/DOM 组合；当前承诺简单 compound
   selector 的列表、四种关系组合器、六类属性操作符、有限结构伪类、表单状态伪类（含
-  option live selected 的 `:checked`、Core effective-disabled relation、validation `:valid`/`:invalid` 和 activeElement
+  option live selected 的 `:checked`、Core effective-disabled relation、validation `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range` 和 activeElement
   驱动的 `:focus`/`:focus-within`、静态链接 `:link`/`:any-link`、有界 `:target`、单一语言
   标签的 `:lang()`、单一简单 compound 参数的 `:not()`、最多 16 个简单 compound 分支的
   `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，以及显式 interaction
