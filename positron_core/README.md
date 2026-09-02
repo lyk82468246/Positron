@@ -126,6 +126,11 @@ scroll-margin、平滑/惯性滚动或匿名目标的宿主指针归因。
 
 Core 持有控件值、checked/selected、disabled/fieldset 继承、required/range/step/pattern/custom validity、submission、multipart、reset 和 successful controls 等产品语义。
 
+脚本宿主可通过 `PCore_NodeCheckedById` 读取带 id 的 `input.checked` 或 `option.selected`
+实时状态；后者会随 `PCore_NodeSetSelectedIndexById`、`PCore_SelectSetOptionSelected`
+和 native SELECT 提交的选择变化。`PCore_NodeSetCheckedById`/`defaultChecked` 仍只
+服务 checkbox/radio input，option 的选择应使用 select/option API。
+
 Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
 
 `PCore_FormSubmission*` 使用 `PCORE_FORM_METHOD_*` 常量报告有效提交方法。`method="dialog"` 或 submitter 的 `formmethod="dialog"` 不生成网络 action/body；调用方改用 `PCore_FormDialogSubmissionAt` 或 `PCore_FormDialogSubmissionForTextInput` 两阶段查询，取得最近祖先 dialog 的 UTF-8 id 和 submitter value。Core 在查询时执行约束验证，但不派发 `submit`/`close`、不改变 `open`，这些事务仍由 Browser 和宿主完成。当前 Browser 组合按 id 寻址，因此无 id 或不在 dialog 内的目标会被消费并 fail closed。

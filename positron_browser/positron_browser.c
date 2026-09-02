@@ -4636,7 +4636,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return index<=b&&(b-index)%(-a)===0;}"
         "function formState9(owner,name){var t;var present;var value;"
         "if(!owner){return false;}t=owner.localName;"
-        "if(name==='checked'){if(t!=='input'||typeof g.__pcoreGetChecked!=='function'){return false;}"
+        "if(name==='checked'){if(t!=='input'&&t!=='option'||typeof g.__pcoreGetChecked!=='function'){return false;}"
         "try{value=owner.checked;}catch(checkedError){return false;}return value===true;}"
         "if(name==='disabled'||name==='enabled'){if(t!=='input'&&t!=='button'&&"
         "t!=='select'&&t!=='textarea'&&t!=='option'){return false;}"

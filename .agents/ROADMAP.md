@@ -29,75 +29,29 @@
 
 ### 真实页面组合缺口
 
-现有 Browser viewport 组合已经覆盖 page-level scroll、有限布局几何、WM_SIZE
-resize、动态 `matchMedia()`、布局视口对应的 `visualViewport` 快照、稳定的
-`screen.orientation` 方向事件和 `history.scrollRestoration` 的宿主策略门；这些
-能力都必须继续由 Browser/Core 提供，不能退回到 `test_host` 的业务 helper。
+现有 Browser/Core 已形成可复用的页面组合基线：page-level 与有限 nested scroll、布局
+几何和尺寸快照、WM_SIZE/`matchMedia()`/`visualViewport`/`screen.orientation`、
+`history.scrollRestoration`、页面生命周期、窗口焦点、activeElement、focus/autofocus、
+以及有界 selector 子集。selector 当前包含顶层列表、四种关系组合器、六类属性操作符、
+有限结构伪类、直接表单状态、option live selected 的 `:checked` 和单一简单 compound
+参数的 `:not()`；对应自动合同见 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
+由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
-next691 已完成页面替换前的 cancelable `beforeunload` 门和参考宿主的 fail-closed
-关闭/提交策略。next692 已把脚本 timer、animation frame、message、idle 和
-microtask 的阶段顺序收拢为 Browser-owned 的统一任务检查点，并接入参考宿主的
-UI 消息循环；宿主仍提供时钟、限额和平台调度。next693 已补齐完成加载后的初始
-`pageshow`，以及 hidden→visible 恢复时的去重 `visibilitychange`/
-`pagehide`/`pageshow` 组合，语义位于 Browser 而不是 `test_host`。下一条
-next694 已补齐宿主驱动的顶层窗口 focus/blur 状态、`document.hasFocus()` 和
-去重事件分发，语义位于 Browser，参考宿主只负责 `WM_ACTIVATE` 接线；
-TEST1139 与定向设备门已验证该合同。next695 又补齐 Core 焦点 id 查询、Browser
-可选的 `document.activeElement` 投影和参考宿主桥接；TEST1140 与定向设备门
-验证了有 id、无 id、清除焦点、过小缓冲和注销后的 body 回退。next696 又补齐了
-按 id 的 `HTMLElement.focus()`/`blur()` 请求桥：Browser 负责脚本方法和请求验证，
-Core 负责已布局目标资格与 focus node，宿主负责 native HWND 和 focus family；
-TEST1141 与定向设备门验证了切换顺序、no-op 和注销后的 fail-closed。next697
-增加了 Ex focus request、默认 page-level focus reveal 和
-`focus({preventScroll:true})`，由 TEST1142 与定向设备门验证 callback 后脚本滚动
-同步和 viewport 可见性。next698 又补齐了页面级 `Element.scrollIntoView()`：Browser
-复用 `getBoundingClientRect()` 和现有 scroll callback，提供有限的 block/inline 对齐，
-并以 TEST1143 与定向设备门验证默认、center、末端、nearest 和 smooth 拒绝路径。
-next699 补齐了基于 Core 单矩形快照的 `Element.getClientRects()` 回归。next700
-进一步把普通 inline flow 的实际行片段接入 Core relation：Browser 每次新建最多 16
-个 viewport-relative 矩形，并以同一集合计算 `getBoundingClientRect()` union；TEST1144
-覆盖单矩形回归，TEST1145 覆盖窄容器多片段、索引顺序、identity 和 union。next701
-在同一 bridge 上补齐了已布局常见 box 的六个只读布局尺寸快照，TEST1146 覆盖 Core
-relation、Browser getter、边框/内边距/retained-scrollport 算术、后代 extent 和隐藏回退。
-next702 已在 Core/Browser 中完成带 DOM id 的常见 overflow box retained 两轴滚动：
-关系 38/39、按 id setter、两轴 clamp、脚本 `scrollLeft`/`scrollTop`/`scrollTo()`/
-`scrollBy()`、目标元素事件去重和宿主 pointer snapshot 同步均有 TEST1147 覆盖。
-next703 又补齐了有限的嵌套 `Element.scrollIntoView()`：Core 关系 40–43 提供轴可用性
-和 client edge 快照，Browser 沿最多 64 层可寻址父链默认只移动最近 retained overflow
-祖先，并在没有适用祖先时回退 page-level scroll；TEST1148 已通过定向设备门。next704
-在同一公共 Browser 语义上增加了显式 `container:"all"`：从最近到最外依次处理适用
-祖先、每次滚动后重读目标矩形，链完成后才按需回退页面滚动；TEST1149 与 1148 的相邻
-设备门已通过。next705 在同一公共 Browser 语义上把 `HTMLElement.focus()` 与这条嵌套
-滚动路径接合：Browser 沿最多 64 层检测 retained overflow ancestor，必要时向 Ex
-host callback 传递有效 `prevent_scroll`，由宿主先保持 page viewport 不变，再由 Browser
-按最近到最外执行 `container:"all"` reveal；显式 `focus({preventScroll:true})` 和
-`blur()` 不移动页面或元素。TEST1150 与 TEST1142、1148、1149 的相邻设备门已通过。
-next706 在页面提交后的宿主生命周期中补齐了有界 `autofocus`：Core 按 DOM 顺序发现
-第一个符合既有布局/可见/焦点资格的目标，提供 UTF-8 id size-probe、Core focus node
-设置和目标保持的事件 dispatch；宿主只在 style/layout 与 native 子控件创建完成后调用，
-有 id 目标复用 Browser bridge，无 id 目标仍能派发 focus/focusin。TEST1151 与定向设备
-门已通过。完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/Selection、
-pinch zoom、平滑/惯性滚动和匿名目标仍未实现，不能把有限 reveal 或宿主 autofocus
-事务误写成完整 Web 行为。next707–711 已在 Browser bootstrap 中形成一个有界 selector
-子集：顶层列表、后代/子代/相邻兄弟/一般兄弟组合器，六类属性操作符，`:root`、`:empty`、
-child/of-type 和四种 `nth-*` 结构伪类，以及 `input:checked`、直接 `disabled` 对应的
-`:disabled`/`:enabled` 和直接 `required` 对应的 `:required`/`:optional`。TEST1152–1155
-验证查询一致性、列表顺序、通配标签、属性值保护、受限 `an+b` 公式、表单状态 mutation
-和非法输入的 fail-closed 行为；TEST1156 再验证只接受单一简单 compound 参数的 `:not()`、
-mutation、组合/列表顺序和不支持参数的回退；Browser 会话堆上限为 710 KiB。fieldset/optgroup 继承、
-option 动态 selected、交互/链接伪类、伪元素、属性大小写修饰符、namespace、shadow DOM、
-完整 Selectors 语法和完整滚动容器树等边界仍未实现。下一条纵向能力是 next712，仍须从
-源码、日志或截图固定一个新的可复现用户可见组合缺口；不能凭空扩张 ABI，也不能把页面
-业务规则塞回 `test_host`。
+未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
+Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、fieldset/optgroup 继承、交互/链接
+伪类、伪元素、属性大小写修饰符、namespace、shadow DOM、完整 Selectors 语法，以及
+完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
+浏览器行为。
 
-优先检查导航提交后的实际页面行为、资源/布局组合或已有人工反馈中仍未被自动覆盖的回归。实现前先固定最小离线 fixture 或稳定哨兵，明确旧页保留、失败回滚、资源所有权和页面生命周期的预期；实现后由拥有语义的 Core/Browser 或相应公共 DLL 提供能力，宿主只保留 WM、线程、网络和应用策略。任何新增结构必须保持 C ABI、UTF-8、opaque ownership、固定容量和 VS2008/WM6/C89 兼容。
+next713 的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
+保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
+线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque
+ownership、固定容量和 VS2008/WM6/C89 兼容。
 
-next694、next695、next696、next697、next698、next699、next700、next701、next702、
-next703、next704、next705、next706、next707、next708、next709、next710 和 next711 的完成证据都包括定向
-自动断言、直接相邻回归和风险相称的设备门；下一批 next712 必须沿用同一完成标准。
-视觉、触摸、SIP/IME、picker 或旋转只能进入人工累计清单，崩溃、数据损坏、
-严重布局破坏和核心交互阻塞必须立即人工复核。不要为增加测试编号拆分能力，
-也不要在没有实际缺口证据时提前选择下一能力方向。
+每一批都应包含自动断言、直接相邻回归、风险相称的设备门和职责文档更新。视觉、触摸、
+SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严重布局破坏和核心交互阻塞
+必须立即人工复核。不要为增加测试编号拆分能力，也不要在没有缺口证据时提前选择方向。
 
 ### 继续清理产品所有权
 
@@ -109,8 +63,9 @@ next703、next704、next705、next706、next707、next708、next709、next710 �
 
 - 依据 corpus 补齐高价值 DOM/Event/form/navigation 对象，不追求一次性完整 Web API。
 - 继续在 Browser 中按真实页面缺口扩展有界 selector/DOM 组合；当前承诺简单 compound
-  selector 的列表、四种关系组合器、六类属性操作符、有限结构伪类、表单状态伪类和单一
-  简单 compound 参数的 `:not()`，完整 CSS Selectors 语法仍不作为默认目标。
+  selector 的列表、四种关系组合器、六类属性操作符、有限结构伪类、表单状态伪类（含
+  option live selected 的 `:checked`）和单一简单 compound 参数的 `:not()`，完整 CSS
+  Selectors 语法仍不作为默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。
 - 保持浏览器 JavaScript 显式 opt-in，并持续验证关闭时不抓取或执行页面脚本。

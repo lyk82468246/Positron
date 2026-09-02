@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1156
+#define TEST_MAX_NUMBER 1157
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -38723,6 +38723,165 @@ static BOOL test1156_browser_selector_not_contract(void)
     show_info(L"TEST 1156 OK",
             "Selector :not supports one bounded simple compound argument;"
             " lists, combinators, nested pseudos and advanced syntax fail closed.");
+    return TRUE;
+}
+
+/* TEST 1157 - option selected state participates in :checked. */
+static BOOL test1157_browser_selector_option_checked_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form'>"
+        "<select id='choice'><option id='one' selected>One</option>"
+        "<option id='two'>Two</option><option id='three'>Three</option></select>"
+        "<select id='multi' multiple><option id='m-one' selected>One</option>"
+        "<option id='m-two' selected>Two</option><option id='m-three'>Three</option></select>"
+        "<input id='check' type='checkbox' checked></form>"
+        "<script>window.__selectorOptionCheckedContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-option-checked";
+    static const char *PHASE_NAMES[] = {
+        "initial-selected", "live-selected-mutation", "composition-and-order",
+        "unsupported-input"
+    };
+    static const char *PHASES[] = {
+        "(function(){var choice=document.getElementById('choice');"
+        "var one=document.getElementById('one');var two=document.getElementById('two');"
+        "var check=document.getElementById('check');var list;var multi;var ok;"
+        "list=document.querySelectorAll('select#choice > option:checked');"
+        "multi=document.querySelectorAll('select#multi > option:checked');"
+        "ok=choice.selectedIndex===0&&list.length===1&&list[0]===one&&"
+        "multi.length===2&&multi[0]===document.getElementById('m-one')&&"
+        "multi[1]===document.getElementById('m-two')&&one.matches('option:checked')&&"
+        "!two.matches('option:checked')&&check.matches('input:checked');"
+        "return ok?'true':'phase1';})();",
+        "(function(){var choice=document.getElementById('choice');"
+        "var one=document.getElementById('one');var two=document.getElementById('two');"
+        "var list;choice.selectedIndex=1;list=document.querySelectorAll("
+        "'select#choice > option:checked');return choice.selectedIndex===1&&"
+        "list.length===1&&list[0]===two&&!one.matches('option:checked')&&"
+        "two.matches('option:checked')&&document.querySelector("
+        "'select#choice > option:checked')===two?'true':'phase2';})();",
+        "(function(){var choice=document.getElementById('choice');var two;var list;"
+        "two=document.getElementById('two');list=document.querySelectorAll("
+        "'form > select > option:checked, form > input:checked');return list.length===4&&"
+        "list[0]===two&&list[1]===document.getElementById('m-one')&&"
+        "list[2]===document.getElementById('m-two')&&"
+        "list[3]===document.getElementById('check')&&"
+        "two.closest('select option:checked')===two&&"
+        "choice.matches('select:not(:checked)')===false?'true':'phase3';})();",
+        "(function(){var two=document.getElementById('two');var ok;ok="
+        "document.querySelectorAll('option:checked(foo)').length===0&&"
+        "document.querySelectorAll('select:checked').length===0&&"
+        "document.querySelectorAll('input:not(:checked)').length===0&&"
+        "document.querySelectorAll('option::before').length===0&&"
+        "!two.matches('option:checked(foo)');return ok?'true':'phase4';})();"
+    };
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int phase;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    phase = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector option checked script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        for (phase = 0; phase < 4; ++phase) {
+            memset(error, 0, sizeof(error));
+            if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
+                    error, sizeof(error)) != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector option checked phase %d (%s) evaluation failed",
+                        phase + 1, PHASE_NAMES[phase]);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector option checked phase %d (%s) failed: %s",
+                        phase + 1, PHASE_NAMES[phase],
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1157 FAIL", error[0] != '\0' ? error :
+                "selector option checked contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1157 OK",
+            "Selector :checked reflects input checked and live option selected "
+            "state with fail-closed unsupported input.");
     return TRUE;
 }
 
@@ -96785,6 +96944,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1154: ok = test1154_browser_selector_structural_pseudo_contract(); break;
         case 1155: ok = test1155_browser_selector_form_state_contract(); break;
         case 1156: ok = test1156_browser_selector_not_contract(); break;
+        case 1157: ok = test1157_browser_selector_option_checked_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

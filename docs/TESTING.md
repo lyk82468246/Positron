@@ -246,8 +246,8 @@ callback 的当前值，`:disabled`/`:enabled` 读取 input、button、select、
 `querySelectorAll()` 断言初始状态、checked/属性 mutation 后的实时结果、列表顺序和
 组合查询，并确认带参数、交互伪类、`:not()` 的不支持参数、伪元素和非表单元素安全
 fail closed。
-该子集不推导 fieldset/optgroup 继承，不把 option 的动态 selected 状态映射为
-`:checked`，也不代表完整 CSS Selectors 语法。
+该子集不推导 fieldset/optgroup 继承；option 的动态 selected→`:checked` 映射由
+TEST1157 单独覆盖，也不代表完整 CSS Selectors 语法。
 
 TEST1156 覆盖 Browser selector 的有界 `:not()`：参数只能是一个不含伪类、伪元素、
 列表或组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值），并在
@@ -256,6 +256,12 @@ TEST1156 覆盖 Browser selector 的有界 `:not()`：参数只能是一个不�
 逗号列表、空格/组合器、嵌套伪类、伪元素和非精确属性操作符都必须 fail closed。该能力
 覆盖 `details:not([open])`、`:not(summary)` 等本项目所需的有限场景，不代表完整 CSS
 Selectors 语法。
+
+TEST1157 覆盖 Browser selector 对 `<option>` 动态 selected 状态的 `:checked` 映射：
+单选初始选择、`selectedIndex` mutation、多选初始选择、`matches()`、`closest()`、
+顶层列表顺序和 input/option 的区分都必须保持一致；带参数、非 option 元素、嵌套伪类
+和伪元素仍安全 fail closed。Core 的 checked getter 只扩展为读取 option.selected，
+option 选择 mutation 仍由 select/option API 完成。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

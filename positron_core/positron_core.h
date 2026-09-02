@@ -407,8 +407,9 @@ PCORE_API int PCore_NodeOverflowScrollToById(HANDLE hDoc,
         const char *element_id, int scroll_x, int scroll_y,
         int *out_x, int *out_y);
 /* DOM-level form properties for script/runtime hosts. Value/defaultValue
- * support input, textarea and select.value; checked/defaultChecked support
- * input; selectedIndex supports select. These functions do not require a
+ * support input, textarea and select.value; checked reads input.checked or an
+ * option's live selected state, while defaultChecked and checked mutation
+ * support input; selectedIndex supports select. These functions do not require a
  * styled/layout box tree, so parser-complete scripts may use them before the
  * first layout. String getters use the same probe/truncation contract as
  * PCore_NodeTextContentById. */

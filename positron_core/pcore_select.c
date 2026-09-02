@@ -6422,13 +6422,21 @@ PCORE_API int PCore_NodeCheckedById(HANDLE hDoc, const char *element_id,
     }
     *out_checked = 0;
     element = pcore_element_by_id((dom_document *) hDoc, element_id);
-    if (element == NULL || !pcore_element_name_is(element, "input")) {
+    if (element == NULL) {
         if (element != NULL) { dom_node_unref((dom_node *) element); }
         return 1;
     }
     checked = false;
-    err = dom_html_input_element_get_checked(
-            (dom_html_input_element *) element, &checked);
+    if (pcore_element_name_is(element, "input")) {
+        err = dom_html_input_element_get_checked(
+                (dom_html_input_element *) element, &checked);
+    } else if (pcore_element_name_is(element, "option")) {
+        err = dom_html_option_element_get_selected(
+                (dom_html_option_element *) element, &checked);
+    } else {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
     dom_node_unref((dom_node *) element);
     if (err != DOM_NO_ERR) {
         return 1;

@@ -1,6 +1,6 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口的浏览器会话组合层。它拥有 history、浏览器 script session、bootstrap、DOM/Event adapter、native 控件事务策略，以及候选导航的身份、生命周期和结果摘要，但不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
+`positron_browser.dll` 是无窗口的浏览器会话组合层，负责 history、script session、bootstrap、DOM/Event adapter、native 控件事务和导航候选摘要。它不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
 
 ## 产物与依赖
 
@@ -302,8 +302,9 @@ selector 支持 compound、列表、空格/`>`/`+`/`~`、属性/结构伪类（`
 child/of-type、`nth-*`）；受限 `an+b` 按 DOM 快照求值。
 `:not()` 仅支持简单 compound；其他参数 fail closed。动态伪类、伪元素等高级语法不支持。
 
-表单：`input:checked`、直接 `disabled`/`required` 对应 `:disabled`/`:enabled`/`:required`/`:optional`；
-不处理继承、option selected。
+表单：`input:checked` 和 `option:checked` 分别读取 input.checked 与 option.selected
+实时状态；直接 `disabled`/`required` 对应 `:disabled`/`:enabled`/`:required`/`:optional`。
+不处理 fieldset/optgroup 继承，option 的选择应通过 select/option API 变更。
 
 ### `dialog` 生命周期
 
@@ -647,9 +648,9 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   smooth/inertia、transforms、pinch zoom 和匿名目标仍不在范围内；宿主仍负责页面 extent、
   clamp、物理滚动和 `PBrowser_ScriptSessionNotifyScroll`/
   `PBrowser_ScriptSessionNotifyElementScroll`。
-- `dialog` 与 `contenteditable` 都是有界的脚本/宿主组合；完整 CSS `::backdrop`、多窗口 modal、Range/Selection、富文本、designMode 和完整 IME 仍不在范围内，详细事务边界见上文对应章节。
+- `dialog`/`contenteditable` 仅支持有界脚本/宿主组合；完整 backdrop、modal、Range/Selection、富文本和 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
-整体分层见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)，当前限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+参见 [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与 [`KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
