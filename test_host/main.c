@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1167
+#define TEST_MAX_NUMBER 1168
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -41173,6 +41173,365 @@ static BOOL test1167_browser_selector_range_contract(void)
             "Selector :in-range and :out-of-range follow Core range"
             " validation state, live value/constraint changes and fail-closed"
             " unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1168 - bounded read-only/read-write selector pseudo-classes. */
+static BOOL test1168_browser_selector_editable_state_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form'>"
+        "<input id='edit' type='text' value='alpha'>"
+        "<input id='search' type='search' value='term'>"
+        "<input id='number' type='number' value='3'>"
+        "<input id='locked' type='text' value='alpha' readonly>"
+        "<input id='disabled' type='text' value='alpha' disabled>"
+        "<input id='hidden' type='hidden' value='secret'>"
+        "<input id='slider' type='range' min='0' max='10' value='5'>"
+        "<textarea id='notes'>alpha</textarea>"
+        "<textarea id='notes-locked' readonly>alpha</textarea>"
+        "<div id='editor' contenteditable='true'>edit"
+        "<span id='child'>child</span></div>"
+        "<div id='editor-off' contenteditable='false'>off</div>"
+        "<div id='plain'>plain</div>"
+        "<select id='select'><option>one</option></select>"
+        "<button id='button' type='button'>button</button>"
+        "<script>window.selectorEditableReady=true;</script>"
+        "</form></body></html>";
+    static const char URL[] =
+        "https://positron.local/selector-editable";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char eval_error[1024];
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(eval_error, 0, sizeof(eval_error));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector editable script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 420;
+        g_view_w = 260;
+        g_view_h = 420;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var edit=document.getElementById('edit');"
+            "var search=document.getElementById('search');"
+            "var number=document.getElementById('number');"
+            "var locked=document.getElementById('locked');"
+            "var disabled=document.getElementById('disabled');"
+            "var hidden=document.getElementById('hidden');"
+            "var slider=document.getElementById('slider');"
+            "var notes=document.getElementById('notes');"
+            "var notesLocked=document.getElementById('notes-locked');"
+            "var editor=document.getElementById('editor');"
+            "var child=document.getElementById('child');"
+            "var editorOff=document.getElementById('editor-off');"
+            "var plain=document.getElementById('plain');"
+            "var select=document.getElementById('select');"
+            "var button=document.getElementById('button');"
+            "var form=document.getElementById('form');"
+            "String(edit!==null&&search!==null&&number!==null&&locked!==null&&"
+            "disabled!==null&&hidden!==null&&slider!==null&&notes!==null&&"
+            "notesLocked!==null&&editor!==null&&child!==null&&editorOff!==null&&"
+            "plain!==null&&select!==null&&button!==null&&form!==null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(eval_error, sizeof(eval_error), error);
+        session_error = g_browser_script_session.session != NULL ?
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) : NULL;
+        _snprintf(error, sizeof(error) - 1,
+                "editable selector wrapper setup failed: result=%s eval=%s"
+                " session=%s",
+                result != NULL ? result : "<null>",
+                eval_error[0] != '\0' ? eval_error : "<none>",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "<none>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(edit.matches(':read-write'))+'|' +"
+            "String(search.matches(':read-write'))+'|' +"
+            "String(number.matches(':read-write'))+'|' +"
+            "String(notes.matches(':read-write'))+'|' +"
+            "String(locked.matches(':read-write'))+'|' +"
+            "String(locked.matches(':read-only'))+'|' +"
+            "String(disabled.matches(':read-write'))+'|' +"
+            "String(disabled.matches(':read-only'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|false|true|false|true") !=
+            0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable control state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(hidden.matches(':read-write'))+'|' +"
+            "String(hidden.matches(':read-only'))+'|' +"
+            "String(slider.matches(':read-write'))+'|' +"
+            "String(slider.matches(':read-only'))+'|' +"
+            "String(notesLocked.matches(':read-write'))+'|' +"
+            "String(notesLocked.matches(':read-only'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|false|true|false|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial non-editable control state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(editor.matches(':read-write'))+'|' +"
+            "String(editor.matches(':read-only'))+'|' +"
+            "String(child.matches(':read-write'))+'|' +"
+            "String(editorOff.matches(':read-write'))+'|' +"
+            "String(editorOff.matches(':read-only'))+'|' +"
+            "String(plain.matches(':read-only'))+'|' +"
+            "String(select.matches(':read-only'))+'|' +"
+            "String(button.matches(':read-only'))+'|' +"
+            "String(form.matches(':read-only'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|true|false|true|true|true|true|true") !=
+            0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable ancestor state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var q=document.querySelectorAll('input:read-write');"
+            "var qok=q.length===3&&q[0]===edit&&q[1]===search&&"
+            "q[2]===number;q=null;String(qok);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(eval_error, sizeof(eval_error), error);
+        session_error = g_browser_script_session.session != NULL ?
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) : NULL;
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable selector query state failed: result=%s"
+                " eval=%s session=%s",
+                result != NULL ? result : "<null>",
+                eval_error[0] != '\0' ? eval_error : "<none>",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "<none>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.querySelector('input:read-write')===edit)+'|' +"
+            "String(document.querySelectorAll('input:read-only').length===4);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable input query state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var q=document.querySelectorAll('textarea:read-write');"
+            "var qok=q.length===1&&q[0]===notes;q=null;String(qok);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable textarea query state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var q=document.querySelectorAll('div:read-write');"
+            "var qok=q.length===1&&q[0]===editor;q=null;String(qok);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable div query state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.querySelectorAll('textarea:read-only').length===1)+'|' +"
+            "String(document.querySelectorAll('div:read-only').length===2);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable read-only query state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(child.closest(':read-write')===child)+'|' +"
+            "String(editorOff.closest(':read-write')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial editable selector closest state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "edit.readOnly=true;disabled.removeAttribute('disabled');"
+            "editor.contentEditable='false';notes.readOnly=true;"
+            "String(edit.matches(':read-only'))+'|' +"
+            "String(!edit.matches(':read-write'))+'|' +"
+            "String(disabled.matches(':read-write'))+'|' +"
+            "String(!disabled.matches(':read-only'))+'|' +"
+            "String(editor.matches(':read-only'))+'|' +"
+            "String(!editor.matches(':read-write'))+'|' +"
+            "String(notes.matches(':read-only'))+'|' +"
+            "String(!notes.matches(':read-write'))+'|' +"
+            "String(document.querySelectorAll('input:read-write').length===3);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|true|true|true|true|true") !=
+            0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "editable selector mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "edit.readOnly=false;notes.removeAttribute('readonly');"
+            "disabled.setAttribute('disabled','');"
+            "editor.contentEditable='true';"
+            "String(edit.matches(':read-write'))+'|' +"
+            "String(notes.matches(':read-write'))+'|' +"
+            "String(editor.matches(':read-write'))+'|' +"
+            "String(child.matches(':read-write'))+'|' +"
+            "String(document.querySelectorAll('input:read-write').length===3)+'|' +"
+            "String(document.querySelectorAll('textarea:read-write').length===1);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "editable selector restore failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionUnregisterContentEditableCallbacks(
+            g_browser_script_session.session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "contenteditable callback unregister failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(editor.matches(':read-write'))+'|' +"
+            "String(editor.matches(':read-only'))+'|' +"
+            "String(plain.matches(':read-only'))+'|' +"
+            "String(edit.matches(':read-only(foo)'))+'|' +"
+            "String(edit.matches('::read-only'))+'|' +"
+            "String(document.querySelectorAll(':read-write,').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|true|false|false|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "editable selector callback or invalid input contract failed");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1168 FAIL", error[0] != '\0' ? error :
+                "editable selector contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1168 OK",
+            "Selector read-only/read-write state follows text controls,"
+            " contenteditable, disabled/readonly mutation and fail-closed"
+            " callback handling.");
     return TRUE;
 }
 
@@ -99246,6 +99605,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1165: ok = test1165_browser_selector_interaction_contract(); break;
         case 1166: ok = test1166_browser_selector_effective_disabled_contract(); break;
         case 1167: ok = test1167_browser_selector_range_contract(); break;
+        case 1168: ok = test1168_browser_selector_editable_state_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

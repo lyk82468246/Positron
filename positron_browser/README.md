@@ -319,6 +319,9 @@ callback 参数和输出缓冲只在调用期间借用。
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
 表单状态、`:valid`/`:invalid`、有界 `:in-range`/`:out-of-range`、`:focus`/`:focus-within`、
 静态 `:link`/`:any-link`、`:target`/`:lang` 和可选 interaction 的 `:active`/`:hover`。
+编辑状态还提供有界 `:read-only`/`:read-write`：文本输入类型与 `textarea` 读取
+readonly/effective-disabled，存在 Core `isContentEditable` callback 时也读取显式或继承的
+editing host；不支持编辑的 input 类型和普通元素按 `:read-only` 处理。
 `:not()` 只接受单一简单 compound，`:is()`/`:where()` 与 `:has()` 各最多 16 个分支；
 `:has()` 仅支持后代/子代/兄弟关系，遍历最多 64 步，空分支、链式关系和不完整参数
 fail closed。表单状态包括 input/option 的实时 `:checked`、Core effective-disabled

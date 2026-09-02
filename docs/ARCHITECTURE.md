@@ -145,6 +145,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `time`/`datetime-local`；`range` 的默认范围也算受限范围，underflow/overflow 才是
   out-of-range，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和
   单独 stepMismatch 安全不匹配；
+- 同一 selector bridge 还提供有界 `:read-only`/`:read-write`：文本输入类型与
+  `textarea` 依据 readonly 和 Core effective-disabled 判定，存在
+  `isContentEditable` callback 时补充显式或继承 editing host；不支持编辑的 input 类型、
+  普通元素以及 callback 缺失时的显式 contenteditable 按既定 fail-closed 规则处理；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、element focus、window focus/blur、composition、click 和导航协调；
 - 可选的 `document.activeElement` 投影：宿主注册

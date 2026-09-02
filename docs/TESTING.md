@@ -333,6 +333,13 @@ underflow/overflow 标志。空值、bad/type mismatch、disabled/readonly、无
 query、值和约束属性 mutation、查询顺序及带参数/伪元素/非法列表的 fail-closed 行为；
 它不扩展完整 Selectors、原生范围控件视觉或本地化 validation UI。
 
+TEST1168 覆盖 Browser selector 的有界 `:read-only`/`:read-write`：文本输入类型与
+`textarea` 在未 readonly 且未 effective-disabled 时匹配 `:read-write`，Core 的
+`isContentEditable` callback 让显式或继承的 editing host 也能匹配；readonly、禁用、
+不支持编辑的 input 类型和普通元素匹配 `:read-only`。夹具覆盖属性 mutation、祖先继承、
+`matches()`、`closest()`、三种 query、结果顺序和注销 contenteditable callback 后的
+fail-closed 行为；不承诺完整 CSS Selectors、富文本编辑或 native 输入视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
