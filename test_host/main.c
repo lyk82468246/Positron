@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1155
+#define TEST_MAX_NUMBER 1156
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -38232,12 +38232,14 @@ static BOOL test1154_browser_selector_structural_pseudo_contract(void)
         "var spanOne=document.getElementById('span-one');var spanTwo=document.getElementById('span-two');"
         "var bold=document.getElementById('bold');var list="
         "document.querySelectorAll(':root, #items > li:first-child');"
+        "var notList=document.querySelectorAll('li:not(.item)');"
         "var ok=document.querySelector('section#typed > span:first-of-type')===spanOne&&"
         "document.querySelector('section#typed > span:last-of-type')===spanTwo&&"
         "document.querySelector('section#typed > span:nth-of-type(2)')===spanTwo&&"
         "document.querySelector('section#typed > span:nth-last-of-type(2)')===spanOne&&"
         "bold.matches('b:only-of-type')&&list.length===2&&list[0]===document.documentElement&&"
-        "list[1]===one&&three.matches('li:nth-child(2n + 1)')&&"
+        "list[1]===one&&notList.length===4&&notList[0]===one&&notList[3]===document.getElementById('four')&&"
+        "three.matches('li:nth-child(2n + 1)')&&"
         "three.closest('ul > li:nth-child(2n + 1)')===three;"
         "return ok?'true':'phase3';})();",
         "(function(){var one=document.getElementById('one');var ok="
@@ -38245,7 +38247,6 @@ static BOOL test1154_browser_selector_structural_pseudo_contract(void)
         "document.querySelectorAll('#items > li:nth-child(2n+)').length===0&&"
         "document.querySelectorAll('#items > li:nth-child(2 of .item)').length===0&&"
         "document.querySelectorAll('li::before').length===0&&"
-        "document.querySelectorAll('li:not(.item)').length===0&&"
         "one.matches('li:nth-child(999999999999999999999)')===false;"
         "return ok?'true':'phase4';})();"
     };
@@ -38547,6 +38548,181 @@ static BOOL test1155_browser_selector_form_state_contract(void)
             "Selector form-state pseudos support bounded checked, direct "
             "disabled/enabled and required/optional matching with fail-closed "
             "unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1156 - bounded :not() selector pseudo-class. */
+static BOOL test1156_browser_selector_not_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><main id='root' class='shell'>"
+        "<section id='panel' class='panel' data-kind='keep'>"
+        "<p id='muted' class='muted'>Muted</p>"
+        "<p id='active' class='active' data-kind='save'>Active</p>"
+        "<span id='badge' class='active'>Badge</span></section>"
+        "<section id='other' data-skip='1'>"
+        "<p id='other-text' class='muted'>Other</p>"
+        "<span id='other-badge' class='active'>Other badge</span></section>"
+        "</main><script>window.__selectorNotContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-not";
+    static const char *PHASE_NAMES[] = {
+        "initial-matches", "live-mutation", "composition-and-order",
+        "unsupported-input"
+    };
+    static const char *PHASES[] = {
+        "(function(){var root=document.getElementById('root');"
+        "var panel=document.getElementById('panel');var muted=document.getElementById('muted');"
+        "var active=document.getElementById('active');var other=document.getElementById('other');"
+        "var list=document.querySelectorAll('section:not([data-skip])');var exact;var ok;"
+        "exact=document.querySelectorAll('[data-kind]:not([data-kind=skip])');"
+        "ok=list.length===1&&list[0]===panel&&exact.length===2&&"
+        "exact[0]===panel&&exact[1]===active&&active.matches('p:not(.muted)')&&"
+        "!muted.matches('p:not(.muted)')&&panel.matches('section:not([data-skip])')&&"
+        "!other.matches('section:not([data-skip])')&&"
+        "active.matches('p:not(#muted)')&&root.matches('main:not(#missing)')&&"
+        "panel.matches(\"section:not([data-kind='skip'])\")&&"
+        "document.querySelector('section:not([data-skip]) p:not(.muted)')===active&&"
+        "active.closest('main:not(.missing)')===root;return ok?'true':'phase1';})();",
+        "(function(){var panel=document.getElementById('panel');"
+        "var other=document.getElementById('other');var muted=document.getElementById('muted');"
+        "var active=document.getElementById('active');var otherText=document.getElementById('other-text');"
+        "var list;var ok;muted.setAttribute('class','active');"
+        "active.setAttribute('class','muted');panel.setAttribute('data-skip','1');"
+        "other.removeAttribute('data-skip');otherText.setAttribute('class','active');"
+        "list=document.querySelectorAll('section:not([data-skip])');"
+        "ok=list.length===1&&list[0]===other&&"
+        "!panel.matches('section:not([data-skip])')&&"
+        "other.matches('section:not([data-skip])')&&"
+        "!active.matches('p:not(.muted)')&&muted.matches('p:not(.muted)')&&"
+        "otherText.matches('p:not(.muted)')&&"
+        "document.querySelector('section:not([data-skip]) > p:not(.muted)')===otherText;"
+        "return ok?'true':'phase2';})();",
+        "(function(){var root=document.getElementById('root');"
+        "var otherText=document.getElementById('other-text');"
+        "var otherBadge=document.getElementById('other-badge');var panel=document.getElementById('panel');"
+        "var list=document.querySelectorAll('section:not([data-skip]) > p:not(.muted),"
+        "section:not([data-skip]) > span:not(.muted)');var ok;"
+        "ok=list.length===2&&list[0]===otherText&&list[1]===otherBadge&&"
+        "document.querySelector('main:not(.missing) > section:not([data-skip]) > span:not(.muted)')===otherBadge&&"
+        "otherBadge.closest('main:not(.missing)')===root&&"
+        "panel.closest('section:not([data-skip])')===null;return ok?'true':'phase3';})();",
+        "(function(){var active=document.getElementById('active');var ok;ok="
+        "document.querySelectorAll('p:not()').length===0&&"
+        "document.querySelectorAll('p:not(.muted,.active)').length===0&&"
+        "document.querySelectorAll('p:not(section p)').length===0&&"
+        "document.querySelectorAll('p:not(:checked)').length===0&&"
+        "document.querySelectorAll('p:not([data-kind^=\"\"])').length===0&&"
+        "document.querySelectorAll('p:not(::before)').length===0&&"
+        "!active.matches('p:not(.muted,.active)')&&!active.matches('p:not(:checked)')&&"
+        "!active.matches('p:not([data-kind^=\"\"])');return ok?'true':'phase4';})();"
+    };
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int phase;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    phase = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector :not script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        for (phase = 0; phase < 4; ++phase) {
+            memset(error, 0, sizeof(error));
+            if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
+                    error, sizeof(error)) != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector :not phase %d (%s) evaluation failed",
+                        phase + 1, PHASE_NAMES[phase]);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector :not phase %d (%s) failed: %s",
+                        phase + 1, PHASE_NAMES[phase],
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1156 FAIL", error[0] != '\0' ? error :
+                "selector :not contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1156 OK",
+            "Selector :not supports one bounded simple compound argument;"
+            " lists, combinators, nested pseudos and advanced syntax fail closed.");
     return TRUE;
 }
 
@@ -96608,6 +96784,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1153: ok = test1153_browser_selector_attribute_operator_contract(); break;
         case 1154: ok = test1154_browser_selector_structural_pseudo_contract(); break;
         case 1155: ok = test1155_browser_selector_form_state_contract(); break;
+        case 1156: ok = test1156_browser_selector_not_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

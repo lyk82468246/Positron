@@ -298,9 +298,9 @@ Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把
 
 Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
 
-selector 支持简单 compound、顶层列表、空格/`>`/`+`/`~`、属性操作符和结构伪类（`:root`、
-`:empty`、child/of-type、`nth-*`）；受限 `an+b` 按 DOM 快照求值并保护引号内分隔符。
-动态伪类、`:not()`、伪元素等高级语法不支持；非法输入 fail closed。
+selector 支持 compound、列表、空格/`>`/`+`/`~`、属性/结构伪类（`:root`、`:empty`、
+child/of-type、`nth-*`）；受限 `an+b` 按 DOM 快照求值。
+`:not()` 仅支持简单 compound；其他参数 fail closed。动态伪类、伪元素等高级语法不支持。
 
 表单：`input:checked`、直接 `disabled`/`required` 对应 `:disabled`/`:enabled`/`:required`/`:optional`；
 不处理继承、option selected。

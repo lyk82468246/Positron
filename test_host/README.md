@@ -68,7 +68,7 @@ tests=13,20,27,999
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
-  属性操作符、结构伪类与表单状态查询（TEST1146–1155）；
+  属性操作符、结构伪类、表单状态与有界 `:not()` 查询（TEST1146–1156）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -158,7 +158,9 @@ callback；TEST1152 用离线 fixture 断言顶层 selector 列表、后代/子�
 TEST1154 断言 `:root`、`:empty`、child/of-type 与四种 `nth-*` 结构伪类及其非法
 输入回退；TEST1155 断言 `input:checked`、直接 `disabled` 对应的
 `:disabled`/`:enabled`、直接 `required` 对应的 `:required`/`:optional`，以及属性
-mutation 后的查询更新和不支持输入的回退。宿主不得在测试 helper 中复制 selector
+mutation 后的查询更新和不支持输入的回退；TEST1156 断言单一简单 compound 参数的
+`:not()`、mutation 后的查询更新、组合/列表顺序和不支持参数的回退。宿主不得在测试
+helper 中复制 selector
 解析或匹配规则；这些语义和固定预算都属于 Browser。
 
 ### Native EDIT/SELECT/button/file
