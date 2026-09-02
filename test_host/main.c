@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1165
+#define TEST_MAX_NUMBER 1166
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -40634,6 +40634,313 @@ static BOOL test1165_browser_selector_interaction_contract(void)
     show_info(L"TEST 1165 OK",
             "Browser :hover and :active selectors follow Core pointer"
             " interaction ids and fail closed without the bridge.");
+    return TRUE;
+}
+
+/* TEST 1166 - effective disabled state reaches Browser selectors and forms. */
+static BOOL test1166_browser_selector_effective_disabled_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form' "
+        "action='/effective-disabled' method='get'>"
+        "<fieldset id='locked' disabled>"
+        "<legend>First <input id='legend-field' name='legend' "
+        "value='legend-value'></legend>"
+        "<input id='blocked' name='blocked' required>"
+        "</fieldset>"
+        "<select id='choices' name='choice' multiple>"
+        "<optgroup id='group-locked' label='Locked' disabled>"
+        "<option id='opt-locked' value='locked' selected>Locked</option>"
+        "<option id='opt-locked-2' value='locked-2'>Locked two</option>"
+        "</optgroup>"
+        "<optgroup id='group-open' label='Open'>"
+        "<option id='opt-open' value='open' selected>Open</option>"
+        "</optgroup></select>"
+        "<button id='submit' type='submit' name='go' value='send'>Send</button>"
+        "<p id='result'>idle</p></form>"
+        "<script>window.selectorEffectiveDisabledReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0}"
+        "body{font:12px sans-serif;padding:4px}"
+        "fieldset{display:block;margin:4px;padding:4px}"
+        "legend{display:block}"
+        "input,select,button{display:block;width:180px;height:20px;margin:2px}";
+    static const char URL[] =
+        "https://positron.local/selector-effective-disabled";
+    static const char PROBE[] =
+        "var fs=document.getElementById('locked');"
+        "var blocked=document.getElementById('blocked');"
+        "var legend=document.getElementById('legend-field');"
+        "var group=document.getElementById('group-locked');"
+        "var locked=document.getElementById('opt-locked');"
+        "var open=document.getElementById('opt-open');"
+        "var phase1=fs.matches(':disabled')&&"
+        "fs.matches('fieldset:disabled')&&blocked.matches(':disabled')&&"
+        "!blocked.matches(':enabled')&&!legend.matches(':disabled')&&"
+        "group.matches(':disabled')&&!group.matches(':enabled')&&"
+        "locked.matches(':disabled')&&!open.matches(':disabled')&&"
+        "document.querySelectorAll('fieldset:disabled').length===1&&"
+        "document.querySelectorAll('optgroup:disabled').length===1&&"
+        "document.querySelectorAll('option:disabled').length===2;"
+        "fs.removeAttribute('disabled');"
+        "var phase2=!blocked.matches(':disabled')&&"
+        "blocked.matches(':enabled')&&group.matches(':disabled')&&"
+        "locked.matches(':disabled');"
+        "group.removeAttribute('disabled');"
+        "var phase3=!group.matches(':disabled')&&group.matches(':enabled')&&"
+        "!locked.matches(':disabled')&&locked.matches(':enabled');"
+        "fs.setAttribute('disabled','');group.setAttribute('disabled','');"
+        "var phase4=blocked.matches(':disabled')&&"
+        "!legend.matches(':disabled')&&group.matches(':disabled')&&"
+        "locked.matches(':disabled');"
+        "var unsupported=document.querySelectorAll('option:disabled(foo)').length===0&&"
+        "!locked.matches(':disabled(foo)')&&!locked.matches('option::before');"
+        "document.getElementById('result').textContent="
+        "String(phase1)+'|'+String(phase2)+'|'+String(phase3)+'|'+"
+        "String(phase4)+'|'+String(unsupported);";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreSelectInfo select_info;
+    PCoreFormSubmissionInfo submission;
+    const char *result;
+    const char *session_error;
+    char relation[8];
+    char result_text[128];
+    char error[1024];
+    char action[128];
+    char body[512];
+    int executed;
+    int ignored;
+    int result_bytes;
+    int relation_bytes;
+    int selected;
+    int disabled;
+    int submit_x;
+    int submit_y;
+    int submit_w;
+    int submit_h;
+    int submit_kind;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(&select_info, 0, sizeof(select_info));
+    memset(&submission, 0, sizeof(submission));
+    memset(relation, 0, sizeof(relation));
+    memset(result_text, 0, sizeof(result_text));
+    memset(error, 0, sizeof(error));
+    memset(action, 0, sizeof(action));
+    memset(body, 0, sizeof(body));
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    relation_bytes = 0;
+    selected = 0;
+    disabled = 0;
+    submit_x = 0;
+    submit_y = 0;
+    submit_w = 0;
+    submit_h = 0;
+    submit_kind = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "effective disabled script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/selector-effective-disabled.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 480) != 0 ||
+                PCore_FormControlInfoById(document, "submit", &submit_x,
+                &submit_y, &submit_w, &submit_h, &submit_kind, NULL,
+                NULL) != 0 || submit_kind != 7 || submit_w <= 0 ||
+                submit_h <= 0 || PCore_SelectInfo(document, 0,
+                &select_info) != 0 || !select_info.multiple ||
+                select_info.option_count != 3 ||
+                select_info.selected_count != 2) {
+            cstr_copy(error, sizeof(error),
+                    "effective disabled fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = 320;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 320;
+        g_view_h = 480;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        if (pcore_browser_script_session_evaluate(PROBE, -1, error,
+                sizeof(error)) != 0 ||
+                PCore_NodeTextContentById(document, "result", result_text,
+                sizeof(result_text), &result_bytes) != 0 ||
+                strcmp(result_text, "true|true|true|true|true") != 0) {
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (error[0] == '\0') {
+                _snprintf(error, sizeof(error) - 1,
+                        "effective disabled selector probe failed: %s",
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+            }
+            ok = 0;
+        }
+    }
+    if (ok) {
+        relation_bytes = 0;
+        if (PCore_NodeRelationById(document, "blocked",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 0 ||
+                relation_bytes != 1 || strcmp(relation, "1") != 0 ||
+                PCore_NodeRelationById(document, "legend-field",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 0 ||
+                strcmp(relation, "0") != 0 ||
+                PCore_NodeRelationById(document, "group-locked",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 0 ||
+                strcmp(relation, "1") != 0 ||
+                PCore_NodeRelationById(document, "opt-locked",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 0 ||
+                strcmp(relation, "1") != 0 ||
+                PCore_NodeRelationById(document, "group-open",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 0 ||
+                strcmp(relation, "0") != 0 ||
+                PCore_NodeRelationById(document, "opt-open",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 0 ||
+                strcmp(relation, "0") != 0 ||
+                PCore_NodeRelationById(document, "locked",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+                sizeof(relation), &relation_bytes, NULL) != 2) {
+            cstr_copy(error, sizeof(error),
+                    "effective disabled Core relation failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memset(relation, 'X', sizeof(relation));
+        relation_bytes = 0;
+        if (PCore_NodeRelationById(document, "opt-locked",
+                PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation, 1,
+                &relation_bytes, NULL) != 0 || relation_bytes != 1 ||
+                relation[0] != '\0' ||
+                PCore_SelectOptionInfo(document, 0, 0, NULL, 0, NULL, 0,
+                &selected, &disabled, NULL, NULL) != 0 || !selected ||
+                !disabled ||
+                PCore_SelectOptionInfo(document, 0, 2, NULL, 0, NULL, 0,
+                &selected, &disabled, NULL, NULL) != 0 || !selected ||
+                disabled || PCore_SelectSetOptionSelected(document, 0, 0,
+                0) != 2 || PCore_SelectSetOptionSelected(document, 0, 1,
+                1) != 2) {
+            cstr_copy(error, sizeof(error),
+                    "effective disabled select option policy failed");
+            ok = 0;
+        }
+    }
+    if (ok && (PCore_FormSubmissionAt(document,
+            submit_x + submit_w / 2, submit_y + submit_h / 2,
+            &submission, action, sizeof(action), body, sizeof(body)) != 1 ||
+            submission.method != 1 || strcmp(action, "/effective-disabled") !=
+            0 || strcmp(body, "legend=legend-value&choice=open&go=send") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "disabled option was submitted: action=%s body=%s",
+                action, body);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (PCore_NodeRemoveAttributeById(document, "locked",
+            "disabled") != 0 ||
+            PCore_NodeRelationById(document, "blocked",
+            PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+            sizeof(relation), &relation_bytes, NULL) != 0 ||
+            strcmp(relation, "0") != 0 ||
+            PCore_NodeSetAttributeById(document, "locked", "disabled", "") !=
+            0 || PCore_NodeRemoveAttributeById(document, "group-locked",
+            "disabled") != 0 ||
+            PCore_NodeRelationById(document, "opt-locked",
+            PCORE_NODE_RELATION_FORM_CONTROL_DISABLED, 0, relation,
+            sizeof(relation), &relation_bytes, NULL) != 0 ||
+            strcmp(relation, "0") != 0 || PCore_SelectOptionInfo(document,
+            0, 0, NULL, 0, NULL, 0, NULL, &disabled, NULL, NULL) != 0 ||
+            disabled || PCore_SelectSetOptionSelected(document, 0, 0, 1) !=
+            0 || PCore_NodeSetAttributeById(document, "group-locked",
+            "disabled", "") != 0 ||
+            PCore_SelectSetOptionSelected(document, 0, 0, 0) != 2)) {
+        cstr_copy(error, sizeof(error),
+                "effective disabled mutation did not stay live");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1166 FAIL", error[0] != '\0' ? error :
+                "effective disabled selector contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1166 OK",
+            "Core effective disabled state now reaches Browser fieldset and "
+            "optgroup selectors, option selection and form submission.");
     return TRUE;
 }
 
@@ -98705,6 +99012,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1163: ok = test1163_browser_selector_group_contract(); break;
         case 1164: ok = test1164_browser_selector_has_contract(); break;
         case 1165: ok = test1165_browser_selector_interaction_contract(); break;
+        case 1166: ok = test1166_browser_selector_effective_disabled_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

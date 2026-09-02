@@ -5701,6 +5701,33 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         err = pcore_relation_form_owner((dom_node *) element, out_value,
                 value_capacity, out_bytes);
         break;
+    case PCORE_NODE_RELATION_FORM_CONTROL_DISABLED:
+        {
+            bool applies;
+            bool disabled;
+
+            applies = false;
+            disabled = false;
+            err = pcore_node_effectively_disabled((dom_node *) element,
+                    &applies, &disabled);
+            if (err == 0 && !applies) {
+                err = 2;
+            }
+            if (err == 0) {
+                if (out_bytes != NULL) {
+                    *out_bytes = 1;
+                }
+                if (out_value != NULL && value_capacity > 0) {
+                    if (value_capacity > 1) {
+                        out_value[0] = disabled ? '1' : '0';
+                        out_value[1] = '\0';
+                    } else {
+                        out_value[0] = '\0';
+                    }
+                }
+            }
+        }
+        break;
     case PCORE_NODE_RELATION_LABEL_CONTROL:
         err = pcore_relation_label_control((dom_document *) hDoc, element,
                 out_value, value_capacity, out_bytes);

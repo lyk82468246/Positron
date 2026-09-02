@@ -522,7 +522,11 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * integer CSS-pixel width/height snapshots for supported block, replaced,
  * table and flex boxes. They are read-only and unavailable until layout; the
  * Browser wrapper maps unavailable metrics to zero. The two scroll-offset
- * relations are live retained CSS overflow positions. */
+ * relations are live retained CSS overflow positions. The
+ * FORM_CONTROL_DISABLED relation is a UTF-8 string "0"/"1" effective state
+ * for input, button, select, textarea, option and optgroup elements; it lets
+ * the Browser selector layer share Core's fieldset and optgroup inheritance
+ * rules while remaining compatible with older hosts that do not provide it. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -571,6 +575,7 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_SCROLLABLE_Y   41u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_X       42u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_Y       43u
+#define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_DISABLED 44u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

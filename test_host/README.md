@@ -69,7 +69,7 @@ tests=13,20,27,999
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
-  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover` 查询（TEST1146–1165）；
+  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover` 查询（TEST1146–1166）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -157,7 +157,7 @@ Browser 的 `matches()`、`closest()` 与 document selector 查询由
 callback；TEST1152 用离线 fixture 断言顶层 selector 列表、后代/子代/兄弟组合器、
 属性值中的逗号和非法 selector 的 fail-closed 行为；TEST1153 断言六类属性操作符，
 TEST1154 断言 `:root`、`:empty`、child/of-type 与四种 `nth-*` 结构伪类及其非法
-输入回退；TEST1155 断言 `input:checked`、直接 `disabled` 对应的
+输入回退；TEST1155 断言 `input:checked`、现有直接属性对应的
 `:disabled`/`:enabled`、直接 `required` 对应的 `:required`/`:optional`，以及属性
 mutation 后的查询更新和不支持输入的回退；TEST1156 断言单一简单 compound 参数的
 `:not()`、mutation 后的查询更新、组合/列表顺序和不支持参数的回退；TEST1157 断言
@@ -202,6 +202,13 @@ TEST1165 断言 Core 的当前 hover/active id 通过 Browser interaction callba
 `querySelectorAll()` 只匹配精确状态节点，带参数和伪元素形式 fail closed；Core 的
 size-probe、过小缓冲、组合状态和 Browser callback 注销也必须安全处理。宿主只接线
 `PCore_InteractionStateElementId`，不复制交互状态、selector 解析或匹配规则。
+
+TEST1166 断言 Core 的 effective-disabled relation 贯穿 Browser 表单状态：disabled
+fieldset 的 first-legend exemption、disabled optgroup 对 option 的继承、fieldset/optgroup
+属性 mutation、`matches()`/两种 query、过小关系缓冲、禁止选择 disabled option，以及
+successful form submission 排除 disabled option 均由同一 fixture 验证。宿主只提供既有
+DOM relation/attribute callback 和 Core 表单 API，不复制 disabled 继承、selector 解析或
+提交规则；旧宿主未提供 relation 44 时 Browser 仍安全回退到直接属性。
 
 ### Native EDIT/SELECT/button/file
 

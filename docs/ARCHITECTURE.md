@@ -92,7 +92,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box union 和 inline 行片段快照，供 Browser 组合 `getBoundingClientRect()` 与 `getClientRects()`；
 - 为已布局的常见 block、replaced、table/flex box 提供最近一次 layout 的 offset、client 和 scroll 尺寸快照；这些是整数 CSS 像素的只读 relation，不触发 relayout；同时为支持的、有 DOM id 的 overflow box 保留滚动条位置，提供关系 38/39、按 id setter 和 pointer snapshot；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
-- 表单值、约束验证、提交、reset 和 successful controls；
+- 表单值、约束验证、提交、reset 和 successful controls；Core 统一持有
+  effective-disabled 状态（含 disabled fieldset 的 first-legend exemption 与
+  optgroup→option 继承），并通过 relation 44 向 Browser 提供只读 UTF-8 `"0"`/`"1"`
+  快照；选项选择和 successful submission 也消费同一状态；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
@@ -305,7 +308,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - DNS/TCP/TLS/HTTP 组合策略、worker、取消时机和资源调度；宿主通过 Browser 资源事务注册 URL 并提交 attempt/data/failure/cancel 结果，决定何时重试、何时运行 style/layout、何时提交页面。资源终态、成功字节、预算、required/optional gate、失败摘要和 fallback 计数由 Browser 拥有，宿主读取统计用于 loading、日志和应用策略，不复制第二份资源状态或数据；页面提交时由 Browser 的 `PBrowser_NavigationCommitGetInfo` 给出 candidate/resource 组合快照，宿主不复制其中的分类规则；
 - request 结束时的清理顺序仍由宿主编排：先 join worker，失败/过时 request 先取消 Browser 资源事务中的 pending 项，再读取 `PBrowser_NavigationCleanupGetInfo` 并复制有界结果，最后销毁 candidate/resource handle。该快照只提供 Browser-owned 状态，不改变 candidate state、不拥有宿主线程/response/窗口，也不把“可释放”误当成页面提交成功；
 - 新窗口、外部协议、下载和文件系统权限策略；
-- 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，宿主不复制 box tree 或滚动模型；
+- 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，
+  relation 44 还把 effective-disabled 状态交给 Browser selector；宿主不复制 box tree、
+  滚动模型或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
   脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；

@@ -317,24 +317,25 @@ Browser 负责 JSON 参数、脚本对象形状、错误映射与同步 dispatch
 callback 参数和输出缓冲只在调用期间借用。
 
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
-直接表单状态、`:valid`/`:invalid`、`:focus`/`:focus-within`、静态的
+有限表单状态、`:valid`/`:invalid`、`:focus`/`:focus-within`、静态的
 `:link`/`:any-link`、有界的 `:target` 和 `:lang`，以及可选 interaction callback 驱动的
 `:active`/`:hover`；`:not()` 只接受单一简单 compound
 参数，`:is()`/`:where()` 接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 接受最多
 16 个相对简单 compound 分支。`:has()` 分支只支持后代、直接子代、相邻兄弟和后续兄弟
 关系，每个后代/兄弟遍历最多 64 步；链式关系、空分支和不完整参数会 fail closed。表单
-状态包括 input/option 的实时 `:checked`、直接 `disabled`/`required`，以及通过既有
-validation callback 查询 `form`、input、select、textarea 的有效性。`:focus`/`:focus-within`
+状态包括 input/option 的实时 `:checked`、通过 Core 的 effective-disabled relation 查询
+`input`、`button`、`select`、`textarea`、`option`、`optgroup` 的 `:disabled`/`:enabled`
+（含 fieldset 的 first-legend exemption、optgroup 对 option 的继承；fieldset 自身仍按
+直接属性回退），以及通过既有 validation callback 查询 `form`、input、select、textarea 的
+有效性。`:focus`/`:focus-within`
 通过既有 activeElement callback 读取当前焦点；未注册或返回无效 id 时安全回退为不匹配。
 `:link`/`:any-link` 只匹配带有 `href` 属性的 `<a>`/`<area>`，属性值可以为空；Browser
 没有 visited-state 存储，因而 `:visited` 仍然不支持。`:target` 只在当前 URL fragment 经
 `decodeURIComponent` 后等于元素当前非空 `id` 时匹配；无 fragment、解码失败、仅有 `name`
-的 named anchor 或 stale 元素都 fail closed，不承诺 fragment 的视觉滚动；`:active`/`:hover`
-另由 TEST1165 的可选 interaction callback 处理，不在这个 fragment 夹具中重复实现。
+的 named anchor 或 stale 元素都 fail closed，不承诺 fragment 的视觉滚动。
 `:lang()` 只接受一个 ASCII 语言标签，按大小写不敏感的精确值或 `-` 子标签前缀匹配；语言
 从当前元素沿最多 64 层 `parentElement` 继承，元素的 `lang` 优先于 `xml:lang`，空值或非法
-标签不匹配。该有界实现不处理语言标签列表、引号形式或完整 BCP 47 规则。不处理
-fieldset/optgroup 继承、`:visited`、伪元素或其他完整动态交互语义。
+标签不匹配。该有界实现不处理语言标签列表、引号形式或完整 BCP 47 规则。
 
 ### `dialog` 生命周期
 

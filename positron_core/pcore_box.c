@@ -40,6 +40,7 @@
 #include <dom/html/html_label_element.h>
 #include <dom/html/html_document.h>
 #include <dom/html/html_option_element.h>
+#include <dom/html/html_opt_group_element.h>
 #include <dom/html/html_options_collection.h>
 #include <dom/html/html_select_element.h>
 #include <dom/html/html_text_area_element.h>
@@ -490,6 +491,45 @@ static int pcore_node_disabled_fieldset(dom_node *node)
     return 0;
 }
 
+/* Walk option ancestors and find a disabled optgroup. The result is -1 on a
+ * DOM traversal error, 0 when no disabled optgroup applies, or 1 when one is
+ * found. The option itself is included in the walk so the helper is safe for
+ * callers that pass a borrowed option node. */
+static int pcore_node_disabled_optgroup(dom_node *node)
+{
+    dom_node *current;
+    dom_node *parent;
+    bool disabled;
+
+    if (node == NULL) {
+        return 0;
+    }
+    current = dom_node_ref(node);
+    while (current != NULL) {
+        if (pcore_node_name_is(current, "optgroup")) {
+            disabled = false;
+            if (dom_html_opt_group_element_get_disabled(
+                    (dom_html_opt_group_element *) current,
+                    &disabled) != DOM_NO_ERR) {
+                disabled = pcore_node_has_attr(current, "disabled") ?
+                        true : false;
+            }
+            if (disabled) {
+                dom_node_unref(current);
+                return 1;
+            }
+        }
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return -1;
+        }
+        dom_node_unref(current);
+        current = parent;
+    }
+    return 0;
+}
+
 int pcore_node_effectively_disabled(dom_node *node, bool *applies,
         bool *disabled)
 {
@@ -513,7 +553,8 @@ int pcore_node_effectively_disabled(dom_node *node, bool *applies,
             pcore_node_name_is(node, "button") ||
             pcore_node_name_is(node, "select") ||
             pcore_node_name_is(node, "textarea") ||
-            pcore_node_name_is(node, "option");
+            pcore_node_name_is(node, "option") ||
+            pcore_node_name_is(node, "optgroup");
     if (!*applies) {
         return 0;
     }
@@ -529,14 +570,27 @@ int pcore_node_effectively_disabled(dom_node *node, bool *applies,
     } else if (pcore_node_name_is(node, "textarea")) {
         err = dom_html_text_area_element_get_disabled(
                 (dom_html_text_area_element *) node, disabled);
-    } else {
+    } else if (pcore_node_name_is(node, "option")) {
         err = dom_html_option_element_get_disabled(
                 (dom_html_option_element *) node, disabled);
+    } else {
+        err = dom_html_opt_group_element_get_disabled(
+                (dom_html_opt_group_element *) node, disabled);
     }
     if (err != DOM_NO_ERR) {
         *disabled = pcore_node_has_attr(node, "disabled") ? true : false;
     }
-    if (*disabled || pcore_node_name_is(node, "option")) {
+    if (*disabled) {
+        return 0;
+    }
+    if (pcore_node_name_is(node, "option")) {
+        inherited = pcore_node_disabled_optgroup(node);
+        if (inherited < 0) {
+            return 1;
+        }
+        if (inherited) {
+            *disabled = true;
+        }
         return 0;
     }
     inherited = pcore_node_disabled_fieldset(node);
@@ -6516,12 +6570,9 @@ PCORE_API int PCore_SelectOptionInfo(HANDLE hDoc,
         *value_bytes = (option->value != NULL) ?
                 (int) strlen(option->value) : 0;
     }
-    option_disabled = false;
-    if (dom_html_option_element_get_disabled(
-            (dom_html_option_element *) option->node,
-            &option_disabled) != DOM_NO_ERR) {
-        option_disabled = pcore_node_has_attr(option->node,
-                "disabled") ? true : false;
+    if (pcore_node_effectively_disabled(option->node, NULL,
+            &option_disabled) != 0) {
+        return 1;
     }
     if (disabled != NULL) {
         *disabled = option_disabled ? 1 : 0;
@@ -6552,12 +6603,9 @@ PCORE_API int PCore_SelectSetOptionSelected(HANDLE hDoc,
     if (target == NULL) {
         return 1;
     }
-    option_disabled = false;
-    if (dom_html_option_element_get_disabled(
-            (dom_html_option_element *) target->node,
-            &option_disabled) != DOM_NO_ERR) {
-        option_disabled = pcore_node_has_attr(target->node,
-                "disabled") ? true : false;
+    if (pcore_node_effectively_disabled(target->node, NULL,
+            &option_disabled) != 0) {
+        return 1;
     }
     effective_disabled = control->disabled;
     if (pcore_node_effectively_disabled(control->node, NULL,
@@ -7238,6 +7286,7 @@ static int pcore_form_append_select(pcore_form_buffer *buffer,
     uint32_t count;
     uint32_t index;
     bool disabled;
+    bool option_disabled;
     bool selected;
     int append;
 
@@ -7247,6 +7296,7 @@ static int pcore_form_append_select(pcore_form_buffer *buffer,
     value = NULL;
     count = 0;
     disabled = false;
+    option_disabled = false;
     if (pcore_node_effectively_disabled((dom_node *) select, NULL,
             &disabled) != 0) {
         return 0;
@@ -7282,7 +7332,12 @@ static int pcore_form_append_select(pcore_form_buffer *buffer,
                         &selected) != DOM_NO_ERR) {
             append = 0;
         } else if (selected) {
-            if (dom_html_option_element_get_value(
+            if (pcore_node_effectively_disabled(node, NULL,
+                    &option_disabled) != 0) {
+                append = 0;
+            } else if (option_disabled) {
+                append = 1;
+            } else if (dom_html_option_element_get_value(
                     (dom_html_option_element *) node, &value) !=
                     DOM_NO_ERR) {
                 append = 0;
@@ -10519,6 +10574,7 @@ static int pcore_multipart_append_select(
     uint32_t count;
     uint32_t index;
     bool disabled;
+    bool option_disabled;
     bool selected;
     int result;
 
@@ -10528,6 +10584,7 @@ static int pcore_multipart_append_select(
     value = NULL;
     count = 0;
     disabled = false;
+    option_disabled = false;
     if (pcore_node_effectively_disabled((dom_node *) select, NULL,
             &disabled) != 0 || disabled) {
         return disabled ? 1 : 0;
@@ -10560,7 +10617,12 @@ static int pcore_multipart_append_select(
                         &selected) != DOM_NO_ERR) {
             result = 0;
         } else if (selected) {
-            if (dom_html_option_element_get_value(
+            if (pcore_node_effectively_disabled(node, NULL,
+                    &option_disabled) != 0) {
+                result = 0;
+            } else if (option_disabled) {
+                result = 1;
+            } else if (dom_html_option_element_get_value(
                     (dom_html_option_element *) node, &value) !=
                     DOM_NO_ERR) {
                 result = 0;

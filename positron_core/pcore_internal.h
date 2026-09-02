@@ -39,9 +39,10 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
 
 /* Resolve the effective disabled state of a form-associated control. `applies`
  * (when non-NULL) is false for nodes that are not input/button/select/textarea/
- * option; `disabled` includes a disabled ancestor fieldset except for
- * descendants of that fieldset's first legend. Returns non-zero when the DOM
- * traversal could not be completed. */
+ * option/optgroup; `disabled` includes a disabled ancestor fieldset except for
+ * descendants of that fieldset's first legend, and an option's disabled
+ * optgroup ancestor. Returns non-zero when the DOM traversal could not be
+ * completed. */
 int pcore_node_effectively_disabled(struct dom_node *node, bool *applies,
         bool *disabled);
 

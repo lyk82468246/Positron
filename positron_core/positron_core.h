@@ -340,6 +340,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * that axis' scrollbar; it does not imply a complete scroll-container tree
  * or scroll chaining. LAYOUT_CLIENT_X/Y expose the padding/client edge origin
  * in document CSS pixels for the bounded Browser scrollport calculation.
+ * FORM_CONTROL_DISABLED is a string relationship for input, button, select,
+ * textarea, option and optgroup elements: it returns the effective disabled
+ * state as UTF-8 "0" or "1", including the supported fieldset and optgroup
+ * inheritance rules. It is unavailable for other element types.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
@@ -392,6 +396,7 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_SCROLLABLE_Y   41u
 #define PCORE_NODE_RELATION_LAYOUT_CLIENT_X       42u
 #define PCORE_NODE_RELATION_LAYOUT_CLIENT_Y       43u
+#define PCORE_NODE_RELATION_FORM_CONTROL_DISABLED 44u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

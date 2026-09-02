@@ -81,6 +81,10 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
 - form owner、form controls 和 label/control；
+- form-control 的 effective-disabled relation（关系 44）：input、button、select、
+  textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
+  first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回
+  unavailable。该 relation 是只读 size-probe 快照，不触发 layout；
 - script/runtime 所需的有限 element metadata。
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
@@ -124,12 +128,20 @@ scroll-margin、平滑/惯性滚动或匿名目标的宿主指针归因。
 
 ### 表单与 validation
 
-Core 持有控件值、checked/selected、disabled/fieldset 继承、required/range/step/pattern/custom validity、submission、multipart、reset 和 successful controls 等产品语义。
+Core 持有控件值、checked/selected、effective-disabled（含 fieldset first-legend exemption
+和 optgroup→option 继承）、required/range/step/pattern/custom validity、submission、
+multipart、reset 和 successful controls 等产品语义。
 
 脚本宿主可通过 `PCore_NodeCheckedById` 读取带 id 的 `input.checked` 或 `option.selected`
 实时状态；后者会随 `PCore_NodeSetSelectedIndexById`、`PCore_SelectSetOptionSelected`
 和 native SELECT 提交的选择变化。`PCore_NodeSetCheckedById`/`defaultChecked` 仍只
 服务 checkbox/radio input，option 的选择应使用 select/option API。
+
+`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_FORM_CONTROL_DISABLED` 返回上述
+effective-disabled 状态。Browser 可注册同一 relation，把 `:disabled`/`:enabled` 与
+Core 的 fieldset/optgroup 规则保持一致；宿主不应在测试 helper 或 native 控件适配层
+复制这份继承判断。`PCore_SelectOptionInfo`、`PCore_SelectSetOptionSelected` 和
+successful form submission 同样消费该状态，因此 disabled option 不会被选中或提交。
 
 Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
 

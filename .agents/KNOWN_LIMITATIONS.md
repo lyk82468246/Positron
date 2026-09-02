@@ -57,7 +57,7 @@
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
-- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、表单控件直接 `disabled` 属性对应的 `:disabled`/`:enabled`、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态只限带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性）；`:target` 只在当前 URL fragment 解码后等于元素当前非空 `id` 时匹配，无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor 或 stale wrapper 都安全不匹配；`:not()` 只接受单一简单 compound 参数，`:is()`/`:where()` 只接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 只接受最多 16 个相对简单 compound 分支，且每个后代/兄弟遍历最多 64 步；`:active`/`:hover` 仅在宿主注册 interaction callback 并返回当前 Core 状态的精确 id 时匹配。该子集不推导 fieldset/optgroup 继承；没有 visited-state 存储，因此 `:visited`、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。`:has()` 的链式相对 selector、完整分支语法和更深遍历仍未实现；`:target` 不拥有 fragment reveal 或页面滚动，真实页面视觉仍需宿主验收。
+- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、通过 Core effective-disabled relation 得到的 input/button/select/textarea/option/optgroup `:disabled`/`:enabled`（fieldset 自身回退到直接属性）、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态只限带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性）；`:target` 只在当前 URL fragment 解码后等于元素当前非空 `id` 时匹配，无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor 或 stale wrapper 都安全不匹配；`:not()` 只接受单一简单 compound 参数，`:is()`/`:where()` 只接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 只接受最多 16 个相对简单 compound 分支，且每个后代/兄弟遍历最多 64 步；`:active`/`:hover` 仅在宿主注册 interaction callback 并返回当前 Core 状态的精确 id 时匹配。没有 visited-state 存储，因此 `:visited`、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。`:has()` 的链式相对 selector、完整分支语法和更深遍历仍未实现；`:target` 不拥有 fragment reveal 或页面滚动，真实页面视觉仍需宿主验收。
 - `:lang()` 是同一 selector 子集中的有界扩展：只接受单一 ASCII 语言标签，沿最多 64 层 `parentElement` 读取继承语言，`lang` 优先于 `xml:lang`，按大小写不敏感的精确值或 `-` 子标签前缀匹配；空值、非法参数、语言标签列表和引号形式 fail closed。该实现不代表完整 BCP 47 解析或 namespace 语言规则。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的
   有限 block/inline 对齐，只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到
@@ -227,8 +227,8 @@
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
   的直接 `disabled` 属性匹配，`:required`/`:optional` 按 input、select、textarea 的
   直接 `required` 属性匹配。夹具验证 `matches()`、`closest()`、两种 query、状态 mutation
-  后的实时结果、列表顺序和不支持输入的 fail-closed 行为；不推导 fieldset/optgroup 继承，
-  option 的动态 selected→`:checked` 映射由 TEST1157 覆盖，也不代表完整 CSS Selectors 语法。
+  后的实时结果、列表顺序和不支持输入的 fail-closed 行为；fieldset/optgroup 的 effective
+  继承由 TEST1166 覆盖，option 的动态 selected→`:checked` 映射由 TEST1157 覆盖。
 - TEST1157 覆盖 Browser selector 对 option live selected 状态的 `:checked` 映射：单选初始
   选择、`selectedIndex` mutation、多选初始选择、matches/closest、列表顺序和非法输入
   fail closed；真实 native SELECT 的 popup、键盘、SIP/IME、触摸和视觉仍属于宿主观察。
@@ -269,6 +269,11 @@
   probe、过小缓冲、非法伪类参数和 callback 注销都必须 fail closed。该能力不派发
   pointer 事件、不自动重做 style/layout/paint，不提供 pointer capture、`:visited` 或
   真实触摸/视觉保证。
+- TEST1166 覆盖 Core effective-disabled relation 到 Browser selector 与表单提交的统一：
+  disabled fieldset 的 first-legend exemption、disabled optgroup 对 option 的继承、
+  fieldset/optgroup mutation、matches/query、关系 size-probe、disabled option 的选择
+  拒绝和 successful form submission 排除均由同一离线 fixture 断言。旧宿主缺少 relation 44
+  时 Browser 回退到直接属性；native SELECT popup、触摸和视觉仍需宿主验收。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

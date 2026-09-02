@@ -241,13 +241,13 @@ TEST1154 覆盖 Browser selector 的有界结构伪类：`:root`、`:empty`、`:
 
 TEST1155 覆盖 Browser selector 的有界表单状态：`input:checked` 读取现有 checked
 callback 的当前值，`:disabled`/`:enabled` 读取 input、button、select、textarea、option
-的直接 `disabled` 属性，`:required`/`:optional` 读取 input、select、textarea 的直接
+的直接属性，`:required`/`:optional` 读取 input、select、textarea 的直接
 `required` 属性。夹具通过 `matches()`、`closest()`、`querySelector()` 和
 `querySelectorAll()` 断言初始状态、checked/属性 mutation 后的实时结果、列表顺序和
 组合查询，并确认带参数、交互伪类、`:not()` 的不支持参数、伪元素和非表单元素安全
 fail closed。
-该子集不推导 fieldset/optgroup 继承；option 的动态 selected→`:checked` 映射由
-TEST1157 单独覆盖，也不代表完整 CSS Selectors 语法。
+option 的动态 selected→`:checked` 映射由 TEST1157 单独覆盖，也不代表完整 CSS
+Selectors 语法。fieldset/optgroup 的 effective disabled 继承由 TEST1166 覆盖。
 
 TEST1156 覆盖 Browser selector 的有界 `:not()`：参数只能是一个不含伪类、伪元素、
 列表或组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值），并在
@@ -317,6 +317,13 @@ TEST1165 覆盖 Core 指针交互状态到 Browser selector 的可选映射：�
 size-probe 和过小缓冲、`:active`/`:hover` 的参数/伪元素拒绝，以及注销 callback
 后的 fail-closed 行为。Browser 不自动派发 pointer 事件、重做 style/layout 或重绘；
 真实触摸、按下/释放时机、pointer capture 和视觉仍由宿主与设备验收。
+
+TEST1166 覆盖 Core effective-disabled relation 到 Browser selector 与表单提交的统一：
+disabled fieldset 的 first-legend exemption、disabled optgroup 对 option 的继承、
+fieldset/optgroup 属性 mutation、`matches()`/两种 query、关系 size-probe、disabled
+option 的选择拒绝和 successful form submission 排除均由同一离线 fixture 断言。旧宿主
+未提供 relation 44 时 Browser 回退到直接属性；该测试不扩展完整 CSS Selectors、native
+SELECT popup 或设备视觉承诺。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
