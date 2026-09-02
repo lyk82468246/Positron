@@ -281,6 +281,14 @@ TEST1160 覆盖 Browser selector 对静态链接状态的有界映射：`:link`/
 Browser 没有 visited-state 存储；真实链接绘制、hover/active、导航和历史样式仍属于
 宿主集成与人工观察。
 
+TEST1161 覆盖 Browser selector 的有界 `:target`：当前 URL fragment 经
+`decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、
+`querySelector()` 和 `querySelectorAll()` 只返回该目标；fragment 导航、百分号编码、
+id mutation、无 fragment 和 malformed percent-encoding 均按当前 session 状态更新。
+仅有 `name` 的 named anchor、带参数的 `:target(foo)`、伪元素和尾随逗号必须
+fail closed；stale wrapper 读取也只能安全不匹配。该合同只决定 selector 结果，
+不承诺 fragment reveal、页面滚动或真实设备视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

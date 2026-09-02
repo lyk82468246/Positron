@@ -68,8 +68,8 @@ tests=13,20,27,999
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
-  属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接伪类与有界
-  `:not()` 查询（TEST1146–1160）；
+  属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
+  伪类以及有界 `:not()` 查询（TEST1146–1161）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -169,6 +169,13 @@ value/custom validity mutation、非候选排除和不支持参数的回退；TE
 `:link`/`:any-link` 对带 `href` 的 `<a>`/`<area>`（包括空值）的静态匹配、属性 mutation、
 查询顺序以及 `:visited`、带参数和伪元素等不支持输入的 fail closed。宿主不得在
 测试 helper 中复制 selector 解析或匹配规则；这些语义和固定预算都属于 Browser。
+
+TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
+`decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、
+`querySelector()` 和 `querySelectorAll()` 保持一致；fragment 导航、URL 编码、id
+mutation、无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor、
+带参数、伪元素和尾随逗号等输入分别验证成功或 fail closed。该测试不把 fragment
+reveal 或视觉滚动归入 Browser selector 语义，宿主仍负责导航和设备呈现。
 
 ### Native EDIT/SELECT/button/file
 

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1160
+#define TEST_MAX_NUMBER 1161
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -39432,6 +39432,270 @@ static BOOL test1160_browser_selector_link_contract(void)
     show_info(L"TEST 1160 OK",
             "Selector :link and :any-link follow bounded anchor/area href"
             " state and fail closed for unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1161 - bounded target selector pseudo-class. */
+static BOOL test1161_browser_selector_target_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<h1 id='one'>One</h1>"
+        "<div id='two'><span id='child'>Child</span></div>"
+        "<a id='named' name='legacy'>Legacy</a>"
+        "<p id='plain'>Plain</p>"
+        "<script>window.selectorTargetReady=true;</script>"
+        "</body></html>";
+    static const char URL_INITIAL[] =
+        "https://positron.local/selector-target#one";
+    static const char URL_TWO[] =
+        "https://positron.local/selector-target#two";
+    static const char URL_RENAMED[] =
+        "https://positron.local/selector-target#renamed";
+    static const char URL_ENCODED[] =
+        "https://positron.local/selector-target#%72enamed";
+    static const char URL_EMPTY[] =
+        "https://positron.local/selector-target";
+    static const char URL_BAD[] =
+        "https://positron.local/selector-target#%ZZ";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    executed = -1;
+    ignored = -1;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL_INITIAL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector target script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 240;
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var one=document.getElementById('one');"
+            "var two=document.getElementById('two');"
+            "var child=document.getElementById('child');"
+            "var named=document.getElementById('named');"
+            "String(one.matches(':target'))+'|' +"
+            "String(two.matches(':target'))+'|' +"
+            "String(named.matches(':target'))+'|' +"
+            "String(document.querySelector(':target')===one)+'|' +"
+            "String(document.querySelectorAll(':target').length===1)+'|' +"
+            "String(child.closest(':target')===null)+'|' +"
+            "String(one.matches(':target(foo)'))+'|' +"
+            "String(document.querySelectorAll('::target').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|false|true|true|true|false|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial target selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchHashNavigation(
+            g_browser_script_session.session, URL_TWO, 2) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "target hash navigation dispatch failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(location.hash)+'|' +"
+            "String(one.matches(':target'))+'|' +"
+            "String(two.matches(':target'))+'|' +"
+            "String(document.querySelector(':target')===two)+'|' +"
+            "String(document.querySelectorAll(':target').length===1)+'|' +"
+            "String(two.closest(':target')===two)+'|' +"
+            "String(document.querySelectorAll(':target,').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "#two|false|true|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "target selector hash state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "two.removeAttribute('id');"
+            "String(two.matches(':target'))+'|' +"
+            "String(document.querySelector(':target')===null)+'|' +"
+            "String(document.querySelectorAll(':target').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "target selector id removal failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "one.id='renamed';"
+            "String(one.matches(':target'))+'|' +"
+            "String(document.querySelector(':target')===null)+'|' +"
+            "String(document.querySelectorAll(':target').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "target selector id mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchHashNavigation(
+            g_browser_script_session.session, URL_RENAMED, 3) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "renamed target hash navigation dispatch failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(location.hash)+'|' +"
+            "String(document.querySelector(':target')!==null)+'|' +"
+            "String(document.querySelectorAll(':target').length===1);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "#renamed|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "renamed target selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchHashNavigation(
+            g_browser_script_session.session, URL_ENCODED, 4) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "encoded target hash navigation dispatch failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(location.hash)+'|' +"
+            "String(document.querySelector(':target')!==null)+'|' +"
+            "String(document.querySelectorAll(':target').length===1);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "#%72enamed|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "encoded target selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchHashNavigation(
+            g_browser_script_session.session, URL_EMPTY, 5) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "empty target hash navigation dispatch failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(location.hash==='')+'|' +"
+            "String(document.querySelector(':target')===null)+'|' +"
+            "String(document.querySelectorAll(':target').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "empty target selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchHashNavigation(
+            g_browser_script_session.session, URL_BAD, 6) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "malformed target hash navigation dispatch failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(location.hash==='#%ZZ')+'|' +"
+            "String(document.querySelector(':target')===null)+'|' +"
+            "String(document.querySelectorAll(':target').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "malformed target selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1161 FAIL", error[0] != '\0' ? error :
+                "selector target contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1161 OK",
+            "Selector :target follows the current decoded fragment id"
+            " and fails closed for unsupported input.");
     return TRUE;
 }
 
@@ -97498,6 +97762,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1158: ok = test1158_browser_selector_validation_contract(); break;
         case 1159: ok = test1159_browser_selector_focus_contract(); break;
         case 1160: ok = test1160_browser_selector_link_contract(); break;
+        case 1161: ok = test1161_browser_selector_target_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
