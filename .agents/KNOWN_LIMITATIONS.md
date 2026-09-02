@@ -62,7 +62,7 @@
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
-- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；动态伪类、`:not()`、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。
+- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 `input:checked`、表单控件直接 `disabled` 属性对应的 `:disabled`/`:enabled`，以及 `input`/`select`/`textarea` 直接 `required` 属性对应的 `:required`/`:optional`。该子集不推导 fieldset/optgroup 继承，也不把 option 的动态 selected 状态映射为 `:checked`；`:hover`、`:active`、`:focus`、`:link`、`:visited` 等动态/链接伪类、`:not()`、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的
   有限 block/inline 对齐，只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到
   真实 viewport；callback 和 `PBrowser_ScriptSessionNotifyScroll` 使用 CSS page 坐标，
@@ -227,6 +227,12 @@
   `of` 过滤、伪元素、`:not()` 与超大数值 fail closed。判断使用只读 childNodes/关系快照，
   仍受 64 步、公式系数和 710 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
   shadow DOM 和 CSS Selectors 语法不在保证范围内。
+- TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
+  callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
+  的直接 `disabled` 属性匹配，`:required`/`:optional` 按 input、select、textarea 的
+  直接 `required` 属性匹配。夹具验证 `matches()`、`closest()`、两种 query、状态 mutation
+  后的实时结果、列表顺序和不支持输入的 fail-closed 行为；不推导 fieldset/optgroup 继承，
+  不把 option 的动态 selected 映射为 `:checked`，也不代表完整 CSS Selectors 语法。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

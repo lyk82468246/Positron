@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1154
+#define TEST_MAX_NUMBER 1155
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -38355,6 +38355,198 @@ static BOOL test1154_browser_selector_structural_pseudo_contract(void)
     show_info(L"TEST 1154 OK",
             "Selector structural pseudo-classes support bounded child, "
             "type and nth matching with fail-closed input.");
+    return TRUE;
+}
+
+/* TEST 1155 - bounded form-state selector pseudo-classes. */
+static BOOL test1155_browser_selector_form_state_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form'>"
+        "<input id='check' type='checkbox' checked>"
+        "<input id='off' type='checkbox'>"
+        "<input id='disabled' type='text' disabled>"
+        "<input id='enabled' type='text'>"
+        "<input id='required' type='text' required>"
+        "<input id='optional' type='text'>"
+        "<button id='button' type='button' disabled>Button</button>"
+        "<select id='choice' disabled><option id='choice-one'>One</option>"
+        "<option id='choice-two'>Two</option></select>"
+        "<textarea id='note' required></textarea>"
+        "<div id='plain'>Plain</div></form>"
+        "<script>window.__selectorFormStateContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-form-state";
+    static const char *PHASE_NAMES[] = {
+        "initial-states", "live-mutation", "composition-and-order",
+        "unsupported-input"
+    };
+    static const char *PHASES[] = {
+        "(function(){var check=document.getElementById('check');"
+        "var disabled=document.getElementById('disabled');"
+        "var button=document.getElementById('button');"
+        "var choice=document.getElementById('choice');"
+        "var required=document.getElementById('required');"
+        "var optional=document.getElementById('optional');"
+        "var note=document.getElementById('note');var checked;var off;"
+        "var req;var opt;var ok;checked=document.querySelectorAll('input:checked');"
+        "off=document.querySelectorAll('input:enabled');"
+        "req=document.querySelectorAll('input:required');"
+        "opt=document.querySelectorAll('input:optional');"
+        "ok=checked.length===1&&checked[0]===check&&off.length===5&&"
+        "req.length===1&&req[0]===required&&opt.length===5&&"
+        "disabled.matches(':disabled')&&disabled.matches('input:disabled')&&"
+        "button.matches(':disabled')&&choice.matches(':disabled')&&"
+        "!check.matches(':disabled')&&check.matches(':enabled')&&"
+        "note.matches(':required')&&optional.matches(':optional')&&"
+        "!document.getElementById('plain').matches(':disabled');"
+        "return ok?'true':'phase1';})();",
+        "(function(){var check=document.getElementById('check');"
+        "var off=document.getElementById('off');"
+        "var disabled=document.getElementById('disabled');"
+        "var button=document.getElementById('button');"
+        "var choice=document.getElementById('choice');"
+        "var required=document.getElementById('required');"
+        "var optional=document.getElementById('optional');"
+        "var note=document.getElementById('note');check.checked=false;"
+        "off.checked=true;disabled.removeAttribute('disabled');"
+        "button.disabled=false;choice.disabled=false;required.removeAttribute('required');"
+        "optional.setAttribute('required','');note.removeAttribute('required');"
+        "var ok=!check.matches(':checked')&&off.matches(':checked')&&"
+        "!disabled.matches(':disabled')&&disabled.matches(':enabled')&&"
+        "!button.matches(':disabled')&&button.matches(':enabled')&&"
+        "!choice.matches(':disabled')&&choice.matches(':enabled')&&"
+        "required.matches(':optional')&&optional.matches(':required')&&"
+        "note.matches(':optional');return ok?'true':'phase2';})();",
+        "(function(){var off=document.getElementById('off');"
+        "var optional=document.getElementById('optional');"
+        "var disabled=document.getElementById('disabled');var list;"
+        "list=document.querySelectorAll('form input:checked,form input:required');"
+        "var ok=list.length===2&&list[0]===off&&list[1]===optional&&"
+        "off.matches('input:checked,input:required')&&"
+        "optional.closest('form input:required')===optional&&"
+        "disabled.closest('input:disabled')===null&&"
+        "document.querySelector('input:checked')===off;"
+        "return ok?'true':'phase3';})();",
+        "(function(){var check=document.getElementById('check');var plain="
+        "document.getElementById('plain');var ok;ok="
+        "document.querySelectorAll('input:checked(foo)').length===0&&"
+        "document.querySelectorAll('input:disabled(foo)').length===0&&"
+        "document.querySelectorAll('input:required()').length===0&&"
+        "document.querySelectorAll('input:checked:hover').length===0&&"
+        "document.querySelectorAll('input:not(:checked)').length===0&&"
+        "document.querySelectorAll('input::before').length===0&&"
+        "!check.matches('input:checked(foo)')&&!check.matches('input:hover')&&"
+        "!plain.matches(':required')&&!plain.matches(':checked');"
+        "return ok?'true':'phase4';})();"
+    };
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int phase;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    phase = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector form-state script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        for (phase = 0; phase < 4; ++phase) {
+            memset(error, 0, sizeof(error));
+            if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
+                    error, sizeof(error)) != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector form-state phase %d (%s) evaluation failed",
+                        phase + 1, PHASE_NAMES[phase]);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector form-state phase %d (%s) failed: %s",
+                        phase + 1, PHASE_NAMES[phase],
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1155 FAIL", error[0] != '\0' ? error :
+                "selector form-state contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1155 OK",
+            "Selector form-state pseudos support bounded checked, direct "
+            "disabled/enabled and required/optional matching with fail-closed "
+            "unsupported input.");
     return TRUE;
 }
 
@@ -96415,6 +96607,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1152: ok = test1152_browser_selector_combinator_contract(); break;
         case 1153: ok = test1153_browser_selector_attribute_operator_contract(); break;
         case 1154: ok = test1154_browser_selector_structural_pseudo_contract(); break;
+        case 1155: ok = test1155_browser_selector_form_state_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

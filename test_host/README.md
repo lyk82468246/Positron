@@ -67,8 +67,8 @@ tests=13,20,27,999
 - 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
   `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
-  `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器和
-  属性操作符与结构伪类查询（TEST1146–1154）；
+  `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
+  属性操作符、结构伪类与表单状态查询（TEST1146–1155）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -156,8 +156,10 @@ Browser 的 `matches()`、`closest()` 与 document selector 查询由
 callback；TEST1152 用离线 fixture 断言顶层 selector 列表、后代/子代/兄弟组合器、
 属性值中的逗号和非法 selector 的 fail-closed 行为；TEST1153 断言六类属性操作符，
 TEST1154 断言 `:root`、`:empty`、child/of-type 与四种 `nth-*` 结构伪类及其非法
-输入回退。宿主不得在测试 helper 中复制 selector 解析或匹配规则；这些语义和固定
-预算都属于 Browser。
+输入回退；TEST1155 断言 `input:checked`、直接 `disabled` 对应的
+`:disabled`/`:enabled`、直接 `required` 对应的 `:required`/`:optional`，以及属性
+mutation 后的查询更新和不支持输入的回退。宿主不得在测试 helper 中复制 selector
+解析或匹配规则；这些语义和固定预算都属于 Browser。
 
 ### Native EDIT/SELECT/button/file
 
