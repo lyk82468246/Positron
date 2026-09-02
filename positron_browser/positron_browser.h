@@ -405,8 +405,9 @@ typedef struct PBrowserScriptDomReadCallbacks {
  * document.activeElement fall back to document.body. The host remains the
  * owner of native focus and may derive this value from positron_core's
  * PCore_InteractionFocusElementId. Registering this table installs the
- * optional activeElement projection; a session without this bridge does not
- * pay for or promise that extra property. */
+ * optional activeElement projection and enables the bounded :focus and
+ * :focus-within selector pseudos; a session without this bridge does not pay
+ * for or promise those properties. */
 typedef const char *(*PBrowserScriptGetActiveElementFn)(void *pw);
 typedef struct PBrowserScriptActiveElementCallbacks {
     unsigned long size;

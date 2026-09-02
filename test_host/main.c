@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1158
+#define TEST_MAX_NUMBER 1159
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -39054,6 +39054,223 @@ static BOOL test1158_browser_selector_validation_contract(void)
     show_info(L"TEST 1158 OK",
             "Selector :valid and :invalid reflect bounded Core validation "
             "state and fail closed for unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1159 - bounded focus and focus-within selector pseudo-classes. */
+static BOOL test1159_browser_selector_focus_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<main id='shell'><section id='panel'>"
+        "<input id='first' value='one'>"
+        "<button id='second' type='button'>Next</button>"
+        "</section></main>"
+        "<p id='plain'>Plain</p>"
+        "<script>window.selectorReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:4px}"
+        "#shell,#panel,#first,#second,#plain{display:block;"
+        "width:180px;height:24px;margin:2px}";
+    static const char URL[] =
+        "https://positron.local/selector-focus";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    executed = -1;
+    ignored = -1;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector focus script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/selector-focus.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 260, 240) != 0) {
+            cstr_copy(error, sizeof(error),
+                    "selector focus fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = 260;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var f=document.getElementById('first');"
+            "var b=document.getElementById('second');"
+            "var p=document.getElementById('panel');"
+            "var s=document.getElementById('shell');"
+            "String(f.matches(':focus'))+'|'+"
+            "String(f.matches(':focus-within'))+'|'+"
+            "String(p.matches(':focus-within'))+'|'+"
+            "String(s.matches(':focus-within'))+'|'+"
+            "String(document.querySelector(':focus')===null)+'|'+"
+            "String(document.querySelectorAll(':focus-within').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|false|false|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unfocused selector state did not fail closed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "f.focus();var q=document.querySelectorAll(':focus-within');"
+            "String(f.matches(':focus'))+'|'+"
+            "String(f.matches(':focus-within'))+'|'+"
+            "String(p.matches(':focus-within'))+'|'+"
+            "String(s.matches(':focus-within'))+'|'+"
+            "String(document.querySelector(':focus')===f)+'|'+"
+            "String(document.querySelectorAll('#panel :focus').length===1)+'|'+"
+            "String(q.length>=5&&q[0]===document.documentElement&&"
+            "q[1]===document.body&&q[2]===s&&q[3]===p&&q[4]===f);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|true|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focus selector state did not follow the active element");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "b.focus();var q=document.querySelectorAll(':focus-within');"
+            "String(f.matches(':focus'))+'|'+"
+            "String(b.matches(':focus'))+'|'+"
+            "String(p.matches(':focus-within'))+'|'+"
+            "String(s.matches(':focus-within'))+'|'+"
+            "String(document.querySelector(':focus')===b)+'|'+"
+            "String(document.querySelectorAll('#panel :focus').length===1)+'|'+"
+            "String(q.length>=5&&q[4]===b);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|true|true|true|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focus selector state did not switch targets");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "b.blur();String(document.querySelector(':focus')===null)+'|'+"
+            "String(document.querySelectorAll(':focus-within').length===0)+'|'+"
+            "String(!p.matches(':focus-within'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "blur did not clear selector focus state");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "f.focus();String(f.matches(':focus(foo)'))+'|'+"
+            "String(p.matches(':focus-within(foo)'))+'|'+"
+            "String(f.matches('::focus'))+'|'+"
+            "String(document.querySelectorAll(':focus(foo)').length===0)+'|'+"
+            "String(document.querySelector(':focus-within(foo)')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|false|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unsupported focus selector input was not rejected");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
+            g_browser_script_session.session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "activeElement selector bridge unregister failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(f.matches(':focus'))+'|'+"
+            "String(p.matches(':focus-within'))+'|'+"
+            "String(document.querySelector(':focus')===null)+'|'+"
+            "String(document.querySelectorAll(':focus-within').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "focus selectors did not fail closed after unregister");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1159 FAIL", error[0] != '\0' ? error :
+                "selector focus contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1159 OK",
+            "Selector :focus and :focus-within follow the active element"
+            " through the existing bridge and fail closed when unsupported.");
     return TRUE;
 }
 
@@ -97118,6 +97335,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1156: ok = test1156_browser_selector_not_contract(); break;
         case 1157: ok = test1157_browser_selector_option_checked_contract(); break;
         case 1158: ok = test1158_browser_selector_validation_contract(); break;
+        case 1159: ok = test1159_browser_selector_focus_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
