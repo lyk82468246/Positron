@@ -70,7 +70,8 @@ tests=13,20,27,999
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
-  `:in-range`/`:out-of-range`/`:read-only`/`:read-write` 查询（TEST1146–1168）；
+  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询
+  （TEST1146–1169）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -224,6 +225,13 @@ input 类型与 `textarea` 排除 readonly/effective-disabled，Core contentedit
 按 `:read-only` 处理。夹具覆盖属性 mutation、祖先继承、matches/closest、query 顺序、
 注销 callback 后的 fail-closed 结果和非法 selector；宿主只注册既有 DOM/value/relation/
 contenteditable callback，不复制编辑或 selector 语义。
+
+TEST1169 断言 Browser selector 的有界 `:placeholder-shown` 映射：省略 `type` 或使用
+`text`、`search`、`url`、`tel`、`email`、`password` 的 input，以及 textarea，在 live
+`value` 为空且 `placeholder` 值非空时匹配；不支持的 input 类型、空 placeholder、普通
+元素和带参数形式不匹配。夹具覆盖 value/type/placeholder mutation、matches/closest、
+两种 query 的文档顺序和非法 selector；宿主只提供既有 DOM/value/attribute callback，
+不复制 placeholder 或 selector 语义，也不把 native placeholder 视觉当作自动契约。
 
 ### Native EDIT/SELECT/button/file
 

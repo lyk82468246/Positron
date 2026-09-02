@@ -340,6 +340,13 @@ TEST1168 覆盖 Browser selector 的有界 `:read-only`/`:read-write`：文本�
 `matches()`、`closest()`、三种 query、结果顺序和注销 contenteditable callback 后的
 fail-closed 行为；不承诺完整 CSS Selectors、富文本编辑或 native 输入视觉。
 
+TEST1169 覆盖 Browser selector 的有界 `:placeholder-shown`：省略 `type` 或使用
+`text`、`search`、`url`、`tel`、`email`、`password` 的 input，以及 textarea，在 live
+`value` 为空且 `placeholder` 值非空时匹配；不支持的 input 类型、空 placeholder、普通
+元素和带参数/伪元素形式必须 fail closed。夹具覆盖初始状态、value/type/placeholder
+mutation、`matches()`、`closest()`、两种 query 的文档顺序和非法输入；不承诺 native
+placeholder 绘制、SIP/IME 或设备视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

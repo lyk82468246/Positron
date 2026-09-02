@@ -23,9 +23,9 @@
 
 ## HTML、CSS 与布局
 
-- HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
-- CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
-- 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser 脚本 selector 目前只覆盖简单 compound selector、顶层逗号列表、后代/子代/相邻兄弟/一般兄弟组合器，六类有界属性匹配，`:checked` 的 input/option 状态、`:valid`/`:invalid` 的 form 与可验证控件状态、有界 `:in-range`/`:out-of-range` 的范围验证状态，以及只接受单一简单 compound 参数的 `:not()`、`:is()`/`:where()` 的最多 16 个简单 compound 分支、`:has()` 的最多 16 个相对简单 compound 分支、有界 `:target` 和单一语言标签的 `:lang()`；范围伪类只支持非空且受约束的 input number/range/date/month/week/time/datetime-local，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 均不匹配；注册 interaction callback 后还可读取 Core 精确 active/hover 节点的 `:active`/`:hover`，不等于 CSS selector 引擎的完整语法。
+ - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
+ - CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
+ - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser 脚本 selector 目前只覆盖简单 compound selector、顶层逗号列表、后代/子代/相邻兄弟/一般兄弟组合器，六类有界属性匹配，`:checked` 的 input/option 状态、`:valid`/`:invalid` 的 form 与可验证控件状态、有界 `:in-range`/`:out-of-range` 的范围验证状态，以及只接受单一简单 compound 参数的 `:not()`、`:is()`/`:where()` 的最多 16 个简单 compound 分支、`:has()` 的最多 16 个相对简单 compound 分支、有界 `:target` 和单一语言标签的 `:lang()`；`:placeholder-shown` 只覆盖省略 `type` 或 text-like `input`（text/search/url/tel/email/password）与 textarea 的空 live value、非空 placeholder 状态；空 placeholder、其他 input 类型、普通元素和带参数形式均不匹配；范围伪类只支持非空且受约束的 input number/range/date/month/week/time/datetime-local，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 均不匹配；注册 interaction callback 后还可读取 Core 精确 active/hover 节点的 `:active`/`:hover`，不等于 CSS selector 引擎的完整语法。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -93,7 +93,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
-- script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 710 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 27。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()` 和可选 pointer-interaction selector 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 714 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 27。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()` 和可选 pointer-interaction selector 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -226,7 +226,7 @@
 - TEST1154 覆盖 Browser selector 的有限结构伪类：`:root`、`:empty`、child/of-type
   变体和四种 `nth-*` 变体；支持整数、`odd`/`even` 和受限 `an+b` 公式，并确认空公式、
   `of` 过滤、伪元素和超大数值 fail closed。判断使用只读 childNodes/关系快照，
-  仍受 64 步、公式系数和 710 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
+  仍受 64 步、公式系数和 714 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
   shadow DOM 和 CSS Selectors 语法不在保证范围内。
 - TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
@@ -286,6 +286,10 @@
   `:read-only`/`:read-write` 对文本控件、readonly/effective-disabled、contenteditable
   祖先继承、属性 mutation、query/closest 和 callback 注销的有界映射。真实 native 编辑、
   SIP/IME、富文本、视觉和不同 DPI 仍进入累计人工清单。
+- TEST1169 是离线的 Core/Browser placeholder selector 夹具，无新增立即人工风险；自动门证明
+  `:placeholder-shown` 对 text-like input/textarea 的空 value、非空 placeholder、value/type/
+  placeholder mutation、matches/closest/query 顺序和非法输入的有界映射。真实 native
+  placeholder 绘制、SIP/IME、触摸、视觉和不同 DPI 仍进入累计人工清单。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

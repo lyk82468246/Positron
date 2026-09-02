@@ -40,7 +40,8 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   compound 分支的 `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，
   以及通过可选 interaction callback 读取 Core 精确状态的 `:active`/`:hover`、依据
   readonly/effective-disabled 与可选 contenteditable callback 判定的 `:read-only`/
-  `:read-write`；
+  `:read-write`、以及 text-like input/textarea 空 value 与非空 placeholder 的
+  `:placeholder-shown`；
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
@@ -78,7 +79,8 @@ SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严
   标签的 `:lang()`、单一简单 compound 参数的 `:not()`、最多 16 个简单 compound 分支的
   `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，以及显式 interaction
   callback 驱动的 `:active`/`:hover`、依据 readonly/effective-disabled 与可选
-  contenteditable callback 判定的 `:read-only`/`:read-write`；完整 CSS
+  contenteditable callback 判定的 `:read-only`/`:read-write`、以及 text-like
+  input/textarea 的有界 `:placeholder-shown`；完整 CSS
   Selectors 语法仍不作为默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。

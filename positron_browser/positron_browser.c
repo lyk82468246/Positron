@@ -18,7 +18,7 @@
  * and local to browser sessions; independent PScript contexts remain at their
  * 512 KiB default. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 198UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 202UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -4690,6 +4690,11 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function readWriteState9(owner,name){var state=editableState9(owner);"
         "if(state<0){return false;}if(name==='read-write'){return state===1;}"
         "return name==='read-only'&&state===0;}"
+        "function placeholderState9(owner){var t;var type;"
+        "if(!owner){return false;}try{t=owner.localName;if(t==='input'){"
+        "type=String(owner.type||'').toLowerCase();if(!/^(|text|search|url|tel|email|password)$/.test(type)){"
+        "return false;}}else if(t!=='textarea'){return false;}return owner.placeholder!==''&&"
+        "String(owner.value||'')==='';}catch(placeholderStateError){return false;}}"
         "function activeId9(){var id;"
         "if(typeof g.__pcoreGetActiveElement!=='function'){return '';}"
         "try{id=String(g.__pcoreGetActiveElement({})||'');}"
@@ -4813,6 +4818,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "rangeState9(owner,name);}"
         "if(name==='read-only'||name==='read-write'){return arg===null&&"
         "readWriteState9(owner,name);}"
+        "if(name==='placeholder-shown'){return arg===null&&"
+        "placeholderState9(owner);}"
         "return false;}"
         "function matchSimple9(owner,selector,level){var s=trim9(selector);var pos=0;var start;var end;var token;var body;var eq;var name;var value;var op;var actual;var quote;var c;var pseudo;var arg;var depth;"
         "if(!owner||s===''){return false;}if(level===undefined){level=0;}if(level!==level||level<0||level>8){return false;}if(s==='*'){return true;}"

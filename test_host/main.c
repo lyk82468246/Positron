@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1168
+#define TEST_MAX_NUMBER 1169
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -41532,6 +41532,296 @@ static BOOL test1168_browser_selector_editable_state_contract(void)
             "Selector read-only/read-write state follows text controls,"
             " contenteditable, disabled/readonly mutation and fail-closed"
             " callback handling.");
+    return TRUE;
+}
+
+/* TEST 1169 - bounded :placeholder-shown selector pseudo-class. */
+static BOOL test1169_browser_selector_placeholder_state_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form'>"
+        "<input id='empty' type='text' placeholder='Name'>"
+        "<input id='filled' type='text' value='Alice' placeholder='Name'>"
+        "<input id='default' placeholder='Default'>"
+        "<input id='search' type='search' placeholder='Search'>"
+        "<input id='email' type='email' placeholder='Email'>"
+        "<input id='password' type='password' placeholder='Password'>"
+        "<input id='number' type='number' placeholder='Number'>"
+        "<input id='hidden' type='hidden' placeholder='Hidden'>"
+        "<input id='nohint' type='text'>"
+        "<input id='emptyhint' type='text' placeholder=''>"
+        "<textarea id='notes' placeholder='Notes'></textarea>"
+        "<textarea id='notesfilled' placeholder='Notes'>value</textarea>"
+        "<div id='plain' placeholder='fake'>plain</div>"
+        "<script>window.selectorPlaceholderReady=true;</script>"
+        "</form></body></html>";
+    static const char URL[] =
+        "https://positron.local/selector-placeholder";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char eval_error[1024];
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(eval_error, 0, sizeof(eval_error));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector placeholder script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 420;
+        g_view_w = 260;
+        g_view_h = 420;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var empty=document.getElementById('empty');"
+            "var filled=document.getElementById('filled');"
+            "var defaultInput=document.getElementById('default');"
+            "var search=document.getElementById('search');"
+            "var email=document.getElementById('email');"
+            "var password=document.getElementById('password');"
+            "var number=document.getElementById('number');"
+            "var hidden=document.getElementById('hidden');"
+            "var nohint=document.getElementById('nohint');"
+            "var emptyhint=document.getElementById('emptyhint');"
+            "var notes=document.getElementById('notes');"
+            "var notesfilled=document.getElementById('notesfilled');"
+            "var plain=document.getElementById('plain');"
+            "String(empty!==null&&filled!==null&&defaultInput!==null&&"
+            "search!==null&&email!==null&&password!==null&&number!==null&&"
+            "hidden!==null&&"
+            "nohint!==null&&emptyhint!==null&&notes!==null&&"
+            "notesfilled!==null&&plain!==null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(eval_error, sizeof(eval_error), error);
+        session_error = g_browser_script_session.session != NULL ?
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) : NULL;
+        _snprintf(error, sizeof(error) - 1,
+                "placeholder selector wrapper setup failed: result=%s"
+                " eval=%s session=%s",
+                result != NULL ? result : "<null>",
+                eval_error[0] != '\0' ? eval_error : "<none>",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "<none>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(empty.matches(':placeholder-shown'))+'|' +"
+            "String(filled.matches(':placeholder-shown'))+'|' +"
+            "String(defaultInput.matches(':placeholder-shown'))+'|' +"
+            "String(search.matches(':placeholder-shown'))+'|' +"
+            "String(email.matches(':placeholder-shown'))+'|' +"
+            "String(password.matches(':placeholder-shown'))+'|' +"
+            "String(number.matches(':placeholder-shown'))+'|' +"
+            "String(hidden.matches(':placeholder-shown'))+'|' +"
+            "String(nohint.matches(':placeholder-shown'))+'|' +"
+            "String(emptyhint.matches(':placeholder-shown'))+'|' +"
+            "String(notes.matches(':placeholder-shown'))+'|' +"
+            "String(notesfilled.matches(':placeholder-shown'))+'|' +"
+            "String(plain.matches(':placeholder-shown'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result,
+            "true|false|true|true|true|true|false|false|false|false|true|"
+            "false|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial placeholder selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var q=document.querySelectorAll('input:placeholder-shown');"
+            "var qok=q.length===5&&q[0]===empty&&q[1]===defaultInput&&"
+            "q[2]===search&&q[3]===email&&q[4]===password;"
+            "q=null;String(qok);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true") != 0)) {
+        cstr_copy(eval_error, sizeof(eval_error), error);
+        session_error = g_browser_script_session.session != NULL ?
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) : NULL;
+        _snprintf(error, sizeof(error) - 1,
+                "initial placeholder input query failed: result=%s"
+                " eval=%s session=%s",
+                result != NULL ? result : "<null>",
+                eval_error[0] != '\0' ? eval_error : "<none>",
+                session_error != NULL && session_error[0] != '\0' ?
+                session_error : "<none>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(document.querySelector(':placeholder-shown')===empty)+'|' +"
+            "String(document.querySelectorAll('textarea:placeholder-shown').length===1)+'|' +"
+            "String(document.querySelectorAll(':placeholder-shown').length===6)+'|' +"
+            "String(document.querySelectorAll(':placeholder-shown')[5]===notes)+'|' +"
+            "String(notes.closest(':placeholder-shown')===notes)+'|' +"
+            "String(plain.closest(':placeholder-shown')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "placeholder selector query/closest failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "empty.value='x';filled.value='';notes.value='x';"
+            "String(!empty.matches(':placeholder-shown'))+'|' +"
+            "String(filled.matches(':placeholder-shown'))+'|' +"
+            "String(!notes.matches(':placeholder-shown'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "placeholder value mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "empty.value='';filled.value='Alice';notes.value='';"
+            "empty.removeAttribute('placeholder');"
+            "notes.removeAttribute('placeholder');"
+            "String(!empty.matches(':placeholder-shown'))+'|' +"
+            "String(!filled.matches(':placeholder-shown'))+'|' +"
+            "String(!notes.matches(':placeholder-shown'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "placeholder attribute mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "empty.setAttribute('placeholder','Again');"
+            "notes.setAttribute('placeholder','Notes again');"
+            "number.type='text';number.value='';"
+            "String(empty.matches(':placeholder-shown'))+'|' +"
+            "String(notes.matches(':placeholder-shown'))+'|' +"
+            "String(number.matches(':placeholder-shown'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "placeholder state restore/type mutation failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "number.type='number';empty.setAttribute('placeholder','');"
+            "var noHint=!empty.matches(':placeholder-shown');"
+            "empty.setAttribute('placeholder','Final');"
+            "var finalHint=empty.matches(':placeholder-shown');"
+            "String(!number.matches(':placeholder-shown'))+'|' +"
+            "String(noHint)+'|' +String(finalHint);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "placeholder unsupported/empty attribute state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(empty.matches(':placeholder-shown(foo)'))+'|' +"
+            "String(empty.matches('::placeholder-shown'))+'|' +"
+            "String(document.querySelectorAll(':placeholder-shown,').length===0)+'|' +"
+            "String(plain.closest(':placeholder-shown(foo)')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|true|true") != 0)) {
+        cstr_copy(error, sizeof(error),
+                "unsupported placeholder selector input was not rejected");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1169 FAIL", error[0] != '\0' ? error :
+                "placeholder selector contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1169 OK",
+            "Selector :placeholder-shown follows bounded text-control"
+            " value/placeholder state, live mutation and fail-closed input.");
     return TRUE;
 }
 
@@ -99606,6 +99896,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1166: ok = test1166_browser_selector_effective_disabled_contract(); break;
         case 1167: ok = test1167_browser_selector_range_contract(); break;
         case 1168: ok = test1168_browser_selector_editable_state_contract(); break;
+        case 1169: ok = test1169_browser_selector_placeholder_state_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
