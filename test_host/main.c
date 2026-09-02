@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1169
+#define TEST_MAX_NUMBER 1170
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -462,6 +462,8 @@ static const char *pcore_native_edit_clipboard_status_name(int status)
 static BOOL test_browser_raw_string_fixture(const char *html,
         const char *probe, const char *expected, char *error,
         int error_capacity);
+static BOOL test_browser_form_attribute_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity);
 
 static int test_config_space(char c)
 {
@@ -41823,6 +41825,39 @@ static BOOL test1169_browser_selector_placeholder_state_contract(void)
             "Selector :placeholder-shown follows bounded text-control"
             " value/placeholder state, live mutation and fail-closed input.");
     return TRUE;
+}
+
+/* TEST 1170 - explicit form-owner association and cross-document controls. */
+static BOOL test1170_browser_form_attribute_owner_contract(void)
+{
+    static const char PROBE[] =
+        "var primary=document.getElementById('primary'),secondary=document.getElementById('secondary'),"
+        "inside=document.getElementById('inside'),override=document.getElementById('override'),"
+        "external=document.getElementById('external'),notes=document.getElementById('notes'),"
+        "missing=document.getElementById('missing'),label=document.getElementById('external-label');"
+        "function ids(c){var s='',i;for(i=0;i<c.length;i++){if(i>0){s+='|';}s+=c[i].id;}return s;}"
+        "var snapshot=primary.elements;document.getElementById('result').textContent="
+        "String(inside.form===primary)+'|'+String(override.form===secondary)+'|'"
+        "+String(external.form===primary)+'|'+String(missing.form===null)+'|'"
+        "+String(primary.elements.length===3)+'|'+ids(primary.elements)+'|'"
+        "+ids(secondary.elements)+'|'+String(primary.elements.namedItem('external')===external)+'|'"
+        "+String(external.labels.length===1&&external.labels[0]===label)+'|'"
+        "+String(snapshot.length===3);"
+        "missing.setAttribute('form','primary');external.removeAttribute('form');"
+        "override.setAttribute('form','primary');"
+        "document.getElementById('result').textContent+='|'+ids(primary.elements)+'|'"
+        "+ids(secondary.elements)+'|'+String(external.form===null)+'|'"
+        "+String(override.form===primary)+'|'+String(missing.form===primary)+'|'"
+        "+String(primary.elements.namedItem('missing')===missing)+'|'"
+        "+String(secondary.elements.namedItem('override')===null)+'|'"
+        "+String(snapshot.length===3);";
+    char error[256];
+
+    return test_browser_form_attribute_case(1170, PROBE,
+            "true|true|true|true|true|inside|external|notes|override|"
+            "secondary-button|true|true|true|inside|override|notes|missing|"
+            "secondary-button|true|true|true|true|true|true", error,
+            sizeof(error));
 }
 
 static BOOL test12_render(void)
@@ -88836,6 +88871,40 @@ static BOOL test_browser_form_collection_case(int number, const char *probe,
     return ok;
 }
 
+/* Shared parser-complete fixture for explicit form-owner association.  The
+ * controls with a `form` attribute intentionally sit outside, or point away
+ * from, their nearest ancestor so the Core relation must resolve the target
+ * form across the document. */
+static BOOL test_browser_form_attribute_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='primary'><input id='inside' name='inside' value='a'>"
+        "<input id='override' form='secondary' name='override' value='b'>"
+        "</form><label id='external-label' for='external'>External</label>"
+        "<input id='external' form='primary' name='external'>"
+        "<textarea id='notes' form='primary' name='notes'></textarea>"
+        "<input id='missing' form='missing' name='missing'>"
+        "<form id='secondary'><button id='secondary-button' name='send'>"
+        "Send</button></form><p id='result'>idle</p></body></html>";
+    WCHAR title[64];
+    BOOL ok;
+
+    ok = test_browser_raw_string_fixture(HTML, probe, expected,
+            error, error_capacity);
+    _snwprintf(title, sizeof(title) / sizeof(title[0]) - 1,
+            ok ? L"TEST %d OK" : L"TEST %d FAIL", number);
+    title[sizeof(title) / sizeof(title[0]) - 1] = L'\0';
+    if (ok) {
+        show_info(title, "Explicit form-owner/controls fixture passed.");
+    } else {
+        show_error(title, error[0] != '\0' ? error :
+                "Explicit form-owner/controls fixture failed.");
+    }
+    return ok;
+}
+
 /* TEST 542 - element/node/local names expose the parser's tag identity. */
 static BOOL test542_browser_node_names(void)
 {
@@ -99897,6 +99966,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1167: ok = test1167_browser_selector_range_contract(); break;
         case 1168: ok = test1168_browser_selector_editable_state_contract(); break;
         case 1169: ok = test1169_browser_selector_placeholder_state_contract(); break;
+        case 1170: ok = test1170_browser_form_attribute_owner_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -347,6 +347,12 @@ TEST1169 覆盖 Browser selector 的有界 `:placeholder-shown`：省略 `type` 
 mutation、`matches()`、`closest()`、两种 query 的文档顺序和非法输入；不承诺 native
 placeholder 绘制、SIP/IME 或设备视觉。
 
+TEST1170 覆盖 Core 显式 form-owner 到 Browser `Element.form`/`HTMLFormElement.elements` 的
+有界映射：默认最近祖先归属、`form="id"` 的跨树控件、存在属性时不回退祖先、空值/无效
+目标无 owner，以及 form 控件集合的文档顺序、`namedItem()`、label association 和
+mutation 后重新查询。旧集合保持 snapshot identity，不会原地变成 live collection；宿主
+只提供既有 DOM relation/attribute callback，不复制表单归属或集合规则。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -80,7 +80,10 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
-- form owner、form controls 和 label/control；
+- form owner、form controls 和 label/control。支持的 input、select、textarea、button
+  控件会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中对应的 form，空值或
+  无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档顺序包含这种跨树
+  显式关联的控件，但仍是每次查询生成的有界 snapshot；
 - form-control 的 effective-disabled relation（关系 44）：input、button、select、
   textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
   first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回

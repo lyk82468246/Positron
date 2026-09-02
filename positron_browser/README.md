@@ -316,6 +316,12 @@ validation/custom validity、contenteditable 纯文本选区、event listener �
 Browser 负责 JSON 参数、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实状态，
 callback 参数和输出缓冲只在调用期间借用。
 
+`Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
+`input`、`select`、`textarea`、`button` 控件默认归最近祖先 form；控件存在 `form="id"`
+时解析文档中对应的 form，因此可以把 form 外的控件纳入 `form.elements`，而空值或无效
+目标没有 owner，也不回退到祖先。`elements` 每次读取都是按文档顺序建立的有界 snapshot，
+  文档 mutation 后应重新读取；Browser 不扩展为完整 live form collection。
+
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符和有限结构/表单
 伪类，包括 `:checked`、`:required`/`:optional`、`:valid`/`:invalid`、有界
 `:in-range`/`:out-of-range`、`:focus`/`:focus-within`、静态 `:link`/`:any-link`、
@@ -646,20 +652,15 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 ## 当前边界
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
-- History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `document.activeElement`、`HTMLElement.focus()`/`blur()` 和 autofocus 只有在宿主注册
-  对应 callback 并用 Core 接线后才工作；Browser 只提供有界 id 投影、focus family、
-  `preventScroll` 和最多 64 层 retained overflow reveal，不提供完整焦点算法、focus ring、
-  滚动树、scroll chaining 或跨窗口策略。
-- 几何 getter 只读取最近一次 Core layout 的整数快照；`getClientRects()` 最多 16 个片段，
-  尺寸 getter 不触发 relayout。`scrollIntoView()`、元素滚动和 page scroll 只支持文档化的
-  有界路径，宿主负责 extent、clamp、物理滚动和 CSS/设备坐标换算；transforms、Range/
-  Selection、pinch zoom、scroll-margin、smooth/inertia 和完整 nested scroll tree 不在范围内。
-- selector、form validation、`dialog` 与 `contenteditable` 都是有界脚本/宿主组合；完整
-  Selectors、backdrop 合成、Range/Selection、富文本、ClipboardEvent、async clipboard
-  和完整 IME 不在范围内。
+- History 有界且不持久；多窗口、opener 和跨窗口 history 未实现。
+- `document.activeElement`、focus/blur、autofocus 只有在宿主注册 Core callback 后才工作；
+  Browser 只提供 id 投影、`preventScroll` 和最多 64 层 nested reveal，不提供完整焦点算法。
+- 几何与滚动 getter 只读取最近一次 Core layout 的整数快照；`getClientRects()` 最多 16
+  个片段，宿主负责 extent、clamp 和 CSS/设备换算。transforms、Range/Selection、pinch
+  zoom、scroll-margin、smooth/inertia 和完整 scroll tree 不在范围内。
+- selector/form/dialog/contenteditable 均为有界组合；完整 Selectors、
+  backdrop、Range/Selection、富文本、clipboard 和 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
-- contenteditable 的宿主只承诺有界 `CF_UNICODETEXT` paste/cut/copy；跨应用格式转换仍未实现。
-- 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
+- ABI、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
 参见 [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与 [`KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。

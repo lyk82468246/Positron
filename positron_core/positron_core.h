@@ -344,6 +344,13 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * textarea, option and optgroup elements: it returns the effective disabled
  * state as UTF-8 "0" or "1", including the supported fieldset and optgroup
  * inheritance rules. It is unavailable for other element types.
+ * FORM_OWNER resolves a supported form-associated control's nearest ancestor
+ * form unless a present `form` attribute explicitly names a form by id; an
+ * empty, missing, or non-form target has no owner and never falls back to the
+ * ancestor. FORM_CONTROL_COUNT and FORM_CONTROL_AT enumerate all supported
+ * input, select, textarea and button controls owned by the form in document
+ * order, including controls outside the form that use that explicit
+ * attribute. Their results are read snapshots for one relation query.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host

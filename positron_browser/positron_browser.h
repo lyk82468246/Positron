@@ -497,9 +497,14 @@ typedef struct PBrowserScriptFocusRequestCallbacksEx {
  * write out_number; attribute name/value and child-node fields use the
  * bounded UTF-8 probe/truncation contract. The CHILD_NODE_* relations expose
  * a direct childNodes snapshot, including text/comment nodes; an element id
- * is returned only when that child has a non-empty id. The callback returns
- * 0 when found, 2 when the relationship is absent or outside the bounded
- * wrapper tree, and a negative value on adapter failure. */
+ * is returned only when that child has a non-empty id. FORM_OWNER and
+ * FORM_CONTROL_* use the Core form-owner rules: a supported control with a
+ * present `form` attribute resolves the first form with that id, while an
+ * empty or invalid target has no owner and does not fall back to an ancestor.
+ * Form-control relations enumerate supported controls in document order,
+ * including explicitly associated controls outside the form. The callback
+ * returns 0 when found, 2 when the relationship is absent or outside the
+ * bounded wrapper tree, and a negative value on adapter failure. */
 typedef int (*PBrowserScriptGetNodeRelationFn)(void *pw, const char *id,
         unsigned int relation, unsigned int index, char *out_value,
         int out_capacity, int *out_bytes, int *out_number);

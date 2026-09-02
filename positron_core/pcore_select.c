@@ -4781,13 +4781,42 @@ static int pcore_relation_parent(dom_node *node, char *value,
     return 2;
 }
 
-static int pcore_relation_form_owner_is(dom_node *node,
+static int pcore_relation_is_control(dom_element *element);
+static int pcore_relation_attribute_value(dom_element *element,
+        const char *name, dom_string **out_value);
+static int pcore_relation_explicit_form_owner(dom_document *doc,
+        dom_element *element, dom_element **out_owner,
+        int *out_has_attribute);
+
+static int pcore_relation_form_owner_is(dom_document *doc, dom_node *node,
         dom_element *wanted_form)
 {
+    dom_element *explicit_owner;
     dom_node *current;
     dom_node *parent;
     dom_node_type type;
+    int has_form_attribute;
     int is_form;
+    int result;
+
+    explicit_owner = NULL;
+    has_form_attribute = 0;
+    if (pcore_relation_is_control((dom_element *) node)) {
+        result = pcore_relation_explicit_form_owner(doc,
+                (dom_element *) node, &explicit_owner,
+                &has_form_attribute);
+        if (result != 0) {
+            return 0;
+        }
+        if (has_form_attribute) {
+            if (explicit_owner == NULL) {
+                return 0;
+            }
+            result = explicit_owner == wanted_form ? 1 : 0;
+            dom_node_unref((dom_node *) explicit_owner);
+            return result;
+        }
+    }
 
     current = dom_node_ref(node);
     while (current != NULL) {
@@ -4827,8 +4856,8 @@ static int pcore_relation_is_control(dom_element *element)
             pcore_element_name_is(element, "button");
 }
 
-static int pcore_relation_walk_controls(dom_node *node, dom_element *form,
-        unsigned int wanted, unsigned int *count, char *value,
+static int pcore_relation_walk_controls(dom_node *node, dom_document *doc,
+        dom_element *form, unsigned int wanted, unsigned int *count, char *value,
         int value_capacity, int *out_bytes, int *found)
 {
     dom_node *child;
@@ -4852,7 +4881,7 @@ static int pcore_relation_walk_controls(dom_node *node, dom_element *form,
         }
         if (type == DOM_ELEMENT_NODE) {
             if (pcore_relation_is_control((dom_element *) child) &&
-                    pcore_relation_form_owner_is(child, form)) {
+                    pcore_relation_form_owner_is(doc, child, form)) {
                 bytes = 0;
                 err = pcore_relation_copy_element_id(child, NULL, 0,
                         &bytes);
@@ -4877,8 +4906,8 @@ static int pcore_relation_walk_controls(dom_node *node, dom_element *form,
                     return 1;
                 }
             }
-            err = pcore_relation_walk_controls(child, form, wanted, count,
-                    value, value_capacity, out_bytes, found);
+            err = pcore_relation_walk_controls(child, doc, form, wanted,
+                    count, value, value_capacity, out_bytes, found);
             if (err != 0 || *found) {
                 dom_node_unref(child);
                 return err;
@@ -4894,13 +4923,35 @@ static int pcore_relation_walk_controls(dom_node *node, dom_element *form,
     return 0;
 }
 
-static int pcore_relation_form_owner(dom_node *node, char *value,
+static int pcore_relation_form_owner(dom_document *doc, dom_node *node, char *value,
         int value_capacity, int *out_bytes)
 {
+    dom_element *explicit_owner;
     dom_node *current;
     dom_node *parent;
     dom_node_type type;
+    int has_form_attribute;
     int err;
+
+    explicit_owner = NULL;
+    has_form_attribute = 0;
+    if (pcore_relation_is_control((dom_element *) node)) {
+        err = pcore_relation_explicit_form_owner(doc, (dom_element *) node,
+                &explicit_owner, &has_form_attribute);
+        if (err != 0) {
+            return 1;
+        }
+        if (has_form_attribute) {
+            if (explicit_owner == NULL) {
+                return 2;
+            }
+            err = pcore_relation_copy_element_id(
+                    (dom_node *) explicit_owner, value,
+                    value_capacity, out_bytes);
+            dom_node_unref((dom_node *) explicit_owner);
+            return err == 0 ? 0 : (err == 2 ? 2 : 1);
+        }
+    }
 
     current = dom_node_ref(node);
     while (current != NULL) {
@@ -4961,6 +5012,59 @@ static int pcore_relation_attribute_value(dom_element *element,
         return 1;
     }
     return (*out_value == NULL) ? 2 : 0;
+}
+
+/* Resolve the explicit HTML form owner selected by a control's `form`
+ * attribute.  A present but empty, missing, or non-form target deliberately
+ * means that the control has no owner; it does not fall back to an ancestor
+ * form.  The returned owner is retained for the caller. */
+static int pcore_relation_explicit_form_owner(dom_document *doc,
+        dom_element *element, dom_element **out_owner,
+        int *out_has_attribute)
+{
+    dom_element *candidate;
+    dom_string *form_value;
+    const char *data;
+    int result;
+
+    if (out_owner != NULL) {
+        *out_owner = NULL;
+    }
+    if (out_has_attribute != NULL) {
+        *out_has_attribute = 0;
+    }
+    if (doc == NULL || element == NULL || out_owner == NULL ||
+            out_has_attribute == NULL) {
+        return 1;
+    }
+    form_value = NULL;
+    result = pcore_relation_attribute_value(element, "form", &form_value);
+    if (result == 2) {
+        return 0;
+    }
+    if (result != 0 || form_value == NULL) {
+        if (form_value != NULL) {
+            dom_string_unref(form_value);
+        }
+        return 1;
+    }
+    *out_has_attribute = 1;
+    data = (const char *) dom_string_data(form_value);
+    if (data == NULL || data[0] == '\0') {
+        dom_string_unref(form_value);
+        return 0;
+    }
+    candidate = pcore_element_by_id(doc, data);
+    dom_string_unref(form_value);
+    if (candidate == NULL) {
+        return 0;
+    }
+    if (!pcore_element_name_is(candidate, "form")) {
+        dom_node_unref((dom_node *) candidate);
+        return 0;
+    }
+    *out_owner = candidate;
+    return 0;
 }
 
 static int pcore_relation_same_element_id(dom_element *first,
@@ -5639,6 +5743,7 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     int count;
     int found;
     int err;
+    dom_element *root;
 
     if (out_bytes != NULL) {
         *out_bytes = 0;
@@ -5649,6 +5754,7 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     if (out_value != NULL && value_capacity > 0) {
         out_value[0] = '\0';
     }
+    root = NULL;
     if (hDoc == NULL || element_id == NULL || element_id[0] == '\0' ||
             (out_value == NULL && value_capacity > 0) || value_capacity < 0) {
         return 1;
@@ -5698,8 +5804,8 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
                 value_capacity, out_bytes);
         break;
     case PCORE_NODE_RELATION_FORM_OWNER:
-        err = pcore_relation_form_owner((dom_node *) element, out_value,
-                value_capacity, out_bytes);
+        err = pcore_relation_form_owner((dom_document *) hDoc,
+                (dom_node *) element, out_value, value_capacity, out_bytes);
         break;
     case PCORE_NODE_RELATION_FORM_CONTROL_DISABLED:
         {
@@ -5748,8 +5854,16 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
             err = 0;
             count = 0;
         } else {
-            err = pcore_relation_walk_controls((dom_node *) element, element,
-                    (unsigned int) -1, &count, NULL, 0, NULL, &found);
+            if (dom_document_get_document_element((dom_document *) hDoc,
+                    &root) != DOM_NO_ERR || root == NULL) {
+                err = 1;
+            } else {
+                err = pcore_relation_walk_controls((dom_node *) root,
+                        (dom_document *) hDoc, element,
+                        (unsigned int) -1, &count, NULL, 0, NULL, &found);
+                dom_node_unref((dom_node *) root);
+                root = NULL;
+            }
         }
         if (err == 0 && out_number != NULL) {
             *out_number = count;
@@ -5759,9 +5873,16 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         if (!pcore_element_name_is(element, "form")) {
             err = 2;
         } else {
-            err = pcore_relation_walk_controls((dom_node *) element, element,
-                    index, &count, out_value, value_capacity, out_bytes,
-                    &found);
+            if (dom_document_get_document_element((dom_document *) hDoc,
+                    &root) != DOM_NO_ERR || root == NULL) {
+                err = 1;
+            } else {
+                err = pcore_relation_walk_controls((dom_node *) root,
+                        (dom_document *) hDoc, element, index, &count,
+                        out_value, value_capacity, out_bytes, &found);
+                dom_node_unref((dom_node *) root);
+                root = NULL;
+            }
             if (err == 0 && !found) {
                 err = 2;
             }

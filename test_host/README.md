@@ -71,7 +71,7 @@ tests=13,20,27,999
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询
-  （TEST1146–1169）；
+  （TEST1146–1170）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -232,6 +232,13 @@ TEST1169 断言 Browser selector 的有界 `:placeholder-shown` 映射：省略 
 元素和带参数形式不匹配。夹具覆盖 value/type/placeholder mutation、matches/closest、
 两种 query 的文档顺序和非法 selector；宿主只提供既有 DOM/value/attribute callback，
 不复制 placeholder 或 selector 语义，也不把 native placeholder 视觉当作自动契约。
+
+TEST1170 断言 Core 的显式 form-owner 规则到 Browser `Element.form` 与
+`HTMLFormElement.elements` 的映射：`form="id"` 可把 form 外控件纳入目标 form，控件上
+存在该属性时不会回退到最近祖先，空值或无效目标保持无 owner；`elements` 仍按文档顺序
+返回受支持的 input/textarea/button 控件，`namedItem()`、label association 和 mutation
+后的重新查询保持一致。夹具还确认旧 snapshot 不被原地改写；宿主只提供既有 DOM relation/
+attribute callback，不复制 form-owner 或集合语义。
 
 ### Native EDIT/SELECT/button/file
 

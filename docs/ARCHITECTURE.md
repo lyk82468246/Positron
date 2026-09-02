@@ -96,6 +96,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   effective-disabled 状态（含 disabled fieldset 的 first-legend exemption 与
   optgroup→option 继承），并通过 relation 44 向 Browser 提供只读 UTF-8 `"0"`/`"1"`
   快照；选项选择和 successful submission 也消费同一状态；
+- 表单关联关系：支持的 input、select、textarea、button 默认归最近祖先 form；存在
+  `form="id"` 时解析文档中对应的 form，把 form 外控件纳入按文档顺序的有界
+  `form.elements` snapshot，空值或无效目标不回退到祖先；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
