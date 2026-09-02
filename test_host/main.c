@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1157
+#define TEST_MAX_NUMBER 1158
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -38882,6 +38882,178 @@ static BOOL test1157_browser_selector_option_checked_contract(void)
     show_info(L"TEST 1157 OK",
             "Selector :checked reflects input checked and live option selected "
             "state with fail-closed unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1158 - bounded :valid/:invalid selector pseudo-classes. */
+static BOOL test1158_browser_selector_validation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form'>"
+        "<input id='required' type='text' required>"
+        "<input id='ready' type='text' value='ready'>"
+        "<input id='custom' type='text'>"
+        "<button id='submit' type='submit'>Submit</button>"
+        "<div id='plain'>Plain</div></form>"
+        "<script>window.__selectorValidationContractReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-validation";
+    static const char *PHASE_NAMES[] = {
+        "initial-invalid", "required-value-mutation", "custom-error-mutation",
+        "unsupported-input"
+    };
+    static const char *PHASES[] = {
+        "(function(){var form=document.getElementById('form');"
+        "var required=document.getElementById('required');"
+        "var ready=document.getElementById('ready');"
+        "var custom=document.getElementById('custom');"
+        "var submit=document.getElementById('submit');"
+        "var plain=document.getElementById('plain');var invalid;var valid;var ok;"
+        "invalid=document.querySelectorAll('input:invalid');"
+        "valid=document.querySelectorAll('input:valid');"
+        "ok=invalid.length===1&&invalid[0]===required&&valid.length===2&&"
+        "valid[0]===ready&&valid[1]===custom&&required.matches(':invalid')&&"
+        "!required.matches(':valid')&&ready.matches(':valid')&&"
+        "!ready.matches(':invalid')&&!custom.matches(':invalid')&&"
+        "form.matches(':invalid')&&!form.matches(':valid')&&"
+        "!submit.matches(':valid')&&!submit.matches(':invalid')&&"
+        "!plain.matches(':valid')&&!plain.matches(':invalid')&&"
+        "required.willValidate&&submit.willValidate===false;"
+        "return ok?'true':'phase1';})();",
+        "(function(){var form=document.getElementById('form');"
+        "var required=document.getElementById('required');var invalid;var valid;"
+        "required.value='filled';invalid=document.querySelectorAll(':invalid');"
+        "valid=document.querySelectorAll('input:valid');"
+        "return required.value==='filled'&&invalid.length===0&&valid.length===3&&"
+        "valid[0]===required&&valid[1]===document.getElementById('ready')&&"
+        "valid[2]===document.getElementById('custom')&&required.matches(':valid')&&"
+        "form.matches('form:valid')&&!form.matches('form:invalid')?'true':'phase2';})();",
+        "(function(){var form=document.getElementById('form');"
+        "var custom=document.getElementById('custom');var ready=document.getElementById('ready');"
+        "var invalid;var valid;custom.setCustomValidity('bad value');"
+        "invalid=document.querySelectorAll('input:invalid');"
+        "valid=document.querySelectorAll('input:valid');"
+        "if(!(invalid.length===1&&invalid[0]===custom&&valid.length===2&&"
+        "!custom.matches(':valid')&&custom.matches(':invalid')&&"
+        "form.matches(':invalid')&&!form.matches(':valid'))){return 'phase3-set';}"
+        "custom.setCustomValidity('');invalid=document.querySelectorAll(':invalid');"
+        "return invalid.length===0&&valid.length===2&&custom.matches(':valid')&&"
+        "form.matches(':valid')&&!form.matches(':invalid')?'true':'phase3-clear';})();",
+        "(function(){var required=document.getElementById('required');var ok;ok="
+        "document.querySelectorAll('input:valid(foo)').length===0&&"
+        "document.querySelectorAll('form:invalid(foo)').length===0&&"
+        "document.querySelectorAll('div:valid').length===0&&"
+        "document.querySelectorAll('input:not(:valid)').length===0&&"
+        "document.querySelectorAll('input::before').length===0&&"
+        "!required.matches('input:valid(foo)')&&!required.matches('input:invalid(foo)');"
+        "return ok?'true':'phase4';})();"
+    };
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int phase;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    phase = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector validation script bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        for (phase = 0; phase < 4; ++phase) {
+            memset(error, 0, sizeof(error));
+            if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
+                    error, sizeof(error)) != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector validation phase %d (%s) evaluation failed",
+                        phase + 1, PHASE_NAMES[phase]);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL || strcmp(result, "true") != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector validation phase %d (%s) failed: %s",
+                        phase + 1, PHASE_NAMES[phase],
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    g_page_scroll_dpi = 96;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1158 FAIL", error[0] != '\0' ? error :
+                "selector validation contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1158 OK",
+            "Selector :valid and :invalid reflect bounded Core validation "
+            "state and fail closed for unsupported input.");
     return TRUE;
 }
 
@@ -96945,6 +97117,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1155: ok = test1155_browser_selector_form_state_contract(); break;
         case 1156: ok = test1156_browser_selector_not_contract(); break;
         case 1157: ok = test1157_browser_selector_option_checked_contract(); break;
+        case 1158: ok = test1158_browser_selector_validation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

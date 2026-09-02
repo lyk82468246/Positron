@@ -33,8 +33,9 @@
 几何和尺寸快照、WM_SIZE/`matchMedia()`/`visualViewport`/`screen.orientation`、
 `history.scrollRestoration`、页面生命周期、窗口焦点、activeElement、focus/autofocus、
 以及有界 selector 子集。selector 当前包含顶层列表、四种关系组合器、六类属性操作符、
-有限结构伪类、直接表单状态、option live selected 的 `:checked` 和单一简单 compound
-参数的 `:not()`；对应自动合同见 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
+有限结构伪类、直接表单状态、option live selected 的 `:checked`、通过 validation
+callback 的 `:valid`/`:invalid` 和单一简单 compound 参数的 `:not()`；对应自动合同见
+`docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
@@ -43,7 +44,7 @@ Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、fieldset/opt
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-next713 的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next714 的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque
@@ -64,8 +65,8 @@ SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严
 - 依据 corpus 补齐高价值 DOM/Event/form/navigation 对象，不追求一次性完整 Web API。
 - 继续在 Browser 中按真实页面缺口扩展有界 selector/DOM 组合；当前承诺简单 compound
   selector 的列表、四种关系组合器、六类属性操作符、有限结构伪类、表单状态伪类（含
-  option live selected 的 `:checked`）和单一简单 compound 参数的 `:not()`，完整 CSS
-  Selectors 语法仍不作为默认目标。
+  option live selected 的 `:checked` 与 validation `:valid`/`:invalid`）和单一简单
+  compound 参数的 `:not()`，完整 CSS Selectors 语法仍不作为默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。
 - 保持浏览器 JavaScript 显式 opt-in，并持续验证关闭时不抓取或执行页面脚本。

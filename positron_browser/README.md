@@ -286,25 +286,17 @@ focus ring、完整 scroll tree、scroll chaining、scroll-margin、平滑/惯�
 
 ### DOM、表单与 validation adapters
 
-Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document 的受限查询和 mutation 映射为：
+Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document
+的受限查询和 mutation 映射为文本/属性/value/checked、节点关系、form/selected state、
+validation/custom validity、contenteditable 纯文本选区、event listener 和 navigation。
+Browser 负责 JSON 参数、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实状态，
+callback 参数和输出缓冲只在调用期间借用。
 
-- element/text/attribute/value/checked 读写；
-- parent/child/sibling、attributes、childNodes、form owner 和 label/control 关系；
-- form properties、control collection 与 selected state；
-- validity、custom validity、report validity 和 validation message；
-- `contenteditable` 有效状态、`isContentEditable`/`innerText` 的有界纯文本桥、`selectionStart`/`selectionEnd`/`selectionDirection` 和 `selectionchange`；
-- event listener、navigation；selector 查询支持顶层列表、后代/子代/兄弟组合器和有界
-  属性操作符。
-
-Browser 负责 JSON 参数解析、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实文档状态。callback 参数和输出缓冲只在调用期间借用，不得缓存。
-
-selector 支持 compound、列表、空格/`>`/`+`/`~`、属性/结构伪类（`:root`、`:empty`、
-child/of-type、`nth-*`）；受限 `an+b` 按 DOM 快照求值。
-`:not()` 仅支持简单 compound；其他参数 fail closed。动态伪类、伪元素等高级语法不支持。
-
-表单：`input:checked` 和 `option:checked` 分别读取 input.checked 与 option.selected
-实时状态；直接 `disabled`/`required` 对应 `:disabled`/`:enabled`/`:required`/`:optional`。
-不处理 fieldset/optgroup 继承，option 的选择应通过 select/option API 变更。
+selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
+直接表单状态和 `:valid`/`:invalid`；`:not()` 只接受单一简单 compound 参数，其他
+参数 fail closed。表单状态包括 input/option 的实时 `:checked`、直接 `disabled`/
+`required`，以及通过既有 validation callback 查询 `form`、input、select、textarea
+的有效性；不处理 fieldset/optgroup 继承、动态交互伪类或伪元素。
 
 ### `dialog` 生命周期
 
@@ -615,42 +607,19 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 - 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
 - History 有界且不持久；多窗口、第二个 global、opener 和跨窗口 history 未实现。
-- `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
-  后才安装；它通过 Core 的有界焦点 id 和现有 DOM 读回调解析元素，空值、过长或
-  过时 id 回退到 `document.body`。它不替代完整焦点算法、native 焦点矩形、自动
-  自主 autofocus、焦点陷阱或跨窗口策略。
-- `HTMLElement.focus()`/`blur()` 只有在宿主注册
-  `PBrowserScriptFocusRequestCallbacks`（或 Ex 版本）后才安装；宿主必须用 Core 的
-  按 id 资格与 focus node API 接线 native HWND 和 focus family。Ex 版本还支持默认
-  focus 的 page-level viewport reveal、最多 64 层 retained overflow ancestor reveal
-  与 `focus({preventScroll:true})`，并把实际 CSS scroll 坐标在 callback 返回后同步回
-  脚本。Browser 在发现可寻址嵌套祖先时把 Ex 请求的 `prevent_scroll` 置为真，要求
-  宿主暂缓页面级 reveal，再由 Browser 完成 `container:"all"` 的有限链；不可用目标、
-  对非当前目标的 blur，以及注销后的方法都 fail closed/no-op；重复 focus 不重复派发
-  focus family。完整焦点导航、自动初始焦点、focus ring、完整 scroll tree、scroll chaining、
-  scroll-margin、平滑/惯性滚动或跨窗口策略仍不在范围内。
-- `getBoundingClientRect()` 与 `getClientRects()` 只组合已有的 Core relation geometry
-  片段快照；后者返回每次调用都新建、最多 16 个按行排列的正尺寸矩形，前者返回这些
-  片段的 union。未布局、隐藏或非正尺寸时分别返回全零/空集合。它们不提供 transforms、
-  Range/Selection、完整 nested overflow scrolling、pinch zoom、平滑滚动或视觉像素精度。
-- `offsetWidth`/`offsetHeight`、`clientWidth`/`clientHeight` 和
-  `scrollWidth`/`scrollHeight` 只读回 Core 最近一次 layout 的有界尺寸快照，支持的
-  block/replaced/table/flex box 返回整数 CSS 像素，未布局、隐藏、inline/text 或
-  不可用 box 返回 `0`。这些 getter 不触发 relayout；有 id 的支持 box 还可通过
-  `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 使用 Core 的 retained scrollbar。
-  不支持 scroll chaining、scroll-margin、smooth/inertia、transforms 或 pinch zoom。
-- `Element.scrollIntoView()` 组合已有的 Core relation geometry、关系 40–43 和 page-level
-  scroll callback，支持有限的 block/inline 对齐、`auto`/`instant` 行为，以及
-  `container:"nearest"`/`"all"`。默认只移动父链中最近的可寻址 retained overflow
-  box；`container:"all"` 才从最近到最外遍历最多 64 层，并在每次滚动后重读目标矩形，
-  仅在链完成后目标仍位于页面视口外时回退 page-level scroll。无 layout、矩形或 client
-  bridge 时安全 no-op。完整滚动容器树、scroll chaining/anchoring、scroll-margin、
-  smooth/inertia、transforms、pinch zoom 和匿名目标仍不在范围内；宿主仍负责页面 extent、
-  clamp、物理滚动和 `PBrowser_ScriptSessionNotifyScroll`/
-  `PBrowser_ScriptSessionNotifyElementScroll`。
-- `dialog`/`contenteditable` 仅支持有界脚本/宿主组合；完整 backdrop、modal、Range/Selection、富文本和 IME 不在范围内。
+- `document.activeElement`、`HTMLElement.focus()`/`blur()` 和 autofocus 只有在宿主注册
+  对应 callback 并用 Core 接线后才工作；Browser 只提供有界 id 投影、focus family、
+  `preventScroll` 和最多 64 层 retained overflow reveal，不提供完整焦点算法、focus ring、
+  滚动树、scroll chaining 或跨窗口策略。
+- 几何 getter 只读取最近一次 Core layout 的整数快照；`getClientRects()` 最多 16 个片段，
+  尺寸 getter 不触发 relayout。`scrollIntoView()`、元素滚动和 page scroll 只支持文档化的
+  有界路径，宿主负责 extent、clamp、物理滚动和 CSS/设备坐标换算；transforms、Range/
+  Selection、pinch zoom、scroll-margin、smooth/inertia 和完整 nested scroll tree 不在范围内。
+- selector、form validation、`dialog` 与 `contenteditable` 都是有界脚本/宿主组合；完整
+  Selectors、backdrop 合成、Range/Selection、富文本、ClipboardEvent、async clipboard
+  和完整 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
-- contenteditable 的宿主目前只承诺有界 `CF_UNICODETEXT` paste/cut/copy；ClipboardEvent、async clipboard、CF_TEXT/富文本转换和跨应用格式互操作仍未实现。
+- contenteditable 的宿主只承诺有界 `CF_UNICODETEXT` paste/cut/copy；跨应用格式转换仍未实现。
 - 公共 ABI 的精确能力、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 
 参见 [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与 [`KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。

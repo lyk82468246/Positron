@@ -677,8 +677,9 @@ typedef struct PBrowserScriptFormCallbacks {
 
 /* Typed host adapter for the product-owned constraint-validation query. The
  * browser DLL owns JSON encoding and the script-facing checkValidity(),
- * willValidate and validity properties; the host supplies a synchronous
- * state lookup by UTF-8 DOM id. A host may return an aggregate form result
+ * willValidate, validity and bounded :valid/:invalid selector properties; the
+ * host supplies a synchronous state lookup by UTF-8 DOM id. A host may return
+ * an aggregate form result
  * for a form id; such a result uses valid for the form query and keeps
  * will_validate=0 and flags=0. Non-validation candidates should return
  * valid=1, will_validate=0 and flags=0. The callback returns zero on success
