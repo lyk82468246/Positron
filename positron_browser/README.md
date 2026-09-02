@@ -219,6 +219,30 @@ PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
 因此这项组合不提供完整浏览器焦点算法、自动初始焦点、焦点矩形、native HWND
 切换或跨窗口策略。回调指针只在同步调用期间借用，宿主仍拥有 native 焦点状态。
 
+#### `:active` / `:hover` interaction bridge
+
+指针状态也可以按需投影到 Browser selector。宿主注册
+`PBrowserScriptInteractionCallbacks`，在 callback 中按 `state`（`"active"` 或
+`"hover"`）返回当前 Core 节点的非空 UTF-8 id；参考接线使用
+`PCore_InteractionStateElementId`，因此不会维护第二份交互模型：
+
+```c
+PBrowserScriptInteractionCallbacks interaction;
+
+memset(&interaction, 0, sizeof(interaction));
+interaction.size = sizeof(interaction);
+interaction.pw = bridge;
+interaction.get_interaction_element = host_get_interaction_element_id;
+PBrowser_ScriptSessionRegisterInteractionElementCallbacks(session,
+        &interaction);
+```
+
+注册后，`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 会在每次
+查询时读取 callback；无 callback、空/过长/失效 id、带参数或伪元素都安全不匹配。Browser
+不派发 pointer 事件、不改变 Core/style/layout/paint；宿主负责 hit-test、时机、事件、
+失效和视觉。桥只匹配精确当前元素，不实现祖先 `:hover`、完整 `:active`/`:visited` 或
+pointer capture。
+
 #### `HTMLElement.focus()` / `blur()` 请求
 
 脚本主动聚焦是另一条按需安装的桥。宿主注册
@@ -294,7 +318,8 @@ callback 参数和输出缓冲只在调用期间借用。
 
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
 直接表单状态、`:valid`/`:invalid`、`:focus`/`:focus-within`、静态的
-`:link`/`:any-link`、有界的 `:target` 和 `:lang`；`:not()` 只接受单一简单 compound
+`:link`/`:any-link`、有界的 `:target` 和 `:lang`，以及可选 interaction callback 驱动的
+`:active`/`:hover`；`:not()` 只接受单一简单 compound
 参数，`:is()`/`:where()` 接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 接受最多
 16 个相对简单 compound 分支。`:has()` 分支只支持后代、直接子代、相邻兄弟和后续兄弟
 关系，每个后代/兄弟遍历最多 64 步；链式关系、空分支和不完整参数会 fail closed。表单
@@ -304,11 +329,12 @@ validation callback 查询 `form`、input、select、textarea 的有效性。`:f
 `:link`/`:any-link` 只匹配带有 `href` 属性的 `<a>`/`<area>`，属性值可以为空；Browser
 没有 visited-state 存储，因而 `:visited` 仍然不支持。`:target` 只在当前 URL fragment 经
 `decodeURIComponent` 后等于元素当前非空 `id` 时匹配；无 fragment、解码失败、仅有 `name`
-的 named anchor、stale 元素或其他动态交互状态都 fail closed，不承诺 fragment 的视觉滚动。
+的 named anchor 或 stale 元素都 fail closed，不承诺 fragment 的视觉滚动；`:active`/`:hover`
+另由 TEST1165 的可选 interaction callback 处理，不在这个 fragment 夹具中重复实现。
 `:lang()` 只接受一个 ASCII 语言标签，按大小写不敏感的精确值或 `-` 子标签前缀匹配；语言
 从当前元素沿最多 64 层 `parentElement` 继承，元素的 `lang` 优先于 `xml:lang`，空值或非法
 标签不匹配。该有界实现不处理语言标签列表、引号形式或完整 BCP 47 规则。不处理
-fieldset/optgroup 继承、`:hover`、`:active` 等其他动态交互伪类或伪元素。
+fieldset/optgroup 继承、`:visited`、伪元素或其他完整动态交互语义。
 
 ### `dialog` 生命周期
 
@@ -591,7 +617,8 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 2. 为该文档构造 callback context；
 3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
    `document.activeElement` 或 `HTMLElement.focus()`/`blur()`，同时准备 Core 焦点
-   id 与 focus request callbacks；若需要页面级滚动可见性，使用 focus request 的
+   id 与 focus request callbacks；若需要脚本 `:active`/`:hover`，注册 interaction
+   callback 读取 Core 的当前状态；若需要页面级滚动可见性，使用 focus request 的
    Ex callbacks；
 4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；
@@ -627,7 +654,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
   尺寸 getter 不触发 relayout。`scrollIntoView()`、元素滚动和 page scroll 只支持文档化的
   有界路径，宿主负责 extent、clamp、物理滚动和 CSS/设备坐标换算；transforms、Range/
   Selection、pinch zoom、scroll-margin、smooth/inertia 和完整 nested scroll tree 不在范围内。
-- selector、form validation、`dialog` 与 `contenteditable` 都是有界脚本/宿主组合；完整
+- selector（含可选 interaction callback 驱动的 `:active`/`:hover`）、form validation、`dialog` 与 `contenteditable` 都是有界脚本/宿主组合；完整
   Selectors、backdrop 合成、Range/Selection、富文本、ClipboardEvent、async clipboard
   和完整 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。

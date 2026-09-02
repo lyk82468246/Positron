@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1164
+#define TEST_MAX_NUMBER 1165
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6268,6 +6268,7 @@ struct pcore_browser_script_bridge {
      * by a layout hit-test that can miss their overlaid child window. */
     char *programmatic_click_element_id;
     char active_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    char interaction_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
 };
 
 typedef struct pcore_browser_script_session {
@@ -8301,6 +8302,8 @@ static int pcore_browser_script_focus_dispatch(void *pw,
 static void pcore_browser_script_dispatch_focus_at(int x, int y,
         const char *event_type, int bubbles);
 static const char *pcore_browser_script_get_active_element(void *pw);
+static const char *pcore_browser_script_get_interaction_element(void *pw,
+        const char *state);
 static int pcore_browser_script_focus_request(void *pw,
         const PBrowserScriptFocusRequestInfoEx *info,
         PBrowserScriptFocusRequestResult *out_result);
@@ -10523,6 +10526,37 @@ static const char *pcore_browser_script_get_active_element(void *pw)
         return "";
     }
     return bridge->active_element_id;
+}
+
+static const char *pcore_browser_script_get_interaction_element(void *pw,
+        const char *state)
+{
+    pcore_browser_script_bridge *bridge;
+    unsigned int state_flags;
+    int bytes;
+    int rc;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || state == NULL) {
+        return "";
+    }
+    if (strcmp(state, PBROWSER_SCRIPT_INTERACTION_ACTIVE) == 0) {
+        state_flags = PCORE_INTERACTION_ACTIVE;
+    } else if (strcmp(state, PBROWSER_SCRIPT_INTERACTION_HOVER) == 0) {
+        state_flags = PCORE_INTERACTION_HOVER;
+    } else {
+        return "";
+    }
+    bridge->interaction_element_id[0] = '\0';
+    bytes = 0;
+    rc = PCore_InteractionStateElementId(bridge->document, state_flags,
+            bridge->interaction_element_id,
+            sizeof(bridge->interaction_element_id), &bytes);
+    if (rc != 0 || bytes <= 0) {
+        bridge->interaction_element_id[0] = '\0';
+        return "";
+    }
+    return bridge->interaction_element_id;
 }
 
 /* Focus requests originate in the Browser DLL; the reference host only
@@ -16217,6 +16251,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptActiveElementCallbacks active_element_callbacks;
+    PBrowserScriptInteractionCallbacks interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
@@ -16334,6 +16369,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->events = NULL;
     bridge->programmatic_click_element_id = NULL;
     bridge->active_element_id[0] = '\0';
+    bridge->interaction_element_id[0] = '\0';
     dom_read_callbacks.size = sizeof(dom_read_callbacks);
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
@@ -16342,6 +16378,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     active_element_callbacks.pw = bridge;
     active_element_callbacks.get_active_element =
             pcore_browser_script_get_active_element;
+    interaction_callbacks.size = sizeof(interaction_callbacks);
+    interaction_callbacks.pw = bridge;
+    interaction_callbacks.get_interaction_element =
+            pcore_browser_script_get_interaction_element;
     focus_request_callbacks.size = sizeof(focus_request_callbacks);
     focus_request_callbacks.pw = bridge;
     focus_request_callbacks.request_focus =
@@ -16578,6 +16618,17 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &active_element_callbacks) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
                 "activeElement bridge", PBrowser_ScriptSessionGetError(session));
+        pcore_browser_script_bridge_destroy(bridge);
+        if (out_runtime != NULL) {
+            free(bridge);
+        }
+        return 1;
+    }
+    if (PBrowser_ScriptSessionRegisterInteractionElementCallbacks(session,
+            &interaction_callbacks) != PSCRIPT_OK) {
+        pcore_browser_script_error(error, error_capacity,
+                "interaction selector bridge", PBrowser_ScriptSessionGetError(
+                session));
         pcore_browser_script_bridge_destroy(bridge);
         if (out_runtime != NULL) {
             free(bridge);
@@ -40305,6 +40356,284 @@ static BOOL test1164_browser_selector_has_contract(void)
     show_info(L"TEST 1164 OK",
             "Selector :has uses bounded relative descendants and siblings"
             " and fails closed for unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1165 - Core pointer interaction state reaches Browser selectors. */
+static BOOL test1165_browser_selector_interaction_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body>"
+        "<section id='panel'>"
+        "<button id='first' type='button'>First</button>"
+        "<button id='second' type='button'>Second</button>"
+        "<p id='copy'>Copy</p>"
+        "</section>"
+        "<aside id='outside'>Outside</aside>"
+        "<script>window.selectorInteractionReady=true;</script>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:4px}"
+        "#panel,#first,#second,#copy,#outside{display:block;"
+        "width:180px;height:24px;margin:2px}";
+    static const char URL[] =
+        "https://positron.local/selector-interaction";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    char error[1024];
+    int executed;
+    int ignored;
+    int first_x;
+    int first_y;
+    int first_w;
+    int first_h;
+    int second_x;
+    int second_y;
+    int second_w;
+    int second_h;
+    int kind;
+    int selected;
+    int disabled;
+    int bytes;
+    int rc;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(id, 0, sizeof(id));
+    memset(error, 0, sizeof(error));
+    executed = -1;
+    ignored = -1;
+    first_x = 0;
+    first_y = 0;
+    first_w = 0;
+    first_h = 0;
+    second_x = 0;
+    second_y = 0;
+    second_w = 0;
+    second_h = 0;
+    kind = 0;
+    selected = 0;
+    disabled = 0;
+    bytes = -1;
+    rc = -1;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL, NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector interaction script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://positron.local/selector-interaction.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 260, 240) != 0 ||
+                PCore_FormControlInfoById(document, "first", &first_x,
+                &first_y, &first_w, &first_h, &kind, &selected,
+                &disabled) != 0 ||
+                PCore_FormControlInfoById(document, "second", &second_x,
+                &second_y, &second_w, &second_h, &kind, &selected,
+                &disabled) != 0 || first_w <= 0 || first_h <= 0 ||
+                second_w <= 0 || second_h <= 0) {
+            cstr_copy(error, sizeof(error),
+                    "selector interaction fixture layout failed");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_w = 260;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_HOVER, id, sizeof(id), &bytes) != 1 ||
+            bytes != 0 || id[0] != '\0' ||
+            PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_ACTIVE | PCORE_INTERACTION_HOVER,
+            id, sizeof(id), &bytes) != 1 || bytes != 0 || id[0] != '\0')) {
+        cstr_copy(error, sizeof(error),
+                "initial interaction state did not fail closed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var first=document.getElementById('first');"
+            "var second=document.getElementById('second');"
+            "var panel=document.getElementById('panel');"
+            "String(window.selectorInteractionReady===true)+'|' +"
+            "String(first.matches(':hover'))+'|' +"
+            "String(second.matches(':active'))+'|' +"
+            "String(document.querySelector(':hover')===null)+'|' +"
+            "String(document.querySelectorAll(':active').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial interaction selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok) {
+        rc = PCore_InteractionSetAt(document,
+                first_x + first_w / 2, first_y + first_h / 2,
+                PCORE_INTERACTION_HOVER);
+    }
+    if (ok && (rc != 1 ||
+            PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_HOVER, id, sizeof(id), &bytes) != 0 ||
+            strcmp(id, "first") != 0 || bytes != 5)) {
+        _snprintf(error, sizeof(error) - 1,
+                "hover state bridge failed rc=%d id=%s bytes=%d",
+                rc, id, bytes);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(first.matches(':hover'))+'|' +"
+            "String(second.matches(':hover'))+'|' +"
+            "String(panel.matches(':hover'))+'|' +"
+            "String(document.querySelector(':hover')===first)+'|' +"
+            "String(document.querySelectorAll(':hover').length===1)+'|' +"
+            "String(first.matches(':hover(foo)'))+'|' +"
+            "String(first.matches('::hover'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|false|true|true|false|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "hover selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok) {
+        rc = PCore_InteractionSetAt(document,
+                second_x + second_w / 2, second_y + second_h / 2,
+                PCORE_INTERACTION_ACTIVE);
+    }
+    if (ok && (rc != 1 ||
+            PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_ACTIVE, id, sizeof(id), &bytes) != 0 ||
+            strcmp(id, "second") != 0 || bytes != 6 ||
+            PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_ACTIVE, id, 2, &bytes) != 2 ||
+            bytes != 6 || id[0] != '\0')) {
+        _snprintf(error, sizeof(error) - 1,
+                "active state bridge failed rc=%d id=%s bytes=%d",
+                rc, id, bytes);
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(first.matches(':hover'))+'|' +"
+            "String(first.matches(':active'))+'|' +"
+            "String(second.matches(':active'))+'|' +"
+            "String(document.querySelector(':active')===second)+'|' +"
+            "String(document.querySelectorAll(':active').length===1)+'|' +"
+            "String(panel.matches(':active'));",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|true|true|true|false") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "active selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionUnregisterInteractionElementCallbacks(
+            g_browser_script_session.session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "interaction selector bridge unregister failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "String(first.matches(':hover'))+'|' +"
+            "String(second.matches(':active'))+'|' +"
+            "String(document.querySelector(':hover')===null)+'|' +"
+            "String(document.querySelector(':active')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "interaction selectors did not fail closed after unregister: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && PCore_InteractionClear(document,
+            PCORE_INTERACTION_ACTIVE | PCORE_INTERACTION_HOVER) < 0) {
+        cstr_copy(error, sizeof(error),
+                "interaction state clear failed");
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1165 FAIL", error[0] != '\0' ? error :
+                "interaction selector contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1165 OK",
+            "Browser :hover and :active selectors follow Core pointer"
+            " interaction ids and fail closed without the bridge.");
     return TRUE;
 }
 
@@ -98375,6 +98704,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1162: ok = test1162_browser_selector_lang_contract(); break;
         case 1163: ok = test1163_browser_selector_group_contract(); break;
         case 1164: ok = test1164_browser_selector_has_contract(); break;
+        case 1165: ok = test1165_browser_selector_interaction_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

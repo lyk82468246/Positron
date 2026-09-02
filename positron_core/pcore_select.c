@@ -12,8 +12,8 @@
  * self-contained: it talks to libdom through core primitives only (no NetSurf
  * "corestring" table, no html-content structures). Selectors that need more
  * machinery than this first cut provides - dynamic pseudo-classes (:visited,
- * ...) - are stubbed to "no match"; :hover is backed by the document
- * interaction state; type / class / id / attribute /
+ * ...) - are stubbed to "no match"; :active and :hover are backed by the
+ * document interaction state; type / class / id / attribute /
  * static pseudo-classes / descendant / sibling structure all work.
  *
  * C89 only.
@@ -3807,10 +3807,11 @@ static void pcore_copy_dom_string(dom_string *value, char *buffer,
     buffer[copy_length] = '\0';
 }
 
-PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
-        char *out_id, int id_capacity, int *out_bytes)
+static int pcore_interaction_element_id(HANDLE hDoc,
+        unsigned int state_flags, char *out_id, int id_capacity,
+        int *out_bytes)
 {
-    dom_node *focus_node;
+    dom_node *state_node;
     dom_string *id;
     const char *data;
     size_t length;
@@ -3821,17 +3822,28 @@ PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
     if (out_id != NULL && id_capacity > 0) {
         out_id[0] = '\0';
     }
-    if (hDoc == NULL || out_bytes == NULL || id_capacity < 0) {
+    if (hDoc == NULL || out_bytes == NULL || id_capacity < 0 ||
+            (state_flags != PCORE_INTERACTION_FOCUS &&
+            state_flags != PCORE_INTERACTION_ACTIVE &&
+            state_flags != PCORE_INTERACTION_HOVER)) {
         return 1;
     }
-    focus_node = NULL;
-    pcore_interaction_snapshot((dom_document *) hDoc, &focus_node,
-            NULL, NULL);
-    if (focus_node == NULL) {
+    state_node = NULL;
+    if (state_flags == PCORE_INTERACTION_FOCUS) {
+        pcore_interaction_snapshot((dom_document *) hDoc, &state_node,
+                NULL, NULL);
+    } else if (state_flags == PCORE_INTERACTION_ACTIVE) {
+        pcore_interaction_snapshot((dom_document *) hDoc, NULL,
+                &state_node, NULL);
+    } else {
+        pcore_interaction_snapshot((dom_document *) hDoc, NULL, NULL,
+                &state_node);
+    }
+    if (state_node == NULL) {
         return 1;
     }
     id = NULL;
-    if (dom_html_element_get_id(focus_node, &id) != DOM_NO_ERR ||
+    if (dom_html_element_get_id(state_node, &id) != DOM_NO_ERR ||
             id == NULL) {
         return 1;
     }
@@ -3854,6 +3866,21 @@ PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
     out_id[length] = '\0';
     dom_string_unref(id);
     return 0;
+}
+
+PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
+        char *out_id, int id_capacity, int *out_bytes)
+{
+    return pcore_interaction_element_id(hDoc, PCORE_INTERACTION_FOCUS,
+            out_id, id_capacity, out_bytes);
+}
+
+PCORE_API int PCore_InteractionStateElementId(HANDLE hDoc,
+        unsigned int state_flags, char *out_id, int id_capacity,
+        int *out_bytes)
+{
+    return pcore_interaction_element_id(hDoc, state_flags, out_id,
+            id_capacity, out_bytes);
 }
 
 PCORE_API int PCore_GetInlineScriptCount(HANDLE hDoc)

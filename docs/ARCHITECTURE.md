@@ -79,7 +79,7 @@ bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必�
 
 每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存上限，不把该运行时当作完整浏览器沙箱。
 
-`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 26。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement` 和 `HTMLElement.focus()`/`blur()` 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。
+`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 27。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()` 和可选 pointer-interaction selector 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。
 
 ### `positron_core.dll`
 
@@ -95,9 +95,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 表单值、约束验证、提交、reset 和 successful controls；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
-- 当前交互焦点节点的有界 id 查询；`PCore_InteractionFocusElementId` 只复制非空
-  UTF-8 id 和完整字节数，不改变焦点、style 或 layout，无法解析或没有 id 时
-  fail closed；
+- 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
+  `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
+  focus/active/hover 状态、style 或 layout，无法解析、没有 id、状态组合非法或
+  缓冲不足时 fail closed；
 - 按 DOM id 解析已布局且符合有界焦点资格的目标，并在宿主焦点事务中更新 Core
   focus node；`PCore_FocusTargetInfoById` 只返回 geometry/kind，
   `PCore_InteractionFocusById` 只更新 Core 状态，page-level focus reveal、native
@@ -142,6 +143,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律
   回退到 `document.body`；未注册 callback 的 session 不安装该可选属性；
+- 可选的 pointer-interaction selector 投影：宿主注册
+  `PBrowserScriptInteractionCallbacks` 后，Browser 在每次 selector 查询时按
+  `"active"`/`"hover"` 读取当前 id，并以精确节点匹配 `:active`/`:hover`；空、过长、
+  失效或未注册 callback 安全地不匹配。Browser 不派发 pointer 事件、不更新 Core
+  状态、不自动 style/layout/paint；hit-test、按下/释放/移动时机、失效和视觉由宿主
+  负责；
 - 可选的 `HTMLElement.focus()`/`blur()` 请求桥：宿主注册
   `PBrowserScriptFocusRequestCallbacks` 或其 Ex 版本后，Browser 在 bootstrap 后
   安装方法，验证 id 与操作值并同步调用宿主 typed callback；宿主用 Core 的按 id
@@ -300,7 +307,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，宿主不复制 box tree 或滚动模型；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
-  并在需要脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
+  把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
+  脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
   宿主负责按 id 验证 Core 几何/资格、遵守 Ex 的 `prevent_scroll` 并执行
   page-level scroll reveal、native HWND 切换、focus family 事件和重绘调度；页面提交后
   若启用 `autofocus`，宿主还负责在 layout/native 子控件创建完成后显式调用 Core 的

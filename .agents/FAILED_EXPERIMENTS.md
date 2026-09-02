@@ -13,6 +13,24 @@
 
 ## 失败与暂挂
 
+### next720 首轮设备门：pointer-interaction selector 桥超过脚本槽位 — 已替代
+
+问题：在 Browser 已同时启用 DOM、validation、contenteditable、导航、activeElement
+和 focus request 桥的标准组合上，next720 新增 `:active`/`:hover` 的 interaction
+callback 后，首轮 `1164,1165,999` 设备门在 TEST1164 的 Browser bootstrap 阶段失败。
+设备部署已完成，日志明确为 `native function limit exceeded`；没有证据表明 WMDC、RAPI
+或设备连接异常，后续测试因 TEST1164 失败而停止。
+
+替代方案：将 `positron_script` 的公共 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 从 26 精确提升
+到 27，保留固定槽位和注册失败的 fail-closed 语义；同步修订架构、脚本和限制文档，
+然后用同一批 Debug 产物重跑设备门。首轮目录
+`tmp/device-runs/20260902-163124-next720-interaction-pseudos/` 只作为失败取证，
+不是产品基线。
+
+决定：后续新增 Browser 全局 callback 前必须先核对完整注册组合和槽位余量。遇到同类
+失败时，先依据脚本错误与门日志判断资源预算，不要杀掉或重连已经工作的 WMDC，也不要
+通过跳过 callback、删减断言或扩大无界预算来掩盖问题。
+
 ### 2026-09-02 nightly 发布：受限进程误报 GitHub CLI 凭据失效 — 环境误报
 
 问题：在受限 Codex 进程中执行 `gh auth status` 时，进程身份为

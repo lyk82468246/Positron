@@ -37,14 +37,15 @@
 callback 的 `:valid`/`:invalid`、通过 activeElement callback 的 `:focus`/`:focus-within`
 、静态的 `:link`/`:any-link`、当前 fragment 与元素 id 对齐的有界 `:target`、沿父链
 继承语言的有界 `:lang()`、单一简单 compound 参数的 `:not()` 以及最多 16 个简单
-compound 分支的 `:is()`/`:where()`，以及最多 16 个后代/子代/兄弟相对分支的 `:has()`；
+compound 分支的 `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，
+以及通过可选 interaction callback 读取 Core 精确状态的 `:active`/`:hover`；
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
-Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、fieldset/optgroup 继承、`:hover`、
-`:active`、`:visited` 等交互/链接伪类、伪元素、属性大小写修饰符、namespace、
+Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、fieldset/optgroup 继承、`:visited`、
+pointer capture 和完整交互/链接状态、伪元素、属性大小写修饰符、namespace、
 shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
@@ -73,7 +74,8 @@ SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严
   option live selected 的 `:checked`、validation `:valid`/`:invalid` 和 activeElement
   驱动的 `:focus`/`:focus-within`、静态链接 `:link`/`:any-link`、有界 `:target`、单一语言
   标签的 `:lang()`、单一简单 compound 参数的 `:not()`、最多 16 个简单 compound 分支的
-  `:is()`/`:where()` 以及最多 16 个后代/子代/兄弟相对分支的 `:has()`；完整 CSS
+  `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，以及显式 interaction
+  callback 驱动的 `:active`/`:hover`；完整 CSS
   Selectors 语法仍不作为默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。

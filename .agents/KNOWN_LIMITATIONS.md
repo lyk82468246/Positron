@@ -25,17 +25,12 @@
 
 - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
 - CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
-- 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser 脚本 selector 目前只覆盖简单 compound selector、顶层逗号列表、后代/子代/相邻兄弟/一般兄弟组合器，六类有界属性匹配，`:checked` 的 input/option 状态、`:valid`/`:invalid` 的 form 与可验证控件状态，以及只接受单一简单 compound 参数的 `:not()`、`:is()`/`:where()` 的最多 16 个简单 compound 分支、`:has()` 的最多 16 个相对简单 compound 分支、有界 `:target` 和单一语言标签的 `:lang()`，不等于 CSS selector 引擎的完整语法。
+- 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser 脚本 selector 目前只覆盖简单 compound selector、顶层逗号列表、后代/子代/相邻兄弟/一般兄弟组合器，六类有界属性匹配，`:checked` 的 input/option 状态、`:valid`/`:invalid` 的 form 与可验证控件状态，以及只接受单一简单 compound 参数的 `:not()`、`:is()`/`:where()` 的最多 16 个简单 compound 分支、`:has()` 的最多 16 个相对简单 compound 分支、有界 `:target` 和单一语言标签的 `:lang()`；注册 interaction callback 后还可读取 Core 精确 active/hover 节点的 `:active`/`:hover`，不等于 CSS selector 引擎的完整语法。
 - `details`/`summary`、`hidden` 等只有受限静态或交互子集；`dialog` 已有 Browser 脚本的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id、宿主驱动的 Escape 请求桥接和参考宿主的有界 backdrop 点击策略。Core/Browser 组合支持有 id 祖先 dialog 的显式、脚本和隐式 `method="dialog"` 提交，包括 validation、可取消 `submit`、submitter value 与直接 close；无 id、无祖先 dialog 或跨文档目标会 fail closed。宿主可以组合 Core 的 scoped focus snapshot 实现顺序 Tab/Shift+Tab 子树范围，并调用 `PCore_PaintDocumentWithModal` 得到实体色遮罩和指定 dialog 重绘；这不是 CSS `::backdrop`、透明合成或跨文档 top layer。Browser 不自动接管平台消息；宿主必须显式调用这些边界。
 - Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；`PCore_FocusTargetInfoWithin` 可按已知 DOM id 限定到一个祖先子树；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。`PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus` 现在允许宿主在 style/layout 与 native 子控件创建完成后，按 DOM 顺序选择第一个符合相同资格的 `autofocus` 目标；这只是一次显式、有界的事务，不是 Browser 自主生命周期，也不提供完整焦点导航、动态焦点区域、focus ring 或跨窗口焦点。目标必须有可用 layout，深度超限、无 id 或 id 超出 Browser 桥接容量时宿主应安全回退；无 id 目标的事件可通过 `PCore_EventDispatchFocus` 派发，但 Browser 的 `document.activeElement` 仍按 id projection 合同回退到 `document.body`。
 - Core/Browser 对带 DOM `id` 的常见 block/replaced/flex overflow box 提供 retained scrollbar offset、`scrollLeft`/`scrollTop`、`scrollTo()`/`scrollBy()` 和宿主 pointer 同步；这只是有界的两个轴桥接，不能代表完整 CSS overflow 语义。client 尺寸是 retained scrollport 的 padding 区域，滚动条覆盖在边缘。
 - Browser script session 已能由宿主显式维护顶层窗口 focus/blur 状态，并让 `document.hasFocus()` 与去重后的 window 事件保持一致；这不等于完整浏览器焦点策略，native 控件焦点、焦点矩形、焦点陷阱和 OEM/跨窗口激活仍由宿主负责。
-- Core 的 `PCore_InteractionFocusElementId` 只报告当前交互状态中、带非空 UTF-8
-  id 的焦点节点；没有焦点、没有 id、节点过时或缓冲不足时调用方必须按失败/回退
-  处理。Browser 的 `document.activeElement` 是显式 callback 注册后才安装的可选
-  projection，通过现有 ID lookup 返回元素，否则返回 `document.body`；Browser 不自主
-  执行初始 `autofocus`，宿主可在 layout/native 子控件创建后显式调用 Core 的有界入口；
-  这仍不提供完整焦点算法、native 焦点矩形或跨窗口焦点。
+- Core 的 `PCore_InteractionFocusElementId` 与 `PCore_InteractionStateElementId` 只报告当前交互状态中、带非空 UTF-8 id 的节点；没有对应状态、没有 id、节点过时、状态组合非法或缓冲不足时调用方必须按失败/回退处理。Browser 的 `document.activeElement` 是显式 callback 注册后才安装的可选 projection，通过现有 ID lookup 返回元素，否则返回 `document.body`；`:active`/`:hover` 另由显式 interaction callback 投影当前精确节点，注销或无效来源时安全不匹配。Browser 不自主执行初始 `autofocus`，宿主可在 layout/native 子控件创建后显式调用 Core 的有界入口；这仍不提供完整焦点算法、pointer capture、native 焦点矩形或跨窗口焦点。
 - `contenteditable` 目前覆盖单元素的祖先继承、`isContentEditable`、有界纯文本 mutation、宿主编排的 `beforeinput`/`input`，Browser 的 `selectionStart`/`selectionEnd`/`selectionDirection`，以及去重后的非冒泡、不可取消 `selectionchange`。带 id 且已布局的有效 editing host 可由宿主映射为最多 16 个 WM multiline EDIT 代理；无修饰鼠标拖选和 Shift/方向键扩展会把 CRLF 位置转换为逻辑 UTF-16 并报告 forward/backward 方向，捕获丢失、取消模式和焦点切换会结束未完成手势而不重复通知。文本上限为 8192 UTF-8 字节，嵌套继承后代不重复代理。宿主另有受限 `CF_UNICODETEXT` paste/cut 事务，但 Range/Selection 对象、ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有的自动重复与复杂行导航、design mode 和完整 IME 组合仍未实现。
 - 字体 fallback 使用 bundled 子集与系统 GDI，不能保证桌面浏览器字形、kerning、emoji 彩色渲染或抗锯齿一致。
 - WM6 高 DPI、字体度量和设备色深会产生量化差异；自动像素断言不能取代整体视觉判断。
@@ -62,7 +57,7 @@
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
-- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、表单控件直接 `disabled` 属性对应的 `:disabled`/`:enabled`、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态只限带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性）；`:target` 只在当前 URL fragment 解码后等于元素当前非空 `id` 时匹配，无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor 或 stale wrapper 都安全不匹配；`:not()` 只接受单一简单 compound 参数，`:is()`/`:where()` 只接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 只接受最多 16 个相对简单 compound 分支，且每个后代/兄弟遍历最多 64 步。该子集不推导 fieldset/optgroup 继承；没有 visited-state 存储，因此 `:visited`、`:hover`、`:active` 等其他动态伪类、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。`:has()` 的链式相对 selector、完整分支语法和更深遍历仍未实现；`:target` 不拥有 fragment reveal 或页面滚动，真实页面视觉仍需宿主验收。
+- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、表单控件直接 `disabled` 属性对应的 `:disabled`/`:enabled`、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态只限带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性）；`:target` 只在当前 URL fragment 解码后等于元素当前非空 `id` 时匹配，无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor 或 stale wrapper 都安全不匹配；`:not()` 只接受单一简单 compound 参数，`:is()`/`:where()` 只接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 只接受最多 16 个相对简单 compound 分支，且每个后代/兄弟遍历最多 64 步；`:active`/`:hover` 仅在宿主注册 interaction callback 并返回当前 Core 状态的精确 id 时匹配。该子集不推导 fieldset/optgroup 继承；没有 visited-state 存储，因此 `:visited`、伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。`:has()` 的链式相对 selector、完整分支语法和更深遍历仍未实现；`:target` 不拥有 fragment reveal 或页面滚动，真实页面视觉仍需宿主验收。
 - `:lang()` 是同一 selector 子集中的有界扩展：只接受单一 ASCII 语言标签，沿最多 64 层 `parentElement` 读取继承语言，`lang` 优先于 `xml:lang`，按大小写不敏感的精确值或 `-` 子标签前缀匹配；空值、非法参数、语言标签列表和引号形式 fail closed。该实现不代表完整 BCP 47 解析或 namespace 语言规则。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的
   有限 block/inline 对齐，只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到
@@ -93,7 +88,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
-- script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 710 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 26。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement` 和 `HTMLElement.focus()`/`blur()` 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
+- script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 710 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 27。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()` 和可选 pointer-interaction selector 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -268,6 +263,12 @@
   `matches()`、`closest()`、两种 query、属性/类 mutation、表单状态和查询顺序保持一致。
   空分支、链式关系、伪元素、未闭合或尾随逗号等输入安全 fail closed。它不代表完整
   Selectors `:has()`、任意相对 selector、shadow DOM 或真实页面视觉。
+- TEST1165 覆盖 Core pointer interaction 到 Browser selector 的可选映射：
+  `PCore_InteractionStateElementId` 通过 interaction callback 提供当前 active/hover
+  id，`matches()`、`closest()`、两种 query 只匹配精确节点；命中后的状态切换、size-
+  probe、过小缓冲、非法伪类参数和 callback 注销都必须 fail closed。该能力不派发
+  pointer 事件、不自动重做 style/layout/paint，不提供 pointer capture、`:visited` 或
+  真实触摸/视觉保证。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

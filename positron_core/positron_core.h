@@ -964,6 +964,17 @@ PCORE_API int PCore_InteractionClear(HANDLE hDoc,
  * focus or style state is changed. */
 PCORE_API int PCore_InteractionFocusElementId(HANDLE hDoc,
         char *out_id, int id_capacity, int *out_bytes);
+/* Read the non-empty UTF-8 id of one current interaction-state node. The
+ * state_flags argument must contain exactly one of PCORE_INTERACTION_FOCUS,
+ * PCORE_INTERACTION_ACTIVE or PCORE_INTERACTION_HOVER. The copy and return
+ * contract matches PCore_InteractionFocusElementId: out_bytes is always the
+ * complete byte count, a NULL/zero-capacity buffer is a size probe, 0 means
+ * the state has an id-addressable element, 1 means no usable state or invalid
+ * input, and 2 means a supplied buffer is too small. This read-only query
+ * never changes interaction, DOM, style or layout state. */
+PCORE_API int PCore_InteractionStateElementId(HANDLE hDoc,
+        unsigned int state_flags, char *out_id, int id_capacity,
+        int *out_bytes);
 /* Resolve one id-addressable, laid-out focus target using the same bounded
  * eligibility rules as PCore_FocusTargetInfo(). The result includes the
  * document-space geometry and focus-target kind, but does not change focus.

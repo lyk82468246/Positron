@@ -47,6 +47,9 @@ extern "C" {
 #define PBROWSER_SCRIPT_DIALOG_VALUE_MAX 1024
 #define PBROWSER_SCRIPT_DIALOG_ID_MAX 1024
 #define PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX 1024
+#define PBROWSER_SCRIPT_INTERACTION_STATE_MAX 16
+#define PBROWSER_SCRIPT_INTERACTION_ACTIVE "active"
+#define PBROWSER_SCRIPT_INTERACTION_HOVER "hover"
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -414,6 +417,24 @@ typedef struct PBrowserScriptActiveElementCallbacks {
     void *pw;
     PBrowserScriptGetActiveElementFn get_active_element;
 } PBrowserScriptActiveElementCallbacks;
+
+/* The host supplies one current pointer-interaction element id for the
+ * requested state. `state` is one of PBROWSER_SCRIPT_INTERACTION_ACTIVE or
+ * PBROWSER_SCRIPT_INTERACTION_HOVER and is borrowed for this synchronous
+ * call only; the returned pointer is borrowed for the same call.
+ * NULL/empty means that the state is not id-addressable. Registering this
+ * table enables the bounded Browser :active and :hover selector pseudos. A
+ * session without the bridge fails
+ * closed for those selectors. The callback does not dispatch events or
+ * mutate Core state; hosts own the pointer transaction and repaint/restyle
+ * policy. */
+typedef const char *(*PBrowserScriptGetInteractionElementFn)(void *pw,
+        const char *state);
+typedef struct PBrowserScriptInteractionCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetInteractionElementFn get_interaction_element;
+} PBrowserScriptInteractionCallbacks;
 
 /* Typed host adapter for script-visible HTMLElement.focus()/blur(). The
  * browser layer owns the methods and request validation; the host resolves
@@ -1610,6 +1631,11 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterActiveElementCallbacks(
         HANDLE hSession,
         const PBrowserScriptActiveElementCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterInteractionElementCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptInteractionCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterInteractionElementCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacks(
         HANDLE hSession,

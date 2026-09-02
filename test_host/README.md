@@ -69,7 +69,7 @@ tests=13,20,27,999
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
-  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()` 查询（TEST1146–1164）；
+  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover` 查询（TEST1146–1165）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -196,6 +196,12 @@ TEST1164 断言 Browser selector 的有界 `:has()`：最多 16 个相对简单 
 状态伪类、类/属性 mutation 和 64 步遍历预算；空分支、链式关系、未闭合或尾随逗号、
 伪元素等不支持输入必须 fail closed。宿主只提供既有 DOM relation/attribute callback，
 不得复制相对 selector 的解析或匹配规则。
+
+TEST1165 断言 Core 的当前 hover/active id 通过 Browser interaction callback 投影到
+`:hover`/`:active`：命中两个已布局 button 后，`matches()`、`querySelector()` 与
+`querySelectorAll()` 只匹配精确状态节点，带参数和伪元素形式 fail closed；Core 的
+size-probe、过小缓冲、组合状态和 Browser callback 注销也必须安全处理。宿主只接线
+`PCore_InteractionStateElementId`，不复制交互状态、selector 解析或匹配规则。
 
 ### Native EDIT/SELECT/button/file
 

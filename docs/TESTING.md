@@ -278,7 +278,8 @@ TEST1160 覆盖 Browser selector 对静态链接状态的有界映射：`:link`/
 带 `href` 属性的 `<a>`/`<area>`，空属性值也算链接；移除或新增 `href` 后，
 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 的结果与文档顺序
 必须立即更新。带参数、伪元素、`:visited` 和尾随逗号等不支持输入必须 fail closed。
-Browser 没有 visited-state 存储；真实链接绘制、hover/active、导航和历史样式仍属于
+Browser 没有 visited-state 存储；脚本 `:active`/`:hover` 由 TEST1165 的可选
+interaction callback 单独覆盖，真实链接绘制、pointer 时机、导航和历史样式仍属于
 宿主集成与人工观察。
 
 TEST1161 覆盖 Browser selector 的有界 `:target`：当前 URL fragment 经
@@ -308,6 +309,14 @@ compound 分支，支持无前缀后代、`>` 直接子代、`+` 相邻兄弟和
 `querySelectorAll()` 使用同一实时结果，夹具还验证属性操作符、`button:disabled`、
 类/属性 mutation、分支数量上限和查询顺序。空分支、链式关系、伪元素、未闭合或尾随
 逗号等输入必须 fail closed；这不是完整 Selectors `:has()` 或任意相对 selector 语法。
+
+TEST1165 覆盖 Core 指针交互状态到 Browser selector 的可选映射：宿主以
+`PBrowserScriptInteractionCallbacks` 读取 `PCore_InteractionStateElementId` 的
+`active`/`hover` id，`matches()`、`closest()`、`querySelector()` 与
+`querySelectorAll()` 只匹配当前精确节点。夹具覆盖 hit-test 后的状态切换、Core
+size-probe 和过小缓冲、`:active`/`:hover` 的参数/伪元素拒绝，以及注销 callback
+后的 fail-closed 行为。Browser 不自动派发 pointer 事件、重做 style/layout 或重绘；
+真实触摸、按下/释放时机、pointer capture 和视觉仍由宿主与设备验收。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

@@ -4655,6 +4655,14 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(typeof g.__pcoreGetActiveElement!=='function'){return '';}"
         "try{id=String(g.__pcoreGetActiveElement({})||'');}"
         "catch(activeElementError){return '';}return id;}"
+        "function interactionId9(name){var id;"
+        "if((name!=='active'&&name!=='hover')||"
+        "typeof g.__pcoreGetInteractionElement!=='function'){return '';}"
+        "try{id=String(g.__pcoreGetInteractionElement({state:name})||'');}"
+        "catch(interactionElementError){return '';}return id;}"
+        "function interactionState9(owner,name){var id;"
+        "if(!owner||(name!=='active'&&name!=='hover')){return false;}"
+        "id=interactionId9(name);return id!==''&&owner.__id===id;}"
         "function focusState9(owner,name){var id;var n;var depth;"
         "if(!owner){return false;}id=activeId9();if(id===''){return false;}"
         "if(name==='focus'){return owner.__id===id;}"
@@ -4753,6 +4761,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(name==='nth-last-child'){index=elementIndex9(owner,true,false);return arg!==null&&nth9(index,arg);}"
         "if(name==='nth-of-type'){index=elementIndex9(owner,false,typeOnly);return arg!==null&&nth9(index,arg);}"
         "if(name==='nth-last-of-type'){index=elementIndex9(owner,true,typeOnly);return arg!==null&&nth9(index,arg);}"
+        "if(name==='active'||name==='hover'){return arg===null&&interactionState9(owner,name);}"
         "if(name==='focus'||name==='focus-within'){return arg===null&&focusState9(owner,name);}"
         "if(name==='link'||name==='any-link'){return arg===null&&linkState9(owner,name);}"
         "if(name==='target'){return arg===null&&targetState9(owner);}"
@@ -5416,6 +5425,10 @@ typedef struct p_browser_script_active_element_binding {
     PBrowserScriptActiveElementCallbacks callbacks;
 } p_browser_script_active_element_binding;
 
+typedef struct p_browser_script_interaction_binding {
+    PBrowserScriptInteractionCallbacks callbacks;
+} p_browser_script_interaction_binding;
+
 typedef struct p_browser_script_focus_request_binding {
     HANDLE session;
     int extended;
@@ -5593,6 +5606,7 @@ typedef struct p_browser_script_session {
     int bootstrap_ready;
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_active_element_binding *active_element;
+    p_browser_script_interaction_binding *interaction_element;
     p_browser_script_focus_request_binding *focus_request;
     p_browser_script_dom_relation_binding *dom_relation;
     p_browser_script_dom_write_binding *dom_write;
@@ -6196,6 +6210,38 @@ static int p_browser_script_get_active_element(void *pw,
             PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
         element_id = "";
     }
+    return p_browser_script_write_string(element_id, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_get_interaction_element(void *pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    p_browser_script_interaction_binding *binding;
+    HANDLE root;
+    HANDLE object;
+    const char *state;
+    const char *element_id;
+
+    binding = (p_browser_script_interaction_binding *) pw;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    state = (object != NULL) ? PJson_GetString(object, "state") : NULL;
+    element_id = NULL;
+    if (binding != NULL && root != NULL && state != NULL &&
+            strlen(state) < PBROWSER_SCRIPT_INTERACTION_STATE_MAX &&
+            (strcmp(state, PBROWSER_SCRIPT_INTERACTION_ACTIVE) == 0 ||
+            strcmp(state, PBROWSER_SCRIPT_INTERACTION_HOVER) == 0) &&
+            binding->callbacks.get_interaction_element != NULL) {
+        element_id = binding->callbacks.get_interaction_element(
+                binding->callbacks.pw, state);
+    }
+    if (element_id == NULL || strlen(element_id) >=
+            PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+        element_id = "";
+    }
+    PJson_Free(root);
     return p_browser_script_write_string(element_id, out_json,
             out_capacity, out_len);
 }
@@ -7519,6 +7565,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->bootstrap_ready = 0;
     session->dom_read = NULL;
     session->active_element = NULL;
+    session->interaction_element = NULL;
     session->focus_request = NULL;
     session->dom_relation = NULL;
     session->dom_write = NULL;
@@ -7584,6 +7631,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreGetActiveElement", -1);
         free(session->active_element);
         session->active_element = NULL;
+    }
+    if (session->interaction_element != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreGetInteractionElement", -1);
+        free(session->interaction_element);
+        session->interaction_element = NULL;
     }
     if (session->focus_request != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -8188,6 +8241,60 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
             "__pcoreGetActiveElement", -1);
     free(session->active_element);
     session->active_element = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterInteractionElementCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptInteractionCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_interaction_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptInteractionCallbacks) ||
+            callbacks->get_interaction_element == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->interaction_element != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_interaction_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetInteractionElement", -1,
+            p_browser_script_get_interaction_element, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->interaction_element = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterInteractionElementCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->interaction_element == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetInteractionElement", -1);
+    free(session->interaction_element);
+    session->interaction_element = NULL;
     return rc;
 }
 
