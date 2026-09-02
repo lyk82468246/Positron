@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-08-31
+更新时间：2026-09-02
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -12,6 +12,23 @@
 - **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
 ## 失败与暂挂
+
+### 2026-09-02 nightly 发布：受限进程误报 GitHub CLI 凭据失效 — 环境误报
+
+问题：在受限 Codex 进程中执行 `gh auth status` 时，进程身份为
+`laptop-li\codexsandboxoffline`；虽然 `USERPROFILE` 指向 `C:\Users\Joe`，它仍无法读取
+Joe 用户的 Windows keyring，于是把 `lyk82468246` 报为 `invalid`。普通 PowerShell 的
+用户身份 `laptop-li\joe` 显示同一 keyring 登录正常。首次 nightly 发布因此在脚本的认证
+前置检查处停止，没有修改 `nightly` tag 或 release。
+
+修复证据：在 `laptop-li\joe` 上确认 `gh auth status` 后运行
+`scripts\package_nightly.bat`，成功覆盖 `nightly` pre-release 和
+`positron-nightly.zip`（源提交 `989c3276`、Debug、19 个 `ZIP_STORED` 条目）。
+
+决定：发布前必须以实际执行发布脚本的用户身份核对 `whoami` 和 `gh auth status`；仅
+`codexsandboxoffline` 上的 `invalid` 不能判定 Joe 的登录失效。不要据此反复要求用户登录，
+也不要在无法访问用户 keyring 的上下文中继续尝试 release API；先切换到
+`laptop-li\joe`，让脚本的认证检查在任何 tag/release 修改前完成。
 
 ### next696 首轮设备门：新增 focus request bridge 超过脚本槽位 — 已替代
 
