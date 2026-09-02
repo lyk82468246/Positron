@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1161
+#define TEST_MAX_NUMBER 1162
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -39695,6 +39695,199 @@ static BOOL test1161_browser_selector_target_contract(void)
     }
     show_info(L"TEST 1161 OK",
             "Selector :target follows the current decoded fragment id"
+            " and fails closed for unsupported input.");
+    return TRUE;
+}
+
+/* TEST 1162 - bounded language selector pseudo-class. */
+static BOOL test1162_browser_selector_lang_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html lang='en'><body id='body' lang='en-US'>"
+        "<section id='zh' lang='zh-Hant'><div id='inherit'>"
+        "<span id='deep'>Deep</span></div></section>"
+        "<p id='xml' xml:lang='fr-CA'>French</p>"
+        "<p id='empty' lang=''>Empty</p>"
+        "<p id='none'>None</p>"
+        "<script>window.selectorLangReady=true;</script>"
+        "</body></html>";
+    static const char URL[] = "https://positron.local/selector-lang";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    executed = -1;
+    ignored = -1;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, URL,
+            NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector lang script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 240;
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = bridge->runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "var zh=document.getElementById('zh');"
+            "var inherit=document.getElementById('inherit');"
+            "var deep=document.getElementById('deep');"
+            "var xml=document.getElementById('xml');"
+            "var empty=document.getElementById('empty');"
+            "var none=document.getElementById('none');"
+            "String(deep.matches(':lang(zh)'))+'|' +"
+            "String(deep.matches(':lang(zh-Hant)'))+'|' +"
+            "String(deep.matches(':lang(en)'))+'|' +"
+            "String(deep.closest('section:lang(zh)')===zh)+'|' +"
+            "String(document.querySelector(':lang(fr)')===xml)+'|' +"
+            "String(document.querySelectorAll(':lang(fr)').length===1)+'|' +"
+            "String(xml.matches(':lang(fr-CA)'))+'|' +"
+            "String(empty.matches(':lang(en)'))+'|' +"
+            "String(none.matches(':lang(en)'))+'|' +"
+            "String(deep.matches(':lang(zh-TW)'))+'|' +"
+            "String(deep.matches(':lang()'))+'|' +"
+            "String(deep.matches(':lang(en,fr)'))+'|' +"
+            "String(deep.matches(\":lang('en')\"))+'|' +"
+            "String(document.querySelectorAll('::lang').length===0)+'|' +"
+            "String(document.querySelectorAll(':lang(en),').length===0);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result,
+            "true|true|false|true|true|true|true|false|true|false|"
+            "false|false|false|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "initial language selector state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "xml.setAttribute('lang','de-DE');"
+            "String(xml.matches(':lang(fr)'))+'|' +"
+            "String(xml.matches(':lang(de)'))+'|' +"
+            "String(document.querySelector(':lang(fr)')===null)+'|' +"
+            "String(document.querySelector(':lang(de)')===xml);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "false|true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "language attribute precedence failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "xml.removeAttribute('lang');"
+            "String(xml.matches(':lang(fr)'))+'|' +"
+            "String(document.querySelector(':lang(fr)')===xml);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "xml language fallback failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "zh.setAttribute('lang','en-GB');"
+            "String(deep.matches(':lang(en)'))+'|' +"
+            "String(deep.matches(':lang(en-GB)'))+'|' +"
+            "String(deep.matches(':lang(zh)'))+'|' +"
+            "String(document.querySelector(':lang(zh)')===null);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|false|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "language mutation state failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(
+            "zh.removeAttribute('lang');"
+            "String(deep.matches(':lang(en)'))+'|' +"
+            "String(deep.matches(':lang(en-GB)'))+'|' +"
+            "String(deep.matches(':lang(zh)'))+'|' +"
+            "String(document.querySelector(':lang(en)')===document.documentElement);",
+            -1, error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|false|false|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "language inheritance fallback failed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    free(bridge);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        show_error(L"TEST 1162 FAIL", error[0] != '\0' ? error :
+                "selector language contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1162 OK",
+            "Selector :lang follows bounded inherited language attributes"
             " and fails closed for unsupported input.");
     return TRUE;
 }
@@ -97763,6 +97956,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1159: ok = test1159_browser_selector_focus_contract(); break;
         case 1160: ok = test1160_browser_selector_link_contract(); break;
         case 1161: ok = test1161_browser_selector_target_contract(); break;
+        case 1162: ok = test1162_browser_selector_lang_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

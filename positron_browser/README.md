@@ -294,7 +294,7 @@ callback 参数和输出缓冲只在调用期间借用。
 
 selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符、有限结构伪类、
 直接表单状态、`:valid`/`:invalid`、`:focus`/`:focus-within`、静态的
-`:link`/`:any-link` 以及有界的 `:target`；`:not()` 只接受单一简单 compound
+`:link`/`:any-link`、有界的 `:target` 和 `:lang`；`:not()` 只接受单一简单 compound
 参数，其他参数 fail closed。表单状态包括 input/option 的实时 `:checked`、直接
 `disabled`/`required`，以及通过既有 validation callback 查询 `form`、input、select、
 textarea 的有效性。`:focus`/`:focus-within` 通过既有 activeElement callback 读取当前
@@ -302,7 +302,10 @@ textarea 的有效性。`:focus`/`:focus-within` 通过既有 activeElement call
 属性的 `<a>`/`<area>`，属性值可以为空；Browser 没有 visited-state 存储，因而
 `:visited` 仍然不支持。`:target` 只在当前 URL fragment 经 `decodeURIComponent` 后
 等于元素当前非空 `id` 时匹配；无 fragment、解码失败、仅有 `name` 的 named anchor、
-stale 元素或其他动态交互状态都 fail closed，不承诺 fragment 的视觉滚动。不处理
+stale 元素或其他动态交互状态都 fail closed，不承诺 fragment 的视觉滚动。`:lang()`
+只接受一个 ASCII 语言标签，按大小写不敏感的精确值或 `-` 子标签前缀匹配；语言从
+当前元素沿最多 64 层 `parentElement` 继承，元素的 `lang` 优先于 `xml:lang`，空值或
+非法标签不匹配。该有界实现不处理语言标签列表、引号形式或完整 BCP 47 规则。不处理
 fieldset/optgroup 继承、`:hover`、`:active` 等其他动态交互伪类或伪元素。
 
 ### `dialog` 生命周期
