@@ -99,6 +99,56 @@ function Write-ResultFile(
     Set-Content -LiteralPath $path -Value $lines -Encoding UTF8
 }
 
+function Get-CompletionMarker([string] $logText)
+{
+    if ($logText -match "(?m)^\[INFO\] TESTBENCH PASS\s*$") {
+        return "PASS"
+    }
+    if ($logText -match "(?m)^\[ERROR\] TESTBENCH FAIL\s*$") {
+        return "FAIL"
+    }
+    return "none"
+}
+
+function Receive-CompleteRemoteLog(
+        [string] $remotePath,
+        [string] $localPath)
+{
+    $firstText = $null
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        if (![PositronDeviceRapi]::TryCopyFileFromDevice(
+                $remotePath, $localPath)) {
+            return $false
+        }
+        $text = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8
+        if ((Get-CompletionMarker $text) -eq "none") {
+            return $false
+        }
+        if ($attempt -eq 0) {
+            $firstText = $text
+            Start-Sleep -Milliseconds 250
+        } elseif ($text -ne $firstText) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Remove-RemoteDirectorySafely([string] $remotePath)
+{
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        try {
+            [PositronDeviceRapi]::DeleteDirectoryTree($remotePath)
+            return $true
+        } catch {
+            if ($attempt -eq 0) {
+                Start-Sleep -Milliseconds 250
+            }
+        }
+    }
+    return $false
+}
+
 if ($Candidate -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]*$") {
     throw "Candidate must contain only letters, digits, dot, underscore or dash."
 }
@@ -126,6 +176,7 @@ $localStage = Join-Path $runRoot "stage"
 $localLog = Join-Path $runRoot "test_host.log"
 $resultPath = Join-Path $runRoot "device-gate-result.txt"
 $manifestPath = Join-Path $runRoot "payload-sha256.txt"
+$preflightPath = Join-Path $runRoot "device-gate-preflight.txt"
 New-Item -ItemType Directory -Path $localStage -Force | Out-Null
 
 Write-Stage "building and staging $Candidate ($Configuration)"
@@ -189,6 +240,16 @@ $manifest = foreach ($file in ($payloadFiles | Sort-Object FullName)) {
     "$hash  $relative"
 }
 Set-Content -LiteralPath $manifestPath -Value $manifest -Encoding ASCII
+
+$payloadBytesValue = ($payloadFiles | Measure-Object -Property Length -Sum).Sum
+if ($null -eq $payloadBytesValue) {
+    $payloadBytesValue = 0
+}
+$storagePayloadBytes = [uint64] $payloadBytesValue
+$storageReserveBytes = [uint64] 1048576
+$storageRequiredBytes = $storagePayloadBytes + $storageReserveBytes
+$priorEvidenceRoot = Join-Path $runRoot "prior-logs"
+New-Item -ItemType Directory -Path $priorEvidenceRoot -Force | Out-Null
 
 $rapiSource = @'
 using System;
@@ -269,6 +330,49 @@ public static class PositronDeviceRapi
         public int hrRapiInit;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StoreInformation
+    {
+        public uint dwStoreSize;
+        public uint dwFreeSize;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LargeInteger
+    {
+        public uint LowPart;
+        public uint HighPart;
+
+        public ulong ToUInt64()
+        {
+            return ((ulong) HighPart << 32) | LowPart;
+        }
+    }
+
+    public sealed class StorageProbe
+    {
+        public bool Available;
+        public bool PathSpecific;
+        public string Api;
+        public string Scope;
+        public ulong FreeBytes;
+        public ulong TotalBytes;
+        public ulong TotalFreeBytes;
+
+        public StorageProbe(bool available, bool pathSpecific,
+                string api, string scope, ulong freeBytes,
+                ulong totalBytes, ulong totalFreeBytes)
+        {
+            Available = available;
+            PathSpecific = pathSpecific;
+            Api = api;
+            Scope = scope;
+            FreeBytes = freeBytes;
+            TotalBytes = totalBytes;
+            TotalFreeBytes = totalFreeBytes;
+        }
+    }
+
     private const uint WAIT_OBJECT_0 = 0x00000000;
     private const uint WAIT_TIMEOUT = 0x00000102;
     private const uint WAIT_FAILED = 0xffffffff;
@@ -285,6 +389,18 @@ public static class PositronDeviceRapi
 
     [DllImport("rapi.dll", ExactSpelling = true)]
     private static extern uint CeGetLastError();
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeGetDiskFreeSpaceEx(
+        string directoryName, out LargeInteger freeBytesAvailableToCaller,
+        out LargeInteger totalNumberOfBytes,
+        out LargeInteger totalNumberOfFreeBytes);
+
+    [DllImport("rapi.dll", ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeGetStoreInformation(
+        out StoreInformation storeInformation);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WaitForSingleObject(
@@ -419,6 +535,48 @@ public static class PositronDeviceRapi
     public static void Disconnect()
     {
         CeRapiUninit();
+    }
+
+    public static StorageProbe QueryStorage(string directoryName)
+    {
+        LargeInteger freeBytesAvailableToCaller;
+        LargeInteger totalNumberOfBytes;
+        LargeInteger totalNumberOfFreeBytes;
+        StoreInformation storeInformation;
+
+        try {
+            if (CeGetDiskFreeSpaceEx(directoryName,
+                    out freeBytesAvailableToCaller,
+                    out totalNumberOfBytes,
+                    out totalNumberOfFreeBytes)) {
+                return new StorageProbe(true, true,
+                    "CeGetDiskFreeSpaceEx", "volume",
+                    freeBytesAvailableToCaller.ToUInt64(),
+                    totalNumberOfBytes.ToUInt64(),
+                    totalNumberOfFreeBytes.ToUInt64());
+            }
+        } catch (EntryPointNotFoundException) {
+            // Older ActiveSync/RAPI builds do not export this API.
+        } catch (MissingMethodException) {
+            // Keep the legacy fallback below for old CLR/RAPI combinations.
+        }
+
+        try {
+            if (CeGetStoreInformation(out storeInformation)) {
+                return new StorageProbe(true, false,
+                    "CeGetStoreInformation", "object-store",
+                    storeInformation.dwFreeSize,
+                    storeInformation.dwStoreSize,
+                    storeInformation.dwFreeSize);
+            }
+        } catch (EntryPointNotFoundException) {
+            // Fall through to an explicit unavailable result.
+        } catch (MissingMethodException) {
+            // Fall through to an explicit unavailable result.
+        }
+
+        return new StorageProbe(false, false, "unavailable", "unknown",
+            0, 0, 0);
     }
 
     public static void EnsureDirectory(string path)
@@ -594,6 +752,16 @@ $remoteExitCode = "not_exposed_by_rapi"
 $completionMarker = "none"
 $checkLines = @()
 $rapiConnected = $false
+$storageApi = "not_queried"
+$storageScope = "unknown"
+$storageFreeBytes = [uint64] 0
+$storageTotalBytes = [uint64] 0
+$storageTotalFreeBytes = [uint64] 0
+$storageCheck = "not_run"
+$priorCleanupRemoved = @()
+$priorCleanupPreserved = @()
+$currentCleanup = "not_attempted"
+$completeLogRetrieved = $false
 
 try {
     Write-Stage "opening the current GUI-connected WMDC target"
@@ -638,25 +806,92 @@ try {
             [PositronDeviceRapi]::EnsureDirectory($ownerDirectory)
         }
     }
-    if ([string]::Equals($remoteOwnerRoot,
-            "\Temp\Positron-device-gate",
-            [StringComparison]::OrdinalIgnoreCase)) {
-        foreach ($oldName in [PositronDeviceRapi]::ListSubdirectories(
-                $remoteOwnerRoot)) {
-            $oldPath = $remoteOwnerRoot + "\" + $oldName
-            if ($oldPath -eq $remoteRoot) {
-                continue
-            }
-            if ($oldName -notmatch
-                    "^[A-Za-z0-9][A-Za-z0-9._-]*-\d{8}-\d{6}$") {
-                Write-Stage "preserving unrecognized remote directory: $oldPath"
-                continue
-            }
-            Write-Stage "reclaiming prior gate directory: $oldPath"
-            [PositronDeviceRapi]::DeleteDirectoryTree($oldPath)
+    Write-Stage "checking prior gate directories under $remoteOwnerRoot"
+    foreach ($oldName in [PositronDeviceRapi]::ListSubdirectories(
+            $remoteOwnerRoot)) {
+        $oldPath = $remoteOwnerRoot + "\" + $oldName
+        if ($oldPath -eq $remoteRoot) {
+            continue
         }
+        if ($oldName -notmatch
+                "^[A-Za-z0-9][A-Za-z0-9._-]*-\d{8}-\d{6}$") {
+            Write-Stage "preserving unrecognized remote directory: $oldPath"
+            $priorCleanupPreserved += "$oldPath (unrecognized)"
+            continue
+        }
+
+        $oldRemoteLog = $oldPath + "\test_host.log"
+        $oldLocalLog = Join-Path $priorEvidenceRoot ($oldName + ".log")
+        Write-Stage "retrieving prior gate log before cleanup: $oldRemoteLog"
+        if (!(Receive-CompleteRemoteLog $oldRemoteLog $oldLocalLog)) {
+            Write-Stage "preserving prior gate directory (log is missing or incomplete): $oldPath"
+            $priorCleanupPreserved += "$oldPath (log incomplete)"
+            continue
+        }
+        if (Remove-RemoteDirectorySafely $oldPath) {
+            Write-Stage "removed prior gate directory after complete log retrieval: $oldPath"
+            $priorCleanupRemoved += $oldPath
+        } else {
+            Write-Stage "preserving prior gate directory (cleanup failed): $oldPath"
+            $priorCleanupPreserved += "$oldPath (cleanup failed)"
+        }
+    }
+
+    $storageInfo = [PositronDeviceRapi]::QueryStorage($remoteOwnerRoot)
+    $storageApi = $storageInfo.Api
+    $storageScope = $storageInfo.Scope
+    $storageFreeBytes = [uint64] $storageInfo.FreeBytes
+    $storageTotalBytes = [uint64] $storageInfo.TotalBytes
+    $storageTotalFreeBytes = [uint64] $storageInfo.TotalFreeBytes
+    Write-Stage (("storage preflight: api={0} scope={1} free={2} " +
+            "required={3} total={4}") -f $storageApi, $storageScope,
+            $storageFreeBytes, $storageRequiredBytes, $storageTotalBytes)
+    $storageFailure = $null
+    if (!$storageInfo.Available) {
+        $storageCheck = "UNAVAILABLE"
+        $storageFailure = ("Could not query free device storage for {0}; the gate " +
+                "retrieved complete prior logs before cleanup but will not " +
+                "deploy without a storage API.") -f $remoteOwnerRoot
+    } elseif (!$storageInfo.PathSpecific -and
+            $remoteOwnerRoot -match '(?i)^\\Storage Card(?:\\|$)') {
+        $storageCheck = "UNAVAILABLE_PATH_SCOPE"
+        $storageFailure = ("RAPI exposed only object-store free space while the deployment " +
+                "target is {0}; refusing a path-unsafe deployment.") -f $remoteOwnerRoot
+    } elseif ($storageFreeBytes -lt $storageRequiredBytes) {
+        $storageCheck = "INSUFFICIENT"
+        $storageFailure = ("Insufficient device storage at {0}: free={1} bytes, " +
+                "required={2} bytes (payload={3}, reserve={4}, api={5}).") -f
+                $remoteOwnerRoot, $storageFreeBytes, $storageRequiredBytes,
+                $storagePayloadBytes, $storageReserveBytes, $storageApi
+    } elseif ($storageInfo.PathSpecific) {
+        $storageCheck = "PASS"
     } else {
-        Write-Stage "custom RemoteBase: preserving all prior directories"
+        $storageCheck = "PASS_COARSE"
+        Write-Stage "storage API fallback is object-store scoped; deployment target is not an external volume"
+    }
+    $preflightLines = @(
+        "remote_base=$remoteOwnerRoot",
+        "storage_api=$storageApi",
+        "storage_scope=$storageScope",
+        "storage_free_bytes=$storageFreeBytes",
+        "storage_total_free_bytes=$storageTotalFreeBytes",
+        "storage_total_bytes=$storageTotalBytes",
+        "storage_payload_bytes=$storagePayloadBytes",
+        "storage_reserve_bytes=$storageReserveBytes",
+        "storage_required_bytes=$storageRequiredBytes",
+        "storage_check=$storageCheck",
+        "prior_cleanup_removed_count=$($priorCleanupRemoved.Count)",
+        "prior_cleanup_preserved_count=$($priorCleanupPreserved.Count)"
+    )
+    if ($priorCleanupRemoved.Count -gt 0) {
+        $preflightLines += "prior_cleanup_removed=$($priorCleanupRemoved -join '|')"
+    }
+    if ($priorCleanupPreserved.Count -gt 0) {
+        $preflightLines += "prior_cleanup_preserved=$($priorCleanupPreserved -join '|')"
+    }
+    Set-Content -LiteralPath $preflightPath -Value $preflightLines -Encoding UTF8
+    if ($null -ne $storageFailure) {
+        throw $storageFailure
     }
     foreach ($remoteDirectory in ($remoteDirectories | Sort-Object Length)) {
         Write-Stage "creating remote directory: $remoteDirectory"
@@ -685,11 +920,9 @@ try {
         if ([PositronDeviceRapi]::TryCopyFileFromDevice(
                 $remoteLog, $localLog)) {
             $partialLog = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
-            if ($partialLog -match "(?m)^\[INFO\] TESTBENCH PASS\s*$") {
-                $completionMarker = "PASS"
-            } elseif ($partialLog -match
-                    "(?m)^\[ERROR\] TESTBENCH FAIL\s*$") {
-                $completionMarker = "FAIL"
+            $partialMarker = Get-CompletionMarker $partialLog
+            if ($partialMarker -ne "none") {
+                $completionMarker = $partialMarker
             }
         }
         if ($completionMarker -eq "none") {
@@ -704,9 +937,24 @@ try {
 
     Start-Sleep -Milliseconds 500
     Write-Stage "receiving complete test_host.log"
-    if (![PositronDeviceRapi]::TryCopyFileFromDevice(
-            $remoteLog, $localLog)) {
+    if (!(Receive-CompleteRemoteLog $remoteLog $localLog)) {
         throw "The completed remote test_host.log could not be received."
+    }
+    $completeLogRetrieved = $true
+    $finalLogText = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
+    $finalMarker = Get-CompletionMarker $finalLogText
+    if ($finalMarker -ne $completionMarker) {
+        throw ("The completed remote test_host.log changed its completion " +
+                "marker from {0} to {1} while it was being received.") -f
+                $completionMarker, $finalMarker
+    }
+    Start-Sleep -Milliseconds 250
+    if (Remove-RemoteDirectorySafely $remoteRoot) {
+        $currentCleanup = "removed_after_complete_log"
+        Write-Stage "removed current gate directory after complete log retrieval: $remoteRoot"
+    } else {
+        $currentCleanup = "preserved_cleanup_failed"
+        Write-Stage "preserving current gate directory because cleanup failed: $remoteRoot"
     }
 } finally {
     if ($rapiConnected) {
@@ -755,8 +1003,22 @@ $checkLines += "fail_count=$failCount"
 $checkLines += "testbench_pass_count=$passCount"
 $checkLines += "test13_route_ok=$routeOk"
 $checkLines += "completion_marker=$completionMarker"
+$checkLines += "storage_api=$storageApi"
+$checkLines += "storage_scope=$storageScope"
+$checkLines += "storage_free_bytes=$storageFreeBytes"
+$checkLines += "storage_total_free_bytes=$storageTotalFreeBytes"
+$checkLines += "storage_total_bytes=$storageTotalBytes"
+$checkLines += "storage_payload_bytes=$storagePayloadBytes"
+$checkLines += "storage_reserve_bytes=$storageReserveBytes"
+$checkLines += "storage_required_bytes=$storageRequiredBytes"
+$checkLines += "storage_check=$storageCheck"
+$checkLines += "prior_cleanup_removed_count=$($priorCleanupRemoved.Count)"
+$checkLines += "prior_cleanup_preserved_count=$($priorCleanupPreserved.Count)"
+$checkLines += "current_cleanup=$currentCleanup"
+$checkLines += "complete_log_retrieved=$completeLogRetrieved"
 
-$passed = $completionMarker -eq "PASS" -and $metricOk -and
+$passed = ($storageCheck -eq "PASS" -or $storageCheck -eq "PASS_COARSE") -and
+        $completionMarker -eq "PASS" -and $metricOk -and
         $missing.Count -eq 0 -and $unexpected.Count -eq 0 -and
         $errorCount -eq 0 -and $failCount -eq 0 -and
         $passCount -eq 1 -and $routeOk

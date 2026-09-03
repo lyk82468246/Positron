@@ -168,6 +168,11 @@
 - RAPI 1 只暴露当前连接，不支持安全枚举多个设备；自动门假定恰好一个当前目标。
 - 主机 WMDC 重装可能恢复旧 RAPI COM 注册值并触发 `0x8007007E`，应使用严格、幂等的修复脚本取证，不要手改未知注册项。
 - RAPI 没有可靠的通用远端强杀语义；超时后可能需要用户在设备上关闭遗留进程。
+- 设备门在部署前以 `CeGetDiskFreeSpaceEx` 查询 `-RemoteBase` 所在卷，要求 staging
+  总大小加 1 MiB 余量；旧 RAPI 只能提供 `CeGetStoreInformation` 时，结果只标记为
+  object-store 粗粒度检查，外部 `\Storage Card` 没有路径级结果会 fail closed。旧部署目录
+  只有在 `test_host.log` 完整复制两次且终态标记稳定后才清理；超时、缺失/增长中的日志和
+  清理失败都会保留远端目录以便诊断。
 - 新增公共 DLL 导出后若直接使用增量链接产物，设备门曾出现已有 Browser bootstrap 的 `PSCRIPT_ERROR_TIMEOUT (-4)`；完整执行 `scripts\build.bat Debug rebuild` 并重新 staging 后恢复通过。看到这类 bootstrap 超时应先排除旧产物/混包，不能把一次增量构建失败当作产品回归。
 - 自动可视门只保证首帧和断言，不保证边距、字体、触摸、SIP、picker、旋转或失败网络体验。
 

@@ -8,11 +8,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next733 的 Browser `formdata` 事件、`FormDataEvent` 构造器、
-  `form.onformdata` 接线、TEST1178 夹具和公共边界文档已完成；next732 的 Ex bridge
-  与 Core submitter-aware successful-control snapshot 继续保持；
-  Core 的表单收集语义仍由 `positron_core.dll` 持有，本批 `test_host` 只新增 callback
-  接线、fixture 和断言；`tmp/` 中的本地证据未纳入版本控制。
+- 分支：`main`。next734 的设备门部署安全护栏已完成：RAPI 优先按目标卷查询剩余空间，
+  旧部署目录只有在完整日志稳定回收后才清理，当前目录在本批完整日志回收后也会尝试清理；
+  这批没有新增公共产品语义，`test_host` 仍只是被部署的回归宿主。next733 的 Browser
+  `formdata` 事件、`FormDataEvent` 构造器、`form.onformdata` 接线、TEST1178 夹具和公共
+  边界文档继续保持；`tmp/` 中的本地证据未纳入版本控制。
 - `TEST_MAX_NUMBER` 已为 1178。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
@@ -39,6 +39,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、
   direct `submit()` 和 detached `FormData(form[, submitter])` 已形成同一套 by-id/成功控件
   合同，构造成功后还会同步派发 `formdata`；TEST1170–1178 是当前相邻夹具。
+- 设备门的部署前空间预检、旧目录日志完整性检查和完成后清理已集中在
+  `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
 
 ## 当前中期里程碑
@@ -184,17 +186,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 最新有效设备证据
 
-当前最新产品门为 next733 的 Browser `formdata` 事件与相邻 FormData 回归：
+当前最新设备门证据为 next734 的部署安全护栏窄门；最新产品能力基线仍是 next733：
 
-- `tmp/device-runs/20260903-171840-next733-formdata-event5/`；动态选择
-  `1176-1178,999`，4 项；4/4 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。
-  TEST1176 验证无 submitter snapshot，TEST1177 验证 Ex submitter owner/顺序/拒绝边界，
-  TEST1178 验证同步 `FormDataEvent`、监听器 mutation、非冒泡/不可取消和无 submit 副作用，
-  TEST999 请求一次提示音。
-- 设备：240x320，dpi=96；payload 使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建，
-  staging 位于 `\Storage Card\Positron-device-gate-next733` 下的本批隔离目录；RAPI 只复用
-  GUI 会话，不连接、选择、重置或杀死设备。默认 `\Temp` 旧目录回收曾因残留字体文件失败，
-  后续改用可写的 `\Storage Card` 隔离目录通过；该环境边界另记入失败实验。
+- `tmp/device-runs/20260903-195507-next734/`；动态选择 `999`，1/1 通过，零 `ERROR`/`FAIL`，
+  唯一 `TESTBENCH PASS`，`storage_api=CeGetDiskFreeSpaceEx`、`storage_scope=volume`、
+  `storage_check=PASS`；完整日志双读后 `current_cleanup=removed_after_complete_log`。
+- 设备：240x320，dpi=96；使用当前 WMDC GUI 会话和正式 Debug ARMV4I 构建，部署根为
+  `\Storage Card\Positron-device-gate-next734`。RAPI 只复用 GUI 会话，不连接、选择、重置
+  或杀死设备。第一次以默认 `\Temp` 运行时，预检读到 18,432 字节可用而需要 10,734,079
+  字节，门在首个文件复制前停止；其中一个无完整终态日志的旧目录按规则保留。
+- next733 产品证据仍在 `tmp/device-runs/20260903-171840-next733-formdata-event5/`：
+  动态选择 `1176-1178,999`，4/4 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`；
+  TEST1176–1178 与 TEST999 的语义结论不因本批工具护栏改变。
 - 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I rebuild、同批 staging、
   `python scripts/audit_repo.py` 和 `git diff --check` 均已通过；Browser heap ceiling 为
   714 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
@@ -303,21 +306,20 @@ fieldset/object/image 等其他 form-associated 元素、复杂 parser 重构和
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next734
+## 唯一下一步：next735
 
-next733 已在 Browser 中完成 `new FormData(form[, submitter])` 的同步 `formdata` 事件：
-`FormDataEvent.formData` 与正在返回的 detached 对象保持同一身份，监听器和
-`form.onformdata` 可在构造返回前修改字段；事件非冒泡、不可取消，不触发 submit 或
-默认动作。TEST1178 与 TEST1176–1177 的相邻断言已由启用 JavaScript 的
-`1176-1178,999` 设备门通过，证据在 `tmp/device-runs/20260903-171840-next733-formdata-event5/`。
-首次作用域错误、默认 `\Temp` 旧目录回收失败和新 `\Temp` 目录创建失败均已记录在
-`FAILED_EXPERIMENTS.md`，不属于产品基线。
+next734 已完成设备门部署安全护栏，但没有改变产品 DLL：RAPI 优先调用
+`CeGetDiskFreeSpaceEx` 查询目标卷，旧环境可退回对象存储空间；预检按 staging 总大小加
+1 MiB 余量，在首个远端文件复制前 fail closed。旧目录和当前目录只有在 `test_host.log`
+完整复制两次且终态稳定后才尝试删除，超时、缺失或不稳定日志继续保留。窄门证据和默认
+`\Temp` 空间不足的停止证据见上文；具体工具规则见 `docs/TESTING.md` 和
+`docs/TROUBLESHOOTING.md`。
 
-下一批先从 compatibility corpus、源码、日志或截图固定另一个真实缺口，再选择一个边界
-清楚的离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台
-接线、调度、应用策略和断言；不要仅为增加编号拆分提交，也不要在没有证据时扩大 ABI。
-完整滚动容器树、Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性滚动、
-完整媒体查询语法、bfcache 和视觉差异仍是限制，不应在下一步中被误写成已支持。
+next735 仍需从 compatibility corpus、源码、日志或截图固定一个真实产品缺口，再选择
+一个边界清楚的离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主
+只做平台接线、调度、应用策略和断言；不要仅为增加编号拆分提交，也不要在没有证据时扩大
+ABI。完整滚动容器树、Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性
+滚动、完整媒体查询语法、bfcache 和视觉差异仍是限制，不应在下一步中被误写成已支持。
 
 优先场景应同时满足：
 
@@ -327,11 +329,11 @@ next733 已在 Browser 中完成 `new FormData(form[, submitter])` 的同步 `fo
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next734）
+## 下一步完成标准（next735）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱现有布局、几何、滚动、history、生命周期、selector、focus、form-owner、reset、requestSubmit、direct-submit 或 FormData 旧/Ex 路径；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- next734 完成后 handoff 应覆盖为 next734 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- next735 完成后 handoff 应覆盖为 next735 快照，ROADMAP 只保留当前尚未完成的纵向能力。

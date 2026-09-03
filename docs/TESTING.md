@@ -513,6 +513,26 @@ scripts\device_gate.bat -Candidate feature-name ^
 
 脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，本地证据保存在 `tmp/device-runs/`，不会纳入 Git。
 
+部署前的 RAPI 预检会针对 `-RemoteBase` 查询剩余空间：优先使用
+`CeGetDiskFreeSpaceEx` 的目标卷可用字节，旧 RAPI 不导出该入口时回退到
+`CeGetStoreInformation` 的对象存储可用字节。微软文档说明后者是历史 API，且只描述
+object store；因此外部 `\Storage Card` 目标没有路径级 API 时会 fail closed，不会用
+错误的对象存储数字冒险部署。预检要求的空间是当前 staging 全部文件大小加 1 MiB
+运行余量；不足、无法查询或路径范围不安全都会在复制第一个文件前停止。结果文件记录
+`storage_api`、`storage_scope`、`storage_free_bytes`、`storage_required_bytes` 和
+`storage_check`（`PASS` 或旧 API 的 `PASS_COARSE`）。参考：
+[`GetStoreInformation`（Microsoft Learn）](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms891023%28v%3Dmsdn.10%29)。
+即使预检阻止部署，也会在本地证据目录写出 `device-gate-preflight.txt`，便于确认失败
+发生在远端复制之前。
+
+为避免设备空间被旧包逐次吃完，设备门只把名字符合自身时间戳格式的旧目录视为候选。
+每个旧目录都必须先把 `test_host.log` 成功复制两次并得到稳定的 `TESTBENCH PASS` 或
+`TESTBENCH FAIL` 终态，才允许删除；缺失、仍在增长或复制失败的日志会让目录保留并在
+输出中说明原因。当前运行的目录也在完整日志回收后才尝试删除；超时或日志不完整时保留
+它以便取证。自定义 `-RemoteBase` 同样遵守这条规则，无法删除只产生警告，不会伪造自动
+通过；`device-gate-result.txt` 会记录 `prior_cleanup_*`、`current_cleanup` 和
+`complete_log_retrieved`。
+
 RAPI 没有安全的通用远端终止语义。超时会保存可取得的日志并返回非零，但不会强杀设备进程；重试前应在设备 GUI 确认真正结束遗留 `test_host.exe`。WMDC/RAPI 错误按 [故障排查](TROUBLESHOOTING.md#wmdc-自动设备门不要混淆-corecon-与-rapi)处理。
 
 ### 自动通过标准

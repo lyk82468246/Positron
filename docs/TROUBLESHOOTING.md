@@ -35,6 +35,23 @@ Windows CE 可能在系统范围继续复用已加载 DLL。只替换一个文�
 - 如果设备仍加载旧 DLL，重启模拟器后再运行隔离目录。
 - 比较二进制时应比较同一配置和同一批构建，不以文件时间单独判定。
 
+### 设备空间预检与旧目录清理
+
+`scripts\device_gate.bat` 在第一次复制远端文件前查询 `-RemoteBase` 的可用空间。
+RAPI 优先调用 `CeGetDiskFreeSpaceEx`；旧设备没有该导出时才回退到
+`CeGetStoreInformation`。后者是对象存储的粗粒度数字，不代表 `\Storage Card` 等外部卷；
+如果目标是外部卷而没有路径级结果，设备门会停止并明确报告
+`storage_check=UNAVAILABLE_PATH_SCOPE`。有效结果必须至少容纳 staging 文件总大小和
+1 MiB 运行余量；`storage_check=INSUFFICIENT` 或 `UNAVAILABLE` 都表示尚未部署。
+
+预检前会枚举门自己生成的时间戳目录。目录只有在 `test_host.log` 已完整复制、连续两次
+内容稳定且包含最终 `TESTBENCH PASS`/`TESTBENCH FAIL` 标记后才会删除；未知名称、没有
+终态或复制不完整的目录始终保留。当前目录同样要在完整日志回收到本机后才尝试删除；超时
+或日志不完整时绝不清理，便于诊断。删除失败只记录警告并保留目录，不能被当成通过条件。
+本机证据中的 `prior-logs` 保存被检查过的旧日志，结果文件还会列出
+`storage_*`、`prior_cleanup_*` 与 `current_cleanup` 字段；若预检在部署前停止，仍可从
+`device-gate-preflight.txt` 读取同一组空间和清理摘要。
+
 ## WMDC 自动设备门：不要混淆 CoreCon 与 RAPI
 
 WMDC 显示 USB 真机或 DMA emulator 已连接，只能证明 WMDC 当前会话可用；它不保证 VS2008 Core Connectivity（CoreCon）已经存在一个可由 `EnumerateConnections2()` 枚举的活动 `ICcConnection`。两者是不同的主机端通道，不能用 CoreCon 枚举为空推断“设备未连接”，也不应要求用户因此重新 Cradle 或重启已经正常的 WMDC 会话。
