@@ -194,12 +194,15 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律
   回退到 `document.body`；未注册 callback 的 session 不安装该可选属性；
-- 可选的 pointer-interaction selector 投影：宿主注册
+- 可选的 pointer/link-interaction selector 投影：宿主注册
   `PBrowserScriptInteractionCallbacks` 后，Browser 在每次 selector 查询时按
-  `"active"`/`"hover"` 读取当前 id，并以精确节点匹配 `:active`/`:hover`；空、过长、
-  失效或未注册 callback 安全地不匹配。Browser 不派发 pointer 事件、不更新 Core
-  状态、不自动 style/layout/paint；hit-test、按下/释放/移动时机、失效和视觉由宿主
-  负责；
+  `"active"`/`"hover"` 读取当前 id，并以精确节点匹配 `:active`/`:hover`；宿主也可用
+  `PBrowserScriptInteractionCallbacksEx` 在同一 native bridge 上提供 `get_link_visited`，
+  由 Browser 为带 `href` 的 `<a>`/`<area>` 转交有界元素 id 与 raw href，匹配宿主明确批准
+  的 `:visited`。空、过长、失效或未注册 callback 安全地不匹配；Browser 不保存或推断
+  history，不导航，也不决定隐私策略。Browser 不派发 pointer 事件、不更新 Core 状态、
+  不自动 style/layout/paint；hit-test、按下/释放/移动时机、URL 解析、历史来源、失效和
+  视觉由宿主负责；
 - 可选的 `HTMLElement.focus()`/`blur()` 请求桥：宿主注册
   `PBrowserScriptFocusRequestCallbacks` 或其 Ex 版本后，Browser 在 bootstrap 后
   安装方法，验证 id 与操作值并同步调用宿主 typed callback；宿主用 Core 的按 id

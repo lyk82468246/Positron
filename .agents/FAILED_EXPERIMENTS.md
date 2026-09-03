@@ -13,6 +13,26 @@
 
 ## 失败与暂挂
 
+### next737 首轮设备门：Browser selector bootstrap 在 2× 页预算下超时 — 已替代
+
+问题：next737 为 Browser selector 增加宿主批准的 `:visited` 查询后，参考宿主以原有
+`PSCRIPT_DEFAULT_BUDGET_MS * 2` 执行组合 bootstrap；设备门在
+`tmp/device-runs/20260903-205340-next737/` 和
+`tmp/device-runs/20260903-205627-next737-visited-r2/` 报
+`DOM bootstrap: JavaScript execution timeout`。部署目录和 WMDC/RAPI 会话均正常，失败
+发生在页面脚本初始化而非 visited callback 或断言；没有通过删减 selector、关闭 callback、
+扩大 Browser heap 或跳过测试来掩盖。
+
+替代方案：保持 Browser 的固定 heap、source、native-function 和执行时限约束不变，只把
+参考宿主大型页面 bootstrap 的有界 page budget 调整为 `PSCRIPT_DEFAULT_BUDGET_MS * 3`。
+`tmp/device-runs/20260903-205748-next737-visited-r3/` 先通过 `1179,999`，随后
+`tmp/device-runs/20260903-205834-next737-visited-final/` 通过相邻 `1160,1179,999`
+（3/3、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）。
+
+决定：慢 WM6 设备的 bootstrap timeout 先按宿主一次性预算与同批 Debug/staging 混用排查；
+只有在同一批正式产物、稳定设备会话和明确错误分类下复现，才评估公共脚本预算变更。宿主
+预算必须保持有界，不能把页面脚本变成无界执行。
+
 ### next733 首轮设备门：FormDataEvent 作用域与 Temp 清理边界 — 已替代
 
 问题：最初把 `PFormDataEvent` 放在 Browser bootstrap 的第一作用域，而

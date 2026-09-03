@@ -4747,10 +4747,16 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "try{n=doc.getElementById(id);}catch(focusWithinError){return false;}"
         "depth=0;while(n!==null&&depth<64){if(n.__id===owner.__id){return true;}"
         "n=n.parentElement;depth++;}return false;}"
-        "function linkState9(owner,name){var t;"
-        "if(!owner||(name!=='link'&&name!=='any-link')){return false;}"
+        "function linkState9(owner,name){var t;var id;var value;"
+        "if(!owner||(name!=='link'&&name!=='any-link'&&name!=='visited')){return false;}"
         "t=owner.localName;if(t!=='a'&&t!=='area'){return false;}"
-        "try{return owner.hasAttribute('href');}catch(linkError){return false;}}"
+        "try{if(!owner.hasAttribute('href')){return false;}"
+        "if(name!=='visited'){return true;}"
+        "if(typeof g.__pcoreGetInteractionElement!=='function'){return false;}"
+        "id=String(owner.__id||'');if(id===''){return false;}"
+        "value=g.__pcoreGetInteractionElement({state:'visited',id:id,"
+        "href:String(owner.getAttribute('href')||'')});return value===true;"
+        "}catch(linkError){return false;}}"
         "function targetState9(owner){var hash;var token;var id;"
         "if(!owner){return false;}"
         "try{id=owner.id;}catch(targetIdError){return false;}"
@@ -4841,6 +4847,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(name==='active'||name==='hover'){return arg===null&&interactionState9(owner,name);}"
         "if(name==='focus'||name==='focus-within'){return arg===null&&focusState9(owner,name);}"
         "if(name==='link'||name==='any-link'){return arg===null&&linkState9(owner,name);}"
+        "if(name==='visited'){return arg===null&&linkState9(owner,name);}"
         "if(name==='target'){return arg===null&&targetState9(owner);}"
         "if(name==='lang'){return arg!==null&&langState9(owner,arg);}"
         "if(name==='has'){return arg!==null&&hasState9(owner,arg,level);}"
@@ -5548,6 +5555,8 @@ typedef struct p_browser_script_active_element_binding {
 
 typedef struct p_browser_script_interaction_binding {
     PBrowserScriptInteractionCallbacks callbacks;
+    PBrowserScriptInteractionCallbacksEx callbacks_ex;
+    int extended;
 } p_browser_script_interaction_binding;
 
 typedef struct p_browser_script_focus_request_binding {
@@ -6524,23 +6533,50 @@ static int p_browser_script_get_interaction_element(void *pw,
     HANDLE object;
     const char *state;
     const char *element_id;
+    const char *href;
+    int visited;
 
     binding = (p_browser_script_interaction_binding *) pw;
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
     state = (object != NULL) ? PJson_GetString(object, "state") : NULL;
     element_id = NULL;
+    href = NULL;
+    visited = 0;
     if (binding != NULL && root != NULL && state != NULL &&
             strlen(state) < PBROWSER_SCRIPT_INTERACTION_STATE_MAX &&
             (strcmp(state, PBROWSER_SCRIPT_INTERACTION_ACTIVE) == 0 ||
             strcmp(state, PBROWSER_SCRIPT_INTERACTION_HOVER) == 0) &&
-            binding->callbacks.get_interaction_element != NULL) {
-        element_id = binding->callbacks.get_interaction_element(
+            ((binding->extended &&
+            binding->callbacks_ex.get_interaction_element != NULL) ||
+            (!binding->extended &&
+            binding->callbacks.get_interaction_element != NULL))) {
+        element_id = binding->extended ?
+                binding->callbacks_ex.get_interaction_element(
+                binding->callbacks_ex.pw, state) :
+                binding->callbacks.get_interaction_element(
                 binding->callbacks.pw, state);
     }
     if (element_id == NULL || strlen(element_id) >=
             PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
         element_id = "";
+    }
+    if (binding != NULL && binding->extended && root != NULL &&
+            state != NULL &&
+            strlen(state) < PBROWSER_SCRIPT_INTERACTION_STATE_MAX &&
+            strcmp(state, PBROWSER_SCRIPT_INTERACTION_VISITED) == 0 &&
+            binding->callbacks_ex.get_link_visited != NULL) {
+        element_id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+        href = (object != NULL) ? PJson_GetString(object, "href") : NULL;
+        if (element_id != NULL && element_id[0] != '\0' &&
+                strlen(element_id) < PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX &&
+                href != NULL && strlen(href) < PBROWSER_SCRIPT_LINK_HREF_MAX) {
+            visited = binding->callbacks_ex.get_link_visited(
+                    binding->callbacks_ex.pw, element_id, href);
+        }
+        PJson_Free(root);
+        return p_browser_script_write_bool(visited > 0, out_json,
+                out_capacity, out_len);
     }
     PJson_Free(root);
     return p_browser_script_write_string(element_id, out_json,
@@ -8895,7 +8931,46 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterInteractionElementCallbacks(
     if (binding == NULL) {
         return PSCRIPT_ERROR_FATAL;
     }
+    memset(binding, 0, sizeof(*binding));
+    binding->extended = 0;
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetInteractionElement", -1,
+            p_browser_script_get_interaction_element, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->interaction_element = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptInteractionCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_interaction_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptInteractionCallbacksEx) ||
+            callbacks->get_link_visited == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->interaction_element != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_interaction_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->extended = 1;
+    memcpy(&binding->callbacks_ex, callbacks,
+            sizeof(binding->callbacks_ex));
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreGetInteractionElement", -1,
             p_browser_script_get_interaction_element, binding);

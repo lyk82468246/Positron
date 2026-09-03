@@ -277,10 +277,9 @@ activeElement callback 的输入必须 fail closed。该测试复用既有 Core 
 TEST1160 覆盖 Browser selector 对静态链接状态的有界映射：`:link`/`:any-link` 只匹配
 带 `href` 属性的 `<a>`/`<area>`，空属性值也算链接；移除或新增 `href` 后，
 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 的结果与文档顺序
-必须立即更新。带参数、伪元素、`:visited` 和尾随逗号等不支持输入必须 fail closed。
-Browser 没有 visited-state 存储；脚本 `:active`/`:hover` 由 TEST1165 的可选
-interaction callback 单独覆盖，真实链接绘制、pointer 时机、导航和历史样式仍属于
-宿主集成与人工观察。
+必须立即更新。带参数、伪元素和尾随逗号等不支持输入必须 fail closed。Browser 不保存
+visited history；脚本 `:active`/`:hover` 由 TEST1165 的可选 interaction callback
+单独覆盖，真实链接绘制、pointer 时机、导航和历史样式仍属于宿主集成与人工观察。
 
 TEST1161 覆盖 Browser selector 的有界 `:target`：当前 URL fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、
@@ -412,6 +411,14 @@ TEST1178 覆盖 Browser `new FormData(form[, submitter])` 的 `formdata` 事件�
 EventTarget 规则接收事件。夹具确认 `target`/`currentTarget`、构造器继承关系、
 阻止默认无效、body 不冒泡且不触发 submit；宿主只提供 fixture 和断言，事件与 FormData
 对象语义仍属于 Browser。
+
+TEST1179 覆盖 Browser selector 的可选 `:visited` 映射：宿主以同一 interaction Ex
+callback 返回明确批准的访问结果，Browser 对 `<a>`/`<area>` 的绝对/相对 href、fragment
+和空 href 在 `matches()`、`closest()`、`querySelector()`、`querySelectorAll()` 中
+保持一致；href mutation 与查询顺序即时更新，带参数、伪元素、尾随逗号和注销 callback
+安全 fail closed。Browser 不写入或持久化 history，也不导航、重做 style/layout/paint；
+宿主负责 URL 解析、历史来源和隐私策略。该离线门不证明真实链接颜色、visited 隐私隔离、
+跨窗口 history 或设备视觉。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

@@ -49,7 +49,9 @@ tests=13,20,27,999
 - `auto=1`：按选择运行、抑制结果对话框、覆盖写日志并自动判门。
 - `auto=0`：保留启动确认、说明框、可见窗口和人工操作。
 - `javascript=0`：默认不执行网页 classic script。
-- `javascript=1`：显式启用实验性的 Browser script session。
+- `javascript=1`：显式启用实验性的 Browser script session；参考宿主为大型产品
+  bootstrap 分配默认脚本页预算的 3 倍，但仍受固定 heap/source/native-function/执行时限
+  约束，不会开启无界执行。
 - `tests=`：接受编号、范围及源码明确支持的特殊编号。
 
 没有 INI 或 INI 无效时，宿主退回内置分组选择。移走 INI 不是“自动全量”；全量自动清单由 nightly/device tooling 从当前源码 dispatch 生成。
@@ -69,12 +71,12 @@ tests=13,20,27,999
   有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
-  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
+  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/`:visited`/
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
-  `formdata` 事件（TEST1146–1178）；
+  `formdata` 事件（TEST1146–1179）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -171,9 +173,11 @@ option.selected 的 `option:checked` 映射、`selectedIndex` mutation、组合/
 value/custom validity mutation、非候选排除和不支持参数的回退；TEST1159 断言
 `:focus`/`:focus-within` 通过既有 activeElement/Core focus bridge 反映当前焦点、焦点
 切换和 blur 清理，并对带参数、伪元素和注销 callback 的输入 fail closed；TEST1160 断言
-`:link`/`:any-link` 对带 `href` 的 `<a>`/`<area>`（包括空值）的静态匹配、属性 mutation、
-查询顺序以及 `:visited`、带参数和伪元素等不支持输入的 fail closed。宿主不得在
-测试 helper 中复制 selector 解析或匹配规则；这些语义和固定预算都属于 Browser。
+`:link`/`:any-link` 对带 `href` 的 `<a>`/`<area>`（包括空值）的静态匹配、属性 mutation
+和查询顺序；TEST1179 进一步通过同一 interaction Ex callback 验证宿主明确授权的
+`:visited` 结果、绝对/相对 href 解析、live mutation、`<area>` 支持和注销后的
+fail-closed。宿主只提供历史策略与接线，不得在测试 helper 中复制 selector 解析或
+匹配规则；这些语义和固定预算都属于 Browser。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、
@@ -293,6 +297,13 @@ TEST1178 断言 Browser `new FormData(form[, submitter])` 的 `formdata` 事件�
 身份，监听器和 `form.onformdata` 可在构造返回前修改字段。夹具确认事件目标、构造器
 继承关系、阻止默认无效、body 不冒泡和 submit 计数保持为零；宿主只提供 fixture 与
 断言，事件与 FormData 语义仍属于 Browser。
+
+TEST1179 断言 Browser selector 的 `:visited` 通过
+`PBrowserScriptInteractionCallbacksEx` 读取宿主明确批准的访问策略：绝对和相对
+`href`、fragment/空 href、`<a>`/`<area>`、`matches()`/`closest()`/两种 query、
+属性 mutation、查询顺序以及带参数、伪元素、尾随逗号和注销 callback 的
+fail-closed。Browser 不保存 history、不导航、不改变 style/layout/paint；宿主只
+解析 URL、选择历史来源并返回布尔结果，真实链接样式和隐私策略仍需宿主决定。
 
 ### Native EDIT/SELECT/button/file
 

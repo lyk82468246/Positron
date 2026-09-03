@@ -50,6 +50,8 @@ extern "C" {
 #define PBROWSER_SCRIPT_INTERACTION_STATE_MAX 16
 #define PBROWSER_SCRIPT_INTERACTION_ACTIVE "active"
 #define PBROWSER_SCRIPT_INTERACTION_HOVER "hover"
+#define PBROWSER_SCRIPT_INTERACTION_VISITED "visited"
+#define PBROWSER_SCRIPT_LINK_HREF_MAX PBROWSER_HISTORY_URL_MAX
 
 #define PBROWSER_OK 0
 #define PBROWSER_ERROR_ARGUMENT (-1)
@@ -435,6 +437,24 @@ typedef struct PBrowserScriptInteractionCallbacks {
     void *pw;
     PBrowserScriptGetInteractionElementFn get_interaction_element;
 } PBrowserScriptInteractionCallbacks;
+
+/* Additive interaction adapter for the privacy-sensitive link state. The
+ * Browser layer supplies the element id and raw href only for an <a>/<area>
+ * with an href attribute; both strings are borrowed for this synchronous
+ * call. Return >0 for a host-approved visited link, 0 for unvisited, and a
+ * negative value when the host cannot answer. The host owns history storage,
+ * privacy policy and URL normalization. An absent adapter, invalid input or
+ * a negative callback result is fail-closed. The original interaction
+ * callback remains available for ABI-compatible hosts; this Ex table reuses
+ * the same native function slot rather than adding another script global. */
+typedef int (*PBrowserScriptGetLinkVisitedFn)(void *pw,
+        const char *element_id, const char *href);
+typedef struct PBrowserScriptInteractionCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetInteractionElementFn get_interaction_element;
+    PBrowserScriptGetLinkVisitedFn get_link_visited;
+} PBrowserScriptInteractionCallbacksEx;
 
 /* Typed host adapter for script-visible HTMLElement.focus()/blur(). The
  * browser layer owns the methods and request validation; the host resolves
@@ -1804,6 +1824,9 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterActiveElementCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterInteractionElementCallbacks(
         HANDLE hSession,
         const PBrowserScriptInteractionCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptInteractionCallbacksEx *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterInteractionElementCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFocusRequestCallbacks(

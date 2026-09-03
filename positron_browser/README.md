@@ -237,11 +237,33 @@ PBrowser_ScriptSessionRegisterInteractionElementCallbacks(session,
         &interaction);
 ```
 
-注册后，`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 会在每次
-查询时读取 callback；无 callback、空/过长/失效 id、带参数或伪元素都安全不匹配。Browser
-不派发 pointer 事件、不改变 Core/style/layout/paint；宿主负责 hit-test、时机、事件、
-失效和视觉。桥只匹配精确当前元素，不实现祖先 `:hover`、完整 `:active`/`:visited` 或
-pointer capture。
+注册后，各 selector 查询都会读取 callback；无 callback、空/过长/失效 id、带参数或伪元素
+安全不匹配。Browser 不派发 pointer 事件、不改变 Core/style/layout/paint；宿主负责
+hit-test、时机、事件、失效和视觉。桥只匹配精确当前元素，不实现祖先 `:hover`、完整
+pointer capture 或其他 pointer/touch 状态。
+
+需要让页面读取宿主访问历史时，使用同一 native function slot 的
+`PBrowserScriptInteractionCallbacksEx`：
+
+```c
+PBrowserScriptInteractionCallbacksEx interaction;
+
+memset(&interaction, 0, sizeof(interaction));
+interaction.size = sizeof(interaction);
+interaction.pw = bridge;
+interaction.get_interaction_element = host_get_interaction_element_id;
+interaction.get_link_visited = host_get_link_visited;
+PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(session,
+        &interaction);
+```
+
+`get_link_visited` 只为带 `href` 的 `<a>`/`<area>` 同步接收借用的 UTF-8 `element_id` 与
+原始 `href`；正数表示宿主批准已访问，零表示未访问，负数表示无法判断。宿主负责历史
+存储、隐私策略和 URL 解析，Browser 只在 `:visited` 查询时读取结果，不修改 history、
+不导航、不重做 style/layout/paint。未注册 Ex callback、无 id、超长/非法输入或 callback
+失败都安全不匹配。
+旧 `PBrowserScriptInteractionCallbacks` ABI 保持兼容；Ex 与旧表不可在同一 session 重复
+注册，注销使用 `PBrowser_ScriptSessionUnregisterInteractionElementCallbacks`。
 
 #### `HTMLElement.focus()` / `blur()` 请求
 
@@ -356,12 +378,11 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 最多 64 项，名称 64 字节、字符串值 128 字节、文件名和 MIME 类型各 64 字节；文件只保留
 filename/type 和空内容，不承诺完整文件读取、live collection 或其他 form-associated 元素。
 
-selector bridge 支持有界 compound、顶层列表、后代/子代/兄弟组合器、属性操作符和
-结构/表单伪类，包括 `:checked`、validation 的 `:valid`/`:invalid` 与范围状态、
-focus/link/fragment/language、可选 interaction 的 `:active`/`:hover`，以及
-`:not()`/`:is()`/`:where()`/`:has()`、`:read-only`/`:read-write` 和
-`:placeholder-shown`。参数、分支和遍历有固定预算；非法或未注册 callback 时 fail
-closed；限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
+focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
+`:read-only`/`:read-write`/`:placeholder-shown`。`:visited` 通过 interaction Ex callback
+读取宿主批准结果，Browser 不保存 history；参数、分支和遍历有固定预算，非法或未注册
+callback fail closed。完整限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
 
 ### `dialog` 生命周期
 
@@ -511,23 +532,8 @@ successful commit. Terminal failed,
 cancelled and stale candidates are releasable once their resource transaction
 is settled.
 
-```c
-PBrowserNavigationCleanupInfo cleanup;
-
-memset(&cleanup, 0, sizeof(cleanup));
-cleanup.size = sizeof(cleanup);
-/* Join the worker and settle/categorize the request before this call. */
-if (PBrowser_NavigationCleanupGetInfo(candidate, tx,
-        current_generation, &cleanup) == PBROWSER_OK &&
-        cleanup.can_release) {
-    /* Copy any needed fields, then destroy candidate and tx. */
-}
-```
-
-The API is synchronous and only provides product-owned state. It does not
-expose response bytes, threads, windows, messages or application log text,
-and it does not replace the final `PBrowser_NavigationCandidateMarkCommitted`
-check used at the page-swap boundary.
+该 API 只提供同步的 Browser-owned 状态；它不暴露响应字节、线程、窗口、消息或应用日志，
+也不替代页面交换边界的最终 `PBrowser_NavigationCandidateMarkCommitted` 检查。
 
 ### Navigation candidate lifecycle
 
@@ -572,21 +578,9 @@ PBrowser_NavigationCandidateDestroy(candidate);
 中止阻塞 socket、发窗口消息、执行 page teardown 或提交 history。失败或退休的 candidate
 必须由宿主丢弃，不得进入 teardown 或修改 history。
 
-`PBrowser_NavigationCandidateGetResult` 返回 Browser-owned 的只读诊断快照，按 Browser 状态
-和调用方的当前 generation 区分 `PENDING`、`COMMITTED`、`FAILED`、`CANCELLED`、`STALE`：
-取消请求在 retire 前仍为 pending，退休且 generation 仍当前才是 cancelled，非终态且
-generation 不符为 stale；已提交或失败保持终态。宿主只复制快照，不重算分类，也不把它
-当作网络错误文本。
-
-```c
-PBrowserNavigationCandidateResult result;
-
-memset(&result, 0, sizeof(result));
-result.size = sizeof(result);
-PBrowser_NavigationCandidateGetResult(candidate, current_generation,
-        &result);
-/* result.result is a PBROWSER_NAVIGATION_CANDIDATE_RESULT_* value. */
-```
+`PBrowser_NavigationCandidateGetResult` 返回按 Browser 状态和当前 generation 分类的只读诊断
+快照（`PENDING`、`COMMITTED`、`FAILED`、`CANCELLED` 或 `STALE`）；宿主只复制结果，不重算
+分类，也不把它当作网络错误文本。
 
 ### 队列与生命周期
 
@@ -678,7 +672,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 - 几何与滚动 getter 只读取最近一次 Core layout 的整数快照；`getClientRects()` 最多 16
   个片段，宿主负责 extent、clamp 和 CSS/设备换算。transforms、Range/Selection、pinch
   zoom、scroll-margin、smooth/inertia 和完整 scroll tree 不在范围内。
-- selector/form/dialog/contenteditable 均为有界组合；完整 Selectors、
+- `:visited` 仅反映宿主 Ex callback，不提供持久化、隐私隔离或跨窗口共享；完整 Selectors、
   backdrop、Range/Selection、富文本、clipboard 和 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - ABI、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。

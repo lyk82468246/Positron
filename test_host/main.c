@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1178
+#define TEST_MAX_NUMBER 1179
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6228,6 +6228,7 @@ typedef struct pcore_browser_script_event_binding
 #define PCORE_BROWSE_HISTORY_MAX 16
 #define PCORE_BROWSE_HISTORY_URL_MAX 1024
 #define PCORE_BROWSE_HISTORY_STATE_MAX 1024
+#define PCORE_BROWSE_VISITED_OVERRIDE_MAX 4
 #define PCORE_BROWSE_HISTORY_TARGET_NEW (-1)
 #define PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT (-2)
 
@@ -6274,6 +6275,9 @@ struct pcore_browser_script_bridge {
     char *programmatic_click_element_id;
     char active_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
     char interaction_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
+    int visited_url_count;
+    char visited_urls[PCORE_BROWSE_VISITED_OVERRIDE_MAX]
+            [PCORE_BROWSE_HISTORY_URL_MAX];
 };
 
 typedef struct pcore_browser_script_session {
@@ -8320,6 +8324,8 @@ static void pcore_browser_script_dispatch_focus_at(int x, int y,
 static const char *pcore_browser_script_get_active_element(void *pw);
 static const char *pcore_browser_script_get_interaction_element(void *pw,
         const char *state);
+static int pcore_browser_script_get_link_visited(void *pw,
+        const char *element_id, const char *href);
 static int pcore_browser_script_focus_request(void *pw,
         const PBrowserScriptFocusRequestInfoEx *info,
         PBrowserScriptFocusRequestResult *out_result);
@@ -13791,6 +13797,51 @@ static BOOL resolve_url(const char *href, char *host, int hostcap,
             host, hostcap, path, pathcap, out_port);
 }
 
+/* The reference host owns the visited-link policy. Browser only asks for a
+ * bounded anchor id and href; this adapter resolves the href against the
+ * visible origin and compares it with either a fixture override or the
+ * product-owned browse history. No history is changed by a selector query. */
+static int pcore_browser_script_get_link_visited(void *pw,
+        const char *element_id, const char *href)
+{
+    pcore_browser_script_bridge *bridge;
+    char host[256];
+    char path[1024];
+    char url[PCORE_BROWSE_HISTORY_URL_MAX];
+    int port;
+    int i;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL ||
+            element_id == NULL || element_id[0] == '\0' ||
+            strlen(element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            href == NULL || strlen(href) >= PCORE_BROWSE_HISTORY_URL_MAX) {
+        return -1;
+    }
+    if (!resolve_url(href, host, sizeof(host), path, sizeof(path), &port) ||
+            pcore_document_url(host, path, port, url, sizeof(url)) != 0) {
+        return -1;
+    }
+    if (bridge->visited_url_count > 0) {
+        for (i = 0; i < bridge->visited_url_count &&
+                i < PCORE_BROWSE_VISITED_OVERRIDE_MAX; i++) {
+            if (bridge->visited_urls[i][0] != '\0' &&
+                    pcore_browse_history_same_base_url(
+                    bridge->visited_urls[i], url) > 0) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+    for (i = 0; i < g_browse_history.count; i++) {
+        if (pcore_browse_history_same_base_url(
+                g_browse_history.entries[i], url) > 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static pcore_navigation_resource *pcore_navigation_resource_find(
         pcore_navigation_request *request, const char *url)
 {
@@ -16340,7 +16391,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     HANDLE runtime;
     PBrowserScriptDomReadCallbacks dom_read_callbacks;
     PBrowserScriptActiveElementCallbacks active_element_callbacks;
-    PBrowserScriptInteractionCallbacks interaction_callbacks;
+    PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacks dom_write_callbacks;
@@ -16418,7 +16469,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (count == 0) {
         return 0;
     }
-    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 2UL);
+    /* Browser bootstrap is a large, product-owned selector/DOM program on
+     * the slow WM6 CPU. Keep the page budget bounded while allowing the
+     * reference host enough headroom for its one-time parse. */
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 3UL);
     runtime = PBrowser_ScriptSessionRuntime(session);
     if (session == NULL || runtime == NULL) {
         PBrowser_ScriptSessionDestroy(session);
@@ -16466,6 +16520,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->programmatic_click_element_id = NULL;
     bridge->active_element_id[0] = '\0';
     bridge->interaction_element_id[0] = '\0';
+    bridge->visited_url_count = 0;
+    memset(bridge->visited_urls, 0, sizeof(bridge->visited_urls));
     dom_read_callbacks.size = sizeof(dom_read_callbacks);
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
@@ -16478,6 +16534,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     interaction_callbacks.pw = bridge;
     interaction_callbacks.get_interaction_element =
             pcore_browser_script_get_interaction_element;
+    interaction_callbacks.get_link_visited =
+            pcore_browser_script_get_link_visited;
     focus_request_callbacks.size = sizeof(focus_request_callbacks);
     focus_request_callbacks.pw = bridge;
     focus_request_callbacks.request_focus =
@@ -16751,7 +16809,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         }
         return 1;
     }
-    if (PBrowser_ScriptSessionRegisterInteractionElementCallbacks(session,
+    if (PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(session,
             &interaction_callbacks) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
                 "interaction selector bridge", PBrowser_ScriptSessionGetError(
@@ -43122,6 +43180,231 @@ static BOOL test1178_browser_form_data_event_contract(void)
             "FormData(form[, submitter]) dispatches a synchronous, detached "
             "formdata event whose FormDataEvent object can mutate the result "
             "without bubbling, cancellation or submit side effects.");
+    return TRUE;
+}
+
+/* TEST 1179 - host-approved visited-link selector state. */
+static BOOL test1179_browser_selector_visited_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head>"
+        "<link id='headlink' rel='stylesheet' href='/theme.css'>"
+        "</head><body>"
+        "<a id='first' href='https://positron.local/visited#fragment'>First</a>"
+        "<a id='second' href='https://positron.local/unvisited'>Second</a>"
+        "<area id='hot' href='https://positron.local/visited' alt='Hot'>"
+        "<a id='empty' href=''>Empty</a>"
+        "<a id='plain'>Plain</a>"
+        "<div id='container'><span id='child'>Child</span></div>"
+        "<script>window.selectorVisitedReady=true;</script>"
+        "</body></html>";
+    static const char URL[] =
+        "https://positron.local/selector-visited";
+    static const char *PHASE_NAMES[] = {
+        "initial-policy", "live-mutation", "unsupported-input",
+        "unregistered-fallback"
+    };
+    static const char *PHASES[] = {
+        "(function(){var first=document.getElementById('first');"
+        "var second=document.getElementById('second');"
+        "var hot=document.getElementById('hot');"
+        "var empty=document.getElementById('empty');"
+        "var plain=document.getElementById('plain');"
+        "var head=document.getElementById('headlink');"
+        "var container=document.getElementById('container');var list;"
+        "list=document.querySelectorAll(':visited');"
+        "return String(first.matches(':visited'))+'|'"
+        "+String(second.matches(':visited'))+'|'"
+        "+String(hot.matches(':visited'))+'|'"
+        "+String(empty.matches(':visited'))+'|'"
+        "+String(plain.matches(':visited'))+'|'"
+        "+String(head.matches(':visited'))+'|'"
+        "+String(list.length===3&&list[0]===first&&list[1]===hot&&list[2]===empty)+'|'"
+        "+String(document.querySelectorAll('a:visited').length===2)+'|'"
+        "+String(container.closest(':visited')===null);})()",
+        "(function(){var first=document.getElementById('first');"
+        "var second=document.getElementById('second');"
+        "var hot=document.getElementById('hot');"
+        "var empty=document.getElementById('empty');var list;"
+        "second.setAttribute('href','/visited');"
+        "first.removeAttribute('href');"
+        "empty.setAttribute('href','/unvisited');"
+        "hot.setAttribute('href','/unvisited');"
+        "list=document.querySelectorAll(':visited');"
+        "return String(first.matches(':visited')===false)+'|'"
+        "+String(second.matches(':visited'))+'|'"
+        "+String(hot.matches(':visited')===false)+'|'"
+        "+String(empty.matches(':visited')===false)+'|'"
+        "+String(list.length===1&&list[0]===second)+'|'"
+        "+String(document.querySelectorAll('a:visited').length===1)+'|'"
+        "+String(document.querySelector(':visited')===second)+'|'"
+        "+String(second.matches(':link'));})()",
+        "(function(){var second=document.getElementById('second');"
+        "return String(second.matches(':visited(foo)')===false)+'|'"
+        "+String(second.matches('::visited')===false)+'|'"
+        "+String(document.querySelectorAll(':visited,').length===0)+'|'"
+        "+String(document.querySelectorAll(':visited(:link)').length===0)+'|'"
+        "+String(second.matches(':visited'));})()",
+        "(function(){var second=document.getElementById('second');"
+        "return String(second.matches(':visited')===false)+'|'"
+        "+String(document.querySelectorAll(':visited').length===0)+'|'"
+        "+String(second.matches(':link'));})()"
+    };
+    char saved_host[sizeof(g_cur_host)];
+    char saved_path[sizeof(g_cur_path)];
+    int saved_port;
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    const char *result;
+    const char *session_error;
+    char error[1024];
+    int executed;
+    int ignored;
+    int phase;
+    int ok;
+
+    memcpy(saved_host, g_cur_host, sizeof(saved_host));
+    memcpy(saved_path, g_cur_path, sizeof(saved_path));
+    saved_port = g_cur_port;
+    cstr_copy(g_cur_host, sizeof(g_cur_host), "positron.local");
+    cstr_copy(g_cur_path, sizeof(g_cur_path), "/selector-visited");
+    g_cur_port = 443;
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    result = NULL;
+    session_error = NULL;
+    executed = -1;
+    ignored = -1;
+    phase = 0;
+    ok = 1;
+    memset(error, 0, sizeof(error));
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || pcore_browser_execute_scripts(document, 1, 0,
+            URL, NULL, NULL, &executed, &ignored, error, sizeof(error),
+            &runtime, &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        if (error[0] == '\0') {
+            cstr_copy(error, sizeof(error),
+                    "selector visited script setup failed");
+        }
+        ok = 0;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_doc_w = 260;
+        g_doc_h = 240;
+        g_view_w = 260;
+        g_view_h = 240;
+        g_scroll_x = 0;
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        bridge->visited_url_count = 3;
+        cstr_copy(bridge->visited_urls[0],
+                sizeof(bridge->visited_urls[0]),
+                "https://positron.local/visited");
+        cstr_copy(bridge->visited_urls[1],
+                sizeof(bridge->visited_urls[1]), URL);
+        cstr_copy(bridge->visited_urls[2],
+                sizeof(bridge->visited_urls[2]),
+                "https://positron.local/selector-visited");
+        bridge = NULL;
+        runtime = NULL;
+    }
+    if (ok) {
+        for (phase = 0; phase < 3; ++phase) {
+            memset(error, 0, sizeof(error));
+            if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
+                    error, sizeof(error)) != 0) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector visited phase %d (%s) evaluation failed",
+                        phase + 1, PHASE_NAMES[phase]);
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (result == NULL ||
+                    ((phase == 0 && strcmp(result,
+                    "true|false|true|true|false|false|true|true|true") != 0) ||
+                    (phase == 1 && strcmp(result,
+                    "true|true|true|true|true|true|true|true") != 0) ||
+                    (phase == 2 && strcmp(result,
+                    "true|true|true|true|true") != 0))) {
+                _snprintf(error, sizeof(error) - 1,
+                        "selector visited phase %d (%s) failed: %s",
+                        phase + 1, PHASE_NAMES[phase],
+                        result != NULL ? result : "<null>");
+                error[sizeof(error) - 1] = '\0';
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (ok && PBrowser_ScriptSessionUnregisterInteractionElementCallbacks(
+            g_browser_script_session.session) != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error),
+                "visited selector bridge unregister failed");
+        ok = 0;
+    }
+    if (ok && (pcore_browser_script_session_evaluate(PHASES[3], -1,
+            error, sizeof(error)) != 0 ||
+            (result = PBrowser_ScriptSessionGetResult(
+            g_browser_script_session.session)) == NULL ||
+            strcmp(result, "true|true|true") != 0)) {
+        _snprintf(error, sizeof(error) - 1,
+                "unregistered visited selector did not fail closed: %s",
+                result != NULL ? result : "<null>");
+        error[sizeof(error) - 1] = '\0';
+        ok = 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            g_browser_script_session.session != NULL) {
+        session_error = PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session);
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        }
+    }
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    g_doc_w = 0;
+    g_doc_h = 0;
+    g_view_w = 0;
+    g_view_h = 0;
+    g_scroll_x = 0;
+    g_scroll_y = 0;
+    pcore_browser_script_session_destroy();
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    memcpy(g_cur_host, saved_host, sizeof(g_cur_host));
+    memcpy(g_cur_path, saved_path, sizeof(g_cur_path));
+    g_cur_port = saved_port;
+    if (!ok) {
+        show_error(L"TEST 1179 FAIL", error[0] != '\0' ? error :
+                "selector visited contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1179 OK",
+            "Selector :visited follows an explicit host history policy for"
+            " anchors and areas, resolves live href mutations and fails"
+            " closed when the optional bridge is absent or input is invalid.");
     return TRUE;
 }
 
@@ -101240,6 +101523,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1176: ok = test1176_browser_form_data_contract(); break;
         case 1177: ok = test1177_browser_form_data_submitter_contract(); break;
         case 1178: ok = test1178_browser_form_data_event_contract(); break;
+        case 1179: ok = test1179_browser_selector_visited_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
