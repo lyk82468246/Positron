@@ -103,6 +103,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   不会只在 Browser 关系层识别跨树控件。`PCore_FormResetById` 是 Core 提供的无坐标
   state-only reset 入口；Browser/宿主必须先处理可取消 reset 事件，并在成功后重新
   layout/paint，Core 不创建事件或 native 控件；
+  `PCore_FormSubmissionNoValidationById`、`PCore_FormDialogSubmissionNoValidationById`
+  和 `PCore_MultipartSubmissionNoValidationById` 是 `HTMLFormElement.submit()` 使用的
+  无 validation/submitter state-only 结果入口；它们不派发事件、不导航、不关闭 dialog，
+  调用方负责容量与 multipart handle 释放；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
@@ -169,8 +173,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `PBrowserScriptFormSubmitCallbacks.validate_submit`，验证通过后派发可冒泡、可取消的
   `submit`，再调用 `submit_form`。宿主把 reset 接到 `PCore_FormResetById`，把 submit
   接到 Core 的 by-id validation/submission/dialog/multipart primitives，并负责成功后的
-  style/layout/paint、网络或 dialog 策略。Browser 不创建 native 控件，Core 的 state-only
-  入口也不自行派发事件；`HTMLFormElement.submit()` 暂未实现；
+  style/layout/paint、网络或 dialog 策略。另一个 `PBrowserScriptFormSubmitDirectCallbacks`
+  表为 `HTMLFormElement.submit()` 提供直接默认动作：Browser 不做 validation、submit
+  event 或 submitter 选择，宿主把 callback 接到 Core 的三个 NoValidationById primitive
+  后执行同一应用策略。三种脚本方法均不由 Browser 创建 native 控件，Core 的 state-only
+  入口也不自行派发事件；旧的 form-submit 表保持兼容；
 - 可选的 `document.activeElement` 投影：宿主注册
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1174
+#define TEST_MAX_NUMBER 1175
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8266,11 +8266,14 @@ static int g_native_toggle_key_probe_ok = 0;
 static int g_script_form_submit_probe = 0;
 static int g_script_form_submit_validate_calls = 0;
 static int g_script_form_submit_default_calls = 0;
+static int g_script_form_submit_direct_calls = 0;
+static int g_script_form_submit_method_counts[5];
 static int g_script_form_submit_last_method = 0;
 static char g_script_form_submit_last_form[64];
 static char g_script_form_submit_last_submitter[64];
 static char g_script_form_submit_last_action[256];
 static char g_script_form_submit_last_body[512];
+static char g_script_form_submit_post_body[512];
 
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key);
@@ -8357,6 +8360,8 @@ static int pcore_browser_script_dom_reset_form(void *pw,
 static int pcore_browser_script_form_submit_validate(void *pw,
         const PBrowserScriptFormSubmitInfo *info, int *out_valid);
 static int pcore_browser_script_form_submit_default(void *pw,
+        const PBrowserScriptFormSubmitInfo *info);
+static int pcore_browser_script_form_submit_direct(void *pw,
         const PBrowserScriptFormSubmitInfo *info);
 static int pcore_browser_script_invalid_dispatch(void *pw,
         const PBrowserScriptInvalidEventInfo *info,
@@ -16342,6 +16347,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFormCallbacks form_callbacks;
     PBrowserScriptFormResetCallbacks form_reset_callbacks;
     PBrowserScriptFormSubmitCallbacks form_submit_callbacks;
+    PBrowserScriptFormSubmitDirectCallbacks form_submit_direct_callbacks;
     PBrowserScriptValidationCallbacks validation_callbacks;
     PBrowserScriptReportValidityCallbacks report_validity_callbacks;
     PBrowserScriptCustomValidityCallbacks custom_validity_callbacks;
@@ -16521,6 +16527,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_form_submit_validate;
     form_submit_callbacks.submit_form =
             pcore_browser_script_form_submit_default;
+    form_submit_direct_callbacks.size = sizeof(form_submit_direct_callbacks);
+    form_submit_direct_callbacks.pw = bridge;
+    form_submit_direct_callbacks.submit_form =
+            pcore_browser_script_form_submit_direct;
     validation_callbacks.size = sizeof(validation_callbacks);
     validation_callbacks.pw = bridge;
     validation_callbacks.get_validation =
@@ -16668,6 +16678,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &form_reset_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormSubmitCallbacks(session,
             &form_submit_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormSubmitDirectCallbacks(session,
+            &form_submit_direct_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterValidationCallbacks(session,
             &validation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterReportValidityCallbacks(session,
@@ -17887,6 +17899,10 @@ static void pcore_browser_script_form_submit_probe_record(
         return;
     }
     g_script_form_submit_default_calls++;
+    if (method >= 0 && method < (int) (sizeof(g_script_form_submit_method_counts) /
+            sizeof(g_script_form_submit_method_counts[0]))) {
+        g_script_form_submit_method_counts[method]++;
+    }
     g_script_form_submit_last_method = method;
     cstr_copy(g_script_form_submit_last_form,
             sizeof(g_script_form_submit_last_form), info->form_id);
@@ -17898,6 +17914,11 @@ static void pcore_browser_script_form_submit_probe_record(
     cstr_copy(g_script_form_submit_last_body,
             sizeof(g_script_form_submit_last_body),
             (body != NULL) ? body : "");
+    if (method == PCORE_FORM_METHOD_POST) {
+        cstr_copy(g_script_form_submit_post_body,
+                sizeof(g_script_form_submit_post_body),
+                (body != NULL) ? body : "");
+    }
 }
 
 static char *pcore_browser_script_form_target(
@@ -18003,7 +18024,7 @@ static int pcore_browser_script_form_submit_validate(void *pw,
 
 static int pcore_browser_script_form_submit_dialog_default(
         pcore_browser_script_bridge *bridge,
-        const PBrowserScriptFormSubmitInfo *info)
+        const PBrowserScriptFormSubmitInfo *info, int validate)
 {
     PCoreDialogFormSubmissionInfo dialog_info;
     char dialog_probe[1];
@@ -18017,10 +18038,17 @@ static int pcore_browser_script_form_submit_dialog_default(
     dialog_info.size = sizeof(dialog_info);
     dialog_probe[0] = '\0';
     value_probe[0] = '\0';
-    result = PCore_FormDialogSubmissionById(bridge->document,
-            info->form_id, info->submitter_id, &dialog_info,
-            dialog_probe, sizeof(dialog_probe), value_probe,
-            sizeof(value_probe));
+    if (validate) {
+        result = PCore_FormDialogSubmissionById(bridge->document,
+                info->form_id, info->submitter_id, &dialog_info,
+                dialog_probe, sizeof(dialog_probe), value_probe,
+                sizeof(value_probe));
+    } else {
+        result = PCore_FormDialogSubmissionNoValidationById(
+                bridge->document, info->form_id, &dialog_info,
+                dialog_probe, sizeof(dialog_probe), value_probe,
+                sizeof(value_probe));
+    }
     if (result == 0 || result == 2 || result == 5) {
         return result == 2 ? 1 : 0;
     }
@@ -18039,10 +18067,17 @@ static int pcore_browser_script_form_submit_dialog_default(
         free(return_value);
         return 0;
     }
-    result = PCore_FormDialogSubmissionById(bridge->document,
-            info->form_id, info->submitter_id, &dialog_info, dialog_id,
-            dialog_info.dialog_id_bytes + 1, return_value,
-            dialog_info.return_value_bytes + 1);
+    if (validate) {
+        result = PCore_FormDialogSubmissionById(bridge->document,
+                info->form_id, info->submitter_id, &dialog_info, dialog_id,
+                dialog_info.dialog_id_bytes + 1, return_value,
+                dialog_info.return_value_bytes + 1);
+    } else {
+        result = PCore_FormDialogSubmissionNoValidationById(
+                bridge->document, info->form_id, &dialog_info, dialog_id,
+                dialog_info.dialog_id_bytes + 1, return_value,
+                dialog_info.return_value_bytes + 1);
+    }
     if (result != 1) {
         free(dialog_id);
         free(return_value);
@@ -18077,8 +18112,8 @@ static int pcore_browser_script_form_submit_dialog_default(
     return closed ? 1 : 0;
 }
 
-static int pcore_browser_script_form_submit_default(void *pw,
-        const PBrowserScriptFormSubmitInfo *info)
+static int pcore_browser_script_form_submit_default_common(void *pw,
+        const PBrowserScriptFormSubmitInfo *info, int validate)
 {
     pcore_browser_script_bridge *bridge;
     PCoreFormSubmissionInfo submission;
@@ -18100,18 +18135,30 @@ static int pcore_browser_script_form_submit_default(void *pw,
     memset(&submission, 0, sizeof(submission));
     action_probe[0] = '\0';
     body_probe[0] = '\0';
-    result = PCore_FormSubmissionById(bridge->document, info->form_id,
-            info->submitter_id, &submission, action_probe,
-            sizeof(action_probe), body_probe, sizeof(body_probe));
+    if (validate) {
+        result = PCore_FormSubmissionById(bridge->document, info->form_id,
+                info->submitter_id, &submission, action_probe,
+                sizeof(action_probe), body_probe, sizeof(body_probe));
+    } else {
+        result = PCore_FormSubmissionNoValidationById(bridge->document,
+                info->form_id, &submission, action_probe,
+                sizeof(action_probe), body_probe, sizeof(body_probe));
+    }
     if (result == 0 || result == 2 || result == 5) {
         return 0;
     }
     if (result == 6) {
-        return pcore_browser_script_form_submit_dialog_default(bridge, info);
+        return pcore_browser_script_form_submit_dialog_default(bridge, info,
+                validate);
     }
     if (result == 3) {
-        multipart = PCore_MultipartSubmissionById(bridge->document,
-                info->form_id, info->submitter_id);
+        if (validate) {
+            multipart = PCore_MultipartSubmissionById(bridge->document,
+                    info->form_id, info->submitter_id);
+        } else {
+            multipart = PCore_MultipartSubmissionNoValidationById(
+                    bridge->document, info->form_id);
+        }
         if (multipart == NULL) {
             return 0;
         }
@@ -18160,10 +18207,17 @@ static int pcore_browser_script_form_submit_default(void *pw,
             free(body);
             return 0;
         }
-        result = PCore_FormSubmissionById(bridge->document,
-                info->form_id, info->submitter_id, &submission, action,
-                submission.action_bytes + 1, body,
-                submission.body_bytes + 1);
+        if (validate) {
+            result = PCore_FormSubmissionById(bridge->document,
+                    info->form_id, info->submitter_id, &submission, action,
+                    submission.action_bytes + 1, body,
+                    submission.body_bytes + 1);
+        } else {
+            result = PCore_FormSubmissionNoValidationById(
+                    bridge->document, info->form_id, &submission, action,
+                    submission.action_bytes + 1, body,
+                    submission.body_bytes + 1);
+        }
         if (result != 1) {
             free(action);
             free(body);
@@ -18184,6 +18238,25 @@ static int pcore_browser_script_form_submit_default(void *pw,
     if (action != action_probe) { free(action); }
     if (body != body_probe) { free(body); }
     return result;
+}
+
+static int pcore_browser_script_form_submit_default(void *pw,
+        const PBrowserScriptFormSubmitInfo *info)
+{
+    return pcore_browser_script_form_submit_default_common(pw, info, 1);
+}
+
+static int pcore_browser_script_form_submit_direct(void *pw,
+        const PBrowserScriptFormSubmitInfo *info)
+{
+    if (info == NULL || info->submitter_id == NULL ||
+            info->submitter_id[0] != '\0') {
+        return -1;
+    }
+    if (g_script_form_submit_probe) {
+        g_script_form_submit_direct_calls++;
+    }
+    return pcore_browser_script_form_submit_default_common(pw, info, 0);
 }
 
 /* Every WM re-style must reassert the physical-pixel/DPI contract before
@@ -42682,6 +42755,95 @@ static BOOL test1174_browser_form_request_submit_contract(void)
             "HTMLFormElement.requestSubmit validates the selected submitter,"
             " dispatches a cancelable bubbling submit event, and only then"
             " builds the Core-owned successful-control request.");
+    return TRUE;
+}
+
+/* TEST 1175 - Browser HTMLFormElement.submit() direct default action. */
+static BOOL test1175_browser_form_direct_submit_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body>"
+        "<form id='direct' action='/direct-submit' method='post'>"
+        "<input id='field' name='field' required>"
+        "<button id='send' type='submit' name='submit' value='send'>Send</button>"
+        "</form>"
+        "<dialog id='modal'><form id='dialog-form' method='dialog'>"
+        "<input id='dialog-field' name='dialog-field' required>"
+        "</form></dialog>"
+        "<form id='multi' action='/direct-multipart' method='post' "
+        "enctype='multipart/form-data'><input id='upload-field' "
+        "name='upload' required></form>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var direct=document.getElementById('direct'),dialogForm="
+        "document.getElementById('dialog-form'),multi=document.getElementById('multi'),"
+        "events=0;"
+        "direct.addEventListener('submit',function(){events++;});"
+        "dialogForm.addEventListener('submit',function(){events++;});"
+        "multi.addEventListener('submit',function(){events++;});"
+        "var a=direct.submit(),b=dialogForm.submit(),c=multi.submit();"
+        "document.getElementById('result').textContent="
+        "String(typeof direct.submit)+'|'+String(a===undefined&&b===undefined&&c===undefined)+'|'"
+        "+String(events===0)+'|'+String(document.getElementById('field').validity.valueMissing===true);";
+    static const char EXPECTED[] = "function|true|true|true";
+    char error[384];
+    BOOL ok;
+
+    memset(error, 0, sizeof(error));
+    g_script_form_submit_probe = 1;
+    g_script_form_submit_validate_calls = 0;
+    g_script_form_submit_default_calls = 0;
+    g_script_form_submit_direct_calls = 0;
+    memset(g_script_form_submit_method_counts, 0,
+            sizeof(g_script_form_submit_method_counts));
+    g_script_form_submit_last_method = 0;
+    g_script_form_submit_last_form[0] = '\0';
+    g_script_form_submit_last_submitter[0] = '\0';
+    g_script_form_submit_last_action[0] = '\0';
+    g_script_form_submit_last_body[0] = '\0';
+    g_script_form_submit_post_body[0] = '\0';
+    ok = test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error));
+    g_script_form_submit_probe = 0;
+    if (ok && (g_script_form_submit_validate_calls != 0 ||
+            g_script_form_submit_direct_calls != 3 ||
+            g_script_form_submit_default_calls != 3 ||
+            g_script_form_submit_method_counts[PCORE_FORM_METHOD_POST] != 1 ||
+            g_script_form_submit_method_counts[PCORE_FORM_METHOD_DIALOG] != 1 ||
+            g_script_form_submit_method_counts[PCORE_FORM_METHOD_MULTIPART] != 1 ||
+            strcmp(g_script_form_submit_post_body, "field=") != 0 ||
+            g_script_form_submit_last_method != PCORE_FORM_METHOD_MULTIPART ||
+            strcmp(g_script_form_submit_last_form, "multi") != 0 ||
+            g_script_form_submit_last_submitter[0] != '\0' ||
+            strcmp(g_script_form_submit_last_action, "/direct-multipart") != 0 ||
+            g_script_form_submit_last_body[0] != '\0')) {
+        ok = FALSE;
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "validate=%d direct=%d defaults=%d methods=%d/%d/%d "
+                    "post=%s last=%d/%s/%s/%s",
+                    g_script_form_submit_validate_calls,
+                    g_script_form_submit_direct_calls,
+                    g_script_form_submit_default_calls,
+                    g_script_form_submit_method_counts[PCORE_FORM_METHOD_POST],
+                    g_script_form_submit_method_counts[PCORE_FORM_METHOD_DIALOG],
+                    g_script_form_submit_method_counts[PCORE_FORM_METHOD_MULTIPART],
+                    g_script_form_submit_post_body,
+                    g_script_form_submit_last_method,
+                    g_script_form_submit_last_form,
+                    g_script_form_submit_last_action,
+                    g_script_form_submit_last_body);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1175 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1175 OK",
+            "HTMLFormElement.submit skips validation and submit events while"
+            " routing urlencoded, dialog, and multipart defaults through Core.");
     return TRUE;
 }
 
@@ -100796,6 +100958,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1172: ok = test1172_core_form_reset_by_id_contract(); break;
         case 1173: ok = test1173_browser_form_reset_contract(); break;
         case 1174: ok = test1174_browser_form_request_submit_contract(); break;
+        case 1175: ok = test1175_browser_form_direct_submit_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

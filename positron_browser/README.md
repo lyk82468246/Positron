@@ -331,9 +331,15 @@ callback 参数和输出缓冲只在调用期间借用。
 调用 Core validation，验证通过后派发可冒泡、可取消的 `submit`，再调用宿主默认动作
 callback。Core 的 by-id submission primitives 负责 enabled submitter、`novalidate`/
 `formnovalidate`、urlencoded/multipart/dialog 结果；宿主负责网络导航或 dialog close。
-两条方法都在缺少 callback、目标非法、事件取消或 adapter 失败时 fail closed；
-`requestSubmit()` 返回 `undefined`，`HTMLFormElement.submit()` 尚未实现。Core reset/
-submission 入口不自行派发事件、导航或操作 native 控件；原有按坐标的
+启用 `PBrowserScriptFormSubmitDirectCallbacks` 后还会安装
+`HTMLFormElement.submit()`：Browser 只解析当前有 id 的 form，跳过 constraint
+validation、`submit` 事件和 submitter 选择，调用 direct callback 后返回
+`undefined`。宿主应把该 callback 接到
+`PCore_FormSubmissionNoValidationById`、
+`PCore_FormDialogSubmissionNoValidationById` 或
+`PCore_MultipartSubmissionNoValidationById`，再按应用策略执行网络导航或
+dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、非法目标或 adapter
+失败会安全 no-op；Core state-only 入口不派发事件、导航或操作 native 控件，原有按坐标的
 `PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
 
 selector bridge 支持有界 compound、顶层列表、后代/子代/兄弟组合器、属性操作符和
@@ -388,12 +394,8 @@ Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click�
 
 通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、HDC、网络和页面生命周期。
 
-脚本 `form.reset()` 与 `form.requestSubmit()` 的顺序由 Browser 固定：前者先通过 Ex
-form-event adapter 派发 `reset`，后者先完成 Core validation 再派发
-`submit`（两者均为 `bubbles=1`、`cancelable=1`），只有未取消时才调用相应默认动作
-callback。宿主负责把 reset 结果映射到 `PCore_FormResetById`，把 submit 结果映射到
-Core submission primitive 后执行网络或 dialog 策略，不应在宿主复制表单 owner、验证、
-submitter 或事件取消规则。
+脚本三种 form 方法的顺序见上面的 DOM/form 小节；宿主把各默认动作接到对应 Core
+primitive 并执行网络或 dialog 策略，不复制表单 owner、验证或事件规则。
 
 每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。键盘焦点顺序由 Core 的 `PCore_FocusTargetInfo`（或 modal 场景的 `PCore_FocusTargetInfoWithin`）提供；Browser 负责报告活动 modal id，并把宿主的 WM key transaction 按取消和默认动作规则分发给当前目标。
 
@@ -634,13 +636,9 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 1. 用 `positron_core.dll` 创建、style、layout 当前文档；
 2. 为该文档构造 callback context；
-3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
-   `document.activeElement` 或 `HTMLElement.focus()`/`blur()`，同时准备 Core 焦点
-   id 与 focus request callbacks；若需要脚本 `:active`/`:hover`，注册 interaction
-   callback 读取 Core 的当前状态；若脚本需要 `HTMLFormElement.reset()` 或
-   `requestSubmit()`，再注册相应的 `PBrowserScriptFormResetCallbacks`/
-   `PBrowserScriptFormSubmitCallbacks` 与 `PBrowserScriptFormEventCallbacksEx`，让宿主
-   能按 form id 调用 Core reset/submission primitive；若需要页面级滚动可见性，使用
+3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；按需增加
+   activeElement/focus、interaction 和 form method callbacks，并让宿主把 form id
+   映射到 Core reset 或 validation/no-validation primitive；页面级滚动可见性使用
    focus request 的 Ex callbacks；
 4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；

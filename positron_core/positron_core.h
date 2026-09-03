@@ -1415,10 +1415,23 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
  * a Core default-action primitive: it does not dispatch submit events or start
  * navigation, and the embedder owns those steps. */
 PCORE_API int PCore_FormSubmissionById(HANDLE hDoc, const char *form_id,
-                                    const char *submitter_id,
-                                    PCoreFormSubmissionInfo *out_info,
-                                    char *action, int action_capacity,
-                                    char *body, int body_capacity);
+                                     const char *submitter_id,
+                                     PCoreFormSubmissionInfo *out_info,
+                                     char *action, int action_capacity,
+                                     char *body, int body_capacity);
+
+/* Build the direct HTMLFormElement.submit() default action for form_id. This
+ * intentionally skips constraint validation, submitter selection and submit
+ * event dispatch; no submit button is included in the successful-control set.
+ * The return values and output-buffer rules match PCore_FormSubmissionAt. A
+ * zero result means that the form cannot be resolved or the DOM/output data
+ * cannot be built. The caller owns navigation and any surrounding event or
+ * lifecycle policy. */
+PCORE_API int PCore_FormSubmissionNoValidationById(HANDLE hDoc,
+                                     const char *form_id,
+                                     PCoreFormSubmissionInfo *out_info,
+                                     char *action, int action_capacity,
+                                     char *body, int body_capacity);
 
 /* Resolve the default action of a method="dialog" form submission without
  * exposing DOM nodes. The explicit form addresses a laid-out submit button
@@ -1457,12 +1470,24 @@ PCORE_API int PCore_FormDialogSubmissionForTextInput(HANDLE hDoc,
  * mutates the dialog's open state. A zero result means no form/submitter or a
  * non-dialog method. */
 PCORE_API int PCore_FormDialogSubmissionById(HANDLE hDoc,
-                                    const char *form_id,
-                                    const char *submitter_id,
-                                    PCoreDialogFormSubmissionInfo *out_info,
-                                    char *dialog_id, int dialog_id_capacity,
-                                    char *return_value,
-                                    int return_value_capacity);
+                                     const char *form_id,
+                                     const char *submitter_id,
+                                     PCoreDialogFormSubmissionInfo *out_info,
+                                     char *dialog_id, int dialog_id_capacity,
+                                     char *return_value,
+                                     int return_value_capacity);
+
+/* Resolve the direct HTMLFormElement.submit() default action for a
+ * method="dialog" form. Constraint validation, submitter selection and submit
+ * event dispatch are skipped; the returned value is therefore empty because
+ * no submit button is activated. The query never mutates the dialog or
+ * dispatches events. */
+PCORE_API int PCore_FormDialogSubmissionNoValidationById(HANDLE hDoc,
+                                     const char *form_id,
+                                     PCoreDialogFormSubmissionInfo *out_info,
+                                     char *dialog_id, int dialog_id_capacity,
+                                     char *return_value,
+                                     int return_value_capacity);
 
 typedef struct PCoreMultipartSubmissionInfo {
     int action_bytes;
@@ -1495,6 +1520,12 @@ PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
 PCORE_API HANDLE PCore_MultipartSubmissionById(HANDLE hDoc,
                                                const char *form_id,
                                                const char *submitter_id);
+/* Capture a direct HTMLFormElement.submit() multipart action. Constraint
+ * validation and submitter selection are skipped, so no submit button part is
+ * emitted. The caller owns the returned snapshot until
+ * PCore_FreeMultipartSubmission. */
+PCORE_API HANDLE PCore_MultipartSubmissionNoValidationById(HANDLE hDoc,
+                                               const char *form_id);
 PCORE_API int PCore_MultipartSubmissionInfo(HANDLE hSubmission,
                                     PCoreMultipartSubmissionInfo *out_info,
                                     char *action, int action_capacity);

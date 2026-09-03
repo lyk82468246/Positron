@@ -736,6 +736,24 @@ typedef struct PBrowserScriptFormSubmitCallbacks {
     PBrowserScriptSubmitFormFn submit_form;
 } PBrowserScriptFormSubmitCallbacks;
 
+/* Optional adapter for HTMLFormElement.submit(). Unlike requestSubmit(), the
+ * direct method skips validation, submit-event dispatch and submitter
+ * selection. The browser still owns the script method and invokes this host
+ * callback only for a resolved form id; the host applies the Core
+ * no-validation default action and its navigation/dialog policy. The callback
+ * returns >0 when the action was accepted, 0 for a safe no-op and <0 for an
+ * adapter failure. The id is borrowed for the synchronous call and
+ * submitter_id in the supplied info is always an empty UTF-8 string. Register
+ * this table after PBrowserScriptFormCallbacks; the existing form-submit ABI
+ * remains unchanged. */
+typedef int (*PBrowserScriptFormSubmitDirectFn)(void *pw,
+        const PBrowserScriptFormSubmitInfo *info);
+typedef struct PBrowserScriptFormSubmitDirectCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptFormSubmitDirectFn submit_form;
+} PBrowserScriptFormSubmitDirectCallbacks;
+
 /* Constraint-validation bits returned by the product-owned validation
  * bridge. They intentionally mirror the public positron_core flags without
  * making this DLL depend on positron_core headers. */
@@ -1779,6 +1797,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormResetCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormSubmitCallbacks(
         HANDLE hSession, const PBrowserScriptFormSubmitCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormSubmitCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormSubmitDirectCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptFormSubmitDirectCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormSubmitDirectCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
         HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks);

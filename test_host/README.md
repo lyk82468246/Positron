@@ -267,6 +267,13 @@ required 失败先阻止默认动作，`formnovalidate` 可绕过约束，`submi
 action/body、调用次数和 `undefined` 返回值；宿主只负责 Core callback 接线、导航记录和
 断言，不复制 form owner、验证或 submitter 语义。
 
+TEST1175 断言 Browser 脚本 `HTMLFormElement.submit()` 的直接默认动作：urlencoded POST、
+`method="dialog"` 和 multipart 三个 form 都含空 required 控件；调用返回 `undefined`，
+不调用 validation、不派发 `submit`、不选择 submitter，却仍分别生成 Core 的 POST、dialog
+和 multipart 结果。夹具检查三个 direct/default callback、方法分类、`field=` body、空
+dialog return value/submitter 与 multipart action。宿主只负责注册 direct callback、调用
+Core NoValidationById primitive、记录导航或 dialog 策略和断言，产品语义仍属于 Browser/Core。
+
 ### Native EDIT/SELECT/button/file
 
 WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。对 contenteditable，宿主从 `PCore_ContentEditableTargetInfo` 枚举带 id 的已布局 editing host，创建最多 16 个 WM multiline EDIT 代理；`WM_CHAR` 默认处理返回后才回读最终文本并调用 Core mutation。宿主实现的 selection callback 把 WM EDIT 的 UTF-16 位置（包括 CRLF）转换为 Browser 使用的逻辑 UTF-16 位置，并只保存原生控件的短暂状态；原生范围确定后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`，由 Browser 去重并分发一次 `selectionchange`。这样可吸收 WM6 在默认处理期间提前发送的 `EN_CHANGE`，避免把旧值或空值提交为一次 input，也避免宿主经 Core 重复派发选区事件。对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取有界 `CF_UNICODETEXT`、规范化 CRLF，并把精确 data 交给 `beforeinput`；`WM_COPY` 的折叠选区保持现有剪贴板不变，允许的 paste/cut 才执行 native default 和 Core/input 提交，格式缺失或超长时 fail closed。WinCE 原生 `WM_CUT` 可能内部重入 `WM_COPY`，宿主只在该外层默认动作期间放行同一 HWND 的重入，不让它绕过自己的外部 copy 规则。键盘/拖选 anchor、Shift 状态和捕获/取消/焦点中断收尾同样只属于宿主平台接线。

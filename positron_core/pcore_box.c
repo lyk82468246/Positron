@@ -10869,7 +10869,7 @@ static int pcore_form_submission_multipart(
 
 static pcore_multipart_submission *pcore_multipart_snapshot(
         pcore_render *st, dom_html_form_element *form, dom_node *activated,
-        int choose_default)
+        int choose_default, int validate)
 {
     pcore_multipart_submission *submission;
     PCoreFormValidationInfo validation;
@@ -10904,8 +10904,8 @@ static pcore_multipart_submission *pcore_multipart_snapshot(
         pcore_multipart_free(submission);
         return NULL;
     }
-    if (!pcore_form_validate(st, form, activated, &validation) ||
-            !validation.valid) {
+    if (validate && (!pcore_form_validate(st, form, activated, &validation) ||
+            !validation.valid)) {
         if (default_submit != NULL) {
             dom_node_unref(default_submit);
         }
@@ -11008,7 +11008,7 @@ static int pcore_form_submission_multipart(
 
 static int pcore_form_submission(pcore_render *st,
         dom_html_form_element *form,
-        dom_node *activated, int choose_default,
+        dom_node *activated, int choose_default, int validate,
         PCoreFormSubmissionInfo *out_info, char *action, int action_capacity,
         char *body, int body_capacity)
 {
@@ -11047,10 +11047,10 @@ static int pcore_form_submission(pcore_render *st,
         }
         activated = default_submit;
     }
-    if (!pcore_form_validate(st, form, activated, &validation)) {
+    if (validate && !pcore_form_validate(st, form, activated, &validation)) {
         goto form_submission_done;
     }
-    if (!validation.valid) {
+    if (validate && !validation.valid) {
         result = 5;
         goto form_submission_done;
     }
@@ -11156,7 +11156,7 @@ PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
     if (form == NULL) {
         return 2;
     }
-    result = pcore_form_submission(st, form, control->node, 0, out_info,
+    result = pcore_form_submission(st, form, control->node, 0, 1, out_info,
             action, action_capacity, body, body_capacity);
     dom_node_unref((dom_node *) form);
     return result;
@@ -11193,7 +11193,7 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
     if (form == NULL) {
         return 0;
     }
-    result = pcore_form_submission(st, form, NULL, 1, out_info,
+    result = pcore_form_submission(st, form, NULL, 1, 1, out_info,
             action, action_capacity, body, body_capacity);
     dom_node_unref((dom_node *) form);
     return result;
@@ -11231,11 +11231,40 @@ PCORE_API int PCore_FormSubmissionById(HANDLE hDoc, const char *form_id,
         return 0;
     }
     st = pcore_get_render((dom_document *) hDoc);
-    result = pcore_form_submission(st, form, submitter, 0, out_info,
+    result = pcore_form_submission(st, form, submitter, 0, 1, out_info,
             action, action_capacity, body, body_capacity);
     if (submitter != NULL) {
         dom_node_unref(submitter);
     }
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
+PCORE_API int PCore_FormSubmissionNoValidationById(HANDLE hDoc,
+        const char *form_id, PCoreFormSubmissionInfo *out_info,
+        char *action, int action_capacity, char *body, int body_capacity)
+{
+    dom_element *element;
+    dom_html_form_element *form;
+    pcore_render *st;
+    int result;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return 0;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 0;
+    }
+    form = (dom_html_form_element *) element;
+    st = pcore_get_render((dom_document *) hDoc);
+    result = pcore_form_submission(st, form, NULL, 0, 0, out_info,
+            action, action_capacity, body, body_capacity);
     dom_node_unref((dom_node *) element);
     return result;
 }
@@ -11287,7 +11316,8 @@ static dom_string *pcore_form_submitter_value(dom_node *activated)
 
 static int pcore_form_dialog_submission(pcore_render *st,
         dom_html_form_element *form, dom_node *activated,
-        int choose_default, PCoreDialogFormSubmissionInfo *out_info,
+        int choose_default, int validate,
+        PCoreDialogFormSubmissionInfo *out_info,
         char *dialog_id, int dialog_id_capacity,
         char *return_value, int return_value_capacity)
 {
@@ -11342,10 +11372,10 @@ static int pcore_form_dialog_submission(pcore_render *st,
         result = 0;
         goto dialog_submission_done;
     }
-    if (!pcore_form_validate(st, form, activated, &validation)) {
+    if (validate && !pcore_form_validate(st, form, activated, &validation)) {
         goto dialog_submission_done;
     }
-    if (!validation.valid) {
+    if (validate && !validation.valid) {
         result = 5;
         goto dialog_submission_done;
     }
@@ -11436,7 +11466,7 @@ PCORE_API int PCore_FormDialogSubmissionAt(HANDLE hDoc, int x, int y,
     if (form == NULL) {
         return 0;
     }
-    result = pcore_form_dialog_submission(st, form, control->node, 0,
+    result = pcore_form_dialog_submission(st, form, control->node, 0, 1,
             out_info, dialog_id, dialog_id_capacity, return_value,
             return_value_capacity);
     dom_node_unref((dom_node *) form);
@@ -11475,7 +11505,7 @@ PCORE_API int PCore_FormDialogSubmissionForTextInput(HANDLE hDoc,
     if (form == NULL) {
         return 0;
     }
-    result = pcore_form_dialog_submission(st, form, NULL, 1, out_info,
+    result = pcore_form_dialog_submission(st, form, NULL, 1, 1, out_info,
             dialog_id, dialog_id_capacity, return_value,
             return_value_capacity);
     dom_node_unref((dom_node *) form);
@@ -11515,12 +11545,43 @@ PCORE_API int PCore_FormDialogSubmissionById(HANDLE hDoc,
         return 0;
     }
     st = pcore_get_render((dom_document *) hDoc);
-    result = pcore_form_dialog_submission(st, form, submitter, 0, out_info,
+    result = pcore_form_dialog_submission(st, form, submitter, 0, 1, out_info,
             dialog_id, dialog_id_capacity, return_value,
             return_value_capacity);
     if (submitter != NULL) {
         dom_node_unref(submitter);
     }
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
+PCORE_API int PCore_FormDialogSubmissionNoValidationById(HANDLE hDoc,
+        const char *form_id, PCoreDialogFormSubmissionInfo *out_info,
+        char *dialog_id, int dialog_id_capacity, char *return_value,
+        int return_value_capacity)
+{
+    dom_element *element;
+    dom_html_form_element *form;
+    pcore_render *st;
+    int result;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return 0;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 0;
+    }
+    form = (dom_html_form_element *) element;
+    st = pcore_get_render((dom_document *) hDoc);
+    result = pcore_form_dialog_submission(st, form, NULL, 0, 0, out_info,
+            dialog_id, dialog_id_capacity, return_value,
+            return_value_capacity);
     dom_node_unref((dom_node *) element);
     return result;
 }
@@ -11557,7 +11618,7 @@ PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y)
     if (form == NULL) {
         return NULL;
     }
-    submission = pcore_multipart_snapshot(st, form, control->node, 0);
+    submission = pcore_multipart_snapshot(st, form, control->node, 0, 1);
     dom_node_unref((dom_node *) form);
     return (HANDLE) submission;
 }
@@ -11592,7 +11653,7 @@ PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
     if (form == NULL) {
         return NULL;
     }
-    submission = pcore_multipart_snapshot(st, form, NULL, 1);
+    submission = pcore_multipart_snapshot(st, form, NULL, 1, 1);
     dom_node_unref((dom_node *) form);
     return (HANDLE) submission;
 }
@@ -11628,10 +11689,37 @@ PCORE_API HANDLE PCore_MultipartSubmissionById(HANDLE hDoc,
         return NULL;
     }
     st = pcore_get_render((dom_document *) hDoc);
-    submission = pcore_multipart_snapshot(st, form, submitter, 0);
+    submission = pcore_multipart_snapshot(st, form, submitter, 0, 1);
     if (submitter != NULL) {
         dom_node_unref(submitter);
     }
+    dom_node_unref((dom_node *) element);
+    return (HANDLE) submission;
+}
+
+PCORE_API HANDLE PCore_MultipartSubmissionNoValidationById(HANDLE hDoc,
+        const char *form_id)
+{
+    dom_element *element;
+    dom_html_form_element *form;
+    pcore_render *st;
+    pcore_multipart_submission *submission;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return NULL;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return NULL;
+    }
+    form = (dom_html_form_element *) element;
+    st = pcore_get_render((dom_document *) hDoc);
+    submission = pcore_multipart_snapshot(st, form, NULL, 0, 0);
     dom_node_unref((dom_node *) element);
     return (HANDLE) submission;
 }

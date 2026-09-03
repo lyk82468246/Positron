@@ -172,6 +172,14 @@ opaque handle 仍须由调用方配对 `PCore_FreeMultipartSubmission`。
 
 `PCore_FormSubmission*` 使用 `PCORE_FORM_METHOD_*` 常量报告有效提交方法。`method="dialog"` 或 submitter 的 `formmethod="dialog"` 不生成网络 action/body；调用方改用 `PCore_FormDialogSubmissionAt` 或 `PCore_FormDialogSubmissionForTextInput` 两阶段查询，取得最近祖先 dialog 的 UTF-8 id 和 submitter value。Core 在查询时执行约束验证，但不派发 `submit`/`close`、不改变 `open`，这些事务仍由 Browser 和宿主完成。当前 Browser 组合按 id 寻址，因此无 id 或不在 dialog 内的目标会被消费并 fail closed。
 
+脚本 `HTMLFormElement.submit()` 使用三个独立的无验证 by-id 入口：
+`PCore_FormSubmissionNoValidationById` 构造 urlencoded 或报告 multipart/dialog 方法，
+`PCore_FormDialogSubmissionNoValidationById` 返回最近祖先 dialog 的 id（不含 submitter
+value），`PCore_MultipartSubmissionNoValidationById` 返回由调用方释放的 multipart
+snapshot。它们跳过 constraint validation、submitter 选择和事件，不导航、不关闭 dialog、
+不操作 native 控件；Browser 决定脚本方法和事件边界，宿主在 direct callback 中采用对应
+结果并执行网络或 dialog 策略。空/无效 form id、容量不足或不满足方法条件均安全失败。
+
 ### 交互与事件
 
 Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispatch 和可聚焦目标枚举。Browser 决定脚本事件/默认动作事务，宿主把 WM 消息和 native 控件状态映射进来。
