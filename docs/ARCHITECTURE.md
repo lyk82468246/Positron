@@ -178,13 +178,15 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   event 或 submitter 选择，宿主把 callback 接到 Core 的三个 NoValidationById primitive
   后执行同一应用策略。三种脚本方法均不由 Browser 创建 native 控件，Core 的 state-only
   入口也不自行派发事件；旧的 form-submit 表保持兼容；
-- 可选的 `new FormData(form)` snapshot：宿主注册
-  `PBrowserScriptFormDataCallbacks` 后，Browser 按 form id 请求一次 count 和逐项 entry，
-  生成脱离 DOM 的脚本对象。宿主只把 callback 接到 Core 的
-  `PCore_FormDataById`/`PCore_FormDataInfo`/`PCore_FormDataEntryInfo`，Core 复用
+- 可选的 `new FormData(form[, submitter])` snapshot：宿主注册
+  `PBrowserScriptFormDataCallbacks`（无显式 submitter）或新增的
+  `PBrowserScriptFormDataCallbacksEx`（带 submitter id）后，Browser 按 form id 请求一次
+  count 和逐项 entry，生成脱离 DOM 的脚本对象。宿主只把 callback 接到
+  `PCore_FormDataById`/`PCore_FormDataByIdEx` 及 info/entry API，Core 复用
   successful-control 与显式 form-owner 规则；Browser 负责对象、文件 metadata 和错误
   映射，宿主不得复制表单收集或暴露 picker 路径。该桥固定最多 64 项和受限 UTF-8 字段，
-  不做 validation、submitter、事件、导航或 live linkage；
+  submitter 必须是启用且归属于目标 form 的 submit-type input/button；它不做 validation、
+  事件、导航或 live linkage；
 - 可选的 `document.activeElement` 投影：宿主注册
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律

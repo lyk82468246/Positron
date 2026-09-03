@@ -67,12 +67,14 @@
   的 NoValidationById primitive，再由宿主决定导航或 close。两条脚本提交方法都要求有
   可寻址的 form id，并在 callback 缺失、目标非法或容量不足时 fail closed。文档 mutation
   后调用方仍应重新查询。
-  Browser 的 `new FormData(form)` 另有独立的 detached snapshot：它复用 successful-control
-  与 form-owner 规则，最多返回 64 项；名称最多 64 字节，字符串值最多 128 字节，文件名
-  和 MIME 类型各最多 64 字节。文件只返回 filename/type 和空内容，不暴露 picker 路径；
-  无 id、超限、缺少 callback 或第二个 submitter 参数均安全失败。完整 live
-  HTMLFormControlsCollection、`FormData(form, submitter)`、文件读取和所有
-  form-associated 元素、fieldset/object/image 归属及浏览器完整表单树规则仍未实现。
+  Browser 的 `new FormData(form[, submitter])` 另有独立的 detached snapshot：无显式
+  submitter 时使用旧 callback，带第二参数时使用 Ex callback，并复用 successful-control
+  与 form-owner 规则；最多返回 64 项，名称最多 64 字节，字符串值最多 128 字节，文件名
+  和 MIME 类型各最多 64 字节。非空 submitter 必须是启用且归属于目标 form 的 submit-type
+  input/button；普通、禁用、跨 form、伪造对象、无 id、超限或缺少 callback 均安全失败。
+  文件只返回 filename/type 和空内容，不暴露 picker 路径；完整 live
+  HTMLFormControlsCollection、文件读取和所有其他 form-associated 元素、fieldset/object/
+  image 归属及浏览器完整表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -342,9 +344,10 @@
   动作以及 native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍未实现或需人工验收。
 - TEST1176 是离线的 Browser/Core FormData snapshot 夹具，无新增立即人工风险；自动门证明
   `new FormData(form)` 对成功控件、显式 form owner、重复 select、disabled/unnamed/submit
-  排除、detached mutation、无 submit 事件和第二参数拒绝的有界映射。它只支持有 id 的
-  form、64 项和受限字段容量，文件只保留 metadata；完整 live collection、文件读取、
-  native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍未实现或需人工验收。
+  排除、detached mutation 和无 submit 事件的有界映射。TEST1177 继续覆盖 Ex bridge 的
+  enabled submitter、外部 owner、跨 form/禁用/非元素拒绝和无 submit 事件。两项只支持
+  有 id 的 form、64 项和受限字段容量，文件只保留 metadata；完整 live collection、文件
+  读取、native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍未实现或需人工验收。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

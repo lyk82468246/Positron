@@ -693,14 +693,14 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
-/* Typed adapter for the detached `new FormData(form)` snapshot. The browser
- * layer owns the JavaScript FormData object and JSON bridge; the host only
- * enumerates Core's already-filtered successful controls. get_count and
- * get_entry return zero on success, a positive value when the form/entry is
- * unavailable and a negative value on adapter failure. `form_id` and all
- * buffers are borrowed for the synchronous callback. Lengths exclude the
- * trailing NUL; capacities include it. A callback must fail closed when a
- * value does not fit its supplied capacity rather than truncating it.
+/* Typed adapter for the detached `new FormData(form)` snapshot without an
+ * explicit submitter. The browser layer owns the JavaScript FormData object
+ * and JSON bridge; the host only enumerates Core's already-filtered successful
+ * controls. get_count and get_entry return zero on success, a positive value
+ * when the form/entry is unavailable and a negative value on adapter failure.
+ * `form_id` and all buffers are borrowed for the synchronous callback. Lengths
+ * exclude the trailing NUL; capacities include it. A callback must fail closed
+ * when a value does not fit its supplied capacity rather than truncating it.
  *
  * The bridge is intentionally bounded by the fixed native-script result
  * buffer. It supports at most PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES entries,
@@ -744,6 +744,24 @@ typedef struct PBrowserScriptFormDataCallbacks {
     PBrowserScriptGetFormDataCountFn get_count;
     PBrowserScriptGetFormDataEntryFn get_entry;
 } PBrowserScriptFormDataCallbacks;
+
+/* Additive adapter for `new FormData(form, submitter)`. It has the same
+ * ownership and bounded-field rules as PBrowserScriptFormDataCallbacks, but
+ * receives the optional submitter id so Core can validate its form owner and
+ * include that successful submit control. A NULL or empty submitter id means
+ * no explicit submitter. The Ex table preserves the original no-submitter ABI
+ * for consumers that do not need the second constructor argument. */
+typedef int (*PBrowserScriptGetFormDataCountFnEx)(void *pw,
+        const char *form_id, const char *submitter_id, int *out_count);
+typedef int (*PBrowserScriptGetFormDataEntryFnEx)(void *pw,
+        const char *form_id, const char *submitter_id,
+        unsigned int entry_index, PBrowserScriptFormDataEntryInfo *out_info);
+typedef struct PBrowserScriptFormDataCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetFormDataCountFnEx get_count;
+    PBrowserScriptGetFormDataEntryFnEx get_entry;
+} PBrowserScriptFormDataCallbacksEx;
 
 /* Additive adapter for the script-facing HTMLFormElement.reset() default
  * action. The browser layer dispatches a cancelable reset event through the
@@ -1844,6 +1862,8 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacks(
         HANDLE hSession, const PBrowserScriptFormDataCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacksEx(
+        HANDLE hSession, const PBrowserScriptFormDataCallbacksEx *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormDataCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormResetCallbacks(

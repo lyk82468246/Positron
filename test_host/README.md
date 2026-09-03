@@ -73,7 +73,7 @@ tests=13,20,27,999
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
-  和 `new FormData(form)` 的 detached successful-control snapshot（TEST1146–1176）；
+  和 `new FormData(form[, submitter])` 的 detached successful-control snapshot（TEST1146–1177）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -277,9 +277,15 @@ Core NoValidationById primitive、记录导航或 dialog 策略和断言，产�
 TEST1176 断言 Browser `new FormData(form)` 的快照边界：统一 Core owner 规则把显式
 `form="data"` 外部控件按文档顺序纳入，保留字符串、checkbox、重复 select 和 textarea，
 排除 disabled、未勾选、unnamed 与 submit 控件。旧对象在 native value/checked/selection
-变化后保持原内容，第二次构造读取新状态，构造不派发 submit 事件，第二个 submitter 参数
-安全拒绝。宿主只注册 FormData callback、转调 Core snapshot 并断言，不实现表单收集、
+变化后保持原内容，第二次构造读取新状态，构造不派发 submit 事件。宿主只注册 FormData
+callback、转调 Core snapshot 并断言，不实现表单收集、
 文件路径或 Browser 对象语义；文件 metadata、64 项和字段容量上限属于公共桥接合同。
+
+TEST1177 断言 Browser `new FormData(form, submitter)` 的 Ex bridge：启用且归属于目标
+form 的 submit-type input/button（包括显式 `form="id"` 外部按钮）按文档顺序进入快照；
+`null`/`undefined` 等同省略 submitter，普通控件、禁用控件、其他 form 的 submitter 和
+伪造的普通对象均安全抛出 `TypeError`。构造不派发 submit 事件或执行默认动作；宿主只注册
+Ex callback、转调 `PCore_FormDataByIdEx` 并断言，字段容量和 64 项上限仍由公共桥接负责。
 
 ### Native EDIT/SELECT/button/file
 

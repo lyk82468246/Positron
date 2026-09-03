@@ -11820,12 +11820,14 @@ PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission)
     pcore_multipart_free((pcore_multipart_submission *) hSubmission);
 }
 
-/* FormData(form) needs the same successful-control collector as multipart
- * submission, but it must be independent of method/enctype, validation and
- * submitter selection. Keep the returned object in the existing private part
- * representation so the two public snapshot families cannot drift apart. */
+/* FormData(form[, submitter]) needs the same successful-control collector as
+ * multipart submission, but it is independent of method/enctype, validation
+ * and event dispatch. The optional activated node is already validated by the
+ * caller and only affects successful submit-control inclusion. Keep the
+ * returned object in the existing private part representation so the two
+ * public snapshot families cannot drift apart. */
 static pcore_multipart_submission *pcore_form_data_snapshot(
-        dom_html_form_element *form)
+        dom_html_form_element *form, dom_node *activated)
 {
     pcore_multipart_submission *submission;
 
@@ -11839,17 +11841,21 @@ static pcore_multipart_submission *pcore_form_data_snapshot(
     }
     submission->action = pcore_heap_string("");
     if (submission->action == NULL ||
-            !pcore_multipart_build_parts(form, NULL, submission)) {
+            !pcore_multipart_build_parts(form, activated, submission)) {
         pcore_multipart_free(submission);
         return NULL;
     }
     return submission;
 }
 
-PCORE_API HANDLE PCore_FormDataById(HANDLE hDoc, const char *form_id)
+static HANDLE pcore_form_data_by_id(HANDLE hDoc, const char *form_id,
+        const char *submitter_id)
 {
     dom_element *element;
+    dom_node *submitter;
+    dom_html_form_element *form;
     pcore_multipart_submission *submission;
+    int submitter_error;
 
     if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
         return NULL;
@@ -11863,9 +11869,31 @@ PCORE_API HANDLE PCore_FormDataById(HANDLE hDoc, const char *form_id)
         }
         return NULL;
     }
-    submission = pcore_form_data_snapshot((dom_html_form_element *) element);
+    form = (dom_html_form_element *) element;
+    submitter_error = 0;
+    submitter = pcore_form_submitter_by_id((dom_document *) hDoc, form,
+            submitter_id, &submitter_error);
+    if (submitter_error) {
+        dom_node_unref((dom_node *) element);
+        return NULL;
+    }
+    submission = pcore_form_data_snapshot(form, submitter);
+    if (submitter != NULL) {
+        dom_node_unref(submitter);
+    }
     dom_node_unref((dom_node *) element);
     return (HANDLE) submission;
+}
+
+PCORE_API HANDLE PCore_FormDataById(HANDLE hDoc, const char *form_id)
+{
+    return pcore_form_data_by_id(hDoc, form_id, NULL);
+}
+
+PCORE_API HANDLE PCore_FormDataByIdEx(HANDLE hDoc, const char *form_id,
+        const char *submitter_id)
+{
+    return pcore_form_data_by_id(hDoc, form_id, submitter_id);
 }
 
 PCORE_API int PCore_FormDataInfo(HANDLE hFormData,

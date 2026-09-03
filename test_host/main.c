@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1176
+#define TEST_MAX_NUMBER 1177
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8363,11 +8363,11 @@ static int pcore_browser_script_form_submit_default(void *pw,
         const PBrowserScriptFormSubmitInfo *info);
 static int pcore_browser_script_form_submit_direct(void *pw,
         const PBrowserScriptFormSubmitInfo *info);
-static int pcore_browser_script_form_data_count(void *pw,
-        const char *form_id, int *out_count);
-static int pcore_browser_script_form_data_entry(void *pw,
-        const char *form_id, unsigned int entry_index,
-        PBrowserScriptFormDataEntryInfo *out_info);
+static int pcore_browser_script_form_data_count_ex(void *pw,
+        const char *form_id, const char *submitter_id, int *out_count);
+static int pcore_browser_script_form_data_entry_ex(void *pw,
+        const char *form_id, const char *submitter_id,
+        unsigned int entry_index, PBrowserScriptFormDataEntryInfo *out_info);
 static int pcore_browser_script_invalid_dispatch(void *pw,
         const PBrowserScriptInvalidEventInfo *info,
         int *out_default_allowed);
@@ -16350,7 +16350,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
-    PBrowserScriptFormDataCallbacks form_data_callbacks;
+    PBrowserScriptFormDataCallbacksEx form_data_callbacks;
     PBrowserScriptFormResetCallbacks form_reset_callbacks;
     PBrowserScriptFormSubmitCallbacks form_submit_callbacks;
     PBrowserScriptFormSubmitDirectCallbacks form_submit_direct_callbacks;
@@ -16526,8 +16526,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_set_selected_index;
     form_data_callbacks.size = sizeof(form_data_callbacks);
     form_data_callbacks.pw = bridge;
-    form_data_callbacks.get_count = pcore_browser_script_form_data_count;
-    form_data_callbacks.get_entry = pcore_browser_script_form_data_entry;
+    form_data_callbacks.get_count = pcore_browser_script_form_data_count_ex;
+    form_data_callbacks.get_entry = pcore_browser_script_form_data_entry_ex;
     form_reset_callbacks.size = sizeof(form_reset_callbacks);
     form_reset_callbacks.pw = bridge;
     form_reset_callbacks.reset_form = pcore_browser_script_dom_reset_form;
@@ -16684,7 +16684,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_checked_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(session,
             &form_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterFormDataCallbacks(session,
+            PBrowser_ScriptSessionRegisterFormDataCallbacksEx(session,
             &form_data_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormResetCallbacks(session,
             &form_reset_callbacks) != PSCRIPT_OK ||
@@ -18271,8 +18271,8 @@ static int pcore_browser_script_form_submit_direct(void *pw,
     return pcore_browser_script_form_submit_default_common(pw, info, 0);
 }
 
-static int pcore_browser_script_form_data_count(void *pw,
-        const char *form_id, int *out_count)
+static int pcore_browser_script_form_data_count_ex(void *pw,
+        const char *form_id, const char *submitter_id, int *out_count)
 {
     pcore_browser_script_bridge *bridge;
     HANDLE form_data;
@@ -18284,7 +18284,8 @@ static int pcore_browser_script_form_data_count(void *pw,
             form_id[0] == '\0' || out_count == NULL) {
         return -1;
     }
-    form_data = PCore_FormDataById(bridge->document, form_id);
+    form_data = PCore_FormDataByIdEx(bridge->document, form_id,
+            submitter_id);
     if (form_data == NULL) {
         return 1;
     }
@@ -18300,9 +18301,9 @@ static int pcore_browser_script_form_data_count(void *pw,
     return 0;
 }
 
-static int pcore_browser_script_form_data_entry(void *pw,
-        const char *form_id, unsigned int entry_index,
-        PBrowserScriptFormDataEntryInfo *out_info)
+static int pcore_browser_script_form_data_entry_ex(void *pw,
+        const char *form_id, const char *submitter_id,
+        unsigned int entry_index, PBrowserScriptFormDataEntryInfo *out_info)
 {
     pcore_browser_script_bridge *bridge;
     HANDLE form_data;
@@ -18331,7 +18332,8 @@ static int pcore_browser_script_form_data_entry(void *pw,
             PBROWSER_SCRIPT_FORM_DATA_TYPE_MAX_BYTES + 1) {
         return -1;
     }
-    form_data = PCore_FormDataById(bridge->document, form_id);
+    form_data = PCore_FormDataByIdEx(bridge->document, form_id,
+            submitter_id);
     if (form_data == NULL) {
         return 1;
     }
@@ -42993,16 +42995,15 @@ static BOOL test1176_browser_form_data_contract(void)
         "var fd=new FormData(form),original=fd.toQueryString(),all=fd.getAll('pick');"
         "field.value='changed';check.checked=false;choice.selectedIndex=2;"
         "notes.value='changed';outside.value='changed';"
-        "var detached=fd.toQueryString()===original,second=new FormData(form),bad=false;"
-        "try{new FormData(form,send);}catch(e){bad=true;}"
+        "var detached=fd.toQueryString()===original,second=new FormData(form);"
         "document.getElementById('result').textContent="
         "String(fd instanceof FormData)+'|'+original+'|'+String(detached)+'|'"
         "+String(fd.get('first')==='alpha')+'|'+String(all.length===2&&all[0]==='a'&&all[1]==='b')+'|'"
         "+String(!fd.has('disabled')&&!fd.has('action')&&!fd.has('unnamed'))+'|'"
-        "+String(events===0)+'|'+second.toQueryString()+'|'+String(bad);";
+        "+String(events===0)+'|'+second.toQueryString();";
     static const char EXPECTED[] =
         "true|first=alpha&flag=yes&pick=a&pick=b&notes=hello+world&outside=external|"
-        "true|true|true|true|true|first=changed&pick=c&notes=changed&outside=changed|true";
+        "true|true|true|true|true|first=changed&pick=c&notes=changed&outside=changed";
     char error[512];
 
     memset(error, 0, sizeof(error));
@@ -43017,6 +43018,61 @@ static BOOL test1176_browser_form_data_contract(void)
             " document order, includes explicit external owners, excludes"
             " disabled/unnamed/submit controls and stays detached from later"
             " native value changes.");
+    return TRUE;
+}
+
+/* TEST 1177 - Browser FormData(form, submitter) ownership contract. */
+static BOOL test1177_browser_form_data_submitter_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='primary'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='first' type='submit' name='action' value='one'>One</button>"
+        "<button id='second' type='submit' name='action' value='two'>Two</button>"
+        "<button id='disabled' type='submit' name='action' value='disabled' disabled>"
+        "Disabled</button></form>"
+        "<button id='external' type='submit' form='primary' name='action' "
+        "value='external'>External</button>"
+        "<form id='other'><button id='otherSubmit' type='submit' "
+        "name='action' value='other'>Other</button></form>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('primary'),field=document.getElementById('field'),"
+        "firstButton=document.getElementById('first'),secondButton=document.getElementById('second'),"
+        "externalButton=document.getElementById('external'),disabledButton=document.getElementById('disabled'),"
+        "otherButton=document.getElementById('otherSubmit'),events=0;"
+        "form.addEventListener('submit',function(){events++;});"
+        "var base=new FormData(form).toQueryString(),firstData=new FormData(form,firstButton).toQueryString(),"
+        "secondData=new FormData(form,secondButton).toQueryString(),"
+        "externalData=new FormData(form,externalButton).toQueryString(),"
+        "nullData=new FormData(form,null).toQueryString(),"
+        "undefinedData=new FormData(form,undefined).toQueryString();"
+        "var badInput=false;try{new FormData(form,field);}catch(e){badInput=true;}"
+        "var badOther=false;try{new FormData(form,otherButton);}catch(e){badOther=true;}"
+        "var badDisabled=false;try{new FormData(form,disabledButton);}catch(e){badDisabled=true;}"
+        "var badObject=false;try{new FormData(form,{__id:'first'});}catch(e){badObject=true;}"
+        "document.getElementById('result').textContent=base+'|'+firstData+'|'+secondData+'|'"
+        "+externalData+'|'+String(nullData===base)+'|'+String(undefinedData===base)+'|'"
+        "+String(events===0)+'|'+String(badInput)+'|'+String(badOther)+'|'"
+        "+String(badDisabled)+'|'+String(badObject);";
+    static const char EXPECTED[] =
+        "field=alpha|field=alpha&action=one|field=alpha&action=two|"
+        "field=alpha&action=external|true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1177 FAIL", error[0] != '\0' ? error :
+                "Browser FormData(form, submitter) fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1177 OK",
+            "new FormData(form, submitter) includes only an enabled submit "
+            "control owned by the form, treats null/undefined as no submitter, "
+            "rejects invalid owners and stays side-effect free without "
+            "dispatching submit events.");
     return TRUE;
 }
 
@@ -101133,6 +101189,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1174: ok = test1174_browser_form_request_submit_contract(); break;
         case 1175: ok = test1175_browser_form_direct_submit_contract(); break;
         case 1176: ok = test1176_browser_form_data_contract(); break;
+        case 1177: ok = test1177_browser_form_data_submitter_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

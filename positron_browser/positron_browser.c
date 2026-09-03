@@ -3128,15 +3128,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(g,'localStorage',{value:pstorageProxy(new PStorage('local')),"
         "writable:false,configurable:false});"
         "function PFormData(init){this.__pairs=[];var i;var k;var count;var entry;"
+        "var submitter;var submitterId='';"
         "if(init&&typeof init==='object'&&typeof init.localName==='string'&&"
         "init.localName==='form'){"
         "if(typeof init.__id!=='string'||init.__id===''){throw new TypeError('form id required');}"
-        "if(arguments.length>1){throw new TypeError('form data submitter');}"
+        "if(arguments.length>1){submitter=arguments[1];"
+        "if(submitter!==null&&submitter!==undefined){"
+        "if(!(submitter instanceof PElement)||typeof submitter.__id!=='string'||"
+        "submitter.__id===''){throw new TypeError('form data submitter');}"
+        "submitterId=submitter.__id;}}"
         "if(typeof g.__pcoreFormData!=='function'){throw new TypeError('form data bridge unavailable');}"
-        "count=g.__pcoreFormData({id:init.__id,op:'count'});"
+        "count=g.__pcoreFormData({id:init.__id,submitter:submitterId,op:'count'});"
         "if(typeof count!=='number'||!isFinite(count)||count<0||count!==Math.floor(count)||"
         "count>64){throw new TypeError('form data unavailable');}"
-        "for(i=0;i<count;i++){entry=g.__pcoreFormData({id:init.__id,op:'entry',index:i});"
+        "for(i=0;i<count;i++){entry=g.__pcoreFormData({id:init.__id,"
+        "submitter:submitterId,op:'entry',index:i});"
         "if(!entry||typeof entry.name!=='string'){throw new TypeError('form data entry');}"
         "if(entry.kind===2){this.append(entry.name,new g.File([''],"
         "String(entry.filename||''),{type:String(entry.type||'')}));}"
@@ -5573,6 +5579,8 @@ typedef struct p_browser_script_form_binding {
 typedef struct p_browser_script_form_data_binding {
     HANDLE session;
     PBrowserScriptFormDataCallbacks callbacks;
+    PBrowserScriptFormDataCallbacksEx callbacks_ex;
+    int extended;
 } p_browser_script_form_data_binding;
 
 typedef struct p_browser_script_form_reset_binding {
@@ -7449,6 +7457,7 @@ static int p_browser_script_form_data(void *pw, const char *args_json,
     HANDLE root;
     HANDLE object;
     const char *form_id;
+    const char *submitter_id;
     const char *op;
     int index;
     int count;
@@ -7464,9 +7473,14 @@ static int p_browser_script_form_data(void *pw, const char *args_json,
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
     form_id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    submitter_id = (object != NULL) ? PJson_GetString(object, "submitter") : NULL;
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
+    if (submitter_id == NULL) {
+        submitter_id = "";
+    }
     if (!p_script_session_valid(session) || binding == NULL || root == NULL ||
             form_id == NULL || form_id[0] == '\0' || strlen(form_id) >=
+            PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX || strlen(submitter_id) >=
             PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX || op == NULL ||
             session->form_data == NULL || session->form_data_active) {
         PJson_Free(root);
@@ -7475,8 +7489,16 @@ static int p_browser_script_form_data(void *pw, const char *args_json,
     if (strcmp(op, "count") == 0) {
         count = -1;
         session->form_data_active = 1;
-        result = session->form_data->callbacks.get_count(
-                session->form_data->callbacks.pw, form_id, &count);
+        if (binding->extended) {
+            result = session->form_data->callbacks_ex.get_count(
+                    session->form_data->callbacks_ex.pw, form_id,
+                    submitter_id, &count);
+        } else if (submitter_id[0] == '\0') {
+            result = session->form_data->callbacks.get_count(
+                    session->form_data->callbacks.pw, form_id, &count);
+        } else {
+            result = 1;
+        }
         session->form_data_active = 0;
         PJson_Free(root);
         if (result != 0 || count < 0 ||
@@ -7510,9 +7532,17 @@ static int p_browser_script_form_data(void *pw, const char *args_json,
     info.type = type;
     info.type_capacity = sizeof(type);
     session->form_data_active = 1;
-    result = session->form_data->callbacks.get_entry(
-            session->form_data->callbacks.pw, form_id,
-            (unsigned int) index, &info);
+    if (binding->extended) {
+        result = session->form_data->callbacks_ex.get_entry(
+                session->form_data->callbacks_ex.pw, form_id,
+                submitter_id, (unsigned int) index, &info);
+    } else if (submitter_id[0] == '\0') {
+        result = session->form_data->callbacks.get_entry(
+                session->form_data->callbacks.pw, form_id,
+                (unsigned int) index, &info);
+    } else {
+        result = 1;
+    }
     session->form_data_active = 0;
     PJson_Free(root);
     if (result != 0 ||
@@ -9517,6 +9547,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
     if (binding == NULL) {
         return PSCRIPT_ERROR_FATAL;
     }
+    memset(binding, 0, sizeof(*binding));
     binding->session = hSession;
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
@@ -9571,8 +9602,45 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacks(
     if (binding == NULL) {
         return PSCRIPT_ERROR_FATAL;
     }
+    memset(binding, 0, sizeof(*binding));
     binding->session = hSession;
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreFormData", -1, p_browser_script_form_data, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->form_data = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacksEx(
+        HANDLE hSession, const PBrowserScriptFormDataCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_form_data_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFormDataCallbacksEx) ||
+            callbacks->get_count == NULL || callbacks->get_entry == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_data != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_form_data_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->session = hSession;
+    binding->extended = 1;
+    memcpy(&binding->callbacks_ex, callbacks,
+            sizeof(binding->callbacks_ex));
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreFormData", -1, p_browser_script_form_data, binding);
     if (rc != PSCRIPT_OK) {

@@ -1538,11 +1538,12 @@ PCORE_API int PCore_MultipartPartInfo(HANDLE hSubmission,
 PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
 
 /* Capture the detached successful-control snapshot used by the browser
- * FormData(form) bridge. Unlike the multipart submission APIs above this
- * query does not inspect method/enctype, perform constraint validation,
- * choose a submitter, dispatch events or navigate. Controls are collected in
- * document order using the shared ancestor/explicit form="id" owner rule.
- * The returned handle is opaque and caller-owned until
+ * FormData(form[, submitter]) bridge. Unlike the multipart submission APIs
+ * above this query does not inspect method/enctype, perform constraint
+ * validation, dispatch events or navigate. An optional non-empty submitter id
+ * must name an enabled submit control owned by the form; it is included in
+ * document order. Controls use the shared ancestor/explicit form="id" owner
+ * rule. The returned handle is opaque and caller-owned until
  * PCore_FreeFormData. File entries have kind 2 and expose their submitted
  * filename as value; the local picker path remains private to Core. */
 typedef struct PCoreFormDataInfo {
@@ -1556,6 +1557,8 @@ typedef struct PCoreFormDataEntryInfo {
 } PCoreFormDataEntryInfo;
 
 PCORE_API HANDLE PCore_FormDataById(HANDLE hDoc, const char *form_id);
+PCORE_API HANDLE PCore_FormDataByIdEx(HANDLE hDoc, const char *form_id,
+        const char *submitter_id);
 PCORE_API int PCore_FormDataInfo(HANDLE hFormData,
         PCoreFormDataInfo *out_info);
 PCORE_API int PCore_FormDataEntryInfo(HANDLE hFormData,

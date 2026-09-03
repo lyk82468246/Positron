@@ -180,13 +180,16 @@ snapshot。它们跳过 constraint validation、submitter 选择和事件，不�
 不操作 native 控件；Browser 决定脚本方法和事件边界，宿主在 direct callback 中采用对应
 结果并执行网络或 dialog 策略。空/无效 form id、容量不足或不满足方法条件均安全失败。
 
-`PCore_FormDataById` 为脚本 `new FormData(form)` 提供独立的 successful-control snapshot。
-它复用同一套 form-owner、disabled、checkbox/radio、select 和文件控件收集规则，但不读取
-method/enctype、不做 constraint validation、不选择 submitter、不派发事件，也不导航。
+`PCore_FormDataById` 为脚本 `new FormData(form)` 提供独立的 successful-control snapshot；
+`PCore_FormDataByIdEx` 另外接受可选 `submitter_id`，空值表示没有显式 submitter，非空值必须
+指向一个启用、归属于该 form 的 submit-type input 或 button（包括有效的外部
+`form="id"` 控件），并按文档顺序把它纳入快照。两者复用同一套 form-owner、disabled、
+checkbox/radio、select 和文件控件收集规则，但不读取 method/enctype、不做 constraint
+validation、不派发事件，也不导航；无效 submitter 或 owner 安全失败。
 `PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 按文档顺序读取字符串或文件名，调用方必须
 用 `PCore_FreeFormData` 释放 handle；文件的本地 picker 路径不会从该 API 暴露。快照与
-后续 DOM/value mutation 脱离，空值或无效 form id 安全失败。完整 live `FormData`、
-`FormData(form, submitter)` 和其他 form-associated 元素仍不在 Core 合同内。
+后续 DOM/value mutation 脱离，空值或无效 form id 安全失败。完整 live `FormData`、文件
+读取和其他 form-associated 元素仍不在 Core 合同内。
 
 ### 交互与事件
 

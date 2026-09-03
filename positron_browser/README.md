@@ -343,16 +343,16 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 `PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
 
 启用 `PBrowserScriptFormDataCallbacks` 后，Browser 为有非空 id 的 `<form>` 安装
-`new FormData(form)`。构造时同步向宿主请求一次 count，再按文档顺序读取成功控件并生成
-脱离 DOM 的 `FormData`；它不触发 validation、submit/reset 事件、submitter 选择、导航或
-重新 layout。宿主 callback 只应把请求转给 `PCore_FormDataById`，用
-`PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 填充调用期间借用的 UTF-8 缓冲，再配对
-`PCore_FreeFormData`；不得把 picker 路径写入 Browser。字符串和文件分别使用
-`PBROWSER_SCRIPT_FORM_DATA_STRING`/`_FILE`，最多 64 项，名称 64 字节、字符串值 128
-字节、文件名和 MIME 类型各 64 字节；超限、缺少 callback、无效/无 id form 或第二个
-submitter 参数均抛出 `TypeError`，不会产生部分对象。文件只保留 filename/type 和空内容，
-不承诺完整文件读取、`FormData(form, submitter)`、live collection 或其他
-form-associated 元素。
+`new FormData(form)`；需要第二参数时改用 `PBrowserScriptFormDataCallbacksEx` 与对应
+注册函数，即可使用 `new FormData(form, submitter)`。构造同步请求 count/entry，生成
+脱离 DOM 的对象，不触发 validation、事件、导航或重新 layout。Ex callback 收到 form id
+和 submitter id，宿主转给 `PCore_FormDataByIdEx`；旧表只支持无显式 submitter。两种表都
+用 `PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 填充借用的 UTF-8 缓冲并配对
+`PCore_FreeFormData`，不得暴露 picker 路径。submitter 必须是 Browser 的 `PElement`、
+启用且归属于该 form 的 submit-type input/button；`null`/`undefined` 等同省略 submitter，
+其他无效 owner 抛出 `TypeError`。
+最多 64 项，名称 64 字节、字符串值 128 字节、文件名和 MIME 类型各 64 字节；文件只保留
+filename/type 和空内容，不承诺完整文件读取、live collection 或其他 form-associated 元素。
 
 selector bridge 支持有界 compound、顶层列表、后代/子代/兄弟组合器、属性操作符和
 结构/表单伪类，包括 `:checked`、validation 的 `:valid`/`:invalid` 与范围状态、
