@@ -37,12 +37,19 @@ Windows CE 可能在系统范围继续复用已加载 DLL。只替换一个文�
 
 ### 设备空间预检与旧目录清理
 
-`scripts\device_gate.bat` 在第一次复制远端文件前查询 `-RemoteBase` 的可用空间。
-RAPI 优先调用 `CeGetDiskFreeSpaceEx`；旧设备没有该导出时才回退到
-`CeGetStoreInformation`。后者是对象存储的粗粒度数字，不代表 `\Storage Card` 等外部卷；
-如果目标是外部卷而没有路径级结果，设备门会停止并明确报告
-`storage_check=UNAVAILABLE_PATH_SCOPE`。有效结果必须至少容纳 staging 文件总大小和
-1 MiB 运行余量；`storage_check=INSUFFICIENT` 或 `UNAVAILABLE` 都表示尚未部署。
+`scripts\device_gate.bat` 在第一次复制远端文件前分别查询目标卷和内部 object store。
+目标卷优先使用 `CeGetDiskFreeSpaceEx`；旧设备没有该导出时，只有已知内部路径才可用
+`CeGetStoreInformation` 作为粗粒度目标数字。它不代表 `\Storage Card` 等外部卷；如果
+外部目标没有路径级结果，设备门会停止并明确报告
+`storage_check=UNAVAILABLE_PATH_SCOPE`。目标卷必须至少容纳 staging 文件总大小和 1 MiB
+运行余量；目标卷 `INSUFFICIENT_TARGET`/`INSUFFICIENT_OBJECT_STORE` 或 `UNAVAILABLE`
+都表示尚未部署。
+
+内部 object store 还会单独记录系统缓存风险。64 KiB 只是告警线：外部目标下
+`internal_storage_check=LOW_ADVISORY` 或 `UNAVAILABLE_ADVISORY` 不会被错误归因成目标卷
+不足，门会在目标卷通过时继续；已知内部目标则 object store 数字本身就是硬性容量门。
+这不能保证 OEM/WMDC 的实际缓存需求，若运行时仍失败，应以完整日志和该字段区分目标卷
+不足与内部缓存风险。
 
 预检前会枚举门自己生成的时间戳目录。目录只有在 `test_host.log` 已完整复制、连续两次
 内容稳定且包含最终 `TESTBENCH PASS`/`TESTBENCH FAIL` 标记后才会删除；未知名称、没有

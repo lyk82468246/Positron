@@ -513,14 +513,17 @@ scripts\device_gate.bat -Candidate feature-name ^
 
 脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，本地证据保存在 `tmp/device-runs/`，不会纳入 Git。
 
-部署前的 RAPI 预检会针对 `-RemoteBase` 查询剩余空间：优先使用
-`CeGetDiskFreeSpaceEx` 的目标卷可用字节，旧 RAPI 不导出该入口时回退到
-`CeGetStoreInformation` 的对象存储可用字节。微软文档说明后者是历史 API，且只描述
+部署前的 RAPI 预检会分别记录两类空间：优先使用
+`CeGetDiskFreeSpaceEx` 查询 `-RemoteBase` 所在目标卷，同时使用
+`CeGetStoreInformation` 查询内部 object store。微软文档说明后者是历史 API，且只描述
 object store；因此外部 `\Storage Card` 目标没有路径级 API 时会 fail closed，不会用
-错误的对象存储数字冒险部署。预检要求的空间是当前 staging 全部文件大小加 1 MiB
-运行余量；不足、无法查询或路径范围不安全都会在复制第一个文件前停止。结果文件记录
-`storage_api`、`storage_scope`、`storage_free_bytes`、`storage_required_bytes` 和
-`storage_check`（`PASS` 或旧 API 的 `PASS_COARSE`）。参考：
+错误的对象存储数字冒险部署。目标卷的硬性要求是当前 staging 全部文件大小加 1 MiB
+运行余量；目标卷不足、无法查询或路径范围不安全都会在复制第一个文件前停止。
+内部 object store 另设 64 KiB 的系统缓存告警线：外部目标下它只产生
+`LOW_ADVISORY`/`UNAVAILABLE_ADVISORY`，不把内部粗粒度数字误报成目标卷不足；已知内部
+目标则直接用 object store 数字执行硬性容量门。结果文件记录兼容的 `storage_*` 别名，
+以及更明确的 `target_storage_*`、`internal_storage_*`、`internal_cache_reserve_bytes`
+和 `internal_storage_check` 字段。参考：
 [`GetStoreInformation`（Microsoft Learn）](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms891023%28v%3Dmsdn.10%29)。
 即使预检阻止部署，也会在本地证据目录写出 `device-gate-preflight.txt`，便于确认失败
 发生在远端复制之前。
