@@ -72,11 +72,11 @@ tests=13,20,27,999
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/`:visited`/
-  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
+  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown`/`:scope` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
-  `formdata` 事件（TEST1146–1179）；
+  `formdata` 事件（TEST1146–1180）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -175,9 +175,16 @@ value/custom validity mutation、非候选排除和不支持参数的回退；TE
 切换和 blur 清理，并对带参数、伪元素和注销 callback 的输入 fail closed；TEST1160 断言
 `:link`/`:any-link` 对带 `href` 的 `<a>`/`<area>`（包括空值）的静态匹配、属性 mutation
 和查询顺序；TEST1179 进一步通过同一 interaction Ex callback 验证宿主明确授权的
-`:visited` 结果、绝对/相对 href 解析、live mutation、`<area>` 支持和注销后的
-fail-closed。宿主只提供历史策略与接线，不得在测试 helper 中复制 selector 解析或
-匹配规则；这些语义和固定预算都属于 Browser。
+  `:visited` 结果、绝对/相对 href 解析、live mutation、`<area>` 支持和注销后的
+  fail-closed。宿主只提供历史策略与接线，不得在测试 helper 中复制 selector 解析或
+  匹配规则；这些语义和固定预算都属于 Browser。
+
+TEST1180 断言 Browser selector 的有界 `:scope` context：element query 把 receiver
+作为 scope，带 `:scope` 的查询可按文档顺序包含 owner，`:scope > ...` 与 `:scope ...`
+分别匹配直接子代和后代；无 `:scope` 的 element query 仍排除 owner，document query
+把 `document.documentElement` 作为 scope。`matches()`/`closest()` 的 receiver 也只
+能匹配自身 scope；带参数、伪元素、尾随逗号和其他不支持形式必须 fail closed。宿主只
+提供既有 DOM relation callback，不复制 scope 解析、遍历或排序语义。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

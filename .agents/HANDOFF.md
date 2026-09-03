@@ -14,7 +14,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   足才阻断。这批没有新增公共产品语义，`test_host` 仍只是被部署的回归宿主。next733 的 Browser
   `formdata` 事件、`FormDataEvent` 构造器、`form.onformdata` 接线、TEST1178 夹具和公共
   边界文档继续保持；`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1179。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1180。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -39,8 +39,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、
   direct `submit()` 和 detached `FormData(form[, submitter])` 已形成同一套 by-id/成功控件
-  合同，构造成功后还会同步派发 `formdata`；TEST1170–1179 是当前相邻夹具，其中
-  TEST1179 还覆盖宿主批准的链接 `:visited` 状态。
+  合同，构造成功后还会同步派发 `formdata`；TEST1170–1180 是当前相邻夹具，其中
+  TEST1179 覆盖宿主批准的链接 `:visited` 状态，TEST1180 覆盖 Browser selector 的
+  有界 `:scope` context。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -51,84 +52,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-- next706 已在 Core 中提供有界 `autofocus` 目标发现、Core focus node 设置和目标保持
-  的事件 dispatch；宿主在 style/layout 与 native 子控件创建完成后显式调用它，有 id
-  目标复用 Browser focus bridge，无 id 目标仍可派发 focus/focusin。TEST1151、
-  `1151,999` 定向门和 `1142,1148-1151,999` 相邻回归门均已通过；`test_host.exe`
-  只保留生命周期接线、native/page 适配、fixture 和断言。
-- next707–721 已完成 Browser selector 的列表/组合器/属性操作符/结构伪类/表单状态/
-  有界 `:not()`、validation `:valid`/`:invalid`、activeElement 驱动的
-  `:focus`/`:focus-within`、静态 `:link`/`:any-link`、当前 fragment 对齐元素 id 的
-  `:target`、沿父链继承语言的 `:lang()`、正向分组 `:is()`/`:where()` 以及相对分支
-  `:has()` 纵向能力；next721 还以 Core effective-disabled relation 统一 fieldset
-  first-legend exemption、optgroup→option 继承、selector 状态、选项选择和提交过滤。
-- next722 在同一 Browser selector 解析器中增加了 Core validation 驱动的有界
-  `:in-range`/`:out-of-range`。仅支持带非空值和约束的 input
-  number/range/date/month/week/time/datetime-local（range 默认范围也算）；
-  underflow/overflow 决定 out-of-range，stepMismatch 单独仍为 in-range，空值、bad/type
-  mismatch、disabled/readonly、无范围限制和非 input fail closed。TEST1167 覆盖
-  Core flags、matches/closest/query、live mutation 和非法输入；`1063,1166-1167,999`
-  定向门已通过。不要仅为增加编号拆分提交，也不要把页面语义放回 `test_host`。
-- next723 在同一 Browser selector 解析器中增加了有界 `:read-only`/`:read-write`：文本
-  输入类型与 `textarea` 排除 readonly/effective-disabled，显式或继承的 contenteditable
-  在 Core callback 存在时可匹配；不支持编辑的控件和普通元素按 `:read-only` 处理。
-  TEST1168 覆盖属性 mutation、contenteditable 祖先继承、matches/closest/query、查询
-  顺序、callback 注销和非法 selector；`1063,1167-1168,999` 定向门已通过。
-- next724 在同一 Browser selector 解析器中增加了有界 `:placeholder-shown`：省略 `type`
-  或使用 text-like input 类型的 input，以及 textarea，在 live value 为空且 placeholder
-  值非空时匹配；value/type/placeholder mutation、matches/closest/query 顺序和非法输入
-  由 TEST1169 覆盖。Browser bootstrap heap ceiling 为 714 KiB 以容纳该 bootstrap。
-- next725 修复了 Core 的显式 form-owner 解析：支持的 input、select、textarea、button
-  在存在 `form="id"` 时归属于文档中对应的 form，空值或无效目标不回退到祖先；
-  `form.elements` 现在从整棵文档按顺序收集显式跨树控件，仍由 Browser 生成有界 snapshot。
-  TEST1170 覆盖默认/显式/无效归属、集合顺序、namedItem、label association、mutation
-  后重查和旧 snapshot 保持；`1169,1170,999` 定向设备门已通过。
-- next726 让同一 owner 解析贯穿 Core 的 validation、reportValidity invalid-event 扫描、
-  urlencoded/multipart successful-control 构建、dialog/default-submit、reset 和按坐标的
-  submit/reset 激活；新增共享文档遍历和 TEST1171，覆盖 form 外 input/textarea/button、
-  required 阻止与恢复、提交顺序及 reset 初值恢复。`1170,1171,999` 定向设备门已通过。
-- next727 新增 `PCore_FormResetById`，把无坐标的 state-only reset 暴露为 Core 公共入口；
-  它复用同一 owner 规则恢复 form 子树和显式 `form="id"` 外部 input、checkbox、select、
-  textarea，缺失/非 form/空值参数 fail closed。TEST1172 覆盖成功恢复、无效 owner 保持
-  原值和参数拒绝；`1171-1172,999` 定向设备门已通过。
-- next728 在 Browser 中增加可选的 `HTMLFormElement.reset()` bridge：脚本先按 form id
-  派发可冒泡、可取消的 `reset`，未取消时才调用宿主 reset callback；参考宿主把它接到
-  `PCore_FormResetById` 并在成功后重新 layout。TEST1173 覆盖取消保持、默认恢复、事件
-  字段/target 身份、调用次数和 `undefined` 返回值。启用 JavaScript 的
-  `1172,1173,999` 定向设备门已通过（`tmp/device-runs/20260903-135218-next728-form-reset-final/`，唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）。
-- next729 在 Browser 中增加可选的 `HTMLFormElement.requestSubmit([submitter])` bridge：
-  Browser 固定 validation→可取消 bubbling `submit`→默认动作顺序，Core 通过 by-id
-  validation/submission/dialog/multipart primitives 解析 enabled submitter、
-  `novalidate`/`formnovalidate` 和 successful controls，宿主只接线网络或 dialog 策略。
-  TEST1174 覆盖成功、验证阻止、事件取消、无 submitter、非法 submitter/receiver、POST
-  action/body 和 `undefined` 返回；修复 session callback 显式初始化后，启用 JavaScript 的
-  `1172-1174,999` 定向设备门已通过（`tmp/device-runs/20260903-150230-next729-form-request-submit-fixed4/`，唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）。
-- next730 在 Browser 中增加可选的 `HTMLFormElement.submit()` direct bridge：Browser
-  跳过 validation、`submit` 事件和 submitter 选择，宿主 callback 调用 Core 的三个
-  NoValidationById primitive，再执行网络或 dialog 策略；旧 requestSubmit/reset ABI
-  保持兼容；direct callback 的 bootstrap 安装与 requestSubmit 脚本独立，direct-only
-  consumer 不会得到半可用的 requestSubmit。TEST1175 覆盖 urlencoded POST、
-  `method="dialog"`、multipart、空 required
-  值、无事件、空 submitter 和 `undefined` 返回；启用 JavaScript 的
-  `1173-1175,999` 定向设备门已通过（见最新证据）。
-- next731 在 Core 中增加 `PCore_FormDataById`/info/entry/free successful-control
-  snapshot，在 Browser 中增加可选 `PBrowserScriptFormDataCallbacks` 和
-  `new FormData(form)` detached bridge；它复用显式 form-owner、disabled、checkbox/radio、
-  select、textarea 和 file 规则，不做 validation、submitter、事件或导航。TEST1176
-  覆盖文档顺序、重复项、跨树控件、排除规则、snapshot 脱离和旧路径；`1173-1176,999`
-  定向设备门已通过（见最新证据）。为容纳完整 Browser callback 组合，
-  `PSCRIPT_MAX_NATIVE_FUNCTIONS` 精确由 27 调整为 28；失败取证见
-  [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)。
-- next732 在 Core 中增加 `PCore_FormDataByIdEx`，在 Browser 中增加
-  `PBrowserScriptFormDataCallbacksEx` 与 `new FormData(form, submitter)` bridge；Ex 路径
-  复用统一 owner/successful-control 规则，只接受目标 form 的 enabled submit-type
-  input/button，并保持 detached、无 validation/submit 事件/默认动作/导航的快照语义。TEST1177
-  覆盖同表单、外部 `form="id"`、禁用/跨表单/非元素拒绝和无事件；启用 JavaScript 的
-  `1173-1177,999` 定向设备门已通过（见最新证据）。旧无 submitter callback ABI 保持兼容。
-- next733 在 Browser 中增加同步 `formdata` 事件：`FormDataEvent.formData` 指向正在
-  返回的 detached 对象，监听器和 `form.onformdata` 可在构造返回前修改它；事件非冒泡、
-  不可取消且不触发 submit/default action。TEST1178 与 TEST1176–1177 的相邻断言已由
-  启用 JavaScript 的 `1176-1178,999` 定向设备门通过，证据见最新有效设备证据。
+- 近期 Browser/Core 已形成可复用的 focus/autofocus、selector、validation、form-owner、
+  reset、submission、FormData 和生命周期组合；各能力的边界与测试编号以
+  [`docs/TESTING.md`](../docs/TESTING.md) 和 `KNOWN_LIMITATIONS.md` 为准，handoff 不再
+  按 next 编号重复维护历史实现细节。当前 selector 还包含宿主批准的 `:visited` 与
+  next738 新增的有界 `:scope` context，见下方最新状态。
+- Core/Browser 的 form-owner、validation、submission、dialog/default-submit、reset、
+  `requestSubmit`、direct `submit()` 和 detached `FormData(form[, submitter])` 现共享一套
+  by-id/successful-control 规则；构造 FormData 后同步派发非冒泡、不可取消的 `formdata`
+  事件。显式跨树控件、invalid-event、multipart、submitter 和 reset 的边界由
+  TEST1170–1178 的离线 corpus 覆盖，详细合同和设备证据集中在 `docs/TESTING.md`；
+  `test_host` 只保留 callback 接线、fixture 与断言。
 - next737 在 Browser selector 中增加宿主明确批准的 `:visited`：新增 Ex interaction
   callback 与旧 `active`/`hover` callback 共用一个 native bridge；Browser 只校验并转交
   元素 id/raw href，不保存 history、不导航、不决定隐私策略。参考宿主在 callback 中按
@@ -137,7 +71,16 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   非法输入和注销后的 fail-closed。首次 2× page budget 在 WM6 上触发 bootstrap timeout，
   参考宿主调整为仍有上限的 3× budget 后，`1160,1179,999` 设备门通过；该余量属于宿主
   的一次性 bootstrap 策略，不扩大 Browser 的无界执行能力。
-- 当前唯一下一步是 next738：先从 compatibility corpus、源码、设备日志和截图固定新的
+- next738 在同一 Browser selector bridge 中增加有界 `:scope` context：element query
+  以 receiver 为 scope，document query 以 `document.documentElement` 为 scope；直接、
+  无参数的 `:scope` 可参与 compound、子代和后代查询，带 scope 的 element query 可把
+  owner 置于结果首位，而无 scope 的 element query 仍排除 owner。`matches()` 与
+  `closest()` 也以 receiver 为 scope；嵌套参数、伪元素和完整 Selectors 语法保持
+  fail-closed。TEST1180 覆盖查询顺序、owner 规则、大小写形式、matches/closest 和非法
+  输入；Browser bootstrap heap ceiling 在保持固定上限的前提下从 714 KiB 调整为
+  730 KiB。`tmp/device-runs/20260903-214303-next738-scope-r5/` 的 `1180,999` 门
+  通过（2/2、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）。
+- 当前唯一下一步是 next739：先从 compatibility corpus、源码、设备日志和截图固定新的
   用户可见缺口，再在公共 DLL 中推进一条完整纵向能力；不要预先把尚未验证的 Web API
   或视觉行为写成承诺。
 
@@ -189,14 +132,26 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1179。
+- `TEST_MAX_NUMBER`：1180。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新设备门证据为 next737 的 `:visited` selector 与 next736 的双空间预检/空间回收窄门：
+当前最新设备门证据为 next738 的 `:scope` selector 与 next737 的 `:visited` selector；next736
+的双空间预检/空间回收窄门仍是部署安全基线：
+
+- `tmp/device-runs/20260903-215511-next738-scope-final/`；动态选择
+  `1152-1169,1179-1180,999`，21/21 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。
+  Storage Card 目标卷 `CeGetDiskFreeSpaceEx` 为 66,198,962,176 字节可用、总计
+  511,101,108,224，payload 9,700,371、reserve 1,048,576、required 10,748,947；内部
+  object store 为 8,742,912/32,942,080，目标与内部检查均通过，完整日志双读后完成
+  目录清理。TEST1152–1169、TEST1179、TEST1180 及 TEST999 均通过。
+
+- 中间窄门 `tmp/device-runs/20260903-214303-next738-scope-r5/` 的 `1180,999` 也已
+  通过（2/2、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）；完整邻接门以上述 final
+  证据为准。
 
 - `tmp/device-runs/20260903-205834-next737-visited-final/`；动态选择
   `1160,1179,999`，3/3 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。Storage Card
@@ -229,7 +184,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   TEST1176–1178 与 TEST999 的语义结论不因后续 selector 或工具护栏改变。
 - 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I rebuild、同批 staging、
   `python scripts/audit_repo.py` 和 `git diff --check` 均已通过；Browser heap ceiling 为
-  714 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
+  730 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
 
 ## 当前人工验收状态
 
@@ -242,7 +197,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1117–TEST1179 都是离线自动夹具，无新增立即人工风险；真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 继续进入累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
+- TEST1117–TEST1180 都是离线自动夹具，无新增立即人工风险；真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 继续进入累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
 - TEST1151 是离线的 Core/Browser autofocus 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实初始焦点矩形、native HWND、滚动条裁剪、触摸/SIP、不同 DPI 和多窗口策略仍属于宿主集成观察，自动门只证明 DOM 顺序资格、size-probe、Core focus node、无 id 目标事件保持和 Browser body 回退合同。
 - TEST1152–1165 是离线的 Browser selector 组合器、属性/结构伪类、表单验证、焦点、链接、
   fragment、语言、分组、`:has()` 和 pointer-interaction 夹具，无新增立即人工风险；自动门
@@ -295,6 +250,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   live mutation、matches/closest/query 顺序、非法 selector 和 callback 注销后的
   fail-closed。Browser 不保存 history；真实链接颜色、隐私隔离、跨窗口持久化、导航
   联动和不同 DPI 视觉仍进入累计人工清单。
+- TEST1180 是离线的 Browser selector `:scope` 夹具，无新增立即人工风险；自动门证明
+  element/document query 的 scope owner 规则、子代/后代关系、文档顺序、matches/closest
+  receiver scope、大小写形式以及参数/伪元素/尾随逗号的 fail-closed。Browser 不保存
+  scope 状态；真实页面完整 Selectors、视觉、触摸和不同 DPI 仍进入累计人工清单。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -322,7 +281,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
-- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`，以及 text-like input/textarea 的 `:placeholder-shown`。TEST1152–1169 与 TEST1179 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 714 KiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179 和 TEST1180 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 730 KiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 多窗口、持久 history、完整下载/外部协议策略仍属于宿主或未实现范围。
 - mbed TLS 2.16.12 等依赖为旧平台兼容 pin，发布前必须审查当前安全风险。
 - OEM SIP/IME、系统 picker、视觉和旋转不能仅凭 synthetic 自动测试保证。
@@ -340,12 +299,12 @@ fieldset/object/image 等其他 form-associated 元素、复杂 parser 重构和
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next738
+## 唯一下一步：next739
 
 next734–737 的设备门与产品 selector 证据已在上文记录；部署空间护栏和失败停止规则详见
 `docs/TESTING.md` 与 `docs/TROUBLESHOOTING.md`，本节不重复实现细节。
 
-next738 仍需从 compatibility corpus、源码、日志或截图固定一个真实产品缺口，再选择
+next739 仍需从 compatibility corpus、源码、日志或截图固定一个真实产品缺口，再选择
 一个边界清楚的离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主
 只做平台接线、调度、应用策略和断言；不要仅为增加编号拆分提交，也不要在没有证据时扩大
 ABI。完整滚动容器树、Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性
@@ -359,11 +318,11 @@ ABI。完整滚动容器树、Range/Selection、pinch zoom、transforms、scroll
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next738）
+## 下一步完成标准（next739）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱现有布局、几何、滚动、history、生命周期、selector、focus、form-owner、reset、requestSubmit、direct-submit 或 FormData 旧/Ex 路径；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- next738 完成后 handoff 应覆盖为 next738 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- next739 完成后 handoff 应覆盖为 next739 快照，ROADMAP 只保留当前尚未完成的纵向能力。

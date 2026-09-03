@@ -13,6 +13,26 @@
 
 ## 失败与暂挂
 
+### next738 首轮设备门：`:scope` bootstrap 与夹具格式 — 已替代
+
+问题：next738 首轮加入 `:scope` selector context 后，设备门在
+`tmp/device-runs/20260903-212658-next738-scope-final/` 报 Browser bootstrap
+`SyntaxError: parse error`；根因是新 selector scanner 的 C 字符串转义错误，不是 WMDC
+或 RAPI。修正 scanner 后，`20260903-212913-next738-scope-final-r2/` 在既有
+TEST1154 报 `JavaScript memory limit exceeded`；这是新增 selector 逻辑使原有大型
+bootstrap 超过 714 KiB 固定 heap 的资源预算边界。
+
+替代方案：将 Browser bootstrap ceiling 有界地从 714 KiB 调整为 730 KiB，保留固定
+heap、source、native-function 和执行时间预算；`tmp/device-runs/20260903-213335-next738-scope-debug-r2/`
+的 `1154,999` 通过。随后相邻 selector 门 `20260903-213454-next738-scope-r3/`
+的 19 个既有测试均通过，TEST1180 初版 fixture 只因脚本顶层 `return` 没有写出结果；
+改为 IIFE 后，`20260903-214303-next738-scope-r5/` 的 `1180,999` 通过（2/2、唯一
+`TESTBENCH PASS`、零 `ERROR`/`FAIL`）。
+
+决定：保留新的 scope 语义和 730 KiB 有界余量，不把 bootstrap parse error、heap
+ceiling 或 malformed fixture 当作产品回归；后续新增 Browser bootstrap 逻辑仍须先核对
+转义、源预算和已有大型页面，并用完整结果标记验证 fixture。
+
 ### next737 首轮设备门：Browser selector bootstrap 在 2× 页预算下超时 — 已替代
 
 问题：next737 为 Browser selector 增加宿主批准的 `:visited` 查询后，参考宿主以原有

@@ -41,8 +41,9 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   以及通过可选 interaction callback 读取 Core 精确状态的 `:active`/`:hover`、通过
   interaction Ex callback 读取宿主明确批准 history 的 `:visited`、依据
   readonly/effective-disabled 与可选 contenteditable callback 判定的 `:read-only`/
-  `:read-write`、以及 text-like input/textarea 空 value 与非空 placeholder 的
-  `:placeholder-shown`；Core 的 form-owner relation 还支持 input、select、textarea、button
+  `:read-write`、text-like input/textarea 空 value 与非空 placeholder 的
+  `:placeholder-shown`，以及以 query receiver/document root 为 context 的直接、无参数
+  `:scope`；Core 的 form-owner relation 还支持 input、select、textarea、button
   的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回有界 snapshot；
   Core validation、submission、multipart、dialog/default-submit、reset 和按坐标的
   submit/reset activation 也共享该 owner 解析；Browser 另提供可选的
@@ -91,8 +92,8 @@ SIP/IME、picker 或旋转可累计后人工验收；崩溃、数据损坏、严
   标签的 `:lang()`、单一简单 compound 参数的 `:not()`、最多 16 个简单 compound 分支的
   `:is()`/`:where()`、最多 16 个后代/子代/兄弟相对分支的 `:has()`，以及显式 interaction
   callback 驱动的 `:active`/`:hover`、依据 readonly/effective-disabled 与可选
-  contenteditable callback 判定的 `:read-only`/`:read-write`、宿主批准的 `:visited`、以及 text-like
-  input/textarea 的有界 `:placeholder-shown`；完整 CSS
+  contenteditable callback 判定的 `:read-only`/`:read-write`、宿主批准的 `:visited`、text-like
+  input/textarea 的有界 `:placeholder-shown`，以及直接、无参数的 `:scope` context；完整 CSS
   Selectors 语法仍不作为默认目标。
 - 明确 script session 与 document/window 生命周期，继续验证取消、过时导航和 queue 清理的组合顺序。
 - 为 timer、microtask、animation frame、message 和 lifecycle 的组合顺序增加真实页面断言。

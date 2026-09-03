@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1179
+#define TEST_MAX_NUMBER 1180
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -39035,10 +39035,16 @@ static BOOL test1154_browser_selector_structural_pseudo_contract(void)
             memset(error, 0, sizeof(error));
             if (pcore_browser_script_session_evaluate(PHASES[phase], -1,
                     error, sizeof(error)) != 0) {
-                _snprintf(error, sizeof(error) - 1,
-                        "selector structural phase %d (%s) evaluation failed",
-                        phase + 1, PHASE_NAMES[phase]);
-                error[sizeof(error) - 1] = '\0';
+                session_error = PBrowser_ScriptSessionGetError(
+                        g_browser_script_session.session);
+                if (session_error != NULL && session_error[0] != '\0') {
+                    cstr_copy(error, sizeof(error), session_error);
+                } else {
+                    _snprintf(error, sizeof(error) - 1,
+                            "selector structural phase %d (%s) evaluation failed",
+                            phase + 1, PHASE_NAMES[phase]);
+                    error[sizeof(error) - 1] = '\0';
+                }
                 ok = 0;
                 break;
             }
@@ -43405,6 +43411,67 @@ static BOOL test1179_browser_selector_visited_contract(void)
             "Selector :visited follows an explicit host history policy for"
             " anchors and areas, resolves live href mutations and fails"
             " closed when the optional bridge is absent or input is invalid.");
+    return TRUE;
+}
+
+/* TEST 1180 - bounded :scope selector context for matches and queries. */
+static BOOL test1180_browser_selector_scope_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><main id='container'><section id='scope' class='scope'>"
+        "<span id='first' class='item'>First</span>"
+        "<div id='nested'><span id='deep' class='item'>Deep</span></div>"
+        "<span id='second' class='item'>Second</span>"
+        "</section><span id='outside' class='item'>Outside</span></main>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var scope=document.getElementById('scope');"
+        "var first=document.getElementById('first');"
+        "var deep=document.getElementById('deep');"
+        "var second=document.getElementById('second');"
+        "var direct=scope.querySelectorAll(':scope > .item');"
+        "var descendants=scope.querySelectorAll(':scope .item');"
+        "var self=scope.querySelectorAll(':scope');"
+        "var comma=scope.querySelectorAll(':scope, .item');"
+        "document.getElementById('result').textContent="
+        "String(direct.length===2&&direct[0]===first&&direct[1]===second)+'|'"
+        "+String(descendants.length===3&&descendants[0]===first&&"
+        "descendants[1]===deep&&descendants[2]===second)+'|'"
+        "+String(scope.querySelector(':scope .item')===first)+'|'"
+        "+String(self.length===1&&self[0]===scope&&"
+        "scope.querySelector(':scope')===scope)+'|'"
+        "+String(comma.length===4&&comma[0]===scope&&comma[1]===first&&"
+        "comma[2]===deep&&comma[3]===second)+'|'"
+        "+String(scope.querySelector('section')===null&&"
+        "scope.querySelectorAll('.scope').length===0)+'|'"
+        "+String(scope.matches(':scope')&&scope.matches('section:scope')&&"
+        "first.matches(':scope')&&first.matches(':scope > .item')===false)+'|'"
+        "+String(deep.closest(':scope')===deep&&scope.closest(':scope')===scope&&"
+        "deep.closest(':scope > .item')===null)+'|'"
+        "+String(document.querySelector(':scope')===document.documentElement&&"
+        "document.querySelectorAll(':scope').length===1)+'|'"
+        "+String(document.querySelector(':scope > body')===document.body)+'|'"
+        "+String(scope.querySelectorAll(':scope .outside').length===0&&"
+        "scope.querySelectorAll(':scope(foo)').length===0)+'|'"
+        "+String(scope.querySelectorAll('::scope').length===0&&"
+        "scope.querySelectorAll(':scope,').length===0)+'|'"
+        "+String(scope.querySelectorAll(':ScOpE > .item').length===2);})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true|true|true|true|true";
+    char error[1024];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1180 FAIL", error[0] != '\0' ? error :
+                "Browser :scope selector fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1180 OK",
+            "Element and document selector queries support a bounded :scope"
+            " context, preserve owner exclusion for unscoped queries, and"
+            " fail closed for unsupported scope syntax.");
     return TRUE;
 }
 
@@ -101524,6 +101591,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1177: ok = test1177_browser_form_data_submitter_contract(); break;
         case 1178: ok = test1178_browser_form_data_event_contract(); break;
         case 1179: ok = test1179_browser_selector_visited_contract(); break;
+        case 1180: ok = test1180_browser_selector_scope_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

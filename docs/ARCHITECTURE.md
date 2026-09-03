@@ -165,6 +165,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   为空且 `placeholder` 值非空时匹配；type/value/placeholder mutation 会被后续查询读取，
   不支持的 input 类型、普通元素和带参数形式安全不匹配，且不扩大 native placeholder
   绘制或 SIP/IME 的宿主职责；
+- 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
+  scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
+  scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，
+  `matches()`/`closest()` 以 receiver 为 scope。只接受直接、无参数的 scope compound；
+  嵌套参数、伪元素和其他完整 Selectors 语法安全不匹配，宿主只提供已有 DOM relation
+  callback；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、element focus、window focus/blur、composition、click 和导航协调；
 - 可选的脚本 form 默认动作事务：`HTMLFormElement.reset()` 先由 Browser 按 form id 通过

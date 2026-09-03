@@ -12,8 +12,6 @@
 
 其他项目链接 `positron_browser.lib` 并部署三个 DLL。不要复制 Browser 内部结构，也不要把 `test_host.exe` 当作运行时依赖。
 
-## 能力分组
-
 ### History
 
 `PBrowser_History*` 管理有界的进程内条目、当前位置、state、same-document 操作和 traversal。URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
@@ -167,7 +165,7 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
-独立的 714 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
+独立的 730 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
 状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host
 objects 由 Browser callbacks 提供。
 
@@ -188,8 +186,6 @@ if (history == NULL || session == NULL) {
 PBrowser_ScriptSessionDestroy(session);
 PBrowser_HistoryDestroy(history);
 ```
-
-精确预算、返回码和 callback 结构以 `positron_browser.h` 为准。
 
 ### `document.activeElement` 与 Core 焦点桥
 
@@ -264,6 +260,17 @@ PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(session,
 失败都安全不匹配。
 旧 `PBrowserScriptInteractionCallbacks` ABI 保持兼容；Ex 与旧表不可在同一 session 重复
 注册，注销使用 `PBrowser_ScriptSessionUnregisterInteractionElementCallbacks`。
+
+#### Selector bridge
+
+`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 共享同一有界
+selector parser。element query 以 receiver 为 scope；直接、无参数的 `:scope` 可使
+owner 出现在结果首位，并支持 `:scope > ...`（直接子代）和 `:scope ...`（后代），
+结果仍按文档顺序返回；无 scope 的 element query 继续排除 owner。document query 以
+`document.documentElement` 为 scope，`matches()`/`closest()` 以 receiver 为 scope。
+
+`:scope` 仅接受直接、无参数形式；嵌套参数、伪元素、未闭合和完整 Selectors 语法均
+fail closed。宿主只提供既有 DOM relation callbacks。
 
 #### `HTMLElement.focus()` / `blur()` 请求
 
@@ -636,20 +643,15 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 一个浏览器宿主通常：
 
 1. 用 `positron_core.dll` 创建、style、layout 当前文档；
-2. 为该文档构造 callback context；
-3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；按需增加
-   activeElement/focus、interaction 和 form method callbacks，并让宿主把 form id
-   映射到 Core reset 或 validation/no-validation primitive；页面级滚动可见性使用
-   focus request 的 Ex callbacks；
-4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
-   顺序执行允许的 classic script；
+  2. 为该文档构造 callback context；
+  3. 注册 DOM/Event/form/navigation tables，按需增加 activeElement/focus、interaction 和
+    form-method callbacks，并将 form id 映射到 Core primitive；
+  4. 显式 bootstrap；在 classic script 前注册所需的可选 callback；
   5. 把 WM 输入转换为 Browser typed transaction；嵌套 overflow 指针则按 Core 的 document-space 合同调用 `PCore_OverflowPointer`；
   6. 只在 Browser 允许默认动作后修改 Core/native 控件；`Element.scrollTo()`/`scrollBy()` 的位置由 Core callback 返回；
   7. mutation 或 overflow scroll 后重新 layout/paint，并用 dirty rect 限定失效；
   8. 在导航或 fragment/traversal 改变页面前，把当前 viewport 写入对应 history entry；目标页面提交后读取目标 snapshot，并由宿主 clamp/apply；
   9. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
-
-完整组合示例见 [`../test_host/`](../test_host/README.md)，但产品应用应根据自己的窗口、网络和安全策略实现 callbacks。
 
 ## 所有权与错误
 
@@ -665,15 +667,14 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 ## 当前边界
 
-- 浏览器 JavaScript 是显式 opt-in 的有限组合，不是完整 DOM/Web API 或安全沙箱。
-- History 有界且不持久；多窗口、opener 和跨窗口 history 未实现。
-- `document.activeElement`、focus/blur、autofocus 只有在宿主注册 Core callback 后才工作；
-  Browser 只提供 id 投影、`preventScroll` 和最多 64 层 nested reveal，不提供完整焦点算法。
-- 几何与滚动 getter 只读取最近一次 Core layout 的整数快照；`getClientRects()` 最多 16
-  个片段，宿主负责 extent、clamp 和 CSS/设备换算。transforms、Range/Selection、pinch
-  zoom、scroll-margin、smooth/inertia 和完整 scroll tree 不在范围内。
-- `:visited` 仅反映宿主 Ex callback，不提供持久化、隐私隔离或跨窗口共享；完整 Selectors、
-  backdrop、Range/Selection、富文本、clipboard 和 IME 不在范围内。
+- JavaScript 是显式 opt-in 的有限组合；History 有界且不持久，多窗口、opener 和跨窗口
+  history 未实现，也不提供完整 DOM/Web API 或安全沙箱。
+- `activeElement`、focus/blur、autofocus、几何和滚动 getter 依赖宿主/Core callback，
+  读取最近一次有界 layout 快照；Browser 不提供完整焦点算法、scroll tree、transforms、
+  Range/Selection、pinch zoom、scroll-margin 或 smooth/inertia。
+- `:visited` 仅反映宿主 Ex callback，`:scope` 仅是直接 compound/context 扩展；完整
+  Selectors、持久 history/隐私隔离、伪元素、namespace、shadow DOM、backdrop、富文本、
+  clipboard 和 IME 不在范围内。
 - 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
 - ABI、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
 

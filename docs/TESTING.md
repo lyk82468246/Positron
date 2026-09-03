@@ -420,6 +420,14 @@ callback 返回明确批准的访问结果，Browser 对 `<a>`/`<area>` 的绝�
 宿主负责 URL 解析、历史来源和隐私策略。该离线门不证明真实链接颜色、visited 隐私隔离、
 跨窗口 history 或设备视觉。
 
+TEST1180 覆盖 Browser selector 的有界 `:scope` context：element query 把 receiver
+作为 scope，`:scope > ...` 与 `:scope ...` 分别匹配直接子代和后代，并在带 scope 的
+查询中按文档顺序把 owner 放在结果首位；不带 `:scope` 的 element query 仍排除 owner，
+document query 把 `document.documentElement` 作为 scope。`matches()`/`closest()`
+以 receiver 作为 scope，因此 `node.matches(':scope')` 与 `node.closest(':scope')`
+只命中自身。带参数、伪元素、尾随逗号及嵌套在当前不支持参数中的 scope 必须 fail closed；
+宿主只提供既有 DOM relation callback，不复制 selector 解析、scope 或排序语义。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
