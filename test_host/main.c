@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1172
+#define TEST_MAX_NUMBER 1173
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8338,6 +8338,11 @@ static int pcore_browser_script_programmatic_click_default(void *pw,
 static int pcore_browser_script_form_event_dispatch(void *pw,
         const PBrowserScriptFormEventInfo *info,
         int *out_default_allowed);
+static int pcore_browser_script_form_event_dispatch_by_id(void *pw,
+        const PBrowserScriptFormEventInfoEx *info,
+        int *out_default_allowed);
+static int pcore_browser_script_dom_reset_form(void *pw,
+        const char *form_id);
 static int pcore_browser_script_invalid_dispatch(void *pw,
         const PBrowserScriptInvalidEventInfo *info,
         int *out_default_allowed);
@@ -8365,6 +8370,7 @@ static int pcore_browser_script_dispatch_key_data_at(int x, int y,
 static void pcore_invalidate_form_dirty(HWND hwnd, int x, int y,
         int width, int height);
 static void pcore_request_interaction_restyle(HWND hwnd);
+static int pcore_restyle_form_state(HWND hwnd, int preserve_focus);
 static int pcore_form_toggle_activate(int x, int y,
         int product_toggle_started, int *dirty_x, int *dirty_y,
         int *dirty_w, int *dirty_h);
@@ -11180,6 +11186,30 @@ static int pcore_browser_script_form_event_dispatch(void *pw,
     }
     *out_default_allowed = 1;
     result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, out_default_allowed);
+    return (result < 0) ? -1 : 0;
+}
+
+static int pcore_browser_script_form_event_dispatch_by_id(void *pw,
+        const PBrowserScriptFormEventInfoEx *info,
+        int *out_default_allowed)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            out_default_allowed == NULL ||
+            info->size < sizeof(PBrowserScriptFormEventInfoEx) ||
+            info->element_id == NULL || info->element_id[0] == '\0' ||
+            info->event_type == NULL ||
+            (strcmp(info->event_type, "submit") != 0 &&
+            strcmp(info->event_type, "reset") != 0)) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchToId(bridge->document, info->element_id,
             info->event_type, info->bubbles ? 1 : 0,
             info->cancelable ? 1 : 0, out_default_allowed);
     return (result < 0) ? -1 : 0;
@@ -15368,6 +15398,26 @@ static int pcore_browser_script_dom_set_selected_index(void *pw,
             1 : 0;
 }
 
+static int pcore_browser_script_dom_reset_form(void *pw,
+        const char *form_id)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || form_id == NULL ||
+            form_id[0] == '\0') {
+        return -1;
+    }
+    if (PCore_FormResetById(bridge->document, form_id) != 0) {
+        return 0;
+    }
+    if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
+            pcore_restyle_form_state(bridge->hwnd, 0) != 0) {
+        return -1;
+    }
+    return 1;
+}
+
 static int pcore_browser_script_dom_get_validation(void *pw,
         const char *id, PBrowserScriptValidationInfo *out_info)
 {
@@ -16263,6 +16313,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
+    PBrowserScriptFormResetCallbacks form_reset_callbacks;
     PBrowserScriptValidationCallbacks validation_callbacks;
     PBrowserScriptReportValidityCallbacks report_validity_callbacks;
     PBrowserScriptCustomValidityCallbacks custom_validity_callbacks;
@@ -16279,6 +16330,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptProgrammaticAnchorCallbacks
             programmatic_anchor_callbacks;
     PBrowserScriptFormEventCallbacks form_event_callbacks;
+    PBrowserScriptFormEventCallbacksEx form_event_callbacks_ex;
     PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptNavigationCallbacks navigation_callbacks;
     PBrowserScriptScrollCallbacks scroll_callbacks;
@@ -16430,6 +16482,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_get_selected_index;
     form_callbacks.set_selected_index =
             pcore_browser_script_dom_set_selected_index;
+    form_reset_callbacks.size = sizeof(form_reset_callbacks);
+    form_reset_callbacks.pw = bridge;
+    form_reset_callbacks.reset_form = pcore_browser_script_dom_reset_form;
     validation_callbacks.size = sizeof(validation_callbacks);
     validation_callbacks.pw = bridge;
     validation_callbacks.get_validation =
@@ -16492,6 +16547,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     form_event_callbacks.pw = bridge;
     form_event_callbacks.dispatch_form_event =
             pcore_browser_script_form_event_dispatch;
+    form_event_callbacks_ex.size = sizeof(form_event_callbacks_ex);
+    form_event_callbacks_ex.pw = bridge;
+    form_event_callbacks_ex.dispatch_form_event =
+            pcore_browser_script_form_event_dispatch_by_id;
     invalid_callbacks.size = sizeof(invalid_callbacks);
     invalid_callbacks.pw = bridge;
     invalid_callbacks.dispatch_invalid = pcore_browser_script_invalid_dispatch;
@@ -16569,6 +16628,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_checked_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(session,
             &form_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormResetCallbacks(session,
+            &form_reset_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterValidationCallbacks(session,
             &validation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterReportValidityCallbacks(session,
@@ -16597,6 +16658,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &programmatic_anchor_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormEventCallbacks(session,
             &form_event_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormEventCallbacksEx(session,
+            &form_event_callbacks_ex) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterInvalidCallbacks(session,
             &invalid_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomAttributeCallbacks(session,
@@ -42030,7 +42093,8 @@ static BOOL test1171_core_form_attribute_lifecycle_contract(void)
 static BOOL test1172_core_form_reset_by_id_contract(void)
 {
     static const char HTML[] =
-        "<!doctype html><html><body><form id='primary'>"
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='primary'>"
         "<input id='inside' value='inside-default'>"
         "<input id='check' type='checkbox' checked>"
         "<select id='choice'><option value='first' selected>First</option>"
@@ -42129,6 +42193,51 @@ static BOOL test1172_core_form_reset_by_id_contract(void)
     show_info(L"TEST 1172 OK",
             "PCore_FormResetById restores ancestor and explicit external "
             "form-owner controls while leaving unrelated controls unchanged.");
+    return TRUE;
+}
+
+/* TEST 1173 - Browser HTMLFormElement.reset() event/default ordering. */
+static BOOL test1173_browser_form_reset_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='primary'>"
+        "<input id='inside' value='inside-default'>"
+        "<input id='check' type='checkbox' checked>"
+        "<select id='choice'><option value='first' selected>First</option>"
+        "<option value='second'>Second</option></select></form>"
+        "<textarea id='outside' form='primary'>outside-default</textarea>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('primary'),inside=document.getElementById('inside'),"
+        "check=document.getElementById('check'),choice=document.getElementById('choice'),"
+        "outside=document.getElementById('outside'),cancel=true,calls=0,trace='';"
+        "form.addEventListener('reset',function(e){calls++;trace+=e.type+':'"
+        "+String(e.target===form)+':' +String(e.currentTarget===form)+':'"
+        "+String(e.bubbles)+':' +String(e.cancelable)+';';"
+        "if(cancel){e.preventDefault();}});"
+        "inside.value='inside-change';outside.value='outside-change';check.checked=false;"
+        "choice.selectedIndex=1;form.reset();"
+        "var canceled=String(inside.value==='inside-change'&&outside.value==='outside-change'&&"
+        "!check.checked&&choice.selectedIndex===1)+'|'+String(calls===1);"
+        "cancel=false;var returned=form.reset();"
+        "var applied=String(inside.value==='inside-default'&&outside.value==='outside-default'&&"
+        "check.checked&&choice.selectedIndex===0)+'|'+String(typeof returned==='undefined')+'|'"
+        "+String(calls===2);"
+        "document.getElementById('result').textContent=canceled+'|'+applied+'|'+trace;";
+    char error[384];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE,
+            "true|true|true|true|true|reset:true:true:true:true;"
+            "reset:true:true:true:true;", error, sizeof(error))) {
+        show_error(L"TEST 1173 FAIL", error[0] != '\0' ? error :
+                "Browser form reset fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1173 OK",
+            "HTMLFormElement.reset dispatches a cancelable reset event before"
+            " restoring associated controls and leaves canceled state intact.");
     return TRUE;
 }
 
@@ -100241,6 +100350,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1170: ok = test1170_browser_form_attribute_owner_contract(); break;
         case 1171: ok = test1171_core_form_attribute_lifecycle_contract(); break;
         case 1172: ok = test1172_core_form_reset_by_id_contract(); break;
+        case 1173: ok = test1173_browser_form_reset_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

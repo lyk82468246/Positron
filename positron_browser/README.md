@@ -322,26 +322,21 @@ callback 参数和输出缓冲只在调用期间借用。
 目标没有 owner，也不回退到祖先。`elements` 每次读取都是按文档顺序建立的有界 snapshot，
   文档 mutation 后应重新读取；Browser 不扩展为完整 live form collection。
 
-selector 支持 compound、顶层列表、空格/`>`/`+`/`~`、六类属性操作符和有限结构/表单
-伪类，包括 `:checked`、`:required`/`:optional`、`:valid`/`:invalid`、有界
-`:in-range`/`:out-of-range`、`:focus`/`:focus-within`、静态 `:link`/`:any-link`、
-`:target`/`:lang` 与可选 `:active`/`:hover`。
-编辑状态还提供有界 `:read-only`/`:read-write`：文本输入类型与 `textarea` 读取
-readonly/effective-disabled，存在 Core `isContentEditable` callback 时也读取显式或继承的
-editing host；不支持编辑的 input 类型和普通元素按 `:read-only` 处理。
-`:placeholder-shown` 只匹配省略 `type` 或使用 `text`、`search`、`url`、`tel`、`email`、
-`password` 的 input，以及 textarea 的非空 `placeholder` 和空 live `value`；value/type/
-placeholder mutation 会在下一次查询中反映，其他 input 类型、空 placeholder、普通元素和
-带参数形式不匹配。
-`:not()` 只接受单一简单 compound；`:is()`/`:where()`/`:has()` 各最多 16 个分支，后者
-只支持后代/子代/兄弟关系且遍历最多 64 步，空分支、链式关系和不完整参数 fail closed。
-范围伪类仅适用于带非空值和约束的 input `number`/`range`/`date`/`month`/`week`/`time`/
-`datetime-local`（range 默认范围也算）；underflow/overflow 才是 out-of-range，空值、
-bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 不匹配。
-`:focus`/`:focus-within` 读取 activeElement callback；`:link`/`:any-link` 只匹配带 `href`
-的 `<a>`/`<area>`；`:target` 只匹配 decoded fragment 对应的非空 id；`:lang` 只接受单一
-ASCII 标签并沿最多 64 层父链继承。未注册 callback、visited、伪元素、namespace、shadow
-DOM 和完整 Selectors 语法均不在范围内。
+启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
+`PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 也可接到同一
+事务：Browser 先按 form id 派发可冒泡、可取消的 `reset`，只有事件未被阻止时才调用
+宿主的 `reset_form` callback。宿主应在 callback 中调用 `PCore_FormResetById`，并在成功后
+重新 style/layout/paint；方法返回 `undefined`。缺少任一必需 callback、目标不是 form
+或 adapter 失败时保持 fail closed。`PCore_FormResetById` 仍是 Core 的
+state-only 入口，不自行派发事件或操作 native 控件；原有按坐标的
+`PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
+
+selector bridge 支持有界 compound、顶层列表、后代/子代/兄弟组合器、属性操作符和
+结构/表单伪类，包括 `:checked`、validation 的 `:valid`/`:invalid` 与范围状态、
+focus/link/fragment/language、可选 interaction 的 `:active`/`:hover`，以及
+`:not()`/`:is()`/`:where()`/`:has()`、`:read-only`/`:read-write` 和
+`:placeholder-shown`。参数、分支和遍历有固定预算；非法或未注册 callback 时 fail
+closed；限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
 
 ### `dialog` 生命周期
 
@@ -382,6 +377,11 @@ Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click�
 - anchor/disclosure/programmatic click：可取消 click 与有界默认动作。
 
 通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、HDC、网络和页面生命周期。
+
+脚本 `form.reset()` 的顺序同样由 Browser 固定：先通过 Ex form-event adapter 派发
+`reset`（`bubbles=1`、`cancelable=1`），再在未取消时调用 reset callback。该 callback
+只返回状态结果；宿主负责把成功结果映射到 Core 的 `PCore_FormResetById` 和后续
+layout/paint，不应在宿主复制表单 owner 或事件取消规则。
 
 每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。键盘焦点顺序由 Core 的 `PCore_FocusTargetInfo`（或 modal 场景的 `PCore_FocusTargetInfoWithin`）提供；Browser 负责报告活动 modal id，并把宿主的 WM key transaction 按取消和默认动作规则分发给当前目标。
 
@@ -625,8 +625,10 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
    `document.activeElement` 或 `HTMLElement.focus()`/`blur()`，同时准备 Core 焦点
    id 与 focus request callbacks；若需要脚本 `:active`/`:hover`，注册 interaction
-   callback 读取 Core 的当前状态；若需要页面级滚动可见性，使用 focus request 的
-   Ex callbacks；
+   callback 读取 Core 的当前状态；若脚本需要 `HTMLFormElement.reset()`，再注册
+   `PBrowserScriptFormResetCallbacks` 与 `PBrowserScriptFormEventCallbacksEx`，让宿主
+   能按 form id dispatch `reset` 并调用 Core reset；若需要页面级滚动可见性，使用 focus
+   request 的 Ex callbacks；
 4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；
   5. 把 WM 输入转换为 Browser typed transaction；嵌套 overflow 指针则按 Core 的 document-space 合同调用 `PCore_OverflowPointer`；

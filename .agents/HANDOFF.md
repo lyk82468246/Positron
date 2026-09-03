@@ -8,10 +8,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next727 的 Core 按 form ID reset、TEST1172 夹具和职责文档已
-  完成；本批复用共享 owner/traversal，`test_host` 只新增 fixture/断言；`tmp/`
-  中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1172。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- 分支：`main`。next728 的 Browser `HTMLFormElement.reset()` bridge、TEST1173 夹具和
+  公共边界文档已完成；Core reset 仍由 `PCore_FormResetById` 持有，本批 `test_host` 只
+  新增 callback 接线、fixture 和断言；`tmp/` 中的本地证据未纳入版本控制。
+- `TEST_MAX_NUMBER` 已为 1173。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -125,7 +125,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   它复用同一 owner 规则恢复 form 子树和显式 `form="id"` 外部 input、checkbox、select、
   textarea，缺失/非 form/空值参数 fail closed。TEST1172 覆盖成功恢复、无效 owner 保持
   原值和参数拒绝；`1171-1172,999` 定向设备门已通过。
-- 当前唯一下一步是 next728：重新检查 compatibility corpus、源码、设备日志和截图，
+- next728 在 Browser 中增加可选的 `HTMLFormElement.reset()` bridge：脚本先按 form id
+  派发可冒泡、可取消的 `reset`，未取消时才调用宿主 reset callback；参考宿主把它接到
+  `PCore_FormResetById` 并在成功后重新 layout。TEST1173 覆盖取消保持、默认恢复、事件
+  字段/target 身份、调用次数和 `undefined` 返回值。启用 JavaScript 的
+  `1172,1173,999` 定向设备门已通过（`tmp/device-runs/20260903-135218-next728-form-reset-final/`，唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）。
+- 当前唯一下一步是 next729：重新检查 compatibility corpus、源码、设备日志和截图，
   固定一个新的用户可见缺口，再选择一个边界清楚的公共 DLL 纵向能力。
 
 ## 已验证产品事实
@@ -276,14 +281,16 @@ native 表单视觉仍未实现。
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next728
+## 唯一下一步：next729
 
-next727 在 Core 中增加了 `PCore_FormResetById`：调用方在 dispatch 可取消 reset 事件后，
-可以按 form ID 执行无坐标的 state-only 默认动作。该入口复用共享 owner/traversal，
-恢复 form 子树和显式 `form="id"` 外部 input、checkbox、select、textarea，失败参数
-安全拒绝；TEST1172 与 TEST1171 的相邻生命周期断言已由 `1171-1172,999` 设备门通过。
-它不创建事件、native 控件或 layout；完整 live collection、其他 form-associated 元素、
-native 表单视觉和设备差异仍未承诺。
+next728 已在 Browser 中完成脚本 `HTMLFormElement.reset()` 的可选事务桥：Browser 先按
+form id 派发可冒泡、可取消的 `reset`，只有默认动作获准后才同步调用宿主 reset callback；
+参考宿主调用 `PCore_FormResetById` 恢复共享 owner 下的控件并重新 layout。TEST1173 与
+TEST1172 的相邻生命周期断言已由启用 JavaScript 的 `1172,1173,999` 设备门通过，证据在
+`tmp/device-runs/20260903-135218-next728-form-reset-final/`。Core state-only 入口、旧的
+坐标 form-event ABI 和 Browser reset bridge 都保持 additive；缺少 callback、无效 form id
+或 adapter 失败时 fail closed。完整 live collection、其他 form-associated 元素、native
+表单视觉和设备差异仍未承诺。
 
 下一批先从 compatibility corpus、源码、日志或截图固定另一个真实缺口，再选择一个边界
 清楚的离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台
@@ -299,11 +306,11 @@ native 表单视觉和设备差异仍未承诺。
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next728）
+## 下一步完成标准（next729）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
-- 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–724 的布局 relation、布局尺寸、元素滚动、`getBoundingClientRect()`/`getClientRects()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration、beforeunload、脚本任务检查点、窗口焦点、activeElement、focus/blur 请求、autofocus、page-level/nested scrollIntoView、selector 组合器/属性/结构伪类/表单状态/`:not()`/`:is()`/`:where()`/`:has()`/`:valid`/`:invalid`/`:in-range`/`:out-of-range`/`:focus`/`:focus-within`/`:link`/`:any-link`/`:target`/`:lang`/`:active`/`:hover`/`:read-only`/`:read-write`/`:placeholder-shown`、effective-disabled relation 或旧页保留契约；
+- 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–728 的布局 relation、布局尺寸、元素滚动、`getBoundingClientRect()`/`getClientRects()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration、beforeunload、脚本任务检查点、窗口焦点、activeElement、focus/blur 请求、autofocus、page-level/nested scrollIntoView、selector 组合器/属性/结构伪类/表单状态/`:not()`/`:is()`/`:where()`/`:has()`/`:valid`/`:invalid`/`:in-range`/`:out-of-range`/`:focus`/`:focus-within`/`:link`/`:any-link`/`:target`/`:lang`/`:active`/`:hover`/`:read-only`/`:read-write`/`:placeholder-shown`、effective-disabled relation、form-owner/reset 或旧页保留契约；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- next728 完成后 handoff 应覆盖为 next728 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- next729 完成后 handoff 应覆盖为 next729 快照，ROADMAP 只保留当前尚未完成的纵向能力。

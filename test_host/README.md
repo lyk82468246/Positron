@@ -71,8 +71,8 @@ tests=13,20,27,999
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
-  以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费
-  （TEST1146–1172）；
+  以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
+  Browser 脚本 `HTMLFormElement.reset()` 的可取消事件与默认动作顺序（TEST1146–1173）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -252,6 +252,12 @@ TEST1172 断言 `PCore_FormResetById` 的无坐标 state-only reset：form 子�
 的控件保持修改后的值；缺失、非 form、空 id 和 NULL 参数均安全拒绝。宿主只提供
 fixture、状态 mutation 和断言，reset 事件策略、owner/traversal、native 控件及 layout
 仍由公共 DLL/调用方负责。
+
+TEST1173 断言 Browser 脚本 `HTMLFormElement.reset()` 的事件/默认动作边界：第一次
+`reset()` 先派发可冒泡、可取消事件，listener 取消后所有 live 值保持修改态；第二次在
+事件允许后调用宿主 reset callback，由 `PCore_FormResetById` 恢复 form 子树和显式外部
+控件，并重新 layout。夹具检查 `target`/`currentTarget` 身份、事件字段、调用次数和
+`undefined` 返回值；宿主只负责 callback 接线、fixture、状态读取和断言。
 
 ### Native EDIT/SELECT/button/file
 

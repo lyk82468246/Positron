@@ -365,6 +365,14 @@ form 子树内以及显式 `form="primary"` 的外部 input、checkbox、select 
 调用方仍须在该入口前完成可取消 reset 事件策略，并在成功后重新 layout/paint；该夹具
 不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
 
+TEST1173 覆盖 Browser 脚本 `HTMLFormElement.reset()` 的完整事务：第一次调用由 form id
+派发 `bubbles=1`、`cancelable=1` 的 `reset` 事件，listener 通过 `preventDefault()` 取消
+时，form 子树和显式 `form="primary"` 外部控件的 live state 均保持不变；第二次调用在
+事件允许后进入宿主 reset callback，由 Core 恢复 input、checkbox、select 和 textarea 的
+初始值，并在参考宿主重新 layout。夹具还断言 `event.target === event.currentTarget`、
+事件顺序、两次调用计数、方法返回 `undefined` 以及无重复事件。它验证的是 Browser/Core
+事务和 adapter 合同，不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

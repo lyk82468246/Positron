@@ -693,6 +693,22 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
+/* Additive adapter for the script-facing HTMLFormElement.reset() default
+ * action. The browser layer dispatches a cancelable reset event through the
+ * by-id form-event adapter before calling reset_form; the host only applies
+ * the Core state-only reset for the supplied UTF-8 form id and re-layouts its
+ * active page afterward. reset_form returns >0 when the form state was
+ * restored, 0 when the target is absent or unavailable, and <0 on adapter
+ * failure. The id is borrowed for the synchronous callback. Register this
+ * table after PBrowserScriptFormCallbacks; the original form callback ABI is
+ * unchanged. */
+typedef int (*PBrowserScriptResetFormFn)(void *pw, const char *form_id);
+typedef struct PBrowserScriptFormResetCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptResetFormFn reset_form;
+} PBrowserScriptFormResetCallbacks;
+
 /* Constraint-validation bits returned by the product-owned validation
  * bridge. They intentionally mirror the public positron_core flags without
  * making this DLL depend on positron_core headers. */
@@ -1347,6 +1363,29 @@ typedef struct PBrowserScriptFormEventCallbacks {
     PBrowserScriptDispatchFormEventFn dispatch_form_event;
 } PBrowserScriptFormEventCallbacks;
 
+/* Additive form-event adapter addressed by DOM id. This is used by
+ * script-facing form methods whose target is not represented by a pointer
+ * coordinate. event_type is "submit" or "reset" and all strings are borrowed
+ * only for the synchronous callback. The callback returns zero when Core
+ * dispatch was attempted and writes 1 when the default is allowed or 0 when
+ * a cancelable listener prevented it; a negative return reports an adapter
+ * failure. */
+typedef struct PBrowserScriptFormEventInfoEx {
+    unsigned long size;
+    const char *element_id;
+    const char *event_type;
+    int bubbles;
+    int cancelable;
+} PBrowserScriptFormEventInfoEx;
+typedef int (*PBrowserScriptDispatchFormEventFnEx)(void *pw,
+        const PBrowserScriptFormEventInfoEx *info,
+        int *out_default_allowed);
+typedef struct PBrowserScriptFormEventCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDispatchFormEventFnEx dispatch_form_event;
+} PBrowserScriptFormEventCallbacksEx;
+
 /* Typed host adapter for product-owned native constraint-validation events.
  * The browser layer owns the invalid-event contract and dispatch entry point;
  * the host supplies core hit-testing/propagation for the invalid control's
@@ -1706,6 +1745,10 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
         HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
         HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormResetCallbacks(
+        HANDLE hSession, const PBrowserScriptFormResetCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormResetCallbacks(
+        HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
         HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterValidationCallbacks(
@@ -1950,6 +1993,17 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormEventCallbacks(
  * adapter. On success out_default_allowed is 1 or 0 as described above. */
 PBROWSER_API int PBrowser_ScriptSessionDispatchFormEvent(HANDLE hSession,
         const PBrowserScriptFormEventInfo *info, int *out_default_allowed);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormEventCallbacksEx(
+        HANDLE hSession,
+        const PBrowserScriptFormEventCallbacksEx *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormEventCallbacksEx(
+        HANDLE hSession);
+/* Dispatch one script-visible form event addressed by DOM id. This additive
+ * entry point requires the Ex callback table and preserves the old
+ * coordinate-based form-event ABI. */
+PBROWSER_API int PBrowser_ScriptSessionDispatchFormEventById(HANDLE hSession,
+        const PBrowserScriptFormEventInfoEx *info,
+        int *out_default_allowed);
 PBROWSER_API int PBrowser_ScriptSessionRegisterInvalidCallbacks(
         HANDLE hSession, const PBrowserScriptInvalidCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterInvalidCallbacks(
