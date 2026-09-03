@@ -51,13 +51,16 @@ Windows CE 可能在系统范围继续复用已加载 DLL。只替换一个文�
 这不能保证 OEM/WMDC 的实际缓存需求，若运行时仍失败，应以完整日志和该字段区分目标卷
 不足与内部缓存风险。
 
-预检前会枚举门自己生成的时间戳目录。目录只有在 `test_host.log` 已完整复制、连续两次
-内容稳定且包含最终 `TESTBENCH PASS`/`TESTBENCH FAIL` 标记后才会删除；未知名称、没有
-终态或复制不完整的目录始终保留。当前目录同样要在完整日志回收到本机后才尝试删除；超时
-或日志不完整时绝不清理，便于诊断。删除失败只记录警告并保留目录，不能被当成通过条件。
-本机证据中的 `prior-logs` 保存被检查过的旧日志，结果文件还会列出
-`storage_*`、`prior_cleanup_*` 与 `current_cleanup` 字段；若预检在部署前停止，仍可从
-`device-gate-preflight.txt` 读取同一组空间和清理摘要。
+预检前会枚举门自己生成的时间戳目录。正常清理只有在 `test_host.log` 已完整复制、连续
+两次内容稳定且包含最终 `TESTBENCH PASS`/`TESTBENCH FAIL` 标记后才会删除；未知名称、
+没有终态或复制不完整的目录默认保留。若目标卷或已知内部 object store 确认不足，门会
+再做一次有界应急回收：只处理门生成且不是当前运行目录的旧目录，先尽力把日志复制到本机
+`prior-logs`，然后允许删除旧目录来释放空间，即使终态日志仍不完整；这种记录会标成
+`forced; incomplete log best effort`。未知目录和当前目录不会因此被删除。回收后会重新
+查询容量，仍不足才阻止部署；删除失败仍保留目录，不能被当成通过条件。结果文件还会列出
+`storage_*`、`prior_cleanup_*`、`space_reclaim_removed/partial/preserved` 与 `current_cleanup`
+字段；若预检在部署
+前停止，仍可从 `device-gate-preflight.txt` 读取同一组空间、回收和最终状态摘要。
 
 ## WMDC 自动设备门：不要混淆 CoreCon 与 RAPI
 

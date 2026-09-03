@@ -149,6 +149,23 @@ function Remove-RemoteDirectorySafely([string] $remotePath)
     return $false
 }
 
+function Remove-RemoteDirectoryBestEffort([string] $remotePath)
+{
+    for ($attempt = 0; $attempt -lt 2; $attempt++) {
+        try {
+            if ([PositronDeviceRapi]::DeleteDirectoryTreeBestEffort(
+                    $remotePath)) {
+                return $true
+            }
+        } catch {
+            if ($attempt -eq 0) {
+                Start-Sleep -Milliseconds 250
+            }
+        }
+    }
+    return $false
+}
+
 if ($Candidate -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]*$") {
     throw "Candidate must contain only letters, digits, dot, underscore or dash."
 }
@@ -456,6 +473,11 @@ public static class PositronDeviceRapi
 
     [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeSetFileAttributes(
+        string fileName, uint fileAttributes);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool CeRemoveDirectory(string pathName);
 
     [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
@@ -745,6 +767,42 @@ public static class PositronDeviceRapi
             throw CreateRemoteException("CeRemoveDirectory(" + directory + ")");
         }
     }
+
+    private static bool TryClearFileAttributes(string path)
+    {
+        try {
+            return CeSetFileAttributes(path, FILE_ATTRIBUTE_NORMAL);
+        } catch (EntryPointNotFoundException) {
+            return false;
+        } catch (MissingMethodException) {
+            return false;
+        }
+    }
+
+    public static bool DeleteDirectoryTreeBestEffort(string directory)
+    {
+        bool complete = true;
+        foreach (CeFindData child in FindChildren(directory)) {
+            string path = directory.TrimEnd('\\') + "\\" + child.cFileName;
+            if ((child.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+                if (!DeleteDirectoryTreeBestEffort(path)) {
+                    complete = false;
+                }
+            } else if (!CeDeleteFile(path)) {
+                if (!TryClearFileAttributes(path) ||
+                        !CeDeleteFile(path)) {
+                    complete = false;
+                }
+            }
+        }
+        if (!CeRemoveDirectory(directory)) {
+            if (!TryClearFileAttributes(directory) ||
+                    !CeRemoveDirectory(directory)) {
+                complete = false;
+            }
+        }
+        return complete;
+    }
 }
 '@
 Add-Type -TypeDefinition $rapiSource -Language CSharp
@@ -789,6 +847,11 @@ $internalStorageTotalFreeBytes = [uint64] 0
 $internalStorageCheck = "not_run"
 $priorCleanupRemoved = @()
 $priorCleanupPreserved = @()
+$spaceReclaimAttempted = $false
+$spaceReclaimRemoved = @()
+$spaceReclaimPartial = @()
+$spaceReclaimPreserved = @()
+$spaceReclaimRecheck = "not_run"
 $currentCleanup = "not_attempted"
 $completeLogRetrieved = $false
 
@@ -866,124 +929,179 @@ try {
         }
     }
 
-    $targetInfo = [PositronDeviceRapi]::QueryVolumeStorage($remoteOwnerRoot)
-    $internalInfo = [PositronDeviceRapi]::QueryObjectStoreStorage()
-    $targetStorageApi = $targetInfo.Api
-    $targetStorageScope = $targetInfo.Scope
-    $targetStorageFreeBytes = [uint64] $targetInfo.FreeBytes
-    $targetStorageTotalBytes = [uint64] $targetInfo.TotalBytes
-    $targetStorageTotalFreeBytes = [uint64] $targetInfo.TotalFreeBytes
-    $internalStorageApi = $internalInfo.Api
-    $internalStorageScope = $internalInfo.Scope
-    $internalStorageFreeBytes = [uint64] $internalInfo.FreeBytes
-    $internalStorageTotalBytes = [uint64] $internalInfo.TotalBytes
-    $internalStorageTotalFreeBytes = [uint64] $internalInfo.TotalFreeBytes
-
-    $knownObjectStorePath = $remoteOwnerRoot -match
-            '(?i)^\\(Temp|Windows|Program Files|My Documents|Application Data)(?:\\|$)'
-    if (!$targetInfo.Available -and $knownObjectStorePath -and
-            $internalInfo.Available) {
-        $targetInfo = $internalInfo
+    $evaluateStorage = {
+        $targetStorageCheck = "not_run"
+        $internalStorageCheck = "not_run"
+        $storageCheck = "not_run"
+        $storageFailure = $null
+        $targetInfo = [PositronDeviceRapi]::QueryVolumeStorage($remoteOwnerRoot)
+        $internalInfo = [PositronDeviceRapi]::QueryObjectStoreStorage()
         $targetStorageApi = $targetInfo.Api
         $targetStorageScope = $targetInfo.Scope
         $targetStorageFreeBytes = [uint64] $targetInfo.FreeBytes
         $targetStorageTotalBytes = [uint64] $targetInfo.TotalBytes
         $targetStorageTotalFreeBytes = [uint64] $targetInfo.TotalFreeBytes
-        Write-Stage "target volume API unavailable; using the internal object-store probe for the known object-store path"
-    }
+        $internalStorageApi = $internalInfo.Api
+        $internalStorageScope = $internalInfo.Scope
+        $internalStorageFreeBytes = [uint64] $internalInfo.FreeBytes
+        $internalStorageTotalBytes = [uint64] $internalInfo.TotalBytes
+        $internalStorageTotalFreeBytes = [uint64] $internalInfo.TotalFreeBytes
 
-    $storageApi = $targetStorageApi
-    $storageScope = $targetStorageScope
-    $storageFreeBytes = $targetStorageFreeBytes
-    $storageTotalBytes = $targetStorageTotalBytes
-    $storageTotalFreeBytes = $targetStorageTotalFreeBytes
-    Write-Stage (("target storage preflight: api={0} scope={1} free={2} " +
-            "required={3} total={4}") -f $targetStorageApi,
-            $targetStorageScope, $targetStorageFreeBytes,
-            $storageRequiredBytes, $targetStorageTotalBytes)
-    Write-Stage (("internal object-store preflight: api={0} free={1} " +
-            "cache_reserve={2} total={3}") -f $internalStorageApi,
-            $internalStorageFreeBytes, $internalCacheReserveBytes,
-            $internalStorageTotalBytes)
-    $storageFailure = $null
-    if (!$targetInfo.Available) {
-        if ($knownObjectStorePath -and !$internalInfo.Available) {
-            $targetStorageCheck = "UNAVAILABLE"
-            $storageCheck = "UNAVAILABLE"
-            $storageFailure = ("Could not query free device storage for {0}; the gate " +
-                "retrieved complete prior logs before cleanup but will not " +
-                "deploy without a storage API.") -f $remoteOwnerRoot
-        } else {
+        $knownObjectStorePath = $remoteOwnerRoot -match
+                '(?i)^\\(Temp|Windows|Program Files|My Documents|Application Data)(?:\\|$)'
+        if (!$targetInfo.Available -and $knownObjectStorePath -and
+                $internalInfo.Available) {
+            $targetInfo = $internalInfo
+            $targetStorageApi = $targetInfo.Api
+            $targetStorageScope = $targetInfo.Scope
+            $targetStorageFreeBytes = [uint64] $targetInfo.FreeBytes
+            $targetStorageTotalBytes = [uint64] $targetInfo.TotalBytes
+            $targetStorageTotalFreeBytes = [uint64] $targetInfo.TotalFreeBytes
+            Write-Stage "target volume API unavailable; using the internal object-store probe for the known object-store path"
+        }
+
+        $storageApi = $targetStorageApi
+        $storageScope = $targetStorageScope
+        $storageFreeBytes = $targetStorageFreeBytes
+        $storageTotalBytes = $targetStorageTotalBytes
+        $storageTotalFreeBytes = $targetStorageTotalFreeBytes
+        Write-Stage (("target storage preflight: api={0} scope={1} free={2} " +
+                "required={3} total={4}") -f $targetStorageApi,
+                $targetStorageScope, $targetStorageFreeBytes,
+                $storageRequiredBytes, $targetStorageTotalBytes)
+        Write-Stage (("internal object-store preflight: api={0} free={1} " +
+                "cache_reserve={2} total={3}") -f $internalStorageApi,
+                $internalStorageFreeBytes, $internalCacheReserveBytes,
+                $internalStorageTotalBytes)
+        if (!$targetInfo.Available) {
+            if ($knownObjectStorePath -and !$internalInfo.Available) {
+                $targetStorageCheck = "UNAVAILABLE"
+                $storageCheck = "UNAVAILABLE"
+                $storageFailure = ("Could not query free device storage for {0}; the gate " +
+                    "retrieved complete prior logs before cleanup but will not " +
+                    "deploy without a storage API.") -f $remoteOwnerRoot
+            } else {
+                $targetStorageCheck = "UNAVAILABLE_PATH_SCOPE"
+                $storageCheck = "UNAVAILABLE_PATH_SCOPE"
+                $storageFailure = ("Could not query path-level free storage for {0}; " +
+                    "the gate will not deploy an unknown or external target using " +
+                    "only an object-store number.") -f $remoteOwnerRoot
+            }
+        } elseif (!$targetInfo.PathSpecific -and
+                $remoteOwnerRoot -match '(?i)^\\Storage Card(?:\\|$)') {
             $targetStorageCheck = "UNAVAILABLE_PATH_SCOPE"
             $storageCheck = "UNAVAILABLE_PATH_SCOPE"
-            $storageFailure = ("Could not query path-level free storage for {0}; " +
-                "the gate will not deploy an unknown or external target using " +
-                "only an object-store number.") -f $remoteOwnerRoot
-        }
-    } elseif (!$targetInfo.PathSpecific -and
-            $remoteOwnerRoot -match '(?i)^\\Storage Card(?:\\|$)') {
-        $targetStorageCheck = "UNAVAILABLE_PATH_SCOPE"
-        $storageCheck = "UNAVAILABLE_PATH_SCOPE"
-        $storageFailure = ("RAPI exposed only object-store free space while the deployment " +
-                "target is {0}; refusing a path-unsafe deployment.") -f $remoteOwnerRoot
-    } elseif ($targetInfo.PathSpecific -and
-            $targetStorageFreeBytes -lt $storageRequiredBytes) {
-        $targetStorageCheck = "INSUFFICIENT_TARGET"
-        $storageCheck = "INSUFFICIENT_TARGET"
-        $storageFailure = ("Insufficient target-volume storage at {0}: free={1} bytes, " +
-                "required={2} bytes (payload={3}, reserve={4}, api={5}).") -f
-                $remoteOwnerRoot, $targetStorageFreeBytes, $storageRequiredBytes,
-                $storagePayloadBytes, $storageReserveBytes, $storageApi
-    } elseif ($targetInfo.PathSpecific) {
-        $targetStorageCheck = "PASS"
-        if (!$internalInfo.Available) {
+            $storageFailure = ("RAPI exposed only object-store free space while the deployment " +
+                    "target is {0}; refusing a path-unsafe deployment.") -f $remoteOwnerRoot
+        } elseif ($targetInfo.PathSpecific -and
+                $targetStorageFreeBytes -lt $storageRequiredBytes) {
+            $targetStorageCheck = "INSUFFICIENT_TARGET"
+            $storageCheck = "INSUFFICIENT_TARGET"
+            $storageFailure = ("Insufficient target-volume storage at {0}: free={1} bytes, " +
+                    "required={2} bytes (payload={3}, reserve={4}, api={5}).") -f
+                    $remoteOwnerRoot, $targetStorageFreeBytes, $storageRequiredBytes,
+                    $storagePayloadBytes, $storageReserveBytes, $storageApi
+        } elseif ($targetInfo.PathSpecific) {
+            $targetStorageCheck = "PASS"
+            if (!$internalInfo.Available) {
+                $internalStorageCheck = "UNAVAILABLE_ADVISORY"
+                $storageCheck = "PASS_TARGET_ONLY"
+                Write-Stage "internal object-store probe unavailable; continuing on the path-specific target-volume check"
+            } elseif ($internalStorageFreeBytes -lt $internalCacheReserveBytes) {
+                $internalStorageCheck = "LOW_ADVISORY"
+                $storageCheck = "PASS_WITH_INTERNAL_WARNING"
+                Write-Stage "internal object-store space is below the cache advisory floor; target-volume capacity is sufficient, so deployment continues with a warning"
+            } else {
+                $internalStorageCheck = "PASS"
+                $storageCheck = "PASS"
+            }
+        } elseif ($targetStorageFreeBytes -lt $storageRequiredBytes) {
+            $targetStorageCheck = "INSUFFICIENT_OBJECT_STORE"
+            $storageCheck = "INSUFFICIENT_OBJECT_STORE"
+            $storageFailure = ("Insufficient object-store storage at {0}: free={1} bytes, " +
+                    "required={2} bytes (payload={3}, reserve={4}, api={5}).") -f
+                    $remoteOwnerRoot, $targetStorageFreeBytes, $storageRequiredBytes,
+                    $storagePayloadBytes, $storageReserveBytes, $targetStorageApi
+        } elseif (!$internalInfo.Available) {
+            $targetStorageCheck = "PASS_COARSE"
             $internalStorageCheck = "UNAVAILABLE_ADVISORY"
-            $storageCheck = "PASS_TARGET_ONLY"
-            Write-Stage "internal object-store probe unavailable; continuing on the path-specific target-volume check"
-        } elseif ($internalStorageFreeBytes -lt $internalCacheReserveBytes) {
-            $internalStorageCheck = "LOW_ADVISORY"
-            $storageCheck = "PASS_WITH_INTERNAL_WARNING"
-            Write-Stage "internal object-store space is below the cache advisory floor; target-volume capacity is sufficient, so deployment continues with a warning"
-        } else {
-            $internalStorageCheck = "PASS"
-            $storageCheck = "PASS"
-        }
-    } elseif ($targetStorageFreeBytes -lt $storageRequiredBytes) {
-        $targetStorageCheck = "INSUFFICIENT_OBJECT_STORE"
-        $storageCheck = "INSUFFICIENT_OBJECT_STORE"
-        $storageFailure = ("Insufficient object-store storage at {0}: free={1} bytes, " +
-                "required={2} bytes (payload={3}, reserve={4}, api={5}).") -f
-                $remoteOwnerRoot, $targetStorageFreeBytes, $storageRequiredBytes,
-                $storagePayloadBytes, $storageReserveBytes, $targetStorageApi
-    } elseif (!$internalInfo.Available) {
-        $targetStorageCheck = "PASS_COARSE"
-        $internalStorageCheck = "UNAVAILABLE_ADVISORY"
-        $storageCheck = "PASS_COARSE"
-        Write-Stage "object-store fallback is available for the known internal target; cache probe is unavailable"
-    } else {
-        $targetStorageCheck = "PASS_COARSE"
-        if ($internalStorageFreeBytes -lt $internalCacheReserveBytes) {
-            $internalStorageCheck = "LOW_ADVISORY"
-            $storageCheck = "PASS_COARSE_WITH_INTERNAL_WARNING"
-            Write-Stage "internal object-store space is below the cache advisory floor; the coarse target check remains sufficient for this known internal path"
-        } else {
-            $internalStorageCheck = "PASS"
             $storageCheck = "PASS_COARSE"
-        }
-    }
-    if (!$internalInfo.Available -and $internalStorageCheck -eq "not_run") {
-        $internalStorageCheck = "UNAVAILABLE_ADVISORY"
-        Write-Stage "internal object-store space could not be queried; this is advisory for an external target"
-    } elseif ($internalInfo.Available -and
-            $internalStorageCheck -eq "not_run") {
-        if ($internalStorageFreeBytes -lt $internalCacheReserveBytes) {
-            $internalStorageCheck = "LOW_ADVISORY"
+            Write-Stage "object-store fallback is available for the known internal target; cache probe is unavailable"
         } else {
-            $internalStorageCheck = "PASS"
+            $targetStorageCheck = "PASS_COARSE"
+            if ($internalStorageFreeBytes -lt $internalCacheReserveBytes) {
+                $internalStorageCheck = "LOW_ADVISORY"
+                $storageCheck = "PASS_COARSE_WITH_INTERNAL_WARNING"
+                Write-Stage "internal object-store space is below the cache advisory floor; the coarse target check remains sufficient for this known internal path"
+            } else {
+                $internalStorageCheck = "PASS"
+                $storageCheck = "PASS_COARSE"
+            }
+        }
+        if (!$internalInfo.Available -and $internalStorageCheck -eq "not_run") {
+            $internalStorageCheck = "UNAVAILABLE_ADVISORY"
+            Write-Stage "internal object-store space could not be queried; this is advisory for an external target"
+        } elseif ($internalInfo.Available -and
+                $internalStorageCheck -eq "not_run") {
+            if ($internalStorageFreeBytes -lt $internalCacheReserveBytes) {
+                $internalStorageCheck = "LOW_ADVISORY"
+            } else {
+                $internalStorageCheck = "PASS"
+            }
+        }
+        if ($storageCheck -eq "not_run") {
+            $storageCheck = $targetStorageCheck
         }
     }
-    if ($storageCheck -eq "not_run") {
-        $storageCheck = $targetStorageCheck
+    . $evaluateStorage
+
+    if ($null -ne $storageFailure -and
+            ($targetStorageCheck -eq "INSUFFICIENT_TARGET" -or
+             $targetStorageCheck -eq "INSUFFICIENT_OBJECT_STORE")) {
+        $spaceReclaimAttempted = $true
+        Write-Stage "target storage is insufficient; attempting emergency cleanup of stale gate directories"
+        foreach ($oldName in [PositronDeviceRapi]::ListSubdirectories(
+                $remoteOwnerRoot)) {
+            $oldPath = $remoteOwnerRoot + "\" + $oldName
+            if ($oldPath -eq $remoteRoot) {
+                continue
+            }
+            if ($oldName -notmatch
+                    "^[A-Za-z0-9][A-Za-z0-9._-]*-\d{8}-\d{6}$") {
+                Write-Stage "preserving unrecognized remote directory during emergency cleanup: $oldPath"
+                $spaceReclaimPreserved += "$oldPath (unrecognized)"
+                continue
+            }
+
+            $oldRemoteLog = $oldPath + "\test_host.log"
+            $oldLocalLog = Join-Path $priorEvidenceRoot ($oldName +
+                    "-space-reclaim.log")
+            Write-Stage "retrieving prior gate log before emergency space cleanup: $oldRemoteLog"
+            $logComplete = Receive-CompleteRemoteLog $oldRemoteLog $oldLocalLog
+            if ($logComplete) {
+                Write-Stage "emergency cleanup captured a complete prior log: $oldPath"
+            } else {
+                Write-Stage "emergency cleanup could not capture a complete prior log; removing the stale directory to reclaim space: $oldPath"
+            }
+            if (Remove-RemoteDirectoryBestEffort $oldPath) {
+                if ($logComplete) {
+                    $spaceReclaimRemoved += "$oldPath (complete log)"
+                } else {
+                    $spaceReclaimRemoved += "$oldPath (forced; incomplete log best effort)"
+                }
+                Write-Stage "removed prior gate directory during emergency space cleanup: $oldPath"
+            } else {
+                Write-Stage "emergency cleanup removed what it could but a remote file or directory remains: $oldPath"
+                $spaceReclaimPartial += "$oldPath (remote file or directory remains)"
+            }
+        }
+        . $evaluateStorage
+        $spaceReclaimRecheck = $storageCheck
+        if ($null -eq $storageFailure) {
+            Write-Stage "emergency cleanup reclaimed enough storage; deployment may continue"
+        } else {
+            Write-Stage "emergency cleanup did not reclaim enough storage; deployment remains blocked"
+        }
     }
     $preflightLines = @(
         "remote_base=$remoteOwnerRoot",
@@ -1010,13 +1128,27 @@ try {
         "internal_cache_reserve_bytes=$internalCacheReserveBytes",
         "internal_storage_check=$internalStorageCheck",
         "prior_cleanup_removed_count=$($priorCleanupRemoved.Count)",
-        "prior_cleanup_preserved_count=$($priorCleanupPreserved.Count)"
+        "prior_cleanup_preserved_count=$($priorCleanupPreserved.Count)",
+        "space_reclaim_attempted=$spaceReclaimAttempted",
+        "space_reclaim_recheck=$spaceReclaimRecheck",
+        "space_reclaim_removed_count=$($spaceReclaimRemoved.Count)",
+        "space_reclaim_partial_count=$($spaceReclaimPartial.Count)",
+        "space_reclaim_preserved_count=$($spaceReclaimPreserved.Count)"
     )
     if ($priorCleanupRemoved.Count -gt 0) {
         $preflightLines += "prior_cleanup_removed=$($priorCleanupRemoved -join '|')"
     }
     if ($priorCleanupPreserved.Count -gt 0) {
         $preflightLines += "prior_cleanup_preserved=$($priorCleanupPreserved -join '|')"
+    }
+    if ($spaceReclaimRemoved.Count -gt 0) {
+        $preflightLines += "space_reclaim_removed=$($spaceReclaimRemoved -join '|')"
+    }
+    if ($spaceReclaimPreserved.Count -gt 0) {
+        $preflightLines += "space_reclaim_preserved=$($spaceReclaimPreserved -join '|')"
+    }
+    if ($spaceReclaimPartial.Count -gt 0) {
+        $preflightLines += "space_reclaim_partial=$($spaceReclaimPartial -join '|')"
     }
     Set-Content -LiteralPath $preflightPath -Value $preflightLines -Encoding UTF8
     if ($null -ne $storageFailure) {
@@ -1156,6 +1288,20 @@ $checkLines += "internal_cache_reserve_bytes=$internalCacheReserveBytes"
 $checkLines += "internal_storage_check=$internalStorageCheck"
 $checkLines += "prior_cleanup_removed_count=$($priorCleanupRemoved.Count)"
 $checkLines += "prior_cleanup_preserved_count=$($priorCleanupPreserved.Count)"
+$checkLines += "space_reclaim_attempted=$spaceReclaimAttempted"
+$checkLines += "space_reclaim_recheck=$spaceReclaimRecheck"
+$checkLines += "space_reclaim_removed_count=$($spaceReclaimRemoved.Count)"
+$checkLines += "space_reclaim_partial_count=$($spaceReclaimPartial.Count)"
+$checkLines += "space_reclaim_preserved_count=$($spaceReclaimPreserved.Count)"
+if ($spaceReclaimRemoved.Count -gt 0) {
+    $checkLines += "space_reclaim_removed=$($spaceReclaimRemoved -join '|')"
+}
+if ($spaceReclaimPreserved.Count -gt 0) {
+    $checkLines += "space_reclaim_preserved=$($spaceReclaimPreserved -join '|')"
+}
+if ($spaceReclaimPartial.Count -gt 0) {
+    $checkLines += "space_reclaim_partial=$($spaceReclaimPartial -join '|')"
+}
 $checkLines += "current_cleanup=$currentCleanup"
 $checkLines += "complete_log_retrieved=$completeLogRetrieved"
 

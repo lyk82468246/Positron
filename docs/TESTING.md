@@ -531,9 +531,13 @@ object store；因此外部 `\Storage Card` 目标没有路径级 API 时会 fai
 为避免设备空间被旧包逐次吃完，设备门只把名字符合自身时间戳格式的旧目录视为候选。
 每个旧目录都必须先把 `test_host.log` 成功复制两次并得到稳定的 `TESTBENCH PASS` 或
 `TESTBENCH FAIL` 终态，才允许删除；缺失、仍在增长或复制失败的日志会让目录保留并在
-输出中说明原因。当前运行的目录也在完整日志回收后才尝试删除；超时或日志不完整时保留
-它以便取证。自定义 `-RemoteBase` 同样遵守这条规则，无法删除只产生警告，不会伪造自动
-通过；`device-gate-result.txt` 会记录 `prior_cleanup_*`、`current_cleanup` 和
+输出中说明原因。若目标卷或已知内部 object store 确认空间不足，设备门会再做一次有界的
+应急回收：只处理门自己生成、且不是当前运行目录的旧目录，先尽力把日志复制到本地
+`prior-logs`；为释放已确认需要的空间，即使终态日志仍不完整，也允许删除这个旧目录，
+并在结果中标记为 `forced; incomplete log best effort`。未知目录不会删除，当前运行目录
+也不会在预检阶段删除。回收后会重新查询空间，仍不足才阻止部署。自定义 `-RemoteBase`
+同样遵守这条规则；`device-gate-preflight.txt` 和 `device-gate-result.txt` 会记录
+`prior_cleanup_*`、`space_reclaim_removed/partial/preserved`、最终空间状态、`current_cleanup` 和
 `complete_log_retrieved`。
 
 RAPI 没有安全的通用远端终止语义。超时会保存可取得的日志并返回非零，但不会强杀设备进程；重试前应在设备 GUI 确认真正结束遗留 `test_host.exe`。WMDC/RAPI 错误按 [故障排查](TROUBLESHOOTING.md#wmdc-自动设备门不要混淆-corecon-与-rapi)处理。
