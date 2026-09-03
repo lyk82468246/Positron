@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1177
+#define TEST_MAX_NUMBER 1178
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43073,6 +43073,55 @@ static BOOL test1177_browser_form_data_submitter_contract(void)
             "control owned by the form, treats null/undefined as no submitter, "
             "rejects invalid owners and stays side-effect free without "
             "dispatching submit events.");
+    return TRUE;
+}
+
+/* TEST 1178 - Browser FormData formdata event contract. */
+static BOOL test1178_browser_form_data_event_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='data'>"
+        "<input id='field' name='field' value='alpha'>"
+        "<button id='send' type='submit' name='action' value='go'>Go</button>"
+        "</form><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('data'),send=document.getElementById('send'),"
+        "events=0,bodyEvents=0,submitEvents=0,firstEventData=null,"
+        "secondEventData=null,eventFlags=true;"
+        "document.body.addEventListener('formdata',function(){bodyEvents++;});"
+        "form.addEventListener('submit',function(){submitEvents++;});"
+        "form.addEventListener('formdata',function(e){events++;"
+        "if(events===1){firstEventData=e.formData;}else{secondEventData=e.formData;}"
+        "eventFlags=eventFlags&&e instanceof FormDataEvent&&e instanceof Event&&"
+        "e.target===form&&e.currentTarget===form&&!e.bubbles&&!e.cancelable;"
+        "e.preventDefault();eventFlags=eventFlags&&!e.defaultPrevented;"
+        "e.formData.append('listener','yes');});"
+        "var fd=new FormData(form,send),first=fd.toQueryString();"
+        "form.onformdata=function(e){e.formData.append('property','yes');};"
+        "var second=new FormData(form),manual=new FormDataEvent('custom',{formData:fd});"
+        "var manualOk=manual instanceof Event&&manual instanceof FormDataEvent&&"
+        "manual.type==='custom'&&manual.formData===fd;"
+        "document.getElementById('result').textContent=first+'|'+second.toQueryString()+'|'"
+        "+String(events===2)+'|'+String(bodyEvents===0)+'|'+String(submitEvents===0)+'|'"
+        "+String(firstEventData===fd&&secondEventData===second)+'|'"
+        "+String(eventFlags&&manualOk);";
+    static const char EXPECTED[] =
+        "field=alpha&action=go&listener=yes|"
+        "field=alpha&listener=yes&property=yes|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1178 FAIL", error[0] != '\0' ? error :
+                "Browser FormData formdata event fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1178 OK",
+            "FormData(form[, submitter]) dispatches a synchronous, detached "
+            "formdata event whose FormDataEvent object can mutate the result "
+            "without bubbling, cancellation or submit side effects.");
     return TRUE;
 }
 
@@ -101190,6 +101239,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1175: ok = test1175_browser_form_direct_submit_contract(); break;
         case 1176: ok = test1176_browser_form_data_contract(); break;
         case 1177: ok = test1177_browser_form_data_submitter_contract(); break;
+        case 1178: ok = test1178_browser_form_data_event_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

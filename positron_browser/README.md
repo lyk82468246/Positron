@@ -342,12 +342,14 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 失败会安全 no-op；Core state-only 入口不派发事件、导航或操作 native 控件，原有按坐标的
 `PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
 
-启用 `PBrowserScriptFormDataCallbacks` 后，Browser 为有非空 id 的 `<form>` 安装
-`new FormData(form)`；需要第二参数时改用 `PBrowserScriptFormDataCallbacksEx` 与对应
-注册函数，即可使用 `new FormData(form, submitter)`。构造同步请求 count/entry，生成
-脱离 DOM 的对象，不触发 validation、事件、导航或重新 layout。Ex callback 收到 form id
-和 submitter id，宿主转给 `PCore_FormDataByIdEx`；旧表只支持无显式 submitter。两种表都
-用 `PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 填充借用的 UTF-8 缓冲并配对
+启用 `PBrowserScriptFormDataCallbacks` 后，为有 id 的 `<form>` 安装
+`new FormData(form)`；第二参数使用 `PBrowserScriptFormDataCallbacksEx` 与对应注册函数。
+构造同步读取 count/entry 得到 detached 对象；不做 validation、submit/reset、默认动作、导航
+或重新 layout。成功后在 form 上同步派发非冒泡、不可取消的 `formdata`；
+`event.formData` 就是返回对象，监听器可在返回前用 `append()`/`set()`/`delete()`
+修改它，`form.onformdata` 也可用。Ex callback 收到 form id 和 submitter id，宿主转给
+`PCore_FormDataByIdEx`；旧表只支持无显式 submitter。两种表都用
+`PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 填充借用的 UTF-8 缓冲并配对
 `PCore_FreeFormData`，不得暴露 picker 路径。submitter 必须是 Browser 的 `PElement`、
 启用且归属于该 form 的 submit-type input/button；`null`/`undefined` 等同省略 submitter，
 其他无效 owner 抛出 `TypeError`。

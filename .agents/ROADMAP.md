@@ -48,10 +48,11 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   `HTMLFormElement.reset()` 与 `requestSubmit([submitter])` 可取消事件/默认动作桥接，
   前者调用 Core reset，后者调用 Core validation/submission primitives；另有
   `HTMLFormElement.submit()` 的 direct bridge，调用 Core NoValidationById primitives，
-  跳过 validation、submit event 和 submitter 选择；`new FormData(form[, submitter])` 通过
-  独立的 Core successful-control snapshot bridge 生成脱离 DOM 的有界对象，保留显式 owner、
-  重复项和文件 metadata；Ex callback 只允许目标 form 的 enabled submit-type input/button，
-  不暴露 picker 路径；
+ 跳过 validation、submit event 和 submitter 选择；`new FormData(form[, submitter])` 通过
+ 独立的 Core successful-control snapshot bridge 生成脱离 DOM 的有界对象，保留显式 owner、
+ 重复项和文件 metadata；Ex callback 只允许目标 form 的 enabled submit-type input/button，
+ 不暴露 picker 路径。Browser 在构造成功后同步派发非冒泡、不可取消的 `formdata` 事件，
+ `FormDataEvent.formData` 指向正在返回的对象，监听器可在构造返回前修改它；
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。

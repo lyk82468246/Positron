@@ -73,7 +73,8 @@ tests=13,20,27,999
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
-  和 `new FormData(form[, submitter])` 的 detached successful-control snapshot（TEST1146–1177）；
+  和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
+  `formdata` 事件（TEST1146–1178）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -286,6 +287,12 @@ form 的 submit-type input/button（包括显式 `form="id"` 外部按钮）按�
 `null`/`undefined` 等同省略 submitter，普通控件、禁用控件、其他 form 的 submitter 和
 伪造的普通对象均安全抛出 `TypeError`。构造不派发 submit 事件或执行默认动作；宿主只注册
 Ex callback、转调 `PCore_FormDataByIdEx` 并断言，字段容量和 64 项上限仍由公共桥接负责。
+
+TEST1178 断言 Browser `new FormData(form[, submitter])` 的 `formdata` 事件：成功控件
+快照完成后同步派发非冒泡、不可取消的 `FormDataEvent`，`formData` 与返回对象保持同一
+身份，监听器和 `form.onformdata` 可在构造返回前修改字段。夹具确认事件目标、构造器
+继承关系、阻止默认无效、body 不冒泡和 submit 计数保持为零；宿主只提供 fixture 与
+断言，事件与 FormData 语义仍属于 Browser。
 
 ### Native EDIT/SELECT/button/file
 

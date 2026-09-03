@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-09-02
+更新时间：2026-09-03
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -12,6 +12,26 @@
 - **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
 ## 失败与暂挂
+
+### next733 首轮设备门：FormDataEvent 作用域与 Temp 清理边界 — 已替代
+
+问题：最初把 `PFormDataEvent` 放在 Browser bootstrap 的第一作用域，而
+`PFormData` 位于第二作用域；设备日志明确报 TEST1176
+`ReferenceError: identifier 'PFormDataEvent' undefined`。修正构造器位置后，默认
+`\Temp` 根目录的旧门回收又在残留字体 `PositronEmoji.ttf` 上返回
+`CeDeleteFile(...)=false`，改用新的 `\Temp` 兄弟目录仍因设备
+`ERROR_FILE_NOT_FOUND (2)` 无法创建；这些尝试都没有改变 WMDC 连接或杀死设备进程。
+
+替代方案：将 `PFormDataEvent` 与 `PFormData` 放在同一 Browser bootstrap 作用域，
+并对非真实 EventTarget 的兼容 form wrapper 保持安全 no-op。设备门改用已验证可写的
+`\Storage Card\Positron-device-gate-next733` 隔离根，随后以正式 Debug ARMV4I
+payload 通过 TEST1176–1178、999（4/4，唯一 `TESTBENCH PASS`，零
+`ERROR`/`FAIL`）。通过证据为
+`tmp/device-runs/20260903-171840-next733-formdata-event5/`。
+
+决定：bootstrap 新增跨层构造器时必须核对每个 IIFE 的可见性并用相邻 FormData fixture
+验证；设备门若仅在默认 `\Temp` 回收或新目录创建失败，应保留失败取证并改用明确的
+Storage Card 隔离路径，不要为清理旧目录强杀设备进程、重置或重新连接 WMDC。
 
 ### next731 首轮设备门：FormData bridge 占满脚本槽位与设备 Temp 空间 — 已替代
 

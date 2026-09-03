@@ -72,7 +72,10 @@
   与 form-owner 规则；最多返回 64 项，名称最多 64 字节，字符串值最多 128 字节，文件名
   和 MIME 类型各最多 64 字节。非空 submitter 必须是启用且归属于目标 form 的 submit-type
   input/button；普通、禁用、跨 form、伪造对象、无 id、超限或缺少 callback 均安全失败。
-  文件只返回 filename/type 和空内容，不暴露 picker 路径；完整 live
+  构造成功后 Browser 在 form 上同步派发非冒泡、不可取消的 `formdata` 事件，事件的
+  `formData` 指向正在返回的对象；监听器可在构造返回前修改字段，`form.onformdata`
+  也可用。它不触发 validation、submit/reset 事件、默认动作或导航。文件只返回 filename/type
+  和空内容，不暴露 picker 路径；完整 live
   HTMLFormControlsCollection、文件读取和所有其他 form-associated 元素、fieldset/object/
   image 归属及浏览器完整表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
@@ -348,6 +351,11 @@
   enabled submitter、外部 owner、跨 form/禁用/非元素拒绝和无 submit 事件。两项只支持
   有 id 的 form、64 项和受限字段容量，文件只保留 metadata；完整 live collection、文件
   读取、native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍未实现或需人工验收。
+- TEST1178 是离线的 Browser FormData `formdata` 事件夹具，无新增立即人工风险；自动门
+  证明事件同步派发、`FormDataEvent.formData` 身份、监听器及 `onformdata` mutation、
+  非冒泡/不可取消和 submit 无副作用。它不扩展文件内容、完整 live collection 或其他
+  form-associated 元素，真实 native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍需人工
+  验收。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

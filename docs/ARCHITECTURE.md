@@ -186,7 +186,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   successful-control 与显式 form-owner 规则；Browser 负责对象、文件 metadata 和错误
   映射，宿主不得复制表单收集或暴露 picker 路径。该桥固定最多 64 项和受限 UTF-8 字段，
   submitter 必须是启用且归属于目标 form 的 submit-type input/button；它不做 validation、
-  事件、导航或 live linkage；
+  submit/reset 事件、默认动作、导航或 live linkage。构造成功后 Browser 在 form 上同步
+  派发非冒泡、不可取消的 `formdata` 事件，`FormDataEvent.formData` 指向正在返回的
+  detached 对象，监听器可在构造返回前修改该对象；`form.onformdata` 与
+  `addEventListener('formdata', ...)` 均可用；
 - 可选的 `document.activeElement` 投影：宿主注册
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律
