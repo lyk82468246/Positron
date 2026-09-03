@@ -1472,6 +1472,17 @@ PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
  * consumed the point, and 3 on a DOM failure. */
 PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y);
 
+/* Perform the state portion of the default reset action for the form named
+ * by form_id. The same ancestor/explicit form="id" owner rule used by the
+ * other form APIs is applied across the whole document, so controls outside
+ * the form subtree are restored in document order as well. This is a
+ * state-only primitive: an embedder that exposes a script or UI reset action
+ * must dispatch its cancelable reset event before calling this function and
+ * must re-layout afterward. Returns 0 when the form was found and every
+ * owned control was restored; returns non-zero for an absent/non-form id or a
+ * DOM/allocation failure. */
+PCORE_API int PCore_FormResetById(HANDLE hDoc, const char *form_id);
+
 /* Forward pointer input to a nested CSS overflow scrollbar. Coordinates use
  * the same document-space convention as PCore_LinkAt. DOWN performs arrow or
  * page steps, MOVE drags a scrollbar thumb, and UP ends the drag. Returns 1

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1171
+#define TEST_MAX_NUMBER 1172
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -42023,6 +42023,112 @@ static BOOL test1171_core_form_attribute_lifecycle_contract(void)
             "Explicit form owners now drive Core validation, invalid-event "
             "reporting, successful-control submission, external submit/reset "
             "activation and reset restoration.");
+    return TRUE;
+}
+
+/* TEST 1172 - reset a form by id, including explicit external owners. */
+static BOOL test1172_core_form_reset_by_id_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='primary'>"
+        "<input id='inside' value='inside-default'>"
+        "<input id='check' type='checkbox' checked>"
+        "<select id='choice'><option value='first' selected>First</option>"
+        "<option value='second'>Second</option></select></form>"
+        "<input id='outside' form='primary' value='outside-default'>"
+        "<textarea id='notes' form='primary'>notes-default</textarea>"
+        "<input id='foreign' form='missing' value='foreign-default'>"
+        "<div id='not-form'></div></body></html>";
+    HANDLE document;
+    char inside[64];
+    char outside[64];
+    char notes[64];
+    char foreign[64];
+    int bytes;
+    int checked;
+    int selected_index;
+    int stage;
+    int ok;
+    char error[384];
+
+    document = NULL;
+    memset(inside, 0, sizeof(inside));
+    memset(outside, 0, sizeof(outside));
+    memset(notes, 0, sizeof(notes));
+    memset(foreign, 0, sizeof(foreign));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    checked = 0;
+    selected_index = -1;
+    stage = 1;
+    ok = 1;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = 2;
+        if (PCore_NodeSetValueById(document, "inside", "inside-change") !=
+                0 ||
+                PCore_NodeSetValueById(document, "outside", "outside-change")
+                != 0 ||
+                PCore_NodeSetValueById(document, "notes", "notes-change") !=
+                0 ||
+                PCore_NodeSetValueById(document, "foreign", "foreign-change")
+                != 0 ||
+                PCore_NodeSetCheckedById(document, "check", 0) != 0 ||
+                PCore_NodeSetSelectedIndexById(document, "choice", 1) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 3;
+        if (PCore_FormResetById(document, "primary") != 0 ||
+                PCore_NodeValueById(document, "inside", inside,
+                sizeof(inside), &bytes) != 0 ||
+                strcmp(inside, "inside-default") != 0 ||
+                PCore_NodeValueById(document, "outside", outside,
+                sizeof(outside), &bytes) != 0 ||
+                strcmp(outside, "outside-default") != 0 ||
+                PCore_NodeValueById(document, "notes", notes,
+                sizeof(notes), &bytes) != 0 ||
+                strcmp(notes, "notes-default") != 0 ||
+                PCore_NodeCheckedById(document, "check", &checked) != 0 ||
+                !checked ||
+                PCore_NodeSelectedIndexById(document, "choice",
+                &selected_index) != 0 || selected_index != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = 4;
+        if (PCore_NodeValueById(document, "foreign", foreign,
+                sizeof(foreign), &bytes) != 0 ||
+                strcmp(foreign, "foreign-change") != 0 ||
+                PCore_FormResetById(document, "missing") == 0 ||
+                PCore_FormResetById(document, "not-form") == 0 ||
+                PCore_FormResetById(document, "") == 0 ||
+                PCore_FormResetById(document, NULL) == 0) {
+            ok = 0;
+        }
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        _snprintf(error, sizeof(error) - 1,
+                "stage=%d inside=%s outside=%s notes=%s foreign=%s "
+                "checked=%d selected=%d bytes=%d",
+                stage, inside, outside, notes, foreign, checked,
+                selected_index, bytes);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1172 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1172 OK",
+            "PCore_FormResetById restores ancestor and explicit external "
+            "form-owner controls while leaving unrelated controls unchanged.");
     return TRUE;
 }
 
@@ -100134,6 +100240,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1169: ok = test1169_browser_selector_placeholder_state_contract(); break;
         case 1170: ok = test1170_browser_form_attribute_owner_contract(); break;
         case 1171: ok = test1171_core_form_attribute_lifecycle_contract(); break;
+        case 1172: ok = test1172_core_form_reset_by_id_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

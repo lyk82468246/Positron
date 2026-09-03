@@ -55,9 +55,10 @@
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button，并按文档顺序纳入跨树
   控件；validation、submission/multipart、dialog/default-submit、reset 和按坐标的
-  submit/reset 激活也复用这条 owner 规则，但文档 mutation 后调用方仍应重新查询。完整
-  live HTMLFormControlsCollection、所有 form-associated 元素、fieldset/object/image 归属
-  和浏览器完整表单树规则仍未实现。
+  submit/reset 激活也复用这条 owner 规则；`PCore_FormResetById` 还提供按 form ID 的
+  state-only 初值恢复，但事件、native 控件和 layout 仍由 Browser/宿主负责。文档 mutation
+  后调用方仍应重新查询。完整 live HTMLFormControlsCollection、所有 form-associated 元素、
+  fieldset/object/image 归属和浏览器完整表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -304,6 +305,10 @@
   successful-control submission 和外部 submit/reset activation，reset 后初始值恢复且
   required invalid 再次出现。multipart 以同一 owner 实现为基础，但本夹具不承诺 native
   表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
+- TEST1172 是离线的 Core 按 form ID state-only reset 夹具，无新增立即人工风险；自动门
+  证明 `PCore_FormResetById` 恢复 form 子树与显式外部 input/checkbox/select/textarea，
+  无效 owner 保持原值，缺失/非 form/空值/NULL 参数安全拒绝。该 API 不派发 reset 事件、
+  不创建 native 控件或触发 layout；这些仍由 Browser/宿主按事务顺序完成。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

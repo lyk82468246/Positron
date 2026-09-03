@@ -156,6 +156,12 @@ successful form submission 同样消费该状态，因此 disabled option 不会
 
 Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
 
+对于不依赖点击坐标的应用流程，宿主可以在 reset 事件获准后调用
+`PCore_FormResetById(doc, "form-id")`。该 state-only 入口使用同一套 owner 规则恢复表单
+子树内以及带 `form="form-id"` 的外部 input、select、textarea、button；成功返回 0，
+目标不存在、不是 form 或 DOM 恢复失败返回非零。调用方在成功后必须重新 layout/paint，
+不能把该入口当作事件 dispatch 或 native 控件策略。
+
 `PCore_FormSubmission*` 使用 `PCORE_FORM_METHOD_*` 常量报告有效提交方法。`method="dialog"` 或 submitter 的 `formmethod="dialog"` 不生成网络 action/body；调用方改用 `PCore_FormDialogSubmissionAt` 或 `PCore_FormDialogSubmissionForTextInput` 两阶段查询，取得最近祖先 dialog 的 UTF-8 id 和 submitter value。Core 在查询时执行约束验证，但不派发 `submit`/`close`、不改变 `open`，这些事务仍由 Browser 和宿主完成。当前 Browser 组合按 id 寻址，因此无 id 或不在 dialog 内的目标会被消费并 fail closed。
 
 ### 交互与事件

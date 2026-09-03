@@ -72,7 +72,7 @@ tests=13,20,27,999
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费
-  （TEST1146–1171）；
+  （TEST1146–1172）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -246,6 +246,12 @@ input/textarea 参与 aggregate validation、`reportValidity()` 的 invalid-even
 successful-control/urlencoded submission，以及外部 submit/reset button 的按坐标默认动作；
 reset 后初始值恢复并再次暴露 required invalid，另一个 form 的控件不会进入 body。宿主只
 提供布局、坐标和断言，不在 fixture 中复制 owner、validation、submission 或 reset 规则。
+
+TEST1172 断言 `PCore_FormResetById` 的无坐标 state-only reset：form 子树内以及显式
+`form="primary"` 的外部 input、checkbox、select、textarea 恢复初始值，`form="missing"`
+的控件保持修改后的值；缺失、非 form、空 id 和 NULL 参数均安全拒绝。宿主只提供
+fixture、状态 mutation 和断言，reset 事件策略、owner/traversal、native 控件及 layout
+仍由公共 DLL/调用方负责。
 
 ### Native EDIT/SELECT/button/file
 

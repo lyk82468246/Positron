@@ -11759,6 +11759,28 @@ PCORE_API int PCore_FormResetAt(HANDLE hDoc, int x, int y)
     return result ? 3 : 1;
 }
 
+PCORE_API int PCore_FormResetById(HANDLE hDoc, const char *form_id)
+{
+    dom_element *element;
+    int result;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return 1;
+    }
+    element = pcore_custom_validity_element_by_id(
+            (dom_document *) hDoc, form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    result = pcore_form_reset((dom_html_form_element *) element);
+    dom_node_unref((dom_node *) element);
+    return result == 0 ? 0 : 1;
+}
+
 static void pcore_dirty_add_box(struct box *box, int *valid,
         int *x0, int *y0, int *x1, int *y1)
 {

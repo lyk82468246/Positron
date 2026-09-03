@@ -8,10 +8,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next726 的 Core 显式 form-owner 生命周期、TEST1171 夹具和职责文档已
-  完成；本批把共享 owner/traversal 放入 `positron_core`，`test_host` 只新增 fixture/
-  断言；`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1171。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- 分支：`main`。next727 的 Core 按 form ID reset、TEST1172 夹具和职责文档已
+  完成；本批复用共享 owner/traversal，`test_host` 只新增 fixture/断言；`tmp/`
+  中的本地证据未纳入版本控制。
+- `TEST_MAX_NUMBER` 已为 1172。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -121,7 +121,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   urlencoded/multipart successful-control 构建、dialog/default-submit、reset 和按坐标的
   submit/reset 激活；新增共享文档遍历和 TEST1171，覆盖 form 外 input/textarea/button、
   required 阻止与恢复、提交顺序及 reset 初值恢复。`1170,1171,999` 定向设备门已通过。
-- 当前唯一下一步是 next727：重新检查 compatibility corpus、源码、设备日志和截图，
+- next727 新增 `PCore_FormResetById`，把无坐标的 state-only reset 暴露为 Core 公共入口；
+  它复用同一 owner 规则恢复 form 子树和显式 `form="id"` 外部 input、checkbox、select、
+  textarea，缺失/非 form/空值参数 fail closed。TEST1172 覆盖成功恢复、无效 owner 保持
+  原值和参数拒绝；`1171-1172,999` 定向设备门已通过。
+- 当前唯一下一步是 next728：重新检查 compatibility corpus、源码、设备日志和截图，
   固定一个新的用户可见缺口，再选择一个边界清楚的公共 DLL 纵向能力。
 
 ## 已验证产品事实
@@ -172,20 +176,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1171。
+- `TEST_MAX_NUMBER`：1172。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-当前最新产品门为 next726 的 Core 显式 form-owner 生命周期与 Browser/相邻关系回归：
+当前最新产品门为 next727 的 Core 按 form ID reset 与 Browser/相邻关系回归：
 
-- `tmp/device-runs/20260902-232736-next726/`；动态选择 `1170,1171,999`，3 项；3/3
-  通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。TEST1170 验证 Browser 的默认/显式/
-  无效 form owner、跨树 controls 文档顺序、namedItem、label association、mutation 后重查
-  和旧 snapshot；TEST1171 验证 Core validation、reportValidity、提交顺序、外部
-  submit/reset 激活与初值恢复；TEST999 请求一次提示音。
+- `tmp/device-runs/20260903-131822-next727-form-reset-by-id/`；动态选择 `1171-1172,999`，
+  3 项；3/3 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`。TEST1171 验证 Core
+  validation、reportValidity、提交顺序、外部 submit/reset 激活与初值恢复；TEST1172
+  验证 `PCore_FormResetById` 对 form 子树和显式外部 input/checkbox/select/textarea 的
+  恢复、无效 owner 隔离和参数 fail-closed；TEST999 请求一次提示音。
 - 设备：240x320，dpi=96；使用当前 WMDC GUI 会话、正式 Debug ARMV4I 构建和同批
   staging；RAPI 只复用 GUI 会话，不连接、选择、重置或杀死设备。
 - 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I 构建、同批 staging、
@@ -203,7 +207,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1117–TEST1171 都是离线自动夹具，无新增立即人工风险；真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 继续进入累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
+- TEST1117–TEST1172 都是离线自动夹具，无新增立即人工风险；真实视觉、触摸、旋转、SIP/IME、picker 和不同 DPI 继续进入累计清单。自动结果不替代真实网络恢复、OEM 控件或逐资源视觉验收。
 - TEST1151 是离线的 Core/Browser autofocus 语义夹具，没有新增必须立即人工复核的崩溃或数据风险；真实初始焦点矩形、native HWND、滚动条裁剪、触摸/SIP、不同 DPI 和多窗口策略仍属于宿主集成观察，自动门只证明 DOM 顺序资格、size-probe、Core focus node、无 id 目标事件保持和 Browser body 回退合同。
 - TEST1152–1165 是离线的 Browser selector 组合器、属性/结构伪类、表单验证、焦点、链接、
   fragment、语言、分组、`:has()` 和 pointer-interaction 夹具，无新增立即人工风险；自动门
@@ -228,11 +232,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   successful-control submission 和外部 submit/reset activation，reset 后初始值恢复且
   required invalid 再次出现。真实 native 表单控件、SIP/IME、picker、触摸、视觉和不同
   DPI 仍进入累计人工清单。
-- next682 的 TEST1081/1082 没有新增必须立即人工复核的崩溃或数据风险；不同页面高度、横向滚动、旋转、DPI 和真实后退按钮的整体视觉/触摸结果继续与既有滚动和 history 风险一起累计观察。自动门只证明 Browser snapshot 与宿主 clamp/apply 的语义。
-- next683 的 TEST1128 同样是离线自动夹具，没有新增必须立即人工复核的崩溃或数据风险；宽页面的横向滚动条、左右边距、触摸/键盘操作、resize/旋转/DPI 视觉和真实页面 overflow 结果进入既有人工累计清单。自动门只证明 page-level extent、坐标一致性、clamp 和 snapshot 语义。
-- next684 的 TEST1129 是离线脚本/宿主同步夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面脚本滚动、滚动条视觉、触摸/键盘、resize/旋转/DPI 和嵌套 overflow 仍进入既有人工累计清单。自动门只证明 page-level 坐标、clamp、反向同步、事件去重和 callback 不可重入。
-- next685 的 TEST1130 是离线 Core/Browser 几何夹具，没有新增必须立即人工复核的崩溃或数据风险；真实页面的容器边距、复杂定位、transform、嵌套 overflow、滚动和不同 DPI 视觉仍进入既有人工累计清单。自动门只证明有限整数 border-box、viewport scroll 偏移和 DPI 坐标边界。
-
+- TEST1172 是离线的 Core 按 form ID state-only reset 夹具，无新增立即人工风险；自动门
+  证明 form 子树与显式外部 input/checkbox/select/textarea 恢复初值、无效 owner 不被
+  误重置，以及缺失/非 form/空值/NULL 参数 fail closed。真实 native 表单控件、SIP/IME、
+  picker、触摸、视觉和不同 DPI 仍进入累计人工清单。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -273,14 +276,14 @@ native 表单视觉仍未实现。
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next727
+## 唯一下一步：next728
 
-next726 在 Core 中增加了共享的显式 form-owner 解析和整棵文档控制遍历：Browser 的
-`Element.form`/`HTMLFormElement.elements` 与 Core 的 validation、reportValidity、
-successful-control/multipart submission、dialog/default-submit、reset、submit/reset
-激活现在使用同一条规则；TEST1171 固定 form 外 input/textarea/button 的 required 阻止、
-提交顺序、外部按钮激活和 reset 初值恢复。`1170,1171,999` 定向设备门已通过；完整 live
-collection、其他 form-associated 元素、native 表单视觉和设备差异仍未承诺。
+next727 在 Core 中增加了 `PCore_FormResetById`：调用方在 dispatch 可取消 reset 事件后，
+可以按 form ID 执行无坐标的 state-only 默认动作。该入口复用共享 owner/traversal，
+恢复 form 子树和显式 `form="id"` 外部 input、checkbox、select、textarea，失败参数
+安全拒绝；TEST1172 与 TEST1171 的相邻生命周期断言已由 `1171-1172,999` 设备门通过。
+它不创建事件、native 控件或 layout；完整 live collection、其他 form-associated 元素、
+native 表单视觉和设备差异仍未承诺。
 
 下一批先从 compatibility corpus、源码、日志或截图固定另一个真实缺口，再选择一个边界
 清楚的离线 fixture 或稳定哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台
@@ -296,11 +299,11 @@ collection、其他 form-associated 元素、native 表单视觉和设备差异�
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一步完成标准（next727）
+## 下一步完成标准（next728）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱 next685–724 的布局 relation、布局尺寸、元素滚动、`getBoundingClientRect()`/`getClientRects()`、DPI 换算、history snapshot、宿主 clamp/apply、scroll restoration、beforeunload、脚本任务检查点、窗口焦点、activeElement、focus/blur 请求、autofocus、page-level/nested scrollIntoView、selector 组合器/属性/结构伪类/表单状态/`:not()`/`:is()`/`:where()`/`:has()`/`:valid`/`:invalid`/`:in-range`/`:out-of-range`/`:focus`/`:focus-within`/`:link`/`:any-link`/`:target`/`:lang`/`:active`/`:hover`/`:read-only`/`:read-write`/`:placeholder-shown`、effective-disabled relation 或旧页保留契约；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- next727 完成后 handoff 应覆盖为 next727 快照，ROADMAP 只保留当前尚未完成的纵向能力。
+- next728 完成后 handoff 应覆盖为 next728 快照，ROADMAP 只保留当前尚未完成的纵向能力。

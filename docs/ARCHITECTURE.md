@@ -100,7 +100,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `form="id"` 时解析文档中对应的 form，把 form 外控件纳入按文档顺序的有界
   `form.elements` snapshot，空值或无效目标不回退到祖先。validation、successful-control
   与 multipart/dialog submission、reset 以及 submit/reset 默认动作也复用同一 owner，
-  不会只在 Browser 关系层识别跨树控件；
+  不会只在 Browser 关系层识别跨树控件。`PCore_FormResetById` 是 Core 提供的无坐标
+  state-only reset 入口；Browser/宿主必须先处理可取消 reset 事件，并在成功后重新
+  layout/paint，Core 不创建事件或 native 控件；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
