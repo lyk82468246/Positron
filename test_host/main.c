@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1173
+#define TEST_MAX_NUMBER 1174
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6158,6 +6158,7 @@ static const WCHAR *g_image_format_name[PCORE_IMAGE_FORMAT_COUNT] = {
 #define PCORE_SCRIPT_NAVIGATION_FRAGMENT 7
 #define PCORE_SCRIPT_NAVIGATION_FRAGMENT_REPLACE 8
 #define PCORE_SCRIPT_NAVIGATION_OPEN 9
+#define PCORE_SCRIPT_NAVIGATION_FORM 10
 #define PCORE_SCRIPT_NAVIGATION_URL_MAX 1024
 #define PCORE_NAV_TIMER 24
 #define PCORE_NAV_COMMIT_TIMER 25
@@ -6247,7 +6248,9 @@ struct pcore_browser_script_bridge {
     HWND hwnd;
     int navigation_kind;
     int navigation_delta;
+    int navigation_method;
     char *navigation_url;
+    char *navigation_body;
     char navigation_target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
     char navigation_rel[PBROWSER_SCRIPT_ANCHOR_REL_MAX];
     char navigation_context_name[PBROWSER_SCRIPT_WINDOW_NAME_MAX];
@@ -8260,6 +8263,14 @@ static int g_native_programmatic_focus_probe_ok = 0;
 static char g_native_programmatic_focus_probe_detail[256];
 static int g_native_toggle_key_probe = 0;
 static int g_native_toggle_key_probe_ok = 0;
+static int g_script_form_submit_probe = 0;
+static int g_script_form_submit_validate_calls = 0;
+static int g_script_form_submit_default_calls = 0;
+static int g_script_form_submit_last_method = 0;
+static char g_script_form_submit_last_form[64];
+static char g_script_form_submit_last_submitter[64];
+static char g_script_form_submit_last_action[256];
+static char g_script_form_submit_last_body[512];
 
 static int pcore_browser_script_dispatch_key_event(HWND control,
         const char *event_type, WPARAM wp, LPARAM lp, int system_key);
@@ -8343,6 +8354,10 @@ static int pcore_browser_script_form_event_dispatch_by_id(void *pw,
         int *out_default_allowed);
 static int pcore_browser_script_dom_reset_form(void *pw,
         const char *form_id);
+static int pcore_browser_script_form_submit_validate(void *pw,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid);
+static int pcore_browser_script_form_submit_default(void *pw,
+        const PBrowserScriptFormSubmitInfo *info);
 static int pcore_browser_script_invalid_dispatch(void *pw,
         const PBrowserScriptInvalidEventInfo *info,
         int *out_default_allowed);
@@ -15616,6 +15631,15 @@ static int pcore_browser_script_navigation(void *pw,
         return -1;
     }
     *out_value = 0;
+    /* A later script navigation supersedes a queued form POST. Keep the
+     * bridge's single pending-navigation slot coherent before recording the
+     * new request. */
+    free(bridge->navigation_body);
+    bridge->navigation_body = NULL;
+    bridge->navigation_method = 0;
+    if (bridge->navigation_kind == PCORE_SCRIPT_NAVIGATION_FORM) {
+        bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
+    }
     bridge->navigation_target[0] = '\0';
     bridge->navigation_rel[0] = '\0';
     bridge->navigation_context_name[0] = '\0';
@@ -16043,6 +16067,9 @@ static void pcore_browser_script_bridge_destroy(
     bridge->events = NULL;
     free(bridge->navigation_url);
     bridge->navigation_url = NULL;
+    free(bridge->navigation_body);
+    bridge->navigation_body = NULL;
+    bridge->navigation_method = 0;
     bridge->navigation_target[0] = '\0';
     bridge->navigation_rel[0] = '\0';
     bridge->navigation_context_name[0] = '\0';
@@ -16314,6 +16341,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
     PBrowserScriptFormResetCallbacks form_reset_callbacks;
+    PBrowserScriptFormSubmitCallbacks form_submit_callbacks;
     PBrowserScriptValidationCallbacks validation_callbacks;
     PBrowserScriptReportValidityCallbacks report_validity_callbacks;
     PBrowserScriptCustomValidityCallbacks custom_validity_callbacks;
@@ -16403,7 +16431,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->hwnd = NULL;
     bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
     bridge->navigation_delta = 0;
+    bridge->navigation_method = 0;
     bridge->navigation_url = NULL;
+    bridge->navigation_body = NULL;
     bridge->navigation_target[0] = '\0';
     bridge->navigation_rel[0] = '\0';
     bridge->navigation_target_kind =
@@ -16485,6 +16515,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     form_reset_callbacks.size = sizeof(form_reset_callbacks);
     form_reset_callbacks.pw = bridge;
     form_reset_callbacks.reset_form = pcore_browser_script_dom_reset_form;
+    form_submit_callbacks.size = sizeof(form_submit_callbacks);
+    form_submit_callbacks.pw = bridge;
+    form_submit_callbacks.validate_submit =
+            pcore_browser_script_form_submit_validate;
+    form_submit_callbacks.submit_form =
+            pcore_browser_script_form_submit_default;
     validation_callbacks.size = sizeof(validation_callbacks);
     validation_callbacks.pw = bridge;
     validation_callbacks.get_validation =
@@ -16630,6 +16666,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &form_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormResetCallbacks(session,
             &form_reset_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormSubmitCallbacks(session,
+            &form_submit_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterValidationCallbacks(session,
             &validation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterReportValidityCallbacks(session,
@@ -17834,6 +17872,318 @@ static void navigate_form_submission(HWND hwnd, int method,
     navigate_to_request(hwnd, target, method,
             (method == 2) ? body : NULL);
     free(target);
+}
+
+/* Script requestSubmit() reaches this host only after Browser has completed
+ * validation and the cancelable submit event. Keep the remaining work as a
+ * thin adapter: Core builds the successful-control set, while this host
+ * starts the existing navigation/dialog machinery or records a deterministic
+ * raw-fixture observation. */
+static void pcore_browser_script_form_submit_probe_record(
+        const PBrowserScriptFormSubmitInfo *info, int method,
+        const char *action, const char *body)
+{
+    if (!g_script_form_submit_probe || info == NULL) {
+        return;
+    }
+    g_script_form_submit_default_calls++;
+    g_script_form_submit_last_method = method;
+    cstr_copy(g_script_form_submit_last_form,
+            sizeof(g_script_form_submit_last_form), info->form_id);
+    cstr_copy(g_script_form_submit_last_submitter,
+            sizeof(g_script_form_submit_last_submitter), info->submitter_id);
+    cstr_copy(g_script_form_submit_last_action,
+            sizeof(g_script_form_submit_last_action),
+            (action != NULL) ? action : "");
+    cstr_copy(g_script_form_submit_last_body,
+            sizeof(g_script_form_submit_last_body),
+            (body != NULL) ? body : "");
+}
+
+static char *pcore_browser_script_form_target(
+        pcore_browser_script_bridge *bridge, const char *action,
+        const char *body, int method)
+{
+    const char *effective_action;
+
+    effective_action = action;
+    if ((effective_action == NULL || effective_action[0] == '\0') &&
+            bridge != NULL && bridge->history_url != NULL &&
+            bridge->history_url[0] != '\0') {
+        /* During initial inline-script execution the global visible URL is
+         * still the old page. The candidate bridge's history URL is the
+         * correct base for an omitted form action. */
+        effective_action = bridge->history_url;
+    }
+    return pcore_form_target_url(effective_action, body, method);
+}
+
+static int pcore_browser_script_queue_form_navigation(
+        pcore_browser_script_bridge *bridge, int method,
+        const char *action, const char *body)
+{
+    char *target;
+    char *body_copy;
+    int body_len;
+    int result;
+
+    if (bridge == NULL || (method != PCORE_FORM_METHOD_GET &&
+            method != PCORE_FORM_METHOD_POST) ||
+            (body == NULL && method == PCORE_FORM_METHOD_POST)) {
+        return 0;
+    }
+    if (g_script_form_submit_probe) {
+        return 1;
+    }
+    target = pcore_browser_script_form_target(bridge, action, body, method);
+    if (target == NULL) {
+        return 0;
+    }
+    if (bridge->hwnd != NULL && bridge->document == g_render_doc) {
+        result = navigate_to_request_ex(bridge->hwnd, target, method,
+                (method == PCORE_FORM_METHOD_POST) ? body : NULL,
+                (method == PCORE_FORM_METHOD_POST && body != NULL) ?
+                (int) strlen(body) : 0, NULL,
+                PCORE_BROWSE_HISTORY_TARGET_NEW);
+        free(target);
+        return result == 0 ? 1 : 0;
+    }
+    body_copy = NULL;
+    body_len = (body != NULL) ? (int) strlen(body) : 0;
+    if (method == PCORE_FORM_METHOD_POST) {
+        body_copy = (char *) malloc((size_t) body_len + 1);
+        if (body_copy == NULL) {
+            free(target);
+            return 0;
+        }
+        if (body_len > 0) {
+            memcpy(body_copy, body, (size_t) body_len);
+        }
+        body_copy[body_len] = '\0';
+    }
+    free(bridge->navigation_url);
+    bridge->navigation_url = target;
+    free(bridge->navigation_body);
+    bridge->navigation_body = body_copy;
+    bridge->navigation_method = method;
+    bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_FORM;
+    bridge->navigation_delta = 0;
+    bridge->navigation_target[0] = '\0';
+    bridge->navigation_rel[0] = '\0';
+    bridge->navigation_context_name[0] = '\0';
+    bridge->navigation_target_kind =
+            PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
+    return 1;
+}
+
+static int pcore_browser_script_form_submit_validate(void *pw,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreFormValidationInfo validation;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptFormSubmitInfo) ||
+            info->form_id == NULL || info->form_id[0] == '\0' ||
+            info->submitter_id == NULL || out_valid == NULL) {
+        return -1;
+    }
+    if (g_script_form_submit_probe) {
+        g_script_form_submit_validate_calls++;
+    }
+    *out_valid = -1;
+    if (PCore_FormValidationSubmitById(bridge->document, info->form_id,
+            info->submitter_id, &validation) != 0) {
+        return 0;
+    }
+    *out_valid = validation.valid ? 1 : 0;
+    return 0;
+}
+
+static int pcore_browser_script_form_submit_dialog_default(
+        pcore_browser_script_bridge *bridge,
+        const PBrowserScriptFormSubmitInfo *info)
+{
+    PCoreDialogFormSubmissionInfo dialog_info;
+    char dialog_probe[1];
+    char value_probe[1];
+    char *dialog_id;
+    char *return_value;
+    int closed;
+    int result;
+
+    memset(&dialog_info, 0, sizeof(dialog_info));
+    dialog_info.size = sizeof(dialog_info);
+    dialog_probe[0] = '\0';
+    value_probe[0] = '\0';
+    result = PCore_FormDialogSubmissionById(bridge->document,
+            info->form_id, info->submitter_id, &dialog_info,
+            dialog_probe, sizeof(dialog_probe), value_probe,
+            sizeof(value_probe));
+    if (result == 0 || result == 2 || result == 5) {
+        return result == 2 ? 1 : 0;
+    }
+    if (result != 4 || dialog_info.dialog_id_bytes <= 0 ||
+            dialog_info.return_value_bytes < 0 ||
+            dialog_info.dialog_id_bytes >= PBROWSER_SCRIPT_DIALOG_ID_MAX ||
+            dialog_info.return_value_bytes >=
+            PBROWSER_SCRIPT_DIALOG_VALUE_MAX) {
+        return 0;
+    }
+    dialog_id = (char *) malloc((size_t) dialog_info.dialog_id_bytes + 1);
+    return_value = (char *) malloc(
+            (size_t) dialog_info.return_value_bytes + 1);
+    if (dialog_id == NULL || return_value == NULL) {
+        free(dialog_id);
+        free(return_value);
+        return 0;
+    }
+    result = PCore_FormDialogSubmissionById(bridge->document,
+            info->form_id, info->submitter_id, &dialog_info, dialog_id,
+            dialog_info.dialog_id_bytes + 1, return_value,
+            dialog_info.return_value_bytes + 1);
+    if (result != 1) {
+        free(dialog_id);
+        free(return_value);
+        return 0;
+    }
+    pcore_browser_script_form_submit_probe_record(info,
+            PCORE_FORM_METHOD_DIALOG, dialog_id, return_value);
+    if (g_script_form_submit_probe) {
+        free(dialog_id);
+        free(return_value);
+        return 1;
+    }
+    closed = 0;
+    if (bridge->session == NULL ||
+            PBrowser_ScriptSessionCloseDialogById(bridge->session,
+            dialog_id, return_value, &closed) != PSCRIPT_OK) {
+        free(dialog_id);
+        free(return_value);
+        return 0;
+    }
+    if (closed) {
+        pcore_toggle_focus_clear();
+        pcore_button_focus_clear();
+        pcore_disclosure_focus_clear();
+        pcore_sequential_focus_clear();
+        if (bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+    }
+    free(dialog_id);
+    free(return_value);
+    return closed ? 1 : 0;
+}
+
+static int pcore_browser_script_form_submit_default(void *pw,
+        const PBrowserScriptFormSubmitInfo *info)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreFormSubmissionInfo submission;
+    char action_probe[1];
+    char body_probe[1];
+    char *action;
+    char *body;
+    HANDLE multipart;
+    PCoreMultipartSubmissionInfo multipart_info;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || info == NULL ||
+            info->size < sizeof(PBrowserScriptFormSubmitInfo) ||
+            info->form_id == NULL || info->form_id[0] == '\0' ||
+            info->submitter_id == NULL) {
+        return -1;
+    }
+    memset(&submission, 0, sizeof(submission));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    result = PCore_FormSubmissionById(bridge->document, info->form_id,
+            info->submitter_id, &submission, action_probe,
+            sizeof(action_probe), body_probe, sizeof(body_probe));
+    if (result == 0 || result == 2 || result == 5) {
+        return 0;
+    }
+    if (result == 6) {
+        return pcore_browser_script_form_submit_dialog_default(bridge, info);
+    }
+    if (result == 3) {
+        multipart = PCore_MultipartSubmissionById(bridge->document,
+                info->form_id, info->submitter_id);
+        if (multipart == NULL) {
+            return 0;
+        }
+        memset(&multipart_info, 0, sizeof(multipart_info));
+        if (PCore_MultipartSubmissionInfo(multipart, &multipart_info,
+                NULL, 0) != 1 || multipart_info.action_bytes < 0 ||
+                multipart_info.action_bytes >=
+                (int) sizeof(g_script_form_submit_last_action)) {
+            PCore_FreeMultipartSubmission(multipart);
+            return 0;
+        }
+        action = (char *) malloc((size_t) multipart_info.action_bytes + 1);
+        if (action == NULL ||
+                PCore_MultipartSubmissionInfo(multipart, &multipart_info,
+                action, multipart_info.action_bytes + 1) != 1) {
+            free(action);
+            PCore_FreeMultipartSubmission(multipart);
+            return 0;
+        }
+        pcore_browser_script_form_submit_probe_record(info,
+                PCORE_FORM_METHOD_MULTIPART, action, "");
+        free(action);
+        if (g_script_form_submit_probe) {
+            PCore_FreeMultipartSubmission(multipart);
+            return 1;
+        }
+        if (bridge->hwnd == NULL || bridge->document != g_render_doc) {
+            PCore_FreeMultipartSubmission(multipart);
+            return 0;
+        }
+        return navigate_multipart_submission(bridge->hwnd, multipart);
+    }
+    action = NULL;
+    body = NULL;
+    if (result == 1) {
+        action = action_probe;
+        body = body_probe;
+    } else if (result == 4 && submission.method != 0 &&
+            submission.action_bytes >= 0 && submission.body_bytes >= 0 &&
+            submission.action_bytes < 65535 &&
+            submission.body_bytes < 65535) {
+        action = (char *) malloc((size_t) submission.action_bytes + 1);
+        body = (char *) malloc((size_t) submission.body_bytes + 1);
+        if (action == NULL || body == NULL) {
+            free(action);
+            free(body);
+            return 0;
+        }
+        result = PCore_FormSubmissionById(bridge->document,
+                info->form_id, info->submitter_id, &submission, action,
+                submission.action_bytes + 1, body,
+                submission.body_bytes + 1);
+        if (result != 1) {
+            free(action);
+            free(body);
+            return 0;
+        }
+    } else {
+        return 0;
+    }
+    pcore_browser_script_form_submit_probe_record(info, submission.method,
+            action, body);
+    if (g_script_form_submit_probe) {
+        if (action != action_probe) { free(action); }
+        if (body != body_probe) { free(body); }
+        return 1;
+    }
+    result = pcore_browser_script_queue_form_navigation(bridge,
+            submission.method, action, body);
+    if (action != action_probe) { free(action); }
+    if (body != body_probe) { free(body); }
+    return result;
 }
 
 /* Every WM re-style must reassert the physical-pixel/DPI contract before
@@ -22298,9 +22648,11 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
     case WM_PCORE_SCRIPT_NAVIGATE: {
         pcore_browser_script_bridge *bridge;
         char *url;
+        char *body;
         char target[PBROWSER_SCRIPT_ANCHOR_TARGET_MAX];
         char context_name[PBROWSER_SCRIPT_WINDOW_NAME_MAX];
         int delta;
+        int form_method;
         int kind;
         unsigned int target_kind;
 
@@ -22310,6 +22662,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             kind = bridge->navigation_kind;
             delta = bridge->navigation_delta;
             url = bridge->navigation_url;
+            body = bridge->navigation_body;
+            form_method = bridge->navigation_method;
             target_kind = bridge->navigation_target_kind;
             cstr_copy(target, sizeof(target), bridge->navigation_target);
             cstr_copy(context_name, sizeof(context_name),
@@ -22317,6 +22671,8 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             bridge->navigation_kind = PCORE_SCRIPT_NAVIGATION_NONE;
             bridge->navigation_delta = 0;
             bridge->navigation_url = NULL;
+            bridge->navigation_body = NULL;
+            bridge->navigation_method = 0;
             bridge->navigation_target_kind =
                     PBROWSER_SCRIPT_NAVIGATION_TARGET_DEFAULT;
             bridge->navigation_target[0] = '\0';
@@ -22362,8 +22718,17 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                     (void) pcore_browser_script_session_navigate_fragment(
                             url, 1);
                 }
+            } else if (kind == PCORE_SCRIPT_NAVIGATION_FORM &&
+                    url != NULL && (form_method == PCORE_FORM_METHOD_GET ||
+                    form_method == PCORE_FORM_METHOD_POST)) {
+                (void) navigate_to_request_ex(hwnd, url, form_method,
+                        (form_method == PCORE_FORM_METHOD_POST) ? body : NULL,
+                        (form_method == PCORE_FORM_METHOD_POST &&
+                        body != NULL) ? (int) strlen(body) : 0, NULL,
+                        PCORE_BROWSE_HISTORY_TARGET_NEW);
             }
             free(url);
+            free(body);
         }
         return 0;
     }
@@ -42238,6 +42603,85 @@ static BOOL test1173_browser_form_reset_contract(void)
     show_info(L"TEST 1173 OK",
             "HTMLFormElement.reset dispatches a cancelable reset event before"
             " restoring associated controls and leaves canceled state intact.");
+    return TRUE;
+}
+
+/* TEST 1174 - Browser HTMLFormElement.requestSubmit() ordering and
+ * submitter selection. */
+static BOOL test1174_browser_form_request_submit_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='primary' action='/request-submit' "
+        "method='post'><input id='field' name='field' required>"
+        "<button id='send' type='submit' name='submit' value='send'>Send</button>"
+        "<button id='bypass' type='submit' formnovalidate name='submit' "
+        "value='bypass'>Bypass</button></form>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('primary'),field=document.getElementById('field'),"
+        "send=document.getElementById('send'),bypass=document.getElementById('bypass'),"
+        "events=0,trace='',cancel=true;"
+        "form.addEventListener('submit',function(e){events++;trace+=e.type+':'"
+        "+String(e.target===form)+':'+String(e.currentTarget===form)+':'"
+        "+String(e.bubbles)+':'+String(e.cancelable)+';';"
+        "if(cancel){e.preventDefault();}});"
+        "form.requestSubmit(send);cancel=false;form.requestSubmit(bypass);"
+        "field.value='alpha';cancel=true;form.requestSubmit(send);"
+        "cancel=false;form.requestSubmit();"
+        "var badSubmitter=false;try{form.requestSubmit(field);}catch(e){badSubmitter=true;}"
+        "var badReceiver=false;try{field.requestSubmit();}catch(e){badReceiver=true;}"
+        "document.getElementById('result').textContent="
+        "String(typeof form.requestSubmit)+'|'+String(events===3)+'|'+trace+'|'"
+        "+String(badSubmitter)+'|'+String(badReceiver);";
+    static const char EXPECTED[] =
+        "function|true|submit:true:true:true:true;"
+        "submit:true:true:true:true;submit:true:true:true:true;|true|true";
+    char error[384];
+    int ok;
+
+    memset(error, 0, sizeof(error));
+    g_script_form_submit_probe = 1;
+    g_script_form_submit_validate_calls = 0;
+    g_script_form_submit_default_calls = 0;
+    g_script_form_submit_last_method = 0;
+    g_script_form_submit_last_form[0] = '\0';
+    g_script_form_submit_last_submitter[0] = '\0';
+    g_script_form_submit_last_action[0] = '\0';
+    g_script_form_submit_last_body[0] = '\0';
+    ok = test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error));
+    g_script_form_submit_probe = 0;
+    if (ok && (g_script_form_submit_validate_calls != 5 ||
+            g_script_form_submit_default_calls != 2 ||
+            g_script_form_submit_last_method != PCORE_FORM_METHOD_POST ||
+            strcmp(g_script_form_submit_last_form, "primary") != 0 ||
+            g_script_form_submit_last_submitter[0] != '\0' ||
+            strcmp(g_script_form_submit_last_action, "/request-submit") != 0 ||
+            strcmp(g_script_form_submit_last_body, "field=alpha") != 0)) {
+        ok = 0;
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "validation=%d defaults=%d method=%d form=%s "
+                    "submitter=%s action=%s body=%s",
+                    g_script_form_submit_validate_calls,
+                    g_script_form_submit_default_calls,
+                    g_script_form_submit_last_method,
+                    g_script_form_submit_last_form,
+                    g_script_form_submit_last_submitter,
+                    g_script_form_submit_last_action,
+                    g_script_form_submit_last_body);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1174 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1174 OK",
+            "HTMLFormElement.requestSubmit validates the selected submitter,"
+            " dispatches a cancelable bubbling submit event, and only then"
+            " builds the Core-owned successful-control request.");
     return TRUE;
 }
 
@@ -100351,6 +100795,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1171: ok = test1171_core_form_attribute_lifecycle_contract(); break;
         case 1172: ok = test1172_core_form_reset_by_id_contract(); break;
         case 1173: ok = test1173_browser_form_reset_contract(); break;
+        case 1174: ok = test1174_browser_form_request_submit_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

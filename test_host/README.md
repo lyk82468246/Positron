@@ -72,7 +72,8 @@ tests=13,20,27,999
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
-  Browser 脚本 `HTMLFormElement.reset()` 的可取消事件与默认动作顺序（TEST1146–1173）；
+  Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
+  （TEST1146–1174）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -258,6 +259,13 @@ TEST1173 断言 Browser 脚本 `HTMLFormElement.reset()` 的事件/默认动作�
 事件允许后调用宿主 reset callback，由 `PCore_FormResetById` 恢复 form 子树和显式外部
 控件，并重新 layout。夹具检查 `target`/`currentTarget` 身份、事件字段、调用次数和
 `undefined` 返回值；宿主只负责 callback 接线、fixture、状态读取和断言。
+
+TEST1174 断言 Browser 脚本 `HTMLFormElement.requestSubmit([submitter])` 的事务边界：
+required 失败先阻止默认动作，`formnovalidate` 可绕过约束，`submit` listener 可取消，
+省略 submitter 时使用无按钮的 successful-control 序列；非法 submitter、非 form receiver
+和缺少 id 的目标安全失败。夹具检查 validation→submit→默认动作顺序、事件身份、POST
+action/body、调用次数和 `undefined` 返回值；宿主只负责 Core callback 接线、导航记录和
+断言，不复制 form owner、验证或 submitter 语义。
 
 ### Native EDIT/SELECT/button/file
 

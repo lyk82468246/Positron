@@ -162,6 +162,14 @@ Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action
 目标不存在、不是 form 或 DOM 恢复失败返回非零。调用方在成功后必须重新 layout/paint，
 不能把该入口当作事件 dispatch 或 native 控件策略。
 
+脚本 `requestSubmit([submitter])` 可使用 `PCore_FormValidationSubmitById` 先解析 form
+和可选的 enabled submit button，并按 `novalidate`/`formnovalidate` 规则取得验证结果；
+随后用 `PCore_FormSubmissionById`、`PCore_FormDialogSubmissionById` 或
+`PCore_MultipartSubmissionById` 读取对应的 urlencoded、dialog 或 multipart 默认动作。
+这些 by-id 入口都只解析/快照 DOM，不派发 `submit`、不导航、不关闭 dialog；Browser 负责
+事件取消顺序，宿主负责把获准结果接到网络或 native/dialog 策略。multipart 返回的
+opaque handle 仍须由调用方配对 `PCore_FreeMultipartSubmission`。
+
 `PCore_FormSubmission*` 使用 `PCORE_FORM_METHOD_*` 常量报告有效提交方法。`method="dialog"` 或 submitter 的 `formmethod="dialog"` 不生成网络 action/body；调用方改用 `PCore_FormDialogSubmissionAt` 或 `PCore_FormDialogSubmissionForTextInput` 两阶段查询，取得最近祖先 dialog 的 UTF-8 id 和 submitter value。Core 在查询时执行约束验证，但不派发 `submit`/`close`、不改变 `open`，这些事务仍由 Browser 和宿主完成。当前 Browser 组合按 id 寻址，因此无 id 或不在 dialog 内的目标会被消费并 fail closed。
 
 ### 交互与事件

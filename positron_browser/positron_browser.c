@@ -5386,6 +5386,22 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.__pcoreFormProperty({id:this.__id,op:'reset'});};"
         "})(this);";
 
+    /* Keep requestSubmit's validation/event/default ordering in the browser
+     * layer. The host callback only resolves Core form data and performs its
+     * platform navigation or dialog default after the event is accepted. */
+    static const char P_BROWSER_SCRIPT_FORM_SUBMIT[] =
+        "(function(g){var P=g.__pcorePElement;"
+        "if(!P){throw new Error('form submit bridge unavailable');}"
+        "P.prototype.requestSubmit=function(submitter){var id='';"
+        "if(this.localName!=='form'){throw new TypeError('form required');}"
+        "if(arguments.length>0&&submitter!==undefined&&submitter!==null){"
+        "if(!submitter||typeof submitter.__id!=='string'){"
+        "throw new TypeError('submitter');}id=submitter.__id;}"
+        "if(typeof g.__pcoreFormProperty!=='function'){return;}"
+        "g.__pcoreFormProperty({id:this.__id,op:'requestSubmit',"
+        "submitter:id});};"
+        "})(this);";
+
     /* Keep the cancelable navigation hook out of the cold bootstrap path. It
      * is installed only when the host is about to replace or close a live
      * document, which keeps startup within the small WM6 script budget. */
@@ -5533,6 +5549,11 @@ typedef struct p_browser_script_form_binding {
 typedef struct p_browser_script_form_reset_binding {
     PBrowserScriptFormResetCallbacks callbacks;
 } p_browser_script_form_reset_binding;
+
+typedef struct p_browser_script_form_submit_binding {
+    HANDLE session;
+    PBrowserScriptFormSubmitCallbacks callbacks;
+} p_browser_script_form_submit_binding;
 
 typedef struct p_browser_script_validation_binding {
     PBrowserScriptValidationCallbacks callbacks;
@@ -5691,6 +5712,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
     p_browser_script_form_reset_binding *form_reset;
+    p_browser_script_form_submit_binding *form_submit;
     p_browser_script_validation_binding *validation;
     p_browser_script_report_validity_binding *report_validity;
     p_browser_script_custom_validity_binding *custom_validity;
@@ -5714,6 +5736,7 @@ typedef struct p_browser_script_session {
     p_browser_script_form_event_binding *form_event;
     p_browser_script_form_event_ex_binding *form_event_ex;
     int form_reset_active;
+    int form_submit_active;
     p_browser_script_invalid_binding *invalid;
     p_browser_script_navigation_binding *navigation;
     p_browser_script_scroll_binding *scroll;
@@ -5766,6 +5789,18 @@ static int p_browser_script_install_form_reset(
             P_BROWSER_SCRIPT_FORM_RESET, -1);
 }
 
+static int p_browser_script_install_form_submit(
+        p_browser_script_session *session)
+{
+    if (!p_script_session_valid(session) || !session->bootstrap_ready ||
+            session->form == NULL || session->form_submit == NULL ||
+            session->form_event_ex == NULL) {
+        return PSCRIPT_OK;
+    }
+    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_FORM_SUBMIT, -1);
+}
+
 static int p_browser_script_finish_bootstrap(HANDLE hSession)
 {
     p_browser_script_session *session;
@@ -5786,7 +5821,11 @@ static int p_browser_script_finish_bootstrap(HANDLE hSession)
     if (rc != PSCRIPT_OK) {
         return rc;
     }
-    return p_browser_script_install_form_reset(session);
+    rc = p_browser_script_install_form_reset(session);
+    if (rc != PSCRIPT_OK) {
+        return rc;
+    }
+    return p_browser_script_install_form_submit(session);
 }
 
 static void p_browser_script_clear_dispatch_globals(
@@ -7146,6 +7185,80 @@ static int p_browser_script_form_reset(
             out_capacity, out_len);
 }
 
+static int p_browser_script_form_submit(
+        p_browser_script_form_binding *binding, const char *form_id,
+        const char *submitter_id, char *out_json, int out_capacity,
+        int *out_len)
+{
+    p_browser_script_session *session;
+    PBrowserScriptFormEventInfoEx event_info;
+    PBrowserScriptFormSubmitInfo submit_info;
+    const char *effective_submitter_id;
+    int default_allowed;
+    int submit_result;
+    int valid;
+    int rc;
+
+    session = (binding != NULL) ? p_script_session(binding->session) : NULL;
+    if (!p_script_session_valid(session) || session->form_submit == NULL ||
+            session->form_event_ex == NULL || form_id == NULL ||
+            form_id[0] == '\0' || strlen(form_id) >=
+            PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            (submitter_id != NULL && strlen(submitter_id) >=
+            PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) ||
+            session->form_submit_active) {
+        return 1;
+    }
+    effective_submitter_id = (submitter_id != NULL) ? submitter_id : "";
+    memset(&submit_info, 0, sizeof(submit_info));
+    submit_info.size = sizeof(submit_info);
+    submit_info.form_id = form_id;
+    submit_info.submitter_id = effective_submitter_id;
+    valid = 0;
+    session->form_submit_active = 1;
+    rc = session->form_submit->callbacks.validate_submit(
+            session->form_submit->callbacks.pw, &submit_info, &valid);
+    if (rc < 0) {
+        session->form_submit_active = 0;
+        return 1;
+    }
+    if (valid < 0) {
+        session->form_submit_active = 0;
+        return 1;
+    }
+    if (!valid) {
+        session->form_submit_active = 0;
+        return p_browser_script_write_bool(0, out_json, out_capacity,
+                out_len);
+    }
+    memset(&event_info, 0, sizeof(event_info));
+    event_info.size = sizeof(event_info);
+    event_info.element_id = form_id;
+    event_info.event_type = "submit";
+    event_info.bubbles = 1;
+    event_info.cancelable = 1;
+    default_allowed = 1;
+    rc = PBrowser_ScriptSessionDispatchFormEventById(
+            binding->session, &event_info, &default_allowed);
+    if (rc != PSCRIPT_OK) {
+        session->form_submit_active = 0;
+        return 1;
+    }
+    if (!default_allowed) {
+        session->form_submit_active = 0;
+        return p_browser_script_write_bool(0, out_json, out_capacity,
+                out_len);
+    }
+    submit_result = session->form_submit->callbacks.submit_form(
+            session->form_submit->callbacks.pw, &submit_info);
+    session->form_submit_active = 0;
+    if (submit_result < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(submit_result > 0, out_json,
+            out_capacity, out_len);
+}
+
 static int p_browser_script_form_property(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -7170,6 +7283,18 @@ static int p_browser_script_form_property(void *pw,
         form_id = PJson_GetString(object, "id");
         result = p_browser_script_form_reset(binding, form_id, out_json,
                 out_capacity, out_len);
+        PJson_Free(root);
+        return result;
+    }
+    if (strcmp(op, "requestSubmit") == 0) {
+        const char *form_id;
+        const char *submitter_id;
+        int result;
+
+        form_id = PJson_GetString(object, "id");
+        submitter_id = PJson_GetString(object, "submitter");
+        result = p_browser_script_form_submit(binding, form_id,
+                submitter_id, out_json, out_capacity, out_len);
         PJson_Free(root);
         return result;
     }
@@ -7725,6 +7850,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_checked = NULL;
     session->form = NULL;
     session->form_reset = NULL;
+    session->form_submit = NULL;
     session->validation = NULL;
     session->report_validity = NULL;
     session->custom_validity = NULL;
@@ -7749,6 +7875,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->form_event = NULL;
     session->form_event_ex = NULL;
     session->form_reset_active = 0;
+    session->form_submit_active = 0;
     session->invalid = NULL;
     session->navigation = NULL;
     session->scroll = NULL;
@@ -7850,6 +7977,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     if (session->form_reset != NULL) {
         free(session->form_reset);
         session->form_reset = NULL;
+    }
+    if (session->form_submit != NULL) {
+        free(session->form_submit);
+        session->form_submit = NULL;
     }
     if (session->validation != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -9170,6 +9301,59 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormResetCallbacks(
     }
     free(session->form_reset);
     session->form_reset = NULL;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormSubmitCallbacks(
+        HANDLE hSession, const PBrowserScriptFormSubmitCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_form_submit_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFormSubmitCallbacks) ||
+            callbacks->validate_submit == NULL ||
+            callbacks->submit_form == NULL || session->form == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_submit != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_form_submit_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->session = hSession;
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->form_submit = binding;
+    if (session->bootstrap_ready) {
+        rc = p_browser_script_install_form_submit(session);
+        if (rc != PSCRIPT_OK) {
+            session->form_submit = NULL;
+            free(binding);
+            return rc;
+        }
+    }
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormSubmitCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_submit == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->form_submit);
+    session->form_submit = NULL;
     return PSCRIPT_OK;
 }
 
@@ -11835,6 +12019,12 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterFormEventCallbacksEx(
     session->form_event_ex = binding;
     if (session->bootstrap_ready) {
         rc = p_browser_script_install_form_reset(session);
+        if (rc != PSCRIPT_OK) {
+            session->form_event_ex = NULL;
+            free(binding);
+            return rc;
+        }
+        rc = p_browser_script_install_form_submit(session);
         if (rc != PSCRIPT_OK) {
             session->form_event_ex = NULL;
             free(binding);

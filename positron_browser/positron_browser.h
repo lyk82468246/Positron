@@ -709,6 +709,33 @@ typedef struct PBrowserScriptFormResetCallbacks {
     PBrowserScriptResetFormFn reset_form;
 } PBrowserScriptFormResetCallbacks;
 
+/* Additive adapter for script-facing HTMLFormElement.requestSubmit(). The
+ * browser layer validates the request, dispatches a cancelable bubbling
+ * submit event by form id, and only then invokes submit_form for the host's
+ * default action. validate_submit writes 1 when the request may submit, 0
+ * when constraint validation blocks it, or -1 when form/submitter resolution
+ * failed; the callback itself returns <0 only for an adapter failure.
+ * submit_form returns >0 when the host accepted the Core submission, 0 for a
+ * safe no-op and <0 for an adapter failure. Both ids are borrowed for the
+ * synchronous callback and are UTF-8; submitter_id is empty when omitted.
+ * Register this table after PBrowserScriptFormCallbacks; the original form
+ * and reset callback ABIs remain unchanged. */
+typedef struct PBrowserScriptFormSubmitInfo {
+    unsigned long size;
+    const char *form_id;
+    const char *submitter_id;
+} PBrowserScriptFormSubmitInfo;
+typedef int (*PBrowserScriptValidateFormSubmitFn)(void *pw,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid);
+typedef int (*PBrowserScriptSubmitFormFn)(void *pw,
+        const PBrowserScriptFormSubmitInfo *info);
+typedef struct PBrowserScriptFormSubmitCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptValidateFormSubmitFn validate_submit;
+    PBrowserScriptSubmitFormFn submit_form;
+} PBrowserScriptFormSubmitCallbacks;
+
 /* Constraint-validation bits returned by the product-owned validation
  * bridge. They intentionally mirror the public positron_core flags without
  * making this DLL depend on positron_core headers. */
@@ -1748,6 +1775,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormResetCallbacks(
         HANDLE hSession, const PBrowserScriptFormResetCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormResetCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormSubmitCallbacks(
+        HANDLE hSession, const PBrowserScriptFormSubmitCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormSubmitCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterValidationCallbacks(
         HANDLE hSession, const PBrowserScriptValidationCallbacks *callbacks);

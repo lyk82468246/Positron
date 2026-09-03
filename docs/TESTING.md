@@ -373,6 +373,14 @@ TEST1173 覆盖 Browser 脚本 `HTMLFormElement.reset()` 的完整事务：第�
 事件顺序、两次调用计数、方法返回 `undefined` 以及无重复事件。它验证的是 Browser/Core
 事务和 adapter 合同，不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
 
+TEST1174 覆盖 Browser 脚本 `HTMLFormElement.requestSubmit([submitter])` 的完整事务：
+无效 required 值先阻止默认动作，`formnovalidate` submitter 可绕过约束，listener 的
+`preventDefault()` 会取消提交，省略 submitter 使用无按钮的 successful-control 序列；
+非法 submitter、非 form receiver 和缺少 id 的目标均安全失败。夹具断言 validation→
+可取消 `submit`→Core urlencoded 默认动作的顺序、`target/currentTarget`、POST action/body、
+调用次数及 `undefined` 返回值；宿主只接线和记录导航，不复制验证或 submitter 规则。
+该夹具不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -1241,6 +1241,19 @@ PCORE_API int PCore_FormControlValidationById(HANDLE hDoc,
 PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
         PCoreFormValidationInfo *out_info);
 
+/* Validate the form named by form_id for a script requestSubmit() call. A
+ * non-empty submitter_id must name an enabled submit button owned by that
+ * form; NULL or an empty string means that no explicit submitter was supplied.
+ * The submitter's formnovalidate and the form's novalidate are honored, unlike
+ * PCore_FormValidationById, which intentionally reports the raw checkValidity
+ * state. This is a DOM-only query and may run before layout; geometry is zero.
+ * Returns 0 when the form/optional submitter were resolved and validation was
+ * inspected, and non-zero for an absent/non-form id, invalid submitter or DOM
+ * failure. It does not dispatch events or submit the form. */
+PCORE_API int PCore_FormValidationSubmitById(HANDLE hDoc,
+        const char *form_id, const char *submitter_id,
+        PCoreFormValidationInfo *out_info);
+
 /* Query and report the aggregate constraint state of the form named by
  * form_id. This uses the same DOM-only candidate rules as
  * PCore_FormValidationById, then dispatches a trusted, non-bubbling,
@@ -1394,6 +1407,19 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
                                     char *action, int action_capacity,
                                     char *body, int body_capacity);
 
+/* Build a urlencoded submission for a form addressed by form_id, as used by
+ * script requestSubmit(). NULL or an empty submitter_id omits a submit button;
+ * otherwise the id must name an enabled submit button owned by the form. The
+ * return values and output-buffer rules match PCore_FormSubmissionAt. A zero
+ * result means the form or optional submitter could not be resolved. This is
+ * a Core default-action primitive: it does not dispatch submit events or start
+ * navigation, and the embedder owns those steps. */
+PCORE_API int PCore_FormSubmissionById(HANDLE hDoc, const char *form_id,
+                                    const char *submitter_id,
+                                    PCoreFormSubmissionInfo *out_info,
+                                    char *action, int action_capacity,
+                                    char *body, int body_capacity);
+
 /* Resolve the default action of a method="dialog" form submission without
  * exposing DOM nodes. The explicit form addresses a laid-out submit button
  * by document-space point; the implicit form uses the first enabled submit
@@ -1425,6 +1451,18 @@ PCORE_API int PCore_FormDialogSubmissionForTextInput(HANDLE hDoc,
                                     char *dialog_id, int dialog_id_capacity,
                                     char *return_value,
                                     int return_value_capacity);
+/* Resolve a method="dialog" submission by form/submitter id. The optional
+ * submitter rule and return values match PCore_FormDialogSubmissionAt; this
+ * query only returns the dialog id/value and never dispatches events or
+ * mutates the dialog's open state. A zero result means no form/submitter or a
+ * non-dialog method. */
+PCORE_API int PCore_FormDialogSubmissionById(HANDLE hDoc,
+                                    const char *form_id,
+                                    const char *submitter_id,
+                                    PCoreDialogFormSubmissionInfo *out_info,
+                                    char *dialog_id, int dialog_id_capacity,
+                                    char *return_value,
+                                    int return_value_capacity);
 
 typedef struct PCoreMultipartSubmissionInfo {
     int action_bytes;
@@ -1450,6 +1488,13 @@ typedef struct PCoreMultipartPartInfo {
 PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y);
 PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
                                                        unsigned int text_index);
+/* Capture a multipart submission by form/submitter id. The optional
+ * submitter rule matches PCore_FormSubmissionById. The returned opaque handle
+ * is owned by the caller until PCore_FreeMultipartSubmission; no event or
+ * navigation is performed. */
+PCORE_API HANDLE PCore_MultipartSubmissionById(HANDLE hDoc,
+                                               const char *form_id,
+                                               const char *submitter_id);
 PCORE_API int PCore_MultipartSubmissionInfo(HANDLE hSubmission,
                                     PCoreMultipartSubmissionInfo *out_info,
                                     char *action, int action_capacity);

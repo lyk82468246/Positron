@@ -323,12 +323,17 @@ callback 参数和输出缓冲只在调用期间借用。
   文档 mutation 后应重新读取；Browser 不扩展为完整 live form collection。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
-`PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 也可接到同一
-事务：Browser 先按 form id 派发可冒泡、可取消的 `reset`，只有事件未被阻止时才调用
-宿主的 `reset_form` callback。宿主应在 callback 中调用 `PCore_FormResetById`，并在成功后
-重新 style/layout/paint；方法返回 `undefined`。缺少任一必需 callback、目标不是 form
-或 adapter 失败时保持 fail closed。`PCore_FormResetById` 仍是 Core 的
-state-only 入口，不自行派发事件或操作 native 控件；原有按坐标的
+`PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、
+可取消的 `reset`，只有事件未被阻止时才调用宿主 `reset_form` callback；宿主应在其中
+调用 `PCore_FormResetById`，成功后重新 style/layout/paint，方法返回 `undefined`。
+启用 `PBrowserScriptFormSubmitCallbacks` 后还会安装
+`HTMLFormElement.requestSubmit([submitter])`：Browser 先让宿主按 form/submitter id
+调用 Core validation，验证通过后派发可冒泡、可取消的 `submit`，再调用宿主默认动作
+callback。Core 的 by-id submission primitives 负责 enabled submitter、`novalidate`/
+`formnovalidate`、urlencoded/multipart/dialog 结果；宿主负责网络导航或 dialog close。
+两条方法都在缺少 callback、目标非法、事件取消或 adapter 失败时 fail closed；
+`requestSubmit()` 返回 `undefined`，`HTMLFormElement.submit()` 尚未实现。Core reset/
+submission 入口不自行派发事件、导航或操作 native 控件；原有按坐标的
 `PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
 
 selector bridge 支持有界 compound、顶层列表、后代/子代/兄弟组合器、属性操作符和
@@ -342,16 +347,21 @@ closed；限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATI
 
 启用浏览器 JavaScript 后，`<dialog>` 元素提供一个有界的生命周期接口：
 
-- `show()` 和 `showModal()` 要求元素已连接且当前未打开；同一 session 同时只允许一个由 `showModal()` 打开的对话框；
-- `close(value)` 移除 `open`、更新 `returnValue` 并同步派发非冒泡的 `close`；不带参数时把返回值重置为空字符串；
-- `requestClose(value)` 先派发可取消的非冒泡 `cancel`，只有未被 `preventDefault()` 阻止时才执行 `close(value)`；
-- `open` 继续反映 DOM 属性，属性变化通过宿主的 DOM callback 进入正常 restyle/layout 调度，`oncancel`/`onclose` 与 `addEventListener` 均可使用。
-- 宿主收到平台 Escape 等关闭手势后，可调用 `PBrowser_ScriptSessionRequestDialogClose` 将该手势交给当前 modal；有活动 modal 时即使 `cancel` 阻止关闭也会报告已处理，无活动 modal 时则由宿主决定后续行为。
-- 宿主处理顺序 Tab 时，可调用 `PBrowser_ScriptSessionGetActiveDialogId` 读取当前 modal 的 UTF-8 DOM id；返回空字符串表示没有 modal。再把这个 id 交给 Core 的 `PCore_FocusTargetInfoWithin`，即可将 Tab/Shift+Tab 限定在该 dialog 子树内。该 API 只报告 Browser 状态，不改变焦点，也不创建或绘制窗口。
-- 宿主处理指针时，可把 client 坐标换算为 document 坐标，用活动 id 对应的 Core 几何做有界命中测试：dialog 外部调用 `PBrowser_ScriptSessionRequestDialogClose`，内部继续交给普通控件命中；即使 `cancel` 阻止关闭，宿主也应消费这次 backdrop 点击。Browser 只提供生命周期桥，不自行读取窗口坐标。
-- 对 `method="dialog"` 的表单，宿主先让 Core 完成约束验证并解析最近祖先 dialog 与 submitter value，再派发可取消的 `submit`。事件允许默认动作后，调用 `PBrowser_ScriptSessionCloseDialogById` 可执行 `dialog.close(value)`：更新 `returnValue`、派发 `close`，不先派发 `cancel`，也不发起网络导航。显式点击、脚本 `click()` 和单行输入的隐式 Enter 可共用这条组合路径。
+- `show()`/`showModal()` 要求元素已连接且当前未打开；同一 session 只允许一个 modal。
+- `close(value)` 移除 `open`、更新 `returnValue` 并派发非冒泡 `close`；`requestClose(value)`
+  先派发可取消的非冒泡 `cancel`，未被阻止才 close。`open` 反映 DOM 属性，属性变化
+  由宿主 DOM callback 进入正常 restyle/layout，`oncancel`/`onclose` 与监听器均可用。
+- 宿主把 Escape 交给 `PBrowser_ScriptSessionRequestDialogClose`；有活动 modal 时即使
+  `cancel` 阻止关闭也消费手势。Tab 时读取 `PBrowser_ScriptSessionGetActiveDialogId`
+  并交给 `PCore_FocusTargetInfoWithin` 限定 dialog 子树。指针路径由宿主用 Core 几何
+  命中，dialog 外部请求关闭并消费 backdrop，Browser 不读取窗口坐标。
+- `method="dialog"` 表单由宿主让 Core 验证/解析后派发 `submit`；事件允许时调用
+  `PBrowser_ScriptSessionCloseDialogById` 执行 `dialog.close(value)`、更新 `returnValue`
+  并派发 `close`，不发网络导航。显式点击、脚本 `click()` 与隐式 Enter 可复用该路径。
 
-这些方法属于 Browser 的脚本语义，不创建 HWND，也不直接绘制 top layer、backdrop 或系统模态窗口。宿主可把活动 id 同时交给 Core 的 `PCore_PaintDocumentWithModal`，由 Core 在普通文档绘制后组合有界实体色 backdrop 和指定 dialog 的重绘；Browser 仍只拥有生命周期状态。宿主必须自己决定初始焦点、native HWND 切换和焦点视觉，并只把 nested overflow 的 WM 指针与失效接到 Core/Browser 的公开滚动桥，跨文档 modal 生命周期仍未覆盖。
+这些方法只维护 Browser 脚本生命周期，不创建 HWND 或绘制 top layer/backdrop。宿主可把
+活动 id 交给 `PCore_PaintDocumentWithModal` 组合有限 backdrop 和 dialog 重绘，并负责
+初始焦点、native HWND、焦点视觉及 nested overflow 指针；跨文档 modal 生命周期未覆盖。
 
 ### 单元素 `contenteditable`
 
@@ -378,10 +388,12 @@ Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click�
 
 通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、HDC、网络和页面生命周期。
 
-脚本 `form.reset()` 的顺序同样由 Browser 固定：先通过 Ex form-event adapter 派发
-`reset`（`bubbles=1`、`cancelable=1`），再在未取消时调用 reset callback。该 callback
-只返回状态结果；宿主负责把成功结果映射到 Core 的 `PCore_FormResetById` 和后续
-layout/paint，不应在宿主复制表单 owner 或事件取消规则。
+脚本 `form.reset()` 与 `form.requestSubmit()` 的顺序由 Browser 固定：前者先通过 Ex
+form-event adapter 派发 `reset`，后者先完成 Core validation 再派发
+`submit`（两者均为 `bubbles=1`、`cancelable=1`），只有未取消时才调用相应默认动作
+callback。宿主负责把 reset 结果映射到 `PCore_FormResetById`，把 submit 结果映射到
+Core submission primitive 后执行网络或 dialog 策略，不应在宿主复制表单 owner、验证、
+submitter 或事件取消规则。
 
 每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。键盘焦点顺序由 Core 的 `PCore_FocusTargetInfo`（或 modal 场景的 `PCore_FocusTargetInfoWithin`）提供；Browser 负责报告活动 modal id，并把宿主的 WM key transaction 按取消和默认动作规则分发给当前目标。
 
@@ -625,10 +637,11 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 3. 把 DOM/Event/form/navigation callback tables 注册到 Browser session；若需要
    `document.activeElement` 或 `HTMLElement.focus()`/`blur()`，同时准备 Core 焦点
    id 与 focus request callbacks；若需要脚本 `:active`/`:hover`，注册 interaction
-   callback 读取 Core 的当前状态；若脚本需要 `HTMLFormElement.reset()`，再注册
-   `PBrowserScriptFormResetCallbacks` 与 `PBrowserScriptFormEventCallbacksEx`，让宿主
-   能按 form id dispatch `reset` 并调用 Core reset；若需要页面级滚动可见性，使用 focus
-   request 的 Ex callbacks；
+   callback 读取 Core 的当前状态；若脚本需要 `HTMLFormElement.reset()` 或
+   `requestSubmit()`，再注册相应的 `PBrowserScriptFormResetCallbacks`/
+   `PBrowserScriptFormSubmitCallbacks` 与 `PBrowserScriptFormEventCallbacksEx`，让宿主
+   能按 form id 调用 Core reset/submission primitive；若需要页面级滚动可见性，使用
+   focus request 的 Ex callbacks；
 4. 显式 bootstrap；在页面脚本运行前注册可选的 activeElement/focus request callback，并按文档
    顺序执行允许的 classic script；
   5. 把 WM 输入转换为 Browser typed transaction；嵌套 overflow 指针则按 Core 的 document-space 合同调用 `PCore_OverflowPointer`；

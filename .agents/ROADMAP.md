@@ -45,7 +45,9 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回有界 snapshot；
   Core validation、submission、multipart、dialog/default-submit、reset 和按坐标的
   submit/reset activation 也共享该 owner 解析；Browser 另提供可选的
-  `HTMLFormElement.reset()` 可取消事件/默认动作桥接；
+  `HTMLFormElement.reset()` 与 `requestSubmit([submitter])` 可取消事件/默认动作桥接，
+  前者调用 Core reset，后者调用 Core validation/submission primitives；
+  `HTMLFormElement.submit()` 仍是后续缺口；
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。

@@ -9719,6 +9719,63 @@ static dom_element *pcore_custom_validity_element_by_id(
     return element;
 }
 
+static int pcore_form_validate(pcore_render *st,
+        dom_html_form_element *form, dom_node *activated,
+        PCoreFormValidationInfo *out_info);
+
+/* Resolve the optional submitter used by a script requestSubmit() call. The
+ * returned element is retained by the caller. An empty or NULL id means that
+ * no explicit submitter was supplied; any non-empty id must name an enabled
+ * input type=submit or submit-type button owned by the target form. */
+static dom_node *pcore_form_submitter_by_id(dom_document *doc,
+        dom_html_form_element *form, const char *submitter_id, int *error)
+{
+    dom_element *element;
+    dom_element *owner;
+    bool disabled;
+    int has_attribute;
+    int result;
+
+    if (error == NULL) {
+        return NULL;
+    }
+    *error = 0;
+    if (submitter_id == NULL || submitter_id[0] == '\0') {
+        return NULL;
+    }
+    element = pcore_custom_validity_element_by_id(doc, submitter_id);
+    owner = NULL;
+    if (element == NULL || pcore_form_control_type((dom_node *) element) !=
+            GADGET_SUBMIT) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        *error = 1;
+        return NULL;
+    }
+    disabled = false;
+    if (pcore_node_effectively_disabled((dom_node *) element, NULL,
+            &disabled) != 0 || disabled) {
+        dom_node_unref((dom_node *) element);
+        *error = 1;
+        return NULL;
+    }
+    has_attribute = 0;
+    result = pcore_form_control_owner(doc, (dom_node *) element, &owner,
+            &has_attribute);
+    (void) has_attribute;
+    if (result != 0 || owner != (dom_element *) form) {
+        if (owner != NULL) {
+            dom_node_unref((dom_node *) owner);
+        }
+        dom_node_unref((dom_node *) element);
+        *error = 1;
+        return NULL;
+    }
+    dom_node_unref((dom_node *) owner);
+    return (dom_node *) element;
+}
+
 static int pcore_custom_validity_control_supported(dom_node *node)
 {
     int gadget_type;
@@ -10027,6 +10084,48 @@ PCORE_API int PCore_FormValidationById(HANDLE hDoc, const char *form_id,
     return result == 0 ? 0 : 1;
 }
 
+PCORE_API int PCore_FormValidationSubmitById(HANDLE hDoc,
+        const char *form_id, const char *submitter_id,
+        PCoreFormValidationInfo *out_info)
+{
+    dom_element *element;
+    dom_node *submitter;
+    dom_html_form_element *form;
+    pcore_render *st;
+    int submitter_error;
+    int result;
+
+    if (out_info == NULL || hDoc == NULL || form_id == NULL ||
+            form_id[0] == '\0') {
+        return 1;
+    }
+    pcore_form_validation_init(out_info);
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    form = (dom_html_form_element *) element;
+    submitter_error = 0;
+    submitter = pcore_form_submitter_by_id((dom_document *) hDoc, form,
+            submitter_id, &submitter_error);
+    if (submitter_error) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    result = pcore_form_validate(st, form, submitter, out_info);
+    if (submitter != NULL) {
+        dom_node_unref(submitter);
+    }
+    dom_node_unref((dom_node *) element);
+    return result ? 0 : 1;
+}
+
 typedef struct pcore_form_report_context {
     dom_html_form_element *form;
     char **invalid_ids;
@@ -10162,7 +10261,10 @@ static int pcore_form_validate(pcore_render *st,
 
     info = (out_info != NULL) ? out_info : &local_info;
     pcore_form_validation_init(info);
-    if (st == NULL || form == NULL) {
+    /* Validation itself is DOM-only. A NULL render state simply omits the
+     * optional geometry for the first invalid control, which lets script and
+     * by-id submission paths run before the first layout. */
+    if (form == NULL) {
         return 0;
     }
     if (pcore_node_has_attr((dom_node *) form, "novalidate") ||
@@ -11097,6 +11199,47 @@ PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
     return result;
 }
 
+PCORE_API int PCore_FormSubmissionById(HANDLE hDoc, const char *form_id,
+        const char *submitter_id, PCoreFormSubmissionInfo *out_info,
+        char *action, int action_capacity, char *body, int body_capacity)
+{
+    dom_element *element;
+    dom_node *submitter;
+    dom_html_form_element *form;
+    pcore_render *st;
+    int submitter_error;
+    int result;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return 0;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 0;
+    }
+    form = (dom_html_form_element *) element;
+    submitter_error = 0;
+    submitter = pcore_form_submitter_by_id((dom_document *) hDoc, form,
+            submitter_id, &submitter_error);
+    if (submitter_error) {
+        dom_node_unref((dom_node *) element);
+        return 0;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    result = pcore_form_submission(st, form, submitter, 0, out_info,
+            action, action_capacity, body, body_capacity);
+    if (submitter != NULL) {
+        dom_node_unref(submitter);
+    }
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
 static dom_node *pcore_form_dialog_ancestor(dom_html_form_element *form)
 {
     dom_node *current;
@@ -11176,7 +11319,9 @@ static int pcore_form_dialog_submission(pcore_render *st,
     }
     out_info->dialog_id_bytes = 0;
     out_info->return_value_bytes = 0;
-    if (st == NULL || form == NULL) {
+    /* Validation and dialog-result extraction are DOM-only. A NULL render
+     * state is allowed for scripts that submit during initial bootstrap. */
+    if (form == NULL) {
         return 0;
     }
     default_submit = NULL;
@@ -11337,6 +11482,49 @@ PCORE_API int PCore_FormDialogSubmissionForTextInput(HANDLE hDoc,
     return result;
 }
 
+PCORE_API int PCore_FormDialogSubmissionById(HANDLE hDoc,
+        const char *form_id, const char *submitter_id,
+        PCoreDialogFormSubmissionInfo *out_info, char *dialog_id,
+        int dialog_id_capacity, char *return_value, int return_value_capacity)
+{
+    dom_element *element;
+    dom_node *submitter;
+    dom_html_form_element *form;
+    pcore_render *st;
+    int submitter_error;
+    int result;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return 0;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 0;
+    }
+    form = (dom_html_form_element *) element;
+    submitter_error = 0;
+    submitter = pcore_form_submitter_by_id((dom_document *) hDoc, form,
+            submitter_id, &submitter_error);
+    if (submitter_error) {
+        dom_node_unref((dom_node *) element);
+        return 0;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    result = pcore_form_dialog_submission(st, form, submitter, 0, out_info,
+            dialog_id, dialog_id_capacity, return_value,
+            return_value_capacity);
+    if (submitter != NULL) {
+        dom_node_unref(submitter);
+    }
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
 PCORE_API HANDLE PCore_MultipartSubmissionAt(HANDLE hDoc, int x, int y)
 {
     pcore_render *st;
@@ -11406,6 +11594,45 @@ PCORE_API HANDLE PCore_MultipartSubmissionForTextInput(HANDLE hDoc,
     }
     submission = pcore_multipart_snapshot(st, form, NULL, 1);
     dom_node_unref((dom_node *) form);
+    return (HANDLE) submission;
+}
+
+PCORE_API HANDLE PCore_MultipartSubmissionById(HANDLE hDoc,
+        const char *form_id, const char *submitter_id)
+{
+    dom_element *element;
+    dom_node *submitter;
+    dom_html_form_element *form;
+    pcore_multipart_submission *submission;
+    pcore_render *st;
+    int submitter_error;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return NULL;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return NULL;
+    }
+    form = (dom_html_form_element *) element;
+    submitter_error = 0;
+    submitter = pcore_form_submitter_by_id((dom_document *) hDoc, form,
+            submitter_id, &submitter_error);
+    if (submitter_error) {
+        dom_node_unref((dom_node *) element);
+        return NULL;
+    }
+    st = pcore_get_render((dom_document *) hDoc);
+    submission = pcore_multipart_snapshot(st, form, submitter, 0);
+    if (submitter != NULL) {
+        dom_node_unref(submitter);
+    }
+    dom_node_unref((dom_node *) element);
     return (HANDLE) submission;
 }
 

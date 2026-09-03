@@ -163,11 +163,14 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   绘制或 SIP/IME 的宿主职责；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、element focus、window focus/blur、composition、click 和导航协调；
-- 可选的脚本 `HTMLFormElement.reset()` 事务：Browser 按 form id 先通过
+- 可选的脚本 form 默认动作事务：`HTMLFormElement.reset()` 先由 Browser 按 form id 通过
   `PBrowserScriptFormEventCallbacksEx` 派发可冒泡、可取消的 `reset`，仅在未取消时调用
-  `PBrowserScriptFormResetCallbacks.reset_form`；宿主再把 callback 接到
-  `PCore_FormResetById`，并负责成功后的 style/layout/paint。Browser 不创建 native 控件，
-  Core 的 state-only reset 入口也不自行派发事件；
+  `PBrowserScriptFormResetCallbacks.reset_form`；`requestSubmit([submitter])` 则先调用
+  `PBrowserScriptFormSubmitCallbacks.validate_submit`，验证通过后派发可冒泡、可取消的
+  `submit`，再调用 `submit_form`。宿主把 reset 接到 `PCore_FormResetById`，把 submit
+  接到 Core 的 by-id validation/submission/dialog/multipart primitives，并负责成功后的
+  style/layout/paint、网络或 dialog 策略。Browser 不创建 native 控件，Core 的 state-only
+  入口也不自行派发事件；`HTMLFormElement.submit()` 暂未实现；
 - 可选的 `document.activeElement` 投影：宿主注册
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律
