@@ -3127,7 +3127,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "writable:false,configurable:false});"
         "Object.defineProperty(g,'localStorage',{value:pstorageProxy(new PStorage('local')),"
         "writable:false,configurable:false});"
-        "function PFormData(init){this.__pairs=[];var i;var k;"
+        "function PFormData(init){this.__pairs=[];var i;var k;var count;var entry;"
+        "if(init&&typeof init==='object'&&typeof init.localName==='string'&&"
+        "init.localName==='form'){"
+        "if(typeof init.__id!=='string'||init.__id===''){throw new TypeError('form id required');}"
+        "if(arguments.length>1){throw new TypeError('form data submitter');}"
+        "if(typeof g.__pcoreFormData!=='function'){throw new TypeError('form data bridge unavailable');}"
+        "count=g.__pcoreFormData({id:init.__id,op:'count'});"
+        "if(typeof count!=='number'||!isFinite(count)||count<0||count!==Math.floor(count)||"
+        "count>64){throw new TypeError('form data unavailable');}"
+        "for(i=0;i<count;i++){entry=g.__pcoreFormData({id:init.__id,op:'entry',index:i});"
+        "if(!entry||typeof entry.name!=='string'){throw new TypeError('form data entry');}"
+        "if(entry.kind===2){this.append(entry.name,new g.File([''],"
+        "String(entry.filename||''),{type:String(entry.type||'')}));}"
+        "else if(entry.kind===1){this.append(entry.name,String(entry.value||''));}"
+        "else{throw new TypeError('form data entry kind');}}return;}"
         "if(init instanceof PFormData){for(i=0;i<init.__pairs.length;i++){"
         "this.__pairs.push([init.__pairs[i][0],init.__pairs[i][1]]);}return;}"
         "if(init instanceof Array){for(i=0;i<init.length;i++){"
@@ -5556,6 +5570,11 @@ typedef struct p_browser_script_form_binding {
     PBrowserScriptFormCallbacks callbacks;
 } p_browser_script_form_binding;
 
+typedef struct p_browser_script_form_data_binding {
+    HANDLE session;
+    PBrowserScriptFormDataCallbacks callbacks;
+} p_browser_script_form_data_binding;
+
 typedef struct p_browser_script_form_reset_binding {
     PBrowserScriptFormResetCallbacks callbacks;
 } p_browser_script_form_reset_binding;
@@ -5726,6 +5745,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
+    p_browser_script_form_data_binding *form_data;
     p_browser_script_form_reset_binding *form_reset;
     p_browser_script_form_submit_binding *form_submit;
     p_browser_script_form_submit_direct_binding *form_submit_direct;
@@ -5753,6 +5773,7 @@ typedef struct p_browser_script_session {
     p_browser_script_form_event_ex_binding *form_event_ex;
     int form_reset_active;
     int form_submit_active;
+    int form_data_active;
     p_browser_script_invalid_binding *invalid;
     p_browser_script_navigation_binding *navigation;
     p_browser_script_scroll_binding *scroll;
@@ -6350,6 +6371,106 @@ static int p_browser_script_write_string(const char *value,
     out_json[escaped + 1] = '"';
     out_json[escaped + 2] = '\0';
     *out_len = escaped + 2;
+    return 0;
+}
+
+static int p_browser_script_form_data_append_literal(char *out_json,
+        int out_capacity, int *out_used, const char *literal)
+{
+    int length;
+
+    if (out_json == NULL || out_used == NULL || literal == NULL ||
+            *out_used < 0 || *out_used >= out_capacity ||
+            out_capacity <= 0) {
+        return 1;
+    }
+    length = (int) strlen(literal);
+    if (length < 0 || length > out_capacity - *out_used - 1) {
+        return 1;
+    }
+    if (length > 0) {
+        memcpy(out_json + *out_used, literal, (size_t) length);
+    }
+    *out_used += length;
+    out_json[*out_used] = '\0';
+    return 0;
+}
+
+static int p_browser_script_form_data_append_string(char *out_json,
+        int out_capacity, int *out_used, const char *value)
+{
+    int escaped;
+
+    if (out_json == NULL || out_used == NULL || *out_used < 0 ||
+            *out_used >= out_capacity - 1 || out_capacity <= 0) {
+        return 1;
+    }
+    out_json[(*out_used)++] = '"';
+    escaped = p_browser_script_json_escape(value, out_json + *out_used,
+            out_capacity - *out_used);
+    if (escaped < 0 || escaped > out_capacity - *out_used - 2) {
+        return 1;
+    }
+    *out_used += escaped;
+    out_json[(*out_used)++] = '"';
+    out_json[*out_used] = '\0';
+    return 0;
+}
+
+static int p_browser_script_write_form_data_entry(
+        const PBrowserScriptFormDataEntryInfo *info, char *out_json,
+        int out_capacity, int *out_len)
+{
+    int used;
+
+    if (info == NULL || out_json == NULL || out_len == NULL ||
+            info->kind != PBROWSER_SCRIPT_FORM_DATA_STRING &&
+            info->kind != PBROWSER_SCRIPT_FORM_DATA_FILE) {
+        return 1;
+    }
+    used = 0;
+    out_json[0] = '\0';
+    if (p_browser_script_form_data_append_literal(out_json, out_capacity,
+            &used, info->kind == PBROWSER_SCRIPT_FORM_DATA_FILE ?
+            "{\"kind\":2,\"name\":" : "{\"kind\":1,\"name\":")) {
+        return 1;
+    }
+    if (p_browser_script_form_data_append_string(out_json, out_capacity,
+            &used, info->name)) {
+        return 1;
+    }
+    if (info->kind == PBROWSER_SCRIPT_FORM_DATA_FILE) {
+        if (p_browser_script_form_data_append_literal(out_json,
+                out_capacity, &used, ",\"filename\":")) {
+            return 1;
+        }
+        if (p_browser_script_form_data_append_string(out_json,
+                out_capacity, &used, info->filename)) {
+            return 1;
+        }
+        if (p_browser_script_form_data_append_literal(out_json,
+                out_capacity, &used, ",\"type\":")) {
+            return 1;
+        }
+        if (p_browser_script_form_data_append_string(out_json,
+                out_capacity, &used, info->type)) {
+            return 1;
+        }
+    } else {
+        if (p_browser_script_form_data_append_literal(out_json,
+                out_capacity, &used, ",\"value\":")) {
+            return 1;
+        }
+        if (p_browser_script_form_data_append_string(out_json,
+                out_capacity, &used, info->value)) {
+            return 1;
+        }
+    }
+    if (p_browser_script_form_data_append_literal(out_json, out_capacity,
+            &used, "}")) {
+        return 1;
+    }
+    *out_len = used;
     return 0;
 }
 
@@ -7320,6 +7441,98 @@ static int p_browser_script_form_submit_direct(
             out_capacity, out_len);
 }
 
+static int p_browser_script_form_data(void *pw, const char *args_json,
+        int args_len, char *out_json, int out_capacity, int *out_len)
+{
+    p_browser_script_form_data_binding *binding;
+    p_browser_script_session *session;
+    HANDLE root;
+    HANDLE object;
+    const char *form_id;
+    const char *op;
+    int index;
+    int count;
+    int result;
+    char name[PBROWSER_SCRIPT_FORM_DATA_NAME_MAX_BYTES + 1];
+    char value[PBROWSER_SCRIPT_FORM_DATA_VALUE_MAX_BYTES + 1];
+    char filename[PBROWSER_SCRIPT_FORM_DATA_FILENAME_MAX_BYTES + 1];
+    char type[PBROWSER_SCRIPT_FORM_DATA_TYPE_MAX_BYTES + 1];
+    PBrowserScriptFormDataEntryInfo info;
+
+    binding = (p_browser_script_form_data_binding *) pw;
+    session = (binding != NULL) ? p_script_session(binding->session) : NULL;
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    form_id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
+    if (!p_script_session_valid(session) || binding == NULL || root == NULL ||
+            form_id == NULL || form_id[0] == '\0' || strlen(form_id) >=
+            PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX || op == NULL ||
+            session->form_data == NULL || session->form_data_active) {
+        PJson_Free(root);
+        return 1;
+    }
+    if (strcmp(op, "count") == 0) {
+        count = -1;
+        session->form_data_active = 1;
+        result = session->form_data->callbacks.get_count(
+                session->form_data->callbacks.pw, form_id, &count);
+        session->form_data_active = 0;
+        PJson_Free(root);
+        if (result != 0 || count < 0 ||
+                count > PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES) {
+            return 1;
+        }
+        return p_browser_script_write_int(count, out_json, out_capacity,
+                out_len);
+    }
+    if (strcmp(op, "entry") != 0) {
+        PJson_Free(root);
+        return 1;
+    }
+    index = PJson_GetInt(object, "index");
+    if (index < 0 || index >= PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES) {
+        PJson_Free(root);
+        return 1;
+    }
+    memset(name, 0, sizeof(name));
+    memset(value, 0, sizeof(value));
+    memset(filename, 0, sizeof(filename));
+    memset(type, 0, sizeof(type));
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.name = name;
+    info.name_capacity = sizeof(name);
+    info.value = value;
+    info.value_capacity = sizeof(value);
+    info.filename = filename;
+    info.filename_capacity = sizeof(filename);
+    info.type = type;
+    info.type_capacity = sizeof(type);
+    session->form_data_active = 1;
+    result = session->form_data->callbacks.get_entry(
+            session->form_data->callbacks.pw, form_id,
+            (unsigned int) index, &info);
+    session->form_data_active = 0;
+    PJson_Free(root);
+    if (result != 0 ||
+            (info.kind != PBROWSER_SCRIPT_FORM_DATA_STRING &&
+            info.kind != PBROWSER_SCRIPT_FORM_DATA_FILE) ||
+            info.name_bytes < 0 || info.name_bytes >= (int) sizeof(name) ||
+            info.value_bytes < 0 || info.value_bytes >= (int) sizeof(value) ||
+            info.filename_bytes < 0 ||
+            info.filename_bytes >= (int) sizeof(filename) ||
+            info.type_bytes < 0 || info.type_bytes >= (int) sizeof(type) ||
+            name[info.name_bytes] != '\0' ||
+            value[info.value_bytes] != '\0' ||
+            filename[info.filename_bytes] != '\0' ||
+            type[info.type_bytes] != '\0') {
+        return 1;
+    }
+    return p_browser_script_write_form_data_entry(&info, out_json,
+            out_capacity, out_len);
+}
+
 static int p_browser_script_form_property(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -7920,6 +8133,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_value = NULL;
     session->dom_checked = NULL;
     session->form = NULL;
+    session->form_data = NULL;
     session->form_reset = NULL;
     session->form_submit = NULL;
     session->form_submit_direct = NULL;
@@ -7948,6 +8162,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->form_event_ex = NULL;
     session->form_reset_active = 0;
     session->form_submit_active = 0;
+    session->form_data_active = 0;
     session->invalid = NULL;
     session->navigation = NULL;
     session->scroll = NULL;
@@ -8045,6 +8260,12 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreFormProperty", -1);
         free(session->form);
         session->form = NULL;
+    }
+    if (session->form_data != NULL) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreFormData", -1);
+        free(session->form_data);
+        session->form_data = NULL;
     }
     if (session->form_reset != NULL) {
         free(session->form_reset);
@@ -9326,6 +9547,59 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
             "__pcoreFormProperty", -1);
     free(session->form);
     session->form = NULL;
+    return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacks(
+        HANDLE hSession, const PBrowserScriptFormDataCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_form_data_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptFormDataCallbacks) ||
+            callbacks->get_count == NULL || callbacks->get_entry == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_data != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_form_data_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->session = hSession;
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreFormData", -1, p_browser_script_form_data, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->form_data = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormDataCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->form_data == NULL) {
+        return PSCRIPT_OK;
+    }
+    rc = PScript_UnregisterGlobalJsonFunction(session->runtime,
+            "__pcoreFormData", -1);
+    free(session->form_data);
+    session->form_data = NULL;
     return rc;
 }
 

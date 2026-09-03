@@ -342,6 +342,18 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 失败会安全 no-op；Core state-only 入口不派发事件、导航或操作 native 控件，原有按坐标的
 `PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
 
+启用 `PBrowserScriptFormDataCallbacks` 后，Browser 为有非空 id 的 `<form>` 安装
+`new FormData(form)`。构造时同步向宿主请求一次 count，再按文档顺序读取成功控件并生成
+脱离 DOM 的 `FormData`；它不触发 validation、submit/reset 事件、submitter 选择、导航或
+重新 layout。宿主 callback 只应把请求转给 `PCore_FormDataById`，用
+`PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 填充调用期间借用的 UTF-8 缓冲，再配对
+`PCore_FreeFormData`；不得把 picker 路径写入 Browser。字符串和文件分别使用
+`PBROWSER_SCRIPT_FORM_DATA_STRING`/`_FILE`，最多 64 项，名称 64 字节、字符串值 128
+字节、文件名和 MIME 类型各 64 字节；超限、缺少 callback、无效/无 id form 或第二个
+submitter 参数均抛出 `TypeError`，不会产生部分对象。文件只保留 filename/type 和空内容，
+不承诺完整文件读取、`FormData(form, submitter)`、live collection 或其他
+form-associated 元素。
+
 selector bridge 支持有界 compound、顶层列表、后代/子代/兄弟组合器、属性操作符和
 结构/表单伪类，包括 `:checked`、validation 的 `:valid`/`:invalid` 与范围状态、
 focus/link/fragment/language、可选 interaction 的 `:active`/`:hover`，以及
@@ -554,22 +566,15 @@ PBrowser_NavigationCandidateGetInfo(candidate, current_generation, &info);
 PBrowser_NavigationCandidateDestroy(candidate);
 ```
 
-The cancellation flag is safe for a worker to poll while the host requests
-cancellation; other state transitions and info snapshots must be serialized
-by the caller. These APIs never abort a blocked socket, post a window message,
-or perform page teardown/history commit. A failed or retired candidate must
-not call the page-teardown entry or mutate history.
+取消标志可由 worker 在宿主请求取消时轮询，其他状态和快照由宿主串行化；这些 API 不会
+中止阻塞 socket、发窗口消息、执行 page teardown 或提交 history。失败或退休的 candidate
+必须由宿主丢弃，不得进入 teardown 或修改 history。
 
-`PBrowser_NavigationCandidateGetResult` provides a second, read-only snapshot
-for cross-host diagnostics. It derives `PENDING`, `COMMITTED`, `FAILED`,
-`CANCELLED` or `STALE` from the Browser state and the caller's current
-generation: a cancellation request remains pending until retirement, a
-retired candidate is cancelled while its generation is still current, and a
-non-terminal candidate whose generation no longer matches is stale. Committed
-and failed results remain terminal even when a later navigation changes the
-current generation. The host may copy this bounded result into its own log,
-but must not reimplement the classification or treat it as a network error
-message.
+`PBrowser_NavigationCandidateGetResult` 返回 Browser-owned 的只读诊断快照，按 Browser 状态
+和调用方的当前 generation 区分 `PENDING`、`COMMITTED`、`FAILED`、`CANCELLED`、`STALE`：
+取消请求在 retire 前仍为 pending，退休且 generation 仍当前才是 cancelled，非终态且
+generation 不符为 stale；已提交或失败保持终态。宿主只复制快照，不重算分类，也不把它
+当作网络错误文本。
 
 ```c
 PBrowserNavigationCandidateResult result;

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1175
+#define TEST_MAX_NUMBER 1176
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8363,6 +8363,11 @@ static int pcore_browser_script_form_submit_default(void *pw,
         const PBrowserScriptFormSubmitInfo *info);
 static int pcore_browser_script_form_submit_direct(void *pw,
         const PBrowserScriptFormSubmitInfo *info);
+static int pcore_browser_script_form_data_count(void *pw,
+        const char *form_id, int *out_count);
+static int pcore_browser_script_form_data_entry(void *pw,
+        const char *form_id, unsigned int entry_index,
+        PBrowserScriptFormDataEntryInfo *out_info);
 static int pcore_browser_script_invalid_dispatch(void *pw,
         const PBrowserScriptInvalidEventInfo *info,
         int *out_default_allowed);
@@ -16345,6 +16350,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
+    PBrowserScriptFormDataCallbacks form_data_callbacks;
     PBrowserScriptFormResetCallbacks form_reset_callbacks;
     PBrowserScriptFormSubmitCallbacks form_submit_callbacks;
     PBrowserScriptFormSubmitDirectCallbacks form_submit_direct_callbacks;
@@ -16518,6 +16524,10 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_get_selected_index;
     form_callbacks.set_selected_index =
             pcore_browser_script_dom_set_selected_index;
+    form_data_callbacks.size = sizeof(form_data_callbacks);
+    form_data_callbacks.pw = bridge;
+    form_data_callbacks.get_count = pcore_browser_script_form_data_count;
+    form_data_callbacks.get_entry = pcore_browser_script_form_data_entry;
     form_reset_callbacks.size = sizeof(form_reset_callbacks);
     form_reset_callbacks.pw = bridge;
     form_reset_callbacks.reset_form = pcore_browser_script_dom_reset_form;
@@ -16674,6 +16684,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_checked_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(session,
             &form_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormDataCallbacks(session,
+            &form_data_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormResetCallbacks(session,
             &form_reset_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormSubmitCallbacks(session,
@@ -18257,6 +18269,112 @@ static int pcore_browser_script_form_submit_direct(void *pw,
         g_script_form_submit_direct_calls++;
     }
     return pcore_browser_script_form_submit_default_common(pw, info, 0);
+}
+
+static int pcore_browser_script_form_data_count(void *pw,
+        const char *form_id, int *out_count)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE form_data;
+    PCoreFormDataInfo info;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || form_id == NULL ||
+            form_id[0] == '\0' || out_count == NULL) {
+        return -1;
+    }
+    form_data = PCore_FormDataById(bridge->document, form_id);
+    if (form_data == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    result = PCore_FormDataInfo(form_data, &info);
+    if (result != 1 || info.entry_count >
+            PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES) {
+        PCore_FreeFormData(form_data);
+        return 1;
+    }
+    *out_count = (int) info.entry_count;
+    PCore_FreeFormData(form_data);
+    return 0;
+}
+
+static int pcore_browser_script_form_data_entry(void *pw,
+        const char *form_id, unsigned int entry_index,
+        PBrowserScriptFormDataEntryInfo *out_info)
+{
+    pcore_browser_script_bridge *bridge;
+    HANDLE form_data;
+    PCoreFormDataEntryInfo core_info;
+    char core_name[PBROWSER_SCRIPT_FORM_DATA_NAME_MAX_BYTES + 1];
+    char core_value[PBROWSER_SCRIPT_FORM_DATA_VALUE_MAX_BYTES + 1];
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || form_id == NULL ||
+            form_id[0] == '\0' || out_info == NULL ||
+            out_info->size < sizeof(PBrowserScriptFormDataEntryInfo) ||
+            out_info->name == NULL || out_info->name_capacity <= 0 ||
+            out_info->value == NULL || out_info->value_capacity <= 0 ||
+            out_info->filename == NULL || out_info->filename_capacity <= 0 ||
+            out_info->type == NULL || out_info->type_capacity <= 0) {
+        return -1;
+    }
+    if (out_info->name_capacity >
+            PBROWSER_SCRIPT_FORM_DATA_NAME_MAX_BYTES + 1 ||
+            out_info->value_capacity >
+            PBROWSER_SCRIPT_FORM_DATA_VALUE_MAX_BYTES + 1 ||
+            out_info->filename_capacity >
+            PBROWSER_SCRIPT_FORM_DATA_FILENAME_MAX_BYTES + 1 ||
+            out_info->type_capacity >
+            PBROWSER_SCRIPT_FORM_DATA_TYPE_MAX_BYTES + 1) {
+        return -1;
+    }
+    form_data = PCore_FormDataById(bridge->document, form_id);
+    if (form_data == NULL) {
+        return 1;
+    }
+    memset(&core_info, 0, sizeof(core_info));
+    memset(core_name, 0, sizeof(core_name));
+    memset(core_value, 0, sizeof(core_value));
+    result = PCore_FormDataEntryInfo(form_data, entry_index, &core_info,
+            core_name, sizeof(core_name), core_value, sizeof(core_value));
+    PCore_FreeFormData(form_data);
+    if (result != 1 ||
+            (core_info.kind != PBROWSER_SCRIPT_FORM_DATA_STRING &&
+            core_info.kind != PBROWSER_SCRIPT_FORM_DATA_FILE) ||
+            core_info.name_bytes < 0 || core_info.name_bytes >=
+            (int) sizeof(core_name) || core_info.value_bytes < 0 ||
+            core_info.value_bytes >= (int) sizeof(core_value)) {
+        return 1;
+    }
+    if (core_info.name_bytes >= out_info->name_capacity ||
+            (core_info.kind == PBROWSER_SCRIPT_FORM_DATA_STRING &&
+            core_info.value_bytes >= out_info->value_capacity) ||
+            (core_info.kind == PBROWSER_SCRIPT_FORM_DATA_FILE &&
+            core_info.value_bytes >= out_info->filename_capacity)) {
+        return -1;
+    }
+    memcpy(out_info->name, core_name, (size_t) core_info.name_bytes + 1);
+    out_info->name_bytes = core_info.name_bytes;
+    out_info->value[0] = '\0';
+    out_info->value_bytes = 0;
+    out_info->filename[0] = '\0';
+    out_info->filename_bytes = 0;
+    out_info->type[0] = '\0';
+    out_info->type_bytes = 0;
+    if (core_info.kind == PBROWSER_SCRIPT_FORM_DATA_FILE) {
+        memcpy(out_info->filename, core_value,
+                (size_t) core_info.value_bytes + 1);
+        out_info->filename_bytes = core_info.value_bytes;
+    } else {
+        memcpy(out_info->value, core_value,
+                (size_t) core_info.value_bytes + 1);
+        out_info->value_bytes = core_info.value_bytes;
+    }
+    out_info->kind = core_info.kind;
+    return 0;
 }
 
 /* Every WM re-style must reassert the physical-pixel/DPI contract before
@@ -42844,6 +42962,61 @@ static BOOL test1175_browser_form_direct_submit_contract(void)
     show_info(L"TEST 1175 OK",
             "HTMLFormElement.submit skips validation and submit events while"
             " routing urlencoded, dialog, and multipart defaults through Core.");
+    return TRUE;
+}
+
+/* TEST 1176 - detached Browser FormData(form) snapshot. */
+static BOOL test1176_browser_form_data_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><form id='data'>"
+        "<input id='first' name='first' value='alpha'>"
+        "<input id='disabled' name='disabled' value='ignore' disabled>"
+        "<input id='unchecked' name='flag' type='checkbox' value='no'>"
+        "<input id='checked' name='flag' type='checkbox' value='yes' checked>"
+        "<select id='choice' name='pick' multiple>"
+        "<option value='a' selected>A</option>"
+        "<option value='b' selected>B</option>"
+        "<option value='c'>C</option></select>"
+        "<textarea id='notes' name='notes'>hello world</textarea>"
+        "<button id='send' type='submit' name='action' value='send'>Send</button>"
+        "</form><input id='outside' form='data' name='outside' value='external'>"
+        "<input id='unnamed' form='data' value='ignore'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('data'),field=document.getElementById('first'),"
+        "check=document.getElementById('checked'),choice=document.getElementById('choice'),"
+        "notes=document.getElementById('notes'),outside=document.getElementById('outside'),"
+        "send=document.getElementById('send'),events=0;"
+        "form.addEventListener('submit',function(){events++;});"
+        "var fd=new FormData(form),original=fd.toQueryString(),all=fd.getAll('pick');"
+        "field.value='changed';check.checked=false;choice.selectedIndex=2;"
+        "notes.value='changed';outside.value='changed';"
+        "var detached=fd.toQueryString()===original,second=new FormData(form),bad=false;"
+        "try{new FormData(form,send);}catch(e){bad=true;}"
+        "document.getElementById('result').textContent="
+        "String(fd instanceof FormData)+'|'+original+'|'+String(detached)+'|'"
+        "+String(fd.get('first')==='alpha')+'|'+String(all.length===2&&all[0]==='a'&&all[1]==='b')+'|'"
+        "+String(!fd.has('disabled')&&!fd.has('action')&&!fd.has('unnamed'))+'|'"
+        "+String(events===0)+'|'+second.toQueryString()+'|'+String(bad);";
+    static const char EXPECTED[] =
+        "true|first=alpha&flag=yes&pick=a&pick=b&notes=hello+world&outside=external|"
+        "true|true|true|true|true|first=changed&pick=c&notes=changed&outside=changed|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1176 FAIL", error[0] != '\0' ? error :
+                "Browser FormData(form) fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1176 OK",
+            "new FormData(form) snapshots Core's successful controls in"
+            " document order, includes explicit external owners, excludes"
+            " disabled/unnamed/submit controls and stays detached from later"
+            " native value changes.");
     return TRUE;
 }
 
@@ -100959,6 +101132,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1173: ok = test1173_browser_form_reset_contract(); break;
         case 1174: ok = test1174_browser_form_request_submit_contract(); break;
         case 1175: ok = test1175_browser_form_direct_submit_contract(); break;
+        case 1176: ok = test1176_browser_form_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

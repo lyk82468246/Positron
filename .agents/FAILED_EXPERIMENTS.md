@@ -13,6 +13,25 @@
 
 ## 失败与暂挂
 
+### next731 首轮设备门：FormData bridge 占满脚本槽位与设备 Temp 空间 — 已替代
+
+问题：为 `new FormData(form)` 增加 Browser native JSON bridge 后，首次以
+`1173-1176,999` 运行时，完整 Browser 组合超过原有
+`PSCRIPT_MAX_NATIVE_FUNCTIONS=27`，在 TEST1173 的 bootstrap 阶段报
+`focus request bridge: native function limit exceeded`；这不是 WMDC、Core 表单数据或
+测试断言失败。将远端根目录改为新的 `\Temp` 隔离目录后，RAPI 会话仍正常，但部署第三个
+字体返回设备 `ERROR_DISK_FULL (112)`，说明旧 Temp 内容耗尽可用空间。
+
+替代方案：把 `positron_script` 公共上限精确提升到 28，保留固定槽位和注册失败的
+fail-closed 语义；不跳过 FormData 或 focus bridge，也不引入无界 native 表。设备门改用
+此前成功的 `\Storage Card\Positron-device-gate-next731` 隔离根，完整 Debug staging
+随后通过 `1173-1176,999`（5/5、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`）。失败目录
+`tmp/device-runs/20260903-161737-next731-formdata/` 和首轮目录只作取证，不是产品基线。
+
+决定：新增 Browser 全局 callback 前先核对完整注册组合与脚本槽位；若需要扩容，只能在
+`positron_script` 公共常量中精确调整并同步资源文档。设备门若在旧 `\Temp` 清理或部署时
+失败，应改用明确的隔离 Storage Card 路径，不要为了回收旧目录强杀设备进程或重置 WMDC。
+
 ### next720 首轮设备门：pointer-interaction selector 桥超过脚本槽位 — 已替代
 
 问题：在 Browser 已同时启用 DOM、validation、contenteditable、导航、activeElement

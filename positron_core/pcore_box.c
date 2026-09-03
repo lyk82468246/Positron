@@ -11820,6 +11820,93 @@ PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission)
     pcore_multipart_free((pcore_multipart_submission *) hSubmission);
 }
 
+/* FormData(form) needs the same successful-control collector as multipart
+ * submission, but it must be independent of method/enctype, validation and
+ * submitter selection. Keep the returned object in the existing private part
+ * representation so the two public snapshot families cannot drift apart. */
+static pcore_multipart_submission *pcore_form_data_snapshot(
+        dom_html_form_element *form)
+{
+    pcore_multipart_submission *submission;
+
+    if (form == NULL) {
+        return NULL;
+    }
+    submission = (pcore_multipart_submission *) calloc(1,
+            sizeof(*submission));
+    if (submission == NULL) {
+        return NULL;
+    }
+    submission->action = pcore_heap_string("");
+    if (submission->action == NULL ||
+            !pcore_multipart_build_parts(form, NULL, submission)) {
+        pcore_multipart_free(submission);
+        return NULL;
+    }
+    return submission;
+}
+
+PCORE_API HANDLE PCore_FormDataById(HANDLE hDoc, const char *form_id)
+{
+    dom_element *element;
+    pcore_multipart_submission *submission;
+
+    if (hDoc == NULL || form_id == NULL || form_id[0] == '\0') {
+        return NULL;
+    }
+    element = pcore_custom_validity_element_by_id((dom_document *) hDoc,
+            form_id);
+    if (element == NULL || !pcore_node_name_is((dom_node *) element,
+            "form")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return NULL;
+    }
+    submission = pcore_form_data_snapshot((dom_html_form_element *) element);
+    dom_node_unref((dom_node *) element);
+    return (HANDLE) submission;
+}
+
+PCORE_API int PCore_FormDataInfo(HANDLE hFormData,
+        PCoreFormDataInfo *out_info)
+{
+    pcore_multipart_submission *submission;
+
+    submission = (pcore_multipart_submission *) hFormData;
+    if (submission == NULL || submission->action == NULL) {
+        return 0;
+    }
+    if (out_info != NULL) {
+        out_info->entry_count = submission->part_count;
+    }
+    return 1;
+}
+
+PCORE_API int PCore_FormDataEntryInfo(HANDLE hFormData,
+        unsigned int entry_index, PCoreFormDataEntryInfo *out_info,
+        char *name, int name_capacity, char *value, int value_capacity)
+{
+    PCoreMultipartPartInfo multipart_info;
+    int result;
+
+    memset(&multipart_info, 0, sizeof(multipart_info));
+    result = PCore_MultipartPartInfo(hFormData, entry_index,
+            &multipart_info, name, name_capacity, value, value_capacity,
+            NULL, 0);
+    if (out_info != NULL) {
+        out_info->kind = multipart_info.kind;
+        out_info->name_bytes = multipart_info.name_bytes;
+        out_info->value_bytes = multipart_info.value_bytes;
+    }
+    return result;
+}
+
+PCORE_API void PCore_FreeFormData(HANDLE hFormData)
+{
+    pcore_multipart_free((pcore_multipart_submission *) hFormData);
+}
+
 static int pcore_form_reset_input(dom_html_input_element *input)
 {
     dom_string *default_value;

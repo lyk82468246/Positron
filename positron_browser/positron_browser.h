@@ -693,6 +693,58 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
+/* Typed adapter for the detached `new FormData(form)` snapshot. The browser
+ * layer owns the JavaScript FormData object and JSON bridge; the host only
+ * enumerates Core's already-filtered successful controls. get_count and
+ * get_entry return zero on success, a positive value when the form/entry is
+ * unavailable and a negative value on adapter failure. `form_id` and all
+ * buffers are borrowed for the synchronous callback. Lengths exclude the
+ * trailing NUL; capacities include it. A callback must fail closed when a
+ * value does not fit its supplied capacity rather than truncating it.
+ *
+ * The bridge is intentionally bounded by the fixed native-script result
+ * buffer. It supports at most PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES entries,
+ * and each UTF-8 field is limited by the corresponding *_MAX_BYTES constant.
+ * kind 1 is a string value; kind 2 is a file whose filename/type are exposed
+ * and whose local picker path is never returned to script. The value buffer
+ * is empty for kind 2. No validation, event dispatch, navigation or live
+ * linkage to the controls occurs while taking the snapshot. */
+#define PBROWSER_SCRIPT_FORM_DATA_STRING 1
+#define PBROWSER_SCRIPT_FORM_DATA_FILE   2
+#define PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES 64
+#define PBROWSER_SCRIPT_FORM_DATA_NAME_MAX_BYTES 64
+#define PBROWSER_SCRIPT_FORM_DATA_VALUE_MAX_BYTES 128
+#define PBROWSER_SCRIPT_FORM_DATA_FILENAME_MAX_BYTES 64
+#define PBROWSER_SCRIPT_FORM_DATA_TYPE_MAX_BYTES 64
+
+typedef struct PBrowserScriptFormDataEntryInfo {
+    unsigned long size;
+    int kind;
+    char *name;
+    int name_capacity;
+    int name_bytes;
+    char *value;
+    int value_capacity;
+    int value_bytes;
+    char *filename;
+    int filename_capacity;
+    int filename_bytes;
+    char *type;
+    int type_capacity;
+    int type_bytes;
+} PBrowserScriptFormDataEntryInfo;
+typedef int (*PBrowserScriptGetFormDataCountFn)(void *pw,
+        const char *form_id, int *out_count);
+typedef int (*PBrowserScriptGetFormDataEntryFn)(void *pw,
+        const char *form_id, unsigned int entry_index,
+        PBrowserScriptFormDataEntryInfo *out_info);
+typedef struct PBrowserScriptFormDataCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetFormDataCountFn get_count;
+    PBrowserScriptGetFormDataEntryFn get_entry;
+} PBrowserScriptFormDataCallbacks;
+
 /* Additive adapter for the script-facing HTMLFormElement.reset() default
  * action. The browser layer dispatches a cancelable reset event through the
  * by-id form-event adapter before calling reset_form; the host only applies
@@ -1789,6 +1841,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
         HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacks(
+        HANDLE hSession, const PBrowserScriptFormDataCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterFormDataCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormResetCallbacks(
         HANDLE hSession, const PBrowserScriptFormResetCallbacks *callbacks);

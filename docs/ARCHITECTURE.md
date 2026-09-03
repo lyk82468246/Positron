@@ -79,7 +79,7 @@ bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必�
 
 每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存上限，不把该运行时当作完整浏览器沙箱。
 
-`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 27。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()` 和可选 pointer-interaction selector 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。
+`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。该上限是固定的 WM6 资源预算，不应通过跳过已注册的 Browser bridge 或引入无界表来绕过。
 
 ### `positron_core.dll`
 
@@ -178,6 +178,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   event 或 submitter 选择，宿主把 callback 接到 Core 的三个 NoValidationById primitive
   后执行同一应用策略。三种脚本方法均不由 Browser 创建 native 控件，Core 的 state-only
   入口也不自行派发事件；旧的 form-submit 表保持兼容；
+- 可选的 `new FormData(form)` snapshot：宿主注册
+  `PBrowserScriptFormDataCallbacks` 后，Browser 按 form id 请求一次 count 和逐项 entry，
+  生成脱离 DOM 的脚本对象。宿主只把 callback 接到 Core 的
+  `PCore_FormDataById`/`PCore_FormDataInfo`/`PCore_FormDataEntryInfo`，Core 复用
+  successful-control 与显式 form-owner 规则；Browser 负责对象、文件 metadata 和错误
+  映射，宿主不得复制表单收集或暴露 picker 路径。该桥固定最多 64 项和受限 UTF-8 字段，
+  不做 validation、submitter、事件、导航或 live linkage；
 - 可选的 `document.activeElement` 投影：宿主注册
   `PBrowserScriptActiveElementCallbacks` 后，Browser 读取宿主提供的当前焦点
   UTF-8 id，并通过既有 DOM read adapter 解析；空、过长、失效或不可用 id 一律

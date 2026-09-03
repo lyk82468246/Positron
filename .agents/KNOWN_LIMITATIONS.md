@@ -67,8 +67,12 @@
   的 NoValidationById primitive，再由宿主决定导航或 close。两条脚本提交方法都要求有
   可寻址的 form id，并在 callback 缺失、目标非法或容量不足时 fail closed。文档 mutation
   后调用方仍应重新查询。
-  完整 live HTMLFormControlsCollection、所有 form-associated 元素、
-  fieldset/object/image 归属和浏览器完整表单树规则仍未实现。
+  Browser 的 `new FormData(form)` 另有独立的 detached snapshot：它复用 successful-control
+  与 form-owner 规则，最多返回 64 项；名称最多 64 字节，字符串值最多 128 字节，文件名
+  和 MIME 类型各最多 64 字节。文件只返回 filename/type 和空内容，不暴露 picker 路径；
+  无 id、超限、缺少 callback 或第二个 submitter 参数均安全失败。完整 live
+  HTMLFormControlsCollection、`FormData(form, submitter)`、文件读取和所有
+  form-associated 元素、fieldset/object/image 归属及浏览器完整表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -109,7 +113,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 714 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 27。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()` 和可选 pointer-interaction selector 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 714 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；不能通过跳过必要桥或扩大为无界表来规避预算。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -336,6 +340,11 @@
   NoValidationById primitive 生成 urlencoded、dialog、multipart 结果，并在无效目标或
   callback 缺失时 fail closed。它要求有 id 的 form；初始 inline 阶段的 multipart 网络
   动作以及 native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍未实现或需人工验收。
+- TEST1176 是离线的 Browser/Core FormData snapshot 夹具，无新增立即人工风险；自动门证明
+  `new FormData(form)` 对成功控件、显式 form owner、重复 select、disabled/unnamed/submit
+  排除、detached mutation、无 submit 事件和第二参数拒绝的有界映射。它只支持有 id 的
+  form、64 项和受限字段容量，文件只保留 metadata；完整 live collection、文件读取、
+  native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍未实现或需人工验收。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

@@ -390,6 +390,15 @@ TEST1175 覆盖 Browser 脚本 `HTMLFormElement.submit()` 的直接默认动作�
 记录应用策略并断言，不复制表单语义；该夹具不承诺 native 表单视觉、SIP/IME、picker、
 触摸或不同 DPI 结果。
 
+TEST1176 覆盖 Browser `new FormData(form)` 的 detached snapshot：Core 按统一 form-owner
+和 successful-control 规则收集 form 子树及显式 `form="id"` 外部控件，保留 checkbox、
+重复 select 和 textarea 顺序，排除 disabled、未勾选、unnamed 与 submit 控件。夹具确认
+返回对象身份、查询/重复项、后续 value mutation 不会改写旧 snapshot，第二次构造读取新
+状态，未派发 submit 事件且第二个 submitter 参数被拒绝；宿主只接线
+`PBrowserScriptFormDataCallbacks` 和 Core snapshot API。该桥最多 64 项并有受限 UTF-8
+字段，文件只返回 metadata；不承诺完整 live collection、文件读取或 native 表单视觉、
+SIP/IME、picker、触摸和不同 DPI 结果。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

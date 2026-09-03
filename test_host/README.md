@@ -73,7 +73,7 @@ tests=13,20,27,999
   `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
-  （TEST1146–1174）；
+  和 `new FormData(form)` 的 detached successful-control snapshot（TEST1146–1176）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -273,6 +273,13 @@ TEST1175 断言 Browser 脚本 `HTMLFormElement.submit()` 的直接默认动作�
 和 multipart 结果。夹具检查三个 direct/default callback、方法分类、`field=` body、空
 dialog return value/submitter 与 multipart action。宿主只负责注册 direct callback、调用
 Core NoValidationById primitive、记录导航或 dialog 策略和断言，产品语义仍属于 Browser/Core。
+
+TEST1176 断言 Browser `new FormData(form)` 的快照边界：统一 Core owner 规则把显式
+`form="data"` 外部控件按文档顺序纳入，保留字符串、checkbox、重复 select 和 textarea，
+排除 disabled、未勾选、unnamed 与 submit 控件。旧对象在 native value/checked/selection
+变化后保持原内容，第二次构造读取新状态，构造不派发 submit 事件，第二个 submitter 参数
+安全拒绝。宿主只注册 FormData callback、转调 Core snapshot 并断言，不实现表单收集、
+文件路径或 Browser 对象语义；文件 metadata、64 项和字段容量上限属于公共桥接合同。
 
 ### Native EDIT/SELECT/button/file
 
