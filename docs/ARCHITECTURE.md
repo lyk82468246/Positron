@@ -102,12 +102,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   的同步入口；前一组修改 live 选择并遵守单选互斥/多选规则，后一组只读写
   Core 的默认基线，不通过 content attribute 改写 live 选择；这些入口不触发
   layout、paint 或 native 控件副作用；
-- 表单关联关系：支持的 input、select、textarea、button 和 fieldset 默认归最近祖先
-  form；存在 `form="id"` 时解析文档中对应的 form，把有 id 的 form-associated 元素
-  （包括 form 外 fieldset）纳入按文档顺序的有界 `form.elements` snapshot，空值或无效
-  目标不回退到祖先。fieldset 只属于元素集合，不进入 successful-control、提交或
-  FormData visitor。validation、successful-control 与 multipart/dialog submission、reset
-  以及 submit/reset 默认动作也复用 input/select/textarea/button 的 owner，不会只在
+- 表单关联关系：支持的 input、select、textarea、button、fieldset 和 output 默认归最近
+  祖先 form；存在 `form="id"` 时解析文档中对应的 form，把有 id 的 form-associated
+  元素（包括 form 外 fieldset/output）纳入按文档顺序的有界 `form.elements` snapshot，
+  空值或无效目标不回退到祖先。fieldset/output 只属于元素集合，不进入
+  successful-control、提交或 FormData visitor。validation、successful-control 与
+  multipart/dialog submission、reset 以及 submit/reset 默认动作也复用
+  input/select/textarea/button 的 owner，不会只在
   Browser 关系层识别跨树控件。`PCore_FormResetById` 是 Core 提供的无坐标
   state-only reset 入口；Browser/宿主必须先处理可取消 reset 事件，并在成功后重新
   layout/paint，Core 不创建事件或 native 控件；
@@ -211,10 +212,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - `HTMLFieldSetElement.type`、`form` 和 `elements` 也有一个有界投影：`type` 固定为只读
   的 `fieldset`，`form` 复用 FORM_OWNER 的祖先/显式 `form="id"` 规则，`elements` 从
   fieldset 子树按 DOM 顺序生成独立 HTMLCollection snapshot，包含带 id 的 input、select、
-  textarea、button（可跨嵌套 fieldset），最多遍历 256 个节点、返回 64 项。对应的
-  `HTMLFormElement.elements` 也按同一 owner 规则包含有 id 的 fieldset；fieldset 仍不作为
-  successful control。该扩展不覆盖其他 listed elements、无 id 节点或 live 子树 mutation，
-  也不增加 ABI 或 native slot。
+  textarea、button、output（可跨嵌套 fieldset），最多遍历 256 个节点、返回 64 项。对应的
+  `HTMLFormElement.elements` 也按同一 owner 规则包含有 id 的 fieldset/output；fieldset 和
+  output 仍不作为 successful control。output 的 `form`/`labels` 复用同一公共 relation，
+  但不扩展其完整 value/defaultValue 算法。该扩展不覆盖其他 listed elements、无 id 节点或
+  live 子树 mutation，也不增加 ABI 或 native slot。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，

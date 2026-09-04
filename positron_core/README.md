@@ -80,16 +80,17 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
-- form owner、form controls 和 label/control。支持的 input、select、textarea、button
-  和 fieldset 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中对应的
-  form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档顺序包含
-  这些有 id 的 form-associated 元素（包括跨树显式关联的 fieldset），仍是每次查询生成
-  的有界 snapshot。Core 的 validation、successful control/multipart、dialog/default-submit、
-  reset 和原生激活路径复用 input/select/textarea/button 的 owner 解析，因此跨树控件
+- form owner、form controls 和 label/control。支持的 input、select、textarea、button、
+  fieldset 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
+  对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档
+  顺序包含这些有 id 的 form-associated 元素（包括跨树显式关联的 fieldset/output），仍是
+  每次查询生成的有界 snapshot。Core 的 validation、successful control/multipart、
+  dialog/default-submit、reset 和原生激活路径复用 input/select/textarea/button 的 owner
+  解析，因此跨树控件
   不会只在 Browser 关系查询中出现；
-- FORM_OWNER 同样解析 `fieldset` 的祖先或显式 `form="id"` owner。fieldset 会出现在
+- FORM_OWNER 同样解析 `fieldset`/`output` 的祖先或显式 `form="id"` owner。两者都会出现在
   `form.elements`，但不会进入 successful-control 或提交 visitor；Browser 可在此基础上
-  提供 `fieldset.form` 与其独立的子树控件 snapshot；
+  提供 `fieldset.form`、`output.form` 与 fieldset 的独立子树控件 snapshot；
 - form-control 的 effective-disabled relation（关系 44）：input、button、select、
   textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
   first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回

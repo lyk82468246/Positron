@@ -4782,12 +4782,14 @@ static int pcore_relation_parent(dom_node *node, char *value,
 }
 
 static int pcore_relation_is_control(dom_element *element);
+static int pcore_relation_is_non_successful_form_element(
+        dom_element *element);
 static int pcore_relation_is_form_element(dom_element *element);
 static int pcore_relation_attribute_value(dom_element *element,
         const char *name, dom_string **out_value);
-static int pcore_relation_fieldset_form_owner(dom_document *doc,
+static int pcore_relation_form_associated_owner(dom_document *doc,
         dom_node *node, char *value, int value_capacity, int *out_bytes);
-static int pcore_relation_fieldset_form_owner_is(dom_document *doc,
+static int pcore_relation_form_associated_owner_is(dom_document *doc,
         dom_node *node, dom_element *wanted_form);
 
 static int pcore_relation_form_owner_is(dom_document *doc, dom_node *node,
@@ -4803,8 +4805,9 @@ static int pcore_relation_form_owner_is(dom_document *doc, dom_node *node,
 
     explicit_owner = NULL;
     has_form_attribute = 0;
-    if (pcore_element_name_is((dom_element *) node, "fieldset")) {
-        return pcore_relation_fieldset_form_owner_is(doc, node,
+    if (pcore_relation_is_non_successful_form_element(
+            (dom_element *) node)) {
+        return pcore_relation_form_associated_owner_is(doc, node,
                 wanted_form);
     }
     if (pcore_relation_is_control((dom_element *) node)) {
@@ -4862,13 +4865,19 @@ static int pcore_relation_is_control(dom_element *element)
             pcore_element_name_is(element, "button");
 }
 
+static int pcore_relation_is_non_successful_form_element(dom_element *element)
+{
+    return pcore_element_name_is(element, "fieldset") ||
+            pcore_element_name_is(element, "output");
+}
+
 static int pcore_relation_is_form_element(dom_element *element)
 {
     return pcore_relation_is_control(element) ||
-            pcore_element_name_is(element, "fieldset");
+            pcore_relation_is_non_successful_form_element(element);
 }
 
-static int pcore_relation_fieldset_form_owner_is(dom_document *doc,
+static int pcore_relation_form_associated_owner_is(dom_document *doc,
         dom_node *node, dom_element *wanted_form)
 {
     dom_string *form_value;
@@ -4880,7 +4889,8 @@ static int pcore_relation_fieldset_form_owner_is(dom_document *doc,
     int result;
 
     if (doc == NULL || node == NULL || wanted_form == NULL ||
-            !pcore_element_name_is((dom_element *) node, "fieldset") ||
+            !pcore_relation_is_non_successful_form_element(
+                    (dom_element *) node) ||
             !pcore_element_name_is(wanted_form, "form")) {
         return 0;
     }
@@ -5013,8 +5023,9 @@ static int pcore_relation_form_owner(dom_document *doc, dom_node *node, char *va
 
     explicit_owner = NULL;
     has_form_attribute = 0;
-    if (pcore_element_name_is((dom_element *) node, "fieldset")) {
-        return pcore_relation_fieldset_form_owner(doc, node, value,
+    if (pcore_relation_is_non_successful_form_element(
+            (dom_element *) node)) {
+        return pcore_relation_form_associated_owner(doc, node, value,
                 value_capacity, out_bytes);
     }
     if (pcore_relation_is_control((dom_element *) node)) {
@@ -5067,7 +5078,7 @@ static int pcore_relation_form_owner(dom_document *doc, dom_node *node, char *va
  * slice.  It is computed from the parsed document on each relation query so
  * attribute changes are observed without introducing a second live DOM cache.
  * Only the labelable controls already represented by the core form bridge are
- * included (input except type=hidden, select, textarea and button). */
+ * included (input except type=hidden, select, textarea, button and output). */
 static int pcore_relation_attribute_value(dom_element *element,
         const char *name, dom_string **out_value)
 {
@@ -5097,11 +5108,11 @@ static int pcore_relation_attribute_value(dom_element *element,
     return (*out_value == NULL) ? 2 : 0;
 }
 
-/* Fieldsets are form-associated elements, but they are not successful form
- * controls. Their owner projection is shared by the DOM relation walker,
- * while the separate successful-control visitor continues to exclude them
- * from submission and FormData. */
-static int pcore_relation_fieldset_form_owner(dom_document *doc,
+/* Fieldsets and output elements are form-associated elements, but they are not
+ * successful form controls. Their owner projection is shared by the DOM
+ * relation walker, while the separate successful-control visitor continues to
+ * exclude them from submission and FormData. */
+static int pcore_relation_form_associated_owner(dom_document *doc,
         dom_node *node, char *value, int value_capacity, int *out_bytes)
 {
     dom_string *form_value;
@@ -5115,7 +5126,8 @@ static int pcore_relation_fieldset_form_owner(dom_document *doc,
 
     if (doc == NULL || node == NULL || value_capacity < 0 ||
             (value == NULL && value_capacity > 0) || out_bytes == NULL ||
-            !pcore_element_name_is((dom_element *) node, "fieldset")) {
+            !pcore_relation_is_non_successful_form_element(
+                    (dom_element *) node)) {
         return 1;
     }
     *out_bytes = 0;
@@ -5225,7 +5237,8 @@ static int pcore_relation_is_labelable(dom_element *element)
     }
     return pcore_element_name_is(element, "select") ||
             pcore_element_name_is(element, "textarea") ||
-            pcore_element_name_is(element, "button");
+            pcore_element_name_is(element, "button") ||
+            pcore_element_name_is(element, "output");
 }
 
 /* Find the first labelable descendant in tree order. */
