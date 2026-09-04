@@ -56,6 +56,10 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
  重复项和文件 metadata；Ex callback 只允许目标 form 的 enabled submit-type input/button，
  不暴露 picker 路径。Browser 在构造成功后同步派发非冒泡、不可取消的 `formdata` 事件，
  `FormDataEvent.formData` 指向正在返回的对象，监听器可在构造返回前修改它；
+ `<option>` 还提供有界的 `selected`/`defaultSelected` 与 `value`/`label`/`text`
+ 属性桥：前者由 Core 维护 live/default 选择状态，后者复用通用 attribute/text
+ callback 并在缺失属性时回退到 option 文本；这些桥不扩展 native SELECT popup 或
+ 完整 HTML option 算法；
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。

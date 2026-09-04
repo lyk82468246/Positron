@@ -182,6 +182,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `__pcoreFormProperty` JSON/native slot，不增加 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 占用。
   `selected` setter 遵守 Core 的单选互斥和多选规则，`defaultSelected` setter 只更新
   默认基线；Browser 不创建 native SELECT、弹出菜单或视觉重绘，宿主负责相应控件接线。
+- 同一 DOM bridge 还提供 `<option>` 的 `value`、`label`、`text` 基础 IDL 属性。Browser
+  在对应 attribute 存在时返回 `value`/`label`，缺失时回退到 option 文本；`text` 直接
+  读写 option 的纯文本，因此属性或文本 mutation 会即时反映到后续读取和所属 select
+  的 live value，空 attribute 仍与缺失区分。该桥复用 Core 的通用 attribute/text callback，
+  不新增 ABI 或 native slot；非 option、无效 id、缺失 callback 或失败 mutation 安全拒绝，
+  native SELECT popup、layout/paint 和完整 HTML option 算法仍由宿主或未来能力负责。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，
@@ -385,7 +391,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，
   relation 44/45 还把 effective-disabled 与 option default-selected 状态交给 Browser
   selector；同时在 form callback 注册后按需注册 `PBrowserScriptOptionCallbacks`，把
-  `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`；宿主不复制 box tree、
+  `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`，并让通用 DOM
+  attribute/text callback 支持 option 的 `value`/`label`/`text`；宿主不复制 box tree、
   滚动模型、默认状态或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
@@ -461,6 +468,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 表单 option 的 selected/defaultSelected adapter 使用独立的可选 callback table，
   保持既有 `PBrowserScriptFormCallbacks` 布局不变；Browser 只在注册且字段完整时启用，
   缺失或失败按 fail-closed 处理。
+- option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
+  不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
+  option 文本的规则只由 Browser 实现，Core 继续提供通用存储。
 - 无效参数、容量不足、越界、错 origin 和错状态必须返回稳定错误，不能部分提交。
 - 公共头文件是精确契约；README 只解释调用模式，不复制整套声明。
 

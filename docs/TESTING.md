@@ -444,6 +444,14 @@ TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性�
 宿主只注册独立的 `PBrowserScriptOptionCallbacks` 并转调 Core 按 id API，不复制选择或
 默认状态规则。该离线门不承诺 native SELECT popup、触摸、SIP/IME、视觉或不同 DPI。
 
+TEST1183 覆盖 Browser `<option>` 的基础 `value`/`label`/`text` 属性桥：脚本先验证显式
+`value`/`label` attribute 优先，缺失时分别回退到 option 文本，`text` 读写会更新文本
+以及后续的 option/select 读取；`select.value` 与 `selectedIndex` 在 live 选择变化后
+保持一致。夹具还区分空 attribute 与缺失 attribute，并确认非 option setter、无效目标或
+失败 mutation 安全拒绝。实现复用既有 Core DOM attribute/text callback，不增加 ABI 或
+native slot；宿主只做回调接线和断言。该离线门不承诺 native SELECT popup、键盘/触摸、
+SIP/IME、layout/paint 或不同 DPI 视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

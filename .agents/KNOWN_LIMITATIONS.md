@@ -39,6 +39,13 @@
   attribute 或当前 live 选择。该可选表复用既有 Browser form-property native slot，
   缺失、非 option、无效 id 或 callback 错误均 fail closed；它不提供 native SELECT
   popup、键盘/触摸、SIP/IME、layout、paint 或完整 HTML option 算法。
+- 同一 Browser DOM bridge 还提供可选的 `<option>` `value`、`label`、`text` 属性：
+  `value`/`label` 在对应 attribute 存在时返回其 UTF-8 值，否则回退到 option 文本；
+  `text` 读写 option 的纯文本，属性或文本 mutation 会被后续读取和所属 select 的
+  live value 观察到，空 attribute 不等于缺失。该扩展复用通用 attribute/text callback，
+  不增加 Core ABI 或 native slot；非 option、无效 id、缺失 callback 或失败 mutation
+  均安全拒绝，也不实现 native SELECT popup、layout/paint、键盘/触摸或完整 HTML option
+  算法。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -395,6 +402,11 @@
   `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
   一致性、默认基线与 live 状态分离，以及非 option/无效 id/缺失 callback 的 fail-closed。
   真实 native SELECT popup、键盘/触摸、SIP/IME、视觉和不同 DPI 仍需人工验收。
+- TEST1183 是离线的 Browser option 基础属性夹具，无新增立即人工风险；自动门证明
+  `value`/`label` 的属性优先与文本 fallback、`text` mutation、select live value/
+  selectedIndex 联动、空属性区分以及非 option setter 的 fail-closed。该桥复用既有
+  Core DOM attribute/text callback，不提供 native SELECT popup、键盘/触摸、SIP/IME、
+  layout、paint 或不同 DPI 保证。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

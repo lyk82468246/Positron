@@ -337,17 +337,17 @@ focus ring、完整 scroll tree、scroll chaining、scroll-margin、平滑/惯�
 
 ### DOM、表单与 validation adapters
 
-Browser 不认识 libdom 节点。宿主注册 size-tagged UTF-8 callbacks，把当前 Core document
-的受限查询和 mutation 映射为文本/属性/value/checked、节点关系、form/selected state、
-validation/custom validity、contenteditable 纯文本选区、event listener 和 navigation。
-Browser 负责 JSON 参数、脚本对象形状、错误映射与同步 dispatch；Core/宿主负责真实状态，
-callback 参数和输出缓冲只在调用期间借用。
+Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks 映射 Core 的受限
+DOM、form、event 和 navigation 查询/mutation。Browser 负责 JSON 参数、脚本对象形状、
+错误映射与同步 dispatch，真实状态和缓冲由 Core/宿主在调用期间借用。
 
-`<option>` 的 `selected`/`defaultSelected` 是扩展。宿主在 form callbacks 之后、
-bootstrap 之前注册 `PBrowserScriptOptionCallbacks`；它转调 Core 按 id API。`selected`
-遵守单选互斥/多选规则，`defaultSelected`
-只改默认基线；未注册、非 option、无效 id 或 callback 错误均 fail closed。该桥不创建
-native SELECT，也不负责视觉或输入。
+`<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
+在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；
+`selected` 遵守单选互斥/多选规则，`defaultSelected` 只改默认基线。`value`/`label`
+读取显式 attribute，缺失时回退到 option 文本，`text` 读写该纯文本；mutation 会反映
+到后续读取和 `select.value`，空 attribute 与缺失可区分。未注册、非 option、无效 id 或
+callback/mutation 失败均 fail closed；不涉及 native SELECT、视觉/输入或完整 HTML option
+算法。
 
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
 `input`、`select`、`textarea`、`button` 控件默认归最近祖先 form；控件存在 `form="id"`
@@ -675,7 +675,7 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 ## 当前边界
 
 Browser 是显式 opt-in 的有界会话；完整 DOM/Web API、selector、滚动/几何/焦点以及
-`option` 的 native popup 和视觉不在保证内，`selected`/`defaultSelected` 还要求可选
-callback。系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉由宿主在设备验收；ABI、
-常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。完整限制见
+`option` native popup/视觉不在保证内，上述属性要求可选 DOM/form callback。系统 picker、
+OEM SIP/IME、真实触摸、旋转和焦点视觉由宿主验收；ABI、常量和结构布局只以
+[`positron_browser.h`](positron_browser.h) 为准。完整限制见
 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。

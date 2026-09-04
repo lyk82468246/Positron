@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1182
+#define TEST_MAX_NUMBER 1183
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43723,6 +43723,57 @@ static BOOL test1182_browser_option_selection_properties(void)
             "Browser exposes option selected/defaultSelected through an"
             " additive callback table; single-select exclusivity, multiple"
             " selection and live/default separation remain bounded.");
+    return TRUE;
+}
+
+/* TEST 1183 - bounded HTMLOptionElement value/label/text properties. */
+static BOOL test1183_browser_option_basic_properties(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><select id='choice'><option id='explicit' value='wire' "
+        "label='Shown' selected>Visible text</option>"
+        "<option id='fallback'>Fallback text</option></select>"
+        "<div id='not-option'>plain</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "var s=document.getElementById('choice'),e=document.getElementById('explicit'),"
+        "f=document.getElementById('fallback'),p=document.getElementById('not-option');"
+        "var initial=e.value==='wire'&&e.label==='Shown'&&e.text==='Visible text'&&"
+        "f.value==='Fallback text'&&f.label==='Fallback text'&&"
+        "f.text==='Fallback text'&&s.value==='wire';"
+        "e.value='new-wire';e.label='New shown';e.text='Changed text';"
+        "var changed=e.value==='new-wire'&&e.label==='New shown'&&"
+        "e.text==='Changed text'&&e.getAttribute('value')==='new-wire'&&"
+        "e.getAttribute('label')==='New shown'&&s.value==='new-wire';"
+        "f.text='Fallback changed';var fallback=f.value==='Fallback changed'&&"
+        "f.label==='Fallback changed'&&f.textContent==='Fallback changed';"
+        "e.selected=false;f.selected=true;var selected=s.value==='Fallback changed'&&"
+        "s.selectedIndex===1;"
+        "e.removeAttribute('value');e.removeAttribute('label');"
+        "var fallbackAttrs=e.value==='Changed text'&&e.label==='Changed text';"
+        "e.label='';var emptyLabel=e.label===''&&e.value==='Changed text';"
+        "var rejected=false;try{p.label='blocked';}catch(err){rejected=true;}"
+        "var safe=typeof p.label==='undefined'&&typeof p.text==='undefined'&&"
+        "p.textContent==='plain'&&!p.hasAttribute('label');"
+        "document.getElementById('result').textContent=String(initial)+'|'"
+        "+String(changed)+'|'+String(fallback)+'|'+String(selected)+'|'"
+        "+String(fallbackAttrs)+'|'+String(emptyLabel)+'|'+String(rejected)+'|'"
+        "+String(safe);";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1183 FAIL", error[0] != '\0' ? error :
+                "Browser option value/label/text fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1183 OK",
+            "Browser exposes bounded option value/label/text fallback and"
+            " mutation semantics through the existing DOM bridge.");
     return TRUE;
 }
 
@@ -101845,6 +101896,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1180: ok = test1180_browser_selector_scope_contract(); break;
         case 1181: ok = test1181_browser_selector_default_contract(); break;
         case 1182: ok = test1182_browser_option_selection_properties(); break;
+        case 1183: ok = test1183_browser_option_basic_properties(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
