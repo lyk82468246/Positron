@@ -347,16 +347,17 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * for option elements: it returns the option's parser/default-selected state
  * as 1 or 0, independently of the live selected state. Both relationships
  * are unavailable for other element types.
- * FORM_OWNER resolves a supported form-associated control, fieldset or output
- * element to its nearest ancestor form. A present `form` attribute instead names a form by id;
+ * FORM_OWNER resolves a supported form-associated control, fieldset, object or
+ * output element to its nearest ancestor form. A present `form` attribute instead names a form by id;
  * an empty, invalid, or non-form target has no owner and never falls back to the
  * ancestor. FORM_CONTROL_COUNT and FORM_CONTROL_AT enumerate
- * all supported input, select, textarea, button, fieldset and output
+ * all supported input, select, textarea, button, fieldset, object and output
  * form-associated elements owned by the form
  * in document order, including controls outside the form that use that explicit
- * attribute. Fieldsets and output elements are included for
+ * attribute. Fieldsets, object and output elements are included for
  * HTMLFormElement.elements but remain excluded from the separate
- * successful-control visitor used by submission and FormData. Their results
+ * successful-control visitor used by submission and FormData. Object, fieldset
+ * and output results
  * are read snapshots for one relation query.
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.

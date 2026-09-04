@@ -306,6 +306,7 @@ static int pcore_form_control_is(dom_node *node)
 static int pcore_form_associated_is(dom_node *node)
 {
     return pcore_form_control_is(node) ||
+            pcore_form_node_name_is(node, "object") ||
             pcore_form_node_name_is(node, "output");
 }
 

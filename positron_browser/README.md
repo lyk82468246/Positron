@@ -346,29 +346,29 @@ callback/mutation 失败均 fail closed。
 提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；
 getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
 遍历上限为 256 个节点、返回 64 个 option；缺少稳定 id 的元素不投影，也没有 live
-collection 或 native popup。
+collection/popup。
 
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
-`input`、`select`、`textarea`、`button`、`fieldset` 和 `output` 元素默认归最近祖先 form；
+`input`、`select`、`textarea`、`button`、`fieldset`、`object` 和 `output` 元素默认归最近祖先 form；
 元素存在 `form="id"` 时解析文档中对应的 form，因此可以把 form 外的 form-associated
-元素纳入 `form.elements`，而空值或无效目标没有 owner，也不回退到祖先。fieldset 和
-output 会出现在 `form.elements`，但不会进入 Core successful-control、提交或 FormData
+元素纳入 `form.elements`，而空值或无效目标没有 owner，也不回退到祖先。fieldset、object
+和 output 会出现在 `form.elements`，但不会进入 Core successful-control、提交或 FormData
 visitor。对 `<option>`，Browser 沿最多 64 层可寻址的
 `parentElement` 链找到所属 `select`，再复用该 `select.form`；因此嵌套 `optgroup`、显式
 `select form="id"` 和属性 mutation 都能反映，找不到 select 或 owner 时返回 `null`。
-`elements` 每次读取均为按文档顺序建立的有界 snapshot。
+`elements` 每次读取都是有界的 DOM 顺序 snapshot。
 
 `select.type` 按 live `multiple` attribute 返回只读的 `select-one`/`select-multiple`；
 `optgroup.label` 反映 `label` attribute，缺失为 `''` 且随 mutation 更新，`option.label`
-的文本 fallback 保持不变。仅提供脚本元数据，不创建 popup 或改变 layout/paint/平台输入。
+的文本 fallback 保持不变。仅提供元数据，不创建 popup 或改变 layout/paint。
 
 `fieldset.type` 固定为只读的 `'fieldset'`；`fieldset.form` 复用 Core 的 FORM_OWNER
 祖先/显式 `form="id"` 规则，无效 owner 返回 `null`。`fieldset.elements` 每次按 DOM
 顺序生成独立 HTMLCollection snapshot，投影子树中带 id 的 input/select/textarea/button/
-output（含嵌套 fieldset），最多遍历 256 个节点、返回 64 项；不覆盖无 id 节点或 live
+object/output（含嵌套 fieldset），最多遍历 256 个节点、返回 64 项；不覆盖无 id 节点或 live
 mutation。output 也是可寻址的 labelable 元素，`labels` 复用 Core label/control relation。
-它的 `type` 固定为只读的 `'output'`；`value` 反映 descendant text，`defaultValue` 反映
-Core 保存的默认值。设置 `value` 会保留独立 default override，设置 `defaultValue` 在有
+它的 `type` 只读为 `'output'`；`value` 反映文本，`defaultValue` 反映 Core 默认值。设置
+`value` 会保留独立 default override，设置 `defaultValue` 在有
 override 时只改默认基线、否则改写文本；宿主的 `form.reset()` 通过 Core 清除 override
 并恢复默认文本。output 仍不会进入 successful-control 或 FormData。
 

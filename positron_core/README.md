@@ -81,15 +81,15 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
-  fieldset 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
+  fieldset、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档
-  顺序包含这些有 id 的 form-associated 元素（包括跨树显式关联的 fieldset/output），仍是
+  顺序包含这些有 id 的 form-associated 元素（包括跨树显式关联的 fieldset/object/output），仍是
   每次查询生成的有界 snapshot。Core 的 validation、successful control/multipart、
   dialog/default-submit 和原生激活路径复用 input/select/textarea/button 的 owner 解析；
   reset 另对 output 运行独立的默认值恢复 visitor，因此跨树元素不会只在 Browser 关系查询
   中出现；
-- FORM_OWNER 同样解析 `fieldset`/`output` 的祖先或显式 `form="id"` owner。两者都会出现在
-  `form.elements`，但不会进入 successful-control 或提交 visitor；Browser 可在此基础上
+- FORM_OWNER 同样解析 `fieldset`/`object`/`output` 的祖先或显式 `form="id"` owner。三者都会
+  出现在 `form.elements`，但不会进入 successful-control 或提交 visitor；Browser 可在此基础上
   提供 `fieldset.form`、`output.form` 与 fieldset 的独立子树控件 snapshot。output 的
   `value`/`defaultValue` 由 Core 保存 live text 与 default override；
   `PCore_FormResetById` 恢复该默认并清除 override，但仍不把 output 变成提交字段；
@@ -208,7 +208,7 @@ validation、不派发事件，也不导航；无效 submitter 或 owner 安全�
 `PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 按文档顺序读取字符串或文件名，调用方必须
 用 `PCore_FreeFormData` 释放 handle；文件的本地 picker 路径不会从该 API 暴露。快照与
 后续 DOM/value mutation 脱离，空值或无效 form id 安全失败。完整 live `FormData`、文件
-读取和其他 form-associated 元素仍不在 Core 合同内。
+读取、`img` 及其他尚未列出的 form-associated 元素仍不在 Core 合同内。
 
 ### 交互与事件
 

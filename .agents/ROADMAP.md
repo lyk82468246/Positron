@@ -45,8 +45,9 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   `:placeholder-shown`、有界 `:default`（默认 checked/default-selected 与 form 首个
   submit control），以及以 query receiver/document root 为 context 的直接、无参数
   `:scope`；Core 的 form-owner relation 还支持 input、select、textarea、button、fieldset、
-  output 的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回包含有 id
-  fieldset/output 的有界 snapshot；fieldset/output 不进入 successful-control 或 FormData visitor；
+  object、output 的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回包含有 id
+  fieldset/object/output 的有界 snapshot；fieldset/object/output 不进入 successful-control 或
+  FormData visitor；
   Core validation、submission、multipart、dialog/default-submit、reset 和按坐标的
   submit/reset activation 也共享该 owner 解析；Browser 另提供可选的
   `HTMLFormElement.reset()` 与 `requestSubmit([submitter])` 可取消事件/默认动作桥接，
@@ -63,13 +64,14 @@ callback 并在缺失属性时回退到 option 文本；`select.options`、`sele
 `length` 和 `option.index` 另外提供按可寻址 id 生成的有限 snapshot；`select.type` 根据
 live `multiple` attribute 提供只读的 `select-one`/`select-multiple` 模式，`optgroup.label`
 反映 label attribute（缺失为空字符串），而 `option.label` 的文本 fallback 保持不变。
-`fieldset.type`、`fieldset.form`、`fieldset.elements` 和 `output.form`/`output.labels` 也通过公共 bridge 提供有界的
+`fieldset.type`、`fieldset.form`、`fieldset.elements`、`object.form` 和 `output.form`/`output.labels` 也通过公共 bridge 提供有界的
 只读元数据与子树控件 snapshot：form owner 复用 Core 的祖先/显式 `form="id"` 规则，
-集合按 DOM 顺序返回含嵌套 fieldset 的可寻址 input/select/textarea/button/output，最多遍历
-256 个节点、返回 64 项；`form.elements` 另外按同一 owner 规则包含有 id 的 fieldset/output；
-output 的 label association 复用 Core relation；其 `type`、descendant-text `value`、带
+集合按 DOM 顺序返回含嵌套 fieldset 的可寻址 input/select/textarea/button/object/output，最多遍历
+256 个节点、返回 64 项；`form.elements` 另外按同一 owner 规则包含有 id 的 fieldset/object/output；
+output 的 label association 复用 Core relation；object 只提供 owner/collection 元数据，不
+创建 plugin 或替代内容窗口；output 的 `type`、descendant-text `value`、带
 独立 default override 的 `defaultValue` 和 form reset 恢复由 Core/Browser 统一提供，
-但不扩展其他 listed elements 或 live child mutation。
+但不扩展 img、其他 listed elements 或 live child mutation。
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过
 最多 64 层可寻址父链定位所属 select 并复用 `select.form`，显式 form owner 与 mutation

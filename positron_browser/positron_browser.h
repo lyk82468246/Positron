@@ -522,9 +522,9 @@ typedef struct PBrowserScriptFocusRequestCallbacksEx {
  * present `form` attribute resolves the first form with that id, while an
  * empty or invalid target has no owner and does not fall back to an ancestor.
  * Form-control relations enumerate supported input, select, textarea, button,
- * fieldset and output form-associated elements in document order, including
- * explicitly associated elements outside the form. Fieldsets and output are
- * included for the Browser form.elements collection but remain outside Core's
+ * fieldset, object and output form-associated elements in document order, including
+ * explicitly associated elements outside the form. Fieldsets, object and output
+ * are included for the Browser form.elements collection but remain outside Core's
  * successful-control visitor used by submission and FormData. The callback
  * returns 0 when found, 2 when the relationship is absent or outside the
  * bounded wrapper tree, and a negative value on adapter failure. */

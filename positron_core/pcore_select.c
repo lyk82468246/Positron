@@ -4868,6 +4868,7 @@ static int pcore_relation_is_control(dom_element *element)
 static int pcore_relation_is_non_successful_form_element(dom_element *element)
 {
     return pcore_element_name_is(element, "fieldset") ||
+            pcore_element_name_is(element, "object") ||
             pcore_element_name_is(element, "output");
 }
 
@@ -5108,10 +5109,10 @@ static int pcore_relation_attribute_value(dom_element *element,
     return (*out_value == NULL) ? 2 : 0;
 }
 
-/* Fieldsets and output elements are form-associated elements, but they are not
- * successful form controls. Their owner projection is shared by the DOM
- * relation walker, while the separate successful-control visitor continues to
- * exclude them from submission and FormData. */
+/* Fieldsets, object and output elements are form-associated elements, but they
+ * are not successful form controls. Their owner projection is shared by the
+ * DOM relation walker, while the separate successful-control visitor
+ * continues to exclude them from submission and FormData. */
 static int pcore_relation_form_associated_owner(dom_document *doc,
         dom_node *node, char *value, int value_capacity, int *out_bytes)
 {

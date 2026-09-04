@@ -496,7 +496,7 @@ TEST1189 覆盖 `output` 的 form-associated 组合：Core/Browser 按文档顺�
 `form="id"` 的 output 纳入 `form.elements`，fieldset 子树也能枚举 output；`output.form`、
 `labels`、`item()`/`namedItem()`、snapshot 隔离、name/form mutation 和无效 owner 均有断言。
 同一 fixture 通过 `PCore_FormDataById` 确认 output 不进入 successful-control 快照。该桥不
-实现其他 listed form-associated 元素、live collection、native 表单视觉或平台输入保证。
+实现 `img` 和其他尚未覆盖的 listed form-associated 元素、live collection、native 表单视觉或平台输入保证。
 
 TEST1190 覆盖 output 的值状态纵切：Core 直接断言 `value` 反映 descendant text，设置
 `value` 后保留独立的 default override，`defaultValue` 在有 override 时只改默认基线，
@@ -504,6 +504,13 @@ TEST1190 覆盖 output 的值状态纵切：Core 直接断言 `value` 反映 des
 验证同一语义可由脚本观察。夹具还确认 output 仍不进入 successful-control/FormData，且
 `output.type` 为只读的 `output`。该门不承诺完整 output listed-content 算法、live collection、
 native 表单视觉或平台输入保证。
+
+TEST1191 覆盖 `<object>` 的 listed form-associated 组合：Core/Browser 按文档顺序枚举
+form 内、fieldset 子树内和显式 `form="id"` 的 object；`object.form`、
+`fieldset.elements`、`item()`/`namedItem()`、owner mutation 与无效 owner 均有断言。
+object 只进入 owner/collection snapshot，不进入 validation、successful-control 或
+FormData，也不触发 plugin、替代内容窗口或 native 控件接线；img 和其他尚未覆盖的
+form-associated 元素仍不在本批范围。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

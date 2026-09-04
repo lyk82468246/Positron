@@ -46,7 +46,7 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
 int pcore_node_effectively_disabled(struct dom_node *node, bool *applies,
         bool *disabled);
 
-/* Resolve a supported form control's current owner from the DOM. A present
+/* Resolve a supported form-associated node's current owner from the DOM. A present
  * `form` attribute sets *out_has_attribute even when its value is empty or
  * invalid; in that case *out_owner remains NULL and no ancestor fallback is
  * allowed. When the attribute is absent, the nearest ancestor form is
