@@ -343,7 +343,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * FORM_CONTROL_DISABLED is a string relationship for input, button, select,
  * textarea, option and optgroup elements: it returns the effective disabled
  * state as UTF-8 "0" or "1", including the supported fieldset and optgroup
- * inheritance rules. It is unavailable for other element types.
+ * inheritance rules. FORM_OPTION_DEFAULT_SELECTED is a numeric relationship
+ * for option elements: it returns the option's parser/default-selected state
+ * as 1 or 0, independently of the live selected state. Both relationships
+ * are unavailable for other element types.
  * FORM_OWNER resolves a supported form-associated control's nearest ancestor
  * form unless a present `form` attribute explicitly names a form by id; an
  * empty, missing, or non-form target has no owner and never falls back to the
@@ -404,6 +407,7 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_CLIENT_X       42u
 #define PCORE_NODE_RELATION_LAYOUT_CLIENT_Y       43u
 #define PCORE_NODE_RELATION_FORM_CONTROL_DISABLED 44u
+#define PCORE_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED 45u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

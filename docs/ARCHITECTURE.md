@@ -95,7 +95,8 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 表单值、约束验证、提交、reset 和 successful controls；Core 统一持有
   effective-disabled 状态（含 disabled fieldset 的 first-legend exemption 与
   optgroup→option 继承），并通过 relation 44 向 Browser 提供只读 UTF-8 `"0"`/`"1"`
-  快照；选项选择和 successful submission 也消费同一状态；
+  快照；选项选择和 successful submission 也消费同一状态。relation 45 只为
+  `option` 提供 parser/default-selected 的数值快照，与 live selected 状态分离；
 - 表单关联关系：支持的 input、select、textarea、button 默认归最近祖先 form；存在
   `form="id"` 时解析文档中对应的 form，把 form 外控件纳入按文档顺序的有界
   `form.elements` snapshot，空值或无效目标不回退到祖先。validation、successful-control
@@ -165,6 +166,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   为空且 `placeholder` 值非空时匹配；type/value/placeholder mutation 会被后续查询读取，
   不支持的 input 类型、普通元素和带参数形式安全不匹配，且不扩大 native placeholder
   绘制或 SIP/IME 的宿主职责；
+- 同一 selector bridge 还提供有界 `:default`：checkbox/radio 依据 content `checked`
+  属性，`option` 依据 Core relation 45 的 default-selected 快照，submit-capable
+  button/input/image 依据其 form 中按文档顺序遇到的第一个 submit control。live
+  `.checked` 或 `selectedIndex` mutation 不改写这些默认状态；无 relation、非法元素或
+  带参数形式安全不匹配，且不承诺完整 Selectors 或 native 默认按钮视觉；
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，
@@ -366,8 +372,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - request 结束时的清理顺序仍由宿主编排：先 join worker，失败/过时 request 先取消 Browser 资源事务中的 pending 项，再读取 `PBrowser_NavigationCleanupGetInfo` 并复制有界结果，最后销毁 candidate/resource handle。该快照只提供 Browser-owned 状态，不改变 candidate state、不拥有宿主线程/response/窗口，也不把“可释放”误当成页面提交成功；
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，
-  relation 44 还把 effective-disabled 状态交给 Browser selector；宿主不复制 box tree、
-  滚动模型或 fieldset/optgroup 继承规则；
+  relation 44/45 还把 effective-disabled 与 option default-selected 状态交给 Browser
+  selector；宿主不复制 box tree、滚动模型、默认状态或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
   脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；

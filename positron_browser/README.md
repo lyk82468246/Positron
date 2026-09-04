@@ -263,14 +263,12 @@ PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(session,
 
 #### Selector bridge
 
-`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 共享同一有界
-selector parser。element query 以 receiver 为 scope；直接、无参数的 `:scope` 可使
-owner 出现在结果首位，并支持 `:scope > ...`（直接子代）和 `:scope ...`（后代），
-结果仍按文档顺序返回；无 scope 的 element query 继续排除 owner。document query 以
+`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 共享有界 selector
+parser。element query 以 receiver 为 scope；带直接、无参数的 `:scope` 时可按文档顺序
+包含 owner、直接子代和后代，无 scope 时排除 owner。document query 以
 `document.documentElement` 为 scope，`matches()`/`closest()` 以 receiver 为 scope。
-
-`:scope` 仅接受直接、无参数形式；嵌套参数、伪元素、未闭合和完整 Selectors 语法均
-fail closed。宿主只提供既有 DOM relation callbacks。
+嵌套参数、伪元素、未闭合和其他完整 Selectors 语法 fail closed；宿主只提供 DOM relation
+callback。
 
 #### `HTMLElement.focus()` / `blur()` 请求
 
@@ -387,7 +385,10 @@ filename/type 和空内容，不承诺完整文件读取、live collection 或�
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
-`:read-only`/`:read-write`/`:placeholder-shown`。`:visited` 通过 interaction Ex callback
+`:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/
+radio 的 content `checked`、option 的 Core relation 45 default-selected 快照，以及
+form 中按文档顺序的第一个 submit-capable button/input/image；live `.checked`/
+`selectedIndex` mutation 不会改写默认状态。`:visited` 通过 interaction Ex callback
 读取宿主批准结果，Browser 不保存 history；参数、分支和遍历有固定预算，非法或未注册
 callback fail closed。完整限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
 
@@ -667,15 +668,13 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 ## 当前边界
 
-- JavaScript 是显式 opt-in 的有限组合；History 有界且不持久，多窗口、opener 和跨窗口
-  history 未实现，也不提供完整 DOM/Web API 或安全沙箱。
-- `activeElement`、focus/blur、autofocus、几何和滚动 getter 依赖宿主/Core callback，
-  读取最近一次有界 layout 快照；Browser 不提供完整焦点算法、scroll tree、transforms、
-  Range/Selection、pinch zoom、scroll-margin 或 smooth/inertia。
-- `:visited` 仅反映宿主 Ex callback，`:scope` 仅是直接 compound/context 扩展；完整
-  Selectors、持久 history/隐私隔离、伪元素、namespace、shadow DOM、backdrop、富文本、
-  clipboard 和 IME 不在范围内。
-- 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收。
-- ABI、常量和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。
-
-参见 [`ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 与 [`KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+- JavaScript 显式 opt-in；History 有界且不持久；不提供完整 DOM/Web API 或安全沙箱。
+- `activeElement`、focus/blur、autofocus、几何和滚动 getter 依赖宿主/Core callback 与
+  最近一次 layout 快照；完整焦点/scroll tree、transforms、Range/Selection、pinch zoom、
+  scroll-margin 和 smooth/inertia 不在范围内。
+- selector bridge 是有界子集：`:visited` 只反映宿主 Ex callback，`:scope` 只提供直接
+  context，`:default` 只覆盖默认 checked/default-selected 与 form 首个 submit control；
+  完整 Selectors、持久 history/隐私隔离、伪元素、namespace、shadow DOM、backdrop、
+  富文本、clipboard 和 IME 不在范围内。
+- 系统 picker、OEM SIP/IME、真实触摸、旋转和焦点视觉必须由宿主和设备验收；ABI、常量
+  和结构布局只以 [`positron_browser.h`](positron_browser.h) 为准。

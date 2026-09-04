@@ -551,7 +551,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * FORM_CONTROL_DISABLED relation is a UTF-8 string "0"/"1" effective state
  * for input, button, select, textarea, option and optgroup elements; it lets
  * the Browser selector layer share Core's fieldset and optgroup inheritance
- * rules while remaining compatible with older hosts that do not provide it. */
+ * rules while remaining compatible with older hosts that do not provide it.
+ * FORM_OPTION_DEFAULT_SELECTED is a numeric option-only relation for the
+ * parser/default-selected state, not the live selected state; older hosts
+ * that do not provide it fall back conservatively in the selector bridge. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -601,6 +604,7 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_X       42u
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_Y       43u
 #define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_DISABLED 44u
+#define PBROWSER_SCRIPT_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED 45u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

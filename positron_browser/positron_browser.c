@@ -4728,6 +4728,23 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "type=String(owner.type||'').toLowerCase();if(!/^(|text|search|url|tel|email|password)$/.test(type)){"
         "return false;}}else if(t!=='textarea'){return false;}return owner.placeholder!==''&&"
         "String(owner.value||'')==='';}catch(placeholderStateError){return false;}}"
+        "function defaultButton9(owner){var form;var elements;var i;var n;var t;var type;"
+        "try{form=owner.form;if(!form||form.localName!=='form'){return false;}elements=form.elements;"
+        "if(!elements||typeof elements.length!=='number'){return false;}for(i=0;i<elements.length&&i<64;i++){"
+        "n=elements[i];if(!n){continue;}t=n.localName;type=String(n.type||'').toLowerCase();"
+        "if((t==='button'&&(type===''||type==='submit'))||(t==='input'&&(type==='submit'||type==='image'))){"
+        "return n.__id===owner.__id;}}}catch(defaultButtonError){return false;}return false;}"
+        "function defaultState9(owner){var t;var type;var value;"
+        "if(!owner){return false;}try{t=owner.localName;"
+        "if(t==='option'){value=relation9(owner,45,0);"
+        "if(value===1||value==='1'){return true;}if(value===0||value==='0'){return false;}"
+        "return owner.hasAttribute('selected');}"
+        "if(t==='input'){type=String(owner.type||'').toLowerCase();"
+        "if(type==='checkbox'||type==='radio'){return owner.hasAttribute('checked');}"
+        "if(type==='submit'||type==='image'){return defaultButton9(owner);}return false;}"
+        "if(t==='button'){type=String(owner.type||'').toLowerCase();"
+        "return (type===''||type==='submit')&&defaultButton9(owner);}return false;"
+        "}catch(defaultStateError){return false;}}"
         "function activeId9(){var id;"
         "if(typeof g.__pcoreGetActiveElement!=='function'){return '';}"
         "try{id=String(g.__pcoreGetActiveElement({})||'');}"
@@ -4861,6 +4878,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "readWriteState9(owner,name);}"
         "if(name==='placeholder-shown'){return arg===null&&"
         "placeholderState9(owner);}"
+        "if(name==='default'){return arg===null&&defaultState9(owner);}"
         "return false;}"
         "function matchSimple9(owner,selector,level,scope){var s=trim9(selector);var pos=0;var start;var end;var token;var body;var eq;var name;var value;var op;var actual;var quote;var c;var pseudo;var arg;var depth;"
         "if(!owner||s===''){return false;}if(level===undefined){level=0;}if(level!==level||level<0||level>8){return false;}if(s==='*'){return true;}"
@@ -6727,6 +6745,7 @@ static int p_browser_script_relation_is_count(unsigned int relation)
 {
     return relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_COUNT ||
+            relation == PBROWSER_SCRIPT_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_ATTRIBUTE_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_COUNT ||
             relation == PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_TYPE_AT ||

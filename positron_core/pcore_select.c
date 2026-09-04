@@ -5779,6 +5779,20 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
             }
         }
         break;
+    case PCORE_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED:
+        if (!pcore_element_name_is(element, "option")) {
+            err = 2;
+        } else {
+            bool default_selected;
+
+            default_selected = false;
+            err = dom_html_option_element_get_default_selected(
+                    (dom_html_option_element *) element, &default_selected);
+            if (err == DOM_NO_ERR && out_number != NULL) {
+                *out_number = default_selected ? 1 : 0;
+            }
+        }
+        break;
     case PCORE_NODE_RELATION_LABEL_CONTROL:
         err = pcore_relation_label_control((dom_document *) hDoc, element,
                 out_value, value_capacity, out_bytes);

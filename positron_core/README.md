@@ -90,6 +90,9 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
   first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回
   unavailable。该 relation 是只读 size-probe 快照，不触发 layout；
+- option default-selected relation（关系 45）：仅对 `option` 返回数值 `1`/`0`，表示
+  parser/default-selected 状态而不是 live `selected` 状态；其他元素返回 unavailable，
+  查询同样不触发 layout；
 - script/runtime 所需的有限 element metadata。
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
@@ -149,10 +152,12 @@ owner，也不会回退到祖先。Browser 的 `Element.form`/`form.elements` �
 服务 checkbox/radio input，option 的选择应使用 select/option API。
 
 `PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_FORM_CONTROL_DISABLED` 返回上述
-effective-disabled 状态。Browser 可注册同一 relation，把 `:disabled`/`:enabled` 与
-Core 的 fieldset/optgroup 规则保持一致；宿主不应在测试 helper 或 native 控件适配层
-复制这份继承判断。`PCore_SelectOptionInfo`、`PCore_SelectSetOptionSelected` 和
-successful form submission 同样消费该状态，因此 disabled option 不会被选中或提交。
+effective-disabled 状态；`PCORE_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED` 返回
+option 的默认 selected 快照。Browser 可注册同一 relation，把 `:disabled`/`:enabled`
+与 Core 的 fieldset/optgroup 规则保持一致，并让 `:default` 与 live selected state
+保持分离；宿主不应在测试 helper 或 native 控件适配层复制这些判断。
+`PCore_SelectOptionInfo`、`PCore_SelectSetOptionSelected` 和 successful form submission
+同样消费 effective-disabled/live selected 状态，因此 disabled option 不会被选中或提交。
 
 Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
 

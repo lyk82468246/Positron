@@ -428,6 +428,15 @@ document query 把 `document.documentElement` 作为 scope。`matches()`/`closes
 只命中自身。带参数、伪元素、尾随逗号及嵌套在当前不支持参数中的 scope 必须 fail closed；
 宿主只提供既有 DOM relation callback，不复制 selector 解析、scope 或排序语义。
 
+TEST1181 覆盖 Browser selector 的有界 `:default`：checkbox/radio 读取 content
+`checked` 属性作为 default state，`option` 通过 Core relation 45 读取
+default-selected 快照，submit-capable button/input/image 选择其 form 中按文档顺序的
+第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
+`.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
+逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
+默认状态或 selector 解析。为保持 WM6 上固定的 730 KiB Browser heap，初始、mutation 和
+非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

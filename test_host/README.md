@@ -72,11 +72,11 @@ tests=13,20,27,999
   `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
   属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
   伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/`:visited`/
-  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown`/`:scope` 查询，
+  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown`/`:scope`/`:default` 查询，
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
-  `formdata` 事件（TEST1146–1180）；
+  `formdata` 事件（TEST1146–1181）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -185,6 +185,14 @@ TEST1180 断言 Browser selector 的有界 `:scope` context：element query 把 
 把 `document.documentElement` 作为 scope。`matches()`/`closest()` 的 receiver 也只
 能匹配自身 scope；带参数、伪元素、尾随逗号和其他不支持形式必须 fail closed。宿主只
 提供既有 DOM relation callback，不复制 scope 解析、遍历或排序语义。
+
+TEST1181 断言 Browser selector 的有界 `:default`：checkbox/radio 依据 content
+`checked` 属性，option 依据 Core relation 45 的 default-selected 快照，submit-capable
+button/input/image 依据所属 form 中按文档顺序的首个 submit control。夹具把初始状态、
+query 顺序、默认属性移除、live `.checked`/`selectedIndex` mutation、`matches()`/
+`closest()` 和非法 selector 分开断言；多个短脚本 session 是固定 730 KiB heap 下的
+测试编排。宿主只提供 Core DOM relation/attribute callback、脚本接线和断言，不复制默认
+状态或 selector 语义。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

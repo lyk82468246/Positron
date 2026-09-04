@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1180
+#define TEST_MAX_NUMBER 1181
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43472,6 +43472,139 @@ static BOOL test1180_browser_selector_scope_contract(void)
             "Element and document selector queries support a bounded :scope"
             " context, preserve owner exclusion for unscoped queries, and"
             " fail closed for unsupported scope syntax.");
+    return TRUE;
+}
+
+/* TEST 1181 - bounded :default form-state selector contract. */
+static BOOL test1181_browser_selector_default_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='form'>"
+        "<input id='check-default' type='checkbox' checked>"
+        "<input id='check-live' type='checkbox' checked>"
+        "<input id='radio-default' type='radio' name='choice' checked>"
+        "<input id='radio-other' type='radio' name='choice'>"
+        "<input id='first-submit' type='submit' name='first' value='one'>"
+        "<button id='second-submit' type='submit'>Second</button>"
+        "<button id='implicit-submit'>Implicit</button>"
+        "<button id='reset' type='reset'>Reset</button>"
+        "<input id='image' type='image'>"
+        "<select id='select'><option id='option-default' selected>A</option>"
+        "<option id='option-other'>B</option></select>"
+        "</form><button id='outside-submit' type='submit'>Outside</button>"
+        "<p id='result'>idle</p></body></html>";
+    static const char INITIAL_PROBE[] =
+        "var a=document.getElementById('check-default'),"
+        "b=document.getElementById('check-live'),"
+        "c=document.getElementById('radio-default'),"
+        "d=document.getElementById('radio-other'),"
+        "e=document.getElementById('first-submit'),"
+        "f=document.getElementById('second-submit'),"
+        "g=document.getElementById('implicit-submit'),"
+        "h=document.getElementById('reset'),i=document.getElementById('image'),"
+        "j=document.getElementById('option-default'),k=document.getElementById('option-other'),"
+        "l=document.getElementById('outside-submit');"
+        "document.getElementById('result').textContent=String("
+        "a.matches(':default')&&b.matches(':default')&&c.matches(':default')&&"
+        "!d.matches(':default')&&e.matches(':default')&&!f.matches(':default')&&"
+        "!g.matches(':default')&&!h.matches(':default')&&!i.matches(':default')&&"
+        "j.matches(':default')&&!k.matches(':default')&&!l.matches(':default'));";
+    static const char ORDER_PROBE[] =
+        "var a=document.querySelectorAll(':default');"
+        "document.getElementById('result').textContent=String(a.length===5&&"
+        "a[0].id==='check-default'&&a[1].id==='check-live'&&"
+        "a[2].id==='radio-default'&&a[3].id==='first-submit'&&"
+        "a[4].id==='option-default');";
+    static const char MUTATION_ATTRIBUTE_PROBE[] =
+        "var a=document.getElementById('check-default');"
+        "a.removeAttribute('checked');"
+        "document.getElementById('result').textContent=String(!a.matches(':default'));";
+    static const char MUTATION_CHECKED_PROBE[] =
+        "var a=document.getElementById('check-live');"
+        "a.checked=false;"
+        "document.getElementById('result').textContent=String(a.matches(':default'));";
+    static const char MUTATION_RADIO_PROBE[] =
+        "var a=document.getElementById('radio-default');"
+        "a.checked=false;"
+        "document.getElementById('result').textContent=String(a.matches(':default'));";
+    static const char MUTATION_OPTION_PROBE[] =
+        "var a=document.getElementById('select'),b=document.getElementById('option-default');"
+        "a.selectedIndex=1;"
+        "document.getElementById('result').textContent=String(b.matches(':default'));";
+    static const char MUTATION_ORDER_PROBE[] =
+        "var a=document.getElementById('check-default'),"
+        "b=document.getElementById('check-live'),c=document.getElementById('radio-default'),"
+        "s=document.getElementById('select');"
+        "a.removeAttribute('checked');b.checked=false;c.checked=false;s.selectedIndex=1;"
+        "var q=document.querySelectorAll(':default');"
+        "document.getElementById('result').textContent=String("
+        "q.length===4&&q[0].id==='check-live'&&q[1].id==='radio-default'&&"
+        "q[2].id==='first-submit'&&q[3].id==='option-default');";
+    static const char INVALID_PROBE[] =
+        "var a=document.getElementById('option-default'),b=document.getElementById('second-submit');"
+        "document.getElementById('result').textContent=String("
+        "a.closest(':default')===a&&b.closest(':default')===null&&"
+        "document.querySelectorAll(':default(foo)').length===0&&"
+        "document.querySelectorAll('::default').length===0&&"
+        "document.querySelectorAll(':default,').length===0&&"
+        "b.matches(':default(foo)')===false);";
+    static const char EXPECTED[] = "true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, INITIAL_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 INITIAL FAIL", error[0] != '\0' ? error :
+                "Browser :default initial-state fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, ORDER_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 ORDER FAIL", error[0] != '\0' ? error :
+                "Browser :default query-order fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, MUTATION_ATTRIBUTE_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 ATTRIBUTE MUTATION FAIL", error[0] != '\0' ? error :
+                "Browser :default attribute mutation fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, MUTATION_CHECKED_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 CHECKED MUTATION FAIL", error[0] != '\0' ? error :
+                "Browser :default checked mutation fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, MUTATION_RADIO_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 RADIO MUTATION FAIL", error[0] != '\0' ? error :
+                "Browser :default radio mutation fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, MUTATION_OPTION_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 OPTION MUTATION FAIL", error[0] != '\0' ? error :
+                "Browser :default option mutation fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, MUTATION_ORDER_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 MUTATION ORDER FAIL", error[0] != '\0' ? error :
+                "Browser :default mutation order fixture failed.");
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture(HTML, INVALID_PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1181 INVALID FAIL", error[0] != '\0' ? error :
+                "Browser :default invalid-input fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1181 OK",
+            "Browser :default maps default checked controls, default selected"
+            " options and the first form submit control; live mutations and"
+            " unsupported syntax remain bounded and fail closed.");
     return TRUE;
 }
 
@@ -101592,6 +101725,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1178: ok = test1178_browser_form_data_event_contract(); break;
         case 1179: ok = test1179_browser_selector_visited_contract(); break;
         case 1180: ok = test1180_browser_selector_scope_contract(); break;
+        case 1181: ok = test1181_browser_selector_default_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
