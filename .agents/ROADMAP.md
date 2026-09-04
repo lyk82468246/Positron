@@ -62,6 +62,10 @@ callback 并在缺失属性时回退到 option 文本；`select.options`、`sele
 `length` 和 `option.index` 另外提供按可寻址 id 生成的有限 snapshot；`select.type` 根据
 live `multiple` attribute 提供只读的 `select-one`/`select-multiple` 模式，`optgroup.label`
 反映 label attribute（缺失为空字符串），而 `option.label` 的文本 fallback 保持不变。
+`fieldset.type`、`fieldset.form` 和 `fieldset.elements` 也通过公共 bridge 提供有界的
+只读元数据与子树控件 snapshot：form owner 复用 Core 的祖先/显式 `form="id"` 规则，
+集合按 DOM 顺序返回含嵌套 fieldset 的可寻址 input/select/textarea/button，最多遍历 256
+个节点、返回 64 项；不扩展其他 listed elements 或 live child mutation。
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过
 最多 64 层可寻址父链定位所属 select 并复用 `select.form`，显式 form owner 与 mutation

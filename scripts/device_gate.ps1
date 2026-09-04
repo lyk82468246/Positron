@@ -1081,14 +1081,12 @@ try {
             if ($logComplete) {
                 Write-Stage "emergency cleanup captured a complete prior log: $oldPath"
             } else {
-                Write-Stage "emergency cleanup could not capture a complete prior log; removing the stale directory to reclaim space: $oldPath"
+                Write-Stage "preserving prior gate directory during emergency cleanup (complete log unavailable): $oldPath"
+                $spaceReclaimPreserved += "$oldPath (log incomplete)"
+                continue
             }
             if (Remove-RemoteDirectoryBestEffort $oldPath) {
-                if ($logComplete) {
-                    $spaceReclaimRemoved += "$oldPath (complete log)"
-                } else {
-                    $spaceReclaimRemoved += "$oldPath (forced; incomplete log best effort)"
-                }
+                $spaceReclaimRemoved += "$oldPath (complete log)"
                 Write-Stage "removed prior gate directory during emergency space cleanup: $oldPath"
             } else {
                 Write-Stage "emergency cleanup removed what it could but a remote file or directory remains: $oldPath"

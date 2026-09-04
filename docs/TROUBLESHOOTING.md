@@ -55,9 +55,9 @@ Windows CE 可能在系统范围继续复用已加载 DLL。只替换一个文�
 两次内容稳定且包含最终 `TESTBENCH PASS`/`TESTBENCH FAIL` 标记后才会删除；未知名称、
 没有终态或复制不完整的目录默认保留。若目标卷或已知内部 object store 确认不足，门会
 再做一次有界应急回收：只处理门生成且不是当前运行目录的旧目录，先尽力把日志复制到本机
-`prior-logs`，然后允许删除旧目录来释放空间，即使终态日志仍不完整；这种记录会标成
-`forced; incomplete log best effort`。未知目录和当前目录不会因此被删除。回收后会重新
-查询容量，仍不足才阻止部署；删除失败仍保留目录，不能被当成通过条件。结果文件还会列出
+`prior-logs`，只有日志完整且稳定的目录才允许删除来释放空间。缺失或不完整的日志始终
+保留，避免空间压力覆盖证据。未知目录和当前目录不会因此被删除。回收后会重新查询容量，
+仍不足才阻止部署；删除失败仍保留目录，不能被当成通过条件。结果文件还会列出
 `storage_*`、`prior_cleanup_*`、`space_reclaim_removed/partial/preserved` 与 `current_cleanup`
 字段；若预检在部署
 前停止，仍可从 `device-gate-preflight.txt` 读取同一组空间、回收和最终状态摘要。

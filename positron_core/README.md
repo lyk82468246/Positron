@@ -86,6 +86,9 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   显式关联的控件，但仍是每次查询生成的有界 snapshot。Core 的 validation、successful
   control/multipart、dialog/default-submit、reset 和原生激活路径复用同一 owner 解析，
   因此跨树控件不会只在 Browser 关系查询中出现；
+- FORM_OWNER 同样解析 `fieldset` 的祖先或显式 `form="id"` owner，但 fieldset 不会被
+  `form.elements`、successful-control 或提交 visitor 当作控件；Browser 可在此基础上
+  提供 `fieldset.form` 与其独立的子树控件 snapshot；
 - form-control 的 effective-disabled relation（关系 44）：input、button、select、
   textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
   first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回

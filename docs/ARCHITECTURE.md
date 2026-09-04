@@ -206,6 +206,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   为空字符串并随 mutation 更新，`option.label` 的文本 fallback 保持不变。它们复用
   既有 attribute callback，不增加 ABI 或 native slot，也不实现 SELECT popup、layout/paint
   或平台输入行为。
+- `HTMLFieldSetElement.type`、`form` 和 `elements` 也有一个有界投影：`type` 固定为只读
+  的 `fieldset`，`form` 复用 FORM_OWNER 的祖先/显式 `form="id"` 规则，`elements` 从
+  fieldset 子树按 DOM 顺序生成独立 HTMLCollection snapshot，包含带 id 的 input、select、
+  textarea、button（可跨嵌套 fieldset），最多遍历 256 个节点、返回 64 项。该扩展不把
+  fieldset 作为 successful control，不覆盖其他 listed elements、无 id 节点或 live 子树
+  mutation，也不增加 ABI 或 native slot。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，

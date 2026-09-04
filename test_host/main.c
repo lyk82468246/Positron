@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1186
+#define TEST_MAX_NUMBER 1187
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43920,6 +43920,103 @@ static BOOL test1186_browser_select_group_metadata(void)
             "Browser exposes select-one/select-multiple mode and live"
             " optgroup label metadata while preserving option fallback and"
             " non-target fail-closed behavior.");
+    return TRUE;
+}
+
+/* TEST 1187 - bounded fieldset type/form/elements projection. */
+static BOOL test1187_browser_fieldset_form_elements(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='outer'><fieldset id='inside'>"
+        "<legend id='legend'><input id='legend-input' name='legend-name'>Legend</legend>"
+        "<div id='group-wrap'><label id='label'>Field"
+        "<input id='field-id' name='field-name'></label>"
+        "<select id='choice' name='choice-name'><option id='choice-option'>Choice</option>"
+        "</select></div>"
+        "<fieldset id='nested'><input id='nested-input' name='nested-name'></fieldset>"
+        "</fieldset><input id='outside' name='outside-name'></form>"
+        "<fieldset id='external' form='outer'><input id='external-input'"
+        " name='external-name'></fieldset>"
+        "<fieldset id='orphan' form='missing'><input id='orphan-input'"
+        " name='orphan-name'></fieldset>"
+        "<fieldset id='standalone'><textarea id='standalone-text'>Text</textarea></fieldset>"
+        "<div id='plain'>Plain</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('outer'),inside=document.getElementById('inside'),"
+        "nested=document.getElementById('nested'),external=document.getElementById('external'),"
+        "orphan=document.getElementById('orphan'),standalone=document.getElementById('standalone'),"
+        "legendInput=document.getElementById('legend-input'),field=document.getElementById('field-id'),"
+        "choice=document.getElementById('choice'),nestedInput=document.getElementById('nested-input'),"
+        "externalInput=document.getElementById('external-input'),plain=document.getElementById('plain');"
+        "var c=inside.elements;var initial=inside.type==='fieldset'&&inside.form===form&&"
+        "c.length===4&&c[0]===legendInput&&c[1]===field&&c[2]===choice&&"
+        "c[3]===nestedInput&&c.namedItem('field-name')===field&&"
+        "c.namedItem('choice-name')===choice&&c.namedItem('outside-name')===null;"
+        "c.pop();var snapshot=c.length===3&&inside.elements.length===4;"
+        "field.name='renamed-name';var mutation=inside.elements.namedItem('renamed-name')===field&&"
+        "inside.elements.namedItem('field-name')===null;"
+        "var nestedOk=nested.type==='fieldset'&&nested.form===form&&nested.elements.length===1&&"
+        "nested.elements[0]===nestedInput;"
+        "var externalOk=external.type==='fieldset'&&external.form===form&&"
+        "external.elements.length===1&&external.elements[0]===externalInput;"
+        "var noOwner=orphan.form===null&&standalone.form===null&&plain.form===null&&"
+        "plain.elements.length===0;"
+        "external.setAttribute('form','missing');var invalid=external.form===null;"
+        "external.removeAttribute('form');var released=external.form===null;"
+        "external.setAttribute('form','outer');var rebound=external.form===form;"
+        "document.getElementById('result').textContent=String(initial)+'|'+String(snapshot)+'|'"
+        "+String(mutation)+'|'+String(nestedOk)+'|'+String(externalOk)+'|'"
+        "+String(noOwner)+'|'+String(invalid)+'|'+String(released)+'|'+String(rebound);";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true";
+    HANDLE document;
+    char value[64];
+    char error[512];
+    int bytes;
+    BOOL core_ok;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    memset(value, 0, sizeof(value));
+    bytes = 0;
+    core_ok = document != NULL &&
+            PCore_NodeRelationById(document, "inside",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, value, sizeof(value),
+            &bytes, NULL) == 0 && strcmp(value, "outer") == 0 &&
+            PCore_NodeRelationById(document, "external",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, value, sizeof(value),
+            &bytes, NULL) == 0 && strcmp(value, "outer") == 0 &&
+            PCore_NodeRelationById(document, "orphan",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, value, sizeof(value),
+            &bytes, NULL) == 2 &&
+            PCore_NodeSetAttributeById(document, "external", "form",
+            "missing") == 0 &&
+            PCore_NodeRelationById(document, "external",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, value, sizeof(value),
+            &bytes, NULL) == 2 &&
+            PCore_NodeRemoveAttributeById(document, "external", "form") == 0 &&
+            PCore_NodeRelationById(document, "external",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, value, sizeof(value),
+            &bytes, NULL) == 2 &&
+            PCore_NodeSetAttributeById(document, "external", "form",
+            "outer") == 0 &&
+            PCore_NodeRelationById(document, "external",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, value, sizeof(value),
+            &bytes, NULL) == 0 && strcmp(value, "outer") == 0;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    memset(error, 0, sizeof(error));
+    if (!core_ok || !test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1187 FAIL", error[0] != '\0' ? error :
+                "Browser fieldset form/elements fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1187 OK",
+            "Browser exposes bounded fieldset type/form metadata and a"
+            " document-order elements snapshot; explicit owners, nested"
+            " controls and invalid-owner fail-closed behavior remain stable.");
     return TRUE;
 }
 
@@ -102046,6 +102143,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1184: ok = test1184_browser_select_option_collections(); break;
         case 1185: ok = test1185_browser_option_form_owner(); break;
         case 1186: ok = test1186_browser_select_group_metadata(); break;
+        case 1187: ok = test1187_browser_fieldset_form_elements(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

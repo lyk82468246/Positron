@@ -77,7 +77,7 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge（TEST1146–1186）；
+  的 typed property bridge（TEST1146–1187）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -228,6 +228,14 @@ attribute 返回 `select-one`/`select-multiple`，只读 setter 不落入 `type`
 fallback 与非目标元素的安全结果均由同一 fixture 断言。宿主只负责脚本接线、fixture 和
 断言，产品语义留在 Browser；该门不承诺 native SELECT popup、键盘/触摸、SIP/IME、
 layout/paint 或不同 DPI。
+
+TEST1187 断言 Browser/Core 的 `HTMLFieldSetElement` 组合：`fieldset.type` 为只读
+`fieldset`，`fieldset.form` 复用祖先与显式 `form="id"` owner 规则，`fieldset.elements`
+按 DOM 顺序返回含嵌套 fieldset 控件的独立 HTMLCollection snapshot；`item()`/
+`namedItem()`、snapshot 隔离、属性 mutation、无效 owner 和非 fieldset 空集合均有自动
+断言。宿主只提供既有 DOM relation/attribute callback，产品语义留在公共 DLL；集合仅
+投影带稳定 id 的 input/select/textarea/button，最多遍历 256 个节点、返回 64 项，不
+承诺其他 listed elements、无 id 节点、append/remove、native 控件视觉或平台输入。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

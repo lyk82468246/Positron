@@ -4784,6 +4784,8 @@ static int pcore_relation_parent(dom_node *node, char *value,
 static int pcore_relation_is_control(dom_element *element);
 static int pcore_relation_attribute_value(dom_element *element,
         const char *name, dom_string **out_value);
+static int pcore_relation_fieldset_form_owner(dom_document *doc,
+        dom_node *node, char *value, int value_capacity, int *out_bytes);
 
 static int pcore_relation_form_owner_is(dom_document *doc, dom_node *node,
         dom_element *wanted_form)
@@ -4932,6 +4934,10 @@ static int pcore_relation_form_owner(dom_document *doc, dom_node *node, char *va
 
     explicit_owner = NULL;
     has_form_attribute = 0;
+    if (pcore_element_name_is((dom_element *) node, "fieldset")) {
+        return pcore_relation_fieldset_form_owner(doc, node, value,
+                value_capacity, out_bytes);
+    }
     if (pcore_relation_is_control((dom_element *) node)) {
         err = pcore_form_control_owner(doc, node,
                 &explicit_owner, &has_form_attribute);
@@ -5010,6 +5016,80 @@ static int pcore_relation_attribute_value(dom_element *element,
         return 1;
     }
     return (*out_value == NULL) ? 2 : 0;
+}
+
+/* Fieldsets are form-associated elements, but they are not successful form
+ * controls. Keep their owner projection separate from the successful-control
+ * visitor so form.elements and submission retain their existing scope. */
+static int pcore_relation_fieldset_form_owner(dom_document *doc,
+        dom_node *node, char *value, int value_capacity, int *out_bytes)
+{
+    dom_string *form_value;
+    dom_element *candidate;
+    dom_node *current;
+    dom_node *parent;
+    dom_node_type type;
+    const char *data;
+    int result;
+    int err;
+
+    if (doc == NULL || node == NULL || value_capacity < 0 ||
+            (value == NULL && value_capacity > 0) || out_bytes == NULL ||
+            !pcore_element_name_is((dom_element *) node, "fieldset")) {
+        return 1;
+    }
+    *out_bytes = 0;
+    form_value = NULL;
+    result = pcore_relation_attribute_value((dom_element *) node, "form",
+            &form_value);
+    if (result == 1) {
+        return 1;
+    }
+    if (result == 0) {
+        data = dom_string_data(form_value);
+        candidate = NULL;
+        if (data != NULL && data[0] != '\0' &&
+                dom_document_get_element_by_id(doc, form_value,
+                &candidate) == DOM_NO_ERR && candidate != NULL &&
+                pcore_element_name_is(candidate, "form")) {
+            err = pcore_relation_copy_element_id((dom_node *) candidate,
+                    value, value_capacity, out_bytes);
+            dom_node_unref((dom_node *) candidate);
+            dom_string_unref(form_value);
+            return err == 0 ? 0 : (err == 2 ? 2 : 1);
+        }
+        if (candidate != NULL) {
+            dom_node_unref((dom_node *) candidate);
+        }
+        dom_string_unref(form_value);
+        return 2;
+    }
+
+    current = dom_node_ref(node);
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 1;
+        }
+        dom_node_unref(current);
+        current = parent;
+        if (current == NULL) {
+            break;
+        }
+        if (dom_node_get_node_type(current, &type) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) current, "form")) {
+            err = pcore_relation_copy_element_id(current, value,
+                    value_capacity, out_bytes);
+            dom_node_unref(current);
+            return err == 0 ? 0 : (err == 2 ? 2 : 1);
+        }
+    }
+    return 2;
 }
 
 static int pcore_relation_same_element_id(dom_element *first,

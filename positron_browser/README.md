@@ -65,10 +65,9 @@ viewport 位置换算为 CSS page 坐标，再调用
 有限的 `addEventListener('change', ...)` 监听器。方向真正翻转时，Browser 先完成
 同一次通知中的媒体列表刷新，再派发 orientation `change`，最后派发 visual viewport
 与 window 的 `resize`；仅尺寸或 DPR 改变而方向不变时不会伪造 orientation 事件。宽高允许为零，
-DPR 必须为正；参数必须是有限数值。完全相同的三元组仍返回成功，但不会重复派发
-事件。该入口只更新脚本侧快照，不触发 Core style/layout，也不自动运行 timer 或
-`requestAnimationFrame` 队列；宿主若页面在 resize handler 中排队下一帧，必须用
-已有的 frame pump 另行驱动。会话会追踪最多 64 个 `matchMedia()` 列表；有效
+DPR 必须为正且有限；相同快照只返回成功，不重复派发事件，也不触发
+Core style/layout 或任务队列；宿主需另行驱动 frame pump。会话会追踪最多 64 个
+`matchMedia()` 列表；有效
 viewport 或 DPR 变化时，只有 `matches` 实际翻转的列表才同步派发一次 `change`
 事件，且发生在同一次 `resize` 事件之前。事件提供 `media`、`matches`、
 `target`、`currentTarget`、`isTrusted` 和固定的非冒泡/不可取消字段；重复快照和
@@ -81,8 +80,7 @@ viewport 或 DPR 变化时，只有 `matches` 实际翻转的列表才同步派�
 固定为 `0`。宿主的有效 resize 会先同步派发 visual viewport `resize`，再派发
 window `resize`；有效 scroll 会先派发 visual viewport `scroll`，再派发 window
 `scroll`。重复快照保持静默，`onresize`/`onscroll` 与普通 listener 都可使用。
-该对象不模拟 pinch zoom、视觉 viewport 偏移或 nested overflow；宿主仍负责
-真实窗口、Core layout 和滚动应用。
+不模拟 pinch zoom、视觉偏移或 nested overflow；窗口与滚动由宿主负责。
 
 ### Layout geometry 与 `getBoundingClientRect()` / `getClientRects()`
 
@@ -100,8 +98,8 @@ relation callback 未注册时，查询失败；Browser 不触发 style/layout�
 和其中的矩形不与上一次调用共享身份。`Element.getBoundingClientRect()` 对同一份
 片段集合计算 union，返回有限的 `{left, top, right, bottom, x, y, width, height}`
 快照；空集合返回全零矩形。两种方法都会扣除当前 page-level `scrollX`/`scrollY`，
-并随 Browser 的滚动同步更新。宿主仍负责在 DOM mutation、resize 或页面提交后重新
-style/layout，并按实际滚动位置调用 `PBrowser_ScriptSessionNotifyScroll`。
+并随 Browser 的滚动同步更新。DOM mutation、resize 或页面提交后的 layout 与滚动同步
+仍由宿主驱动。
 
 该边界只覆盖 Core 已布局的普通 block 与 inline 行片段，不承诺 transforms、Range/
 Selection、完整 nested overflow 坐标传播、pinch zoom、平滑滚动或视觉像素精度。
@@ -113,8 +111,8 @@ Selection、完整 nested overflow 坐标传播、pinch zoom、平滑滚动或�
 `scrollHeight` getter。getter 每次从最近一次 Core layout 快照读取整数 CSS 像素：
 offset 包含 border，client 为 retained scrollport 的 padding 区域（滚动条覆盖在边缘，
 不从 client 尺寸再扣除固定宽度），scroll 包含有界后代内容 extent。Core 不提供快照时
-这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。宿主仍须在 DOM/样式
-变化后自行重新 layout，并继续通过 page-level scroll callback 管理页面滚动。对于有有效
+这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。DOM/样式变化后的
+layout 与 page scroll 仍由宿主驱动。对于有有效
 DOM `id` 且存在 retained overflow scrollbar 的支持 box，Browser 还安装
 `scrollLeft`/`scrollTop` getter/setter、`scrollTo()`、`scroll()` 和 `scrollBy()`；请求
 通过 callback 的 `element_id` 交给 Core clamp，成功后只在实际位置改变时派发一次目标元素的
@@ -158,9 +156,7 @@ retained overflow ancestor，并在每次滚动后重新读取目标矩形。没
 或 `all`。无可用 layout、矩形或 nested client bridge 时安全回退/ no-op；没有 scroll
 callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scrollTo()` 的本地状态规则。
 不支持 `smooth`、scroll-margin、完整滚动容器树、scroll chaining、scroll anchoring 或
-匿名祖先/目标。调用完成后，实际位置变化仍由既有 scroll callback
-和 `PBrowser_ScriptSessionNotifyScroll`/`PBrowser_ScriptSessionNotifyElementScroll`
-负责同步与事件去重。
+匿名祖先/目标。
 
 ### Script session
 
@@ -351,10 +347,8 @@ callback/mutation 失败均 fail closed。
 `select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 由 Browser
 提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；
 getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
-最多
-遍历 256 个节点并返回 64 个 option，缺少稳定 id 的元素不能投影；不提供完整 live
-完整 collection、`length` setter、append/remove、native SELECT popup、键盘/触摸、SIP/IME
-或视觉保证。
+最多遍历 256 个节点并返回 64 个 option；缺少稳定 id 的元素不投影，也不提供 live
+collection、`length` setter、append/remove 或 native popup。
 
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
 `input`、`select`、`textarea`、`button` 控件默认归最近祖先 form；控件存在 `form="id"`
@@ -367,6 +361,11 @@ getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
 `select.type` 按 live `multiple` attribute 返回只读的 `select-one`/`select-multiple`；
 `optgroup.label` 反映 `label` attribute，缺失为 `''` 且随 mutation 更新，`option.label`
 的文本 fallback 保持不变。仅提供脚本元数据，不创建 popup 或改变 layout/paint/平台输入。
+
+`fieldset.type` 固定为只读的 `'fieldset'`；`fieldset.form` 复用 Core 的 FORM_OWNER
+祖先/显式 `form="id"` 规则，无效 owner 返回 `null`。`fieldset.elements` 每次按 DOM
+顺序生成独立 HTMLCollection snapshot，投影子树中带 id 的 input/select/textarea/button
+（含嵌套 fieldset），最多遍历 256 个节点、返回 64 项；不覆盖无 id 节点或 live mutation。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
 `PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、
@@ -400,7 +399,7 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 启用且归属于该 form 的 submit-type input/button；`null`/`undefined` 等同省略 submitter，
 其他无效 owner 抛出 `TypeError`。
 最多 64 项，名称 64 字节、字符串值 128 字节、文件名和 MIME 类型各 64 字节；文件只保留
-filename/type 和空内容，不承诺完整文件读取、live collection 或其他 form-associated 元素。
+filename/type 和空内容，不承诺完整文件读取。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
@@ -409,7 +408,7 @@ radio 的 content `checked`、option 的 Core relation 45 default-selected 快�
 form 中按文档顺序的第一个 submit-capable button/input/image；live `.checked`/
 `selectedIndex` mutation 不会改写默认状态。`:visited` 通过 interaction Ex callback
 读取宿主批准结果，Browser 不保存 history；参数、分支和遍历有固定预算，非法或未注册
-callback fail closed。完整限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+callback fail closed；限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
 
 ### `dialog` 生命周期
 

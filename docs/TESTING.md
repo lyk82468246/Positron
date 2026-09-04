@@ -476,6 +476,14 @@ live mutation 下保持 `select-one`/`select-multiple`，只读 setter 不写入
 接线和 fixture，不复制属性语义；该离线门不承诺 native SELECT popup、键盘/触摸、SIP/IME、
 layout/paint 或不同 DPI 视觉。
 
+TEST1187 覆盖 Browser/Core 的 `HTMLFieldSetElement` 组合：`fieldset.type` 为只读
+`fieldset`，`fieldset.form` 复用祖先与显式 `form="id"` owner 规则，`fieldset.elements`
+按 DOM 顺序返回含嵌套 fieldset 控件的独立 HTMLCollection snapshot；`item()`/
+`namedItem()`、snapshot 隔离、属性 mutation、无效 owner 和非 fieldset 空集合均由同一
+fixture 断言。集合只投影带稳定 id 的 input/select/textarea/button，最多遍历 256 个节点、
+返回 64 项；其他 listed elements、无 id 节点、append/remove、native 控件视觉、键盘/触摸、
+SIP/IME 和不同 DPI 仍不在契约内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
@@ -596,9 +604,9 @@ object store；因此外部 `\Storage Card` 目标没有路径级 API 时会 fai
 `TESTBENCH FAIL` 终态，才允许删除；缺失、仍在增长或复制失败的日志会让目录保留并在
 输出中说明原因。若目标卷或已知内部 object store 确认空间不足，设备门会再做一次有界的
 应急回收：只处理门自己生成、且不是当前运行目录的旧目录，先尽力把日志复制到本地
-`prior-logs`；为释放已确认需要的空间，即使终态日志仍不完整，也允许删除这个旧目录，
-并在结果中标记为 `forced; incomplete log best effort`。未知目录不会删除，当前运行目录
-也不会在预检阶段删除。回收后会重新查询空间，仍不足才阻止部署。自定义 `-RemoteBase`
+`prior-logs`；只有日志完整且稳定的目录才允许删除来释放空间，日志不完整的目录始终
+保留。未知目录不会删除，当前运行目录也不会在预检阶段删除。回收后会重新查询空间，仍不足
+才阻止部署。自定义 `-RemoteBase`
 同样遵守这条规则；`device-gate-preflight.txt` 和 `device-gate-result.txt` 会记录
 `prior_cleanup_*`、`space_reclaim_removed/partial/preserved`、最终空间状态、`current_cleanup` 和
 `complete_log_retrieved`。

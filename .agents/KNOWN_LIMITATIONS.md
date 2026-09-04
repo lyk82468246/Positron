@@ -59,6 +59,12 @@
   写入；`optgroup.label` 反映自身 attribute，缺失时为空字符串，`option.label` 的文本
   fallback 保持不变。该桥复用通用 attribute callback，不增加 ABI 或 native slot；它不
   实现 native SELECT popup、完整 option/group 算法、layout/paint 或平台输入行为。
+- `fieldset.type`、`fieldset.form` 与 `fieldset.elements` 现在也有一个有界 Browser/Core
+  projection：`type` 固定为只读 `fieldset`，`form` 使用 Core FORM_OWNER 的祖先/显式
+  `form="id"` 规则，`elements` 从 fieldset 子树按 DOM 顺序生成独立 HTMLCollection
+  snapshot，包含带稳定 id 的 input/select/textarea/button（含嵌套 fieldset）。每次最多
+  遍历 256 个节点、返回 64 项；不覆盖其他 listed elements、无 id 节点、完整 live
+  collection 或 append/remove，也不改变 fieldset 在 successful-control 中的排除。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -108,9 +114,9 @@
   构造成功后 Browser 在 form 上同步派发非冒泡、不可取消的 `formdata` 事件，事件的
   `formData` 指向正在返回的对象；监听器可在构造返回前修改字段，`form.onformdata`
   也可用。它不触发 validation、submit/reset 事件、默认动作或导航。文件只返回 filename/type
-  和空内容，不暴露 picker 路径；完整 live
-  HTMLFormControlsCollection、文件读取和所有其他 form-associated 元素、fieldset/object/
-  image 归属及浏览器完整表单树规则仍未实现。
+  和空内容，不暴露 picker 路径；完整 live HTMLFormControlsCollection、文件读取和
+  fieldset 之外的其他 form-associated 元素（如 object/image）及浏览器完整表单树规则
+  仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -207,8 +213,8 @@
   没有路径级导出时，外部 `\Storage Card` 会 fail closed；OEM/WMDC 实际缓存需求仍可能
   超出告警线。正常清理要求 `test_host.log` 完整复制两次且终态标记稳定；若目标卷或已知
   内部 object store 确认不足，设备门会对门自己生成且非当前运行的旧目录做一次有界应急
-  回收，先尽力保存日志，必要时允许删除终态不完整的旧目录以释放空间。未知目录、当前
-  目录、删除失败的目录仍保留；应急回收后的复检仍不足才阻断部署。
+  回收，先尽力保存日志，只有日志完整且稳定时才允许删除来释放空间；日志不完整的目录、
+  未知目录、当前目录和删除失败的目录仍保留。应急回收后的复检仍不足才阻断部署。
 - 新增公共 DLL 导出后若直接使用增量链接产物，设备门曾出现已有 Browser bootstrap 的 `PSCRIPT_ERROR_TIMEOUT (-4)`；完整执行 `scripts\build.bat Debug rebuild` 并重新 staging 后恢复通过。看到这类 bootstrap 超时应先排除旧产物/混包，不能把一次增量构建失败当作产品回归。
 - 自动可视门只保证首帧和断言，不保证边距、字体、触摸、SIP、picker、旋转或失败网络体验。
 
@@ -436,6 +442,11 @@
   只读 setter、`optgroup.label` 的显式值/缺失回退/attribute mutation，以及 option label
   fallback 和非目标 fail-closed。该扩展不增加 ABI，不提供 native SELECT popup、键盘/触摸、
   SIP/IME、layout/paint 或不同 DPI 视觉保证。
+- TEST1187 是离线的 Browser/Core fieldset 组合夹具，无新增立即人工风险；自动门证明
+  `fieldset.type`、祖先/显式 `form="id"` owner、嵌套 fieldset 控件的
+  `elements` snapshot、`item()`/`namedItem()`、属性 mutation 和无效 owner 的 fail-closed。
+  该桥不把 fieldset 作为 successful control，也不承诺无 id 节点、完整 live collection、
+  append/remove、native 控件视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由
