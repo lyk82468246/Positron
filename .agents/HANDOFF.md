@@ -14,7 +14,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   阻断。这批没有新增公共产品语义，`test_host` 仍只是被部署的回归宿主。next733 的 Browser
   `formdata` 事件、`FormDataEvent` 构造器、`form.onformdata` 接线、TEST1178 夹具和公共
   边界文档继续保持；`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1192。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1193。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -39,7 +39,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、
   direct `submit()` 和 detached `FormData(form[, submitter])` 已形成同一套 by-id/成功控件
-  合同，构造成功后还会同步派发 `formdata`；TEST1170–1192 是当前相邻夹具，其中
+  合同，构造成功后还会同步派发 `formdata`；TEST1170–1193 是当前相邻夹具，其中
   TEST1179 覆盖宿主批准的链接 `:visited` 状态，TEST1180 覆盖 Browser selector 的
   有界 `:scope` context，TEST1181 覆盖 form 默认状态的 `:default`，TEST1182 覆盖
   option 的 live/default 属性桥，TEST1183 覆盖 option 的 value/label/text 基础属性桥，
@@ -51,7 +51,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   successful-control/FormData 的边界；TEST1190 覆盖 output 的 value/defaultValue
   状态、Core/Browser reset 恢复与只读 type；TEST1191 覆盖 object 的 listed
   form-associated owner/collection 关系与无效 owner 回退；TEST1192 覆盖 img 的
-  form-associated owner-only 关系与 listed collection 排除。
+  form-associated owner-only 关系与 listed collection 排除；TEST1193 覆盖 img 的
+  元数据属性、图片 cache 终态和 natural-size/complete relation。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -63,7 +64,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 近期 Browser/Core 已形成 focus/autofocus、selector、validation、form-owner、reset、
-  submission、FormData、fieldset/object/output collection、img owner 和生命周期组合；各能力边界与测试编号
+  submission、FormData、fieldset/object/output collection、img owner/metadata/resource state
+  和生命周期组合；各能力边界与测试编号
   以 [`docs/TESTING.md`](../docs/TESTING.md) 和 `KNOWN_LIMITATIONS.md` 为准，避免在
   handoff 中重复逐 next 记录历史实现细节。
 - Core/Browser 的 form-owner、validation、submission、dialog/default-submit、reset、
@@ -99,7 +101,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - next750 在 Core/Browser 公共关系中接入 `<img>` 的祖先/显式 `form="id"` owner；img
   保持不进入 `form.elements`、`fieldset.elements`、validation、successful-control 或
   FormData。TEST1192 与 TEST999 已通过最新设备门。
-- 当前唯一下一步是 next751：从 compatibility corpus、源码、设备日志或截图固定新的
+- next751 在 Core/Browser 中接入有界 `HTMLImageElement` 元数据和图片资源状态：Core
+  relation 46–48 投影 natural dimensions/complete，图片 cache 记住终态 fetch failure；
+  Browser 反映 raw attributes、boolean/尺寸属性、`currentSrc` 与 document.images
+  snapshot，明确不做 srcset/CORS/decode。TEST1193 与 TEST999 已通过最新设备门。
+- 当前唯一下一步是 next752：从 compatibility corpus、源码、设备日志或截图固定新的
   用户可见缺口，再在公共 DLL 中推进一条完整纵向能力；不要预先把尚未验证的 Web API
   或视觉行为写成承诺。
 
@@ -161,21 +167,21 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1192。
+- `TEST_MAX_NUMBER`：1193。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新设备门证据为 next750 的 img form-owner；双空间预检/空间回收窄门
-仍是部署安全基线：
+最新设备门证据为 next751 的 `HTMLImageElement` 元数据与资源状态；双空间预检/空间
+回收窄门仍是部署安全基线：
 
-- `tmp/device-runs/20260904-134423-next750/`；选择 `1192,999`，2/2 通过，零
+- `tmp/device-runs/20260904-144912-next751-adjacent/`；选择 `1192,1193,999`，3/3 通过，零
   `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，`complete_log_retrieved=True`。Storage Card
-  目标卷 `CeGetDiskFreeSpaceEx` 可用 65,648,885,760 字节，总计 511,101,108,224，
-  payload 9,761,284、reserve 1,048,576、required 10,809,860；内部 object store
-  `CeGetStoreInformation` 可用 8,769,536/32,942,080，cache reserve 65,536，目标与
+  目标卷 `CeGetDiskFreeSpaceEx` 可用 65,465,090,048 字节，总计 511,101,108,224，
+  payload 9,773,065、reserve 1,048,576、required 10,821,641；内部 object store
+  `CeGetStoreInformation` 可用 8,744,960/32,942,080，cache reserve 65,536，目标与
   内部检查均通过。15 个部署文件来自同一批 ARMV4I Debug 构建，完整日志取得后当前目录
   清理。
 
@@ -183,8 +189,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   构建。RAPI 只复用当前会话，不连接、选择、cradle、重置或杀死设备。
 - 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I build、同批 staging、
   `python scripts/audit_repo.py` 和 `git diff --check` 均已通过；Browser heap ceiling 为
-  730 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。TEST1192 日志确认 img owner-only
-  由公共 DLL 提供，且不进入 form collections、validation、successful-control 或 FormData。
+  730 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。TEST1193 日志确认 img 属性与资源状态
+  由公共 DLL 提供，成功 SVG 在 retained decode 后报告 120×60，终态失败/无 source/
+  未选 `srcset` 均保持约定的 complete/natural-size 结果；TEST999 的完成提示音也只请求一次。
 
 ## 当前人工验收状态
 
@@ -224,6 +231,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   的祖先/显式 form owner、无效 owner 与 owner mutation，并确认 img 不进入
   `form.elements`/`fieldset.elements`、validation、successful-control 或 FormData。该桥不改变
   图片资源、layout/paint 或 native 图像视觉；其余 form-associated 扩展仍需未来能力。
+- TEST1193 是离线的 Core/Browser `HTMLImageElement` 元数据与资源状态夹具，无新增立即
+  人工风险；自动门证明 `document.images` snapshot、attribute/boolean/尺寸属性边界、
+  非 `img` fail-closed，以及成功 SVG、终态 fetch failure、无 source 和仅 `srcset` 的
+  `naturalWidth`/`naturalHeight`/`complete` 投影，并确认 retained decode 后才暴露自然尺寸。
+  该门不改变 native 图像视觉，完整候选选择/CORS/decode/事件仍在未来或人工范围。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -279,18 +291,14 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next750
+## 唯一下一步：next752
 
-next734–743 的设备门与产品证据已在上文记录；部署空间护栏和失败停止规则详见
-`docs/TESTING.md` 与 `docs/TROUBLESHOOTING.md`，本节不重复实现细节。
-
-next744 的 select/optgroup metadata、next745 的 fieldset form/elements projection、
-next746 的 `form.elements` fieldset enumeration、next747 的 output form association/
-collection/labels、next748 的 output value/defaultValue/reset 与 next749 的 object form
-association/collection 均已完成；next750 正在验证 img owner-only projection，完成后才从 compatibility corpus、源码、日志或截图固定下一个真实产品缺口。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；
-不要仅为增加编号拆分提交，也不要在没有证据时扩大 ABI。完整滚动容器树、Range/Selection、
-pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache 和视觉
-差异仍是限制，不应在下一步中被误写成已支持。
+next751 的 img 元数据与资源状态纵切已经完成并通过自动设备门；部署空间护栏和失败
+停止规则详见 `docs/TESTING.md` 与 `docs/TROUBLESHOOTING.md`，本节不重复实现细节。
+下一步必须先从 compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，
+再决定进入哪个公共 DLL；不要预先把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器
+树、Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体
+查询语法、bfcache、srcset/CORS/decode 和图像事件仍是限制，不应在下一步中被误写成已支持。
 
 优先场景应同时满足：
 
@@ -300,12 +308,12 @@ pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查�
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 本批完成标准（next750）
+## 下一批完成标准（next752）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱现有布局、几何、滚动、history、生命周期、selector、focus、form-owner、reset、requestSubmit、direct-submit 或 FormData 旧/Ex 路径；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- next750 完成后 handoff 应覆盖为 next750 快照，ROADMAP 只保留当前尚未完成的纵向能力；
-  TEST1192 的 img owner-only 边界和设备证据应可由本文件与 `docs/TESTING.md` 复核。
+- 完成后 handoff 应覆盖为 next752 快照，ROADMAP 只保留当前尚未完成的纵向能力；
+  新测试、公共边界和设备证据应可由本文件与 `docs/TESTING.md` 复核。

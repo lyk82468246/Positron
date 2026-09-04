@@ -2630,6 +2630,7 @@ typedef struct pcore_image_resource {
     char *url;
     char *data;
     int len;
+    int state;
     int retained_attempted;
     void *native_image;
     void *svg;
@@ -2638,6 +2639,9 @@ typedef struct pcore_image_resource {
     int height;
     PCoreImageDecodeStats decode_stats;
 } pcore_image_resource;
+
+#define PCORE_IMAGE_RESOURCE_STATE_SUCCESS 1
+#define PCORE_IMAGE_RESOURCE_STATE_FAILED  2
 
 typedef struct pcore_image_cache {
     pcore_image_resource *head;
@@ -2893,23 +2897,67 @@ static pcore_image_resource *pcore_image_cache_find(
     return NULL;
 }
 
+static void pcore_image_resource_reset_retained(pcore_image_resource *entry)
+{
+    if (entry == NULL) {
+        return;
+    }
+    if (entry->native_image != NULL) {
+        PImage_FreeBitmap((PIMAGE_BITMAP) entry->native_image);
+    }
+    if (entry->shared_svg != NULL) {
+        pcore_shared_svg_release(entry->shared_svg);
+    } else if (entry->svg != NULL) {
+        PImage_FreeSvg((PIMAGE_SVG) entry->svg);
+    }
+    entry->retained_attempted = 0;
+    entry->native_image = NULL;
+    entry->svg = NULL;
+    entry->shared_svg = NULL;
+    entry->width = 0;
+    entry->height = 0;
+    memset(&entry->decode_stats, 0, sizeof(entry->decode_stats));
+}
+
 static int pcore_image_cache_store(pcore_image_cache *cache,
         const char *url, const char *data, int len)
 {
     pcore_image_resource *entry;
+    pcore_image_resource *existing;
+    char *copy;
     size_t url_len;
 
     if (cache == NULL || url == NULL || data == NULL || len <= 0) {
         return 1;
     }
+    copy = (char *) malloc((size_t) len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, data, (size_t) len);
+    existing = pcore_image_cache_find(cache, url);
+    if (existing != NULL) {
+        if (existing->state == PCORE_IMAGE_RESOURCE_STATE_SUCCESS) {
+            free(copy);
+            return 0;
+        }
+        free(existing->data);
+        existing->data = copy;
+        existing->len = len;
+        existing->state = PCORE_IMAGE_RESOURCE_STATE_SUCCESS;
+        pcore_image_resource_reset_retained(existing);
+        return 0;
+    }
     entry = (pcore_image_resource *) malloc(sizeof(*entry));
     if (entry == NULL) {
+        free(copy);
         return 1;
     }
     entry->next = NULL;
     entry->url = NULL;
-    entry->data = NULL;
-    entry->len = 0;
+    entry->data = copy;
+    entry->len = len;
+    entry->state = PCORE_IMAGE_RESOURCE_STATE_SUCCESS;
     entry->retained_attempted = 0;
     entry->native_image = NULL;
     entry->svg = NULL;
@@ -2920,16 +2968,44 @@ static int pcore_image_cache_store(pcore_image_cache *cache,
 
     url_len = strlen(url);
     entry->url = (char *) malloc(url_len + 1);
-    entry->data = (char *) malloc((size_t) len);
-    if (entry->url == NULL || entry->data == NULL) {
+    if (entry->url == NULL) {
         free(entry->url);
         free(entry->data);
         free(entry);
         return 1;
     }
     memcpy(entry->url, url, url_len + 1);
-    memcpy(entry->data, data, (size_t) len);
-    entry->len = len;
+    entry->next = cache->head;
+    cache->head = entry;
+    return 0;
+}
+
+static int pcore_image_cache_store_failure(pcore_image_cache *cache,
+        const char *url)
+{
+    pcore_image_resource *entry;
+    size_t url_len;
+
+    if (cache == NULL || url == NULL || url[0] == '\0') {
+        return 1;
+    }
+    entry = pcore_image_cache_find(cache, url);
+    if (entry != NULL) {
+        return entry->state == PCORE_IMAGE_RESOURCE_STATE_FAILED ? 0 : 1;
+    }
+    entry = (pcore_image_resource *) malloc(sizeof(*entry));
+    if (entry == NULL) {
+        return 1;
+    }
+    memset(entry, 0, sizeof(*entry));
+    url_len = strlen(url);
+    entry->url = (char *) malloc(url_len + 1);
+    if (entry->url == NULL) {
+        free(entry);
+        return 1;
+    }
+    memcpy(entry->url, url, url_len + 1);
+    entry->state = PCORE_IMAGE_RESOURCE_STATE_FAILED;
     entry->next = cache->head;
     cache->head = entry;
     return 0;
@@ -3110,7 +3186,7 @@ int pcore_image_resource_get(dom_document *doc, const char *url,
     }
     cache = pcore_image_cache_get(doc, 0);
     entry = pcore_image_cache_find(cache, url);
-    if (entry == NULL) {
+    if (entry == NULL || entry->state != PCORE_IMAGE_RESOURCE_STATE_SUCCESS) {
         return 1;
     }
     if (out_data != NULL) {
@@ -3259,13 +3335,17 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
     url[url_len] = '\0';
     cached = pcore_image_cache_find(ic->cache, url);
     if (cached != NULL) {
-        ic->fetched++;
+        if (cached->state == PCORE_IMAGE_RESOURCE_STATE_SUCCESS) {
+            ic->fetched++;
+        }
     } else if (ic->fetch != NULL &&
             ic->fetch(ic->pw, url, &data, &len) == 0 &&
             data != NULL && len > 0) {
         if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
             ic->fetched++;
         }
+    } else if (ic->fetch != NULL) {
+        (void) pcore_image_cache_store_failure(ic->cache, url);
     }
     if (data != NULL && ic->freefn != NULL) {
         ic->freefn(ic->pw, data);
@@ -5707,6 +5787,101 @@ static int pcore_relation_child_node_field(dom_node *node,
     return 0;
 }
 
+/* Project the image resource state that Core already owns into the typed DOM
+ * relation bridge. This is a read-only snapshot: it never fetches, decodes or
+ * lays out an image. A src/srcset-less image is complete with zero natural
+ * dimensions; an image with a source is incomplete until a cached body has
+ * reached a retained decode attempt. A remembered fetch failure is complete
+ * with zero dimensions, matching the browser's terminal broken-resource
+ * state without exposing cache or decoder handles. */
+static int pcore_relation_image_resource(dom_document *doc,
+        dom_element *element, unsigned int relation, int *out_number)
+{
+    dom_string *src;
+    dom_string *srcset;
+    pcore_image_cache *cache;
+    pcore_image_resource *entry;
+    const char *src_data;
+    int has_src;
+    int has_srcset;
+    int result;
+
+    if (out_number == NULL) {
+        return 1;
+    }
+    *out_number = 0;
+    if (doc == NULL || element == NULL ||
+            !pcore_element_name_is(element, "img")) {
+        return 2;
+    }
+    src = NULL;
+    srcset = NULL;
+    result = pcore_relation_attribute_value(element, "src", &src);
+    if (result == 1) {
+        return 1;
+    }
+    result = pcore_relation_attribute_value(element, "srcset", &srcset);
+    if (result == 1) {
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        return 1;
+    }
+    has_src = src != NULL && dom_string_byte_length(src) > 0;
+    has_srcset = srcset != NULL && dom_string_byte_length(srcset) > 0;
+    if (!has_src) {
+        if (srcset != NULL) {
+            dom_string_unref(srcset);
+        }
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        /* Source-set selection is not implemented; keep that state visibly
+         * incomplete instead of claiming that a candidate was loaded. */
+        if (relation == PCORE_NODE_RELATION_IMAGE_COMPLETE) {
+            *out_number = has_srcset ? 0 : 1;
+        }
+        return 0;
+    }
+    src_data = dom_string_data(src);
+    cache = pcore_image_cache_get(doc, 0);
+    entry = pcore_image_cache_find(cache, src_data);
+    if (relation == PCORE_NODE_RELATION_IMAGE_COMPLETE) {
+        if (entry != NULL &&
+                (entry->state == PCORE_IMAGE_RESOURCE_STATE_FAILED ||
+                 (entry->state == PCORE_IMAGE_RESOURCE_STATE_SUCCESS &&
+                  entry->retained_attempted))) {
+            *out_number = 1;
+        }
+    } else if (entry != NULL &&
+            entry->state == PCORE_IMAGE_RESOURCE_STATE_SUCCESS &&
+            entry->retained_attempted) {
+        if (relation == PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH) {
+            *out_number = entry->width > 0 ? entry->width : 0;
+        } else if (relation == PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT) {
+            *out_number = entry->height > 0 ? entry->height : 0;
+        } else {
+            dom_string_unref(src);
+            if (srcset != NULL) {
+                dom_string_unref(srcset);
+            }
+            return 1;
+        }
+    } else if (relation != PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH &&
+            relation != PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT) {
+        dom_string_unref(src);
+        if (srcset != NULL) {
+            dom_string_unref(srcset);
+        }
+        return 1;
+    }
+    dom_string_unref(src);
+    if (srcset != NULL) {
+        dom_string_unref(srcset);
+    }
+    return 0;
+}
+
 /* Return one component of the current border-box geometry. The relation
  * bridge intentionally exposes only integer CSS-pixel snapshots; it never
  * lends the internal box tree to a script host. Fragment components use the
@@ -5974,6 +6149,12 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
                 *out_number = default_selected ? 1 : 0;
             }
         }
+        break;
+    case PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH:
+    case PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT:
+    case PCORE_NODE_RELATION_IMAGE_COMPLETE:
+        err = pcore_relation_image_resource((dom_document *) hDoc, element,
+                relation, out_number);
         break;
     case PCORE_NODE_RELATION_LABEL_CONTROL:
         err = pcore_relation_label_control((dom_document *) hDoc, element,

@@ -519,6 +519,16 @@ img；`img.form`、无效 owner、owner mutation 与 snapshot/命名集合排除
 validation、successful-control 或 FormData；该门不改变既有图片资源发现、解码、layout/paint，
 也不承诺 native 图像视觉、完整 form-associated 扩展或 live collection。
 
+TEST1193 覆盖 `HTMLImageElement` 的有界元数据与 Core 资源状态：离线 Browser fixture
+断言 `document.images` 的 DOM 顺序 snapshot、raw `src`/`srcset`/`sizes`/`useMap` 等
+attribute reflection、`crossOrigin` 的 `null` 回退、boolean/尺寸 setter 边界、
+非 `img` 的安全结果，以及 `naturalWidth`/`naturalHeight`/`complete` 的资源状态投影；
+Core fixture 另外断言成功 SVG、终态 fetch failure、无 source 和仅有 `srcset` 的状态，
+并验证 layout 后 retained decode 才暴露自然尺寸。该门不实现或承诺 `srcset`/`sizes`
+选择、绝对 URL、CORS/referrer enforcement、`decode()`、load/error 事件、image-map 命中、
+完整 loading/fetch-priority 策略或 native 图像视觉；宿主只提供资源 callback、DOM 接线、
+fixture 与断言，产品语义位于 Core/Browser。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1192
+#define TEST_MAX_NUMBER 1193
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -44683,6 +44683,180 @@ static BOOL test1192_browser_img_form_association(void)
     return TRUE;
 }
 
+typedef struct image_resource_test_ctx {
+    int calls;
+    int matched;
+    int frees;
+} image_resource_test_ctx;
+
+static void image_resource_free(void *pw, char *data);
+static int image_svg_fetch(void *pw, const char *url,
+        char **out_data, int *out_len);
+
+/* TEST 1193 - bounded HTMLImageElement metadata and resource state. */
+static BOOL test1193_browser_img_properties(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='loaded' name='loaded-name' alt='Loaded' "
+        "src='/img/test.svg'>"
+        "<img id='broken' alt='Broken' src='/img/missing.svg'>"
+        "<img id='empty' alt='Empty'>"
+        "<img id='set-only' alt='Set only' srcset='/img/test.svg 1x'>"
+        "<div id='not-image'>plain</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{margin:0;}img{display:block;width:120px;height:60px;}";
+    static const char META_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='img' name='img-name' alt='A' src='/raw.svg'>"
+        "<img id='empty'><img id='set-only' srcset='/raw.svg 1x'>"
+        "<div id='not-image'>plain</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char META_PROBE_COLLECTION[] =
+        "(function(){var a=document.images,i=document.getElementById('img');"
+        "var ok=a.length===3&&a.item(0)===i&&a.item(3)===null&&"
+        "a.namedItem('img')===i&&i.alt==='A'&&i.src==='/raw.svg'&&"
+        "i.srcset===''&&i.sizes===''&&i.crossOrigin===null&&i.useMap===''&&"
+        "i.isMap===false&&i.controls===false&&i.width===0&&i.height===0&&"
+        "i.currentSrc==='/raw.svg';document.getElementById('result')"
+        ".textContent=String(ok);})();";
+    static const char META_PROBE_STATE[] =
+        "(function(){var i=document.getElementById('img'),e=document.getElementById('empty'),"
+        "s=document.getElementById('set-only'),d=document.getElementById('not-image');"
+        "var ok=i.naturalWidth===0&&i.complete===false&&e.complete===true&&"
+        "s.currentSrc===''&&s.naturalWidth===0&&s.complete===false&&"
+        "d.src===undefined&&d.naturalWidth===undefined&&d.complete===undefined;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char META_PROBE_MUTATE[] =
+        "(function(){var i=document.getElementById('img');i.srcset='/raw.svg 2x';"
+        "i.sizes='120px';i.crossOrigin='anonymous';i.useMap='#map';i.isMap=true;"
+        "i.controls=true;i.width=77;i.height=33;i.referrerPolicy='no-referrer';"
+        "i.decoding='async';i.loading='lazy';i.fetchPriority='high';var ok="
+        "i.srcset==='/raw.svg 2x'&&i.sizes==='120px'&&i.crossOrigin==='anonymous'&&"
+        "i.useMap==='#map'&&i.isMap===true&&i.controls===true&&i.width===77&&"
+        "i.height===33&&i.referrerPolicy==='no-referrer'&&i.decoding==='async'&&"
+        "i.loading==='lazy'&&i.fetchPriority==='high';document.getElementById('result')"
+        ".textContent=String(ok);})();";
+    static const char META_PROBE_BOUNDARY[] =
+        "(function(){var i=document.getElementById('img'),d=document.getElementById('not-image');"
+        "i.crossOrigin=null;i.isMap=false;i.controls=false;var bad=false;try{i.width=-1;}"
+        "catch(e){bad=true;}var ok=i.crossOrigin===null&&i.isMap===false&&"
+        "i.controls===false&&bad&&d.src===undefined;document.getElementById('result')"
+        ".textContent=String(ok);})();";
+    HANDLE document;
+    HANDLE sheet;
+    image_resource_test_ctx ctx;
+    char error[512];
+    int found;
+    int fetched;
+    int found_again;
+    int fetched_again;
+    int number;
+    int vw;
+    int vh;
+    BOOL core_ok;
+    BOOL metadata_ok;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(error, 0, sizeof(error));
+    found = 0;
+    fetched = 0;
+    found_again = 0;
+    fetched_again = 0;
+    number = 0;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    core_ok = FALSE;
+    metadata_ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL && PCore_FetchImageResources(document,
+            image_svg_fetch, image_resource_free, &ctx, &found, &fetched) == 0 &&
+            found == 2 && fetched == 1 && ctx.calls == 2 &&
+            ctx.matched == 1 && ctx.frees == 1 &&
+            PCore_FetchImageResources(document, image_svg_fetch,
+            image_resource_free, &ctx, &found_again, &fetched_again) == 0 &&
+            found_again == 2 && fetched_again == 1 && ctx.calls == 2 &&
+            ctx.frees == 1 &&
+            PCore_NodeRelationById(document, "loaded",
+            PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0, NULL,
+            &number) == 0 && number == 0 &&
+            PCore_NodeRelationById(document, "loaded",
+            PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+            &number) == 0 && number == 0 &&
+            PCore_NodeRelationById(document, "broken",
+            PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+            &number) == 0 && number == 1 &&
+            PCore_NodeRelationById(document, "empty",
+            PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+            &number) == 0 && number == 1 &&
+            PCore_NodeRelationById(document, "set-only",
+            PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+            &number) == 0 && number == 0 &&
+            PCore_NodeRelationById(document, "not-image",
+            PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+            &number) == 2) {
+        core_ok = TRUE;
+    }
+    if (core_ok) {
+        test_host_set_device_viewport(vw, vh);
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/img-properties.css");
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, vw, vh) != 0 ||
+                PCore_NodeRelationById(document, "loaded",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0, NULL,
+                &number) != 0 || number != 120 ||
+                PCore_NodeRelationById(document, "loaded",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT, 0, NULL, 0, NULL,
+                &number) != 0 || number != 60 ||
+                PCore_NodeRelationById(document, "loaded",
+                PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+                &number) != 0 || number != 1) {
+            core_ok = FALSE;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    metadata_ok =
+            test_browser_raw_string_fixture(META_HTML, META_PROBE_COLLECTION,
+            "true", error, sizeof(error)) &&
+            test_browser_raw_string_fixture(META_HTML, META_PROBE_STATE,
+            "true", error, sizeof(error)) &&
+            test_browser_raw_string_fixture(META_HTML, META_PROBE_MUTATE,
+            "true", error, sizeof(error)) &&
+            test_browser_raw_string_fixture(META_HTML, META_PROBE_BOUNDARY,
+            "true", error, sizeof(error));
+    test_host_set_device_viewport(vw, vh);
+    if (!core_ok || !metadata_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d metadata=%d fetch=%d/%d again=%d/%d calls=%d",
+                    core_ok, metadata_ok, found, fetched, found_again,
+                    fetched_again, ctx.calls);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1193 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1193 OK",
+            "img metadata reflects bounded content attributes and Core image"
+            " cache state; natural dimensions and complete stay fail-closed"
+            " without srcset selection, CORS or decode() semantics.");
+    return TRUE;
+}
+
 static BOOL test12_render(void)
 {
     static const char *HTML =
@@ -45040,12 +45214,6 @@ static BOOL test_layout(void)
 /* Scans <img src>, fetches into the document cache, then scans again to   */
 /* prove cache hits avoid duplicate fetches. No decode/paint yet.          */
 /* -------------------------------------------------------------------- */
-typedef struct image_resource_test_ctx {
-    int calls;
-    int matched;
-    int frees;
-} image_resource_test_ctx;
-
 static int image_resource_fetch(void *pw, const char *url,
                                 char **out_data, int *out_len)
 {
@@ -102812,6 +102980,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1190: ok = test1190_browser_output_value_default_reset(); break;
         case 1191: ok = test1191_browser_object_form_association(); break;
         case 1192: ok = test1192_browser_img_form_association(); break;
+        case 1193: ok = test1193_browser_img_properties(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

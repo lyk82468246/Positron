@@ -558,7 +558,14 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * rules while remaining compatible with older hosts that do not provide it.
  * FORM_OPTION_DEFAULT_SELECTED is a numeric option-only relation for the
  * parser/default-selected state, not the live selected state; older hosts
- * that do not provide it fall back conservatively in the selector bridge. */
+ * that do not provide it fall back conservatively in the selector bridge.
+ * IMAGE_NATURAL_WIDTH, IMAGE_NATURAL_HEIGHT and IMAGE_COMPLETE are numeric
+ * img-only snapshots. They read the Core-owned image cache without fetching,
+ * decoding or laying out; natural dimensions remain zero until a retained
+ * decode attempt, complete is true for a source-less image or terminal
+ * cached failure, and a non-empty srcset without a selected src is incomplete.
+ * Older hosts that do not provide these relations leave the Browser getters
+ * at their conservative zero/false values. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -609,6 +616,9 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_LAYOUT_CLIENT_Y       43u
 #define PBROWSER_SCRIPT_NODE_RELATION_FORM_CONTROL_DISABLED 44u
 #define PBROWSER_SCRIPT_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED 45u
+#define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_NATURAL_WIDTH  46u
+#define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_NATURAL_HEIGHT 47u
+#define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_COMPLETE       48u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

@@ -87,6 +87,15 @@
 - SVG 是 libsvgtiny 与 NanoSVG 的有限组合，不支持完整 SVG DOM、filter、mask、animation、script、external resource、完整 paint server 和任意文本排版。
 - 径向渐变焦点、spread method、复杂继承和部分 alpha/compositing 边界仍不完整。
 - Core 的页面 image cache 有固定数量和字节预算，超限或解码失败时降级为 alt/src 文本。
+- `HTMLImageElement` 目前只有有界的属性/资源状态 bridge：`alt`、raw `src`/`srcset`/
+  `sizes`/`useMap`、`crossOrigin`、`isMap`、`controls`、`width`/`height`、
+  `referrerPolicy`、`decoding`、`loading`、`fetchPriority`、`currentSrc` 以及
+  `naturalWidth`/`naturalHeight`/`complete`。Core relation 查询不 fetch、decode 或 layout；
+  无 source 的图片 complete 且自然尺寸为 0，非空 `srcset` 未选出 raw `src` 时保持
+  incomplete，成功资源要等 retained decode attempt，终态 fetch failure 则 complete 且
+  尺寸为 0。当前 `currentSrc` 是 raw `src`，不做绝对 URL 或候选选择；不实现
+  `srcset`/`sizes` 选择、CORS/referrer enforcement、`decode()`、load/error 事件、完整
+  loading/fetch-priority 策略、image-map 命中或 native 图像视觉。
 
 ## DOM、表单与事件
 
@@ -95,7 +104,7 @@
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
-  纳入跨树 listed form-associated 元素，img 只提供 FORM_OWNER，不进入 `form.elements` 或
+  纳入跨树 listed form-associated 元素；在表单关系中 img 只提供 FORM_OWNER，不进入 `form.elements` 或
   `fieldset.elements`；fieldset/object/output 只进入 `form.elements`，不会进入 successful-control
   或 FormData visitor。output 也可读取 `form` 与 `labels`，并通过 Core 提供 descendant-text
   `value`、带独立 override 的 `defaultValue` 以及 reset 恢复；这不是完整 listed-content
@@ -478,6 +487,12 @@
   的祖先/显式 `form="id"` owner、无效 owner 与 owner mutation，同时确认 img 不属于
   `form.elements`/`fieldset.elements`，也不进入 successful-control 或 FormData。该桥不扩展
   img 的完整资源/图像行为、其他 form-associated 扩展、live collection、native 表单视觉或平台输入。
+- TEST1193 是离线的 Core/Browser `HTMLImageElement` 元数据与资源状态夹具，无新增立即
+  人工风险；自动门证明 `document.images` snapshot、attribute/boolean/尺寸属性边界、
+  非 `img` fail-closed，以及成功 SVG、终态 fetch failure、无 source 和仅 `srcset` 的
+  `naturalWidth`/`naturalHeight`/`complete` 投影，并确认 retained decode 后才暴露自然
+  尺寸。该门不证明 `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、`decode()`、
+  load/error 事件、image-map 命中或 native 图像视觉；这些仍是未来能力或人工观察范围。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

@@ -88,6 +88,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - UTF-8 HTML 解析为 libdom 文档；
 - CSS 解析、cascade、媒体条件和整树 computed style；
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
+- 图片 cache 按当前文档的 raw `src` key 记录成功与终态失败；图片 relation 46–48
+  只读地投影 `naturalWidth`、`naturalHeight` 和 `complete`。relation 查询不会 fetch、
+  decode 或 layout：无 `src`/`srcset` 的图片 complete 且尺寸为 0，非空 `srcset` 在
+  没有选定 `src` 时保持 incomplete，成功资源要等 retained decode attempt 后才有自然
+  尺寸，失败资源 complete 且尺寸为 0；`srcset` 选择、CORS、`decode()` 和事件不在
+  Core 边界内；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box union 和 inline 行片段快照，供 Browser 组合 `getBoundingClientRect()` 与 `getClientRects()`；
 - 为已布局的常见 block、replaced、table/flex box 提供最近一次 layout 的 offset、client 和 scroll 尺寸快照；这些是整数 CSS 像素的只读 relation，不触发 relayout；同时为支持的、有 DOM id 的 overflow box 保留滚动条位置，提供关系 38/39、按 id setter 和 pointer snapshot；
@@ -165,6 +171,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `time`/`datetime-local`；`range` 的默认范围也算受限范围，underflow/overflow 才是
   out-of-range，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和
   单独 stepMismatch 安全不匹配；
+- `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
+  `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
+  `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
+  `currentSrc` 均通过 Browser 的脚本对象与 Core relation 读取；Browser 只维护对象形状
+  与同步 callback，宿主仍负责资源 I/O，Core 负责 cache/decode/layout。该桥不声称
+  `srcset`/`sizes` 选择、绝对 URL 解析、CORS/referrer enforcement、`decode()`、load/error
+  事件或 image-map 命中；
 - 同一 selector bridge 还提供有界 `:read-only`/`:read-write`：文本输入类型与
   `textarea` 依据 readonly 和 Core effective-disabled 判定，存在
   `isContentEditable` callback 时补充显式或继承 editing host；不支持编辑的 input 类型、

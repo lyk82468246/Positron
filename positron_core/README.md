@@ -56,6 +56,11 @@ DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout
 
 图片和 script discovery 使用对应的 fetch/enumeration API。Core 只负责发现、缓存和解释，不调度 worker、不拥有 HTTP response，也不执行 script。网络失败应由宿主分类和记录。
 
+图片发现会在当前文档 cache 中记住按 URL 的终态失败，因此同一文档的后续扫描不会
+自动反复请求已失败的图片；该失败状态只用于 fail-closed 的 `complete`/自然尺寸投影，
+不会把失败字节或解码对象暴露给调用方。宿主若要重试，应建立新的文档或明确控制自己的
+资源事务，而不是依赖 relation 查询触发网络副作用。
+
 ## 能力分组
 
 ### 解析、样式与布局
@@ -101,6 +106,13 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 - option default-selected relation（关系 45）：仅对 `option` 返回数值 `1`/`0`，表示
   parser/default-selected 状态而不是 live `selected` 状态；其他元素返回 unavailable，
   查询同样不触发 layout；
+- image resource state relations（关系 46–48）：仅对 `img` 返回
+  `naturalWidth`、`naturalHeight` 和 `complete` 的有界数值快照。Core 从当前文档的
+  image cache 读取这些值，不在 relation 查询中 fetch、decode 或 layout；没有 `src`/
+  `srcset` 的图片立即 complete 且自然尺寸为 0，带非空 `srcset` 但尚未选出 `src` 的
+  图片保持 incomplete，成功资源要等 retained decode attempt 后才暴露自然尺寸，终态
+  fetch failure 则 complete 且尺寸为 0。该桥按现有 raw `src` cache key 工作，不实现
+  `srcset` 选择、CORS、`decode()` 或事件；非 `img` 目标返回 unavailable；
 - script/runtime 所需的有限 element metadata。
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。

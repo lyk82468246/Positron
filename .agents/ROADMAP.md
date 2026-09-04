@@ -48,7 +48,7 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   submit control），以及以 query receiver/document root 为 context 的直接、无参数
   `:scope`；Core 的 form-owner relation 还支持 input、select、textarea、button、fieldset、
   img、object、output 的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回包含有 id
-  fieldset/object/output 的有界 snapshot；img 只提供 owner，不进入 form collections；fieldset/object/output 不进入 successful-control 或
+  fieldset/object/output 的有界 snapshot；img 提供 owner 与有界元数据但不进入 form collections；fieldset/object/output 不进入 successful-control 或
   FormData visitor；
 
   Core validation、submission、multipart、dialog/default-submit、reset 和按坐标的
@@ -74,9 +74,15 @@ live `multiple` attribute 提供只读的 `select-one`/`select-multiple` 模式�
 集合按 DOM 顺序返回含嵌套 fieldset 的可寻址 input/select/textarea/button/object/output，最多遍历
 256 个节点、返回 64 项；`form.elements` 另外按同一 owner 规则包含有 id 的 fieldset/object/output；
 output 的 label association 复用 Core relation；object 只提供 owner/collection 元数据，不
-创建 plugin 或替代内容窗口；img 只提供 owner 元数据；output 的 `type`、descendant-text `value`、带
+创建 plugin 或替代内容窗口；img 提供 owner 与有界加载元数据；output 的 `type`、descendant-text `value`、带
 独立 default override 的 `defaultValue` 和 form reset 恢复由 Core/Browser 统一提供，
-但不扩展其他 listed elements、完整 img 资源语义或 live child mutation。
+但不扩展其他 listed elements、完整图像加载语义或 live child mutation。
+
+`HTMLImageElement` 还提供有界的属性与资源状态投影：Browser 反映 raw
+`src`/`srcset`/`sizes`/`useMap`、`crossOrigin`、boolean/尺寸属性和加载提示属性，Core
+relation 46–48 提供 `naturalWidth`/`naturalHeight`/`complete`。无 source、未选中的
+`srcset`、成功 retained decode 和终态 fetch failure 的状态分别保持可观察且
+fail-closed；该桥不引入 `srcset` 选择、CORS、`decode()` 或图像事件。
 
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过

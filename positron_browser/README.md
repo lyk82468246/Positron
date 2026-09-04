@@ -406,6 +406,21 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 最多 64 项，名称 64 字节、字符串值 128 字节、文件名和 MIME 类型各 64 字节；文件只保留
 filename/type 和空内容，不承诺完整文件读取。
 
+### `HTMLImageElement` 元数据与资源状态
+
+注册 callbacks 后，为 `PElement` 提供有界的 `HTMLImageElement` 元数据（`alt`、
+raw source attrs、`crossOrigin`、map/size/loading fields、自然尺寸、`complete`、
+`currentSrc`）。缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，非法
+尺寸读取为 `0` 且 setter 拒绝；mutation 走 Core callback。
+
+自然尺寸/`complete` 来自 Core，getter 不 fetch、decode 或 layout；`currentSrc` 是
+raw `src`。无 source 为 complete/尺寸 `0`，未选 `src` 的 `srcset` 保持 incomplete，成功
+资源要等 retained decode，fetch failure 则 complete/尺寸 `0`。`document.images` 是有界
+snapshot，提供 `item()`/`namedItem()`。
+
+不实现 srcset/CORS、`decode()`、load/error、完整 loading 或图像视觉；资源/绘制由宿主/Core
+负责。
+
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
 `:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/
@@ -662,28 +677,25 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 一个浏览器宿主通常：
 
-1. 用 `positron_core.dll` 创建、style、layout 当前文档；
-  2. 为该文档构造 callback context；
-  3. 注册 DOM/Event/form/navigation tables，按需增加 activeElement/focus、interaction 和
-    form-method callbacks，并将 form id 映射到 Core primitive；
-  4. 显式 bootstrap；在 classic script 前注册所需的可选 callback；
-  5. 把 WM 输入转换为 Browser typed transaction；嵌套 overflow 指针则按 Core 的 document-space 合同调用 `PCore_OverflowPointer`；
-  6. 只在 Browser 允许默认动作后修改 Core/native 控件；`Element.scrollTo()`/`scrollBy()` 的位置由 Core callback 返回；
-  7. mutation 或 overflow scroll 后重新 layout/paint，并用 dirty rect 限定失效；
-  8. 在导航或 fragment/traversal 改变页面前，把当前 viewport 写入对应 history entry；目标页面提交后读取目标 snapshot，并由宿主 clamp/apply；
-  9. 导航候选成功后，在旧 document/session 仍有效时调用 Browser 的 page-teardown 入口，再销毁旧 session/document 并提交新页面与 history；失败候选保留旧页及其队列。
+1. 用 `positron_core.dll` 创建、style、layout 文档，构造 callback context 并注册所需的
+   DOM/Event/form/navigation 与可选焦点、资源状态表，再显式 bootstrap；
+2. 把 WM/native 输入转换为 Browser typed transaction；默认动作获准后才调用 Core/native
+   mutation，并在 mutation、overflow scroll 或 viewport 变化后重新 layout/paint；
+3. 通过 Core 的 document-space overflow API 与 Browser scroll callback 接线实际滚动，
+   由宿主负责 dirty rect、DPI、窗口和控件；
+4. 在 history/navigation 前后保存或读取 viewport snapshot，由宿主 clamp/apply；
+5. 候选提交先通过 Browser commit/teardown 门，再交换 document/session；失败候选保留旧页，
+   worker 收尾后释放所有 handle。
 
 ## 所有权与错误
 
-- History 和 script-session handle 由 Browser 创建/销毁，不使用 `CloseHandle`。
-- 导航资源事务 handle、URL 副本和资源字节均由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationResourceDestroy`，调用方需要自己的数据时使用 `PBrowser_NavigationResourceCopyData`。
-- 导航 candidate handle、generation、取消/退休标志、committed/failed 终态和结果分类由 Browser 拥有；每个 create 都必须配对 `PBrowser_NavigationCandidateDestroy`，不得用 `CloseHandle` 或复制内部状态。结果结构是同步借用快照，调用方只应复制值，不得把它当作可释放对象。
-- History 返回的 entry/state 字符串是借用值，调用方不得 free。
-- History 的 viewport snapshot 由 Browser entry 拥有；`PBrowser_HistoryEntryScroll` 只写入调用方提供的两个整数，`PBrowser_HistorySetEntryScroll` 不保存指针。Browser 不替宿主 clamp、滚动窗口或绘制页面。
-- callback table 和 `pw` 由宿主持有，必须活到 unregister 或 session destroy。
-- callback 中的字符串、event info 和输出缓冲只在同步调用期间有效。
-- 结构体必须设置正确 `cbSize`；较小旧结构保持兼容，未知布局应拒绝。
-- `PBROWSER_OK` 以外的稳定错误区分参数、容量、origin、状态、范围和方法问题。
+History、script-session、navigation-resource 和 navigation-candidate handle 均由
+Browser 创建/销毁，不使用 `CloseHandle`；资源 URL/字节、candidate 状态和 history
+snapshot 也由 Browser 拥有。调用方需要副本时使用对应的 `Copy`/info API，并按每个
+`Create` 配对 `Destroy`。返回的字符串、event info、callback 输出和 relation 数据只在
+同步调用期间有效，不能保存指针；callback table 与 `pw` 必须活到 unregister 或 session
+destroy。所有 size-tagged 结构都要设置正确 `cbSize`，较小旧结构保持兼容，未知布局和
+`PBROWSER_OK` 之外的参数、容量、origin、状态、范围或方法错误应安全拒绝。
 
 ## 当前边界
 

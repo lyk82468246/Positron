@@ -346,7 +346,13 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * inheritance rules. FORM_OPTION_DEFAULT_SELECTED is a numeric relationship
  * for option elements: it returns the option's parser/default-selected state
  * as 1 or 0, independently of the live selected state. Both relationships
- * are unavailable for other element types.
+ * are unavailable for other element types. IMAGE_NATURAL_WIDTH,
+ * IMAGE_NATURAL_HEIGHT and IMAGE_COMPLETE are numeric img-only snapshots.
+ * They read the document-owned image cache without fetching, decoding or
+ * laying out: natural dimensions are zero until a retained decode attempt,
+ * complete is true for a source-less image or a terminal cached failure, and
+ * non-img targets are unavailable. A non-empty srcset without a selected src
+ * remains incomplete because source selection is outside this bounded API.
  * FORM_OWNER resolves a supported form-associated control, fieldset, img,
  * object or output element to its nearest ancestor form. A present `form` attribute instead names a form by id;
  * an empty, invalid, or non-form target has no owner and never falls back to the
@@ -414,6 +420,9 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_LAYOUT_CLIENT_Y       43u
 #define PCORE_NODE_RELATION_FORM_CONTROL_DISABLED 44u
 #define PCORE_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED 45u
+#define PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH  46u
+#define PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT 47u
+#define PCORE_NODE_RELATION_IMAGE_COMPLETE       48u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,
