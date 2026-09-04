@@ -12119,6 +12119,8 @@ static int pcore_form_reset_visit(dom_node *node, void *pw)
                 (dom_html_text_area_element *) node);
     } else if (pcore_node_name_is(node, "select")) {
         result = pcore_form_reset_select((dom_html_select_element *) node);
+    } else if (pcore_node_name_is(node, "output")) {
+        result = pcore_output_reset(node);
     }
     if (result != 0) {
         context->error = 1;
@@ -12148,6 +12150,10 @@ static int pcore_form_reset(dom_html_form_element *form)
     context.error = 0;
     result = pcore_form_controls_visit(doc, (dom_element *) form,
             pcore_form_reset_visit, &context);
+    if (result == 0 && !context.error) {
+        result = pcore_form_outputs_visit(doc, (dom_element *) form,
+                pcore_form_reset_visit, &context);
+    }
     dom_node_unref((dom_node *) doc);
     return result != 0 || context.error;
 }

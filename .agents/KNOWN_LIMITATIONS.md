@@ -95,8 +95,9 @@
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、output，并按文档顺序
   纳入跨树 form-associated 元素；fieldset/output 只进入 `form.elements`，不会进入 successful-control
-  或 FormData visitor。output 也可读取 `form` 与 `labels`，但不提供完整 value/defaultValue。
-  validation、submission/multipart、dialog/default-submit、reset 和按坐标的
+  或 FormData visitor。output 也可读取 `form` 与 `labels`，并通过 Core 提供 descendant-text
+  `value`、带独立 override 的 `defaultValue` 以及 reset 恢复；这不是完整 listed-content
+  算法。validation、submission/multipart、dialog/default-submit、reset 和按坐标的
   submit/reset 激活仍只对可提交控件复用同一 owner 规则；`PCore_FormResetById` 还提供按 form ID 的
   state-only 初值恢复；Core 入口本身不派发事件、不操作 native 控件或 layout。启用
   Browser 的 `PBrowserScriptFormResetCallbacks` 与 Ex form-event adapter 后，脚本
@@ -459,8 +460,13 @@
 - TEST1189 是离线的 Browser/Core `output` form-associated 夹具，无新增立即人工风险；自动门
   证明 output 的祖先/显式 `form="id"` owner、`form.elements`/fieldset 子树文档顺序、
   `labels`、`item()`/`namedItem()`、name/form mutation 和无效 owner 的 fail-closed，同时
-  确认 output 不进入 Core successful-control/FormData 快照。该扩展不实现 output 的完整
-  value/defaultValue 算法、object 等其他 form-associated 元素、完整 live collection、
+  确认 output 不进入 Core successful-control/FormData 快照。该夹具不覆盖 output 的其他
+  listed-content 算法、object 等其他 form-associated 元素、完整 live collection、native
+  表单视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
+- TEST1190 是离线的 Browser/Core output value-state 夹具，无新增立即人工风险；自动门证明
+  `value`/`defaultValue` 的 descendant-text 与 default override 分离、`form.reset()` 和
+  `PCore_FormResetById` 的恢复/清除，以及只读 `output.type`；同时确认 output 仍不进入
+  successful-control/FormData。该扩展不覆盖其他 listed-content 算法、live collection、
   native 表单视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

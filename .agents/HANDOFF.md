@@ -14,7 +14,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   阻断。这批没有新增公共产品语义，`test_host` 仍只是被部署的回归宿主。next733 的 Browser
   `formdata` 事件、`FormDataEvent` 构造器、`form.onformdata` 接线、TEST1178 夹具和公共
   边界文档继续保持；`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1189。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1190。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -39,7 +39,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、
   direct `submit()` 和 detached `FormData(form[, submitter])` 已形成同一套 by-id/成功控件
-  合同，构造成功后还会同步派发 `formdata`；TEST1170–1189 是当前相邻夹具，其中
+  合同，构造成功后还会同步派发 `formdata`；TEST1170–1190 是当前相邻夹具，其中
   TEST1179 覆盖宿主批准的链接 `:visited` 状态，TEST1180 覆盖 Browser selector 的
   有界 `:scope` context，TEST1181 覆盖 form 默认状态的 `:default`，TEST1182 覆盖
   option 的 live/default 属性桥，TEST1183 覆盖 option 的 value/label/text 基础属性桥，
@@ -48,7 +48,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   fieldset 的 type/form/elements projection，TEST1188 覆盖 `form.elements` 中 fieldset
   的文档顺序、显式 owner、snapshot 隔离以及 fieldset 不进入 FormData，TEST1189 覆盖
   output 的 form/labels、`form.elements`/`fieldset.elements` 顺序和 output 不进入
-  successful-control/FormData 的边界。
+  successful-control/FormData 的边界；TEST1190 覆盖 output 的 value/defaultValue
+  状态、Core/Browser reset 恢复与只读 type。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -86,7 +87,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   与 999 在 `tmp/device-runs/20260904-122701-next747/` 通过（3/3、唯一
   `TESTBENCH PASS`、零 `ERROR`/`FAIL`），Storage Card 目标卷/内部 object store 双空间
   预检、完整日志取得和完成后清理均通过。
-- 当前唯一下一步是 next748：从 compatibility corpus、源码、设备日志或截图固定新的
+- next748 在 Core 中加入 output 的 descendant-text `value`、带独立 default override 的
+  `defaultValue` 与 form reset 恢复，并在 Browser 中投影只读 `output.type`；TEST1190
+  同时验证 Core/Browser reset 与 output 不进入 FormData。
+- 当前唯一下一步是 next749：从 compatibility corpus、源码、设备日志或截图固定新的
   用户可见缺口，再在公共 DLL 中推进一条完整纵向能力；不要预先把尚未验证的 Web API
   或视觉行为写成承诺。
 
@@ -147,21 +151,21 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1189。
+- `TEST_MAX_NUMBER`：1190。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新设备门证据为 next747 的 output form association/collection/labels；双空间预检/空间回收窄门
+最新设备门证据为 next748 的 output value/defaultValue/reset；双空间预检/空间回收窄门
 仍是部署安全基线：
 
-- `tmp/device-runs/20260904-122701-next747/`；选择 `1188-1189,999`，3/3 通过，零
+- `tmp/device-runs/20260904-125204-next748/`；选择 `1189-1190,999`，3/3 通过，零
   `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，`complete_log_retrieved=True`。Storage Card
-  目标卷 `CeGetDiskFreeSpaceEx` 可用 65,766,785,024 字节，总计 511,101,108,224，
-  payload 9,743,369、reserve 1,048,576、required 10,791,945；内部 object store
-  `CeGetStoreInformation` 可用 8,755,200/32,942,080，cache reserve 65,536，目标与
+  目标卷 `CeGetDiskFreeSpaceEx` 可用 65,727,758,336 字节，总计 511,101,108,224，
+  payload 9,752,585、reserve 1,048,576、required 10,801,161；内部 object store
+  `CeGetStoreInformation` 可用 8,753,152/32,942,080，cache reserve 65,536，目标与
   内部检查均通过。15 个部署文件来自同一批 ARMV4I Debug 构建，完整日志取得后当前目录
   清理。
 
@@ -169,7 +173,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   构建。RAPI 只复用当前会话，不连接、选择、cradle、重置或杀死设备。
 - 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I rebuild、同批 staging、
   `python scripts/audit_repo.py` 和 `git diff --check` 均已通过；Browser heap ceiling 为
-  730 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
+  730 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。TEST1190 日志确认 output value/defaultValue
+  状态与 reset 恢复由公共 DLL 提供，且不进入 FormData。
 
 ## 当前人工验收状态
 
@@ -183,106 +188,23 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
 - contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` paste/cut，1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
 - TEST1151 autofocus 夹具仅证明 DOM/焦点桥合同；初始焦点矩形、native HWND、触摸/SIP、滚动条裁剪和不同 DPI 仍需宿主观察。
-- TEST1152–1165 是离线的 Browser selector 组合器、属性/结构伪类、表单验证、焦点、链接、
-  fragment、语言、分组、`:has()` 和 pointer-interaction 夹具，无新增立即人工风险；自动门
-  证明各自的有界查询、mutation、顺序、callback 边界和非法输入 fail-closed，真实页面的
-  完整 Selectors、native 输入、触摸、布局视觉和不同 DPI 仍属宿主观察。
-- TEST1166 是离线的 Core/Browser effective-disabled 夹具，无新增立即人工风险；native SELECT popup、触摸、视觉和不同 DPI 仍需宿主观察，自动门证明 relation、first-legend exemption、optgroup→option 继承、mutation、过小缓冲、disabled option 拒绝和提交排除。
-- TEST1167 是离线的 Core/Browser range selector 夹具，无新增立即人工风险；原生范围控件视觉、本地化 validation UI、触摸和不同 DPI 仍需宿主观察，自动门证明范围状态映射、约束 mutation、查询顺序和非法输入回退。
-- TEST1168 是离线的 Core/Browser editable selector 夹具，无新增立即人工风险；自动门证明
-  `:read-only`/`:read-write` 对文本控件、readonly/effective-disabled、contenteditable
-  祖先继承、属性 mutation、query/closest 和 callback 注销的有界映射。真实 native 编辑、
-  SIP/IME、富文本、视觉和不同 DPI 仍进入累计人工清单。
-- TEST1169 是离线的 Core/Browser placeholder selector 夹具，无新增立即人工风险；自动门证明
-  `:placeholder-shown` 对 text-like input/textarea 的空 value、非空 placeholder、value/type/
-  placeholder mutation、matches/closest/query 顺序和非法输入的有界映射。真实 native
-  placeholder 绘制、SIP/IME、触摸、视觉和不同 DPI 仍进入累计人工清单。
-- TEST1170 是离线的 Core/Browser form-owner 夹具，无新增立即人工风险；自动门证明
-  最近祖先与显式 `form="id"` 归属、空值/无效目标不回退、跨树 `form.elements` 文档顺序、
-  namedItem、label association、mutation 后重查和旧 snapshot 保持。真实 native 表单
-  控件、SIP/IME、picker、触摸、视觉和不同 DPI 仍进入累计人工清单。
-- TEST1171 是离线的 Core form-owner 生命周期夹具，无新增立即人工风险；自动门证明
-  form 外显式控件参与 validation、`reportValidity()` invalid-event 扫描、urlencoded
-  successful-control submission 和外部 submit/reset activation，reset 后初始值恢复且
-  required invalid 再次出现。真实 native 表单控件、SIP/IME、picker、触摸、视觉和不同
-  DPI 仍进入累计人工清单。
-- TEST1172 是离线的 Core 按 form ID state-only reset 夹具，无新增立即人工风险；自动门
-  证明 form 子树与显式外部 input/checkbox/select/textarea 恢复初值、无效 owner 不被
-  误重置，以及缺失/非 form/空值/NULL 参数 fail closed。真实 native 表单控件、SIP/IME、
-  picker、触摸、视觉和不同 DPI 仍进入累计人工清单。
-- TEST1173–1175 是离线的 Browser/Core form script 夹具，无新增立即人工风险；自动门
-  分别证明 reset 的取消/默认恢复、requestSubmit 的 validation→submit→默认动作，以及
-  direct submit 的无验证/无事件/无 submitter 默认动作、POST body、dialog/multipart
-  结果和非法目标 fail closed。真实 native 表单视觉、SIP/IME、picker、触摸和不同 DPI
-  仍进入累计人工清单。
-- TEST1176 是离线的 Browser/Core FormData snapshot 夹具，无新增立即人工风险；自动门
-  证明 successful controls、显式 form owner、重复 select、排除规则、snapshot 脱离、
-  无 submit 事件。该桥最多 64 项且字段有界，文件只返回 metadata；真实
-  native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍进入累计人工清单。
-- TEST1177 是离线的 Browser/Core FormData submitter 夹具，无新增立即人工风险；自动门
-  证明 Ex bridge 只接受目标 form 的 enabled submit-type input/button，包含显式外部 owner，
-  按文档顺序加入 submitter；`null`/`undefined` 等同省略 submitter，普通、禁用、跨 form
-  和伪造对象 fail closed，且不派发 submit 事件。真实 native 表单视觉、SIP/IME、picker、
-  触摸和不同 DPI 仍进入
-  累计人工清单。
-- TEST1178 是离线的 Browser FormData `formdata` 事件夹具，无新增立即人工风险；自动门
-  证明同步 `FormDataEvent`、`formData` identity、监听器及 `onformdata` mutation、
-  非冒泡/不可取消和 submit 无副作用。真实 native 表单视觉、SIP/IME、picker、触摸和
-  不同 DPI 仍进入累计人工清单。
-- TEST1179 是离线的 Browser selector `:visited` 夹具，无新增立即人工风险；自动门证明
-  宿主 Ex history policy、绝对/相对 href 与 fragment 归一、`<a>`/`<area>` 与空 href、
-  live mutation、matches/closest/query 顺序、非法 selector 和 callback 注销后的
-  fail-closed。Browser 不保存 history；真实链接颜色、隐私隔离、跨窗口持久化、导航
-  联动和不同 DPI 视觉仍进入累计人工清单。
-- TEST1180 是离线的 Browser selector `:scope` 夹具，无新增立即人工风险；自动门证明
-  element/document query 的 scope owner 规则、子代/后代关系、文档顺序、matches/closest
-  receiver scope、大小写形式以及参数/伪元素/尾随逗号的 fail-closed。Browser 不保存
-  scope 状态；真实页面完整 Selectors、视觉、触摸和不同 DPI 仍进入累计人工清单。
-- TEST1181 是离线的 Browser selector `:default` 夹具，无新增立即人工风险；自动门证明
-  默认 checked 控件、Core relation 45 的 option default-selected、form 首个 submit
-  control、查询顺序、live state mutation、matches/closest 和非法输入的 fail-closed。
-  夹具拆为多个短脚本 session 以保持固定 730 KiB heap；真实 native 默认按钮行为、
-  表单视觉、触摸、SIP/IME 和不同 DPI 仍进入累计人工清单。
-- TEST1182 是离线的 Browser/Core option property 夹具，无新增立即人工风险；自动门证明
-  `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
-  一致性、默认基线与 live 状态分离，以及非 option/无效 id/缺失 callback 的 fail-closed。
-  真实 native SELECT popup、键盘/触摸、SIP/IME、视觉和不同 DPI 仍进入累计人工清单。
-- TEST1183 是离线的 Browser option 基础属性夹具，无新增立即人工风险；自动门证明
-  `value`/`label` 的属性优先与文本 fallback、`text` mutation、select live value/
-  selectedIndex 联动、空属性区分以及非 option setter 的 fail-closed。该桥复用既有
-  Core DOM attribute/text callback，不提供 native SELECT popup、键盘/触摸、SIP/IME、
-  layout、paint 或不同 DPI 保证。
-- TEST1184 是离线的 Browser select/option collection 夹具，无新增立即人工风险；自动门证明
-  `select.options`/`selectedOptions` 的文档顺序、`item()`/`namedItem()`、live selected
-  mutation、`select.length`、`option.index` 和 snapshot 隔离，并确认 optgroup 不进入
-  collection、非 select/option 目标安全返回。该桥只枚举有稳定 id 的可寻址元素且最多
-  64 个 option/256 个遍历节点，不提供完整 live HTMLCollection、append/remove、
-  native SELECT popup、键盘/触摸、SIP/IME、layout、paint 或不同 DPI 保证。
-- TEST1185 是离线的 Browser option.form owner 夹具，无新增立即人工风险；自动门证明
-  optgroup 父链、显式 `select form="id"`、form attribute mutation、无 owner/无效 owner
-  的 `null` 回退和既有 input owner 不变。实现只复用现有 DOM relation、form owner 与
-  attribute mutation，不增加 ABI；64 层父链预算、无 id 元素不可寻址、完整 HTML
-  option/form-owner 算法、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证仍未实现。
-- TEST1186 是离线的 Browser select/optgroup metadata 夹具，无新增立即人工风险；自动门
-  证明 `select.type` 对 `multiple` attribute 的 live `select-one`/`select-multiple` 映射、
-  只读 setter、`optgroup.label` 的显式值/缺失回退/attribute mutation，以及 option label
-  fallback 和非目标 fail-closed。该扩展不增加 ABI，不提供 native SELECT popup、键盘/触摸、
-  SIP/IME、layout/paint 或不同 DPI 视觉保证。
-- TEST1187 是离线的 Browser fieldset property 夹具，无新增立即人工风险；自动门证明
-  `fieldset.type`、`fieldset.form`、`fieldset.elements` 的 owner/顺序/snapshot 组合，
-  包括嵌套 fieldset 与显式 `form="id"`，并确认错误 owner 安全返回。该桥不改变
-  successful-control/FormData visitor，不提供 native 表单视觉或完整 live collection。
-- TEST1188 是离线的 Core/Browser `form.elements` 夹具，无新增立即人工风险；自动门证明
-  form 内与显式外部 owner 的 fieldset 按文档顺序加入有界 snapshot、`item()`/
-  `namedItem()` 与 fieldset name mutation，且 fieldset 仍排除在 successful-control 和
-  FormData 结果之外。该扩展不增加 ABI；真实 native 表单视觉、触摸、SIP/IME、picker
-  和不同 DPI 仍进入累计人工清单。
+- TEST1152–1169 是离线的 Browser selector、validation、焦点和 placeholder 夹具，
+  自动门已证明各自的有界查询、mutation、顺序、callback 边界和非法输入 fail-closed；
+  真实页面完整 Selectors、native 输入、SIP/IME、触摸、布局视觉和不同 DPI 仍由宿主观察。
+- TEST1170–1188 是离线的 Core/Browser form-owner、validation、submission、reset、
+  FormData、selector 默认状态、option 属性/collection、fieldset projection 与
+  `form.elements` 夹具；自动门已证明跨树 owner、成功控件排除、默认动作顺序、snapshot
+  隔离和有界错误回退。它们不保证完整 live collection、native 表单/SELECT 视觉、picker、
+  键盘/触摸、SIP/IME 或不同 DPI 行为；逐测试合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1189 是离线的 Core/Browser `<output>` form-association 夹具，无新增立即人工风险；
   自动门证明 output 的最近祖先/显式 form owner、`form.elements` 与嵌套
   `fieldset.elements` 文档顺序、`labels` 关联、snapshot 隔离和无效 owner fail-closed，
-  并确认 output 不进入 successful-control 或 FormData。该扩展不增加 ABI；output 的
-  完整 value/defaultValue 语义、真实 native 表单视觉、触摸、SIP/IME、picker 和不同
-  DPI 仍进入累计人工清单。
+  并确认 output 不进入 successful-control 或 FormData。该扩展不增加 ABI；真实 native
+  表单视觉、触摸、SIP/IME、picker 和不同 DPI 仍进入累计人工清单。
+- TEST1190 是离线的 Core/Browser output value-state/reset 夹具，无新增立即人工风险；
+  自动门证明 descendant-text `value`、独立 default override、Core 与脚本 form reset
+  的恢复/清除，以及只读 `output.type`；同时确认 output 仍不进入 successful-control 或
+  FormData。真实 native 表单视觉、触摸、SIP/IME、picker 和不同 DPI 仍进入累计人工清单。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -326,8 +248,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 Core/Browser form owner 目前覆盖 input、select、textarea、button、fieldset 和 output；这些元素
 （包括显式 `form="id"` 的跨树元素）按文档顺序加入有界 `form.elements` snapshot。fieldset
 和 output 只属于 DOM relation enumeration，仍不进入 successful-control visitor、submission 或
-FormData；output 的 labels 已提供，但完整 value/defaultValue 尚未覆盖；object、image 等其他
-form-associated 元素尚未覆盖。validation、
+FormData；output 的 labels、descendant-text `value`、独立 default override、只读 `type` 和
+reset 恢复已覆盖；object、image 等其他 form-associated 元素尚未覆盖。validation、
 submission/multipart、dialog/default-submit、reset、按坐标的 submit/reset 激活和脚本
 `HTMLFormElement.submit()` direct path 以及 `new FormData(form[, submitter])` snapshot 也
 复用这条 owner 规则。direct path 和 FormData bridge 仅支持有 id form；前者跳过 validation、
@@ -338,14 +260,14 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next748
+## 唯一下一步：next749
 
 next734–743 的设备门与产品证据已在上文记录；部署空间护栏和失败停止规则详见
 `docs/TESTING.md` 与 `docs/TROUBLESHOOTING.md`，本节不重复实现细节。
 
 next744 的 select/optgroup metadata、next745 的 fieldset form/elements projection、
-next746 的 `form.elements` fieldset enumeration 与 next747 的 output form association/
-collection/labels 均已完成；next748 仍需从 compatibility corpus、源码、日志或截图固定一个真实产品缺口，再选择一个边界清楚的离线 fixture 或稳定
+next746 的 `form.elements` fieldset enumeration、next747 的 output form association/
+collection/labels 与 next748 的 output value/defaultValue/reset 均已完成；next749 仍需从 compatibility corpus、源码、日志或截图固定一个真实产品缺口，再选择一个边界清楚的离线 fixture 或稳定
 哨兵。实现必须把可复用语义放在正确的公共 DLL，宿主只做平台接线、调度、应用策略和断言；
 不要仅为增加编号拆分提交，也不要在没有证据时扩大 ABI。完整滚动容器树、Range/Selection、
 pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache 和视觉

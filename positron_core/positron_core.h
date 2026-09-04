@@ -427,14 +427,18 @@ PCORE_API int PCore_NodeOverflowScrollToById(HANDLE hDoc,
         const char *element_id, int scroll_x, int scroll_y,
         int *out_x, int *out_y);
 /* DOM-level form properties for script/runtime hosts. Value/defaultValue
- * support input, textarea and select.value; checked reads input.checked or an
- * option's live selected state, while defaultChecked and checked mutation
- * support input; selectedIndex supports select. Option selected/defaultSelected
- * are exposed separately below so a live selection mutation never changes the
- * parser/default baseline. These functions do not require a styled/layout box
- * tree, so parser-complete scripts may use them before the first layout. String
- * getters use the same probe/truncation contract as
- * PCore_NodeTextContentById. */
+ * support input, textarea, select.value and output; output.value reflects its
+ * descendant text, while setting it keeps a Core-owned default-value override
+ * so defaultValue and form reset remain independent. Setting output.defaultValue
+ * updates that override while a live value exists, or its text when no override
+ * exists; form reset restores the default and clears the override. checked reads
+ * input.checked or an option's live selected state, while defaultChecked and
+ * checked mutation support input; selectedIndex supports select. Option
+ * selected/defaultSelected are exposed separately below so a live selection
+ * mutation never changes the parser/default baseline. These functions do not
+ * require a styled/layout box tree, so parser-complete scripts may use them
+ * before the first layout. String getters use the same probe/truncation
+ * contract as PCore_NodeTextContentById. */
 PCORE_API int PCore_NodeValueById(HANDLE hDoc, const char *element_id,
         char *value, int value_capacity, int *out_bytes);
 PCORE_API int PCore_NodeSetValueById(HANDLE hDoc, const char *element_id,

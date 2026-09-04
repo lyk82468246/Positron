@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1189
+#define TEST_MAX_NUMBER 1190
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -44278,6 +44278,133 @@ static BOOL test1189_browser_output_form_association(void)
             "output participates in form-owner and collection snapshots,"
             " including labels and fieldset descendants, while successful"
             " FormData entries continue to exclude it.");
+    return TRUE;
+}
+
+/* TEST 1190 - output value/defaultValue override and form reset state. */
+static BOOL test1190_browser_output_value_default_reset(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='form'><input id='field' name='field' value='one'>"
+        "<output id='out' name='out'>initial</output></form>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var f=document.getElementById('form'),o=document.getElementById('out');"
+        "var a=o.type==='output'&&o.value==='initial'&&"
+        "o.defaultValue==='initial'&&o.textContent==='initial';"
+        "o.value='live';var b=o.value==='live'&&o.textContent==='live'&&"
+        "o.defaultValue==='initial';"
+        "o.defaultValue='baseline';var c=o.value==='live'&&"
+        "o.textContent==='live'&&o.defaultValue==='baseline';"
+        "f.reset();var d=o.value==='baseline'&&o.defaultValue==='baseline'&&"
+        "o.textContent==='baseline';"
+        "o.defaultValue='after-reset';var e=o.value==='after-reset'&&"
+        "o.defaultValue==='after-reset'&&o.textContent==='after-reset';"
+        "o.value='changed';var g=o.value==='changed'&&"
+        "o.defaultValue==='after-reset'&&o.textContent==='changed';"
+        "document.getElementById('result').textContent=String(a)+'|'"
+        "+String(b)+'|'+String(c)+'|'+String(d)+'|'+String(e)+'|'"
+        "+String(g);";
+    static const char EXPECTED[] = "true|true|true|true|true|true";
+    HANDLE document;
+    HANDLE form_data;
+    PCoreFormDataInfo form_data_info;
+    PCoreFormDataEntryInfo entry_info;
+    char value[128];
+    char name[64];
+    char entry_value[128];
+    char error[512];
+    int bytes;
+    int core_ok;
+    int data_ok;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    form_data = NULL;
+    memset(&form_data_info, 0, sizeof(form_data_info));
+    memset(&entry_info, 0, sizeof(entry_info));
+    memset(value, 0, sizeof(value));
+    memset(name, 0, sizeof(name));
+    memset(entry_value, 0, sizeof(entry_value));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    core_ok = document != NULL;
+    if (core_ok) {
+        core_ok = PCore_NodeValueById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "initial") == 0 &&
+                PCore_NodeDefaultValueById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "initial") == 0;
+    }
+    if (core_ok) {
+        core_ok = PCore_NodeSetValueById(document, "out", "live") == 0 &&
+                PCore_NodeValueById(document, "out", value, sizeof(value),
+                &bytes) == 0 && strcmp(value, "live") == 0 &&
+                PCore_NodeDefaultValueById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "initial") == 0;
+    }
+    if (core_ok) {
+        core_ok = PCore_NodeSetDefaultValueById(document, "out",
+                "baseline") == 0 &&
+                PCore_NodeValueById(document, "out", value, sizeof(value),
+                &bytes) == 0 && strcmp(value, "live") == 0 &&
+                PCore_NodeDefaultValueById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "baseline") == 0;
+    }
+    if (core_ok) {
+        core_ok = PCore_FormResetById(document, "form") == 0 &&
+                PCore_NodeValueById(document, "out", value, sizeof(value),
+                &bytes) == 0 && strcmp(value, "baseline") == 0 &&
+                PCore_NodeDefaultValueById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "baseline") == 0 &&
+                PCore_NodeTextContentById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "baseline") == 0;
+    }
+    if (core_ok) {
+        core_ok = PCore_NodeSetDefaultValueById(document, "out",
+                "after-reset") == 0 &&
+                PCore_NodeValueById(document, "out", value, sizeof(value),
+                &bytes) == 0 && strcmp(value, "after-reset") == 0 &&
+                PCore_NodeSetValueById(document, "out", "changed") == 0 &&
+                PCore_NodeValueById(document, "out", value, sizeof(value),
+                &bytes) == 0 && strcmp(value, "changed") == 0 &&
+                PCore_NodeDefaultValueById(document, "out", value,
+                sizeof(value), &bytes) == 0 && strcmp(value, "after-reset") == 0;
+    }
+    data_ok = 0;
+    if (core_ok) {
+        form_data = PCore_FormDataById(document, "form");
+        data_ok = form_data != NULL &&
+                PCore_FormDataInfo(form_data, &form_data_info) == 1 &&
+                form_data_info.entry_count == 1;
+        if (data_ok) {
+            data_ok = PCore_FormDataEntryInfo(form_data, 0, &entry_info,
+                    name, sizeof(name), entry_value, sizeof(entry_value)) == 1 &&
+                    entry_info.kind == 1 && strcmp(name, "field") == 0 &&
+                    strcmp(entry_value, "one") == 0;
+        }
+    }
+    if (form_data != NULL) {
+        PCore_FreeFormData(form_data);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!core_ok || !data_ok ||
+            !test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d data=%d entries=%d name=%s value=%s",
+                    core_ok, data_ok, form_data_info.entry_count, name,
+                    entry_value);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1190 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1190 OK",
+            "output value/defaultValue overrides survive live updates and "
+            "form reset, while output remains excluded from FormData.");
     return TRUE;
 }
 
@@ -102407,6 +102534,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1187: ok = test1187_browser_fieldset_form_elements(); break;
         case 1188: ok = test1188_browser_form_elements_fieldsets(); break;
         case 1189: ok = test1189_browser_output_form_association(); break;
+        case 1190: ok = test1190_browser_output_value_default_reset(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

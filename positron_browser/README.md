@@ -111,15 +111,13 @@ Selection、完整 nested overflow 坐标传播、pinch zoom、平滑滚动或�
 `scrollHeight` getter。getter 每次从最近一次 Core layout 快照读取整数 CSS 像素：
 offset 包含 border，client 为 retained scrollport 的 padding 区域（滚动条覆盖在边缘，
 不从 client 尺寸再扣除固定宽度），scroll 包含有界后代内容 extent。Core 不提供快照时
-这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。DOM/样式变化后的
-layout 与 page scroll 仍由宿主驱动。对于有有效
+这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。对于有有效
 DOM `id` 且存在 retained overflow scrollbar 的支持 box，Browser 还安装
 `scrollLeft`/`scrollTop` getter/setter、`scrollTo()`、`scroll()` 和 `scrollBy()`；请求
 通过 callback 的 `element_id` 交给 Core clamp，成功后只在实际位置改变时派发一次目标元素的
 非冒泡、不可取消 `scroll`。宿主的 WM 指针路径应调用
-`PBrowser_ScriptSessionNotifyElementScroll()` 同步 Core 位置。该桥本身不实现 scroll
-chaining、scroll-margin、smooth/inertia 或无 id 目标；`scrollIntoView()` 的有限 nested
-reveal 见下文。
+`PBrowser_ScriptSessionNotifyElementScroll()` 同步 Core 位置；`scrollIntoView()` 的
+有限 nested reveal 见下文。
 
 ### 元素 overflow 滚动桥
 
@@ -369,6 +367,10 @@ visitor。对 `<option>`，Browser 沿最多 64 层可寻址的
 顺序生成独立 HTMLCollection snapshot，投影子树中带 id 的 input/select/textarea/button/
 output（含嵌套 fieldset），最多遍历 256 个节点、返回 64 项；不覆盖无 id 节点或 live
 mutation。output 也是可寻址的 labelable 元素，`labels` 复用 Core label/control relation。
+它的 `type` 固定为只读的 `'output'`；`value` 反映 descendant text，`defaultValue` 反映
+Core 保存的默认值。设置 `value` 会保留独立 default override，设置 `defaultValue` 在有
+override 时只改默认基线、否则改写文本；宿主的 `form.reset()` 通过 Core 清除 override
+并恢复默认文本。output 仍不会进入 successful-control 或 FormData。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
 `PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、
@@ -685,8 +687,6 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 
 ## 当前边界
 
-Browser 是显式 opt-in 的有界会话；完整 DOM/Web API、selector、滚动/几何/焦点以及
-`option` native popup/视觉不在保证内，上述属性要求可选 DOM/form callback。系统 picker、
-OEM SIP/IME、真实触摸、旋转和焦点视觉由宿主验收；ABI、常量和结构布局只以
-[`positron_browser.h`](positron_browser.h) 为准。完整限制见
-[`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+Browser 是显式 opt-in 的有界会话；完整 DOM/Web API 与平台输入由宿主验收。ABI 以
+[`positron_browser.h`](positron_browser.h) 为准，完整限制见
+[`已知限制`](../.agents/KNOWN_LIMITATIONS.md)。

@@ -6559,6 +6559,9 @@ PCORE_API int PCore_NodeValueById(HANDLE hDoc, const char *element_id,
     } else if (pcore_element_name_is(element, "select")) {
         err = dom_html_select_element_get_value(
                 (dom_html_select_element *) element, &dom_value);
+    } else if (pcore_element_name_is(element, "output")) {
+        err = pcore_output_get_value(element, &dom_value) == 0 ?
+                DOM_NO_ERR : DOM_NOT_SUPPORTED_ERR;
     } else {
         dom_node_unref((dom_node *) element);
         return 1;
@@ -6591,6 +6594,11 @@ PCORE_API int PCore_NodeSetValueById(HANDLE hDoc, const char *element_id,
     element = pcore_element_by_id((dom_document *) hDoc, element_id);
     if (element == NULL) {
         return 1;
+    }
+    if (pcore_element_name_is(element, "output")) {
+        err = pcore_output_set_value(element, value);
+        dom_node_unref((dom_node *) element);
+        return err == 0 ? 0 : 1;
     }
     normalised = NULL;
     length = strlen(value);
@@ -6668,6 +6676,9 @@ PCORE_API int PCore_NodeDefaultValueById(HANDLE hDoc,
     } else if (pcore_element_name_is(element, "textarea")) {
         err = dom_html_text_area_element_get_default_value(
                 (dom_html_text_area_element *) element, &dom_value);
+    } else if (pcore_element_name_is(element, "output")) {
+        err = pcore_output_get_default_value(element, &dom_value) == 0 ?
+                DOM_NO_ERR : DOM_NOT_SUPPORTED_ERR;
     } else {
         dom_node_unref((dom_node *) element);
         return 1;
@@ -6696,6 +6707,11 @@ PCORE_API int PCore_NodeSetDefaultValueById(HANDLE hDoc,
     element = pcore_element_by_id((dom_document *) hDoc, element_id);
     if (element == NULL) {
         return 1;
+    }
+    if (pcore_element_name_is(element, "output")) {
+        err = pcore_output_set_default_value(element, value);
+        dom_node_unref((dom_node *) element);
+        return err == 0 ? 0 : 1;
     }
     dom_value = NULL;
     if (dom_string_create((const uint8_t *) value, strlen(value),

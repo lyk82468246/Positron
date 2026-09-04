@@ -107,9 +107,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   元素（包括 form 外 fieldset/output）纳入按文档顺序的有界 `form.elements` snapshot，
   空值或无效目标不回退到祖先。fieldset/output 只属于元素集合，不进入
   successful-control、提交或 FormData visitor。validation、successful-control 与
-  multipart/dialog submission、reset 以及 submit/reset 默认动作也复用
-  input/select/textarea/button 的 owner，不会只在
-  Browser 关系层识别跨树控件。`PCore_FormResetById` 是 Core 提供的无坐标
+  multipart/dialog submission、以及 submit/reset 默认动作复用 input/select/textarea/button
+  的 owner；reset 另外遍历同一 owner 下的 output，恢复其 Core-owned default override，
+  不会只在 Browser 关系层识别跨树控件。`PCore_FormResetById` 是 Core 提供的无坐标
   state-only reset 入口；Browser/宿主必须先处理可取消 reset 事件，并在成功后重新
   layout/paint，Core 不创建事件或 native 控件；
   `PCore_FormSubmissionNoValidationById`、`PCore_FormDialogSubmissionNoValidationById`
@@ -215,8 +215,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   textarea、button、output（可跨嵌套 fieldset），最多遍历 256 个节点、返回 64 项。对应的
   `HTMLFormElement.elements` 也按同一 owner 规则包含有 id 的 fieldset/output；fieldset 和
   output 仍不作为 successful control。output 的 `form`/`labels` 复用同一公共 relation，
-  但不扩展其完整 value/defaultValue 算法。该扩展不覆盖其他 listed elements、无 id 节点或
-  live 子树 mutation，也不增加 ABI 或 native slot。
+  `type` 固定为只读的 `output`，`value` 反映 descendant text，`defaultValue` 与 Core 的
+  default override 同步；设置 live value、修改默认值和 `PCore_FormResetById` 的恢复语义
+  由 Core 统一持有。该扩展不覆盖其他 listed elements、无 id 节点或 live 子树 mutation，
+  也不增加 ABI 或 native slot。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，

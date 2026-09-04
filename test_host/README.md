@@ -77,7 +77,7 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge（TEST1146–1189）；
+  的 typed property bridge（TEST1146–1190）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -248,8 +248,15 @@ TEST1189 断言 `output` 作为 form-associated、labelable 元素进入 Core/Br
 `form.elements` 与 fieldset 子树 snapshot：祖先/显式 `form="id"` owner、文档顺序、
 `output.form`、`labels`、`item()`/`namedItem()`、name/form mutation 和无效 owner 均有
 自动断言；同一 fixture 用 `PCore_FormDataById` 确认 output 不进入 successful-control
-快照。宿主只接线既有 relation/attribute callback，不复制表单语义，也不承诺 output 的
-完整 value/defaultValue 算法、其他 form-associated 元素、native 控件视觉或平台输入。
+快照。宿主只接线既有 relation/attribute callback，不复制表单语义，也不承诺其他
+form-associated 元素、native 控件视觉或平台输入。
+
+TEST1190 断言 output 的完整值状态纵切：`value` 反映 descendant text，设置 live value
+后由 Core 保存独立的 default override，`defaultValue` 在 override 存在时只更新默认
+基线；Core `PCore_FormResetById` 与脚本 `form.reset()` 都恢复默认并清除 override。
+同一夹具确认 `output.type` 是只读的 `output`，并且 output 仍不进入 successful-control
+或 FormData。宿主只提供既有 value/default/reset callback 与断言，不在测试宿主复制业务
+语义。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

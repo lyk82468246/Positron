@@ -67,8 +67,9 @@ live `multiple` attribute 提供只读的 `select-one`/`select-multiple` 模式�
 只读元数据与子树控件 snapshot：form owner 复用 Core 的祖先/显式 `form="id"` 规则，
 集合按 DOM 顺序返回含嵌套 fieldset 的可寻址 input/select/textarea/button/output，最多遍历
 256 个节点、返回 64 项；`form.elements` 另外按同一 owner 规则包含有 id 的 fieldset/output；
-output 的 label association 复用 Core relation，不扩展其完整 value/defaultValue 算法、
-其他 listed elements 或 live child mutation。
+output 的 label association 复用 Core relation；其 `type`、descendant-text `value`、带
+独立 default override 的 `defaultValue` 和 form reset 恢复由 Core/Browser 统一提供，
+但不扩展其他 listed elements 或 live child mutation。
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过
 最多 64 层可寻址父链定位所属 select 并复用 `select.form`，显式 form owner 与 mutation

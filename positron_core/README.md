@@ -85,12 +85,14 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档
   顺序包含这些有 id 的 form-associated 元素（包括跨树显式关联的 fieldset/output），仍是
   每次查询生成的有界 snapshot。Core 的 validation、successful control/multipart、
-  dialog/default-submit、reset 和原生激活路径复用 input/select/textarea/button 的 owner
-  解析，因此跨树控件
-  不会只在 Browser 关系查询中出现；
+  dialog/default-submit 和原生激活路径复用 input/select/textarea/button 的 owner 解析；
+  reset 另对 output 运行独立的默认值恢复 visitor，因此跨树元素不会只在 Browser 关系查询
+  中出现；
 - FORM_OWNER 同样解析 `fieldset`/`output` 的祖先或显式 `form="id"` owner。两者都会出现在
   `form.elements`，但不会进入 successful-control 或提交 visitor；Browser 可在此基础上
-  提供 `fieldset.form`、`output.form` 与 fieldset 的独立子树控件 snapshot；
+  提供 `fieldset.form`、`output.form` 与 fieldset 的独立子树控件 snapshot。output 的
+  `value`/`defaultValue` 由 Core 保存 live text 与 default override；
+  `PCore_FormResetById` 恢复该默认并清除 override，但仍不把 output 变成提交字段；
 - form-control 的 effective-disabled relation（关系 44）：input、button、select、
   textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
   first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回

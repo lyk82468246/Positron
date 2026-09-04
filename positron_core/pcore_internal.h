@@ -64,6 +64,26 @@ typedef int (*pcore_form_control_visit_fn)(struct dom_node *node, void *pw);
 int pcore_form_controls_visit(struct dom_document *doc,
         struct dom_element *form, pcore_form_control_visit_fn visit,
         void *pw);
+/* Visit output elements owned by `form` in document order. This separate
+ * traversal keeps output out of validation/submission visitors while allowing
+ * form reset to restore its default-value state. */
+int pcore_form_outputs_visit(struct dom_document *doc,
+        struct dom_element *form, pcore_form_control_visit_fn visit,
+        void *pw);
+
+/* Output elements keep a small Core-owned default-value override so the
+ * Browser `value`/`defaultValue` properties and form reset share one state.
+ * These helpers return zero on success and non-zero on invalid input, DOM or
+ * allocation failure. Returned dom_string values are owned by the caller and
+ * must be unref'd. */
+int pcore_output_get_value(struct dom_element *output,
+        dom_string **out_value);
+int pcore_output_set_value(struct dom_element *output, const char *value);
+int pcore_output_get_default_value(struct dom_element *output,
+        dom_string **out_value);
+int pcore_output_set_default_value(struct dom_element *output,
+        const char *value);
+int pcore_output_reset(struct dom_node *output);
 
 /* Resolve the effective contenteditable mode for a borrowed element node.
  * Unlike the public DOM query this helper does not consume the node
