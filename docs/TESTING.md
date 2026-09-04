@@ -484,6 +484,14 @@ fixture 断言。集合只投影带稳定 id 的 input/select/textarea/button，
 返回 64 项；其他 listed elements、无 id 节点、append/remove、native 控件视觉、键盘/触摸、
 SIP/IME 和不同 DPI 仍不在契约内。
 
+TEST1188 覆盖 `HTMLFormElement.elements` 与 fieldset owner 的组合：form 关系按文档顺序
+返回有 id 的 input、select、fieldset 及其后代控件，并保留 `item()`/`namedItem()`、独立
+snapshot、显式 `form="id"` mutation 和无效 owner 的 fail-closed。Core 关系层同时确认
+fieldset 出现在 `FORM_CONTROL_COUNT/AT`，但 `PCore_FormDataById` 的 successful-control
+快照仍只包含可提交控件，不把 fieldset 当作字段。宿主只提供现有 DOM relation、attribute
+callback 和断言；不新增 ABI、native slot、live collection、append/remove 或视觉/平台输入
+保证，后者仍需人工验收。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

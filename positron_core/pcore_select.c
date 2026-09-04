@@ -4782,10 +4782,13 @@ static int pcore_relation_parent(dom_node *node, char *value,
 }
 
 static int pcore_relation_is_control(dom_element *element);
+static int pcore_relation_is_form_element(dom_element *element);
 static int pcore_relation_attribute_value(dom_element *element,
         const char *name, dom_string **out_value);
 static int pcore_relation_fieldset_form_owner(dom_document *doc,
         dom_node *node, char *value, int value_capacity, int *out_bytes);
+static int pcore_relation_fieldset_form_owner_is(dom_document *doc,
+        dom_node *node, dom_element *wanted_form);
 
 static int pcore_relation_form_owner_is(dom_document *doc, dom_node *node,
         dom_element *wanted_form)
@@ -4800,6 +4803,10 @@ static int pcore_relation_form_owner_is(dom_document *doc, dom_node *node,
 
     explicit_owner = NULL;
     has_form_attribute = 0;
+    if (pcore_element_name_is((dom_element *) node, "fieldset")) {
+        return pcore_relation_fieldset_form_owner_is(doc, node,
+                wanted_form);
+    }
     if (pcore_relation_is_control((dom_element *) node)) {
         result = pcore_form_control_owner(doc, node, &explicit_owner,
                 &has_form_attribute);
@@ -4855,7 +4862,79 @@ static int pcore_relation_is_control(dom_element *element)
             pcore_element_name_is(element, "button");
 }
 
-static int pcore_relation_walk_controls(dom_node *node, dom_document *doc,
+static int pcore_relation_is_form_element(dom_element *element)
+{
+    return pcore_relation_is_control(element) ||
+            pcore_element_name_is(element, "fieldset");
+}
+
+static int pcore_relation_fieldset_form_owner_is(dom_document *doc,
+        dom_node *node, dom_element *wanted_form)
+{
+    dom_string *form_value;
+    dom_element *candidate;
+    dom_node *current;
+    dom_node *parent;
+    dom_node_type type;
+    const char *data;
+    int result;
+
+    if (doc == NULL || node == NULL || wanted_form == NULL ||
+            !pcore_element_name_is((dom_element *) node, "fieldset") ||
+            !pcore_element_name_is(wanted_form, "form")) {
+        return 0;
+    }
+    form_value = NULL;
+    result = pcore_relation_attribute_value((dom_element *) node, "form",
+            &form_value);
+    if (result == 1) {
+        return 0;
+    }
+    if (result == 0) {
+        data = dom_string_data(form_value);
+        candidate = NULL;
+        if (data != NULL && data[0] != '\0' &&
+                dom_document_get_element_by_id(doc, form_value,
+                        &candidate) == DOM_NO_ERR && candidate != NULL &&
+                pcore_element_name_is(candidate, "form")) {
+            result = candidate == wanted_form ? 1 : 0;
+        } else {
+            result = 0;
+        }
+        if (candidate != NULL) {
+            dom_node_unref((dom_node *) candidate);
+        }
+        dom_string_unref(form_value);
+        return result;
+    }
+
+    current = dom_node_ref(node);
+    while (current != NULL) {
+        parent = NULL;
+        if (dom_node_get_parent_node(current, &parent) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 0;
+        }
+        dom_node_unref(current);
+        current = parent;
+        if (current == NULL) {
+            break;
+        }
+        if (dom_node_get_node_type(current, &type) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 0;
+        }
+        if (type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) current, "form")) {
+            result = current == (dom_node *) wanted_form ? 1 : 0;
+            dom_node_unref(current);
+            return result;
+        }
+    }
+    return 0;
+}
+
+static int pcore_relation_walk_form_elements(dom_node *node, dom_document *doc,
         dom_element *form, unsigned int wanted, unsigned int *count, char *value,
         int value_capacity, int *out_bytes, int *found)
 {
@@ -4879,7 +4958,7 @@ static int pcore_relation_walk_controls(dom_node *node, dom_document *doc,
             return 1;
         }
         if (type == DOM_ELEMENT_NODE) {
-            if (pcore_relation_is_control((dom_element *) child) &&
+            if (pcore_relation_is_form_element((dom_element *) child) &&
                     pcore_relation_form_owner_is(doc, child, form)) {
                 bytes = 0;
                 err = pcore_relation_copy_element_id(child, NULL, 0,
@@ -4905,7 +4984,7 @@ static int pcore_relation_walk_controls(dom_node *node, dom_document *doc,
                     return 1;
                 }
             }
-            err = pcore_relation_walk_controls(child, doc, form, wanted,
+            err = pcore_relation_walk_form_elements(child, doc, form, wanted,
                     count, value, value_capacity, out_bytes, found);
             if (err != 0 || *found) {
                 dom_node_unref(child);
@@ -5019,8 +5098,9 @@ static int pcore_relation_attribute_value(dom_element *element,
 }
 
 /* Fieldsets are form-associated elements, but they are not successful form
- * controls. Keep their owner projection separate from the successful-control
- * visitor so form.elements and submission retain their existing scope. */
+ * controls. Their owner projection is shared by the DOM relation walker,
+ * while the separate successful-control visitor continues to exclude them
+ * from submission and FormData. */
 static int pcore_relation_fieldset_form_owner(dom_document *doc,
         dom_node *node, char *value, int value_capacity, int *out_bytes)
 {
@@ -5897,7 +5977,7 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
                     &root) != DOM_NO_ERR || root == NULL) {
                 err = 1;
             } else {
-                err = pcore_relation_walk_controls((dom_node *) root,
+                err = pcore_relation_walk_form_elements((dom_node *) root,
                         (dom_document *) hDoc, element,
                         (unsigned int) -1, &count, NULL, 0, NULL, &found);
                 dom_node_unref((dom_node *) root);
@@ -5916,7 +5996,7 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
                     &root) != DOM_NO_ERR || root == NULL) {
                 err = 1;
             } else {
-                err = pcore_relation_walk_controls((dom_node *) root,
+                err = pcore_relation_walk_form_elements((dom_node *) root,
                         (dom_document *) hDoc, element, index, &count,
                         out_value, value_capacity, out_bytes, &found);
                 dom_node_unref((dom_node *) root);

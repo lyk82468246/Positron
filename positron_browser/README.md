@@ -351,9 +351,10 @@ getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
 collection、`length` setter、append/remove 或 native popup。
 
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
-`input`、`select`、`textarea`、`button` 控件默认归最近祖先 form；控件存在 `form="id"`
-时解析文档中对应的 form，因此可以把 form 外的控件纳入 `form.elements`，而空值或无效
-目标没有 owner，也不回退到祖先。对 `<option>`，Browser 沿最多 64 层可寻址的
+`input`、`select`、`textarea`、`button` 和 `fieldset` 元素默认归最近祖先 form；元素存在
+`form="id"` 时解析文档中对应的 form，因此可以把 form 外的 form-associated 元素纳入
+`form.elements`，而空值或无效目标没有 owner，也不回退到祖先。fieldset 会出现在
+`form.elements`，但不会进入 Core successful-control、提交或 FormData visitor。对 `<option>`，Browser 沿最多 64 层可寻址的
 `parentElement` 链找到所属 `select`，再复用该 `select.form`；因此嵌套 `optgroup`、显式
 `select form="id"` 和属性 mutation 都能反映，找不到 select 或 owner 时返回 `null`。
 `elements` 每次读取都是按文档顺序建立的有界 snapshot，不提供完整 live form collection。
