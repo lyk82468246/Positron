@@ -32,7 +32,9 @@
 现有 Browser/Core 已形成可复用的页面组合基线：page-level 与有限 nested scroll、布局
 几何和尺寸快照、WM_SIZE/`matchMedia()`/`visualViewport`/`screen.orientation`、
 `history.scrollRestoration`、页面生命周期、窗口焦点、activeElement、focus/autofocus、
-以及有界 selector 子集。selector 当前包含顶层列表、四种关系组合器、六类属性操作符、
+以及有界 selector 子集。
+
+selector 当前包含顶层列表、四种关系组合器、六类属性操作符、
 有限结构伪类、Core effective-disabled 表单状态、option live selected 的 `:checked`、通过 validation
 callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`、通过 activeElement callback 的 `:focus`/`:focus-within`
 、静态的 `:link`/`:any-link`、当前 fragment 与元素 id 对齐的有界 `:target`、沿父链
@@ -45,9 +47,10 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
   `:placeholder-shown`、有界 `:default`（默认 checked/default-selected 与 form 首个
   submit control），以及以 query receiver/document root 为 context 的直接、无参数
   `:scope`；Core 的 form-owner relation 还支持 input、select、textarea、button、fieldset、
-  object、output 的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回包含有 id
-  fieldset/object/output 的有界 snapshot；fieldset/object/output 不进入 successful-control 或
+  img、object、output 的 `form="id"` 显式跨树归属，并让 Browser `form.elements` 按文档顺序返回包含有 id
+  fieldset/object/output 的有界 snapshot；img 只提供 owner，不进入 form collections；fieldset/object/output 不进入 successful-control 或
   FormData visitor；
+
   Core validation、submission、multipart、dialog/default-submit、reset 和按坐标的
   submit/reset activation 也共享该 owner 解析；Browser 另提供可选的
   `HTMLFormElement.reset()` 与 `requestSubmit([submitter])` 可取消事件/默认动作桥接，
@@ -57,25 +60,29 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
  独立的 Core successful-control snapshot bridge 生成脱离 DOM 的有界对象，保留显式 owner、
  重复项和文件 metadata；Ex callback 只允许目标 form 的 enabled submit-type input/button，
  不暴露 picker 路径。Browser 在构造成功后同步派发非冒泡、不可取消的 `formdata` 事件，
- `FormDataEvent.formData` 指向正在返回的对象，监听器可在构造返回前修改它；
+`FormDataEvent.formData` 指向正在返回的对象，监听器可在构造返回前修改它；
+
 `<option>` 还提供有界的 `selected`/`defaultSelected` 与 `value`/`label`/`text`
 属性桥：前者由 Core 维护 live/default 选择状态，后者复用通用 attribute/text
 callback 并在缺失属性时回退到 option 文本；`select.options`、`selectedOptions`、
 `length` 和 `option.index` 另外提供按可寻址 id 生成的有限 snapshot；`select.type` 根据
 live `multiple` attribute 提供只读的 `select-one`/`select-multiple` 模式，`optgroup.label`
 反映 label attribute（缺失为空字符串），而 `option.label` 的文本 fallback 保持不变。
-`fieldset.type`、`fieldset.form`、`fieldset.elements`、`object.form` 和 `output.form`/`output.labels` 也通过公共 bridge 提供有界的
+
+`fieldset.type`、`fieldset.form`、`fieldset.elements`、`img.form`、`object.form` 和 `output.form`/`output.labels` 也通过公共 bridge 提供有界的
 只读元数据与子树控件 snapshot：form owner 复用 Core 的祖先/显式 `form="id"` 规则，
 集合按 DOM 顺序返回含嵌套 fieldset 的可寻址 input/select/textarea/button/object/output，最多遍历
 256 个节点、返回 64 项；`form.elements` 另外按同一 owner 规则包含有 id 的 fieldset/object/output；
 output 的 label association 复用 Core relation；object 只提供 owner/collection 元数据，不
-创建 plugin 或替代内容窗口；output 的 `type`、descendant-text `value`、带
+创建 plugin 或替代内容窗口；img 只提供 owner 元数据；output 的 `type`、descendant-text `value`、带
 独立 default override 的 `defaultValue` 和 form reset 恢复由 Core/Browser 统一提供，
-但不扩展 img、其他 listed elements 或 live child mutation。
+但不扩展其他 listed elements、完整 img 资源语义或 live child mutation。
+
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过
 最多 64 层可寻址父链定位所属 select 并复用 `select.form`，显式 form owner 与 mutation
 可见，缺失或无效 owner 返回 `null`；这仍不是完整 HTML form-owner 算法。
+
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。

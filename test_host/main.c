@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1191
+#define TEST_MAX_NUMBER 1192
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -44544,6 +44544,142 @@ static BOOL test1191_browser_object_form_association(void)
     show_info(L"TEST 1191 OK",
             "object form owners and form.elements snapshots follow Core"
             " document order while object remains excluded from FormData.");
+    return TRUE;
+}
+
+/* TEST 1192 - img form association and listed collection membership. */
+static BOOL test1192_browser_img_form_association(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='form'>"
+        "<input id='first' name='first' value='one'>"
+        "<img id='inside-image' name='inside-image-name' alt='one'>"
+        "<fieldset id='group' name='group-name'>"
+        "<img id='nested-image' name='nested-image-name' alt='nested'>"
+        "<input id='inside-input' name='inside' value='two'></fieldset>"
+        "<select id='choice' name='choice'><option id='choice-option'"
+        " value='picked' selected>Picked</option></select></form>"
+        "<img id='external-image' name='external-image-name' form='form'"
+        " alt='outside'>"
+        "<img id='orphan-image' name='orphan-image-name' form='missing'"
+        " alt='orphan'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var f=document.getElementById('form'),first=document.getElementById('first'),"
+        "insideImage=document.getElementById('inside-image'),group=document.getElementById('group'),"
+        "nestedImage=document.getElementById('nested-image'),insideInput=document.getElementById('inside-input'),"
+        "choice=document.getElementById('choice'),externalImage=document.getElementById('external-image'),"
+        "orphanImage=document.getElementById('orphan-image');"
+        "var e=f.elements;var initial=e.length===4&&e[0]===first&&e[1]===group&&"
+        "e[2]===insideInput&&e[3]===choice&&e.item(4)===null&&"
+        "e.namedItem('inside-image-name')===null&&e.namedItem('group-name')===group&&"
+        "e.namedItem('nested-image-name')===null&&"
+        "e.namedItem('external-image-name')===null&&"
+        "e.namedItem('orphan-image-name')===null;"
+        "e.pop();var snapshot=e.length===3&&f.elements.length===4;"
+        "var owners=insideImage.form===f&&nestedImage.form===f&&"
+        "externalImage.form===f&&orphanImage.form===null&&insideImage.labels===null;"
+        "var nestedElements=group.elements;var nestedState=nestedElements.length===1&&"
+        "nestedElements[0]===insideInput;"
+        "externalImage.setAttribute('form','missing');var invalid=externalImage.form===null&&"
+        "f.elements.length===4;externalImage.setAttribute('form','form');"
+        "var rebound=externalImage.form===f&&f.elements.length===4;"
+        "document.getElementById('result').textContent=String(initial)+'|'"
+        "+String(snapshot)+'|'+String(owners)+'|'+String(nestedState)+'|'"
+        "+String(invalid)+'|'+String(rebound);";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true";
+    static const char *expected_ids[] = {
+        "first", "group", "inside-input", "choice"
+    };
+    static const char *expected_names[] = {
+        "first", "inside", "choice"
+    };
+    HANDLE document;
+    HANDLE form_data;
+    PCoreFormDataInfo form_data_info;
+    PCoreFormDataEntryInfo entry_info;
+    char id[64];
+    char owner[64];
+    char name[64];
+    char value[128];
+    char error[512];
+    int bytes;
+    int owner_bytes;
+    int count;
+    int i;
+    BOOL core_ok;
+    BOOL data_ok;
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    form_data = NULL;
+    memset(&form_data_info, 0, sizeof(form_data_info));
+    memset(&entry_info, 0, sizeof(entry_info));
+    memset(id, 0, sizeof(id));
+    memset(owner, 0, sizeof(owner));
+    memset(name, 0, sizeof(name));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    owner_bytes = 0;
+    count = 0;
+    core_ok = document != NULL &&
+            PCore_NodeRelationById(document, "form",
+            PCORE_NODE_RELATION_FORM_CONTROL_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 4 &&
+            PCore_NodeRelationById(document, "inside-image",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, owner, sizeof(owner),
+            &owner_bytes, NULL) == 0 && strcmp(owner, "form") == 0 &&
+            PCore_NodeRelationById(document, "external-image",
+            PCORE_NODE_RELATION_FORM_OWNER, 0, owner, sizeof(owner),
+            &owner_bytes, NULL) == 0 && strcmp(owner, "form") == 0;
+    for (i = 0; core_ok && i < 4; i++) {
+        memset(id, 0, sizeof(id));
+        bytes = 0;
+        if (PCore_NodeRelationById(document, "form",
+                PCORE_NODE_RELATION_FORM_CONTROL_AT, (unsigned int) i,
+                id, sizeof(id), &bytes, NULL) != 0 ||
+                strcmp(id, expected_ids[i]) != 0) {
+            core_ok = FALSE;
+        }
+    }
+    form_data = PCore_FormDataById(document, "form");
+    data_ok = form_data != NULL &&
+            PCore_FormDataInfo(form_data, &form_data_info) == 1 &&
+            form_data_info.entry_count == 3;
+    for (i = 0; data_ok && i < 3; i++) {
+        memset(&entry_info, 0, sizeof(entry_info));
+        memset(name, 0, sizeof(name));
+        memset(value, 0, sizeof(value));
+        if (PCore_FormDataEntryInfo(form_data, (unsigned int) i,
+                &entry_info, name, sizeof(name), value, sizeof(value)) != 1 ||
+                entry_info.kind != 1 || strcmp(name, expected_names[i]) != 0) {
+            data_ok = FALSE;
+        }
+    }
+    if (form_data != NULL) {
+        PCore_FreeFormData(form_data);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!core_ok || !data_ok ||
+            !test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d data=%d count=%d name=%s value=%s",
+                    core_ok, data_ok, form_data_info.entry_count, name,
+                    value);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1192 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1192 OK",
+            "img form owners follow Core while img stays outside listed"
+            " collections and FormData.");
     return TRUE;
 }
 
@@ -102675,6 +102811,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1189: ok = test1189_browser_output_form_association(); break;
         case 1190: ok = test1190_browser_output_value_default_reset(); break;
         case 1191: ok = test1191_browser_object_form_association(); break;
+        case 1192: ok = test1192_browser_img_form_association(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -77,7 +77,7 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge（TEST1146–1191）；
+  的 typed property bridge（TEST1146–1192）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -235,21 +235,21 @@ TEST1187 断言 Browser/Core 的 `HTMLFieldSetElement` 组合：`fieldset.type` 
 `namedItem()`、snapshot 隔离、属性 mutation、无效 owner 和非 fieldset 空集合均有自动
 断言。宿主只提供既有 DOM relation/attribute callback，产品语义留在公共 DLL；集合仅
 投影带稳定 id 的 input/select/textarea/button，最多遍历 256 个节点、返回 64 项，不
-承诺 `img` 等其他 listed elements、无 id 节点、append/remove、native 控件视觉或平台输入。
+承诺本夹具未覆盖的 listed elements、无 id 节点、append/remove、native 控件视觉或平台输入。
 
 TEST1188 断言 `HTMLFormElement.elements` 也包含其有 id 的 fieldset：Core relation 按
 文档顺序返回 input、select、fieldset 及其后代控件，显式 `form="id"` 与无效 owner 的
 mutation 保持一致；同一 fixture 再用 `PCore_FormDataById` 确认 fieldset 不进入
 successful-control 快照。Browser 的 `item()`/`namedItem()` 与独立 snapshot 由自动断言
-覆盖，宿主只接线既有 relation/attribute callback，不复制表单语义，也不承诺其他
-form-associated 元素、live collection、native 控件视觉或平台输入。
+覆盖，宿主只接线既有 relation/attribute callback，不复制表单语义，也不承诺本夹具未覆盖的
+form-associated owner、live collection、native 控件视觉或平台输入。
 
 TEST1189 断言 `output` 作为 form-associated、labelable 元素进入 Core/Browser 的
 `form.elements` 与 fieldset 子树 snapshot：祖先/显式 `form="id"` owner、文档顺序、
 `output.form`、`labels`、`item()`/`namedItem()`、name/form mutation 和无效 owner 均有
 自动断言；同一 fixture 用 `PCore_FormDataById` 确认 output 不进入 successful-control
-快照。宿主只接线既有 relation/attribute callback，不复制表单语义，也不承诺其他
-form-associated 元素、native 控件视觉或平台输入。
+快照。宿主只接线既有 relation/attribute callback，不复制表单语义，也不承诺本夹具未覆盖的
+form-associated owner、native 控件视觉或平台输入。
 
 TEST1190 断言 output 的完整值状态纵切：`value` 反映 descendant text，设置 live value
 后由 Core 保存独立的 default override，`defaultValue` 在 override 存在时只更新默认
@@ -264,6 +264,12 @@ TEST1191 断言 `<object>` 的 listed form-associated 关系：Core/Browser 将 
 object 仍排除在 validation、successful-control 和 FormData 之外；宿主只提供离线 DOM
 fixture、既有 relation/attribute callback 与断言，不创建 plugin 或替代内容窗口，也不在
 测试宿主复制产品语义。
+
+TEST1192 断言 `<img>` 的 form-associated owner-only 关系：Core/Browser 解析 form 内、fieldset
+子树内和显式 `form="id"` 的 img owner，同时确认 img 不进入 `form.elements` 或
+`fieldset.elements`；`img.form`、无效 owner、owner mutation 与命名集合排除均有自动断言。
+img 不进入 validation、successful-control 或 FormData；宿主只提供离线 DOM fixture、既有
+relation/attribute callback 与断言，不复制图片资源、layout/paint 或其他产品语义。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

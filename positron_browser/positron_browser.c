@@ -5078,7 +5078,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return typeof id==='string'&&id!==''?wrap9(id):null;}try{n=n.parentElement;}"
         "catch(optionFormParentNextError){return null;}depth++;}return null;}"
         "Object.defineProperty(PElement.prototype,'form',{get:function(){var t=this.localName;var id;"
-        "if(t==='option'){return optionForm9(this);}if(t!=='input'&&t!=='select'&&t!=='textarea'&&t!=='button'&&t!=='fieldset'&&t!=='object'&&t!=='output'){return null;}"
+        "if(t==='option'){return optionForm9(this);}if(t!=='input'&&t!=='select'&&t!=='textarea'&&t!=='button'&&t!=='fieldset'&&t!=='img'&&t!=='object'&&t!=='output'){return null;}"
         "id=relation9(this,8,0);return typeof id==='string'&&id!==''?wrap9(id):null;},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'elements',{get:function(){var a=[];var n;var i;var id;"
         "if(this.localName==='fieldset'){return fieldsetElements9(this);}"

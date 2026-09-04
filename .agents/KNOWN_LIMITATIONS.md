@@ -62,11 +62,11 @@
 - `fieldset.type`、`fieldset.form` 与 `fieldset.elements` 现在也有一个有界 Browser/Core
   projection：`type` 固定为只读 `fieldset`，`form` 使用 Core FORM_OWNER 的祖先/显式
   `form="id"` 规则，`elements` 从 fieldset 子树按 DOM 顺序生成独立 HTMLCollection
-  snapshot，包含带稳定 id 的 input/select/textarea/button/object/output（含嵌套 fieldset）。
+  snapshot，包含带稳定 id 的 listed input/select/textarea/button/object/output（含嵌套 fieldset）。
   每次最多遍历 256 个节点、返回 64 项；`form.elements` 同样包含有 id 的
-  fieldset/object/output。output 的 `form`/`labels` 复用同一关系，但不覆盖 img/其他 listed
-  elements、无 id 节点、完整 live collection 或 append/remove，也不改变 fieldset/object/output
-  在 successful-control 中的排除。
+  fieldset/object/output。`img.form` 复用同一 owner 关系，但 img 不进入任一集合。该桥不
+  覆盖其他 listed elements、无 id 节点、完整 live collection 或 append/remove，也不改变
+  fieldset/object/output 在 successful-control 中的排除。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -94,8 +94,9 @@
 - 大量 IDL reflection、namespace、mutation observer、range/selection 和 shadow DOM 不存在。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
-  关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、object、output，并按文档顺序
-  纳入跨树 form-associated 元素；fieldset/object/output 只进入 `form.elements`，不会进入 successful-control
+  关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
+  纳入跨树 listed form-associated 元素，img 只提供 FORM_OWNER，不进入 `form.elements` 或
+  `fieldset.elements`；fieldset/object/output 只进入 `form.elements`，不会进入 successful-control
   或 FormData visitor。output 也可读取 `form` 与 `labels`，并通过 Core 提供 descendant-text
   `value`、带独立 override 的 `defaultValue` 以及 reset 恢复；这不是完整 listed-content
   算法。validation、submission/multipart、dialog/default-submit、reset 和按坐标的
@@ -120,7 +121,7 @@
   `formData` 指向正在返回的对象；监听器可在构造返回前修改字段，`form.onformdata`
   也可用。它不触发 validation、submit/reset 事件、默认动作或导航。文件只返回 filename/type
   和空内容，不暴露 picker 路径；完整 live HTMLFormControlsCollection、文件读取和
-  fieldset/object/output 之外的其他 form-associated 元素（如 img）及浏览器完整表单树规则仍未实现。
+  其他 form-associated 扩展及浏览器完整表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -454,14 +455,14 @@
 - TEST1188 是离线的 Browser/Core `form.elements` fieldset 夹具，无新增立即人工风险；自动门
   证明 form 关系按文档顺序包含有 id 的 fieldset 及其后代控件，显式 `form="id"` 与无效
   owner mutation、`item()`/`namedItem()` 和独立 snapshot 保持一致，同时确认 fieldset
-  不进入 Core successful-control/FormData 快照。该扩展不增加 ABI，不实现其他
-  form-associated 元素、完整 live collection、append/remove、native 表单视觉、键盘/触摸、
+  不进入 Core successful-control/FormData 快照。该扩展不增加 ABI，不实现完整 live collection、
+  append/remove、native 表单视觉、键盘/触摸、
   SIP/IME 或不同 DPI 行为。
 - TEST1189 是离线的 Browser/Core `output` form-associated 夹具，无新增立即人工风险；自动门
   证明 output 的祖先/显式 `form="id"` owner、`form.elements`/fieldset 子树文档顺序、
   `labels`、`item()`/`namedItem()`、name/form mutation 和无效 owner 的 fail-closed，同时
   确认 output 不进入 Core successful-control/FormData 快照。该夹具不覆盖 output 的其他
-  listed-content 算法、img 等其他 form-associated 元素、完整 live collection、native
+  listed-content 算法、完整 live collection、native
   表单视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
 - TEST1190 是离线的 Browser/Core output value-state 夹具，无新增立即人工风险；自动门证明
   `value`/`defaultValue` 的 descendant-text 与 default override 分离、`form.reset()` 和
@@ -472,7 +473,11 @@
   证明 object 的祖先/显式 `form="id"` owner、`form.elements`/`fieldset.elements` 文档顺序、
   `item()`/`namedItem()`、snapshot 隔离、owner mutation 与无效 owner，并确认 object 不进入
   validation、successful-control 或 FormData。实现不创建 plugin/替代内容窗口，也不覆盖
-  img、其他 listed-content 算法、完整 live collection、native 表单视觉或平台输入。
+  其他 listed-content 算法、完整 live collection、native 表单视觉或平台输入。
+- TEST1192 是离线的 Browser/Core img form-owner 夹具，无新增立即人工风险；自动门证明 img
+  的祖先/显式 `form="id"` owner、无效 owner 与 owner mutation，同时确认 img 不属于
+  `form.elements`/`fieldset.elements`，也不进入 successful-control 或 FormData。该桥不扩展
+  img 的完整资源/图像行为、其他 form-associated 扩展、live collection、native 表单视觉或平台输入。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由
