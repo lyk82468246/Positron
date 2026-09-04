@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1185
+#define TEST_MAX_NUMBER 1186
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43876,6 +43876,50 @@ static BOOL test1185_browser_option_form_owner(void)
             "Browser resolves option.form through its owning select, including"
             " explicit form owners and live attribute changes, while missing"
             " or invalid owners remain null.");
+    return TRUE;
+}
+
+/* TEST 1186 - select mode and optgroup label metadata remain typed and live. */
+static BOOL test1186_browser_select_group_metadata(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><select id='single'><optgroup id='group' label='Initial group'>"
+        "<option id='one'>One</option></optgroup></select>"
+        "<select id='multi' multiple><optgroup id='multi-group'>"
+        "<option id='many'>Many</option></optgroup></select>"
+        "<div id='plain'>Plain</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var single=document.getElementById('single'),multi=document.getElementById('multi'),"
+        "group=document.getElementById('group'),multiGroup=document.getElementById('multi-group'),"
+        "one=document.getElementById('one'),plain=document.getElementById('plain');"
+        "var initial=single.type==='select-one'&&multi.type==='select-multiple'&&"
+        "group.label==='Initial group'&&multiGroup.label===''&&one.label==='One';"
+        "group.label='Updated group';var changed=group.label==='Updated group'&&"
+        "group.getAttribute('label')==='Updated group';group.removeAttribute('label');"
+        "var cleared=group.label===''&&one.label==='One';"
+        "single.type='custom';var readonly=single.type==='select-one'&&"
+        "single.getAttribute('type')===null;single.setAttribute('multiple','');"
+        "var enabled=single.type==='select-multiple';single.removeAttribute('multiple');"
+        "var restored=single.type==='select-one';"
+        "var safe=typeof plain.label==='undefined'&&plain.type==='';"
+        "document.getElementById('result').textContent=String(initial)+'|'"
+        "+String(changed)+'|'+String(cleared)+'|'+String(readonly)+'|'"
+        "+String(enabled)+'|'+String(restored)+'|'+String(safe);";
+    static const char EXPECTED[] = "true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1186 FAIL", error[0] != '\0' ? error :
+                "Browser select/optgroup metadata fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1186 OK",
+            "Browser exposes select-one/select-multiple mode and live"
+            " optgroup label metadata while preserving option fallback and"
+            " non-target fail-closed behavior.");
     return TRUE;
 }
 
@@ -102001,6 +102045,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1183: ok = test1183_browser_option_basic_properties(); break;
         case 1184: ok = test1184_browser_select_option_collections(); break;
         case 1185: ok = test1185_browser_option_form_owner(); break;
+        case 1186: ok = test1186_browser_select_group_metadata(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

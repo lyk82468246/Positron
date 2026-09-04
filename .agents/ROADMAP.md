@@ -59,7 +59,10 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
 `<option>` 还提供有界的 `selected`/`defaultSelected` 与 `value`/`label`/`text`
 属性桥：前者由 Core 维护 live/default 选择状态，后者复用通用 attribute/text
 callback 并在缺失属性时回退到 option 文本；`select.options`、`selectedOptions`、
-`length` 和 `option.index` 另外提供按可寻址 id 生成的有限 snapshot。以上桥不扩展
+`length` 和 `option.index` 另外提供按可寻址 id 生成的有限 snapshot；`select.type` 根据
+live `multiple` attribute 提供只读的 `select-one`/`select-multiple` 模式，`optgroup.label`
+反映 label attribute（缺失为空字符串），而 `option.label` 的文本 fallback 保持不变。
+以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过
 最多 64 层可寻址父链定位所属 select 并复用 `select.form`，显式 form owner 与 mutation
 可见，缺失或无效 owner 返回 `null`；这仍不是完整 HTML form-owner 算法。

@@ -54,6 +54,11 @@
   完整 live collection、`length` setter、append/remove、option.form 的完整 owner 算法（当前
   只沿有界可寻址父链投影到所属 select）、
   native SELECT popup、键盘/触摸、SIP/IME、layout/paint 或不同 DPI 视觉。
+- `select.type` 与 `optgroup.label` 现在有一个有界的 Browser metadata projection：`type`
+  只由 live `multiple` attribute 决定并返回 `select-one`/`select-multiple`，不能通过 setter
+  写入；`optgroup.label` 反映自身 attribute，缺失时为空字符串，`option.label` 的文本
+  fallback 保持不变。该桥复用通用 attribute callback，不增加 ABI 或 native slot；它不
+  实现 native SELECT popup、完整 option/group 算法、layout/paint 或平台输入行为。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -421,6 +426,16 @@
   非 select/option 目标安全返回。该门只覆盖有稳定 id 的可寻址元素和 64 个 option/256
   个遍历节点预算，不代表完整 live HTMLCollection、length setter、append/remove、
   option.form 的完整 owner 算法、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证。
+- TEST1185 是离线的 Browser option.form owner 夹具，无新增立即人工风险；自动门证明
+  optgroup 父链、显式 `select form="id"`、form attribute mutation、无 owner/无效 owner
+  的 `null` 回退和既有 input owner 不变。实现只复用现有 DOM relation、form owner 与
+  attribute mutation，不增加 ABI；64 层父链预算、无 id 元素不可寻址、完整 HTML
+  option/form-owner 算法、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证仍未实现。
+- TEST1186 是离线的 Browser select/optgroup metadata 夹具，无新增立即人工风险；自动门
+  证明 `select.type` 对 `multiple` attribute 的 live `select-one`/`select-multiple` 映射、
+  只读 setter、`optgroup.label` 的显式值/缺失回退/attribute mutation，以及 option label
+  fallback 和非目标 fail-closed。该扩展不增加 ABI，不提供 native SELECT popup、键盘/触摸、
+  SIP/IME、layout/paint 或不同 DPI 视觉保证。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

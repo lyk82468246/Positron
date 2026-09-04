@@ -346,15 +346,14 @@ DOM、form、event 和 navigation 查询/mutation。Browser 负责 JSON 参数�
 `selected` 遵守单选互斥/多选规则，`defaultSelected` 只改默认基线。`value`/`label`
 读取显式 attribute，缺失时回退到 option 文本，`text` 读写该纯文本；mutation 会反映
 到后续读取和 `select.value`，空 attribute 与缺失可区分。未注册、非 option、无效 id 或
-callback/mutation 失败均 fail closed；不涉及 native SELECT、视觉/输入或完整 HTML option
-算法。
+callback/mutation 失败均 fail closed。
 
-`select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 也由
-Browser 提供。集合从现有 DOM relation snapshot 遍历可寻址的 option，包含 optgroup
-后代并按文档顺序返回；每次 getter 都生成独立的 HTMLCollection，`selectedOptions` 在
-读取时筛选当前 live selected 状态，snapshot 数组的本地修改不会回写 DOM。该桥最多
+`select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 由 Browser
+提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；
+getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
+最多
 遍历 256 个节点并返回 64 个 option，缺少稳定 id 的元素不能投影；不提供完整 live
-HTMLCollection、`length` setter、append/remove、native SELECT popup、键盘/触摸、SIP/IME
+完整 collection、`length` setter、append/remove、native SELECT popup、键盘/触摸、SIP/IME
 或视觉保证。
 
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
@@ -363,8 +362,11 @@ HTMLCollection、`length` setter、append/remove、native SELECT popup、键盘/
 目标没有 owner，也不回退到祖先。对 `<option>`，Browser 沿最多 64 层可寻址的
 `parentElement` 链找到所属 `select`，再复用该 `select.form`；因此嵌套 `optgroup`、显式
 `select form="id"` 和属性 mutation 都能反映，找不到 select 或 owner 时返回 `null`。
-`elements` 每次读取都是按文档顺序建立的有界 snapshot，文档 mutation 后应重新读取；
-这不是完整 HTML form-owner 算法，也不扩展为完整 live form collection。
+`elements` 每次读取都是按文档顺序建立的有界 snapshot，不提供完整 live form collection。
+
+`select.type` 按 live `multiple` attribute 返回只读的 `select-one`/`select-multiple`；
+`optgroup.label` 反映 `label` attribute，缺失为 `''` 且随 mutation 更新，`option.label`
+的文本 fallback 保持不变。仅提供脚本元数据，不创建 popup 或改变 layout/paint/平台输入。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
 `PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、

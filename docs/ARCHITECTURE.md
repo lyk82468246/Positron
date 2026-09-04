@@ -200,6 +200,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   显式 `select form="id"` 和 form attribute mutation 可被读取；缺失 select、无效 form
   id 或 relation 失败均返回 `null`。这不增加 ABI，不实现完整 HTML option/form-owner 算法，
   也不创建 native SELECT。
+- `HTMLSelectElement.type` 与 `HTMLOptGroupElement.label` 是同一 DOM bridge 的有界元数据：
+  `select.type` 根据 live `multiple` attribute 返回只读的 `select-one` 或
+  `select-multiple`，setter 不写入 `type`；`optgroup.label` 反映 `label` attribute，缺失
+  为空字符串并随 mutation 更新，`option.label` 的文本 fallback 保持不变。它们复用
+  既有 attribute callback，不增加 ABI 或 native slot，也不实现 SELECT popup、layout/paint
+  或平台输入行为。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，
