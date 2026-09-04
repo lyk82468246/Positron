@@ -462,6 +462,13 @@ selected 和 attribute callback，不增加 ABI 或 native slot；每次最多�
 HTMLCollection、`length` setter、append/remove、native SELECT popup、键盘/触摸、
 SIP/IME、layout/paint 或不同 DPI 视觉。
 
+TEST1185 覆盖 Browser `<option>.form` 的有界 owner 投影：嵌套 `optgroup` 通过最多 64 层
+可寻址父链找到所属 `select`，再复用 `select.form`；显式 `select form="id"`、form
+attribute mutation、无 owner、无效 owner 和非 option 目标分别验证成功或 `null`，并
+确认既有 input owner 不回退。宿主只提供现有 DOM relation、attribute mutation 和断言，
+不复制 form-owner 规则；该门不承诺完整 HTML option/form 算法、native SELECT popup、
+键盘/触摸、SIP/IME、layout/paint 或不同 DPI 视觉。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -60,7 +60,9 @@ callback 的 `:valid`/`:invalid`、范围验证的 `:in-range`/`:out-of-range`�
 属性桥：前者由 Core 维护 live/default 选择状态，后者复用通用 attribute/text
 callback 并在缺失属性时回退到 option 文本；`select.options`、`selectedOptions`、
 `length` 和 `option.index` 另外提供按可寻址 id 生成的有限 snapshot。以上桥不扩展
-native SELECT popup、完整 live collection 或完整 HTML option 算法；
+native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过
+最多 64 层可寻址父链定位所属 select 并复用 `select.form`，显式 form owner 与 mutation
+可见，缺失或无效 owner 返回 `null`；这仍不是完整 HTML form-owner 算法。
 对应自动合同见
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。

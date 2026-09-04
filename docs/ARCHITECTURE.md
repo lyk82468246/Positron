@@ -195,6 +195,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   该实现不增加 Core ABI 或 native slot，最多遍历 256 个节点、返回 64 个 option，
   缺少稳定 id 的元素无法投影，完整 live collection、length setter、append/remove、
   native SELECT popup 与视觉/输入仍不在 Browser 公共边界内。
+- `HTMLOptionElement.form` 是同一 Browser bridge 的有界 owner 投影：Browser 沿最多 64
+  层可寻址父链定位所属 `select`，再复用 `select.form` 的 Core relation，因此 optgroup、
+  显式 `select form="id"` 和 form attribute mutation 可被读取；缺失 select、无效 form
+  id 或 relation 失败均返回 `null`。这不增加 ABI，不实现完整 HTML option/form-owner 算法，
+  也不创建 native SELECT。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，

@@ -77,7 +77,7 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge（TEST1146–1184）；
+  的 typed property bridge（TEST1146–1185）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -215,6 +215,12 @@ TEST1184 断言 Browser `select.options`/`selectedOptions`/`length` 与 `option.
 和 attribute callback，不在 fixture 中复制集合语义；该门最多遍历 256 个节点、返回
 64 个 option，不承诺完整 live HTMLCollection、length setter、append/remove、native
 SELECT popup、键盘/触摸、SIP/IME、layout/paint 或不同 DPI。
+
+TEST1185 断言 Browser `<option>.form` 的有界 owner 投影：嵌套 optgroup、显式
+`select form="id"`、form attribute mutation、无 owner、无效 owner 和非 option 目标均
+得到预期结果，既有 input 的 form owner 保持不变。宿主只提供现有 DOM relation、属性
+mutation、脚本接线和断言，不在 fixture 中复制 form-owner 语义；该门不承诺完整 HTML
+option/form 算法、native SELECT popup、键盘/触摸、SIP/IME、layout/paint 或不同 DPI。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

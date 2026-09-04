@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1184
+#define TEST_MAX_NUMBER 1185
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43828,6 +43828,54 @@ static BOOL test1184_browser_select_option_collections(void)
             "Browser exposes bounded options/selectedOptions snapshots,"
             " select length and document-order option indices through the"
             " existing DOM bridge.");
+    return TRUE;
+}
+
+/* TEST 1185 - option.form follows the owning select, including explicit
+ * form="id" owners, while remaining live and fail-closed. */
+static BOOL test1185_browser_option_form_owner(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><form id='checkout'><select id='inside'>"
+        "<optgroup id='inside-group'><option id='inside-option' selected>Inside</option>"
+        "</optgroup></select><input id='field' name='field'></form>"
+        "<select id='external' form='checkout'><option id='external-option'>External</option></select>"
+        "<select id='orphan'><optgroup id='orphan-group'><option id='orphan-option'>Orphan</option>"
+        "</optgroup></select><select id='invalid' form='missing'><option id='invalid-option'>Invalid</option></select>"
+        "<div id='plain'>Plain</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var form=document.getElementById('checkout'),inside=document.getElementById('inside-option'),"
+        "insideSelect=document.getElementById('inside'),external=document.getElementById('external-option'),"
+        "externalSelect=document.getElementById('external'),orphan=document.getElementById('orphan'),"
+        "orphanOption=document.getElementById('orphan-option'),invalid=document.getElementById('invalid-option'),"
+        "field=document.getElementById('field'),plain=document.getElementById('plain');"
+        "var nested=inside.form===form&&inside.parentElement.localName==='optgroup'&&"
+        "inside.parentElement.parentElement===insideSelect;"
+        "var explicit=external.form===form&&externalSelect.form===form&&"
+        "external.parentElement===externalSelect;"
+        "var noOwner=orphanOption.form===null&&invalid.form===null&&plain.form===null;"
+        "var unchanged=field.form===form;"
+        "var before=orphanOption.form===null;orphan.setAttribute('form','checkout');"
+        "var rebound=orphanOption.form===form;orphan.removeAttribute('form');"
+        "var released=orphanOption.form===null;"
+        "document.getElementById('result').textContent=String(nested)+'|'"
+        "+String(explicit)+'|'+String(noOwner)+'|'+String(unchanged)+'|'"
+        "+String(before)+'|'+String(rebound)+'|'+String(released);";
+    static const char EXPECTED[] = "true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1185 FAIL", error[0] != '\0' ? error :
+                "Browser option.form owner fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1185 OK",
+            "Browser resolves option.form through its owning select, including"
+            " explicit form owners and live attribute changes, while missing"
+            " or invalid owners remain null.");
     return TRUE;
 }
 
@@ -101952,6 +102000,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1182: ok = test1182_browser_option_selection_properties(); break;
         case 1183: ok = test1183_browser_option_basic_properties(); break;
         case 1184: ok = test1184_browser_select_option_collections(); break;
+        case 1185: ok = test1185_browser_option_form_owner(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

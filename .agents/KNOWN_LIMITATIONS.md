@@ -51,7 +51,8 @@
   `selectedOptions` 在读取时筛选 live selected 状态，`option.index` 包括 optgroup 内的
   option。每次 getter 都生成新集合，snapshot 数组的本地修改不会写回 DOM；遍历最多 256
   个节点并返回 64 个 option，缺少稳定 id 的元素不能被当前 wrapper 寻址。该扩展不实现
-  完整 live collection、`length` setter、append/remove、option.form 的完整 owner 算法、
+  完整 live collection、`length` setter、append/remove、option.form 的完整 owner 算法（当前
+  只沿有界可寻址父链投影到所属 select）、
   native SELECT popup、键盘/触摸、SIP/IME、layout/paint 或不同 DPI 视觉。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
@@ -419,7 +420,7 @@
   `select.length`、`option.index` 和 snapshot 隔离，并确认 optgroup 不进入 collection、
   非 select/option 目标安全返回。该门只覆盖有稳定 id 的可寻址元素和 64 个 option/256
   个遍历节点预算，不代表完整 live HTMLCollection、length setter、append/remove、
-  option.form、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证。
+  option.form 的完整 owner 算法、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

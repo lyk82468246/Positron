@@ -354,14 +354,17 @@ Browser 提供。集合从现有 DOM relation snapshot 遍历可寻址的 option
 后代并按文档顺序返回；每次 getter 都生成独立的 HTMLCollection，`selectedOptions` 在
 读取时筛选当前 live selected 状态，snapshot 数组的本地修改不会回写 DOM。该桥最多
 遍历 256 个节点并返回 64 个 option，缺少稳定 id 的元素不能投影；不提供完整 live
-HTMLCollection、`length` setter、append/remove、option.form 的完整算法、native SELECT
-popup、键盘/触摸、SIP/IME 或视觉保证。
+HTMLCollection、`length` setter、append/remove、native SELECT popup、键盘/触摸、SIP/IME
+或视觉保证。
 
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
 `input`、`select`、`textarea`、`button` 控件默认归最近祖先 form；控件存在 `form="id"`
 时解析文档中对应的 form，因此可以把 form 外的控件纳入 `form.elements`，而空值或无效
-目标没有 owner，也不回退到祖先。`elements` 每次读取都是按文档顺序建立的有界 snapshot，
-  文档 mutation 后应重新读取；Browser 不扩展为完整 live form collection。
+目标没有 owner，也不回退到祖先。对 `<option>`，Browser 沿最多 64 层可寻址的
+`parentElement` 链找到所属 `select`，再复用该 `select.form`；因此嵌套 `optgroup`、显式
+`select form="id"` 和属性 mutation 都能反映，找不到 select 或 owner 时返回 `null`。
+`elements` 每次读取都是按文档顺序建立的有界 snapshot，文档 mutation 后应重新读取；
+这不是完整 HTML form-owner 算法，也不扩展为完整 live form collection。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
 `PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、
