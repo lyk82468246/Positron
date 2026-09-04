@@ -96,7 +96,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   effective-disabled 状态（含 disabled fieldset 的 first-legend exemption 与
   optgroup→option 继承），并通过 relation 44 向 Browser 提供只读 UTF-8 `"0"`/`"1"`
   快照；选项选择和 successful submission 也消费同一状态。relation 45 只为
-  `option` 提供 parser/default-selected 的数值快照，与 live selected 状态分离；
+  `option` 提供 parser/default-selected 的数值快照，与 live selected 状态分离。
+  `PCore_NodeSelectedById`/`PCore_NodeSetSelectedById` 以及
+  `PCore_NodeDefaultSelectedById`/`PCore_NodeSetDefaultSelectedById` 是按 DOM id
+  的同步入口；前一组修改 live 选择并遵守单选互斥/多选规则，后一组只读写
+  Core 的默认基线，不通过 content attribute 改写 live 选择；这些入口不触发
+  layout、paint 或 native 控件副作用；
 - 表单关联关系：支持的 input、select、textarea、button 默认归最近祖先 form；存在
   `form="id"` 时解析文档中对应的 form，把 form 外控件纳入按文档顺序的有界
   `form.elements` snapshot，空值或无效目标不回退到祖先。validation、successful-control
@@ -171,6 +176,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   button/input/image 依据其 form 中按文档顺序遇到的第一个 submit control。live
   `.checked` 或 `selectedIndex` mutation 不改写这些默认状态；无 relation、非法元素或
   带参数形式安全不匹配，且不承诺完整 Selectors 或 native 默认按钮视觉；
+- `<option>` 的脚本 `selected`/`defaultSelected` 属性通过可选的
+  `PBrowserScriptOptionCallbacks` typed table 接入 Core 的按 id 状态；该表在既有
+  `PBrowserScriptFormCallbacks` 之后注册，Browser 复用已有的
+  `__pcoreFormProperty` JSON/native slot，不增加 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 占用。
+  `selected` setter 遵守 Core 的单选互斥和多选规则，`defaultSelected` setter 只更新
+  默认基线；Browser 不创建 native SELECT、弹出菜单或视觉重绘，宿主负责相应控件接线。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，
@@ -373,7 +384,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 新窗口、外部协议、下载和文件系统权限策略；
 - 把 Core 文档回调注册到 Browser session；布局 relation 还包括元素滚动的当前 offset，
   relation 44/45 还把 effective-disabled 与 option default-selected 状态交给 Browser
-  selector；宿主不复制 box tree、滚动模型、默认状态或 fieldset/optgroup 继承规则；
+  selector；同时在 form callback 注册后按需注册 `PBrowserScriptOptionCallbacks`，把
+  `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`；宿主不复制 box tree、
+  滚动模型、默认状态或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
   脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
@@ -445,6 +458,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 
 - 已发布结构体通过 `cbSize` 或显式 ABI 版本演进；新字段追加，不改变旧字段布局。
 - 新能力优先新增函数或 `Ex` 入口，不静默改变旧入口含义。
+- 表单 option 的 selected/defaultSelected adapter 使用独立的可选 callback table，
+  保持既有 `PBrowserScriptFormCallbacks` 布局不变；Browser 只在注册且字段完整时启用，
+  缺失或失败按 fail-closed 处理。
 - 无效参数、容量不足、越界、错 origin 和错状态必须返回稳定错误，不能部分提交。
 - 公共头文件是精确契约；README 只解释调用模式，不复制整套声明。
 

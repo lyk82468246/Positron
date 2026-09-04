@@ -6651,6 +6651,217 @@ PCORE_API int PCore_NodeSetDefaultCheckedById(HANDLE hDoc,
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
 
+/* libdom represents an option's live selected state with the selected
+ * attribute. Mark the current defaultSelected value as explicit before
+ * changing that attribute so a live mutation cannot accidentally rewrite the
+ * parser/default baseline. */
+static dom_exception pcore_option_set_selected_live(
+        dom_html_option_element *option, bool selected)
+{
+    bool default_selected;
+    dom_exception err;
+
+    default_selected = false;
+    err = dom_html_option_element_get_default_selected(option,
+            &default_selected);
+    if (err != DOM_NO_ERR) {
+        return err;
+    }
+    err = dom_html_option_element_set_default_selected(option,
+            default_selected);
+    if (err != DOM_NO_ERR) {
+        return err;
+    }
+    return dom_html_option_element_set_selected(option, selected);
+}
+
+static int pcore_select_set_selected_index_dom(
+        dom_html_select_element *select, int index);
+
+/* Return the retained <select> ancestor for an option. Options nested in an
+ * optgroup are included; detached options are not addressable by the public
+ * document-id API and therefore fail closed. */
+static dom_html_select_element *pcore_option_owner_select(dom_node *option)
+{
+    dom_node *current;
+    dom_node *parent;
+    dom_node_type type;
+    dom_exception err;
+
+    current = NULL;
+    if (option == NULL || dom_node_get_parent_node(option, &current) !=
+            DOM_NO_ERR) {
+        return NULL;
+    }
+    while (current != NULL) {
+        err = dom_node_get_node_type(current, &type);
+        if (err != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return NULL;
+        }
+        if (type == DOM_ELEMENT_NODE && pcore_element_name_is(
+                (dom_element *) current, "select")) {
+            return (dom_html_select_element *) current;
+        }
+        parent = NULL;
+        err = dom_node_get_parent_node(current, &parent);
+        dom_node_unref(current);
+        if (err != DOM_NO_ERR) {
+            if (parent != NULL) {
+                dom_node_unref(parent);
+            }
+            return NULL;
+        }
+        current = parent;
+    }
+    return NULL;
+}
+
+PCORE_API int PCore_NodeSelectedById(HANDLE hDoc, const char *element_id,
+        int *out_selected)
+{
+    dom_element *element;
+    bool selected;
+    dom_exception err;
+
+    if (out_selected == NULL) {
+        return 1;
+    }
+    *out_selected = 0;
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "option")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    selected = false;
+    err = dom_html_option_element_get_selected(
+            (dom_html_option_element *) element, &selected);
+    dom_node_unref((dom_node *) element);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    *out_selected = selected ? 1 : 0;
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetSelectedById(HANDLE hDoc,
+        const char *element_id, int selected)
+{
+    dom_element *element;
+    dom_html_select_element *select;
+    dom_html_options_collection *options;
+    dom_node *node;
+    dom_exception err;
+    bool multiple;
+    uint32_t length;
+    uint32_t i;
+    int found;
+    int result;
+
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "option")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    select = pcore_option_owner_select((dom_node *) element);
+    if (select == NULL || dom_html_select_element_get_multiple(select,
+            &multiple) != DOM_NO_ERR) {
+        if (select != NULL) {
+            dom_node_unref((dom_node *) select);
+        }
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    result = 1;
+    if (!selected || multiple) {
+        err = pcore_option_set_selected_live(
+                (dom_html_option_element *) element, selected ? true : false);
+        result = (err == DOM_NO_ERR) ? 0 : 1;
+    } else {
+        options = NULL;
+        length = 0;
+        found = -1;
+        if (dom_html_select_element_get_options(select, &options) ==
+                DOM_NO_ERR && options != NULL &&
+                dom_html_options_collection_get_length(options, &length) ==
+                DOM_NO_ERR) {
+            for (i = 0; i < length; i++) {
+                node = NULL;
+                err = dom_html_options_collection_item(options, i, &node);
+                if (err != DOM_NO_ERR || node == NULL) {
+                    result = 1;
+                    break;
+                }
+                if (node == (dom_node *) element) {
+                    found = (int) i;
+                }
+                dom_node_unref(node);
+            }
+            if (found >= 0) {
+                result = pcore_select_set_selected_index_dom(select, found);
+            }
+        }
+        if (options != NULL) {
+            dom_html_options_collection_unref(options);
+        }
+    }
+    dom_node_unref((dom_node *) select);
+    dom_node_unref((dom_node *) element);
+    return result;
+}
+
+PCORE_API int PCore_NodeDefaultSelectedById(HANDLE hDoc,
+        const char *element_id, int *out_selected)
+{
+    dom_element *element;
+    bool selected;
+    dom_exception err;
+
+    if (out_selected == NULL) {
+        return 1;
+    }
+    *out_selected = 0;
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "option")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    selected = false;
+    err = dom_html_option_element_get_default_selected(
+            (dom_html_option_element *) element, &selected);
+    dom_node_unref((dom_node *) element);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    *out_selected = selected ? 1 : 0;
+    return 0;
+}
+
+PCORE_API int PCore_NodeSetDefaultSelectedById(HANDLE hDoc,
+        const char *element_id, int selected)
+{
+    dom_element *element;
+    dom_exception err;
+
+    element = pcore_element_by_id((dom_document *) hDoc, element_id);
+    if (element == NULL || !pcore_element_name_is(element, "option")) {
+        if (element != NULL) {
+            dom_node_unref((dom_node *) element);
+        }
+        return 1;
+    }
+    err = dom_html_option_element_set_default_selected(
+            (dom_html_option_element *) element, selected ? true : false);
+    dom_node_unref((dom_node *) element);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
 PCORE_API int PCore_NodeSelectedIndexById(HANDLE hDoc,
         const char *element_id, int *out_index)
 {
@@ -6708,7 +6919,7 @@ static int pcore_select_set_selected_index_dom(
             ok = 0;
             break;
         }
-        err = dom_html_option_element_set_selected(
+        err = pcore_option_set_selected_live(
                 (dom_html_option_element *) node,
                 index >= 0 && i == (uint32_t) index);
         dom_node_unref(node);

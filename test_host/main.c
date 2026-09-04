@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1181
+#define TEST_MAX_NUMBER 1182
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15474,6 +15474,59 @@ static int pcore_browser_script_dom_set_selected_index(void *pw,
             1 : 0;
 }
 
+static int pcore_browser_script_dom_get_option_selected(void *pw,
+        const char *id, int *out_selected)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_selected == NULL) {
+        return -1;
+    }
+    return PCore_NodeSelectedById(bridge->document, id, out_selected);
+}
+
+static int pcore_browser_script_dom_set_option_selected(void *pw,
+        const char *id, int selected)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetSelectedById(bridge->document, id, selected) == 0 ?
+            1 : 0;
+}
+
+static int pcore_browser_script_dom_get_option_default_selected(void *pw,
+        const char *id, int *out_selected)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            out_selected == NULL) {
+        return -1;
+    }
+    return PCore_NodeDefaultSelectedById(bridge->document, id,
+            out_selected);
+}
+
+static int pcore_browser_script_dom_set_option_default_selected(void *pw,
+        const char *id, int selected)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL) {
+        return -1;
+    }
+    return PCore_NodeSetDefaultSelectedById(bridge->document, id, selected) ==
+            0 ? 1 : 0;
+}
+
 static int pcore_browser_script_dom_reset_form(void *pw,
         const char *form_id)
 {
@@ -16401,6 +16454,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptDomValueCallbacks dom_value_callbacks;
     PBrowserScriptDomCheckedCallbacks dom_checked_callbacks;
     PBrowserScriptFormCallbacks form_callbacks;
+    PBrowserScriptOptionCallbacks option_callbacks;
     PBrowserScriptFormDataCallbacksEx form_data_callbacks;
     PBrowserScriptFormResetCallbacks form_reset_callbacks;
     PBrowserScriptFormSubmitCallbacks form_submit_callbacks;
@@ -16472,7 +16526,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     /* Browser bootstrap is a large, product-owned selector/DOM program on
      * the slow WM6 CPU. Keep the page budget bounded while allowing the
      * reference host enough headroom for its one-time parse. */
-    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 3UL);
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 4UL);
     runtime = PBrowser_ScriptSessionRuntime(session);
     if (session == NULL || runtime == NULL) {
         PBrowser_ScriptSessionDestroy(session);
@@ -16582,6 +16636,16 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_get_selected_index;
     form_callbacks.set_selected_index =
             pcore_browser_script_dom_set_selected_index;
+    option_callbacks.size = sizeof(option_callbacks);
+    option_callbacks.pw = bridge;
+    option_callbacks.get_selected =
+            pcore_browser_script_dom_get_option_selected;
+    option_callbacks.set_selected =
+            pcore_browser_script_dom_set_option_selected;
+    option_callbacks.get_default_selected =
+            pcore_browser_script_dom_get_option_default_selected;
+    option_callbacks.set_default_selected =
+            pcore_browser_script_dom_set_option_default_selected;
     form_data_callbacks.size = sizeof(form_data_callbacks);
     form_data_callbacks.pw = bridge;
     form_data_callbacks.get_count = pcore_browser_script_form_data_count_ex;
@@ -16742,6 +16806,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_checked_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(session,
             &form_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterOptionCallbacks(session,
+            &option_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormDataCallbacksEx(session,
             &form_data_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormResetCallbacks(session,
@@ -43605,6 +43671,58 @@ static BOOL test1181_browser_selector_default_contract(void)
             "Browser :default maps default checked controls, default selected"
             " options and the first form submit control; live mutations and"
             " unsupported syntax remain bounded and fail closed.");
+    return TRUE;
+}
+
+/* TEST 1182 - option selected/defaultSelected property contract. */
+static BOOL test1182_browser_option_selection_properties(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><select id='single'><option id='one' selected>One</option>"
+        "<option id='two'>Two</option></select>"
+        "<select id='multi' multiple><option id='many-one' selected>One</option>"
+        "<option id='many-two'>Two</option></select>"
+        "<div id='not-option'>not option</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "var s=document.getElementById('single'),one=document.getElementById('one'),"
+        "two=document.getElementById('two'),m1=document.getElementById('many-one'),"
+        "m2=document.getElementById('many-two');"
+        "var initial=one.selected&&one.defaultSelected&&!two.selected&&"
+        "!two.defaultSelected&&s.selectedIndex===0;"
+        "one.selected=false;var cleared=!one.selected&&one.defaultSelected&&"
+        "s.selectedIndex===-1;"
+        "two.selected=true;var chosen=two.selected&&!one.selected&&"
+        "!two.defaultSelected&&s.selectedIndex===1;"
+        "two.defaultSelected=true;var defaultOn=two.defaultSelected&&two.selected;"
+        "two.selected=false;var liveOff=!two.selected&&two.defaultSelected&&"
+        "s.selectedIndex===-1;"
+        "two.defaultSelected=false;var defaultOff=!two.defaultSelected&&"
+        "!two.selected;"
+        "m2.selected=true;var multiOn=m1.selected&&m2.selected;"
+        "m1.selected=false;var multiOff=!m1.selected&&m2.selected;"
+        "var rejected=false;try{document.getElementById('not-option').selected;}"
+        "catch(e){rejected=true;}"
+        "document.getElementById('result').textContent=String(initial)+'|'"
+        "+String(cleared)+'|'+String(chosen)+'|'+String(defaultOn)+'|'"
+        "+String(liveOff)+'|'+String(defaultOff)+'|'"
+        "+String(multiOn)+'|'+String(multiOff)+'|'+String(rejected);";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1182 FAIL", error[0] != '\0' ? error :
+                "Browser option selected/defaultSelected fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1182 OK",
+            "Browser exposes option selected/defaultSelected through an"
+            " additive callback table; single-select exclusivity, multiple"
+            " selection and live/default separation remain bounded.");
     return TRUE;
 }
 
@@ -101726,6 +101844,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1179: ok = test1179_browser_selector_visited_contract(); break;
         case 1180: ok = test1180_browser_selector_scope_contract(); break;
         case 1181: ok = test1181_browser_selector_default_contract(); break;
+        case 1182: ok = test1182_browser_option_selection_properties(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

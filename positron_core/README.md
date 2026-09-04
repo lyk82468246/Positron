@@ -151,6 +151,13 @@ owner，也不会回退到祖先。Browser 的 `Element.form`/`form.elements` �
 和 native SELECT 提交的选择变化。`PCore_NodeSetCheckedById`/`defaultChecked` 仍只
 服务 checkbox/radio input，option 的选择应使用 select/option API。
 
+对需要脚本属性语义的宿主，`PCore_NodeSelectedById` 与
+`PCore_NodeSetSelectedById` 读取/修改 option 的 live 选择；单选会清除同一 select
+中其他 option，多选保持独立选择。`PCore_NodeDefaultSelectedById` 与
+`PCore_NodeSetDefaultSelectedById` 读取/修改 parser/default-selected 基线，setter
+不会通过 content attribute 改写 live 选择。这四个入口只改变 Core 文档状态，不触发
+layout、paint 或 native 控件；Browser 的可选 option callback 负责把它们暴露给脚本。
+
 `PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_FORM_CONTROL_DISABLED` 返回上述
 effective-disabled 状态；`PCORE_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED` 返回
 option 的默认 selected 快照。Browser 可注册同一 relation，把 `:disabled`/`:enabled`

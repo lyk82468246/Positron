@@ -33,6 +33,12 @@
   live `.checked`/`selectedIndex` mutation 不会改写默认状态；relation 缺失、非支持元素、
   带参数、伪元素或尾随逗号仍 fail closed。TEST1181 通过多个短脚本 session 适配固定的
   730 KiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
+- `<option>` 的脚本 `selected`/`defaultSelected` 属性只在宿主注册
+  `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
+  选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
+  attribute 或当前 live 选择。该可选表复用既有 Browser form-property native slot，
+  缺失、非 option、无效 id 或 callback 错误均 fail closed；它不提供 native SELECT
+  popup、键盘/触摸、SIP/IME、layout、paint 或完整 HTML option 算法。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -125,7 +131,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 730 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型 bootstrap 使用默认脚本页预算的 3 倍，但该页预算仍有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 730 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -380,6 +386,15 @@
   receiver scope、无 scope 时的 owner 排除、大小写形式以及参数/伪元素/尾随逗号的
   fail-closed。Browser 不保存 scope 状态，宿主只提供既有 DOM relation callback；真实
   页面完整 Selectors、视觉和不同 DPI 仍需人工验收。
+- TEST1181 是离线的 Browser selector `:default` 夹具，无新增立即人工风险；自动门证明
+  默认 checked 控件、Core relation 45 的 option default-selected、form 首个 submit
+  control、查询顺序、live state mutation、matches/closest 和非法输入的 fail-closed。
+  多个短脚本 session 只为适配固定 730 KiB heap；真实 native 默认按钮行为、表单视觉、
+  触摸、SIP/IME 和不同 DPI 仍需人工验收。
+- TEST1182 是离线的 Browser/Core option property 夹具，无新增立即人工风险；自动门证明
+  `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
+  一致性、默认基线与 live 状态分离，以及非 option/无效 id/缺失 callback 的 fail-closed。
+  真实 native SELECT popup、键盘/触摸、SIP/IME、视觉和不同 DPI 仍需人工验收。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

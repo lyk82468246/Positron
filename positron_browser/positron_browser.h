@@ -717,6 +717,32 @@ typedef struct PBrowserScriptFormCallbacks {
     PBrowserScriptSetSelectedIndexFn set_selected_index;
 } PBrowserScriptFormCallbacks;
 
+/* Optional typed adapters for the product-owned HTML <option>
+ * selected/defaultSelected properties. This is a separate additive table so
+ * the established PBrowserScriptFormCallbacks ABI remains unchanged. The
+ * browser DLL owns the JSON bridge and JavaScript properties; the host only
+ * reads or updates the Core option state. Getters return zero on success or a
+ * negative value on adapter error. Setters return >0 when the option was
+ * updated, 0 when the target/operation is unavailable and <0 on adapter
+ * error. Register this table after the established form callback table and
+ * before evaluating bootstrap when the option properties are needed. */
+typedef int (*PBrowserScriptGetOptionSelectedFn)(void *pw, const char *id,
+        int *out_selected);
+typedef int (*PBrowserScriptSetOptionSelectedFn)(void *pw, const char *id,
+        int selected);
+typedef int (*PBrowserScriptGetOptionDefaultSelectedFn)(void *pw,
+        const char *id, int *out_selected);
+typedef int (*PBrowserScriptSetOptionDefaultSelectedFn)(void *pw,
+        const char *id, int selected);
+typedef struct PBrowserScriptOptionCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptGetOptionSelectedFn get_selected;
+    PBrowserScriptSetOptionSelectedFn set_selected;
+    PBrowserScriptGetOptionDefaultSelectedFn get_default_selected;
+    PBrowserScriptSetOptionDefaultSelectedFn set_default_selected;
+} PBrowserScriptOptionCallbacks;
+
 /* Typed adapter for the detached `new FormData(form)` snapshot without an
  * explicit submitter. The browser layer owns the JavaScript FormData object
  * and JSON bridge; the host only enumerates Core's already-filtered successful
@@ -1890,6 +1916,10 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomCheckedCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormCallbacks(
         HANDLE hSession, const PBrowserScriptFormCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterOptionCallbacks(
+        HANDLE hSession, const PBrowserScriptOptionCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterOptionCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacks(
         HANDLE hSession, const PBrowserScriptFormDataCallbacks *callbacks);

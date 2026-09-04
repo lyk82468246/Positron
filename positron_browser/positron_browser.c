@@ -2571,6 +2571,18 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(!__pcoreFormProperty({id:this.__id,op:'setSelectedIndex',"
         "index:n}))"
         "{throw new Error('selectedIndex update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'selected',{"
+        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "op:'getSelected'});},"
+        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "op:'setSelected',selected:v?1:0}))"
+        "{throw new Error('selected update failed');}}});"
+        "Object.defineProperty(PElement.prototype,'defaultSelected',{"
+        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "op:'getDefaultSelected'});},"
+        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "op:'setDefaultSelected',selected:v?1:0}))"
+        "{throw new Error('defaultSelected update failed');}}});"
         "Object.defineProperty(PElement.prototype,'id',{"
         "get:function(){var v=this.getAttribute('id');"
         "return v===null?'':v;},"
@@ -5622,6 +5634,10 @@ typedef struct p_browser_script_form_binding {
     PBrowserScriptFormCallbacks callbacks;
 } p_browser_script_form_binding;
 
+typedef struct p_browser_script_option_binding {
+    PBrowserScriptOptionCallbacks callbacks;
+} p_browser_script_option_binding;
+
 typedef struct p_browser_script_form_data_binding {
     HANDLE session;
     PBrowserScriptFormDataCallbacks callbacks;
@@ -5799,6 +5815,7 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_value_binding *dom_value;
     p_browser_script_dom_checked_binding *dom_checked;
     p_browser_script_form_binding *form;
+    p_browser_script_option_binding *option;
     p_browser_script_form_data_binding *form_data;
     p_browser_script_form_reset_binding *form_reset;
     p_browser_script_form_submit_binding *form_submit;
@@ -7284,6 +7301,34 @@ static int p_browser_script_form_set_bool(
             out_capacity, out_len);
 }
 
+static int p_browser_script_option_set_bool(
+        PBrowserScriptSetOptionSelectedFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    const char *id;
+    int selected;
+    int changed;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    selected = (object != NULL) ? PJson_GetInt(object, "selected") : 0;
+    if (root == NULL || id == NULL || callback == NULL) {
+        PJson_Free(root);
+        return 1;
+    }
+    changed = callback(callback_pw, id, selected ? 1 : 0);
+    PJson_Free(root);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
 static int p_browser_script_form_get_int(
         PBrowserScriptGetSelectedIndexFn callback, void *callback_pw,
         const char *args_json, int args_len, char *out_json,
@@ -7642,11 +7687,13 @@ static int p_browser_script_form_property(void *pw,
         int out_capacity, int *out_len)
 {
     p_browser_script_form_binding *binding;
+    p_browser_script_session *session;
     HANDLE root;
     HANDLE object;
     const char *op;
 
     binding = (p_browser_script_form_binding *) pw;
+    session = (binding != NULL) ? p_script_session(binding->session) : NULL;
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
@@ -7723,6 +7770,38 @@ static int p_browser_script_form_property(void *pw,
         return p_browser_script_form_set_int(
                 binding->callbacks.set_selected_index, binding->callbacks.pw,
                 args_json, args_len, out_json, out_capacity, out_len);
+    }
+    if (session != NULL && session->option != NULL &&
+            strcmp(op, "getSelected") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_get_bool(
+                session->option->callbacks.get_selected,
+                session->option->callbacks.pw, args_json, args_len,
+                out_json, out_capacity, out_len);
+    }
+    if (session != NULL && session->option != NULL &&
+            strcmp(op, "setSelected") == 0) {
+        PJson_Free(root);
+        return p_browser_script_option_set_bool(
+                session->option->callbacks.set_selected,
+                session->option->callbacks.pw, args_json, args_len,
+                out_json, out_capacity, out_len);
+    }
+    if (session != NULL && session->option != NULL &&
+            strcmp(op, "getDefaultSelected") == 0) {
+        PJson_Free(root);
+        return p_browser_script_form_get_bool(
+                session->option->callbacks.get_default_selected,
+                session->option->callbacks.pw, args_json, args_len,
+                out_json, out_capacity, out_len);
+    }
+    if (session != NULL && session->option != NULL &&
+            strcmp(op, "setDefaultSelected") == 0) {
+        PJson_Free(root);
+        return p_browser_script_option_set_bool(
+                session->option->callbacks.set_default_selected,
+                session->option->callbacks.pw, args_json, args_len,
+                out_json, out_capacity, out_len);
     }
     PJson_Free(root);
     return 1;
@@ -8237,6 +8316,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_value = NULL;
     session->dom_checked = NULL;
     session->form = NULL;
+    session->option = NULL;
     session->form_data = NULL;
     session->form_reset = NULL;
     session->form_submit = NULL;
@@ -8364,6 +8444,10 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
                 "__pcoreFormProperty", -1);
         free(session->form);
         session->form = NULL;
+    }
+    if (session->option != NULL) {
+        free(session->option);
+        session->option = NULL;
     }
     if (session->form_data != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
@@ -9692,6 +9776,50 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterFormCallbacks(
     free(session->form);
     session->form = NULL;
     return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterOptionCallbacks(
+        HANDLE hSession, const PBrowserScriptOptionCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_option_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptOptionCallbacks) ||
+            callbacks->get_selected == NULL ||
+            callbacks->set_selected == NULL ||
+            callbacks->get_default_selected == NULL ||
+            callbacks->set_default_selected == NULL || session->form == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->option != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_option_binding *) malloc(sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    session->option = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterOptionCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->option == NULL) {
+        return PSCRIPT_OK;
+    }
+    free(session->option);
+    session->option = NULL;
+    return PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterFormDataCallbacks(

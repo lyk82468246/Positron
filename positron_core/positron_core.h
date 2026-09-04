@@ -425,9 +425,11 @@ PCORE_API int PCore_NodeOverflowScrollToById(HANDLE hDoc,
 /* DOM-level form properties for script/runtime hosts. Value/defaultValue
  * support input, textarea and select.value; checked reads input.checked or an
  * option's live selected state, while defaultChecked and checked mutation
- * support input; selectedIndex supports select. These functions do not require a
- * styled/layout box tree, so parser-complete scripts may use them before the
- * first layout. String getters use the same probe/truncation contract as
+ * support input; selectedIndex supports select. Option selected/defaultSelected
+ * are exposed separately below so a live selection mutation never changes the
+ * parser/default baseline. These functions do not require a styled/layout box
+ * tree, so parser-complete scripts may use them before the first layout. String
+ * getters use the same probe/truncation contract as
  * PCore_NodeTextContentById. */
 PCORE_API int PCore_NodeValueById(HANDLE hDoc, const char *element_id,
         char *value, int value_capacity, int *out_bytes);
@@ -446,6 +448,20 @@ PCORE_API int PCore_NodeDefaultCheckedById(HANDLE hDoc,
         const char *element_id, int *out_checked);
 PCORE_API int PCore_NodeSetDefaultCheckedById(HANDLE hDoc,
         const char *element_id, int checked);
+/* Option-only live/default selection properties. Getters write 0/1 to the
+ * required output and return zero on success; setters return zero on success
+ * and non-zero for a missing/non-option id or DOM failure. The live setter
+ * applies select single/multiple rules. The default setter changes only the
+ * parser/default baseline and does not rewrite the live selected state or
+ * trigger layout, paint or native-control work. */
+PCORE_API int PCore_NodeSelectedById(HANDLE hDoc, const char *element_id,
+        int *out_selected);
+PCORE_API int PCore_NodeSetSelectedById(HANDLE hDoc,
+        const char *element_id, int selected);
+PCORE_API int PCore_NodeDefaultSelectedById(HANDLE hDoc,
+        const char *element_id, int *out_selected);
+PCORE_API int PCore_NodeSetDefaultSelectedById(HANDLE hDoc,
+        const char *element_id, int selected);
 PCORE_API int PCore_NodeSelectedIndexById(HANDLE hDoc,
         const char *element_id, int *out_index);
 PCORE_API int PCore_NodeSetSelectedIndexById(HANDLE hDoc,

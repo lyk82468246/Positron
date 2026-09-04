@@ -50,7 +50,7 @@ tests=13,20,27,999
 - `auto=0`：保留启动确认、说明框、可见窗口和人工操作。
 - `javascript=0`：默认不执行网页 classic script。
 - `javascript=1`：显式启用实验性的 Browser script session；参考宿主为大型产品
-  bootstrap 分配默认脚本页预算的 3 倍，但仍受固定 heap/source/native-function/执行时限
+  bootstrap 分配默认脚本页预算的 4 倍，但仍受固定 heap/source/native-function/执行时限
   约束，不会开启无界执行。
 - `tests=`：接受编号、范围及源码明确支持的特殊编号。
 
@@ -76,7 +76,8 @@ tests=13,20,27,999
   以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
-  `formdata` 事件（TEST1146–1181）；
+  `formdata` 事件，以及 `<option>` `selected`/`defaultSelected` 的 typed property bridge
+  （TEST1146–1182）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -193,6 +194,12 @@ query 顺序、默认属性移除、live `.checked`/`selectedIndex` mutation、`
 `closest()` 和非法 selector 分开断言；多个短脚本 session 是固定 730 KiB heap 下的
 测试编排。宿主只提供 Core DOM relation/attribute callback、脚本接线和断言，不复制默认
 状态或 selector 语义。
+
+TEST1182 断言 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：单选互斥、
+多选独立选择、`selectedIndex` 一致性、默认基线与 live 状态分离，以及非 option、无效
+id、缺失 callback 时的 fail-closed。宿主只注册 `PBrowserScriptOptionCallbacks` 并转调
+Core 按 id API，不在 fixture 中复制选择规则；该离线夹具不承诺 native SELECT popup、
+触摸、SIP/IME、视觉或不同 DPI。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、
