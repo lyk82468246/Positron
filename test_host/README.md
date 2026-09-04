@@ -77,7 +77,7 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge（TEST1146–1183）；
+  的 typed property bridge（TEST1146–1184）；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -207,6 +207,14 @@ live value，空 attribute 与缺失 attribute 可区分；非 option setter、�
 mutation 均安全拒绝。宿主只提供既有 Core DOM attribute/text callback、脚本接线和断言，
 不在 fixture 中复制属性语义；该离线夹具不承诺 native SELECT popup、键盘/触摸、SIP/IME、
 layout/paint 或不同 DPI。
+
+TEST1184 断言 Browser `select.options`/`selectedOptions`/`length` 与 `option.index` 的
+有界组合：集合按可寻址 option 的文档顺序建立，包含 optgroup 后代，支持
+`item()`/`namedItem()`，selected mutation 会在下一次读取时反映，snapshot 数组的本地
+修改不回写 DOM，非 select/option 目标安全返回。宿主只提供既有 DOM relation、selected
+和 attribute callback，不在 fixture 中复制集合语义；该门最多遍历 256 个节点、返回
+64 个 option，不承诺完整 live HTMLCollection、length setter、append/remove、native
+SELECT popup、键盘/触摸、SIP/IME、layout/paint 或不同 DPI。
 
 TEST1161 断言 Browser selector 的有界 `:target`：当前 URL 的 fragment 经
 `decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、

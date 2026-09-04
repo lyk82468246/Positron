@@ -349,6 +349,14 @@ DOM、form、event 和 navigation 查询/mutation。Browser 负责 JSON 参数�
 callback/mutation 失败均 fail closed；不涉及 native SELECT、视觉/输入或完整 HTML option
 算法。
 
+`select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 也由
+Browser 提供。集合从现有 DOM relation snapshot 遍历可寻址的 option，包含 optgroup
+后代并按文档顺序返回；每次 getter 都生成独立的 HTMLCollection，`selectedOptions` 在
+读取时筛选当前 live selected 状态，snapshot 数组的本地修改不会回写 DOM。该桥最多
+遍历 256 个节点并返回 64 个 option，缺少稳定 id 的元素不能投影；不提供完整 live
+HTMLCollection、`length` setter、append/remove、option.form 的完整算法、native SELECT
+popup、键盘/触摸、SIP/IME 或视觉保证。
+
 `Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
 `input`、`select`、`textarea`、`button` 控件默认归最近祖先 form；控件存在 `form="id"`
 时解析文档中对应的 form，因此可以把 form 外的控件纳入 `form.elements`，而空值或无效
@@ -488,7 +496,9 @@ PBrowser_NavigationResourceGet(tx, index, &info);
 PBrowser_NavigationResourceDestroy(tx);
 ```
 
-`SetData` copies the input into Browser-owned storage; the caller still owns `bytes`. Failed or cancelled attempts use `Fail`/`Cancel`, and `ShouldRetry` only permits transport retries within the fixed budget. `GetStats` supplies the gate counters and bounded summary for logs. `CopyData` returns a caller-owned copy of a ready resource. The APIs are synchronous and must be serialized by the caller; they do not normalize URLs, cache across transactions, create threads, or retain Core document pointers.
+`SetData` 复制输入到 Browser-owned storage，调用方仍拥有 `bytes`；失败/取消走 `Fail`/`Cancel`，
+`ShouldRetry` 受固定 transport 预算约束，`GetStats`/`CopyData` 分别提供日志快照和调用方副本。
+这些 API 同步且需由调用方串行化，不会规范化 URL、跨事务缓存、创建线程或保留 Core 文档指针。
 
 ### Candidate/resource commit snapshot
 
@@ -532,19 +542,13 @@ pending count, hash-only failure summary and fallback-family counters—into a
 caller-owned `PBrowserNavigationCleanupInfo`. The output does not retain either
 handle and remains valid after both handles are destroyed.
 
-The snapshot does not settle work itself. The host first joins the request's
-worker and settles any remaining resource entries (normally with
-`PBrowser_NavigationResourceCancelAll` for a failed or superseded request),
-then makes an otherwise-active candidate terminal and reads the snapshot. A
-`can_release` value of `1` means there is no pending candidate/resource work;
-`COMMITTED` additionally requires a `READY` resource gate. Pending work reports
-`PBROWSER_NAVIGATION_CLEANUP_CANDIDATE_PENDING` or
-`PBROWSER_NAVIGATION_CLEANUP_RESOURCE_PENDING` with `can_release == 0`, while a
-committed candidate paired with a non-ready settled gate reports
-`PBROWSER_NAVIGATION_CLEANUP_INCONSISTENT` and must not be treated as a
-successful commit. Terminal failed,
-cancelled and stale candidates are releasable once their resource transaction
-is settled.
+The snapshot does not settle work itself. The host joins the worker, settles
+remaining resources (normally with `PBrowser_NavigationResourceCancelAll`),
+makes an active candidate terminal, and then reads it. `can_release == 1`
+means no candidate/resource work remains; `COMMITTED` additionally requires a
+`READY` gate. Pending or inconsistent combinations report a non-releasable
+decision, while failed/cancelled/stale candidates are releasable after resource
+settlement.
 
 该 API 只提供同步的 Browser-owned 状态；它不暴露响应字节、线程、窗口、消息或应用日志，
 也不替代页面交换边界的最终 `PBrowser_NavigationCandidateMarkCommitted` 检查。

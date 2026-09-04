@@ -188,6 +188,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   的 live value，空 attribute 仍与缺失区分。该桥复用 Core 的通用 attribute/text callback，
   不新增 ABI 或 native slot；非 option、无效 id、缺失 callback 或失败 mutation 安全拒绝，
   native SELECT popup、layout/paint 和完整 HTML option 算法仍由宿主或未来能力负责。
+- 同一 DOM bridge 还提供 `HTMLSelectElement.options`、`selectedOptions`、`length` 和
+  `HTMLOptionElement.index`。Browser 从现有只读 DOM relation snapshot 按文档顺序遍历
+  可寻址的 option（包含 optgroup 后代），每次 getter 返回独立的有界 HTMLCollection；
+  `selectedOptions` 在读取时按 live selected 状态筛选，集合数组的本地修改不回写文档。
+  该实现不增加 Core ABI 或 native slot，最多遍历 256 个节点、返回 64 个 option，
+  缺少稳定 id 的元素无法投影，完整 live collection、length setter、append/remove、
+  native SELECT popup 与视觉/输入仍不在 Browser 公共边界内。
 - 同一 selector bridge 还提供有界 `:scope` context：element query 的 receiver 是
   scope，带 `:scope` 的查询可以包含 receiver，并按文档顺序处理直接子代/后代；不带
   scope 的 element query 继续排除 owner，document query 以 `documentElement` 为 scope，

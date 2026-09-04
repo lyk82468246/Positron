@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1183
+#define TEST_MAX_NUMBER 1184
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -43774,6 +43774,60 @@ static BOOL test1183_browser_option_basic_properties(void)
     show_info(L"TEST 1183 OK",
             "Browser exposes bounded option value/label/text fallback and"
             " mutation semantics through the existing DOM bridge.");
+    return TRUE;
+}
+
+/* TEST 1184 - bounded select option collections and option indices. */
+static BOOL test1184_browser_select_option_collections(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><select id='choice' multiple>"
+        "<option id='first' value='one' selected>One</option>"
+        "<optgroup id='group' label='Group'>"
+        "<option id='second' value='two'>Two</option>"
+        "<option id='third' name='third-name' value='three' selected>Three</option>"
+        "</optgroup>"
+        "<option id='fourth'>Four</option></select>"
+        "<select id='other'><option id='other-option' selected>Other</option></select>"
+        "<div id='plain'>Plain</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "var s=document.getElementById('choice'),first=document.getElementById('first'),"
+        "second=document.getElementById('second'),third=document.getElementById('third'),"
+        "fourth=document.getElementById('fourth'),other=document.getElementById('other-option'),"
+        "plain=document.getElementById('plain');"
+        "var options=s.options,selected=s.selectedOptions;"
+        "var initial=s.length===4&&options.length===4&&selected.length===2&&"
+        "options.item(0)===first&&options.item(1)===second&&"
+        "options.item(2)===third&&options.item(3)===fourth&&"
+        "options.namedItem('third')===third&&"
+        "options.namedItem('third-name')===third&&options.namedItem('missing')===null&&"
+        "selected[0]===first&&selected[1]===third&&"
+        "first.index===0&&second.index===1&&third.index===2&&fourth.index===3&&"
+        "other.index===0&&typeof plain.options==='undefined'&&"
+        "typeof plain.length==='undefined'&&typeof plain.index==='undefined';"
+        "options.pop();second.selected=true;"
+        "var changed=s.selectedOptions.length===3&&s.selectedOptions[0]===first&&"
+        "s.selectedOptions[1]===second&&s.selectedOptions[2]===third&&"
+        "s.options.length===4&&s.length===4&&options.length===3&&"
+        "s.options!==options&&s.options.item(3)===fourth;"
+        "document.getElementById('result').textContent=String(initial)+'|'"
+        "+String(changed);";
+    static const char EXPECTED[] = "true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1184 FAIL", error[0] != '\0' ? error :
+                "Browser select option collection fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1184 OK",
+            "Browser exposes bounded options/selectedOptions snapshots,"
+            " select length and document-order option indices through the"
+            " existing DOM bridge.");
     return TRUE;
 }
 
@@ -101897,6 +101951,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1181: ok = test1181_browser_selector_default_contract(); break;
         case 1182: ok = test1182_browser_option_selection_properties(); break;
         case 1183: ok = test1183_browser_option_basic_properties(); break;
+        case 1184: ok = test1184_browser_select_option_collections(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

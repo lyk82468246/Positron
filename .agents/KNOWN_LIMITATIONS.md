@@ -46,6 +46,13 @@
   不增加 Core ABI 或 native slot；非 option、无效 id、缺失 callback 或失败 mutation
   均安全拒绝，也不实现 native SELECT popup、layout/paint、键盘/触摸或完整 HTML option
   算法。
+- 同一 Browser DOM bridge 还提供可选的 `select.options`、`selectedOptions`、`length`
+  和 `option.index`：集合按可寻址 id 的 DOM 顺序生成独立 HTMLCollection snapshot，
+  `selectedOptions` 在读取时筛选 live selected 状态，`option.index` 包括 optgroup 内的
+  option。每次 getter 都生成新集合，snapshot 数组的本地修改不会写回 DOM；遍历最多 256
+  个节点并返回 64 个 option，缺少稳定 id 的元素不能被当前 wrapper 寻址。该扩展不实现
+  完整 live collection、`length` setter、append/remove、option.form 的完整 owner 算法、
+  native SELECT popup、键盘/触摸、SIP/IME、layout/paint 或不同 DPI 视觉。
 - `:read-only`/`:read-write` 是同一 selector 子集中的有界编辑状态：文本输入类型与
   `textarea` 读取 readonly/effective-disabled，存在 Core `isContentEditable` callback
   时读取显式或祖先继承的 editing host；不支持编辑的 input 类型和普通元素按
@@ -407,6 +414,12 @@
   selectedIndex 联动、空属性区分以及非 option setter 的 fail-closed。该桥复用既有
   Core DOM attribute/text callback，不提供 native SELECT popup、键盘/触摸、SIP/IME、
   layout、paint 或不同 DPI 保证。
+- TEST1184 是离线的 Browser select/option collection 夹具，无新增立即人工风险；自动门
+  证明 `options`/`selectedOptions` 的文档顺序、`item()`/`namedItem()`、selected mutation、
+  `select.length`、`option.index` 和 snapshot 隔离，并确认 optgroup 不进入 collection、
+  非 select/option 目标安全返回。该门只覆盖有稳定 id 的可寻址元素和 64 个 option/256
+  个遍历节点预算，不代表完整 live HTMLCollection、length setter、append/remove、
+  option.form、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由
