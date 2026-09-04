@@ -32,7 +32,7 @@
   submit-capable button/input/image 只匹配所属 form 中按文档顺序的第一个 submit control。
   live `.checked`/`selectedIndex` mutation 不会改写默认状态；relation 缺失、非支持元素、
   带参数、伪元素或尾随逗号仍 fail closed。TEST1181 通过多个短脚本 session 适配固定的
-  730 KiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
+  768 KiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
 - `<option>` 的脚本 `selected`/`defaultSelected` 属性只在宿主注册
   `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
   选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
@@ -94,8 +94,15 @@
   无 source 的图片 complete 且自然尺寸为 0，非空 `srcset` 未选出 raw `src` 时保持
   incomplete，成功资源要等 retained decode attempt，终态 fetch failure 则 complete 且
   尺寸为 0。当前 `currentSrc` 是 raw `src`，不做绝对 URL 或候选选择；不实现
-  `srcset`/`sizes` 选择、CORS/referrer enforcement、`decode()`、load/error 事件、完整
-  loading/fetch-priority 策略、image-map 命中或 native 图像视觉。
+  `srcset`/`sizes` 选择、CORS/referrer enforcement、完整 loading/fetch-priority 策略、
+  image-map 命中或 native 图像视觉仍未实现。Browser 的 `decode()` 只提供有界的
+  Promise 生命周期：无 source/已知正尺寸在 microtask 中完成，终态失败和 source
+  mutation 以 `EncodingError` 拒绝，page teardown 对剩余请求以 `AbortError` 拒绝；每个
+  session 最多 64 个 pending 请求。宿主在 Core relation 更新后通过
+  `PBrowser_ScriptSessionNotifyImageEvent` 显式派发 `load`/`error`；事件 trusted、非冒泡、
+  不可取消，重复同终态幂等，过时/相反/未就绪通知 fail closed。该桥不自动抓取、选择、
+  解码或绘制图像；每个 session 的 image/source 终态映射最多 64 项，source 改变会释放
+  旧项，超限的新终态通知保持 fail closed。
 
 ## DOM、表单与事件
 
@@ -171,7 +178,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 730 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 768 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -312,7 +319,7 @@
 - TEST1154 覆盖 Browser selector 的有限结构伪类：`:root`、`:empty`、child/of-type
   变体和四种 `nth-*` 变体；支持整数、`odd`/`even` 和受限 `an+b` 公式，并确认空公式、
   `of` 过滤、伪元素和超大数值 fail closed。判断使用只读 childNodes/关系快照，
-  仍受 64 步、公式系数和 730 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
+  仍受 64 步、公式系数和 768 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
   shadow DOM 和 CSS Selectors 语法不在保证范围内。
 - TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
@@ -429,7 +436,7 @@
 - TEST1181 是离线的 Browser selector `:default` 夹具，无新增立即人工风险；自动门证明
   默认 checked 控件、Core relation 45 的 option default-selected、form 首个 submit
   control、查询顺序、live state mutation、matches/closest 和非法输入的 fail-closed。
-  多个短脚本 session 只为适配固定 730 KiB heap；真实 native 默认按钮行为、表单视觉、
+  多个短脚本 session 只为适配固定 768 KiB heap；真实 native 默认按钮行为、表单视觉、
   触摸、SIP/IME 和不同 DPI 仍需人工验收。
 - TEST1182 是离线的 Browser/Core option property 夹具，无新增立即人工风险；自动门证明
   `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
@@ -491,8 +498,14 @@
   人工风险；自动门证明 `document.images` snapshot、attribute/boolean/尺寸属性边界、
   非 `img` fail-closed，以及成功 SVG、终态 fetch failure、无 source 和仅 `srcset` 的
   `naturalWidth`/`naturalHeight`/`complete` 投影，并确认 retained decode 后才暴露自然
-  尺寸。该门不证明 `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、`decode()`、
-  load/error 事件、image-map 命中或 native 图像视觉；这些仍是未来能力或人工观察范围。
+  尺寸。该门不证明 `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略、
+  image-map 命中或 native 图像视觉；这些仍是未来能力或人工观察范围。
+- TEST1194 是离线的 Browser `HTMLImageElement.decode()` 与宿主终态事件夹具，无新增立即
+  人工风险；自动门证明无 source/成功/失败/source mutation/teardown 的 Promise 结果、
+  `EncodingError`/`AbortError` 分类、Core relation 就绪门、trusted 非冒泡不可取消的
+  `load`/`error`、重复通知幂等以及过时/相反/缺失目标的 fail-closed。该桥不实现
+  `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略、image-map 命中或
+  native 图像视觉；宿主仍负责 fetch/decode/layout、终态通知和 microtask 调度。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

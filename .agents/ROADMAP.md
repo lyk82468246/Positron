@@ -82,7 +82,10 @@ output 的 label association 复用 Core relation；object 只提供 owner/colle
 `src`/`srcset`/`sizes`/`useMap`、`crossOrigin`、boolean/尺寸属性和加载提示属性，Core
 relation 46–48 提供 `naturalWidth`/`naturalHeight`/`complete`。无 source、未选中的
 `srcset`、成功 retained decode 和终态 fetch failure 的状态分别保持可观察且
-fail-closed；该桥不引入 `srcset` 选择、CORS、`decode()` 或图像事件。
+fail-closed；Browser 另提供有界 `decode()` Promise、source mutation/teardown 拒绝和
+由宿主在 Core 终态就绪后触发的 trusted、非冒泡 `load`/`error` 通知。该桥仍不引入
+`srcset`/`sizes` 选择、CORS/referrer enforcement、完整 loading 策略、image-map 命中或
+图像视觉。
 
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过

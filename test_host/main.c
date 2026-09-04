@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1193
+#define TEST_MAX_NUMBER 1194
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -44854,6 +44854,305 @@ static BOOL test1193_browser_img_properties(void)
             "img metadata reflects bounded content attributes and Core image"
             " cache state; natural dimensions and complete stay fail-closed"
             " without srcset selection, CORS or decode() semantics.");
+    return TRUE;
+}
+
+/* TEST 1194 - bounded HTMLImageElement decode() and host terminal events. */
+static BOOL test1194_browser_img_decode_events(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='loaded' src='/img/test.svg'>"
+        "<img id='broken' src='/img/missing.svg'>"
+        "<img id='pending'><img id='empty'><img id='changed'>"
+        "<img id='late'><img id='teardown'><div id='not-image'>plain</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "body{margin:0;}img{display:block;width:120px;height:60px;}";
+    static const char SETUP[] =
+        "(function(){var l=document.getElementById('loaded');"
+        "var b=document.getElementById('broken');var p=document.getElementById('pending');"
+        "var e=document.getElementById('empty');var c=document.getElementById('changed');"
+        "var d=document.getElementById('not-image');var events=[];var state={};"
+        "window.__imgEvents=events;window.__imgState=state;"
+        "state.loaded='pending';state.broken='pending';state.pending='pending';"
+        "state.empty='pending';state.non='pending';state.changed='pending';"
+        "function record(name){return function(x){events.push(name+':'+String(x.isTrusted)+':'+"
+        "String(x.bubbles)+':'+String(x.cancelable));};}"
+        "l.onload=record('loaded');b.onerror=record('broken');p.onload=record('pending');"
+        "l.decode().then(function(){state.loaded='fulfilled';},function(x){"
+        "state.loaded='rejected:'+x.name;});"
+        "b.decode().then(function(){state.broken='fulfilled';},function(x){"
+        "state.broken='rejected:'+x.name;});"
+        "p.src='/img/test.svg';p.decode().then(function(){state.pending='fulfilled';},"
+        "function(x){state.pending='rejected:'+x.name;});"
+        "e.decode().then(function(){state.empty='fulfilled';},function(x){"
+        "state.empty='rejected:'+x.name;});"
+        "d.decode().then(function(){state.non='fulfilled';},function(x){"
+        "state.non='rejected:'+x.name;});"
+        "c.src='/img/changed-a.svg';c.decode().then(function(){state.changed='fulfilled';},"
+        "function(x){state.changed='rejected:'+x.name;});c.src='/img/changed-b.svg';"
+        "true;})();";
+    static const char INITIAL_PROBE[] =
+        "__imgState.loaded+'|'+__imgState.broken+'|'+__imgState.pending+'|'"
+        "+__imgState.empty+'|'+__imgState.non+'|'+__imgState.changed+'|'"
+        "+__imgEvents.length;";
+    static const char READY_PROBE[] =
+        "String(document.getElementById('loaded').complete)+'|'"
+        "+String(document.getElementById('loaded').naturalWidth)+'|'"
+        "+String(document.getElementById('pending').complete)+'|'"
+        "+String(document.getElementById('pending').naturalWidth)+'|'"
+        "+String(document.getElementById('broken').complete)+'|'"
+        "+String(document.getElementById('broken').naturalWidth);";
+    static const char EVENT_PROBE[] =
+        "__imgState.loaded+'|'+__imgState.broken+'|'+__imgState.pending+'|'"
+        "+__imgState.empty+'|'+__imgState.non+'|'+__imgState.changed+'|'"
+        "+__imgState.late+'|'+__imgState.teardown+'|'"
+        "+__imgEvents.join(',');";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    image_resource_test_ctx ctx;
+    char error[768];
+    const char *result;
+    int executed;
+    int ignored;
+    int found;
+    int fetched;
+    int vw;
+    int vh;
+    int rc;
+    int event_step;
+    int late_pre_microtask_rc;
+    int teardown_rc;
+    int teardown_microtask_rc;
+    const char *stage;
+    BOOL ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(error, 0, sizeof(error));
+    result = NULL;
+    executed = -1;
+    ignored = -1;
+    found = 0;
+    fetched = 0;
+    event_step = 0;
+    late_pre_microtask_rc = -1;
+    teardown_rc = -1;
+    teardown_microtask_rc = -1;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    ok = TRUE;
+    stage = "parse";
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/img-decode", NULL, NULL, &executed,
+            &ignored, error, sizeof(error), &runtime, &bridge) != 0 ||
+            executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        stage = "setup";
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, SETUP, -1);
+        if (rc != PSCRIPT_OK &&
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) != NULL) {
+            cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session));
+        }
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "initial-probe";
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, INITIAL_PROBE, -1);
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (rc != PSCRIPT_OK && error[0] == '\0' &&
+                PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) != NULL) {
+            cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session));
+        }
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result,
+                "pending|pending|pending|fulfilled|rejected:InvalidStateError|"
+                "rejected:EncodingError|0") == 0;
+    }
+    if (ok) {
+        stage = "fetch-layout";
+        test_host_set_device_viewport(vw, vh);
+        ok = PCore_FetchImageResources(document, image_svg_fetch,
+                image_resource_free, &ctx, &found, &fetched) == 0;
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/img-decode.css");
+        ok = ok && sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, vw, vh) == 0;
+    }
+    if (ok) {
+        stage = "ready-probe";
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, READY_PROBE, -1);
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true|120|true|120|true|0") == 0;
+    }
+    if (ok) {
+        stage = "terminal-events";
+        event_step = 1;
+        rc = PBrowser_ScriptSessionNotifyImageEvent(
+                g_browser_script_session.session, "loaded",
+                PBROWSER_SCRIPT_IMAGE_EVENT_LOAD);
+        ok = rc == PSCRIPT_OK;
+        if (ok) {
+            event_step = 2;
+            rc = PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, "pending",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD);
+            ok = rc == PSCRIPT_OK;
+        }
+        if (ok) {
+            event_step = 3;
+            rc = PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, "broken",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_ERROR);
+            ok = rc == PSCRIPT_OK;
+        }
+        if (ok) {
+            event_step = 4;
+            rc = PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, "loaded",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD);
+            ok = rc == PSCRIPT_OK;
+        }
+        if (ok) {
+            event_step = 5;
+            rc = PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, "loaded",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_ERROR);
+            ok = rc == PSCRIPT_ERROR_ARGUMENT;
+        }
+        if (ok) {
+            event_step = 6;
+            rc = PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, "missing",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD);
+            ok = rc == PSCRIPT_ERROR_ARGUMENT;
+        }
+        if (ok) {
+            event_step = 7;
+            rc = PBrowser_ScriptSessionRunMicrotasks(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK;
+        }
+        if (!ok && PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) != NULL) {
+            cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session));
+        }
+    }
+    if (ok) {
+        stage = "late-teardown";
+        rc = PBrowser_ScriptSessionEvaluate(g_browser_script_session.session,
+                "var late=document.getElementById('late');var teardown="
+                "document.getElementById('teardown');window.__imgState.late='pending';"
+                "window.__imgState.teardown='pending';late.src='/img/late-a.svg';"
+                "late.decode().then(function(){window.__imgState.late='fulfilled';},"
+                "function(x){window.__imgState.late='rejected:'+x.name;});"
+                "late.setAttribute('src','/img/late-b.svg');"
+                "teardown.src='/img/not-started.svg';teardown.decode().then("
+                "function(){window.__imgState.teardown='fulfilled';},function(x){"
+                "window.__imgState.teardown='rejected:'+x.name;});true;", -1);
+        late_pre_microtask_rc = rc == PSCRIPT_OK ?
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) : PSCRIPT_ERROR_CALL;
+        teardown_rc = PBrowser_ScriptSessionDispatchPageTeardown(
+                g_browser_script_session.session);
+        teardown_microtask_rc = PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session);
+        ok = rc == PSCRIPT_OK && late_pre_microtask_rc == PSCRIPT_OK &&
+                teardown_rc == PSCRIPT_OK &&
+                teardown_microtask_rc == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "event-probe";
+        rc = PBrowser_ScriptSessionEvaluate(g_browser_script_session.session,
+                EVENT_PROBE, -1);
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (rc != PSCRIPT_OK && PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) != NULL) {
+            cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session));
+        }
+        ok = rc == PSCRIPT_OK && result != NULL && strcmp(result,
+                "fulfilled|rejected:EncodingError|fulfilled|fulfilled|"
+                "rejected:InvalidStateError|rejected:EncodingError|"
+                "rejected:EncodingError|rejected:AbortError|"
+                "loaded:true:false:false,pending:true:false:false,"
+                "broken:true:false:false") == 0;
+        if (!ok && error[0] == '\0') {
+            cstr_copy(error, sizeof(error), result != NULL ? result :
+                    "event probe returned no result");
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s step=%d rc=%d late_microtasks=%d teardown=%d microtasks=%d result=%s fetched=%d/%d calls=%d frees=%d",
+                    stage, event_step, rc,
+                    late_pre_microtask_rc, teardown_rc, teardown_microtask_rc,
+                    result != NULL ? result : "(null)", fetched, found,
+                    ctx.calls, ctx.frees);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1194 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1194 OK",
+            "img.decode() settles against Core's terminal dimensions;"
+            " host load/error notifications dispatch trusted non-bubbling"
+            " events, deduplicate, and reject stale/pending work at teardown.");
     return TRUE;
 }
 
@@ -102981,6 +103280,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1191: ok = test1191_browser_object_form_association(); break;
         case 1192: ok = test1192_browser_img_form_association(); break;
         case 1193: ok = test1193_browser_img_properties(); break;
+        case 1194: ok = test1194_browser_img_decode_events(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

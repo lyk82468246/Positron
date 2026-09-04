@@ -175,9 +175,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
   `currentSrc` 均通过 Browser 的脚本对象与 Core relation 读取；Browser 只维护对象形状
-  与同步 callback，宿主仍负责资源 I/O，Core 负责 cache/decode/layout。该桥不声称
-  `srcset`/`sizes` 选择、绝对 URL 解析、CORS/referrer enforcement、`decode()`、load/error
-  事件或 image-map 命中；
+  与同步 callback，并在宿主通知后维护有界 `decode()` Promise 和 `load`/`error` 事件
+  终态；宿主仍负责资源 I/O，Core 负责 cache/decode/layout。宿主须先让 Core relation
+  反映 complete/natural-size，再调用 `PBrowser_ScriptSessionNotifyImageEvent`；Browser
+  只派发 trusted、非冒泡、不可取消事件并 settle 同一 source 的 decode 请求。该桥不声称
+  `srcset`/`sizes` 选择、绝对 URL 解析、CORS/referrer enforcement、完整 loading 策略
+  或 image-map 命中；
 - 同一 selector bridge 还提供有界 `:read-only`/`:read-write`：文本输入类型与
   `textarea` 依据 readonly 和 Core effective-disabled 判定，存在
   `isContentEditable` callback 时补充显式或继承 editing host；不支持编辑的 input 类型、

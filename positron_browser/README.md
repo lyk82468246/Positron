@@ -159,8 +159,8 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
-独立的 730 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
-状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但它的 Web host
+独立的 768 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
+状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但 Web host
 objects 由 Browser callbacks 提供。
 
 典型生命周期：
@@ -214,18 +214,8 @@ PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
 指针状态也可以按需投影到 Browser selector。宿主注册
 `PBrowserScriptInteractionCallbacks`，在 callback 中按 `state`（`"active"` 或
 `"hover"`）返回当前 Core 节点的非空 UTF-8 id；参考接线使用
-`PCore_InteractionStateElementId`，因此不会维护第二份交互模型：
-
-```c
-PBrowserScriptInteractionCallbacks interaction;
-
-memset(&interaction, 0, sizeof(interaction));
-interaction.size = sizeof(interaction);
-interaction.pw = bridge;
-interaction.get_interaction_element = host_get_interaction_element_id;
-PBrowser_ScriptSessionRegisterInteractionElementCallbacks(session,
-        &interaction);
-```
+`PCore_InteractionStateElementId`，因此不会维护第二份交互模型。初始化 size-tagged
+table 后调用 `PBrowser_ScriptSessionRegisterInteractionElementCallbacks` 即可。
 
 注册后，各 selector 查询都会读取 callback；无 callback、空/过长/失效 id、带参数或伪元素
 安全不匹配。Browser 不派发 pointer 事件、不改变 Core/style/layout/paint；宿主负责
@@ -303,18 +293,9 @@ focus.request_focus = host_request_focus;
 PBrowser_ScriptSessionRegisterFocusRequestCallbacks(session, &focus);
 ```
 
-页面级滚动扩展的注册形态如下；`out_result` 由 Browser 预先清零并在 callback
-返回后读取，宿主不应保存它或其中的借用指针：
-
-```c
-PBrowserScriptFocusRequestCallbacksEx focus_ex;
-
-memset(&focus_ex, 0, sizeof(focus_ex));
-focus_ex.size = sizeof(focus_ex);
-focus_ex.pw = bridge;
-focus_ex.request_focus = host_request_focus_ex;
-PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(session, &focus_ex);
-```
+需要页面级滚动扩展时改用同一注册函数的 `PBrowserScriptFocusRequestCallbacksEx` 表；
+Browser 会清零 `out_result`，宿主只在 callback 返回前读取实际 CSS 坐标，
+不得保存指针。
 
 #### 宿主驱动的初始 `autofocus`
 
@@ -324,10 +305,8 @@ Browser 不自主执行 `autofocus`。宿主在 Core layout/native
 `PCore_EventDispatchFocus` 派发 focus/focusin。无合格目标、过期目标或超长 id 安全回退；
 无 id 的 `document.activeElement` 返回 `body`，事件监听器应按可空 `target` 处理。
 
-该扩展覆盖 id-addressable Core 目标、page-level viewport 和最多 64 层可寻址的
-retained overflow ancestor 链，但不提供完整 focus navigation、自动初始焦点、
-focus ring、完整 scroll tree、scroll chaining、scroll-margin、平滑/惯性滚动、
-跨窗口策略或 OEM 控件视觉保证。
+该扩展覆盖 id-addressable Core 目标和最多 64 层可寻址的 retained overflow ancestor
+链；完整 focus navigation、scroll tree、跨窗口策略和 OEM 控件视觉仍不在契约内。
 
 ### DOM、表单与 validation adapters
 
@@ -418,8 +397,16 @@ raw `src`。无 source 为 complete/尺寸 `0`，未选 `src` 的 `srcset` 保�
 资源要等 retained decode，fetch failure 则 complete/尺寸 `0`。`document.images` 是有界
 snapshot，提供 `item()`/`namedItem()`。
 
-不实现 srcset/CORS、`decode()`、load/error、完整 loading 或图像视觉；资源/绘制由宿主/Core
-负责。
+`PElement.decode()` 返回有界 Promise：无 source 在 microtask 中完成，已有正的 Core
+自然尺寸时完成，终态失败以 `EncodingError` 拒绝；源属性改变会拒绝旧请求，页面 teardown
+会以 `AbortError` 拒绝仍 pending 的请求。每个 session 最多保留 64 个 pending decode，
+宿主仍需显式泵出 Browser microtask。Core 完成 fetch/decode/layout 后，宿主调用
+`PBrowser_ScriptSessionNotifyImageEvent(session, id, PBROWSER_SCRIPT_IMAGE_EVENT_LOAD)`
+或 `..._ERROR`；Browser 只接受当前 `<img>` 已 complete 且自然尺寸与终态一致的通知，
+派发 trusted、非冒泡、不可取消的 `load`/`error`，并 settle 同一 source 的 decode 请求。
+终态通知幂等，过时、相反或未就绪的通知 fail closed。srcset/CORS、绝对 URL、完整
+loading 策略、image-map 命中和图像视觉仍由未来能力或宿主/Core 负责。每个 session
+最多追踪 64 个 image 终态；超限时新通知在 source 改变或 teardown 前 fail closed。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、

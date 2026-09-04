@@ -1748,8 +1748,22 @@ typedef struct PBrowserScriptEventInfo {
 #define PBROWSER_SCRIPT_EVENT_ACTION_NONE            0x00u
 #define PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT 0x01u
 
+/* Host notifications for the bounded HTMLImageElement lifecycle. The host
+ * must update Core's image cache/layout relations first, then notify the
+ * current Browser session. A notification is accepted only for a current
+ * <img> whose complete/natural dimensions already describe the requested
+ * terminal state; duplicate notifications for the same source are idempotent.
+ * The session tracks at most 64 image terminal states; a new state beyond that
+ * bound fails closed until an image source changes or the session is torn down.
+ * The Browser dispatches a trusted, non-bubbling, non-cancelable `load` or
+ * `error` event and settles pending decode() promises. The host owns fetching,
+ * decoding, source selection and resource lifetime; this API does not perform
+ * any of those operations. */
+#define PBROWSER_SCRIPT_IMAGE_EVENT_LOAD  1u
+#define PBROWSER_SCRIPT_IMAGE_EVENT_ERROR 2u
+
 /* Browser script session. The session owns one browser-sized PScript context
- * (the browser bootstrap uses a bounded 730 KiB heap ceiling) and all
+ * (the browser bootstrap uses a bounded 768 KiB heap ceiling) and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
  * stable positron_script result codes; zero is success. */
@@ -2282,6 +2296,13 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterEventCallbacks(
 PBROWSER_API unsigned int PBrowser_ScriptSessionDispatchEvent(
         HANDLE hSession, unsigned int listener, const char *event_type,
         const PBrowserScriptEventInfo *event_info);
+/* Notify the Browser that one Core-owned image reached a terminal load/error
+ * state. `element_id` is UTF-8 and borrowed for the duration of the call.
+ * Returns PSCRIPT_OK when the event was dispatched or was an identical
+ * duplicate; invalid/stale/unready states return PSCRIPT_ERROR_ARGUMENT and
+ * a failed script call returns PSCRIPT_ERROR_CALL. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
+        const char *element_id, unsigned int event_kind);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,

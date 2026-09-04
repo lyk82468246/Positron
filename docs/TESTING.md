@@ -434,7 +434,7 @@ default-selected 快照，submit-capable button/input/image 选择其 form 中�
 第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
 `.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
 逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
-默认状态或 selector 解析。为保持 WM6 上固定的 730 KiB Browser heap，初始、mutation 和
+默认状态或 selector 解析。为保持 WM6 上固定的 768 KiB Browser heap，初始、mutation 和
 非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
 
 TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：脚本先读
@@ -525,9 +525,19 @@ attribute reflection、`crossOrigin` 的 `null` 回退、boolean/尺寸 setter �
 非 `img` 的安全结果，以及 `naturalWidth`/`naturalHeight`/`complete` 的资源状态投影；
 Core fixture 另外断言成功 SVG、终态 fetch failure、无 source 和仅有 `srcset` 的状态，
 并验证 layout 后 retained decode 才暴露自然尺寸。该门不实现或承诺 `srcset`/`sizes`
-选择、绝对 URL、CORS/referrer enforcement、`decode()`、load/error 事件、image-map 命中、
+选择、绝对 URL、CORS/referrer enforcement、Promise/事件生命周期、image-map 命中、
 完整 loading/fetch-priority 策略或 native 图像视觉；宿主只提供资源 callback、DOM 接线、
 fixture 与断言，产品语义位于 Core/Browser。
+
+TEST1194 覆盖 `HTMLImageElement.decode()` 与宿主驱动的图像终态事件：脚本先验证无 source、
+pending、成功尺寸、终态失败、非 `img` 目标和 source mutation 的 Promise 状态；Core fetch/
+style/layout 使成功与失败关系可观察后，宿主通过
+`PBrowser_ScriptSessionNotifyImageEvent` 派发可信、非冒泡、不可取消的 `load`/`error`，
+并断言重复通知幂等、相反/过时/缺失 id fail closed、Promise settle 顺序和 page teardown
+对剩余 pending 请求的 `AbortError`；每个 session 的 image/source 终态映射最多 64 项，
+source 改变会释放旧项，超限的新终态通知保持 fail closed。该门不实现 `srcset`/`sizes` 选择、绝对 URL、CORS/
+referrer enforcement、完整 loading 策略、image-map 命中或 native 图像视觉；宿主只负责
+先更新 Core relation、调用通知入口和泵出 microtask，产品语义位于 Browser/Core。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
