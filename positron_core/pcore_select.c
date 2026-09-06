@@ -3312,7 +3312,6 @@ typedef struct pcore_image_fetch_ctx {
     int          found;
     int          fetched;
     dom_string  *img_name;
-    dom_string  *src_name;
 } pcore_image_fetch_ctx;
 
 static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
@@ -3389,16 +3388,17 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
             dom_string_unref(name);
         }
         if (is_img) {
-            dom_string *src = NULL;
-            if (dom_element_get_attribute(node, ic->src_name, &src) ==
-                    DOM_NO_ERR && src != NULL) {
-                const char *su8 = dom_string_data(src);
-                size_t sl = dom_string_byte_length(src);
+            char selected[PCORE_IMAGE_SOURCE_MAX_BYTES];
+            int selected_bytes;
 
-                if (su8 != NULL && sl > 0) {
-                    pcore_fetch_image_url(ic, su8, sl);
-                }
-                dom_string_unref(src);
+            selected_bytes = 0;
+            if (pcore_image_selected_source(node, selected,
+                    sizeof(selected), &selected_bytes) == 0 &&
+                    selected_bytes > 0 &&
+                    selected_bytes < (int) sizeof(selected) &&
+                    selected[0] != '\0') {
+                pcore_fetch_image_url(ic, selected,
+                        strlen(selected));
             }
             return;   /* <img> is void; no useful children to scan. */
         }
@@ -3445,14 +3445,12 @@ PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
     ic.found = 0;
     ic.fetched = 0;
     ic.img_name = NULL;
-    ic.src_name = NULL;
 
     if (ic.cache == NULL) {
         goto cleanup;
     }
     dom_string_create((const uint8_t *) "img", 3, &ic.img_name);
-    dom_string_create((const uint8_t *) "src", 3, &ic.src_name);
-    if (ic.img_name == NULL || ic.src_name == NULL) {
+    if (ic.img_name == NULL) {
         goto cleanup;
     }
     if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
@@ -3475,9 +3473,6 @@ cleanup:
     }
     if (ic.img_name != NULL) {
         dom_string_unref(ic.img_name);
-    }
-    if (ic.src_name != NULL) {
-        dom_string_unref(ic.src_name);
     }
     return rc;
 }
@@ -5196,6 +5191,297 @@ static int pcore_relation_attribute_value(dom_element *element,
     return (*out_value == NULL) ? 2 : 0;
 }
 
+/* The image source-set bridge deliberately implements only the part that is
+ * useful on the fixed WM6 viewport: positive density (x) candidates. Width
+ * descriptors and sizes require a full source-size/media evaluator and are
+ * rejected here, so a malformed or unsupported set can never replace a
+ * usable src fallback. Parsing is kept local and bounded; no candidate array
+ * or URL allocation is proportional to attacker-controlled markup. */
+static int pcore_image_source_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+
+static int pcore_image_source_copy(const char *data, size_t length,
+        char *out_url, int url_capacity, int *out_bytes)
+{
+    size_t copy_length;
+
+    if (out_bytes != NULL) {
+        *out_bytes = (length > (size_t) INT_MAX) ? INT_MAX :
+                (int) length;
+    }
+    if (out_url == NULL || url_capacity <= 0) {
+        return 0;
+    }
+    copy_length = length;
+    if (copy_length > (size_t) (url_capacity - 1)) {
+        copy_length = (size_t) (url_capacity - 1);
+    }
+    if (copy_length > 0 && data != NULL) {
+        memcpy(out_url, data, copy_length);
+    }
+    out_url[copy_length] = '\0';
+    return 0;
+}
+
+static int pcore_image_source_density(const char *data, size_t length,
+        int *out_density)
+{
+    size_t i;
+    int whole;
+    int fraction;
+    int fraction_digits;
+    int seen_digit;
+    int seen_dot;
+    int extra_nonzero;
+    char c;
+
+    if (out_density != NULL) {
+        *out_density = 0;
+    }
+    if (data == NULL || out_density == NULL || length < 2 ||
+            (data[length - 1] != 'x' && data[length - 1] != 'X')) {
+        return 0;
+    }
+    whole = 0;
+    fraction = 0;
+    fraction_digits = 0;
+    seen_digit = 0;
+    seen_dot = 0;
+    extra_nonzero = 0;
+    for (i = 0; i + 1 < length; i++) {
+        c = data[i];
+        if (c == '.') {
+            if (seen_dot) {
+                return 0;
+            }
+            seen_dot = 1;
+            continue;
+        }
+        if (c < '0' || c > '9') {
+            return 0;
+        }
+        seen_digit = 1;
+        if (!seen_dot) {
+            if (whole > 100) {
+                return 0;
+            }
+            whole = whole * 10 + (c - '0');
+            if (whole > 100) {
+                return 0;
+            }
+        } else if (fraction_digits < 3) {
+            fraction = fraction * 10 + (c - '0');
+            fraction_digits++;
+        } else if (c != '0') {
+            extra_nonzero = 1;
+        }
+    }
+    if (!seen_digit || (seen_dot && fraction_digits == 0) ||
+            extra_nonzero) {
+        return 0;
+    }
+    while (fraction_digits < 3) {
+        fraction *= 10;
+        fraction_digits++;
+    }
+    if (whole == 0 && fraction == 0) {
+        return 0;
+    }
+    *out_density = whole * 1000 + fraction;
+    return *out_density > 0 && *out_density <= 100000;
+}
+
+static int pcore_image_source_set_select(dom_string *srcset,
+        char *out_url, int url_capacity, int *out_bytes)
+{
+    const char *data;
+    size_t length;
+    size_t pos;
+    size_t start;
+    size_t end;
+    size_t token_start;
+    size_t token_end;
+    char best_above[PCORE_IMAGE_SOURCE_MAX_BYTES];
+    char best_any[PCORE_IMAGE_SOURCE_MAX_BYTES];
+    int density;
+    int descriptor_count;
+    int valid;
+    int candidate_count;
+    int have_above;
+    int have_any;
+    int best_above_density;
+    int best_any_density;
+    int device_dpi;
+    int target_density;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (out_url != NULL && url_capacity > 0) {
+        out_url[0] = '\0';
+    }
+    if (srcset == NULL || out_url == NULL || url_capacity <= 0) {
+        return 0;
+    }
+    data = dom_string_data(srcset);
+    length = dom_string_byte_length(srcset);
+    if (data == NULL || length == 0) {
+        return 0;
+    }
+    pos = 0;
+    candidate_count = 0;
+    have_above = 0;
+    have_any = 0;
+    best_above_density = 0;
+    best_any_density = 0;
+    best_above[0] = '\0';
+    best_any[0] = '\0';
+    device_dpi = (int) (pcore_unit_ctx.device_dpi /
+            (1 << CSS_RADIX_POINT));
+    if (device_dpi <= 0) {
+        device_dpi = 96;
+    }
+    if (device_dpi > 9600) {
+        device_dpi = 9600;
+    }
+    target_density = (device_dpi * 1000 + 48) / 96;
+    if (target_density <= 0) {
+        target_density = 1;
+    }
+
+    while (pos < length && candidate_count <
+            PCORE_IMAGE_SRCSET_MAX_CANDIDATES) {
+        while (pos < length && (pcore_image_source_space(data[pos]) ||
+                data[pos] == ',')) {
+            pos++;
+        }
+        if (pos >= length) {
+            break;
+        }
+        start = pos;
+        while (pos < length && !pcore_image_source_space(data[pos]) &&
+                data[pos] != ',') {
+            pos++;
+        }
+        end = pos;
+        valid = end > start && end - start <
+                (size_t) sizeof(best_any);
+        descriptor_count = 0;
+        density = 1000;
+        while (pos < length && data[pos] != ',') {
+            while (pos < length && pcore_image_source_space(data[pos])) {
+                pos++;
+            }
+            if (pos >= length || data[pos] == ',') {
+                break;
+            }
+            token_start = pos;
+            while (pos < length && !pcore_image_source_space(data[pos]) &&
+                    data[pos] != ',') {
+                pos++;
+            }
+            token_end = pos;
+            descriptor_count++;
+            if (descriptor_count != 1 ||
+                    !pcore_image_source_density(data + token_start,
+                    token_end - token_start, &density)) {
+                valid = 0;
+            }
+        }
+        if (pos < length && data[pos] == ',') {
+            pos++;
+        }
+        if (!valid || end <= start || descriptor_count > 1) {
+            continue;
+        }
+        candidate_count++;
+        if (!have_any || density > best_any_density) {
+            memcpy(best_any, data + start, end - start);
+            best_any[end - start] = '\0';
+            best_any_density = density;
+            have_any = 1;
+        }
+        if (density >= target_density &&
+                (!have_above || density < best_above_density)) {
+            memcpy(best_above, data + start, end - start);
+            best_above[end - start] = '\0';
+            best_above_density = density;
+            have_above = 1;
+        }
+    }
+    if (have_above) {
+        return pcore_image_source_copy(best_above,
+                strlen(best_above), out_url, url_capacity, out_bytes) == 0;
+    }
+    if (have_any) {
+        return pcore_image_source_copy(best_any,
+                strlen(best_any), out_url, url_capacity, out_bytes) == 0;
+    }
+    return 0;
+}
+
+int pcore_image_selected_source(dom_node *image, char *out_url,
+        int url_capacity, int *out_bytes)
+{
+    dom_string *src;
+    dom_string *srcset;
+    int result;
+    int selected_bytes;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (out_url != NULL && url_capacity > 0) {
+        out_url[0] = '\0';
+    }
+    if (image == NULL || out_url == NULL || url_capacity <= 0 ||
+            !pcore_element_name_is((dom_element *) image, "img")) {
+        return 1;
+    }
+    src = NULL;
+    srcset = NULL;
+    result = pcore_relation_attribute_value((dom_element *) image, "src",
+            &src);
+    if (result == 1) {
+        return 1;
+    }
+    result = pcore_relation_attribute_value((dom_element *) image, "srcset",
+            &srcset);
+    if (result == 1) {
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        return 1;
+    }
+    selected_bytes = 0;
+    if (srcset != NULL && dom_string_byte_length(srcset) > 0 &&
+            pcore_image_source_set_select(srcset, out_url, url_capacity,
+            &selected_bytes) && selected_bytes > 0) {
+        if (out_bytes != NULL) {
+            *out_bytes = selected_bytes;
+        }
+        dom_string_unref(srcset);
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        return 0;
+    }
+    if (src != NULL && dom_string_byte_length(src) > 0) {
+        pcore_image_source_copy(dom_string_data(src),
+                dom_string_byte_length(src), out_url, url_capacity,
+                out_bytes);
+    }
+    if (srcset != NULL) {
+        dom_string_unref(srcset);
+    }
+    if (src != NULL) {
+        dom_string_unref(src);
+    }
+    return 0;
+}
+
 /* Fieldsets, img, object and output elements are form-associated, but none are
  * successful form controls. Fieldsets, object and output also belong in the
  * DOM relation collection; img uses this owner projection only. The separate
@@ -5789,21 +6075,20 @@ static int pcore_relation_child_node_field(dom_node *node,
 
 /* Project the image resource state that Core already owns into the typed DOM
  * relation bridge. This is a read-only snapshot: it never fetches, decodes or
- * lays out an image. A src/srcset-less image is complete with zero natural
- * dimensions; an image with a source is incomplete until a cached body has
- * reached a retained decode attempt. A remembered fetch failure is complete
- * with zero dimensions, matching the browser's terminal broken-resource
- * state without exposing cache or decoder handles. */
+ * lays out an image. Source selection is shared with the fetch/layout path;
+ * a src/srcset-less image is complete with zero natural dimensions, an image
+ * with a selected source is incomplete until a cached body has reached a
+ * retained decode attempt, and a remembered fetch failure is complete with
+ * zero dimensions. */
 static int pcore_relation_image_resource(dom_document *doc,
         dom_element *element, unsigned int relation, int *out_number)
 {
-    dom_string *src;
     dom_string *srcset;
     pcore_image_cache *cache;
     pcore_image_resource *entry;
-    const char *src_data;
-    int has_src;
     int has_srcset;
+    char selected[PCORE_IMAGE_SOURCE_MAX_BYTES];
+    int selected_bytes;
     int result;
 
     if (out_number == NULL) {
@@ -5814,38 +6099,34 @@ static int pcore_relation_image_resource(dom_document *doc,
             !pcore_element_name_is(element, "img")) {
         return 2;
     }
-    src = NULL;
     srcset = NULL;
-    result = pcore_relation_attribute_value(element, "src", &src);
-    if (result == 1) {
-        return 1;
-    }
     result = pcore_relation_attribute_value(element, "srcset", &srcset);
     if (result == 1) {
-        if (src != NULL) {
-            dom_string_unref(src);
-        }
         return 1;
     }
-    has_src = src != NULL && dom_string_byte_length(src) > 0;
     has_srcset = srcset != NULL && dom_string_byte_length(srcset) > 0;
-    if (!has_src) {
+    selected_bytes = 0;
+    selected[0] = '\0';
+    result = pcore_image_selected_source((dom_node *) element, selected,
+            sizeof(selected), &selected_bytes);
+    if (result != 0) {
         if (srcset != NULL) {
             dom_string_unref(srcset);
         }
-        if (src != NULL) {
-            dom_string_unref(src);
-        }
-        /* Source-set selection is not implemented; keep that state visibly
-         * incomplete instead of claiming that a candidate was loaded. */
+        return 1;
+    }
+    if (selected_bytes <= 0 || selected_bytes >= (int) sizeof(selected) ||
+            selected[0] == '\0') {
         if (relation == PCORE_NODE_RELATION_IMAGE_COMPLETE) {
             *out_number = has_srcset ? 0 : 1;
         }
+        if (srcset != NULL) {
+            dom_string_unref(srcset);
+        }
         return 0;
     }
-    src_data = dom_string_data(src);
     cache = pcore_image_cache_get(doc, 0);
-    entry = pcore_image_cache_find(cache, src_data);
+    entry = pcore_image_cache_find(cache, selected);
     if (relation == PCORE_NODE_RELATION_IMAGE_COMPLETE) {
         if (entry != NULL &&
                 (entry->state == PCORE_IMAGE_RESOURCE_STATE_FAILED ||
@@ -5861,7 +6142,6 @@ static int pcore_relation_image_resource(dom_document *doc,
         } else if (relation == PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT) {
             *out_number = entry->height > 0 ? entry->height : 0;
         } else {
-            dom_string_unref(src);
             if (srcset != NULL) {
                 dom_string_unref(srcset);
             }
@@ -5869,16 +6149,54 @@ static int pcore_relation_image_resource(dom_document *doc,
         }
     } else if (relation != PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH &&
             relation != PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT) {
-        dom_string_unref(src);
         if (srcset != NULL) {
             dom_string_unref(srcset);
         }
         return 1;
     }
-    dom_string_unref(src);
     if (srcset != NULL) {
         dom_string_unref(srcset);
     }
+    return 0;
+}
+
+static int pcore_relation_image_current_source(dom_element *element,
+        char *value, int value_capacity, int *out_bytes)
+{
+    char selected[PCORE_IMAGE_SOURCE_MAX_BYTES];
+    int selected_bytes;
+    int copy_bytes;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (element == NULL || value_capacity < 0 ||
+            (value == NULL && value_capacity > 0) ||
+            !pcore_element_name_is(element, "img")) {
+        return 1;
+    }
+    selected[0] = '\0';
+    selected_bytes = 0;
+    if (pcore_image_selected_source((dom_node *) element, selected,
+            sizeof(selected), &selected_bytes) != 0 || selected_bytes < 0 ||
+            selected_bytes >= (int) sizeof(selected)) {
+        return 2;
+    }
+    if (out_bytes != NULL) {
+        *out_bytes = selected_bytes;
+    }
+    if (value == NULL || value_capacity <= 0 || selected_bytes == 0) {
+        return 0;
+    }
+    copy_bytes = selected_bytes;
+    if (copy_bytes > value_capacity - 1) {
+        copy_bytes = value_capacity - 1;
+    }
+    memcpy(value, selected, (size_t) copy_bytes);
+    value[copy_bytes] = '\0';
     return 0;
 }
 
@@ -6155,6 +6473,10 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_IMAGE_COMPLETE:
         err = pcore_relation_image_resource((dom_document *) hDoc, element,
                 relation, out_number);
+        break;
+    case PCORE_NODE_RELATION_IMAGE_CURRENT_SRC:
+        err = pcore_relation_image_current_source(element, out_value,
+                value_capacity, out_bytes);
         break;
     case PCORE_NODE_RELATION_LABEL_CONTROL:
         err = pcore_relation_label_control((dom_document *) hDoc, element,

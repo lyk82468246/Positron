@@ -351,8 +351,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * They read the document-owned image cache without fetching, decoding or
  * laying out: natural dimensions are zero until a retained decode attempt,
  * complete is true for a source-less image or a terminal cached failure, and
- * non-img targets are unavailable. A non-empty srcset without a selected src
- * remains incomplete because source selection is outside this bounded API.
+ * non-img targets are unavailable. IMAGE_CURRENT_SRC returns the same
+ * bounded source candidate used by image fetching/layout: up to 16 positive
+ * density (x) candidates are selected against the current Core device DPI;
+ * width descriptors, sizes and malformed candidates fall back to src.
  * FORM_OWNER resolves a supported form-associated control, fieldset, img,
  * object or output element to its nearest ancestor form. A present `form` attribute instead names a form by id;
  * an empty, invalid, or non-form target has no owner and never falls back to the
@@ -423,6 +425,7 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH  46u
 #define PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT 47u
 #define PCORE_NODE_RELATION_IMAGE_COMPLETE       48u
+#define PCORE_NODE_RELATION_IMAGE_CURRENT_SRC   49u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

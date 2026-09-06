@@ -563,9 +563,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * img-only snapshots. They read the Core-owned image cache without fetching,
  * decoding or laying out; natural dimensions remain zero until a retained
  * decode attempt, complete is true for a source-less image or terminal
- * cached failure, and a non-empty srcset without a selected src is incomplete.
- * Older hosts that do not provide these relations leave the Browser getters
- * at their conservative zero/false values. */
+ * cached failure, and IMAGE_CURRENT_SRC is the Core-selected source used by
+ * fetch/layout. The bounded selector accepts positive density (`x`)
+ * candidates only; older hosts that do not provide these relations leave the
+ * Browser getters at their conservative zero/false values. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -619,6 +620,7 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_NATURAL_WIDTH  46u
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_NATURAL_HEIGHT 47u
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_COMPLETE       48u
+#define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_CURRENT_SRC   49u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

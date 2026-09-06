@@ -1680,24 +1680,26 @@ done:
 static struct box *pcore_make_cached_image_box(dom_node *node,
         css_computed_style *style, void *ctx, PCoreBoxStats *stats)
 {
-    char *src = NULL;
-    size_t src_len = 0;
+    char selected[PCORE_IMAGE_SOURCE_MAX_BYTES];
+    int selected_bytes;
     char *url = NULL;
     dom_document *doc = NULL;
     struct bitmap *bitmap;
     struct box *box;
 
+    selected_bytes = 0;
     if (!pcore_node_name_is(node, "img") ||
-            !pcore_copy_attr_text(node, "src", ctx, &src, &src_len) ||
-            src == NULL || src_len == 0) {
+            pcore_image_selected_source(node, selected, sizeof(selected),
+            &selected_bytes) != 0 || selected_bytes <= 0 ||
+            selected_bytes >= (int) sizeof(selected) || selected[0] == '\0') {
         return NULL;
     }
-    url = (char *) malloc(src_len + 1);
+    url = (char *) malloc((size_t) selected_bytes + 1);
     if (url == NULL) {
         return NULL;
     }
-    memcpy(url, src, src_len);
-    url[src_len] = '\0';
+    memcpy(url, selected, (size_t) selected_bytes);
+    url[selected_bytes] = '\0';
     if (dom_node_get_owner_document(node, &doc) != DOM_NO_ERR ||
             doc == NULL) {
         if (doc != NULL) {
@@ -7394,9 +7396,8 @@ static int pcore_image_map_scale_coord(int value, int rendered, int base)
 static void pcore_image_map_dimensions(dom_document *doc, dom_node *image,
         int image_w, int image_h, int *base_w, int *base_h)
 {
-    dom_string *src_name;
-    dom_string *src;
-    const char *src_data;
+    char selected[PCORE_IMAGE_SOURCE_MAX_BYTES];
+    int selected_bytes;
     int attempted;
     int natural_w;
     int natural_h;
@@ -7405,38 +7406,25 @@ static void pcore_image_map_dimensions(dom_document *doc, dom_node *image,
 
     *base_w = image_w;
     *base_h = image_h;
-    src_name = NULL;
-    src = NULL;
+    selected[0] = '\0';
+    selected_bytes = 0;
     attempted = 0;
     natural_w = 0;
     natural_h = 0;
     native_image = NULL;
     svg = NULL;
     if (doc == NULL || image == NULL ||
-            dom_string_create((const uint8_t *) "src", 3,
-            &src_name) != DOM_NO_ERR || src_name == NULL ||
-            dom_element_get_attribute((dom_element *) image, src_name,
-            &src) != DOM_NO_ERR || src == NULL ||
-            dom_string_byte_length(src) == 0) {
-        if (src != NULL) {
-            dom_string_unref(src);
-        }
-        if (src_name != NULL) {
-            dom_string_unref(src_name);
-        }
+            pcore_image_selected_source(image, selected, sizeof(selected),
+            &selected_bytes) != 0 || selected_bytes <= 0 ||
+            selected_bytes >= (int) sizeof(selected) || selected[0] == '\0') {
         return;
     }
-    src_data = dom_string_data(src);
-    if (src_data != NULL) {
-        (void) pcore_image_resource_retained_get(doc, src_data, &attempted,
+    (void) pcore_image_resource_retained_get(doc, selected, &attempted,
                 &native_image, &svg, &natural_w, &natural_h);
-    }
     if (attempted && natural_w > 0 && natural_h > 0) {
         *base_w = natural_w;
         *base_h = natural_h;
     }
-    dom_string_unref(src);
-    dom_string_unref(src_name);
 }
 
 static int pcore_image_map_shape_kind(dom_string *shape)

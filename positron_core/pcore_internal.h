@@ -14,6 +14,13 @@
 
 #include "positron_core.h"
 
+/* Source selection is intentionally bounded for WM6 callers.  The public
+ * relation bridge may still truncate a returned string to its caller-owned
+ * buffer, but Core never allocates an unbounded candidate while scanning or
+ * laying out an image. */
+#define PCORE_IMAGE_SOURCE_MAX_BYTES      2048
+#define PCORE_IMAGE_SRCSET_MAX_CANDIDATES 16
+
 /* Parse one stylesheet through Positron's compatibility transforms. Unlike
  * the public PCore_ParseCSS entry point, this may return CSS_IMPORTS_PENDING
  * so pcore_select can fetch and register the native libcss import tree. */
@@ -117,6 +124,13 @@ int pcore_image_resource_retained_get(struct dom_document *doc,
 int pcore_image_resource_retained_store(struct dom_document *doc,
         const char *url, void *native_image, void *svg,
         int width, int height, const PCoreImageDecodeStats *decode_stats);
+/* Resolve one <img> to the bounded source that Core should fetch, decode and
+ * expose as currentSrc. The selector accepts at most 16 density (x)
+ * candidates, uses the current Core device DPI as the target density, and
+ * falls back to src when the source-set is absent or unsupported. `out_url`
+ * is caller-owned UTF-8; out_bytes excludes its terminator. */
+int pcore_image_selected_source(struct dom_node *image, char *out_url,
+        int url_capacity, int *out_bytes);
 void pcore_image_shared_shutdown(void);
 
 /* Build a NetSurf box tree (struct box) from the styled document element

@@ -387,27 +387,26 @@ filename/type 和空内容，不承诺完整文件读取。
 
 ### `HTMLImageElement` 元数据与资源状态
 
-注册 callbacks 后，为 `PElement` 提供有界的 `HTMLImageElement` 元数据（`alt`、
-raw source attrs、`crossOrigin`、map/size/loading fields、自然尺寸、`complete`、
-`currentSrc`）。缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，非法
-尺寸读取为 `0` 且 setter 拒绝；mutation 走 Core callback。
-
-自然尺寸/`complete` 来自 Core，getter 不 fetch、decode 或 layout；`currentSrc` 是
-raw `src`。无 source 为 complete/尺寸 `0`，未选 `src` 的 `srcset` 保持 incomplete，成功
-资源要等 retained decode，fetch failure 则 complete/尺寸 `0`。`document.images` 是有界
-snapshot，提供 `item()`/`namedItem()`。
+注册 callbacks 后，`PElement` 提供有界的 `HTMLImageElement` 元数据（`alt`、raw
+source attrs、`crossOrigin`、map/size/loading fields、自然尺寸、`complete`、
+`currentSrc`）。缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，
+非法尺寸读取为 `0` 且 setter 拒绝；mutation 走 Core callback。自然尺寸和 `complete`
+来自 Core，getter 不 fetch、decode 或 layout；`currentSrc` 读取关系 49，因此与实际
+fetch、解码和布局共用来源。Core 按 viewport DPI 从最多 16 个、每个不超过 2047 字节的
+正密度（`x`）候选中选择合适者；`w`/`sizes`、畸形候选和不支持的
+URL 语法回退到 raw `src`。没有 source 为 complete/尺寸 `0`，无候选且无 `src` 的非空
+`srcset` 保持 incomplete，成功资源要等 retained decode，fetch failure 则 complete/
+尺寸 `0`。`document.images` 是有界 snapshot。
 
 `PElement.decode()` 返回有界 Promise：无 source 在 microtask 中完成，已有正的 Core
-自然尺寸时完成，终态失败以 `EncodingError` 拒绝；源属性改变会拒绝旧请求，页面 teardown
-会以 `AbortError` 拒绝仍 pending 的请求。每个 session 最多保留 64 个 pending decode，
-宿主仍需显式泵出 Browser microtask。Core 完成 fetch/decode/layout 后，宿主调用
+自然尺寸时完成，终态失败以 `EncodingError` 拒绝；source mutation 拒绝旧请求，teardown
+以 `AbortError` 拒绝 pending 请求。每个 session 最多保留 64 个 pending decode 和 64 个
+image 终态。宿主在 Core 完成 fetch/decode/layout 后调用
 `PBrowser_ScriptSessionNotifyImageEvent(session, id, PBROWSER_SCRIPT_IMAGE_EVENT_LOAD)`
-或 `..._ERROR`；Browser 只接受当前 `<img>` 已 complete 且自然尺寸与终态一致的通知，
-派发 trusted、非冒泡、不可取消的 `load`/`error`，并 settle 同一 source 的 decode 请求。
-终态通知幂等，过时、相反或未就绪的通知 fail closed。srcset/CORS、绝对 URL、完整
-loading 策略和图像视觉由未来能力或宿主/Core 负责；map 命中和区域几何由 Core 提供。
-各 session 最多追踪 64 个 image 终态；
-新通知在 source 改变或 teardown 前 fail closed。
+或 `..._ERROR`；Browser 只接受当前 `<img>` 已 complete 且终态一致的通知，派发 trusted、
+非冒泡、不可取消的 `load`/`error`，并 settle 同一 source 的 decode 请求。重复、过时、
+错误通知 fail closed。候选选择由 Core 负责；CORS、绝对 URL、完整 loading 策略、图像
+视觉与 map 命中不由 Browser 负责。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、

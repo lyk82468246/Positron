@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1195
+#define TEST_MAX_NUMBER 1196
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -44702,7 +44702,7 @@ static BOOL test1193_browser_img_properties(void)
         "src='/img/test.svg'>"
         "<img id='broken' alt='Broken' src='/img/missing.svg'>"
         "<img id='empty' alt='Empty'>"
-        "<img id='set-only' alt='Set only' srcset='/img/test.svg 1x'>"
+        "<img id='set-only' alt='Set only' srcset='/img/test.svg 120w'>"
         "<div id='not-image'>plain</div><p id='result'>idle</p>"
         "</body></html>";
     static const char CSS[] =
@@ -44710,7 +44710,7 @@ static BOOL test1193_browser_img_properties(void)
     static const char META_HTML[] =
         "<!doctype html><html><head><script>window.boot=1;</script></head>"
         "<body><img id='img' name='img-name' alt='A' src='/raw.svg'>"
-        "<img id='empty'><img id='set-only' srcset='/raw.svg 1x'>"
+        "<img id='empty'><img id='set-only' srcset='/raw.svg 120w'>"
         "<div id='not-image'>plain</div><p id='result'>idle</p>"
         "</body></html>";
     static const char META_PROBE_COLLECTION[] =
@@ -44853,7 +44853,8 @@ static BOOL test1193_browser_img_properties(void)
     show_info(L"TEST 1193 OK",
             "img metadata reflects bounded content attributes and Core image"
             " cache state; natural dimensions and complete stay fail-closed"
-            " without srcset selection, CORS or decode() semantics.");
+            " with unsupported width descriptors kept fail-closed; CORS"
+            " or decode() semantics are outside this metadata test.");
     return TRUE;
 }
 
@@ -45502,6 +45503,232 @@ static BOOL test1195_browser_image_map_hit_test(void)
             "bounded map areas resolve rect/circle/poly/default links,"
             " expose area geometry and metadata, update active/hover state,"
             " and receive trusted click events through Core.");
+    return TRUE;
+}
+
+typedef struct image_srcset_resource_test_ctx {
+    int calls;
+    int matched;
+    int frees;
+    char last_url[128];
+} image_srcset_resource_test_ctx;
+
+static int image_srcset_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    static const char SVG_ONE[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='120' height='60'>"
+        "<rect width='120' height='60' fill='#ff0000'/></svg>";
+    static const char SVG_TWO[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='240' height='120'>"
+        "<rect width='240' height='120' fill='#00ff00'/></svg>";
+    static const char SVG_THREE[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='360' height='180'>"
+        "<rect width='360' height='180' fill='#0000ff'/></svg>";
+    static const char SVG_FALLBACK[] =
+        "<svg xmlns='http://www.w3.org/2000/svg' width='96' height='48'>"
+        "<rect width='96' height='48' fill='#808080'/></svg>";
+    image_srcset_resource_test_ctx *ctx;
+    const char *svg;
+    char *copy;
+    int length;
+
+    if (out_data == NULL || out_len == NULL || url == NULL) {
+        return 1;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    ctx = (image_srcset_resource_test_ctx *) pw;
+    if (ctx == NULL) {
+        return 1;
+    }
+    ctx->calls++;
+    cstr_copy(ctx->last_url, sizeof(ctx->last_url), url);
+    svg = NULL;
+    if (strcmp(url, "/img/one.svg") == 0) {
+        svg = SVG_ONE;
+    } else if (strcmp(url, "/img/two.svg") == 0) {
+        svg = SVG_TWO;
+    } else if (strcmp(url, "/img/three.svg") == 0) {
+        svg = SVG_THREE;
+    } else if (strcmp(url, "/img/fallback.svg") == 0) {
+        svg = SVG_FALLBACK;
+    }
+    if (svg == NULL) {
+        return 1;
+    }
+    length = (int) strlen(svg);
+    copy = (char *) malloc((size_t) length);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, svg, (size_t) length);
+    *out_data = copy;
+    *out_len = length;
+    ctx->matched++;
+    return 0;
+}
+
+static void image_srcset_free(void *pw, char *data)
+{
+    image_srcset_resource_test_ctx *ctx;
+
+    ctx = (image_srcset_resource_test_ctx *) pw;
+    if (ctx != NULL) {
+        ctx->frees++;
+    }
+    free(data);
+}
+
+/* TEST 1196 - bounded density srcset selection shared by Core and Browser. */
+static BOOL test1196_browser_img_srcset_selection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='density' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 1x,/img/two.svg 2x,/img/three.svg 3x'>"
+        "<img id='fallback' src='/img/fallback.svg' "
+        "srcset='/img/width.svg 120w'>"
+        "<img id='empty' srcset='/img/one.svg 1x'>"
+        "<img id='invalid' srcset='/img/invalid.svg 0x'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;}img{display:block;"
+        "width:120px;height:60px;}";
+    static const char BROWSER_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='density' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 1x,/img/two.svg 2x,/img/three.svg 3x'>"
+        "<img id='fallback' src='/img/fallback.svg' "
+        "srcset='/img/width.svg 120w'>"
+        "<img id='empty' srcset='/img/one.svg 1x'>"
+        "<img id='invalid' srcset='/img/invalid.svg 0x'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char BROWSER_PROBE[] =
+        "var d=document.getElementById('density');"
+        "var f=document.getElementById('fallback');"
+        "var e=document.getElementById('empty');"
+        "var i=document.getElementById('invalid');"
+        "document.getElementById('result').textContent="
+        "d.currentSrc+'|'+f.currentSrc+'|'+e.currentSrc+'|'+i.currentSrc;";
+    HANDLE document;
+    HANDLE sheet;
+    image_srcset_resource_test_ctx ctx;
+    char error[512];
+    char source[128];
+    int found;
+    int fetched;
+    int found_again;
+    int fetched_again;
+    int number;
+    int vw;
+    int vh;
+    BOOL core_ok;
+    BOOL browser_ok;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(error, 0, sizeof(error));
+    memset(source, 0, sizeof(source));
+    found = 0;
+    fetched = 0;
+    found_again = 0;
+    fetched_again = 0;
+    number = 0;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    core_ok = FALSE;
+    browser_ok = FALSE;
+
+    /* A 192-DPI context has a target density of 2x. */
+    PCore_SetViewport(240, 320, 192);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL &&
+            PCore_NodeRelationById(document, "density",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) == 0 &&
+            strcmp(source, "/img/two.svg") == 0 &&
+            PCore_NodeRelationById(document, "fallback",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) == 0 &&
+            strcmp(source, "/img/fallback.svg") == 0 &&
+            PCore_NodeRelationById(document, "empty",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) == 0 &&
+            strcmp(source, "/img/one.svg") == 0 &&
+            PCore_NodeRelationById(document, "invalid",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) == 0 && source[0] == '\0') {
+        core_ok = TRUE;
+    }
+    if (core_ok) {
+        core_ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                found == 3 && fetched == 3 && ctx.calls == 3 &&
+                ctx.matched == 3 && ctx.frees == 3;
+    }
+    if (core_ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/srcset.css");
+        core_ok = sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0 &&
+                PCore_NodeRelationById(document, "density",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0, NULL,
+                &number) == 0 && number == 240 &&
+                PCore_NodeRelationById(document, "density",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT, 0, NULL, 0, NULL,
+                &number) == 0 && number == 120 &&
+                PCore_NodeRelationById(document, "density",
+                PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0, NULL,
+                &number) == 0 && number == 1;
+    }
+    if (core_ok) {
+        if (PCore_FetchImageResources(document, image_srcset_fetch,
+                image_srcset_free, &ctx, &found_again,
+                &fetched_again) != 0 || found_again != 3 ||
+                fetched_again != 3 || ctx.calls != 3 || ctx.frees != 3) {
+            core_ok = FALSE;
+        }
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+        document = NULL;
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+        sheet = NULL;
+    }
+
+    PCore_SetViewport(240, 320, 192);
+    browser_ok = test_browser_raw_string_fixture(BROWSER_HTML,
+            BROWSER_PROBE, "/img/two.svg|/img/fallback.svg|/img/one.svg|",
+            error, sizeof(error));
+    if (browser_ok) {
+        PCore_SetViewport(240, 320, 96);
+        browser_ok = test_browser_raw_string_fixture(BROWSER_HTML,
+                BROWSER_PROBE, "/img/one.svg|/img/fallback.svg|/img/one.svg|",
+                error, sizeof(error));
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!core_ok || !browser_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d browser=%d fetch=%d/%d again=%d/%d calls=%d/%d/%d source=%s relation=%d",
+                    core_ok, browser_ok, found, fetched, found_again,
+                    fetched_again, ctx.calls, ctx.matched, ctx.frees, source,
+                    number);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1196 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1196 OK",
+            "bounded density srcset candidates select one shared source for"
+            " Core fetch/layout and Browser currentSrc; unsupported width"
+            " descriptors and malformed candidates fail closed.");
     return TRUE;
 }
 
@@ -103631,6 +103858,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1193: ok = test1193_browser_img_properties(); break;
         case 1194: ok = test1194_browser_img_decode_events(); break;
         case 1195: ok = test1195_browser_image_map_hit_test(); break;
+        case 1196: ok = test1196_browser_img_srcset_selection(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -87,13 +87,15 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 
 - UTF-8 HTML 解析为 libdom 文档；
 - CSS 解析、cascade、媒体条件和整树 computed style；
-- 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；
-- 图片 cache 按当前文档的 raw `src` key 记录成功与终态失败；图片 relation 46–48
-  只读地投影 `naturalWidth`、`naturalHeight` 和 `complete`。relation 查询不会 fetch、
-  decode 或 layout：无 `src`/`srcset` 的图片 complete 且尺寸为 0，非空 `srcset` 在
-  没有选定 `src` 时保持 incomplete，成功资源要等 retained decode attempt 后才有自然
-  尺寸，失败资源 complete 且尺寸为 0；`srcset` 选择、CORS、`decode()` 和事件不在
-  Core 边界内；
+- 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；图片 cache 按 Core 选定的
+  来源 URL key 记录成功与终态失败；
+- `<img>` 的图片来源选择和资源状态：Core 接受最多 16 个、URL 不超过 2047 字节的正
+  密度（`x`）候选，以当前 viewport DPI 选择最小的足够密度或最高候选，并让同一结果
+  驱动发现、缓存、解码、布局和 relation 49 的 `currentSrc`。`w` 描述符、`sizes`、
+  畸形候选和不支持的 URL 语法回退到 raw `src`；没有可用来源时安全保持空值。图片
+  relation 46–48 只读地投影 `naturalWidth`、`naturalHeight` 和 `complete`，relation
+  查询不会 fetch、decode 或 layout：成功资源要等 retained decode attempt 后才有自然
+  尺寸，失败资源 complete 且尺寸为 0。CORS、`decode()` 和事件不在 Core 边界内；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 图像映射命中与链接几何：对已布局且带 `usemap` 的 `<img>`，Core 按 DOM 顺序在
   `<map>` 的最多 64 个 `<area>` 中解析 `default`、`rect`、`circle` 和
@@ -182,10 +184,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
   `currentSrc` 均通过 Browser 的脚本对象与 Core relation 读取；Browser 只维护对象形状
   与同步 callback，并在宿主通知后维护有界 `decode()` Promise 和 `load`/`error` 事件
-  终态；宿主仍负责资源 I/O，Core 负责 cache/decode/layout。宿主须先让 Core relation
-  反映 complete/natural-size，再调用 `PBrowser_ScriptSessionNotifyImageEvent`；Browser
-  只派发 trusted、非冒泡、不可取消事件并 settle 同一 source 的 decode 请求。该桥不声称
-  `srcset`/`sizes` 选择、绝对 URL 解析、CORS/referrer enforcement 或完整 loading 策略；
+  终态；宿主仍负责资源 I/O，Core 负责来源选择、cache/decode/layout。宿主须先让 Core
+  relation 反映 complete/natural-size，再调用 `PBrowser_ScriptSessionNotifyImageEvent`；
+  Browser 只派发 trusted、非冒泡、不可取消事件并 settle 同一 source 的 decode 请求。
+  当前 source 选择只覆盖最多 16 个正密度 `x` 候选；`w`/`sizes`、绝对 URL 解析、
+  CORS/referrer enforcement 或完整 loading 策略仍不在 Browser 边界；
   image-map 的解析、命中、area 几何和 Core 事件目标仍由 `positron_core.dll` 拥有，
   Browser 只接收宿主转发的 click 事务结果；
 - 同一 selector bridge 还提供有界 `:read-only`/`:read-write`：文本输入类型与
