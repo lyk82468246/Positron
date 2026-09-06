@@ -564,9 +564,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * decoding or laying out; natural dimensions remain zero until a retained
  * decode attempt, complete is true for a source-less image or terminal
  * cached failure, and IMAGE_CURRENT_SRC is the Core-selected source used by
- * fetch/layout. The bounded selector accepts positive density (`x`)
- * candidates only; older hosts that do not provide these relations leave the
- * Browser getters at their conservative zero/false values. */
+ * fetch/layout. The bounded selector accepts homogeneous positive density
+ * (`x`) or width (`w`) candidates; width sets use Core's px/vw/vh `sizes`
+ * subset. Older hosts that do not provide these relations leave the Browser
+ * getters at their conservative zero/false values. */
 #define PBROWSER_SCRIPT_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PBROWSER_SCRIPT_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PBROWSER_SCRIPT_DOCUMENT_BODY_TOKEN    "__positron_document_body__"

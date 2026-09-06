@@ -89,10 +89,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - CSS 解析、cascade、媒体条件和整树 computed style；
 - 外链 CSS、`@import`、图片和 script 资源发现与有界缓存；图片 cache 按 Core 选定的
   来源 URL key 记录成功与终态失败；
-- `<img>` 的图片来源选择和资源状态：Core 接受最多 16 个、URL 不超过 2047 字节的正
-  密度（`x`）候选，以当前 viewport DPI 选择最小的足够密度或最高候选，并让同一结果
-  驱动发现、缓存、解码、布局和 relation 49 的 `currentSrc`。`w` 描述符、`sizes`、
-  畸形候选和不支持的 URL 语法回退到 raw `src`；没有可用来源时安全保持空值。图片
+- `<img>` 的图片来源选择和资源状态：Core 接受最多 16 个、URL 不超过 2047 字节的同类
+  候选，以当前 viewport DPI 选择最小的足够来源或最高来源；`x` 描述符按密度选择，
+  `w` 描述符按 `sizes` 的 px/vw/vh 源尺寸及单一 `(min-width|max-width: <length>)`
+  条件选择，缺失或不支持的 `sizes` 按 100vw。选择结果驱动发现、缓存、解码、布局和
+  relation 49 的 `currentSrc`。混合/畸形候选和不支持的 URL 语法回退到 raw `src`；没有可用来源时安全保持空值。图片
   relation 46–48 只读地投影 `naturalWidth`、`naturalHeight` 和 `complete`，relation
   查询不会 fetch、decode 或 layout：成功资源要等 retained decode attempt 后才有自然
   尺寸，失败资源 complete 且尺寸为 0。CORS、`decode()` 和事件不在 Core 边界内；
@@ -187,8 +188,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   终态；宿主仍负责资源 I/O，Core 负责来源选择、cache/decode/layout。宿主须先让 Core
   relation 反映 complete/natural-size，再调用 `PBrowser_ScriptSessionNotifyImageEvent`；
   Browser 只派发 trusted、非冒泡、不可取消事件并 settle 同一 source 的 decode 请求。
-  当前 source 选择只覆盖最多 16 个正密度 `x` 候选；`w`/`sizes`、绝对 URL 解析、
-  CORS/referrer enforcement 或完整 loading 策略仍不在 Browser 边界；
+  当前 source 选择由 Core 覆盖最多 16 个正密度 `x` 或正宽度 `w` 候选；`sizes` 仅支持
+  Core 的 px/vw/vh 与单一 min/max-width 条件子集。绝对 URL 解析、CORS/referrer
+  enforcement 或完整 loading 策略仍不在 Browser 边界；
   image-map 的解析、命中、area 几何和 Core 事件目标仍由 `positron_core.dll` 拥有，
   Browser 只接收宿主转发的 click 事务结果；
 - 同一 selector bridge 还提供有界 `:read-only`/`:read-write`：文本输入类型与

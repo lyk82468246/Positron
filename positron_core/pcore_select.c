@@ -5191,15 +5191,57 @@ static int pcore_relation_attribute_value(dom_element *element,
     return (*out_value == NULL) ? 2 : 0;
 }
 
-/* The image source-set bridge deliberately implements only the part that is
- * useful on the fixed WM6 viewport: positive density (x) candidates. Width
- * descriptors and sizes require a full source-size/media evaluator and are
- * rejected here, so a malformed or unsupported set can never replace a
- * usable src fallback. Parsing is kept local and bounded; no candidate array
- * or URL allocation is proportional to attacker-controlled markup. */
+/* The image source-set bridge implements a bounded subset that is useful on
+ * the fixed WM6 viewport: homogeneous positive density (x) or width (w)
+ * candidates. Width sets use a small source-size evaluator for px/vw/vh and
+ * one min/max-width condition per sizes component. Unsupported syntax falls
+ * back to the viewport width, while mixed/invalid candidate descriptors never
+ * replace a usable src fallback. Parsing is kept local and bounded; no
+ * candidate array or URL allocation is proportional to attacker-controlled
+ * markup. */
 static int pcore_image_source_space(char c)
 {
     return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+
+static int pcore_image_source_token_equal(const char *data, size_t length,
+        const char *literal)
+{
+    size_t i;
+    size_t literal_length;
+    char c;
+
+    if (data == NULL || literal == NULL) {
+        return 0;
+    }
+    literal_length = strlen(literal);
+    if (length != literal_length) {
+        return 0;
+    }
+    for (i = 0; i < length; i++) {
+        c = data[i];
+        if (c >= 'A' && c <= 'Z') {
+            c = (char) (c + ('a' - 'A'));
+        }
+        if (c != literal[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static void pcore_image_source_trim(const char *data, size_t *start,
+        size_t *end)
+{
+    if (data == NULL || start == NULL || end == NULL) {
+        return;
+    }
+    while (*start < *end && pcore_image_source_space(data[*start])) {
+        (*start)++;
+    }
+    while (*end > *start && pcore_image_source_space(data[*end - 1])) {
+        (*end)--;
+    }
 }
 
 static int pcore_image_source_copy(const char *data, size_t length,
@@ -5293,28 +5335,444 @@ static int pcore_image_source_density(const char *data, size_t length,
     return *out_density > 0 && *out_density <= 100000;
 }
 
-static int pcore_image_source_set_select(dom_string *srcset,
-        char *out_url, int url_capacity, int *out_bytes)
+static int pcore_image_source_width(const char *data, size_t length,
+        int *out_width)
+{
+    size_t i;
+    int value;
+    int digit;
+
+    if (out_width != NULL) {
+        *out_width = 0;
+    }
+    if (data == NULL || out_width == NULL || length < 2 ||
+            (data[length - 1] != 'w' && data[length - 1] != 'W')) {
+        return 0;
+    }
+    value = 0;
+    for (i = 0; i + 1 < length; i++) {
+        if (data[i] < '0' || data[i] > '9') {
+            return 0;
+        }
+        digit = data[i] - '0';
+        if (value > (PCORE_IMAGE_SOURCE_MAX_CSS_PX - digit) / 10) {
+            return 0;
+        }
+        value = value * 10 + digit;
+    }
+    if (value <= 0 || value > PCORE_IMAGE_SOURCE_MAX_CSS_PX) {
+        return 0;
+    }
+    *out_width = value;
+    return 1;
+}
+
+/* Parse a non-negative CSS number into thousandths without using the WM6
+ * CRT's locale-sensitive floating-point parser. At most three fractional
+ * digits are retained; further digits must be zero. */
+static int pcore_image_source_number_milli(const char *data, size_t start,
+        size_t end, int *out_milli)
+{
+    size_t i;
+    int whole;
+    int fraction;
+    int fraction_digits;
+    int seen_digit;
+    int seen_dot;
+    int extra_nonzero;
+    int digit;
+
+    if (out_milli != NULL) {
+        *out_milli = 0;
+    }
+    if (data == NULL || out_milli == NULL || start >= end) {
+        return 0;
+    }
+    whole = 0;
+    fraction = 0;
+    fraction_digits = 0;
+    seen_digit = 0;
+    seen_dot = 0;
+    extra_nonzero = 0;
+    for (i = start; i < end; i++) {
+        if (data[i] == '.') {
+            if (seen_dot) {
+                return 0;
+            }
+            seen_dot = 1;
+            continue;
+        }
+        if (data[i] < '0' || data[i] > '9') {
+            return 0;
+        }
+        seen_digit = 1;
+        digit = data[i] - '0';
+        if (!seen_dot) {
+            if (whole > PCORE_IMAGE_SOURCE_MAX_CSS_PX / 10 ||
+                    (whole == PCORE_IMAGE_SOURCE_MAX_CSS_PX / 10 &&
+                     digit > PCORE_IMAGE_SOURCE_MAX_CSS_PX % 10)) {
+                return 0;
+            }
+            whole = whole * 10 + digit;
+        } else if (fraction_digits < 3) {
+            fraction = fraction * 10 + digit;
+            fraction_digits++;
+        } else if (digit != 0) {
+            extra_nonzero = 1;
+        }
+    }
+    if (!seen_digit || extra_nonzero || (seen_dot && fraction_digits == 0)) {
+        return 0;
+    }
+    while (fraction_digits < 3) {
+        fraction *= 10;
+        fraction_digits++;
+    }
+    if (whole > PCORE_IMAGE_SOURCE_MAX_CSS_PX ||
+            whole * 1000 > INT_MAX - fraction) {
+        return 0;
+    }
+    *out_milli = whole * 1000 + fraction;
+    return 1;
+}
+
+static int pcore_image_source_viewport_width(void)
+{
+    int value;
+
+    value = (int) (pcore_unit_ctx.viewport_width /
+            (1 << CSS_RADIX_POINT));
+    if (value < 1) {
+        value = 1;
+    }
+    if (value > PCORE_IMAGE_SOURCE_MAX_CSS_PX) {
+        value = PCORE_IMAGE_SOURCE_MAX_CSS_PX;
+    }
+    return value;
+}
+
+static int pcore_image_source_viewport_height(void)
+{
+    int value;
+
+    value = (int) (pcore_unit_ctx.viewport_height /
+            (1 << CSS_RADIX_POINT));
+    if (value < 1) {
+        value = 1;
+    }
+    if (value > PCORE_IMAGE_SOURCE_MAX_CSS_PX) {
+        value = PCORE_IMAGE_SOURCE_MAX_CSS_PX;
+    }
+    return value;
+}
+
+/* Convert one bounded sizes length to CSS pixels. The caller supplies a
+ * trimmed token, so a unit is mandatory; percentages, calc(), auto and other
+ * modern syntax are intentionally rejected. */
+static int pcore_image_source_length(const char *data, size_t start,
+        size_t end, int *out_px)
+{
+    size_t unit_start;
+    int number_milli;
+    int value;
+    int denominator;
+    const char *unit;
+
+    if (out_px != NULL) {
+        *out_px = 0;
+    }
+    if (data == NULL || out_px == NULL) {
+        return 0;
+    }
+    pcore_image_source_trim(data, &start, &end);
+    if (end <= start || end - start < 3) {
+        return 0;
+    }
+    unit_start = end - 2;
+    if (pcore_image_source_token_equal(data + unit_start, 2, "px")) {
+        unit = "px";
+    } else if (pcore_image_source_token_equal(data + unit_start, 2,
+            "vw")) {
+        unit = "vw";
+    } else if (pcore_image_source_token_equal(data + unit_start, 2,
+            "vh")) {
+        unit = "vh";
+    } else {
+        return 0;
+    }
+    if (!pcore_image_source_number_milli(data, start, unit_start,
+            &number_milli)) {
+        return 0;
+    }
+    if (strcmp(unit, "px") == 0) {
+        value = MulDiv(number_milli, 1, 1000);
+    } else {
+        denominator = 100000;
+        value = MulDiv(strcmp(unit, "vw") == 0 ?
+                pcore_image_source_viewport_width() :
+                pcore_image_source_viewport_height(), number_milli,
+                denominator);
+    }
+    if (value <= 0 || value > PCORE_IMAGE_SOURCE_MAX_CSS_PX) {
+        return 0;
+    }
+    *out_px = value;
+    return 1;
+}
+
+/* Parse one optional `(min-width|max-width: <length>)` condition. Return 1
+ * for a valid condition (with out_match set), 0 for malformed/unsupported
+ * input. A caller can distinguish an unconditional component by an empty
+ * prefix before invoking this helper. */
+static int pcore_image_source_media_condition(const char *data,
+        size_t start, size_t end, int *out_match)
+{
+    size_t inner_start;
+    size_t inner_end;
+    size_t colon;
+    size_t name_start;
+    size_t name_end;
+    size_t value_start;
+    size_t value_end;
+    int found_colon;
+    int value_px;
+    int viewport_width;
+    int min_width;
+
+    if (out_match != NULL) {
+        *out_match = 0;
+    }
+    if (data == NULL || out_match == NULL) {
+        return 0;
+    }
+    pcore_image_source_trim(data, &start, &end);
+    if (end <= start + 2 || data[start] != '(' || data[end - 1] != ')') {
+        return 0;
+    }
+    inner_start = start + 1;
+    inner_end = end - 1;
+    pcore_image_source_trim(data, &inner_start, &inner_end);
+    colon = inner_start;
+    found_colon = 0;
+    while (colon < inner_end) {
+        if (data[colon] == ':') {
+            if (found_colon) {
+                return 0;
+            }
+            found_colon = 1;
+            break;
+        }
+        colon++;
+    }
+    if (!found_colon) {
+        return 0;
+    }
+    name_start = inner_start;
+    name_end = colon;
+    value_start = colon + 1;
+    value_end = inner_end;
+    pcore_image_source_trim(data, &name_start, &name_end);
+    pcore_image_source_trim(data, &value_start, &value_end);
+    if (name_start >= name_end || value_start >= value_end) {
+        return 0;
+    }
+    if (pcore_image_source_token_equal(data + name_start,
+            name_end - name_start, "min-width")) {
+        min_width = 1;
+    } else if (pcore_image_source_token_equal(data + name_start,
+            name_end - name_start, "max-width")) {
+        min_width = 0;
+    } else {
+        return 0;
+    }
+    if (!pcore_image_source_length(data, value_start, value_end,
+            &value_px)) {
+        return 0;
+    }
+    viewport_width = pcore_image_source_viewport_width();
+    *out_match = min_width ? viewport_width >= value_px :
+            viewport_width <= value_px;
+    return 1;
+}
+
+/* Resolve a sizes list to a CSS-pixel source size. The first valid matching
+ * component wins. If no component matches, the HTML default of 100vw is used
+ * (the same safe fallback is used for unsupported syntax). */
+static int pcore_image_source_sizes(dom_string *sizes, int *out_px)
 {
     const char *data;
     size_t length;
     size_t pos;
     size_t start;
     size_t end;
+    size_t comma;
+    size_t length_start;
+    size_t prefix_start;
+    size_t prefix_end;
+    int component_count;
+    int has_prefix;
+    int match;
+    int value_px;
+
+    if (out_px != NULL) {
+        *out_px = pcore_image_source_viewport_width();
+    }
+    if (sizes == NULL || out_px == NULL) {
+        return 0;
+    }
+    data = dom_string_data(sizes);
+    length = dom_string_byte_length(sizes);
+    if (data == NULL || length == 0) {
+        return 0;
+    }
+    pos = 0;
+    component_count = 0;
+    while (pos < length && component_count <
+            PCORE_IMAGE_SIZES_MAX_COMPONENTS) {
+        start = pos;
+        comma = pos;
+        while (comma < length && data[comma] != ',') {
+            comma++;
+        }
+        end = comma;
+        pcore_image_source_trim(data, &start, &end);
+        if (start < end) {
+            length_start = end;
+            while (length_start > start &&
+                    !pcore_image_source_space(data[length_start - 1])) {
+                length_start--;
+            }
+            prefix_start = start;
+            prefix_end = length_start;
+            pcore_image_source_trim(data, &prefix_start, &prefix_end);
+            has_prefix = prefix_start < prefix_end;
+            match = 1;
+            if (has_prefix && !pcore_image_source_media_condition(data,
+                    prefix_start, prefix_end, &match)) {
+                match = 0;
+            }
+            if (match && pcore_image_source_length(data, length_start,
+                    end, &value_px)) {
+                *out_px = value_px;
+                return 1;
+            }
+        }
+        component_count++;
+        if (comma >= length) {
+            break;
+        }
+        pos = comma + 1;
+    }
+    return 0;
+}
+
+/* Read one comma-delimited candidate without allocating. The returned start
+ * and end delimit only the URL token; kind is 1 for density (x), 2 for width
+ * (w), and 0 for a malformed candidate. The cursor always advances, so a
+ * long run of malformed input cannot loop forever. */
+static int pcore_image_source_candidate_next(const char *data, size_t length,
+        size_t *io_pos, size_t *out_start, size_t *out_end, int *out_kind,
+        int *out_value)
+{
+    size_t pos;
+    size_t start;
+    size_t end;
     size_t token_start;
     size_t token_end;
+    int descriptor_count;
+    int descriptor_kind;
+    int value;
+    int valid;
+
+    if (io_pos == NULL || out_start == NULL || out_end == NULL ||
+            out_kind == NULL || out_value == NULL || data == NULL) {
+        return 0;
+    }
+    pos = *io_pos;
+    while (pos < length && (pcore_image_source_space(data[pos]) ||
+            data[pos] == ',')) {
+        pos++;
+    }
+    if (pos >= length) {
+        *io_pos = pos;
+        return 0;
+    }
+    start = pos;
+    while (pos < length && !pcore_image_source_space(data[pos]) &&
+            data[pos] != ',') {
+        pos++;
+    }
+    end = pos;
+    valid = end > start && end - start <
+            (size_t) PCORE_IMAGE_SOURCE_MAX_BYTES;
+    descriptor_count = 0;
+    descriptor_kind = 1;
+    value = 1000;
+    while (pos < length && data[pos] != ',') {
+        while (pos < length && pcore_image_source_space(data[pos])) {
+            pos++;
+        }
+        if (pos >= length || data[pos] == ',') {
+            break;
+        }
+        token_start = pos;
+        while (pos < length && !pcore_image_source_space(data[pos]) &&
+                data[pos] != ',') {
+            pos++;
+        }
+        token_end = pos;
+        descriptor_count++;
+        if (descriptor_count != 1) {
+            valid = 0;
+        } else if (pcore_image_source_density(data + token_start,
+                token_end - token_start, &value)) {
+            descriptor_kind = 1;
+        } else if (pcore_image_source_width(data + token_start,
+                token_end - token_start, &value)) {
+            descriptor_kind = 2;
+        } else {
+            valid = 0;
+        }
+    }
+    if (pos < length && data[pos] == ',') {
+        pos++;
+    }
+    *io_pos = pos;
+    *out_start = start;
+    *out_end = end;
+    if (!valid || end <= start || descriptor_count > 1) {
+        *out_kind = 0;
+        *out_value = 0;
+    } else {
+        *out_kind = descriptor_kind;
+        *out_value = value;
+    }
+    return 1;
+}
+
+static int pcore_image_source_set_select(dom_string *srcset,
+        dom_string *sizes, char *out_url, int url_capacity, int *out_bytes)
+{
+    const char *data;
+    size_t length;
+    size_t pos;
+    size_t start;
+    size_t end;
     char best_above[PCORE_IMAGE_SOURCE_MAX_BYTES];
     char best_any[PCORE_IMAGE_SOURCE_MAX_BYTES];
-    int density;
-    int descriptor_count;
-    int valid;
+    int kind;
+    int value;
+    int set_kind;
     int candidate_count;
-    int have_above;
     int have_any;
-    int best_above_density;
-    int best_any_density;
+    int mixed;
+    int have_above;
+    int best_above_value;
+    int best_any_value;
     int device_dpi;
     int target_density;
+    int source_size_px;
+    int target_width;
 
     if (out_bytes != NULL) {
         *out_bytes = 0;
@@ -5330,14 +5788,29 @@ static int pcore_image_source_set_select(dom_string *srcset,
     if (data == NULL || length == 0) {
         return 0;
     }
-    pos = 0;
+    set_kind = 0;
     candidate_count = 0;
-    have_above = 0;
     have_any = 0;
-    best_above_density = 0;
-    best_any_density = 0;
-    best_above[0] = '\0';
-    best_any[0] = '\0';
+    mixed = 0;
+    pos = 0;
+    while (candidate_count < PCORE_IMAGE_SRCSET_MAX_CANDIDATES &&
+            pcore_image_source_candidate_next(data, length, &pos, &start,
+            &end, &kind, &value)) {
+        if (kind == 0) {
+            continue;
+        }
+        candidate_count++;
+        have_any = 1;
+        if (set_kind == 0) {
+            set_kind = kind;
+        } else if (set_kind != kind) {
+            mixed = 1;
+        }
+    }
+    if (mixed || !have_any) {
+        return 0;
+    }
+
     device_dpi = (int) (pcore_unit_ctx.device_dpi /
             (1 << CSS_RADIX_POINT));
     if (device_dpi <= 0) {
@@ -5350,64 +5823,50 @@ static int pcore_image_source_set_select(dom_string *srcset,
     if (target_density <= 0) {
         target_density = 1;
     }
+    source_size_px = pcore_image_source_viewport_width();
+    target_width = 0;
+    if (set_kind == 2) {
+        (void) pcore_image_source_sizes(sizes, &source_size_px);
+        target_width = MulDiv(source_size_px, device_dpi, 96);
+        if (target_width < 1) {
+            target_width = 1;
+        }
+        if (target_width > PCORE_IMAGE_SOURCE_MAX_CSS_PX) {
+            target_width = PCORE_IMAGE_SOURCE_MAX_CSS_PX;
+        }
+    }
 
-    while (pos < length && candidate_count <
-            PCORE_IMAGE_SRCSET_MAX_CANDIDATES) {
-        while (pos < length && (pcore_image_source_space(data[pos]) ||
-                data[pos] == ',')) {
-            pos++;
-        }
-        if (pos >= length) {
-            break;
-        }
-        start = pos;
-        while (pos < length && !pcore_image_source_space(data[pos]) &&
-                data[pos] != ',') {
-            pos++;
-        }
-        end = pos;
-        valid = end > start && end - start <
-                (size_t) sizeof(best_any);
-        descriptor_count = 0;
-        density = 1000;
-        while (pos < length && data[pos] != ',') {
-            while (pos < length && pcore_image_source_space(data[pos])) {
-                pos++;
-            }
-            if (pos >= length || data[pos] == ',') {
-                break;
-            }
-            token_start = pos;
-            while (pos < length && !pcore_image_source_space(data[pos]) &&
-                    data[pos] != ',') {
-                pos++;
-            }
-            token_end = pos;
-            descriptor_count++;
-            if (descriptor_count != 1 ||
-                    !pcore_image_source_density(data + token_start,
-                    token_end - token_start, &density)) {
-                valid = 0;
-            }
-        }
-        if (pos < length && data[pos] == ',') {
-            pos++;
-        }
-        if (!valid || end <= start || descriptor_count > 1) {
+    best_above[0] = '\0';
+    best_any[0] = '\0';
+    best_above_value = 0;
+    best_any_value = 0;
+    have_above = 0;
+    have_any = 0;
+    candidate_count = 0;
+    pos = 0;
+    while (candidate_count < PCORE_IMAGE_SRCSET_MAX_CANDIDATES &&
+            pcore_image_source_candidate_next(data, length, &pos, &start,
+            &end, &kind, &value)) {
+        if (kind == 0) {
             continue;
         }
         candidate_count++;
-        if (!have_any || density > best_any_density) {
+        if (kind != set_kind) {
+            continue;
+        }
+        if (!have_any || value > best_any_value) {
             memcpy(best_any, data + start, end - start);
             best_any[end - start] = '\0';
-            best_any_density = density;
+            best_any_value = value;
             have_any = 1;
         }
-        if (density >= target_density &&
-                (!have_above || density < best_above_density)) {
+        if ((kind == 1 && value >= target_density &&
+                (!have_above || value < best_above_value)) ||
+                (kind == 2 && value >= target_width &&
+                 (!have_above || value < best_above_value))) {
             memcpy(best_above, data + start, end - start);
             best_above[end - start] = '\0';
-            best_above_density = density;
+            best_above_value = value;
             have_above = 1;
         }
     }
@@ -5427,6 +5886,7 @@ int pcore_image_selected_source(dom_node *image, char *out_url,
 {
     dom_string *src;
     dom_string *srcset;
+    dom_string *sizes;
     int result;
     int selected_bytes;
 
@@ -5442,6 +5902,7 @@ int pcore_image_selected_source(dom_node *image, char *out_url,
     }
     src = NULL;
     srcset = NULL;
+    sizes = NULL;
     result = pcore_relation_attribute_value((dom_element *) image, "src",
             &src);
     if (result == 1) {
@@ -5455,12 +5916,26 @@ int pcore_image_selected_source(dom_node *image, char *out_url,
         }
         return 1;
     }
+    result = pcore_relation_attribute_value((dom_element *) image, "sizes",
+            &sizes);
+    if (result == 1) {
+        if (srcset != NULL) {
+            dom_string_unref(srcset);
+        }
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        return 1;
+    }
     selected_bytes = 0;
     if (srcset != NULL && dom_string_byte_length(srcset) > 0 &&
-            pcore_image_source_set_select(srcset, out_url, url_capacity,
-            &selected_bytes) && selected_bytes > 0) {
+            pcore_image_source_set_select(srcset, sizes, out_url,
+            url_capacity, &selected_bytes) && selected_bytes > 0) {
         if (out_bytes != NULL) {
             *out_bytes = selected_bytes;
+        }
+        if (sizes != NULL) {
+            dom_string_unref(sizes);
         }
         dom_string_unref(srcset);
         if (src != NULL) {
@@ -5475,6 +5950,9 @@ int pcore_image_selected_source(dom_node *image, char *out_url,
     }
     if (srcset != NULL) {
         dom_string_unref(srcset);
+    }
+    if (sizes != NULL) {
+        dom_string_unref(sizes);
     }
     if (src != NULL) {
         dom_string_unref(src);

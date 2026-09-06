@@ -61,11 +61,13 @@ DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout
 不会把失败字节或解码对象暴露给调用方。宿主若要重试，应建立新的文档或明确控制自己的
 资源事务，而不是依赖 relation 查询触发网络副作用。
 
-`<img srcset>` 的资源选择也由 Core 统一负责。当前实现只接受最多 16 个、URL 不超过
-2047 字节的正密度（`x`）候选，以当前 `PCore_SetViewport`/`PCore_SetDeviceViewport`
-提供的 DPI 选择最小的足够密度；没有足够密度时选择最高候选。`w` 描述符、`sizes`、
-畸形候选和不支持的 URL 语法不会替换 `src`。同一个选择结果驱动图片发现、缓存、解码、
-布局自然尺寸、`complete` 以及关系 49 的 `currentSrc`；relation 查询仍然是只读的，
+`<img srcset>` 的资源选择也由 Core 统一负责。当前实现接受最多 16 个、URL 不超过
+2047 字节的同类候选，以当前 `PCore_SetViewport`/`PCore_SetDeviceViewport` 提供的 DPI
+选择最小的足够来源；`x` 描述符按密度选择，`w` 描述符按 `sizes` 的源尺寸选择，缺失
+或不支持的 `sizes` 按 100vw。`sizes` 仅支持 px/vw/vh 和单一
+`(min-width|max-width: <length>)` 条件。混合/畸形候选和不支持的 URL 语法不会替换 `src`。
+同一个选择结果驱动图片发现、缓存、解码、
+  布局自然尺寸、`complete` 以及关系 49 的 `currentSrc`；relation 查询仍然是只读的，
 不会触发 fetch、decode 或 layout。宿主应在资源扫描和布局前设置 viewport；若候选或
 `src` 超出边界，Core 会安全回退或不发起该请求。
 
@@ -130,8 +132,9 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   layout；没有 `src`/`srcset` 的图片立即 complete 且自然尺寸为 0，无法选出候选且
   没有 `src` 的非空 `srcset` 保持 incomplete，成功资源要等 retained decode attempt
   后才暴露自然尺寸，终态 fetch failure 则 complete 且尺寸为 0。关系 49 与图片发现、
-  布局共用最多 16 个正密度 `x` 候选的选择结果；`w`、`sizes`、畸形候选和超长 URL
-  安全回退或不可用。该桥不实现 CORS、`decode()` 或事件；非 `img` 目标返回 unavailable；
+  布局共用最多 16 个同类 `x`/`w` 候选的选择结果；`sizes` 的支持范围是 px/vw/vh 和
+  单一 min/max-width 条件，畸形候选和超长 URL 安全回退或不可用。该桥不实现 CORS、
+  `decode()` 或事件；非 `img` 目标返回 unavailable；
 - script/runtime 所需的有限 element metadata。
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。

@@ -391,12 +391,12 @@ filename/type 和空内容，不承诺完整文件读取。
 source attrs、`crossOrigin`、map/size/loading fields、自然尺寸、`complete`、
 `currentSrc`）。缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，
 非法尺寸读取为 `0` 且 setter 拒绝；mutation 走 Core callback。自然尺寸和 `complete`
-来自 Core，getter 不 fetch、decode 或 layout；`currentSrc` 读取关系 49，因此与实际
-fetch、解码和布局共用来源。Core 按 viewport DPI 从最多 16 个、每个不超过 2047 字节的
-正密度（`x`）候选中选择合适者；`w`/`sizes`、畸形候选和不支持的
-URL 语法回退到 raw `src`。没有 source 为 complete/尺寸 `0`，无候选且无 `src` 的非空
-`srcset` 保持 incomplete，成功资源要等 retained decode，fetch failure 则 complete/
-尺寸 `0`。`document.images` 是有界 snapshot。
+来自 Core；`currentSrc` 读取关系 49，与 fetch、解码和布局共用来源。Core 按 viewport
+DPI 从最多 16 个同类 `x`/`w` 候选中选择；
+`w` 使用 `sizes` 的 px/vw/vh 长度和一个 `(min-width|max-width: <length>)` 条件，缺失
+或不支持的 `sizes` 按 100vw。畸形候选和不支持的 URL 语法回退到 raw `src`。无 source
+或 fetch failure 为 complete/尺寸 `0`；无候选且无 `src` 的非空 `srcset` 保持 incomplete，
+`document.images` 是有界 snapshot。
 
 `PElement.decode()` 返回有界 Promise：无 source 在 microtask 中完成，已有正的 Core
 自然尺寸时完成，终态失败以 `EncodingError` 拒绝；source mutation 拒绝旧请求，teardown

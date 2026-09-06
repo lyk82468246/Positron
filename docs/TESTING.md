@@ -524,7 +524,7 @@ TEST1193 覆盖 `HTMLImageElement` 的有界元数据与 Core 资源状态：离
 attribute reflection、`crossOrigin` 的 `null` 回退、boolean/尺寸 setter 边界、
 非 `img` 的安全结果，以及 `naturalWidth`/`naturalHeight`/`complete` 的资源状态投影；
 Core fixture 另外断言成功 SVG、终态 fetch failure、无 source 和仅有 `srcset` 的状态，
-并验证 layout 后 retained decode 才暴露自然尺寸。候选选择由后续 TEST1196 单独覆盖；
+并验证 layout 后 retained decode 才暴露自然尺寸。候选选择由 TEST1196/1197 单独覆盖；
 本门仍不实现绝对 URL、CORS/referrer enforcement、Promise/事件生命周期、image-map 命中、
 完整 loading/fetch-priority 策略或 native 图像视觉。宿主只提供资源 callback、DOM 接线、
 fixture 与断言，产品语义位于 Core/Browser。
@@ -551,11 +551,20 @@ pointer/touch 手势；map 解析和命中语义属于 Core，宿主只接线与
 
 TEST1196 覆盖 Core 与 Browser 共用的有界 `srcset` 密度选择：在两个 DPI 上选择最小的
 足够密度或最高候选，`currentSrc`、资源发现、缓存复用、retained SVG 自然尺寸和
-`complete` 必须指向同一 URL；无 `src` 的有效集合、空集合、`w` 描述符和畸形密度分别
+`complete` 必须指向同一 URL；无 `src` 的有效集合、混合 `w`/`x` 集合和畸形密度分别
 验证候选、raw `src` 回退或 fail closed。Browser fixture 还检查脚本 `currentSrc` 与
-Core 选择一致。实现最多接受 16 个正密度 `x` 候选，候选 URL 最多 2047 字节；`sizes`、
-绝对 URL、CORS/referrer、完整 loading 策略、自动 `load`/`error` 事件和 native 图像
-视觉仍不在本门范围。宿主只提供离线资源 callback、viewport 设置、DOM 接线和断言。
+Core 选择一致。实现最多接受 16 个正密度 `x` 候选，候选 URL 最多 2047 字节；绝对 URL、
+CORS/referrer、完整 loading 策略、自动 `load`/`error` 事件和 native 图像视觉仍不在本门
+范围。宿主只提供离线资源 callback、viewport 设置、DOM 接线和断言。
+
+TEST1197 覆盖 Core 与 Browser 共用的有界 `srcset` 宽度选择：`w` 候选按 `sizes` 的
+px/vw/vh 源尺寸与单一 `(min-width|max-width: <length>)` 条件选择，在 240/480 CSS
+视口下验证最小足够宽度或最高候选；无 `sizes` 或不支持的 `sizes` 按 100vw，混合
+descriptor、畸形候选仍回退 raw `src`。`currentSrc`、资源发现、缓存复用、retained SVG
+自然尺寸和 `complete` 必须指向同一 URL，Browser fixture 与 Core 选择保持一致。候选数
+最多 16、URL 最多 2047 字节；复杂媒体条件、绝对 URL、CORS/referrer、完整 loading、
+自动图像事件和 native 图像视觉仍不在本门范围。宿主只提供离线资源 callback、viewport
+设置、DOM 接线和断言。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

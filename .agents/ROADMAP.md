@@ -81,12 +81,14 @@ output 的 label association 复用 Core relation；object 只提供 owner/colle
 `HTMLImageElement` 还提供有界的属性与资源状态投影：Browser 反映 raw
 `src`/`srcset`/`sizes`/`useMap`、`crossOrigin`、boolean/尺寸属性和加载提示属性，Core
 relation 46–49 提供 `naturalWidth`/`naturalHeight`/`complete`/`currentSrc`。Core 当前
-按 viewport DPI 在最多 16 个、每个最多 2047 字节的正密度（`x`）候选中选择最小的
-足够密度或最高候选，并让同一 URL 驱动资源发现、缓存、retained decode 和布局；无
-source、候选不可用及终态 fetch failure 的状态分别保持可观察且 fail-closed。Browser
-另提供有界 `decode()` Promise、source mutation/teardown 拒绝和由宿主在 Core 终态就绪
-后触发的 trusted、非冒泡 `load`/`error` 通知。`w`/`sizes`、绝对 URL、CORS/referrer
-enforcement、完整 loading 策略或图像视觉仍未实现。Core
+按 viewport DPI 在最多 16 个、每个最多 2047 字节的同类候选中选择最小的足够来源或最高
+来源：`x` 描述符按密度选择，`w` 描述符按 `sizes` 解析出的 px/vw/vh 源尺寸选择，且
+可选单一 `(min-width|max-width: <length>)` 条件按当前视口求值；缺失或不支持的 `sizes`
+按 100vw。选择结果驱动资源发现、缓存、retained decode 和布局；无 source、候选不可用
+及终态 fetch failure 的状态分别保持可观察且 fail-closed。Browser 另提供有界 `decode()`
+Promise、source mutation/teardown 拒绝和由宿主在 Core 终态就绪后触发的 trusted、非冒泡
+`load`/`error` 通知。绝对 URL、CORS/referrer enforcement、完整 loading 策略或图像视觉仍
+未实现。Core
 另已提供有界 image-map 命中：已布局 `<img usemap>` 按 DOM 顺序解析最多 64 个 linked
 `<area>`，支持 `default`、`rect`、`circle` 和 `poly`/`polygon`，将自然坐标缩放到
 渲染尺寸，并把链接、区域几何、active/hover 和按坐标事件 target 统一接入 Core 命中

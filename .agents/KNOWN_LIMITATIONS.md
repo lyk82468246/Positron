@@ -93,10 +93,12 @@
   `naturalWidth`/`naturalHeight`/`complete`。Core relation 查询不 fetch、decode 或 layout；
   无 source 的图片 complete 且自然尺寸为 0，无法选出候选且没有 `src` 的非空 `srcset`
   保持 incomplete，成功资源要等 retained decode attempt，终态 fetch failure 则 complete
-  且尺寸为 0。当前 source 选择只接受最多 16 个、每个最多 2047 字节的正密度（`x`）
-  候选，按当前 Core viewport DPI 选择最小的足够密度或最高候选；`w`/`sizes`、畸形候选、
-  绝对 URL 和 CORS/referrer enforcement 仍不实现，无法安全选择时回退 raw `src` 或保持
-  空值。完整 loading/fetch-priority 策略或 native 图像视觉仍未实现。Core 只提供有界的
+  且尺寸为 0。当前 source 选择最多接受 16 个、每个最多 2047 字节的同类候选：正密度
+  （`x`）按当前 Core viewport DPI 选择，正宽度（`w`）按 `sizes` 源尺寸与 DPI 选择；
+  `sizes` 仅接受 px/vw/vh 以及单一 `(min-width|max-width: <length>)` 条件，缺失或不支持
+  时按 100vw。混合/畸形候选、超长 URL 和不支持的 URL 语法无法安全选择时回退 raw `src`
+  或保持空值。完整 loading/fetch-priority 策略、绝对 URL、CORS/referrer enforcement
+  或 native 图像视觉仍未实现。Core 只提供有界的
   image-map 命中：已布局图片最多解析 64
   个 `<area>`、64 个坐标，并支持 `default`、`rect`、`circle` 和 `poly`/`polygon`；自然
   坐标按渲染尺寸缩放，坏坐标、未知形状、`nohref`、空区域和超限输入安全忽略。该路径
@@ -510,8 +512,8 @@
   人工风险；自动门证明无 source/成功/失败/source mutation/teardown 的 Promise 结果、
   `EncodingError`/`AbortError` 分类、Core relation 就绪门、trusted 非冒泡不可取消的
   `load`/`error`、重复通知幂等以及过时/相反/缺失目标的 fail-closed。该桥不实现
-  `w`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉；
-  宿主仍负责 fetch/decode/layout、终态通知和 microtask 调度，密度候选由 Core 统一选择。
+  绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉；宿主仍负责
+  fetch/decode/layout、终态通知和 microtask 调度，候选选择由 Core 统一执行。
 - TEST1195 是离线的 Core image-map 命中夹具，无新增立即人工风险；自动门证明已布局
   `<img usemap>` 最多解析 64 个 linked `<area>` 和 64 个坐标，支持
   `default`/`rect`/`circle`/`poly`，并验证自然坐标缩放、malformed/nohref fail-closed、
@@ -520,10 +522,14 @@
   手势和 native 图像视觉仍未实现。
 - TEST1196 是离线的 Core/Browser `srcset` 密度选择夹具，无新增立即人工风险；自动门证明
   两个 DPI 下的最小足够密度/最高候选、`currentSrc` 与 Core fetch/layout/cache/natural
-  size/`complete` 一致、缓存重扫不重复抓取，以及无 `src`、空集合、`w` 描述符和畸形
-  密度的回退或 fail-closed。当前实现最多接受 16 个正密度 `x` 候选、URL 2047 字节；
-  `sizes`、绝对 URL、CORS/referrer、完整 loading 策略、自动图像事件和 native 图像视觉
-  仍未实现。
+  size/`complete` 一致、缓存重扫不重复抓取，以及无 `src`、混合 `w`/`x` 和畸形密度
+  的回退或 fail-closed。不同密度资源的真实视觉、绝对 URL、CORS/referrer、完整 loading
+  策略、自动图像事件和 native 图像视觉仍未实现或需人工观察。
+- TEST1197 是离线的 Core/Browser `srcset` 宽度选择夹具，无新增立即人工风险；自动门证明
+  `w` 候选按 `sizes` 的 px/vw/vh 长度和单一 min/max-width 条件选择，在 240/480 CSS
+  视口下与 Core fetch/cache/layout/currentSrc/natural-size 一致；无 `sizes`、畸形 `sizes`
+  和混合 descriptor 安全回退。复杂媒体条件、绝对 URL、CORS/referrer、完整 loading、
+  动态网络切换、旋转和不同密度资源的真实视觉仍未实现或需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

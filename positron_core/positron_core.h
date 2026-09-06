@@ -352,9 +352,14 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * laying out: natural dimensions are zero until a retained decode attempt,
  * complete is true for a source-less image or a terminal cached failure, and
  * non-img targets are unavailable. IMAGE_CURRENT_SRC returns the same
- * bounded source candidate used by image fetching/layout: up to 16 positive
- * density (x) candidates are selected against the current Core device DPI;
- * width descriptors, sizes and malformed candidates fall back to src.
+ * bounded source candidate used by image fetching/layout. Up to 16 candidates
+ * are accepted. A homogeneous set of positive density (x) descriptors is
+ * selected against the current Core device DPI. A homogeneous set of positive
+ * width (w) descriptors is selected against a bounded source size: `sizes`
+ * accepts a simple CSS length in px/vw/vh and an optional single
+ * `(min-width|max-width: <length>)` condition per comma component; an absent
+ * or unsupported size falls back to the viewport width. Mixed/invalid
+ * descriptors fall back to src. URLs are capped at 2047 bytes.
  * FORM_OWNER resolves a supported form-associated control, fieldset, img,
  * object or output element to its nearest ancestor form. A present `form` attribute instead names a form by id;
  * an empty, invalid, or non-form target has no owner and never falls back to the

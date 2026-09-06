@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1196
+#define TEST_MAX_NUMBER 1197
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -44702,7 +44702,7 @@ static BOOL test1193_browser_img_properties(void)
         "src='/img/test.svg'>"
         "<img id='broken' alt='Broken' src='/img/missing.svg'>"
         "<img id='empty' alt='Empty'>"
-        "<img id='set-only' alt='Set only' srcset='/img/test.svg 120w'>"
+        "<img id='set-only' alt='Set only' srcset='/img/test.svg bad'>"
         "<div id='not-image'>plain</div><p id='result'>idle</p>"
         "</body></html>";
     static const char CSS[] =
@@ -44710,7 +44710,7 @@ static BOOL test1193_browser_img_properties(void)
     static const char META_HTML[] =
         "<!doctype html><html><head><script>window.boot=1;</script></head>"
         "<body><img id='img' name='img-name' alt='A' src='/raw.svg'>"
-        "<img id='empty'><img id='set-only' srcset='/raw.svg 120w'>"
+        "<img id='empty'><img id='set-only' srcset='/raw.svg bad'>"
         "<div id='not-image'>plain</div><p id='result'>idle</p>"
         "</body></html>";
     static const char META_PROBE_COLLECTION[] =
@@ -44853,7 +44853,7 @@ static BOOL test1193_browser_img_properties(void)
     show_info(L"TEST 1193 OK",
             "img metadata reflects bounded content attributes and Core image"
             " cache state; natural dimensions and complete stay fail-closed"
-            " with unsupported width descriptors kept fail-closed; CORS"
+            " with malformed descriptors kept fail-closed; CORS"
             " or decode() semantics are outside this metadata test.");
     return TRUE;
 }
@@ -45588,7 +45588,7 @@ static BOOL test1196_browser_img_srcset_selection(void)
         "<body><img id='density' src='/img/fallback.svg' "
         "srcset='/img/one.svg 1x,/img/two.svg 2x,/img/three.svg 3x'>"
         "<img id='fallback' src='/img/fallback.svg' "
-        "srcset='/img/width.svg 120w'>"
+        "srcset='/img/width.svg 120w,/img/one.svg 1x'>"
         "<img id='empty' srcset='/img/one.svg 1x'>"
         "<img id='invalid' srcset='/img/invalid.svg 0x'>"
         "<p id='result'>idle</p></body></html>";
@@ -45600,7 +45600,7 @@ static BOOL test1196_browser_img_srcset_selection(void)
         "<body><img id='density' src='/img/fallback.svg' "
         "srcset='/img/one.svg 1x,/img/two.svg 2x,/img/three.svg 3x'>"
         "<img id='fallback' src='/img/fallback.svg' "
-        "srcset='/img/width.svg 120w'>"
+        "srcset='/img/width.svg 120w,/img/one.svg 1x'>"
         "<img id='empty' srcset='/img/one.svg 1x'>"
         "<img id='invalid' srcset='/img/invalid.svg 0x'>"
         "<p id='result'>idle</p></body></html>";
@@ -45727,8 +45727,216 @@ static BOOL test1196_browser_img_srcset_selection(void)
     }
     show_info(L"TEST 1196 OK",
             "bounded density srcset candidates select one shared source for"
-            " Core fetch/layout and Browser currentSrc; unsupported width"
+            " Core fetch/layout and Browser currentSrc; mixed width/density"
             " descriptors and malformed candidates fail closed.");
+    return TRUE;
+}
+
+/* TEST 1197 - bounded width srcset selection with a viewport-sized slot. */
+static BOOL test1197_browser_img_srcset_width_selection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='half' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w' "
+        "sizes='50vw'>"
+        "<img id='media' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w' "
+        "sizes='(max-width: 300px) 100vw, 25vw'>"
+        "<img id='default' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w'>"
+        "<img id='mixed' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 2x'>"
+        "<img id='unsupported' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w' "
+        "sizes='calc(50vw)'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;}img{display:block;"
+        "width:120px;height:60px;}";
+    static const char BROWSER_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='half' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w' "
+        "sizes='50vw'>"
+        "<img id='media' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w' "
+        "sizes='(max-width: 300px) 100vw, 25vw'>"
+        "<img id='default' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w'>"
+        "<img id='mixed' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 2x'>"
+        "<img id='unsupported' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 120w,/img/two.svg 240w,/img/three.svg 480w' "
+        "sizes='calc(50vw)'>"
+        "<p id='result'>idle</p></body></html>";
+    static const char BROWSER_PROBE[] =
+        "var a=document.getElementById('half');"
+        "var b=document.getElementById('media');"
+        "var c=document.getElementById('default');"
+        "var d=document.getElementById('mixed');"
+        "var e=document.getElementById('unsupported');"
+        "document.getElementById('result').textContent="
+        "a.currentSrc+'|'+b.currentSrc+'|'+c.currentSrc+'|'"
+        "+d.currentSrc+'|'+e.currentSrc;";
+    static const char EXPECTED_240[] =
+        "/img/one.svg|/img/two.svg|/img/two.svg|/img/fallback.svg|/img/two.svg";
+    static const char EXPECTED_480[] =
+        "/img/two.svg|/img/one.svg|/img/three.svg|/img/fallback.svg|/img/three.svg";
+    HANDLE document;
+    HANDLE sheet;
+    image_srcset_resource_test_ctx ctx;
+    char source[128];
+    char error[512];
+    int found;
+    int fetched;
+    int number;
+    int vw;
+    int vh;
+    BOOL core_ok;
+    BOOL browser_ok;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(source, 0, sizeof(source));
+    memset(error, 0, sizeof(error));
+    found = 0;
+    fetched = 0;
+    number = 0;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    core_ok = TRUE;
+
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            PCore_NodeRelationById(document, "half",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/one.svg") != 0 ||
+            PCore_NodeRelationById(document, "media",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/two.svg") != 0 ||
+            PCore_NodeRelationById(document, "default",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/two.svg") != 0 ||
+            PCore_NodeRelationById(document, "mixed",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/fallback.svg") != 0 ||
+            PCore_NodeRelationById(document, "unsupported",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/two.svg") != 0) {
+        core_ok = FALSE;
+    }
+    if (core_ok) {
+        core_ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                found == 5 && fetched == 5 && ctx.calls == 3 &&
+                ctx.matched == 3 && ctx.frees == 3;
+    }
+    if (core_ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/srcset-width.css");
+        core_ok = sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0 &&
+                PCore_NodeRelationById(document, "half",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0, NULL,
+                &number) == 0 && number == 120;
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+        sheet = NULL;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+        document = NULL;
+    }
+
+    if (core_ok) {
+        memset(&ctx, 0, sizeof(ctx));
+        memset(source, 0, sizeof(source));
+        found = 0;
+        fetched = 0;
+        PCore_SetViewport(480, 320, 96);
+        document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+        if (document == NULL ||
+                PCore_NodeRelationById(document, "half",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/two.svg") != 0 ||
+                PCore_NodeRelationById(document, "media",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/one.svg") != 0 ||
+                PCore_NodeRelationById(document, "default",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/three.svg") != 0 ||
+                PCore_NodeRelationById(document, "mixed",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/fallback.svg") != 0 ||
+                PCore_NodeRelationById(document, "unsupported",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/three.svg") != 0) {
+            core_ok = FALSE;
+        }
+        if (core_ok) {
+            core_ok = PCore_FetchImageResources(document,
+                    image_srcset_fetch, image_srcset_free, &ctx, &found,
+                    &fetched) == 0 && found == 5 && fetched == 5 &&
+                    ctx.calls == 4 && ctx.matched == 4 && ctx.frees == 4;
+        }
+        if (core_ok) {
+            sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                    "http://positron.local/srcset-width.css");
+            core_ok = sheet != NULL &&
+                    PCore_StyleDocument(document, sheet) == 0 &&
+                    PCore_LayoutDocument(document, 480, 320) == 0 &&
+                    PCore_NodeRelationById(document, "default",
+                    PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0,
+                    NULL, &number) == 0 && number == 360;
+        }
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+
+    browser_ok = FALSE;
+    PCore_SetViewport(240, 320, 96);
+    if (test_browser_raw_string_fixture(BROWSER_HTML, BROWSER_PROBE,
+            EXPECTED_240, error, sizeof(error))) {
+        PCore_SetViewport(480, 320, 96);
+        browser_ok = test_browser_raw_string_fixture(BROWSER_HTML,
+                BROWSER_PROBE, EXPECTED_480, error, sizeof(error));
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!core_ok || !browser_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d browser=%d found=%d fetched=%d calls=%d/%d/%d source=%s relation=%d",
+                    core_ok, browser_ok, found, fetched, ctx.calls,
+                    ctx.matched, ctx.frees, source, number);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1197 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1197 OK",
+            "bounded width srcset candidates select against px/vw/vh sizes"
+            " and min/max-width conditions, sharing currentSrc with Core"
+            " fetch/layout while mixed or unsupported input stays safe.");
     return TRUE;
 }
 
@@ -103859,6 +104067,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1194: ok = test1194_browser_img_decode_events(); break;
         case 1195: ok = test1195_browser_image_map_hit_test(); break;
         case 1196: ok = test1196_browser_img_srcset_selection(); break;
+        case 1197: ok = test1197_browser_img_srcset_width_selection(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
