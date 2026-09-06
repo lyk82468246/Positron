@@ -77,6 +77,16 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 布局后可按坐标或 DOM id 查询链接、片段、控件、summary 和 box geometry。扩展查询把 href、target、rel 等 UTF-8 元数据复制到调用方缓冲；容量不足或 stale layout 会 fail closed。
 
+图像映射属于同一条 Core 命中路径：带 `usemap` 的已布局 `<img>` 会解析对应的
+`<map>`，按 DOM 顺序检查最多 64 个 `<area>`，支持 `default`、`rect`、`circle` 和
+`poly`/`polygon` 四种有界形状。坐标以图片自然尺寸为基准，按当前渲染宽高分别缩放并
+裁剪到图片边界；缺少 href、`nohref`、未知形状、坏坐标、空区域或超过 64 个坐标时
+安全忽略。映射区域优先于包围图片的 `<a>`，因此 `PCore_LinkAt`、`PCore_LinkAtEx`
+和 `PCore_LinkInfoById(Ex)` 返回 area 的链接/区域几何；`PCore_InteractionSetAt`
+和按坐标事件 dispatch 也以 area 作为 DOM target，沿 `<area> → <map> → ...` 的正常
+事件路径传播。该能力不改变图片加载、`srcset` 选择、CORS 或 native 图像绘制；固定
+上限和 malformed-input 回退是 WM6 资源预算的一部分。
+
 片段 token 按支持的 id/name 规则解析，但 history、URL percent-decoding、viewport scroll 和窗口副作用仍属于 Browser/宿主。
 
 ### DOM 与关系 bridge

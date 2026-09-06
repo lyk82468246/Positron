@@ -2873,7 +2873,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(typeof fn!=='function'&&!(fn&&typeof fn.handleEvent==='function')){return false;}"
         "entry=g.__pcoreListenerEntries[info.listener];"
         "var e={type:info.type,phase:info.phase,bubbles:!!info.bubbles,"
-        "cancelable:!!info.cancelable,trusted:!!info.trusted,"
+        "cancelable:!!info.cancelable,trusted:!!info.trusted,isTrusted:!!info.trusted,"
         "defaultPrevented:!!info.defaultPrevented,key:info.key||'',"
         "inputType:info.inputType||'',data:info.data||'',"
         "isComposing:!!info.isComposing,"

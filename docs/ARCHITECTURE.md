@@ -95,6 +95,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   尺寸，失败资源 complete 且尺寸为 0；`srcset` 选择、CORS、`decode()` 和事件不在
   Core 边界内；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
+- 图像映射命中与链接几何：对已布局且带 `usemap` 的 `<img>`，Core 按 DOM 顺序在
+  `<map>` 的最多 64 个 `<area>` 中解析 `default`、`rect`、`circle` 和
+  `poly`/`polygon`，把自然图像坐标缩放到当前渲染尺寸并裁剪到图片边界。有效 href 的
+  area 优先于包围图片的 `<a>`；坏坐标、未知形状、`nohref`、空区域和超出预算的输入
+  fail closed。`PCore_LinkAt(Ex)`、`PCore_LinkInfoById(Ex)`、交互状态和按坐标事件
+  都复用这一份 Core 语义，Browser/宿主不复制 map 解析或命中模型；
 - 最近一次 layout 的 page-level width/height extent，供宿主决定滚动条、clamp viewport，并把同一坐标应用到 paint/命中测试；同时为 ID-addressable 元素提供有界的 border-box union 和 inline 行片段快照，供 Browser 组合 `getBoundingClientRect()` 与 `getClientRects()`；
 - 为已布局的常见 block、replaced、table/flex box 提供最近一次 layout 的 offset、client 和 scroll 尺寸快照；这些是整数 CSS 像素的只读 relation，不触发 relayout；同时为支持的、有 DOM id 的 overflow box 保留滚动条位置，提供关系 38/39、按 id setter 和 pointer snapshot；
 - 在宿主提供活动 modal id 时，把普通文档、实体色 backdrop 和指定 `<dialog open>` 按固定顺序组合绘制；
@@ -179,8 +185,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   终态；宿主仍负责资源 I/O，Core 负责 cache/decode/layout。宿主须先让 Core relation
   反映 complete/natural-size，再调用 `PBrowser_ScriptSessionNotifyImageEvent`；Browser
   只派发 trusted、非冒泡、不可取消事件并 settle 同一 source 的 decode 请求。该桥不声称
-  `srcset`/`sizes` 选择、绝对 URL 解析、CORS/referrer enforcement、完整 loading 策略
-  或 image-map 命中；
+  `srcset`/`sizes` 选择、绝对 URL 解析、CORS/referrer enforcement 或完整 loading 策略；
+  image-map 的解析、命中、area 几何和 Core 事件目标仍由 `positron_core.dll` 拥有，
+  Browser 只接收宿主转发的 click 事务结果；
 - 同一 selector bridge 还提供有界 `:read-only`/`:read-write`：文本输入类型与
   `textarea` 依据 readonly 和 Core effective-disabled 判定，存在
   `isContentEditable` callback 时补充显式或继承 editing host；不支持编辑的 input 类型、
@@ -245,6 +252,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   callback；
 - `isContentEditable`/`innerText` 的有界单元素纯文本桥、脚本侧 `selectionStart`/`selectionEnd`/`selectionDirection` 和去重后的 `selectionchange`；
 - Event、input、keyboard、element focus、window focus/blur、composition、click 和导航协调；
+  通用脚本事件对象把同一可信度快照暴露为标准 `isTrusted`，并保留兼容别名 `trusted`；
+  Core 命中 image-map `<area>` 时，Browser 沿 `<area>` 的 DOM target/bubble 路径派发，
+  不在宿主复制 map/shape 语义；
 - 可选的脚本 form 默认动作事务：`HTMLFormElement.reset()` 先由 Browser 按 form id 通过
   `PBrowserScriptFormEventCallbacksEx` 派发可冒泡、可取消的 `reset`，仅在未取消时调用
   `PBrowserScriptFormResetCallbacks.reset_form`；`requestSubmit([submitter])` 则先调用

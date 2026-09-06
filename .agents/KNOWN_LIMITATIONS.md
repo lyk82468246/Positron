@@ -94,8 +94,12 @@
   无 source 的图片 complete 且自然尺寸为 0，非空 `srcset` 未选出 raw `src` 时保持
   incomplete，成功资源要等 retained decode attempt，终态 fetch failure 则 complete 且
   尺寸为 0。当前 `currentSrc` 是 raw `src`，不做绝对 URL 或候选选择；不实现
-  `srcset`/`sizes` 选择、CORS/referrer enforcement、完整 loading/fetch-priority 策略、
-  image-map 命中或 native 图像视觉仍未实现。Browser 的 `decode()` 只提供有界的
+  `srcset`/`sizes` 选择、CORS/referrer enforcement、完整 loading/fetch-priority 策略或
+  native 图像视觉仍未实现。Core 只提供有界的 image-map 命中：已布局图片最多解析 64
+  个 `<area>`、64 个坐标，并支持 `default`、`rect`、`circle` 和 `poly`/`polygon`；自然
+  坐标按渲染尺寸缩放，坏坐标、未知形状、`nohref`、空区域和超限输入安全忽略。该路径
+  不实现 transforms、复杂图像生命周期、pointer/touch 手势或完整 HTML image-map 算法。
+  Browser 的 `decode()` 只提供有界的
   Promise 生命周期：无 source/已知正尺寸在 microtask 中完成，终态失败和 source
   mutation 以 `EncodingError` 拒绝，page teardown 对剩余请求以 `AbortError` 拒绝；每个
   session 最多 64 个 pending 请求。宿主在 Core relation 更新后通过
@@ -498,14 +502,20 @@
   人工风险；自动门证明 `document.images` snapshot、attribute/boolean/尺寸属性边界、
   非 `img` fail-closed，以及成功 SVG、终态 fetch failure、无 source 和仅 `srcset` 的
   `naturalWidth`/`naturalHeight`/`complete` 投影，并确认 retained decode 后才暴露自然
-  尺寸。该门不证明 `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略、
-  image-map 命中或 native 图像视觉；这些仍是未来能力或人工观察范围。
+  尺寸。该门不证明 `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略
+  或 native 图像视觉；这些仍是未来能力或人工观察范围。
 - TEST1194 是离线的 Browser `HTMLImageElement.decode()` 与宿主终态事件夹具，无新增立即
   人工风险；自动门证明无 source/成功/失败/source mutation/teardown 的 Promise 结果、
   `EncodingError`/`AbortError` 分类、Core relation 就绪门、trusted 非冒泡不可取消的
   `load`/`error`、重复通知幂等以及过时/相反/缺失目标的 fail-closed。该桥不实现
-  `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略、image-map 命中或
-  native 图像视觉；宿主仍负责 fetch/decode/layout、终态通知和 microtask 调度。
+  `srcset`/`sizes` 选择、绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉；
+  宿主仍负责 fetch/decode/layout、终态通知和 microtask 调度。
+- TEST1195 是离线的 Core image-map 命中夹具，无新增立即人工风险；自动门证明已布局
+  `<img usemap>` 最多解析 64 个 linked `<area>` 和 64 个坐标，支持
+  `default`/`rect`/`circle`/`poly`，并验证自然坐标缩放、malformed/nohref fail-closed、
+  area 链接 metadata/几何、active/hover 状态、area→map 事件冒泡以及 Browser
+  `isTrusted`/`trusted` 字段一致。transforms、完整 HTML image-map 算法、pointer/touch
+  手势和 native 图像视觉仍未实现。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

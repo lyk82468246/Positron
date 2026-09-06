@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1194
+#define TEST_MAX_NUMBER 1195
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -45153,6 +45153,355 @@ static BOOL test1194_browser_img_decode_events(void)
             "img.decode() settles against Core's terminal dimensions;"
             " host load/error notifications dispatch trusted non-bubbling"
             " events, deduplicate, and reject stale/pending work at teardown.");
+    return TRUE;
+}
+
+/* TEST 1195 - bounded image-map area hit testing and event activation. */
+static BOOL test1195_browser_image_map_hit_test(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='hero' src='/img/test.svg' usemap='#hotspots' alt='Map'>"
+        "<map id='hotspots' name='hotspots'>"
+        "<area id='disabled' nohref href='/disabled' shape='rect' coords='0,0,40,30'>"
+        "<area id='rect' href='/rect' target='_self' rel='nofollow' shape='rect' coords='0,0,40,30'>"
+        "<area id='circle' href='/circle' shape='circle' coords='100,45,10'>"
+        "<area id='poly' href='/poly' shape='poly' coords='45,5,75,5,60,25'>"
+        "<area id='bad' href='/bad' shape='rect' coords='bad'>"
+        "<area id='default' href='/default' shape='default'>"
+        "</map><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;}img{display:block;width:120px;height:60px;}";
+    static const char SETUP[] =
+        "window.mapEvents='';"
+        "window.mapListenerId=document.getElementById('rect').addEventListener('click',function(e){"
+        "window.mapEvents+='rect:'+String(e.isTrusted)+':'+String(e.bubbles)+':'"
+        "+String(e.cancelable)+';';});"
+        "window.mapImageListenerId=document.getElementById('hero').addEventListener('click',function(e){"
+        "window.mapEvents+='hero;';});"
+        "window.mapElementListenerId=document.getElementById('hotspots').addEventListener('click',function(e){"
+        "window.mapEvents+='map;';});true;";
+    static const char EVENT_PROBE[] = "window.mapEvents;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    image_resource_test_ctx ctx;
+    char error[512];
+    char href[128];
+    char target[64];
+    char rel[64];
+    char id[64];
+    char shape[32];
+    char coords[64];
+    char rect_href[64];
+    char circle_href[64];
+    char poly_href[64];
+    char default_href[64];
+    char outside_href[64];
+    const char *result;
+    int executed;
+    int ignored;
+    int found;
+    int fetched;
+    int vw;
+    int vh;
+    int ix;
+    int iy;
+    int iw;
+    int ih;
+    int x;
+    int y;
+    int w;
+    int h;
+    int bytes;
+    int rc;
+    int rect_rc;
+    int circle_rc;
+    int poly_rc;
+    int default_rc;
+    int outside_rc;
+    int click_ok;
+    int event_eval_rc;
+    int listener_id;
+    int image_listener_id;
+    int map_listener_id;
+    int direct_rc;
+    int direct_eval_rc;
+    const char *stage;
+    BOOL ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(error, 0, sizeof(error));
+    memset(href, 0, sizeof(href));
+    memset(target, 0, sizeof(target));
+    memset(rel, 0, sizeof(rel));
+    memset(id, 0, sizeof(id));
+    memset(shape, 0, sizeof(shape));
+    memset(coords, 0, sizeof(coords));
+    memset(rect_href, 0, sizeof(rect_href));
+    memset(circle_href, 0, sizeof(circle_href));
+    memset(poly_href, 0, sizeof(poly_href));
+    memset(default_href, 0, sizeof(default_href));
+    memset(outside_href, 0, sizeof(outside_href));
+    result = NULL;
+    executed = -1;
+    ignored = -1;
+    found = 0;
+    fetched = 0;
+    ix = 0;
+    iy = 0;
+    iw = 0;
+    ih = 0;
+    x = 0;
+    y = 0;
+    w = 0;
+    h = 0;
+    bytes = 0;
+    rc = 0;
+    rect_rc = -1;
+    circle_rc = -1;
+    poly_rc = -1;
+    default_rc = -1;
+    outside_rc = -1;
+    click_ok = -1;
+    event_eval_rc = -1;
+    listener_id = -1;
+    image_listener_id = -1;
+    map_listener_id = -1;
+    direct_rc = -1;
+    direct_eval_rc = -1;
+    stage = "parse";
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/image-map", NULL, NULL, &executed,
+            &ignored, error, sizeof(error), &runtime, &bridge) != 0 ||
+            executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        stage = "setup";
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, SETUP, -1);
+        ok = rc == PSCRIPT_OK;
+        if (!ok && PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session) != NULL) {
+            cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session));
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(g_browser_script_session.session,
+                    "String(window.mapListenerId)+'|'"
+                    "+String(window.mapImageListenerId)+'|'"
+                    "+String(window.mapElementListenerId);", -1);
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            if (rc != PSCRIPT_OK || result == NULL) {
+                ok = FALSE;
+            } else {
+                listener_id = atoi(result);
+                {
+                    const char *separator;
+                    separator = strchr(result, '|');
+                    if (separator != NULL) {
+                        image_listener_id = atoi(separator + 1);
+                        separator = strchr(separator + 1, '|');
+                        if (separator != NULL) {
+                            map_listener_id = atoi(separator + 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (ok) {
+        stage = "fetch-layout";
+        test_host_set_device_viewport(vw, vh);
+        ok = PCore_FetchImageResources(document, image_svg_fetch,
+                image_resource_free, &ctx, &found, &fetched) == 0 &&
+                found == 1 && fetched == 1 && ctx.calls == 1 &&
+                ctx.matched == 1 && ctx.frees == 1;
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/image-map.css");
+        ok = ok && sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, vw, vh) == 0 &&
+                PCore_NodeBox(document, "img", &ix, &iy, &iw, &ih) == 0 &&
+                iw > 0 && ih > 0 &&
+                PCore_NodeAttributeById(document, "circle", "shape", shape,
+                sizeof(shape), &bytes) == 0 && strcmp(shape, "circle") == 0 &&
+                PCore_NodeAttributeById(document, "circle", "coords", coords,
+                sizeof(coords), &bytes) == 0 && strcmp(coords, "100,45,10") == 0;
+    }
+    if (ok) {
+        stage = "rect";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        rect_rc = PCore_LinkAtEx(document, ix + iw / 6, iy + ih / 4,
+                rect_href, sizeof(rect_href), target, sizeof(target), rel,
+                sizeof(rel));
+        if (rect_rc != 0 || strcmp(rect_href, "/rect") != 0 ||
+                strcmp(target, "_self") != 0 ||
+                strcmp(rel, "nofollow") != 0) {
+            ok = FALSE;
+        }
+    }
+    if (g_render_doc != NULL) {
+        circle_rc = PCore_LinkAtEx(document,
+            ix + (iw * 100) / 120, iy + (ih * 45) / 60,
+            circle_href, sizeof(circle_href), target, sizeof(target), rel,
+            sizeof(rel));
+        poly_rc = PCore_LinkAtEx(document,
+            ix + (iw * 60) / 120, iy + (ih * 15) / 60,
+            poly_href, sizeof(poly_href), target, sizeof(target), rel,
+            sizeof(rel));
+        default_rc = PCore_LinkAt(document, ix + iw - 2, iy + ih - 2,
+            default_href, sizeof(default_href));
+        outside_rc = PCore_LinkAt(document, ix + iw + 1, iy + ih / 2,
+            outside_href, sizeof(outside_href));
+    }
+    stage = "circle";
+    if (ok && (circle_rc != 0 || strcmp(circle_href, "/circle") != 0)) {
+        ok = FALSE;
+    }
+    stage = "poly";
+    if (ok && (poly_rc != 0 || strcmp(poly_href, "/poly") != 0)) {
+        ok = FALSE;
+    }
+    stage = "default";
+    if (ok && (default_rc == 0 || strcmp(default_href, "/default") != 0)) {
+        ok = FALSE;
+    }
+    stage = "outside";
+    if (ok && outside_rc != 0) {
+        ok = FALSE;
+    }
+    stage = "geometry-rect";
+    if (ok && (PCore_LinkInfoByIdEx(document, "rect", &x, &y, &w, &h,
+            href, sizeof(href), target, sizeof(target), rel,
+            sizeof(rel)) != 0 || x != ix || y != iy || w <= 0 || h <= 0 ||
+            strcmp(href, "/rect") != 0 || strcmp(target, "_self") != 0 ||
+            strcmp(rel, "nofollow") != 0)) {
+        ok = FALSE;
+    }
+    stage = "geometry-circle";
+    if (ok && (PCore_LinkInfoByIdEx(document, "circle", &x, &y, &w, &h,
+            href, sizeof(href), target, sizeof(target), rel,
+            sizeof(rel)) != 0 || x < ix || y < iy || w <= 0 || h <= 0 ||
+            x + w > ix + iw || y + h > iy + ih || strcmp(href, "/circle") != 0)) {
+        ok = FALSE;
+    }
+    stage = "invalid";
+    if (ok && (PCore_LinkInfoByIdEx(document, "bad", &x, &y, &w, &h,
+            href, sizeof(href), target, sizeof(target), rel,
+            sizeof(rel)) == 0 || PCore_LinkInfoByIdEx(document, "disabled",
+            &x, &y, &w, &h, href, sizeof(href), target, sizeof(target), rel,
+            sizeof(rel)) == 0)) {
+        ok = FALSE;
+    }
+    stage = "interaction";
+    if (ok && (PCore_InteractionSetAt(document, ix + iw / 6,
+            iy + ih / 4, PCORE_INTERACTION_ACTIVE |
+            PCORE_INTERACTION_HOVER) <= 0 ||
+            PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_ACTIVE, id, sizeof(id), &bytes) != 0 ||
+            strcmp(id, "rect") != 0 || bytes != 4 ||
+            PCore_InteractionStateElementId(document,
+            PCORE_INTERACTION_HOVER, id, sizeof(id), &bytes) != 0 ||
+            strcmp(id, "rect") != 0 || bytes != 4)) {
+        ok = FALSE;
+    }
+    if (ok) {
+        stage = "event";
+        direct_rc = PCore_EventDispatchToId(document, "rect", "click", 1,
+                1, &rc);
+        direct_eval_rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, EVENT_PROBE, -1);
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (direct_rc != 1 || direct_eval_rc != PSCRIPT_OK ||
+                result == NULL || strcmp(result,
+                "rect:true:true:true;map;") != 0) {
+            ok = FALSE;
+        }
+        if (ok && PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, "window.mapEvents='';",
+                -1) != PSCRIPT_OK) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        click_ok = pcore_browser_script_dispatch_click_at(ix + iw / 6,
+                iy + ih / 4);
+        event_eval_rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, EVENT_PROBE, -1);
+        if (!click_ok || event_eval_rc != PSCRIPT_OK) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        ok = result != NULL && strcmp(result,
+                "rect:true:true:true;map;") == 0;
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s link=%s circle=%s poly=%s default=%s outside=%s target=%s rel=%s box=%d,%d,%d,%d shape=%s coords=%s map_rc=%d,%d,%d,%d,%d listener=%d/%d/%d direct=%d/%d click=%d eval=%d result=%s rc=%d",
+                    stage,
+                    rect_href, circle_href, poly_href, default_href,
+                    outside_href, target, rel, ix, iy, iw, ih,
+                    shape, coords,
+                    rect_rc, circle_rc, poly_rc, default_rc, outside_rc,
+                    listener_id, image_listener_id, map_listener_id,
+                    direct_rc, direct_eval_rc, click_ok, event_eval_rc,
+                    result != NULL ? result : "(null)", rc);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1195 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1195 OK",
+            "bounded map areas resolve rect/circle/poly/default links,"
+            " expose area geometry and metadata, update active/hover state,"
+            " and receive trusted click events through Core.");
     return TRUE;
 }
 
@@ -103281,6 +103630,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1192: ok = test1192_browser_img_form_association(); break;
         case 1193: ok = test1193_browser_img_properties(); break;
         case 1194: ok = test1194_browser_img_decode_events(); break;
+        case 1195: ok = test1195_browser_image_map_hit_test(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

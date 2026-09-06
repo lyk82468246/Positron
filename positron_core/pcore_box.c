@@ -34,11 +34,14 @@
 
 #include <dom/dom.h>
 #include <dom/html/html_button_element.h>
+#include <dom/html/html_area_element.h>
 #include <dom/html/html_collection.h>
 #include <dom/html/html_form_element.h>
+#include <dom/html/html_image_element.h>
 #include <dom/html/html_input_element.h>
 #include <dom/html/html_label_element.h>
 #include <dom/html/html_document.h>
+#include <dom/html/html_map_element.h>
 #include <dom/html/html_option_element.h>
 #include <dom/html/html_opt_group_element.h>
 #include <dom/html/html_options_collection.h>
@@ -73,9 +76,23 @@
 /* GDI font measurement table (pcore_plot_gdi.c, M2). */
 extern const struct gui_layout_table pcore_gdi_layout;
 
+#define PCORE_IMAGE_MAP_MAX_AREAS 64
+#define PCORE_IMAGE_MAP_MAX_COORDS 64
+#define PCORE_IMAGE_MAP_MAX_MAPS 64
+#define PCORE_IMAGE_MAP_TOKEN_MAX 128
+#define PCORE_IMAGE_MAP_COORD_MAX 32767
+
 static struct box *pcore_hit(struct box *box, int px, int py);
 static struct box *pcore_box_for_node(struct box *box, dom_node *node);
 static struct box *pcore_box_for_any_node(struct box *box, dom_node *node);
+static dom_node *pcore_image_map_area_at(struct pcore_render *st,
+        dom_document *doc, int x, int y);
+static int pcore_image_map_area_geometry(struct pcore_render *st,
+        dom_document *doc, dom_node *target, int *x, int *y, int *w, int *h);
+static int pcore_link_copy_attribute(dom_element *element,
+        dom_string *attribute, char *out, int cap, int required);
+static int pcore_link_copy_href_truncated(dom_element *element,
+        dom_string *attribute, char *out, int cap);
 static dom_element *pcore_box_element_by_id(dom_document *doc,
         const char *element_id);
 static int pcore_disclosure_summary_box_info(struct pcore_render *st,
@@ -4091,16 +4108,18 @@ static int pcore_event_dispatch_at(dom_document *doc, int x, int y,
     if (state == NULL) {
         return 0;
     }
-    target = NULL;
-    box = pcore_hit(state->root_box, x, y);
-    while (box != NULL) {
-        if (box->node != NULL &&
-                dom_node_get_node_type(box->node, &node_type) == DOM_NO_ERR &&
-                node_type == DOM_ELEMENT_NODE) {
-            target = dom_node_ref(box->node);
-            break;
+    target = pcore_image_map_area_at(state, doc, x, y);
+    if (target == NULL) {
+        box = pcore_hit(state->root_box, x, y);
+        while (box != NULL) {
+            if (box->node != NULL &&
+                    dom_node_get_node_type(box->node, &node_type) ==
+                    DOM_NO_ERR && node_type == DOM_ELEMENT_NODE) {
+                target = dom_node_ref(box->node);
+                break;
+            }
+            box = box->parent;
         }
-        box = box->parent;
     }
     if (target == NULL) {
         return 0;
@@ -7045,6 +7064,916 @@ static struct box *pcore_hit(struct box *b, int px, int py)
         return b;
     }
     return NULL;
+}
+
+/* Image-map hit testing is intentionally kept small and deterministic.  The
+ * map/area DOM nodes do not receive layout boxes of their own, so the image
+ * box supplies the rendered coordinate system and these helpers project the
+ * bounded HTML shape grammar into it. */
+typedef struct pcore_image_map_region {
+    int kind;       /* 0=default, 1=rect, 2=circle, 3=poly */
+    int count;
+    int coords[PCORE_IMAGE_MAP_MAX_COORDS];
+    int x;
+    int y;
+    int w;
+    int h;
+    int center_x;
+    int center_y;
+    int radius_x;
+    int radius_y;
+} pcore_image_map_region;
+
+static int pcore_image_map_ascii_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f';
+}
+
+static char pcore_image_map_ascii_lower(char c)
+{
+    if (c >= 'A' && c <= 'Z') {
+        return (char) (c + ('a' - 'A'));
+    }
+    return c;
+}
+
+/* Compare an ASCII token after trimming HTML whitespace.  Shape keywords and
+ * usemap names are deliberately limited to this bounded comparison; non-ASCII
+ * values simply fail closed instead of being silently normalised. */
+static int pcore_image_map_token_is(dom_string *value, const char *wanted,
+        int caseless)
+{
+    const char *data;
+    size_t length;
+    size_t start;
+    size_t end;
+    size_t wanted_length;
+    size_t index;
+
+    if (value == NULL || wanted == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (data == NULL) {
+        return 0;
+    }
+    start = 0;
+    while (start < length && pcore_image_map_ascii_space(data[start])) {
+        start++;
+    }
+    end = length;
+    while (end > start && pcore_image_map_ascii_space(data[end - 1])) {
+        end--;
+    }
+    wanted_length = strlen(wanted);
+    if (end - start != wanted_length) {
+        return 0;
+    }
+    for (index = 0; index < wanted_length; index++) {
+        char left = data[start + index];
+        char right = wanted[index];
+        if (caseless) {
+            left = pcore_image_map_ascii_lower(left);
+            right = pcore_image_map_ascii_lower(right);
+        }
+        if (left != right) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_image_map_copy_token(dom_string *value, char *out,
+        int capacity)
+{
+    const char *data;
+    size_t length;
+    size_t start;
+    size_t end;
+    size_t copy_length;
+
+    if (out == NULL || capacity <= 0) {
+        return 0;
+    }
+    out[0] = '\0';
+    if (value == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (data == NULL) {
+        return 0;
+    }
+    start = 0;
+    while (start < length && pcore_image_map_ascii_space(data[start])) {
+        start++;
+    }
+    end = length;
+    while (end > start && pcore_image_map_ascii_space(data[end - 1])) {
+        end--;
+    }
+    copy_length = end - start;
+    if (copy_length == 0 || copy_length >= (size_t) capacity) {
+        return 0;
+    }
+    memcpy(out, data + start, copy_length);
+    out[copy_length] = '\0';
+    return 1;
+}
+
+/* Resolve the map named by an image's usemap attribute.  A fragment id is
+ * preferred when present; bare names are accepted as a bounded compatibility
+ * extension for old WM pages.  The returned map node is retained. */
+static dom_element *pcore_image_map_for_image(dom_document *doc,
+        dom_node *image)
+{
+    dom_string *use_map;
+    char token[PCORE_IMAGE_MAP_TOKEN_MAX];
+    dom_element *map;
+    dom_string *id;
+    dom_string *tag;
+    dom_html_collection *maps;
+    dom_node *node;
+    dom_string *name;
+    uint32_t count;
+    uint32_t index;
+
+    use_map = NULL;
+    map = NULL;
+    id = NULL;
+    tag = NULL;
+    maps = NULL;
+    node = NULL;
+    name = NULL;
+    count = 0;
+    if (doc == NULL || image == NULL ||
+            !pcore_node_name_is(image, "img") ||
+            dom_html_image_element_get_use_map(
+            (dom_html_image_element *) image, &use_map) != DOM_NO_ERR ||
+            !pcore_image_map_copy_token(use_map, token, sizeof(token))) {
+        if (use_map != NULL) {
+            dom_string_unref(use_map);
+        }
+        return NULL;
+    }
+    dom_string_unref(use_map);
+
+    if (token[0] == '#') {
+        if (token[1] == '\0' ||
+                dom_string_create((const uint8_t *) (token + 1),
+                strlen(token + 1), &id) != DOM_NO_ERR || id == NULL ||
+                dom_document_get_element_by_id(doc, id, &map) != DOM_NO_ERR) {
+            if (id != NULL) {
+                dom_string_unref(id);
+            }
+            if (map != NULL) {
+                dom_node_unref((dom_node *) map);
+            }
+            return NULL;
+        }
+        dom_string_unref(id);
+        if (map != NULL && pcore_node_name_is((dom_node *) map, "map")) {
+            return map;
+        }
+        if (map != NULL) {
+            dom_node_unref((dom_node *) map);
+        }
+        return NULL;
+    }
+
+    if (dom_string_create((const uint8_t *) "map", 3, &tag) != DOM_NO_ERR ||
+            tag == NULL || dom_document_get_elements_by_tag_name(doc, tag,
+            &maps) != DOM_NO_ERR || maps == NULL ||
+            dom_html_collection_get_length(maps, &count) != DOM_NO_ERR) {
+        if (tag != NULL) {
+            dom_string_unref(tag);
+        }
+        if (maps != NULL) {
+            dom_html_collection_unref(maps);
+        }
+        return NULL;
+    }
+    if (count > PCORE_IMAGE_MAP_MAX_MAPS) {
+        count = PCORE_IMAGE_MAP_MAX_MAPS;
+    }
+    for (index = 0; index < count; index++) {
+        node = NULL;
+        name = NULL;
+        if (dom_html_collection_item(maps, index, &node) != DOM_NO_ERR ||
+                node == NULL) {
+            break;
+        }
+        if (pcore_node_name_is(node, "map") &&
+                dom_html_map_element_get_name(
+                (dom_html_map_element *) node, &name) == DOM_NO_ERR &&
+                name != NULL && pcore_image_map_token_is(name, token, 0)) {
+            if (name != NULL) {
+                dom_string_unref(name);
+            }
+            dom_html_collection_unref(maps);
+            dom_string_unref(tag);
+            return (dom_element *) node;
+        }
+        if (name != NULL) {
+            dom_string_unref(name);
+        }
+        dom_node_unref(node);
+    }
+    dom_html_collection_unref(maps);
+    dom_string_unref(tag);
+    return NULL;
+}
+
+static int pcore_image_map_area_is_link(dom_node *area)
+{
+    bool no_href;
+    dom_string *href;
+
+    if (area == NULL || !pcore_node_name_is(area, "area") ||
+            pcore_ensure_link_strings() != 0) {
+        return 0;
+    }
+    no_href = false;
+    if (dom_html_area_element_get_no_href(
+            (dom_html_area_element *) area, &no_href) != DOM_NO_ERR ||
+            no_href) {
+        return 0;
+    }
+    href = NULL;
+    if (dom_element_get_attribute((dom_element *) area, pcore_href_name,
+            &href) != DOM_NO_ERR || href == NULL ||
+            dom_string_byte_length(href) == 0) {
+        if (href != NULL) {
+            dom_string_unref(href);
+        }
+        return 0;
+    }
+    dom_string_unref(href);
+    return 1;
+}
+
+static int pcore_image_map_parse_coords(dom_string *value, int *coords,
+        int capacity)
+{
+    const char *data;
+    size_t length;
+    size_t index;
+    int count;
+    int sign;
+    int number;
+    int digit;
+    int digits;
+
+    if (value == NULL || coords == NULL || capacity <= 0) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (data == NULL || length == 0) {
+        return 0;
+    }
+    index = 0;
+    count = 0;
+    while (index < length) {
+        while (index < length && (pcore_image_map_ascii_space(data[index]) ||
+                data[index] == ',')) {
+            index++;
+        }
+        if (index >= length) {
+            break;
+        }
+        sign = 1;
+        if (data[index] == '+' || data[index] == '-') {
+            if (data[index] == '-') {
+                sign = -1;
+            }
+            index++;
+        }
+        number = 0;
+        digits = 0;
+        while (index < length && data[index] >= '0' &&
+                data[index] <= '9') {
+            digit = data[index] - '0';
+            if (number > (PCORE_IMAGE_MAP_COORD_MAX - digit) / 10) {
+                return 0;
+            }
+            number = number * 10 + digit;
+            index++;
+            digits = 1;
+        }
+        if (!digits || count >= capacity) {
+            return 0;
+        }
+        coords[count++] = sign * number;
+        if (index < length && !pcore_image_map_ascii_space(data[index]) &&
+                data[index] != ',') {
+            return 0;
+        }
+    }
+    return count;
+}
+
+static int pcore_image_map_scale_coord(int value, int rendered, int base)
+{
+    double scaled;
+
+    if (base <= 0 || rendered <= 0) {
+        return value;
+    }
+    scaled = ((double) value * (double) rendered) / (double) base;
+    if (scaled > (double) INT_MAX) {
+        return INT_MAX;
+    }
+    if (scaled < (double) INT_MIN) {
+        return INT_MIN;
+    }
+    return (int) scaled;
+}
+
+static void pcore_image_map_dimensions(dom_document *doc, dom_node *image,
+        int image_w, int image_h, int *base_w, int *base_h)
+{
+    dom_string *src_name;
+    dom_string *src;
+    const char *src_data;
+    int attempted;
+    int natural_w;
+    int natural_h;
+    void *native_image;
+    void *svg;
+
+    *base_w = image_w;
+    *base_h = image_h;
+    src_name = NULL;
+    src = NULL;
+    attempted = 0;
+    natural_w = 0;
+    natural_h = 0;
+    native_image = NULL;
+    svg = NULL;
+    if (doc == NULL || image == NULL ||
+            dom_string_create((const uint8_t *) "src", 3,
+            &src_name) != DOM_NO_ERR || src_name == NULL ||
+            dom_element_get_attribute((dom_element *) image, src_name,
+            &src) != DOM_NO_ERR || src == NULL ||
+            dom_string_byte_length(src) == 0) {
+        if (src != NULL) {
+            dom_string_unref(src);
+        }
+        if (src_name != NULL) {
+            dom_string_unref(src_name);
+        }
+        return;
+    }
+    src_data = dom_string_data(src);
+    if (src_data != NULL) {
+        (void) pcore_image_resource_retained_get(doc, src_data, &attempted,
+                &native_image, &svg, &natural_w, &natural_h);
+    }
+    if (attempted && natural_w > 0 && natural_h > 0) {
+        *base_w = natural_w;
+        *base_h = natural_h;
+    }
+    dom_string_unref(src);
+    dom_string_unref(src_name);
+}
+
+static int pcore_image_map_shape_kind(dom_string *shape)
+{
+    if (shape == NULL || pcore_image_map_token_is(shape, "default", 1)) {
+        return 0;
+    }
+    if (pcore_image_map_token_is(shape, "rect", 1) ||
+            pcore_image_map_token_is(shape, "rectangle", 1)) {
+        return 1;
+    }
+    if (pcore_image_map_token_is(shape, "circle", 1)) {
+        return 2;
+    }
+    if (pcore_image_map_token_is(shape, "poly", 1) ||
+            pcore_image_map_token_is(shape, "polygon", 1)) {
+        return 3;
+    }
+    /* The empty/missing shape has the HTML default shape. */
+    if (shape != NULL && pcore_image_map_token_is(shape, "", 1)) {
+        return 0;
+    }
+    return -1;
+}
+
+/* Add two bounded integer coordinates without wrapping.  DOM coordinates are
+ * untrusted; saturating here lets the subsequent image-space clip reduce them
+ * to the rendered image instead of turning a huge value into an unrelated
+ * point. */
+static int pcore_image_map_saturating_add(int left, int right)
+{
+    if (right > 0 && left > INT_MAX - right) {
+        return INT_MAX;
+    }
+    if (right < 0 && left < INT_MIN - right) {
+        return INT_MIN;
+    }
+    return left + right;
+}
+
+static int pcore_image_map_saturating_double(int value)
+{
+    if (value > INT_MAX / 2) {
+        return INT_MAX;
+    }
+    if (value < INT_MIN / 2) {
+        return INT_MIN;
+    }
+    return value * 2;
+}
+
+static int pcore_image_map_clip_coord(int value, int limit)
+{
+    if (value < 0) {
+        return 0;
+    }
+    if (value > limit) {
+        return limit;
+    }
+    return value;
+}
+
+static void pcore_image_map_region_clip(pcore_image_map_region *region,
+        int image_w, int image_h)
+{
+    int right;
+    int bottom;
+    int left;
+    int top;
+
+    left = region->x;
+    top = region->y;
+    right = pcore_image_map_saturating_add(region->x, region->w);
+    bottom = pcore_image_map_saturating_add(region->y, region->h);
+    left = pcore_image_map_clip_coord(left, image_w);
+    top = pcore_image_map_clip_coord(top, image_h);
+    right = pcore_image_map_clip_coord(right, image_w);
+    bottom = pcore_image_map_clip_coord(bottom, image_h);
+    region->x = left;
+    region->y = top;
+    region->w = (right > left) ? right - left : 0;
+    region->h = (bottom > top) ? bottom - top : 0;
+}
+
+/* Build one rendered-space region.  Coordinates are bounded to avoid the
+ * untrusted DOM creating unbounded work or integer overflow. */
+static int pcore_image_map_region_from_area(dom_node *area, int image_w,
+        int image_h, int base_w, int base_h, pcore_image_map_region *region)
+{
+    dom_string *shape;
+    dom_string *coords_string;
+    int parsed[PCORE_IMAGE_MAP_MAX_COORDS];
+    int parsed_count;
+    int kind;
+    int index;
+    int left;
+    int top;
+    int right;
+    int bottom;
+    int radius_x;
+    int radius_y;
+    int center_x;
+    int center_y;
+
+    if (area == NULL || region == NULL || image_w <= 0 || image_h <= 0 ||
+            base_w <= 0 || base_h <= 0 ||
+            !pcore_image_map_area_is_link(area)) {
+        return 1;
+    }
+    memset(region, 0, sizeof(*region));
+    shape = NULL;
+    if (dom_html_area_element_get_shape((dom_html_area_element *) area,
+            &shape) != DOM_NO_ERR) {
+        shape = NULL;
+    }
+    kind = pcore_image_map_shape_kind(shape);
+    if (shape != NULL) {
+        dom_string_unref(shape);
+    }
+    if (kind < 0) {
+        return 1;
+    }
+    region->kind = kind;
+    if (kind == 0) {
+        region->x = 0;
+        region->y = 0;
+        region->w = image_w;
+        region->h = image_h;
+        return 0;
+    }
+    coords_string = NULL;
+    if (dom_html_area_element_get_coords(
+            (dom_html_area_element *) area, &coords_string) != DOM_NO_ERR ||
+            coords_string == NULL) {
+        if (coords_string != NULL) {
+            dom_string_unref(coords_string);
+        }
+        return 1;
+    }
+    parsed_count = pcore_image_map_parse_coords(coords_string, parsed,
+            PCORE_IMAGE_MAP_MAX_COORDS);
+    dom_string_unref(coords_string);
+    if (parsed_count <= 0) {
+        return 1;
+    }
+    if (kind == 1) {
+        if (parsed_count < 4) {
+            return 1;
+        }
+        left = pcore_image_map_scale_coord(parsed[0], image_w, base_w);
+        top = pcore_image_map_scale_coord(parsed[1], image_h, base_h);
+        right = pcore_image_map_scale_coord(parsed[2], image_w, base_w);
+        bottom = pcore_image_map_scale_coord(parsed[3], image_h, base_h);
+        if (left > right) {
+            index = left;
+            left = right;
+            right = index;
+        }
+        if (top > bottom) {
+            index = top;
+            top = bottom;
+            bottom = index;
+        }
+        left = pcore_image_map_clip_coord(left, image_w);
+        top = pcore_image_map_clip_coord(top, image_h);
+        right = pcore_image_map_clip_coord(right, image_w);
+        bottom = pcore_image_map_clip_coord(bottom, image_h);
+        if (right <= left || bottom <= top) {
+            return 1;
+        }
+        region->x = left;
+        region->y = top;
+        region->w = right - left;
+        region->h = bottom - top;
+    } else if (kind == 2) {
+        if (parsed_count < 3 || parsed[2] <= 0) {
+            return 1;
+        }
+        center_x = pcore_image_map_scale_coord(parsed[0], image_w, base_w);
+        center_y = pcore_image_map_scale_coord(parsed[1], image_h, base_h);
+        radius_x = pcore_image_map_scale_coord(parsed[2], image_w, base_w);
+        radius_y = pcore_image_map_scale_coord(parsed[2], image_h, base_h);
+        if (radius_x <= 0 || radius_y <= 0) {
+            return 1;
+        }
+        region->center_x = center_x;
+        region->center_y = center_y;
+        region->radius_x = radius_x;
+        region->radius_y = radius_y;
+        region->x = pcore_image_map_saturating_add(center_x, -radius_x);
+        region->y = pcore_image_map_saturating_add(center_y, -radius_y);
+        region->w = pcore_image_map_saturating_double(radius_x);
+        region->h = pcore_image_map_saturating_double(radius_y);
+    } else {
+        if (parsed_count < 6 || (parsed_count & 1) != 0) {
+            return 1;
+        }
+        if (parsed_count > PCORE_IMAGE_MAP_MAX_COORDS) {
+            return 1;
+        }
+        region->count = parsed_count;
+        left = INT_MAX;
+        top = INT_MAX;
+        right = INT_MIN;
+        bottom = INT_MIN;
+        for (index = 0; index < parsed_count; index += 2) {
+            region->coords[index] =
+                    pcore_image_map_scale_coord(parsed[index], image_w,
+                    base_w);
+            region->coords[index + 1] =
+                    pcore_image_map_scale_coord(parsed[index + 1], image_h,
+                    base_h);
+            if (region->coords[index] < left) {
+                left = region->coords[index];
+            }
+            if (region->coords[index] > right) {
+                right = region->coords[index];
+            }
+            if (region->coords[index + 1] < top) {
+                top = region->coords[index + 1];
+            }
+            if (region->coords[index + 1] > bottom) {
+                bottom = region->coords[index + 1];
+            }
+        }
+        left = pcore_image_map_clip_coord(left, image_w);
+        top = pcore_image_map_clip_coord(top, image_h);
+        right = pcore_image_map_clip_coord(right, image_w);
+        bottom = pcore_image_map_clip_coord(bottom, image_h);
+        if (right <= left || bottom <= top) {
+            return 1;
+        }
+        region->x = left;
+        region->y = top;
+        region->w = right - left;
+        region->h = bottom - top;
+    }
+    pcore_image_map_region_clip(region, image_w, image_h);
+    return (region->w > 0 && region->h > 0) ? 0 : 1;
+}
+
+static int pcore_image_map_point_on_segment(double px, double py,
+        double x1, double y1, double x2, double y2)
+{
+    double cross;
+    double min_x;
+    double max_x;
+    double min_y;
+    double max_y;
+
+    cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
+    if (fabs(cross) > 0.0001) {
+        return 0;
+    }
+    min_x = (x1 < x2) ? x1 : x2;
+    max_x = (x1 > x2) ? x1 : x2;
+    min_y = (y1 < y2) ? y1 : y2;
+    max_y = (y1 > y2) ? y1 : y2;
+    return px >= min_x && px <= max_x && py >= min_y && py <= max_y;
+}
+
+static int pcore_image_map_region_contains(
+        const pcore_image_map_region *region, int x, int y)
+{
+    int index;
+    int previous;
+    int inside;
+    double px;
+    double py;
+    double x1;
+    double y1;
+    double x2;
+    double y2;
+    double crossing;
+    double radius_x;
+    double radius_y;
+    double dx;
+    double dy;
+
+    if (region == NULL || region->w <= 0 || region->h <= 0 ||
+            x < region->x || y < region->y ||
+            x - region->x >= region->w || y - region->y >= region->h) {
+        return 0;
+    }
+    if (region->kind == 0 || region->kind == 1) {
+        return 1;
+    }
+    if (region->kind == 2) {
+        radius_x = (region->radius_x > 0) ?
+                (double) region->radius_x : region->w / 2.0;
+        radius_y = (region->radius_y > 0) ?
+                (double) region->radius_y : region->h / 2.0;
+        if (radius_x <= 0.0 || radius_y <= 0.0) {
+            return 0;
+        }
+        dx = (double) x - (double) region->center_x;
+        dy = (double) y - (double) region->center_y;
+        return (dx * dx) / (radius_x * radius_x) +
+                (dy * dy) / (radius_y * radius_y) <= 1.0;
+    }
+    if (region->kind != 3 || region->count < 6) {
+        return 0;
+    }
+    px = (double) x;
+    py = (double) y;
+    inside = 0;
+    previous = region->count - 2;
+    for (index = 0; index < region->count; index += 2) {
+        x1 = (double) region->coords[previous];
+        y1 = (double) region->coords[previous + 1];
+        x2 = (double) region->coords[index];
+        y2 = (double) region->coords[index + 1];
+        if (pcore_image_map_point_on_segment(px, py, x1, y1, x2, y2)) {
+            return 1;
+        }
+        if ((y1 > py) != (y2 > py)) {
+            crossing = (x2 - x1) * (py - y1) / (y2 - y1) + x1;
+            if (px < crossing) {
+                inside = !inside;
+            }
+        }
+        previous = index;
+    }
+    return inside;
+}
+
+static int pcore_image_map_area_region_for_image(dom_document *doc,
+        dom_node *image, struct box *image_box, dom_node *area,
+        pcore_image_map_region *region)
+{
+    int base_w;
+    int base_h;
+
+    if (doc == NULL || image == NULL || image_box == NULL ||
+            area == NULL || region == NULL || image_box->width <= 0 ||
+            image_box->height <= 0) {
+        return 1;
+    }
+    pcore_image_map_dimensions(doc, image, image_box->width,
+            image_box->height, &base_w, &base_h);
+    return pcore_image_map_region_from_area(area, image_box->width,
+            image_box->height, base_w, base_h, region);
+}
+
+/* Find the first linked area covering a point in one rendered image.  The
+ * collection and area references are released on every non-match; a match is
+ * returned retained for the caller. */
+static dom_node *pcore_image_map_area_for_image_point(dom_document *doc,
+        dom_node *image, struct box *image_box, int x, int y)
+{
+    dom_element *map;
+    dom_html_collection *areas;
+    dom_node *area;
+    uint32_t count;
+    uint32_t index;
+    int image_x;
+    int image_y;
+    int local_x;
+    int local_y;
+    pcore_image_map_region region;
+
+    if (doc == NULL || image == NULL || image_box == NULL ||
+            image_box->width <= 0 || image_box->height <= 0) {
+        return NULL;
+    }
+    image_x = 0;
+    image_y = 0;
+    box_coords(image_box, &image_x, &image_y);
+    local_x = x - image_x;
+    local_y = y - image_y;
+    if (local_x < 0 || local_y < 0 || local_x >= image_box->width ||
+            local_y >= image_box->height) {
+        return NULL;
+    }
+    areas = NULL;
+    map = pcore_image_map_for_image(doc, image);
+    if (map == NULL || dom_html_map_element_get_areas(
+            (dom_html_map_element *) map, &areas) != DOM_NO_ERR ||
+            areas == NULL || dom_html_collection_get_length(areas,
+            &count) != DOM_NO_ERR) {
+        if (map != NULL) {
+            dom_node_unref((dom_node *) map);
+        }
+        if (areas != NULL) {
+            dom_html_collection_unref(areas);
+        }
+        return NULL;
+    }
+    if (count > PCORE_IMAGE_MAP_MAX_AREAS) {
+        count = PCORE_IMAGE_MAP_MAX_AREAS;
+    }
+    for (index = 0; index < count; index++) {
+        area = NULL;
+        if (dom_html_collection_item(areas, index, &area) != DOM_NO_ERR ||
+                area == NULL) {
+            break;
+        }
+        if (pcore_image_map_area_region_for_image(doc, image, image_box,
+                area, &region) == 0 && pcore_image_map_region_contains(
+                &region, local_x, local_y)) {
+            dom_html_collection_unref(areas);
+            dom_node_unref((dom_node *) map);
+            return area;
+        }
+        dom_node_unref(area);
+    }
+    dom_html_collection_unref(areas);
+    dom_node_unref((dom_node *) map);
+    return NULL;
+}
+
+static dom_node *pcore_image_map_area_at_box(dom_document *doc,
+        struct box *hit, int x, int y)
+{
+    struct box *box;
+    dom_node *area;
+
+    for (box = hit; box != NULL; box = box->parent) {
+        if (box->node != NULL && pcore_node_name_is(box->node, "img")) {
+            area = pcore_image_map_area_for_image_point(doc, box->node,
+                    box, x, y);
+            if (area != NULL) {
+                return area;
+            }
+        }
+    }
+    return NULL;
+}
+
+static dom_node *pcore_image_map_area_at(struct pcore_render *st,
+        dom_document *doc, int x, int y)
+{
+    struct box *hit;
+
+    if (st == NULL || st->root_box == NULL || doc == NULL) {
+        return NULL;
+    }
+    hit = pcore_hit(st->root_box, x, y);
+    if (hit == NULL) {
+        return NULL;
+    }
+    return pcore_image_map_area_at_box(doc, hit, x, y);
+}
+
+static int pcore_image_map_area_geometry_in_image(dom_document *doc,
+        dom_node *image, struct box *image_box, dom_node *target,
+        int *x, int *y, int *w, int *h)
+{
+    dom_element *map;
+    dom_html_collection *areas;
+    dom_node *area;
+    uint32_t count;
+    uint32_t index;
+    int image_x;
+    int image_y;
+    pcore_image_map_region region;
+
+    if (doc == NULL || image == NULL || image_box == NULL ||
+            target == NULL || x == NULL || y == NULL || w == NULL ||
+            h == NULL) {
+        return 1;
+    }
+    areas = NULL;
+    map = pcore_image_map_for_image(doc, image);
+    if (map == NULL || dom_html_map_element_get_areas(
+            (dom_html_map_element *) map, &areas) != DOM_NO_ERR ||
+            areas == NULL || dom_html_collection_get_length(areas,
+            &count) != DOM_NO_ERR) {
+        if (map != NULL) {
+            dom_node_unref((dom_node *) map);
+        }
+        if (areas != NULL) {
+            dom_html_collection_unref(areas);
+        }
+        return 1;
+    }
+    if (count > PCORE_IMAGE_MAP_MAX_AREAS) {
+        count = PCORE_IMAGE_MAP_MAX_AREAS;
+    }
+    for (index = 0; index < count; index++) {
+        area = NULL;
+        if (dom_html_collection_item(areas, index, &area) != DOM_NO_ERR ||
+                area == NULL) {
+            break;
+        }
+        if (area == target && pcore_image_map_area_region_for_image(doc,
+                image, image_box, area, &region) == 0) {
+            image_x = 0;
+            image_y = 0;
+            box_coords(image_box, &image_x, &image_y);
+            *x = image_x + region.x;
+            *y = image_y + region.y;
+            *w = region.w;
+            *h = region.h;
+            dom_node_unref(area);
+            dom_html_collection_unref(areas);
+            dom_node_unref((dom_node *) map);
+            return 0;
+        }
+        dom_node_unref(area);
+    }
+    dom_html_collection_unref(areas);
+    dom_node_unref((dom_node *) map);
+    return 1;
+}
+
+static int pcore_image_map_area_geometry_in_tree(dom_document *doc,
+        struct box *box, dom_node *target, int *x, int *y, int *w, int *h)
+{
+    struct box *child;
+
+    if (box == NULL) {
+        return 1;
+    }
+    if (box->node != NULL && pcore_node_name_is(box->node, "img") &&
+            pcore_image_map_area_geometry_in_image(doc, box->node, box,
+            target, x, y, w, h) == 0) {
+        return 0;
+    }
+    for (child = box->children; child != NULL; child = child->next) {
+        if (pcore_image_map_area_geometry_in_tree(doc, child, target, x, y,
+                w, h) == 0) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_image_map_area_geometry(struct pcore_render *st,
+        dom_document *doc, dom_node *target, int *x, int *y, int *w, int *h)
+{
+    if (st == NULL || st->root_box == NULL || doc == NULL ||
+            target == NULL || !pcore_node_name_is(target, "area")) {
+        return 1;
+    }
+    return pcore_image_map_area_geometry_in_tree(doc, st->root_box, target,
+            x, y, w, h);
 }
 
 #define PCORE_FORM_DATA_MAX 65535
@@ -12392,18 +13321,30 @@ PCORE_API int PCore_InteractionSetAt(HANDLE hDoc, int x, int y,
         changed |= result;
     }
     if ((state_flags & PCORE_INTERACTION_ACTIVE) != 0) {
-        target = pcore_interaction_node(hit, 0);
+        target = pcore_image_map_area_at(st, doc, x, y);
+        if (target == NULL) {
+            target = pcore_interaction_node(hit, 0);
+        }
         result = pcore_interaction_set_node(doc,
                 PCORE_INTERACTION_ACTIVE, target);
+        if (target != NULL && pcore_node_name_is(target, "area")) {
+            dom_node_unref(target);
+        }
         if (result < 0) {
             return -1;
         }
         changed |= result;
     }
     if ((state_flags & PCORE_INTERACTION_HOVER) != 0) {
-        target = pcore_hover_node(hit);
+        target = pcore_image_map_area_at(st, doc, x, y);
+        if (target == NULL) {
+            target = pcore_hover_node(hit);
+        }
         result = pcore_interaction_set_node(doc,
                 PCORE_INTERACTION_HOVER, target);
+        if (target != NULL && pcore_node_name_is(target, "area")) {
+            dom_node_unref(target);
+        }
         if (result < 0) {
             return -1;
         }
@@ -13650,6 +14591,15 @@ PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y, char *out_href, int cap)
     if (pcore_ensure_link_strings() != 0) {
         return 0;
     }
+    {
+        dom_node *area = pcore_image_map_area_at(st, doc, x, y);
+        if (area != NULL) {
+            rc = pcore_link_copy_href_truncated((dom_element *) area,
+                    pcore_href_name, out_href, cap);
+            dom_node_unref(area);
+            return rc;
+        }
+    }
     hit = pcore_hit(st->root_box, x, y);
     if (hit == NULL) {
         return 0;
@@ -13721,6 +14671,42 @@ static int pcore_link_copy_attribute(dom_element *element,
     return required && length == 0 ? 1 : 0;
 }
 
+/* The legacy PCore_LinkAt contract permits truncating href values, unlike the
+ * strict Ex/ById snapshots.  Keep that behaviour identical for <a> and
+ * mapped <area> links. */
+static int pcore_link_copy_href_truncated(dom_element *element,
+        dom_string *attribute, char *out, int cap)
+{
+    dom_string *value;
+    const char *data;
+    int length;
+
+    if (element == NULL || attribute == NULL || out == NULL || cap <= 0) {
+        return 0;
+    }
+    value = NULL;
+    if (dom_element_get_attribute(element, attribute, &value) != DOM_NO_ERR ||
+            value == NULL) {
+        if (value != NULL) {
+            dom_string_unref(value);
+        }
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = (int) dom_string_byte_length(value);
+    if (data == NULL || length <= 0) {
+        dom_string_unref(value);
+        return 0;
+    }
+    if (length > cap - 1) {
+        length = cap - 1;
+    }
+    memcpy(out, data, (size_t) length);
+    out[length] = '\0';
+    dom_string_unref(value);
+    return 1;
+}
+
 PCORE_API int PCore_LinkAtEx(HANDLE hDoc, int x, int y,
         char *out_href, int href_cap, char *out_target, int target_cap,
         char *out_rel, int rel_cap)
@@ -13747,6 +14733,22 @@ PCORE_API int PCore_LinkAtEx(HANDLE hDoc, int x, int y,
             out_target == NULL || target_cap <= 0 || out_rel == NULL ||
             rel_cap <= 0 || pcore_ensure_link_strings() != 0) {
         return 1;
+    }
+    {
+        dom_node *area = pcore_image_map_area_at(st, doc, x, y);
+        if (area != NULL) {
+            if (pcore_link_copy_attribute((dom_element *) area,
+                    pcore_href_name, out_href, href_cap, 1) != 0 ||
+                    pcore_link_copy_attribute((dom_element *) area,
+                    pcore_target_name, out_target, target_cap, 0) != 0 ||
+                    pcore_link_copy_attribute((dom_element *) area,
+                    pcore_rel_name, out_rel, rel_cap, 0) != 0) {
+                dom_node_unref(area);
+                return 1;
+            }
+            dom_node_unref(area);
+            return 0;
+        }
     }
     hit = pcore_hit(st->root_box, x, y);
     if (hit == NULL) {
@@ -13789,8 +14791,12 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
     const char *name_data;
     const char *href_data;
     int href_len;
+    int is_anchor;
+    int is_area;
     int ax;
     int ay;
+    int geometry_w;
+    int geometry_h;
 
     doc = (dom_document *) hDoc;
     st = pcore_get_render(doc);
@@ -13823,8 +14829,11 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
         return 1;
     }
     name_data = dom_string_data(name);
-    if (name_data == NULL ||
-            !dom_string_caseless_isequal(name, pcore_a_name)) {
+    is_anchor = name_data != NULL &&
+            dom_string_caseless_isequal(name, pcore_a_name);
+    is_area = name_data != NULL &&
+            pcore_node_name_is((dom_node *) element, "area");
+    if (!is_anchor && !is_area) {
         dom_string_unref(name);
         dom_node_unref((dom_node *) element);
         return 1;
@@ -13843,13 +14852,30 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
         dom_node_unref((dom_node *) element);
         return 1;
     }
-    box = pcore_box_for_any_node(st->root_box, (dom_node *) element);
-    if (box == NULL) {
-        dom_string_unref(href);
-        dom_node_unref((dom_node *) element);
-        return 1;
+    box = NULL;
+    ax = 0;
+    ay = 0;
+    geometry_w = 0;
+    geometry_h = 0;
+    if (is_area) {
+        if (pcore_image_map_area_geometry(st, doc,
+                (dom_node *) element, &ax, &ay, &geometry_w,
+                &geometry_h) != 0) {
+            dom_string_unref(href);
+            dom_node_unref((dom_node *) element);
+            return 1;
+        }
+    } else {
+        box = pcore_box_for_any_node(st->root_box, (dom_node *) element);
+        if (box == NULL) {
+            dom_string_unref(href);
+            dom_node_unref((dom_node *) element);
+            return 1;
+        }
+        box_coords(box, &ax, &ay);
+        geometry_w = box->width;
+        geometry_h = box->height;
     }
-    box_coords(box, &ax, &ay);
     if (x != NULL) {
         *x = ax;
     }
@@ -13857,10 +14883,10 @@ PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
         *y = ay;
     }
     if (w != NULL) {
-        *w = box->width;
+        *w = geometry_w;
     }
     if (h != NULL) {
-        *h = box->height;
+        *h = geometry_h;
     }
     memcpy(out_href, href_data, (size_t) href_len);
     out_href[href_len] = '\0';

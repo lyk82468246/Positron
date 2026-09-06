@@ -894,41 +894,46 @@ PCORE_API void PCore_SetDeviceViewport(int device_width, int device_height,
 /* --- Links / navigation (engine layer 4, inline milestone) ---------- */
 
 /* Hit-test a document-space point (device px, i.e. client coordinate + the
- * current scroll offset) against the laid-out inline link fragments. If a link
- * covers the point, writes its (UTF-8, NUL-terminated, possibly truncated to
- * `cap`) href into `out_href` and returns 1; otherwise returns 0 and leaves
- * `out_href` untouched. Must be called after PCore_LayoutDocument. Lets the
- * application turn a tap into a navigation. */
+ * current scroll offset) against laid-out links. This includes an <area>
+ * inside a mapped <img> when its bounded default/rect/circle/poly region
+ * covers the point; mapped areas take precedence over an enclosing <a>.
+ * If a link covers the point, writes its (UTF-8, NUL-terminated, possibly
+ * truncated to `cap`) href into `out_href` and returns 1; otherwise returns 0
+ * and leaves `out_href` untouched. Must be called after
+ * PCore_LayoutDocument. Lets the application turn a tap into a navigation. */
 PCORE_API int PCore_LinkAt(HANDLE hDoc, int x, int y,
                            char *out_href, int cap);
 
 /* Hit-test a laid-out link and copy its href, target and rel attributes into
- * caller-owned UTF-8 buffers. href is required and must be non-empty;
- * target/rel are optional HTML attributes and are returned as empty strings
- * when absent. All three buffers must be non-NULL and have positive
- * capacities; the function fails closed when any value does not fit. The
- * returned metadata is a synchronous snapshot for the host's click
- * transaction and does not transfer DOM ownership. */
+ * caller-owned UTF-8 buffers. Anchors and linked <area> map regions are
+ * supported; href is required and must be non-empty, while target/rel are
+ * optional HTML attributes returned as empty strings when absent. All three
+ * buffers must be non-NULL and have positive capacities; the function fails
+ * closed when any value does not fit. The returned metadata is a synchronous
+ * snapshot for the host's click transaction and does not transfer DOM
+ * ownership. */
 PCORE_API int PCore_LinkAtEx(HANDLE hDoc, int x, int y,
                              char *out_href, int href_cap,
                              char *out_target, int target_cap,
                              char *out_rel, int rel_cap);
 
-/* Resolve a laid-out <a href> element by its UTF-8 DOM id. Geometry is in
- * document CSS px and the href is copied into the caller's UTF-8 buffer.
- * Returns 0 for a matching anchor with a non-empty href; returns non-zero
- * when the id is missing, not an anchor, not laid out, has no href, or the
- * output buffer is too small. This narrow lookup is used by browser-owned
- * HTMLElement.click() navigation and does not expose the internal box tree. */
+/* Resolve a laid-out <a href> or linked <area> element by its UTF-8 DOM id.
+ * Anchor geometry is its laid-out box; area geometry is the bounded rendered
+ * map region in document CSS px. The href is copied into the caller's UTF-8
+ * buffer. Returns 0 for a matching link with a non-empty href; returns
+ * non-zero when the id is missing, not a supported link, not laid out, not a
+ * linked/usable map area, or the output buffer is too small. This narrow
+ * lookup is used by browser-owned HTMLElement.click() navigation and does not
+ * expose the internal box tree. */
 PCORE_API int PCore_LinkInfoById(HANDLE hDoc, const char *element_id,
                                  int *x, int *y, int *w, int *h,
                                  char *out_href, int cap);
 
-/* Resolve a laid-out <a href> element by id and return its bounded link
- * metadata. Geometry and href follow PCore_LinkInfoById(); target and rel
- * are raw UTF-8 attribute values, empty when absent. This additive query is
- * intended for browser-owned anchor activation and leaves URL resolution,
- * window policy and network side effects to the host. */
+/* Resolve a laid-out <a href> or linked <area> element by id and return its
+ * bounded link metadata. Geometry and href follow PCore_LinkInfoById();
+ * target and rel are raw UTF-8 attribute values, empty when absent. This
+ * additive query is intended for browser-owned anchor/area activation and
+ * leaves URL resolution, window policy and network side effects to the host. */
 PCORE_API int PCore_LinkInfoByIdEx(HANDLE hDoc, const char *element_id,
                                    int *x, int *y, int *w, int *h,
                                    char *out_href, int href_cap,
@@ -1124,9 +1129,12 @@ PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
 PCORE_API int PCore_EventListenerRemove(HANDLE hDoc, HANDLE hListener);
 
 /* Dispatch a trusted generic event either to an element id or to the nearest
- * laid-out element at document coordinates. Return 1 when dispatched, 0 when
- * no target exists and -1 on invalid input/DOM failure. default_allowed is
- * initialised to 1 and becomes 0 only when a cancelable event was canceled. */
+ * laid-out element at document coordinates. Coordinate dispatch first checks
+ * a linked <area> in a mapped image, so its DOM target and normal map/ancestor
+ * bubbling path are preserved; otherwise it uses the nearest laid-out
+ * element. Return 1 when dispatched, 0 when no target exists and -1 on
+ * invalid input/DOM failure. default_allowed is initialised to 1 and becomes
+ * 0 only when a cancelable event was canceled. */
 PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
                                      const char *event_type, int bubbles,
                                      int cancelable, int *default_allowed);

@@ -535,9 +535,19 @@ style/layout 使成功与失败关系可观察后，宿主通过
 `PBrowser_ScriptSessionNotifyImageEvent` 派发可信、非冒泡、不可取消的 `load`/`error`，
 并断言重复通知幂等、相反/过时/缺失 id fail closed、Promise settle 顺序和 page teardown
 对剩余 pending 请求的 `AbortError`；每个 session 的 image/source 终态映射最多 64 项，
-source 改变会释放旧项，超限的新终态通知保持 fail closed。该门不实现 `srcset`/`sizes` 选择、绝对 URL、CORS/
-referrer enforcement、完整 loading 策略、image-map 命中或 native 图像视觉；宿主只负责
-先更新 Core relation、调用通知入口和泵出 microtask，产品语义位于 Browser/Core。
+source 改变会释放旧项，超限的新终态通知保持 fail closed。该门不覆盖 `srcset`/`sizes`
+选择、绝对 URL、CORS/referrer enforcement、完整 loading 策略、image-map 命中或 native
+图像视觉；宿主只负责先更新 Core relation、调用通知入口和泵出 microtask，产品语义位于
+Browser/Core。
+
+TEST1195 覆盖 Core 的有界 image-map 命中纵切：已布局 `<img usemap>` 解析对应 `<map>`，
+按 DOM 顺序处理 linked `<area>` 的 `rect`、`circle`、`poly`/`polygon` 与 `default`，把
+自然图像坐标缩放到渲染尺寸并对 malformed coords、`nohref`、未知形状和超出预算安全
+忽略。夹具同时断言 area 优先于外层 `<a>` 的 `PCore_LinkAt(Ex)` href/target/rel、
+`PCore_LinkInfoById(Ex)` 的区域几何、`PCore_InteractionSetAt` 的 active/hover 节点，
+以及按坐标 Core 事件沿 `<area> → <map>` 正常冒泡；Browser 事件对象的 `isTrusted`
+和兼容 `trusted` 字段保持一致。该门不扩展 `srcset`/`sizes` 选择、transforms、CORS、
+完整图像视觉或 pointer/touch 手势；map 解析和命中语义属于 Core，宿主只接线与断言。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

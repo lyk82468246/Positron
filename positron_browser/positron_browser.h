@@ -1723,7 +1723,10 @@ typedef struct PBrowserScriptEventCallbacks {
 
 /* Synchronous event data passed to PBrowser_ScriptSessionDispatchEvent.
  * Strings are UTF-8 and borrowed for the duration of the call. The size tag
- * permits compatible extensions without exposing positron_core types. */
+ * permits compatible extensions without exposing positron_core types. The
+ * script event object exposes `trusted` and the standard `isTrusted` as the
+ * same normalized boolean; coordinate click hit-testing (including a Core
+ * image-map <area>) is still supplied by the host adapter. */
 typedef struct PBrowserScriptEventInfo {
     unsigned long size;
     unsigned int phase;

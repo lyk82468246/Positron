@@ -84,8 +84,11 @@ relation 46–48 提供 `naturalWidth`/`naturalHeight`/`complete`。无 source�
 `srcset`、成功 retained decode 和终态 fetch failure 的状态分别保持可观察且
 fail-closed；Browser 另提供有界 `decode()` Promise、source mutation/teardown 拒绝和
 由宿主在 Core 终态就绪后触发的 trusted、非冒泡 `load`/`error` 通知。该桥仍不引入
-`srcset`/`sizes` 选择、CORS/referrer enforcement、完整 loading 策略、image-map 命中或
-图像视觉。
+`srcset`/`sizes` 选择、CORS/referrer enforcement、完整 loading 策略或图像视觉。Core
+另已提供有界 image-map 命中：已布局 `<img usemap>` 按 DOM 顺序解析最多 64 个 linked
+`<area>`，支持 `default`、`rect`、`circle` 和 `poly`/`polygon`，将自然坐标缩放到
+渲染尺寸，并把链接、区域几何、active/hover 和按坐标事件 target 统一接入 Core 命中
+路径；坏坐标、`nohref`、未知形状和超出预算安全忽略。
 
 以上桥不扩展
 native SELECT popup、完整 live collection 或完整 HTML option 算法；`option.form` 通过

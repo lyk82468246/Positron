@@ -405,8 +405,9 @@ snapshot，提供 `item()`/`namedItem()`。
 或 `..._ERROR`；Browser 只接受当前 `<img>` 已 complete 且自然尺寸与终态一致的通知，
 派发 trusted、非冒泡、不可取消的 `load`/`error`，并 settle 同一 source 的 decode 请求。
 终态通知幂等，过时、相反或未就绪的通知 fail closed。srcset/CORS、绝对 URL、完整
-loading 策略、image-map 命中和图像视觉仍由未来能力或宿主/Core 负责。每个 session
-最多追踪 64 个 image 终态；超限时新通知在 source 改变或 teardown 前 fail closed。
+loading 策略和图像视觉由未来能力或宿主/Core 负责；map 命中和区域几何由 Core 提供。
+各 session 最多追踪 64 个 image 终态；
+新通知在 source 改变或 teardown 前 fail closed。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
