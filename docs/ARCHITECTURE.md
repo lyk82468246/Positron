@@ -145,14 +145,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `children`/`childNodes`/query snapshot 失效，宿主负责输入/事件策略及后续
   style/layout/paint。该路径不派发事件、不获取资源、不操作 native 控件，也不实现节点
   插入、reparent 或完整 live collection；
-- Text 自身 mutation：`PCore_NodeSetTextChildById` 按父元素 UTF-8 id 和未过滤的
-  `childNodes` 索引只修改现有 `DOM_TEXT_NODE` 的数据，成功后使 retained layout 失效，
-  不改变 child list、不插入/删除/reparent、不派发事件。Browser 通过扩展的
-  `PBrowserScriptDomWriteCallbacksEx` 复用既有 `__pcoreSetText` slot，将
-  `Text.nodeValue`、`Text.data` 和 `Text.textContent` setter 转给宿主；
-  `appendData()`、`insertData()`、`deleteData()` 和 `replaceData()` 在 Browser 侧计算
-  有界新字符串后复用同一 setter。宿主只负责 callback 接线和后续 style/layout/paint，
-  失效或 detached wrapper 必须安全失败；
+- CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
+  `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
+  `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
+  layout 失效，不改变 child list、不插入/删除/reparent、不派发事件。Browser 通过
+  `PBrowserScriptDomWriteCallbacksEx2` 复用既有 `__pcoreSetText` slot，将
+  `nodeValue`/`data`/`textContent` setter 与四个 CharacterData mutator 转给宿主；Text
+  仍可使用 Ex 表。宿主只负责 callback 接线和后续 style/layout/paint，失效或 detached
+  wrapper 必须安全失败；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
@@ -497,9 +497,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   relation 44/45 还把 effective-disabled 与 option default-selected 状态交给 Browser
   selector；同时在 form callback 注册后按需注册 `PBrowserScriptOptionCallbacks`，把
   `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`，并让通用 DOM
-  attribute/text callback 支持 option 的 `value`/`label`/`text`；需要脚本 Text setter
-  时注册 `PBrowserScriptDomWriteCallbacksEx`，把父 id/childNodes 索引转给
-  `PCore_NodeSetTextChildById`；宿主不复制 box tree、
+  attribute/text callback 支持 option 的 `value`/`label`/`text`；需要脚本 CharacterData
+  setter 时注册 `PBrowserScriptDomWriteCallbacksEx`（仅 Text）或 Ex2（含 Comment/CDATA），
+  把父 id/childNodes 索引转给对应的 Core child-data primitive；宿主不复制 box tree、
   滚动模型、默认状态或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
@@ -575,9 +575,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 表单 option 的 selected/defaultSelected adapter 使用独立的可选 callback table，
   保持既有 `PBrowserScriptFormCallbacks` 布局不变；Browser 只在注册且字段完整时启用，
   缺失或失败按 fail-closed 处理。
-- DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，复用
-  旧的 `__pcoreSetText` native slot；旧的 `PBrowserScriptDomWriteCallbacks` 布局和
-  element-only 语义保持不变。
+- DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，Ex2 再
+  追加 Comment/CDATA callback；两者复用旧的 `__pcoreSetText` native slot。旧的
+  `PBrowserScriptDomWriteCallbacks` 布局和 element-only 语义保持不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

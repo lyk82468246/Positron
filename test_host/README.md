@@ -420,11 +420,16 @@ Text 节点，保持连接中 wrapper 与 NodeList snapshot 身份，更新 `len
 旧 wrapper 保留最近一次成功数据。宿主只负责扩展 callback 接线、可选 restyle、fixture
 与断言，仍不实现插入、reparent、文本节点删除、MutationObserver 或完整 live collection。
 
-TEST1204 断言 Text 的 CharacterData 方法：`appendData()`、`insertData()`、`deleteData()`
-和 `replaceData()` 在 Browser 侧计算 UTF-16 code-unit 范围后复用同一 Core 文本桥，验证
-连续修改、超长 count 截断、wrapper/NodeList 身份和错误范围。comment、CDATA 与 detached
-wrapper 的写入安全失败；宿主只负责 callback 接线、fixture 与断言，不实现 CharacterData
-业务语义或节点结构 mutation。
+TEST1204 断言 Text、Comment 的 CharacterData 方法：`appendData()`、`insertData()`、
+`deleteData()` 和 `replaceData()` 在 Browser 侧计算 UTF-16 code-unit 范围后复用同一 Core
+文本桥，验证连续修改、超长 count 截断、wrapper/NodeList 身份和错误范围。Comment 现在
+可更新，invalid/detached wrapper 仍安全失败；宿主只负责 callback 接线、fixture 与断言，
+不实现 CharacterData 业务语义或节点结构 mutation。
+
+TEST1205 在同一离线 child-node fixture 上验证 Ex2 callback 与
+`PCore_NodeSetCharacterDataChildById`：Comment 的 setter 和四个 mutator 保持 child list、
+wrapper 身份，成功后使 retained layout 失效，并验证 Text/element/缺失/越界边界及 detached
+写入。CDATA 沿用同一公共 DLL/typed callback 合同；宿主仍只接线和断言，不拥有产品语义。
 
 ### Native EDIT/SELECT/button/file
 

@@ -5505,18 +5505,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "String(g.location.href):'';},enumerable:true});Object.defineProperty(n,'namespaceURI',{"
         "get:function(){return n.nodeType===1?'http://www.w3.org/1999/xhtml':null;},enumerable:true});"
         "Object.defineProperty(n,'prefix',{value:null,writable:false,configurable:false,enumerable:true});"
-        "function setText11(v){var s=String(v),ok;"
-        "if(t!==3||!current11(n)||!o||typeof o.__id!=='string'||o.__id===''||"
+        "function setCharacterData11(v){var s=String(v),ok;"
+        "if((t!==3&&t!==4&&t!==8)||!current11(n)||!o||"
+        "typeof o.__id!=='string'||o.__id===''||"
         "typeof g.__pcoreSetText!=='function'){return false;}"
-        "try{ok=g.__pcoreSetText({parentId:o.__id,index:i,text:s});}"
+        "try{ok=g.__pcoreSetText({parentId:o.__id,index:i,nodeType:t,text:s});}"
         "catch(e){return false;}if(!ok){return false;}data11=s;return true;}"
-        "function requireText11(){if(t!==3||!current11(n)){"
-        "throw new Error('character data unavailable');}}"
+        "function setText11(v){if(t!==3){return false;}return setCharacterData11(v);}"
+        "function requireCharacterData11(){if((t!==3&&t!==4&&t!==8)||"
+        "!current11(n)){throw new Error('character data unavailable');}}"
         "function offset11(v,l){var a=Number(v);if(a!==a||!isFinite(a)||a<0||"
         "a!==Math.floor(a)||a>l){throw new Error('character data offset');}return a;}"
         "function count11(v){var a=Number(v);if(a!==a||!isFinite(a)||a<0||"
         "a!==Math.floor(a)){throw new Error('character data count');}return a;}"
-        "function writeText11(s){if(!setText11(s)){throw new Error('text node update failed');}}"
+        "function writeCharacterData11(s){if(!setCharacterData11(s)){"
+        "throw new Error('character data update failed');}}"
         "n.isDefaultNamespace=function(v){var s=v===null||v===undefined?null:String(v);"
         "var ns=n.namespaceURI;return ns===null?s===null:ns===s;};"
         "n.lookupNamespaceURI=function(v){var s=v===null||v===undefined?'':String(v);"
@@ -5530,23 +5533,26 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(n,'localName',{get:function(){return n.nodeType===1?n.nodeName.toLowerCase():null;},enumerable:true});"
         "Object.defineProperty(n,'nodeValue',{get:function(){var z;if(n.nodeType===1){return null;}"
         "if(!current11(n)){return data11;}z=r(o,17,i);return typeof z==='string'?z:null;},"
-        "set:function(v){if(n.nodeType===1){return;}if(!setText11(v)){"
-        "throw new Error('text node update failed');}},enumerable:true});"
+        "set:function(v){if(n.nodeType===1){return;}if(!setCharacterData11(v)){"
+        "throw new Error('character data update failed');}},enumerable:true});"
         "Object.defineProperty(n,'textContent',{get:function(){var z;if(!current11(n)){return data11;}"
         "z=r(o,19,i);return typeof z==='string'?z:'';},set:function(v){"
-        "if(!setText11(v)){throw new Error('text node update failed');}},enumerable:true});"
+        "if(n.nodeType===1){return;}if(!setCharacterData11(v)){"
+        "throw new Error('character data update failed');}},enumerable:true});"
         "Object.defineProperty(n,'data',{get:function(){var z=n.nodeValue;return z===null?'':z;},"
-        "set:function(v){if(!setText11(v)){throw new Error('text node update failed');}},enumerable:true});"
+        "set:function(v){if(!setCharacterData11(v)){"
+        "throw new Error('character data update failed');}},enumerable:true});"
         "Object.defineProperty(n,'length',{get:function(){return n.data.length;},enumerable:true});"
-        "n.appendData=function(v){var s;requireText11();s=n.data+String(v);writeText11(s);};"
-        "n.insertData=function(offset,v){var s=n.data,a;requireText11();"
-        "a=offset11(offset,s.length);writeText11(s.substring(0,a)+String(v)+s.substring(a));};"
-        "n.deleteData=function(offset,count){var s=n.data,a,b;requireText11();"
+        "n.appendData=function(v){var s;requireCharacterData11();"
+        "s=n.data+String(v);writeCharacterData11(s);};"
+        "n.insertData=function(offset,v){var s=n.data,a;requireCharacterData11();"
+        "a=offset11(offset,s.length);writeCharacterData11(s.substring(0,a)+String(v)+s.substring(a));};"
+        "n.deleteData=function(offset,count){var s=n.data,a,b;requireCharacterData11();"
         "a=offset11(offset,s.length);b=count11(count);if(b>s.length-a){b=s.length-a;}"
-        "writeText11(s.substring(0,a)+s.substring(a+b));};"
-        "n.replaceData=function(offset,count,v){var s=n.data,a,b;requireText11();"
+        "writeCharacterData11(s.substring(0,a)+s.substring(a+b));};"
+        "n.replaceData=function(offset,count,v){var s=n.data,a,b;requireCharacterData11();"
         "a=offset11(offset,s.length);b=count11(count);if(b>s.length-a){b=s.length-a;}"
-        "writeText11(s.substring(0,a)+String(v)+s.substring(a+b));};"
+        "writeCharacterData11(s.substring(0,a)+String(v)+s.substring(a+b));};"
         "n.substringData=function(offset,count){var a=Number(offset),b=Number(count),s=n.data;"
         "if(a!==a||b!==b||a<0||b<0){return '';}a=Math.floor(a);b=Math.floor(b);"
         "return s.substring(a,a+b);};"
@@ -5966,6 +5972,7 @@ typedef struct p_browser_script_dom_write_binding {
     void *pw;
     PBrowserScriptSetTextFn set_text;
     PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7250,6 +7257,7 @@ static int p_browser_script_dom_set_text(void *pw,
     const char *parent_id;
     const char *text;
     int child_index;
+    int node_type;
     int changed;
 
     binding = (p_browser_script_dom_write_binding *) pw;
@@ -7259,6 +7267,7 @@ static int p_browser_script_dom_set_text(void *pw,
     parent_id = (object != NULL) ? PJson_GetString(object, "parentId") : NULL;
     text = (object != NULL) ? PJson_GetString(object, "text") : NULL;
     child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
+    node_type = (object != NULL) ? PJson_GetInt(object, "nodeType") : 0;
     if (binding == NULL || root == NULL || text == NULL) {
         PJson_Free(root);
         return 1;
@@ -7272,10 +7281,21 @@ static int p_browser_script_dom_set_text(void *pw,
         changed = binding->set_text(binding->pw, id, text);
     } else if (parent_id != NULL && parent_id[0] != '\0' &&
             child_index >= 0 &&
-            strlen(parent_id) < PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX &&
-            binding->set_child_text != NULL) {
-        changed = binding->set_child_text(binding->pw, parent_id,
-                (unsigned int) child_index, text);
+            strlen(parent_id) < PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+        if ((node_type == 3 || (node_type == 0 &&
+                binding->set_character_data_child == NULL)) &&
+                binding->set_child_text != NULL) {
+            changed = binding->set_child_text(binding->pw, parent_id,
+                    (unsigned int) child_index, text);
+        } else if ((node_type == 4 || node_type == 8) &&
+                binding->set_character_data_child != NULL) {
+            changed = binding->set_character_data_child(binding->pw,
+                    parent_id, (unsigned int) child_index,
+                    (unsigned int) node_type, text);
+        } else {
+            PJson_Free(root);
+            return 1;
+        }
     } else {
         PJson_Free(root);
         return 1;
@@ -9899,6 +9919,43 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx(
     binding->pw = callbacks->pw;
     binding->set_text = callbacks->set_text;
     binding->set_child_text = callbacks->set_child_text;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx2(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx2 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx2) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

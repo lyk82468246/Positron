@@ -448,17 +448,16 @@ fail closed；不派发 DOM 事件，不支持插入、reparent、文本节点�
 无 id 文本 wrapper 保留数据并变为 detached。编辑元素的 `innerText` 共享这条失效规则；
 宿主负责输入/事件策略及重新 style/layout/paint。
 
-需要 Text setter 时，宿主改用扩展表注册同一条 native slot，并同时提供旧的 element
-setter 与 `set_child_text`。后者收到父 id、未过滤 childNodes 索引和 UTF-8 文本，转给
-`PCore_NodeSetTextChildById`；成功后宿主安排重排。Browser 保持连接中 wrapper 身份，对
-非 Text、越界或 detached 写入安全失败。旧注册函数保持 element-only ABI，不增加
-native-function 数量。
+需要 Text setter 时，宿主用 `PBrowserScriptDomWriteCallbacksEx` 注册 native slot，提供
+element setter 与 `set_child_text`；后者收到父 id、未过滤 `childNodes` 索引和 UTF-8 文本，
+转给 `PCore_NodeSetTextChildById`。Comment/CDATA 改用 Ex2 的
+`set_character_data_child`；Text 仍走旧 callback，Ex2 不改变旧表布局或 slot 数量。成功
+后宿主重排，失效或 detached wrapper 安全失败。
 
-同一 Text wrapper 还提供有界的 `appendData()`、`insertData()`、`deleteData()` 和
-`replaceData()`。offset/count 使用 JavaScript 字符串的 UTF-16 code-unit 语义；offset
-和负数/非整数 count 会抛出错误，超长 count 截断。成功调用复用上述 setter，保持 child
-list、wrapper/NodeList 身份并使 Core retained layout 失效，不派发事件。comment/CDATA、
-`splitText()`、节点插入和 detached wrapper 仍安全失败。
+Text、Comment、CDATA wrapper 提供 `appendData()`、`insertData()`、`deleteData()`、
+`replaceData()` 及 `nodeValue`/`data`/`textContent` setter。offset/count 使用 UTF-16
+code-unit 语义；负数/非整数 count 抛错，超长 count 截断。成功保持 child/wrapper 身份并
+使 retained layout 失效；`splitText()`、mutation 和 detached 失败。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1204
+#define TEST_MAX_NUMBER 1205
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15169,6 +15169,33 @@ static int pcore_browser_script_dom_set_child_text(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_set_character_data_child(void *pw,
+        const char *parent_id, unsigned int child_index,
+        unsigned int node_type, const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            text == NULL || (node_type != 4 && node_type != 8)) {
+        return (bridge == NULL || bridge->document == NULL ||
+                parent_id == NULL || text == NULL) ? -1 : 0;
+    }
+    result = PCore_NodeSetCharacterDataChildById(bridge->document, parent_id,
+            child_index, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16700,7 +16727,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx2 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -16858,6 +16885,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
     dom_write_callbacks.set_child_text =
             pcore_browser_script_dom_set_child_text;
+    dom_write_callbacks.set_character_data_child =
+            pcore_browser_script_dom_set_character_data_child;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17055,7 +17084,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx2(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -47323,7 +47352,7 @@ static BOOL test1204_browser_character_data_mutation_contract(void)
         "(function(){var r=document.getElementById('root'),list=r.childNodes,"
         "t=list[0],comment=list[2],before,appendOk,insertOk,deleteOk,replaceOk,"
         "same,invalidOffset,invalidFraction,invalidCount,unchanged,"
-        "commentRejected,detached,stale;"
+        "commentUpdated,detached,stale;"
         "before=list.length===4&&t.data==='alpha'&&list===r.childNodes;"
         "appendOk=t.appendData('-tail')===undefined&&t.data==='alpha-tail'&&"
         "t===r.childNodes[0];"
@@ -47338,14 +47367,14 @@ static BOOL test1204_browser_character_data_mutation_contract(void)
         "catch(e){invalidFraction=true;}"
         "invalidCount=false;try{t.deleteData(0,-1);}catch(e){invalidCount=true;}"
         "unchanged=t.data==='alpha-CORE';"
-        "commentRejected=false;try{comment.appendData('x');}"
-        "catch(e){commentRejected=true;}"
+        "commentUpdated=false;try{comment.appendData('x');"
+        "commentUpdated=comment.data==='notex';}catch(e){}"
         "r.textContent='done';detached=t.parentNode===null&&!t.isConnected&&"
         "t.data==='alpha-CORE';stale=false;"
         "try{t.replaceData(0,1,'x');}catch(e){stale=true;}"
         "return document.getElementById('result').textContent="
         "[before,appendOk,insertOk,deleteOk,replaceOk,same,invalidOffset,"
-        "invalidFraction,invalidCount,unchanged,commentRejected,detached,"
+        "invalidFraction,invalidCount,unchanged,commentUpdated,detached,"
         "stale,t.data==='alpha-CORE'].join('|');})();";
     static const char EXPECTED[] =
         "true|true|true|true|true|true|true|true|true|true|true|true|true|true";
@@ -47358,8 +47387,106 @@ static BOOL test1204_browser_character_data_mutation_contract(void)
     }
     show_info(L"TEST 1204 OK",
             "Text CharacterData append/insert/delete/replace mutations"
-            " preserve wrappers and reject invalid, comment, and detached"
-            " writes through the bounded Core bridge.");
+            " preserve wrappers, update comment CharacterData, and reject"
+            " invalid or detached writes through the bounded Core bridge.");
+    return TRUE;
+}
+
+/* TEST 1205 - Comment CharacterData writes share the bounded Core bridge. */
+static BOOL test1205_browser_comment_character_data_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'>alpha<span id='child'>beta</span>"
+        "<!--note--><em>gamma</em></div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),list=r.childNodes,"
+        "c=list[2],before,n1,n2,appendOk,insertOk,deleteOk,replaceOk,"
+        "same,invalidOffset,invalidCount,detached,stale;"
+        "before=list.length===4&&c.nodeType===8&&c.data==='note'&&"
+        "c.nodeValue==='note'&&c.textContent==='note'&&list===r.childNodes;"
+        "c.nodeValue='memo';"
+        "n1=c.nodeValue==='memo'&&c.data==='memo'&&c.textContent==='memo';"
+        "c.data='memo2';"
+        "n2=c.nodeValue==='memo2'&&c.data==='memo2'&&c===r.childNodes[2];"
+        "appendOk=c.appendData('-tail')===undefined&&c.data==='memo2-tail';"
+        "insertOk=c.insertData(5,'+')===undefined&&c.data==='memo2+-tail';"
+        "deleteOk=c.deleteData(5,1)===undefined&&c.data==='memo2-tail';"
+        "replaceOk=c.replaceData(6,99,'CORE')===undefined&&"
+        "c.data==='memo2-CORE'&&c.length===10;"
+        "same=list===r.childNodes&&list[2]===c&&"
+        "r.textContent.indexOf('memo2')<0;"
+        "invalidOffset=false;try{c.insertData(11,'x');}catch(e){invalidOffset=true;}"
+        "invalidCount=false;try{c.deleteData(0,-1);}catch(e){invalidCount=true;}"
+        "c.textContent='final';"
+        "r.textContent='done';"
+        "detached=c.parentNode===null&&!c.isConnected&&c.data==='final';"
+        "stale=false;try{c.appendData('x');}catch(e){stale=true;}"
+        "stale=stale&&c.data==='final';"
+        "return document.getElementById('result').textContent="
+        "[before,n1,n2,appendOk,insertOk,deleteOk,replaceOk,same,"
+        "invalidOffset,invalidCount,detached,stale].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true|true|true|true";
+    HANDLE document;
+    PCoreLayoutStats stats;
+    char value[128];
+    char error[768];
+    int value_bytes;
+    BOOL core_ok;
+    BOOL script_ok;
+
+    document = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    value_bytes = -1;
+    core_ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL && PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeSetCharacterDataChildById(document, "root", 2,
+            "api-comment") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 2, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "api-comment") == 0 &&
+            PCore_NodeSetCharacterDataChildById(document, "root", 0,
+            "api-text") == 0 &&
+            PCore_NodeSetCharacterDataChildById(document, NULL, 0, "x") == 1 &&
+            PCore_NodeSetCharacterDataChildById(document, "missing", 0,
+            "x") == 2 &&
+            PCore_NodeSetCharacterDataChildById(document, "root", 1,
+            "x") == 2 &&
+            PCore_NodeSetCharacterDataChildById(document, "root", 99,
+            "x") == 2 && PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_GetLayoutStats(document, &stats) == 0) {
+        core_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_child_node_case(1205, PROBE, EXPECTED, error,
+            sizeof(error));
+    if (!core_ok || !script_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d script=%d value=%s bytes=%d", core_ok,
+                    script_ok, value[0] != '\0' ? value : "(null)",
+                    value_bytes);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1205 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1205 OK",
+            "Comment CharacterData setters and append/insert/delete/replace"
+            " now use the additive Core bridge, preserve child and wrapper"
+            " identity, invalidate layout, and reject invalid or detached"
+            " writes without changing the child structure.");
     return TRUE;
 }
 
@@ -105498,6 +105625,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1202: ok = test1202_browser_dom_text_mutation_contract(); break;
         case 1203: ok = test1203_browser_text_node_mutation_contract(); break;
         case 1204: ok = test1204_browser_character_data_mutation_contract(); break;
+        case 1205: ok = test1205_browser_comment_character_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

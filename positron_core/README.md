@@ -169,6 +169,12 @@ style/layout/paint。Browser 的 `Text.nodeValue`、`Text.data` 和 `Text.textCo
 `replaceData()` 也先在脚本侧按 UTF-16 code-unit 计算新字符串，再复用同一个入口；Core
 仍只负责一次完整 Text 数据替换，不承担 CharacterData 参数转换或事件派发。
 
+`PCore_NodeSetCharacterDataChildById` 是同一边界的通用入口：除 Text 外还接受现有
+`DOM_COMMENT_NODE` 与 `DOM_CDATA_SECTION_NODE`，仍使用未过滤 childNodes 索引，返回码和
+retained-layout 失效规则不变。它只替换一个已有节点的数据，不插入、删除、reparent 或
+派发事件；Browser 的 Ex2 write callback 将 Comment/CDATA 请求转给宿主，再由宿主安排
+正常的 style/layout/paint。
+
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
 布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`

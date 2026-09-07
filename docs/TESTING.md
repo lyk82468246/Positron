@@ -622,12 +622,17 @@ fail closed、成功 mutation 使 retained layout 失效，以及父级替换后
 完整 live collection、事件或 native/视觉行为；宿主只负责 callback 接线、可选 restyle、
 fixture 与断言。
 
-TEST1204 覆盖 Text 的 CharacterData 方法：`appendData()`、`insertData()`、`deleteData()`
-和 `replaceData()` 在 Browser 侧按 UTF-16 code-unit 计算新字符串，再复用同一 Core
-direct-child setter。自动断言覆盖方法返回值、连续替换后的数据/length、超长 count 截断、
-NodeList 与 Text wrapper identity，以及负数/非整数/越界范围、comment 和 detached wrapper
-的 fail-closed 行为。该门不实现 comment/CDATA mutation、`splitText()`、节点插入、
-reparent、文本节点删除、MutationObserver、事件或 native/视觉行为；宿主只负责既有
+TEST1204 覆盖 Text、Comment 的 CharacterData 方法：`appendData()`、`insertData()`、
+`deleteData()` 和 `replaceData()` 在 Browser 侧按 UTF-16 code-unit 计算新字符串，再复用
+同一 Core direct-child setter。自动断言覆盖方法返回值、连续替换后的数据/length、超长
+count 截断、NodeList 与 wrapper identity，以及负数/非整数/越界范围和 detached wrapper
+的 fail-closed 行为；Comment 写入应成功。
+
+TEST1205 覆盖新增 `PCore_NodeSetCharacterDataChildById` 与
+`PBrowserScriptDomWriteCallbacksEx2`：Comment 的 setter 和四个 mutator 保持 child list、
+wrapper identity，成功后使 retained layout 失效；Core 直接调用同时验证 Text、element、
+缺失和越界返回码。CDATA 使用同一公共接口合同。两项测试都不实现 `splitText()`、节点
+插入、reparent、文本节点删除、MutationObserver、事件或 native/视觉行为；宿主只负责
 callback 接线、fixture 与断言。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。

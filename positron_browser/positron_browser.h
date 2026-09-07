@@ -653,6 +653,24 @@ typedef struct PBrowserScriptDomWriteCallbacksEx {
     PBrowserScriptSetTextChildFn set_child_text;
 } PBrowserScriptDomWriteCallbacksEx;
 
+/* Extended CharacterData write table. The Ex registration above remains
+ * ABI-compatible and continues to cover element text and Text children.
+ * Ex2 adds Comment/CDATA direct-child writes while reusing the same native
+ * JSON slot. `node_type` is the DOM value 8 (Comment) or 4 (CDATA); Text
+ * children continue through set_child_text. All ids/text are borrowed UTF-8
+ * for the synchronous call. set_character_data_child returns >0 after an
+ * update, 0 when the target or node type is unavailable, and <0 on failure. */
+typedef int (*PBrowserScriptSetCharacterDataChildFn)(void *pw,
+        const char *parent_id, unsigned int child_index,
+        unsigned int node_type, const char *text);
+typedef struct PBrowserScriptDomWriteCallbacksEx2 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+} PBrowserScriptDomWriteCallbacksEx2;
+
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
  * Core-owned removal of one direct element child. remove_child returns >0
@@ -1981,6 +1999,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx2(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx2 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(
