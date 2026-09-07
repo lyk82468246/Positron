@@ -3525,6 +3525,31 @@ static pcore_render *pcore_get_render(dom_document *doc)
     return (pcore_render *) d;
 }
 
+/* Detach and free the retained box tree before a DOM mutation removes a
+ * node that the tree borrows.  libdom does not invoke the user-data handler
+ * when data is explicitly removed, so the old render state is released here
+ * after the document slot has been cleared. */
+void pcore_render_invalidate(dom_document *doc)
+{
+    void *old;
+
+    if (doc == NULL || pcore_render_key == NULL) {
+        return;
+    }
+    old = NULL;
+    if (dom_node_get_user_data((struct dom_node *) doc,
+            pcore_render_key, &old) != DOM_NO_ERR || old == NULL) {
+        return;
+    }
+    if (dom_node_set_user_data((struct dom_node *) doc, pcore_render_key,
+            NULL, NULL, &old) != DOM_NO_ERR) {
+        return;
+    }
+    if (old != NULL) {
+        pcore_render_free((pcore_render *) old);
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* DOM events                                                         */
 /* ------------------------------------------------------------------ */

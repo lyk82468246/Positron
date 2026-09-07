@@ -77,7 +77,8 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge（TEST1146–1193）；
+  的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -396,6 +397,14 @@ TEST1179 断言 Browser selector 的 `:visited` 通过
 属性 mutation、查询顺序以及带参数、伪元素、尾随逗号和注销 callback 的
 fail-closed。Browser 不保存 history、不导航、不改变 style/layout/paint；宿主只
 解析 URL、选择历史来源并返回布尔结果，真实链接样式和隐私策略仍需宿主决定。
+
+TEST1201 断言 Browser/Core 的有界 direct-element DOM mutation：`Element.removeChild()`
+只接受直接 element child，错误 parent、非 direct child、缺失 id 和结构 child token
+必须抛出或安全失败；成功删除后，新的 `children`/`childNodes`/query 结果排除被移除
+子树，旧 snapshot 保持不变，detached `Element.remove()` 不产生副作用。Core 的
+`PCore_NodeRemoveChildById` 在成功 mutation 后使 retained layout 失效，宿主 fixture
+只负责 callback 接线、重新 style/layout 和断言，不复制 DOM 或布局语义。该测试不覆盖
+插入、reparent、文本节点删除、MutationObserver、完整 live collection 或 native 视觉。
 
 ### Native EDIT/SELECT/button/file
 

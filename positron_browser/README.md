@@ -430,6 +430,19 @@ slot，不增加脚本 native-function 数量；未注册时 mutation 仍成功�
 重复注册返回 `PSCRIPT_ERROR_GLOBAL`，注销使用
 `PBrowser_ScriptSessionUnregisterImageSourceCallbacks()`，注销后后续 mutation 不再通知。
 
+### 有界 DOM 子节点删除
+
+宿主注册 `PBrowserScriptDomMutationCallbacks` 后，`remove_child` 将 UTF-8
+`parent_id`/`child_id` 转给 Core 的 `PCore_NodeRemoveChildById`。
+`Element.removeChild(child)` 只接受直接 element child，成功返回 wrapper 并刷新 receiver
+的 `children`/`childNodes` snapshot；连接中的 `Element.remove()` 复用该路径，detached
+element 是 no-op。
+
+Browser 只负责 JSON/错误映射；Core 删除成功后丢弃 retained layout，宿主必须
+重新 style/layout/paint。错误关系、缺失/过长 id、结构 child token 和未注册 callback
+fail closed；不派发 DOM 事件，不支持插入、reparent、文本节点删除或 live collection。
+该桥多占一个 native slot；重复注册返回 `PSCRIPT_ERROR_GLOBAL`。
+
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
 `:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/

@@ -582,7 +582,8 @@ TEST1199 覆盖图片 source identity 的生命周期通知：Browser 反映 `so
 pending `decode()` 并清除旧的 `load`/`error` 终态。有效的
 `PBrowser_ScriptSessionNotifyResize` 在媒体和 resize 事件前刷新 source identity，240/480
 CSS 视口切换与 Core relation 49 保持一致；未变化的 source 不被误拒绝。该门不执行
-fetch、选择、layout、paint 或自动资源加载，也不承诺完整媒体查询、动态 DOM 插入/删除、
+fetch、选择、layout、paint 或自动资源加载，也不承诺完整媒体查询、通用动态 DOM 插入/删除
+（仅另有有界 direct-element removal）、
 绝对 URL、CORS/referrer、loading 策略或 native 图像视觉；宿主只负责 mutation、通知、
 microtask pump 与断言。
 
@@ -593,7 +594,16 @@ TEST1200 覆盖脚本图片来源 mutation 的可选 Browser→宿主 typed call
 `PSCRIPT_ERROR_GLOBAL` 且 native-function 数量不变；内部 setter 的不一致元数据不会
 产生伪通知，注销后也不会再回调。callback 是 mutation 成功后的同步 borrowed snapshot，
 只为宿主安排 Core 查询和 replacement pipeline，不执行 I/O、选择、decode、layout 或
-paint；因此该门无新增立即人工风险，也不承诺动态 DOM 插入/删除或自动图像加载。
+paint；因此该门无新增立即人工风险，也不承诺通用动态 DOM 插入/删除或自动图像加载。
+
+TEST1201 覆盖有界 direct-element DOM removal：Browser 的 `Element.removeChild()` 只能
+删除 receiver 的直接 element child，错误 parent、非 direct child、缺失 id 和
+document/head/body 结构 child token 必须 fail closed；成功后新的 `children`、`childNodes`
+和 query snapshot 排除被移除子树，旧 snapshot 保持不变，detached `Element.remove()`
+是 no-op。Core 的 `PCore_NodeRemoveChildById` 在成功后清除 retained layout，fixture
+重新 style/layout 后才读取几何状态；该入口不派发事件、不插入或 reparent、不删除文本
+节点，也不实现完整 live collection。宿主只注册 typed callback、驱动 fixture 和断言，
+没有新增立即人工视觉风险。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

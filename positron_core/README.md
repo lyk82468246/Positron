@@ -145,6 +145,14 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   `decode()` 或事件；非 `img` 目标返回 unavailable；
 - script/runtime 所需的有限 element metadata。
 
+`PCore_NodeRemoveChildById` 是 Core 拥有的有界 DOM mutation：它按 UTF-8 id 删除一个
+element parent 的一个 direct element child，并拒绝缺失目标、非 direct pair、文本节点和
+document/head/body 等结构 child token。成功后会丢弃 retained box tree；调用方必须重新
+执行 style/layout/paint，并重新取得几何和 native-control 快照。该入口不派发事件、不做
+资源获取或 native 控件操作，返回 `0` 表示成功、`2` 表示目标或关系不可删除、`1` 表示
+参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；插入、
+reparent、文本节点删除和完整 live collection 仍不在此边界内。
+
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
 布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`

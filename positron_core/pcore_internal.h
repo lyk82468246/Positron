@@ -187,6 +187,11 @@ int pcore_box_overflow_axis_available(struct dom_document *doc,
 int pcore_box_layout_client_origin_for_node(struct dom_document *doc,
         struct dom_node *node, int *x, int *y);
 
+/* Drop the retained box tree before a DOM tree mutation can detach nodes it
+ * borrows. The helper is a no-op for an unlaid-out document and is owned by
+ * the Core layout translation unit. */
+void pcore_render_invalidate(struct dom_document *doc);
+
 /* Overflow scrollbar helpers owned by pcore_box_inspect.c. */
 struct scrollbar;
 bool pcore_scrollbar_is_dragging(struct scrollbar *scrollbar);

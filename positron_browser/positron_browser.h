@@ -636,6 +636,24 @@ typedef struct PBrowserScriptDomWriteCallbacks {
     PBrowserScriptSetTextFn set_text;
 } PBrowserScriptDomWriteCallbacks;
 
+/* Typed host adapter for the bounded direct-element DOM mutation boundary.
+ * The browser DLL parses the JSON request and the host performs the
+ * Core-owned removal of one direct element child. remove_child returns >0
+ * after removal, 0 when either id is absent or the pair is not removable,
+ * and <0 on adapter failure. The callback is synchronous and receives
+ * borrowed UTF-8 ids; it does not dispatch events, style/layout, paint or
+ * native-control work. The host must re-query its document and schedule any
+ * required restyle/rebuild after a successful mutation. Text nodes,
+ * document structure tokens, reparenting and insertion remain outside this
+ * bounded surface. */
+typedef int (*PBrowserScriptRemoveChildFn)(void *pw,
+        const char *parent_id, const char *child_id);
+typedef struct PBrowserScriptDomMutationCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptRemoveChildFn remove_child;
+} PBrowserScriptDomMutationCallbacks;
+
 /* Typed host adapter for the bounded single-element contenteditable
  * boundary. The browser DLL owns the JSON bridge and `isContentEditable`
  * property; the host reads effective state and performs a plain-text Core
@@ -1945,6 +1963,11 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomRelationCallbacks(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacks(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacks *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptDomMutationCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDomMutationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(
         HANDLE hSession,

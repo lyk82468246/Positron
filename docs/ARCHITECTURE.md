@@ -79,7 +79,7 @@ bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必�
 
 每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存上限，不把该运行时当作完整浏览器沙箱。
 
-`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。该上限是固定的 WM6 资源预算，不应通过跳过已注册的 Browser bridge 或引入无界表来绕过。
+`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。该上限是固定的 WM6 资源预算，不应通过跳过已注册的 Browser bridge 或引入无界表来绕过。
 
 ### `positron_core.dll`
 
@@ -134,6 +134,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   无 validation/submitter state-only 结果入口；它们不派发事件、不导航、不关闭 dialog，
   调用方负责容量与 multipart handle 释放；
 - 单元素 `contenteditable` 的祖先继承、有效模式、有界 UTF-8 纯文本 mutation，以及供宿主创建编辑表面的已布局 editing-host 快照；剪贴板数据不进入 Core 文档状态；
+- 有界 direct-element DOM mutation：`PCore_NodeRemoveChildById` 按 UTF-8 id 删除一个
+  direct element child，拒绝缺失、非 direct、文本节点和 document/head/body 结构 child
+  token，并在成功后使 retained layout 失效；调用方必须重新 style/layout/paint。该入口
+  不派发事件、不获取资源、不操作 native 控件，插入、reparent 和完整 live collection
+  仍由未来能力决定；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
@@ -228,6 +233,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `__pcoreFormProperty` JSON/native slot，不增加 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 占用。
   `selected` setter 遵守 Core 的单选互斥和多选规则，`defaultSelected` setter 只更新
   默认基线；Browser 不创建 native SELECT、弹出菜单或视觉重绘，宿主负责相应控件接线。
+- `Element.removeChild()` 与 `Element.remove()` 的有界 direct-element mutation：Browser
+  解析 `{parentId, childId}`，同步调用宿主注册的
+  `PBrowserScriptDomMutationCallbacks`，由宿主转调 Core 的
+  `PCore_NodeRemoveChildById`。成功后只使 receiver 的 `children`/`childNodes` 快照失效并
+  返回被移除 wrapper；错误关系抛出脚本错误，detached `remove()` 是 no-op。Browser 不
+  派发 mutation event、不插入或 reparent 节点，也不自行 style/layout/paint；宿主必须在
+  成功 callback 后安排 Core 重排。
 - 同一 DOM bridge 还提供 `<option>` 的 `value`、`label`、`text` 基础 IDL 属性。Browser
   在对应 attribute 存在时返回 `value`/`label`，缺失时回退到 option 文本；`text` 直接
   读写 option 的纯文本，因此属性或文本 mutation 会即时反映到后续读取和所属 select

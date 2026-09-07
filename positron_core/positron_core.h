@@ -239,6 +239,19 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
 
+/* Remove one element child from one element parent. Both arguments are
+ * UTF-8 DOM ids (the three reserved document-structure tokens are rejected
+ * as removable children). The operation requires the child to be a direct
+ * child of the named parent; it never re-parents, clones or removes a
+ * document root. Returns 0 after removal, 2 when either element is absent,
+ * non-removable or not a direct parent/child pair, and 1 for invalid input or
+ * a DOM failure. Any retained layout is invalidated after a successful
+ * removal; callers must style/layout/paint again before using geometry or
+ * native-control snapshots. No events, resource fetches or native-control
+ * work are dispatched by this Core primitive. */
+PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
+        const char *parent_id, const char *child_id);
+
 /* Minimal single-element contenteditable boundary for browser/runtime hosts.
  * The effective state walks the element's ancestors: an explicit true or
  * empty value enables editing, false disables it, plaintext-only enables the

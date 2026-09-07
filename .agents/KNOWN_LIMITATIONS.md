@@ -117,13 +117,19 @@
   picture source 的 `media`/`type`/`srcset`/`sizes` 时，宿主可在 DOM attribute callbacks
   之后注册可选的 `PBrowser_ScriptSessionRegisterImageSourceCallbacks`，同步取得借用的
   id/kind/attribute/removed 元数据；该桥复用既有 native slot，不执行自动 I/O、选择、
-  layout 或 paint。未注册时 mutation 不回滚；动态 DOM 插入/删除、完整 image loading
+  layout 或 paint。未注册时 mutation 不回滚；通用动态 DOM 插入/删除（仅另有有界
+  direct-element removal）、完整 image loading
   和宿主 replacement pipeline 仍不在 Browser 契约内，callback 也不得重入或销毁 session。
 
 ## DOM、表单与事件
 
 - DOM bridge 以有界 ID/结构 token 和 snapshot collection 为主，不是完整 live DOM/CSSOM。
 - 大量 IDL reflection、namespace、mutation observer、range/selection 和 shadow DOM 不存在。
+- Browser/Core 现在只支持有界的 direct-element 删除：`Element.removeChild()`/
+  `Element.remove()` 通过 `PCore_NodeRemoveChildById` 处理带 id 的直接子元素，并在成功后
+  使 retained layout 失效；调用方必须重新 style/layout/paint。插入、reparent、文本节点
+  删除、MutationObserver 和完整 live collection 仍未实现，错误关系与缺失/过长 id 必须
+  fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -194,7 +200,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 768 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 28。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector 和 FormData 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 768 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -549,13 +555,21 @@
   source 已变化时的 pending `decode()` `EncodingError`、旧终态清理，以及
   `PBrowser_ScriptSessionNotifyResize` 在媒体/resize 事件前的 source 刷新。Browser 的
   pending decode 和 image 终态各限 64 项，未变化的 source 保持 pending；该门不提供
-  自动 fetch、选择、layout、paint、动态 DOM 插入/删除、完整媒体查询、绝对 URL、
+  自动 fetch、选择、layout、paint、通用动态 DOM 插入/删除（仅另有有界 direct-element
+  removal）、完整媒体查询、绝对 URL、
   CORS/referrer、loading 策略或 native 图像视觉。
 - TEST1200 覆盖脚本图片来源 mutation 的可选 typed callback：`img.sizes`、source 的
   `media`/`type`/`srcset`/`sizes` 以及 set/remove attribute 都产生正确的 id、kind、
   attribute 和 removed 元数据；重复注册、native-function 数量不变、不一致 metadata
-  fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖动态 DOM
-  插入/删除、完整 loading、视觉或触摸/SIP 风险。
+  fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
+  插入/删除（TEST1201 仅覆盖有界 direct-element removal）、完整 loading、
+  视觉或触摸/SIP 风险。
+- TEST1201 覆盖 Browser/Core 的有界 direct-element DOM removal：成功删除只接受直接
+  element child，错误 parent、非 direct child、缺失 id 和 document/head/body 结构 child
+  token fail closed；新的 relation/query snapshot 排除被移除子树，旧 snapshot 保持不变，
+  detached `Element.remove()` 是 no-op。Core 成功后清除 retained layout，调用方必须重新
+  style/layout/paint；该门不实现插入、reparent、文本节点删除、MutationObserver、完整
+  live collection 或 native/视觉行为，暂无新增立即人工风险。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

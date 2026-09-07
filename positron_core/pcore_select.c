@@ -7738,6 +7738,86 @@ PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
 
+PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
+        const char *parent_id, const char *child_id)
+{
+    dom_element *parent;
+    dom_element *child;
+    dom_node *actual_parent;
+    dom_node *removed;
+    dom_node_type parent_type;
+    dom_node_type child_type;
+    const char *structural;
+    dom_exception err;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            child_id == NULL || child_id[0] == '\0') {
+        return 1;
+    }
+    parent = pcore_element_by_id((dom_document *) hDoc, parent_id);
+    child = pcore_element_by_id((dom_document *) hDoc, child_id);
+    if (parent == NULL || child == NULL) {
+        if (parent != NULL) {
+            dom_node_unref((dom_node *) parent);
+        }
+        if (child != NULL) {
+            dom_node_unref((dom_node *) child);
+        }
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) parent, &parent_type) !=
+            DOM_NO_ERR || dom_node_get_node_type((dom_node *) child,
+            &child_type) != DOM_NO_ERR ||
+            parent_type != DOM_ELEMENT_NODE || child_type != DOM_ELEMENT_NODE) {
+        dom_node_unref((dom_node *) child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    structural = pcore_document_structural_token((dom_node *) child);
+    if (structural != NULL) {
+        dom_node_unref((dom_node *) child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    actual_parent = NULL;
+    if (dom_node_get_parent_node((dom_node *) child, &actual_parent) !=
+            DOM_NO_ERR || actual_parent == NULL) {
+        if (actual_parent != NULL) {
+            dom_node_unref(actual_parent);
+        }
+        dom_node_unref((dom_node *) child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    if (actual_parent != (dom_node *) parent) {
+        dom_node_unref(actual_parent);
+        dom_node_unref((dom_node *) child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    dom_node_unref(actual_parent);
+    removed = NULL;
+    err = dom_node_remove_child((dom_node *) parent, (dom_node *) child,
+            &removed);
+    if (err != DOM_NO_ERR) {
+        if (removed != NULL) {
+            dom_node_unref(removed);
+        }
+        dom_node_unref((dom_node *) child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    /* Boxes borrow DOM nodes. Invalidate them while the caller still owns a
+     * reference to the detached child, then release all libdom references. */
+    pcore_render_invalidate((dom_document *) hDoc);
+    if (removed != NULL) {
+        dom_node_unref(removed);
+    }
+    dom_node_unref((dom_node *) child);
+    dom_node_unref((dom_node *) parent);
+    return 0;
+}
+
 PCORE_API int PCore_NodeAttributeById(HANDLE hDoc, const char *element_id,
         const char *name, char *value, int value_capacity, int *out_bytes)
 {
