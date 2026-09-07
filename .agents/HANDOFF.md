@@ -8,14 +8,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。当前候选 next757 在 `positron_browser.dll` 增加了
-  `<picture><source>` 的属性 reflection、Core mutation/viewport 后的 source identity
-  失效桥和 `PBrowser_ScriptSessionNotifyImageSourceChange`；Browser 只维护 pending
-  decode/终态，`test_host` 只新增 TEST1199 fixture/断言。设备门为每次远端启动使用唯一
-  executable basename，以降低 WM6 在超时后复用旧路径/名称的风险；它仍只复用 WMDC GUI
-  当前唯一 RAPI 会话，超时进程需在设备端正常结束。
+- 分支：`main`。当前基线 next758 在 `positron_browser.dll` 增加了可选的
+  Browser→宿主 image-source mutation typed callback；它复用既有 DOM attribute bridge，
+  不增加脚本 native slot，并在 Core mutation 成功后同步提供 borrowed UTF-8 元数据。
+  Browser 仍不执行资源替换；`test_host` 只新增 TEST1200 fixture/断言。设备门为每次远端
+  启动使用唯一 executable basename，以降低 WM6 在超时后复用旧路径/名称的风险；它仍只
+  复用 WMDC GUI 当前唯一 RAPI 会话，超时进程需在设备端正常结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1199。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1200。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -65,7 +65,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   malformed/unsupported source 回退，以及 240/480 CSS 视口下 Core/Browser
   `currentSrc`、fetch/cache/layout/natural-size 的一致性；TEST1199 覆盖 source
   property reflection、Core mutation/viewport 通知、stale decode 拒绝与 source identity
-  不变时的保留。
+  不变时的保留；TEST1200 覆盖脚本 img/source mutation 的 typed host callback、重复
+  注册/native-slot 不变、metadata fail-closed 和注销后的静默。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -78,12 +79,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 - 当前基线已包含表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
   生命周期、焦点、图片元数据/decode/image-map，以及 next754–757 的有界 `srcset`、
-  `<picture><source>` 选择和 source identity 生命周期；稳定合同和逐测试说明以
+  `<picture><source>` 选择和 source identity 生命周期；next758 又补齐脚本图片来源
+  mutation 的可选 typed host callback；稳定合同和逐测试说明以
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
-- 当前唯一下一步是 next758：先从 compatibility corpus、源码、设备日志或截图固定一个
+- 当前唯一下一步是 next759：先从 compatibility corpus、源码、设备日志或截图固定一个
   新的真实产品缺口，再推进一条可自动断言的公共 DLL 纵向能力；不要预先承诺未验证的
   Web API 或视觉行为。
 
@@ -155,31 +157,37 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1199。
+- `TEST_MAX_NUMBER`：1200。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新设备门证据为 next757 的 Browser/Core 图片 source lifecycle 纵切；双空间预检、
+最新设备门证据为 next758 的 Browser→宿主图片来源 mutation 纵切；双空间预检、
 唯一远端 executable basename 和完整日志回收仍是部署安全基线：
 
-- `tmp/device-runs/20260907-192302-next757-picture-lifecycle8/`；Debug ARMV4I、选择
-  `1199`、`EnableJavaScript`，1/1 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，
-  `complete_log_retrieved=True`。日志证明 source property reflection、Core source
-  mutation 通知、stale decode 的 `EncodingError`、240→480 CSS viewport source 切换和
-  Core/Browser `currentSrc` 一致。
-- 设备指标为 320x320、128 dpi；门实际设置的 CSS viewport 为 240/480，使用用户已在 WMDC
-  GUI 建立的唯一会话和正式 Debug ARMV4I 构建。RAPI 只复用当前会话，不连接、选择、
-  cradle、重置或杀死设备；本次远端目录在双次完整日志取得后清理。
-- 运行前目标卷 `CeGetDiskFreeSpaceEx` 曾只剩 6,004,736 字节，低于本批所需容量；已把
-  四个 next756 picture 超时目录的现有日志复制到 `tmp/device-runs/cleanup-next756-picture/`
-  后，按用户已授权的空间回收约束仅删除这四个精确目录，没有强杀进程或触碰 WMDC。
-  重部署后目标卷可用 29,616,128 字节，payload 9,850,368、reserve 1,048,576、
-  required 10,898,944，目标卷与内部 object store 检查均通过。
-- 静态验证：`python scripts/test_c89ize.py`、正式 Debug/Release ARMV4I build、
-  `python scripts/audit_repo.py` 和 `git diff --check` 均已通过。Browser heap ceiling 为
+- `tmp/device-runs/20260907-201436-next758-image-source-callbacks4/`；Debug ARMV4I、
+  选择 `1200`、`EnableJavaScript`，1/1 通过，零 `ERROR`/`FAIL`，唯一
+  `TESTBENCH PASS`，完整日志已取得。日志证明 img/source 的八次属性 mutation 都携带
+  正确 kind、id、attribute、removed 元数据，重复注册、无效 metadata 和注销路径符合
+  合同。
+- `tmp/device-runs/20260907-202915-next758-test1193-fixed2/` 在已验证的
+  `\Storage Card` 目标卷单独通过 TEST1193；随后
+  `tmp/device-runs/20260907-202957-next758-adjacent-fixed/` 选择 `1193-1200`，8/8
+  通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，完整日志已取得。两次均为正式 Debug
+  ARMV4I，使用用户已在 WMDC GUI 建立的唯一会话；RAPI 不连接、选择、cradle、重置或
+  杀死设备，完成后只清理当前完整目录。
+- 最终 metadata 一致性校验在 `tmp/device-runs/20260907-204842-next758-final/`
+  重新选择 TEST1200 通过（1/1、零 `ERROR`/`FAIL`、唯一 `TESTBENCH PASS`，
+  `complete_log_retrieved=True`）；目标卷可用 70,602,063,872 字节，内部 object store
+  可用 9,857,024 字节，双空间检查均为 PASS。
+- 设备指标为 320x320、128 dpi；外部目标卷在相邻门运行时仍有约 70 GB 可用，内部
+  object store 约 9.4 MiB 且通过空间检查。默认 `\Temp` 的两个启动头超时目录被门保留
+  （未取得完整日志，不能安全删除或远端强杀），外部目标卷的定向重跑用于排除旧进程/空间
+  环境误报；具体首轮额外 native-slot 失败见 [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)。
+- 最终静态验证：`python scripts/test_c89ize.py`、正式 Debug/Release ARMV4I build、
+  `python scripts/audit_repo.py` 和 `git diff --check` 均通过。Browser heap ceiling 为
   768 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
 
 ## 当前人工验收状态
@@ -321,11 +329,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next758
+## 唯一下一步：next759
 
-next757 的 source property reflection、Core mutation/viewport 后 source identity 失效、
-共享 `decode()`/`currentSrc` 路径和 TEST1199 已通过定向自动设备门；部署空间护栏和
-失败停止规则详见
+next758 的图片来源 mutation typed callback、native-slot 复用、metadata fail-closed 和
+TEST1193–1200 相邻设备门已通过；部署空间护栏和失败停止规则详见
 `docs/TESTING.md` 与 `docs/TROUBLESHOOTING.md`，本节不重复实现细节。下一步必须先从
 compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，再决定进入哪个
 公共 DLL；不要预先把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器树、Range/
@@ -341,12 +348,12 @@ bfcache、绝对 URL、CORS、完整图像 loading 和 image-map 的未覆盖扩
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一批完成标准（next758）
+## 下一批完成标准（next759）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱现有布局、几何、滚动、history、生命周期、selector、focus、form-owner、reset、requestSubmit、direct-submit 或 FormData 旧/Ex 路径；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- 完成后 handoff 应覆盖为 next758 快照，ROADMAP 只保留当前尚未完成的纵向能力；
+- 完成后 handoff 应覆盖为 next759 快照，ROADMAP 只保留当前尚未完成的纵向能力；
   新测试、公共边界和设备证据应可由本文件与 `docs/TESTING.md` 复核。

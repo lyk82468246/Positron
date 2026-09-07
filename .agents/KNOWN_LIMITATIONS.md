@@ -113,7 +113,12 @@
   `PBrowser_ScriptSessionNotifyImageEvent` 显式派发 `load`/`error`；事件 trusted、非冒泡、
   不可取消，重复同终态幂等，过时/相反/未就绪通知 fail closed。该桥不自动抓取、选择、
   解码或绘制图像；每个 session 的 image/source 终态映射最多 64 项，source 改变会释放
-  旧项，超限的新终态通知保持 fail closed。
+  旧项，超限的新终态通知保持 fail closed。脚本写入 img 的 `src`/`srcset`/`sizes` 或
+  picture source 的 `media`/`type`/`srcset`/`sizes` 时，宿主可在 DOM attribute callbacks
+  之后注册可选的 `PBrowser_ScriptSessionRegisterImageSourceCallbacks`，同步取得借用的
+  id/kind/attribute/removed 元数据；该桥复用既有 native slot，不执行自动 I/O、选择、
+  layout 或 paint。未注册时 mutation 不回滚；动态 DOM 插入/删除、完整 image loading
+  和宿主 replacement pipeline 仍不在 Browser 契约内，callback 也不得重入或销毁 session。
 
 ## DOM、表单与事件
 
@@ -546,6 +551,11 @@
   pending decode 和 image 终态各限 64 项，未变化的 source 保持 pending；该门不提供
   自动 fetch、选择、layout、paint、动态 DOM 插入/删除、完整媒体查询、绝对 URL、
   CORS/referrer、loading 策略或 native 图像视觉。
+- TEST1200 覆盖脚本图片来源 mutation 的可选 typed callback：`img.sizes`、source 的
+  `media`/`type`/`srcset`/`sizes` 以及 set/remove attribute 都产生正确的 id、kind、
+  attribute 和 removed 元数据；重复注册、native-function 数量不变、不一致 metadata
+  fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖动态 DOM
+  插入/删除、完整 loading、视觉或触摸/SIP 风险。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

@@ -2435,10 +2435,12 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return this.hasAttribute('multiple')?'select-multiple':'select-one';}"
         "if(name==='type'&&this.localName==='fieldset'){return 'fieldset';}"
         "v=this.getAttribute(attr);return v===null?'':v;},"
-        "set:function(v){if(name==='type'&&(this.localName==='select'||"
+        "set:function(v){var request;if(name==='type'&&(this.localName==='select'||"
         "this.localName==='fieldset'||this.localName==='output')){return;}"
-        "if(!__pcoreSetAttribute({id:this.__id,"
-        "name:attr,value:String(v)})){throw new Error(name+' update failed');}"
+        "request={id:this.__id,name:attr,value:String(v)};"
+        "if(name==='type'&&this.localName==='source'){request.imageKind=2;"
+        "request.imageName='type';request.imageRemoved=0;}"
+        "if(!__pcoreSetAttribute(request)){throw new Error(name+' update failed');}"
         "if(name==='type'&&this.localName==='source'&&"
         "typeof g.__pcoreImageSourceChanged==='function'){"
         "g.__pcoreImageSourceChanged({id:this.__id});}}});}"
@@ -4715,9 +4717,12 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function media9(owner){var t=owner.localName;var v;"
         "if(t!=='link'&&t!=='style'&&t!=='source'){return undefined;}"
         "v=owner.getAttribute('media');return v===null?'':v;}"
-        "function setMedia9(owner,value){var t=owner.localName;"
+        "function setMedia9(owner,value){var t=owner.localName;var request;"
         "if(t!=='link'&&t!=='style'&&t!=='source'){return;}"
-        "if(!__pcoreSetAttribute({id:owner.__id,name:'media',value:String(value)})){"
+        "request={id:owner.__id,name:'media',value:String(value)};"
+        "if(t==='source'){request.imageKind=2;request.imageName='media';"
+        "request.imageRemoved=0;}"
+        "if(!__pcoreSetAttribute(request)){"
         "throw new Error('media update failed');}"
         "if(t==='source'&&typeof imageRefreshPicture9==='function'){"
         "imageRefreshPicture9(owner);}}"
@@ -4832,11 +4837,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "owner.dispatchEvent(event);if(type==='load'){imagePendingSettle9(owner,"
         "source,true,null);}else{imagePendingSettle9(owner,source,false,"
         "imageException9('Image decode failed','EncodingError'));}return true;};"
-        "function imageSetAttr9(owner,attr,value,name){var before;var after;"
-        "if(!image9(owner)){return;}if(attr==='src'||attr==='srcset'){before=imageSource9(owner);}"
-        "if(!__pcoreSetAttribute({id:owner.__id,name:attr,value:String(value)})){"
-        "throw new Error(name+' update failed');}if(attr==='src'||attr==='srcset'){"
-        "after=imageSource9(owner);if(after!==before){imageInvalidate9(owner,before);}}}"
+        "function imageSetAttr9(owner,attr,value,name){var before;var after;var request;"
+        "if(!image9(owner)){return;}if(attr==='src'||attr==='srcset'||attr==='sizes'){before=imageSource9(owner);}"
+        "request={id:owner.__id,name:attr,value:String(value)};"
+        "if(attr==='src'||attr==='srcset'||attr==='sizes'){request.imageKind=1;"
+        "request.imageName=attr;request.imageRemoved=0;}"
+        "if(!__pcoreSetAttribute(request)){"
+        "throw new Error(name+' update failed');}if(attr==='src'||attr==='srcset'||attr==='sizes'){"
+        "after=imageSource9(owner);if(after!==before){imageInvalidate9(owner,before);}"
+        "}}"
         "function imageBool9(owner,attr){return image9(owner)?owner.hasAttribute(attr):undefined;}"
         "function imageSetBool9(owner,attr,value,name){if(!image9(owner)){return;}"
         "if(value){if(!__pcoreSetAttribute({id:owner.__id,name:attr,value:''})){"
@@ -4863,8 +4872,10 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "set:function(v){imageSetAttr9(this,'alt',v,'alt');},enumerable:true,configurable:true});"
         "Object.defineProperty(PElement.prototype,'src',{get:function(){return imageAttr9(this,'src');},"
         "set:function(v){imageSetAttr9(this,'src',v,'src');},enumerable:true,configurable:true});"
-        "function sourceSetAttr9(owner,attr,value,name){if(!source9(owner)){return;}"
-        "if(!__pcoreSetAttribute({id:owner.__id,name:attr,value:String(value)})){"
+        "function sourceSetAttr9(owner,attr,value,name){var request;"
+        "if(!source9(owner)){return;}request={id:owner.__id,name:attr,value:String(value),"
+        "imageKind:2,imageName:attr,imageRemoved:0};"
+        "if(!__pcoreSetAttribute(request)){"
         "throw new Error(name+' update failed');}if(typeof imageRefreshPicture9==='function'){"
         "imageRefreshPicture9(owner);}}"
         "Object.defineProperty(PElement.prototype,'srcset',{get:function(){return image9(this)?"
@@ -4911,17 +4922,29 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "var imageSetAttribute9=PElement.prototype.setAttribute;"
         "var imageRemoveAttribute9=PElement.prototype.removeAttribute;"
         "PElement.prototype.setAttribute=function(name,value){var n=String(name).toLowerCase();"
-        "var before;var after;if(image9(this)&&(n==='src'||n==='srcset')){before=imageSource9(this);}"
-        "imageSetAttribute9.call(this,name,value);if(image9(this)&&(n==='src'||n==='srcset')){"
-        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}}"
-        "else if(source9(this)&&(n==='media'||n==='type'||n==='srcset'||n==='sizes')){"
-        "imageRefreshPicture9(this);}};"
+        "var before;var after;var request;"
+        "if(image9(this)&&(n==='src'||n==='srcset'||n==='sizes')){"
+        "before=imageSource9(this);request={id:this.__id,name:n,value:String(value),"
+        "imageKind:1,imageName:n,imageRemoved:0};"
+        "if(!__pcoreSetAttribute(request)){throw new Error('setAttribute failed');}"
+        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}"
+        "return;}"
+        "if(source9(this)&&(n==='media'||n==='type'||n==='srcset'||n==='sizes')){"
+        "request={id:this.__id,name:n,value:String(value),imageKind:2,"
+        "imageName:n,imageRemoved:0};if(!__pcoreSetAttribute(request)){"
+        "throw new Error('setAttribute failed');}imageRefreshPicture9(this);return;}"
+        "imageSetAttribute9.call(this,name,value);};"
         "PElement.prototype.removeAttribute=function(name){var n=String(name).toLowerCase();"
-        "var before;var after;if(image9(this)&&(n==='src'||n==='srcset')){before=imageSource9(this);}"
-        "imageRemoveAttribute9.call(this,name);if(image9(this)&&(n==='src'||n==='srcset')){"
-        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}}"
-        "else if(source9(this)&&(n==='media'||n==='type'||n==='srcset'||n==='sizes')){"
-        "imageRefreshPicture9(this);}};"
+        "var before;var after;var request;"
+        "if(image9(this)&&(n==='src'||n==='srcset'||n==='sizes')){"
+        "before=imageSource9(this);request={id:this.__id,name:n,imageKind:1,"
+        "imageName:n,imageRemoved:1};if(!__pcoreRemoveAttribute(request)){"
+        "throw new Error('removeAttribute failed');}after=imageSource9(this);"
+        "if(after!==before){imageInvalidate9(this,before);}return;}"
+        "if(source9(this)&&(n==='media'||n==='type'||n==='srcset'||n==='sizes')){"
+        "request={id:this.__id,name:n,imageKind:2,imageName:n,imageRemoved:1};"
+        "if(!__pcoreRemoveAttribute(request)){throw new Error('removeAttribute failed');}"
+        "imageRefreshPicture9(this);return;}imageRemoveAttribute9.call(this,name);};"
         "PElement.prototype.contains=function(other){var n=other;var i=0;"
         "if(!other||typeof other.__id!=='string'){return false;}while(n&&i<64){"
         "if(n.__id===this.__id){return true;}n=n.parentElement;i++;}return false;};"
@@ -6074,6 +6097,8 @@ typedef struct p_browser_script_scroll_binding {
 
 typedef struct p_browser_script_dom_attribute_binding {
     PBrowserScriptDomAttributeCallbacks callbacks;
+    PBrowserScriptImageSourceCallbacks image_source_callbacks;
+    int image_source_registered;
 } p_browser_script_dom_attribute_binding;
 
 typedef struct p_browser_script_event_binding {
@@ -8364,6 +8389,54 @@ static int p_browser_script_dom_get_attribute(void *pw,
     return result;
 }
 
+static int p_browser_script_image_source_attribute_valid(
+        unsigned int element_kind, const char *attribute)
+{
+    if (attribute == NULL) {
+        return 0;
+    }
+    if (element_kind == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG) {
+        return strcmp(attribute, "src") == 0 ||
+                strcmp(attribute, "srcset") == 0 ||
+                strcmp(attribute, "sizes") == 0;
+    }
+    if (element_kind == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE) {
+        return strcmp(attribute, "media") == 0 ||
+                strcmp(attribute, "type") == 0 ||
+                strcmp(attribute, "srcset") == 0 ||
+                strcmp(attribute, "sizes") == 0;
+    }
+    return 0;
+}
+
+static void p_browser_script_dom_notify_image_source(
+        p_browser_script_dom_attribute_binding *binding,
+        const char *element_id, unsigned int element_kind,
+        const char *attribute, const char *mutation_name, int removed)
+{
+    PBrowserScriptImageSourceMutationInfo info;
+
+    if (binding == NULL || !binding->image_source_registered ||
+            binding->image_source_callbacks.mutation == NULL ||
+            element_id == NULL || element_id[0] == '\0' ||
+            strlen(element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            attribute == NULL || attribute[0] == '\0' ||
+            strlen(attribute) >= 16 ||
+            mutation_name == NULL || strcmp(attribute, mutation_name) != 0 ||
+            !p_browser_script_image_source_attribute_valid(element_kind,
+            attribute) || (removed != 0 && removed != 1)) {
+        return;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.element_id = element_id;
+    info.element_kind = element_kind;
+    info.attribute = attribute;
+    info.removed = removed;
+    binding->image_source_callbacks.mutation(
+            binding->image_source_callbacks.pw, &info);
+}
+
 static int p_browser_script_dom_set_attribute(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
@@ -8374,6 +8447,8 @@ static int p_browser_script_dom_set_attribute(void *pw,
     const char *id;
     const char *name;
     const char *value;
+    const char *image_attribute;
+    int image_kind;
     int changed;
 
     binding = (p_browser_script_dom_attribute_binding *) pw;
@@ -8382,6 +8457,9 @@ static int p_browser_script_dom_set_attribute(void *pw,
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
     value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    image_attribute = (object != NULL) ?
+            PJson_GetString(object, "imageName") : NULL;
+    image_kind = (object != NULL) ? PJson_GetInt(object, "imageKind") : 0;
     if (binding == NULL || binding->callbacks.set_attribute == NULL) {
         PJson_Free(root);
         return 1;
@@ -8393,6 +8471,10 @@ static int p_browser_script_dom_set_attribute(void *pw,
     }
     changed = binding->callbacks.set_attribute(binding->callbacks.pw, id,
             name, value);
+    if (changed > 0) {
+        p_browser_script_dom_notify_image_source(binding, id,
+                (unsigned int) image_kind, image_attribute, name, 0);
+    }
     PJson_Free(root);
     if (changed < 0) {
         return 1;
@@ -8410,6 +8492,8 @@ static int p_browser_script_dom_remove_attribute(void *pw,
     HANDLE object;
     const char *id;
     const char *name;
+    const char *image_attribute;
+    int image_kind;
     int changed;
 
     binding = (p_browser_script_dom_attribute_binding *) pw;
@@ -8417,6 +8501,9 @@ static int p_browser_script_dom_remove_attribute(void *pw,
     root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     name = (object != NULL) ? PJson_GetString(object, "name") : NULL;
+    image_attribute = (object != NULL) ?
+            PJson_GetString(object, "imageName") : NULL;
+    image_kind = (object != NULL) ? PJson_GetInt(object, "imageKind") : 0;
     if (binding == NULL || binding->callbacks.remove_attribute == NULL) {
         PJson_Free(root);
         return 1;
@@ -8428,6 +8515,10 @@ static int p_browser_script_dom_remove_attribute(void *pw,
     }
     changed = binding->callbacks.remove_attribute(binding->callbacks.pw,
             id, name);
+    if (changed > 0) {
+        p_browser_script_dom_notify_image_source(binding, id,
+                (unsigned int) image_kind, image_attribute, name, 1);
+    }
     PJson_Free(root);
     if (changed < 0) {
         return 1;
@@ -13429,6 +13520,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomAttributeCallbacks(
     if (binding == NULL) {
         return PSCRIPT_ERROR_FATAL;
     }
+    memset(binding, 0, sizeof(*binding));
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreGetAttribute", -1, p_browser_script_dom_get_attribute,
@@ -13708,6 +13800,52 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
     }
     return strcmp(result, "true") == 0 ? PSCRIPT_OK :
             PSCRIPT_ERROR_ARGUMENT;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterImageSourceCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptImageSourceCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_attribute_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptImageSourceCallbacks) ||
+            callbacks->mutation == NULL || session->dom_attribute == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    binding = session->dom_attribute;
+    if (binding->image_source_registered) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    memcpy(&binding->image_source_callbacks, callbacks,
+            sizeof(binding->image_source_callbacks));
+    binding->image_source_registered = 1;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterImageSourceCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_attribute_binding *binding;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_attribute == NULL) {
+        return PSCRIPT_OK;
+    }
+    binding = session->dom_attribute;
+    if (!binding->image_source_registered) {
+        return PSCRIPT_OK;
+    }
+    memset(&binding->image_source_callbacks, 0,
+            sizeof(binding->image_source_callbacks));
+    binding->image_source_registered = 0;
+    return PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,

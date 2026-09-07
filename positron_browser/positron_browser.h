@@ -1768,6 +1768,31 @@ typedef struct PBrowserScriptEventInfo {
 #define PBROWSER_SCRIPT_IMAGE_EVENT_LOAD  1u
 #define PBROWSER_SCRIPT_IMAGE_EVENT_ERROR 2u
 
+/* Browser-to-host notification for script mutations that can change an
+ * image's selected resource. The callback runs synchronously after the
+ * underlying Core mutation has succeeded. It never performs I/O, selection,
+ * decoding, layout or paint; the host remains responsible for querying Core,
+ * coalescing requests and running that replacement pipeline. All strings in
+ * the info snapshot are UTF-8 and borrowed for the callback only. A callback
+ * must not re-enter or destroy the script session. The Browser does not roll
+ * back a successful mutation when the optional callback is absent. */
+#define PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG    1u
+#define PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE 2u
+typedef struct PBrowserScriptImageSourceMutationInfo {
+    unsigned long size;
+    const char *element_id;
+    unsigned int element_kind;
+    const char *attribute;
+    int removed;
+} PBrowserScriptImageSourceMutationInfo;
+typedef void (*PBrowserScriptImageSourceMutationFn)(void *pw,
+        const PBrowserScriptImageSourceMutationInfo *info);
+typedef struct PBrowserScriptImageSourceCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptImageSourceMutationFn mutation;
+} PBrowserScriptImageSourceCallbacks;
+
 /* Browser script session. The session owns one browser-sized PScript context
  * (the browser bootstrap uses a bounded 768 KiB heap ceiling) and all
  * registered native functions. It does not own a core document or any host
@@ -2317,6 +2342,18 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
  * not fetch, select, decode, lay out or paint the image. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
         HANDLE hSession, const char *element_id);
+/* Register/unregister the optional synchronous request bridge described
+ * above. Register after PBrowser_ScriptSessionRegisterDomAttributeCallbacks;
+ * mutation metadata travels through that existing attribute native slot and
+ * therefore does not consume another script native-function slot. Registering
+ * twice returns PSCRIPT_ERROR_GLOBAL. The callback is invoked for successful
+ * script writes/removals of img `src`/`srcset`/`sizes` and source
+ * `media`/`type`/`srcset`/`sizes`. */
+PBROWSER_API int PBrowser_ScriptSessionRegisterImageSourceCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptImageSourceCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterImageSourceCallbacks(
+        HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1199
+#define TEST_MAX_NUMBER 1200
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -46402,6 +46402,226 @@ static BOOL test1199_browser_picture_source_lifecycle(void)
             "picture source properties and host notifications invalidate"
             " stale image decode state on source mutation and viewport"
             " changes while currentSrc remains shared with Core selection.");
+    return TRUE;
+}
+
+typedef struct test1200_image_source_state {
+    int calls;
+    unsigned int kinds[8];
+    int removed[8];
+    char ids[8][64];
+    char attributes[8][16];
+} test1200_image_source_state;
+
+static void test1200_image_source_mutation(void *pw,
+        const PBrowserScriptImageSourceMutationInfo *info)
+{
+    test1200_image_source_state *state;
+    int index;
+
+    state = (test1200_image_source_state *) pw;
+    if (state == NULL || info == NULL || info->size <
+            sizeof(PBrowserScriptImageSourceMutationInfo)) {
+        return;
+    }
+    index = state->calls;
+    state->calls++;
+    if (index < 0 || index >= 8) {
+        return;
+    }
+    state->kinds[index] = info->element_kind;
+    state->removed[index] = info->removed;
+    cstr_copy(state->ids[index], sizeof(state->ids[index]),
+            info->element_id);
+    cstr_copy(state->attributes[index], sizeof(state->attributes[index]),
+            info->attribute);
+}
+
+/* TEST 1200 - script image-source mutations request a host replacement pass. */
+static BOOL test1200_browser_image_source_mutation_callbacks(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><picture><source id='source' media='(max-width: 300px)' "
+        "type='image/svg+xml' srcset='/img/one.svg 1x' sizes='100vw'>"
+        "<img id='hero' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 1x,/img/two.svg 2x' sizes='100vw'>"
+        "</picture></body></html>";
+    static const char MUTATIONS[] =
+        "var hero=document.getElementById('hero');"
+        "var source=document.getElementById('source');"
+        "hero.sizes='50vw';"
+        "source.media='(min-width: 300px)';"
+        "source.type='image/png';"
+        "source.srcset='/img/two.svg 1x';"
+        "source.sizes='100vw';"
+        "hero.setAttribute('srcset','/img/one.svg 1x');"
+        "hero.removeAttribute('sizes');"
+        "source.removeAttribute('type');"
+        "[hero.sizes,source.media,source.type,source.srcset,source.sizes].join('|');";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptImageSourceCallbacks callbacks;
+    test1200_image_source_state state;
+    char error[768];
+    char result_text[512];
+    const char *result;
+    int executed;
+    int ignored;
+    int rc;
+    unsigned long native_count;
+    BOOL ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&callbacks, 0, sizeof(callbacks));
+    memset(&state, 0, sizeof(state));
+    memset(error, 0, sizeof(error));
+    memset(result_text, 0, sizeof(result_text));
+    result = NULL;
+    executed = -1;
+    ignored = -1;
+    rc = PSCRIPT_ERROR_CALL;
+    native_count = 0;
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/image-source-callback", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        callbacks.size = sizeof(callbacks);
+        callbacks.pw = &state;
+        callbacks.mutation = test1200_image_source_mutation;
+        native_count = PBrowser_ScriptSessionNativeFunctionCount(
+                g_browser_script_session.session);
+        rc = PBrowser_ScriptSessionRegisterImageSourceCallbacks(
+                g_browser_script_session.session, &callbacks);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionNativeFunctionCount(
+                g_browser_script_session.session) == native_count &&
+                PBrowser_ScriptSessionRegisterImageSourceCallbacks(
+                g_browser_script_session.session, &callbacks) ==
+                PSCRIPT_ERROR_GLOBAL;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, MUTATIONS, -1);
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result != NULL) {
+            cstr_copy(result_text, sizeof(result_text), result);
+        }
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result,
+                "|(min-width: 300px)||/img/two.svg 1x|100vw") == 0 &&
+                state.calls == 8 &&
+                state.kinds[0] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG &&
+                state.kinds[1] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE &&
+                state.kinds[2] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE &&
+                state.kinds[3] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE &&
+                state.kinds[4] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE &&
+                state.kinds[5] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG &&
+                state.kinds[6] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG &&
+                state.kinds[7] == PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE &&
+                state.removed[6] == 1 && state.removed[7] == 1 &&
+                strcmp(state.ids[0], "hero") == 0 &&
+                strcmp(state.attributes[0], "sizes") == 0 &&
+                strcmp(state.attributes[7], "type") == 0;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionCallGlobalJson(
+                g_browser_script_session.session,
+                "__pcoreSetAttribute",
+                "[{\"id\":\"hero\",\"name\":\"data-probe\","
+                "\"value\":\"one\",\"imageKind\":1,"
+                "\"imageName\":\"href\",\"imageRemoved\":0}]");
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result != NULL) {
+            cstr_copy(result_text, sizeof(result_text), result);
+        }
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.calls == 8;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionCallGlobalJson(
+                g_browser_script_session.session,
+                "__pcoreSetAttribute",
+                "[{\"id\":\"hero\",\"name\":\"data-probe\","
+                "\"value\":\"two\",\"imageKind\":1,"
+                "\"imageName\":\"src\",\"imageRemoved\":0}]");
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result != NULL) {
+            cstr_copy(result_text, sizeof(result_text), result);
+        }
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "true") == 0 && state.calls == 8;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionUnregisterImageSourceCallbacks(
+                g_browser_script_session.session);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionNativeFunctionCount(
+                g_browser_script_session.session) == native_count;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session,
+                "document.getElementById('hero').sizes='25vw';true;", -1);
+        ok = rc == PSCRIPT_OK && state.calls == 8;
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "rc=%d result=%s calls=%d kinds=%u,%u,%u,%u,%u,%u,%u,%u "
+                    "removed=%d,%d,%d,%d,%d,%d,%d,%d attr0=%s attr7=%s",
+                    rc, result_text[0] != '\0' ? result_text : "(null)", state.calls,
+                    state.kinds[0], state.kinds[1], state.kinds[2],
+                    state.kinds[3], state.kinds[4], state.kinds[5],
+                    state.kinds[6], state.kinds[7], state.removed[0],
+                    state.removed[1], state.removed[2], state.removed[3],
+                    state.removed[4], state.removed[5], state.removed[6],
+                    state.removed[7], state.attributes[0], state.attributes[7]);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1200 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1200 OK",
+            "script img/source selection mutations invalidate through the"
+            " shared image path and notify the host with typed id, kind,"
+            " attribute and removal metadata; unregistering is fail-closed.");
     return TRUE;
 }
 
@@ -104535,6 +104755,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1197: ok = test1197_browser_img_srcset_width_selection(); break;
         case 1198: ok = test1198_browser_picture_source_selection(); break;
         case 1199: ok = test1199_browser_picture_source_lifecycle(); break;
+        case 1200: ok = test1200_browser_image_source_mutation_callbacks(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -407,6 +407,29 @@ Browser 只使变化 source 的 pending decode/旧事件失效，不执行 fetch
 `source.media`、`source.srcset`、`source.sizes` 反射走同一路径；有效
 `PBrowser_ScriptSessionNotifyResize()` 会在媒体和 resize 事件前刷新 source identity。
 
+脚本 mutation 需要宿主安排替换资源时，可在
+`PBrowser_ScriptSessionRegisterDomAttributeCallbacks()` 成功后注册可选的
+`PBrowserScriptImageSourceCallbacks`：
+
+```c
+PBrowserScriptImageSourceCallbacks image_source;
+
+memset(&image_source, 0, sizeof(image_source));
+image_source.size = sizeof(image_source);
+image_source.pw = host;
+image_source.mutation = host_image_source_mutation;
+PBrowser_ScriptSessionRegisterImageSourceCallbacks(session, &image_source);
+```
+
+`host_image_source_mutation` 在 Core attribute mutation 成功后同步收到借用的 UTF-8
+`element_id`、`element_kind`（`PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG` 或
+`PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE`）、属性名和 `removed` 标志。它应只记录或
+合并请求，然后查询 Core 并自行启动 replacement fetch/select/layout/paint；回调不能保存
+这些指针、进行 I/O 或重入/销毁 session。该注册复用 DOM attribute bridge 的既有 native
+slot，不增加脚本 native-function 数量；未注册时 mutation 仍成功但不会自动加载或回滚。
+重复注册返回 `PSCRIPT_ERROR_GLOBAL`，注销使用
+`PBrowser_ScriptSessionUnregisterImageSourceCallbacks()`，注销后后续 mutation 不再通知。
+
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
 `:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/
@@ -545,41 +568,19 @@ resource counters.
 
 ### Navigation cleanup snapshot
 
-`PBrowser_NavigationCleanupGetInfo` is the last observation before a host
-releases the two independent handles for one request. It copies the candidate
-result and the complete bounded resource stats—including the resource gate,
-pending count, hash-only failure summary and fallback-family counters—into a
-caller-owned `PBrowserNavigationCleanupInfo`. The output does not retain either
-handle and remains valid after both handles are destroyed.
-
-The snapshot does not settle work itself. The host joins the worker, settles
-remaining resources (normally with `PBrowser_NavigationResourceCancelAll`),
-makes an active candidate terminal, and then reads it. `can_release == 1`
-means no candidate/resource work remains; `COMMITTED` additionally requires a
-`READY` gate. Pending or inconsistent combinations report a non-releasable
-decision, while failed/cancelled/stale candidates are releasable after resource
-settlement.
-
-该 API 只提供同步的 Browser-owned 状态；它不暴露响应字节、线程、窗口、消息或应用日志，
-也不替代页面交换边界的最终 `PBrowser_NavigationCandidateMarkCommitted` 检查。
+`PBrowser_NavigationCleanupGetInfo` 在释放一次 request 的 candidate/resource
+handle 前复制有界终态、resource gate、pending、失败摘要和 fallback 计数到调用方的
+`PBrowserNavigationCleanupInfo`；副本在两个 handle 销毁后仍有效。宿主必须先 join worker、
+取消剩余资源并让 candidate 进入终态，再读取快照；`can_release` 非零才可释放。该 API
+不拥有响应字节、线程、窗口或页面交换，也不替代最终的 committed 重检。
 
 ### Navigation candidate lifecycle
 
-`PBrowser_NavigationCandidate*` owns the admission state for one pending
-document without owning the document itself. The handle stores an immutable
-generation and the states `ACTIVE`, `RETIRED`, `COMMITTED` or `FAILED`, plus a
-cooperatively polled cancellation flag. `PBrowser_NavigationCandidateCanApply`
-requires both an active, uncancelled handle and the host's current generation;
-`MarkCommitted` enforces the same check, so a late worker message cannot commit
-an older candidate. `RequestCancel` and `Retire` are separate operations:
-cancel asks the worker to stop, while retire makes the candidate permanently
-ineligible and is idempotent.
-
-The host owns the monotonic counter, worker/thread, response, resource
-transaction, WM messages and page swap. It should create a candidate when it
-assigns a generation, request cancellation before retiring a superseded
-candidate, keep the opaque handle reachable until the worker completion is
-consumed, and then mark the current candidate committed or failed:
+`PBrowser_NavigationCandidate*` 只拥有一个待提交 document 的 generation、取消/退休状态和
+终态 admission；它不拥有 document、worker、response、resource transaction 或页面交换。
+`CanApply`/`MarkCommitted` 都要求当前 generation 且未取消，避免迟到的 worker 消息提交旧
+候选；`RequestCancel` 与幂等的 `Retire` 分别表达协作取消和永久失格。宿主保留线程、WM、
+网络与页面策略，完成 worker 后标记 committed/failed：
 
 ```c
 HANDLE candidate;
@@ -602,13 +603,9 @@ PBrowser_NavigationCandidateGetInfo(candidate, current_generation, &info);
 PBrowser_NavigationCandidateDestroy(candidate);
 ```
 
-取消标志可由 worker 在宿主请求取消时轮询，其他状态和快照由宿主串行化；这些 API 不会
-中止阻塞 socket、发窗口消息、执行 page teardown 或提交 history。失败或退休的 candidate
-必须由宿主丢弃，不得进入 teardown 或修改 history。
-
-`PBrowser_NavigationCandidateGetResult` 返回按 Browser 状态和当前 generation 分类的只读诊断
-快照（`PENDING`、`COMMITTED`、`FAILED`、`CANCELLED` 或 `STALE`）；宿主只复制结果，不重算
-分类，也不把它当作网络错误文本。
+取消标志由 worker 协作轮询，其余状态由宿主串行化；这些 API 不会中止阻塞 socket、执行
+teardown 或提交 history。`GetResult` 只返回 Browser 按 generation 分类的诊断快照，宿主
+应复制它而不是从 worker 标志重算分类。
 
 ### 队列与生命周期
 

@@ -93,7 +93,9 @@ Promise、source mutation/teardown 拒绝和由宿主在 Core 终态就绪后触
 未实现。source 的 `media`/`type`/`srcset`/`sizes` mutation 由 Browser 通过
 `PBrowser_ScriptSessionNotifyImageSourceChange` 接收；它只失效 source identity 已改变的
 pending decode 和旧终态。有效 viewport resize 会在媒体与 resize 事件前刷新同一 identity，
-而不会代替宿主执行 fetch、选择、layout 或 paint。Core
+而不会代替宿主执行 fetch、选择、layout 或 paint。脚本 attribute mutation 还可通过复用
+既有 DOM attribute slot 的 typed callback 通知宿主；它只提供 borrowed 元数据，不改变
+宿主负责 replacement pipeline 的边界。Core
 另已提供有界 image-map 命中：已布局 `<img usemap>` 按 DOM 顺序解析最多 64 个 linked
 `<area>`，支持 `default`、`rect`、`circle` 和 `poly`/`polygon`，将自然坐标缩放到
 渲染尺寸，并把链接、区域几何、active/hover 和按坐标事件 target 统一接入 Core 命中

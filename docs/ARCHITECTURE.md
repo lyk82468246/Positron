@@ -195,6 +195,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   只使 source identity 已变化的 pending decode 和旧终态失效，不替宿主重新 fetch、
   select、layout 或 paint。有效的 `PBrowser_ScriptSessionNotifyResize` 也会在 resize/
   media 事件前刷新变化的 source identity。
+  对脚本直接写入这些属性，宿主可在 DOM attribute callbacks 注册完成后再注册可选的
+  `PBrowser_ScriptSessionRegisterImageSourceCallbacks`。Browser 在 Core mutation 成功后
+  同步提供借用的 UTF-8 元数据（元素 id、`img`/`source` 类型、属性名和是否移除）；该
+  通知复用既有 attribute native slot，不增加固定 native-function 数量，宿主据此查询
+  Core 并安排自己的 replacement fetch/select/layout/paint。没有注册 callback 时 mutation
+  仍成功但不会自动加载或回滚；不一致的元数据安全忽略，callback 不得重入或销毁 session。
   当前 source 选择由 Core 覆盖最多 16 个正密度 `x` 或正宽度 `w` 候选；`<picture>`
   另外限制为最多 16 层祖先、8 个 preceding `<source>` 和 64 个 direct-child 节点，
   并先按有界 media/type 过滤。`sizes` 仅支持 Core 的 px/vw/vh 与单一 min/max-width

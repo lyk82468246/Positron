@@ -13,6 +13,22 @@
 
 ## 失败与暂挂
 
+### next758 首轮 image-source callback：新增 native slot 触及上限 — 已替代
+
+问题：首版把 Browser→宿主 image-source mutation 通知实现为新的脚本 native global。
+设备门在 Browser bootstrap 已注册固定桥后返回 `PSCRIPT_ERROR_NATIVE_LIMIT (-15)`；当时
+session 的 native-function 数量已达到项目规定的 28，继续加槽会让大型页面直接失败。
+
+处置：撤回额外 global，改为在现有 `__pcoreSetAttribute`/
+`__pcoreRemoveAttribute` JSON 请求中携带受校验的 image kind、属性名和 operation 标志，
+由 `PBrowser_ScriptSessionRegisterImageSourceCallbacks` 复用已注册的 DOM attribute binding
+同步转发 typed borrowed metadata。TEST1200 同时断言注册不改变 native-function 数量、
+重复注册 fail closed、metadata 不一致不通知以及注销后的静默。
+
+决定：Browser bootstrap 达到 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 上限时，不得为新语义增加
+另一个 native slot；优先扩展已有 typed bridge，并保持 callback 不重入、不做 I/O/选择/layout/
+paint。首轮失败仅记录该资源边界，不恢复额外 global 方案。
+
 ### next756 首轮设备门：`<picture>` 测试停在启动头 — 环境误报，已替代
 
 问题：next756 的多次候选选择探针都在日志头和 `TEST 1198` 后停止，没有写出

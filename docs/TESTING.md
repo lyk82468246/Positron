@@ -586,6 +586,15 @@ fetch、选择、layout、paint 或自动资源加载，也不承诺完整媒体
 绝对 URL、CORS/referrer、loading 策略或 native 图像视觉；宿主只负责 mutation、通知、
 microtask pump 与断言。
 
+TEST1200 覆盖脚本图片来源 mutation 的可选 Browser→宿主 typed callback：fixture 分别
+写入 `img.sizes`、`source.media`/`type`/`srcset`/`sizes`，并通过
+`setAttribute`/`removeAttribute` 覆盖 img/source 的同一条 attribute bridge。自动断言
+八次成功 mutation 的元素类型、id、属性名和 removal 标志，重复注册返回
+`PSCRIPT_ERROR_GLOBAL` 且 native-function 数量不变；内部 setter 的不一致元数据不会
+产生伪通知，注销后也不会再回调。callback 是 mutation 成功后的同步 borrowed snapshot，
+只为宿主安排 Core 查询和 replacement pipeline，不执行 I/O、选择、decode、layout 或
+paint；因此该门无新增立即人工风险，也不承诺动态 DOM 插入/删除或自动图像加载。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
