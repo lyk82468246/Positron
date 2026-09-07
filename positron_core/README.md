@@ -165,7 +165,9 @@ comment 或越界索引误写成文本。成功返回 `0` 并使 retained layout
 不派发事件、不获取资源，也不刷新任何 Browser snapshot；宿主应在成功后安排正常的
 style/layout/paint。Browser 的 `Text.nodeValue`、`Text.data` 和 `Text.textContent` setter
 通过 typed callback 复用这一入口，旧的 detached wrapper 保留最近一次成功的字符串，之后
-的写入安全失败。
+的写入安全失败。Browser 的 `appendData()`、`insertData()`、`deleteData()` 和
+`replaceData()` 也先在脚本侧按 UTF-16 code-unit 计算新字符串，再复用同一个入口；Core
+仍只负责一次完整 Text 数据替换，不承担 CharacterData 参数转换或事件派发。
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 

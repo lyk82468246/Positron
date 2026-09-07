@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1203
+#define TEST_MAX_NUMBER 1204
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -463,6 +463,8 @@ static BOOL test_browser_raw_string_fixture(const char *html,
         const char *probe, const char *expected, char *error,
         int error_capacity);
 static BOOL test_browser_form_attribute_case(int number, const char *probe,
+        const char *expected, char *error, int error_capacity);
+static BOOL test_browser_child_node_case(int number, const char *probe,
         const char *expected, char *error, int error_capacity);
 
 static int test_config_space(char c)
@@ -47311,6 +47313,53 @@ static BOOL test1203_browser_text_node_mutation_contract(void)
             " Core-owned direct-child bridge, preserve connected wrapper"
             " identity, retain the last detached value, and invalidate"
             " retained layout; unsupported stale writes fail closed.");
+    return TRUE;
+}
+
+/* TEST 1204 - bounded CharacterData mutators reuse the Text setter bridge. */
+static BOOL test1204_browser_character_data_mutation_contract(void)
+{
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),list=r.childNodes,"
+        "t=list[0],comment=list[2],before,appendOk,insertOk,deleteOk,replaceOk,"
+        "same,invalidOffset,invalidFraction,invalidCount,unchanged,"
+        "commentRejected,detached,stale;"
+        "before=list.length===4&&t.data==='alpha'&&list===r.childNodes;"
+        "appendOk=t.appendData('-tail')===undefined&&t.data==='alpha-tail'&&"
+        "t===r.childNodes[0];"
+        "insertOk=t.insertData(5,'+')===undefined&&t.data==='alpha+-tail';"
+        "deleteOk=t.deleteData(5,1)===undefined&&t.data==='alpha-tail';"
+        "replaceOk=t.replaceData(6,99,'CORE')===undefined&&"
+        "t.data==='alpha-CORE'&&t.length===10&&"
+        "r.textContent.indexOf('alpha-CORE')===0;"
+        "same=list===r.childNodes&&list[0]===t;"
+        "invalidOffset=false;try{t.insertData(11,'x');}catch(e){invalidOffset=true;}"
+        "invalidFraction=false;try{t.deleteData(1.5,1);}"
+        "catch(e){invalidFraction=true;}"
+        "invalidCount=false;try{t.deleteData(0,-1);}catch(e){invalidCount=true;}"
+        "unchanged=t.data==='alpha-CORE';"
+        "commentRejected=false;try{comment.appendData('x');}"
+        "catch(e){commentRejected=true;}"
+        "r.textContent='done';detached=t.parentNode===null&&!t.isConnected&&"
+        "t.data==='alpha-CORE';stale=false;"
+        "try{t.replaceData(0,1,'x');}catch(e){stale=true;}"
+        "return document.getElementById('result').textContent="
+        "[before,appendOk,insertOk,deleteOk,replaceOk,same,invalidOffset,"
+        "invalidFraction,invalidCount,unchanged,commentRejected,detached,"
+        "stale,t.data==='alpha-CORE'].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_child_node_case(1204, PROBE, EXPECTED, error,
+            sizeof(error))) {
+        return FALSE;
+    }
+    show_info(L"TEST 1204 OK",
+            "Text CharacterData append/insert/delete/replace mutations"
+            " preserve wrappers and reject invalid, comment, and detached"
+            " writes through the bounded Core bridge.");
     return TRUE;
 }
 
@@ -105448,6 +105497,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1201: ok = test1201_browser_dom_remove_child_contract(); break;
         case 1202: ok = test1202_browser_dom_text_mutation_contract(); break;
         case 1203: ok = test1203_browser_text_node_mutation_contract(); break;
+        case 1204: ok = test1204_browser_character_data_mutation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

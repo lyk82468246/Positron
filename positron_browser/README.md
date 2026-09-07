@@ -451,8 +451,14 @@ fail closed；不派发 DOM 事件，不支持插入、reparent、文本节点�
 需要 Text setter 时，宿主改用扩展表注册同一条 native slot，并同时提供旧的 element
 setter 与 `set_child_text`。后者收到父 id、未过滤 childNodes 索引和 UTF-8 文本，转给
 `PCore_NodeSetTextChildById`；成功后宿主安排重排。Browser 保持连接中 wrapper 身份，对
-非 Text、越界或 detached 写入安全失败。旧注册函数保持 element-only ABI，扩展表不增加
+非 Text、越界或 detached 写入安全失败。旧注册函数保持 element-only ABI，不增加
 native-function 数量。
+
+同一 Text wrapper 还提供有界的 `appendData()`、`insertData()`、`deleteData()` 和
+`replaceData()`。offset/count 使用 JavaScript 字符串的 UTF-16 code-unit 语义；offset
+和负数/非整数 count 会抛出错误，超长 count 截断。成功调用复用上述 setter，保持 child
+list、wrapper/NodeList 身份并使 Core retained layout 失效，不派发事件。comment/CDATA、
+`splitText()`、节点插入和 detached wrapper 仍安全失败。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、

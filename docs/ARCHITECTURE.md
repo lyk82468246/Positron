@@ -149,8 +149,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `childNodes` 索引只修改现有 `DOM_TEXT_NODE` 的数据，成功后使 retained layout 失效，
   不改变 child list、不插入/删除/reparent、不派发事件。Browser 通过扩展的
   `PBrowserScriptDomWriteCallbacksEx` 复用既有 `__pcoreSetText` slot，将
-  `Text.nodeValue`、`Text.data` 和 `Text.textContent` setter 转给宿主；宿主只负责
-  callback 接线和后续 style/layout/paint，失效或 detached wrapper 必须安全失败；
+  `Text.nodeValue`、`Text.data` 和 `Text.textContent` setter 转给宿主；
+  `appendData()`、`insertData()`、`deleteData()` 和 `replaceData()` 在 Browser 侧计算
+  有界新字符串后复用同一 setter。宿主只负责 callback 接线和后续 style/layout/paint，
+  失效或 detached wrapper 必须安全失败；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
