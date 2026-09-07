@@ -96,9 +96,12 @@
   且尺寸为 0。当前 source 选择最多接受 16 个、每个最多 2047 字节的同类候选：正密度
   （`x`）按当前 Core viewport DPI 选择，正宽度（`w`）按 `sizes` 源尺寸与 DPI 选择；
   `sizes` 仅接受 px/vw/vh 以及单一 `(min-width|max-width: <length>)` 条件，缺失或不支持
-  时按 100vw。混合/畸形候选、超长 URL 和不支持的 URL 语法无法安全选择时回退 raw `src`
-  或保持空值。完整 loading/fetch-priority 策略、绝对 URL、CORS/referrer enforcement
-  或 native 图像视觉仍未实现。Core 只提供有界的
+  时按 100vw。`<picture>` 另在最多 16 层祖先、8 个 preceding `<source>` 和 64 个
+  direct-child 节点内按 document order 过滤有界 `media`/`type`，然后复用每个 source
+  的 `srcset`/`sizes` 选择；不合格 source 才回到 img 的候选。WM6 libdom 对省略 source
+  结束标签的兼容路径只保留这些上限。混合/畸形候选、未知 MIME、超长 URL 和不支持的
+  URL 语法无法安全选择时回退 raw `src` 或保持空值。完整媒体查询、loading/fetch-priority
+  策略、绝对 URL、CORS/referrer enforcement 或 native 图像视觉仍未实现。Core 只提供有界的
   image-map 命中：已布局图片最多解析 64
   个 `<area>`、64 个坐标，并支持 `default`、`rect`、`circle` 和 `poly`/`polygon`；自然
   坐标按渲染尺寸缩放，坏坐标、未知形状、`nohref`、空区域和超限输入安全忽略。该路径
@@ -527,9 +530,15 @@
   策略、自动图像事件和 native 图像视觉仍未实现或需人工观察。
 - TEST1197 是离线的 Core/Browser `srcset` 宽度选择夹具，无新增立即人工风险；自动门证明
   `w` 候选按 `sizes` 的 px/vw/vh 长度和单一 min/max-width 条件选择，在 240/480 CSS
-  视口下与 Core fetch/cache/layout/currentSrc/natural-size 一致；无 `sizes`、畸形 `sizes`
-  和混合 descriptor 安全回退。复杂媒体条件、绝对 URL、CORS/referrer、完整 loading、
-  动态网络切换、旋转和不同密度资源的真实视觉仍未实现或需人工观察。
+视口下与 Core fetch/cache/layout/currentSrc/natural-size 一致；无 `sizes`、畸形 `sizes`
+和混合 descriptor 安全回退。复杂媒体条件、绝对 URL、CORS/referrer、完整 loading、
+动态网络切换、旋转和不同密度资源的真实视觉仍未实现或需人工观察。
+- TEST1198 覆盖 Core/Browser 的有界 `<picture><source>` 选择：最多 16 层祖先、8 个
+  preceding source 和 64 个 direct-child 节点按文档顺序过滤 media/type，再复用 source
+  的 `srcset`/`sizes` 选择；unsupported/malformed source 回退到后续 source 或 img
+  候选，240/480 CSS 视口下的 `currentSrc`、fetch/cache/layout/natural-size 保持一致。
+  完整媒体查询、动态 source 生命周期、绝对 URL、CORS/referrer、loading 策略和 native
+  图像视觉仍未实现或需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

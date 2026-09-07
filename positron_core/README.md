@@ -71,6 +71,12 @@ DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout
 不会触发 fetch、decode 或 layout。宿主应在资源扫描和布局前设置 viewport；若候选或
 `src` 超出边界，Core 会安全回退或不发起该请求。
 
+`<picture>` 中的 `<source>` 也由同一选择器处理。Core 最多扫描最近 picture 的 16 层
+祖先、8 个 preceding source 和 64 个 direct-child 节点；按文档顺序先过滤有界
+`media`/`type`，再按 source 的 `srcset`/`sizes` 选择，全部不合格时回到 `<img>` 自身
+的 `srcset`/`src`。这是针对 WM6 libdom 对省略 source 结束标签的有界兼容路径，不是完整
+媒体查询或任意 DOM 修复；未知 MIME、坏候选、超长 URL 和不支持的条件都会安全跳过。
+
 ## 能力分组
 
 ### 解析、样式与布局
@@ -132,8 +138,10 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   layout；没有 `src`/`srcset` 的图片立即 complete 且自然尺寸为 0，无法选出候选且
   没有 `src` 的非空 `srcset` 保持 incomplete，成功资源要等 retained decode attempt
   后才暴露自然尺寸，终态 fetch failure 则 complete 且尺寸为 0。关系 49 与图片发现、
-  布局共用最多 16 个同类 `x`/`w` 候选的选择结果；`sizes` 的支持范围是 px/vw/vh 和
-  单一 min/max-width 条件，畸形候选和超长 URL 安全回退或不可用。该桥不实现 CORS、
+  布局共用 `<img>` 与 `<picture><source>` 的选择结果：每个 source 最多扫描 16 层祖先、
+  8 个 source 和 64 个 direct-child 节点，再在 source 的 media/type 通过后使用最多
+  16 个同类 `x`/`w` 候选；`sizes` 的支持范围是 px/vw/vh 和单一 min/max-width 条件，
+  畸形候选和超长 URL 安全回退或不可用。该桥不实现 CORS、
   `decode()` 或事件；非 `img` 目标返回 unavailable；
 - script/runtime 所需的有限 element metadata。
 

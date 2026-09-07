@@ -391,7 +391,7 @@ filename/type 和空内容，不承诺完整文件读取。
 source attrs、`crossOrigin`、map/size/loading fields、自然尺寸、`complete`、
 `currentSrc`）。缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，
 非法尺寸读取为 `0` 且 setter 拒绝；mutation 走 Core callback。自然尺寸和 `complete`
-来自 Core；`currentSrc` 读取关系 49，与 fetch、解码和布局共用来源。Core 按 viewport
+来自 Core；`currentSrc` 读取关系 49，与 fetch、解码、布局和 picture source 共用。Core 按 viewport
 DPI 从最多 16 个同类 `x`/`w` 候选中选择；
 `w` 使用 `sizes` 的 px/vw/vh 长度和一个 `(min-width|max-width: <length>)` 条件，缺失
 或不支持的 `sizes` 按 100vw。畸形候选和不支持的 URL 语法回退到 raw `src`。无 source
@@ -405,8 +405,8 @@ image 终态。宿主在 Core 完成 fetch/decode/layout 后调用
 `PBrowser_ScriptSessionNotifyImageEvent(session, id, PBROWSER_SCRIPT_IMAGE_EVENT_LOAD)`
 或 `..._ERROR`；Browser 只接受当前 `<img>` 已 complete 且终态一致的通知，派发 trusted、
 非冒泡、不可取消的 `load`/`error`，并 settle 同一 source 的 decode 请求。重复、过时、
-错误通知 fail closed。候选选择由 Core 负责；CORS、绝对 URL、完整 loading 策略、图像
-视觉与 map 命中不由 Browser 负责。
+错误通知 fail closed。CORS、绝对 URL、完整 loading 策略、图像视觉与 map 命中不由
+Browser 负责。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、

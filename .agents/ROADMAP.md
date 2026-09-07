@@ -84,8 +84,10 @@ relation 46–49 提供 `naturalWidth`/`naturalHeight`/`complete`/`currentSrc`�
 按 viewport DPI 在最多 16 个、每个最多 2047 字节的同类候选中选择最小的足够来源或最高
 来源：`x` 描述符按密度选择，`w` 描述符按 `sizes` 解析出的 px/vw/vh 源尺寸选择，且
 可选单一 `(min-width|max-width: <length>)` 条件按当前视口求值；缺失或不支持的 `sizes`
-按 100vw。选择结果驱动资源发现、缓存、retained decode 和布局；无 source、候选不可用
-及终态 fetch failure 的状态分别保持可观察且 fail-closed。Browser 另提供有界 `decode()`
+按 100vw。`<picture>` 还会在最多 16 层祖先、8 个 preceding `<source>` 和 64 个
+direct-child 节点内按文档顺序过滤有界 `media`/`type`，再复用同一选择器；无可用 source
+时才回到 img 的候选。选择结果驱动资源发现、缓存、retained decode 和布局；无 source、
+候选不可用及终态 fetch failure 的状态分别保持可观察且 fail-closed。Browser 另提供有界 `decode()`
 Promise、source mutation/teardown 拒绝和由宿主在 Core 终态就绪后触发的 trusted、非冒泡
 `load`/`error` 通知。绝对 URL、CORS/referrer enforcement、完整 loading 策略或图像视觉仍
 未实现。Core

@@ -819,7 +819,11 @@ try {
 }
 
 $remoteRoot = $RemoteBase.TrimEnd("\") + "\" + $Candidate + "-" + $runStamp
-$remoteExe = $remoteRoot + "\test_host.exe"
+# Windows Mobile can keep an executable module mapped by its basename after a
+# timed-out run. Give each remote launch a unique basename to reduce stale
+# path/name reuse; a timed-out process still requires normal device cleanup.
+$remoteExecutableName = "test_host-run-" + $runStamp + ".exe"
+$remoteExe = $remoteRoot + "\" + $remoteExecutableName
 $remoteLog = $remoteRoot + "\test_host.log"
 $remoteProcessId = 0
 $timedOut = $false
@@ -1160,7 +1164,11 @@ try {
     foreach ($file in $orderedPayload) {
         $index++
         $relative = Get-RelativePath $localStage $file.FullName
-        $remotePath = $remoteRoot + "\" + $relative
+        if ($relative -eq "test_host.exe") {
+            $remotePath = $remoteExe
+        } else {
+            $remotePath = $remoteRoot + "\" + $relative
+        }
         Write-Stage "deploying $index/$($orderedPayload.Count): $relative"
         [PositronDeviceRapi]::CopyFileToDevice($file.FullName, $remotePath)
     }

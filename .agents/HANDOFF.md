@@ -8,18 +8,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。next734–736 的设备门部署安全护栏已完成：RAPI 分开查询目标卷与内部
-  object store，目标卷负责硬性部署容量，外部目标的内部空间只作缓存风险告警；容量不足时
-  还会对已识别且日志完整的旧门目录做一次有界应急回收，日志不完整时保留并在仍不足时
-  阻断。这批没有新增公共产品语义，`test_host` 仍只是被部署的回归宿主。next733 的 Browser
-  `formdata` 事件、`FormDataEvent` 构造器、`form.onformdata` 接线、TEST1178 夹具和公共
-  边界文档继续保持；next753 又把有界 image-map 命中、area 链接几何、交互状态和
-  Core 事件 target 接入 `positron_core.dll`，并让 Browser 通用事件对象同时提供标准
-  `isTrusted` 与兼容 `trusted`。next754 又把有界 density `srcset` 选择、Core relation
-  49、共享 fetch/cache/layout/currentSrc 路径接入 `positron_core.dll`；next755 在同一
-  选择器中加入有界 `w`/`sizes`（px/vw/vh 与单一 min/max-width 条件），`test_host` 只
-  新增 TEST1196/1197 夹具与断言。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1197。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- 分支：`main`。当前候选 next756 将 `<picture><source>` 的有界 media/type/srcset
+  选择放入 `positron_core.dll`，并让既有 fetch/cache/layout/currentSrc 路径复用该结果；
+  `test_host` 只新增 TEST1198 fixture/断言。设备门为每次远端启动使用唯一 executable
+  basename，以降低 WM6 在超时后复用旧路径/名称的风险；它仍只复用 WMDC GUI 当前唯一
+  RAPI 会话，超时进程需在设备端正常结束。
+  `tmp/` 中的本地证据未纳入版本控制。
+- `TEST_MAX_NUMBER` 已为 1198。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-02 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -64,7 +59,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   一致性；TEST1196 覆盖 Core/Browser 共用的 density `srcset` 选择、relation 49、
   资源缓存复用、自然尺寸/complete 一致性和无效候选回退；TEST1197 覆盖
   `w`/`sizes` 的有界 px/vw/vh 与 min/max-width 选择、混合/畸形回退以及
-  240/480 CSS 视口下的 Core/Browser 一致性。
+  240/480 CSS 视口下的 Core/Browser 一致性；TEST1198 覆盖
+  `<picture><source>` 的有界 media/type/srcset 选择、source 文档顺序、
+  malformed/unsupported source 回退，以及 240/480 CSS 视口下 Core/Browser
+  `currentSrc`、fetch/cache/layout/natural-size 的一致性。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -76,12 +74,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 当前基线已包含表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片元数据/decode/image-map，以及 next754–755 的有界 `srcset`
-  选择；稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
+  生命周期、焦点、图片元数据/decode/image-map，以及 next754–756 的有界 `srcset` 与
+  `<picture><source>` 选择；稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
-- 当前唯一下一步是 next756：先从 compatibility corpus、源码、设备日志或截图固定一个
+- 当前唯一下一步是 next757：先从 compatibility corpus、源码、设备日志或截图固定一个
   新的真实产品缺口，再推进一条可自动断言的公共 DLL 纵向能力；不要预先承诺未验证的
   Web API 或视觉行为。
 
@@ -153,30 +151,32 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1197。
+- `TEST_MAX_NUMBER`：1198。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新设备门证据为 next755 的 Core `w`/`sizes` 选择与 Browser `currentSrc` 桥；双空间
-预检/空间回收窄门仍是部署安全基线：
+最新设备门证据为 next756 的 Core/Browser `<picture><source>` 选择纵切；双空间预检、
+唯一远端 executable basename 和完整日志回收仍是部署安全基线：
 
-- `tmp/device-runs/20260907-002255-next755-final/`；选择 `1196-1197,999`，3/3 通过，零
-  `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，`complete_log_retrieved=True`。日志证明
-  density 回归、`w`/`sizes` 在 240/480 CSS 视口下的候选选择、混合/畸形回退、缓存与
-  自然尺寸一致；TEST999 的完成提示音只请求一次。
-- 当前设备为 240x320、96 dpi；门使用用户已在 WMDC GUI 建立的唯一会话和正式 Debug ARMV4I
-  构建。RAPI 只复用当前会话，不连接、选择、cradle、重置或杀死设备。
-- Storage Card 目标卷 `CeGetDiskFreeSpaceEx` 可用 65,822,621,696 字节，总计
-  511,101,108,224，payload 9,831,945、reserve 1,048,576、required 10,880,521；
-  内部 object store `CeGetStoreInformation` 可用 8,761,344/32,942,080，cache reserve
-  65,536；目标与内部检查均通过，4 个日志不完整的旧目录按规则保留，当前目录在完整日志
-  取得后清理。
-- 静态验证：`python scripts/test_c89ize.py`、正式 Debug ARMV4I build、`python
-  scripts/audit_repo.py` 和 `git diff --check` 均已通过。Browser heap ceiling 为 768 KiB，
-  `PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
+- `tmp/device-runs/20260907-105822-next756-picture-rerun2/`；Debug ARMV4I、选择 `1198`、
+  `EnableJavaScript`，1/1 通过，零 `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，
+  `complete_log_retrieved=True`。日志证明 240/480 CSS 视口下 media/type/source 顺序、
+  unsupported/malformed source 回退、Core/Browser `currentSrc`、fetch/cache/layout 和
+  natural-size 断言一致。
+- 设备指标为 320x320、128 dpi；门实际设置的 CSS viewport 为 240/480，使用用户已在 WMDC
+  GUI 建立的唯一会话和正式 Debug ARMV4I 构建。RAPI 只复用当前会话，不连接、选择、
+  cradle、重置或杀死设备；本次远端目录在双次完整日志取得后清理。
+- 运行前目标卷 `CeGetDiskFreeSpaceEx` 曾只剩 6,004,736 字节，低于本批所需容量；已把
+  四个 next756 picture 超时目录的现有日志复制到 `tmp/device-runs/cleanup-next756-picture/`
+  后，按用户已授权的空间回收约束仅删除这四个精确目录，没有强杀进程或触碰 WMDC。
+  重部署后目标卷可用 29,616,128 字节，payload 9,840,128、reserve 1,048,576、
+  required 10,888,704，目标卷与内部 object store 检查均通过。
+- 静态验证：`python scripts/test_c89ize.py`、正式 Debug/Release ARMV4I build、
+  `python scripts/audit_repo.py` 和 `git diff --check` 均已通过。Browser heap ceiling 为
+  768 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 28。
 
 ## 当前人工验收状态
 
@@ -220,7 +220,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   人工风险；自动门证明 `document.images` snapshot、attribute/boolean/尺寸属性边界、
   非 `img` fail-closed，以及成功 SVG、终态 fetch failure、无 source 和仅 `srcset` 的
   `naturalWidth`/`naturalHeight`/`complete` 投影，并确认 retained decode 后才暴露自然尺寸。
-  该门不改变 native 图像视觉，候选选择由 TEST1196/1197 覆盖，CORS/loading 仍在未来或人工范围。
+  该门不改变 native 图像视觉，候选选择由 TEST1196–1198 覆盖，CORS/loading 仍在未来或人工范围。
 - TEST1194 是离线的 Browser `HTMLImageElement.decode()` 与终态事件夹具，无新增立即人工
   风险；自动门证明无 source/成功/失败/source mutation/teardown 的 Promise 结果、
   `EncodingError`/`AbortError` 分类、Core relation 就绪门、trusted 非冒泡不可取消的
@@ -241,6 +241,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   视口下与 Core fetch/cache/layout/currentSrc/natural-size 一致；无 `sizes`、畸形 `sizes`
   和混合 descriptor 安全回退。绝对 URL、复杂媒体条件、CORS/referrer、完整 loading、
   动态网络切换、旋转和不同密度资源的真实视觉仍进入累计人工或未来能力范围。
+- TEST1198 是离线的 Core/Browser `<picture><source>` 选择夹具，暂无新增立即人工风险；
+  自动设备门证明 source 的 media/type 过滤、文档顺序、unsupported/malformed 回退，以及
+  240/480 CSS 视口下 `currentSrc`、fetch/cache/layout/natural-size 的一致性。完整媒体
+  查询、绝对 URL、CORS/referrer、loading 策略、动态 source 视觉和真实图像显示仍进入
+  累计人工或未来能力范围。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -270,10 +275,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
 - Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 768 KiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 图片资源的候选选择覆盖 Core 的最多 16 个同类正密度 `x` 或正宽度 `w` 候选（每个
-  URL 最多 2047 字节），按 viewport DPI 或有界 `sizes` 源尺寸选择并供
-  fetch/cache/layout/currentSrc 共用；`sizes` 只支持 px/vw/vh 和单一 min/max-width
-  条件，绝对 URL、CORS/referrer enforcement、完整 loading/fetch-priority 策略或 native
-  图像视觉仍未实现。Core 的 image-map 只有有界的 default/rect/circle/poly 命中和 area
+  URL 最多 2047 字节），以及每个 `<picture>` 最多 8 个 preceding `<source>`、16 层
+  ancestor 和 64 个 direct-child 节点的有界扫描。source 先按 document order 过滤
+  media/type，再用同一 `srcset`/`sizes` 选择器；结果由 fetch/cache/layout/currentSrc
+  共用。`sizes` 只支持 px/vw/vh 和单一 min/max-width 条件，完整媒体查询、绝对 URL、
+  CORS/referrer enforcement、完整 loading/fetch-priority 策略或 native 图像视觉仍未
+  实现。Core 的 image-map 只有有界的 default/rect/circle/poly 命中和 area
   几何；不覆盖 transforms、完整 HTML image-map 算法或 pointer/touch 手势。`decode()`、
   `load`/`error` 只覆盖 Browser 的有界 Promise/事件桥，必须由宿主在 Core 的当前
   complete/natural-size relation 就绪后显式通知；它不提供后台加载、自动事件或完整图像
@@ -305,10 +312,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next756
+## 唯一下一步：next757
 
-next755 的有界 `w`/`sizes` 选择、Core relation 49、共享 fetch/cache/layout/currentSrc
-路径和 TEST1197 已通过相邻自动设备门；部署空间护栏和失败停止规则详见
+next756 的 `<picture><source>` 选择、Core relation 49、共享 fetch/cache/layout/currentSrc
+路径和 TEST1198 已通过定向自动设备门；部署空间护栏和失败停止规则详见
 `docs/TESTING.md` 与 `docs/TROUBLESHOOTING.md`，本节不重复实现细节。下一步必须先从
 compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，再决定进入哪个
 公共 DLL；不要预先把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器树、Range/
@@ -324,12 +331,12 @@ bfcache、绝对 URL、CORS、完整图像 loading 和 image-map 的未覆盖扩
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一批完成标准（next756）
+## 下一批完成标准（next757）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱现有布局、几何、滚动、history、生命周期、selector、focus、form-owner、reset、requestSubmit、direct-submit 或 FormData 旧/Ex 路径；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- 完成后 handoff 应覆盖为 next756 快照，ROADMAP 只保留当前尚未完成的纵向能力；
+- 完成后 handoff 应覆盖为 next757 快照，ROADMAP 只保留当前尚未完成的纵向能力；
   新测试、公共边界和设备证据应可由本文件与 `docs/TESTING.md` 复核。

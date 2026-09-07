@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1197
+#define TEST_MAX_NUMBER 1198
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -45937,6 +45937,206 @@ static BOOL test1197_browser_img_srcset_width_selection(void)
             "bounded width srcset candidates select against px/vw/vh sizes"
             " and min/max-width conditions, sharing currentSrc with Core"
             " fetch/layout while mixed or unsupported input stays safe.");
+    return TRUE;
+}
+
+/* TEST 1198 - bounded picture/source selection shared by Core and Browser. */
+static BOOL test1198_browser_picture_source_selection(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><picture><source media='(min-width: 300px)' "
+        "srcset='/img/three.svg 1x'><source media='(max-width: 300px)' "
+        "srcset='/img/one.svg 1x'><img id='responsive' "
+        "src='/img/fallback.svg'></picture>"
+        "<picture><source type='image/webp' srcset='/img/three.svg 1x'>"
+        "<source type='image/svg+xml' srcset='/img/two.svg 1x'>"
+        "<img id='typed' src='/img/fallback.svg'></picture>"
+        "<picture><source media='screen' srcset='/img/three.svg 1x'>"
+        "<img id='fallback' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 1x,/img/two.svg 2x'></picture>"
+        "<picture><source media='(min-width: 300px)' "
+        "srcset='/img/bad.svg nope'><source media='(min-width: 300px)' "
+        "srcset='/img/two.svg 1x'><img id='malformed' "
+        "src='/img/fallback.svg'></picture>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;}picture{display:block;}"
+        "img{display:block;width:120px;height:60px;}";
+    static const char BROWSER_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><picture><source media='(min-width: 300px)' "
+        "srcset='/img/three.svg 1x'><source media='(max-width: 300px)' "
+        "srcset='/img/one.svg 1x'><img id='responsive' "
+        "src='/img/fallback.svg'></picture>"
+        "<picture><source type='image/webp' srcset='/img/three.svg 1x'>"
+        "<source type='image/svg+xml' srcset='/img/two.svg 1x'>"
+        "<img id='typed' src='/img/fallback.svg'></picture>"
+        "<picture><source media='screen' srcset='/img/three.svg 1x'>"
+        "<img id='fallback' src='/img/fallback.svg' "
+        "srcset='/img/one.svg 1x,/img/two.svg 2x'></picture>"
+        "<picture><source media='(min-width: 300px)' "
+        "srcset='/img/bad.svg nope'><source media='(min-width: 300px)' "
+        "srcset='/img/two.svg 1x'><img id='malformed' "
+        "src='/img/fallback.svg'></picture>"
+        "<p id='result'>idle</p></body></html>";
+    static const char BROWSER_PROBE[] =
+        "var a=document.getElementById('responsive');"
+        "var b=document.getElementById('typed');"
+        "var c=document.getElementById('fallback');"
+        "var d=document.getElementById('malformed');"
+        "document.getElementById('result').textContent="
+        "a.currentSrc+'|'+b.currentSrc+'|'+c.currentSrc+'|'+d.currentSrc;";
+    static const char EXPECTED_240[] =
+        "/img/one.svg|/img/two.svg|/img/one.svg|/img/fallback.svg";
+    static const char EXPECTED_480[] =
+        "/img/three.svg|/img/two.svg|/img/one.svg|/img/two.svg";
+    HANDLE document;
+    HANDLE sheet;
+    image_srcset_resource_test_ctx ctx;
+    char source[128];
+    char error[512];
+    int found;
+    int fetched;
+    int number;
+    int vw;
+    int vh;
+    BOOL core_ok;
+    BOOL browser_ok;
+
+    document = NULL;
+    sheet = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(source, 0, sizeof(source));
+    memset(error, 0, sizeof(error));
+    found = 0;
+    fetched = 0;
+    number = 0;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    core_ok = TRUE;
+
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            PCore_NodeRelationById(document, "responsive",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/one.svg") != 0 ||
+            PCore_NodeRelationById(document, "typed",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/two.svg") != 0 ||
+            PCore_NodeRelationById(document, "fallback",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/one.svg") != 0 ||
+            PCore_NodeRelationById(document, "malformed",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), NULL, NULL) != 0 ||
+            strcmp(source, "/img/fallback.svg") != 0) {
+        core_ok = FALSE;
+    }
+    if (core_ok) {
+        core_ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                found == 4 && fetched == 4 && ctx.calls == 3 &&
+                ctx.matched == 3 && ctx.frees == 3;
+    }
+    if (core_ok) {
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/picture.css");
+        core_ok = sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0 &&
+                PCore_NodeRelationById(document, "responsive",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0, NULL,
+                &number) == 0 && number == 120;
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+        sheet = NULL;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+        document = NULL;
+    }
+
+    if (core_ok) {
+        memset(&ctx, 0, sizeof(ctx));
+        memset(source, 0, sizeof(source));
+        found = 0;
+        fetched = 0;
+        PCore_SetViewport(480, 320, 96);
+        document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+        if (document == NULL ||
+                PCore_NodeRelationById(document, "responsive",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/three.svg") != 0 ||
+                PCore_NodeRelationById(document, "typed",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/two.svg") != 0 ||
+                PCore_NodeRelationById(document, "fallback",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/one.svg") != 0 ||
+                PCore_NodeRelationById(document, "malformed",
+                PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+                sizeof(source), NULL, NULL) != 0 ||
+                strcmp(source, "/img/two.svg") != 0) {
+            core_ok = FALSE;
+        }
+        if (core_ok) {
+            core_ok = PCore_FetchImageResources(document,
+                    image_srcset_fetch, image_srcset_free, &ctx, &found,
+                    &fetched) == 0 && found == 4 && fetched == 4 &&
+                    ctx.calls == 3 && ctx.matched == 3 && ctx.frees == 3;
+        }
+        if (core_ok) {
+            sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                    "http://positron.local/picture.css");
+            core_ok = sheet != NULL &&
+                    PCore_StyleDocument(document, sheet) == 0 &&
+                    PCore_LayoutDocument(document, 480, 320) == 0 &&
+                    PCore_NodeRelationById(document, "responsive",
+                    PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0,
+                    NULL, &number) == 0 && number == 360;
+        }
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+
+    browser_ok = FALSE;
+    PCore_SetViewport(240, 320, 96);
+    if (test_browser_raw_string_fixture(BROWSER_HTML, BROWSER_PROBE,
+            EXPECTED_240, error, sizeof(error))) {
+        PCore_SetViewport(480, 320, 96);
+        browser_ok = test_browser_raw_string_fixture(BROWSER_HTML,
+                BROWSER_PROBE, EXPECTED_480, error, sizeof(error));
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!core_ok || !browser_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d browser=%d found=%d fetched=%d calls=%d/%d/%d source=%s natural_width=%d",
+                    core_ok, browser_ok, found, fetched, ctx.calls,
+                    ctx.matched, ctx.frees, source, number);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1198 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1198 OK",
+            "picture source elements select bounded media/type candidates"
+            " before the img fallback, sharing currentSrc with Core"
+            " fetch/layout while unsupported or malformed sources stay safe.");
     return TRUE;
 }
 
@@ -104068,6 +104268,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1195: ok = test1195_browser_image_map_hit_test(); break;
         case 1196: ok = test1196_browser_img_srcset_selection(); break;
         case 1197: ok = test1197_browser_img_srcset_width_selection(); break;
+        case 1198: ok = test1198_browser_picture_source_selection(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

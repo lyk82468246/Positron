@@ -5881,6 +5881,317 @@ static int pcore_image_source_set_select(dom_string *srcset,
     return 0;
 }
 
+/* A picture source type is only a decoder hint.  Keep the allow-list aligned
+ * with the image formats that this Core build can retain; an unknown hint is
+ * skipped rather than allowing a source that the decoder cannot consume. */
+static int pcore_image_source_type_supported(dom_string *type)
+{
+    const char *data;
+    size_t length;
+    size_t start;
+    size_t end;
+
+    if (type == NULL) {
+        return 1;
+    }
+    data = dom_string_data(type);
+    length = dom_string_byte_length(type);
+    if (data == NULL) {
+        return 0;
+    }
+    start = 0;
+    end = length;
+    pcore_image_source_trim(data, &start, &end);
+    if (start >= end) {
+        return 1;
+    }
+    if (pcore_image_source_token_equal(data + start, end - start,
+            "image/svg+xml") ||
+            pcore_image_source_token_equal(data + start, end - start,
+            "image/png") ||
+            pcore_image_source_token_equal(data + start, end - start,
+            "image/jpeg") ||
+            pcore_image_source_token_equal(data + start, end - start,
+            "image/gif") ||
+            pcore_image_source_token_equal(data + start, end - start,
+            "image/bmp")) {
+        return 1;
+    }
+    return 0;
+}
+
+/* Source media is deliberately the same small viewport condition subset used
+ * by sizes.  Missing/empty media matches; unsupported media makes this source
+ * ineligible so a later source or the img fallback can be considered. */
+static int pcore_image_source_media_matches(dom_string *media)
+{
+    const char *data;
+    size_t length;
+    size_t start;
+    size_t end;
+    int match;
+
+    if (media == NULL) {
+        return 1;
+    }
+    data = dom_string_data(media);
+    length = dom_string_byte_length(media);
+    if (data == NULL) {
+        return 0;
+    }
+    start = 0;
+    end = length;
+    pcore_image_source_trim(data, &start, &end);
+    if (start >= end) {
+        return 1;
+    }
+    match = 0;
+    if (!pcore_image_source_media_condition(data, start, end, &match)) {
+        return 0;
+    }
+    return match;
+}
+
+/* Try one source element without mutating the DOM.  The return value is one
+ * only when the source has a usable bounded candidate; absent attributes are
+ * allowed, while attribute access errors make the source ineligible. */
+static int pcore_image_picture_source_try(dom_node *source, char *out_url,
+        int url_capacity, int *out_bytes)
+{
+    dom_string *media;
+    dom_string *mime_type;
+    dom_string *srcset;
+    dom_string *sizes;
+    int result;
+    int eligible;
+    int selected_bytes;
+
+    if (source == NULL || out_url == NULL || url_capacity <= 0) {
+        return 0;
+    }
+    media = NULL;
+    mime_type = NULL;
+    srcset = NULL;
+    sizes = NULL;
+    eligible = 1;
+    result = pcore_relation_attribute_value((dom_element *) source, "media",
+            &media);
+    if (result == 1) {
+        eligible = 0;
+    }
+    result = pcore_relation_attribute_value((dom_element *) source, "type",
+            &mime_type);
+    if (result == 1) {
+        eligible = 0;
+    }
+    result = pcore_relation_attribute_value((dom_element *) source, "srcset",
+            &srcset);
+    if (result == 1) {
+        eligible = 0;
+    }
+    result = pcore_relation_attribute_value((dom_element *) source, "sizes",
+            &sizes);
+    if (result == 1) {
+        eligible = 0;
+    }
+    if (eligible && !pcore_image_source_media_matches(media)) {
+        eligible = 0;
+    }
+    if (eligible && !pcore_image_source_type_supported(mime_type)) {
+        eligible = 0;
+    }
+    selected_bytes = 0;
+    result = eligible && srcset != NULL &&
+            dom_string_byte_length(srcset) > 0 &&
+            pcore_image_source_set_select(srcset, sizes, out_url,
+            url_capacity, &selected_bytes) && selected_bytes > 0;
+    if (result && out_bytes != NULL) {
+        *out_bytes = selected_bytes;
+    }
+    if (media != NULL) {
+        dom_string_unref(media);
+    }
+    if (mime_type != NULL) {
+        dom_string_unref(mime_type);
+    }
+    if (srcset != NULL) {
+        dom_string_unref(srcset);
+    }
+    if (sizes != NULL) {
+        dom_string_unref(sizes);
+    }
+    return result ? 1 : 0;
+}
+
+/* Resolve source elements that precede an img in its nearest picture
+ * ancestor.  Standard DOMs expose source siblings directly under picture;
+ * the WM6 libdom parser may instead retain the source elements as ancestors
+ * of the img because source is not represented as an HTML void element.  The
+ * bounded ancestor collection handles that parser shape, while the direct
+ * sibling pass handles the standard shape without recursively walking a
+ * possibly malformed child graph. */
+static int pcore_image_picture_source_select(dom_node *image, char *out_url,
+        int url_capacity, int *out_bytes)
+{
+    dom_node *parent;
+    dom_node *next;
+    dom_node *picture;
+    dom_node *child;
+    dom_node *sources[PCORE_IMAGE_PICTURE_MAX_SOURCES];
+    dom_node_type node_type;
+    int depth;
+    int node_count;
+    int source_count;
+    int direct_picture;
+    int index;
+    int selected_bytes;
+    int result;
+
+    if (image == NULL || out_url == NULL || url_capacity <= 0) {
+        return 0;
+    }
+    parent = NULL;
+    if (dom_node_get_parent_node(image, &parent) != DOM_NO_ERR) {
+        return 0;
+    }
+    picture = NULL;
+    depth = 0;
+    source_count = 0;
+    direct_picture = 0;
+    while (parent != NULL && depth < PCORE_IMAGE_PICTURE_MAX_DEPTH) {
+        if (dom_node_get_node_type(parent, &node_type) != DOM_NO_ERR) {
+            dom_node_unref(parent);
+            while (source_count > 0) {
+                source_count--;
+                dom_node_unref(sources[source_count]);
+            }
+            return 0;
+        }
+        if (depth == 0 && node_type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) parent, "picture")) {
+            direct_picture = 1;
+        }
+        if (node_type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) parent, "source")) {
+            if (source_count < PCORE_IMAGE_PICTURE_MAX_SOURCES) {
+                sources[source_count] = dom_node_ref(parent);
+                if (sources[source_count] != NULL) {
+                    source_count++;
+                }
+            } else {
+                dom_node_unref(sources[0]);
+                for (index = 1; index < source_count; index++) {
+                    sources[index - 1] = sources[index];
+                }
+                next = dom_node_ref(parent);
+                if (next != NULL) {
+                    sources[source_count - 1] = next;
+                } else {
+                    source_count--;
+                }
+            }
+        }
+        if (node_type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) parent, "picture")) {
+            picture = parent;
+            parent = NULL;
+            break;
+        }
+        next = NULL;
+        if (dom_node_get_parent_node(parent, &next) != DOM_NO_ERR) {
+            dom_node_unref(parent);
+            while (source_count > 0) {
+                source_count--;
+                dom_node_unref(sources[source_count]);
+            }
+            return 0;
+        }
+        dom_node_unref(parent);
+        parent = next;
+        depth++;
+    }
+    if (parent != NULL) {
+        dom_node_unref(parent);
+    }
+    if (picture == NULL) {
+        while (source_count > 0) {
+            source_count--;
+            dom_node_unref(sources[source_count]);
+        }
+        return 0;
+    }
+    result = 0;
+    selected_bytes = 0;
+    for (index = source_count - 1; index >= 0; index--) {
+        if (pcore_image_picture_source_try(sources[index], out_url,
+                url_capacity, &selected_bytes)) {
+            if (out_bytes != NULL) {
+                *out_bytes = selected_bytes;
+            }
+            result = 1;
+            break;
+        }
+    }
+    while (source_count > 0) {
+        source_count--;
+        dom_node_unref(sources[source_count]);
+    }
+    if (result) {
+        dom_node_unref(picture);
+        return 1;
+    }
+
+    if (!direct_picture) {
+        dom_node_unref(picture);
+        return 0;
+    }
+    child = NULL;
+    if (dom_node_get_first_child(picture, &child) != DOM_NO_ERR) {
+        dom_node_unref(picture);
+        return 0;
+    }
+    source_count = 0;
+    node_count = 0;
+    while (child != NULL && node_count < PCORE_IMAGE_PICTURE_MAX_NODES) {
+        node_count++;
+        if (child == image) {
+            break;
+        }
+        if (dom_node_get_node_type(child, &node_type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            break;
+        }
+        if (node_type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) child, "source")) {
+            if (source_count < PCORE_IMAGE_PICTURE_MAX_SOURCES) {
+                source_count++;
+                selected_bytes = 0;
+                if (pcore_image_picture_source_try(child, out_url,
+                        url_capacity, &selected_bytes)) {
+                    if (out_bytes != NULL) {
+                        *out_bytes = selected_bytes;
+                    }
+                    dom_node_unref(child);
+                    dom_node_unref(picture);
+                    return 1;
+                }
+            }
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            break;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    if (child != NULL) {
+        dom_node_unref(child);
+    }
+    dom_node_unref(picture);
+    return 0;
+}
+
 int pcore_image_selected_source(dom_node *image, char *out_url,
         int url_capacity, int *out_bytes)
 {
@@ -5899,6 +6210,10 @@ int pcore_image_selected_source(dom_node *image, char *out_url,
     if (image == NULL || out_url == NULL || url_capacity <= 0 ||
             !pcore_element_name_is((dom_element *) image, "img")) {
         return 1;
+    }
+    if (pcore_image_picture_source_select(image, out_url, url_capacity,
+            out_bytes)) {
+        return 0;
     }
     src = NULL;
     srcset = NULL;

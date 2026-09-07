@@ -21,6 +21,9 @@
 #define PCORE_IMAGE_SOURCE_MAX_BYTES      2048
 #define PCORE_IMAGE_SRCSET_MAX_CANDIDATES 16
 #define PCORE_IMAGE_SIZES_MAX_COMPONENTS  16
+#define PCORE_IMAGE_PICTURE_MAX_SOURCES   8
+#define PCORE_IMAGE_PICTURE_MAX_DEPTH     16
+#define PCORE_IMAGE_PICTURE_MAX_NODES     64
 #define PCORE_IMAGE_SOURCE_MAX_CSS_PX     1000000
 
 /* Parse one stylesheet through Positron's compatibility transforms. Unlike
@@ -128,9 +131,11 @@ int pcore_image_resource_retained_store(struct dom_document *doc,
         int width, int height, const PCoreImageDecodeStats *decode_stats);
 /* Resolve one <img> to the bounded source that Core should fetch, decode and
  * expose as currentSrc. The selector accepts at most 16 homogeneous density
- * (x) or width (w) candidates. Width sets use the current viewport and the
- * bounded px/vw/vh sizes evaluator; mixed or unsupported candidates fall back
- * to src. `out_url` is caller-owned UTF-8; out_bytes excludes its terminator. */
+ * (x) or width (w) candidates. An img in a picture may instead use the first
+ * matching source in document order (at most 8 preceding source elements),
+ * with the same media/type and px/vw/vh sizes bounds. Unsupported candidates
+ * fall back to the img's own srcset/src. `out_url` is caller-owned UTF-8;
+ * out_bytes excludes its terminator. */
 int pcore_image_selected_source(struct dom_node *image, char *out_url,
         int url_capacity, int *out_bytes);
 void pcore_image_shared_shutdown(void);
