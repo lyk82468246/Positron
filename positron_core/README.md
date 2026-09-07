@@ -153,6 +153,11 @@ document/head/body 等结构 child token。成功后会丢弃 retained box tree�
 参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；插入、
 reparent、文本节点删除和完整 live collection 仍不在此边界内。
 
+`PCore_NodeSetTextContentById` 与 `PCore_ContentEditableSetTextById` 在成功替换子内容
+后同样丢弃 retained box tree。它们仍然只改变 Core DOM，不派发事件、不获取资源，也不
+操作 native 控件；Browser/宿主负责 beforeinput/input 策略、更新脚本 snapshot，并重新
+style/layout/paint。Core 只把新的纯文本作为一个子节点写入文档，失败时不作部分提交。
+
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
 布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`

@@ -406,6 +406,13 @@ TEST1201 断言 Browser/Core 的有界 direct-element DOM mutation：`Element.re
 只负责 callback 接线、重新 style/layout 和断言，不复制 DOM 或布局语义。该测试不覆盖
 插入、reparent、文本节点删除、MutationObserver、完整 live collection 或 native 视觉。
 
+TEST1202 断言 Browser/Core 的文本内容 mutation：`textContent` 和非编辑元素的
+`innerText` 用现有 callback 替换子内容后，新的 `childNodes` 会生成新的文本节点
+wrapper，旧 wrapper 保留原始数据并成为 detached，`children`/query 与连接状态保持
+一致；Core retained layout 在成功 mutation 后不可直接读取，重新 style/layout 后才
+恢复。宿主只负责已有 text callback 接线、可选 restyle、fixture 与断言；该门不扩展
+插入、reparent、文本节点自身 mutation、MutationObserver 或完整 live collection。
+
 ### Native EDIT/SELECT/button/file
 
 WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。对 contenteditable，宿主从 `PCore_ContentEditableTargetInfo` 枚举带 id 的已布局 editing host，创建最多 16 个 WM multiline EDIT 代理；`WM_CHAR` 默认处理返回后才回读最终文本并调用 Core mutation。宿主实现的 selection callback 把 WM EDIT 的 UTF-16 位置（包括 CRLF）转换为 Browser 使用的逻辑 UTF-16 位置，并只保存原生控件的短暂状态；原生范围确定后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`，由 Browser 去重并分发一次 `selectionchange`。这样可吸收 WM6 在默认处理期间提前发送的 `EN_CHANGE`，避免把旧值或空值提交为一次 input，也避免宿主经 Core 重复派发选区事件。对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取有界 `CF_UNICODETEXT`、规范化 CRLF，并把精确 data 交给 `beforeinput`；`WM_COPY` 的折叠选区保持现有剪贴板不变，允许的 paste/cut 才执行 native default 和 Core/input 提交，格式缺失或超长时 fail closed。WinCE 原生 `WM_CUT` 可能内部重入 `WM_COPY`，宿主只在该外层默认动作期间放行同一 HWND 的重入，不让它绕过自己的外部 copy 规则。键盘/拖选 anchor、Shift 状态和捕获/取消/焦点中断收尾同样只属于宿主平台接线。
@@ -414,7 +421,7 @@ WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser
 
 ### 单元素 `contenteditable`
 
-`test_host` 把 `PBrowserScriptContentEditableCallbacks` 与 `PBrowserScriptContentEditableSelectionCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。Browser 维护脚本可见的 `selectionStart`/`selectionEnd`/`selectionDirection` 与 `selectionchange` 事件；宿主只在存在原生 editing host 时读写对应 HWND，将 multiline 的 CRLF 位置转换为逻辑 UTF-16 位置，在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 和 Shift/方向键期间保留短暂 anchor，并在原生消息完成或捕获/取消/焦点中断后调用 Browser 的通知入口。宿主窗口不保存第二份文本模型，也不经 Core 再派发选区事件。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标、取消回滚、WM EDIT 的允许/取消顺序、selection range、原生 selectionchange、无修饰鼠标拖选的连续方向、键盘方向保持和中断收尾，以及 TEST1115 的 `CF_UNICODETEXT` paste/cut data、取消回滚、单次 Core mutation、折叠 caret 同步和空/不支持格式 fail-closed；TEST1116 覆盖 `WM_COPY` 非空选区复制、折叠选区 no-op、超长 UTF-8/非 Unicode 拒绝，以及原生 `WM_CUT` 内部重入保护。Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode、ClipboardEvent/async clipboard、CF_TEXT 转换或 OEM IME 仍未实现。
+`test_host` 把 `PBrowserScriptContentEditableCallbacks` 与 `PBrowserScriptContentEditableSelectionCallbacks` 接到当前 Core 文档，并负责在真实输入源中编排 `beforeinput`、允许后的 `PCore_ContentEditableSetTextById` 和 `input`。Browser 维护脚本可见的 `selectionStart`/`selectionEnd`/`selectionDirection` 与 `selectionchange` 事件；宿主只在存在原生 editing host 时读写对应 HWND，将 multiline 的 CRLF 位置转换为逻辑 UTF-16 位置，在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 和 Shift/方向键期间保留短暂 anchor，并在原生消息完成或捕获/取消/焦点中断后调用 Browser 的通知入口。宿主窗口不保存第二份文本模型，也不经 Core 再派发选区事件。Core mutation 会暂时释放 retained layout，因此在下一次 relayout 前连续原生编辑事件必须沿用 native EDIT 的 DOM id 进行同步目标派发，不能依赖旧坐标命中。当前测试覆盖继承、`false`/未知值、`plaintext-only`、合法 UTF-8、失效目标、取消回滚、WM EDIT 的允许/取消顺序、selection range、原生 selectionchange、无修饰鼠标拖选的连续方向、键盘方向保持和中断收尾，以及 TEST1115 的 `CF_UNICODETEXT` paste/cut data、取消回滚、单次 Core mutation、折叠 caret 同步和空/不支持格式 fail-closed；TEST1116 覆盖 `WM_COPY` 非空选区复制、折叠选区 no-op、超长 UTF-8/非 Unicode 拒绝，以及原生 `WM_CUT` 内部重入保护。Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode、ClipboardEvent/async clipboard、CF_TEXT 转换或 OEM IME 仍未实现。
 
 ### 绘制与交互
 

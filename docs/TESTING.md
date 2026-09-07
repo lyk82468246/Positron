@@ -434,7 +434,7 @@ default-selected 快照，submit-capable button/input/image 选择其 form 中�
 第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
 `.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
 逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
-默认状态或 selector 解析。为保持 WM6 上固定的 768 KiB Browser heap，初始、mutation 和
+默认状态或 selector 解析。为保持 WM6 上固定的 832 KiB Browser heap，初始、mutation 和
 非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
 
 TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：脚本先读
@@ -604,6 +604,14 @@ document/head/body 结构 child token 必须 fail closed；成功后新的 `chil
 重新 style/layout 后才读取几何状态；该入口不派发事件、不插入或 reparent、不删除文本
 节点，也不实现完整 live collection。宿主只注册 typed callback、驱动 fixture 和断言，
 没有新增立即人工视觉风险。
+
+TEST1202 覆盖文本内容 mutation 的 snapshot/lifecycle 合同：`textContent` 与非编辑元素
+的 `innerText` 成功写入后，新的 `childNodes` 生成新的无 id 文本 wrapper，旧 wrapper
+保留原始 `nodeValue`/`textContent`、变为 detached 且不污染新的 `children`/query 结果；
+Core retained layout 在 mutation 后失效，重新 style/layout 后恢复。编辑元素的
+`innerText` 仍复用 contenteditable callback，但共享同一失效规则。该门不实现节点插入、
+reparent、文本节点自身 setter、MutationObserver、完整 live collection 或自动事件；
+宿主只提供已有 text callback、可选 restyle 和断言。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
@@ -783,7 +791,7 @@ RAPI 没有安全的通用远端终止语义。超时会保存可取得的日志
 - OEM 剪贴板与其他应用的 copy/paste、CF_TEXT 或富文本格式互操作；自动门只覆盖宿主自备的有界 `CF_UNICODETEXT` contenteditable paste/cut/copy，折叠复制 no-op 和超长/非 Unicode 拒绝也只在该宿主契约内成立；
 - loading、失败网络、旧页保留和深层真实导航。
 
-contenteditable 的自动 fixture 证明有效 editing host 的 WM EDIT 代理、`beforeinput` 取消、Core 文本提交、`input` 顺序、脚本 `selectionStart`/`selectionEnd`/`selectionDirection` 的范围语义，以及只对实际变化分发一次的非冒泡、不可取消 `selectionchange`；设备门还验证这些范围可同步到原生 EDIT，并由原生消息触发同一 Browser 事件。TEST1113 用 WM EDIT 的 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 序列验证无修饰拖选的连续 forward/backward 方向和重复范围抑制；TEST1114 覆盖 Shift/方向键方向保持，以及 `WM_CAPTURECHANGED`、`WM_CANCELMODE`、`WM_KILLFOCUS`/`WM_SETFOCUS` 中断时的收尾和去重；TEST1115 覆盖宿主有界 `CF_UNICODETEXT` paste/cut 的精确 `beforeinput.data`、取消回滚、Core 单次提交、折叠选区同步，以及空或不支持格式时的 fail-closed；TEST1116 覆盖 `WM_COPY` 的非空选区复制、折叠选区 no-op、超长 UTF-8 与非 Unicode 格式拒绝，并确认 WinCE 原生 `WM_CUT` 的内部 `WM_COPY` 重入不会破坏剪切。由于 WinCE 直接 `SendMessage` 不会更新键盘状态表，TEST1114 在 key-up 前注入有界原生范围来验证宿主通知路径；真实 OEM 默认键盘、SIP 候选词、完整 IME composition、硬键盘和跨应用剪贴板格式仍应在设备人工矩阵中观察。
+contenteditable 的自动 fixture 证明有效 editing host 的 WM EDIT 代理、`beforeinput` 取消、Core 文本提交、`input` 顺序、脚本 `selectionStart`/`selectionEnd`/`selectionDirection` 的范围语义，以及只对实际变化分发一次的非冒泡、不可取消 `selectionchange`；设备门还验证这些范围可同步到原生 EDIT，并由原生消息触发同一 Browser 事件。Core 文本 mutation 会暂时释放 retained layout，连续原生操作在下一次 relayout 前必须沿用 native EDIT 的 DOM id 派发同步事件，不能依赖旧坐标命中。TEST1113 用 WM EDIT 的 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 序列验证无修饰拖选的连续 forward/backward 方向和重复范围抑制；TEST1114 覆盖 Shift/方向键方向保持，以及 `WM_CAPTURECHANGED`、`WM_CANCELMODE`、`WM_KILLFOCUS`/`WM_SETFOCUS` 中断时的收尾和去重；TEST1115 覆盖宿主有界 `CF_UNICODETEXT` paste/cut 的精确 `beforeinput.data`、取消回滚、Core 单次提交、折叠选区同步，以及空或不支持格式时的 fail-closed；TEST1116 覆盖 `WM_COPY` 的非空选区复制、折叠选区 no-op、超长 UTF-8 与非 Unicode 格式拒绝，并确认 WinCE 原生 `WM_CUT` 的内部 `WM_COPY` 重入不会破坏剪切。由于 WinCE 直接 `SendMessage` 不会更新键盘状态表，TEST1114 在 key-up 前注入有界原生范围来验证宿主通知路径；真实 OEM 默认键盘、SIP 候选词、完整 IME composition、硬键盘和跨应用剪贴板格式仍应在设备人工矩阵中观察。
 
 低风险视觉或输入变化可以累计若干批次后集中验收。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即复核，不能等待累计窗口。
 

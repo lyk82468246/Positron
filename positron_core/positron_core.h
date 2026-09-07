@@ -231,8 +231,9 @@ PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
 
 /* Minimal DOM text boundary for an external script/runtime host. IDs and text
  * are UTF-8. The getter reports the full byte count even when the caller only
- * probes or supplies a smaller buffer. The setter mutates the DOM only; the
- * caller must run style/layout again before painting an already styled page. */
+ * probes or supplies a smaller buffer. A successful setter mutates the DOM
+ * and drops retained layout; the caller must run style/layout again before
+ * painting an already styled page. */
 PCORE_API int PCore_NodeExistsById(HANDLE hDoc, const char *element_id);
 PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
         char *text, int text_capacity, int *out_bytes);
@@ -280,10 +281,11 @@ PCORE_API int PCore_ContentEditableInfoById(HANDLE hDoc,
 /* Replace one editable element's textContent with bounded valid UTF-8 plain
  * text. This intentionally collapses child markup into one text node and
  * never dispatches input events; the Browser/host input transaction owns
- * beforeinput cancellation and input dispatch. Returns 0 on success, 1 for
- * invalid/absent DOM, 2 when the effective element is not editable, and 3
- * when the text exceeds PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES or is invalid
- * UTF-8. */
+ * beforeinput cancellation and input dispatch. A successful mutation drops
+ * retained layout; the caller must style/layout/paint again. Returns 0 on
+ * success, 1 for invalid/absent DOM, 2 when the effective element is not
+ * editable, and 3 when the text exceeds
+ * PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES or is invalid UTF-8. */
 PCORE_API int PCore_ContentEditableSetTextById(HANDLE hDoc,
         const char *element_id, const char *text);
 

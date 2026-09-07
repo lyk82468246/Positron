@@ -1812,7 +1812,7 @@ typedef struct PBrowserScriptImageSourceCallbacks {
 } PBrowserScriptImageSourceCallbacks;
 
 /* Browser script session. The session owns one browser-sized PScript context
- * (the browser bootstrap uses a bounded 768 KiB heap ceiling) and all
+ * (the browser bootstrap uses a bounded 832 KiB heap ceiling) and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
  * stable positron_script result codes; zero is success. */

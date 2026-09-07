@@ -32,7 +32,7 @@
   submit-capable button/input/image 只匹配所属 form 中按文档顺序的第一个 submit control。
   live `.checked`/`selectedIndex` mutation 不会改写默认状态；relation 缺失、非支持元素、
   带参数、伪元素或尾随逗号仍 fail closed。TEST1181 通过多个短脚本 session 适配固定的
-  768 KiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
+  832 KiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
 - `<option>` 的脚本 `selected`/`defaultSelected` 属性只在宿主注册
   `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
   选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
@@ -125,11 +125,13 @@
 
 - DOM bridge 以有界 ID/结构 token 和 snapshot collection 为主，不是完整 live DOM/CSSOM。
 - 大量 IDL reflection、namespace、mutation observer、range/selection 和 shadow DOM 不存在。
-- Browser/Core 现在只支持有界的 direct-element 删除：`Element.removeChild()`/
-  `Element.remove()` 通过 `PCore_NodeRemoveChildById` 处理带 id 的直接子元素，并在成功后
-  使 retained layout 失效；调用方必须重新 style/layout/paint。插入、reparent、文本节点
-  删除、MutationObserver 和完整 live collection 仍未实现，错误关系与缺失/过长 id 必须
-  fail closed。
+- Browser/Core 现在只支持有界的 DOM mutation：`Element.removeChild()`/`Element.remove()`
+  通过 `PCore_NodeRemoveChildById` 处理带 id 的直接子元素，`textContent`/非编辑
+  `innerText` 通过既有 text callback 替换为一个纯文本子节点；两条路径成功后都使
+  retained layout 失效，调用方必须重新 style/layout/paint。文本 mutation 会刷新目标的
+  `children`/`childNodes`/query snapshot，旧的无 id 文本 wrapper 保留数据但变为 detached。
+  节点插入、reparent、文本节点自身 setter、MutationObserver 和完整 live collection 仍未
+  实现，错误关系与缺失/过长 id 必须 fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -160,7 +162,7 @@
   也可用。它不触发 validation、submit/reset 事件、默认动作或导航。文件只返回 filename/type
   和空内容，不暴露 picker 路径；完整 live HTMLFormControlsCollection、文件读取和
   其他 form-associated 扩展及浏览器完整表单树规则仍未实现。
-- 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；它不是通用 DOM ClipboardEvent 或 async clipboard API。
+- 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；Core mutation 暂时释放 retained layout，宿主在下一次 relayout 前必须用 native EDIT 的 DOM id 维持连续 beforeinput/input/change 的目标身份；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
 ## JavaScript
@@ -200,7 +202,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 768 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 832 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -341,7 +343,7 @@
 - TEST1154 覆盖 Browser selector 的有限结构伪类：`:root`、`:empty`、child/of-type
   变体和四种 `nth-*` 变体；支持整数、`odd`/`even` 和受限 `an+b` 公式，并确认空公式、
   `of` 过滤、伪元素和超大数值 fail closed。判断使用只读 childNodes/关系快照，
-  仍受 64 步、公式系数和 768 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
+  仍受 64 步、公式系数和 832 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
   shadow DOM 和 CSS Selectors 语法不在保证范围内。
 - TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
@@ -458,7 +460,7 @@
 - TEST1181 是离线的 Browser selector `:default` 夹具，无新增立即人工风险；自动门证明
   默认 checked 控件、Core relation 45 的 option default-selected、form 首个 submit
   control、查询顺序、live state mutation、matches/closest 和非法输入的 fail-closed。
-  多个短脚本 session 只为适配固定 768 KiB heap；真实 native 默认按钮行为、表单视觉、
+  多个短脚本 session 只为适配固定 832 KiB heap；真实 native 默认按钮行为、表单视觉、
   触摸、SIP/IME 和不同 DPI 仍需人工验收。
 - TEST1182 是离线的 Browser/Core option property 夹具，无新增立即人工风险；自动门证明
   `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
@@ -570,6 +572,11 @@
   detached `Element.remove()` 是 no-op。Core 成功后清除 retained layout，调用方必须重新
   style/layout/paint；该门不实现插入、reparent、文本节点删除、MutationObserver、完整
   live collection 或 native/视觉行为，暂无新增立即人工风险。
+- TEST1202 覆盖 Browser/Core 的文本内容 mutation：`textContent` 与非编辑
+  `innerText` 成功替换子内容后，新的 `childNodes` wrapper 与旧的 detached 文本 wrapper
+  分离，父级 `children`/query 保持一致，Core retained layout 失效且可在重新
+  style/layout 后恢复。节点插入、reparent、文本节点自身 setter、MutationObserver、
+  完整 live collection 和 native/视觉行为仍未实现或需要人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

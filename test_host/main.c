@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1201
+#define TEST_MAX_NUMBER 1202
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -6273,6 +6273,11 @@ struct pcore_browser_script_bridge {
      * callback so native form controls are dispatched by identity rather than
      * by a layout hit-test that can miss their overlaid child window. */
     char *programmatic_click_element_id;
+    /* A contenteditable mutation invalidates Core's retained box tree before
+     * Browser dispatches the matching native-edit event. Keep one synchronous
+     * target id so the host callback can dispatch that event by DOM identity
+     * instead of asking the now-invalid layout to hit-test old coordinates. */
+    char native_edit_input_target_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
     char active_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
     char interaction_element_id[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX];
     int visited_url_count;
@@ -8298,6 +8303,12 @@ static int pcore_browser_script_dispatch_native_edit_beforeinput(
         HWND control, const char *input_type, const char *data,
         int cancelable, int is_composing);
 static int pcore_browser_script_dispatch_native_edit_input(HWND control);
+static int pcore_browser_script_dispatch_native_edit_input_at(
+        unsigned long target_token, int x, int y, const char *target_id);
+static int pcore_native_edit_lookup(HWND control,
+        unsigned long *out_token, const char **out_content_id,
+        int *out_content_editable);
+static void cstr_copy(char *d, int cap, const char *s);
 static void pcore_browser_script_dispatch_native_edit_blur(HWND control);
 static void pcore_browser_script_reset_native_edit_state(void);
 static int pcore_browser_script_dispatch_native_edit_composition(
@@ -10867,9 +10878,16 @@ static int pcore_browser_script_edit_dispatch(void *pw,
             strcmp(info->event_type, "change") != 0) {
         return -1;
     }
-    result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
-            info->event_type, info->bubbles ? 1 : 0,
-            info->cancelable ? 1 : 0, NULL);
+    if (bridge->native_edit_input_target_id[0] != '\0') {
+        result = PCore_EventDispatchToId(bridge->document,
+                bridge->native_edit_input_target_id, info->event_type,
+                info->bubbles ? 1 : 0, info->cancelable ? 1 : 0,
+                NULL);
+    } else {
+        result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
+                info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, NULL);
+    }
     return (result < 0) ? -1 : 0;
 }
 
@@ -11507,18 +11525,34 @@ static int pcore_browser_script_dispatch_native_edit_beforeinput(
     unsigned long target_token;
     int x;
     int y;
+    const char *target_id;
+    int content_editable;
     int default_allowed;
     int rc;
 
+    target_token = 0;
+    x = 0;
+    y = 0;
+    target_id = NULL;
+    content_editable = 0;
     if (input_type == NULL || data == NULL ||
-            !pcore_browser_script_native_edit_geometry(control,
-            &target_token, &x, &y) ||
-            !pcore_native_script_active() ||
+            !pcore_native_edit_lookup(control, &target_token, &target_id,
+            &content_editable) || !pcore_native_script_active() ||
             g_browser_script_session.bridge == NULL ||
             g_browser_script_session.bridge->session == NULL) {
         return 1;
     }
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y)) {
+        if (!content_editable || target_id == NULL || target_id[0] == '\0') {
+            return 1;
+        }
+    }
     bridge = g_browser_script_session.bridge;
+    if (content_editable && target_id != NULL) {
+        cstr_copy(bridge->native_edit_input_target_id,
+                sizeof(bridge->native_edit_input_target_id), target_id);
+    }
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     info.target_token = target_token;
@@ -11531,6 +11565,7 @@ static int pcore_browser_script_dispatch_native_edit_beforeinput(
     default_allowed = 1;
     rc = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
             bridge->session, &info, &default_allowed);
+    bridge->native_edit_input_target_id[0] = '\0';
     if (rc != PSCRIPT_OK) {
         return 1;
     }
@@ -11545,12 +11580,19 @@ static int pcore_browser_script_dispatch_native_edit_composition(
     unsigned long target_token;
     int x;
     int y;
+    const char *target_id;
+    int content_editable;
     int default_allowed;
     int rc;
 
     default_allowed = 1;
-    if (!pcore_browser_script_native_edit_geometry(control,
-            &target_token, &x, &y) || !pcore_native_script_active() ||
+    target_token = 0;
+    x = 0;
+    y = 0;
+    target_id = NULL;
+    content_editable = 0;
+    if (!pcore_native_edit_lookup(control, &target_token, &target_id,
+            &content_editable) || !pcore_native_script_active() ||
             g_browser_script_session.bridge == NULL ||
             g_browser_script_session.bridge->session == NULL) {
         if (out_default_allowed != NULL) {
@@ -11558,7 +11600,20 @@ static int pcore_browser_script_dispatch_native_edit_composition(
         }
         return 1;
     }
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y)) {
+        if (!content_editable || target_id == NULL || target_id[0] == '\0') {
+            if (out_default_allowed != NULL) {
+                *out_default_allowed = 1;
+            }
+            return 1;
+        }
+    }
     bridge = g_browser_script_session.bridge;
+    if (content_editable && target_id != NULL) {
+        cstr_copy(bridge->native_edit_input_target_id,
+                sizeof(bridge->native_edit_input_target_id), target_id);
+    }
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     info.target_token = target_token;
@@ -11568,6 +11623,7 @@ static int pcore_browser_script_dispatch_native_edit_composition(
     info.data = data;
     rc = PBrowser_ScriptSessionDispatchNativeEditComposition(
             bridge->session, &info, &default_allowed);
+    bridge->native_edit_input_target_id[0] = '\0';
     if (out_default_allowed != NULL) {
         *out_default_allowed = default_allowed ? 1 : 0;
     }
@@ -11588,14 +11644,31 @@ static void pcore_browser_script_dispatch_native_edit_result(
     unsigned long target_token;
     int x;
     int y;
+    const char *target_id;
+    int content_editable;
 
-    if (!pcore_browser_script_native_edit_geometry(control,
-            &target_token, &x, &y) || !pcore_native_script_active() ||
+    target_token = 0;
+    x = 0;
+    y = 0;
+    target_id = NULL;
+    content_editable = 0;
+    if (!pcore_native_edit_lookup(control, &target_token, &target_id,
+            &content_editable) || !pcore_native_script_active() ||
             g_browser_script_session.bridge == NULL ||
             g_browser_script_session.bridge->session == NULL) {
         return;
     }
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y)) {
+        if (!content_editable || target_id == NULL || target_id[0] == '\0') {
+            return;
+        }
+    }
     bridge = g_browser_script_session.bridge;
+    if (content_editable && target_id != NULL) {
+        cstr_copy(bridge->native_edit_input_target_id,
+                sizeof(bridge->native_edit_input_target_id), target_id);
+    }
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     info.target_token = target_token;
@@ -11604,34 +11677,83 @@ static void pcore_browser_script_dispatch_native_edit_result(
     info.data = data;
     (void) PBrowser_ScriptSessionDispatchNativeEditResult(
             bridge->session, &info);
+    bridge->native_edit_input_target_id[0] = '\0';
 }
 
-static int pcore_browser_script_dispatch_native_edit_input(HWND control)
+static int pcore_browser_script_dispatch_native_edit_input_at(
+        unsigned long target_token, int x, int y, const char *target_id)
 {
     pcore_browser_script_bridge *bridge;
     PBrowserScriptNativeEditInputInfo info;
-    unsigned long target_token;
-    int x;
-    int y;
     int rc;
 
-    if (!pcore_browser_script_native_edit_geometry(control,
-            &target_token, &x, &y) ||
-            !pcore_native_script_active() ||
+    if (target_token == 0 || !pcore_native_script_active() ||
             g_browser_script_session.bridge == NULL ||
             g_browser_script_session.bridge->session == NULL) {
         return 1;
     }
     bridge = g_browser_script_session.bridge;
+    if (target_id != NULL) {
+        cstr_copy(bridge->native_edit_input_target_id,
+                sizeof(bridge->native_edit_input_target_id), target_id);
+    } else {
+        bridge->native_edit_input_target_id[0] = '\0';
+    }
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     info.target_token = target_token;
     info.x = x;
     info.y = y;
-    rc = PBrowser_ScriptSessionDispatchNativeEditInput(
-            bridge->session, &info);
+    rc = PBrowser_ScriptSessionDispatchNativeEditInput(bridge->session,
+            &info);
+    bridge->native_edit_input_target_id[0] = '\0';
     (void) rc;
     return 1;
+}
+
+/* Look up the stable native-edit token and (for contenteditable proxies) the
+ * DOM id without asking Core for a retained layout.  The id is borrowed only
+ * for the synchronous Browser callback; native controls are not rebuilt from
+ * inside that callback. */
+static int pcore_native_edit_lookup(HWND control,
+        unsigned long *out_token, const char **out_content_id,
+        int *out_content_editable)
+{
+    unsigned int i;
+
+    if (control == NULL) {
+        return 0;
+    }
+    for (i = 0; i < g_native_edit_count; i++) {
+        if (g_native_edits[i].hwnd == control) {
+            if (out_token != NULL) {
+                *out_token = g_native_edits[i].target_token;
+            }
+            if (out_content_id != NULL) {
+                *out_content_id = g_native_edits[i].content_editable_id;
+            }
+            if (out_content_editable != NULL) {
+                *out_content_editable =
+                        g_native_edits[i].content_editable ? 1 : 0;
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_browser_script_dispatch_native_edit_input(HWND control)
+{
+    unsigned long target_token;
+    int x;
+    int y;
+
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y)) {
+        return 1;
+    }
+    return pcore_browser_script_dispatch_native_edit_input_at(
+            target_token, x, y, NULL);
 }
 
 static void pcore_browser_script_dispatch_native_edit_blur(HWND control)
@@ -11641,15 +11763,31 @@ static void pcore_browser_script_dispatch_native_edit_blur(HWND control)
     unsigned long target_token;
     int x;
     int y;
+    const char *target_id;
+    int content_editable;
 
-    if (!pcore_browser_script_native_edit_geometry(control,
-            &target_token, &x, &y) ||
-            !pcore_native_script_active() ||
+    target_token = 0;
+    x = 0;
+    y = 0;
+    target_id = NULL;
+    content_editable = 0;
+    if (!pcore_native_edit_lookup(control, &target_token, &target_id,
+            &content_editable) || !pcore_native_script_active() ||
             g_browser_script_session.bridge == NULL ||
             g_browser_script_session.bridge->session == NULL) {
         return;
     }
+    if (!pcore_browser_script_native_edit_geometry(control,
+            &target_token, &x, &y)) {
+        if (!content_editable || target_id == NULL || target_id[0] == '\0') {
+            return;
+        }
+    }
     bridge = g_browser_script_session.bridge;
+    if (content_editable && target_id != NULL) {
+        cstr_copy(bridge->native_edit_input_target_id,
+                sizeof(bridge->native_edit_input_target_id), target_id);
+    }
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     info.target_token = target_token;
@@ -11657,6 +11795,7 @@ static void pcore_browser_script_dispatch_native_edit_blur(HWND control)
     info.y = y;
     (void) PBrowser_ScriptSessionDispatchNativeEditBlur(
             bridge->session, &info);
+    bridge->native_edit_input_target_id[0] = '\0';
 }
 
 static void pcore_browser_script_reset_native_edit_state(void)
@@ -11683,6 +11822,7 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
     int y;
     int width;
     int height;
+    int geometry_valid;
     int default_allowed;
     int rc;
 
@@ -11697,11 +11837,25 @@ static int pcore_browser_script_dispatch_input_data_event(HWND control,
     }
     bridge = g_browser_script_session.bridge;
     for (i = 0; i < g_native_edit_count; i++) {
-        if (g_native_edits[i].hwnd == control &&
-                pcore_native_edit_geometry_info(&g_native_edits[i],
-                        &x, &y, &width, &height, NULL, NULL)) {
-            x += width / 2;
-            y += height / 2;
+        if (g_native_edits[i].hwnd == control) {
+            geometry_valid = pcore_native_edit_geometry_info(
+                    &g_native_edits[i], &x, &y, &width, &height,
+                    NULL, NULL);
+            if (geometry_valid) {
+                x += width / 2;
+                y += height / 2;
+            } else if (strcmp(event_type, "beforeinput") != 0 ||
+                    !g_native_edits[i].content_editable ||
+                    g_native_edits[i].content_editable_id == NULL ||
+                    g_native_edits[i].content_editable_id[0] == '\0') {
+                continue;
+            } else {
+                /* Core may have released the retained layout after the
+                 * previous edit. The native-edit helper below will dispatch
+                 * by DOM id; coordinates are only a required ABI payload. */
+                x = 0;
+                y = 0;
+            }
             if (strcmp(event_type, "beforeinput") == 0) {
                 return pcore_browser_script_dispatch_native_edit_beforeinput(
                         control, input_type, (data != NULL) ? data : "",
@@ -11751,10 +11905,17 @@ static int pcore_browser_script_input_dispatch(void *pw,
     input_data.data = info->data;
     input_data.is_composing = info->is_composing ? 1 : 0;
     *out_default_allowed = 1;
-    result = PCore_EventDispatchInputExAt(bridge->document, info->x, info->y,
-            info->event_type, info->bubbles ? 1 : 0,
-            info->cancelable ? 1 : 0, &input_data,
-            out_default_allowed);
+    if (bridge->native_edit_input_target_id[0] != '\0') {
+        result = PCore_EventDispatchInputExToId(bridge->document,
+                bridge->native_edit_input_target_id, info->event_type,
+                info->bubbles ? 1 : 0, info->cancelable ? 1 : 0,
+                &input_data, out_default_allowed);
+    } else {
+        result = PCore_EventDispatchInputExAt(bridge->document, info->x,
+                info->y, info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, &input_data,
+                out_default_allowed);
+    }
     return (result < 0) ? -1 : 0;
 }
 
@@ -12275,7 +12436,15 @@ static void pcore_native_edit_changed(HWND edit)
     int set_result;
     int wide_len;
     int utf8_len;
+    unsigned long input_target_token;
+    int input_x;
+    int input_y;
+    int input_geometry_valid;
 
+    input_target_token = 0;
+    input_x = 0;
+    input_y = 0;
+    input_geometry_valid = 0;
     if (g_native_edit_syncing || edit == NULL || g_render_doc == NULL) {
         return;
     }
@@ -12339,6 +12508,24 @@ static void pcore_native_edit_changed(HWND edit)
             }
         }
         value[target_index] = '\0';
+        /* The successful Core mutation releases its retained box tree. Save
+         * the native edit's identity and pre-mutation geometry so the
+         * Browser input callback can still target this editing host after
+         * that invalidation. */
+        input_geometry_valid = pcore_browser_script_native_edit_geometry(edit,
+                &input_target_token, &input_x, &input_y);
+        if (!input_geometry_valid && native_edit->content_editable &&
+                native_edit->content_editable_id != NULL &&
+                pcore_native_edit_lookup(edit, &input_target_token,
+                NULL, NULL) && input_target_token != 0) {
+            /* A preceding edit may still have the native HWND alive while
+             * Core's retained layout is absent. The DOM id is enough for the
+             * synchronous Browser input callback; coordinates are unused by
+             * the host's identity path. */
+            input_x = 0;
+            input_y = 0;
+            input_geometry_valid = 1;
+        }
         set_result = (native_edit->content_editable_id != NULL) ?
                 PCore_ContentEditableSetTextById(g_render_doc,
                 native_edit->content_editable_id, value) : 1;
@@ -12350,7 +12537,13 @@ static void pcore_native_edit_changed(HWND edit)
         if (native_edit->content_editable) {
             native_edit->native_selection_direction_valid = 0;
         }
-        (void) pcore_browser_script_dispatch_native_edit_input(edit);
+        if (native_edit->content_editable && input_geometry_valid) {
+            (void) pcore_browser_script_dispatch_native_edit_input_at(
+                    input_target_token, input_x, input_y,
+                    native_edit->content_editable_id);
+        } else {
+            (void) pcore_browser_script_dispatch_native_edit_input(edit);
+        }
         if (native_edit->content_editable) {
             pcore_native_edit_selection_changed(native_edit, 1);
         }
@@ -14932,14 +15125,21 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
         const char *text)
 {
     pcore_browser_script_bridge *bridge;
+    int result;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || id == NULL ||
             text == NULL) {
         return -1;
     }
-    return PCore_NodeSetTextContentById(bridge->document, id, text) == 0 ?
-            1 : 0;
+    result = PCore_NodeSetTextContentById(bridge->document, id, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    return result < 0 ? -1 : 0;
 }
 
 static int pcore_browser_script_dom_remove_child(void *pw,
@@ -16222,6 +16422,7 @@ static void pcore_browser_script_bridge_destroy(
     bridge->history_state_json = NULL;
     free(bridge->programmatic_click_element_id);
     bridge->programmatic_click_element_id = NULL;
+    bridge->native_edit_input_target_id[0] = '\0';
     bridge->history_state_changed = 0;
     for (i = 0; i < bridge->history_push_count; i++) {
         free(bridge->history_push_urls[i]);
@@ -16598,6 +16799,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->next_event_id = 1;
     bridge->events = NULL;
     bridge->programmatic_click_element_id = NULL;
+    bridge->native_edit_input_target_id[0] = '\0';
     bridge->active_element_id[0] = '\0';
     bridge->interaction_element_id[0] = '\0';
     bridge->visited_url_count = 0;
@@ -41601,6 +41803,12 @@ static BOOL test1166_browser_selector_effective_disabled_contract(void)
             ok = 0;
         }
     }
+    if (ok && (PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, 320, 480) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "effective disabled post-script relayout failed");
+        ok = 0;
+    }
     if (ok) {
         relation_bytes = 0;
         if (PCore_NodeRelationById(document, "blocked",
@@ -46797,6 +47005,138 @@ static BOOL test1201_browser_dom_remove_child_contract(void)
             " DOM removal, refresh per-parent collection snapshots and stale"
             " wrappers, reject wrong parent/direct-child pairs, and invalidate"
             " retained Core layout before the host's optional restyle pass.");
+    return TRUE;
+}
+
+/* TEST 1202 - bounded textContent/innerText mutation keeps Browser child
+ * snapshots and Core's retained layout state coherent. */
+static BOOL test1202_browser_dom_text_mutation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><main id='root'><div id='target'>old</div>"
+        "<p id='keep'>keep</p></main><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),t=document.getElementById('target'),"
+        "k=document.getElementById('keep'),c=r.children,a=t.childNodes,s=a[0];"
+        "t.textContent='new';var b=t.childNodes,n=b[0];"
+        "var x=a.length===1&&a[0]===s&&s.nodeValue==='old'&&s.textContent==='old'&&"
+        "s.parentNode===null&&"
+        "!s.isConnected;var y=b.length===1&&n!==s&&n.nodeValue==='new'&&"
+        "n.textContent==='new'&&n.parentNode===t&&t.children.length===0;"
+        "var z=t.parentNode===r&&t.isConnected&&c.length===2&&c[0]===t&&c[1]===k;"
+        "t.innerText='next';var d=t.childNodes[0];"
+        "var v=d!==n&&d.nodeValue==='next'&&t.textContent==='next';"
+        "return document.getElementById('result').textContent=[x,y,z,v].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreLayoutStats stats;
+    char error[768];
+    char result_text[256];
+    const char *result;
+    int executed;
+    int ignored;
+    int rc;
+    int layout_status;
+    int text_bytes;
+    BOOL ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(error, 0, sizeof(error));
+    memset(result_text, 0, sizeof(result_text));
+    result = NULL;
+    executed = -1;
+    ignored = -1;
+    rc = PSCRIPT_ERROR_CALL;
+    layout_status = -1;
+    text_bytes = -1;
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeSetTextContentById(document, "missing", "x") == 0) {
+        ok = FALSE;
+    }
+    if (ok && pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/dom-text-mutation", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0) {
+        ok = FALSE;
+    }
+    if (ok && (executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL)) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        rc = pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error));
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result != NULL) {
+            cstr_copy(result_text, sizeof(result_text), result);
+        }
+        ok = rc == PSCRIPT_OK && result != NULL && strcmp(result, EXPECTED) == 0;
+    }
+    if (ok) {
+        ok = PCore_NodeExistsById(document, "target") == 1 &&
+                PCore_NodeTextContentById(document, "target", result_text,
+                sizeof(result_text), &text_bytes) == 0 &&
+                strcmp(result_text, "next") == 0 &&
+                PCore_GetLayoutStats(document, &stats) != 0;
+    }
+    if (ok) {
+        ok = PCore_StyleDocument(document, NULL) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0 &&
+                PCore_GetLayoutStats(document, &stats) == 0;
+    }
+    if (document != NULL) {
+        layout_status = PCore_GetLayoutStats(document, &stats);
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "rc=%d result=%s exec/ignore=%d/%d layout=%d",
+                    rc, result_text[0] != '\0' ? result_text : "(null)",
+                    executed, ignored,
+                    layout_status);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1202 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1202 OK",
+            "textContent and innerText mutations now invalidate stale child"
+            " snapshots and retained Core layout while preserving detached"
+            " text-node identity; the host can schedule the normal restyle.");
     return TRUE;
 }
 
@@ -104932,6 +105272,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1199: ok = test1199_browser_picture_source_lifecycle(); break;
         case 1200: ok = test1200_browser_image_source_mutation_callbacks(); break;
         case 1201: ok = test1201_browser_dom_remove_child_contract(); break;
+        case 1202: ok = test1202_browser_dom_text_mutation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

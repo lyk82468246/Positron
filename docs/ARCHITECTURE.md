@@ -139,6 +139,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   token，并在成功后使 retained layout 失效；调用方必须重新 style/layout/paint。该入口
   不派发事件、不获取资源、不操作 native 控件，插入、reparent 和完整 live collection
   仍由未来能力决定；
+- 文本内容 mutation：`PCore_NodeSetTextContentById` 与
+  `PCore_ContentEditableSetTextById` 成功替换子内容后同样使 retained layout 失效，并把
+  一个纯文本子节点交给 Browser/宿主重新查询；Browser 使旧的无 id 文本 wrapper 与
+  `children`/`childNodes`/query snapshot 失效，宿主负责输入/事件策略及后续
+  style/layout/paint。该路径不派发事件、不获取资源、不操作 native 控件，也不实现节点
+  插入、reparent 或完整 live collection；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
@@ -169,7 +175,7 @@ Core 不执行网络请求。资源获取通过调用方提供的 resolve/fetch/
 
 Core 不保存编辑选区，也不重新派发 `selectionchange`。Browser 以 JavaScript UTF-16 code-unit 偏移提供 `selectionStart`、`selectionEnd` 和 `selectionDirection`，并在范围实际改变时分发一次非冒泡、不可取消的 `selectionchange`；宿主可通过 `PBrowserScriptContentEditableSelectionCallbacks` 把这些范围映射到原生 EDIT，再用 `PBrowser_ScriptSessionNotifyContentEditableSelection` 报告原生范围变化。WM EDIT 宿主对无修饰鼠标拖选和 Shift/方向键扩展保留短暂 anchor，在默认消息完成后报告有序范围和方向；捕获丢失、取消模式或焦点切换会先结束未完成手势，再由 Browser 去重通知。无法物化原生窗口时 Browser 保留脚本侧回退。宿主不得在 Core 中复制第二份文本或选区模型。
 
-受限剪贴板事务同样由宿主负责平台接线：宿主从 `WM_PASTE` 读取 `CF_UNICODETEXT`，从原生选区取得 `WM_COPY` data，或从 `WM_CUT` 取得 data，将 CRLF 规范化为 UTF-8 后交给 Browser 的 `beforeinput`；`WM_COPY` 的折叠选区不改写剪贴板，粘贴/复制数据超长、格式缺失或读取失败时在 native mutation 前 fail closed。对 `WM_CUT`，事件未取消时才允许 native default，再调用 Core 文本 mutation、Browser `input` 和选区通知；WinCE 原生 EDIT 在该默认动作中可能内部重入 `WM_COPY`，宿主只对同一外层剪切临时放行该重入。Core 不读取系统剪贴板、不保存 clipboard handle。
+受限剪贴板事务同样由宿主负责平台接线：宿主从 `WM_PASTE` 读取 `CF_UNICODETEXT`，从原生选区取得 `WM_COPY` data，或从 `WM_CUT` 取得 data，将 CRLF 规范化为 UTF-8 后交给 Browser 的 `beforeinput`；`WM_COPY` 的折叠选区不改写剪贴板，粘贴/复制数据超长、格式缺失或读取失败时在 native mutation 前 fail closed。对 `WM_CUT`，事件未取消时才允许 native default，再调用 Core 文本 mutation、Browser `input` 和选区通知；WinCE 原生 EDIT 在该默认动作中可能内部重入 `WM_COPY`，宿主只对同一外层剪切临时放行该重入。Core 不读取系统剪贴板、不保存 clipboard handle。Core mutation 会使 retained layout 暂时失效；在下一次宿主 relayout 之前，宿主必须保留 native EDIT 的 DOM id，并让这次同步的 beforeinput/input/change 事务按 id 派发，不得用旧坐标命中测试伪造事件目标。
 
 ### `positron_browser.dll`
 

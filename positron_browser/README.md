@@ -1,6 +1,6 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口的浏览器会话组合层，负责 history、script session、bootstrap、DOM/Event adapter、native 控件事务和导航候选摘要。它不创建窗口、不抓取网络、不持有 Core document，也不直接操作 WM 控件。
+`positron_browser.dll` 是无窗口的会话层，负责 history、脚本、DOM/Event 和导航候选；不抓网络、不持有 Core 文档。限制见 [`已知限制`](../.agents/KNOWN_LIMITATIONS.md)。
 
 ## 产物与依赖
 
@@ -159,7 +159,7 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
-独立的 768 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
+独立的 832 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
 状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但 Web host
 objects 由 Browser callbacks 提供。
 
@@ -443,6 +443,11 @@ Browser 只负责 JSON/错误映射；Core 删除成功后丢弃 retained layout
 fail closed；不派发 DOM 事件，不支持插入、reparent、文本节点删除或 live collection。
 该桥多占一个 native slot；重复注册返回 `PSCRIPT_ERROR_GLOBAL`。
 
+`textContent` 和非编辑元素的 `innerText` setter 复用既有 text callback；成功后 Core
+丢弃 retained layout，Browser 刷新目标的 `children`/`childNodes`/query snapshot，旧的
+无 id 文本 wrapper 保留数据并变为 detached。编辑元素的 `innerText` 共享这条失效规则；
+宿主负责输入/事件策略及重新 style/layout/paint。
+
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
 `:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/
@@ -450,7 +455,7 @@ radio 的 content `checked`、option 的 Core relation 45 default-selected 快�
 form 中按文档顺序的第一个 submit-capable button/input/image；live `.checked`/
 `selectedIndex` mutation 不会改写默认状态。`:visited` 通过 interaction Ex callback
 读取宿主批准结果，Browser 不保存 history；参数、分支和遍历有固定预算，非法或未注册
-callback fail closed；限制见 [`../.agents/KNOWN_LIMITATIONS.md`](../.agents/KNOWN_LIMITATIONS.md)。
+callback fail closed。
 
 ### `dialog` 生命周期
 
@@ -692,9 +697,3 @@ snapshot 也由 Browser 拥有。调用方需要副本时使用对应的 `Copy`/
 同步调用期间有效，不能保存指针；callback table 与 `pw` 必须活到 unregister 或 session
 destroy。所有 size-tagged 结构都要设置正确 `cbSize`，较小旧结构保持兼容，未知布局和
 `PBROWSER_OK` 之外的参数、容量、origin、状态、范围或方法错误应安全拒绝。
-
-## 当前边界
-
-Browser 是显式 opt-in 的有界会话；完整 DOM/Web API 与平台输入由宿主验收。ABI 以
-[`positron_browser.h`](positron_browser.h) 为准，完整限制见
-[`已知限制`](../.agents/KNOWN_LIMITATIONS.md)。

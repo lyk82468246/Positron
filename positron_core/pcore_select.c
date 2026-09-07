@@ -7709,6 +7709,9 @@ PCORE_API int PCore_ContentEditableSetTextById(HANDLE hDoc,
     }
     error = dom_node_set_text_content((dom_node *) element, content);
     dom_string_unref(content);
+    if (error == DOM_NO_ERR) {
+        pcore_render_invalidate((dom_document *) hDoc);
+    }
     return (error == DOM_NO_ERR) ? 0 : 1;
 }
 
@@ -7734,6 +7737,9 @@ PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
     }
     err = dom_node_set_text_content((dom_node *) element, content);
     dom_string_unref(content);
+    if (err == DOM_NO_ERR) {
+        pcore_render_invalidate((dom_document *) hDoc);
+    }
     dom_node_unref((dom_node *) element);
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
