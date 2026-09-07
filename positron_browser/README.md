@@ -456,8 +456,8 @@ element setter 与 `set_child_text`；后者收到父 id、未过滤 `childNodes
 
 Text、Comment、CDATA wrapper 提供 `appendData()`、`insertData()`、`deleteData()`、
 `replaceData()` 及 `nodeValue`/`data`/`textContent` setter。offset/count 使用 UTF-16
-code-unit 语义；负数/非整数 count 抛错，超长 count 截断。成功保持 child/wrapper 身份并
-使 retained layout 失效；`splitText()`、mutation 和 detached 失败。
+code-unit 语义；offset/count 为有限非负整数，超长 count 截断，越界 offset 抛错。
+`substringData()` 只读，沿用校验；wrapper/detached 留快照，layout 失效。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、

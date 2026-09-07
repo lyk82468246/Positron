@@ -151,8 +151,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   layout 失效，不改变 child list、不插入/删除/reparent、不派发事件。Browser 通过
   `PBrowserScriptDomWriteCallbacksEx2` 复用既有 `__pcoreSetText` slot，将
   `nodeValue`/`data`/`textContent` setter 与四个 CharacterData mutator 转给宿主；Text
-  仍可使用 Ex 表。宿主只负责 callback 接线和后续 style/layout/paint，失效或 detached
-  wrapper 必须安全失败；
+  仍可使用 Ex 表；`substringData()` 复用同一 UTF-16 offset/count 校验，超长 count
+  截断且保持只读，detached wrapper 仍可读取 retained data snapshot。宿主只负责
+  callback 接线和后续 style/layout/paint，失效或 detached 写入 wrapper 必须安全失败；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变

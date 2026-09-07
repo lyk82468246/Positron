@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1205
+#define TEST_MAX_NUMBER 1206
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -47487,6 +47487,44 @@ static BOOL test1205_browser_comment_character_data_contract(void)
             " now use the additive Core bridge, preserve child and wrapper"
             " identity, invalidate layout, and reject invalid or detached"
             " writes without changing the child structure.");
+    return TRUE;
+}
+
+/* TEST 1206 - substringData validates offsets/counts for CharacterData. */
+static BOOL test1206_browser_character_substring_contract(void)
+{
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),list=r.childNodes,"
+        "t=list[0],c=list[2],before,textOk,commentOk,badOffset,badCount,"
+        "badFraction,badPast,readOnly,detached;"
+        "before=list.length===4&&t.nodeType===3&&c.nodeType===8;"
+        "textOk=t.substringData(1,3)==='lph'&&t.data==='alpha';"
+        "commentOk=c.substringData(1,99)==='ote'&&c.data==='note';"
+        "badOffset=false;try{t.substringData(-1,2);}catch(e){badOffset=true;}"
+        "badCount=false;try{t.substringData(0,-1);}catch(e){badCount=true;}"
+        "badFraction=false;try{t.substringData(1.5,1);}catch(e){badFraction=true;}"
+        "badPast=false;try{t.substringData(6,1);}catch(e){badPast=true;}"
+        "readOnly=t.data==='alpha'&&c.data==='note';"
+        "r.textContent='done';"
+        "detached=t.parentNode===null&&!t.isConnected&&"
+        "t.substringData(0,99)==='alpha'&&c.substringData(0,4)==='note';"
+        "return document.getElementById('result').textContent="
+        "[before,textOk,commentOk,badOffset,badCount,badFraction,badPast,"
+        "readOnly,detached].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_child_node_case(1206, PROBE, EXPECTED, error,
+            sizeof(error))) {
+        return FALSE;
+    }
+    show_info(L"TEST 1206 OK",
+            "CharacterData substringData now validates non-negative integer"
+            " offsets and counts, clamps oversized counts, stays read-only"
+            " for Text/Comment wrappers, and remains available on detached"
+            " snapshots.");
     return TRUE;
 }
 
@@ -95312,16 +95350,21 @@ static BOOL test598_browser_child_snapshot(void)
             "true|true|4|1", error, sizeof(error));
 }
 
-/* TEST 599 - CharacterData substringData remains bounded and read-only. */
+/* TEST 599 - CharacterData substringData validates range and stays read-only. */
 static BOOL test599_browser_character_substring(void)
 {
     static const char PROBE[] =
         "var n=document.getElementById('root').childNodes;"
+        "var badOffset=false,badCount=false,clamped;"
+        "try{n[0].substringData(-1,2);}catch(e){badOffset=true;}"
+        "try{n[0].substringData(0,-1);}catch(e){badCount=true;}"
+        "clamped=n[0].substringData(3,99);"
         "document.getElementById('result').textContent=n[0].substringData(1,3)+'|'"
-        "+n[2].data+'|'+n[0].substringData(-1,2)+'|'+n[0].length;";
+        "+n[2].data+'|'+clamped+'|'+n[0].length+'|'"
+        "+badOffset+'|'+badCount;";
     char error[256];
     return test_browser_child_node_case(599, PROBE,
-            "lph|note||5", error, sizeof(error));
+            "lph|note|ha|5|true|true", error, sizeof(error));
 }
 
 /* TEST 600 - the public core relation API exposes all child-node fields. */
@@ -105626,6 +105669,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1203: ok = test1203_browser_text_node_mutation_contract(); break;
         case 1204: ok = test1204_browser_character_data_mutation_contract(); break;
         case 1205: ok = test1205_browser_comment_character_data_contract(); break;
+        case 1206: ok = test1206_browser_character_substring_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

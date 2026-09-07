@@ -132,7 +132,8 @@
   旧的无 id 文本 wrapper 保留数据但变为 detached。
   `Text.nodeValue`/`data`/`textContent` setter 按父 id 与未过滤 childNodes 索引修改
   Text/Comment/CDATA，保持 child list并使布局失效；四个 CharacterData
-  mutator 按 UTF-16 code-unit 计算并截断超长 count。无效范围和 detached
+  mutator 按 UTF-16 code-unit 计算并截断超长 count；`substringData()` 只读并复用
+  非负整数 offset/count 校验。无效范围和 detached
   wrapper fail closed；节点插入、reparent、删除、`splitText()`、observer 和 live
   collection 未实现，错误关系与缺失/过长 id fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
@@ -569,25 +570,21 @@
   fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201 仅覆盖有界 direct-element removal）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201 覆盖 Browser/Core 的有界 direct-element DOM removal：成功删除只接受直接
-  element child，错误 parent、非 direct child、缺失 id 和 document/head/body 结构 child
-  token fail closed；新的 relation/query snapshot 排除被移除子树，旧 snapshot 保持不变，
-  detached `Element.remove()` 是 no-op。Core 成功后清除 retained layout，调用方必须重新
-  style/layout/paint；该门不实现插入、reparent、文本节点删除、MutationObserver、完整
-  live collection 或 native/视觉行为，暂无新增立即人工风险。
-- TEST1202 覆盖 Browser/Core 的文本内容 mutation：`textContent` 与非编辑
-  `innerText` 成功替换子内容后，新的 `childNodes` wrapper 与旧的 detached 文本 wrapper
-  分离，父级 `children`/query 保持一致，Core retained layout 失效且可在重新
-  style/layout 后恢复；结构 mutation、MutationObserver、完整 live collection 与
+- TEST1201 覆盖有界 direct-element removal：直接 child、错误关系、snapshot 隔离、detached
+  no-op 与 retained-layout invalidation；插入、reparent、文本删除、observer、live collection
+  和 native/视觉行为不在门内。
+- TEST1202 覆盖 `textContent`/非编辑 `innerText` 的新旧文本 wrapper、detached 数据、
+  父级查询和 retained-layout 失效/恢复；结构 mutation、observer、live collection 与
   native/视觉行为仍未实现。
-  - TEST1203 通过扩展 callback 验证 Text setter、wrapper identity、父级文本、layout
-  invalidation 与元素/缺失/越界/detached 的 fail-closed；Comment/CDATA 由 TEST1205
-  覆盖，其余结构/observer/collection/native 视觉未实现。
- - TEST1204 验证 Text/Comment CharacterData mutator、UTF-16 范围、count 截断、wrapper/NodeList
-  identity 和非法/detached fail-closed；结构、observer、collection/native 视觉不在门内。
- - TEST1205 验证 Ex2 callback、通用 child-data primitive、Comment setter/四个 mutator、
+- TEST1203 通过 Ex callback 验证 Text setter、wrapper identity、父级文本、layout invalidation
+  及元素/缺失/越界/detached fail-closed；Comment/CDATA 由 TEST1205 覆盖。
+- TEST1204 验证 Text/Comment CharacterData mutator、UTF-16 范围、count 截断、wrapper/
+  NodeList identity 和非法/detached fail-closed；结构、observer、collection/native 视觉不在门内。
+- TEST1205 验证 Ex2 callback、通用 child-data primitive、Comment setter/四个 mutator、
   Text/element/缺失/越界返回码和 retained-layout invalidation；CDATA 共用接口但没有独立
-  HTML fixture；结构、observer、collection/native 视觉不在门内。
+  HTML fixture。
+- TEST1206 验证 `substringData()` 的 UTF-16 只读范围、超长 count 截断、非法 offset/count
+  与 detached Text/Comment 快照；结构、observer、collection/native 视觉不在门内。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由
