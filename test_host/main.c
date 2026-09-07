@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1202
+#define TEST_MAX_NUMBER 1203
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15142,6 +15142,31 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
     return result < 0 ? -1 : 0;
 }
 
+static int pcore_browser_script_dom_set_child_text(void *pw,
+        const char *parent_id, unsigned int child_index, const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            text == NULL) {
+        return -1;
+    }
+    result = PCore_NodeSetTextChildById(bridge->document, parent_id,
+            child_index, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16673,7 +16698,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacks dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx dom_write_callbacks;
     PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -16829,6 +16854,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.size = sizeof(dom_write_callbacks);
     dom_write_callbacks.pw = bridge;
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
+    dom_write_callbacks.set_child_text =
+            pcore_browser_script_dom_set_child_text;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17026,7 +17053,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacks(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -47137,6 +47164,153 @@ static BOOL test1202_browser_dom_text_mutation_contract(void)
             "textContent and innerText mutations now invalidate stale child"
             " snapshots and retained Core layout while preserving detached"
             " text-node identity; the host can schedule the normal restyle.");
+    return TRUE;
+}
+
+/* TEST 1203 - Text node value/data/textContent setters preserve a live
+ * wrapper while the direct Core mutation invalidates retained layout. */
+static BOOL test1203_browser_text_node_mutation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><main id='root'>A<span id='middle'>B</span>C</main>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),list=r.childNodes,"
+        "a=list[0],m=list[1],c=list[2],before;"
+        "before=list.length===3&&a.nodeType===3&&a.nodeValue==='A'&&"
+        "a.data==='A'&&a.textContent==='A'&&a.parentNode===r&&"
+        "a===list[0]&&m.nodeType===1&&c.nodeType===3;"
+        "a.nodeValue='AA';"
+        "var n1=a===r.childNodes[0]&&list===r.childNodes&&a.nodeValue==='AA'&&"
+        "a.data==='AA'&&a.textContent==='AA'&&a.length===2;"
+        "c.data='CC';"
+        "var n2=c===r.childNodes[2]&&list===r.childNodes&&c.nodeValue==='CC'&&"
+        "c.data==='CC'&&c.textContent==='CC';"
+        "a.textContent='AAA';"
+        "var n3=a===r.childNodes[0]&&a.nodeValue==='AAA'&&a.data==='AAA'&&"
+        "a.textContent==='AAA'&&r.textContent==='AAABCC';"
+        "var elementNoop=true;try{m.nodeValue='x';}catch(e){elementNoop=false;}"
+        "elementNoop=elementNoop&&m.textContent==='B';"
+        "var stable=list===r.childNodes&&list[0]===a&&list[2]===c;"
+        "r.textContent='reset';"
+        "var detached=a.parentNode===null&&!a.isConnected&&a.nodeValue==='AAA'&&"
+        "a.data==='AAA';var staleFailed=false;"
+        "try{a.nodeValue='bad';}catch(e){staleFailed=true;}"
+        "detached=detached&&staleFailed&&a.nodeValue==='AAA';"
+        "return document.getElementById('result').textContent="
+        "[before,n1,n2,n3,elementNoop,stable,detached].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreLayoutStats stats;
+    char error[768];
+    char result_text[256];
+    const char *result;
+    int executed;
+    int ignored;
+    int rc;
+    int layout_status;
+    int text_bytes;
+    BOOL ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(error, 0, sizeof(error));
+    memset(result_text, 0, sizeof(result_text));
+    result = NULL;
+    executed = -1;
+    ignored = -1;
+    rc = PSCRIPT_ERROR_CALL;
+    layout_status = -1;
+    text_bytes = -1;
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0 ||
+            PCore_NodeSetTextChildById(document, NULL, 0, "x") != 1 ||
+            PCore_NodeSetTextChildById(document, "missing", 0, "x") != 2 ||
+            PCore_NodeSetTextChildById(document, "root", 1, "x") != 2 ||
+            PCore_NodeSetTextChildById(document, "root", 99, "x") != 2) {
+        ok = FALSE;
+    }
+    if (ok && pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/text-node-mutation", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0) {
+        ok = FALSE;
+    }
+    if (ok && (executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL)) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        rc = pcore_browser_script_session_evaluate(PROBE, -1,
+                error, sizeof(error));
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        if (result != NULL) {
+            cstr_copy(result_text, sizeof(result_text), result);
+        }
+        ok = rc == PSCRIPT_OK && result != NULL && strcmp(result, EXPECTED) == 0;
+    }
+    if (ok) {
+        ok = PCore_NodeTextContentById(document, "root", result_text,
+                sizeof(result_text), &text_bytes) == 0 &&
+                strcmp(result_text, "reset") == 0 &&
+                PCore_GetLayoutStats(document, &stats) != 0;
+    }
+    if (ok) {
+        ok = PCore_StyleDocument(document, NULL) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0 &&
+                PCore_GetLayoutStats(document, &stats) == 0;
+    }
+    if (document != NULL) {
+        layout_status = PCore_GetLayoutStats(document, &stats);
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "rc=%d result=%s exec/ignore=%d/%d layout=%d text=%d",
+                    rc, result_text[0] != '\0' ? result_text : "(null)",
+                    executed, ignored, layout_status, text_bytes);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1203 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1203 OK",
+            "Text node nodeValue/data/textContent setters now use the"
+            " Core-owned direct-child bridge, preserve connected wrapper"
+            " identity, retain the last detached value, and invalidate"
+            " retained layout; unsupported stale writes fail closed.");
     return TRUE;
 }
 
@@ -105273,6 +105447,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1200: ok = test1200_browser_image_source_mutation_callbacks(); break;
         case 1201: ok = test1201_browser_dom_remove_child_contract(); break;
         case 1202: ok = test1202_browser_dom_text_mutation_contract(); break;
+        case 1203: ok = test1203_browser_text_node_mutation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

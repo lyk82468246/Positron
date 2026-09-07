@@ -613,6 +613,15 @@ Core retained layout 在 mutation 后失效，重新 style/layout 后恢复。�
 reparent、文本节点自身 setter、MutationObserver、完整 live collection 或自动事件；
 宿主只提供已有 text callback、可选 restyle 和断言。
 
+TEST1203 覆盖文本节点自身 mutation 的完整有界纵切：`Text.nodeValue`、`Text.data` 和
+`Text.textContent` 通过 `PBrowserScriptDomWriteCallbacksEx` 的同一 native slot，按未过滤
+`childNodes` 索引调用 `PCore_NodeSetTextChildById`。自动断言确认连接中 wrapper 和
+NodeList snapshot 身份不变、`length`/父级文本实时更新、元素 child 与缺失/越界索引
+fail closed、成功 mutation 使 retained layout 失效，以及父级替换后旧 wrapper 保留最近
+一次成功数据且不能再次写入。该门不实现插入、reparent、文本节点删除、MutationObserver、
+完整 live collection、事件或 native/视觉行为；宿主只负责 callback 接线、可选 restyle、
+fixture 与断言。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

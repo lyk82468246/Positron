@@ -240,6 +240,18 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
 
+/* Replace the data of one direct Text child without changing the child list.
+ * `parent_id` is a UTF-8 element id (or a supported document-structure token)
+ * and `child_index` is the unfiltered childNodes index, so text/comment and
+ * element children retain their DOM positions.  Returns 0 after a Text node
+ * was updated, 2 when the parent or index is unavailable or the child is not
+ * a Text node, and 1 for invalid input or a DOM failure.  A successful update
+ * invalidates retained layout; callers must style/layout/paint again before
+ * using geometry or native-control snapshots.  This primitive does not
+ * insert, remove or reparent nodes and does not dispatch events. */
+PCORE_API int PCore_NodeSetTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *text);
+
 /* Remove one element child from one element parent. Both arguments are
  * UTF-8 DOM ids (the three reserved document-structure tokens are rejected
  * as removable children). The operation requires the child to be a direct

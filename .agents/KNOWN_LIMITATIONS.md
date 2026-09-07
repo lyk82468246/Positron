@@ -130,8 +130,11 @@
   `innerText` 通过既有 text callback 替换为一个纯文本子节点；两条路径成功后都使
   retained layout 失效，调用方必须重新 style/layout/paint。文本 mutation 会刷新目标的
   `children`/`childNodes`/query snapshot，旧的无 id 文本 wrapper 保留数据但变为 detached。
-  节点插入、reparent、文本节点自身 setter、MutationObserver 和完整 live collection 仍未
-  实现，错误关系与缺失/过长 id 必须 fail closed。
+  `Text.nodeValue`/`Text.data`/`Text.textContent` 另有按父 id 与未过滤 childNodes 索引的
+  有界 setter；它只接受现有 `DOM_TEXT_NODE`，保持 child list 不变，成功后同样使 retained
+  layout 失效，detached wrapper 的后续写入安全失败。节点插入、reparent、文本节点删除、
+  comment/CDATA setter、MutationObserver 和完整 live collection 仍未实现，错误关系与
+  缺失/过长 id 必须 fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -575,8 +578,14 @@
 - TEST1202 覆盖 Browser/Core 的文本内容 mutation：`textContent` 与非编辑
   `innerText` 成功替换子内容后，新的 `childNodes` wrapper 与旧的 detached 文本 wrapper
   分离，父级 `children`/query 保持一致，Core retained layout 失效且可在重新
-  style/layout 后恢复。节点插入、reparent、文本节点自身 setter、MutationObserver、
-  完整 live collection 和 native/视觉行为仍未实现或需要人工观察。
+  style/layout 后恢复。该门不实现节点插入、reparent、文本节点删除、MutationObserver、
+  完整 live collection 和 native/视觉行为。
+- TEST1203 覆盖 Text 自身 mutation：`nodeValue`、`data`、`textContent` 通过扩展 DOM
+  write callback 调用 `PCore_NodeSetTextChildById`，保持连接中 wrapper/NodeList 身份，
+  更新父级文本和 length，并在成功后使 retained layout 失效；元素 child、缺失/越界
+  索引和 detached wrapper fail closed，旧 wrapper 保留最近一次成功数据。该门不扩展
+  comment/CDATA、插入、reparent、文本节点删除、MutationObserver、完整 live collection
+  或 native/视觉行为。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

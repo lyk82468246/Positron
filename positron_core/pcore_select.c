@@ -7744,6 +7744,58 @@ PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
 
+PCORE_API int PCore_NodeSetTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *text)
+{
+    dom_element *parent;
+    dom_node *child;
+    dom_node_type child_type;
+    dom_string *content;
+    dom_exception err;
+    int result;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            text == NULL) {
+        return 1;
+    }
+    parent = pcore_element_by_id((dom_document *) hDoc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    child = NULL;
+    result = pcore_relation_child_node_at((dom_node *) parent, child_index,
+            &child);
+    if (result != 0) {
+        dom_node_unref((dom_node *) parent);
+        return result == 2 ? 2 : 1;
+    }
+    if (dom_node_get_node_type(child, &child_type) != DOM_NO_ERR) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    if (child_type != DOM_TEXT_NODE) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    content = NULL;
+    if (dom_string_create((const uint8_t *) text, strlen(text), &content) !=
+            DOM_NO_ERR || content == NULL) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    err = dom_node_set_node_value(child, content);
+    dom_string_unref(content);
+    if (err == DOM_NO_ERR) {
+        pcore_render_invalidate((dom_document *) hDoc);
+    }
+    dom_node_unref(child);
+    dom_node_unref((dom_node *) parent);
+    return (err == DOM_NO_ERR) ? 0 : 1;
+}
+
 PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id)
 {

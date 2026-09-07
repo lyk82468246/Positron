@@ -158,6 +158,15 @@ reparent、文本节点删除和完整 live collection 仍不在此边界内。
 操作 native 控件；Browser/宿主负责 beforeinput/input 策略、更新脚本 snapshot，并重新
 style/layout/paint。Core 只把新的纯文本作为一个子节点写入文档，失败时不作部分提交。
 
+`PCore_NodeSetTextChildById` 是不改变 child list 的有界 Text mutation：调用方提供父元素
+的 UTF-8 id 和未过滤的 `childNodes` 索引，Core 只接受 `DOM_TEXT_NODE`，因此不会把 element、
+comment 或越界索引误写成文本。成功返回 `0` 并使 retained layout 失效；父节点/索引不可用
+或目标不是 Text 返回 `2`，参数或 DOM 失败返回 `1`。该入口不插入、删除或 reparent 节点，
+不派发事件、不获取资源，也不刷新任何 Browser snapshot；宿主应在成功后安排正常的
+style/layout/paint。Browser 的 `Text.nodeValue`、`Text.data` 和 `Text.textContent` setter
+通过 typed callback 复用这一入口，旧的 detached wrapper 保留最近一次成功的字符串，之后
+的写入安全失败。
+
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
 布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`

@@ -448,6 +448,12 @@ fail closed；不派发 DOM 事件，不支持插入、reparent、文本节点�
 无 id 文本 wrapper 保留数据并变为 detached。编辑元素的 `innerText` 共享这条失效规则；
 宿主负责输入/事件策略及重新 style/layout/paint。
 
+需要 Text setter 时，宿主改用扩展表注册同一条 native slot，并同时提供旧的 element
+setter 与 `set_child_text`。后者收到父 id、未过滤 childNodes 索引和 UTF-8 文本，转给
+`PCore_NodeSetTextChildById`；成功后宿主安排重排。Browser 保持连接中 wrapper 身份，对
+非 Text、越界或 detached 写入安全失败。旧注册函数保持 element-only ABI，扩展表不增加
+native-function 数量。
+
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
 `:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/
@@ -482,8 +488,6 @@ callback fail closed。
 注册 `PBrowserScriptContentEditableCallbacks` 后，Browser 为每个元素暴露只读的 `isContentEditable`。该查询由宿主转给 Core，因而也能正确处理没有 id 的祖先和 `true`/空值、`false`、`plaintext-only`、未知值继承。`contentEditable` 仍是原始 attribute reflection，不应拿它代替有效状态。
 
 `innerText` getter 读取 Core 的文本快照；对有效可编辑元素的 setter 走 `__pcoreSetContentEditableText`，由宿主调用 `PCore_ContentEditableSetTextById` 执行有界合法 UTF-8 纯文本替换。setter 是程序化 mutation，不自动产生 `beforeinput`/`input`。宿主若把 Core 的 editing-host 快照映射为 WM EDIT，真实键盘、SIP/IME 或其他输入源必须沿用已有 typed input 事务：先派发可取消 `beforeinput`，仅在允许后提交原生文本并调用 Core mutation，再派发 `input`；Browser 只决定事件、取消和顺序，不创建 HWND。
-
-剪贴板不是 Browser 直接访问的系统 API。宿主可以在 WM EDIT 的 `WM_PASTE`/`WM_CUT`/`WM_COPY` 路径读取 `CF_UNICODETEXT` 或选中文本，将 CRLF 规范化为逻辑 UTF-8 后传给 `PBrowser_ScriptSessionDispatchNativeEditBeforeInput`；允许后执行 native default，再用 `PBrowser_ScriptSessionDispatchNativeEditInput` 和 selection notification 完成事务。`WM_COPY` 的折叠选区由宿主保持为 no-op，不产生空格式。当前边界只承诺单元素纯文本、`CF_UNICODETEXT` 和小于 `PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TEXT_BYTES` 的 UTF-8 data；格式缺失、读取失败或超长时宿主应在 native mutation 前 fail closed。Browser 不提供 `ClipboardEvent`、async clipboard 或格式转换，也不拥有 WinCE 原生 `WM_CUT` 内部重入策略。
 
 `selectionStart`、`selectionEnd` 和 `selectionDirection` 使用 JavaScript UTF-16 code-unit 偏移。调用 `setSelectionRange()` 或 `select()` 时，Browser 先更新有界脚本状态，再尝试通过可选的 `PBrowserScriptContentEditableSelectionCallbacks` 同步宿主的原生 editing host；没有原生窗口（例如离线 fixture 或未布局的后代元素）时保留脚本侧回退。宿主的 multiline EDIT 适配器负责把 CRLF 原生位置转换为 Core/Browser 的逻辑 LF 位置。
 
