@@ -2438,7 +2438,10 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "set:function(v){if(name==='type'&&(this.localName==='select'||"
         "this.localName==='fieldset'||this.localName==='output')){return;}"
         "if(!__pcoreSetAttribute({id:this.__id,"
-        "name:attr,value:String(v)})){throw new Error(name+' update failed');}}});}"
+        "name:attr,value:String(v)})){throw new Error(name+' update failed');}"
+        "if(name==='type'&&this.localName==='source'&&"
+        "typeof g.__pcoreImageSourceChanged==='function'){"
+        "g.__pcoreImageSourceChanged({id:this.__id});}}});}"
         "PDefineBoolean('required','required');"
         "PDefineBoolean('readOnly','readonly');"
         "PDefineBoolean('multiple','multiple');"
@@ -3595,7 +3598,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(nw===pviewportWidth&&nh===pviewportHeight&&nd===pdevicePixelRatio){"
         "return true;}orientationChanged=(pviewportWidth>=pviewportHeight)!=(nw>=nh);"
         "pviewportWidth=nw;pviewportHeight=nh;"
-        "pdevicePixelRatio=nd;pmediaRefresh();if(orientationChanged){"
+        "pdevicePixelRatio=nd;if(typeof g.__pcoreImageViewportChanged9==="
+        "'function'){g.__pcoreImageViewportChanged9();}pmediaRefresh();"
+        "if(orientationChanged){"
         "pdispatchOrientationChange();}if(typeof g.__pcoreVisualViewportResize==="
         "'function'){g.__pcoreVisualViewportResize();}pdispatchResize();return true;}"
         "function psetScrollApplied(x,y){var nx=Number(x);var ny=Number(y);"
@@ -4708,16 +4713,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(PElement.prototype,'nodeName',{get:function(){return tag9(this).toUpperCase();},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'localName',{get:function(){return tag9(this).toLowerCase();},enumerable:true});"
         "function media9(owner){var t=owner.localName;var v;"
-        "if(t!=='link'&&t!=='style'){return undefined;}"
+        "if(t!=='link'&&t!=='style'&&t!=='source'){return undefined;}"
         "v=owner.getAttribute('media');return v===null?'':v;}"
         "function setMedia9(owner,value){var t=owner.localName;"
-        "if(t!=='link'&&t!=='style'){return;}"
+        "if(t!=='link'&&t!=='style'&&t!=='source'){return;}"
         "if(!__pcoreSetAttribute({id:owner.__id,name:'media',value:String(value)})){"
-        "throw new Error('media update failed');}}"
+        "throw new Error('media update failed');}"
+        "if(t==='source'&&typeof imageRefreshPicture9==='function'){"
+        "imageRefreshPicture9(owner);}}"
         "Object.defineProperty(PElement.prototype,'media',{get:function(){return media9(this);},"
         "set:function(v){setMedia9(this,v);},enumerable:true,configurable:true});"
         "function image9(owner){return !!owner&&owner.localName==='img';}"
+        "function source9(owner){return !!owner&&owner.localName==='source';}"
         "function imageAttr9(owner,attr){var v;if(!image9(owner)){return undefined;}"
+        "v=owner.getAttribute(attr);return v===null?'':v;}"
+        "function sourceAttr9(owner,attr){var v;if(!source9(owner)){return undefined;}"
         "v=owner.getAttribute(attr);return v===null?'':v;}"
         "var imageDecodePending9=[];var imageDecodeMax9=64;"
         "var imageEventStates9={};var imageEventStateCount9=0;"
@@ -4725,10 +4735,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function imageException9(message,name){var e;"
         "if(typeof g.DOMException==='function'){return new g.DOMException(message,name);}"
         "e=new Error(message);e.name=name;return e;}"
+        "function imageCurrentSource9(owner){var value;"
+        "if(!image9(owner)){return '';}value=relation9(owner,49,0);"
+        "return typeof value==='string'?value:'';}"
         "function imageSource9(owner){return imageAttr9(owner,'src')+'\\n'+"
-        "imageAttr9(owner,'srcset');}"
+        "imageAttr9(owner,'srcset')+'\\n'+imageCurrentSource9(owner);}"
         "function imageHasSource9(owner){return imageAttr9(owner,'src')!==''||"
-        "imageAttr9(owner,'srcset')!=='';}"
+        "imageAttr9(owner,'srcset')!==''||imageCurrentSource9(owner)!=='';}"
         "function imageEventKey9(owner){return '$'+String(owner.__id||'');}"
         "function imagePendingSettle9(owner,source,success,error){var i;var p;"
         "for(i=imageDecodePending9.length-1;i>=0;i--){p=imageDecodePending9[i];"
@@ -4745,6 +4758,36 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(imageEventStates9[imageEventKey9(owner)]!==undefined){"
         "delete imageEventStates9[imageEventKey9(owner)];if(imageEventStateCount9>0){"
         "imageEventStateCount9--;}}}}"
+        "function imageRefresh9(owner){var current;var key;var state;var i;var p;"
+        "if(!image9(owner)){return false;}current=imageSource9(owner);"
+        "for(i=imageDecodePending9.length-1;i>=0;i--){p=imageDecodePending9[i];"
+        "if((p.owner===owner||p.owner&&p.owner.__id===owner.__id)&&"
+        "p.source!==current){imageDecodePending9.splice(i,1);try{p.reject("
+        "imageException9('Image source changed','EncodingError'));}catch(refreshRejectError){}}}"
+        "key=imageEventKey9(owner);state=imageEventStates9[key];"
+        "if(state&&state.source!==current){delete imageEventStates9[key];"
+        "if(imageEventStateCount9>0){imageEventStateCount9--;}}return true;}"
+        "function picture9(owner){var n=owner;var depth=0;"
+        "while(n&&depth<16){if(n.localName==='picture'){return n;}n=n.parentElement;depth++;}"
+        "return null;}"
+        "function imageRefreshPicture9(owner){var picture;var images;var i;var limit;"
+        "picture=picture9(owner);if(!doc||typeof doc.getElementsByTagName!=="
+        "'function'){return false;}if(!picture){return imageRefreshAll9();}"
+        "images=doc.getElementsByTagName('img');limit=images.length;"
+        "if(limit>64){limit=64;}for(i=0;i<limit;i++){if(picture9(images[i])===picture){"
+        "imageRefresh9(images[i]);}}return true;}"
+        "function imageRefreshAll9(){var images;var i;var limit;var p;"
+        "for(i=imageDecodePending9.length-1;i>=0;i--){p=imageDecodePending9[i];"
+        "if(p&&p.owner){imageRefresh9(p.owner);}}"
+        "if(!doc||typeof doc.getElementsByTagName!=='function'){return false;}"
+        "images=doc.getElementsByTagName('img');limit=images.length;if(limit>64){limit=64;}"
+        "for(i=0;i<limit;i++){imageRefresh9(images[i]);}return true;}"
+        "g.__pcoreImageViewportChanged9=function(){return imageRefreshAll9();};"
+        "g.__pcoreImageSourceChanged=function(info){var owner;var id;"
+        "if(!info||!doc||typeof doc.getElementById!=='function'){return false;}"
+        "id=String(info.id||'');if(id===''){return false;}owner=doc.getElementById(id);"
+        "if(image9(owner)){return imageRefresh9(owner);}if(source9(owner)){"
+        "return imageRefreshPicture9(owner);}return false;};"
         "function imageCheckDecode9(owner,source){var current;var complete;"
         "var width;var height;if(!image9(owner)){imagePendingSettle9(owner,source,"
         "false,imageException9('Image is not active','InvalidStateError'));return;}"
@@ -4820,10 +4863,18 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "set:function(v){imageSetAttr9(this,'alt',v,'alt');},enumerable:true,configurable:true});"
         "Object.defineProperty(PElement.prototype,'src',{get:function(){return imageAttr9(this,'src');},"
         "set:function(v){imageSetAttr9(this,'src',v,'src');},enumerable:true,configurable:true});"
-        "Object.defineProperty(PElement.prototype,'srcset',{get:function(){return imageAttr9(this,'srcset');},"
-        "set:function(v){imageSetAttr9(this,'srcset',v,'srcset');},enumerable:true,configurable:true});"
-        "Object.defineProperty(PElement.prototype,'sizes',{get:function(){return imageAttr9(this,'sizes');},"
-        "set:function(v){imageSetAttr9(this,'sizes',v,'sizes');},enumerable:true,configurable:true});"
+        "function sourceSetAttr9(owner,attr,value,name){if(!source9(owner)){return;}"
+        "if(!__pcoreSetAttribute({id:owner.__id,name:attr,value:String(value)})){"
+        "throw new Error(name+' update failed');}if(typeof imageRefreshPicture9==='function'){"
+        "imageRefreshPicture9(owner);}}"
+        "Object.defineProperty(PElement.prototype,'srcset',{get:function(){return image9(this)?"
+        "imageAttr9(this,'srcset'):sourceAttr9(this,'srcset');},set:function(v){if(image9(this)){"
+        "imageSetAttr9(this,'srcset',v,'srcset');}else{sourceSetAttr9(this,'srcset',v,'srcset');}},"
+        "enumerable:true,configurable:true});"
+        "Object.defineProperty(PElement.prototype,'sizes',{get:function(){return image9(this)?"
+        "imageAttr9(this,'sizes'):sourceAttr9(this,'sizes');},set:function(v){if(image9(this)){"
+        "imageSetAttr9(this,'sizes',v,'sizes');}else{sourceSetAttr9(this,'sizes',v,'sizes');}},"
+        "enumerable:true,configurable:true});"
         "Object.defineProperty(PElement.prototype,'crossOrigin',{get:function(){return imageCrossOrigin9(this);},"
         "set:function(v){imageSetCrossOrigin9(this,v);},enumerable:true,configurable:true});"
         "Object.defineProperty(PElement.prototype,'useMap',{get:function(){return imageAttr9(this,'usemap');},"
@@ -4842,7 +4893,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "enumerable:true,configurable:true});"
         "Object.defineProperty(PElement.prototype,'complete',{get:function(){var s;var q;"
         "if(!image9(this)){return undefined;}s=imageAttr9(this,'src');q=imageAttr9(this,'srcset');"
-        "if(s===''&&q===''){return true;}return imageRelation9(this,48)===1;},"
+        "if(s===''&&q===''&&imageCurrentSource9(this)===''){return true;}"
+        "return imageRelation9(this,48)===1;},"
         "enumerable:true,configurable:true});"
         "Object.defineProperty(PElement.prototype,'currentSrc',{get:function(){"
         "var v;if(!image9(this)){return undefined;}v=relation9(this,49,0);"
@@ -4861,11 +4913,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "PElement.prototype.setAttribute=function(name,value){var n=String(name).toLowerCase();"
         "var before;var after;if(image9(this)&&(n==='src'||n==='srcset')){before=imageSource9(this);}"
         "imageSetAttribute9.call(this,name,value);if(image9(this)&&(n==='src'||n==='srcset')){"
-        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}}};"
+        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}}"
+        "else if(source9(this)&&(n==='media'||n==='type'||n==='srcset'||n==='sizes')){"
+        "imageRefreshPicture9(this);}};"
         "PElement.prototype.removeAttribute=function(name){var n=String(name).toLowerCase();"
         "var before;var after;if(image9(this)&&(n==='src'||n==='srcset')){before=imageSource9(this);}"
         "imageRemoveAttribute9.call(this,name);if(image9(this)&&(n==='src'||n==='srcset')){"
-        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}}};"
+        "after=imageSource9(this);if(after!==before){imageInvalidate9(this,before);}}"
+        "else if(source9(this)&&(n==='media'||n==='type'||n==='srcset'||n==='sizes')){"
+        "imageRefreshPicture9(this);}};"
         "PElement.prototype.contains=function(other){var n=other;var i=0;"
         "if(!other||typeof other.__id!=='string'){return false;}while(n&&i<64){"
         "if(n.__id===this.__id){return true;}n=n.parentElement;i++;}return false;};"
@@ -13602,6 +13658,47 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
     args[length] = '\0';
     rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
             "__pcoreDispatchImageEvent", args);
+    if (rc != PSCRIPT_OK) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    if (result == NULL) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    return strcmp(result, "true") == 0 ? PSCRIPT_OK :
+            PSCRIPT_ERROR_ARGUMENT;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
+        HANDLE hSession, const char *element_id)
+{
+    p_browser_script_session *session;
+    char id_json[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX * 6 + 1];
+    char args[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX * 6 + 32];
+    const char *result;
+    int escaped;
+    int length;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || element_id == NULL ||
+            element_id[0] == '\0' ||
+            strlen(element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    escaped = p_browser_script_json_escape(element_id, id_json,
+            sizeof(id_json));
+    if (escaped < 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    length = _snprintf(args, sizeof(args) - 1,
+            "[{\"id\":\"%s\"}]", id_json);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreImageSourceChanged", args);
     if (rc != PSCRIPT_OK) {
         return PSCRIPT_ERROR_CALL;
     }

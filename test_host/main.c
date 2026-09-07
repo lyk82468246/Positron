@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1198
+#define TEST_MAX_NUMBER 1199
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -46137,6 +46137,271 @@ static BOOL test1198_browser_picture_source_selection(void)
             "picture source elements select bounded media/type candidates"
             " before the img fallback, sharing currentSrc with Core"
             " fetch/layout while unsupported or malformed sources stay safe.");
+    return TRUE;
+}
+
+/* TEST 1199 - bounded picture/source mutation and viewport invalidation. */
+static BOOL test1199_browser_picture_source_lifecycle(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><picture><source id='narrow' "
+        "media='(max-width: 300px)' type='image/svg+xml' "
+        "srcset='/img/one.svg 1x' sizes='100vw'>"
+        "<source id='wide' media='(min-width: 301px)' "
+        "type='image/svg+xml' srcset='/img/two.svg 1x'>"
+        "<img id='hero' src='/img/fallback.svg'>"
+        "</picture><p id='result'>idle</p></body></html>";
+    static const char SETUP[] =
+        "var hero=document.getElementById('hero');"
+        "var narrow=document.getElementById('narrow');"
+        "window.imageState='pending';"
+        "window.imageProps=narrow.media+'|'+narrow.type+'|'"
+        "+narrow.srcset+'|'+narrow.sizes;"
+        "hero.decode().then(function(){window.imageState='fulfilled';},"
+        "function(e){window.imageState='rejected:'+e.name;});true;";
+    static const char INITIAL_PROBE[] =
+        "window.imageProps+'|'+window.imageState+'|'"
+        "+document.getElementById('hero').currentSrc;";
+    static const char FIRST_CHANGE_PROBE[] =
+        "String(window.imageState)+'|'"
+        "+document.getElementById('hero').currentSrc+'|'"
+        "+String(document.getElementById('hero').complete);";
+    static const char PROPERTY_PROBE[] =
+        "window.imageProps2+'|'"
+        "+document.getElementById('hero').currentSrc;";
+    static const char SECOND_CHANGE_SETUP[] =
+        "window.imageState2='pending';document.getElementById('hero').decode().then(function(){"
+        "window.imageState2='fulfilled';},function(e){"
+        "window.imageState2='rejected:'+e.name;});true;";
+    static const char SECOND_CHANGE_PROBE[] =
+        "window.imageState2+'|'"
+        "+document.getElementById('hero').currentSrc;";
+    static const char RESIZE_SETUP[] =
+        "window.imageState3='pending';document.getElementById('hero').decode().then(function(){"
+        "window.imageState3='fulfilled';},function(e){"
+        "window.imageState3='rejected:'+e.name;});true;";
+    static const char RESIZE_PROBE[] =
+        "window.imageState3+'|'"
+        "+document.getElementById('hero').currentSrc;";
+    static const char PROPERTY_UPDATE[] =
+        "document.getElementById('narrow').media='(max-width: 300px)';"
+        "document.getElementById('narrow').srcset='/img/one.svg 1x';"
+        "document.getElementById('narrow').sizes='100vw';"
+        "document.getElementById('narrow').type='image/svg+xml';"
+        "window.imageProps2=document.getElementById('narrow').media+'|'"
+        "+document.getElementById('narrow').type+'|'"
+        "+document.getElementById('narrow').srcset+'|'"
+        "+document.getElementById('narrow').sizes;true;";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char error[768];
+    char result[512];
+    char source[128];
+    const char *probe_result;
+    const char *stage;
+    int executed;
+    int ignored;
+    int result_bytes;
+    int rc;
+    int relation_rc;
+    BOOL ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(error, 0, sizeof(error));
+    memset(result, 0, sizeof(result));
+    memset(source, 0, sizeof(source));
+    probe_result = NULL;
+    stage = "parse";
+    executed = -1;
+    ignored = -1;
+    result_bytes = 0;
+    rc = PSCRIPT_ERROR_CALL;
+    relation_rc = -1;
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/picture-lifecycle", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "setup";
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, SETUP, -1);
+        ok = rc == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "initial";
+        rc = PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session);
+        ok = rc == PSCRIPT_OK;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, INITIAL_PROBE, -1);
+            probe_result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && probe_result != NULL &&
+                    strcmp(probe_result,
+                    "(max-width: 300px)|image/svg+xml|/img/one.svg 1x|"
+                    "100vw|pending|/img/one.svg") == 0;
+        }
+    }
+    if (ok) {
+        stage = "host-source-change";
+        relation_rc = PCore_NodeSetAttributeById(document, "narrow",
+                "media", "(min-width: 300px)");
+        rc = PBrowser_ScriptSessionNotifyImageSourceChange(
+                g_browser_script_session.session, "narrow");
+        ok = relation_rc == 0 && rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, FIRST_CHANGE_PROBE,
+                    -1);
+            probe_result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && probe_result != NULL &&
+                    strcmp(probe_result,
+                    "rejected:EncodingError|/img/fallback.svg|false") == 0;
+            if (!ok && error[0] == '\0' &&
+                    PBrowser_ScriptSessionGetError(
+                    g_browser_script_session.session) != NULL) {
+                cstr_copy(error, sizeof(error),
+                        PBrowser_ScriptSessionGetError(
+                        g_browser_script_session.session));
+            }
+        }
+    }
+    if (ok) {
+        stage = "source-properties";
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, PROPERTY_UPDATE, -1);
+        ok = rc == PSCRIPT_OK;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, PROPERTY_PROBE, -1);
+            probe_result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && probe_result != NULL &&
+                    strcmp(probe_result,
+                    "(max-width: 300px)|image/svg+xml|/img/one.svg 1x|"
+                    "100vw|/img/one.svg") == 0;
+        }
+    }
+    if (ok) {
+        stage = "host-image-change";
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, SECOND_CHANGE_SETUP, -1);
+        relation_rc = PCore_NodeSetAttributeById(document, "narrow",
+                "media", "(min-width: 300px)");
+        rc = (rc == PSCRIPT_OK) ? PBrowser_ScriptSessionNotifyImageSourceChange(
+                g_browser_script_session.session, "hero") : rc;
+        ok = relation_rc == 0 && rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, SECOND_CHANGE_PROBE,
+                    -1);
+            probe_result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && probe_result != NULL &&
+                    strcmp(probe_result,
+                    "rejected:EncodingError|/img/fallback.svg") == 0;
+        }
+    }
+    if (ok) {
+        stage = "resize-change";
+        relation_rc = PCore_NodeSetAttributeById(document, "narrow",
+                "media", "(max-width: 300px)");
+        rc = PBrowser_ScriptSessionNotifyImageSourceChange(
+                g_browser_script_session.session, "narrow");
+        if (relation_rc != 0 || rc != PSCRIPT_OK ||
+                PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, RESIZE_SETUP, -1) !=
+                PSCRIPT_OK) {
+            ok = FALSE;
+        }
+        if (ok) {
+            PCore_SetViewport(480, 320, 96);
+            rc = PBrowser_ScriptSessionNotifyResize(
+                    g_browser_script_session.session, 480.0, 320.0, 1.0);
+            ok = rc == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionRunMicrotasks(
+                    g_browser_script_session.session) == PSCRIPT_OK;
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, RESIZE_PROBE, -1);
+            probe_result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && probe_result != NULL &&
+                    strcmp(probe_result,
+                    "rejected:EncodingError|/img/two.svg") == 0;
+        }
+    }
+    if (ok) {
+        stage = "invalid-notification";
+        rc = PBrowser_ScriptSessionNotifyImageSourceChange(
+                g_browser_script_session.session, "missing");
+        ok = rc == PSCRIPT_ERROR_ARGUMENT;
+    }
+    relation_rc = PCore_NodeRelationById(document, "hero",
+            PCORE_NODE_RELATION_IMAGE_CURRENT_SRC, 0, source,
+            sizeof(source), &result_bytes, NULL);
+    if ((relation_rc != 0 || strcmp(source, "/img/two.svg") != 0) && ok) {
+        ok = FALSE;
+    }
+    if (probe_result != NULL) {
+        cstr_copy(result, sizeof(result), probe_result);
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d relation=%d result=%s source=%s "
+                    "exec/ignore=%d/%d", stage, rc, relation_rc,
+                    result[0] != '\0' ? result : "(null)", source,
+                    executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1199 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1199 OK",
+            "picture source properties and host notifications invalidate"
+            " stale image decode state on source mutation and viewport"
+            " changes while currentSrc remains shared with Core selection.");
     return TRUE;
 }
 
@@ -104269,6 +104534,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1196: ok = test1196_browser_img_srcset_selection(); break;
         case 1197: ok = test1197_browser_img_srcset_width_selection(); break;
         case 1198: ok = test1198_browser_picture_source_selection(); break;
+        case 1199: ok = test1199_browser_picture_source_lifecycle(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

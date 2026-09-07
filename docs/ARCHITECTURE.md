@@ -190,6 +190,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   终态；宿主仍负责资源 I/O，Core 负责来源选择、cache/decode/layout。宿主须先让 Core
   relation 反映 complete/natural-size，再调用 `PBrowser_ScriptSessionNotifyImageEvent`；
   Browser 只派发 trusted、非冒泡、不可取消事件并 settle 同一 source 的 decode 请求。
+  Core mutation 改写 `img` 或 `<picture>` 内 `source` 的 source-selection 属性后，宿主
+  通过新增的 `PBrowser_ScriptSessionNotifyImageSourceChange` 传入元素 id；Browser
+  只使 source identity 已变化的 pending decode 和旧终态失效，不替宿主重新 fetch、
+  select、layout 或 paint。有效的 `PBrowser_ScriptSessionNotifyResize` 也会在 resize/
+  media 事件前刷新变化的 source identity。
   当前 source 选择由 Core 覆盖最多 16 个正密度 `x` 或正宽度 `w` 候选；`<picture>`
   另外限制为最多 16 层祖先、8 个 preceding `<source>` 和 64 个 direct-child 节点，
   并先按有界 media/type 过滤。`sizes` 仅支持 Core 的 px/vw/vh 与单一 min/max-width

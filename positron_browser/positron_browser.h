@@ -2309,6 +2309,14 @@ PBROWSER_API unsigned int PBrowser_ScriptSessionDispatchEvent(
  * a failed script call returns PSCRIPT_ERROR_CALL. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
         const char *element_id, unsigned int event_kind);
+/* Notify the Browser that a Core-owned image or picture source changed after
+ * the host mutated the document. `element_id` names either the img or a
+ * source inside its nearest picture. The host must call this after the Core
+ * mutation and before it starts a replacement fetch/layout pass. The Browser
+ * only invalidates stale decode promises and terminal event state; it does
+ * not fetch, select, decode, lay out or paint the image. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
+        HANDLE hSession, const char *element_id);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalString(HANDLE hSession,
         const char *name, const char *value);
 PBROWSER_API int PBrowser_ScriptSessionSetGlobalNumber(HANDLE hSession,

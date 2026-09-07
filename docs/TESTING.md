@@ -572,8 +572,19 @@ TEST1198 覆盖 Core 与 Browser 共用的有界 `<picture><source>` 选择：�
 `img` 的 `srcset`/`src`。fixture 同时验证 WM6 libdom 的 source-ancestor 形状和标准
 direct-child 形状、最多 8 个 source/16 层祖先/64 个 direct-child 节点的边界，以及
 `currentSrc`、资源发现、缓存复用、布局自然尺寸和 Browser 脚本结果的一致性。该门不
-承诺完整媒体查询、绝对 URL、CORS/referrer、动态 source 生命周期、完整 loading 策略或
-native 图像视觉；宿主只提供离线资源 callback、viewport 设置、DOM 接线和断言。
+承诺完整媒体查询、绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉；动态
+source mutation 与 viewport 失效由 TEST1199 单独覆盖。宿主只提供离线资源 callback、
+viewport 设置、DOM 接线和断言。
+
+TEST1199 覆盖图片 source identity 的生命周期通知：Browser 反映 `source.media`、
+`source.type`、`source.srcset` 和 `source.sizes`，宿主在 Core 改写 source 或 img 后调用
+`PBrowser_ScriptSessionNotifyImageSourceChange`，Browser 只拒绝 source 已变化的
+pending `decode()` 并清除旧的 `load`/`error` 终态。有效的
+`PBrowser_ScriptSessionNotifyResize` 在媒体和 resize 事件前刷新 source identity，240/480
+CSS 视口切换与 Core relation 49 保持一致；未变化的 source 不被误拒绝。该门不执行
+fetch、选择、layout、paint 或自动资源加载，也不承诺完整媒体查询、动态 DOM 插入/删除、
+绝对 URL、CORS/referrer、loading 策略或 native 图像视觉；宿主只负责 mutation、通知、
+microtask pump 与断言。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

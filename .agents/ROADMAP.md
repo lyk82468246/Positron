@@ -90,7 +90,10 @@ direct-child 节点内按文档顺序过滤有界 `media`/`type`，再复用同�
 候选不可用及终态 fetch failure 的状态分别保持可观察且 fail-closed。Browser 另提供有界 `decode()`
 Promise、source mutation/teardown 拒绝和由宿主在 Core 终态就绪后触发的 trusted、非冒泡
 `load`/`error` 通知。绝对 URL、CORS/referrer enforcement、完整 loading 策略或图像视觉仍
-未实现。Core
+未实现。source 的 `media`/`type`/`srcset`/`sizes` mutation 由 Browser 通过
+`PBrowser_ScriptSessionNotifyImageSourceChange` 接收；它只失效 source identity 已改变的
+pending decode 和旧终态。有效 viewport resize 会在媒体与 resize 事件前刷新同一 identity，
+而不会代替宿主执行 fetch、选择、layout 或 paint。Core
 另已提供有界 image-map 命中：已布局 `<img usemap>` 按 DOM 顺序解析最多 64 个 linked
 `<area>`，支持 `default`、`rect`、`circle` 和 `poly`/`polygon`，将自然坐标缩放到
 渲染尺寸，并把链接、区域几何、active/hover 和按坐标事件 target 统一接入 Core 命中

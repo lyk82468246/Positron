@@ -537,8 +537,15 @@
   preceding source 和 64 个 direct-child 节点按文档顺序过滤 media/type，再复用 source
   的 `srcset`/`sizes` 选择；unsupported/malformed source 回退到后续 source 或 img
   候选，240/480 CSS 视口下的 `currentSrc`、fetch/cache/layout/natural-size 保持一致。
-  完整媒体查询、动态 source 生命周期、绝对 URL、CORS/referrer、loading 策略和 native
-  图像视觉仍未实现或需人工观察。
+  完整媒体查询、绝对 URL、CORS/referrer、loading 策略和 native 图像视觉仍未实现或需
+  人工观察；source mutation 的生命周期通知由 TEST1199 覆盖。
+- TEST1199 覆盖 Browser 的 source identity 生命周期桥：`source.media`/`type`/`srcset`/
+  `sizes` reflection、Core mutation 后的 `PBrowser_ScriptSessionNotifyImageSourceChange`、
+  source 已变化时的 pending `decode()` `EncodingError`、旧终态清理，以及
+  `PBrowser_ScriptSessionNotifyResize` 在媒体/resize 事件前的 source 刷新。Browser 的
+  pending decode 和 image 终态各限 64 项，未变化的 source 保持 pending；该门不提供
+  自动 fetch、选择、layout、paint、动态 DOM 插入/删除、完整媒体查询、绝对 URL、
+  CORS/referrer、loading 策略或 native 图像视觉。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

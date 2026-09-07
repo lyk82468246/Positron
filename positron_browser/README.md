@@ -387,26 +387,25 @@ filename/type 和空内容，不承诺完整文件读取。
 
 ### `HTMLImageElement` 元数据与资源状态
 
-注册 callbacks 后，`PElement` 提供有界的 `HTMLImageElement` 元数据（`alt`、raw
-source attrs、`crossOrigin`、map/size/loading fields、自然尺寸、`complete`、
-`currentSrc`）。缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，
-非法尺寸读取为 `0` 且 setter 拒绝；mutation 走 Core callback。自然尺寸和 `complete`
-来自 Core；`currentSrc` 读取关系 49，与 fetch、解码、布局和 picture source 共用。Core 按 viewport
-DPI 从最多 16 个同类 `x`/`w` 候选中选择；
-`w` 使用 `sizes` 的 px/vw/vh 长度和一个 `(min-width|max-width: <length>)` 条件，缺失
-或不支持的 `sizes` 按 100vw。畸形候选和不支持的 URL 语法回退到 raw `src`。无 source
-或 fetch failure 为 complete/尺寸 `0`；无候选且无 `src` 的非空 `srcset` 保持 incomplete，
-`document.images` 是有界 snapshot。
+`PElement` 提供图片元数据、属性反射和 relation 46–49（含 `naturalWidth`、
+`naturalHeight`、`complete`、`currentSrc`）。
+缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，非法尺寸读为 `0` 且
+setter 拒绝；mutation 走 Core callback。自然尺寸和 `complete` 来自 Core，`currentSrc`
+读取 relation 49，并与 picture、fetch、解码和布局共享选择结果。Core 对 `x`/`w`
+候选、`sizes` 的 px/vw/vh 与单一 min/max-width 条件均设固定上限；畸形候选、不支持的
+`sizes` 或 URL 回退到 raw `src`。无 source 或失败资源为零尺寸，`document.images` 是有界
+snapshot。
 
-`PElement.decode()` 返回有界 Promise：无 source 在 microtask 中完成，已有正的 Core
-自然尺寸时完成，终态失败以 `EncodingError` 拒绝；source mutation 拒绝旧请求，teardown
-以 `AbortError` 拒绝 pending 请求。每个 session 最多保留 64 个 pending decode 和 64 个
-image 终态。宿主在 Core 完成 fetch/decode/layout 后调用
-`PBrowser_ScriptSessionNotifyImageEvent(session, id, PBROWSER_SCRIPT_IMAGE_EVENT_LOAD)`
-或 `..._ERROR`；Browser 只接受当前 `<img>` 已 complete 且终态一致的通知，派发 trusted、
-非冒泡、不可取消的 `load`/`error`，并 settle 同一 source 的 decode 请求。重复、过时、
-错误通知 fail closed。CORS、绝对 URL、完整 loading 策略、图像视觉与 map 命中不由
-Browser 负责。
+`PElement.decode()` 是有界 Promise：无 source 在 microtask 中完成，正的 Core 自然尺寸
+完成，失败以 `EncodingError` 拒绝；source mutation 拒绝旧请求，teardown 以 `AbortError`
+拒绝 pending 请求。每个 session 最多 64 个 pending decode 和 64 个 image 终态。宿主在
+Core 完成 fetch/decode/layout 后调用 `PBrowser_ScriptSessionNotifyImageEvent()`；Browser
+只接受当前且 complete 的 `<img>` 终态，派发 trusted、非冒泡、不可取消事件并 settle 同源
+decode，重复或过时通知 fail closed。Core 改写 `img` 或 picture `source` 的
+`media`/`type`/`srcset`/`sizes` 后，宿主调用 `PBrowser_ScriptSessionNotifyImageSourceChange()`；
+Browser 只使变化 source 的 pending decode/旧事件失效，不执行 fetch、选择、layout 或 paint。
+`source.media`、`source.srcset`、`source.sizes` 反射走同一路径；有效
+`PBrowser_ScriptSessionNotifyResize()` 会在媒体和 resize 事件前刷新 source identity。
 
 selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
 focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
