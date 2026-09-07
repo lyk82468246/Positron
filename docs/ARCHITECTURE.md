@@ -152,8 +152,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `PBrowserScriptDomWriteCallbacksEx2` 复用既有 `__pcoreSetText` slot，将
   `nodeValue`/`data`/`textContent` setter 与四个 CharacterData mutator 转给宿主；Text
   仍可使用 Ex 表；`substringData()` 复用同一 UTF-16 offset/count 校验，超长 count
-  截断且保持只读，detached wrapper 仍可读取 retained data snapshot。宿主只负责
-  callback 接线和后续 style/layout/paint，失效或 detached 写入 wrapper 必须安全失败；
+  截断且保持只读，detached wrapper 仍可读取 retained data snapshot。新增的
+  `PCore_NodeSplitTextChildById` 与 `PBrowserScriptDomWriteCallbacksEx3` 只对一个
+  direct Text child 提供 `Text.splitText()`：Core 将 UTF-16 边界映射到 libdom 的
+  UTF-8 code-point 偏移，插入紧邻的新 Text sibling，并在成功后使 retained layout
+  失效；Browser 保留原 wrapper、刷新当前 childNodes snapshot，旧 snapshot 仍是静态
+  视图。不能表示的 astral code-point 内部边界、缺失/错误 child 或 detached wrapper
+  fail closed；该入口不派发事件、不做通用插入/reparent/合并。宿主只负责 callback
+  接线和后续 style/layout/paint，失效或 detached 写入 wrapper 必须安全失败；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
@@ -499,8 +505,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   selector；同时在 form callback 注册后按需注册 `PBrowserScriptOptionCallbacks`，把
   `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`，并让通用 DOM
   attribute/text callback 支持 option 的 `value`/`label`/`text`；需要脚本 CharacterData
-  setter 时注册 `PBrowserScriptDomWriteCallbacksEx`（仅 Text）或 Ex2（含 Comment/CDATA），
-  把父 id/childNodes 索引转给对应的 Core child-data primitive；宿主不复制 box tree、
+  setter 时注册 `PBrowserScriptDomWriteCallbacksEx`（仅 Text）、Ex2（含 Comment/CDATA）
+  或 Ex3（另含 Text.splitText），把父 id/childNodes 索引转给对应的 Core child-data
+  primitive；宿主不复制 box tree、
   滚动模型、默认状态或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
@@ -577,8 +584,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   保持既有 `PBrowserScriptFormCallbacks` 布局不变；Browser 只在注册且字段完整时启用，
   缺失或失败按 fail-closed 处理。
 - DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，Ex2 再
-  追加 Comment/CDATA callback；两者复用旧的 `__pcoreSetText` native slot。旧的
-  `PBrowserScriptDomWriteCallbacks` 布局和 element-only 语义保持不变。
+  追加 Comment/CDATA callback，Ex3 追加 `Text.splitText()` callback；三者都复用旧的
+  `__pcoreSetText` native slot。旧的 `PBrowserScriptDomWriteCallbacks`、Ex2 布局和
+  element/Text/CharacterData 既有语义保持不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

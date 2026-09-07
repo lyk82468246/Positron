@@ -263,6 +263,22 @@ PCORE_API int PCore_NodeSetTextChildById(HANDLE hDoc,
 PCORE_API int PCore_NodeSetCharacterDataChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text);
 
+/* Split one direct Text child at a UTF-16 code-unit boundary. The original
+ * child keeps the prefix and a new Text sibling containing the suffix is
+ * inserted immediately after it; an offset equal to the length creates an
+ * empty sibling. `parent_id` is a UTF-8 element id (or a supported
+ * document-structure token) and `child_index` is the unfiltered childNodes
+ * index. Returns 0 after insertion, 2 when the parent/index is unavailable
+ * or the child is not a Text node, 3 when the offset is outside the UTF-16
+ * range or falls inside an encoded astral code point, and 1 for invalid input
+ * or another DOM failure. A successful split invalidates retained layout;
+ * callers must style/layout/paint again before using geometry or native
+ * snapshots. This primitive only changes the Text child list and does not
+ * dispatch events, reparent existing nodes or merge adjacent Text nodes. */
+PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        unsigned int offset);
+
 /* Remove one element child from one element parent. Both arguments are
  * UTF-8 DOM ids (the three reserved document-structure tokens are rejected
  * as removable children). The operation requires the child to be a direct

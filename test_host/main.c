@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1206
+#define TEST_MAX_NUMBER 1207
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15196,6 +15196,31 @@ static int pcore_browser_script_dom_set_character_data_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_split_text_child(void *pw,
+        const char *parent_id, unsigned int child_index,
+        unsigned int offset)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeSplitTextChildById(bridge->document, parent_id,
+            child_index, offset);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16727,7 +16752,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx2 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx3 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -16887,6 +16912,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_set_child_text;
     dom_write_callbacks.set_character_data_child =
             pcore_browser_script_dom_set_character_data_child;
+    dom_write_callbacks.split_text_child =
+            pcore_browser_script_dom_split_text_child;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17084,7 +17111,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx2(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx3(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -47525,6 +47552,121 @@ static BOOL test1206_browser_character_substring_contract(void)
             " offsets and counts, clamps oversized counts, stays read-only"
             " for Text/Comment wrappers, and remains available on detached"
             " snapshots.");
+    return TRUE;
+}
+
+/* TEST 1207 - bounded Text.splitText preserves the original wrapper and
+ * inserts a new sibling through the Core-owned mutation boundary. */
+static BOOL test1207_browser_text_split_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'>alpha<span id='child'>beta</span>"
+        "<!--note--><em>gamma</em></div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char UNICODE_HTML[] =
+        "<!doctype html><html><body><div id='root'>A\360\237\230\200B"
+        "</div></body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),old=r.childNodes,"
+        "t=old[0],m=old[1],c=old[2],split,end,now,now2,before,first,"
+        "snapshot,siblings,atEnd,badNegative,badFraction,badPast,commentNoMethod,"
+        "detached,staleFailed;"
+        "before=old.length===4&&t.data==='alpha'&&m.nodeName==='SPAN'&&"
+        "c.nodeName==='#comment';"
+        "split=t.splitText(2);now=r.childNodes;"
+        "first=split!==null&&split.nodeType===3&&t.data==='al'&&"
+        "split.data==='pha'&&t===now[0]&&split===now[1]&&"
+        "t.parentNode===r&&split.parentNode===r;"
+        "snapshot=old.length===4&&old[0]===t&&old[1]===m&&old[2]===c&&"
+        "old[3].nodeName==='EM'&&now.length===5&&now[2]===m&&"
+        "now[3]===c&&now[4].nodeName==='EM';"
+        "siblings=t.nextSibling===split&&split.previousSibling===t&&"
+        "split.nextSibling===m&&m.previousSibling===split;"
+        "end=split.splitText(3);now2=r.childNodes;"
+        "atEnd=end!==null&&end.data===''&&end.parentNode===r&&"
+        "now2.length===6&&now2[0]===t&&now2[1]===split&&now2[2]===end&&"
+        "now2[3]===m&&now2[4]===c;"
+        "badNegative=false;try{t.splitText(-1);}catch(e){badNegative=true;}"
+        "badFraction=false;try{t.splitText(1.5);}catch(e){badFraction=true;}"
+        "badPast=false;try{t.splitText(3);}catch(e){badPast=true;}"
+        "commentNoMethod=typeof c.splitText==='undefined';"
+        "r.textContent='done';detached=t.parentNode===null&&!t.isConnected&&"
+        "t.data==='al'&&split.data==='pha'&&end.data==='';staleFailed=false;"
+        "try{split.splitText(0);}catch(e){staleFailed=true;}"
+        "return document.getElementById('result').textContent="
+        "[before,first,snapshot,siblings,atEnd,badNegative,badFraction,badPast,"
+        "commentNoMethod,detached,staleFailed].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true|true|true|true";
+    HANDLE document;
+    PCoreLayoutStats stats;
+    char value[128];
+    char error[768];
+    int value_bytes;
+    BOOL core_ok;
+    BOOL unicode_ok;
+    BOOL script_ok;
+
+    document = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    value_bytes = -1;
+    core_ok = FALSE;
+    unicode_ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL && PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 2) == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 0, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "al") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 1, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "pha") == 0 &&
+            PCore_NodeSplitTextChildById(document, "root", 2, 0) == 2 &&
+            PCore_NodeSplitTextChildById(document, "root", 99, 0) == 2 &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 3) == 3 &&
+            PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_GetLayoutStats(document, &stats) == 0) {
+        core_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    document = PCore_ParseHTML(UNICODE_HTML, sizeof(UNICODE_HTML) - 1);
+    if (document != NULL &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 2) == 3 &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 1) == 0) {
+        unicode_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_child_node_case(1207, PROBE, EXPECTED,
+            error, sizeof(error));
+    if (!core_ok || !unicode_ok || !script_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d unicode=%d script=%d value=%s bytes=%d", core_ok,
+                    unicode_ok, script_ok,
+                    value[0] != '\0' ? value : "(null)",
+                    value_bytes);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1207 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1207 OK",
+            "Text.splitText now maps UTF-16 boundaries through the Core"
+            " Text mutation API, inserts an adjacent sibling, preserves"
+            " wrapper identity and snapshots, handles end splits, and"
+            " rejects invalid or detached operations.");
     return TRUE;
 }
 
@@ -105670,6 +105812,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1204: ok = test1204_browser_character_data_mutation_contract(); break;
         case 1205: ok = test1205_browser_comment_character_data_contract(); break;
         case 1206: ok = test1206_browser_character_substring_contract(); break;
+        case 1207: ok = test1207_browser_text_split_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

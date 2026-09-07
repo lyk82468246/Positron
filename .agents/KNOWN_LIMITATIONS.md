@@ -133,9 +133,11 @@
   `Text.nodeValue`/`data`/`textContent` setter 按父 id 与未过滤 childNodes 索引修改
   Text/Comment/CDATA，保持 child list并使布局失效；四个 CharacterData
   mutator 按 UTF-16 code-unit 计算并截断超长 count；`substringData()` 只读并复用
-  非负整数 offset/count 校验。无效范围和 detached
-  wrapper fail closed；节点插入、reparent、删除、`splitText()`、observer 和 live
-  collection 未实现，错误关系与缺失/过长 id fail closed。
+  非负整数 offset/count 校验。`Text.splitText()` 另有一个 direct-child 有界入口：
+  UTF-16 offset 必须落在 UTF-8 code-point 边界，成功后插入紧邻 Text sibling 并使布局
+  失效；astral code point 内部边界、无效范围和 detached wrapper fail closed。通用节点
+  插入、reparent、删除、Text 合并、observer 和 live collection 未实现，错误关系与
+  缺失/过长 id fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -585,6 +587,8 @@
   HTML fixture。
 - TEST1206 验证 `substringData()` 的 UTF-16 只读范围、超长 count 截断、非法 offset/count
   与 detached Text/Comment 快照；结构、observer、collection/native 视觉不在门内。
+- TEST1207 验证 Ex3 的 `splitText()` UTF-16 边界、wrapper/快照及回退；结构 mutation、
+  observer、collection/native 视觉不在门内。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

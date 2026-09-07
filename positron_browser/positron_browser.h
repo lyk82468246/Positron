@@ -671,6 +671,26 @@ typedef struct PBrowserScriptDomWriteCallbacksEx2 {
     PBrowserScriptSetCharacterDataChildFn set_character_data_child;
 } PBrowserScriptDomWriteCallbacksEx2;
 
+/* Extended Text mutation table. Ex2 remains ABI-fixed for existing hosts;
+ * Ex3 appends the bounded Text.splitText() adapter while reusing the same
+ * `__pcoreSetText` JSON native slot. `parent_id` is borrowed UTF-8,
+ * `child_index` is the unfiltered childNodes index, and `offset` is a
+ * non-negative UTF-16 code-unit offset for the synchronous call.
+ * split_text_child returns >0 after a new Text sibling was inserted, 0 when
+ * the parent/index/child or offset is unavailable, and <0 on adapter failure.
+ * The host must re-query and restyle/layout/paint after success. */
+typedef int (*PBrowserScriptSplitTextChildFn)(void *pw,
+        const char *parent_id, unsigned int child_index,
+        unsigned int offset);
+typedef struct PBrowserScriptDomWriteCallbacksEx3 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+} PBrowserScriptDomWriteCallbacksEx3;
+
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
  * Core-owned removal of one direct element child. remove_child returns >0
@@ -2001,6 +2021,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx2(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx2 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx3(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx3 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

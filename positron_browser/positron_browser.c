@@ -5556,6 +5556,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "n.substringData=function(offset,count){var a,b,s=n.data;"
         "a=offset11(offset,s.length);b=count11(count);if(b>s.length-a){"
         "b=s.length-a;}return s.substring(a,a+b);};"
+        "if(t===3){n.splitText=function(v){var s,a,ok,list11;"
+        "requireCharacterData11();s=n.data;a=offset11(v,s.length);"
+        "try{ok=g.__pcoreSetText({op:'splitText',parentId:o.__id,index:i,offset:a});}"
+        "catch(e){ok=false;}if(!ok){throw new Error('splitText update failed');}"
+        "data11=s.substring(0,a);"
+        "list11=split11(o,i);if(!list11||list11.length<=i+1){"
+        "throw new Error('splitText wrapper unavailable');}return list11[i+1];};}"
         "Object.defineProperty(n,'parentNode',{get:function(){return current11(n)?o:null;},enumerable:true});"
         "Object.defineProperty(n,'parentElement',{get:function(){return current11(n)?o:null;},enumerable:true});"
         "Object.defineProperty(n,'previousSibling',{get:function(){return sibling(n,-1);},enumerable:true});"
@@ -5578,6 +5585,12 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "n.contains=function(other){return typeof g.__pcoreNodeContains12==='function'?"
         "g.__pcoreNodeContains12(n,other):same(n,other);};"
         "return n;}"
+        "function split11(o,index){var old=o.__nodes11,next=[],j,x;"
+        "if(!old){old=nodes(o);}for(j=0;j<old.length;j++){next.push(old[j]);"
+        "if(j===index){x=child(o,j+1);if(x===null){return null;}next.push(x);}}"
+        "o.__nodes11=list(next);for(j=0;j<next.length;j++){"
+        "if(next[j]&&next[j].__owner11===o){next[j].__index11=j;}}"
+        "o.__children9=null;return o.__nodes11;}"
         "function current11(n){var a=n&&n.__owner11?n.__owner11.__nodes11:null;"
         "return !!(a&&n.__index11>=0&&n.__index11<a.length&&a[n.__index11]===n); }"
         "function parent(o){var id;if(o&&o.__owner11){return current11(o)?o.__owner11:null;}"
@@ -5973,6 +5986,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptSetTextFn set_text;
     PBrowserScriptSetTextChildFn set_child_text;
     PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7255,9 +7269,11 @@ static int p_browser_script_dom_set_text(void *pw,
     HANDLE object;
     const char *id;
     const char *parent_id;
+    const char *op;
     const char *text;
     int child_index;
     int node_type;
+    int offset;
     int changed;
 
     binding = (p_browser_script_dom_write_binding *) pw;
@@ -7265,14 +7281,28 @@ static int p_browser_script_dom_set_text(void *pw,
     root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     parent_id = (object != NULL) ? PJson_GetString(object, "parentId") : NULL;
+    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
     text = (object != NULL) ? PJson_GetString(object, "text") : NULL;
     child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
     node_type = (object != NULL) ? PJson_GetInt(object, "nodeType") : 0;
-    if (binding == NULL || root == NULL || text == NULL) {
+    offset = (object != NULL) ? PJson_GetInt(object, "offset") : -1;
+    if (binding == NULL || root == NULL) {
         PJson_Free(root);
         return 1;
     }
-    if (id != NULL && id[0] != '\0') {
+    if (op != NULL && strcmp(op, "splitText") == 0) {
+        if (binding->split_text_child == NULL || parent_id == NULL ||
+                parent_id[0] == '\0' || child_index < 0 || offset < 0 ||
+                strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->split_text_child(binding->pw, parent_id,
+                (unsigned int) child_index, (unsigned int) offset);
+    } else if (text == NULL) {
+        PJson_Free(root);
+        return 1;
+    } else if (id != NULL && id[0] != '\0') {
         if (binding->set_text == NULL ||
                 strlen(id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
             PJson_Free(root);
@@ -9956,6 +9986,45 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx2(
     binding->set_text = callbacks->set_text;
     binding->set_child_text = callbacks->set_child_text;
     binding->set_character_data_child = callbacks->set_character_data_child;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx3(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx3 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx3) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

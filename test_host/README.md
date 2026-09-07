@@ -436,6 +436,12 @@ TEST1206 在同一 fixture 上验证 `substringData()` 的 CharacterData 合同�
 fail closed；读取不修改原数据，父级替换后 detached Text/Comment 仍能读取保留快照。
 宿主只负责 fixture、callback 接线与断言，业务语义仍属于 Browser 公共 DLL。
 
+TEST1207 在同一 fixture 上验证 `Text.splitText()`：宿主注册 Ex3 DOM write callback，
+Browser 以 direct child 的 UTF-16 offset 调用 Core，断言原 wrapper 身份、新 sibling 顺序、
+旧 NodeList snapshot、末尾空 Text、错误范围/Comment/detached fail closed，以及 Core
+mutation 后 retained layout 的失效与恢复。宿主仅提供 callback 接线、fixture 和断言；
+UTF-8 code-point 映射、插入与 wrapper/cache reconciliation 均属于公共 DLL。
+
 ### Native EDIT/SELECT/button/file
 
 WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。对 contenteditable，宿主从 `PCore_ContentEditableTargetInfo` 枚举带 id 的已布局 editing host，创建最多 16 个 WM multiline EDIT 代理；`WM_CHAR` 默认处理返回后才回读最终文本并调用 Core mutation。宿主实现的 selection callback 把 WM EDIT 的 UTF-16 位置（包括 CRLF）转换为 Browser 使用的逻辑 UTF-16 位置，并只保存原生控件的短暂状态；原生范围确定后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`，由 Browser 去重并分发一次 `selectionchange`。这样可吸收 WM6 在默认处理期间提前发送的 `EN_CHANGE`，避免把旧值或空值提交为一次 input，也避免宿主经 Core 重复派发选区事件。对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取有界 `CF_UNICODETEXT`、规范化 CRLF，并把精确 data 交给 `beforeinput`；`WM_COPY` 的折叠选区保持现有剪贴板不变，允许的 paste/cut 才执行 native default 和 Core/input 提交，格式缺失或超长时 fail closed。WinCE 原生 `WM_CUT` 可能内部重入 `WM_COPY`，宿主只在该外层默认动作期间放行同一 HWND 的重入，不让它绕过自己的外部 copy 规则。键盘/拖选 anchor、Shift 状态和捕获/取消/焦点中断收尾同样只属于宿主平台接线。

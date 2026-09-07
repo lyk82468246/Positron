@@ -248,11 +248,10 @@ PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(session,
 #### Selector bridge
 
 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 共享有界 selector
-parser。element query 以 receiver 为 scope；带直接、无参数的 `:scope` 时可按文档顺序
-包含 owner、直接子代和后代，无 scope 时排除 owner。document query 以
-`document.documentElement` 为 scope，`matches()`/`closest()` 以 receiver 为 scope。
-嵌套参数、伪元素、未闭合和其他完整 Selectors 语法 fail closed；宿主只提供 DOM relation
-callback。
+parser；element/document query 的 scope 为 receiver 或 `document.documentElement`，
+`:scope` 可包含 owner，`matches()`/`closest()` 以 receiver 为 scope。支持 compound、
+组合器、属性、结构、form-state 与 focus/link/visited 伪类；复杂输入/未注册回调 fail
+closed。宿主接入 relation/interaction 回调。
 
 #### `HTMLElement.focus()` / `blur()` 请求
 
@@ -459,14 +458,15 @@ Text、Comment、CDATA wrapper 提供 `appendData()`、`insertData()`、`deleteD
 code-unit 语义；offset/count 为有限非负整数，超长 count 截断，越界 offset 抛错。
 `substringData()` 只读，沿用校验；wrapper/detached 留快照，layout 失效。
 
-selector bridge 提供有界 compound/列表/组合器/属性/结构/表单状态，以及
-focus/link/visited/fragment/language、`:not()`/`:is()`/`:where()`/`:has()`、
-`:read-only`/`:read-write`/`:placeholder-shown`/`:default`。`:default` 依据 checkbox/
-radio 的 content `checked`、option 的 Core relation 45 default-selected 快照，以及
-form 中按文档顺序的第一个 submit-capable button/input/image；live `.checked`/
-`selectedIndex` mutation 不会改写默认状态。`:visited` 通过 interaction Ex callback
-读取宿主批准结果，Browser 不保存 history；参数、分支和遍历有固定预算，非法或未注册
-callback fail closed。
+需要 `Text.splitText()` 时，宿主改用 ABI 追加的
+`PBrowserScriptDomWriteCallbacksEx3`，保留 Ex2 的前三个字段并提供
+`split_text_child`。Browser 只接受当前 direct Text child 的有限非负 UTF-16 offset，
+通过同一 `__pcoreSetText` slot 发送 `{op:"splitText",parentId,index,offset}`；Core
+在 UTF-8 code-point 边界创建并插入紧邻 sibling，offset 等于长度时创建空 Text。成功
+后原 Text wrapper 仍表示前缀，当前 `childNodes` 得到新 snapshot，既有静态 snapshot
+保持不变，宿主负责重新 style/layout/paint。缺失/错误 child、detached wrapper、越界
+offset 或位于 astral code point 内部的 offset 安全失败；该桥不提供通用节点插入、
+reparent、合并、事件或 MutationObserver。
 
 ### `dialog` 生命周期
 

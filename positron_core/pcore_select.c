@@ -7799,6 +7799,113 @@ static int pcore_node_set_character_data_child_impl(HANDLE hDoc,
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
 
+/* Convert the browser-facing UTF-16 offset to libdom's UTF-8 code-point
+ * offset. libdom's CharacterData implementation indexes decoded Unicode
+ * scalar values, whereas ECMAScript strings expose UTF-16 code units. A
+ * split inside an astral scalar cannot be represented by this UTF-8 DOM, so
+ * report that boundary as an invalid offset instead of manufacturing a
+ * malformed string. */
+static int pcore_text_utf8_decode(const uint8_t *bytes, size_t remaining,
+        uint32_t *out_codepoint, size_t *out_bytes)
+{
+    unsigned int codepoint;
+    unsigned int first;
+    int needed;
+    int i;
+
+    if (bytes == NULL || remaining == 0 || out_codepoint == NULL ||
+            out_bytes == NULL) {
+        return 1;
+    }
+    first = bytes[0];
+    if (first < 0x80U) {
+        *out_codepoint = first;
+        *out_bytes = 1;
+        return 0;
+    }
+    if (first >= 0xc2U && first <= 0xdfU) {
+        needed = 1;
+        codepoint = first & 0x1fU;
+    } else if (first >= 0xe0U && first <= 0xefU) {
+        needed = 2;
+        codepoint = first & 0x0fU;
+    } else if (first >= 0xf0U && first <= 0xf4U) {
+        needed = 3;
+        codepoint = first & 0x07U;
+    } else {
+        return 1;
+    }
+    if (remaining < (size_t) needed + 1) {
+        return 1;
+    }
+    for (i = 1; i <= needed; i++) {
+        if ((bytes[i] & 0xc0U) != 0x80U) {
+            return 1;
+        }
+        codepoint = (codepoint << 6) | (bytes[i] & 0x3fU);
+    }
+    if ((needed == 2 && codepoint < 0x800U) ||
+            (needed == 3 && codepoint < 0x10000U) ||
+            (codepoint >= 0xd800U && codepoint <= 0xdfffU) ||
+            codepoint > 0x10ffffU) {
+        return 1;
+    }
+    *out_codepoint = codepoint;
+    *out_bytes = (size_t) needed + 1;
+    return 0;
+}
+
+static int pcore_text_utf16_offset(dom_string *data,
+        unsigned int utf16_offset, uint32_t *out_codepoint_offset)
+{
+    const uint8_t *bytes;
+    size_t byte_length;
+    size_t byte_offset;
+    size_t char_bytes;
+    uint32_t codepoint;
+    uint32_t character_offset;
+    unsigned int unit_offset;
+    unsigned int unit_width;
+
+    if (data == NULL || out_codepoint_offset == NULL) {
+        return 1;
+    }
+    bytes = (const uint8_t *) dom_string_data(data);
+    byte_length = dom_string_byte_length(data);
+    if (bytes == NULL && byte_length != 0) {
+        return 1;
+    }
+    byte_offset = 0;
+    character_offset = 0;
+    unit_offset = 0;
+    while (byte_offset < byte_length) {
+        if (utf16_offset == unit_offset) {
+            *out_codepoint_offset = character_offset;
+            return 0;
+        }
+        if (pcore_text_utf8_decode(bytes + byte_offset,
+                byte_length - byte_offset, &codepoint, &char_bytes) != 0 ||
+                char_bytes == 0) {
+            return 1;
+        }
+        unit_width = (codepoint > 0xffffU) ? 2U : 1U;
+        if (unit_offset > UINT_MAX - unit_width) {
+            return 2;
+        }
+        if (utf16_offset < unit_offset + unit_width) {
+            return 2;
+        }
+        unit_offset += unit_width;
+        character_offset++;
+        byte_offset += char_bytes;
+    }
+    if (utf16_offset == unit_offset) {
+        *out_codepoint_offset = character_offset;
+        return 0;
+    }
+    return 2;
+}
+
 PCORE_API int PCore_NodeSetTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text)
 {
@@ -7811,6 +7918,129 @@ PCORE_API int PCore_NodeSetCharacterDataChildById(HANDLE hDoc,
 {
     return pcore_node_set_character_data_child_impl(hDoc, parent_id,
             child_index, text, 0);
+}
+
+PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        unsigned int offset)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_node *child;
+    dom_node *next;
+    dom_node *inserted;
+    dom_node_type child_type;
+    dom_string *old_data;
+    dom_string *empty_data;
+    dom_text *new_text;
+    dom_exception err;
+    uint32_t codepoint_offset;
+    int result;
+    int split_done;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || parent_id == NULL || parent_id[0] == '\0') {
+        return 1;
+    }
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    child = NULL;
+    result = pcore_relation_child_node_at((dom_node *) parent, child_index,
+            &child);
+    if (result != 0) {
+        dom_node_unref((dom_node *) parent);
+        return result == 2 ? 2 : 1;
+    }
+    if (dom_node_get_node_type(child, &child_type) != DOM_NO_ERR ||
+            child_type != DOM_TEXT_NODE) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    old_data = NULL;
+    if (dom_node_get_node_value(child, &old_data) != DOM_NO_ERR ||
+            old_data == NULL) {
+        if (old_data != NULL) {
+            dom_string_unref(old_data);
+        }
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    result = pcore_text_utf16_offset(old_data, offset,
+            &codepoint_offset);
+    if (result != 0) {
+        dom_string_unref(old_data);
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return result == 2 ? 3 : 1;
+    }
+    next = NULL;
+    if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+        dom_string_unref(old_data);
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    new_text = NULL;
+    split_done = 0;
+    if (codepoint_offset < dom_string_length(old_data)) {
+        err = dom_text_split_text((dom_text *) child, codepoint_offset,
+                &new_text);
+        if (err == DOM_NO_ERR) {
+            split_done = 1;
+        }
+    } else {
+        empty_data = NULL;
+        err = dom_string_create((const uint8_t *) "", 0, &empty_data);
+        if (err == DOM_NO_ERR && empty_data != NULL) {
+            err = dom_document_create_text_node(doc, empty_data,
+                    &new_text);
+            dom_string_unref(empty_data);
+        }
+    }
+    if (err != DOM_NO_ERR || new_text == NULL) {
+        if (next != NULL) {
+            dom_node_unref(next);
+        }
+        dom_string_unref(old_data);
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    inserted = NULL;
+    err = dom_node_insert_before((dom_node *) parent,
+            (dom_node *) new_text, next, &inserted);
+    if (err != DOM_NO_ERR) {
+        if (split_done) {
+            (void) dom_node_set_node_value(child, old_data);
+        }
+        if (inserted != NULL) {
+            dom_node_unref(inserted);
+        }
+        dom_node_unref((dom_node *) new_text);
+        if (next != NULL) {
+            dom_node_unref(next);
+        }
+        dom_string_unref(old_data);
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    dom_node_unref((dom_node *) new_text);
+    if (next != NULL) {
+        dom_node_unref(next);
+    }
+    dom_string_unref(old_data);
+    dom_node_unref(child);
+    dom_node_unref((dom_node *) parent);
+    pcore_render_invalidate(doc);
+    return 0;
 }
 
 PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,

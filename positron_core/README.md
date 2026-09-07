@@ -175,6 +175,14 @@ retained-layout 失效规则不变。它只替换一个已有节点的数据，�
 派发事件；Browser 的 Ex2 write callback 将 Comment/CDATA 请求转给宿主，再由宿主安排
 正常的 style/layout/paint。
 
+`PCore_NodeSplitTextChildById` 是 Text 结构 mutation 的窄入口：按父元素 UTF-8 id 与未
+过滤 childNodes 索引定位现有 `DOM_TEXT_NODE`，以 UTF-16 code-unit offset 在 UTF-8
+code-point 边界分割，并把 suffix 作为紧邻的新 Text sibling 插入；offset 等于长度时
+产生空 sibling。成功返回 `0` 并使 retained layout 失效；父/索引不可用或目标不是 Text
+返回 `2`，越界或落在 astral code point 内部返回 `3`，参数/其他 DOM 失败返回 `1`。
+该入口不派发事件、不合并相邻 Text、不做通用插入或 reparent；调用方必须重新
+style/layout/paint，且不能把 libdom 指针泄漏到 ABI。
+
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
 布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`
