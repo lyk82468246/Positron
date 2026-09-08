@@ -79,7 +79,7 @@ bitmap/SVG handle 由创建方通过对应 free API 释放。编码 buffer 必�
 
 每个 script handle 独立拥有 heap、模块缓存、native function 注册和错误/result 缓冲。回调同步运行在调用线程，不得重入、销毁当前 context 或保存借用参数指针。宿主应使用有界预算和内存上限，不把该运行时当作完整浏览器沙箱。
 
-`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。该上限是固定的 WM6 资源预算，不应通过跳过已注册的 Browser bridge 或引入无界表来绕过。
+`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 组合在同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 DOM removal 桥时会占满这组槽位；额外的宿主全局 native function 必须先检查注册计数，达到上限时保守失败。该上限是固定的 WM6 资源预算，不应通过跳过已注册的 Browser bridge 或引入无界表来绕过。
 
 ### `positron_core.dll`
 
@@ -148,9 +148,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - Text-only DOM deletion：`PCore_NodeRemoveTextChildById` 按父元素 UTF-8 id 和未过滤
   `childNodes` 索引删除一个现有 direct Text child，返回 `0`（成功）、`2`（父级/索引/节点
   类型不可用）或 `1`（参数/DOM 失败），并使 retained layout 失效。它不派发事件、不获取
-  资源、不操作 native 控件；Browser 的 `Text.remove()` 通过 Ex2 mutation adapter 复用该
-  primitive，Comment/CDATA、通用 Node/DocumentFragment、reparent、其他删除和 live
-  collection 仍未实现，宿主负责后续 style/layout/paint；
+  资源、不操作 native 控件；Browser 的 `Text.remove()` 与
+  `Element.removeChild(Text)` 通过 Ex2 mutation adapter 复用该 primitive，前者对 detached
+  wrapper 是 no-op，后者只接受当前 receiver 的 connected direct Text 并返回被移除 wrapper。
+  Comment/CDATA、通用 Node/DocumentFragment、reparent、其他删除和 live collection 仍未实现，
+  宿主负责后续 style/layout/paint；
 - 文本内容 mutation：`PCore_NodeSetTextContentById` 与
   `PCore_ContentEditableSetTextById` 成功替换子内容后同样使 retained layout 失效，并把
   一个纯文本子节点交给 Browser/宿主重新查询；Browser 使旧的无 id 文本 wrapper 与
@@ -312,11 +314,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   fail closed，不产生脚本侧部分提交。该桥复用 `__pcoreSetText`，不增加 native slot；
   Core 的 retained layout 失效和后续 style/layout/paint 仍由宿主负责。DocumentFragment、
   已有节点 reparent、其他文本节点删除、事件、MutationObserver 和 live collection 不在边界内；
-- `Text.remove()` 是另一条有界 mutation：宿主注册追加 `remove_text_child` 的
+- `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加 `remove_text_child` 的
   `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text wrapper 的
   `childNodes` 索引通过 `__pcoreRemoveChild` 调用 `PCore_NodeRemoveTextChildById`。成功后
-  刷新父级 snapshot，旧 snapshot 与 wrapper 保留数据但 detached，重复 detached 调用
-  为 no-op；Comment/CDATA、Node/DocumentFragment、reparent、其他删除、事件、observer
+  刷新父级 snapshot，旧 snapshot 与 wrapper 保留数据但 detached；`Text.remove()` 的重复
+  detached 调用为 no-op，`Element.removeChild(Text)` 对 detached 或错误 parent 抛出脚本错误
+  且不变更 DOM。Comment/CDATA、Node/DocumentFragment、reparent、其他删除、事件、observer
   和 live collection 不在边界内。
 - 同一 DOM bridge 还提供 `<option>` 的 `value`、`label`、`text` 基础 IDL 属性。Browser
   在对应 attribute 存在时返回 `value`/`label`，缺失时回退到 option 文本；`text` 直接

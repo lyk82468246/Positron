@@ -170,8 +170,9 @@ id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Cor
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或
 其他 DOM 失败返回 `1`。它不派发事件、不获取资源、不操作 native 控件，也不支持
 Comment/CDATA、通用 Node/DocumentFragment 删除、reparent 或 live collection；调用方
-必须在成功后重新 style/layout/paint。Browser 的 `Text.remove()` 只复用这条窄路径，
-detached wrapper 的生命周期由 Browser 负责。
+必须在成功后重新 style/layout/paint。Browser 的 `Text.remove()` 与
+`Element.removeChild(Text)` 只复用这条窄路径，前者对 detached wrapper 是 no-op，后者
+的 receiver/child 关系校验和 detached wrapper 生命周期由 Browser 负责。
 
 `PCore_NodeSetTextContentById` 与 `PCore_ContentEditableSetTextById` 在成功替换子内容
 后同样丢弃 retained box tree。它们仍然只改变 Core DOM，不派发事件、不获取资源，也不

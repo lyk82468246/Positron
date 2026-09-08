@@ -111,11 +111,11 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
 结构 mutation 目前承诺两条窄路径：带 id 元素的单值 `Element.append()`/`prepend()`，以及
-连接中 direct Text wrapper 的 `Text.remove()`。前者由 Ex6 在未过滤 `childNodes` 的末尾
-或零位创建 Text，后者由 Ex2 按原索引删除一个 Text；两者都由 Core 拥有 DOM 语义并在
-成功后使 retained layout 失效。通用 Node/DocumentFragment 插入、已有节点 reparent、
-Comment/CDATA/其他删除、observer 和 live collection 仍需由真实页面缺口驱动，不能从这两条
-窄路径外推。
+连接中 direct Text wrapper 的 `Text.remove()`/`Element.removeChild(Text)`。前者由 Ex6
+在未过滤 `childNodes` 的末尾或零位创建 Text，后者由 Ex2 按原索引删除一个 Text；两者都
+由 Core 拥有 DOM 语义并在成功后使 retained layout 失效。通用 Node/DocumentFragment 插入、
+已有节点 reparent、Comment/CDATA/其他删除、observer 和 live collection 仍需由真实页面缺口
+驱动，不能从这两条窄路径外推。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接

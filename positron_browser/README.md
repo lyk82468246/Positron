@@ -433,19 +433,18 @@ detached element 是 no-op。Core 丢弃 retained layout，错误关系、结构
 未注册 callback fail closed，不派发事件，宿主随后重排。
 
 `PBrowserScriptDomMutationCallbacksEx2` 在旧表后追加 `remove_text_child`，不改变 ABI。
-连接中的 Text wrapper 的 `Text.remove()` 通过 `__pcoreRemoveChild` 发送
-`{op:"removeTextChild", parentId, index, nodeType:3}`，callback 转给
-`PCore_NodeRemoveTextChildById`；刷新父级 snapshot，旧 snapshot/wrapper 保留数据但
-detached，重复调用 no-op。非 Text、reparent、删除、事件、observer 和 live collection
-不支持；宿主负责重排。
+连接中的 `Text.remove()` 与 `Element.removeChild(text)` 对 direct Text 通过
+`__pcoreRemoveChild` 发送 `{op:"removeTextChild", parentId, index, nodeType:3}`，由 callback
+转给 `PCore_NodeRemoveTextChildById`；刷新父级 snapshot，wrapper 保留 detached 数据。
+前者重复调用 no-op，后者返回 wrapper；detached、错误 parent、非 Text、reparent、其他删除、
+事件、observer 和 live collection 均 fail closed，宿主负责重排。
 
 `textContent` 和非编辑元素的 `innerText` setter 复用既有 text callback；成功后 Core 丢弃
 retained layout，Browser 刷新 `children`/`childNodes`/query snapshot，旧的无 id 文本
 wrapper 保留数据并 detached。编辑元素共享失效规则，宿主负责输入/事件策略和重排。
 
-Text setter 使用 Ex 的 `set_child_text` 转给 `PCore_NodeSetTextChildById`；Comment/CDATA
-使用 Ex2 的 `set_character_data_child`，Text 仍走旧 callback，表布局不变。成功后宿主
-重排，失效或 detached wrapper 安全失败。
+Text/Comment/CDATA setter 分别经 Ex/Ex2 callback 写入 Core child；成功后宿主重排，
+失效或 detached wrapper fail closed。
 
 Text、Comment、CDATA wrapper 提供四个 CharacterData mutator 及
 `nodeValue`/`data`/`textContent` setter；offset/count 按 UTF-16 code unit 校验，超长
@@ -469,10 +468,10 @@ processing-instruction 停止；非 Text 无此属性，detached 回退 `data`�
 （删空/合并 Text，非 Text 为边界）并重建 `childNodes`；无 id 后代跳过，变化失效 layout，
 重复调用 no-op。
 
-Ex6 `insert_text_child` 复用 `__pcoreSetText` 调用 `PCore_NodeInsertTextChildById`；带
-id 元素的 `append`/`prepend` 仅接受单个字符串/原始值，在末尾/零位插入 Text，成功刷新
-snapshot 并使 layout 失效。Node、多参、>64、无 id、Fragment/reparent/其他删除、事件、
-observer、live collection 不支持；Text-only `Text.remove()` 走上面的 Ex2 bridge。
+Ex6 `insert_text_child` 复用 `__pcoreSetText` 调用 `PCore_NodeInsertTextChildById`；带 id
+元素的 `append`/`prepend` 仅接受一个值，在末尾/零位插入 Text，成功刷新 snapshot 并使
+layout 失效。Node、多参、>64、无 id、Fragment/reparent/其他删除、事件、observer、live
+collection 不支持；`Text.remove()` 与 `Element.removeChild(text)` 复用该 Ex2 bridge。
 
 `Node.cloneNode(deep)` 返回 detached snapshot；深克隆最多 64 个子节点、256 个节点，
 保留属性/顺序/父链/独立数据，并可与 live wrapper 做 `isEqualNode()` 比较。原文不改，

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1214
+#define TEST_MAX_NUMBER 1215
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -48460,6 +48460,50 @@ static BOOL test1214_browser_text_child_removal_contract(void)
             "Text.remove now detaches one bounded direct child through Core,"
             " preserves the detached wrapper and old snapshot, refreshes the"
             " parent collection, and keeps repeated detached removal a no-op.");
+    return TRUE;
+}
+
+/* TEST 1215 - Element.removeChild() accepts one direct Text child. */
+static BOOL test1215_browser_remove_child_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'><span id='keep'>A</span><!--note-->tail</div>"
+        "<div id='other'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var root=document.getElementById('root'),"
+        "other=document.getElementById('other'),old,keep,comment,tail,after,"
+        "ret,wrong,reject,repeat,ok;old=root.childNodes;keep=old[0];"
+        "comment=old[1];tail=old[2];ok=root!==null&&other!==null&&"
+        "old.length===3&&keep.localName==='span'&&comment.nodeType===8&&"
+        "tail.nodeType===3&&tail.data==='tail'&&root.children.length===1;"
+        "ret=root.removeChild(tail);after=root.childNodes;"
+        "ok=ok&&ret===tail&&after.length===2&&after[0]===keep&&"
+        "after[1]===comment&&old.length===3&&old[0]===keep&&"
+        "old[1]===comment&&old[2]===tail&&tail.parentNode===null&&"
+        "tail.parentElement===null&&!tail.isConnected&&tail.data==='tail'&&"
+        "root.textContent==='A'&&root.children.length===1;wrong=false;"
+        "try{other.removeChild(tail);}catch(e){wrong=true;}reject=false;"
+        "try{root.removeChild(comment);}catch(e){reject=true;}repeat=false;"
+        "try{root.removeChild(tail);}catch(e){repeat=true;}ok=ok&&wrong&&"
+        "reject&&repeat&&root.childNodes.length===2&&"
+        "root.childNodes[0]===keep&&root.childNodes[1]===comment&&"
+        "other.childNodes.length===0&&root.textContent==='A';"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-remove-child-text", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1215 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1215 OK",
+            "Element.removeChild now accepts one connected direct Text child"
+            " through the shared Core path, returns the detached wrapper,"
+            " preserves snapshots, and rejects detached, wrong-parent, and"
+            " non-Text removals without mutation.");
     return TRUE;
 }
 
@@ -106613,6 +106657,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1212: ok = test1212_browser_clone_equality_contract(); break;
         case 1213: ok = test1213_browser_text_child_insertion_contract(); break;
         case 1214: ok = test1214_browser_text_child_removal_contract(); break;
+        case 1215: ok = test1215_browser_remove_child_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
