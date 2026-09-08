@@ -76,6 +76,8 @@ scripts\device_gate.bat -Candidate nextNNN
 
 gate 对 `CeRapiInitEx()` 使用 30 秒有界事件等待。按微软 [`CeRapiInitEx` API 契约](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/aa513385(v=msdn.10))，调用者只填写 `RAPIINIT.cbSize`，然后等待 API 写回 `heRapiInit` 的完成事件；不得自行 `CreateEvent()` 并把句柄当作输入。若等待超时，gate 会调用 `CeRapiUninit()` 清理本地 RAPI 状态并退出，不会留下无限等待的 PowerShell，也不会把设备端进程当作已启动。WinSock 10101/远端主动关闭通常表示当前会话中断；先确认 GUI 的唯一连接和设备端遗留进程，再重试一次。单独的 30 秒超时还应检查 gate 是否遵守上述事件所有权，不能自动归因于主机。
 
+宿主写日志时会一直保持 `test_host.log` 的写句柄。WM6/RAPI 1 可能在文件已经成功打开后，让某一次 `CeReadFile` 因并发写入暂时失败；设备门把这次复制当作“快照尚未就绪”，从文件开头重新尝试，而不是把它判成测试失败。部署文件先写入门自己生成的唯一 `.part-*` 文件，完整关闭后再用同卷 `CeMoveFile` 改成最终名称；已知的连接重置/设备访问暂态会释放并重新打开当前 RAPI 会话后重试当前文件一次。只有读到最终 `TESTBENCH PASS`/`TESTBENCH FAIL`，并在两次完整复制之间保持不变，才会进入结果校验和远端目录清理。若在宿主启动前两次复制都失败，或在超时前始终没有终态，应保留本地不完整证据并按连接、宿主崩溃或设备空间继续取证，不能把它写成产品测试失败。
+
 ### `RapiMgr`/`WcesComm` 报无效句柄
 
 服务控制台显示 `RapiMgr` 为 Running 不能单独证明 RAPI 通道健康，但也不能据此管理或重启用户已经连接的 WMDC。本机 2026-08-24 的 WER 曾记录 `RapiMgr`/`WcesComm` 以 `0xc0000008`（`ntdll.dll` 无效句柄）连续崩溃；最终取证发现每次崩溃都与错误 gate 探针对应：当时的脚本自建、等待并关闭了本应由 `CeRapiInitEx()` 返回的事件句柄。改为等待 API 写回的 `heRapiInit` 后，最小和完整设备门均通过，期间没有新增服务崩溃。

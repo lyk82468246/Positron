@@ -16,9 +16,10 @@
 /* The browser bootstrap owns additional bounded DOM, geometry and scrolling
  * layers beyond the standalone script surface. Keep its heap ceiling explicit
  * and local to browser sessions; independent PScript contexts remain at their
- * 512 KiB default. */
+ * 512 KiB default. The extra 384 KiB leaves bounded room for browser
+ * bridge state and transient numeric-conversion workspaces. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 320UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 384UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];

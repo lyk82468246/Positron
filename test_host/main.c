@@ -6067,6 +6067,11 @@ static int    g_doc_w = 0;
 static int    g_doc_h = 0;
 static int    g_view_w = 0;
 static int    g_view_h = 0;
+/* SetWindowPos(SWP_FRAMECHANGED) can synchronously deliver nested WM_SIZE
+ * messages while the scrollbar style is settling.  Those transient messages
+ * must not enter Browser callbacks or rebuild native children; the outermost
+ * message publishes the final, clamped viewport once the frame is stable. */
+static int    g_scrollbar_settle_depth = 0;
 /* Suppress host-to-script re-entry while a script-originated scroll request
  * is already being evaluated. The Browser callback returns the final pair
  * to that evaluation; a second notification would re-enter the runtime. */
@@ -13419,6 +13424,7 @@ static void pcore_set_scrollbar(HWND hwnd)
     LONG style;
     LONG next_style;
 
+    g_scrollbar_settle_depth++;
     for (pass = 0; pass < 3; pass++) {
         GetClientRect(hwnd, &rc);
         cw = rc.right - rc.left;
@@ -13486,6 +13492,7 @@ static void pcore_set_scrollbar(HWND hwnd)
     si.nPage = (UINT) ((ch > 0) ? ch : 1);
     si.nPos = g_scroll_y;
     SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+    g_scrollbar_settle_depth--;
 }
 
 /* Reflect a host-owned movement into the active Browser script session. The
@@ -16798,9 +16805,17 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     int i;
     int host_dpi;
     int initial_window_name_rc;
+    int focus_rc;
     double viewport_width;
     double viewport_height;
     double device_pixel_ratio;
+    HANDLE focus_runtime;
+    unsigned long focus_memory_used;
+    unsigned long focus_memory_peak;
+    unsigned long focus_memory_limit;
+    unsigned long focus_native_count;
+    const char *focus_error;
+    char focus_detail[256];
 
     if (out_executed != NULL) {
         *out_executed = 0;
@@ -17205,11 +17220,25 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         }
         return 1;
     }
-    if (PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(session,
-            &focus_request_callbacks) != PSCRIPT_OK) {
+    focus_rc = PBrowser_ScriptSessionRegisterFocusRequestCallbacksEx(session,
+            &focus_request_callbacks);
+    if (focus_rc != PSCRIPT_OK) {
+        focus_runtime = PBrowser_ScriptSessionRuntime(session);
+        focus_error = PBrowser_ScriptSessionGetError(session);
+        focus_memory_used = PScript_GetMemoryUsed(focus_runtime);
+        focus_memory_peak = PScript_GetPeakMemoryUsed(focus_runtime);
+        focus_memory_limit = PScript_GetMemoryLimit(focus_runtime);
+        focus_native_count = PBrowser_ScriptSessionNativeFunctionCount(
+                session);
+        _snprintf(focus_detail, sizeof(focus_detail) - 1,
+                "rc=%d error=%s memory=%lu/%lu peak=%lu natives=%lu",
+                focus_rc,
+                (focus_error != NULL && focus_error[0] != '\0') ?
+                focus_error : "empty", focus_memory_used,
+                focus_memory_limit, focus_memory_peak, focus_native_count);
+        focus_detail[sizeof(focus_detail) - 1] = '\0';
         pcore_browser_script_error(error, error_capacity,
-                "focus request bridge", PBrowser_ScriptSessionGetError(
-                session));
+                "focus request bridge", focus_detail);
         pcore_browser_script_bridge_destroy(bridge);
         if (out_runtime != NULL) {
             free(bridge);
@@ -23053,11 +23082,17 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
             MoveWindow(g_nav_bar, 0, 0, cw, g_nav_bar_h, TRUE);
         }
         pcore_set_scrollbar(hwnd);
+        if (g_scrollbar_settle_depth > 0) {
+            /* This WM_SIZE was delivered synchronously by the frame-change
+             * operation above.  Let the outer message finish the final
+             * layout, native-child reposition and Browser notifications. */
+            return 0;
+        }
         pcore_browse_history_save_scroll();
         pcore_browser_script_sync_scroll();
-        pcore_browser_script_notify_resize();
         pcore_native_edits_rebuild(hwnd, 1);
         pcore_native_selects_rebuild(hwnd, 1);
+        pcore_browser_script_notify_resize();
         SHFullScreen(hwnd, SHFS_HIDESIPBUTTON);   /* keep SIP hidden on rotate */
         InvalidateRect(hwnd, NULL, TRUE);   /* full repaint after a resize */
         return 0;
@@ -24246,6 +24281,12 @@ static BOOL show_render_window(void)
     }
     pcore_native_edits_rebuild(hwnd, 0);
     pcore_native_selects_rebuild(hwnd, 0);
+    /* Publish the initial, frame-settled viewport only after the native
+     * editing children have their final geometry.  The first scrollbar pass
+     * above may have delivered nested WM_SIZE messages; those are deferred by
+     * the settle guard and cannot safely notify Browser. */
+    pcore_browser_script_sync_scroll();
+    pcore_browser_script_notify_resize();
     (void) pcore_browser_script_autofocus_apply(hwnd);
     if (g_native_programmatic_focus_probe) {
         pcore_native_programmatic_focus_probe_run(hwnd);

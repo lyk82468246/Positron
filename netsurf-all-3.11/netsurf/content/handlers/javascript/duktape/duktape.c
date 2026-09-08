@@ -89779,8 +89779,7 @@ DUK_LOCAL DUK_NOINLINE void duk__numconv_stringify_raw(duk_hthread *thr,
 	duk_small_int_t c;
 	duk_small_int_t neg;
 	duk_uint32_t uval;
-	duk__numconv_stringify_ctx nc_ctx_alloc; /* large context; around 2kB now */
-	duk__numconv_stringify_ctx *nc_ctx = &nc_ctx_alloc;
+	duk__numconv_stringify_ctx *nc_ctx;
 
 	x = (duk_double_t) duk_require_number(thr, -1);
 	duk_pop(thr);
@@ -89819,6 +89818,14 @@ DUK_LOCAL DUK_NOINLINE void duk__numconv_stringify_raw(duk_hthread *thr,
 		;
 	}
 
+	/* The Dragon4 context is about 2 KiB. Keeping it as an automatic local
+	 * overflows the small WM6 native stack when number-to-string is reached
+	 * through the browser event bridge. Use a fixed Duktape buffer instead;
+	 * the value-stack root keeps the context alive across later allocations or
+	 * longjmp-based errors while keeping it off the native stack. */
+	nc_ctx = (duk__numconv_stringify_ctx *) duk_push_fixed_buffer(
+		thr, sizeof(*nc_ctx));
+
 	/*
 	 *  Handle integers in 32-bit range (that is, [-(2**32-1),2**32-1])
 	 *  specially, as they're very likely for embedded programs.  This
@@ -89844,6 +89851,7 @@ DUK_LOCAL DUK_NOINLINE void duk__numconv_stringify_raw(duk_hthread *thr,
 		}
 		p += duk__dragon4_format_uint32(p, uval, radix);
 		duk_push_lstring(thr, (const char *) buf, (duk_size_t) (p - buf));
+		duk_remove(thr, -2);  /* discard the rooted context buffer */
 		return;
 	}
 
@@ -89968,6 +89976,7 @@ zero_skip:
 	}
 
 	duk__dragon4_convert_and_push(nc_ctx, thr, radix, digits, flags, neg);
+	duk_remove(thr, -2);  /* discard the rooted context buffer */
 }
 
 DUK_INTERNAL void duk_numconv_stringify(duk_hthread *thr, duk_small_int_t radix, duk_small_int_t digits, duk_small_uint_t flags) {
@@ -89986,8 +89995,7 @@ DUK_INTERNAL void duk_numconv_stringify(duk_hthread *thr, duk_small_int_t radix,
  */
 
 DUK_LOCAL DUK_NOINLINE void duk__numconv_parse_raw(duk_hthread *thr, duk_small_int_t radix, duk_small_uint_t flags) {
-	duk__numconv_stringify_ctx nc_ctx_alloc; /* large context; around 2kB now */
-	duk__numconv_stringify_ctx *nc_ctx = &nc_ctx_alloc;
+	duk__numconv_stringify_ctx *nc_ctx = NULL;
 	duk_double_t res;
 	duk_hstring *h_str;
 	duk_int_t expt;
@@ -90160,6 +90168,13 @@ DUK_LOCAL DUK_NOINLINE void duk__numconv_parse_raw(duk_hthread *thr, duk_small_i
 	 *  finite, so NaN/Infinity would be incorrect.
 	 */
 
+	/* Parsing uses the same roughly 2 KiB Dragon4 context as formatting.
+	 * Keep it off the WM6 native stack. Place the fixed buffer below the input
+	 * string so the existing parse stack contract remains unchanged; the value
+	 * stack root also survives any later allocation or longjmp-based error. */
+	nc_ctx = (duk__numconv_stringify_ctx *) duk_push_fixed_buffer(
+		thr, sizeof(*nc_ctx));
+	duk_insert(thr, -2);
 	duk__bi_set_small(&nc_ctx->f, 0);
 	dig_prec = 0;
 	dig_lzero = 0;
@@ -90506,16 +90521,25 @@ negcheck_and_ret:
 	duk_pop(thr);
 	duk_push_number(thr, (double) res);
 	DUK_DDD(DUK_DDDPRINT("result: %!T", (duk_tval *) duk_get_tval(thr, -1)));
+	if (nc_ctx != NULL) {
+		duk_remove(thr, -2);  /* discard the rooted context buffer */
+	}
 	return;
 
 parse_fail:
 	DUK_DDD(DUK_DDDPRINT("parse failed"));
 	duk_pop(thr);
 	duk_push_nan(thr);
+	if (nc_ctx != NULL) {
+		duk_remove(thr, -2);  /* discard the rooted context buffer */
+	}
 	return;
 
 parse_explimit_error:
 	DUK_DDD(DUK_DDDPRINT("parse failed, internal error, can't return a value"));
+	if (nc_ctx != NULL) {
+		duk_remove(thr, -2);  /* discard the rooted context buffer */
+	}
 	DUK_ERROR_RANGE(thr, "exponent too large");
 	DUK_WO_NORETURN(return;);
 }

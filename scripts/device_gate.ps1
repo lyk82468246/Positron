@@ -6,6 +6,7 @@ param(
     [string] $RemoteBase = "\Temp\Positron-device-gate",
     [string] $TestSelection = "",
     [switch] $EnableJavaScript,
+    [switch] $PreserveDeployment,
     [string] $PlatformName = "",
     [string] $DeviceName = ""
 )
@@ -455,6 +456,11 @@ public static class PositronDeviceRapi
     private static extern bool CeCloseHandle(IntPtr handle);
 
     [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CeMoveFile(
+        string existingFileName, string newFileName);
+
+    [DllImport("rapi.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern IntPtr CeFindFirstFile(
         string fileName, out CeFindData findData);
 
@@ -633,28 +639,39 @@ public static class PositronDeviceRapi
 
     public static void CopyFileToDevice(string localPath, string remotePath)
     {
-        IntPtr remote = CeCreateFile(remotePath, GENERIC_WRITE, 0,
+        string temporaryPath = remotePath + ".part-" +
+                Guid.NewGuid().ToString("N");
+        IntPtr remote = CeCreateFile(temporaryPath, GENERIC_WRITE, 0,
             IntPtr.Zero, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, IntPtr.Zero);
         if (IsInvalidHandle(remote)) {
-            throw CreateRemoteException("CeCreateFile(" + remotePath + ")");
+            throw CreateRemoteException(
+                    "CeCreateFile(" + temporaryPath + ")");
         }
         try {
             using (FileStream local = new FileStream(localPath, FileMode.Open,
                     FileAccess.Read, FileShare.Read)) {
-                byte[] buffer = new byte[32768];
+                /* WMDC/RAPI 1 occasionally resets the session when a large
+                 * binary crosses its 512 KiB transfer window.  An 8 KiB
+                 * request keeps each write below the legacy transport's
+                 * packet boundary without changing the file contents. */
+                byte[] buffer = new byte[8192];
                 int count;
                 while ((count = local.Read(buffer, 0, buffer.Length)) > 0) {
                     uint written;
                     if (!CeWriteFile(remote, buffer, (uint) count,
                             out written, IntPtr.Zero) || written != (uint) count) {
                         throw CreateRemoteException(
-                            "CeWriteFile(" + remotePath + ")");
+                            "CeWriteFile(" + temporaryPath + ")");
                     }
                 }
             }
         }
         finally {
             CeCloseHandle(remote);
+        }
+        if (!CeMoveFile(temporaryPath, remotePath)) {
+            throw CreateRemoteException(
+                    "CeMoveFile(" + temporaryPath + " -> " + remotePath + ")");
         }
     }
 
@@ -675,8 +692,14 @@ public static class PositronDeviceRapi
                     uint read;
                     if (!CeReadFile(remote, buffer, (uint) buffer.Length,
                             out read, IntPtr.Zero)) {
-                        throw CreateRemoteException(
-                            "CeReadFile(" + remotePath + ")");
+                        /* The test host keeps the log handle open while it
+                         * appends.  On WM6/RAPI 1 a concurrent read can open
+                         * successfully and still fail one CeReadFile call
+                         * (typically ERROR_ACCESS_DENIED).  Treat that
+                         * snapshot as not ready; the caller will retry from
+                         * the beginning and the completion marker remains
+                         * the authority for success. */
+                        return false;
                     }
                     if (read == 0) {
                         break;
@@ -907,6 +930,10 @@ try {
             $remoteOwnerRoot)) {
         $oldPath = $remoteOwnerRoot + "\" + $oldName
         if ($oldPath -eq $remoteRoot) {
+            continue
+        }
+        if ($PreserveDeployment) {
+            $priorCleanupPreserved += "$oldPath (diagnostic preservation)"
             continue
         }
         if ($oldName -notmatch
@@ -1170,7 +1197,34 @@ try {
             $remotePath = $remoteRoot + "\" + $relative
         }
         Write-Stage "deploying $index/$($orderedPayload.Count): $relative"
-        [PositronDeviceRapi]::CopyFileToDevice($file.FullName, $remotePath)
+        $copySucceeded = $false
+        for ($copyAttempt = 1; $copyAttempt -le 2; $copyAttempt++) {
+            try {
+                [PositronDeviceRapi]::CopyFileToDevice(
+                        $file.FullName, $remotePath)
+                $copySucceeded = $true
+                break
+            } catch {
+                $copyMessage = $_.Exception.ToString()
+                $retryableCopy = $copyMessage -match
+                        "RAPI=0x80072746|RAPI=0x80072775|device=5"
+                if (!$retryableCopy -or $copyAttempt -eq 2) {
+                    throw
+                }
+                Write-Stage (("transient RAPI copy failure for {0}; " +
+                        "reopening current session and retrying once") -f $relative)
+                if ($rapiConnected) {
+                    [PositronDeviceRapi]::Disconnect()
+                    $rapiConnected = $false
+                }
+                Start-Sleep -Seconds 1
+                [PositronDeviceRapi]::Connect()
+                $rapiConnected = $true
+            }
+        }
+        if (!$copySucceeded) {
+            throw "Copy did not complete for $relative."
+        }
     }
 
     Write-Stage "starting $remoteExe"
@@ -1216,7 +1270,10 @@ try {
                 $completionMarker, $finalMarker
     }
     Start-Sleep -Milliseconds 250
-    if (Remove-RemoteDirectorySafely $remoteRoot) {
+    if ($PreserveDeployment) {
+        $currentCleanup = "preserved_for_diagnosis";
+        Write-Stage "preserving current deployment for diagnosis: $remoteRoot"
+    } elseif (Remove-RemoteDirectorySafely $remoteRoot) {
         $currentCleanup = "removed_after_complete_log"
         Write-Stage "removed current gate directory after complete log retrieval: $remoteRoot"
     } else {
@@ -1317,7 +1374,9 @@ $passed = $storageGateOk -and
         $missing.Count -eq 0 -and $unexpected.Count -eq 0 -and
         $errorCount -eq 0 -and $failCount -eq 0 -and
         $passCount -eq 1 -and $routeOk
-$status = if ($passed) { "PASS" } else { "FAIL" }
+$status = if (!$passed) { "FAIL" } elseif ($PreserveDeployment) {
+    "DIAGNOSTIC_ONLY"
+} else { "PASS" }
 Write-ResultFile $resultPath $status $targetDescription $remoteRoot `
         $remoteExitCode $checkLines
 

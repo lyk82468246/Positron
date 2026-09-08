@@ -8,7 +8,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-- 分支：`main`。当前基线 next765 延续 next761–764 的 Core child-data 与 Browser
+工作区仍在 `main`，本批未提交改动包含两项相互独立的 WM6 稳定性修复：Duktape Dragon4 数值转换上下文移出原生线程栈；参考宿主在 `SetWindowPos(SWP_FRAMECHANGED)` 引发的同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。设备门同时使用唯一 `.part-*` 文件、同卷原子改名和一次有界 RAPI 重连重试，日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。
+
+`20260908-112916-next765-native-resize-formal2` 已在当前 GUI 连接的 WMDC 目标上以正式 Debug ARMV4I、全新外部目录、无 `-PreserveDeployment` 运行 `TEST1113,1114,1115,1116,1199,999`：6/6 OK、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，完整日志已回收且当前远端目录已删除；该证据早于 fixed-buffer 数值上下文及原子部署改动。其后的 `20260908-113632`–`114342` 尝试均在 RAPI 文件传输阶段失败，宿主未启动，不能当作产品测试结果。`next766` wholeText 草稿仍只保存在本地 `tmp/next766-draft.patch`。
+
+- 当前代码 next765 延续 next761–764 的 Core child-data 与 Browser
   CharacterData bridge；新增 `Text.splitText()` 的 direct-child 有界路径，将 UTF-16
   边界映射到 UTF-8 code-point、插入紧邻 Text sibling，并保持原 wrapper 与旧 snapshot
   合同。`PCore_NodeSetCharacterDataChildById`、`PBrowserScriptDomWriteCallbacksEx2`
@@ -78,9 +82,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
-- 当前唯一下一步是 next766：先从 compatibility corpus、源码、设备日志或截图固定一个
-  新的真实产品缺口，再推进一条可自动断言的公共 DLL 纵向能力；不要预先承诺未验证的
-  Web API 或视觉行为。
+- 当前唯一下一步是让用户在需要时重新建立稳定的 WMDC GUI 独占连接，再用当前 fixed-buffer
+  数值转换和原子部署代码完成一次 `1113–1116,1199,999` 正式设备门；通过后才恢复
+  next766 的下一条公共 DLL 纵向能力。不得把测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
 
@@ -167,8 +171,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 最新有效设备证据
 
-最新设备门证据为 next765 的 Browser/Core `Text.splitText()` 纵切；双空间预检、唯一
-远端 executable basename 和完整日志回收仍是部署安全基线：
+最新成功的正式证据是 `20260908-112916-next765-native-resize-formal2`：正式 Debug ARMV4I、
+完整日志回收，`TEST1113,1114,1115,1116,1199,999` 全部通过且零
+`ERROR`/`FAIL`；结果为 `status=PASS`、`complete_log_retrieved=True`、
+`current_cleanup=removed_after_complete_log`。它确认嵌套 `WM_SIZE` 不再进入 Browser
+resize 通知，窗口稳定后才完成 native child rebuild 与 resize 发布，并确认正常清理路径无
+崩溃；但当前 fixed-buffer/原子部署版本尚未取得新的设备日志。
+
+此前的诊断证据 `20260908-111143-next765-native-resize-regression` 也通过同一选择，
+但保留部署目录，仅供定位复核。
+
+此前的设备证据仍是历史基线，不能替代上述正式门：
 
 - `tmp/device-runs/20260908-025630-next765/`；正式 Debug ARMV4I，定向选择
   `TEST1204-1207,TEST999` 并启用 `EnableJavaScript`，5/5 通过，零 `ERROR`/`FAIL`，唯一
@@ -179,23 +192,6 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   通过 `CeGetStoreInformation`，free `9375744` bytes，cache reserve `65536`。当前运行
   目录在完整日志回收后已清理。
 
-- `tmp/device-runs/20260908-020307-next764/`；正式 Debug ARMV4I，定向选择
-  `TEST599,TEST1204-1206,TEST999` 并启用 `EnableJavaScript`，5/5 通过，零
-  `ERROR`/`FAIL`，唯一 `TESTBENCH PASS`，完整日志已取得。`substringData()` 的严格
-  offset/count、超长 count 截断、只读性和 detached Text/Comment 快照均通过；
-  `\Storage Card\Positron-device-gate` 目标卷通过 `CeGetDiskFreeSpaceEx`，free
-  `71043710976` bytes，payload `9888781` + reserve `1048576`；内部 object store
-  通过 `CeGetStoreInformation`，free `9375744` bytes，cache reserve `65536`。
-  当前运行目录在完整日志回收后已清理。
-
-- `tmp/device-runs/20260908-014353-next763/`；正式 Debug ARMV4I，定向选择
-  `TEST1204-1205,TEST999` 并启用 `EnableJavaScript`，3/3 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`，完整日志已取得。`\Storage Card\Positron-device-gate` 目标卷通过
-  `CeGetDiskFreeSpaceEx`，free `71076708352` bytes，payload `9886729` + reserve
-  `1048576`；内部 object store 通过 `CeGetStoreInformation`，free `9375744` bytes，
-  cache reserve `65536`。当前运行目录在完整日志回收后已清理；旧的 5 个目录因日志不完整
-  被保留。
-
 - next761–762 的相邻 CharacterData 门和 next758–760 的 source/text/removal/contenteditable
   回归均已在此前交接中通过；逐门细节保留在 Git 历史和 `tmp/device-runs/`，当前交接只
   保留与 next765 直接相关的证据。设备基线为 320x320、128 dpi；外部目标卷约 71 GB
@@ -203,7 +199,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   规则保留，不能据此强杀设备进程；失败路线见 [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)。
 - next765 静态验证：`python scripts/test_c89ize.py`、Debug/Release ARMV4I build、
   `python scripts/audit_repo.py` 和 `git diff --check` 均通过；Browser heap ceiling 为
-  832 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 29。
+  896 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 29。
 
 ## 当前人工验收状态
 
@@ -290,7 +286,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
-- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 832 KiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 896 KiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 图片资源的候选选择覆盖 Core 的最多 16 个同类正密度 `x` 或正宽度 `w` 候选（每个
   URL 最多 2047 字节），以及每个 `<picture>` 最多 8 个 preceding `<source>`、16 层
   ancestor 和 64 个 direct-child 节点的有界扫描。source 先按 document order 过滤
@@ -329,12 +325,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 唯一下一步：next766
+## 后续计划：next766
 
 next765 的 `Text.splitText()` direct-child 结构 mutation、Ex3 callback、UTF-16→UTF-8
 边界映射、wrapper/snapshot reconciliation 和末尾空 sibling 已由 TEST1207 及相邻
-TEST1204–1206、TEST999 回归验证；外部目标设备门和 832 KiB 的有界 Browser heap 证据
-见上方。下一步仍必须先从 compatibility
+TEST1204–1206、TEST999 回归验证；嵌套 `WM_SIZE` 重入保护和日志快照重试已在正式门
+验证，fixed-buffer 数值上下文与原子部署仍待稳定 RAPI 会话下补一份正式日志。下一步仍必须先从 compatibility
 corpus、源码、设备日志或截图固定一个新的真实产品缺口，再决定进入哪个公共 DLL；不要预先
 把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器树、Range/Selection、pinch zoom、
 transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对 URL、CORS、
@@ -348,7 +344,7 @@ transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bf
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 下一批完成标准（next766）
+## 恢复功能开发后的完成标准（next766）
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；

@@ -434,7 +434,7 @@ default-selected 快照，submit-capable button/input/image 选择其 form 中�
 第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
 `.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
 逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
-默认状态或 selector 解析。为保持 WM6 上固定的 832 KiB Browser heap，初始、mutation 和
+默认状态或 selector 解析。为保持 WM6 上固定的 896 KiB Browser heap，初始、mutation 和
 非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
 
 TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：脚本先读

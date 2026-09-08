@@ -159,7 +159,7 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
-独立的 832 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
+独立的 896 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
 状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但 Web host
 objects 由 Browser callbacks 提供。
 
