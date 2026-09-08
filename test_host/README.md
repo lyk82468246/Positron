@@ -131,6 +131,12 @@ DOM、libcss 和 NetSurf document 只在 UI 线程操作。worker 不持有 DOM 
 
 宿主把当前 `PCore` document 包装为 size-tagged callbacks，供 Browser session 查询 DOM、属性、表单、validation、`contenteditable` 状态、文本、布局几何和可选原生选区。布局 callback 只转发 Core 已完成 layout 的 border-box union、有限 inline 行片段、六个布局尺寸快照和关系 38/39 的 retained overflow offset；Browser 负责把它们转换为 `getBoundingClientRect()`、`getClientRects()`、只读尺寸 getter 以及有 id 元素的滚动属性，宿主不复制 box tree 或实现第二份 box model。Browser 负责脚本对象、事件顺序、取消与事务状态；宿主只执行允许的 Core mutation、WM 默认动作和导航副作用。
 
+DOM 文本写入按能力选择版本化 callback table：已有 Ex/Ex2/Ex3 注册路径继续保持 ABI，
+需要 `Text.replaceWholeText()` 时使用 Ex4 的 `replace_whole_text_child`。该 callback
+只把 Browser 提供的父 id、未过滤 childNodes 索引和 UTF-8 文本转发给 Core；宿主不遍历、
+合并或删除 DOM 节点。成功后宿主按正常生命周期重新 style/layout/paint，Browser 自己
+更新 wrapper/snapshot，事件、插入、reparent、normalize 和 live collection 不由宿主补做。
+
 callback 同步且不可重入。候选页面成功提交前，宿主必须在旧 document/session 仍有效时调用 `PBrowser_ScriptSessionDispatchPageTeardown`；它负责一次性的 `visibilitychange`→`pagehide`→`unload` 边界和页面队列清理。随后宿主停止新消息和事务，销毁 native 控件、Browser session 和 Core document，避免 stale token 或借用指针逃逸。失败候选不调用 teardown，旧页状态继续服务。
 
 ### 元素 overflow 滚动
@@ -448,6 +454,14 @@ libdom 的逻辑相邻 Text 拼接，断言 `splitText()` 后相邻 wrapper、Ch
 边界停止；属性为只读、非 Text/缺失节点安全返回，detached wrapper 保留最后的文本快照。
 宿主只提供 relation callback、fixture 和断言；相邻 Text 遍历、UTF-8 缓冲与快照语义属于
 公共 Core/Browser DLL。
+
+TEST1209 在同一离线 fixture 上验证 `Text.replaceWholeText()`：宿主注册 Ex4 callback，
+Browser 把 direct Text child 的原始索引和 UTF-8 值转给 Core，自动断言目标 wrapper 保持
+身份并移动到连续 Text 段首位、相邻 Text 变为 detached、element/Comment/CDATA 边界
+保持不变，以及 `wholeText`、旧 NodeList snapshot、astral 字符和父级替换的一致性。
+非法 parent/index/child、空参数和 detached 写入安全失败；Core mutation 后 retained layout
+失效并由 fixture 重新 style/layout。宿主只负责 callback 接线、可选 restyle、fixture
+和断言，不实现通用节点插入、reparent、normalize、MutationObserver 或 live collection。
 
 ### Native EDIT/SELECT/button/file
 

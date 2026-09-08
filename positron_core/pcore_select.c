@@ -8094,6 +8094,123 @@ PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
     return 0;
 }
 
+/* Remove one logical-adjacent Text sibling at a time. The libdom
+ * replaceWholeText helper walks an internal sibling cursor while dispatching
+ * mutation callbacks; on the WM6 port that cursor can retain a stale pending
+ * node after a prior split. Keeping the walk here explicit makes the public
+ * boundary bounded and fail-closed while preserving libdom's normal remove
+ * notifications and reference ownership. */
+static int pcore_remove_adjacent_text_nodes(dom_node *parent,
+        dom_node *target, int left)
+{
+    dom_node *neighbor;
+    dom_node *removed;
+    dom_node_type type;
+    dom_exception err;
+
+    if (parent == NULL || target == NULL) {
+        return 1;
+    }
+    while (1) {
+        neighbor = NULL;
+        if (left) {
+            err = dom_node_get_previous_sibling(target, &neighbor);
+        } else {
+            err = dom_node_get_next_sibling(target, &neighbor);
+        }
+        if (err != DOM_NO_ERR) {
+            return 1;
+        }
+        if (neighbor == NULL) {
+            return 0;
+        }
+        if (dom_node_get_node_type(neighbor, &type) != DOM_NO_ERR) {
+            dom_node_unref(neighbor);
+            return 1;
+        }
+        if (type != DOM_TEXT_NODE) {
+            dom_node_unref(neighbor);
+            return 0;
+        }
+        removed = NULL;
+        err = dom_node_remove_child(parent, neighbor, &removed);
+        if (err != DOM_NO_ERR) {
+            if (removed != NULL) {
+                dom_node_unref(removed);
+            }
+            dom_node_unref(neighbor);
+            return 1;
+        }
+        if (removed != NULL) {
+            dom_node_unref(removed);
+        }
+        dom_node_unref(neighbor);
+    }
+}
+
+PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *text)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_node *child;
+    dom_node_type child_type;
+    dom_string *content;
+    dom_exception err;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            text == NULL) {
+        return 1;
+    }
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    child = NULL;
+    result = pcore_relation_child_node_at((dom_node *) parent, child_index,
+            &child);
+    if (result != 0) {
+        dom_node_unref((dom_node *) parent);
+        return result == 2 ? 2 : 1;
+    }
+    if (dom_node_get_node_type(child, &child_type) != DOM_NO_ERR) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    if (child_type != DOM_TEXT_NODE) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    content = NULL;
+    if (dom_string_create((const uint8_t *) text, strlen(text), &content) !=
+            DOM_NO_ERR || content == NULL) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    err = dom_node_set_node_value(child, content);
+    dom_string_unref(content);
+    if (err == DOM_NO_ERR) {
+        err = pcore_remove_adjacent_text_nodes((dom_node *) parent, child,
+                1) == 0 ? DOM_NO_ERR : DOM_NOT_FOUND_ERR;
+    }
+    if (err == DOM_NO_ERR) {
+        err = pcore_remove_adjacent_text_nodes((dom_node *) parent, child,
+                0) == 0 ? DOM_NO_ERR : DOM_NOT_FOUND_ERR;
+    }
+    dom_node_unref(child);
+    dom_node_unref((dom_node *) parent);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
 PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id)
 {

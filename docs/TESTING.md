@@ -658,6 +658,17 @@ TEST1208 覆盖 `Text.wholeText` 的 Core/Browser 读取纵切：关系 50 只�
 layout、资源 I/O 或事件；通用插入、reparent、Text 合并、MutationObserver、完整 live
 collection 和 native/视觉行为仍不在门内。
 
+TEST1209 覆盖 `Text.replaceWholeText()` 的 Core/Browser 结构 mutation：宿主注册追加
+`PBrowserScriptDomWriteCallbacksEx4`，Browser 通过既有 `__pcoreSetText` slot 把目标
+direct Text child 的未过滤索引和 UTF-8 文本交给 `PCore_NodeReplaceWholeTextChildById`。
+自动断言确认目标 wrapper 身份保留并移动到连续 Text 段首位，相邻 Text 被移除后成为
+detached 快照，element/Comment/CDATA 边界不被跨越，astral UTF-8 值、旧 NodeList
+snapshot、`wholeText` 和父级替换均保持一致；缺失/非 Text/越界/detached/空参数安全
+失败，成功 mutation 使 retained layout 失效并可重新 style/layout。Core 在 WM6 上使用
+有界显式 sibling walk，不依赖 split 后会卡住的 libdom helper；该门不实现通用插入、
+reparent、normalize、MutationObserver、完整 live collection、事件或 native/视觉行为。
+宿主只负责 Ex4 callback 接线、fixture、可选 restyle 和断言。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

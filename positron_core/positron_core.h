@@ -279,6 +279,20 @@ PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index,
         unsigned int offset);
 
+/* Replace one direct Text child and all logically adjacent Text siblings with
+ * one UTF-8 Text node value. The target keeps its DOM identity and is placed
+ * at the first position of the adjacent run; element, comment and CDATA
+ * boundaries stop the run. `parent_id` is the UTF-8 element id (or a
+ * supported document-structure token), and `child_index` is the unfiltered
+ * childNodes index of the target before replacement. Returns 0 after the
+ * replacement, 2 when the parent/index is unavailable or the child is not a
+ * Text node, and 1 for invalid input or another DOM failure. A successful
+ * replacement invalidates retained layout; callers must style/layout/paint
+ * again before using geometry or native-control snapshots. This primitive
+ * does not dispatch events and does not expose detached-node mutation. */
+PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *text);
+
 /* Remove one element child from one element parent. Both arguments are
  * UTF-8 DOM ids (the three reserved document-structure tokens are rejected
  * as removable children). The operation requires the child to be a direct

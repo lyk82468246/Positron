@@ -167,6 +167,16 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   wrapper 的只读 getter；连接中的 wrapper 每次读取当前相邻文本，detached wrapper
   保留最近一次数据快照。该关系不合并节点、不改变 child list、不派发事件，也不触发
   layout 或资源 I/O；
+- `PCore_NodeReplaceWholeTextChildById` 为同一 Text 纵切提供有界结构 mutation：它按
+  未过滤 `childNodes` 索引定位直接 Text child，把新 UTF-8 值写入目标，并删除该目标两侧
+  连续的 Text sibling；目标保留 DOM 身份并移动到这段逻辑相邻文本的第一位置，element、
+  Comment 或 CDATA 会截断范围。成功后 retained layout 失效，调用方必须重新
+  style/layout/paint；该入口不获取资源、不派发 Browser 事件，也不扩展为通用插入、
+  reparent、normalize 或 live collection。Browser 通过 ABI 追加的
+  `PBrowserScriptDomWriteCallbacksEx4` 复用 `__pcoreSetText` slot 提供
+  `Text.replaceWholeText()`，更新当前 childNodes snapshot，并让被移除 wrapper 保留
+  数据但变为 detached。Core 在 WM6 上显式逐个删除相邻 Text，避开 split 后 libdom
+  replaceWholeText helper 的 stale-cursor 路径；这是实现护栏，不改变公共语义；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
@@ -591,9 +601,10 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   保持既有 `PBrowserScriptFormCallbacks` 布局不变；Browser 只在注册且字段完整时启用，
   缺失或失败按 fail-closed 处理。
 - DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，Ex2 再
-  追加 Comment/CDATA callback，Ex3 追加 `Text.splitText()` callback；三者都复用旧的
-  `__pcoreSetText` native slot。旧的 `PBrowserScriptDomWriteCallbacks`、Ex2 布局和
-  element/Text/CharacterData 既有语义保持不变。
+  追加 Comment/CDATA callback，Ex3 追加 `Text.splitText()` callback，Ex4 再追加
+  `Text.replaceWholeText()` callback；四者都复用旧的 `__pcoreSetText` native slot。
+  旧的 `PBrowserScriptDomWriteCallbacks`、Ex2/Ex3 布局和 element/Text/CharacterData
+  既有语义保持不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

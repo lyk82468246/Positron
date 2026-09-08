@@ -187,6 +187,15 @@ code-point 边界分割，并把 suffix 作为紧邻的新 Text sibling 插入�
 该入口不派发事件、不合并相邻 Text、不做通用插入或 reparent；调用方必须重新
 style/layout/paint，且不能把 libdom 指针泄漏到 ABI。
 
+`PCore_NodeReplaceWholeTextChildById` 补上 Text 结构 mutation 的相邻合并路径：它按同一
+父元素和未过滤 childNodes 索引定位直接 Text child，先写入新的 UTF-8 数据，再删除目标
+两侧连续的 Text sibling；目标保留 DOM 身份并移动到该逻辑相邻文本段的第一位置，
+element、Comment 和 CDATA 会截断段落。返回 `0` 表示成功，`2` 表示父节点/索引不可用
+或目标不是 Text，`1` 表示参数或 DOM 失败。成功后 retained layout 失效，调用方必须
+重新 style/layout/paint。该入口不派发事件、不获取资源、不做通用插入、reparent、
+normalize 或 live collection，也不暴露被删除节点的可写句柄；它在 WM6 上采用有界的
+显式 sibling walk，避免 split 后 libdom helper 的 stale-cursor 风险。
+
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 
 布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`

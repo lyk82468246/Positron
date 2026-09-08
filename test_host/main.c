@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1208
+#define TEST_MAX_NUMBER 1209
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15231,6 +15231,31 @@ static int pcore_browser_script_dom_split_text_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_replace_whole_text_child(void *pw,
+        const char *parent_id, unsigned int child_index, const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            text == NULL) {
+        return -1;
+    }
+    result = PCore_NodeReplaceWholeTextChildById(bridge->document, parent_id,
+            child_index, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16762,7 +16787,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx3 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx4 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -16932,6 +16957,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_set_character_data_child;
     dom_write_callbacks.split_text_child =
             pcore_browser_script_dom_split_text_child;
+    dom_write_callbacks.replace_whole_text_child =
+            pcore_browser_script_dom_replace_whole_text_child;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17129,7 +17156,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx3(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx4(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -47836,6 +47863,124 @@ static BOOL test1208_browser_text_whole_text_contract(void)
             " through a bounded UTF-8 relation, preserves the read-only"
             " Browser property across split/mutation, stops at element and"
             " comment boundaries, and retains detached snapshots.");
+    return TRUE;
+}
+
+/* TEST 1209 - bounded Text.replaceWholeText removes only one logical text
+ * run, keeps the target wrapper at the run's first position, and preserves
+ * snapshots and structure across element/comment boundaries. */
+static BOOL test1209_browser_text_replace_whole_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'>alpha<span id='child'>beta</span>"
+        "<!--note--><em>gamma</em>omega</div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),old=r.childNodes,"
+        "t=old[0],span=old[1],comment=old[2],em=old[3],tail=old[4],split,"
+        "now,after,replaced,before,identity,snapshot,boundaries,methods,"
+        "unicode,detached,stale,u;"
+        "before=old.length===5&&t.data==='alpha'&&span.nodeName==='SPAN'&&"
+        "comment.nodeName==='#comment'&&em.nodeName==='EM'&&tail.data==='omega';"
+        "split=t.splitText(2);now=r.childNodes;"
+        "identity=split!==null&&now.length===6&&t.data==='al'&&"
+        "split.data==='pha'&&now[0]===t&&now[1]===split;"
+        "u=String.fromCharCode(0xd83d,0xde00);"
+        "replaced=split.replaceWholeText('A'+u+'B');"
+        "after=r.childNodes;"
+        "identity=identity&&replaced===split&&after.length===5&&"
+        "after[0]===split&&split.parentNode===r&&split.data==='A'+u+'B'&&"
+        "split.wholeText==='A'+u+'B'&&t.parentNode===null&&"
+        "t.data==='al';"
+        "snapshot=now.length===6&&now[0]===t&&now[1]===split&&"
+        "now[2]===span&&now[3]===comment&&now[4]===em&&now[5]===tail;"
+        "boundaries=after[1]===span&&after[2]===comment&&after[3]===em&&"
+        "after[4]===tail&&tail.data==='omega';"
+        "methods=typeof split.replaceWholeText==='function'&&"
+        "typeof span.replaceWholeText==='undefined'&&"
+        "typeof comment.replaceWholeText==='undefined';"
+        "unicode=split.length===4&&split.data==='A'+u+'B';"
+        "r.textContent='done';detached=split.parentNode===null&&"
+        "!split.isConnected&&split.data==='A'+u+'B';stale=false;"
+        "try{split.replaceWholeText('x');}catch(e){stale=true;}"
+        "return document.getElementById('result').textContent="
+        "[before,identity,snapshot,boundaries,methods,unicode,detached,"
+        "stale].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true|true|true";
+    static const char UNICODE_TEXT[] = "A\360\237\230\200B";
+    HANDLE document;
+    PCoreLayoutStats stats;
+    char value[128];
+    char error[768];
+    int value_bytes;
+    int child_count;
+    BOOL core_ok;
+    BOOL script_ok;
+
+    document = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    value_bytes = -1;
+    child_count = -1;
+    core_ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL && PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 2) == 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeReplaceWholeTextChildById(document, "root", 1,
+            UNICODE_TEXT) == 0 && PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0,
+            NULL, &child_count) == 0 && child_count == 5 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 0, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, UNICODE_TEXT) == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_TEXT_AT, 1, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "beta") == 0 &&
+            PCore_NodeReplaceWholeTextChildById(document, "root", 1,
+            "x") == 2 &&
+            PCore_NodeReplaceWholeTextChildById(document, "root", 99,
+            "x") == 2 &&
+            PCore_NodeReplaceWholeTextChildById(document, "missing", 0,
+            "x") == 2 &&
+            PCore_NodeReplaceWholeTextChildById(document, NULL, 0,
+            "x") == 1 &&
+            PCore_NodeReplaceWholeTextChildById(document, "root", 0,
+            NULL) == 1 && PCore_GetLayoutStats(document, &stats) == 0) {
+        core_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_raw_string_fixture_at_url(
+            "http://positron.local/text-replace-whole-text", HTML, PROBE,
+            EXPECTED, error, sizeof(error));
+    if (!core_ok || !script_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d script=%d value=%s bytes=%d", core_ok,
+                    script_ok, value[0] != '\0' ? value : "(null)",
+                    value_bytes);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1209 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1209 OK",
+            "Text.replaceWholeText now replaces one logical adjacent-text"
+            " run through the Core-owned mutation boundary, keeps the target"
+            " wrapper and snapshots coherent, stops at element/comment"
+            " boundaries, and rejects detached or unavailable targets.");
     return TRUE;
 }
 
@@ -105983,6 +106128,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1206: ok = test1206_browser_character_substring_contract(); break;
         case 1207: ok = test1207_browser_text_split_contract(); break;
         case 1208: ok = test1208_browser_text_whole_text_contract(); break;
+        case 1209: ok = test1209_browser_text_replace_whole_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

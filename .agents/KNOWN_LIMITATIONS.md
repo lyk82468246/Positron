@@ -135,11 +135,15 @@
   mutator 按 UTF-16 code-unit 计算并截断超长 count；`substringData()` 只读并复用
   非负整数 offset/count 校验。`Text.splitText()` 另有一个 direct-child 有界入口：
   UTF-16 offset 必须落在 UTF-8 code-point 边界，成功后插入紧邻 Text sibling 并使布局
-  失效；astral code point 内部边界、无效范围和 detached wrapper fail closed。通用节点
-  插入、reparent、删除、Text 合并、observer 和 live collection 未实现，错误关系与
-  缺失/过长 id fail closed。`Text.wholeText` 只读关系 50 仅对直接 Text child 有效，
-  拼接逻辑相邻 Text sibling 并在 element、Comment 或 processing-instruction 处停止；
-  detached wrapper 返回最近一次数据快照，不扩展为通用节点遍历。
+  失效；astral code point 内部边界、无效范围和 detached wrapper fail closed。
+  `Text.wholeText` 只读关系 50 仅对直接 Text child 有效，拼接逻辑相邻 Text sibling
+  并在 element、Comment 或 processing-instruction 处停止；detached wrapper 返回最近
+  一次数据快照。`Text.replaceWholeText()` 现在通过 Ex4/`PCore_NodeReplaceWholeTextChildById`
+  提供同一 direct-child 范围内的有界合并：目标保留身份并移动到相邻 Text 段首位，
+  其他 Text wrapper 变为 detached，边界节点不被跨越，成功后布局失效。Core 在 WM6
+  上显式逐个删除相邻 sibling，以避开 split 后 libdom helper 的 stale-cursor 风险。
+  通用节点插入、reparent、独立文本节点删除、`normalize()`、MutationObserver 和 live
+  collection 仍未实现，错误关系与缺失/过长 id fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -578,10 +582,11 @@
   和 CharacterData mutator：断言直接 child、wrapper/snapshot、UTF-16 范围、detached
   回退以及 retained-layout invalidation。结构 mutation、observer、完整 collection 和
   native/视觉行为不在门内。
-- TEST1205–1208 覆盖 Comment/CDATA child-data、`substringData()`、`splitText()` 与
-  `Text.wholeText`：断言 Ex2/Ex3、UTF-16→UTF-8 边界、logical-adjacent 拼接、element/
-  Comment 边界、实时 mutation、probe/truncation 和 detached snapshot；其余结构 mutation、
-  observer、完整 collection 与 native/视觉行为仍未实现或需人工观察。
+- TEST1205–1209 覆盖 Comment/CDATA child-data、`substringData()`、`splitText()`、
+  `Text.wholeText` 与 `Text.replaceWholeText()`：断言 Ex2/Ex3/Ex4、UTF-16→UTF-8 边界、
+  logical-adjacent 拼接与有界合并、element/Comment 边界、实时 mutation、
+  probe/truncation、wrapper/snapshot 身份和 detached snapshot；其余结构 mutation、
+  `normalize()`、observer、完整 collection 与 native/视觉行为仍未实现或需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

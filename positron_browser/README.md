@@ -467,6 +467,15 @@ reparent、合并、事件或 MutationObserver。
 element、Comment 或 processing-instruction 停止；非 Text 无此属性，detached wrapper
 回退 `data` 快照。读取只产生有界 UTF-8 snapshot，不改 DOM、layout 或资源。
 
+需要 `Text.replaceWholeText()` 时，宿主使用 ABI 追加的
+`PBrowserScriptDomWriteCallbacksEx4.replace_whole_text_child`（Ex3 ABI 不变）。Browser
+记录 direct Text child 两侧的连续 wrapper，通过同一 `__pcoreSetText` slot 发送
+`{op:"replaceWholeText",parentId,index,text}`；Core 成功后目标 wrapper 保留身份并移到
+段首，其他相邻 Text wrapper 从新 snapshot 移除但保留数据快照。element、Comment 和
+CDATA 截断范围；缺失/错误 child、detached wrapper 或未注册/失败回调抛出脚本错误。
+成功后需重排；该桥不派发事件或提供通用结构 mutation、
+observer、live collection。
+
 ### `dialog` 生命周期
 
 启用浏览器 JavaScript 后，`<dialog>` 元素提供一个有界的生命周期接口：
@@ -678,9 +687,16 @@ document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同�
 入口只描述脚本可见的顶层窗口状态，不创建 HWND，也不代替宿主管理 native
 控件焦点、焦点矩形或跨窗口策略。
 
-跨文档候选已经完成 parse、资源、style、layout 并准备提交时，宿主仍应保留旧 document/session，先调用 `PBrowser_ScriptSessionDispatchBeforeUnload`。该入口同步派发当前 window 的 cancelable、non-bubbling、trusted `beforeunload` 事件，覆盖 `window.onbeforeunload` 与 `addEventListener('beforeunload', ...)`；调用 `preventDefault()`、写入非空 `event.returnValue`，或从 `window.onbeforeunload` 返回非空字符串都会把 `out_prevented` 置为非零。它只返回取消决定，不显示提示框、不执行导航或 teardown；提示 UI 和“继续/取消”的产品策略由宿主决定，脚本调用或结果解析失败时必须按取消处理。参考宿主没有确认对话框，因此直接拒绝候选提交或窗口关闭并保留旧页。
+跨文档候选准备提交时，宿主仍保留旧 document/session，先调用
+`PBrowser_ScriptSessionDispatchBeforeUnload`。Browser 同步派发当前 window 的
+cancelable、non-bubbling、trusted `beforeunload`，把 `preventDefault()`、非空
+`event.returnValue` 或 handler 的非空返回映射到 `out_prevented`；它不显示提示框、
+不执行导航或 teardown，提示策略由宿主决定，调用/解析失败按取消处理。
 
-只有 `beforeunload` 允许后，宿主才调用 `PBrowser_ScriptSessionDispatchPageTeardown`。首次 teardown 在旧页可见时依次派发 document `visibilitychange`、window `pagehide` 和 `unload`，再清理 timer、animation frame、microtask、idle、message 队列；已隐藏或已派发 `pagehide` 的页面不会重复派发，重复调用也保持幂等。宿主随后停止 native 回调、销毁控件和 script session，最后释放旧 Core document 并安装候选页。失败或被取消的候选不得调用 teardown，旧页、旧 session 和旧队列必须继续保留。两个入口都不创建线程、不访问 HWND，也不得从 Browser callback 内重入或销毁当前 session。
+只有 `beforeunload` 允许后，宿主才调用
+`PBrowser_ScriptSessionDispatchPageTeardown`；Browser 按既有生命周期顺序派发一次
+teardown 并清理脚本队列，宿主随后停止 native 回调、销毁控件/session，最后释放旧 Core
+document。失败或取消的候选不得 teardown；两个入口都不创建线程或访问 HWND。
 
 ## 典型 Core 组合
 
