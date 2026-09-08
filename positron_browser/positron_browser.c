@@ -5500,7 +5500,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(n,'nodeType',{value:t,writable:false,configurable:false,enumerable:true});"
         "v=t===3?'#text':r(o,16,i);if(typeof v!=='string'){v='';}if(t===1){v=v.toUpperCase();}"
         "Object.defineProperty(n,'nodeName',{value:v,writable:false,configurable:false,enumerable:true});"
-        "v=(t===3||t===4||t===8)?r(o,17,i):'';if(typeof v!=='string'){v='';}data11=v;"
+        "v=(t===3||t===4||t===8)?r(o,17,n.__index11):'';if(typeof v!=='string'){v='';}data11=v;"
         "Object.defineProperty(n,'ownerDocument',{value:doc,writable:false,configurable:false,enumerable:true});"
         "Object.defineProperty(n,'baseURI',{get:function(){return g.location&&g.location.href!==undefined?"
         "String(g.location.href):'';},enumerable:true});Object.defineProperty(n,'namespaceURI',{"
@@ -5510,7 +5510,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if((t!==3&&t!==4&&t!==8)||!current11(n)||!o||"
         "typeof o.__id!=='string'||o.__id===''||"
         "typeof g.__pcoreSetText!=='function'){return false;}"
-        "try{ok=g.__pcoreSetText({parentId:o.__id,index:i,nodeType:t,text:s});}"
+        "try{ok=g.__pcoreSetText({parentId:o.__id,index:n.__index11,nodeType:t,text:s});}"
         "catch(e){return false;}if(!ok){return false;}data11=s;return true;}"
         "function setText11(v){if(t!==3){return false;}return setCharacterData11(v);}"
         "function requireCharacterData11(){if((t!==3&&t!==4&&t!==8)||"
@@ -5529,15 +5529,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "n.lookupPrefix=function(v){var s=v===null||v===undefined?'':String(v);"
         "return s==='http://www.w3.org/XML/1998/namespace'?'xml':null;};"
         "Object.defineProperty(n,'id',{get:function(){var z;if(t!==1||!current11(n)){return '';}"
-        "z=r(o,18,i);return typeof z==='string'?z:'';},enumerable:true});"
+        "z=r(o,18,n.__index11);return typeof z==='string'?z:'';},enumerable:true});"
         "Object.defineProperty(n,'tagName',{get:function(){return n.nodeType===1?n.nodeName:'';},enumerable:true});"
         "Object.defineProperty(n,'localName',{get:function(){return n.nodeType===1?n.nodeName.toLowerCase():null;},enumerable:true});"
         "Object.defineProperty(n,'nodeValue',{get:function(){var z;if(n.nodeType===1){return null;}"
-        "if(!current11(n)){return data11;}z=r(o,17,i);return typeof z==='string'?z:null;},"
+        "if(!current11(n)){return data11;}z=r(o,17,n.__index11);return typeof z==='string'?z:null;},"
         "set:function(v){if(n.nodeType===1){return;}if(!setCharacterData11(v)){"
         "throw new Error('character data update failed');}},enumerable:true});"
         "Object.defineProperty(n,'textContent',{get:function(){var z;if(!current11(n)){return data11;}"
-        "z=r(o,19,i);return typeof z==='string'?z:'';},set:function(v){"
+        "z=r(o,19,n.__index11);return typeof z==='string'?z:'';},set:function(v){"
         "if(n.nodeType===1){return;}if(!setCharacterData11(v)){"
         "throw new Error('character data update failed');}},enumerable:true});"
         "Object.defineProperty(n,'data',{get:function(){var z=n.nodeValue;return z===null?'':z;},"
@@ -5545,7 +5545,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "throw new Error('character data update failed');}},enumerable:true});"
         "Object.defineProperty(n,'length',{get:function(){return n.data.length;},enumerable:true});"
         "if(t===3){Object.defineProperty(n,'wholeText',{get:function(){var z;"
-        "if(!current11(n)){return data11;}z=r(o,50,i);return typeof z==='string'?z:data11;},"
+        "if(!current11(n)){return data11;}z=r(o,50,n.__index11);return typeof z==='string'?z:data11;},"
         "enumerable:true});}"
         "n.appendData=function(v){var s;requireCharacterData11();"
         "s=n.data+String(v);writeCharacterData11(s);};"
@@ -5562,11 +5562,11 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "b=s.length-a;}return s.substring(a,a+b);};"
         "if(t===3){n.splitText=function(v){var s,a,ok,list11;"
         "requireCharacterData11();s=n.data;a=offset11(v,s.length);"
-        "try{ok=g.__pcoreSetText({op:'splitText',parentId:o.__id,index:i,offset:a});}"
+        "try{ok=g.__pcoreSetText({op:'splitText',parentId:o.__id,index:n.__index11,offset:a});}"
         "catch(e){ok=false;}if(!ok){throw new Error('splitText update failed');}"
         "data11=s.substring(0,a);"
-        "list11=split11(o,i);if(!list11||list11.length<=i+1){"
-        "throw new Error('splitText wrapper unavailable');}return list11[i+1];};}"
+        "list11=split11(o,n.__index11);if(!list11||list11.length<=n.__index11+1){"
+        "throw new Error('splitText wrapper unavailable');}return list11[n.__index11+1];};}"
         "if(t===3){n.replaceWholeText=function(v){var s,ok,list11,start,end,j,next11;"
         "requireCharacterData11();s=String(v);list11=nodes(o);start=n.__index11;"
         "end=start;while(start>0&&list11[start-1]&&list11[start-1].nodeType===3){start--;}"
@@ -5605,6 +5605,28 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "o.__nodes11=list(next);for(j=0;j<next.length;j++){"
         "if(next[j]&&next[j].__owner11===o){next[j].__index11=j;}}"
         "o.__children9=null;return o.__nodes11;}"
+        "function normalize11(o){var old,i,j,n,ok,snap,keepers,keepIndex,"
+        "runHasKeeper,next,count,type,id;"
+        "if(!o||o.nodeType!==1||typeof o.__id!=='string'||o.__id===''){"
+        "throw new Error('normalize unavailable');}old=nodes(o);snap=[];keepers=[];"
+        "for(i=0;i<old.length;i++){n=old[i];if(n&&n.nodeType===1&&"
+        "typeof n.normalize==='function'){n.normalize();}}"
+        "runHasKeeper=false;for(i=0;i<old.length;i++){n=old[i];"
+        "snap[i]=n&&n.nodeType===3?String(n.data):null;"
+        "if(!n||n.nodeType!==3){runHasKeeper=false;}else if(snap[i]!==''&&!runHasKeeper){"
+        "keepers[keepers.length]=n;runHasKeeper=true;}}"
+        "try{ok=g.__pcoreSetText({op:'normalize',"
+        "parentId:o.__id});}catch(normalizeError){ok=false;}"
+        "if(!ok){throw new Error('normalize update failed');}next=[];"
+        "keepIndex=0;count=num(o,14,0);for(i=0;i<count;i++){"
+        "type=num(o,15,i);if(type===3){if(keepIndex<keepers.length){"
+        "next[next.length]=keepers[keepIndex++];}else{n=child(o,i);"
+        "if(n!==null){next[next.length]=n;}}}else if(type===1){"
+        "id=r(o,18,i);n=wrap(id);if(n!==null){next[next.length]=n;}"
+        "}else{n=child(o,i);if(n!==null){next[next.length]=n;}}}"
+        "o.__nodes11=list(next);for(j=0;j<next.length;j++){"
+        "if(next[j]&&next[j].__owner11===o){next[j].__index11=j;}}"
+        "o.__children9=null;}"
         "function current11(n){var a=n&&n.__owner11?n.__owner11.__nodes11:null;"
         "return !!(a&&n.__index11>=0&&n.__index11<a.length&&a[n.__index11]===n); }"
         "function parent(o){var id;if(o&&o.__owner11){return current11(o)?o.__owner11:null;}"
@@ -5632,6 +5654,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(P.prototype,'nextElementSibling',{get:function(){return elementSibling(this,1);},enumerable:true});"
         "P.prototype.hasChildNodes=function(){return nodes(this).length>0;};"
         "P.prototype.contains=function(other){return contains(this,other);};"
+        "P.prototype.normalize=function(){normalize11(this);};"
         "if(!g.Node||typeof g.Node!=='object'){g.Node={};}"
         "function constant(name,value){if(g.Node[name]===undefined){Object.defineProperty(g.Node,name,{value:value,writable:false,configurable:false,enumerable:true});}}"
         "constant('ELEMENT_NODE',1);constant('ATTRIBUTE_NODE',2);constant('TEXT_NODE',3);"
@@ -5731,6 +5754,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "doc.isDefaultNamespace=function(v){return defaultNamespace12(doc,v);};"
         "doc.lookupNamespaceURI=function(v){return lookupNamespace12(doc,v);};"
         "doc.lookupPrefix=function(v){return lookupPrefix12(doc,v);};"
+        "doc.normalize=function(){var root=doc.documentElement;"
+        "if(root&&typeof root.normalize==='function'){root.normalize();}};"
         "function constant(name,value){if(N[name]===undefined){Object.defineProperty(N,name,{"
         "value:value,writable:false,configurable:false,enumerable:true});}}"
         "constant('DOCUMENT_POSITION_DISCONNECTED',1);constant('DOCUMENT_POSITION_PRECEDING',2);"
@@ -6002,6 +6027,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptSetCharacterDataChildFn set_character_data_child;
     PBrowserScriptSplitTextChildFn split_text_child;
     PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7305,7 +7331,15 @@ static int p_browser_script_dom_set_text(void *pw,
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "replaceWholeText") == 0) {
+    if (op != NULL && strcmp(op, "normalize") == 0) {
+        if (binding->normalize_child_text == NULL || parent_id == NULL ||
+                parent_id[0] == '\0' ||
+                strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->normalize_child_text(binding->pw, parent_id);
+    } else if (op != NULL && strcmp(op, "replaceWholeText") == 0) {
         if (binding->replace_whole_text_child == NULL || parent_id == NULL ||
                 parent_id[0] == '\0' || child_index < 0 || text == NULL ||
                 strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
@@ -10090,6 +10124,49 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx4(
     binding->set_character_data_child = callbacks->set_character_data_child;
     binding->split_text_child = callbacks->split_text_child;
     binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx5(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx5 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx5) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

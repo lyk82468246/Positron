@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1209
+#define TEST_MAX_NUMBER 1210
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15256,6 +15256,29 @@ static int pcore_browser_script_dom_replace_whole_text_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_normalize_child_text(void *pw,
+        const char *element_id)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || element_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeNormalizeById(bridge->document, element_id);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16787,7 +16810,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx4 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx5 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -16959,6 +16982,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_split_text_child;
     dom_write_callbacks.replace_whole_text_child =
             pcore_browser_script_dom_replace_whole_text_child;
+    dom_write_callbacks.normalize_child_text =
+            pcore_browser_script_dom_normalize_child_text;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17156,7 +17181,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx4(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx5(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -47981,6 +48006,158 @@ static BOOL test1209_browser_text_replace_whole_text_contract(void)
             " run through the Core-owned mutation boundary, keeps the target"
             " wrapper and snapshots coherent, stops at element/comment"
             " boundaries, and rejects detached or unavailable targets.");
+    return TRUE;
+}
+
+/* TEST 1210 - bounded Node.normalize removes empty Text children and merges
+ * adjacent Text runs while preserving the first wrapper and non-Text
+ * boundaries; Browser recursion is limited to addressed element wrappers. */
+static BOOL test1210_browser_node_normalize_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'>alpha<em id='nest'>beta</em>omega</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_STRUCTURE[] =
+        "(function(){var r,e,t,n,s,a,b,first,empty;"
+        "r=document.getElementById('root');e=document.getElementById('nest');"
+        "first=r.childNodes[0];empty=first.splitText(0);t=empty;"
+        "n=e.firstChild;s=t.splitText(2);s.splitText(3);"
+        "n.splitText(2);r.normalize();a=r.childNodes;b=e.childNodes;"
+        "document.getElementById('result').textContent=String(a.length===3&&"
+        "a[0]===t&&t.data==='alpha'&&first.parentNode===null&&first.data===''&&"
+        "a[1]===e&&a[2].data==='omega'&&"
+        "b.length===1&&b[0]===n&&n.data==='beta');})();";
+    static const char PROBE_SNAPSHOT[] =
+        "(function(){var r,e,t,n,s,z,q,rs,ns;"
+        "r=document.getElementById('root');e=document.getElementById('nest');"
+        "t=r.childNodes[0];n=e.firstChild;s=t.splitText(2);z=s.splitText(3);"
+        "q=n.splitText(2);rs=r.childNodes;ns=e.childNodes;r.normalize();"
+        "document.getElementById('result').textContent=String(rs.length===5&&"
+        "rs[0]===t&&rs[1]===s&&rs[2]===z&&rs[3]===e&&"
+        "rs[4].data==='omega'&&ns.length===2&&ns[0]===n&&ns[1]===q&&"
+        "s.parentNode===null&&z.parentNode===null&&q.parentNode===null&&"
+        "z.data===''&&s.data==='pha'&&q.data==='ta');})();";
+    static const char PROBE_METHODS[] =
+        "(function(){var r,t,s,z,stale;"
+        "r=document.getElementById('root');t=r.childNodes[0];s=t.splitText(2);"
+        "z=s.splitText(3);r.normalize();stale=false;"
+        "try{s.replaceWholeText('x');}catch(e){stale=true;}document.normalize();"
+        "document.getElementById('result').textContent=String(stale&&"
+        "typeof r.normalize==='function'&&typeof document.normalize==='function'&&"
+        "typeof t.normalize==='undefined'&&z.parentNode===null);})();";
+    HANDLE document;
+    PCoreLayoutStats stats;
+    char value[128];
+    char id[64];
+    char error[768];
+    int value_bytes;
+    int child_count;
+    int child_type;
+    const char *failed_probe;
+    char probe_detail[768];
+    BOOL core_ok;
+    BOOL script_ok;
+
+    document = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(value, 0, sizeof(value));
+    memset(id, 0, sizeof(id));
+    memset(error, 0, sizeof(error));
+    value_bytes = -1;
+    child_count = -1;
+    child_type = -1;
+    failed_probe = "structure";
+    memset(probe_detail, 0, sizeof(probe_detail));
+    core_ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL && PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 2) == 0 &&
+            PCore_NodeSplitTextChildById(document, "root", 1, 3) == 0 &&
+            PCore_NodeSplitTextChildById(document, "nest", 0, 2) == 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeNormalizeById(document, "nest") == 0 &&
+            PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_NodeNormalizeById(document, "root") == 0 &&
+            PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &child_count) == 0 && child_count == 3 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 0, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "alpha") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 1, NULL, 0, NULL,
+            &child_type) == 0 && child_type == 1 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_ID_AT, 1, id, sizeof(id),
+            &value_bytes, NULL) == 0 && strcmp(id, "nest") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 2, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "omega") == 0 &&
+            PCore_NodeRelationById(document, "nest",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &child_count) == 0 && child_count == 1 &&
+            PCore_NodeRelationById(document, "nest",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 0, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "beta") == 0 &&
+            PCore_NodeNormalizeById(document, "root") == 0 &&
+            PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_GetLayoutStats(document, &stats) == 0 &&
+            PCore_NodeNormalizeById(document, "missing") == 2 &&
+            PCore_NodeNormalizeById(document, NULL) == 1) {
+        core_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-normalize", HTML, PROBE_STRUCTURE,
+            "true", error, sizeof(error));
+    if (script_ok) {
+        failed_probe = "snapshot";
+        script_ok = test_browser_raw_string_fixture_at_url(
+                "http://positron.local/node-normalize", HTML, PROBE_SNAPSHOT,
+                "true", error, sizeof(error));
+    }
+    if (script_ok) {
+        failed_probe = "methods";
+        script_ok = test_browser_raw_string_fixture_at_url(
+                "http://positron.local/node-normalize", HTML, PROBE_METHODS,
+                "true", error, sizeof(error));
+    }
+    if (!core_ok || !script_ok) {
+        if (!script_ok && error[0] != '\0') {
+            strncpy(probe_detail, error, sizeof(probe_detail) - 1);
+            probe_detail[sizeof(probe_detail) - 1] = '\0';
+            _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                    probe_detail);
+            error[sizeof(error) - 1] = '\0';
+        }
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d script=%d value=%s bytes=%d count=%d type=%d",
+                    core_ok, script_ok, value[0] != '\0' ? value : "(null)",
+                    value_bytes, child_count, child_type);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1210 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1210 OK",
+            "Node.normalize now removes empty direct Text nodes and merges"
+            " adjacent runs through Core, recurses through addressed element"
+            " wrappers, preserves the first wrapper and snapshots, keeps"
+            " non-Text boundaries, and rejects stale mutation targets.");
     return TRUE;
 }
 
@@ -106129,6 +106306,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1207: ok = test1207_browser_text_split_contract(); break;
         case 1208: ok = test1208_browser_text_whole_text_contract(); break;
         case 1209: ok = test1209_browser_text_replace_whole_text_contract(); break;
+        case 1210: ok = test1210_browser_node_normalize_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

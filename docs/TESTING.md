@@ -669,6 +669,17 @@ snapshot、`wholeText` 和父级替换均保持一致；缺失/非 Text/越界/d
 reparent、normalize、MutationObserver、完整 live collection、事件或 native/视觉行为。
 宿主只负责 Ex4 callback 接线、fixture、可选 restyle 和断言。
 
+TEST1210 覆盖 `Node.normalize()` 的 Core/Browser 结构整理：宿主注册 Ex5 的
+`normalize_child_text` callback，Browser 对有稳定 id 的元素 wrapper 按受控顺序递归，
+Core 则只处理一个元素的 direct child list。自动断言确认空 Text 被移除、连续 Text
+合并到每段第一个非空节点、元素/Comment/CDATA 边界保持不变、首个非空 Text wrapper
+身份与旧 NodeList snapshot 保持一致、被移除节点成为 detached 快照，以及重复调用、
+缺失目标和非 Text 写入安全失败；同时确认变化后的 retained layout 必须重新
+style/layout 才可读取。没有稳定 id 的嵌套元素会被 Browser 跳过，不伪造可写句柄。
+该门不实现通用节点插入、reparent、独立文本节点删除、MutationObserver、完整 live
+collection、事件或 native/视觉行为；宿主只负责 Ex5 接线、fixture、可选 restyle 和
+断言。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

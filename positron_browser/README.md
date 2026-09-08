@@ -454,27 +454,28 @@ code-unit 语义；offset/count 为有限非负整数，超长 count 截断，�
 `substringData()` 只读，沿用校验；wrapper/detached 留快照，layout 失效。
 
 需要 `Text.splitText()` 时，宿主改用 ABI 追加的
-`PBrowserScriptDomWriteCallbacksEx3`，保留 Ex2 的前三个字段并提供
-`split_text_child`。Browser 只接受当前 direct Text child 的有限非负 UTF-16 offset，
-通过同一 `__pcoreSetText` slot 发送 `{op:"splitText",parentId,index,offset}`；Core
-在 UTF-8 code-point 边界创建并插入紧邻 sibling，offset 等于长度时创建空 Text。成功
-后原 Text wrapper 仍表示前缀，当前 `childNodes` 得到新 snapshot，既有静态 snapshot
-保持不变，宿主负责重新 style/layout/paint。缺失/错误 child、detached wrapper、越界
-offset 或位于 astral code point 内部的 offset 安全失败；该桥不提供通用节点插入、
-reparent、合并、事件或 MutationObserver。
+`PBrowserScriptDomWriteCallbacksEx3.split_text_child`。Browser 只接受 direct Text child
+的非负 UTF-16 offset，经 `__pcoreSetText` 请求 Core 在 code-point 边界插入紧邻
+sibling（末尾 offset 允许空 Text）。原 wrapper 保留为前缀，新的 `childNodes` 是
+snapshot，宿主随后重排。缺失/错误 child、detached wrapper、越界或位于 astral
+code point 内的 offset fail closed。
 
-`Text.wholeText` 是关系 50 的只读 getter：Core/libdom 拼接同级连续 Text，遇
-element、Comment 或 processing-instruction 停止；非 Text 无此属性，detached wrapper
-回退 `data` 快照。读取只产生有界 UTF-8 snapshot，不改 DOM、layout 或资源。
+`Text.wholeText` 是关系 50 的只读 getter：Core 拼接同级连续 Text，遇 element、
+Comment/processing-instruction 停止；非 Text 无此属性，detached 回退 `data`。
+读取为 snapshot，不改 DOM。
 
 需要 `Text.replaceWholeText()` 时，宿主使用 ABI 追加的
 `PBrowserScriptDomWriteCallbacksEx4.replace_whole_text_child`（Ex3 ABI 不变）。Browser
-记录 direct Text child 两侧的连续 wrapper，通过同一 `__pcoreSetText` slot 发送
-`{op:"replaceWholeText",parentId,index,text}`；Core 成功后目标 wrapper 保留身份并移到
-段首，其他相邻 Text wrapper 从新 snapshot 移除但保留数据快照。element、Comment 和
-CDATA 截断范围；缺失/错误 child、detached wrapper 或未注册/失败回调抛出脚本错误。
-成功后需重排；该桥不派发事件或提供通用结构 mutation、
-observer、live collection。
+记录 direct Text child 两侧的相邻段，经 `__pcoreSetText` 发送
+`{op:"replaceWholeText",parentId,index,text}`；Core 让目标 wrapper 保留身份并置于段首，
+其他 Text wrapper 变为 detached，element/Comment/CDATA 是边界。错误 child、detached
+wrapper 或未注册/失败回调抛出脚本错误，成功后宿主重排。
+
+`Node.normalize()` 由 Ex5 的 `normalize_child_text` callback 接入。Browser 递归访问带稳定
+id 的元素 wrapper，再请求 Core 整理 direct children：删除空 Text，合并相邻段到首个非空
+Text，element/Comment/CDATA 为边界。Browser 重建 `childNodes`，保留首个 wrapper；旧
+snapshot/detached 不改写，无 id 后代跳过。变化使 layout 失效，重复调用为 no-op，
+不派发事件/I/O；通用结构 mutation、observer、live collection 不支持。
 
 ### `dialog` 生命周期
 

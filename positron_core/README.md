@@ -192,9 +192,18 @@ style/layout/paint，且不能把 libdom 指针泄漏到 ABI。
 两侧连续的 Text sibling；目标保留 DOM 身份并移动到该逻辑相邻文本段的第一位置，
 element、Comment 和 CDATA 会截断段落。返回 `0` 表示成功，`2` 表示父节点/索引不可用
 或目标不是 Text，`1` 表示参数或 DOM 失败。成功后 retained layout 失效，调用方必须
-重新 style/layout/paint。该入口不派发事件、不获取资源、不做通用插入、reparent、
-normalize 或 live collection，也不暴露被删除节点的可写句柄；它在 WM6 上采用有界的
+重新 style/layout/paint。该入口不派发事件、不获取资源、不做通用插入、reparent 或 live
+collection，也不暴露被删除节点的可写句柄；它在 WM6 上采用有界的
 显式 sibling walk，避免 split 后 libdom helper 的 stale-cursor 风险。
+
+`PCore_NodeNormalizeById` 提供一个同样有界的 direct-child 结构整理：它按元素 id 遍历
+该元素的直接子节点，删除空 Text，并把每段连续 Text 合并到其中第一个非空节点；元素、
+Comment、CDATA 和其他非 Text 节点都是边界。实现使用显式 sibling walk，不依赖 WM6 上
+可能留下 stale cursor 的 libdom helper。成功且列表发生变化时 retained layout 会失效，
+调用方必须重新 style/layout/paint；没有事件、资源获取、reparent 或 live collection
+副作用。返回 `0` 表示成功（包括 no-op），`2` 表示缺失或非 element，`1` 表示参数或
+其他 DOM 失败。递归顺序和 Browser wrapper/cache reconciliation 由上层决定；Core 只
+整理一个已寻址元素的直接子列表。
 
 结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
 

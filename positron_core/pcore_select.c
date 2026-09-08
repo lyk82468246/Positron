@@ -8211,6 +8211,218 @@ PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
     return 0;
 }
 
+/* Normalize one direct child list without using libdom's cursor-based
+ * replaceWholeText helper. The caller owns the recursion policy; this helper
+ * only removes empty Text nodes and merges adjacent non-empty Text nodes into
+ * the first node in each run. */
+static int pcore_normalize_direct_text_children(dom_node *parent,
+        int *out_changed)
+{
+    dom_node *current;
+    dom_node *next;
+    dom_node *removed;
+    dom_node_type type;
+    dom_node_type next_type;
+    dom_string *current_data;
+    dom_string *next_data;
+    dom_string *combined;
+    dom_exception err;
+    int changed;
+
+    if (out_changed != NULL) {
+        *out_changed = 0;
+    }
+    if (parent == NULL || out_changed == NULL) {
+        return 1;
+    }
+    current = NULL;
+    if (dom_node_get_first_child(parent, &current) != DOM_NO_ERR) {
+        if (current != NULL) {
+            dom_node_unref(current);
+        }
+        return 1;
+    }
+    changed = 0;
+    while (current != NULL) {
+        if (dom_node_get_node_type(current, &type) != DOM_NO_ERR) {
+            dom_node_unref(current);
+            return 1;
+        }
+        if (type != DOM_TEXT_NODE) {
+            next = NULL;
+            err = dom_node_get_next_sibling(current, &next);
+            dom_node_unref(current);
+            if (err != DOM_NO_ERR) {
+                if (next != NULL) {
+                    dom_node_unref(next);
+                }
+                return 1;
+            }
+            current = next;
+            continue;
+        }
+
+        current_data = NULL;
+        err = dom_node_get_node_value(current, &current_data);
+        if (err != DOM_NO_ERR || current_data == NULL) {
+            if (current_data != NULL) {
+                dom_string_unref(current_data);
+            }
+            dom_node_unref(current);
+            return 1;
+        }
+        if (dom_string_length(current_data) == 0) {
+            next = NULL;
+            err = dom_node_get_next_sibling(current, &next);
+            if (err != DOM_NO_ERR) {
+                if (next != NULL) {
+                    dom_node_unref(next);
+                }
+                dom_string_unref(current_data);
+                dom_node_unref(current);
+                return 1;
+            }
+            removed = NULL;
+            err = dom_node_remove_child(parent, current, &removed);
+            if (removed != NULL) {
+                dom_node_unref(removed);
+            }
+            dom_node_unref(current);
+            dom_string_unref(current_data);
+            if (err != DOM_NO_ERR) {
+                if (next != NULL) {
+                    dom_node_unref(next);
+                }
+                return 1;
+            }
+            changed = 1;
+            current = next;
+            continue;
+        }
+
+        while (1) {
+            next = NULL;
+            err = dom_node_get_next_sibling(current, &next);
+            if (err != DOM_NO_ERR) {
+                if (next != NULL) {
+                    dom_node_unref(next);
+                }
+                dom_string_unref(current_data);
+                dom_node_unref(current);
+                return 1;
+            }
+            if (next == NULL) {
+                break;
+            }
+            if (dom_node_get_node_type(next, &next_type) != DOM_NO_ERR) {
+                dom_node_unref(next);
+                dom_string_unref(current_data);
+                dom_node_unref(current);
+                return 1;
+            }
+            if (next_type != DOM_TEXT_NODE) {
+                dom_node_unref(next);
+                break;
+            }
+            next_data = NULL;
+            err = dom_node_get_node_value(next, &next_data);
+            if (err != DOM_NO_ERR || next_data == NULL) {
+                if (next_data != NULL) {
+                    dom_string_unref(next_data);
+                }
+                dom_node_unref(next);
+                dom_string_unref(current_data);
+                dom_node_unref(current);
+                return 1;
+            }
+            if (dom_string_length(next_data) != 0) {
+                combined = NULL;
+                err = dom_string_concat(current_data, next_data, &combined);
+                if (err != DOM_NO_ERR || combined == NULL) {
+                    if (combined != NULL) {
+                        dom_string_unref(combined);
+                    }
+                    dom_string_unref(next_data);
+                    dom_node_unref(next);
+                    dom_string_unref(current_data);
+                    dom_node_unref(current);
+                    return 1;
+                }
+                err = dom_node_set_node_value(current, combined);
+                if (err != DOM_NO_ERR) {
+                    dom_string_unref(combined);
+                    dom_string_unref(next_data);
+                    dom_node_unref(next);
+                    dom_string_unref(current_data);
+                    dom_node_unref(current);
+                    return 1;
+                }
+                dom_string_unref(current_data);
+                current_data = combined;
+            }
+            removed = NULL;
+            err = dom_node_remove_child(parent, next, &removed);
+            if (removed != NULL) {
+                dom_node_unref(removed);
+            }
+            dom_string_unref(next_data);
+            dom_node_unref(next);
+            if (err != DOM_NO_ERR) {
+                dom_string_unref(current_data);
+                dom_node_unref(current);
+                return 1;
+            }
+            changed = 1;
+        }
+        dom_string_unref(current_data);
+        next = NULL;
+        err = dom_node_get_next_sibling(current, &next);
+        dom_node_unref(current);
+        if (err != DOM_NO_ERR) {
+            if (next != NULL) {
+                dom_node_unref(next);
+            }
+            return 1;
+        }
+        current = next;
+    }
+    *out_changed = changed;
+    return 0;
+}
+
+PCORE_API int PCore_NodeNormalizeById(HANDLE hDoc, const char *element_id)
+{
+    dom_document *doc;
+    dom_element *element;
+    dom_node_type type;
+    int changed;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
+        return 1;
+    }
+    element = pcore_element_by_id(doc, element_id);
+    if (element == NULL) {
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) element, &type) != DOM_NO_ERR ||
+            type != DOM_ELEMENT_NODE) {
+        dom_node_unref((dom_node *) element);
+        return 2;
+    }
+    changed = 0;
+    if (pcore_normalize_direct_text_children((dom_node *) element,
+            &changed) != 0) {
+        dom_node_unref((dom_node *) element);
+        return 1;
+    }
+    dom_node_unref((dom_node *) element);
+    if (changed) {
+        pcore_render_invalidate(doc);
+    }
+    return 0;
+}
+
 PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id)
 {

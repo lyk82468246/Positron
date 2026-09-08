@@ -111,7 +111,11 @@ int pcore_font_initialize(HMODULE module)
         changed |= g_emoji_loaded;
     }
     if (changed) {
-        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+        /* WM6 can retain a stale test-host window after a timed-out run.
+         * A synchronous broadcast would make the next PCore_Init wait on
+         * that peer forever; the font table is already installed, so notify
+         * peers asynchronously and keep initialization fail-closed. */
+        PostMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
     }
     return 0;
 }
@@ -145,7 +149,7 @@ void pcore_font_shutdown(void)
     g_symbols_path[0] = L'\0';
     g_emoji_path[0] = L'\0';
     if (changed) {
-        SendMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+        PostMessage(HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
     }
 }
 
