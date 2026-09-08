@@ -8588,8 +8588,9 @@ PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
     return 0;
 }
 
-PCORE_API int PCore_NodeRemoveTextChildById(HANDLE hDoc,
-        const char *parent_id, unsigned int child_index)
+static int pcore_node_remove_character_data_child_impl(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        dom_node_type expected_type)
 {
     dom_document *doc;
     dom_element *parent;
@@ -8615,7 +8616,7 @@ PCORE_API int PCore_NodeRemoveTextChildById(HANDLE hDoc,
         return result == 2 ? 2 : 1;
     }
     if (dom_node_get_node_type(child, &child_type) != DOM_NO_ERR ||
-            child_type != DOM_TEXT_NODE) {
+            child_type != expected_type) {
         dom_node_unref(child);
         dom_node_unref((dom_node *) parent);
         return 2;
@@ -8637,6 +8638,32 @@ PCORE_API int PCore_NodeRemoveTextChildById(HANDLE hDoc,
     dom_node_unref(child);
     dom_node_unref((dom_node *) parent);
     return 0;
+}
+
+PCORE_API int PCore_NodeRemoveTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index)
+{
+    return pcore_node_remove_character_data_child_impl(hDoc, parent_id,
+            child_index, DOM_TEXT_NODE);
+}
+
+PCORE_API int PCore_NodeRemoveCharacterDataChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        unsigned int node_type)
+{
+    dom_node_type expected_type;
+
+    if (node_type == 3U) {
+        expected_type = DOM_TEXT_NODE;
+    } else if (node_type == 4U) {
+        expected_type = DOM_CDATA_SECTION_NODE;
+    } else if (node_type == 8U) {
+        expected_type = DOM_COMMENT_NODE;
+    } else {
+        return 1;
+    }
+    return pcore_node_remove_character_data_child_impl(hDoc, parent_id,
+            child_index, expected_type);
 }
 
 PCORE_API int PCore_NodeAttributeById(HANDLE hDoc, const char *element_id,

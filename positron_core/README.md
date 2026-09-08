@@ -155,7 +155,7 @@ document/head/body 等结构 child token。成功后会丢弃 retained box tree�
 执行 style/layout/paint，并重新取得几何和 native-control 快照。该入口不派发事件、不做
 资源获取或 native 控件操作，返回 `0` 表示成功、`2` 表示目标或关系不可删除、`1` 表示
 参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；通用节点
-插入、reparent、其他文本节点删除和完整 live collection 仍不在此边界内。
+插入、reparent、其他节点删除和完整 live collection 仍不在此边界内。
 
 `PCore_NodeInsertTextChildById` 是一个互补的结构 mutation 窄入口：它按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count
@@ -163,16 +163,23 @@ id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引
 失效；父节点或索引不可用返回 `2`，参数、非法 UTF-8 或其他 DOM 失败返回 `1`。该
 入口只改变 Core DOM，不派发事件、不获取资源、不操作 native 控件；调用方必须重新
 style/layout/paint，并重新取得几何和控件快照。它不提供通用 Node/DocumentFragment
-插入、已有节点 reparent、其他文本节点删除或 live collection。
+插入、已有节点 reparent、其他节点删除或 live collection。
 
 `PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或
-其他 DOM 失败返回 `1`。它不派发事件、不获取资源、不操作 native 控件，也不支持
-Comment/CDATA、通用 Node/DocumentFragment 删除、reparent 或 live collection；调用方
-必须在成功后重新 style/layout/paint。Browser 的 `Text.remove()` 与
-`Element.removeChild(Text)` 只复用这条窄路径，前者对 detached wrapper 是 no-op，后者
-的 receiver/child 关系校验和 detached wrapper 生命周期由 Browser 负责。
+其他 DOM 失败返回 `1`。该旧入口不派发事件、不获取资源、不操作 native 控件，且继续
+保持原 ABI。Browser 的 `Text.remove()` 与 `Element.removeChild(Text)` 只复用这条窄路径，
+前者对 detached wrapper 是 no-op，后者的 receiver/child 关系校验和 detached wrapper
+生命周期由 Browser 负责。
+
+`PCore_NodeRemoveCharacterDataChildById` 在同一 direct-child 边界补充带显式节点类型的
+删除：`node_type` 只能是 DOM 值 3（Text）、4（CDATA）或 8（Comment），Core 会再次核对
+索引处 child 的实际类型，避免把错误节点删除。返回码、retained-layout 失效、无事件/资源/
+native 控件副作用与 Text-only 入口一致；它仍不提供通用 Node/DocumentFragment 删除、
+reparent、live collection 或其他节点类型。成功后调用方必须重新 style/layout/paint；Browser
+通过 mutation callback Ex3 将 Comment/CDATA wrapper 的 `remove()` 与
+`Element.removeChild()` 转给该入口。
 
 `PCore_NodeSetTextContentById` 与 `PCore_ContentEditableSetTextById` 在成功替换子内容
 后同样丢弃 retained box tree。它们仍然只改变 Core DOM，不派发事件、不获取资源，也不

@@ -5578,7 +5578,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "else if(j===start){next11.push(n);}}o.__nodes11=list(next11);"
         "for(j=0;j<next11.length;j++){if(next11[j]&&next11[j].__owner11===o){"
         "next11[j].__index11=j;}}i=start;o.__children9=null;data11=s;return n;};}"
-        "if(t===3){n.remove=function(){return removeText11(n);};}"
+        "if(t===3||t===4||t===8){n.remove=function(){if(t===3){"
+        "return removeText11(n);}return removeCharacterData11(n);};}"
         "Object.defineProperty(n,'parentNode',{get:function(){return current11(n)?o:null;},enumerable:true});"
         "Object.defineProperty(n,'parentElement',{get:function(){return current11(n)?o:null;},enumerable:true});"
         "Object.defineProperty(n,'previousSibling',{get:function(){return sibling(n,-1);},enumerable:true});"
@@ -5613,11 +5614,25 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "owner.__nodes11=list(next);for(j=0;j<next.length;j++){"
         "if(next[j]&&next[j].__owner11===owner){next[j].__index11=j;}}"
         "owner.__children9=null;return undefined;}"
+        "function removeCharacterData11(n){var owner,old,next,j,ok;"
+        "if(!n||(n.nodeType!==4&&n.nodeType!==8)||!current11(n)){return undefined;}"
+        "owner=n.__owner11;if(!owner||typeof owner.__id!=='string'||"
+        "owner.__id===''||typeof g.__pcoreRemoveChild!=='function'){"
+        "throw new Error('remove unavailable');}"
+        "old=nodes(owner);try{ok=g.__pcoreRemoveChild({"
+        "op:'removeCharacterDataChild',parentId:owner.__id,index:n.__index11,"
+        "nodeType:n.nodeType});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('remove character data failed');}next=[];"
+        "for(j=0;j<old.length;j++){if(old[j]!==n){next.push(old[j]);}}"
+        "owner.__nodes11=list(next);for(j=0;j<next.length;j++){"
+        "if(next[j]&&next[j].__owner11===owner){next[j].__index11=j;}}"
+        "owner.__children9=null;return undefined;}"
         "oldRemoveChild11=P.prototype.removeChild;"
         "P.prototype.removeChild=function(child){"
-        "if(child&&child.nodeType===3){"
+        "if(child&&(child.nodeType===3||child.nodeType===4||child.nodeType===8)){"
         "if(child.__owner11!==this||!current11(child)){throw new Error('removeChild failed');}"
-        "removeText11(child);return child;}"
+        "if(child.nodeType===3){removeText11(child);}else{removeCharacterData11(child);}"
+        "return child;}"
         "if(typeof oldRemoveChild11==='function'){return oldRemoveChild11.call(this,child);}"
         "throw new Error('removeChild failed');};"
         "function split11(o,index){var old=o.__nodes11,next=[],j,x;"
@@ -6173,6 +6188,7 @@ typedef struct p_browser_script_dom_write_binding {
 typedef struct p_browser_script_dom_mutation_binding {
     PBrowserScriptDomMutationCallbacks callbacks;
     PBrowserScriptRemoveTextChildFn remove_text_child;
+    PBrowserScriptRemoveCharacterDataChildFn remove_character_data_child;
 } p_browser_script_dom_mutation_binding;
 
 typedef struct p_browser_script_content_editable_binding {
@@ -7583,6 +7599,15 @@ static int p_browser_script_dom_remove_child(void *pw,
         }
         changed = binding->remove_text_child(binding->callbacks.pw,
                 parent_id, (unsigned int) child_index);
+    } else if (op != NULL && strcmp(op, "removeCharacterDataChild") == 0) {
+        if (binding->remove_character_data_child == NULL ||
+                child_index < 0 || (node_type != 4 && node_type != 8)) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->remove_character_data_child(
+                binding->callbacks.pw, parent_id,
+                (unsigned int) child_index, (unsigned int) node_type);
     } else {
         if (child_id == NULL || child_id[0] == '\0' ||
                 strlen(child_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
@@ -10436,6 +10461,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(
     }
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
     binding->remove_text_child = NULL;
+    binding->remove_character_data_child = NULL;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);
@@ -10472,6 +10498,46 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx2(
     }
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
     binding->remove_text_child = callbacks->remove_text_child;
+    binding->remove_character_data_child = NULL;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_mutation = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx3(
+        HANDLE hSession,
+        const PBrowserScriptDomMutationCallbacksEx3 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_mutation_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomMutationCallbacksEx3) ||
+            callbacks->remove_child == NULL ||
+            callbacks->remove_text_child == NULL ||
+            callbacks->remove_character_data_child == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_mutation != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_mutation_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    binding->remove_text_child = callbacks->remove_text_child;
+    binding->remove_character_data_child =
+            callbacks->remove_character_data_child;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);

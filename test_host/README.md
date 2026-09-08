@@ -78,12 +78,13 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1215，其中
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1216，其中
   TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211/1212 只验证
   Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality，TEST1213 验证
   Core/Browser 的 `Element.append()`/`prepend()` 文本插入，TEST1214 验证
   `Text.remove()` 的 direct-child 删除与 detached 生命周期，TEST1215 验证
-  `Element.removeChild(Text)` 的返回值、共享删除桥和失败边界；
+  `Element.removeChild(Text)` 的返回值、共享删除桥和失败边界，TEST1216 验证
+  Comment CharacterData 的 `remove()`/`removeChild()` 与 Ex3 typed callback；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -430,7 +431,7 @@ TEST1203 断言 Browser/Core 的 Text 自身 mutation：`nodeValue`、`data` 和
 Text 节点，保持连接中 wrapper 与 NodeList snapshot 身份，更新 `length`/父级文本并在
 成功后使 retained layout 失效。元素 child、缺失/越界目标和 detached wrapper 均安全失败；
 旧 wrapper 保留最近一次成功数据。宿主只负责扩展 callback 接线、可选 restyle、fixture
-与断言，仍不实现插入、reparent、其他文本节点删除、MutationObserver 或完整 live collection。
+与断言，仍不实现插入、reparent、其他节点删除、MutationObserver 或完整 live collection。
 
 TEST1204 断言 Text、Comment 的 CharacterData 方法：`appendData()`、`insertData()`、
 `deleteData()` 和 `replaceData()` 在 Browser 侧计算 UTF-16 code-unit 范围后复用同一 Core
@@ -494,16 +495,28 @@ direct Text wrapper 的未过滤 `childNodes` 索引转为 `PCore_NodeRemoveText
 成功后更新父级 `childNodes`/`children`，保留旧 NodeList snapshot 与 detached wrapper
 的数据和身份，并让重复 detached `remove()` 成为 no-op。Core 断言成功、缺失/越界/非
 Text/空 parent 的稳定返回码，Browser 断言父级 textContent 和 wrapper 生命周期；宿主
-只负责 callback 接线、可选 restyle、fixture 与断言。Comment/CDATA、通用 Node/
-DocumentFragment、reparent、其他删除、事件、MutationObserver、live collection 和
-native/视觉行为仍不在该门内。
+只负责 callback 接线、可选 restyle、fixture 与断言。通用 Node/DocumentFragment、
+reparent、其他删除、事件、MutationObserver、live collection 和 native/视觉行为仍不在
+该门内。
 
 TEST1215 验证 `Element.removeChild(Text)` 与 `Text.remove()` 共用 Ex2 mutation callback：
 Browser 只接受当前 receiver 的 connected direct Text，按未过滤 `childNodes` 索引转给
 `PCore_NodeRemoveTextChildById`，成功返回原 wrapper，刷新父级集合并保留旧 snapshot 与
-detached 数据。错误 parent、重复 detached 调用和 Comment 拒绝均必须不产生部分 mutation；
+detached 数据。错误 parent、重复 detached 调用和其他不支持节点均必须不产生部分
+mutation；Comment 的 CharacterData 删除由 TEST1216 覆盖。
 宿主只负责 callback 接线、fixture 与断言，不复制 DOM 语义。通用 Node/DocumentFragment、
 reparent、其他删除、事件、MutationObserver、live collection 和 native/视觉行为仍不在门内。
+
+TEST1216 验证 Comment CharacterData 的有界结构 mutation：宿主注册
+`PBrowserScriptDomMutationCallbacksEx3`，Browser 以未过滤 `childNodes` 索引和节点类型 8
+通过 `__pcoreRemoveChild` 调用 `PCore_NodeRemoveCharacterDataChildById`，支持连接中
+Comment 的 `remove()` 与 `Element.removeChild(comment)`。自动断言覆盖返回的原 wrapper、
+旧 NodeList snapshot、detached `data`/`nodeValue`、父级 `textContent`、错误 parent 和
+重复 detached no-op，同时验证 Core 对 Text、Comment、CDATA 类型匹配及非法节点类型的
+稳定返回码。相同 Ex3 callback 为 CDATA（节点类型 4）保留公共 ABI 路径；当前 HTML 夹具
+不伪造 CDATA 节点。通用 Node/DocumentFragment、reparent、其他删除、事件、
+MutationObserver、live collection 和 native/视觉行为仍不在门内；宿主只负责接线、fixture
+和断言。
 
 ### Native EDIT/SELECT/button/file
 

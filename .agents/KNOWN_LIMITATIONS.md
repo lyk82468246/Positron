@@ -136,13 +136,14 @@
   失效，Core 在 WM6 上显式删除 sibling 以避开 stale cursor。
   `Node.normalize()` 通过 Ex5/Core 整理带 id 元素的 direct children（删空/合并 Text，非
   Text 为边界），并递归可寻址后代；无 id 后代跳过，变化使布局失效。通用插入、reparent、
-  Comment/CDATA/通用删除、MutationObserver/live collection 未实现，错误目标 fail closed。
-  Ex6 允许带 id 元素 `append(text)`/`prepend(text)` 在末尾/零位插入单个 Text；Ex2
-  另允许连接中 direct Text wrapper 的 `Text.remove()` 或其父级
-  `Element.removeChild(text)` 按未过滤索引删除一个 Text，刷新父级 snapshot 并使旧 wrapper
-  成为 detached；重复 detached 的 `Text.remove()` 是 no-op，`removeChild(text)` 则失败且
-  不变更 DOM。Node、多参、>64 子节点、DocumentFragment、已有节点 reparent 和其他删除
-  仍不支持。
+  MutationObserver/live collection 未实现，错误目标 fail closed。Ex6 允许带 id 元素
+  `append(text)`/`prepend(text)` 在末尾/零位插入单个 Text；Ex2 允许连接中 direct Text
+  wrapper 的 `Text.remove()` 或其父级 `Element.removeChild(text)` 按未过滤索引删除一个
+  Text。Ex3 再允许连接中 direct Comment/CDATA wrapper 的 `remove()` 或
+  `Element.removeChild(comment/cdata)`，经 `PCore_NodeRemoveCharacterDataChildById` 按
+  节点类型 8/4 删除；这些路径刷新父级 snapshot 并使旧 wrapper 成为 detached，重复
+  detached 的 `remove()` 是 no-op，`removeChild()` 则失败且不变更 DOM。Node、多参、>64
+  子节点、DocumentFragment、已有节点 reparent 和其他删除仍不支持。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -569,17 +570,18 @@
   `PBrowser_ScriptSessionNotifyResize` 在媒体/resize 事件前的 source 刷新。Browser 的
   pending decode 和 image 终态各限 64 项，未变化的 source 保持 pending；该门不提供
   自动 fetch、选择、layout、paint、通用动态 DOM 插入/删除（仅另有有界 direct-element
-  与 direct-Text removal）、完整媒体查询、绝对 URL、
+  与 direct-CharacterData removal）、完整媒体查询、绝对 URL、
   CORS/referrer、loading 策略或 native 图像视觉。
 - TEST1200 覆盖脚本图片来源 mutation 的可选 typed callback：`img.sizes`、source 的
   `media`/`type`/`srcset`/`sizes` 以及 set/remove attribute 都产生正确的 id、kind、
-  attribute 和 removed 元数据；重复注册、native-function 数量不变、不一致 metadata
-  fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
-  插入/删除（TEST1201/1215 仅覆盖两条有界 removal 路径）、完整 loading、
+attribute 和 removed 元数据；重复注册、native-function 数量不变、不一致 metadata
+fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
+  插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1215 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
-  clone/equality、Ex6 文本插入和 Ex2 `Text.remove()`/`Element.removeChild(Text)` 的
-  wrapper/snapshot、detached、UTF-16 与 retained-layout 边界；逐项合同见
+- TEST1201–1216 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
+  clone/equality、Ex6 文本插入、Ex2 `Text.remove()`/`Element.removeChild(Text)` 与 Ex3
+  Comment CharacterData removal 的 wrapper/snapshot、detached、UTF-16 与 retained-layout
+  边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
   其他结构 mutation、observer/live collection、native/视觉需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

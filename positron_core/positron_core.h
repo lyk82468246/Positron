@@ -339,6 +339,21 @@ PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
 PCORE_API int PCore_NodeRemoveTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index);
 
+/* Remove one existing direct CharacterData child at an unfiltered
+ * childNodes index. `node_type` must be the DOM value 3 (Text), 4 (CDATA)
+ * or 8 (Comment); the indexed child must have that exact type. The parent
+ * must be an addressable element. Returns 0 after removal, 2 when the
+ * parent/index/type is unavailable, and 1 for invalid input or another DOM
+ * failure. A successful removal invalidates retained layout; callers must
+ * style/layout/paint again before using geometry or native-control
+ * snapshots. This additive primitive does not dispatch events, fetch
+ * resources, reparent nodes or provide a live collection. The older
+ * PCore_NodeRemoveTextChildById entry point remains ABI-compatible and is
+ * the Text-only wrapper of this contract. */
+PCORE_API int PCore_NodeRemoveCharacterDataChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        unsigned int node_type);
+
 /* Minimal single-element contenteditable boundary for browser/runtime hosts.
  * The effective state walks the element's ancestors: an explicit true or
  * empty value enables editing, false disables it, plaintext-only enables the

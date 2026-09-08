@@ -137,22 +137,25 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 有界 direct-element DOM mutation：`PCore_NodeRemoveChildById` 按 UTF-8 id 删除一个
   direct element child，拒绝缺失、非 direct、文本节点和 document/head/body 结构 child
   token，并在成功后使 retained layout 失效；调用方必须重新 style/layout/paint。该入口
-  不派发事件、不获取资源、不操作 native 控件；通用节点插入、reparent、其他文本节点删除和完整 live
+  不派发事件、不获取资源、不操作 native 控件；通用节点插入、reparent、其他节点删除和完整 live
   collection 仍由未来能力决定；
 - 同一 DOM 边界还提供 `PCore_NodeInsertTextChildById`：按父元素 UTF-8 id 和未过滤
   `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count 时追加。它既
   不复用也不 reparent 已有节点，成功后使 retained layout 失效，参数/非法 UTF-8、
   不可用父节点或索引安全返回失败码；Core 不派发事件、不获取资源、不操作 native
   控件，调用方负责重新 style/layout/paint。它不扩展为通用 Node/DocumentFragment
-  插入、已有节点 reparent、其他文本节点删除或 live collection；
-- Text-only DOM deletion：`PCore_NodeRemoveTextChildById` 按父元素 UTF-8 id 和未过滤
-  `childNodes` 索引删除一个现有 direct Text child，返回 `0`（成功）、`2`（父级/索引/节点
-  类型不可用）或 `1`（参数/DOM 失败），并使 retained layout 失效。它不派发事件、不获取
-  资源、不操作 native 控件；Browser 的 `Text.remove()` 与
-  `Element.removeChild(Text)` 通过 Ex2 mutation adapter 复用该 primitive，前者对 detached
-  wrapper 是 no-op，后者只接受当前 receiver 的 connected direct Text 并返回被移除 wrapper。
-  Comment/CDATA、通用 Node/DocumentFragment、reparent、其他删除和 live collection 仍未实现，
-  宿主负责后续 style/layout/paint；
+  插入、已有节点 reparent、其他节点删除或 live collection；
+- Text/CharacterData DOM deletion：`PCore_NodeRemoveTextChildById` 保持旧的 Text-only ABI，
+  按父元素 UTF-8 id 和未过滤 `childNodes` 索引删除一个现有 direct Text child；新增的
+  `PCore_NodeRemoveCharacterDataChildById` 在相同边界接受显式 DOM 节点类型 3（Text）、
+  4（CDATA）或 8（Comment），并拒绝类型不匹配的 child。两者返回 `0`（成功）、`2`
+  （父级/索引/节点类型不可用）或 `1`（参数/DOM 失败），成功后使 retained layout 失效；
+  它们不派发事件、不获取资源、不操作 native 控件。Browser 的 Text 路径仍由 Ex2 的
+  `remove_text_child` 复用旧入口；Ex3 追加 `remove_character_data_child`，把 Comment/
+  CDATA wrapper 的 `remove()` 与 `Element.removeChild()` 接到新入口。detached `remove()`
+  是 no-op，`removeChild()` 只接受当前 receiver 的 connected direct CharacterData 并返回
+  被移除 wrapper；宿主负责后续 style/layout/paint。通用 Node/DocumentFragment、reparent、
+  其他删除和 live collection 仍未实现；
 - 文本内容 mutation：`PCore_NodeSetTextContentById` 与
   `PCore_ContentEditableSetTextById` 成功替换子内容后同样使 retained layout 失效，并把
   一个纯文本子节点交给 Browser/宿主重新查询；Browser 使旧的无 id 文本 wrapper 与
@@ -313,14 +316,17 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   receiver snapshot；Node、多参数、超出 64 个现有子节点、不可寻址父级或失败 callback
   fail closed，不产生脚本侧部分提交。该桥复用 `__pcoreSetText`，不增加 native slot；
   Core 的 retained layout 失效和后续 style/layout/paint 仍由宿主负责。DocumentFragment、
-  已有节点 reparent、其他文本节点删除、事件、MutationObserver 和 live collection 不在边界内；
-- `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加 `remove_text_child` 的
-  `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text wrapper 的
-  `childNodes` 索引通过 `__pcoreRemoveChild` 调用 `PCore_NodeRemoveTextChildById`。成功后
-  刷新父级 snapshot，旧 snapshot 与 wrapper 保留数据但 detached；`Text.remove()` 的重复
-  detached 调用为 no-op，`Element.removeChild(Text)` 对 detached 或错误 parent 抛出脚本错误
-  且不变更 DOM。Comment/CDATA、Node/DocumentFragment、reparent、其他删除、事件、observer
-  和 live collection 不在边界内。
+  已有节点 reparent、其他节点删除、事件、MutationObserver 和 live collection 不在边界内；
+- `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加
+  `remove_text_child` 的 `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text
+  wrapper 的 `childNodes` 索引通过 `__pcoreRemoveChild` 调用
+  `PCore_NodeRemoveTextChildById`。Ex3 在不改变旧表布局的前提下再追加
+  `remove_character_data_child`；Comment/CDATA wrapper 以同一 JSON slot 携带节点类型，
+  由宿主转调 `PCore_NodeRemoveCharacterDataChildById`。两条路径都刷新父级 snapshot，
+  旧 snapshot 与 wrapper 保留数据但 detached；`remove()` 的重复 detached 调用为 no-op，
+  `Element.removeChild()` 对 detached、错误 parent、非支持 CharacterData 或类型不匹配抛出
+  脚本错误且不变更 DOM。Node/DocumentFragment、reparent、其他删除、事件、observer 和
+  live collection 不在边界内。
 - 同一 DOM bridge 还提供 `<option>` 的 `value`、`label`、`text` 基础 IDL 属性。Browser
   在对应 attribute 存在时返回 `value`/`label`，缺失时回退到 option 文本；`text` 直接
   读写 option 的纯文本，因此属性或文本 mutation 会即时反映到后续读取和所属 select
@@ -650,7 +656,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `PBrowserScriptDomWriteCallbacks`、Ex2/Ex3/Ex4 布局和 element/Text/CharacterData
   既有语义保持不变。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
-  `remove_text_child`，并复用既有 `__pcoreRemoveChild` JSON/native slot。
+  `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
+  `__pcoreRemoveChild` JSON/native slot；旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

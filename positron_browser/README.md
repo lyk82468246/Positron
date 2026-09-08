@@ -1,6 +1,7 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口的会话层，负责 history、脚本、DOM/Event 和导航候选；不抓网络、不持有 Core 文档。限制见 [`已知限制`](../.agents/KNOWN_LIMITATIONS.md)。
+`positron_browser.dll` 是无窗口会话层，负责 history、脚本、DOM/Event 和导航候选；网络和
+Core 文档不在其所有权内。
 
 ## 产物与依赖
 
@@ -29,7 +30,7 @@ if (PBrowser_HistoryEntryScroll(history, entry_index,
 }
 ```
 
-新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只决定条目语义，不请求 URL、不保存文档、不创建窗口，也不持久化到磁盘。宿主只有在页面真正提交后才应 commit 新导航；失败候选不得污染 history。
+新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只决定条目语义，不请求 URL、创建窗口或持久化；宿主在页面提交后才 commit，失败候选不得污染 history。
 
 浏览器脚本的 `history.scrollRestoration` 初始为 `auto`，也可以设为
 `manual`。Browser 通过 `PBrowser_ScriptSessionGetScrollRestoration()` 把这项
@@ -428,16 +429,19 @@ slot，不增加脚本 native-function 数量；未注册时 mutation 仍成功�
 
 宿主注册 `PBrowserScriptDomMutationCallbacks` 后，`remove_child` 将 UTF-8
 `parent_id`/`child_id` 转给 `PCore_NodeRemoveChildById`。`Element.removeChild()` 与连接中的
-`Element.remove()` 只接受直接 element child，成功刷新 `children`/`childNodes` snapshot；
-detached element 是 no-op。Core 丢弃 retained layout，错误关系、结构 token、过长 id 或
-未注册 callback fail closed，不派发事件，宿主随后重排。
+`Element.remove()` 只接受直接 element child；成功刷新 `children`/`childNodes` snapshot，
+Core 丢弃 retained layout，错误关系、结构 token、过长 id 或未注册 callback fail closed，
+不派发事件，宿主随后重排。detached element 是 no-op。
 
 `PBrowserScriptDomMutationCallbacksEx2` 在旧表后追加 `remove_text_child`，不改变 ABI。
-连接中的 `Text.remove()` 与 `Element.removeChild(text)` 对 direct Text 通过
-`__pcoreRemoveChild` 发送 `{op:"removeTextChild", parentId, index, nodeType:3}`，由 callback
-转给 `PCore_NodeRemoveTextChildById`；刷新父级 snapshot，wrapper 保留 detached 数据。
-前者重复调用 no-op，后者返回 wrapper；detached、错误 parent、非 Text、reparent、其他删除、
-事件、observer 和 live collection 均 fail closed，宿主负责重排。
+连接中的 `Text.remove()` 与 `Element.removeChild(text)` 通过
+`{op:"removeTextChild", parentId, index, nodeType:3}` 调用
+`PCore_NodeRemoveTextChildById`；前者重复调用 no-op，后者返回原 wrapper。
+Ex3 再追加 `remove_character_data_child`，复用同一 JSON/native slot，nodeType 只能是 4
+（CDATA）或 8（Comment），并转给 `PCore_NodeRemoveCharacterDataChildById`。因此
+Comment/CDATA 也支持 `remove()` 与父级 `Element.removeChild()`；成功均刷新父级 snapshot，
+旧 wrapper 保留数据但 detached。错误 parent、非支持节点、reparent、其他删除、事件、
+observer 和 live collection 均 fail closed。
 
 `textContent` 和非编辑元素的 `innerText` setter 复用既有 text callback；成功后 Core 丢弃
 retained layout，Browser 刷新 `children`/`childNodes`/query snapshot，旧的无 id 文本
@@ -469,9 +473,8 @@ processing-instruction 停止；非 Text 无此属性，detached 回退 `data`�
 重复调用 no-op。
 
 Ex6 `insert_text_child` 复用 `__pcoreSetText` 调用 `PCore_NodeInsertTextChildById`；带 id
-元素的 `append`/`prepend` 仅接受一个值，在末尾/零位插入 Text，成功刷新 snapshot 并使
-layout 失效。Node、多参、>64、无 id、Fragment/reparent/其他删除、事件、observer、live
-collection 不支持；`Text.remove()` 与 `Element.removeChild(text)` 复用该 Ex2 bridge。
+元素的 `append`/`prepend` 仅插入一个 Text，并刷新 snapshot、使 layout 失效。Node、多参、
+>64、无 id、Fragment/reparent、其他删除与观察器不支持。
 
 `Node.cloneNode(deep)` 返回 detached snapshot；深克隆最多 64 个子节点、256 个节点，
 保留属性/顺序/父链/独立数据，并可与 live wrapper 做 `isEqualNode()` 比较。原文不改，
