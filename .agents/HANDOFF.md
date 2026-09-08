@@ -8,9 +8,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-工作区仍在 `main`，本批未提交改动包含两项相互独立的 WM6 稳定性修复：Duktape Dragon4 数值转换上下文移出原生线程栈；参考宿主在 `SetWindowPos(SWP_FRAMECHANGED)` 引发的同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。设备门同时使用唯一 `.part-*` 文件、同卷原子改名和一次有界 RAPI 重连重试，日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。
+工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-`20260908-112916-next765-native-resize-formal2` 已在当前 GUI 连接的 WMDC 目标上以正式 Debug ARMV4I、全新外部目录、无 `-PreserveDeployment` 运行 `TEST1113,1114,1115,1116,1199,999`：6/6 OK、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，完整日志已回收且当前远端目录已删除；该证据早于 fixed-buffer 数值上下文及原子部署改动。其后的 `20260908-113632`–`114342` 尝试均在 RAPI 文件传输阶段失败，宿主未启动，不能当作产品测试结果。`next766` wholeText 草稿仍只保存在本地 `tmp/next766-draft.patch`。
+`20260908-151743-next765-native-resize-formal10` 已在当前 GUI 连接的 WMDC 目标上以正式 Debug ARMV4I、全新外部目录、无 `-PreserveDeployment` 运行 `TEST1113,1114,1115,1116,1199,999`：6/6 OK、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，完整日志已回收且当前远端目录已删除；该目标卷约 32 MiB，预检仍通过。前一轮同目标的 `formal9` 曾在设备门等待窗口内被误判为超时，但随后重开 RAPI 会话取得的两份完整日志一致为 PASS；这一证据已促成当前的超时后最终日志回收路径。更早的 `formal3`–`formal8` 仅在传输阶段失败，宿主未启动，不能当作产品测试结果。`next766` wholeText 草稿仍只保存在本地 `tmp/next766-draft.patch`。
 
 - 当前代码 next765 延续 next761–764 的 Core child-data 与 Browser
   CharacterData bridge；新增 `Text.splitText()` 的 direct-child 有界路径，将 UTF-16
@@ -82,9 +82,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
-- 当前唯一下一步是让用户在需要时重新建立稳定的 WMDC GUI 独占连接，再用当前 fixed-buffer
-  数值转换和原子部署代码完成一次 `1113–1116,1199,999` 正式设备门；通过后才恢复
-  next766 的下一条公共 DLL 纵向能力。不得把测试宿主扩展当作产品语义实现。
+- 当前 fixed-buffer 数值转换、原子部署和 RAPI 日志恢复已由 `formal10` 正式门验证；唯一下一步是
+  从 compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，恢复 next766 的下一条
+  公共 DLL 纵向能力。不得把测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
 
@@ -329,8 +329,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 next765 的 `Text.splitText()` direct-child 结构 mutation、Ex3 callback、UTF-16→UTF-8
 边界映射、wrapper/snapshot reconciliation 和末尾空 sibling 已由 TEST1207 及相邻
-TEST1204–1206、TEST999 回归验证；嵌套 `WM_SIZE` 重入保护和日志快照重试已在正式门
-验证，fixed-buffer 数值上下文与原子部署仍待稳定 RAPI 会话下补一份正式日志。下一步仍必须先从 compatibility
+TEST1204–1206、TEST999 回归验证；嵌套 `WM_SIZE` 重入保护、32 KiB 原子部署、fixed-buffer
+数值上下文和超时后日志恢复已由 `formal10` 在稳定 RAPI 会话下正式验证。下一步仍必须先从 compatibility
 corpus、源码、设备日志或截图固定一个新的真实产品缺口，再决定进入哪个公共 DLL；不要预先
 把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器树、Range/Selection、pinch zoom、
 transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对 URL、CORS、

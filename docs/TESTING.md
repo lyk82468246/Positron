@@ -747,7 +747,7 @@ scripts\device_gate.bat -Candidate feature-name ^
   -EnableJavaScript -TestSelection "1095-1102,999"
 ```
 
-脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，并把 `test_host.exe` 复制为带时间戳的唯一远端 basename，以降低 WM6 在超时后复用旧路径/名称的风险；超时进程仍需在设备端正常结束。本地证据保存在 `tmp/device-runs/`，不会纳入 Git。
+脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，并把 `test_host.exe` 复制为带时间戳的唯一远端 basename，以降低 WM6 在超时后复用旧路径/名称的风险；等待窗口结束时还会重开当前 RAPI 会话并尝试一次完整、稳定的日志回收，只有恢复失败才报告超时；超时进程仍需在设备端正常结束。本地证据保存在 `tmp/device-runs/`，不会纳入 Git。
 
 部署前的 RAPI 预检会分别记录两类空间：优先使用
 `CeGetDiskFreeSpaceEx` 查询 `-RemoteBase` 所在目标卷，同时使用
@@ -776,7 +776,7 @@ object store；因此外部 `\Storage Card` 目标没有路径级 API 时会 fai
 `prior_cleanup_*`、`space_reclaim_removed/partial/preserved`、最终空间状态、`current_cleanup` 和
 `complete_log_retrieved`。
 
-RAPI 没有安全的通用远端终止语义。超时会保存可取得的日志并返回非零，但不会强杀设备进程；重试前应在设备 GUI 确认真正结束遗留 `test_host.exe`。WMDC/RAPI 错误按 [故障排查](TROUBLESHOOTING.md#wmdc-自动设备门不要混淆-corecon-与-rapi)处理。
+RAPI 没有安全的通用远端终止语义。等待窗口结束时，设备门会先重开当前会话并尝试回收一份两次稳定的完整日志；仍无法取得终态时才保存可取得的日志并返回非零，且不会强杀设备进程。重试前应在设备 GUI 确认真正结束遗留 `test_host.exe`。WMDC/RAPI 错误按 [故障排查](TROUBLESHOOTING.md#wmdc-自动设备门不要混淆-corecon-与-rapi)处理。
 
 ### 自动通过标准
 

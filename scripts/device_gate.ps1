@@ -650,11 +650,11 @@ public static class PositronDeviceRapi
         try {
             using (FileStream local = new FileStream(localPath, FileMode.Open,
                     FileAccess.Read, FileShare.Read)) {
-                /* WMDC/RAPI 1 occasionally resets the session when a large
-                 * binary crosses its 512 KiB transfer window.  An 8 KiB
-                 * request keeps each write below the legacy transport's
-                 * packet boundary without changing the file contents. */
-                byte[] buffer = new byte[8192];
+                /* Keep each request below the legacy RAPI packet boundary
+                 * while avoiding thousands of round trips on larger DLLs.
+                 * The unique temporary path still prevents a partial write
+                 * from becoming visible as the final payload. */
+                byte[] buffer = new byte[32768];
                 int count;
                 while ((count = local.Read(buffer, 0, buffer.Length)) > 0) {
                     uint written;
@@ -850,6 +850,7 @@ $remoteExe = $remoteRoot + "\" + $remoteExecutableName
 $remoteLog = $remoteRoot + "\test_host.log"
 $remoteProcessId = 0
 $timedOut = $false
+$recoveredAfterTimeout = $false
 $remoteExitCode = "not_exposed_by_rapi"
 $completionMarker = "none"
 $checkLines = @()
@@ -1251,9 +1252,30 @@ try {
         }
     }
     if ($timedOut) {
-        [void] [PositronDeviceRapi]::TryCopyFileFromDevice(
-                $remoteLog, $localLog)
-        throw "The device gate timed out after $TimeoutSeconds seconds. RAPI 1 does not expose a safe remote wait/terminate API, so the gate did not kill any device process."
+        Write-Stage "timeout reached; reopening current session for one final complete-log snapshot"
+        if ($rapiConnected) {
+            [PositronDeviceRapi]::Disconnect()
+            $rapiConnected = $false
+        }
+        try {
+            [PositronDeviceRapi]::Connect()
+            $rapiConnected = $true
+            if (Receive-CompleteRemoteLog $remoteLog $localLog) {
+                $completionMarker = Get-CompletionMarker(
+                        (Get-Content -LiteralPath $localLog -Raw -Encoding UTF8))
+                $timedOut = $false
+                $recoveredAfterTimeout = $true
+                Write-Stage "recovered complete test_host.log after timeout window"
+            }
+        } catch {
+            Write-Stage ("final log recovery after timeout failed: " +
+                    $_.Exception.Message)
+        }
+        if ($timedOut) {
+            [void] [PositronDeviceRapi]::TryCopyFileFromDevice(
+                    $remoteLog, $localLog)
+            throw "The device gate timed out after $TimeoutSeconds seconds. RAPI 1 does not expose a safe remote wait/terminate API, so the gate did not kill any device process."
+        }
     }
 
     Start-Sleep -Milliseconds 500
@@ -1327,6 +1349,7 @@ $checkLines += "fail_count=$failCount"
 $checkLines += "testbench_pass_count=$passCount"
 $checkLines += "test13_route_ok=$routeOk"
 $checkLines += "completion_marker=$completionMarker"
+$checkLines += "log_recovered_after_timeout=$recoveredAfterTimeout"
 $checkLines += "storage_api=$storageApi"
 $checkLines += "storage_scope=$storageScope"
 $checkLines += "storage_free_bytes=$storageFreeBytes"
