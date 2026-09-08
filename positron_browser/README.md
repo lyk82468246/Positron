@@ -455,10 +455,10 @@ code-unit 语义；offset/count 为有限非负整数，超长 count 截断，�
 
 需要 `Text.splitText()` 时，宿主改用 ABI 追加的
 `PBrowserScriptDomWriteCallbacksEx3.split_text_child`。Browser 只接受 direct Text child
-的非负 UTF-16 offset，经 `__pcoreSetText` 请求 Core 在 code-point 边界插入紧邻
-sibling（末尾 offset 允许空 Text）。原 wrapper 保留为前缀，新的 `childNodes` 是
-snapshot，宿主随后重排。缺失/错误 child、detached wrapper、越界或位于 astral
-code point 内的 offset fail closed。
+的非负 UTF-16 offset，经 `__pcoreSetText` 请求 Core 在 code-point 边界插入紧邻 sibling
+（末尾允许空 Text）。原 wrapper 保留为前缀，新的 `childNodes` 是 snapshot，宿主随后
+重排；缺失/错误 child、detached wrapper、越界或位于 astral code point 内的 offset
+fail closed。
 
 `Text.wholeText` 是关系 50 的只读 getter：Core 拼接同级连续 Text，遇 element、
 Comment/processing-instruction 停止；非 Text 无此属性，detached 回退 `data`。
@@ -466,16 +466,18 @@ Comment/processing-instruction 停止；非 Text 无此属性，detached 回退 
 
 需要 `Text.replaceWholeText()` 时，宿主使用 ABI 追加的
 `PBrowserScriptDomWriteCallbacksEx4.replace_whole_text_child`（Ex3 ABI 不变）。Browser
-记录 direct Text child 两侧的相邻段，经 `__pcoreSetText` 发送
-`{op:"replaceWholeText",parentId,index,text}`；Core 让目标 wrapper 保留身份并置于段首，
-其他 Text wrapper 变为 detached，element/Comment/CDATA 是边界。错误 child、detached
-wrapper 或未注册/失败回调抛出脚本错误，成功后宿主重排。
+记录 direct Text child 的相邻段，经 `__pcoreSetText` 发送
+`{op:"replaceWholeText",parentId,index,text}`；Core 保留目标身份并置于段首，其他 Text
+wrapper 变为 detached，element/Comment/CDATA 是边界。错误 child、detached wrapper 或
+未注册/失败回调 fail closed，成功后宿主重排。
 
-`Node.normalize()` 由 Ex5 的 `normalize_child_text` callback 接入。Browser 递归访问带稳定
-id 的元素 wrapper，再请求 Core 整理 direct children：删除空 Text，合并相邻段到首个非空
-Text，element/Comment/CDATA 为边界。Browser 重建 `childNodes`，保留首个 wrapper；旧
-snapshot/detached 不改写，无 id 后代跳过。变化使 layout 失效，重复调用为 no-op，
-不派发事件/I/O；通用结构 mutation、observer、live collection 不支持。
+`Node.normalize()` 由 Ex5 callback 接入：递归带稳定 id 的元素后代，Core 整理 direct
+children（删空/合并 Text，element/Comment/CDATA 为边界）；重建 `childNodes`，保留首个
+wrapper，无 id 跳过。变化失效 layout，重复调用 no-op，不派发事件/I/O。
+
+`Node.cloneNode(deep)` 返回 detached snapshot：默认浅复制，`true` 深复制最多 64 个 direct
+children/256 个节点，保留属性、顺序、parent links 和独立数据；不改原文档，超限/不支持
+节点 fail closed。
 
 ### `dialog` 生命周期
 

@@ -10,25 +10,16 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 `next768` 设备证据、此前 `next767`/`formal10` 证据及失败实验均在“最新有效设备证据”段落说明；更早的传输失败记录只保留在 Git 历史和 `docs/history/`，不作为产品通过依据。
+最新 `next769` 设备证据、此前 `next768`/`next767`/`formal10` 证据及失败实验均在“最新有效设备证据”段落说明；更早的传输失败记录只保留在 Git 历史和 `docs/history/`，不作为产品通过依据。
 
-- 当前代码 next768 延续 next761–767 的 Core child-data 与 Browser
-  CharacterData bridge；Ex3 的 `Text.splitText()` 与关系 50 的 `Text.wholeText` ABI
-  保持不变。Ex4 新增 `Text.replaceWholeText()` 的 direct-child 有界路径：Core 写入
-  目标值、显式删除两侧连续 Text sibling 并让目标保留身份且移动到段首，Browser 更新
-  当前 snapshot，宿主只负责 callback 接线和可选 restyle。成功 mutation 仍使 retained
-  layout 失效，Browser/宿主负责事件策略、重新 style/layout/paint；element/Comment/
-  CDATA 边界、缺失/错误 child 和 detached wrapper 均 fail closed。为规避 WM6 上 split
-  后 libdom helper 的 stale-cursor 卡死，Core 使用有界逐 sibling 删除，未改变公共语义。
-  Ex5 进一步新增 `Node.normalize()` 的 direct-child 有界路径：Core 删除空 Text、把
-  连续 Text 合并到每段第一个非空节点并在变化时失效 retained layout；Browser 对带稳定
-  id 的元素 wrapper 按受控顺序递归，按新 child relation 重建 snapshot，并保持首个非空
-  Text wrapper 身份。没有稳定 id 的嵌套元素被跳过，不伪造可写句柄。`test_host` 只增加
-  TEST1209/1210 fixture、边界断言与 Ex4/Ex5 callback 接线，没有承载产品 DOM
-  或布局语义。设备门为每次远端启动使用唯一 executable basename，仍只复用 WMDC GUI
-  当前唯一 RAPI 会话，超时进程需在设备端正常结束。
-  `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1210。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- 当前代码 next769 延续 next761–768 的 Core child-data 与 Browser CharacterData bridge，
+  保持 Ex3 `Text.splitText()`、关系 50 `wholeText`、Ex4 `replaceWholeText()` 和 Ex5
+  `Node.normalize()` 的有界 ABI/失效合同；Browser 新增 `Node.cloneNode(deep)` detached
+  snapshot。产品语义仍在 Core/Browser，`test_host` 只接 callback、fixture 和断言；错误
+  child、结构边界、失效 wrapper 与超预算均 fail closed。
+- 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
+  超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
+- `TEST_MAX_NUMBER` 已为 1211。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -53,13 +44,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、direct
   `submit()`、detached `FormData`、图片元数据/decode/image-map、selector 子集和
-  source-selection 生命周期已形成有界合同；TEST1170–1210 的逐项夹具、边界和错误回退
-  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1210 还覆盖 source
+  source-selection 生命周期已形成有界合同；TEST1170–1211 的逐项夹具、边界和错误回退
+  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1211 还覆盖 source
   mutation callback、direct-element removal、元素文本内容、Text/Comment/CDATA
   CharacterData mutation、`substringData()` 范围、`Text.splitText()`/`wholeText`/
-  `replaceWholeText()` 结构合同和 `Node.normalize()` 递归/快照合同，均保持产品语义在
-  Core/Browser 而非宿主。TEST1209–1210 还覆盖 Ex4/Ex5 callback、相邻 Text 合并、
-  目标/首个非空 wrapper 保持身份和 detached snapshot。
+  `replaceWholeText()` 结构合同、`Node.normalize()` 递归/快照和 `Node.cloneNode()`
+  detached snapshot 合同，均保持产品语义在 Core/Browser 而非宿主。TEST1209–1211 还
+  覆盖 Ex4/Ex5 callback、相邻 Text 合并、目标/首个非空 wrapper 保持身份、克隆属性和
+  独立数据。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -87,16 +79,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   边界、UTF-8 probe/truncation、只读 getter 和 detached 快照；
   next767 再补齐 `Text.replaceWholeText()` 的 Ex4/Core 有界相邻段合并；next768 再补齐
   `Node.normalize()` 的 Ex5/Core direct-child 整理、可寻址 wrapper 递归和新旧 snapshot
-  reconciliation；
+  reconciliation；next769 再补齐 Browser-owned `Node.cloneNode(deep)` 的有界 detached
+  snapshot，覆盖属性、子树、parent links 和克隆独立性；
   稳定合同和逐测试说明以
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - 当前 fixed-buffer 数值转换、原子部署和 RAPI 日志恢复已由 `formal10` 正式门验证；`next766`
-  的 wholeText、`next767` 的 replaceWholeText 和 `next768` 的 Node.normalize 纵切均已有
-  正式设备门证据。下一步应从 compatibility corpus、源码、设备日志或截图固定一个新的真实
-  产品缺口，选择 next769 的下一条公共 DLL 纵向能力。不得把测试宿主扩展当作产品语义实现。
+  的 wholeText、`next767` 的 replaceWholeText、`next768` 的 Node.normalize 和 `next769`
+  的 Node.cloneNode 纵切均已有正式设备门证据。下一步应从 compatibility corpus、源码、
+  设备日志或截图固定一个新的真实产品缺口，选择 next770 的下一条公共 DLL 纵向能力。不得
+  把测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
 
@@ -137,6 +131,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   合并到第一个非空节点；Browser 对带 id 的后代 wrapper 按受控顺序递归并保持首个非空
   wrapper 与旧 snapshot。宿主负责输入/事件策略和重新 style/layout/paint；通用节点插入、
   reparent、独立文本节点删除、MutationObserver 与完整 live collection 仍未实现。
+- Browser 的 `Node.cloneNode(deep)` 返回 Browser-owned detached snapshot：浅/深克隆保留
+  有界 element 属性、子节点顺序、parent links 和独立数据，超限或不支持类型 fail closed；
+  它不改变 Core 文档、retained layout 或事件 listener。
 - Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle、native 控件事务、导航资源事务、候选生命周期/结果协调和 FormData snapshot bridge（含 Ex submitter 与 formdata 事件路径）。`select.options`、`selectedOptions`、`length`、`option.index`、`option.form`、fieldset 的 type/form/elements、img/object 的 form 以及 output 的 form/labels、`form.elements` 中的 fieldset/object/output enumeration 也在 Browser 中以有界、可寻址元素 bridge 提供。
 - Browser script session 的 `PBrowser_ScriptSessionRunTaskCheckpoint` 统一驱动 timer、animation frame、message、idle 和 microtask：调用方选择阶段后，Browser 按固定顺序在每个阶段后运行一次有界 microtask；宿主提供时钟、各阶段限额和 UI 消息循环。参考宿主已在真实窗口消息循环安装 16 ms `WM_TIMER`，未调用 pump 的 session 不会自行推进异步队列。
 - 页面替换前，Browser session 可由宿主显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`，同步派发 cancelable 的 `beforeunload` 并返回取消决定；参考宿主在取消或脚本调用失败时保留旧页，允许后才调用 page teardown。Browser 不显示 prompt，也不拥有宿主的关闭/导航策略。
@@ -182,20 +179,19 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1210。
+- `TEST_MAX_NUMBER`：1211。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新正式证据是 `20260908-193506-next768-node-normalize-final3`：正式 Debug ARMV4I、
-当前 GUI 连接的唯一 WMDC 目标、全新外部目录，定向运行 `TEST1207,1208,1209,1210,999`。
-5/5 测试通过，只有一个 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，
+最新正式证据是 `20260908-203254-next769-node-clone`：正式 Debug ARMV4I、
+当前 GUI 连接的唯一 WMDC 目标、全新外部目录，定向运行 `TEST1210,1211,999`。
+3/3 测试通过，只有一个 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，
 `current_cleanup=removed_after_complete_log`，空间预检和内部 object-store 检查均通过。
-它确认 splitText、wholeText、replaceWholeText 与 Node.normalize 的相邻纵切、首个非空
-wrapper 保持身份、前置空节点删除后的动态 wrapper index、旧 snapshot/detached 快照、
-当前 32 KiB RAPI 写块、日志回收和完成后清理路径。
+它确认 Node.normalize 回归与 `Node.cloneNode()` 的浅/深 detached snapshot、属性/子树、
+parent links、独立数据、当前 32 KiB RAPI 写块、日志回收和完成后清理路径。
 
 前一项 `20260908-151743-next765-native-resize-formal10` 以同样的正式配置通过
 `TEST1113,1114,1115,1116,1199,999`（6/6、零 `ERROR`/`FAIL`），确认嵌套 `WM_SIZE`
@@ -281,6 +277,10 @@ wrapper 保持身份、前置空节点删除后的动态 wrapper index、旧 sna
   以及重复/缺失/失效目标的 fail closed。没有稳定 id 的嵌套元素会跳过，通用节点插入、
   reparent、独立文本节点删除、MutationObserver、完整 live collection 和 native/OEM
   文本视觉仍未实现或需人工观察。
+- TEST1211 是离线的 Browser-only `Node.cloneNode(deep)` 夹具，暂无新增立即人工风险；
+  自动门证明浅/深 detached snapshot 的属性、子树顺序、parent/children 关系、源文档不变、
+  克隆数据独立和有界回退。它不改变 Core/layout，也不复制事件 listener；超限或不支持
+  类型仍需保持 fail closed。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -347,16 +347,14 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 后续计划：next769
+## 后续计划：next770
 
-next768 已完成 `Node.normalize()` 的有界 Core/Browser 纵切：Ex5 callback 和
-`PCore_NodeNormalizeById` 只处理一个带 id 元素的 direct children，删除空 Text、合并
-相邻 Text，并在变化时失效 retained layout；Browser 对可寻址后代按受控顺序递归，按
-新关系重建 snapshot，同时保持每段首个非空 Text wrapper。TEST1207–1210、TEST999 的
-正式 Debug ARMV4I 设备门已通过，日志完整回收且远端目录已清理；WM6 stale peer 的字体
-变更通知改为异步，避免超时旧宿主阻塞下一次 `PCore_Init`。
+next769 已完成 Browser-owned `Node.cloneNode(deep)` 的有界 detached snapshot：浅/深
+克隆复制 element 属性、子节点顺序、parent links 和独立数据，限制为 64 个 direct children
+与 256 个节点，不改变 Core 文档、layout 或事件 listener。TEST1210–1211、TEST999 的
+正式 Debug ARMV4I 设备门已通过，日志完整回收且远端目录已清理。
 
-next769 的唯一下一步是先从 compatibility corpus、源码、设备日志或用户新页面固定一个
+next770 的唯一下一步是先从 compatibility corpus、源码、设备日志或用户新页面固定一个
 新的、可复现的产品缺口，再选择对应公共 DLL 的完整纵向能力。通用节点插入、reparent、
 独立文本删除、Range/Selection、完整 live collection、MutationObserver、完整滚动容器
 树、pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、

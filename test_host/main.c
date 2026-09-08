@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1210
+#define TEST_MAX_NUMBER 1211
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -48158,6 +48158,53 @@ static BOOL test1210_browser_node_normalize_contract(void)
             " adjacent runs through Core, recurses through addressed element"
             " wrappers, preserves the first wrapper and snapshots, keeps"
             " non-Text boundaries, and rejects stale mutation targets.");
+    return TRUE;
+}
+
+/* TEST 1211 - bounded Node.cloneNode returns an independent detached snapshot. */
+static BOOL test1211_browser_node_clone_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='source' class='card' data-k='v'><span id='inner'>Hi</span>"
+        "<!--note-->tail</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var s=document.getElementById('source'),sh,deep,again,"
+        "kids,span,comment,tail,attrs,ok,sourceText;"
+        "sh=s.cloneNode();kids=s.childNodes;attrs=sh.attributes;"
+        "ok=sh!==s&&!sh.isConnected&&sh.parentNode===null&&sh.nodeType===1&&"
+        "sh.nodeName==='DIV'&&sh.id==='source'&&sh.className==='card'&&"
+        "sh.getAttribute('data-k')==='v'&&attrs.length===3&&"
+        "attrs.getNamedItem('data-k').value==='v'&&sh.childNodes.length===0;"
+        "deep=s.cloneNode(true);kids=deep.childNodes;span=kids[0];"
+        "comment=kids[1];tail=kids[2];"
+        "ok=ok&&deep!==s&&!deep.isConnected&&deep.children.length===1&&"
+        "deep.children[0]===span&&kids.item(0)===span&&kids.length===3&&"
+        "span.nodeName==='SPAN'&&span.id==='inner'&&span.textContent==='Hi'&&"
+        "span.parentNode===deep&&span.parentElement===deep&&"
+        "span.firstChild.data==='Hi'&&comment.nodeType===8&&comment.data==='note'&&"
+        "tail.nodeType===3&&tail.data==='tail'&&tail.previousSibling===comment&&"
+        "tail.nextSibling===null&&deep.textContent==='Hitail';"
+        "sourceText=s.textContent;tail.data='changed';"
+        "ok=ok&&deep.textContent==='Hichanged'&&s.textContent===sourceText&&"
+        "tail.cloneNode(false).data==='changed';"
+        "again=deep.cloneNode(true);ok=ok&&again!==deep&&again.textContent==='Hichanged'&&"
+        "again.childNodes[0]!==span&&again.childNodes[0].firstChild.data==='Hi'&&"
+        "again.getAttribute('data-k')==='v'&&again.childNodes[2].parentNode===again;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-clone", HTML, PROBE, "true",
+            error, sizeof(error))) {
+        show_error(L"TEST 1211 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1211 OK",
+            "Node.cloneNode now creates bounded Browser-owned detached"
+            " snapshots, preserving attributes, child order, parent links"
+            " and deep-copy independence without changing the Core document.");
     return TRUE;
 }
 
@@ -106307,6 +106354,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1208: ok = test1208_browser_text_whole_text_contract(); break;
         case 1209: ok = test1209_browser_text_replace_whole_text_contract(); break;
         case 1210: ok = test1210_browser_node_normalize_contract(); break;
+        case 1211: ok = test1211_browser_node_clone_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

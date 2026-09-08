@@ -583,11 +583,10 @@
   和 CharacterData mutator：断言直接 child、wrapper/snapshot、UTF-16 范围、detached
   回退以及 retained-layout invalidation。结构 mutation、observer、完整 collection 和
   native/视觉行为不在门内。
-- TEST1205–1210 自动断言 `substringData()`、`splitText()`、
-  `Text.wholeText`、`Text.replaceWholeText()`、`Node.normalize()` 的 Ex2–Ex5、UTF-16/合并/
-  边界、mutation、wrapper/snapshot/detached 与 fail-closed；TEST1210 验 stable-id
-  后代递归、layout invalidation 和无 id 跳过。通用结构 mutation、observer/live collection、
-  native/视觉需人工观察。
+- TEST1205–1211 自动断言 CharacterData、Text relations/mutations、`Node.normalize()` 与
+  Browser `Node.cloneNode()` 的 Ex2–Ex5、UTF-16/合并/边界、wrapper/snapshot/detached 和
+  fail-closed；1210 验 stable-id 后代递归/layout invalidation，1211 验浅/深 detached clone
+  的属性、顺序、独立性。通用结构 mutation、observer/live collection、native/视觉需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由
@@ -597,7 +596,7 @@
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。
 - 人工风险可以按规则累计，但崩溃、数据损坏、严重布局破坏和核心交互阻塞必须立即复核。
 
-## 明确不保证
+## 不保证
 
 - 现代浏览器标准符合性或任意网站可用性；
 - 在未审查旧依赖安全状态时用于高风险生产环境；

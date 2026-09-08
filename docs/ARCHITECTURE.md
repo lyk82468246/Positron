@@ -184,6 +184,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   Browser 通过 ABI 追加的 `PBrowserScriptDomWriteCallbacksEx5` 接线
   `Node.normalize()`，负责递归顺序和 wrapper/snapshot reconciliation；没有稳定 id 的
   后代不会被伪造为可写目标，宿主只负责 callback 与后续 style/layout/paint；
+- Browser 的 `Node.cloneNode(deep)` 是独立的 detached snapshot 路径，不改变 Core 文档或
+  retained layout。它由 Browser 复制有界的 element 属性、direct child 顺序和 parent links，
+  深克隆最多 64 个 direct children、256 个节点；超限或不支持的节点 fail closed。克隆的
+  数据与源 wrapper 脱离，宿主无需注册 callback，也不得在 `test_host` 复制这套语义；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变

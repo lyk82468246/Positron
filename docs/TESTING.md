@@ -680,6 +680,13 @@ style/layout 才可读取。没有稳定 id 的嵌套元素会被 Browser 跳过
 collection、事件或 native/视觉行为；宿主只负责 Ex5 接线、fixture、可选 restyle 和
 断言。
 
+TEST1211 覆盖 `Node.cloneNode(deep)` 的 Browser-owned detached snapshot：默认浅克隆与
+`deep=true` 深克隆分别断言节点类型、element 属性、子节点顺序、parent/children 关系、
+源文档不变和克隆数据独立；再次深克隆保持同一有界结构。深度超过 64 层、总节点超过
+256 或不支持的节点必须 fail closed。该路径不注册 Core callback、不使 layout 失效，也
+不实现把克隆节点插入文档、通用节点 mutation、事件 listener 复制或完整 DOM 类型。
+宿主只提供 fixture 与断言。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -78,8 +78,9 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1210，其中
-  TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接；
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1211，其中
+  TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211 只验证
+  Browser-owned `Node.cloneNode()` detached snapshot；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -463,7 +464,15 @@ Browser 把 direct Text child 的原始索引和 UTF-8 值转给 Core，自动�
 保持不变，以及 `wholeText`、旧 NodeList snapshot、astral 字符和父级替换的一致性。
 非法 parent/index/child、空参数和 detached 写入安全失败；Core mutation 后 retained layout
 失效并由 fixture 重新 style/layout。宿主只负责 callback 接线、可选 restyle、fixture
-和断言，不实现通用节点插入、reparent、normalize、MutationObserver 或 live collection。
+和断言，不实现通用节点插入、reparent、normalize、clone 或 MutationObserver/live collection。
+
+TEST1210 在同一离线 fixture 上验证 Ex5 `Node.normalize()`：宿主只接线 callback，Browser
+递归可寻址元素并由 Core 整理 direct Text children；相邻文本合并、wrapper/snapshot 和
+layout 失效均由公共 DLL 断言。
+
+TEST1211 验证 Browser 的 `Node.cloneNode(deep)`：浅/深 detached snapshot 保留属性、顺序、
+父子关系和独立数据，深度与节点数超限安全失败；源文档不变，宿主不提供 callback 或
+第二份 DOM 语义。
 
 ### Native EDIT/SELECT/button/file
 
