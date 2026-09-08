@@ -442,6 +442,13 @@ Browser 以 direct child 的 UTF-16 offset 调用 Core，断言原 wrapper 身�
 mutation 后 retained layout 的失效与恢复。宿主仅提供 callback 接线、fixture 和断言；
 UTF-8 code-point 映射、插入与 wrapper/cache reconciliation 均属于公共 DLL。
 
+TEST1208 在同一 fixture 上验证 `Text.wholeText`：Browser 通过 Core 关系 50 读取
+libdom 的逻辑相邻 Text 拼接，断言 `splitText()` 后相邻 wrapper、CharacterData mutation
+和 UTF-8（含 astral code point）保持实时结果，element/comment/processing-instruction
+边界停止；属性为只读、非 Text/缺失节点安全返回，detached wrapper 保留最后的文本快照。
+宿主只提供 relation callback、fixture 和断言；相邻 Text 遍历、UTF-8 缓冲与快照语义属于
+公共 Core/Browser DLL。
+
 ### Native EDIT/SELECT/button/file
 
 WM subclass 把键盘、focus、composition、selection 和 click 转成 Browser typed transaction。只有 Browser 允许默认动作后，宿主才写入 Core/native 控件，并把提交结果送回 Browser 产生 `input`、`change`、submit/reset 等后续事件。对 contenteditable，宿主从 `PCore_ContentEditableTargetInfo` 枚举带 id 的已布局 editing host，创建最多 16 个 WM multiline EDIT 代理；`WM_CHAR` 默认处理返回后才回读最终文本并调用 Core mutation。宿主实现的 selection callback 把 WM EDIT 的 UTF-16 位置（包括 CRLF）转换为 Browser 使用的逻辑 UTF-16 位置，并只保存原生控件的短暂状态；原生范围确定后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`，由 Browser 去重并分发一次 `selectionchange`。这样可吸收 WM6 在默认处理期间提前发送的 `EN_CHANGE`，避免把旧值或空值提交为一次 input，也避免宿主经 Core 重复派发选区事件。对 `WM_PASTE`/`WM_COPY`/`WM_CUT`，宿主读取有界 `CF_UNICODETEXT`、规范化 CRLF，并把精确 data 交给 `beforeinput`；`WM_COPY` 的折叠选区保持现有剪贴板不变，允许的 paste/cut 才执行 native default 和 Core/input 提交，格式缺失或超长时 fail closed。WinCE 原生 `WM_CUT` 可能内部重入 `WM_COPY`，宿主只在该外层默认动作期间放行同一 HWND 的重入，不让它绕过自己的外部 copy 规则。键盘/拖选 anchor、Shift 状态和捕获/取消/焦点中断收尾同样只属于宿主平台接线。

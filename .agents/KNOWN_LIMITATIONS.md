@@ -137,7 +137,9 @@
   UTF-16 offset 必须落在 UTF-8 code-point 边界，成功后插入紧邻 Text sibling 并使布局
   失效；astral code point 内部边界、无效范围和 detached wrapper fail closed。通用节点
   插入、reparent、删除、Text 合并、observer 和 live collection 未实现，错误关系与
-  缺失/过长 id fail closed。
+  缺失/过长 id fail closed。`Text.wholeText` 只读关系 50 仅对直接 Text child 有效，
+  拼接逻辑相邻 Text sibling 并在 element、Comment 或 processing-instruction 处停止；
+  detached wrapper 返回最近一次数据快照，不扩展为通用节点遍历。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -572,23 +574,14 @@
   fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201 仅覆盖有界 direct-element removal）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201 覆盖有界 direct-element removal：直接 child、错误关系、snapshot 隔离、detached
-  no-op 与 retained-layout invalidation；插入、reparent、文本删除、observer、live collection
-  和 native/视觉行为不在门内。
-- TEST1202 覆盖 `textContent`/非编辑 `innerText` 的新旧文本 wrapper、detached 数据、
-  父级查询和 retained-layout 失效/恢复；结构 mutation、observer、live collection 与
-  native/视觉行为仍未实现。
-- TEST1203 通过 Ex callback 验证 Text setter、wrapper identity、父级文本、layout invalidation
-  及元素/缺失/越界/detached fail-closed；Comment/CDATA 由 TEST1205 覆盖。
-- TEST1204 验证 Text/Comment CharacterData mutator、UTF-16 范围、count 截断、wrapper/
-  NodeList identity 和非法/detached fail-closed；结构、observer、collection/native 视觉不在门内。
-- TEST1205 验证 Ex2 callback、通用 child-data primitive、Comment setter/四个 mutator、
-  Text/element/缺失/越界返回码和 retained-layout invalidation；CDATA 共用接口但没有独立
-  HTML fixture。
-- TEST1206 验证 `substringData()` 的 UTF-16 只读范围、超长 count 截断、非法 offset/count
-  与 detached Text/Comment 快照；结构、observer、collection/native 视觉不在门内。
-- TEST1207 验证 Ex3 的 `splitText()` UTF-16 边界、wrapper/快照及回退；结构 mutation、
-  observer、collection/native 视觉不在门内。
+- TEST1201–1204 覆盖有界 direct-element removal、`textContent`/`innerText`、Text setter
+  和 CharacterData mutator：断言直接 child、wrapper/snapshot、UTF-16 范围、detached
+  回退以及 retained-layout invalidation。结构 mutation、observer、完整 collection 和
+  native/视觉行为不在门内。
+- TEST1205–1208 覆盖 Comment/CDATA child-data、`substringData()`、`splitText()` 与
+  `Text.wholeText`：断言 Ex2/Ex3、UTF-16→UTF-8 边界、logical-adjacent 拼接、element/
+  Comment 边界、实时 mutation、probe/truncation 和 detached snapshot；其余结构 mutation、
+  observer、完整 collection 与 native/视觉行为仍未实现或需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

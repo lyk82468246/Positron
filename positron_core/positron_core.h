@@ -430,7 +430,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
- * script call; mutation remains on the existing attribute APIs. */
+ * script call; CHILD_NODE_WHOLE_TEXT is only available for a direct Text
+ * child and returns libdom's logical-adjacent Text projection as a bounded
+ * UTF-8 snapshot, stopping at element/comment/processing-instruction
+ * boundaries. Mutation remains on the existing attribute/text APIs. */
 #define PCORE_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PCORE_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PCORE_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -485,6 +488,7 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_IMAGE_NATURAL_HEIGHT 47u
 #define PCORE_NODE_RELATION_IMAGE_COMPLETE       48u
 #define PCORE_NODE_RELATION_IMAGE_CURRENT_SRC   49u
+#define PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT 50u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

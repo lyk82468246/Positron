@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1207
+#define TEST_MAX_NUMBER 1208
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -462,6 +462,9 @@ static const char *pcore_native_edit_clipboard_status_name(int status)
 static BOOL test_browser_raw_string_fixture(const char *html,
         const char *probe, const char *expected, char *error,
         int error_capacity);
+static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
+        const char *html, const char *probe, const char *expected,
+        char *error, int error_capacity);
 static BOOL test_browser_form_attribute_case(int number, const char *probe,
         const char *expected, char *error, int error_capacity);
 static BOOL test_browser_child_node_case(int number, const char *probe,
@@ -47708,6 +47711,131 @@ static BOOL test1207_browser_text_split_contract(void)
             " Text mutation API, inserts an adjacent sibling, preserves"
             " wrapper identity and snapshots, handles end splits, and"
             " rejects invalid or detached operations.");
+    return TRUE;
+}
+
+/* TEST 1208 - Text.wholeText projects logical adjacent Text siblings without
+ * widening the bounded direct-child mutation or relation surface. */
+static BOOL test1208_browser_text_whole_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'>alpha<span id='child'>beta</span>"
+        "<!--note--><em>gamma</em></div><p id='result'>idle</p>"
+        "</body></html>";
+    static const char UNICODE_HTML[] =
+        "<!doctype html><html><body><div id='root'>A\360\237\230\200B"
+        "</div></body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('root'),old=r.childNodes,"
+        "t=old[0],span=old[1],comment=old[2],split,now,descriptor,"
+        "before,joined,readOnly,live,boundary,detached;"
+        "before=t.wholeText==='alpha'&&old.length===4&&"
+        "typeof span.wholeText==='undefined'&&"
+        "typeof comment.wholeText==='undefined';"
+        "split=t.splitText(2);now=r.childNodes;"
+        "joined=split!==null&&now.length===5&&t.wholeText==='alpha'&&"
+        "split.wholeText==='alpha'&&t===now[0]&&split===now[1];"
+        "descriptor=Object.getOwnPropertyDescriptor(t,'wholeText');"
+        "readOnly=descriptor!==null&&typeof descriptor.get==='function'&&"
+        "typeof descriptor.set==='undefined'&&descriptor.enumerable===true&&"
+        "descriptor.configurable===false;"
+        "t.wholeText='changed';readOnly=readOnly&&t.wholeText==='alpha'&&"
+        "t.data==='al';"
+        "t.data='A';live=t.wholeText==='Apha'&&split.wholeText==='Apha'&&"
+        "r.textContent.indexOf('Apha')===0;"
+        "boundary=typeof span.wholeText==='undefined'&&"
+        "typeof comment.wholeText==='undefined';"
+        "r.textContent='done';detached=t.parentNode===null&&!t.isConnected&&"
+        "split.parentNode===null&&t.wholeText==='A'&&split.wholeText==='pha';"
+        "return document.getElementById('result').textContent="
+        "[before,joined,readOnly,live,boundary,detached].join('|');})();";
+    static const char EXPECTED[] =
+        "true|true|true|true|true|true";
+    HANDLE document;
+    PCoreLayoutStats stats;
+    char value[128];
+    char short_value[4];
+    char error[768];
+    int value_bytes;
+    BOOL core_ok;
+    BOOL unicode_ok;
+    BOOL script_ok;
+
+    document = NULL;
+    memset(&stats, 0, sizeof(stats));
+    memset(value, 0, sizeof(value));
+    memset(short_value, 0, sizeof(short_value));
+    memset(error, 0, sizeof(error));
+    value_bytes = -1;
+    core_ok = FALSE;
+    unicode_ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document != NULL && PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_GetLayoutStats(document, &stats) == 0 &&
+            PCore_NodeSplitTextChildById(document, "root", 0, 2) == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 0, NULL, 0,
+            &value_bytes, NULL) == 0 && value_bytes == 5 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 0, short_value,
+            sizeof(short_value), &value_bytes, NULL) == 0 &&
+            value_bytes == 5 && strcmp(short_value, "alp") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 1, value,
+            sizeof(value), &value_bytes, NULL) == 0 &&
+            strcmp(value, "alpha") == 0 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 2, value,
+            sizeof(value), &value_bytes, NULL) == 2 &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 99, value,
+            sizeof(value), &value_bytes, NULL) == 2 &&
+            PCore_NodeRelationById(document, "missing",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 0, value,
+            sizeof(value), &value_bytes, NULL) == 2 &&
+            PCore_GetLayoutStats(document, &stats) != 0 &&
+            PCore_StyleDocument(document, NULL) == 0 &&
+            PCore_LayoutDocument(document, 240, 320) == 0 &&
+            PCore_GetLayoutStats(document, &stats) == 0) {
+        core_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    document = PCore_ParseHTML(UNICODE_HTML, sizeof(UNICODE_HTML) - 1);
+    memset(value, 0, sizeof(value));
+    value_bytes = -1;
+    if (document != NULL &&
+            PCore_NodeRelationById(document, "root",
+            PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT, 0, value,
+            sizeof(value), &value_bytes, NULL) == 0 && value_bytes == 6 &&
+            strcmp(value, "A\360\237\230\200B") == 0) {
+        unicode_ok = TRUE;
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_raw_string_fixture_at_url(
+            "http://positron.local/text-whole-text", HTML, PROBE,
+            EXPECTED, error, sizeof(error));
+    if (!core_ok || !unicode_ok || !script_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d unicode=%d script=%d value=%s bytes=%d",
+                    core_ok, unicode_ok, script_ok,
+                    value[0] != '\0' ? value : "(null)", value_bytes);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1208 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1208 OK",
+            "Text.wholeText now exposes libdom logical-adjacent text"
+            " through a bounded UTF-8 relation, preserves the read-only"
+            " Browser property across split/mutation, stops at element and"
+            " comment boundaries, and retains detached snapshots.");
     return TRUE;
 }
 
@@ -105854,6 +105982,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1205: ok = test1205_browser_comment_character_data_contract(); break;
         case 1206: ok = test1206_browser_character_substring_contract(); break;
         case 1207: ok = test1207_browser_text_split_contract(); break;
+        case 1208: ok = test1208_browser_text_whole_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

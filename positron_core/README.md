@@ -111,6 +111,10 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
+- direct Text child 的 `PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`（关系 50）读取：Core
+  调用 libdom 的逻辑相邻 Text 遍历，按 UTF-8 probe/truncation 合同返回 `wholeText`；
+  元素、Comment、processing-instruction、缺失和越界 child 返回 unavailable。该读取
+  不合并节点、不改变 child list、不触发 layout 或资源 I/O；
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档

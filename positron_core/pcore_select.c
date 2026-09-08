@@ -6866,6 +6866,53 @@ static int pcore_relation_child_node_field(dom_node *node,
     return 0;
 }
 
+/* Return the logical-adjacent text projection for one direct Text child.
+ * libdom owns the DOM Level 3 traversal and keeps element/comment boundaries
+ * intact; this adapter only exposes the bounded UTF-8 copy contract used by
+ * the script relation bridge. */
+static int pcore_relation_child_node_whole_text(dom_node *node,
+        unsigned int index, char *value, int value_capacity, int *out_bytes)
+{
+    dom_node *child;
+    dom_node_type type;
+    dom_string *whole;
+    dom_exception err;
+    int result;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    child = NULL;
+    result = pcore_relation_child_node_at(node, index, &child);
+    if (result != 0) {
+        return result;
+    }
+    if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+        dom_node_unref(child);
+        return 1;
+    }
+    if (type != DOM_TEXT_NODE) {
+        dom_node_unref(child);
+        return 2;
+    }
+    whole = NULL;
+    err = dom_text_get_whole_text((dom_text *) child, &whole);
+    if (err != DOM_NO_ERR || whole == NULL) {
+        if (whole != NULL) {
+            dom_string_unref(whole);
+        }
+        dom_node_unref(child);
+        return err == DOM_NO_ERR ? 2 : 1;
+    }
+    pcore_copy_dom_string(whole, value, value_capacity, out_bytes);
+    dom_string_unref(whole);
+    dom_node_unref(child);
+    return 0;
+}
+
 /* Project the image resource state that Core already owns into the typed DOM
  * relation bridge. This is a read-only snapshot: it never fetches, decodes or
  * lays out an image. Source selection is shared with the fetch/layout path;
@@ -7367,6 +7414,10 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_CHILD_NODE_TEXT_AT:
         err = pcore_relation_child_node_field((dom_node *) element, index,
                 3, out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT:
+        err = pcore_relation_child_node_whole_text((dom_node *) element,
+                index, out_value, value_capacity, out_bytes);
         break;
     case PCORE_NODE_RELATION_LAYOUT_RECT_X:
     case PCORE_NODE_RELATION_LAYOUT_RECT_Y:

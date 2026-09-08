@@ -101,8 +101,8 @@ relation callback 未注册时，查询失败；Browser 不触发 style/layout�
 并随 Browser 的滚动同步更新。DOM mutation、resize 或页面提交后的 layout 与滚动同步
 仍由宿主驱动。
 
-该边界只覆盖 Core 已布局的普通 block 与 inline 行片段，不承诺 transforms、Range/
-Selection、完整 nested overflow 坐标传播、pinch zoom、平滑滚动或视觉像素精度。
+完整几何限制（transforms、Range/Selection、nested overflow、pinch zoom、平滑滚动与
+视觉精度）见 [`KNOWN_LIMITATIONS`](../.agents/KNOWN_LIMITATIONS.md)。
 
 #### 布局尺寸快照
 
@@ -111,13 +111,8 @@ Selection、完整 nested overflow 坐标传播、pinch zoom、平滑滚动或�
 `scrollHeight` getter。getter 每次从最近一次 Core layout 快照读取整数 CSS 像素：
 offset 包含 border，client 为 retained scrollport 的 padding 区域（滚动条覆盖在边缘，
 不从 client 尺寸再扣除固定宽度），scroll 包含有界后代内容 extent。Core 不提供快照时
-这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。对于有有效
-DOM `id` 且存在 retained overflow scrollbar 的支持 box，Browser 还安装
-`scrollLeft`/`scrollTop` getter/setter、`scrollTo()`、`scroll()` 和 `scrollBy()`；请求
-通过 callback 的 `element_id` 交给 Core clamp，成功后只在实际位置改变时派发一次目标元素的
-非冒泡、不可取消 `scroll`。宿主的 WM 指针路径应调用
-`PBrowser_ScriptSessionNotifyElementScroll()` 同步 Core 位置；`scrollIntoView()` 的
-有限 nested reveal 见下文。
+这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。有 id 的 overflow
+box 及其滚动通知见下方“元素 overflow 滚动桥”。
 
 ### 元素 overflow 滚动桥
 
@@ -153,8 +148,8 @@ retained overflow ancestor，并在每次滚动后重新读取目标矩形。没
 `end`、`nearest`，`behavior` 的 `auto` 或 `instant`，以及 `container` 的 `nearest`
 或 `all`。无可用 layout、矩形或 nested client bridge 时安全回退/ no-op；没有 scroll
 callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scrollTo()` 的本地状态规则。
-不支持 `smooth`、scroll-margin、完整滚动容器树、scroll chaining、scroll anchoring 或
-匿名祖先/目标。
+不支持 `smooth`、scroll-margin、完整滚动容器树、anchoring 或匿名祖先/目标；详细限制见
+[`KNOWN_LIMITATIONS`](../.agents/KNOWN_LIMITATIONS.md)。
 
 ### Script session
 
@@ -467,6 +462,10 @@ code-unit 语义；offset/count 为有限非负整数，超长 count 截断，�
 保持不变，宿主负责重新 style/layout/paint。缺失/错误 child、detached wrapper、越界
 offset 或位于 astral code point 内部的 offset 安全失败；该桥不提供通用节点插入、
 reparent、合并、事件或 MutationObserver。
+
+`Text.wholeText` 是关系 50 的只读 getter：Core/libdom 拼接同级连续 Text，遇
+element、Comment 或 processing-instruction 停止；非 Text 无此属性，detached wrapper
+回退 `data` 快照。读取只产生有界 UTF-8 snapshot，不改 DOM、layout 或资源。
 
 ### `dialog` 生命周期
 

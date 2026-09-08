@@ -160,6 +160,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   视图。不能表示的 astral code-point 内部边界、缺失/错误 child 或 detached wrapper
   fail closed；该入口不派发事件、不做通用插入/reparent/合并。宿主只负责 callback
   接线和后续 style/layout/paint，失效或 detached 写入 wrapper 必须安全失败；
+- Text 读取还通过关系 50（`PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`）提供
+  `Text.wholeText`：Core 仅接受未过滤 `childNodes` 中的直接 `DOM_TEXT_NODE`，调用
+  libdom 的逻辑相邻文本遍历并按既有 probe/truncation 合同复制 UTF-8；元素、Comment、
+  processing-instruction、缺失或越界 child 返回 unavailable。Browser 将它作为 Text
+  wrapper 的只读 getter；连接中的 wrapper 每次读取当前相邻文本，detached wrapper
+  保留最近一次数据快照。该关系不合并节点、不改变 child list、不派发事件，也不触发
+  layout 或资源 I/O；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变

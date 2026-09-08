@@ -10,21 +10,24 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-`20260908-151743-next765-native-resize-formal10` 已在当前 GUI 连接的 WMDC 目标上以正式 Debug ARMV4I、全新外部目录、无 `-PreserveDeployment` 运行 `TEST1113,1114,1115,1116,1199,999`：6/6 OK、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，完整日志已回收且当前远端目录已删除；该目标卷约 32 MiB，预检仍通过。前一轮同目标的 `formal9` 曾在设备门等待窗口内被误判为超时，但随后重开 RAPI 会话取得的两份完整日志一致为 PASS；这一证据已促成当前的超时后最终日志回收路径。更早的 `formal3`–`formal8` 仅在传输阶段失败，宿主未启动，不能当作产品测试结果。`next766` wholeText 草稿仍只保存在本地 `tmp/next766-draft.patch`。
+`20260908-151743-next765-native-resize-formal10` 已在当前 GUI 连接的 WMDC 目标上以正式 Debug ARMV4I、全新外部目录、无 `-PreserveDeployment` 运行 `TEST1113,1114,1115,1116,1199,999`：6/6 OK、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，完整日志已回收且当前远端目录已删除；该目标卷约 32 MiB，预检仍通过。前一轮同目标的 `formal9` 曾在设备门等待窗口内被误判为超时，但随后重开 RAPI 会话取得的两份完整日志一致为 PASS；这一证据已促成当前的超时后最终日志回收路径。更早的 `formal3`–`formal8` 仅在传输阶段失败，宿主未启动，不能当作产品测试结果。随后 `20260908-153431-next766-whole-text` 在同一 GUI 连接上以 Debug ARMV4I 运行 `TEST1205,1206,1207,1208,999`：5/5 OK、唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，完整日志已回收且当前远端目录已删除；该证据确认 wholeText 纵切及其相邻 CharacterData/ splitText 回归。
 
-- 当前代码 next765 延续 next761–764 的 Core child-data 与 Browser
+- 当前代码 next766 延续 next761–765 的 Core child-data 与 Browser
   CharacterData bridge；新增 `Text.splitText()` 的 direct-child 有界路径，将 UTF-16
   边界映射到 UTF-8 code-point、插入紧邻 Text sibling，并保持原 wrapper 与旧 snapshot
   合同。`PCore_NodeSetCharacterDataChildById`、`PBrowserScriptDomWriteCallbacksEx2`
   和旧 Text-only ABI 均保持不变；Ex3 仅追加 `split_text_child`。成功 mutation 仍使
   retained layout 失效，Browser/宿主负责事件与输入策略、重新 style/layout/paint。
-  `test_host` 只增加 TEST1207 fixture、边界断言与 callback 接线，没有承载产品 DOM 或
+  next766 另外新增关系 50 的 `Text.wholeText`：Core 通过 libdom 拼接逻辑相邻 Text
+  sibling，Browser 提供只读 getter，非 Text/边界/无效 child 返回 unavailable，detached
+  wrapper 回退到最近一次数据快照；读取不改 DOM、不触发 layout 或资源 I/O。
+  `test_host` 只增加 TEST1207/1208 fixture、边界断言与 callback 接线，没有承载产品 DOM 或
   布局语义。next760 的元素 textContent/innerText 与 next759 的 direct-element removal
   保持不变。设备门为每次远端启动使用
   唯一 executable basename，仍只复用 WMDC GUI 当前唯一 RAPI 会话，超时进程需在设备端
   正常结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1207。tracked `test_host/test_host.ini` 仍是窄 smoke：
+- `TEST_MAX_NUMBER` 已为 1208。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
@@ -49,8 +52,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、direct
   `submit()`、detached `FormData`、图片元数据/decode/image-map、selector 子集和
-  source-selection 生命周期已形成有界合同；TEST1170–1207 的逐项夹具、边界和错误回退
-  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1207 还覆盖 source
+  source-selection 生命周期已形成有界合同；TEST1170–1208 的逐项夹具、边界和错误回退
+  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1208 还覆盖 source
   mutation callback、direct-element removal、元素文本内容、Text/Comment/CDATA
   CharacterData mutation、`substringData()` 范围和 `Text.splitText()` 结构合同，
   均保持产品语义在 Core/Browser 而非宿主。
@@ -77,13 +80,16 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   UTF-16 offset/count 校验、超长 count 截断和 detached Text/Comment/CDATA 快照读取；
   next765 再补齐 direct Text child 的 `splitText()`、Ex3 callback、UTF-16/UTF-8 边界
   映射与 sibling/snapshot reconciliation；
+  next766 再补齐关系 50 的 `Text.wholeText` 读取，覆盖逻辑相邻 Text 拼接、非 Text
+  边界、UTF-8 probe/truncation、只读 getter 和 detached 快照；
   稳定合同和逐测试说明以
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
-- 当前 fixed-buffer 数值转换、原子部署和 RAPI 日志恢复已由 `formal10` 正式门验证；唯一下一步是
-  从 compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，恢复 next766 的下一条
+- 当前 fixed-buffer 数值转换、原子部署和 RAPI 日志恢复已由 `formal10` 正式门验证；`next766`
+  的 wholeText 纵切也已由 `20260908-153431-next766-whole-text` 正式门验证。下一步应从
+  compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，选择 next767 的下一条
   公共 DLL 纵向能力。不得把测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
@@ -118,7 +124,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   通过 Ex3/`PCore_NodeSplitTextChildById` 对 direct Text child 插入紧邻 sibling，保留
   原 wrapper、旧 NodeList snapshot，并对 UTF-16→UTF-8 不可表示边界 fail closed；宿主
   负责输入/事件策略和重新 style/layout/paint，通用节点插入、reparent、文本节点删除、
-  Text 合并、MutationObserver 与完整 live collection仍未实现。
+  Text 合并、MutationObserver 与完整 live collection仍未实现。关系 50 的
+  `Text.wholeText` 读取已在 next766 加入：连续 Text sibling 由 Core/libdom 拼接，
+  非 Text 边界和无效 child fail closed，detached wrapper 保留最近一次数据快照。
 - Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle、native 控件事务、导航资源事务、候选生命周期/结果协调和 FormData snapshot bridge（含 Ex submitter 与 formdata 事件路径）。`select.options`、`selectedOptions`、`length`、`option.index`、`option.form`、fieldset 的 type/form/elements、img/object 的 form 以及 output 的 form/labels、`form.elements` 中的 fieldset/object/output enumeration 也在 Browser 中以有界、可寻址元素 bridge 提供。
 - Browser script session 的 `PBrowser_ScriptSessionRunTaskCheckpoint` 统一驱动 timer、animation frame、message、idle 和 microtask：调用方选择阶段后，Browser 按固定顺序在每个阶段后运行一次有界 microtask；宿主提供时钟、各阶段限额和 UI 消息循环。参考宿主已在真实窗口消息循环安装 16 ms `WM_TIMER`，未调用 pump 的 session 不会自行推进异步队列。
 - 页面替换前，Browser session 可由宿主显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`，同步派发 cancelable 的 `beforeunload` 并返回取消决定；参考宿主在取消或脚本调用失败时保留旧页，允许后才调用 page teardown。Browser 不显示 prompt，也不拥有宿主的关闭/导航策略。
@@ -164,42 +172,27 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1207。
+- `TEST_MAX_NUMBER`：1208。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新成功的正式证据是 `20260908-112916-next765-native-resize-formal2`：正式 Debug ARMV4I、
-完整日志回收，`TEST1113,1114,1115,1116,1199,999` 全部通过且零
-`ERROR`/`FAIL`；结果为 `status=PASS`、`complete_log_retrieved=True`、
-`current_cleanup=removed_after_complete_log`。它确认嵌套 `WM_SIZE` 不再进入 Browser
-resize 通知，窗口稳定后才完成 native child rebuild 与 resize 发布，并确认正常清理路径无
-崩溃；但当前 fixed-buffer/原子部署版本尚未取得新的设备日志。
+最新正式证据是 `20260908-153431-next766-whole-text`：正式 Debug ARMV4I、
+当前 GUI 连接的唯一 WMDC 目标、全新外部目录，定向运行 `TEST1205,1206,1207,1208,999`。
+5/5 测试通过，只有一个 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，
+`current_cleanup=removed_after_complete_log`。它确认 wholeText、CharacterData 和
+splitText 的相邻纵切，以及当前 32 KiB RAPI 写块、空间预检和完成后清理路径。
 
-此前的诊断证据 `20260908-111143-next765-native-resize-regression` 也通过同一选择，
-但保留部署目录，仅供定位复核。
+前一项 `20260908-151743-next765-native-resize-formal10` 以同样的正式配置通过
+`TEST1113,1114,1115,1116,1199,999`（6/6、零 `ERROR`/`FAIL`），确认嵌套 `WM_SIZE`
+重入保护、native child 重建顺序和超时后日志恢复。更早的 formal3–8 只在传输阶段失败，
+不能当作产品测试结果；formal9 的等待超时随后重开 RAPI 会话并取得完整 PASS 日志。
+逐批实现细节和本地日志仍保留在 Git 历史与 `tmp/device-runs/`，不在此重复维护。
 
-此前的设备证据仍是历史基线，不能替代上述正式门：
-
-- `tmp/device-runs/20260908-025630-next765/`；正式 Debug ARMV4I，定向选择
-  `TEST1204-1207,TEST999` 并启用 `EnableJavaScript`，5/5 通过，零 `ERROR`/`FAIL`，唯一
-  `TESTBENCH PASS`，完整日志已取得。`Text.splitText()` 的 UTF-16 边界映射、紧邻
-  sibling、wrapper/NodeList snapshot、末尾空 Text、错误范围和 detached 失败均通过；
-  `\Storage Card\Positron-device-gate` 目标卷通过 `CeGetDiskFreeSpaceEx`，free
-  `70980796416` bytes，payload `9896969` + reserve `1048576`；内部 object store
-  通过 `CeGetStoreInformation`，free `9375744` bytes，cache reserve `65536`。当前运行
-  目录在完整日志回收后已清理。
-
-- next761–762 的相邻 CharacterData 门和 next758–760 的 source/text/removal/contenteditable
-  回归均已在此前交接中通过；逐门细节保留在 Git 历史和 `tmp/device-runs/`，当前交接只
-  保留与 next765 直接相关的证据。设备基线为 320x320、128 dpi；外部目标卷约 71 GB
-  可用，内部 object store 约 9.0 MiB。默认 `\Temp` 的不完整启动头目录仍按日志完整性
-  规则保留，不能据此强杀设备进程；失败路线见 [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)。
-- next765 静态验证：`python scripts/test_c89ize.py`、Debug/Release ARMV4I build、
-  `python scripts/audit_repo.py` 和 `git diff --check` 均通过；Browser heap ceiling 为
-  896 KiB，`PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 29。
+本批 `test_c89ize`、`audit_repo`、`git diff --check` 和 Release ARMV4I 构建均通过；仅有既存
+libcss 数值转换警告。
 
 ## 当前人工验收状态
 
@@ -259,6 +252,11 @@ resize 通知，窗口稳定后才完成 native child rebuild 与 resize 发布�
   sibling、末尾空 Text、Core layout invalidation 以及 invalid/Comment/detached fail
   closed。通用节点插入、reparent、Text 合并、MutationObserver、完整 live collection
   和 native/OEM 文本视觉仍未实现或需人工观察。
+- TEST1208 是离线的 Browser/Core `Text.wholeText` 夹具，暂无新增立即人工风险；自动门
+  证明关系 50 的完整/截断/探测 UTF-8 读取、逻辑相邻 Text 拼接、element/Comment 边界、
+  Browser 只读 getter、splitText/CharacterData 后的实时值和 detached 快照。读取不改
+  child list、不触发 layout 或资源 I/O；通用节点插入、reparent、Text 合并、
+  MutationObserver、完整 live collection 和 native/OEM 文本视觉仍未实现或需人工观察。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -325,16 +323,17 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 后续计划：next766
+## 后续计划：next767
 
-next765 的 `Text.splitText()` direct-child 结构 mutation、Ex3 callback、UTF-16→UTF-8
-边界映射、wrapper/snapshot reconciliation 和末尾空 sibling 已由 TEST1207 及相邻
-TEST1204–1206、TEST999 回归验证；嵌套 `WM_SIZE` 重入保护、32 KiB 原子部署、fixed-buffer
-数值上下文和超时后日志恢复已由 `formal10` 在稳定 RAPI 会话下正式验证。下一步仍必须先从 compatibility
-corpus、源码、设备日志或截图固定一个新的真实产品缺口，再决定进入哪个公共 DLL；不要预先
-把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器树、Range/Selection、pinch zoom、
-transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对 URL、CORS、
-完整图像 loading 和 image-map 的未覆盖扩展仍是限制，不应在下一步中被误写成已支持。
+next766 的 `Text.wholeText` 关系 50 已由 TEST1208 及 TEST1205–1207、TEST999 的相邻
+回归验证：Core 对直接 Text child 调用 libdom 逻辑相邻遍历并按 UTF-8 probe/truncation
+合同返回，Browser 提供只读 getter，splitText/CharacterData 后保持实时值，detached
+wrapper 回退到数据快照；非 Text、边界、缺失和越界 child 均 fail closed。`formal10` 仍
+确认嵌套 `WM_SIZE` 重入保护、32 KiB 原子部署、fixed-buffer 数值上下文和超时后日志恢复。
+下一步仍必须先从 compatibility corpus、源码、设备日志或截图固定一个新的真实产品缺口，
+再决定进入哪个公共 DLL；不要预先把尚未验证的 Web API 或视觉行为写成承诺。完整滚动容器
+树、Range/Selection、pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询
+语法、bfcache、绝对 URL、CORS、完整图像 loading 和 image-map 的未覆盖扩展仍是限制。
 
 优先场景应同时满足：
 
@@ -344,12 +343,11 @@ transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bf
 4. 通用语义进入公共 DLL，宿主只保留平台接线；
 5. 可以自动断言主要结果，人工部分只保留无法机器判断的视觉/输入风险。
 
-## 恢复功能开发后的完成标准（next766）
+## next767 完成标准
 
 - 先用 compatibility corpus、源码、日志或截图固定一个真实页面/交互组合缺口，并把最小可重复 fixture 或哨兵写入测试入口；
 - 可复用的 URL/history/DOM/Event/资源/布局/生命周期语义位于对应公共 DLL，`test_host` 只负责 WM 接线、调度和 fixture，不新增业务所有权；
 - 自动断言覆盖该纵向能力的成功、失败/取消、资源清理和直接相邻旧路径，且不会削弱现有布局、几何、滚动、history、生命周期、selector、focus、form-owner、reset、requestSubmit、direct-submit 或 FormData 旧/Ex 路径；
 - C89 回归、VS2008 ARMV4I 正式构建、同批 staging、仓库审计和风险相称的设备门均通过，无旧 EXE/DLL 混包；
 - 定向门及直接相邻回归唯一 `TESTBENCH PASS`、零 `ERROR`/`FAIL`，视觉、触摸、SIP/IME、picker 或旋转风险进入人工累计清单；
-- 完成后 handoff 应覆盖为 next766 快照，ROADMAP 只保留当前尚未完成的纵向能力；
-  新测试、公共边界和设备证据应可由本文件与 `docs/TESTING.md` 复核。
+- 完成后 handoff 应覆盖为 next767 快照，ROADMAP 只保留当前尚未完成的纵向能力；新测试、公共边界和设备证据应可由本文件与 `docs/TESTING.md` 复核。

@@ -649,6 +649,15 @@ offset 产生空 Text、错误范围/Comment/detached wrapper fail closed，以�
 返回码。offset 落在 astral code point 内部时安全拒绝；通用节点插入、reparent、合并、
 MutationObserver、事件或 native/视觉行为仍不在门内。
 
+TEST1208 覆盖 `Text.wholeText` 的 Core/Browser 读取纵切：关系 50 只接受未过滤
+`childNodes` 中的直接 Text child，使用 libdom 的逻辑相邻遍历按 UTF-8 probe/truncation
+合同返回连续 Text sibling 的拼接值，并在 element、Comment 或其他非 Text 节点处停止。
+自动断言覆盖 Core 的完整/截断/探测读取、UTF-8 astral 字符、非 Text/缺失/越界返回码，
+以及 Browser getter 的只读描述、splitText 后的实时拼接、CharacterData mutation 后的
+实时更新和 detached wrapper 快照。该关系只读，不合并节点、不改变 child list、不触发
+layout、资源 I/O 或事件；通用插入、reparent、Text 合并、MutationObserver、完整 live
+collection 和 native/视觉行为仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

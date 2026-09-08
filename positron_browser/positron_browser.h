@@ -526,9 +526,11 @@ typedef struct PBrowserScriptFocusRequestCallbacksEx {
  * including explicitly associated elements outside the form. Img has an owner
  * projection but is not listed in the Browser form.elements collection. Fieldsets,
  * object and output remain outside Core's successful-control visitor used by
- * submission and FormData. The callback
- * returns 0 when found, 2 when the relationship is absent or outside the
- * bounded wrapper tree, and a negative value on adapter failure. */
+ * submission and FormData. CHILD_NODE_WHOLE_TEXT is a value relationship for
+ * direct Text children; it returns the logical-adjacent Text projection as a
+ * bounded UTF-8 snapshot and is unavailable for elements, comments and other
+ * nodes. The callback returns 0 when found, 2 when the relationship is absent
+ * or outside the bounded wrapper tree, and a negative value on adapter failure. */
 typedef int (*PBrowserScriptGetNodeRelationFn)(void *pw, const char *id,
         unsigned int relation, unsigned int index, char *out_value,
         int out_capacity, int *out_bytes, int *out_number);
@@ -622,6 +624,7 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_NATURAL_HEIGHT 47u
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_COMPLETE       48u
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_CURRENT_SRC   49u
+#define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_WHOLE_TEXT 50u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;
