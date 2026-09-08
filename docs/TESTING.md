@@ -618,7 +618,7 @@ TEST1203 覆盖文本节点自身 mutation 的完整有界纵切：`Text.nodeVal
 `childNodes` 索引调用 `PCore_NodeSetTextChildById`。自动断言确认连接中 wrapper 和
 NodeList snapshot 身份不变、`length`/父级文本实时更新、元素 child 与缺失/越界索引
 fail closed、成功 mutation 使 retained layout 失效，以及父级替换后旧 wrapper 保留最近
-一次成功数据且不能再次写入。该门不实现插入、reparent、文本节点删除、MutationObserver、
+一次成功数据且不能再次写入。该门不实现插入、reparent、其他文本节点删除、MutationObserver、
 完整 live collection、事件或 native/视觉行为；宿主只负责 callback 接线、可选 restyle、
 fixture 与断言。
 
@@ -676,7 +676,7 @@ Core 则只处理一个元素的 direct child list。自动断言确认空 Text 
 身份与旧 NodeList snapshot 保持一致、被移除节点成为 detached 快照，以及重复调用、
 缺失目标和非 Text 写入安全失败；同时确认变化后的 retained layout 必须重新
 style/layout 才可读取。没有稳定 id 的嵌套元素会被 Browser 跳过，不伪造可写句柄。
-该门不实现通用节点插入、reparent、独立文本节点删除、MutationObserver、完整 live
+该门不实现通用节点插入、reparent、独立文本节点删除（TEST1214 的窄路径除外）、MutationObserver、完整 live
 collection、事件或 native/视觉行为；宿主只负责 Ex5 接线、fixture、可选 restyle 和
 断言。
 
@@ -697,8 +697,17 @@ TEST1213 覆盖 Core/Browser 的有界文本结构 mutation：Ex6 callback 将�
 `childNodes` 的末尾或零位创建一个新的 Text。自动断言覆盖 Core 的插入/索引错误码、父级
 文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和多参数
 请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture 和
-断言；已有节点 reparent、DocumentFragment/Node 插入、文本节点删除、事件、
+断言；已有节点 reparent、DocumentFragment/Node 插入、其他文本节点删除、事件、
 MutationObserver 和 live collection 仍不在该门内。
+
+TEST1214 覆盖 `Text.remove()` 的 Core/Browser 有界纵切：Ex2 mutation callback 将连接中
+direct Text wrapper 的未过滤 `childNodes` 索引交给 `PCore_NodeRemoveTextChildById`。
+自动断言覆盖 Core 的成功、缺失/越界/非 Text/空 parent 返回码，Browser 的父级
+`childNodes`/`children` 刷新、旧 NodeList snapshot 不变、被移除 wrapper 的 detached
+数据与身份、父级 textContent 和重复 detached no-op。成功 mutation 使 retained layout
+失效，宿主只负责 callback 接线、可选 restyle、fixture 与断言；Comment/CDATA、通用
+Node/DocumentFragment、reparent、其他删除、事件、MutationObserver、live collection
+以及 native/视觉行为仍不在门内。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

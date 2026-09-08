@@ -329,6 +329,16 @@ PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
 PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text);
 
+/* Remove one existing direct Text child at an unfiltered childNodes index.
+ * The parent must be an addressable element and the indexed child must be a
+ * DOM_TEXT_NODE; no other node type, reparenting or document-structure token
+ * is accepted. Returns 0 after removal, 2 when the parent/index/type is not
+ * available, and 1 for invalid input or another DOM failure. A successful
+ * removal invalidates retained layout; callers must style/layout/paint again
+ * before using geometry or native-control snapshots. */
+PCORE_API int PCore_NodeRemoveTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index);
+
 /* Minimal single-element contenteditable boundary for browser/runtime hosts.
  * The effective state walks the element's ancestors: an explicit true or
  * empty value enables editing, false disables it, plaintext-only enables the

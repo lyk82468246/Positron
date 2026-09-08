@@ -78,10 +78,11 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1213，其中
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1214，其中
   TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211/1212 只验证
   Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality，TEST1213 验证
-  Core/Browser 的 `Element.append()`/`prepend()` 文本插入；
+  Core/Browser 的 `Element.append()`/`prepend()` 文本插入，TEST1214 验证
+  `Text.remove()` 的 direct-child 删除与 detached 生命周期；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -428,7 +429,7 @@ TEST1203 断言 Browser/Core 的 Text 自身 mutation：`nodeValue`、`data` 和
 Text 节点，保持连接中 wrapper 与 NodeList snapshot 身份，更新 `length`/父级文本并在
 成功后使 retained layout 失效。元素 child、缺失/越界目标和 detached wrapper 均安全失败；
 旧 wrapper 保留最近一次成功数据。宿主只负责扩展 callback 接线、可选 restyle、fixture
-与断言，仍不实现插入、reparent、文本节点删除、MutationObserver 或完整 live collection。
+与断言，仍不实现插入、reparent、其他文本节点删除、MutationObserver 或完整 live collection。
 
 TEST1204 断言 Text、Comment 的 CharacterData 方法：`appendData()`、`insertData()`、
 `deleteData()` 和 `replaceData()` 在 Browser 侧计算 UTF-16 code-unit 范围后复用同一 Core
@@ -486,6 +487,15 @@ TEST1213 验证 Core/Browser 的有界文本结构 mutation：Ex6 callback 将�
 多参数请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture
 和断言；已有节点 reparent、DocumentFragment/Node 插入、文本节点删除、事件、
 MutationObserver 和 live collection 仍不在该门内。
+
+TEST1214 验证 Core/Browser 的有界 `Text.remove()`：Ex2 mutation callback 将连接中
+direct Text wrapper 的未过滤 `childNodes` 索引转为 `PCore_NodeRemoveTextChildById`，
+成功后更新父级 `childNodes`/`children`，保留旧 NodeList snapshot 与 detached wrapper
+的数据和身份，并让重复 detached `remove()` 成为 no-op。Core 断言成功、缺失/越界/非
+Text/空 parent 的稳定返回码，Browser 断言父级 textContent 和 wrapper 生命周期；宿主
+只负责 callback 接线、可选 restyle、fixture 与断言。Comment/CDATA、通用 Node/
+DocumentFragment、reparent、其他删除、事件、MutationObserver、live collection 和
+native/视觉行为仍不在该门内。
 
 ### Native EDIT/SELECT/button/file
 

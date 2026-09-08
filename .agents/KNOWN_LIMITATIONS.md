@@ -125,28 +125,22 @@
 
 - DOM bridge 只提供有界 snapshot。
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
-- Browser/Core 现在只支持有界 DOM mutation：`Element.removeChild()`/`remove()` 通过
-  `PCore_NodeRemoveChildById` 处理带 id 的直接子元素，`textContent`/非编辑 `innerText`
-  通过既有 text callback 替换为一个纯文本子节点；成功后 retained layout 失效，调用方
-  必须重新 style/layout/paint。文本 mutation 会刷新目标的 `children`/`childNodes` snapshot，
-  旧的无 id 文本 wrapper 保留数据但变为 detached。
-  `Text.nodeValue`/`data`/`textContent` setter 按父 id 与未过滤 childNodes 索引修改
-  Text/Comment/CDATA，保持 child list并使布局失效；四个 CharacterData
-  mutator 按 UTF-16 code-unit 计算并截断超长 count；`substringData()` 只读并复用
-  非负整数校验。`Text.splitText()` 另有一个 direct-child 有界入口：
-  UTF-16 offset 必须落在 UTF-8 code-point 边界，成功后插入紧邻 Text sibling 并使布局
-  失效；astral code point 内部边界、无效范围和 detached wrapper fail closed。
-  `Text.wholeText` 只读关系 50 仅对直接 Text child 有效，拼接逻辑相邻 Text sibling
-  并在 element、Comment 或 processing-instruction 处停止；detached wrapper 返回最近
-  一次数据快照。`Text.replaceWholeText()` 现在通过 Ex4/`PCore_NodeReplaceWholeTextChildById`
-  提供同一 direct-child 范围内的有界合并：目标保留身份并移动到相邻 Text 段首位，
-  其他 Text wrapper 变为 detached，边界节点不被跨越，成功后布局失效。Core 在 WM6
-  上显式逐个删除相邻 sibling，以避开 split 后 libdom helper 的 stale-cursor 风险。
+- Browser/Core 只支持有界 DOM mutation：`Element.removeChild()`/`remove()` 处理带 id 的
+  直接子元素，`textContent`/非编辑 `innerText` 通过 text callback 替换纯文本；成功后
+  retained layout 失效并刷新 snapshot，旧文本 wrapper 可保留数据但 detached。
+  `Text.nodeValue`/`data`/`textContent` setter 和四个 CharacterData mutator 按父 id、
+  未过滤索引及 UTF-16 code-unit 规则修改 Text/Comment/CDATA；`substringData()` 只读。
+  `Text.splitText()` 只接受 direct Text 的 UTF-16→UTF-8 code-point 边界；`wholeText` 只读
+  拼接逻辑相邻 Text，`replaceWholeText()` 通过 Ex4 合并同一 direct-child 段并保留目标
+  身份。越界、astral 内部边界和 detached wrapper fail closed；成功结构 mutation 使布局
+  失效，Core 在 WM6 上显式删除 sibling 以避开 stale cursor。
   `Node.normalize()` 通过 Ex5/Core 整理带 id 元素的 direct children（删空/合并 Text，非
-  Text 为边界），并递归可寻址后代；无 id 后代跳过，变化使布局失效。通用插入、删除、
-  MutationObserver/live collection 未实现，错误目标 fail closed。Ex6 允许带 id 元素
-  `append(text)`/`prepend(text)` 在末尾/零位插入单个 Text；Node、多参、>64 子节点、
-  DocumentFragment、reparent 和文本节点删除仍不支持。
+  Text 为边界），并递归可寻址后代；无 id 后代跳过，变化使布局失效。通用插入、reparent、
+  Comment/CDATA/通用删除、MutationObserver/live collection 未实现，错误目标 fail closed。
+  Ex6 允许带 id 元素 `append(text)`/`prepend(text)` 在末尾/零位插入单个 Text；Ex2
+  另允许连接中 direct Text wrapper 的 `Text.remove()` 按未过滤索引删除一个 Text，刷新
+  父级 snapshot 并使旧 wrapper 成为 detached，重复 detached 调用 no-op。Node、多参、
+  >64 子节点、DocumentFragment、已有节点 reparent 和其他删除仍不支持。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -585,10 +579,11 @@
   和 CharacterData mutator：断言直接 child、wrapper/snapshot、UTF-16 范围、detached
   回退以及 retained-layout invalidation。结构 mutation、observer、完整 collection 和
   native/视觉行为不在门内。
-- TEST1205–1213 断言 CharacterData/Text relations、`Node.normalize()`、
-  `Node.cloneNode()`/`isEqualNode()` 和 Ex6 文本插入的边界、wrapper/snapshot、detached
-  与 fail-closed；1210 验递归，1211/1212 验克隆与 equality，1213 验 append/prepend。
-  其他结构 mutation、observer/live collection、native/视觉需人工观察。
+- TEST1205–1214 断言 CharacterData/Text relations、`Node.normalize()`、
+  `Node.cloneNode()`/`isEqualNode()`、Ex6 文本插入和 Ex2 `Text.remove()` 的边界、
+  wrapper/snapshot、detached 与 fail-closed；1210 验递归，1211/1212 验克隆与 equality，
+  1213 验 append/prepend，1214 验 direct Text 删除。其他结构 mutation、observer/live
+  collection、native/视觉需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

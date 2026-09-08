@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1213
+#define TEST_MAX_NUMBER 1214
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15329,6 +15329,30 @@ static int pcore_browser_script_dom_remove_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_remove_text_child(void *pw,
+        const char *parent_id, unsigned int child_index)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeRemoveTextChildById(bridge->document, parent_id,
+            child_index);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_content_editable_get(void *pw,
         const char *id, int *out_editable)
 {
@@ -16836,7 +16860,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx2 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17015,6 +17039,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
             pcore_browser_script_dom_remove_child;
+    dom_mutation_callbacks.remove_text_child =
+            pcore_browser_script_dom_remove_text_child;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17210,7 +17236,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx2(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -48353,6 +48379,87 @@ static BOOL test1213_browser_text_child_insertion_contract(void)
             " through Core, preserve existing snapshot wrappers and order,"
             " refresh the receiver collection, and reject Node or multi-value"
             " insertion without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1214 - bounded Text.remove() detaches one direct Text child. */
+static BOOL test1214_browser_text_child_removal_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'><span id='keep'>A</span>tail</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'><span id='keep'>A</span>tail</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var root=document.getElementById('root'),old,keep,tail,after,"
+        "first,ret1,ret2,ok;old=root.childNodes;keep=old[0];tail=old[1];"
+        "ok=root!==null&&old.length===2&&keep.localName==='span'&&"
+        "tail.nodeType===3&&tail.data==='tail'&&root.children.length===1;"
+        "ret1=tail.remove();after=root.childNodes;first=after[0];"
+        "ok=ok&&ret1===undefined&&after.length===1&&first===keep&&"
+        "old.length===2&&old[0]===keep&&old[1]===tail&&tail.parentNode===null&&"
+        "tail.parentElement===null&&!tail.isConnected&&tail.data==='tail'&&"
+        "root.textContent==='A'&&root.children.length===1;ret2=tail.remove();"
+        "ok=ok&&ret2===undefined&&root.childNodes.length===1&&"
+        "root.childNodes[0]===keep&&root.textContent==='A';"
+        "document.getElementById('result').textContent=String(ok);})();";
+    HANDLE core_doc;
+    char core_value[128];
+    int core_bytes;
+    int core_remove;
+    int core_bad_index;
+    int core_element;
+    int core_missing_parent;
+    int core_null_parent;
+    int core_text_result;
+    char error[768];
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    core_bytes = 0;
+    memset(core_value, 0, sizeof(core_value));
+    core_remove = core_doc == NULL ? 1 : PCore_NodeRemoveTextChildById(
+            core_doc, "root", 1);
+    core_bad_index = core_doc == NULL ? 1 : PCore_NodeRemoveTextChildById(
+            core_doc, "root", 1);
+    core_element = core_doc == NULL ? 1 : PCore_NodeRemoveTextChildById(
+            core_doc, "root", 0);
+    core_missing_parent = core_doc == NULL ? 1 :
+            PCore_NodeRemoveTextChildById(core_doc, "missing", 0);
+    core_null_parent = core_doc == NULL ? 1 :
+            PCore_NodeRemoveTextChildById(core_doc, NULL, 0);
+    core_text_result = core_doc == NULL ? 1 : PCore_NodeTextContentById(
+            core_doc, "root", core_value, sizeof(core_value), &core_bytes);
+    if (core_doc == NULL || core_remove != 0 || core_bad_index != 2 ||
+            core_element != 2 || core_missing_parent != 2 ||
+            core_null_parent != 1 || core_text_result != 0 ||
+            strcmp(core_value, "A") != 0 || core_bytes != 1) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core remove=%d bad=%d element=%d missing=%d null=%d text=%d value=%s bytes=%d",
+                core_remove, core_bad_index, core_element,
+                core_missing_parent, core_null_parent, core_text_result,
+                core_value, core_bytes);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1214 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-text-remove", HTML, PROBE, "true",
+            error, sizeof(error))) {
+        show_error(L"TEST 1214 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1214 OK",
+            "Text.remove now detaches one bounded direct child through Core,"
+            " preserves the detached wrapper and old snapshot, refreshes the"
+            " parent collection, and keeps repeated detached removal a no-op.");
     return TRUE;
 }
 
@@ -106505,6 +106612,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1211: ok = test1211_browser_node_clone_contract(); break;
         case 1212: ok = test1212_browser_clone_equality_contract(); break;
         case 1213: ok = test1213_browser_text_child_insertion_contract(); break;
+        case 1214: ok = test1214_browser_text_child_removal_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

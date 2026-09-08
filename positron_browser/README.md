@@ -427,59 +427,56 @@ slot，不增加脚本 native-function 数量；未注册时 mutation 仍成功�
 ### 有界 DOM 子节点删除
 
 宿主注册 `PBrowserScriptDomMutationCallbacks` 后，`remove_child` 将 UTF-8
-`parent_id`/`child_id` 转给 Core 的 `PCore_NodeRemoveChildById`。
-`Element.removeChild(child)` 只接受直接 element child，成功返回 wrapper 并刷新 receiver
-的 `children`/`childNodes` snapshot；连接中的 `Element.remove()` 复用该路径，detached
-element 是 no-op。
+`parent_id`/`child_id` 转给 `PCore_NodeRemoveChildById`。`Element.removeChild()` 与连接中的
+`Element.remove()` 只接受直接 element child，成功刷新 `children`/`childNodes` snapshot；
+detached element 是 no-op。Core 丢弃 retained layout，错误关系、结构 token、过长 id 或
+未注册 callback fail closed，不派发事件，宿主随后重排。
 
-Browser 负责 JSON 映射；Core 删除成功后丢弃 retained layout，宿主必须重新
-style/layout/paint。错误关系、结构 token、过长 id 或未注册 callback fail closed；不派发
-事件。
+`PBrowserScriptDomMutationCallbacksEx2` 在旧表后追加 `remove_text_child`，不改变 ABI。
+连接中的 Text wrapper 的 `Text.remove()` 通过 `__pcoreRemoveChild` 发送
+`{op:"removeTextChild", parentId, index, nodeType:3}`，callback 转给
+`PCore_NodeRemoveTextChildById`；刷新父级 snapshot，旧 snapshot/wrapper 保留数据但
+detached，重复调用 no-op。非 Text、reparent、删除、事件、observer 和 live collection
+不支持；宿主负责重排。
 
-`textContent` 和非编辑元素的 `innerText` setter 复用既有 text callback；成功后 Core
-丢弃 retained layout，Browser 刷新目标的 `children`/`childNodes`/query snapshot，旧的
-无 id 文本 wrapper 保留数据并变为 detached。编辑元素的 `innerText` 共享这条失效规则；
-宿主负责输入/事件策略及重新 style/layout/paint。
+`textContent` 和非编辑元素的 `innerText` setter 复用既有 text callback；成功后 Core 丢弃
+retained layout，Browser 刷新 `children`/`childNodes`/query snapshot，旧的无 id 文本
+wrapper 保留数据并 detached。编辑元素共享失效规则，宿主负责输入/事件策略和重排。
 
-需要 Text setter 时，宿主用 `PBrowserScriptDomWriteCallbacksEx` 注册 native slot，提供
-element setter 与 `set_child_text`；后者收到父 id、未过滤 `childNodes` 索引和 UTF-8 文本，
-转给 `PCore_NodeSetTextChildById`。Comment/CDATA 改用 Ex2 的
-`set_character_data_child`；Text 仍走旧 callback，Ex2 不改变旧表布局或 slot 数量。成功
-后宿主重排，失效或 detached wrapper 安全失败。
+Text setter 使用 Ex 的 `set_child_text` 转给 `PCore_NodeSetTextChildById`；Comment/CDATA
+使用 Ex2 的 `set_character_data_child`，Text 仍走旧 callback，表布局不变。成功后宿主
+重排，失效或 detached wrapper 安全失败。
 
-Text、Comment、CDATA wrapper 提供 `appendData()`、`insertData()`、`deleteData()`、
-`replaceData()` 及 `nodeValue`/`data`/`textContent` setter。offset/count 使用 UTF-16
-code-unit 语义；offset/count 为有限非负整数，超长 count 截断，越界 offset 抛错。
-`substringData()` 只读，沿用校验；wrapper/detached 留快照，layout 失效。
+Text、Comment、CDATA wrapper 提供四个 CharacterData mutator 及
+`nodeValue`/`data`/`textContent` setter；offset/count 按 UTF-16 code unit 校验，超长
+count 截断，越界抛错。`substringData()` 只读并保留 detached 快照，成功 mutation 使
+layout 失效。
 
-需要 `Text.splitText()` 时，宿主改用 ABI 追加的
-`PBrowserScriptDomWriteCallbacksEx3.split_text_child`。Browser 只接受 direct Text child
-的非负 UTF-16 offset，经 `__pcoreSetText` 请求 Core 在 code-point 边界插入紧邻 sibling
-（末尾允许空 Text）。原 wrapper 保留为前缀，新的 `childNodes` 是 snapshot，宿主随后
-重排；缺失/错误 child、detached wrapper、越界或位于 astral code point 内的 offset
-fail closed。
+`Text.splitText()` 使用 ABI 追加的 `PBrowserScriptDomWriteCallbacksEx3.split_text_child`；
+Browser 只接受 direct Text child 的非负 UTF-16 offset，经 `__pcoreSetText` 请求 Core 在
+code-point 边界插入紧邻 sibling（末尾允许空 Text）。原 wrapper 保留为前缀并刷新 snapshot；
+错误 child、detached、越界或 astral 内部边界 fail closed。
 
-`Text.wholeText` 是关系 50 的只读 getter：Core 拼接同级连续 Text，遇 element、
-Comment/processing-instruction 停止；非 Text 无此属性，detached 回退 `data`。
-读取为 snapshot，不改 DOM。
+`Text.wholeText` 是关系 50 的只读 getter：Core 拼接同级连续 Text，遇 element、Comment/
+processing-instruction 停止；非 Text 无此属性，detached 回退 `data`，不改 DOM。
 
-需要 `Text.replaceWholeText()` 时，宿主使用 ABI 追加的
+`Text.replaceWholeText()` 使用 ABI 追加的
 `PBrowserScriptDomWriteCallbacksEx4.replace_whole_text_child`（Ex3 ABI 不变）。Browser
-记录 direct Text child 的相邻段并经 `__pcoreSetText` 发送请求；Core 保留目标身份、删除
-相邻 Text，element/Comment/CDATA 截断范围，失败或 detached wrapper fail closed。
+记录 direct Text child 的相邻段并经 `__pcoreSetText` 请求 Core；目标身份保留，相邻 Text
+变为 detached，element/Comment/CDATA 截断范围，失败或 detached fail closed。
 
-`Node.normalize()` 由 Ex5 callback 接入：Browser 按稳定 id 递归，Core 整理 direct
-children（删空/合并 Text，非 Text 为边界）并重建 `childNodes`；无 id 后代跳过，变化失效
-layout，重复调用 no-op，不派发事件/I/O。
+`Node.normalize()` 由 Ex5 callback 接入：Browser 按稳定 id 递归，Core 整理 direct children
+（删空/合并 Text，非 Text 为边界）并重建 `childNodes`；无 id 后代跳过，变化失效 layout，
+重复调用 no-op。
 
-Ex6 `insert_text_child` 复用 `__pcoreSetText` 调用
-`PCore_NodeInsertTextChildById`。带 id 元素 `append`/`prepend` 仅接收单个字符串/原始
-值，在末尾/零位插入 Text；成功刷新 snapshot、失效 layout。Node、多参、>64、无 id、
-Fragment/reparent/删除、事件、observer、live collection 不支持。
+Ex6 `insert_text_child` 复用 `__pcoreSetText` 调用 `PCore_NodeInsertTextChildById`；带
+id 元素的 `append`/`prepend` 仅接受单个字符串/原始值，在末尾/零位插入 Text，成功刷新
+snapshot 并使 layout 失效。Node、多参、>64、无 id、Fragment/reparent/其他删除、事件、
+observer、live collection 不支持；Text-only `Text.remove()` 走上面的 Ex2 bridge。
 
-`Node.cloneNode(deep)` 返回 detached snapshot；深克隆最多 64 个直接子节点、256 个节点，
-保留属性/顺序/父链/独立数据；含 clone 时 `isEqualNode()` 比较结构。原文不改，
-超限/不支持 fail closed。
+`Node.cloneNode(deep)` 返回 detached snapshot；深克隆最多 64 个子节点、256 个节点，
+保留属性/顺序/父链/独立数据，并可与 live wrapper 做 `isEqualNode()` 比较。原文不改，
+超限或不支持 fail closed。
 
 ### `dialog` 生命周期
 
