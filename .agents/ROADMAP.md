@@ -110,6 +110,11 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
+结构 mutation 目前只承诺带 id 元素的单值 `Element.append()`/`prepend()`：Browser 通过
+Ex6 复用既有写入槽，由 Core 在未过滤 `childNodes` 的末尾或零位创建一个新的 Text。
+这条窄路径已具备自动合同；通用 Node/DocumentFragment 插入、已有节点 reparent、删除、
+observer 和 live collection 仍需由真实页面缺口驱动，不能从该能力外推。
+
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接
 状态（包括持久化 visited history、隐私隔离与真实 visited 颜色）、伪元素、属性大小写修饰符、namespace、

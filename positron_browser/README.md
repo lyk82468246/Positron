@@ -432,10 +432,9 @@ slot，不增加脚本 native-function 数量；未注册时 mutation 仍成功�
 的 `children`/`childNodes` snapshot；连接中的 `Element.remove()` 复用该路径，detached
 element 是 no-op。
 
-Browser 只负责 JSON/错误映射；Core 删除成功后丢弃 retained layout，宿主必须
-重新 style/layout/paint。错误关系、缺失/过长 id、结构 child token 和未注册 callback
-fail closed；不派发 DOM 事件，不支持插入、reparent、文本节点删除或 live collection。
-该桥多占一个 native slot；重复注册返回 `PSCRIPT_ERROR_GLOBAL`。
+Browser 负责 JSON 映射；Core 删除成功后丢弃 retained layout，宿主必须重新
+style/layout/paint。错误关系、结构 token、过长 id 或未注册 callback fail closed；不派发
+事件。
 
 `textContent` 和非编辑元素的 `innerText` setter 复用既有 text callback；成功后 Core
 丢弃 retained layout，Browser 刷新目标的 `children`/`childNodes`/query snapshot，旧的
@@ -466,18 +465,21 @@ Comment/processing-instruction 停止；非 Text 无此属性，detached 回退 
 
 需要 `Text.replaceWholeText()` 时，宿主使用 ABI 追加的
 `PBrowserScriptDomWriteCallbacksEx4.replace_whole_text_child`（Ex3 ABI 不变）。Browser
-记录 direct Text child 的相邻段，经 `__pcoreSetText` 发送
-`{op:"replaceWholeText",parentId,index,text}`；Core 保留目标身份并置于段首，其他 Text
-wrapper 变为 detached，element/Comment/CDATA 是边界。错误 child、detached wrapper 或
-未注册/失败回调 fail closed，成功后宿主重排。
+记录 direct Text child 的相邻段并经 `__pcoreSetText` 发送请求；Core 保留目标身份、删除
+相邻 Text，element/Comment/CDATA 截断范围，失败或 detached wrapper fail closed。
 
-`Node.normalize()` 由 Ex5 callback 接入：递归带稳定 id 的元素后代，Core 整理 direct
-children（删空/合并 Text，element/Comment/CDATA 为边界）；重建 `childNodes`，保留首个
-wrapper，无 id 跳过。变化失效 layout，重复调用 no-op，不派发事件/I/O。
+`Node.normalize()` 由 Ex5 callback 接入：Browser 按稳定 id 递归，Core 整理 direct
+children（删空/合并 Text，非 Text 为边界）并重建 `childNodes`；无 id 后代跳过，变化失效
+layout，重复调用 no-op，不派发事件/I/O。
 
-`Node.cloneNode(deep)` 返回 detached snapshot：默认浅、`true` 深复制最多 64 个直接子节点、
-256 节点，保留属性、顺序、父链及独立数据；含 clone 时 `isEqualNode()` 比较结构。
-不改原文，超限/不支持节点 fail closed。
+Ex6 `insert_text_child` 复用 `__pcoreSetText` 调用
+`PCore_NodeInsertTextChildById`。带 id 元素 `append`/`prepend` 仅接收单个字符串/原始
+值，在末尾/零位插入 Text；成功刷新 snapshot、失效 layout。Node、多参、>64、无 id、
+Fragment/reparent/删除、事件、observer、live collection 不支持。
+
+`Node.cloneNode(deep)` 返回 detached snapshot；深克隆最多 64 个直接子节点、256 个节点，
+保留属性/顺序/父链/独立数据；含 clone 时 `isEqualNode()` 比较结构。原文不改，
+超限/不支持 fail closed。
 
 ### `dialog` 生命周期
 

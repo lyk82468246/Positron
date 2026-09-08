@@ -317,6 +317,18 @@ PCORE_API int PCore_NodeNormalizeById(HANDLE hDoc, const char *element_id);
 PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id);
 
+/* Insert one new UTF-8 Text child at an unfiltered childNodes index. The
+ * parent must be an addressable element; child_index may equal the current
+ * child count to append. The inserted node is always new and never reuses or
+ * reparents an existing node. Returns 0 after insertion, 2 when the parent
+ * or insertion index is unavailable, and 1 for invalid input, malformed
+ * UTF-8 or another DOM failure. A successful insertion invalidates retained
+ * layout; callers must style/layout/paint again before using geometry or
+ * native-control snapshots. This primitive does not dispatch events, remove
+ * nodes, or provide a live collection. */
+PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *text);
+
 /* Minimal single-element contenteditable boundary for browser/runtime hosts.
  * The effective state walks the element's ancestors: an explicit true or
  * empty value enables editing, false disables it, plaintext-only enables the

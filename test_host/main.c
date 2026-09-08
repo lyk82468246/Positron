@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1212
+#define TEST_MAX_NUMBER 1213
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15279,6 +15279,31 @@ static int pcore_browser_script_dom_normalize_child_text(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_insert_text_child(void *pw,
+        const char *parent_id, unsigned int child_index, const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            text == NULL) {
+        return -1;
+    }
+    result = PCore_NodeInsertTextChildById(bridge->document, parent_id,
+            child_index, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16810,7 +16835,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx5 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacks dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -16984,6 +17009,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_replace_whole_text_child;
     dom_write_callbacks.normalize_child_text =
             pcore_browser_script_dom_normalize_child_text;
+    dom_write_callbacks.insert_text_child =
+            pcore_browser_script_dom_insert_text_child;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17181,7 +17208,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx5(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -48237,6 +48264,95 @@ static BOOL test1212_browser_clone_equality_contract(void)
     show_info(L"TEST 1212 OK",
             "Node.isEqualNode compares bounded clone structure, attributes"
             " and character data in either direction without identity aliasing.");
+    return TRUE;
+}
+
+/* TEST 1213 - bounded Element.append/prepend insert one new Text child. */
+static BOOL test1213_browser_text_child_insertion_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'><span id='keep'>A</span>tail</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'><span id='keep'>A</span>tail</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var root=document.getElementById('root'),old,oldKeep,oldTail,"
+        "oldElements,after,after2,added,prepended,badNode=false,badMany=false,"
+        "beforeText,ok;old=root.childNodes;oldElements=root.children;"
+        "oldKeep=old[0];oldTail=old[1];ok=root!==null&&old.length===2&&"
+        "oldKeep.nodeName==='SPAN'&&oldTail.nodeType===3&&oldTail.data==='tail'&&"
+        "oldElements.length===1;root.append('end');after=root.childNodes;added=after[2];"
+        "ok=ok&&after.length===3&&after[0]===oldKeep&&after[1]===oldTail&&"
+        "added.nodeType===3&&added.data==='end'&&old.length===2&&"
+        "oldKeep.parentNode===root&&oldTail.parentNode===root&&"
+        "root.children.length===1&&oldElements.length===1;root.prepend('start');"
+        "after2=root.childNodes;prepended=after2[0];"
+        "ok=ok&&after2.length===4&&prepended.nodeType===3&&prepended.data==='start'&&"
+        "after2[1]===oldKeep&&after2[2]===oldTail&&after2[3]===added&&"
+        "oldKeep.parentNode===root&&oldTail.parentNode===root&&added.parentNode===root&&"
+        "root.textContent==='startAtailend'&&root.children.length===1;beforeText="
+        "root.textContent;try{root.append(root);}catch(e){badNode=true;}"
+        "try{root.append('x','y');}catch(e2){badMany=true;}"
+        "ok=ok&&badNode&&badMany&&root.textContent===beforeText&&"
+        "root.childNodes.length===4;document.getElementById('result').textContent=String(ok);})();";
+    HANDLE core_doc;
+    char core_value[128];
+    int core_bytes;
+    int core_insert_head;
+    int core_insert_end;
+    int core_bad_index;
+    int core_missing_parent;
+    int core_null_text;
+    int core_text_result;
+    char error[768];
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    core_bytes = 0;
+    memset(core_value, 0, sizeof(core_value));
+    core_insert_head = core_doc == NULL ? 1 :
+            PCore_NodeInsertTextChildById(core_doc, "root", 0, "head");
+    core_insert_end = core_doc == NULL ? 1 :
+            PCore_NodeInsertTextChildById(core_doc, "root", 3, "end");
+    core_bad_index = core_doc == NULL ? 1 :
+            PCore_NodeInsertTextChildById(core_doc, "root", 5, "bad");
+    core_missing_parent = core_doc == NULL ? 1 :
+            PCore_NodeInsertTextChildById(core_doc, "missing", 0, "bad");
+    core_null_text = core_doc == NULL ? 1 :
+            PCore_NodeInsertTextChildById(core_doc, "root", 0, NULL);
+    core_text_result = core_doc == NULL ? 1 : PCore_NodeTextContentById(
+            core_doc, "root", core_value, sizeof(core_value), &core_bytes);
+    if (core_doc == NULL || core_insert_head != 0 || core_insert_end != 0 ||
+            core_bad_index != 2 || core_missing_parent != 2 ||
+            core_null_text != 1 || core_text_result != 0 ||
+            strcmp(core_value, "headAtailend") != 0 || core_bytes != 12) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core insert=%d,%d bad=%d missing=%d null=%d text=%d value=%s bytes=%d",
+                core_insert_head, core_insert_end, core_bad_index,
+                core_missing_parent, core_null_text, core_text_result,
+                core_value, core_bytes);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1213 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-text-insert", HTML, PROBE, "true",
+            error, sizeof(error))) {
+        show_error(L"TEST 1213 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1213 OK",
+            "Element.append/prepend now insert one bounded UTF-8 Text child"
+            " through Core, preserve existing snapshot wrappers and order,"
+            " refresh the receiver collection, and reject Node or multi-value"
+            " insertion without partial mutation.");
     return TRUE;
 }
 
@@ -106388,6 +106504,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1210: ok = test1210_browser_node_normalize_contract(); break;
         case 1211: ok = test1211_browser_node_clone_contract(); break;
         case 1212: ok = test1212_browser_clone_equality_contract(); break;
+        case 1213: ok = test1213_browser_text_child_insertion_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

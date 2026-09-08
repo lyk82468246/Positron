@@ -137,8 +137,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 有界 direct-element DOM mutation：`PCore_NodeRemoveChildById` 按 UTF-8 id 删除一个
   direct element child，拒绝缺失、非 direct、文本节点和 document/head/body 结构 child
   token，并在成功后使 retained layout 失效；调用方必须重新 style/layout/paint。该入口
-  不派发事件、不获取资源、不操作 native 控件，插入、reparent 和完整 live collection
-  仍由未来能力决定；
+  不派发事件、不获取资源、不操作 native 控件；通用节点插入、reparent 和完整 live
+  collection 仍由未来能力决定；
+- 同一 DOM 边界还提供 `PCore_NodeInsertTextChildById`：按父元素 UTF-8 id 和未过滤
+  `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count 时追加。它既
+  不复用也不 reparent 已有节点，成功后使 retained layout 失效，参数/非法 UTF-8、
+  不可用父节点或索引安全返回失败码；Core 不派发事件、不获取资源、不操作 native
+  控件，调用方负责重新 style/layout/paint。它不扩展为通用 Node/DocumentFragment
+  插入、已有节点 reparent、文本节点删除或 live collection；
 - 文本内容 mutation：`PCore_NodeSetTextContentById` 与
   `PCore_ContentEditableSetTextById` 成功替换子内容后同样使 retained layout 失效，并把
   一个纯文本子节点交给 Browser/宿主重新查询；Browser 使旧的无 id 文本 wrapper 与
@@ -292,6 +298,14 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   返回被移除 wrapper；错误关系抛出脚本错误，detached `remove()` 是 no-op。Browser 不
   派发 mutation event、不插入或 reparent 节点，也不自行 style/layout/paint；宿主必须在
   成功 callback 后安排 Core 重排。
+- `Element.append(text)` 与 `Element.prepend(text)` 通过 ABI 追加的
+  `PBrowserScriptDomWriteCallbacksEx6.insert_text_child` 接入
+  `PCore_NodeInsertTextChildById`。Browser 只接受带 id 元素上的单个字符串或原始值，按
+  未过滤 `childNodes` 的末尾或零位插入一个新 Text 节点，并保留已有 wrapper、刷新
+  receiver snapshot；Node、多参数、超出 64 个现有子节点、不可寻址父级或失败 callback
+  fail closed，不产生脚本侧部分提交。该桥复用 `__pcoreSetText`，不增加 native slot；
+  Core 的 retained layout 失效和后续 style/layout/paint 仍由宿主负责。DocumentFragment、
+  已有节点 reparent、文本节点删除、事件、MutationObserver 和 live collection 不在边界内；
 - 同一 DOM bridge 还提供 `<option>` 的 `value`、`label`、`text` 基础 IDL 属性。Browser
   在对应 attribute 存在时返回 `value`/`label`，缺失时回退到 option 文本；`text` 直接
   读写 option 的纯文本，因此属性或文本 mutation 会即时反映到后续读取和所属 select

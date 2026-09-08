@@ -78,9 +78,10 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1212，其中
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1213，其中
   TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211/1212 只验证
-  Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality；
+  Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality，TEST1213 验证
+  Core/Browser 的 `Element.append()`/`prepend()` 文本插入；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -477,6 +478,14 @@ TEST1211 验证 Browser 的 `Node.cloneNode(deep)`：浅/深 detached snapshot �
 TEST1212 验证 Browser 的 `Node.isEqualNode()` 在 clone 与 live wrapper 之间进行有界结构
 比较：属性、节点类型/名称、字符数据和子树顺序相等但身份不同，clone mutation 不污染
 源节点，结构变化立即反映；超限或不支持类型安全返回 `false`，宿主只提供 fixture 与断言。
+
+TEST1213 验证 Core/Browser 的有界文本结构 mutation：Ex6 callback 将带 id 元素的
+`append(text)`/`prepend(text)` 请求转为 `PCore_NodeInsertTextChildById`，在未过滤
+`childNodes` 的末尾或零位创建一个新的 Text 节点。自动断言覆盖 Core 的插入/索引错误码、
+父级文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和
+多参数请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture
+和断言；已有节点 reparent、DocumentFragment/Node 插入、文本节点删除、事件、
+MutationObserver 和 live collection 仍不在该门内。
 
 ### Native EDIT/SELECT/button/file
 

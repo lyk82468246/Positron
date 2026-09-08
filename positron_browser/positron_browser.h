@@ -736,6 +736,28 @@ typedef struct PBrowserScriptDomWriteCallbacksEx5 {
     PBrowserScriptNormalizeChildTextFn normalize_child_text;
 } PBrowserScriptDomWriteCallbacksEx5;
 
+/* Extended DOM write table. Ex5 remains ABI-fixed for existing hosts; Ex6
+ * appends a bounded direct Text-child insertion adapter while reusing the
+ * same `__pcoreSetText` native JSON slot. `parent_id` is borrowed UTF-8,
+ * `child_index` is the unfiltered childNodes insertion index (including the
+ * child count for append), and `text` is borrowed UTF-8 for the synchronous
+ * call. insert_text_child returns >0 after a new Text child was inserted, 0
+ * when the parent or index is unavailable, and <0 on adapter failure. The
+ * host must re-query and restyle/layout/paint after success. */
+typedef int (*PBrowserScriptInsertTextChildFn)(void *pw,
+        const char *parent_id, unsigned int child_index, const char *text);
+typedef struct PBrowserScriptDomWriteCallbacksEx6 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+} PBrowserScriptDomWriteCallbacksEx6;
+
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
  * Core-owned removal of one direct element child. remove_child returns >0
@@ -2072,6 +2094,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx4(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx4 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx5(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx5 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx6 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

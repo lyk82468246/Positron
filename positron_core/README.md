@@ -154,8 +154,16 @@ element parent 的一个 direct element child，并拒绝缺失目标、非 dire
 document/head/body 等结构 child token。成功后会丢弃 retained box tree；调用方必须重新
 执行 style/layout/paint，并重新取得几何和 native-control 快照。该入口不派发事件、不做
 资源获取或 native 控件操作，返回 `0` 表示成功、`2` 表示目标或关系不可删除、`1` 表示
-参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；插入、
-reparent、文本节点删除和完整 live collection 仍不在此边界内。
+参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；通用节点
+插入、reparent、文本节点删除和完整 live collection 仍不在此边界内。
+
+`PCore_NodeInsertTextChildById` 是一个互补的结构 mutation 窄入口：它按父元素 UTF-8
+id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count
+时追加到末尾，既不复用也不 reparent 已有节点。成功返回 `0` 并使 retained box tree
+失效；父节点或索引不可用返回 `2`，参数、非法 UTF-8 或其他 DOM 失败返回 `1`。该
+入口只改变 Core DOM，不派发事件、不获取资源、不操作 native 控件；调用方必须重新
+style/layout/paint，并重新取得几何和控件快照。它不提供通用 Node/DocumentFragment
+插入、已有节点 reparent、文本节点删除或 live collection。
 
 `PCore_NodeSetTextContentById` 与 `PCore_ContentEditableSetTextById` 在成功替换子内容
 后同样丢弃 retained box tree。它们仍然只改变 Core DOM，不派发事件、不获取资源，也不

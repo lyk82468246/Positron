@@ -8503,6 +8503,91 @@ PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
     return 0;
 }
 
+PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *text)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_nodelist *children;
+    dom_ulong length;
+    dom_node *ref;
+    dom_string *content;
+    dom_text *new_text;
+    dom_node *inserted;
+    dom_exception err;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            text == NULL || !pcore_contenteditable_utf8_valid(text)) {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    children = NULL;
+    length = 0;
+    if (dom_node_get_child_nodes((dom_node *) parent, &children) !=
+            DOM_NO_ERR || children == NULL ||
+            dom_nodelist_get_length(children, &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    if ((dom_ulong) child_index > length) {
+        dom_nodelist_unref(children);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    ref = NULL;
+    if ((dom_ulong) child_index < length) {
+        if (dom_nodelist_item(children, (dom_ulong) child_index, &ref) !=
+                DOM_NO_ERR || ref == NULL) {
+            dom_nodelist_unref(children);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    dom_nodelist_unref(children);
+    content = NULL;
+    if (dom_string_create((const uint8_t *) text, strlen(text), &content) !=
+            DOM_NO_ERR || content == NULL) {
+        if (ref != NULL) {
+            dom_node_unref(ref);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    new_text = NULL;
+    err = dom_document_create_text_node(doc, content, &new_text);
+    dom_string_unref(content);
+    if (err != DOM_NO_ERR || new_text == NULL) {
+        if (ref != NULL) {
+            dom_node_unref(ref);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    inserted = NULL;
+    err = dom_node_insert_before((dom_node *) parent, (dom_node *) new_text,
+            ref, &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (ref != NULL) {
+        dom_node_unref(ref);
+    }
+    dom_node_unref((dom_node *) new_text);
+    dom_node_unref((dom_node *) parent);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
 PCORE_API int PCore_NodeAttributeById(HANDLE hDoc, const char *element_id,
         const char *name, char *value, int value_capacity, int *out_bytes)
 {
