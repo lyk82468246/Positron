@@ -583,10 +583,10 @@
   和 CharacterData mutator：断言直接 child、wrapper/snapshot、UTF-16 范围、detached
   回退以及 retained-layout invalidation。结构 mutation、observer、完整 collection 和
   native/视觉行为不在门内。
-- TEST1205–1211 自动断言 CharacterData、Text relations/mutations、`Node.normalize()` 与
-  Browser `Node.cloneNode()` 的 Ex2–Ex5、UTF-16/合并/边界、wrapper/snapshot/detached 和
-  fail-closed；1210 验 stable-id 后代递归/layout invalidation，1211 验浅/深 detached clone
-  的属性、顺序、独立性。通用结构 mutation、observer/live collection、native/视觉需人工观察。
+- TEST1205–1212 断言 CharacterData、Text relations/mutations、`Node.normalize()`、
+  `Node.cloneNode()`/`isEqualNode()` 的 Ex2–Ex5、UTF-16/合并/边界、wrapper/snapshot/
+  detached、equality 和 fail-closed；1210 验 stable-id 递归，1211 验浅/深克隆，1212 验
+  属性/子树 equality 与独立性。结构 mutation、observer/live collection、native/视觉需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

@@ -78,9 +78,9 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1211，其中
-  TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211 只验证
-  Browser-owned `Node.cloneNode()` detached snapshot；
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1212，其中
+  TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211/1212 只验证
+  Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -473,6 +473,10 @@ layout 失效均由公共 DLL 断言。
 TEST1211 验证 Browser 的 `Node.cloneNode(deep)`：浅/深 detached snapshot 保留属性、顺序、
 父子关系和独立数据，深度与节点数超限安全失败；源文档不变，宿主不提供 callback 或
 第二份 DOM 语义。
+
+TEST1212 验证 Browser 的 `Node.isEqualNode()` 在 clone 与 live wrapper 之间进行有界结构
+比较：属性、节点类型/名称、字符数据和子树顺序相等但身份不同，clone mutation 不污染
+源节点，结构变化立即反映；超限或不支持类型安全返回 `false`，宿主只提供 fixture 与断言。
 
 ### Native EDIT/SELECT/button/file
 

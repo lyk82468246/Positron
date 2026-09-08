@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1211
+#define TEST_MAX_NUMBER 1212
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -48205,6 +48205,38 @@ static BOOL test1211_browser_node_clone_contract(void)
             "Node.cloneNode now creates bounded Browser-owned detached"
             " snapshots, preserving attributes, child order, parent links"
             " and deep-copy independence without changing the Core document.");
+    return TRUE;
+}
+
+/* TEST 1212 - bounded Node.isEqualNode compares detached clone structure. */
+static BOOL test1212_browser_clone_equality_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='source' class='card' data-k='v'><span id='inner'>Hi</span>"
+        "<!--note-->tail</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var s=document.getElementById('source'),sh,deep,again,tail,ok;"
+        "sh=s.cloneNode();deep=s.cloneNode(true);again=s.cloneNode(true);"
+        "ok=s.isEqualNode(s)&&s.isEqualNode(deep)&&deep.isEqualNode(s)&&"
+        "deep.isEqualNode(again)&&again.isEqualNode(deep)&&"
+        "!s.isSameNode(deep)&&!s.isEqualNode(sh)&&!sh.isEqualNode(s);"
+        "tail=deep.childNodes[2];tail.data='changed';"
+        "ok=ok&&!deep.isEqualNode(s)&&!s.isEqualNode(deep)&&"
+        "again.isEqualNode(s)&&!again.isEqualNode(deep);"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-clone-equality", HTML, PROBE, "true",
+            error, sizeof(error))) {
+        show_error(L"TEST 1212 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1212 OK",
+            "Node.isEqualNode compares bounded clone structure, attributes"
+            " and character data in either direction without identity aliasing.");
     return TRUE;
 }
 
@@ -106355,6 +106387,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1209: ok = test1209_browser_text_replace_whole_text_contract(); break;
         case 1210: ok = test1210_browser_node_normalize_contract(); break;
         case 1211: ok = test1211_browser_node_clone_contract(); break;
+        case 1212: ok = test1212_browser_clone_equality_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

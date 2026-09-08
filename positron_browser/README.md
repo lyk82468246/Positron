@@ -475,9 +475,9 @@ wrapper 变为 detached，element/Comment/CDATA 是边界。错误 child、detac
 children（删空/合并 Text，element/Comment/CDATA 为边界）；重建 `childNodes`，保留首个
 wrapper，无 id 跳过。变化失效 layout，重复调用 no-op，不派发事件/I/O。
 
-`Node.cloneNode(deep)` 返回 detached snapshot：默认浅复制，`true` 深复制最多 64 个 direct
-children/256 个节点，保留属性、顺序、parent links 和独立数据；不改原文档，超限/不支持
-节点 fail closed。
+`Node.cloneNode(deep)` 返回 detached snapshot：默认浅、`true` 深复制最多 64 个直接子节点、
+256 节点，保留属性、顺序、父链及独立数据；含 clone 时 `isEqualNode()` 比较结构。
+不改原文，超限/不支持节点 fail closed。
 
 ### `dialog` 生命周期
 

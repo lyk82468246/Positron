@@ -188,6 +188,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   retained layout。它由 Browser 复制有界的 element 属性、direct child 顺序和 parent links，
   深克隆最多 64 个 direct children、256 个节点；超限或不支持的节点 fail closed。克隆的
   数据与源 wrapper 脱离，宿主无需注册 callback，也不得在 `test_host` 复制这套语义；
+- 当任一操作数是 detached clone 时，Browser 的 `Node.isEqualNode()` 按同一有界预算比较节点
+  类型、名称、属性、字符数据和子树顺序；它不把结构相等误报为身份相等，超限或不支持的
+  对象返回 `false`。普通 live wrapper 继续使用既有 Core equality bridge；宿主不参与比较；
 - 交互状态、DOM 事件、焦点候选和支持控件的默认动作；
 - 当前交互节点的有界 id 查询；`PCore_InteractionFocusElementId` 与
   `PCore_InteractionStateElementId` 只复制非空 UTF-8 id 和完整字节数，不改变
