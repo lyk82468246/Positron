@@ -819,7 +819,7 @@ static int pcore_font_px(HDC dc, const plot_font_style_t *fstyle)
 }
 
 static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
-        int font_kind)
+        int font_kind, int *cached_out)
 {
     int px = pcore_font_px(dc, fstyle);
     int italic = (fstyle->flags & (FONTF_ITALIC | FONTF_OBLIQUE)) ? 1 : 0;
@@ -828,10 +828,17 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
     int i;
     HFONT f;
 
+    if (cached_out != NULL) {
+        *cached_out = 0;
+    }
+
     for (i = 0; i < g_fc_n; i++) {
         if (g_fc[i].px == px && g_fc[i].weight == weight &&
                 g_fc[i].italic == italic && g_fc[i].family == family &&
                 g_fc[i].font_kind == font_kind) {
+            if (cached_out != NULL) {
+                *cached_out = 1;
+            }
             return g_fc[i].font;
         }
     }
@@ -844,7 +851,14 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
         g_fc[g_fc_n].font_kind = font_kind;
         g_fc[g_fc_n].font = f;
         g_fc_n++;
+        if (cached_out != NULL) {
+            *cached_out = 1;
+        }
     }
+    /* The bounded cache is intentional.  Once it is full, ownership of the
+     * newly-created font remains with the caller so it can be released after
+     * the measurement run; otherwise every new style would leak a GDI handle
+     * until the process shuts down. */
     return f;
 }
 
@@ -871,6 +885,7 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
         int kind;
         int end;
         HFONT font;
+        int font_cached;
         HFONT old;
         SIZE size;
 
@@ -885,11 +900,17 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
             }
             end += next_units;
         }
-        font = pcore_font_for(dc, fstyle, kind);
+        font = pcore_font_for(dc, fstyle, kind, &font_cached);
         if (font == NULL) {
             return 0;
         }
         old = (HFONT) SelectObject(dc, font);
+        if (old == NULL) {
+            if (!font_cached) {
+                DeleteObject(font);
+            }
+            return 0;
+        }
         if (cumulative != NULL) {
             int dummy;
             int i;
@@ -897,6 +918,9 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
             if (!GetTextExtentExPointW(dc, text + start, end - start,
                     0x7fffffff, &dummy, cumulative + start, &size)) {
                 SelectObject(dc, old);
+                if (!font_cached) {
+                    DeleteObject(font);
+                }
                 return 0;
             }
             for (i = start; i < end; i++) {
@@ -905,10 +929,16 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
         } else if (!GetTextExtentPoint32W(dc, text + start,
                 end - start, &size)) {
             SelectObject(dc, old);
+            if (!font_cached) {
+                DeleteObject(font);
+            }
             return 0;
         }
         total += size.cx;
         SelectObject(dc, old);
+        if (!font_cached) {
+            DeleteObject(font);
+        }
         start = end;
     }
     if (width != NULL) {
