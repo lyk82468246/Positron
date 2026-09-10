@@ -130,25 +130,15 @@
 
 - DOM bridge 只提供有界 snapshot。
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
-- Browser/Core 只支持有界 DOM mutation：`Element.removeChild()`/`remove()` 处理带 id 的
-  直接子元素，`textContent`/非编辑 `innerText` 通过 text callback 替换纯文本；成功后
-  retained layout 失效并刷新 snapshot，旧文本 wrapper 可保留数据但 detached。
-  `Text.nodeValue`/`data`/`textContent` setter 和四个 CharacterData mutator 按父 id、
-  未过滤索引及 UTF-16 code-unit 规则修改 Text/Comment/CDATA；`substringData()` 只读。
-  `Text.splitText()` 只接受 direct Text 的 UTF-16→UTF-8 code-point 边界；`wholeText` 只读
-  拼接逻辑相邻 Text，`replaceWholeText()` 通过 Ex4 合并同一 direct-child 段并保留目标
-  身份。越界、astral 内部边界和 detached wrapper fail closed；成功结构 mutation 使布局
-  失效，Core 在 WM6 上显式删除 sibling 以避开 stale cursor。
-  `Node.normalize()` 通过 Ex5/Core 整理带 id 元素的 direct children（删空/合并 Text，非
-  Text 为边界），并递归可寻址后代；无 id 后代跳过，变化使布局失效。通用插入、reparent、
-  MutationObserver/live collection 未实现，错误目标 fail closed。Ex6 允许带 id 元素
-  `append(text)`/`prepend(text)` 在末尾/零位插入单个 Text；Ex2 允许连接中 direct Text
-  wrapper 的 `Text.remove()` 或其父级 `Element.removeChild(text)` 按未过滤索引删除一个
-  Text。Ex3 再允许连接中 direct Comment/CDATA wrapper 的 `remove()` 或
-  `Element.removeChild(comment/cdata)`，经 `PCore_NodeRemoveCharacterDataChildById` 按
-  节点类型 8/4 删除；这些路径刷新父级 snapshot 并使旧 wrapper 成为 detached，重复
-  detached 的 `remove()` 是 no-op，`removeChild()` 则失败且不变更 DOM。Node、多参、>64
-  子节点、DocumentFragment、已有节点 reparent 和其他删除仍不支持。
+- Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、
+  CharacterData setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、
+  `Node.normalize()`、Ex6 的单值 `append()`/`prepend()`，以及 Ex2/Ex3 的 Text、Comment、
+  CDATA direct-child removal。成功 mutation 使 retained layout 失效并刷新必要 snapshot；
+  UTF-16 offset、UTF-8、detached wrapper 和错误目标均按各入口合同 fail closed。
+  Ex4 的 `Node.insertBefore()`/`appendChild()` 另支持带 id element 的同父级 reorder、跨父级
+  reparent 和 `NULL` reference append；错误 parent、层级环、结构 token、detached、Text/
+  Comment/CDATA、DocumentFragment 与多参数不产生部分 mutation。通用 Node 插入、
+  Comment/CDATA 插入、其他删除、mutation 事件、MutationObserver 和 live collection 仍未实现。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序

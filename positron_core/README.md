@@ -154,8 +154,17 @@ element parent 的一个 direct element child，并拒绝缺失目标、非 dire
 document/head/body 等结构 child token。成功后会丢弃 retained box tree；调用方必须重新
 执行 style/layout/paint，并重新取得几何和 native-control 快照。该入口不派发事件、不做
 资源获取或 native 控件操作，返回 `0` 表示成功、`2` 表示目标或关系不可删除、`1` 表示
-参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；通用节点
-插入、reparent、其他节点删除和完整 live collection 仍不在此边界内。
+参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；该删除
+入口不处理 Text/Comment/CDATA、DocumentFragment 或其他节点类型。
+
+`PCore_NodeInsertChildById` 是与删除路径配套的有界已有元素插入：它按 UTF-8 id 将一个
+已连接的 element child 放到目标 element 的指定 direct element child 之前，传入 `NULL`
+则追加到末尾。Core 允许同一父级重排和跨 element 父级迁移，但拒绝 document/head/body
+结构 token、Text/Comment/CDATA、DocumentFragment、detached 节点、错误 reference parent
+和层级环。返回 `0` 表示成功（把节点插到自身之前的合法 no-op 也不改变 DOM），`2` 表示
+目标或关系不可用，`1` 表示参数或其他 DOM 失败；成功后 retained box tree 失效，调用方
+必须重新 style/layout/paint。该入口不派发事件、不获取资源、不操作 native 控件，也不提供
+live collection。
 
 `PCore_NodeInsertTextChildById` 是一个互补的结构 mutation 窄入口：它按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count

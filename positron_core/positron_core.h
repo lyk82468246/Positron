@@ -317,6 +317,21 @@ PCORE_API int PCore_NodeNormalizeById(HANDLE hDoc, const char *element_id);
 PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id);
 
+/* Insert one existing element before another direct element child, or append
+ * it when `reference_child_id` is NULL. Both node ids are UTF-8 and must
+ * address elements in this document; the child may be moved from its current
+ * element parent, but document structure tokens, Text nodes, fragments and
+ * detached nodes are outside this bounded surface. The reference id, when
+ * supplied, must be a direct child of `parent_id`. Returns 0 after insertion,
+ * 2 when an id, direct relation or hierarchy is unavailable, and 1 for
+ * invalid input or another DOM failure. A successful move invalidates retained
+ * layout; callers must style/layout/paint again before using geometry or
+ * native-control snapshots. No events, resource fetches or live collections
+ * are dispatched by this Core primitive. */
+PCORE_API int PCore_NodeInsertChildById(HANDLE hDoc,
+        const char *parent_id, const char *child_id,
+        const char *reference_child_id);
+
 /* Insert one new UTF-8 Text child at an unfiltered childNodes index. The
  * parent must be an addressable element; child_index may equal the current
  * child count to append. The inserted node is always new and never reuses or

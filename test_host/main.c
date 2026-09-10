@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1216
+#define TEST_MAX_NUMBER 1217
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15374,6 +15374,32 @@ static int pcore_browser_script_dom_insert_text_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_insert_child(void *pw,
+        const char *parent_id, const char *child_id,
+        const char *reference_child_id)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            child_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeInsertChildById(bridge->document, parent_id, child_id,
+            reference_child_id);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -16955,7 +16981,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx3 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx4 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17138,6 +17164,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_remove_text_child;
     dom_mutation_callbacks.remove_character_data_child =
             pcore_browser_script_dom_remove_character_data_child;
+    dom_mutation_callbacks.insert_child =
+            pcore_browser_script_dom_insert_child;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17333,7 +17361,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx3(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx4(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -48770,6 +48798,119 @@ static BOOL test1216_browser_remove_child_character_data_contract(void)
             " snapshots, refresh the parent collection, and reject detached"
             " or wrong-parent removals. CDATA uses the same typed adapter when"
             " a document supplies a CDATA child.");
+    return TRUE;
+}
+
+/* TEST 1217 - bounded existing-element insertion supports reorder/reparent. */
+static BOOL test1217_browser_existing_element_insertion_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='a'><span id='one'>1</span>"
+        "<span id='two'>2</span></div><div id='b'><span id='three'>3</span>"
+        "</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='one'>1</span><span id='two'>2</span>"
+        "</div><div id='b'><span id='three'>3</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),one=document.getElementById('one'),"
+        "two=document.getElementById('two'),three=document.getElementById('three'),"
+        "oldA=a.children,oldB=b.children,oldNodesA=a.childNodes,"
+        "oldNodesB=b.childNodes,ret,badSelf=false,badText=false,"
+        "badReference=false,ok;"
+        "ok=a!==null&&b!==null&&one!==null&&two!==null&&three!==null&&"
+        "oldA.length===2&&oldA[0]===one&&oldA[1]===two&&oldB.length===1&&"
+        "oldB[0]===three&&oldNodesA.length===2&&oldNodesB.length===1;"
+        "ret=a.insertBefore(two,one);ok=ok&&ret===two&&a.children.length===2&&"
+        "a.children[0]===two&&a.children[1]===one&&two.parentElement===a&&"
+        "one.parentElement===a;ret=b.insertBefore(one,three);ok=ok&&ret===one&&"
+        "a.children.length===1&&a.children[0]===two&&b.children.length===2&&"
+        "b.children[0]===one&&b.children[1]===three&&one.parentElement===b;"
+        "ret=a.appendChild(three);ok=ok&&ret===three&&a.children.length===2&&"
+        "a.children[0]===two&&a.children[1]===three&&b.children.length===1&&"
+        "b.children[0]===one&&three.parentElement===a&&a.textContent==='23'&&"
+        "b.textContent==='1'&&oldA.length===2&&oldA[0]===one&&oldA[1]===two&&"
+        "oldB.length===1&&oldB[0]===three&&oldNodesA.length===2&&"
+        "oldNodesA[0]===one&&oldNodesA[1]===two&&oldNodesB.length===1&&"
+        "oldNodesB[0]===three;try{a.appendChild(a);}catch(e){badSelf=true;}"
+        "try{a.insertBefore(a.firstChild.firstChild,null);}catch(e2){badText=true;}"
+        "try{a.insertBefore(one,b.children[0]);}catch(e3){badReference=true;}"
+        "ok=ok&&badSelf&&badText&&badReference&&a.children.length===2&&"
+        "a.children[0]===two&&a.children[1]===three&&b.children.length===1&&"
+        "b.children[0]===one&&one.parentElement===b&&three.parentElement===a;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char core_a_value[64];
+    char core_b_value[64];
+    char error[768];
+    int core_a_bytes;
+    int core_b_bytes;
+    int core_reorder;
+    int core_reparent;
+    int core_append;
+    int core_bad_ref;
+    int core_bad_child;
+    int core_self;
+    int core_a_text;
+    int core_b_text;
+    HANDLE core_doc;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    memset(core_a_value, 0, sizeof(core_a_value));
+    memset(core_b_value, 0, sizeof(core_b_value));
+    core_a_bytes = 0;
+    core_b_bytes = 0;
+    core_reorder = core_doc == NULL ? 1 : PCore_NodeInsertChildById(
+            core_doc, "a", "two", "one");
+    core_reparent = core_doc == NULL ? 1 : PCore_NodeInsertChildById(
+            core_doc, "b", "one", "three");
+    core_append = core_doc == NULL ? 1 : PCore_NodeInsertChildById(
+            core_doc, "a", "three", NULL);
+    core_bad_ref = core_doc == NULL ? 1 : PCore_NodeInsertChildById(
+            core_doc, "a", "two", "one");
+    core_bad_child = core_doc == NULL ? 1 : PCore_NodeInsertChildById(
+            core_doc, "a", "missing", NULL);
+    core_self = core_doc == NULL ? 1 : PCore_NodeInsertChildById(
+            core_doc, "a", "a", NULL);
+    core_a_text = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "a", core_a_value, sizeof(core_a_value), &core_a_bytes);
+    core_b_text = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "b", core_b_value, sizeof(core_b_value), &core_b_bytes);
+    if (core_doc == NULL || core_reorder != 0 || core_reparent != 0 ||
+            core_append != 0 || core_bad_ref != 2 || core_bad_child != 2 ||
+            core_self != 2 || core_a_text != 0 || core_b_text != 0 ||
+            strcmp(core_a_value, "23") != 0 || strcmp(core_b_value, "1") != 0 ||
+            core_a_bytes != 2 || core_b_bytes != 1) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core reorder=%d reparent=%d append=%d ref=%d child=%d self=%d"
+                " text=%d,%d values=%s/%s bytes=%d/%d", core_reorder,
+                core_reparent, core_append, core_bad_ref, core_bad_child,
+                core_self, core_a_text, core_b_text, core_a_value,
+                core_b_value, core_a_bytes, core_b_bytes);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1217 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-existing-insert", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1217 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1217 OK",
+            "Node.insertBefore and appendChild now move existing bounded"
+            " element children through Core, preserve wrapper identity and"
+            " old snapshots across same-parent reorder and cross-parent"
+            " reparenting, refresh both parent collections, and reject"
+            " hierarchy, Text-node, and wrong-reference operations without"
+            " partial mutation.");
     return TRUE;
 }
 
@@ -106950,6 +107091,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1214: ok = test1214_browser_text_child_removal_contract(); break;
         case 1215: ok = test1215_browser_remove_child_text_contract(); break;
         case 1216: ok = test1216_browser_remove_child_character_data_contract(); break;
+        case 1217: ok = test1217_browser_existing_element_insertion_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

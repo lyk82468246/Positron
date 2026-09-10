@@ -728,6 +728,17 @@ Comment 的 `remove()` 与 `Element.removeChild(comment)`。自动断言覆盖�
 MutationObserver、live collection 和 native/视觉行为仍不在门内；宿主只负责接线、fixture
 和断言。
 
+TEST1217 覆盖已有 element 的有界结构 mutation：宿主注册追加 insertion 字段的
+`PBrowserScriptDomMutationCallbacksEx4`，Browser 以 `Node.insertBefore(element, reference)`
+和 `Node.appendChild(element)` 将现有 element child 交给 `PCore_NodeInsertChildById`。
+自动断言覆盖同父级 reorder、跨父级 reparent、`NULL` reference 的 append、moved wrapper
+identity、两侧 `children`/`childNodes` snapshot 失效、旧 snapshot 保持和父级
+`textContent` 更新；Core 另外验证缺失 child、错误 reference parent 和自身层级的返回码。
+Text 节点、错误 reference、DocumentFragment、detached/结构 token 和多余参数必须
+fail closed 且不产生部分 mutation。成功后 retained layout 失效，宿主只负责 Ex4 接线、
+可选 restyle、fixture 和断言；Comment/CDATA 插入、mutation 事件、MutationObserver、
+live collection 和 native/视觉行为仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

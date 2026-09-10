@@ -814,6 +814,28 @@ typedef struct PBrowserScriptDomMutationCallbacksEx3 {
     PBrowserScriptRemoveCharacterDataChildFn remove_character_data_child;
 } PBrowserScriptDomMutationCallbacksEx3;
 
+/* Extended DOM mutation table. Ex3 remains ABI-fixed for existing hosts;
+ * Ex4 appends a bounded existing-element insertion adapter while preserving
+ * all three removal callbacks. `parent_id` and `child_id` are borrowed UTF-8
+ * element ids. `reference_child_id` is NULL for append, otherwise it names a
+ * direct element child of `parent_id`. insert_child returns >0 after the
+ * existing element was inserted (including a same-node no-op), 0 when the
+ * relation or hierarchy is unavailable and <0 on adapter failure. The host
+ * must re-query and schedule style/layout/paint after success. Text nodes,
+ * document structure tokens, fragments and event dispatch remain outside
+ * this bounded callback. */
+typedef int (*PBrowserScriptInsertChildFn)(void *pw,
+        const char *parent_id, const char *child_id,
+        const char *reference_child_id);
+typedef struct PBrowserScriptDomMutationCallbacksEx4 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptRemoveChildFn remove_child;
+    PBrowserScriptRemoveTextChildFn remove_text_child;
+    PBrowserScriptRemoveCharacterDataChildFn remove_character_data_child;
+    PBrowserScriptInsertChildFn insert_child;
+} PBrowserScriptDomMutationCallbacksEx4;
+
 /* Typed host adapter for the bounded single-element contenteditable
  * boundary. The browser DLL owns the JSON bridge and `isContentEditable`
  * property; the host reads effective state and performs a plain-text Core
@@ -2145,6 +2167,9 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx2(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx3(
         HANDLE hSession,
         const PBrowserScriptDomMutationCallbacksEx3 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx4(
+        HANDLE hSession,
+        const PBrowserScriptDomMutationCallbacksEx4 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomMutationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(

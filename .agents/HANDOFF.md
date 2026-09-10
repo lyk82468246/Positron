@@ -10,15 +10,19 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next775 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
+最新 next776 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next775 延续 next761–774 的 Core child-data 与 Browser CharacterData bridge，
+- 当前代码 next776 延续 next761–775 的 Core child-data 与 Browser CharacterData bridge，
   保持 Ex3 `Text.splitText()`、关系 50 `wholeText`、Ex4 `replaceWholeText()`、Ex5
   `Node.normalize()`、Ex6 `Element.append()`/`prepend()` 文本插入、Ex2 `Text.remove()`/
   `Element.removeChild(Text)`，并以 Ex3 mutation callback 和
   `PCore_NodeRemoveCharacterDataChildById` 支持 Comment/CDATA direct-child removal；同时
-  保持 Browser 的 `Node.cloneNode(deep)`/clone equality 有界合同。next775 又修复了
+  保持 Browser 的 `Node.cloneNode(deep)`/clone equality 有界合同。next776 又新增 Ex4
+  `Node.insertBefore()`/`appendChild()` 的 existing-element 同父重排和跨父迁移：Core
+  `PCore_NodeInsertChildById` 执行结构变更，Browser 保留 wrapper identity、刷新新旧父级
+  collection snapshot，并对 Text/结构节点、错误 reference 和无效关系 fail closed。
+  next775 又修复了
   Core GDI 测量字体缓存达到上限后临时字体未释放的所有权漏洞，并在字体选入测量 DC
   失败时安全回退；本批还让 `PCore_SelectSetOptionSelected` 在 retained layout 被脚本
   listener 失效后通过 live DOM 完成选择提交，并新增按 SELECT 序号派发 extended key
@@ -30,8 +34,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1216。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1217。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -55,16 +59,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、direct
   `submit()`、detached `FormData`、图片元数据/decode/image-map、selector 子集和
-  source-selection 生命周期已形成有界合同；TEST1170–1216 的逐项夹具、边界和错误回退
-  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1216 还覆盖 source
+  source-selection 生命周期已形成有界合同；TEST1170–1217 的逐项夹具、边界和错误回退
+  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1217 还覆盖 source
   mutation callback、direct-element removal、元素文本内容、Text/Comment/CDATA
   CharacterData mutation、`substringData()` 范围、`Text.splitText()`/`wholeText`/
   `replaceWholeText()` 结构合同、`Node.normalize()` 递归/快照、`Node.cloneNode()` detached
   snapshot、clone/live `isEqualNode()` 结构合同、`Text.remove()` 生命周期和
-  `Element.removeChild(Text)` 兼容路径以及 Comment CharacterData removal，均保持产品
-  语义在 Core/Browser 而非宿主。TEST1209–1216 还覆盖 Ex4/Ex5/Ex6/Ex2/Ex3 callback、
+  `Element.removeChild(Text)` 兼容路径、Comment CharacterData removal 和 existing-element
+  insertion/reparent，均保持产品
+  语义在 Core/Browser 而非宿主。TEST1209–1217 还覆盖 Ex4/Ex5/Ex6/Ex2/Ex3 callback、
   相邻 Text 合并、目标/首个非空 wrapper 保持身份、克隆属性、独立数据、结构 equality、
-  单值文本插入、direct Text/Comment 删除及 `removeChild()` 的返回值和失败边界。
+  单值文本插入、direct Text/Comment 删除、existing-element insertion/reparent 及
+  `removeChild()` 的返回值和失败边界。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -80,7 +86,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `Node.cloneNode()` detached snapshot 与 clone/live `Node.isEqualNode()` 结构比较，
   next771 又加入 Ex6 的单值 `Element.append()`/`prepend()` 文本插入，next773 补齐
   `Element.removeChild(Text)` 对已有 Ex2 删除桥的 Browser 兼容路径，next774 再补齐
-  Comment/CDATA direct-child removal 的 Ex3 mutation bridge。
+  Comment/CDATA direct-child removal 的 Ex3 mutation bridge，next776 再补齐
+  existing-element insertion/reparent 的 Ex4 bridge。
   稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
@@ -91,7 +98,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `next772` 的 `Text.remove()` 与 `next773` 的 `Element.removeChild(Text)` 纵切均已有正式
   设备门证据。next774 已完成 Core/Browser 的 Comment/CDATA direct-child removal 代码、
   Ex3 ABI 和 TEST1216 离线夹具，Debug/Release ARMV4I 构建均通过；当前 WMDC 连接上的
-  `TEST1216,999` 自动设备门也已通过；不得把测试宿主扩展当作产品语义实现。
+  `TEST1216,999` 自动设备门也已通过；next776 的 `TEST1217,999` 门也已通过；不得把
+  测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
 
@@ -182,14 +190,21 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1216。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,999`。
+- `TEST_MAX_NUMBER`：1217。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260910-223812-next775-css-stack-recheck`：正式 Debug ARMV4I，选择
+最新自动证据是 `20260910-230051-next776`：正式 Debug ARMV4I，选择 `1217,999`，
+2/2、唯一 PASS、零 ERROR/FAIL，完整日志已回收，目标卷和内部 object-store 双空间
+预检通过，当前部署在完整日志回收后已清理。运行前转储清单为 0，运行后仍为 0，
+`crash_check=PASS`、`new_crash_dump_count=0`。TEST1217 证明同父重排、跨父 existing-element
+迁移和 append 保持 Browser wrapper identity，刷新新旧父级 collection snapshot，并对 self、
+Text child、错误 reference 和缺失 child 拒绝且不部分修改。
+
+此前有效设备证据 `20260910-223812-next775-css-stack-recheck`：正式 Debug ARMV4I，选择
 `6-12,15,16,18,21,22,24,38-42,51,59-62,64-67,118,999`，29/29、唯一 PASS、零 ERROR/FAIL，
 日志完整回收、双空间预检通过且当前部署已清理。用户先关闭了设备上保留的旧 Error
 Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，运行后仍为 0，
@@ -204,37 +219,16 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
 远端同名时间戳目录和不完整日志仍保留，未强杀进程；该启动停滞不作为正式基线，
 正式设备基线为上述 Debug 门。
 
-此前 `20260910-165042-next775-stack-config-fix` 和
-`20260910-165407-next775-stack-config-final` 虽然断言通过，却各新增一份转储，均不算
-崩溃修复基线；仅改选择入口不够。另一次坏配置注入验证了 `tests=1-45,62,118,999`
-会记录 `TESTBENCH FAIL` 与 `No tests were started`，不进入分组。相关日志和转储已回收
-到本地 `tmp/`；本地配置检查 13 例、最终 Debug/Release 构建均通过。最新复核已在
-清除旧错误报告后完成，当前崩溃修复的自动验收闭环成立。
+早期 next775 的错误配置运行虽有断言通过，但各新增转储，不作为基线；坏 INI
+`tests=1-45,62,118,999` 会被拒绝并记录 `TESTBENCH FAIL`/`No tests were started`。
+取证确认两处 libcss 选择状态大栈帧导致 `0xC00000FD`，现已改为独立 heap scratch，
+分配失败返回 `CSS_NOMEM` 并在所有路径释放；设备门会以转储差异阻止“日志 PASS”冒充
+无崩溃。Ignore 的旧截图来自已撤回的 TEST23 配置，不是已证实的 RAPI 复制故障。
 
-截图取证已纠正先前归因：Ignore 对应 `1-45` 中已撤回的 TEST23，旧 gate 未校验可用性，
-宿主拒绝配置后转入手动模式，所以没有自动日志。这不是已经证明的 RAPI 复制故障。
-错误报告的 AppStamp `6aa20b74` 对应 09:44 的宿主，ModStamp `6aa20a29` 对应旧 Core；
-偏移 `0x83130` 为 `css_select_style()` 入口第一次写栈，其前序指令一次分配 6308 字节。
-匹配二进制与 PDB 后确认函数身份；修复后该入口 Debug 局部栈分配为 176 字节。
-后续新转储明确记录 `0xC00000FD` 栈溢出，偏移 `0x8ab5c` 指向同样使用大型选择状态的
-`css__computed_style_initialise()`。两处现均使用每次调用独立的堆对象，分配失败返回
-`CSS_NOMEM`，失败和正常结束均释放。设备门也不再只凭日志 PASS 判定无崩溃：新增转储
-或转储检查失败均阻止通过，并保留当前部署。截图时间不能替代产物身份与转储证据。
-
-此前 `20260910-101933-next775-select-regression`：正式 Debug ARMV4I、当前
-GUI 连接的唯一 WMDC 目标、全新外部目录，定向运行 `TEST62,64-67,118,999`。7/7
-测试通过，只有一个 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，
-`current_cleanup=removed_after_complete_log`，目标卷和内部 object-store 空间预检均通过。
-其中 TEST118 证明脚本 keydown 使 retained layout 失效后，native COMBOBOX 的 ArrowDown
-仍能把 keydown/keyup 完整送达 target 与 bubble listener，Core live selection 与 native
-index 同步；`TEST118,999` 的独立门 `20260910-101737-next775-test118-clean` 也通过。
-`20260910-101041-next775-select-cumulative` 因上述坏 INI 未进入自动模式，远端目录仍保留。
-另一份有效配置 smoke 在 TEST3 的 postman-echo TLS EOF 停止；这些运行不作为全量基线。
-
-此前 Comment removal 的 Debug 门 `20260908-232232-next774` 已通过 `TEST1216,999`，
-完整日志已回收；公共合同见 `docs/TESTING.md`。更早批次的证据与失败实验保留在 Git
-历史、`docs/history/` 和本地 `tmp/device-runs/`，不在当前交接重复测试清单。
-全量 smoke 仍需在网络稳定且日志完整时另行执行，不能用 TEST3 的 TLS EOF 运行替代。
+此前 TEST118 的 Debug 选择回归门和 next774 的 `TEST1216,999` Comment removal 门均
+通过；更早证据、失败实验和不完整部署只保留在 Git 历史、`docs/history/` 与本地
+`tmp/device-runs/`，不作为当前基线。Release 复核若只有启动头同样不算通过，网络 smoke
+仍需在网络稳定且日志完整时单独执行。
 
 ## 当前人工验收状态
 
@@ -274,16 +268,23 @@ index 同步；`TEST118,999` 的独立门 `20260910-101737-next775-test118-clean
   单值文本 `append()`/`prepend()`、`Text.remove()` 和 `Element.removeChild(Text)`。
   自动门已证明 ABI callback、UTF-16/UTF-8 边界、wrapper 与旧 snapshot 身份、detached
   快照、Core layout invalidation 及错误输入 fail closed；暂无新增立即人工风险，逐项合同见
-  [`docs/TESTING.md`](../docs/TESTING.md)。通用 Node/DocumentFragment、reparent、其他
-  删除、MutationObserver、完整 live collection 和 native/OEM 文本视觉仍未实现或需人工观察。
+  [`docs/TESTING.md`](../docs/TESTING.md)。通用 Node/DocumentFragment、超出 existing-element
+  有界约束的 reparent、其他删除、MutationObserver、完整 live collection 和 native/OEM 文本
+  视觉仍未实现或需人工观察。
 - TEST1216 是离线的 Core/Browser Comment CharacterData removal 夹具，暂无新增立即人工
   风险；自动门证明 Ex3 mutation callback 携带未过滤索引和节点类型 8，
   `PCore_NodeRemoveCharacterDataChildById` 删除 direct Comment，Browser 返回原 wrapper、
   刷新父级 snapshot、保留 detached `data`/`nodeValue`，并对错误 parent、重复 detached、
   Text/CDATA 类型不匹配和非法节点类型 fail closed。节点类型 4（CDATA）沿用同一公共
   API/ABI 路径，当前 HTML fixture 不伪造 CDATA 节点；通用 Node/DocumentFragment、
-  reparent、其他删除、MutationObserver、完整 live collection 和 native/OEM 文本视觉仍
-  未实现或需人工观察。
+  超出有界元素约束的 reparent、其他删除、MutationObserver、完整 live collection 和
+  native/OEM 文本视觉仍未实现或需人工观察。
+- TEST1217 是离线的 Core/Browser existing-element insertion 夹具，覆盖同父
+  `insertBefore()` 重排、跨父 `insertBefore()` 迁移、`appendChild()` 追加、返回值和
+  新旧父级 collection snapshot/文本刷新；自动门也验证 self、Text、错误 reference、
+  缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，暂无新增
+  立即人工风险；DocumentFragment、非 direct-child reference、通用节点插入和完整
+  live collection 仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -352,11 +353,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-先在设备端结束 Release 遗留宿主，再完成人工崩溃复核：确认 Debug 修复后的运行结束没有新的 Ignore 或系统错误报告；若仍出现，
-按 AppStamp/ModStamp 匹配本次产物后继续取证，不以日志 PASS 覆盖崩溃。随后在网络稳定时
-重跑网络 smoke，并从 compatibility corpus、源码或用户页面固定新的产品缺口。新批次
-仍须把可复用语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
-离线夹具、直接相邻回归、正式设备门和职责文档更新。通用节点插入、reparent、其他删除、
+在网络稳定时从 compatibility corpus、源码或用户页面固定下一个产品缺口；新批次仍须
+把可复用语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
+离线夹具、直接相邻回归、正式设备门和职责文档更新。通用节点插入、超出有界元素约束的
+reparent、其他删除、
 Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、
 transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对 URL、CORS、
 完整图像 loading 和 image-map 扩展仍是候选限制，不能在证据之前写成已支持行为。
