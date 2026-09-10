@@ -189,10 +189,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260910-215754-next775-css-stack-both`：正式 Debug ARMV4I，选择
+最新自动证据是 `20260910-223812-next775-css-stack-recheck`：正式 Debug ARMV4I，选择
 `6-12,15,16,18,21,22,24,38-42,51,59-62,64-67,118,999`，29/29、唯一 PASS、零 ERROR/FAIL，
-日志完整回收、双空间预检通过且当前部署已清理。新设备门比较启动前与完成后的系统转储，
-本次 `crash_check=PASS`、`new_crash_dump_count=0`。仍需用户确认画面没有新的系统错误报告。
+日志完整回收、双空间预检通过且当前部署已清理。用户先关闭了设备上保留的旧 Error
+Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，运行后仍为 0，
+`crash_check=PASS`、`new_crash_dump_count=0`。
 本次构建同时包含 TEST51 的窄列表项 fixture 调整（180→126px），用于让 inside marker
 的 hanging wrap 在 180 CSS px probe 中保持可观察；这是项目代码改动，已在本次修复后续
 提交中纳入。上述 Debug 门包含 TEST51 并通过，设备证据与该源码一致。
@@ -200,14 +201,15 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 额外 Release 复核 `20260910-220325-next775-css-stack-release` 在 240 秒及最终日志
 恢复后仍只有启动头，没有任何测试完成记录，不能作为通过证据。只读检查未见新增转储；
 该现象与 `FAILED_EXPERIMENTS.md` 中已有的 Release 启动停滞相似，但未证明同一根因。
-远端同名时间戳目录和不完整日志保留，未强杀进程；下一次部署前须由用户在设备端正常
-结束遗留宿主，正式设备基线仍为上述 Debug 门。
+远端同名时间戳目录和不完整日志仍保留，未强杀进程；该启动停滞不作为正式基线，
+正式设备基线为上述 Debug 门。
 
 此前 `20260910-165042-next775-stack-config-fix` 和
 `20260910-165407-next775-stack-config-final` 虽然断言通过，却各新增一份转储，均不算
 崩溃修复基线；仅改选择入口不够。另一次坏配置注入验证了 `tests=1-45,62,118,999`
 会记录 `TESTBENCH FAIL` 与 `No tests were started`，不进入分组。相关日志和转储已回收
-到本地 `tmp/`；本地配置检查 13 例、最终 Debug/Release 构建均通过。
+到本地 `tmp/`；本地配置检查 13 例、最终 Debug/Release 构建均通过。最新复核已在
+清除旧错误报告后完成，当前崩溃修复的自动验收闭环成立。
 
 截图取证已纠正先前归因：Ignore 对应 `1-45` 中已撤回的 TEST23，旧 gate 未校验可用性，
 宿主拒绝配置后转入手动模式，所以没有自动日志。这不是已经证明的 RAPI 复制故障。
