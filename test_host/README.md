@@ -78,7 +78,7 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1220，其中
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1221，其中
   TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211/1212 只验证
   Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality，TEST1213 验证
   Core/Browser 的 `Element.append()`/`prepend()` 文本插入，TEST1214 验证
@@ -87,11 +87,11 @@ tests=13,20,27,999
   Comment CharacterData 的 `remove()`/`removeChild()` 与 Ex3 typed callback，TEST1217
   验证已有 element 的同父/跨父插入，TEST1218 验证已有 element 的 `replaceChild()`/
   `replaceWith()` 替换，TEST1219 验证 `Element.append()`/`prepend()` 对
-  element 的精确 childNodes 位置插入，TEST1220 验证已有 element 相对目标的
-  `before()`/`after()` 插入；
+  element 的精确 childNodes 位置插入，TEST1220/1221 验证已有 element 与 primitive 的
+  相对 `before()`/`after()` 插入；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
-编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
+编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
 
 ## 浏览器组合边界
 
@@ -541,13 +541,13 @@ child 与多余参数必须拒绝且不产生部分 mutation；宿主只负责 E
 fixture 和断言。DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、
 observer 和 live collection 仍不在该边界内。
 
-TEST1219/1220 验证 Ex6 的 existing-element 位置操作：宿主把
+TEST1219–1221 验证 Ex6 位置操作：宿主把
 `PBrowserScriptDomMutationCallbacksEx6.insert_child_at` 接到
 `PCore_NodeInsertElementChildAtById`，Browser 对混合 Text/element 子节点支持单参数
-`append`/`prepend` 及目标相对的 `before`/`after`，覆盖重排/跨父、顺序、identity、snapshot、
-textContent 和 no-op。self、detached clone、Text、无 parent、
-越界及多参数 fail closed；宿主只接线、fixture 和断言。通用节点 mutation、observer 和
-live collection 不在边界。
+existing-element `append`/`prepend` 及 `before`/`after`；后两者另将单个 primitive
+转为位置 Text。自动断言覆盖重排/跨父、顺序、identity、snapshot、文本、no-op，
+并拒绝 detached clone、Text/对象、无 parent、越界、多参数；宿主只接线、
+fixture/断言。通用节点 mutation、observer 和 live collection 不在边界。
 
 ### Native EDIT/SELECT/button/file
 

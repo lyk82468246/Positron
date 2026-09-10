@@ -331,8 +331,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   节点类型、DocumentFragment、越界和多参数调用 fail closed。宿主只负责 callback 接线、
   重排和重绘，不在本地复制 DOM 语义。相同的 Ex6 callback 还支持单参数
   `Element.before(element)`/`after(element)`：Browser 从目标 element 的 direct parent
-  计算未过滤位置，允许同父级重排和跨父级迁移，并对无 parent、self、detached、非 element
-  和多参数调用 fail closed；
+  计算未过滤位置，允许同父级重排和跨父级迁移；这两个入口也接受一个字符串化 primitive，
+  通过既有 `insert_text_child` 在相同位置创建 Text。无 parent、self、detached、非支持
+  对象/节点和多参数调用 fail closed；
 - `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加
   `remove_text_child` 的 `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text
   wrapper 的 `childNodes` 索引通过 `__pcoreRemoveChild` 调用
@@ -675,7 +676,7 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
-  insertion；旧注册入口的语义和布局不变。
+  insertion；相对 primitive 文本复用既有 write Ex6 slot，旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

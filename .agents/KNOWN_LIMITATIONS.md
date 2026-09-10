@@ -132,13 +132,14 @@
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
 - Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、
   CharacterData setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、
-  `Node.normalize()`、Ex6 的单值 `append()`/`prepend()`/`before()`/`after()`，以及 Ex2/Ex3 的 Text、Comment、
+  `Node.normalize()`、Ex6 的单值 `append()`/`prepend()`/`before()`/`after()`（后两者另接受一个
+  字符串化 primitive），以及 Ex2/Ex3 的 Text、Comment、
   CDATA direct-child removal。成功 mutation 使 retained layout 失效并刷新必要 snapshot；
   UTF-16 offset、UTF-8、detached wrapper 和错误目标均按各入口合同 fail closed。
   Ex4 的 `Node.insertBefore()`/`appendChild()` 另支持带 id element 的同父级 reorder、跨父级
   reparent 和 `NULL` reference append；Ex6 的单参数 `Element.append()`/`prepend()` 再按未过滤
   `childNodes` 的末尾/零位支持同父级重排和跨父级迁移，`Element.before()`/`after()` 按目标
-  element 的 direct-parent 位置支持相对插入；错误 parent、层级环、结构 token、detached、Text/
+  element 的 direct-parent 位置支持 existing-element 或一个字符串化 primitive 的相对插入；错误 parent、层级环、结构 token、detached、Text/
   Comment/CDATA、DocumentFragment 与多参数不产生部分 mutation。通用 Node 插入、
   Comment/CDATA 插入、其他删除、mutation 事件、MutationObserver 和 live collection 仍未实现。
   Ex5 的 `Node.replaceChild()`/`Element.replaceWith()` 只支持当前文档中带 id 的 existing
@@ -578,10 +579,10 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1220 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
+- TEST1201–1221 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
   clone/equality、Ex6 文本插入、Ex2 `Text.remove()`/`Element.removeChild(Text)` 与 Ex3
   Comment CharacterData removal、Ex4/Ex5/Ex6 existing-element insertion/replacement/relative
-  insertion 的
+  insertion 和单值 primitive text 的
   wrapper/snapshot、detached、UTF-16 与 retained-layout
   边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。

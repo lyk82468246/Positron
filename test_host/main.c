@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1220
+#define TEST_MAX_NUMBER 1221
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -49252,6 +49252,48 @@ static BOOL test1220_browser_existing_element_relative_contract(void)
             " text, same-parent reorder and cross-parent migration, while"
             " preserving wrapper identity and old snapshots and rejecting"
             " self, detached, Text and multiple-value requests.");
+    return TRUE;
+}
+
+/* TEST 1221 - bounded relative DOM insertion accepts primitive text values. */
+static BOOL test1221_browser_relative_text_insertion_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span>tail</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('a'),"
+        "t=document.getElementById('target'),old=a.childNodes,x,ok,ret,bad=0,oldText;"
+        "ok=a!==null&&t!==null&&old.length===3&&old[1]===t;"
+        "ret=t.before('A');ok=ok&&ret===undefined;"
+        "ret=t.after(7);ok=ok&&ret===undefined;"
+        "ret=t.before(null);ret=t.after(false);ret=t.before(undefined);"
+        "x=a.childNodes;ok=ok&&ret===undefined&&x.length===8&&"
+        "x[1].data==='A'&&x[2].data==='null'&&x[3].data==='undefined'&&"
+        "x[4]===t&&x[5].data==='false'&&x[6].data==='7'&&"
+        "a.textContent==='leadAnullundefinedTfalse7tail'&&"
+        "old.length===3&&old[1]===t;"
+        "oldText=a.textContent;try{t.before({});}catch(e){bad|=1;}"
+        "try{t.after(t.firstChild);}catch(e2){bad|=2;}"
+        "try{t.before(t.cloneNode(false));}catch(e3){bad|=4;}"
+        "try{t.after(t,'x');}catch(e4){bad|=8;}t.before();t.after();"
+        "ok=ok&&bad===15&&a.textContent===oldText&&old.length===3&&old[1]===t;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-text", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1221 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1221 OK",
+            "Element.before and after now insert one bounded stringified"
+            " primitive at the Core childNodes position, while preserving"
+            " existing wrapper and snapshot identity and rejecting unsupported"
+            " objects without partial mutation.");
     return TRUE;
 }
 
@@ -107436,6 +107478,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1218: ok = test1218_browser_existing_element_replacement_contract(); break;
         case 1219: ok = test1219_browser_existing_element_append_contract(); break;
         case 1220: ok = test1220_browser_existing_element_relative_contract(); break;
+        case 1221: ok = test1221_browser_relative_text_insertion_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

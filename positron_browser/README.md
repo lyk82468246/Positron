@@ -456,9 +456,10 @@ Ex6 追加 `insert_child_at`，由单参数 existing-element 的
 `Element.append()`/`prepend()`/`before()`/`after()` 调用
 `PCore_NodeInsertElementChildAtById`。Browser 按未过滤 `childNodes` 的末尾、零位或目标
 direct parent 位置移动带 id element，支持混合 Text/Comment/CDATA 子节点的同父重排与跨父
-迁移；成功返回 `undefined`，使受影响 snapshot 失效并请求宿主重排。字符串/原始值仍由
-write Ex6 创建新 Text；detached clone、Text/Comment/CDATA、DocumentFragment、层级环、
-无 parent、越界和多参数 fail closed，不派发 mutation 事件。Ex5 及更旧注册入口保持 ABI。
+迁移；成功返回 `undefined`，使受影响 snapshot 失效并请求宿主重排。`before()`/`after()`
+另接受一个字符串化 primitive，复用 write Ex6 在同一位置创建新 Text。detached clone、
+Text/Comment/CDATA、DocumentFragment、层级环、无 parent、越界和多参数 fail closed，不派发
+mutation 事件；Ex5 及更旧注册入口保持 ABI。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由

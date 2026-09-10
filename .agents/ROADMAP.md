@@ -115,7 +115,8 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
  direct Comment/CDATA wrapper 的 `remove()`/`Element.removeChild()`，以及 Ex4 的已有
  element `Node.insertBefore()`/`appendChild()`，以及 Ex5 的已有 element
   `Node.replaceChild()`/`Element.replaceWith()`，以及 Ex6 的已有 element
-  `Element.append()`/`prepend()` 位置插入。前四条分别由 write Ex6、Ex2、Ex3 和 Ex4 复用既有
+  `Element.append()`/`prepend()` 位置插入和目标相对的单值 primitive 文本插入。前四条分别由
+  write Ex6、Ex2、Ex3 和 Ex4 复用既有
  Core 入口；Ex4 将现有 element child 在同父级重排或跨父级迁移，`NULL` reference 追加；
 Ex5 在 direct-child 位置替换现有 element，并允许 new child 来自另一父级；mutation Ex6
 按未过滤 `childNodes` 位置将现有 element 追加、前置或相对目标插入（`before()`/`after()`），
