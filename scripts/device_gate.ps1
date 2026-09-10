@@ -21,21 +21,50 @@ function Write-Stage([string] $message)
 function Get-ConfiguredTests([string] $iniPath)
 {
     $selection = $null
+    $autoCount = 0
     foreach ($line in Get-Content -LiteralPath $iniPath -Encoding UTF8) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#") -or
                 $trimmed.StartsWith(";")) {
             continue
         }
-        if ($trimmed -match "^tests\s*=\s*(.+)$") {
-            $selection = $Matches[1]
-            break
+        if ($trimmed -match "^auto\s*=\s*(.+)$") {
+            if ($Matches[1] -notmatch '^1\s*(#.*)?$') {
+                throw "The automatic device gate requires auto=1 in $iniPath."
+            }
+            $autoCount++
         }
+        if ($trimmed -match "^tests\s*=\s*(.+)$") {
+            if ($null -ne $selection) {
+                throw "Duplicate tests= in $iniPath."
+            }
+            $selection = $Matches[1]
+        }
+    }
+    if ($autoCount -ne 1) {
+        throw "The automatic device gate requires exactly one auto=1 in $iniPath."
     }
     if ([string]::IsNullOrEmpty($selection)) {
         throw "No tests= selection was found in $iniPath."
     }
 
+    $hostSource = [IO.File]::ReadAllText(
+            (Join-Path $repoRoot 'test_host\main.c'), [Text.Encoding]::UTF8)
+    $dispatchStart = $hostSource.IndexOf('static int run_configured_tests(')
+    if ($dispatchStart -lt 0) { throw 'Cannot locate the host test dispatcher.' }
+    $available = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($entry in [regex]::Matches($hostSource.Substring($dispatchStart),
+            '(?m)^\s*case (\d+):\s*ok\s*=')) {
+        [void] $available.Add($entry.Groups[1].Value)
+    }
+    if ($available.Count -eq 0) { throw 'Host test dispatcher is empty.' }
+    # TEST7 and TEST7b are dispatched together before the numbered switch.
+    [void] $available.Add('7')
+    [void] $available.Add('999')
+    [void] $available.Add('7b')
+    $maximum = ($available | Where-Object { $_ -match '^\d+$' } |
+            ForEach-Object { [int] $_ } | Measure-Object -Maximum).Maximum
+    $selection = ($selection -split '#', 2)[0]
     $tests = New-Object "System.Collections.Generic.HashSet[string]"
     foreach ($token in ($selection -split "[,\s]+")) {
         if ([string]::IsNullOrEmpty($token)) {
@@ -46,6 +75,12 @@ function Get-ConfiguredTests([string] $iniPath)
             $last = [int] $Matches[2]
             if ($last -lt $first) {
                 throw "Descending test range is invalid: $token."
+            }
+            if ($first -lt 1 -or $last -gt $maximum) {
+                throw "Test range is outside the host dispatcher: $token."
+            }
+            if ($first -le 999 -and $last -ge 999 -and $first -ne $last) {
+                throw 'TEST999 must be selected separately from ranges.'
             }
             for ($number = $first; $number -le $last; $number++) {
                 [void] $tests.Add($number.ToString())
@@ -58,6 +93,12 @@ function Get-ConfiguredTests([string] $iniPath)
             throw "Invalid test selector: $token."
         }
     }
+    foreach ($test in $tests) {
+        if (!$available.Contains($test)) {
+            throw "TEST $test is unavailable in test_host; refusing deployment of $iniPath."
+        }
+    }
+    if ($tests.Count -eq 0) { throw "Empty test selection in $iniPath." }
     return $tests
 }
 
@@ -758,6 +799,9 @@ public static class PositronDeviceRapi
                     children.Add(data);
                 }
             } while (CeFindNextFile(find, out data));
+            if (CeGetLastError() != 18) {
+                throw CreateRemoteException("CeFindNextFile(" + directory + ")");
+            }
         }
         finally {
             CeFindClose(find);
@@ -774,6 +818,37 @@ public static class PositronDeviceRapi
             }
         }
         return names.ToArray();
+    }
+
+    public static Dictionary<string, string> SnapshotCrashDumps()
+    {
+        Dictionary<string, string> files = new Dictionary<string, string>();
+        string root = @"\Windows\System\DumpFiles";
+        uint attributes = CeGetFileAttributes(root);
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            uint error = CeGetLastError();
+            if (error == 2 || error == 3) return files;
+            throw CreateRemoteException("Crash dump directory query");
+        }
+        SnapshotCrashDumpDirectory(root, 0, files);
+        return files;
+    }
+
+    private static void SnapshotCrashDumpDirectory(string directory, int depth,
+            Dictionary<string, string> files)
+    {
+        if (depth > 4 || files.Count > 512)
+            throw new InvalidOperationException("Crash dump inventory exceeds its bound.");
+        foreach (CeFindData child in FindChildren(directory)) {
+            string path = directory.TrimEnd('\\') + "\\" + child.cFileName;
+            if ((child.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+                SnapshotCrashDumpDirectory(path, depth + 1, files);
+            } else if (path.EndsWith(".kdmp", StringComparison.OrdinalIgnoreCase)) {
+                files[path] = child.nFileSizeHigh + ":" + child.nFileSizeLow +
+                    ":" + child.ftLastWriteTime.dwHighDateTime + ":" +
+                    child.ftLastWriteTime.dwLowDateTime;
+            }
+        }
     }
 
     public static void DeleteDirectoryTree(string directory)
@@ -882,6 +957,8 @@ $spaceReclaimPreserved = @()
 $spaceReclaimRecheck = "not_run"
 $currentCleanup = "not_attempted"
 $completeLogRetrieved = $false
+$crashCheck = 'not_run'
+$newCrashDumps = @()
 
 try {
     Write-Stage "opening the current GUI-connected WMDC target"
@@ -1228,6 +1305,8 @@ try {
         }
     }
 
+    $crashBefore = [PositronDeviceRapi]::SnapshotCrashDumps()
+    Write-Stage "recorded pre-run crash dump inventory: $($crashBefore.Count) files"
     Write-Stage "starting $remoteExe"
     $remoteProcessId = [PositronDeviceRapi]::LaunchProcess(
             $remoteExe, $remoteRoot)
@@ -1291,8 +1370,31 @@ try {
                 "marker from {0} to {1} while it was being received.") -f
                 $completionMarker, $finalMarker
     }
-    Start-Sleep -Milliseconds 250
-    if ($PreserveDeployment) {
+    # PASS is a log marker, not proof of a crash-free run. Allow the OS dump
+    # writer to finish before comparing the inventory and cleaning binaries.
+    Start-Sleep -Seconds 3
+    try {
+        $crashAfter = [PositronDeviceRapi]::SnapshotCrashDumps()
+        $newCrashDumps = @($crashAfter.Keys | Where-Object {
+            !$crashBefore.ContainsKey($_) -or $crashBefore[$_] -ne $crashAfter[$_]
+        })
+        $crashCheck = if ($newCrashDumps.Count) { 'NEW_DUMPS' } else { 'PASS' }
+        $dumpIndex = 0
+        foreach ($dump in $newCrashDumps) {
+            $dumpIndex++
+            $localDump = Join-Path $runRoot ("crash-$dumpIndex.kdmp")
+            if (![PositronDeviceRapi]::TryCopyFileFromDevice($dump, $localDump)) {
+                Write-Stage "could not retrieve new crash dump: $dump"
+            }
+        }
+    } catch {
+        $crashCheck = 'UNAVAILABLE'
+        Write-Stage ("crash inventory check failed: " + $_.Exception.Message)
+    }
+    if ($crashCheck -ne 'PASS') {
+        $currentCleanup = 'preserved_crash_evidence'
+        Write-Stage "preserving deployment: crash_check=$crashCheck"
+    } elseif ($PreserveDeployment) {
         $currentCleanup = "preserved_for_diagnosis";
         Write-Stage "preserving current deployment for diagnosis: $remoteRoot"
     } elseif (Remove-RemoteDirectorySafely $remoteRoot) {
@@ -1390,9 +1492,12 @@ if ($spaceReclaimPartial.Count -gt 0) {
 }
 $checkLines += "current_cleanup=$currentCleanup"
 $checkLines += "complete_log_retrieved=$completeLogRetrieved"
+$checkLines += "crash_check=$crashCheck"
+$checkLines += "new_crash_dump_count=$($newCrashDumps.Count)"
+$checkLines += "new_crash_dumps=$($newCrashDumps -join '|')"
 
 $storageGateOk = $storageCheck -match "^PASS"
-$passed = $storageGateOk -and
+$passed = $storageGateOk -and $crashCheck -eq 'PASS' -and
         $completionMarker -eq "PASS" -and $metricOk -and
         $missing.Count -eq 0 -and $unexpected.Count -eq 0 -and
         $errorCount -eq 0 -and $failCount -eq 0 -and

@@ -107003,11 +107003,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     configured_count = test_config_load(configured_tests, &configured_7b,
             &configured_999, &configured_auto, &configured_javascript);
     if (configured_count < 0) {
-        show_error(L"test_host.ini ignored",
+        /* A broken explicit configuration must not silently switch an
+         * unattended run into the interactive group selector. */
+        g_testbench_auto = 1;
+        testbench_log_open();
+        show_error(L"TESTBENCH FAIL",
                    "The file exists but is empty, unreadable or malformed.\n"
                    "Use: tests=31,32 or tests=1-5 7b 999\n"
                    "Optional: auto=1 and javascript=0\n\n"
-                   "TEST 23/78/79 are unavailable. Continuing with group selection.");
+                   "TEST 23/78/79 are unavailable. No tests were started.");
+        testbench_log_close();
+        return 2;
     } else if (configured_count > 0) {
         g_browser_javascript_enabled = configured_javascript;
         test_config_prompt(configured_tests, configured_7b, configured_999,

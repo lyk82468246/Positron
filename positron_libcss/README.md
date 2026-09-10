@@ -9,3 +9,5 @@
 ## 构建与来源
 
 工程使用 `netsurf-all-3.11/libcss`、libwapcaplet、libparserutils 和 `compat`，通过 `scripts\build.bat Debug build` 随根解决方案生成。修改生成属性文件或上游版本时，保留上游许可证、项目审计和 C89/ARMV4I 约束；来源和许可证见 NetSurf 快照及根 `THIRD_PARTY.md`。
+
+WM6 的样式选择及 computed-style 初始化所需的选择状态，均按调用独立分配在堆上，避免大型自动变量跨过 ARMV4I 线程的栈保护页。分配失败返回 `CSS_NOMEM`，失败和正常清理均释放状态；不能改回大栈对象或共享静态状态。该适配隐藏在 Core 内，不改变应用的公共 ABI 或 computed-style 所有权。

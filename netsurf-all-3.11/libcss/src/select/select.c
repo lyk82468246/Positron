@@ -1255,7 +1255,7 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		css_select_results **result)
 {
 	css_error error;
-	css_select_state state;
+	css_select_state *state;
 	css_hint *hints;
 	void *parent;
 	struct css_node_data *share;
@@ -1272,49 +1272,57 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	if (error != CSS_OK)
 		return error;
 
+	/* WM6 ARMV4I does not probe this >6 KiB automatic object across
+	 * stack guard pages. Own one bounded heap state per selection instead. */
+	state = malloc(sizeof(*state));
+	if (state == NULL)
+		return CSS_NOMEM;
+
 	error = css_select__initialise_selection_state(
-			&state, node, parent, media, unit_ctx, handler, pw);
-	if (error != CSS_OK)
+			state, node, parent, media, unit_ctx, handler, pw);
+	if (error != CSS_OK) {
+		free(state);
 		return error;
+	}
 
 	/* Fetch presentational hints */
 	error = handler->node_presentational_hint(pw, node, &nhints, &hints);
 	if (error != CSS_OK)
 		goto cleanup;
 	if (nhints > 0) {
-		state.node_data->flags |= CSS_NODE_FLAGS_HAS_HINTS;
+		state->node_data->flags |= CSS_NODE_FLAGS_HAS_HINTS;
 	}
 
 	if (inline_style != NULL) {
-		state.node_data->flags |= CSS_NODE_FLAGS_HAS_INLINE_STYLE;
+		state->node_data->flags |= CSS_NODE_FLAGS_HAS_INLINE_STYLE;
 	}
 
 	/* Check if we can share another node's style */
-	error = css_select_style__get_sharable_node_data(node, &state, &share);
+	error = css_select_style__get_sharable_node_data(node, state, &share);
 	if (error != CSS_OK) {
 		goto cleanup;
 	} else if (share != NULL) {
 		css_computed_style **styles = share->partial.styles;
 		for (i = 0; i < CSS_PSEUDO_ELEMENT_COUNT; i++) {
-			state.results->styles[i] =
+			state->results->styles[i] =
 					css__computed_style_ref(styles[i]);
 		}
 #ifdef DEBUG_STYLE_SHARING
 		printf("style:\t%s\tSHARED!\n",
-				lwc_string_data(state.element.name));
+				lwc_string_data(state->element.name));
 #endif
 		goto complete;
 	}
 #ifdef DEBUG_STYLE_SHARING
-	printf("style:\t%s\tSELECTED\n", lwc_string_data(state.element.name));
+	printf("style:\t%s\tSELECTED\n", lwc_string_data(state->element.name));
 #endif
 
 	/* Not sharing; need to select. */
 	if (ctx->uses_revert ||
 			(inline_style != NULL && inline_style->uses_revert)) {
 		/* Need to track UA and USER origin styles for revert. */
-		state.revert = calloc(CSS_ORIGIN_AUTHOR, sizeof(*state.revert));
-		if (state.revert == NULL) {
+		state->revert = calloc(CSS_ORIGIN_AUTHOR, sizeof(*state->revert));
+		if (state->revert == NULL) {
 			error = CSS_NOMEM;
 			goto cleanup;
 		}
@@ -1323,7 +1331,7 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	/* Base element style is guaranteed to exist
 	 */
 	error = css__computed_style_create(
-			&state.results->styles[CSS_PSEUDO_ELEMENT_NONE]);
+			&state->results->styles[CSS_PSEUDO_ELEMENT_NONE]);
 	if (error != CSS_OK) {
 		goto cleanup;
 	}
@@ -1332,11 +1340,11 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	if (nhints > 0) {
 		/* Ensure that the appropriate computed style exists */
 		struct css_computed_style *computed_style =
-				state.results->styles[CSS_PSEUDO_ELEMENT_NONE];
-		state.computed = computed_style;
+				state->results->styles[CSS_PSEUDO_ELEMENT_NONE];
+		state->computed = computed_style;
 
 		for (i = 0; i < nhints; i++) {
-			error = set_hint(&state, &hints[i]);
+			error = set_hint(state, &hints[i]);
 			if (error != CSS_OK)
 				goto cleanup;
 		}
@@ -1351,19 +1359,19 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	for (i = 0; i < ctx->n_sheets; i++) {
 		const css_select_sheet s = ctx->sheets[i];
 
-		if (state.revert != NULL && s.origin != origin) {
+		if (state->revert != NULL && s.origin != origin) {
 			for (j = 0; j < CSS_PSEUDO_ELEMENT_COUNT; j++) {
-				if (state.results->styles[j] == NULL) {
+				if (state->results->styles[j] == NULL) {
 					continue;
 				}
 				error = css__computed_style_clone(
-						state.results->styles[j],
-						&state.revert[origin].style[j]);
+						state->results->styles[j],
+						&state->revert[origin].style[j]);
 				if (error != CSS_OK) {
 					goto cleanup;
 				}
-				memcpy(state.revert[origin].props,
-				       state.props, sizeof(state.props));
+				memcpy(state->revert[origin].props,
+				       state->props, sizeof(state->props));
 			}
 			origin = s.origin;
 		}
@@ -1371,7 +1379,7 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		if (mq__list_match(s.media, unit_ctx, media, &ctx->str) &&
 				s.sheet->disabled == false) {
 			error = select_from_sheet(ctx, s.sheet,
-					s.origin, &state);
+					s.origin, state);
 			if (error != CSS_OK)
 				goto cleanup;
 		}
@@ -1393,11 +1401,11 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 		/* No bytecode if input was empty or wholly invalid */
 		if (sel->style != NULL) {
 			/* Inline style applies to base element only */
-			state.current_pseudo = CSS_PSEUDO_ELEMENT_NONE;
-			state.computed = state.results->styles[
+			state->current_pseudo = CSS_PSEUDO_ELEMENT_NONE;
+			state->computed = state->results->styles[
 					CSS_PSEUDO_ELEMENT_NONE];
 
-			error = cascade_style(sel->style, &state);
+			error = cascade_style(sel->style, state);
 			if (error != CSS_OK)
 				goto cleanup;
 		}
@@ -1406,13 +1414,13 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	/* Fix up any remaining unset properties. */
 
 	/* Base element */
-	state.current_pseudo = CSS_PSEUDO_ELEMENT_NONE;
-	state.computed = state.results->styles[CSS_PSEUDO_ELEMENT_NONE];
+	state->current_pseudo = CSS_PSEUDO_ELEMENT_NONE;
+	state->computed = state->results->styles[CSS_PSEUDO_ELEMENT_NONE];
 	for (i = 0; i < CSS_N_PROPERTIES; i++) {
-		prop_state *prop = &state.props[i][CSS_PSEUDO_ELEMENT_NONE];
+		prop_state *prop = &state->props[i][CSS_PSEUDO_ELEMENT_NONE];
 
 		if (prop->explicit_default == FLAG_VALUE_REVERT) {
-			error = css__select_revert_property(&state, prop,
+			error = css__select_revert_property(state, prop,
 					CSS_PSEUDO_ELEMENT_NONE, i);
 			if (error != CSS_OK) {
 				goto cleanup;
@@ -1434,7 +1442,7 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 				prop->set == false ||
 				(parent == NULL &&
 				prop->explicit_default == FLAG_VALUE_INHERIT)) {
-			error = set_initial(&state, i,
+			error = set_initial(state, i,
 					CSS_PSEUDO_ELEMENT_NONE, parent);
 			if (error != CSS_OK)
 				goto cleanup;
@@ -1443,18 +1451,18 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 
 	/* Pseudo elements, if any */
 	for (j = CSS_PSEUDO_ELEMENT_NONE + 1; j < CSS_PSEUDO_ELEMENT_COUNT; j++) {
-		state.current_pseudo = j;
-		state.computed = state.results->styles[j];
+		state->current_pseudo = j;
+		state->computed = state->results->styles[j];
 
 		/* Skip non-existent pseudo elements */
-		if (state.computed == NULL)
+		if (state->computed == NULL)
 			continue;
 
 		for (i = 0; i < CSS_N_PROPERTIES; i++) {
-			prop_state *prop = &state.props[i][j];
+			prop_state *prop = &state->props[i][j];
 
 			if (prop->explicit_default == FLAG_VALUE_REVERT) {
-				error = css__select_revert_property(&state,
+				error = css__select_revert_property(state,
 						prop, j, i);
 				if (error != CSS_OK) {
 					goto cleanup;
@@ -1473,7 +1481,7 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 			 * to its initial value. */
 			if (prop->explicit_default == FLAG_VALUE_INITIAL ||
 					prop->set == false) {
-				error = set_initial(&state, i, j, parent);
+				error = set_initial(state, i, j, parent);
 				if (error != CSS_OK)
 					goto cleanup;
 			}
@@ -1487,7 +1495,7 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	if (parent == NULL) {
 		/* Only compute absolute values for the base element */
 		error = css__compute_absolute_values(NULL,
-				state.results->styles[CSS_PSEUDO_ELEMENT_NONE],
+				state->results->styles[CSS_PSEUDO_ELEMENT_NONE],
 				unit_ctx);
 		if (error != CSS_OK)
 			goto cleanup;
@@ -1496,30 +1504,31 @@ css_error css_select_style(css_select_ctx *ctx, void *node,
 	/* Intern the partial computed styles */
 	for (j = CSS_PSEUDO_ELEMENT_NONE; j < CSS_PSEUDO_ELEMENT_COUNT; j++) {
 		/* Skip non-existent pseudo elements */
-		if (state.results->styles[j] == NULL)
+		if (state->results->styles[j] == NULL)
 			continue;
 
-		error = css__arena_intern_style(&state.results->styles[j]);
+		error = css__arena_intern_style(&state->results->styles[j]);
 		if (error != CSS_OK) {
 			goto cleanup;
 		}
 	}
 
 complete:
-	error = css__set_node_data(node, &state, handler, pw);
+	error = css__set_node_data(node, state, handler, pw);
 	if (error != CSS_OK) {
 		goto cleanup;
 	}
 
 	/* Steal the results from the selection state, so they don't get
 	 * freed when the selection state is finalised */
-	*result = state.results;
-	state.results = NULL;
+	*result = state->results;
+	state->results = NULL;
 
 	error = CSS_OK;
 
 cleanup:
-	css_select__finalise_selection_state(&state);
+	css_select__finalise_selection_state(state);
+	free(state);
 
 	return error;
 }

@@ -205,30 +205,35 @@ css_error css_computed_style_destroy(css_computed_style *style)
 css_error css__computed_style_initialise(css_computed_style *style,
 		css_select_handler *handler, void *pw)
 {
-	css_select_state state;
+	css_select_state *state;
 	uint32_t i;
 	css_error error;
 
 	if (style == NULL)
 		return CSS_BADPARM;
 
-	state.node = NULL;
-	state.media = NULL;
-	state.results = NULL;
-	state.computed = style;
-	state.handler = handler;
-	state.pw = pw;
+	/* Keep the same large selection scratch off the WM6 thread stack as
+	 * css_select_style. This call also runs on nested initial-style paths. */
+	state = calloc(1, sizeof(*state));
+	if (state == NULL)
+		return CSS_NOMEM;
+	state->computed = style;
+	state->handler = handler;
+	state->pw = pw;
 
 	for (i = 0; i < CSS_N_PROPERTIES; i++) {
 		/* No need to initialise anything other than the normal
 		 * properties -- the others are handled by the accessors */
 		if (prop_dispatch[i].inherited == false) {
-			error = prop_dispatch[i].initial(&state);
-			if (error != CSS_OK)
+			error = prop_dispatch[i].initial(state);
+			if (error != CSS_OK) {
+				free(state);
 				return error;
+			}
 		}
 	}
 
+	free(state);
 	return CSS_OK;
 }
 

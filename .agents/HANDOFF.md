@@ -10,8 +10,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 `next774` 设备证据、此前 `next773`/`next772`/`next771`/`next770`/
-`next769`/`formal10` 证据及失败实验均在“最新有效设备证据”段落说明；更早传输失败只
+最新 next775 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
 - 当前代码 next775 延续 next761–774 的 Core child-data 与 Browser CharacterData bridge，
@@ -24,8 +23,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   失败时安全回退；本批还让 `PCore_SelectSetOptionSelected` 在 retained layout 被脚本
   listener 失效后通过 live DOM 完成选择提交，并新增按 SELECT 序号派发 extended key
   event 的 Core 入口，宿主只缓存原生控件的几何和目标 token。该修复已通过 C89 检查、
-  Debug ARMV4I 构建、定向设备门和 SELECT 回归门；全量 smoke 曾在无关的 TEST3 TLS
-  对端 EOF 处停止，未被记作产品基线证据。产品语义仍在 Core/Browser，`test_host`
+  Debug ARMV4I 构建、定向设备门和 SELECT 回归门。截图后续暴露的 libcss 选择状态大栈帧
+  已改为每次调用独立的堆对象，坏 INI 则在部署前拒绝；宿主也会记录失败并退出，不再进入
+  手动分组。产品语义仍在 Core/Browser，`test_host`
   只接 callback、fixture 和断言；错误 child、结构边界、失效 wrapper 与超预算均
   fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
@@ -189,41 +189,49 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 最新有效设备证据
 
-最新有效证据是 `20260910-101933-next775-select-regression`：正式 Debug ARMV4I、当前
+最新自动证据是 `20260910-215754-next775-css-stack-both`：正式 Debug ARMV4I，选择
+`6-12,15,16,18,21,22,24,38-42,51,59-62,64-67,118,999`，29/29、唯一 PASS、零 ERROR/FAIL，
+日志完整回收、双空间预检通过且当前部署已清理。新设备门比较启动前与完成后的系统转储，
+本次 `crash_check=PASS`、`new_crash_dump_count=0`。仍需用户确认画面没有新的系统错误报告。
+本次构建包含用户原有的 TEST51 列表宽度改动（180→126px），该改动保留未提交，不属于
+栈溢出修复；设备证据对应实际工作区，而不是声称纯提交快照已单独复测。
+
+额外 Release 复核 `20260910-220325-next775-css-stack-release` 在 240 秒及最终日志
+恢复后仍只有启动头，没有任何测试完成记录，不能作为通过证据。只读检查未见新增转储；
+该现象与 `FAILED_EXPERIMENTS.md` 中已有的 Release 启动停滞相似，但未证明同一根因。
+远端同名时间戳目录和不完整日志保留，未强杀进程；下一次部署前须由用户在设备端正常
+结束遗留宿主，正式设备基线仍为上述 Debug 门。
+
+此前 `20260910-165042-next775-stack-config-fix` 和
+`20260910-165407-next775-stack-config-final` 虽然断言通过，却各新增一份转储，均不算
+崩溃修复基线；仅改选择入口不够。另一次坏配置注入验证了 `tests=1-45,62,118,999`
+会记录 `TESTBENCH FAIL` 与 `No tests were started`，不进入分组。相关日志和转储已回收
+到本地 `tmp/`；本地配置检查 13 例、最终 Debug/Release 构建均通过。
+
+截图取证已纠正先前归因：Ignore 对应 `1-45` 中已撤回的 TEST23，旧 gate 未校验可用性，
+宿主拒绝配置后转入手动模式，所以没有自动日志。这不是已经证明的 RAPI 复制故障。
+错误报告的 AppStamp `6aa20b74` 对应 09:44 的宿主，ModStamp `6aa20a29` 对应旧 Core；
+偏移 `0x83130` 为 `css_select_style()` 入口第一次写栈，其前序指令一次分配 6308 字节。
+匹配二进制与 PDB 后确认函数身份；修复后该入口 Debug 局部栈分配为 176 字节。
+后续新转储明确记录 `0xC00000FD` 栈溢出，偏移 `0x8ab5c` 指向同样使用大型选择状态的
+`css__computed_style_initialise()`。两处现均使用每次调用独立的堆对象，分配失败返回
+`CSS_NOMEM`，失败和正常结束均释放。设备门也不再只凭日志 PASS 判定无崩溃：新增转储
+或转储检查失败均阻止通过，并保留当前部署。截图时间不能替代产物身份与转储证据。
+
+此前 `20260910-101933-next775-select-regression`：正式 Debug ARMV4I、当前
 GUI 连接的唯一 WMDC 目标、全新外部目录，定向运行 `TEST62,64-67,118,999`。7/7
 测试通过，只有一个 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，
 `current_cleanup=removed_after_complete_log`，目标卷和内部 object-store 空间预检均通过。
 其中 TEST118 证明脚本 keydown 使 retained layout 失效后，native COMBOBOX 的 ArrowDown
 仍能把 keydown/keyup 完整送达 target 与 bubble listener，Core live selection 与 native
 index 同步；`TEST118,999` 的独立门 `20260910-101737-next775-test118-clean` 也通过。
-先前 `20260910-101041-next775-select-cumulative` 因设备端日志未完整回收而保留远端目录，
-随后可取得的 smoke 在 TEST3 的 postman-echo TLS EOF 停止；这些运行不作为全量基线。
+`20260910-101041-next775-select-cumulative` 因上述坏 INI 未进入自动模式，远端目录仍保留。
+另一份有效配置 smoke 在 TEST3 的 postman-echo TLS EOF 停止；这些运行不作为全量基线。
 
-更早的正式证据是 `20260908-232232-next774`：正式 Debug ARMV4I、当前 GUI 连接的唯一
-WMDC 目标、全新外部目录，定向运行 `TEST1216,999`。2/2 测试通过，只有一个
-`TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，`current_cleanup=removed_after_complete_log`，
-空间预检和内部 object-store 检查均通过。它确认 `Element.removeChild(Comment)` 与
-`Comment.remove()` 经 Ex3 mutation callback 复用 `PCore_NodeRemoveCharacterDataChildById`，
-返回被移除 wrapper，刷新父级 snapshot，保留 detached 数据，并对重复 detached、错误 parent
-和类型不匹配保持 fail closed；同时复用了当前 32 KiB RAPI 写块和完成后清理。
-
-前一项 `20260908-224955-next773-r2`：正式 Debug ARMV4I、当前 GUI 连接的唯一 WMDC 目标、
-全新外部目录，定向运行 `TEST1201,1214-1215,999`。4/4 测试通过，只有一个
-`TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，空间预检和内部 object-store 检查
-均通过；它确认 `Element.removeChild(Text)` 复用 `PCore_NodeRemoveTextChildById`/Ex2
-mutation callback，返回被移除 wrapper，刷新父级 snapshot，保留旧 snapshot 与 detached
-数据，并对重复 detached、错误 parent 和 Comment 保持 fail closed。
-
-再前一项 `20260908-215428-next772` 以同样配置通过 `TEST1214,999`（2/2、零
-`ERROR`/`FAIL`），确认 `PCore_NodeRemoveTextChildById`、Ex2 callback、`Text.remove()`
-的 direct Text 删除、父级 snapshot 刷新、detached wrapper 保留数据和重复调用 no-op。
-next771/next770/formal10 的通过证据及更早失败实验均保留在 Git 历史、`docs/history/` 和
-本地 `tmp/device-runs/`，不在此重复维护。
-
-next774 批的 `test_c89ize`、文档审计、`git diff --check`、Debug/Release ARMV4I 构建和
-设备门均通过；构建输出仍只有既存 libcss 数值转换警告。next775 的字体所有权修复已由
-`eec0c65a` 提交并推送，本批的 SELECT 键盘回退在上面的定向设备门中通过；全量 smoke
-仍需在网络稳定且日志能完整回收时另行执行，不能用 TEST3 的 TLS EOF 运行替代。
+此前 Comment removal 的 Debug 门 `20260908-232232-next774` 已通过 `TEST1216,999`，
+完整日志已回收；公共合同见 `docs/TESTING.md`。更早批次的证据与失败实验保留在 Git
+历史、`docs/history/` 和本地 `tmp/device-runs/`，不在当前交接重复测试清单。
+全量 smoke 仍需在网络稳定且日志完整时另行执行，不能用 TEST3 的 TLS EOF 运行替代。
 
 ## 当前人工验收状态
 
@@ -341,9 +349,9 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-当前 next775 的字体所有权与 native SELECT 键盘回退均已有定向设备证据。下一步只在
-网络稳定、日志可完整回收时重跑受影响的网络 smoke，并从 compatibility corpus、源码、
-设备日志或用户新页面固定一个新的、可复现的产品缺口；在缺口确认前不凭空扩展 API。新批次
+先在设备端结束 Release 遗留宿主，再完成人工崩溃复核：确认 Debug 修复后的运行结束没有新的 Ignore 或系统错误报告；若仍出现，
+按 AppStamp/ModStamp 匹配本次产物后继续取证，不以日志 PASS 覆盖崩溃。随后在网络稳定时
+重跑网络 smoke，并从 compatibility corpus、源码或用户页面固定新的产品缺口。新批次
 仍须把可复用语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。通用节点插入、reparent、其他删除、
 Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、
