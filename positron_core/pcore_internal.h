@@ -58,6 +58,22 @@ css_computed_style *pcore_document_default_style(struct dom_document *doc);
 int pcore_node_effectively_disabled(struct dom_node *node, bool *applies,
         bool *disabled);
 
+/* Resolve a styled SELECT by the same document-order index used by the
+ * retained native-control bridge. The returned element is retained and must
+ * be released by the caller. */
+int pcore_select_dom_at(struct dom_document *doc, unsigned int select_index,
+        struct dom_html_select_element **out_select);
+
+/* Set one select option through the live DOM when the retained box tree is
+ * unavailable (for example, a script listener invalidated layout while a
+ * native control was dispatching a key event). The select index follows the
+ * same document-order, visible/styled control enumeration as the box bridge.
+ * Return values match PCore_SelectSetOptionSelected: zero for success, one
+ * for a missing/invalid select or option, and two for an effectively disabled
+ * select or option. */
+int pcore_select_set_option_selected_dom(struct dom_document *doc,
+        unsigned int select_index, unsigned int option_index, int selected);
+
 /* Resolve a supported form-associated node's current owner from the DOM. A present
  * `form` attribute sets *out_has_attribute even when its value is empty or
  * invalid; in that case *out_owner remains NULL and no ancestor fallback is

@@ -21,10 +21,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `PCore_NodeRemoveCharacterDataChildById` 支持 Comment/CDATA direct-child removal；同时
   保持 Browser 的 `Node.cloneNode(deep)`/clone equality 有界合同。next775 又修复了
   Core GDI 测量字体缓存达到上限后临时字体未释放的所有权漏洞，并在字体选入测量 DC
-  失败时安全回退。该修复已通过 C89 检查、Debug ARMV4I 构建、仓库审计和 diff 检查；
-  由于设备上的 WER/锁定目录尚未释放，尚无新的设备门证据，不能提前宣称基线通过。
-  产品语义仍在 Core/Browser，`test_host`
-  只接 callback、fixture 和断言；错误 child、结构边界、失效 wrapper 与超预算均 fail closed。
+  失败时安全回退；本批还让 `PCore_SelectSetOptionSelected` 在 retained layout 被脚本
+  listener 失效后通过 live DOM 完成选择提交，并新增按 SELECT 序号派发 extended key
+  event 的 Core 入口，宿主只缓存原生控件的几何和目标 token。该修复已通过 C89 检查、
+  Debug ARMV4I 构建、定向设备门和 SELECT 回归门；全量 smoke 曾在无关的 TEST3 TLS
+  对端 EOF 处停止，未被记作产品基线证据。产品语义仍在 Core/Browser，`test_host`
+  只接 callback、fixture 和断言；错误 child、结构边界、失效 wrapper 与超预算均
+  fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
 - `TEST_MAX_NUMBER` 已为 1216。tracked `test_host/test_host.ini` 仍是窄 smoke：
@@ -186,7 +189,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 最新有效设备证据
 
-最新正式证据是 `20260908-232232-next774`：正式 Debug ARMV4I、当前 GUI 连接的唯一
+最新有效证据是 `20260910-101933-next775-select-regression`：正式 Debug ARMV4I、当前
+GUI 连接的唯一 WMDC 目标、全新外部目录，定向运行 `TEST62,64-67,118,999`。7/7
+测试通过，只有一个 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，
+`current_cleanup=removed_after_complete_log`，目标卷和内部 object-store 空间预检均通过。
+其中 TEST118 证明脚本 keydown 使 retained layout 失效后，native COMBOBOX 的 ArrowDown
+仍能把 keydown/keyup 完整送达 target 与 bubble listener，Core live selection 与 native
+index 同步；`TEST118,999` 的独立门 `20260910-101737-next775-test118-clean` 也通过。
+先前 `20260910-101041-next775-select-cumulative` 因设备端日志未完整回收而保留远端目录，
+随后可取得的 smoke 在 TEST3 的 postman-echo TLS EOF 停止；这些运行不作为全量基线。
+
+更早的正式证据是 `20260908-232232-next774`：正式 Debug ARMV4I、当前 GUI 连接的唯一
 WMDC 目标、全新外部目录，定向运行 `TEST1216,999`。2/2 测试通过，只有一个
 `TESTBENCH PASS`，零 `ERROR`/`FAIL`，完整日志已回收，`current_cleanup=removed_after_complete_log`，
 空间预检和内部 object-store 检查均通过。它确认 `Element.removeChild(Comment)` 与
@@ -208,8 +221,9 @@ next771/next770/formal10 的通过证据及更早失败实验均保留在 Git �
 本地 `tmp/device-runs/`，不在此重复维护。
 
 next774 批的 `test_c89ize`、文档审计、`git diff --check`、Debug/Release ARMV4I 构建和
-设备门均通过；构建输出仍只有既存 libcss 数值转换警告。next775 的 Core 修复已经以
-`eec0c65a` 提交并推送，但设备门需在用户释放上次运行留下的 WER/锁定目录后重新执行。
+设备门均通过；构建输出仍只有既存 libcss 数值转换警告。next775 的字体所有权修复已由
+`eec0c65a` 提交并推送，本批的 SELECT 键盘回退在上面的定向设备门中通过；全量 smoke
+仍需在网络稳定且日志能完整回收时另行执行，不能用 TEST3 的 TLS EOF 运行替代。
 
 ## 当前人工验收状态
 
@@ -231,6 +245,9 @@ next774 批的 `test_c89ize`、文档审计、`git diff --check`、Debug/Release
   `form.elements` 夹具；自动门已证明跨树 owner、成功控件排除、默认动作顺序、snapshot
   隔离和有界错误回退。它们不保证完整 live collection、native 表单/SELECT 视觉、picker、
   键盘/触摸、SIP/IME 或不同 DPI 行为；逐测试合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- 低号 TEST118 是 native SELECT 键盘桥的例外：本批自动设备门覆盖关闭态 COMBOBOX 的
+  ArrowDown `keydown`/`keyup`、target/bubble 顺序和 layout invalidation 后的 live
+  selection 回退；它不覆盖展开 popup、触摸、SIP/IME、OEM 重复键或视觉保证。
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
@@ -322,22 +339,13 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-## 后续计划：next775
+## 唯一下一步
 
-next774 已完成一个有界的 Browser Comment/CDATA CharacterData removal 纵切：Core 新增
-`PCore_NodeRemoveCharacterDataChildById`，保留旧 Text-only API；Browser 通过 Ex3 mutation
-callback 让连接中的 Comment/CDATA wrapper 支持 `remove()` 与
-`Element.removeChild()`，并保持 detached wrapper、旧 snapshot、错误 parent/type 的
-fail-closed 语义。`20260908-232232-next774` 的正式 Debug ARMV4I 设备门已通过
-`TEST1216,999`（2/2），日志完整回收且远端目录已清理；Debug/Release 构建、C89 检查、
-文档结构门和宿主边界门均通过。当前 HTML fixture 不伪造 CDATA 节点，因此节点类型 4
-仍由公共 ABI/API 合同覆盖，待真实 XML/foreign-content 语料出现再增加专门设备断言。
-
-next775 的唯一下一步是释放上次设备运行留下的 WER/锁定目录后，在同一 WMDC GUI 会话中
-重新执行受影响的累计测试，确认 GDI 临时字体所有权修复是否消除 TEST62 前后的超时/崩溃。
-若设备证据通过，再从 compatibility corpus、源码、设备日志或用户新页面固定一个新的、可复现的产品缺口，再选择对应公共 DLL 的完整纵向能力。通用节点插入、reparent、
-其他删除、Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、
-pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对
-URL、CORS、完整图像 loading 和 image-map 扩展仍是候选限制，不能在证据之前写成已支持行为。
-候选必须能在仓库内固定主要 fixture、自动断言核心结果，并把语义放入公共 DLL；宿主只保留
-平台接线、调度和应用策略。
+当前 next775 的字体所有权与 native SELECT 键盘回退均已有定向设备证据。下一步只在
+网络稳定、日志可完整回收时重跑受影响的网络 smoke，并从 compatibility corpus、源码、
+设备日志或用户新页面固定一个新的、可复现的产品缺口；在缺口确认前不凭空扩展 API。新批次
+仍须把可复用语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
+离线夹具、直接相邻回归、正式设备门和职责文档更新。通用节点插入、reparent、其他删除、
+Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、
+transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对 URL、CORS、
+完整图像 loading 和 image-map 扩展仍是候选限制，不能在证据之前写成已支持行为。

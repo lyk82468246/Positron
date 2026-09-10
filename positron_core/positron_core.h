@@ -1298,6 +1298,16 @@ PCORE_API int PCore_EventDispatchKeyExToId(HANDLE hDoc,
                                           int bubbles, int cancelable,
                                           const PCoreKeyEventDataEx *data,
                                           int *default_allowed);
+/* Dispatch a trusted extended keyboard event to the select control at
+ * select_index. The index follows PCore_SelectInfo's styled document-order
+ * enumeration and resolves directly against the live DOM, so this form stays
+ * usable while a script listener has invalidated the retained layout. */
+PCORE_API int PCore_EventDispatchKeyExToSelectIndex(HANDLE hDoc,
+                                                   unsigned int select_index,
+                                                   const char *event_type,
+                                                   int bubbles, int cancelable,
+                                                   const PCoreKeyEventDataEx *data,
+                                                   int *default_allowed);
 PCORE_API int PCore_EventDispatchKeyExAt(HANDLE hDoc, int x, int y,
                                         const char *event_type,
                                         int bubbles, int cancelable,

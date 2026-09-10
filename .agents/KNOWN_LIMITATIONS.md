@@ -37,8 +37,13 @@
   `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
   选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
   attribute 或当前 live 选择。该可选表复用既有 Browser form-property native slot，
-  缺失、非 option、无效 id 或 callback 错误均 fail closed；它不提供 native SELECT
-  popup、键盘/触摸、SIP/IME、layout、paint 或完整 HTML option 算法。
+  缺失、非 option、无效 id 或 callback 错误均 fail closed；这个 property bridge 本身不
+  实现 native SELECT popup 或平台输入编排；有限的关闭态单选键盘桥另见下文。
+- Native SELECT 平台输入仅有一条有界路径：关闭态单选 COMBOBOX 可通过
+  `PCore_EventDispatchKeyExToSelectIndex` 把 `keydown`/`keyup` metadata 送到 live DOM，
+  允许默认动作后同步 Core/native selection；listener 使 retained layout 失效时仍可用。
+  展开 popup、触摸、SIP/IME、OEM 自动重复、跨设备焦点及视觉/DPI 未覆盖；不等于完整
+  select 键盘行为。
 - 同一 Browser DOM bridge 还提供可选的 `<option>` `value`、`label`、`text` 属性：
   `value`/`label` 在对应 attribute 存在时返回其 UTF-8 值，否则回退到 option 文本；
   `text` 读写 option 的纯文本，属性或文本 mutation 会被后续读取和所属 select 的

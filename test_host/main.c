@@ -8268,6 +8268,11 @@ static int g_native_contenteditable_clipboard_probe = 0;
 static int g_native_contenteditable_clipboard_probe_ok = 0;
 static int g_native_contenteditable_clipboard_edge_probe = 0;
 static char g_native_contenteditable_clipboard_probe_detail[768];
+/* Set only while Browser synchronously dispatches a native SELECT key.  The
+ * generic key callback otherwise receives coordinates only; this token lets
+ * it preserve the native target when a preceding listener invalidated Core's
+ * retained layout. */
+static unsigned int g_native_select_key_dispatch_index = UINT_MAX;
 static int g_native_form_enter_probe = 0;
 static int g_native_form_enter_probe_seen = 0;
 static int g_native_form_enter_probe_ok = 0;
@@ -10336,6 +10341,10 @@ typedef struct pcore_native_select {
     unsigned int select_index;
     int option_count;
     int multiple;
+    int x;
+    int y;
+    int width;
+    int height;
     unsigned int pending_high_surrogate;
     UINT pending_high_message;
     LPARAM pending_high_lparam;
@@ -10345,6 +10354,7 @@ typedef struct pcore_native_select {
 
 static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
         WPARAM wp, LPARAM lp);
+static void pcore_native_select_changed(HWND select_window);
 
 static pcore_native_select *g_native_selects = NULL;
 static unsigned int g_native_select_count = 0;
@@ -10357,12 +10367,35 @@ static int g_native_multiselect_probe = 0;
 static int g_native_multiselect_probe_ok = 0;
 static int g_native_select_key_probe = 0;
 static int g_native_select_key_probe_ok = 0;
+static char g_native_select_key_probe_detail[384];
 static int g_native_keypress_probe = 0;
 static int g_native_syskey_probe = 0;
 static int g_native_unicode_probe = 0;
 static int g_native_surrogate_probe = 0;
 static int g_native_ime_probe = 0;
 static int g_interaction_restyle_pending = 0;
+
+/* WinCE COMBOBOX can update its closed-list selection without sending the
+ * parent CBN_SELCHANGE notification until a later message-loop turn.  Once
+ * the native default has run, reconcile that committed value immediately;
+ * an open dropdown remains a candidate and is committed only by its normal
+ * END_OK transaction. */
+static void pcore_native_select_sync_after_key(HWND hwnd,
+        pcore_native_select *native_select, int before)
+{
+    LRESULT after;
+
+    if (hwnd == NULL || native_select == NULL || native_select->multiple ||
+            native_select->dropdown_active || before < 0 ||
+            SendMessage(hwnd, CB_GETDROPPEDSTATE, 0, 0) != 0) {
+        return;
+    }
+    after = SendMessage(hwnd, CB_GETCURSEL, 0, 0);
+    if (after == CB_ERR || after == before) {
+        return;
+    }
+    pcore_native_select_changed(hwnd);
+}
 
 static void pcore_browser_script_dispatch_control_event(HWND control,
         const char *event_type, int bubbles)
@@ -10541,10 +10574,17 @@ static int pcore_browser_script_key_dispatch(void *pw,
     extended.alt = info->alt ? 1 : 0;
     extended.is_composing = info->is_composing ? 1 : 0;
     *out_default_allowed = 1;
-    result = PCore_EventDispatchKeyExAt(bridge->document, info->x, info->y,
-            info->event_type, info->bubbles ? 1 : 0,
-            info->cancelable ? 1 : 0, &extended,
-            out_default_allowed);
+    if (g_native_select_key_dispatch_index != UINT_MAX) {
+        result = PCore_EventDispatchKeyExToSelectIndex(bridge->document,
+                g_native_select_key_dispatch_index, info->event_type,
+                info->bubbles ? 1 : 0, info->cancelable ? 1 : 0,
+                &extended, out_default_allowed);
+    } else {
+        result = PCore_EventDispatchKeyExAt(bridge->document, info->x,
+                info->y, info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, &extended,
+                out_default_allowed);
+    }
     return (result < 0) ? -1 : 0;
 }
 
@@ -11395,7 +11435,7 @@ static int pcore_browser_script_dispatch_select_key_event(HWND control,
 {
     pcore_browser_script_bridge *bridge;
     PBrowserScriptNativeSelectKeyInfo key_info;
-    PCoreSelectInfo select_info;
+    pcore_native_select *native_select;
     unsigned int i;
     int x;
     int y;
@@ -11411,16 +11451,19 @@ static int pcore_browser_script_dispatch_select_key_event(HWND control,
     }
     bridge = g_browser_script_session.bridge;
     for (i = 0; i < g_native_select_count; i++) {
-        if (g_native_selects[i].hwnd == control &&
-                PCore_SelectInfo(g_render_doc,
-                        g_native_selects[i].select_index,
-                        &select_info) == 0) {
-            x = select_info.x + select_info.width / 2;
-            y = select_info.y + select_info.height / 2;
+        native_select = &g_native_selects[i];
+        if (native_select->hwnd == control) {
+            /* A key listener is allowed to mutate the DOM. That mutation
+             * invalidates Core's retained box tree before the paired keyup
+             * reaches this subclass, but the native HWND still represents
+             * the same target. Keep the last laid-out rectangle with the
+             * bridge record so both halves of the gesture reach Browser. */
+            x = native_select->x + native_select->width / 2;
+            y = native_select->y + native_select->height / 2;
             memset(&key_info, 0, sizeof(key_info));
             key_info.size = sizeof(key_info);
             key_info.target_token =
-                    g_native_selects[i].select_index + 1UL;
+                    native_select->select_index + 1UL;
             key_info.x = x;
             key_info.y = y;
             key_info.event_type = event_type;
@@ -11434,8 +11477,18 @@ static int pcore_browser_script_dispatch_select_key_event(HWND control,
                     ((GetKeyState(VK_MENU) < 0) ? 1 : 0);
             key_info.is_composing = 0;
             default_allowed = 1;
-            rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
-                    bridge->session, &key_info, &default_allowed);
+            {
+                unsigned int previous_select_index;
+
+                previous_select_index =
+                        g_native_select_key_dispatch_index;
+                g_native_select_key_dispatch_index =
+                        native_select->select_index;
+                rc = PBrowser_ScriptSessionDispatchNativeSelectKey(
+                        bridge->session, &key_info, &default_allowed);
+                g_native_select_key_dispatch_index =
+                        previous_select_index;
+            }
             if (rc != PSCRIPT_OK) {
                 return 1;
             }
@@ -12725,6 +12778,10 @@ static void pcore_native_selects_rebuild(HWND parent, int preserve_focus)
         items[i].select_index = i;
         items[i].option_count = info.option_count;
         items[i].multiple = info.multiple;
+        items[i].x = info.x;
+        items[i].y = info.y;
+        items[i].width = info.width;
+        items[i].height = info.height;
         if (items[i].hwnd == NULL) {
             continue;
         }
@@ -12823,12 +12880,20 @@ static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
     unsigned long value;
     unsigned long codepoint;
     LRESULT native_result;
+    int key_message;
+    int key_before;
 
     native_select = pcore_native_select_find(hwnd);
     original = (native_select != NULL) ? native_select->original_proc : NULL;
     value = (unsigned long) wp;
     codepoint = 0;
     native_result = 0;
+    key_message = msg == WM_KEYDOWN || msg == WM_KEYUP ||
+            msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP;
+    key_before = -1;
+    if (key_message && native_select != NULL && !native_select->multiple) {
+        key_before = (int) SendMessage(hwnd, CB_GETCURSEL, 0, 0);
+    }
     if ((msg == WM_KEYDOWN || msg == WM_KEYUP ||
             msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) &&
             pcore_browser_script_dispatch_select_key_event(hwnd,
@@ -12893,9 +12958,14 @@ static LRESULT CALLBACK pcore_native_select_proc(HWND hwnd, UINT msg,
             return 0;
         }
     }
-    return (original != NULL) ?
+    native_result = (original != NULL) ?
             CallWindowProc(original, hwnd, msg, wp, lp) :
             DefWindowProc(hwnd, msg, wp, lp);
+    if (key_message) {
+        pcore_native_select_sync_after_key(hwnd, native_select,
+                key_before);
+    }
+    return native_result;
 }
 
 static void pcore_native_focus_changed(HWND control)
@@ -19281,7 +19351,12 @@ static int pcore_browser_script_dispatch_native_select_commit(HWND control)
     pcore_browser_script_bridge *bridge;
     PBrowserScriptNativeSelectCommitInfo commit_info;
     PCoreSelectInfo select_info;
+    pcore_native_select *native_select;
     unsigned int i;
+    int multiple;
+    int selected_index;
+    int selected_count;
+    int option_index;
     int x;
     int y;
     int rc;
@@ -19290,11 +19365,45 @@ static int pcore_browser_script_dispatch_native_select_commit(HWND control)
         return -1;
     }
     for (i = 0; i < g_native_select_count; i++) {
-        if (g_native_selects[i].hwnd == control &&
-                PCore_SelectInfo(g_render_doc,
-                g_native_selects[i].select_index, &select_info) == 0) {
-            x = select_info.x + select_info.width / 2;
-            y = select_info.y + select_info.height / 2;
+        native_select = &g_native_selects[i];
+        if (native_select->hwnd == control) {
+            multiple = native_select->multiple ? 1 : 0;
+            selected_index = -1;
+            selected_count = 0;
+            if (PCore_SelectInfo(g_render_doc, native_select->select_index,
+                    &select_info) == 0) {
+                x = select_info.x + select_info.width / 2;
+                y = select_info.y + select_info.height / 2;
+                multiple = select_info.multiple ? 1 : 0;
+                selected_index = select_info.selected_index;
+                selected_count = select_info.selected_count;
+            } else {
+                /* The selection mutation may have invalidated layout before
+                 * the paired input/change notification is dispatched. The
+                 * native record still owns the last geometry and the WM
+                 * control is authoritative for its committed snapshot. */
+                x = native_select->x + native_select->width / 2;
+                y = native_select->y + native_select->height / 2;
+                if (multiple) {
+                    selected_count = (int) SendMessage(control,
+                            LB_GETSELCOUNT, 0, 0);
+                    if (selected_count == 1) {
+                        for (option_index = 0;
+                                option_index < native_select->option_count;
+                                option_index++) {
+                            if (SendMessage(control, LB_GETSEL,
+                                    (WPARAM) option_index, 0) > 0) {
+                                selected_index = option_index;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    selected_index = (int) SendMessage(control,
+                            CB_GETCURSEL, 0, 0);
+                    selected_count = selected_index == CB_ERR ? 0 : 1;
+                }
+            }
             bridge = g_browser_script_session.bridge;
             if (g_browser_script_session.document == g_render_doc &&
                     g_browser_script_session.runtime != NULL &&
@@ -19302,12 +19411,12 @@ static int pcore_browser_script_dispatch_native_select_commit(HWND control)
                 memset(&commit_info, 0, sizeof(commit_info));
                 commit_info.size = sizeof(commit_info);
                 commit_info.target_token =
-                        g_native_selects[i].select_index + 1UL;
+                        native_select->select_index + 1UL;
                 commit_info.x = x;
                 commit_info.y = y;
-                commit_info.multiple = select_info.multiple ? 1 : 0;
-                commit_info.selected_index = select_info.selected_index;
-                commit_info.selected_count = select_info.selected_count;
+                commit_info.multiple = multiple;
+                commit_info.selected_index = selected_index;
+                commit_info.selected_count = selected_count;
                 rc = PBrowser_ScriptSessionDispatchNativeSelectCommit(
                         bridge->session, &commit_info);
                 return rc == PSCRIPT_OK ? 1 : -1;
@@ -24436,27 +24545,6 @@ static BOOL show_render_window(void)
         SendMessage(g_native_selects[0].hwnd, CB_SETCURSEL, 2, 0);
         pcore_native_select_changed(g_native_selects[0].hwnd);
     }
-    if (g_native_select_key_probe && g_native_select_count > 0 &&
-            g_native_selects[0].hwnd != NULL) {
-        PCoreSelectInfo key_probe_info;
-        int key_probe_before;
-
-        key_probe_before = -1;
-        if (PCore_SelectInfo(g_render_doc,
-                g_native_selects[0].select_index, &key_probe_info) == 0) {
-            key_probe_before = key_probe_info.selected_index;
-        }
-        SendMessage(g_native_selects[0].hwnd, WM_KEYDOWN, VK_DOWN, 0);
-        SendMessage(g_native_selects[0].hwnd, WM_KEYUP, VK_DOWN, 0);
-        if (key_probe_before == 0 &&
-                SendMessage(g_native_selects[0].hwnd, CB_GETCURSEL,
-                0, 0) == 1 &&
-                PCore_SelectInfo(g_render_doc,
-                g_native_selects[0].select_index, &key_probe_info) == 0 &&
-                key_probe_info.selected_index == 1) {
-            g_native_select_key_probe_ok = 1;
-        }
-    }
     if (g_native_keypress_probe) {
         if (g_native_edit_count > 0 && g_native_edits[0].hwnd != NULL) {
             SendMessage(g_native_edits[0].hwnd, WM_CHAR,
@@ -24566,6 +24654,76 @@ static BOOL show_render_window(void)
         UpdateWindow(hwnd);
     }
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    if (g_native_select_key_probe && g_native_select_count > 0 &&
+            g_native_selects[0].hwnd != NULL) {
+        PCoreSelectInfo key_probe_info;
+        int key_probe_before;
+        int key_probe_after;
+        int core_probe_after;
+        int old_select_syncing;
+        int probe_commands;
+        LRESULT focus_result;
+        LRESULT dlg_code;
+        LRESULT key_down_result;
+        LRESULT key_up_result;
+        LRESULT dropped_state;
+        MSG probe_message;
+
+        /* A WM_KEYDOWN sent to a WinCE CBS_DROPDOWNLIST only follows the
+         * native arrow-key path when the control is the active foreground
+         * child.  Prepare that platform state exactly as a user key press
+         * would, while suppressing the synthetic focus notifications so the
+         * key-event probe compares only its declared event sequence. */
+        old_select_syncing = g_native_select_syncing;
+        g_native_select_syncing = 1;
+        focus_result = (LRESULT) SetFocus(g_native_selects[0].hwnd);
+        g_native_select_syncing = old_select_syncing;
+        key_probe_before = -1;
+        key_probe_after = -1;
+        core_probe_after = -1;
+        if (PCore_SelectInfo(g_render_doc,
+                g_native_selects[0].select_index, &key_probe_info) == 0) {
+            key_probe_before = key_probe_info.selected_index;
+        }
+        dlg_code = SendMessage(g_native_selects[0].hwnd,
+                WM_GETDLGCODE, VK_DOWN, 0);
+        key_down_result = SendMessage(g_native_selects[0].hwnd,
+                WM_KEYDOWN, VK_DOWN, 0);
+        key_up_result = SendMessage(g_native_selects[0].hwnd,
+                WM_KEYUP, VK_DOWN, 0);
+        /* WinCE may post CBN_SELCHANGE to the parent instead of delivering
+         * it before the original WM_KEYDOWN returns.  Drain only the bounded
+         * parent command queue so the normal host adapter can commit the
+         * native candidate before the probe samples Core selection. */
+        probe_commands = 0;
+        while (probe_commands < 16 && PeekMessage(&probe_message, hwnd,
+                WM_COMMAND, WM_COMMAND, PM_REMOVE)) {
+            DispatchMessage(&probe_message);
+            probe_commands++;
+        }
+        key_probe_after = (int) SendMessage(g_native_selects[0].hwnd,
+                CB_GETCURSEL, 0, 0);
+        dropped_state = SendMessage(g_native_selects[0].hwnd,
+                CB_GETDROPPEDSTATE, 0, 0);
+        (void) PCore_NodeSelectedIndexById(g_render_doc, "target",
+                &core_probe_after);
+        _snprintf(g_native_select_key_probe_detail,
+                sizeof(g_native_select_key_probe_detail) - 1,
+                "focus=%p/%p set=%ld drop=%d/%ld dlg=0x%lx key=%ld/%ld "
+                "cmd=%d native=%d/%d core=%d/%d",
+                GetFocus(), g_native_selects[0].hwnd, (long) focus_result,
+                g_native_selects[0].dropdown_active, (long) dropped_state,
+                (unsigned long) dlg_code, (long) key_down_result,
+                (long) key_up_result, probe_commands, key_probe_before,
+                key_probe_after,
+                key_probe_before, core_probe_after);
+        g_native_select_key_probe_detail[
+                sizeof(g_native_select_key_probe_detail) - 1] = '\0';
+        if (key_probe_before == 0 &&
+                key_probe_after == 1 && core_probe_after == 1) {
+            g_native_select_key_probe_ok = 1;
+        }
+    }
     if (g_native_contenteditable_probe) {
         pcore_native_contenteditable_probe_run(hwnd);
     }
@@ -61482,21 +61640,43 @@ static BOOL test118_browser_script_select_keyboard(void)
         }
     }
     if (ok) {
+        /* RESET intentionally invalidates the retained tree; restore the
+         * render snapshot before asking the native bridge to materialise the
+         * SELECT control. */
+        if (PCore_SelectInfo(document, 0, NULL) != 0 &&
+                (PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 240, 320) != 0 ||
+                PCore_SelectInfo(document, 0, NULL) != 0)) {
+            ok = 0;
+        }
+    }
+    if (ok) {
         g_doc_h = PCore_DocumentHeight(document);
         g_scroll_y = 0;
         g_render_doc = document;
         g_render_sheet = sheet;
         g_native_select_key_probe_ok = 0;
+        g_native_select_key_probe_detail[0] = '\0';
         g_native_select_key_probe = 1;
         if (!show_render_window()) {
+            _snprintf(error, sizeof(error) - 1,
+                    "show_render_window failed error=%lu",
+                    (unsigned long) GetLastError());
+            error[sizeof(error) - 1] = '\0';
             ok = 0;
         }
         g_native_select_key_probe = 0;
         if (ok && !g_native_select_key_probe_ok) {
             ok = 0;
-            _snprintf(error, sizeof(error) - 1,
-                    "native ArrowDown default action did not move "
-                    "COMBOBOX and Core selection to option 1");
+            if (g_native_select_key_probe_detail[0] != '\0') {
+                _snprintf(error, sizeof(error) - 1, "%s",
+                        g_native_select_key_probe_detail);
+            } else {
+                _snprintf(error, sizeof(error) - 1,
+                        "native ArrowDown default action did not move "
+                        "COMBOBOX and Core selection to option 1 "
+                        "(native_selects=%u)", g_native_select_count);
+            }
             error[sizeof(error) - 1] = '\0';
         }
         g_render_doc = NULL;
@@ -61504,6 +61684,9 @@ static BOOL test118_browser_script_select_keyboard(void)
         if (ok && (PCore_NodeTextContentById(document, "result", text,
                 sizeof(text), &bytes) != 0 ||
                 strcmp(text, EXPECTED) != 0)) {
+            _snprintf(error, sizeof(error) - 1,
+                    "actual[%d]=%s", bytes, text);
+            error[sizeof(error) - 1] = '\0';
             ok = 0;
         }
     }

@@ -299,6 +299,12 @@ option 的默认 selected 快照。Browser 可注册同一 relation，把 `:disa
 保持分离；宿主不应在测试 helper 或 native 控件适配层复制这些判断。
 `PCore_SelectOptionInfo`、`PCore_SelectSetOptionSelected` 和 successful form submission
 同样消费 effective-disabled/live selected 状态，因此 disabled option 不会被选中或提交。
+如果脚本 listener 在 native SELECT 的键盘事件期间使 retained layout 失效，
+`PCore_SelectSetOptionSelected` 会改用 live DOM 完成同一选择提交，不要求宿主先同步重排。
+对应的 native bridge 可用 `PCore_EventDispatchKeyExToSelectIndex` 按 SELECT 的有界文档序号
+派发带完整 key metadata 的 trusted 事件；该入口同样直接定位 live DOM，适合成对的
+`keydown`/`keyup` 跨越一次 layout invalidation。布局恢复后，宿主仍须按原有策略重新
+style/layout/paint，并重新查询几何快照。
 
 Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
 

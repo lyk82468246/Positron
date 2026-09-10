@@ -4075,6 +4075,43 @@ PCORE_API int PCore_EventDispatchKeyExToId(HANDLE hDoc,
             data->is_composing, default_allowed);
 }
 
+PCORE_API int PCore_EventDispatchKeyExToSelectIndex(HANDLE hDoc,
+        unsigned int select_index, const char *event_type, int bubbles,
+        int cancelable, const PCoreKeyEventDataEx *data,
+        int *default_allowed)
+{
+    dom_html_select_element *select;
+    PCoreKeyEventData legacy;
+    pcore_event_state *state;
+    int result;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0' ||
+            data == NULL || data->struct_size < sizeof(*data)) {
+        return -1;
+    }
+    select = NULL;
+    if (pcore_select_dom_at((dom_document *) hDoc, select_index,
+            &select) != 0 || select == NULL) {
+        return 0;
+    }
+    legacy.key = data->key;
+    legacy.key_code = data->key_code;
+    legacy.char_code = data->char_code;
+    legacy.repeat = data->repeat;
+    legacy.shift = data->shift;
+    legacy.ctrl = data->ctrl;
+    legacy.alt = data->alt;
+    state = pcore_event_state_get((dom_document *) hDoc, 0);
+    result = pcore_event_dispatch_node((dom_node *) select, event_type,
+            bubbles, cancelable, state, &legacy, NULL,
+            data->is_composing, default_allowed);
+    dom_node_unref((dom_node *) select);
+    return result;
+}
+
 PCORE_API int PCore_EventDispatchInputToId(HANDLE hDoc,
         const char *element_id, const char *event_type, int bubbles,
         int cancelable, const PCoreInputEventData *input_data,
@@ -6641,6 +6678,14 @@ PCORE_API int PCore_SelectSetOptionSelected(HANDLE hDoc,
     const char *display_text;
 
     st = pcore_get_render((dom_document *) hDoc);
+    if (st == NULL) {
+        /* A script listener may invalidate the retained box tree while a
+         * native SELECT key/candidate transaction is still committing.  The
+         * DOM state remains authoritative, so keep this public mutation
+         * usable without forcing the host to synchronously rebuild layout. */
+        return pcore_select_set_option_selected_dom((dom_document *) hDoc,
+                select_index, option_index, selected);
+    }
     current = 0;
     box = (st != NULL) ? pcore_select_control_at(st->root_box,
             select_index, &current) : NULL;

@@ -9097,8 +9097,184 @@ static dom_exception pcore_option_set_selected_live(
     return dom_html_option_element_set_selected(option, selected);
 }
 
+/* Keep the DOM fallback's select numbering aligned with the retained box
+ * bridge.  Box construction visits styled, non-display:none elements in
+ * document order and skips a hidden subtree; mirror that bounded walk here so
+ * a native control can still commit its state after a script mutation has
+ * invalidated the retained layout. */
+#define PCORE_SELECT_DOM_MAX_DEPTH 256U
+
+typedef struct pcore_select_dom_lookup {
+    unsigned int target;
+    unsigned int current;
+    dom_html_select_element *select;
+} pcore_select_dom_lookup;
+
+static int pcore_select_dom_walk(dom_node *node, unsigned int depth,
+        pcore_select_dom_lookup *lookup)
+{
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+    css_computed_style *style;
+    int result;
+
+    if (node == NULL || lookup == NULL || depth >
+            PCORE_SELECT_DOM_MAX_DEPTH) {
+        return -1;
+    }
+    if (dom_node_get_node_type(node, &type) != DOM_NO_ERR) {
+        return -1;
+    }
+    if (type == DOM_ELEMENT_NODE) {
+        style = pcore_node_computed_style(node);
+        /* The box builder omits an unstyled element and its descendants. */
+        if (style == NULL || css_computed_display(style, false) ==
+                CSS_DISPLAY_NONE) {
+            return 0;
+        }
+        if (pcore_element_name_is((dom_element *) node, "select")) {
+            if (lookup->current == lookup->target) {
+                lookup->select = (dom_html_select_element *) dom_node_ref(node);
+                return lookup->select != NULL ? 1 : -1;
+            }
+            if (lookup->current == UINT_MAX) {
+                return -1;
+            }
+            lookup->current++;
+        }
+    }
+    child = NULL;
+    if (dom_node_get_first_child(node, &child) != DOM_NO_ERR) {
+        return -1;
+    }
+    while (child != NULL) {
+        next = NULL;
+        result = pcore_select_dom_walk(child, depth + 1U, lookup);
+        if (result != 0) {
+            dom_node_unref(child);
+            return result;
+        }
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            return -1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    return 0;
+}
+
+int pcore_select_dom_at(dom_document *doc, unsigned int select_index,
+        dom_html_select_element **out_select)
+{
+    dom_element *root;
+    pcore_select_dom_lookup lookup;
+    int result;
+
+    if (out_select == NULL) {
+        return 1;
+    }
+    *out_select = NULL;
+    if (doc == NULL) {
+        return 1;
+    }
+    root = NULL;
+    if (dom_document_get_document_element(doc, &root) != DOM_NO_ERR ||
+            root == NULL) {
+        if (root != NULL) {
+            dom_node_unref((dom_node *) root);
+        }
+        return 1;
+    }
+    lookup.target = select_index;
+    lookup.current = 0;
+    lookup.select = NULL;
+    result = pcore_select_dom_walk((dom_node *) root, 0, &lookup);
+    dom_node_unref((dom_node *) root);
+    if (result < 0 || lookup.select == NULL) {
+        if (lookup.select != NULL) {
+            dom_node_unref((dom_node *) lookup.select);
+        }
+        return 1;
+    }
+    *out_select = lookup.select;
+    return 0;
+}
+
 static int pcore_select_set_selected_index_dom(
         dom_html_select_element *select, int index);
+
+int pcore_select_set_option_selected_dom(dom_document *doc,
+        unsigned int select_index, unsigned int option_index, int selected)
+{
+    dom_html_select_element *select;
+    dom_html_options_collection *options;
+    dom_node *target;
+    bool multiple;
+    bool select_disabled;
+    bool option_disabled;
+    dom_exception err;
+    uint32_t length;
+    int result;
+
+    select = NULL;
+    options = NULL;
+    target = NULL;
+    if (pcore_select_dom_at(doc, select_index, &select) != 0 ||
+            select == NULL) {
+        return 1;
+    }
+    select_disabled = false;
+    if (pcore_node_effectively_disabled((dom_node *) select, NULL,
+            &select_disabled) != 0) {
+        dom_node_unref((dom_node *) select);
+        return 1;
+    }
+    if (dom_html_select_element_get_multiple(select, &multiple) !=
+            DOM_NO_ERR || dom_html_select_element_get_options(select,
+            &options) != DOM_NO_ERR || options == NULL ||
+            dom_html_options_collection_get_length(options, &length) !=
+            DOM_NO_ERR || option_index >= length) {
+        if (options != NULL) {
+            dom_html_options_collection_unref(options);
+        }
+        dom_node_unref((dom_node *) select);
+        return 1;
+    }
+    if (dom_html_options_collection_item(options, option_index, &target) !=
+            DOM_NO_ERR || target == NULL) {
+        dom_html_options_collection_unref(options);
+        dom_node_unref((dom_node *) select);
+        return 1;
+    }
+    option_disabled = false;
+    if (pcore_node_effectively_disabled(target, NULL, &option_disabled) !=
+            0) {
+        dom_node_unref(target);
+        dom_html_options_collection_unref(options);
+        dom_node_unref((dom_node *) select);
+        return 1;
+    }
+    if (select_disabled || option_disabled) {
+        dom_node_unref(target);
+        dom_html_options_collection_unref(options);
+        dom_node_unref((dom_node *) select);
+        return 2;
+    }
+    if (multiple || !selected) {
+        err = pcore_option_set_selected_live(
+                (dom_html_option_element *) target, selected ? true : false);
+        result = (err == DOM_NO_ERR) ? 0 : 1;
+    } else {
+        result = pcore_select_set_selected_index_dom(select,
+                (int) option_index);
+    }
+    dom_node_unref(target);
+    dom_html_options_collection_unref(options);
+    dom_node_unref((dom_node *) select);
+    return result;
+}
 
 /* Return the retained <select> ancestor for an option. Options nested in an
  * optgroup are included; detached options are not addressable by the public
