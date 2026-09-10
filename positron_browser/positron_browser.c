@@ -5803,11 +5803,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "P.prototype.cloneNode=function(deep){return cloneNode11(this,!!deep,{count:0},0,null);};"
         "P.prototype.normalize=function(){normalize11(this);};"
         "P.prototype.append=function(value){if(arguments.length===0){return undefined;}"
-        "if(arguments.length!==1){throw new Error('append only accepts one text value');}"
-        "return insertText11(this,value,false);};"
+        "if(arguments.length!==1){throw new Error('append only accepts one value');}"
+        "if(value&&value.nodeType===1){insertExistingAt11(this,value,num(this,14,0));"
+        "return undefined;}return insertText11(this,value,false);};"
         "P.prototype.prepend=function(value){if(arguments.length===0){return undefined;}"
-        "if(arguments.length!==1){throw new Error('prepend only accepts one text value');}"
-        "return insertText11(this,value,true);};"
+        "if(arguments.length!==1){throw new Error('prepend only accepts one value');}"
+        "if(value&&value.nodeType===1){insertExistingAt11(this,value,0);"
+        "return undefined;}return insertText11(this,value,true);};"
         "function insertExisting11(o,n,ref){var oldParent,ok;"
         "if(!o||typeof o.__id!=='string'||o.__id===''||!n||n.nodeType!==1||"
         "typeof n.__id!=='string'||n.__id===''){throw new Error('insert unavailable');}"
@@ -5822,6 +5824,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "op:'insertElementChild',parentId:o.__id,childId:n.__id,"
         "referenceId:ref===null?null:ref.__id});}catch(e){ok=false;}"
         "if(!ok){throw new Error('insert failed');}"
+        "if(typeof g.__pcoreInvalidateDomCaches==='function'){"
+        "g.__pcoreInvalidateDomCaches(o.__id);if(oldParent&&oldParent!==o&&"
+        "typeof oldParent.__id==='string'&&oldParent.__id!==''){"
+        "g.__pcoreInvalidateDomCaches(oldParent.__id);}}return n;}"
+        "function insertExistingAt11(o,n,index){var oldParent,ok,count;"
+        "if(!o||typeof o.__id!=='string'||o.__id===''||!n||n.nodeType!==1||"
+        "typeof n.__id!=='string'||n.__id===''){throw new Error('insert unavailable');}"
+        "count=num(o,14,0);if(index!==Number(index)||index<0||"
+        "index!==Math.floor(index)||index>count||count>64){"
+        "throw new Error('insert index unavailable');}"
+        "if(same(o,n)){throw new Error('insert hierarchy');}"
+        "oldParent=parent(n);if(typeof g.__pcoreRemoveChild!=='function'){"
+        "throw new Error('insert unavailable');}try{ok=g.__pcoreRemoveChild({"
+        "op:'insertElementChildAt',parentId:o.__id,childId:n.__id,index:index});"
+        "}catch(e){ok=false;}if(!ok){throw new Error('insert failed');}"
         "if(typeof g.__pcoreInvalidateDomCaches==='function'){"
         "g.__pcoreInvalidateDomCaches(o.__id);if(oldParent&&oldParent!==o&&"
         "typeof oldParent.__id==='string'&&oldParent.__id!==''){"
@@ -6235,6 +6252,7 @@ typedef struct p_browser_script_dom_mutation_binding {
     PBrowserScriptRemoveCharacterDataChildFn remove_character_data_child;
     PBrowserScriptInsertChildFn insert_child;
     PBrowserScriptReplaceChildFn replace_child;
+    PBrowserScriptInsertChildAtFn insert_child_at;
 } p_browser_script_dom_mutation_binding;
 
 typedef struct p_browser_script_content_editable_binding {
@@ -7641,7 +7659,16 @@ static int p_browser_script_dom_remove_child(void *pw,
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "insertElementChild") == 0) {
+    if (op != NULL && strcmp(op, "insertElementChildAt") == 0) {
+        if (binding->insert_child_at == NULL || child_id == NULL ||
+                child_id[0] == '\0' || child_index < 0 ||
+                strlen(child_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->insert_child_at(binding->callbacks.pw,
+                parent_id, child_id, (unsigned int) child_index);
+    } else if (op != NULL && strcmp(op, "insertElementChild") == 0) {
         if (binding->insert_child == NULL || child_id == NULL ||
                 child_id[0] == '\0' ||
                 strlen(child_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
@@ -10538,6 +10565,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(
     binding->remove_character_data_child = NULL;
     binding->insert_child = NULL;
     binding->replace_child = NULL;
+    binding->insert_child_at = NULL;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);
@@ -10577,6 +10605,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx2(
     binding->remove_character_data_child = NULL;
     binding->insert_child = NULL;
     binding->replace_child = NULL;
+    binding->insert_child_at = NULL;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);
@@ -10618,6 +10647,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx3(
             callbacks->remove_character_data_child;
     binding->insert_child = NULL;
     binding->replace_child = NULL;
+    binding->insert_child_at = NULL;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);
@@ -10660,6 +10690,7 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx4(
             callbacks->remove_character_data_child;
     binding->insert_child = callbacks->insert_child;
     binding->replace_child = NULL;
+    binding->insert_child_at = NULL;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);
@@ -10703,6 +10734,52 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx5(
             callbacks->remove_character_data_child;
     binding->insert_child = callbacks->insert_child;
     binding->replace_child = callbacks->replace_child;
+    binding->insert_child_at = NULL;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_mutation = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx6(
+        HANDLE hSession,
+        const PBrowserScriptDomMutationCallbacksEx6 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_mutation_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomMutationCallbacksEx6) ||
+            callbacks->remove_child == NULL ||
+            callbacks->remove_text_child == NULL ||
+            callbacks->remove_character_data_child == NULL ||
+            callbacks->insert_child == NULL ||
+            callbacks->replace_child == NULL ||
+            callbacks->insert_child_at == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_mutation != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_mutation_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    binding->remove_text_child = callbacks->remove_text_child;
+    binding->remove_character_data_child =
+            callbacks->remove_character_data_child;
+    binding->insert_child = callbacks->insert_child;
+    binding->replace_child = callbacks->replace_child;
+    binding->insert_child_at = callbacks->insert_child_at;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreRemoveChild", -1, p_browser_script_dom_remove_child,
             binding);

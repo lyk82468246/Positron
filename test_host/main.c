@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1218
+#define TEST_MAX_NUMBER 1219
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15400,6 +15400,32 @@ static int pcore_browser_script_dom_insert_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_insert_child_at(void *pw,
+        const char *parent_id, const char *child_id,
+        unsigned int child_index)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            child_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeInsertElementChildAtById(bridge->document, parent_id,
+            child_id, child_index);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_replace_child(void *pw,
         const char *parent_id, const char *new_child_id,
         const char *old_child_id)
@@ -17007,7 +17033,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx5 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx6 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17194,6 +17220,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_insert_child;
     dom_mutation_callbacks.replace_child =
             pcore_browser_script_dom_replace_child;
+    dom_mutation_callbacks.insert_child_at =
+            pcore_browser_script_dom_insert_child_at;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17389,7 +17417,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx5(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx6(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -49065,6 +49093,112 @@ static BOOL test1218_browser_existing_element_replacement_contract(void)
             " detached wrapper identity, refresh affected parent snapshots,"
             " and reject Text, self and wrong-parent operations without"
             " partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1219 - bounded Element.append/prepend accepts one existing element
+ * at an unfiltered childNodes position while preserving the text overload. */
+static BOOL test1219_browser_existing_element_append_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='a'>lead<span id='one'>1</span>"
+        "mid<span id='two'>2</span></div><div id='b'><span id='three'>3</span>"
+        "</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='one'>1</span>mid<span id='two'>2</span>"
+        "</div><div id='b'><span id='three'>3</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),one=document.getElementById('one'),"
+        "two=document.getElementById('two'),three=document.getElementById('three'),"
+        "oldA=a.childNodes,oldB=b.childNodes,afterAppend,afterPrepend,ret,ok;"
+        "ok=a!==null&&b!==null&&one!==null&&two!==null&&three!==null&&"
+        "oldA.length===4&&oldB.length===1;"
+        "ret=a.append(three);afterAppend=a.childNodes;"
+        "ok=ok&&ret===undefined&&afterAppend.length===5&&"
+        "afterAppend[0].nodeType===3&&afterAppend[0].data==='lead'&&"
+        "afterAppend[1]===one&&afterAppend[2].nodeType===3&&"
+        "afterAppend[2].data==='mid'&&afterAppend[3]===two&&"
+        "afterAppend[4]===three&&three.parentElement===a&&"
+        "b.childNodes.length===0&&oldA.length===4&&oldA[3]===two&&"
+        "oldB.length===1&&oldB[0]===three;"
+        "ret=a.prepend(two);afterPrepend=a.childNodes;"
+        "ok=ok&&ret===undefined&&afterPrepend.length===5&&"
+        "afterPrepend[0]===two&&afterPrepend[1].data==='lead'&&"
+        "afterPrepend[2]===one&&afterPrepend[3].data==='mid'&&"
+        "afterPrepend[4]===three&&two.parentElement===a&&"
+        "a.textContent==='2lead1mid3'&&afterAppend[0].data==='lead'&&"
+        "afterAppend[3]===two&&afterAppend[4]===three;"
+        "ret=a.prepend(a.firstChild);"
+        "ok=ok&&ret===undefined&&a.firstChild===two&&a.childNodes.length===5;"
+        "var badArgs=false,badClone=false,badText=false;"
+        "try{a.append(two,one);}catch(e){badArgs=true;}"
+        "try{a.append(a.cloneNode(false));}catch(e2){badClone=true;}"
+        "try{a.prepend(a.firstChild.firstChild);}catch(e3){badText=true;}"
+        "ok=ok&&badArgs&&badClone&&badText&&a.textContent==='2lead1mid3';"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char core_value[64];
+    char error[768];
+    int core_append;
+    int core_prepend;
+    int core_noop;
+    int core_bad_index;
+    int core_bad_parent;
+    int core_bad_child;
+    int core_self;
+    int core_result;
+    HANDLE core_doc;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    memset(core_value, 0, sizeof(core_value));
+    core_append = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "a", "three", 4);
+    core_prepend = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "a", "two", 0);
+    core_noop = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "a", "two", 0);
+    core_bad_index = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "a", "two", 99);
+    core_bad_parent = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "missing", "two", 0);
+    core_bad_child = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "a", "missing", 0);
+    core_self = core_doc == NULL ? 1 :
+            PCore_NodeInsertElementChildAtById(core_doc, "a", "a", 0);
+    core_result = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "a", core_value, sizeof(core_value), NULL);
+    if (core_doc == NULL || core_append != 0 || core_prepend != 0 ||
+            core_noop != 0 || core_bad_index != 2 || core_bad_parent != 2 ||
+            core_bad_child != 2 || core_self != 2 || core_result != 0 ||
+            strcmp(core_value, "2lead1mid3") != 0) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core append=%d prepend=%d noop=%d index=%d parent=%d"
+                " child=%d self=%d result=%d value=%s", core_append,
+                core_prepend, core_noop, core_bad_index, core_bad_parent,
+                core_bad_child, core_self, core_result, core_value);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1219 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-existing-append", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1219 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1219 OK",
+            "Element.append and prepend now move one existing element through"
+            " Core at exact childNodes positions, including mixed text, while"
+            " preserving wrapper identity and snapshots and rejecting detached"
+            " clones, Text arguments, and multiple values without mutation.");
     return TRUE;
 }
 
@@ -107247,6 +107381,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1216: ok = test1216_browser_remove_child_character_data_contract(); break;
         case 1217: ok = test1217_browser_existing_element_insertion_contract(); break;
         case 1218: ok = test1218_browser_existing_element_replacement_contract(); break;
+        case 1219: ok = test1219_browser_existing_element_append_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

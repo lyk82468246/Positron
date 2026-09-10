@@ -137,8 +137,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - 有界 direct-element DOM mutation：`PCore_NodeRemoveChildById` 按 UTF-8 id 删除一个
   direct element child，拒绝缺失、非 direct、文本节点和 document/head/body 结构 child
   token，并在成功后使 retained layout 失效；调用方必须重新 style/layout/paint。该入口
-  不派发事件、不获取资源、不操作 native 控件；通用节点插入、reparent、其他节点删除和完整 live
-  collection 仍由未来能力决定；
+  不派发事件、不获取资源、不操作 native 控件；DocumentFragment、其他节点类型删除和完整
+  live collection 仍由未来能力决定；
+- 同一 DOM 边界提供两条 existing-element insertion primitive：`PCore_NodeInsertChildById`
+  按 direct element reference 插入或追加，`PCore_NodeInsertElementChildAtById` 按未过滤
+  `childNodes` 索引插入或追加。两者都允许已连接 element 的同父级重排和跨父级迁移，拒绝
+  detached、结构 token、层级环和无效 reference/index；成功后使 retained layout 失效，
+  但不派发事件、不获取资源、不操作 native 控件。Text/Comment/CDATA、DocumentFragment
+  和 live collection 不在这些公共入口内；
 - 同一 DOM 边界还提供 `PCore_NodeInsertTextChildById`：按父元素 UTF-8 id 和未过滤
   `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count 时追加。它既
   不复用也不 reparent 已有节点，成功后使 retained layout 失效，参数/非法 UTF-8、
@@ -317,6 +323,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   fail closed，不产生脚本侧部分提交。该桥复用 `__pcoreSetText`，不增加 native slot；
   Core 的 retained layout 失效和后续 style/layout/paint 仍由宿主负责。DocumentFragment、
   已有节点 reparent、其他节点删除、事件、MutationObserver 和 live collection 不在边界内；
+- 单参数 `Element.append(element)` 与 `Element.prepend(element)` 通过
+  `PBrowserScriptDomMutationCallbacksEx6.insert_child_at` 接入
+  `PCore_NodeInsertElementChildAtById`。Browser 按未过滤 `childNodes` 的末尾或零位移动
+  当前文档中带 id 的 existing element，允许混合 Text/Comment/CDATA direct children，
+  保留 wrapper identity，并在成功后使受影响父级 snapshot 失效；detached clone、其他
+  节点类型、DocumentFragment、越界和多参数调用 fail closed。宿主只负责 callback 接线、
+  重排和重绘，不在本地复制 DOM 语义；
 - `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加
   `remove_text_child` 的 `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text
   wrapper 的 `childNodes` 索引通过 `__pcoreRemoveChild` 调用
@@ -657,7 +670,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   既有语义保持不变。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
-  `__pcoreRemoveChild` JSON/native slot；旧注册入口的语义和布局不变。
+  `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
+  existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
+  insertion；旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

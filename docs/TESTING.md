@@ -583,7 +583,8 @@ pending `decode()` 并清除旧的 `load`/`error` 终态。有效的
 `PBrowser_ScriptSessionNotifyResize` 在媒体和 resize 事件前刷新 source identity，240/480
 CSS 视口切换与 Core relation 49 保持一致；未变化的 source 不被误拒绝。该门不执行
 fetch、选择、layout、paint 或自动资源加载，也不承诺完整媒体查询、通用动态 DOM 插入/删除
-（仅另有 TEST1201、TEST1214–1216 的有界 removal 路径）、
+（仅另有 TEST1201、TEST1214–1216 的 removal 与 TEST1217–1219 的
+existing-element insertion/replacement 路径）、
 绝对 URL、CORS/referrer、loading 策略或 native 图像视觉；宿主只负责 mutation、通知、
 microtask pump 与断言。
 
@@ -747,6 +748,15 @@ TEST1218 覆盖已有 element 的有界替换 mutation：宿主注册 Ex5 的 `r
 mutation。成功后 retained layout 失效，宿主只负责 Ex5 接线、可选 restyle、fixture 和
 断言；DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、MutationObserver、
 live collection 和 native/视觉行为仍不在门内。
+
+TEST1219 覆盖已有 element 的有界 `Element.append()`/`prepend()`：宿主注册 Ex6 的
+`insert_child_at`，Browser 按未过滤 `childNodes` 的末尾或零位调用
+`PCore_NodeInsertElementChildAtById`。离线 fixture 同时包含 Text 与 element direct child，
+自动断言同父级重排、跨父级迁移、wrapper identity、旧/新 NodeList snapshot、父级
+`textContent` 和同节点 no-op；字符串仍走既有 Text 插入路径。Detached clone、Text、
+越界和多参数调用必须 fail closed 且不产生部分 mutation。成功后 retained layout 失效，
+宿主只负责 Ex6 接线、可选 restyle、fixture 与断言；DocumentFragment、Comment/CDATA 插入、
+通用节点 mutation、事件、MutationObserver、live collection 和 native/视觉行为仍不在门内。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

@@ -333,6 +333,21 @@ PCORE_API int PCore_NodeInsertChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id,
         const char *reference_child_id);
 
+/* Insert one existing element at an unfiltered childNodes index. Both ids
+ * are UTF-8 and must address connected elements in this document; the child
+ * may be moved from its current element parent. `child_index` may equal the
+ * current child count to append, and the indexed reference may be Text,
+ * Comment, CDATA or an id-less element. Document structure tokens, detached
+ * nodes and hierarchy cycles are rejected. Returns 0 after insertion
+ * (including a same-parent no-op before itself), 2 when an id, parent,
+ * insertion index or hierarchy is unavailable, and 1 for invalid input or
+ * another DOM failure. A successful move invalidates retained layout; callers
+ * must style/layout/paint again. No events, resource fetches or live
+ * collections are dispatched by this Core primitive. */
+PCORE_API int PCore_NodeInsertElementChildAtById(HANDLE hDoc,
+        const char *parent_id, const char *child_id,
+        unsigned int child_index);
+
 /* Replace one direct element child with another connected element from the
  * same document. Both ids must resolve to element nodes; old_child_id must
  * name a direct child of parent_id and new_child_id must name an attached

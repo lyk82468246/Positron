@@ -168,6 +168,13 @@ document/head/body 等结构 child token。成功后会丢弃 retained box tree�
 必须重新 style/layout/paint。该入口不派发事件、不获取资源、不操作 native 控件，也不提供
 live collection。
 
+`PCore_NodeInsertElementChildAtById` 是同一边界的未过滤位置变体：它按 `childNodes`
+索引把一个已连接的 element child 插入目标 element，索引等于当前 child count 时追加，
+因此 reference 可以是 Text、Comment、CDATA 或没有 id 的 element。Core 允许同父级重排
+和跨父级迁移，拒绝 document/head/body 结构 child token、detached 节点、越界索引和层级环。
+返回码和 retained-layout 失效规则与 `PCore_NodeInsertChildById` 相同；该入口不派发事件、
+不获取资源、不操作 native 控件，也不提供 live collection。
+
 `PCore_NodeReplaceElementChildById` 是替换路径的有界补充：它按 `parent_id` 的 direct
 child 关系，用同一文档中另一个已连接的 element 替换 `old_child_id`；新 element 可以来自
 另一个父级或同一父级的其他位置。成功返回 `0`（新旧 id 相同是合法 no-op），目标、关系、
