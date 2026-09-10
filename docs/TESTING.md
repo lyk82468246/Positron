@@ -776,6 +776,15 @@ NodeList snapshot 与父级 `textContent`。自动断言同时验证返回值、
 Ex6 接线、fixture 与断言。DocumentFragment、通用节点 mutation、事件、MutationObserver、
 live collection 和 native/视觉行为仍不在门内。
 
+TEST1222 覆盖 `Element.replaceWith(value)` 的有界 primitive 重载：Browser 通过 Ex7
+`replace_child_with_text` callback 调用 Core 的 `PCore_NodeReplaceElementChildWithTextById`，
+在目标 direct-parent 的未过滤 `childNodes` 原位置原子创建 Text，并保留旧 element wrapper
+为 detached、旧 NodeList 为静态快照。fixture 同时验证字符串/数字字符串化、返回值、父级
+`textContent`、缺失/错误 parent、self、非法 UTF-8、对象/已有 Text/detached clone 和多参数
+拒绝，以及失败时无部分 mutation；成功后宿主只负责 snapshot reconciliation 和可选
+style/layout/paint。DocumentFragment、Comment/CDATA/非 element target、MutationObserver、
+live collection 和 native/视觉行为仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

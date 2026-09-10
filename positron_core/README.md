@@ -183,6 +183,14 @@ child 关系，用同一文档中另一个已连接的 element 替换 `old_child
 控件。Text/Comment/CDATA、DocumentFragment、detached 节点和 live collection 不在该
 公共入口内。
 
+`PCore_NodeReplaceElementChildWithTextById` 是 primitive `Element.replaceWith(value)` 的
+有界 Core 入口：它按 `parent_id`/`old_child_id` 的 direct element-child 关系，在旧节点的
+未过滤 `childNodes` 位置创建一个新的 UTF-8 Text，并令旧 element detached。成功返回 `0`
+并使 retained box tree 失效；缺失 parent/child、非 element、非 direct child 或结构关系不可
+用返回 `2`，参数、非法 UTF-8 或其他 DOM 失败返回 `1`。该入口不 reparent、不派发事件、
+不操作 native 控件，也不提供 DocumentFragment、Comment/CDATA 或 live collection；调用方
+必须在成功后重新 style/layout/paint。
+
 `PCore_NodeInsertTextChildById` 是一个互补的结构 mutation 窄入口：它按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count
 时追加到末尾，既不复用也不 reparent 已有节点。成功返回 `0` 并使 retained box tree

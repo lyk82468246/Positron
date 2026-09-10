@@ -362,6 +362,18 @@ PCORE_API int PCore_NodeReplaceElementChildById(HANDLE hDoc,
         const char *parent_id, const char *new_child_id,
         const char *old_child_id);
 
+/* Replace one direct element child with a new UTF-8 Text node. Both ids are
+ * UTF-8; `old_child_id` must name a direct element child of `parent_id`.
+ * The new Text is inserted at the old child's exact childNodes position and
+ * the old element becomes detached. Returns 0 after replacement, 2 when the
+ * parent/child relation or node type is unavailable, and 1 for invalid input,
+ * malformed UTF-8 or another DOM failure. A successful replacement
+ * invalidates retained layout; callers must style/layout/paint again. This
+ * primitive does not dispatch events, reparent nodes or implement fragments.
+ */
+PCORE_API int PCore_NodeReplaceElementChildWithTextById(HANDLE hDoc,
+        const char *parent_id, const char *old_child_id, const char *text);
+
 /* Insert one new UTF-8 Text child at an unfiltered childNodes index. The
  * parent must be an addressable element; child_index may equal the current
  * child count to append. The inserted node is always new and never reuses or

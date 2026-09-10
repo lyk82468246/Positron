@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1221
+#define TEST_MAX_NUMBER 1222
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15452,6 +15452,31 @@ static int pcore_browser_script_dom_replace_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_replace_child_with_text(void *pw,
+        const char *parent_id, const char *old_child_id, const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            old_child_id == NULL || text == NULL) {
+        return -1;
+    }
+    result = PCore_NodeReplaceElementChildWithTextById(bridge->document,
+            parent_id, old_child_id, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -17033,7 +17058,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx6 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx7 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17222,6 +17247,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_replace_child;
     dom_mutation_callbacks.insert_child_at =
             pcore_browser_script_dom_insert_child_at;
+    dom_mutation_callbacks.replace_child_with_text =
+            pcore_browser_script_dom_replace_child_with_text;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17417,7 +17444,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx6(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx7(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -49294,6 +49321,130 @@ static BOOL test1221_browser_relative_text_insertion_contract(void)
             " primitive at the Core childNodes position, while preserving"
             " existing wrapper and snapshot identity and rejecting unsupported"
             " objects without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1222 - bounded Element.replaceWith replaces one direct element child
+ * with one stringified primitive Text node at the same childNodes position. */
+static BOOL test1222_browser_replace_with_text_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='a'>lead<span id='old'>OLD</span>"
+        "tail</div><div id='b'><span id='other'>O</span></div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='old'>OLD</span>tail</div>"
+        "<div id='b'><span id='other'>O</span></div>"
+        "<div id='c'><span id='stay'>S</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),c=document.getElementById('c'),"
+        "old=document.getElementById('old'),other=document.getElementById('other'),"
+        "stay=document.getElementById('stay'),snapA=a.childNodes,snapB=b.childNodes,"
+        "x,ret,bad=0,ok;"
+        "ok=a!==null&&b!==null&&c!==null&&old!==null&&other!==null&&"
+        "stay!==null&&snapA.length===3&&snapA[1]===old&&snapB.length===1&&"
+        "snapB[0]===other;ret=old.replaceWith('X');x=a.childNodes;"
+        "ok=ok&&ret===undefined&&x.length===3&&x[0].data==='lead'&&"
+        "x[1].nodeType===3&&x[1].data==='X'&&x[2].data==='tail'&&"
+        "a.textContent==='leadXtail'&&old.parentNode===null&&"
+        "old.isConnected===false&&snapA.length===3&&snapA[1]===old;"
+        "ret=other.replaceWith(0);x=b.childNodes;"
+        "ok=ok&&ret===undefined&&x.length===1&&x[0].nodeType===3&&"
+        "x[0].data==='0'&&b.textContent==='0'&&other.parentNode===null&&"
+        "other.isConnected===false&&snapB.length===1&&snapB[0]===other;"
+        "try{stay.replaceWith({});}catch(e){bad|=1;}"
+        "try{stay.replaceWith(stay.firstChild);}catch(e2){bad|=2;}"
+        "try{stay.replaceWith(stay.cloneNode(false));}catch(e3){bad|=4;}"
+        "try{stay.replaceWith(stay,'x');}catch(e4){bad|=8;}"
+        "try{stay.replaceWith();}catch(e5){bad|=16;}"
+        "ok=ok&&bad===31&&c.childNodes.length===1&&c.firstChild===stay&&"
+        "c.textContent==='S';document.getElementById('result').textContent=String(ok);})();";
+    static const char BAD_UTF8[] = { (char) 0xc3, (char) 0x28, '\0' };
+    HANDLE core_doc;
+    char core_value[128];
+    char error[768];
+    int core_replace;
+    int core_missing;
+    int core_wrong_parent;
+    int core_parent;
+    int core_self;
+    int core_bad_utf8;
+    int core_count;
+    int core_type;
+    int core_bytes;
+    int core_text;
+    int core_old_exists;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    memset(core_value, 0, sizeof(core_value));
+    core_replace = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextById(core_doc, "a", "old",
+            "X");
+    core_missing = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextById(core_doc, "a", "missing",
+            "Y");
+    core_wrong_parent = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextById(core_doc, "a", "other",
+            "Y");
+    core_parent = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextById(core_doc, "missing", "old",
+            "Y");
+    core_self = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextById(core_doc, "a", "a", "Y");
+    core_bad_utf8 = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextById(core_doc, "a", "old",
+            BAD_UTF8);
+    core_count = -1;
+    core_type = -1;
+    core_bytes = -1;
+    core_text = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "a", core_value, sizeof(core_value), &core_bytes);
+    if (core_doc != NULL) {
+        (void) PCore_NodeRelationById(core_doc, "a",
+                PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+                &core_count);
+        (void) PCore_NodeRelationById(core_doc, "a",
+                PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 1, NULL, 0, NULL,
+                &core_type);
+    }
+    core_old_exists = core_doc == NULL ? 1 :
+            PCore_NodeExistsById(core_doc, "old");
+    if (core_doc == NULL || core_replace != 0 || core_missing != 2 ||
+            core_wrong_parent != 2 || core_parent != 2 || core_self != 2 ||
+            core_bad_utf8 != 1 ||
+            core_count != 3 || core_type != 3 || core_text != 0 ||
+            core_old_exists != 0 || strcmp(core_value, "leadXtail") != 0 ||
+            core_bytes != 9) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core replace=%d missing=%d wrong=%d parent=%d self=%d utf8=%d"
+                " count=%d type=%d text=%d old=%d value=%s bytes=%d", core_replace,
+                core_missing, core_wrong_parent, core_parent, core_self,
+                core_bad_utf8, core_count, core_type, core_text, core_old_exists,
+                core_value, core_bytes);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1222 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-text", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1222 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1222 OK",
+            "Element.replaceWith now atomically replaces one bounded direct"
+            " element with a stringified primitive Text child through the"
+            " Core/Browser Ex7 bridge, preserving child position, detached"
+            " wrapper identity and old snapshots while rejecting unsupported"
+            " values and argument counts without partial mutation.");
     return TRUE;
 }
 
@@ -107479,6 +107630,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1219: ok = test1219_browser_existing_element_append_contract(); break;
         case 1220: ok = test1220_browser_existing_element_relative_contract(); break;
         case 1221: ok = test1221_browser_relative_text_insertion_contract(); break;
+        case 1222: ok = test1222_browser_replace_with_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -331,9 +331,18 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   节点类型、DocumentFragment、越界和多参数调用 fail closed。宿主只负责 callback 接线、
   重排和重绘，不在本地复制 DOM 语义。相同的 Ex6 callback 还支持单参数
   `Element.before(element)`/`after(element)`：Browser 从目标 element 的 direct parent
-  计算未过滤位置，允许同父级重排和跨父级迁移；这两个入口也接受一个字符串化 primitive，
-  通过既有 `insert_text_child` 在相同位置创建 Text。无 parent、self、detached、非支持
-  对象/节点和多参数调用 fail closed；
+   计算未过滤位置，允许同父级重排和跨父级迁移；这两个入口也接受一个字符串化 primitive，
+   通过既有 `insert_text_child` 在相同位置创建 Text。无 parent、self、detached、非支持
+   对象/节点和多参数调用 fail closed；
+- `Element.replaceWith(value)` 的 primitive 重载通过 ABI 追加的
+  `PBrowserScriptDomMutationCallbacksEx7.replace_child_with_text` 接入
+  `PCore_NodeReplaceElementChildWithTextById`。Browser 只接受一个字符串、数字、布尔值、
+  `null` 或 `undefined`，在目标 element 的 direct-parent 未过滤 `childNodes` 原位置创建
+  新 Text；旧 element wrapper 保留为 detached，旧 NodeList 保持静态，成功后受影响
+  parent snapshot 刷新。对象、节点、DocumentFragment、无 parent、非 direct child、
+  多参数和非法 UTF-8 均 fail closed；Core 负责原子 DOM 替换与 retained-layout invalidation，
+  宿主只负责 callback 接线及后续 style/layout/paint，不派发 mutation 事件；Ex6 及旧注册
+  入口的布局不变。
 - `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加
   `remove_text_child` 的 `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text
   wrapper 的 `childNodes` 索引通过 `__pcoreRemoveChild` 调用
@@ -676,7 +685,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
-  insertion；相对 primitive 文本复用既有 write Ex6 slot，旧注册入口的语义和布局不变。
+  insertion，Ex7 再追加 primitive `replaceWith` 文本替换；相对 primitive 文本仍复用
+  既有 write Ex6 slot，旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。
