@@ -107,7 +107,9 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 ### DOM 与关系 bridge
 
-`PCore_Node*ById` 提供有界 text、attribute、value、checked 和结构查询。关系 API 覆盖：
+`PCore_Node*ById` 提供有界 text、attribute、value、checked 和结构查询。
+`PCore_NodeTextContentById` 对没有文本的元素返回成功的零字节 UTF-8 snapshot，
+不会把 libdom 的空结果误判为 getter 失败。关系 API 覆盖：
 
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
@@ -165,6 +167,14 @@ document/head/body 等结构 child token。成功后会丢弃 retained box tree�
 目标或关系不可用，`1` 表示参数或其他 DOM 失败；成功后 retained box tree 失效，调用方
 必须重新 style/layout/paint。该入口不派发事件、不获取资源、不操作 native 控件，也不提供
 live collection。
+
+`PCore_NodeReplaceElementChildById` 是替换路径的有界补充：它按 `parent_id` 的 direct
+child 关系，用同一文档中另一个已连接的 element 替换 `old_child_id`；新 element 可以来自
+另一个父级或同一父级的其他位置。成功返回 `0`（新旧 id 相同是合法 no-op），目标、关系、
+节点类型或层级不可用返回 `2`，参数或其他 DOM 失败返回 `1`。成功会使 retained box tree
+失效，调用方必须重新 style/layout/paint；Core 不派发事件、不获取资源、不操作 native
+控件。Text/Comment/CDATA、DocumentFragment、detached 节点和 live collection 不在该
+公共入口内。
 
 `PCore_NodeInsertTextChildById` 是一个互补的结构 mutation 窄入口：它按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count

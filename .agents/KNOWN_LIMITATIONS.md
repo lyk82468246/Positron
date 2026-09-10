@@ -139,6 +139,9 @@
   reparent 和 `NULL` reference append；错误 parent、层级环、结构 token、detached、Text/
   Comment/CDATA、DocumentFragment 与多参数不产生部分 mutation。通用 Node 插入、
   Comment/CDATA 插入、其他删除、mutation 事件、MutationObserver 和 live collection 仍未实现。
+  Ex5 的 `Node.replaceChild()`/`Element.replaceWith()` 只支持当前文档中带 id 的 existing
+  element；old 必须是 receiver 的 direct child，new 可来自同父或另一父级，Text/Comment/
+  CDATA、DocumentFragment、detached 和多参数仍 fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -573,7 +576,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1216 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
+- TEST1201–1218 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
   clone/equality、Ex6 文本插入、Ex2 `Text.remove()`/`Element.removeChild(Text)` 与 Ex3
   Comment CharacterData removal 的 wrapper/snapshot、detached、UTF-16 与 retained-layout
   边界；逐项合同见

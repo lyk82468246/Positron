@@ -739,6 +739,15 @@ fail closed 且不产生部分 mutation。成功后 retained layout 失效，宿
 可选 restyle、fixture 和断言；Comment/CDATA 插入、mutation 事件、MutationObserver、
 live collection 和 native/视觉行为仍不在门内。
 
+TEST1218 覆盖已有 element 的有界替换 mutation：宿主注册 Ex5 的 `replace_child`，Browser
+以 `Node.replaceChild(element, oldElement)` 和 `Element.replaceWith(element)` 调用
+`PCore_NodeReplaceElementChildById`。自动断言覆盖跨父替换、同父替换、同节点 no-op、返回
+旧 wrapper、被替换节点的 detached 状态、受影响父级 snapshot/文本刷新以及旧 snapshot
+保持不变；Text、self、错误 parent、缺失 child 和多余参数必须 fail closed 且不产生部分
+mutation。成功后 retained layout 失效，宿主只负责 Ex5 接线、可选 restyle、fixture 和
+断言；DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、MutationObserver、
+live collection 和 native/视觉行为仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

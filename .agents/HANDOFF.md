@@ -10,10 +10,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next776 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
+最新 next777 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next776 延续 next761–775 的 Core child-data 与 Browser CharacterData bridge，
+- 当前代码 next777 延续 next761–775 的 Core child-data 与 Browser CharacterData bridge，
   保持 Ex3 `Text.splitText()`、关系 50 `wholeText`、Ex4 `replaceWholeText()`、Ex5
   `Node.normalize()`、Ex6 `Element.append()`/`prepend()` 文本插入、Ex2 `Text.remove()`/
   `Element.removeChild(Text)`，并以 Ex3 mutation callback 和
@@ -22,6 +22,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `Node.insertBefore()`/`appendChild()` 的 existing-element 同父重排和跨父迁移：Core
   `PCore_NodeInsertChildById` 执行结构变更，Browser 保留 wrapper identity、刷新新旧父级
   collection snapshot，并对 Text/结构节点、错误 reference 和无效关系 fail closed。
+  next777 再新增 Ex5 `Node.replaceChild()`/`Element.replaceWith()` 的 existing-element
+  替换：Core `PCore_NodeReplaceElementChildById` 支持同父、跨父和同节点 no-op，Browser
+  保留返回/ detached wrapper 与旧 snapshot，并刷新受影响父级；`PCore_NodeTextContentById`
+  同时将空元素的 libdom 空结果规范化为成功的零字节 UTF-8 snapshot。TEST1218 已覆盖
+  该纵切及 Text/self/错误 parent/缺失 child 的 fail-closed 边界。
   next775 又修复了
   Core GDI 测量字体缓存达到上限后临时字体未释放的所有权漏洞，并在字体选入测量 DC
   失败时安全回退；本批还让 `PCore_SelectSetOptionSelected` 在 retained layout 被脚本
@@ -34,8 +39,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1217。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1218。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1218,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -59,18 +64,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、direct
   `submit()`、detached `FormData`、图片元数据/decode/image-map、selector 子集和
-  source-selection 生命周期已形成有界合同；TEST1170–1217 的逐项夹具、边界和错误回退
-  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1217 还覆盖 source
+  source-selection 生命周期已形成有界合同；TEST1170–1218 的逐项夹具、边界和错误回退
+  统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1218 还覆盖 source
   mutation callback、direct-element removal、元素文本内容、Text/Comment/CDATA
   CharacterData mutation、`substringData()` 范围、`Text.splitText()`/`wholeText`/
   `replaceWholeText()` 结构合同、`Node.normalize()` 递归/快照、`Node.cloneNode()` detached
   snapshot、clone/live `isEqualNode()` 结构合同、`Text.remove()` 生命周期和
   `Element.removeChild(Text)` 兼容路径、Comment CharacterData removal 和 existing-element
-  insertion/reparent，均保持产品
-  语义在 Core/Browser 而非宿主。TEST1209–1217 还覆盖 Ex4/Ex5/Ex6/Ex2/Ex3 callback、
+  insertion/reparent/replacement，均保持产品
+  语义在 Core/Browser 而非宿主。TEST1209–1218 还覆盖 Ex4/Ex5/Ex6/Ex2/Ex3 callback、
   相邻 Text 合并、目标/首个非空 wrapper 保持身份、克隆属性、独立数据、结构 equality、
-  单值文本插入、direct Text/Comment 删除、existing-element insertion/reparent 及
-  `removeChild()` 的返回值和失败边界。
+  单值文本插入、direct Text/Comment 删除、existing-element insertion/reparent/replacement 及
+  `removeChild()`/`replaceChild()` 的返回值和失败边界。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -87,7 +92,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   next771 又加入 Ex6 的单值 `Element.append()`/`prepend()` 文本插入，next773 补齐
   `Element.removeChild(Text)` 对已有 Ex2 删除桥的 Browser 兼容路径，next774 再补齐
   Comment/CDATA direct-child removal 的 Ex3 mutation bridge，next776 再补齐
-  existing-element insertion/reparent 的 Ex4 bridge。
+  existing-element insertion/reparent 的 Ex4 bridge，next777 再补齐
+  existing-element replacement 的 Ex5 bridge，并修正空元素 `textContent` 的 Core getter
+  结果。
   稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
@@ -98,7 +105,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `next772` 的 `Text.remove()` 与 `next773` 的 `Element.removeChild(Text)` 纵切均已有正式
   设备门证据。next774 已完成 Core/Browser 的 Comment/CDATA direct-child removal 代码、
   Ex3 ABI 和 TEST1216 离线夹具，Debug/Release ARMV4I 构建均通过；当前 WMDC 连接上的
-  `TEST1216,999` 自动设备门也已通过；next776 的 `TEST1217,999` 门也已通过；不得把
+  `TEST1216,999` 自动设备门也已通过；next776 的 `TEST1217,999` 门和 next777 的
+  `TEST1218,999` 门也已通过；不得把
   测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
@@ -125,7 +133,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `currentSrc` 共用该结果；混合/畸形候选安全回退。绝对 URL、CORS/referrer 和完整
   loading 策略仍不支持。
 - `textContent` 与非编辑元素的 `innerText` setter 通过 Browser 的既有 text callback
-  调用 Core；成功后 Core 丢弃 retained layout，Browser 刷新目标的
+  调用 Core；空元素的 getter 返回成功的零字节字符串。成功 setter 后 Core 丢弃 retained
+  layout，Browser 刷新目标的
   `children`/`childNodes`/query snapshot，并让旧的无 id 文本 wrapper 保留数据但变为
   detached。contenteditable 的 `innerText` 复用同一失效规则；Text 的
   `Text`/`Comment`/`CDATA` 的 `nodeValue`/`data`/`textContent` 与四个 CharacterData
@@ -146,9 +155,6 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - Browser 的 `Node.cloneNode(deep)` 返回 Browser-owned detached snapshot：浅/深克隆保留
   有界 element 属性、子节点顺序、parent links 和独立数据，超限或不支持类型 fail closed；
   它不改变 Core 文档、retained layout 或事件 listener。
-- Browser 层提供有界 history、same-document state、script session、DOM/Event/input/navigation callbacks，以及 timer/microtask/lifecycle、native 控件事务、导航资源事务、候选生命周期/结果协调和 FormData snapshot bridge（含 Ex submitter 与 formdata 事件路径）。`select.options`、`selectedOptions`、`length`、`option.index`、`option.form`、fieldset 的 type/form/elements、img/object 的 form 以及 output 的 form/labels、`form.elements` 中的 fieldset/object/output enumeration 也在 Browser 中以有界、可寻址元素 bridge 提供。
-- Browser script session 的 `PBrowser_ScriptSessionRunTaskCheckpoint` 统一驱动 timer、animation frame、message、idle 和 microtask：调用方选择阶段后，Browser 按固定顺序在每个阶段后运行一次有界 microtask；宿主提供时钟、各阶段限额和 UI 消息循环。参考宿主已在真实窗口消息循环安装 16 ms `WM_TIMER`，未调用 pump 的 session 不会自行推进异步队列。
-- 页面替换前，Browser session 可由宿主显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`，同步派发 cancelable 的 `beforeunload` 并返回取消决定；参考宿主在取消或脚本调用失败时保留旧页，允许后才调用 page teardown。Browser 不显示 prompt，也不拥有宿主的关闭/导航策略。
 - Browser 层还提供由宿主显式驱动的 viewport resize 合同：`PBrowser_ScriptSessionNotifyResize` 更新 CSS viewport/DPR 和动态 `screen` 方向，值变化时同步派发一次 window `resize`；同一 session 的 `screen.orientation` 对象保持身份稳定，方向翻转时在媒体列表刷新后先派发一次可信 `change`，再进入 visual/window `resize`；调用不负责 Core relayout 或 frame scheduling。
 - 同一 Browser session 还提供布局视口对应的 `visualViewport`：`width`/`height` 与 CSS viewport 同步，`pageLeft`/`pageTop` 与 page scroll 同步，`scale` 为 1、offset 为 0；有效 resize/scroll 先派发 visual viewport 事件，再派发 window 事件，并对重复快照去重。TEST1133 覆盖该合同。
 - Browser history entry 同时拥有非负的 `(scroll_x, scroll_y)` viewport snapshot；新 document entry 和同 URL 新 document 从零开始，`replaceState`/traversal 保留目标值，`pushState` 新 entry 从零开始，history 裁剪会同步搬移 snapshot。Browser 不访问窗口、不知道 Core 的页面 extent；宿主读取 `PCore_DocumentWidth/Height` 后保存/读取并对两个轴 clamp/apply。
@@ -165,9 +171,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - next702–704 已补齐有界的元素 overflow 滚动：Core 对带 DOM `id` 的常见 block/replaced/flex box 保留 scrollbar offset，关系 38/39 返回/设置 CSS 像素并执行 clamp，关系 40–43 为 Browser 提供 axis availability 和 client-edge origin；`PCore_OverflowPointer`/`PCore_OverflowScrollSnapshot` 把 WM pointer 的目标和位置交给宿主。Browser 通过 `PBrowserScriptScrollInfo.element_id` 接入 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 和有限 nested `scrollIntoView()`；默认选择最近祖先，`container:"all"` 沿最多 64 层向外处理，`PBrowser_ScriptSessionNotifyElementScroll` 更新脚本状态并去重派发目标元素 scroll。完整 scroll tree、scroll chaining/anchoring、scroll-margin、smooth/inertia 和非 addressable/匿名目标仍不支持。
 - 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。Browser candidate handle 拥有 generation、取消/退休、提交资格和结果分类，宿主用它门控 worker 完成/进度消息并在 worker 收尾后回收旧候选；旧候选不能越过 generation 门。layout/swap 前，宿主通过 `PBrowser_NavigationCommitGetInfo` 读取独立 candidate/resource 的组合 decision 与 `can_commit`，不在宿主复制失败/过时提交规则。
 - Browser 资源事务按 URL 去重并拥有 `pending`、`ready`、`failed`、`cancelled` 四种终态、成功字节、失败分类、required/optional gate、transport 重试预算、最多 4 项 hash-only 摘要和 fallback family 计数。宿主负责网络 I/O、worker、取消/重试时机和页面提交，只保留 URL→resource-index 短引用；HTTP、resolve、budget、memory 和取消不重试，取消也不会重新暴露为可用缓存。
-- 深层 DOM 资源准备使用单个事务级 heap scratch，避免大批固定栈缓冲耗尽 WM6 线程栈。
 - 导航 request 在 worker join 后由宿主先收敛失败/过时资源，再调用 Browser 的 `PBrowser_NavigationCleanupGetInfo` 复制 cleanup decision、candidate/resource 终态、pending、`can_release`、hash-only failure summary 和 fallback 计数；复制值在 candidate/resource handle 销毁后仍可用于日志。TEST1127 同时覆盖 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制、释放后快照存活，以及成功/失败 `pcore_navigation_finish` 的真实回收路径。
-- `<details>/<summary>` 支持 click 与 Enter/Space 激活、取消和 DOM 状态同步。
 - Core 的 form owner relation 对支持的 input、select、textarea、button、fieldset、img、object、output 解析
   最近祖先或显式 `form="id"` 目标；Browser 的 `Element.form` 与 `form.elements` 复用这条
   规则，后者从整棵文档按顺序返回跨树 listed form-associated 元素的有界 snapshot，img
@@ -190,14 +194,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1217。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217,999`。
+- `TEST_MAX_NUMBER`：1218。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1218,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260910-230051-next776`：正式 Debug ARMV4I，选择 `1217,999`，
+最新自动证据是 `20260910-233353-next777`：正式 Debug ARMV4I，选择 `1218,999`，
+2/2、唯一 PASS、零 ERROR/FAIL，完整日志已回收，目标卷和内部 object-store 双空间
+预检通过，当前部署在完整日志回收后已清理。运行前转储清单为 0，运行后仍为 0，
+`crash_check=PASS`、`new_crash_dump_count=0`。TEST1218 证明 existing-element 的
+跨父/同父替换、同节点 no-op、返回与 detached wrapper、旧 collection snapshot 保持和
+空父级 `textContent` 读取，并对 Text/self/错误 parent/缺失 child 拒绝且不部分修改。
+此前自动证据是 `20260910-230051-next776`：正式 Debug ARMV4I，选择 `1217,999`，
 2/2、唯一 PASS、零 ERROR/FAIL，完整日志已回收，目标卷和内部 object-store 双空间
 预检通过，当前部署在完整日志回收后已清理。运行前转储清单为 0，运行后仍为 0，
 `crash_check=PASS`、`new_crash_dump_count=0`。TEST1217 证明同父重排、跨父 existing-element
@@ -285,6 +295,12 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
   缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，暂无新增
   立即人工风险；DocumentFragment、非 direct-child reference、通用节点插入和完整
   live collection 仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- TEST1218 是离线的 Core/Browser existing-element replacement 夹具，覆盖跨父/同父
+  `replaceChild()`、`replaceWith()`、同节点 no-op、返回与 detached wrapper、旧 snapshot
+  保持、受影响父级 collection/文本刷新和空元素 `textContent`；自动门也验证 Text、self、
+  错误 parent、缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，
+  暂无新增立即人工风险；DocumentFragment、Comment/CDATA、通用节点替换、完整 live
+  collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险

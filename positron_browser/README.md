@@ -444,6 +444,14 @@ moved wrapper identity、使原/新父级 `children` 与 `childNodes` snapshot �
 重排；自身层级、Text/Comment/CDATA、DocumentFragment、detached、错误 reference 和
 多参数调用 fail closed，不派发 mutation 事件。
 
+Ex5 追加 `replace_child`，由 `Node.replaceChild(element, oldElement)` 和
+`Element.replaceWith(element)` 调用 `PCore_NodeReplaceElementChildById`。它只接受当前文档
+中带 id 的 element，old 必须是 receiver 的 direct child；new 可来自另一个父级或同父级的
+其他位置，同一节点替换是 no-op。成功返回旧 wrapper（`replaceWith()` 返回 `undefined`），
+使受影响父级的 `children`/`childNodes` snapshot 失效并请求宿主重排；Text/Comment/CDATA、
+DocumentFragment、detached、错误 parent、self 和多参数调用 fail closed，不派发 mutation
+事件。Ex4 仍保持原 ABI，旧宿主不注册 Ex5 时不会获得该入口。
+
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
 Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界插入紧邻 sibling，
@@ -451,7 +459,8 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
 write Ex6 的 `insert_text_child` 只让带 id 元素的 `append`/`prepend` 插入单个 Text；已有
-element reorder/reparent 由 mutation Ex4 处理。上述路径都不实现 DocumentFragment、其他
+element reorder/reparent 由 mutation Ex4 处理，existing-element replacement 由 mutation
+Ex5 处理。上述路径都不实现 DocumentFragment、其他
 节点类型、完整 live collection 或 mutation observer。`Node.cloneNode(deep)` 只产生最多
 64 子节点/256 总节点的独立 detached snapshot，超限或不支持类型 fail closed。
 

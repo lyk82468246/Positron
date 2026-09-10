@@ -78,13 +78,15 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1216，其中
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1218，其中
   TEST1210 只验证 Browser/Core 的 `Node.normalize()` 桥接，TEST1211/1212 只验证
   Browser-owned `Node.cloneNode()` detached snapshot 及其结构 equality，TEST1213 验证
   Core/Browser 的 `Element.append()`/`prepend()` 文本插入，TEST1214 验证
   `Text.remove()` 的 direct-child 删除与 detached 生命周期，TEST1215 验证
   `Element.removeChild(Text)` 的返回值、共享删除桥和失败边界，TEST1216 验证
-  Comment CharacterData 的 `remove()`/`removeChild()` 与 Ex3 typed callback；
+  Comment CharacterData 的 `remove()`/`removeChild()` 与 Ex3 typed callback，TEST1217
+  验证已有 element 的同父/跨父插入，TEST1218 验证已有 element 的 `replaceChild()`/
+  `replaceWith()` 替换；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key，不是功能路线图。测试的准确含义应由 fixture、断言、开始提示和失败文本表达，不在 README 复制逐编号清单。
@@ -527,6 +529,15 @@ TEST1217 验证 Ex4 的已有 element 结构 mutation：宿主把
 节点、错误 reference 和多余参数拒绝且不产生部分 mutation。宿主只负责 Ex4 接线、可选
 restyle、fixture 与断言；DocumentFragment、Comment/CDATA 插入、mutation 事件、observer
 和 live collection 仍不在该边界内。
+
+TEST1218 验证 Ex5 的已有 element 替换：宿主把
+`PBrowserScriptDomMutationCallbacksEx5.replace_child` 接到
+`PCore_NodeReplaceElementChildById`，Browser 通过 `Node.replaceChild()` 和
+`Element.replaceWith()` 覆盖跨父/同父替换、同节点 no-op、旧 wrapper 返回值、detached
+状态、受影响父级 snapshot/文本刷新和旧 snapshot 保持。Text、self、错误 parent、缺失
+child 与多余参数必须拒绝且不产生部分 mutation；宿主只负责 Ex5 接线、可选 restyle、
+fixture 和断言。DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、
+observer 和 live collection 仍不在该边界内。
 
 ### Native EDIT/SELECT/button/file
 

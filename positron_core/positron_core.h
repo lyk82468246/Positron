@@ -231,9 +231,10 @@ PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
 
 /* Minimal DOM text boundary for an external script/runtime host. IDs and text
  * are UTF-8. The getter reports the full byte count even when the caller only
- * probes or supplies a smaller buffer. A successful setter mutates the DOM
- * and drops retained layout; the caller must run style/layout again before
- * painting an already styled page. */
+ * probes or supplies a smaller buffer; an element with no text returns a
+ * successful zero-byte result. A successful setter mutates the DOM and drops
+ * retained layout; the caller must run style/layout again before painting an
+ * already styled page. */
 PCORE_API int PCore_NodeExistsById(HANDLE hDoc, const char *element_id);
 PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
         char *text, int text_capacity, int *out_bytes);
@@ -331,6 +332,20 @@ PCORE_API int PCore_NodeRemoveChildById(HANDLE hDoc,
 PCORE_API int PCore_NodeInsertChildById(HANDLE hDoc,
         const char *parent_id, const char *child_id,
         const char *reference_child_id);
+
+/* Replace one direct element child with another connected element from the
+ * same document. Both ids must resolve to element nodes; old_child_id must
+ * name a direct child of parent_id and new_child_id must name an attached
+ * element. The replacement may move the new element from another parent or
+ * from a later position in the same parent. This bounded operation returns
+ * 0 on success (including replacing a node with itself), 2 when the ids,
+ * direct-child relation, node types or hierarchy are unavailable, and 1 for
+ * argument/DOM failures. It invalidates retained layout on success and does
+ * not dispatch events, touch native controls or implement fragments/text
+ * insertion. */
+PCORE_API int PCore_NodeReplaceElementChildById(HANDLE hDoc,
+        const char *parent_id, const char *new_child_id,
+        const char *old_child_id);
 
 /* Insert one new UTF-8 Text child at an unfiltered childNodes index. The
  * parent must be an addressable element; child_index may equal the current
