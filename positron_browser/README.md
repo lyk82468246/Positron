@@ -452,13 +452,13 @@ Ex5 追加 `replace_child`，由 `Node.replaceChild(element, oldElement)` 和
 DocumentFragment、detached、错误 parent、self 和多参数调用 fail closed，不派发 mutation
 事件。Ex4 仍保持原 ABI，旧宿主不注册 Ex5 时不会获得该入口。
 
-Ex6 追加 `insert_child_at`，由单参数 `Element.append(element)` 和
-`Element.prepend(element)` 调用 `PCore_NodeInsertElementChildAtById`。Browser 按未过滤
-`childNodes` 计算末尾或零位，允许带 id 的现有 element 在同父级重排或跨父级迁移，并保留
-wrapper identity；混合 Text/Comment/CDATA 子节点也按精确位置处理。成功返回 `undefined`，
-使原/新父级 snapshot 失效并请求宿主重排；已有的字符串/原始值仍走 Ex6 write callback
-创建新 Text。Detached clone、Text/Comment/CDATA、DocumentFragment、层级环、越界和多参数
-调用 fail closed，不派发 mutation 事件。Ex5 及更旧注册入口保持 ABI 和原语义不变。
+Ex6 追加 `insert_child_at`，由单参数 existing-element 的
+`Element.append()`/`prepend()`/`before()`/`after()` 调用
+`PCore_NodeInsertElementChildAtById`。Browser 按未过滤 `childNodes` 的末尾、零位或目标
+direct parent 位置移动带 id element，支持混合 Text/Comment/CDATA 子节点的同父重排与跨父
+迁移；成功返回 `undefined`，使受影响 snapshot 失效并请求宿主重排。字符串/原始值仍由
+write Ex6 创建新 Text；detached clone、Text/Comment/CDATA、DocumentFragment、层级环、
+无 parent、越界和多参数 fail closed，不派发 mutation 事件。Ex5 及更旧注册入口保持 ABI。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
@@ -466,10 +466,9 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 `wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
-write Ex6 的 `insert_text_child` 只让带 id 元素的 `append`/`prepend` 插入单个 Text；已有
-element reorder/reparent 由 mutation Ex4 处理，existing-element replacement 由 mutation
-Ex5 处理，单个 existing-element 的 `append`/`prepend` 则由 mutation Ex6 按未过滤位置处理。
-上述路径都不实现 DocumentFragment、其他
+write Ex6 的 `insert_text_child` 处理字符串/原始值的 `append`/`prepend` Text；mutation
+Ex4、Ex5、Ex6 分别处理 existing-element 的 `insertBefore`/`appendChild`、替换和
+`append`/`prepend`/`before`/`after` 位置操作。上述路径都不实现 DocumentFragment、其他
 节点类型、完整 live collection 或 mutation observer。`Node.cloneNode(deep)` 只产生最多
 64 子节点/256 总节点的独立 detached snapshot，超限或不支持类型 fail closed。
 

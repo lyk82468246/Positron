@@ -758,6 +758,16 @@ TEST1219 覆盖已有 element 的有界 `Element.append()`/`prepend()`：宿主�
 宿主只负责 Ex6 接线、可选 restyle、fixture 与断言；DocumentFragment、Comment/CDATA 插入、
 通用节点 mutation、事件、MutationObserver、live collection 和 native/视觉行为仍不在门内。
 
+TEST1220 覆盖已有 element 的有界相对插入：Browser 从目标 element 的 direct parent
+计算未过滤 `childNodes` 索引，通过 Ex6 的 `insert_child_at` 调用
+`PCore_NodeInsertElementChildAtById`，让单参数 `Element.before(element)`/`after(element)`
+在混合 Text/element 子节点中执行同父级重排和跨父级迁移。自动断言覆盖返回值、目标前后
+顺序、wrapper identity、旧 NodeList snapshot、父级 `textContent` 和零参数 no-op；self、
+detached clone、Text、无 parent 与多参数调用必须 fail closed 且不产生部分 mutation。成功后
+retained layout 失效，宿主只负责 Ex6 接线、可选 restyle、fixture 与断言；DocumentFragment、
+Comment/CDATA、通用节点 mutation、事件、MutationObserver、live collection 和 native/视觉
+行为仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

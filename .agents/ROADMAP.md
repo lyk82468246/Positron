@@ -118,7 +118,8 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
   `Element.append()`/`prepend()` 位置插入。前四条分别由 write Ex6、Ex2、Ex3 和 Ex4 复用既有
  Core 入口；Ex4 将现有 element child 在同父级重排或跨父级迁移，`NULL` reference 追加；
 Ex5 在 direct-child 位置替换现有 element，并允许 new child 来自另一父级；mutation Ex6
-按未过滤 `childNodes` 位置将现有 element 追加或前置，并允许同父级重排与跨父级迁移。六条路径都由
+按未过滤 `childNodes` 位置将现有 element 追加、前置或相对目标插入（`before()`/`after()`），
+并允许同父级重排与跨父级迁移。六条路径都由
  Core 拥有 DOM 语义并在成功后使 retained layout 失效。DocumentFragment、Text/Comment/
 CDATA 插入或替换、其他删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。

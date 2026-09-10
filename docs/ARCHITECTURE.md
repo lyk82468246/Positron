@@ -329,7 +329,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   当前文档中带 id 的 existing element，允许混合 Text/Comment/CDATA direct children，
   保留 wrapper identity，并在成功后使受影响父级 snapshot 失效；detached clone、其他
   节点类型、DocumentFragment、越界和多参数调用 fail closed。宿主只负责 callback 接线、
-  重排和重绘，不在本地复制 DOM 语义；
+  重排和重绘，不在本地复制 DOM 语义。相同的 Ex6 callback 还支持单参数
+  `Element.before(element)`/`after(element)`：Browser 从目标 element 的 direct parent
+  计算未过滤位置，允许同父级重排和跨父级迁移，并对无 parent、self、detached、非 element
+  和多参数调用 fail closed；
 - `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加
   `remove_text_child` 的 `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text
   wrapper 的 `childNodes` 索引通过 `__pcoreRemoveChild` 调用
