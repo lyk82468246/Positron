@@ -53603,7 +53603,7 @@ static BOOL test51_inside_list_markers(void)
         "h1{font-size:23px;color:#800000;margin:0 0 6px;}"
         "ul,ol{padding-left:28px;margin:5px 0;}"
         /* Leave enough first-line room for the widest textual marker. */
-        "li{width:180px;}"
+        "li{width:126px;}"
         ".outside{list-style-position:outside;list-style-type:disc;}"
         ".inside{list-style-position:inside;list-style-type:upper-roman;}"
         ".image{list-style-position:inside;list-style-type:square;"
