@@ -14,12 +14,15 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 `next769`/`formal10` 证据及失败实验均在“最新有效设备证据”段落说明；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next774 延续 next761–773 的 Core child-data 与 Browser CharacterData bridge，
+- 当前代码 next775 延续 next761–774 的 Core child-data 与 Browser CharacterData bridge，
   保持 Ex3 `Text.splitText()`、关系 50 `wholeText`、Ex4 `replaceWholeText()`、Ex5
   `Node.normalize()`、Ex6 `Element.append()`/`prepend()` 文本插入、Ex2 `Text.remove()`/
   `Element.removeChild(Text)`，并以 Ex3 mutation callback 和
   `PCore_NodeRemoveCharacterDataChildById` 支持 Comment/CDATA direct-child removal；同时
-  保持 Browser 的 `Node.cloneNode(deep)`/clone equality 有界合同。
+  保持 Browser 的 `Node.cloneNode(deep)`/clone equality 有界合同。next775 又修复了
+  Core GDI 测量字体缓存达到上限后临时字体未释放的所有权漏洞，并在字体选入测量 DC
+  失败时安全回退。该修复已通过 C89 检查、Debug ARMV4I 构建、仓库审计和 diff 检查；
+  由于设备上的 WER/锁定目录尚未释放，尚无新的设备门证据，不能提前宣称基线通过。
   产品语义仍在 Core/Browser，`test_host`
   只接 callback、fixture 和断言；错误 child、结构边界、失效 wrapper 与超预算均 fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
@@ -204,8 +207,9 @@ mutation callback，返回被移除 wrapper，刷新父级 snapshot，保留旧 
 next771/next770/formal10 的通过证据及更早失败实验均保留在 Git 历史、`docs/history/` 和
 本地 `tmp/device-runs/`，不在此重复维护。
 
-本批 `test_c89ize`、文档审计、`git diff --check`、Debug/Release ARMV4I 构建和设备门均
-通过。构建输出仍只有既存 libcss 数值转换警告。
+next774 批的 `test_c89ize`、文档审计、`git diff --check`、Debug/Release ARMV4I 构建和
+设备门均通过；构建输出仍只有既存 libcss 数值转换警告。next775 的 Core 修复已经以
+`eec0c65a` 提交并推送，但设备门需在用户释放上次运行留下的 WER/锁定目录后重新执行。
 
 ## 当前人工验收状态
 
@@ -329,8 +333,9 @@ fail-closed 语义。`20260908-232232-next774` 的正式 Debug ARMV4I 设备门�
 文档结构门和宿主边界门均通过。当前 HTML fixture 不伪造 CDATA 节点，因此节点类型 4
 仍由公共 ABI/API 合同覆盖，待真实 XML/foreign-content 语料出现再增加专门设备断言。
 
-next775 的唯一下一步仍是先从 compatibility corpus、源码、设备日志或用户新页面固定一个
-新的、可复现的产品缺口，再选择对应公共 DLL 的完整纵向能力。通用节点插入、reparent、
+next775 的唯一下一步是释放上次设备运行留下的 WER/锁定目录后，在同一 WMDC GUI 会话中
+重新执行受影响的累计测试，确认 GDI 临时字体所有权修复是否消除 TEST62 前后的超时/崩溃。
+若设备证据通过，再从 compatibility corpus、源码、设备日志或用户新页面固定一个新的、可复现的产品缺口，再选择对应公共 DLL 的完整纵向能力。通用节点插入、reparent、
 其他删除、Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、
 pinch zoom、transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对
 URL、CORS、完整图像 loading 和 image-map 扩展仍是候选限制，不能在证据之前写成已支持行为。
