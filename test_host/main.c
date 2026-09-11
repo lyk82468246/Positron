@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1222
+#define TEST_MAX_NUMBER 1223
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -49445,6 +49445,86 @@ static BOOL test1222_browser_replace_with_text_contract(void)
             " Core/Browser Ex7 bridge, preserving child position, detached"
             " wrapper identity and old snapshots while rejecting unsupported"
             " values and argument counts without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1223 - bounded insertAdjacentText covers all four DOM positions. */
+static BOOL test1223_browser_insert_adjacent_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span>tail</div>"
+        "<div id='empty'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE_POSITIONS[] =
+        "(function(){var a=document.getElementById('a'),"
+        "t=document.getElementById('target'),old=a.childNodes,snap=t.childNodes,"
+        "x,y,ret,ok;ok=a!==null&&t!==null&&old.length===3&&old[1]===t&&"
+        "snap.length===1&&snap[0].data==='T';"
+        "ret=t.insertAdjacentText('BEFOREBEGIN','A');"
+        "ret=t.insertAdjacentText('afterend',7);x=a.childNodes;"
+        "ret=t.insertAdjacentText('afterbegin',false);"
+        "ret=t.insertAdjacentText('beforeend',null);y=t.childNodes;"
+        "ok=ok&&ret===undefined&&x.length===5&&x[0].data==='lead'&&"
+        "x[1].data==='A'&&x[2]===t&&x[3].data==='7'&&x[4].data==='tail'&&"
+        "y.length===3&&y[0].data==='false'&&y[1].data==='T'&&"
+        "y[2].data==='null'&&t.textContent==='falseTnull'&&"
+        "a.textContent==='leadAfalseTnull7tail'&&old.length===3&&old[1]===t&&"
+        "snap.length===1&&snap[0].data==='T';"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_EMPTY[] =
+        "(function(){var e=document.getElementById('empty'),old=e.childNodes,ok;"
+        "e.insertAdjacentText('afterbegin',undefined);"
+        "e.insertAdjacentText('beforeend','z');"
+        "ok=e.childNodes.length===2&&e.firstChild.data==='undefined'&&"
+        "e.lastChild.data==='z'&&e.textContent==='undefinedz'&&old.length===0;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var t=document.getElementById('target'),old=t.childNodes,"
+        "bad=0,removed=0;"
+        "try{t.insertAdjacentText('middle','x');}catch(a){bad|=1;}"
+        "try{t.insertAdjacentText('beforebegin',{});}catch(b){bad|=2;}"
+        "try{t.insertAdjacentText('afterend',t.firstChild);}catch(c){bad|=4;}"
+        "try{t.insertAdjacentText('beforeend','x','y');}catch(d){bad|=8;}"
+        "try{t.insertAdjacentText('beforeend');}catch(f){bad|=16;}"
+        "try{t.remove();removed=1;}catch(g){}"
+        "try{t.insertAdjacentText('beforeend','x');}catch(h){bad|=32;}"
+        "ok=bad===63&&removed===1&&old.length===1&&old[0].data==='T'&&"
+        "!t.isConnected;document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+    char probe_detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(probe_detail, 0, sizeof(probe_detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-insert-adjacent-text", HTML,
+            PROBE_POSITIONS, "true", error, sizeof(error))) {
+        failed_probe = "positions";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-insert-adjacent-text", HTML,
+            PROBE_EMPTY, "true", error, sizeof(error))) {
+        failed_probe = "empty";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-insert-adjacent-text", HTML,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(probe_detail, error, sizeof(probe_detail) - 1);
+        probe_detail[sizeof(probe_detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                probe_detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1223 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1223 OK",
+            "Element.insertAdjacentText now covers beforebegin, afterbegin,"
+            " beforeend and afterend through the existing Core Text-child"
+            " insertion bridge, preserving mixed child order and snapshots"
+            " while rejecting unsupported positions, values, detached targets"
+            " and argument counts without partial mutation.");
     return TRUE;
 }
 
@@ -107631,6 +107711,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1220: ok = test1220_browser_existing_element_relative_contract(); break;
         case 1221: ok = test1221_browser_relative_text_insertion_contract(); break;
         case 1222: ok = test1222_browser_replace_with_text_contract(); break;
+        case 1223: ok = test1223_browser_insert_adjacent_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

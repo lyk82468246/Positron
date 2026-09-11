@@ -10,18 +10,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next781 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
+最新 next782 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next781 在 mutation Ex6 的 existing-element 插入和 primitive 相对文本插入后，
-  通过新增 Ex7 callback 与 Core 原子入口补齐单值 primitive `Element.replaceWith(value)`：
-  Browser 在 direct-parent 的未过滤 `childNodes` 原位置创建 Text，Core 继续拥有结构语义。
-  TEST1220–1222 覆盖 element/primitive 插入与替换，保留 wrapper/snapshot，错误 child、
+- 当前代码 next782 在 mutation Ex6 的 existing-element 插入和 primitive 相对文本插入后，
+  补齐 `Element.insertAdjacentText()` 四位置，复用 Core Text-child 语义。
+  TEST1220–1223 覆盖 element/primitive 插入与替换，保留 wrapper/snapshot，错误 child、
   对象/节点、detached、越界和多参数均 fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1222。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1222,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1223。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1223,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -45,7 +44,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   WM/时钟/调度/策略，Browser 不创建线程或自行推进队列。
 - Browser/Core 的表单 owner、validation、submission、dialog、reset、`requestSubmit`、direct
   `submit()`、detached `FormData`、图片元数据/decode/image-map、selector 子集和
-  source-selection 生命周期已形成有界合同；TEST1170–1222 的逐项夹具、边界和错误回退
+  source-selection 生命周期已形成有界合同；TEST1170–1223 的逐项夹具、边界和错误回退
   统一见 [`docs/TESTING.md`](../docs/TESTING.md)。最近的 TEST1199–1222 还覆盖 source
   mutation callback、direct-element removal、元素文本内容、Text/Comment/CDATA
   CharacterData mutation、`substringData()` 范围、`Text.splitText()`/`wholeText`/
@@ -53,11 +52,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   snapshot、clone/live `isEqualNode()` 结构合同、`Text.remove()` 生命周期和
   `Element.removeChild(Text)` 兼容路径、Comment CharacterData removal 和 existing-element
   insertion/reparent/replacement，均保持产品
-  语义在 Core/Browser 而非宿主。TEST1209–1222 还覆盖 Ex4/Ex5/Ex6/Ex7/Ex2/Ex3 callback、
+  语义在 Core/Browser 而非宿主。TEST1209–1223 还覆盖 Ex4/Ex5/Ex6/Ex7/Ex2/Ex3 callback、
   相邻 Text 合并、目标/首个非空 wrapper 保持身份、克隆属性、独立数据、结构 equality、
   单值文本插入、direct Text/Comment 删除、existing-element insertion/reparent/replacement 及
   `removeChild()`/`replaceChild()` 的返回值和失败边界，以及 existing-element 的
-  `before()`/`after()` 相对与 primitive 文本插入，以及 `replaceWith()` 的 primitive 文本替换。
+  `before()`/`after()` 相对与 primitive 文本插入、`replaceWith()` 文本替换及
+  `insertAdjacentText()` 四位置。
 - 设备门的部署前双空间预检、空间不足应急回收、旧目录日志完整性检查和完成后清理已集中在
   `scripts\device_gate.ps1`；这只是测试基础设施护栏，不改变任何公共 DLL ABI 或产品语义。
 - `tmp/` 仅保存本地设备日志与截图；更早的基线和逐批实现由 Git 历史保存。
@@ -78,7 +78,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   existing-element replacement 的 Ex5 bridge，并修正空元素 `textContent` 的 Core getter
   结果；next778 再补齐 mutation Ex6 的 existing-element `append()`/`prepend()` 位置插入，
   next779 补齐相对 `before()`/`after()` element 插入，next780 补齐同一入口的单值
-  primitive 文本插入，next781 补齐 Ex7 的 primitive `replaceWith()` 文本替换。
+  primitive 文本插入，next781 补齐 Ex7 的 primitive `replaceWith()` 文本替换，next782
+  补齐 Ex6 `insertAdjacentText()` 四位置。
   稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
@@ -91,7 +92,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   Ex3 ABI 和 TEST1216 离线夹具，Debug/Release ARMV4I 构建均通过；当前 WMDC 连接上的
   `TEST1216,999` 自动设备门也已通过；next776 的 `TEST1217,999` 门、next777 的
   `TEST1218,999` 门、next778 的 `TEST1219,999` 门、next779 的 `TEST1220,999` 门、
-  next780 的 `TEST1221,999` 门和 next781 的 `TEST1222,999` 门也已通过；不得把
+  next780 的 `TEST1221,999` 门、next781 的 `TEST1222,999` 门和 next782 的
+  `TEST1223,999` 门也已通过；不得把
   测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
@@ -181,20 +183,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1222。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1222,999`。
+- `TEST_MAX_NUMBER`：1223。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1223,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260911-021644-next781-replace-text`：正式 Debug ARMV4I，选择
-`1221-1222,999`，3/3、唯一 PASS、零 ERROR/FAIL，完整日志已回收，目标卷和内部
+最新自动证据是 `20260911-144512-next782-detached-cache`：正式 Debug ARMV4I，选择
+`1223,999`，2/2、唯一 PASS、零 ERROR/FAIL，完整日志已回收，目标卷和内部
 object-store 双空间预检通过，部署在日志回收后已清理；运行前后转储清单均为 0，
-`crash_check=PASS`、`new_crash_dump_count=0`。TEST1221 证明 `before()`/`after()`
-的 primitive 文本插入，TEST1222 证明 `Element.replaceWith(value)` 在 mixed
-Text/element 子节点中的原位文本替换；两者均保持 wrapper/snapshot 并在错误输入时
-fail closed。此前 `20260911-004625-next779` 的 `1220,999` 门证明 existing-element
+`crash_check=PASS`、`new_crash_dump_count=0`。TEST1223 覆盖
+`insertAdjacentText()` 四位置、primitive 字符串化、wrapper/snapshot 保持和
+detached/错误输入 fail closed；TEST999 的完成提示音也通过。此前 `20260911-004625-next779`
+的 `1220,999` 门证明 existing-element
 相对重排与跨父迁移。
 此前自动证据 `20260911-000708-next778`：正式 Debug ARMV4I，选择 `1219,999`，2/2，
 唯一 PASS、零 ERROR/FAIL，日志完整回收、双空间预检通过且部署已清理；TEST1219 覆盖
@@ -291,9 +293,10 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
   错误 parent、缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，
   暂无新增立即人工风险；DocumentFragment、Comment/CDATA、通用节点替换、完整 live
   collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1219–1222 是离线的 Core/Browser existing-element Ex6/Ex7 夹具，覆盖
+- TEST1219–1223 是离线的 Core/Browser existing-element Ex6/Ex7 夹具，覆盖
   `append()`/`prepend()` 的末尾/零位插入、`before()`/`after()` 的同父重排/跨父迁移、
-  relative text 的字符串化 primitive，以及 `replaceWith(value)` 的原位文本替换；自动门
+  relative text 的字符串化 primitive、`replaceWith(value)` 原位文本替换和
+  `insertAdjacentText()` 四位置；自动门
   已验证 mixed Text/element 位置、wrapper identity、旧 snapshot、父级 textContent、
   同节点 no-op 与 detached、对象/节点、越界、多参数和 UTF-8 错误的 fail-closed 边界。
   该路径暂无新增立即人工风险；DocumentFragment、Comment/CDATA 插入、通用节点 mutation、

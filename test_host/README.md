@@ -78,10 +78,9 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1222，覆盖
-  normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4/Ex5/Ex6/Ex7
-  existing-element insertion/replacement、relative primitive insertion 和
-  `replaceWith(value)` primitive replacement；
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1223，覆盖
+  normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex7
+  insertion/replacement、relative primitive insertion 和 `insertAdjacentText`；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -543,6 +542,11 @@ existing-element `append`/`prepend` 及 `before`/`after`；后两者另将单个
 wrapper、静态 snapshot、字符串化 primitive、错误 parent/self/UTF-8/对象/节点/多参数
 拒绝和失败无部分 mutation；宿主只接线、fixture/断言。通用节点 mutation、observer 和
 live collection 不在边界。
+
+TEST1223 验证 `Element.insertAdjacentText()` 的四个位置。宿主复用 Ex6 的
+`insert_text_child` 接线；Browser 负责 receiver/direct-parent 索引、primitive 字符串化、
+快照更新和错误回退。fixture 覆盖 mixed child 顺序、空元素、detached、未知位置、对象及
+多参数；宿主只提供 fixture/断言和可选重排。
 
 ### Native EDIT/SELECT/button/file
 

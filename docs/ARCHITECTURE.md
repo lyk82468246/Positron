@@ -343,6 +343,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   多参数和非法 UTF-8 均 fail closed；Core 负责原子 DOM 替换与 retained-layout invalidation，
   宿主只负责 callback 接线及后续 style/layout/paint，不派发 mutation 事件；Ex6 及旧注册
   入口的布局不变。
+- `Element.insertAdjacentText(position, text)` 复用 write Ex6 的
+  `insert_text_child`，在 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置
+  插入一个字符串化 primitive Text。内侧位置作用于 receiver，外侧位置要求 receiver 是
+  direct child 并按未过滤 `childNodes` 计算索引；无 parent、对象/函数、未知 position、
+  detached、容量或多参数失败时不产生部分 mutation。Core 继续拥有插入和 retained-layout
+  invalidation，宿主只负责 callback 后的重排与重绘。
 - `Text.remove()` 与 `Element.removeChild(Text)` 是同一条有界 mutation：宿主注册追加
   `remove_text_child` 的 `PBrowserScriptDomMutationCallbacksEx2`，Browser 以 direct Text
   wrapper 的 `childNodes` 索引通过 `__pcoreRemoveChild` 调用
@@ -685,8 +691,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
-  insertion，Ex7 再追加 primitive `replaceWith` 文本替换；相对 primitive 文本仍复用
-  既有 write Ex6 slot，旧注册入口的语义和布局不变。
+  insertion，Ex7 再追加 primitive `replaceWith` 文本替换；相对 primitive 文本和
+  `insertAdjacentText()` 仍复用既有 write Ex6 slot，旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

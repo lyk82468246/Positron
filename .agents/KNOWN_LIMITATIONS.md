@@ -139,7 +139,8 @@
   Ex4 的 `Node.insertBefore()`/`appendChild()` 另支持带 id element 的同父级 reorder、跨父级
   reparent 和 `NULL` reference append；Ex6 的单参数 `Element.append()`/`prepend()` 再按未过滤
   `childNodes` 的末尾/零位支持同父级重排和跨父级迁移，`Element.before()`/`after()` 按目标
-  element 的 direct-parent 位置支持 existing-element 或一个字符串化 primitive 的相对插入；错误 parent、层级环、结构 token、detached、Text/
+  element 的 direct-parent 位置支持 existing-element 或一个 primitive 的相对插入；同一 Ex6
+  write 入口的 `insertAdjacentText()` 另覆盖四个位置；错误 parent、层级环、结构 token、detached、Text/
   Comment/CDATA、DocumentFragment 与多参数不产生部分 mutation。通用 Node 插入、
   Comment/CDATA 插入、其他删除、mutation 事件、MutationObserver 和 live collection 仍未实现。
   Ex5 的 `Node.replaceChild()` 仍只支持当前文档中带 id 的 existing element；Ex7 的
@@ -580,9 +581,9 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1222 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
-  clone/equality、Ex2/Ex3 removal 与 Ex4–Ex7 existing-element insertion/replacement/relative
-  primitive text 的 wrapper/snapshot、detached、UTF-16 和 retained-layout 边界；逐项合同见
+- TEST1201–1223 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
+  clone/equality、Ex2/Ex3 removal 与 Ex4–Ex7 insertion/replacement/relative text、
+  `insertAdjacentText()` 的 wrapper/snapshot、detached、UTF-16 和 retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
   其他结构 mutation、observer/live collection、native/视觉需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

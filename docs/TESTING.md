@@ -785,6 +785,14 @@ TEST1222 覆盖 `Element.replaceWith(value)` 的有界 primitive 重载：Browse
 style/layout/paint。DocumentFragment、Comment/CDATA/非 element target、MutationObserver、
 live collection 和 native/视觉行为仍不在门内。
 
+TEST1223 覆盖 `Element.insertAdjacentText(position, text)` 的四个有界位置：Browser 复用
+Ex6 的 `insert_text_child` callback，在 receiver 内侧或其 direct parent 的未过滤
+`childNodes` 索引创建一个字符串化 primitive Text。fixture 验证 mixed child 顺序、内外侧
+位置、旧 snapshot 和空元素末尾插入；未知 position、对象/已有 Text、多参数、detached
+target 与失败时的无部分 mutation 必须 fail closed。宿主只负责既有 callback 接线、可选
+restyle/layout/paint；DocumentFragment、Comment/CDATA 插入、mutation event、observer 和
+live collection 仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

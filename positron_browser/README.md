@@ -445,23 +445,25 @@ moved wrapper identity、使原/新父级 `children` 与 `childNodes` snapshot �
 多参数调用 fail closed，不派发 mutation 事件。
 
 Ex5 追加 `replace_child`，由 `Node.replaceChild(element, oldElement)` 和
-`Element.replaceWith(element)` 调用 `PCore_NodeReplaceElementChildById`。它只接受当前文档
-中带 id 的 element，old 必须是 receiver 的 direct child，new 可来自同父或另一父级；成功
-返回旧 wrapper（`replaceWith()` 返回 `undefined`），刷新受影响父级 snapshot 并请求宿主重排。
-Text/Comment/CDATA、DocumentFragment、detached、错误 parent、self 和多参数调用 fail closed，
+`Element.replaceWith(element)` 调用 `PCore_NodeReplaceElementChildById`；仅支持带 id element，
+old 必须是 direct child，new 可跨父。成功返回旧 wrapper、刷新父级 snapshot 并请求重排；
+Text/Comment/CDATA、DocumentFragment、detached、错误 parent/self、多参数 fail closed，
 不派发 mutation 事件。
 
 Ex6 追加 `insert_child_at`，由 existing-element 的 `Element.append()`/`prepend()`/
-`before()`/`after()` 调用 `PCore_NodeInsertElementChildAtById`，按未过滤 `childNodes` 的
-末尾、零位或目标 direct-parent 位置移动带 id element，支持混合子节点、同父重排和跨父迁移。
-`before()`/`after()` 的 primitive 重载复用 write Ex6，在同一位置创建新 Text。
+`before()`/`after()` 调用 `PCore_NodeInsertElementChildAtById`，按未过滤 `childNodes` 位置
+移动带 id element，支持混合子节点和跨父迁移；relative primitive 复用 write
+Ex6，创建 Text。
 
 Ex7 追加 `replace_child_with_text`，由 `Element.replaceWith(value)` 的 primitive 重载调用
-`PCore_NodeReplaceElementChildWithTextById`。Browser 将一个字符串、数字、布尔值、`null`
-或 `undefined` 字符串化，在目标 direct-parent 原 childNodes 位置原子创建 Text；旧 element
-wrapper 保持 detached，旧 snapshot 保持静态，成功后请求宿主重排。对象/节点、Comment/CDATA、
-DocumentFragment、detached、非 direct child、非法 UTF-8 和多参数均 fail closed；旧入口 ABI
-不变。
+`PCore_NodeReplaceElementChildWithTextById`；支持五种 primitive，目标 direct-parent 原位建
+Text，旧 wrapper/snapshot 保持 detached/静态。非 element、DocumentFragment、detached、
+错误参数均 fail closed；Core 原子替换并失效 layout。
+
+`Element.insertAdjacentText(position,text)` 复用 Ex6 `insert_text_child`，支持四位置
+`beforebegin`/`afterbegin`/`beforeend`/`afterend`；内侧写 receiver，外侧写 direct parent
+索引。仅字符串化 primitive；未知 position、对象、detached、超限/多参 fail closed，
+宿主负责重排/重绘。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
@@ -469,10 +471,10 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 `wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
-write Ex6 的 `insert_text_child` 处理字符串/原始值的 `append`/`prepend` Text；mutation
-Ex4、Ex5、Ex6、Ex7 分别处理 existing-element 的插入、替换、位置操作和 primitive
-`replaceWith`。这些窄路径都不实现 DocumentFragment、其他节点类型、完整 live collection
-或 mutation observer。`Node.cloneNode(deep)` 只产生最多
+write Ex6 的 `insert_text_child` 处理 `append`/`prepend`、relative 和 `insertAdjacentText`；
+Ex4–Ex7 mutation 分别处理 existing-element 插入、替换、位置和 primitive `replaceWith`。
+不支持 `DocumentFragment`、其他节点或 live collection。
+`Node.cloneNode(deep)` 只产生最多
 64 子节点/256 总节点的独立 detached snapshot，超限或不支持类型 fail closed。
 
 ### `dialog` 生命周期
