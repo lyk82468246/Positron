@@ -793,6 +793,14 @@ target 与失败时的无部分 mutation 必须 fail closed。宿主只负责既
 restyle/layout/paint；DocumentFragment、Comment/CDATA 插入、mutation event、observer 和
 live collection 仍不在门内。
 
+TEST1224 覆盖 `Element.insertAdjacentElement(position, element)` 的四个有界位置：Browser
+复用 Ex6 的 `insertElementChildAt` callback，在 receiver 内侧或其 direct parent 的未过滤
+`childNodes` 索引移动带 id 的 existing element，并返回该 element。fixture 验证跨父迁移、
+mixed child 顺序、旧 snapshot、detached wrapper 及失败时无部分 mutation；非 element、已
+detached element、未知 position、无 parent 和多参数必须 fail closed。宿主只负责既有 callback
+接线、fixture 与可选 restyle/layout/paint；DocumentFragment、Text/Comment/CDATA 插入、
+mutation event、observer 和 live collection 仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

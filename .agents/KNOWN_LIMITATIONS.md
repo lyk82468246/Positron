@@ -130,19 +130,17 @@
 
 - DOM bridge 只提供有界 snapshot。
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
-- Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、
-  CharacterData setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、
-  `Node.normalize()`、Ex6 的单值 `append()`/`prepend()`/`before()`/`after()`（后两者另接受一个
-  字符串化 primitive），以及 Ex2/Ex3 的 Text、Comment、
-  CDATA direct-child removal。成功 mutation 使 retained layout 失效并刷新必要 snapshot；
-  UTF-16 offset、UTF-8、detached wrapper 和错误目标均按各入口合同 fail closed。
-  Ex4 的 `Node.insertBefore()`/`appendChild()` 另支持带 id element 的同父级 reorder、跨父级
-  reparent 和 `NULL` reference append；Ex6 的单参数 `Element.append()`/`prepend()` 再按未过滤
-  `childNodes` 的末尾/零位支持同父级重排和跨父级迁移，`Element.before()`/`after()` 按目标
-  element 的 direct-parent 位置支持 existing-element 或一个 primitive 的相对插入；同一 Ex6
-  write 入口的 `insertAdjacentText()` 另覆盖四个位置；错误 parent、层级环、结构 token、detached、Text/
-  Comment/CDATA、DocumentFragment 与多参数不产生部分 mutation。通用 Node 插入、
-  Comment/CDATA 插入、其他删除、mutation 事件、MutationObserver 和 live collection 仍未实现。
+- Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、CharacterData
+  setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`，以及
+  Ex2/Ex3 的 Text/Comment/CDATA direct-child removal。成功 mutation 使 retained layout 失效
+  并刷新必要 snapshot；UTF-16、UTF-8、detached wrapper 和错误目标按各入口合同 fail closed。
+  Ex4 的 `Node.insertBefore()`/`appendChild()` 支持带 id element 的同父 reorder、跨父 reparent
+  和 `NULL` append；Ex6 的单参数 `append()`/`prepend()` 对 existing element 按未过滤
+  `childNodes` 末尾/零位移动，对 primitive 创建 Text，`before()`/`after()` 在目标
+  direct-parent 位置支持 existing element 或一个 primitive；同一 Ex6 write 入口的
+  `insertAdjacentText()`/`insertAdjacentElement()` 另覆盖四个位置。错误 parent、层级环、结构
+  token、detached、Text/Comment/CDATA、DocumentFragment 与多参数不产生部分 mutation；通用
+  Node/Comment/CDATA 插入、其他删除、mutation 事件、MutationObserver 和 live collection 仍未实现。
   Ex5 的 `Node.replaceChild()` 仍只支持当前文档中带 id 的 existing element；Ex7 的
   `Element.replaceWith(value)` 另接受一个字符串化 primitive，将 direct element child
   原位替换为 Text。两者的 element old/new 必须满足各自 direct-child/connected 约束；

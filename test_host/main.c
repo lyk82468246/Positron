@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1223
+#define TEST_MAX_NUMBER 1224
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -49525,6 +49525,95 @@ static BOOL test1223_browser_insert_adjacent_text_contract(void)
             " insertion bridge, preserving mixed child order and snapshots"
             " while rejecting unsupported positions, values, detached targets"
             " and argument counts without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1224 - bounded insertAdjacentElement covers all four DOM positions. */
+static BOOL test1224_browser_insert_adjacent_element_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span>tail</div>"
+        "<div id='b'><i id='x'>X</i><em id='y'>Y</em>"
+        "<strong id='z'>Z</strong><u id='w'>W</u></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_POSITIONS[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),t=document.getElementById('target'),"
+        "x=document.getElementById('x'),y=document.getElementById('y'),"
+        "z=document.getElementById('z'),w=document.getElementById('w'),"
+        "oldA=a.childNodes,oldB=b.childNodes,snapT=t.childNodes,r,ok;"
+        "ok=a!==null&&b!==null&&t!==null&&x!==null&&y!==null&&z!==null&&"
+        "w!==null&&oldA.length===3&&oldA[1]===t&&oldB.length===4&&"
+        "oldB[0]===x&&oldB[1]===y&&oldB[2]===z&&oldB[3]===w&&"
+        "snapT.length===1&&snapT[0].data==='T';"
+        "r=t.insertAdjacentElement('BEFOREBEGIN',x);ok=ok&&r===x;"
+        "r=t.insertAdjacentElement('afterend',y);ok=ok&&r===y;"
+        "r=t.insertAdjacentElement('afterbegin',z);ok=ok&&r===z;"
+        "r=t.insertAdjacentElement('beforeend',w);ok=ok&&r===w;"
+        "ok=ok&&a.childNodes.length===5&&a.childNodes[0].data==='lead'&&"
+        "a.childNodes[1]===x&&a.childNodes[2]===t&&a.childNodes[3]===y&&"
+        "a.childNodes[4].data==='tail'&&t.childNodes.length===3&&"
+        "t.childNodes[0]===z&&t.childNodes[1].data==='T'&&"
+        "t.childNodes[2]===w&&x.parentElement===a&&y.parentElement===a&&"
+        "z.parentElement===t&&w.parentElement===t&&b.childNodes.length===0&&"
+        "a.textContent==='leadXZTWYtail'&&t.textContent==='ZTW'&&"
+        "b.textContent===''&&oldA.length===3&&oldA[1]===t&&oldB.length===4&&"
+        "oldB[0]===x&&oldB[1]===y&&oldB[2]===z&&oldB[3]===w&&"
+        "snapT.length===1&&snapT[0].data==='T';"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),t=document.getElementById('target'),"
+        "x=document.getElementById('x'),oldA=a.childNodes,oldB=b.childNodes,"
+        "snapT=t.childNodes,bad=0,removedX=0,removedT=0,ok;"
+        "try{t.insertAdjacentElement('middle',x);}catch(e){bad|=1;}"
+        "try{t.insertAdjacentElement('beforebegin',{});}catch(e2){bad|=2;}"
+        "try{t.insertAdjacentElement('beforeend',t.firstChild);}catch(e3){bad|=4;}"
+        "try{t.insertAdjacentElement('beforeend',x,'extra');}catch(e4){bad|=8;}"
+        "try{t.insertAdjacentElement('beforeend');}catch(e5){bad|=16;}"
+        "try{x.remove();removedX=1;}catch(e6){}"
+        "try{t.insertAdjacentElement('beforebegin',x);}catch(e7){bad|=32;}"
+        "try{t.remove();removedT=1;}catch(e8){}"
+        "try{t.insertAdjacentElement('beforeend',a);}catch(e9){bad|=64;}"
+        "ok=bad===127&&removedX===1&&removedT===1&&!t.isConnected&&"
+        "t.parentNode===null&&!x.isConnected&&x.parentNode===null&&"
+        "a.childNodes.length===2&&a.textContent==='leadtail'&&"
+        "b.childNodes.length===3&&b.textContent==='YZW'&&oldA.length===3&&"
+        "oldA[1]===t&&oldB.length===4&&oldB[0]===x&&snapT.length===1&&"
+        "snapT[0].data==='T';document.getElementById('result').textContent="
+        "String(ok);})();";
+    char error[768];
+    char probe_detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(probe_detail, 0, sizeof(probe_detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-insert-adjacent-element", HTML,
+            PROBE_POSITIONS, "true", error, sizeof(error))) {
+        failed_probe = "positions";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-insert-adjacent-element", HTML,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(probe_detail, error, sizeof(probe_detail) - 1);
+        probe_detail[sizeof(probe_detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                probe_detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1224 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1224 OK",
+            "Element.insertAdjacentElement now covers beforebegin,"
+            " afterbegin, beforeend and afterend through the existing Core"
+            " element insertion bridge, preserving identity, mixed order and"
+            " snapshots while rejecting invalid, detached and multi-argument"
+            " operations without partial mutation.");
     return TRUE;
 }
 
@@ -107712,6 +107801,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1221: ok = test1221_browser_relative_text_insertion_contract(); break;
         case 1222: ok = test1222_browser_replace_with_text_contract(); break;
         case 1223: ok = test1223_browser_insert_adjacent_text_contract(); break;
+        case 1224: ok = test1224_browser_insert_adjacent_element_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
