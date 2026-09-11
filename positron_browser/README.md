@@ -450,19 +450,20 @@ old 必须是 direct child，new 可跨父。成功返回旧 wrapper、刷新父
 Text/Comment/CDATA、DocumentFragment、detached、错误 parent/self、多参数 fail closed，
 不派发 mutation 事件。
 
-Ex6 追加 `insert_child_at`，由 existing-element 的 `Element.append()`/`prepend()`/
-`before()`/`after()`/`insertAdjacentElement()` 调用
+Ex6 追加 `insert_child_at`，由 `Element.append()`/`prepend()` 的最多四个
+existing-element 值及 `before()`/`after()`/`insertAdjacentElement()` 调用
 `PCore_NodeInsertElementChildAtById`，按未过滤 `childNodes` 位置移动带 id element，支持
-混合子节点和跨父迁移；relative primitive 复用 write Ex6，创建 Text。
+混合子节点和跨父迁移；primitive 值复用 write Ex6 创建 Text。
 
 Ex7 追加 `replace_child_with_text`，由 `Element.replaceWith(value)` 的 primitive 重载调用
 `PCore_NodeReplaceElementChildWithTextById`；支持五种 primitive，目标 direct-parent 原位建
 Text，旧 wrapper/snapshot 保持 detached/静态。非 element、DocumentFragment、detached、
 错误参数均 fail closed；Core 原子替换并失效 layout。
 
-`insertAdjacentText()` 与 `insertAdjacentElement()` 复用 Ex6 bridge，覆盖四位置；前者按
-receiver/parent 索引创建 primitive Text，后者移动并返回 existing element。未知 position、
-非支持值、detached、超限/多参 fail closed；宿主负责重排/重绘。
+`append()`/`prepend()` 接受零至四个 primitive/element，先校验再按序插入；
+`insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，分别创建
+Text 或移动并返回 element。未知/不支持、detached、超限或错误参数 fail closed；宿主
+负责重排/重绘。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由

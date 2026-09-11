@@ -78,10 +78,10 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1224，覆盖
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1225，覆盖
   normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex7
   insertion/replacement、relative primitive insertion 和 `insertAdjacentText`/
-  `insertAdjacentElement`；
+  `insertAdjacentElement`、最多四值的 `append()`/`prepend()`；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -483,7 +483,7 @@ TEST1213 验证 Core/Browser 的有界文本结构 mutation：Ex6 callback 将�
 `append(text)`/`prepend(text)` 请求转为 `PCore_NodeInsertTextChildById`，在未过滤
 `childNodes` 的末尾或零位创建一个新的 Text 节点。自动断言覆盖 Core 的插入/索引错误码、
 父级文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和
-多参数请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture
+超过四值请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture
 和断言；已有节点 reparent、DocumentFragment/Node 插入、文本节点删除、事件、
 MutationObserver 和 live collection 仍不在该门内。
 
@@ -534,11 +534,11 @@ child 与多余参数必须拒绝且不产生部分 mutation；宿主只负责 E
 fixture 和断言。DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、
 observer 和 live collection 仍不在该边界内。
 
-TEST1219–1224 验证 Ex6/Ex7 的有界位置操作：宿主只把现有 callback 接到 Core，Browser
+TEST1219–1225 验证 Ex6/Ex7 的有界位置操作：宿主只把现有 callback 接到 Core，Browser
 负责 mixed Text/element 顺序、direct-parent 索引、primitive 字符串化、element identity、
 detached/snapshot 和错误回退。范围包括 existing-element `append`/`prepend`、`before`/
-`after`、`insertAdjacentText()` 与 `insertAdjacentElement()`，以及 primitive
-`replaceWith()`；fixture/断言验证跨父迁移、四位置、无部分 mutation 和多参数拒绝。通用
+`after`、`insertAdjacentText()`/`insertAdjacentElement()`、最多四值的 append/prepend，以及
+primitive `replaceWith()`；fixture/断言验证跨父迁移、四位置、无部分 mutation 和超限拒绝。通用
 节点 mutation、observer 和 live collection 不在边界。
 
 ### Native EDIT/SELECT/button/file

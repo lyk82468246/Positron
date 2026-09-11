@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1224
+#define TEST_MAX_NUMBER 1225
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -48616,7 +48616,7 @@ static BOOL test1213_browser_text_child_insertion_contract(void)
         "oldKeep.parentNode===root&&oldTail.parentNode===root&&added.parentNode===root&&"
         "root.textContent==='startAtailend'&&root.children.length===1;beforeText="
         "root.textContent;try{root.append(root);}catch(e){badNode=true;}"
-        "try{root.append('x','y');}catch(e2){badMany=true;}"
+        "try{root.append('x','y','z','q','r');}catch(e2){badMany=true;}"
         "ok=ok&&badNode&&badMany&&root.textContent===beforeText&&"
         "root.childNodes.length===4;document.getElementById('result').textContent=String(ok);})();";
     HANDLE core_doc;
@@ -48673,8 +48673,8 @@ static BOOL test1213_browser_text_child_insertion_contract(void)
     show_info(L"TEST 1213 OK",
             "Element.append/prepend now insert one bounded UTF-8 Text child"
             " through Core, preserve existing snapshot wrappers and order,"
-            " refresh the receiver collection, and reject Node or multi-value"
-            " insertion without partial mutation.");
+            " refresh the receiver collection, and reject Node or over-limit"
+            " value insertion without partial mutation.");
     return TRUE;
 }
 
@@ -49160,11 +49160,11 @@ static BOOL test1219_browser_existing_element_append_contract(void)
         "afterAppend[3]===two&&afterAppend[4]===three;"
         "ret=a.prepend(a.firstChild);"
         "ok=ok&&ret===undefined&&a.firstChild===two&&a.childNodes.length===5;"
-        "var badArgs=false,badClone=false,badText=false;"
-        "try{a.append(two,one);}catch(e){badArgs=true;}"
+        "var badCount=false,badClone=false,badText=false;"
+        "try{a.append(two,one,three,a.firstChild,a.lastChild);}catch(e){badCount=true;}"
         "try{a.append(a.cloneNode(false));}catch(e2){badClone=true;}"
         "try{a.prepend(a.firstChild.firstChild);}catch(e3){badText=true;}"
-        "ok=ok&&badArgs&&badClone&&badText&&a.textContent==='2lead1mid3';"
+        "ok=ok&&badCount&&badClone&&badText&&a.textContent==='2lead1mid3';"
         "document.getElementById('result').textContent=String(ok);})();";
     char core_value[64];
     char error[768];
@@ -49225,7 +49225,7 @@ static BOOL test1219_browser_existing_element_append_contract(void)
             "Element.append and prepend now move one existing element through"
             " Core at exact childNodes positions, including mixed text, while"
             " preserving wrapper identity and snapshots and rejecting detached"
-            " clones, Text arguments, and multiple values without mutation.");
+            " clones, Text arguments, and over-limit value lists without mutation.");
     return TRUE;
 }
 
@@ -49614,6 +49614,99 @@ static BOOL test1224_browser_insert_adjacent_element_contract(void)
             " element insertion bridge, preserving identity, mixed order and"
             " snapshots while rejecting invalid, detached and multi-argument"
             " operations without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1225 - bounded variadic Element.append/prepend accepts up to four
+ * primitive or existing-element values with prevalidation. */
+static BOOL test1225_browser_variadic_append_prepend_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='one'>1</span>mid<span id='two'>2</span>"
+        "</div><div id='b'><i id='three'>3</i><em id='four'>4</em></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_APPEND[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),one=document.getElementById('one'),"
+        "two=document.getElementById('two'),three=document.getElementById('three'),"
+        "four=document.getElementById('four'),old=a.childNodes,oldB=b.childNodes,x,r,ok;"
+        "ok=a!==null&&b!==null&&one!==null&&two!==null&&three!==null&&four!==null&&"
+        "old.length===4&&oldB.length===2;"
+        "r=a.append('A',three,7,four);x=a.childNodes;"
+        "ok=ok&&r===undefined&&x.length===8&&x[0].data==='lead'&&x[1]===one&&"
+        "x[2].data==='mid'&&x[3]===two&&x[4].data==='A'&&x[5]===three&&"
+        "x[6].data==='7'&&x[7]===four&&a.textContent==='lead1mid2A374'&&"
+        "three.parentElement===a&&four.parentElement===a&&b.childNodes.length===0&&"
+        "old.length===4&&old[1]===one&&old[3]===two&&oldB.length===2&&"
+        "oldB[0]===three&&oldB[1]===four;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_PREPEND[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),one=document.getElementById('one'),"
+        "two=document.getElementById('two'),three=document.getElementById('three'),"
+        "four=document.getElementById('four'),old=a.childNodes,oldB=b.childNodes,x,r,ok;"
+        "ok=a!==null&&b!==null&&one!==null&&two!==null&&three!==null&&four!==null&&"
+        "old.length===4&&oldB.length===2;"
+        "r=a.prepend('P',three,false,four);x=a.childNodes;"
+        "ok=ok&&r===undefined&&x.length===8&&x[0].data==='P'&&x[1]===three&&"
+        "x[2].data==='false'&&x[3]===four&&x[4].data==='lead'&&x[5]===one&&"
+        "x[6].data==='mid'&&x[7]===two&&a.textContent==='P3false4lead1mid2'&&"
+        "three.parentElement===a&&four.parentElement===a&&b.childNodes.length===0&&"
+        "old.length===4&&old[1]===one&&old[3]===two&&oldB.length===2&&"
+        "oldB[0]===three&&oldB[1]===four;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var a=document.getElementById('a'),"
+        "b=document.getElementById('b'),old=a.childNodes,oldB=b.childNodes,"
+        "oldText=a.textContent,clone=a.cloneNode(false),bad=0,ret,ret2,ok;"
+        "try{a.append('A',{nodeType:1,__id:'one'},'late');}catch(e){bad|=1;}"
+        "try{a.prepend('P',clone,'late');}catch(e2){bad|=2;}"
+        "try{a.append('A',a);}catch(e3){bad|=4;}"
+        "try{a.prepend('P',a.parentElement);}catch(e4){bad|=8;}"
+        "try{a.append(1,2,3,4,5);}catch(e5){bad|=16;}"
+        "try{a.append('A',a.firstChild);}catch(e6){bad|=32;}"
+        "ret=a.append();ret2=a.prepend();"
+        "ok=bad===63&&ret===undefined&&ret2===undefined&&"
+        "a.textContent===oldText&&a.textContent==='lead1mid2'&&"
+        "a.childNodes.length===4&&old.length===4&&old[1].nodeType===1&&"
+        "oldB.length===2&&b.childNodes.length===2&&clone.isConnected===false;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+    char probe_detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(probe_detail, 0, sizeof(probe_detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-variadic-append", HTML,
+            PROBE_APPEND, "true", error, sizeof(error))) {
+        failed_probe = "append";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-variadic-prepend", HTML,
+            PROBE_PREPEND, "true", error, sizeof(error))) {
+        failed_probe = "prepend";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-variadic-append", HTML,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(probe_detail, error, sizeof(probe_detail) - 1);
+        probe_detail[sizeof(probe_detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                probe_detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1225 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1225 OK",
+            "Element.append and prepend now accept up to four validated"
+            " primitive or existing-element values in order, preserving"
+            " identity and snapshots while rejecting cycles, spoofed or"
+            " detached elements, unsupported values and over-limit lists"
+            " before any mutation.");
     return TRUE;
 }
 
@@ -107802,6 +107895,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1222: ok = test1222_browser_replace_with_text_contract(); break;
         case 1223: ok = test1223_browser_insert_adjacent_text_contract(); break;
         case 1224: ok = test1224_browser_insert_adjacent_element_contract(); break;
+        case 1225: ok = test1225_browser_variadic_append_prepend_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

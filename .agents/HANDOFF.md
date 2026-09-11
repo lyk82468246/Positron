@@ -10,17 +10,16 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next783 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
+最新 next784 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next783 补齐 `Element.insertAdjacentElement()` 四位置，复用 Core existing-element
-  语义；
-  TEST1220–1224 覆盖 element/primitive 插入与替换，保留 wrapper/snapshot，错误 child、
-  对象/节点、detached、越界和多参数均 fail closed。
+- 当前代码 next784 补齐 Ex6 `Element.append()`/`prepend()` 的零至四值混合插入，复用 Core
+  existing-element/Text 语义并在 dispatch 前预检；TEST1220–1225 覆盖 element/primitive
+  插入与替换，保留 wrapper/snapshot，错误 child、对象/节点、detached、越界和超限均 fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1224。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1224,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1225。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1225,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -80,7 +79,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   next779 补齐相对 `before()`/`after()` element 插入，next780 补齐同一入口的单值
   primitive 文本插入，next781 补齐 Ex7 的 primitive `replaceWith()` 文本替换，next782
   补齐 Ex6 `insertAdjacentText()` 四位置，next783 补齐同一 Ex6 的
-  `insertAdjacentElement()` 四位置。
+  `insertAdjacentElement()` 四位置，next784 扩展 `append()`/`prepend()` 的零至四值预检插入。
   稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
@@ -91,10 +90,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `next772` 的 `Text.remove()` 与 `next773` 的 `Element.removeChild(Text)` 纵切均已有正式
   设备门证据。next774 已完成 Core/Browser 的 Comment/CDATA direct-child removal 代码、
   Ex3 ABI 和 TEST1216 离线夹具，Debug/Release ARMV4I 构建均通过；当前 WMDC 连接上的
-  `TEST1216,999` 自动设备门也已通过；next776 的 `TEST1217,999` 门、next777 的
-  `TEST1218,999` 门、next778 的 `TEST1219,999` 门、next779 的 `TEST1220,999` 门、
-  next780 的 `TEST1221,999` 门、next781 的 `TEST1222,999` 门和 next782 的
-  `TEST1223,999` 门和 next783 的 `TEST1224,999` 门也已通过；不得把
+  `TEST1216,999` 自动设备门也已通过；next776–next784 的 `TEST1217,999`–
+  `TEST1225,999` 设备门也已通过；不得把
   测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
@@ -135,8 +132,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   目标移动到段首，其他 Text wrapper 变为 detached，成功后使 retained layout 失效。
   `Node.normalize()` 通过 Ex5/`PCore_NodeNormalizeById` 删除空 Text，并将每段连续 Text
   合并到第一个非空节点；Browser 对带 id 的后代 wrapper 按受控顺序递归并保持首个非空
-  wrapper 与旧 snapshot。write Ex6 的 `Element.append()`/`prepend()` 为带 id 元素创建一个
-  新 Text child；mutation Ex6 另按未过滤位置移动 existing element。Ex2 的 `Text.remove()`
+  wrapper 与旧 snapshot。write Ex6 的 `Element.append()`/`prepend()` 按零至四值为带 id 元素
+  创建 Text child；mutation Ex6 另按未过滤位置移动 existing element。Ex2 的 `Text.remove()`
   与 `Element.removeChild(Text)` 删除连接中的
   direct Text child，Ex3 再为 Comment/CDATA 提供相同的 `remove()`/`removeChild()`
   路径。各路径都保留 detached wrapper、刷新父级 snapshot，并由宿主在成功后重排；
@@ -184,26 +181,19 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1224。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1224,999`。
+- `TEST_MAX_NUMBER`：1225。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1225,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260911-153420-next783-adjacent-element-fixed`：Debug ARMV4I，选择
-`1224,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
-`crash_check` 均 PASS，新增 dump=0。TEST1224 覆盖四位置、跨父 existing-element
-迁移、identity/snapshot 和 detached/错误 fail closed；TEST999 beep 通过。此前
-`20260911-004625-next779` 的 `1220,999` 门证明 existing-element
-相对重排与跨父迁移。
-此前自动证据 `20260911-000708-next778`：正式 Debug ARMV4I，选择 `1219,999`，2/2，
-唯一 PASS、零 ERROR/FAIL，日志完整回收、双空间预检通过且部署已清理；TEST1219 覆盖
-existing-element `append()`/`prepend()` 的末尾/零位插入、同父重排和跨父迁移。
-此前自动证据 `20260910-233353-next777`（`1218,999`）和
-`20260910-230051-next776`（`1217,999`）均为正式 Debug ARMV4I，2/2 PASS、零
-ERROR/FAIL，日志完整回收、双空间预检通过、部署已清理且无新增转储；分别覆盖
-existing-element replacement 与 insertion 的返回值、snapshot/identity 和 fail-closed 边界。
+最新自动证据是 `20260911-161749-next784-append-retry`：Debug ARMV4I，选择
+`1225,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
+`crash_check` 均 PASS，新增 dump=0。TEST1225 覆盖最多四值 append/prepend 的 primitive/
+element 顺序、跨父迁移、identity/snapshot、空调用和预检失败边界；TEST999 beep 通过。
+此前 `20260911-153420-next783-adjacent-element-fixed` 的 `1224,999` 门也已通过，覆盖
+四位置 identity/snapshot 与 detached/错误边界。
 
 此前有效设备证据 `20260910-223812-next775-css-stack-recheck`：正式 Debug ARMV4I，选择
 `6-12,15,16,18,21,22,24,38-42,51,59-62,64-67,118,999`，29/29、唯一 PASS、零 ERROR/FAIL，
@@ -292,12 +282,12 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
   错误 parent、缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，
   暂无新增立即人工风险；DocumentFragment、Comment/CDATA、通用节点替换、完整 live
   collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1219–1224 是离线的 Core/Browser existing-element Ex6/Ex7 夹具，覆盖
-  `append()`/`prepend()` 的末尾/零位插入、`before()`/`after()` 的同父重排/跨父迁移、
+- TEST1219–1225 是离线的 Core/Browser existing-element Ex6/Ex7 夹具，覆盖
+  `append()`/`prepend()` 的末尾/零位及最多四值插入、`before()`/`after()` 的同父重排/跨父迁移、
   relative text 的字符串化 primitive、`replaceWith(value)` 原位文本替换以及
   `insertAdjacentText()`/`insertAdjacentElement()` 四位置；自动门
   已验证 mixed Text/element 位置、wrapper identity、旧 snapshot、父级 textContent、
-  同节点 no-op 与 detached、对象/节点、越界、多参数和 UTF-8 错误的 fail-closed 边界。
+  同节点 no-op 与 detached、对象/节点、越界、超限和 UTF-8 错误的 fail-closed 边界。
   该路径暂无新增立即人工风险；DocumentFragment、Comment/CDATA 插入、通用节点 mutation、
   完整 live collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。

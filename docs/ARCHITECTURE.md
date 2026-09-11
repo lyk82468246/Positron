@@ -315,25 +315,17 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   返回被移除 wrapper；错误关系抛出脚本错误，detached `remove()` 是 no-op。Browser 不
   派发 mutation event、不插入或 reparent 节点，也不自行 style/layout/paint；宿主必须在
   成功 callback 后安排 Core 重排。
-- `Element.append(text)` 与 `Element.prepend(text)` 通过 ABI 追加的
-  `PBrowserScriptDomWriteCallbacksEx6.insert_text_child` 接入
-  `PCore_NodeInsertTextChildById`。Browser 只接受带 id 元素上的单个字符串或原始值，按
-  未过滤 `childNodes` 的末尾或零位插入一个新 Text 节点，并保留已有 wrapper、刷新
-  receiver snapshot；Node、多参数、超出 64 个现有子节点、不可寻址父级或失败 callback
-  fail closed，不产生脚本侧部分提交。该桥复用 `__pcoreSetText`，不增加 native slot；
-  Core 的 retained layout 失效和后续 style/layout/paint 仍由宿主负责。DocumentFragment、
-  已有节点 reparent、其他节点删除、事件、MutationObserver 和 live collection 不在边界内；
-- 单参数 `Element.append(element)` 与 `Element.prepend(element)` 通过
-  `PBrowserScriptDomMutationCallbacksEx6.insert_child_at` 接入
-  `PCore_NodeInsertElementChildAtById`。Browser 按未过滤 `childNodes` 的末尾或零位移动
-  当前文档中带 id 的 existing element，允许混合 Text/Comment/CDATA direct children，
-  保留 wrapper identity，并在成功后使受影响父级 snapshot 失效；detached clone、其他
-  节点类型、DocumentFragment、越界和多参数调用 fail closed。宿主只负责 callback 接线、
-  重排和重绘，不在本地复制 DOM 语义。相同的 Ex6 callback 还支持单参数
-  `Element.before(element)`/`after(element)`：Browser 从目标 element 的 direct parent
-   计算未过滤位置，允许同父级重排和跨父级迁移；这两个入口也接受一个字符串化 primitive，
-   通过既有 `insert_text_child` 在相同位置创建 Text。无 parent、self、detached、非支持
-   对象/节点和多参数调用 fail closed；
+- `Element.append(...values)` 与 `Element.prepend(...values)` 通过 Ex6 的
+  `insert_text_child`/`insert_child_at` 分别接入 `PCore_NodeInsertTextChildById`/
+  `PCore_NodeInsertElementChildAtById`。Browser 接受零至四个已验证的 primitive 或当前
+  文档中带 id 的 existing element；primitive 按未过滤 `childNodes` 的末尾/零位创建 Text，
+  element 在同一位置移动，保留 wrapper identity 并使受影响父级 snapshot 失效。所有值先
+  做类型、connected、层级和容量检查，失败不产生部分 mutation；宿主只负责 callback 接线、
+  重排和重绘。DocumentFragment、其他节点、完整 live collection、事件和 observer 不在
+  边界内。相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
+  `after(element)` 及其单值 primitive 重载：Browser 从目标 element 的 direct parent 计算
+  未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和
+  多参数调用 fail closed；
 - `Element.replaceWith(value)` 的 primitive 重载通过 ABI 追加的
   `PBrowserScriptDomMutationCallbacksEx7.replace_child_with_text` 接入
   `PCore_NodeReplaceElementChildWithTextById`。Browser 只接受一个字符串、数字、布尔值、

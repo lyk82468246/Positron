@@ -696,7 +696,7 @@ TEST1212 覆盖 clone 与 live wrapper 的 `Node.isEqualNode()`：相同的浅/�
 TEST1213 覆盖 Core/Browser 的有界文本结构 mutation：Ex6 callback 将带 id 元素的
 `Element.append(text)`/`prepend(text)` 请求转为 `PCore_NodeInsertTextChildById`，在未过滤
 `childNodes` 的末尾或零位创建一个新的 Text。自动断言覆盖 Core 的插入/索引错误码、父级
-文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和多参数
+文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和超过四值
 请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture 和
 断言；已有节点 reparent、DocumentFragment/Node 插入、其他节点删除、事件、
 MutationObserver 和 live collection 仍不在该门内。
@@ -754,7 +754,7 @@ TEST1219 覆盖已有 element 的有界 `Element.append()`/`prepend()`：宿主�
 `PCore_NodeInsertElementChildAtById`。离线 fixture 同时包含 Text 与 element direct child，
 自动断言同父级重排、跨父级迁移、wrapper identity、旧/新 NodeList snapshot、父级
 `textContent` 和同节点 no-op；字符串仍走既有 Text 插入路径。Detached clone、Text、
-越界和多参数调用必须 fail closed 且不产生部分 mutation。成功后 retained layout 失效，
+越界和超过四值的调用必须 fail closed 且不产生部分 mutation。成功后 retained layout 失效，
 宿主只负责 Ex6 接线、可选 restyle、fixture 与断言；DocumentFragment、Comment/CDATA 插入、
 通用节点 mutation、事件、MutationObserver、live collection 和 native/视觉行为仍不在门内。
 
@@ -800,6 +800,15 @@ mixed child 顺序、旧 snapshot、detached wrapper 及失败时无部分 mutat
 detached element、未知 position、无 parent 和多参数必须 fail closed。宿主只负责既有 callback
 接线、fixture 与可选 restyle/layout/paint；DocumentFragment、Text/Comment/CDATA 插入、
 mutation event、observer 和 live collection 仍不在门内。
+
+TEST1225 覆盖 `Element.append(...values)`/`prepend(...values)` 的有界多值重载：Browser
+ 对零至四个 primitive 或当前文档中的 existing element 先做类型、connected、层级和容量
+ 预检，再按 append 原序或 prepend 逆序复用 Ex6 的两个 callback；primitive 创建 Text，
+ element 移动并保留 identity，旧 NodeList snapshot 仍静态。fixture 验证混合顺序、跨父迁移、
+ 空调用、父级文本和失败时无部分 mutation；spoofed/detached/clone/ancestor/self、Text、
+ 超过四个值和其他对象必须 fail closed。该能力不增加 Core ABI；宿主只负责 callback 接线、
+ 可选 restyle/layout/paint，DocumentFragment、通用 Node、事件、observer 和 live collection
+ 仍不在门内。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
