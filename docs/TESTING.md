@@ -802,13 +802,22 @@ detached element、未知 position、无 parent 和多参数必须 fail closed�
 mutation event、observer 和 live collection 仍不在门内。
 
 TEST1225 覆盖 `Element.append(...values)`/`prepend(...values)` 的有界多值重载：Browser
- 对零至四个 primitive 或当前文档中的 existing element 先做类型、connected、层级和容量
- 预检，再按 append 原序或 prepend 逆序复用 Ex6 的两个 callback；primitive 创建 Text，
- element 移动并保留 identity，旧 NodeList snapshot 仍静态。fixture 验证混合顺序、跨父迁移、
- 空调用、父级文本和失败时无部分 mutation；spoofed/detached/clone/ancestor/self、Text、
- 超过四个值和其他对象必须 fail closed。该能力不增加 Core ABI；宿主只负责 callback 接线、
- 可选 restyle/layout/paint，DocumentFragment、通用 Node、事件、observer 和 live collection
- 仍不在门内。
+对零至四个 primitive 或当前文档中的 existing element 先做类型、connected、层级和容量
+预检，再按 append 原序或 prepend 逆序复用 Ex6 的两个 callback；primitive 创建 Text，
+element 移动并保留 identity，旧 NodeList snapshot 仍静态。fixture 验证混合顺序、跨父迁移、
+空调用、父级文本和失败时无部分 mutation；spoofed/detached/clone/ancestor/self、Text、
+超过四个值和其他对象必须 fail closed。该能力不增加 Core ABI；宿主只负责 callback 接线、
+可选 restyle/layout/paint，DocumentFragment、通用 Node、事件、observer 和 live collection
+仍不在门内。
+
+TEST1226 覆盖 CharacterData wrapper 的有界 `before(value)`/`after(value)`：Text、Comment
+wrapper 只接受一个 primitive，通过既有 write Ex6 `insert_text_child` 在同一
+direct parent 的未过滤 `childNodes` 索引前后创建 Text，并保留目标 wrapper、旧 snapshot
+和父级文本顺序。fixture 验证字符串化的字符串/数字/布尔值/`null`/`undefined`、零参数
+no-op、对象/已有节点/多参数拒绝，以及 detached wrapper 不产生 mutation；该路径不增加
+Core ABI，宿主只负责既有 callback 接线、可选 restyle/layout/paint；同一 Browser 分支对
+CDATA wrapper 采用相同合同，但当前 HTML fixture 不伪造 CDATA。DocumentFragment、通用
+CharacterData insertion、mutation event、observer 和 live collection 仍不在门内。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

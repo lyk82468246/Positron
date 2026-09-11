@@ -326,6 +326,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `after(element)` 及其单值 primitive 重载：Browser 从目标 element 的 direct parent 计算
   未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和
   多参数调用 fail closed；
+- 相同的 write Ex6 text-child callback 还服务 CharacterData wrapper：Text、Comment 和
+  CDATA 的 `before(value)`/`after(value)` 只接受一个 primitive，按当前 direct parent 的
+  未过滤 `childNodes` 索引创建 Text sibling，并保留目标 wrapper 与旧 snapshot。零参数和
+  detached wrapper 是 no-op；节点、对象和多参数 fail closed。Core 继续拥有插入及
+  retained-layout invalidation，不新增 callback table 或 ABI；
 - `Element.replaceWith(value)` 的 primitive 重载通过 ABI 追加的
   `PBrowserScriptDomMutationCallbacksEx7.replace_child_with_text` 接入
   `PCore_NodeReplaceElementChildWithTextById`。Browser 只接受一个字符串、数字、布尔值、
@@ -688,9 +693,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
-  insertion，Ex7 再追加 primitive `replaceWith` 文本替换；相对 primitive 文本与
-  `insertAdjacentText()` 仍复用既有 write Ex6 slot，`insertAdjacentElement()` 复用
-  Ex6 existing-element slot，旧注册入口的语义和布局不变。
+  insertion，Ex7 再追加 primitive `replaceWith` 文本替换；相对 primitive 文本、
+  CharacterData `before()`/`after()` 与 `insertAdjacentText()` 仍复用既有 write Ex6 slot，
+  `insertAdjacentElement()` 复用 Ex6 existing-element slot，旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。

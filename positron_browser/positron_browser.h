@@ -742,8 +742,10 @@ typedef struct PBrowserScriptDomWriteCallbacksEx5 {
  * `child_index` is the unfiltered childNodes insertion index (including the
  * child count for append), and `text` is borrowed UTF-8 for the synchronous
  * call. insert_text_child returns >0 after a new Text child was inserted, 0
- * when the parent or index is unavailable, and <0 on adapter failure. The
- * host must re-query and restyle/layout/paint after success. */
+ * when the parent or index is unavailable, and <0 on adapter failure. Browser
+ * CharacterData before()/after() primitive insertion reuses this callback
+ * with the same parent/index contract. The host must re-query and
+ * restyle/layout/paint after success. */
 typedef int (*PBrowserScriptInsertTextChildFn)(void *pw,
         const char *parent_id, unsigned int child_index, const char *text);
 typedef struct PBrowserScriptDomWriteCallbacksEx6 {

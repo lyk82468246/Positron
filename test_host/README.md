@@ -78,10 +78,10 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1225，覆盖
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1226，覆盖
   normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex7
-  insertion/replacement、relative primitive insertion 和 `insertAdjacentText`/
-  `insertAdjacentElement`、最多四值的 `append()`/`prepend()`；
+  insertion/replacement、relative primitive insertion、CharacterData relative insertion 和
+  `insertAdjacentText`/`insertAdjacentElement`、最多四值的 `append()`/`prepend()`；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -534,12 +534,15 @@ child 与多余参数必须拒绝且不产生部分 mutation；宿主只负责 E
 fixture 和断言。DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、
 observer 和 live collection 仍不在该边界内。
 
-TEST1219–1225 验证 Ex6/Ex7 的有界位置操作：宿主只把现有 callback 接到 Core，Browser
+TEST1219–1226 验证 Ex6/Ex7 的有界位置操作：宿主只把现有 callback 接到 Core，Browser
 负责 mixed Text/element 顺序、direct-parent 索引、primitive 字符串化、element identity、
 detached/snapshot 和错误回退。范围包括 existing-element `append`/`prepend`、`before`/
 `after`、`insertAdjacentText()`/`insertAdjacentElement()`、最多四值的 append/prepend，以及
-primitive `replaceWith()`；fixture/断言验证跨父迁移、四位置、无部分 mutation 和超限拒绝。通用
-节点 mutation、observer 和 live collection 不在边界。
+primitive `replaceWith()`；TEST1226 还验证 Text/Comment wrapper 的 primitive
+`before()`/`after()`、字符串化、目标/旧 snapshot 身份和 detached no-op；同一 Browser 分支
+对 CDATA 保持相同合同，但 HTML fixture 不伪造 CDATA。fixture/断言验证
+跨父迁移、四位置、无部分 mutation 和超限拒绝。通用节点 mutation、observer 和 live
+collection 不在边界。
 
 ### Native EDIT/SELECT/button/file
 

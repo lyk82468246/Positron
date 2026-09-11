@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1225
+#define TEST_MAX_NUMBER 1226
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -49707,6 +49707,88 @@ static BOOL test1225_browser_variadic_append_prepend_contract(void)
             " identity and snapshots while rejecting cycles, spoofed or"
             " detached elements, unsupported values and over-limit lists"
             " before any mutation.");
+    return TRUE;
+}
+
+/* TEST 1226 - bounded CharacterData before/after inserts primitive Text. */
+static BOOL test1226_browser_character_data_relative_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<!--mark-->tail<span id='target'>T</span>end</div>"
+        "<p id='d'>gone</p><p id='result'>idle</p></body></html>";
+    static const char PROBE_TEXT[] =
+        "(function(){var a=document.getElementById('a'),old=a.childNodes,"
+        "text=old[0],target=document.getElementById('target'),x,r,ok;"
+        "ok=a!==null&&text!==null&&target!==null&&old.length===5&&"
+        "text.nodeType===3&&old[3]===target;"
+        "r=text.before('A');ok=ok&&r===undefined;"
+        "r=text.after(7);x=a.childNodes;"
+        "ok=ok&&r===undefined&&x.length===7&&x[0].data==='A'&&x[1]===text&&"
+        "x[1].data==='lead'&&x[2].data==='7'&&x[3].data==='mark'&&"
+        "x[4].data==='tail'&&x[5]===target&&x[6].data==='end'&&"
+        "a.textContent==='Alead7tailTend'&&old.length===5&&old[0]===text&&"
+        "old[3]===target;document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_COMMENT[] =
+        "(function(){var a=document.getElementById('a'),old=a.childNodes,"
+        "comment=old[1],target=document.getElementById('target'),x,r,ok;"
+        "ok=a!==null&&comment!==null&&target!==null&&old.length===5&&"
+        "comment.nodeType===8&&old[3]===target;"
+        "r=comment.before(null);r=comment.after(false);x=a.childNodes;"
+        "ok=ok&&r===undefined&&x.length===7&&x[0].data==='lead'&&"
+        "x[1].data==='null'&&x[2]===comment&&x[2].data==='mark'&&"
+        "x[3].data==='false'&&x[4].data==='tail'&&x[5]===target&&"
+        "x[6].data==='end'&&a.textContent==='leadnullfalsetailTend'&&"
+        "old.length===5&&old[1]===comment&&old[3]===target;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var a=document.getElementById('a'),d=document.getElementById('d'),"
+        "old=a.childNodes,text=old[0],comment=old[1],gone=d.firstChild,bad=0,x,ok;"
+        "try{text.before({});}catch(e){bad|=1;}"
+        "try{comment.after(text);}catch(e2){bad|=2;}"
+        "try{comment.before(comment.cloneNode(false));}catch(e3){bad|=4;}"
+        "try{text.after('x','y');}catch(e4){bad|=8;}"
+        "text.before();comment.after();gone.remove();gone.before('ignored');gone.after('ignored');"
+        "x=a.childNodes;ok=bad===15&&x.length===5&&a.textContent==='leadtailTend'&&"
+        "old.length===5&&old[0]===text&&old[1]===comment&&d.childNodes.length===0&&"
+        "gone.parentNode===null&&!gone.isConnected;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+    char probe_detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(probe_detail, 0, sizeof(probe_detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-character-data-relative", HTML,
+            PROBE_TEXT, "true", error, sizeof(error))) {
+        failed_probe = "text";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-character-data-relative", HTML,
+            PROBE_COMMENT, "true", error, sizeof(error))) {
+        failed_probe = "comment";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-character-data-relative", HTML,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(probe_detail, error, sizeof(probe_detail) - 1);
+        probe_detail[sizeof(probe_detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                probe_detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1226 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1226 OK",
+            "Text and Comment wrappers expose bounded before and after"
+            " primitive insertion through the existing Ex6 text-child"
+            " callback; the same CharacterData branch accepts CDATA when"
+            " present, preserving direct-child order, identity and snapshots"
+            " while rejecting nodes, objects, multiple values and detached"
+            " no-op calls.");
     return TRUE;
 }
 
@@ -107896,6 +107978,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1223: ok = test1223_browser_insert_adjacent_text_contract(); break;
         case 1224: ok = test1224_browser_insert_adjacent_element_contract(); break;
         case 1225: ok = test1225_browser_variadic_append_prepend_contract(); break;
+        case 1226: ok = test1226_browser_character_data_relative_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

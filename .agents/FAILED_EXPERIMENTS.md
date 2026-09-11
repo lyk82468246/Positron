@@ -13,6 +13,20 @@
 
 ## 失败与暂挂
 
+### next785 首轮设备门：单个 CharacterData probe 触及脚本 heap — 已替代
+
+问题：`20260911-172817-next785` 的部署、RAPI 会话、双空间预检和日志回收均成功，
+但 `TEST1226` 将 Text/Comment 插入、错误输入和 detached 检查放在同一个 Browser
+脚本 probe 中，设备返回 `JavaScript memory limit exceeded`，随后测试宿主按失败停止。
+这不是 WMDC、Core DOM 或崩溃转储故障，不能把该日志当作通过。
+
+处置：保持 Browser 固定 896 KiB heap 和公共 ABI 不变，把同一 fixture 拆成 Text、
+Comment、失败/ detached 三个短脚本 session；`20260911-173051-next785-char-relative-retry`
+和最终门均以同一 Debug 产物通过 `1226,999`。
+
+决定：新增离线 Browser fixture 必须按既有 896 KiB 预算拆分独立 probe；不得扩大无界
+heap、跳过断言或把启动头/不完整日志当作通过证据。
+
 ### next758 首轮 image-source callback：新增 native slot 触及上限 — 已替代
 
 问题：首版把 Browser→宿主 image-source mutation 通知实现为新的脚本 native global。

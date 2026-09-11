@@ -471,8 +471,8 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 `wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
-write Ex6 的 `insert_text_child` 处理 `append`/`prepend`、relative 和 `insertAdjacentText`；
-Ex4–Ex7 mutation 分别处理 existing-element 插入、替换、位置和 primitive `replaceWith`。
+write Ex6 的 `insert_text_child` 处理 append/prepend、relative、adjacent text 和 CharacterData
+primitive before/after；Ex4–Ex7 处理 element 插入/替换、位置和 primitive replaceWith。
 不支持 `DocumentFragment`、其他节点或 live collection。
 `Node.cloneNode(deep)` 只产生最多
 64 子节点/256 总节点的独立 detached snapshot，超限或不支持类型 fail closed。
