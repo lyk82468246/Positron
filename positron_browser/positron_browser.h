@@ -760,6 +760,32 @@ typedef struct PBrowserScriptDomWriteCallbacksEx6 {
     PBrowserScriptInsertTextChildFn insert_text_child;
 } PBrowserScriptDomWriteCallbacksEx6;
 
+/* Extended DOM write table. Ex6 remains ABI-fixed for existing hosts; Ex7
+ * appends a bounded primitive-text list insertion adapter while reusing the
+ * same `__pcoreSetText` native slot. `parent_id` and `text` values are
+ * borrowed UTF-8 for the synchronous call, `child_index` is an unfiltered
+ * childNodes index, and `text_count` is between one and four. The callback
+ * inserts the complete list atomically and returns >0 after success, 0 when
+ * the parent/index is unavailable and <0 on adapter failure. The host must
+ * re-query and schedule style/layout/paint after success. Existing nodes,
+ * DocumentFragment values and mutation events remain outside this callback.
+ */
+typedef int (*PBrowserScriptInsertTextChildListFn)(void *pw,
+        const char *parent_id, unsigned int child_index,
+        const char *const *texts, unsigned int text_count);
+typedef struct PBrowserScriptDomWriteCallbacksEx7 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
+} PBrowserScriptDomWriteCallbacksEx7;
+
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
  * Core-owned removal of one direct element child. remove_child returns >0
@@ -2091,7 +2117,7 @@ typedef struct PBrowserScriptImageSourceCallbacks {
 } PBrowserScriptImageSourceCallbacks;
 
 /* Browser script session. The session owns one browser-sized PScript context
- * (the browser bootstrap uses a bounded 896 KiB heap ceiling) and all
+ * (the browser bootstrap uses a bounded 1 MiB heap ceiling) and all
  * registered native functions. It does not own a core document or any host
  * callback pw value. Return codes from Evaluate/Call/Set/Register are the
  * stable positron_script result codes; zero is success. */
@@ -2253,6 +2279,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx5(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx5 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx6 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx7 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

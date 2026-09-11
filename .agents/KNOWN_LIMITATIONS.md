@@ -32,7 +32,7 @@
   submit-capable button/input/image 只匹配所属 form 中按文档顺序的第一个 submit control。
   live `.checked`/`selectedIndex` mutation 不会改写默认状态；relation 缺失、非支持元素、
   带参数、伪元素或尾随逗号仍 fail closed。TEST1181 通过多个短脚本 session 适配固定的
-  896 KiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
+  1 MiB heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
 - `<option>` 的脚本 `selected`/`defaultSelected` 属性只在宿主注册
   `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
   选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
@@ -132,16 +132,17 @@
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
 - Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、CharacterData
   setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`，以及
-  Ex2/Ex3 的 Text/Comment/CDATA direct-child removal。成功 mutation 使 layout 失效
-  并刷新必要 snapshot；UTF-16、UTF-8、detached wrapper 和错误目标按入口合同 fail closed。
+  Ex2/Ex3 的 Text/Comment/CDATA direct-child removal。成功 mutation 使 layout 失效；
+  UTF-16、UTF-8、detached wrapper 和错误目标按入口合同 fail closed。
   Ex4 的 `Node.insertBefore()`/`appendChild()` 支持带 id element 的同父 reorder、跨父 reparent
   和 `NULL` append；Ex6 的 `append()`/`prepend()`（零至四值）先预检，再按未过滤
   `childNodes` 末尾/零位移动 element 或创建 primitive Text。element 的 `before()`/`after()`、
   `insertAdjacentText()`/`insertAdjacentElement()` 覆盖 direct-parent/四位置；Text、Comment、
-  CDATA wrapper 也可用 write Ex6 做 primitive `before()`/`after()`。错误 parent、
-  层级环、结构 token、detached、节点/DocumentFragment、超限值列表不产生部分 mutation；
+  CDATA wrapper 可用 write Ex6 单值或 write Ex7 的 2–4 primitive Text 列表做
+  `before()`/`after()`。错误 parent、层级环、结构 token、detached、节点/DocumentFragment、
+  超限值列表不产生部分 mutation；
   通用 Node/DocumentFragment、其他 CharacterData 插入/替换、其他删除、mutation 事件、
-  MutationObserver 和 live collection 仍未实现。Ex5 的 `Node.replaceChild()` 仍只支持带 id
+  MutationObserver 和 live collection 未实现。Ex5 的 `Node.replaceChild()` 仍只支持带 id
   existing element；Ex7 的 `Element.replaceWith(value)` 支持一个字符串化 primitive，Ex8
   支持 2–4 个 primitive 并以一次 Core 操作创建 Text 列表。old/new 必须满足
   direct-child/connected 约束；DocumentFragment、detached、对象、零值和超限多值仍 fail closed。
@@ -215,7 +216,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 896 KiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 DOM removal 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
+ - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 1 MiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 DOM removal 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -356,7 +357,7 @@
 - TEST1154 覆盖 Browser selector 的有限结构伪类：`:root`、`:empty`、child/of-type
   变体和四种 `nth-*` 变体；支持整数、`odd`/`even` 和受限 `an+b` 公式，并确认空公式、
   `of` 过滤、伪元素和超大数值 fail closed。判断使用只读 childNodes/关系快照，
-  仍受 64 步、公式系数和 896 KiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
+  仍受 64 步、公式系数和 1 MiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
   shadow DOM 和 CSS Selectors 语法不在保证范围内。
 - TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
@@ -473,7 +474,7 @@
 - TEST1181 是离线的 Browser selector `:default` 夹具，无新增立即人工风险；自动门证明
   默认 checked 控件、Core relation 45 的 option default-selected、form 首个 submit
   control、查询顺序、live state mutation、matches/closest 和非法输入的 fail-closed。
-  多个短脚本 session 只为适配固定 896 KiB heap；真实 native 默认按钮行为、表单视觉、
+  多个短脚本 session 只为适配固定 1 MiB heap；真实 native 默认按钮行为、表单视觉、
   触摸、SIP/IME 和不同 DPI 仍需人工验收。
 - TEST1182 是离线的 Browser/Core option property 夹具，无新增立即人工风险；自动门证明
   `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
@@ -579,7 +580,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1227 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
+- TEST1201–1228 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
   clone/equality、Ex2/Ex3 removal 与 Ex4–Ex8 insertion/replacement/relative text、
   `insertAdjacentText()`/`insertAdjacentElement()`、CharacterData relative insertion 及
   四值 append/prepend/replaceWith 的 wrapper/snapshot、detached、UTF-16 和 retained-layout

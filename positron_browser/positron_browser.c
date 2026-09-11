@@ -16,10 +16,10 @@
 /* The browser bootstrap owns additional bounded DOM, geometry and scrolling
  * layers beyond the standalone script surface. Keep its heap ceiling explicit
  * and local to browser sessions; independent PScript contexts remain at their
- * 512 KiB default. The extra 384 KiB leaves bounded room for browser
- * bridge state and transient numeric-conversion workspaces. */
+ * 512 KiB default. The extra 512 KiB leaves bounded room for the browser
+ * bridge state, DOM adapters and transient conversion workspaces. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 384UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 512UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -5581,10 +5581,10 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "for(j=0;j<next11.length;j++){if(next11[j]&&next11[j].__owner11===o){"
         "next11[j].__index11=j;}}i=start;o.__children9=null;data11=s;return n;};}"
         "if(t===3||t===4||t===8){n.before=function(value){if(arguments.length===0){"
-        "return undefined;}if(arguments.length!==1){throw new Error('relative arguments');}"
-        "return insertCharacterDataRelative11(n,value,false);};n.after=function(value){"
-        "if(arguments.length===0){return undefined;}if(arguments.length!==1){"
-        "throw new Error('relative arguments');}return insertCharacterDataRelative11(n,value,true);};"
+        "return undefined;}return insertCharacterDataRelative11(n,value,false,"
+        "arguments.length>1?arguments:null);};n.after=function(value){"
+        "if(arguments.length===0){return undefined;}return insertCharacterDataRelative11(n,value,true,"
+        "arguments.length>1?arguments:null);};"
         "n.remove=function(){if(t===3){return removeText11(n);}return removeCharacterData11(n);};}"
         "Object.defineProperty(n,'parentNode',{get:function(){return current11(n)?o:null;},enumerable:true});"
         "Object.defineProperty(n,'parentElement',{get:function(){return current11(n)?o:null;},enumerable:true});"
@@ -5633,14 +5633,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "owner.__nodes11=list(next);for(j=0;j<next.length;j++){"
         "if(next[j]&&next[j].__owner11===owner){next[j].__index11=j;}}"
         "owner.__children9=null;return undefined;}"
-        "function insertCharacterDataRelative11(n,value,after){var owner,index;"
+        "function insertCharacterDataRelative11(n,value,after,args){var owner,index;"
         "if(!n||(n.nodeType!==3&&n.nodeType!==4&&n.nodeType!==8)||!current11(n)){"
         "return undefined;}if(value!==null&&value!==undefined&&(typeof value==='object'||"
-        "typeof value==='function')){throw new Error('insert only accepts text');}"
+        "typeof value==='function')&&!args){throw new Error('insert only accepts text');}"
         "if(!n.isConnected){return undefined;}owner=n.__owner11;"
         "if(!owner||typeof owner.__id!=='string'||owner.__id===''||"
         "owner.__pcoreDetached11){throw new Error('insert parent unavailable');}"
-        "index=n.__index11+(after?1:0);return insertText11(owner,value,false,index);}"
+        "index=n.__index11+(after?1:0);return args?insertTextList11(owner,args,index):"
+        "insertText11(owner,value,false,index); }"
         "oldRemoveChild11=P.prototype.removeChild;"
         "P.prototype.removeChild=function(child){"
         "if(child&&(child.nodeType===3||child.nodeType===4||child.nodeType===8)){"
@@ -5772,23 +5773,31 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "o.__nodes11=list(next);for(j=0;j<next.length;j++){"
         "if(next[j]&&next[j].__owner11===o){next[j].__index11=j;}}"
         "o.__children9=null;}"
-        "function insertText11(o,value,atStart,index){var old,count,ok,newNode,next,j;"
+        "function insertText11(o,value,atStart,index,multi){var old,count,n,ok,newNode,next,i,j,payload,v;"
         "if(!o||typeof o.__id!=='string'||o.__id===''){throw new Error('insert unavailable');}"
         "if(o.__pcoreDetached11){throw new Error('insert parent unavailable');}"
-        "if(value!==null&&value!==undefined&&(typeof value==='object'||typeof value==='function')){"
+        "n=multi?value.length:1;if(n<1||n>4){throw new Error('insert argument limit');}"
+        "if(!multi&&value!==null&&value!==undefined&&(typeof value==='object'||typeof value==='function')){"
         "throw new Error('insert only accepts text');}if(typeof g.__pcoreSetText!=='function'){"
         "throw new Error('insert unavailable');}old=nodes(o);count=num(o,14,0);"
         "index=index===undefined?(atStart?0:count):index;"
-        "if(count>64||old.length!==count||index<0||index>count){"
-        "throw new Error('insert child limit');}try{ok=g.__pcoreSetText({op:'insertTextChild',"
+        "if(count>64||old.length!==count||index!==Math.floor(index)||index<0||"
+        "index>count||count+n>64){throw new Error('insert child limit');}"
+        "if(multi){payload={count:n};for(i=0;i<n;i++){v=value[i];"
+        "if(v!==null&&v!==undefined&&(typeof v==='object'||typeof v==='function')){"
+        "throw new Error('insert only accepts text');}payload['text'+i]=String(v);}}"
+        "try{ok=multi?g.__pcoreSetText({op:'insertTextChildList',parentId:o.__id,"
+        "index:index,values:payload}):g.__pcoreSetText({op:'insertTextChild',"
         "parentId:o.__id,index:index,text:String(value)});}catch(e){ok=false;}"
-        "if(!ok){throw new Error('insert text failed');}newNode=child(o,index);"
-        "if(newNode===null){if(typeof g.__pcoreInvalidateDomCaches==='function'){"
+        "if(!ok){throw new Error('insert text failed');}next=[];"
+        "for(j=0;j<index;j++){next.push(old[j]);}for(i=0;i<n;i++){"
+        "newNode=child(o,index+i);if(newNode===null){if(typeof g.__pcoreInvalidateDomCaches==='function'){"
         "g.__pcoreInvalidateDomCaches(o.__id);}throw new Error('insert wrapper unavailable');}"
-        "next=[];for(j=0;j<count+1;j++){if(j===index){next.push(newNode);}else if(j<index){"
-        "next.push(old[j]);}else{next.push(old[j-1]);}}o.__nodes11=list(next);"
+        "next.push(newNode);}for(j=index;j<count;j++){next.push(old[j]);}"
+        "o.__nodes11=list(next);"
         "for(j=0;j<next.length;j++){if(next[j]&&next[j].__owner11===o){"
         "next[j].__index11=j;}}o.__children9=null;return undefined;}"
+        "function insertTextList11(o,args,index){return insertText11(o,args,false,index,true);}"
         "function current11(n){var a=n&&n.__owner11?n.__owner11.__nodes11:null;"
         "return !!(a&&!n.__owner11.__pcoreDetached11&&n.__index11>=0&&"
         "n.__index11<a.length&&a[n.__index11]===n); }"
@@ -5874,9 +5883,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "else{insertText11(o,v,true,0);}}}else{for(i=0;i<n;i++){v=args[i];"
         "if(v&&v.nodeType===1){insertExistingAt11(o,v,num(o,14,0));}"
         "else{insertText11(o,v,false,num(o,14,0));}}}return undefined;}"
-        "function insertRelative11(o,n,after,returnNode){var p,a,i,index,oldParent,ok;"
+        "function insertRelative11(o,n,after,returnNode,args){var p,a,i,index,oldParent,ok;"
         "if(!o||o.nodeType!==1||typeof o.__id!=='string'||o.__id===''||"
-        "(n!==null&&n!==undefined&&(typeof n==='object'||typeof n==='function')&&"
+        "(!args&&n!==null&&n!==undefined&&(typeof n==='object'||typeof n==='function')&&"
         "(!n.nodeType||n.nodeType!==1||typeof n.__id!=='string'||n.__id===''))){"
         "throw new Error('insert unavailable');}if(same(o,n)){"
         "throw new Error('insert hierarchy');}p=parent(o);if(!p||p===doc||"
@@ -5885,7 +5894,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(!a||a.length>64){throw new Error('insert child limit');}index=-1;"
         "for(i=0;i<a.length;i++){if(same(a[i],o)){index=i;break;}}"
         "if(index<0){throw new Error('insert target unavailable');}"
-        "if(after){index++;}if(!n||n.nodeType!==1||typeof n.__id!=='string'||"
+        "if(after){index++;}if(args){return insertTextList11(p,args,index);}"
+        "if(!n||n.nodeType!==1||typeof n.__id!=='string'||"
         "n.__id===''){return insertText11(p,n,false,index);}oldParent=parent(n);"
         "if(typeof g.__pcoreRemoveChild!=='function'){throw new Error('insert unavailable');}"
         "try{ok=g.__pcoreRemoveChild({op:'insertElementChildAt',parentId:p.__id,"
@@ -5924,11 +5934,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "throw new Error('insertAdjacentElement position');}"
         "return insertRelative11(o,n,pos==='afterend',true);}"
         "P.prototype.before=function(value){if(arguments.length===0){return undefined;}"
-        "if(arguments.length!==1){throw new Error('before arguments');}"
-        "return insertRelative11(this,value,false);};"
+        "return insertRelative11(this,value,false,false,arguments.length>1?arguments:null);};"
         "P.prototype.after=function(value){if(arguments.length===0){return undefined;}"
-        "if(arguments.length!==1){throw new Error('after arguments');}"
-        "return insertRelative11(this,value,true);};"
+        "return insertRelative11(this,value,true,false,arguments.length>1?arguments:null);};"
         "P.prototype.insertAdjacentElement=function(position,element){"
         "if(arguments.length!==2){throw new Error('insertAdjacentElement arguments');}"
         "return insertAdjacentElement11(this,String(position).toLowerCase(),element);};"
@@ -6378,6 +6386,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
     PBrowserScriptNormalizeChildTextFn normalize_child_text;
     PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7662,13 +7671,19 @@ static int p_browser_script_dom_set_text(void *pw,
         const char *args_json, int args_len, char *out_json,
         int out_capacity, int *out_len)
 {
+    static const char *text_keys[4] = {
+        "text0", "text1", "text2", "text3"
+    };
     p_browser_script_dom_write_binding *binding;
     HANDLE root;
     HANDLE object;
+    HANDLE values;
     const char *id;
     const char *parent_id;
     const char *op;
     const char *text;
+    const char *text_values[4];
+    int value_count;
     int child_index;
     int node_type;
     int offset;
@@ -7681,6 +7696,8 @@ static int p_browser_script_dom_set_text(void *pw,
     parent_id = (object != NULL) ? PJson_GetString(object, "parentId") : NULL;
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
     text = (object != NULL) ? PJson_GetString(object, "text") : NULL;
+    values = (object != NULL) ? PJson_GetObject(object, "values") : NULL;
+    value_count = 0;
     child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
     node_type = (object != NULL) ? PJson_GetInt(object, "nodeType") : 0;
     offset = (object != NULL) ? PJson_GetInt(object, "offset") : -1;
@@ -7688,7 +7705,37 @@ static int p_browser_script_dom_set_text(void *pw,
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "insertTextChild") == 0) {
+    if (op != NULL && strcmp(op, "insertTextChildList") == 0) {
+        if (binding->insert_text_child_list == NULL || parent_id == NULL ||
+                parent_id[0] == '\0' || child_index < 0 || values == NULL ||
+                strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
+            PJson_Free(root);
+            return 1;
+        }
+        value_count = PJson_GetInt(values, "count");
+        if (value_count < 1 || value_count > 4) {
+            PJson_Free(root);
+            return 1;
+        }
+        for (child_index = 0; child_index < value_count; child_index++) {
+            text_values[child_index] = PJson_GetString(values,
+                    text_keys[child_index]);
+            if (text_values[child_index] == NULL ||
+                    strlen(text_values[child_index]) >
+                    PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+                PJson_Free(root);
+                return 1;
+            }
+        }
+        child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
+        if (child_index < 0) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->insert_text_child_list(binding->pw, parent_id,
+                (unsigned int) child_index, text_values,
+                (unsigned int) value_count);
+    } else if (op != NULL && strcmp(op, "insertTextChild") == 0) {
         if (binding->insert_text_child == NULL || parent_id == NULL ||
                 parent_id[0] == '\0' || child_index < 0 || text == NULL ||
                 strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
@@ -10697,6 +10744,54 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(
     binding->replace_whole_text_child = callbacks->replace_whole_text_child;
     binding->normalize_child_text = callbacks->normalize_child_text;
     binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = NULL;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx7 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx7) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

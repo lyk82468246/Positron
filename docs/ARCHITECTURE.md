@@ -151,6 +151,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   不可用父节点或索引安全返回失败码；Core 不派发事件、不获取资源、不操作 native
   控件，调用方负责重新 style/layout/paint。它不扩展为通用 Node/DocumentFragment
   插入、已有节点 reparent、其他节点删除或 live collection；
+- `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
+  原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
+  mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
+  不暴露 fragment 或已有节点操作；
 - Text/CharacterData DOM deletion：`PCore_NodeRemoveTextChildById` 保持旧的 Text-only ABI，
   按父元素 UTF-8 id 和未过滤 `childNodes` 索引删除一个现有 direct Text child；新增的
   `PCore_NodeRemoveCharacterDataChildById` 在相同边界接受显式 DOM 节点类型 3（Text）、
@@ -327,10 +331,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和
   多参数调用 fail closed；
 - 相同的 write Ex6 text-child callback 还服务 CharacterData wrapper：Text、Comment 和
-  CDATA 的 `before(value)`/`after(value)` 只接受一个 primitive，按当前 direct parent 的
-  未过滤 `childNodes` 索引创建 Text sibling，并保留目标 wrapper 与旧 snapshot。零参数和
-  detached wrapper 是 no-op；节点、对象和多参数 fail closed。Core 继续拥有插入及
-  retained-layout invalidation，不新增 callback table 或 ABI；
+  CDATA 的 `before(value)`/`after(value)` 接受一个 primitive，按当前 direct parent 的
+  未过滤 `childNodes` 索引创建 Text sibling，并保留目标 wrapper 与旧 snapshot。write Ex7
+  在同一 `__pcoreSetText` slot 追加列表 callback，使 element 与 CharacterData relative
+  入口一次插入 2–4 个 primitive Text；Core 以 fragment 原子提交。零参数和 detached
+  wrapper 是 no-op；节点、对象和超限列表 fail closed；宿主仍只负责接线与成功后的
+  重排/重绘，旧 Ex6 表布局不变。
 - `Element.replaceWith(value)` 的 primitive 重载通过 ABI 追加的
   `PBrowserScriptDomMutationCallbacksEx7.replace_child_with_text` 接入
   `PCore_NodeReplaceElementChildWithTextById`。Browser 只接受一个字符串、数字、布尔值、
@@ -692,10 +698,10 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   缺失或失败按 fail-closed 处理。
 - DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，Ex2 再
   追加 Comment/CDATA callback，Ex3 追加 `Text.splitText()` callback，Ex4 再追加
-  `Text.replaceWholeText()` callback，Ex5 再追加 `Node.normalize()` callback；五者都
+  `Text.replaceWholeText()` callback，Ex5 再追加 `Node.normalize()` callback，Ex6 追加
+  direct Text-child callback，Ex7 追加 2–4 primitive Text 列表 callback；所有版本都
   复用旧的 `__pcoreSetText` native slot。旧的
-  `PBrowserScriptDomWriteCallbacks`、Ex2/Ex3/Ex4 布局和 element/Text/CharacterData
-  既有语义保持不变。
+  `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex6 布局和既有语义保持不变。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加

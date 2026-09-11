@@ -13,6 +13,21 @@
 
 ## 失败与暂挂
 
+### next787 首轮设备门：Browser bootstrap 触及旧 heap ceiling — 已替代
+
+问题：`20260911-191458-next787-relative-text-list-retry` 及后续压缩 probe 在
+`TEST1228` 的 Browser persistent evaluation 阶段报告 `JavaScript memory limit exceeded`；
+同一批旧 `TEST1221` 也在新功能断言前失败。部署、RAPI、日志回收和 crash 检查没有异常，
+诊断值为 used=916955、peak=917501、limit=917504，说明原固定 896 KiB 上限只剩极少余量。
+
+处置：保留 Ex7 的有界 2–4 值列表合同和紧凑 probe，不跳过断言或改成无界堆；将 Browser
+bootstrap 的固定 ceiling 精确提高 512 KiB，总上限为 1 MiB，并同步资源文档。最终
+`20260911-193051-next787-relative-text-list-1m` 以 Debug ARMV4I 通过 `1228,999`，
+2/2 PASS、零 ERROR/FAIL、日志完整、双空间与 crash 检查通过，新增 dump=0。
+
+决定：后续 Browser bootstrap 扩展必须在相同固定 1 MiB 上限下保持 payload/fixture 有界；
+再次触及上限时先压缩重复状态或拆分 session，不能继续无界扩大预算。
+
 ### next786 首轮设备门：多值 replaceWith 触及脚本 heap — 已替代
 
 问题：`20260911-180638-next786-replace-text-list-final`、`180900` 和 `181153` 的部署、

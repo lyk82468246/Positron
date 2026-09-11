@@ -402,6 +402,22 @@ PCORE_API int PCore_NodeReplaceElementChildWithTextListById(HANDLE hDoc,
 PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text);
 
+/* Insert a bounded list of newly-created UTF-8 Text children at an
+ * unfiltered childNodes index. `texts` contains `text_count` borrowed
+ * strings; the count must be between one and four. The complete list is
+ * created in a DocumentFragment and inserted in one DOM operation, so
+ * validation or allocation failure cannot leave a partial mutation. Returns
+ * 0 after insertion, 2 when the parent or index is unavailable, and 1 for
+ * invalid input, malformed UTF-8, a list limit violation or another DOM
+ * failure. A successful insertion invalidates retained layout; callers must
+ * re-query and style/layout/paint again. This primitive never reparents
+ * existing nodes, dispatches events or exposes the fragment to callers.
+ */
+#define PCORE_NODE_INSERT_TEXT_LIST_MAX 4u
+PCORE_API int PCore_NodeInsertTextChildListById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        const char *const *texts, unsigned int text_count);
+
 /* Remove one existing direct Text child at an unfiltered childNodes index.
  * The parent must be an addressable element and the indexed child must be a
  * DOM_TEXT_NODE; no other node type, reparenting or document-structure token

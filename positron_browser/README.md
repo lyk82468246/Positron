@@ -155,7 +155,7 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 ### Script session
 
 `PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
-独立的 896 KiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
+独立的 1 MiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
 状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但 Web host
 objects 由 Browser callbacks 提供。
 
@@ -449,7 +449,7 @@ DocumentFragment、detached、错误 parent/self、多参数 fail closed。
 
 Ex6 追加 `insert_child_at`，处理 `append()`/`prepend()`（最多四个 element）、`before()`/
 `after()`/`insertAdjacentElement()`；Core 按未过滤索引移动 id element，支持混合/跨父；
-primitive 复用 Ex6 建 Text。
+primitive 同样走 Ex6。
 
 Ex7 追加 `replace_child_with_text`，由 `Element.replaceWith(value)` 调用
 `PCore_NodeReplaceElementChildWithTextById`；支持五种 primitive，原位建 Text、保留旧
@@ -462,9 +462,8 @@ primitive Text，旧 wrapper/snapshot detached。对象/element/fragment、detac
 均 fail closed；宿主接线，成功后重排。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
-`insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，分别创建
-Text 或移动并返回 element。未知/不支持、detached、超限或错误参数 fail closed；宿主
-负责重排/重绘。
+`insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text
+或移动 element。错误参数、detached 或超限 fail closed；宿主负责重排/重绘。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
@@ -472,11 +471,10 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 `wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
-write Ex6 的 `insert_text_child` 处理 primitive Text、relative/adjacent text 和
-CharacterData `before()`/`after()`；Ex4–Ex8 处理 element 插入/替换及位置。
-不支持 `DocumentFragment`、其他节点或 live collection。
-`Node.cloneNode(deep)` 只产生最多
-64 子节点/256 总节点的独立 detached snapshot，超限或不支持类型 fail closed。
+write Ex7 的 `insert_text_child_list`（通过
+`PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7` 注册）支持 element/CharacterData
+relative `before()`/`after()` 的 2–4 primitive Text 列表。
+`Node.cloneNode(deep)` 有 64 子节点/256 总节点预算；超限或不支持类型 fail closed。
 
 ### `dialog` 生命周期
 

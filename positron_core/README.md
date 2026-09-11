@@ -206,6 +206,13 @@ id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引
 style/layout/paint，并重新取得几何和控件快照。它不提供通用 Node/DocumentFragment
 插入、已有节点 reparent、其他节点删除或 live collection。
 
+`PCore_NodeInsertTextChildListById` 是同一位置合同的原子列表变体：`texts` 是调用方
+借用的 1–4 个合法 UTF-8 字符串，Core 先在 document fragment 中创建完整 Text 列表，
+再以一次 `childNodes` 插入提交，因此校验或分配失败不会留下部分 mutation。成功返回
+`0` 并使 retained box tree 失效；父节点/索引不可用返回 `2`，空列表、超限、非法 UTF-8
+或其他 DOM 失败返回 `1`。它不复用已有节点、不派发事件或暴露 fragment；调用方成功后
+必须重新取得 snapshot 并执行 style/layout/paint。
+
 `PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或

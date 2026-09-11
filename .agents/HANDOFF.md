@@ -10,19 +10,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next786 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
+最新 next787 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next786 在 next785 的基础上补齐 `Element.replaceWith(...values)` 的 Ex8 多值
+- 当前代码 next787 在 next786 的基础上补齐 element 与 CharacterData wrapper 的
+  2–4 primitive `before()`/`after()` Text 列表插入；next786 补齐 `Element.replaceWith(...values)` 的 Ex8 多值
   primitive Text 列表替换；next785 补齐 CharacterData wrapper 的 Ex6 `before()`/
   `after()` 单值 primitive 文本插入；next784 补齐 `Element.append()`/`prepend()` 的零至四值混合插入，复用 Core
-  existing-element/Text 语义并在 dispatch 前预检；TEST1220–1227 覆盖 element/primitive
+  existing-element/Text 语义并在 dispatch 前预检；TEST1220–1228 覆盖 element/primitive
   插入与替换、CharacterData relative 和 2–4 值 `replaceWith()`；保留 wrapper/snapshot，
   错误 child、对象/节点、detached、越界和超限均 fail closed。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1227。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1227,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1228。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1228,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -70,23 +71,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-- 当前基线已覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和 CharacterData 的有界 DOM 合同；next769/770 形成了
-  `Node.cloneNode()` detached snapshot 与 clone/live `Node.isEqualNode()` 结构比较，
-  next771 又加入 Ex6 的单值 `Element.append()`/`prepend()` 文本插入，next773 补齐
-  `Element.removeChild(Text)` 对已有 Ex2 删除桥的 Browser 兼容路径，next774 再补齐
-  Comment/CDATA direct-child removal 的 Ex3 mutation bridge，next776 再补齐
-  existing-element insertion/reparent 的 Ex4 bridge，next777 再补齐
-  existing-element replacement 的 Ex5 bridge，并修正空元素 `textContent` 的 Core getter
-  结果；next778 再补齐 mutation Ex6 的 existing-element `append()`/`prepend()` 位置插入，
-  next779 补齐相对 `before()`/`after()` element 插入，next780 补齐同一入口的单值
-  primitive 文本插入，next781 补齐 Ex7 的 primitive `replaceWith()` 文本替换，next782
-  补齐 Ex6 `insertAdjacentText()` 四位置，next783 补齐同一 Ex6 的
-  `insertAdjacentElement()` 四位置，next784 扩展 `append()`/`prepend()` 的零至四值预检插入，
-  next785 补齐 CharacterData wrapper 的 primitive `before()`/`after()`，next786 扩展
-  `Element.replaceWith(...values)` 的 2–4 primitive Text 列表替换。
-  稳定合同和逐测试说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与
-  [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
+- 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
+  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next787
+  依次补齐多值 append/prepend、CharacterData relative 单值、`replaceWith(...values)`
+  以及 element/CharacterData relative 的 2–4 primitive Text 列表。稳定合同和逐测试
+  说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
+  为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - 当前 fixed-buffer 数值转换、原子部署和 RAPI 日志恢复已由 `formal10` 正式门验证；`next766`
@@ -95,8 +85,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `next772` 的 `Text.remove()` 与 `next773` 的 `Element.removeChild(Text)` 纵切均已有正式
   设备门证据。next774 已完成 Core/Browser 的 Comment/CDATA direct-child removal 代码、
   Ex3 ABI 和 TEST1216 离线夹具，Debug/Release ARMV4I 构建均通过；当前 WMDC 连接上的
-  `TEST1216,999` 自动设备门也已通过；next776–next786 的 `TEST1217,999`–
-  `TEST1227,999` 设备门也已通过；不得把
+  `TEST1216,999` 自动设备门也已通过；next776–next787 的 `TEST1217,999`–
+  `TEST1228,999` 设备门也已通过；不得把
   测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
@@ -186,18 +176,19 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1227。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1227,999`。
+- `TEST_MAX_NUMBER`：1228。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1228,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260911-181556-next786-replace-text-list-final`：Debug ARMV4I，选择
-`1227,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
-`crash_check` 均 PASS，新增 dump=0。TEST1227 覆盖 Ex8 的 2–4 primitive
-`replaceWith(...values)` 原子 Text 列表替换、顺序、detached wrapper/旧 snapshot 与拒绝边界；
-TEST999 beep 通过。
+最新自动证据是 `20260911-193051-next787-relative-text-list-1m`：Debug ARMV4I，选择
+`1228,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
+`crash_check` 均 PASS，新增 dump=0。TEST1228 覆盖 write Ex7 的 element/CharacterData
+`before()`/`after()` 2–4 primitive Text 列表原子插入、顺序、wrapper/旧 snapshot 与拒绝边界；
+TEST999 beep 通过。Browser bootstrap heap ceiling 已为 1 MiB；旧 896 KiB 在 next787
+首次 probe 前耗尽（诊断见 Git history/tmp，不作为基线）。
 此前 `20260911-161749-next784-append-retry`：Debug ARMV4I，选择
 `1225,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
 `crash_check` 均 PASS，新增 dump=0。TEST1225 覆盖最多四值 append/prepend 的 primitive/
@@ -292,9 +283,9 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
   错误 parent、缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，
   暂无新增立即人工风险；DocumentFragment、Comment/CDATA、通用节点替换、完整 live
   collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1219–1227 是离线的 Core/Browser existing-element/CharacterData Ex6–Ex8 夹具，覆盖
+- TEST1219–1228 是离线的 Core/Browser existing-element/CharacterData Ex6–Ex8 夹具，覆盖
   `append()`/`prepend()`、`before()`/`after()`、`insertAdjacent*()`、CharacterData relative
-  primitive、单值及 2–4 值 primitive `replaceWith()`；自动门验证顺序、wrapper identity、旧
+  primitive、单值及 2–4 值 primitive `replaceWith()` 和 relative Text 列表；自动门验证顺序、wrapper identity、旧
   snapshot、父级 textContent、detached、对象/节点、越界、超限和 UTF-8 错误的 fail-closed 边界。
   该路径暂无新增立即人工风险；DocumentFragment、Comment/CDATA 插入、通用节点 mutation、
   完整 live collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
@@ -325,7 +316,7 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
-- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 896 KiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 1 MiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 图片资源的候选选择覆盖 Core 的最多 16 个同类正密度 `x` 或正宽度 `w` 候选（每个
   URL 最多 2047 字节），以及每个 `<picture>` 最多 8 个 preceding `<source>`、16 层
   ancestor 和 64 个 direct-child 节点的有界扫描。source 先按 document order 过滤

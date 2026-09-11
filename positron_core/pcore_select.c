@@ -9209,6 +9209,137 @@ PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
     return 0;
 }
 
+PCORE_API int PCore_NodeInsertTextChildListById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index,
+        const char *const *texts, unsigned int text_count)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_nodelist *children;
+    dom_ulong length;
+    dom_node *ref;
+    dom_document_fragment *fragment;
+    dom_string *content;
+    dom_text *new_text;
+    dom_node *inserted;
+    dom_exception err;
+    unsigned int i;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            texts == NULL || text_count == 0 ||
+            text_count > PCORE_NODE_INSERT_TEXT_LIST_MAX) {
+        return 1;
+    }
+    for (i = 0; i < text_count; i++) {
+        if (texts[i] == NULL || !pcore_contenteditable_utf8_valid(texts[i])) {
+            return 1;
+        }
+    }
+    doc = (dom_document *) hDoc;
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    children = NULL;
+    length = 0;
+    if (dom_node_get_child_nodes((dom_node *) parent, &children) !=
+            DOM_NO_ERR || children == NULL ||
+            dom_nodelist_get_length(children, &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    if ((dom_ulong) child_index > length) {
+        dom_nodelist_unref(children);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    ref = NULL;
+    if ((dom_ulong) child_index < length) {
+        if (dom_nodelist_item(children, (dom_ulong) child_index, &ref) !=
+                DOM_NO_ERR || ref == NULL) {
+            dom_nodelist_unref(children);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    dom_nodelist_unref(children);
+    fragment = NULL;
+    err = dom_document_create_document_fragment(doc, &fragment);
+    if (err != DOM_NO_ERR || fragment == NULL) {
+        if (ref != NULL) {
+            dom_node_unref(ref);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    for (i = 0; i < text_count; i++) {
+        content = NULL;
+        err = dom_string_create((const uint8_t *) texts[i], strlen(texts[i]),
+                &content);
+        if (err != DOM_NO_ERR || content == NULL) {
+            dom_node_unref((dom_node *) fragment);
+            if (ref != NULL) {
+                dom_node_unref(ref);
+            }
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        new_text = NULL;
+        err = dom_document_create_text_node(doc, content, &new_text);
+        dom_string_unref(content);
+        if (err != DOM_NO_ERR || new_text == NULL) {
+            if (new_text != NULL) {
+                dom_node_unref((dom_node *) new_text);
+            }
+            dom_node_unref((dom_node *) fragment);
+            if (ref != NULL) {
+                dom_node_unref(ref);
+            }
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        inserted = NULL;
+        err = dom_node_append_child((dom_node *) fragment,
+                (dom_node *) new_text, &inserted);
+        if (inserted != NULL) {
+            dom_node_unref(inserted);
+        }
+        dom_node_unref((dom_node *) new_text);
+        if (err != DOM_NO_ERR) {
+            dom_node_unref((dom_node *) fragment);
+            if (ref != NULL) {
+                dom_node_unref(ref);
+            }
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    inserted = NULL;
+    err = dom_node_insert_before((dom_node *) parent, (dom_node *) fragment,
+            ref, &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (ref != NULL) {
+        dom_node_unref(ref);
+    }
+    dom_node_unref((dom_node *) fragment);
+    dom_node_unref((dom_node *) parent);
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR ||
+            err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
 static int pcore_node_remove_character_data_child_impl(HANDLE hDoc,
         const char *parent_id, unsigned int child_index,
         dom_node_type expected_type)

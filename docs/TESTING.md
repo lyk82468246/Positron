@@ -434,7 +434,7 @@ default-selected 快照，submit-capable button/input/image 选择其 form 中�
 第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
 `.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
 逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
-默认状态或 selector 解析。为保持 WM6 上固定的 896 KiB Browser heap，初始、mutation 和
+默认状态或 selector 解析。为保持 WM6 上固定的 1 MiB Browser heap，初始、mutation 和
 非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
 
 TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：脚本先读
@@ -827,6 +827,14 @@ element、clone、零值、超过四值、非法 UTF-8 与 detached target 必�
 产生部分 mutation。设备门同时选择 `TEST1227,999`，确认 Browser heap 预算内的脚本执行、
 完整日志回收、空间预检与 crash check；DocumentFragment、通用 Node、mutation event、
 observer、live collection 和 native/视觉行为仍不在门内。
+
+TEST1228 覆盖 Browser write Ex7 的 `insert_text_child_list`：element 与 Text/Comment/CDATA
+wrapper 的 `before()`/`after()` 在 direct parent 的未过滤 `childNodes` 位置一次插入 2–4
+个字符串化 primitive，宿主只接线到 `PCore_NodeInsertTextChildListById`，Core 在 fragment
+中完整创建 Text 后原子提交。自动断言验证混合 child 顺序、返回值、目标 wrapper 与旧
+snapshot 身份、父级 `textContent` 以及 UTF-8/索引错误；对象、已有节点、超过四值和
+detached target 必须 fail closed，不产生部分 mutation。该门不覆盖 DocumentFragment、
+通用节点 mutation、事件、observer、live collection 或 native/视觉行为。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

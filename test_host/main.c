@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1227
+#define TEST_MAX_NUMBER 1228
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15374,6 +15374,33 @@ static int pcore_browser_script_dom_insert_text_child(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_insert_text_child_list(void *pw,
+        const char *parent_id, unsigned int child_index,
+        const char *const *texts, unsigned int text_count)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            texts == NULL || text_count == 0 ||
+            text_count > PCORE_NODE_INSERT_TEXT_LIST_MAX) {
+        return -1;
+    }
+    result = PCore_NodeInsertTextChildListById(bridge->document, parent_id,
+            child_index, texts, text_count);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_insert_child(void *pw,
         const char *parent_id, const char *child_id,
         const char *reference_child_id)
@@ -17084,7 +17111,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx7 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx8 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17260,6 +17287,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_normalize_child_text;
     dom_write_callbacks.insert_text_child =
             pcore_browser_script_dom_insert_text_child;
+    dom_write_callbacks.insert_text_child_list =
+            pcore_browser_script_dom_insert_text_child_list;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17471,7 +17500,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx8(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -49833,7 +49862,7 @@ static BOOL test1227_browser_replace_with_text_list_contract(void)
         "<div id='b'><span id='other'>O</span></div>"
         "<p id='result'>idle</p></body></html>";
     /* Keep each persistent evaluation compact: the browser session carries a
-     * fixed 896 KiB heap on WM6, so one oversized assertion script can fail
+     * fixed 1 MiB heap on WM6, so one oversized assertion script can fail
      * before the callback is reached even though the same assertions pass in
      * smaller evaluations.  The three probes below retain the full contract
      * while keeping each source/temporary allocation bounded. */
@@ -49999,6 +50028,178 @@ static BOOL test1227_browser_replace_with_text_list_contract(void)
             " through an atomic Core fragment replacement, preserving direct"
             " order, detached wrapper identity and old snapshots while"
             " rejecting objects, nodes, over-limit lists and detached targets.");
+    return TRUE;
+}
+
+/* TEST 1228 - bounded relative before/after accepts primitive Text lists. */
+static BOOL test1228_browser_relative_text_list_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='a'>lead<span id='target'>T</span>"
+        "<!--mark-->tail</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span><!--mark-->tail</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_ELEMENT_BEFORE[] =
+        "(function(){var a=document.getElementById('a'),t=document.getElementById('target'),"
+        "s=a.childNodes,x,r,ok;s=s||[];ok=s.length===4&&s[1]===t&&s[2].data==='mark';"
+        "r=t.before('A',7,null,false);x=a.childNodes;ok=ok&&r===undefined&&x.length===8&&"
+        "x[1].data==='A'&&x[2].data==='7'&&x[3].data==='null'&&x[4].data==='false'&&"
+        "x[5]===t&&x[6].data==='mark'&&x[7].data==='tail'&&"
+        "a.textContent==='leadA7nullfalseTtail'&&s.length===4&&s[1]===t;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_ELEMENT_AFTER[] =
+        "(function(){var a=document.getElementById('a'),t=document.getElementById('target'),"
+        "s=a.childNodes,x,r,ok;s=s||[];r=t.after('X','Y');x=a.childNodes;ok=t!==null&&"
+        "s.length===4&&r===undefined&&x.length===6&&x[1]===t&&x[2].data==='X'&&"
+        "x[3].data==='Y'&&x[4].data==='mark'&&x[5].data==='tail'&&"
+        "a.textContent==='leadTXYtail'&&s.length===4&&s[1]===t;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_CHARACTER_TEXT[] =
+        "(function(){var a=document.getElementById('a'),s=a.childNodes,text=s[0],t=s[1],"
+        "comment=s[2],x,r,ok;r=text.before('A',7);x=a.childNodes;ok=s.length===4&&"
+        "text.nodeType===3&&t.nodeType===1&&comment.nodeType===8&&r===undefined&&"
+        "x.length===6&&x[0].data==='A'&&x[1].data==='7'&&x[2]===text&&x[3]===t&&"
+        "x[4]===comment&&x[5].data==='tail'&&a.textContent==='A7leadTtail'&&"
+        "s.length===4&&s[0]===text&&s[1]===t&&s[2]===comment;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_CHARACTER_COMMENT[] =
+        "(function(){var a=document.getElementById('a'),s=a.childNodes,text=s[0],t=s[1],"
+        "comment=s[2],x,r,ok;r=comment.after('X','Y');x=a.childNodes;ok=s.length===4&&"
+        "text.nodeType===3&&t.nodeType===1&&comment.nodeType===8&&r===undefined&&"
+        "x.length===6&&x[0]===text&&x[1]===t&&x[2]===comment&&x[3].data==='X'&&"
+        "x[4].data==='Y'&&x[5].data==='tail'&&a.textContent==='leadTXYtail'&&"
+        "s.length===4&&s[0]===text&&s[1]===t&&s[2]===comment;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var a=document.getElementById('a'),t=document.getElementById('target'),"
+        "other=document.getElementById('other'),old=a.childNodes,bad=0,ok;"
+        "try{t.before('1','2','3','4','5');}catch(e){bad|=1;}"
+        "try{t.before('1',{});}catch(e2){bad|=2;}"
+        "try{t.after('1',other);}catch(e3){bad|=4;}t.remove();"
+        "try{t.before('x','y');}catch(e4){bad|=8;}ok=bad===15&&"
+        "a.childNodes.length===3&&a.textContent==='leadOtail'&&"
+        "old.length===4&&old[1]===t&&other.parentElement===a&&"
+        "t.parentNode===null&&!t.isConnected;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char BAD_UTF8[] = { (char) 0xc3, (char) 0x28, '\0' };
+    static const char *text_values[4];
+    static const char *after_values[2];
+    static const char *bad_values[2];
+    static const char *too_many[5];
+    HANDLE core_doc;
+    char core_value[128];
+    char error[768];
+    char probe_detail[768];
+    const char *failed_probe;
+    int core_first;
+    int core_second;
+    int core_bad_utf8;
+    int core_bad_count;
+    int core_bad_index;
+    int core_bad_parent;
+    int core_count;
+    int core_text;
+    int core_bytes;
+
+    text_values[0] = "A";
+    text_values[1] = "7";
+    text_values[2] = "null";
+    text_values[3] = "false";
+    after_values[0] = "X";
+    after_values[1] = "Y";
+    bad_values[0] = "ok";
+    bad_values[1] = BAD_UTF8;
+    too_many[0] = "1";
+    too_many[1] = "2";
+    too_many[2] = "3";
+    too_many[3] = "4";
+    too_many[4] = "5";
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    memset(core_value, 0, sizeof(core_value));
+    core_first = core_doc == NULL ? 1 : PCore_NodeInsertTextChildListById(
+            core_doc, "a", 1, text_values, 4);
+    core_second = core_doc == NULL ? 1 : PCore_NodeInsertTextChildListById(
+            core_doc, "a", 6, after_values, 2);
+    core_bad_utf8 = core_doc == NULL ? 1 : PCore_NodeInsertTextChildListById(
+            core_doc, "a", 1, bad_values, 2);
+    core_bad_count = core_doc == NULL ? 1 : PCore_NodeInsertTextChildListById(
+            core_doc, "a", 1, too_many, 5);
+    core_bad_index = core_doc == NULL ? 1 : PCore_NodeInsertTextChildListById(
+            core_doc, "a", 99, after_values, 2);
+    core_bad_parent = core_doc == NULL ? 1 : PCore_NodeInsertTextChildListById(
+            core_doc, "missing", 0, after_values, 2);
+    core_count = -1;
+    core_bytes = -1;
+    core_text = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "a", core_value, sizeof(core_value), &core_bytes);
+    if (core_doc != NULL) {
+        (void) PCore_NodeRelationById(core_doc, "a",
+                PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+                &core_count);
+    }
+    if (core_doc == NULL || core_first != 0 || core_second != 0 ||
+            core_bad_utf8 != 1 || core_bad_count != 1 || core_bad_index != 2 ||
+            core_bad_parent != 2 || core_count != 10 || core_text != 0 ||
+            core_bytes != 22 || strcmp(core_value,
+            "leadA7nullfalseTXYtail") != 0) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core first=%d second=%d utf8=%d count=%d index=%d parent=%d"
+                " nodes=%d text=%d bytes=%d value=%s", core_first, core_second,
+                core_bad_utf8, core_bad_count, core_bad_index, core_bad_parent,
+                core_count, core_text, core_bytes, core_value);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1228 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    memset(probe_detail, 0, sizeof(probe_detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-text-list", HTML,
+            PROBE_ELEMENT_BEFORE, "true", error, sizeof(error))) {
+        failed_probe = "element-before";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-text-list", HTML,
+            PROBE_ELEMENT_AFTER, "true", error, sizeof(error))) {
+        failed_probe = "element-after";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-text-list", HTML,
+            PROBE_CHARACTER_TEXT, "true", error, sizeof(error))) {
+        failed_probe = "character-text";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-text-list", HTML,
+            PROBE_CHARACTER_COMMENT, "true", error, sizeof(error))) {
+        failed_probe = "character-comment";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-text-list",
+            "<!doctype html><html><head><script>window.boot=1;</script></head>"
+            "<body><div id='a'>lead<span id='target'>T</span>"
+            "<i id='other'>O</i>tail</div><p id='result'>idle</p></body></html>",
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(probe_detail, error, sizeof(probe_detail) - 1);
+        probe_detail[sizeof(probe_detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                probe_detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1228 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1228 OK",
+            "Element and CharacterData before/after now insert two to four"
+            " stringified primitive Text values atomically through Browser Ex7"
+            " and the Core fragment bridge, preserving order and snapshots"
+            " while rejecting objects, nodes, over-limit lists and detached"
+            " targets without partial mutation.");
     return TRUE;
 }
 
@@ -90194,6 +90395,10 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
     int ignored;
     int result_bytes;
     int ok;
+    int evaluate_rc;
+    unsigned long memory_used;
+    unsigned long memory_peak;
+    unsigned long memory_limit;
 
     document = NULL;
     runtime = NULL;
@@ -90224,12 +90429,31 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
         g_browser_script_session.bridge = bridge;
         runtime = NULL;
         bridge = NULL;
-        if (pcore_browser_script_session_evaluate(probe, -1,
-                error, error_capacity) != 0 ||
+        evaluate_rc = pcore_browser_script_session_evaluate(probe, -1,
+                error, error_capacity);
+        if (evaluate_rc != 0 ||
                 PCore_NodeTextContentById(document, "result", result,
                 sizeof(result), &result_bytes) != 0 ||
                 strcmp(result, expected) != 0) {
             ok = 0;
+            if (evaluate_rc != 0 && g_browser_script_session.runtime != NULL &&
+                    error != NULL && error_capacity > 0) {
+                memory_used = PScript_GetMemoryUsed(
+                        g_browser_script_session.runtime);
+                memory_peak = PScript_GetPeakMemoryUsed(
+                        g_browser_script_session.runtime);
+                memory_limit = PScript_GetMemoryLimit(
+                        g_browser_script_session.runtime);
+                {
+                    char detail[768];
+                    strncpy(detail, error, sizeof(detail) - 1);
+                    detail[sizeof(detail) - 1] = '\0';
+                    _snprintf(error, error_capacity - 1,
+                            "%s (used=%lu peak=%lu limit=%lu)", detail,
+                            memory_used, memory_peak, memory_limit);
+                    error[error_capacity - 1] = '\0';
+                }
+            }
         }
     }
     pcore_browser_script_session_destroy();
@@ -108190,6 +108414,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1225: ok = test1225_browser_variadic_append_prepend_contract(); break;
         case 1226: ok = test1226_browser_character_data_relative_contract(); break;
         case 1227: ok = test1227_browser_replace_with_text_list_contract(); break;
+        case 1228: ok = test1228_browser_relative_text_list_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

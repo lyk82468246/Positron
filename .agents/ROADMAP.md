@@ -121,7 +121,8 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
  插入/替换，mutation Ex6 按未过滤 `childNodes` 支持同父重排、跨父迁移、四位置
 `insertAdjacentText()`/`insertAdjacentElement()`，并让 Text/Comment/CDATA wrapper 以同一
 write Ex6 callback 做单值 primitive `before()`/`after()`；Ex7/Ex8 保留旧 wrapper 为 detached。
-这十一条路径都由 Core 拥有 DOM 语义并在成功后使 retained layout 失效；DocumentFragment、通用
+这十一条路径都由 Core 拥有 DOM 语义并在成功后使 retained layout 失效；relative primitive 列表的 write Ex7
+支持 element 与 CharacterData 的 2–4 值原子 Text 插入。DocumentFragment、通用
 CharacterData 插入/替换、其他删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。
 
