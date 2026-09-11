@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1226
+#define TEST_MAX_NUMBER 1227
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15477,6 +15477,33 @@ static int pcore_browser_script_dom_replace_child_with_text(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_replace_child_with_text_list(void *pw,
+        const char *parent_id, const char *old_child_id,
+        const char *const *texts, unsigned int text_count)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            old_child_id == NULL || texts == NULL || text_count == 0 ||
+            text_count > PCORE_NODE_REPLACE_TEXT_LIST_MAX) {
+        return -1;
+    }
+    result = PCore_NodeReplaceElementChildWithTextListById(
+            bridge->document, parent_id, old_child_id, texts, text_count);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -17058,7 +17085,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx6 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx7 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx8 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17249,6 +17276,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_insert_child_at;
     dom_mutation_callbacks.replace_child_with_text =
             pcore_browser_script_dom_replace_child_with_text;
+    dom_mutation_callbacks.replace_child_with_text_list =
+            pcore_browser_script_dom_replace_child_with_text_list;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17444,7 +17473,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx6(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx7(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx8(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -49789,6 +49818,187 @@ static BOOL test1226_browser_character_data_relative_contract(void)
             " present, preserving direct-child order, identity and snapshots"
             " while rejecting nodes, objects, multiple values and detached"
             " no-op calls.");
+    return TRUE;
+}
+
+/* TEST 1227 - bounded variadic Element.replaceWith creates primitive Text. */
+static BOOL test1227_browser_replace_with_text_list_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='a'>lead<span id='old'>OLD</span>"
+        "tail</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='old'>OLD</span>tail</div>"
+        "<div id='b'><span id='other'>O</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    /* Keep each persistent evaluation compact: the browser session carries a
+     * fixed 896 KiB heap on WM6, so one oversized assertion script can fail
+     * before the callback is reached even though the same assertions pass in
+     * smaller evaluations.  The three probes below retain the full contract
+     * while keeping each source/temporary allocation bounded. */
+    static const char PROBE_VALID[] =
+        "var a=document.getElementById('a'),o=document.getElementById('old'),"
+        "s=a.childNodes,r=o.replaceWith('A',7,null,false),x=a.childNodes;"
+        "document.getElementById('result').textContent=String(r===undefined&&"
+        "x.length===6&&x[1].data==='A'&&x[2].data==='7'&&x[3].data==='null'&&"
+        "x[4].data==='false'&&x[1].nodeType===3&&x[1].parentNode===a&&"
+        "a.textContent==='leadA7nullfalsetail'&&o.parentNode===null&&"
+        "!o.isConnected&&s.length===3&&s[1]===o);";
+    static const char PROBE_REJECTIONS[] =
+        "var a=document.getElementById('a'),o=document.getElementById('old'),"
+        "n=document.getElementById('other'),s=a.childNodes,e=0;"
+        "try{o.replaceWith('1','2','3','4','5')}catch(x){e|=1}"
+        "try{o.replaceWith('1',{})}catch(x){e|=2}"
+        "try{o.replaceWith('1',n)}catch(x){e|=4}"
+        "document.getElementById('result').textContent=String(e===7&&"
+        "a.childNodes.length===3&&a.childNodes[1]===o&&"
+        "a.textContent==='leadOLDtail');";
+    static const char PROBE_EDGE[] =
+        "var a=document.getElementById('a'),o=document.getElementById('old'),"
+        "s=a.childNodes,e=0;try{o.replaceWith('1',o.cloneNode(false))}"
+        "catch(x){e|=1}try{o.replaceWith()}catch(x){e|=2}o.remove();"
+        "o.replaceWith('x','y');document.getElementById('result').textContent="
+        "String(e===3&&a.childNodes.length===2&&a.textContent==='leadtail'&&"
+        "o.parentNode===null&&!o.isConnected&&s.length===3&&s[1]===o);";
+    static const char BAD_UTF8[] = { (char) 0xc3, (char) 0x28, '\0' };
+    static const char *too_many[5] = { "1", "2", "3", "4", "5" };
+    const char *text_values[4];
+    const char *bad_values[2];
+    HANDLE core_doc;
+    char core_before_value[128];
+    char core_value[128];
+    char error[768];
+    int core_bad_utf8;
+    int core_bad_count;
+    int core_before;
+    int core_before_count;
+    int core_replace;
+    int core_count;
+    int core_type_first;
+    int core_type_last;
+    int core_text;
+    int core_bytes;
+    int core_old_exists;
+
+    text_values[0] = "A";
+    text_values[1] = "7";
+    text_values[2] = "null";
+    text_values[3] = "false";
+    bad_values[0] = "X";
+    bad_values[1] = BAD_UTF8;
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    memset(core_before_value, 0, sizeof(core_before_value));
+    memset(core_value, 0, sizeof(core_value));
+    core_bad_utf8 = -1;
+    core_bad_count = -1;
+    core_before = -1;
+    core_before_count = -1;
+    core_replace = -1;
+    core_count = -1;
+    core_type_first = -1;
+    core_type_last = -1;
+    core_text = -1;
+    core_bytes = -1;
+    core_old_exists = -1;
+    core_bad_utf8 = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextListById(core_doc, "a",
+            "old", bad_values, 2);
+    core_bad_count = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextListById(core_doc, "a",
+            "old", too_many, 5);
+    core_before = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "a", core_before_value, sizeof(core_before_value),
+            &core_before_count);
+    core_replace = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithTextListById(core_doc, "a",
+            "old", text_values, 4);
+    core_count = -1;
+    core_type_first = -1;
+    core_type_last = -1;
+    if (core_doc != NULL) {
+        (void) PCore_NodeRelationById(core_doc, "a",
+                PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+                &core_count);
+        (void) PCore_NodeRelationById(core_doc, "a",
+                PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 1, NULL, 0, NULL,
+                &core_type_first);
+        (void) PCore_NodeRelationById(core_doc, "a",
+                PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 4, NULL, 0, NULL,
+                &core_type_last);
+    }
+    core_text = core_doc == NULL ? 1 : PCore_NodeTextContentById(core_doc,
+            "a", core_value, sizeof(core_value), &core_bytes);
+    core_old_exists = core_doc == NULL ? 1 :
+            PCore_NodeExistsById(core_doc, "old");
+    if (core_doc == NULL || core_bad_utf8 != 1 || core_bad_count != 1 ||
+            core_before != 0 || core_before_count != 11 ||
+            strcmp(core_before_value, "leadOLDtail") != 0 ||
+            core_replace != 0 || core_count != 6 || core_type_first != 3 ||
+            core_type_last != 3 || core_text != 0 || core_bytes != 19 ||
+            core_old_exists != 0 || strcmp(core_value,
+            "leadA7nullfalsetail") != 0) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core bad_utf8=%d bad_count=%d before=%d/%d value=%s"
+                " replace=%d count=%d types=%d/%d text=%d bytes=%d old=%d"
+                " result=%s", core_bad_utf8, core_bad_count, core_before,
+                core_before_count, core_before_value, core_replace, core_count,
+                core_type_first, core_type_last, core_text, core_bytes,
+                core_old_exists, core_value);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1227 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-text-list", HTML,
+            PROBE_VALID, "true", error, sizeof(error))) {
+        {
+            char detail[768];
+            strncpy(detail, error, sizeof(detail) - 1);
+            detail[sizeof(detail) - 1] = '\0';
+            _snprintf(error, sizeof(error) - 1, "probe=valid %s", detail);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1227 FAIL", error);
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-text-list", HTML,
+            PROBE_REJECTIONS, "true", error, sizeof(error))) {
+        {
+            char detail[768];
+            strncpy(detail, error, sizeof(detail) - 1);
+            detail[sizeof(detail) - 1] = '\0';
+            _snprintf(error, sizeof(error) - 1, "probe=rejections %s", detail);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1227 FAIL", error);
+        return FALSE;
+    }
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-text-list", HTML,
+            PROBE_EDGE, "true", error, sizeof(error))) {
+        {
+            char detail[768];
+            strncpy(detail, error, sizeof(detail) - 1);
+            detail[sizeof(detail) - 1] = '\0';
+            _snprintf(error, sizeof(error) - 1, "probe=edge %s", detail);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1227 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1227 OK",
+            "Element.replaceWith now supports two to four primitive values"
+            " through an atomic Core fragment replacement, preserving direct"
+            " order, detached wrapper identity and old snapshots while"
+            " rejecting objects, nodes, over-limit lists and detached targets.");
     return TRUE;
 }
 
@@ -107979,6 +108189,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1224: ok = test1224_browser_insert_adjacent_element_contract(); break;
         case 1225: ok = test1225_browser_variadic_append_prepend_contract(); break;
         case 1226: ok = test1226_browser_character_data_relative_contract(); break;
+        case 1227: ok = test1227_browser_replace_with_text_list_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

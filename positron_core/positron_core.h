@@ -374,6 +374,22 @@ PCORE_API int PCore_NodeReplaceElementChildById(HANDLE hDoc,
 PCORE_API int PCore_NodeReplaceElementChildWithTextById(HANDLE hDoc,
         const char *parent_id, const char *old_child_id, const char *text);
 
+/* Replace one direct element child with a bounded list of newly-created UTF-8
+ * Text nodes. `texts` contains `text_count` borrowed strings; the count must
+ * be between one and four. The list is inserted at the old child's exact
+ * childNodes position in one DOM operation, and the old element becomes
+ * detached. Returns 0 after replacement, 2 when the parent/child relation or
+ * node type is unavailable, and 1 for invalid input, malformed UTF-8, a list
+ * limit violation or another DOM failure. A successful replacement
+ * invalidates retained layout; callers must style/layout/paint again. This
+ * primitive does not reparent existing nodes, dispatch events or expose a
+ * DocumentFragment to callers.
+ */
+#define PCORE_NODE_REPLACE_TEXT_LIST_MAX 4u
+PCORE_API int PCore_NodeReplaceElementChildWithTextListById(HANDLE hDoc,
+        const char *parent_id, const char *old_child_id,
+        const char *const *texts, unsigned int text_count);
+
 /* Insert one new UTF-8 Text child at an unfiltered childNodes index. The
  * parent must be an addressable element; child_index may equal the current
  * child count to append. The inserted node is always new and never reuses or

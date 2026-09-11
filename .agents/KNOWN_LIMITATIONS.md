@@ -142,9 +142,9 @@
   层级环、结构 token、detached、节点/DocumentFragment、超限值列表不产生部分 mutation；
   通用 Node/DocumentFragment、其他 CharacterData 插入/替换、其他删除、mutation 事件、
   MutationObserver 和 live collection 仍未实现。Ex5 的 `Node.replaceChild()` 仍只支持带 id
-  existing element；Ex7 的 `Element.replaceWith(value)` 另把一个字符串化 primitive 在 direct
-  element child 原位替换为 Text。element old/new 必须满足各自 direct-child/connected 约束；
-  Text/Comment/CDATA、DocumentFragment、detached、对象和多参数仍 fail closed。
+  existing element；Ex7 的 `Element.replaceWith(value)` 支持一个字符串化 primitive，Ex8
+  支持 2–4 个 primitive 并以一次 Core 操作创建 Text 列表。old/new 必须满足
+  direct-child/connected 约束；DocumentFragment、detached、对象、零值和超限多值仍 fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -579,10 +579,11 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1226 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
-  clone/equality、Ex2/Ex3 removal 与 Ex4–Ex7 insertion/replacement/relative text、
-  `insertAdjacentText()`/`insertAdjacentElement()`、CharacterData relative insertion 及四值 append/prepend 的
-  wrapper/snapshot、detached、UTF-16 和 retained-layout 边界；逐项合同见
+- TEST1201–1227 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
+  clone/equality、Ex2/Ex3 removal 与 Ex4–Ex8 insertion/replacement/relative text、
+  `insertAdjacentText()`/`insertAdjacentElement()`、CharacterData relative insertion 及
+  四值 append/prepend/replaceWith 的 wrapper/snapshot、detached、UTF-16 和 retained-layout
+  边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
   其他结构 mutation、observer/live collection、native/视觉需人工观察。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

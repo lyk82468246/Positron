@@ -1,6 +1,6 @@
 # 失败实验与禁止恢复边界
 
-更新时间：2026-09-07
+更新时间：2026-09-11
 
 这里只保留未来可能重复踩坑的失败、环境陷阱和重启门槛。普通已修复 bug 由 Git 和测试保存；当前仍存在的能力缺口见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -12,6 +12,22 @@
 - **环境误报**：失败来自旧进程、DLL 混用或设备环境，仍需保留流程护栏。
 
 ## 失败与暂挂
+
+### next786 首轮设备门：多值 replaceWith 触及脚本 heap — 已替代
+
+问题：`20260911-180638-next786-replace-text-list-final`、`180900` 和 `181153` 的部署、
+RAPI、双空间预检、完整日志回收与 `crash_check` 均正常，但 `TEST1227` 在 Browser probe
+中报告 `JavaScript memory limit exceeded`，不能把启动头或失败日志当作通过证据。
+
+根因：bootstrap helper 的局部 `list` 变量遮蔽了全局 `list()` NodeList wrapper，回调成功后
+包装新 child 进入错误路径；同时 WM6 固定 896 KiB heap 不适合数组化的临时 JSON payload。
+
+处置：局部变量改名为 `payload`，native 请求改用 `count/text0..text3` 紧凑对象，并将断言
+拆为三个短 probe；不扩大 heap 或放宽断言。最终 `20260911-181556-next786-replace-text-list-final`
+以 Debug ARMV4I 选择 `1227,999` 取得 2/2 PASS、零 ERROR/FAIL，日志完整、空间与 crash 检查通过。
+
+决定：新增 Browser fixture 必须尊重 896 KiB 预算；helper 局部名不得遮蔽 bootstrap helper，
+临时 payload 保持有界且失败时 fail closed。
 
 ### next785 首轮设备门：单个 CharacterData probe 触及脚本 heap — 已替代
 

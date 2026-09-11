@@ -819,6 +819,15 @@ Core ABI，宿主只负责既有 callback 接线、可选 restyle/layout/paint�
 CDATA wrapper 采用相同合同，但当前 HTML fixture 不伪造 CDATA。DocumentFragment、通用
 CharacterData insertion、mutation event、observer 和 live collection 仍不在门内。
 
+TEST1227 覆盖 `Element.replaceWith(...values)` 的有界多值 primitive 重载：Browser 通过
+Ex8 `replace_child_with_text_list` 把 2–4 个字符串化 primitive 一次交给 Core，Core 在
+fragment 中完整建 Text 后原子替换 direct element child。fixture/断言验证四值顺序、
+返回值、旧 element detached、旧 NodeList snapshot 和父级 `textContent`；对象、existing
+element、clone、零值、超过四值、非法 UTF-8 与 detached target 必须 fail closed，失败不
+产生部分 mutation。设备门同时选择 `TEST1227,999`，确认 Browser heap 预算内的脚本执行、
+完整日志回收、空间预检与 crash check；DocumentFragment、通用 Node、mutation event、
+observer、live collection 和 native/视觉行为仍不在门内。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
