@@ -100,11 +100,15 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   查询不会 fetch、decode 或 layout：成功资源要等 retained decode attempt 后才有自然
   尺寸，失败资源 complete 且尺寸为 0。CORS、`decode()` 和事件不在 Core 边界内；
 - 通过 `PCORE_NODE_RELATION_ELEMENT_INNER_HTML`/`PCORE_NODE_RELATION_ELEMENT_OUTER_HTML`
-  （关系 51/52）提供
-  ID-addressable element 的只读 HTML 序列化投影。Core 在固定节点、深度、child/attribute
-  和 UTF-8 字节预算内完整遍历 libdom 子树并负责转义；该查询不修改 DOM、不派发事件、
-  不获取资源也不触发布局；setter、clone snapshot、DocumentFragment、未知节点和超限
-  输入由 Core/Browser 共同 fail closed；
+  （关系 51/52）提供 ID-addressable element 的 live、只读 HTML 序列化投影。Core 在
+  固定节点、深度、child/attribute 和 UTF-8 字节预算内完整遍历 libdom 子树并负责转义；
+  该查询不修改 DOM、不派发事件、不获取资源也不触发布局。另通过
+  `PCore_NodeSetInnerHTMLById` 和 Browser write Ex8 提供同一 document 的 parser-backed
+  direct-child replacement：输入最多 16,384 字节、256 节点、64 层、每个元素 64 个
+  direct child，只接受 Element/Text/Comment/CDATA；重复/冲突 id、非法 UTF-8、未知/超限
+  输入在 mutation 前 fail closed，成功保留目标身份并使 retained layout 失效。outerHTML
+  setter、clone snapshot、通用 DocumentFragment、context-sensitive parser、事件和资源
+  执行仍不在边界内；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 图像映射命中与链接几何：对已布局且带 `usemap` 的 `<img>`，Core 按 DOM 顺序在
   `<map>` 的最多 64 个 `<area>` 中解析 `default`、`rect`、`circle` 和
@@ -201,6 +205,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `children`/`childNodes`/query snapshot 失效，宿主负责输入/事件策略及后续
   style/layout/paint。该路径不派发事件、不获取资源、不操作 native 控件，也不实现节点
   插入、reparent 或完整 live collection；
+- `PCore_NodeSetInnerHTMLById` 是文本内容 mutation 之外的另一条有界 Element 子树路径：
+   Core 使用同一 document 的 UTF-8 fragment parser，在提交前检查 16,384 字节、256 节点、
+   64 层、每个元素 64 个 direct child、支持节点类型和 id 冲突；通过后才把目标的 direct
+   children 移入临时 fragment 并一次性附加新片段，失败恢复旧子树。成功保持目标身份并
+   使 retained layout 失效；Browser 的 write Ex8 负责同步失效其有界旧 wrapper/snapshot，
+   宿主负责 callback 接线与后续 style/layout/paint。该路径不执行 script、不获取资源、
+   不派发 mutation 事件，也不扩展为 outerHTML setter、通用 DocumentFragment 或完整
+   context-sensitive HTML parser；
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
@@ -295,9 +307,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `time`/`datetime-local`；`range` 的默认范围也算受限范围，underflow/overflow 才是
   out-of-range，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和
   单独 stepMismatch 安全不匹配；
-- live、ID-addressable Element 的只读 `innerHTML`/`outerHTML` getter；序列化遍历和
-  escaping 由 Core relation 51/52 拥有，Browser 不复制 libdom 子树。setter、clone
-  snapshot、fragment、未知节点和超预算输入保持 fail closed；
+- live、ID-addressable Element 的 `innerHTML`/`outerHTML` getter；序列化遍历和 escaping
+  由 Core relation 51/52 拥有，Browser 不复制 libdom 子树。`innerHTML` setter 由 Browser
+  write Ex8 调用 Core 的 parser-backed replacement，成功后刷新有界 wrapper/snapshot 并
+  交给宿主安排 style/layout/paint；outerHTML setter、clone snapshot、fragment、未知节点
+  和超预算输入保持 fail closed；
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
@@ -689,9 +703,10 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`，并让通用 DOM
   attribute/text callback 支持 option 的 `value`/`label`/`text`；需要脚本 CharacterData
   setter 时注册 `PBrowserScriptDomWriteCallbacksEx`（仅 Text）、Ex2（含 Comment/CDATA）、
-  Ex3（另含 Text.splitText）、Ex4（另含 Text.replaceWholeText）或 Ex5（另含
-  Node.normalize），把父/元素 id 与 childNodes 索引转给对应的 Core primitive；宿主不复制 box tree、
-  滚动模型、默认状态或 fieldset/optgroup 继承规则；
+  Ex3（另含 Text.splitText）、Ex4（另含 Text.replaceWholeText）、Ex5（另含
+  Node.normalize）或 Ex8（另含 `Element.innerHTML` setter），把父/元素 id 与 childNodes
+  索引或 HTML 字符串转给对应的 Core primitive；宿主不复制 box tree、滚动模型、默认状态
+  或 fieldset/optgroup 继承规则；
 - 把 Core 的焦点 id 查询注册为 Browser 的可选 `document.activeElement` callback，
   把 `PCore_InteractionStateElementId` 注册为可选 interaction callback，并在需要
   脚本主动聚焦时注册 `PBrowserScriptFocusRequestCallbacks` 或 Ex 版本；
@@ -769,9 +784,10 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，Ex2 再
   追加 Comment/CDATA callback，Ex3 追加 `Text.splitText()` callback，Ex4 再追加
   `Text.replaceWholeText()` callback，Ex5 再追加 `Node.normalize()` callback，Ex6 追加
-  direct Text-child callback，Ex7 追加 2–4 primitive Text 列表 callback；所有版本都
-  复用旧的 `__pcoreSetText` native slot。旧的
-  `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex6 布局和既有语义保持不变。
+  direct Text-child callback，Ex7 追加 2–4 primitive Text 列表 callback，Ex8 追加
+  `Element.innerHTML` 的 `set_inner_html` callback；所有版本都复用旧的
+  `__pcoreSetText` native slot。旧的 `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex7 布局
+  和既有语义保持不变。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加

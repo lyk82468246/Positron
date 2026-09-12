@@ -121,8 +121,16 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   51/52）为带 id 的 Element
   提供只读、有界 HTML 序列化。Core 直接遍历完整 libdom 子树，涵盖无 id 后代并转义
   文本/属性；预算为 256 节点、64 层、64 个 direct child/attribute、16,384 个字节。
-  查询不触发 mutation、事件、资源或 layout；setter、clone、fragment、未知/超限输入
-  不属于该 ABI。
+  查询不触发 mutation、事件、资源或 layout；outerHTML setter、clone snapshot 和
+  DocumentFragment 仍不属于该 ABI。
+- `PCore_NodeSetInnerHTMLById(hDoc, element_id, html)` 是同一 DOM 边界的 parser-backed
+  setter。Core 在同一 document 中以 UTF-8 fragment parser 预检并替换目标 Element 的
+  direct children；输入最多 16,384 字节，fragment 最多 256 节点、64 层、每个元素 64 个
+  direct child。只接受 Element/Text/Comment/CDATA；重复 id、与替换子树外冲突的 id、
+  非法 UTF-8、未知节点或超限输入在 mutation 前返回 `3`，目标缺失或 document/head/body
+  结构目标返回 `2`，其他 parser/DOM 失败返回 `1`。成功返回 `0`、保持目标身份并使
+  retained layout 失效；Core 不执行 script、不获取资源、不派发事件，调用方必须重新
+  style/layout/paint。
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档

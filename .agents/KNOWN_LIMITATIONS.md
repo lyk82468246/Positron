@@ -128,8 +128,6 @@
 
 ## DOM、表单与事件
 
-- DOM bridge 默认只提供有界 snapshot；live、可寻址 Element 另有只读
-  `innerHTML`/`outerHTML` 序列化投影。
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
 - Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、CharacterData
   setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`，
@@ -140,14 +138,15 @@
   `before()`/`after()` 和单节点 `replaceWith()` 复用这两条既有路径。上述路径支持同父、跨父
   和 wrapper owner 更新。成功 mutation 使 layout 失效，UTF-16/UTF-8、detached、结构 token、
   错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/`prepend()`
-  （零至四值）创建 primitive Text 或移动 element；Ex7/Ex8 element `replaceWith()` 和
-  Ex9 CharacterData 1–4 primitive `replaceWith()` 仍按各自 callback 合同工作。Node/
-  DocumentFragment、通用 mutation/observer 和 live collection 未实现；CDATA 共享 ABI 但
-  HTML fixture 不伪造节点。
-- HTML 序列化由 Core relation 51/52 在一次有界 libdom 遍历中完成：最多 256 个节点、64 层、
-  64 个 direct child/attribute、16,384 个 UTF-8 字节，包含无 id 后代并转义文本/属性字符。
-  Browser 只为 live、可寻址 Element 提供 getter；setter、clone snapshot、DocumentFragment、
-  未知节点和超限输入 fail closed，不触发 mutation、事件、资源或 layout。
+  （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
+  遵循各自 callback 合同。Node/DocumentFragment、通用 mutation/observer 和 live collection
+  未实现。
+- Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
+  另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；成功
+  保持目标身份、标记旧 wrapper detached 并使 layout 失效，失败不改变 DOM。重复/外部冲突
+  id、非法 UTF-8、未知或超限输入 fail closed；不执行 script、不抓取资源、不派发事件，
+  也不提供 outerHTML setter、clone 或通用 DocumentFragment。预算与 parser 限制见
+  [`docs/TESTING.md`](../docs/TESTING.md)。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -582,10 +581,11 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1235 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
+- TEST1201–1237 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
   Ex2/Ex3 removal、Ex4–Ex12 insertion/replacement/relative text，以及 `insertAdjacent*()`、
-  四值 append/prepend/replaceWith、mixed list 的 wrapper/snapshot、detached、UTF-16 和
-  retained-layout 边界；逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+  四值 append/prepend/replaceWith、mixed list 的 wrapper/snapshot、detached、UTF-16、
+  parser-backed `innerHTML` replacement 和 retained-layout 边界；逐项合同见
+  [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

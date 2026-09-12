@@ -241,6 +241,27 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
 
+/* Replace one live element's child list with a UTF-8 HTML fragment. The
+ * parser-backed operation is deliberately bounded: input is limited to
+ * PCORE_NODE_HTML_MUTATION_MAX_BYTES, the fragment to
+ * PCORE_NODE_HTML_MUTATION_MAX_NODES and
+ * PCORE_NODE_HTML_MUTATION_MAX_CHILDREN direct children per element, and
+ * nesting to PCORE_NODE_HTML_MUTATION_MAX_DEPTH. Only Element, Text, Comment
+ * and CDATA nodes are accepted; document structure tokens, duplicate ids and
+ * ids that collide outside the replaced subtree fail before any mutation.
+ * The target element keeps its identity, while its old descendants become
+ * detached. No script execution, resource fetch or DOM event dispatch is
+ * exposed by this boundary. Returns 0 on success, 2 when the target is
+ * absent or a document-structure element, 3 for invalid UTF-8 or a bound
+ * violation, and 1 for another DOM/parser failure. A successful update
+ * invalidates retained layout; callers must style/layout/paint again. */
+#define PCORE_NODE_HTML_MUTATION_MAX_BYTES   16384U
+#define PCORE_NODE_HTML_MUTATION_MAX_NODES     256U
+#define PCORE_NODE_HTML_MUTATION_MAX_DEPTH      64U
+#define PCORE_NODE_HTML_MUTATION_MAX_CHILDREN   64U
+PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
+        const char *element_id, const char *html);
+
 /* Replace the data of one direct Text child without changing the child list.
  * `parent_id` is a UTF-8 element id (or a supported document-structure token)
  * and `child_index` is the unfiltered childNodes index, so text/comment and

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1236
+#define TEST_MAX_NUMBER 1237
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15224,6 +15224,32 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
     return result < 0 ? -1 : 0;
 }
 
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_dom_set_inner_html(void *pw,
+        const char *id, const char *html)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            html == NULL) {
+        return -1;
+    }
+    result = PCore_NodeSetInnerHTMLById(bridge->document, id, html);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_set_child_text(void *pw,
         const char *parent_id, unsigned int child_index, const char *text)
 {
@@ -17224,7 +17250,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx7 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx8 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx12 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17388,6 +17414,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.size = sizeof(dom_write_callbacks);
     dom_write_callbacks.pw = bridge;
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
+    dom_write_callbacks.set_inner_html =
+            pcore_browser_script_dom_set_inner_html;
     dom_write_callbacks.set_child_text =
             pcore_browser_script_dom_set_child_text;
     dom_write_callbacks.set_character_data_child =
@@ -17621,7 +17649,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx8(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx12(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -50950,7 +50978,7 @@ static BOOL test1235_browser_character_data_relative_existing_contract(void)
     return TRUE;
 }
 
-/* TEST 1236 - bounded read-only Element.innerHTML/outerHTML serialization. */
+/* TEST 1236 - bounded Element HTML serialization and setter smoke. */
 static BOOL test1236_browser_element_html_serialization_contract(void)
 {
     static const char HTML[] =
@@ -50960,13 +50988,14 @@ static BOOL test1236_browser_element_html_serialization_contract(void)
     static const char PROBE[] =
         "(function(){var e=document.getElementById('target'),raw,outer,"
         "setterOk=0,outerSetterOk=0;raw=e.innerHTML;outer=e.outerHTML;"
-        "try{e.innerHTML='mutate';}catch(x){setterOk=1;}"
+        "try{e.innerHTML='mutate';setterOk=1;}catch(x){}"
         "try{e.outerHTML='mutate';}catch(y){outerSetterOk=1;}"
         "document.getElementById('result').textContent=String("
         "raw==='<span title=\"q\">A &lt; B</span><!--note-->Z'&&"
         "outer==='<div id=\"target\" class=\"card\" data-x=\"a&amp;b\">"
         "<span title=\"q\">A &lt; B</span><!--note-->Z</div>'&&"
-        "setterOk&&outerSetterOk&&e.textContent==='A < BZ');})();";
+        "setterOk&&outerSetterOk&&e.innerHTML==='mutate'&&"
+        "e.textContent==='mutate');})();";
     char error[768];
 
     memset(error, 0, sizeof(error));
@@ -50977,9 +51006,138 @@ static BOOL test1236_browser_element_html_serialization_contract(void)
         return FALSE;
     }
     show_info(L"TEST 1236 OK",
-            "Element.innerHTML and outerHTML now expose bounded read-only"
-            " serialization for live elements, escaping text and"
-            " attributes while rejecting setters without DOM mutation.");
+            "Element.innerHTML and outerHTML expose bounded serialization"
+            " for live elements, escaping text and attributes; the basic"
+            " innerHTML setter and the read-only outerHTML setter are covered"
+            " here, with full replacement/error boundaries in TEST 1237.");
+    return TRUE;
+}
+
+/* TEST 1237 - bounded parser-backed Element.innerHTML mutation. */
+static BOOL test1237_browser_element_inner_html_mutation_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='old'>old</p>tail</div>"
+        "<p id='outside'>outside</p><p id='result'>idle</p></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='old'>old</p>tail</div>"
+        "<p id='outside'>outside</p><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var e=document.getElementById('target'),old="
+        "document.getElementById('old'),stable,bad=0,ok=true;"
+        "try{e.innerHTML='<span id=\"new\">A &amp; B</span><!--c-->tail2';}"
+        "catch(x){ok=false;}stable=e.innerHTML;ok=ok&&e===document.getElementById('target')&&"
+        "stable==='<span id=\"new\">A &amp; B</span><!--c-->tail2'&&"
+        "e.textContent==='A & Btail2'&&document.getElementById('new')!==null&&"
+        "old.parentNode===null&&!old.isConnected;try{old.innerHTML;}catch(y){bad|=1;}"
+        "try{e.innerHTML='<i id=\"outside\">bad</i>';}catch(z){bad|=2;}"
+        "ok=ok&&e.innerHTML===stable;try{document.documentElement.innerHTML='bad';}"
+        "catch(q){bad|=4;}ok=ok&&e.innerHTML===stable;e.innerHTML='';"
+        "ok=ok&&e.childNodes.length===0&&e.innerHTML===''&&"
+        "document.getElementById('new')===null&&bad===7;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char BAD_UTF8[] = { (char) 0xc3, (char) 0x28, '\0' };
+    static const char EXPECTED_HTML[] =
+        "<span id=\"new\">A &amp; B</span><!--c-->tail2";
+    char html_value[256];
+    char core_after_html[256];
+    char text_value[128];
+    char error[768];
+    int html_bytes;
+    int text_bytes;
+    int core_replace;
+    int core_bad_utf8;
+    int core_duplicate_id;
+    int core_too_large;
+    int core_empty;
+    int core_html;
+    int core_after_html_result;
+    int core_after_html_bytes;
+    HANDLE core_doc;
+    char *too_large;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    too_large = (char *) malloc((size_t) PCORE_NODE_HTML_MUTATION_MAX_BYTES +
+            2U);
+    if (too_large != NULL) {
+        memset(too_large, 'x',
+                (size_t) PCORE_NODE_HTML_MUTATION_MAX_BYTES + 1U);
+        too_large[PCORE_NODE_HTML_MUTATION_MAX_BYTES + 1U] = '\0';
+    }
+    memset(html_value, 0, sizeof(html_value));
+    memset(core_after_html, 0, sizeof(core_after_html));
+    memset(text_value, 0, sizeof(text_value));
+    html_bytes = 0;
+    text_bytes = 0;
+    core_replace = core_doc == NULL ? 1 : PCore_NodeSetInnerHTMLById(
+            core_doc, "target", EXPECTED_HTML);
+    core_after_html_bytes = 0;
+    core_after_html_result = core_doc == NULL ? 1 : PCore_NodeRelationById(
+            core_doc, "target", PCORE_NODE_RELATION_ELEMENT_INNER_HTML, 0,
+            core_after_html, sizeof(core_after_html),
+            &core_after_html_bytes, NULL);
+    core_bad_utf8 = core_doc == NULL ? 1 : PCore_NodeSetInnerHTMLById(
+            core_doc, "target", BAD_UTF8);
+    core_duplicate_id = core_doc == NULL ? 1 : PCore_NodeSetInnerHTMLById(
+            core_doc, "target", "<i id='outside'>bad</i>");
+    core_empty = core_doc == NULL ? 1 : PCore_NodeSetInnerHTMLById(
+            core_doc, "target", "");
+    core_html = core_doc == NULL ? 1 : PCore_NodeRelationById(core_doc,
+            "target", PCORE_NODE_RELATION_ELEMENT_INNER_HTML, 0,
+            html_value, sizeof(html_value), &html_bytes, NULL);
+    if (core_doc != NULL) {
+        (void) PCore_NodeTextContentById(core_doc, "target", text_value,
+                sizeof(text_value), &text_bytes);
+    }
+    core_too_large = 1;
+    if (too_large != NULL && core_doc != NULL) {
+        core_too_large = PCore_NodeSetInnerHTMLById(core_doc, "target",
+                too_large);
+    }
+    if (core_doc == NULL || too_large == NULL || core_replace != 0 ||
+            core_after_html_result != 0 || strcmp(core_after_html,
+            EXPECTED_HTML) != 0 ||
+            core_bad_utf8 != 3 || core_duplicate_id != 3 ||
+            core_empty != 0 || core_too_large != 3 ||
+            core_html != 0 || html_bytes != 0 || text_bytes != 0 ||
+            html_value[0] != '\0' || text_value[0] != '\0') {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        if (too_large != NULL) {
+            free(too_large);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core replace=%d utf8=%d duplicate=%d size=%d empty=%d html=%d"
+                " after_result=%d after_bytes=%d after=%s html_bytes=%d"
+                " text_bytes=%d html=%s text=%s",
+                core_replace, core_bad_utf8, core_duplicate_id, core_too_large,
+                core_empty, core_html, core_after_html_result,
+                core_after_html_bytes, core_after_html, html_bytes, text_bytes,
+                html_value, text_value);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1237 FAIL", error);
+        return FALSE;
+    }
+    if (core_doc != NULL) {
+        PCore_FreeDocument(core_doc);
+    }
+    free(too_large);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/element-inner-html-mutation", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1237 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1237 OK",
+            "Element.innerHTML now parses a bounded UTF-8 fragment in Core,"
+            " replaces the target child list atomically, preserves the target"
+            " identity, detaches stale descendants and rejects invalid,"
+            " oversized or colliding-id input without partial mutation.");
     return TRUE;
 }
 
@@ -109203,6 +109361,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1234: ok = test1234_browser_element_replace_with_character_data_contract(); break;
         case 1235: ok = test1235_browser_character_data_relative_existing_contract(); break;
         case 1236: ok = test1236_browser_element_html_serialization_contract(); break;
+        case 1237: ok = test1237_browser_element_inner_html_mutation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

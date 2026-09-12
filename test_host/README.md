@@ -78,9 +78,9 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续 image-source 与
-  DOM fixtures（TEST1201–1236）覆盖 normalize、clone/equality、Text/CharacterData、
+  DOM fixtures（TEST1201–1237）覆盖 normalize、clone/equality、Text/CharacterData、
   Ex2/Ex3 removal、Ex4–Ex12 insertion/replacement/relative list，以及 bounded HTML
-  serialization；
+  getter/setter；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。

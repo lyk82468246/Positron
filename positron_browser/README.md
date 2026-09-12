@@ -309,10 +309,9 @@ Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks �
 DOM、form、event 和 navigation 查询/mutation。Browser 负责 JSON 参数、脚本对象形状、
 错误映射与同步 dispatch，真实状态和缓冲由 Core/宿主在调用期间借用。
 
-`Element.innerHTML`/`outerHTML` 是 live、可寻址 Element 的只读 HTML 投影。Core 在 256
-节点、64 层、64 个 direct child/attribute、16,384 字符内遍历 libdom 子树，无 id 后代能
-出现；文本/属性会转义。setter、clone、fragment、未知/超限输入 fail closed，不触发
-mutation、事件、资源或 layout。
+`Element.innerHTML`/`outerHTML` 是 HTML 投影。`innerHTML` setter 由 Ex8 调用
+`PCore_NodeSetInnerHTMLById`；同一 document 有界替换成功保留身份、wrapper detached，
+失败不变。outerHTML setter、clone、DocumentFragment 及 script/资源/事件不支持。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
 在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；

@@ -4672,6 +4672,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.__pcoreInvalidateDomCaches=function(id){var owner;if(!doc||typeof doc.getElementById!=="
         "'function'){return false;}owner=doc.getElementById(String(id||''));if(!owner){return false;}"
         "invalidate9(owner);return true;};"
+        "function invalidateTree9(owner,old){var i,n,id;if(old&&typeof old.length==='number'){"
+        "for(i=0;i<old.length;i++){n=old[i];if(!n){continue;}n.__pcoreDetached11=true;"
+        "if(n.nodeType===1){id=n.__id;if(typeof id==='string'&&id!==''){delete cache[id];}}}}"
+        "invalidate9(owner);}"
+        "g.__pcoreInvalidateDomTree=function(id,old){var owner;if(!doc||typeof doc.getElementById!=="
+        "'function'){return false;}owner=doc.getElementById(String(id||''));if(!owner){return false;}"
+        "invalidateTree9(owner,old);return true;};"
         "PElement.prototype.removeChild=function(child){var ok;"
         "if(!child||typeof child.__id!=='string'||child.__id===''){"
         "throw new Error('removeChild failed');}"
@@ -5843,8 +5850,18 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function serializeLive11(node,relation){var value;if(!node||typeof node.__id!=='string'||"
         "node.__id===''){throw new Error('HTML serialization unavailable');}value=r(node,relation,0);"
         "if(typeof value!=='string'){throw new Error('HTML serialization unavailable');}return value;}"
+        "function collectTree11(n,out,depth){var a,i,c;if(!n||!out||depth>64||out.length>=256){return;}"
+        "a=nodes(n);if(!a){return;}for(i=0;i<a.length&&out.length<256;i++){c=a[i];if(!c){continue;}"
+        "out.push(c);if(c.nodeType===1){collectTree11(c,out,depth+1);}}}"
         "Object.defineProperty(P.prototype,'innerHTML',{get:function(){return serializeLive11(this,51);},"
-        "set:function(){throw new Error('innerHTML update unavailable');},enumerable:true,configurable:true});"
+        "set:function(v){var old=[],ok,s;if(!this||typeof this.__id!=='string'||this.__id===''||"
+        "this.__pcoreDetached11){throw new Error('innerHTML update unavailable');}s=String(v);"
+        "collectTree11(this,old,0);if(typeof g.__pcoreSetText!=='function'){"
+        "throw new Error('innerHTML update unavailable');}try{ok=g.__pcoreSetText({op:'setInnerHTML',"
+        "id:this.__id,html:s});}catch(e){ok=false;}if(!ok){throw new Error('innerHTML update failed');}"
+        "if(typeof g.__pcoreInvalidateDomTree==='function'){g.__pcoreInvalidateDomTree(this.__id,old);}"
+        "else if(typeof g.__pcoreInvalidateDomCaches==='function'){g.__pcoreInvalidateDomCaches(this.__id);}},"
+        "enumerable:true,configurable:true});"
         "Object.defineProperty(P.prototype,'outerHTML',{get:function(){return serializeLive11(this,52);},"
         "set:function(){throw new Error('outerHTML update unavailable');},enumerable:true,configurable:true});"
         "function contains(o,other){var n=other,i=0;if(!other){return false;}while(n&&i<64){if(same(n,o)){return true;}n=parent(n);i++;}return false;}"
@@ -6572,6 +6589,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptNormalizeChildTextFn normalize_child_text;
     PBrowserScriptInsertTextChildFn insert_text_child;
     PBrowserScriptInsertTextChildListFn insert_text_child_list;
+    PBrowserScriptSetInnerHTMLFn set_inner_html;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7035,6 +7053,7 @@ static int p_browser_script_dispatch_page_lifecycle(
 }
 
 #define PBROWSER_SCRIPT_TEXT_MAX_BYTES 65535
+#define PBROWSER_SCRIPT_HTML_MAX_BYTES 16384
 
 static HANDLE p_browser_script_args_object(const char *args_json,
         int args_len, HANDLE *out_object)
@@ -7875,6 +7894,7 @@ static int p_browser_script_dom_set_text(void *pw,
     const char *parent_id;
     const char *op;
     const char *text;
+    const char *html;
     const char *text_values[4];
     int value_count;
     int child_index;
@@ -7889,6 +7909,7 @@ static int p_browser_script_dom_set_text(void *pw,
     parent_id = (object != NULL) ? PJson_GetString(object, "parentId") : NULL;
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
     text = (object != NULL) ? PJson_GetString(object, "text") : NULL;
+    html = (object != NULL) ? PJson_GetString(object, "html") : NULL;
     values = (object != NULL) ? PJson_GetObject(object, "values") : NULL;
     value_count = 0;
     child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
@@ -7898,7 +7919,16 @@ static int p_browser_script_dom_set_text(void *pw,
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "insertTextChildList") == 0) {
+    if (op != NULL && strcmp(op, "setInnerHTML") == 0) {
+        if (binding->set_inner_html == NULL || id == NULL ||
+                id[0] == '\0' || html == NULL ||
+                strlen(id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+                strlen(html) > PBROWSER_SCRIPT_HTML_MAX_BYTES) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->set_inner_html(binding->pw, id, html);
+    } else if (op != NULL && strcmp(op, "insertTextChildList") == 0) {
         if (binding->insert_text_child_list == NULL || parent_id == NULL ||
                 parent_id[0] == '\0' || child_index < 0 || values == NULL ||
                 strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX) {
@@ -11068,6 +11098,55 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(
     binding->normalize_child_text = callbacks->normalize_child_text;
     binding->insert_text_child = callbacks->insert_text_child;
     binding->insert_text_child_list = callbacks->insert_text_child_list;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx8(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx8 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx8) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL ||
+            callbacks->set_inner_html == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
+    binding->set_inner_html = callbacks->set_inner_html;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {
