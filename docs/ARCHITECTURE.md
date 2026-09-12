@@ -355,6 +355,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   的 detached 状态和旧 NodeList snapshot；对象、existing element、DocumentFragment、
   detached、零值/超限和错误参数均 fail closed。Ex8 追加字段不改变 Ex7 及更旧表布局，
   宿主仍只接线并在成功后安排 style/layout/paint。
+- `Element.replaceWith(...values)` 的 2–4 值 mixed existing-element/primitive 组合不新增
+  ABI；Browser 先预检 connected、层级、重复、类型和容量，再按序复用 Ex5 的 element
+  replace、Ex6 的 indexed element/text insertion 与 Ex7 的 primitive replacement callback。
+  预检错误不产生 mutation；混合序列的后续 callback 错误不保证回滚。
 - `Element.insertAdjacentText(position, text)` 复用 write Ex6 的
   `insert_text_child`，在 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置
   插入一个字符串化 primitive Text。内侧位置作用于 receiver，外侧位置要求 receiver 是
@@ -710,7 +714,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
   insertion，Ex7 再追加单值 primitive `replaceWith` 文本替换，Ex8 追加 2–4 值 primitive
   `replaceWith` 文本列表；element relative 的 mixed `before()`/`after()` 不新增 callback table，
-  而是复用 Ex6 的 existing-element/text callbacks；相对 primitive 文本、
+  而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用
+  Ex5–Ex7，旧布局不变；相对 primitive 文本、
   CharacterData `before()`/`after()` 与 `insertAdjacentText()` 仍复用既有 write Ex6 slot，
   `insertAdjacentElement()` 复用 Ex6 existing-element slot，旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，

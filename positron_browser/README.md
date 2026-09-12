@@ -456,10 +456,10 @@ Ex7 追加 `replace_child_with_text`，由 `Element.replaceWith(value)` 调用
 wrapper/snapshot 为 detached；非 element/fragment/detached/错误参数 fail closed，
 Core 原子替换并失效 layout。
 
-Ex8 追加 `replace_child_with_text_list`，由 `Element.replaceWith(...values)` 调用
-`PCore_NodeReplaceElementChildWithTextListById`；Core 一次 fragment 操作创建/替换 2–4 个
-primitive Text，旧 wrapper/snapshot detached。对象/element/fragment、detached、零值/超限/错误
-均 fail closed；宿主接线，成功后重排。
+Ex8 `replace_child_with_text_list` 对接 `PCore_NodeReplaceElementChildWithTextListById`，用于
+`Element.replaceWith(...values)`；Core 原子创建 2–4 Text，旧 wrapper/snapshot detached。
+mixed 2–4 element/primitive 先预检再复用 Ex5–Ex7；非法值、detached、超限 fail closed，
+预检无 mutation，callback 失败不回滚。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
 `insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text

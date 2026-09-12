@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1229
+#define TEST_MAX_NUMBER 1230
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -50286,6 +50286,97 @@ static BOOL test1229_browser_relative_mixed_list_contract(void)
             " elements and primitive Text values, preserving order, identity"
             " and snapshots while rejecting invalid, duplicate, cyclic and"
             " detached inputs before mutation.");
+    return TRUE;
+}
+
+/* TEST 1230 - bounded Element.replaceWith accepts mixed values. */
+static BOOL test1230_browser_replace_with_mixed_list_contract(void)
+{
+    static const char HTML_ELEMENT_FIRST[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='old'>O</span><i id='same'>S</i>tail</div>"
+        "<div id='other'><b id='cross'>C</b></div><p id='result'>idle</p></body></html>";
+    static const char HTML_TEXT_FIRST[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='old'>O</span><i id='same'>S</i>tail</div>"
+        "<div id='other'><b id='cross'>C</b></div><p id='result'>idle</p></body></html>";
+    static const char HTML_FAILURES[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='old'>O</span><i id='same'>S</i>tail</div>"
+        "<div id='other'><b id='cross'>C</b></div><p id='result'>idle</p></body></html>";
+    static const char PROBE_ELEMENT_FIRST[] =
+        "(function(){var a=document.getElementById('a'),old=document.getElementById('old'),"
+        "same=document.getElementById('same'),cross=document.getElementById('cross'),"
+        "other=document.getElementById('other'),s=a.childNodes,so=other.childNodes,x,r,ok;"
+        "r=old.replaceWith(same,'X',cross,7);x=a.childNodes;"
+        "ok=r===undefined&&x.length===6&&x[0].data==='lead'&&x[1]===same&&"
+        "x[2].data==='X'&&x[3]===cross&&x[4].data==='7'&&x[5].data==='tail'&&"
+        "a.textContent==='leadSXC7tail'&&other.childNodes.length===0&&"
+        "old.parentNode===null&&!old.isConnected&&same.parentElement===a&&"
+        "cross.parentElement===a&&s.length===4&&s[1]===old&&s[2]===same&&"
+        "so.length===1&&so[0]===cross;document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_TEXT_FIRST[] =
+        "(function(){var a=document.getElementById('a'),old=document.getElementById('old'),"
+        "same=document.getElementById('same'),cross=document.getElementById('cross'),"
+        "other=document.getElementById('other'),s=a.childNodes,so=other.childNodes,x,r,ok;"
+        "r=old.replaceWith('X',same,'Y',cross);x=a.childNodes;"
+        "ok=r===undefined&&x.length===6&&x[0].data==='lead'&&x[1].data==='X'&&"
+        "x[2]===same&&x[3].data==='Y'&&x[4]===cross&&x[5].data==='tail'&&"
+        "a.textContent==='leadXSYCtail'&&other.childNodes.length===0&&"
+        "old.parentNode===null&&!old.isConnected&&same.parentElement===a&&"
+        "cross.parentElement===a&&s.length===4&&s[1]===old&&s[2]===same&&"
+        "so.length===1&&so[0]===cross;document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var a=document.getElementById('a'),old=document.getElementById('old'),"
+        "same=document.getElementById('same'),cross=document.getElementById('cross'),"
+        "other=document.getElementById('other'),s=a.childNodes,so=other.childNodes,bad=0,ok;"
+        "try{old.replaceWith(cross,{});}catch(e){bad|=1;}"
+        "try{old.replaceWith(cross,cross);}catch(e2){bad|=2;}"
+        "try{old.replaceWith(old,'x');}catch(e3){bad|=4;}"
+        "try{old.replaceWith(a,'x');}catch(e4){bad|=8;}"
+        "try{old.replaceWith(cross,'1','2','3','4');}catch(e5){bad|=16;}"
+        "try{old.replaceWith('1',{});}catch(e6){bad|=32;}"
+        "ok=bad===63&&a.childNodes.length===4&&a.childNodes[0].data==='lead'&&"
+        "a.childNodes[1]===old&&a.childNodes[2]===same&&a.childNodes[3].data==='tail'&&"
+        "a.textContent==='leadOStail'&&other.childNodes.length===1&&"
+        "other.childNodes[0]===cross&&s.length===4&&s[1]===old&&so.length===1&&so[0]===cross;"
+        "old.remove();try{old.replaceWith(cross,'x');}catch(e7){bad|=64;}"
+        "ok=ok&&bad===63&&a.childNodes.length===3&&a.textContent==='leadStail'&&"
+        "old.parentNode===null&&!old.isConnected&&other.childNodes.length===1&&"
+        "other.childNodes[0]===cross;document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+    char detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(detail, 0, sizeof(detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-mixed", HTML_ELEMENT_FIRST,
+            PROBE_ELEMENT_FIRST, "true", error, sizeof(error))) {
+        failed_probe = "element-first";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-mixed", HTML_TEXT_FIRST,
+            PROBE_TEXT_FIRST, "true", error, sizeof(error))) {
+        failed_probe = "text-first";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-replace-mixed", HTML_FAILURES,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(detail, error, sizeof(detail) - 1);
+        detail[sizeof(detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1230 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1230 OK",
+            "Element replaceWith now accepts bounded mixed lists of existing"
+            " elements and primitive Text values, preserving order, identity"
+            " and snapshots while rejecting invalid lists before mutation.");
     return TRUE;
 }
 
@@ -108502,6 +108593,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1227: ok = test1227_browser_replace_with_text_list_contract(); break;
         case 1228: ok = test1228_browser_relative_text_list_contract(); break;
         case 1229: ok = test1229_browser_relative_mixed_list_contract(); break;
+        case 1230: ok = test1230_browser_replace_with_mixed_list_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

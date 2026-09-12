@@ -138,16 +138,15 @@
   和 `NULL` append；Ex6 的 `append()`/`prepend()`（零至四值）先预检，再按未过滤
   `childNodes` 末尾/零位移动 element 或创建 primitive Text。element 的 `before()`/`after()`、
   `insertAdjacentText()`/`insertAdjacentElement()` 覆盖 direct-parent/四位置；element relative
-  `before()`/`after()` 另接受 2–4 值 mixed element/primitive；Browser 预检连接、层级、重复、
-  类型和容量后按序复用 Ex6 callbacks。Text/Comment/CDATA wrapper 仍用 write Ex6 单值或
-  Ex7 的 2–4 primitive Text 列表。错误 parent、层级环、结构 token、detached、节点或
-  DocumentFragment、对象、重复元素和超限值列表
-  不产生部分 mutation；
-  通用 Node/DocumentFragment、其他 CharacterData 插入/替换、其他删除、mutation 事件、
-  MutationObserver 和 live collection 未实现。Ex5 的 `Node.replaceChild()` 仍只支持带 id
-  existing element；Ex7 的 `Element.replaceWith(value)` 支持一个字符串化 primitive，Ex8
-  支持 2–4 个 primitive 并以一次 Core 操作创建 Text 列表。old/new 必须满足
-  direct-child/connected 约束；DocumentFragment、detached、对象、零值和超限多值仍 fail closed。
+  `before()`/`after()` 另接受 2–4 值 mixed，先预检后复用 Ex6。Text/Comment/CDATA wrapper
+  用 write Ex6 单值或 Ex7 的 2–4 primitive 列表；错误 parent、环、结构 token、detached、
+  节点、DocumentFragment、对象、重复和超限均在预检阶段 fail closed，不产生部分 mutation。
+  通用 Node/DocumentFragment、其他 CharacterData/删除、mutation 事件、MutationObserver 和
+  live collection 未实现。Ex5 `Node.replaceChild()` 仍仅带 id existing element；Ex7
+  `Element.replaceWith(value)` 支持单 primitive，Ex8 支持 2–4 primitive 原子 Text 列表；
+  `replaceWith(...values)` 另支持 2–4 值 mixed existing-element/primitive，先预检再复用
+  Ex5–Ex7。old/new 须 direct-child/connected；DocumentFragment、detached、对象、零值、
+  超限仍 fail closed；预检错误不 mutation。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -582,7 +581,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1229 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
+- TEST1201–1230 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
   Ex2/Ex3 removal 与 Ex4–Ex8 insertion/replacement/relative text，以及 `insertAdjacent*()`、
   四值 append/prepend/replaceWith、relative mixed list 的 wrapper/snapshot、detached、UTF-16
   和 retained-layout 边界；逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
