@@ -116,7 +116,8 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
  element `Node.insertBefore()`/`appendChild()`、Ex5 的已有 element
  `Node.replaceChild()`/`Element.replaceWith()`、Ex6 的目标位置插入和相对单值 primitive
  文本插入，以及 Ex7 的 `Element.replaceWith(value)` 原位 primitive 文本替换，和 Ex8 的
- `Element.replaceWith(...values)` 2–4 值 primitive 原子替换。write Ex6
+ `Element.replaceWith(...values)` 2–4 值 primitive 原子替换；Ex9 的 CharacterData
+ `replaceWith(value[, ...])` 对 Text/Comment/CDATA 提供 1–4 primitive 原子 Text 替换。write Ex6
 负责 primitive Text，Ex2/Ex3 负责 CharacterData 删除，Ex4/Ex5 负责 existing-element
  插入/替换，mutation Ex6 按未过滤 `childNodes` 支持同父重排、跨父迁移、四位置
 `insertAdjacentText()`/`insertAdjacentElement()`，并让 Text/Comment/CDATA wrapper 以同一
@@ -126,8 +127,7 @@ write Ex6 callback 做单值 primitive `before()`/`after()`；Ex7/Ex8 保留旧 
 2–4 值 mixed existing-element/primitive 列表，由 Browser 预检后复用 Ex6 callbacks 按序插入；
 `Element.replaceWith(...values)` 也支持 2–4 值 mixed existing-element/primitive 组合，复用
 Ex5–Ex7 callbacks。
-DocumentFragment、通用
-CharacterData 插入/替换、其他删除、mutation 事件、observer 和 live collection 仍需由真实页面
+DocumentFragment、通用 CharacterData 插入/替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/

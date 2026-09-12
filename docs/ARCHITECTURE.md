@@ -155,6 +155,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
   不暴露 fragment 或已有节点操作；
+- `PCore_NodeReplaceCharacterDataChildWithTextListById` 在同一位置提供 CharacterData
+  原子替换：按未过滤 `childNodes` 索引和节点类型 3/4/8 定位 direct Text/CDATA/Comment，
+  在 fragment 中创建 1–4 个借用 UTF-8 primitive Text 后一次提交。成功返回 `0` 并使
+  retained layout 失效，目标/关系不可用返回 `2`，参数、类型、UTF-8、容量或 DOM 失败返回
+  `1`；不派发事件、不 reparent、不暴露 fragment，Browser 负责 wrapper/snapshot。
 - Text/CharacterData DOM deletion：`PCore_NodeRemoveTextChildById` 保持旧的 Text-only ABI，
   按父元素 UTF-8 id 和未过滤 `childNodes` 索引删除一个现有 direct Text child；新增的
   `PCore_NodeRemoveCharacterDataChildById` 在相同边界接受显式 DOM 节点类型 3（Text）、
@@ -359,6 +364,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   ABI；Browser 先预检 connected、层级、重复、类型和容量，再按序复用 Ex5 的 element
   replace、Ex6 的 indexed element/text insertion 与 Ex7 的 primitive replacement callback。
   预检错误不产生 mutation；混合序列的后续 callback 错误不保证回滚。
+- CharacterData wrapper 的 `replaceWith(value[, ...])` 通过 ABI 追加的
+  `PBrowserScriptDomMutationCallbacksEx9.replace_character_data_with_text_list` 接入上述
+  Core 入口；Text/Comment/CDATA 接受 1–4 个 primitive，Core 以 fragment 原子创建 Text
+  列表，Browser 保留旧 wrapper/NodeList snapshot 并将目标标为 detached。对象、节点、
+  DocumentFragment、零值、超限、错误 parent/类型和 detached target 在 dispatch 前拒绝；
+  Ex9 只追加字段，Ex8 及更旧 callback table 的布局和语义保持不变。
 - `Element.insertAdjacentText(position, text)` 复用 write Ex6 的
   `insert_text_child`，在 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置
   插入一个字符串化 primitive Text。内侧位置作用于 receiver，外侧位置要求 receiver 是
@@ -713,7 +724,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
   insertion，Ex7 再追加单值 primitive `replaceWith` 文本替换，Ex8 追加 2–4 值 primitive
-  `replaceWith` 文本列表；element relative 的 mixed `before()`/`after()` 不新增 callback table，
+  `replaceWith` 文本列表，Ex9 再追加 CharacterData 的 1–4 值 primitive `replaceWith`；
+  element relative 的 mixed `before()`/`after()` 不新增 callback table，
   而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用
   Ex5–Ex7，旧布局不变；相对 primitive 文本、
   CharacterData `before()`/`after()` 与 `insertAdjacentText()` 仍复用既有 write Ex6 slot，

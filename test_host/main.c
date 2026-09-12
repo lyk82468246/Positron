@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1230
+#define TEST_MAX_NUMBER 1231
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15531,6 +15531,35 @@ static int pcore_browser_script_dom_replace_child_with_text_list(void *pw,
     return -1;
 }
 
+static int pcore_browser_script_dom_replace_character_data_with_text_list(
+        void *pw, const char *parent_id, unsigned int child_index,
+        unsigned int node_type, const char *const *texts,
+        unsigned int text_count)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            texts == NULL || text_count == 0 ||
+            text_count > PCORE_NODE_REPLACE_CHARACTER_DATA_TEXT_LIST_MAX) {
+        return -1;
+    }
+    result = PCore_NodeReplaceCharacterDataChildWithTextListById(
+            bridge->document, parent_id, child_index, node_type, texts,
+            text_count);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -17112,7 +17141,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx7 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx8 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx9 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17307,6 +17336,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_replace_child_with_text;
     dom_mutation_callbacks.replace_child_with_text_list =
             pcore_browser_script_dom_replace_child_with_text_list;
+    dom_mutation_callbacks.replace_character_data_with_text_list =
+            pcore_browser_script_dom_replace_character_data_with_text_list;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17502,7 +17533,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx8(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx9(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -50377,6 +50408,77 @@ static BOOL test1230_browser_replace_with_mixed_list_contract(void)
             "Element replaceWith now accepts bounded mixed lists of existing"
             " elements and primitive Text values, preserving order, identity"
             " and snapshots while rejecting invalid lists before mutation.");
+    return TRUE;
+}
+
+/* TEST 1231 - bounded CharacterData.replaceWith accepts primitive values. */
+static BOOL test1231_browser_character_data_replace_with_text_list_contract(void)
+{
+    static const char HTML_TEXT[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<!--comment--><span id='keep'>K</span>tail</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char HTML_TEXT_FAILURES[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead</div><p id='result'>idle</p></body></html>";
+    static const char HTML_COMMENT[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>left<!--old-->right</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_TEXT[] =
+        "var a=document.getElementById('a'),s=a.childNodes,o=s[0],c=s[1],k=s[2],x;"
+        "o.replaceWith('X',7,null,false);x=a.childNodes;"
+        "document.getElementById('result').textContent=String(x.length===7&&"
+        "x[0].data==='X'&&x[1].data==='7'&&x[2].data==='null'&&"
+        "x[3].data==='false'&&x[4]===c&&x[5]===k&&x[6].data==='tail'&&"
+        "o.parentNode===null&&s.length===4&&s[0]===o&&s[1]===c&&"
+        "a.textContent==='X7nullfalseKtail');";
+    static const char PROBE_FAILURES[] =
+        "var a=document.getElementById('a'),o=a.firstChild,b=0,t=a.textContent;"
+        "try{o.replaceWith({});}catch(e){b|=1;}try{o.replaceWith();}catch(e2){b|=2;}"
+        "try{o.replaceWith(1,2,3,4,5);}catch(e3){b|=4;}"
+        "document.getElementById('result').textContent=String(b===7&&"
+        "a.textContent===t&&o.parentNode===a);";
+    static const char PROBE_COMMENT[] =
+        "var a=document.getElementById('a'),s=a.childNodes,o=s[1],x,q;"
+        "o.replaceWith('C',true);x=a.childNodes;q=x[1];q.remove();"
+        "document.getElementById('result').textContent=String(x.length===4&&"
+        "x[0].data==='left'&&x[1].data==='C'&&x[2].data==='true'&&"
+        "x[3].data==='right'&&o.parentNode===null&&s.length===3&&s[1]===o&&"
+        "q.parentNode===null&&a.textContent==='lefttrueright');";
+    char error[768];
+    char detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(detail, 0, sizeof(detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/character-data-replace", HTML_TEXT,
+            PROBE_TEXT, "true", error, sizeof(error))) {
+        failed_probe = "text";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/character-data-replace", HTML_TEXT_FAILURES,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/character-data-replace", HTML_COMMENT,
+            PROBE_COMMENT, "true", error, sizeof(error))) {
+        failed_probe = "comment";
+    }
+    if (failed_probe != NULL) {
+        strncpy(detail, error, sizeof(detail) - 1);
+        detail[sizeof(detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1231 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1231 OK",
+            "CharacterData replaceWith now atomically replaces bounded Text"
+            " and Comment wrappers with primitive Text values while preserving"
+            " order, snapshots and detached identity.");
     return TRUE;
 }
 
@@ -108594,6 +108696,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1228: ok = test1228_browser_relative_text_list_contract(); break;
         case 1229: ok = test1229_browser_relative_mixed_list_contract(); break;
         case 1230: ok = test1230_browser_replace_with_mixed_list_contract(); break;
+        case 1231: ok = test1231_browser_character_data_replace_with_text_list_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -9124,6 +9124,132 @@ PCORE_API int PCore_NodeReplaceElementChildWithTextListById(HANDLE hDoc,
     return 1;
 }
 
+PCORE_API int PCore_NodeReplaceCharacterDataChildWithTextListById(
+        HANDLE hDoc, const char *parent_id, unsigned int child_index,
+        unsigned int node_type, const char *const *texts,
+        unsigned int text_count)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_node *old_child;
+    dom_document_fragment *fragment;
+    dom_string *content;
+    dom_text *new_text;
+    dom_node *inserted;
+    dom_node *replaced;
+    dom_node_type expected_type;
+    dom_node_type parent_type;
+    dom_node_type old_type;
+    dom_exception err;
+    unsigned int i;
+    int result;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            texts == NULL || text_count == 0 ||
+            text_count > PCORE_NODE_REPLACE_CHARACTER_DATA_TEXT_LIST_MAX) {
+        return 1;
+    }
+    if (node_type == 3U) {
+        expected_type = DOM_TEXT_NODE;
+    } else if (node_type == 4U) {
+        expected_type = DOM_CDATA_SECTION_NODE;
+    } else if (node_type == 8U) {
+        expected_type = DOM_COMMENT_NODE;
+    } else {
+        return 1;
+    }
+    for (i = 0; i < text_count; i++) {
+        if (texts[i] == NULL || !pcore_contenteditable_utf8_valid(texts[i])) {
+            return 1;
+        }
+    }
+    doc = (dom_document *) hDoc;
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) parent, &parent_type) !=
+            DOM_NO_ERR || parent_type != DOM_ELEMENT_NODE) {
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    old_child = NULL;
+    result = pcore_relation_child_node_at((dom_node *) parent, child_index,
+            &old_child);
+    if (result != 0) {
+        dom_node_unref((dom_node *) parent);
+        return result == 2 ? 2 : 1;
+    }
+    if (dom_node_get_node_type(old_child, &old_type) != DOM_NO_ERR ||
+            old_type != expected_type) {
+        dom_node_unref(old_child);
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    fragment = NULL;
+    err = dom_document_create_document_fragment(doc, &fragment);
+    if (err != DOM_NO_ERR || fragment == NULL) {
+        dom_node_unref(old_child);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    for (i = 0; i < text_count; i++) {
+        content = NULL;
+        err = dom_string_create((const uint8_t *) texts[i], strlen(texts[i]),
+                &content);
+        if (err != DOM_NO_ERR || content == NULL) {
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref(old_child);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        new_text = NULL;
+        err = dom_document_create_text_node(doc, content, &new_text);
+        dom_string_unref(content);
+        if (err != DOM_NO_ERR || new_text == NULL) {
+            if (new_text != NULL) {
+                dom_node_unref((dom_node *) new_text);
+            }
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref(old_child);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        inserted = NULL;
+        err = dom_node_append_child((dom_node *) fragment,
+                (dom_node *) new_text, &inserted);
+        if (inserted != NULL) {
+            dom_node_unref(inserted);
+        }
+        dom_node_unref((dom_node *) new_text);
+        if (err != DOM_NO_ERR) {
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref(old_child);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    replaced = NULL;
+    err = dom_node_replace_child((dom_node *) parent, (dom_node *) fragment,
+            old_child, &replaced);
+    if (replaced != NULL) {
+        dom_node_unref(replaced);
+    }
+    dom_node_unref((dom_node *) fragment);
+    dom_node_unref(old_child);
+    dom_node_unref((dom_node *) parent);
+    if (err == DOM_NO_ERR) {
+        pcore_render_invalidate(doc);
+        return 0;
+    }
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR ||
+            err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    return 1;
+}
+
 PCORE_API int PCore_NodeInsertTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text)
 {

@@ -141,12 +141,12 @@
   `before()`/`after()` 另接受 2–4 值 mixed，先预检后复用 Ex6。Text/Comment/CDATA wrapper
   用 write Ex6 单值或 Ex7 的 2–4 primitive 列表；错误 parent、环、结构 token、detached、
   节点、DocumentFragment、对象、重复和超限均在预检阶段 fail closed，不产生部分 mutation。
-  通用 Node/DocumentFragment、其他 CharacterData/删除、mutation 事件、MutationObserver 和
-  live collection 未实现。Ex5 `Node.replaceChild()` 仍仅带 id existing element；Ex7
-  `Element.replaceWith(value)` 支持单 primitive，Ex8 支持 2–4 primitive 原子 Text 列表；
-  `replaceWith(...values)` 另支持 2–4 值 mixed existing-element/primitive，先预检再复用
-  Ex5–Ex7。old/new 须 direct-child/connected；DocumentFragment、detached、对象、零值、
-  超限仍 fail closed；预检错误不 mutation。
+  Node/DocumentFragment、其他 CharacterData 插入/替换/删除、mutation/observer
+  和 live collection 未实现。Ex5 `Node.replaceChild()` 仍仅带 id existing element；Ex7/Ex8
+  支持 element 的单值或 2–4 primitive `replaceWith()`，mixed 列表先预检再复用 Ex5–Ex7；
+  Ex9 的 CharacterData `replaceWith(value[, ...])` 支持 Text/Comment/CDATA 的 1–4 primitive
+  原子 Text 列表。目标须 direct-child/connected；DocumentFragment、detached、对象、零值、
+  超限和错误类型均 fail closed，预检错误不 mutation。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -581,8 +581,8 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1230 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
-  Ex2/Ex3 removal 与 Ex4–Ex8 insertion/replacement/relative text，以及 `insertAdjacent*()`、
+- TEST1201–1231 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
+  Ex2/Ex3 removal 与 Ex4–Ex9 insertion/replacement/relative text，以及 `insertAdjacent*()`、
   四值 append/prepend/replaceWith、relative mixed list 的 wrapper/snapshot、detached、UTF-16
   和 retained-layout 边界；逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

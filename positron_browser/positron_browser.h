@@ -959,6 +959,36 @@ typedef struct PBrowserScriptDomMutationCallbacksEx8 {
     PBrowserScriptReplaceChildWithTextListFn replace_child_with_text_list;
 } PBrowserScriptDomMutationCallbacksEx8;
 
+/* Extended DOM mutation table. Ex8 remains ABI-fixed for existing hosts;
+ * Ex9 appends a bounded CharacterData-to-Text replacement adapter while
+ * preserving all eight older callbacks. `parent_id` is a borrowed UTF-8
+ * element id, `child_index` is the unfiltered childNodes position and
+ * `node_type` is DOM Text (3), CDATA (4) or Comment (8). `texts` points to
+ * one to four borrowed UTF-8 strings valid only for the synchronous call.
+ * The callback replaces the CharacterData child with the complete Text list
+ * atomically, returning >0 after success, 0 when the relation or list is
+ * unavailable and <0 on adapter failure. The host must re-query and schedule
+ * style/layout/paint after success. Existing elements, fragments and
+ * mutation events remain outside this bounded callback. */
+typedef int (*PBrowserScriptReplaceCharacterDataWithTextListFn)(void *pw,
+        const char *parent_id, unsigned int child_index,
+        unsigned int node_type, const char *const *texts,
+        unsigned int text_count);
+typedef struct PBrowserScriptDomMutationCallbacksEx9 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptRemoveChildFn remove_child;
+    PBrowserScriptRemoveTextChildFn remove_text_child;
+    PBrowserScriptRemoveCharacterDataChildFn remove_character_data_child;
+    PBrowserScriptInsertChildFn insert_child;
+    PBrowserScriptReplaceChildFn replace_child;
+    PBrowserScriptInsertChildAtFn insert_child_at;
+    PBrowserScriptReplaceChildWithTextFn replace_child_with_text;
+    PBrowserScriptReplaceChildWithTextListFn replace_child_with_text_list;
+    PBrowserScriptReplaceCharacterDataWithTextListFn
+        replace_character_data_with_text_list;
+} PBrowserScriptDomMutationCallbacksEx9;
+
 /* Typed host adapter for the bounded single-element contenteditable
  * boundary. The browser DLL owns the JSON bridge and `isContentEditable`
  * property; the host reads effective state and performs a plain-text Core
@@ -2307,6 +2337,9 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx7(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx8(
         HANDLE hSession,
         const PBrowserScriptDomMutationCallbacksEx8 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx9(
+        HANDLE hSession,
+        const PBrowserScriptDomMutationCallbacksEx9 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomMutationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(

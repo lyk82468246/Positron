@@ -390,6 +390,24 @@ PCORE_API int PCore_NodeReplaceElementChildWithTextListById(HANDLE hDoc,
         const char *parent_id, const char *old_child_id,
         const char *const *texts, unsigned int text_count);
 
+/* Replace one direct CharacterData child with a bounded list of newly-created
+ * UTF-8 Text nodes. `node_type` must be the DOM value 3 (Text), 4 (CDATA) or
+ * 8 (Comment); `child_index` is the unfiltered childNodes index and `texts`
+ * contains one to four borrowed strings. The complete list is built in a
+ * DocumentFragment and replaces the target in one DOM operation, so a
+ * validation/allocation failure cannot leave a partial mutation. Returns 0
+ * after replacement, 2 when the parent/index/type is unavailable and 1 for
+ * invalid input, malformed UTF-8, a list limit violation or another DOM
+ * failure. A successful replacement invalidates retained layout; callers must
+ * re-query and style/layout/paint again. The old CharacterData node is
+ * detached; this primitive does not dispatch events or reparent existing
+ * nodes. */
+#define PCORE_NODE_REPLACE_CHARACTER_DATA_TEXT_LIST_MAX 4u
+PCORE_API int PCore_NodeReplaceCharacterDataChildWithTextListById(
+        HANDLE hDoc, const char *parent_id, unsigned int child_index,
+        unsigned int node_type, const char *const *texts,
+        unsigned int text_count);
+
 /* Insert one new UTF-8 Text child at an unfiltered childNodes index. The
  * parent must be an addressable element; child_index may equal the current
  * child count to append. The inserted node is always new and never reuses or

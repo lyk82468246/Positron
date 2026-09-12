@@ -213,6 +213,13 @@ style/layout/paint，并重新取得几何和控件快照。它不提供通用 N
 或其他 DOM 失败返回 `1`。它不复用已有节点、不派发事件或暴露 fragment；调用方成功后
 必须重新取得 snapshot 并执行 style/layout/paint。
 
+`PCore_NodeReplaceCharacterDataChildWithTextListById` 按父元素 id、未过滤的
+`childNodes` 索引和节点类型 3（Text）、4（CDATA）或 8（Comment）定位 direct child，
+接受 1–4 个借用 UTF-8 字符串，在 fragment 中完整创建 Text 后一次性替换。返回 `0` 表示
+成功并使 retained layout 失效，`2` 表示目标/关系不可用，`1` 表示参数、类型、UTF-8、
+容量或 DOM 失败；它不派发事件、不 reparent、不暴露 fragment。Browser 的 Ex9 callback
+负责 detached wrapper 与 snapshot reconciliation，其他应用只需在成功后重新 style/layout/paint。
+
 `PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或

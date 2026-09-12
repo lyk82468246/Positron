@@ -451,15 +451,12 @@ Ex6 `insert_child_at` 处理 `append()`/`prepend()`、`before()`/`after()` 和
 `insertAdjacentElement()`；按未过滤索引移动 id element，primitive 走同一 bridge。
 element relative 的 2–4 值 mixed 列表先预检，再按序复用 Ex6 element/text callbacks。
 
-Ex7 追加 `replace_child_with_text`，由 `Element.replaceWith(value)` 调用
-`PCore_NodeReplaceElementChildWithTextById`；支持五种 primitive，原位建 Text、保留旧
-wrapper/snapshot 为 detached；非 element/fragment/detached/错误参数 fail closed，
-Core 原子替换并失效 layout。
-
-Ex8 `replace_child_with_text_list` 对接 `PCore_NodeReplaceElementChildWithTextListById`，用于
-`Element.replaceWith(...values)`；Core 原子创建 2–4 Text，旧 wrapper/snapshot detached。
-mixed 2–4 element/primitive 先预检再复用 Ex5–Ex7；非法值、detached、超限 fail closed，
-预检无 mutation，callback 失败不回滚。
+Ex7 的 `replace_child_with_text` 由 `Element.replaceWith(value)` 调用
+`PCore_NodeReplaceElementChildWithTextById`，Ex8 的 `replace_child_with_text_list` 支持
+element 的 2–4 primitive 原子 Text 替换。Ex9 的
+`replace_character_data_with_text_list` 让 Text/Comment/CDATA 支持 1–4 primitive
+`replaceWith()`，并保留旧 wrapper/snapshot 为 detached。三者都拒绝对象、节点、fragment、
+detached、零值和超限；mixed element/primitive 仍复用 Ex5–Ex7，Ex9 只追加字段，旧 ABI 不变。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
 `insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text
