@@ -158,6 +158,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   参数/DOM 失败，并使 retained layout 失效；不派发事件、不获取资源、不暴露 fragment。
   Browser 的 Ex10 callback 负责 wrapper owner、两侧 snapshot 与后续重排；DocumentFragment、
   通用节点和完整 live collection 仍不在边界内；
+- `PCore_NodeReplaceCharacterDataChildById` 在同一边界用已连接的 direct Text、CDATA 或
+  Comment 替换另一个 CharacterData child：target/source 父级和未过滤索引必须匹配显式节点
+  类型，支持同父、跨父和同节点 no-op。Core 以一次 `dom_node_replace_child` 保留新节点
+  identity 并使 retained layout 失效，Browser 的 Ex11 callback 负责旧 wrapper detached、
+  新 owner 和两侧 snapshot；不派发事件、不暴露 fragment 或 live collection；
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -383,6 +388,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   容量，成功后更新 source/target wrapper owner 与索引并保留旧 snapshot；对象、错误
   reference、detached、结构 token、越界和错误类型 fail closed。Ex10 只追加字段，Ex9
   及更旧 callback table 的布局和语义保持不变。
+- CharacterData wrapper 的 `Node.replaceChild()` 通过 Ex11 追加的
+  `PBrowserScriptDomMutationCallbacksEx11.replace_character_data_child` 接入
+  `PCore_NodeReplaceCharacterDataChildById`。Browser 只允许现有 Text/Comment/CDATA，
+  按 target/source 未过滤索引预检 direct parent、类型、connected 和 64-child 容量；
+  成功后保留返回旧 wrapper 为 detached，更新新节点 owner/索引与两侧 snapshot。对象、
+  元素、detached、错 parent、错类型和越界均 fail closed；Ex11 只追加字段，旧表布局不变。
 - `Element.insertAdjacentText(position, text)` 复用 write Ex6 的
   `insert_text_child`，在 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置
   插入一个字符串化 primitive Text。内侧位置作用于 receiver，外侧位置要求 receiver 是
@@ -738,7 +749,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
   insertion，Ex7 再追加单值 primitive `replaceWith` 文本替换，Ex8 追加 2–4 值 primitive
   `replaceWith` 文本列表，Ex9 再追加 CharacterData 的 1–4 值 primitive `replaceWith`，
-  Ex10 再追加 existing CharacterData 的 `insertBefore`/`appendChild` move callback；
+  Ex10 再追加 existing CharacterData 的 `insertBefore`/`appendChild` move callback，Ex11
+  追加 existing CharacterData 的 `replaceChild` callback；
   element relative 的 mixed `before()`/`after()` 不新增 callback table，
   而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用
   Ex5–Ex7，旧布局不变；相对 primitive 文本、

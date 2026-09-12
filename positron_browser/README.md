@@ -456,10 +456,10 @@ Ex7/Ex8 的 replacement callbacks 分别支持 element 的单值和 2–4 primit
 支持 1–4 primitive `replaceWith()`，保留旧 wrapper/snapshot 为 detached。对象、节点、
 fragment、detached、零值和超限均拒绝；mixed element/primitive 复用 Ex5–Ex7，旧 ABI 不变。
 
-Ex10 的 `insert_character_data_child_at` 扩展 `Node.insertBefore()`/`appendChild()`，移动
-现有 Text/Comment/CDATA。Browser 将 ids/索引交给 Core；同父/跨父与 `null` append 保留
-身份/owner/snapshot。错误引用/类型、detached、越界或超限 fail closed；仅追加字段，
-ABI不变。
+Ex10/Ex11 的 CharacterData callbacks 接入
+`Node.insertBefore()`/`appendChild()`/`replaceChild()`，仅处理现有 Text/Comment/CDATA。
+Browser 维护跨父 identity/owner/snapshot；错 parent/ref、类型、detached、越界/超限
+fail closed，ABI 仅追加。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
 `insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text

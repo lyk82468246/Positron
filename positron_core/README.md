@@ -227,6 +227,12 @@ Comment 移到目标索引；目标索引等于 child count 时追加，同父�
 `1`。它保留节点身份，不派发事件、不获取资源、不操作 native 控件，也不提供 fragment、
 observer 或 live collection；Browser 应在成功后刷新相关 snapshot 并重新 style/layout/paint。
 
+`PCore_NodeReplaceCharacterDataChildById` 是 Ex11 的现有节点替换入口：按 target/source 父元素
+id、未过滤 `childNodes` 索引和显式节点类型，用同一文档中已连接的 Text/CDATA/Comment 替换
+目标 direct child；同节点是 no-op，跨父操作保留新节点身份。成功返回 `0` 并使 retained layout
+失效，关系、类型或索引不可用返回 `2`，参数或其他 DOM 失败返回 `1`。它不创建 fragment、
+派发事件或操作 native 控件；调用方必须刷新两侧 snapshot 并重新 style/layout/paint。
+
 `PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或
