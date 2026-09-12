@@ -561,6 +561,10 @@ typedef struct PBrowserScriptDomRelationCallbacks {
  * FORM_OPTION_DEFAULT_SELECTED is a numeric option-only relation for the
  * parser/default-selected state, not the live selected state; older hosts
  * that do not provide it fall back conservatively in the selector bridge.
+ * ELEMENT_INNER_HTML and ELEMENT_OUTER_HTML are read-only, bounded UTF-8
+ * serialization projections for live ID-addressable elements. Core owns the
+ * subtree walk and escaping; Browser only exposes the getter, and setters,
+ * clone snapshots, fragments and over-budget/unsupported nodes fail closed.
  * IMAGE_NATURAL_WIDTH, IMAGE_NATURAL_HEIGHT and IMAGE_COMPLETE are numeric
  * img-only snapshots. They read the Core-owned image cache without fetching,
  * decoding or laying out; natural dimensions remain zero until a retained
@@ -625,6 +629,8 @@ typedef struct PBrowserScriptDomRelationCallbacks {
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_COMPLETE       48u
 #define PBROWSER_SCRIPT_NODE_RELATION_IMAGE_CURRENT_SRC   49u
 #define PBROWSER_SCRIPT_NODE_RELATION_CHILD_NODE_WHOLE_TEXT 50u
+#define PBROWSER_SCRIPT_NODE_RELATION_ELEMENT_INNER_HTML  51u
+#define PBROWSER_SCRIPT_NODE_RELATION_ELEMENT_OUTER_HTML  52u
 
 /* Typed host adapters for the first product-owned DOM write callback. The
  * browser DLL parses the JSON argument object and encodes the JSON result;

@@ -6715,6 +6715,401 @@ static int pcore_relation_attribute_field(dom_element *element,
     return 0;
 }
 
+/* HTML serialization is a read-only Core projection.  Keep the complete
+ * traversal here so id-less descendants do not depend on the Browser's
+ * id-addressed wrapper cache. */
+#define PCORE_HTML_SERIALIZE_MAX_BYTES 16384
+#define PCORE_HTML_SERIALIZE_MAX_NODES 256U
+#define PCORE_HTML_SERIALIZE_MAX_DEPTH 64U
+#define PCORE_HTML_SERIALIZE_MAX_ATTRIBUTES 64U
+#define PCORE_HTML_SERIALIZE_MAX_CHILDREN 64U
+
+typedef struct pcore_html_serialize_state {
+    char *value;
+    int capacity;
+    int length;
+    unsigned int nodes;
+} pcore_html_serialize_state;
+
+static int pcore_html_serialize_append(pcore_html_serialize_state *state,
+        const char *value, size_t length)
+{
+    size_t copy_length;
+    size_t available;
+
+    if (state == NULL || (value == NULL && length != 0) ||
+            state->length < 0 || state->length >
+            PCORE_HTML_SERIALIZE_MAX_BYTES || length >
+            (size_t) (PCORE_HTML_SERIALIZE_MAX_BYTES - state->length)) {
+        return 1;
+    }
+    if (state->value != NULL && state->capacity > 0) {
+        available = (size_t) (state->capacity - 1) >
+                (size_t) state->length ?
+                (size_t) (state->capacity - 1 - state->length) : 0;
+        copy_length = length < available ? length : available;
+        if (copy_length > 0) {
+            memcpy(state->value + state->length, value, copy_length);
+        }
+        state->value[state->length + copy_length] = '\0';
+    }
+    state->length += (int) length;
+    return 0;
+}
+
+static int pcore_html_serialize_append_cstr(
+        pcore_html_serialize_state *state, const char *value)
+{
+    if (value == NULL) {
+        return 1;
+    }
+    return pcore_html_serialize_append(state, value, strlen(value));
+}
+
+static int pcore_html_serialize_append_dom_value(
+        pcore_html_serialize_state *state, dom_string *value, int attribute)
+{
+    const uint8_t *data;
+    size_t length;
+    size_t i;
+    size_t start;
+    const char *escaped;
+
+    if (state == NULL || value == NULL) {
+        return 1;
+    }
+    data = (const uint8_t *) dom_string_data(value);
+    length = dom_string_byte_length(value);
+    if (data == NULL && length != 0) {
+        return 1;
+    }
+    start = 0;
+    for (i = 0; i < length; i++) {
+        escaped = NULL;
+        if (data[i] == '&') {
+            escaped = "&amp;";
+        } else if (data[i] == '<') {
+            escaped = "&lt;";
+        } else if (data[i] == '>') {
+            escaped = "&gt;";
+        } else if (attribute && data[i] == '"') {
+            escaped = "&quot;";
+        }
+        if (escaped != NULL) {
+            if (i > start && pcore_html_serialize_append(state,
+                    (const char *) data + start, i - start) != 0) {
+                return 1;
+            }
+            if (pcore_html_serialize_append_cstr(state, escaped) != 0) {
+                return 1;
+            }
+            start = i + 1;
+        }
+    }
+    if (start < length && pcore_html_serialize_append(state,
+            (const char *) data + start, length - start) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int pcore_html_serialize_name(dom_string *source, char *name,
+        int capacity, int tag_name)
+{
+    const uint8_t *data;
+    size_t length;
+    size_t i;
+    unsigned char c;
+    int valid;
+
+    if (source == NULL || name == NULL || capacity < 2) {
+        return 1;
+    }
+    data = (const uint8_t *) dom_string_data(source);
+    length = dom_string_byte_length(source);
+    if ((data == NULL && length != 0) || length == 0 ||
+            length >= (size_t) capacity) {
+        return 1;
+    }
+    for (i = 0; i < length; i++) {
+        c = data[i];
+        if (i == 0) {
+            valid = (c >= 'A' && c <= 'Z') ||
+                    (c >= 'a' && c <= 'z') || (!tag_name &&
+                    (c == ':' || c == '_'));
+        } else {
+            valid = (c >= 'A' && c <= 'Z') ||
+                    (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                    c == ':' || c == '-' || (!tag_name &&
+                    (c == '_' || c == '.'));
+        }
+        if (!valid) {
+            return 1;
+        }
+        if (tag_name && c >= 'A' && c <= 'Z') {
+            c = (unsigned char) (c + ('a' - 'A'));
+        }
+        name[i] = (char) c;
+    }
+    name[length] = '\0';
+    return 0;
+}
+
+static int pcore_html_serialize_void_name(const char *name)
+{
+    return strcmp(name, "area") == 0 || strcmp(name, "base") == 0 ||
+            strcmp(name, "br") == 0 || strcmp(name, "col") == 0 ||
+            strcmp(name, "embed") == 0 || strcmp(name, "hr") == 0 ||
+            strcmp(name, "img") == 0 || strcmp(name, "input") == 0 ||
+            strcmp(name, "link") == 0 || strcmp(name, "meta") == 0 ||
+            strcmp(name, "param") == 0 || strcmp(name, "source") == 0 ||
+            strcmp(name, "track") == 0 || strcmp(name, "wbr") == 0;
+}
+
+static int pcore_html_serialize_contains(dom_string *value,
+        const char *needle)
+{
+    const char *data;
+    size_t length;
+    size_t needle_length;
+    size_t i;
+
+    if (value == NULL || needle == NULL) {
+        return 0;
+    }
+    data = dom_string_data(value);
+    length = dom_string_byte_length(value);
+    needle_length = strlen(needle);
+    if (data == NULL || needle_length == 0 || needle_length > length) {
+        return 0;
+    }
+    for (i = 0; i + needle_length <= length; i++) {
+        if (memcmp(data + i, needle, needle_length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_html_serialize_node(dom_node *node,
+        pcore_html_serialize_state *state, unsigned int depth)
+{
+    dom_node_type type;
+    dom_string *data;
+    dom_string *node_name;
+    dom_namednodemap *attributes;
+    dom_nodelist *children;
+    dom_node *attribute;
+    dom_node *child;
+    dom_string *attribute_name;
+    dom_string *attribute_value;
+    dom_ulong length;
+    dom_ulong i;
+    char tag_name[128];
+    char attr_name[256];
+    int result;
+
+    if (node == NULL || state == NULL || depth >=
+            PCORE_HTML_SERIALIZE_MAX_DEPTH || state->nodes >=
+            PCORE_HTML_SERIALIZE_MAX_NODES ||
+            dom_node_get_node_type(node, &type) != DOM_NO_ERR) {
+        return 1;
+    }
+    state->nodes++;
+    if (type == DOM_TEXT_NODE || type == DOM_CDATA_SECTION_NODE ||
+            type == DOM_COMMENT_NODE) {
+        data = NULL;
+        if (dom_node_get_node_value(node, &data) != DOM_NO_ERR ||
+                data == NULL) {
+            if (data != NULL) {
+                dom_string_unref(data);
+            }
+            return 1;
+        }
+        result = 0;
+        if (type == DOM_TEXT_NODE) {
+            result = pcore_html_serialize_append_dom_value(state, data, 0);
+        } else if (type == DOM_CDATA_SECTION_NODE) {
+            if (pcore_html_serialize_contains(data, "]]>") ||
+                    pcore_html_serialize_append_cstr(state, "<![CDATA[") !=
+                    0 || pcore_html_serialize_append(state,
+                    dom_string_data(data), dom_string_byte_length(data)) !=
+                    0 || pcore_html_serialize_append_cstr(state, "]]>") != 0) {
+                result = 1;
+            }
+        } else {
+            length = (dom_ulong) dom_string_byte_length(data);
+            if (pcore_html_serialize_contains(data, "--") ||
+                    (length > 0 && dom_string_data(data)[length - 1] == '-') ||
+                    pcore_html_serialize_append_cstr(state, "<!--") != 0 ||
+                    pcore_html_serialize_append_dom_value(state, data, 0) != 0 ||
+                    pcore_html_serialize_append_cstr(state, "-->") != 0) {
+                result = 1;
+            }
+        }
+        dom_string_unref(data);
+        return result;
+    }
+    if (type != DOM_ELEMENT_NODE) {
+        return 1;
+    }
+    node_name = NULL;
+    if (dom_node_get_node_name(node, &node_name) != DOM_NO_ERR ||
+            node_name == NULL || pcore_html_serialize_name(node_name,
+            tag_name, sizeof(tag_name), 1) != 0) {
+        if (node_name != NULL) {
+            dom_string_unref(node_name);
+        }
+        return 1;
+    }
+    result = pcore_html_serialize_append_cstr(state, "<");
+    if (result == 0) {
+        result = pcore_html_serialize_append_cstr(state, tag_name);
+    }
+    attributes = NULL;
+    if (result == 0 && dom_node_get_attributes(node, &attributes) !=
+            DOM_NO_ERR) {
+        result = 1;
+    }
+    length = 0;
+    if (result == 0 && attributes != NULL &&
+            dom_namednodemap_get_length(attributes, &length) != DOM_NO_ERR) {
+        result = 1;
+    }
+    if (result == 0 && length > PCORE_HTML_SERIALIZE_MAX_ATTRIBUTES) {
+        result = 1;
+    }
+    for (i = 0; result == 0 && i < length; i++) {
+        attribute = NULL;
+        attribute_name = NULL;
+        attribute_value = NULL;
+        if (dom_namednodemap_item(attributes, i, &attribute) != DOM_NO_ERR ||
+                attribute == NULL || dom_node_get_node_name(attribute,
+                &attribute_name) != DOM_NO_ERR || attribute_name == NULL ||
+                pcore_html_serialize_name(attribute_name, attr_name,
+                sizeof(attr_name), 0) != 0 ||
+                dom_node_get_text_content(attribute, &attribute_value) !=
+                DOM_NO_ERR || attribute_value == NULL ||
+                pcore_html_serialize_append_cstr(state, " ") != 0 ||
+                pcore_html_serialize_append_cstr(state, attr_name) != 0 ||
+                pcore_html_serialize_append_cstr(state, "=\"") != 0 ||
+                pcore_html_serialize_append_dom_value(state, attribute_value,
+                1) != 0 || pcore_html_serialize_append_cstr(state, "\"") !=
+                0) {
+            result = 1;
+        }
+        if (attribute_value != NULL) {
+            dom_string_unref(attribute_value);
+        }
+        if (attribute_name != NULL) {
+            dom_string_unref(attribute_name);
+        }
+        if (attribute != NULL) {
+            dom_node_unref(attribute);
+        }
+    }
+    if (attributes != NULL) {
+        dom_namednodemap_unref(attributes);
+    }
+    if (result == 0) {
+        result = pcore_html_serialize_append_cstr(state, ">");
+    }
+    if (result == 0 && !pcore_html_serialize_void_name(tag_name)) {
+        children = NULL;
+        if (dom_node_get_child_nodes(node, &children) != DOM_NO_ERR ||
+                children == NULL || dom_nodelist_get_length(children,
+                &length) != DOM_NO_ERR || length >
+                PCORE_HTML_SERIALIZE_MAX_CHILDREN) {
+            result = 1;
+        }
+        for (i = 0; result == 0 && i < length; i++) {
+            child = NULL;
+            if (dom_nodelist_item(children, i, &child) != DOM_NO_ERR ||
+                    child == NULL || pcore_html_serialize_node(child, state,
+                    depth + 1) != 0) {
+                result = 1;
+            }
+            if (child != NULL) {
+                dom_node_unref(child);
+            }
+        }
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        if (result == 0) {
+            result = pcore_html_serialize_append_cstr(state, "</");
+            if (result == 0) {
+                result = pcore_html_serialize_append_cstr(state, tag_name);
+            }
+            if (result == 0) {
+                result = pcore_html_serialize_append_cstr(state, ">");
+            }
+        }
+    }
+    dom_string_unref(node_name);
+    return result;
+}
+
+static int pcore_relation_element_html(dom_element *element, int outer,
+        char *value, int value_capacity, int *out_bytes)
+{
+    pcore_html_serialize_state state;
+    dom_nodelist *children;
+    dom_node *child;
+    dom_ulong length;
+    dom_ulong i;
+    int result;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (element == NULL || value_capacity < 0 ||
+            (value == NULL && value_capacity > 0)) {
+        return 1;
+    }
+    state.value = value;
+    state.capacity = value_capacity;
+    state.length = 0;
+    state.nodes = 0;
+    result = 0;
+    if (outer) {
+        result = pcore_html_serialize_node((dom_node *) element, &state, 0);
+    } else {
+        children = NULL;
+        length = 0;
+        if (dom_node_get_child_nodes((dom_node *) element, &children) !=
+                DOM_NO_ERR || children == NULL || dom_nodelist_get_length(
+                children, &length) != DOM_NO_ERR || length >
+                PCORE_HTML_SERIALIZE_MAX_CHILDREN) {
+            result = 1;
+        }
+        for (i = 0; result == 0 && i < length; i++) {
+            child = NULL;
+            if (dom_nodelist_item(children, i, &child) != DOM_NO_ERR ||
+                    child == NULL || pcore_html_serialize_node(child, &state,
+                    1) != 0) {
+                result = 1;
+            }
+            if (child != NULL) {
+                dom_node_unref(child);
+            }
+        }
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+    }
+    if (result == 0 && out_bytes != NULL) {
+        *out_bytes = state.length;
+    }
+    if (result != 0 && value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    return result;
+}
+
 /* Return one direct child without filtering out text, comment, or
  * id-less-element nodes. The caller owns the returned reference. */
 static int pcore_relation_child_node_at(dom_node *node, unsigned int index,
@@ -7418,6 +7813,14 @@ PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
     case PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT:
         err = pcore_relation_child_node_whole_text((dom_node *) element,
                 index, out_value, value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_ELEMENT_INNER_HTML:
+        err = pcore_relation_element_html(element, 0, out_value,
+                value_capacity, out_bytes);
+        break;
+    case PCORE_NODE_RELATION_ELEMENT_OUTER_HTML:
+        err = pcore_relation_element_html(element, 1, out_value,
+                value_capacity, out_bytes);
         break;
     case PCORE_NODE_RELATION_LAYOUT_RECT_X:
     case PCORE_NODE_RELATION_LAYOUT_RECT_Y:

@@ -654,7 +654,11 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * script call; CHILD_NODE_WHOLE_TEXT is only available for a direct Text
  * child and returns libdom's logical-adjacent Text projection as a bounded
  * UTF-8 snapshot, stopping at element/comment/processing-instruction
- * boundaries. Mutation remains on the existing attribute/text APIs. */
+ * boundaries. ELEMENT_INNER_HTML and ELEMENT_OUTER_HTML are read-only,
+ * bounded UTF-8 serialization projections for an ID-addressable element;
+ * they traverse the complete libdom subtree without mutation, events,
+ * resource work or layout. Mutation remains on the existing attribute/text
+ * APIs. */
 #define PCORE_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PCORE_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PCORE_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
@@ -710,6 +714,8 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_NODE_RELATION_IMAGE_COMPLETE       48u
 #define PCORE_NODE_RELATION_IMAGE_CURRENT_SRC   49u
 #define PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT 50u
+#define PCORE_NODE_RELATION_ELEMENT_INNER_HTML  51u
+#define PCORE_NODE_RELATION_ELEMENT_OUTER_HTML  52u
 
 PCORE_API int PCore_NodeRelationById(HANDLE hDoc, const char *element_id,
         unsigned int relation, unsigned int index, char *out_value,

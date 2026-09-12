@@ -117,6 +117,12 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   调用 libdom 的逻辑相邻 Text 遍历，按 UTF-8 probe/truncation 合同返回 `wholeText`；
   元素、Comment、processing-instruction、缺失和越界 child 返回 unavailable。该读取
   不合并节点、不改变 child list、不触发 layout 或资源 I/O；
+- `PCORE_NODE_RELATION_ELEMENT_INNER_HTML`/`PCORE_NODE_RELATION_ELEMENT_OUTER_HTML`（关系
+  51/52）为带 id 的 Element
+  提供只读、有界 HTML 序列化。Core 直接遍历完整 libdom 子树，涵盖无 id 后代并转义
+  文本/属性；预算为 256 节点、64 层、64 个 direct child/attribute、16,384 个字节。
+  查询不触发 mutation、事件、资源或 layout；setter、clone、fragment、未知/超限输入
+  不属于该 ABI。
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档

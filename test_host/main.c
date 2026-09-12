@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1235
+#define TEST_MAX_NUMBER 1236
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -50947,6 +50947,39 @@ static BOOL test1235_browser_character_data_relative_existing_contract(void)
             " bounded existing CharacterData node, preserving same-parent and"
             " cross-parent identity, snapshots and detached targets while"
             " rejecting unsupported nodes without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1236 - bounded read-only Element.innerHTML/outerHTML serialization. */
+static BOOL test1236_browser_element_html_serialization_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target' class='card' data-x='a&amp;b'><span title='q'>"
+        "A &lt; B</span><!--note-->Z</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var e=document.getElementById('target'),raw,outer,"
+        "setterOk=0,outerSetterOk=0;raw=e.innerHTML;outer=e.outerHTML;"
+        "try{e.innerHTML='mutate';}catch(x){setterOk=1;}"
+        "try{e.outerHTML='mutate';}catch(y){outerSetterOk=1;}"
+        "document.getElementById('result').textContent=String("
+        "raw==='<span title=\"q\">A &lt; B</span><!--note-->Z'&&"
+        "outer==='<div id=\"target\" class=\"card\" data-x=\"a&amp;b\">"
+        "<span title=\"q\">A &lt; B</span><!--note-->Z</div>'&&"
+        "setterOk&&outerSetterOk&&e.textContent==='A < BZ');})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/element-html-serialization", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1236 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1236 OK",
+            "Element.innerHTML and outerHTML now expose bounded read-only"
+            " serialization for live elements, escaping text and"
+            " attributes while rejecting setters without DOM mutation.");
     return TRUE;
 }
 
@@ -109169,6 +109202,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1233: ok = test1233_browser_character_data_replacement_contract(); break;
         case 1234: ok = test1234_browser_element_replace_with_character_data_contract(); break;
         case 1235: ok = test1235_browser_character_data_relative_existing_contract(); break;
+        case 1236: ok = test1236_browser_element_html_serialization_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

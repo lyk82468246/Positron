@@ -99,6 +99,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   relation 46–48 只读地投影 `naturalWidth`、`naturalHeight` 和 `complete`，relation
   查询不会 fetch、decode 或 layout：成功资源要等 retained decode attempt 后才有自然
   尺寸，失败资源 complete 且尺寸为 0。CORS、`decode()` 和事件不在 Core 边界内；
+- 通过 `PCORE_NODE_RELATION_ELEMENT_INNER_HTML`/`PCORE_NODE_RELATION_ELEMENT_OUTER_HTML`
+  （关系 51/52）提供
+  ID-addressable element 的只读 HTML 序列化投影。Core 在固定节点、深度、child/attribute
+  和 UTF-8 字节预算内完整遍历 libdom 子树并负责转义；该查询不修改 DOM、不派发事件、
+  不获取资源也不触发布局；setter、clone snapshot、DocumentFragment、未知节点和超限
+  输入由 Core/Browser 共同 fail closed；
 - NetSurf box construction、layout、hit testing 和 GDI paint；
 - 图像映射命中与链接几何：对已布局且带 `usemap` 的 `<img>`，Core 按 DOM 顺序在
   `<map>` 的最多 64 个 `<area>` 中解析 `default`、`rect`、`circle` 和
@@ -289,6 +295,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `time`/`datetime-local`；`range` 的默认范围也算受限范围，underflow/overflow 才是
   out-of-range，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和
   单独 stepMismatch 安全不匹配；
+- live、ID-addressable Element 的只读 `innerHTML`/`outerHTML` getter；序列化遍历和
+  escaping 由 Core relation 51/52 拥有，Browser 不复制 libdom 子树。setter、clone
+  snapshot、fragment、未知节点和超预算输入保持 fail closed；
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和

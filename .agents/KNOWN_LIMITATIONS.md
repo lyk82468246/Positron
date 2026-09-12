@@ -128,7 +128,8 @@
 
 ## DOM、表单与事件
 
-- DOM bridge 只提供有界 snapshot。
+- DOM bridge 默认只提供有界 snapshot；live、可寻址 Element 另有只读
+  `innerHTML`/`outerHTML` 序列化投影。
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
 - Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、CharacterData
   setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`，
@@ -143,6 +144,10 @@
   Ex9 CharacterData 1–4 primitive `replaceWith()` 仍按各自 callback 合同工作。Node/
   DocumentFragment、通用 mutation/observer 和 live collection 未实现；CDATA 共享 ABI 但
   HTML fixture 不伪造节点。
+- HTML 序列化由 Core relation 51/52 在一次有界 libdom 遍历中完成：最多 256 个节点、64 层、
+  64 个 direct child/attribute、16,384 个 UTF-8 字节，包含无 id 后代并转义文本/属性字符。
+  Browser 只为 live、可寻址 Element 提供 getter；setter、clone snapshot、DocumentFragment、
+  未知节点和超限输入 fail closed，不触发 mutation、事件、资源或 layout。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序

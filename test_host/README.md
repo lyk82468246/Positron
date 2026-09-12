@@ -77,10 +77,10 @@ tests=13,20,27,999
   Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM fixtures 已将这组组合扩展到 TEST1201–1235，覆盖
-  normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex12 的
-  insertion/replacement/relative list 和最多四值的 primitive/mixed 操作；
+  的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续 image-source 与
+  DOM fixtures（TEST1201–1236）覆盖 normalize、clone/equality、Text/CharacterData、
+  Ex2/Ex3 removal、Ex4–Ex12 insertion/replacement/relative list，以及 bounded HTML
+  serialization；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。

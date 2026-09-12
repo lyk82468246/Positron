@@ -135,6 +135,9 @@ CharacterData 同父/跨父替换，Ex12 再让 element target 用现有 Charact
 source/target 未过滤索引提交，旧 Ex10 及更早 ABI 布局不变。DocumentFragment、通用节点替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。
 
+Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
+setter、clone snapshot、fragment 和超限/未知节点仍不在边界内。
+
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接
 状态（包括持久化 visited history、隐私隔离与真实 visited 颜色）、伪元素、属性大小写修饰符、namespace、

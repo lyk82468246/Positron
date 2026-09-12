@@ -309,6 +309,11 @@ Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks �
 DOM、form、event 和 navigation 查询/mutation。Browser 负责 JSON 参数、脚本对象形状、
 错误映射与同步 dispatch，真实状态和缓冲由 Core/宿主在调用期间借用。
 
+`Element.innerHTML`/`outerHTML` 是 live、可寻址 Element 的只读 HTML 投影。Core 在 256
+节点、64 层、64 个 direct child/attribute、16,384 字符内遍历 libdom 子树，无 id 后代能
+出现；文本/属性会转义。setter、clone、fragment、未知/超限输入 fail closed，不触发
+mutation、事件、资源或 layout。
+
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
 在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；
 `selected` 遵守单选互斥/多选规则，`defaultSelected` 只改默认基线。`value`/`label`
@@ -336,15 +341,12 @@ listed 元素：fieldset/object/output 会出现；img 仅有 owner，不进集�
 `optgroup.label` 反映 `label` attribute，缺失为 `''` 且随 mutation 更新，`option.label`
 的文本 fallback 保持不变。仅提供元数据，不创建 popup 或改变 layout/paint。
 
-`fieldset.type` 固定为只读的 `'fieldset'`；`fieldset.form` 复用 Core 的 FORM_OWNER
-祖先/显式 `form="id"` 规则，无效 owner 返回 `null`。`fieldset.elements` 每次按 DOM
-顺序生成独立 HTMLCollection snapshot，投影子树中带 id 的 input/select/textarea/button/
-object/output（含嵌套 fieldset），最多遍历 256 个节点、返回 64 项；不覆盖无 id/live
-mutation。output 也是可寻址的 labelable 元素，`labels` 复用 Core label/control relation。
-它的 `type` 只读为 `'output'`；`value` 反映文本，`defaultValue` 反映 Core 默认值。设置
-`value` 会保留独立 default override，设置 `defaultValue` 在有
-override 时只改默认基线、否则改写文本；宿主的 `form.reset()` 通过 Core 清除 override
-并恢复默认文本。output 仍不会进入 successful-control 或 FormData。
+`fieldset.type` 固定为只读的 `'fieldset'`，`fieldset.form` 复用 Core owner 规则。
+`fieldset.elements` 是每次读取的有界 snapshot，只投影子树中带 id 的
+input/select/textarea/button/object/output，最多遍历 256 个节点、返回 64 项。`output` 的
+`type` 为 `'output'`，`labels` 复用 Core relation，`value`/`defaultValue` 与 Core 文本和
+默认 override 同步；`form.reset()` 清除 override。fieldset/output 不进入 successful-control
+或 FormData。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
 `PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、

@@ -10,21 +10,19 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next794 设备证据见“最新有效设备证据”；更早传输失败只
+最新 next795 设备证据见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next794 在 Ex11 之后追加 Ex12：element target 的 `Node.replaceChild()`/
-  `Element.replaceWith()` 可用另一个已连接的 Text/Comment/CDATA 替换 direct element child，
-  Core 保留新节点身份并支持同父、跨父迁移，Browser 更新两侧 wrapper/cache；
-  next794 还让 CharacterData 的 `before()`/`after()` 和单节点 `replaceWith()` 接受一个
-  已连接 CharacterData，复用 Ex10/Ex11 并保持同父/跨父身份和 snapshot 语义；
-  next790–next793 的 primitive replacement、existing-node insertion 和 CharacterData
-  replacement 保持不变。TEST1220–1235 覆盖顺序、snapshot、detached、
-  错误 child/reference、越界和超限，HTML 夹具不伪造 CDATA 节点。
+- next790–next794 完成 primitive/mixed replacement、existing-node insertion 和
+  CharacterData relative mutation；TEST1220–1235 覆盖顺序、snapshot、detached、错误
+  child/reference、越界和超限，HTML 夹具不伪造 CDATA 节点。
+- next795 加入 Element 的只读 `innerHTML`/`outerHTML`：Core relation 51/52 完整遍历含无
+  id 后代的有界子树并负责 HTML escaping，Browser 只提供 live getter；setter、clone
+  snapshot、fragment、未知/超限输入 fail closed。TEST1236 覆盖该合同。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1235。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1235,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1236。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1236,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -73,10 +71,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next794
+  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next795
   依次补齐多值 append/prepend、CharacterData relative、`replaceWith(...values)`、
   relative/mixed 列表、CharacterData `replaceWith`、insertion、existing-node replacement
-  以及 element-to-CharacterData replacement、CharacterData existing-node relative mutation。
+  以及 element-to-CharacterData replacement、CharacterData existing-node relative mutation、
+  Element HTML serialization。
   稳定合同和逐测试
   说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
@@ -179,47 +178,21 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1235。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1235,999`。
+- `TEST_MAX_NUMBER`：1236。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1236,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260912-182954-next794-character-data-relative`：Debug ARMV4I，
-选择 `1235,1234,1233,999`，4/4 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理、
-`crash_check` 均 PASS，新增 dump=0。TEST1235/1234/1233/999 均通过。
-本次使用 `\Storage Card`（默认 `\Temp` 仅 2.83 MiB，低于本批所需 10.58 MiB），未删除日志不完整
-的旧目录。Browser bootstrap 1 MiB 上限下短探针通过；过长探针仅留调试记录。
-此前 `20260911-161749-next784-append-retry`：Debug ARMV4I，选择
-`1225,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
-`crash_check` 均 PASS，新增 dump=0。TEST1225 覆盖最多四值 append/prepend 的 primitive/
-element 顺序、跨父迁移、identity/snapshot、空调用和预检失败边界；TEST999 beep 通过。
-此前有效设备证据 `20260910-223812-next775-css-stack-recheck`：正式 Debug ARMV4I，选择
-`6-12,15,16,18,21,22,24,38-42,51,59-62,64-67,118,999`，29/29、唯一 PASS、零 ERROR/FAIL，
-日志完整回收、双空间预检通过且当前部署已清理。用户先关闭了设备上保留的旧 Error
-Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，运行后仍为 0，
-`crash_check=PASS`、`new_crash_dump_count=0`。
-本次构建同时包含 TEST51 的窄列表项 fixture 调整（180→126px），用于让 inside marker
-的 hanging wrap 在 180 CSS px probe 中保持可观察；这是项目代码改动，已在本次修复后续
-提交中纳入。上述 Debug 门包含 TEST51 并通过，设备证据与该源码一致。
+`tmp/device-runs/20260912-193139-next795-html-serialization` 是当前基线：Debug ARMV4I，
+选择 `1236,1235,1234,999`，4/4 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
+`crash_check` 均 PASS，新增 dump=0。部署使用 `\Storage Card`，日志复制完成后移除了当前目录；
+本批只验证脚本 DOM getter，无需视觉人工步骤。
 
-额外 Release 复核 `20260910-220325-next775-css-stack-release` 在 240 秒及最终日志
-恢复后仍只有启动头，没有任何测试完成记录，不能作为通过证据。只读检查未见新增转储；
-该现象与 `FAILED_EXPERIMENTS.md` 中已有的 Release 启动停滞相似，但未证明同一根因。
-远端同名时间戳目录和不完整日志仍保留，未强杀进程；该启动停滞不作为正式基线，
-正式设备基线为上述 Debug 门。
-
-早期 next775 的错误配置运行虽有断言通过，但各新增转储，不作为基线；坏 INI
-`tests=1-45,62,118,999` 会被拒绝并记录 `TESTBENCH FAIL`/`No tests were started`。
-取证确认两处 libcss 选择状态大栈帧导致 `0xC00000FD`，现已改为独立 heap scratch，
-分配失败返回 `CSS_NOMEM` 并在所有路径释放；设备门会以转储差异阻止“日志 PASS”冒充
-无崩溃。Ignore 的旧截图来自已撤回的 TEST23 配置，不是已证实的 RAPI 复制故障。
-
-此前 TEST118 的 Debug 选择回归门和 next774 的 `TEST1216,999` Comment removal 门均
-通过；更早证据、失败实验和不完整部署只保留在 Git 历史、`docs/history/` 与本地
-`tmp/device-runs/`，不作为当前基线。Release 复核若只有启动头同样不算通过，网络 smoke
-仍需在网络稳定且日志完整时单独执行。
+更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
+`FAILED_EXPERIMENTS.md` 与本地 `tmp/`，不能替代当前基线。设备门不会把只有启动头或不完整日志
+认作通过。
 
 ## 当前人工验收状态
 
@@ -295,8 +268,10 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
   单节点 `replaceWith()` 同父与跨父、element target→CharacterData replacement、
   identity/snapshot、owner、textContent 及错误 reference/object/self/type/index；Core 与
   Browser 均拒绝部分 mutation。CDATA 共享 ABI，无 HTML fixture。自动门选
-  `1235,1234,1233,999` 并回归相邻路径；暂无新增人工风险。
-  DocumentFragment、通用 mutation、observer、live collection 和 native/视觉仍不在边界。
+  `1235,1234,1233,999` 并回归相邻路径；暂无新增人工风险。TEST1236 另验证 Core relation
+  51/52 的 live Element HTML serialization、转义、无 id 后代、只读 setter 和有界 fail
+  closed；暂无新增人工风险。DocumentFragment、通用 mutation、observer、live collection
+  和 native/视觉仍不在边界。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
