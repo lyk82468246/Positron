@@ -130,8 +130,9 @@ Ex5–Ex7 callbacks。
 Ex10 再为 Text/Comment/CDATA 的 `Node.insertBefore()`/`appendChild()` 提供现有节点
 同父重排、跨父迁移和 wrapper owner 更新；Ex11 追加 `Node.replaceChild()` 的现有
 CharacterData 同父/跨父替换，Ex12 再让 element target 用现有 CharacterData 完成
-`replaceChild()`/`replaceWith()`。Core 按 source/target 未过滤索引提交，旧 Ex10 及更早 ABI
-布局不变。DocumentFragment、通用节点替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
+`replaceChild()`/`replaceWith()`；next794 又让 CharacterData 的 `before()`/`after()` 和单节点
+`replaceWith()` 复用 Ex10/Ex11，支持同父/跨父 existing-node relative mutation。Core 按
+source/target 未过滤索引提交，旧 Ex10 及更早 ABI 布局不变。DocumentFragment、通用节点替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/

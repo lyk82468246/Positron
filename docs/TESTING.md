@@ -888,6 +888,15 @@ element-to-element、detached、错误 parent、类型不匹配和越界必须�
 check；该门不扩展 DocumentFragment、通用节点替换、MutationObserver、live collection 或
 native/视觉行为。
 
+TEST1235 覆盖 CharacterData relative existing-node mutation：复用 Ex10/Ex11 的既有
+callback，让 Text/Comment/CDATA 的 `before()`、`after()` 和单节点 `replaceWith()` 支持
+一个已连接 CharacterData，验证同父重排、跨父迁移、返回值、source identity、两侧静态
+snapshot、detached target/source 和父级 `textContent`。元素、fragment、混合列表、对象、
+失效 source 与其他类型在 Browser preflight 阶段拒绝且不产生部分 mutation；CDATA 共享
+同一 ABI，HTML fixture 不伪造 CDATA。设备门选择 `TEST1235,1234,1233,999`，确认
+JavaScript heap、完整日志、空间预检、完成后清理和 crash check；该门仍不扩展
+DocumentFragment、通用 mutation、MutationObserver、live collection 或 native/视觉行为。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

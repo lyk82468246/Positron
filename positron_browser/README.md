@@ -457,6 +457,10 @@ Ex10–Ex12 的 callbacks 接入现有 CharacterData 的
 `replaceChild(characterData, oldElement)`/`Element.replaceWith(characterData)`。Browser
 预检连接、类型、索引和容量，成功后更新 owner/snapshot；错误输入 fail closed，旧 ABI 不变。
 
+CharacterData 的 `before()`/`after()` 和单节点 `replaceWith()` 复用 Ex10/Ex11，接受一个
+已连接 Text/Comment/CDATA；支持同父/跨父、identity 和两侧 snapshot。混合节点/primitive
+列表、fragment、detached source、元素和其他对象仍 fail closed。
+
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
 `insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text
 或移动 element。错误参数、detached 或超限 fail closed；宿主负责重排/重绘。

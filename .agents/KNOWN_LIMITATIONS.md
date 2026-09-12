@@ -135,11 +135,12 @@
   Ex2/Ex3 的 Text/Comment/CDATA direct-child removal，以及 Ex4–Ex12 的 existing-element/
   CharacterData insertion、replacement 和 relative text。Ex10 按未过滤 `childNodes` 索引移动
   现有 Text/Comment/CDATA，Ex11 用另一个现有 CharacterData 替换 direct child，Ex12 用已
-  连接的 CharacterData 替换 direct element child；三者均支持同父、跨父和 wrapper owner
-  更新。成功 mutation 使 layout 失效，UTF-16/UTF-8、detached、
-  结构 token、错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/
-  `prepend()`（零至四值）创建 primitive Text 或移动 element；Ex7/Ex8 element `replaceWith()`
-  和 Ex9 CharacterData 1–4 primitive `replaceWith()` 仍按各自 callback 合同工作。Node/
+  连接的 CharacterData 替换 direct element child；next794 让 CharacterData 的 relative
+  `before()`/`after()` 和单节点 `replaceWith()` 复用这两条既有路径。上述路径支持同父、跨父
+  和 wrapper owner 更新。成功 mutation 使 layout 失效，UTF-16/UTF-8、detached、结构 token、
+  错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/`prepend()`
+  （零至四值）创建 primitive Text 或移动 element；Ex7/Ex8 element `replaceWith()` 和
+  Ex9 CharacterData 1–4 primitive `replaceWith()` 仍按各自 callback 合同工作。Node/
   DocumentFragment、通用 mutation/observer 和 live collection 未实现；CDATA 共享 ABI 但
   HTML fixture 不伪造节点。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
@@ -576,7 +577,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1234 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
+- TEST1201–1235 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
   Ex2/Ex3 removal、Ex4–Ex12 insertion/replacement/relative text，以及 `insertAdjacent*()`、
   四值 append/prepend/replaceWith、mixed list 的 wrapper/snapshot、detached、UTF-16 和
   retained-layout 边界；逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。

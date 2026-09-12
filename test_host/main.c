@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1234
+#define TEST_MAX_NUMBER 1235
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -50896,6 +50896,57 @@ static BOOL test1234_browser_element_replace_with_character_data_contract(void)
             " identity, owner and old snapshots across same-parent and"
             " cross-parent replacement while rejecting detached or invalid"
             " targets without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1235 - bounded CharacterData relative existing-node mutation. */
+static BOOL test1235_browser_character_data_relative_existing_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='oldA'>O</span>A<!--ca-->"
+        "<span id='tailA'>T</span></div><div id='b'>B<!--cb--><!--cc-->"
+        "<span id='tailB'>D</span></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('a'),b=document.getElementById('b'),"
+        "oldA=document.getElementById('oldA'),tailA=document.getElementById('tailA'),"
+        "tailB=document.getElementById('tailB'),textA=a.childNodes[1],commentA=a.childNodes[2],"
+        "textB=b.childNodes[0],commentB=b.childNodes[1],commentC=b.childNodes[2],"
+        "sa=a.childNodes,sb=b.childNodes,r1,r2,r3,r4,bad=0,unchanged;"
+        "r1=textA.before(commentB);r2=textA.after(textB);"
+        "r3=commentB.replaceWith(commentA);r4=textB.replaceWith(commentC);"
+        "unchanged=a.textContent;textA.before(textA);"
+        "try{textA.before({});}catch(e){bad|=1;}"
+        "try{textA.after(oldA);}catch(e2){bad|=2;}"
+        "try{textA.after(commentB);}catch(e3){bad|=4;}commentB.after(commentC);"
+        "try{textA.before(commentB);}catch(e4){bad|=8;}"
+        "try{textA.replaceWith(oldA);}catch(e5){bad|=16;}"
+        "document.getElementById('result').textContent=String(r1===undefined&&"
+        "r2===undefined&&r3===undefined&&r4===undefined&&unchanged==='OAT'&&"
+        "a.childNodes.length===5&&a.childNodes[0]===oldA&&a.childNodes[1]===commentA&&"
+        "a.childNodes[2]===textA&&a.childNodes[3]===commentC&&a.childNodes[4]===tailA&&"
+        "b.childNodes.length===1&&b.childNodes[0]===tailB&&oldA.parentNode===a&&"
+        "tailA.parentNode===a&&tailB.parentNode===b&&textA.parentNode===a&&"
+        "commentA.parentNode===a&&commentC.parentNode===a&&commentB.parentNode===null&&"
+        "textB.parentNode===null&&sa.length===4&&sa[0]===oldA&&sa[1]===textA&&"
+        "sa[2]===commentA&&sa[3]===tailA&&sb.length===4&&sb[0]===textB&&"
+        "sb[1]===commentB&&sb[2]===commentC&&sb[3]===tailB&&textA.data==='A'&&"
+        "commentA.data==='ca'&&commentC.data==='cc'&&a.textContent==='OAT'&&"
+        "b.textContent==='D'&&bad===31);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/character-data-relative-existing", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1235 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1235 OK",
+            "Text, Comment and CDATA before/after/replaceWith now accept one"
+            " bounded existing CharacterData node, preserving same-parent and"
+            " cross-parent identity, snapshots and detached targets while"
+            " rejecting unsupported nodes without partial mutation.");
     return TRUE;
 }
 
@@ -109117,6 +109168,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1232: ok = test1232_browser_character_data_insertion_contract(); break;
         case 1233: ok = test1233_browser_character_data_replacement_contract(); break;
         case 1234: ok = test1234_browser_element_replace_with_character_data_contract(); break;
+        case 1235: ok = test1235_browser_character_data_relative_existing_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

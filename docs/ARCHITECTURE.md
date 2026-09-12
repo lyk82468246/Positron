@@ -409,6 +409,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   旧 element，更新两侧 owner/index 与 snapshot。对象、element-to-element、detached、错
   parent、错类型和越界均 fail closed；Ex12 只追加字段，Ex11 及更旧 callback table 的布局
   和语义保持不变。
+- CharacterData wrapper 的相对 `before()`/`after()` 以及单节点 `replaceWith()` 复用 Ex10
+  的 existing-node insertion 和 Ex11 的 replacement callback。Browser 只接受一个已连接的
+  Text/CDATA/Comment source，按 direct parent 和未过滤位置完成同父重排或跨父迁移，保留
+  source identity、更新两侧 owner/index 与旧 snapshot；detached target 是 no-op，detached
+  source、元素、fragment、混合列表和其他对象在提交前拒绝，不新增 ABI 字段。
 - `Element.insertAdjacentText(position, text)` 复用 write Ex6 的
   `insert_text_child`，在 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置
   插入一个字符串化 primitive Text。内侧位置作用于 receiver，外侧位置要求 receiver 是
@@ -771,7 +776,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用
   Ex5–Ex7，旧布局不变；相对 primitive 文本、
   CharacterData `before()`/`after()` 与 `insertAdjacentText()` 仍复用既有 write Ex6 slot，
-  `insertAdjacentElement()` 复用 Ex6 existing-element slot，旧注册入口的语义和布局不变。
+  `insertAdjacentElement()` 复用 Ex6 existing-element slot；CharacterData relative 的
+  existing-node `before()`/`after()`/单节点 `replaceWith()` 复用 Ex10/Ex11，旧注册入口的
+  语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，
   不新增 callback table、native slot 或 ABI 版本；显式 attribute 优先、缺失时回退到
   option 文本的规则只由 Browser 实现，Core 继续提供通用存储。
