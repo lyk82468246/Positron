@@ -329,7 +329,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   边界内。相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
   `after(element)` 及其单值 primitive 重载：Browser 从目标 element 的 direct parent 计算
   未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和
-  多参数调用 fail closed；
+  其他错误参数调用 fail closed。对 element 的 2–4 值 mixed `before()`/`after()`，Browser 先验证
+  existing-element 的 identity/connected/层级/重复约束及 primitive 类型和容量，再按 relative
+  position 复用同一组 Ex6 callbacks；这条路径不新增 ABI，运行时错误仍按 callback 结果 fail closed；
 - 相同的 write Ex6 text-child callback 还服务 CharacterData wrapper：Text、Comment 和
   CDATA 的 `before(value)`/`after(value)` 接受一个 primitive，按当前 direct parent 的
   未过滤 `childNodes` 索引创建 Text sibling，并保留目标 wrapper 与旧 snapshot。write Ex7
@@ -707,7 +709,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
   existing-element replacement，Ex6 追加按未过滤 `childNodes` 索引的 existing-element
   insertion，Ex7 再追加单值 primitive `replaceWith` 文本替换，Ex8 追加 2–4 值 primitive
-  `replaceWith` 文本列表；相对 primitive 文本、
+  `replaceWith` 文本列表；element relative 的 mixed `before()`/`after()` 不新增 callback table，
+  而是复用 Ex6 的 existing-element/text callbacks；相对 primitive 文本、
   CharacterData `before()`/`after()` 与 `insertAdjacentText()` 仍复用既有 write Ex6 slot，
   `insertAdjacentElement()` 复用 Ex6 existing-element slot，旧注册入口的语义和布局不变。
 - option 的 `value`/`label`/`text` 基础属性复用既有 DOM attribute/text callback，

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1228
+#define TEST_MAX_NUMBER 1229
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -50200,6 +50200,92 @@ static BOOL test1228_browser_relative_text_list_contract(void)
             " and the Core fragment bridge, preserving order and snapshots"
             " while rejecting objects, nodes, over-limit lists and detached"
             " targets without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1229 - bounded relative insertion accepts mixed values. */
+static BOOL test1229_browser_relative_mixed_list_contract(void)
+{
+    static const char HTML_BEFORE[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span><i id='move'>M</i>tail</div>"
+        "<div id='other'><b id='from'>F</b></div><p id='result'>idle</p></body></html>";
+    static const char HTML_AFTER[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span>tail</div>"
+        "<div id='other'><i id='move'>M</i><b id='from'>F</b></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char HTML_FAILURES[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'>lead<span id='target'>T</span><i id='move'>M</i>tail</div>"
+        "<div id='other'><b id='from'>F</b></div><p id='result'>idle</p></body></html>";
+    static const char PROBE_BEFORE[] =
+        "(function(){var a=document.getElementById('a'),t=document.getElementById('target'),"
+        "m=document.getElementById('move'),o=document.getElementById('other'),f=document.getElementById('from'),"
+        "s=a.childNodes,so=o.childNodes,x,r,ok;r=t.before(m,'A',f,7);x=a.childNodes;"
+        "ok=r===undefined&&x.length===7&&x[0].data==='lead'&&x[1]===m&&x[2].data==='A'&&"
+        "x[3]===f&&x[4].data==='7'&&x[5]===t&&x[6].data==='tail'&&"
+        "a.textContent==='leadMAF7Ttail'&&o.childNodes.length===0&&f.parentElement===a&&"
+        "s.length===4&&s[1]===t&&s[2]===m&&so.length===1&&so[0]===f;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_AFTER[] =
+        "(function(){var a=document.getElementById('a'),t=document.getElementById('target'),"
+        "m=document.getElementById('move'),f=document.getElementById('from'),o=document.getElementById('other'),"
+        "s=a.childNodes,so=o.childNodes,x,r,ok;r=t.after('X',m,'Y',f);x=a.childNodes;"
+        "ok=r===undefined&&x.length===7&&x[0].data==='lead'&&x[1]===t&&x[2].data==='X'&&"
+        "x[3]===m&&x[4].data==='Y'&&x[5]===f&&x[6].data==='tail'&&"
+        "a.textContent==='leadTXMYFtail'&&o.childNodes.length===0&&m.parentElement===a&&"
+        "f.parentElement===a&&s.length===3&&s[1]===t&&so.length===2&&so[0]===m&&so[1]===f;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char PROBE_FAILURES[] =
+        "(function(){var a=document.getElementById('a'),t=document.getElementById('target'),"
+        "m=document.getElementById('move'),o=document.getElementById('other'),f=document.getElementById('from'),"
+        "s=a.childNodes,so=o.childNodes,bad=0;try{t.before(f,{});}catch(e){bad|=1;}"
+        "try{t.after(f,t);}catch(e2){bad|=2;}try{t.before(m,f,m);}catch(e3){bad|=4;}"
+        "try{t.before(f,'1','2','3','4');}catch(e4){bad|=8;}"
+        "try{t.before('1',{});}catch(e5){bad|=16;}try{t.before(a,'x');}catch(e6){bad|=32;}"
+        "ok=bad===63&&a.childNodes.length===4&&a.childNodes[0].data==='lead'&&"
+        "a.childNodes[1]===t&&a.childNodes[2]===m&&a.childNodes[3].data==='tail'&&"
+        "a.textContent==='leadTMtail'&&o.childNodes.length===1&&o.childNodes[0]===f&&"
+        "s.length===4&&s[1]===t&&s[2]===m&&so.length===1&&so[0]===f;"
+        "t.remove();try{t.before(f,'x');}catch(e7){bad|=64;}"
+        "ok=ok&&bad===127&&a.childNodes.length===3&&a.textContent==='leadMtail'&&"
+        "t.parentNode===null&&!t.isConnected&&o.childNodes.length===1&&o.childNodes[0]===f;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    char error[768];
+    char detail[768];
+    const char *failed_probe;
+
+    memset(error, 0, sizeof(error));
+    memset(detail, 0, sizeof(detail));
+    failed_probe = NULL;
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-mixed", HTML_BEFORE,
+            PROBE_BEFORE, "true", error, sizeof(error))) {
+        failed_probe = "before-mixed";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-mixed", HTML_AFTER,
+            PROBE_AFTER, "true", error, sizeof(error))) {
+        failed_probe = "after-mixed";
+    } else if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/node-relative-mixed", HTML_FAILURES,
+            PROBE_FAILURES, "true", error, sizeof(error))) {
+        failed_probe = "failures";
+    }
+    if (failed_probe != NULL) {
+        strncpy(detail, error, sizeof(detail) - 1);
+        detail[sizeof(detail) - 1] = '\0';
+        _snprintf(error, sizeof(error) - 1, "probe=%s %s", failed_probe,
+                detail);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1229 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1229 OK",
+            "Element before/after now accept bounded mixed lists of existing"
+            " elements and primitive Text values, preserving order, identity"
+            " and snapshots while rejecting invalid, duplicate, cyclic and"
+            " detached inputs before mutation.");
     return TRUE;
 }
 
@@ -108415,6 +108501,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1226: ok = test1226_browser_character_data_relative_contract(); break;
         case 1227: ok = test1227_browser_replace_with_text_list_contract(); break;
         case 1228: ok = test1228_browser_relative_text_list_contract(); break;
+        case 1229: ok = test1229_browser_relative_mixed_list_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

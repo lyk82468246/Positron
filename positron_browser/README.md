@@ -447,9 +447,9 @@ Ex5 追加 `replace_child`，由 `Node.replaceChild(element, oldElement)`/
 old 为 direct child、new 可跨父；成功返回旧 wrapper 并刷新 snapshot/重排。Text/Comment/CDATA、
 DocumentFragment、detached、错误 parent/self、多参数 fail closed。
 
-Ex6 追加 `insert_child_at`，处理 `append()`/`prepend()`（最多四个 element）、`before()`/
-`after()`/`insertAdjacentElement()`；Core 按未过滤索引移动 id element，支持混合/跨父；
-primitive 同样走 Ex6。
+Ex6 `insert_child_at` 处理 `append()`/`prepend()`、`before()`/`after()` 和
+`insertAdjacentElement()`；按未过滤索引移动 id element，primitive 走同一 bridge。
+element relative 的 2–4 值 mixed 列表先预检，再按序复用 Ex6 element/text callbacks。
 
 Ex7 追加 `replace_child_with_text`，由 `Element.replaceWith(value)` 调用
 `PCore_NodeReplaceElementChildWithTextById`；支持五种 primitive，原位建 Text、保留旧

@@ -137,10 +137,12 @@
   Ex4 的 `Node.insertBefore()`/`appendChild()` 支持带 id element 的同父 reorder、跨父 reparent
   和 `NULL` append；Ex6 的 `append()`/`prepend()`（零至四值）先预检，再按未过滤
   `childNodes` 末尾/零位移动 element 或创建 primitive Text。element 的 `before()`/`after()`、
-  `insertAdjacentText()`/`insertAdjacentElement()` 覆盖 direct-parent/四位置；Text、Comment、
-  CDATA wrapper 可用 write Ex6 单值或 write Ex7 的 2–4 primitive Text 列表做
-  `before()`/`after()`。错误 parent、层级环、结构 token、detached、节点/DocumentFragment、
-  超限值列表不产生部分 mutation；
+  `insertAdjacentText()`/`insertAdjacentElement()` 覆盖 direct-parent/四位置；element relative
+  `before()`/`after()` 另接受 2–4 值 mixed element/primitive；Browser 预检连接、层级、重复、
+  类型和容量后按序复用 Ex6 callbacks。Text/Comment/CDATA wrapper 仍用 write Ex6 单值或
+  Ex7 的 2–4 primitive Text 列表。错误 parent、层级环、结构 token、detached、节点或
+  DocumentFragment、对象、重复元素和超限值列表
+  不产生部分 mutation；
   通用 Node/DocumentFragment、其他 CharacterData 插入/替换、其他删除、mutation 事件、
   MutationObserver 和 live collection 未实现。Ex5 的 `Node.replaceChild()` 仍只支持带 id
   existing element；Ex7 的 `Element.replaceWith(value)` 支持一个字符串化 primitive，Ex8
@@ -580,13 +582,10 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1228 已自动覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、
-  clone/equality、Ex2/Ex3 removal 与 Ex4–Ex8 insertion/replacement/relative text、
-  `insertAdjacentText()`/`insertAdjacentElement()`、CharacterData relative insertion 及
-  四值 append/prepend/replaceWith 的 wrapper/snapshot、detached、UTF-16 和 retained-layout
-  边界；逐项合同见
-  [`docs/TESTING.md`](../docs/TESTING.md)。
-  其他结构 mutation、observer/live collection、native/视觉需人工观察。
+- TEST1201–1229 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
+  Ex2/Ex3 removal 与 Ex4–Ex8 insertion/replacement/relative text，以及 `insertAdjacent*()`、
+  四值 append/prepend/replaceWith、relative mixed list 的 wrapper/snapshot、detached、UTF-16
+  和 retained-layout 边界；逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

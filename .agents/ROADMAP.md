@@ -110,7 +110,7 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
 `docs/TESTING.md` 与当前交接文件。上述语义必须继续
 由 Core/Browser 提供，不能退回到 `test_host` 的业务 helper。
 
-结构 mutation 目前承诺十一条窄路径：带 id 元素的 `Element.append()`/`prepend()` 零至四值文本/元素插入，
+结构 mutation 目前承诺这些窄路径：带 id 元素的 `Element.append()`/`prepend()` 零至四值文本/元素插入，
 连接中 direct Text wrapper 的 `Text.remove()`/`Element.removeChild(Text)`，连接中
  direct Comment/CDATA wrapper 的 `remove()`/`Element.removeChild()`，以及 Ex4 的已有
  element `Node.insertBefore()`/`appendChild()`、Ex5 的已有 element
@@ -121,8 +121,10 @@ native SELECT popup、完整 live collection 或完整 HTML option 算法；`opt
  插入/替换，mutation Ex6 按未过滤 `childNodes` 支持同父重排、跨父迁移、四位置
 `insertAdjacentText()`/`insertAdjacentElement()`，并让 Text/Comment/CDATA wrapper 以同一
 write Ex6 callback 做单值 primitive `before()`/`after()`；Ex7/Ex8 保留旧 wrapper 为 detached。
-这十一条路径都由 Core 拥有 DOM 语义并在成功后使 retained layout 失效；relative primitive 列表的 write Ex7
-支持 element 与 CharacterData 的 2–4 值原子 Text 插入。DocumentFragment、通用
+这些路径都由 Core 拥有 DOM 语义并在成功后使 retained layout 失效；relative primitive 列表的 write Ex7
+支持 element 与 CharacterData 的 2–4 值原子 Text 插入，element `before()`/`after()` 另支持
+2–4 值 mixed existing-element/primitive 列表，由 Browser 预检后复用 Ex6 callbacks 按序插入。
+DocumentFragment、通用
 CharacterData 插入/替换、其他删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。
 

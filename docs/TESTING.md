@@ -836,6 +836,14 @@ snapshot 身份、父级 `textContent` 以及 UTF-8/索引错误；对象、已�
 detached target 必须 fail closed，不产生部分 mutation。该门不覆盖 DocumentFragment、
 通用节点 mutation、事件、observer、live collection 或 native/视觉行为。
 
+TEST1229 覆盖 element `before()`/`after()` 的 2–4 值 mixed 列表：Browser 先验证 existing
+element 的 identity、connected、层级、重复和 primitive 类型/容量，再按 relative position
+复用既有 Ex6 `insert_child_at`/`insert_text_child` callback；自动断言同父重排、跨父迁移、
+primitive 字符串化、目标/旧 snapshot 身份、父级顺序和 preflight 失败时无 mutation。对象、
+Text/Comment/CDATA、self/ancestor、重复 element、超过四值和 detached target 必须 fail
+closed；该门不扩展 DocumentFragment、通用 Node、事件、observer、live collection 或
+native/视觉行为。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

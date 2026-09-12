@@ -78,7 +78,7 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1228，覆盖
+  mutation 与 bounded DOM mutation fixtures 已将这组组合扩展到 TEST1201–1229，覆盖
   normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex8
   insertion/replacement、relative primitive insertion、CharacterData relative insertion 和
   `insertAdjacentText`/`insertAdjacentElement`、最多四值的 append/prepend/replaceWith；
@@ -534,17 +534,15 @@ child 与多余参数必须拒绝且不产生部分 mutation；宿主只负责 E
 fixture 和断言。DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、
 observer 和 live collection 仍不在该边界内。
 
-TEST1219–1228 验证 Ex6–Ex8 的有界位置操作：宿主只把现有 callback 接到 Core，Browser
-负责 mixed Text/element 顺序、direct-parent 索引、primitive 字符串化、element identity、
-detached/snapshot 和错误回退。范围包括 existing-element `append`/`prepend`、`before`/
-`after`、`insertAdjacentText()`/`insertAdjacentElement()`、最多四值的 append/prepend，以及
-primitive `replaceWith()`；TEST1226 还验证 Text/Comment wrapper 的 primitive
-`before()`/`after()`、字符串化、目标/旧 snapshot 身份和 detached no-op；同一 Browser 分支
-对 CDATA 保持相同合同，但 HTML fixture 不伪造 CDATA。TEST1227 还验证 2–4 个 primitive
-值的 `replaceWith(...values)` 通过 Ex8 一次性 fragment replacement，保留顺序、旧 wrapper
-和 snapshot，并拒绝 object/element、零值和超限输入；TEST1228 还验证 element 与
-CharacterData 的 2–4 primitive `before()`/`after()` 列表原子插入；fixture/断言验证跨父迁移；
-无部分 mutation 和超限拒绝。通用节点 mutation、observer 和 live collection 不在边界。
+TEST1219–1229 验证 Ex6–Ex8 的有界位置 mutation。宿主只接 Core callbacks；Browser 断言
+direct-parent 索引、mixed Text/element 顺序、primitive 字符串化、identity、snapshot、
+detached 和错误回退。范围包括 existing-element `append()`/`prepend()`、`before()`/`after()`、
+`insertAdjacent*()`、四值 append/prepend 和 primitive `replaceWith()`；TEST1226 覆盖
+CharacterData relative primitive，TEST1227 覆盖 Ex8 的 2–4 primitive `replaceWith()`，
+TEST1228 覆盖 element/CharacterData 的 2–4 primitive relative list，TEST1229 覆盖 element
+的 2–4 值 mixed existing-element/primitive relative list、同父重排、跨父迁移和 preflight
+拒绝。相关失败路径均断言无部分 mutation；CDATA 复用同一 Browser 合同但不伪造 HTML
+fixture。通用节点 mutation、observer 和 live collection 不在边界。
 
 ### Native EDIT/SELECT/button/file
 
