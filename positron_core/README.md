@@ -233,6 +233,14 @@ id、未过滤 `childNodes` 索引和显式节点类型，用同一文档中已�
 失效，关系、类型或索引不可用返回 `2`，参数或其他 DOM 失败返回 `1`。它不创建 fragment、
 派发事件或操作 native 控件；调用方必须刷新两侧 snapshot 并重新 style/layout/paint。
 
+`PCore_NodeReplaceElementChildWithCharacterDataById` 是 Ex12 的互补入口：按 target/source
+父元素 id、old element 子节点 id、source 未过滤 `childNodes` 索引和显式节点类型，把同一
+文档中已连接的 Text/CDATA/Comment 移到目标 element child 的位置，并使旧 element detached。
+同父重排与跨父迁移都保留新 CharacterData 的身份；成功返回 `0` 并使 retained layout 失效，
+父级、direct-child 关系、类型或索引不可用返回 `2`，参数或其他 DOM 失败返回 `1`。它不
+创建 fragment、派发事件或操作 native 控件；调用方必须刷新两侧 snapshot 并重新
+style/layout/paint。DocumentFragment、通用节点替换和 live collection 仍不在该 ABI 内。
+
 `PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或

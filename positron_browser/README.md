@@ -432,20 +432,15 @@ element parent/child id 交给 `PCore_NodeRemoveChildById`。成功刷新父级 
 retained layout 失效；结构 token、错误关系、过长 id 和未注册 callback fail closed，
 detached element 是 no-op。
 
-Ex2/Ex3 在旧表后追加 Text、Comment/CDATA direct-child removal 字段，保持 ABI 兼容；
-Browser 按未过滤 `childNodes` 索引和节点类型调用对应 Core 入口，成功保留旧 wrapper 的
-detached 数据并刷新父级 snapshot。错误 parent、非支持节点、reparent、事件、observer
-和 live collection 均不产生 mutation。
+Ex2/Ex3 在旧表后追加 Text、Comment/CDATA direct-child removal 字段，Browser 按未过滤
+`childNodes` 索引和节点类型调用 Core，成功保留 detached 数据并刷新父 snapshot；错误
+parent、非支持节点、reparent、事件、observer 和 live collection 不产生 mutation。
 
-Ex4 再追加 `insert_child`，由 `Node.insertBefore(element, reference)`/
-`Node.appendChild(element)` 调用 `PCore_NodeInsertChildById`。仅接受带 id element；reference
-须为 direct child，`null` 追加。成功保留 wrapper、刷新两侧 snapshot 并重排。自身层级、Text/Comment/CDATA、DocumentFragment、detached、错误
-reference/多参数 fail closed，不派发事件。
-
-Ex5 追加 `replace_child`，由 `Node.replaceChild(element, oldElement)`/
-`Element.replaceWith(element)` 调用 `PCore_NodeReplaceElementChildById`；只接受带 id element，
-old 为 direct child、new 可跨父；成功返回旧 wrapper 并刷新 snapshot/重排。Text/Comment/CDATA、
-DocumentFragment、detached、错误 parent/self、多参数 fail closed。
+Ex4/Ex5 分别追加 existing-element 的 `insert_child` 与 `replace_child`：
+`Node.insertBefore()`/`appendChild()`、`Node.replaceChild()`/`Element.replaceWith()` 调用
+Core 的对应入口，支持 direct child、跨父迁移和旧 wrapper/snapshot 更新；结构 token、
+Text/Comment/CDATA、fragment、detached、错误 parent/self、错误 reference 或多参数均
+fail closed。
 
 Ex6 `insert_child_at` 处理 `append()`/`prepend()`、`before()`/`after()` 和
 `insertAdjacentElement()`；按未过滤索引移动 id element，primitive 走同一 bridge。
@@ -456,10 +451,11 @@ Ex7/Ex8 的 replacement callbacks 分别支持 element 的单值和 2–4 primit
 支持 1–4 primitive `replaceWith()`，保留旧 wrapper/snapshot 为 detached。对象、节点、
 fragment、detached、零值和超限均拒绝；mixed element/primitive 复用 Ex5–Ex7，旧 ABI 不变。
 
-Ex10/Ex11 的 CharacterData callbacks 接入
-`Node.insertBefore()`/`appendChild()`/`replaceChild()`，仅处理现有 Text/Comment/CDATA。
-Browser 维护跨父 identity/owner/snapshot；错 parent/ref、类型、detached、越界/超限
-fail closed，ABI 仅追加。
+Ex10–Ex12 的 callbacks 接入现有 CharacterData 的
+`insertBefore()`/`appendChild()`/`replaceChild()`；Ex12 让 element target 通过
+`PCore_NodeReplaceElementChildWithCharacterDataById` 支持
+`replaceChild(characterData, oldElement)`/`Element.replaceWith(characterData)`。Browser
+预检连接、类型、索引和容量，成功后更新 owner/snapshot；错误输入 fail closed，旧 ABI 不变。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
 `insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text

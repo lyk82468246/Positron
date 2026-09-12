@@ -10,18 +10,19 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next792 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
+最新 next793 设备证据及此前验证见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
-- 当前代码 next792 在 Ex10 之后追加 Ex11：`Node.replaceChild()` 可用另一个已连接的
-  Text/Comment/CDATA 替换 direct CharacterData child，Core 保留新节点身份并支持同父、
-  跨父替换，Browser 更新两侧 wrapper/cache；next790–next791 的 primitive replacement
-  与 existing-node insertion 保持不变。TEST1220–1233 覆盖顺序、snapshot、detached、
+- 当前代码 next793 在 Ex11 之后追加 Ex12：element target 的 `Node.replaceChild()`/
+  `Element.replaceWith()` 可用另一个已连接的 Text/Comment/CDATA 替换 direct element child，
+  Core 保留新节点身份并支持同父、跨父迁移，Browser 更新两侧 wrapper/cache；
+  next790–next792 的 primitive replacement、existing-node insertion 和 CharacterData
+  replacement 保持不变。TEST1220–1234 覆盖顺序、snapshot、detached、
   错误 child/reference、越界和超限，HTML 夹具不伪造 CDATA 节点。
 - 设备门每次远端启动使用唯一 executable basename，复用 WMDC GUI 当前唯一 RAPI 会话；
   超时进程需在设备端正常结束。`tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1233。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1233,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1234。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1234,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -70,9 +71,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next792
+  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next793
   依次补齐多值 append/prepend、CharacterData relative、`replaceWith(...values)`、
-  relative/mixed 列表、CharacterData `replaceWith`、insertion 和 existing-node replacement。稳定合同和逐测试
+  relative/mixed 列表、CharacterData `replaceWith`、insertion、existing-node replacement
+  以及 element-to-CharacterData replacement。稳定合同和逐测试
   说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
@@ -83,8 +85,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `next772` 的 `Text.remove()` 与 `next773` 的 `Element.removeChild(Text)` 纵切均已有正式
   设备门证据。next774 已完成 Core/Browser 的 Comment/CDATA direct-child removal 代码、
   Ex3 ABI 和 TEST1216 离线夹具，Debug/Release ARMV4I 构建均通过；当前 WMDC 连接上的
-  `TEST1216,999` 自动设备门也已通过；next776–next792 的 `TEST1217,999`–
-  `TEST1232,999` 和 `TEST1233,999` 设备门也已通过；不得把
+  `TEST1216,999` 自动设备门也已通过；next776–next793 的 `TEST1217,999`–
+  `TEST1232,999`、`TEST1233,999` 和 `TEST1234,1233,1232,999` 设备门也已通过；不得把
   测试宿主扩展当作产品语义实现。
 
 ## 已验证产品事实
@@ -174,22 +176,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1233。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1233,999`。
+- `TEST_MAX_NUMBER`：1234。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1234,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-最新自动证据是 `20260912-173123-next792-character-data-replace-retry`：Debug ARMV4I，
-选择 `1233,1232,1231,999`，4/4 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
-`crash_check` 均 PASS，新增 dump=0。TEST1233 的 CharacterData existing-node
-`replaceChild()` 同父/跨父、identity/snapshot、detached 与 fail-closed 边界，以及 TEST1232 的
-`insertBefore()`/`appendChild()`、TEST1231 的 primitive `replaceWith()` 均通过；TEST999 beep
-通过。本次使用已验证的 `\Storage Card` 目标卷，
-因为默认 `\Temp` 在预检时只有 2.83 MiB，低于本批所需 10.58 MiB；未删除日志不完整的旧目录。
-Browser bootstrap heap ceiling 已为 1 MiB；探针拆成短脚本后在该预算内通过。此前一次过长
-探针触发的内存上限只作为调试记录，不作为失败基线。
+最新自动证据是 `20260912-181935-next793-element-character-data-replace`：Debug ARMV4I，
+选择 `1234,1233,1232,999`，4/4 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理、
+`crash_check` 均 PASS，新增 dump=0。TEST1234 及 1233/1232 相邻回归和 TEST999 beep 均通过。
+本次使用 `\Storage Card`（默认 `\Temp` 仅 2.83 MiB，低于本批所需 10.58 MiB），未删除日志不完整
+的旧目录。Browser bootstrap 1 MiB 上限下短探针通过；此前过长探针只作为调试记录。
 此前 `20260911-161749-next784-append-retry`：Debug ARMV4I，选择
 `1225,999`，2/2 PASS、零 ERROR/FAIL；日志完整回收，双空间预检、部署后清理和
 `crash_check` 均 PASS，新增 dump=0。TEST1225 覆盖最多四值 append/prepend 的 primitive/
@@ -292,10 +290,11 @@ Reporting 页面和 Release 遗留宿主；本次运行前转储清单为 0，�
   identity、旧 snapshot、父级 textContent、detached、对象/节点、越界、超限和 UTF-8 错误的
   fail-closed 边界。该路径暂无新增立即人工风险；DocumentFragment、通用节点 mutation、
   完整 live collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1232–1233 是 Ex10/Ex11 CharacterData 结构夹具：覆盖现有节点的
-  `insertBefore()`/`appendChild()`/`replaceChild()` 同父与跨父、identity/snapshot、owner、
-  textContent 及错误 reference/object/self/type/index；Core 与 Browser 均拒绝部分 mutation。
-  CDATA 共享 ABI，无 HTML fixture。自动门选 `1233,999` 并回归 1231/1232；暂无新增人工风险。
+- TEST1232–1234 是 Ex10–Ex12 CharacterData 结构夹具：覆盖现有节点的
+  `insertBefore()`/`appendChild()`/`replaceChild()` 同父与跨父、element target→CharacterData
+  replacement、identity/snapshot、owner、textContent 及错误 reference/object/self/type/index；
+  Core 与 Browser 均拒绝部分 mutation。CDATA 共享 ABI，无 HTML fixture。自动门选
+  `1234,1233,1232,999` 并回归 1231/1232；暂无新增人工风险。
   DocumentFragment、通用 mutation、observer、live collection 和 native/视觉仍不在边界。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 

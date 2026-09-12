@@ -78,8 +78,8 @@ tests=13,20,27,999
   和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
   `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
   的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续图片 source
-  mutation 与 bounded DOM fixtures 已将这组组合扩展到 TEST1201–1233，覆盖
-  normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex11 的
+  mutation 与 bounded DOM fixtures 已将这组组合扩展到 TEST1201–1234，覆盖
+  normalize、clone/equality、Text/CharacterData、Ex2/Ex3 removal，以及 Ex4–Ex12 的
   insertion/replacement/relative list 和最多四值的 primitive/mixed 操作；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
@@ -541,6 +541,11 @@ append/prepend/replaceWith，以及 TEST1232 的 CharacterData `insertBefore()`/
 TEST1230/1231 继续覆盖 element/CharacterData 的有界 `replaceWith()`；失败路径均断言无部分
 mutation，CDATA 复用 ABI 但不伪造 HTML fixture。通用节点 mutation、observer 和 live collection
 不在边界。
+
+TEST1234 验证 Ex12：`Node.replaceChild(characterData, oldElement)` 与
+`Element.replaceWith(characterData)` 将已连接的 Text/Comment/CDATA 移到 direct element
+child 位置，覆盖同父/跨父、identity/owner、snapshot、detached 和 `textContent`。宿主接
+Ex12 到 Core；对象、detached、错 parent/类型和越界由 Browser/Core 拒绝，CDATA 复用 ABI。
 
 ### Native EDIT/SELECT/button/file
 

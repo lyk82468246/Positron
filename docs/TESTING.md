@@ -875,6 +875,19 @@ TEST1233 覆盖 CharacterData 的 existing-node `replaceChild()`：Ex11
 越界的 fail-closed 无部分 mutation；CDATA 共享 ABI，但 HTML fixture 不伪造 CDATA。设备门
 选择 `TEST1233,999`，并与 1231/1232 做相邻回归。
 
+TEST1234 覆盖 Element target 的 existing CharacterData replacement：Ex12
+`replace_element_child_with_character_data` 把目标 element 的 direct child 与同一文档中已
+连接的 Text/Comment/CDATA 互换，Core 通过
+`PCore_NodeReplaceElementChildWithCharacterDataById` 按 source 未过滤 `childNodes` 索引
+一次提交。`Node.replaceChild(characterData, oldElement)` 与
+`Element.replaceWith(characterData)` 均覆盖同父重排、跨父迁移、旧 element detached、
+新 CharacterData identity/owner 更新、两侧静态 snapshot 和父级 `textContent`；对象、
+element-to-element、detached、错误 parent、类型不匹配和越界必须在 preflight 阶段拒绝，
+不产生部分 mutation。CDATA 共享公共 ABI，但 HTML fixture 不伪造 CDATA。设备门选择
+`TEST1234,1233,1232,999`，确认 Debug ARMV4I、完整日志、空间预检、完成后清理和 crash
+check；该门不扩展 DocumentFragment、通用节点替换、MutationObserver、live collection 或
+native/视觉行为。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

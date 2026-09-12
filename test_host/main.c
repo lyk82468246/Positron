@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1233
+#define TEST_MAX_NUMBER 1234
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15616,6 +15616,34 @@ static int pcore_browser_script_dom_replace_character_data_child(
     return -1;
 }
 
+static int pcore_browser_script_dom_replace_element_child_with_character_data(
+        void *pw, const char *parent_id, const char *old_child_id,
+        const char *source_parent_id, unsigned int source_index,
+        unsigned int node_type)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            old_child_id == NULL || source_parent_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeReplaceElementChildWithCharacterDataById(
+            bridge->document, parent_id, old_child_id, source_parent_id,
+            source_index, node_type);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_remove_child(void *pw,
         const char *parent_id, const char *child_id)
 {
@@ -17197,7 +17225,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx7 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx11 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx12 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17398,6 +17426,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_insert_character_data_child_at;
     dom_mutation_callbacks.replace_character_data_child =
             pcore_browser_script_dom_replace_character_data_child;
+    dom_mutation_callbacks.replace_element_child_with_character_data =
+            pcore_browser_script_dom_replace_element_child_with_character_data;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17593,7 +17623,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx11(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx12(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -50760,6 +50790,112 @@ static BOOL test1233_browser_character_data_replacement_contract(void)
             " through Core, preserves identity and old snapshots across"
             " same-parent and cross-parent replacement, and rejects invalid"
             " types, detached nodes and hierarchy without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1234 - bounded element replacement moves existing CharacterData. */
+static BOOL test1234_browser_element_replace_with_character_data_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='a'><span id='oldA'>old</span>"
+        "A<!--ca--><span id='oldC'>C</span></div><div id='b'>"
+        "<span id='oldB'>oldb</span>B<!--cb--></div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='oldA'>old</span>A<!--ca-->"
+        "<span id='oldC'>C</span></div><div id='b'><span id='oldB'>oldb</span>"
+        "B<!--cb--></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('a'),b=document.getElementById('b'),"
+        "old=a.firstChild,text=a.childNodes[1],oldC=document.getElementById('oldC'),"
+        "oldB=document.getElementById('oldB'),comment=b.childNodes[2],sa=a.childNodes,sb=b.childNodes,"
+        "r1,r2,bad=0,r3;"
+        "r1=a.replaceChild(text,old);r2=b.replaceChild(comment,oldB);"
+        "r3=oldC.replaceWith(b.childNodes[1]);"
+        "try{a.replaceChild({},old);}catch(e){bad|=1;}"
+        "try{a.replaceChild(a.childNodes[0],old);}catch(e2){bad|=2;}"
+        "document.getElementById('result').textContent=String(r1===old&&r2===oldB&&"
+        "typeof r3==='undefined'&&a.childNodes.length===3&&a.childNodes[0]===text&&"
+        "a.childNodes[1]===sa[2]&&a.childNodes[2]===sb[1]&&"
+        "b.childNodes.length===1&&b.childNodes[0]===comment&&old.parentNode===null&&"
+        "oldB.parentNode===null&&oldC.parentNode===null&&text.parentNode===a&&"
+        "comment.parentNode===b&&sa.length===4&&sa[0]===old&&sa[1]===text&&"
+        "sa[2].nodeType===8&&sa[3]===oldC&&sb.length===3&&sb[0]===oldB&&"
+        "sb[1].data==='B'&&sb[2]===comment&&bad===3&&a.textContent==='AB'&&"
+        "b.textContent==='');})();";
+    char a_value[64];
+    char b_value[64];
+    char error[768];
+    int a_bytes;
+    int b_bytes;
+    int same_replace;
+    int cross_replace;
+    int bad_type;
+    int bad_source;
+    int bad_target;
+    int missing_parent;
+    HANDLE core_doc;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    memset(a_value, 0, sizeof(a_value));
+    memset(b_value, 0, sizeof(b_value));
+    a_bytes = 0;
+    b_bytes = 0;
+    same_replace = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithCharacterDataById(core_doc,
+            "a", "oldA", "a", 1, 3);
+    cross_replace = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithCharacterDataById(core_doc,
+            "b", "oldB", "a", 1, 8);
+    bad_type = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithCharacterDataById(core_doc,
+            "a", "oldC", "a", 0, 8);
+    bad_source = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithCharacterDataById(core_doc,
+            "a", "oldC", "a", 99, 3);
+    bad_target = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithCharacterDataById(core_doc,
+            "a", "oldA", "a", 0, 3);
+    missing_parent = core_doc == NULL ? 1 :
+            PCore_NodeReplaceElementChildWithCharacterDataById(core_doc,
+            "missing", "oldC", "a", 0, 3);
+    if (core_doc != NULL) {
+        (void) PCore_NodeTextContentById(core_doc, "a", a_value,
+                sizeof(a_value), &a_bytes);
+        (void) PCore_NodeTextContentById(core_doc, "b", b_value,
+                sizeof(b_value), &b_bytes);
+    }
+    if (core_doc == NULL || same_replace != 0 || cross_replace != 0 ||
+            bad_type != 2 || bad_source != 2 || bad_target != 2 ||
+            missing_parent != 2 || strcmp(a_value, "AC") != 0 ||
+            strcmp(b_value, "B") != 0 || a_bytes != 2 || b_bytes != 1) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core same=%d cross=%d type=%d source=%d target=%d missing=%d"
+                " values=%s/%s bytes=%d/%d", same_replace, cross_replace,
+                bad_type, bad_source, bad_target, missing_parent, a_value,
+                b_value, a_bytes, b_bytes);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1234 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/element-character-data-replace", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1234 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1234 OK",
+            "Node.replaceChild and Element.replaceWith now move one bounded"
+            " existing Text/Comment node into an element position, preserving"
+            " identity, owner and old snapshots across same-parent and"
+            " cross-parent replacement while rejecting detached or invalid"
+            " targets without partial mutation.");
     return TRUE;
 }
 
@@ -108980,6 +109116,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1231: ok = test1231_browser_character_data_replace_with_text_list_contract(); break;
         case 1232: ok = test1232_browser_character_data_insertion_contract(); break;
         case 1233: ok = test1233_browser_character_data_replacement_contract(); break;
+        case 1234: ok = test1234_browser_element_replace_with_character_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

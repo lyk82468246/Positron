@@ -383,6 +383,23 @@ PCORE_API int PCore_NodeReplaceCharacterDataChildById(HANDLE hDoc,
         unsigned int target_node_type, const char *source_parent_id,
         unsigned int source_index, unsigned int source_node_type);
 
+/* Replace one direct element child with an existing connected CharacterData
+ * node from this document. `parent_id`/`old_child_id` identify the target
+ * element and its direct element child; `source_parent_id`/`source_index`
+ * identify the new direct Text, CDATA or Comment child and `node_type` must
+ * match that indexed node. The new node keeps its identity and may move from
+ * another element parent. The old element becomes detached; reserved
+ * document/head/body child tokens are rejected. Returns 0 after replacement,
+ * 2 when a parent, relation, type or
+ * hierarchy is unavailable, and 1 for invalid input or another DOM failure.
+ * A successful replacement invalidates retained layout; callers must
+ * re-query and style/layout/paint again. No events, native-control work or
+ * live collections are dispatched. */
+PCORE_API int PCore_NodeReplaceElementChildWithCharacterDataById(
+        HANDLE hDoc, const char *parent_id, const char *old_child_id,
+        const char *source_parent_id, unsigned int source_index,
+        unsigned int node_type);
+
 /* Replace one direct element child with another connected element from the
  * same document. Both ids must resolve to element nodes; old_child_id must
  * name a direct child of parent_id and new_child_id must name an attached
