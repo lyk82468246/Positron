@@ -451,12 +451,15 @@ Ex6 `insert_child_at` 处理 `append()`/`prepend()`、`before()`/`after()` 和
 `insertAdjacentElement()`；按未过滤索引移动 id element，primitive 走同一 bridge。
 element relative 的 2–4 值 mixed 列表先预检，再按序复用 Ex6 element/text callbacks。
 
-Ex7 的 `replace_child_with_text` 由 `Element.replaceWith(value)` 调用
-`PCore_NodeReplaceElementChildWithTextById`，Ex8 的 `replace_child_with_text_list` 支持
-element 的 2–4 primitive 原子 Text 替换。Ex9 的
-`replace_character_data_with_text_list` 让 Text/Comment/CDATA 支持 1–4 primitive
-`replaceWith()`，并保留旧 wrapper/snapshot 为 detached。三者都拒绝对象、节点、fragment、
-detached、零值和超限；mixed element/primitive 仍复用 Ex5–Ex7，Ex9 只追加字段，旧 ABI 不变。
+Ex7/Ex8 的 replacement callbacks 分别支持 element 的单值和 2–4 primitive 原子
+`replaceWith()`；Ex9 的 `replace_character_data_with_text_list` 让 Text/Comment/CDATA
+支持 1–4 primitive `replaceWith()`，保留旧 wrapper/snapshot 为 detached。对象、节点、
+fragment、detached、零值和超限均拒绝；mixed element/primitive 复用 Ex5–Ex7，旧 ABI 不变。
+
+Ex10 的 `insert_character_data_child_at` 扩展 `Node.insertBefore()`/`appendChild()`，移动
+现有 Text/Comment/CDATA。Browser 将 ids/索引交给 Core；同父/跨父与 `null` append 保留
+身份/owner/snapshot。错误引用/类型、detached、越界或超限 fail closed；仅追加字段，
+ABI不变。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
 `insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text

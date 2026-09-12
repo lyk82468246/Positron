@@ -220,6 +220,13 @@ style/layout/paint，并重新取得几何和控件快照。它不提供通用 N
 容量或 DOM 失败；它不派发事件、不 reparent、不暴露 fragment。Browser 的 Ex9 callback
 负责 detached wrapper 与 snapshot reconciliation，其他应用只需在成功后重新 style/layout/paint。
 
+`PCore_NodeInsertCharacterDataChildAtById` 是 Ex10 的已有 CharacterData 移动入口：按源/目标
+父元素 id、未过滤 `childNodes` 索引和节点类型 3、4 或 8，将同一文档中已连接的 Text/CDATA/
+Comment 移到目标索引；目标索引等于 child count 时追加，同父级移到自身前不改变结果。成功
+返回 `0` 并使 retained layout 失效，目标/关系/类型不可用返回 `2`，参数或其他 DOM 失败返回
+`1`。它保留节点身份，不派发事件、不获取资源、不操作 native 控件，也不提供 fragment、
+observer 或 live collection；Browser 应在成功后刷新相关 snapshot 并重新 style/layout/paint。
+
 `PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
 id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
 retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或

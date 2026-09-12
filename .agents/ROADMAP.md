@@ -127,7 +127,9 @@ write Ex6 callback 做单值 primitive `before()`/`after()`；Ex7/Ex8 保留旧 
 2–4 值 mixed existing-element/primitive 列表，由 Browser 预检后复用 Ex6 callbacks 按序插入；
 `Element.replaceWith(...values)` 也支持 2–4 值 mixed existing-element/primitive 组合，复用
 Ex5–Ex7 callbacks。
-DocumentFragment、通用 CharacterData 插入/替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
+Ex10 再为 Text/Comment/CDATA 的 `Node.insertBefore()`/`appendChild()` 提供现有节点
+同父重排、跨父迁移和 wrapper owner 更新；Core 按 source/target 未过滤索引原子移动，旧
+Ex9 及更早 ABI 布局不变。DocumentFragment、通用 CharacterData 替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
 缺口驱动，不能从窄路径外推。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/

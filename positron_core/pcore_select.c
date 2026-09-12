@@ -8771,6 +8771,148 @@ PCORE_API int PCore_NodeInsertElementChildAtById(HANDLE hDoc,
     return 1;
 }
 
+PCORE_API int PCore_NodeInsertCharacterDataChildAtById(HANDLE hDoc,
+        const char *source_parent_id, unsigned int source_index,
+        unsigned int node_type, const char *target_parent_id,
+        unsigned int target_index)
+{
+    dom_document *doc;
+    dom_element *source_parent;
+    dom_element *target_parent;
+    dom_node *child;
+    dom_node *reference;
+    dom_node *actual_parent;
+    dom_node *inserted;
+    dom_nodelist *children;
+    dom_ulong length;
+    dom_node_type source_parent_type;
+    dom_node_type target_parent_type;
+    dom_node_type child_type;
+    dom_exception err;
+    int result;
+
+    if (hDoc == NULL || source_parent_id == NULL ||
+            source_parent_id[0] == '\0' ||
+            target_parent_id == NULL || target_parent_id[0] == '\0' ||
+            (node_type != 3U && node_type != 4U && node_type != 8U)) {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    source_parent = pcore_element_by_id(doc, source_parent_id);
+    target_parent = pcore_element_by_id(doc, target_parent_id);
+    if (source_parent == NULL || target_parent == NULL) {
+        if (target_parent != NULL) {
+            dom_node_unref((dom_node *) target_parent);
+        }
+        if (source_parent != NULL) {
+            dom_node_unref((dom_node *) source_parent);
+        }
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) source_parent,
+            &source_parent_type) != DOM_NO_ERR ||
+            dom_node_get_node_type((dom_node *) target_parent,
+            &target_parent_type) != DOM_NO_ERR ||
+            source_parent_type != DOM_ELEMENT_NODE ||
+            target_parent_type != DOM_ELEMENT_NODE) {
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 2;
+    }
+    child = NULL;
+    result = pcore_relation_child_node_at((dom_node *) source_parent,
+            source_index, &child);
+    if (result != 0) {
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return result == 2 ? 2 : 1;
+    }
+    if (dom_node_get_node_type(child, &child_type) != DOM_NO_ERR ||
+            ((node_type == 3U && child_type != DOM_TEXT_NODE) ||
+            (node_type == 4U && child_type != DOM_CDATA_SECTION_NODE) ||
+            (node_type == 8U && child_type != DOM_COMMENT_NODE))) {
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 2;
+    }
+    actual_parent = NULL;
+    if (dom_node_get_parent_node(child, &actual_parent) != DOM_NO_ERR ||
+            actual_parent == NULL || actual_parent !=
+            (dom_node *) source_parent) {
+        if (actual_parent != NULL) {
+            dom_node_unref(actual_parent);
+        }
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 2;
+    }
+    dom_node_unref(actual_parent);
+    children = NULL;
+    length = 0;
+    if (dom_node_get_child_nodes((dom_node *) target_parent, &children) !=
+            DOM_NO_ERR || children == NULL ||
+            dom_nodelist_get_length(children, &length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 1;
+    }
+    if ((dom_ulong) target_index > length) {
+        dom_nodelist_unref(children);
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 2;
+    }
+    reference = NULL;
+    if ((dom_ulong) target_index < length &&
+            (dom_nodelist_item(children, (dom_ulong) target_index,
+            &reference) != DOM_NO_ERR || reference == NULL)) {
+        dom_nodelist_unref(children);
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 1;
+    }
+    dom_nodelist_unref(children);
+    if (reference == child) {
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        dom_node_unref(child);
+        dom_node_unref((dom_node *) target_parent);
+        dom_node_unref((dom_node *) source_parent);
+        return 0;
+    }
+    inserted = NULL;
+    err = dom_node_insert_before((dom_node *) target_parent, child,
+            reference, &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (reference != NULL) {
+        dom_node_unref(reference);
+    }
+    dom_node_unref(child);
+    dom_node_unref((dom_node *) target_parent);
+    dom_node_unref((dom_node *) source_parent);
+    if (err == DOM_NO_ERR) {
+        pcore_render_invalidate(doc);
+        return 0;
+    }
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR ||
+            err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    return 1;
+}
+
 PCORE_API int PCore_NodeReplaceElementChildById(HANDLE hDoc,
         const char *parent_id, const char *new_child_id,
         const char *old_child_id)

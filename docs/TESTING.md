@@ -816,8 +816,8 @@ direct parent 的未过滤 `childNodes` 索引前后创建 Text，并保留目�
 和父级文本顺序。fixture 验证字符串化的字符串/数字/布尔值/`null`/`undefined`、零参数
 no-op、对象/已有节点/多参数拒绝，以及 detached wrapper 不产生 mutation；该路径不增加
 Core ABI，宿主只负责既有 callback 接线、可选 restyle/layout/paint；同一 Browser 分支对
-CDATA wrapper 采用相同合同，但当前 HTML fixture 不伪造 CDATA。DocumentFragment、通用
-CharacterData insertion、mutation event、observer 和 live collection 仍不在门内。
+CDATA wrapper 采用相同合同，但当前 HTML fixture 不伪造 CDATA。DocumentFragment、通用节点或
+未覆盖的 CharacterData insertion、mutation event、observer 和 live collection 仍不在门内。
 
 TEST1227 覆盖 `Element.replaceWith(...values)` 的有界多值 primitive 重载：Browser 通过
 Ex8 `replace_child_with_text_list` 把 2–4 个字符串化 primitive 一次交给 Core，Core 在
@@ -850,7 +850,7 @@ existing-element 的 identity/connected/层级/重复与 primitive 类型/容量
 callbacks。自动断言 element-first/text-first 顺序、同父重排、跨父迁移、旧 target wrapper
 与 NodeList snapshot、父级 `textContent`，以及 object/duplicate/self/ancestor/超过四值/
 detached target 的 preflight 拒绝；预检错误不产生 mutation。该门不扩展 DocumentFragment、
-通用 Node、CharacterData replaceWith、事件、observer、live collection 或 native/视觉行为。
+通用 Node、事件、observer、live collection 或 native/视觉行为。
 
 TEST1231 覆盖 CharacterData wrapper 的 `replaceWith(value[, ...])`：Text/Comment/CDATA
 通过 Ex9 `replace_character_data_with_text_list` 接受 1–4 个 primitive，Core 在 fragment
@@ -859,6 +859,14 @@ TEST1231 覆盖 CharacterData wrapper 的 `replaceWith(value[, ...])`：Text/Com
 和 detached target 必须在 preflight 阶段拒绝且不产生部分 mutation。CDATA 共享同一 ABI，
 但 HTML 夹具不伪造 CDATA 节点。宿主只注册 callback、触发重排并读取断言结果；设备门选择
 `TEST1231,999`，确认 1 MiB Browser heap、完整日志、空间预检和 crash check。
+
+TEST1232 覆盖 CharacterData 的 existing-node `insertBefore()`/`appendChild()`：Ex10
+`insert_character_data_child_at` 把 Text/Comment/CDATA 的 source/target 父级与未过滤索引
+交给 Core，支持同父重排、跨父迁移和 NULL append。自动断言返回值、wrapper identity、
+source/target 与旧 childNodes snapshot、父级 `textContent`、CharacterData 新 owner，
+以及 object、self、错误 reference、source/target 越界和类型不匹配的 fail-closed 无部分
+mutation；CDATA 共享 ABI，但 HTML fixture 不伪造 CDATA。设备门选择 `TEST1232,999`，
+并与 1230/1231 做相邻回归。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

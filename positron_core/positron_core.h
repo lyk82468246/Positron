@@ -348,6 +348,24 @@ PCORE_API int PCore_NodeInsertElementChildAtById(HANDLE hDoc,
         const char *parent_id, const char *child_id,
         unsigned int child_index);
 
+/* Move one existing connected CharacterData child at an unfiltered
+ * childNodes index. `source_parent_id`/`source_index` identify a direct
+ * Text, CDATA or Comment child and `target_parent_id`/`target_index` identify
+ * the destination element and its pre-move insertion position; an index equal
+ * to the destination count appends. The node keeps its identity and may move
+ * between element parents. The indexed destination reference may be any
+ * bounded direct child. Document structure tokens, detached nodes, wrong
+ * node types and hierarchy cycles are rejected. Returns 0 after insertion
+ * (including a same-parent no-op before itself), 2 when a parent, relation,
+ * node type or index is unavailable, and 1 for invalid input or another DOM
+ * failure. A successful move invalidates retained layout; callers must
+ * re-query and style/layout/paint again. No events, resource fetches or live
+ * collections are dispatched by this Core primitive. */
+PCORE_API int PCore_NodeInsertCharacterDataChildAtById(HANDLE hDoc,
+        const char *source_parent_id, unsigned int source_index,
+        unsigned int node_type, const char *target_parent_id,
+        unsigned int target_index);
+
 /* Replace one direct element child with another connected element from the
  * same document. Both ids must resolve to element nodes; old_child_id must
  * name a direct child of parent_id and new_child_id must name an attached
