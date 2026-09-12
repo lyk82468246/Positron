@@ -65,22 +65,10 @@ tests=13,20,27,999
 - HTML/CSS/DOM、style/layout/paint、图片/SVG 和资源 cache；
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
-- 固定离线 compatibility corpus，把 contenteditable、dialog/form、same-document navigation 和失败回滚组合成可重复的完整流程；
-- 最新的滚动几何夹具还验证 Core/Browser 的布局尺寸、retained overflow offset，以及
-  `Element.scrollIntoView()` 对最近可寻址 overflow 祖先和显式 `container:"all"` 链的一次
-  有限 reveal，以及 `HTMLElement.focus()` 对该链的联动；页面提交后由宿主显式触发的
-  `autofocus` 目标发现和无 id focus 事件保持，以及 Browser selector 列表/组合器、
-  属性操作符、结构伪类、表单状态、验证状态、焦点状态、静态链接与 fragment target
-  伪类以及有界 `:not()`/`:is()`/`:where()`/`:has()`/`:lang()`/`:active`/`:hover`/`:visited`/
-  `:in-range`/`:out-of-range`/`:read-only`/`:read-write`/`:placeholder-shown`/`:scope`/`:default` 查询，
-  以及显式 form-owner 在 Core validation/submission/reset/default activation 中的一致消费、
-  Browser 脚本 `HTMLFormElement.reset()`/`requestSubmit()` 的可取消事件与默认动作顺序
-  和 `new FormData(form[, submitter])` 的 detached successful-control snapshot 及
-  `formdata` 事件，以及 `<option>` `selected`/`defaultSelected`、`value`/`label`/`text`
-  的 typed property bridge，以及 `<img>` 的元数据/资源状态 bridge；后续 image-source 与
-  DOM fixtures（TEST1201–1237）覆盖 normalize、clone/equality、Text/CharacterData、
-  Ex2/Ex3 removal、Ex4–Ex12 insertion/replacement/relative list，以及 bounded HTML
-  getter/setter；
+- 固定离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/
+  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1238 覆盖
+  normalize、clone/equality、Text/CharacterData、Ex2–Ex12 insertion/replacement 和
+  bounded HTML getter/setter/insertAdjacentHTML；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -547,6 +535,11 @@ Ex12 到 Core；对象、detached、错 parent/类型和越界由 Browser/Core �
 
 TEST1235 覆盖 Text/Comment/CDATA 的 `before()`/`after()`/`replaceWith()`，含同/跨父、
 identity/snapshot、detached、`textContent` 和无效 source fail-closed；宿主只接 callback。
+
+TEST1236–1238 覆盖 bounded HTML getter/setter、parser replacement 和四位置
+`insertAdjacentHTML`。宿主只注册 Ex8/Ex9、安排重排并断言 Core/Browser；预算、id/编码、
+结构、detached、超限和 snapshot fail closed，script/资源/事件/DocumentFragment 不由
+test_host 实现。
 
 ### Native EDIT/SELECT/button/file
 

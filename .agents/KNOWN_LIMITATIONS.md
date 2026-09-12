@@ -142,10 +142,11 @@
   遵循各自 callback 合同。Node/DocumentFragment、通用 mutation/observer 和 live collection
   未实现。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
-  另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；成功
-  保持目标身份、标记旧 wrapper detached 并使 layout 失效，失败不改变 DOM。重复/外部冲突
-  id、非法 UTF-8、未知或超限输入 fail closed；不执行 script、不抓取资源、不派发事件，
-  也不提供 outerHTML setter、clone 或通用 DocumentFragment。预算与 parser 限制见
+  另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
+  `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
+  目标/既有节点身份，预检重复或外部冲突 id、非法 UTF-8、未知/超限输入并 fail closed；
+  成功使 layout 失效，不执行 script、不抓取资源、不派发事件。outerHTML setter、
+  clone、通用 DocumentFragment 和 context-sensitive parser 仍未实现。预算与 parser 限制见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
@@ -581,10 +582,9 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1237 覆盖有界 DOM removal、文本/CharacterData、关系读取、normalize、clone/equality、
-  Ex2/Ex3 removal、Ex4–Ex12 insertion/replacement/relative text，以及 `insertAdjacent*()`、
-  四值 append/prepend/replaceWith、mixed list 的 wrapper/snapshot、detached、UTF-16、
-  parser-backed `innerHTML` replacement 和 retained-layout 边界；逐项合同见
+- TEST1201–1238 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+  Ex4–Ex12 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
+  UTF-16、parser-backed HTML mutation 和 retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

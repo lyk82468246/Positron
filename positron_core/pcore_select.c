@@ -8213,6 +8213,7 @@ PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
 typedef struct pcore_html_mutation_scan {
     dom_document *doc;
     dom_element *target;
+    int allow_existing_inside_target;
     dom_string *id_name;
     dom_string *ids[PCORE_NODE_HTML_MUTATION_MAX_NODES];
     unsigned int node_count;
@@ -8291,7 +8292,8 @@ static int pcore_html_mutation_scan_id(pcore_html_mutation_scan *scan,
     }
     existing = pcore_element_by_id(scan->doc, id_data);
     if (existing != NULL) {
-        if ((dom_node *) existing == (dom_node *) scan->target ||
+        if (!scan->allow_existing_inside_target || scan->target == NULL ||
+                (dom_node *) existing == (dom_node *) scan->target ||
                 !pcore_html_mutation_is_inside((dom_node *) existing,
                 (dom_node *) scan->target)) {
             dom_node_unref((dom_node *) existing);
@@ -8689,6 +8691,7 @@ PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
     memset(&scan, 0, sizeof(scan));
     scan.doc = doc;
     scan.target = target;
+    scan.allow_existing_inside_target = 1;
     id_name = NULL;
     if (dom_string_create_interned((const uint8_t *) "id", 2, &id_name) !=
             DOM_NO_ERR || id_name == NULL) {
@@ -8739,6 +8742,154 @@ PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
     dom_node_unref((dom_node *) fragment);
     dom_node_unref((dom_node *) stash);
     dom_node_unref((dom_node *) target);
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
+PCORE_API int PCore_NodeInsertAdjacentHTMLById(HANDLE hDoc,
+        const char *element_id, unsigned int position, const char *html)
+{
+    dom_document *doc;
+    dom_element *target;
+    dom_node *parent;
+    dom_node *insert_parent;
+    dom_node *reference;
+    dom_document_fragment *fragment;
+    dom_node *inserted;
+    dom_node_type parent_type;
+    dom_string *id_name;
+    dom_exception err;
+    pcore_html_mutation_scan scan;
+    size_t length;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            html == NULL) {
+        return 1;
+    }
+    if (position != PCORE_NODE_ADJACENT_HTML_BEFORE_BEGIN &&
+            position != PCORE_NODE_ADJACENT_HTML_AFTER_BEGIN &&
+            position != PCORE_NODE_ADJACENT_HTML_BEFORE_END &&
+            position != PCORE_NODE_ADJACENT_HTML_AFTER_END) {
+        return 2;
+    }
+    length = strlen(html);
+    if (length > PCORE_NODE_HTML_MUTATION_MAX_BYTES ||
+            !pcore_contenteditable_utf8_valid(html)) {
+        return 3;
+    }
+    target = pcore_element_by_id(doc, element_id);
+    if (target == NULL) {
+        return 2;
+    }
+    if (pcore_document_structural_token((dom_node *) target) != NULL) {
+        dom_node_unref((dom_node *) target);
+        return 2;
+    }
+
+    parent = NULL;
+    insert_parent = (dom_node *) target;
+    reference = NULL;
+    if (position == PCORE_NODE_ADJACENT_HTML_BEFORE_BEGIN ||
+            position == PCORE_NODE_ADJACENT_HTML_AFTER_END) {
+        if (dom_node_get_parent_node((dom_node *) target, &parent) !=
+                DOM_NO_ERR || parent == NULL ||
+                dom_node_get_node_type(parent, &parent_type) != DOM_NO_ERR ||
+                parent_type != DOM_ELEMENT_NODE ||
+                pcore_element_name_is((dom_element *) parent, "html")) {
+            if (parent != NULL) {
+                dom_node_unref(parent);
+            }
+            dom_node_unref((dom_node *) target);
+            return 2;
+        }
+        insert_parent = parent;
+        if (position == PCORE_NODE_ADJACENT_HTML_BEFORE_BEGIN) {
+            reference = dom_node_ref((dom_node *) target);
+        } else if (dom_node_get_next_sibling((dom_node *) target,
+                &reference) != DOM_NO_ERR) {
+            reference = NULL;
+            dom_node_unref(parent);
+            dom_node_unref((dom_node *) target);
+            return 1;
+        }
+    } else if (position == PCORE_NODE_ADJACENT_HTML_AFTER_BEGIN) {
+        if (dom_node_get_first_child((dom_node *) target, &reference) !=
+                DOM_NO_ERR) {
+            dom_node_unref((dom_node *) target);
+            return 1;
+        }
+    }
+
+    fragment = NULL;
+    result = pcore_html_mutation_parse_fragment(doc, html, length,
+            &fragment);
+    if (result != 0 || fragment == NULL) {
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        dom_node_unref((dom_node *) target);
+        return result != 0 ? result : 1;
+    }
+    memset(&scan, 0, sizeof(scan));
+    scan.doc = doc;
+    scan.target = target;
+    scan.allow_existing_inside_target = 0;
+    id_name = NULL;
+    if (dom_string_create_interned((const uint8_t *) "id", 2, &id_name) !=
+            DOM_NO_ERR || id_name == NULL) {
+        dom_node_unref((dom_node *) fragment);
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        dom_node_unref((dom_node *) target);
+        return 1;
+    }
+    scan.id_name = id_name;
+    result = pcore_html_mutation_scan_fragment(&scan, fragment);
+    dom_string_unref(id_name);
+    scan.id_name = NULL;
+    pcore_html_mutation_scan_release(&scan);
+    if (result != 0) {
+        dom_node_unref((dom_node *) fragment);
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        dom_node_unref((dom_node *) target);
+        return result;
+    }
+
+    inserted = NULL;
+    err = dom_node_insert_before(insert_parent, (dom_node *) fragment,
+            reference, &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (reference != NULL) {
+        dom_node_unref(reference);
+    }
+    dom_node_unref((dom_node *) fragment);
+    if (parent != NULL) {
+        dom_node_unref(parent);
+    }
+    dom_node_unref((dom_node *) target);
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR || err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
     pcore_render_invalidate(doc);
     return 0;
 }

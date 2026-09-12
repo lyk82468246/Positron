@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1237
+#define TEST_MAX_NUMBER 1238
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15250,6 +15250,33 @@ static int pcore_browser_script_dom_set_inner_html(void *pw,
     return -1;
 }
 
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_dom_insert_adjacent_html(void *pw,
+        const char *id, unsigned int position, const char *html)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            html == NULL) {
+        return -1;
+    }
+    result = PCore_NodeInsertAdjacentHTMLById(bridge->document, id, position,
+            html);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_set_child_text(void *pw,
         const char *parent_id, unsigned int child_index, const char *text)
 {
@@ -17250,7 +17277,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx8 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx9 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx12 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17416,6 +17443,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_write_callbacks.set_text = pcore_browser_script_dom_set_text;
     dom_write_callbacks.set_inner_html =
             pcore_browser_script_dom_set_inner_html;
+    dom_write_callbacks.insert_adjacent_html =
+            pcore_browser_script_dom_insert_adjacent_html;
     dom_write_callbacks.set_child_text =
             pcore_browser_script_dom_set_child_text;
     dom_write_callbacks.set_character_data_child =
@@ -17649,7 +17678,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx8(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx9(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx12(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -51138,6 +51167,191 @@ static BOOL test1237_browser_element_inner_html_mutation_contract(void)
             " replaces the target child list atomically, preserves the target"
             " identity, detaches stale descendants and rejects invalid,"
             " oversized or colliding-id input without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1238 - bounded Element.insertAdjacentHTML mutation. */
+static BOOL test1238_browser_insert_adjacent_html_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='prefix'>P</div><div id='target'><i id='old'>old</i>"
+        "tail</div><div id='suffix'>Q</div><p id='outside'>O</p>"
+        "<p id='detached'>D</p><p id='result'>idle</p></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='prefix'>P</div><div id='target'><i id='old'>old</i>"
+        "tail</div><div id='suffix'>Q</div><p id='outside'>O</p>"
+        "<p id='detached'>D</p><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var t=document.getElementById('target'),old="
+        "document.getElementById('old'),det=document.getElementById('detached'),"
+        "parent=t.parentNode,snap=t.childNodes,ret,stable,children,bad=0,ok=true;"
+        "try{ret=t.insertAdjacentHTML('beforebegin','<span id=\"bb\">BB</span>"
+        "<!--c-->');ok=ok&&ret===undefined;}catch(e){ok=false;}"
+        "try{ret=t.insertAdjacentHTML('afterbegin','<span id=\"ab\">AB</span>');"
+        "ok=ok&&ret===undefined;}catch(e2){ok=false;}"
+        "try{ret=t.insertAdjacentHTML('beforeend','BE');ok=ok&&ret===undefined;}"
+        "catch(e3){ok=false;}"
+        "try{ret=t.insertAdjacentHTML('afterend','<span id=\"ae\">AE</span>');"
+        "ok=ok&&ret===undefined;}catch(e4){ok=false;}"
+        "children=parent.childNodes;ok=ok&&t===document.getElementById('target')&&"
+        "old.parentNode===t&&snap.length===2&&snap[0]===old&&"
+        "snap[1].data==='tail'&&t.childNodes.length===4&&"
+        "t.firstElementChild.id==='ab'&&t.childNodes[1]===old&&"
+        "t.childNodes[2].data==='tail'&&t.childNodes[3].data==='BE'&&"
+        "t.textContent==='ABoldtailBE'&&children.length===9&&"
+        "children[1].id==='bb'&&children[2].nodeType===8&&children[3]===t&&"
+        "children[4].id==='ae'&&document.getElementById('bb')!==null&&"
+        "document.getElementById('ab')!==null&&document.getElementById('ae')!==null;"
+        "stable=parent.textContent;"
+        "try{t.insertAdjacentHTML('middle','x');}catch(e5){bad|=1;}"
+        "try{t.insertAdjacentHTML('beforeend','<b id=\"outside\">x</b>');}"
+        "catch(e6){bad|=2;}"
+        "try{t.insertAdjacentHTML('beforeend','<b id=\"dup\"></b><i id=\"dup\">"
+        "</i>');}catch(e7){bad|=4;}"
+        "try{document.documentElement.insertAdjacentHTML('beforeend','x');}"
+        "catch(e8){bad|=8;}"
+        "try{t.insertAdjacentHTML('beforeend');}catch(e9){bad|=16;}"
+        "det.remove();stable=parent.textContent;"
+        "try{det.insertAdjacentHTML('beforeend','x');}catch(e10){bad|=32;}"
+        "try{t.insertAdjacentHTML('beforeend','');}catch(e11){bad|=64;}"
+        "ok=ok&&bad===63&&parent.textContent===stable&&"
+        "document.getElementById('outside').textContent==='O'&&"
+        "document.getElementById('dup')===null&&det.parentNode===null&&"
+        "!det.isConnected;document.getElementById('result').textContent=String(ok);})();";
+    static const char BAD_UTF8[] = { (char) 0xc3, (char) 0x28, '\0' };
+    static const char EXPECTED_BODY_TEXT[] = "PBBABoldtailBEAEQODidle";
+    char body_text[256];
+    char after_invalid[256];
+    char error[768];
+    int body_bytes;
+    int after_invalid_bytes;
+    int core_before_begin;
+    int core_after_begin;
+    int core_before_end;
+    int core_after_end;
+    int core_invalid_position;
+    int core_bad_utf8;
+    int core_outside_id;
+    int core_duplicate_id;
+    int core_structural;
+    int core_empty;
+    int core_too_large;
+    int core_body_result;
+    int core_after_invalid_result;
+    HANDLE core_doc;
+    char *too_large;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    too_large = (char *) malloc((size_t) PCORE_NODE_HTML_MUTATION_MAX_BYTES +
+            2U);
+    if (too_large != NULL) {
+        memset(too_large, 'x',
+                (size_t) PCORE_NODE_HTML_MUTATION_MAX_BYTES + 1U);
+        too_large[PCORE_NODE_HTML_MUTATION_MAX_BYTES + 1U] = '\0';
+    }
+    core_before_begin = core_doc == NULL ? 1 :
+            PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_BEGIN,
+            "<span id='bb'>BB</span><!--c-->");
+    core_after_begin = core_doc == NULL ? 1 :
+            PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_AFTER_BEGIN,
+            "<span id='ab'>AB</span>");
+    core_before_end = core_doc == NULL ? 1 :
+            PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_END, "BE");
+    core_after_end = core_doc == NULL ? 1 :
+            PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_AFTER_END,
+            "<span id='ae'>AE</span>");
+    memset(body_text, 0, sizeof(body_text));
+    body_bytes = 0;
+    core_body_result = core_doc == NULL ? 1 : PCore_NodeTextContentById(
+            core_doc, PCORE_DOCUMENT_BODY_TOKEN, body_text,
+            sizeof(body_text), &body_bytes);
+    if (core_body_result != 0 || strcmp(body_text, EXPECTED_BODY_TEXT) != 0 ||
+            core_before_begin != 0 || core_after_begin != 0 ||
+            core_before_end != 0 || core_after_end != 0 || core_doc == NULL ||
+            PCore_NodeExistsById(core_doc, "bb") != 1 ||
+            PCore_NodeExistsById(core_doc, "ab") != 1 ||
+            PCore_NodeExistsById(core_doc, "ae") != 1) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        if (too_large != NULL) {
+            free(too_large);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core valid before=%d afterbegin=%d beforeend=%d after=%d"
+                " body_result=%d body=%s", core_before_begin,
+                core_after_begin, core_before_end, core_after_end,
+                core_body_result, body_text);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1238 FAIL", error);
+        return FALSE;
+    }
+    memset(after_invalid, 0, sizeof(after_invalid));
+    after_invalid_bytes = 0;
+    core_invalid_position = PCore_NodeInsertAdjacentHTMLById(core_doc,
+            "target", 0, "x");
+    core_bad_utf8 = PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_END, BAD_UTF8);
+    core_outside_id = PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_END,
+            "<b id='outside'>bad</b>");
+    core_duplicate_id = PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_END,
+            "<b id='dup'></b><i id='dup'></i>");
+    core_structural = PCore_NodeInsertAdjacentHTMLById(core_doc,
+            PCORE_DOCUMENT_BODY_TOKEN,
+            PCORE_NODE_ADJACENT_HTML_AFTER_BEGIN, "x");
+    core_empty = PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_END, "");
+    core_too_large = too_large == NULL ? 1 :
+            PCore_NodeInsertAdjacentHTMLById(core_doc, "target",
+            PCORE_NODE_ADJACENT_HTML_BEFORE_END, too_large);
+    core_after_invalid_result = PCore_NodeTextContentById(core_doc,
+            PCORE_DOCUMENT_BODY_TOKEN, after_invalid, sizeof(after_invalid),
+            &after_invalid_bytes);
+    if (core_invalid_position != 2 || core_bad_utf8 != 3 ||
+            core_outside_id != 3 || core_duplicate_id != 3 ||
+            core_structural != 2 || core_empty != 0 || core_too_large != 3 ||
+            core_after_invalid_result != 0 ||
+            strcmp(after_invalid, EXPECTED_BODY_TEXT) != 0) {
+        PCore_FreeDocument(core_doc);
+        if (too_large != NULL) {
+            free(too_large);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core invalid position=%d utf8=%d outside=%d duplicate=%d"
+                " structural=%d empty=%d size=%d after_result=%d after=%s",
+                core_invalid_position, core_bad_utf8, core_outside_id,
+                core_duplicate_id, core_structural, core_empty, core_too_large,
+                core_after_invalid_result, after_invalid);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1238 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+    if (too_large != NULL) {
+        free(too_large);
+    }
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/element-insert-adjacent-html", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1238 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1238 OK",
+            "Element.insertAdjacentHTML now parses a bounded UTF-8 fragment"
+            " in Core at all four positions, preserves target and snapshot"
+            " identity, refreshes Browser caches and rejects bad positions,"
+            " structural targets, detached targets, duplicate ids, outside"
+            " collisions and oversize input without partial mutation.");
     return TRUE;
 }
 
@@ -109362,6 +109576,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1235: ok = test1235_browser_character_data_relative_existing_contract(); break;
         case 1236: ok = test1236_browser_element_html_serialization_contract(); break;
         case 1237: ok = test1237_browser_element_inner_html_mutation_contract(); break;
+        case 1238: ok = test1238_browser_insert_adjacent_html_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

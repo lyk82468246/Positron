@@ -262,6 +262,24 @@ PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
 PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
         const char *element_id, const char *html);
 
+/* Insert a UTF-8 HTML fragment immediately around one live element. Position
+ * is one of PCORE_NODE_ADJACENT_HTML_BEFORE_BEGIN, AFTER_BEGIN, BEFORE_END
+ * or AFTER_END. The same parser/node/depth/direct-child bounds and element,
+ * text, comment and CDATA node subset as innerHTML apply. Existing document
+ * ids are never shadowed by the inserted fragment, and no mutation occurs on
+ * malformed, duplicate or conflicting input. Returns 0 on success, 2 when
+ * the target, parent, position or document structure is unavailable, 3 for
+ * invalid UTF-8, id conflict or a bound violation, and 1 for another
+ * parser/DOM failure. The target and its existing children keep their
+ * identity; a successful insertion invalidates retained layout. No script,
+ * resource fetch or DOM event dispatch is exposed by this boundary. */
+#define PCORE_NODE_ADJACENT_HTML_BEFORE_BEGIN  1U
+#define PCORE_NODE_ADJACENT_HTML_AFTER_BEGIN   2U
+#define PCORE_NODE_ADJACENT_HTML_BEFORE_END    3U
+#define PCORE_NODE_ADJACENT_HTML_AFTER_END    4U
+PCORE_API int PCore_NodeInsertAdjacentHTMLById(HANDLE hDoc,
+        const char *element_id, unsigned int position, const char *html);
+
 /* Replace the data of one direct Text child without changing the child list.
  * `parent_id` is a UTF-8 element id (or a supported document-structure token)
  * and `child_index` is the unfiltered childNodes index, so text/comment and

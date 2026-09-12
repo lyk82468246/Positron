@@ -916,6 +916,16 @@ script、不抓取资源、不派发 mutation 事件。该门不扩展 outerHTML
 通用 DocumentFragment、context-sensitive parser 或视觉行为。设备门选择
 `TEST1237,1236,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1238 覆盖 parser-backed `Element.insertAdjacentHTML(position, html)` 的 Core/Browser
+纵切。Core 通过 `PCore_NodeInsertAdjacentHTMLById` 在 `beforebegin`、`afterbegin`、
+`beforeend`、`afterend` 四个位置插入同一 document 的有界 UTF-8 fragment；目标和既有
+子节点 identity 保持不变，Browser write Ex9 只刷新受影响的 target/parent snapshot，宿主
+在成功后安排 style/layout/paint。夹具验证新 id lookup、静态 snapshot、空片段，以及未知
+position、document structure、detached target、重复/外部冲突 id、非法 UTF-8 和超大输入
+的 fail-closed 无部分 mutation；不执行 script、不获取资源、不派发 mutation 事件，也不
+扩展 outerHTML setter、clone 或 DocumentFragment。设备门选择 `1236,1237,1238,999`，
+Debug ARMV4I，日志完整，双空间预检、完成后清理和 crash check 均通过。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

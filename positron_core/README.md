@@ -131,6 +131,11 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   结构目标返回 `2`，其他 parser/DOM 失败返回 `1`。成功返回 `0`、保持目标身份并使
   retained layout 失效；Core 不执行 script、不获取资源、不派发事件，调用方必须重新
   style/layout/paint。
+- `PCore_NodeInsertAdjacentHTMLById(hDoc, element_id, position, html)` 复用同一
+  parser，在 `BEFORE_BEGIN`、`AFTER_BEGIN`、`BEFORE_END` 或 `AFTER_END` 位置插入片段。
+  预算、节点类型、UTF-8 和 id 冲突规则与 setter 相同；成功返回 `0` 并保持目标/既有
+  子节点身份，结构/位置不可用返回 `2`，非法或超限输入返回 `3`，其他 DOM 失败返回
+  `1`。成功后 retained layout 失效；不执行 script、不获取资源、不派发事件。
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档

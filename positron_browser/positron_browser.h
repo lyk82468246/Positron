@@ -48,6 +48,10 @@ extern "C" {
 #define PBROWSER_SCRIPT_DIALOG_ID_MAX 1024
 #define PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX 1024
 #define PBROWSER_SCRIPT_INTERACTION_STATE_MAX 16
+#define PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_BEGIN 1U
+#define PBROWSER_SCRIPT_ADJACENT_HTML_AFTER_BEGIN 2U
+#define PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_END 3U
+#define PBROWSER_SCRIPT_ADJACENT_HTML_AFTER_END 4U
 #define PBROWSER_SCRIPT_INTERACTION_ACTIVE "active"
 #define PBROWSER_SCRIPT_INTERACTION_HOVER "hover"
 #define PBROWSER_SCRIPT_INTERACTION_VISITED "visited"
@@ -814,6 +818,30 @@ typedef struct PBrowserScriptDomWriteCallbacksEx8 {
     PBrowserScriptInsertTextChildListFn insert_text_child_list;
     PBrowserScriptSetInnerHTMLFn set_inner_html;
 } PBrowserScriptDomWriteCallbacksEx8;
+
+/* Extended HTML write table. Ex8 remains ABI-fixed; Ex9 appends the bounded
+ * Element.insertAdjacentHTML() adapter. `id` and `html` are borrowed UTF-8
+ * for the synchronous call. `position` uses the four
+ * PBROWSER_SCRIPT_ADJACENT_HTML_* values above. The host must
+ * schedule a fresh style/layout/paint pass after success; script execution,
+ * resource fetches, mutation events and DocumentFragment exposure remain
+ * outside this callback. */
+typedef int (*PBrowserScriptInsertAdjacentHTMLFn)(void *pw, const char *id,
+        unsigned int position, const char *html);
+typedef struct PBrowserScriptDomWriteCallbacksEx9 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
+    PBrowserScriptSetInnerHTMLFn set_inner_html;
+    PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
+} PBrowserScriptDomWriteCallbacksEx9;
 
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
@@ -2445,6 +2473,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx7 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx8(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx8 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx9(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx9 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

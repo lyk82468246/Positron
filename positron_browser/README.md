@@ -305,13 +305,14 @@ Browser 不自主执行 `autofocus`。宿主在 Core layout/native
 
 ### DOM、表单与 validation adapters
 
-Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks 映射 Core 的受限
-DOM、form、event 和 navigation 查询/mutation。Browser 负责 JSON 参数、脚本对象形状、
-错误映射与同步 dispatch，真实状态和缓冲由 Core/宿主在调用期间借用。
+Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks 映射 Core 的 DOM、
+form/event/navigation 查询与 mutation。Browser 负责参数、脚本对象形状、错误映射与
+同步 dispatch。
 
-`Element.innerHTML`/`outerHTML` 是 HTML 投影。`innerHTML` setter 由 Ex8 调用
-`PCore_NodeSetInnerHTMLById`；同一 document 有界替换成功保留身份、wrapper detached，
-失败不变。outerHTML setter、clone、DocumentFragment 及 script/资源/事件不支持。
+`Element.innerHTML`/`outerHTML` 是 HTML 投影；`innerHTML` setter（Ex8 →
+`PCore_NodeSetInnerHTMLById`）与 `insertAdjacentHTML()`（Ex9）复用 parser 覆盖四个
+位置，成功刷新 wrapper；失败不变。outerHTML setter、clone、fragment 及
+脚本等不支持。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
 在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；
@@ -462,9 +463,10 @@ CharacterData 的 `before()`/`after()` 和单节点 `replaceWith()` 复用 Ex10/
 已连接 Text/Comment/CDATA；支持同父/跨父、identity 和两侧 snapshot。混合节点/primitive
 列表、fragment、detached source、元素和其他对象仍 fail closed。
 
-`append()`/`prepend()` 校验后按序处理零至四个 primitive/element；
-`insertAdjacentText()`/`insertAdjacentElement()` 复用 Ex6 bridge 覆盖四位置，创建 Text
-或移动 element。错误参数、detached 或超限 fail closed；宿主负责重排/重绘。
+`append()`/`prepend()` 校验后按序处理零至四个 primitive/element；`insertAdjacentText()`、
+`insertAdjacentElement()` 和 `insertAdjacentHTML()` 覆盖四位置，分别创建 Text、移动
+element 或把 UTF-8 fragment 交给 Core。错误参数、detached、冲突 id 或超限 fail closed；
+宿主负责重排/重绘。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由

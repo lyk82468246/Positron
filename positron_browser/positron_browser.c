@@ -6032,6 +6032,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "for(i=0;i<a.length;i++){if(same(a[i],o)){index=i;break;}}"
         "if(index<0){throw new Error('insert target unavailable');}"
         "if(pos==='afterend'){index++;}return insertText11(p,value,false,index);}"
+        "function insertAdjacentHTML11(o,pos,value){var p,s,ok,position;"
+        "if(!o||o.nodeType!==1||typeof o.__id!=='string'||o.__id===''||"
+        "o.__pcoreDetached11){throw new Error('insertAdjacentHTML unavailable');}"
+        "if(pos!=='beforebegin'&&pos!=='afterbegin'&&pos!=='beforeend'&&"
+        "pos!=='afterend'){throw new Error('insertAdjacentHTML position');}"
+        "p=parent(o);if(!p){throw new Error('insert parent unavailable');}"
+        "s=String(value);position=pos==='beforebegin'?1:pos==='afterbegin'?2:"
+        "pos==='beforeend'?3:4;if(typeof g.__pcoreSetText!=='function'){"
+        "throw new Error('insertAdjacentHTML unavailable');}try{ok=g.__pcoreSetText({"
+        "op:'insertAdjacentHTML',id:o.__id,position:position,html:s});}"
+        "catch(e){ok=false;}if(!ok){throw new Error('insertAdjacentHTML failed');}"
+        "if(typeof g.__pcoreInvalidateDomCaches==='function'){"
+        "g.__pcoreInvalidateDomCaches(o.__id);if((pos==='beforebegin'||"
+        "pos==='afterend')&&p!==doc&&typeof p.__id==='string'&&p.__id!==''){"
+        "g.__pcoreInvalidateDomCaches(p.__id);}}return undefined;}"
         "function insertAdjacentElement11(o,pos,n){"
         "if(!o||o.nodeType!==1||typeof o.__id!=='string'||o.__id===''||"
         "!n||n.nodeType!==1||typeof n.__id!=='string'||n.__id===''){"
@@ -6052,6 +6067,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return insertAdjacentElement11(this,String(position).toLowerCase(),element);};"
         "P.prototype.insertAdjacentText=function(position,text){if(arguments.length!==2){"
         "throw new Error('insertAdjacentText arguments');}return insertAdjacentText11(this,"
+        "String(position).toLowerCase(),text);};"
+        "P.prototype.insertAdjacentHTML=function(position,text){if(arguments.length!==2){"
+        "throw new Error('insertAdjacentHTML arguments');}return insertAdjacentHTML11(this,"
         "String(position).toLowerCase(),text);};"
         "P.prototype.insertBefore=function(n,ref){if(arguments.length<1||"
         "arguments.length>2){throw new Error('insertBefore arguments');}"
@@ -6590,6 +6608,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptInsertTextChildFn insert_text_child;
     PBrowserScriptInsertTextChildListFn insert_text_child_list;
     PBrowserScriptSetInnerHTMLFn set_inner_html;
+    PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7900,6 +7919,7 @@ static int p_browser_script_dom_set_text(void *pw,
     int child_index;
     int node_type;
     int offset;
+    int position;
     int changed;
 
     binding = (p_browser_script_dom_write_binding *) pw;
@@ -7915,6 +7935,7 @@ static int p_browser_script_dom_set_text(void *pw,
     child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
     node_type = (object != NULL) ? PJson_GetInt(object, "nodeType") : 0;
     offset = (object != NULL) ? PJson_GetInt(object, "offset") : -1;
+    position = (object != NULL) ? PJson_GetInt(object, "position") : 0;
     if (binding == NULL || root == NULL) {
         PJson_Free(root);
         return 1;
@@ -7928,6 +7949,18 @@ static int p_browser_script_dom_set_text(void *pw,
             return 1;
         }
         changed = binding->set_inner_html(binding->pw, id, html);
+    } else if (op != NULL && strcmp(op, "insertAdjacentHTML") == 0) {
+        if (binding->insert_adjacent_html == NULL || id == NULL ||
+                id[0] == '\0' || html == NULL ||
+                (position < (int) PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_BEGIN ||
+                position > (int) PBROWSER_SCRIPT_ADJACENT_HTML_AFTER_END) ||
+                strlen(id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+                strlen(html) > PBROWSER_SCRIPT_HTML_MAX_BYTES) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->insert_adjacent_html(binding->pw, id,
+                (unsigned int) position, html);
     } else if (op != NULL && strcmp(op, "insertTextChildList") == 0) {
         if (binding->insert_text_child_list == NULL || parent_id == NULL ||
                 parent_id[0] == '\0' || child_index < 0 || values == NULL ||
@@ -11147,6 +11180,57 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx8(
     binding->insert_text_child = callbacks->insert_text_child;
     binding->insert_text_child_list = callbacks->insert_text_child_list;
     binding->set_inner_html = callbacks->set_inner_html;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx9(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx9 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx9) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL ||
+            callbacks->set_inner_html == NULL ||
+            callbacks->insert_adjacent_html == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
+    binding->set_inner_html = callbacks->set_inner_html;
+    binding->insert_adjacent_html = callbacks->insert_adjacent_html;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

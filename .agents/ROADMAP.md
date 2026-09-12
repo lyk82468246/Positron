@@ -139,8 +139,10 @@ Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只�
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
 元素 64 个 direct child），并在成功后保留目标身份、失效旧 wrapper 与 retained layout。
-重复/冲突 id、非法 UTF-8、未知/超限节点 fail closed；outerHTML setter、clone snapshot、
-通用 DocumentFragment、context-sensitive parser、mutation event 和资源执行仍不在边界内。
+同一 parser 边界的 `PCore_NodeInsertAdjacentHTMLById` 和 Browser write Ex9 还在四个相邻
+位置插入片段，保持目标/既有节点身份并刷新受影响 snapshot；重复/冲突 id、非法 UTF-8、
+未知/超限节点 fail closed。outerHTML setter、clone snapshot、通用 DocumentFragment、
+context-sensitive parser、mutation event 和资源执行仍不在边界内。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接
