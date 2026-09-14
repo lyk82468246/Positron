@@ -310,26 +310,26 @@ child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 fa
 Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、Fragment、detached
 handle、事件/资源/observer 和重复/无 id 均 fail closed。关系按 wrapper 身份随物化/移除保持。
 
-`document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须
-恰好传入一个参数，参数按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`nodeName="#comment"`、
-`data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling 查询，及
-`isSameNode()`/`isEqualNode()`、`cloneNode()`、`appendData()` 和 `remove()`。数据最多 65,535
-个脚本字符，并在进入 Core 时受 65,535 个 UTF-8 字节的公共 ABI 上限约束。插入带 id 的 live
-Element 时，DOM write Ex12 的 `create_comment_child_at` callback 负责首次物化；后续数据更新、
-移除、同父重排、再次插入复用既有 CharacterData callbacks，wrapper/alias identity 保持不变。
-无效参数、错误 reference、对象节点和超限输入在 mutation 前 fail closed；通用 detached Core
-handle、Fragment、相对 `before()`/`after()`/`replaceWith()`、事件、资源和 observer 不在边界内。
+遗留的 `HTMLBodyElement.text` 只提供有界属性投影：getter 反映 `text` attribute，缺失时为空；
+setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他值按 JavaScript `String` 转换并复用
+attribute callback。deprecated presentation-color、完整 body 接口和 detached body staging
+不在此范围内。
+
+`document.createComment(data)` 提供有界的 Browser-owned detached Comment wrapper：单一参数按
+JavaScript `String` 转换，暴露 node shape、data/nodeValue/textContent、root/parent/connection、
+identity、clone、appendData 和 remove；数据最多 65,535 个脚本字符，进入 Core 时还受同样大小
+的 UTF-8 ABI 上限。插入带 id 的 live Element 通过 DOM write Ex12 首次物化，后续 data mutation、
+移除、同父重排和再次插入保持 wrapper identity；无效参数/reference、对象、超限、通用 detached
+Core handle、Fragment、相对 mutation、事件、资源和 observer 均 fail closed。
 
 Comment wrapper 提供有界 CharacterData offset 方法：`insertData()`、`deleteData()`、
 `replaceData()` 和 `substringData()` 均按 UTF-16 code unit 解释；offset/count 必须为有限
 非负整数，删除超出末尾时截断。detached 更新 Browser 快照，connected 复用
-`__pcoreSetText` callback；超长、非法参数或 Core 失败保持原数据。相对
-`before()`/`after()`/`replaceWith()` 未提供。
+`__pcoreSetText` callback；超长、非法参数或 Core 失败保持原数据。相对 `before()`/`after()`/`replaceWith()` 未提供。
 
-`<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
-注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
-`value`/`label` 缺失时回退到 option 文本，`text` 写入纯文本。未注册、非 option、无效
-id 或 callback/mutation 失败均 fail closed。
+`<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；注册
+`PBrowserScriptOptionCallbacks` 后由 Core 维护选择，`value`/`label` 缺失时回退到 option
+文本，`text` 写入纯文本；未注册、非 option、无效 id 或 callback/mutation 失败均 fail closed。
 
 `select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 由 Browser
 提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；

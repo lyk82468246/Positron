@@ -178,17 +178,17 @@
   反射 setter（含 `align`）在 detached/removed 状态暂存，物化调用 Core。
   宿主负责后续 layout/paint；视觉/触摸/SIP 不由
   该门保证。
-- `document.createComment(data)` 目前是 Browser-owned 的有界 detached Comment wrapper：必须
-  恰好一个参数并按 `String` 转换，最多 65,535 个脚本字符；进入 Core 时还受 65,535 字节
-  UTF-8 上限。wrapper 提供 node shape、data/nodeValue/textContent/length、owner/root/
-  parent/connection/sibling、identity、clone、appendData、insertData、deleteData、replaceData、
-  substringData 和 remove；offset/count 按 UTF-16 code unit 校验，删除范围超出末尾时截断；首次插入 live Element
-  通过 DOM write Ex12 的 `create_comment_child_at` 物化，后续更新、移除、同父重排和再次插入
-  复用既有 CharacterData callbacks。无效参数/reference、对象、超限输入 fail closed；
-  没有通用 detached Core handle、Fragment、相对 `before()`/`after()`/`replaceWith()`、事件、
-  资源、observer 或完整 live collection，宿主仍负责 style/layout/paint，视觉/触摸/SIP 结果
-  不由该门保证。非法参数、超限或 callback/Core 失败均保持原数据；相对
-  `before()`/`after()`/`replaceWith()`、通用 detached Core handle 和 Fragment 仍未实现。
+- `HTMLBodyElement.text` 现在提供一个 live、遗留的 `text` attribute 投影：缺失 getter 返回
+  空字符串，setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript
+  `String` 转换；`setAttribute()`/`removeAttribute()` 的变化会被后续 getter 读取。它不
+  扩展 deprecated presentation-color、完整 HTMLBodyElement 接口或 detached body staging。
+- `document.createComment(data)` 目前是 Browser-owned 的有界 detached Comment wrapper：单一
+  参数按 `String` 转换，数据最多 65,535 个脚本字符，进入 Core 时还受同样大小的 UTF-8
+  上限；wrapper 提供 node shape、数据/父级/identity、clone、CharacterData offset 方法和
+  remove。首次插入 live Element 通过 DOM write Ex12 物化，后续更新、移除、同父重排和再次
+  插入复用既有 callback。非法参数/reference、对象、超限、通用 detached Core handle、
+  Fragment、相对 mutation、事件、资源、observer 和完整 live collection 均 fail closed；
+  宿主仍负责 style/layout/paint，视觉/触摸/SIP 不由该门保证。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
@@ -571,14 +571,15 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1253 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1254 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与
   Ex15 typed CharacterData）、detached `document.createTextNode()` 的插入/数据/offset/lifecycle，
   以及 detached `document.createElement()` 的物化、属性/Text staging、clone、identity/lifecycle，
   以及其 `hasChildNodes()`/`childNodes` child-query staging 一致性，
-  以及 detached Element style/reflected-attribute facade 的生命周期一致性，
+  以及 detached Element style/reflected-attribute facade 的生命周期一致性和
+  `HTMLBodyElement.text` 的遗留属性反射，
   detached `document.createComment()` 的创建、数据、insert/delete/replace/substring、插入、
   移除、重插入、clone 和 identity，
   以及 retained-layout 边界；逐项合同见

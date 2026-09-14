@@ -12,34 +12,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 next812 设备证据见下文；历史失败不作为依据。
 
-- next790–next798 已完成有界 DOM/CharacterData insertion/replacement、HTML serialization、
-  parser-backed `innerHTML`/`insertAdjacentHTML`/`outerHTML` 与相应 identity、snapshot、
-  detached、错误输入和容量门；每条路径都由 Core 原子提交并保持无事件/资源副作用，
-  通用 DocumentFragment 仍未实现。逐批细节和 TEST1220–1239 证据由 Git 历史保存。
-- next799 在 Browser 增加不新增 Core ABI 的 text-only `DocumentFragment` staging：最多四个
-  primitive Text 可通过 append/prepend、Element 的 insert/append/replace 和 CharacterData
-  replaceWith 一次性消费；成功后才清空 fragment，existing node、nested fragment、mixed/
-  clone 与 HTML parser context fail closed。TEST1240 覆盖 node 形状、child 数据、静态
-  snapshot、消费顺序、容量和失败原子性。
-- next800 在 Core 增加 `PCore_NodeReplaceChildrenWithTextListById`，并由 Browser mutation
-  Ex13 暴露 `Element.replaceChildren()`：0–4 个 primitive Text 或一个 text-only fragment
-  先完整预检，再以 Core 的暂存/回滚路径原子替换全部 direct children；fragment 只在成功
-  后清空，旧子树 wrapper/snapshot 变为 detached。目标结构 token、对象、mixed/nested
-  fragment、超限和 callback 缺失 fail closed。TEST1241 覆盖空列表、字符串化、fragment
-  消费、旧 snapshot 及失败原子性。
-- next801 在 Core 增加 `PCore_NodeReplaceChildrenWithMixedListById`，Browser mutation
-  Ex14 让 `Element.replaceChildren()` 接受最多四项 primitive Text 与当前目标已连接的
-  direct Element。只允许同一父级的既有 element 重排，保留选中节点及后代 identity，
-  未保留旧子树才变为 detached；跨父、重复、自身、CharacterData、fragment、对象和超限
-  输入在提交前 fail closed，Core 负责暂存、原子提交和回滚。TEST1242 覆盖这些合同。
-- next802 在 Core 增加 `PCore_NodeReplaceChildrenWithNodeListById`，Browser mutation
-  Ex15 让 `Element.replaceChildren()` 接受最多四项 primitive Text、当前目标已连接的
-  direct Element，以及按替换前未过滤 `childNodes` 索引指定的 Text/Comment/CDATA。
-  Browser 重建 direct list 时保留选中 CharacterData/Element wrapper identity；跨父、
-  重复、自身、错类型/越界、fragment、对象和超限输入在提交前 fail closed，Core 负责
-  暂存、原子提交和回滚。为适配固定 1 MiB Browser heap，CharacterData 路径复用已有
-  `replaceChildren` 引导并只按新位置创建 primitive wrapper，避免重复 bootstrap 常驻开销。
-  TEST1243 覆盖 Text/Comment、同父重排、失败不变和外部节点保护；next802 设备门已通过。
+- next790–next802 已完成有界 CharacterData/HTML parser mutation、text-only fragment staging
+  以及 Ex13–Ex15 `replaceChildren()` 的 Core 原子提交、identity/snapshot 刷新和失败回滚；
+  通用 DocumentFragment、复杂节点和事件/资源副作用仍不在边界。逐批细节与 TEST1220–1243
+  证据由 Git 历史保存，稳定合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - next803 根据 NetSurf compatibility corpus 中现有的 `document.createTextNode()` 用法，
   在 Browser 增加 detached Text wrapper。它复用既有 Core Text insertion、CharacterData
   move、Text setter 和删除入口，支持 `insertBefore()`、`appendChild()`、只含
@@ -81,10 +57,15 @@ next812 设备证据见下文；历史失败不作为依据。
   integer、非负 length（含新增 `align`）在未物化/已移除 wrapper 上经 facade 暂存，物化后
   live wrapper 仍调用 Core；非法 integer/length 在写入前拒绝。TEST1253 与 `1252,1253,999`
   专门设备门已通过。
+- next813 根据 NetSurf compatibility corpus 的 `idl-treatnullas-emptystring.html` 缺口，补齐
+  live `HTMLBodyElement.text` 的遗留属性投影。getter 反映 `text` attribute（缺失为空字符
+  串），setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript `String`
+  转换，并保留 `option.text` 与非 body 元素的既有边界。TEST1254 与 `1253,1254,999`
+  专门设备门已通过。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1253。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1253,999`。
+- `TEST_MAX_NUMBER` 已为 1254。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1254,999`。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
   可能以 `laptop-li\codexsandboxoffline` 身份运行，即使用户目录仍显示为 Joe，也看不到
@@ -118,8 +99,8 @@ next812 设备证据见下文；历史失败不作为依据。
 ## 当前短期目标
 
 - 当前基线涵盖表单、selector、滚动/几何、生命周期、焦点、图片和有界 DOM mutation；
-  next790–next812 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
-  CharacterData offset、clone/style/reflected-attribute facade 纵切已有自动合同。稳定边界见
+  next790–next813 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
+  CharacterData offset、clone/style/reflected-attribute facade 和 body.text 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
@@ -223,15 +204,15 @@ next812 设备证据见下文；历史失败不作为依据。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1253。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1253,999`。
+- `TEST_MAX_NUMBER`：1254。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1254,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260915-004951-next812` 是当前有效基线：Debug ARMV4I，选择
-`1252,1253,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
+`tmp/device-runs/20260915-011403-next813` 是当前有效基线：Debug ARMV4I，选择
+`1253,1254,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
 `crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后移除了当前目录；
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
@@ -296,6 +277,10 @@ next812 设备证据见下文；历史失败不作为依据。
   `style.cssText` 和 reflected attribute setter 在 detached/attached/removed 状态下保持一致。
   最新门选择 `1252,1253,999`，
   3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增 dump=0。
+- TEST1254 由 next813 的相邻设备门验证 `HTMLBodyElement.text` 的初值、attribute mutation、
+  `null` 空字符串转换、普通 `String` 转换和 option/non-body 回退。门选择
+  `1253,1254,999`，3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增
+  dump=0；本批只改变 Browser 脚本属性语义，无需人工视觉步骤。
 
 ## 当前未决风险
 
@@ -363,8 +348,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-基于 compatibility corpus、源码或用户页面选择 next813 的一个产品缺口；next812 的 detached
-Element reflected attribute facade 修补和 TEST1253 已通过正式设备门。新批次仍须把可复用
+基于 compatibility corpus、源码或用户页面选择 next814 的一个产品缺口；next813 的
+`HTMLBodyElement.text` 反射修补和 TEST1254 已通过正式设备门。新批次仍须把可复用
 语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、

@@ -224,6 +224,14 @@ fixture 覆盖 staging、物化、live mutation、移除后的再次写入和错
 也不扩大嵌套 Element、通用 Node/Fragment、事件、资源或视觉语义。`1252,1253,999` Debug
 ARMV4I 设备门已通过。
 
+next813 根据 NetSurf compatibility corpus 的 `idl-treatnullas-emptystring.html` 缺口，补齐
+live `HTMLBodyElement.text` 的遗留属性投影。getter 反映 `text` attribute，缺失时返回空
+字符串；setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript `String`
+转换，并保留既有 `option.text` 与非 body 元素的安全边界。TEST1254 覆盖初值、null/普通
+值转换、set/removeAttribute、option 回归和非 body 拒绝；不新增 Core ABI，也不扩展
+deprecated presentation-color、完整 body 接口或通用 DOM。`1253,1254,999` Debug ARMV4I
+设备门已通过。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -245,7 +253,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next813）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next814）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

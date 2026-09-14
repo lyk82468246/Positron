@@ -401,6 +401,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `isSameNode()` 不因空/重复 id 合并，`contains()` 与 `compareDocumentPosition()` 保持
   disconnected 结果；物化、同父排序和移除仍复用同一 wrapper identity。嵌套 Element、
   Fragment、通用 detached Core handle、事件、资源和 observer 不属于该边界。
+- Browser 的 DOM attribute adapter 还为 live `HTMLBodyElement.text` 提供遗留属性投影：getter
+  反映 `text` attribute，缺失时返回空字符串；setter 对 `null` 采用
+  `[TreatNullAs=EmptyString]`，其他输入按 JavaScript `String` 转换并复用现有 attribute
+  callback。该投影不新增 Core ABI，也不扩展 deprecated presentation-color、完整 body
+  接口或 detached body staging。
 - `document.createComment(data)` 是 Browser-owned 的 detached Comment staging。调用必须恰好
   一个参数并按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`#comment`、
   `data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling、

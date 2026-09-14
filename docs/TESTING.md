@@ -1073,6 +1073,15 @@ TEST1253 覆盖 detached `document.createElement()` 的 reflected attribute sett
 Element、通用 Node/Fragment、事件、资源或视觉语义。设备门选择 `1252,1253,999`，确认
 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1254 覆盖 NetSurf compatibility corpus 的 `idl-treatnullas-emptystring.html` 所需
+`HTMLBodyElement.text` 反射。带 `text` attribute 的 `body.text` 必须读回原值；赋值 `null`
+按 `[TreatNullAs=EmptyString]` 写为空字符串，数字和 `undefined` 仍按 JavaScript `String`
+转换；随后通过 `setAttribute()`/`removeAttribute()` 的变化也必须被 getter 观察到。夹具
+同时验证现有 `option.text` 行为不回归，普通非 body 元素的 `text` 仍安全返回/拒绝。该门
+只增加 Browser 属性语义，不新增 Core ABI 或 deprecated presentation-color、通用 DOM
+扩展；设备门选择 `1253,1254,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后
+清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

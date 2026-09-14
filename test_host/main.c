@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1253
+#define TEST_MAX_NUMBER 1254
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52583,6 +52583,51 @@ static BOOL test1253_browser_detached_element_reflected_attribute_contract(void)
             " attribute facade; align is covered for createElement divs and"
             " values survive materialization, live updates, removal and"
             " invalid-input rejection.");
+    return TRUE;
+}
+
+/* TEST 1254 - HTMLBodyElement.text TreatNullAs=EmptyString reflection. */
+static BOOL test1254_browser_body_text_treat_null_as_empty_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body text='blue'><select><option id='opt'>choice</option></select>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var body=document.body,opt=document.getElementById('opt'),"
+        "p=document.createElement('p'),result=document.getElementById('result'),"
+        "ok=true,bad=0;"
+        "if(!body||body.localName!=='body'||body.text!=='blue'||"
+        "body.getAttribute('text')!=='blue')ok=false;"
+        "try{body.text=null;}catch(e1){bad|=2;}"
+        "if(body.text!==''||body.getAttribute('text')!=='')ok=false;"
+        "try{body.text=123;}catch(e2){bad|=4;}"
+        "if(body.text!=='123'||body.getAttribute('text')!=='123')ok=false;"
+        "body.setAttribute('text','green');"
+        "if(body.text!=='green')ok=false;"
+        "body.removeAttribute('text');"
+        "if(body.text!==''||body.getAttribute('text')!==null)ok=false;"
+        "try{body.text=undefined;}catch(e3){bad|=8;}"
+        "if(body.text!=='undefined'||body.getAttribute('text')!=='undefined')ok=false;"
+        "if(!opt||opt.text!=='choice')ok=false;"
+        "try{opt.text='updated';}catch(e4){bad|=16;}"
+        "if(opt.text!=='updated'||opt.textContent!=='updated')ok=false;"
+        "if(p.text!==undefined)ok=false;"
+        "try{p.text='reject';}catch(e5){bad|=1;}"
+        "result.textContent=String(ok&&bad===1);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/html-body-text-treat-null",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1254 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1254 OK",
+            "HTMLBodyElement.text now reflects the text attribute and"
+            " treats null as an empty string while preserving ordinary"
+            " stringification, attribute mutation and option.text behavior.");
     return TRUE;
 }
 
@@ -110823,6 +110868,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1251: ok = test1251_browser_detached_element_child_query_contract(); break;
         case 1252: ok = test1252_browser_detached_element_style_css_text_contract(); break;
         case 1253: ok = test1253_browser_detached_element_reflected_attribute_contract(); break;
+        case 1254: ok = test1254_browser_body_text_treat_null_as_empty_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
