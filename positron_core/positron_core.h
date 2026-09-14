@@ -258,6 +258,31 @@ PCORE_API int PCore_NodeReplaceChildrenWithTextListById(HANDLE hDoc,
         const char *parent_id, const char *const *texts,
         unsigned int text_count);
 
+/* A bounded mixed child-list item for Element.replaceChildren().  ELEMENT
+ * items must name an already-connected direct Element child of the target;
+ * TEXT items carry a borrowed UTF-8 string.  The list is borrowed only for
+ * the synchronous call and is never retained by Core. */
+#define PCORE_NODE_REPLACE_CHILDREN_MIXED_LIST_MAX 4u
+#define PCORE_NODE_REPLACE_CHILDREN_MIXED_TEXT_MAX_BYTES 16384u
+#define PCORE_NODE_REPLACE_CHILDREN_ITEM_TEXT 1u
+#define PCORE_NODE_REPLACE_CHILDREN_ITEM_ELEMENT 2u
+typedef struct PCoreNodeReplaceChildrenItem {
+    unsigned int kind;
+    const char *element_id;
+    const char *text;
+} PCoreNodeReplaceChildrenItem;
+/* Replace all direct children with zero to four primitive Text values and/or
+ * existing direct Element children of the same target.  Core stages the
+ * complete result and commits it atomically; a failed validation, allocation
+ * or DOM operation leaves the old child order intact.  Cross-parent elements,
+ * fragments, CharacterData nodes, document structure tokens and duplicate
+ * elements return 2; malformed UTF-8, invalid items or byte/list limits return
+ * 3; other failures return 1.  A successful replacement invalidates retained
+ * layout and returns 0. */
+PCORE_API int PCore_NodeReplaceChildrenWithMixedListById(HANDLE hDoc,
+        const char *parent_id, const PCoreNodeReplaceChildrenItem *items,
+        unsigned int item_count);
+
 /* Replace one live element's child list with a UTF-8 HTML fragment. The
  * parser-backed operation is deliberately bounded: input is limited to
  * PCORE_NODE_HTML_MUTATION_MAX_BYTES, the fragment to

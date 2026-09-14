@@ -150,6 +150,13 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   返回 `2`，非法 UTF-8、空指针、列表或字节超限返回 `3`，其他 DOM/分配失败返回 `1`。
   成功返回 `0`、保持目标 Element 身份并使 retained layout 失效；失败恢复旧子树，不
   reparent existing node、派发事件、执行资源或暴露 fragment handle。
+- `PCore_NodeReplaceChildrenWithMixedListById` 是同一目标的 mixed 变体。调用方传入 0–4
+  个 `PCoreNodeReplaceChildrenItem`：每项是 UTF-8 primitive Text，或目标当前已连接的
+  direct Element。Core 只接受同一父级、非自身、无重复的 existing element，先暂存全部
+  direct children，再按列表顺序一次性装配；失败恢复原树，成功保留被选 element 及其后代
+  identity 并使 retained layout 失效。总文本最多 16,384 UTF-8 字节；跨父、CharacterData、
+  fragment、结构 token、非法/超限输入沿用 fail-closed 错误码，不派发事件、不执行资源、
+  不暴露 fragment handle。
 - Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
   只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
   `PCore_NodeReplaceElementChildWithTextListById`、

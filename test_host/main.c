@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1241
+#define TEST_MAX_NUMBER 1242
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15638,6 +15638,44 @@ static int pcore_browser_script_dom_replace_element_children_with_text_list(
     return -1;
 }
 
+static int pcore_browser_script_dom_replace_element_children_with_mixed_list(
+        void *pw, const char *parent_id,
+        const PBrowserScriptReplaceChildrenItem *items,
+        unsigned int item_count)
+{
+    pcore_browser_script_bridge *bridge;
+    PCoreNodeReplaceChildrenItem core_items[
+            PCORE_NODE_REPLACE_CHILDREN_MIXED_LIST_MAX];
+    unsigned int i;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            parent_id[0] == '\0' ||
+            item_count > PCORE_NODE_REPLACE_CHILDREN_MIXED_LIST_MAX ||
+            (item_count > 0 && items == NULL)) {
+        return -1;
+    }
+    for (i = 0; i < item_count; i++) {
+        core_items[i].kind = items[i].kind;
+        core_items[i].element_id = items[i].element_id;
+        core_items[i].text = items[i].text;
+    }
+    result = PCore_NodeReplaceChildrenWithMixedListById(
+            bridge->document, parent_id,
+            item_count > 0 ? core_items : NULL, item_count);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_replace_character_data_with_text_list(
         void *pw, const char *parent_id, unsigned int child_index,
         unsigned int node_type, const char *const *texts,
@@ -17332,7 +17370,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx10 dom_write_callbacks;
-    PBrowserScriptDomMutationCallbacksEx13 dom_mutation_callbacks;
+    PBrowserScriptDomMutationCallbacksEx14 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
             content_editable_selection_callbacks;
@@ -17543,6 +17581,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_replace_element_child_with_character_data;
     dom_mutation_callbacks.replace_element_children_with_text_list =
             pcore_browser_script_dom_replace_element_children_with_text_list;
+    dom_mutation_callbacks.replace_element_children_with_mixed_list =
+            pcore_browser_script_dom_replace_element_children_with_mixed_list;
     content_editable_callbacks.size = sizeof(content_editable_callbacks);
     content_editable_callbacks.pw = bridge;
     content_editable_callbacks.get_editable =
@@ -17738,7 +17778,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx10(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx13(session,
+            PBrowser_ScriptSessionRegisterDomMutationCallbacksEx14(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
             &content_editable_callbacks) != PSCRIPT_OK ||
@@ -51720,6 +51760,70 @@ static BOOL test1241_browser_replace_children_text_contract(void)
             " values or one staged text fragment, consumes a fragment only"
             " after success, detaches old wrappers and preserves the old"
             " tree on mixed, object, over-limit and structural failures.");
+    return TRUE;
+}
+
+/* TEST 1242 - bounded mixed Element.replaceChildren() replacement. */
+static BOOL test1242_browser_replace_children_mixed_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><i id='one'><small id='nested'>1</small>"
+        "</i>tail<b id='two'>2</b><em id='drop'>D</em></div>"
+        "<div id='outside'><span id='foreign'>F</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var t=document.getElementById('target'),one="
+        "document.getElementById('one'),two=document.getElementById('two'),"
+        "nested=document.getElementById('nested'),drop=document.getElementById('drop'),"
+        "outside=document.getElementById('outside'),foreign=document.getElementById('foreign'),"
+        "result=document.getElementById('result'),snap=t.childNodes,snap2,stable,ret,bad=0,ok=true;"
+        "if(snap.length!==4||snap[0]!==one||snap[1].data!=='tail'||"
+        "snap[2]!==two||snap[3]!==drop)ok=false;"
+        "ret=t.replaceChildren(two,'-',one);"
+        "if(ret!==undefined||t.childNodes.length!==3||t.childNodes[0]!==two||"
+        "t.childNodes[1].data!=='-'||t.childNodes[2]!==one||"
+        "t.textContent!=='2-1'||one.parentNode!==t||two.parentNode!==t||"
+        "nested.parentNode!==one||document.getElementById('nested')!==nested||"
+        "drop.parentNode!==null||drop.isConnected||document.getElementById('drop')!==null||"
+        "snap.length!==4||snap[0]!==one||snap[2]!==two||"
+        "snap[1].parentNode!==null||snap[3].parentNode!==null)ok=false;"
+        "ret=t.replaceChildren(one,null,undefined,0);"
+        "if(ret!==undefined||t.childNodes.length!==4||t.childNodes[0]!==one||"
+        "t.childNodes[1].data!=='null'||t.childNodes[2].data!=='undefined'||"
+        "t.childNodes[3].data!=='0'||t.textContent!=='1nullundefined0'||"
+        "two.parentNode!==null||two.isConnected||document.getElementById('two')!==null||"
+        "nested.parentNode!==one||document.getElementById('nested')!==nested)ok=false;"
+        "snap2=t.childNodes;stable=t.textContent;"
+        "try{t.replaceChildren(foreign,'x');}catch(e1){bad|=1;}"
+        "if(foreign.parentNode!==outside||outside.textContent!=='F'||"
+        "t.textContent!==stable||snap2.length!==4||snap2[0]!==one||"
+        "snap2[1].data!=='null')ok=false;"
+        "try{t.replaceChildren(one,one);}catch(e2){bad|=2;}"
+        "try{t.replaceChildren(t);}catch(e3){bad|=4;}"
+        "try{t.replaceChildren(one,'a','b','c','d');}catch(e4){bad|=8;}"
+        "if(bad!==15||t.textContent!==stable||one.parentNode!==t||"
+        "nested.parentNode!==one||foreign.parentNode!==outside)ok=false;"
+        "ret=t.replaceChildren('final');"
+        "if(ret!==undefined||t.childNodes.length!==1||t.firstChild.data!=='final'||"
+        "one.parentNode!==null||one.isConnected||document.getElementById('one')!==null||"
+        "nested.parentNode!==null)ok=false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/element-replace-children-mixed", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1242 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1242 OK",
+            "Element.replaceChildren accepts a bounded mixed list of"
+            " primitive text and existing direct Element children. Core"
+            " stages the result atomically, preserves selected element"
+            " identity and descendants, detaches omitted children, and"
+            " rejects cross-parent, duplicate, self and over-limit inputs.");
     return TRUE;
 }
 
@@ -109948,6 +110052,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1239: ok = test1239_browser_element_outer_html_mutation_contract(); break;
         case 1240: ok = test1240_browser_document_fragment_text_contract(); break;
         case 1241: ok = test1241_browser_replace_children_text_contract(); break;
+        case 1242: ok = test1242_browser_replace_children_mixed_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

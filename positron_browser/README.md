@@ -15,29 +15,15 @@ Core 文档不在其所有权内。
 
 ### History
 
-`PBrowser_History*` 管理有界的进程内条目、当前位置、state、same-document 操作和 traversal。URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
+`PBrowser_History*` 管理有界的条目、当前位置、state、same-document 操作和 traversal。URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
 
-每个条目还可以保存一个有界的 `(scroll_x, scroll_y)` viewport snapshot。坐标是调用方约定的非负整数；Browser 只随条目保存和搬移它们，不知道文档高度、不创建窗口，也不负责 clamp。宿主在真正提交页面或完成 traversal 后读取快照，再按自己的 client area 和 document extent 应用它：
+每个条目还可以保存一个有界的 `(scroll_x, scroll_y)` viewport snapshot。坐标是调用方约定的非负整数；Browser 只随条目保存和搬移它们，不知道文档高度、不创建窗口，也不负责 clamp。宿主在真正提交页面或完成 traversal 后用 `PBrowser_HistoryEntryScroll()` 读取，再按自己的 client area 和 document extent 应用并 clamp。
 
-```c
-int scroll_x;
-int scroll_y;
-
-PBrowser_HistorySetEntryScroll(history, entry_index, 0, current_scroll_y);
-if (PBrowser_HistoryEntryScroll(history, entry_index,
-        &scroll_x, &scroll_y) == PBROWSER_OK) {
-    host_scroll_to(scroll_x, scroll_y); /* host clamps to its document */
-}
-```
-
-新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只管理条目；宿主负责页面提交，失败候选不得污染 history。
-
-浏览器脚本的 `history.scrollRestoration` 初始为 `auto`，也可以设为
-`manual`。Browser 通过 `PBrowser_ScriptSessionGetScrollRestoration()` 把这项
-策略提供给宿主；宿主只有在结果为 `PBROWSER_SCROLL_RESTORATION_AUTO` 时才应在
-history traversal 后自动应用 entry snapshot，`MANUAL` 则保留当前 viewport。这个
-查询不改变 history 或 viewport；fragment reveal 和应用显式请求的滚动仍由宿主
-单独处理。只有明确读到 `MANUAL` 才能跳过恢复，查询失败不能把页面误判为手动模式。
+新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState`/traversal 保留
+snapshot，`pushState` 从零开始，history 裁剪时三者一起移动。History 只管理条目，
+失败候选不得污染它。脚本 `history.scrollRestoration` 默认 `auto`；宿主读取
+`PBrowser_ScriptSessionGetScrollRestoration()`，仅在明确得到 `AUTO` 时自动恢复快照，
+`MANUAL` 或查询失败都保留当前 viewport。fragment reveal 和显式滚动另行处理。
 
 ### Page viewport 与脚本滚动
 
@@ -315,11 +301,12 @@ outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
 不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 提供四个以内
 primitive Text staging；Element append/prepend/insert/replace 与
-CharacterData replaceWith 可消费它；`Element.replaceChildren()` 还通过 mutation Ex13
-把 0–4 个 primitive Text（或一个仅含这些 Text 的 fragment）交给 Core 的原子子节点列表
-替换入口。fragment 仅在 Core 成功后清空，旧 direct children 的 wrapper/snapshot 会被
-标记为 detached；existing node、nested fragment、mixed/clone 和 context-sensitive
-parser 均 fail closed。
+CharacterData replaceWith 可消费它；`Element.replaceChildren()` 还通过 mutation Ex13 把
+0–4 个 primitive Text（或一个仅含这些 Text 的 fragment）交给 Core 的原子子节点列表替换
+入口；Ex14 再允许最多四项 primitive Text 与 receiver 当前已连接 direct Element 的 mixed
+列表，按序重排并保留被选 element 及后代 identity。fragment 仅在 Core 成功后清空，未保留
+的旧 direct 子树 wrapper/snapshot 会被标记为 detached；跨父、重复/自身 element、
+CharacterData、nested fragment、clone 和 context-sensitive parser 均 fail closed。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
 注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
@@ -462,6 +449,14 @@ JSON 请求提交；0 个值清空 direct children，单个 text-only fragment �
 负责旧子树暂存、完整 Text 列表创建和失败恢复，宿主只在成功 callback 后安排重排/重绘；
 结构 token、对象、混合 fragment、existing node 和 callback 缺失均 fail closed。Ex13 只
 追加字段，Ex12 及更旧表布局保持不变。
+
+Ex14 的 `replace_element_children_with_mixed_list` 接入
+`PCore_NodeReplaceChildrenWithMixedListById`，实现同一 receiver 的有界 mixed
+`replaceChildren()`。Browser 先检查 0–4 项、primitive 文本和当前 direct Element 身份，
+再提交 `{kind,id,text}` 列表；Core 原子暂存/提交/回滚。成功后仅未保留的旧子树变为
+detached，保留节点及后代的 wrapper/snapshot identity 不变；跨父、重复、自身、fragment、
+CharacterData、对象、超限和 callback 缺失均拒绝。Ex14 只在表尾追加字段，Ex13 及更旧
+注册入口的 ABI 和语义保持不变。
 
 CharacterData 的 `before()`/`after()`/`replaceWith()` 以及 Element 的
 `append()`/`prepend()`/`insertAdjacent*()` 只承诺上面描述的有界 Text/element 路径；

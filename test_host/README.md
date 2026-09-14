@@ -66,10 +66,10 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 固定离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/
-  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1241 覆盖
-  normalize、clone/equality、Text/CharacterData、Ex2–Ex13 insertion/replacement 和
-  bounded HTML getter/setter/insertAdjacentHTML/outerHTML、text-only DocumentFragment 和
-  Ex13 `Element.replaceChildren()`；
+  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1242 覆盖
+  normalize、clone/equality、Text/CharacterData、Ex2–Ex14 insertion/replacement 和
+  bounded HTML getter/setter/insertAdjacentHTML/outerHTML、text-only DocumentFragment、
+  Ex13 文本/fragment 与 Ex14 mixed `Element.replaceChildren()`；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -541,8 +541,10 @@ TEST1236–1240 覆盖 bounded HTML getter/setter、parser replacement、四位�
 `insertAdjacentHTML` 和 `outerHTML` replacement/removal；TEST1240 覆盖 Browser-owned
 text-only `DocumentFragment` staging、消费顺序、child/snapshot identity、四子节点上限和
 失败原子性。TEST1241 覆盖 Ex13 `Element.replaceChildren()` 的 0–4 primitive 文本、
-单 fragment 消费、旧子树 detached 与失败原子性。宿主只注册既有 callbacks、安排重排并
-断言 Core/Browser；通用 fragment、script/资源/事件不由 test_host 实现。
+单 fragment 消费、旧子树 detached 与失败原子性；TEST1242 覆盖 Ex14 的 0–4 mixed
+element/text、同父重排、保留节点 identity 和跨父/重复/自身/超限 fail-closed。宿主只
+注册 Ex13/Ex14 callbacks、安排重排并断言 Core/Browser；通用 fragment、script/资源/事件
+不由 test_host 实现。
 
 ### Native EDIT/SELECT/button/file
 

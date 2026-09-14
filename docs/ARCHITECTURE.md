@@ -189,6 +189,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   返回 `1`；失败恢复旧子树，成功返回 `0` 并使 retained layout 失效。它不 reparent
   existing node、不派发事件、不执行资源，也不向调用方暴露 fragment handle；Browser
   通过 Ex13 负责参数、wrapper/snapshot 和 fragment 消费，宿主只安排后续重排/重绘；
+- `PCore_NodeReplaceChildrenWithMixedListById` 是同一目标的有界 mixed 变体：调用方提交
+  0–4 项 `PCoreNodeReplaceChildrenItem`，每项为 UTF-8 primitive Text 或当前目标已有的
+  direct Element。Core 只接受同父、已连接、无重复且非自身的 element，先保存全部旧
+  direct children，再按提交顺序一次性装配；失败恢复原树，成功保持被选 element 及其后代
+  identity 并使 retained layout 失效。总文本仍受 16,384 UTF-8 字节预算，跨父、
+  CharacterData、fragment、结构 token、非法/超限输入返回既有 fail-closed 错误码；不派发
+  事件、不执行资源，也不暴露 fragment handle。Browser Ex14 负责类型、wrapper/snapshot
+  和 detached 元数据，宿主只接 callback 及后续重排/重绘。
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -470,6 +478,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   invalidation，宿主只负责 callback 接线及重排/重绘。对象、mixed/nested fragment、
   existing node、结构 token、超限和 callback 缺失 fail closed；Ex13 只追加字段，旧表
   布局保持不变。
+- Ex14 在 callback 表尾追加 `replace_element_children_with_mixed_list`，接入上面的
+  `PCore_NodeReplaceChildrenWithMixedListById`。Browser 为最多四个 `{kind,id,text}` 项
+  做预检并提交一次 JSON 请求；primitive 文本按 Web 字符串化，element 项只能是当前
+  receiver 的直接、已连接子项。成功后只将未保留的旧 direct 子树标为 detached，保留项及
+  其后代的 wrapper/snapshot identity，Core 负责暂存、提交和回滚。跨父、重复、自身、
+  fragment、CharacterData、对象、超限和缺少 callback 均 fail closed；Ex13 及更旧注册入口
+  仍把新增字段设为 `NULL`，旧 ABI 布局和语义不变。
 - CharacterData wrapper 的相对 `before()`/`after()` 以及单节点 `replaceWith()` 复用 Ex10
   的 existing-node insertion 和 Ex11 的 replacement callback。Browser 只接受一个已连接的
   Text/CDATA/Comment source，按 direct parent 和未过滤位置完成同父重排或跨父迁移，保留
@@ -845,7 +860,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   追加 existing CharacterData 的 `replaceChild` callback，Ex12 再追加 element target 到
   existing CharacterData 的 `replaceChild`/`replaceWith` callback；
   Ex13 再追加 element target 的 `replaceChildren()` text-list callback，接入 Core 的
-  原子 direct-children replacement。每个 Ex 版本只在结构尾部追加字段，旧注册入口继续
+  原子 direct-children replacement；Ex14 在其后追加同父 mixed element/text callback，
+  接入 Core 的原子重排/替换。每个 Ex 版本只在结构尾部追加字段，旧注册入口继续
   把新增字段设为 `NULL`，因此 Ex12 及更旧 callback table 的布局和语义不变；
   element relative 的 mixed `before()`/`after()` 不新增 callback table，
   而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用
