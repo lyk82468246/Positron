@@ -1003,6 +1003,18 @@ Core mutation 前 fail closed，失败不得改变原树。标签只接受 ASCII
 资源或 observer。宿主只接 callback、安排后续 style/layout/paint 并断言。设备门选择
 `TEST1245,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1246 覆盖 NetSurf compatibility corpus 中 `document.createComment()` 的有界 detached
+Comment 组合。夹具验证 `nodeType`/`nodeName`、owner/root/parent/connection/sibling、
+`data`/`nodeValue`/`textContent`/`length`、`isSameNode()`/`isEqualNode()` 和 detached
+clone；同一 wrapper 通过 `insertBefore()`、`appendChild()`、`appendData()`、数据 setter、
+`remove()`、同父重排和再次插入检查 Core 同步、静态 snapshot 与 identity。无参数/多参数、
+错误 reference、对象节点和超限输入必须在 mutation 前 fail closed，失败不得改变原树。
+Browser write Ex12 追加 `create_comment_child_at`，Core 入口按未过滤 `childNodes` 索引和
+最多 65,535 个 UTF-8 字节原子创建 live Comment；宿主只接 callback、安排后续
+style/layout/paint 并断言。该路径不扩展通用 detached Core handle、DocumentFragment、相对
+`before()`/`after()`/`replaceWith()`、事件、资源或 observer。设备门选择
+`TEST1246,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

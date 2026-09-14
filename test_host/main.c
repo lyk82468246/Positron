@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1245
+#define TEST_MAX_NUMBER 1246
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15254,6 +15254,33 @@ static int pcore_browser_script_dom_create_element(void *pw,
 
 /* Product semantics stay in positron_core; the test host only supplies the
  * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_dom_create_comment(void *pw,
+        const char *parent_id, unsigned int child_index, const char *data)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            data == NULL) {
+        return -1;
+    }
+    result = PCore_NodeCreateCommentChildAtById(bridge->document, parent_id,
+            child_index, data);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
 static int pcore_browser_script_dom_set_inner_html(void *pw,
         const char *id, const char *html)
 {
@@ -17437,7 +17464,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx11 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx12 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx15 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17623,6 +17650,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_insert_text_child_list;
     dom_write_callbacks.create_element_child_at =
             pcore_browser_script_dom_create_element;
+    dom_write_callbacks.create_comment_child_at =
+            pcore_browser_script_dom_create_comment;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17848,7 +17877,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx15(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -52091,6 +52120,62 @@ static BOOL test1245_browser_create_element_contract(void)
             " it through the Core creation callback, preserves the wrapper alias"
             " across attach/remove/re-attach, and rejects unsupported names"
             " or missing ids without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1246 - detached Comment creation and bounded materialization. */
+static BOOL test1246_browser_create_comment_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='anchor'>A</p><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var body=document.body,anchor=document.getElementById('anchor'),"
+        "result=document.getElementById('result'),n,c,snap,ret,bad=0,ok=true;"
+        "try{n=document.createComment('note');}catch(err){ok=false;}"
+        "if(!n||n.nodeType!==8||n.nodeName!=='#comment'||n.ownerDocument!==document||"
+        "n.parentNode!==null||n.parentElement!==null||n.isConnected||n.getRootNode()!==n||"
+        "n.hasChildNodes()||n.firstChild!==null||n.lastChild!==null||n.childNodes.length!==0||"
+        "n.data!=='note'||n.nodeValue!=='note'||n.textContent!=='note'||n.length!==4||!n.isSameNode(n)){ok=false;}"
+        "c=n.cloneNode();if(!c||c===n||c.nodeType!==8||c.data!=='note'||c.parentNode!==null||"
+        "c.getRootNode()!==c||!n.isEqualNode(c)||n.isSameNode(c)){ok=false;}"
+        "snap=body.childNodes;ret=body.insertBefore(n,anchor);"
+        "if(ret!==n||n.parentNode!==body||n.parentElement!==body||!n.isConnected||"
+        "n.getRootNode()!==document||body.childNodes.length!==3||body.childNodes[0]!==n||"
+        "body.childNodes[1]!==anchor||n.previousSibling!==null||n.nextSibling!==anchor||"
+        "anchor.previousSibling!==n||snap.length!==2||snap[0]!==anchor){ok=false;}"
+        "n.data='changed';if(n.nodeValue!=='changed'||n.textContent!=='changed'||n.length!==7||"
+        "body.childNodes[0]!==n||body.textContent!=='Aidle'){ok=false;}"
+        "n.nodeValue='updated';c=n.cloneNode();c.data='clone';"
+        "if(n.data!=='updated'||c.data!=='clone'||n.isEqualNode(c)||c.parentNode!==null||"
+        "n.nextSibling!==anchor){ok=false;}"
+        "ret=n.remove();if(ret!==undefined||n.parentNode!==null||n.parentElement!==null||"
+        "n.isConnected||n.getRootNode()!==n||n.data!=='updated'||body.childNodes.length!==2||"
+        "body.childNodes[0]!==anchor){ok=false;}"
+        "ret=body.appendChild(n);if(ret!==n||n.parentNode!==body||!n.isConnected||"
+        "body.childNodes[2]!==n||n.previousSibling!==document.getElementById('result')){ok=false;}"
+        "ret=body.insertBefore(n,anchor);if(ret!==n||body.childNodes[0]!==n||n.nextSibling!==anchor||"
+        "n.parentNode!==body||!n.isConnected){ok=false;}"
+        "ret=body.removeChild(n);if(ret!==n||n.parentNode!==null||n.isConnected||n.data!=='updated'){ok=false;}"
+        "ret=body.append(n);if(ret!==undefined||n.parentNode!==body||body.lastChild!==n||!n.isConnected){ok=false;}"
+        "try{document.createComment();}catch(e1){bad|=1;}try{document.createComment('a','b');}catch(e2){bad|=2;}"
+        "try{body.insertBefore(n,{});}catch(e3){bad|=4;}try{body.appendChild({});}catch(e4){bad|=8;}"
+        "result.textContent=String(ok&&bad===15&&anchor.textContent==='A');})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-comment", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1246 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1246 OK",
+            "document.createComment now provides bounded detached Comment"
+            " wrappers with data, length and identity semantics. The wrapper"
+            " materializes through the Core callback, preserves identity across"
+            " insertion, data updates, removal and re-insertion, and keeps"
+            " detached clones isolated while invalid arguments fail closed.");
     return TRUE;
 }
 
@@ -110323,6 +110408,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1243: ok = test1243_browser_replace_children_character_data_contract(); break;
         case 1244: ok = test1244_browser_create_text_node_contract(); break;
         case 1245: ok = test1245_browser_create_element_contract(); break;
+        case 1246: ok = test1246_browser_create_comment_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

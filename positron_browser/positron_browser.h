@@ -50,6 +50,7 @@ extern "C" {
 #define PBROWSER_SCRIPT_CREATE_ELEMENT_TAG_MAX 32
 #define PBROWSER_SCRIPT_CREATE_ELEMENT_ID_MAX 255
 #define PBROWSER_SCRIPT_CREATE_ELEMENT_ATTRIBUTE_MAX 64
+#define PBROWSER_SCRIPT_CREATE_COMMENT_DATA_MAX 65535
 #define PBROWSER_SCRIPT_INTERACTION_STATE_MAX 16
 #define PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_BEGIN 1U
 #define PBROWSER_SCRIPT_ADJACENT_HTML_AFTER_BEGIN 2U
@@ -899,6 +900,34 @@ typedef struct PBrowserScriptDomWriteCallbacksEx11 {
     PBrowserScriptSetOuterHTMLFn set_outer_html;
     PBrowserScriptCreateElementChildAtFn create_element_child_at;
 } PBrowserScriptDomWriteCallbacksEx11;
+
+/* Extended HTML write table. Ex11 remains ABI-fixed; Ex12 appends the
+ * bounded Core-owned document.createComment materialization adapter, again
+ * reusing the existing `__pcoreSetText` native JSON slot. The callback
+ * creates one Comment with UTF-8 data and inserts it at an unfiltered
+ * childNodes index. `parent_id` and `data` are borrowed for the synchronous
+ * call. Detached wrappers, data/length/identity and insertion/removal
+ * lifecycle are Browser-owned; generic Nodes, events and fragments remain
+ * outside this boundary. */
+typedef int (*PBrowserScriptCreateCommentChildAtFn)(void *pw,
+        const char *parent_id, unsigned int child_index, const char *data);
+typedef struct PBrowserScriptDomWriteCallbacksEx12 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
+    PBrowserScriptSetInnerHTMLFn set_inner_html;
+    PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
+    PBrowserScriptSetOuterHTMLFn set_outer_html;
+    PBrowserScriptCreateElementChildAtFn create_element_child_at;
+    PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
+} PBrowserScriptDomWriteCallbacksEx12;
 
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
@@ -2668,6 +2697,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx10(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx10 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx11 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx12 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

@@ -180,6 +180,14 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   成功会使 retained layout 失效，调用方必须重新 style/layout/paint；Core 不保存 detached
   handle，不创建子节点/其他属性，不派发事件、不执行 script、不抓取资源，也不暴露
   DocumentFragment。Browser 后续通过既有 attribute/Text callbacks 填充有界状态。
+- `PCore_NodeCreateCommentChildAtById(hDoc, parent_id, child_index, data)` 是 Browser
+  detached Comment 进入 live DOM 的唯一 Core 物化入口。它只接受可寻址且已连接的
+  Element（包括 `body`）和未过滤 `childNodes` 插入索引；`data` 是借用的 UTF-8 文本，
+  最多 65,535 个字节。Core 直接创建并插入 `nodeType=8` 的 Comment，成功返回 `0` 并
+  使 retained layout 失效；目标/索引不可用返回 `2`，空值、非法 UTF-8 或超限返回 `3`，
+  其他 DOM/分配失败返回 `1`。该入口不保存 detached handle、不派发事件、不执行 script、
+  不抓取资源，也不暴露 Fragment；Browser 负责 detached wrapper、后续 data mutation、
+  remove/reinsert 和 identity。
 - Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
   只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
   `PCore_NodeReplaceElementChildWithTextListById`、

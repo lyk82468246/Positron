@@ -3155,6 +3155,87 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "d.createElement=function(tag){var s;if(arguments.length!==1){throw new TypeError('createElement arguments');}s=String(tag).toLowerCase();"
         "if(s===''||s.length>32||!/^[a-z][a-z0-9-]*$/.test(s)||s==='html'||s==='head'||s==='body'){throw new Error('createElement name unavailable');}return make(s);};})(this);";
 
+    /* Keep Comment creation detached until a live Element supplies the Core
+     * parent id.  The wrapper owns only CharacterData state and delegates
+     * materialisation, updates, moves and removal through existing native
+     * JSON/mutation slots; no generic detached Node graph is exposed. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE[] =
+        "(function(g){var P=g.__pcorePElement,d=g.document,find,ins,app,pre,pr,rem;"
+        "if(!P||!d||typeof d.getElementById!=='function'){return;}find=d.getElementById;"
+        "ins=P.prototype.insertBefore;app=P.prototype.appendChild;pre=P.prototype.append;"
+        "pr=P.prototype.prepend;rem=P.prototype.removeChild;"
+        "function created(n){return !!(n&&n.__pcoreCreatedComment805&&n.nodeType===8);}"
+        "function owner(n){return n&&n.__pcoreOwner805?n.__pcoreOwner805:null;}"
+        "function live(n){var p=owner(n),a;if(!p){return false;}a=p.childNodes;"
+        "return !!(a&&n.__pcoreIndex805>=0&&n.__pcoreIndex805<a.length&&a[n.__pcoreIndex805]===n); }"
+        "function parent805(p){if(!p||p.nodeType!==1||typeof p.__id!=='string'||p.__id===''||"
+        "p.__pcoreDetached11||find.call(d,p.__id)!==p){throw new Error('comment parent unavailable');}return p;}"
+        "function list805(a){if(typeof g.__pcoreDecorateCollection13==='function'){return g.__pcoreDecorateCollection13(a,'NodeList',false);}return a;}"
+        "function reindex805(p,a){var i,x;for(i=0;i<a.length;i++){x=a[i];if(x&&x.__owner11===p){x.__index11=i;}"
+        "if(created(x)&&owner(x)===p){x.__pcoreIndex805=i;}}p.__nodes11=list805(a);p.__children9=null;}"
+        "function sibling805(n,step){var p=owner(n),a,i;if(!live(n)){return null;}a=p.childNodes;"
+        "for(i=0;i<a.length;i++){if(a[i]===n){i+=step;return i>=0&&i<a.length?a[i]:null;}}return null;}"
+        "function setData805(n,v){var s=String(v),p,ok;if(s.length>65535){throw new Error('comment data limit');}"
+        "p=owner(n);if(p===null){n.__data805=s;return undefined;}if(!live(n)){throw new Error('comment unavailable');}"
+        "parent805(p);if(typeof g.__pcoreSetText!=='function'){throw new Error('comment unavailable');}"
+        "try{ok=g.__pcoreSetText({parentId:p.__id,index:n.__pcoreIndex805,nodeType:8,text:s});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('comment update failed');}n.__data805=s;return undefined;}"
+        "function remove805(n){var p,old,next,i,ok;if(!created(n)||!live(n)){return undefined;}p=parent805(owner(n));old=p.childNodes;"
+        "if(typeof g.__pcoreRemoveChild!=='function'){throw new Error('comment remove unavailable');}"
+        "try{ok=g.__pcoreRemoveChild({op:'removeCharacterDataChild',parentId:p.__id,index:n.__pcoreIndex805,nodeType:8});}"
+        "catch(e){ok=false;}if(!ok){throw new Error('comment remove failed');}next=[];for(i=0;i<old.length;i++){if(old[i]!==n){next.push(old[i]);}}"
+        "n.__pcoreOwner805=null;n.__pcoreIndex805=-1;reindex805(p,next);return undefined;}"
+        "function insert805(p,n,ref){var old,source,src,sourceIndex,index,next,nextSource,i,ok;parent805(p);"
+        "if(!created(n)){throw new Error('comment insert unavailable');}source=owner(n);if(source!==null&&!live(n)){throw new Error('comment unavailable');}"
+        "if(ref===undefined||ref===null){ref=null;}else{if(ref.nodeType!==1&&ref.nodeType!==3&&ref.nodeType!==4&&ref.nodeType!==8){"
+        "throw new Error('comment reference unavailable');}if(ref.parentNode!==p){throw new Error('comment reference unavailable');}}"
+        "old=p.childNodes;if(!old||old.length>64){throw new Error('comment child limit');}index=old.length;"
+        "if(ref!==null){index=-1;for(i=0;i<old.length;i++){if(old[i]===ref){index=i;break;}}if(index<0){throw new Error('comment reference unavailable');}}"
+        "if(source===p&&ref===n){return n;}if(source!==null){src=source.childNodes;sourceIndex=n.__pcoreIndex805;"
+        "if(!src||sourceIndex<0||sourceIndex>=src.length||src[sourceIndex]!==n){throw new Error('comment source unavailable');}parent805(source);"
+        "if(typeof g.__pcoreRemoveChild!=='function'){throw new Error('comment insert unavailable');}"
+        "try{ok=g.__pcoreRemoveChild({op:'insertCharacterDataChildAt',parentId:p.__id,index:index,sourceParentId:source.__id,sourceIndex:sourceIndex,nodeType:8});}"
+        "catch(e1){ok=false;}}else{if(typeof g.__pcoreSetText!=='function'){throw new Error('comment insert unavailable');}"
+        "try{ok=g.__pcoreSetText({op:'createComment',parentId:p.__id,index:index,text:n.__data805});}catch(e2){ok=false;}}"
+        "if(!ok){throw new Error('comment insert failed');}next=[];for(i=0;i<old.length;i++){if(old[i]===n){continue;}"
+        "if(ref!==null&&old[i]===ref){next.push(n);}next.push(old[i]);}if(ref===null){next.push(n);}"
+        "if(source!==null&&source!==p){nextSource=[];for(i=0;i<src.length;i++){if(src[i]!==n){nextSource.push(src[i]);}}}"
+        "n.__pcoreOwner805=p;reindex805(p,next);if(source!==null&&source!==p){reindex805(source,nextSource);}return n;}"
+        "function make805(v){var n={__pcoreCreatedComment805:true,__pcoreOwner805:null,__pcoreIndex805:-1,__data805:String(v)};"
+        "if(n.__data805.length>65535){throw new Error('comment data limit');}"
+        "Object.defineProperty(n,'nodeType',{value:8,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'nodeName',{value:'#comment',writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'ownerDocument',{value:d,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'nodeValue',{get:function(){return n.__data805;},set:function(v){setData805(n,v);},enumerable:true});"
+        "Object.defineProperty(n,'data',{get:function(){return n.__data805;},set:function(v){setData805(n,v);},enumerable:true});"
+        "Object.defineProperty(n,'textContent',{get:function(){return n.__data805;},set:function(v){setData805(n,v);},enumerable:true});"
+        "Object.defineProperty(n,'length',{get:function(){return n.__data805.length;},enumerable:true});"
+        "Object.defineProperty(n,'parentNode',{get:function(){return live(n)?owner(n):null;},enumerable:true});"
+        "Object.defineProperty(n,'parentElement',{get:function(){var p=live(n)?owner(n):null;return p&&p.nodeType===1?p:null;},enumerable:true});"
+        "Object.defineProperty(n,'isConnected',{get:function(){var p=live(n)?owner(n):null;return !!(p&&p.isConnected);},enumerable:true});"
+        "Object.defineProperty(n,'previousSibling',{get:function(){return sibling805(n,-1);},enumerable:true});"
+        "Object.defineProperty(n,'nextSibling',{get:function(){return sibling805(n,1);},enumerable:true});"
+        "Object.defineProperty(n,'firstChild',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'lastChild',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'childNodes',{get:function(){return list805([]);},enumerable:true});"
+        "n.hasChildNodes=function(){return false;};n.getRootNode=function(){return live(n)?d:n;};"
+        "n.isSameNode=function(other){return n===other;};n.isEqualNode=function(other){return !!other&&other.nodeType===8&&String(other.data)===n.__data805;};"
+        "n.cloneNode=function(){return make805(n.__data805);};n.appendData=function(v){setData805(n,n.__data805+String(v));};"
+        "n.remove=function(){return remove805(n);};return n;}"
+        "function appendMany805(p,args,prepend){var i,v,has=0;if(args.length>4){throw new Error('comment append limit');}"
+        "for(i=0;i<args.length;i++){if(created(args[i])){has=1;}}if(!has){return (prepend?pr:pre).apply(p,args);}"
+        "for(i=0;i<args.length;i++){if(!created(args[i])){throw new Error('comment append mixed unavailable');}}"
+        "if(prepend){for(i=args.length-1;i>=0;i--){v=args[i];insert805(p,v,p.childNodes.length?p.childNodes[0]:null);}}"
+        "else{for(i=0;i<args.length;i++){insert805(p,args[i],null);}}return undefined;}"
+        "P.prototype.insertBefore=function(n,ref){if(created(n)){return insert805(this,n,arguments.length>1?ref:null);}return ins.apply(this,arguments);};"
+        "P.prototype.appendChild=function(n){if(created(n)){return insert805(this,n,null);}return app.apply(this,arguments);};"
+        "P.prototype.removeChild=function(n){if(created(n)){if(owner(n)!==this||!live(n)){throw new Error('removeChild failed');}remove805(n);return n;}return rem.apply(this,arguments);};"
+        "P.prototype.append=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(created(arguments[i])){has=1;break;}}"
+        "return has?appendMany805(this,arguments,false):pre.apply(this,arguments);};"
+        "P.prototype.prepend=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(created(arguments[i])){has=1;break;}}"
+        "return has?appendMany805(this,arguments,true):pr.apply(this,arguments);};"
+        "d.createComment=function(value){if(arguments.length!==1){throw new TypeError('createComment arguments');}return make805(value);};})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -6963,6 +7044,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
     return p_browser_script_finish_bootstrap(hSession);
 }
 typedef struct p_browser_script_dom_read_binding {
@@ -7004,6 +7090,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
     PBrowserScriptSetOuterHTMLFn set_outer_html;
     PBrowserScriptCreateElementChildAtFn create_element_child_at;
+    PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -8358,6 +8445,16 @@ static int p_browser_script_dom_set_text(void *pw,
         }
         changed = binding->create_element_child_at(binding->pw, parent_id,
                 tag_name, element_id, (unsigned int) child_index);
+    } else if (op != NULL && strcmp(op, "createComment") == 0) {
+        if (binding->create_comment_child_at == NULL || parent_id == NULL ||
+                parent_id[0] == '\0' || child_index < 0 || text == NULL ||
+                strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+                strlen(text) > PBROWSER_SCRIPT_CREATE_COMMENT_DATA_MAX) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->create_comment_child_at(binding->pw, parent_id,
+                (unsigned int) child_index, text);
     } else if (op != NULL && strcmp(op, "setInnerHTML") == 0) {
         if (binding->set_inner_html == NULL || id == NULL ||
                 id[0] == '\0' || html == NULL ||
@@ -11912,6 +12009,63 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(
     binding->insert_adjacent_html = callbacks->insert_adjacent_html;
     binding->set_outer_html = callbacks->set_outer_html;
     binding->create_element_child_at = callbacks->create_element_child_at;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx12 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx12) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL ||
+            callbacks->set_inner_html == NULL ||
+            callbacks->insert_adjacent_html == NULL ||
+            callbacks->set_outer_html == NULL ||
+            callbacks->create_element_child_at == NULL ||
+            callbacks->create_comment_child_at == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
+    binding->set_inner_html = callbacks->set_inner_html;
+    binding->insert_adjacent_html = callbacks->insert_adjacent_html;
+    binding->set_outer_html = callbacks->set_outer_html;
+    binding->create_element_child_at = callbacks->create_element_child_at;
+    binding->create_comment_child_at = callbacks->create_comment_child_at;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

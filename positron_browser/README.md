@@ -312,6 +312,17 @@ clone 复用 Core callbacks；通用 Node/fragment 不支持。
 alias identity；无 id、重复 id、结构标签、嵌套 Element、Fragment、通用 detached Core
 handle、事件、资源和 observer 均 fail closed。
 
+`document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须
+恰好传入一个参数，参数按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`nodeName="#comment"`、
+`data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling 查询，及
+`isSameNode()`/`isEqualNode()`、`cloneNode()`、`appendData()` 和 `remove()`。数据最多 65,535
+个脚本字符，并在进入 Core 时受 65,535 个 UTF-8 字节的公共 ABI 上限约束。插入带 id 的 live
+Element 时，DOM write Ex12 的 `create_comment_child_at` callback 负责首次物化；后续数据更新、
+移除、同父重排、再次插入复用既有 CharacterData callbacks，wrapper/alias identity 保持不变。
+无效参数、错误 reference、对象节点和超限输入在 mutation 前 fail closed；通用 detached Core
+handle、DocumentFragment、相对 `before()`/`after()`/`replaceWith()`、事件、资源和 observer
+语义不在该边界内。
+
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
 注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
 `value`/`label` 缺失时回退到 option 文本，`text` 写入纯文本。未注册、非 option、无效

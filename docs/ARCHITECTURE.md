@@ -222,6 +222,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   Ex11 负责 detached wrapper、属性和 direct Text staging，宿主只接 callback 与后续
   style/layout/paint；不暴露通用 detached Core handle、Fragment、嵌套 Element、事件、
   资源或 observer 语义。
+- `PCore_NodeCreateCommentChildAtById(hDoc, parent_id, child_index, data)` 是 Browser
+  detached Comment 进入 live DOM 的唯一 Core 物化入口。它只接受已连接的 Element（包括
+  `body`）和未过滤 `childNodes` 索引；`data` 为借用 UTF-8，最多 65,535 字节。Core 直接
+  创建并插入 Comment，成功返回 `0` 并使 retained layout 失效；目标/索引不可用返回 `2`，
+  空值、非法 UTF-8 或超限返回 `3`，其他 DOM/分配失败返回 `1`。Browser write Ex12 负责
+  detached wrapper、数据更新、remove/reinsert 和 identity；宿主只接 callback 及后续
+  style/layout/paint。该入口不提供 detached Core handle、Fragment、事件、资源或 observer。
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -381,6 +388,15 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `childNodes` 索引创建空 Element，再同步 staged 属性/Text。移除、重插入和 id rename
   保留 wrapper/alias identity；嵌套 Element、Fragment、通用 detached Core handle、事件、
   资源和 observer 不属于该边界。
+- `document.createComment(data)` 是 Browser-owned 的 detached Comment staging。调用必须恰好
+  一个参数并按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`#comment`、
+  `data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling、
+  `isSameNode()`/`isEqualNode()`、`cloneNode()`、`appendData()` 和 `remove()`。数据最多 65,535
+  个脚本字符，进入 Core 时还受 65,535 字节 UTF-8 ABI 上限约束。向 live Element 插入时，
+  DOM write Ex12 的 `create_comment_child_at` 调用 Core 按未过滤 `childNodes` 索引物化；后续
+  data mutation、移除、同父重排和再次插入复用既有 CharacterData callbacks 并保留 identity。
+  无效参数/reference、对象、超限输入以及通用 detached Core handle、Fragment、相对
+  `before()`/`after()`/`replaceWith()`、事件、资源和 observer 语义均 fail closed。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
@@ -893,6 +909,11 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `__pcoreSetText` native slot。Ex11 只在结构尾部追加字段，旧的
   `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex10 布局和既有语义保持不变；旧注册入口会
   将新增字段置为 `NULL`。
+- DOM write Ex12 在表尾追加 `document.createComment()` 的
+  `create_comment_child_at` callback，仍复用 `__pcoreSetText` native slot；Ex12 及更旧
+  callback table 的布局和既有语义保持不变，旧注册入口会将该字段置为 `NULL`。该 callback
+  只负责 Browser-owned detached Comment 的首次 Core 物化，数据更新、移除和重排继续复用
+  既有 CharacterData/DOM mutation callbacks。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加

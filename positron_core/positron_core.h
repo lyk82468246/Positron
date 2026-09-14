@@ -493,6 +493,20 @@ PCORE_API int PCore_NodeCreateElementChildAtById(HANDLE hDoc,
         const char *parent_id, const char *tag_name,
         const char *element_id, unsigned int child_index);
 
+/* Create one new Comment and insert it at an unfiltered childNodes index.
+ * `parent_id` and `data` are borrowed UTF-8; the parent must be a connected
+ * addressable Element and `child_index` may equal its current child count.
+ * The returned Comment has no public Core handle: Browser owns any detached
+ * wrapper and later materializes it through this primitive. Returns 0 after
+ * insertion, 2 when the parent or index is unavailable, 3 for malformed
+ * UTF-8 or data over PCORE_NODE_CREATE_COMMENT_DATA_MAX_BYTES, and 1 for
+ * invalid input or another DOM/allocation failure. A successful insertion
+ * invalidates retained layout; no events, script, resource fetches or
+ * DocumentFragment exposure are part of this primitive. */
+#define PCORE_NODE_CREATE_COMMENT_DATA_MAX_BYTES 65535u
+PCORE_API int PCore_NodeCreateCommentChildAtById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *data);
+
 /* Move one existing connected CharacterData child at an unfiltered
  * childNodes index. `source_parent_id`/`source_index` identify a direct
  * Text, CDATA or Comment child and `target_parent_id`/`target_index` identify

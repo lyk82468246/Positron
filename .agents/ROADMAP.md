@@ -162,6 +162,15 @@ Browser 以 DOM write Ex11 复用既有 `__pcoreSetText` native slot；wrapper �
 TEST1245 与 `1245,999` Debug ARMV4I 设备门验证节点形状、属性/Text、生命周期、失败原子性
 和容量限制。
 
+next805 根据同一 compatibility corpus 中 `document.createComment()` 及
+`parameter-error.html` 的调用缺口补齐一个有界的 Browser-owned detached Comment staging。
+Core 新增 `PCore_NodeCreateCommentChildAtById`，按未过滤 `childNodes` 索引在已连接 Element
+下创建 Comment；Browser 追加 DOM write Ex12 的 `create_comment_child_at` callback，并保留
+detached wrapper 的节点形状、data/length、clone、appendData、remove 和 identity，后续更新、
+重排与重插入复用既有 CharacterData callbacks。无效参数/reference、对象、超限输入、通用
+detached Core handle、Fragment 和相对 mutation 均 fail closed。TEST1246 的
+`1244,1245,1246,999` Debug ARMV4I 设备门验证成功/失败原子性、生命周期和 identity。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -182,7 +191,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next805）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next806）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

@@ -10933,6 +10933,127 @@ PCORE_API int PCore_NodeCreateElementChildAtById(HANDLE hDoc,
     return 1;
 }
 
+PCORE_API int PCore_NodeCreateCommentChildAtById(HANDLE hDoc,
+        const char *parent_id, unsigned int child_index, const char *data)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_nodelist *children;
+    dom_node *reference;
+    dom_comment *comment;
+    dom_node *inserted;
+    dom_node_type parent_type;
+    dom_exception err;
+    size_t data_length;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            data == NULL) {
+        return 1;
+    }
+    data_length = strlen(data);
+    if (data_length > PCORE_NODE_CREATE_COMMENT_DATA_MAX_BYTES ||
+            !pcore_contenteditable_utf8_valid(data)) {
+        return 3;
+    }
+    doc = (dom_document *) hDoc;
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) parent, &parent_type) !=
+            DOM_NO_ERR || parent_type != DOM_ELEMENT_NODE) {
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    children = NULL;
+    if (dom_node_get_child_nodes((dom_node *) parent, &children) !=
+            DOM_NO_ERR || children == NULL) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    {
+        dom_ulong length;
+
+        if (dom_nodelist_get_length(children, &length) != DOM_NO_ERR) {
+            dom_nodelist_unref(children);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        if ((dom_ulong) child_index > length) {
+            dom_nodelist_unref(children);
+            dom_node_unref((dom_node *) parent);
+            return 2;
+        }
+    }
+    reference = NULL;
+    {
+        dom_ulong length;
+
+        if (dom_nodelist_get_length(children, &length) != DOM_NO_ERR) {
+            dom_nodelist_unref(children);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        if ((dom_ulong) child_index < length &&
+                (dom_nodelist_item(children, (dom_ulong) child_index,
+                &reference) != DOM_NO_ERR || reference == NULL)) {
+            dom_nodelist_unref(children);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    dom_nodelist_unref(children);
+    {
+        dom_string *content;
+
+        content = NULL;
+        if (dom_string_create((const uint8_t *) data, data_length,
+                &content) != DOM_NO_ERR || content == NULL) {
+            if (reference != NULL) {
+                dom_node_unref(reference);
+            }
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        comment = NULL;
+        err = dom_document_create_comment(doc, content, &comment);
+        dom_string_unref(content);
+    }
+    if (err != DOM_NO_ERR || comment == NULL) {
+        if (comment != NULL) {
+            dom_node_unref((dom_node *) comment);
+        }
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        dom_node_unref((dom_node *) parent);
+        return err == DOM_INVALID_CHARACTER_ERR ? 3 : 1;
+    }
+    inserted = NULL;
+    err = dom_node_insert_before((dom_node *) parent, (dom_node *) comment,
+            reference, &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    dom_node_unref((dom_node *) comment);
+    if (reference != NULL) {
+        dom_node_unref(reference);
+    }
+    dom_node_unref((dom_node *) parent);
+    if (err == DOM_NO_ERR) {
+        pcore_render_invalidate(doc);
+        return 0;
+    }
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR || err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    return 1;
+}
+
 PCORE_API int PCore_NodeInsertCharacterDataChildAtById(HANDLE hDoc,
         const char *source_parent_id, unsigned int source_index,
         unsigned int node_type, const char *target_parent_id,
