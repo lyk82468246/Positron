@@ -10,8 +10,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next811 设备证据见“最新有效设备证据”；更早传输失败只保留在 Git 历史和
-`docs/history/`，不作为通过依据。
+next812 设备证据见下文；历史失败不作为依据。
 
 - next790–next798 已完成有界 DOM/CharacterData insertion/replacement、HTML serialization、
   parser-backed `innerHTML`/`insertAdjacentHTML`/`outerHTML` 与相应 identity、snapshot、
@@ -78,11 +77,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - next811 修正 detached Element 的 `style.cssText` setter：wrapper 属性 facade 处理三种状态，
   不再把空 id 送到 Core；live Element 的既有 CSS 声明解析不变。TEST1252 与
   `1251,1252,999` 专门设备门已通过。
-- 设备门复用 WMDC GUI 当前唯一 RAPI 会话；超时进程需在设备端正常结束。
+- next812 修正 Browser-owned detached Element 的 reflected attribute setter：string、boolean、
+  integer、非负 length（含新增 `align`）在未物化/已移除 wrapper 上经 facade 暂存，物化后
+  live wrapper 仍调用 Core；非法 integer/length 在写入前拒绝。TEST1253 与 `1252,1253,999`
+  专门设备门已通过。
+- 设备门复用 WMDC RAPI；超时进程需在设备端结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1252。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1252,999`；nightly/device
-  tooling 从源码 dispatch 动态生成全量清单。
+- `TEST_MAX_NUMBER` 已为 1253。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1253,999`。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
   可能以 `laptop-li\codexsandboxoffline` 身份运行，即使用户目录仍显示为 Joe，也看不到
@@ -115,11 +117,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前短期目标
 
-- 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；next790–next811 的
-  parser、DocumentFragment staging、replaceChildren、detached Text/Element/Comment 及
-  CharacterData offset、Element clone/style facade 纵切均已有自动合同。稳定边界和逐测试说明以
-  [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 为准。
+- 当前基线涵盖表单、selector、滚动/几何、生命周期、焦点、图片和有界 DOM mutation；
+  next790–next812 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
+  CharacterData offset、clone/style/reflected-attribute facade 纵切已有自动合同。稳定边界见
+  [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -222,17 +223,16 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1252。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1252,999`。
+- `TEST_MAX_NUMBER`：1253。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1253,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260915-003255-next811` 是当前有效基线：Debug ARMV4I，选择
-`1251,1252,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
+`tmp/device-runs/20260915-004951-next812` 是当前有效基线：Debug ARMV4I，选择
+`1252,1253,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
 `crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后移除了当前目录；
-本批无需视觉人工步骤。
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
 `FAILED_EXPERIMENTS.md` 与本地 `tmp/`，不能替代当前基线。设备门不会把只有启动头或不完整日志
@@ -292,8 +292,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   Core 同步、duplicate-id 拒绝、改名插入、ancestor/sibling position、disconnected 结果
   和非法参数失败不变性。最新门选择 `1249,1250,999`，3/3 PASS；日志完整，双空间预检、
   完成后清理和 crash check 均 PASS，新增 dump=0；本批没有视觉人工步骤。
-- TEST1251–1252 由 next810–811 的相邻设备门验证 detached Element 的 `hasChildNodes()` 与
-  `style.cssText` 在 detached/attached/removed 状态下保持一致。门选择 `1251,1252,999`，
+- TEST1251–1253 由 next810–812 的相邻设备门验证 detached Element 的 `hasChildNodes()`、
+  `style.cssText` 和 reflected attribute setter 在 detached/attached/removed 状态下保持一致。
+  最新门选择 `1252,1253,999`，
   3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增 dump=0。
 
 ## 当前未决风险
@@ -362,8 +363,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-基于 compatibility corpus、源码或用户页面选择 next812 的一个产品缺口；next811 的 detached
-Element style facade 修补和 TEST1252 已通过正式设备门。新批次仍须把可复用
+基于 compatibility corpus、源码或用户页面选择 next813 的一个产品缺口；next812 的 detached
+Element reflected attribute facade 修补和 TEST1253 已通过正式设备门。新批次仍须把可复用
 语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、

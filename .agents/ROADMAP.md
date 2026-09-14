@@ -216,6 +216,14 @@ next811 根据源码审查发现的 detached Element style facade 不对称，�
 fixture 覆盖 `cssText` 读取、`setProperty()`、物化、移除和清空；不新增 Core ABI，也不扩大
 CSS parser、嵌套 Element、事件、资源或视觉语义。`1251,1252,999` Debug ARMV4I 设备门已通过。
 
+next812 根据 NetSurf compatibility corpus 的 `dom-html-div-element.html` 缺口，修正
+Browser-owned detached Element 的 reflected attribute setter。已有 string、boolean、integer、
+非负 length 反射以及新增的 `align` 在未物化/已移除 wrapper 上经属性 facade 暂存，物化后的
+live wrapper 仍调用 Core；非法 integer/length 输入在写入前拒绝且不改变旧值。TEST1253 的
+fixture 覆盖 staging、物化、live mutation、移除后的再次写入和错误不变性；不新增 Core ABI，
+也不扩大嵌套 Element、通用 Node/Fragment、事件、资源或视觉语义。`1252,1253,999` Debug
+ARMV4I 设备门已通过。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -237,7 +245,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next812）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next813）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

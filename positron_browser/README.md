@@ -304,10 +304,10 @@ offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复
 `document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
 `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后，
 可按未过滤 `childNodes` 索引用四种插入方法物化到 live Element。每个 wrapper 最多 64 个属性
-和 direct Text child；`__pcoreSetText` 建立 Core Element 并同步属性/Text。`childNodes`、首尾
-child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过属性 facade 支持各
-wrapper 状态。`cloneNode(false/true)` 分别复制属性或属性与 direct
-Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、Fragment、detached
+和 direct Text child；物化时同步属性/Text。`childNodes`、首尾
+child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 facade 支持三种状态；
+反射 setter（含 `align`）在 detached/removed wrapper 经 facade 暂存，物化后走
+Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、Fragment、detached
 handle、事件/资源/observer 和重复/无 id 均 fail closed。关系按 wrapper 身份随物化/移除保持。
 
 `document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须

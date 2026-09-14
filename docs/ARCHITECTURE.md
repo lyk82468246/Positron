@@ -395,7 +395,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   这份有界 direct-Text staging。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
   direct Text child；克隆仍是独立的 Browser-owned detached staging，连接源的克隆必须先
   改为唯一 id。其 `style.cssText` setter 也经 wrapper 属性 facade 写入，因而在 detached、
-  attached 和 removed wrapper 上保持同一 CSS 声明快照。关系查询对该 staging 使用 wrapper 身份：不同 detached wrapper 的
+  attached 和 removed wrapper 上保持同一 CSS 声明快照；已暴露的 string、boolean、integer
+  和非负 length reflected setter 也在未物化/已移除状态写入同一 facade，`align` 覆盖常见
+  `createElement('div')` 兼容路径，物化后的 live wrapper 才调用 Core。关系查询对该 staging 使用 wrapper 身份：不同 detached wrapper 的
   `isSameNode()` 不因空/重复 id 合并，`contains()` 与 `compareDocumentPosition()` 保持
   disconnected 结果；物化、同父排序和移除仍复用同一 wrapper identity。嵌套 Element、
   Fragment、通用 detached Core handle、事件、资源和 observer 不属于该边界。

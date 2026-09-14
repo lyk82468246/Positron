@@ -1066,6 +1066,13 @@ detached wrapper 的 `style.cssText=` 必须通过 Browser 属性 facade 写入�
 设备门选择 `1251,1252,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
 check。
 
+TEST1253 覆盖 detached `document.createElement()` 的 reflected attribute setter。`align` 与
+现有 string、boolean、integer、非负 length 反射在未物化 wrapper 上必须写入同一属性 facade，
+并在物化、live mutation、移除后的再次写入中保持 getter、raw attribute 和连接状态一致；
+非整数 integer 与负 length 在写入前拒绝且不改变旧值。该路径不新增 Core ABI，不扩展嵌套
+Element、通用 Node/Fragment、事件、资源或视觉语义。设备门选择 `1252,1253,999`，确认
+Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

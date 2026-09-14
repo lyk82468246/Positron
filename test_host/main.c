@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1252
+#define TEST_MAX_NUMBER 1253
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52529,6 +52529,60 @@ static BOOL test1252_browser_detached_element_style_css_text_contract(void)
             " attribute owner before and after materialization; property"
             " parsing and clearing remain consistent across attach/remove"
             " without changing the existing CSS declaration boundary.");
+    return TRUE;
+}
+
+/* TEST 1253 - detached Element reflected attribute setters. */
+static BOOL test1253_browser_detached_element_reflected_attribute_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),a,ok=true,bad=0;"
+        "a=document.createElement('div');"
+        "if(a.align!==''||a.title!==''||a.hidden||a.tabIndex!==-1||"
+        "a.maxLength!==-1)ok=false;"
+        "try{a.align='right';a.title='staged';a.hidden=true;"
+        "a.tabIndex=4;a.maxLength=7;}catch(e1){ok=false;}"
+        "if(a.align!=='right'||a.title!=='staged'||!a.hidden||"
+        "a.tabIndex!==4||a.maxLength!==7||a.getAttribute('align')!=='right'||"
+        "a.getAttribute('title')!=='staged'||a.getAttribute('hidden')!==''||"
+        "a.getAttribute('tabindex')!=='4'||a.getAttribute('maxlength')!=='7')ok=false;"
+        "a.id='reflected';target.appendChild(a);"
+        "if(!a.isConnected||target.firstChild!==a||a.align!=='right'||"
+        "a.title!=='staged'||!a.hidden||a.tabIndex!==4||a.maxLength!==7)ok=false;"
+        "a.align='center';a.title='live';a.hidden=false;a.tabIndex=2;"
+        "a.maxLength=9;"
+        "if(a.align!=='center'||a.title!=='live'||a.hidden||"
+        "a.getAttribute('hidden')!==null||a.tabIndex!==2||a.maxLength!==9)ok=false;"
+        "a.remove();a.align='left';a.title='removed';a.hidden=true;"
+        "a.tabIndex=1;a.maxLength=3;"
+        "if(a.isConnected||a.parentNode!==null||a.align!=='left'||"
+        "a.title!=='removed'||!a.hidden||a.tabIndex!==1||a.maxLength!==3||"
+        "a.getAttribute('align')!=='left'||a.getAttribute('title')!=='removed'||"
+        "a.getAttribute('hidden')!==''||a.getAttribute('tabindex')!=='1'||"
+        "a.getAttribute('maxlength')!=='3')ok=false;"
+        "try{a.tabIndex=1.5;}catch(e2){bad|=1;}"
+        "try{a.maxLength=-1;}catch(e3){bad|=2;}"
+        "if(a.tabIndex!==1||a.maxLength!==3)ok=false;"
+        "result.textContent=String(ok&&bad===3);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-reflected-attributes",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1253 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1253 OK",
+            "Detached Element reflected string, boolean, integer and"
+            " nonnegative-length setters now stage through the wrapper"
+            " attribute facade; align is covered for createElement divs and"
+            " values survive materialization, live updates, removal and"
+            " invalid-input rejection.");
     return TRUE;
 }
 
@@ -110768,6 +110822,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1250: ok = test1250_browser_detached_element_identity_contract(); break;
         case 1251: ok = test1251_browser_detached_element_child_query_contract(); break;
         case 1252: ok = test1252_browser_detached_element_style_css_text_contract(); break;
+        case 1253: ok = test1253_browser_detached_element_reflected_attribute_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
