@@ -171,6 +171,13 @@ detached wrapper 的节点形状、data/length、clone、appendData、remove 和
 detached Core handle、Fragment 和相对 mutation 均 fail closed。TEST1246 的
 `1244,1245,1246,999` Debug ARMV4I 设备门验证成功/失败原子性、生命周期和 identity。
 
+next806 根据源码审查发现的 CharacterData API 不对称，补齐 detached Comment wrapper 的
+`insertData()`、`deleteData()`、`replaceData()` 和 `substringData()`。四个方法在 Browser
+内按 UTF-16 code-unit offset/count 运行：detached 状态只更新本地快照，connected 状态复用
+既有 CharacterData write callback，删除范围按末尾截断，非法参数、超长结果或 Core 失败不
+部分提交；相对 `before()`/`after()`/`replaceWith()` 仍不纳入本批。TEST1247 的
+`1246,1247,999` Debug ARMV4I 设备门验证 surrogate、生命周期、同步和失败不变性。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -191,7 +198,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next806）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next807）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

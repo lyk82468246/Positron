@@ -397,6 +397,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   data mutation、移除、同父重排和再次插入复用既有 CharacterData callbacks 并保留 identity。
   无效参数/reference、对象、超限输入以及通用 detached Core handle、Fragment、相对
   `before()`/`after()`/`replaceWith()`、事件、资源和 observer 语义均 fail closed。
+- detached Comment wrapper 的 `insertData()`、`deleteData()`、`replaceData()` 和
+  `substringData()` 在 Browser 内按 UTF-16 code-unit 偏移执行；前 3 个方法在 detached
+  状态更新本地数据，在 connected 状态复用既有 CharacterData write callback，最后一个
+  只返回 snapshot。offset/count 必须为有限非负整数，删除范围按数据末尾截断，合成结果仍
+  受 65,535 个脚本字符和 Core UTF-8 字节预算约束；非法参数或 callback/Core 失败保持
+  原数据不变。相对 `before()`/`after()`/`replaceWith()` 仍不属于该 wrapper 边界。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和

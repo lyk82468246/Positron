@@ -323,6 +323,12 @@ Element 时，DOM write Ex12 的 `create_comment_child_at` callback 负责首次
 handle、DocumentFragment、相对 `before()`/`after()`/`replaceWith()`、事件、资源和 observer
 语义不在该边界内。
 
+Comment wrapper 提供有界 CharacterData offset 方法：`insertData()`、`deleteData()`、
+`replaceData()` 和 `substringData()` 均按 UTF-16 code unit 解释；offset/count 必须为有限
+非负整数，删除超出末尾时截断。detached 更新 Browser 快照，connected 复用
+`__pcoreSetText` callback；超长、非法参数或 Core 失败保持原数据。相对
+`before()`/`after()`/`replaceWith()` 未提供。
+
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
 注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
 `value`/`label` 缺失时回退到 option 文本，`text` 写入纯文本。未注册、非 option、无效

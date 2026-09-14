@@ -1015,6 +1015,15 @@ style/layout/paint 并断言。该路径不扩展通用 detached Core handle、D
 `before()`/`after()`/`replaceWith()`、事件、资源或 observer。设备门选择
 `TEST1246,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1247 覆盖 detached Comment 的 CharacterData offset 方法。夹具在 detached 状态验证
+`insertData()`、`deleteData()`、`replaceData()`、`substringData()` 的 UTF-16 code-unit
+偏移、字符串化、尾部截断和 `length`；进入 live Element 后验证同一 wrapper/identity 通过
+Core callback 同步数据，包含 surrogate pair 的偏移仍按 JS code unit 解释。负数、非整数、
+NaN/Infinity、越界 offset 和负 count 必须抛错且不部分提交；超长结果及 callback/Core 失败
+也必须保持旧数据。该门不扩展相对 `before()`/`after()`/`replaceWith()`、通用 detached
+Core handle、Fragment、事件、资源或视觉行为。设备门选择 `1246,1247,999`，确认 Debug
+ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
