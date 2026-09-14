@@ -981,6 +981,16 @@ parser。宿主只接 Ex15 callback、安排重排并断言，不实现 DOM 语�
 `TEST1243,1242,1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
 check。
 
+TEST1244 覆盖 NetSurf compatibility corpus 中 `document.createTextNode()` 的 detached
+Text 组合。夹具验证新 Text 的 node type/name、owner、detached root/parent/connection、
+数据与 clone identity；随后以同一节点执行 `insertBefore()`、`appendChild()`、`append()`/
+`prepend()`，检查静态 `childNodes` snapshot、兄弟关系、Core 同步的 `nodeValue`/`data`/
+`textContent`/`appendData()`，以及 `remove()` 后数据保留和再次插入。无效节点与 reference
+必须在 mutation 前拒绝，Browser 不创建 Core detached handle，也不增加 callback 表；最多
+64 个 direct child，单个 Text 数据最多 65,535 个脚本字符。该路径不扩展通用 Node、
+DocumentFragment、含 element/fragment 的混合 append、事件、资源或视觉行为。设备门选择
+`TEST1244,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

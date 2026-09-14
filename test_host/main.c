@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1243
+#define TEST_MAX_NUMBER 1244
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -51925,6 +51925,81 @@ static BOOL test1243_browser_replace_children_character_data_contract(void)
             " and commits atomically; selected wrappers keep identity while"
             " omitted subtrees detach and cross-parent, duplicate, self and"
             " over-limit inputs fail closed.");
+    return TRUE;
+}
+
+/* TEST 1244 - detached Text creation and insertion into a live Element. */
+static BOOL test1244_browser_create_text_node_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><i id='anchor'>A</i></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var t=document.getElementById('target'),a="
+        "document.getElementById('anchor'),result=document.getElementById('result'),"
+        "n,m,c,h,e,mix,mix2,snap,ret,bad=0,ok=true;"
+        "n=document.createTextNode('left');"
+        "if(!n||n.nodeType!==3||n.nodeName!=='#text'||n.ownerDocument!==document||"
+        "n.parentNode!==null||n.parentElement!==null||n.isConnected||"
+        "n.nodeValue!=='left'||n.data!=='left'||n.textContent!=='left'||"
+        "n.length!==4||n.getRootNode()!==n||n.hasChildNodes()||"
+        "!n.isSameNode(n))ok=false;"
+        "c=n.cloneNode();if(!c||c===n||c.nodeType!==3||c.data!=='left'||"
+        "c.parentNode!==null||c.getRootNode()!==c||!n.isEqualNode(c)||"
+        "n.isSameNode(c))ok=false;"
+        "snap=t.childNodes;ret=t.insertBefore(n,a);"
+        "if(ret!==n||n.parentNode!==t||n.parentElement!==t||!n.isConnected||"
+        "n.getRootNode()!==document||t.childNodes.length!==2||"
+        "t.childNodes[0]!==n||t.childNodes[1]!==a||n.previousSibling!==null||"
+        "n.nextSibling!==a||a.previousSibling!==n||a.nextSibling!==null||"
+        "t.textContent!=='leftA'||snap.length!==1||snap[0]!==a)ok=false;"
+        "n.nodeValue='LEFT';if(n.data!=='LEFT'||n.textContent!=='LEFT'||"
+        "t.textContent!=='LEFTA')ok=false;"
+        "n.appendData('!');if(n.data!=='LEFT!'||n.length!==5||"
+        "t.textContent!=='LEFT!A')ok=false;"
+        "m=document.createTextNode('tail');ret=t.appendChild(m);"
+        "if(ret!==m||m.parentNode!==t||m.parentElement!==t||!m.isConnected||"
+        "t.lastChild!==m||t.textContent!=='LEFT!Atail')ok=false;"
+        "ret=m.remove();if(ret!==undefined||m.parentNode!==null||"
+        "m.parentElement!==null||m.isConnected||m.getRootNode()!==m||"
+        "m.data!=='tail'||t.childNodes.length!==2||t.textContent!=='LEFT!A')ok=false;"
+        "ret=t.appendChild(m);if(ret!==m||m.parentNode!==t||"
+        "t.lastChild!==m||t.textContent!=='LEFT!Atail')ok=false;"
+        "h=document.createTextNode('head');ret=t.prepend(h);"
+        "if(ret!==undefined||h.parentNode!==t||t.firstChild!==h||"
+        "h.nextSibling!==n||t.textContent!=='headLEFT!Atail')ok=false;"
+        "e=document.createTextNode('end');ret=t.append(e);"
+        "if(ret!==undefined||e.parentNode!==t||t.lastChild!==e||"
+        "t.textContent!=='headLEFT!Atailend')ok=false;"
+        "ret=t.prepend(m);if(ret!==undefined||t.firstChild!==m||"
+        "m.nextSibling!==h||t.textContent!=='tailheadLEFT!Aend')ok=false;"
+        "mix=document.createTextNode('M');ret=t.append('z',mix);"
+        "if(ret!==undefined||mix.parentNode!==t||t.lastChild!==mix||"
+        "t.textContent!=='tailheadLEFT!AendzM')ok=false;"
+        "mix2=document.createTextNode('Q');ret=t.prepend(mix2,'q');"
+        "if(ret!==undefined||t.firstChild!==mix2||mix2.nextSibling.data!=='q'||"
+        "t.textContent!=='QqtailheadLEFT!AendzM')ok=false;"
+        "try{t.appendChild({});}catch(e1){bad|=1;}"
+        "try{t.insertBefore(document.createTextNode('bad'),{});}catch(e2){bad|=2;}"
+        "if(bad!==3||t.textContent!=='QqtailheadLEFT!AendzM'||"
+        "n.parentNode!==t||h.parentNode!==t||e.parentNode!==t)ok=false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-text-node", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1244 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1244 OK",
+            "document.createTextNode now creates bounded detached Text"
+            " wrappers that preserve identity through insertBefore,"
+            " appendChild, append and prepend. Data mutation, removal and"
+            " re-insertion stay synchronized with Core; invalid nodes and"
+            " references fail closed while detached clones remain isolated.");
     return TRUE;
 }
 
@@ -110155,6 +110230,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1241: ok = test1241_browser_replace_children_text_contract(); break;
         case 1242: ok = test1242_browser_replace_children_mixed_contract(); break;
         case 1243: ok = test1243_browser_replace_children_character_data_contract(); break;
+        case 1244: ok = test1244_browser_create_text_node_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

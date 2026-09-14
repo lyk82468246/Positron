@@ -205,6 +205,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   layout 失效。该 ABI 不暴露 fragment、事件或资源副作用，结构 token、跨父/错类型、非法
   项和超限输入继续按既有错误码 fail closed；Browser Ex15 负责 wrapper/index 重建，宿主
   只接 callback 及后续重排/重绘。
+- Browser 的 `document.createTextNode(value)` 是不新增 Core ABI 的 detached Text
+  路径：Browser 保留数据、owner、索引和节点 identity，成功后才通过既有 Text 插入、
+  CharacterData 移动、Text setter 与删除入口写入 Core。已创建的 Text 可用
+  `insertBefore()`、`appendChild()` 以及只含 primitive/created Text 的有界 `append()`/
+  `prepend()` 进入带 id 的 live Element；`nodeValue`/`data`/`textContent`、
+  `appendData()`、`remove()`、`cloneNode()`、父级/兄弟/root 查询同步其 detached 或
+  connected 状态。最多 64 个 direct child、单值最多 65,535 个脚本字符；通用 Node、
+  DocumentFragment、含 element/fragment 的混合 append 及其他动态树语义继续 fail closed。
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，

@@ -152,6 +152,13 @@
   错类型/越界或跨父 CharacterData、跨父/重复/自身 element、超限和 callback 缺失均 fail
   closed；失败不会消费 fragment 或改变原树。通用 Node/DocumentFragment、MutationObserver 和
   完整 live collection 仍未实现。
+- `document.createTextNode(value)` 现在提供 Browser-owned 的 detached Text 快照；它可在
+  成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
+  只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/
+  `textContent`/`appendData()`、`remove()` 与 `cloneNode()`。Browser 复用既有 Core Text
+  插入、CharacterData 移动、Text setter 和删除入口，不新增 Core ABI 或 detached handle；
+  64 个 direct child、65,535 个脚本字符、generic Node、DocumentFragment、含
+  element/fragment 的混合 append 和其他动态树语义仍 fail closed。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
@@ -533,11 +540,11 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1243 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1244 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与
-  Ex15 typed CharacterData）和
+  Ex15 typed CharacterData）以及 detached `document.createTextNode()` 的插入/数据/生命周期，和
   retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

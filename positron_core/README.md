@@ -164,6 +164,12 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   并一次性装配；失败恢复原树，成功保留选中节点 identity、使 retained layout 失效。该
   ABI 不暴露 fragment 或事件/资源副作用，结构 token、跨父/越界/错类型、非法项和超限
   输入继续按既有错误码 fail closed。
+- Core 没有 `createTextNode()` 或 detached-node handle；该语义由 Browser 持有。Browser
+  创建的 detached Text 在真正进入 live Element 时复用既有
+  `PCore_NodeInsertTextChildById`/`PCore_NodeInsertCharacterDataChildAtById`，数据更新复用
+  `PCore_NodeSetTextChildById`，移除复用 `PCore_NodeRemoveTextChildById`。这些入口仍只
+  操作 Core DOM、按既有容量/错误码提交并使 retained layout 失效，不保存脚本 wrapper、
+  不暴露 fragment，也不改变公共 ABI。
 - Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
   只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
   `PCore_NodeReplaceElementChildWithTextListById`、

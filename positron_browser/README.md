@@ -297,6 +297,9 @@ existing-node 路径都按序重排并保留被选节点及后代 identity；fra
 element、错类型/越界 CharacterData、nested fragment、clone 和 context-sensitive parser
 均 fail closed。
 
+`document.createTextNode()` 创建 Text；插入、数据 mutation、移除、重插入、
+clone 复用 Core callbacks；通用 Node/fragment 不支持。
+
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
 注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
 `value`/`label` 缺失时回退到 option 文本，`text` 写入纯文本。未注册、非 option、无效
