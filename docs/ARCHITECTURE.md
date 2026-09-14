@@ -393,8 +393,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `childNodes` 索引创建空 Element，再同步 staged 属性/Text。移除、重插入和 id rename
   保留 wrapper/alias identity。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
   direct Text child；克隆仍是独立的 Browser-owned detached staging，连接源的克隆必须先
-  改为唯一 id。嵌套 Element、Fragment、通用 detached Core handle、事件、资源和 observer
-  不属于该边界。
+  改为唯一 id。关系查询对该 staging 使用 wrapper 对象身份：不同 detached wrapper 的
+  `isSameNode()` 不因空/重复 id 合并，`contains()` 与 `compareDocumentPosition()` 保持
+  disconnected 结果；物化、同父排序和移除仍复用同一 wrapper identity。嵌套 Element、
+  Fragment、通用 detached Core handle、事件、资源和 observer 不属于该边界。
 - `document.createComment(data)` 是 Browser-owned 的 detached Comment staging。调用必须恰好
   一个参数并按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`#comment`、
   `data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling、

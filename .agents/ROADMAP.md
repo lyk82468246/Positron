@@ -193,6 +193,14 @@ next808 根据源码审查发现的 detached Element clone 不对称，补齐 Br
 TEST1249 以两个低堆峰值离线 fixture 覆盖浅/深复制、attached clone、重复 id 原子拒绝、改名
 插入、顺序和源数据隔离；`1248,1249,999` Debug ARMV4I 设备门已通过。
 
+next809 根据源码审查发现的 detached Element 关系不对称，修正 Browser 通用关系函数对
+Browser-owned wrapper 的身份判断：不同 staging wrapper 即使标签、文本或 id 相同，也不
+会被 `isSameNode()`、`contains()` 或 `compareDocumentPosition()` 按空/重复 id 合并；
+物化到同一 parent、同父排序和移除后的 disconnected 结果继续使用同一 wrapper identity。
+该修补不新增 Core ABI，也不扩展通用 Node/Fragment、事件、资源或视觉语义。TEST1250 的
+两个低堆峰值 fixture 覆盖 detached/disconnected、ancestor/sibling position、document
+root 与物化/移除生命周期；`1249,1250,999` Debug ARMV4I 设备门已通过。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -214,7 +222,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next809）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next810）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

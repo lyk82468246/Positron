@@ -169,8 +169,11 @@
   `cloneNode(false)` 复制属性，`cloneNode(true)` 复制 direct Text child；克隆与源保持独立，
   连接源的克隆必须先改为唯一 id 才能物化。没有通用 detached Core handle、嵌套 Element、
   DocumentFragment、事件、资源、observer 或完整 live collection；结构标签、重复/无 id、
-  错误 parent/reference 和超限输入 fail closed，宿主仍负责后续 style/layout/paint，视觉/
-  触摸/SIP 结果不由该门保证。
+  错误 parent/reference 和超限输入 fail closed。通用关系查询对该 wrapper 的 detached
+  形态使用对象身份：不同节点的 `isSameNode()` 不会因空/重复 id 合并，`contains()` 对
+  非自身节点返回 false，`compareDocumentPosition()` 报告 disconnected；物化、同父排序
+  和移除后仍保持 wrapper identity。宿主仍负责后续 style/layout/paint，视觉/触摸/SIP
+  结果不由该门保证。
 - `document.createComment(data)` 目前是 Browser-owned 的有界 detached Comment wrapper：必须
   恰好一个参数并按 `String` 转换，最多 65,535 个脚本字符；进入 Core 时还受 65,535 字节
   UTF-8 上限。wrapper 提供 node shape、data/nodeValue/textContent/length、owner/root/
@@ -564,7 +567,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1249 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1250 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与

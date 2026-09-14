@@ -304,12 +304,12 @@ offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复
 `document.createElement(tag)` 提供 Browser-owned detached Element staging：标签转小写，只接受
 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`。设唯一非空
 id 后按未过滤 `childNodes` 索引用 `appendChild()`、`insertBefore()`、`append()` 或
-`prepend()` 物化到 live Element；staging 保存 64 个 attribute 和 64 个 direct Text
-child。Ex11 复用 `__pcoreSetText` 创建 Core Element 并写入 staged attr/Text。`cloneNode(false)`
+`prepend()` 物化到 live Element；staging 限 64 个属性和 direct Text 子节点。Ex11 通过
+`__pcoreSetText` 创建 Core Element 并同步属性/Text。`cloneNode(false)`
 复制属性，`cloneNode(true)` 还复制 direct Text；克隆与源独立，仍 detached。
 连接源的克隆必须先改为唯一 id；重复/无 id、结构标签、嵌套 Element、Fragment、
-detached Core handle、事件、资源和 observer 均 fail closed。移除、重插入和 id rename 保持
-identity。
+detached Core handle、事件/资源/observer fail closed。
+关系查询使用对象身份：相同 id 的 detached 节点互不相等，物化/移除后保持。
 
 `document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须
 恰好传入一个参数，参数按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`nodeName="#comment"`、

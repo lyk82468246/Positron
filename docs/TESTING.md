@@ -1041,6 +1041,16 @@ wrapper、顺序和文本保持。克隆只接受当前 createElement 边界内�
 扩展嵌套 Element、通用 Node/Fragment、事件、资源或视觉语义。设备门选择
 `1248,1249,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1250 覆盖 detached `document.createElement()` wrapper 的节点身份和关系查询。两个
+仍处于 staging 的同标签、同 id、同文本 wrapper 必须保持不同的 `isSameNode()` 身份，
+互不 `contains()`，并对彼此报告 disconnected 的 `compareDocumentPosition()`；自身关系
+仍成立且 `getRootNode()` 返回各自 detached root。物化到同一 live parent 后，兄弟顺序、
+ancestor `contains()`、following/preceding 位和 `document` root 必须与 wrapper identity
+一致；移除其中一个后关系回到 disconnected，另一个节点保持 connected。该修补只改变
+Browser 的 detached Element identity 判定，不新增 Core ABI，也不扩展通用 Node/Fragment、
+事件、资源或视觉语义。设备门选择 `1249,1250,999`，确认 Debug ARMV4I、完整日志、双空间
+预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

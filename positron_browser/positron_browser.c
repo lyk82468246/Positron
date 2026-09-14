@@ -6735,6 +6735,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function known(o){return o===doc||isDoctype(o)||!!(o&&typeof o.nodeType==='number'&&"
         "((o.nodeType===1&&typeof o.__id==='string')||o.__owner11));}"
         "function same(a,b){if(a===b){return true;}if(!known(a)||!known(b)){return false;}"
+        "if((a&&a.__pcoreCreatedElement804)||(b&&b.__pcoreCreatedElement804)){return false;}"
         "if(a.nodeType===1&&b.nodeType===1&&typeof a.__id==='string'&&"
         "typeof b.__id==='string'){return String(a.__id)===String(b.__id);}"
         "if(a.__owner11&&b.__owner11){return same(a.__owner11,b.__owner11)&&"

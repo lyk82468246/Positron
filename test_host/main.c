@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1249
+#define TEST_MAX_NUMBER 1250
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52366,6 +52366,64 @@ static BOOL test1249_browser_create_element_clone_contract(void)
             " attributes and text remain independent, duplicate ids fail"
             " closed, and renamed clones can be inserted through the"
             " existing Element materialization path.");
+    return TRUE;
+}
+
+/* TEST 1250 - detached Element identity and relationship semantics. */
+static BOOL test1250_browser_detached_element_identity_contract(void)
+{
+    static const char HTML_DETACHED[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE_DETACHED[] =
+        "(function(){var result=document.getElementById('result'),a,b,ok=true;"
+        "a=document.createElement('section');b=document.createElement('section');"
+        "a.id='same';b.id='same';a.append('x');b.append('x');"
+        "if(a===b||a.isSameNode(b)||b.isSameNode(a)||!a.isSameNode(a)||"
+        "a.contains(b)||b.contains(a)||a.compareDocumentPosition(b)!==33||"
+        "b.compareDocumentPosition(a)!==33||a.getRootNode()!==a||"
+        "b.getRootNode()!==b||a.parentNode!==null||b.parentNode!==null)ok=false;"
+        "result.textContent=String(ok);})();";
+    static const char HTML_ATTACHED[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE_ATTACHED[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),a,b,ok=true;"
+        "a=document.createElement('section');b=document.createElement('section');"
+        "a.id='left';b.id='right';a.append('x');b.append('x');"
+        "target.appendChild(a);target.appendChild(b);"
+        "if(!a.isSameNode(a)||a.isSameNode(b)||b.isSameNode(a)||"
+        "!target.contains(a)||!target.contains(b)||a.contains(b)||"
+        "a.compareDocumentPosition(b)!==4||b.compareDocumentPosition(a)!==2||"
+        "a.getRootNode()!==document||b.getRootNode()!==document)ok=false;"
+        "a.remove();"
+        "if(a.isConnected||a.parentNode!==null||a.isSameNode(b)||"
+        "a.contains(b)||a.compareDocumentPosition(b)!==33||"
+        "!b.isConnected||b.parentNode!==target)ok=false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-identity-detached",
+            HTML_DETACHED, PROBE_DETACHED, "true", error, sizeof(error))) {
+        show_error(L"TEST 1250 FAIL", error);
+        return FALSE;
+    }
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-identity-attached",
+            HTML_ATTACHED, PROBE_ATTACHED, "true", error, sizeof(error))) {
+        show_error(L"TEST 1250 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1250 OK",
+            "Detached Element wrappers now keep object identity for"
+            " isSameNode(), contains(), and compareDocumentPosition();"
+            " separate staged nodes no longer alias through an empty or"
+            " duplicate id, and the same relationship contract survives"
+            " materialization and removal.");
     return TRUE;
 }
 
@@ -110602,6 +110660,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1247: ok = test1247_browser_create_comment_character_data_contract(); break;
         case 1248: ok = test1248_browser_create_text_node_character_data_contract(); break;
         case 1249: ok = test1249_browser_create_element_clone_contract(); break;
+        case 1250: ok = test1250_browser_detached_element_identity_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
