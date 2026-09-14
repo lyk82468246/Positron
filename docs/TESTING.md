@@ -900,10 +900,10 @@ DocumentFragment、通用 mutation、MutationObserver、live collection 或 nati
 TEST1236 覆盖 Element 的 live HTML 投影：Core relation 51/52 在单次有界遍历中生成
 `innerHTML`/`outerHTML`，因此无 `id` 的后代也能被序列化；文本和属性中的 `&`、`<`、`>`
 及属性引号会转义，void 元素、Comment、CDATA 和非法节点按 fail-closed 规则处理。
-夹具还做一次基本 `innerHTML` setter smoke，并确认 `outerHTML` setter 仍是只读错误；getter
-预算为 256 个节点、64 层、64 个 direct child/attribute 和 16,384 个 UTF-8 字节。完整的
-replacement、identity 和错误边界由 TEST1237 覆盖；本合同不扩展 clone snapshot、
-DocumentFragment、事件、资源或视觉行为。
+夹具还做一次基本 `innerHTML` setter smoke，并确认顶层文本形式的 `outerHTML` assignment
+安全拒绝；getter 预算为 256 个节点、64 层、64 个 direct child/attribute 和 16,384 个
+UTF-8 字节。完整的 replacement、identity 和错误边界由 TEST1237 与 TEST1239 覆盖；
+本合同不扩展 clone snapshot、DocumentFragment、事件、资源或视觉行为。
 
 TEST1237 覆盖 parser-backed `Element.innerHTML` setter 的 Core/Browser 纵切：Core 通过
 `PCore_NodeSetInnerHTMLById` 在同一 document 中预检并原子替换目标的 direct children，输入
@@ -912,8 +912,9 @@ Element/Text/Comment/CDATA。夹具验证目标 Element identity、精确 HTML/t
 后代、空 replacement、旧 wrapper detached，以及重复 id、替换子树外 id 冲突、非法 UTF-8、
 超大输入、documentElement 等结构目标的 fail-closed 无部分 mutation。Browser 通过
 `PBrowserScriptDomWriteCallbacksEx8` 接线，成功后由宿主安排 style/layout/paint；不执行
-script、不抓取资源、不派发 mutation 事件。该门不扩展 outerHTML setter、clone snapshot、
-通用 DocumentFragment、context-sensitive parser 或视觉行为。设备门选择
+script、不抓取资源、不派发 mutation 事件。该门不扩展 clone snapshot、通用
+DocumentFragment、context-sensitive parser 或视觉行为；`outerHTML` setter 由 TEST1239
+单独覆盖。设备门选择
 `TEST1237,1236,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
 TEST1238 覆盖 parser-backed `Element.insertAdjacentHTML(position, html)` 的 Core/Browser
@@ -923,8 +924,19 @@ TEST1238 覆盖 parser-backed `Element.insertAdjacentHTML(position, html)` 的 C
 在成功后安排 style/layout/paint。夹具验证新 id lookup、静态 snapshot、空片段，以及未知
 position、document structure、detached target、重复/外部冲突 id、非法 UTF-8 和超大输入
 的 fail-closed 无部分 mutation；不执行 script、不获取资源、不派发 mutation 事件，也不
-扩展 outerHTML setter、clone 或 DocumentFragment。设备门选择 `1236,1237,1238,999`，
+扩展 clone 或 DocumentFragment。设备门选择 `1236,1237,1238,999`，
 Debug ARMV4I，日志完整，双空间预检、完成后清理和 crash check 均通过。
+
+TEST1239 覆盖 parser-backed `Element.outerHTML` setter 的 Core/Browser 纵切。Core 通过
+`PCore_NodeSetOuterHTMLById` 预检并原子替换一个 live Element：输入必须产生单一 Element
+根，且不能是 `html`/`head`/`body`；空字符串移除目标。输入最多 16,384 字节，节点、深度、
+direct-child、UTF-8 和 id 预算沿用 TEST1237/1238；重复 id、与旧目标子树外冲突的 id、
+顶层文本/Comment、多根和超限输入在 mutation 前拒绝。成功时新根占据原父级和
+`childNodes` 索引，旧目标及后代 wrapper 变为 detached，父级和文档 id cache 刷新，
+宿主安排新的 style/layout/paint；不执行 script、不获取资源、不派发 mutation 事件。
+夹具同时验证目标/子树/父级 snapshot identity、同 id 重新寻址、失败后内容不变、结构目标
+拒绝和空 setter 移除。设备门选择 `1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、
+完成后清理和 crash check 均通过。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 

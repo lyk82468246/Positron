@@ -310,9 +310,12 @@ form/event/navigation 查询与 mutation。Browser 负责参数、脚本对象�
 同步 dispatch。
 
 `Element.innerHTML`/`outerHTML` 是 HTML 投影；`innerHTML` setter（Ex8 →
-`PCore_NodeSetInnerHTMLById`）与 `insertAdjacentHTML()`（Ex9）复用 parser 覆盖四个
-位置，成功刷新 wrapper；失败不变。outerHTML setter、clone、fragment 及
-脚本等不支持。
+`PCore_NodeSetInnerHTMLById`）、`insertAdjacentHTML()`（Ex9）和 `outerHTML` setter
+（Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
+outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
+wrapper/snapshot，失败不变。三条路径拒绝顶层文本、多根、结构元素、重复/外部 id、非法
+UTF-8 或超限输入；不执行脚本、资源或 mutation 事件。clone、DocumentFragment、
+context-sensitive parser 和完整脚本语义仍不支持。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
 在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；
@@ -324,29 +327,24 @@ callback/mutation 失败均 fail closed。
 `select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 由 Browser
 提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；
 getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
-遍历上限为 256 个节点、返回 64 个 option；缺少稳定 id 的元素不投影，也没有 live
-collection/popup。
+最多遍历 256 个节点、返回 64 个 option；缺少稳定 id 的元素不投影，也没有 live collection/popup。
 
-`Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。支持的
-`input`、`select`、`textarea`、`button`、`fieldset`、`img`、`object` 和 `output` 元素默认归最近祖先 form；
-元素存在 `form="id"` 时解析文档中对应的 form，因此可以把 form 外的 form-associated
-元素纳入 owner 关系；空值或无效目标没有 owner，也不回退到祖先。`form.elements` 只投影
-listed 元素：fieldset/object/output 会出现；img 仅有 owner，不进集合、successful-control、
-提交或 FormData。对 `<option>`，Browser 沿最多 64 层可寻址的
-`parentElement` 链找到所属 `select`，再复用该 `select.form`；因此嵌套 `optgroup`、显式
-`select form="id"` 和属性 mutation 都能反映，找不到 select 或 owner 时返回 `null`。
-`elements` 每次读取都是有界的 DOM 顺序 snapshot。
+`Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。`input`、
+`select`、`textarea`、`button`、`fieldset`、`img`、`object`、`output` 默认归最近祖先 form；
+有 `form="id"` 时解析对应 form，支持 form 外的关联元素；空值或无效目标无 owner，不回退祖先。
+`form.elements` 只投影 listed 元素（fieldset/object/output 会出现）；img 仅有 owner，不进
+集合、successful-control、提交或 FormData。`option` 沿最多 64 层 `parentElement` 找所属
+`select` 并复用其 form，嵌套 optgroup、显式 form 和 mutation 均可反映，找不到时返回 `null`。
+`elements` 每次读取都是有界 DOM 顺序 snapshot。
 
-`select.type` 按 live `multiple` attribute 返回只读的 `select-one`/`select-multiple`；
-`optgroup.label` 反映 `label` attribute，缺失为 `''` 且随 mutation 更新，`option.label`
-的文本 fallback 保持不变。仅提供元数据，不创建 popup 或改变 layout/paint。
+`select.type` 按 live `multiple` 返回只读的 `select-one`/`select-multiple`；
+`optgroup.label` 反映 `label`（缺失为 `''`），`option.label` 保留文本 fallback 并随 mutation
+更新。仅提供元数据，不创建 popup 或改变 layout/paint。
 
-`fieldset.type` 固定为只读的 `'fieldset'`，`fieldset.form` 复用 Core owner 规则。
-`fieldset.elements` 是每次读取的有界 snapshot，只投影子树中带 id 的
-input/select/textarea/button/object/output，最多遍历 256 个节点、返回 64 项。`output` 的
-`type` 为 `'output'`，`labels` 复用 Core relation，`value`/`defaultValue` 与 Core 文本和
-默认 override 同步；`form.reset()` 清除 override。fieldset/output 不进入 successful-control
-或 FormData。
+`fieldset.type` 为只读 `'fieldset'`，`fieldset.form` 复用 Core owner；`fieldset.elements`
+每次读取有界 snapshot（最多 256 节点、64 项），只投影子树中带 id 的控件。`output.type`
+为 `'output'`，`labels`/`value`/`defaultValue` 与 Core 同步，`form.reset()` 清除 override；
+fieldset/output 不进入 successful-control 或 FormData。
 
 启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
 `PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、
@@ -379,8 +377,7 @@ dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、�
 `PCore_FreeFormData`，不得暴露 picker 路径。submitter 必须是 Browser 的 `PElement`、
 启用且归属于该 form 的 submit-type input/button；`null`/`undefined` 等同省略 submitter，
 其他无效 owner 抛出 `TypeError`。
-最多 64 项，名称 64 字节、字符串值 128 字节、文件名和 MIME 类型各 64 字节；文件只保留
-filename/type 和空内容，不承诺完整文件读取。
+最多 64 项；名称 64 字节、字符串值 128 字节，文件只保留 filename/type 和空内容。
 
 ### `HTMLImageElement` 元数据与资源状态
 

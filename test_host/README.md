@@ -66,9 +66,9 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 固定离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/
-  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1238 覆盖
+  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1239 覆盖
   normalize、clone/equality、Text/CharacterData、Ex2–Ex12 insertion/replacement 和
-  bounded HTML getter/setter/insertAdjacentHTML；
+  bounded HTML getter/setter/insertAdjacentHTML/outerHTML；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -536,10 +536,10 @@ Ex12 到 Core；对象、detached、错 parent/类型和越界由 Browser/Core �
 TEST1235 覆盖 Text/Comment/CDATA 的 `before()`/`after()`/`replaceWith()`，含同/跨父、
 identity/snapshot、detached、`textContent` 和无效 source fail-closed；宿主只接 callback。
 
-TEST1236–1238 覆盖 bounded HTML getter/setter、parser replacement 和四位置
-`insertAdjacentHTML`。宿主只注册 Ex8/Ex9、安排重排并断言 Core/Browser；预算、id/编码、
-结构、detached、超限和 snapshot fail closed，script/资源/事件/DocumentFragment 不由
-test_host 实现。
+TEST1236–1239 覆盖 bounded HTML getter/setter、parser replacement、四位置
+`insertAdjacentHTML` 和 `outerHTML` replacement/removal。宿主只注册 Ex8–Ex10、安排重排
+并断言 Core/Browser；预算、id/编码、结构、detached、超限和 snapshot fail closed，
+script/资源/事件/DocumentFragment 不由 test_host 实现。
 
 ### Native EDIT/SELECT/button/file
 

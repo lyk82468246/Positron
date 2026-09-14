@@ -145,9 +145,11 @@
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
   目标/既有节点身份，预检重复或外部冲突 id、非法 UTF-8、未知/超限输入并 fail closed；
-  成功使 layout 失效，不执行 script、不抓取资源、不派发事件。outerHTML setter、
-  clone、通用 DocumentFragment 和 context-sensitive parser 仍未实现。预算与 parser 限制见
-  [`docs/TESTING.md`](../docs/TESTING.md)。
+  成功使 layout 失效，不执行 script、不抓取资源、不派发事件。`PCore_NodeSetOuterHTMLById`/
+  Ex10 另以单一 Element 根替换目标或以空字符串移除目标，保留原父级/索引并让旧目标及
+  后代 wrapper detached；它同样预检重复/外部冲突 id、非法 UTF-8、顶层文本/Comment、
+  多根和超限输入。clone、通用 DocumentFragment 和 context-sensitive parser 仍未实现。
+  三条路径的预算与错误合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -463,77 +465,14 @@
   非冒泡/不可取消和 submit 无副作用。它不扩展文件内容、完整 live collection 或其他
   form-associated 元素，真实 native 表单视觉、SIP/IME、picker、触摸和不同 DPI 仍需人工
   验收。
-- TEST1179 是离线的 Browser selector `:visited` 夹具，无新增立即人工风险；自动门证明
-  `PBrowserScriptInteractionCallbacksEx` 的宿主批准结果、`<a>`/`<area>` 的绝对/相对
-  href、fragment/空 href、matches/closest/query、href mutation、列表顺序以及注销或
-  非法输入时的 fail-closed。Browser 不存储或修改 history，宿主只负责 URL 解析、历史
-  来源和隐私策略；真实链接样式、跨窗口 history、触摸和视觉仍需人工验收。
-- TEST1180 是离线的 Browser selector `:scope` 夹具，无新增立即人工风险；自动门证明
-  element/document query 的 scope owner 规则、子代/后代关系、文档顺序、matches/closest
-  receiver scope、无 scope 时的 owner 排除、大小写形式以及参数/伪元素/尾随逗号的
-  fail-closed。Browser 不保存 scope 状态，宿主只提供既有 DOM relation callback；真实
-  页面完整 Selectors、视觉和不同 DPI 仍需人工验收。
-- TEST1181 是离线的 Browser selector `:default` 夹具，无新增立即人工风险；自动门证明
-  默认 checked 控件、Core relation 45 的 option default-selected、form 首个 submit
-  control、查询顺序、live state mutation、matches/closest 和非法输入的 fail-closed。
-  多个短脚本 session 只为适配固定 1 MiB heap；真实 native 默认按钮行为、表单视觉、
-  触摸、SIP/IME 和不同 DPI 仍需人工验收。
-- TEST1182 是离线的 Browser/Core option property 夹具，无新增立即人工风险；自动门证明
-  `selected`/`defaultSelected` getter/setter、单选互斥、多选独立选择、`selectedIndex`
-  一致性、默认基线与 live 状态分离，以及非 option/无效 id/缺失 callback 的 fail-closed。
-  真实 native SELECT popup、键盘/触摸、SIP/IME、视觉和不同 DPI 仍需人工验收。
-- TEST1183 是离线的 Browser option 基础属性夹具，无新增立即人工风险；自动门证明
-  `value`/`label` 的属性优先与文本 fallback、`text` mutation、select live value/
-  selectedIndex 联动、空属性区分以及非 option setter 的 fail-closed。该桥复用既有
-  Core DOM attribute/text callback，不提供 native SELECT popup、键盘/触摸、SIP/IME、
-  layout、paint 或不同 DPI 保证。
-- TEST1184 是离线的 Browser select/option collection 夹具，无新增立即人工风险；自动门
-  证明 `options`/`selectedOptions` 的文档顺序、`item()`/`namedItem()`、selected mutation、
-  `select.length`、`option.index` 和 snapshot 隔离，并确认 optgroup 不进入 collection、
-  非 select/option 目标安全返回。该门只覆盖有稳定 id 的可寻址元素和 64 个 option/256
-  个遍历节点预算，不代表完整 live HTMLCollection、length setter、append/remove、
-  option.form 的完整 owner 算法、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证。
-- TEST1185 是离线的 Browser option.form owner 夹具，无新增立即人工风险；自动门证明
-  optgroup 父链、显式 `select form="id"`、form attribute mutation、无 owner/无效 owner
-  的 `null` 回退和既有 input owner 不变。实现只复用现有 DOM relation、form owner 与
-  attribute mutation，不增加 ABI；64 层父链预算、无 id 元素不可寻址、完整 HTML
-  option/form-owner 算法、native SELECT popup、键盘/触摸、SIP/IME 或视觉保证仍未实现。
-- TEST1186 是离线的 Browser select/optgroup metadata 夹具，无新增立即人工风险；自动门
-  证明 `select.type` 对 `multiple` attribute 的 live `select-one`/`select-multiple` 映射、
-  只读 setter、`optgroup.label` 的显式值/缺失回退/attribute mutation，以及 option label
-  fallback 和非目标 fail-closed。该扩展不增加 ABI，不提供 native SELECT popup、键盘/触摸、
-  SIP/IME、layout/paint 或不同 DPI 视觉保证。
-- TEST1187 是离线的 Browser/Core fieldset 组合夹具，无新增立即人工风险；自动门证明
-  `fieldset.type`、祖先/显式 `form="id"` owner、嵌套 fieldset 控件的
-  `elements` snapshot、`item()`/`namedItem()`、属性 mutation 和无效 owner 的 fail-closed。
-  该桥不把 fieldset 作为 successful control，也不承诺无 id 节点、完整 live collection、
-  append/remove、native 控件视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
-- TEST1188 是离线的 Browser/Core `form.elements` fieldset 夹具，无新增立即人工风险；自动门
-  证明 form 关系按文档顺序包含有 id 的 fieldset 及其后代控件，显式 `form="id"` 与无效
-  owner mutation、`item()`/`namedItem()` 和独立 snapshot 保持一致，同时确认 fieldset
-  不进入 Core successful-control/FormData 快照。该扩展不增加 ABI，不实现完整 live collection、
-  append/remove、native 表单视觉、键盘/触摸、
-  SIP/IME 或不同 DPI 行为。
-- TEST1189 是离线的 Browser/Core `output` form-associated 夹具，无新增立即人工风险；自动门
-  证明 output 的祖先/显式 `form="id"` owner、`form.elements`/fieldset 子树文档顺序、
-  `labels`、`item()`/`namedItem()`、name/form mutation 和无效 owner 的 fail-closed，同时
-  确认 output 不进入 Core successful-control/FormData 快照。该夹具不覆盖 output 的其他
-  listed-content 算法、完整 live collection、native
-  表单视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
-- TEST1190 是离线的 Browser/Core output value-state 夹具，无新增立即人工风险；自动门证明
-  `value`/`defaultValue` 的 descendant-text 与 default override 分离、`form.reset()` 和
-  `PCore_FormResetById` 的恢复/清除，以及只读 `output.type`；同时确认 output 仍不进入
-  successful-control/FormData。该扩展不覆盖其他 listed-content 算法、live collection、
-  native 表单视觉、键盘/触摸、SIP/IME 或不同 DPI 行为。
-- TEST1191 是离线的 Browser/Core object form-association 夹具，无新增立即人工风险；自动门
-  证明 object 的祖先/显式 `form="id"` owner、`form.elements`/`fieldset.elements` 文档顺序、
-  `item()`/`namedItem()`、snapshot 隔离、owner mutation 与无效 owner，并确认 object 不进入
-  validation、successful-control 或 FormData。实现不创建 plugin/替代内容窗口，也不覆盖
-  其他 listed-content 算法、完整 live collection、native 表单视觉或平台输入。
-- TEST1192 是离线的 Browser/Core img form-owner 夹具，无新增立即人工风险；自动门证明 img
-  的祖先/显式 `form="id"` owner、无效 owner 与 owner mutation，同时确认 img 不属于
-  `form.elements`/`fieldset.elements`，也不进入 successful-control 或 FormData。该桥不扩展
-  img 的完整资源/图像行为、其他 form-associated 扩展、live collection、native 表单视觉或平台输入。
+- TEST1179–1181 覆盖有限 selector 状态（`:visited`、`:scope`、`:default`）及 live
+  mutation/query 顺序；宿主批准、history/URL 解析和 native 控件视觉仍由宿主负责。
+- TEST1182–1188 覆盖 option/select/optgroup/fieldset 的属性、选择状态、owner 和有限
+  collection snapshot（64 项、256 节点预算）；完整 live collection、popup、键盘、
+  SIP/IME、触摸和视觉仍未实现。
+- TEST1189–1192 覆盖 output/object/img 的有限 form-owner、labels/metadata 与
+  successful-control 排除；不创建 plugin/替代内容窗口，也不覆盖完整资源行为或 native
+  表单视觉。
 - TEST1193 是离线的 Core/Browser `HTMLImageElement` 元数据与资源状态夹具，无新增立即
   人工风险；自动门证明 `document.images` snapshot、attribute/boolean/尺寸属性边界、
   非 `img` fail-closed，以及成功 SVG、终态 fetch failure、无 source 和仅 `srcset` 的
@@ -582,7 +521,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1238 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1239 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex12 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation 和 retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。

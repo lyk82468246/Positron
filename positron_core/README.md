@@ -121,8 +121,8 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   51/52）为带 id 的 Element
   提供只读、有界 HTML 序列化。Core 直接遍历完整 libdom 子树，涵盖无 id 后代并转义
   文本/属性；预算为 256 节点、64 层、64 个 direct child/attribute、16,384 个字节。
-  查询不触发 mutation、事件、资源或 layout；outerHTML setter、clone snapshot 和
-  DocumentFragment 仍不属于该 ABI。
+  查询不触发 mutation、事件、资源或 layout；clone snapshot 和 DocumentFragment
+  仍不属于该 ABI。
 - `PCore_NodeSetInnerHTMLById(hDoc, element_id, html)` 是同一 DOM 边界的 parser-backed
   setter。Core 在同一 document 中以 UTF-8 fragment parser 预检并替换目标 Element 的
   direct children；输入最多 16,384 字节，fragment 最多 256 节点、64 层、每个元素 64 个
@@ -136,6 +136,14 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   预算、节点类型、UTF-8 和 id 冲突规则与 setter 相同；成功返回 `0` 并保持目标/既有
   子节点身份，结构/位置不可用返回 `2`，非法或超限输入返回 `3`，其他 DOM 失败返回
   `1`。成功后 retained layout 失效；不执行 script、不获取资源、不派发事件。
+- `PCore_NodeSetOuterHTMLById(hDoc, element_id, html)` 是同一 parser 边界的元素替换
+  setter。Core 预检并原子替换目标 Element 本身：输入必须产生一个 Element 根，且不能是
+  `html`/`head`/`body`；空字符串表示移除目标。输入最多 16,384 字节，节点、深度和 direct
+  child 预算与上面相同；重复 id、与目标子树外冲突的 id、非法 UTF-8、顶层文本/Comment、
+  多根或超限输入在 mutation 前返回 `3`，目标、父级或结构不可用返回 `2`，其他 parser/DOM
+  失败返回 `1`。成功返回 `0`，新根占据原父级和 childNodes 索引，旧目标及后代变为 detached，
+  retained layout 失效；不执行 script、不获取资源、不派发事件，调用方必须重新
+  style/layout/paint。
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档

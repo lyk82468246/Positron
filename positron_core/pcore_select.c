@@ -8214,6 +8214,7 @@ typedef struct pcore_html_mutation_scan {
     dom_document *doc;
     dom_element *target;
     int allow_existing_inside_target;
+    int allow_existing_target;
     dom_string *id_name;
     dom_string *ids[PCORE_NODE_HTML_MUTATION_MAX_NODES];
     unsigned int node_count;
@@ -8268,9 +8269,10 @@ static int pcore_html_mutation_is_inside(dom_node *node, dom_node *ancestor)
     return inside;
 }
 
-/* Validate one id before the fragment is attached.  Existing ids are allowed
- * only when they belong to the subtree about to be replaced: the old node is
- * then removed before the new node takes over its id. */
+/* Validate one id before the fragment is attached. Existing ids are allowed
+ * only when they belong to the subtree about to be replaced (or are the
+ * addressed element itself): the old node is then removed before the new
+ * fragment takes over its id. */
 static int pcore_html_mutation_scan_id(pcore_html_mutation_scan *scan,
         dom_string *id_value)
 {
@@ -8293,9 +8295,11 @@ static int pcore_html_mutation_scan_id(pcore_html_mutation_scan *scan,
     existing = pcore_element_by_id(scan->doc, id_data);
     if (existing != NULL) {
         if (!scan->allow_existing_inside_target || scan->target == NULL ||
-                (dom_node *) existing == (dom_node *) scan->target ||
+                ((dom_node *) existing == (dom_node *) scan->target &&
+                !scan->allow_existing_target) ||
+                ((dom_node *) existing != (dom_node *) scan->target &&
                 !pcore_html_mutation_is_inside((dom_node *) existing,
-                (dom_node *) scan->target)) {
+                (dom_node *) scan->target))) {
             dom_node_unref((dom_node *) existing);
             return 3;
         }
@@ -8892,6 +8896,175 @@ PCORE_API int PCore_NodeInsertAdjacentHTMLById(HANDLE hDoc,
     }
     pcore_render_invalidate(doc);
     return 0;
+}
+
+/* Replace one live element with one parser-backed Element root.  Keeping the
+ * root count deliberately narrow avoids pretending that this API implements
+ * the context-sensitive HTML fragment algorithm; callers that need a list of
+ * nodes should use innerHTML/insertAdjacentHTML instead. */
+PCORE_API int PCore_NodeSetOuterHTMLById(HANDLE hDoc,
+        const char *element_id, const char *html)
+{
+    dom_document *doc;
+    dom_element *target;
+    dom_node *parent;
+    dom_node *root;
+    dom_node *next;
+    dom_node *replaced;
+    dom_node *removed;
+    dom_document_fragment *fragment;
+    dom_node_type parent_type;
+    dom_node_type root_type;
+    dom_string *id_name;
+    dom_exception err;
+    pcore_html_mutation_scan scan;
+    size_t length;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || element_id == NULL || element_id[0] == '\0' ||
+            html == NULL) {
+        return 1;
+    }
+    length = strlen(html);
+    if (length > PCORE_NODE_HTML_MUTATION_MAX_BYTES ||
+            !pcore_contenteditable_utf8_valid(html)) {
+        return 3;
+    }
+    target = pcore_element_by_id(doc, element_id);
+    if (target == NULL) {
+        return 2;
+    }
+    if (pcore_document_structural_token((dom_node *) target) != NULL) {
+        dom_node_unref((dom_node *) target);
+        return 2;
+    }
+    parent = NULL;
+    if (dom_node_get_parent_node((dom_node *) target, &parent) != DOM_NO_ERR ||
+            parent == NULL || dom_node_get_node_type(parent, &parent_type) !=
+            DOM_NO_ERR || parent_type != DOM_ELEMENT_NODE) {
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        dom_node_unref((dom_node *) target);
+        return 2;
+    }
+
+    fragment = NULL;
+    result = pcore_html_mutation_parse_fragment(doc, html, length,
+            &fragment);
+    if (result != 0 || fragment == NULL) {
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return result != 0 ? result : 1;
+    }
+
+    root = NULL;
+    if (dom_node_get_first_child((dom_node *) fragment, &root) !=
+            DOM_NO_ERR) {
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 1;
+    }
+    if (root == NULL) {
+        /* An empty outerHTML assignment removes the addressed element.  No
+         * parser tree or id scan is needed, and all failure checks happened
+         * before this single DOM operation. */
+        removed = NULL;
+        err = dom_node_remove_child(parent, (dom_node *) target, &removed);
+        if (removed != NULL) {
+            dom_node_unref(removed);
+        }
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        if (err == DOM_NO_ERR) {
+            pcore_render_invalidate(doc);
+            return 0;
+        }
+        if (err == DOM_HIERARCHY_REQUEST_ERR ||
+                err == DOM_WRONG_DOCUMENT_ERR || err == DOM_NOT_FOUND_ERR ||
+                err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+            return 2;
+        }
+        return 1;
+    }
+    if (dom_node_get_node_type(root, &root_type) != DOM_NO_ERR ||
+            root_type != DOM_ELEMENT_NODE) {
+        dom_node_unref(root);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 3;
+    }
+    next = NULL;
+    if (dom_node_get_next_sibling(root, &next) != DOM_NO_ERR) {
+        dom_node_unref(root);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 1;
+    }
+    if (next != NULL || pcore_element_name_is((dom_element *) root, "html") ||
+            pcore_element_name_is((dom_element *) root, "head") ||
+            pcore_element_name_is((dom_element *) root, "body")) {
+        if (next != NULL) {
+            dom_node_unref(next);
+        }
+        dom_node_unref(root);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 3;
+    }
+
+    memset(&scan, 0, sizeof(scan));
+    scan.doc = doc;
+    scan.target = target;
+    scan.allow_existing_inside_target = 1;
+    scan.allow_existing_target = 1;
+    id_name = NULL;
+    if (dom_string_create_interned((const uint8_t *) "id", 2, &id_name) !=
+            DOM_NO_ERR || id_name == NULL) {
+        dom_node_unref(root);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 1;
+    }
+    scan.id_name = id_name;
+    result = pcore_html_mutation_scan_fragment(&scan, fragment);
+    dom_string_unref(id_name);
+    scan.id_name = NULL;
+    pcore_html_mutation_scan_release(&scan);
+    if (result != 0) {
+        dom_node_unref(root);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return result;
+    }
+
+    replaced = NULL;
+    err = dom_node_replace_child(parent, (dom_node *) fragment,
+            (dom_node *) target, &replaced);
+    if (replaced != NULL) {
+        dom_node_unref(replaced);
+    }
+    dom_node_unref(root);
+    dom_node_unref((dom_node *) fragment);
+    dom_node_unref(parent);
+    dom_node_unref((dom_node *) target);
+    if (err == DOM_NO_ERR) {
+        pcore_render_invalidate(doc);
+        return 0;
+    }
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR || err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    return 1;
 }
 
 static int pcore_node_set_character_data_child_impl(HANDLE hDoc,

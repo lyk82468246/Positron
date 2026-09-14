@@ -280,6 +280,20 @@ PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
 PCORE_API int PCore_NodeInsertAdjacentHTMLById(HANDLE hDoc,
         const char *element_id, unsigned int position, const char *html);
 
+/* Replace one live element with a parser-backed UTF-8 HTML fragment. This
+ * bounded outerHTML surface accepts either one Element root or an empty
+ * string (which removes the target); top-level text/comment/multiple roots,
+ * document structure elements, duplicate ids and ids colliding outside the
+ * replaced subtree fail before mutation. The same byte/node/depth/direct-
+ * child limits as innerHTML apply. The old element and descendants become
+ * detached, while the new root is inserted at the same parent/index. Returns
+ * 0 on success, 2 when the target/parent/structure is unavailable, 3 for
+ * invalid UTF-8 or a bound/shape/id violation, and 1 for another parser/DOM
+ * failure. No script, resource fetch or DOM event dispatch is exposed; a
+ * successful update invalidates retained layout. */
+PCORE_API int PCore_NodeSetOuterHTMLById(HANDLE hDoc,
+        const char *element_id, const char *html);
+
 /* Replace the data of one direct Text child without changing the child list.
  * `parent_id` is a UTF-8 element id (or a supported document-structure token)
  * and `child_index` is the unfiltered childNodes index, so text/comment and

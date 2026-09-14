@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1238
+#define TEST_MAX_NUMBER 1239
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15277,6 +15277,32 @@ static int pcore_browser_script_dom_insert_adjacent_html(void *pw,
     return -1;
 }
 
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_dom_set_outer_html(void *pw,
+        const char *id, const char *html)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || id == NULL ||
+            html == NULL) {
+        return -1;
+    }
+    result = PCore_NodeSetOuterHTMLById(bridge->document, id, html);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
 static int pcore_browser_script_dom_set_child_text(void *pw,
         const char *parent_id, unsigned int child_index, const char *text)
 {
@@ -17277,7 +17303,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx9 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx10 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx12 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17445,6 +17471,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_set_inner_html;
     dom_write_callbacks.insert_adjacent_html =
             pcore_browser_script_dom_insert_adjacent_html;
+    dom_write_callbacks.set_outer_html =
+            pcore_browser_script_dom_set_outer_html;
     dom_write_callbacks.set_child_text =
             pcore_browser_script_dom_set_child_text;
     dom_write_callbacks.set_character_data_child =
@@ -17678,7 +17706,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx9(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx10(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx12(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -51016,14 +51044,14 @@ static BOOL test1236_browser_element_html_serialization_contract(void)
         "A &lt; B</span><!--note-->Z</div><p id='result'>idle</p></body></html>";
     static const char PROBE[] =
         "(function(){var e=document.getElementById('target'),raw,outer,"
-        "setterOk=0,outerSetterOk=0;raw=e.innerHTML;outer=e.outerHTML;"
+        "setterOk=0,outerInvalidRejected=0;raw=e.innerHTML;outer=e.outerHTML;"
         "try{e.innerHTML='mutate';setterOk=1;}catch(x){}"
-        "try{e.outerHTML='mutate';}catch(y){outerSetterOk=1;}"
+        "try{e.outerHTML='mutate';}catch(y){outerInvalidRejected=1;}"
         "document.getElementById('result').textContent=String("
         "raw==='<span title=\"q\">A &lt; B</span><!--note-->Z'&&"
         "outer==='<div id=\"target\" class=\"card\" data-x=\"a&amp;b\">"
         "<span title=\"q\">A &lt; B</span><!--note-->Z</div>'&&"
-        "setterOk&&outerSetterOk&&e.innerHTML==='mutate'&&"
+        "setterOk&&outerInvalidRejected&&e.innerHTML==='mutate'&&"
         "e.textContent==='mutate');})();";
     char error[768];
 
@@ -51037,8 +51065,8 @@ static BOOL test1236_browser_element_html_serialization_contract(void)
     show_info(L"TEST 1236 OK",
             "Element.innerHTML and outerHTML expose bounded serialization"
             " for live elements, escaping text and attributes; the basic"
-            " innerHTML setter and the read-only outerHTML setter are covered"
-            " here, with full replacement/error boundaries in TEST 1237.");
+            " innerHTML setter and an invalid outerHTML assignment are covered"
+            " here, with full outerHTML replacement/error boundaries in TEST 1239.");
     return TRUE;
 }
 
@@ -51352,6 +51380,161 @@ static BOOL test1238_browser_insert_adjacent_html_contract(void)
             " identity, refreshes Browser caches and rejects bad positions,"
             " structural targets, detached targets, duplicate ids, outside"
             " collisions and oversize input without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1239 - bounded parser-backed Element.outerHTML mutation. */
+static BOOL test1239_browser_element_outer_html_mutation_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='prefix'>P</div><div id='target'><i id='old'>old</i>"
+        "tail</div><div id='suffix'>Q</div><p id='outside'>O</p>"
+        "<p id='result'>idle</p></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='prefix'>P</div><div id='target'><i id='old'>old</i>"
+        "tail</div><div id='suffix'>Q</div><p id='outside'>O</p>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var t=document.getElementById('target'),old="
+        "document.getElementById('old'),p=t.parentNode,s=p.childNodes,oldChildren="
+        "t.childNodes,n,bad=0,ok=true,stable;"
+        "try{t.outerHTML='<section id=\"target\"><b id=\"new\">N</b>"
+        "tail2</section>';}catch(e){ok=false;}n=document.getElementById('target');"
+        "if(ok&&(n===null||n===t||n.parentNode!==p||p.childNodes[1]!==n||"
+        "n.firstElementChild.id!=='new'||n.textContent!=='Ntail2'||"
+        "document.getElementById('new')!==n.firstElementChild||t.parentNode!==null||"
+        "t.isConnected||old.parentNode!==null||old.isConnected||s.length!==5||"
+        "s[1]!==t||oldChildren.length!==2||oldChildren[0]!==old||"
+        "oldChildren[1].data!=='tail'))ok=false;stable=n.outerHTML;"
+        "try{n.outerHTML='<i id=\"outside\">bad</i>';}catch(e1){bad|=1;}"
+        "try{n.outerHTML='<i></i><b></b>';}catch(e2){bad|=2;}"
+        "if(ok&&(bad!==3||n.outerHTML!==stable||"
+        "document.getElementById('outside').textContent!=='O'))ok=false;"
+        "try{n.outerHTML='';}catch(e3){bad|=4;}if(ok&&(bad!==3||"
+        "document.getElementById('target')!==null||n.parentNode!==null||n.isConnected||"
+        "p.childNodes.length!==4||p.childNodes[1].id!=='suffix'||"
+        "p.textContent!=='PQOidle'))ok=false;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char BAD_UTF8[] = { (char) 0xc3, (char) 0x28, '\0' };
+    static const char EXPECTED_OUTER[] =
+        "<section id=\"target\"><b id=\"new\">N</b>tail2</section>";
+    char body_text[256];
+    char stable_text[256];
+    char outer_value[256];
+    char error[768];
+    int body_bytes;
+    int stable_bytes;
+    int outer_bytes;
+    int core_replace;
+    int core_conflict;
+    int core_duplicate;
+    int core_multiple;
+    int core_bad_utf8;
+    int core_structural;
+    int core_empty;
+    int core_too_large;
+    int core_after_replace;
+    int core_after_empty;
+    int core_after_empty_bytes;
+    int core_exists;
+    HANDLE core_doc;
+    char *too_large;
+
+    core_doc = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    too_large = (char *) malloc((size_t) PCORE_NODE_HTML_MUTATION_MAX_BYTES +
+            2U);
+    if (too_large != NULL) {
+        memset(too_large, 'x',
+                (size_t) PCORE_NODE_HTML_MUTATION_MAX_BYTES + 1U);
+        too_large[PCORE_NODE_HTML_MUTATION_MAX_BYTES + 1U] = '\0';
+    }
+    core_replace = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", EXPECTED_OUTER);
+    memset(outer_value, 0, sizeof(outer_value));
+    outer_bytes = 0;
+    core_after_replace = core_doc == NULL ? 1 : PCore_NodeRelationById(
+            core_doc, "target", PCORE_NODE_RELATION_ELEMENT_OUTER_HTML, 0,
+            outer_value, sizeof(outer_value), &outer_bytes, NULL);
+    memset(body_text, 0, sizeof(body_text));
+    body_bytes = 0;
+    if (core_doc != NULL) {
+        (void) PCore_NodeTextContentById(core_doc,
+                PCORE_DOCUMENT_BODY_TOKEN, body_text, sizeof(body_text),
+                &body_bytes);
+    }
+    core_conflict = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", "<article id='outside'>bad</article>");
+    core_duplicate = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", "<i id='dup'></i><b id='dup'></b>");
+    core_multiple = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", "<i></i><b></b>");
+    core_bad_utf8 = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", BAD_UTF8);
+    core_structural = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, PCORE_DOCUMENT_BODY_TOKEN, "<div>x</div>");
+    core_too_large = too_large == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", too_large);
+    memset(stable_text, 0, sizeof(stable_text));
+    stable_bytes = 0;
+    if (core_doc != NULL) {
+        (void) PCore_NodeTextContentById(core_doc,
+                PCORE_DOCUMENT_BODY_TOKEN, stable_text,
+                sizeof(stable_text), &stable_bytes);
+    }
+    core_empty = core_doc == NULL ? 1 : PCore_NodeSetOuterHTMLById(
+            core_doc, "target", "");
+    core_after_empty_bytes = 0;
+    core_after_empty = core_doc == NULL ? 1 : PCore_NodeTextContentById(
+            core_doc, PCORE_DOCUMENT_BODY_TOKEN, body_text,
+            sizeof(body_text), &core_after_empty_bytes);
+    core_exists = core_doc == NULL ? -1 : PCore_NodeExistsById(core_doc,
+            "target");
+    if (core_doc == NULL || too_large == NULL || core_replace != 0 ||
+            core_after_replace != 0 || outer_bytes != (int) strlen(EXPECTED_OUTER) ||
+            strcmp(outer_value, EXPECTED_OUTER) != 0 ||
+            strcmp(stable_text, "PNtail2QOidle") != 0 ||
+            body_bytes != (int) strlen("PNtail2QOidle") ||
+            core_conflict != 3 || core_duplicate != 3 || core_multiple != 3 ||
+            core_bad_utf8 != 3 || core_structural != 2 || core_too_large != 3 ||
+            core_empty != 0 || core_after_empty != 0 ||
+            strcmp(body_text, "PQOidle") != 0 ||
+            core_after_empty_bytes != (int) strlen("PQOidle") ||
+            core_exists != 0) {
+        if (core_doc != NULL) {
+            PCore_FreeDocument(core_doc);
+        }
+        if (too_large != NULL) {
+            free(too_large);
+        }
+        _snprintf(error, sizeof(error) - 1,
+                "Core replace=%d outer=%s outer_bytes=%d body=%s/%d"
+                " conflict=%d duplicate=%d multiple=%d utf8=%d structural=%d"
+                " size=%d empty=%d after=%s/%d exists=%d",
+                core_replace, outer_value, outer_bytes, stable_text,
+                body_bytes, core_conflict, core_duplicate, core_multiple,
+                core_bad_utf8, core_structural, core_too_large, core_empty,
+                body_text, core_after_empty_bytes, core_exists);
+        error[sizeof(error) - 1] = '\0';
+        show_error(L"TEST 1239 FAIL", error);
+        return FALSE;
+    }
+    PCore_FreeDocument(core_doc);
+    free(too_large);
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/element-outer-html", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1239 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1239 OK",
+            "Element.outerHTML now replaces or removes one live element"
+            " through a bounded parser-backed Core operation, preserving"
+            " parent order while detaching old wrappers and rejecting"
+            " conflicting, multi-root, structural and oversized input.");
     return TRUE;
 }
 
@@ -109577,6 +109760,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1236: ok = test1236_browser_element_html_serialization_contract(); break;
         case 1237: ok = test1237_browser_element_inner_html_mutation_contract(); break;
         case 1238: ok = test1238_browser_insert_adjacent_html_contract(); break;
+        case 1239: ok = test1239_browser_element_outer_html_mutation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

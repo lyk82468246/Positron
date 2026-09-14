@@ -141,8 +141,12 @@ write Ex8 在同一 document 中有界替换 direct children（16,384 字节、2
 元素 64 个 direct child），并在成功后保留目标身份、失效旧 wrapper 与 retained layout。
 同一 parser 边界的 `PCore_NodeInsertAdjacentHTMLById` 和 Browser write Ex9 还在四个相邻
 位置插入片段，保持目标/既有节点身份并刷新受影响 snapshot；重复/冲突 id、非法 UTF-8、
-未知/超限节点 fail closed。outerHTML setter、clone snapshot、通用 DocumentFragment、
-context-sensitive parser、mutation event 和资源执行仍不在边界内。
+未知/超限节点 fail closed。Browser write Ex10 另由
+`PCore_NodeSetOuterHTMLById` 以一个 Element 根替换目标或以空字符串移除目标，保留原父级/
+索引并让旧目标及后代 wrapper detached；重复/冲突 id、非法 UTF-8、顶层文本/Comment、
+多根和超限输入同样在 mutation 前拒绝。三条 HTML mutation 路径都不执行 script、不抓取
+资源、不派发 mutation event；clone snapshot、通用 DocumentFragment 和 context-sensitive
+parser 仍不在边界内。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接
