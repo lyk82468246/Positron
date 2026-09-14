@@ -306,16 +306,17 @@ Browser 不自主执行 `autofocus`。宿主在 Core layout/native
 ### DOM、表单与 validation adapters
 
 Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks 映射 Core 的 DOM、
-form/event/navigation 查询与 mutation。Browser 负责参数、脚本对象形状、错误映射与
-同步 dispatch。
+form/event/navigation 查询与 mutation。Browser 负责参数、对象形状、错误映射与 dispatch。
 
 `Element.innerHTML`/`outerHTML` 是 HTML 投影；`innerHTML` setter（Ex8 →
 `PCore_NodeSetInnerHTMLById`）、`insertAdjacentHTML()`（Ex9）和 `outerHTML` setter
 （Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
 outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
-wrapper/snapshot，失败不变。三条路径拒绝顶层文本、多根、结构元素、重复/外部 id、非法
-UTF-8 或超限输入；不执行脚本、资源或 mutation 事件。clone、DocumentFragment、
-context-sensitive parser 和完整脚本语义仍不支持。
+wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
+不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 提供四个以内
+primitive Text staging；Element append/prepend/insert/replace 与
+CharacterData replaceWith 可消费它。existing node、nested fragment、mixed/clone 和
+context-sensitive parser 均 fail closed。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
 在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；
@@ -454,16 +455,15 @@ Ex10–Ex12 的 callbacks 接入现有 CharacterData 的
 `insertBefore()`/`appendChild()`/`replaceChild()`；Ex12 让 element target 通过
 `PCore_NodeReplaceElementChildWithCharacterDataById` 支持
 `replaceChild(characterData, oldElement)`/`Element.replaceWith(characterData)`。Browser
-预检连接、类型、索引和容量，成功后更新 owner/snapshot；错误输入 fail closed，旧 ABI 不变。
+预检连接、类型、索引和容量，成功后更新 owner/snapshot；错误输入 fail closed。
 
-CharacterData 的 `before()`/`after()` 和单节点 `replaceWith()` 复用 Ex10/Ex11，接受一个
-已连接 Text/Comment/CDATA；支持同父/跨父、identity 和两侧 snapshot。混合节点/primitive
-列表、fragment、detached source、元素和其他对象仍 fail closed。
+CharacterData 的 `before()`/`after()`/`replaceWith()` 接受连接中的 Text/Comment/CDATA 或
+text-only `DocumentFragment`，支持同父/跨父。混合节点/primitive 列表、nested/invalid
+fragment、detached、元素和对象 fail closed。
 
 `append()`/`prepend()` 校验后按序处理零至四个 primitive/element；`insertAdjacentText()`、
 `insertAdjacentElement()` 和 `insertAdjacentHTML()` 覆盖四位置，分别创建 Text、移动
-element 或把 UTF-8 fragment 交给 Core。错误参数、detached、冲突 id 或超限 fail closed；
-宿主负责重排/重绘。
+element 或把 UTF-8 fragment 交给 Core；错误参数、detached、冲突 id 或超限 fail closed。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
@@ -471,10 +471,8 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 `wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
-write Ex7 的 `insert_text_child_list`（通过
-`PBrowser_ScriptSessionRegisterDomWriteCallbacksEx7` 注册）支持 element/CharacterData
-relative `before()`/`after()` 的 2–4 primitive Text 列表。
-`Node.cloneNode(deep)` 有 64 子节点/256 总节点预算；超限或不支持类型 fail closed。
+write Ex7 的 `insert_text_child_list` 支持 element/CharacterData relative
+`before()`/`after()` 的 2–4 primitive Text 列表；`cloneNode` 超限或不支持类型 fail closed。
 
 ### `dialog` 生命周期
 

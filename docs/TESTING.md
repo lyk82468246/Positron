@@ -938,6 +938,16 @@ direct-child、UTF-8 和 id 预算沿用 TEST1237/1238；重复 id、与旧目�
 拒绝和空 setter 移除。设备门选择 `1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、
 完成后清理和 crash check 均通过。
 
+TEST1240 覆盖 Browser-owned text-only `DocumentFragment` staging。夹具验证
+`createDocumentFragment()` 的 nodeType/名称/owner、空 child list、primitive `append()`/
+`prepend()`、fragment `textContent`、子节点 parent/数据、`removeChild()`、最多四个
+Text child 预算，以及 Element 的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/
+`replaceChild()`/`replaceWith()` 和 CharacterData `replaceWith()` 的一次性消费。成功的
+Core text-list mutation 之后 fragment 才清空；静态 snapshot 与既有 wrapper identity 保持，
+existing element、mixed argument、nested fragment、第五个 child 和其他非 text 形态在提交前
+fail closed。该路径不解析 HTML、不新增 Core ABI、不派发事件或资源；设备门选择
+`TEST1240,1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -139,8 +139,10 @@
   和 wrapper owner 更新。成功 mutation 使 layout 失效，UTF-16/UTF-8、detached、结构 token、
   错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/`prepend()`
   （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
-  遵循各自 callback 合同。Node/DocumentFragment、通用 mutation/observer 和 live collection
-  未实现。
+  遵循各自 callback 合同。Browser 另提供最多四个 primitive Text 的 text-only
+  `DocumentFragment` staging，并在 Element/CharacterData 消费成功后清空；existing node、
+  nested fragment、mixed/clone 和 HTML parser context fail closed。通用 Node mutation、
+  observer 和 live collection 未实现。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
@@ -148,7 +150,8 @@
   成功使 layout 失效，不执行 script、不抓取资源、不派发事件。`PCore_NodeSetOuterHTMLById`/
   Ex10 另以单一 Element 根替换目标或以空字符串移除目标，保留原父级/索引并让旧目标及
   后代 wrapper detached；它同样预检重复/外部冲突 id、非法 UTF-8、顶层文本/Comment、
-  多根和超限输入。clone、通用 DocumentFragment 和 context-sensitive parser 仍未实现。
+  多根和超限输入。Core 仍不暴露 DocumentFragment ABI；Browser 仅支持上述 text-only
+  staging，通用 fragment、clone insertion 和 context-sensitive parser 仍未实现。
   三条路径的预算与错误合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
@@ -521,9 +524,9 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1239 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1240 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex12 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
-  UTF-16、parser-backed HTML mutation 和 retained-layout 边界；逐项合同见
+  UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging 和 retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

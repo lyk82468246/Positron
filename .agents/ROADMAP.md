@@ -132,8 +132,10 @@ Ex10 再为 Text/Comment/CDATA 的 `Node.insertBefore()`/`appendChild()` 提供�
 CharacterData 同父/跨父替换，Ex12 再让 element target 用现有 CharacterData 完成
 `replaceChild()`/`replaceWith()`；next794 又让 CharacterData 的 `before()`/`after()` 和单节点
 `replaceWith()` 复用 Ex10/Ex11，支持同父/跨父 existing-node relative mutation。Core 按
-source/target 未过滤索引提交，旧 Ex10 及更早 ABI 布局不变。DocumentFragment、通用节点替换/删除、mutation 事件、observer 和 live collection 仍需由真实页面
-缺口驱动，不能从窄路径外推。
+source/target 未过滤索引提交，旧 Ex10 及更早 ABI 布局不变。next799 在 Browser 增加
+最多四个 primitive Text 的 text-only `DocumentFragment` staging，并复用现有 text-list
+mutation；通用节点/fragment、observer 和 live collection 仍需由真实页面缺口驱动，不能
+从窄路径外推。
 
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
@@ -145,8 +147,8 @@ write Ex8 在同一 document 中有界替换 direct children（16,384 字节、2
 `PCore_NodeSetOuterHTMLById` 以一个 Element 根替换目标或以空字符串移除目标，保留原父级/
 索引并让旧目标及后代 wrapper detached；重复/冲突 id、非法 UTF-8、顶层文本/Comment、
 多根和超限输入同样在 mutation 前拒绝。三条 HTML mutation 路径都不执行 script、不抓取
-资源、不派发 mutation event；clone snapshot、通用 DocumentFragment 和 context-sensitive
-parser 仍不在边界内。
+资源、不派发 mutation event；Core 不暴露 fragment ABI，Browser 只支持 text-only staging；
+clone insertion、通用 DocumentFragment 和 context-sensitive parser 仍不在边界内。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接

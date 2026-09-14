@@ -66,9 +66,9 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 固定离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/
-  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1239 覆盖
+  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1240 覆盖
   normalize、clone/equality、Text/CharacterData、Ex2–Ex12 insertion/replacement 和
-  bounded HTML getter/setter/insertAdjacentHTML/outerHTML；
+  bounded HTML getter/setter/insertAdjacentHTML/outerHTML、text-only DocumentFragment；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -471,7 +471,7 @@ TEST1213 验证 Core/Browser 的有界文本结构 mutation：Ex6 callback 将�
 `childNodes` 的末尾或零位创建一个新的 Text 节点。自动断言覆盖 Core 的插入/索引错误码、
 父级文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和
 超过四值请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture
-和断言；已有节点 reparent、DocumentFragment/Node 插入、文本节点删除、事件、
+和断言；已有节点 reparent、通用 DocumentFragment/Node 插入、文本节点删除、事件、
 MutationObserver 和 live collection 仍不在该门内。
 
 TEST1214 验证 Core/Browser 的有界 `Text.remove()`：Ex2 mutation callback 将连接中
@@ -536,10 +536,11 @@ Ex12 到 Core；对象、detached、错 parent/类型和越界由 Browser/Core �
 TEST1235 覆盖 Text/Comment/CDATA 的 `before()`/`after()`/`replaceWith()`，含同/跨父、
 identity/snapshot、detached、`textContent` 和无效 source fail-closed；宿主只接 callback。
 
-TEST1236–1239 覆盖 bounded HTML getter/setter、parser replacement、四位置
-`insertAdjacentHTML` 和 `outerHTML` replacement/removal。宿主只注册 Ex8–Ex10、安排重排
-并断言 Core/Browser；预算、id/编码、结构、detached、超限和 snapshot fail closed，
-script/资源/事件/DocumentFragment 不由 test_host 实现。
+TEST1236–1240 覆盖 bounded HTML getter/setter、parser replacement、四位置
+`insertAdjacentHTML` 和 `outerHTML` replacement/removal；TEST1240 覆盖 Browser-owned
+text-only `DocumentFragment` staging、消费顺序、child/snapshot identity、四子节点上限和
+失败原子性。宿主只注册既有 callbacks、安排重排并断言 Core/Browser；通用 fragment、
+script/资源/事件不由 test_host 实现。
 
 ### Native EDIT/SELECT/button/file
 

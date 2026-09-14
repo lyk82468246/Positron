@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1239
+#define TEST_MAX_NUMBER 1240
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -51535,6 +51535,99 @@ static BOOL test1239_browser_element_outer_html_mutation_contract(void)
             " through a bounded parser-backed Core operation, preserving"
             " parent order while detaching old wrappers and rejecting"
             " conflicting, multi-root, structural and oversized input.");
+    return TRUE;
+}
+
+/* TEST 1240 - bounded text-only DocumentFragment staging and insertion. */
+static BOOL test1240_browser_document_fragment_text_contract(void)
+{
+    static const char HTML_STAGE[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><i id='keep'>K</i></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_STAGE[] =
+        "(function(){var t=document.getElementById('target'),keep="
+        "document.getElementById('keep'),snap=t.childNodes,f,f2,f3,f4,f5,f6,ret,"
+        "bad=0,ok=true;"
+        "f=document.createDocumentFragment();if(!f||f.nodeType!==11||"
+        "f.nodeName!=='#document-fragment'||f.parentNode!==null||"
+        "f.parentElement!==null||f.isConnected||f.childNodes.length!==0||"
+        "f.children.length!==0)ok=false;"
+        "f.append('A','B');if(f.childNodes.length!==2||f.textContent!=='AB'||"
+        "f.firstChild.data!=='A'||f.lastChild.data!=='B'||"
+        "f.firstChild.parentNode!==f)ok=false;"
+        "ret=t.append(f);if(ret!==undefined||f.childNodes.length!==0||"
+        "f.textContent!==''||t.textContent!=='KAB'||snap.length!==1||"
+        "snap[0]!==keep)ok=false;"
+        "f2=document.createDocumentFragment();f2.textContent='C';"
+        "t.prepend(f2);if(f2.childNodes.length!==0||t.textContent!=='CKAB'||"
+        "t.childNodes[0].data!=='C')ok=false;"
+        "f3=document.createDocumentFragment();f3.append('X','Y');"
+        "ret=t.insertBefore(f3,keep);if(ret!==f3||f3.childNodes.length!==0||"
+        "t.textContent!=='CXYKAB'||t.childNodes[3]!==keep)ok=false;"
+        "f4=document.createDocumentFragment();try{f4.appendChild(keep);}"
+        "catch(e1){bad|=1;}if(bad!==1||f4.childNodes.length!==0||"
+        "keep.parentNode!==t)ok=false;"
+        "f5=document.createDocumentFragment();f5.append('Z');"
+        "try{t.append(f5,'W');}catch(e2){bad|=2;}"
+        "if(bad!==3||f5.textContent!=='Z'||t.textContent!=='CXYKAB')ok=false;"
+        "try{f5.append(document.createDocumentFragment());}catch(e3){bad|=4;}"
+        "if(bad!==7||f5.textContent!=='Z')ok=false;"
+        "f6=document.createDocumentFragment();f6.append('1','2','3','4');"
+        "try{f6.append('5');}catch(e4){bad|=8;}"
+        "if(bad!==15||f6.textContent!=='1234')ok=false;"
+        "ret=t.appendChild(f6);if(ret!==f6||f6.childNodes.length!==0||"
+        "t.textContent!=='CXYKAB1234'||snap.length!==1||snap[0]!==keep)ok=false;"
+        "document.getElementById('result').textContent=String(ok);})();";
+    static const char HTML_REPLACE[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><i id='keep'>K</i>tail</div>"
+        "<span id='replace'>R</span><p id='result'>idle</p></body></html>";
+    static const char PROBE_REPLACE[] =
+        "(function(){var t=document.getElementById('target'),keep="
+        "document.getElementById('keep'),r=document.getElementById('replace'),"
+        "result=document.getElementById('result'),snap=t.childNodes,q,txt,f7,f4,ret,ok=true;"
+        "q=document.createDocumentFragment();q.append('R','S');q.removeChild(q.firstChild);"
+        "if(q.textContent!=='S'||q.firstChild.parentNode!==q){ok=false;}"
+        "ret=t.replaceChild(q,keep);if(ret!==keep||q.childNodes.length!==0||"
+        "keep.parentNode!==null||keep.isConnected||t.textContent!=='Stail'){ok=false;}"
+        "txt=t.childNodes[1];if(!txt||txt.nodeType!==3||txt.parentNode!==t){ok=false;}"
+        "f7=document.createDocumentFragment();f7.append('D','E');"
+        "ret=txt.replaceWith(f7);if(ret!==undefined||f7.childNodes.length!==0||"
+        "t.textContent!=='SDE'||t.childNodes[1].data!=='D'||"
+        "t.childNodes[2].data!=='E'){ok=false;}"
+        "f4=document.createDocumentFragment();f4.textContent='Q';if(!r.parentNode||r.parentNode!==document.body){ok=false;}"
+        "ret=r.replaceWith(f4);"
+        "if(ret!==undefined||f4.childNodes.length!==0||r.parentNode!==null||"
+        "document.getElementById('replace')!==null||document.body.textContent!=='SDEQidle'){ok=false;}"
+        "if(snap.length!==2||snap[0]!==keep||snap[1].data!=='tail'||"
+        "snap[0].parentNode!==null||result.parentNode===null){ok=false;}"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-text-stage", HTML_STAGE,
+            PROBE_STAGE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1240 FAIL", error);
+        return FALSE;
+    }
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-text-replace", HTML_REPLACE,
+            PROBE_REPLACE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1240 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1240 OK",
+            "Browser now exposes a bounded text-only DocumentFragment"
+            " staging path: primitive text can be appended, prepended,"
+            " inserted before a live child, appended to an element or"
+            " consumed by replaceChild/replaceWith and CharacterData"
+            " replacement. Fragment children are consumed only after the"
+            " Core text-list mutation succeeds; existing nodes, nested"
+            " fragments, mixed arguments and the fifth child fail closed.");
     return TRUE;
 }
 
@@ -109761,6 +109854,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1237: ok = test1237_browser_element_inner_html_mutation_contract(); break;
         case 1238: ok = test1238_browser_insert_adjacent_html_contract(); break;
         case 1239: ok = test1239_browser_element_outer_html_mutation_contract(); break;
+        case 1240: ok = test1240_browser_document_fragment_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
