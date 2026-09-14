@@ -144,11 +144,19 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   失败返回 `1`。成功返回 `0`，新根占据原父级和 childNodes 索引，旧目标及后代变为 detached，
   retained layout 失效；不执行 script、不获取资源、不派发事件，调用方必须重新
   style/layout/paint。
-- Browser 的 text-only `DocumentFragment` staging 不新增 Core ABI：Browser 只把最多四个
-  primitive UTF-8 Text 值交给现有的 `PCore_NodeInsertTextChildListById`、
-  `PCore_NodeReplaceElementChildWithTextListById` 或
-  `PCore_NodeReplaceCharacterDataChildWithTextListById` 原子入口。Core 不接收 fragment
-  handle，也不 reparent existing node、解析 HTML 或派发 mutation 事件。
+- `PCore_NodeReplaceChildrenWithTextListById` 是 Element 子节点列表的有界原子替换入口：
+  Core 在同一 document fragment 中先创建 0–4 个 UTF-8 Text，再把旧 direct children
+  暂存后一次提交；输入总字节数最多 16,384，目标缺失或 document/head/body 结构 token
+  返回 `2`，非法 UTF-8、空指针、列表或字节超限返回 `3`，其他 DOM/分配失败返回 `1`。
+  成功返回 `0`、保持目标 Element 身份并使 retained layout 失效；失败恢复旧子树，不
+  reparent existing node、派发事件、执行资源或暴露 fragment handle。
+- Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
+  只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
+  `PCore_NodeReplaceElementChildWithTextListById`、
+  `PCore_NodeReplaceCharacterDataChildWithTextListById` 或上述
+  `PCore_NodeReplaceChildrenWithTextListById` 原子入口。fragment 只在成功消费后清空；
+  existing node、nested fragment、mixed/clone、HTML parser context 和 mutation 事件
+  仍不属于 Core ABI。
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档

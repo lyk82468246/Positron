@@ -131,7 +131,7 @@
 - IDL reflection、namespace、observer、range、shadow DOM 不支持。
 - Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、CharacterData
   setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`，
-  Ex2/Ex3 的 Text/Comment/CDATA direct-child removal，以及 Ex4–Ex12 的 existing-element/
+  Ex2/Ex3 的 Text/Comment/CDATA direct-child removal，以及 Ex4–Ex13 的 existing-element/
   CharacterData insertion、replacement 和 relative text。Ex10 按未过滤 `childNodes` 索引移动
   现有 Text/Comment/CDATA，Ex11 用另一个现有 CharacterData 替换 direct child，Ex12 用已
   连接的 CharacterData 替换 direct element child；next794 让 CharacterData 的 relative
@@ -142,7 +142,10 @@
   遵循各自 callback 合同。Browser 另提供最多四个 primitive Text 的 text-only
   `DocumentFragment` staging，并在 Element/CharacterData 消费成功后清空；existing node、
   nested fragment、mixed/clone 和 HTML parser context fail closed。通用 Node mutation、
-  observer 和 live collection 未实现。
+  observer 和 live collection 未实现。Ex13 的 `Element.replaceChildren()` 只接受 0–4 个
+  primitive 文本或一个 text-only fragment；Core 以 16,384 UTF-8 字节总预算原子替换
+  direct children，目标结构 token、对象、mixed/nested fragment、超限和 callback 缺失
+  均 fail closed，失败保留旧树和 fragment。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
@@ -524,9 +527,10 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1240 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
-  Ex4–Ex12 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
-  UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging 和 retained-layout 边界；逐项合同见
+- TEST1201–1241 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+  Ex4–Ex13 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
+  UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
+  `Element.replaceChildren()` 和 retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

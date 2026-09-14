@@ -1174,6 +1174,42 @@ typedef struct PBrowserScriptDomMutationCallbacksEx12 {
         replace_element_child_with_character_data;
 } PBrowserScriptDomMutationCallbacksEx12;
 
+/* Extended DOM mutation table. Ex12 remains ABI-fixed for existing hosts;
+ * Ex13 appends an atomic bounded Element.replaceChildren() adapter. `parent_id`
+ * is borrowed UTF-8, `texts` points to zero to four borrowed UTF-8 strings
+ * valid only for the synchronous call, and a zero count clears the direct
+ * child list. The callback must replace the complete child list with newly
+ * created Text nodes, returning >0 after success, 0 when the element or
+ * operation is unavailable and <0 on adapter failure. The host must
+ * re-query and schedule style/layout/paint after success. Existing nodes,
+ * fragments, parser context and mutation events remain outside this
+ * callback. */
+typedef int (*PBrowserScriptReplaceElementChildrenWithTextListFn)(void *pw,
+        const char *parent_id, const char *const *texts,
+        unsigned int text_count);
+typedef struct PBrowserScriptDomMutationCallbacksEx13 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptRemoveChildFn remove_child;
+    PBrowserScriptRemoveTextChildFn remove_text_child;
+    PBrowserScriptRemoveCharacterDataChildFn remove_character_data_child;
+    PBrowserScriptInsertChildFn insert_child;
+    PBrowserScriptReplaceChildFn replace_child;
+    PBrowserScriptInsertChildAtFn insert_child_at;
+    PBrowserScriptReplaceChildWithTextFn replace_child_with_text;
+    PBrowserScriptReplaceChildWithTextListFn replace_child_with_text_list;
+    PBrowserScriptReplaceCharacterDataWithTextListFn
+        replace_character_data_with_text_list;
+    PBrowserScriptInsertCharacterDataChildAtFn
+        insert_character_data_child_at;
+    PBrowserScriptReplaceCharacterDataChildFn
+        replace_character_data_child;
+    PBrowserScriptReplaceElementChildWithCharacterDataFn
+        replace_element_child_with_character_data;
+    PBrowserScriptReplaceElementChildrenWithTextListFn
+        replace_element_children_with_text_list;
+} PBrowserScriptDomMutationCallbacksEx13;
+
 /* Typed host adapter for the bounded single-element contenteditable
  * boundary. The browser DLL owns the JSON bridge and `isContentEditable`
  * property; the host reads effective state and performs a plain-text Core
@@ -2540,6 +2576,9 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx11(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx12(
         HANDLE hSession,
         const PBrowserScriptDomMutationCallbacksEx12 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacksEx13(
+        HANDLE hSession,
+        const PBrowserScriptDomMutationCallbacksEx13 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomMutationCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterContentEditableCallbacks(

@@ -8654,6 +8654,132 @@ static int pcore_html_mutation_restore_children(dom_element *target,
     return err == DOM_NO_ERR ? 0 : 1;
 }
 
+PCORE_API int PCore_NodeReplaceChildrenWithTextListById(HANDLE hDoc,
+        const char *parent_id, const char *const *texts,
+        unsigned int text_count)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_document_fragment *fragment;
+    dom_document_fragment *stash;
+    dom_string *content;
+    dom_text *new_text;
+    dom_node *inserted;
+    dom_node_type parent_type;
+    dom_exception err;
+    size_t total_bytes;
+    size_t bytes;
+    unsigned int i;
+    int result;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            text_count > PCORE_NODE_REPLACE_CHILDREN_TEXT_LIST_MAX ||
+            (text_count > 0 && texts == NULL)) {
+        return 1;
+    }
+    total_bytes = 0;
+    for (i = 0; i < text_count; i++) {
+        if (texts[i] == NULL || !pcore_contenteditable_utf8_valid(texts[i])) {
+            return 3;
+        }
+        bytes = strlen(texts[i]);
+        if (bytes > PCORE_NODE_REPLACE_CHILDREN_TEXT_MAX_BYTES ||
+                total_bytes > PCORE_NODE_REPLACE_CHILDREN_TEXT_MAX_BYTES -
+                bytes) {
+            return 3;
+        }
+        total_bytes += bytes;
+    }
+    doc = (dom_document *) hDoc;
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) parent, &parent_type) !=
+            DOM_NO_ERR || parent_type != DOM_ELEMENT_NODE ||
+            pcore_document_structural_token((dom_node *) parent) != NULL) {
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    fragment = NULL;
+    err = dom_document_create_document_fragment(doc, &fragment);
+    if (err != DOM_NO_ERR || fragment == NULL) {
+        if (fragment != NULL) {
+            dom_node_unref((dom_node *) fragment);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    for (i = 0; i < text_count; i++) {
+        content = NULL;
+        if (dom_string_create((const uint8_t *) texts[i], strlen(texts[i]),
+                &content) != DOM_NO_ERR || content == NULL) {
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        new_text = NULL;
+        err = dom_document_create_text_node(doc, content, &new_text);
+        dom_string_unref(content);
+        if (err != DOM_NO_ERR || new_text == NULL) {
+            if (new_text != NULL) {
+                dom_node_unref((dom_node *) new_text);
+            }
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+        inserted = NULL;
+        err = dom_node_append_child((dom_node *) fragment,
+                (dom_node *) new_text, &inserted);
+        if (inserted != NULL) {
+            dom_node_unref(inserted);
+        }
+        dom_node_unref((dom_node *) new_text);
+        if (err != DOM_NO_ERR) {
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    stash = NULL;
+    err = dom_document_create_document_fragment(doc, &stash);
+    if (err != DOM_NO_ERR || stash == NULL) {
+        if (stash != NULL) {
+            dom_node_unref((dom_node *) stash);
+        }
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    result = pcore_html_mutation_stash_children(parent, stash);
+    if (result != 0) {
+        (void) pcore_html_mutation_restore_children(parent, stash);
+        dom_node_unref((dom_node *) stash);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    inserted = NULL;
+    err = dom_node_append_child((dom_node *) parent,
+            (dom_node *) fragment, &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (err != DOM_NO_ERR) {
+        (void) pcore_html_mutation_restore_children(parent, stash);
+        dom_node_unref((dom_node *) stash);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    dom_node_unref((dom_node *) stash);
+    dom_node_unref((dom_node *) fragment);
+    dom_node_unref((dom_node *) parent);
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
 PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
         const char *element_id, const char *html)
 {

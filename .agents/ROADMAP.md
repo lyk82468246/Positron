@@ -134,8 +134,10 @@ CharacterData 同父/跨父替换，Ex12 再让 element target 用现有 Charact
 `replaceWith()` 复用 Ex10/Ex11，支持同父/跨父 existing-node relative mutation。Core 按
 source/target 未过滤索引提交，旧 Ex10 及更早 ABI 布局不变。next799 在 Browser 增加
 最多四个 primitive Text 的 text-only `DocumentFragment` staging，并复用现有 text-list
-mutation；通用节点/fragment、observer 和 live collection 仍需由真实页面缺口驱动，不能
-从窄路径外推。
+mutation；next800 再以 Ex13 和 `PCore_NodeReplaceChildrenWithTextListById` 提供
+`Element.replaceChildren()` 的 0–4 primitive Text 或单 fragment 原子替换，成功后才
+消费 fragment，失败保留旧 direct children。通用节点/fragment、observer 和 live collection
+仍需由真实页面缺口驱动，不能从窄路径外推。
 
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
@@ -157,7 +159,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next801）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

@@ -30,7 +30,7 @@ if (PBrowser_HistoryEntryScroll(history, entry_index,
 }
 ```
 
-新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只决定条目语义，不请求 URL、创建窗口或持久化；宿主在页面提交后才 commit，失败候选不得污染 history。
+新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState` 与 history traversal 保留已有 snapshot，`pushState` 的新 entry 从零开始，history 达到上限裁剪时 snapshot 与 URL/state 一起移动。History 只管理条目；宿主负责页面提交，失败候选不得污染 history。
 
 浏览器脚本的 `history.scrollRestoration` 初始为 `auto`，也可以设为
 `manual`。Browser 通过 `PBrowser_ScriptSessionGetScrollRestoration()` 把这项
@@ -315,28 +315,26 @@ outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
 不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 提供四个以内
 primitive Text staging；Element append/prepend/insert/replace 与
-CharacterData replaceWith 可消费它。existing node、nested fragment、mixed/clone 和
-context-sensitive parser 均 fail closed。
+CharacterData replaceWith 可消费它；`Element.replaceChildren()` 还通过 mutation Ex13
+把 0–4 个 primitive Text（或一个仅含这些 Text 的 fragment）交给 Core 的原子子节点列表
+替换入口。fragment 仅在 Core 成功后清空，旧 direct children 的 wrapper/snapshot 会被
+标记为 detached；existing node、nested fragment、mixed/clone 和 context-sensitive
+parser 均 fail closed。
 
-`<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展。宿主
-在 form callbacks 之后注册 `PBrowserScriptOptionCallbacks`，将选择状态转给 Core；
-`selected` 遵守单选互斥/多选规则，`defaultSelected` 只改默认基线。`value`/`label`
-读取显式 attribute，缺失时回退到 option 文本，`text` 读写该纯文本；mutation 会反映
-到后续读取和 `select.value`，空 attribute 与缺失可区分。未注册、非 option、无效 id 或
-callback/mutation 失败均 fail closed。
+`<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
+注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
+`value`/`label` 缺失时回退到 option 文本，`text` 写入纯文本。未注册、非 option、无效
+id 或 callback/mutation 失败均 fail closed。
 
 `select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 由 Browser
 提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；
 getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
 最多遍历 256 个节点、返回 64 个 option；缺少稳定 id 的元素不投影，也没有 live collection/popup。
 
-`Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation。`input`、
-`select`、`textarea`、`button`、`fieldset`、`img`、`object`、`output` 默认归最近祖先 form；
-有 `form="id"` 时解析对应 form，支持 form 外的关联元素；空值或无效目标无 owner，不回退祖先。
-`form.elements` 只投影 listed 元素（fieldset/object/output 会出现）；img 仅有 owner，不进
-集合、successful-control、提交或 FormData。`option` 沿最多 64 层 `parentElement` 找所属
-`select` 并复用其 form，嵌套 optgroup、显式 form 和 mutation 均可反映，找不到时返回 `null`。
-`elements` 每次读取都是有界 DOM 顺序 snapshot。
+`Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation：支持控件默认归
+最近祖先 form，`form="id"` 可关联 form 外元素，空/无效目标不回退。`form.elements` 按
+DOM 顺序 snapshot 投影 listed 元素（fieldset/object/output 会出现，img 仅有 owner）；
+`option` 沿最多 64 层父链定位所属 select。完整 live collection 不在契约内。
 
 `select.type` 按 live `multiple` 返回只读的 `select-one`/`select-multiple`；
 `optgroup.label` 反映 `label`（缺失为 `''`），`option.label` 保留文本 fallback 并随 mutation
@@ -457,13 +455,17 @@ Ex10–Ex12 的 callbacks 接入现有 CharacterData 的
 `replaceChild(characterData, oldElement)`/`Element.replaceWith(characterData)`。Browser
 预检连接、类型、索引和容量，成功后更新 owner/snapshot；错误输入 fail closed。
 
-CharacterData 的 `before()`/`after()`/`replaceWith()` 接受连接中的 Text/Comment/CDATA 或
-text-only `DocumentFragment`，支持同父/跨父。混合节点/primitive 列表、nested/invalid
-fragment、detached、元素和对象 fail closed。
+Ex13 的 `replace_element_children_with_text_list` 接入
+`PCore_NodeReplaceChildrenWithTextListById`，实现 `Element.replaceChildren()` 的有界文本
+子树替换。Browser 先完成参数/fragment/容量预检，再用一个 `{count,text0..text3}`
+JSON 请求提交；0 个值清空 direct children，单个 text-only fragment 在成功后消费。Core
+负责旧子树暂存、完整 Text 列表创建和失败恢复，宿主只在成功 callback 后安排重排/重绘；
+结构 token、对象、混合 fragment、existing node 和 callback 缺失均 fail closed。Ex13 只
+追加字段，Ex12 及更旧表布局保持不变。
 
-`append()`/`prepend()` 校验后按序处理零至四个 primitive/element；`insertAdjacentText()`、
-`insertAdjacentElement()` 和 `insertAdjacentHTML()` 覆盖四位置，分别创建 Text、移动
-element 或把 UTF-8 fragment 交给 Core；错误参数、detached、冲突 id 或超限 fail closed。
+CharacterData 的 `before()`/`after()`/`replaceWith()` 以及 Element 的
+`append()`/`prepend()`/`insertAdjacent*()` 只承诺上面描述的有界 Text/element 路径；
+混合或 nested fragment、detached、对象、冲突 id 和超限输入均 fail closed。
 
 `textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
 各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
@@ -471,8 +473,8 @@ Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界�
 `wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
 并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
 
-write Ex7 的 `insert_text_child_list` 支持 element/CharacterData relative
-`before()`/`after()` 的 2–4 primitive Text 列表；`cloneNode` 超限或不支持类型 fail closed。
+write Ex7 的 `insert_text_child_list` 负责 relative 2–4 primitive Text 列表；`cloneNode`
+超限或不支持类型 fail closed。
 
 ### `dialog` 生命周期
 

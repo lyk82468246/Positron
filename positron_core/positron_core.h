@@ -241,6 +241,23 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
 
+/* Replace all direct children of one live element with a bounded list of
+ * newly-created UTF-8 Text nodes. `texts` contains zero to four borrowed
+ * strings; a zero count clears the child list and may pass NULL. The complete
+ * list is built in a same-document DocumentFragment and committed after the
+ * existing children are stashed, so validation/allocation/DOM failure does
+ * not leave a partial replacement. Returns 0 after success, 2 when the
+ * element is absent or a document-structure token, 3 for invalid UTF-8 or a
+ * byte/list bound violation, and 1 for another DOM failure. A successful
+ * replacement invalidates retained layout; callers must re-query and style/
+ * layout/paint again. This primitive does not reparent existing nodes,
+ * dispatch events, execute resources or expose the fragment to callers. */
+#define PCORE_NODE_REPLACE_CHILDREN_TEXT_LIST_MAX 4u
+#define PCORE_NODE_REPLACE_CHILDREN_TEXT_MAX_BYTES 16384u
+PCORE_API int PCore_NodeReplaceChildrenWithTextListById(HANDLE hDoc,
+        const char *parent_id, const char *const *texts,
+        unsigned int text_count);
+
 /* Replace one live element's child list with a UTF-8 HTML fragment. The
  * parser-backed operation is deliberately bounded: input is limited to
  * PCORE_NODE_HTML_MUTATION_MAX_BYTES, the fragment to

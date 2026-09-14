@@ -10,7 +10,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next799 设备证据见“最新有效设备证据”；更早传输失败只
+最新 next800 设备证据见“最新有效设备证据”；更早传输失败只
 保留在 Git 历史和 `docs/history/`，不作为通过依据。
 
 - next790–next794 完成 primitive/mixed replacement、existing-node insertion 和
@@ -40,10 +40,16 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   replaceWith 一次性消费；成功后才清空 fragment，existing node、nested fragment、mixed/
   clone 与 HTML parser context fail closed。TEST1240 覆盖 node 形状、child 数据、静态
   snapshot、消费顺序、容量和失败原子性。
+- next800 在 Core 增加 `PCore_NodeReplaceChildrenWithTextListById`，并由 Browser mutation
+  Ex13 暴露 `Element.replaceChildren()`：0–4 个 primitive Text 或一个 text-only fragment
+  先完整预检，再以 Core 的暂存/回滚路径原子替换全部 direct children；fragment 只在成功
+  后清空，旧子树 wrapper/snapshot 变为 detached。目标结构 token、对象、mixed/nested
+  fragment、超限和 callback 缺失 fail closed。TEST1241 覆盖空列表、字符串化、fragment
+  消费、旧 snapshot 及失败原子性。
 - 设备门复用 WMDC GUI 当前唯一 RAPI 会话；超时进程需在设备端正常结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1240。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1240,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1241。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1241,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -61,8 +67,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   宿主只拥有 WM、线程、网络、native 控件、页面策略、fixture 与断言。
 - DOM 结构 mutation 已覆盖 direct-element removal、文本/Comment/CDATA、normalize、clone/
   equality、existing-element insertion/replacement、relative/mixed `replaceWith()`，以及
-  parser-backed `innerHTML`、四位置 `insertAdjacentHTML`、单根 `outerHTML` replacement 和
-  Browser text-only `DocumentFragment` staging。
+  parser-backed `innerHTML`、四位置 `insertAdjacentHTML`、单根 `outerHTML` replacement、
+  Browser text-only `DocumentFragment` staging 和 Ex13 `Element.replaceChildren()`。
   每项合同、上限和未实现边界见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - Browser script session 仍由宿主显式推进；宿主不创建脚本线程，也不复制 URL、DOM、Event、
   表单、图像或生命周期业务语义。
@@ -76,13 +82,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next799
+  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next800
   依次补齐多值 append/prepend、CharacterData relative、`replaceWith(...values)`、
   relative/mixed 列表、CharacterData `replaceWith`、insertion、existing-node replacement
   以及 element-to-CharacterData replacement、CharacterData existing-node relative mutation、
   Element HTML serialization、parser-backed `innerHTML` replacement、四位置
-  `insertAdjacentHTML`、单根 `outerHTML` replacement/removal 和 text-only
-  `DocumentFragment` staging。
+  `insertAdjacentHTML`、单根 `outerHTML` replacement/removal、text-only
+  `DocumentFragment` staging 和 `Element.replaceChildren()`。
   稳定合同和逐测试
   说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
@@ -188,17 +194,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1240。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1240,999`。
+- `TEST_MAX_NUMBER`：1241。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1241,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260914-105412-next798-final6` 是当前基线：Debug ARMV4I，选择
-`1239,1236,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、`crash_check`
-均 PASS，新增 dump=0。目标存储与内部 store 预检均通过，部署使用 `\Storage Card`，日志复制
-完成后移除了当前目录；本批无需视觉人工步骤。
+`tmp/device-runs/20260914-143224-next800` 是当前基线：Debug ARMV4I，选择
+`1239,1240,1241,999`，4/4 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
+`crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后
+移除了当前目录；本批无需视觉人工步骤。
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
 `FAILED_EXPERIMENTS.md` 与本地 `tmp/`，不能替代当前基线。设备门不会把只有启动头或不完整日志
@@ -233,66 +239,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - TEST1201–1202 是离线的 Browser/Core direct-element removal 与文本内容 mutation 夹具；
   自动门已证明直接子节点关系、旧/新 wrapper 与 collection snapshot、detached no-op 以及
   Core retained-layout invalidation。逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1203–1206 是离线的 Text/Comment/CDATA CharacterData 夹具；自动门已证明 setter、
-  四个 mutator、`substringData()` 的 UTF-16 范围、wrapper/snapshot、detached 与
-  retained-layout 边界，并验证 Ex2 的 Core 错误码。它们不覆盖通用结构 mutation、
-  observer/live collection 或 native/OEM 视觉，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1207–1215 是离线的 Browser/Core CharacterData 与受限结构 mutation 夹具，覆盖
-  `Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`、clone/equality、
-  单值文本 `append()`/`prepend()`、`Text.remove()` 和 `Element.removeChild(Text)`。
-  自动门已证明 ABI callback、UTF-16/UTF-8 边界、wrapper 与旧 snapshot 身份、detached
-  快照、Core layout invalidation 及错误输入 fail closed；暂无新增立即人工风险，逐项合同见
-  [`docs/TESTING.md`](../docs/TESTING.md)。通用 Node/DocumentFragment（text-only staging
-  除外）、超出 existing-element
-  有界约束的 reparent、其他删除、MutationObserver、完整 live collection 和 native/OEM 文本
-  视觉仍未实现或需人工观察。
-- TEST1216 是离线的 Core/Browser Comment CharacterData removal 夹具，暂无新增立即人工
-  风险；自动门证明 Ex3 mutation callback 携带未过滤索引和节点类型 8，
-  `PCore_NodeRemoveCharacterDataChildById` 删除 direct Comment，Browser 返回原 wrapper、
-  刷新父级 snapshot、保留 detached `data`/`nodeValue`，并对错误 parent、重复 detached、
-  Text/CDATA 类型不匹配和非法节点类型 fail closed。节点类型 4（CDATA）沿用同一公共
-  API/ABI 路径，当前 HTML fixture 不伪造 CDATA 节点；通用 Node/DocumentFragment、
-  超出有界元素约束的 reparent、其他删除、MutationObserver、完整 live collection 和
-  native/OEM 文本视觉仍未实现或需人工观察。
-- TEST1217 是离线的 Core/Browser existing-element insertion 夹具，覆盖同父
-  `insertBefore()` 重排、跨父 `insertBefore()` 迁移、`appendChild()` 追加、返回值和
-  新旧父级 collection snapshot/文本刷新；自动门也验证 self、Text、错误 reference、
-  缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，暂无新增
-  立即人工风险；DocumentFragment、非 direct-child reference、通用节点插入和完整
-  live collection 仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1218 是离线的 Core/Browser existing-element replacement 夹具，覆盖跨父/同父
-  `replaceChild()`、`replaceWith()`、同节点 no-op、返回与 detached wrapper、旧 snapshot
-  保持、受影响父级 collection/文本刷新和空元素 `textContent`；自动门也验证 Text、self、
-  错误 parent、缺失 child 等输入 fail closed 且不产生部分结构修改。该路径是有界元素合同，
-  暂无新增立即人工风险；DocumentFragment、Comment/CDATA、通用节点替换、完整 live
-  collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1219–1231 是离线的 Core/Browser existing-element/CharacterData Ex6–Ex9 夹具，覆盖
-  `append()`/`prepend()`、`before()`/`after()`、`insertAdjacent*()`、CharacterData relative
-  primitive、单值及 2–4 值 primitive `replaceWith()`、relative Text 列表和 element relative
-  mixed 列表和 `replaceWith` mixed 列表；TEST1231 另验证 CharacterData 的 primitive
-  `replaceWith()` 原子替换、Comment removal 和失败前置检查。自动门验证顺序、wrapper
-  identity、旧 snapshot、父级 textContent、detached、对象/节点、越界、超限和 UTF-8 错误的
-  fail-closed 边界。该路径暂无新增立即人工风险；DocumentFragment、通用节点 mutation、
-  完整 live collection 和 native/视觉行为仍未实现，逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1232–1235 是 Ex10–Ex12 CharacterData 结构夹具：覆盖现有节点的
-  `insertBefore()`/`appendChild()`/`replaceChild()`、relative `before()`/`after()`/
-  单节点 `replaceWith()` 同父与跨父、element target→CharacterData replacement、
-  identity/snapshot、owner、textContent 及错误 reference/object/self/type/index；Core 与
-  Browser 均拒绝部分 mutation。CDATA 共享 ABI，无 HTML fixture。自动门选
-  `1235,1234,1233,999` 并回归相邻路径；暂无新增人工风险。TEST1236 验证 Core relation
-  51/52 的 live Element HTML serialization、转义、无 id 后代和有界 fail closed；TEST1237
-  另验证同一 document 的 parser-backed `innerHTML` replacement、
-  target identity、old wrapper detached、duplicate/outside id、invalid UTF-8、oversize 和
-  empty replacement；TEST1238 验证四位置 `insertAdjacentHTML`、目标/静态 snapshot identity、
-  新 id lookup、结构/ detached/重复/外部冲突、非法 UTF-8、超限和空片段。自动门选择
-  `1236,1237,1238,999` 已通过，无新增人工风险。TEST1239 验证 Ex10 的
-  `outerHTML` 单根替换/空移除、原父级索引、目标/子树/父级 snapshot、同 id 重新寻址、
-  失败原子性、结构/重复/外部冲突、非法 UTF-8 和超限输入；设备门选择 `1239,999` 已
-  通过，无新增立即人工风险。其余边界见 `KNOWN_LIMITATIONS.md`。
+- TEST1203–1239 的 CharacterData、existing-node、HTML parser 和 Ex10–Ex12 结构夹具
+  已通过自动门验证 UTF-16/UTF-8、wrapper/snapshot、owner、detached、错误输入及
+  retained-layout 失效；逐项合同和历史选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，
+  本文件不重复维护。通用节点、observer、完整 live collection、CDATA fixture 和
+  native/OEM 视觉仍不在该自动门范围。
 - TEST1240 设备门选择 `1240,1239,999` 已通过：两个独立 Browser session 分别验证
   text-only fragment staging/append/prepend/insert 和 element/CharacterData replacement，
   fragment 只在成功 mutation 后清空；日志完整，双空间预检、完成后清理、crash check 均
   PASS，新增 dump=0，无需人工视觉步骤。
+- TEST1241 与相邻 TEST1240/1239 一起由 `next800` 设备门验证：0–4 个 primitive、单个
+  text-only fragment、空列表、字符串化、旧 snapshot/detached 和结构/对象/混合输入的
+  fail-closed 均通过；Ex13 callback 使用 Core 暂存/回滚，fragment 仅在成功后消费。该门
+  选择 `1241,1240,1239,999`，4/4 PASS，日志完整，双空间预检、完成后清理和 crash check
+  均 PASS，新增 dump=0，无需人工视觉步骤。
 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
@@ -361,7 +321,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-在网络稳定时从 compatibility corpus、源码或用户页面固定 next800 的一个产品缺口；新批次仍须
+在网络稳定时从 compatibility corpus、源码或用户页面固定 next801 的一个产品缺口；新批次仍须
 把可复用语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、

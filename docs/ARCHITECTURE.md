@@ -182,6 +182,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   支持同父重排与跨父迁移，Core 以一次 `dom_node_replace_child` 保留新节点 identity 并使
   retained layout 失效。Browser 的 Ex12 callback 负责旧/新 wrapper 的 owner、detached
   状态和两侧 snapshot；不派发事件、不暴露 fragment 或 live collection；
+- `PCore_NodeReplaceChildrenWithTextListById` 在同一边界原子替换一个带 id Element 的
+  全部 direct children。Core 先在同一 document fragment 中创建 0–4 个 UTF-8 Text，
+  再把旧子树暂存并一次提交；总文本最多 16,384 字节。目标缺失或 document/head/body
+  结构 token 返回 `2`，非法 UTF-8、空指针、列表/字节超限返回 `3`，其他 DOM/分配失败
+  返回 `1`；失败恢复旧子树，成功返回 `0` 并使 retained layout 失效。它不 reparent
+  existing node、不派发事件、不执行资源，也不向调用方暴露 fragment handle；Browser
+  通过 Ex13 负责参数、wrapper/snapshot 和 fragment 消费，宿主只安排后续重排/重绘；
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -227,10 +234,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   原父级与 childNodes 索引；空字符串移除目标。Browser 标记旧目标/后代 wrapper 为 detached，
   刷新父级与 id cache，宿主安排后续 style/layout/paint。顶层文本/Comment、多根、结构元素、
   重复/外部冲突 id、非法或超限输入在提交前拒绝；不执行 script、不抓取资源、不派发事件；
-- Browser 的 `document.createDocumentFragment()` 是一个不改变 Core ABI 的 text-only staging
+- Browser 的 `document.createDocumentFragment()` 是 Browser-owned 的 text-only staging
   对象：最多四个 primitive Text 值由 Browser 在类型、长度和容量通过后，复用现有 text-list
-  insert/replace primitive 一次性消费。它不向 Core 暴露 fragment handle；existing node、
-  nested fragment、mixed/clone 和 HTML parser context 均 fail closed。
+  insert/replace primitive 或 Ex13 的 `PCore_NodeReplaceChildrenWithTextListById` 一次性
+  消费。它不向 Core 暴露 fragment handle；fragment 仅在成功 mutation 后清空，existing
+  node、nested fragment、mixed/clone 和 HTML parser context 均 fail closed。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
@@ -453,6 +461,15 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   旧 element，更新两侧 owner/index 与 snapshot。对象、element-to-element、detached、错
   parent、错类型和越界均 fail closed；Ex12 只追加字段，Ex11 及更旧 callback table 的布局
   和语义保持不变。
+- `Element.replaceChildren()` 通过 Ex13 追加的
+  `PBrowserScriptDomMutationCallbacksEx13.replace_element_children_with_text_list` 接入
+  `PCore_NodeReplaceChildrenWithTextListById`。Browser 只接受 0–4 个 primitive 文本，或
+  一个仅含这些 Text 的 Browser-owned fragment；先预检类型、fragment 活性和容量，再以
+  一次 JSON 列表请求替换全部 direct children。成功后清空 fragment、标记旧子树 wrapper
+  为 detached 并刷新 receiver snapshot；Core 负责原子提交/回滚和 retained-layout
+  invalidation，宿主只负责 callback 接线及重排/重绘。对象、mixed/nested fragment、
+  existing node、结构 token、超限和 callback 缺失 fail closed；Ex13 只追加字段，旧表
+  布局保持不变。
 - CharacterData wrapper 的相对 `before()`/`after()` 以及单节点 `replaceWith()` 复用 Ex10
   的 existing-node insertion 和 Ex11 的 replacement callback。Browser 只接受一个已连接的
   Text/CDATA/Comment source，按 direct parent 和未过滤位置完成同父重排或跨父迁移，保留
@@ -827,6 +844,9 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   Ex10 再追加 existing CharacterData 的 `insertBefore`/`appendChild` move callback，Ex11
   追加 existing CharacterData 的 `replaceChild` callback，Ex12 再追加 element target 到
   existing CharacterData 的 `replaceChild`/`replaceWith` callback；
+  Ex13 再追加 element target 的 `replaceChildren()` text-list callback，接入 Core 的
+  原子 direct-children replacement。每个 Ex 版本只在结构尾部追加字段，旧注册入口继续
+  把新增字段设为 `NULL`，因此 Ex12 及更旧 callback table 的布局和语义不变；
   element relative 的 mixed `before()`/`after()` 不新增 callback table，
   而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用
   Ex5–Ex7，旧布局不变；相对 primitive 文本、
