@@ -159,6 +159,14 @@
   插入、CharacterData 移动、Text setter 和删除入口，不新增 Core ABI 或 detached handle；
   64 个 direct child、65,535 个脚本字符、generic Node、DocumentFragment、含
   element/fragment 的混合 append 和其他动态树语义仍 fail closed。
+- `document.createElement(tag)` 目前是 Browser-owned 的有界 detached Element staging：标签
+  只接受小写化后的 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），必须在物化前设置
+  非空且唯一 id；每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个
+  direct Text child。Ex11 通过既有 `__pcoreSetText` slot 调用 Core 创建入口，Element 只能
+  插入到 live Element，并在 remove/reinsert/id rename 后保留 wrapper/alias identity。没有
+  通用 detached Core handle、嵌套 Element、DocumentFragment、事件、资源、observer 或
+  完整 live collection；结构标签、重复/无 id、错误 parent/reference 和超限输入 fail
+  closed，宿主仍负责后续 style/layout/paint，视觉/触摸/SIP 结果不由该门保证。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
@@ -540,11 +548,12 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1244 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1245 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与
-  Ex15 typed CharacterData）以及 detached `document.createTextNode()` 的插入/数据/生命周期，和
+  Ex15 typed CharacterData）、detached `document.createTextNode()` 的插入/数据/生命周期，
+  以及 detached `document.createElement()` 的物化、属性/Text staging、identity/lifecycle，和
   retained-layout 边界；逐项合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

@@ -170,6 +170,16 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   `PCore_NodeSetTextChildById`，移除复用 `PCore_NodeRemoveTextChildById`。这些入口仍只
   操作 Core DOM、按既有容量/错误码提交并使 retained layout 失效，不保存脚本 wrapper、
   不暴露 fragment，也不改变公共 ABI。
+- `PCore_NodeCreateElementChildAtById(hDoc, parent_id, tag_name, element_id,
+  child_index)` 是 Browser detached Element 的唯一 Core 物化入口。它要求可寻址的已连接
+  Element（包括 `body`）、非空且全局唯一的 UTF-8 `element_id`，按未过滤 `childNodes`
+  索引创建并插入一个只有 `id` 属性、没有子节点的 Element；`child_index` 等于当前
+  child count 时追加。`tag_name` 最多 32 个字节，id 最多 255 个字节；空值、重复 id、
+  结构 token、不可用父级/索引和非法 DOM 名称 fail closed。返回 `0` 表示成功，`2` 表示
+  目标/名称/索引不可用，`3` 表示非法 UTF-8 或超出边界，`1` 表示其他 DOM/分配失败。
+  成功会使 retained layout 失效，调用方必须重新 style/layout/paint；Core 不保存 detached
+  handle，不创建子节点/其他属性，不派发事件、不执行 script、不抓取资源，也不暴露
+  DocumentFragment。Browser 后续通过既有 attribute/Text callbacks 填充有界状态。
 - Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
   只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
   `PCore_NodeReplaceElementChildWithTextListById`、

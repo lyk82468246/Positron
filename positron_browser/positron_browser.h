@@ -47,6 +47,9 @@ extern "C" {
 #define PBROWSER_SCRIPT_DIALOG_VALUE_MAX 1024
 #define PBROWSER_SCRIPT_DIALOG_ID_MAX 1024
 #define PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX 1024
+#define PBROWSER_SCRIPT_CREATE_ELEMENT_TAG_MAX 32
+#define PBROWSER_SCRIPT_CREATE_ELEMENT_ID_MAX 255
+#define PBROWSER_SCRIPT_CREATE_ELEMENT_ATTRIBUTE_MAX 64
 #define PBROWSER_SCRIPT_INTERACTION_STATE_MAX 16
 #define PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_BEGIN 1U
 #define PBROWSER_SCRIPT_ADJACENT_HTML_AFTER_BEGIN 2U
@@ -867,6 +870,35 @@ typedef struct PBrowserScriptDomWriteCallbacksEx10 {
     PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
     PBrowserScriptSetOuterHTMLFn set_outer_html;
 } PBrowserScriptDomWriteCallbacksEx10;
+
+/* Extended HTML write table. Ex10 remains ABI-fixed; Ex11 appends the
+ * bounded Core-owned document.createElement materialization adapter, reusing
+ * the existing `__pcoreSetText` native JSON slot. The
+ * callback creates one Element with a required unique id and inserts it at
+ * an unfiltered childNodes index. `parent_id`, `tag_name` and `element_id`
+ * are borrowed UTF-8 for the synchronous call. The new Element has no
+ * children or attributes beyond its id; callers may use the existing
+ * attribute/Text write bridges afterward. No generic detached Node or
+ * DocumentFragment is exposed by this boundary. */
+typedef int (*PBrowserScriptCreateElementChildAtFn)(void *pw,
+        const char *parent_id, const char *tag_name,
+        const char *element_id, unsigned int child_index);
+typedef struct PBrowserScriptDomWriteCallbacksEx11 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
+    PBrowserScriptSetInnerHTMLFn set_inner_html;
+    PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
+    PBrowserScriptSetOuterHTMLFn set_outer_html;
+    PBrowserScriptCreateElementChildAtFn create_element_child_at;
+} PBrowserScriptDomWriteCallbacksEx11;
 
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
@@ -2634,6 +2666,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx9(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx9 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx10(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx10 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx11 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

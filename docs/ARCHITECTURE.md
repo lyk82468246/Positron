@@ -213,6 +213,15 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `appendData()`、`remove()`、`cloneNode()`、父级/兄弟/root 查询同步其 detached 或
   connected 状态。最多 64 个 direct child、单值最多 65,535 个脚本字符；通用 Node、
   DocumentFragment、含 element/fragment 的混合 append 及其他动态树语义继续 fail closed。
+- `PCore_NodeCreateElementChildAtById(hDoc, parent_id, tag_name, element_id,
+  child_index)` 是 Browser detached Element 的唯一 Core 物化入口。它只接受已连接的
+  live Element（包括 body）作为父级、合法且不重复的非空 UTF-8 id，以及未过滤
+  `childNodes` 中的插入索引；索引等于当前数量时表示追加。Core 创建一个只带 id、没有
+  子节点和其他属性的新 Element，成功返回 `0` 并使 retained layout 失效；结构 token、
+  重复/空 id、非法名称/UTF-8、越界或超限输入按既有错误码 fail closed。Browser write
+  Ex11 负责 detached wrapper、属性和 direct Text staging，宿主只接 callback 与后续
+  style/layout/paint；不暴露通用 detached Core handle、Fragment、嵌套 Element、事件、
+  资源或 observer 语义。
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -363,6 +372,15 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   同一 parser，在四个位置插入片段。成功后 Browser 刷新有界 wrapper/snapshot 并交给
   宿主安排 style/layout/paint；`outerHTML` setter 由 Ex10 调用同一 parser，完成单根替换或
   空字符串移除；clone snapshot、fragment、未知节点和超预算输入保持 fail closed；
+- `document.createElement(tag)` 是 Browser-owned 的 detached Element staging。Browser 将标签
+  规范化为小写，仅接受 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），拒绝
+  `html`/`head`/`body`；wrapper 在物化前本地保存最多 64 个 attribute（每个值最多
+  65,535 个脚本字符）和最多 64 个 direct Text child，并要求非空、唯一的 id。向 live
+  Element 的 `appendChild()`/`insertBefore()`/`append()`/`prepend()` 通过 DOM write Ex11
+  复用 `__pcoreSetText` slot，调用 Core `PCore_NodeCreateElementChildAtById` 按未过滤
+  `childNodes` 索引创建空 Element，再同步 staged 属性/Text。移除、重插入和 id rename
+  保留 wrapper/alias identity；嵌套 Element、Fragment、通用 detached Core handle、事件、
+  资源和 observer 不属于该边界。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
@@ -870,9 +888,11 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   direct Text-child callback，Ex7 追加 2–4 primitive Text 列表 callback，Ex8 追加
   `Element.innerHTML` 的 `set_inner_html` callback，Ex9 再追加四位置
   `Element.insertAdjacentHTML` 的 `insert_adjacent_html` callback，Ex10 再追加
-  `Element.outerHTML` 的 `set_outer_html` callback；所有版本都复用旧的
-  `__pcoreSetText` native slot。旧的 `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex9 布局
-  和既有语义保持不变。
+  `Element.outerHTML` 的 `set_outer_html` callback，Ex11 再追加
+  `document.createElement()` 的 `create_element_child_at` callback；所有版本都复用旧的
+  `__pcoreSetText` native slot。Ex11 只在结构尾部追加字段，旧的
+  `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex10 布局和既有语义保持不变；旧注册入口会
+  将新增字段置为 `NULL`。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加

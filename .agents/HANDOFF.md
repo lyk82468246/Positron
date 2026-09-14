@@ -10,31 +10,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next802 设备证据见“最新有效设备证据”；更早传输失败只保留在 Git 历史和
+最新 next804 设备证据见“最新有效设备证据”；更早传输失败只保留在 Git 历史和
 `docs/history/`，不作为通过依据。
 
-- next790–next794 完成 primitive/mixed replacement、existing-node insertion 和
-  CharacterData relative mutation；TEST1220–1235 覆盖顺序、snapshot、detached、错误
-  child/reference、越界和超限，HTML 夹具不伪造 CDATA 节点。
-- next795 加入 Element 的只读 `innerHTML`/`outerHTML`：Core relation 51/52 完整遍历含无
-  id 后代的有界子树并负责 HTML escaping，Browser 提供 live getter。
-- next796 在该边界增加 parser-backed `innerHTML` setter：Core 的
-  `PCore_NodeSetInnerHTMLById` 在同一 document 中解析并原子替换 direct children，限制
-  16,384 字节、256 节点、64 层和每个元素 64 个 direct child；只接受 Element/Text/
-  Comment/CDATA，重复 id 或与替换子树外冲突的 id 在 mutation 前拒绝。目标保持身份，
-  Browser Ex8 使旧的有界 wrapper/snapshot 失效，成功后由宿主安排 style/layout/paint；
-  TEST1236/1237 覆盖 getter、setter、identity、detached 和 fail-closed 合同；通用
-  DocumentFragment 仍未实现。
-- next797 在同一 parser-backed 边界增加 `PCore_NodeInsertAdjacentHTMLById` 与 Browser
-  write Ex9，支持四个相邻位置；目标、既有节点和静态 snapshot 保持身份，新增 id 在
-  提交前检查冲突，失败不产生部分 mutation。TEST1238 覆盖位置、缓存刷新及结构/
-  detached/超限/非法 UTF-8 边界。
-- next798 在同一 parser-backed 边界增加 `PCore_NodeSetOuterHTMLById` 与 Browser write
-  Ex10：输入必须产生单一 Element 根，空字符串移除目标；成功在原父级和 childNodes 索引
-  原子替换，旧目标及后代 wrapper detached，父级/id cache 与 retained layout 失效。重复/
-  外部冲突 id、顶层文本/Comment、多根、结构元素、非法 UTF-8 和超限输入在 mutation 前
-  fail closed；不执行 script、不抓取资源、不派发事件。TEST1239 覆盖 Core 错误码、目标/
-  子树/父级 snapshot、同 id 重新寻址、失败后内容不变和空 setter 移除。
+- next790–next798 已完成有界 DOM/CharacterData insertion/replacement、HTML serialization、
+  parser-backed `innerHTML`/`insertAdjacentHTML`/`outerHTML` 与相应 identity、snapshot、
+  detached、错误输入和容量门；每条路径都由 Core 原子提交并保持无事件/资源副作用，
+  通用 DocumentFragment 仍未实现。逐批细节和 TEST1220–1239 证据由 Git 历史保存。
 - next799 在 Browser 增加不新增 Core ABI 的 text-only `DocumentFragment` staging：最多四个
   primitive Text 可通过 append/prepend、Element 的 insert/append/replace 和 CharacterData
   replaceWith 一次性消费；成功后才清空 fragment，existing node、nested fragment、mixed/
@@ -65,10 +47,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   primitive/created Text 的有界 `append()`/`prepend()`、数据更新、`remove()`、重插入和
   detached `cloneNode()`，不新增 Core ABI。TEST1244 覆盖 identity、snapshot、兄弟/root/
   connection、数据同步、失败引用和生命周期；next803 设备门已通过。
+- next804 根据 NetSurf compatibility corpus 中现有的 `document.createElement()` 用法，
+  在 Core 增加 `PCore_NodeCreateElementChildAtById`，在 Browser 以 DOM write Ex11 复用
+  `__pcoreSetText` native slot。detached Element 先在 Browser 保存标签、唯一 id、本地
+  attribute 和 direct Text，随后按未过滤 `childNodes` 索引通过 Core 物化；wrapper identity
+  在 remove/reinsert/id rename 后保持。TEST1245 覆盖节点形状、owner/root、属性/Text
+  同步、失败原子性与容量边界；不支持通用 detached Core handle、嵌套 Element 或
+  DocumentFragment，next804 专门设备门已通过。
 - 设备门复用 WMDC GUI 当前唯一 RAPI 会话；超时进程需在设备端正常结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1244。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1244,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1245。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1245,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -103,14 +92,15 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next803
+  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next804
   依次补齐多值 append/prepend、CharacterData relative、`replaceWith(...values)`、
   relative/mixed 列表、CharacterData `replaceWith`、insertion、existing-node replacement
   以及 element-to-CharacterData replacement、CharacterData existing-node relative mutation、
   Element HTML serialization、parser-backed `innerHTML` replacement、四位置
   `insertAdjacentHTML`、单根 `outerHTML` replacement/removal、text-only
   `DocumentFragment` staging、Ex13 文本/fragment、Ex14 同父 mixed、Ex15 node-aware
-  `Element.replaceChildren()` 和 next803 detached `Text` creation/insertion。
+  `Element.replaceChildren()`、next803 detached `Text` creation/insertion，以及 next804
+  detached `Element` creation、属性/Text staging、Core 物化与 identity/lifecycle。
   稳定合同和逐测试
   说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
   为准。
@@ -216,18 +206,17 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1244。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1244,999`。
+- `TEST_MAX_NUMBER`：1245。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1245,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260914-173539-next803` 是当前基线：Debug ARMV4I，选择
-`1244,1243,1242,1239,999`，5/5 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后
-清理、`crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署
-完成后移除了当前目录；本批无需视觉人工步骤。专门的 `1244,999` 证据另见
-`tmp/device-runs/20260914-173504-next803`。
+`tmp/device-runs/20260914-213137-next804` 是当前基线：Debug ARMV4I，选择
+`1244,1245,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、`crash_check`
+均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后移除了当前目录；
+本批无需视觉人工步骤。
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
 `FAILED_EXPERIMENTS.md` 与本地 `tmp/`，不能替代当前基线。设备门不会把只有启动头或不完整日志
@@ -292,6 +281,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   移除和再次插入均通过；无效节点/reference fail-closed。专门门选择 `1244,999`，2/2 PASS；
   随后相邻门选择 `1244,1243,1242,1239,999`，5/5 PASS。两次日志均完整，双空间预检、
   完成后清理和 crash check 均 PASS，新增 dump=0；本批没有视觉人工步骤。
+- TEST1245 由 next804 设备门验证：`document.createElement()` 的 detached Element
+  staging、属性/direct Text 同步、唯一 id 物化、未过滤 `childNodes` 插入位置、remove/
+  reinsert/id rename 后的 wrapper/alias identity，以及无 id、结构标签、嵌套 Element、
+  Fragment 和超限输入的 fail-closed 合同。专门门选择 `1245,999`，2/2 PASS；日志完整，
+  双空间预检、完成后清理和 crash check 均 PASS，新增 dump=0；本批没有视觉人工步骤。
 
 ## 当前未决风险
 
@@ -359,8 +353,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-基于 compatibility corpus、源码或用户页面选择 next804 的一个产品缺口；next803 的 detached
-`document.createTextNode()` 路径和 TEST1244 已完成并通过设备门。新批次仍须把可复用
+基于 compatibility corpus、源码或用户页面选择 next805 的一个产品缺口；next804 的 detached
+`document.createElement()` 路径和 TEST1245 已完成并通过设备门。新批次仍须把可复用
 语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、

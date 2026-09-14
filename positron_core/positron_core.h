@@ -474,6 +474,25 @@ PCORE_API int PCore_NodeInsertElementChildAtById(HANDLE hDoc,
         const char *parent_id, const char *child_id,
         unsigned int child_index);
 
+/* Create one new HTML Element and insert it at an unfiltered childNodes
+ * index. `parent_id`, `tag_name` and `element_id` are borrowed UTF-8; the
+ * parent must be a connected, addressable Element and `element_id` must be
+ * non-empty and unique in the document. The new Element starts with no
+ * children or attributes beyond its id, so callers may add bounded attributes
+ * and Text children through the other Core primitives. `child_index` may
+ * equal the current child count to append. Document structure tokens, empty
+ * or malformed names, duplicate ids and unavailable parents/indices return
+ * 2; malformed UTF-8 or length/name bounds return 3; other DOM/allocation
+ * failures return 1. A successful insertion invalidates retained layout;
+ * callers must re-query and style/layout/paint before using geometry. No
+ * events, script execution, resource fetches or fragment exposure are part
+ * of this primitive. */
+#define PCORE_NODE_CREATE_ELEMENT_TAG_MAX 32u
+#define PCORE_NODE_CREATE_ELEMENT_ID_MAX 255u
+PCORE_API int PCore_NodeCreateElementChildAtById(HANDLE hDoc,
+        const char *parent_id, const char *tag_name,
+        const char *element_id, unsigned int child_index);
+
 /* Move one existing connected CharacterData child at an unfiltered
  * childNodes index. `source_parent_id`/`source_index` identify a direct
  * Text, CDATA or Comment child and `target_parent_id`/`target_index` identify

@@ -153,6 +153,15 @@ Browser-owned detached Text：节点先在脚本侧保留数据、owner/index、
 `cloneNode()`；通用 Node、DocumentFragment、含 element/fragment 的混合 append 和其他动态
 树语义仍 fail closed。TEST1244 已用 Debug ARMV4I 设备门验证，未新增 Core ABI。
 
+next804 根据同一 compatibility corpus 中的 `document.createElement()` 用法补齐一个有界的
+Browser-owned detached Element staging。Core 新增 `PCore_NodeCreateElementChildAtById`，
+Browser 以 DOM write Ex11 复用既有 `__pcoreSetText` native slot；wrapper 在物化前保存
+标签、唯一 id、本地 attribute 和 direct Text，成功后按未过滤 `childNodes` 索引由 Core
+创建空 Element，再同步 staged 数据。remove/reinsert/id rename 保留 wrapper/alias identity；
+嵌套 Element、通用 detached Core handle、DocumentFragment、事件/资源/observer 不在边界内。
+TEST1245 与 `1245,999` Debug ARMV4I 设备门验证节点形状、属性/Text、生命周期、失败原子性
+和容量限制。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -173,7 +182,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next804）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next805）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

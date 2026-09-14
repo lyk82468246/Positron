@@ -300,6 +300,18 @@ element、错类型/越界 CharacterData、nested fragment、clone 和 context-s
 `document.createTextNode()` 创建 Text；插入、数据 mutation、移除、重插入、
 clone 复用 Core callbacks；通用 Node/fragment 不支持。
 
+`document.createElement(tag)` 提供一个 Browser-owned 的 detached Element staging 路径。标签名
+先规范化为小写，只接受 ASCII `[a-z][a-z0-9-]*` 且不超过 32 个 UTF-8 字节；`html`、`head`
+和 `body` 不能创建。新 Element 必须先设置非空且唯一的 id，才能通过
+`appendChild()`、`insertBefore()`、`append()` 或 `prepend()` 物化到带 id 的 live Element；
+插入位置按未过滤 `childNodes` 索引解释，省略索引时追加。每个 detached Element 最多保存
+64 个本地 attribute（值最多 65,535 个脚本字符）和 64 个 direct Text child；属性与 Text
+在物化前只存在于 Browser wrapper。Ex11 callback 通过既有 `__pcoreSetText` native slot
+调用 `PCore_NodeCreateElementChildAtById`，Core 只创建带 id 的空 Element 并使 layout
+失效，随后 Browser 再写入 staged 属性/Text。移除后再次插入和 id rename 保留 wrapper/
+alias identity；无 id、重复 id、结构标签、嵌套 Element、Fragment、通用 detached Core
+handle、事件、资源和 observer 均 fail closed。
+
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
 注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
 `value`/`label` 缺失时回退到 option 文本，`text` 写入纯文本。未注册、非 option、无效
@@ -413,52 +425,20 @@ Ex2/Ex3 在旧表后追加 Text、Comment/CDATA direct-child removal 字段，Br
 `childNodes` 索引和节点类型调用 Core，成功保留 detached 数据并刷新父 snapshot；错误
 parent、非支持节点、reparent、事件、observer 和 live collection 不产生 mutation。
 
-Ex4/Ex5 分别追加 existing-element 的 `insert_child` 与 `replace_child`：
-`Node.insertBefore()`/`appendChild()`、`Node.replaceChild()`/`Element.replaceWith()` 调用
-Core 的对应入口，支持 direct child、跨父迁移和旧 wrapper/snapshot 更新；结构 token、
-Text/Comment/CDATA、fragment、detached、错误 parent/self、错误 reference 或多参数均
-fail closed。
+Ex4–Ex12 的 existing-element、CharacterData 和 relative callbacks 复用稳定的 Core
+direct-child insertion/replacement 入口；它们按未过滤 `childNodes` 索引维护同父重排、
+跨父迁移和 wrapper/snapshot owner。Ex13–Ex15 的 `replaceChildren()` 分别覆盖 0–4 个
+primitive Text、同父 direct Element mixed 列表，以及按索引指定的 Text/Comment/CDATA；
+Browser 先完成类型、连接、重复、fragment 和容量预检，再提交 Core 的原子暂存/回滚。
+成功只使未保留子树 detached，选中节点及后代保留 identity；结构 token、错误 parent/self、
+跨父 CharacterData、对象、nested/mixed fragment、clone 和超限输入均 fail closed。旧
+callback table 只在尾部追加字段，旧注册入口布局和语义保持不变。
 
-Ex6 `insert_child_at` 处理 `append()`/`prepend()`、`before()`/`after()` 和
-`insertAdjacentElement()`；按未过滤索引移动 id element，primitive 走同一 bridge。
-element relative 的 2–4 值 mixed 列表先预检，再按序复用 Ex6 element/text callbacks。
-
-Ex7/Ex8 的 replacement callbacks 分别支持 element 的单值和 2–4 primitive 原子
-`replaceWith()`；Ex9 的 `replace_character_data_with_text_list` 让 Text/Comment/CDATA
-支持 1–4 primitive `replaceWith()`，保留旧 wrapper/snapshot 为 detached。对象、节点、
-fragment、detached、零值和超限均拒绝；mixed element/primitive 复用 Ex5–Ex7，旧 ABI 不变。
-
-Ex10–Ex12 的 callbacks 接入现有 CharacterData 的
-`insertBefore()`/`appendChild()`/`replaceChild()`；Ex12 让 element target 通过
-`PCore_NodeReplaceElementChildWithCharacterDataById` 支持
-`replaceChild(characterData, oldElement)`/`Element.replaceWith(characterData)`。Browser
-预检连接、类型、索引和容量，成功后更新 owner/snapshot；错误输入 fail closed。
-
-Ex13 的 `replace_element_children_with_text_list` 接入
-`PCore_NodeReplaceChildrenWithTextListById`，实现 `Element.replaceChildren()` 的有界文本
-子树替换。Browser 先完成参数/fragment/容量预检，再用一个 `{count,text0..text3}`
-JSON 请求提交；0 个值清空 direct children，单个 text-only fragment 在成功后消费。Core
-负责旧子树暂存、完整 Text 列表创建和失败恢复，宿主只在成功 callback 后安排重排/重绘；
-结构 token、对象、混合 fragment、existing node 和 callback 缺失均 fail closed。Ex13 只
-追加字段，Ex12 及更旧表布局保持不变。
-
-Ex14 的 `replace_element_children_with_mixed_list` 接入
-`PCore_NodeReplaceChildrenWithMixedListById`，实现同一 receiver 的有界 mixed
-`replaceChildren()`。Browser 先检查 0–4 项、primitive 文本和当前 direct Element 身份，
-再提交 `{kind,id,text}` 列表；Core 原子暂存/提交/回滚。成功后仅未保留的旧子树变为
-detached，保留节点及后代的 wrapper/snapshot identity 不变；跨父、重复、自身、fragment、
-CharacterData、对象、超限和 callback 缺失均拒绝。Ex14 只在表尾追加字段，Ex13 及更旧
-注册入口的 ABI 和语义保持不变。
-
-Ex15 的 `replace_element_children_with_node_list` 接入
-`PCore_NodeReplaceChildrenWithNodeListById`，把 `Element.replaceChildren()` 扩展到最多四项
-primitive Text、direct Element 和同一 receiver 的 direct Text/Comment/CDATA。CharacterData
-项携带替换前未过滤 `childNodes` 的索引与 3/4/8 节点类型；Browser 先校验 wrapper 活性、
-同父关系、重复项、对象/fragment 和容量，再提交一次 `{kind,nodeType,index,id,text}` JSON
-请求。Core 原子暂存并按参数顺序装配，失败恢复旧树；成功后仅未选中的旧子树 detached，
-Browser 重建 direct list 时保留选中 CharacterData 与 Element wrapper identity。Ex15 只在
-表尾追加字段，Ex14 及更旧注册入口的 ABI 和语义保持不变；通用 Node/DocumentFragment、
-跨父 reparent、MutationObserver 和事件/资源副作用仍不在此边界内。
+所有 mutation 都不派发事件、不执行资源、不自行 style/layout/paint；宿主只接 callback 并
+在成功后安排重排/重绘。`textContent`/`innerText`、CharacterData setter、`splitText()`、
+`wholeText`、`replaceWholeText()` 与 `normalize()` 复用相同的 UTF-16、detached snapshot
+和 retained-layout 合同。通用 Node、Fragment ABI、MutationObserver 和完整 live collection
+仍未实现。
 
 CharacterData 的 `before()`/`after()`/`replaceWith()` 以及 Element 的
 `append()`/`prepend()`/`insertAdjacent*()` 只承诺上面描述的有界 Text/element 路径；

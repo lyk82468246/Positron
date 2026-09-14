@@ -3071,6 +3071,90 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.__pcoreTrim=PTrim;"
         "})(this);";
 
+    /* The WM6 script heap is deliberately small.  Keep the live createElement
+     * path compact: detached elements stage only attributes and direct Text
+     * children, then reuse the Core Element and Text callbacks when a unique
+     * id makes materialization possible. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE[] =
+        "(function(g){var P=g.__pcorePElement,d=g.document,find,ins,app,pre,pr,rem,ga,sa,ra,di,dt,by={};"
+        "if(!P||!d||typeof d.getElementById!=='function'){return;}find=d.getElementById;"
+        "ins=P.prototype.insertBefore;app=P.prototype.appendChild;pre=P.prototype.append;pr=P.prototype.prepend;"
+        "rem=P.prototype.removeChild;ga=P.prototype.getAttribute;sa=P.prototype.setAttribute;ra=P.prototype.removeAttribute;"
+        "di=Object.getOwnPropertyDescriptor(P.prototype,'id');dt=Object.getOwnPropertyDescriptor(P.prototype,'textContent');"
+        "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}function E(n){return !!(n&&n.__pcoreCreatedElement804&&n.nodeType===1);}"
+        "function N(v){var s=String(v).toLowerCase(),i,c;if(s===''||s.length>64){throw new Error('attribute name unavailable');}"
+        "for(i=0;i<s.length;i++){c=s.charCodeAt(i);if(c<33||c===34||c===39||c===47||c===60||c===62||c===61){throw new Error('attribute name unavailable');}}return s;}"
+        "function I(e,n){var i,a=e.__attrs804,s=String(n).toLowerCase();for(i=0;i<a.length;i++){if(a[i].name===s){return i;}}return -1;}"
+        "function V(e,n){var i=I(e,n);return i<0?null:e.__attrs804[i].value;}function put(e,n,v){var i=I(e,n),s=String(v);"
+        "if(s.length>65535){throw new Error('attribute value limit');}if(i<0){if(e.__attrs804.length>=64){throw new Error('attribute count limit');}e.__attrs804.push({name:N(n),value:s});}else{e.__attrs804[i].value=s;}}"
+        "function drop(e,n){var i=I(e,n),j;if(i<0){return;}for(j=i+1;j<e.__attrs804.length;j++){e.__attrs804[j-1]=e.__attrs804[j];}e.__attrs804.length--;}"
+        "function list(a,n){return typeof g.__pcoreDecorateCollection13==='function'?"
+        "g.__pcoreDecorateCollection13(a,n?'HTMLCollection':'NodeList',!!n):a;}"
+        "function attrs(e){var a=[],i,x,n,v;for(i=0;i<e.__attrs804.length;i++){n=e.__attrs804[i].name;v=e.__attrs804[i].value;"
+        "x={name:n,nodeName:n,value:v,nodeValue:v,textContent:v,specified:true,ownerElement:e};Object.defineProperty(x,'nodeType',{value:2});a.push(x);}"
+        "a.getNamedItem=function(n){var i=I(e,n);return i<0?null:a[i];};return list(a,false);}"
+        "function reindex(e){var i;for(i=0;i<e.__children804.length;i++){e.__children804[i].__pcoreOwner803=e;e.__children804[i].__pcoreIndex803=i;}"
+        "e.__nodes11=e.__children804;e.__children9=null;}"
+        "function detachText(n){var e=n&&n.__pcoreOwner803,a,i,j;if(!e||!E(e)||e.__attached804){return false;}a=e.__children804;i=n.__pcoreIndex803;"
+        "if(i<0||i>=a.length||a[i]!==n){return false;}for(j=i+1;j<a.length;j++){a[j-1]=a[j];}a.length--;n.__pcoreOwner803=null;n.__pcoreIndex803=-1;reindex(e);return true;}"
+        "function patchText(n){var oldRemove,oldAppend;if(!T(n)||n.__pcoreElementText804){return;}oldRemove=n.remove;oldAppend=n.appendData;"
+        "n.remove=function(){var e=n.__pcoreOwner803;if(e&&E(e)&&!e.__attached804){detachText(n);return undefined;}return oldRemove.call(n);};"
+        "n.appendData=function(v){var e=n.__pcoreOwner803,s;if(e&&E(e)&&!e.__attached804){s=String(v);if(n.__data803.length+s.length>65535){throw new Error('text node limit');}n.__data803+=s;return undefined;}return oldAppend.call(n,v);};n.__pcoreElementText804=true;}"
+        "function textAt(e,n,i){var owner=n.__pcoreOwner803,a=e.__children804,j;if(!T(n)){throw new Error('element child unavailable');}"
+        "if(owner!==null&&owner!==e){if(E(owner)&&!owner.__attached804){detachText(n);}else{throw new Error('element child unavailable');}}"
+        "if(i<0||i>a.length){throw new Error('element child index');}if(e.__attached804&&typeof g.__pcoreSetText!=='function'){throw new Error('element child unavailable');}"
+        "if(e.__attached804&&!g.__pcoreSetText({op:'insertTextChild',parentId:e.__id,index:i,text:n.__data803})){throw new Error('element text insert failed');}"
+        "for(j=a.length;j>i;j--){a[j]=a[j-1];}a[i]=n;patchText(n);reindex(e);return n;}"
+        "function values(e,args,first){var i,n,v;if(args.length>4){throw new Error('append argument limit');}if(first){for(i=args.length-1;i>=0;i--){v=args[i];"
+        "if(!T(v)){if(v!==null&&v!==undefined&&(typeof v==='object'||typeof v==='function')){throw new Error('element only accepts text');}v=d.createTextNode(v);}textAt(e,v,0);}}"
+        "else{for(i=0;i<args.length;i++){v=args[i];if(!T(v)){if(v!==null&&v!==undefined&&(typeof v==='object'||typeof v==='function')){throw new Error('element only accepts text');}v=d.createTextNode(v);}textAt(e,v,e.__children804.length);}}return undefined;}"
+        "function live(p){return !!(p&&p.nodeType===1&&typeof p.__id==='string'&&p.__id!==''&&!p.__pcoreDetached11&&find.call(d,p.__id)===p);}"
+        "function make(tag){var e=new P('');e.__pcoreCreatedElement804=true;e.__attached804=false;e.__actual804=null;e.__pcoreDetached11=true;"
+        "e.__tag804=tag;e.__attrs804=[];e.__children804=list([],false);Object.defineProperty(e,'nodeName',{value:tag.toUpperCase(),configurable:true});"
+        "Object.defineProperty(e,'tagName',{value:tag.toUpperCase(),configurable:true});Object.defineProperty(e,'localName',{value:tag,configurable:true});"
+        "Object.defineProperty(e,'isConnected',{get:function(){return !!(e.__attached804&&e.__actual804&&e.__actual804.isConnected);},configurable:true});"
+        "Object.defineProperty(e,'parentNode',{get:function(){return e.__attached804&&e.__actual804?e.__actual804.parentNode:null;},configurable:true});"
+        "Object.defineProperty(e,'parentElement',{get:function(){return e.__attached804&&e.__actual804?e.__actual804.parentElement:null;},configurable:true});"
+        "Object.defineProperty(e,'childNodes',{get:function(){return e.__children804;},configurable:true});Object.defineProperty(e,'children',{get:function(){return list([],true);},configurable:true});"
+        "Object.defineProperty(e,'firstChild',{get:function(){return e.__children804.length?e.__children804[0]:null;},configurable:true});"
+        "Object.defineProperty(e,'lastChild',{get:function(){var a=e.__children804;return a.length?a[a.length-1]:null;},configurable:true});"
+        "Object.defineProperty(e,'childElementCount',{value:0,configurable:true});Object.defineProperty(e,'textContent',{get:function(){var s='',i;"
+        "if(e.__attached804&&dt&&dt.get){return dt.get.call(e.__actual804);}for(i=0;i<e.__children804.length;i++){s+=e.__children804[i].__data803;}return s;},"
+        "set:function(v){var s=String(v),i;if(e.__attached804&&dt&&dt.set){dt.set.call(e.__actual804,s);e.__children804=[];reindex(e);return;}"
+        "for(i=0;i<e.__children804.length;i++){e.__children804[i].__pcoreOwner803=null;e.__children804[i].__pcoreIndex803=-1;}e.__children804=[];if(s!==''){values(e,[s],false);}},configurable:true});"
+        "Object.defineProperty(e,'attributes',{get:function(){return attrs(e);},configurable:true});e.getAttribute=function(n){return e.__attached804?ga.call(e.__actual804,N(n)):V(e,n);};"
+        "e.hasAttribute=function(n){return e.getAttribute(n)!==null;};e.getAttributeNames=function(){var a=[],i;for(i=0;i<e.__attrs804.length;i++){a.push(e.__attrs804[i].name);}return a;};"
+        "e.setAttribute=function(n,v){var k=N(n),s=String(v),x;if(s.length>65535){throw new Error('attribute value limit');}if(e.__attached804){if(k==='id'){x=find.call(d,s);if(s===''||s.length>255||(x!==null&&x!==e.__actual804)){throw new Error('element id exists');}sa.call(e.__actual804,k,s);e.__actual804.__id=s;if(by[e.__id]===e){delete by[e.__id];}e.__id=s;put(e,k,s);by[s]=e;}else{sa.call(e.__actual804,k,s);put(e,k,s);}return;}put(e,k,s);};"
+        "e.removeAttribute=function(n){var k=N(n);if(e.__attached804){if(k==='id'){throw new Error('element id required');}ra.call(e.__actual804,k);drop(e,k);return;}drop(e,k);};"
+        "Object.defineProperty(e,'id',{get:function(){if(e.__attached804&&di&&di.get){return di.get.call(e.__actual804);}var v=V(e,'id');return v===null?'':v;},set:function(v){e.setAttribute('id',v);},configurable:true});"
+        "Object.defineProperty(e,'className',{get:function(){var v=V(e,'class');return e.__attached804?ga.call(e.__actual804,'class'):(v===null?'':v);},set:function(v){e.setAttribute('class',v);},configurable:true});"
+        "e.appendChild=function(n){if(e.__attached804){return textAt(e,n,e.__children804.length);}return textAt(e,n,e.__children804.length);};"
+        "e.insertBefore=function(n,r){var i=e.__children804.length;if(r!==null&&r!==undefined){if(r.__pcoreOwner803!==e){throw new Error('insert reference unavailable');}i=r.__pcoreIndex803;}return textAt(e,n,i);};"
+        "e.removeChild=function(n){if(!T(n)||n.__pcoreOwner803!==e||!detachText(n)){throw new Error('removeChild failed');}return n;};"
+        "e.append=function(){return values(e,arguments,false);};e.prepend=function(){return values(e,arguments,true);};e.remove=function(){var p=e.parentNode;if(p!==null){p.removeChild(e);}};"
+        "e.getRootNode=function(){return e.__attached804?d:e;};return e;}"
+        "function attach(p,e,r){var id=V(e,'id'),before,index,a,actual,i;if(!live(p)){throw new Error('element parent unavailable');}"
+        "if(id===null||id===''||id.length>255||find.call(d,id)!==null){throw new Error('element id required');}if(e.__children804.length>64){throw new Error('element child limit');}"
+        "before=p.childNodes;"
+        "if(!before||before.length>=64){throw new Error('insert child limit');}index=before.length;if(r!==null&&r!==undefined){if(r.nodeType!==1||r.parentNode!==p){throw new Error('insert reference unavailable');}}"
+        "for(i=0;i<before.length;i++){if(before[i]===r){index=i;break;}}if(index===before.length&&r!==null&&r!==undefined){throw new Error('insert reference unavailable');}"
+        "if(typeof g.__pcoreSetText!=='function'||!g.__pcoreSetText({op:'createElement',parentId:p.__id,tagName:e.__tag804,elementId:id,index:index})){throw new Error('element materialize failed');}"
+        "actual=find.call(d,id);if(!actual){throw new Error('element materialize failed');}actual.__pcoreDetached11=false;e.__id=id;e.__actual804=actual;e.__attached804=true;e.__pcoreDetached11=false;by[id]=e;"
+        "p.__nodes11=null;p.__children9=null;a=p.childNodes;for(i=0;i<a.length;i++){if(a[i]===actual){a[i]=e;}}p.__nodes11=a;p.__children9=null;"
+        "for(i=0;i<e.__attrs804.length;i++){if(e.__attrs804[i].name!=='id'){sa.call(actual,e.__attrs804[i].name,e.__attrs804[i].value);}}"
+        "for(i=0;i<e.__children804.length;i++){if(!g.__pcoreSetText({op:'insertTextChild',parentId:id,index:i,text:e.__children804[i].__data803})){throw new Error('element text insert failed');}}"
+        "e.__nodes11=e.__children804;e.__children9=null;return e;}"
+        "function gone(e){var id=e.__id;if(id&&by[id]===e){delete by[id];}e.__attached804=false;e.__actual804=null;e.__pcoreDetached11=true;e.__id='';e.__nodes11=e.__children804;e.__children9=null;}"
+        "d.getElementById=function(id){var e=by[String(id)];if(e&&e.__attached804&&e.__actual804&&e.__actual804.isConnected){return e;}if(e){delete by[String(id)];}return find.call(this,id);};"
+        "P.prototype.appendChild=function(n){return E(n)?attach(this,n,null):app.apply(this,arguments);};P.prototype.insertBefore=function(n,r){return E(n)?attach(this,n,r):ins.apply(this,arguments);};"
+        "P.prototype.removeChild=function(n){var r;if(E(n)){if(!n.__attached804||n.parentNode!==this){throw new Error('removeChild failed');}r=rem.call(this,n.__actual804);gone(n);return r;}return rem.apply(this,arguments);};"
+        "P.prototype.append=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(E(arguments[i])){has=1;break;}}if(!has){return pre.apply(this,arguments);}"
+        "for(i=0;i<arguments.length;i++){if(!E(arguments[i])){throw new Error('append mixed element unavailable');}attach(this,arguments[i],null);}return undefined;};"
+        "P.prototype.prepend=function(){var i,has=0,r;for(i=0;i<arguments.length;i++){if(E(arguments[i])){has=1;break;}}if(!has){return pr.apply(this,arguments);}r=this.childNodes.length?this.childNodes[0]:null;"
+        "for(i=arguments.length-1;i>=0;i--){if(!E(arguments[i])){throw new Error('prepend mixed element unavailable');}attach(this,arguments[i],r);r=arguments[i];}return undefined;};"
+        "d.createElement=function(tag){var s;if(arguments.length!==1){throw new TypeError('createElement arguments');}s=String(tag).toLowerCase();"
+        "if(s===''||s.length>32||!/^[a-z][a-z0-9-]*$/.test(s)||s==='html'||s==='head'||s==='body'){throw new Error('createElement name unavailable');}return make(s);};})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -6874,6 +6958,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
     return p_browser_script_finish_bootstrap(hSession);
 }
 typedef struct p_browser_script_dom_read_binding {
@@ -6914,6 +7003,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptSetInnerHTMLFn set_inner_html;
     PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
     PBrowserScriptSetOuterHTMLFn set_outer_html;
+    PBrowserScriptCreateElementChildAtFn create_element_child_at;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -8225,6 +8315,8 @@ static int p_browser_script_dom_set_text(void *pw,
     const char *op;
     const char *text;
     const char *html;
+    const char *tag_name;
+    const char *element_id;
     const char *text_values[4];
     int value_count;
     int child_index;
@@ -8241,6 +8333,8 @@ static int p_browser_script_dom_set_text(void *pw,
     op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
     text = (object != NULL) ? PJson_GetString(object, "text") : NULL;
     html = (object != NULL) ? PJson_GetString(object, "html") : NULL;
+    tag_name = (object != NULL) ? PJson_GetString(object, "tagName") : NULL;
+    element_id = (object != NULL) ? PJson_GetString(object, "elementId") : NULL;
     values = (object != NULL) ? PJson_GetObject(object, "values") : NULL;
     value_count = 0;
     child_index = (object != NULL) ? PJson_GetInt(object, "index") : -1;
@@ -8251,7 +8345,20 @@ static int p_browser_script_dom_set_text(void *pw,
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "setInnerHTML") == 0) {
+    if (op != NULL && strcmp(op, "createElement") == 0) {
+        if (binding->create_element_child_at == NULL || parent_id == NULL ||
+                parent_id[0] == '\0' || tag_name == NULL ||
+                tag_name[0] == '\0' || element_id == NULL ||
+                element_id[0] == '\0' || child_index < 0 ||
+                strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+                strlen(tag_name) > PBROWSER_SCRIPT_CREATE_ELEMENT_TAG_MAX ||
+                strlen(element_id) > PBROWSER_SCRIPT_CREATE_ELEMENT_ID_MAX) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->create_element_child_at(binding->pw, parent_id,
+                tag_name, element_id, (unsigned int) child_index);
+    } else if (op != NULL && strcmp(op, "setInnerHTML") == 0) {
         if (binding->set_inner_html == NULL || id == NULL ||
                 id[0] == '\0' || html == NULL ||
                 strlen(id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
@@ -11750,6 +11857,61 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx10(
     binding->set_inner_html = callbacks->set_inner_html;
     binding->insert_adjacent_html = callbacks->insert_adjacent_html;
     binding->set_outer_html = callbacks->set_outer_html;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx11 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx11) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL ||
+            callbacks->set_inner_html == NULL ||
+            callbacks->insert_adjacent_html == NULL ||
+            callbacks->set_outer_html == NULL ||
+            callbacks->create_element_child_at == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
+    binding->set_inner_html = callbacks->set_inner_html;
+    binding->insert_adjacent_html = callbacks->insert_adjacent_html;
+    binding->set_outer_html = callbacks->set_outer_html;
+    binding->create_element_child_at = callbacks->create_element_child_at;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

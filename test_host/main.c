@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1244
+#define TEST_MAX_NUMBER 1245
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15226,6 +15226,34 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
 
 /* Product semantics stay in positron_core; the test host only supplies the
  * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_dom_create_element(void *pw,
+        const char *parent_id, const char *tag_name,
+        const char *element_id, unsigned int child_index)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            tag_name == NULL || element_id == NULL) {
+        return -1;
+    }
+    result = PCore_NodeCreateElementChildAtById(bridge->document, parent_id,
+            tag_name, element_id, child_index);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
 static int pcore_browser_script_dom_set_inner_html(void *pw,
         const char *id, const char *html)
 {
@@ -17409,7 +17437,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx10 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx11 dom_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx15 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17593,6 +17621,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_insert_text_child;
     dom_write_callbacks.insert_text_child_list =
             pcore_browser_script_dom_insert_text_child_list;
+    dom_write_callbacks.create_element_child_at =
+            pcore_browser_script_dom_create_element;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17818,7 +17848,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx10(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx15(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
@@ -52000,6 +52030,67 @@ static BOOL test1244_browser_create_text_node_contract(void)
             " appendChild, append and prepend. Data mutation, removal and"
             " re-insertion stay synchronized with Core; invalid nodes and"
             " references fail closed while detached clones remain isolated.");
+    return TRUE;
+}
+
+/* TEST 1245 - detached Element creation and bounded materialization. */
+static BOOL test1245_browser_create_element_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='anchor'>A</p><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var body=document.body,anchor=document.getElementById('anchor'),"
+        "result=document.getElementById('result'),e,t,t2,ret,bad=0,ok=true;"
+        "try{e=document.createElement('Div');}catch(err){ok=false;}"
+        "if(!e||e.nodeType!==1||e.nodeName!=='DIV'||e.tagName!=='DIV'||"
+        "e.localName!=='div'||e.ownerDocument!==document||e.parentNode!==null||"
+        "e.parentElement!==null||e.isConnected||e.getRootNode()!==e||"
+        "e.childNodes.length!==0||e.children.length!==0||e.childElementCount!==0){ok=false;}"
+        "e.setAttribute('ID','created');e.setAttribute('class','generated');"
+        "e.setAttribute('title','A&B');"
+        "if(e.id!=='created'||e.className!=='generated'||e.getAttribute('id')!=='created'||"
+        "!e.hasAttribute('TITLE')||e.getAttribute('title')!=='A&B'||"
+        "e.getAttributeNames().length!==3||e.attributes.length!==3){ok=false;}"
+        "t=document.createTextNode('Some text in a div.');ret=e.appendChild(t);"
+        "if(ret!==t||t.parentNode!==e||t.parentElement!==e||t.isConnected||"
+        "e.firstChild!==t||e.lastChild!==t||e.textContent!=='Some text in a div.'){ok=false;}"
+        "e.prepend('Start ');e.append(' End');"
+        "if(e.textContent!=='Start Some text in a div. End'||e.childNodes.length!==3){ok=false;}"
+        "try{body.appendChild(e);}catch(err2){ok=false;}"
+        "if(!e.isConnected||e.parentNode!==body||e.parentElement!==body||"
+        "document.getElementById('created')!==e||e.textContent!=='Start Some text in a div. End'||"
+        "e.getAttribute('title')!=='A&B'){ok=false;}"
+        "e.removeAttribute('title');if(e.hasAttribute('title')||e.getAttributeNames().length!==2||e.attributes.length!==2){ok=false;}"
+        "t2=document.createTextNode(' tail');ret=e.appendChild(t2);"
+        "if(ret!==t2||t2.parentNode!==e||e.textContent!=='Start Some text in a div. End tail'){ok=false;}"
+        "ret=e.remove();if(ret!==undefined||e.isConnected||e.parentNode!==null||"
+        "document.getElementById('created')!==null||t.parentNode!==e||t2.parentNode!==e||"
+        "e.textContent!=='Start Some text in a div. End tail'){ok=false;}"
+        "ret=body.appendChild(e);if(ret!==e||!e.isConnected||e.parentNode!==body||"
+        "document.getElementById('created')!==e||e.textContent!=='Start Some text in a div. End tail'){ok=false;}"
+        "try{body.appendChild(document.createElement('span'));}catch(err3){bad|=1;}"
+        "try{body.appendChild(document.createElement('html'));}catch(err4){bad|=2;}"
+        "e.setAttribute('id','created-again');if(e.id!=='created-again'||"
+        "e.getAttribute('id')!=='created-again'||e.getAttributeNames().length!==2||"
+        "e.attributes.length!==2||document.getElementById('created-again')!==e||"
+        "document.getElementById('created')!==null){ok=false;}"
+        "result.textContent=String(ok&&bad===3&&anchor.textContent==='A');})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1245 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1245 OK",
+            "document.createElement now provides a bounded detached Element"
+            " with local attributes and Text staging. A unique id materializes"
+            " it through the Core creation callback, preserves the wrapper alias"
+            " across attach/remove/re-attach, and rejects unsupported names"
+            " or missing ids without partial mutation.");
     return TRUE;
 }
 
@@ -110231,6 +110322,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1242: ok = test1242_browser_replace_children_mixed_contract(); break;
         case 1243: ok = test1243_browser_replace_children_character_data_contract(); break;
         case 1244: ok = test1244_browser_create_text_node_contract(); break;
+        case 1245: ok = test1245_browser_create_element_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

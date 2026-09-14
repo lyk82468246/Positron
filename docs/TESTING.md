@@ -991,6 +991,18 @@ Text 组合。夹具验证新 Text 的 node type/name、owner、detached root/pa
 DocumentFragment、含 element/fragment 的混合 append、事件、资源或视觉行为。设备门选择
 `TEST1244,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1245 覆盖 NetSurf compatibility corpus 中 `document.createElement()` 的有界 detached
+Element 组合。夹具验证 Element 的 node shape、owner、detached root/parent/connection、
+本地 attribute 与 direct Text staging；带唯一 id 的 Element 物化后检查 Core parent、未过滤
+`childNodes` 位置、wrapper/alias identity、属性/文本同步，以及 `remove()` 后再次插入和
+id rename。无 id、重复 id、结构标签、无效 reference、嵌套 Element 和 Fragment 必须在
+Core mutation 前 fail closed，失败不得改变原树。标签只接受 ASCII `[a-z][a-z0-9-]*`，最多
+32 个 UTF-8 字节；每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64
+个 direct Text child。Browser write Ex11 通过既有 `__pcoreSetText` slot 调用
+`PCore_NodeCreateElementChildAtById`，不引入通用 detached Core handle、parser、事件、
+资源或 observer。宿主只接 callback、安排后续 style/layout/paint 并断言。设备门选择
+`TEST1245,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式
