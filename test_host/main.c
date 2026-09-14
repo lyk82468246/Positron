@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1250
+#define TEST_MAX_NUMBER 1251
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52424,6 +52424,69 @@ static BOOL test1250_browser_detached_element_identity_contract(void)
             " separate staged nodes no longer alias through an empty or"
             " duplicate id, and the same relationship contract survives"
             " materialization and removal.");
+    return TRUE;
+}
+
+/* TEST 1251 - detached Element child-query state. */
+static BOOL test1251_browser_detached_element_child_query_contract(void)
+{
+    static const char HTML_DETACHED[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE_DETACHED[] =
+        "(function(){var result=document.getElementById('result'),a,ok=true;"
+        "a=document.createElement('article');"
+        "if(a.hasChildNodes()||a.childNodes.length!==0||a.firstChild!==null||"
+        "a.lastChild!==null||a.textContent!=='')ok=false;"
+        "a.append('A','B');"
+        "if(!a.hasChildNodes()||a.childNodes.length!==2||a.children.length!==0||"
+        "a.childElementCount!==0||a.firstChild===null||a.lastChild===null||"
+        "a.textContent!=='AB')ok=false;"
+        "a.textContent='';"
+        "if(a.hasChildNodes()||a.childNodes.length!==0||a.firstChild!==null||"
+        "a.lastChild!==null||a.textContent!=='')ok=false;"
+        "result.textContent=String(ok);})();";
+    static const char HTML_ATTACHED[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE_ATTACHED[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),a,ok=true;"
+        "a=document.createElement('article');a.id='child';a.append('X');"
+        "target.appendChild(a);"
+        "if(!a.hasChildNodes()||a.childNodes.length!==1||a.textContent!=='X'||"
+        "!a.isConnected||a.parentNode!==target)ok=false;"
+        "a.textContent='';"
+        "if(a.hasChildNodes()||a.childNodes.length!==0||a.textContent!=='')ok=false;"
+        "a.append('Y');"
+        "if(!a.hasChildNodes()||a.childNodes.length!==1||a.textContent!=='Y')ok=false;"
+        "a.remove();"
+        "if(a.isConnected||a.parentNode!==null||!a.hasChildNodes()||"
+        "a.textContent!=='Y'||target.childNodes.length!==0)ok=false;"
+        "a.textContent='';"
+        "if(a.hasChildNodes()||a.childNodes.length!==0||a.textContent!=='')ok=false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-child-query-detached",
+            HTML_DETACHED, PROBE_DETACHED, "true", error, sizeof(error))) {
+        show_error(L"TEST 1251 FAIL", error);
+        return FALSE;
+    }
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-child-query-attached",
+            HTML_ATTACHED, PROBE_ATTACHED, "true", error, sizeof(error))) {
+        show_error(L"TEST 1251 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1251 OK",
+            "Detached Element hasChildNodes() now follows its bounded"
+            " direct-Text staging across append, textContent clearing,"
+            " materialization and removal; childNodes, first/last child"
+            " and text snapshots remain consistent without a new Core ABI.");
     return TRUE;
 }
 
@@ -110661,6 +110724,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1248: ok = test1248_browser_create_text_node_character_data_contract(); break;
         case 1249: ok = test1249_browser_create_element_clone_contract(); break;
         case 1250: ok = test1250_browser_detached_element_identity_contract(); break;
+        case 1251: ok = test1251_browser_detached_element_child_query_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

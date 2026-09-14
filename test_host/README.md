@@ -66,7 +66,7 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/geometry、
-  selector、image 与 DOM bridge；DOM fixtures TEST1201–1250 覆盖 normalize、clone/equality、
+  selector、image 与 DOM bridge；DOM fixtures TEST1201–1251 覆盖 normalize、clone/equality、
   Text/CharacterData、Ex2–Ex15 mutation、bounded HTML/DocumentFragment/replaceChildren 以及
   detached Text/Comment/Element staging 的数据、生命周期、clone 和关系身份路径；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
@@ -547,9 +547,10 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 断言 Core/Browser；通用 fragment、script/资源/事件
 不由 test_host 实现。
 
-TEST1244–1250 覆盖 Browser-owned detached Text/Element/Comment 的创建、属性/文本、数据、
-clone、物化、生命周期和关系身份。TEST1250 断言关系查询不把空/重复 id 当作同一节点；
-宿主只提供 fixture/断言，不实现 DOM 语义。
+TEST1244–1251 覆盖 Browser-owned detached Text/Element/Comment 的创建、属性/文本、数据、
+clone、物化、生命周期、关系身份和 child-query 一致性。TEST1250 断言关系查询不把空/重复 id
+当作同一节点；TEST1251 断言 `hasChildNodes()` 跟随 direct-Text staging。宿主只提供
+fixture/断言，不实现 DOM 语义。
 
 ### Native EDIT/SELECT/button/file
 

@@ -1051,6 +1051,14 @@ Browser 的 detached Element identity 判定，不新增 Core ABI，也不扩展
 事件、资源或视觉语义。设备门选择 `1249,1250,999`，确认 Debug ARMV4I、完整日志、双空间
 预检、完成后清理和 crash check。
 
+TEST1251 覆盖 detached `document.createElement()` 的 child-query 一致性。空 wrapper 的
+`hasChildNodes()`、`childNodes`、首尾 child 和 `textContent` 必须表示空；追加两个 primitive
+Text 后这些读取必须同步反映两个 direct child，`children` 与 `childElementCount` 仍为空。
+清空 `textContent` 后状态必须回到空。将 wrapper 物化到 live Element、清空、再次追加并移除
+后，`hasChildNodes()` 仍跟随 Browser 自己的有界 direct-Text staging；该门不扩展嵌套 Element、
+通用 Node/Fragment、事件、资源或视觉语义，也不新增 Core ABI。设备门选择
+`1250,1251,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -391,7 +391,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   Element 的 `appendChild()`/`insertBefore()`/`append()`/`prepend()` 通过 DOM write Ex11
   复用 `__pcoreSetText` slot，调用 Core `PCore_NodeCreateElementChildAtById` 按未过滤
   `childNodes` 索引创建空 Element，再同步 staged 属性/Text。移除、重插入和 id rename
-  保留 wrapper/alias identity。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
+  保留 wrapper/alias identity；`childNodes`、首尾 child 和 `hasChildNodes()` 读取跟随
+  这份有界 direct-Text staging。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
   direct Text child；克隆仍是独立的 Browser-owned detached staging，连接源的克隆必须先
   改为唯一 id。关系查询对该 staging 使用 wrapper 对象身份：不同 detached wrapper 的
   `isSameNode()` 不因空/重复 id 合并，`contains()` 与 `compareDocumentPosition()` 保持

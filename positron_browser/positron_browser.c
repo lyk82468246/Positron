@@ -3122,6 +3122,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(e.__attached804&&dt&&dt.get){return dt.get.call(e.__actual804);}for(i=0;i<e.__children804.length;i++){s+=e.__children804[i].__data803;}return s;},"
         "set:function(v){var s=String(v),i;if(e.__attached804&&dt&&dt.set){dt.set.call(e.__actual804,s);e.__children804=[];reindex(e);return;}"
         "for(i=0;i<e.__children804.length;i++){e.__children804[i].__pcoreOwner803=null;e.__children804[i].__pcoreIndex803=-1;}e.__children804=[];if(s!==''){values(e,[s],false);}},configurable:true});"
+        "e.hasChildNodes=function(){return e.__children804.length>0;};"
         "Object.defineProperty(e,'attributes',{get:function(){return attrs(e);},configurable:true});e.getAttribute=function(n){return e.__attached804?ga.call(e.__actual804,N(n)):V(e,n);};"
         "e.hasAttribute=function(n){return e.getAttribute(n)!==null;};e.getAttributeNames=function(){var a=[],i;for(i=0;i<e.__attrs804.length;i++){a.push(e.__attrs804[i].name);}return a;};"
         "e.setAttribute=function(n,v){var k=N(n),s=String(v),x;if(s.length>65535){throw new Error('attribute value limit');}if(e.__attached804){if(k==='id'){x=find.call(d,s);if(s===''||s.length>255||(x!==null&&x!==e.__actual804)){throw new Error('element id exists');}sa.call(e.__actual804,k,s);e.__actual804.__id=s;if(by[e.__id]===e){delete by[e.__id];}e.__id=s;put(e,k,s);by[s]=e;}else{sa.call(e.__actual804,k,s);put(e,k,s);}return;}put(e,k,s);};"

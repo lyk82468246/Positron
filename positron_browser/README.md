@@ -297,19 +297,19 @@ existing-node 路径都按序重排并保留被选节点及后代 identity；fra
 element、错类型/越界 CharacterData、nested fragment、通用 clone 和 context-sensitive
 parser 均 fail closed。
 
-`document.createTextNode(value)` 创建 Browser-owned detached Text；支持插入、移除、重插入、
+`document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
 offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复用 Core callback。
 
-`document.createElement(tag)` 提供 Browser-owned detached Element staging：标签转小写，只接受
+`document.createElement(tag)` 提供有界 detached Element staging：标签转小写，只接受
 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`。设唯一非空
 id 后按未过滤 `childNodes` 索引用 `appendChild()`、`insertBefore()`、`append()` 或
 `prepend()` 物化到 live Element；staging 限 64 个属性和 direct Text 子节点。Ex11 通过
-`__pcoreSetText` 创建 Core Element 并同步属性/Text。`cloneNode(false)`
-复制属性，`cloneNode(true)` 还复制 direct Text；克隆与源独立，仍 detached。
-连接源的克隆必须先改为唯一 id；重复/无 id、结构标签、嵌套 Element、Fragment、
-detached Core handle、事件/资源/observer fail closed。
-关系查询使用对象身份：相同 id 的 detached 节点互不相等，物化/移除后保持。
+`__pcoreSetText` 建立 Core Element 并同步属性/Text。`childNodes`、首尾 child、
+`hasChildNodes()` 跟随 direct-Text staging；`cloneNode(false)` 复制属性，
+`cloneNode(true)` 复制 direct Text，克隆独立 detached。连接前须有唯一 id；重复/无 id、
+结构标签、嵌套 Element、Fragment、detached handle、事件/资源/observer 均 fail closed。
+关系按 wrapper 身份随物化/移除保持。
 
 `document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须
 恰好传入一个参数，参数按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`nodeName="#comment"`、
