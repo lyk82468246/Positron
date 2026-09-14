@@ -294,23 +294,22 @@ CharacterData replaceWith 可消费它；`Element.replaceChildren()` 还通过 m
 列表，Ex15 再允许按原始 `childNodes` 索引选择同一 receiver 的 Text/Comment/CDATA。两种
 existing-node 路径都按序重排并保留被选节点及后代 identity；fragment 仅在 Ex13 Core 成功
 后清空，未保留的旧 direct 子树 wrapper/snapshot 会被标记为 detached。跨父、重复/自身
-element、错类型/越界 CharacterData、nested fragment、clone 和 context-sensitive parser
-均 fail closed。
+element、错类型/越界 CharacterData、nested fragment、通用 clone 和 context-sensitive
+parser 均 fail closed。
 
 `document.createTextNode(value)` 创建 Browser-owned detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
 offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复用 Core callback。
-Node/fragment 仍不支持。
 
-`document.createElement(tag)` 提供一个 Browser-owned 的 detached Element staging 路径。标签名
-先规范化为小写，只接受 ASCII `[a-z][a-z0-9-]*` 且不超过 32 个 UTF-8 字节；`html`、`head`
-和 `body` 不能创建。设置唯一非空 id 后，才可通过 `appendChild()`、`insertBefore()`、
-`append()` 或 `prepend()` 按未过滤 `childNodes` 索引物化到 live Element；detached staging
-最多保存 64 个 attribute 和 64 个 direct Text child。Ex11 callback 复用
-`__pcoreSetText` 调用 Core 创建空 Element，再写入 staged 属性/Text。
-移除后再次插入和 id rename 保留 wrapper/alias identity；无 id、重复 id、结构标签、嵌套
-Element、Fragment、通用 detached Core handle、事件、资源和
-observer 均 fail closed。
+`document.createElement(tag)` 提供 Browser-owned detached Element staging：标签转小写，只接受
+ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`。设唯一非空
+id 后按未过滤 `childNodes` 索引用 `appendChild()`、`insertBefore()`、`append()` 或
+`prepend()` 物化到 live Element；staging 保存 64 个 attribute 和 64 个 direct Text
+child。Ex11 复用 `__pcoreSetText` 创建 Core Element 并写入 staged attr/Text。`cloneNode(false)`
+复制属性，`cloneNode(true)` 还复制 direct Text；克隆与源独立，仍 detached。
+连接源的克隆必须先改为唯一 id；重复/无 id、结构标签、嵌套 Element、Fragment、
+detached Core handle、事件、资源和 observer 均 fail closed。移除、重插入和 id rename 保持
+identity。
 
 `document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须
 恰好传入一个参数，参数按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`nodeName="#comment"`、
@@ -320,8 +319,7 @@ observer 均 fail closed。
 Element 时，DOM write Ex12 的 `create_comment_child_at` callback 负责首次物化；后续数据更新、
 移除、同父重排、再次插入复用既有 CharacterData callbacks，wrapper/alias identity 保持不变。
 无效参数、错误 reference、对象节点和超限输入在 mutation 前 fail closed；通用 detached Core
-handle、DocumentFragment、相对 `before()`/`after()`/`replaceWith()`、事件、资源和 observer
-语义不在该边界内。
+handle、Fragment、相对 `before()`/`after()`/`replaceWith()`、事件、资源和 observer 不在边界内。
 
 Comment wrapper 提供有界 CharacterData offset 方法：`insertData()`、`deleteData()`、
 `replaceData()` 和 `substringData()` 均按 UTF-16 code unit 解释；offset/count 必须为有限
@@ -448,7 +446,7 @@ direct-child insertion/replacement 入口；它们按未过滤 `childNodes` 索�
 primitive Text、同父 direct Element mixed 列表，以及按索引指定的 Text/Comment/CDATA；
 Browser 先完成类型、连接、重复、fragment 和容量预检，再提交 Core 的原子暂存/回滚。
 成功只使未保留子树 detached，选中节点及后代保留 identity；结构 token、错误 parent/self、
-跨父 CharacterData、对象、nested/mixed fragment、clone 和超限输入均 fail closed。旧
+跨父 CharacterData、对象、nested/mixed fragment、通用 clone 和超限输入均 fail closed。旧
 callback table 只在尾部追加字段，旧注册入口布局和语义保持不变。
 
 所有 mutation 都不派发事件、不执行资源、不自行 style/layout/paint；宿主只接 callback 并

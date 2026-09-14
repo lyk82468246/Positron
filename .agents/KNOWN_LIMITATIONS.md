@@ -141,7 +141,7 @@
   （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
   遵循各自 callback 合同。Browser 另提供最多四个 primitive Text 的 text-only
   `DocumentFragment` staging，并在 Element/CharacterData 消费成功后清空；existing node、
-  nested fragment、mixed/clone 和 HTML parser context fail closed。通用 Node mutation、
+  nested fragment、mixed/通用 clone 和 HTML parser context fail closed。通用 Node mutation、
   observer 和 live collection 未实现。Ex13 的 `Element.replaceChildren()` 只接受 0–4 个
   primitive 文本或一个 text-only fragment；Core 以 16,384 UTF-8 字节总预算原子替换
   direct children。Ex14 另接受最多四项 primitive 文本与当前目标的已连接 direct Element
@@ -165,10 +165,12 @@
   只接受小写化后的 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），必须在物化前设置
   非空且唯一 id；每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个
   direct Text child。Ex11 通过既有 `__pcoreSetText` slot 调用 Core 创建入口，Element 只能
-  插入到 live Element，并在 remove/reinsert/id rename 后保留 wrapper/alias identity。没有
-  通用 detached Core handle、嵌套 Element、DocumentFragment、事件、资源、observer 或
-  完整 live collection；结构标签、重复/无 id、错误 parent/reference 和超限输入 fail
-  closed，宿主仍负责后续 style/layout/paint，视觉/触摸/SIP 结果不由该门保证。
+  插入到 live Element，并在 remove/reinsert/id rename 后保留 wrapper/alias identity。
+  `cloneNode(false)` 复制属性，`cloneNode(true)` 复制 direct Text child；克隆与源保持独立，
+  连接源的克隆必须先改为唯一 id 才能物化。没有通用 detached Core handle、嵌套 Element、
+  DocumentFragment、事件、资源、observer 或完整 live collection；结构标签、重复/无 id、
+  错误 parent/reference 和超限输入 fail closed，宿主仍负责后续 style/layout/paint，视觉/
+  触摸/SIP 结果不由该门保证。
 - `document.createComment(data)` 目前是 Browser-owned 的有界 detached Comment wrapper：必须
   恰好一个参数并按 `String` 转换，最多 65,535 个脚本字符；进入 Core 时还受 65,535 字节
   UTF-8 上限。wrapper 提供 node shape、data/nodeValue/textContent/length、owner/root/
@@ -188,7 +190,8 @@
   Ex10 另以单一 Element 根替换目标或以空字符串移除目标，保留原父级/索引并让旧目标及
   后代 wrapper detached；它同样预检重复/外部冲突 id、非法 UTF-8、顶层文本/Comment、
   多根和超限输入。Core 仍不暴露 DocumentFragment ABI；Browser 仅支持上述 text-only
-  staging，通用 fragment、clone insertion 和 context-sensitive parser 仍未实现。
+  staging，通用或嵌套 clone insertion 和 context-sensitive parser 仍未实现；当前只有
+  createElement 的属性/direct-Text 克隆能沿既有有界物化路径插入。
   三条路径的预算与错误合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
@@ -561,12 +564,12 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1248 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1249 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与
   Ex15 typed CharacterData）、detached `document.createTextNode()` 的插入/数据/offset/lifecycle，
-  以及 detached `document.createElement()` 的物化、属性/Text staging、identity/lifecycle，
+  以及 detached `document.createElement()` 的物化、属性/Text staging、clone、identity/lifecycle，
   detached `document.createComment()` 的创建、数据、insert/delete/replace/substring、插入、
   移除、重插入、clone 和 identity，
   以及 retained-layout 边界；逐项合同见

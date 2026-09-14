@@ -1033,6 +1033,14 @@ wrapper identity、数据同步、surrogate pair 偏移和失败不变性。负�
 提交；该门不扩展通用 Node/Fragment、事件、资源、视觉或其他动态树语义。设备门选择
 `1247,1248,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1249 覆盖 detached `document.createElement()` 的有界 `cloneNode()` staging。第一段
+夹具验证 shallow clone 的属性复制、deep clone 的 direct Text 复制、父级/root/connection
+状态和源/克隆数据独立；第二段把 deep clone 物化到 live Element，验证连接后的 clone 再次
+深克隆、重复 id 在 Core mutation 前拒绝、改名后按 `insertBefore()` 成功插入，以及原有
+wrapper、顺序和文本保持。克隆只接受当前 createElement 边界内的属性与 direct Text，仍不
+扩展嵌套 Element、通用 Node/Fragment、事件、资源或视觉语义。设备门选择
+`1248,1249,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -185,6 +185,14 @@ unit 校验，删除范围按末尾截断，非法参数或 callback 失败不�
 不扩展通用 Node/Fragment。TEST1248 的 `1247,1248,999` Debug ARMV4I 设备门验证 detached/
 attached 生命周期、surrogate、同步和失败不变性。
 
+next808 根据源码审查发现的 detached Element clone 不对称，补齐 Browser-owned
+`document.createElement()` wrapper 的 `cloneNode(false/true)` staging。浅克隆复制有界属性，
+深克隆复制 direct Text child；克隆保持独立的 Browser wrapper、数据和 detached root，连接源的
+克隆必须先改为唯一 id，随后复用既有 Ex11/Core 物化、`insertBefore()` 和 identity 路径。
+嵌套 Element、通用 Node/Fragment、事件、资源和视觉行为继续 fail closed，不新增 Core ABI。
+TEST1249 以两个低堆峰值离线 fixture 覆盖浅/深复制、attached clone、重复 id 原子拒绝、改名
+插入、顺序和源数据隔离；`1248,1249,999` Debug ARMV4I 设备门已通过。
+
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
 write Ex8 在同一 document 中有界替换 direct children（16,384 字节、256 节点、64 层、每个
@@ -196,7 +204,8 @@ write Ex8 在同一 document 中有界替换 direct children（16,384 字节、2
 索引并让旧目标及后代 wrapper detached；重复/冲突 id、非法 UTF-8、顶层文本/Comment、
 多根和超限输入同样在 mutation 前拒绝。三条 HTML mutation 路径都不执行 script、不抓取
 资源、不派发 mutation event；Core 不暴露 fragment ABI，Browser 只支持 text-only staging；
-clone insertion、通用 DocumentFragment 和 context-sensitive parser 仍不在边界内。
+通用或嵌套 clone insertion、通用 DocumentFragment 和 context-sensitive parser 仍不在边界内；
+当前仅支持 detached Element 的属性/direct-Text clone 沿既有有界物化路径插入。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接
@@ -205,7 +214,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next808）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next809）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

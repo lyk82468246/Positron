@@ -280,7 +280,7 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   对象：最多四个 primitive Text 值由 Browser 在类型、长度和容量通过后，复用现有 text-list
   insert/replace primitive 或 Ex13 的 `PCore_NodeReplaceChildrenWithTextListById` 一次性
   消费。它不向 Core 暴露 fragment handle；fragment 仅在成功 mutation 后清空，existing
-  node、nested fragment、mixed/clone 和 HTML parser context 均 fail closed。
+  node、nested fragment、mixed/通用 clone 和 HTML parser context 均 fail closed。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
@@ -320,10 +320,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   Browser 通过 ABI 追加的 `PBrowserScriptDomWriteCallbacksEx5` 接线
   `Node.normalize()`，负责递归顺序和 wrapper/snapshot reconciliation；没有稳定 id 的
   后代不会被伪造为可写目标，宿主只负责 callback 与后续 style/layout/paint；
-- Browser 的 `Node.cloneNode(deep)` 是独立的 detached snapshot 路径，不改变 Core 文档或
-  retained layout。它由 Browser 复制有界的 element 属性、direct child 顺序和 parent links，
-  深克隆最多 64 个 direct children、256 个节点；超限或不支持的节点 fail closed。克隆的
-  数据与源 wrapper 脱离，宿主无需注册 callback，也不得在 `test_host` 复制这套语义；
+- 通用 live wrapper 的 `Node.cloneNode(deep)` 是独立的 detached snapshot 路径，不改变 Core
+  文档或 retained layout。它由 Browser 复制有界的 element 属性、direct child 顺序和 parent
+  links，深克隆最多 64 个 direct children、256 个节点；超限或不支持的节点 fail closed。
+  `document.createElement()` 的 Browser-owned wrapper 另有更窄的 `cloneNode(false/true)`
+  staging：只复制其有界属性和 direct Text child，克隆可在改为唯一 id 后沿 Ex11 物化路径
+  插入。两类克隆的数据都与源 wrapper 脱离，宿主无需注册 callback，也不得在 `test_host`
+  复制这套语义；
 - 当任一操作数是 detached clone 时，Browser 的 `Node.isEqualNode()` 按同一有界预算比较节点
   类型、名称、属性、字符数据和子树顺序；它不把结构相等误报为身份相等，超限或不支持的
   对象返回 `false`。普通 live wrapper 继续使用既有 Core equality bridge；宿主不参与比较；
@@ -388,8 +391,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   Element 的 `appendChild()`/`insertBefore()`/`append()`/`prepend()` 通过 DOM write Ex11
   复用 `__pcoreSetText` slot，调用 Core `PCore_NodeCreateElementChildAtById` 按未过滤
   `childNodes` 索引创建空 Element，再同步 staged 属性/Text。移除、重插入和 id rename
-  保留 wrapper/alias identity；嵌套 Element、Fragment、通用 detached Core handle、事件、
-  资源和 observer 不属于该边界。
+  保留 wrapper/alias identity。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
+  direct Text child；克隆仍是独立的 Browser-owned detached staging，连接源的克隆必须先
+  改为唯一 id。嵌套 Element、Fragment、通用 detached Core handle、事件、资源和 observer
+  不属于该边界。
 - `document.createComment(data)` 是 Browser-owned 的 detached Comment staging。调用必须恰好
   一个参数并按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`#comment`、
   `data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling、

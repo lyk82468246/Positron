@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1248
+#define TEST_MAX_NUMBER 1249
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52284,6 +52284,88 @@ static BOOL test1248_browser_create_text_node_character_data_contract(void)
             " deleteData, replaceData and substringData with UTF-16 offsets;"
             " attached updates reuse the Core callback and reject invalid"
             " mutations without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1249 - detached Element cloneNode staging and insertion. */
+static BOOL test1249_browser_create_element_clone_contract(void)
+{
+    static const char HTML_DETACHED[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE_DETACHED[] =
+        "(function(){var result=document.getElementById('result'),source,"
+        "shallow,deep,attrs,ok=true;"
+        "source=document.createElement('article');source.id='source';"
+        "source.className='card';source.setAttribute('data-k','v');"
+        "source.append('A',document.createTextNode('B'));"
+        "if(source.parentNode!==null||source.isConnected||source.nodeName!=='ARTICLE'||"
+        "source.childNodes.length!==2||source.textContent!=='AB')ok=false;"
+        "shallow=source.cloneNode();attrs=shallow.attributes;"
+        "if(!shallow||shallow===source||shallow.parentNode!==null||"
+        "shallow.isConnected||shallow.nodeName!=='ARTICLE'||shallow.id!=='source'||"
+        "shallow.className!=='card'||shallow.getAttribute('data-k')!=='v'||"
+        "attrs.length!==3||attrs.getNamedItem('data-k').value!=='v'||"
+        "shallow.childNodes.length!==0||shallow.textContent!=='')ok=false;"
+        "deep=source.cloneNode(true);"
+        "if(!deep||deep===source||deep.id!=='source'||deep.childNodes.length!==2||"
+        "deep.childNodes[0]===source.childNodes[0]||"
+        "deep.childNodes[0].parentNode!==deep||deep.textContent!=='AB')ok=false;"
+        "deep.firstChild.data='X';"
+        "if(deep.textContent!=='XB'||source.textContent!=='AB')ok=false;"
+        "result.textContent=String(ok&&source.parentNode===null&&"
+        "source.textContent==='AB'&&deep.textContent==='XB');})();";
+    static const char HTML_ATTACHED[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><span id='anchor'>A</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE_ATTACHED[] =
+        "(function(){var target=document.getElementById('target'),anchor="
+        "document.getElementById('anchor'),result=document.getElementById('result'),"
+        "source,deep,duplicate,ret,bad=0,ok=true;"
+        "source=document.createElement('article');source.id='source';"
+        "source.append('X','B');deep=source.cloneNode(true);deep.id='clone';"
+        "ret=target.appendChild(deep);"
+        "if(ret!==deep||deep.parentNode!==target||!deep.isConnected||"
+        "document.getElementById('clone')!==deep||target.childNodes[1]!==deep||"
+        "target.childNodes[0]!==anchor||target.textContent!=='AXB')ok=false;"
+        "duplicate=deep.cloneNode(true);"
+        "if(!duplicate||duplicate===deep||duplicate.id!=='clone'||"
+        "duplicate.parentNode!==null||duplicate.isConnected||"
+        "duplicate.textContent!=='XB'||duplicate.firstChild===deep.firstChild)ok=false;"
+        "duplicate.firstChild.data='Y';"
+        "if(duplicate.textContent!=='YB'||deep.textContent!=='XB')ok=false;"
+        "try{target.appendChild(duplicate);}catch(e1){bad|=1;}"
+        "if(duplicate.parentNode!==null||duplicate.isConnected||"
+        "deep.parentNode!==target||target.textContent!=='AXB')ok=false;"
+        "duplicate.id='clone2';ret=target.insertBefore(duplicate,deep);"
+        "if(ret!==duplicate||duplicate.parentNode!==target||"
+        "document.getElementById('clone2')!==duplicate||target.childNodes[1]!==duplicate||"
+        "target.childNodes[2]!==deep||target.textContent!=='AYBXB')ok=false;"
+        "result.textContent=String(ok&&bad===1&&source.parentNode===null&&"
+        "source.textContent==='XB'&&target.childNodes[0]===anchor);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-clone-detached",
+            HTML_DETACHED, PROBE_DETACHED, "true", error, sizeof(error))) {
+        show_error(L"TEST 1249 FAIL", error);
+        return FALSE;
+    }
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-clone-attached",
+            HTML_ATTACHED, PROBE_ATTACHED, "true", error, sizeof(error))) {
+        show_error(L"TEST 1249 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1249 OK",
+            "Detached Element wrappers now provide bounded cloneNode"
+            " staging for shallow and direct-Text deep clones; cloned"
+            " attributes and text remain independent, duplicate ids fail"
+            " closed, and renamed clones can be inserted through the"
+            " existing Element materialization path.");
     return TRUE;
 }
 
@@ -110519,6 +110601,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1246: ok = test1246_browser_create_comment_contract(); break;
         case 1247: ok = test1247_browser_create_comment_character_data_contract(); break;
         case 1248: ok = test1248_browser_create_text_node_character_data_contract(); break;
+        case 1249: ok = test1249_browser_create_element_clone_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

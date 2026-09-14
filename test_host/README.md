@@ -65,11 +65,10 @@ tests=13,20,27,999
 - HTML/CSS/DOM、style/layout/paint、图片/SVG 和资源 cache；
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
-- 固定离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/
-  geometry、selector、image 与 DOM bridge；DOM fixtures TEST1201–1243 覆盖
-  normalize、clone/equality、Text/CharacterData、Ex2–Ex15 insertion/replacement 和
-  bounded HTML getter/setter/insertAdjacentHTML/outerHTML、text-only DocumentFragment、
-  Ex13 文本/fragment、Ex14 mixed 与 Ex15 node-aware `Element.replaceChildren()`；
+- 离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/geometry、
+  selector、image 与 DOM bridge；DOM fixtures TEST1201–1249 覆盖 normalize、clone/equality、
+  Text/CharacterData、Ex2–Ex15 mutation、bounded HTML/DocumentFragment/replaceChildren 以及
+  detached Text/Comment/Element staging 的数据、生命周期和 clone 路径；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -547,6 +546,10 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 混合重排、wrapper identity 和失败原子性。宿主只注册 Ex13–Ex15 callbacks、安排重排并
 断言 Core/Browser；通用 fragment、script/资源/事件
 不由 test_host 实现。
+
+TEST1244–1249 覆盖 Browser-owned detached Text/Element/Comment：创建、属性/Text、数据、
+clone、物化和生命周期。TEST1249 的 Element clone 仅复制属性/direct Text；宿主只提供
+fixture/断言，不实现 DOM 语义。
 
 ### Native EDIT/SELECT/button/file
 
