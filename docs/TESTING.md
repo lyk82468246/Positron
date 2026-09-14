@@ -970,6 +970,17 @@ TEST1242 覆盖 `Element.replaceChildren()` 的 Core/Browser Ex14 mixed 纵切�
 安排重排并断言，不实现 DOM 语义。设备门选择 `TEST1242,1241,1239,999`，确认 Debug
 ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
 
+TEST1243 覆盖 Ex15 的 node-aware `Element.replaceChildren()` 纵切。夹具以最多四项 primitive
+Text、当前 receiver 的 direct Element 以及按替换前未过滤 `childNodes` 索引指定的 Text/
+Comment 组合，验证同父重排、选中 CharacterData/Element wrapper identity、后代保留、
+字符串化和旧 direct 子树 detached。跨父 CharacterData、重复节点、自身、带 CharacterData
+的第五项、对象输入和错类型/失效 wrapper 都必须在提交前 fail closed，目标与外部节点保持
+不变。Core 通过 `PCore_NodeReplaceChildrenWithNodeListById` 校验 3/4/8 节点类型并暂存、
+一次提交或完整回滚；总文本最多 16,384 UTF-8 字节，不派发事件、不执行资源或 HTML
+parser。宿主只接 Ex15 callback、安排重排并断言，不实现 DOM 语义。设备门选择
+`TEST1243,1242,1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
+check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

@@ -10,8 +10,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-最新 next801 设备证据见“最新有效设备证据”；更早传输失败只
-保留在 Git 历史和 `docs/history/`，不作为通过依据。
+最新 next802 设备证据见“最新有效设备证据”；更早传输失败只保留在 Git 历史和
+`docs/history/`，不作为通过依据。
 
 - next790–next794 完成 primitive/mixed replacement、existing-node insertion 和
   CharacterData relative mutation；TEST1220–1235 覆盖顺序、snapshot、detached、错误
@@ -51,10 +51,18 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   direct Element。只允许同一父级的既有 element 重排，保留选中节点及后代 identity，
   未保留旧子树才变为 detached；跨父、重复、自身、CharacterData、fragment、对象和超限
   输入在提交前 fail closed，Core 负责暂存、原子提交和回滚。TEST1242 覆盖这些合同。
+- next802 在 Core 增加 `PCore_NodeReplaceChildrenWithNodeListById`，Browser mutation
+  Ex15 让 `Element.replaceChildren()` 接受最多四项 primitive Text、当前目标已连接的
+  direct Element，以及按替换前未过滤 `childNodes` 索引指定的 Text/Comment/CDATA。
+  Browser 重建 direct list 时保留选中 CharacterData/Element wrapper identity；跨父、
+  重复、自身、错类型/越界、fragment、对象和超限输入在提交前 fail closed，Core 负责
+  暂存、原子提交和回滚。为适配固定 1 MiB Browser heap，CharacterData 路径复用已有
+  `replaceChildren` 引导并只按新位置创建 primitive wrapper，避免重复 bootstrap 常驻开销。
+  TEST1243 覆盖 Text/Comment、同父重排、失败不变和外部节点保护；next802 设备门已通过。
 - 设备门复用 WMDC GUI 当前唯一 RAPI 会话；超时进程需在设备端正常结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1242。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1242,999`；nightly/device
+- `TEST_MAX_NUMBER` 已为 1243。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1243,999`；nightly/device
   tooling 从源码 dispatch 动态生成全量清单。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
@@ -73,8 +81,8 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - DOM 结构 mutation 已覆盖 direct-element removal、文本/Comment/CDATA、normalize、clone/
   equality、existing-element insertion/replacement、relative/mixed `replaceWith()`，以及
   parser-backed `innerHTML`、四位置 `insertAdjacentHTML`、单根 `outerHTML` replacement、
-  Browser text-only `DocumentFragment` staging、Ex13 文本/fragment 与 Ex14 同父 mixed
-  `Element.replaceChildren()`。
+  Browser text-only `DocumentFragment` staging、Ex13 文本/fragment、Ex14 同父 mixed 和
+  Ex15 node-aware `Element.replaceChildren()`。
   每项合同、上限和未实现边界见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - Browser script session 仍由宿主显式推进；宿主不创建脚本线程，也不复制 URL、DOM、Event、
   表单、图像或生命周期业务语义。
@@ -88,13 +96,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前短期目标
 
 - 当前基线覆盖表单 owner/validation/submission/reset/FormData、selector、滚动/几何、
-  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next801
+  生命周期、焦点、图片资源和有界 CharacterData/DOM mutation；最近 next784–next802
   依次补齐多值 append/prepend、CharacterData relative、`replaceWith(...values)`、
   relative/mixed 列表、CharacterData `replaceWith`、insertion、existing-node replacement
   以及 element-to-CharacterData replacement、CharacterData existing-node relative mutation、
   Element HTML serialization、parser-backed `innerHTML` replacement、四位置
   `insertAdjacentHTML`、单根 `outerHTML` replacement/removal、text-only
-  `DocumentFragment` staging、Ex13 文本/fragment 和 Ex14 同父 mixed
+  `DocumentFragment` staging、Ex13 文本/fragment、Ex14 同父 mixed 和 Ex15 node-aware
   `Element.replaceChildren()`。
   稳定合同和逐测试
   说明以 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
@@ -201,15 +209,15 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1242。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1242,999`。
+- `TEST_MAX_NUMBER`：1243。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1243,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260914-151638-next801` 是当前基线：Debug ARMV4I，选择
-`1242,1241,1239,999`，4/4 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
+`tmp/device-runs/20260914-164943-next802` 是当前基线：Debug ARMV4I，选择
+`1243,1242,1239,999`，4/4 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
 `crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后
 移除了当前目录；本批无需视觉人工步骤。
 
@@ -266,6 +274,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   identity、未保留子树 detached、字符串化和跨父/重复/自身/超限 fail-closed 均通过。该门
   选择 `1242,1241,1239,999`，4/4 PASS，日志完整，双空间预检、完成后清理和 crash check
   均 PASS，新增 dump=0；本批没有视觉人工步骤。
+- TEST1243 由 next802 设备门验证：Ex15 的 primitive Text、同父 direct Element、Text/
+  Comment CharacterData 混排与重排保留 identity，未保留子树 detached，跨父、重复、自身、
+  对象和超限输入 fail-closed。该门选择 `1243,1242,1239,999`，4/4 PASS，日志完整，
+  双空间预检、完成后清理和 crash check 均 PASS，新增 dump=0；本批没有视觉人工步骤。
 
 ## 当前未决风险
 
@@ -333,8 +345,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-在网络稳定时从 compatibility corpus、源码或用户页面固定 next802 的一个产品缺口；新批次仍须
-把可复用语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
+基于 compatibility corpus、源码或用户页面选择 next803 的一个产品缺口；新批次仍须把可复用
+语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、
 超出有界元素约束的 reparent、其他删除、

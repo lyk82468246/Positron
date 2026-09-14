@@ -139,8 +139,11 @@ mutation；next800 再以 Ex13 和 `PCore_NodeReplaceChildrenWithTextListById` �
 消费 fragment，失败保留旧 direct children。next801 在同一 Ex14/Core 边界增加最多四项
 primitive Text 与当前目标的已连接 direct Element 混合列表：只允许同一父级的既有 element
 重排，保留被选节点及其后代 identity，并在提交失败时恢复完整旧树；跨父、重复、自身、
-fragment、CharacterData 和超限输入继续 fail closed。通用节点/fragment、observer 和
-live collection 仍需由真实页面缺口驱动，不能从窄路径外推。
+fragment、CharacterData 和超限输入继续 fail closed。next802 在新增 Ex15/Core 边界支持
+最多四项 primitive Text、同父 direct Element 和按替换前未过滤 `childNodes` 索引指定的
+Text/Comment/CDATA；Browser 保留选中 CharacterData/Element wrapper identity，Core
+原子暂存并在失败时恢复完整旧树。通用节点/fragment、observer 和 live collection 仍需由
+真实页面缺口驱动，不能从窄路径外推。
 
 Element 的 `innerHTML`/`outerHTML` 现在通过 Core relation 51/52 提供只读、有界序列化；
 `innerHTML` setter 另通过 Core 的 parser-backed `PCore_NodeSetInnerHTMLById` 和 Browser
@@ -162,7 +165,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next802）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next803）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

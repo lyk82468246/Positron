@@ -9088,6 +9088,311 @@ mixed_cleanup:
     return result;
 }
 
+PCORE_API int PCore_NodeReplaceChildrenWithNodeListById(HANDLE hDoc,
+        const char *parent_id,
+        const PCoreNodeReplaceChildrenNodeItem *items,
+        unsigned int item_count)
+{
+    dom_document *doc;
+    dom_element *parent;
+    dom_element *element;
+    dom_node *actual_parent;
+    dom_node *candidate;
+    dom_node *old_nodes[PCORE_NODE_HTML_MUTATION_MAX_CHILDREN];
+    dom_node *prepared[PCORE_NODE_REPLACE_CHILDREN_NODE_LIST_MAX];
+    dom_node *inserted;
+    dom_document_fragment *stash;
+    dom_document_fragment *fragment;
+    dom_nodelist *children;
+    dom_string *content;
+    dom_text *new_text;
+    dom_node_type parent_type;
+    dom_node_type item_type;
+    dom_ulong old_length;
+    dom_exception err;
+    size_t total_bytes;
+    size_t bytes;
+    unsigned int old_count;
+    unsigned int i;
+    unsigned int j;
+    int result;
+
+    if (hDoc == NULL || parent_id == NULL || parent_id[0] == '\0' ||
+            item_count > PCORE_NODE_REPLACE_CHILDREN_NODE_LIST_MAX ||
+            (item_count > 0 && items == NULL)) {
+        return 1;
+    }
+    for (i = 0; i < PCORE_NODE_REPLACE_CHILDREN_NODE_LIST_MAX; i++) {
+        prepared[i] = NULL;
+    }
+    for (i = 0; i < PCORE_NODE_HTML_MUTATION_MAX_CHILDREN; i++) {
+        old_nodes[i] = NULL;
+    }
+    total_bytes = 0;
+    for (i = 0; i < item_count; i++) {
+        if (items[i].kind == PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_TEXT) {
+            if (items[i].node_type != 0U || items[i].child_index != 0U ||
+                    items[i].element_id != NULL || items[i].text == NULL ||
+                    !pcore_contenteditable_utf8_valid(items[i].text)) {
+                return 3;
+            }
+            bytes = strlen(items[i].text);
+            if (bytes > PCORE_NODE_REPLACE_CHILDREN_NODE_TEXT_MAX_BYTES ||
+                    total_bytes >
+                    PCORE_NODE_REPLACE_CHILDREN_NODE_TEXT_MAX_BYTES -
+                    bytes) {
+                return 3;
+            }
+            total_bytes += bytes;
+        } else if (items[i].kind ==
+                PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_ELEMENT) {
+            if (items[i].node_type != 0U || items[i].child_index != 0U ||
+                    items[i].element_id == NULL ||
+                    items[i].element_id[0] == '\0' ||
+                    items[i].text != NULL) {
+                return 3;
+            }
+        } else if (items[i].kind ==
+                PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_CHARACTER_DATA) {
+            if ((items[i].node_type != 3U && items[i].node_type != 4U &&
+                    items[i].node_type != 8U) ||
+                    items[i].element_id != NULL || items[i].text != NULL) {
+                return 3;
+            }
+        } else {
+            return 3;
+        }
+    }
+    doc = (dom_document *) hDoc;
+    parent = pcore_element_by_id(doc, parent_id);
+    if (parent == NULL) {
+        return 2;
+    }
+    if (dom_node_get_node_type((dom_node *) parent, &parent_type) !=
+            DOM_NO_ERR || parent_type != DOM_ELEMENT_NODE ||
+            pcore_document_structural_token((dom_node *) parent) != NULL) {
+        dom_node_unref((dom_node *) parent);
+        return 2;
+    }
+    children = NULL;
+    old_length = 0;
+    if (dom_node_get_child_nodes((dom_node *) parent, &children) !=
+            DOM_NO_ERR || children == NULL ||
+            dom_nodelist_get_length(children, &old_length) != DOM_NO_ERR) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
+        }
+        dom_node_unref((dom_node *) parent);
+        return 1;
+    }
+    if (old_length > (dom_ulong) PCORE_NODE_HTML_MUTATION_MAX_CHILDREN) {
+        dom_nodelist_unref(children);
+        dom_node_unref((dom_node *) parent);
+        return 3;
+    }
+    old_count = (unsigned int) old_length;
+    for (i = 0; i < old_count; i++) {
+        if (dom_nodelist_item(children, (dom_ulong) i, &old_nodes[i]) !=
+                DOM_NO_ERR || old_nodes[i] == NULL) {
+            dom_nodelist_unref(children);
+            for (j = 0; j < old_count; j++) {
+                if (old_nodes[j] != NULL) {
+                    dom_node_unref(old_nodes[j]);
+                }
+            }
+            dom_node_unref((dom_node *) parent);
+            return 1;
+        }
+    }
+    dom_nodelist_unref(children);
+    for (i = 0; i < item_count; i++) {
+        if (items[i].kind == PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_TEXT) {
+            content = NULL;
+            err = dom_string_create((const uint8_t *) items[i].text,
+                    strlen(items[i].text), &content);
+            if (err != DOM_NO_ERR || content == NULL) {
+                result = 1;
+                goto node_list_cleanup;
+            }
+            new_text = NULL;
+            err = dom_document_create_text_node(doc, content, &new_text);
+            dom_string_unref(content);
+            if (err != DOM_NO_ERR || new_text == NULL) {
+                if (new_text != NULL) {
+                    dom_node_unref((dom_node *) new_text);
+                }
+                result = 1;
+                goto node_list_cleanup;
+            }
+            prepared[i] = (dom_node *) new_text;
+        } else if (items[i].kind ==
+                PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_ELEMENT) {
+            element = pcore_element_by_id(doc, items[i].element_id);
+            if (element == NULL) {
+                result = 2;
+                goto node_list_cleanup;
+            }
+            if (dom_node_get_node_type((dom_node *) element, &item_type) !=
+                    DOM_NO_ERR || item_type != DOM_ELEMENT_NODE ||
+                    pcore_document_structural_token((dom_node *) element) !=
+                    NULL || element == parent) {
+                dom_node_unref((dom_node *) element);
+                result = 2;
+                goto node_list_cleanup;
+            }
+            actual_parent = NULL;
+            if (dom_node_get_parent_node((dom_node *) element,
+                    &actual_parent) != DOM_NO_ERR || actual_parent == NULL ||
+                    actual_parent != (dom_node *) parent) {
+                if (actual_parent != NULL) {
+                    dom_node_unref(actual_parent);
+                }
+                dom_node_unref((dom_node *) element);
+                result = 2;
+                goto node_list_cleanup;
+            }
+            dom_node_unref(actual_parent);
+            for (j = 0; j < i; j++) {
+                if (prepared[j] == (dom_node *) element) {
+                    dom_node_unref((dom_node *) element);
+                    result = 2;
+                    goto node_list_cleanup;
+                }
+            }
+            prepared[i] = (dom_node *) element;
+        } else {
+            if (items[i].child_index >= old_count) {
+                result = 2;
+                goto node_list_cleanup;
+            }
+            candidate = old_nodes[items[i].child_index];
+            if (candidate == NULL ||
+                    dom_node_get_node_type(candidate, &item_type) !=
+                    DOM_NO_ERR ||
+                    ((items[i].node_type == 3U &&
+                    item_type != DOM_TEXT_NODE) ||
+                    (items[i].node_type == 4U &&
+                    item_type != DOM_CDATA_SECTION_NODE) ||
+                    (items[i].node_type == 8U &&
+                    item_type != DOM_COMMENT_NODE))) {
+                result = 2;
+                goto node_list_cleanup;
+            }
+            actual_parent = NULL;
+            if (dom_node_get_parent_node(candidate, &actual_parent) !=
+                    DOM_NO_ERR || actual_parent == NULL ||
+                    actual_parent != (dom_node *) parent) {
+                if (actual_parent != NULL) {
+                    dom_node_unref(actual_parent);
+                }
+                result = 2;
+                goto node_list_cleanup;
+            }
+            dom_node_unref(actual_parent);
+            for (j = 0; j < i; j++) {
+                if (prepared[j] == candidate) {
+                    result = 2;
+                    goto node_list_cleanup;
+                }
+            }
+            prepared[i] = dom_node_ref(candidate);
+            if (prepared[i] == NULL) {
+                result = 1;
+                goto node_list_cleanup;
+            }
+        }
+    }
+    for (i = 0; i < item_count; i++) {
+        if (items[i].kind ==
+                PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_ELEMENT) {
+            for (j = 0; j < old_count; j++) {
+                if (old_nodes[j] == prepared[i]) {
+                    break;
+                }
+            }
+            if (j == old_count) {
+                result = 2;
+                goto node_list_cleanup;
+            }
+        }
+    }
+    stash = NULL;
+    fragment = NULL;
+    err = dom_document_create_document_fragment(doc, &stash);
+    if (err != DOM_NO_ERR || stash == NULL) {
+        if (stash != NULL) {
+            dom_node_unref((dom_node *) stash);
+        }
+        result = 1;
+        goto node_list_cleanup;
+    }
+    err = dom_document_create_document_fragment(doc, &fragment);
+    if (err != DOM_NO_ERR || fragment == NULL) {
+        if (fragment != NULL) {
+            dom_node_unref((dom_node *) fragment);
+        }
+        dom_node_unref((dom_node *) stash);
+        result = 1;
+        goto node_list_cleanup;
+    }
+    if (pcore_html_mutation_stash_children(parent, stash) != 0) {
+        (void) pcore_html_mutation_restore_node_list(parent, old_nodes,
+                old_count);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref((dom_node *) stash);
+        result = 1;
+        goto node_list_cleanup;
+    }
+    for (i = 0; i < item_count; i++) {
+        inserted = NULL;
+        err = dom_node_append_child((dom_node *) fragment, prepared[i],
+                &inserted);
+        if (inserted != NULL) {
+            dom_node_unref(inserted);
+        }
+        if (err != DOM_NO_ERR) {
+            (void) pcore_html_mutation_restore_node_list(parent, old_nodes,
+                    old_count);
+            dom_node_unref((dom_node *) fragment);
+            dom_node_unref((dom_node *) stash);
+            result = 1;
+            goto node_list_cleanup;
+        }
+    }
+    inserted = NULL;
+    err = dom_node_append_child((dom_node *) parent, (dom_node *) fragment,
+            &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (err != DOM_NO_ERR) {
+        (void) pcore_html_mutation_restore_node_list(parent, old_nodes,
+                old_count);
+        dom_node_unref((dom_node *) fragment);
+        dom_node_unref((dom_node *) stash);
+        result = 1;
+        goto node_list_cleanup;
+    }
+    dom_node_unref((dom_node *) fragment);
+    dom_node_unref((dom_node *) stash);
+    pcore_render_invalidate(doc);
+    result = 0;
+
+node_list_cleanup:
+    for (i = 0; i < item_count; i++) {
+        if (prepared[i] != NULL) {
+            dom_node_unref(prepared[i]);
+        }
+    }
+    for (i = 0; i < old_count; i++) {
+        if (old_nodes[i] != NULL) {
+            dom_node_unref(old_nodes[i]);
+        }
+    }
+    dom_node_unref((dom_node *) parent);
+    return result;
+}
+
 PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
         const char *element_id, const char *html)
 {

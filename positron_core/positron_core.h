@@ -283,6 +283,37 @@ PCORE_API int PCore_NodeReplaceChildrenWithMixedListById(HANDLE hDoc,
         const char *parent_id, const PCoreNodeReplaceChildrenItem *items,
         unsigned int item_count);
 
+/* A bounded node-aware child-list item for Element.replaceChildren().  TEXT
+ * items carry a borrowed primitive UTF-8 string.  ELEMENT items name an
+ * already-connected direct Element child of the target.  CHARACTER_DATA
+ * items address an already-connected direct Text, Comment or CDATA child by
+ * its pre-mutation child index and node type.  The item array and all
+ * referenced strings are borrowed only for the synchronous call. */
+#define PCORE_NODE_REPLACE_CHILDREN_NODE_LIST_MAX 4u
+#define PCORE_NODE_REPLACE_CHILDREN_NODE_TEXT_MAX_BYTES 16384u
+#define PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_TEXT 1u
+#define PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_ELEMENT 2u
+#define PCORE_NODE_REPLACE_CHILDREN_NODE_ITEM_CHARACTER_DATA 3u
+typedef struct PCoreNodeReplaceChildrenNodeItem {
+    unsigned int kind;
+    unsigned int node_type;
+    const char *element_id;
+    unsigned int child_index;
+    const char *text;
+} PCoreNodeReplaceChildrenNodeItem;
+/* Replace all direct children with zero to four primitive Text values and/or
+ * existing direct Element or CharacterData children of the same target.
+ * Core stages the complete result and commits it atomically; a failed
+ * validation, allocation or DOM operation leaves the old child order intact.
+ * Cross-parent nodes, fragments, document structure tokens and duplicate
+ * nodes return 2; malformed UTF-8, invalid items or byte/list bounds return
+ * 3; other failures return 1.  A successful replacement invalidates retained
+ * layout and returns 0. */
+PCORE_API int PCore_NodeReplaceChildrenWithNodeListById(HANDLE hDoc,
+        const char *parent_id,
+        const PCoreNodeReplaceChildrenNodeItem *items,
+        unsigned int item_count);
+
 /* Replace one live element's child list with a UTF-8 HTML fragment. The
  * parser-backed operation is deliberately bounded: input is limited to
  * PCORE_NODE_HTML_MUTATION_MAX_BYTES, the fragment to

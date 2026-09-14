@@ -197,6 +197,14 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   CharacterData、fragment、结构 token、非法/超限输入返回既有 fail-closed 错误码；不派发
   事件、不执行资源，也不暴露 fragment handle。Browser Ex14 负责类型、wrapper/snapshot
   和 detached 元数据，宿主只接 callback 及后续重排/重绘。
+- `PCore_NodeReplaceChildrenWithNodeListById` 是 Ex15 的 node-aware 变体：调用方提交
+  0–4 项 `PCoreNodeReplaceChildrenNodeItem`，除 primitive Text 和 direct Element 外，
+  还可按替换前未过滤 `childNodes` 的索引及节点类型 3/4/8 选择同一目标的 Text、Comment
+  或 CDATA。Core 先校验父级、类型、重复、越界和 16,384 UTF-8 字节总预算，再暂存旧
+  direct children 并一次性装配；失败恢复原树，成功保持选中节点 identity 并使 retained
+  layout 失效。该 ABI 不暴露 fragment、事件或资源副作用，结构 token、跨父/错类型、非法
+  项和超限输入继续按既有错误码 fail closed；Browser Ex15 负责 wrapper/index 重建，宿主
+  只接 callback 及后续重排/重绘。
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -485,6 +493,13 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   其后代的 wrapper/snapshot identity，Core 负责暂存、提交和回滚。跨父、重复、自身、
   fragment、CharacterData、对象、超限和缺少 callback 均 fail closed；Ex13 及更旧注册入口
   仍把新增字段设为 `NULL`，旧 ABI 布局和语义不变。
+- Ex15 再在 callback 表尾追加 `replace_element_children_with_node_list`，接入
+  `PCore_NodeReplaceChildrenWithNodeListById`。Browser 为最多四个 `{kind,nodeType,index,id,text}`
+  项做预检并提交一次 JSON 请求；CharacterData 项只能引用 receiver 当前 direct 的 Text、
+  Comment 或 CDATA。成功后按参数重建 direct NodeList，保留选中 CharacterData/Element 的
+  wrapper identity，未选中的旧子树才标为 detached；Core 负责暂存、提交和回滚。跨父、
+  重复、错类型/越界、自身、fragment、对象、超限和缺少 callback 均 fail closed。Ex15 只在
+  表尾追加字段，Ex14 及更旧注册入口的布局和语义保持不变。
 - CharacterData wrapper 的相对 `before()`/`after()` 以及单节点 `replaceWith()` 复用 Ex10
   的 existing-node insertion 和 Ex11 的 replacement callback。Browser 只接受一个已连接的
   Text/CDATA/Comment source，按 direct parent 和未过滤位置完成同父重排或跨父迁移，保留
@@ -861,7 +876,8 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   existing CharacterData 的 `replaceChild`/`replaceWith` callback；
   Ex13 再追加 element target 的 `replaceChildren()` text-list callback，接入 Core 的
   原子 direct-children replacement；Ex14 在其后追加同父 mixed element/text callback，
-  接入 Core 的原子重排/替换。每个 Ex 版本只在结构尾部追加字段，旧注册入口继续
+  接入 Core 的原子重排/替换；Ex15 再追加 node-aware element/text/CharacterData callback，
+  接入 Core 的 typed-index 原子重排/替换。每个 Ex 版本只在结构尾部追加字段，旧注册入口继续
   把新增字段设为 `NULL`，因此 Ex12 及更旧 callback table 的布局和语义不变；
   element relative 的 mixed `before()`/`after()` 不新增 callback table，
   而是复用 Ex6 的 existing-element/text callbacks；`replaceWith` 的 mixed 序列同样复用

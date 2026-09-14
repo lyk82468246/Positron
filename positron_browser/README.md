@@ -15,9 +15,11 @@ Core 文档不在其所有权内。
 
 ### History
 
-`PBrowser_History*` 管理有界的条目、当前位置、state、same-document 操作和 traversal。URL/state 查询返回借用字符串，在同一 history handle 的下一次 mutation 或 destroy 后失效。
-
-每个条目还可以保存一个有界的 `(scroll_x, scroll_y)` viewport snapshot。坐标是调用方约定的非负整数；Browser 只随条目保存和搬移它们，不知道文档高度、不创建窗口，也不负责 clamp。宿主在真正提交页面或完成 traversal 后用 `PBrowser_HistoryEntryScroll()` 读取，再按自己的 client area 和 document extent 应用并 clamp。
+`PBrowser_History*` 管理有界条目、当前位置、state、same-document 操作和 traversal；URL/
+state 查询返回的字符串只在同一 handle 的下一次 mutation 或 destroy 前有效。每个条目还可
+保存非负 `(scroll_x, scroll_y)` viewport snapshot。Browser 只随条目保存/搬移坐标，不知道
+文档高度、不创建窗口、不负责 clamp；宿主在提交或 traversal 后用
+`PBrowser_HistoryEntryScroll()` 读取并按 client area/extent 应用。
 
 新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState`/traversal 保留
 snapshot，`pushState` 从零开始，history 裁剪时三者一起移动。History 只管理条目，
@@ -42,32 +44,17 @@ viewport 位置换算为 CSS page 坐标，再调用
 因此宿主可以在完成自己的 clamp/apply 后安全调用它。回调同步且不可重入；
 宿主不得在 scroll callback 内再次进入或销毁同一 Browser session。
 
-宿主完成物理窗口的 style/layout 和 viewport clamp 后，还应把 CSS viewport
-宽高与当前 `devicePixelRatio` 传给
-`PBrowser_ScriptSessionNotifyResize(session, width, height, dpr)`。Browser
-会更新 `innerWidth`、`innerHeight`、`outerWidth`、`outerHeight`、
-`devicePixelRatio` 以及 `screen` 的宽高/方向，并同步派发一次不冒泡、不可取消、
-`isTrusted` 为真的 window `resize` 事件。`screen.orientation` 是跨读取保持身份
-稳定的对象；其 `type`/`angle` 随布局视口的横竖方向更新，支持 `onchange` 和
-有限的 `addEventListener('change', ...)` 监听器。方向真正翻转时，Browser 先完成
-同一次通知中的媒体列表刷新，再派发 orientation `change`，最后派发 visual viewport
-与 window 的 `resize`；仅尺寸或 DPR 改变而方向不变时不会伪造 orientation 事件。宽高允许为零，
-DPR 必须为正且有限；相同快照只返回成功，不重复派发事件，也不触发
-Core style/layout 或任务队列；宿主需另行驱动 frame pump。会话会追踪最多 64 个
-`matchMedia()` 列表；有效
-viewport 或 DPR 变化时，只有 `matches` 实际翻转的列表才同步派发一次 `change`
-事件，且发生在同一次 `resize` 事件之前。事件提供 `media`、`matches`、
-`target`、`currentTarget`、`isTrusted` 和固定的非冒泡/不可取消字段；重复快照和
-未发生匹配变化都保持静默。超过追踪上限的列表仍返回初始快照，但不会收到后续
-`change` 通知。该能力不扩展到 nested overflow 或完整媒体查询语法。
+宿主完成物理窗口的 style/layout 和 viewport clamp 后，用
+`PBrowser_ScriptSessionNotifyResize(session, width, height, dpr)` 同步 CSS 视口与
+`devicePixelRatio`。Browser 更新 window/screen/orientation 和最多 64 个
+`matchMedia()` 列表；方向翻转时按媒体 `change` → orientation `change` → visual
+viewport `resize` → window `resize` 的顺序通知，同方向尺寸/DPR 变化只通知匹配变化和
+`resize`。宽高可为零，DPR 必须为正有限；相同快照静默，不触发 Core layout 或任务队列。
 
-同一个 bootstrap 还暴露有限的 `window.visualViewport`。它是当前布局视口的
-稳定 `EventTarget` 快照：`width`/`height` 读取当前 viewport，`pageLeft`/
-`pageTop` 读取当前 page scroll，`scale` 固定为 `1`，`offsetLeft`/`offsetTop`
-固定为 `0`。宿主的有效 resize 会先同步派发 visual viewport `resize`，再派发
-window `resize`；有效 scroll 会先派发 visual viewport `scroll`，再派发 window
-`scroll`。重复快照保持静默，`onresize`/`onscroll` 与普通 listener 都可使用。
-不模拟 pinch zoom、视觉偏移或 nested overflow；窗口与滚动由宿主负责。
+同一 bootstrap 的 `window.visualViewport` 是稳定的有限 EventTarget：`width`/`height`
+反映 CSS 视口，`pageLeft`/`pageTop` 跟随 page scroll，`scale` 为 1、offset 为 0；有效
+resize/scroll 先通知 visual viewport，再通知 window，并对重复快照去重。宿主仍负责
+frame pump、窗口和真实滚动；不模拟 pinch zoom、视觉偏移、nested overflow 或完整媒体查询。
 
 ### Layout geometry 与 `getBoundingClientRect()` / `getClientRects()`
 
@@ -304,9 +291,11 @@ primitive Text staging；Element append/prepend/insert/replace 与
 CharacterData replaceWith 可消费它；`Element.replaceChildren()` 还通过 mutation Ex13 把
 0–4 个 primitive Text（或一个仅含这些 Text 的 fragment）交给 Core 的原子子节点列表替换
 入口；Ex14 再允许最多四项 primitive Text 与 receiver 当前已连接 direct Element 的 mixed
-列表，按序重排并保留被选 element 及后代 identity。fragment 仅在 Core 成功后清空，未保留
-的旧 direct 子树 wrapper/snapshot 会被标记为 detached；跨父、重复/自身 element、
-CharacterData、nested fragment、clone 和 context-sensitive parser 均 fail closed。
+列表，Ex15 再允许按原始 `childNodes` 索引选择同一 receiver 的 Text/Comment/CDATA。两种
+existing-node 路径都按序重排并保留被选节点及后代 identity；fragment 仅在 Ex13 Core 成功
+后清空，未保留的旧 direct 子树 wrapper/snapshot 会被标记为 detached。跨父、重复/自身
+element、错类型/越界 CharacterData、nested fragment、clone 和 context-sensitive parser
+均 fail closed。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；宿主
 注册 `PBrowserScriptOptionCallbacks` 后由 Core 维护 live/default 选择和单选互斥，
@@ -457,6 +446,16 @@ Ex14 的 `replace_element_children_with_mixed_list` 接入
 detached，保留节点及后代的 wrapper/snapshot identity 不变；跨父、重复、自身、fragment、
 CharacterData、对象、超限和 callback 缺失均拒绝。Ex14 只在表尾追加字段，Ex13 及更旧
 注册入口的 ABI 和语义保持不变。
+
+Ex15 的 `replace_element_children_with_node_list` 接入
+`PCore_NodeReplaceChildrenWithNodeListById`，把 `Element.replaceChildren()` 扩展到最多四项
+primitive Text、direct Element 和同一 receiver 的 direct Text/Comment/CDATA。CharacterData
+项携带替换前未过滤 `childNodes` 的索引与 3/4/8 节点类型；Browser 先校验 wrapper 活性、
+同父关系、重复项、对象/fragment 和容量，再提交一次 `{kind,nodeType,index,id,text}` JSON
+请求。Core 原子暂存并按参数顺序装配，失败恢复旧树；成功后仅未选中的旧子树 detached，
+Browser 重建 direct list 时保留选中 CharacterData 与 Element wrapper identity。Ex15 只在
+表尾追加字段，Ex14 及更旧注册入口的 ABI 和语义保持不变；通用 Node/DocumentFragment、
+跨父 reparent、MutationObserver 和事件/资源副作用仍不在此边界内。
 
 CharacterData 的 `before()`/`after()`/`replaceWith()` 以及 Element 的
 `append()`/`prepend()`/`insertAdjacent*()` 只承诺上面描述的有界 Text/element 路径；

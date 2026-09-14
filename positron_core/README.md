@@ -157,6 +157,13 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   identity 并使 retained layout 失效。总文本最多 16,384 UTF-8 字节；跨父、CharacterData、
   fragment、结构 token、非法/超限输入沿用 fail-closed 错误码，不派发事件、不执行资源、
   不暴露 fragment handle。
+- `PCore_NodeReplaceChildrenWithNodeListById` 是 Ex15 的 node-aware 变体。调用方传入 0–4
+  个 `PCoreNodeReplaceChildrenNodeItem`：除 primitive Text 和 direct Element 外，还可按
+  替换前的未过滤 `childNodes` 索引及节点类型 3/4/8 选择同一目标的 Text、Comment 或
+  CDATA。Core 先验证父级、类型、重复和 16,384 字节总预算，再暂存旧 direct children
+  并一次性装配；失败恢复原树，成功保留选中节点 identity、使 retained layout 失效。该
+  ABI 不暴露 fragment 或事件/资源副作用，结构 token、跨父/越界/错类型、非法项和超限
+  输入继续按既有错误码 fail closed。
 - Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
   只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
   `PCore_NodeReplaceElementChildWithTextListById`、
