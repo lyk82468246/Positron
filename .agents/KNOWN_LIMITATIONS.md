@@ -174,7 +174,9 @@
   非自身节点返回 false，`compareDocumentPosition()` 报告 disconnected；物化、同父排序
   和移除后仍保持 wrapper identity。`childNodes`、首尾 child 和 `hasChildNodes()` 读取
   跟随有界 direct-Text staging；`children`/`childElementCount` 不表示未实现的嵌套元素。
-  宿主仍负责后续 style/layout/paint，视觉/触摸/SIP 结果不由该门保证。
+  `style.cssText` 在 detached、attached 和 removed wrapper 上均经属性 facade 写入；CSS
+  声明仍只按既有有界解析处理。宿主仍负责后续 style/layout/paint，视觉/触摸/SIP 结果不由
+  该门保证。
 - `document.createComment(data)` 目前是 Browser-owned 的有界 detached Comment wrapper：必须
   恰好一个参数并按 `String` 转换，最多 65,535 个脚本字符；进入 Core 时还受 65,535 字节
   UTF-8 上限。wrapper 提供 node shape、data/nodeValue/textContent/length、owner/root/
@@ -568,13 +570,14 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1251 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1252 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与
   Ex15 typed CharacterData）、detached `document.createTextNode()` 的插入/数据/offset/lifecycle，
   以及 detached `document.createElement()` 的物化、属性/Text staging、clone、identity/lifecycle，
   以及其 `hasChildNodes()`/`childNodes` child-query staging 一致性，
+  以及 detached Element `style.cssText` 的属性 facade 和生命周期一致性，
   detached `document.createComment()` 的创建、数据、insert/delete/replace/substring、插入、
   移除、重插入、clone 和 identity，
   以及 retained-layout 边界；逐项合同见

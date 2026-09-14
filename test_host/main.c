@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1251
+#define TEST_MAX_NUMBER 1252
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52487,6 +52487,48 @@ static BOOL test1251_browser_detached_element_child_query_contract(void)
             " direct-Text staging across append, textContent clearing,"
             " materialization and removal; childNodes, first/last child"
             " and text snapshots remain consistent without a new Core ABI.");
+    return TRUE;
+}
+
+/* TEST 1252 - detached Element CSSStyleDeclaration cssText. */
+static BOOL test1252_browser_detached_element_style_css_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),a,s,ok=true;"
+        "a=document.createElement('article');s=a.style;"
+        "try{s.cssText='color: red; width: 2px';}catch(e1){ok=false;}"
+        "if(a.getAttribute('style')!=='color: red; width: 2px'||"
+        "s.getPropertyValue('color')!=='red'||s.getPropertyValue('width')!=='2px'||"
+        "s.cssText!=='color: red; width: 2px')ok=false;"
+        "s.setProperty('height','3px');"
+        "if(s.getPropertyValue('height')!=='3px'||s.getPropertyValue('color')!=='red')ok=false;"
+        "a.id='styled';target.appendChild(a);"
+        "s.cssText='margin: 4px';"
+        "if(!a.isConnected||a.getAttribute('style')!=='margin: 4px'||"
+        "s.getPropertyValue('margin')!=='4px')ok=false;"
+        "a.remove();s.cssText='padding: 1px';"
+        "if(a.isConnected||a.getAttribute('style')!=='padding: 1px'||"
+        "s.getPropertyValue('padding')!=='1px')ok=false;"
+        "s.cssText='';if(s.length!==0||a.getAttribute('style')!=='')ok=false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-element-style-css-text",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1252 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1252 OK",
+            "Detached Element style.cssText now writes through the wrapper"
+            " attribute owner before and after materialization; property"
+            " parsing and clearing remain consistent across attach/remove"
+            " without changing the existing CSS declaration boundary.");
     return TRUE;
 }
 
@@ -110725,6 +110767,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1249: ok = test1249_browser_create_element_clone_contract(); break;
         case 1250: ok = test1250_browser_detached_element_identity_contract(); break;
         case 1251: ok = test1251_browser_detached_element_child_query_contract(); break;
+        case 1252: ok = test1252_browser_detached_element_style_css_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
