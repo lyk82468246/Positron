@@ -210,9 +210,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   CharacterData 移动、Text setter 与删除入口写入 Core。已创建的 Text 可用
   `insertBefore()`、`appendChild()` 以及只含 primitive/created Text 的有界 `append()`/
   `prepend()` 进入带 id 的 live Element；`nodeValue`/`data`/`textContent`、
-  `appendData()`、`remove()`、`cloneNode()`、父级/兄弟/root 查询同步其 detached 或
-  connected 状态。最多 64 个 direct child、单值最多 65,535 个脚本字符；通用 Node、
-  DocumentFragment、含 element/fragment 的混合 append 及其他动态树语义继续 fail closed。
+  `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`、
+  `remove()`、`cloneNode()`、父级/兄弟/root 查询同步其 detached 或 connected 状态。offset/
+  count 按 UTF-16 code-unit 校验，detached（含 staging 子树）写本地快照，connected 写入复用既有 Core callback；
+  最多 64 个 direct child、单值最多 65,535 个脚本字符。通用 Node、DocumentFragment、含
+  element/fragment 的混合 append 及其他动态树语义继续 fail closed。
 - `PCore_NodeCreateElementChildAtById(hDoc, parent_id, tag_name, element_id,
   child_index)` 是 Browser detached Element 的唯一 Core 物化入口。它只接受已连接的
   live Element（包括 body）作为父级、合法且不重复的非空 UTF-8 id，以及未过滤

@@ -297,20 +297,20 @@ existing-node 路径都按序重排并保留被选节点及后代 identity；fra
 element、错类型/越界 CharacterData、nested fragment、clone 和 context-sensitive parser
 均 fail closed。
 
-`document.createTextNode()` 创建 Text；插入、数据 mutation、移除、重插入、
-clone 复用 Core callbacks；通用 Node/fragment 不支持。
+`document.createTextNode(value)` 创建 Browser-owned detached Text；支持插入、移除、重插入、
+clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
+offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复用 Core callback。
+Node/fragment 仍不支持。
 
 `document.createElement(tag)` 提供一个 Browser-owned 的 detached Element staging 路径。标签名
 先规范化为小写，只接受 ASCII `[a-z][a-z0-9-]*` 且不超过 32 个 UTF-8 字节；`html`、`head`
-和 `body` 不能创建。新 Element 必须先设置非空且唯一的 id，才能通过
-`appendChild()`、`insertBefore()`、`append()` 或 `prepend()` 物化到带 id 的 live Element；
-插入位置按未过滤 `childNodes` 索引解释，省略索引时追加。每个 detached Element 最多保存
-64 个本地 attribute（值最多 65,535 个脚本字符）和 64 个 direct Text child；属性与 Text
-在物化前只存在于 Browser wrapper。Ex11 callback 通过既有 `__pcoreSetText` native slot
-调用 `PCore_NodeCreateElementChildAtById`，Core 只创建带 id 的空 Element 并使 layout
-失效，随后 Browser 再写入 staged 属性/Text。移除后再次插入和 id rename 保留 wrapper/
-alias identity；无 id、重复 id、结构标签、嵌套 Element、Fragment、通用 detached Core
-handle、事件、资源和 observer 均 fail closed。
+和 `body` 不能创建。设置唯一非空 id 后，才可通过 `appendChild()`、`insertBefore()`、
+`append()` 或 `prepend()` 按未过滤 `childNodes` 索引物化到 live Element；detached staging
+最多保存 64 个 attribute 和 64 个 direct Text child。Ex11 callback 复用
+`__pcoreSetText` 调用 Core 创建空 Element，再写入 staged 属性/Text。
+移除后再次插入和 id rename 保留 wrapper/alias identity；无 id、重复 id、结构标签、嵌套
+Element、Fragment、通用 detached Core handle、事件、资源和
+observer 均 fail closed。
 
 `document.createComment(data)` 提供一个 Browser-owned 的 detached Comment wrapper。调用必须
 恰好传入一个参数，参数按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`nodeName="#comment"`、

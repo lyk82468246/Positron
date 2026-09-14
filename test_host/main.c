@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1247
+#define TEST_MAX_NUMBER 1248
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52191,8 +52191,10 @@ static BOOL test1247_browser_create_comment_character_data_contract(void)
         "try{n=document.createComment('abcdef');}catch(e){ok=false;}"
         "ok=ok&&n!==null&&n.parentNode===null&&n.length===6&&"
         "n.substringData(1,3)==='bcd'&&n.substringData(4,99)==='ef';"
-        "try{n.substringData(7,0);}catch(e1){bad|=1;}"
-        "try{n.substringData(0,-1);}catch(e2){bad|=2;}"
+        "try{n.substringData(NaN,0);}catch(e1a){bad|=1;}"
+        "try{n.substringData(7,0);}catch(e1b){bad|=1;}"
+        "try{n.substringData(0,Infinity);}catch(e2a){bad|=2;}"
+        "try{n.substringData(0,-1);}catch(e2b){bad|=2;}"
         "try{n.insertData(1.5,'x');}catch(e3){bad|=4;}"
         "try{n.deleteData(-1,1);}catch(e4){bad|=8;}"
         "n.insertData(2,'X');n.deleteData(3,2);n.replaceData(0,2,'Q');"
@@ -52227,6 +52229,61 @@ static BOOL test1247_browser_create_comment_character_data_contract(void)
             " deleteData, replaceData and substringData with UTF-16 offsets;"
             " attached updates reuse the Core callback and reject invalid"
             " offsets or counts without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1248 - detached Text CharacterData offset operations. */
+static BOOL test1248_browser_create_text_node_character_data_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='anchor'>A</p><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var body=document.body,anchor=document.getElementById('anchor'),"
+        "result=document.getElementById('result'),n,staged,stagedText,snap,before,bad=0,ok=true,ret;"
+        "try{n=document.createTextNode('abcdef');}catch(e){ok=false;}"
+        "ok=ok&&n!==null&&n.parentNode===null&&n.length===6&&"
+        "n.substringData(1,3)==='bcd'&&n.substringData(4,99)==='ef';"
+        "try{n.substringData(7,0);}catch(e1){bad|=1;}"
+        "try{n.substringData(0,-1);}catch(e2){bad|=2;}"
+        "try{n.insertData(1.5,'x');}catch(e3){bad|=4;}"
+        "try{n.deleteData(-1,1);}catch(e4){bad|=8;}"
+        "n.insertData(2,'X');n.deleteData(3,2);n.replaceData(0,2,'Q');"
+        "ok=ok&&n.data==='QXef'&&n.length===4&&n.substringData(1,99)==='Xef';"
+        "n.appendData('!');snap=body.childNodes;ret=body.insertBefore(n,anchor);"
+        "ok=ok&&ret===n&&n.data==='QXef!'&&n.parentNode===body&&n.isConnected&&"
+        "body.childNodes.length===3&&body.childNodes[0]===n&&body.childNodes[1]===anchor&&"
+        "snap.length===2&&snap[0]===anchor&&body.textContent==='QXef!Aidle';"
+        "staged=document.createElement('div');staged.id='staged';"
+        "stagedText=document.createTextNode('stage');staged.appendChild(stagedText);"
+        "stagedText.insertData(2,'X');stagedText.deleteData(0,1);"
+        "ok=ok&&stagedText.parentNode===staged&&stagedText.data==='tXage'&&"
+        "staged.textContent==='tXage';"
+        "n.insertData('2',null);n.deleteData(2,4);n.replaceData(1,99,'R');"
+        "n.appendData('?');ok=ok&&n.data==='QR?'&&n.substringData(0,2)==='QR';"
+        "before=n.data;try{n.insertData(99,'x');}catch(e5){bad|=16;}"
+        "try{n.deleteData(0,-1);}catch(e6){bad|=32;}"
+        "try{n.replaceData(0,-1,'x');}catch(e7){bad|=64;}"
+        "try{n.substringData(0,1.5);}catch(e8){bad|=128;}"
+        "ok=ok&&n.data===before&&n.parentNode===body&&body.childNodes[0]===n;"
+        "n.data='A😀B';ok=ok&&n.length===4&&n.substringData(1,2)==='😀';"
+        "n.insertData(3,'!');n.deleteData(1,2);"
+        "ok=ok&&n.data==='A!B'&&n.length===3&&body.textContent==='A!BAidle';"
+        "result.textContent=String(ok&&bad===255&&n.parentNode===body);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-create-text-node-data", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1248 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1248 OK",
+            "Detached Text wrappers now expose bounded insertData,"
+            " deleteData, replaceData and substringData with UTF-16 offsets;"
+            " attached updates reuse the Core callback and reject invalid"
+            " mutations without partial mutation.");
     return TRUE;
 }
 
@@ -110461,6 +110518,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1245: ok = test1245_browser_create_element_contract(); break;
         case 1246: ok = test1246_browser_create_comment_contract(); break;
         case 1247: ok = test1247_browser_create_comment_character_data_contract(); break;
+        case 1248: ok = test1248_browser_create_text_node_character_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

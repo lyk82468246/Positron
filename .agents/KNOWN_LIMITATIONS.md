@@ -155,8 +155,10 @@
 - `document.createTextNode(value)` 现在提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/
-  `textContent`/`appendData()`、`remove()` 与 `cloneNode()`。Browser 复用既有 Core Text
-  插入、CharacterData 移动、Text setter 和删除入口，不新增 Core ABI 或 detached handle；
+  `textContent`/`appendData()`/`insertData()`/`deleteData()`/`replaceData()`/`substringData()`、
+  `remove()` 与 `cloneNode()`。四个 offset 方法按 UTF-16 code unit 校验；detached 更新快照，
+  connected 复用既有 Core callback。Browser 复用既有 Core Text 插入、CharacterData 移动、
+  Text setter 和删除入口，不新增 Core ABI 或 detached handle；
   64 个 direct child、65,535 个脚本字符、generic Node、DocumentFragment、含
   element/fragment 的混合 append 和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 目前是 Browser-owned 的有界 detached Element staging：标签
@@ -170,18 +172,14 @@
 - `document.createComment(data)` 目前是 Browser-owned 的有界 detached Comment wrapper：必须
   恰好一个参数并按 `String` 转换，最多 65,535 个脚本字符；进入 Core 时还受 65,535 字节
   UTF-8 上限。wrapper 提供 node shape、data/nodeValue/textContent/length、owner/root/
-  parent/connection/sibling、identity、clone、appendData 和 remove；首次插入 live Element
+  parent/connection/sibling、identity、clone、appendData、insertData、deleteData、replaceData、
+  substringData 和 remove；offset/count 按 UTF-16 code unit 校验，删除范围超出末尾时截断；首次插入 live Element
   通过 DOM write Ex12 的 `create_comment_child_at` 物化，后续更新、移除、同父重排和再次插入
   复用既有 CharacterData callbacks。无效参数/reference、对象、超限输入 fail closed；
   没有通用 detached Core handle、Fragment、相对 `before()`/`after()`/`replaceWith()`、事件、
   资源、observer 或完整 live collection，宿主仍负责 style/layout/paint，视觉/触摸/SIP 结果
-  不由该门保证。
-- detached Comment wrapper 的 `insertData()`、`deleteData()`、`replaceData()` 和
-  `substringData()` 只提供有界 UTF-16 code-unit offset 语义：offset/count 必须为有限非负
-  整数，删除范围超出末尾时截断；detached 更新本地快照，connected 更新复用既有 Core
-  CharacterData callback。结果仍受 65,535 个脚本字符与 Core UTF-8 字节预算约束，非法参数、
-  超限或 callback/Core 失败不改变原数据。相对 `before()`/`after()`/`replaceWith()`、通用
-  detached Core handle、Fragment、事件、资源、observer 和完整 live collection 仍未实现。
+  不由该门保证。非法参数、超限或 callback/Core 失败均保持原数据；相对
+  `before()`/`after()`/`replaceWith()`、通用 detached Core handle 和 Fragment 仍未实现。
 - Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
   另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
   `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
@@ -563,11 +561,11 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1247 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1248 覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、`insertAdjacent*()`、mixed wrapper/snapshot、detached、
   UTF-16、parser-backed HTML mutation、text-only DocumentFragment staging、
   `Element.replaceChildren()`（含 Ex13 文本/fragment、Ex14 同父 mixed element/text 与
-  Ex15 typed CharacterData）、detached `document.createTextNode()` 的插入/数据/生命周期，
+  Ex15 typed CharacterData）、detached `document.createTextNode()` 的插入/数据/offset/lifecycle，
   以及 detached `document.createElement()` 的物化、属性/Text staging、identity/lifecycle，
   detached `document.createComment()` 的创建、数据、insert/delete/replace/substring、插入、
   移除、重插入、clone 和 identity，
