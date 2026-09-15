@@ -189,17 +189,14 @@
   插入复用既有 callback。非法参数/reference、对象、超限、通用 detached Core handle、
   Fragment、相对 mutation、事件、资源、observer 和完整 live collection 均 fail closed；
   宿主仍负责 style/layout/paint，视觉/触摸/SIP 不由该门保证。
-- Core relation 51/52 提供有界、转义的 Element HTML getter。`PCore_NodeSetInnerHTMLById`
-  另用同一 document 的 UTF-8 fragment parser，经 Browser Ex8 替换 direct children；
-  `PCore_NodeInsertAdjacentHTMLById`/Ex9 复用该 parser 在四个位置插入片段。两者保持
-  目标/既有节点身份，预检重复或外部冲突 id、非法 UTF-8、未知/超限输入并 fail closed；
-  成功使 layout 失效，不执行 script、不抓取资源、不派发事件。`PCore_NodeSetOuterHTMLById`/
-  Ex10 另以单一 Element 根替换目标或以空字符串移除目标，保留原父级/索引并让旧目标及
-  后代 wrapper detached；它同样预检重复/外部冲突 id、非法 UTF-8、顶层文本/Comment、
-  多根和超限输入。Core 仍不暴露 DocumentFragment ABI；Browser 仅支持上述 text-only
-  staging，通用或嵌套 clone insertion 和 context-sensitive parser 仍未实现；当前只有
-  createElement 的属性/direct-Text 克隆能沿既有有界物化路径插入。
-  三条路径的预算与错误合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- HTML getter 与 Core mutation 入口共用有界 UTF-8 parser；它们保持
+  身份、拒绝非法/超限/id 冲突并使 layout 失效。OuterHTML 只接受单一 Element 根或空字符串；
+  顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 只有
+  text-only staging/direct-Text clone，不执行脚本、资源或事件。预算见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- `document.write()`/`document.writeln()` 不是通用 parser：只有注册
+  `PBrowserScriptDocumentWriteCallbacks` 并设置当前 classic-script 索引才安装；片段有界、
+  同步插入 script 后。`<script>`、非法/超限/冲突 id 均拒绝，不执行脚本、抓取资源或派发
+  事件；无 callback、无效索引或 Core/宿主失败均 fail closed。
 - 表单实现覆盖常用控件、validation、submission、reset 和 successful controls，但没有完整本地化 validation UI、所有 input type 的系统 picker 或桌面浏览器级 editing 行为。
 - `labels`、form collections 和若干 NodeList 是静态 snapshot；支持的 form owner/form.elements
   关系现在识别带 `form="id"` 的 input、select、textarea、button、fieldset、img、object、output；按文档顺序
@@ -239,6 +236,9 @@
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
+- `document.write()`/`writeln()` 仅在 callback 存在时安装；受 16,384 字节和 parser 预算约束，
+  不提供动态脚本、资源、`open()`/`close()` 或流式重写。`PScript_CollectGarbage()` 只回收
+  引导临时对象，不改变 heap/globals。
 - Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、通过 Core effective-disabled relation 得到的 input/button/select/textarea/option/optgroup `:disabled`/`:enabled`（fieldset 自身回退到直接属性）、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态包括带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性），以及在宿主注册 `PBrowserScriptInteractionCallbacksEx` 后由宿主明确批准的 `:visited`；`:visited` 只收到元素 id 与原始 href，Browser 不保存或推断 history，宿主负责 URL 解析、历史来源和隐私策略，callback 缺失、失败、无效输入或超长值均安全不匹配；`:target` 只在当前 URL fragment 解码后等于元素当前非空 `id` 时匹配，无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor 或 stale wrapper 都安全不匹配；`:not()` 只接受单一简单 compound 参数，`:is()`/`:where()` 只接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 只接受最多 16 个相对简单 compound 分支，且每个后代/兄弟遍历最多 64 步；`:active`/`:hover` 仅在宿主注册 interaction callback 并返回当前 Core 状态的精确 id 时匹配。伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。`:has()` 的链式相对 selector、完整分支语法和更深遍历仍未实现；`:target` 不拥有 fragment reveal 或页面滚动，真实页面视觉仍需宿主验收。
 - `:lang()` 是同一 selector 子集中的有界扩展：只接受单一 ASCII 语言标签，沿最多 64 层 `parentElement` 读取继承语言，`lang` 优先于 `xml:lang`，按大小写不敏感的精确值或 `-` 子标签前缀匹配；空值、非法参数、语言标签列表和引号形式 fail closed。该实现不代表完整 BCP 47 解析或 namespace 语言规则。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的

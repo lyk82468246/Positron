@@ -1088,6 +1088,15 @@ TEST1255 覆盖 Browser session 内 `document.cookie` 的有界解析。夹具�
 fail-closed 配额；其他属性不会改变会话 cookie。该路径只改 Browser 脚本语义，不新增
 Core ABI 或 HTTP 持久化 jar；设备门选择 `1254,1255,999`。
 
+TEST1256 覆盖 Browser `document.write()`/`document.writeln()` 的有界脚本位置桥。夹具
+在同一 classic script 中传入多个参数并检查字符串化、`writeln()` 的单个换行、插入节点
+位于当前 script 之后，以及包含 `<script>` 的片段被原子拒绝且未执行。Browser 通过
+`PBrowser_ScriptSessionSetCurrentScriptIndex()` 传递脚本发现索引，宿主 callback 转给
+Core 的 `PCore_NodeInsertHTMLAfterScriptByIndex()`；该 Core parser 复用 16,384 字节、
+256 节点、64 层和 id 冲突预算，不抓取资源、不派发 mutation 事件。无 callback、无效
+索引、非法 UTF-8 或超限输入均 fail closed。设备门选择 `1236-1239,1244-1256,999`，
+需确认同一批 DLL、完整日志、双空间预检、完成后清理和 crash check。
+
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
 
 ### 手动模式

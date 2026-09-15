@@ -66,9 +66,10 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/geometry、
-  selector、image 与 DOM bridge；DOM fixtures TEST1201–1254 覆盖 bounded DOM/CharacterData
+  selector、image 与 DOM bridge；DOM fixtures TEST1201–1256 覆盖 bounded DOM/CharacterData
   mutation、HTML/fragment/replaceChildren，以及 detached Text/Comment/Element 的数据、
-  生命周期、关系、style、reflected attribute facade 和 `HTMLBodyElement.text`；
+  生命周期、关系、style、reflected attribute facade、`HTMLBodyElement.text` 和有界
+  `document.write()` script-position mutation；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。

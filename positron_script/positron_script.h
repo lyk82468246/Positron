@@ -22,7 +22,7 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010006UL
+#define PSCRIPT_ABI_VERSION 0x00010007UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (64UL * 1024UL)
@@ -79,6 +79,11 @@ PSCRIPT_API void PScript_Destroy(HANDLE hScript);
  * The final expression value is available through PScript_GetResult. */
 PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
         int source_len);
+
+/* Run a full Duktape collection and compact the heap. This is a synchronous
+ * maintenance boundary for long-lived embedders that evaluate many small
+ * programs; it does not change globals or module state. */
+PSCRIPT_API int PScript_CollectGarbage(HANDLE hScript);
 
 /* Set persistent JSON-compatible values in the global object. Names and
  * strings accept a negative length for NUL-terminated input. These values

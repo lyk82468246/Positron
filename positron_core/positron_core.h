@@ -353,6 +353,22 @@ PCORE_API int PCore_NodeSetInnerHTMLById(HANDLE hDoc,
 PCORE_API int PCore_NodeInsertAdjacentHTMLById(HANDLE hDoc,
         const char *element_id, unsigned int position, const char *html);
 
+/* Insert a bounded UTF-8 HTML fragment immediately after the non-empty
+ * classic script at `script_index` in document discovery order. This is the
+ * Core primitive used by Browser document.write()/writeln() while that
+ * script is executing. The fragment uses the same Element/Text/Comment/CDATA
+ * parser subset and byte/node/depth/direct-child limits as
+ * PCore_NodeInsertAdjacentHTMLById, but script elements are rejected so the
+ * host's already enumerated script sequence cannot be reordered or executed
+ * implicitly. The script, its parent and existing nodes retain identity;
+ * malformed UTF-8, duplicate/conflicting ids, unsupported nodes, an invalid
+ * index or an unavailable parent fail before mutation. Returns 0 on success,
+ * 2 when the script/index/parent is unavailable, 3 for invalid input or a
+ * bound violation, and 1 for another parser/DOM failure. No script, resource
+ * fetch or DOM event dispatch is performed. */
+PCORE_API int PCore_NodeInsertHTMLAfterScriptByIndex(HANDLE hDoc,
+        unsigned int script_index, const char *html);
+
 /* Replace one live element with a parser-backed UTF-8 HTML fragment. This
  * bounded outerHTML surface accepts either one Element root or an empty
  * string (which removes the target); top-level text/comment/multiple roots,

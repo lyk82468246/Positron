@@ -929,6 +929,23 @@ typedef struct PBrowserScriptDomWriteCallbacksEx12 {
     PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
 } PBrowserScriptDomWriteCallbacksEx12;
 
+/* Browser-owned bridge for the bounded classic-script document.write()
+ * surface. The host sets the current script index on the session immediately
+ * before evaluating each script, then this synchronous callback receives that
+ * discovery index, the borrowed UTF-8 fragment and whether writeln() requested
+ * one trailing LF.
+ * The callback must insert the fragment after that script through Core and
+ * return >0 on success, 0 when the script/operation is unavailable and <0 on
+ * adapter failure. Script elements, resource fetching, implicit execution and
+ * DOM events remain outside this contract. */
+typedef int (*PBrowserScriptDocumentWriteFn)(void *pw,
+        unsigned int script_index, const char *html, int append_newline);
+typedef struct PBrowserScriptDocumentWriteCallbacks {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptDocumentWriteFn write;
+} PBrowserScriptDocumentWriteCallbacks;
+
 /* Typed host adapter for the bounded direct-element DOM mutation boundary.
  * The browser DLL parses the JSON request and the host performs the
  * Core-owned removal of one direct element child. remove_child returns >0
@@ -2537,6 +2554,12 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterJsonFunction(HANDLE hSession,
         const char *name);
 PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
         const char *source, int source_len);
+/* Set the non-empty classic-script discovery index used by the synchronous
+ * document.write()/writeln() bridge. Pass -1 outside script evaluation or
+ * when no script can safely receive a write. The session does not retain a
+ * Core document and never resolves this index itself. */
+PBROWSER_API int PBrowser_ScriptSessionSetCurrentScriptIndex(
+        HANDLE hSession, int script_index);
 /* Evaluate the product-owned browser bootstrap after the host has installed
  * the __pcore* globals and JSON callbacks it needs. The bootstrap only
  * creates the browser-facing window/document/history/location/event objects;
@@ -2700,6 +2723,11 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx12 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
+        HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptDocumentWriteCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDocumentWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(
         HANDLE hSession,

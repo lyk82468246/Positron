@@ -737,6 +737,29 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     return PSCRIPT_OK;
 }
 
+PSCRIPT_API int PScript_CollectGarbage(HANDLE hScript)
+{
+    pscript_context *ctx;
+
+    ctx = (pscript_context *) hScript;
+    if (ctx == NULL || ctx->duk == NULL || ctx->poisoned) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    ctx->memory_limited = 0;
+    ctx->fatal_jmp_active = 1;
+    if (setjmp(ctx->fatal_jmp) != 0) {
+        ctx->fatal_jmp_active = 0;
+        ctx->poisoned = 1;
+        ctx->duk = NULL;
+        return PSCRIPT_ERROR_FATAL;
+    }
+    duk_set_top(ctx->duk, 0);
+    duk_gc(ctx->duk, 0);
+    duk_gc(ctx->duk, DUK_GC_COMPACT);
+    ctx->fatal_jmp_active = 0;
+    return PSCRIPT_OK;
+}
+
 static int pscript_protected_error(pscript_context *ctx, int error_code)
 {
     const char *text;

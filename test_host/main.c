@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1255
+#define TEST_MAX_NUMBER 1256
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15334,6 +15334,53 @@ static int pcore_browser_script_dom_insert_adjacent_html(void *pw,
 
 /* Product semantics stay in positron_core; the test host only supplies the
  * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_document_write(void *pw,
+        unsigned int script_index, const char *html, int append_newline)
+{
+    pcore_browser_script_bridge *bridge;
+    char *fragment;
+    size_t length;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || html == NULL ||
+            (append_newline != 0 && append_newline != 1)) {
+        return -1;
+    }
+    length = strlen(html);
+    if (length > PCORE_NODE_HTML_MUTATION_MAX_BYTES ||
+            (append_newline && length >= PCORE_NODE_HTML_MUTATION_MAX_BYTES)) {
+        return 0;
+    }
+    if (!append_newline) {
+        result = PCore_NodeInsertHTMLAfterScriptByIndex(bridge->document,
+                script_index, html);
+    } else {
+        fragment = (char *) malloc(length + 2);
+        if (fragment == NULL) {
+            return -1;
+        }
+        memcpy(fragment, html, length);
+        fragment[length] = '\n';
+        fragment[length + 1] = '\0';
+        result = PCore_NodeInsertHTMLAfterScriptByIndex(bridge->document,
+                script_index, fragment);
+        free(fragment);
+    }
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
 static int pcore_browser_script_dom_set_outer_html(void *pw,
         const char *id, const char *html)
 {
@@ -17283,6 +17330,83 @@ static int pcore_browser_script_type_supported(const char *type)
                     "application/ecmascript");
 }
 
+/* Keep the optional document.write bootstrap out of sessions whose scripts
+ * cannot call it; the WM6 script heap is deliberately tight. This is only a
+ * bounded source feature probe. It does not parse, execute or assign DOM
+ * semantics in the host. */
+static int pcore_browser_script_contains_write(const char *data, int length)
+{
+    static const char needle[] = "document.write";
+    int needle_length;
+    int i;
+
+    if (data == NULL || length <= 0) {
+        return 0;
+    }
+    needle_length = (int) strlen(needle);
+    if (length < needle_length) {
+        return 0;
+    }
+    for (i = 0; i <= length - needle_length; i++) {
+        if (memcmp(data + i, needle, (size_t) needle_length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int pcore_browser_script_document_write_needed(HANDLE document,
+        const char *document_url, PCoreResolveUrlFn resolve, void *resolve_pw,
+        int count)
+{
+    PCoreScriptInfo info;
+    const char *data;
+    char *source;
+    int i;
+    int needed;
+
+    if (document == NULL || count <= 0) {
+        return 0;
+    }
+    for (i = 0; i < count; i++) {
+        memset(&info, 0, sizeof(info));
+        data = NULL;
+        if (PCore_GetScript(document, (unsigned int) i, document_url,
+                resolve, resolve_pw, &info, NULL, 0, NULL, 0, NULL, 0,
+                &data) != 0 || info.source_bytes < 0 ||
+                info.data_bytes < 0) {
+            return 1;
+        }
+        if (info.kind == 2) {
+            if (info.available && pcore_browser_script_contains_write(data,
+                    info.data_bytes)) {
+                return 1;
+            }
+            continue;
+        }
+        if (info.source_bytes == 0) {
+            continue;
+        }
+        source = (char *) malloc((size_t) info.source_bytes + 1);
+        if (source == NULL) {
+            return 1;
+        }
+        if (PCore_GetScript(document, (unsigned int) i, document_url,
+                resolve, resolve_pw, &info, source,
+                info.source_bytes + 1, NULL, 0, NULL, 0, &data) != 0) {
+            free(source);
+            return 1;
+        }
+        needed = pcore_browser_script_contains_write(source,
+                info.source_bytes);
+        free(source);
+        if (needed) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void pcore_browser_script_error(char *error, int error_capacity,
         const char *stage, const char *detail)
 {
@@ -17465,6 +17589,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
     PBrowserScriptDomWriteCallbacksEx12 dom_write_callbacks;
+    PBrowserScriptDocumentWriteCallbacks document_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx15 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
     PBrowserScriptContentEditableSelectionCallbacks
@@ -17509,6 +17634,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     int rc;
     int i;
     int host_dpi;
+    int document_write_needed;
     int initial_window_name_rc;
     int focus_rc;
     double viewport_width;
@@ -17549,6 +17675,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     if (count == 0) {
         return 0;
     }
+    document_write_needed = pcore_browser_script_document_write_needed(
+            document, document_url, resolve, resolve_pw, count);
     /* Browser bootstrap is a large, product-owned selector/DOM program on
      * the slow WM6 CPU. Keep the page budget bounded while allowing the
      * reference host enough headroom for its one-time parse. */
@@ -17652,6 +17780,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_create_element;
     dom_write_callbacks.create_comment_child_at =
             pcore_browser_script_dom_create_comment;
+    document_write_callbacks.size = sizeof(document_write_callbacks);
+    document_write_callbacks.pw = bridge;
+    document_write_callbacks.write = pcore_browser_script_document_write;
     dom_mutation_callbacks.size = sizeof(dom_mutation_callbacks);
     dom_mutation_callbacks.pw = bridge;
     dom_mutation_callbacks.remove_child =
@@ -17879,6 +18010,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_relation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
+            (document_write_needed &&
+            PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(session,
+            &document_write_callbacks) != PSCRIPT_OK) ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacksEx15(session,
             &dom_mutation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(session,
@@ -18042,7 +18176,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         if (pcore_browser_script_type_supported(type) &&
                 ((info.kind == 1 && source != NULL) ||
                 (info.kind == 2 && data != NULL))) {
-            if (PBrowser_ScriptSessionEvaluate(session,
+            if (PBrowser_ScriptSessionSetCurrentScriptIndex(session, i) !=
+                    PSCRIPT_OK || PBrowser_ScriptSessionEvaluate(session,
                     (info.kind == 1) ? source : data,
                     (info.kind == 1) ? info.source_bytes : info.data_bytes) !=
                     PSCRIPT_OK) {
@@ -18061,6 +18196,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         source = NULL;
         type = NULL;
     }
+    (void) PBrowser_ScriptSessionSetCurrentScriptIndex(session, -1);
     if (rc == 0 && PBrowser_ScriptSessionDispatchPageLifecycle(
             session, "complete") != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
@@ -52688,6 +52824,39 @@ static BOOL test1255_browser_cookie_parser_contract(void)
     return TRUE;
 }
 
+/* TEST 1256 - bounded document.write()/writeln() script-position bridge. */
+static BOOL test1256_browser_document_write_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><script>"
+        "document.write('<span id=\"first\">','one','</span>');"
+        "document.writeln('<span id=\"line\">line</span>');"
+        "try{document.write('<script>window.bad=1;</script>');}"
+        "catch(e){window.rejected=e.name;}"
+        "</script><p id='result'>idle</p><script>"
+        "var a=document.getElementById('first'),l=document.getElementById('line'),n=l.nextSibling;"
+        "document.getElementById('result').textContent="
+        "a.textContent+'|'+l.textContent+'|'+String(window.rejected==='Error')+'|'"
+        "+String(document.getElementsByTagName('script').length===3)+'|'"
+        "+String(!!n&&n.nodeType===3&&n.textContent==='\\n');"
+        "</script></body></html>";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-write-position", HTML, "",
+            "one|line|true|true|true", error, sizeof(error))) {
+        show_error(L"TEST 1256 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1256 OK",
+            "document.write and writeln now insert bounded HTML after the"
+            " currently evaluated script, stringify multiple arguments and"
+            " reject script elements without reordering or executing them.");
+    return TRUE;
+}
+
 static BOOL test12_render(void)
 {
     static const char *HTML =
@@ -62350,11 +62519,27 @@ static BOOL test80_script_runtime(void)
         show_error(L"TEST 80 FAIL", detail);
         return FALSE;
     }
+    rc = PScript_CollectGarbage(hScript);
+    if (rc == PSCRIPT_OK) {
+        rc = PScript_Evaluate(hScript, "answer + 2;", -1);
+    }
+    result = PScript_GetResult(hScript);
+    if (rc != PSCRIPT_OK || result == NULL || strcmp(result, "45") != 0 ||
+            PScript_GetEvaluationCount(hScript) != 5) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "garbage collection rc=%d result=%s expected=45",
+                rc, result != NULL ? result : "(null)");
+        detail[sizeof(detail) - 1] = '\0';
+        PScript_Destroy(hScript);
+        show_error(L"TEST 80 FAIL", detail);
+        return FALSE;
+    }
     PScript_Destroy(hScript);
 
     _snprintf(detail, sizeof(detail) - 1,
             "standalone positron_script.dll: persistent values, thrown\n"
-            "error recovery and DLL-owned memory telemetry passed.\n\n"
+            "error recovery, explicit heap collection and DLL-owned memory\n"
+            "telemetry passed.\n\n"
             "No DOM, window, network or browser-core binding is enabled.");
     detail[sizeof(detail) - 1] = '\0';
     show_info(L"TEST 80 OK", detail);
@@ -110927,6 +111112,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1253: ok = test1253_browser_detached_element_reflected_attribute_contract(); break;
         case 1254: ok = test1254_browser_body_text_treat_null_as_empty_contract(); break;
         case 1255: ok = test1255_browser_cookie_parser_contract(); break;
+        case 1256: ok = test1256_browser_document_write_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

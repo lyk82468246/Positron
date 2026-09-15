@@ -4013,6 +4013,7 @@ typedef struct pcore_script_sequence_scan {
     unsigned int count;
     int found;
     int kind;
+    dom_element *element;
     dom_string *script_name;
     dom_string *src_name;
     dom_string *type_name;
@@ -4068,6 +4069,7 @@ static void pcore_script_sequence_walk(
         if (selected != NULL) {
             if (scan->count == scan->target) {
                 scan->kind = selected_kind;
+                scan->element = (dom_element *) dom_node_ref(node);
                 if (selected_kind == 1) {
                     scan->source = selected;
                 } else {
@@ -4177,6 +4179,10 @@ static void pcore_script_sequence_release(
     if (scan->mime_type != NULL) {
         dom_string_unref(scan->mime_type);
         scan->mime_type = NULL;
+    }
+    if (scan->element != NULL) {
+        dom_node_unref((dom_node *) scan->element);
+        scan->element = NULL;
     }
 }
 
@@ -8215,6 +8221,7 @@ typedef struct pcore_html_mutation_scan {
     dom_element *target;
     int allow_existing_inside_target;
     int allow_existing_target;
+    int reject_script_elements;
     dom_string *id_name;
     dom_string *ids[PCORE_NODE_HTML_MUTATION_MAX_NODES];
     unsigned int node_count;
@@ -8338,6 +8345,10 @@ static int pcore_html_mutation_scan_node(pcore_html_mutation_scan *scan,
     }
     if (type != DOM_ELEMENT_NODE && type != DOM_TEXT_NODE &&
             type != DOM_COMMENT_NODE && type != DOM_CDATA_SECTION_NODE) {
+        return 3;
+    }
+    if (type == DOM_ELEMENT_NODE && scan->reject_script_elements &&
+            pcore_element_name_is((dom_element *) node, "script")) {
         return 3;
     }
     scan->node_count++;
@@ -9625,6 +9636,139 @@ PCORE_API int PCore_NodeInsertAdjacentHTMLById(HANDLE hDoc,
     if (parent != NULL) {
         dom_node_unref(parent);
     }
+    dom_node_unref((dom_node *) target);
+    if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
+            err == DOM_NOT_FOUND_ERR || err == DOM_NO_MODIFICATION_ALLOWED_ERR) {
+        return 2;
+    }
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
+/* The parser-facing primitive for document.write()/writeln().  Script
+ * indices come from the same non-empty classic-script sequence as
+ * PCore_GetScript, so the Browser host can set one context before each
+ * synchronous evaluation without manufacturing an id for an otherwise
+ * anonymous <script> element.  The fragment is inserted after the script;
+ * rejecting script elements keeps the host's precomputed sequence stable. */
+PCORE_API int PCore_NodeInsertHTMLAfterScriptByIndex(HANDLE hDoc,
+        unsigned int script_index, const char *html)
+{
+    dom_document *doc;
+    dom_element *target;
+    dom_node *parent;
+    dom_node *reference;
+    dom_document_fragment *fragment;
+    dom_node *inserted;
+    dom_node_type parent_type;
+    dom_string *id_name;
+    dom_exception err;
+    pcore_html_mutation_scan scan;
+    pcore_script_sequence_scan script_scan;
+    size_t length;
+    int result;
+
+    doc = (dom_document *) hDoc;
+    if (doc == NULL || html == NULL) {
+        return 1;
+    }
+    length = strlen(html);
+    if (length > PCORE_NODE_HTML_MUTATION_MAX_BYTES ||
+            !pcore_contenteditable_utf8_valid(html)) {
+        return 3;
+    }
+
+    memset(&script_scan, 0, sizeof(script_scan));
+    if (pcore_script_sequence_scan_document(doc, script_index,
+            &script_scan) != 0 || !script_scan.found ||
+            script_scan.element == NULL) {
+        pcore_script_sequence_release(&script_scan);
+        return 2;
+    }
+    target = script_scan.element;
+    script_scan.element = NULL;
+    pcore_script_sequence_release(&script_scan);
+    if (pcore_document_structural_token((dom_node *) target) != NULL) {
+        dom_node_unref((dom_node *) target);
+        return 2;
+    }
+
+    parent = NULL;
+    reference = NULL;
+    if (dom_node_get_parent_node((dom_node *) target, &parent) !=
+            DOM_NO_ERR || parent == NULL ||
+            dom_node_get_node_type(parent, &parent_type) != DOM_NO_ERR ||
+            parent_type != DOM_ELEMENT_NODE ||
+            pcore_element_name_is((dom_element *) parent, "html")) {
+        if (parent != NULL) {
+            dom_node_unref(parent);
+        }
+        dom_node_unref((dom_node *) target);
+        return 2;
+    }
+    if (dom_node_get_next_sibling((dom_node *) target, &reference) !=
+            DOM_NO_ERR) {
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 1;
+    }
+
+    fragment = NULL;
+    result = pcore_html_mutation_parse_fragment(doc, html, length,
+            &fragment);
+    if (result != 0 || fragment == NULL) {
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return result != 0 ? result : 1;
+    }
+    memset(&scan, 0, sizeof(scan));
+    scan.doc = doc;
+    scan.target = target;
+    scan.allow_existing_inside_target = 0;
+    scan.reject_script_elements = 1;
+    id_name = NULL;
+    if (dom_string_create_interned((const uint8_t *) "id", 2, &id_name) !=
+            DOM_NO_ERR || id_name == NULL) {
+        dom_node_unref((dom_node *) fragment);
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return 1;
+    }
+    scan.id_name = id_name;
+    result = pcore_html_mutation_scan_fragment(&scan, fragment);
+    dom_string_unref(id_name);
+    scan.id_name = NULL;
+    pcore_html_mutation_scan_release(&scan);
+    if (result != 0) {
+        dom_node_unref((dom_node *) fragment);
+        if (reference != NULL) {
+            dom_node_unref(reference);
+        }
+        dom_node_unref(parent);
+        dom_node_unref((dom_node *) target);
+        return result;
+    }
+
+    inserted = NULL;
+    err = dom_node_insert_before(parent, (dom_node *) fragment, reference,
+            &inserted);
+    if (inserted != NULL) {
+        dom_node_unref(inserted);
+    }
+    if (reference != NULL) {
+        dom_node_unref(reference);
+    }
+    dom_node_unref((dom_node *) fragment);
+    dom_node_unref(parent);
     dom_node_unref((dom_node *) target);
     if (err == DOM_HIERARCHY_REQUEST_ERR || err == DOM_WRONG_DOCUMENT_ERR ||
             err == DOM_NOT_FOUND_ERR || err == DOM_NO_MODIFICATION_ALLOWED_ERR) {

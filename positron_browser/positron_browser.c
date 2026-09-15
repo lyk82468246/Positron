@@ -4358,6 +4358,19 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(next>8192){return;}values[i]=val;total=next;}"
         "Object.defineProperty(d,'cookie',{get:get,set:set,enumerable:true});})(this);";
 
+    /* document.write() is installed separately because it needs the host's
+     * current-script context while the rest of the document object is built.
+     * The product deliberately accepts only a bounded parser fragment; the
+     * registered callback rejects script elements and never executes them. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE[] =
+        "(function(g){var d=g.document;var emit=function(nl,args){var s='';"
+        "var i;if(typeof g.__pcoreSetText!=='function'){throw new Error('document.write unavailable');}"
+        "for(i=0;i<args.length;i++){s+=String(args[i]);}"
+        "if(s.length>16384){throw new Error('document.write input too large');}"
+        "if(!g.__pcoreSetText({op:'documentWrite',text:s,newline:nl?1:0})){throw new Error('document.write failed');}"
+        "};d.write=function(){return emit(false,arguments);};"
+        "d.writeln=function(){return emit(true,arguments);};})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART3[] =
         "(function(g){"
         "var b64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';"
@@ -7024,6 +7037,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return !!e.defaultPrevented;};})(this);";
 
 static int p_browser_script_finish_bootstrap(HANDLE hSession);
+static int p_browser_script_document_write_registered(HANDLE hSession);
 
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
@@ -7038,6 +7052,13 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
             P_BROWSER_SCRIPT_BOOTSTRAP_PART2, -1);
     if (result != PSCRIPT_OK) {
         return result;
+    }
+    if (p_browser_script_document_write_registered(hSession)) {
+        result = PBrowser_ScriptSessionEvaluate(hSession,
+                P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE, -1);
+        if (result != PSCRIPT_OK) {
+            return result;
+        }
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE, -1);
@@ -7119,6 +7140,13 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
+    /* Bootstrap consists of many independent programs. Force a collection
+     * before page code runs so dead parser temporaries do not consume the
+     * bounded WM6 heap merely because no later allocation triggered GC. */
+    result = PScript_CollectGarbage(PBrowser_ScriptSessionRuntime(hSession));
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
     return p_browser_script_finish_bootstrap(hSession);
 }
 typedef struct p_browser_script_dom_read_binding {
@@ -7147,6 +7175,7 @@ typedef struct p_browser_script_dom_relation_binding {
 } p_browser_script_dom_relation_binding;
 
 typedef struct p_browser_script_dom_write_binding {
+    struct p_browser_script_session *session;
     void *pw;
     PBrowserScriptSetTextFn set_text;
     PBrowserScriptSetTextChildFn set_child_text;
@@ -7161,6 +7190,8 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptSetOuterHTMLFn set_outer_html;
     PBrowserScriptCreateElementChildAtFn create_element_child_at;
     PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
+    void *document_write_pw;
+    PBrowserScriptDocumentWriteFn document_write;
 } p_browser_script_dom_write_binding;
 
 typedef struct p_browser_script_dom_mutation_binding {
@@ -7428,6 +7459,7 @@ typedef struct p_browser_script_session {
     p_browser_script_scroll_binding *scroll;
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
+    int current_script_index;
 } p_browser_script_session;
 
 static p_browser_script_session *p_script_session(HANDLE hSession)
@@ -7439,6 +7471,15 @@ static int p_script_session_valid(
         const p_browser_script_session *session)
 {
     return session != NULL && session->runtime != NULL;
+}
+
+static int p_browser_script_document_write_registered(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    return p_script_session_valid(session) && session->dom_write != NULL &&
+            session->dom_write->document_write != NULL;
 }
 
 static int p_browser_script_install_active_element(
@@ -8480,6 +8521,8 @@ static int p_browser_script_dom_set_text(void *pw,
     int node_type;
     int offset;
     int position;
+    int append_newline;
+    int script_index;
     int changed;
 
     binding = (p_browser_script_dom_write_binding *) pw;
@@ -8498,11 +8541,24 @@ static int p_browser_script_dom_set_text(void *pw,
     node_type = (object != NULL) ? PJson_GetInt(object, "nodeType") : 0;
     offset = (object != NULL) ? PJson_GetInt(object, "offset") : -1;
     position = (object != NULL) ? PJson_GetInt(object, "position") : 0;
+    append_newline = (object != NULL) ? PJson_GetInt(object, "newline") : -1;
+    script_index = (binding != NULL && binding->session != NULL) ?
+            binding->session->current_script_index : -1;
     if (binding == NULL || root == NULL) {
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "createElement") == 0) {
+    if (op != NULL && strcmp(op, "documentWrite") == 0) {
+        if (binding->document_write == NULL || binding->session == NULL ||
+                text == NULL || script_index < 0 ||
+                (append_newline != 0 && append_newline != 1) ||
+                strlen(text) > PBROWSER_SCRIPT_HTML_MAX_BYTES) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->document_write(binding->document_write_pw,
+                (unsigned int) script_index, text, append_newline);
+    } else if (op != NULL && strcmp(op, "createElement") == 0) {
         if (binding->create_element_child_at == NULL || parent_id == NULL ||
                 parent_id[0] == '\0' || tag_name == NULL ||
                 tag_name[0] == '\0' || element_id == NULL ||
@@ -10556,6 +10612,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->scroll = NULL;
     session->dom_attribute = NULL;
     session->event = NULL;
+    session->current_script_index = -1;
     session->runtime = PScript_CreateEx(budget_ms,
             P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES);
     if (session->runtime == NULL) {
@@ -10822,6 +10879,19 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
         return PSCRIPT_ERROR_ARGUMENT;
     }
     return PScript_Evaluate(session->runtime, source, source_len);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionSetCurrentScriptIndex(
+        HANDLE hSession, int script_index)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || script_index < -1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session->current_script_index = script_index;
+    return PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionDispatchHistoryTraversal(
@@ -12164,6 +12234,47 @@ PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
     free(session->dom_write);
     session->dom_write = NULL;
     return rc;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(
+        HANDLE hSession,
+        const PBrowserScriptDocumentWriteCallbacks *callbacks)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDocumentWriteCallbacks) ||
+            callbacks->write == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write == NULL ||
+            session->dom_write->document_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    session->dom_write->session = session;
+    session->dom_write->document_write_pw = callbacks->pw;
+    session->dom_write->document_write = callbacks->write;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionUnregisterDocumentWriteCallbacks(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write == NULL ||
+            session->dom_write->document_write == NULL) {
+        return PSCRIPT_OK;
+    }
+    session->dom_write->document_write_pw = NULL;
+    session->dom_write->document_write = NULL;
+    session->dom_write->session = NULL;
+    return PSCRIPT_OK;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomMutationCallbacks(

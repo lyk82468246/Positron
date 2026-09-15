@@ -66,10 +66,12 @@ next814 设备证据见下文；历史失败不作为依据。
   VS2008 单一字符串限制，以数组保存顺序和特殊名称，按 ASCII 空格/制表符修剪，只有合法
   整数 `Max-Age<=0` 删除，空值仍删除；name/value、单次写入、32 对和 8,192 pair 字符
   预算均 fail closed。TEST1255 与 `1254,1255,999` 专门设备门已通过。
-- 设备门复用 WMDC RAPI；超时进程需在设备端结束。
-  `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1255。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1255,999`。
+- 当前 next815 候选针对 `document.write()`/`writeln()`：Browser 提供 callback/脚本索引，
+  Core 以 `PCore_NodeInsertHTMLAfterScriptByIndex()` 原子插入无 `<script>` 的有界片段；
+  `positron_script.dll` 另增 `PScript_CollectGarbage()`。TEST80/1256 已加入，尚无正式设备证据。
+- 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
+- `TEST_MAX_NUMBER` 已为 1256。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1256,999`。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
   可能以 `laptop-li\codexsandboxoffline` 身份运行，即使用户目录仍显示为 Joe，也看不到
@@ -209,8 +211,8 @@ next814 设备证据见下文；历史失败不作为依据。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1255。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1255,999`。
+- `TEST_MAX_NUMBER`：1256。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1256,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
@@ -219,6 +221,10 @@ next814 设备证据见下文；历史失败不作为依据。
 `tmp/device-runs/20260915-095829-next814` 是当前有效基线：Debug ARMV4I，选择
 `1254,1255,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
 `crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后移除了当前目录；
+
+最近三次 next815 设备门均在启动前写入 `positron_script.dll` 时收到
+`CeWriteFile`/`0x80072746`，无设备日志，不能视为产品失败。`repair_wmdc_rapi.bat -AuditOnly`
+为 `PASS`；需用户重新建立 GUI 连接后重跑设备门。
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
 `FAILED_EXPERIMENTS.md` 与本地 `tmp/`，不能替代当前基线。设备门不会把只有启动头或不完整日志
@@ -357,10 +363,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-基于 compatibility corpus、源码或用户页面选择 next815 的一个产品缺口；next814 的
-session `document.cookie` 解析/配额修补和 TEST1255 已通过正式设备门。新批次仍须把可复用
-语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
-离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
+完成 next815 设备门：用户保持 WMDC/Device Emulator GUI 唯一连接，
+运行 `scripts\device_gate.bat -Candidate next815-document-write-final -TestSelection
+"80,1236-1239,1244-1256,999" -EnableJavaScript`。TEST80、1236–1239、1244–1256、999
+须全部 PASS，日志完整且双空间预检、清理、crash check 均 PASS；通过后再推进 next816。
+新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
+相邻回归和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、
 超出有界元素约束的 reparent、其他删除、
 Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、

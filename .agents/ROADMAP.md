@@ -246,6 +246,14 @@ write Ex8 在同一 document 中有界替换 direct children（16,384 字节、2
 通用或嵌套 clone insertion、通用 DocumentFragment 和 context-sensitive parser 仍不在边界内；
 当前仅支持 detached Element 的属性/direct-Text clone 沿既有有界物化路径插入。
 
+当前候选 next815 来自 NetSurf compatibility corpus 对 `document.write()`/`writeln()` 的
+缺口。Browser 提供可选 document-write callback 和当前 classic-script 发现索引，Core
+以既有 UTF-8 fragment parser 将不含 `<script>` 的有界片段原子插在该脚本之后；宿主只
+负责索引接线、重排请求和断言。同步新增 `PScript_CollectGarbage()` 作为长 bootstrap 的
+显式维护入口，并由 TEST80 验证状态保持。TEST1256 覆盖多参数字符串化、`writeln()` 换行、
+脚本位置和 script-fragment 拒绝；正式设备门目前受 WMDC/RAPI `CeWriteFile` 重置阻断，
+尚未写入通过基线。
+
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接
 状态（包括持久化 visited history、隐私隔离与真实 visited 颜色）、伪元素、属性大小写修饰符、namespace、
@@ -253,7 +261,7 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next815）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next816）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

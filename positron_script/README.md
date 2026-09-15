@@ -32,7 +32,7 @@ result = PScript_GetResult(script); /* 借用；不要 free 或修改。 */
 PScript_Destroy(script);
 ```
 
-可用能力：持久 global（字符串、数字、布尔和 JSON）、JSON 参数的全局函数调用、同步 native JSON callback、CommonJS 风格模块、同步模块 source provider，以及预算、内存和模块计数诊断。`PScript_GetError` 同样返回借用字符串。
+可用能力：持久 global（字符串、数字、布尔和 JSON）、JSON 参数的全局函数调用、同步 native JSON callback、CommonJS 风格模块、同步模块 source provider，以及预算、内存和模块计数诊断。长生命周期消费者可调用 `PScript_CollectGarbage()` 显式回收并 compact Duktape 临时对象；它不改变 global/module 状态，也不会提高固定 heap ceiling。`PScript_GetError` 同样返回借用字符串。
 
 context 不支持并发调用；执行中的 host callback 不得重入或销毁当前 context。源码、结果、模块数、native function 数和堆内存都有上限，具体常量以 `positron_script.h` 为准。当前 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 29：浏览器组合层的 DOM、validation、contenteditable、导航、焦点、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥接会占用这些槽位，宿主若注册额外的全局 native 函数仍必须检查 `PScript_GetNativeFunctionCount()`，并在达到上限时保守失败。模块 provider 的源代码和释放回调由宿主拥有，DLL 只在同步调用约定内使用。
 

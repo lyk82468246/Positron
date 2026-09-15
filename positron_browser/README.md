@@ -127,12 +127,11 @@ callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scroll
 
 ### Script session
 
-`PBrowser_ScriptSessionCreate` 创建有预算的浏览器脚本 context；Browser bootstrap 使用
-独立的 1 MiB heap ceiling。`Destroy` 释放 bootstrap、队列、native function 和事务
-状态。浏览器脚本使用 `positron_script.dll` 中同一 Duktape 引擎，但 Web host
-objects 由 Browser callbacks 提供。
+`PBrowser_ScriptSessionCreate` 创建 context（bootstrap heap 为 1 MiB）；
+`Destroy` 释放会话状态。浏览器与独立脚本共用 `positron_script.dll` 的 Duktape，host objects
+由 Browser callbacks 提供。
 
-典型生命周期：
+生命周期：
 
 ```c
 HANDLE history;
@@ -141,14 +140,16 @@ HANDLE session;
 history = PBrowser_HistoryCreate();
 session = PBrowser_ScriptSessionCreate(2500);
 if (history == NULL || session == NULL) {
-    /* handle allocation failure */
+    /* fail */
 }
-
-/* Register size-tagged callback tables, then bootstrap/evaluate scripts. */
 
 PBrowser_ScriptSessionDestroy(session);
 PBrowser_HistoryDestroy(history);
 ```
+
+需 `document.write()`/`writeln()` 时注册 Ex12/document-write callbacks，并在 `Evaluate()` 前设
+脚本索引（完成 `-1`）。Browser 交 Core；Core 拒绝 `<script>`/非法/超限/id 冲突，不执行
+脚本/资源/事件；无效输入抛错。
 
 ### `document.activeElement` 与 Core 焦点桥
 

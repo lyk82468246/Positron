@@ -371,6 +371,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - 浏览器 script session 与 bootstrap；每个 session 的 `document.cookie` 由 Browser 在内存中
   按有界 name/value 对维护，合法整数 `Max-Age<=0` 才删除，配额为最多 32 对、8,192 个
   pair 字符；它不新增 Core ABI，也不属于 HTTP 持久化 cookie jar；
+- 浏览器 script session 还可在宿主注册 document-write callback 后提供有界的
+  `document.write()`/`document.writeln()`。宿主在每次 classic script 求值前设置脚本发现
+  索引，Browser 把参数字符串化并同步交给 Core；Core 只把不含 `<script>` 的 UTF-8
+  fragment 插到该脚本之后，沿用既有 parser、id、节点和字节预算。没有 callback、脚本
+  索引无效或输入超限时 fail closed；该路径不执行新脚本、不抓取资源、不派发 mutation
+  事件，也不改变 HTTP cookie 或资源事务；
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
 - 浏览器脚本 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 的有界元素滚动桥：callback 的 `element_id` 把请求交给 Core，`PBrowser_ScriptSessionNotifyElementScroll` 接收宿主 pointer/其他物理路径的实际位置并去重派发目标元素 `scroll` 事件；
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；
@@ -940,6 +946,12 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   callback table 的布局和既有语义保持不变，旧注册入口会将该字段置为 `NULL`。该 callback
   只负责 Browser-owned detached Comment 的首次 Core 物化，数据更新、移除和重排继续复用
   既有 CharacterData/DOM mutation callbacks。
+- document.write bridge 使用独立的 `PBrowserScriptDocumentWriteCallbacks`，不再占用新的
+  native-function slot；宿主以 `PBrowser_ScriptSessionSetCurrentScriptIndex()` 标记正在
+  求值的 classic script，Browser 再把有界写入交给 Core 的脚本位置插入 primitive。该表
+  只在注册后安装 `document.write()`/`writeln()`，脚本片段拒绝 `<script>` 且不产生资源或
+  mutation 事件；旧 DOM write table 的布局保持不变。`positron_script.dll` 的
+  `PScript_CollectGarbage()` 是独立的显式维护入口，不改变脚本 ABI 的 ownership 规则。
 - DOM mutation 的 `PBrowserScriptDomMutationCallbacks` 保持旧布局；Ex2 只追加
   `remove_text_child`，Ex3 再追加 `remove_character_data_child`，二者都复用既有
   `__pcoreRemoveChild` JSON/native slot；Ex4 再追加已有 element insertion，Ex5 追加
