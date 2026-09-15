@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1254
+#define TEST_MAX_NUMBER 1255
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -52628,6 +52628,63 @@ static BOOL test1254_browser_body_text_treat_null_as_empty_contract(void)
             "HTMLBodyElement.text now reflects the text attribute and"
             " treats null as an empty string while preserving ordinary"
             " stringification, attribute mutation and option.text behavior.");
+    return TRUE;
+}
+
+/* TEST 1255 - bounded Browser session cookie parsing and quota contract. */
+static BOOL test1255_browser_cookie_parser_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var result=document.getElementById('result'),c,long='',"
+        "i,ok=true;"
+        "document.cookie='alpha=one; Path=/';"
+        "document.cookie='beta=two; Max-Age=01';"
+        "if(document.cookie.indexOf('alpha=one')<0||"
+        "document.cookie.indexOf('beta=two')<0)ok=false;"
+        "document.cookie='beta=three; Max-Age=+10';"
+        "document.cookie='gamma=keep; Max-Age=bogus';"
+        "if(document.cookie.indexOf('beta=three')<0||"
+        "document.cookie.indexOf('gamma=keep')<0)ok=false;"
+        "document.cookie='gamma=gone; Max-Age = 0';"
+        "document.cookie='delta=gone; MAX-AGE=-1';"
+        "if(document.cookie.indexOf('gamma=')>=0||"
+        "document.cookie.indexOf('delta=')>=0)ok=false;"
+        "document.cookie='hasOwnProperty=value';"
+        "document.cookie='__proto__=proto';"
+        "document.cookie=' spaced = value ';"
+        "c=document.cookie;"
+        "if(c.indexOf('hasOwnProperty=value')<0||c.indexOf('__proto__=proto')<0||"
+        "c.indexOf('spaced=value')<0)ok=false;"
+        "document.cookie='empty=';"
+        "if(document.cookie.indexOf('empty=')>=0)ok=false;"
+        "document.cookie='bad name=ignored';"
+        "document.cookie='badvalue='+String.fromCharCode(1);"
+        "document.cookie=String.fromCharCode(1)+'=ignored';"
+        "if(document.cookie.indexOf('bad name=')>=0||"
+        "document.cookie.indexOf('badvalue=')>=0)ok=false;"
+        "for(i=0;i<2050;i++){long+='x';}"
+        "document.cookie='toolong='+long;"
+        "if(document.cookie.indexOf('toolong=')>=0)ok=false;"
+        "for(i=0;i<27;i++){document.cookie='k'+i+'=v';}"
+        "c=document.cookie;document.cookie='k27=v';"
+        "if(c.indexOf('k26=v')<0||document.cookie.indexOf('k27=v')>=0)ok=false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-cookie-parser", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1255 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1255 OK",
+            "Browser document.cookie now parses Max-Age exactly, rejects"
+            " unsafe or oversized pairs, preserves special names without"
+            " object-key collisions, and enforces bounded session quotas.");
     return TRUE;
 }
 
@@ -110869,6 +110926,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1252: ok = test1252_browser_detached_element_style_css_text_contract(); break;
         case 1253: ok = test1253_browser_detached_element_reflected_attribute_contract(); break;
         case 1254: ok = test1254_browser_body_text_treat_null_as_empty_contract(); break;
+        case 1255: ok = test1255_browser_cookie_parser_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

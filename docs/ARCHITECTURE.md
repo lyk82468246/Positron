@@ -368,7 +368,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 
 - 有界 history entries、每项 viewport snapshot、same-document state、traversal 和
   `scrollRestoration` 策略；
-- 浏览器 script session 与 bootstrap；
+- 浏览器 script session 与 bootstrap；每个 session 的 `document.cookie` 由 Browser 在内存中
+  按有界 name/value 对维护，合法整数 `Max-Age<=0` 才删除，配额为最多 32 对、8,192 个
+  pair 字符；它不新增 Core ABI，也不属于 HTTP 持久化 cookie jar；
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
 - 浏览器脚本 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 的有界元素滚动桥：callback 的 `element_id` 把请求交给 Core，`PBrowser_ScriptSessionNotifyElementScroll` 接收宿主 pointer/其他物理路径的实际位置并去重派发目标元素 `scroll` 事件；
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；

@@ -310,10 +310,10 @@ child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 fa
 Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、Fragment、detached
 handle、事件/资源/observer 和重复/无 id 均 fail closed。关系按 wrapper 身份随物化/移除保持。
 
-遗留的 `HTMLBodyElement.text` 只提供有界属性投影：getter 反映 `text` attribute，缺失时为空；
-setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他值按 JavaScript `String` 转换并复用
-attribute callback。deprecated presentation-color、完整 body 接口和 detached body staging
-不在此范围内。
+遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
+`[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话
+内存 jar：name/value，32 对/8192 pair 字符上限，`Max-Age<=0` 删除，其余属性忽略，不
+持久化、不参与 HTTP。deprecated presentation-color、body 与 detached staging 不在此范围。
 
 `document.createComment(data)` 提供有界的 Browser-owned detached Comment wrapper：单一参数按
 JavaScript `String` 转换，暴露 node shape、data/nodeValue/textContent、root/parent/connection、

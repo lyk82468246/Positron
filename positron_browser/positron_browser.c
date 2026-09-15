@@ -4163,20 +4163,6 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return phidden;},enumerable:true});"
         "Object.defineProperty(pdocument,'visibilityState',{get:function(){"
         "return phidden?'hidden':'visible';},enumerable:true});"
-        "var pcookieData={};var pcookieKeys=[];"
-        "function pcookieGet(){var s='';var i;"
-        "for(i=0;i<pcookieKeys.length;i++){if(i>0){s+='; ';}"
-        "s+=pcookieKeys[i]+'='+pcookieData[pcookieKeys[i]];}return s;}"
-        "function pcookieSet(value){var s=String(value);var semi=s.indexOf(';');"
-        "var first=semi<0?s:s.substring(0,semi);var eq=first.indexOf('=');"
-        "var name;var val;var i;if(eq<=0){return;}name=first.substring(0,eq);"
-        "val=first.substring(eq+1);if(name.indexOf(';')>=0||name.indexOf('=')>=0){return;}"
-        "if(s.toLowerCase().indexOf('max-age=0')>=0){val='';}"
-        "if(val===''){delete pcookieData[name];for(i=0;i<pcookieKeys.length;i++){"
-        "if(pcookieKeys[i]===name){pcookieKeys.splice(i,1);break;}}return;}"
-        "if(!pcookieData.hasOwnProperty(name)){pcookieKeys.push(name);}pcookieData[name]=val;}"
-        "Object.defineProperty(pdocument,'cookie',{get:pcookieGet,set:pcookieSet,"
-        "enumerable:true});"
         "Object.defineProperty(g,'__pcorePageLifecycle',{value:ppageLifecycle,"
         "writable:false,configurable:false});"
         "Object.defineProperty(pdocument,'URL',{get:function(){"
@@ -4329,6 +4315,48 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "phistory.replaceState=preplaceState;"
         "phistory.pushState=ppushState;g.history=phistory;"
         "})(this);";
+
+    /* Keep the session cookie jar in its own bootstrap unit so the VS2008
+     * compiler's 64 KiB single-literal limit cannot be reached by the main
+     * DOM bootstrap.  The arrays remain private to this script session. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE[] =
+        "(function(g){var d=g.document;if(!d){return;}"
+        "var keys=[];var values=[];var total=0;"
+        "function trim(value){var s=String(value);var a=0;var b=s.length;var c;"
+        "while(a<b){c=s.charCodeAt(a);if(c!==32&&c!==9){break;}a++;}"
+        "while(b>a){c=s.charCodeAt(b-1);if(c!==32&&c!==9){break;}b--;}"
+        "return s.substring(a,b);}"
+        "function index(name){var i;for(i=0;i<keys.length;i++){if(keys[i]===name){return i;}}"
+        "return -1;}"
+        "function deleteAt(i){if(i<0||i>=keys.length){return;}"
+        "total-=keys[i].length+values[i].length+1;keys.splice(i,1);values.splice(i,1);}"
+        "function nameSafe(name){var i;var c;if(name===''||name.length>256){return false;}"
+        "for(i=0;i<name.length;i++){c=name.charCodeAt(i);if(c<=32||c===34||c===40||"
+        "c===41||c===44||c===47||c===58||c===59||c===60||c===61||c===62||"
+        "c===63||c===64||c===91||c===92||c===93||c===123||c===125||c===127){return false;}}"
+        "return true;}"
+        "function valueSafe(value){var i;var c;if(value.length>2048){return false;}"
+        "for(i=0;i<value.length;i++){c=value.charCodeAt(i);if(c<32||c===127||c===59){return false;}}"
+        "return true;}"
+        "function maxAgeRemove(s,start){var p=start;var end;var token;var eq;var key;"
+        "var value;var n;while(p<=s.length){end=s.indexOf(';',p);if(end<0){end=s.length;}"
+        "token=trim(s.substring(p,end));eq=token.indexOf('=');if(eq>0){"
+        "key=trim(token.substring(0,eq)).toLowerCase();value=trim(token.substring(eq+1));"
+        "if(key==='max-age'&&value!==''&&/^[+-]?[0-9]+$/.test(value)){n=Number(value);"
+        "if(isFinite(n)&&n<=0){return true;}}}if(end===s.length){break;}p=end+1;}return false;}"
+        "function get(){var s='';var i;for(i=0;i<keys.length;i++){if(i>0){s+='; ';}"
+        "s+=keys[i]+'='+values[i];}return s;}"
+        "function set(value){var s=String(value);var semi=s.indexOf(';');var first;var eq;"
+        "var name;var val;var i;var old;var next;var remove;"
+        "if(s.length>4096){return;}first=semi<0?s:s.substring(0,semi);eq=first.indexOf('=');"
+        "if(eq<=0){return;}name=trim(first.substring(0,eq));val=trim(first.substring(eq+1));"
+        "if(!nameSafe(name)||!valueSafe(val)){return;}remove=semi>=0&&maxAgeRemove(s,semi+1);"
+        "i=index(name);if(remove||val===''){if(i>=0){deleteAt(i);}return;}"
+        "if(i<0){if(keys.length>=32||total+name.length+val.length+1>8192){return;}"
+        "keys.push(name);values.push(val);total+=name.length+val.length+1;return;}"
+        "old=keys[i].length+values[i].length+1;next=total-old+name.length+val.length+1;"
+        "if(next>8192){return;}values[i]=val;total=next;}"
+        "Object.defineProperty(d,'cookie',{get:get,set:set,enumerable:true});})(this);";
 
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART3[] =
         "(function(g){"
@@ -7008,6 +7036,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART2, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }

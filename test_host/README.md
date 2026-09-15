@@ -547,8 +547,9 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 断言 Core/Browser；通用 fragment、script/资源/事件
 不由 test_host 实现。
 
-TEST1244–1254 覆盖 detached Text/Element/Comment 的有界 staging、关系、style、reflected
-attribute facade 和 `HTMLBodyElement.text`；宿主只提供 fixture/断言。
+TEST1244–1255 覆盖 detached Text/Element/Comment 的有界 staging、关系、style、reflected
+attribute facade、`HTMLBodyElement.text` 与 session `document.cookie` parser/quota；宿主只
+提供 fixture/断言。
 
 ### Native EDIT/SELECT/button/file
 

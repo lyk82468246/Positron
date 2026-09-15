@@ -10,7 +10,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-next812 设备证据见下文；历史失败不作为依据。
+next814 设备证据见下文；历史失败不作为依据。
 
 - next790–next802 已完成有界 CharacterData/HTML parser mutation、text-only fragment staging
   以及 Ex13–Ex15 `replaceChildren()` 的 Core 原子提交、identity/snapshot 刷新和失败回滚；
@@ -62,10 +62,14 @@ next812 设备证据见下文；历史失败不作为依据。
   串），setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript `String`
   转换，并保留 `option.text` 与非 body 元素的既有边界。TEST1254 与 `1253,1254,999`
   专门设备门已通过。
+- next814 根据 Browser 源码审查修订 session `document.cookie`：使用独立 bootstrap 单元避开
+  VS2008 单一字符串限制，以数组保存顺序和特殊名称，按 ASCII 空格/制表符修剪，只有合法
+  整数 `Max-Age<=0` 删除，空值仍删除；name/value、单次写入、32 对和 8,192 pair 字符
+  预算均 fail closed。TEST1255 与 `1254,1255,999` 专门设备门已通过。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束。
   `tmp/` 中的本地证据未纳入版本控制。
-- `TEST_MAX_NUMBER` 已为 1254。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1254,999`。
+- `TEST_MAX_NUMBER` 已为 1255。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1255,999`。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
   可能以 `laptop-li\codexsandboxoffline` 身份运行，即使用户目录仍显示为 Joe，也看不到
@@ -99,8 +103,9 @@ next812 设备证据见下文；历史失败不作为依据。
 ## 当前短期目标
 
 - 当前基线涵盖表单、selector、滚动/几何、生命周期、焦点、图片和有界 DOM mutation；
-  next790–next813 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
-  CharacterData offset、clone/style/reflected-attribute facade 和 body.text 纵切已有自动合同。稳定边界见
+  next790–next814 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
+  CharacterData offset、clone/style/reflected-attribute facade、body.text 和 session cookie
+  纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
@@ -204,15 +209,15 @@ next812 设备证据见下文；历史失败不作为依据。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1254。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1254,999`。
+- `TEST_MAX_NUMBER`：1255。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1255,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260915-011403-next813` 是当前有效基线：Debug ARMV4I，选择
-`1253,1254,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
+`tmp/device-runs/20260915-095829-next814` 是当前有效基线：Debug ARMV4I，选择
+`1254,1255,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
 `crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后移除了当前目录；
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
@@ -281,6 +286,10 @@ next812 设备证据见下文；历史失败不作为依据。
   `null` 空字符串转换、普通 `String` 转换和 option/non-body 回退。门选择
   `1253,1254,999`，3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增
   dump=0；本批只改变 Browser 脚本属性语义，无需人工视觉步骤。
+- TEST1255 由 next814 的相邻设备门验证 session `document.cookie` 的 pair trim、精确
+  `Max-Age` 删除、特殊名称、非法/超限拒绝及 32 对/8,192 字符配额。门选择
+  `1254,1255,999`，3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增
+  dump=0；本批只改变 Browser 脚本会话语义，无需人工视觉步骤。
 
 ## 当前未决风险
 
@@ -348,8 +357,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-基于 compatibility corpus、源码或用户页面选择 next814 的一个产品缺口；next813 的
-`HTMLBodyElement.text` 反射修补和 TEST1254 已通过正式设备门。新批次仍须把可复用
+基于 compatibility corpus、源码或用户页面选择 next815 的一个产品缺口；next814 的
+session `document.cookie` 解析/配额修补和 TEST1255 已通过正式设备门。新批次仍须把可复用
 语义放入对应公共 DLL，宿主只保留平台接线、调度和应用策略，并附带最小
 离线夹具、直接相邻回归、正式设备门和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、
