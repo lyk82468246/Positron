@@ -412,6 +412,22 @@ typedef struct PBrowserScriptDomReadCallbacks {
     PBrowserScriptGetTextFn get_text;
 } PBrowserScriptDomReadCallbacks;
 
+/* Extended DOM read table.  The legacy registration above remains
+ * ABI-compatible; Ex adds the document metadata title projection without
+ * overloading an element id.  get_document_title follows the same bounded
+ * UTF-8 probe/truncation contract as get_text and returns zero on success.
+ * Hosts that do not provide this optional callback leave document.title at
+ * Browser scope, preserving compatibility with older adapters. */
+typedef int (*PBrowserScriptGetDocumentTitleFn)(void *pw, char *out_text,
+        int out_capacity, int *out_len);
+typedef struct PBrowserScriptDomReadCallbacksEx {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptHasElementFn has_element;
+    PBrowserScriptGetTextFn get_text;
+    PBrowserScriptGetDocumentTitleFn get_document_title;
+} PBrowserScriptDomReadCallbacksEx;
+
 /* The host supplies the current focused element's non-empty UTF-8 DOM id.
  * The returned pointer is borrowed for the synchronous callback only;
  * NULL/empty means that no id-addressable element is focused and makes
@@ -928,6 +944,33 @@ typedef struct PBrowserScriptDomWriteCallbacksEx12 {
     PBrowserScriptCreateElementChildAtFn create_element_child_at;
     PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
 } PBrowserScriptDomWriteCallbacksEx12;
+
+/* Extended metadata write table.  Ex12 remains ABI-fixed for existing hosts;
+ * Ex13 appends the bounded document.title setter while reusing the existing
+ * `__pcoreSetText` JSON native slot.  The callback receives a borrowed valid
+ * UTF-8 string and returns >0 after Core has updated or created the first
+ * <title>, 0 when the metadata surface is unavailable and <0 on adapter
+ * failure.  It does not address an element id, so an element whose id happens
+ * to resemble an internal token remains a normal DOM node. */
+typedef int (*PBrowserScriptSetDocumentTitleFn)(void *pw, const char *text);
+typedef struct PBrowserScriptDomWriteCallbacksEx13 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
+    PBrowserScriptSetInnerHTMLFn set_inner_html;
+    PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
+    PBrowserScriptSetOuterHTMLFn set_outer_html;
+    PBrowserScriptCreateElementChildAtFn create_element_child_at;
+    PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
+    PBrowserScriptSetDocumentTitleFn set_document_title;
+} PBrowserScriptDomWriteCallbacksEx13;
 
 /* Browser-owned bridge for the bounded classic-script document.write()
  * surface. The host sets the current script index on the session immediately
@@ -2657,6 +2700,8 @@ PBROWSER_API int PBrowser_ScriptSessionRunMessages(HANDLE hSession,
         unsigned long limit);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         HANDLE hSession, const PBrowserScriptDomReadCallbacks *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacksEx(
+        HANDLE hSession, const PBrowserScriptDomReadCallbacksEx *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomReadCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterActiveElementCallbacks(
@@ -2722,6 +2767,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx11(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx11 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx12 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx13 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1256
+#define TEST_MAX_NUMBER 1257
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15227,6 +15227,29 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
     return result < 0 ? -1 : 0;
 }
 
+/* The Browser metadata callback delegates document.title to Core; the host
+ * only supplies the document handle and requests a later render pass when a
+ * live window owns that document. */
+static int pcore_browser_script_dom_set_document_title(void *pw,
+        const char *text)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || text == NULL) {
+        return -1;
+    }
+    result = PCore_DocumentSetTitle(bridge->document, text);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    return result == 2 || result == 3 ? 0 : -1;
+}
+
 /* Product semantics stay in positron_core; the test host only supplies the
  * browser session's document handle and schedules a fresh render pass. */
 static int pcore_browser_script_dom_create_element(void *pw,
@@ -16295,6 +16318,21 @@ static int pcore_browser_script_dom_get_text(void *pw, const char *id,
     }
     return PCore_NodeTextContentById(bridge->document, id, out_text,
             out_capacity, out_len);
+}
+
+/* Product semantics stay in positron_core; this adapter exposes the metadata
+ * snapshot without pretending that <title> is an id-addressable Element. */
+static int pcore_browser_script_dom_get_document_title(void *pw,
+        char *out_text, int out_capacity, int *out_len)
+{
+    pcore_browser_script_bridge *bridge;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL) {
+        return -1;
+    }
+    return PCore_DocumentTitle(bridge->document, out_text, out_capacity,
+            out_len);
 }
 
 static int pcore_browser_script_dom_get_relation(void *pw, const char *id,
@@ -17586,12 +17624,12 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PCoreScriptInfo info;
     HANDLE session;
     HANDLE runtime;
-    PBrowserScriptDomReadCallbacks dom_read_callbacks;
+    PBrowserScriptDomReadCallbacksEx dom_read_callbacks;
     PBrowserScriptActiveElementCallbacks active_element_callbacks;
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx12 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx13 dom_write_callbacks;
     PBrowserScriptDocumentWriteCallbacks document_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx15 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
@@ -17738,6 +17776,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     dom_read_callbacks.pw = bridge;
     dom_read_callbacks.has_element = pcore_browser_script_dom_has_element;
     dom_read_callbacks.get_text = pcore_browser_script_dom_get_text;
+    dom_read_callbacks.get_document_title =
+            pcore_browser_script_dom_get_document_title;
     active_element_callbacks.size = sizeof(active_element_callbacks);
     active_element_callbacks.pw = bridge;
     active_element_callbacks.get_active_element =
@@ -17783,6 +17823,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_create_element;
     dom_write_callbacks.create_comment_child_at =
             pcore_browser_script_dom_create_comment;
+    dom_write_callbacks.set_document_title =
+            pcore_browser_script_dom_set_document_title;
     document_write_callbacks.size = sizeof(document_write_callbacks);
     document_write_callbacks.pw = bridge;
     document_write_callbacks.write = pcore_browser_script_document_write;
@@ -18007,11 +18049,11 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             "__pcoreViewportHeight", viewport_height) != PSCRIPT_OK ||
             PBrowser_ScriptSessionSetGlobalNumber(session,
             "__pcoreDevicePixelRatio", device_pixel_ratio) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomReadCallbacks(session,
+            PBrowser_ScriptSessionRegisterDomReadCallbacksEx(session,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             (document_write_needed &&
             PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(session,
@@ -52927,6 +52969,82 @@ static BOOL test1256_browser_document_write_contract(void)
             "document.write and writeln now insert bounded HTML after the"
             " currently evaluated script, stringify multiple arguments and"
             " reject script elements without reordering or executing them.");
+    return TRUE;
+}
+
+/* TEST 1257 - Core-backed document.title metadata projection. */
+static BOOL test1257_browser_document_title_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><title>Initial &amp; &#937;</title>"
+        "<script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char NO_TITLE_HTML[] =
+        "<!doctype html><html><head></head><body><p id='result'>idle</p>"
+        "</body></html>";
+    static const char PROBE[] =
+        "(function(){var r=document.getElementById('result'),omega="
+        "String.fromCharCode(937),before=document.title,ok=true;"
+        "ok=before==='Initial & '+omega;document.title='Updated '+omega;"
+        "ok=ok&&document.title==='Updated '+omega;document.title=null;"
+        "ok=ok&&document.title==='null';r.textContent=String(ok)+'|'"
+        "+String(before==='Initial & '+omega)+'|'"
+        "+String(document.title==='null');})();";
+    HANDLE document;
+    HANDLE no_title_document;
+    char title[128];
+    char short_title[8];
+    char error[768];
+    int bytes;
+    int small_bytes;
+    int core_ok;
+    int browser_ok;
+
+    document = PCore_ParseHTML(HTML, strlen(HTML));
+    no_title_document = PCore_ParseHTML(NO_TITLE_HTML,
+            strlen(NO_TITLE_HTML));
+    memset(title, 0, sizeof(title));
+    memset(short_title, 0, sizeof(short_title));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    small_bytes = 0;
+    core_ok = document != NULL && no_title_document != NULL &&
+            PCore_DocumentTitle(document, NULL, 0, &bytes) == 0 &&
+            bytes == (int) strlen("Initial & \316\251") &&
+            PCore_DocumentTitle(document, short_title, sizeof(short_title),
+            &small_bytes) == 0 && small_bytes == bytes &&
+            strcmp(short_title, "Initial") == 0 &&
+            PCore_DocumentSetTitle(document, "Core \316\251") == 0 &&
+            PCore_DocumentTitle(document, title, sizeof(title), NULL) == 0 &&
+            strcmp(title, "Core \316\251") == 0 &&
+            PCore_DocumentTitle(no_title_document, title, sizeof(title),
+            &bytes) == 0 && bytes == 0 && title[0] == '\0' &&
+            PCore_DocumentSetTitle(no_title_document, "Created") == 0 &&
+            PCore_DocumentTitle(no_title_document, title, sizeof(title),
+            &bytes) == 0 && bytes == 7 && strcmp(title, "Created") == 0;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (no_title_document != NULL) {
+        PCore_FreeDocument(no_title_document);
+    }
+    browser_ok = test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-title", HTML, PROBE,
+            "true|true|true", error, sizeof(error));
+    if (!core_ok || !browser_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "Core title=%d/%d/%s browser=%d", bytes,
+                    small_bytes, title, browser_ok);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1257 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1257 OK",
+            "document.title now reads decoded <title> text through Core and"
+            " the Browser bridge, updates the first title, and creates one"
+            " when the parsed head has none.");
     return TRUE;
 }
 
@@ -111201,6 +111319,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1254: ok = test1254_browser_body_text_treat_null_as_empty_contract(); break;
         case 1255: ok = test1255_browser_cookie_parser_contract(); break;
         case 1256: ok = test1256_browser_document_write_contract(); break;
+        case 1257: ok = test1257_browser_document_title_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

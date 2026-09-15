@@ -839,6 +839,11 @@ public static class PositronDeviceRapi
         StartupInfo startupInfo = new StartupInfo();
         startupInfo.cb = (uint) Marshal.SizeOf(typeof(StartupInfo));
         ProcessInformation processInformation;
+        /* Windows CE documents lpCurrentDirectory as unsupported.  Some
+         * WM6 images reject a non-NULL value even though file transfer to
+         * the same directory succeeds; the executable path is absolute, so
+         * no working directory is needed by the gate. */
+        currentDirectory = null;
         if (!CeCreateProcess(imageName, null, IntPtr.Zero, IntPtr.Zero,
                 false, 0, IntPtr.Zero, currentDirectory,
                 ref startupInfo, out processInformation)) {

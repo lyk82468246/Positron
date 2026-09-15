@@ -268,7 +268,16 @@ next816 已补齐设备门的部署护栏：默认优先使用外置卡的
 `\Temp\Positron-device-gate`；显式 `-RemoteBase` 仍保持严格固定目标。该变化不新增公共
 DLL ABI，选择策略、预检字段和路径布局由配置测试及 `1256,999` 设备门覆盖。
 
-下一批（next817）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next817 已补齐 Core-backed `document.title` metadata 纵切：Core 以
+`PCore_DocumentTitle`/`PCore_DocumentSetTitle` 读取或替换首个直接 `<head><title>`，按
+4 KiB 有效 UTF-8 setter 边界运行，缺失 title 时在现有 head 下创建；Browser 以新的读写
+扩展 callback 映射该 metadata，不占用 Element id，不派发事件、脚本或资源副作用，旧宿主
+仍可使用局部回退。TEST1257 覆盖解码、probe/截断、替换、创建和 JavaScript 字符串化；
+桌面构建已通过；`tmp/device-runs/20260915-223010-next817` 在当前 GUI 连接的仿真器上以
+Debug ARMV4I、外置卡自动模式运行 `1256,1257,999`，3/3 PASS、零 ERROR/FAIL，完整日志
+回收、空间预检、完成后清理和 `crash_check` 均通过，新增 dump=0。
+
+下一批（next818）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

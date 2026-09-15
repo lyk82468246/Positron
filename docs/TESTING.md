@@ -1098,7 +1098,14 @@ tag-name boundary 的 ASCII 大小写不敏感 `<script...` 起始 token fail cl
 callback、无效索引、非法 UTF-8 或超限输入均 fail closed。设备门选择 `1236-1239,1244-1256,999`，
 需确认同一批 DLL、完整日志、双空间预检、完成后清理和 crash check。
 
-TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。
+TEST1257 覆盖 Core-backed `document.title` metadata。第一段直接调用
+`PCore_DocumentTitle`/`PCore_DocumentSetTitle`，检查实体解码后的 UTF-8 文本、size
+probe 与截断、首个 title 替换，以及没有 title 时在现有 head 下创建节点；第二段通过
+`PBrowserScriptDomReadCallbacksEx`/`PBrowserScriptDomWriteCallbacksEx13` 验证 Browser
+getter/setter 与同一 Core 文档一致，`null` 仍按 JavaScript `String` 转换。title 不使用
+Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展时 Browser 保留局部回退。设备门
+选择 `1256,1257,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
+check。
 
 ### 手动模式
 

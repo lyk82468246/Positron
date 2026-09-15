@@ -281,6 +281,14 @@ Browser 不自主执行 `autofocus`。宿主在 Core layout/native
 Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks 映射 Core 的 DOM、
 form/event/navigation 查询与 mutation。Browser 负责参数、对象形状、错误映射与 dispatch。
 
+`document.title` 是单独的文档元数据投影，不伪装成带 id 的 Element。支持该投影的宿主
+使用 `PBrowserScriptDomReadCallbacksEx` 与 `PBrowserScriptDomWriteCallbacksEx13` 提供
+有界 UTF-8 读写；Browser getter 每次从宿主读取 Core 的首个直接 `<head><title>` 文本，
+setter 先让宿主更新或创建该节点，再在宿主未提供扩展时回退到当前脚本 session 的局部值。
+因此页面 id 不会与内部 token 冲突。Core 的长度/UTF-8 边界、首个 title 规则和 layout
+失效语义见 `PCore_DocumentTitle`/`PCore_DocumentSetTitle`；这项 metadata 不触发网络、
+事件或窗口标题策略。
+
 `Element.innerHTML`/`outerHTML` 是 HTML 投影；`innerHTML` setter（Ex8 →
 `PCore_NodeSetInnerHTMLById`）、`insertAdjacentHTML()`（Ex9）和 `outerHTML` setter
 （Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
@@ -453,19 +461,6 @@ callback table 只在尾部追加字段，旧注册入口布局和语义保持�
 `wholeText`、`replaceWholeText()` 与 `normalize()` 复用相同的 UTF-16、detached snapshot
 和 retained-layout 合同。通用 Node、Fragment ABI、MutationObserver 和完整 live collection
 仍未实现。
-
-CharacterData 的 `before()`/`after()`/`replaceWith()` 以及 Element 的
-`append()`/`prepend()`/`insertAdjacent*()` 只承诺上面描述的有界 Text/element 路径；
-混合或 nested fragment、detached、对象、冲突 id 和超限输入均 fail closed。
-
-`textContent`/非编辑 `innerText` setter、CharacterData setter 与 `substringData()` 复用
-各自 typed callback；UTF-16 offset/count、detached 快照和 retained-layout 失效规则由
-Browser/Core 共同维护。`Text.splitText()`（Ex3）只在 code-point 边界插入紧邻 sibling，
-`wholeText` 只读拼接逻辑相邻 Text，`replaceWholeText()`（write Ex4）合并 direct Text 段
-并保留目标身份；`Node.normalize()`（write Ex5）按稳定 id 递归删空/合并 Text。
-
-write Ex7 的 `insert_text_child_list` 负责 relative 2–4 primitive Text 列表；`cloneNode`
-超限或不支持类型 fail closed。
 
 ### `dialog` 生命周期
 

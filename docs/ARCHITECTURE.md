@@ -257,6 +257,10 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `children`/`childNodes`/query snapshot 失效，宿主负责输入/事件策略及后续
   style/layout/paint。该路径不派发事件、不获取资源、不操作 native 控件，也不实现节点
   插入、reparent 或完整 live collection；
+- 文档标题 metadata：`PCore_DocumentTitle` 读取首个直接 `<head><title>` 的 UTF-8 文本，
+  支持 size probe 与容量截断；`PCore_DocumentSetTitle` 在同一位置原子替换或创建 title，
+  setter 输入受 4 KiB UTF-8 上限约束并使 retained layout 失效。没有 head、非法/超限输入
+  或 DOM 失败时不部分提交；该入口不派发事件、不获取资源、不提供通用节点寻址。
 - `PCore_NodeSetInnerHTMLById` 是文本内容 mutation 之外的另一条有界 Element 子树路径：
    Core 使用同一 document 的 UTF-8 fragment parser，在提交前检查 16,384 字节、256 节点、
    64 层、每个元素 64 个 direct child、支持节点类型和 id 冲突；通过后才把目标的 direct
@@ -378,6 +382,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   插到该脚本之后，沿用既有 parser、id、节点和字节预算。没有 callback、脚本索引无效或
   输入超限时同样 fail closed；该路径不执行新脚本、不抓取资源、不派发 mutation 事件，
   也不改变 HTTP cookie 或资源事务；
+- `document.title` 是 Browser session 的 metadata 投影，不伪装成普通 Element id：宿主可
+  通过读扩展 callback 与写 Ex13 callback 将其直接映射到 Core 的首个 head title。Browser
+  负责 JavaScript `String` 转换和旧宿主的局部回退；Core 负责 UTF-8、创建/替换和 layout
+  失效。该投影不派发 title 事件，不触发脚本、资源或窗口标题副作用。
 - 浏览器脚本 `window.scrollTo`/`scrollBy` 的 typed viewport callback，以及宿主物理滚动后的去重同步入口；
 - 浏览器脚本 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 的有界元素滚动桥：callback 的 `element_id` 把请求交给 Core，`PBrowser_ScriptSessionNotifyElementScroll` 接收宿主 pointer/其他物理路径的实际位置并去重派发目标元素 `scroll` 事件；
 - 浏览器脚本 viewport metadata（`innerWidth`/`outerWidth`、`devicePixelRatio`、`screen`）、稳定的 `screen.orientation` 对象及方向变化事件、布局视口对应的 `visualViewport` 快照、宿主 resize 通知、去重的 visual/window `resize` 事件和有界 `matchMedia()` 列表刷新；

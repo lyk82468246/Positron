@@ -241,6 +241,22 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_NodeSetTextContentById(HANDLE hDoc,
         const char *element_id, const char *text);
 
+/* Read or replace the document's metadata title.  The getter follows the
+ * HTML document.title projection: it returns the text content of the first
+ * direct <title> child of <head>, or a successful empty snapshot when the
+ * document has no usable head/title.  `text` is optional for a size probe and
+ * receives a NUL-terminated UTF-8 snapshot when capacity is positive;
+ * out_bytes excludes that terminator and reports the complete byte count even
+ * when the caller's buffer is smaller.  The setter accepts bounded, valid
+ * UTF-8, updates the first title or creates one under the existing head, and
+ * invalidates retained layout.  Getter/setter return 0 on success, 2 when a
+ * setter cannot address the document head, 3 for malformed or over-budget
+ * setter input, and 1 for invalid arguments or another DOM failure. */
+#define PCORE_DOCUMENT_TITLE_MAX_BYTES 4096u
+PCORE_API int PCore_DocumentTitle(HANDLE hDoc, char *text,
+        int text_capacity, int *out_bytes);
+PCORE_API int PCore_DocumentSetTitle(HANDLE hDoc, const char *text);
+
 /* Replace all direct children of one live element with a bounded list of
  * newly-created UTF-8 Text nodes. `texts` contains zero to four borrowed
  * strings; a zero count clears the child list and may pass NULL. The complete

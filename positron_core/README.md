@@ -111,6 +111,13 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 `PCore_NodeTextContentById` 对没有文本的元素返回成功的零字节 UTF-8 snapshot，
 不会把 libdom 的空结果误判为 getter 失败。关系 API 覆盖：
 
+- `PCore_DocumentTitle` 读取首个直接位于 `head` 下的 `<title>` 文本，按 UTF-8
+  size-probe/truncation 合同返回；没有可用的 head/title 时是成功的空 snapshot。
+  `PCore_DocumentSetTitle` 接受最多 `PCORE_DOCUMENT_TITLE_MAX_BYTES` 个有效 UTF-8
+  字节，替换首个 title 或在现有 head 下创建一个 title，并使 retained layout 失效。
+  这两个入口不把 title 伪装成 id，也不派发事件、执行脚本或抓取资源；缺失 head、
+  非法输入和 DOM 失败分别沿既有 `2`/`3`/`1` 错误码返回。
+
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
 - direct Text child 的 `PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`（关系 50）读取：Core

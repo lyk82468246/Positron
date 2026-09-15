@@ -578,10 +578,10 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1256 已覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+- TEST1201–1257 已覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
   Ex4–Ex15 insertion/replacement、parser-backed HTML mutation、text-only fragment staging、
   detached Text/Element/Comment 生命周期、属性 facade、`HTMLBodyElement.text`、session
-  cookie 和 document.write；这里不重复逐测试清单，逐项合同与预算统一见
+  cookie、document.write 和 Core-backed `document.title`；这里不重复逐测试清单，逐项合同与预算统一见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

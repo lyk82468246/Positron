@@ -7955,6 +7955,196 @@ PCORE_API int PCore_NodeTextContentById(HANDLE hDoc, const char *element_id,
     return 0;
 }
 
+/* Resolve the first direct <title> child of the document head.  The head is
+ * returned retained even when no title exists so the setter can create one in
+ * the same bounded transaction.  Return 0 for a traversable head, 2 when the
+ * parsed document has no head, and 1 for another DOM failure. */
+static int pcore_document_find_title(dom_document *doc,
+        dom_element **out_head, dom_element **out_title)
+{
+    dom_element *head;
+    dom_node *child;
+    dom_node *next;
+    dom_node_type type;
+
+    if (out_head != NULL) {
+        *out_head = NULL;
+    }
+    if (out_title != NULL) {
+        *out_title = NULL;
+    }
+    if (doc == NULL || out_head == NULL || out_title == NULL) {
+        return 1;
+    }
+    head = pcore_document_structural_element(doc,
+            PCORE_DOCUMENT_HEAD_TOKEN);
+    if (head == NULL) {
+        return 2;
+    }
+    child = NULL;
+    if (dom_node_get_first_child((dom_node *) head, &child) != DOM_NO_ERR) {
+        dom_node_unref((dom_node *) head);
+        return 1;
+    }
+    while (child != NULL) {
+        if (dom_node_get_node_type(child, &type) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            dom_node_unref((dom_node *) head);
+            return 1;
+        }
+        if (type == DOM_ELEMENT_NODE &&
+                pcore_element_name_is((dom_element *) child, "title")) {
+            *out_head = head;
+            *out_title = (dom_element *) child;
+            return 0;
+        }
+        next = NULL;
+        if (dom_node_get_next_sibling(child, &next) != DOM_NO_ERR) {
+            dom_node_unref(child);
+            dom_node_unref((dom_node *) head);
+            return 1;
+        }
+        dom_node_unref(child);
+        child = next;
+    }
+    *out_head = head;
+    return 0;
+}
+
+PCORE_API int PCore_DocumentTitle(HANDLE hDoc, char *text,
+        int text_capacity, int *out_bytes)
+{
+    dom_element *head;
+    dom_element *title;
+    dom_string *content;
+    int result;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (text != NULL && text_capacity > 0) {
+        text[0] = '\0';
+    }
+    if (hDoc == NULL || text_capacity < 0 ||
+            (text == NULL && text_capacity != 0)) {
+        return 1;
+    }
+    head = NULL;
+    title = NULL;
+    result = pcore_document_find_title((dom_document *) hDoc, &head, &title);
+    if (result == 2) {
+        return 0;
+    }
+    if (result != 0) {
+        return 1;
+    }
+    if (title == NULL) {
+        dom_node_unref((dom_node *) head);
+        return 0;
+    }
+    content = NULL;
+    if (dom_node_get_text_content((dom_node *) title, &content) !=
+            DOM_NO_ERR) {
+        dom_node_unref((dom_node *) title);
+        dom_node_unref((dom_node *) head);
+        return 1;
+    }
+    if (content != NULL) {
+        pcore_copy_dom_string(content, text, text_capacity, out_bytes);
+        dom_string_unref(content);
+    }
+    dom_node_unref((dom_node *) title);
+    dom_node_unref((dom_node *) head);
+    return 0;
+}
+
+PCORE_API int PCore_DocumentSetTitle(HANDLE hDoc, const char *text)
+{
+    dom_document *doc;
+    dom_element *head;
+    dom_element *title;
+    dom_string *tag;
+    dom_string *content;
+    dom_node *inserted;
+    dom_exception err;
+    size_t length;
+    int result;
+
+    if (hDoc == NULL || text == NULL) {
+        return 1;
+    }
+    length = strlen(text);
+    if (length > PCORE_DOCUMENT_TITLE_MAX_BYTES ||
+            !pcore_contenteditable_utf8_valid(text)) {
+        return 3;
+    }
+    doc = (dom_document *) hDoc;
+    head = NULL;
+    title = NULL;
+    result = pcore_document_find_title(doc, &head, &title);
+    if (result == 2) {
+        return 2;
+    }
+    if (result != 0) {
+        return 1;
+    }
+    content = NULL;
+    if (dom_string_create((const uint8_t *) text, length, &content) !=
+            DOM_NO_ERR || content == NULL) {
+        if (title != NULL) {
+            dom_node_unref((dom_node *) title);
+        }
+        dom_node_unref((dom_node *) head);
+        return 1;
+    }
+    if (title != NULL) {
+        err = dom_node_set_text_content((dom_node *) title, content);
+        dom_string_unref(content);
+        dom_node_unref((dom_node *) title);
+        dom_node_unref((dom_node *) head);
+        if (err != DOM_NO_ERR) {
+            return 1;
+        }
+        pcore_render_invalidate(doc);
+        return 0;
+    }
+    tag = NULL;
+    if (dom_string_create((const uint8_t *) "title", 5, &tag) !=
+            DOM_NO_ERR || tag == NULL) {
+        dom_string_unref(content);
+        dom_node_unref((dom_node *) head);
+        return 1;
+    }
+    title = NULL;
+    err = dom_document_create_element(doc, tag, &title);
+    dom_string_unref(tag);
+    if (err != DOM_NO_ERR || title == NULL) {
+        dom_string_unref(content);
+        if (title != NULL) {
+            dom_node_unref((dom_node *) title);
+        }
+        dom_node_unref((dom_node *) head);
+        return 1;
+    }
+    err = dom_node_set_text_content((dom_node *) title, content);
+    dom_string_unref(content);
+    if (err == DOM_NO_ERR) {
+        inserted = NULL;
+        err = dom_node_insert_before((dom_node *) head,
+                (dom_node *) title, NULL, &inserted);
+        if (inserted != NULL) {
+            dom_node_unref(inserted);
+        }
+    }
+    dom_node_unref((dom_node *) title);
+    dom_node_unref((dom_node *) head);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    pcore_render_invalidate(doc);
+    return 0;
+}
+
 /* Resolve the enumerated contenteditable attribute while retaining the
  * browser's inheritance rule. The input node is owned by the caller and is
  * consumed by this helper; every parent returned by libdom is released before

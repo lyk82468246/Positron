@@ -4144,8 +4144,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "pdoctype.lookupPrefix=function(v){var s=v===null||v===undefined?'':String(v);"
         "return s==='http://www.w3.org/XML/1998/namespace'?'xml':null;};"
         "Object.freeze(pdoctype);"
-        "Object.defineProperty(pdocument,'title',{get:function(){"
-        "return pdocumentTitle;},set:function(v){pdocumentTitle=String(v);},"
+        "Object.defineProperty(pdocument,'title',{get:function(){var value;"
+        "if(typeof g.__pcoreGetText==='function'){try{value=g.__pcoreGetText("
+        "{op:'documentTitle'});if(typeof value==='string'){pdocumentTitle=value;}"
+        "}catch(titleReadError){}}return pdocumentTitle;},set:function(v){var s=String(v);"
+        "if(typeof g.__pcoreSetText==='function'){try{if(g.__pcoreSetText("
+        "{op:'documentTitle',text:s})){pdocumentTitle=s;return;}}"
+        "catch(titleWriteError){}}pdocumentTitle=s;},"
         "enumerable:true});"
         "Object.defineProperty(pdocument,'characterSet',{value:'UTF-8',"
         "writable:false,configurable:false,enumerable:true});"
@@ -7152,6 +7157,7 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;
+    PBrowserScriptGetDocumentTitleFn get_document_title;
 } p_browser_script_dom_read_binding;
 
 typedef struct p_browser_script_active_element_binding {
@@ -7191,6 +7197,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptSetOuterHTMLFn set_outer_html;
     PBrowserScriptCreateElementChildAtFn create_element_child_at;
     PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
+    PBrowserScriptSetDocumentTitleFn set_document_title;
     void *document_write_pw;
     PBrowserScriptDocumentWriteFn document_write;
 } p_browser_script_dom_write_binding;
@@ -8339,6 +8346,7 @@ static int p_browser_script_dom_get_text(void *pw,
     HANDLE root;
     HANDLE object;
     const char *id;
+    const char *op;
     char *text;
     int allocated_len;
     int text_len;
@@ -8348,24 +8356,49 @@ static int p_browser_script_dom_get_text(void *pw,
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    op = (object != NULL) ? PJson_GetString(object, "op") : NULL;
     text = NULL;
     text_len = 0;
-    if (binding == NULL || root == NULL || id == NULL ||
-            binding->callbacks.get_text == NULL) {
+    if (binding == NULL || root == NULL) {
         PJson_Free(root);
         return 1;
     }
-    if (binding->callbacks.get_text(binding->callbacks.pw, id, NULL, 0,
-            &text_len) != 0 || text_len < 0 ||
-            text_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+    if (op != NULL && strcmp(op, "documentTitle") == 0) {
+        if (binding->get_document_title == NULL ||
+                binding->get_document_title(binding->callbacks.pw, NULL, 0,
+                &text_len) != 0) {
+            PJson_Free(root);
+            return 1;
+        }
+    } else {
+        if (id == NULL || binding->callbacks.get_text == NULL ||
+                binding->callbacks.get_text(binding->callbacks.pw, id, NULL,
+                0, &text_len) != 0) {
+            PJson_Free(root);
+            return 1;
+        }
+    }
+    if (text_len < 0 || text_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
         PJson_Free(root);
         return 1;
     }
     allocated_len = text_len;
     text = (char *) malloc((size_t) allocated_len + 1);
-    if (text == NULL || binding->callbacks.get_text(binding->callbacks.pw,
-            id, text, allocated_len + 1, &text_len) != 0 || text_len < 0 ||
-            text_len > allocated_len ||
+    if (text == NULL) {
+        free(text);
+        PJson_Free(root);
+        return 1;
+    }
+    if (op != NULL && strcmp(op, "documentTitle") == 0) {
+        result = binding->get_document_title == NULL ? 1 :
+                binding->get_document_title(binding->callbacks.pw, text,
+                allocated_len + 1, &text_len);
+    } else {
+        result = binding->callbacks.get_text == NULL ? 1 :
+                binding->callbacks.get_text(binding->callbacks.pw, id, text,
+                allocated_len + 1, &text_len);
+    }
+    if (result != 0 || text_len < 0 || text_len > allocated_len ||
             text_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
         free(text);
         PJson_Free(root);
@@ -8549,7 +8582,14 @@ static int p_browser_script_dom_set_text(void *pw,
         PJson_Free(root);
         return 1;
     }
-    if (op != NULL && strcmp(op, "documentWrite") == 0) {
+    if (op != NULL && strcmp(op, "documentTitle") == 0) {
+        if (binding->set_document_title == NULL || text == NULL ||
+                strlen(text) > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->set_document_title(binding->pw, text);
+    } else if (op != NULL && strcmp(op, "documentWrite") == 0) {
         if (binding->document_write == NULL || binding->session == NULL ||
                 text == NULL || script_index < 0 ||
                 (append_newline != 0 && append_newline != 1) ||
@@ -11196,6 +11236,53 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
         return PSCRIPT_ERROR_FATAL;
     }
     memcpy(&binding->callbacks, callbacks, sizeof(binding->callbacks));
+    binding->get_document_title = NULL;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreHasElement", -1, p_browser_script_dom_has_element,
+            binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreGetText", -1, p_browser_script_dom_get_text, binding);
+    if (rc != PSCRIPT_OK) {
+        PScript_UnregisterGlobalJsonFunction(session->runtime,
+                "__pcoreHasElement", -1);
+        free(binding);
+        return rc;
+    }
+    session->dom_read = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacksEx(
+        HANDLE hSession, const PBrowserScriptDomReadCallbacksEx *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_read_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomReadCallbacksEx) ||
+            callbacks->has_element == NULL || callbacks->get_text == NULL ||
+            callbacks->get_document_title == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_read != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_read_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    binding->callbacks.has_element = callbacks->has_element;
+    binding->callbacks.get_text = callbacks->get_text;
+    binding->callbacks.size = sizeof(binding->callbacks);
+    binding->callbacks.pw = callbacks->pw;
+    binding->get_document_title = callbacks->get_document_title;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreHasElement", -1, p_browser_script_dom_has_element,
             binding);
@@ -12207,6 +12294,65 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(
     binding->set_outer_html = callbacks->set_outer_html;
     binding->create_element_child_at = callbacks->create_element_child_at;
     binding->create_comment_child_at = callbacks->create_comment_child_at;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx13 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx13) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL ||
+            callbacks->set_inner_html == NULL ||
+            callbacks->insert_adjacent_html == NULL ||
+            callbacks->set_outer_html == NULL ||
+            callbacks->create_element_child_at == NULL ||
+            callbacks->create_comment_child_at == NULL ||
+            callbacks->set_document_title == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
+    binding->set_inner_html = callbacks->set_inner_html;
+    binding->insert_adjacent_html = callbacks->insert_adjacent_html;
+    binding->set_outer_html = callbacks->set_outer_html;
+    binding->create_element_child_at = callbacks->create_element_child_at;
+    binding->create_comment_child_at = callbacks->create_comment_child_at;
+    binding->set_document_title = callbacks->set_document_title;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

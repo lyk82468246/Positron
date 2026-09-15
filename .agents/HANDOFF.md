@@ -77,9 +77,15 @@ next815 设备证据见下文；历史失败不作为依据。
   `scripts\test_device_gate_config.ps1` 覆盖选择策略与路径布局；`1256,999` 已在当前
   GUI 连接的仿真器上以自动模式通过，外置卷 `CeGetDiskFreeSpaceEx` 报告 1,378,022,400
   字节可用，部署目录在完整日志回收后已清理。
+- next817 补齐 Core 的 `PCore_DocumentTitle`/`PCore_DocumentSetTitle` 与 Browser 读写扩展
+  callback：Core 只处理首个直接 `<head><title>`，按 UTF-8 size-probe/4 KiB setter 边界
+  替换或创建并使 retained layout 失效；Browser 不占用 Element id，旧宿主仍可局部回退。
+  TEST1257 覆盖实体解码、截断、替换、创建和 `null` 字符串化；桌面构建及
+  `tmp/device-runs/20260915-223010-next817` 的外置卡自动设备门（`1256,1257,999`）
+  3/3 PASS，零 ERROR/FAIL，日志回收、清理和 `crash_check` 均通过，新增 dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1256。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1256,999`。
+- `TEST_MAX_NUMBER` 已为 1257。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1257,999`。
 - 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
   `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
   可能以 `laptop-li\codexsandboxoffline` 身份运行，即使用户目录仍显示为 Joe，也看不到
@@ -103,6 +109,8 @@ next815 设备证据见下文；历史失败不作为依据。
   每项合同、上限和未实现边界见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - Browser script session 仍由宿主显式推进；宿主不创建脚本线程，也不复制 URL、DOM、Event、
   表单、图像或生命周期业务语义。
+- `document.title` 通过 Browser Ex 读写 callback 直接映射 Core 的首个 head title；没有
+  扩展 callback 的旧宿主保持局部回退，不改变普通 Element id 的寻址。
 - 设备门的外置优先/内置回退、双空间预检、日志完整性检查、超时后会话恢复和完成后清理
   集中在 `scripts\device_gate.ps1`；这是测试护栏，不改变公共 DLL ABI。`tmp/` 只保存本地
   证据。
@@ -118,8 +126,9 @@ next815 设备证据见下文；历史失败不作为依据。
   CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
   和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- 下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next817
-  用户可见缺口，并把它实现为一项边界清楚的公共 DLL 能力；在选择前不预设测试编号或功能方向。
+- next817 的 Core-backed `document.title` 已完成桌面构建、离线自动断言和正式设备门；
+  下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next818
+  用户可见缺口，并把它实现为一项边界清楚的公共 DLL 能力。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -222,14 +231,20 @@ next815 设备证据见下文；历史失败不作为依据。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1256。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1256,999`。
+- `TEST_MAX_NUMBER`：1257。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1257,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260915-212030-next816` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+`tmp/device-runs/20260915-223010-next817` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+ARMV4I、自动模式选择 `1256,1257,999`，3/3 PASS，零 ERROR/FAIL；外置
+`\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
+`crash_check` 均 PASS，新增 dump=0。结果记录 `remote_base_selection=external`，目标卷
+可用 `1,357,507,584` 字节，内部 object-store 可用 `608,366,592` 字节；当前部署目录已移除。
+
+`tmp/device-runs/20260915-212030-next816` 是上一批有效证据：当前 GUI 连接的仿真器、Debug
 ARMV4I、自动模式选择 `1256,999`，2/2 PASS，零 ERROR/FAIL；外置
 `\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
 `crash_check` 均 PASS，新增 dump=0。结果与预检文件还记录了
@@ -277,10 +292,11 @@ ERROR/FAIL；日志完整，双空间预检、完成后清理、`crash_check` �
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1255 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
-  body.text 与 session cookie 夹具均已有相邻设备门；逐项合同、预算和选择集中在
-  [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。通用节点、observer、
-  完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
+- TEST1201–1257 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+  body.text、session cookie、document.write 与 Core-backed document.title 夹具均已有相邻
+  设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
+  重复维护历史清单。通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME
+  仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
   崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
@@ -350,7 +366,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next817：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next818：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
