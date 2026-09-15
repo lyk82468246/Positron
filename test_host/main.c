@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1258
+#define TEST_MAX_NUMBER 1259
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53119,6 +53119,89 @@ static BOOL test1258_browser_document_fragment_element_contract(void)
             " and Text, preserves wrapper identity for append/insertBefore/"
             "replaceChildren, commits through the atomic Core parser and"
             " rejects missing-id, nested or connected nodes without mutation.");
+    return TRUE;
+}
+
+/* TEST 1259 - DocumentFragment cloneNode staging and isolation. */
+static BOOL test1259_browser_document_fragment_clone_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),anchor="
+        "document.getElementById('anchor'),result=document.getElementById('result'),"
+        "f,card,cardText,tail,shallow,deep,deepCard,deepText,deepTail,"
+        "textF,textClone,conflict,conflictClone,ret,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();card=document.createElement('article');"
+        "card.id='source-card';card.className='source';"
+        "card.setAttribute('data-x','a&\"<>');cardText=document.createTextNode('A');"
+        "card.appendChild(cardText);tail=document.createTextNode(' tail');f.append(card,tail);}"
+        "catch(e){ok=false;}"
+        "shallow=f.cloneNode(false);"
+        "ok=ok&&shallow!==f&&shallow.nodeType===11&&shallow.ownerDocument===document&&"
+        "shallow.parentNode===null&&!shallow.isConnected&&shallow.childNodes.length===0&&"
+        "shallow.textContent===''&&f.childNodes.length===2&&f.firstChild===card&&"
+        "f.lastChild===tail&&f.textContent==='A tail';"
+        "deep=f.cloneNode(true);deepCard=deep.firstElementChild;deepText=deepCard.firstChild;"
+        "deepTail=deep.lastChild;"
+        "ok=ok&&deep!==f&&deep.childNodes.length===2&&deepCard!==card&&"
+        "deepText!==cardText&&deepTail!==tail&&deepCard.parentNode===deep&&"
+        "deepText.parentNode===deepCard&&deepTail.parentNode===deep&&"
+        "deep.getRootNode()===deep&&deepCard.getRootNode()===deep&&"
+        "deepCard.id==='source-card'&&deepCard.className==='source'&&"
+        "deepCard.getAttribute('data-x')==='a&\"<>'&&deep.textContent==='A tail';"
+        "deepCard.id='clone-card';deepCard.className='clone';deepText.data='B';"
+        "deepTail.data=' end';"
+        "ok=ok&&f.textContent==='A tail'&&card.id==='source-card'&&"
+        "card.className==='source'&&cardText.data==='A'&&tail.data===' tail'&&"
+        "deep.textContent==='B end';"
+        "ret=target.appendChild(deep);"
+        "ok=ok&&ret===deep&&deep.childNodes.length===0&&deep.textContent===''&&"
+        "target.childNodes.length===3&&target.childNodes[0]===anchor&&"
+        "target.childNodes[1]===deepCard&&target.childNodes[2]===deepTail&&"
+        "deepCard.parentNode===target&&deepCard.isConnected&&"
+        "deepCard.getRootNode()===document&&deepText.parentNode===deepCard&&"
+        "deepTail.parentNode===target&&document.getElementById('clone-card')===deepCard&&"
+        "target.textContent==='AB end'&&f.childNodes.length===2&&"
+        "card.parentNode===f&&tail.parentNode===f;"
+        "textF=document.createDocumentFragment();textF.append('x','y');"
+        "textClone=textF.cloneNode(true);"
+        "ok=ok&&textClone!==textF&&textClone.childNodes.length===2&&"
+        "textClone.firstChild!==textF.firstChild&&textClone.lastChild!==textF.lastChild&&"
+        "textClone.textContent==='xy'&&textF.textContent==='xy'&&"
+        "textClone.firstChild.parentNode===textClone&&textClone.lastChild.parentNode===textClone;"
+        "textClone.firstChild.data='X';textClone.lastChild.data='Y';"
+        "ok=ok&&textClone.textContent==='XY'&&textF.textContent==='xy';"
+        "ret=target.appendChild(textClone);"
+        "ok=ok&&ret===textClone&&textClone.childNodes.length===0&&"
+        "textF.childNodes.length===2&&textF.textContent==='xy'&&"
+        "target.childNodes.length===5&&target.childNodes[3].data==='X'&&"
+        "target.childNodes[4].data==='Y'&&target.textContent==='AB endXY';"
+        "conflict=document.createDocumentFragment();"
+        "conflict.appendChild(document.createElement('div'));"
+        "conflictClone=conflict.cloneNode(true);"
+        "try{target.appendChild(conflictClone);}catch(e1){bad|=1;}"
+        "ok=ok&&bad===1&&conflict.childNodes.length===1&&"
+        "conflictClone.childNodes.length===1&&"
+        "conflictClone.firstChild.parentNode===conflictClone&&"
+        "target.childNodes.length===5&&target.textContent==='AB endXY';"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-clone", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1259 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1259 OK",
+            "DocumentFragment cloneNode now creates bounded shallow or deep"
+            " Browser-owned staging copies for Element/Text roots; source and"
+            " clone data stay independent, cloned roots can be materialized"
+            " after id repair, and invalid clones fail without mutation.");
     return TRUE;
 }
 
@@ -111395,6 +111478,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1256: ok = test1256_browser_document_write_contract(); break;
         case 1257: ok = test1257_browser_document_title_contract(); break;
         case 1258: ok = test1258_browser_document_fragment_element_contract(); break;
+        case 1259: ok = test1259_browser_document_fragment_clone_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

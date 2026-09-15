@@ -280,11 +280,16 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   原父级与 childNodes 索引；空字符串移除目标。Browser 标记旧目标/后代 wrapper 为 detached，
   刷新父级与 id cache，宿主安排后续 style/layout/paint。顶层文本/Comment、多根、结构元素、
   重复/外部冲突 id、非法或超限输入在提交前拒绝；不执行 script、不抓取资源、不派发事件；
-- Browser 的 `document.createDocumentFragment()` 是 Browser-owned 的 text-only staging
-  对象：最多四个 primitive Text 值由 Browser 在类型、长度和容量通过后，复用现有 text-list
-  insert/replace primitive 或 Ex13 的 `PCore_NodeReplaceChildrenWithTextListById` 一次性
-  消费。它不向 Core 暴露 fragment handle；fragment 仅在成功 mutation 后清空，existing
-  node、nested fragment、mixed/通用 clone 和 HTML parser context 均 fail closed。
+- Browser 的 `document.createDocumentFragment()` 是 Browser-owned 的 bounded staging
+  对象：最多四个 primitive Text 值或 detached Element/Text 根由 Browser 在类型、长度、
+  ownership 和容量通过后，复用现有 text-list/HTML parser 一次性消费。结构根的 Element
+  必须有唯一非空 id，最多一个 direct Text child，顶层 Text 不能相邻；fragment 仅在成功
+  mutation 后清空并保留物化 wrapper identity。`cloneNode(false)` 返回空 fragment，
+  `cloneNode(true)` 深复制这组有界根、属性和 direct Text，副本的 wrapper/data/ownership
+  与源隔离，连接前仍须修复唯一 id。Fragment-owned Text 的 data/CharacterData 写入只
+  更新 Browser 快照，物化后才调用 Core。Core 不暴露 fragment handle；nested/connected
+  node、重复或缺失 id、结构元素、超限/上下文敏感输入、其他 fragment consumer 和事件/
+  资源副作用均 fail closed。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
@@ -497,9 +502,11 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   文档中带 id 的 existing element；primitive 按未过滤 `childNodes` 的末尾/零位创建 Text，
   element 在同一位置移动，保留 wrapper identity 并使受影响父级 snapshot 失效。所有值先
   做类型、connected、层级和容量检查，失败不产生部分 mutation；宿主只负责 callback 接线、
-  重排和重绘。单个 text-only `DocumentFragment` 另由 Browser 预检并复用 text-list
-  primitive 一次性消费；existing node、嵌套 fragment、mixed/clone 仍 fail closed。完整
-  live collection、事件和 observer 不在边界内。相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
+  重排和重绘。Browser 的 `document.createDocumentFragment()` staging（text-only 与 bounded
+  Element/Text）也属于 Browser，不向 Core 暴露 fragment handle；Core 只接收 Browser 预检后
+  的 text-list 或 parser-backed fragment 提交。existing node、嵌套/通用 fragment、超出
+  bounded clone 的结构以及 mutation event/资源副作用都不进入 Core ABI。完整 live collection、
+  事件和 observer 不在边界内。相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
   `after(element)` 及其单值 primitive 重载：Browser 从目标 element 的 direct parent 计算
   未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和
   其他错误参数调用 fail closed。对 element 的 2–4 值 mixed `before()`/`after()`，Browser 先验证

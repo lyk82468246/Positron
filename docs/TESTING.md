@@ -1098,6 +1098,14 @@ detached Element/Text 根通过既有 Core HTML parser 原子物化，`appendChi
 暴露 Core fragment handle。设备门选择 `1240-1258,999`，确认 Debug ARMV4I、完整日志、
 外置卡优先的双空间预检、完成后清理和 crash check。
 
+TEST1259 覆盖 `DocumentFragment.cloneNode(false/true)` 的 bounded staging 合同：浅克隆
+返回空的 detached fragment，深克隆复制有界 Element/Text 根、属性和 direct Text，且源与
+副本保持独立 wrapper、数据和 owner。副本修复唯一 id 后可通过既有 `appendChild()` parser
+路径物化；缺失 id 的克隆在提交前拒绝并保留原 fragment 与目标树。Fragment-owned Text
+的 data 写入只改 detached 快照，连接后再由 Core callback 更新。设备门选择
+`1240-1259,999`，确认 Debug ARMV4I、完整日志、外置卡优先的双空间预检、完成后清理和
+crash check。
+
 ### 手动模式
 
 `auto=0` 时保留启动确认、测试说明和人工关闭流程。可视页面通常停留在设备上，验收者按说明操作后用 `Esc`、页面空白处或测试明确提供的关闭入口继续。

@@ -294,17 +294,14 @@ setter 先让宿主更新或创建该节点，再在宿主未提供扩展时回�
 （Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
 outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
-不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 在 Browser 侧
-建立 detached staging graph。纯文本 fragment 仍保持最多四个 primitive Text 的 text-list
-合同，可由 Element/CharacterData 路径一次性消费；包含结构的 fragment 另支持最多四个
-detached Element/Text 根：Element 必须有唯一、非空 id，最多一个 direct Text child，Text
-根不能形成相邻的顶层 Text。该窄路径通过既有 Core HTML parser 原子物化，支持 `append()`、
-`prepend()`、以 Element 为 reference 的 `insertBefore()`、`appendChild()` 和
-`replaceChildren()`，成功后保留 staged Element/Text wrapper identity 并清空 fragment。纯
-文本消费继续复用 Ex13/text-list，避免改变既有 `replaceWith()`、CharacterData 和静态
-snapshot 合同。嵌套或 connected node、重复/缺失 id、结构标签、跨父/重复节点、通用 clone、
-其他 fragment consumer 和 context-sensitive parser 均 fail closed；路径不执行脚本、不抓取
-资源、不派发 mutation 事件，也不暴露 Core fragment handle。
+不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 在 Browser 侧建立
+detached staging：最多四个 primitive Text，或最多四个 detached Element/Text 根（Element
+需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻）。复用既有 parser-backed
+`append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()`，成功保留
+wrapper identity 并清空 fragment。纯文本仍复用 Ex13/text-list。`cloneNode(false)` 返回
+空 fragment；`cloneNode(true)` 复制有界根、属性和 direct Text，源/副本隔离，连接前修复
+id；Fragment-owned Text data 写入只更新快照。嵌套/connected、重复/缺失 id、结构/超限/
+上下文敏感输入 fail closed，不执行脚本、资源或事件，也不暴露 Core fragment handle。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
@@ -460,8 +457,7 @@ callback table 只在尾部追加字段，旧注册入口布局和语义保持�
 所有 mutation 都不派发事件、不执行资源、不自行 style/layout/paint；宿主只接 callback 并
 在成功后安排重排/重绘。`textContent`/`innerText`、CharacterData setter、`splitText()`、
 `wholeText`、`replaceWholeText()` 与 `normalize()` 复用相同的 UTF-16、detached snapshot
-和 retained-layout 合同。`DocumentFragment` 的 text-only 与 bounded detached Element/Text
-staging 由 Browser 管理，结构 fragment 只走上述 parser-backed consumer；Core 仍不暴露
+和 retained-layout 合同。`DocumentFragment` staging 由 Browser 管理，Core 仍不暴露
 fragment handle。通用 Node mutation、MutationObserver 和完整 live collection 仍未实现。
 
 ### `dialog` 生命周期

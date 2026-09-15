@@ -141,12 +141,12 @@
   （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
   遵循各自 callback 合同。Browser 另提供两种 `DocumentFragment` staging：最多四个
   primitive Text 的 text-only 路径，以及最多四个 detached Element/Text 根的 bounded
-  结构路径。结构路径要求 Element 具有唯一非空 id、最多一个 direct Text child，使用既有
-  Core HTML parser 原子物化到 live Element，并支持 `append()`、`prepend()`、以 Element
-  为 reference 的 `insertBefore()`、`appendChild()` 和 `replaceChildren()`；成功后保留
-  wrapper identity 并清空 fragment。纯文本仍复用 Ex13/text-list；嵌套/connected node、
-  相邻顶层 Text、mixed/通用 clone、重复/缺失 id、结构标签和 context-sensitive parser
-  fail closed。通用 Node mutation、observer 和 live collection 未实现。Ex13 的
+  结构路径。结构路径要求 Element 有唯一非空 id、至多一个 direct Text，复用 Core HTML
+  parser 物化；支持 `append()`、`prepend()`、`insertBefore()`、`appendChild()`、
+  `replaceChildren()`，成功保留 wrapper identity 并清空 fragment。`cloneNode(false/true)`
+  仅复制 Browser-owned detached bounded 根，源/副本隔离，连接前修复 id；Fragment-owned
+  Text data 只更新 detached 快照。超限、嵌套/connected、重复/缺失 id、结构标签或上下文
+  parser fail closed。Ex13 的
   `Element.replaceChildren()` 接受 0–4 个 primitive 文本、text-only fragment 或上述
   bounded fragment，Core 以 16,384 UTF-8 字节总预算原子替换 direct children。Ex14 只重排
   同一父级的 direct Element mixed 列表；Ex15 另接受按原始 `childNodes` 索引指定的同父
@@ -580,12 +580,9 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1258 已覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
-  Ex4–Ex15 insertion/replacement、parser-backed HTML mutation、text-only 与 bounded
-  Element/Text fragment staging、detached Text/Element/Comment 生命周期、属性 facade、
-  `HTMLBodyElement.text`、session cookie、document.write 和 Core-backed `document.title`；
-  这里不重复逐测试清单，逐项合同与预算统一见
-  [`docs/TESTING.md`](../docs/TESTING.md)。
+- TEST1201–1259 已覆盖有界 DOM/CharacterData、Ex4–Ex15 mutation、parser-backed HTML、
+  fragment staging/clone、detached wrapper、属性 facade、body.text、cookie、document.write
+  和 document.title；逐项合同与预算见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

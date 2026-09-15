@@ -195,13 +195,12 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   其他 DOM/分配失败返回 `1`。该入口不保存 detached handle、不派发事件、不执行 script、
   不抓取资源，也不暴露 Fragment；Browser 负责 detached wrapper、后续 data mutation、
   remove/reinsert 和 identity。
-- Browser 的 text-only `DocumentFragment` staging 仍不暴露 Core fragment ABI：Browser
-  只把最多四个 primitive UTF-8 Text 值交给 `PCore_NodeInsertTextChildListById`、
-  `PCore_NodeReplaceElementChildWithTextListById`、
-  `PCore_NodeReplaceCharacterDataChildWithTextListById` 或上述
-  `PCore_NodeReplaceChildrenWithTextListById` 原子入口。fragment 只在成功消费后清空；
-  existing node、nested fragment、mixed/clone、HTML parser context 和 mutation 事件
-  仍不属于 Core ABI。
+- Browser 的 text-only 与 bounded Element/Text `DocumentFragment` staging 均不暴露 Core
+  fragment ABI：Browser 只把最多四个 primitive UTF-8 Text 值或满足结构约束的序列化
+  Element/Text 根交给既有 text-list/HTML parser 原子入口。fragment 只在成功消费后清空；
+  Browser-owned `cloneNode(false/true)` 也只复制 detached staging，不创建 Core handle。
+  existing node、nested fragment、超出结构边界的 mixed clone、HTML parser context 和
+  mutation 事件仍不属于 Core ABI。
 - form owner、form controls 和 label/control。支持的 input、select、textarea、button、
   fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
   对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档
