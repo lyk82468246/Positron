@@ -3,7 +3,7 @@ param(
     [ValidateSet("Debug", "Release")]
     [string] $Configuration = "Debug",
     [int] $TimeoutSeconds = 1200,
-    [string] $RemoteBase = "\Temp\Positron-device-gate",
+    [string] $RemoteBase = "",
     [string] $TestSelection = "",
     [switch] $EnableJavaScript,
     [switch] $PreserveDeployment,
@@ -208,14 +208,83 @@ function Remove-RemoteDirectoryBestEffort([string] $remotePath)
     return $false
 }
 
+function Ensure-RemoteOwnerRoot([string] $ownerRoot)
+{
+    $ownerDirectory = ""
+    foreach ($segment in ($ownerRoot.Trim("\") -split "\\")) {
+        if (![string]::IsNullOrEmpty($segment)) {
+            $ownerDirectory += "\" + $segment
+            Write-Stage "ensuring remote owner directory: $ownerDirectory"
+            [PositronDeviceRapi]::EnsureDirectory($ownerDirectory)
+        }
+    }
+}
+
+function Get-RemoteGatePaths(
+        [string] $ownerRoot,
+        [string] $candidate,
+        [string] $runStamp,
+        [string] $executableName)
+{
+    $root = $ownerRoot.TrimEnd("\") + "\" + $candidate + "-" + $runStamp
+    return New-Object PSObject -Property @{
+        OwnerRoot = $ownerRoot.TrimEnd("\")
+        Root = $root
+        Exe = $root + "\" + $executableName
+        Log = $root + "\test_host.log"
+    }
+}
+
+function Get-RemoteDirectorySet(
+        [string] $root,
+        [object[]] $payload,
+        [string] $stageRoot)
+{
+    $directories = New-Object "System.Collections.Generic.HashSet[string]"
+    [void] $directories.Add($root)
+    foreach ($file in $payload) {
+        $relative = Get-RelativePath $stageRoot $file.FullName
+        $remotePath = $root + "\" + $relative
+        $remoteDirectory = Split-Path -Parent $remotePath
+        if (![string]::IsNullOrEmpty($remoteDirectory)) {
+            $currentDirectory = ""
+            foreach ($segment in ($remoteDirectory.Trim("\") -split "\\")) {
+                if (![string]::IsNullOrEmpty($segment)) {
+                    $currentDirectory += "\" + $segment
+                    [void] $directories.Add($currentDirectory)
+                }
+            }
+        }
+    }
+    return $directories
+}
+
+function Get-RemoteBaseSelection(
+        [bool] $automatic,
+        [bool] $probeAvailable,
+        [bool] $pathSpecific,
+        [uint64] $freeBytes,
+        [uint64] $requiredBytes)
+{
+    if (!$automatic) {
+        return "explicit"
+    }
+    if ($probeAvailable -and $pathSpecific -and
+            $freeBytes -ge $requiredBytes) {
+        return "external"
+    }
+    return "internal_fallback"
+}
+
 if ($Candidate -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]*$") {
     throw "Candidate must contain only letters, digits, dot, underscore or dash."
 }
 if ($TimeoutSeconds -lt 30) {
     throw "TimeoutSeconds must be at least 30."
 }
-if ($RemoteBase -notmatch "^\\[^\\]+\\[^\\]+" -or
-        $RemoteBase -match "(^|\\)\.\.?($|\\)") {
+if (![string]::IsNullOrEmpty($RemoteBase) -and
+        ($RemoteBase -notmatch "^\\[^\\]+\\[^\\]+" -or
+         $RemoteBase -match "(^|\\)\.\.?($|\\)")) {
     throw "RemoteBase must be an absolute device path with at least two non-dot segments."
 }
 if (![Environment]::Is64BitOperatingSystem -or
@@ -226,6 +295,11 @@ if (![string]::IsNullOrEmpty($PlatformName) -or
         ![string]::IsNullOrEmpty($DeviceName)) {
     throw "-PlatformName and -DeviceName are not valid for the RAPI gate. RAPI always consumes WMDC's current connected device and never selects a VMID or target."
 }
+# An empty -RemoteBase selects this policy.  An explicit path stays strict and
+# never silently moves a deployment to another volume.
+$preferredRemoteBase = "\Storage Card\Temp\Positron-device-gate"
+$fallbackRemoteBase = "\Temp\Positron-device-gate"
+$automaticRemoteBase = [string]::IsNullOrEmpty($RemoteBase)
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $stageScript = Join-Path $PSScriptRoot "stage.bat"
 
@@ -920,7 +994,22 @@ try {
     Write-Stage "WMDC target metadata is unavailable; RAPI remains authoritative"
 }
 
-$remoteRoot = $RemoteBase.TrimEnd("\") + "\" + $Candidate + "-" + $runStamp
+$remoteOwnerRoot = $null
+$remoteRoot = $null
+$remoteExe = $null
+$remoteLog = $null
+$remoteBaseSelection = if ($automaticRemoteBase) {
+    "not_selected"
+} else {
+    "explicit"
+}
+$remoteBaseFallbackReason = ""
+$preferredStorageApi = "not_queried"
+$preferredStorageScope = "unknown"
+$preferredStorageFreeBytes = [uint64] 0
+$preferredStorageTotalBytes = [uint64] 0
+$preferredStorageTotalFreeBytes = [uint64] 0
+$preferredStorageCheck = "not_run"
 # Windows Mobile can keep an executable module mapped by its basename after a
 # timed-out run. Give each remote launch a unique basename to reduce stale
 # path/name reuse; a timed-out process still requires normal device cleanup.
@@ -982,64 +1071,108 @@ try {
         elseif ($_.Name -eq "test_host.ini") { 1 }
         else { 0 }
     }}, FullName)
-    $remoteDirectories = New-Object "System.Collections.Generic.HashSet[string]"
-    [void] $remoteDirectories.Add($remoteRoot)
-    foreach ($file in $orderedPayload) {
-        $relative = Get-RelativePath $localStage $file.FullName
-        $remotePath = $remoteRoot + "\" + $relative
-        $remoteDirectory = Split-Path -Parent $remotePath
-        if (![string]::IsNullOrEmpty($remoteDirectory)) {
-            $currentDirectory = ""
-            foreach ($segment in ($remoteDirectory.Trim("\") -split "\\")) {
-                if (![string]::IsNullOrEmpty($segment)) {
-                    $currentDirectory += "\" + $segment
-                    [void] $remoteDirectories.Add($currentDirectory)
-                }
+    $selectedRemoteBase = if ($automaticRemoteBase) {
+        $preferredRemoteBase
+    } else {
+        $RemoteBase.TrimEnd("\")
+    }
+    $remoteBaseSelection = if ($automaticRemoteBase) {
+        "external"
+    } else {
+        "explicit"
+    }
+    if ($automaticRemoteBase) {
+        Write-Stage "preferring external deployment root: $preferredRemoteBase"
+    }
+    $paths = Get-RemoteGatePaths $selectedRemoteBase $Candidate $runStamp `
+            $remoteExecutableName
+    $remoteOwnerRoot = $paths.OwnerRoot
+    $remoteRoot = $paths.Root
+    $remoteExe = $paths.Exe
+    $remoteLog = $paths.Log
+    try {
+        Ensure-RemoteOwnerRoot $remoteOwnerRoot
+    } catch {
+        if (!$automaticRemoteBase -or $remoteBaseSelection -ne "external") {
+            throw
+        }
+        $remoteBaseFallbackReason = "external directory unavailable: " +
+                $_.Exception.Message
+        $preferredStorageCheck = "UNAVAILABLE_DIRECTORY"
+        Write-Stage ("external deployment root unavailable; falling back to " +
+                "$fallbackRemoteBase ($($_.Exception.Message))")
+        $remoteBaseSelection = "internal_fallback"
+        $selectedRemoteBase = $fallbackRemoteBase
+        $paths = Get-RemoteGatePaths $selectedRemoteBase $Candidate $runStamp `
+                $remoteExecutableName
+        $remoteOwnerRoot = $paths.OwnerRoot
+        $remoteRoot = $paths.Root
+        $remoteExe = $paths.Exe
+        $remoteLog = $paths.Log
+        Ensure-RemoteOwnerRoot $remoteOwnerRoot
+    }
+    $remoteDirectories = Get-RemoteDirectorySet $remoteRoot $orderedPayload `
+            $localStage
+
+    $cleanupPriorDirectories = {
+        Write-Stage "checking prior gate directories under $remoteOwnerRoot"
+        foreach ($oldName in [PositronDeviceRapi]::ListSubdirectories(
+                $remoteOwnerRoot)) {
+            $oldPath = $remoteOwnerRoot + "\" + $oldName
+            if ($oldPath -eq $remoteRoot) {
+                continue
+            }
+            if ($PreserveDeployment) {
+                $priorCleanupPreserved += "$oldPath (diagnostic preservation)"
+                continue
+            }
+            if ($oldName -notmatch
+                    "^[A-Za-z0-9][A-Za-z0-9._-]*-\d{8}-\d{6}$") {
+                Write-Stage "preserving unrecognized remote directory: $oldPath"
+                $priorCleanupPreserved += "$oldPath (unrecognized)"
+                continue
+            }
+
+            $oldRemoteLog = $oldPath + "\test_host.log"
+            $oldLocalLog = Join-Path $priorEvidenceRoot ($oldName + ".log")
+            Write-Stage "retrieving prior gate log before cleanup: $oldRemoteLog"
+            if (!(Receive-CompleteRemoteLog $oldRemoteLog $oldLocalLog)) {
+                Write-Stage "preserving prior gate directory (log is missing or incomplete): $oldPath"
+                $priorCleanupPreserved += "$oldPath (log incomplete)"
+                continue
+            }
+            if (Remove-RemoteDirectorySafely $oldPath) {
+                Write-Stage "removed prior gate directory after complete log retrieval: $oldPath"
+                $priorCleanupRemoved += $oldPath
+            } else {
+                Write-Stage "preserving prior gate directory (cleanup failed): $oldPath"
+                $priorCleanupPreserved += "$oldPath (cleanup failed)"
             }
         }
     }
-    $remoteOwnerRoot = $RemoteBase.TrimEnd("\")
-    $ownerDirectory = ""
-    foreach ($segment in ($remoteOwnerRoot.Trim("\") -split "\\")) {
-        if (![string]::IsNullOrEmpty($segment)) {
-            $ownerDirectory += "\" + $segment
-            Write-Stage "ensuring remote owner directory: $ownerDirectory"
-            [PositronDeviceRapi]::EnsureDirectory($ownerDirectory)
+    try {
+        . $cleanupPriorDirectories
+    } catch {
+        if (!$automaticRemoteBase -or $remoteBaseSelection -ne "external") {
+            throw
         }
-    }
-    Write-Stage "checking prior gate directories under $remoteOwnerRoot"
-    foreach ($oldName in [PositronDeviceRapi]::ListSubdirectories(
-            $remoteOwnerRoot)) {
-        $oldPath = $remoteOwnerRoot + "\" + $oldName
-        if ($oldPath -eq $remoteRoot) {
-            continue
-        }
-        if ($PreserveDeployment) {
-            $priorCleanupPreserved += "$oldPath (diagnostic preservation)"
-            continue
-        }
-        if ($oldName -notmatch
-                "^[A-Za-z0-9][A-Za-z0-9._-]*-\d{8}-\d{6}$") {
-            Write-Stage "preserving unrecognized remote directory: $oldPath"
-            $priorCleanupPreserved += "$oldPath (unrecognized)"
-            continue
-        }
-
-        $oldRemoteLog = $oldPath + "\test_host.log"
-        $oldLocalLog = Join-Path $priorEvidenceRoot ($oldName + ".log")
-        Write-Stage "retrieving prior gate log before cleanup: $oldRemoteLog"
-        if (!(Receive-CompleteRemoteLog $oldRemoteLog $oldLocalLog)) {
-            Write-Stage "preserving prior gate directory (log is missing or incomplete): $oldPath"
-            $priorCleanupPreserved += "$oldPath (log incomplete)"
-            continue
-        }
-        if (Remove-RemoteDirectorySafely $oldPath) {
-            Write-Stage "removed prior gate directory after complete log retrieval: $oldPath"
-            $priorCleanupRemoved += $oldPath
-        } else {
-            Write-Stage "preserving prior gate directory (cleanup failed): $oldPath"
-            $priorCleanupPreserved += "$oldPath (cleanup failed)"
-        }
+        $remoteBaseFallbackReason = "external directory enumeration unavailable: " +
+                $_.Exception.Message
+        $preferredStorageCheck = "UNAVAILABLE_DIRECTORY"
+        Write-Stage ("external deployment root could not be enumerated; falling " +
+                "back to $fallbackRemoteBase ($($_.Exception.Message))")
+        $remoteBaseSelection = "internal_fallback"
+        $selectedRemoteBase = $fallbackRemoteBase
+        $paths = Get-RemoteGatePaths $selectedRemoteBase $Candidate $runStamp `
+                $remoteExecutableName
+        $remoteOwnerRoot = $paths.OwnerRoot
+        $remoteRoot = $paths.Root
+        $remoteExe = $paths.Exe
+        $remoteLog = $paths.Log
+        Ensure-RemoteOwnerRoot $remoteOwnerRoot
+        $remoteDirectories = Get-RemoteDirectorySet $remoteRoot `
+                $orderedPayload $localStage
+        . $cleanupPriorDirectories
     }
 
     $evaluateStorage = {
@@ -1168,6 +1301,37 @@ try {
     }
     . $evaluateStorage
 
+    $preferredSelection = Get-RemoteBaseSelection $automaticRemoteBase `
+            ($null -eq $storageFailure) `
+            ($targetStorageCheck -eq "PASS") $targetStorageFreeBytes `
+            $storageRequiredBytes
+    if ($automaticRemoteBase -and $remoteBaseSelection -eq "external") {
+        $preferredStorageApi = $targetStorageApi
+        $preferredStorageScope = $targetStorageScope
+        $preferredStorageFreeBytes = $targetStorageFreeBytes
+        $preferredStorageTotalBytes = $targetStorageTotalBytes
+        $preferredStorageTotalFreeBytes = $targetStorageTotalFreeBytes
+        $preferredStorageCheck = $storageCheck
+        if ($preferredSelection -eq "internal_fallback") {
+            $remoteBaseFallbackReason = $storageFailure
+            Write-Stage ("external deployment root did not pass storage preflight; " +
+                    "falling back to $fallbackRemoteBase ($storageFailure)")
+            $remoteBaseSelection = "internal_fallback"
+            $selectedRemoteBase = $fallbackRemoteBase
+            $paths = Get-RemoteGatePaths $selectedRemoteBase $Candidate $runStamp `
+                    $remoteExecutableName
+            $remoteOwnerRoot = $paths.OwnerRoot
+            $remoteRoot = $paths.Root
+            $remoteExe = $paths.Exe
+            $remoteLog = $paths.Log
+            Ensure-RemoteOwnerRoot $remoteOwnerRoot
+            $remoteDirectories = Get-RemoteDirectorySet $remoteRoot `
+                    $orderedPayload $localStage
+            . $cleanupPriorDirectories
+            . $evaluateStorage
+        }
+    }
+
     if ($null -ne $storageFailure -and
             ($targetStorageCheck -eq "INSUFFICIENT_TARGET" -or
              $targetStorageCheck -eq "INSUFFICIENT_OBJECT_STORE")) {
@@ -1216,6 +1380,17 @@ try {
     }
     $preflightLines = @(
         "remote_base=$remoteOwnerRoot",
+        "remote_base_mode=$(if ($automaticRemoteBase) { 'automatic' } else { 'explicit' })",
+        "remote_base_selection=$remoteBaseSelection",
+        "preferred_remote_base=$preferredRemoteBase",
+        "fallback_remote_base=$fallbackRemoteBase",
+        "remote_base_fallback_reason=$remoteBaseFallbackReason",
+        "preferred_storage_api=$preferredStorageApi",
+        "preferred_storage_scope=$preferredStorageScope",
+        "preferred_storage_free_bytes=$preferredStorageFreeBytes",
+        "preferred_storage_total_free_bytes=$preferredStorageTotalFreeBytes",
+        "preferred_storage_total_bytes=$preferredStorageTotalBytes",
+        "preferred_storage_check=$preferredStorageCheck",
         "storage_api=$storageApi",
         "storage_scope=$storageScope",
         "storage_free_bytes=$storageFreeBytes",
@@ -1456,6 +1631,17 @@ $checkLines += "testbench_pass_count=$passCount"
 $checkLines += "test13_route_ok=$routeOk"
 $checkLines += "completion_marker=$completionMarker"
 $checkLines += "log_recovered_after_timeout=$recoveredAfterTimeout"
+$checkLines += "remote_base_mode=$(if ($automaticRemoteBase) { 'automatic' } else { 'explicit' })"
+$checkLines += "remote_base_selection=$remoteBaseSelection"
+$checkLines += "preferred_remote_base=$preferredRemoteBase"
+$checkLines += "fallback_remote_base=$fallbackRemoteBase"
+$checkLines += "remote_base_fallback_reason=$remoteBaseFallbackReason"
+$checkLines += "preferred_storage_api=$preferredStorageApi"
+$checkLines += "preferred_storage_scope=$preferredStorageScope"
+$checkLines += "preferred_storage_free_bytes=$preferredStorageFreeBytes"
+$checkLines += "preferred_storage_total_free_bytes=$preferredStorageTotalFreeBytes"
+$checkLines += "preferred_storage_total_bytes=$preferredStorageTotalBytes"
+$checkLines += "preferred_storage_check=$preferredStorageCheck"
 $checkLines += "storage_api=$storageApi"
 $checkLines += "storage_scope=$storageScope"
 $checkLines += "storage_free_bytes=$storageFreeBytes"

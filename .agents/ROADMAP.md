@@ -263,7 +263,12 @@ shadow DOM、完整 Selectors 语法，以及
 完整的媒体查询和 Web API。不能把有限 reveal、autofocus 或 selector 子集误写成完整
 浏览器行为。
 
-下一批（next816）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next816 已补齐设备门的部署护栏：默认优先使用外置卡的
+`\Storage Card\Temp\Positron-device-gate`，目录、路径级容量或路径安全性失败时自动回退到
+`\Temp\Positron-device-gate`；显式 `-RemoteBase` 仍保持严格固定目标。该变化不新增公共
+DLL ABI，选择策略、预检字段和路径布局由配置测试及 `1256,999` 设备门覆盖。
+
+下一批（next817）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

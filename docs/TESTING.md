@@ -1198,20 +1198,24 @@ scripts\device_gate.bat -Candidate feature-name ^
 
 脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，并把 `test_host.exe` 复制为带时间戳的唯一远端 basename，以降低 WM6 在超时后复用旧路径/名称的风险；等待窗口结束时还会重开当前 RAPI 会话并尝试一次完整、稳定的日志回收，只有恢复失败才报告超时；超时进程仍需在设备端正常结束。本地证据保存在 `tmp/device-runs/`，不会纳入 Git。
 
-部署前的 RAPI 预检会分别记录两类空间：优先使用
-`CeGetDiskFreeSpaceEx` 查询 `-RemoteBase` 所在目标卷，同时使用
-`CeGetStoreInformation` 查询内部 object store。微软文档说明后者是历史 API，且只描述
-object store；因此外部 `\Storage Card` 目标没有路径级 API 时会 fail closed，不会用
-错误的对象存储数字冒险部署。目标卷的硬性要求是当前 staging 全部文件大小加 1 MiB
-运行余量；目标卷不足、无法查询或路径范围不安全都会在复制第一个文件前停止。
+部署前的 RAPI 预检会分别记录两类空间。默认不传 `-RemoteBase` 时，设备门先把
+`\Storage Card\Temp\Positron-device-gate` 作为隔离根：先创建目录，再用
+`CeGetDiskFreeSpaceEx` 查询该路径所在外部卷。如果外置目录不可创建、无法取得路径级空间
+或硬性容量不足，门会记录原因并回退到 `\Temp\Positron-device-gate`，然后在内置路径上
+重新执行清理和预检。也可以显式传 `-RemoteBase \Some\Path` 固定目标，此时不启用自动
+回退，继续对外部路径执行严格的路径级容量门。两种模式都会额外查询内部 object store；
+后者只描述 object store，因此外部目标没有路径级 API 时，
+自动模式会回退，显式模式则 fail closed，不会用错误的对象存储数字冒险部署。目标卷的
+硬性要求是 staging 全部文件大小加 1 MiB 运行余量；最终选定目标不足、无法查询或
+路径范围不安全都会在复制第一个文件前停止。
 内部 object store 另设 64 KiB 的系统缓存告警线：外部目标下它只产生
 `LOW_ADVISORY`/`UNAVAILABLE_ADVISORY`，不把内部粗粒度数字误报成目标卷不足；已知内部
 目标则直接用 object store 数字执行硬性容量门。结果文件记录兼容的 `storage_*` 别名，
-以及更明确的 `target_storage_*`、`internal_storage_*`、`internal_cache_reserve_bytes`
-和 `internal_storage_check` 字段。参考：
+以及 `remote_base_*`、`preferred_storage_*`、`target_storage_*`、`internal_storage_*`、
+`internal_cache_reserve_bytes` 和 `internal_storage_check` 字段。
+`remote_base_selection` 为 `external`、`internal_fallback` 或 `explicit`；参考：
 [`GetStoreInformation`（Microsoft Learn）](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms891023%28v%3Dmsdn.10%29)。
-即使预检阻止部署，也会在本地证据目录写出 `device-gate-preflight.txt`，便于确认失败
-发生在远端复制之前。
+预检失败时也会在本地证据目录写出 `device-gate-preflight.txt`。
 
 为避免设备空间被旧包逐次吃完，设备门只把名字符合自身时间戳格式的旧目录视为候选。
 每个旧目录都必须先把 `test_host.log` 成功复制两次并得到稳定的 `TESTBENCH PASS` 或

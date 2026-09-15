@@ -71,6 +71,12 @@ next815 设备证据见下文；历史失败不作为依据。
   并在解析前对带标签名边界的 ASCII 不区分大小写 `<script...` 源片段 fail closed；
   `positron_script.dll` 另增 `PScript_CollectGarbage()`。TEST80、1236–1239、1244–1256、
   999 已在更换后的仿真器上通过扩展设备门。
+- next816 将设备门默认部署根改为外置卡的 `\Storage Card\Temp\Positron-device-gate`。
+  目录创建、路径级容量或外置路径安全性失败时，自动记录原因并回退到内置
+  `\Temp\Positron-device-gate`，重新执行清理和预检；显式 `-RemoteBase` 仍不回退。
+  `scripts\test_device_gate_config.ps1` 覆盖选择策略与路径布局；`1256,999` 已在当前
+  GUI 连接的仿真器上以自动模式通过，外置卷 `CeGetDiskFreeSpaceEx` 报告 1,378,022,400
+  字节可用，部署目录在完整日志回收后已清理。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - `TEST_MAX_NUMBER` 已为 1256。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1256,999`。
@@ -97,8 +103,9 @@ next815 设备证据见下文；历史失败不作为依据。
   每项合同、上限和未实现边界见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - Browser script session 仍由宿主显式推进；宿主不创建脚本线程，也不复制 URL、DOM、Event、
   表单、图像或生命周期业务语义。
-- 设备门的双空间预检、日志完整性检查、超时后会话恢复和完成后清理集中在
-  `scripts\device_gate.ps1`；这是测试护栏，不改变公共 DLL ABI。`tmp/` 只保存本地证据。
+- 设备门的外置优先/内置回退、双空间预检、日志完整性检查、超时后会话恢复和完成后清理
+  集中在 `scripts\device_gate.ps1`；这是测试护栏，不改变公共 DLL ABI。`tmp/` 只保存本地
+  证据。
 
 ## 当前中期里程碑
 
@@ -111,7 +118,7 @@ next815 设备证据见下文；历史失败不作为依据。
   CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
   和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- 下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next816
+- 下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next817
   用户可见缺口，并把它实现为一项边界清楚的公共 DLL 能力；在选择前不预设测试编号或功能方向。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
@@ -221,6 +228,12 @@ next815 设备证据见下文；历史失败不作为依据。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
+
+`tmp/device-runs/20260915-212030-next816` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+ARMV4I、自动模式选择 `1256,999`，2/2 PASS，零 ERROR/FAIL；外置
+`\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
+`crash_check` 均 PASS，新增 dump=0。结果与预检文件还记录了
+`remote_base_selection=external`、`preferred_storage_check=PASS`，部署目录已移除。
 
 `tmp/device-runs/20260915-170055-next815-document-write-broad-retry` 是当前有效证据：
 更换后的仿真器、Debug ARMV4I，选择 `80,1236-1239,1244-1256,999`，19/19 PASS，零
@@ -337,7 +350,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next816：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next817：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

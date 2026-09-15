@@ -38,12 +38,15 @@ Windows CE 可能在系统范围继续复用已加载 DLL。只替换一个文�
 ### 设备空间预检与旧目录清理
 
 `scripts\device_gate.bat` 在第一次复制远端文件前分别查询目标卷和内部 object store。
-目标卷优先使用 `CeGetDiskFreeSpaceEx`；旧设备没有该导出时，只有已知内部路径才可用
-`CeGetStoreInformation` 作为粗粒度目标数字。它不代表 `\Storage Card` 等外部卷；如果
-外部目标没有路径级结果，设备门会停止并明确报告
+默认不传 `-RemoteBase` 时，门先使用外置卡的
+`\Storage Card\Temp\Positron-device-gate`；目录创建或路径级容量预检失败后，会记录原因，
+自动改用内置 `\Temp\Positron-device-gate` 并重新执行清理与预检。目标卷优先使用
+`CeGetDiskFreeSpaceEx`；旧设备没有该导出时，只有已知内部路径才可用
+`CeGetStoreInformation` 作为粗粒度目标数字。它不代表 `\Storage Card` 等外部卷：自动
+模式会因此回退，显式 `-RemoteBase \Storage Card\Some\Path` 则停止并明确报告
 `storage_check=UNAVAILABLE_PATH_SCOPE`。目标卷必须至少容纳 staging 文件总大小和 1 MiB
-运行余量；目标卷 `INSUFFICIENT_TARGET`/`INSUFFICIENT_OBJECT_STORE` 或 `UNAVAILABLE`
-都表示尚未部署。
+运行余量；最终选定目标卷 `INSUFFICIENT_TARGET`/`INSUFFICIENT_OBJECT_STORE` 或
+`UNAVAILABLE` 都表示尚未部署。
 
 内部 object store 还会单独记录系统缓存风险。64 KiB 只是告警线：外部目标下
 `internal_storage_check=LOW_ADVISORY` 或 `UNAVAILABLE_ADVISORY` 不会被错误归因成目标卷
@@ -59,8 +62,9 @@ Windows CE 可能在系统范围继续复用已加载 DLL。只替换一个文�
 保留，避免空间压力覆盖证据。未知目录和当前目录不会因此被删除。回收后会重新查询容量，
 仍不足才阻止部署；删除失败仍保留目录，不能被当成通过条件。结果文件还会列出
 `storage_*`、`prior_cleanup_*`、`space_reclaim_removed/partial/preserved` 与 `current_cleanup`
-字段；若预检在部署
-前停止，仍可从 `device-gate-preflight.txt` 读取同一组空间、回收和最终状态摘要。
+字段；自动模式还会记录 `remote_base_selection`（`external` 或 `internal_fallback`）及
+`remote_base_fallback_reason`；若预检在部署前停止，仍可从
+`device-gate-preflight.txt` 读取同一组空间、回收和最终状态摘要。
 
 ## WMDC 自动设备门：不要混淆 CoreCon 与 RAPI
 
