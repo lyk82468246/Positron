@@ -16,10 +16,10 @@
 /* The browser bootstrap owns additional bounded DOM, geometry and scrolling
  * layers beyond the standalone script surface. Keep its heap ceiling explicit
  * and local to browser sessions; independent PScript contexts remain at their
- * 512 KiB default. The extra 512 KiB leaves bounded room for the browser
+ * 512 KiB default. The extra 1 MiB leaves bounded room for the browser
  * bridge state, DOM adapters and transient conversion workspaces. */
 #define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 512UL * 1024UL)
+        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 1024UL * 1024UL)
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -7140,14 +7140,15 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     if (result != PSCRIPT_OK) {
         return result;
     }
-    /* Bootstrap consists of many independent programs. Force a collection
-     * before page code runs so dead parser temporaries do not consume the
-     * bounded WM6 heap merely because no later allocation triggered GC. */
-    result = PScript_CollectGarbage(PBrowser_ScriptSessionRuntime(hSession));
+    result = p_browser_script_finish_bootstrap(hSession);
     if (result != PSCRIPT_OK) {
         return result;
     }
-    return p_browser_script_finish_bootstrap(hSession);
+    /* Bootstrap consists of many independent programs, including the
+     * optional finish-stage installers above. Force a collection only after
+     * all of them have run so dead parser temporaries do not consume the
+     * bounded WM6 heap merely because no later allocation triggered GC. */
+    return PScript_CollectGarbage(PBrowser_ScriptSessionRuntime(hSession));
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;

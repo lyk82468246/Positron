@@ -434,7 +434,7 @@ default-selected 快照，submit-capable button/input/image 选择其 form 中�
 第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
 `.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
 逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
-默认状态或 selector 解析。为保持 WM6 上固定的 1 MiB Browser heap，初始、mutation 和
+默认状态或 selector 解析。为保持 WM6 上固定的 1.5 MiB Browser heap，初始、mutation 和
 非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
 
 TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：脚本先读
@@ -858,7 +858,7 @@ TEST1231 覆盖 CharacterData wrapper 的 `replaceWith(value[, ...])`：Text/Com
 的静态身份、detached 读取，以及 Comment 替换后 remove；对象、零值、超过四值、错误目标
 和 detached target 必须在 preflight 阶段拒绝且不产生部分 mutation。CDATA 共享同一 ABI，
 但 HTML 夹具不伪造 CDATA 节点。宿主只注册 callback、触发重排并读取断言结果；设备门选择
-`TEST1231,999`，确认 1 MiB Browser heap、完整日志、空间预检和 crash check。
+`TEST1231,999`，确认 1.5 MiB Browser heap、完整日志、空间预检和 crash check。
 
 TEST1232 覆盖 CharacterData 的 existing-node `insertBefore()`/`appendChild()`：Ex10
 `insert_character_data_child_at` 把 Text/Comment/CDATA 的 source/target 父级与未过滤索引
@@ -1092,9 +1092,10 @@ TEST1256 覆盖 Browser `document.write()`/`document.writeln()` 的有界脚本�
 在同一 classic script 中传入多个参数并检查字符串化、`writeln()` 的单个换行、插入节点
 位于当前 script 之后，以及包含 `<script>` 的片段被原子拒绝且未执行。Browser 通过
 `PBrowser_ScriptSessionSetCurrentScriptIndex()` 传递脚本发现索引，宿主 callback 转给
-Core 的 `PCore_NodeInsertHTMLAfterScriptByIndex()`；该 Core parser 复用 16,384 字节、
-256 节点、64 层和 id 冲突预算，不抓取资源、不派发 mutation 事件。无 callback、无效
-索引、非法 UTF-8 或超限输入均 fail closed。设备门选择 `1236-1239,1244-1256,999`，
+Core 的 `PCore_NodeInsertHTMLAfterScriptByIndex()`；Core 在 fragment parser 前先对带
+tag-name boundary 的 ASCII 大小写不敏感 `<script...` 起始 token fail closed，再复用
+16,384 字节、256 节点、64 层和 id 冲突预算，不抓取资源、不派发 mutation 事件。无
+callback、无效索引、非法 UTF-8 或超限输入均 fail closed。设备门选择 `1236-1239,1244-1256,999`，
 需确认同一批 DLL、完整日志、双空间预检、完成后清理和 crash check。
 
 TEST1123 以离线夹具覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation；TEST1124 覆盖 candidate handle 的 generation admission、取消、退休幂等、过时 generation 隔离和 committed/failed 终态；TEST1125 覆盖 Browser 派生的 pending、committed、failed、cancelled 和 stale 结果分类；TEST1126 覆盖资源 gate 与 candidate result 的组合 decision、可提交标志、取消/过时/终态优先级和非法参数；TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。`PBrowser_NavigationCleanupGetInfo` 只提供 Browser-owned 的有界值，宿主在 join worker、收敛资源后读取它，再释放 request。

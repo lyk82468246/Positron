@@ -8439,6 +8439,50 @@ static int pcore_html_mutation_scan_fragment(pcore_html_mutation_scan *scan,
     return 0;
 }
 
+/* Fragment parsing is deliberately non-scripting.  In that mode Hubbub may
+ * represent a script start tag as inert text instead of a DOM Element, so a
+ * caller that must reject script insertion cannot rely on the detached tree
+ * alone.  The document.write boundary is fail-closed for any ASCII
+ * case-insensitive <script> start token with a real tag-name boundary. */
+static int pcore_html_mutation_contains_script_tag(const char *html,
+        size_t length)
+{
+    size_t i;
+    size_t j;
+    unsigned char c;
+
+    if (html == NULL || length < 7) {
+        return 0;
+    }
+    for (i = 0; i + 7 <= length; i++) {
+        if (html[i] != '<') {
+            continue;
+        }
+        j = i + 1;
+        if (html[j] == '/' || html[j] == '!' || html[j] == '?') {
+            continue;
+        }
+        if (j + 6 > length ||
+                (html[j] != 's' && html[j] != 'S') ||
+                (html[j + 1] != 'c' && html[j + 1] != 'C') ||
+                (html[j + 2] != 'r' && html[j + 2] != 'R') ||
+                (html[j + 3] != 'i' && html[j + 3] != 'I') ||
+                (html[j + 4] != 'p' && html[j + 4] != 'P') ||
+                (html[j + 5] != 't' && html[j + 5] != 'T')) {
+            continue;
+        }
+        if (j + 6 == length) {
+            return 1;
+        }
+        c = (unsigned char) html[j + 6];
+        if (c == '>' || c == '/' || c == ' ' || c == '\t' ||
+                c == '\r' || c == '\n' || c == '\f') {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int pcore_html_mutation_parse_fragment(dom_document *doc,
         const char *html, size_t length, dom_document_fragment **out_fragment)
 {
@@ -9678,6 +9722,9 @@ PCORE_API int PCore_NodeInsertHTMLAfterScriptByIndex(HANDLE hDoc,
     length = strlen(html);
     if (length > PCORE_NODE_HTML_MUTATION_MAX_BYTES ||
             !pcore_contenteditable_utf8_valid(html)) {
+        return 3;
+    }
+    if (pcore_html_mutation_contains_script_tag(html, length)) {
         return 3;
     }
 

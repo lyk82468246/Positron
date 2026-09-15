@@ -122,14 +122,12 @@ retained overflow ancestor，并在每次滚动后重新读取目标矩形。没
 `end`、`nearest`，`behavior` 的 `auto` 或 `instant`，以及 `container` 的 `nearest`
 或 `all`。无可用 layout、矩形或 nested client bridge 时安全回退/ no-op；没有 scroll
 callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scrollTo()` 的本地状态规则。
-不支持 `smooth`、scroll-margin、完整滚动容器树、anchoring 或匿名祖先/目标；详细限制见
-[`KNOWN_LIMITATIONS`](../.agents/KNOWN_LIMITATIONS.md)。
+不支持 `smooth`、scroll-margin、完整滚动容器树、anchoring 或匿名祖先/目标。
 
 ### Script session
 
-`PBrowser_ScriptSessionCreate` 创建 context（bootstrap heap 为 1 MiB）；
-`Destroy` 释放会话状态。浏览器与独立脚本共用 `positron_script.dll` 的 Duktape，host objects
-由 Browser callbacks 提供。
+`PBrowser_ScriptSessionCreate` 创建 context（bootstrap heap 为 1.5 MiB），`Destroy`
+释放会话状态。浏览器与独立脚本共用 `positron_script.dll`。
 
 生命周期：
 
@@ -147,9 +145,10 @@ PBrowser_ScriptSessionDestroy(session);
 PBrowser_HistoryDestroy(history);
 ```
 
-需 `document.write()`/`writeln()` 时注册 Ex12/document-write callbacks，并在 `Evaluate()` 前设
-脚本索引（完成 `-1`）。Browser 交 Core；Core 拒绝 `<script>`/非法/超限/id 冲突，不执行
-脚本/资源/事件；无效输入抛错。
+需 `document.write()`/`writeln()` 时注册 Ex12 callbacks，并在 `Evaluate()` 前设置当前脚本索引
+（完成后设 `-1`）。Browser 将写入交给 Core；Core 在 fragment parser 前扫描并拒绝带标签名边界的
+ASCII 不区分大小写 `<script...` token，再应用 UTF-8、节点、深度和 id 预算。写入不执行脚本、
+资源或事件；该扫描只属于 document-write 安全边界，不代表通用 HTML parser 或动态脚本支持。
 
 ### `document.activeElement` 与 Core 焦点桥
 

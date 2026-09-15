@@ -465,6 +465,10 @@ static BOOL test_browser_raw_string_fixture(const char *html,
 static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
         const char *html, const char *probe, const char *expected,
         char *error, int error_capacity);
+static BOOL test_browser_raw_string_fixture_at_url_expected(
+        const char *document_url, const char *html, const char *probe,
+        const char *expected, int expected_executed, int expected_ignored,
+        char *error, int error_capacity);
 static BOOL test_browser_form_attribute_case(int number, const char *probe,
         const char *expected, char *error, int error_capacity);
 static BOOL test_browser_child_node_case(int number, const char *probe,
@@ -6305,7 +6309,6 @@ typedef struct pcore_browser_script_session {
 static pcore_browser_script_session g_browser_script_session = {
     NULL, NULL, NULL, NULL
 };
-
 /* The active browsing context is single-window, but its name survives a
  * document navigation. This handoff is consumed once when a new script
  * session is bootstrapped, then cleared so independent fixtures start empty. */
@@ -18197,6 +18200,15 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
         type = NULL;
     }
     (void) PBrowser_ScriptSessionSetCurrentScriptIndex(session, -1);
+    /* Page scripts are separate evaluations. Reclaim parser temporaries
+     * before lifecycle callbacks and the next host-driven evaluation so the
+     * Browser's fixed WM6 heap is not consumed by a completed script batch. */
+    if (rc == 0 && PScript_CollectGarbage(runtime) != PSCRIPT_OK) {
+        pcore_browser_script_error(error, error_capacity,
+                "script heap collection", PBrowser_ScriptSessionGetError(
+                session));
+        rc = 1;
+    }
     if (rc == 0 && PBrowser_ScriptSessionDispatchPageLifecycle(
             session, "complete") != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
@@ -50375,7 +50387,7 @@ static BOOL test1227_browser_replace_with_text_list_contract(void)
         "<div id='b'><span id='other'>O</span></div>"
         "<p id='result'>idle</p></body></html>";
     /* Keep each persistent evaluation compact: the browser session carries a
-     * fixed 1 MiB heap on WM6, so one oversized assertion script can fail
+     * fixed 1.5 MiB heap on WM6, so one oversized assertion script can fail
      * before the callback is reached even though the same assertions pass in
      * smaller evaluations.  The three probes below retain the full contract
      * while keeping each source/temporary allocation bounded. */
@@ -52832,21 +52844,82 @@ static BOOL test1256_browser_document_write_contract(void)
         "<body><script>"
         "document.write('<span id=\"first\">','one','</span>');"
         "document.writeln('<span id=\"line\">line</span>');"
-        "try{document.write('<script>window.bad=1;</script>');}"
+        "try{document.write('<script>window.bad=1;<\\/script>');}"
         "catch(e){window.rejected=e.name;}"
-        "</script><p id='result'>idle</p><script>"
-        "var a=document.getElementById('first'),l=document.getElementById('line'),n=l.nextSibling;"
-        "document.getElementById('result').textContent="
-        "a.textContent+'|'+l.textContent+'|'+String(window.rejected==='Error')+'|'"
-        "+String(document.getElementsByTagName('script').length===3)+'|'"
-        "+String(!!n&&n.nodeType===3&&n.textContent==='\\n');"
+        "</script><p id='result'>idle</p><script>window.pageProbe=1;"
         "</script></body></html>";
+    static const char PROBE[] =
+        "(function(){var a=document.getElementById('first'),"
+        "l=document.getElementById('line'),r=document.getElementById('result'),"
+        "n=l?l.nextSibling:null;"
+        "r.textContent=String(!!a)+'|'+String(!!l)+'|'"
+        "+String(a?a.textContent:'')+'|'+String(l?l.textContent:'')+'|'"
+        "+String(document.getElementsByTagName('span').length)+'|'"
+        "+String(typeof window.bad==='undefined')+'|'"
+        "+String(window.rejected==='Error')+'|'"
+        "+String(window.pageProbe===1)+'|'"
+        "+String(!!n&&n.nodeType===3&&n.textContent==='\\n');})();";
+    HANDLE core_document;
+    int core_count;
+    int core_first;
+    int core_line;
+    int core_result;
+    int core_write_first;
+    int core_write_line;
+    int core_reject_script;
+    int core_result_text_rc;
+    char core_result_text[64];
+    char core_error[256];
     char error[768];
 
+    core_document = PCore_ParseHTML(HTML, strlen(HTML));
+    core_count = core_document == NULL ? -1 : PCore_GetScriptCount(
+            core_document);
+    core_write_first = core_document == NULL ? -1 :
+            PCore_NodeInsertHTMLAfterScriptByIndex(core_document, 1,
+            "<span id='first'>one</span>");
+    core_write_line = core_document == NULL ? -1 :
+            PCore_NodeInsertHTMLAfterScriptByIndex(core_document, 1,
+            "<span id='line'>line</span>\n");
+    core_reject_script = core_document == NULL ? -1 :
+            PCore_NodeInsertHTMLAfterScriptByIndex(core_document, 1,
+            "<script>window.bad=1;</script>");
+    memset(core_result_text, 0, sizeof(core_result_text));
+    core_result_text_rc = core_document == NULL ? -1 :
+            PCore_NodeTextContentById(core_document, "result",
+            core_result_text, sizeof(core_result_text),
+            NULL);
+    core_error[0] = '\0';
+    if (core_document != NULL) {
+        core_first = PCore_NodeExistsById(core_document, "first");
+        core_line = PCore_NodeExistsById(core_document, "line");
+        core_result = PCore_NodeExistsById(core_document, "result");
+        if (core_count != 3 || core_first != 1 || core_line != 1 ||
+                core_result != 1 ||
+                core_write_first != 0 || core_write_line != 0 ||
+                core_reject_script != 3 || core_result_text_rc != 0 ||
+                strcmp(core_result_text, "idle") != 0) {
+            _snprintf(core_error, sizeof(core_error) - 1,
+                    "count=%d nodes=%d/%d/%d writes=%d/%d reject=%d"
+                    " text=%d/%s",
+                    core_count, core_first, core_line, core_result,
+                    core_write_first, core_write_line, core_reject_script,
+                    core_result_text_rc, core_result_text);
+            core_error[sizeof(core_error) - 1] = '\0';
+        }
+        PCore_FreeDocument(core_document);
+    } else {
+        cstr_copy(core_error, sizeof(core_error), "parse returned NULL");
+    }
+    if (core_error[0] != '\0') {
+        show_error(L"TEST 1256 FAIL", core_error);
+        return FALSE;
+    }
     memset(error, 0, sizeof(error));
-    if (!test_browser_raw_string_fixture_at_url(
-            "http://positron.local/document-write-position", HTML, "",
-            "one|line|true|true|true", error, sizeof(error))) {
+    if (!test_browser_raw_string_fixture_at_url_expected(
+            "http://positron.local/document-write-position", HTML, PROBE,
+            "true|true|one|line|2|true|true|true|true", 3, 0, error,
+            sizeof(error))) {
         show_error(L"TEST 1256 FAIL", error);
         return FALSE;
     }
@@ -93052,10 +93125,10 @@ static BOOL test293_reset_submission_metadata(void)
 /* Small product-browser fixture used by raw reflected-property tests. It
  * intentionally stops before layout: these properties are DOM/bootstrap
  * metadata, not visual or native-control claims. */
-static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
-        const char *html,
-        const char *probe, const char *expected, char *error,
-        int error_capacity)
+static BOOL test_browser_raw_string_fixture_at_url_expected(
+        const char *document_url, const char *html,
+        const char *probe, const char *expected, int expected_executed,
+        int expected_ignored, char *error, int error_capacity)
 {
     HANDLE document;
     HANDLE runtime;
@@ -93064,6 +93137,7 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
     int executed;
     int ignored;
     int result_bytes;
+    int result_read_rc;
     int ok;
     int evaluate_rc;
     unsigned long memory_used;
@@ -93077,7 +93151,9 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
     executed = -1;
     ignored = -1;
     result_bytes = 0;
+    result_read_rc = 1;
     ok = 1;
+    evaluate_rc = 1;
     if (error != NULL && error_capacity > 0) {
         error[0] = '\0';
     }
@@ -93088,7 +93164,9 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
     if (document == NULL ||
             pcore_browser_execute_scripts(document, 1, 0, document_url, NULL,
             NULL, &executed, &ignored, error, error_capacity, &runtime,
-            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            &bridge) != 0 ||
+            (expected_executed >= 0 && executed != expected_executed) ||
+            (expected_ignored >= 0 && ignored != expected_ignored) ||
             runtime == NULL || bridge == NULL) {
         ok = 0;
     }
@@ -93101,9 +93179,9 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
         bridge = NULL;
         evaluate_rc = pcore_browser_script_session_evaluate(probe, -1,
                 error, error_capacity);
-        if (evaluate_rc != 0 ||
-                PCore_NodeTextContentById(document, "result", result,
-                sizeof(result), &result_bytes) != 0 ||
+        result_read_rc = PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &result_bytes);
+        if (evaluate_rc != 0 || result_read_rc != 0 ||
                 strcmp(result, expected) != 0) {
             ok = 0;
             if (evaluate_rc != 0 && g_browser_script_session.runtime != NULL &&
@@ -93141,8 +93219,9 @@ static BOOL test_browser_raw_string_fixture_at_url(const char *document_url,
     }
     if (!ok && error != NULL && error_capacity > 0 && error[0] == '\0') {
         _snprintf(error, error_capacity - 1,
-                "result[%d]=%s exec/ignore=%d/%d expected=%s",
-                result_bytes, result, executed, ignored, expected);
+                "result[%d] read=%d eval=%d=%s exec/ignore=%d/%d expected=%s",
+                result_bytes, result_read_rc, evaluate_rc, result, executed,
+                ignored, expected);
         error[error_capacity - 1] = '\0';
     }
     return ok;
@@ -93154,6 +93233,15 @@ static BOOL test_browser_raw_string_fixture(const char *html,
 {
     return test_browser_raw_string_fixture_at_url(NULL, html, probe,
             expected, error, error_capacity);
+}
+
+static BOOL test_browser_raw_string_fixture_at_url(
+        const char *document_url, const char *html,
+        const char *probe, const char *expected, char *error,
+        int error_capacity)
+{
+    return test_browser_raw_string_fixture_at_url_expected(document_url, html,
+            probe, expected, 1, 0, error, error_capacity);
 }
 
 /* TEST 1062 - bounded label/control association and labels snapshots. */

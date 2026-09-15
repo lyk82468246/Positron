@@ -246,13 +246,15 @@ write Ex8 在同一 document 中有界替换 direct children（16,384 字节、2
 通用或嵌套 clone insertion、通用 DocumentFragment 和 context-sensitive parser 仍不在边界内；
 当前仅支持 detached Element 的属性/direct-Text clone 沿既有有界物化路径插入。
 
-当前候选 next815 来自 NetSurf compatibility corpus 对 `document.write()`/`writeln()` 的
-缺口。Browser 提供可选 document-write callback 和当前 classic-script 发现索引，Core
-以既有 UTF-8 fragment parser 将不含 `<script>` 的有界片段原子插在该脚本之后；宿主只
-负责索引接线、重排请求和断言。同步新增 `PScript_CollectGarbage()` 作为长 bootstrap 的
-显式维护入口，并由 TEST80 验证状态保持。TEST1256 覆盖多参数字符串化、`writeln()` 换行、
-脚本位置和 script-fragment 拒绝；正式设备门目前受 WMDC/RAPI `CeWriteFile` 重置阻断，
-尚未写入通过基线。
+next815 已完成 NetSurf compatibility corpus 对 `document.write()`/`writeln()` 缺口的
+有界纵切。Browser 提供可选 document-write callback 和当前 classic-script 发现索引，Core
+以既有 UTF-8 fragment parser 将不含 `<script>` 的有界片段原子插在该脚本之后；解析前再
+以标签名边界和 ASCII 不区分大小写的 `<script...` 源扫描 fail closed，避免惰性 parser
+表示绕过安全边界。宿主只负责索引接线、重排请求和断言；`PScript_CollectGarbage()` 作为
+长 bootstrap/page-script 批次的显式维护入口。TEST1256 覆盖多参数字符串化、`writeln()`
+换行、脚本位置和 script-fragment 拒绝，TEST80 提供相邻回归。更换后的仿真器已通过
+`80,1236-1239,1244-1256,999` 的 19/19 扩展设备门；门使用 16 KiB RAPI 传输块以避开
+部分 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时的 `0x80072746`。
 
 未实现边界仍包括完整滚动容器树、scroll chaining/anchoring、scroll-margin、Range/
 Selection、pinch zoom、平滑/惯性滚动、匿名焦点目标、pointer capture 和完整交互/链接

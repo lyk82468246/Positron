@@ -437,6 +437,10 @@ public static class PositronDeviceRapi
     private const uint WAIT_TIMEOUT = 0x00000102;
     private const uint WAIT_FAILED = 0xffffffff;
     private const uint RAPI_INIT_TIMEOUT_MS = 30000;
+    /* Some WM6 DMA images reset the RAPI stream when a full 32 KiB packet
+     * starts at the 512 KiB boundary.  Keep both directions below that
+     * legacy boundary while retaining bounded transfer overhead. */
+    private const int RAPI_TRANSFER_CHUNK_BYTES = 16384;
 
     [DllImport("rapi.dll", ExactSpelling = true)]
     private static extern int CeRapiInitEx(ref RapiInit init);
@@ -691,11 +695,11 @@ public static class PositronDeviceRapi
         try {
             using (FileStream local = new FileStream(localPath, FileMode.Open,
                     FileAccess.Read, FileShare.Read)) {
-                /* Keep each request below the legacy RAPI packet boundary
-                 * while avoiding thousands of round trips on larger DLLs.
-                 * The unique temporary path still prevents a partial write
-                 * from becoming visible as the final payload. */
-                byte[] buffer = new byte[32768];
+                /* The 16 KiB request size avoids a reproducible WM6/RAPI
+                 * reset at the 512 KiB boundary on some DMA images.  The
+                 * unique temporary path still prevents a partial write from
+                 * becoming visible as the final payload. */
+                byte[] buffer = new byte[RAPI_TRANSFER_CHUNK_BYTES];
                 int count;
                 while ((count = local.Read(buffer, 0, buffer.Length)) > 0) {
                     uint written;
@@ -728,7 +732,7 @@ public static class PositronDeviceRapi
         try {
             using (FileStream local = new FileStream(localPath,
                     FileMode.Create, FileAccess.Write, FileShare.Read)) {
-                byte[] buffer = new byte[32768];
+                byte[] buffer = new byte[RAPI_TRANSFER_CHUNK_BYTES];
                 while (true) {
                     uint read;
                     if (!CeReadFile(remote, buffer, (uint) buffer.Length,

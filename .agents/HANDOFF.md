@@ -8,9 +8,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、32 KiB RAPI 写块和有界的超时后会话重开；日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
+工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-next814 设备证据见下文；历史失败不作为依据。
+next815 设备证据见下文；历史失败不作为依据。
 
 - next790–next802 已完成有界 CharacterData/HTML parser mutation、text-only fragment staging
   以及 Ex13–Ex15 `replaceChildren()` 的 Core 原子提交、identity/snapshot 刷新和失败回滚；
@@ -66,9 +66,11 @@ next814 设备证据见下文；历史失败不作为依据。
   VS2008 单一字符串限制，以数组保存顺序和特殊名称，按 ASCII 空格/制表符修剪，只有合法
   整数 `Max-Age<=0` 删除，空值仍删除；name/value、单次写入、32 对和 8,192 pair 字符
   预算均 fail closed。TEST1255 与 `1254,1255,999` 专门设备门已通过。
-- 当前 next815 候选针对 `document.write()`/`writeln()`：Browser 提供 callback/脚本索引，
-  Core 以 `PCore_NodeInsertHTMLAfterScriptByIndex()` 原子插入无 `<script>` 的有界片段；
-  `positron_script.dll` 另增 `PScript_CollectGarbage()`。TEST80/1256 已加入，尚无正式设备证据。
+- next815 已完成 `document.write()`/`writeln()` 的有界纵切：Browser 提供 callback/脚本索引，
+  Core 以 `PCore_NodeInsertHTMLAfterScriptByIndex()` 在当前 classic script 后原子插入片段，
+  并在解析前对带标签名边界的 ASCII 不区分大小写 `<script...` 源片段 fail closed；
+  `positron_script.dll` 另增 `PScript_CollectGarbage()`。TEST80、1236–1239、1244–1256、
+  999 已在更换后的仿真器上通过扩展设备门。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - `TEST_MAX_NUMBER` 已为 1256。tracked `test_host/test_host.ini` 仍是窄 smoke：
   `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1256,999`。
@@ -105,10 +107,12 @@ next814 设备证据见下文；历史失败不作为依据。
 ## 当前短期目标
 
 - 当前基线涵盖表单、selector、滚动/几何、生命周期、焦点、图片和有界 DOM mutation；
-  next790–next814 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
-  CharacterData offset、clone/style/reflected-attribute facade、body.text 和 session cookie
-  纵切已有自动合同。稳定边界见
+  next790–next815 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
+  CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
+  和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
+- 下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next816
+  用户可见缺口，并把它实现为一项边界清楚的公共 DLL 能力；在选择前不预设测试编号或功能方向。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -218,13 +222,17 @@ next814 设备证据见下文；历史失败不作为依据。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260915-095829-next814` 是当前有效基线：Debug ARMV4I，选择
-`1254,1255,999`，3/3 PASS，零 ERROR/FAIL；日志完整，双空间预检、完成后清理、
-`crash_check` 均 PASS，新增 dump=0。目标卷与内部 object-store 预检均通过，部署完成后移除了当前目录；
+`tmp/device-runs/20260915-170055-next815-document-write-broad-retry` 是当前有效证据：
+更换后的仿真器、Debug ARMV4I，选择 `80,1236-1239,1244-1256,999`，19/19 PASS，零
+ERROR/FAIL；日志完整，双空间预检、完成后清理、`crash_check` 均 PASS，新增 dump=0，
+目标卷与内部 object-store 预检通过且当前部署目录已移除。聚焦证据
+`tmp/device-runs/20260915-165912-next815-document-write-final-retry` 也已以
+`1256,999` 取得 2/2 PASS。
 
-最近三次 next815 设备门均在启动前写入 `positron_script.dll` 时收到
-`CeWriteFile`/`0x80072746`，无设备日志，不能视为产品失败。`repair_wmdc_rapi.bat -AuditOnly`
-为 `PASS`；需用户重新建立 GUI 连接后重跑设备门。
+本批重试前曾在同一仿真器的 32 KiB 写入于 512 KiB 边界复现 `CeWriteFile`/
+`0x80072746`；将设备门双向传输块限制为 16 KiB 后，完整 `positron_script.dll` 传输成功，
+扩展门随即通过。设备门仍要求用户先在 WMDC/Device Emulator GUI 手动连接恰好一个目标；
+它只复用当前 RAPI 会话，不连接、选择、cradle、重置或强杀设备。
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
 `FAILED_EXPERIMENTS.md` 与本地 `tmp/`，不能替代当前基线。设备门不会把只有启动头或不完整日志
@@ -256,46 +264,12 @@ next814 设备证据见下文；历史失败不作为依据。
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1202 是离线的 Browser/Core direct-element removal 与文本内容 mutation 夹具；
-  自动门已证明直接子节点关系、旧/新 wrapper 与 collection snapshot、detached no-op 以及
-  Core retained-layout invalidation。逐项合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- TEST1203–1239 的 CharacterData、existing-node、HTML parser 和 Ex10–Ex12 结构夹具
-  已通过自动门验证 UTF-16/UTF-8、wrapper/snapshot、owner、detached、错误输入及
-  retained-layout 失效；逐项合同和历史选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，
-  本文件不重复维护。通用节点、observer、完整 live collection、CDATA fixture 和
-  native/OEM 视觉仍不在该自动门范围。
-- TEST1240 设备门选择 `1240,1239,999` 已通过：两个独立 Browser session 分别验证
-  text-only fragment staging/append/prepend/insert 和 element/CharacterData replacement，
-  fragment 只在成功 mutation 后清空；日志完整，双空间预检、完成后清理、crash check 均
-  PASS，新增 dump=0，无需人工视觉步骤。
-- TEST1241 与相邻 TEST1240/1239 一起由 `next800` 设备门验证：0–4 个 primitive、单个
-  text-only fragment、空列表、字符串化、旧 snapshot/detached 和结构/对象/混合输入的
-  fail-closed 均通过；Ex13 callback 使用 Core 暂存/回滚，fragment 仅在成功后消费。该门
-  选择 `1241,1240,1239,999`，4/4 PASS，日志完整，双空间预检、完成后清理和 crash check
-  均 PASS，新增 dump=0，无需人工视觉步骤。
-允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
-
-- TEST1242–1246 由 next801–805 的相邻设备门验证 Ex14/Ex15、detached Text/Element/Comment
-  staging、identity/lifecycle、属性/数据同步和失败原子性；逐项合同与历史选择见
-  [`docs/TESTING.md`](../docs/TESTING.md) 及 Git，所有门均有完整日志、双空间预检、完成后
-  清理和 crash check 证据，本文件不重复维护旧选择。
-- TEST1247–1250 由 next806–809 的相邻设备门验证 Comment/Text CharacterData offset、
-  detached Element clone staging 与关系身份，包括 UTF-16 surrogate、尾部截断、attached
-  Core 同步、duplicate-id 拒绝、改名插入、ancestor/sibling position、disconnected 结果
-  和非法参数失败不变性。最新门选择 `1249,1250,999`，3/3 PASS；日志完整，双空间预检、
-  完成后清理和 crash check 均 PASS，新增 dump=0；本批没有视觉人工步骤。
-- TEST1251–1253 由 next810–812 的相邻设备门验证 detached Element 的 `hasChildNodes()`、
-  `style.cssText` 和 reflected attribute setter 在 detached/attached/removed 状态下保持一致。
-  最新门选择 `1252,1253,999`，
-  3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增 dump=0。
-- TEST1254 由 next813 的相邻设备门验证 `HTMLBodyElement.text` 的初值、attribute mutation、
-  `null` 空字符串转换、普通 `String` 转换和 option/non-body 回退。门选择
-  `1253,1254,999`，3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增
-  dump=0；本批只改变 Browser 脚本属性语义，无需人工视觉步骤。
-- TEST1255 由 next814 的相邻设备门验证 session `document.cookie` 的 pair trim、精确
-  `Max-Age` 删除、特殊名称、非法/超限拒绝及 32 对/8,192 字符配额。门选择
-  `1254,1255,999`，3/3 PASS；日志完整，双空间预检、完成后清理和 crash check 均 PASS，新增
-  dump=0；本批只改变 Browser 脚本会话语义，无需人工视觉步骤。
+- TEST1201–1255 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+  body.text 与 session cookie 夹具均已有相邻设备门；逐项合同、预算和选择集中在
+  [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。通用节点、observer、
+  完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
+- 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
+  崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
 ## 当前未决风险
 
@@ -322,7 +296,7 @@ next814 设备证据见下文；历史失败不作为依据。
 - `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
-- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 1 MiB heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
+- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 1.5 MiB Browser heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - 图片资源的候选选择覆盖 Core 的最多 16 个同类正密度 `x` 或正宽度 `w` 候选（每个
   URL 最多 2047 字节），以及每个 `<picture>` 最多 8 个 preceding `<source>`、16 层
   ancestor 和 64 个 direct-child 节点的有界扫描。source 先按 document order 过滤
@@ -363,10 +337,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-完成 next815 设备门：用户保持 WMDC/Device Emulator GUI 唯一连接，
-运行 `scripts\device_gate.bat -Candidate next815-document-write-final -TestSelection
-"80,1236-1239,1244-1256,999" -EnableJavaScript`。TEST80、1236–1239、1244–1256、999
-须全部 PASS，日志完整且双空间预检、清理、crash check 均 PASS；通过后再推进 next816。
+选择并实现 next816：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
+纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
+以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 text-only 子集的通用节点/
 DocumentFragment 插入、
