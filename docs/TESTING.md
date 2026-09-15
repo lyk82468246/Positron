@@ -1103,8 +1103,11 @@ TEST1259 覆盖 `DocumentFragment.cloneNode(false/true)` 的 bounded staging 合
 副本保持独立 wrapper、数据和 owner。副本修复唯一 id 后可通过既有 `appendChild()` parser
 路径物化；缺失 id 的克隆在提交前拒绝并保留原 fragment 与目标树。Fragment-owned Text
 的 data 写入只改 detached 快照，连接后再由 Core callback 更新。设备门选择
-`1240-1259,999`，确认 Debug ARMV4I、完整日志、外置卡优先的双空间预检、完成后清理和
-crash check。
+`1240-1259,999`。
+
+TEST1260 验证 `getElementById()`：四个以内根按序返回 Element；Text/空/未知 id
+返回 `null`，id mutation、clone 隔离、消费清空、重复 id 拒绝不改目标树。设备门
+`1258-1260,999`。
 
 ### 手动模式
 

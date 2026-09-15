@@ -300,8 +300,11 @@ detached staging：最多四个 primitive Text，或最多四个 detached Elemen
 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()`，成功保留
 wrapper identity 并清空 fragment。纯文本仍复用 Ex13/text-list。`cloneNode(false)` 返回
 空 fragment；`cloneNode(true)` 复制有界根、属性和 direct Text，源/副本隔离，连接前修复
-id；Fragment-owned Text data 写入只更新快照。嵌套/connected、重复/缺失 id、结构/超限/
-上下文敏感输入 fail closed，不执行脚本、资源或事件，也不暴露 Core fragment handle。
+id；Fragment-owned Text data 写入只更新快照。`getElementById()` 按根的树序查找
+detached Element，忽略 Text，并随 staged id mutation 更新；浅克隆为空，深克隆与源各自
+维护查找结果，fragment 消费后查找为空。重复 id 可以在 staging 中按先后返回首个根，但
+物化时仍拒绝。嵌套/connected、重复/缺失 id、结构/超限/上下文敏感输入 fail closed，
+不执行脚本、资源或事件，也不暴露 Core fragment handle。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。

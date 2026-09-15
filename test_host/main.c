@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1259
+#define TEST_MAX_NUMBER 1260
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53202,6 +53202,71 @@ static BOOL test1259_browser_document_fragment_clone_contract(void)
             " Browser-owned staging copies for Element/Text roots; source and"
             " clone data stay independent, cloned roots can be materialized"
             " after id repair, and invalid clones fail without mutation.");
+    return TRUE;
+}
+
+/* TEST 1260 - bounded DocumentFragment getElementById lookup. */
+static BOOL test1260_browser_document_fragment_lookup_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),anchor="
+        "document.getElementById('anchor'),result=document.getElementById('result'),"
+        "f,first,tail,second,shallow,deep,deepFirst,deepTail,deepSecond,"
+        "dup,dupFirst,dupSecond,bad=0,ok=true,ret;"
+        "try{f=document.createDocumentFragment();first=document.createElement('div');"
+        "first.id='frag-first';tail=document.createTextNode('tail');"
+        "second=document.createElement('span');second.id='frag-second';"
+        "f.append(first,tail,second);}catch(e){ok=false;}"
+        "ok=ok&&typeof f.getElementById==='function'&&"
+        "f.getElementById('frag-first')===first&&"
+        "f.getElementById('frag-second')===second&&"
+        "f.getElementById('missing')===null&&f.getElementById('')===null&&"
+        "f.getElementById(null)===null&&f.getElementById(123)===null;"
+        "first.id='frag-renamed';ok=ok&&f.getElementById('frag-first')===null&&"
+        "f.getElementById('frag-renamed')===first;"
+        "shallow=f.cloneNode(false);ok=ok&&"
+        "shallow.getElementById('frag-renamed')===null;"
+        "deep=f.cloneNode(true);deepFirst=deep.firstElementChild;"
+        "deepTail=deep.childNodes[1];deepSecond=deep.lastElementChild;"
+        "ok=ok&&deep.getElementById('frag-renamed')===deepFirst&&"
+        "deep.getElementById('frag-second')===deepSecond&&"
+        "deep.getElementById('missing')===null&&deepFirst!==first&&"
+        "deepSecond!==second&&deepTail!==tail;deepFirst.id='clone-renamed';"
+        "ret=target.appendChild(deep);ok=ok&&ret===deep&&"
+        "deep.childNodes.length===0&&deep.getElementById('clone-renamed')===null&&"
+        "document.getElementById('frag-renamed')===null&&"
+        "document.getElementById('clone-renamed')===deepFirst&&"
+        "document.getElementById('frag-second')===deepSecond&&"
+        "target.childNodes.length===4&&target.childNodes[0]===anchor&&"
+        "target.childNodes[1]===deepFirst&&target.childNodes[2]===deepTail&&"
+        "target.childNodes[3]===deepSecond&&f.childNodes.length===3&&"
+        "f.getElementById('frag-renamed')===first&&"
+        "f.getElementById('frag-second')===second;"
+        "dup=document.createDocumentFragment();dupFirst=document.createElement('i');"
+        "dupFirst.id='dup';dupSecond=document.createElement('b');dupSecond.id='dup';"
+        "dup.append(dupFirst,dupSecond);ok=ok&&dup.getElementById('dup')===dupFirst;"
+        "try{target.appendChild(dup);}catch(e1){bad|=1;}"
+        "ok=ok&&bad===1&&dup.getElementById('dup')===dupFirst&&"
+        "dup.childNodes.length===2&&target.childNodes.length===4&&"
+        "target.firstChild===anchor;result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-lookup", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1260 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1260 OK",
+            "DocumentFragment getElementById now searches bounded detached"
+            " Element roots in tree order, follows id changes, keeps source"
+            " and clone lookups isolated, clears after consumption and stays"
+            " fail-closed when duplicate ids cannot be materialized.");
     return TRUE;
 }
 
@@ -111479,6 +111544,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1257: ok = test1257_browser_document_title_contract(); break;
         case 1258: ok = test1258_browser_document_fragment_element_contract(); break;
         case 1259: ok = test1259_browser_document_fragment_clone_contract(); break;
+        case 1260: ok = test1260_browser_document_fragment_lookup_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
