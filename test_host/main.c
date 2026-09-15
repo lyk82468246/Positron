@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1257
+#define TEST_MAX_NUMBER 1258
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53045,6 +53045,80 @@ static BOOL test1257_browser_document_title_contract(void)
             "document.title now reads decoded <title> text through Core and"
             " the Browser bridge, updates the first title, and creates one"
             " when the parsed head has none.");
+    return TRUE;
+}
+
+/* TEST 1258 - bounded detached Element/Text DocumentFragment staging. */
+static BOOL test1258_browser_document_fragment_element_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='old'>old</p></div>"
+        "<div id='other'>O</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),old="
+        "document.getElementById('old'),result=document.getElementById('result'),"
+        "f,card,cardText,tail,snap,ret,f2,pre,preText,f3,repl,replText,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();card=document.createElement('article');"
+        "card.id='frag-card';card.className='card';card.setAttribute('data-x','a&\"<>');"
+        "cardText=document.createTextNode('A < B');card.appendChild(cardText);"
+        "tail=document.createTextNode(' tail');f.append(card,tail);}catch(e){ok=false;}"
+        "ok=ok&&f.nodeType===11&&f.nodeName==='#document-fragment'&&"
+        "f.ownerDocument===document&&f.parentNode===null&&!f.isConnected&&"
+        "f.childNodes.length===2&&f.children.length===1&&f.firstChild===card&&"
+        "f.firstElementChild===card&&f.lastChild===tail&&f.childElementCount===1&&"
+        "f.textContent==='A < B tail'&&card.parentNode===f&&card.getRootNode()===f&&"
+        "cardText.parentNode===card&&tail.parentNode===f&&tail.getRootNode()===f&&"
+        "card.getAttribute('data-x')==='a&\"<>'&&cardText.data==='A < B';"
+        "snap=target.childNodes;ret=target.appendChild(f);"
+        "ok=ok&&ret===f&&f.childNodes.length===0&&f.textContent===''&&"
+        "target.childNodes.length===3&&target.childNodes[0]===old&&"
+        "target.childNodes[1]===card&&target.childNodes[2]===tail&&"
+        "card.parentNode===target&&card.parentElement===target&&card.isConnected&&"
+        "card.getRootNode()===document&&document.getElementById('frag-card')===card&&"
+        "card.className==='card'&&card.getAttribute('data-x')==='a&\"<>'&&"
+        "card.childNodes.length===1&&card.childNodes[0]===cardText&&"
+        "cardText.parentNode===card&&cardText.data==='A < B'&&tail.parentNode===target&&"
+        "tail.getRootNode()===document&&snap.length===1&&snap[0]===old&&"
+        "target.textContent==='oldA < B tail';"
+        "try{f2=document.createDocumentFragment();pre=document.createElement('span');"
+        "pre.id='frag-pre';preText=document.createTextNode('P');pre.appendChild(preText);"
+        "f2.appendChild(pre);ret=target.insertBefore(f2,old);ok=ok&&ret===f2;}catch(e2){ok=false;}"
+        "ok=ok&&f2.childNodes.length===0&&target.childNodes.length===4&&"
+        "target.childNodes[0]===pre&&target.childNodes[1]===old&&"
+        "pre.parentNode===target&&pre.childNodes[0]===preText&&"
+        "document.getElementById('frag-pre')===pre&&target.textContent==='PoldA < B tail';"
+        "try{f3=document.createDocumentFragment();repl=document.createElement('section');"
+        "repl.id='frag-repl';replText=document.createTextNode('R');repl.appendChild(replText);"
+        "f3.append(repl);ret=target.replaceChildren(f3);ok=ok&&ret===undefined;}catch(e3){ok=false;}"
+        "ok=ok&&f3.childNodes.length===0&&target.childNodes.length===1&&"
+        "target.firstChild===repl&&repl.parentNode===target&&repl.isConnected&&"
+        "repl.childNodes[0]===replText&&replText.parentNode===repl&&"
+        "document.getElementById('frag-repl')===repl&&target.textContent==='R'&&"
+        "old.parentNode===null&&pre.parentNode===null&&!old.isConnected&&!pre.isConnected;"
+        "try{f=document.createDocumentFragment();card=document.createElement('div');"
+        "f.appendChild(card);target.appendChild(f);}catch(e4){bad|=1;}"
+        "ok=ok&&f.childNodes.length===1&&target.childNodes.length===1&&"
+        "target.firstChild===repl;"
+        "try{f2=document.createDocumentFragment();f2.appendChild(document.createDocumentFragment());}"
+        "catch(e5){bad|=2;}try{f2=document.createDocumentFragment();f2.appendChild(target.firstChild);}"
+        "catch(e6){bad|=4;}try{target.appendChild(f2);}catch(e7){bad|=8;}"
+        "ok=ok&&target.firstChild===repl&&target.textContent==='R'&&bad===7;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-element", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1258 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1258 OK",
+            "DocumentFragment now stages a bounded mix of detached Elements"
+            " and Text, preserves wrapper identity for append/insertBefore/"
+            "replaceChildren, commits through the atomic Core parser and"
+            " rejects missing-id, nested or connected nodes without mutation.");
     return TRUE;
 }
 
@@ -111320,6 +111394,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1255: ok = test1255_browser_cookie_parser_contract(); break;
         case 1256: ok = test1256_browser_document_write_contract(); break;
         case 1257: ok = test1257_browser_document_title_contract(); break;
+        case 1258: ok = test1258_browser_document_fragment_element_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

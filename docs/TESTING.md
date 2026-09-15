@@ -623,18 +623,11 @@ fail closed、成功 mutation 使 retained layout 失效，以及父级替换后
 完整 live collection、事件或 native/视觉行为；宿主只负责 callback 接线、可选 restyle、
 fixture 与断言。
 
-TEST1204 覆盖 Text、Comment 的 CharacterData 方法：`appendData()`、`insertData()`、
-`deleteData()` 和 `replaceData()` 在 Browser 侧按 UTF-16 code-unit 计算新字符串，再复用
-同一 Core direct-child setter。自动断言覆盖方法返回值、连续替换后的数据/length、超长
-count 截断、NodeList 与 wrapper identity，以及负数/非整数/越界范围和 detached wrapper
-的 fail-closed 行为；Comment 写入应成功。
-
-TEST1205 覆盖新增 `PCore_NodeSetCharacterDataChildById` 与
-`PBrowserScriptDomWriteCallbacksEx2`：Comment 的 setter 和四个 mutator 保持 child list、
-wrapper identity，成功后使 retained layout 失效；Core 直接调用同时验证 Text、element、
-缺失和越界返回码。CDATA 使用同一公共接口合同；节点结构的其他 mutation、文本节点
-删除、MutationObserver、事件或 native/视觉行为仍不在门内。宿主只负责 callback 接线、
-fixture 与断言。
+TEST1204/1205 覆盖 Text、Comment 的 CharacterData 方法及其 Ex2/Core 纵切：
+`appendData()`、`insertData()`、`deleteData()`、`replaceData()` 和 setter 按 UTF-16
+code-unit 计算后调用 `PCore_NodeSetCharacterDataChildById`。自动断言覆盖返回值、连续
+替换、超长 count 截断、NodeList/wrapper identity、detached 快照，以及负数、非整数、
+越界、element、缺失和越界 child 的 fail-closed 返回码；CDATA 共享 ABI 合同。
 
 TEST1206 覆盖 `substringData()` 的只读范围合同：Text/Comment 使用有限非负整数
 offset/count，超长 count 截断，负数、非整数和越界 offset 抛出脚本错误；读取不改变
@@ -701,22 +694,11 @@ TEST1213 覆盖 Core/Browser 的有界文本结构 mutation：Ex6 callback 将�
 断言；已有节点 reparent、DocumentFragment/Node 插入、其他节点删除、事件、
 MutationObserver 和 live collection 仍不在该门内。
 
-TEST1214 覆盖 `Text.remove()` 的 Core/Browser 有界纵切：Ex2 mutation callback 将连接中
-direct Text wrapper 的未过滤 `childNodes` 索引交给 `PCore_NodeRemoveTextChildById`。
-自动断言覆盖 Core 的成功、缺失/越界/非 Text/空 parent 返回码，Browser 的父级
-`childNodes`/`children` 刷新、旧 NodeList snapshot 不变、被移除 wrapper 的 detached
-数据与身份、父级 textContent 和重复 detached no-op。成功 mutation 使 retained layout
-失效，宿主只负责 callback 接线、可选 restyle、fixture 与断言；通用 Node/DocumentFragment、
-reparent、其他删除、事件、MutationObserver、live collection 以及 native/视觉行为仍不在
-门内。
-
-TEST1215 覆盖 `Element.removeChild(Text)` 与 `Text.remove()` 共用 Ex2 删除桥：Browser
-只接受当前 receiver 的 connected direct Text，按未过滤 `childNodes` 索引调用
-`PCore_NodeRemoveTextChildById`，成功返回原 Text wrapper，刷新父级集合并保留旧 snapshot
-与 detached 数据。自动断言还覆盖错误 parent、重复 detached 调用和其他不支持节点均不产生
-部分 mutation；Comment 的 CharacterData 删除由 TEST1216 覆盖。宿主只负责 callback 接线、
-fixture 与断言。通用 Node/DocumentFragment、reparent、其他删除、事件、MutationObserver、
-live collection 和 native/视觉行为仍不在门内。
+TEST1214/1215 覆盖 `Text.remove()` 与 `Element.removeChild(Text)` 的 Ex2 删除桥：Browser
+按当前 receiver 的未过滤 `childNodes` 索引调用 `PCore_NodeRemoveTextChildById`，保留返回
+wrapper、旧 NodeList snapshot 和 detached 数据，并刷新父级集合/文本。自动断言覆盖成功、
+错误 parent、缺失/越界/非 Text、重复 detached no-op 和 retained-layout 失效；Comment/
+CDATA 的同类路径由 TEST1216 覆盖。
 
 TEST1216 覆盖 Comment CharacterData 的有界结构 mutation：宿主注册
 `PBrowserScriptDomMutationCallbacksEx3`，Browser 以未过滤 `childNodes` 索引和节点类型 8
@@ -1106,6 +1088,15 @@ getter/setter 与同一 Core 文档一致，`null` 仍按 JavaScript `String` �
 Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展时 Browser 保留局部回退。设备门
 选择 `1256,1257,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
 check。
+
+TEST1258 覆盖 Browser-owned `DocumentFragment` 的 bounded Element/Text staging：最多四个
+detached Element/Text 根通过既有 Core HTML parser 原子物化，`appendChild()`、以 Element
+为 reference 的 `insertBefore()` 和 `replaceChildren()` 保留 wrapper、id lookup、顺序及
+静态 snapshot identity。Element 需唯一非空 id、最多一个 direct Text child；相邻顶层 Text、
+嵌套/connected node、重复/缺失 id、结构标签和超出四项在 mutation 前拒绝且不消费 fragment。
+纯文本仍走 Ex13/text-list（回归 TEST1240–1241）；该路径不执行 script、资源或事件，不
+暴露 Core fragment handle。设备门选择 `1240-1258,999`，确认 Debug ARMV4I、完整日志、
+外置卡优先的双空间预检、完成后清理和 crash check。
 
 ### 手动模式
 

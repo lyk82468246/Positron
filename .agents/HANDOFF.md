@@ -10,7 +10,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-next815 设备证据见下文；历史失败不作为依据。
+next818 设备证据见下文；历史失败不作为依据。
 
 - next790–next802 已完成有界 CharacterData/HTML parser mutation、text-only fragment staging
   以及 Ex13–Ex15 `replaceChildren()` 的 Core 原子提交、identity/snapshot 刷新和失败回滚；
@@ -83,37 +83,33 @@ next815 设备证据见下文；历史失败不作为依据。
   TEST1257 覆盖实体解码、截断、替换、创建和 `null` 字符串化；桌面构建及
   `tmp/device-runs/20260915-223010-next817` 的外置卡自动设备门（`1256,1257,999`）
   3/3 PASS，零 ERROR/FAIL，日志回收、清理和 `crash_check` 均通过，新增 dump=0。
+- next818 补齐 Browser-owned `DocumentFragment` 的 bounded Element/Text staging。纯文本
+  fragment 保留既有 Ex13/text-list 与 CharacterData 消费；结构 fragment 最多承载四个
+  detached Element/Text 根，Element 必须有唯一非空 id、最多一个 direct Text child，顶层
+  Text 不能相邻。`append()`、`prepend()`、以 Element 为 reference 的 `insertBefore()`、
+  `appendChild()` 和 `replaceChildren()` 通过既有 Core HTML parser 原子物化，成功后保留
+  staged wrapper identity 并清空 fragment；嵌套/connected node、重复/缺失 id、结构标签、
+  超限和 context-sensitive parser 输入 fail closed，不新增 Core fragment ABI。TEST1258
+  与 TEST1240–1257 相邻回归已通过；`tmp/device-runs/20260916-003555-next818` 的外置卡
+  自动设备门（`1240-1258,999`）20/20 PASS，零 ERROR/FAIL，完整日志回收、双空间预检、
+  完成后清理和 `crash_check` 均通过，新增 dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1257。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1257,999`。
-- 2026-09-08 nightly 已使用 `laptop-li\joe` 的 Windows keyring 成功覆盖固定
-  `nightly` pre-release（源提交 `5236777c`、Debug、19 个不压缩条目）。受限 Codex 进程
-  可能以 `laptop-li\codexsandboxoffline` 身份运行，即使用户目录仍显示为 Joe，也看不到
-  该 keyring；这种进程中的 `gh auth status` 为 invalid 不是用户登录状态的可靠证据。发布
-  前应在 keyring 可见的用户上下文核对身份和 `gh auth status`；失败经过见
-  [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)。
+- `TEST_MAX_NUMBER` 已为 1258。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1258,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
 ## 近期已完成能力摘要
 
-- 导航候选、资源事务、history/viewport、生命周期、脚本调度、焦点、滚动、几何、表单、
-  selector、图像和有界 DOM/CharacterData mutation 已迁入对应 Core/Browser 公共边界；
-  宿主只拥有 WM、线程、网络、native 控件、页面策略、fixture 与断言。
-- DOM 结构 mutation 已覆盖 direct-element removal、文本/Comment/CDATA、normalize、clone/
-  equality、existing-element insertion/replacement、relative/mixed `replaceWith()`，以及
-  parser-backed `innerHTML`、四位置 `insertAdjacentHTML`、单根 `outerHTML` replacement、
-  Browser text-only `DocumentFragment` staging、Ex13 文本/fragment、Ex14 同父 mixed、
-  Ex15 node-aware `Element.replaceChildren()`、Browser-owned detached `Text` creation/insertion、
-  detached `Comment` creation/data/lifecycle/insertion 和 detached Element clone staging/关系身份。
-  每项合同、上限和未实现边界见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- Browser script session 仍由宿主显式推进；宿主不创建脚本线程，也不复制 URL、DOM、Event、
-  表单、图像或生命周期业务语义。
-- `document.title` 通过 Browser Ex 读写 callback 直接映射 Core 的首个 head title；没有
-  扩展 callback 的旧宿主保持局部回退，不改变普通 Element id 的寻址。
-- 设备门的外置优先/内置回退、双空间预检、日志完整性检查、超时后会话恢复和完成后清理
-  集中在 `scripts\device_gate.ps1`；这是测试护栏，不改变公共 DLL ABI。`tmp/` 只保存本地
-  证据。
+最近的产品纵切已覆盖导航/资源、history/viewport、生命周期、脚本、焦点、滚动/几何、
+表单、selector、图像和有界 DOM/CharacterData mutation。HTML parser mutation、
+text-only 与 bounded Element/Text `DocumentFragment`、detached Text/Comment/Element、
+属性 facade、cookie、document.write 和 document.title 的合同与预算集中在
+[`docs/TESTING.md`](../docs/TESTING.md)；宿主仍只拥有平台接线、调度、fixture 和断言。
+
+Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表单、图像或生命周期
+语义。设备门的外置优先/内置回退、双空间预检、日志回收、超时恢复和完成后清理集中在
+`scripts\device_gate.ps1`；`tmp/` 只保存本地证据。
 
 ## 当前中期里程碑
 
@@ -126,9 +122,10 @@ next815 设备证据见下文；历史失败不作为依据。
   CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
   和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- next817 的 Core-backed `document.title` 已完成桌面构建、离线自动断言和正式设备门；
-  下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next818
-  用户可见缺口，并把它实现为一项边界清楚的公共 DLL 能力。
+- next817 的 Core-backed `document.title` 与 next818 的 bounded Element/Text
+  `DocumentFragment` staging 均已完成桌面构建、离线自动断言和正式设备门；下一短期目标
+  是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next819 用户可见缺口，
+  并把它实现为一项边界清楚的公共 DLL 能力。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -177,9 +174,10 @@ next815 设备证据见下文；历史失败不作为依据。
   与 `Element.removeChild(Text)` 删除连接中的
   direct Text child，Ex3 再为 Comment/CDATA 提供相同的 `remove()`/`removeChild()`
   路径。各路径都保留 detached wrapper、刷新父级 snapshot，并由宿主在成功后重排；
-  Browser 现在另支持最多四个 primitive Text 的 text-only `DocumentFragment` staging，
-  可由 Element/CharacterData mutation 一次性消费；通用节点/fragment、超出有界元素约束的
-  reparent、其他删除、MutationObserver 与完整 live collection 仍未实现。
+  Browser 现在另支持最多四个 primitive Text 的 text-only `DocumentFragment` staging，及
+  最多四个 detached Element/Text 根的 bounded staging；后者可由指定的 Element mutation
+  一次性 parser-backed 消费并保留 staged wrapper identity。通用节点/fragment、超出有界元素
+  约束的 reparent、其他删除、MutationObserver 与完整 live collection 仍未实现。
 - Browser 的 `Node.cloneNode(deep)` 返回 Browser-owned detached snapshot：浅/深克隆保留
   有界 element 属性、子节点顺序、parent links 和独立数据，超限或不支持类型 fail closed；
   它不改变 Core 文档、retained layout 或事件 listener。
@@ -191,7 +189,8 @@ next815 设备证据见下文；历史失败不作为依据。
   同一 parser 边界的 Ex9 `insertAdjacentHTML()` 在四个位置插入片段并刷新受影响
   target/parent snapshot；Ex10 `outerHTML` setter 则以单一 Element 根替换目标或以空字符串
   移除目标，并刷新父级/id cache；三条 HTML 路径都不是通用 `DocumentFragment`、mutation
-  event 或资源执行 API。next799 的 Browser fragment 仅承载 primitive Text，不新增 Core ABI。
+  event 或资源执行 API。Browser 的 fragment staging 另有 text-only 与 bounded Element/Text
+  子集，但不新增 Core fragment ABI。
 - Browser 层还提供由宿主显式驱动的 viewport resize 合同：`PBrowser_ScriptSessionNotifyResize` 更新 CSS viewport/DPR 和动态 `screen` 方向，值变化时同步派发一次 window `resize`；同一 session 的 `screen.orientation` 对象保持身份稳定，方向翻转时在媒体列表刷新后先派发一次可信 `change`，再进入 visual/window `resize`；调用不负责 Core relayout 或 frame scheduling。
 - 同一 Browser session 还提供布局视口对应的 `visualViewport`：`width`/`height` 与 CSS viewport 同步，`pageLeft`/`pageTop` 与 page scroll 同步，`scale` 为 1、offset 为 0；有效 resize/scroll 先派发 visual viewport 事件，再派发 window 事件，并对重复快照去重。TEST1133 覆盖该合同。
 - Browser history entry 同时拥有非负的 `(scroll_x, scroll_y)` viewport snapshot；新 document entry 和同 URL 新 document 从零开始，`replaceState`/traversal 保留目标值，`pushState` 新 entry 从零开始，history 裁剪会同步搬移 snapshot。Browser 不访问窗口、不知道 Core 的页面 extent；宿主读取 `PCore_DocumentWidth/Height` 后保存/读取并对两个轴 clamp/apply。
@@ -231,24 +230,23 @@ next815 设备证据见下文；历史失败不作为依据。
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1257。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1257,999`。
+- `TEST_MAX_NUMBER`：1258。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1258,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260915-223010-next817` 是本批最新证据：当前 GUI 连接的仿真器、Debug
-ARMV4I、自动模式选择 `1256,1257,999`，3/3 PASS，零 ERROR/FAIL；外置
+`tmp/device-runs/20260916-003555-next818` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+ARMV4I、自动模式选择 `1240-1258,999`，20/20 PASS，零 ERROR/FAIL；外置
 `\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
 `crash_check` 均 PASS，新增 dump=0。结果记录 `remote_base_selection=external`，目标卷
-可用 `1,357,507,584` 字节，内部 object-store 可用 `608,366,592` 字节；当前部署目录已移除。
+可用 `50,384,273,408` 字节，内部 object-store 可用 `2,678,784` 字节；当前部署目录已移除。
 
-`tmp/device-runs/20260915-212030-next816` 是上一批有效证据：当前 GUI 连接的仿真器、Debug
-ARMV4I、自动模式选择 `1256,999`，2/2 PASS，零 ERROR/FAIL；外置
-`\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
-`crash_check` 均 PASS，新增 dump=0。结果与预检文件还记录了
-`remote_base_selection=external`、`preferred_storage_check=PASS`，部署目录已移除。
+`tmp/device-runs/20260915-223010-next817` 是上一批有效证据：当前 GUI 连接的仿真器、Debug
+ARMV4I、自动模式选择 `1256,1257,999`，3/3 PASS，零 ERROR/FAIL；外置
+`\Storage Card\Temp\Positron-device-gate` 的空间预检、完整日志回收、完成后清理和
+`crash_check` 均 PASS，新增 dump=0，当前部署目录已移除。
 
 `tmp/device-runs/20260915-170055-next815-document-write-broad-retry` 是当前有效证据：
 更换后的仿真器、Debug ARMV4I，选择 `80,1236-1239,1244-1256,999`，19/19 PASS，零
@@ -292,8 +290,9 @@ ERROR/FAIL；日志完整，双空间预检、完成后清理、`crash_check` �
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1257 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
-  body.text、session cookie、document.write 与 Core-backed document.title 夹具均已有相邻
+- TEST1201–1258 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+  body.text、session cookie、document.write、Core-backed document.title 与 bounded
+  DocumentFragment 夹具均已有相邻
   设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
   重复维护历史清单。通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME
   仍不在自动门范围。
@@ -366,12 +365,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next818：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next819：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
-相邻回归和职责文档更新。超出 text-only 子集的通用节点/
+相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点/
 DocumentFragment 插入、
 超出有界元素约束的 reparent、其他删除、
 Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、

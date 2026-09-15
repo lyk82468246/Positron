@@ -242,9 +242,10 @@ write Ex8 在同一 document 中有界替换 direct children（16,384 字节、2
 `PCore_NodeSetOuterHTMLById` 以一个 Element 根替换目标或以空字符串移除目标，保留原父级/
 索引并让旧目标及后代 wrapper detached；重复/冲突 id、非法 UTF-8、顶层文本/Comment、
 多根和超限输入同样在 mutation 前拒绝。三条 HTML mutation 路径都不执行 script、不抓取
-资源、不派发 mutation event；Core 不暴露 fragment ABI，Browser 只支持 text-only staging；
-通用或嵌套 clone insertion、通用 DocumentFragment 和 context-sensitive parser 仍不在边界内；
-当前仅支持 detached Element 的属性/direct-Text clone 沿既有有界物化路径插入。
+资源、不派发 mutation event；Core 不暴露 fragment ABI，Browser 在脚本侧维护 text-only 与
+bounded detached Element/Text staging；通用或嵌套 clone insertion、通用 DocumentFragment
+和 context-sensitive parser 仍不在边界内。detached Element 的属性/direct-Text clone 与
+bounded fragment consumer 都沿既有有界物化路径插入。
 
 next815 已完成 NetSurf compatibility corpus 对 `document.write()`/`writeln()` 缺口的
 有界纵切。Browser 提供可选 document-write callback 和当前 classic-script 发现索引，Core
@@ -277,7 +278,19 @@ next817 已补齐 Core-backed `document.title` metadata 纵切：Core 以
 Debug ARMV4I、外置卡自动模式运行 `1256,1257,999`，3/3 PASS、零 ERROR/FAIL，完整日志
 回收、空间预检、完成后清理和 `crash_check` 均通过，新增 dump=0。
 
-下一批（next818）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next818 补齐 Browser-owned `DocumentFragment` 的 bounded Element/Text staging。纯文本
+fragment 保留既有 Ex13/text-list 与 CharacterData 消费；结构 fragment 最多承载四个
+detached Element/Text 根，Element 必须有唯一非空 id、最多一个 direct Text child，顶层
+Text 不能相邻。`append()`、`prepend()`、以 Element 为 reference 的 `insertBefore()`、
+`appendChild()` 和 `replaceChildren()` 通过既有 Core HTML parser 原子物化，成功后保留
+staged wrapper identity 并消费 fragment；嵌套/connected node、重复/缺失 id、结构标签、
+超限和 parser/context 输入 fail closed。实现不新增 Core fragment ABI，不执行脚本、资源或
+mutation event。TEST1258 与相邻 TEST1240–1257 已通过；`tmp/device-runs/20260916-003555-next818`
+在当前 GUI 连接的仿真器上以 Debug ARMV4I、外置卡自动模式运行 `1240-1258,999`，20/20
+PASS、零 ERROR/FAIL，完整日志回收、双空间预检、完成后清理和 crash check 均通过，新增
+dump=0。
+
+下一批（next819）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

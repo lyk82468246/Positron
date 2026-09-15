@@ -139,36 +139,37 @@
   和 wrapper owner 更新。成功 mutation 使 layout 失效，UTF-16/UTF-8、detached、结构 token、
   错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/`prepend()`
   （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
-  遵循各自 callback 合同。Browser 另提供最多四个 primitive Text 的 text-only
-  `DocumentFragment` staging，并在 Element/CharacterData 消费成功后清空；existing node、
-  nested fragment、mixed/通用 clone 和 HTML parser context fail closed。通用 Node mutation、
-  observer 和 live collection 未实现。Ex13 的 `Element.replaceChildren()` 只接受 0–4 个
-  primitive 文本或一个 text-only fragment；Core 以 16,384 UTF-8 字节总预算原子替换
-  direct children。Ex14 另接受最多四项 primitive 文本与当前目标的已连接 direct Element
-  混合列表，只重排同一父级的既有 element，保留被选节点及其后代 identity，并在提交失败
-  时恢复旧树。Ex15 再接受最多四项 primitive 文本、direct Element 以及按替换前未过滤
-  `childNodes` 索引指定的同父 Text/Comment/CDATA；Browser 重建 direct list 时保留选中
-  CharacterData/Element wrapper identity。目标结构 token、对象、mixed/nested fragment、
-  错类型/越界或跨父 CharacterData、跨父/重复/自身 element、超限和 callback 缺失均 fail
-  closed；失败不会消费 fragment 或改变原树。通用 Node/DocumentFragment、MutationObserver 和
-  完整 live collection 仍未实现。
+  遵循各自 callback 合同。Browser 另提供两种 `DocumentFragment` staging：最多四个
+  primitive Text 的 text-only 路径，以及最多四个 detached Element/Text 根的 bounded
+  结构路径。结构路径要求 Element 具有唯一非空 id、最多一个 direct Text child，使用既有
+  Core HTML parser 原子物化到 live Element，并支持 `append()`、`prepend()`、以 Element
+  为 reference 的 `insertBefore()`、`appendChild()` 和 `replaceChildren()`；成功后保留
+  wrapper identity 并清空 fragment。纯文本仍复用 Ex13/text-list；嵌套/connected node、
+  相邻顶层 Text、mixed/通用 clone、重复/缺失 id、结构标签和 context-sensitive parser
+  fail closed。通用 Node mutation、observer 和 live collection 未实现。Ex13 的
+  `Element.replaceChildren()` 接受 0–4 个 primitive 文本、text-only fragment 或上述
+  bounded fragment，Core 以 16,384 UTF-8 字节总预算原子替换 direct children。Ex14 只重排
+  同一父级的 direct Element mixed 列表；Ex15 另接受按原始 `childNodes` 索引指定的同父
+  Text/Comment/CDATA，均保留选中 wrapper identity。目标结构 token、对象、错类型/越界、
+  跨父/重复/自身节点、超限和 callback 缺失 fail closed；失败不消费 fragment 或改变原树。
 - `document.createTextNode(value)` 现在提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/
   `textContent`/`appendData()`/`insertData()`/`deleteData()`/`replaceData()`/`substringData()`、
   `remove()` 与 `cloneNode()`。四个 offset 方法按 UTF-16 code unit 校验；detached 更新快照，
   connected 复用既有 Core callback。Browser 复用既有 Core Text 插入、CharacterData 移动、
-  Text setter 和删除入口，不新增 Core ABI 或 detached handle；
-  64 个 direct child、65,535 个脚本字符、generic Node、DocumentFragment、含
-  element/fragment 的混合 append 和其他动态树语义仍 fail closed。
+  Text setter 和删除入口，不新增 Core ABI 或 detached handle；64 个 direct child、65,535
+  个脚本字符、generic Node、嵌套/不支持的 fragment consumer、含 element/fragment 的未列入
+  结构路径和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 目前是 Browser-owned 的有界 detached Element staging：标签
   只接受小写化后的 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），必须在物化前设置
   非空且唯一 id；每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个
   direct Text child。Ex11 通过既有 `__pcoreSetText` slot 调用 Core 创建入口，Element 只能
   插入到 live Element，并在 remove/reinsert/id rename 后保留 wrapper/alias identity。
   `cloneNode(false)` 复制属性，`cloneNode(true)` 复制 direct Text child；克隆与源保持独立，
-  连接源的克隆必须先改为唯一 id 才能物化。没有通用 detached Core handle、嵌套 Element、
-  DocumentFragment、事件、资源、observer 或完整 live collection；结构标签、重复/无 id、
+  连接源的克隆必须先改为唯一 id 才能物化。detached Element 可作为 bounded
+  `DocumentFragment` 的根，但不能嵌套 Element；没有通用 detached Core handle、事件、资源、
+  observer 或完整 live collection；结构标签、重复/无 id、
   错误 parent/reference 和超限输入 fail closed。通用关系查询对该 wrapper 的 detached
   形态使用对象身份：不同节点的 `isSameNode()` 不会因空/重复 id 合并，`contains()` 对
   非自身节点返回 false，`compareDocumentPosition()` 报告 disconnected；物化、同父排序
@@ -191,8 +192,9 @@
   宿主仍负责 style/layout/paint，视觉/触摸/SIP 不由该门保证。
 - HTML getter 与 Core mutation 入口共用有界 UTF-8 parser；它们保持
   身份、拒绝非法/超限/id 冲突并使 layout 失效。OuterHTML 只接受单一 Element 根或空字符串；
-  顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 只有
-  text-only staging/direct-Text clone，不执行脚本、资源或事件。预算见 [`docs/TESTING.md`](../docs/TESTING.md)。
+  顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 在 Core
+  parser 之外维护两类 staging，不执行脚本、资源或事件。
+  预算见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - `document.write()`/`document.writeln()` 不是通用 parser：只有注册
   `PBrowserScriptDocumentWriteCallbacks` 并设置当前 classic-script 索引才安装；片段有界、
   同步插入 script 后。Core 在 fragment parser 之前对 ASCII 大小写不敏感且带 tag-name
@@ -578,10 +580,11 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1257 已覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
-  Ex4–Ex15 insertion/replacement、parser-backed HTML mutation、text-only fragment staging、
-  detached Text/Element/Comment 生命周期、属性 facade、`HTMLBodyElement.text`、session
-  cookie、document.write 和 Core-backed `document.title`；这里不重复逐测试清单，逐项合同与预算统一见
+- TEST1201–1258 已覆盖有界 DOM/CharacterData removal、normalize、clone/equality、
+  Ex4–Ex15 insertion/replacement、parser-backed HTML mutation、text-only 与 bounded
+  Element/Text fragment staging、detached Text/Element/Comment 生命周期、属性 facade、
+  `HTMLBodyElement.text`、session cookie、document.write 和 Core-backed `document.title`；
+  这里不重复逐测试清单，逐项合同与预算统一见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

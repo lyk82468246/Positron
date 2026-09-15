@@ -294,16 +294,17 @@ setter 先让宿主更新或创建该节点，再在宿主未提供扩展时回�
 （Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
 outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
-不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 提供四个以内
-primitive Text staging；Element append/prepend/insert/replace 与
-CharacterData replaceWith 可消费它；`Element.replaceChildren()` 还通过 mutation Ex13 把
-0–4 个 primitive Text（或一个仅含这些 Text 的 fragment）交给 Core 的原子子节点列表替换
-入口；Ex14 再允许最多四项 primitive Text 与 receiver 当前已连接 direct Element 的 mixed
-列表，Ex15 再允许按原始 `childNodes` 索引选择同一 receiver 的 Text/Comment/CDATA。两种
-existing-node 路径都按序重排并保留被选节点及后代 identity；fragment 仅在 Ex13 Core 成功
-后清空，未保留的旧 direct 子树 wrapper/snapshot 会被标记为 detached。跨父、重复/自身
-element、错类型/越界 CharacterData、nested fragment、通用 clone 和 context-sensitive
-parser 均 fail closed。
+不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 在 Browser 侧
+建立 detached staging graph。纯文本 fragment 仍保持最多四个 primitive Text 的 text-list
+合同，可由 Element/CharacterData 路径一次性消费；包含结构的 fragment 另支持最多四个
+detached Element/Text 根：Element 必须有唯一、非空 id，最多一个 direct Text child，Text
+根不能形成相邻的顶层 Text。该窄路径通过既有 Core HTML parser 原子物化，支持 `append()`、
+`prepend()`、以 Element 为 reference 的 `insertBefore()`、`appendChild()` 和
+`replaceChildren()`，成功后保留 staged Element/Text wrapper identity 并清空 fragment。纯
+文本消费继续复用 Ex13/text-list，避免改变既有 `replaceWith()`、CharacterData 和静态
+snapshot 合同。嵌套或 connected node、重复/缺失 id、结构标签、跨父/重复节点、通用 clone、
+其他 fragment consumer 和 context-sensitive parser 均 fail closed；路径不执行脚本、不抓取
+资源、不派发 mutation 事件，也不暴露 Core fragment handle。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
@@ -315,8 +316,8 @@ offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复
 和 direct Text child；物化时同步属性/Text。`childNodes`、首尾
 child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 facade 支持三种状态；
 反射 setter（含 `align`）在 detached/removed wrapper 经 facade 暂存，物化后走
-Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、Fragment、detached
-handle、事件/资源/observer 和重复/无 id 均 fail closed。关系按 wrapper 身份随物化/移除保持。
+Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、未列入的 Fragment
+consumer、detached handle、事件/资源/observer 和重复/无 id 均 fail closed。关系按 wrapper 身份随物化/移除保持。
 
 遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
 `[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话
@@ -459,8 +460,9 @@ callback table 只在尾部追加字段，旧注册入口布局和语义保持�
 所有 mutation 都不派发事件、不执行资源、不自行 style/layout/paint；宿主只接 callback 并
 在成功后安排重排/重绘。`textContent`/`innerText`、CharacterData setter、`splitText()`、
 `wholeText`、`replaceWholeText()` 与 `normalize()` 复用相同的 UTF-16、detached snapshot
-和 retained-layout 合同。通用 Node、Fragment ABI、MutationObserver 和完整 live collection
-仍未实现。
+和 retained-layout 合同。`DocumentFragment` 的 text-only 与 bounded detached Element/Text
+staging 由 Browser 管理，结构 fragment 只走上述 parser-backed consumer；Core 仍不暴露
+fragment handle。通用 Node mutation、MutationObserver 和完整 live collection 仍未实现。
 
 ### `dialog` 生命周期
 
