@@ -145,10 +145,10 @@ PBrowser_ScriptSessionDestroy(session);
 PBrowser_HistoryDestroy(history);
 ```
 
-需 `document.write()`/`writeln()` 时注册 Ex12 callbacks，并在 `Evaluate()` 前设置当前脚本索引
-（完成后设 `-1`）。Browser 将写入交给 Core；Core 在 fragment parser 前扫描并拒绝带标签名边界的
-ASCII 不区分大小写 `<script...` token，再应用 UTF-8、节点、深度和 id 预算。写入不执行脚本、
-资源或事件；该扫描只属于 document-write 安全边界，不代表通用 HTML parser 或动态脚本支持。
+需 `document.write()`/`writeln()` 时注册 Ex12 callbacks，并在 `Evaluate()` 前设置脚本索引
+（完成后为 `-1`）。Browser 交给 Core：fragment parser 前扫描带标签名边界的 ASCII 不分大小写
+`<script...`，再应用 UTF-8、节点、深度和 id 预算；无效片段拒绝且不执行脚本/资源/事件。
+该扫描仅属 document-write 安全边界，不代表通用 HTML parser 或动态脚本支持。
 
 ### `document.activeElement` 与 Core 焦点桥
 
