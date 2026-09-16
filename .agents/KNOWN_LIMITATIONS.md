@@ -169,21 +169,18 @@
   connected 复用 Core callback；不新增 Core ABI 或 detached handle；64 个 direct child、65,535
   个脚本字符、generic Node、嵌套/不支持的 fragment consumer、含 element/fragment 的未列入
   结构路径和其他动态树语义仍 fail closed。
-- `document.createElement(tag)` 目前是 Browser-owned 的有界 detached Element staging：标签
-  只接受小写化后的 ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），必须在物化前设置
-  非空且唯一 id；每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个
-  direct Text child。Ex11 通过既有 `__pcoreSetText` slot 调用 Core 创建入口，Element 只能
-  插入到 live Element，并在 remove/reinsert/id rename 后保留 wrapper/alias identity。
-  `cloneNode(false)` 复制属性，`cloneNode(true)` 复制 direct Text child；克隆与源保持独立，
-  连接源的克隆必须先改为唯一 id 才能物化。detached Element 可作为 bounded
-  `DocumentFragment` 的根，但不能嵌套 Element；没有通用 detached Core handle、事件、资源、
-  observer 或完整 live collection；结构标签、重复/无 id、错误 parent/reference 和超限输入
-  fail closed。detached 关系按对象身份处理，物化、同父排序和移除后保持 wrapper identity；
-  `childNodes`、首尾 child 和 `hasChildNodes()` 读取
-  跟随有界 direct-Text staging；`children`/`childElementCount` 不表示未实现的嵌套元素。
-  `style.cssText` 在 detached、attached、removed wrapper 经 facade 写入；声明有界解析。
-  反射 setter（含 `align`）在 detached/removed 状态暂存，物化调用 Core。
-  宿主负责后续 layout/paint；视觉/触摸/SIP 不由
+- `document.createElement(tag)` 是 Browser-owned 的有界 detached staging：标签只接受小写化
+  ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），物化前须有唯一非空 id；每个 wrapper
+  最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个 direct Text child。Ex11 通过
+  `__pcoreSetText` 创建 Core 节点，只能插入 live Element；remove/reinsert/id rename 仍保留
+  wrapper/alias identity。`cloneNode(false/true)` 复制属性或 direct Text 且与源隔离，连接前
+  必须修复 id。detached Element 可作 bounded Fragment 根但不能嵌套；无通用 detached
+  Core handle、事件、资源、observer 或完整 live collection，结构/关系/容量错误均 fail
+  closed。关系、物化、同父排序和移除后的 `childNodes`、首尾 child、`hasChildNodes()`
+  跟随 staging；`children`/`childElementCount` 不表示嵌套元素。`attributes` 是稳定的 bounded
+  `NamedNodeMap`；`get/set/removeAttributeNode*`、Attr value/namespace/iteration 和跨 owner
+  value-copy 共用 facade，不创建 detached Core attr handle。`style.cssText` 与反射 setter
+  在 detached/removed 状态暂存，物化后走 Core；宿主负责 layout/paint，视觉/触摸/SIP 不由
   该门保证。
 - `HTMLBodyElement.text` 现在提供一个 live、遗留的 `text` attribute 投影：缺失 getter 返回
   空字符串，setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript

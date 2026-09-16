@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1273
+#define TEST_MAX_NUMBER 1274
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53957,6 +53957,64 @@ static BOOL test1273_browser_detached_element_replace_child_contract(void)
             " replacement atomically, preserves childNodes and wrapper"
             " identity, moves detached Text between owners, and delegates"
             " attached calls through the current live Node implementation.");
+    return TRUE;
+}
+
+/* TEST 1274 - bounded detached Element Attr/NamedNodeMap staging. */
+static BOOL test1274_browser_detached_element_attribute_node_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),e,e2,m,a,b,c,d,x,old,it,clone,ok=true,bad=0;"
+        "try{e=document.createElement('article');m=e.attributes;e.setAttribute('data-a','1');"
+        "e.setAttribute('title','Hello');a=e.getAttributeNode('data-a');b=e.getAttributeNode('data-a');"
+        "ok=ok&&m===e.attributes&&m.length===2&&a===b&&m.item(0)===a&&"
+        "m.getNamedItem('DATA-A')===a&&a.name==='data-a'&&a.nodeName==='data-a'&&"
+        "a.nodeType===2&&a.ownerElement===e&&a.ownerDocument===document&&a.namespaceURI===null&&"
+        "a.localName==='data-a'&&a.prefix===null&&a.isId===false&&a.toString()==='1';"
+        "it=m.values();ok=ok&&it.next().value===a;it=m.entries();x=it.next().value;"
+        "ok=ok&&x[0]===0&&x[1]===a&&m[0]===a;old=m.setNamedItem(a);"
+        "ok=ok&&old===a&&a.value==='1';a.value='2';ok=ok&&e.getAttribute('data-a')==='2'&&"
+        "a.nodeValue==='2'&&a.textContent==='2';c=e.getAttributeNode('title');old=e.setAttributeNode(c);"
+        "ok=ok&&old===c&&e.getAttribute('title')==='Hello';old=e.removeAttributeNode(c);"
+        "ok=ok&&old===c&&m.length===1&&m.getNamedItem('title')===null&&c.ownerElement===e&&"
+        "c.value==='Hello';c.value='Again';ok=ok&&m.getNamedItem('title')===c&&"
+        "e.getAttribute('title')==='Again';e2=document.createElement('aside');e2.setAttribute('other','X');"
+        "d=e2.getAttributeNode('other');ok=ok&&m.setNamedItem(d)===null&&"
+        "m.setNamedItemNS(d)===null&&e.getAttribute('other')==='X'&&e2.getAttribute('other')==='X';"
+        "e.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:lang','en');"
+        "x=e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang');"
+        "ok=ok&&x!==null&&x===m.getNamedItemNS('http://www.w3.org/XML/1998/namespace','lang')&&"
+        "x.prefix==='xml'&&x.localName==='lang'&&x.namespaceURI==='http://www.w3.org/XML/1998/namespace';"
+        "old=m.removeNamedItemNS('http://www.w3.org/XML/1998/namespace','lang');ok=ok&&old===x&&"
+        "e.getAttributeNodeNS('http://www.w3.org/XML/1998/namespace','lang')===null;"
+        "try{if(m.setNamedItem({nodeType:2,name:'fake',value:'x'})!==null){bad|=1;}}catch(x1){bad|=1;}"
+        "try{if(m.setNamedItemNS({nodeType:2,name:'demo:name',value:'x'})!==null){bad|=2;}}catch(x2){bad|=2;}"
+        "try{if(e.removeAttributeNode(d)!==null){bad|=4;}}catch(x3){bad|=4;}ok=ok&&m.length===3&&"
+        "e.getAttribute('data-a')==='2'&&e.getAttribute('title')==='Again';e.id='attr-stage';"
+        "target.appendChild(e);ok=ok&&e.isConnected&&m===e.attributes&&a===e.getAttributeNode('data-a');"
+        "a.value='3';ok=ok&&e.getAttribute('data-a')==='3';old=e.removeAttributeNode(a);"
+        "ok=ok&&old===a&&e.getAttributeNode('data-a')===null;clone=e.cloneNode(false);"
+        "clone.id='attr-clone';ok=ok&&clone.attributes!==m&&clone.getAttribute('title')==='Again';"
+        "target.appendChild(clone);ok=ok&&clone.isConnected&&clone.getAttributeNode('title')!==null;"
+        "}catch(x4){ok=false;}result.textContent=String(ok&&bad===0);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-attribute-node", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1274 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1274 OK",
+            "detached Element attributes now expose a stable bounded"
+            " NamedNodeMap and Attr wrappers, including value mutation,"
+            " namespace lookup, cross-owner copy and attached clone/reinsert"
+            " identity while unsupported inputs remain fail-closed.");
     return TRUE;
 }
 
@@ -112248,6 +112306,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1271: ok = test1271_browser_detached_normalize_contract(); break;
         case 1272: ok = test1272_browser_detached_element_replace_children_contract(); break;
         case 1273: ok = test1273_browser_detached_element_replace_child_contract(); break;
+        case 1274: ok = test1274_browser_detached_element_attribute_node_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

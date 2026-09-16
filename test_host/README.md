@@ -66,7 +66,7 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/geometry、
-  selector、image 与 DOM bridge；DOM fixtures TEST1201–1273 覆盖 bounded DOM/CharacterData
+  selector、image 与 DOM bridge；DOM fixtures TEST1201–1274 覆盖 bounded DOM/CharacterData
   mutation、HTML/fragment/replaceChildren、detached wrapper、属性 facade、document.write
   和 detached normalize；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
@@ -548,8 +548,8 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 不由 test_host 实现。
 
 TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie。
-TEST1256–1273 覆盖 write/title/fragment；1267/1268 断言 Fragment 组合，1269/1270 断言
-tag/class/namespace 集合，1271–1273 断言 detached normalize/replaceChildren/replaceChild。
+TEST1256–1274 覆盖 write/title/fragment；1267/1268 断言 Fragment 组合，1269/1270 断言
+tag/class/namespace 集合，1271–1274 断言 detached normalize/replaceChildren/replaceChild/Attr。
 
 ### Native EDIT/SELECT/button/file
 

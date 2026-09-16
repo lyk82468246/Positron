@@ -3540,6 +3540,70 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "P.prototype.replaceChildren=function(){if(arguments.length===1&&arguments[0]&&arguments[0].__fragment16){return replace16(this,arguments[0]);}return oldReplaceChildren.apply(this,arguments);};"
         "d.createDocumentFragment=function(){return newF();};g.DocumentFragment=function(){return newF();};})(this);";
 
+    /* Detached Element attributes need their own bounded Attr/NamedNodeMap
+     * facade.  P14 deliberately stores only UTF-8 attribute snapshots, so
+     * this installer keeps stable Browser-owned wrappers and routes all
+     * mutation through the existing P14 setters.  Cross-owner copies remain
+     * value copies; no detached Core attribute handle is introduced. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE[] =
+        "(function(g){var d=g.document,P=g.__pcorePElement,S=g.Symbol,XML='http://www.w3.org/XML/1998/namespace',XMLNS='http://www.w3.org/2000/xmlns/',create,nsArg;"
+        "if(!d||!P||typeof d.createElement!=='function'){return;}create=d.createElement;"
+        "function E(e){return !!(e&&e.__pcoreCreatedElement804&&e.nodeType===1);}"
+        "function N(v){return String(v).toLowerCase();}function names(e){var a;try{a=e.getAttributeNames();}catch(x){a=[];}return a&&typeof a.length==='number'?a:[];}"
+        "function arg(v){var s;if(v===null||v===undefined){return null;}s=String(v);return s===''?null:s;}nsArg=arg;"
+        "function qns(n){var s=String(n),p=s.indexOf(':'),pre;if(p<0){return null;}pre=s.substring(0,p);return pre==='xml'?XML:(pre==='xmlns'?XMLNS:false);}"
+        "function local(n){var s=String(n),p=s.indexOf(':');return p<0?s:s.substring(p+1);}"
+        "function sameNs(n,namespace,localName){return qns(n)===namespace&&local(n)===localName;}"
+        "function remember(e,k,v){var a=e.__attrNodes834,i;if(!a){return;}for(i=0;i<a.length;i++){if(a[i].__name834===k){a[i].__value834=v;return;}}}"
+        "function attr(e,name,value){var a=e.__attrNodes834,i,n,k=N(name),q;if(!a){a=[];e.__attrNodes834=a;}for(i=0;i<a.length;i++){if(a[i].__name834===k){return a[i];}}"
+        "n={__detachedAttr834:true,__owner834:e,__name834:k,__value834:value===undefined?'':String(value)};"
+        "Object.defineProperty(n,'nodeType',{value:2,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'nodeName',{get:function(){return n.__name834;},enumerable:true});Object.defineProperty(n,'name',{get:function(){return n.__name834;},enumerable:true});"
+        "Object.defineProperty(n,'value',{get:function(){var v=e.getAttribute(n.__name834);return v===null?n.__value834:v;},set:function(v){var s=String(v);e.setAttribute(n.__name834,s);n.__value834=s;},enumerable:true});"
+        "Object.defineProperty(n,'nodeValue',{get:function(){return n.value;},set:function(v){n.value=v;},enumerable:true});"
+        "Object.defineProperty(n,'textContent',{get:function(){return n.value;},set:function(v){n.value=v;},enumerable:true});"
+        "Object.defineProperty(n,'specified',{value:true,writable:false,configurable:false,enumerable:true});Object.defineProperty(n,'ownerElement',{value:e,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'ownerDocument',{get:function(){return e.ownerDocument;},enumerable:true});Object.defineProperty(n,'namespaceURI',{get:function(){q=qns(n.__name834);return q===false?null:q;},enumerable:true});"
+        "Object.defineProperty(n,'prefix',{get:function(){q=qns(n.__name834);return q===XML?'xml':(q===XMLNS?'xmlns':null);},enumerable:true});Object.defineProperty(n,'localName',{get:function(){return local(n.__name834);},enumerable:true});"
+        "Object.defineProperty(n,'isId',{get:function(){return n.__name834==='id';},enumerable:true});Object.defineProperty(n,'parentNode',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'parentElement',{value:null,writable:false,configurable:false,enumerable:true});Object.defineProperty(n,'isConnected',{value:false,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'firstChild',{value:null,writable:false,configurable:false,enumerable:true});Object.defineProperty(n,'lastChild',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'previousSibling',{value:null,writable:false,configurable:false,enumerable:true});Object.defineProperty(n,'nextSibling',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'childNodes',{value:(function(){var z=[];z.item=function(){return null;};return z;})(),writable:false,configurable:false,enumerable:true});"
+        "n.hasChildNodes=function(){return false;};n.getRootNode=function(){return n;};n.isSameNode=function(o){return n===o;};"
+        "n.isEqualNode=function(o){return !!o&&Number(o.nodeType)===2&&String(o.name)===n.__name834&&String(o.value)===String(n.value)&&o.namespaceURI===n.namespaceURI;};"
+        "n.compareDocumentPosition=function(o){return o===n?0:33;};n.contains=function(o){return o===n;};n.toString=function(){return String(n.value);};"
+        "a.push(n);return n;}"
+        "function current(e,name){var k=N(name),v=e.getAttribute(k);return v===null?null:attr(e,k,v);}"
+        "function currentNS(e,namespace,localName){var target=nsArg(namespace),localValue=String(localName),a=names(e),i,v,q;"
+        "if(localValue===''){return null;}for(i=0;i<a.length;i++){q=qns(a[i]);if(sameNs(a[i],target,localValue)){v=e.getAttribute(a[i]);return attr(e,a[i],v);}}return null;}"
+        "function validNode(a){return !!a&&Number(a.nodeType)===2;}"
+        "function iter(e,kind){var a=names(e),i=0,x={};x.next=function(){var v;if(i>=a.length){return {done:true,value:undefined};}"
+        "if(kind==='keys'){v=i;}else if(kind==='entries'){v=[i,attr(e,a[i],e.getAttribute(a[i]))];}else{v=attr(e,a[i],e.getAttribute(a[i]));}i++;return {done:false,value:v};};"
+        "if(S&&S.iterator){Object.defineProperty(x,S.iterator,{value:function(){return x;},writable:false,configurable:false});}return x;}"
+        "function map(e){var m,i;"
+        "if(e.__attrsMap834){return e.__attrsMap834;}m={};Object.defineProperty(m,'length',{get:function(){return names(e).length;},enumerable:true});"
+        "m.item=function(i){var n=Number(i),a=names(e);return n===n&&n>=0&&n===Math.floor(n)&&n<a.length?attr(e,a[n],e.getAttribute(a[n])):null;};"
+        "m.getNamedItem=function(n){return current(e,n);};m.getNamedItemNS=function(namespace,localName){return currentNS(e,namespace,localName);};"
+        "m.setNamedItem=function(a){var old;if(!validNode(a)||a.__owner834!==e){return null;}old=current(e,a.name);e.setAttribute(a.name,a.value);return old;};"
+        "m.setNamedItemNS=function(a){var q,target,declared,old;if(!validNode(a)){return null;}q=String(a.name);target=qns(q);if(target===false){return null;}declared=a.namespaceURI===undefined?target:nsArg(a.namespaceURI);if(declared!==target){return null;}"
+        "old=currentNS(e,declared,local(q));if(declared===null){e.setAttribute(q,a.value);}else if(typeof e.setAttributeNS==='function'){e.setAttributeNS(declared,q,a.value);}else{return null;}return old;};"
+        "m.removeNamedItem=function(n){var old=current(e,n);if(old!==null){e.removeAttribute(old.name);}return old;};"
+        "m.removeNamedItemNS=function(namespace,localName){var old=currentNS(e,namespace,localName);if(old!==null){e.removeAttribute(old.name);}return old;};"
+        "m.forEach=function(fn,thisArg){var a=names(e),j;if(typeof fn!=='function'){throw new TypeError('callback');}for(j=0;j<a.length;j++){fn.call(thisArg,attr(e,a[j],e.getAttribute(a[j])),j,m);}return undefined;};"
+        "m.keys=function(){return iter(e,'keys');};m.values=function(){return iter(e,'values');};m.entries=function(){return iter(e,'entries');};m.toString=function(){return '[object NamedNodeMap]';};"
+        "if(S&&S.toStringTag){Object.defineProperty(m,S.toStringTag,{value:'NamedNodeMap',writable:false,configurable:false});}for(i=0;i<8;i++){(function(j){Object.defineProperty(m,String(j),{get:function(){return m.item(j);},enumerable:true});})(i);}"
+        "if(S&&S.iterator){Object.defineProperty(m,S.iterator,{value:function(){return m.values();},writable:false,configurable:false});}e.__attrsMap834=m;return m;}"
+        "function decorate(e){var set0,remove0,clone0,nsSet0;if(!E(e)||e.__attrFacade834){return e;}e.__attrFacade834=true;e.__attrNodes834=[];set0=e.setAttribute;remove0=e.removeAttribute;clone0=e.cloneNode;nsSet0=P.prototype.setAttributeNS;"
+        "e.setAttribute=function(n,v){var k=N(n),s=String(v),r=set0.call(e,n,v);remember(e,k,s);return r;};e.removeAttribute=function(n){var k=N(n),a=current(e,k),v=a===null?'':String(a.value),r=remove0.call(e,n);if(a!==null){a.__value834=v;}return r;};"
+        "Object.defineProperty(e,'attributes',{get:function(){return map(e);},configurable:true,enumerable:true});e.hasAttributes=function(){return map(e).length>0;};"
+        "e.getAttributeNode=function(n){return map(e).getNamedItem(n);};e.getAttributeNodeNS=function(namespace,localName){return map(e).getNamedItemNS(namespace,localName);};"
+        "e.getAttributeNS=function(namespace,localName){var a=map(e).getNamedItemNS(namespace,localName);return a===null?null:a.value;};e.hasAttributeNS=function(namespace,localName){return map(e).getNamedItemNS(namespace,localName)!==null;};"
+        "e.setAttributeNS=function(namespace,qualifiedName,value){return typeof nsSet0==='function'?nsSet0.call(e,namespace,qualifiedName,value):undefined;};e.removeAttributeNS=function(namespace,localName){var a=map(e).getNamedItemNS(namespace,localName);if(a!==null){e.removeAttribute(a.name);}};"
+        "e.setAttributeNode=function(a){return map(e).setNamedItem(a);};e.setAttributeNodeNS=function(a){return map(e).setNamedItemNS(a);};e.removeAttributeNode=function(a){var old;if(!validNode(a)||a.__owner834!==e){return null;}old=map(e).getNamedItem(a.name);if(old===null){return null;}e.removeAttribute(old.name);return old;};"
+        "e.cloneNode=function(deep){return decorate(clone0.call(e,deep));};return e;}"
+        "d.createElement=function(){return decorate(create.apply(d,arguments));};})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -7436,6 +7500,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }
