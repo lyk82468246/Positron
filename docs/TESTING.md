@@ -1103,9 +1103,11 @@ TEST1277 验证 Fragment `textContent=` 原子性：65,535 字符超限预检保
 
 TEST1278 验证 bounded Fragment 中 detached Element 的四个 sibling getter：普通 sibling 含
 Text，element-sibling 跳过 Text；重排、移除、parser-backed 消费和物化后 live 移除同步关系、
-owner 与 wrapper identity，未归属返回 `null`。不扩展通用 detached tree、observer 或 live
-collection。门 `1278,999`，相邻 `1277-1278,999`；两次 Debug ARMV4I 外置卡自动门均完成完整
-日志回收、双空间预检、清理和 crash check，零 ERROR/FAIL、dump=0。
+owner 与 wrapper identity，未归属返回 `null`。门 `1278,999`，相邻 `1277-1278,999`。
+
+TEST1279 验证 Browser-owned Text/Comment 的 element-sibling：detached、Fragment staging 与
+live/removal 均按 `childNodes` 顺序跳过非 Element，未归属返回 `null`，wrapper identity 保持；
+门 `1279,999`，相邻 `1278-1279,999`。
 
 ### 手动模式
 

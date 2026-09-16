@@ -300,9 +300,10 @@ detached Element 只对属性/direct Text 做 text-only escaping/staging；marku
 根；Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。Fragment 的 append/
 prepend/insertBefore/appendChild/replaceChildren、clone、lookup/query、collection、relations
 和 Fragment 组合都受同一容量约束并原子失败；`textContent=` 先预检容量，`normalize()` 只整理
-direct Text。Fragment-owned detached Element 的四个 sibling getter 按当前 staging 顺序读取，
-element-sibling 跳过 Text；无 owner 返回 `null`，物化后回到 live wrapper。该视图不扩展通用
-detached tree、observer 或完整 live collection。
+direct Text。Fragment-owned detached Element，以及 Browser-owned Text/Comment 的 sibling
+getter 按当前 staging 或 live parent 顺序读取；element-sibling getter 跳过所有非 Element
+节点。无 owner 返回 `null`，物化后继续使用 live wrapper。该视图不扩展通用 detached tree、
+observer 或完整 live collection。
 
 `document.createTextNode(value)` 创建 detached Text，支持插入/移除/clone 与 CharacterData
 mutator；offset/count 按 UTF-16 校验，connected 复用 Core。

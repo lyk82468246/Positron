@@ -284,8 +284,8 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `positron_browser.dll` 维护；Core 只接收预检后的 text-list/parser 提交，不暴露 handle。
   detached Element/Fragment 的 `Node.normalize()` 最多处理 64 个 direct Text/四个
   根，删除空并合并相邻 Text；嵌套、超限和不支持输入在 mutation 前拒绝。Fragment
-  `textContent=` 先预检 65,535 字符，失败保留旧树/集合；Fragment-owned detached Element
-  的 sibling getter 按 staging 投影，未归属返回 `null`，物化走 Core。
+  Fragment Element、Browser Text/Comment 的 sibling 按 staging/live 投影，element-sibling
+  跳过非 Element，未归属为 `null`。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained

@@ -162,8 +162,8 @@
   wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
   textContent staging；markup、超长和 detached `outerHTML` setter 在 mutation 前拒绝。
   Fragment 的 `textContent` setter 先预检 65,535 字符再原地替换；失败保留旧树/集合。
-  relations/namespace、replace/组合由 Browser 原子预检；Fragment-owned detached Element 的
-  sibling/element-sibling getter 只在 staging 顺序内提供，未归属为 `null`，物化后走 live。
+  relations/namespace、replace/组合由 Browser 预检；Fragment Element 与 Browser Text/Comment
+  的 sibling/element-sibling getter 按 staging/live 提供，未归属为 `null`。
   `replaceChild()` 展开四根并清空源，空源移除旧节点；不支持输入拒绝。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、

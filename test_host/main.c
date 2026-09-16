@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1278
+#define TEST_MAX_NUMBER 1279
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54202,6 +54202,61 @@ static BOOL test1278_browser_detached_element_sibling_contract(void)
             " sibling and element-sibling views while staged in a Fragment;"
             " reordering, removal, parser materialization and live removal"
             " preserve wrapper identity and update both directions.");
+    return TRUE;
+}
+
+/* TEST 1279 - element-sibling relations for Browser-owned CharacterData. */
+static BOOL test1279_browser_character_data_element_sibling_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><span id='existing'>E</span><i id='tail'>T</i></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,a,t1,b,t2,orphan,existing,tail,comment,ok=true;"
+        "try{f=document.createDocumentFragment();a=document.createElement('article');"
+        "a.id='char-a';t1=document.createTextNode('one');b=document.createElement('aside');"
+        "b.id='char-b';t2=document.createTextNode('two');orphan=document.createTextNode('orphan');"
+        "f.append(a,t1,b,t2);ok=ok&&t1.parentNode===f&&t1.parentElement===null&&"
+        "t1.previousSibling===a&&t1.nextSibling===b&&t2.previousSibling===b&&"
+        "t2.nextSibling===null&&t1.previousElementSibling===a&&t1.nextElementSibling===b&&"
+        "t2.previousElementSibling===b&&t2.nextElementSibling===null&&"
+        "orphan.previousElementSibling===null&&orphan.nextElementSibling===null;"
+        "f.insertBefore(t2,a);ok=ok&&t2.previousElementSibling===null&&"
+        "t2.nextElementSibling===a&&t1.previousElementSibling===a&&"
+        "t1.nextElementSibling===b;f.removeChild(t1);ok=ok&&"
+        "t1.parentNode===null&&t1.previousElementSibling===null&&"
+        "t1.nextElementSibling===null&&t2.nextElementSibling===a&&"
+        "b.previousElementSibling===a;target.appendChild(f);existing="
+        "document.getElementById('existing');tail=document.getElementById('tail');"
+        "ok=ok&&f.childNodes.length===0&&t2.parentNode===target&&"
+        "t2.previousSibling===tail&&t2.previousElementSibling===tail&&"
+        "t2.nextElementSibling===a&&a.previousElementSibling===tail&&"
+        "a.nextElementSibling===b&&b.previousElementSibling===a;comment="
+        "document.createComment('owned');ok=ok&&comment.previousElementSibling===null&&"
+        "comment.nextElementSibling===null;target.insertBefore(comment,b);ok=ok&&"
+        "comment.parentNode===target&&comment.parentElement===target&&"
+        "comment.previousSibling===a&&comment.nextSibling===b&&"
+        "comment.previousElementSibling===a&&comment.nextElementSibling===b;"
+        "comment.remove();ok=ok&&comment.parentNode===null&&"
+        "comment.previousElementSibling===null&&comment.nextElementSibling===null&&"
+        "a.nextElementSibling===b&&b.previousElementSibling===a;"
+        "}catch(x){ok=false;}result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/character-data-element-siblings", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1279 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1279 OK",
+            "Browser-owned Text and Comment wrappers now expose bounded"
+            " previous/next element-sibling views in staged and live parents;"
+            " Text reordering, fragment materialization and comment removal"
+            " preserve null and identity semantics.");
     return TRUE;
 }
 
@@ -112498,6 +112553,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1276: ok = test1276_browser_detached_element_html_contract(); break;
         case 1277: ok = test1277_browser_fragment_text_content_contract(); break;
         case 1278: ok = test1278_browser_detached_element_sibling_contract(); break;
+        case 1279: ok = test1279_browser_character_data_element_sibling_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
