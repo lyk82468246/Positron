@@ -289,9 +289,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   与源隔离，连接前仍须修复唯一 id。Fragment-owned Text 的 data/CharacterData 写入只
   更新 Browser 快照，物化后才调用 Core。`getElementById()` 在最多四个 staged 根中按树序
   查找 Element、忽略 Text，并随 id mutation、clone isolation 和 fragment consumption 保持
-  一致；staging 中的重复 id 只返回首个根，物化仍在 parser 预检时拒绝。Core 不暴露
-  fragment handle；nested/connected node、重复或缺失 id、结构元素、超限/上下文敏感输入、
-  其他 fragment consumer 和事件/资源副作用均 fail closed。
+一致；`querySelector()`/`querySelectorAll()` 复用 Browser selector parser，在同一组 staged
+Element 根中按顺序产生单个结果或静态 NodeList。由于当前结构 fragment 不允许嵌套 Element，
+后代/兄弟组合不会扩展搜索树；空、超长或无法匹配的 selector fail closed。staging 中的
+重复 id 只返回首个根，物化仍在 parser 预检时拒绝。Core 不暴露 fragment handle；
+nested/connected node、重复或缺失 id、结构元素、超限/上下文敏感输入、其他 fragment
+consumer 和事件/资源副作用均 fail closed。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained

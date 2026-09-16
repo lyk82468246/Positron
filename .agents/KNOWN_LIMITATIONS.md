@@ -147,13 +147,13 @@
   仅复制 Browser-owned detached bounded 根，源/副本隔离，连接前修复 id；Fragment-owned
   Text data 只更新 detached 快照。`getElementById()` 只在最多四个 staged 根中按树序查找
   Element，忽略 Text，跟随 staged id mutation；浅克隆为空、深克隆与源隔离，fragment
-  消费后为空。重复 id 可在 staging 中返回首根，但物化仍拒绝。超限、嵌套/connected、
-  重复/缺失 id、结构标签或上下文 parser fail closed。Ex13 的
-  `Element.replaceChildren()` 接受 0–4 个 primitive 文本、text-only fragment 或上述
-  bounded fragment，Core 以 16,384 UTF-8 字节总预算原子替换 direct children。Ex14 只重排
-  同一父级的 direct Element mixed 列表；Ex15 另接受按原始 `childNodes` 索引指定的同父
-  Text/Comment/CDATA，均保留选中 wrapper identity。目标结构 token、对象、错类型/越界、
-  跨父/重复/自身节点、超限和 callback 缺失 fail closed；失败不消费 fragment 或改变原树。
+  消费后为空。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
+  Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配输入返回
+  `null`/空列表。
+  重复 id 可在 staging 中返回首根，但物化仍拒绝。超限、嵌套/connected、重复/缺失 id、
+  结构标签或上下文 parser fail closed。Ex13–Ex15 的 `replaceChildren()` 仅在既有
+  text/element/typed-child 合同内原子提交；结构 token、对象、错类型/越界、跨父/重复/自身、
+  超限和 callback 缺失 fail closed，失败不消费 fragment 或改变原树。
 - `document.createTextNode(value)` 现在提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/
@@ -582,9 +582,9 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1260 已覆盖有界 DOM/CharacterData、Ex4–Ex15 mutation、parser-backed HTML、
+- TEST1201–1261 已覆盖有界 DOM/CharacterData、Ex4–Ex15 mutation、parser-backed HTML、
   fragment staging/clone、detached wrapper、属性 facade、body.text、cookie、document.write
-  和 document.title，以及 bounded fragment lookup；逐项合同与预算见
+  和 document.title，以及 bounded fragment lookup/selector；逐项合同与预算见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、

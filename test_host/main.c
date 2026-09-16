@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1260
+#define TEST_MAX_NUMBER 1261
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53267,6 +53267,64 @@ static BOOL test1260_browser_document_fragment_lookup_contract(void)
             " Element roots in tree order, follows id changes, keeps source"
             " and clone lookups isolated, clears after consumption and stays"
             " fail-closed when duplicate ids cannot be materialized.");
+    return TRUE;
+}
+
+/* TEST 1261 - bounded DocumentFragment selector lookup. */
+static BOOL test1261_browser_document_fragment_selector_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,first,tail,second,all,clone,"
+        "cloneAll,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();first=document.createElement('article');"
+        "first.id='frag-first';first.className='card';"
+        "first.setAttribute('data-kind','a');first.appendChild(document.createTextNode('A'));"
+        "tail=document.createTextNode('tail');second=document.createElement('span');"
+        "second.id='frag-second';second.className='label';"
+        "second.setAttribute('data-kind','b');f.append(first,tail,second);}catch(e){ok=false;}"
+        "all=f.querySelectorAll('article, .label');"
+        "ok=ok&&typeof f.querySelector==='function'&&"
+        "typeof f.querySelectorAll==='function'&&f.querySelector('article')===first&&"
+        "f.querySelector('#frag-second')===second&&f.querySelector('span.label')===second&&"
+        "f.querySelector('[data-kind=\"b\"]')===second&&"
+        "f.querySelector('.missing')===null&&f.querySelector('article span')===null&&"
+        "f.querySelector('')===null&&all.length===2&&all.item(0)===first&&"
+        "all.item(1)===second&&all.item(2)===null&&all[0]===first&&all[1]===second&&"
+        "f.querySelectorAll('*').length===2&&f.querySelectorAll('article span').length===0&&"
+        "f.querySelectorAll('').length===0;"
+        "first.id='frag-renamed';first.className='renamed';"
+        "ok=ok&&f.querySelector('#frag-first')===null&&"
+        "f.querySelector('#frag-renamed.renamed')===first&&"
+        "f.querySelectorAll('.renamed').length===1&&f.querySelectorAll('.renamed')[0]===first&&"
+        "all.length===2&&all[0]===first;"
+        "clone=f.cloneNode(true);cloneAll=clone.querySelectorAll('.renamed');"
+        "ok=ok&&clone!==f&&cloneAll.length===1&&cloneAll[0]===clone.firstElementChild&&"
+        "cloneAll[0]!==first&&clone.querySelector('#frag-renamed')===clone.firstElementChild;"
+        "try{target.appendChild(clone);}catch(e2){bad|=1;}"
+        "ok=ok&&bad===0&&clone.childNodes.length===0&&"
+        "clone.querySelector('#frag-renamed')===null&&"
+        "document.getElementById('frag-renamed')===cloneAll[0]&&"
+        "f.querySelector('#frag-renamed')===first&&f.childNodes.length===3;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-selector", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1261 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1261 OK",
+            "DocumentFragment querySelector and querySelectorAll now search"
+            " bounded detached Element roots in order, expose static NodeLists,"
+            " follow root attribute changes and keep clone/source lookups"
+            " isolated before materialization.");
     return TRUE;
 }
 
@@ -111545,6 +111603,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1258: ok = test1258_browser_document_fragment_element_contract(); break;
         case 1259: ok = test1259_browser_document_fragment_clone_contract(); break;
         case 1260: ok = test1260_browser_document_fragment_lookup_contract(); break;
+        case 1261: ok = test1261_browser_document_fragment_selector_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -1090,24 +1090,25 @@ Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展�
 check。
 
 TEST1258 覆盖 Browser-owned `DocumentFragment` 的 bounded Element/Text staging：最多四个
-detached Element/Text 根通过既有 Core HTML parser 原子物化，`appendChild()`、以 Element
-为 reference 的 `insertBefore()` 和 `replaceChildren()` 保留 wrapper、id lookup、顺序及
-静态 snapshot identity。Element 需唯一非空 id、最多一个 direct Text child；相邻顶层 Text、
-嵌套/connected node、重复/缺失 id、结构标签和超出四项在 mutation 前拒绝且不消费 fragment。
-纯文本仍走 Ex13/text-list（回归 TEST1240–1241）；该路径不执行 script、资源或事件，不
-暴露 Core fragment handle。设备门选择 `1240-1258,999`，确认 Debug ARMV4I、完整日志、
-外置卡优先的双空间预检、完成后清理和 crash check。
+detached 根经既有 Core parser 原子物化，`appendChild()`/Element reference 的 `insertBefore()`/
+`replaceChildren()` 保留 wrapper、id lookup、顺序和 snapshot。Element 需唯一非空 id、至多
+一个 direct Text；相邻顶层 Text、嵌套/connected、重复/缺失 id、结构/超限在 mutation 前
+拒绝且不消费 fragment。纯文本仍走 Ex13/text-list；不执行 script/资源/事件或暴露 Core
+fragment handle。设备门选择 `1240-1258,999`。
 
-TEST1259 覆盖 `DocumentFragment.cloneNode(false/true)` 的 bounded staging 合同：浅克隆
-返回空的 detached fragment，深克隆复制有界 Element/Text 根、属性和 direct Text，且源与
-副本保持独立 wrapper、数据和 owner。副本修复唯一 id 后可通过既有 `appendChild()` parser
-路径物化；缺失 id 的克隆在提交前拒绝并保留原 fragment 与目标树。Fragment-owned Text
-的 data 写入只改 detached 快照，连接后再由 Core callback 更新。设备门选择
-`1240-1259,999`。
+TEST1259 覆盖 `DocumentFragment.cloneNode(false/true)`：浅克隆为空，深克隆复制有界
+Element/Text 根、属性和 direct Text，源/副本的 wrapper、数据和 owner 隔离；修复唯一 id 后
+可复用 `appendChild()` parser 物化，缺失 id 在提交前拒绝。Fragment-owned Text 的 data
+只改 detached 快照。设备门选择 `1240-1259,999`。
 
 TEST1260 验证 `getElementById()`：四个以内根按序返回 Element；Text/空/未知 id
 返回 `null`，id mutation、clone 隔离、消费清空、重复 id 拒绝不改目标树。设备门
 `1258-1260,999`。
+
+TEST1261 验证 fragment `querySelector()`/`querySelectorAll()`：四个根按序复用有界
+parser，返回首个匹配或静态 NodeList，忽略 Text；compound/comma
+id/class/attribute 查询随 mutation 和深克隆隔离。空/过长/后代组合/无匹配不产生 mutation，
+消费后为空；设备门选择 `1260-1261,999`。
 
 ### 手动模式
 
