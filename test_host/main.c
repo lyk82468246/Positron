@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1277
+#define TEST_MAX_NUMBER 1278
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54035,7 +54035,7 @@ static BOOL test1275_browser_detached_element_text_content_contract(void)
         "b.parentNode===null&&e.textContent==='hello';e.textContent='';ok=ok&&"
         "nodes===e.childNodes&&nodes.length===0&&first.parentNode===null&&"
         "e.firstChild===null;e.append('keep');first=e.firstChild;while(longText.length<65536){"
-        "longText+='x';}try{e.textContent=longText;}catch(x1){bad|=1;}ok=ok&&"
+        "longText+='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';}try{e.textContent=longText;}catch(x1){bad|=1;}ok=ok&&"
         "nodes===e.childNodes&&nodes.length===1&&nodes[0]===first&&"
         "first.data==='keep'&&first.parentNode===e;e.id='text-stage';target.appendChild(e);"
         "ok=ok&&e.isConnected&&nodes===e.childNodes&&e.textContent==='keep';"
@@ -54083,7 +54083,7 @@ static BOOL test1276_browser_detached_element_html_contract(void)
         "e.innerHTML==='plain &amp; value'&&old.parentNode===null;"
         "try{e.innerHTML='<b>markup</b>';}catch(x1){bad|=1;}"
         "ok=ok&&e.innerHTML==='plain &amp; value'&&nodes[0]===e.firstChild;"
-        "while(tooLong.length<65536){tooLong+='x';}"
+        "while(tooLong.length<65536){tooLong+='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';}"
         "try{e.innerHTML=tooLong;}catch(x2){bad|=2;}"
         "try{e.outerHTML='x';}catch(x3){bad|=4;}"
         "ok=ok&&nodes.length===1&&e.firstChild.data==='plain & value';"
@@ -54119,7 +54119,7 @@ static BOOL test1277_browser_fragment_text_content_contract(void)
         "document.getElementById('result'),f,nodes,elements,old,large='',bad=0,ok=true;"
         "try{f=document.createDocumentFragment();old=document.createTextNode('old');"
         "f.append(old);nodes=f.childNodes;elements=f.children;"
-        "while(large.length<65536){large+='x';}try{f.textContent=large;}"
+        "while(large.length<65536){large+='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';}try{f.textContent=large;}"
         "catch(x1){bad|=1;}ok=ok&&nodes===f.childNodes&&elements===f.children&&"
         "nodes.length===1&&nodes[0]===old&&old.parentNode===f&&f.textContent==='old';"
         "f.textContent='new & value';ok=ok&&nodes===f.childNodes&&elements===f.children&&"
@@ -54149,6 +54149,59 @@ static BOOL test1277_browser_fragment_text_content_contract(void)
             " capacity before replacing children, preserving collection and"
             " old-node state on failure while keeping successful replacement"
             " atomic for text and detached Element staging.");
+    return TRUE;
+}
+
+/* TEST 1278 - detached Element sibling relations in fragment staging. */
+static BOOL test1278_browser_detached_element_sibling_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><span id='existing'>E</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,a,m,b,c,detached,existing,ok=true;"
+        "try{f=document.createDocumentFragment();a=document.createElement('article');"
+        "a.id='sib-a';m=document.createTextNode('middle');b=document.createElement('aside');"
+        "b.id='sib-b';c=document.createElement('p');c.id='sib-c';detached="
+        "document.createElement('div');f.append(a,m,b,c);ok=ok&&"
+        "a.parentNode===f&&a.parentElement===null&&a.previousSibling===null&&"
+        "a.nextSibling===m&&m.previousSibling===a&&m.nextSibling===b&&"
+        "b.previousSibling===m&&b.nextSibling===c&&c.nextSibling===null&&"
+        "a.previousElementSibling===null&&a.nextElementSibling===b&&"
+        "b.previousElementSibling===a&&b.nextElementSibling===c&&"
+        "c.previousElementSibling===b&&c.nextElementSibling===null&&"
+        "detached.parentNode===null&&detached.nextSibling===null&&"
+        "detached.previousElementSibling===null;f.insertBefore(c,a);ok=ok&&"
+        "f.firstChild===c&&c.nextSibling===a&&a.previousSibling===c&&"
+        "c.nextElementSibling===a&&a.previousElementSibling===c&&"
+        "b.previousElementSibling===a;f.removeChild(m);ok=ok&&m.parentNode===null&&"
+        "a.previousSibling===c&&a.nextSibling===b&&a.nextElementSibling===b&&"
+        "b.previousSibling===a;target.appendChild(f);existing="
+        "document.getElementById('existing');ok=ok&&f.childNodes.length===0&&"
+        "c.parentNode===target&&c.previousSibling===existing&&c.nextSibling===a&&"
+        "c.previousElementSibling===existing&&c.nextElementSibling===a&&"
+        "a.previousElementSibling===c&&a.nextElementSibling===b&&"
+        "b.previousElementSibling===a&&b.nextElementSibling===null;"
+        "target.removeChild(c);ok=ok&&c.parentNode===null&&"
+        "a.previousSibling===existing&&a.previousElementSibling===existing&&"
+        "a.nextElementSibling===b&&b.previousElementSibling===a;"
+        "}catch(x){ok=false;}result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-siblings", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1278 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1278 OK",
+            "detached Element wrappers now expose bounded previous/next"
+            " sibling and element-sibling views while staged in a Fragment;"
+            " reordering, removal, parser materialization and live removal"
+            " preserve wrapper identity and update both directions.");
     return TRUE;
 }
 
@@ -112444,6 +112497,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1275: ok = test1275_browser_detached_element_text_content_contract(); break;
         case 1276: ok = test1276_browser_detached_element_html_contract(); break;
         case 1277: ok = test1277_browser_fragment_text_content_contract(); break;
+        case 1278: ok = test1278_browser_detached_element_sibling_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

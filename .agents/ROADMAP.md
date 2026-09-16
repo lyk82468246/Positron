@@ -331,7 +331,14 @@ next837 修正 DocumentFragment `textContent=` 的失败原子性：setter 先�
 `1276-1277,999` 相邻设备门通过，未新增 Core ABI；Fragment 仍限四个根，复杂 detached
 parser 和通用 observer/live collection 不在本批次范围。
 
-下一批（next838）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next838 补齐 Fragment-owned detached Element 的 bounded sibling 视图：`previousSibling`/
+`nextSibling` 按 staging `childNodes` 顺序返回 Text/Element，`previousElementSibling`/
+`nextElementSibling` 跳过 Text；重排、移除、parser-backed 消费和物化后 live 移除均刷新
+双向关系与 wrapper identity，未归属的 detached Element 保持 `null`。TEST1278 与
+`1277-1278,999` 相邻设备门通过，未新增 Core ABI；设备日志、双空间预检、清理和
+`crash_check` 均通过，dump=0。
+
+下一批（next839）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

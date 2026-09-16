@@ -1084,21 +1084,10 @@ getter/setter 与同一 Core 文档一致，`null` 仍按 JavaScript `String` �
 Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展时 Browser 保留局部回退。设备门
 `1256,1257,999`。
 
-TEST1258 覆盖 Browser-owned `DocumentFragment` bounded Element/Text staging：最多四个 detached
-根经 Core parser 物化；append/prepend/insertBefore/appendChild/replaceChildren 保留 wrapper、
-顺序并在成功后消费。Element 需唯一非空 id、至多一个 direct Text；相邻顶层 Text、嵌套/
-connected、重复/缺失 id、结构/超限和副作用输入 fail closed。纯文本走 Ex13/text-list。设备门
-`1240-1258,999`。
-
-TEST1259 覆盖 fragment clone：浅克隆为空，深克隆复制有界根/属性/direct Text，源/副本隔离；
-修复 id 后可物化，缺失/不支持节点在提交前拒绝。设备门
-`1240-1259,999`。
-
-TEST1260 验证 bounded `getElementById()`：最多四个根按树序返回 Element，忽略 Text；id mutation、
-clone、消费和重复 id 均有断言。设备门 `1258-1260,999`。
-
-TEST1261 验证 fragment selector 的首个匹配、静态 NodeList、属性 mutation、深克隆、无效/空/
-过长输入和后代组合的 fail-closed 行为。设备门 `1260-1261,999`。
+TEST1258–1261 合并覆盖 Browser-owned `DocumentFragment` 的 bounded Element/Text staging、
+消费/clone、`getElementById()` 和 selector/query 快照：四根、唯一 id、Text 边界、wrapper/
+collection identity、属性变化、克隆隔离和消费均有断言；嵌套、重复/缺失 id、空/过长、后代
+组合及副作用输入 fail closed。相邻门 `1240-1261,999`。
 
 TEST1271–1275 验证 detached `Node.normalize()`、Element `replaceChildren()`/
 `replaceChild()`、Attr/NamedNodeMap 与 `textContent`：Text 删除/合并、原子替换、集合/
@@ -1111,6 +1100,12 @@ identity 和 markup/limit/outerHTML fail-closed；门 `1276,999`，相邻 `1275-
 TEST1277 验证 Fragment `textContent=` 原子性：65,535 字符超限预检保留
 `childNodes`/`children`/owner，成功替换保持集合 identity 并 detach 节点，`null`→`"null"`。
 门 `1277,999`，相邻 `1276-1277,999`。
+
+TEST1278 验证 bounded Fragment 中 detached Element 的四个 sibling getter：普通 sibling 含
+Text，element-sibling 跳过 Text；重排、移除、parser-backed 消费和物化后 live 移除同步关系、
+owner 与 wrapper identity，未归属返回 `null`。不扩展通用 detached tree、observer 或 live
+collection。门 `1278,999`，相邻 `1277-1278,999`；两次 Debug ARMV4I 外置卡自动门均完成完整
+日志回收、双空间预检、清理和 crash check，零 ERROR/FAIL、dump=0。
 
 ### 手动模式
 

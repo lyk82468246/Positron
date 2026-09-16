@@ -297,19 +297,12 @@ wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id
 detached Element 只对属性/direct Text 做 text-only escaping/staging；markup、超长和 detached
 `outerHTML` replacement fail closed，connected wrapper 委托 Core projection。
 `document.createDocumentFragment()` 在 Browser 侧建立 bounded staging，最多四个 Text 或 Element
-根；Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。
-Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 支持
-单一源 Fragment 的有界消费并保留 collection identity，纯文本复用 Ex13；`cloneNode(false/true)`
-隔离源/副本，物化前需修复 id；`getElementById()` 按树序忽略 Text。
-`querySelector()`/`querySelectorAll()` 返回最多四根的静态 NodeList。`getElementsByTagName*()`/
-`getElementsByClassName()` 返回 bounded HTMLCollection，支持 tag/class/namespace、`item`/
-`namedItem` 与 id/name 映射。`children` 是缓存 HTMLCollection，随 staging mutation 更新并
-忽略 Text。relations/namespace、
-`replaceChildren()`/`replaceChild()` 与 Fragment 组合均有界、原子、失败不变，
-Fragment `textContent=` 先做 String/容量预检再原地替换；失败保留旧树/collection identity，
-成功 detach 旧节点，
-detached `normalize()` 删除空 Text、合并相邻 Text，限 Element 64 个
-Text/Fragment 四根；不支持/超限输入 fail closed。
+根；Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。Fragment 的 append/
+prepend/insertBefore/appendChild/replaceChildren、clone、lookup/query、collection、relations
+和 Fragment 组合都受同一容量约束并原子失败；`textContent=` 先预检容量，`normalize()` 只整理
+direct Text。Fragment-owned detached Element 的四个 sibling getter 按当前 staging 顺序读取，
+element-sibling 跳过 Text；无 owner 返回 `null`，物化后回到 live wrapper。该视图不扩展通用
+detached tree、observer 或完整 live collection。
 
 `document.createTextNode(value)` 创建 detached Text，支持插入/移除/clone 与 CharacterData
 mutator；offset/count 按 UTF-16 校验，connected 复用 Core。
