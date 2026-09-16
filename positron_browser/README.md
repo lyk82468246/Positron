@@ -314,11 +314,10 @@ offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复
 `document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
 `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后，
 可按 `childNodes` 索引用四种插入方法物化到 live Element。wrapper 最多 64 个属性
-和 direct Text child；物化同步属性/Text。`childNodes`、首尾
-child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 facade 支持三态；
-反射 setter（含 `align`）在 detached/removed wrapper 经 facade 暂存，物化后走
-Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、混合/未知 Fragment
-consumer、detached handle、事件/资源/observer 和重复/无 id 均 fail closed。
+和 direct Text child；物化同步属性/Text。detached wrapper 支持 Text-only
+`replaceChildren()`，保留 childNodes/identity 并跨 owner 移动；连接走 live bridge。
+`childNodes`、首尾 child、`hasChildNodes()` 跟随 staging；style/reflected setter 在
+detached/removed 暂存，物化后走 Core。`cloneNode` 复制属性/Text，克隆独立 detached。连接前须有唯一 id；结构标签、嵌套、未知 consumer、detached handle、事件/资源/observer、重复/无 id fail closed。
 
 遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
 `[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1271
+#define TEST_MAX_NUMBER 1272
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53854,6 +53854,56 @@ static BOOL test1271_browser_detached_normalize_contract(void)
             " bounded Node.normalize semantics: empty and adjacent Text nodes"
             " collapse without losing the first wrapper, and normalized roots"
             " remain consumable by the existing live DOM path.");
+    return TRUE;
+}
+
+/* TEST 1272 - bounded detached Element replaceChildren staging. */
+static BOOL test1272_browser_detached_element_replace_children_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),e,other,a,b,c,nodes,otherNodes,old,"
+        "keep,bad=0,ok=true;try{e=document.createElement('article');a="
+        "document.createTextNode('A');b=document.createTextNode('B');e.append(a,b);"
+        "nodes=e.childNodes;e.replaceChildren('x',a,null);ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===3&&nodes[0].data==='x'&&"
+        "nodes[1]===a&&nodes[2].data==='null'&&a.parentNode===e&&"
+        "b.parentNode===null;other=document.createElement('aside');c="
+        "document.createTextNode('C');other.append(c);otherNodes=other.childNodes;"
+        "e.replaceChildren(c,'Y');ok=ok&&nodes===e.childNodes&&nodes.length===2&&"
+        "nodes[0]===c&&nodes[1].data==='Y'&&c.parentNode===e&&"
+        "otherNodes===other.childNodes&&otherNodes.length===0&&"
+        "other.firstChild===null;old=e.firstChild;e.replaceChildren();ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===0&&old.parentNode===null;"
+        "e.append('keep');keep=e.firstChild;try{e.replaceChildren('new',{});}"
+        "catch(x1){bad|=1;}ok=ok&&nodes===e.childNodes&&nodes.length===1&&"
+        "nodes[0]===keep&&keep.data==='keep'&&keep.parentNode===e;try{"
+        "e.replaceChildren(keep,keep);}catch(x2){bad|=2;}ok=ok&&"
+        "nodes.length===1&&nodes[0]===keep&&keep.data==='keep';try{"
+        "e.replaceChildren('a','b','c','d','e');}catch(x3){bad|=4;}"
+        "ok=ok&&nodes.length===1&&nodes[0]===keep&&keep.data==='keep';"
+        "e.id='detached-replace';target.appendChild(e);ok=ok&&e.isConnected&&"
+        "e.textContent==='keep';e.replaceChildren('live');ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===1&&nodes[0].data==='live'&&"
+        "e.textContent==='live'&&keep.parentNode===null;"
+        "}catch(x){ok=false;}result.textContent=String(ok&&bad===7);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-replace-children",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1272 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1272 OK",
+            "detached Element replaceChildren now stages a bounded text"
+            " list atomically, preserves childNodes and supplied wrapper"
+            " identity, moves detached Text between owners, and leaves"
+            " invalid, duplicate or over-capacity input unchanged.");
     return TRUE;
 }
 
@@ -112143,6 +112193,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1269: ok = test1269_browser_document_fragment_element_collections_contract(); break;
         case 1270: ok = test1270_browser_document_fragment_namespace_collections_contract(); break;
         case 1271: ok = test1271_browser_detached_normalize_contract(); break;
+        case 1272: ok = test1272_browser_detached_element_replace_children_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

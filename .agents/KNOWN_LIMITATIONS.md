@@ -140,16 +140,15 @@
   和 wrapper owner 更新。成功 mutation 使 layout 失效，UTF-16/UTF-8、detached、结构 token、
   错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/`prepend()`
   （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
-  遵循各自 callback 合同。Browser 另提供两种 `DocumentFragment` staging：最多四个
+  遵循各自 callback 合同。Browser 提供两种 `DocumentFragment` staging：最多四个
   primitive Text 的 text-only 路径，以及最多四个 detached Element/Text 根的 bounded
   结构路径。结构路径要求 Element 有唯一非空 id、至多一个 direct Text，复用 Core HTML
   parser 物化；Fragment 自身支持单一 Fragment 参数的 `append()`、`prepend()`、
-  `insertBefore()`、`appendChild()`、`replaceChildren()`，成功保留 wrapper identity 并清空源。
+  `insertBefore()`、`appendChild()`、`replaceChildren()`，成功保留 identity 并清空源。
   `cloneNode(false/true)`
-  仅复制 Browser-owned detached bounded 根，源/副本隔离，连接前修复 id；Fragment-owned
+  仅复制 detached bounded 根，源/副本隔离，连接前修复 id；Fragment-owned
   Text data 只更新 detached 快照。`getElementById()` 只在最多四个 staged 根中按树序查找
-  Element，忽略 Text，跟随 staged id mutation；浅克隆为空、深克隆与源隔离，fragment
-  消费后为空。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
+  Element，忽略 Text。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
   Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
@@ -157,8 +156,9 @@
   HTMLCollection，按 tag/class 或 namespace/localName 查最多四根；NS 承诺 HTML namespace、
   通配符、大小写 localName 与 null/未知 fail closed；支持
   `item`/`namedItem`，完整 live collection 未实现。
-  detached `normalize()` 限 64 个 direct Text/四个 Fragment 根，删除空并合并相邻 Text；嵌套、
-  超限和不支持节点在 mutation 前 fail closed。
+  detached `normalize()` 限 64 个 direct Text/四个 Fragment 根，删除空并合并相邻 Text；detached
+  Element 的 `replaceChildren()` 限 0–4 个 primitive/created Text，原子替换并保留
+  childNodes/传入 wrapper，可移动 detached Text；其余输入在 mutation 前拒绝。
   Fragment relations/namespace 与 replace/组合由 Browser 预检原子提交；
   `replaceChild()` 可展开最多四根并清空源，空源移除旧节点；不支持输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
@@ -586,7 +586,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1271 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
+- TEST1201–1272 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
   document.write/title；合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

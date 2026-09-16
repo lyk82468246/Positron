@@ -98,12 +98,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - next830 补齐 Browser-owned Fragment 的 bounded `getElementsByTagNameNS()` HTMLCollection
   快照：复用 Document/Element 的 HTML namespace、通配符、localName、coercion、命名属性和
   静态快照合同；TEST1270 与 1264–1269 相邻门通过。
-- next831 补齐 detached Element/DocumentFragment 的 bounded `Node.normalize()`：删除空 Text、
-  合并相邻 Text 并保留 wrapper/owner；TEST1271 与相邻门通过，证据见
-  `tmp/device-runs/20260916-140133-next831`。
+- next831 补齐 detached Element/DocumentFragment 的 bounded `Node.normalize()`；next832 补齐
+  detached Element 的 text-only `replaceChildren()`（原子替换、保留 childNodes/传入 wrapper，
+  可跨 detached owner 移动 Text）。TEST1271/1272 与相邻门通过。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1271。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1271,999`。
+- `TEST_MAX_NUMBER` 已为 1272。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1272,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -130,13 +130,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
   和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- next817 的 Core-backed `document.title`、next818 的 bounded Element/Text
-  `DocumentFragment` staging、next819 的 fragment `cloneNode(false/true)`、next820 的
-  bounded `getElementById()`、next821 的 bounded fragment selector 查询、next822 的
-  SameObject `children` collection、next823 的 id/name 命名属性投影、next824 的 Node
-  关系合同、Fragment replace/组合、HTMLCollection 快照和 next831 detached normalize 均已
-  完成桌面构建、离线断言和设备门；下一短期目标是从 compatibility corpus、源码或设备证据
-  选择可复现的 next832 缺口并实现为边界清楚的公共 DLL 能力。
+- next817–next832 的 document.title、DocumentFragment staging/组合、Node 关系、集合快照、
+  detached normalize/replaceChildren 等纵切均已完成桌面构建、离线断言和设备门；下一短期
+  目标是从 compatibility corpus、源码或设备证据选择可复现的 next833 缺口并实现为公共 DLL 能力。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -244,15 +240,16 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1271。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1271,999`。
+- `TEST_MAX_NUMBER`：1272。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1272,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260916-140201-next831-adjacent` 是本批最新证据：Debug ARMV4I
-`1264-1271,999`，9/9 PASS；外置卡双空间预检、日志回收、清理、`crash_check` PASS，dump=0。
+`tmp/device-runs/20260916-144649-next832-adjacent` 是本批最新证据：Debug ARMV4I
+`1264-1272,999`，10/10 PASS；外置卡双空间预检、日志回收、清理、`crash_check` PASS，dump=0。
+定向 `tmp/device-runs/20260916-144613-next832` 的 `1272,999` 也为 2/2 PASS。
 
 旧失败与配置仅作历史参考，见 Git、`docs/history/`、`FAILED_EXPERIMENTS.md` 与 `tmp/`；
 不完整日志不算通过。
@@ -283,7 +280,7 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1271 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1272 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize 夹具均已有相邻
   设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
@@ -358,7 +355,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next832：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next833：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
