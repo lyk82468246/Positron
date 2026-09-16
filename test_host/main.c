@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1270
+#define TEST_MAX_NUMBER 1271
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53815,6 +53815,45 @@ static BOOL test1270_browser_document_fragment_namespace_collections_contract(vo
             " matching the existing Document/Element contract; null or"
             " unknown namespaces fail closed, and old snapshots survive"
             " staging mutation and consumption.");
+    return TRUE;
+}
+
+/* TEST 1271 - bounded normalize for detached text staging. */
+static BOOL test1271_browser_detached_normalize_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),e,a,b,c,snap,f,empty,first,second,fsnap,ok=true;"
+        "try{e=document.createElement('div');a=document.createTextNode('');"
+        "b=document.createTextNode('A');c=document.createTextNode('B');e.append(a,b,c);"
+        "snap=e.childNodes;ok=ok&&typeof e.normalize==='function'&&snap.length===3;"
+        "e.normalize();ok=ok&&snap===e.childNodes&&snap.length===1&&snap[0]===b&&"
+        "b.data==='AB'&&a.parentNode===null&&c.parentNode===null&&e.textContent==='AB';"
+        "f=document.createDocumentFragment();f.append('', 'X','Y');fsnap=f.childNodes;"
+        "empty=fsnap[0];first=fsnap[1];second=fsnap[2];ok=ok&&typeof f.normalize==='function'&&"
+        "fsnap.length===3;f.normalize();ok=ok&&fsnap===f.childNodes&&fsnap.length===1&&"
+        "fsnap[0]===first&&first.data==='XY'&&empty.parentNode===null&&second.parentNode===null&&"
+        "f.textContent==='XY';e.id='norm-detached';target.appendChild(e);target.appendChild(f);"
+        "ok=ok&&e.isConnected&&f.childNodes.length===0&&target.textContent.indexOf('AB')>=0&&"
+        "target.textContent.indexOf('XY')>=0;}catch(x){ok=false;}result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-normalize",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1271 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1271 OK",
+            "detached Element and DocumentFragment text staging now expose"
+            " bounded Node.normalize semantics: empty and adjacent Text nodes"
+            " collapse without losing the first wrapper, and normalized roots"
+            " remain consumable by the existing live DOM path.");
     return TRUE;
 }
 
@@ -112103,6 +112142,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1268: ok = test1268_browser_document_fragment_composition_contract(); break;
         case 1269: ok = test1269_browser_document_fragment_element_collections_contract(); break;
         case 1270: ok = test1270_browser_document_fragment_namespace_collections_contract(); break;
+        case 1271: ok = test1271_browser_detached_normalize_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

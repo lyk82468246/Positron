@@ -311,7 +311,12 @@ localName 查询，沿既有 Document/Element 合同处理 String coercion、命
 消费后的清空。TEST1270 与 1264–1269 相邻设备门通过，未新增 Core 查询 ABI，完整证据见
 `HANDOFF.md`。
 
-下一批（next831）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next831 已补齐 detached Element/DocumentFragment 的 bounded `Node.normalize()`：删除空 Text，
+将相邻 Text 合并到首个 wrapper，保持 childNodes/owner 和后续 Fragment 消费；TEST1271 与
+1264–1270 相邻自动设备门通过，不新增 Core ABI。限制是 Element 最多 64 个 direct Text、
+Fragment 最多四个根，嵌套/超限/不支持节点在 mutation 前 fail closed。
+
+下一批（next832）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

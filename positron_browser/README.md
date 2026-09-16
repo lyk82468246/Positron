@@ -297,25 +297,25 @@ wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id
 `document.createDocumentFragment()` 在 Browser 侧建立 bounded staging，最多四个 primitive Text 或
 detached Element/Text 根；Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。
 Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 支持
-单一源 Fragment 的有界消费并保留 collection identity，纯文本仍复用 Ex13。`cloneNode(false/true)`
-提供隔离的空/深克隆，物化前需修复 id；`getElementById()` 按树序忽略 Text。
-`querySelector()`/`querySelectorAll()` 返回扫描最多四根的静态 NodeList。`getElementsByTagName()`/
-`getElementsByClassName()`/`getElementsByTagNameNS()` 每次返回 HTMLCollection 快照：前两者按
-tag（不分大小写）或全部 class token 查询，NS 版本按 namespace/localName 规则查询非嵌套根；
-支持 `item`/`namedItem` 与 id/name 映射。`children` 是 `[SameObject]`
+单一源 Fragment 的有界消费并保留 collection identity，纯文本复用 Ex13；`cloneNode(false/true)`
+隔离源/副本，物化前需修复 id；`getElementById()` 按树序忽略 Text。
+`querySelector()`/`querySelectorAll()` 返回最多四根的静态 NodeList。三种
+`getElementsByTagName*()`/`getElementsByClassName()` 返回按根顺序过滤的 HTMLCollection，支持
+tag/class/namespace、`item`/`namedItem` 与 id/name 映射。`children` 是 `[SameObject]`
 HTMLCollection，随 staging mutation 更新并忽略 Text。relations/namespace、
 `replaceChildren()`/`replaceChild()` 与 Fragment-to-Fragment 组合均有界、原子、失败不变，
-path64/equality256。
+detached `normalize()` 删除空 Text、合并相邻 Text，限 Element 64 个
+direct Text/Fragment 四根；不支持节点和超限输入在 mutation 前 fail closed。
 
-`document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
+`document.createTextNode(value)` 创建 detached Text；支持插入、移除、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
 offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复用 Core callback。
 
 `document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
 `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后，
-可按未过滤 `childNodes` 索引用四种插入方法物化到 live Element。每个 wrapper 最多 64 个属性
-和 direct Text child；物化时同步属性/Text。`childNodes`、首尾
-child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 facade 支持三种状态；
+可按 `childNodes` 索引用四种插入方法物化到 live Element。wrapper 最多 64 个属性
+和 direct Text child；物化同步属性/Text。`childNodes`、首尾
+child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 facade 支持三态；
 反射 setter（含 `align`）在 detached/removed wrapper 经 facade 暂存，物化后走
 Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、混合/未知 Fragment
 consumer、detached handle、事件/资源/observer 和重复/无 id 均 fail closed。

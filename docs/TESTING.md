@@ -1102,14 +1102,16 @@ TEST1259 覆盖 fragment clone：浅克隆为空，深克隆复制有界根/属�
 TEST1260 验证 bounded `getElementById()`：最多四个根按树序返回 Element，忽略 Text；id mutation、
 clone、消费和重复 id 均有断言。设备门 `1258-1260,999`。
 
-TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`querySelectorAll()` 返回静态
-NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
-组合和消费均 fail closed。设备门 `1260-1261,999`。
+TEST1261 验证 fragment selector 的首个匹配、静态 NodeList、属性 mutation、深克隆、无效/空/
+过长输入和后代组合的 fail-closed 行为。设备门 `1260-1261,999`。
 
-TEST1262–1268 覆盖 Fragment collection/relations 与 replace/组合的有界原子语义；1269 覆盖
-tag/class HTMLCollection 快照，1270 覆盖 `getElementsByTagNameNS()` 的 namespace 过滤、
-通配符、大小写、coercion、命名属性和快照/消费。
-相邻门用 `1264-1270,999`；Fragment 不嵌套，descendant collection 不在承诺内。
+TEST1262–1268 覆盖 Fragment 集合/关系/replace/组合；1269/1270 覆盖 tag/class/NS
+HTMLCollection。相邻门用 `1264-1271,999`；Fragment 不嵌套，descendant collection 不承诺。
+
+TEST1271 验证 detached Element/Fragment 的 `Node.normalize()`：删空、相邻 Text 合并
+到首个 wrapper 并保持 childNodes/owner；Element 限 64 个 Text、Fragment 限四个根，嵌套/超限/
+不支持节点在 mutation 前拒绝；门
+`1264-1271,999`。
 
 ### 手动模式
 

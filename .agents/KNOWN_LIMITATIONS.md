@@ -157,6 +157,8 @@
   HTMLCollection，按 tag/class 或 namespace/localName 查最多四根；NS 承诺 HTML namespace、
   通配符、大小写 localName 与 null/未知 fail closed；支持
   `item`/`namedItem`，完整 live collection 未实现。
+  detached `normalize()` 限 64 个 direct Text/四个 Fragment 根，删除空并合并相邻 Text；嵌套、
+  超限和不支持节点在 mutation 前 fail closed。
   Fragment relations/namespace 与 replace/组合由 Browser 预检原子提交；
   `replaceChild()` 可展开最多四根并清空源，空源移除旧节点；不支持输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
@@ -175,11 +177,9 @@
   `cloneNode(false)` 复制属性，`cloneNode(true)` 复制 direct Text child；克隆与源保持独立，
   连接源的克隆必须先改为唯一 id 才能物化。detached Element 可作为 bounded
   `DocumentFragment` 的根，但不能嵌套 Element；没有通用 detached Core handle、事件、资源、
-  observer 或完整 live collection；结构标签、重复/无 id、
-  错误 parent/reference 和超限输入 fail closed。通用关系查询对该 wrapper 的 detached
-  形态使用对象身份：不同节点的 `isSameNode()` 不会因空/重复 id 合并，`contains()` 对
-  非自身节点返回 false，`compareDocumentPosition()` 报告 disconnected；物化、同父排序
-  和移除后仍保持 wrapper identity。`childNodes`、首尾 child 和 `hasChildNodes()` 读取
+  observer 或完整 live collection；结构标签、重复/无 id、错误 parent/reference 和超限输入
+  fail closed。detached 关系按对象身份处理，物化、同父排序和移除后保持 wrapper identity；
+  `childNodes`、首尾 child 和 `hasChildNodes()` 读取
   跟随有界 direct-Text staging；`children`/`childElementCount` 不表示未实现的嵌套元素。
   `style.cssText` 在 detached、attached、removed wrapper 经 facade 写入；声明有界解析。
   反射 setter（含 `align`）在 detached/removed 状态暂存，物化调用 Core。
@@ -586,7 +586,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1268 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
+- TEST1201–1271 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
   document.write/title；合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
