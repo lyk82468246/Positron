@@ -148,22 +148,22 @@
   Text data 只更新 detached 快照。`getElementById()` 只在最多四个 staged 根中按树序查找
   Element，忽略 Text，跟随 staged id mutation；浅克隆为空、深克隆与源隔离，fragment
   消费后为空。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
-  Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配输入返回
+  Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
   Fragment 提供 bounded relations/namespace；`replaceChildren()`/`replaceChild()` 预检并原子移动，
-  失败不变；path64/equality256，未知节点 fail closed；其他关系未实现。
-  重复 id 返回首根，物化拒绝。超限、嵌套/connected、重复/缺失 id、
+  后者可在旧位置展开最多四根的 Fragment，成功清空源并保持 `SameObject`；空源移除旧
+  节点，失败不变。path64/equality256，未知节点 fail closed；其他关系未实现。
+  重复 id 返回首根，物化仍拒绝；超限、嵌套/connected、缺失 id、
   结构标签或上下文 parser fail closed。Ex13–Ex15 的 `replaceChildren()` 仅在既有
   text/element/typed-child 合同内原子提交；结构 token、对象、错类型/越界、跨父/重复/自身、
-  超限和 callback 缺失 fail closed，失败不消费 fragment 或改变原树。
-- `document.createTextNode(value)` 现在提供 Browser-owned 的 detached Text 快照；它可在
+  超限或 callback 缺失 fail closed，失败不变。
+- `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/
   `textContent`/`appendData()`/`insertData()`/`deleteData()`/`replaceData()`/`substringData()`、
   `remove()` 与 `cloneNode()`。四个 offset 方法按 UTF-16 code unit 校验；detached 更新快照，
-  connected 复用既有 Core callback。Browser 复用既有 Core Text 插入、CharacterData 移动、
-  Text setter 和删除入口，不新增 Core ABI 或 detached handle；64 个 direct child、65,535
+  connected 复用 Core callback；不新增 Core ABI 或 detached handle；64 个 direct child、65,535
   个脚本字符、generic Node、嵌套/不支持的 fragment consumer、含 element/fragment 的未列入
   结构路径和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 目前是 Browser-owned 的有界 detached Element staging：标签
@@ -585,7 +585,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1266 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
+- TEST1201–1267 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
   document.write/title；合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

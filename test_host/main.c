@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1266
+#define TEST_MAX_NUMBER 1267
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53569,8 +53569,10 @@ static BOOL test1266_browser_document_fragment_replace_child_contract(void)
         "elements=f.children;try{f.replaceChild({},moved);}catch(e1){bad|=1;}"
         "ok=ok&&f.childNodes===nodes&&f.children===elements&&f.childNodes.length===3&&"
         "f.childNodes[1]===moved&&moved.parentNode===f;g=document.createDocumentFragment();"
+        "g.append(document.createElement('x'),document.createElement('y'),document.createElement('z'));"
         "try{f.replaceChild(g,moved);}catch(e2){bad|=2;}ok=ok&&f.childNodes.length===3&&"
-        "f.childNodes[1]===moved;live=document.createElement('p');live.id='replace-child-live';"
+        "f.childNodes[1]===moved&&g.childNodes.length===3;live=document.createElement('p');"
+        "live.id='replace-child-live';"
         "live.append('L');document.body.appendChild(live);try{f.replaceChild(live,moved);}"
         "catch(e3){bad|=4;}ok=ok&&f.childNodes.length===3&&f.childNodes[1]===moved&&"
         "live.parentNode===document.body;live.remove();}catch(e){ok=false;}"
@@ -53588,7 +53590,58 @@ static BOOL test1266_browser_document_fragment_replace_child_contract(void)
             "DocumentFragment replaceChild now handles same-root reordering"
             " and cross-fragment moves atomically, preserves wrapper and"
             " collection identity, supports bounded primitive replacement and"
-            " rejects nested, connected or unsupported input without mutation.");
+            " rejects over-capacity, connected or unsupported input without mutation.");
+    return TRUE;
+}
+
+/* TEST 1267 - DocumentFragment replaceChild expands a bounded fragment. */
+static BOOL test1267_browser_document_fragment_replace_child_fragment_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var result=document.getElementById('result'),f,donor,empty,"
+        "full,big,p,q,r,s,u,v,t,a,b,c,nodes,elements,bigNodes,bigElements,ret,"
+        "bad=0,ok=true;try{f=document.createDocumentFragment();a=document.createElement('a');"
+        "a.id='replace-fragment-a';a.append('A');b=document.createElement('b');"
+        "b.id='replace-fragment-b';b.append('B');c=document.createElement('c');"
+        "c.id='replace-fragment-c';c.append('C');f.append(a,b,c);donor="
+        "document.createDocumentFragment();u=document.createElement('u');u.id='replace-fragment-u';"
+        "u.append('U');t=document.createTextNode('T');donor.append(u,t);nodes=f.childNodes;"
+        "elements=f.children;ret=f.replaceChild(donor,b);ok=ok&&ret===b&&b.parentNode===null&&"
+        "donor.childNodes.length===0&&f.childNodes===nodes&&f.children===elements&&"
+        "f.childNodes.length===4&&f.childNodes[0]===a&&f.childNodes[1]===u&&"
+        "f.childNodes[2]===t&&f.childNodes[3]===c&&t.parentNode===f&&"
+        "f.children.length===3&&f.children[1]===u;empty=document.createDocumentFragment();"
+        "ret=f.replaceChild(empty,t);ok=ok&&ret===t&&t.parentNode===null&&"
+        "empty.childNodes.length===0&&f.childNodes.length===3&&f.childNodes[1]===u;"
+        "full=document.createDocumentFragment();p=document.createElement('p');p.id='replace-full-p';"
+        "q=document.createElement('q');q.id='replace-full-q';r=document.createElement('r');"
+        "r.id='replace-full-r';s=document.createElement('s');s.id='replace-full-s';"
+        "full.append(p,q,r,s);big=document.createDocumentFragment();u=document.createElement('u');"
+        "u.id='replace-big-u';v=document.createElement('v');v.id='replace-big-v';big.append(u,v);"
+        "bigNodes=full.childNodes;bigElements=full.children;try{full.replaceChild(big,q);}"
+        "catch(e1){bad|=1;}ok=ok&&full.childNodes===bigNodes&&full.children===bigElements&&"
+        "full.childNodes.length===4&&full.childNodes[1]===q&&q.parentNode===full&&"
+        "big.childNodes.length===2&&big.childNodes[0]===u&&big.childNodes[1]===v;"
+        "try{full.replaceChild(full,r);}catch(e2){bad|=2;}ok=ok&&full.childNodes.length===4&&"
+        "full.childNodes[2]===r&&r.parentNode===full;result.textContent=String(ok&&bad===3);"
+        "}catch(e){ok=false;result.textContent='false';}})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-replace-child-fragment",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1267 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1267 OK",
+            "DocumentFragment replaceChild now expands a bounded source"
+            " fragment at the old-child position, preserves wrapper and"
+            " collection identity, consumes the source on success and keeps"
+            " both fragments unchanged on capacity or self-replacement failure.");
     return TRUE;
 }
 
@@ -111873,6 +111926,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1264: ok = test1264_browser_document_fragment_node_relation_contract(); break;
         case 1265: ok = test1265_browser_document_fragment_replace_children_contract(); break;
         case 1266: ok = test1266_browser_document_fragment_replace_child_contract(); break;
+        case 1267: ok = test1267_browser_document_fragment_replace_child_fragment_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
