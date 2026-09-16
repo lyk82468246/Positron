@@ -1090,25 +1090,26 @@ Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展�
 check。
 
 TEST1258 覆盖 Browser-owned `DocumentFragment` bounded Element/Text staging：最多四个 detached
-根经 Core parser 原子物化；append/prepend/insertBefore/appendChild/replaceChildren 保留 wrapper
-和顺序并在成功后消费。Element 需唯一非空 id、至多一个 direct Text；相邻顶层 Text、嵌套/
+根经 Core parser 物化；append/prepend/insertBefore/appendChild/replaceChildren 保留 wrapper、
+顺序并在成功后消费。Element 需唯一非空 id、至多一个 direct Text；相邻顶层 Text、嵌套/
 connected、重复/缺失 id、结构/超限和副作用输入 fail closed。纯文本走 Ex13/text-list。设备门
 `1240-1258,999`。
 
-TEST1259 覆盖 fragment clone：浅克隆为空，深克隆复制有界根/属性/direct Text，源/副本 wrapper、
-data、owner 隔离；修复 id 后可物化，缺失 id 和不支持节点在提交前拒绝。设备门
+TEST1259 覆盖 fragment clone：浅克隆为空，深克隆复制有界根/属性/direct Text，源/副本隔离；
+修复 id 后可物化，缺失/不支持节点在提交前拒绝。设备门
 `1240-1259,999`。
 
 TEST1260 验证 bounded `getElementById()`：最多四个根按树序返回 Element，忽略 Text；id mutation、
-clone 隔离、消费清空和重复 id 拒绝均有断言。设备门 `1258-1260,999`。
+clone、消费和重复 id 均有断言。设备门 `1258-1260,999`。
 
-TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`querySelectorAll()` 返回按序
-静态 NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
+TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`querySelectorAll()` 返回静态
+NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
 组合和消费均 fail closed。设备门 `1260-1261,999`。
 
-TEST1262–1267 覆盖 fragment `children`/id/name、关系和原子 `replaceChildren()`/`replaceChild()`；
-TEST1267 另断言 source Fragment 在旧索引展开、空源移除、SameObject/旧 wrapper 及超容量/自身
-失败不变。预算 path64/equality256；设备门 `1260-1267,999`。
+TEST1262–1268 覆盖 fragment `children`/id/name、关系和原子 `replaceChildren()`/`replaceChild()`；
+TEST1267 断言展开/空源，TEST1268 断言 Fragment 单源
+append/prepend/appendChild/insertBefore/replaceChildren 消费、identity 以及混合/超容量/self
+失败不变。设备门 `1260-1268,999`。
 
 ### 手动模式
 

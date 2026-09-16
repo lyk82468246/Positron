@@ -142,8 +142,9 @@
   遵循各自 callback 合同。Browser 另提供两种 `DocumentFragment` staging：最多四个
   primitive Text 的 text-only 路径，以及最多四个 detached Element/Text 根的 bounded
   结构路径。结构路径要求 Element 有唯一非空 id、至多一个 direct Text，复用 Core HTML
-  parser 物化；支持 `append()`、`prepend()`、`insertBefore()`、`appendChild()`、
-  `replaceChildren()`，成功保留 wrapper identity 并清空 fragment。`cloneNode(false/true)`
+  parser 物化；Fragment 自身支持单一 Fragment 参数的 `append()`、`prepend()`、
+  `insertBefore()`、`appendChild()`、`replaceChildren()`，成功保留 wrapper identity 并清空源。
+  `cloneNode(false/true)`
   仅复制 Browser-owned detached bounded 根，源/副本隔离，连接前修复 id；Fragment-owned
   Text data 只更新 detached 快照。`getElementById()` 只在最多四个 staged 根中按树序查找
   Element，忽略 Text，跟随 staged id mutation；浅克隆为空、深克隆与源隔离，fragment
@@ -151,10 +152,9 @@
   Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
-  Fragment 提供 bounded relations/namespace；`replaceChildren()`/`replaceChild()` 预检并原子移动，
-  后者可在旧位置展开最多四根的 Fragment，成功清空源并保持 `SameObject`；空源移除旧
-  节点，失败不变。path64/equality256，未知节点 fail closed；其他关系未实现。
-  重复 id 返回首根，物化仍拒绝；超限、嵌套/connected、缺失 id、
+  Fragment 提供 bounded relations/namespace；这些组合操作预检并原子移动，`replaceChild()` 可在
+  旧位置展开最多四根的 Fragment，成功清空源并保持 `SameObject`；空源移除旧节点，失败不变。
+  混合 Fragment 参数、自身、重复/失效 owner、超限、connected、缺失 id、
   结构标签或上下文 parser fail closed。Ex13–Ex15 的 `replaceChildren()` 仅在既有
   text/element/typed-child 合同内原子提交；结构 token、对象、错类型/越界、跨父/重复/自身、
   超限或 callback 缺失 fail closed，失败不变。
@@ -585,7 +585,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1267 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
+- TEST1201–1268 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
   document.write/title；合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

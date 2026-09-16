@@ -58,7 +58,7 @@ tests=13,20,27,999
 
 ## 测试层次
 
-宿主中的测试大致覆盖：
+宿主中的测试覆盖：
 
 - 基础 DLL 的 ABI、所有权、错误和真实网络；
 - 第三方移植库的解析/链接/设备行为；
@@ -66,10 +66,9 @@ tests=13,20,27,999
 - 表单、validation、submission、native 控件和 DOM Event；
 - history、navigation、script session、DOM bridge 和平台事务；
 - 离线 compatibility corpus 覆盖 contenteditable、dialog/form、navigation、scroll/geometry、
-  selector、image 与 DOM bridge；DOM fixtures TEST1201–1267 覆盖 bounded DOM/CharacterData
-  mutation、HTML/fragment/replaceChildren，以及 detached Text/Comment/Element 的数据、
-  生命周期、关系、style、reflected attribute facade、`HTMLBodyElement.text` 和有界
-  `document.write()` script-position mutation；
+  selector、image 与 DOM bridge；DOM fixtures TEST1201–1268 覆盖 bounded DOM/CharacterData
+  mutation、HTML/fragment/replaceChildren，以及 detached Text/Comment/Element 的生命周期、
+  关系、属性 facade、`HTMLBodyElement.text` 和 `document.write()` script-position mutation；
 - 真实 Browse、DPI/旋转、SIP/IME、picker 和视觉 fixture。
 
 编号只是 dispatch key；测试含义由 fixture、断言和提示定义，不在 README 复制清单。
@@ -549,8 +548,8 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 不由 test_host 实现。
 
 TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie。
-TEST1256–1267 覆盖 write/title 与 fragment；1267 断言 Fragment 展开、空源移除、集合/旧 identity
-和失败不变。宿主只接 fixture、回调、断言。
+TEST1256–1268 覆盖 write/title/fragment；1267 断言 Fragment 展开与空源，1268 断言
+Fragment-to-Fragment 有界组合；两者均验证 identity 与失败原子性。宿主只接 fixture、回调、断言。
 
 ### Native EDIT/SELECT/button/file
 

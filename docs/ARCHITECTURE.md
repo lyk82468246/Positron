@@ -280,31 +280,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   原父级与 childNodes 索引；空字符串移除目标。Browser 标记旧目标/后代 wrapper 为 detached，
   刷新父级与 id cache，宿主安排后续 style/layout/paint。顶层文本/Comment、多根、结构元素、
   重复/外部冲突 id、非法或超限输入在提交前拒绝；不执行 script、不抓取资源、不派发事件；
-- Browser 的 `document.createDocumentFragment()` 是 Browser-owned 的 bounded staging
-  对象：最多四个 primitive Text 值或 detached Element/Text 根由 Browser 在类型、长度、
-  ownership 和容量通过后，复用现有 text-list/HTML parser 一次性消费。结构根的 Element
-  必须有唯一非空 id，最多一个 direct Text child，顶层 Text 不能相邻；fragment 仅在成功
-  mutation 后清空并保留物化 wrapper identity。`cloneNode(false)` 返回空 fragment，
-  `cloneNode(true)` 深复制这组有界根、属性和 direct Text，副本的 wrapper/data/ownership
-  与源隔离，连接前仍须修复唯一 id。Fragment-owned Text 的 data/CharacterData 写入只
-  更新 Browser 快照，物化后才调用 Core。`getElementById()` 在最多四个 staged 根中按树序
-  查找 Element、忽略 Text，并随 id mutation、clone isolation 和 fragment consumption 保持
-一致；`querySelector()`/`querySelectorAll()` 复用 Browser selector parser，在同一组 staged
-Element 根中按顺序产生单个结果或静态 NodeList。由于当前结构 fragment 不允许嵌套 Element，
-后代/兄弟组合不会扩展搜索树；空、超长或无法匹配的 selector fail closed。staging 中的
-`children` 是按 fragment 缓存的 `[SameObject]` HTMLCollection，随有界根的追加、移除、
-重排、克隆、消费和清空原地更新，并忽略顶层 Text；`item`/`namedItem` 及 id/name 的
-非枚举、只读命名属性与首尾 Element 及 `childElementCount` 保持同一快照。
-同一批 wrapper 的 Node 关系由 Browser 按 identity 提供 `isSameNode()`、有界递归
-`isEqualNode()`、`contains()`、`compareDocumentPosition()`、`getRootNode()` 和
-`null`/XML namespace helper；关系路径最多 64 层，equality 最多 64 层/256 个节点，
-未知或 disconnected 节点 fail closed。
-Fragment 的 `replaceChildren()`/`replaceChild()` 在 Browser 侧完成 bounded preflight；后者可将
-另一 Fragment 的 0–4 个 staged 根在旧索引展开，成功清空源并返回旧 wrapper，空源移除旧节点；
-超容量、自身、失效 ownership 和不支持根保持原子失败。重复 id 只返回首个根，物化仍在 parser
-预检时拒绝。Core 不暴露 fragment handle；
-nested/connected node、重复或缺失 id、结构元素、超限/上下文敏感输入、其他 fragment
-consumer 和事件/资源副作用均 fail closed。
+- Browser-owned `DocumentFragment` staging（包括 bounded Text/Element 根、clone、查询、
+  relations 和 Fragment-to-Fragment 组合）由 `positron_browser.dll` 维护；Core 只接收
+  Browser 预检后的 text-list 或 parser-backed 提交，不暴露 fragment handle。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
@@ -524,10 +502,12 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   事件和 observer 不在边界内。Fragment、staged Element/Text 及其深克隆的 Node 关系由
   Browser 按 wrapper identity 维护：`isSameNode()`、有界递归 `isEqualNode()`、`contains()`、
   `compareDocumentPosition()`、`getRootNode()` 和 `null`/XML namespace helper 均不新增 Core
-  ABI；关系路径最多 64 层，equality 最多 64 层/256 个节点，未知或 disconnected 节点
-  fail closed。Fragment 的 `replaceChildren()`/`replaceChild()` 在 Browser 侧预检后原子替换；
-  后者可将另一 Fragment 的 bounded 根在旧索引展开并成功清空源，空源移除旧节点；超容量、
-  自身或失效 owner 保持失败不变，不新增 Core fragment ABI。
+  ABI；关系预算为 path64/equality256，未知或 disconnected 节点 fail closed。Fragment 的
+  `replaceChildren()`/`replaceChild()` 在 Browser 侧预检后原子替换；
+  后者可将另一 Fragment 的 bounded 根在旧索引展开并成功清空源，空源移除旧节点；Fragment
+  自身的 `append()`/`prepend()`/`appendChild()`/`insertBefore()`/`replaceChildren()` 对单一源
+  Fragment 也执行同一有界消费。混合参数、超容量、自身或失效 owner 保持失败不变，不新增
+  Core fragment ABI。
   相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
   `after(element)` 及其单值 primitive 重载：Browser 从目标 element 的 direct parent 计算
   未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和

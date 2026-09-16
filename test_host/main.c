@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1267
+#define TEST_MAX_NUMBER 1268
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53518,7 +53518,7 @@ static BOOL test1265_browser_document_fragment_replace_children_contract(void)
         "ok=ok&&f.childNodes===nodes&&f.children===elements&&f.childNodes.length===1&&"
         "f.firstChild===anchor&&anchor.parentNode===f;try{f.replaceChildren(anchor,anchor);}"
         "catch(e2){bad|=2;}ok=ok&&f.childNodes.length===1&&f.firstChild===anchor;"
-        "g=document.createDocumentFragment();try{f.replaceChildren(g);}catch(e3){bad|=4;}"
+        "g=f;try{f.replaceChildren(g);}catch(e3){bad|=4;}"
         "ok=ok&&f.childNodes.length===1&&f.firstChild===anchor;live=document.createElement('p');"
         "live.id='replace-live';live.append('L');document.body.appendChild(live);"
         "try{f.replaceChildren(live);}catch(e4){bad|=8;}"
@@ -53642,6 +53642,71 @@ static BOOL test1267_browser_document_fragment_replace_child_fragment_contract(v
             " fragment at the old-child position, preserves wrapper and"
             " collection identity, consumes the source on success and keeps"
             " both fragments unchanged on capacity or self-replacement failure.");
+    return TRUE;
+}
+
+/* TEST 1268 - bounded fragment-to-fragment composition. */
+static BOOL test1268_browser_document_fragment_composition_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var result=document.getElementById('result'),f,src,anchor,a,b,c,d,e,old,"
+        "nodes,elements,srcNodes,srcElements,ret,full,big,p,q,r,s,u,mix,before,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();nodes=f.childNodes;elements=f.children;"
+        "src=document.createDocumentFragment();srcNodes=src.childNodes;srcElements=src.children;"
+        "a=document.createElement('a');a.id='compose-a';b=document.createElement('b');b.id='compose-b';"
+        "src.append(a,b);ret=f.appendChild(src);ok=ok&&ret===src&&f.childNodes===nodes&&"
+        "f.children===elements&&src.childNodes===srcNodes&&src.children===srcElements&&"
+        "src.childNodes.length===0&&f.childNodes.length===2&&f.childNodes[0]===a&&"
+        "f.childNodes[1]===b&&a.parentNode===f&&b.parentNode===f;anchor=document.createElement('i');"
+        "anchor.id='compose-anchor';f.appendChild(anchor);src=document.createDocumentFragment();"
+        "c=document.createElement('c');src.append(c);"
+        "ret=f.insertBefore(src,anchor);ok=ok&&ret===src&&src.childNodes.length===0&&"
+        "f.childNodes.length===4&&f.childNodes[0]===a&&f.childNodes[1]===b&&"
+        "f.childNodes[2]===c&&f.childNodes[3]===anchor&&c.parentNode===f;"
+        "old=f.firstChild;f.replaceChildren();ok=ok&&old.parentNode===null&&"
+        "f.childNodes.length===0;src=document.createDocumentFragment();e=document.createElement('e');"
+        "src.appendChild(e);ret=f.append(src);ok=ok&&ret===undefined&&src.childNodes.length===0&&"
+        "f.lastChild===e&&e.parentNode===f;"
+        "src=document.createDocumentFragment();src.append('prefix');ret=f.prepend(src);"
+        "ok=ok&&ret===undefined&&src.childNodes.length===0&&f.firstChild.data==='prefix'&&"
+        "f.firstChild.parentNode===f;old=f.firstChild;src=document.createDocumentFragment();"
+        "p=document.createElement('p');q=document.createElement('q');src.append(p,q);"
+        "ret=f.replaceChildren(src);ok=ok&&ret===undefined&&src.childNodes.length===0&&"
+        "old.parentNode===null&&f.childNodes===nodes&&f.children===elements&&"
+        "f.childNodes.length===2&&f.childNodes[0]===p&&f.childNodes[1]===q&&"
+        "p.parentNode===f&&q.parentNode===f;src=document.createDocumentFragment();"
+        "ret=f.replaceChildren(src);ok=ok&&ret===undefined&&f.childNodes.length===0&&"
+        "src.childNodes.length===0;full=document.createDocumentFragment();"
+        "p=document.createElement('p');q=document.createElement('q');r=document.createElement('r');"
+        "s=document.createElement('s');full.append(p,q,r,s);big=document.createDocumentFragment();"
+        "u=document.createElement('u');big.append(u);before=full.childNodes;try{full.appendChild(big);}"
+        "catch(e1){bad|=1;}ok=ok&&full.childNodes===before&&full.childNodes.length===4&&"
+        "full.firstChild===p&&big.childNodes.length===1&&big.firstChild===u&&u.parentNode===big;"
+        "try{full.insertBefore(big,p);}catch(e2){bad|=2;}ok=ok&&full.childNodes.length===4&&"
+        "big.childNodes.length===1&&big.firstChild===u;try{full.replaceChildren(full);}"
+        "catch(e3){bad|=4;}ok=ok&&full.childNodes.length===4&&full.firstChild===p;"
+        "mix=document.createDocumentFragment();m=document.createElement('m');mix.append(m);"
+        "try{f.append(mix,'text');}catch(e4){bad|=8;}ok=ok&&f.childNodes.length===0&&"
+        "mix.childNodes.length===1&&mix.firstChild===m&&m.parentNode===mix;"
+        "try{full.append(full);}catch(e5){bad|=16;}ok=ok&&full.childNodes.length===4&&"
+        "full.firstChild===p;}catch(e){ok=false;}result.textContent=String(ok&&bad===31);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-composition", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1268 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1268 OK",
+            "DocumentFragment composition now consumes a bounded source"
+            " fragment for appendChild, insertBefore, append, prepend and"
+            " replaceChildren, while mixed arguments, self-use and capacity"
+            " failures remain atomic and fail closed.");
     return TRUE;
 }
 
@@ -111927,6 +111992,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1265: ok = test1265_browser_document_fragment_replace_children_contract(); break;
         case 1266: ok = test1266_browser_document_fragment_replace_child_contract(); break;
         case 1267: ok = test1267_browser_document_fragment_replace_child_fragment_contract(); break;
+        case 1268: ok = test1268_browser_document_fragment_composition_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

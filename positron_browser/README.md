@@ -296,15 +296,16 @@ outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
 `document.createDocumentFragment()` 在 Browser 侧建立 bounded staging：最多四个 primitive Text 或
 detached Element/Text 根（Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻）。
-`append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 成功保留 wrapper identity
-并清空；纯文本复用 Ex13/text-list。`cloneNode(false)` 为空，`cloneNode(true)` 复制有界根、属性和
-direct Text，源/副本隔离，连接前修复 id；Fragment-owned Text data 只更新快照。
-`getElementById()` 按根树序查找 Element，忽略 Text，并随 id mutation 与消费清空更新。
+Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 对单一
+源 Fragment 原地消费并保留 collection identity；纯文本复用 Ex13/text-list。`cloneNode(false)` 为空，`cloneNode(true)` 复制有界根、属性和
+direct Text，源/副本隔离，连接前修复 id。
+`getElementById()` 按树序查找 Element，忽略 Text，并随 id mutation/消费更新。
 `querySelector()`/`querySelectorAll()` 复用有界 parser，扫描最多四个 Element 根，返回首个匹配或静态
 NodeList；根不嵌套，空、过长或无匹配返回 `null`/空列表。`children` 是缓存的 `[SameObject]`
 HTMLCollection，随 append/remove/reorder、克隆、消费和清空原地更新，忽略 Text；`item`/`namedItem`。
-relations/namespace、replaceChildren/replaceChild；后者在旧位置展开 0–4 根，清空源；空源移除，
-超容量/自身/失效 owner 失败不变；path64/equality256，余者 fail closed。
+relations/namespace、replaceChildren/replaceChild；后者在旧位置展开 0–4 根，清空源；空源移除。
+组合仅接受单一源 Fragment；混合参数、超容量/自身/失效 owner 失败不变；
+path64/equality256，余者 fail closed。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
@@ -316,8 +317,8 @@ offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复
 和 direct Text child；物化时同步属性/Text。`childNodes`、首尾
 child、`hasChildNodes()` 跟随 direct-Text staging；`style.cssText` 通过 facade 支持三种状态；
 反射 setter（含 `align`）在 detached/removed wrapper 经 facade 暂存，物化后走
-Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、未列入的 Fragment
-consumer、detached handle、事件/资源/observer 和重复/无 id 均 fail closed。关系按 wrapper 身份随物化/移除保持。
+Core。`cloneNode(false/true)` 分别复制属性或 direct Text，克隆保持独立 detached。连接前须有唯一 id；结构标签、嵌套 Element、混合/未知 Fragment
+consumer、detached handle、事件/资源/observer 和重复/无 id 均 fail closed。
 
 遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
 `[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话

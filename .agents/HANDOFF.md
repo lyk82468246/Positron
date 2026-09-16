@@ -90,9 +90,15 @@ next827 设备证据见下文；历史失败不作为依据。
   与 1264–1266 相邻门最终均通过：外置卡自动门 `tmp/device-runs/20260916-120456-next827`
   （5/5）及定向 `tmp/device-runs/20260916-120423-next827`（2/2）零 ERROR/FAIL，日志完整
   回收、双空间预检、清理和 `crash_check` 均通过，新增 dump=0。
+- next828 补齐结构 Fragment 到 Fragment 的有界组合：Fragment 自身的 `appendChild()`、
+  `insertBefore()`、单一 Fragment 参数的 `append()`/`prepend()`/`replaceChildren()` 先
+  预检 ownership、容量和自引用，再原地消费源并保持两边 collection identity；混合参数、
+  重复/失效根和超容量仍 fail closed。TEST1268 与 1264–1267 相邻门最终通过：外置卡自动门
+  `tmp/device-runs/20260916-123718-next828`（6/6）及定向 `tmp/device-runs/20260916-123639-next828`
+  （2/2）零 ERROR/FAIL，日志完整回收、双空间预检、清理和 `crash_check` 均通过，新增 dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1267。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1267,999`。
+- `TEST_MAX_NUMBER` 已为 1268。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1268,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -123,9 +129,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   `DocumentFragment` staging、next819 的 fragment `cloneNode(false/true)`、next820 的
   bounded `getElementById()`、next821 的 bounded fragment selector 查询、next822 的
   SameObject `children` collection、next823 的 id/name 命名属性投影、next824 的 Node
-  关系合同、next825 的 fragment `replaceChildren()`、next826 的 `replaceChild()` 与 next827
-  的 Fragment 展开式 `replaceChild()` 均已完成桌面构建、离线自动断言和正式设备门；下一
-  短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的 next828 用户可见缺口，并把它实现为一项
+  关系合同、next825 的 fragment `replaceChildren()`、next826 的 `replaceChild()`、next827
+  的 Fragment 展开式 `replaceChild()` 与 next828 的 Fragment-to-Fragment 组合均已完成桌面
+  构建、离线自动断言和正式设备门；下一短期目标是从 compatibility corpus、源码或新设备证据
+  中选择一个可复现的 next829 用户可见缺口，并把它实现为一项
   边界清楚的公共 DLL 能力。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
@@ -177,8 +184,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   路径。各路径都保留 detached wrapper、刷新父级 snapshot，并由宿主在成功后重排；
   Browser 现在另支持最多四个 primitive Text 的 text-only `DocumentFragment` staging，及
   最多四个 detached Element/Text 根的 bounded staging；后者可由指定的 Element mutation
-  一次性 parser-backed 消费并保留 staged wrapper identity。通用节点/fragment、超出有界元素
-  约束的 reparent、其他删除、MutationObserver 与完整 live collection 仍未实现。
+  一次性 parser-backed 消费并保留 staged wrapper identity，或在 Fragment 自身上与另一
+  Fragment 做有界组合。通用节点/嵌套 fragment、超出有界元素约束的 reparent、其他删除、
+  MutationObserver 与完整 live collection 仍未实现。
 - Browser 的 `Node.cloneNode(deep)` 返回 Browser-owned detached snapshot：浅/深克隆保留
   有界 element 属性、子节点顺序、parent links 和独立数据，超限或不支持类型 fail closed；
   它不改变 Core 文档、retained layout 或事件 listener。
@@ -231,21 +239,21 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1267。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1267,999`。
+- `TEST_MAX_NUMBER`：1268。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1268,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260916-120456-next827` 是本批最新证据：当前 GUI 连接的仿真器、Debug
-ARMV4I、自动模式选择 `1264-1267,999`，5/5 PASS，零 ERROR/FAIL；外置
+`tmp/device-runs/20260916-123718-next828` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+ARMV4I、自动模式选择 `1264-1268,999`，6/6 PASS，零 ERROR/FAIL；外置
 `\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
 `crash_check` 均 PASS，新增 dump=0。结果记录 `remote_base_selection=external`，目标卷
-可用 `50,893,979,648` 字节，内部 object-store 可用 `2,605,056` 字节；当前部署目录已移除。
+可用 `50,911,576,064` 字节，内部 object-store 可用 `2,603,008` 字节；当前部署目录已移除。
 
-`tmp/device-runs/20260916-120423-next827` 是同一批 TEST1267 的定向证据：自动模式选择
-`1267,999`，2/2 PASS，零 ERROR/FAIL；同样完成完整日志回收、双空间预检、完成后清理和
+`tmp/device-runs/20260916-123639-next828` 是同一批 TEST1268 的定向证据：自动模式选择
+`1268,999`，2/2 PASS，零 ERROR/FAIL；同样完成完整日志回收、双空间预检、完成后清理和
 `crash_check`，新增 dump=0。
 
 更早 next794、Release 启动停滞、WMDC/转储事故和旧配置仅作历史参考，见 Git、`docs/history/`、
@@ -278,9 +286,9 @@ ARMV4I、自动模式选择 `1264-1267,999`，5/5 PASS，零 ERROR/FAIL；外置
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1267 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1268 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
-  DocumentFragment lookup/clone/selector/children/relations/replaceChildren/replaceChild 夹具均已有相邻
+  DocumentFragment lookup/clone/selector/children/relations/replaceChildren/replaceChild/composition 夹具均已有相邻
   设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
   重复维护历史清单。通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME
   仍不在自动门范围。
@@ -353,12 +361,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next828：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next829：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
-相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点/
+相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、
 超出有界元素约束的 reparent、其他删除、
 Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、
