@@ -1106,10 +1106,9 @@ TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`quer
 NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
 组合和消费均 fail closed。设备门 `1260-1261,999`。
 
-TEST1262–1268 覆盖 fragment `children`/id/name、关系和原子 `replaceChildren()`/`replaceChild()`；
-TEST1267 断言展开/空源，TEST1268 断言 Fragment 单源
-append/prepend/appendChild/insertBefore/replaceChildren 消费、identity 以及混合/超容量/self
-失败不变。设备门 `1260-1268,999`。
+TEST1262–1268 覆盖 Fragment collection/relations 与 replace/组合的有界原子语义；1269 覆盖
+tag/class HTMLCollection 快照、命名属性、字符串化及消费后查询。全部用 `1264-1269,999` 门；
+Fragment 不嵌套，live descendant collection 不在承诺内。
 
 ### 手动模式
 

@@ -298,7 +298,14 @@ clone、lookup、selector、`children`/命名属性、Node 关系、原子 `repl
 限制以 [`HANDOFF.md`](HANDOFF.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)
 为准。公共 DLL 仍不暴露 fragment handle，关系预算和 fail-closed 边界也保持稳定。
 
-下一批（next829）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next829 已补齐 Browser-owned `DocumentFragment.getElementsByTagName()`/
+`getElementsByClassName()` 的有界 HTMLCollection 快照：按 staging 顺序查询最多四个非嵌套
+Element 根，支持 tag 大小写折叠、全 class token、`item`/`namedItem` 和 id/name 映射；旧
+快照不随 mutation 改写，新查询和消费后状态保持一致。TEST1269 与 1264–1268 相邻设备门
+通过，完整日志、双空间预检、清理和 crash check 证据见 `HANDOFF.md`。该路径不新增 Core
+查询 ABI，也不声称完整 descendant/live collection。
+
+下一批（next830）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

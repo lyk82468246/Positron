@@ -152,12 +152,11 @@
   Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
-  Fragment 提供 bounded relations/namespace；这些组合操作预检并原子移动，`replaceChild()` 可在
-  旧位置展开最多四根的 Fragment，成功清空源并保持 `SameObject`；空源移除旧节点，失败不变。
-  混合 Fragment 参数、自身、重复/失效 owner、超限、connected、缺失 id、
-  结构标签或上下文 parser fail closed。Ex13–Ex15 的 `replaceChildren()` 仅在既有
-  text/element/typed-child 合同内原子提交；结构 token、对象、错类型/越界、跨父/重复/自身、
-  超限或 callback 缺失 fail closed，失败不变。
+  `getElementsByTagName()`/`getElementsByClassName()` 返回 bounded HTMLCollection 快照，按
+  tag/class token 查询四个以内的非嵌套根；支持 `item`/`namedItem`，完整 descendant/live
+  collection 未实现。Fragment relations/namespace 与 replace/组合由 Browser 预检后原子提交；
+  `replaceChild()` 可展开最多四根并清空源，空源移除旧节点。混合/self/重复/失效/connected/
+  超限/缺失 id/结构冲突以及 Ex13–Ex15 合同外输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/

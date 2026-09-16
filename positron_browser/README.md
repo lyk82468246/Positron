@@ -294,18 +294,17 @@ setter 先让宿主更新或创建该节点，再在宿主未提供扩展时回�
 （Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
 outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
-`document.createDocumentFragment()` 在 Browser 侧建立 bounded staging：最多四个 primitive Text 或
-detached Element/Text 根（Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻）。
-Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 对单一
-源 Fragment 原地消费并保留 collection identity；纯文本复用 Ex13/text-list。`cloneNode(false)` 为空，`cloneNode(true)` 复制有界根、属性和
-direct Text，源/副本隔离，连接前修复 id。
-`getElementById()` 按树序查找 Element，忽略 Text，并随 id mutation/消费更新。
-`querySelector()`/`querySelectorAll()` 复用有界 parser，扫描最多四个 Element 根，返回首个匹配或静态
-NodeList；根不嵌套，空、过长或无匹配返回 `null`/空列表。`children` 是缓存的 `[SameObject]`
-HTMLCollection，随 append/remove/reorder、克隆、消费和清空原地更新，忽略 Text；`item`/`namedItem`。
-relations/namespace、replaceChildren/replaceChild；后者在旧位置展开 0–4 根，清空源；空源移除。
-组合仅接受单一源 Fragment；混合参数、超容量/自身/失效 owner 失败不变；
-path64/equality256，余者 fail closed。
+`document.createDocumentFragment()` 在 Browser 侧建立 bounded staging，最多四个 primitive Text 或
+detached Element/Text 根；Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。
+Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 支持
+单一源 Fragment 的有界消费并保留 collection identity，纯文本仍复用 Ex13。`cloneNode(false/true)`
+提供隔离的空/深克隆，物化前需修复 id；`getElementById()` 按树序忽略 Text。
+`querySelector()`/`querySelectorAll()` 返回扫描最多四根的静态 NodeList。`getElementsByTagName()`/
+`getElementsByClassName()` 每次返回 HTMLCollection 快照，按 tag（不分大小写）或全部 class token
+查询非嵌套根，并支持 `item`/`namedItem` 与 id/name 映射。`children` 是缓存的 `[SameObject]`
+HTMLCollection，随 staging mutation 更新并忽略 Text。relations/namespace、
+`replaceChildren()`/`replaceChild()` 与 Fragment-to-Fragment 组合均有界、原子、失败不变，
+path64/equality256。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。

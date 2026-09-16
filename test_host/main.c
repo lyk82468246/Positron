@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1268
+#define TEST_MAX_NUMBER 1269
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53707,6 +53707,62 @@ static BOOL test1268_browser_document_fragment_composition_contract(void)
             " fragment for appendChild, insertBefore, append, prepend and"
             " replaceChildren, while mixed arguments, self-use and capacity"
             " failures remain atomic and fail closed.");
+    return TRUE;
+}
+
+/* TEST 1269 - bounded DocumentFragment tag/class HTMLCollections. */
+static BOOL test1269_browser_document_fragment_element_collections_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,first,tail,second,third,tags,wild,"
+        "classes,beta,alphaAgain,after,oldTags,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();first=document.createElement('div');"
+        "first.id='collection-div';first.name='collection-name';first.className='alpha beta';"
+        "tail=document.createTextNode('tail');second=document.createElement('span');"
+        "second.id='collection-span';second.className='beta';third=document.createElement('article');"
+        "third.id='collection-article';third.className='alpha';f.append(first,tail,second,third);"
+        "tags=f.getElementsByTagName('dIv');wild=f.getElementsByTagName('*');"
+        "classes=f.getElementsByClassName('alpha beta');beta=f.getElementsByClassName('beta');"
+        "ok=ok&&typeof f.getElementsByTagName==='function'&&"
+        "typeof f.getElementsByClassName==='function'&&tags.length===1&&tags.item(0)===first&&"
+        "tags.item(1)===null&&typeof tags.forEach==='function'&&tags.namedItem('collection-div')===first&&"
+        "tags['collection-div']===first&&wild.length===3&&wild[0]===first&&wild[1]===second&&"
+        "wild[2]===third&&wild.item(3)===null&&wild.namedItem('collection-span')===second&&"
+        "classes.length===1&&classes[0]===first&&classes.namedItem('collection-name')===first&&"
+        "beta.length===2&&beta[0]===first&&beta[1]===second&&"
+        "f.getElementsByTagName('').length===0&&f.getElementsByTagName(null).length===0&&"
+        "f.getElementsByClassName('   ').length===0&&tags!==f.getElementsByTagName('div');"
+        "oldTags=tags;first.className='gamma';alphaAgain=f.getElementsByClassName('alpha');"
+        "ok=ok&&classes.length===1&&classes[0]===first&&beta.length===2&&"
+        "alphaAgain.length===1&&alphaAgain[0]===third&&"
+        "f.getElementsByClassName('gamma').length===1&&"
+        "f.getElementsByClassName('gamma')[0]===first;f.removeChild(first);"
+        "after=f.getElementsByTagName('*');ok=ok&&oldTags.length===1&&oldTags[0]===first&&"
+        "after.length===2&&after[0]===second&&after[1]===third;target.appendChild(f);"
+        "ok=ok&&f.getElementsByTagName('*').length===0&&"
+        "document.getElementById('collection-span')===second&&"
+        "document.getElementById('collection-article')===third;"
+        "try{f.getElementsByTagName({toString:function(){throw 1;}});}catch(e1){bad|=1;}"
+        "}catch(e){ok=false;}result.textContent=String(ok&&bad===1);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-element-collections",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1269 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1269 OK",
+            "DocumentFragment now exposes bounded tag and class HTMLCollection"
+            " snapshots over detached Element roots, including named lookup and"
+            " String coercion, while source mutations and consumption produce"
+            " fresh results without widening the staging graph.");
     return TRUE;
 }
 
@@ -111993,6 +112049,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1266: ok = test1266_browser_document_fragment_replace_child_contract(); break;
         case 1267: ok = test1267_browser_document_fragment_replace_child_fragment_contract(); break;
         case 1268: ok = test1268_browser_document_fragment_composition_contract(); break;
+        case 1269: ok = test1269_browser_document_fragment_element_collections_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
