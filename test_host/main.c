@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1264
+#define TEST_MAX_NUMBER 1265
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53488,6 +53488,56 @@ static BOOL test1264_browser_document_fragment_node_relation_contract(void)
             " document-position and contains relations across staged roots"
             " and descendants, with namespace helpers and disconnected"
             " fail-closed behavior.");
+    return TRUE;
+}
+
+/* TEST 1265 - atomic DocumentFragment replaceChildren staging. */
+static BOOL test1265_browser_document_fragment_replace_children_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var result=document.getElementById('result'),f,other,"
+        "first,second,moved,anchor,live,nodes,elements,oldText,g,bad=0,ok=true,ret;"
+        "try{f=document.createDocumentFragment();first=document.createElement('article');"
+        "first.id='replace-a';first.append('A');second=document.createElement('span');"
+        "second.id='replace-b';second.append('B');f.append(first,second);nodes=f.childNodes;"
+        "elements=f.children;other=document.createDocumentFragment();moved=document.createElement('i');"
+        "moved.id='replace-moved';other.append(moved);ret=f.replaceChildren('x',moved,null);"
+        "ok=ok&&ret===undefined&&f.childNodes===nodes&&f.children===elements&&"
+        "f.childNodes.length===3&&f.childNodes[0].nodeType===3&&f.childNodes[0].data==='x'&&"
+        "f.childNodes[1]===moved&&f.childNodes[2].data==='null'&&f.children.length===1&&"
+        "f.children[0]===moved&&moved.parentNode===f&&moved.getRootNode()===f&&"
+        "other.childNodes.length===0&&first.parentNode===null&&second.parentNode===null;"
+        "oldText=f.firstChild;f.replaceChildren();ok=ok&&f.childNodes===nodes&&"
+        "f.children===elements&&f.childNodes.length===0&&f.children.length===0&&"
+        "oldText.parentNode===null;anchor=document.createElement('p');anchor.id='anchor';"
+        "anchor.append('A');f.append(anchor);nodes=f.childNodes;elements=f.children;"
+        "try{f.replaceChildren(anchor,{});}catch(e1){bad|=1;}"
+        "ok=ok&&f.childNodes===nodes&&f.children===elements&&f.childNodes.length===1&&"
+        "f.firstChild===anchor&&anchor.parentNode===f;try{f.replaceChildren(anchor,anchor);}"
+        "catch(e2){bad|=2;}ok=ok&&f.childNodes.length===1&&f.firstChild===anchor;"
+        "g=document.createDocumentFragment();try{f.replaceChildren(g);}catch(e3){bad|=4;}"
+        "ok=ok&&f.childNodes.length===1&&f.firstChild===anchor;live=document.createElement('p');"
+        "live.id='replace-live';live.append('L');document.body.appendChild(live);"
+        "try{f.replaceChildren(live);}catch(e4){bad|=8;}"
+        "ok=ok&&f.childNodes.length===1&&f.firstChild===anchor&&live.parentNode===document.body;"
+        "live.remove();}catch(e){ok=false;}result.textContent=String(ok&&bad===15);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-replace-children", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1265 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1265 OK",
+            "DocumentFragment replaceChildren now atomically replaces bounded"
+            " staging roots, moves detached nodes from another fragment, keeps"
+            " SameObject collections and rejects duplicate, connected or"
+            " unsupported input without partial mutation.");
     return TRUE;
 }
 
@@ -111770,6 +111820,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1262: ok = test1262_browser_document_fragment_children_contract(); break;
         case 1263: ok = test1263_browser_document_fragment_children_names_contract(); break;
         case 1264: ok = test1264_browser_document_fragment_node_relation_contract(); break;
+        case 1265: ok = test1265_browser_document_fragment_replace_children_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

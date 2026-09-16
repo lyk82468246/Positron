@@ -522,7 +522,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   Browser 按 wrapper identity 维护：`isSameNode()`、有界递归 `isEqualNode()`、`contains()`、
   `compareDocumentPosition()`、`getRootNode()` 和 `null`/XML namespace helper 均不新增 Core
   ABI；关系路径最多 64 层，equality 最多 64 层/256 个节点，未知或 disconnected 节点
-  fail closed。相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
+  fail closed。Fragment 的 `replaceChildren()` 在 Browser 侧预检后原子替换，可移动另一 fragment 的
+  detached 根，不新增 Core fragment ABI。相同的 Ex6 mutation callback 还支持单参数 `Element.before(element)`/
   `after(element)` 及其单值 primitive 重载：Browser 从目标 element 的 direct parent 计算
   未过滤位置，允许同父级重排和跨父级迁移；无 parent、self、detached、非支持对象/节点和
   其他错误参数调用 fail closed。对 element 的 2–4 值 mixed `before()`/`after()`，Browser 先验证

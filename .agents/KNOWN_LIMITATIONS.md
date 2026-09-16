@@ -151,8 +151,8 @@
   Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配输入返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
-  Fragment wrappers 提供 bounded relations 与 `null`/XML namespace；路径最多 64 层、
-  equality 最多 256 个节点，未知/disconnected fail closed；其他通用关系仍未实现。
+  Fragment 提供 bounded relations/namespace；`replaceChildren()` 预检 0–4 项、可跨
+  fragment 移动且失败不变；path64/equality256，未知节点 fail closed；其他关系未实现。
   重复 id 返回首根，物化拒绝。超限、嵌套/connected、重复/缺失 id、
   结构标签或上下文 parser fail closed。Ex13–Ex15 的 `replaceChildren()` 仅在既有
   text/element/typed-child 合同内原子提交；结构 token、对象、错类型/越界、跨父/重复/自身、
@@ -585,7 +585,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1264 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
+- TEST1201–1265 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
   document.write/title；合同见
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或

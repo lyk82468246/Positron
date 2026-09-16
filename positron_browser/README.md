@@ -302,8 +302,8 @@ wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id
 `getElementById()` 按根树序查找 Element，忽略 Text，并随 id mutation 与消费清空更新。
 `querySelector()`/`querySelectorAll()` 复用有界 parser，扫描最多四个 Element 根，返回首个匹配或静态
 NodeList；根不嵌套，空、过长或无匹配返回 `null`/空列表。`children` 是缓存的 `[SameObject]`
-HTMLCollection，随 append/remove/reorder、克隆、消费和清空原地更新，忽略 Text；`item`/`namedItem`
-Fragment wrappers 提供 bounded Node relations；path64/equality256，unknown/disconnected fail closed。
+HTMLCollection，随 append/remove/reorder、克隆、消费和清空原地更新，忽略 Text；`item`/`namedItem`。
+Fragment wrappers 提供 bounded relations、namespace 和原子 `replaceChildren()`；path64/equality256，失败 fail closed。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。
