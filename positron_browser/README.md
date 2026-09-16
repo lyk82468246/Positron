@@ -294,19 +294,17 @@ setter 先让宿主更新或创建该节点，再在宿主未提供扩展时回�
 （Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
 outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
-不执行脚本、资源或 mutation 事件。`document.createDocumentFragment()` 在 Browser 侧建立
-detached staging：最多四个 primitive Text，或最多四个 detached Element/Text 根（Element
-需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻）。复用既有 parser-backed
-`append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()`，成功保留
-wrapper identity 并清空 fragment。纯文本仍复用 Ex13/text-list。`cloneNode(false)` 返回
-空 fragment；`cloneNode(true)` 复制有界根、属性和 direct Text，源/副本隔离，连接前修复
-id；Fragment-owned Text data 写入只更新快照。`getElementById()` 按根的树序查找
-detached Element，忽略 Text，并随 staged id mutation 更新；浅克隆为空，深克隆与源各自
-维护查找结果，fragment 消费后查找为空。`querySelector()`/`querySelectorAll()` 复用有界
-selector parser，按序扫描最多四个 staged Element 根，忽略 Text，返回首个匹配或静态
-NodeList；根不嵌套，组合不扩展搜索树，空、过长或无匹配输入返回 `null`/空列表。
-重复 id 只在 staging 返回首根，物化仍拒绝；无效结构/超限/上下文输入 fail closed；不执行
-脚本、资源或事件，不暴露 Core fragment handle。
+`document.createDocumentFragment()` 在 Browser 侧建立 bounded staging：最多四个 primitive Text，或
+最多四个 detached Element/Text 根（Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻）。
+`append()`/`prepend()`/`insertBefore()`/`appendChild()`/`replaceChildren()` 成功后保留 wrapper identity
+并清空 fragment；纯文本复用 Ex13/text-list。`cloneNode(false)` 为空，`cloneNode(true)` 复制有界根、
+属性和 direct Text，源/副本隔离，连接前修复 id；Fragment-owned Text data 写入只更新快照。
+`getElementById()` 按根树序查找 Element，忽略 Text，并随 id mutation 与消费清空更新。
+`querySelector()`/`querySelectorAll()` 复用有界 parser，扫描最多四个 Element 根，返回首个匹配或静态
+NodeList；根不嵌套，空、过长或无匹配返回 `null`/空列表。`children` 是缓存的 `[SameObject]`
+HTMLCollection，随 append/remove/reorder、克隆、消费和清空原地更新，忽略 Text；`item`/`namedItem`
+与 first/last/childElementCount 一致。重复 id 可在 staging 返回首根，物化仍拒绝；无效结构/超限/
+输入 fail closed，不执行脚本、资源或事件，也不暴露 Core handle。
 
 `document.createTextNode(value)` 创建 detached Text；支持插入、移除、重插入、
 clone 及 `appendData()`、`insertData()`、`deleteData()`、`replaceData()`、`substringData()`。

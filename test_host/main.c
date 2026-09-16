@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1261
+#define TEST_MAX_NUMBER 1262
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53325,6 +53325,63 @@ static BOOL test1261_browser_document_fragment_selector_contract(void)
             " bounded detached Element roots in order, expose static NodeLists,"
             " follow root attribute changes and keep clone/source lookups"
             " isolated before materialization.");
+    return TRUE;
+}
+
+/* TEST 1262 - bounded DocumentFragment children SameObject/live collection. */
+static BOOL test1262_browser_document_fragment_children_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,first,tail,second,children,"
+        "clone,cloneChildren,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();first=document.createElement('article');"
+        "first.id='frag-first';second=document.createElement('span');"
+        "second.id='frag-second';tail=document.createTextNode('tail');"
+        "f.append(first,tail,second);}catch(e){ok=false;}"
+        "children=f.children;"
+        "ok=ok&&children===f.children&&children.length===2&&"
+        "children.item(0)===first&&children.item(1)===second&&"
+        "children.item(2)===null&&children.namedItem('frag-first')===first&&"
+        "f.firstElementChild===first&&f.lastElementChild===second&&"
+        "f.childElementCount===2;"
+        "f.removeChild(first);"
+        "ok=ok&&children===f.children&&children.length===1&&"
+        "children[0]===second&&f.firstElementChild===second&&"
+        "f.lastElementChild===second&&children.namedItem('frag-first')===null;"
+        "f.insertBefore(first,second);"
+        "ok=ok&&children.length===2&&children[0]===first&&children[1]===second&&"
+        "children===f.children;"
+        "clone=f.cloneNode(true);cloneChildren=clone.children;"
+        "ok=ok&&cloneChildren===clone.children&&cloneChildren!==children&&"
+        "cloneChildren.length===2&&cloneChildren[0]!==first&&"
+        "cloneChildren[1]!==second;"
+        "try{target.appendChild(clone);}catch(e2){bad|=1;}"
+        "ok=ok&&bad===0&&cloneChildren===clone.children&&"
+        "cloneChildren.length===0&&children.length===2&&"
+        "f.children===children&&f.firstElementChild===first;"
+        "f.remove();"
+        "ok=ok&&f.children===children&&children.length===0&&"
+        "f.firstElementChild===null&&f.lastElementChild===null&&"
+        "f.childElementCount===0&&children.namedItem('frag-first')===null;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-children", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1262 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1262 OK",
+            "DocumentFragment children now exposes a SameObject HTMLCollection"
+            " that tracks bounded Element roots through staging, reordering,"
+            " cloning, consumption and clearing.");
     return TRUE;
 }
 
@@ -111604,6 +111661,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1259: ok = test1259_browser_document_fragment_clone_contract(); break;
         case 1260: ok = test1260_browser_document_fragment_lookup_contract(); break;
         case 1261: ok = test1261_browser_document_fragment_selector_contract(); break;
+        case 1262: ok = test1262_browser_document_fragment_children_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

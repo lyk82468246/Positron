@@ -1089,26 +1089,26 @@ Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展�
 选择 `1256,1257,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
 check。
 
-TEST1258 覆盖 Browser-owned `DocumentFragment` 的 bounded Element/Text staging：最多四个
-detached 根经既有 Core parser 原子物化，`appendChild()`/Element reference 的 `insertBefore()`/
-`replaceChildren()` 保留 wrapper、id lookup、顺序和 snapshot。Element 需唯一非空 id、至多
-一个 direct Text；相邻顶层 Text、嵌套/connected、重复/缺失 id、结构/超限在 mutation 前
-拒绝且不消费 fragment。纯文本仍走 Ex13/text-list；不执行 script/资源/事件或暴露 Core
-fragment handle。设备门选择 `1240-1258,999`。
+TEST1258 覆盖 Browser-owned `DocumentFragment` bounded Element/Text staging：最多四个 detached
+根经 Core parser 原子物化；append/prepend/insertBefore/appendChild/replaceChildren 保留 wrapper
+和顺序并在成功后消费。Element 需唯一非空 id、至多一个 direct Text；相邻顶层 Text、嵌套/
+connected、重复/缺失 id、结构/超限和副作用输入 fail closed。纯文本走 Ex13/text-list。设备门
+`1240-1258,999`。
 
-TEST1259 覆盖 `DocumentFragment.cloneNode(false/true)`：浅克隆为空，深克隆复制有界
-Element/Text 根、属性和 direct Text，源/副本的 wrapper、数据和 owner 隔离；修复唯一 id 后
-可复用 `appendChild()` parser 物化，缺失 id 在提交前拒绝。Fragment-owned Text 的 data
-只改 detached 快照。设备门选择 `1240-1259,999`。
+TEST1259 覆盖 fragment clone：浅克隆为空，深克隆复制有界根/属性/direct Text，源/副本 wrapper、
+data、owner 隔离；修复 id 后可物化，缺失 id 和不支持节点在提交前拒绝。设备门
+`1240-1259,999`。
 
-TEST1260 验证 `getElementById()`：四个以内根按序返回 Element；Text/空/未知 id
-返回 `null`，id mutation、clone 隔离、消费清空、重复 id 拒绝不改目标树。设备门
-`1258-1260,999`。
+TEST1260 验证 bounded `getElementById()`：最多四个根按树序返回 Element，忽略 Text；id mutation、
+clone 隔离、消费清空和重复 id 拒绝均有断言。设备门 `1258-1260,999`。
 
-TEST1261 验证 fragment `querySelector()`/`querySelectorAll()`：四个根按序复用有界
-parser，返回首个匹配或静态 NodeList，忽略 Text；compound/comma
-id/class/attribute 查询随 mutation 和深克隆隔离。空/过长/后代组合/无匹配不产生 mutation，
-消费后为空；设备门选择 `1260-1261,999`。
+TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`querySelectorAll()` 返回按序
+静态 NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
+组合和消费均 fail closed。设备门 `1260-1261,999`。
+
+TEST1262 验证 fragment `children` 的 `[SameObject]`：同一 HTMLCollection 随最多四个根的
+append/remove/reorder、深克隆、消费和 clear 原地更新，忽略 Text；`item`/`namedItem` 与
+first/last/childElementCount 一致。设备门 `1261-1262,999`。
 
 ### 手动模式
 
