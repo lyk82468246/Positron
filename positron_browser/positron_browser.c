@@ -3676,6 +3676,113 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "enumerable:true,configurable:true});return e;}"
         "d.createElement=function(){return decorate(create.apply(d,arguments));};})(this);";
 
+    /* Browser-owned Text nodes already share the CharacterData mutators from
+     * P11C, but their structural Text API must not disappear merely because
+     * the node has not been materialized by Core yet.  This installer keeps
+     * the implementation in the Browser DLL: detached nodes mutate locally,
+     * live regular Elements use the existing bounded Core callbacks, and
+     * Fragment/staged-Element cases reject operations that would exceed their
+     * deliberately small staging model. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE[] =
+        "(function(g){var d=g.document,P=g.__pcorePElement,oldCreate;"
+        "if(!d||!P||typeof d.createTextNode!=='function'){return;}"
+        "oldCreate=d.createTextNode;"
+        "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}"
+        "function E(n){return !!(n&&n.__pcoreCreatedElement804&&n.nodeType===1);}"
+        "function owner(n){return T(n)&&n.__pcoreOwner803?n.__pcoreOwner803:null;}"
+        "function list(n){var p=owner(n),a=null;"
+        "if(!p){return null;}if(p.__fragment16){a=p.__children16;}"
+        "else if(E(p)&&!p.__attached804){a=p.__children804;}"
+        "else{try{a=p.childNodes;}catch(e){a=null;}}"
+        "return a&&typeof a.length==='number'?a:null;}"
+        "function current(n){var p=owner(n),a=list(n),i=n&&n.__pcoreIndex803;"
+        "return !!(p&&a&&i>=0&&i<a.length&&a[i]===n&&"
+        "(!p.__pcoreDetached11||p.__fragment16||E(p)));}"
+        "function indexOf(a,n){var i;if(!a){return -1;}"
+        "for(i=0;i<a.length;i++){if(a[i]===n){return i;}}return -1;}"
+        "function value(n){var v;if(T(n)){return String(n.__data803);}"
+        "try{v=n.data;return String(v===undefined?(n.nodeValue===null?'':n.nodeValue):v);}"
+        "catch(e){return '';}}"
+        "function append(a,b){var s=String(b);if(a.length+s.length>65535){"
+        "throw new Error('wholeText limit');}return a+s;}"
+        "function offset(v,l){var a=Number(v);if(a!==a||!isFinite(a)||a<0||"
+        "a!==Math.floor(a)||a>l){throw new Error('text data offset');}return a;}"
+        "function decorateList(a){return typeof g.__pcoreDecorateCollection13==='function'?"
+        "g.__pcoreDecorateCollection13(a,'NodeList',false):a;}"
+        "function reindex(p,a){var i,x;for(i=0;i<a.length;i++){x=a[i];"
+        "if(x&&x.__owner11===p){x.__index11=i;}"
+        "if(T(x)&&owner(x)===p){x.__pcoreIndex803=i;}}"
+        "p.__nodes11=decorateList(a);p.__children9=null;}"
+        "function clear(n){if(!T(n)){return;}n.__pcoreOwner803=null;"
+        "n.__pcoreIndex803=-1;n.__owner11=null;n.__index11=-1;}"
+        "function whole(n){var p=owner(n),a,start,end,i,s='';"
+        "if(!p||!current(n)){return value(n);}a=list(n);i=indexOf(a,n);"
+        "if(i<0){return value(n);}start=i;end=i;"
+        "while(start>0&&a[start-1]&&a[start-1].nodeType===3){start--;}"
+        "while(end+1<a.length&&a[end+1]&&a[end+1].nodeType===3){end++;}"
+        "for(i=start;i<=end;i++){s=append(s,value(a[i]));}return s;}"
+        "function splitLive(n,p,s,a,idx,at){var ok,next,i,out=[];"
+        "if(typeof g.__pcoreSetText!=='function'||typeof g.__pcoreNodeAt11!=='function'||"
+        "typeof p.__id!=='string'||p.__id===''||p.__pcoreDetached11){"
+        "throw new Error('splitText unavailable');}"
+        "try{ok=g.__pcoreSetText({op:'splitText',parentId:p.__id,index:idx,offset:at});}"
+        "catch(e){ok=false;}if(!ok){throw new Error('splitText update failed');}"
+        "next=g.__pcoreNodeAt11(p,idx+1);if(!next||next.nodeType!==3){"
+        "if(typeof g.__pcoreInvalidateDomCaches==='function'){g.__pcoreInvalidateDomCaches(p.__id);}"
+        "throw new Error('splitText wrapper unavailable');}n.__data803=s.substring(0,at);"
+        "for(i=0;i<a.length;i++){out.push(a[i]);if(i===idx){out.push(next);}}"
+        "n.__pcoreOwner803=p;n.__pcoreIndex803=idx;n.__owner11=p;n.__index11=idx;"
+        "reindex(p,out);return next;}"
+        "function split(n,v){var s,at,p,a,idx;"
+        "if(!T(n)){throw new Error('splitText unavailable');}s=String(n.__data803);"
+        "at=offset(v,s.length);p=owner(n);if(!p){n.__data803=s.substring(0,at);"
+        "return d.createTextNode(s.substring(at));}"
+        "if(p.__fragment16||E(p)){throw new Error('splitText unavailable');}"
+        "if(!current(n)){throw new Error('splitText unavailable');}a=list(n);idx=indexOf(a,n);"
+        "if(idx<0){throw new Error('splitText unavailable');}return splitLive(n,p,s,a,idx,at);}"
+        "function replaceFragment(n,p,s){var a=p.__children16,start,end,i,x,out=[];"
+        "if(!a||!current(n)){throw new Error('replaceWholeText unavailable');}"
+        "i=indexOf(a,n);if(i<0){throw new Error('replaceWholeText unavailable');}"
+        "start=i;end=i;while(start>0&&T(a[start-1])){start--;}"
+        "while(end+1<a.length&&T(a[end+1])){end++;}"
+        "for(i=0;i<a.length;i++){if(i<start||i>end){out.push(a[i]);}"
+        "else if(i===start){out.push(n);if(a[i]!==n){clear(a[i]);}}"
+        "else if(a[i]!==n){clear(a[i]);}}"
+        "n.__data803=s;a.length=0;for(i=0;i<out.length;i++){a[i]=out[i];x=a[i];"
+        "if(T(x)){x.__pcoreOwner803=p;x.__pcoreIndex803=i;x.__owner11=p;x.__index11=i;}"
+        "else if(E(x)){x.__fragmentIndex16=i;}}p.__nodes11=a;"
+        "if(typeof g.__pcoreRefreshFragment16==='function'){g.__pcoreRefreshFragment16(p);}"
+        "return n;}"
+        "function replaceLive(n,p,s,a,idx){var start=idx,end=idx,i,x,ok,out=[];"
+        "while(start>0&&a[start-1]&&a[start-1].nodeType===3){start--;}"
+        "while(end+1<a.length&&a[end+1]&&a[end+1].nodeType===3){end++;}"
+        "if(typeof g.__pcoreSetText!=='function'||typeof p.__id!=='string'||"
+        "p.__id===''||p.__pcoreDetached11){throw new Error('replaceWholeText unavailable');}"
+        "try{ok=g.__pcoreSetText({op:'replaceWholeText',parentId:p.__id,index:idx,text:s});}"
+        "catch(e){ok=false;}if(!ok){throw new Error('replaceWholeText update failed');}"
+        "for(i=0;i<a.length;i++){x=a[i];if(i<start||i>end){out.push(x);}"
+        "else if(i===start){out.push(n);if(x!==n){if(T(x)){clear(x);}"
+        "else if(x){x.__pcoreDetached11=true;}}}else if(x!==n){if(T(x)){clear(x);}"
+        "else if(x){x.__pcoreDetached11=true;}}}n.__data803=s;"
+        "n.__pcoreOwner803=p;n.__owner11=p;n.__pcoreIndex803=start;n.__index11=start;"
+        "reindex(p,out);return n;}"
+        "function replace(n,v){var p,s,a;"
+        "if(!T(n)){throw new Error('replaceWholeText unavailable');}s=String(v);"
+        "if(s.length>65535){throw new Error('text node limit');}p=owner(n);"
+        "if(!p){n.__data803=s;return n;}if(p.__fragment16){return replaceFragment(n,p,s);}"
+        "if(E(p)){if(!p.__attached804){if(!current(n)){throw new Error('replaceWholeText unavailable');}"
+        "n.__data803=s;return n;}throw new Error('replaceWholeText unavailable');}"
+        "if(!current(n)){throw new Error('replaceWholeText unavailable');}a=list(n);"
+        "if(!a){throw new Error('replaceWholeText unavailable');}return replaceLive(n,p,s,a,indexOf(a,n));}"
+        "function decorate(n){var oldClone;if(!T(n)||n.__textMethods840){return n;}"
+        "n.__textMethods840=true;Object.defineProperty(n,'wholeText',{get:function(){"
+        "return whole(n);},enumerable:true});oldClone=n.cloneNode;"
+        "n.cloneNode=function(){return decorate(oldClone.apply(n,arguments));};"
+        "n.splitText=function(v){return split(n,v);};"
+        "n.replaceWholeText=function(v){return replace(n,v);};return n;}"
+        "d.createTextNode=function(){return decorate(oldCreate.apply(d,arguments));};"
+        "})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -7587,6 +7694,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }

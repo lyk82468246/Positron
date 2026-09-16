@@ -1105,9 +1105,9 @@ TEST1278 验证 bounded Fragment 中 detached Element 的四个 sibling getter�
 Text，element-sibling 跳过 Text；重排、移除、parser-backed 消费和物化后 live 移除同步关系、
 owner 与 wrapper identity，未归属返回 `null`。门 `1278,999`，相邻 `1277-1278,999`。
 
-TEST1279 验证 Browser-owned Text/Comment 的 element-sibling：detached、Fragment staging 与
-live/removal 均按 `childNodes` 顺序跳过非 Element，未归属返回 `null`，wrapper identity 保持；
-门 `1279,999`，相邻 `1278-1279,999`。
+TEST1279/1280 覆盖 Text/Comment element-sibling、Text
+`wholeText`/`splitText()`/`replaceWholeText()`；验证 identity、UTF-16、
+超限和 staging fail-closed，live 路径复用 Core，不新增 ABI。相邻门 `1279-1280,999`。
 
 ### 手动模式
 

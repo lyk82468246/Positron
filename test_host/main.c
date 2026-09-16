@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1279
+#define TEST_MAX_NUMBER 1280
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54257,6 +54257,81 @@ static BOOL test1279_browser_character_data_element_sibling_contract(void)
             " previous/next element-sibling views in staged and live parents;"
             " Text reordering, fragment materialization and comment removal"
             " preserve null and identity semantics.");
+    return TRUE;
+}
+
+/* TEST 1280 - Browser-owned Text character-data structural methods. */
+static BOOL test1280_browser_created_text_character_data_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='root'><span id='boundary'>B</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,u=String.fromCharCode(0xd83d,0xde00),"
+        "n,s,c,large='',bad=0,f,fa,fb,fe,et,liveA,liveB,liveC,tail,"
+        "root=document.getElementById('root'),boundary=document.getElementById('boundary'),"
+        "result=document.getElementById('result'),ok=true,i;"
+        "n=d.createTextNode('A'+u+'B');"
+        "if(!n||n.wholeText!=='A'+u+'B'||n.length!==4||"
+        "typeof n.splitText!=='function'||typeof n.replaceWholeText!=='function'||"
+        "Object.getOwnPropertyDescriptor(n,'wholeText').set!==undefined)ok=false;"
+        "s=n.splitText(3);if(!s||s.nodeType!==3||s.data!=='B'||"
+        "n.data!=='A'+u||n.wholeText!=='A'+u||s.wholeText!=='B'||"
+        "s.parentNode!==null)ok=false;"
+        "c=n.cloneNode(false);if(!c||c===n||c.data!==n.data||"
+        "typeof c.splitText!=='function'||c.wholeText!==n.data)ok=false;"
+        "try{n.splitText(-1);}catch(e1){bad|=1;}"
+        "try{n.splitText(1.5);}catch(e2){bad|=2;}"
+        "try{n.splitText(9);}catch(e3){bad|=4;}"
+        "n.replaceWholeText('detached');if(n.data!=='detached'||"
+        "s.data!=='B')ok=false;"
+        "while(large.length<65536){large+='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';}"
+        "try{n.replaceWholeText(large);}"
+        "catch(e4){bad|=8;}if(n.data!=='detached')ok=false;"
+        "f=d.createDocumentFragment();fa=d.createTextNode('one');"
+        "fb=d.createTextNode('two');fe=d.createElement('i');fe.id='frag-el';"
+        "f.append(fa,fb,fe);if(fa.wholeText!=='onetwo'||fb.wholeText!=='onetwo')ok=false;"
+        "try{fa.splitText(1);}catch(e5){bad|=16;}"
+        "fb.replaceWholeText('joined');if(f.childNodes.length!==2||"
+        "f.firstChild!==fb||fb.data!=='joined'||fa.parentNode!==null||"
+        "fb.wholeText!=='joined')ok=false;"
+        "et=d.createTextNode('inside');fe.appendChild(et);"
+        "try{et.splitText(2);}catch(e6){bad|=32;}et.replaceWholeText('changed');"
+        "if(et.data!=='changed'||fe.textContent!=='changed')ok=false;"
+        "liveA=d.createTextNode('alpha');liveB=d.createTextNode('beta');"
+        "root.insertBefore(liveA,boundary);root.insertBefore(liveB,boundary);"
+        "if(liveA.wholeText!=='alphabeta'||liveB.wholeText!=='alphabeta')ok=false;"
+        "liveB.replaceWholeText('X'+u+'Y');if(root.childNodes[0]!==liveB||"
+        "liveB.data!=='X'+u+'Y'||liveB.parentNode!==root||liveA.parentNode!==null||"
+        "liveB.wholeText!=='X'+u+'Y')ok=false;"
+        "liveB.remove();if(liveB.parentNode!==null||root.childNodes[0]!==boundary)ok=false;"
+        "liveC=d.createTextNode('tail');root.insertBefore(liveC,boundary);"
+        "tail=liveC.splitText(2);if(!tail||tail.nodeType!==3||liveC.data!=='ta'||"
+        "tail.data!=='il'||liveC.wholeText!=='tail'||"
+        "tail.wholeText!=='tail'||"
+        "root.childNodes[0]!==liveC||root.childNodes[1]!==tail)ok=false;"
+        "c=liveC.cloneNode(false);if(!c||c===liveC||c.data!=='ta'||"
+        "typeof c.replaceWholeText!=='function')ok=false;"
+        "liveC.replaceWholeText('Z');if(root.childNodes[0]!==liveC||"
+        "root.childNodes[1]!==boundary||liveC.data!=='Z'||"
+        "tail.parentNode!==null||liveB.parentNode!==null||liveC.wholeText!=='Z')ok=false;"
+        "result.textContent=String(ok&&bad===63);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-text-character-data", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1280 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1280 OK",
+            "Browser-owned Text wrappers now expose bounded wholeText,"
+            "splitText and replaceWholeText semantics. Detached and live"
+            "regular-Element paths preserve UTF-16 identity and rollback"
+            "on invalid input; Fragment and staged-Element split operations"
+            "fail closed while replacement stays local and bounded.");
     return TRUE;
 }
 
@@ -112554,6 +112629,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1277: ok = test1277_browser_fragment_text_content_contract(); break;
         case 1278: ok = test1278_browser_detached_element_sibling_contract(); break;
         case 1279: ok = test1279_browser_character_data_element_sibling_contract(); break;
+        case 1280: ok = test1280_browser_created_text_character_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
