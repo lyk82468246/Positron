@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1263
+#define TEST_MAX_NUMBER 1264
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53431,6 +53431,63 @@ static BOOL test1263_browser_document_fragment_children_names_contract(void)
             "DocumentFragment children now keeps bounded id/name named"
             " properties non-enumerable and read-only while staging nodes"
             " are renamed, removed, cloned, consumed or cleared.");
+    return TRUE;
+}
+
+/* TEST 1264 - bounded DocumentFragment Node identity and relations. */
+static BOOL test1264_browser_document_fragment_node_relation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var result=document.getElementById('result'),f,g,empty,"
+        "first,firstText,tail,last,ok=true;"
+        "f=document.createDocumentFragment();first=document.createElement('article');"
+        "first.id='frag-first';first.setAttribute('data-kind','card');"
+        "firstText=document.createTextNode('A');first.appendChild(firstText);"
+        "tail=document.createTextNode('tail');last=document.createElement('span');"
+        "last.id='frag-last';last.append('B');f.append(first,tail,last);"
+        "empty=f.cloneNode(false);g=f.cloneNode(true);"
+        "ok=ok&&f.isSameNode(f)&&!f.isSameNode(g)&&f.isEqualNode(f)&&"
+        "f.isEqualNode(g)&&g.isEqualNode(f)&&empty.isEqualNode(empty)&&"
+        "empty.isEqualNode(f)===false&&f.getRootNode()===f&&"
+        "first.getRootNode()===f&&firstText.getRootNode()===f&&"
+        "f.contains(f)&&f.contains(first)&&f.contains(firstText)&&"
+        "f.contains(tail)&&f.contains(last)&&!f.contains(g)&&"
+        "!f.contains(null)&&f.compareDocumentPosition(f)===0&&"
+        "f.compareDocumentPosition(first)===20&&"
+        "first.compareDocumentPosition(f)===10&&"
+        "f.compareDocumentPosition(tail)===20&&"
+        "first.compareDocumentPosition(tail)===4&&"
+        "tail.compareDocumentPosition(first)===2&&"
+        "first.contains(firstText)&&!first.contains(last)&&"
+        "f.compareDocumentPosition(g)===33&&"
+        "f.isDefaultNamespace(null)&&f.isDefaultNamespace(undefined)&&"
+        "!f.isDefaultNamespace('http://www.w3.org/1999/xhtml')&&"
+        "f.lookupNamespaceURI(null)===null&&"
+        "f.lookupNamespaceURI('xml')==='http://www.w3.org/XML/1998/namespace'&&"
+        "f.lookupPrefix('http://www.w3.org/XML/1998/namespace')==='xml'&&"
+        "f.lookupPrefix('http://www.w3.org/1999/xhtml')===null;"
+        "first.id='renamed';ok=ok&&!f.isEqualNode(g)&&"
+        "g.isEqualNode(g)&&tail.isEqualNode(g.childNodes[1]);"
+        "f.removeChild(tail);ok=ok&&!f.contains(tail)&&"
+        "f.compareDocumentPosition(tail)===33&&f.isEqualNode(g)===false;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-node-relations", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1264 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1264 OK",
+            "DocumentFragment now exposes bounded Node identity, equality,"
+            " document-position and contains relations across staged roots"
+            " and descendants, with namespace helpers and disconnected"
+            " fail-closed behavior.");
     return TRUE;
 }
 
@@ -111712,6 +111769,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1261: ok = test1261_browser_document_fragment_selector_contract(); break;
         case 1262: ok = test1262_browser_document_fragment_children_contract(); break;
         case 1263: ok = test1263_browser_document_fragment_children_names_contract(); break;
+        case 1264: ok = test1264_browser_document_fragment_node_relation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
