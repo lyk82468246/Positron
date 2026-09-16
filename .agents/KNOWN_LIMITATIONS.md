@@ -161,7 +161,9 @@
   text-only 有界原子 staging，保留 childNodes/owner；attached `textContent` 同步重建 Text
   wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
   textContent staging；markup、超长和 detached `outerHTML` setter 在 mutation 前拒绝。
-  Fragment relations/namespace 与 replace/组合由 Browser 预检原子提交；
+  Fragment 的 `textContent` setter 先做 String/65,535 字符预检再原地替换；失败保留旧子树和
+  collection identity。Fragment
+  relations/namespace 与 replace/组合由 Browser 预检原子提交；
   `replaceChild()` 可展开最多四根并清空源，空源移除旧节点；不支持输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
@@ -585,9 +587,6 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1272 已覆盖有界 DOM/CharacterData、HTML/fragment、detached/属性、
-  document.write/title；合同见
-  [`docs/TESTING.md`](../docs/TESTING.md)。
 - TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
   组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
   `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由

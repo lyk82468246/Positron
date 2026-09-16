@@ -305,12 +305,14 @@ Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`repl
 `getElementsByClassName()` 返回 bounded HTMLCollection，支持 tag/class/namespace、`item`/
 `namedItem` 与 id/name 映射。`children` 是缓存 HTMLCollection，随 staging mutation 更新并
 忽略 Text。relations/namespace、
-`replaceChildren()`/`replaceChild()` 与 Fragment-to-Fragment 组合均有界、原子、失败不变，
+`replaceChildren()`/`replaceChild()` 与 Fragment 组合均有界、原子、失败不变，
+Fragment `textContent=` 先做 String/容量预检再原地替换；失败保留旧树/collection identity，
+成功 detach 旧节点，
 detached `normalize()` 删除空 Text、合并相邻 Text，限 Element 64 个
-Text/Fragment 四根；不支持节点和超限输入在 mutation 前 fail closed。
+Text/Fragment 四根；不支持/超限输入 fail closed。
 
-`document.createTextNode(value)` 创建 detached Text；支持插入、移除、clone 和 CharacterData
-mutator，offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复用 Core。
+`document.createTextNode(value)` 创建 detached Text，支持插入/移除/clone 与 CharacterData
+mutator；offset/count 按 UTF-16 校验，connected 复用 Core。
 
 `document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
 `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后可
@@ -318,9 +320,8 @@ mutator，offset/count 按 UTF-16 code unit 校验；detached 更新快照，con
 `childNodes` 随 staging。
 `attributes` 返回稳定 bounded `NamedNodeMap`；`get/set/removeAttributeNode*`、Attr
 value/namespace/iteration 和跨 owner value-copy 复用 facade，不创建 detached Core handle。
-style/reflected setter 在 detached/removed 暂存，物化后走 Core；`cloneNode` 复制属性/Text，
-连接须有 id。
-`textContent` 保留 `childNodes`；旧 Text detached，超限不变。
+style/reflected setter 暂存，物化走 Core；`cloneNode` 复制属性/Text 且连接须有 id。
+`textContent` 保持 childNodes，超限不变。
 
 遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
 `[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话

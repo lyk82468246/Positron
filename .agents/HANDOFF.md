@@ -97,11 +97,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - next836 补齐 detached Element 的 text-only `innerHTML`/`outerHTML` 序列化与 staging：属性和
   direct Text 使用 bounded escaping，markup、超长输入和 detached `outerHTML` replacement
   在 mutation 前 fail closed；连接 wrapper 仍委托既有 Core HTML 路径。TEST1276 与
-  `1275-1276,999` 门通过，证据为 `tmp/device-runs/20260916-163005-next836`，完整日志、
-  双空间预检、清理和 crash check 均通过，新增 dump=0。
+  `1275-1276,999` 门通过，证据为 `tmp/device-runs/20260916-163005-next836`。
+- next837 修正 Browser-owned `DocumentFragment.textContent=` 的失败原子性：先做 String/容量
+  预检，再用 bounded replacement 提交；超限不清空旧节点，成功保持 `childNodes`/`children`
+  identity 并 detach 旧 Text/Element。TEST1277 与 `1276-1277,999` 门通过，证据为
+  `tmp/device-runs/20260916-165605-next837`；日志、双空间预检、清理、crash check PASS，dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1276。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1276,999`。
+- `TEST_MAX_NUMBER` 已为 1277。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1277,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -128,10 +131,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
   和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- next817–next836 的 document.title、DocumentFragment staging/组合、Node 关系、集合快照、
+- next817–next837 的 document.title、DocumentFragment staging/组合、Node 关系、集合快照、
   detached normalize/replaceChildren/replaceChild、Attr/NamedNodeMap facade、textContent
-  同步与 text-only HTML facade 均已完成构建、断言和设备门；下一步固定可复现的 next837
-  缺口并进入公共 DLL。
+  同步、text-only HTML facade 与 Fragment textContent 原子替换均已完成构建、断言和设备门；
+  下一步固定可复现的 next838 缺口并进入公共 DLL。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -239,19 +242,18 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1276。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1276,999`。
+- `TEST_MAX_NUMBER`：1277。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1277,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260916-163005-next836` 是本批最新证据：Debug ARMV4I
-`1275-1276,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-定向 `tmp/device-runs/20260916-162909-next836` 的 `1276,999` 也为 2/2 PASS。
+`tmp/device-runs/20260916-165605-next837` 是本批最新证据：Debug ARMV4I
+`1276-1277,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+定向 `tmp/device-runs/20260916-165508-next837` 的 `1277,999` 也为 2/2 PASS。
 
-旧失败与配置仅作历史参考，见 Git、`docs/history/`、`FAILED_EXPERIMENTS.md` 与 `tmp/`；
-不完整日志不算通过。
+不完整日志不算通过；旧失败由 Git 与历史文档保留。
 
 ## 当前人工验收状态
 
@@ -279,10 +281,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1276 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1277 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
-  detached Element HTML serialization 夹具均已有相邻
+  detached Element HTML serialization、Fragment textContent 原子替换夹具均已有相邻
   设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
   重复维护历史清单。通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME
   仍不在自动门范围。
@@ -355,7 +357,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next837：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next838：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

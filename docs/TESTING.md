@@ -1100,17 +1100,17 @@ clone、消费和重复 id 均有断言。设备门 `1258-1260,999`。
 TEST1261 验证 fragment selector 的首个匹配、静态 NodeList、属性 mutation、深克隆、无效/空/
 过长输入和后代组合的 fail-closed 行为。设备门 `1260-1261,999`。
 
-TEST1262–1270 覆盖 Fragment 集合/关系/replace/组合与 tag/class/NS HTMLCollection；相邻门
-用 `1264-1270,999`。
-
 TEST1271–1275 验证 detached `Node.normalize()`、Element `replaceChildren()`/
 `replaceChild()`、Attr/NamedNodeMap 与 `textContent`：Text 删除/合并、原子替换、集合/
 Attr identity、namespace、跨 owner copy、attached wrapper 同步和超限不变。门为
 `1271-1275,999`。
 
-TEST1276 验证 detached Element 的 text-only HTML serialization/staging：属性/Text escaping、
-`childNodes` identity 与 markup/超限/detached outerHTML fail-closed。门为 `1276,999`，
-相邻回归为 `1275-1276,999`。
+TEST1276 验证 detached Element text-only HTML serialization/staging：escaping、childNodes
+identity 和 markup/limit/outerHTML fail-closed；门 `1276,999`，相邻 `1275-1276,999`。
+
+TEST1277 验证 Fragment `textContent=` 原子性：65,535 字符超限预检保留
+`childNodes`/`children`/owner，成功替换保持集合 identity 并 detach 节点，`null`→`"null"`。
+门 `1277,999`，相邻 `1276-1277,999`。
 
 ### 手动模式
 

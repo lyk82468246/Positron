@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1276
+#define TEST_MAX_NUMBER 1277
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54105,6 +54105,50 @@ static BOOL test1276_browser_detached_element_html_contract(void)
             " text-only serialization and atomic staging; markup, oversized"
             " input and detached outerHTML replacement remain fail-closed."
             " Connected wrappers continue through the existing Core path.");
+    return TRUE;
+}
+
+/* TEST 1277 - atomic DocumentFragment textContent staging. */
+static BOOL test1277_browser_fragment_text_content_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,nodes,elements,old,large='',bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();old=document.createTextNode('old');"
+        "f.append(old);nodes=f.childNodes;elements=f.children;"
+        "while(large.length<65536){large+='x';}try{f.textContent=large;}"
+        "catch(x1){bad|=1;}ok=ok&&nodes===f.childNodes&&elements===f.children&&"
+        "nodes.length===1&&nodes[0]===old&&old.parentNode===f&&f.textContent==='old';"
+        "f.textContent='new & value';ok=ok&&nodes===f.childNodes&&elements===f.children&&"
+        "nodes.length===1&&nodes[0]!==old&&nodes[0].data==='new & value'&&"
+        "old.parentNode===null&&f.textContent==='new & value';"
+        "e=document.createElement('article');e.id='fragment-text-element';e.append('E');"
+        "f.replaceChildren(e);ok=ok&&nodes===f.childNodes&&nodes.length===1&&"
+        "nodes[0]===e&&e.parentNode===f;f.textContent=null;ok=ok&&"
+        "nodes===f.childNodes&&elements===f.children&&nodes.length===1&&"
+        "nodes[0]!==e&&nodes[0].data==='null'&&e.parentNode===null&&"
+        "f.textContent==='null';f.textContent='';ok=ok&&nodes.length===0&&"
+        "f.firstChild===null;f.textContent='again';old=f.firstChild;"
+        "try{f.textContent=large;}catch(x2){bad|=2;}ok=ok&&nodes.length===1&&"
+        "nodes[0]===old&&old.data==='again'&&old.parentNode===f;"
+        "}catch(x){ok=false;}result.textContent=String(ok&&bad===3);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/fragment-text-content", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1277 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1277 OK",
+            "DocumentFragment textContent now preflights conversion and"
+            " capacity before replacing children, preserving collection and"
+            " old-node state on failure while keeping successful replacement"
+            " atomic for text and detached Element staging.");
     return TRUE;
 }
 
@@ -112399,6 +112443,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1274: ok = test1274_browser_detached_element_attribute_node_contract(); break;
         case 1275: ok = test1275_browser_detached_element_text_content_contract(); break;
         case 1276: ok = test1276_browser_detached_element_html_contract(); break;
+        case 1277: ok = test1277_browser_fragment_text_content_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

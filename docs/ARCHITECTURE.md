@@ -280,12 +280,13 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   原父级与 childNodes 索引；空字符串移除目标。Browser 标记旧目标/后代 wrapper 为 detached，
   刷新父级与 id cache，宿主安排后续 style/layout/paint。顶层文本/Comment、多根、结构元素、
   重复/外部冲突 id、非法或超限输入在提交前拒绝；不执行 script、不抓取资源、不派发事件；
-- Browser-owned `DocumentFragment` staging（包括 bounded Text/Element 根、clone、查询、
-  relations 和 Fragment-to-Fragment 组合）由 `positron_browser.dll` 维护；Core 只接收
-  Browser 预检后的 text-list 或 parser-backed 提交，不暴露 fragment handle。Browser 还在
-  detached Element/Fragment 上提供 bounded `Node.normalize()`：最多 64 个 direct Text 或
-  四个 Fragment 根，删除空节点并把相邻 Text 合并到首个 wrapper；嵌套、超限和不支持节点
-  在 mutation 前 fail closed，仍不新增 Core fragment ABI。
+- Browser-owned `DocumentFragment` staging（bounded roots、clone、query、relations、组合）由
+  `positron_browser.dll` 维护；Core 只接收
+  Browser 预检后的 text-list 或 parser-backed 提交，不暴露 fragment handle；并在 detached
+  Element/Fragment 上提供 `Node.normalize()`：最多 64 个 direct Text 或四个 Fragment
+  根，删空并将相邻 Text 合并到首 wrapper；嵌套、超限和不支持节点
+  在 mutation 前 fail closed。Fragment `textContent=` 在 String/65,535 字符预检后原地
+  替换；失败保留旧子树和集合 identity。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
