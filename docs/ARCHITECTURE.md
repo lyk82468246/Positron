@@ -410,9 +410,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   复用 `__pcoreSetText` slot，调用 Core `PCore_NodeCreateElementChildAtById` 按未过滤
   `childNodes` 索引创建空 Element，再同步 staged 属性/Text。移除、重插入和 id rename
   保留 wrapper/alias identity；`childNodes`、首尾 child 和 `hasChildNodes()` 读取跟随
-  这份有界 direct-Text staging。detached Element 的 `replaceChildren()` 只接受 0–4 个
-  primitive/created Text，预检后原子替换并保留 childNodes 与传入 wrapper，可在 detached
-  owner 间移动；连接后复用 live bridge 并同步本地 wrapper，不新增 Core ABI。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
+  这份有界 direct-Text staging。detached Element 的 `replaceChildren()`（0–4 个
+  primitive/created Text）与 `replaceChild()`（单一 created Text/old Text）都先预检、原子
+  替换并保留 childNodes 与 wrapper，可在 detached owner 间移动；连接后复用 live bridge 并
+  同步本地 wrapper，不新增 Core ABI。`cloneNode(false)` 复制属性，`cloneNode(true)` 还复制
   direct Text child；克隆仍是独立的 Browser-owned detached staging，连接源的克隆必须先
   改为唯一 id。其 `style.cssText` setter 也经 wrapper 属性 facade 写入，因而在 detached、
   attached 和 removed wrapper 上保持同一 CSS 声明快照；已暴露的 string、boolean、integer

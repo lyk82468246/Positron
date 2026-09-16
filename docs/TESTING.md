@@ -1108,10 +1108,9 @@ TEST1261 验证 fragment selector 的首个匹配、静态 NodeList、属性 mut
 TEST1262–1270 覆盖 Fragment 集合/关系/replace/组合与 tag/class/NS HTMLCollection；相邻门
 用 `1264-1270,999`。
 
-TEST1271 验证 detached `Node.normalize()`：删空、相邻 Text 合并到首个 wrapper 并保持
-childNodes/owner；TEST1272 验证 detached Element `replaceChildren()`：0–4 个 Text
-原子替换、childNodes 和 wrapper identity、跨 detached owner 移动及失败不变。门为
-`1264-1272,999`。
+TEST1271–1273 验证 detached `Node.normalize()`、Element `replaceChildren()` 与
+`replaceChild()`：删除/合并 Text、0–4 项或单项原子替换，保持 childNodes/wrapper/owner，
+覆盖跨 owner 移动、失败不变和 attached delegation。门为 `1264-1273,999`。
 
 ### 手动模式
 

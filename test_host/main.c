@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1272
+#define TEST_MAX_NUMBER 1273
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53904,6 +53904,59 @@ static BOOL test1272_browser_detached_element_replace_children_contract(void)
             " list atomically, preserves childNodes and supplied wrapper"
             " identity, moves detached Text between owners, and leaves"
             " invalid, duplicate or over-capacity input unchanged.");
+    return TRUE;
+}
+
+/* TEST 1273 - bounded detached Element replaceChild staging. */
+static BOOL test1273_browser_detached_element_replace_child_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),e,other,a,b,c,d,live,nodes,otherNodes,"
+        "ret,bad=0,ok=true;try{e=document.createElement('article');a="
+        "document.createTextNode('A');b=document.createTextNode('B');c="
+        "document.createTextNode('C');e.append(a,b);nodes=e.childNodes;"
+        "ret=e.replaceChild(c,a);ok=ok&&ret===a&&nodes===e.childNodes&&"
+        "nodes.length===2&&nodes[0]===c&&nodes[1]===b&&c.parentNode===e&&"
+        "a.parentNode===null;other=document.createElement('aside');d="
+        "document.createTextNode('D');other.append(d);otherNodes=other.childNodes;"
+        "ret=e.replaceChild(d,b);ok=ok&&ret===b&&nodes===e.childNodes&&"
+        "nodes.length===2&&nodes[0]===c&&nodes[1]===d&&d.parentNode===e&&"
+        "b.parentNode===null&&otherNodes===other.childNodes&&"
+        "otherNodes.length===0&&other.firstChild===null;ret=e.replaceChild(d,d);"
+        "ok=ok&&ret===d&&nodes.length===2&&nodes[0]===c&&nodes[1]===d;"
+        "try{e.replaceChild({},c);}catch(x1){bad|=1;}try{e.replaceChild('x',c);}"
+        "catch(x2){bad|=2;}try{e.replaceChild(c,b);}catch(x3){bad|=4;}"
+        "try{e.replaceChild(e,c);}catch(x4){bad|=8;}ok=ok&&nodes.length===2&&"
+        "nodes[0]===c&&nodes[1]===d&&c.parentNode===e&&d.parentNode===e;"
+        "ret=e.replaceChild(d,c);ok=ok&&ret===c&&nodes===e.childNodes&&"
+        "nodes.length===1&&nodes[0]===d&&d.parentNode===e&&c.parentNode===null;"
+        "ret=e.replaceChild(c,d);ok=ok&&ret===d&&nodes.length===1&&nodes[0]===c&&"
+        "c.parentNode===e&&d.parentNode===null;e.id='detached-replace-child';"
+        "target.appendChild(e);ok=ok&&e.isConnected&&e.textContent==='C';"
+        "ret=e.replaceChild(c,c);ok=ok&&ret===c&&nodes===e.childNodes&&"
+        "nodes.length===1&&nodes[0]===c;live=document.createTextNode('L');"
+        "e.appendChild(live);ret=e.replaceChild(c,live);ok=ok&&ret===live&&"
+        "nodes===e.childNodes&&nodes.length===1&&nodes[0]===c&&"
+        "c.parentNode===e&&live.parentNode===null&&e.textContent==='C';"
+        "}catch(x){ok=false;}result.textContent=String(ok&&bad===15);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-replace-child", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1273 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1273 OK",
+            "detached Element replaceChild now performs bounded text-only"
+            " replacement atomically, preserves childNodes and wrapper"
+            " identity, moves detached Text between owners, and delegates"
+            " attached calls through the current live Node implementation.");
     return TRUE;
 }
 
@@ -112194,6 +112247,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1270: ok = test1270_browser_document_fragment_namespace_collections_contract(); break;
         case 1271: ok = test1271_browser_detached_normalize_contract(); break;
         case 1272: ok = test1272_browser_detached_element_replace_children_contract(); break;
+        case 1273: ok = test1273_browser_detached_element_replace_child_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

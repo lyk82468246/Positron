@@ -311,13 +311,13 @@ localName 查询，沿既有 Document/Element 合同处理 String coercion、命
 消费后的清空。TEST1270 与 1264–1269 相邻设备门通过，未新增 Core 查询 ABI，完整证据见
 `HANDOFF.md`。
 
-next831 已补齐 detached Element/DocumentFragment 的 bounded `Node.normalize()`；next832 已补齐
-detached Element 的 text-only `replaceChildren()`：0–4 个 primitive/created Text 原子替换，
-保留 childNodes/传入 wrapper，并可跨 detached owner 移动 Text；两项均不新增 Core ABI。
-TEST1271/1272 与 1264–1272 相邻自动设备门通过；Element 仍限 64 个 direct Text、Fragment
+next831/832 已补齐 detached Element/DocumentFragment 的 `Node.normalize()` 与 Element
+text-only `replaceChildren()`；next833 再补齐 detached Element 的 `replaceChild()`：单一
+created Text/old Text 原子替换，保留 childNodes/wrapper，可跨 detached owner 移动，attached
+调用委托当前 live Node，且不新增 Core ABI。TEST1271–1273 与 1264–1273 相邻自动设备门通过；Element 仍限 64 个 direct Text、Fragment
 限四个根，嵌套/超限/不支持输入在 mutation 前 fail closed。
 
-下一批（next833）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+下一批（next834）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque
