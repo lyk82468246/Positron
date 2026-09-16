@@ -1107,8 +1107,9 @@ NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无
 组合和消费均 fail closed。设备门 `1260-1261,999`。
 
 TEST1262–1268 覆盖 Fragment collection/relations 与 replace/组合的有界原子语义；1269 覆盖
-tag/class HTMLCollection 快照、命名属性、字符串化及消费后查询。全部用 `1264-1269,999` 门；
-Fragment 不嵌套，live descendant collection 不在承诺内。
+tag/class HTMLCollection 快照，1270 覆盖 `getElementsByTagNameNS()` 的 namespace 过滤、
+通配符、大小写、coercion、命名属性和快照/消费。
+相邻门用 `1264-1270,999`；Fragment 不嵌套，descendant collection 不在承诺内。
 
 ### 手动模式
 

@@ -305,7 +305,13 @@ Element 根，支持 tag 大小写折叠、全 class token、`item`/`namedItem` 
 通过，完整日志、双空间预检、清理和 crash check 证据见 `HANDOFF.md`。该路径不新增 Core
 查询 ABI，也不声称完整 descendant/live collection。
 
-下一批（next830）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next830 已补齐 Browser-owned `DocumentFragment.getElementsByTagNameNS()` 的有界
+HTMLCollection 快照：在最多四个非嵌套 Element 根中按 HTML namespace、通配符和大小写敏感
+localName 查询，沿既有 Document/Element 合同处理 String coercion、命名属性、静态快照以及
+消费后的清空。TEST1270 与 1264–1269 相邻设备门通过，未新增 Core 查询 ABI，完整证据见
+`HANDOFF.md`。
+
+下一批（next831）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

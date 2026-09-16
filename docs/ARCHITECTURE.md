@@ -500,8 +500,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   的 text-list 或 parser-backed fragment 提交。existing node、嵌套/通用 fragment、超出
   bounded clone 的结构以及 mutation event/资源副作用都不进入 Core ABI。完整 live collection、
   事件和 observer 不在边界内；Fragment 的 `getElementsByTagName()`/
-  `getElementsByClassName()` 只由 Browser 对最多四个非嵌套 Element 根生成 bounded HTMLCollection
-  快照，不新增 Core 查询 ABI。Fragment、staged Element/Text 及其深克隆的 Node 关系由
+  `getElementsByClassName()`/`getElementsByTagNameNS()` 只由 Browser 对最多四个非嵌套
+  Element 根生成 bounded HTMLCollection 快照。NS 版本沿现有 Document/Element 合同处理
+  HTML namespace、通配符、大小写和 fail-closed namespace，不新增 Core 查询 ABI。Fragment、
+  staged Element/Text 及其深克隆的 Node 关系由
   Browser 按 wrapper identity 维护：`isSameNode()`、有界递归 `isEqualNode()`、`contains()`、
   `compareDocumentPosition()`、`getRootNode()` 和 `null`/XML namespace helper 均不新增 Core
   ABI；关系预算为 path64/equality256，未知或 disconnected 节点 fail closed。Fragment 的

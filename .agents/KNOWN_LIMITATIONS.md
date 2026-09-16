@@ -128,7 +128,8 @@
 
 ## DOM、表单与事件
 
-- IDL reflection、namespace、observer、range、shadow DOM 不支持。
+- 通用 namespace 创建/树语义、observer、range、shadow DOM 及大部分 IDL reflection 不支持；
+  仅列出的 HTML/XML 查询可用。
 - Browser/Core 只支持有界 DOM mutation：`textContent`/非编辑 `innerText`、CharacterData
   setter/mutator、`Text.splitText()`/`wholeText`/`replaceWholeText()`、`Node.normalize()`，
   Ex2/Ex3 的 Text/Comment/CDATA direct-child removal，以及 Ex4–Ex13 的 existing-element/
@@ -152,11 +153,12 @@
   Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
-  `getElementsByTagName()`/`getElementsByClassName()` 返回 bounded HTMLCollection 快照，按
-  tag/class token 查询四个以内的非嵌套根；支持 `item`/`namedItem`，完整 descendant/live
-  collection 未实现。Fragment relations/namespace 与 replace/组合由 Browser 预检后原子提交；
-  `replaceChild()` 可展开最多四根并清空源，空源移除旧节点。混合/self/重复/失效/connected/
-  超限/缺失 id/结构冲突以及 Ex13–Ex15 合同外输入均 fail closed。
+  `getElementsByTagName()`/`getElementsByClassName()`/`getElementsByTagNameNS()` 返回 bounded
+  HTMLCollection，按 tag/class 或 namespace/localName 查最多四根；NS 承诺 HTML namespace、
+  通配符、大小写 localName 与 null/未知 fail closed；支持
+  `item`/`namedItem`，完整 live collection 未实现。
+  Fragment relations/namespace 与 replace/组合由 Browser 预检原子提交；
+  `replaceChild()` 可展开最多四根并清空源，空源移除旧节点；不支持输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
   成功插入 live Element 后保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/

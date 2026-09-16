@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1269
+#define TEST_MAX_NUMBER 1270
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53763,6 +53763,58 @@ static BOOL test1269_browser_document_fragment_element_collections_contract(void
             " snapshots over detached Element roots, including named lookup and"
             " String coercion, while source mutations and consumption produce"
             " fresh results without widening the staging graph.");
+    return TRUE;
+}
+
+/* TEST 1270 - bounded DocumentFragment namespace HTMLCollections. */
+static BOOL test1270_browser_document_fragment_namespace_collections_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,first,tail,second,all,divs,wild,"
+        "nullNs,emptyNs,missing,upper,coerced,old,after,bad=0,ok=true;"
+        "try{f=document.createDocumentFragment();first=document.createElement('div');"
+        "first.id='namespace-div';first.name='namespace-name';tail=document.createTextNode('tail');"
+        "second=document.createElement('span');second.id='namespace-span';f.append(first,tail,second);"
+        "all=f.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','*');"
+        "divs=f.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','div');"
+        "wild=f.getElementsByTagNameNS('*','span');"
+        "nullNs=f.getElementsByTagNameNS(null,'div');emptyNs=f.getElementsByTagNameNS('','div');"
+        "missing=f.getElementsByTagNameNS('urn:missing','*');upper=f.getElementsByTagNameNS('http://www.w3.org/1999/xhtml','DIV');"
+        "coerced=f.getElementsByTagNameNS({toString:function(){return 'http://www.w3.org/1999/xhtml';}},"
+        "{toString:function(){return 'div';}});"
+        "ok=ok&&typeof f.getElementsByTagNameNS==='function'&&"
+        "all.length===2&&all.item(0)===first&&all.item(1)===second&&all.item(2)===null&&"
+        "all.namedItem('namespace-span')===second&&all['namespace-div']===first&&"
+        "typeof all.forEach==='function'&&divs.length===1&&divs[0]===first&&"
+        "wild.length===1&&wild[0]===second&&nullNs.length===0&&emptyNs.length===0&&"
+        "missing.length===0&&upper.length===0&&coerced.length===1&&coerced[0]===first;"
+        "try{f.getElementsByTagNameNS({toString:function(){throw 1;}},'div');}catch(e1){bad|=1;}"
+        "try{f.getElementsByTagNameNS('*',{toString:function(){throw 1;}});}catch(e2){bad|=2;}"
+        "old=all;f.removeChild(first);after=f.getElementsByTagNameNS('*','*');"
+        "ok=ok&&old.length===2&&after.length===1&&after[0]===second;target.appendChild(f);"
+        "ok=ok&&f.getElementsByTagNameNS('*','*').length===0&&"
+        "document.getElementById('namespace-span')===second;"
+        "}catch(e){ok=false;}result.textContent=String(ok&&bad===3);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-namespace-collections",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1270 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1270 OK",
+            "DocumentFragment now exposes bounded namespace-aware"
+            " HTMLCollection snapshots with wildcard and coercion rules"
+            " matching the existing Document/Element contract; null or"
+            " unknown namespaces fail closed, and old snapshots survive"
+            " staging mutation and consumption.");
     return TRUE;
 }
 
@@ -112050,6 +112102,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1267: ok = test1267_browser_document_fragment_replace_child_fragment_contract(); break;
         case 1268: ok = test1268_browser_document_fragment_composition_contract(); break;
         case 1269: ok = test1269_browser_document_fragment_element_collections_contract(); break;
+        case 1270: ok = test1270_browser_document_fragment_namespace_collections_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

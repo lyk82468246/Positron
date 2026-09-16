@@ -300,8 +300,9 @@ Fragment 自身的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/`repl
 单一源 Fragment 的有界消费并保留 collection identity，纯文本仍复用 Ex13。`cloneNode(false/true)`
 提供隔离的空/深克隆，物化前需修复 id；`getElementById()` 按树序忽略 Text。
 `querySelector()`/`querySelectorAll()` 返回扫描最多四根的静态 NodeList。`getElementsByTagName()`/
-`getElementsByClassName()` 每次返回 HTMLCollection 快照，按 tag（不分大小写）或全部 class token
-查询非嵌套根，并支持 `item`/`namedItem` 与 id/name 映射。`children` 是缓存的 `[SameObject]`
+`getElementsByClassName()`/`getElementsByTagNameNS()` 每次返回 HTMLCollection 快照：前两者按
+tag（不分大小写）或全部 class token 查询，NS 版本按 namespace/localName 规则查询非嵌套根；
+支持 `item`/`namedItem` 与 id/name 映射。`children` 是 `[SameObject]`
 HTMLCollection，随 staging mutation 更新并忽略 Text。relations/namespace、
 `replaceChildren()`/`replaceChild()` 与 Fragment-to-Fragment 组合均有界、原子、失败不变，
 path64/equality256。
