@@ -319,7 +319,13 @@ text-only `replaceChildren()`；next833 再补齐 detached Element 的 `replaceC
 1271–1275 相邻自动设备门通过；Element 仍限 64 个 direct Text、Fragment 限四个根，嵌套/
 超限/不支持输入在 mutation 前 fail closed。
 
-下一批（next836）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next836 补齐 detached Element 的 text-only `innerHTML`/`outerHTML` facade：属性和 direct
+Text 采用 bounded HTML escaping，`innerHTML` 纯文本 setter 保留原子 `textContent` staging，
+markup、超长输入和 detached `outerHTML` replacement 在 mutation 前拒绝；connected wrapper
+继续委托既有 Core-backed getter/setter。TEST1276 与 `1275-1276,999` 相邻门通过，未新增
+Core ABI；嵌套 Element/完整 detached parser 仍不在本批次范围。
+
+下一批（next837）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

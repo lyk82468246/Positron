@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1275
+#define TEST_MAX_NUMBER 1276
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54062,6 +54062,49 @@ static BOOL test1275_browser_detached_element_text_content_contract(void)
             " preserving childNodes and clearing old owners; attached updates"
             " rebuild stable Text wrappers and reject over-limit input without"
             " losing the current DOM state.");
+    return TRUE;
+}
+
+/* TEST 1276 - bounded detached Element HTML serialization/staging. */
+static BOOL test1276_browser_detached_element_html_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),e,nodes,old,tooLong='',ok=true,bad=0;"
+        "try{e=document.createElement('article');e.setAttribute('id','html-stage');"
+        "e.setAttribute('title','A & \" <');e.append('A & < B');"
+        "ok=ok&&e.innerHTML==='A &amp; &lt; B'&&"
+        "e.outerHTML==='<article id=\"html-stage\" title=\"A &amp; &quot; &lt;\">"
+        "A &amp; &lt; B</article>';nodes=e.childNodes;old=e.firstChild;"
+        "e.innerHTML='plain & value';ok=ok&&nodes===e.childNodes&&nodes.length===1&&"
+        "e.innerHTML==='plain &amp; value'&&old.parentNode===null;"
+        "try{e.innerHTML='<b>markup</b>';}catch(x1){bad|=1;}"
+        "ok=ok&&e.innerHTML==='plain &amp; value'&&nodes[0]===e.firstChild;"
+        "while(tooLong.length<65536){tooLong+='x';}"
+        "try{e.innerHTML=tooLong;}catch(x2){bad|=2;}"
+        "try{e.outerHTML='x';}catch(x3){bad|=4;}"
+        "ok=ok&&nodes.length===1&&e.firstChild.data==='plain & value';"
+        "e.id='html-live';target.appendChild(e);ok=ok&&e.isConnected&&"
+        "typeof e.innerHTML==='string'&&typeof e.outerHTML==='string'&&"
+        "e.outerHTML.indexOf('<article')===0;"
+        "}catch(x){ok=false;}result.textContent=String(ok&&bad===7);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-html", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1276 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1276 OK",
+            "detached Element innerHTML/outerHTML now expose bounded"
+            " text-only serialization and atomic staging; markup, oversized"
+            " input and detached outerHTML replacement remain fail-closed."
+            " Connected wrappers continue through the existing Core path.");
     return TRUE;
 }
 
@@ -112355,6 +112398,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1273: ok = test1273_browser_detached_element_replace_child_contract(); break;
         case 1274: ok = test1274_browser_detached_element_attribute_node_contract(); break;
         case 1275: ok = test1275_browser_detached_element_text_content_contract(); break;
+        case 1276: ok = test1276_browser_detached_element_html_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

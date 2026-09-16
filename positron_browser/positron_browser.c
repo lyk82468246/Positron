@@ -3611,6 +3611,50 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "e.cloneNode=function(deep){return decorate(clone0.call(e,deep));};return e;}"
         "d.createElement=function(){return decorate(create.apply(d,arguments));};})(this);";
 
+    /* Detached Element HTML uses the same bounded Browser-owned staging as
+     * P14: attributes and direct Text children can be serialized without a
+     * Core handle, while markup input is rejected instead of pretending that
+     * a second parser exists.  Connected wrappers continue to delegate to
+     * the existing Core-backed innerHTML/outerHTML descriptors. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE[] =
+        "(function(g){var d=g.document,P=g.__pcorePElement,create,oldInner,oldOuter;"
+        "if(!d||!P||typeof d.createElement!=='function'){return;}create=d.createElement;"
+        "oldInner=Object.getOwnPropertyDescriptor(P.prototype,'innerHTML');"
+        "oldOuter=Object.getOwnPropertyDescriptor(P.prototype,'outerHTML');"
+        "function E(e){return !!(e&&e.__pcoreCreatedElement804&&e.nodeType===1);}"
+        "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}"
+        "function add(a,b){var s=String(b);if(a.length+s.length>65535){"
+        "throw new Error('HTML serialization limit');}return a+s;}"
+        "function esc(v,attribute){var s=String(v),o='',i,c;"
+        "if(s.length>65535){throw new Error('HTML serialization limit');}"
+        "for(i=0;i<s.length;i++){c=s.charAt(i);if(c==='&'){o=add(o,'&amp;');}"
+        "else if(c==='<'){o=add(o,'&lt;');}else if(c==='>'){o=add(o,'&gt;');}"
+        "else if(attribute&&c==='\"'){o=add(o,'&quot;');}else{o=add(o,c);}}return o;}"
+        "function voidTag(t){return (' area br col embed hr img input link meta param source track wbr ').indexOf(' '+t+' ')>=0;}"
+        "function inner(e){var a=e.__children804,o='',i,n;if(!a||a.length>64){"
+        "throw new Error('HTML serialization unavailable');}for(i=0;i<a.length;i++){n=a[i];"
+        "if(!T(n)){throw new Error('HTML serialization unavailable');}o=add(o,esc(n.__data803,false));}return o;}"
+        "function outer(e){var a=e.__attrs804,t=e.__tag804,o='<',i,x;"
+        "if(!a||a.length>64||typeof t!=='string'||t===''){throw new Error('HTML serialization unavailable');}"
+        "o=add(o,t);for(i=0;i<a.length;i++){x=a[i];if(!x||typeof x.name!=='string'||typeof x.value!=='string'){"
+        "throw new Error('HTML serialization unavailable');}o=add(o,' '+esc(x.name,true)+'=\"'+esc(x.value,true)+'\"');}"
+        "o=add(o,'>');if(voidTag(t)){return o;}o=add(o,inner(e));o=add(o,'</'+t+'>');return o;}"
+        "function decorate(e){if(!E(e)||e.__htmlFacade836){return e;}e.__htmlFacade836=true;"
+        "Object.defineProperty(e,'innerHTML',{get:function(){if(e.__attached804){"
+        "if(!oldInner||typeof oldInner.get!=='function'){throw new Error('innerHTML unavailable');}"
+        "return oldInner.get.call(e.__actual804||e);}return inner(e);},set:function(v){var s=String(v);"
+        "if(e.__attached804){if(!oldInner||typeof oldInner.set!=='function'){throw new Error('innerHTML unavailable');}"
+        "return oldInner.set.call(e.__actual804||e,v);}if(s.length>65535){throw new Error('innerHTML limit');}"
+        "if(s.indexOf('<')>=0||s.indexOf('>')>=0){throw new Error('detached HTML markup unavailable');}"
+        "e.textContent=s;},enumerable:true,configurable:true});"
+        "Object.defineProperty(e,'outerHTML',{get:function(){if(e.__attached804){"
+        "if(!oldOuter||typeof oldOuter.get!=='function'){throw new Error('outerHTML unavailable');}"
+        "return oldOuter.get.call(e.__actual804||e);}return outer(e);},set:function(v){"
+        "if(e.__attached804){if(!oldOuter||typeof oldOuter.set!=='function'){throw new Error('outerHTML unavailable');}"
+        "return oldOuter.set.call(e.__actual804||e,v);}throw new Error('detached outerHTML update unavailable');},"
+        "enumerable:true,configurable:true});return e;}"
+        "d.createElement=function(){return decorate(create.apply(d,arguments));};})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -7512,6 +7556,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }

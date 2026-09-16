@@ -1045,15 +1045,13 @@ TEST1252 覆盖 detached `document.createElement()` 的 `CSSStyleDeclaration.css
 detached wrapper 的 `style.cssText=` 必须通过 Browser 属性 facade 写入并可被 property getter
 读取；`setProperty()` 追加后，物化到 live Element、再次赋值、移除后再赋值和清空都必须保持
 同一 style snapshot。该修补不改变 CSS declaration 的有界解析、Core ABI 或通用节点语义。
-设备门选择 `1251,1252,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
-check。
+设备门 `1251,1252,999`。
 
 TEST1253 覆盖 detached `document.createElement()` 的 reflected attribute setter。`align` 与
 现有 string、boolean、integer、非负 length 反射在未物化 wrapper 上必须写入同一属性 facade，
 并在物化、live mutation、移除后的再次写入中保持 getter、raw attribute 和连接状态一致；
 非整数 integer 与负 length 在写入前拒绝且不改变旧值。该路径不新增 Core ABI，不扩展嵌套
-Element、通用 Node/Fragment、事件、资源或视觉语义。设备门选择 `1252,1253,999`，确认
-Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
+Element、通用 Node/Fragment、事件、资源或视觉语义。设备门 `1252,1253,999`。
 
 TEST1254 覆盖 NetSurf compatibility corpus 的 `idl-treatnullas-emptystring.html` 所需
 `HTMLBodyElement.text` 反射。带 `text` attribute 的 `body.text` 必须读回原值；赋值 `null`
@@ -1061,8 +1059,7 @@ TEST1254 覆盖 NetSurf compatibility corpus 的 `idl-treatnullas-emptystring.ht
 转换；随后通过 `setAttribute()`/`removeAttribute()` 的变化也必须被 getter 观察到。夹具
 同时验证现有 `option.text` 行为不回归，普通非 body 元素的 `text` 仍安全返回/拒绝。该门
 只增加 Browser 属性语义，不新增 Core ABI 或 deprecated presentation-color、通用 DOM
-扩展；设备门选择 `1253,1254,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后
-清理和 crash check。
+扩展；设备门 `1253,1254,999`。
 
 TEST1255 覆盖 Browser session 内 `document.cookie` 的有界解析。夹具断言属性空格修剪、
 合法整数 `Max-Age`（正数/非法值保留，`<=0` 删除）、空值删除、`hasOwnProperty` 与
@@ -1077,8 +1074,7 @@ TEST1256 覆盖 Browser `document.write()`/`document.writeln()` 的有界脚本�
 Core 的 `PCore_NodeInsertHTMLAfterScriptByIndex()`；Core 在 fragment parser 前先对带
 tag-name boundary 的 ASCII 大小写不敏感 `<script...` 起始 token fail closed，再复用
 16,384 字节、256 节点、64 层和 id 冲突预算，不抓取资源、不派发 mutation 事件。无
-callback、无效索引、非法 UTF-8 或超限输入均 fail closed。设备门选择 `1236-1239,1244-1256,999`，
-需确认同一批 DLL、完整日志、双空间预检、完成后清理和 crash check。
+callback、无效索引、非法 UTF-8 或超限输入均 fail closed。设备门 `1236-1239,1244-1256,999`。
 
 TEST1257 覆盖 Core-backed `document.title` metadata。第一段直接调用
 `PCore_DocumentTitle`/`PCore_DocumentSetTitle`，检查实体解码后的 UTF-8 文本、size
@@ -1086,8 +1082,7 @@ probe 与截断、首个 title 替换，以及没有 title 时在现有 head 下
 `PBrowserScriptDomReadCallbacksEx`/`PBrowserScriptDomWriteCallbacksEx13` 验证 Browser
 getter/setter 与同一 Core 文档一致，`null` 仍按 JavaScript `String` 转换。title 不使用
 Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展时 Browser 保留局部回退。设备门
-选择 `1256,1257,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
-check。
+`1256,1257,999`。
 
 TEST1258 覆盖 Browser-owned `DocumentFragment` bounded Element/Text staging：最多四个 detached
 根经 Core parser 物化；append/prepend/insertBefore/appendChild/replaceChildren 保留 wrapper、
@@ -1112,6 +1107,10 @@ TEST1271–1275 验证 detached `Node.normalize()`、Element `replaceChildren()`
 `replaceChild()`、Attr/NamedNodeMap 与 `textContent`：Text 删除/合并、原子替换、集合/
 Attr identity、namespace、跨 owner copy、attached wrapper 同步和超限不变。门为
 `1271-1275,999`。
+
+TEST1276 验证 detached Element 的 text-only HTML serialization/staging：属性/Text escaping、
+`childNodes` identity 与 markup/超限/detached outerHTML fail-closed。门为 `1276,999`，
+相邻回归为 `1275-1276,999`。
 
 ### 手动模式
 

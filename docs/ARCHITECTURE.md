@@ -397,7 +397,8 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   out-of-range，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和
   单独 stepMismatch 安全不匹配；
 - live、ID-addressable Element 的 `innerHTML`/`outerHTML` getter；序列化遍历和 escaping
-  由 Core relation 51/52 拥有，Browser 不复制 libdom 子树。`innerHTML` setter 由 Browser
+  由 Core relation 51/52 拥有，Browser 不复制 libdom 子树；detached Element 另有 text-only
+  属性/direct-Text 序列化 facade。`innerHTML` setter 由 Browser
   write Ex8 调用 Core 的 parser-backed replacement；`insertAdjacentHTML()` 由 Ex9 调用
   同一 parser，在四个位置插入片段。成功后 Browser 刷新有界 wrapper/snapshot 并交给
   宿主安排 style/layout/paint；`outerHTML` setter 由 Ex10 调用同一 parser，完成单根替换或
@@ -427,7 +428,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   Fragment、通用 detached Core handle、事件、资源和 observer 不属于该边界。
   `textContent` setter 在 detached 状态原子替换并保留 `childNodes` SameObject、清理旧
   Text owner；attached 状态在 Core 更新后同步重建当前 Text wrapper，并在容量错误时保持
-  旧状态。
+  旧状态。detached wrapper 的 `innerHTML`/`outerHTML` 只对属性和 direct Text 做 bounded
+  escaping；`innerHTML` setter 仅接受纯文本并复用 staging，markup、超长输入和 detached
+  `outerHTML` replacement 在 mutation 前拒绝，connected wrapper 继续委托 Core descriptor。
 - Browser 的 DOM attribute adapter 还为 live `HTMLBodyElement.text` 提供遗留属性投影：getter
   反映 `text` attribute，缺失时返回空字符串；setter 对 `null` 采用
   `[TreatNullAs=EmptyString]`，其他输入按 JavaScript `String` 转换并复用现有 attribute

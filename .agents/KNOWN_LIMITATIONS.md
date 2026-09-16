@@ -159,7 +159,8 @@
   detached `normalize()` 限 64 个 direct Text/四个 Fragment 根，删除空并合并相邻 Text；detached
   Element 的 `replaceChildren()`（0–4 项）、`replaceChild()`（单项）和 `textContent` 均为
   text-only 有界原子 staging，保留 childNodes/owner；attached `textContent` 同步重建 Text
-  wrapper；其他输入在 mutation 前拒绝。
+  wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
+  textContent staging；markup、超长和 detached `outerHTML` setter 在 mutation 前拒绝。
   Fragment relations/namespace 与 replace/组合由 Browser 预检原子提交；
   `replaceChild()` 可展开最多四根并清空源，空源移除旧节点；不支持输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在
@@ -167,7 +168,7 @@
   只含 primitive/created Text 的有界 `append()`/`prepend()`、`nodeValue`/`data`/
   `textContent`/`appendData()`/`insertData()`/`deleteData()`/`replaceData()`/`substringData()`、
   `remove()` 与 `cloneNode()`。四个 offset 方法按 UTF-16 code unit 校验；detached 更新快照，
-  connected 复用 Core callback；不新增 Core ABI 或 detached handle；64 个 direct child、65,535
+  connected 复用 Core callback；64 个 direct child、65,535
   个脚本字符、generic Node、嵌套/不支持的 fragment consumer、含 element/fragment 的未列入
   结构路径和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 是 Browser-owned 的有界 detached staging：标签只接受小写化
@@ -175,12 +176,12 @@
   最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个 direct Text child。Ex11 通过
   `__pcoreSetText` 创建 Core 节点，只能插入 live Element；remove/reinsert/id rename 仍保留
   wrapper/alias identity。`cloneNode(false/true)` 复制属性或 direct Text 且与源隔离，连接前
-  必须修复 id。detached Element 可作 bounded Fragment 根但不能嵌套；无通用 detached
-  Core handle、事件、资源、observer 或完整 live collection，结构/关系/容量错误均 fail
+  必须修复 id。detached Element 可作 bounded Fragment 根但不能嵌套；事件、资源、observer
+  或 live collection，结构/容量错误均 fail
   closed。关系、物化、同父排序和移除后的 `childNodes`、首尾 child、`hasChildNodes()`
   跟随 staging；`children`/`childElementCount` 不表示嵌套元素。`attributes` 是稳定的 bounded
-  `NamedNodeMap`；`get/set/removeAttributeNode*`、Attr value/namespace/iteration 和跨 owner
-  value-copy 共用 facade，不创建 detached Core attr handle。`style.cssText` 与反射 setter
+  `NamedNodeMap`；`get/set/removeAttributeNode*`、value/namespace/iteration 和跨 owner
+  value-copy 共用 facade。`style.cssText` 与反射 setter
   在 detached/removed 状态暂存，物化后走 Core；宿主负责 layout/paint，视觉/触摸/SIP 不由
   该门保证。
 - `HTMLBodyElement.text` 现在提供一个 live、遗留的 `text` attribute 投影：缺失 getter 返回
