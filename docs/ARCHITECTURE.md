@@ -425,6 +425,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   `isSameNode()` 不因空/重复 id 合并，`contains()` 与 `compareDocumentPosition()` 保持
   disconnected 结果；物化、同父排序和移除仍复用同一 wrapper identity。嵌套 Element、
   Fragment、通用 detached Core handle、事件、资源和 observer 不属于该边界。
+  `textContent` setter 在 detached 状态原子替换并保留 `childNodes` SameObject、清理旧
+  Text owner；attached 状态在 Core 更新后同步重建当前 Text wrapper，并在容量错误时保持
+  旧状态。
 - Browser 的 DOM attribute adapter 还为 live `HTMLBodyElement.text` 提供遗留属性投影：getter
   反映 `text` attribute，缺失时返回空字符串；setter 对 `null` 采用
   `[TreatNullAs=EmptyString]`，其他输入按 JavaScript `String` 转换并复用现有 attribute

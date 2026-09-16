@@ -101,10 +101,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 - next831/832 完成 detached Element/Fragment 的 `normalize()` 与 Element text-only
   `replaceChildren()`；next833 增加同一 staging 的 text-only `replaceChild()`；next834
   补齐 detached Element 的稳定 `NamedNodeMap`/`Attr` facade、值 mutation、namespace lookup
-  和跨 owner copy。TEST1271–1274 与 `1268-1274,999` 相邻门通过。
+  和跨 owner copy；next835 修正 Element `textContent` 的原子替换与 childNodes/Text wrapper
+  同步。TEST1271–1275 与 `1271-1275,999` 门通过。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1274。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1274,999`。
+- `TEST_MAX_NUMBER` 已为 1275。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1275,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -131,10 +132,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
   和 document.write 纵切已有自动合同。稳定边界见
   [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- next817–next834 的 document.title、DocumentFragment staging/组合、Node 关系、集合快照、
-  detached normalize/replaceChildren/replaceChild 与 Attr/NamedNodeMap facade 均已完成桌面
-  构建、离线断言和设备门；下一短期目标是从 compatibility corpus、源码或设备证据选择可
-  复现的 next835 缺口并实现为公共 DLL 能力。
+- next817–next835 的 document.title、DocumentFragment staging/组合、Node 关系、集合快照、
+  detached normalize/replaceChildren/replaceChild、Attr/NamedNodeMap facade 与 textContent
+  同步均已完成构建、断言和设备门；下一步固定可复现的 next836 缺口并进入公共 DLL。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -242,16 +242,16 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1274。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1274,999`。
+- `TEST_MAX_NUMBER`：1275。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1275,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260916-154411-next834` 是本批最新证据：Debug ARMV4I
-`1268-1274,999`，8/8 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-定向 `tmp/device-runs/20260916-154334-next834` 的 `1274,999` 也为 2/2 PASS。
+`tmp/device-runs/20260916-160935-next835` 是本批最新证据：Debug ARMV4I
+`1271-1275,999`，6/6 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+定向 `tmp/device-runs/20260916-160845-next835` 的 `1275,999` 也为 2/2 PASS。
 
 旧失败与配置仅作历史参考，见 Git、`docs/history/`、`FAILED_EXPERIMENTS.md` 与 `tmp/`；
 不完整日志不算通过。
@@ -282,7 +282,7 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1274 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1275 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize 夹具均已有相邻
   设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
@@ -357,7 +357,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next835：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next836：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

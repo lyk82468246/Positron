@@ -313,12 +313,13 @@ offset/count 按 UTF-16 code unit 校验；detached 更新快照，connected 复
 
 `document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
 `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后可
-按 `childNodes` 索引物化到 live Element。wrapper 最多 64 个属性和 64 个 Text child，
-`childNodes`、首尾 child、`hasChildNodes()` 跟随 staging。
+按 `childNodes` 索引物化到 live Element。wrapper 最多 64 个属性/Text child，
+`childNodes` 随 staging。
 `attributes` 返回稳定 bounded `NamedNodeMap`；`get/set/removeAttributeNode*`、Attr
 value/namespace/iteration 和跨 owner value-copy 复用 facade，不创建 detached Core handle。
 style/reflected setter 在 detached/attached/removed 暂存，物化后走 Core；`cloneNode` 复制
-属性/Text 且与源隔离，连接前须有唯一 id。结构、嵌套、无 id 等非法输入 fail closed。
+属性/Text 与源隔离，连接须有 id。
+`textContent` 保留 `childNodes`；旧 Text detached，超限不变。
 
 遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
 `[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话

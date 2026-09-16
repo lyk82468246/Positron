@@ -157,8 +157,9 @@
   通配符、大小写 localName 与 null/未知 fail closed；支持
   `item`/`namedItem`，完整 live collection 未实现。
   detached `normalize()` 限 64 个 direct Text/四个 Fragment 根，删除空并合并相邻 Text；detached
-  Element 的 `replaceChildren()`（0–4 项）/`replaceChild()`（单项）均为 text-only 有界原子
-  staging，保留 childNodes/owner；其他输入在 mutation 前拒绝。
+  Element 的 `replaceChildren()`（0–4 项）、`replaceChild()`（单项）和 `textContent` 均为
+  text-only 有界原子 staging，保留 childNodes/owner；attached `textContent` 同步重建 Text
+  wrapper；其他输入在 mutation 前拒绝。
   Fragment relations/namespace 与 replace/组合由 Browser 预检原子提交；
   `replaceChild()` 可展开最多四根并清空源，空源移除旧节点；不支持输入均 fail closed。
 - `document.createTextNode(value)` 提供 Browser-owned 的 detached Text 快照；它可在

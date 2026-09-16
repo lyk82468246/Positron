@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1274
+#define TEST_MAX_NUMBER 1275
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54015,6 +54015,53 @@ static BOOL test1274_browser_detached_element_attribute_node_contract(void)
             " NamedNodeMap and Attr wrappers, including value mutation,"
             " namespace lookup, cross-owner copy and attached clone/reinsert"
             " identity while unsupported inputs remain fail-closed.");
+    return TRUE;
+}
+
+/* TEST 1275 - bounded detached Element textContent replacement staging. */
+static BOOL test1275_browser_detached_element_text_content_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'></div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),e,a,b,nodes,first,liveText,ok=true,bad=0,"
+        "longText='';try{e=document.createElement('article');a="
+        "document.createTextNode('A');b=document.createTextNode('B');e.append(a,b);"
+        "nodes=e.childNodes;e.textContent='hello';first=e.firstChild;ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===1&&first!==a&&first!==b&&"
+        "first.data==='hello'&&first.parentNode===e&&a.parentNode===null&&"
+        "b.parentNode===null&&e.textContent==='hello';e.textContent='';ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===0&&first.parentNode===null&&"
+        "e.firstChild===null;e.append('keep');first=e.firstChild;while(longText.length<65536){"
+        "longText+='x';}try{e.textContent=longText;}catch(x1){bad|=1;}ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===1&&nodes[0]===first&&"
+        "first.data==='keep'&&first.parentNode===e;e.id='text-stage';target.appendChild(e);"
+        "ok=ok&&e.isConnected&&nodes===e.childNodes&&e.textContent==='keep';"
+        "e.textContent='live';liveText=e.firstChild;ok=ok&&nodes===e.childNodes&&"
+        "nodes.length===1&&liveText.data==='live'&&liveText.parentNode===e;"
+        "liveText.appendData('!');ok=ok&&e.textContent==='live!'&&"
+        "nodes[0]===liveText&&liveText.parentNode===e;e.textContent='';ok=ok&&"
+        "nodes===e.childNodes&&nodes.length===0&&liveText.parentNode===null;"
+        "e.textContent='again';liveText=e.firstChild;ok=ok&&nodes.length===1&&"
+        "liveText.data==='again';try{e.textContent=longText;}catch(x2){bad|=2;}"
+        "ok=ok&&nodes.length===1&&nodes[0]===liveText&&liveText.data==='again';"
+        "}catch(x){ok=false;}result.textContent=String(ok&&bad===3);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-text-content", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1275 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1275 OK",
+            "detached Element textContent now replaces text atomically while"
+            " preserving childNodes and clearing old owners; attached updates"
+            " rebuild stable Text wrappers and reject over-limit input without"
+            " losing the current DOM state.");
     return TRUE;
 }
 
@@ -112307,6 +112354,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1272: ok = test1272_browser_detached_element_replace_children_contract(); break;
         case 1273: ok = test1273_browser_detached_element_replace_child_contract(); break;
         case 1274: ok = test1274_browser_detached_element_attribute_node_contract(); break;
+        case 1275: ok = test1275_browser_detached_element_text_content_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
