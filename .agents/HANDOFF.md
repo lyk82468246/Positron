@@ -10,7 +10,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-next825 设备证据见下文；历史失败不作为依据。
+next826 设备证据见下文；历史失败不作为依据。
 
 - next790–next817 已完成有界 CharacterData/HTML parser mutation、text-only fragment、
   Ex13–Ex15 replacement、detached Text/Element/Comment 生命周期、属性 facade、body.text、
@@ -79,9 +79,14 @@ next825 设备证据见下文；历史失败不作为依据。
   TEST1265 与 TEST1260–1264 相邻回归已通过；`tmp/device-runs/20260916-110922-next825`
   的外置卡自动设备门（`1260-1265,999`）7/7 PASS，零 ERROR/FAIL，完整日志回收、双空间
   预检、完成后清理和 `crash_check` 均通过，新增 dump=0。
+- next826 修正 Fragment `replaceChild()`：同 fragment 节点重排、跨 fragment 移动和 primitive
+  替换均先预检再提交；自身替换为 no-op，嵌套、连接或不支持输入失败不改变原顺序。
+  TEST1266 与 TEST1264–1265 相邻回归已通过；`tmp/device-runs/20260916-112652-next826`
+  的外置卡自动设备门（`1264-1266,999`）4/4 PASS，零 ERROR/FAIL，完整日志回收、双空间
+  预检、完成后清理和 `crash_check` 均通过，新增 dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1265。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1265,999`。
+- `TEST_MAX_NUMBER` 已为 1266。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1266,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -112,9 +117,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   `DocumentFragment` staging、next819 的 fragment `cloneNode(false/true)`、next820 的
   bounded `getElementById()`、next821 的 bounded fragment selector 查询、next822 的
   SameObject `children` collection、next823 的 id/name 命名属性投影、next824 的 Node
-  关系合同与 next825 的 fragment `replaceChildren()` 均已完成桌面构建、离线自动断言和
+  关系合同、next825 的 fragment `replaceChildren()` 与 next826 的 `replaceChild()` 均已完成桌面构建、离线自动断言和
   正式设备门；下一短期目标是从 compatibility corpus、源码或新设备证据中选择一个可复现的
-  next826 用户可见缺口，并把它实现为一项
+  next827 用户可见缺口，并把它实现为一项
   边界清楚的公共 DLL 能力。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
@@ -220,14 +225,24 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1265。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1265,999`。
+- `TEST_MAX_NUMBER`：1266。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1266,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260916-110922-next825` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+`tmp/device-runs/20260916-112652-next826` 是本批最新证据：当前 GUI 连接的仿真器、Debug
+ARMV4I、自动模式选择 `1264-1266,999`，4/4 PASS，零 ERROR/FAIL；外置
+`\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
+`crash_check` 均 PASS，新增 dump=0。结果记录 `remote_base_selection=external`，目标卷
+可用 `51,041,861,632` 字节，内部 object-store 可用 `2,609,152` 字节；当前部署目录已移除。
+
+`tmp/device-runs/20260916-112620-next826` 是同一批 TEST1266 的定向证据：自动模式选择
+`1266,999`，2/2 PASS，零 ERROR/FAIL；同样完成完整日志回收、双空间预检、完成后清理和
+`crash_check`，新增 dump=0。
+
+`tmp/device-runs/20260916-110922-next825` 是上一批有效证据：当前 GUI 连接的仿真器、Debug
 ARMV4I、自动模式选择 `1260-1265,999`，7/7 PASS，零 ERROR/FAIL；外置
 `\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
 `crash_check` 均 PASS，新增 dump=0。结果记录 `remote_base_selection=external`，目标卷
@@ -235,16 +250,6 @@ ARMV4I、自动模式选择 `1260-1265,999`，7/7 PASS，零 ERROR/FAIL；外置
 
 `tmp/device-runs/20260916-110853-next825` 是同一批 TEST1265 的定向证据：自动模式选择
 `1265,999`，2/2 PASS，零 ERROR/FAIL；同样完成完整日志回收、双空间预检、完成后清理和
-`crash_check`，新增 dump=0。
-
-`tmp/device-runs/20260916-104217-next824` 是上一批有效证据：当前 GUI 连接的仿真器、Debug
-ARMV4I、自动模式选择 `1260-1264,999`，6/6 PASS，零 ERROR/FAIL；外置
-`\Storage Card\Temp\Positron-device-gate` 的路径级空间预检、完整日志回收、完成后清理和
-`crash_check` 均 PASS，新增 dump=0。结果记录 `remote_base_selection=external`，目标卷
-可用 `51,121,356,800` 字节，内部 object-store 可用 `2,676,736` 字节；当前部署目录已移除。
-
-`tmp/device-runs/20260916-104146-next824` 是同一批 TEST1264 的定向证据：自动模式选择
-`1264,999`，2/2 PASS，零 ERROR/FAIL；同样完成完整日志回收、双空间预检、完成后清理和
 `crash_check`，新增 dump=0。
 
 本批重试前曾在同一仿真器的 32 KiB 写入于 512 KiB 边界复现 `CeWriteFile`/
@@ -282,9 +287,9 @@ ARMV4I、自动模式选择 `1260-1264,999`，6/6 PASS，零 ERROR/FAIL；外置
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1265 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1266 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
-  DocumentFragment lookup/clone/selector/children/relations/replaceChildren 夹具均已有相邻
+  DocumentFragment lookup/clone/selector/children/relations/replaceChildren/replaceChild 夹具均已有相邻
   设备门；逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不
   重复维护历史清单。通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME
   仍不在自动门范围。
@@ -357,7 +362,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next826：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next827：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

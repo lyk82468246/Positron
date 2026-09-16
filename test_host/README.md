@@ -549,7 +549,7 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 不由 test_host 实现。
 
 TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie。
-TEST1256–1265 覆盖 document.write/title 与 fragment API；宿主只创建 fixture、接 callbacks
+TEST1256–1266 覆盖 document.write/title 与 fragment API；宿主只创建 fixture、接 callbacks
 并断言结果，不实现产品语义。
 
 ### Native EDIT/SELECT/button/file

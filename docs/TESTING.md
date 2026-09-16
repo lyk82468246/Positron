@@ -1106,7 +1106,7 @@ TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`quer
 静态 NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
 组合和消费均 fail closed。设备门 `1260-1261,999`。
 
-TEST1262–1265 覆盖 fragment `children`/id/name、关系和原子 `replaceChildren()`（跨 fragment
+TEST1262–1266 覆盖 fragment `children`/id/name、关系和原子 `replaceChildren()`/`replaceChild()`（跨 fragment
 移动与失败不变），以及 clone/消费和 disconnected 安全失败。预算 path64/equality256；设备门
 `1260-1265,999`。
 
