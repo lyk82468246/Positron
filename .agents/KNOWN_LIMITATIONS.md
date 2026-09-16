@@ -150,8 +150,8 @@
   消费后为空。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
   Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配输入返回
   `null`/空列表。
-  `children` 是缓存的 `[SameObject]` HTMLCollection，随根 mutation 更新，忽略 Text。
-  重复 id 可在 staging 中返回首根，但物化仍拒绝。超限、嵌套/connected、重复/缺失 id、
+  `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
+  重复 id 返回首根，物化拒绝。超限、嵌套/connected、重复/缺失 id、
   结构标签或上下文 parser fail closed。Ex13–Ex15 的 `replaceChildren()` 仅在既有
   text/element/typed-child 合同内原子提交；结构 token、对象、错类型/越界、跨父/重复/自身、
   超限和 callback 缺失 fail closed，失败不消费 fragment 或改变原树。
@@ -583,7 +583,7 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1201–1262 已覆盖有界 DOM/CharacterData、Ex4–Ex15 mutation、parser-backed HTML、
+- TEST1201–1263 已覆盖有界 DOM/CharacterData、Ex4–Ex15 mutation、parser-backed HTML、
   fragment staging/clone、detached wrapper、属性 facade、body.text、cookie、document.write
   和 document.title，以及 bounded fragment lookup/selector/children；逐项合同与预算见
   [`docs/TESTING.md`](../docs/TESTING.md)。

@@ -1106,9 +1106,11 @@ TEST1261 验证 fragment selector：`querySelector()` 返回首个匹配，`quer
 静态 NodeList；id/class/attribute compound/comma、属性 mutation、深克隆、无效/空/过长/后代
 组合和消费均 fail closed。设备门 `1260-1261,999`。
 
-TEST1262 验证 fragment `children` 的 `[SameObject]`：同一 HTMLCollection 随最多四个根的
-append/remove/reorder、深克隆、消费和 clear 原地更新，忽略 Text；`item`/`namedItem` 与
-first/last/childElementCount 一致。设备门 `1261-1262,999`。
+TEST1262 验证 fragment `children` `[SameObject]`：HTMLCollection 随根更新、忽略 Text；
+`item`/`namedItem` 与首尾/count 一致。设备门 `1261-1262,999`。
+
+TEST1263 验证 children id/name 名项：非枚举只读，随改名、移除、克隆、消费、
+clear 更新。设备门 `1262-1263,999`。
 
 ### 手动模式
 

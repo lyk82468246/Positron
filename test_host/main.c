@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1262
+#define TEST_MAX_NUMBER 1263
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -53382,6 +53382,55 @@ static BOOL test1262_browser_document_fragment_children_contract(void)
             "DocumentFragment children now exposes a SameObject HTMLCollection"
             " that tracks bounded Element roots through staging, reordering,"
             " cloning, consumption and clearing.");
+    return TRUE;
+}
+
+/* TEST 1263 - bounded DocumentFragment children named properties. */
+static BOOL test1263_browser_document_fragment_children_names_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='anchor'>A</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var target=document.getElementById('target'),result="
+        "document.getElementById('result'),f,first,second,children,clone,"
+        "cloneChildren,descriptor,ok=true,bad=0;"
+        "f=document.createDocumentFragment();first=document.createElement('article');"
+        "first.id='fragFirst';second=document.createElement('span');"
+        "second.id='fragSecond';second.name='fragName';f.append(first,second);"
+        "children=f.children;descriptor=Object.getOwnPropertyDescriptor(children,'fragFirst');"
+        "ok=ok&&children===f.children&&children.fragFirst===first&&"
+        "children.fragSecond===second&&children.fragName===second&&"
+        "children.namedItem('fragName')===second&&descriptor!==undefined&&"
+        "descriptor.enumerable===false&&descriptor.writable===false&&"
+        "descriptor.configurable===true;"
+        "first.id='fragRenamed';second.removeAttribute('name');"
+        "ok=ok&&children.fragFirst===undefined&&children.fragRenamed===first&&"
+        "children.fragName===undefined&&children.namedItem('fragRenamed')===first;"
+        "f.removeChild(second);ok=ok&&children.fragSecond===undefined&&"
+        "children.length===1;clone=f.cloneNode(true);cloneChildren=clone.children;"
+        "ok=ok&&cloneChildren.fragRenamed===clone.firstElementChild&&"
+        "cloneChildren.fragRenamed!==first&&cloneChildren!==children;"
+        "try{target.appendChild(clone);}catch(e){bad|=1;}"
+        "ok=ok&&bad===0&&cloneChildren.length===0&&"
+        "cloneChildren.fragRenamed===undefined&&children.fragRenamed===first;"
+        "f.remove();ok=ok&&children.length===0&&"
+        "children.fragRenamed===undefined&&children.namedItem('fragRenamed')===null;"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-children-names", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1263 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1263 OK",
+            "DocumentFragment children now keeps bounded id/name named"
+            " properties non-enumerable and read-only while staging nodes"
+            " are renamed, removed, cloned, consumed or cleared.");
     return TRUE;
 }
 
@@ -111662,6 +111711,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1260: ok = test1260_browser_document_fragment_lookup_contract(); break;
         case 1261: ok = test1261_browser_document_fragment_selector_contract(); break;
         case 1262: ok = test1262_browser_document_fragment_children_contract(); break;
+        case 1263: ok = test1263_browser_document_fragment_children_names_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

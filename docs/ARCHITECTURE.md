@@ -293,8 +293,8 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 Element 根中按顺序产生单个结果或静态 NodeList。由于当前结构 fragment 不允许嵌套 Element，
 后代/兄弟组合不会扩展搜索树；空、超长或无法匹配的 selector fail closed。staging 中的
 `children` 是按 fragment 缓存的 `[SameObject]` HTMLCollection，随有界根的追加、移除、
-重排、克隆、消费和清空原地更新，并忽略顶层 Text；`item`/`namedItem` 与首尾 Element
-及 `childElementCount` 保持同一快照。
+重排、克隆、消费和清空原地更新，并忽略顶层 Text；`item`/`namedItem` 及 id/name 的
+非枚举、只读命名属性与首尾 Element 及 `childElementCount` 保持同一快照。
 重复 id 只返回首个根，物化仍在 parser 预检时拒绝。Core 不暴露 fragment handle；
 nested/connected node、重复或缺失 id、结构元素、超限/上下文敏感输入、其他 fragment
 consumer 和事件/资源副作用均 fail closed。
