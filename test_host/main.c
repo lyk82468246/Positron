@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1280
+#define TEST_MAX_NUMBER 1281
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54332,6 +54332,62 @@ static BOOL test1280_browser_created_text_character_data_contract(void)
             "regular-Element paths preserve UTF-16 identity and rollback"
             "on invalid input; Fragment and staged-Element split operations"
             "fail closed while replacement stays local and bounded.");
+    return TRUE;
+}
+
+/* TEST 1281 - Browser-created Text relative primitive mutation. */
+static BOOL test1281_browser_created_text_relative_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='head'>H</span><span id='tail'>T</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,a=document.getElementById('a'),tail="
+        "document.getElementById('tail'),t,v,c,u,f,fa,e,et,old,x,bad=0,ok=true;"
+        "t=d.createTextNode('x');a.insertBefore(t,tail);old=a.childNodes;"
+        "if(typeof t.before!=='function'||typeof t.after!=='function'||"
+        "typeof t.replaceWith!=='function'||old.length!==3||old[1]!==t)ok=false;"
+        "t.before('A',7);t.after(null,false);x=a.childNodes;"
+        "if(x.length!==7||x[1].data!=='A'||x[2].data!=='7'||x[3]!==t||"
+        "x[4].data!=='null'||x[5].data!=='false'||x[6]!==tail||"
+        "a.textContent!=='H A7xnullfalseT'.replace(/ /g,'')||"
+        "old.length!==3||old[1]!==t)ok=false;"
+        "v=d.createTextNode('v');a.insertBefore(v,tail);"
+        "try{v.before({});}catch(e4){bad|=1;}"
+        "try{v.after('1','2','3','4','5');}catch(e5){bad|=2;}"
+        "try{v.replaceWith({});}catch(e6){bad|=4;}"
+        "if(v.parentNode!==a||v.data!=='v')ok=false;v.remove();"
+        "t.replaceWith('R',8);x=a.childNodes;"
+        "if(x.length!==8||x[3].data!=='R'||x[4].data!=='8'||"
+        "x[5].data!=='null'||x[6].data!=='false'||x[7]!==tail||"
+        "t.parentNode!==null||t.data!=='x'||a.textContent!=='HA7R8nullfalseT'||"
+        "old.length!==3||old[1]!==t)ok=false;"
+        "t.before('ignored');t.after('ignored');t.replaceWith('ignored');"
+        "u=d.createTextNode('detached');u.before('x');u.after('y');u.replaceWith('z');"
+        "if(u.data!=='detached'||u.parentNode!==null)ok=false;"
+        "c=t.cloneNode(false);if(typeof c.before!=='function'||typeof c.after!=='function'||"
+        "typeof c.replaceWith!=='function'||c.data!=='x')ok=false;"
+        "f=d.createDocumentFragment();fa=d.createTextNode('f');f.append(fa);"
+        "try{fa.before('x');}catch(e1){bad|=8;}try{fa.replaceWith('y');}catch(e2){bad|=16;}"
+        "if(f.childNodes.length!==1||f.firstChild!==fa||fa.data!=='f')ok=false;"
+        "e=d.createElement('i');e.id='staged';et=d.createTextNode('e');e.appendChild(et);"
+        "try{et.after('x');}catch(e3){bad|=32;}if(e.firstChild!==et||et.data!=='e')ok=false;"
+        "document.getElementById('result').textContent=String(ok&&bad===63);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-text-relative", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1281 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1281 OK",
+            "Browser-created Text wrappers now expose bounded primitive"
+            " before, after and replaceWith operations in live regular"
+            " Elements; detached calls remain inert and Fragment or staged"
+            " Element owners fail closed without a new Core ABI.");
     return TRUE;
 }
 
@@ -112630,6 +112686,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1278: ok = test1278_browser_detached_element_sibling_contract(); break;
         case 1279: ok = test1279_browser_character_data_element_sibling_contract(); break;
         case 1280: ok = test1280_browser_created_text_character_data_contract(); break;
+        case 1281: ok = test1281_browser_created_text_relative_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

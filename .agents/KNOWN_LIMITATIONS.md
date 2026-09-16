@@ -167,11 +167,11 @@
   `replaceChild()` 展开四根并清空源，空源移除旧节点；不支持输入拒绝。
 - `document.createTextNode(value)` 提供 detached Text 快照；插入 live Element 后
   保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、有界 `append()`/`prepend()`、
-  CharacterData mutator、`wholeText`、`splitText()`、`replaceWholeText()`、`remove()` 和
-  `cloneNode()`。offset/count 按 UTF-16 code unit 校验；detached（含 Fragment/staged Element）
-  更新本地快照，live regular Element 复用既有 Core callback。Fragment/staged Element 的
-  `splitText()` fail closed，未连接 staged Element 的 replacement 只改本地；64 个 direct child、
-  65,535 个脚本字符、generic Node、嵌套/不支持 fragment consumer 和其他动态树语义仍 fail closed。
+  CharacterData mutator、`wholeText`、`splitText()`、`replaceWholeText()`、`remove()`、
+  `cloneNode()` 和 1–4 个 primitive 的 `before()`/`after()`/`replaceWith()`。UTF-16 code-unit
+  offset/count 校验；detached 更新快照，live regular Element 复用 Core callback；detached
+  relative inert，Fragment/staged Element relative fail closed。64 个 direct child、65,535 个
+  脚本字符；generic Node、嵌套、复杂 fragment 和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 是 Browser-owned 的有界 detached staging：标签只接受小写化
   ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），物化前须有唯一非空 id；每个 wrapper
   最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个 direct Text child。Ex11 通过

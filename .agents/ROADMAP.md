@@ -350,7 +350,12 @@ fail closed，未连接 staged Element 的 replacement 只更新本地快照。T
 `1279-1280,999` Debug ARMV4I 外置卡自动门通过，未新增 Core ABI；证据与预算见
 `.agents/HANDOFF.md` 和 `docs/TESTING.md`。
 
-下一批（next841）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next841 为 Browser-created Text 增加 bounded primitive `before()`/`after()`/`replaceWith()`：
+live regular Element 复用既有 Core insertion/replacement callback，detached 调用 inert，
+Fragment/staged Element fail closed。TEST1281 与 `1280-1281,999` Debug ARMV4I 外置卡自动门
+通过，未新增 Core ABI；证据与预算见 `.agents/HANDOFF.md` 和 `docs/TESTING.md`。
+
+下一批（next842）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

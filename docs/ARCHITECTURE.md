@@ -208,10 +208,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
 - Browser 的 `document.createTextNode(value)` 是不新增 Core ABI 的 detached Text 路径：Browser
   保留数据、owner、索引和 identity，插入 live Element 后复用既有 Text/CharacterData/删除
   callback。已创建 Text 支持有界插入、CharacterData mutator、`wholeText`、`splitText()`、
-  `replaceWholeText()`、`remove()`、`cloneNode()` 和关系查询；offset/count 按 UTF-16 校验。
-  detached/staging 使用本地快照，live regular Element 的 split/replace 委托 Core；Fragment/
-  staged Element 的 split fail closed，未连接 staged replacement 仅更新本地。最多 64 个 direct
-  child、单值 65,535 个脚本字符；通用 Node、DocumentFragment 和其他动态树语义继续 fail closed。
+  `replaceWholeText()`、`remove()`、`cloneNode()` 和关系查询；`before()`/`after()`/
+  `replaceWith()` 另接受 1–4 个 primitive，复用同一 Core insertion/replacement callback；
+  offset/count 按 UTF-16 校验。detached/staging 使用本地快照，detached relative 调用 inert，
+  live regular Element 的 split/replace/relative 委托 Core；Fragment/staged Element 的 split/
+  relative fail closed，未连接 staged replacement 仅更新本地。最多 64 个 direct child、单值
+  65,535 个脚本字符；通用 Node、DocumentFragment 和其他动态树语义继续 fail closed。
 - `PCore_NodeCreateElementChildAtById(hDoc, parent_id, tag_name, element_id,
   child_index)` 是 Browser detached Element 的唯一 Core 物化入口。它只接受已连接的
   live Element（包括 body）作为父级、合法且不重复的非空 UTF-8 id，以及未过滤

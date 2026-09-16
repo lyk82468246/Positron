@@ -305,12 +305,12 @@ getter 按当前 staging 或 live parent 顺序读取；element-sibling getter �
 节点。无 owner 返回 `null`，物化后继续使用 live wrapper。该视图不扩展通用 detached tree、
 observer 或完整 live collection。
 
-`document.createTextNode(value)` 创建 Browser-owned detached Text，支持插入/移除/clone、
-CharacterData mutator 及 bounded `wholeText`/`splitText()`/`replaceWholeText()`。detached
-（含 Fragment/staged Element）只更新本地快照；live regular Element 复用既有 Core callback
-并保留 wrapper identity。offset/count 按 UTF-16 code unit 校验；Fragment/staged Element 的
-split 和已连接 staged replacement fail closed，未连接 staged replacement 仅更新本地。通用
-节点、observer、完整 live collection 和其他动态树语义不在此范围。
+`document.createTextNode(value)` 创建 detached Text，支持插入/移除/clone、CharacterData
+mutator 及 bounded `wholeText`/`splitText()`/`replaceWholeText()`。`before()`/`after()`/
+`replaceWith()` 接受 1–4 个 primitive；live regular Element 复用 Core callback 并保留 wrapper
+identity，detached 调用 inert，Fragment/staged Element fail closed。offset/count 按 UTF-16
+校验；detached 保留本地快照，已连接 staged replacement fail closed。通用节点、observer、
+完整 live collection 和其他动态树语义不在此范围。
 
 `document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
 `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后可

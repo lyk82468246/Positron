@@ -3783,6 +3783,74 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "d.createTextNode=function(){return decorate(oldCreate.apply(d,arguments));};"
         "})(this);";
 
+    /* Keep the relative CharacterData helpers on Browser-created Text in the
+     * Browser DLL as well.  The bounded primitive form delegates live regular
+     * Elements to the existing Core callbacks; detached nodes are inert and
+     * staging owners reject the operation rather than pretending to expose a
+     * general detached tree. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE[] =
+        "(function(g){var d=g.document,oldCreate;"
+        "if(!d||typeof d.createTextNode!=='function'){return;}oldCreate=d.createTextNode;"
+        "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}"
+        "function E(n){return !!(n&&n.__pcoreCreatedElement804&&n.nodeType===1);}"
+        "function owner(n){return T(n)&&n.__pcoreOwner803?n.__pcoreOwner803:null;}"
+        "function list(n){var p=owner(n),a;if(!p){return null;}if(p.__fragment16){return p.__children16||null;}"
+        "if(E(p)&&!p.__attached804){return p.__children804||null;}try{a=p.childNodes;}catch(e){a=null;}"
+        "return a&&typeof a.length==='number'?a:null;}"
+        "function current(n){var p=owner(n),a=list(n),i=n&&n.__pcoreIndex803;"
+        "return !!(p&&a&&i>=0&&i<a.length&&a[i]===n);}"
+        "function regular(p){return !!(p&&p.nodeType===1&&!E(p)&&!p.__pcoreDetached11&&"
+        "typeof p.__id==='string'&&p.__id!==''&&d.getElementById(String(p.__id))===p);}"
+        "function copy(a){var out=[],i;if(!a||typeof a.length!=='number'){return null;}"
+        "for(i=0;i<a.length;i++){out.push(a[i]);}return out;}"
+        "function indexOf(a,n){var i;if(!a){return -1;}for(i=0;i<a.length;i++){if(a[i]===n){return i;}}return -1;}"
+        "function values(args){var out=[],i,v,s;if(!args||args.length<1||args.length>4){"
+        "throw new Error('relative text arguments');}for(i=0;i<args.length;i++){v=args[i];"
+        "if(v!==null&&v!==undefined&&(typeof v==='object'||typeof v==='function')){"
+        "throw new Error('relative text only accepts primitive');}s=String(v);"
+        "if(s.length>65535){throw new Error('relative text limit');}out.push(s);}return out;}"
+        "function reindex(p,a){var i,x;for(i=0;i<a.length;i++){x=a[i];"
+        "if(x&&x.__owner11===p){x.__index11=i;}if(T(x)&&owner(x)===p){x.__pcoreIndex803=i;}}"
+        "p.__nodes11=typeof g.__pcoreDecorateCollection13==='function'?"
+        "g.__pcoreDecorateCollection13(a,'NodeList',false):a;p.__children9=null;}"
+        "function inserted(p,old,at,count){var out=[],i,x;"
+        "p.__nodes11=null;p.__children9=null;for(i=0;i<old.length+count;i++){"
+        "if(i>=at&&i<at+count){x=typeof g.__pcoreNodeAt11==='function'?g.__pcoreNodeAt11(p,i):null;"
+        "if(!x||x.nodeType!==3){throw new Error('relative text wrapper unavailable');}out.push(x);}"
+        "else{out.push(old[i<at?i:i-count]);}}reindex(p,out);return undefined;}"
+        "function insertLive(n,v,after){var p=owner(n),old,idx,at,payload,ok,i;"
+        "if(!regular(p)||!current(n)){throw new Error('relative text unavailable');}old=copy(p.childNodes);"
+        "idx=indexOf(old,n);if(idx<0||old.length>64||old.length+v.length>64){"
+        "throw new Error('relative text child limit');}at=idx+(after?1:0);payload={count:v.length};"
+        "for(i=0;i<v.length;i++){payload['text'+i]=v[i];}if(typeof g.__pcoreSetText!=='function'){"
+        "throw new Error('relative text unavailable');}try{ok=g.__pcoreSetText({"
+        "op:'insertTextChildList',parentId:p.__id,index:at,values:payload});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('relative text insert failed');}return inserted(p,old,at,v.length);}"
+        "function replaceLive(n,v){var p=owner(n),old,idx,payload,ok,out=[],i,x;"
+        "if(!regular(p)||!current(n)){throw new Error('relative text unavailable');}old=copy(p.childNodes);"
+        "idx=indexOf(old,n);if(idx<0||old.length>64||old.length-1+v.length>64){"
+        "throw new Error('relative text child limit');}payload={count:v.length};"
+        "for(i=0;i<v.length;i++){payload['text'+i]=v[i];}if(typeof g.__pcoreRemoveChild!=='function'){"
+        "throw new Error('relative text unavailable');}try{ok=g.__pcoreRemoveChild({"
+        "op:'replaceCharacterDataChildWithTextList',parentId:p.__id,index:idx,nodeType:3,values:payload});"
+        "}catch(e){ok=false;}if(!ok){throw new Error('relative text replace failed');}"
+        "n.__pcoreOwner803=null;n.__pcoreIndex803=-1;n.__owner11=null;n.__index11=-1;"
+        "p.__nodes11=null;p.__children9=null;for(i=0;i<old.length-1+v.length;i++){"
+        "if(i>=idx&&i<idx+v.length){x=typeof g.__pcoreNodeAt11==='function'?g.__pcoreNodeAt11(p,i):null;"
+        "if(!x||x.nodeType!==3){throw new Error('relative text wrapper unavailable');}out.push(x);}"
+        "else if(i<idx){out.push(old[i]);}else{out.push(old[i-(v.length-1)]);}}reindex(p,out);return undefined;}"
+        "function relative(n,args,after){var p=owner(n),v;if(!T(n)||!p||!current(n)){return undefined;}"
+        "v=values(args);if(!regular(p)){throw new Error('relative text unavailable');}return insertLive(n,v,after);}"
+        "function replace(n,args){var p=owner(n),v;if(!T(n)||!p||!current(n)){return undefined;}"
+        "v=values(args);if(!regular(p)){throw new Error('relative text unavailable');}return replaceLive(n,v);}"
+        "function decorate(n){var oldClone;if(!T(n)||n.__textMethods841){return n;}n.__textMethods841=true;"
+        "oldClone=n.cloneNode;n.before=function(){if(arguments.length===0){return undefined;}"
+        "return relative(n,arguments,false);};n.after=function(){if(arguments.length===0){return undefined;}"
+        "return relative(n,arguments,true);};n.replaceWith=function(){if(arguments.length<1||arguments.length>4){"
+        "throw new Error('relative text arguments');}return replace(n,arguments);};"
+        "n.cloneNode=function(){return decorate(oldClone.apply(n,arguments));};return n;}"
+        "d.createTextNode=function(){return decorate(oldCreate.apply(d,arguments));};})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -7699,6 +7767,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }
