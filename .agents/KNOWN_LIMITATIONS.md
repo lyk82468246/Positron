@@ -141,15 +141,15 @@
   错误 parent/reference、对象、节点和超限输入均 fail closed。Ex6 的 `append()`/`prepend()`
   （零至四值）创建 primitive Text 或移动 element；Ex7–Ex9 的 primitive `replaceWith()`
   遵循各自 callback 合同。Browser 提供两种 `DocumentFragment` staging：最多四个
-  primitive Text 的 text-only 路径，以及最多四个 detached Element/Text 根的 bounded
-  结构路径。结构路径要求 Element 有唯一非空 id、至多一个 direct Text，复用 Core HTML
-  parser 物化；Fragment 自身支持单一 Fragment 参数的 `append()`、`prepend()`、
+  primitive Text 的 text-only 路径，以及最多四个 detached Element/Text/Comment/CDATA 根的
+  结构路径。Element 须有唯一非空 id、至多一个 direct Text；Comment/CDATA 复用 Core callback。
+  Fragment 自身支持单一 Fragment 参数的 `append()`、`prepend()`、
   `insertBefore()`、`appendChild()`、`replaceChildren()`，成功保留 identity 并清空源。
   `cloneNode(false/true)`
   仅复制 detached bounded 根，源/副本隔离，连接前修复 id；Fragment-owned
-  Text data 只更新 detached 快照。`getElementById()` 只在最多四个 staged 根中按树序查找
-  Element，忽略 Text。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
-  Element 根，忽略 Text，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
+  CharacterData data 只更新 detached 快照。`getElementById()` 只在最多四个 staged 根中查找
+  Element，忽略非 Element。`querySelector()`/`querySelectorAll()` 复用有界 parser，按序扫描最多四个
+  Element 根，返回首个匹配或静态 NodeList；根不嵌套，空、超长或无匹配返回
   `null`/空列表。
   `children` 是缓存 `[SameObject]` HTMLCollection，随根/id/name mutation 更新；名项只读非枚举，忽略 Text。
   `getElementsByTagName()`/`getElementsByClassName()`/`getElementsByTagNameNS()` 返回 bounded
@@ -162,7 +162,7 @@
   wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
   textContent staging；markup、超长和 detached `outerHTML` setter 在 mutation 前拒绝。
   Fragment 的 `textContent` setter 先预检 65,535 字符再原地替换；失败保留旧树/集合。
-  relations/namespace、replace/组合由 Browser 预检；Fragment Element 与 Browser Text/Comment
+  relations/namespace、replace/组合由 Browser 预检；Fragment Element 与 CharacterData
   的 sibling/element-sibling getter 按 staging/live 提供，未归属为 `null`。
   `replaceChild()` 展开四根并清空源，空源移除旧节点；不支持输入拒绝。
 - `document.createTextNode(value)` 提供 detached Text 快照；插入 live Element 后
@@ -194,8 +194,8 @@
   offset、clone、relative、remove/reinsert；也接受 live CharacterData source
   move/replace。CDATA 提供 `wholeText`、`splitText`、`replaceWholeText`，逻辑相邻
   Text/CDATA 组成同一段，split 返回 Text suffix。Comment/CDATA 经 Ex12/Ex14 物化，
-  更新复用 callback；Fragment、事件、资源、observer、混合/超限树语义和 detached target
-  relative 均 fail closed。
+  更新复用 callback；事件、资源、observer、嵌套/混合/超限树语义和 detached target relative
+  均 fail closed。
 - HTML getter 与 Core mutation 入口共用有界 UTF-8 parser；它们保持
   身份、拒绝非法/超限/id 冲突并使 layout 失效。OuterHTML 只接受单一 Element 根或空字符串；
   顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 在 Core

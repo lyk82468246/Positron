@@ -296,14 +296,13 @@ outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移
 wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
 detached Element 只对属性/direct Text 做 text-only escaping/staging；markup、超长和 detached
 `outerHTML` replacement fail closed，connected wrapper 委托 Core projection。
-`document.createDocumentFragment()` 在 Browser 侧建立 bounded staging，最多四个 Text 或 Element
-根；Element 需唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。Fragment 的 append/
-prepend/insertBefore/appendChild/replaceChildren、clone、lookup/query、collection、relations
-和 Fragment 组合都受同一容量约束并原子失败；`textContent=` 先预检容量，`normalize()` 只整理
-direct Text。Fragment-owned detached Element，以及 Browser-owned Text/Comment 的 sibling
-getter 按当前 staging 或 live parent 顺序读取；element-sibling getter 跳过所有非 Element
-节点。无 owner 返回 `null`，物化后继续使用 live wrapper。该视图不扩展通用 detached tree、
-observer 或完整 live collection。
+`document.createDocumentFragment()` 在 Browser 侧做 bounded staging，最多四个
+Element/Text/Comment/CDATA 根；Element 须唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。
+append/prepend/insertBefore/appendChild/replaceChildren、clone、query、relations、组合、
+`textContent=` 与 `normalize()` 均受同一预算并原子失败。Fragment-owned roots 的 sibling
+getter 按 staging/live parent 顺序读取，element-sibling 跳过非 Element；无 owner 返回 `null`。
+Comment/CDATA 消费复用既有 Core creation callback，不新增 fragment ABI；通用 detached tree、
+observer 和完整 live collection 不支持。
 
 `document.createTextNode(value)` 创建 detached Text，支持插入/移除/clone、CharacterData
 mutator 及 bounded `wholeText`/`splitText()`/`replaceWholeText()`。`before()`/`after()`/
@@ -338,7 +337,8 @@ Comment wrapper 的 offset 方法按 UTF-16 code unit 执行；detached 更新�
 `document.createCDATASection(data)` 提供 detached CharacterData：nodeType、data/offset、
 clone、relative、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和单一
 source move/replace；live parent 中相邻 Text/CDATA 组成同一逻辑段，split 返回 Text suffix。
-Ex14 物化，其他 detached/Fragment/混合列表/事件/资源/observer 仍 fail closed。
+Ex14 物化；Comment/CDATA 也可作为 bounded Fragment 根，消费时复用既有 Core creation
+callback；其他 detached/Fragment 混合列表/事件/资源/observer 仍 fail closed。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；注册
 `PBrowserScriptOptionCallbacks` 后由 Core 维护选择，`value`/`label` 缺失时回退到 option

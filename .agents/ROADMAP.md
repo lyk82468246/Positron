@@ -376,7 +376,13 @@ next845 补齐 CDATASection 继承的 Text 结构合同：`wholeText` 合并相�
 Text/CDATA；TEST1285 与 `1285,999` Debug ARMV4I 外置卡自动门通过，证据与预算见
 `.agents/HANDOFF.md` 和 `docs/TESTING.md`。
 
-下一批（next846）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next846 补齐 Browser-owned `DocumentFragment` 的 CharacterData 根 staging：最多四个
+detached Text/Comment/CDATA 根保持有限关系、clone/normalize、data mutation 和消费后的
+wrapper identity；Comment/CDATA 通过既有 Core creation callback 物化，不新增 Core fragment ABI。
+TEST1286 与 `1286,999` Debug ARMV4I 外置卡自动门通过，证据与预算见 `.agents/HANDOFF.md`
+和 `docs/TESTING.md`。
+
+下一批（next847）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

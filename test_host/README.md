@@ -548,8 +548,9 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 不由 test_host 实现。
 
 TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie；
-TEST1256–1285 覆盖 write/title/fragment、detached staging、CharacterData、CDATA 创建与
-whole/split/replace 合同。宿主只提供 fixture/callback/断言，不持有这些 DOM 语义。
+TEST1256–1286 覆盖 write/title/fragment、detached staging、CharacterData、CDATA 创建、
+Fragment Comment/CDATA 根消费与 whole/split/replace 合同。宿主只提供 fixture/callback/断言，
+不持有这些 DOM 语义。
 
 ### Native EDIT/SELECT/button/file
 

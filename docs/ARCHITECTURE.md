@@ -286,10 +286,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   重复/外部冲突 id、非法或超限输入在提交前拒绝；不执行 script、不抓取资源、不派发事件；
 - Browser-owned `DocumentFragment` staging（bounded roots、clone、query、relations、组合）由
   `positron_browser.dll` 维护；Core 只接收预检后的 text-list/parser 提交，不暴露 handle。
-  detached Element/Fragment 的 `Node.normalize()` 最多处理 64 个 direct Text/四个
-  根，删除空并合并相邻 Text；嵌套、超限和不支持输入在 mutation 前拒绝。Fragment
-  Fragment Element、Browser Text/Comment 的 sibling 按 staging/live 投影，element-sibling
-  跳过非 Element，未归属为 `null`。
+  bounded 根最多四个 detached Element/Text/Comment/CDATA；Comment/CDATA 消费复用 Core 创建
+  callback。detached Element/Fragment 的
+  `Node.normalize()` 最多处理 64 个 direct Text/四个根，删除空并合并相邻 Text；嵌套、超限和
+  不支持输入拒绝。Fragment 与 CharacterData 的 sibling
+  按 staging/live 投影，element-sibling 跳过非 Element，未归属为 `null`。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained
@@ -522,14 +523,14 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   element 在同一位置移动，保留 wrapper identity 并使受影响父级 snapshot 失效。所有值先
   做类型、connected、层级和容量检查，失败不产生部分 mutation；宿主只负责 callback 接线、
   重排和重绘。Browser 的 `document.createDocumentFragment()` staging（text-only 与 bounded
-  Element/Text）也属于 Browser，不向 Core 暴露 fragment handle；Core 只接收 Browser 预检后
+  Element/Text/Comment/CDATA）也属于 Browser，不向 Core 暴露 fragment handle；Core 只接收 Browser 预检后
   的 text-list 或 parser-backed fragment 提交。existing node、嵌套/通用 fragment、超出
   bounded clone 的结构以及 mutation event/资源副作用都不进入 Core ABI。完整 live collection、
   事件和 observer 不在边界内；Fragment 的 `getElementsByTagName()`/
   `getElementsByClassName()`/`getElementsByTagNameNS()` 只由 Browser 对最多四个非嵌套
   Element 根生成 bounded HTMLCollection 快照。NS 版本沿现有 Document/Element 合同处理
   HTML namespace、通配符、大小写和 fail-closed namespace，不新增 Core 查询 ABI。Fragment、
-  staged Element/Text 及其深克隆的 Node 关系由
+  staged roots 及其深克隆的 Node 关系由
   Browser 按 wrapper identity 维护：`isSameNode()`、有界递归 `isEqualNode()`、`contains()`、
   `compareDocumentPosition()`、`getRootNode()` 和 `null`/XML namespace helper 均不新增 Core
   ABI；关系预算为 path64/equality256，未知或 disconnected 节点 fail closed。Fragment 的

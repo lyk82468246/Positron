@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1285
+#define TEST_MAX_NUMBER 1286
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54642,6 +54642,71 @@ static BOOL test1285_browser_cdata_text_contract(void)
             " wholeText spans adjacent Text/CDATA nodes, splitText returns"
             " a Text sibling, and replaceWholeText preserves the target"
             " identity while removing the adjacent run.");
+    return TRUE;
+}
+
+/* TEST 1286 - DocumentFragment CharacterData staging and materialization. */
+static BOOL test1286_browser_document_fragment_character_data_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='tail'>T</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,a=d.getElementById('a'),tail="
+        "d.getElementById('tail'),result=d.getElementById('result'),"
+        "f,c,x,t,deep,dc,dx,dt,ret,ok=true;"
+        "try{f=d.createDocumentFragment();c=d.createComment('C');"
+        "x=d.createCDATASection('D');t=d.createTextNode('T');f.append(c,x,t);}"
+        "catch(e){ok=false;}"
+        "ok=ok&&f.nodeType===11&&f.childNodes.length===3&&"
+        "f.firstChild===c&&f.childNodes[1]===x&&f.lastChild===t&&"
+        "c.parentNode===f&&x.parentNode===f&&t.parentNode===f&&"
+        "c.nextSibling===x&&x.previousSibling===c&&x.nextSibling===t&&"
+        "t.previousSibling===x&&c.getRootNode()===f&&x.getRootNode()===f&&"
+        "f.textContent==='CDT';"
+        "try{c.data='c';x.data='d';t.data='t';}catch(ed){result.textContent='E-data-'+String(ed.message);return;}"
+        "ok=ok&&f.textContent==='cdt'&&c.isEqualNode(c.cloneNode(false));"
+        "deep=f.cloneNode(true);dc=deep.firstChild;dx=deep.childNodes[1];"
+        "dt=deep.lastChild;deep.normalize();"
+        "ok=ok&&deep!==f&&deep.childNodes.length===3&&dc!==c&&dx!==x&&"
+        "dt!==t&&dc.nodeType===8&&dx.nodeType===4&&dt.nodeType===3&&"
+        "dc.data==='c'&&dx.data==='d'&&dt.data==='t'&&"
+        "dc.parentNode===deep&&dx.parentNode===deep&&dt.parentNode===deep&&"
+        "deep.textContent==='cdt'&&f.firstChild===c&&f.lastChild===t;"
+        "try{ret=a.insertBefore(f,tail);}catch(e2){result.textContent='E-insert-'+String(e2.message);return;}"
+        "ok=ok&&ret===f&&f.childNodes.length===0&&f.textContent===''&&"
+        "a.childNodes.length===4&&a.childNodes[0]===c&&"
+        "a.childNodes[1]===x&&a.childNodes[2]===t&&a.childNodes[3]===tail&&"
+        "c.parentNode===a&&x.parentNode===a&&t.parentNode===a&&"
+        "c.parentElement===a&&x.parentElement===a&&t.parentElement===a&&"
+        "c.getRootNode()===d&&x.getRootNode()===d&&t.getRootNode()===d&&"
+        "c.isConnected&&x.isConnected&&t.isConnected&&"
+        "c.nextSibling===x&&x.previousSibling===c&&x.nextSibling===t&&"
+        "a.textContent==='dtT';"
+        "try{c.data='C2';x.data='D2';}catch(ec){result.textContent='E-live-'+String(ec.message);return;}"
+        "ok=ok&&a.textContent==='D2tT'&&c.data==='C2'&&x.data==='D2';"
+        "try{f=d.createDocumentFragment();f.append(d.createComment('R'),"
+        "d.createCDATASection('S'));a.replaceChildren(f);}"
+        "catch(e3){result.textContent='E-replace-'+String(e3.message);return;}"
+        "ok=ok&&f.childNodes.length===0&&a.childNodes.length===2&&"
+        "a.childNodes[0].nodeType===8&&a.childNodes[0].data==='R'&&"
+        "a.childNodes[1].nodeType===4&&a.childNodes[1].data==='S';"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/document-fragment-character-data", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1286 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1286 OK",
+            "DocumentFragment now stages detached Comment and CDATA roots"
+            " alongside Text, preserves CharacterData identity and relations"
+            " through clone/normalize, and materializes the roots through the"
+            " Core creation callbacks without merging marker nodes.");
     return TRUE;
 }
 
@@ -112945,6 +113010,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1283: ok = test1283_browser_created_character_data_existing_relative(); break;
         case 1284: ok = test1284_browser_create_cdata_contract(); break;
         case 1285: ok = test1285_browser_cdata_text_contract(); break;
+        case 1286: ok = test1286_browser_document_fragment_character_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

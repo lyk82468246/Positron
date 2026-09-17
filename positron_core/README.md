@@ -201,9 +201,10 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   `nodeType=4`，成功后使 retained layout 失效；不保存 detached handle、不派发事件、
   不执行脚本、不抓取资源，也不暴露 Fragment。Browser 通过 DOM write Ex14 负责 wrapper、
   数据、relative、remove/reinsert 和 identity。
-- Browser 的 text-only 与 bounded Element/Text `DocumentFragment` staging 均不暴露 Core
-  fragment ABI：Browser 只把最多四个 primitive UTF-8 Text 值或满足结构约束的序列化
-  Element/Text 根交给既有 text-list/HTML parser 原子入口。fragment 只在成功消费后清空；
+- Browser 的 text-only 与 bounded Element/Text/Comment/CDATA `DocumentFragment` staging 均不暴露
+  Core fragment ABI：Browser 只把最多四个 primitive UTF-8 Text 值或满足结构约束的序列化
+  Element/Text 根交给既有 text-list/HTML parser 原子入口，Comment/CDATA 根则调用既有
+  `PCore_NodeCreateCommentChildAtById`/`PCore_NodeCreateCDATAChildAtById` callback。fragment 只在成功消费后清空；
   Browser-owned `cloneNode(false/true)` 也只复制 detached staging，不创建 Core handle。
   existing node、nested fragment、超出结构边界的 mixed clone、HTML parser context 和
   mutation 事件仍不属于 Core ABI。
