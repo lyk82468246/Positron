@@ -192,10 +192,10 @@
 - `document.createComment(data)` 是 bounded detached wrapper：单一参数按 `String` 转换，数据
   最多 65,535 个脚本字符，进入 Core 时还受同样大小的 UTF-8 上限；wrapper 提供 node shape、
   数据/父级/identity、clone、offset、remove 和 1–4 个 primitive 的
-  `before()`/`after()`/`replaceWith()`。插入 live Element 经 Ex12 物化，更新、relative、
-  移除、重排和再插入复用 callback；detached relative inert。非法参数/reference、对象、超限、
-  Fragment、非 primitive relative、事件、资源、observer/live collection 均 fail closed；宿主负责
-  style/layout/paint 与设备 UI。
+  `before()`/`after()`/`replaceWith()`；另支持单一 CharacterData 的 move/replace。
+  插入 live Element 经 Ex12 物化，更新、relative、移除和再插入复用 callback；
+  detached target relative inert。非法参数、对象、detached source、超限、Fragment、混合列表、
+  observer fail closed；宿主负责 style/layout/paint。
 - HTML getter 与 Core mutation 入口共用有界 UTF-8 parser；它们保持
   身份、拒绝非法/超限/id 冲突并使 layout 失效。OuterHTML 只接受单一 Element 根或空字符串；
   顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 在 Core

@@ -548,9 +548,9 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 不由 test_host 实现。
 
 TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie。
-TEST1256–1282 覆盖 write/title/fragment、detached staging、CharacterData；1276/1277 断言
-HTML facade 与 Fragment `textContent=` 原子替换，1278–1280 断言 sibling/aggregate，1281/1282
-断言 primitive relative。宿主只提供 fixture/callback/断言，
+TEST1256–1283 覆盖 write/title/fragment、detached staging、CharacterData；1276–1280 覆盖
+HTML/Fragment、sibling/aggregate，1281–1283 覆盖 primitive 与 existing-source relative；
+宿主只提供 fixture/callback/断言，
 不持有这些 DOM 语义。
 
 ### Native EDIT/SELECT/button/file

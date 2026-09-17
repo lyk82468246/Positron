@@ -3917,6 +3917,97 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "n.cloneNode=function(){return decorate(oldClone.apply(n,arguments));};return n;}"
         "d.createComment=function(){return decorate(oldCreate.apply(d,arguments));};})(this);";
 
+    /* Browser-created Text and Comment wrappers keep the primitive relative
+     * mutation contract from Parts 20 and 21.  This small follow-on adds the
+     * missing single existing-CharacterData form without widening the
+     * detached graph: both the target owner and the source owner must be
+     * live regular Elements, and the existing Core move/replace callbacks
+     * perform the atomic native mutation.  Mixed lists, Elements, fragments
+     * and staged owners continue to fail closed through the earlier methods. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE[] =
+        "(function(g){var d=g.document,oldText,oldComment;"
+        "if(!d){return;}oldText=typeof d.createTextNode==='function'?d.createTextNode:null;"
+        "oldComment=typeof d.createComment==='function'?d.createComment:null;"
+        "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}"
+        "function C(n){return !!(n&&n.__pcoreCreatedComment805&&n.nodeType===8);}"
+        "function created(n){return T(n)||C(n);}"
+        "function character(n){return !!(n&&(n.nodeType===3||n.nodeType===4||n.nodeType===8)&&"
+        "(created(n)||n.__owner11));}"
+        "function owner(n){if(T(n)){return n.__pcoreOwner803||null;}"
+        "if(C(n)){return n.__pcoreOwner805||null;}return null;}"
+        "function index(n){if(T(n)){return n.__pcoreIndex803;}"
+        "if(C(n)){return n.__pcoreIndex805;}return n&&n.__index11;}"
+        "function setOwner(n,p,i){if(T(n)){n.__pcoreOwner803=p;n.__pcoreIndex803=i;}"
+        "else if(C(n)){n.__pcoreOwner805=p;n.__pcoreIndex805=i;}"
+        "else{n.__owner11=p;n.__index11=i;}n.__pcoreDetached11=false;}"
+        "function clearOwner(n){if(T(n)){n.__pcoreOwner803=null;n.__pcoreIndex803=-1;}"
+        "else if(C(n)){n.__pcoreOwner805=null;n.__pcoreIndex805=-1;}"
+        "n.__owner11=null;n.__index11=-1;}"
+        "function list(p){var a;try{a=p&&p.childNodes;}catch(e){a=null;}"
+        "return a&&typeof a.length==='number'?a:null;}"
+        "function regular(p){return !!(p&&p.nodeType===1&&!p.__pcoreCreatedElement804&&"
+        "!p.__pcoreDetached11&&typeof p.__id==='string'&&p.__id!==''&&"
+        "d.getElementById(String(p.__id))===p); }"
+        "function current(n){var p=owner(n),a=list(p),i=index(n);"
+        "return !!(p&&a&&i>=0&&i<a.length&&a[i]===n);}"
+        "function copy(a){var out=[],i;if(!a||typeof a.length!=='number'){return null;}"
+        "for(i=0;i<a.length;i++){out.push(a[i]);}return out;}"
+        "function at(a,n){var i;if(!a){return -1;}for(i=0;i<a.length;i++){if(a[i]===n){return i;}}return -1;}"
+        "function info(n){var p,a,i;if(!character(n)){return null;}p=owner(n);"
+        "i=index(n);if(!p){p=n.__owner11;i=n.__index11;}if(!regular(p)){return null;}"
+        "a=list(p);if(!a||i<0||i>=a.length||a[i]!==n){return null;}return {p:p,i:i};}"
+        "function reindex(p,a){var i,x;if(!p||!a){throw new Error('relative source unavailable');}"
+        "for(i=0;i<a.length;i++){x=a[i];if(x&&x.__owner11===p){x.__index11=i;}"
+        "if(T(x)&&owner(x)===p){x.__pcoreIndex803=i;}if(C(x)&&owner(x)===p){x.__pcoreIndex805=i;}}"
+        "p.__nodes11=typeof g.__pcoreDecorateCollection13==='function'?"
+        "g.__pcoreDecorateCollection13(a,'NodeList',false):a;p.__children9=null;}"
+        "function move(target,source,after){var p,si,old,sourceOld,targetIndex,ref,index,ok,next,nextSource,i;"
+        "p=owner(target);if(!created(target)||!p||!current(target)){return undefined;}"
+        "if(!regular(p)){throw new Error('relative target unavailable');}if(source===target){return undefined;}"
+        "si=info(source);if(!si){throw new Error('relative source unavailable');}"
+        "old=copy(p.childNodes);sourceOld=si.p===p?old:copy(si.p.childNodes);"
+        "targetIndex=at(old,target);if(!old||targetIndex<0||old.length>64||"
+        "!sourceOld||sourceOld.length>64){throw new Error('relative child limit');}"
+        "ref=after?(targetIndex+1<old.length?old[targetIndex+1]:null):target;"
+        "index=ref===null?old.length:at(old,ref);if(index<0){throw new Error('relative target unavailable');}"
+        "if(si.p===p&&source===ref){return undefined;}if(typeof g.__pcoreRemoveChild!=='function'){"
+        "throw new Error('relative move unavailable');}try{ok=g.__pcoreRemoveChild({"
+        "op:'insertCharacterDataChildAt',parentId:p.__id,index:index,sourceParentId:si.p.__id,"
+        "sourceIndex:si.i,nodeType:source.nodeType});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('relative move failed');}next=[];"
+        "for(i=0;i<old.length;i++){if(old[i]===source){continue;}"
+        "if(ref!==null&&old[i]===ref){next.push(source);}next.push(old[i]);}"
+        "if(ref===null){next.push(source);}setOwner(source,p,0);"
+        "if(si.p!==p){nextSource=[];for(i=0;i<sourceOld.length;i++){"
+        "if(sourceOld[i]!==source){nextSource.push(sourceOld[i]);}}reindex(si.p,nextSource);}"
+        "reindex(p,next);return undefined;}"
+        "function replace(target,source){var p,si,old,sourceOld,targetIndex,ok,next,nextSource,i;"
+        "p=owner(target);if(!created(target)||!p||!current(target)){return undefined;}"
+        "if(!regular(p)){throw new Error('relative target unavailable');}if(source===target){return undefined;}"
+        "si=info(source);if(!si){throw new Error('relative source unavailable');}old=copy(p.childNodes);"
+        "sourceOld=si.p===p?old:copy(si.p.childNodes);targetIndex=at(old,target);"
+        "if(!old||targetIndex<0||old.length>64||!sourceOld||sourceOld.length>64){"
+        "throw new Error('relative child limit');}if(typeof g.__pcoreRemoveChild!=='function'){"
+        "throw new Error('relative replace unavailable');}try{ok=g.__pcoreRemoveChild({"
+        "op:'replaceCharacterDataChild',parentId:p.__id,index:targetIndex,targetNodeType:target.nodeType,"
+        "sourceParentId:si.p.__id,sourceIndex:si.i,nodeType:source.nodeType});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('relative replace failed');}next=[];"
+        "for(i=0;i<old.length;i++){if(i===targetIndex){next.push(source);}"
+        "else if(old[i]!==source){next.push(old[i]);}}clearOwner(target);setOwner(source,p,0);"
+        "if(si.p!==p){nextSource=[];for(i=0;i<sourceOld.length;i++){"
+        "if(sourceOld[i]!==source){nextSource.push(sourceOld[i]);}}reindex(si.p,nextSource);}"
+        "reindex(p,next);return undefined;}"
+        "function decorate(n){var oldBefore,oldAfter,oldReplace,oldClone;"
+        "if(!created(n)||n.__relativeMethods843){return n;}n.__relativeMethods843=true;"
+        "oldBefore=n.before;oldAfter=n.after;oldReplace=n.replaceWith;oldClone=n.cloneNode;"
+        "n.before=function(){if(arguments.length===1&&character(arguments[0])){return move(n,arguments[0],false);}"
+        "return oldBefore.apply(n,arguments);};n.after=function(){if(arguments.length===1&&character(arguments[0])){"
+        "return move(n,arguments[0],true);}return oldAfter.apply(n,arguments);};"
+        "n.replaceWith=function(){if(arguments.length===1&&character(arguments[0])){return replace(n,arguments[0]);}"
+        "return oldReplace.apply(n,arguments);};n.cloneNode=function(){return decorate(oldClone.apply(n,arguments));};return n;}"
+        "if(oldText){d.createTextNode=function(){return decorate(oldText.apply(d,arguments));};}"
+        "if(oldComment){d.createComment=function(){return decorate(oldComment.apply(d,arguments));};}})(this);";
+
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
         "var pEventOptions=g.__pcoreEventOptions;var pRemoveListenerEntry=g.__pcoreRemoveListenerEntry;"
@@ -7843,6 +7934,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }

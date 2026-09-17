@@ -1105,8 +1105,9 @@ TEST1278 验证 bounded Fragment 中 detached Element 的四个 sibling getter�
 Text，element-sibling 跳过 Text；重排、移除、parser-backed 消费和物化后 live 移除同步关系、
 owner 与 wrapper identity，未归属返回 `null`。门 `1278,999`，相邻 `1277-1278,999`。
 
-TEST1279–1282 覆盖 CharacterData element-sibling、新建 Text 的 aggregate/relative 与新建
-Comment relative；验证 identity、UTF-16、限额和 fail-closed；门 `1281-1282,999`，无新 ABI。
+TEST1279–1283 覆盖 Text/Comment relative 及到现有 CharacterData 的 move/replace；
+验证 identity、snapshot 和 fail-closed。门 `1281-1283,999`；1283
+只允许单一 live CharacterData source，其他 owner、Element、混合列表和对象拒绝。
 
 ### 手动模式
 

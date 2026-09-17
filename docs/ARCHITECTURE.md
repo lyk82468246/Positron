@@ -209,10 +209,12 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   保留数据、owner、索引和 identity，插入 live Element 后复用既有 Text/CharacterData/删除
   callback。已创建 Text 支持有界插入、CharacterData mutator、`wholeText`、`splitText()`、
   `replaceWholeText()`、`remove()`、`cloneNode()` 和关系查询；`before()`/`after()`/
-  `replaceWith()` 另接受 1–4 个 primitive，复用同一 Core insertion/replacement callback；
-  offset/count 按 UTF-16 校验。detached/staging 使用本地快照，detached relative 调用 inert，
-  live regular Element 的 split/replace/relative 委托 Core；Fragment/staged Element 的 split/
-  relative fail closed，未连接 staged replacement 仅更新本地。最多 64 个 direct child、单值
+  `replaceWith()` 另接受 1–4 个 primitive 或单一 CharacterData，复用
+  callback；跨父更新 owner/index 与 snapshot，offset/count 按 UTF-16 校验。detached/staging
+  用本地快照，detached target relative 调用 inert，live regular Element
+  的 split/replace/relative 委托 Core；其他 owner 的 split/relative fail closed，未连接 staged
+  replacement 仅更新本地。
+  最多 64 个 direct child、单值
   65,535 个脚本字符；通用 Node、DocumentFragment 和其他动态树语义继续 fail closed。
 - `PCore_NodeCreateElementChildAtById(hDoc, parent_id, tag_name, element_id,
   child_index)` 是 Browser detached Element 的唯一 Core 物化入口。它只接受已连接的
@@ -439,18 +441,19 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   一个参数并按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`#comment`、
   `data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling、
   `isSameNode()`/`isEqualNode()`、`cloneNode()`、`appendData()`、`remove()` 和 1–4 个 primitive
-  `before()`/`after()`/`replaceWith()`。数据最多 65,535 个脚本字符，进入 Core 时受 65,535
-  字节 UTF-8 ABI 上限约束。live 插入由 DOM write Ex12 的 `create_comment_child_at` 按
-  `childNodes` 索引物化；data/relative/移除/重排/再插入复用 CharacterData callbacks 并保留
-  identity。无效参数/reference、对象、超限、Fragment、非 primitive relative、事件、资源和
-  observer 均 fail closed；detached relative 不产生 mutation。
+  或单一 CharacterData 的 `before()`/`after()`/`replaceWith()`。数据最多 65,535
+  个脚本字符，进入 Core 时受同样 UTF-8 ABI 上限约束。live 插入由 DOM write Ex12 的
+  `create_comment_child_at` 按
+  `childNodes` 索引物化；后续 data/relative/移除/重排复用 CharacterData callbacks。无效
+  参数、对象、detached source、超限、Fragment、混合列表、事件、
+  资源和 observer 均 fail closed；detached target relative 不产生 mutation。
 - detached Comment wrapper 的 `insertData()`、`deleteData()`、`replaceData()` 和
   `substringData()` 在 Browser 内按 UTF-16 code-unit 偏移执行；前 3 个方法在 detached
   状态更新本地数据，在 connected 状态复用既有 CharacterData write callback，最后一个
   只返回 snapshot。offset/count 必须为有限非负整数，删除范围按数据末尾截断，合成结果仍
   受 65,535 个脚本字符和 Core UTF-8 字节预算约束；非法参数或 callback/Core 失败保持
-  原数据不变。relative 只接受 live regular parent 的 1–4 个 primitive；其他 owner/节点 fail
-  closed。
+  原数据不变。relative 只接受 live regular parent 的 1–4 个 primitive 或单一 live
+  CharacterData source；其他 owner/节点 fail closed。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
@@ -612,10 +615,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   重复、错类型/越界、自身、fragment、对象、超限和缺少 callback 均 fail closed。Ex15 只在
   表尾追加字段，Ex14 及更旧注册入口的布局和语义保持不变。
 - CharacterData wrapper 的相对 `before()`/`after()` 以及单节点 `replaceWith()` 复用 Ex10
-  的 existing-node insertion 和 Ex11 的 replacement callback。Browser 只接受一个已连接的
-  Text/CDATA/Comment source，按 direct parent 和未过滤位置完成同父重排或跨父迁移，保留
-  source identity、更新两侧 owner/index 与旧 snapshot；detached target 是 no-op，detached
-  source、元素、fragment、混合列表和其他对象在提交前拒绝，不新增 ABI 字段。
+  的 existing-node insertion 和 Ex11 的 replacement callback。Browser-created Text/Comment
+  与 parser-backed wrapper 都只接受一个已连接 CharacterData source，按位置完成同父/跨父
+  重排，更新两侧 owner/index 与 snapshot；
+  detached target 是 no-op，其他 owner/节点在提交前拒绝。
 - `Element.insertAdjacentText(position, text)` 复用 write Ex6 的
   `insert_text_child`，在 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置
   插入一个字符串化 primitive Text。内侧位置作用于 receiver，外侧位置要求 receiver 是

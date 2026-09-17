@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1282
+#define TEST_MAX_NUMBER 1283
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54438,6 +54438,72 @@ static BOOL test1282_browser_created_comment_relative_contract(void)
             "Browser-created Comment wrappers now expose bounded primitive"
             " before, after and replaceWith operations in live regular"
             " Elements; detached calls remain inert without a new Core ABI.");
+    return TRUE;
+}
+
+/* TEST 1283 - Browser-created CharacterData relative existing-node mutation. */
+static BOOL test1283_browser_created_character_data_existing_relative(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='head'>H</span><span id='tail'>T</span></div>"
+        "<div id='b'><span id='other'>O</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,a=d.getElementById('a'),b=d.getElementById('b'),"
+        "tail=d.getElementById('tail'),t,src1,src2,rep,old,oldB,x,det,detSrc,clone,"
+        "c,cs,cr,oldC,ptext,qt,bad=0,ok=true,q1=true,q2=true,q3=true,q4=true,q5=true,"
+        "q6=true,q7=true,q8=true,q9=true,q10=true;"
+        "t=d.createTextNode('t');a.insertBefore(t,tail);old=a.childNodes;"
+        "src1=d.createTextNode('s1');b.appendChild(src1);oldB=b.childNodes;"
+        "t.before(src1);x=a.childNodes;"
+        "q1=(x.length===4&&x[1]===src1&&x[2]===t&&src1.parentNode===a&&"
+        "b.childNodes.length===1&&old.length===3&&old[1]===t&&"
+        "oldB.length===2&&oldB[1]===src1);if(!q1)ok=false;"
+        "src2=d.createTextNode('s2');b.appendChild(src2);t.after(src2);x=a.childNodes;"
+        "q2=(x.length===5&&x[1]===src1&&x[2]===t&&x[3]===src2&&x[4]===tail&&"
+        "src2.parentNode===a&&b.childNodes.length===1);if(!q2)ok=false;"
+        "rep=d.createTextNode('rep');b.appendChild(rep);t.replaceWith(rep);x=a.childNodes;"
+        "q3=(x.length===5&&x[2]===rep&&x[1]===src1&&x[3]===src2&&t.parentNode===null&&"
+        "rep.parentNode===a&&b.childNodes.length===1);if(!q3)ok=false;"
+        "detSrc=d.createTextNode('det-src');try{rep.before(detSrc);}catch(e1){bad|=1;}"
+        "try{rep.after(d.createElement('i'));}catch(e2){bad|=2;}"
+        "try{rep.replaceWith({});}catch(e3){bad|=4;}"
+        "q4=(rep.parentNode===a&&rep.data==='rep'&&detSrc.parentNode===null);if(!q4)ok=false;"
+        "det=d.createTextNode('det');det.before(detSrc);det.after(detSrc);det.replaceWith(detSrc);"
+        "q5=(det.data==='det'&&det.parentNode===null&&detSrc.parentNode===null);if(!q5)ok=false;"
+        "clone=rep.cloneNode(false);q6=(typeof clone.before==='function'&&"
+        "typeof clone.after==='function'&&typeof clone.replaceWith==='function'&&"
+        "clone.data==='rep');if(!q6)ok=false;"
+        "c=d.createComment('c');a.insertBefore(c,tail);oldC=a.childNodes;"
+        "cs=d.createComment('cs');b.appendChild(cs);c.after(cs);x=a.childNodes;"
+        "q7=(x.length===7&&x[3]===src2&&x[4]===c&&x[5]===cs&&cs.parentNode===a&&"
+        "oldC.length===6&&oldC[4]===c&&b.childNodes.length===1);if(!q7)ok=false;"
+        "cr=d.createComment('cr');b.appendChild(cr);c.replaceWith(cr);x=a.childNodes;"
+        "q8=(x.length===7&&x[4]===cr&&x[5]===cs&&c.parentNode===null&&"
+        "cr.parentNode===a&&cr.data==='cr'&&b.childNodes.length===1);if(!q8)ok=false;"
+        "q9=(typeof c.cloneNode(false).before==='function'&&"
+        "typeof c.cloneNode(false).after==='function'&&"
+        "typeof c.cloneNode(false).replaceWith==='function');if(!q9)ok=false;"
+        "ptext=d.getElementById('other').firstChild;qt=d.createTextNode('q');"
+        "a.insertBefore(qt,tail);qt.before(ptext);"
+        "q10=(ptext.parentNode===a&&qt.parentNode===a&&"
+        "d.getElementById('other').firstChild===null);if(!q10)ok=false;"
+        "document.getElementById('result').textContent=String(ok&&bad===7);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-character-data-existing-relative",
+            HTML, PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1283 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1283 OK",
+            "Browser-created Text and Comment wrappers accept one live"
+            " existing CharacterData source for before, after and replaceWith."
+            " Cross-parent moves update both owners and preserve static"
+            " snapshots; detached, staged and mixed inputs remain bounded.");
     return TRUE;
 }
 
@@ -112738,6 +112804,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1280: ok = test1280_browser_created_text_character_data_contract(); break;
         case 1281: ok = test1281_browser_created_text_relative_contract(); break;
         case 1282: ok = test1282_browser_created_comment_relative_contract(); break;
+        case 1283: ok = test1283_browser_created_character_data_existing_relative(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
