@@ -438,18 +438,19 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
 - `document.createComment(data)` 是 Browser-owned 的 detached Comment staging。调用必须恰好
   一个参数并按 JavaScript `String` 转换；wrapper 暴露 `nodeType=8`、`#comment`、
   `data`/`nodeValue`/`textContent`/`length`、owner/root/parent/connection/sibling、
-  `isSameNode()`/`isEqualNode()`、`cloneNode()`、`appendData()` 和 `remove()`。数据最多 65,535
-  个脚本字符，进入 Core 时还受 65,535 字节 UTF-8 ABI 上限约束。向 live Element 插入时，
-  DOM write Ex12 的 `create_comment_child_at` 调用 Core 按未过滤 `childNodes` 索引物化；后续
-  data mutation、移除、同父重排和再次插入复用既有 CharacterData callbacks 并保留 identity。
-  无效参数/reference、对象、超限输入以及通用 detached Core handle、Fragment、相对
-  `before()`/`after()`/`replaceWith()`、事件、资源和 observer 语义均 fail closed。
+  `isSameNode()`/`isEqualNode()`、`cloneNode()`、`appendData()`、`remove()` 和 1–4 个 primitive
+  `before()`/`after()`/`replaceWith()`。数据最多 65,535 个脚本字符，进入 Core 时受 65,535
+  字节 UTF-8 ABI 上限约束。live 插入由 DOM write Ex12 的 `create_comment_child_at` 按
+  `childNodes` 索引物化；data/relative/移除/重排/再插入复用 CharacterData callbacks 并保留
+  identity。无效参数/reference、对象、超限、Fragment、非 primitive relative、事件、资源和
+  observer 均 fail closed；detached relative 不产生 mutation。
 - detached Comment wrapper 的 `insertData()`、`deleteData()`、`replaceData()` 和
   `substringData()` 在 Browser 内按 UTF-16 code-unit 偏移执行；前 3 个方法在 detached
   状态更新本地数据，在 connected 状态复用既有 CharacterData write callback，最后一个
   只返回 snapshot。offset/count 必须为有限非负整数，删除范围按数据末尾截断，合成结果仍
   受 65,535 个脚本字符和 Core UTF-8 字节预算约束；非法参数或 callback/Core 失败保持
-  原数据不变。相对 `before()`/`after()`/`replaceWith()` 仍不属于该 wrapper 边界。
+  原数据不变。relative 只接受 live regular parent 的 1–4 个 primitive；其他 owner/节点 fail
+  closed。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和

@@ -40,18 +40,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   查询随属性 mutation 和深克隆保持隔离，fragment 消费后查询为空。当前结构 fragment
   不允许嵌套 Element，后代/兄弟组合不会扩展搜索树；空、过长或无法匹配的 selector
   fail closed。
-- next822–next830 完成 Fragment 的 `children`/命名属性、Node relations、selector 与
-  namespace/tag/class HTMLCollection 快照，以及跨 Fragment 的有界组合；各项均保持
-  最多四根、collection identity、原子提交和 fail-closed 预算。逐项 fixture、门选择与
-  设备证据集中在 [`docs/TESTING.md`](../docs/TESTING.md) 与 Git 历史。
-- next826–next830 完成 Fragment 的 replace/组合、集合与查询边界；具体 fixture、门选择和
-  设备证据集中在 [`docs/TESTING.md`](../docs/TESTING.md) 与 Git 历史，公共 ABI 保持不变。
 - next827 的 Fragment `replaceChild(Fragment, oldChild)` 与 next828 的 Fragment-to-Fragment
   append/insert/replace 已完成有界 ownership、容量和自引用预检，成功后保持两边
   collection identity 并消费源；TEST1267–1268 及相邻设备门均通过。具体证据集中在
   [`docs/TESTING.md`](../docs/TESTING.md) 与 Git 历史，未新增 Core fragment ABI。
-- next829–next830 完成 Fragment 的有界 collection 查询，包括 tag/class、namespace、
-  `item`/`namedItem` 和 id/name 映射；详细合同与门证据见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - next831/832 完成 detached Element/Fragment 的 `normalize()` 与 Element text-only
   `replaceChildren()`；next833 增加同一 staging 的 text-only `replaceChild()`；next834
   补齐 detached Element 的稳定 `NamedNodeMap`/`Attr` facade、值 mutation、namespace lookup
@@ -89,9 +81,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   Fragment/staged Element fail closed；TEST1281 与 `1280-1281,999` 门通过，未新增 Core ABI。
   证据为 `tmp/device-runs/20260916-205600-next841`，Debug ARMV4I 外置卡 3/3 PASS，日志、
   双空间预检、清理和 `crash_check` 均通过，dump=0。
+- next842 为 Browser-created Comment 增加 bounded primitive `before()`/`after()`/`replaceWith()`：
+  live regular Element 复用既有 nodeType=8 Core callback，detached 调用 inert；TEST1282 与
+  `1281-1282,999` 门通过，未新增 Core ABI。证据为 `tmp/device-runs/20260917-175033-next842`，
+  Debug ARMV4I 外置卡 3/3 PASS，日志、双空间预检、清理和 `crash_check` 均通过，dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1281。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1281,999`。
+- `TEST_MAX_NUMBER` 已为 1282。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1282,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -124,7 +120,8 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   next838 又补齐 Fragment-owned detached Element sibling/element-sibling 关系，next839 补齐
   Browser-owned Text/Comment 的 element-sibling 关系，next840 补齐 Browser-created Text 的
   CharacterData aggregate/split/replace 视图，next841 补齐 relative primitive mutation 并完成
-  相邻门；下一步固定可复现的 next842 缺口并进入公共 DLL。
+  相邻门，next842 补齐 Browser-created Comment 的 relative primitive mutation 并完成相邻门；
+  下一步固定可复现的 next843 缺口并进入公共 DLL。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -233,16 +230,16 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1281。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1281,999`。
+- `TEST_MAX_NUMBER`：1282。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1282,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260916-205600-next841` 是本批最新相邻证据：Debug ARMV4I
-`1280-1281,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-此前 next840 的证据仍保留在 `tmp/device-runs/20260916-203139-next840`。
+`tmp/device-runs/20260917-175033-next842` 是本批最新相邻证据：Debug ARMV4I
+`1281-1282,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+此前 next841 的证据仍保留在 `tmp/device-runs/20260916-205600-next841`。
 
 不完整日志不算通过；旧失败由 Git 与历史文档保留。
 
@@ -272,12 +269,12 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1281 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1282 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
   detached Element sibling 关系、Browser-owned Text/Comment element-sibling 关系及
-  Browser-created Text 的 `wholeText`/`splitText()`/`replaceWholeText()`/relative primitive 夹具均已有相邻设备门；
+  Browser-created Text/Comment 的 CharacterData/relative primitive 夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；

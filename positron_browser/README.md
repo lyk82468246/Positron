@@ -326,17 +326,18 @@ style/reflected setter 暂存，物化走 Core；`cloneNode` 复制属性/Text �
 内存 jar：name/value，32 对/8192 pair 字符上限，`Max-Age<=0` 删除，其余属性忽略，不
 持久化、不参与 HTTP。deprecated presentation-color、body 与 detached staging 不在此范围。
 
-`document.createComment(data)` 提供有界的 Browser-owned detached Comment wrapper：单一参数按
-JavaScript `String` 转换，暴露 node shape、data/nodeValue/textContent、root/parent/connection、
-identity、clone、appendData 和 remove；数据最多 65,535 个脚本字符，进入 Core 时还受同样大小
-的 UTF-8 ABI 上限。插入带 id 的 live Element 通过 DOM write Ex12 首次物化，后续 data mutation、
-移除、同父重排和再次插入保持 wrapper identity；无效参数/reference、对象、超限、通用 detached
-Core handle、Fragment、相对 mutation、事件、资源和 observer 均 fail closed。
+`document.createComment(data)` 提供 detached Comment wrapper：单一参数按 `String` 转换，暴露
+node shape、data/nodeValue/textContent、root/parent/connection、identity、clone、appendData、
+remove 和 1–4 primitive 的 `before()`/`after()`/`replaceWith()`；数据最多 65,535 个脚本字符，
+进入 Core 时受同样 UTF-8 ABI 上限。live 插入经 Ex12 物化，后续 data/relative/remove/reorder/
+reinsert 保持 identity；非法参数、对象、超限、Fragment、非 primitive relative、事件、资源、
+observer 均 fail closed。
 
 Comment wrapper 提供有界 CharacterData offset 方法：`insertData()`、`deleteData()`、
-`replaceData()` 和 `substringData()` 均按 UTF-16 code unit 解释；offset/count 必须为有限
-非负整数，删除超出末尾时截断。detached 更新 Browser 快照，connected 复用
-`__pcoreSetText` callback；超长、非法参数或 Core 失败保持原数据。相对 `before()`/`after()`/`replaceWith()` 未提供。
+`replaceData()` 和 `substringData()` 均按 UTF-16 code unit 解释；offset/count 为有限非负整数，
+删除超出末尾时截断。detached 更新快照，connected 复用 `__pcoreSetText`；relative 只接受
+live regular Element 中的 1–4 个 primitive，detached inert；超长、非法参数或 Core 失败保持
+原数据。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；注册
 `PBrowserScriptOptionCallbacks` 后由 Core 维护选择，`value`/`label` 缺失时回退到 option

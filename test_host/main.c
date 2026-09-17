@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1281
+#define TEST_MAX_NUMBER 1282
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54388,6 +54388,56 @@ static BOOL test1281_browser_created_text_relative_contract(void)
             " before, after and replaceWith operations in live regular"
             " Elements; detached calls remain inert and Fragment or staged"
             " Element owners fail closed without a new Core ABI.");
+    return TRUE;
+}
+
+/* TEST 1282 - Browser-created Comment relative primitive mutation. */
+static BOOL test1282_browser_created_comment_relative_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='head'>H</span><span id='tail'>T</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,a=document.getElementById('a'),tail="
+        "document.getElementById('tail'),c,v,u,old,x,bad=0,ok=true;"
+        "c=d.createComment('x');a.insertBefore(c,tail);old=a.childNodes;"
+        "if(typeof c.before!=='function'||typeof c.after!=='function'||"
+        "typeof c.replaceWith!=='function'||c.nodeType!==8||old.length!==3||"
+        "old[1]!==c||c.data!=='x')ok=false;"
+        "c.before('A',7);c.after(null,false);x=a.childNodes;"
+        "if(x.length!==7||x[1].data!=='A'||x[2].data!=='7'||x[3]!==c||"
+        "x[4].data!=='null'||x[5].data!=='false'||x[6]!==tail||"
+        "old.length!==3||old[1]!==c)ok=false;"
+        "v=d.createComment('v');a.insertBefore(v,tail);"
+        "try{v.before({});}catch(e1){bad|=1;}"
+        "try{v.after('1','2','3','4','5');}catch(e2){bad|=2;}"
+        "try{v.replaceWith({});}catch(e3){bad|=4;}"
+        "if(v.parentNode!==a||v.data!=='v')ok=false;v.remove();"
+        "c.replaceWith('R',8);x=a.childNodes;"
+        "if(x.length!==8||x[3].data!=='R'||x[4].data!=='8'||"
+        "x[5].data!=='null'||x[6].data!=='false'||x[7]!==tail||"
+        "c.parentNode!==null||c.data!=='x'||old.length!==3||old[1]!==c)ok=false;"
+        "c.before('ignored');c.after('ignored');c.replaceWith('ignored');"
+        "u=d.createComment('detached');u.before('x');u.after('y');u.replaceWith('z');"
+        "if(u.data!=='detached'||u.parentNode!==null)ok=false;"
+        "if(typeof c.cloneNode(false).before!=='function'||"
+        "typeof c.cloneNode(false).after!=='function'||"
+        "typeof c.cloneNode(false).replaceWith!=='function')ok=false;"
+        "document.getElementById('result').textContent=String(ok&&bad===7);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-comment-relative", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1282 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1282 OK",
+            "Browser-created Comment wrappers now expose bounded primitive"
+            " before, after and replaceWith operations in live regular"
+            " Elements; detached calls remain inert without a new Core ABI.");
     return TRUE;
 }
 
@@ -112687,6 +112737,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1279: ok = test1279_browser_character_data_element_sibling_contract(); break;
         case 1280: ok = test1280_browser_created_text_character_data_contract(); break;
         case 1281: ok = test1281_browser_created_text_relative_contract(); break;
+        case 1282: ok = test1282_browser_created_comment_relative_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
