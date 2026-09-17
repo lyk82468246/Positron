@@ -195,6 +195,12 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
   其他 DOM/分配失败返回 `1`。该入口不保存 detached handle、不派发事件、不执行 script、
   不抓取资源，也不暴露 Fragment；Browser 负责 detached wrapper、后续 data mutation、
   remove/reinsert 和 identity。
+- `PCore_NodeCreateCDATAChildAtById(hDoc, parent_id, child_index, data)` 是 Browser
+  detached CDATASection 进入 live DOM 的唯一 Core 物化入口。它沿用 Comment 的已连接
+  Element、未过滤 `childNodes` 索引、UTF-8/65,535 字节和返回码合同，直接创建
+  `nodeType=4`，成功后使 retained layout 失效；不保存 detached handle、不派发事件、
+  不执行脚本、不抓取资源，也不暴露 Fragment。Browser 通过 DOM write Ex14 负责 wrapper、
+  数据、relative、remove/reinsert 和 identity。
 - Browser 的 text-only 与 bounded Element/Text `DocumentFragment` staging 均不暴露 Core
   fragment ABI：Browser 只把最多四个 primitive UTF-8 Text 值或满足结构约束的序列化
   Element/Text 根交给既有 text-list/HTML parser 原子入口。fragment 只在成功消费后清空；

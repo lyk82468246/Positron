@@ -76,20 +76,20 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   快照。UTF-16 offset、超限和 clone 边界均有断言，不新增 Core ABI。TEST1280 与
   `1279-1280,999` 门通过，证据为 `tmp/device-runs/20260916-203139-next840`；Debug ARMV4I
   外置卡自动模式 2/2 PASS，完整日志回收、双空间预检、完成后清理和 `crash_check` PASS，dump=0。
-- next841 为 Browser-created Text 增加 bounded primitive relative mutation；TEST1281 与
-  `1280-1281,999` 门通过，未新增 Core ABI。证据为
-  `tmp/device-runs/20260916-205600-next841`，Debug ARMV4I 外置卡 3/3 PASS。
-- next842 为 Browser-created Comment 增加 bounded primitive `before()`/`after()`/`replaceWith()`：
-  live regular Element 复用既有 nodeType=8 Core callback，detached 调用 inert；TEST1282 与
-  `1281-1282,999` 门通过，未新增 Core ABI；证据为 `tmp/device-runs/20260917-175033-next842`，
-  Debug ARMV4I 外置卡 3/3 PASS。
 - next843 补齐 Browser-created Text/Comment 对单一 live CharacterData source 的
   `before()`/`after()`/`replaceWith()`：复用 Ex10/Ex11，跨父更新 owner/index 与 snapshot，
   其他 owner/节点 fail closed。TEST1283 与 `1281-1283,999` 门通过，无新 ABI；证据为
   `tmp/device-runs/20260917-183053-next843`，外置卡 3/3 PASS，`crash_check` PASS，dump=0。
+- next844 为 Browser 增加 `document.createCDATASection(data)` 的 bounded detached
+  wrapper，并在 Core 增加按 `childNodes` 索引创建 CDATA 的 Ex14 callback。wrapper 提供
+  node shape、CharacterData data/offset、clone、primitive relative、remove/reinsert 和
+  单一 existing CharacterData source move/replace；Core 只创建 live CDATA，不保存脚本
+  handle。TEST1284 与 `1284,999` 门通过，证据为
+  `tmp/device-runs/20260917-184910-next844`，外置卡 2/2 PASS，双空间预检、完整日志
+  回收、清理和 `crash_check` PASS，dump=0。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1283。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1283,999`。
+- `TEST_MAX_NUMBER` 已为 1284。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1284,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -123,8 +123,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   Browser-owned Text/Comment 的 element-sibling 关系，next840 补齐 Browser-created Text 的
   CharacterData aggregate/split/replace 视图，next841 补齐 relative primitive mutation 并完成
   相邻门，next842 补齐 Browser-created Comment 的 relative primitive mutation，next843 补齐
-  Browser-created Text/Comment 的单一 existing CharacterData relative mutation；
-  下一步固定可复现的 next844 缺口并进入公共 DLL。
+  Browser-created Text/Comment 的单一 existing CharacterData relative mutation，next844 又
+  补齐 Browser-created CDATASection 的 bounded 创建、物化和 CharacterData 生命周期；
+  下一步固定可复现的 next845 缺口并进入公共 DLL。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -233,15 +234,15 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1283。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1283,999`。
+- `TEST_MAX_NUMBER`：1284。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1284,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260917-183053-next843` 是本批最新相邻证据：Debug ARMV4I
-`1281-1283,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+`tmp/device-runs/20260917-184910-next844` 是本批最新相邻证据：Debug ARMV4I
+`1284,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
 此前 next841 的证据仍保留在 `tmp/device-runs/20260916-205600-next841`。
 
 不完整日志不算通过；旧失败由 Git 与历史文档保留。
@@ -350,7 +351,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next844：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+选择并实现 next845：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
 纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
 以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

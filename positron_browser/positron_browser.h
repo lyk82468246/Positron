@@ -972,6 +972,36 @@ typedef struct PBrowserScriptDomWriteCallbacksEx13 {
     PBrowserScriptSetDocumentTitleFn set_document_title;
 } PBrowserScriptDomWriteCallbacksEx13;
 
+/* Extended HTML write table. Ex13 remains ABI-fixed; Ex14 appends the
+ * bounded Core-owned document.createCDATASection materialization adapter
+ * while reusing the existing `__pcoreSetText` native JSON slot. The callback
+ * creates one CDATASection with UTF-8 data and inserts it at an unfiltered
+ * childNodes index. `parent_id` and `data` are borrowed for the synchronous
+ * call. Detached wrappers, data/length/identity and CharacterData lifecycle
+ * remain Browser-owned; generic Nodes, events and fragments remain outside
+ * this boundary. */
+typedef int (*PBrowserScriptCreateCDATAChildAtFn)(void *pw,
+        const char *parent_id, unsigned int child_index, const char *data);
+typedef struct PBrowserScriptDomWriteCallbacksEx14 {
+    unsigned long size;
+    void *pw;
+    PBrowserScriptSetTextFn set_text;
+    PBrowserScriptSetTextChildFn set_child_text;
+    PBrowserScriptSetCharacterDataChildFn set_character_data_child;
+    PBrowserScriptSplitTextChildFn split_text_child;
+    PBrowserScriptReplaceWholeTextChildFn replace_whole_text_child;
+    PBrowserScriptNormalizeChildTextFn normalize_child_text;
+    PBrowserScriptInsertTextChildFn insert_text_child;
+    PBrowserScriptInsertTextChildListFn insert_text_child_list;
+    PBrowserScriptSetInnerHTMLFn set_inner_html;
+    PBrowserScriptInsertAdjacentHTMLFn insert_adjacent_html;
+    PBrowserScriptSetOuterHTMLFn set_outer_html;
+    PBrowserScriptCreateElementChildAtFn create_element_child_at;
+    PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
+    PBrowserScriptSetDocumentTitleFn set_document_title;
+    PBrowserScriptCreateCDATAChildAtFn create_cdata_child_at;
+} PBrowserScriptDomWriteCallbacksEx14;
+
 /* Browser-owned bridge for the bounded classic-script document.write()
  * surface. The host sets the current script index on the session immediately
  * before evaluating each script, then this synchronous callback receives that
@@ -2769,6 +2799,8 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx12(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx12 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(
         HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx13 *callbacks);
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx14(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx14 *callbacks);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterDomWriteCallbacks(
         HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(

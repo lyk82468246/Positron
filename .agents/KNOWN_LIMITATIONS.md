@@ -189,13 +189,11 @@
   空字符串，setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript
   `String` 转换；`setAttribute()`/`removeAttribute()` 的变化会被后续 getter 读取。它不
   扩展 deprecated presentation-color、完整 HTMLBodyElement 接口或 detached body staging。
-- `document.createComment(data)` 是 bounded detached wrapper：单一参数按 `String` 转换，数据
-  最多 65,535 个脚本字符，进入 Core 时还受同样大小的 UTF-8 上限；wrapper 提供 node shape、
-  数据/父级/identity、clone、offset、remove 和 1–4 个 primitive 的
-  `before()`/`after()`/`replaceWith()`；另支持单一 CharacterData 的 move/replace。
-  插入 live Element 经 Ex12 物化，更新、relative、移除和再插入复用 callback；
-  detached target relative inert。非法参数、对象、detached source、超限、Fragment、混合列表、
-  observer fail closed；宿主负责 style/layout/paint。
+- `document.createComment(data)` 和 `document.createCDATASection(data)` 都是 bounded detached
+  CharacterData wrapper：按 `String` 转换，最多 65,535 个脚本字符，提供 node shape、data/
+  offset、clone、primitive relative、remove/reinsert；也接受单一 live CharacterData source
+  move/replace。Comment 经 Ex12、CDATA 经 Ex14 物化，更新复用既有 callback；Core handle、
+  Fragment、事件、资源、observer、混合/超限树语义和 detached target relative 均 fail closed。
 - HTML getter 与 Core mutation 入口共用有界 UTF-8 parser；它们保持
   身份、拒绝非法/超限/id 冲突并使 layout 失效。OuterHTML 只接受单一 Element 根或空字符串；
   顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 在 Core

@@ -232,6 +232,9 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   空值、非法 UTF-8 或超限返回 `3`，其他 DOM/分配失败返回 `1`。Browser write Ex12 负责
   detached wrapper、数据更新、remove/reinsert 和 identity；宿主只接 callback 及后续
   style/layout/paint。该入口不提供 detached Core handle、Fragment、事件、资源或 observer。
+- `PCore_NodeCreateCDATAChildAtById(hDoc, parent_id, child_index, data)` 沿用 Comment 的
+  索引、UTF-8/65,535 字节和返回码合同，创建 nodeType=4；Browser Ex14 负责 wrapper 和
+  lifecycle，不暴露 detached Core handle、Fragment、事件、资源或 observer。
 - `PCore_NodeInsertTextChildListById` 在同一位置提供 1–4 个借用 UTF-8 primitive 的
   原子列表变体：Core 先在 fragment 中完整创建 Text，再一次性插入；失败不会留下部分
   mutation。它复用相同的返回码、retained-layout 失效和无事件/资源/native 副作用合同，
@@ -454,6 +457,9 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   受 65,535 个脚本字符和 Core UTF-8 字节预算约束；非法参数或 callback/Core 失败保持
   原数据不变。relative 只接受 live regular parent 的 1–4 个 primitive 或单一 live
   CharacterData source；其他 owner/节点 fail closed。
+- `document.createCDATASection(data)` 复用 detached CharacterData staging，暴露 nodeType、
+  data/offset、clone、primitive relative、remove/reinsert 和单一 existing source move/replace；
+  Ex14 物化 live 节点，其他 detached/Fragment/事件/资源/observer 语义 fail closed。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
@@ -970,22 +976,12 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
 - 表单 option 的 selected/defaultSelected adapter 使用独立的可选 callback table，
   保持既有 `PBrowserScriptFormCallbacks` 布局不变；Browser 只在注册且字段完整时启用，
   缺失或失败按 fail-closed 处理。
-- DOM write 的 `PBrowserScriptDomWriteCallbacksEx` 只追加 Text-child callback，Ex2 再
-  追加 Comment/CDATA callback，Ex3 追加 `Text.splitText()` callback，Ex4 再追加
-  `Text.replaceWholeText()` callback，Ex5 再追加 `Node.normalize()` callback，Ex6 追加
-  direct Text-child callback，Ex7 追加 2–4 primitive Text 列表 callback，Ex8 追加
-  `Element.innerHTML` 的 `set_inner_html` callback，Ex9 再追加四位置
-  `Element.insertAdjacentHTML` 的 `insert_adjacent_html` callback，Ex10 再追加
-  `Element.outerHTML` 的 `set_outer_html` callback，Ex11 再追加
-  `document.createElement()` 的 `create_element_child_at` callback；所有版本都复用旧的
-  `__pcoreSetText` native slot。Ex11 只在结构尾部追加字段，旧的
-  `PBrowserScriptDomWriteCallbacks` 与 Ex2–Ex10 布局和既有语义保持不变；旧注册入口会
-  将新增字段置为 `NULL`。
-- DOM write Ex12 在表尾追加 `document.createComment()` 的
-  `create_comment_child_at` callback，仍复用 `__pcoreSetText` native slot；Ex12 及更旧
-  callback table 的布局和既有语义保持不变，旧注册入口会将该字段置为 `NULL`。该 callback
-  只负责 Browser-owned detached Comment 的首次 Core 物化，数据更新、移除和重排继续复用
-  既有 CharacterData/DOM mutation callbacks。
+- DOM write Ex/Ex2–Ex11 逐步追加 Text/CharacterData、normalize、文本列表、HTML、
+  createElement 等 callback，均复用 `__pcoreSetText`；新字段只追加在表尾，旧表和旧注册
+  入口不变并把新增字段置为 `NULL`。
+- DOM write Ex12/Ex14 在表尾追加 Comment/CDATA creation callback，均复用
+  `__pcoreSetText`；更旧 table 布局不变且新字段为 `NULL`，后续 lifecycle 复用既有
+  CharacterData/DOM mutation callbacks。
 - document.write bridge 使用独立的 `PBrowserScriptDocumentWriteCallbacks`，不再占用新的
   native-function slot；宿主以 `PBrowser_ScriptSessionSetCurrentScriptIndex()` 标记正在
   求值的 classic script，Browser 再把有界写入交给 Core 的脚本位置插入 primitive。该表

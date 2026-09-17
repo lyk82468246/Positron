@@ -1094,20 +1094,21 @@ TEST1271–1275 验证 detached `Node.normalize()`、Element `replaceChildren()`
 Attr identity、namespace、跨 owner copy、attached wrapper 同步和超限不变。门为
 `1271-1275,999`。
 
-TEST1276 验证 detached Element text-only HTML serialization/staging：escaping、childNodes
-identity 和 markup/limit/outerHTML fail-closed；门 `1276,999`，相邻 `1275-1276,999`。
+TEST1276 验证 detached Element text-only HTML serialization/staging 与 fail-closed；门
+`1276,999`，相邻 `1275-1276,999`。
 
-TEST1277 验证 Fragment `textContent=` 原子性：65,535 字符超限预检保留
-`childNodes`/`children`/owner，成功替换保持集合 identity 并 detach 节点，`null`→`"null"`。
+TEST1277 验证 Fragment `textContent=` 原子性、超限预检、集合 identity 和 `null` 字符串化；
 门 `1277,999`，相邻 `1276-1277,999`。
 
-TEST1278 验证 bounded Fragment 中 detached Element 的四个 sibling getter：普通 sibling 含
-Text，element-sibling 跳过 Text；重排、移除、parser-backed 消费和物化后 live 移除同步关系、
-owner 与 wrapper identity，未归属返回 `null`。门 `1278,999`，相邻 `1277-1278,999`。
+TEST1278 验证 bounded Fragment detached Element 的 sibling/element-sibling、重排、消费、
+物化和 wrapper identity；未归属返回 `null`。门 `1278,999`，相邻 `1277-1278,999`。
 
-TEST1279–1283 覆盖 Text/Comment relative 及到现有 CharacterData 的 move/replace；
-验证 identity、snapshot 和 fail-closed。门 `1281-1283,999`；1283
-只允许单一 live CharacterData source，其他 owner、Element、混合列表和对象拒绝。
+TEST1279–1283 覆盖 Text/Comment relative、existing CharacterData move/replace、identity、
+snapshot 和 fail-closed；门 `1281-1283,999`，source 限定为单一 live CharacterData。
+
+TEST1284 覆盖 `document.createCDATASection()` 的 node shape、data/offset、clone、relative、
+materialization、existing-source move、remove/reinsert 和 fail-closed；门 `1284,999`，确认
+Debug ARMV4I、双空间预检、日志回收、清理和 crash check。
 
 ### 手动模式
 

@@ -3318,6 +3318,128 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return has?appendMany805(this,arguments,true):pr.apply(this,arguments);};"
         "d.createComment=function(value){if(arguments.length!==1){throw new TypeError('createComment arguments');}return make805(value);};})(this);";
 
+    /* Keep CDATA creation in the same bounded Browser-owned CharacterData
+     * staging model as Comment.  The Core callback only materializes a single
+     * CDATASection into a live Element; data, identity, removal and reinsert
+     * remain in this DLL and the later relative installer shares the existing
+     * CharacterData move/replace callbacks. */
+    static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE[] =
+        "(function(g){var P=g.__pcorePElement,d=g.document,find,ins,app,pre,pr,rem;"
+        "if(!P||!d||typeof d.getElementById!=='function'||typeof g.__pcoreSetText!=='function'){return;}find=d.getElementById;"
+        "ins=P.prototype.insertBefore;app=P.prototype.appendChild;pre=P.prototype.append;pr=P.prototype.prepend;rem=P.prototype.removeChild;"
+        "function created(n){return !!(n&&n.__pcoreCreatedCDATA806&&n.nodeType===4);}"
+        "function owner(n){return n&&n.__pcoreOwner806?n.__pcoreOwner806:null;}"
+        "function live(n){var p=owner(n),a;if(!p){return false;}a=p.childNodes;"
+        "return !!(a&&n.__pcoreIndex806>=0&&n.__pcoreIndex806<a.length&&a[n.__pcoreIndex806]===n); }"
+        "function parent806(p){if(!p||p.nodeType!==1||typeof p.__id!=='string'||p.__id===''||"
+        "p.__pcoreDetached11||find.call(d,p.__id)!==p){throw new Error('cdata parent unavailable');}return p;}"
+        "function list806(a){if(typeof g.__pcoreDecorateCollection13==='function'){return g.__pcoreDecorateCollection13(a,'NodeList',false);}return a;}"
+        "function reindex806(p,a){var i,x;for(i=0;i<a.length;i++){x=a[i];if(x&&x.__owner11===p){x.__index11=i;}"
+        "if(created(x)&&owner(x)===p){x.__pcoreIndex806=i;}}p.__nodes11=list806(a);p.__children9=null;}"
+        "function sibling806(n,step){var p=owner(n),a,i;if(!live(n)){return null;}a=p.childNodes;"
+        "for(i=0;i<a.length;i++){if(a[i]===n){i+=step;return i>=0&&i<a.length?a[i]:null;}}return null;}"
+        "function elementSibling806(n,step){var p=owner(n),a,i,j,x;if(!live(n)){return null;}a=p.childNodes;"
+        "for(i=0;i<a.length;i++){if(a[i]===n){j=i+step;while(j>=0&&j<a.length){x=a[j];"
+        "if(x&&x.nodeType===1){return x;}j+=step;}break;}}return null;}"
+        "function setData806(n,v){var s=String(v),p,ok;if(s.length>65535){throw new Error('cdata data limit');}"
+        "p=owner(n);if(p===null){n.__data806=s;return undefined;}if(!live(n)){throw new Error('cdata unavailable');}"
+        "parent806(p);if(typeof g.__pcoreSetText!=='function'){throw new Error('cdata unavailable');}"
+        "try{ok=g.__pcoreSetText({parentId:p.__id,index:n.__pcoreIndex806,nodeType:4,text:s});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('cdata update failed');}n.__data806=s;return undefined;}"
+        "function offset806(v,l){var a=Number(v);if(a!==a||!isFinite(a)||a<0||a!==Math.floor(a)||a>l){throw new Error('cdata data offset');}return a;}"
+        "function count806(v){var a=Number(v);if(a!==a||!isFinite(a)||a<0||a!==Math.floor(a)){throw new Error('cdata data count');}return a;}"
+        "function remove806(n){var p,old,next,i,ok;if(!created(n)||!live(n)){return undefined;}p=parent806(owner(n));old=p.childNodes;"
+        "if(typeof g.__pcoreRemoveChild!=='function'){throw new Error('cdata remove unavailable');}"
+        "try{ok=g.__pcoreRemoveChild({op:'removeCharacterDataChild',parentId:p.__id,index:n.__pcoreIndex806,nodeType:4});}"
+        "catch(e){ok=false;}if(!ok){throw new Error('cdata remove failed');}next=[];for(i=0;i<old.length;i++){if(old[i]!==n){next.push(old[i]);}}"
+        "n.__pcoreOwner806=null;n.__pcoreIndex806=-1;reindex806(p,next);return undefined;}"
+        "function values806(args){var out=[],i,v,s;if(!args||args.length<1||args.length>4){"
+        "throw new Error('cdata relative arguments');}for(i=0;i<args.length;i++){v=args[i];"
+        "if(v!==null&&v!==undefined&&(typeof v==='object'||typeof v==='function')){"
+        "throw new Error('cdata relative only accepts primitive');}s=String(v);"
+        "if(s.length>65535){throw new Error('cdata relative limit');}out.push(s);}return out;}"
+        "function inserted806(p,old,at,count){var out=[],i,x;p.__nodes11=null;p.__children9=null;"
+        "for(i=0;i<old.length+count;i++){if(i>=at&&i<at+count){x=typeof g.__pcoreNodeAt11==='function'?"
+        "g.__pcoreNodeAt11(p,i):null;if(!x||x.nodeType!==3){throw new Error('cdata relative wrapper unavailable');}"
+        "out.push(x);}else{out.push(old[i<at?i:i-count]);}}reindex806(p,out);return undefined;}"
+        "function relative806(n,args,after){var p,old,idx,at,payload,v,ok,i;"
+        "p=owner(n);if(!created(n)||!p||!live(n)){return undefined;}v=values806(args);parent806(p);"
+        "old=[];for(i=0;i<p.childNodes.length;i++){old.push(p.childNodes[i]);}idx=-1;for(i=0;i<old.length;i++){if(old[i]===n){idx=i;break;}}"
+        "if(idx<0||old.length>64||old.length+v.length>64){throw new Error('cdata relative child limit');}"
+        "at=idx+(after?1:0);payload={count:v.length};for(i=0;i<v.length;i++){payload['text'+i]=v[i];}"
+        "if(typeof g.__pcoreSetText!=='function'){throw new Error('cdata relative unavailable');}"
+        "try{ok=g.__pcoreSetText({op:'insertTextChildList',parentId:p.__id,index:at,values:payload});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('cdata relative insert failed');}return inserted806(p,old,at,v.length);}"
+        "function replaceText806(n,args){var p,old,idx,payload,v,ok,out=[],i,x;"
+        "p=owner(n);if(!created(n)||!p||!live(n)){return undefined;}v=values806(args);parent806(p);"
+        "old=[];for(i=0;i<p.childNodes.length;i++){old.push(p.childNodes[i]);}idx=-1;for(i=0;i<old.length;i++){if(old[i]===n){idx=i;break;}}"
+        "if(idx<0||old.length-1+v.length>64){throw new Error('cdata relative child limit');}payload={count:v.length};"
+        "for(i=0;i<v.length;i++){payload['text'+i]=v[i];}if(typeof g.__pcoreRemoveChild!=='function'){throw new Error('cdata relative unavailable');}"
+        "try{ok=g.__pcoreRemoveChild({op:'replaceCharacterDataChildWithTextList',parentId:p.__id,index:idx,nodeType:4,values:payload});}catch(e){ok=false;}"
+        "if(!ok){throw new Error('cdata relative replace failed');}n.__pcoreOwner806=null;n.__pcoreIndex806=-1;"
+        "p.__nodes11=null;p.__children9=null;for(i=0;i<old.length-1+v.length;i++){if(i>=idx&&i<idx+v.length){"
+        "x=typeof g.__pcoreNodeAt11==='function'?g.__pcoreNodeAt11(p,i):null;if(!x||x.nodeType!==3){throw new Error('cdata relative wrapper unavailable');}out.push(x);}"
+        "else if(i<idx){out.push(old[i]);}else{out.push(old[i-(v.length-1)]);}}reindex806(p,out);return undefined;}"
+        "function insert806(p,n,ref){var old,source,src,sourceIndex,index,next,nextSource,i,ok;parent806(p);"
+        "if(!created(n)){throw new Error('cdata insert unavailable');}source=owner(n);if(source!==null&&!live(n)){throw new Error('cdata unavailable');}"
+        "if(ref===undefined||ref===null){ref=null;}else{if(ref.nodeType!==1&&ref.nodeType!==3&&ref.nodeType!==4&&ref.nodeType!==8){"
+        "throw new Error('cdata reference unavailable');}if(ref.parentNode!==p){throw new Error('cdata reference unavailable');}}"
+        "old=p.childNodes;if(!old||old.length>64){throw new Error('cdata child limit');}index=old.length;"
+        "if(ref!==null){index=-1;for(i=0;i<old.length;i++){if(old[i]===ref){index=i;break;}}if(index<0){throw new Error('cdata reference unavailable');}}"
+        "if(source===p&&ref===n){return n;}if(source!==null){src=source.childNodes;sourceIndex=n.__pcoreIndex806;"
+        "if(!src||sourceIndex<0||sourceIndex>=src.length||src[sourceIndex]!==n){throw new Error('cdata source unavailable');}parent806(source);"
+        "if(typeof g.__pcoreRemoveChild!=='function'){throw new Error('cdata insert unavailable');}"
+        "try{ok=g.__pcoreRemoveChild({op:'insertCharacterDataChildAt',parentId:p.__id,index:index,sourceParentId:source.__id,sourceIndex:sourceIndex,nodeType:4});}"
+        "catch(e1){ok=false;}}else{if(typeof g.__pcoreSetText!=='function'){throw new Error('cdata insert unavailable');}"
+        "try{ok=g.__pcoreSetText({op:'createCDATA',parentId:p.__id,index:index,text:n.__data806});}catch(e2){ok=false;}}"
+        "if(!ok){throw new Error('cdata insert failed');}next=[];for(i=0;i<old.length;i++){if(old[i]===n){continue;}"
+        "if(ref!==null&&old[i]===ref){next.push(n);}next.push(old[i]);}if(ref===null){next.push(n);}"
+        "if(source!==null&&source!==p){nextSource=[];for(i=0;i<src.length;i++){if(src[i]!==n){nextSource.push(src[i]);}}}"
+        "n.__pcoreOwner806=p;reindex806(p,next);if(source!==null&&source!==p){reindex806(source,nextSource);}return n;}"
+        "function make806(v){var n={__pcoreCreatedCDATA806:true,__pcoreOwner806:null,__pcoreIndex806:-1,__data806:String(v)};"
+        "if(n.__data806.length>65535){throw new Error('cdata data limit');}"
+        "Object.defineProperty(n,'nodeType',{value:4,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'nodeName',{value:'#cdata-section',writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'ownerDocument',{value:d,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'nodeValue',{get:function(){return n.__data806;},set:function(v){setData806(n,v);},enumerable:true});"
+        "Object.defineProperty(n,'data',{get:function(){return n.__data806;},set:function(v){setData806(n,v);},enumerable:true});"
+        "Object.defineProperty(n,'textContent',{get:function(){return n.__data806;},set:function(v){setData806(n,v);},enumerable:true});"
+        "Object.defineProperty(n,'length',{get:function(){return n.__data806.length;},enumerable:true});"
+        "Object.defineProperty(n,'parentNode',{get:function(){return live(n)?owner(n):null;},enumerable:true});"
+        "Object.defineProperty(n,'parentElement',{get:function(){var p=live(n)?owner(n):null;return p&&p.nodeType===1?p:null;},enumerable:true});"
+        "Object.defineProperty(n,'isConnected',{get:function(){var p=live(n)?owner(n):null;return !!(p&&p.isConnected);},enumerable:true});"
+        "Object.defineProperty(n,'previousSibling',{get:function(){return sibling806(n,-1);},enumerable:true});"
+        "Object.defineProperty(n,'nextSibling',{get:function(){return sibling806(n,1);},enumerable:true});"
+        "Object.defineProperty(n,'previousElementSibling',{get:function(){return elementSibling806(n,-1);},enumerable:true});"
+        "Object.defineProperty(n,'nextElementSibling',{get:function(){return elementSibling806(n,1);},enumerable:true});"
+        "Object.defineProperty(n,'firstChild',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'lastChild',{value:null,writable:false,configurable:false,enumerable:true});"
+        "Object.defineProperty(n,'childNodes',{get:function(){return list806([]);},enumerable:true});"
+        "n.hasChildNodes=function(){return false;};n.getRootNode=function(){return live(n)?d:n;};"
+        "n.isSameNode=function(other){return n===other;};n.isEqualNode=function(other){return !!other&&other.nodeType===4&&String(other.data)===n.__data806;};"
+        "n.cloneNode=function(){return make806(n.__data806);};n.appendData=function(v){setData806(n,n.__data806+String(v));};"
+        "n.insertData=function(offset,v){var s=n.__data806,a=offset806(offset,s.length);setData806(n,s.substring(0,a)+String(v)+s.substring(a));};"
+        "n.deleteData=function(offset,count){var s=n.__data806,a=offset806(offset,s.length),b=count806(count);if(b>s.length-a){b=s.length-a;}setData806(n,s.substring(0,a)+s.substring(a+b));};"
+        "n.replaceData=function(offset,count,v){var s=n.__data806,a=offset806(offset,s.length),b=count806(count);if(b>s.length-a){b=s.length-a;}setData806(n,s.substring(0,a)+String(v)+s.substring(a+b));};"
+        "n.substringData=function(offset,count){var s=n.__data806,a=offset806(offset,s.length),b=count806(count);if(b>s.length-a){b=s.length-a;}return s.substring(a,a+b);};"
+        "n.before=function(){if(arguments.length===0){return undefined;}return relative806(n,arguments,false);};"
+        "n.after=function(){if(arguments.length===0){return undefined;}return relative806(n,arguments,true);};"
+        "n.replaceWith=function(){if(arguments.length<1||arguments.length>4){throw new Error('cdata relative arguments');}return replaceText806(n,arguments);};"
+        "n.remove=function(){return remove806(n);};return n;}"
+        "function appendMany806(p,args,prepend){var i,v,has=0;if(args.length>4){throw new Error('cdata append limit');}"
+        "for(i=0;i<args.length;i++){if(created(args[i])){has=1;}}if(!has){return (prepend?pr:pre).apply(p,args);}"
+        "for(i=0;i<args.length;i++){if(!created(args[i])){throw new Error('cdata append mixed unavailable');}}"
+        "if(prepend){for(i=args.length-1;i>=0;i--){v=args[i];insert806(p,v,p.childNodes.length?p.childNodes[0]:null);}}"
+        "else{for(i=0;i<args.length;i++){v=args[i];insert806(p,v,null);}}return undefined;}"
+        "P.prototype.insertBefore=function(n,ref){if(created(n)){return insert806(this,n,arguments.length>1?ref:null);}return ins.apply(this,arguments);};"
+        "P.prototype.appendChild=function(n){if(created(n)){return insert806(this,n,null);}return app.apply(this,arguments);};"
+        "P.prototype.removeChild=function(n){if(created(n)){if(owner(n)!==this||!live(n)){throw new Error('removeChild failed');}remove806(n);return n;}return rem.apply(this,arguments);};"
+        "P.prototype.append=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(created(arguments[i])){has=1;break;}}"
+        "return has?appendMany806(this,arguments,false):pre.apply(this,arguments);};"
+        "P.prototype.prepend=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(created(arguments[i])){has=1;break;}}"
+        "return has?appendMany806(this,arguments,true):pr.apply(this,arguments);};"
+        "d.createCDATASection=function(value){if(arguments.length!==1){throw new TypeError('createCDATASection arguments');}return make806(value);};})(this);";
+
     /* DocumentFragment is kept as a Browser-owned staging graph.  The
      * bounded path below accepts detached Elements with direct Text children
      * and detached Text roots, then commits the complete fragment through the
@@ -3925,23 +4047,27 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
      * perform the atomic native mutation.  Mixed lists, Elements, fragments
      * and staged owners continue to fail closed through the earlier methods. */
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE[] =
-        "(function(g){var d=g.document,oldText,oldComment;"
+        "(function(g){var d=g.document,oldText,oldComment,oldCdata;"
         "if(!d){return;}oldText=typeof d.createTextNode==='function'?d.createTextNode:null;"
         "oldComment=typeof d.createComment==='function'?d.createComment:null;"
+        "oldCdata=typeof d.createCDATASection==='function'?d.createCDATASection:null;"
         "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}"
         "function C(n){return !!(n&&n.__pcoreCreatedComment805&&n.nodeType===8);}"
-        "function created(n){return T(n)||C(n);}"
+        "function D(n){return !!(n&&n.__pcoreCreatedCDATA806&&n.nodeType===4);}"
+        "function created(n){return T(n)||C(n)||D(n);}"
         "function character(n){return !!(n&&(n.nodeType===3||n.nodeType===4||n.nodeType===8)&&"
         "(created(n)||n.__owner11));}"
         "function owner(n){if(T(n)){return n.__pcoreOwner803||null;}"
-        "if(C(n)){return n.__pcoreOwner805||null;}return null;}"
+        "if(C(n)){return n.__pcoreOwner805||null;}if(D(n)){return n.__pcoreOwner806||null;}return null;}"
         "function index(n){if(T(n)){return n.__pcoreIndex803;}"
-        "if(C(n)){return n.__pcoreIndex805;}return n&&n.__index11;}"
+        "if(C(n)){return n.__pcoreIndex805;}if(D(n)){return n.__pcoreIndex806;}return n&&n.__index11;}"
         "function setOwner(n,p,i){if(T(n)){n.__pcoreOwner803=p;n.__pcoreIndex803=i;}"
         "else if(C(n)){n.__pcoreOwner805=p;n.__pcoreIndex805=i;}"
+        "else if(D(n)){n.__pcoreOwner806=p;n.__pcoreIndex806=i;}"
         "else{n.__owner11=p;n.__index11=i;}n.__pcoreDetached11=false;}"
         "function clearOwner(n){if(T(n)){n.__pcoreOwner803=null;n.__pcoreIndex803=-1;}"
         "else if(C(n)){n.__pcoreOwner805=null;n.__pcoreIndex805=-1;}"
+        "else if(D(n)){n.__pcoreOwner806=null;n.__pcoreIndex806=-1;}"
         "n.__owner11=null;n.__index11=-1;}"
         "function list(p){var a;try{a=p&&p.childNodes;}catch(e){a=null;}"
         "return a&&typeof a.length==='number'?a:null;}"
@@ -3958,7 +4084,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "a=list(p);if(!a||i<0||i>=a.length||a[i]!==n){return null;}return {p:p,i:i};}"
         "function reindex(p,a){var i,x;if(!p||!a){throw new Error('relative source unavailable');}"
         "for(i=0;i<a.length;i++){x=a[i];if(x&&x.__owner11===p){x.__index11=i;}"
-        "if(T(x)&&owner(x)===p){x.__pcoreIndex803=i;}if(C(x)&&owner(x)===p){x.__pcoreIndex805=i;}}"
+        "if(T(x)&&owner(x)===p){x.__pcoreIndex803=i;}if(C(x)&&owner(x)===p){x.__pcoreIndex805=i;}"
+        "if(D(x)&&owner(x)===p){x.__pcoreIndex806=i;}}"
         "p.__nodes11=typeof g.__pcoreDecorateCollection13==='function'?"
         "g.__pcoreDecorateCollection13(a,'NodeList',false):a;p.__children9=null;}"
         "function move(target,source,after){var p,si,old,sourceOld,targetIndex,ref,index,ok,next,nextSource,i;"
@@ -4006,7 +4133,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "n.replaceWith=function(){if(arguments.length===1&&character(arguments[0])){return replace(n,arguments[0]);}"
         "return oldReplace.apply(n,arguments);};n.cloneNode=function(){return decorate(oldClone.apply(n,arguments));};return n;}"
         "if(oldText){d.createTextNode=function(){return decorate(oldText.apply(d,arguments));};}"
-        "if(oldComment){d.createComment=function(){return decorate(oldComment.apply(d,arguments));};}})(this);";
+        "if(oldComment){d.createComment=function(){return decorate(oldComment.apply(d,arguments));};}"
+        "if(oldCdata){d.createCDATASection=function(){return decorate(oldCdata.apply(d,arguments));};}})(this);";
 
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART2[] =
         "(function(g){var PElement=g.__pcorePElement;var PEvent=g.__pcorePEvent;"
@@ -7908,6 +8036,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
         return result;
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE, -1);
     if (result != PSCRIPT_OK) {
         return result;
@@ -7995,6 +8128,7 @@ typedef struct p_browser_script_dom_write_binding {
     PBrowserScriptCreateElementChildAtFn create_element_child_at;
     PBrowserScriptCreateCommentChildAtFn create_comment_child_at;
     PBrowserScriptSetDocumentTitleFn set_document_title;
+    PBrowserScriptCreateCDATAChildAtFn create_cdata_child_at;
     void *document_write_pw;
     PBrowserScriptDocumentWriteFn document_write;
 } p_browser_script_dom_write_binding;
@@ -9418,6 +9552,16 @@ static int p_browser_script_dom_set_text(void *pw,
             return 1;
         }
         changed = binding->create_comment_child_at(binding->pw, parent_id,
+                (unsigned int) child_index, text);
+    } else if (op != NULL && strcmp(op, "createCDATA") == 0) {
+        if (binding->create_cdata_child_at == NULL || parent_id == NULL ||
+                parent_id[0] == '\0' || child_index < 0 || text == NULL ||
+                strlen(parent_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+                strlen(text) > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
+            PJson_Free(root);
+            return 1;
+        }
+        changed = binding->create_cdata_child_at(binding->pw, parent_id,
                 (unsigned int) child_index, text);
     } else if (op != NULL && strcmp(op, "setInnerHTML") == 0) {
         if (binding->set_inner_html == NULL || id == NULL ||
@@ -13150,6 +13294,67 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(
     binding->create_element_child_at = callbacks->create_element_child_at;
     binding->create_comment_child_at = callbacks->create_comment_child_at;
     binding->set_document_title = callbacks->set_document_title;
+    rc = PScript_RegisterGlobalJsonFunction(session->runtime,
+            "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
+    if (rc != PSCRIPT_OK) {
+        free(binding);
+        return rc;
+    }
+    session->dom_write = binding;
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterDomWriteCallbacksEx14(
+        HANDLE hSession, const PBrowserScriptDomWriteCallbacksEx14 *callbacks)
+{
+    p_browser_script_session *session;
+    p_browser_script_dom_write_binding *binding;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || callbacks == NULL ||
+            callbacks->size < sizeof(PBrowserScriptDomWriteCallbacksEx14) ||
+            callbacks->set_text == NULL || callbacks->set_child_text == NULL ||
+            callbacks->set_character_data_child == NULL ||
+            callbacks->split_text_child == NULL ||
+            callbacks->replace_whole_text_child == NULL ||
+            callbacks->normalize_child_text == NULL ||
+            callbacks->insert_text_child == NULL ||
+            callbacks->insert_text_child_list == NULL ||
+            callbacks->set_inner_html == NULL ||
+            callbacks->insert_adjacent_html == NULL ||
+            callbacks->set_outer_html == NULL ||
+            callbacks->create_element_child_at == NULL ||
+            callbacks->create_comment_child_at == NULL ||
+            callbacks->set_document_title == NULL ||
+            callbacks->create_cdata_child_at == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    if (session->dom_write != NULL) {
+        return PSCRIPT_ERROR_GLOBAL;
+    }
+    binding = (p_browser_script_dom_write_binding *) malloc(
+            sizeof(*binding));
+    if (binding == NULL) {
+        return PSCRIPT_ERROR_FATAL;
+    }
+    memset(binding, 0, sizeof(*binding));
+    binding->pw = callbacks->pw;
+    binding->set_text = callbacks->set_text;
+    binding->set_child_text = callbacks->set_child_text;
+    binding->set_character_data_child = callbacks->set_character_data_child;
+    binding->split_text_child = callbacks->split_text_child;
+    binding->replace_whole_text_child = callbacks->replace_whole_text_child;
+    binding->normalize_child_text = callbacks->normalize_child_text;
+    binding->insert_text_child = callbacks->insert_text_child;
+    binding->insert_text_child_list = callbacks->insert_text_child_list;
+    binding->set_inner_html = callbacks->set_inner_html;
+    binding->insert_adjacent_html = callbacks->insert_adjacent_html;
+    binding->set_outer_html = callbacks->set_outer_html;
+    binding->create_element_child_at = callbacks->create_element_child_at;
+    binding->create_comment_child_at = callbacks->create_comment_child_at;
+    binding->set_document_title = callbacks->set_document_title;
+    binding->create_cdata_child_at = callbacks->create_cdata_child_at;
     rc = PScript_RegisterGlobalJsonFunction(session->runtime,
             "__pcoreSetText", -1, p_browser_script_dom_set_text, binding);
     if (rc != PSCRIPT_OK) {

@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1283
+#define TEST_MAX_NUMBER 1284
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -15307,6 +15307,33 @@ static int pcore_browser_script_dom_create_comment(void *pw,
 
 /* Product semantics stay in positron_core; the test host only supplies the
  * browser session's document handle and schedules a fresh render pass. */
+static int pcore_browser_script_dom_create_cdata(void *pw,
+        const char *parent_id, unsigned int child_index, const char *data)
+{
+    pcore_browser_script_bridge *bridge;
+    int result;
+
+    bridge = (pcore_browser_script_bridge *) pw;
+    if (bridge == NULL || bridge->document == NULL || parent_id == NULL ||
+            data == NULL) {
+        return -1;
+    }
+    result = PCore_NodeCreateCDATAChildAtById(bridge->document, parent_id,
+            child_index, data);
+    if (result == 0) {
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
+            pcore_request_interaction_restyle(bridge->hwnd);
+        }
+        return 1;
+    }
+    if (result == 2 || result == 3) {
+        return 0;
+    }
+    return -1;
+}
+
+/* Product semantics stay in positron_core; the test host only supplies the
+ * browser session's document handle and schedules a fresh render pass. */
 static int pcore_browser_script_dom_set_inner_html(void *pw,
         const char *id, const char *html)
 {
@@ -17629,7 +17656,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     PBrowserScriptInteractionCallbacksEx interaction_callbacks;
     PBrowserScriptFocusRequestCallbacksEx focus_request_callbacks;
     PBrowserScriptDomRelationCallbacks dom_relation_callbacks;
-    PBrowserScriptDomWriteCallbacksEx13 dom_write_callbacks;
+    PBrowserScriptDomWriteCallbacksEx14 dom_write_callbacks;
     PBrowserScriptDocumentWriteCallbacks document_write_callbacks;
     PBrowserScriptDomMutationCallbacksEx15 dom_mutation_callbacks;
     PBrowserScriptContentEditableCallbacks content_editable_callbacks;
@@ -17823,6 +17850,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             pcore_browser_script_dom_create_element;
     dom_write_callbacks.create_comment_child_at =
             pcore_browser_script_dom_create_comment;
+    dom_write_callbacks.create_cdata_child_at =
+            pcore_browser_script_dom_create_cdata;
     dom_write_callbacks.set_document_title =
             pcore_browser_script_dom_set_document_title;
     document_write_callbacks.size = sizeof(document_write_callbacks);
@@ -18053,7 +18082,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &dom_read_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(session,
             &dom_relation_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx14(session,
             &dom_write_callbacks) != PSCRIPT_OK ||
             (document_write_needed &&
             PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(session,
@@ -54504,6 +54533,68 @@ static BOOL test1283_browser_created_character_data_existing_relative(void)
             " existing CharacterData source for before, after and replaceWith."
             " Cross-parent moves update both owners and preserve static"
             " snapshots; detached, staged and mixed inputs remain bounded.");
+    return TRUE;
+}
+
+/* TEST 1284 - Browser-created CDATASection staging and materialization. */
+static BOOL test1284_browser_create_cdata_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='head'>H</span><span id='tail'>T</span></div>"
+        "<div id='b'><span id='other'>O</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,a=d.getElementById('a'),b=d.getElementById('b'),"
+        "tail=d.getElementById('tail'),c,v,src,old,x,bad=0,ok=true,u;"
+        "if(typeof d.createCDATASection!=='function'||(typeof Node!=='object'&&typeof Node!=='function')||Node.CDATA_SECTION_NODE!==4){ok=false;}"
+        "try{c=d.createCDATASection('x<y');}catch(e0){ok=false;}"
+        "if(!c||c.nodeType!==4||c.nodeName!=='#cdata-section'||c.ownerDocument!==d||"
+        "c.parentNode!==null||c.parentElement!==null||c.isConnected||c.getRootNode()!==c||"
+        "c.data!=='x<y'||c.nodeValue!=='x<y'||c.textContent!=='x<y'||c.length!==3||"
+        "c.childNodes.length!==0||!c.isSameNode(c)){ok=false;}"
+        "v=c.cloneNode(false);if(!v||v===c||v.nodeType!==4||v.data!=='x<y'||"
+        "v.parentNode!==null||!c.isEqualNode(v)||c.isSameNode(v)){ok=false;}"
+        "try{d.createCDATASection();}catch(e1){bad|=1;}"
+        "try{d.createCDATASection('a','b');}catch(e2){bad|=2;}"
+        "old=a.childNodes;c.before('A',7);c.after(null,false);"
+        "if(c.parentNode!==null||c.data!=='x<y')ok=false;"
+        "a.insertBefore(c,tail);x=a.childNodes;"
+        "if(x.length!==3||x[1]!==c||c.parentNode!==a||!c.isConnected||"
+        "c.getRootNode()!==d||old.length!==2||old[0]!==a.firstChild)ok=false;"
+        "c.before('B',8);c.after(null,false);x=a.childNodes;"
+        "if(x.length!==7||x[1].data!=='B'||x[2].data!=='8'||x[3]!==c||"
+        "x[4].data!=='null'||x[5].data!=='false'||x[6]!==tail||old.length!==2)ok=false;"
+        "c.data='changed';if(c.nodeValue!=='changed'||c.textContent!=='changed'||c.length!==7)ok=false;"
+        "src=d.createCDATASection('src');b.appendChild(src);c.after(src);x=a.childNodes;"
+        "if(x[4]!==src||src.parentNode!==a||b.childNodes.length!==1)ok=false;"
+        "v=d.createCDATASection('v');a.insertBefore(v,tail);"
+        "try{v.before({});}catch(e3){bad|=4;}try{v.after('1','2','3','4','5');}catch(e4){bad|=8;}"
+        "if(v.parentNode!==a||v.data!=='v')ok=false;v.remove();"
+        "c.replaceWith('R',9);x=a.childNodes;"
+        "if(x.length!==9||x[3].data!=='R'||x[4].data!=='9'||x[5]!==src||"
+        "c.parentNode!==null||c.data!=='changed'||old.length!==2)ok=false;"
+        "u=d.createCDATASection('detached');u.before('x');u.after('y');u.replaceWith('z');"
+        "if(u.data!=='detached'||u.parentNode!==null)ok=false;"
+        "if(typeof c.cloneNode(false).before!=='function'||typeof c.cloneNode(false).after!=='function'||"
+        "typeof c.cloneNode(false).replaceWith!=='function')ok=false;"
+        "d.getElementById('result').textContent=String(ok&&bad===15);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-cdata", HTML, PROBE, "true",
+            error, sizeof(error))) {
+        show_error(L"TEST 1284 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1284 OK",
+            "document.createCDATASection now provides bounded detached"
+            " CDATASection wrappers with data, length and identity semantics."
+            " The wrapper materializes through the Core callback, preserves"
+            " identity across relative insertion, data updates, removal and"
+            " re-insertion, and rejects invalid arguments without partial"
+            " mutation.");
     return TRUE;
 }
 
@@ -112805,6 +112896,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1281: ok = test1281_browser_created_text_relative_contract(); break;
         case 1282: ok = test1282_browser_created_comment_relative_contract(); break;
         case 1283: ok = test1283_browser_created_character_data_existing_relative(); break;
+        case 1284: ok = test1284_browser_create_cdata_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
