@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1284
+#define TEST_MAX_NUMBER 1285
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54595,6 +54595,53 @@ static BOOL test1284_browser_create_cdata_contract(void)
             " identity across relative insertion, data updates, removal and"
             " re-insertion, and rejects invalid arguments without partial"
             " mutation.");
+    return TRUE;
+}
+
+/* TEST 1285 - CDATASection Text structural methods. */
+static BOOL test1285_browser_cdata_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='a'><span id='tail'>T</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,a=d.getElementById('a'),tail=d.getElementById('tail'),"
+        "c,s,t,c2,x,bad=0,ok=true;"
+        "c=d.createCDATASection('CD');s=c.splitText(1);"
+        "if(c.data!=='C'||s.nodeType!==3||s.data!=='D'||c.parentNode!==null||"
+        "s.parentNode!==null||c.wholeText!=='C'||s.wholeText!=='D'||"
+        "typeof c.replaceWholeText!=='function')ok=false;"
+        "c=d.createCDATASection('C');t=d.createTextNode('T');c2=d.createCDATASection('D');"
+        "a.insertBefore(c,tail);a.insertBefore(t,tail);a.insertBefore(c2,tail);"
+        "if(c.wholeText!=='CTD'||t.wholeText!=='CTD'||c2.wholeText!=='CTD')ok=false;"
+        "s=c.splitText(1);x=a.childNodes;"
+        "if(c.data!=='C'||s.nodeType!==3||s.data!==''||s.parentNode!==a||"
+        "s.wholeText!=='CTD'||x[1]!==s||x[2]!==t||x[3]!==c2)ok=false;"
+        "c2.replaceWholeText('R');x=a.childNodes;"
+        "if(x.length!==2||x[0]!==c2||x[1]!==tail||c2.data!=='R'||"
+        "c.parentNode!==null||s.parentNode!==null||t.parentNode!==null||"
+        "c2.wholeText!=='R')ok=false;"
+        "s=c2.splitText(1);x=a.childNodes;"
+        "if(c2.data!=='R'||s.nodeType!==3||s.data!==''||s.parentNode!==a||"
+        "x.length!==3||x[1]!==s||s.wholeText!=='R')ok=false;"
+        "try{c2.splitText(99);}catch(e1){bad|=1;}"
+        "c2.replaceWholeText('R');if(c2.data!=='R'||a.childNodes.length!==2)ok=false;"
+        "document.getElementById('result').textContent=String(ok&&bad===1);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/cdata-text-structural", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1285 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1285 OK",
+            "CDATASection now shares the bounded Text structural contract:"
+            " wholeText spans adjacent Text/CDATA nodes, splitText returns"
+            " a Text sibling, and replaceWholeText preserves the target"
+            " identity while removing the adjacent run.");
     return TRUE;
 }
 
@@ -112897,6 +112944,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1282: ok = test1282_browser_created_comment_relative_contract(); break;
         case 1283: ok = test1283_browser_created_character_data_existing_relative(); break;
         case 1284: ok = test1284_browser_create_cdata_contract(); break;
+        case 1285: ok = test1285_browser_cdata_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

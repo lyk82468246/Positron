@@ -7271,17 +7271,67 @@ static int pcore_relation_child_node_field(dom_node *node,
     return 0;
 }
 
-/* Return the logical-adjacent text projection for one direct Text child.
- * libdom owns the DOM Level 3 traversal and keeps element/comment boundaries
- * intact; this adapter only exposes the bounded UTF-8 copy contract used by
- * the script relation bridge. */
+static int pcore_is_text_like_type(dom_node_type type);
+
+/* Append one CharacterData value to a bounded wholeText accumulator. */
+static int pcore_whole_text_append(dom_string **aggregate, dom_node *node,
+        int prepend)
+{
+    dom_string *data;
+    dom_string *joined;
+    dom_exception err;
+
+    if (aggregate == NULL || node == NULL) {
+        return 1;
+    }
+    data = NULL;
+    if (dom_node_get_node_value(node, &data) != DOM_NO_ERR ||
+            data == NULL) {
+        if (data != NULL) {
+            dom_string_unref(data);
+        }
+        return 1;
+    }
+    if (*aggregate == NULL) {
+        *aggregate = data;
+        return 0;
+    }
+    joined = NULL;
+    if (prepend) {
+        err = dom_string_concat(data, *aggregate, &joined);
+    } else {
+        err = dom_string_concat(*aggregate, data, &joined);
+    }
+    dom_string_unref(data);
+    dom_string_unref(*aggregate);
+    *aggregate = NULL;
+    if (err != DOM_NO_ERR || joined == NULL) {
+        if (joined != NULL) {
+            dom_string_unref(joined);
+        }
+        return 1;
+    }
+    *aggregate = joined;
+    return 0;
+}
+
+/* Return the logical-adjacent Text/CDATA projection for one direct child.
+ * libdom's stock helper only recognises DOM_TEXT_NODE on this WM6 port, so
+ * the public relation performs the small sibling walk itself.  Element,
+ * Comment and processing-instruction nodes remain boundaries. */
 static int pcore_relation_child_node_whole_text(dom_node *node,
         unsigned int index, char *value, int value_capacity, int *out_bytes)
 {
     dom_node *child;
+    dom_node *item;
+    dom_nodelist *children;
     dom_node_type type;
     dom_string *whole;
     dom_exception err;
+    dom_ulong length;
+    unsigned int start;
+    unsigned int end;
+    unsigned int i;
     int result;
 
     if (out_bytes != NULL) {
@@ -7299,18 +7349,83 @@ static int pcore_relation_child_node_whole_text(dom_node *node,
         dom_node_unref(child);
         return 1;
     }
-    if (type != DOM_TEXT_NODE) {
+    if (!pcore_is_text_like_type(type)) {
         dom_node_unref(child);
         return 2;
     }
-    whole = NULL;
-    err = dom_text_get_whole_text((dom_text *) child, &whole);
-    if (err != DOM_NO_ERR || whole == NULL) {
-        if (whole != NULL) {
-            dom_string_unref(whole);
+
+    children = NULL;
+    if (dom_node_get_child_nodes(node, &children) != DOM_NO_ERR ||
+            children == NULL || dom_nodelist_get_length(children, &length) !=
+            DOM_NO_ERR || (dom_ulong) index >= length) {
+        if (children != NULL) {
+            dom_nodelist_unref(children);
         }
         dom_node_unref(child);
-        return err == DOM_NO_ERR ? 2 : 1;
+        return 1;
+    }
+    start = index;
+    while (start > 0U) {
+        item = NULL;
+        err = dom_nodelist_item(children, (dom_ulong) (start - 1U), &item);
+        if (err != DOM_NO_ERR || item == NULL) {
+            if (item != NULL) {
+                dom_node_unref(item);
+            }
+            dom_nodelist_unref(children);
+            dom_node_unref(child);
+            return 1;
+        }
+        if (dom_node_get_node_type(item, &type) != DOM_NO_ERR ||
+                !pcore_is_text_like_type(type)) {
+            dom_node_unref(item);
+            break;
+        }
+        dom_node_unref(item);
+        start--;
+    }
+    end = index;
+    while ((dom_ulong) (end + 1U) < length) {
+        item = NULL;
+        err = dom_nodelist_item(children, (dom_ulong) (end + 1U), &item);
+        if (err != DOM_NO_ERR || item == NULL) {
+            if (item != NULL) {
+                dom_node_unref(item);
+            }
+            dom_nodelist_unref(children);
+            dom_node_unref(child);
+            return 1;
+        }
+        if (dom_node_get_node_type(item, &type) != DOM_NO_ERR ||
+                !pcore_is_text_like_type(type)) {
+            dom_node_unref(item);
+            break;
+        }
+        dom_node_unref(item);
+        end++;
+    }
+    whole = NULL;
+    for (i = start; i <= end; i++) {
+        item = NULL;
+        err = dom_nodelist_item(children, (dom_ulong) i, &item);
+        if (err != DOM_NO_ERR || item == NULL ||
+                pcore_whole_text_append(&whole, item, 0) != 0) {
+            if (item != NULL) {
+                dom_node_unref(item);
+            }
+            if (whole != NULL) {
+                dom_string_unref(whole);
+            }
+            dom_nodelist_unref(children);
+            dom_node_unref(child);
+            return 1;
+        }
+        dom_node_unref(item);
+    }
+    dom_nodelist_unref(children);
+    if (whole == NULL) {
+        dom_node_unref(child);
+        return 1;
     }
     pcore_copy_dom_string(whole, value, value_capacity, out_bytes);
     dom_string_unref(whole);
@@ -10349,6 +10464,14 @@ static int pcore_text_utf16_offset(dom_string *data,
     return 2;
 }
 
+/* Text and CDATASection both implement the DOM Text surface.  Keep this
+ * predicate at the Core boundary so wholeText/replaceWholeText do not
+ * silently treat a CDATASection as an unrelated boundary. */
+static int pcore_is_text_like_type(dom_node_type type)
+{
+    return type == DOM_TEXT_NODE || type == DOM_CDATA_SECTION_NODE;
+}
+
 PCORE_API int PCore_NodeSetTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text)
 {
@@ -10397,7 +10520,7 @@ PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
         return result == 2 ? 2 : 1;
     }
     if (dom_node_get_node_type(child, &child_type) != DOM_NO_ERR ||
-            child_type != DOM_TEXT_NODE) {
+            !pcore_is_text_like_type(child_type)) {
         dom_node_unref(child);
         dom_node_unref((dom_node *) parent);
         return 2;
@@ -10520,7 +10643,7 @@ static int pcore_remove_adjacent_text_nodes(dom_node *parent,
             dom_node_unref(neighbor);
             return 1;
         }
-        if (type != DOM_TEXT_NODE) {
+        if (!pcore_is_text_like_type(type)) {
             dom_node_unref(neighbor);
             return 0;
         }
@@ -10572,7 +10695,7 @@ PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
         dom_node_unref((dom_node *) parent);
         return 1;
     }
-    if (child_type != DOM_TEXT_NODE) {
+    if (!pcore_is_text_like_type(child_type)) {
         dom_node_unref(child);
         dom_node_unref((dom_node *) parent);
         return 2;

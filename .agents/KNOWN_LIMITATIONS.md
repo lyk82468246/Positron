@@ -190,10 +190,12 @@
   `String` 转换；`setAttribute()`/`removeAttribute()` 的变化会被后续 getter 读取。它不
   扩展 deprecated presentation-color、完整 HTMLBodyElement 接口或 detached body staging。
 - `document.createComment(data)` 和 `document.createCDATASection(data)` 都是 bounded detached
-  CharacterData wrapper：按 `String` 转换，最多 65,535 个脚本字符，提供 node shape、data/
-  offset、clone、primitive relative、remove/reinsert；也接受单一 live CharacterData source
-  move/replace。Comment 经 Ex12、CDATA 经 Ex14 物化，更新复用既有 callback；Core handle、
-  Fragment、事件、资源、observer、混合/超限树语义和 detached target relative 均 fail closed。
+  CharacterData wrapper：`String` 转换，最多 65,535 字符，提供 data/
+  offset、clone、relative、remove/reinsert；也接受 live CharacterData source
+  move/replace。CDATA 提供 `wholeText`、`splitText`、`replaceWholeText`，逻辑相邻
+  Text/CDATA 组成同一段，split 返回 Text suffix。Comment/CDATA 经 Ex12/Ex14 物化，
+  更新复用 callback；Fragment、事件、资源、observer、混合/超限树语义和 detached target
+  relative 均 fail closed。
 - HTML getter 与 Core mutation 入口共用有界 UTF-8 parser；它们保持
   身份、拒绝非法/超限/id 冲突并使 layout 失效。OuterHTML 只接受单一 Element 根或空字符串；
   顶层文本/Comment、多根和结构冲突拒绝。Core 无 DocumentFragment ABI；Browser 在 Core

@@ -439,19 +439,19 @@ Browser 以 direct child 的 UTF-16 offset 调用 Core，断言原 wrapper 身�
 mutation 后 retained layout 的失效与恢复。宿主仅提供 callback 接线、fixture 和断言；
 UTF-8 code-point 映射、插入与 wrapper/cache reconciliation 均属于公共 DLL。
 
-TEST1208 在同一 fixture 上验证 `Text.wholeText`：Browser 通过 Core 关系 50 读取
-libdom 的逻辑相邻 Text 拼接，断言 `splitText()` 后相邻 wrapper、CharacterData mutation
-和 UTF-8（含 astral code point）保持实时结果，element/comment/processing-instruction
-边界停止；属性为只读、非 Text/缺失节点安全返回，detached wrapper 保留最后的文本快照。
-宿主只提供 relation callback、fixture 和断言；相邻 Text 遍历、UTF-8 缓冲与快照语义属于
+TEST1208 在同一 fixture 上验证 Text/CDATA 的 `wholeText`：Browser 通过 Core 关系 50 读取
+逻辑相邻 Text/CDATA 拼接，断言 `splitText()` 后相邻 wrapper、CharacterData mutation 和
+UTF-8（含 astral code point）保持实时结果，element/comment/processing-instruction 边界
+停止；属性为只读、非文本/缺失节点安全返回，detached wrapper 保留最后的文本快照。
+宿主只提供 relation callback、fixture 和断言；相邻 Text/CDATA 遍历、UTF-8 缓冲与快照语义属于
 公共 Core/Browser DLL。
 
-TEST1209 在同一离线 fixture 上验证 `Text.replaceWholeText()`：宿主注册 Ex4 callback，
-Browser 把 direct Text child 的原始索引和 UTF-8 值转给 Core，自动断言目标 wrapper 保持
-身份并移动到连续 Text 段首位、相邻 Text 变为 detached、element/Comment/CDATA 边界
-保持不变，以及 `wholeText`、旧 NodeList snapshot、astral 字符和父级替换的一致性。
-非法 parent/index/child、空参数和 detached 写入安全失败；Core mutation 后 retained layout
-失效并由 fixture 重新 style/layout。宿主只负责 callback 接线、可选 restyle、fixture
+TEST1209 在同一离线 fixture 上验证 Text/CDATA 的 `replaceWholeText()`：宿主注册 Ex4 callback，
+Browser 把 direct Text/CDATA child 的原始索引和 UTF-8 值转给 Core，自动断言目标 wrapper
+保持身份并移动到连续 Text/CDATA 段首位、相邻文本 wrapper 变为 detached、element/Comment/
+processing-instruction 边界保持不变，以及 `wholeText`、旧 NodeList snapshot、astral 字符
+和父级替换的一致性。非法 parent/index/child、空参数和 detached 写入安全失败；Core mutation
+后 retained layout 失效并由 fixture 重新 style/layout。宿主只负责 callback 接线、可选 restyle、fixture
 和断言，不实现通用节点插入、reparent、normalize、clone 或 MutationObserver/live collection。
 
 TEST1210 在同一离线 fixture 上验证 Ex5 `Node.normalize()`：宿主只接线 callback，Browser
@@ -547,12 +547,9 @@ element/text、同父重排、保留节点 identity 和跨父/重复/自身/超�
 断言 Core/Browser；通用 fragment、script/资源/事件
 不由 test_host 实现。
 
-TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie。
-TEST1256–1284 覆盖 write/title/fragment、detached staging、CharacterData；1276–1280 覆盖
-HTML/Fragment、sibling/aggregate，1281–1283 覆盖 primitive 与 existing-source relative，
-1284 覆盖 CDATASection；
-宿主只提供 fixture/callback/断言，
-不持有这些 DOM 语义。
+TEST1244–1255 覆盖 detached wrapper、关系、style/attribute facade、body.text、cookie；
+TEST1256–1285 覆盖 write/title/fragment、detached staging、CharacterData、CDATA 创建与
+whole/split/replace 合同。宿主只提供 fixture/callback/断言，不持有这些 DOM 语义。
 
 ### Native EDIT/SELECT/button/file
 

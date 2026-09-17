@@ -335,9 +335,10 @@ Comment wrapper 的 offset 方法按 UTF-16 code unit 执行；detached 更新�
 `__pcoreSetText`，relative 仅接受 live regular Element 中的 primitive 或单一 live source，
 超长、非法参数或 Core 失败保持原数据。
 
-`document.createCDATASection(data)` 提供 bounded detached CharacterData：nodeType、data/offset、
-clone、relative、remove/reinsert 和单一 live source move/replace；Ex14 物化，其他 detached/
-Fragment/混合列表/事件/资源/observer 仍 fail closed。
+`document.createCDATASection(data)` 提供 detached CharacterData：nodeType、data/offset、
+clone、relative、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和单一
+source move/replace；live parent 中相邻 Text/CDATA 组成同一逻辑段，split 返回 Text suffix。
+Ex14 物化，其他 detached/Fragment/混合列表/事件/资源/observer 仍 fail closed。
 
 `<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；注册
 `PBrowserScriptOptionCallbacks` 后由 Core 维护选择，`value`/`label` 缺失时回退到 option

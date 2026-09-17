@@ -298,29 +298,29 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   `nodeValue`/`data`/`textContent` setter 与四个 CharacterData mutator 转给宿主；Text
   仍可使用 Ex 表；`substringData()` 复用同一 UTF-16 offset/count 校验，超长 count
   截断且保持只读，detached wrapper 仍可读取 retained data snapshot。新增的
-  `PCore_NodeSplitTextChildById` 与 `PBrowserScriptDomWriteCallbacksEx3` 只对一个
-  direct Text child 提供 `Text.splitText()`：Core 将 UTF-16 边界映射到 libdom 的
+  `PCore_NodeSplitTextChildById` 与 `PBrowserScriptDomWriteCallbacksEx3` 对一个
+  direct Text 或 CDATA child 提供继承的 `splitText()`：Core 将 UTF-16 边界映射到 libdom 的
   UTF-8 code-point 偏移，插入紧邻的新 Text sibling，并在成功后使 retained layout
   失效；Browser 保留原 wrapper、刷新当前 childNodes snapshot，旧 snapshot 仍是静态
   视图。不能表示的 astral code-point 内部边界、缺失/错误 child 或 detached wrapper
   fail closed；该入口不派发事件、不做通用插入/reparent/合并。宿主只负责 callback
   接线和后续 style/layout/paint，失效或 detached 写入 wrapper 必须安全失败；
 - Text 读取还通过关系 50（`PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`）提供
-  `Text.wholeText`：Core 仅接受未过滤 `childNodes` 中的直接 `DOM_TEXT_NODE`，调用
-  libdom 的逻辑相邻文本遍历并按既有 probe/truncation 合同复制 UTF-8；元素、Comment、
-  processing-instruction、缺失或越界 child 返回 unavailable。Browser 将它作为 Text
+  `wholeText`：Core 接受未过滤 `childNodes` 中的直接 Text 或 CDATA，按 Text/CDATA
+  逻辑相邻遍历并按既有 probe/truncation 合同复制 UTF-8；元素、Comment、
+  processing-instruction、缺失或越界 child 返回 unavailable。Browser 将它作为 Text/CDATA
   wrapper 的只读 getter；连接中的 wrapper 每次读取当前相邻文本，detached wrapper
   保留最近一次数据快照。该关系不合并节点、不改变 child list、不派发事件，也不触发
   layout 或资源 I/O；
-- `PCore_NodeReplaceWholeTextChildById` 为同一 Text 纵切提供有界结构 mutation：它按
-  未过滤 `childNodes` 索引定位直接 Text child，把新 UTF-8 值写入目标，并删除该目标两侧
-  连续的 Text sibling；目标保留 DOM 身份并移动到这段逻辑相邻文本的第一位置，element、
-  Comment 或 CDATA 会截断范围。成功后 retained layout 失效，调用方必须重新
+- `PCore_NodeReplaceWholeTextChildById` 为同一 Text/CDATA 纵切提供有界结构 mutation：它按
+  未过滤 `childNodes` 索引定位直接 Text/CDATA child，把新 UTF-8 值写入目标，并删除该目标两侧
+  连续的 Text/CDATA sibling；目标保留 DOM 身份并移动到这段逻辑相邻文本的第一位置，element、
+  Comment 或 processing-instruction 会截断范围。成功后 retained layout 失效，调用方必须重新
   style/layout/paint；该入口不获取资源、不派发 Browser 事件，也不扩展为通用插入、
   reparent 或 live collection。Browser 通过 ABI 追加的
   `PBrowserScriptDomWriteCallbacksEx4` 复用 `__pcoreSetText` slot 提供
-  `Text.replaceWholeText()`，更新当前 childNodes snapshot，并让被移除 wrapper 保留
-  数据但变为 detached。Core 在 WM6 上显式逐个删除相邻 Text，避开 split 后 libdom
+  `Text`/`CDATASection.replaceWholeText()`，更新当前 childNodes snapshot，并让被移除 wrapper 保留
+  数据但变为 detached。Core 在 WM6 上显式逐个删除相邻 Text/CDATA，避开 split 后 libdom
   replaceWholeText helper 的 stale-cursor 路径；这是实现护栏，不改变公共语义；
 - `PCore_NodeNormalizeById` 为同一 Text 结构边界提供单元素的 direct-child 整理：它删除
   空 Text，并将每段连续 Text 合并到第一个非空节点，元素、Comment、CDATA 和其他
@@ -458,8 +458,10 @@ Browser 层拥有无窗口的浏览器会话语义，而不是渲染器：
   原数据不变。relative 只接受 live regular parent 的 1–4 个 primitive 或单一 live
   CharacterData source；其他 owner/节点 fail closed。
 - `document.createCDATASection(data)` 复用 detached CharacterData staging，暴露 nodeType、
-  data/offset、clone、primitive relative、remove/reinsert 和单一 existing source move/replace；
-  Ex14 物化 live 节点，其他 detached/Fragment/事件/资源/observer 语义 fail closed。
+  data/offset、clone、primitive relative、`wholeText`、`splitText`、`replaceWholeText`、
+  remove/reinsert 和单一 existing source move/replace；相邻 Text/CDATA 组成同一逻辑段，
+  split 的 suffix 是 Text。Ex14 物化 live 节点，其他 detached/Fragment/事件/资源/observer
+  语义 fail closed。
 - `HTMLImageElement` 的有界属性和资源状态投影：`alt`、raw `src`/`srcset`/`sizes`、
   `crossOrigin`、`useMap`、`isMap`、`controls`、`width`/`height`、`referrerPolicy`、
   `decoding`、`loading`、`fetchPriority`、`naturalWidth`/`naturalHeight`、`complete` 和
@@ -896,7 +898,7 @@ scroll-margin、平滑/惯性滚动、跨窗口策略或原生控件的 OEM 视�
   `selected`/`defaultSelected` 的读写转给 `PCore_Node*ById`，并让通用 DOM
   attribute/text callback 支持 option 的 `value`/`label`/`text`；需要脚本 CharacterData
   setter 时注册 `PBrowserScriptDomWriteCallbacksEx`（仅 Text）、Ex2（含 Comment/CDATA）、
-  Ex3（另含 Text.splitText）、Ex4（另含 Text.replaceWholeText）、Ex5（另含
+  Ex3（另含 Text/CDATA.splitText）、Ex4（另含 Text/CDATA.replaceWholeText）、Ex5（另含
   Node.normalize）、Ex8（另含 `Element.innerHTML` setter）、Ex9（另含
   `Element.insertAdjacentHTML`）或 Ex10（另含 `Element.outerHTML` setter），把父/元素 id
   与 childNodes 索引或 HTML 字符串转给对应

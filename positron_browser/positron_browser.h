@@ -705,7 +705,7 @@ typedef struct PBrowserScriptDomWriteCallbacksEx2 {
 } PBrowserScriptDomWriteCallbacksEx2;
 
 /* Extended Text mutation table. Ex2 remains ABI-fixed for existing hosts;
- * Ex3 appends the bounded Text.splitText() adapter while reusing the same
+ * Ex3 appends the bounded Text/CDATASection.splitText() adapter while reusing the same
  * `__pcoreSetText` JSON native slot. `parent_id` is borrowed UTF-8,
  * `child_index` is the unfiltered childNodes index, and `offset` is a
  * non-negative UTF-16 code-unit offset for the synchronous call.
@@ -725,14 +725,14 @@ typedef struct PBrowserScriptDomWriteCallbacksEx3 {
 } PBrowserScriptDomWriteCallbacksEx3;
 
 /* Extended Text mutation table. Ex3 remains ABI-fixed for existing hosts;
- * Ex4 appends the bounded Text.replaceWholeText() adapter while reusing the
+ * Ex4 appends the bounded Text/CDATASection.replaceWholeText() adapter while reusing the
  * same `__pcoreSetText` JSON native slot. `parent_id` is borrowed UTF-8,
  * `child_index` is the unfiltered childNodes index, and `text` is borrowed
  * UTF-8 for the synchronous call. replace_whole_text_child returns >0 after
- * the target and its logically adjacent Text siblings were replaced, 0 when
- * the parent/index/child is unavailable, and <0 on adapter failure. The host
- * must re-query and restyle/layout/paint after success. Element, comment and
- * CDATA nodes stop the adjacent run. */
+ * the target and its logically adjacent Text/CDATA siblings were replaced, 0
+ * when the parent/index/child is unavailable, and <0 on adapter failure. The
+ * host must re-query and restyle/layout/paint after success. Element and
+ * Comment nodes stop the adjacent run. */
 typedef int (*PBrowserScriptReplaceWholeTextChildFn)(void *pw,
         const char *parent_id, unsigned int child_index, const char *text);
 typedef struct PBrowserScriptDomWriteCallbacksEx4 {

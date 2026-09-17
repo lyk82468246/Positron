@@ -120,9 +120,9 @@ Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代�
 
 - parent/child/sibling 与结构 root tokens；
 - element attributes 与 childNodes snapshot；
-- direct Text child 的 `PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`（关系 50）读取：Core
-  调用 libdom 的逻辑相邻 Text 遍历，按 UTF-8 probe/truncation 合同返回 `wholeText`；
-  元素、Comment、processing-instruction、缺失和越界 child 返回 unavailable。该读取
+- direct Text/CDATA child 的 `PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`（关系 50）读取：Core
+  按 Text/CDATA 逻辑相邻遍历，按 UTF-8 probe/truncation 合同返回 `wholeText`；元素、
+  Comment、processing-instruction、缺失和越界 child 返回 unavailable。该读取
   不合并节点、不改变 child list、不触发 layout 或资源 I/O；
 - `PCORE_NODE_RELATION_ELEMENT_INNER_HTML`/`PCORE_NODE_RELATION_ELEMENT_OUTER_HTML`（关系
   51/52）为带 id 的 Element
@@ -369,19 +369,19 @@ retained-layout 失效规则不变。它只替换一个已有节点的数据，�
 派发事件；Browser 的 Ex2 write callback 将 Comment/CDATA 请求转给宿主，再由宿主安排
 正常的 style/layout/paint。
 
-`PCore_NodeSplitTextChildById` 是 Text 结构 mutation 的窄入口：按父元素 UTF-8 id 与未
-过滤 childNodes 索引定位现有 `DOM_TEXT_NODE`，以 UTF-16 code-unit offset 在 UTF-8
-code-point 边界分割，并把 suffix 作为紧邻的新 Text sibling 插入；offset 等于长度时
-产生空 sibling。成功返回 `0` 并使 retained layout 失效；父/索引不可用或目标不是 Text
-返回 `2`，越界或落在 astral code point 内部返回 `3`，参数/其他 DOM 失败返回 `1`。
-该入口不派发事件、不合并相邻 Text、不做通用插入或 reparent；调用方必须重新
+`PCore_NodeSplitTextChildById` 是 Text/CDATA 结构 mutation 的窄入口：按父元素 UTF-8 id 与未
+过滤 childNodes 索引定位现有 `DOM_TEXT_NODE` 或 `DOM_CDATA_SECTION_NODE`，以 UTF-16
+code-unit offset 在 UTF-8 code-point 边界分割，并把 suffix 作为紧邻的新 Text sibling
+插入；offset 等于长度时产生空 sibling。成功返回 `0` 并使 retained layout 失效；父/索引
+不可用或目标不是 Text/CDATA 返回 `2`，越界或落在 astral code point 内部返回 `3`，参数/
+其他 DOM 失败返回 `1`。该入口不派发事件、不合并相邻 Text/CDATA、不做通用插入或 reparent；调用方必须重新
 style/layout/paint，且不能把 libdom 指针泄漏到 ABI。
 
-`PCore_NodeReplaceWholeTextChildById` 补上 Text 结构 mutation 的相邻合并路径：它按同一
-父元素和未过滤 childNodes 索引定位直接 Text child，先写入新的 UTF-8 数据，再删除目标
-两侧连续的 Text sibling；目标保留 DOM 身份并移动到该逻辑相邻文本段的第一位置，
-element、Comment 和 CDATA 会截断段落。返回 `0` 表示成功，`2` 表示父节点/索引不可用
-或目标不是 Text，`1` 表示参数或 DOM 失败。成功后 retained layout 失效，调用方必须
+`PCore_NodeReplaceWholeTextChildById` 补上 Text/CDATA 结构 mutation 的相邻合并路径：它按同一
+父元素和未过滤 childNodes 索引定位直接 Text/CDATA child，先写入新的 UTF-8 数据，再删除目标
+两侧连续的 Text/CDATA sibling；目标保留 DOM 身份并移动到该逻辑相邻文本段的第一位置，
+element、Comment 和 processing-instruction 会截断段落。返回 `0` 表示成功，`2` 表示父节点/
+索引不可用或目标不是 Text/CDATA，`1` 表示参数或 DOM 失败。成功后 retained layout 失效，调用方必须
 重新 style/layout/paint。该入口不派发事件、不获取资源、不做通用插入、reparent 或 live
 collection，也不暴露被删除节点的可写句柄；它在 WM6 上采用有界的
 显式 sibling walk，避免 split 后 libdom helper 的 stale-cursor 风险。

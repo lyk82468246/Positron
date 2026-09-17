@@ -643,25 +643,16 @@ offset 产生空 Text、错误范围/Comment/detached wrapper fail closed，以�
 返回码。offset 落在 astral code point 内部时安全拒绝；通用节点插入、reparent、合并、
 MutationObserver、事件或 native/视觉行为仍不在门内。
 
-TEST1208 覆盖 `Text.wholeText` 的 Core/Browser 读取纵切：关系 50 只接受未过滤
-`childNodes` 中的直接 Text child，使用 libdom 的逻辑相邻遍历按 UTF-8 probe/truncation
-合同返回连续 Text sibling 的拼接值，并在 element、Comment 或其他非 Text 节点处停止。
-自动断言覆盖 Core 的完整/截断/探测读取、UTF-8 astral 字符、非 Text/缺失/越界返回码，
-以及 Browser getter 的只读描述、splitText 后的实时拼接、CharacterData mutation 后的
-实时更新和 detached wrapper 快照。该关系只读，不合并节点、不改变 child list、不触发
-layout、资源 I/O 或事件；通用插入、reparent、Text 合并、MutationObserver、完整 live
-collection 和 native/视觉行为仍不在门内。
+TEST1208 覆盖 `Text`/`CDATASection.wholeText`：关系 50 读取逻辑相邻 Text/CDATA，并在
+element、Comment 或其他非文本节点处停止。断言完整/截断读取、astral 字符、错误码、只读
+getter、split/mutation 实时值和 detached 快照；该关系不改 child list，不涉及插入、reparent、
+合并、MutationObserver、live collection 或 native/视觉行为。
 
-TEST1209 覆盖 `Text.replaceWholeText()` 的 Core/Browser 结构 mutation：宿主注册追加
-`PBrowserScriptDomWriteCallbacksEx4`，Browser 通过既有 `__pcoreSetText` slot 把目标
-direct Text child 的未过滤索引和 UTF-8 文本交给 `PCore_NodeReplaceWholeTextChildById`。
-自动断言确认目标 wrapper 身份保留并移动到连续 Text 段首位，相邻 Text 被移除后成为
-detached 快照，element/Comment/CDATA 边界不被跨越，astral UTF-8 值、旧 NodeList
-snapshot、`wholeText` 和父级替换均保持一致；缺失/非 Text/越界/detached/空参数安全
-失败，成功 mutation 使 retained layout 失效并可重新 style/layout。Core 在 WM6 上使用
-有界显式 sibling walk，不依赖 split 后会卡住的 libdom helper；该门不实现通用插入、
-reparent、normalize、MutationObserver、完整 live collection、事件或 native/视觉行为。
-宿主只负责 Ex4 callback 接线、fixture、可选 restyle 和断言。
+TEST1209 覆盖 `Text`/`CDATASection.replaceWholeText()`：Ex4 把 direct Text/CDATA child 的
+索引和 UTF-8 值交给 `PCore_NodeReplaceWholeTextChildById`；断言目标 identity、段首移动、
+相邻节点 detached、非文本边界、astral 值、snapshot、`wholeText` 和父级替换。缺失/错误
+类型/越界/detached/空参数 fail closed；Core 使用有界 sibling walk。宿主只负责接线、fixture、
+可选 restyle 和断言。
 
 TEST1210 覆盖 `Node.normalize()` 的 Core/Browser 结构整理：宿主注册 Ex5 的
 `normalize_child_text` callback，Browser 对有稳定 id 的元素 wrapper 按受控顺序递归，
@@ -1109,6 +1100,10 @@ snapshot 和 fail-closed；门 `1281-1283,999`，source 限定为单一 live Cha
 TEST1284 覆盖 `document.createCDATASection()` 的 node shape、data/offset、clone、relative、
 materialization、existing-source move、remove/reinsert 和 fail-closed；门 `1284,999`，确认
 Debug ARMV4I、双空间预检、日志回收、清理和 crash check。
+
+TEST1285 覆盖 CDATASection 的 Text 合同：`wholeText` 聚合 Text/CDATA，`splitText()` 返回
+Text suffix，`replaceWholeText()` 保留目标并清理相邻节点，同时覆盖 detached/offset 失败；
+门 `1285,999`，确认 Debug ARMV4I、双空间预检、日志回收、清理和 crash check。
 
 ### 手动模式
 

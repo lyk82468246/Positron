@@ -427,28 +427,31 @@ PCORE_API int PCore_NodeSetCharacterDataChildById(HANDLE hDoc,
  * inserted immediately after it; an offset equal to the length creates an
  * empty sibling. `parent_id` is a UTF-8 element id (or a supported
  * document-structure token) and `child_index` is the unfiltered childNodes
- * index. Returns 0 after insertion, 2 when the parent/index is unavailable
- * or the child is not a Text node, 3 when the offset is outside the UTF-16
- * range or falls inside an encoded astral code point, and 1 for invalid input
- * or another DOM failure. A successful split invalidates retained layout;
- * callers must style/layout/paint again before using geometry or native
- * snapshots. This primitive only changes the Text child list and does not
- * dispatch events, reparent existing nodes or merge adjacent Text nodes. */
+ * index. Text and CDATASection children are accepted; the returned suffix is
+ * a Text node. Returns 0 after insertion, 2 when the parent/index is
+ * unavailable or the child is not Text/CDATA, 3 when the offset is outside
+ * the UTF-16 range or falls inside an encoded astral code point, and 1 for
+ * invalid input or another DOM failure. A successful split invalidates
+ * retained layout; callers must style/layout/paint again before using
+ * geometry or native snapshots. This primitive only changes the CharacterData
+ * child list and does not dispatch events, reparent existing nodes or merge
+ * adjacent Text/CDATA nodes. */
 PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index,
         unsigned int offset);
 
-/* Replace one direct Text child and all logically adjacent Text siblings with
- * one UTF-8 Text node value. The target keeps its DOM identity and is placed
- * at the first position of the adjacent run; element, comment and CDATA
+/* Replace one direct Text/CDATA child and all logically adjacent Text/CDATA
+ * siblings with one UTF-8 value. The target keeps its DOM identity and is
+ * placed at the first position of the adjacent run; element and comment
  * boundaries stop the run. `parent_id` is the UTF-8 element id (or a
  * supported document-structure token), and `child_index` is the unfiltered
  * childNodes index of the target before replacement. Returns 0 after the
  * replacement, 2 when the parent/index is unavailable or the child is not a
- * Text node, and 1 for invalid input or another DOM failure. A successful
- * replacement invalidates retained layout; callers must style/layout/paint
- * again before using geometry or native-control snapshots. This primitive
- * does not dispatch events and does not expose detached-node mutation. */
+ * Text/CDATA node, and 1 for invalid input or another DOM failure. A
+ * successful replacement invalidates retained layout; callers must
+ * style/layout/paint again before using geometry or native-control snapshots.
+ * This primitive does not dispatch events and does not expose detached-node
+ * mutation. */
 PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text);
 
@@ -856,10 +859,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
  * return value is 0 for a relationship that was found, 2 for an
  * absent/unavailable relationship and 1 for invalid input or a DOM failure.
  * The tree and attribute map are read snapshots for the duration of the host
- * script call; CHILD_NODE_WHOLE_TEXT is only available for a direct Text
- * child and returns libdom's logical-adjacent Text projection as a bounded
- * UTF-8 snapshot, stopping at element/comment/processing-instruction
- * boundaries. ELEMENT_INNER_HTML and ELEMENT_OUTER_HTML are read-only,
+ * script call; CHILD_NODE_WHOLE_TEXT is available for a direct Text or
+ * CDATASection child and returns the logical-adjacent Text/CDATA projection
+ * as a bounded UTF-8 snapshot, stopping at element/comment/processing-
+ * instruction boundaries. ELEMENT_INNER_HTML and ELEMENT_OUTER_HTML are read-only,
  * bounded UTF-8 serialization projections for an ID-addressable element;
  * they traverse the complete libdom subtree without mutation, events,
  * resource work or layout. Mutation remains on the existing attribute/text
