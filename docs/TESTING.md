@@ -1,18 +1,18 @@
 # 测试与验收
 
-Positron 的测试由主机静态检查、VS2008 ARMV4I 构建、自动设备门和必要的人工设备验收组成。单一层级通过不能替代其他层级：桌面脚本不能证明 ARM 二进制可用，自动首帧也不能证明真实触摸、SIP 或视觉正确。
+Positron 的验证分为主机静态检查、VS2008 ARMV4I 构建、自动设备门和必要的人工设备验收。单一层级通过不能替代其他层级：桌面脚本不能证明 ARM 二进制可用，自动断言和首帧也不能证明真实触摸、SIP 或视觉结果。
 
-逐测试实现以 [`test_host/main.c`](../test_host/main.c) 为准；当前候选、测试选择和最新设备证据见 [`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。本文只说明长期有效的操作和判定方法。
+逐测试实现以 [`test_host/main.c`](../test_host/main.c) 为准；当前候选、设备连接状态和最近证据只写入 [`.agents/HANDOFF.md`](../.agents/HANDOFF.md)。本文只保留长期有效的操作、判定和能力分组，不维护会漂移的逐编号历史。
 
-## 测试宿主的角色
+## 测试宿主的职责
 
-`test_host.exe` 是公共 DLL 的回归宿主和示例消费者。它覆盖基础库、渲染、真实网页、表单、事件、history/session 和显式启用的浏览器 JavaScript。
+`test_host.exe` 是公共 DLL 的回归宿主和示例消费者。它负责窗口/消息接线、测试 fixture、平台 callback、断言和日志；URL、DOM、事件、表单、资源、布局以及生命周期语义必须由对应公共 DLL 提供。测试编号是宿主实现细节，不是公共 ABI。
 
-测试编号是宿主实现细节，不是公共 ABI。增加或删除测试时，应修改源码中的 dispatch 和断言，而不是在稳定文档中维护一份容易漂移的逐编号目录。
+新增测试时应同时修改源码 dispatch、相邻断言和必要的测试说明。不要把产品实现源文件加入宿主工程，也不要为了让宿主通过而复制一份公共语义。
 
 ## `test_host.ini`
 
-INI 必须和 `test_host.exe` 位于同一目录。最小配置如下：
+INI 必须和 `test_host.exe` 位于同一目录。最小自动配置如下：
 
 ```ini
 auto=1
@@ -20,1130 +20,54 @@ javascript=0
 tests=13,20,27,999
 ```
 
-`tests` 接受逗号或空格分隔的编号和范围，也接受源码明确支持的特殊编号：
+`tests` 接受逗号或空格分隔的编号和范围，也接受源码明确支持的特殊编号，例如：
 
 ```ini
 tests=1-5 7b 13 20,999
 ```
 
-不存在 INI 时，宿主进入内置的交互分组选择。文件存在但为空、不可读或格式错误时，宿主会提示并退回分组选择，不会静默扩大为全量测试。
+文件不存在时宿主进入交互式分组选择；文件为空、不可读或格式错误时提示并退回分组选择，不会静默扩大为全量。Nightly 打包和设备门从当前源码 dispatch 动态生成全量自动清单，因此不会把每天新增的测试硬编码在脚本中。
 
 ### 自动模式
 
-`auto=1` 时：
+`auto=1` 直接运行选择，抑制确认和结果 MessageBox，同目录 `test_host.log` 覆盖写入。自动可视测试至少绘制一帧后自行关闭；任何断言失败都会使批次失败，只有唯一的 `TESTBENCH PASS` 才是完整通过。
 
-- 直接运行 `tests=` 选择；
-- 测试确认和结果 MessageBox 被抑制；
-- 同目录 `test_host.log` 每次覆盖写入；
-- 自动可视测试至少绘制一帧后自行关闭；
-- 任一失败令批次失败，最终必须出现唯一 `TESTBENCH PASS` 才算通过。
-
-自动模式只证明断言、资源计数、消息路径和首帧没有失败。它不能证明字体、边距、抗锯齿、触摸命中、系统 picker 或 OEM 输入法体验。
-
-涉及导航的自动日志会给出 Browser 资源事务的 `queued/ready/failed/cancelled/pending` 计数、resolve/transport/HTTP/budget/memory 失败分类，以及 `attempts/retries/exhausted` 计数和 `gate/required-failed/optional-failed` 结果。宿主负责 worker、网络 I/O、取消和何时重试；Browser 负责按 URL 去重、资源字节、终态、预算、gate、hash-only 摘要和 fallback observation。宿主只读取这些结果写日志，不复制第二份资源状态。
-
-候选通过 `PBrowser_NavigationCandidate*` handle 由 Browser 拥有 generation、取消/退休状态、committed/failed 终态和 pending/committed/failed/cancelled/stale 结果摘要；宿主只保留线程、消息、退休队列和页面提交策略，并直接记录 `PBrowser_NavigationCandidateGetResult` 的快照。提交边界调用 `PBrowser_NavigationCommitGetInfo`，一次读取 candidate result 与独立 resource gate；只有组合 `decision=READY` 且 `can_commit=1` 才允许 layout/swap，最终仍需 `MarkCommitted` 重检。
-
-transport 失败每项最多重试 2 次（最多 3 次尝试）；HTTP、resolve、budget、memory 和取消不重试。style pass 发现新的 pending 时会回到 worker；layout/swap 前必须重新检查组合快照，required stylesheet/`@import` 失败、未收敛、候选过时或取消会保留旧页，optional image/script 失败可在 Core fallback 下继续。完成的候选应没有未处理的 `pending` 项；`cancelled` 是独立终态，不应被当作网络失败。日志还可输出最多 4 项不含原始 URL 的 `role/failure#hash` 失败摘要，以及 image/script/other/observed fallback family 的粗粒度计数；它们是 Browser 提供给宿主的有界观测，不是逐资源视觉保证。
-
-TEST1081/TEST1082 覆盖 history entry 的 viewport snapshot：same-document fragment 和跨文档 traversal 都从 Browser 读取目标 `(scroll_x, scroll_y)`，新 entry 从零开始，短页面由宿主按 document extent clamp；TEST1082 还验证非负约束、横向值保持和非法索引 fail closed。宿主不得用私有按 entry 数组替代 `PBrowser_HistoryEntryScroll`。
-
-TEST1128 覆盖 page-level horizontal viewport：离线宽页面通过 `PCore_DocumentWidth` 暴露溢出范围，宿主对 x/y 两轴执行 clamp、滚动和 native 坐标换算，Browser snapshot 保存/恢复横向位置，fragment 命中使用同一 document-space x 坐标。它不代表嵌套 overflow 容器或复杂真实页面的视觉兼容性。
-
-TEST1129 覆盖浏览器脚本滚动与宿主视口的双向边界：`window.scrollTo()`/
-`scrollBy()` 经过 Browser 的 typed scroll callback，由宿主按 document/client
-extent clamp 并返回实际坐标；滚动条或其他宿主路径再通过
-`PBrowser_ScriptSessionNotifyScroll` 更新脚本侧 `scrollX`/`scrollY`；设备 DPI
-边界由宿主在物理坐标与 CSS page 坐标之间换算。断言覆盖
-候选式回显、越界 clamp、`scroll` 事件去重、宿主反向同步、重复通知、回调
-注销和非法坐标；回调期间不得重入脚本 runtime。它仍不证明嵌套 overflow、平滑
-滚动、触摸惯性或真实页面的视觉体验。
-
-TEST1130 覆盖真实 IANA 页面目录脚本需要的布局几何：Core 在成功 layout 前
-拒绝几何关系，layout 后通过现有 DOM relation callback 暴露元素 border-box 的
-`x/y/width/height`，Browser 将四个整数组合成 `getBoundingClientRect()` 快照，
-并随 page-level scroll 返回 viewport-relative 的 `top`。断言同时检查矩形边界
-算术和滚动后的尺寸/横坐标保持不变；它不证明 transforms、Range、多片段文本、
-nested overflow 或真实页面的字体/像素视觉。
-
-TEST1131 覆盖 WM_SIZE 到 Browser script session 的 viewport resize 合同：宿主
-把物理 client area 按 DPI 换算为 CSS 宽高/DPR，Browser 更新
-`innerWidth`/`outerWidth`/`devicePixelRatio` 与 `screen` 方向，并同步派发一次
-可信、不可取消且不冒泡的 window `resize`。断言覆盖监听器顺序、事件字段、重复
-三元组去重、方向变化和负值/零 DPR 的参数拒绝；它不替代真实旋转、字体、边距、
-滚动条或页面在 resize handler 中排队的 animation-frame 视觉验收。
-
-TEST1132 覆盖 viewport/DPR 变化对已有 `MediaQueryList` 的刷新：宽度和分辨率
-条件在匹配结果实际翻转时各派发一次同步 `change`，事件带有 `media`、
-`matches`、target/currentTarget 和可信/取消标志；重复 resize、未变化条件以及
-移除监听器保持静默。Browser 会追踪每个 session 最多 64 个列表，超出部分仍
-提供创建时快照但不保证后续 `change` 通知；完整媒体查询语法仍不在范围内。
-
-TEST1133 覆盖浏览器脚本 `visualViewport` 的有限布局视口快照：`width`、`height`
-和 page scroll 会随 Browser 的 resize/scroll 通知同步，`scale` 固定为 1，
-`offsetLeft`/`offsetTop` 固定为 0。断言检查 visual `resize`/`scroll` 的 target、
-事件字段、可信标志、监听器顺序和重复通知去重，并确认移除 visual handler 后
-window 事件仍可独立到达。它不保证 pinch zoom、嵌套 overflow、视觉像素或真实
-旋转体验。
-
-TEST1134 覆盖 history traversal 的自动滚动恢复策略：Browser 以
-`PBrowser_ScriptSessionGetScrollRestoration` 暴露脚本的 `auto`/`manual` 状态，
-宿主在明确 `manual` 时保留当前 viewport，在 `auto` 时才读取并 clamp Browser
-保存的 entry snapshot；查询的空句柄/空输出参数会 fail closed。fragment reveal
-和显式脚本滚动不属于这条自动恢复门。
-
-TEST1135 覆盖 `screen.orientation` 的 Browser 语义：同一 session 内多次读取保持
-同一个对象身份，`type`/`angle` 随布局视口方向更新；方向翻转时先在媒体列表刷新后
-同步派发一次以 orientation 为 target 的可信 `change`，再进入 visual/window
-`resize`，而重复或同方向 resize 不重复派发。断言同时覆盖 `onchange`、有限
-`addEventListener` 监听器、事件字段、监听器移除和非法 resize 的 fail-closed
-保护；不证明设备真实旋转动画、非客户区或视觉像素结果。
-
-TEST1136 覆盖页面替换前的 `beforeunload` Browser 合同：`window.onbeforeunload`
-与 `addEventListener('beforeunload', ...)` 的事件字段、调用顺序、
-`preventDefault()`、非空 `returnValue`、handler 返回字符串和监听器移除。它还
-检查空句柄/空输出参数的 fail-closed 行为；参考宿主没有确认对话框，因此取消时
-保留当前页面，测试不把 prompt UI 当作 Browser 的职责。
-
-TEST1137 覆盖统一脚本任务检查点：Browser 按 `phase_mask` 选择 timer、
-animation frame、message 和 idle callback，固定按阶段顺序运行，并在每个阶段后
-执行一次有界 microtask。断言覆盖 frame timestamp、idle timeout、message limit、
-只运行 microtask 的零 mask、未知 mask 的参数拒绝，以及每个阶段的事件顺序；参考
-宿主还在窗口 UI 线程以 16 ms `WM_TIMER` 调用 `PBROWSER_SCRIPT_PUMP_ALL`。这项
-测试证明队列语义和宿主接线，不证明 OEM 消息调度、功耗策略或真实页面的视觉结果。
-
-TEST1138 覆盖 Browser 页面生命周期的 pageshow 组合：`complete` 在已有的
-readystatechange/DOMContentLoaded/load 序列后派发一次初始 `pageshow`，重复
-`complete` 不重复；进入 hidden 时按 visibilitychange→pagehide，回到 visible
-时按 visibilitychange→pageshow，重复的 hidden 值保持静默。断言同时检查
-`document.readyState`、`visibilityState` 和 `persisted === false`。它是离线
-脚本语义夹具，不证明 bfcache、真实后台挂起、OEM 可见性通知或视觉结果。
-
-TEST1139 覆盖 Browser 的顶层窗口焦点合同：新 session 的
-`document.hasFocus()` 初始为真；宿主调用
-`PBrowser_ScriptSessionDispatchWindowFocus()` 后，状态变化按 blur/focus 顺序
-派发一次可信、不可取消、不冒泡的 window 事件，并同时支持属性 handler 和普通
-listener。重复的零值或非零值保持静默，非零输入归一化为 focused；测试还断言
-`target`、`currentTarget`、`isTrusted`、`preventDefault()` 和状态读取。它是
-离线脚本语义夹具，不证明 OEM 激活通知、native 控件焦点矩形或真实窗口切换的
-视觉结果。
-
-TEST1140 覆盖 Core 焦点 id 到 Browser `document.activeElement` 的可选桥：未设置
-焦点或焦点节点没有 id 时返回 `document.body`，有 id 时通过现有 DOM read adapter
-解析到对应元素；清除焦点和注销 callback 都保持安全回退。断言还覆盖 Core
-UTF-8 size-probe、过小缓冲的完整字节数和不修改输出、注册后 getter 的同步读取，
-以及空/无效 id 的 fail-closed 行为。它是离线脚本/Core 语义夹具，不证明完整
-浏览器焦点算法、native HWND 焦点矩形、自动初始焦点、焦点陷阱或真实窗口切换
-视觉；这些仍由宿主和人工设备验收负责。
-
-TEST1141 覆盖 `HTMLElement.focus()`/`blur()` 的可选 Browser→宿主桥：脚本请求按
- id 经过 Core 的已布局焦点资格检查，focus 在切换目标时先发旧目标的 blur/focusout，
- 再发新目标的 focus/focusin；对非当前目标的 blur、disabled/plain 目标和注销后的
- bridge 都保持 no-op，`document.activeElement` 与 body 回退保持一致。它同时验证
- Core `PCore_FocusTargetInfoById`/`PCore_InteractionFocusById` 的边界和固定
- native-function 预算回归。页面级滚动可见性与 options 结果由下一条夹具单独验证；
- 本测试不证明完整焦点算法、自动初始焦点、焦点矩形、真实 native HWND/OEM 控件或
- 跨窗口视觉。
-
-TEST1142 覆盖 focus request Ex bridge 的页面级 viewport 组合：默认
-`HTMLElement.focus()` 会把 Core layout 矩形滚入宿主的 page-level viewport，Browser
-在宿主 callback 返回后才同步实际 CSS `scrollY` 并派发一次 window `scroll`；
-`focus({preventScroll:true})` 更新 active element 和 focus family，但保留原滚动
-位置且不产生滚动事件。夹具同时断言目标矩形在 viewport 内、Core geometry 与
-Browser `getBoundingClientRect()` 使用同一滚动偏移，以及 callback 内不重入脚本。
-它专门覆盖 page-level 路径；焦点与嵌套 retained overflow 的联动由 TEST1150 覆盖。
-
-TEST1143 覆盖页面级 `Element.scrollIntoView()`：默认 block start/inline nearest、
-布尔值 `false` 的末端对齐，以及有限的 center 对齐都复用既有 page-level scroll
-callback，并在实际变化时只产生一次 window `scroll`；已经可见的 nearest 请求保持
-静默。夹具还断言不支持的 `behavior:"smooth"` 安全拒绝，不改变 viewport 或事件
-队列。它不证明 scroll-margin、nested overflow、平滑/惯性滚动、真实触摸/滚动条
-视觉或复杂布局中的完整浏览器对齐算法。
-
-TEST1144 覆盖 `Element.getClientRects()` 的有界单矩形集合：每次调用都会得到新的
-array-like 集合和矩形，`length`、索引 `0` 与 `.item(0)` 与同一元素的
-`getBoundingClientRect()` 保持一致，越界项返回 `null`；集合随 page-level scroll
-更新，隐藏元素返回空集合。它不证明 transforms、inline 多片段/Range、nested
-overflow 或视觉像素精度。
-
-TEST1145 覆盖 Core 到 Browser 的 inline 多片段组合：窄容器中的带边框文本被分成
-多个按行排列的正尺寸矩形，Core 的 count/index relations 与 Browser 的
-`getClientRects()` 使用同一快照，`getBoundingClientRect()` 是这些片段的 union。
-夹具同时检查每次调用的新集合/新矩形身份、`.item()` 边界、索引顺序和旧的
-`getClientRects()` 单矩形行为不回退。它不证明 transforms、Range/Selection、
-nested overflow、pinch zoom、复杂字体度量或视觉像素精度。
-
-TEST1146 覆盖 Core 到 Browser 的布局尺寸快照：支持的 block box 暴露
-`offset*`、`client*` 与 `scroll*` 六个整数 CSS 像素 getter，offset/client 的
-border/padding/retained-scrollport 关系以及有界后代 extent 由离线夹具断言；Browser
-还检查 getter 为只读、descriptor 存在、隐藏元素安全返回 `0`，Core relation 与脚本值
-保持一致。该测试不证明元素滚动操作或真实滚动条呈现。
-
-TEST1147 覆盖带 DOM `id` 的嵌套 overflow box：Core 的关系 38/39、按 id setter
-和非负 clamp 与 Browser 的 `scrollLeft`/`scrollTop`、`scrollTo()`、`scrollBy()`
-保持一致；脚本请求只接受 `auto`/`instant`，实际位置改变时目标元素收到一次非冒泡、
-不可取消的 `scroll` 事件。夹具还把 Core 的 retained scrollbar pointer snapshot
-通过宿主 adapter 送回 `PBrowser_ScriptSessionNotifyElementScroll()`，验证 host-driven
-位置同步和事件去重。它不证明完整滚动容器树、scroll chaining/anchoring、nested
-`scrollIntoView()`、smooth/inertia、匿名目标、触摸手势或滚动条视觉。
-
-TEST1148 覆盖 `Element.scrollIntoView()` 对最近可寻址 retained overflow 祖先的有限
-嵌套 reveal：Core 关系 40/41 报告两个轴是否有 retained scrollbar，42/43 提供
-padding/client edge 文档坐标，Browser 沿 `parentElement` 最多遍历 64 层并只移动最近
-祖先。断言覆盖两个轴的 start 对齐、页面 viewport 保持、目标元素一次非冒泡 scroll
-事件、重复 nearest 静默以及 smooth 请求拒绝；没有可用嵌套 client bridge 时仍应回退
-到既有 page-level 行为。它不证明完整 scroll tree、scroll chaining/anchoring、
-scroll-margin、平滑/惯性滚动、匿名目标、复杂布局或真实滚动条/触摸视觉。
-
-TEST1149 覆盖 `Element.scrollIntoView({container:"all"})` 的有界多层 reveal：离线
-夹具包含两个 retained overflow ancestor，断言 Browser 从最近到最外层依次重新读取
-目标矩形并移动两个滚动容器，页面 viewport 保持稳定，元素 `scroll` 事件顺序为
-inner→outer。重复 `nearest` 请求、未知 `container` 和 `behavior:"smooth"` 都必须
-保持位置与事件队列不变；64 层上限、完整 scroll tree、scroll chaining/anchoring、
-scroll-margin、平滑/惯性、匿名目标和视觉滚动条仍不由该测试覆盖。
-
-TEST1150 覆盖 `HTMLElement.focus()` 与有限 nested `scrollIntoView()` 的组合：Browser
-发现可寻址 retained overflow ancestor 时，Ex callback 的 `prevent_scroll` 会要求宿主
-暂缓 page-level reveal，随后 Browser 依次滚动 inner→outer，并保持 page viewport 不变。
-夹具断言两个轴的 retained offset、目标在两层 client edge 内、focus/focusin→scroll
-事件顺序、重复 focus 静默、`focus({preventScroll:true})` 不移动任何滚动容器，以及
-远端目标 `blur()` 不触发滚动。它不证明完整 scroll tree、scroll chaining/anchoring、
-scroll-margin、平滑/惯性滚动、真实触摸滚动或 OEM 控件焦点视觉。
-
-TEST1151 覆盖页面提交后由宿主显式触发的有界 `autofocus`：Core 按 DOM 顺序跳过
-hidden、disabled 和未布局目标，提供 UTF-8 id size-probe 与 geometry 快照，并只更新
-Core focus node；有 id 目标复用 Browser focus bridge，无 id 目标通过
-`PCore_EventDispatchFocus` 保留焦点节点并派发 focus/focusin。夹具同时断言重复应用
-不重复派发、移除 id 后仍能安全完成 Core 事务、过小 id buffer 不发生部分写入，以及
-Browser 的 id-addressable `document.activeElement` 按合同回退到 `body`。它不证明
-完整焦点算法、Browser 自主初始焦点、native HWND/焦点矩形、完整滚动树或 OEM 视觉。
-
-TEST1152 覆盖 Browser selector 子集的组合查询：顶层逗号列表、后代空格、子代 `>`、
-相邻兄弟 `+` 和一般兄弟 `~` 在 `matches()`、`closest()`、`querySelector()` 与
-`querySelectorAll()` 中保持一致，带逗号的属性值不会被误拆分，查询结果按文档顺序
-返回 snapshot。夹具还断言三段组合链、非法/空 selector 的 fail-closed 结果，以及
-`closest()` 的列表匹配。组合链和祖先/兄弟遍历各自有 64 步上限；动态伪类、伪元素、
-属性大小写修饰符、namespace、shadow DOM 和完整 CSS Selectors 语法仍不在范围内；
-已实现的结构伪类由 TEST1154 单独覆盖。
-
-TEST1153 覆盖 Browser selector 的有界属性操作符：`=`, `^=`, `$=`, `*=`, `~=`, `|=`
-在 `matches()`、`closest()`、`querySelector()` 与 `querySelectorAll()` 中支持精确、前缀、
-后缀、子串、空白分词和语言前缀匹配。夹具同时覆盖通配标签、组合器、顶层列表顺序、
-引号内的空格/逗号/`]`、空操作数、未闭合引号、未支持的大小写修饰符和无属性值的
-fail-closed 结果；属性名、值和 selector 链仍受 Browser 的固定大小/步数预算约束。
-
-TEST1154 覆盖 Browser selector 的有界结构伪类：`:root`、`:empty`、`:first-child`、
-`:last-child`、`:only-child`、四种 `*-of-type` 变体，以及 `:nth-child()`、
-`:nth-last-child()`、`:nth-of-type()` 和 `:nth-last-of-type()` 的整数、`odd`/`even`
-与受限 `an+b` 公式。断言同时覆盖列表、`matches()`、`closest()`、空元素与文本元素，
-并确认空公式、`of` 过滤、伪元素和超大数值安全 fail closed。结构判断使用
-只读 DOM 关系快照；遍历、公式系数和脚本 heap 都有固定上限，不代表完整 CSS Selectors。
-
-TEST1155 覆盖 Browser selector 的有界表单状态：`input:checked` 读取现有 checked
-callback 的当前值，`:disabled`/`:enabled` 读取 input、button、select、textarea、option
-的直接属性，`:required`/`:optional` 读取 input、select、textarea 的直接
-`required` 属性。夹具通过 `matches()`、`closest()`、`querySelector()` 和
-`querySelectorAll()` 断言初始状态、checked/属性 mutation 后的实时结果、列表顺序和
-组合查询，并确认带参数、交互伪类、`:not()` 的不支持参数、伪元素和非表单元素安全
-fail closed。
-option 的动态 selected→`:checked` 映射由 TEST1157 单独覆盖，也不代表完整 CSS
-Selectors 语法。fieldset/optgroup 的 effective disabled 继承由 TEST1166 覆盖。
-
-TEST1156 覆盖 Browser selector 的有界 `:not()`：参数只能是一个不含伪类、伪元素、
-列表或组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值），并在
-`matches()`、`closest()`、`querySelector()` 与 `querySelectorAll()` 中保持一致。夹具
-覆盖属性/类 mutation、后代与子代组合、顶层列表顺序和多个 `:not()` 链；空参数、
-逗号列表、空格/组合器、嵌套伪类、伪元素和非精确属性操作符都必须 fail closed。该能力
-覆盖 `details:not([open])`、`:not(summary)` 等本项目所需的有限场景，不代表完整 CSS
-Selectors 语法。
-
-TEST1157 覆盖 Browser selector 对 `<option>` 动态 selected 状态的 `:checked` 映射：
-单选初始选择、`selectedIndex` mutation、多选初始选择、`matches()`、`closest()`、
-顶层列表顺序和 input/option 的区分都必须保持一致；带参数、非 option 元素、嵌套伪类
-和伪元素仍安全 fail closed。Core 的 checked getter 只扩展为读取 option.selected，
-option 选择 mutation 仍由 select/option API 完成。
-
-TEST1158 覆盖 Browser selector 对 Core 约束验证结果的有界 `:valid`/`:invalid` 映射：
-required 空值、value mutation、custom validity mutation、form 聚合结果和
-`willValidate` 非候选排除都必须保持一致；带参数、非验证元素、嵌套伪类和伪元素仍安全
-fail closed。该测试复用既有 validation callback，不改变验证规则或生成 native UI。
-
-TEST1159 覆盖 Browser selector 对焦点状态的有界映射：`:focus` 只匹配当前
-activeElement，`:focus-within` 沿最多 64 层的已寻址祖先链匹配；焦点切换、blur 清理、
-`matches()`、`closest()`、两种 query 和顶层遍历保持一致。带参数、伪元素和注销
-activeElement callback 的输入必须 fail closed。该测试复用既有 Core focus/activeElement
-桥，不改变宿主 native focus、焦点矩形或 OEM 输入行为。
-
-TEST1160 覆盖 Browser selector 对静态链接状态的有界映射：`:link`/`:any-link` 只匹配
-带 `href` 属性的 `<a>`/`<area>`，空属性值也算链接；移除或新增 `href` 后，
-`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 的结果与文档顺序
-必须立即更新。带参数、伪元素和尾随逗号等不支持输入必须 fail closed。Browser 不保存
-visited history；脚本 `:active`/`:hover` 由 TEST1165 的可选 interaction callback
-单独覆盖，真实链接绘制、pointer 时机、导航和历史样式仍属于宿主集成与人工观察。
-
-TEST1161 覆盖 Browser selector 的有界 `:target`：当前 URL fragment 经
-`decodeURIComponent` 后与元素当前非空 `id` 相等时，`matches()`、`closest()`、
-`querySelector()` 和 `querySelectorAll()` 只返回该目标；fragment 导航、百分号编码、
-id mutation、无 fragment 和 malformed percent-encoding 均按当前 session 状态更新。
-仅有 `name` 的 named anchor、带参数的 `:target(foo)`、伪元素和尾随逗号必须
-fail closed；stale wrapper 读取也只能安全不匹配。该合同只决定 selector 结果，
-不承诺 fragment reveal、页面滚动或真实设备视觉。
-
-TEST1162 覆盖 Browser selector 的有界 `:lang()`：当前元素及最多 64 层父链上的
-`lang`/`xml:lang` 按大小写不敏感的精确值或 `-` 子标签前缀匹配，元素 `lang` 优先，
-空值停止继承；`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()`
-都使用同一实时状态。夹具验证属性 mutation、`xml:lang` fallback、无覆盖时的祖先继承、
-空参数、语言标签列表、引号形式、伪元素和尾随逗号的 fail-closed 行为；它不实现完整
-BCP 47/namespace 语言解析，也不替代字体、布局或设备视觉验收。
-
-TEST1163 覆盖 Browser selector 的有界正向分组：`:is()` 与 `:where()` 接受最多 16 个
-逗号分隔的简单 compound 分支，并在 `matches()`、`closest()`、`querySelector()` 和
-`querySelectorAll()` 中保持同一匹配和文档顺序。夹具验证类/属性分支、子代组合、
-查询与 `closest()`、类 mutation 后的实时结果，以及空分支、嵌套伪类、组合器、伪元素、
-未闭合和尾随逗号的 fail-closed 行为；不承诺完整 Selectors 语法或 specificity 计算。
-
-TEST1164 覆盖 Browser selector 的有界 `:has()`：每个伪类最多接受 16 个相对简单
-compound 分支，支持无前缀后代、`>` 直接子代、`+` 相邻兄弟和 `~` 后续兄弟关系；每个
-后代或兄弟遍历最多 64 步。`matches()`、`closest()`、`querySelector()` 和
-`querySelectorAll()` 使用同一实时结果，夹具还验证属性操作符、`button:disabled`、
-类/属性 mutation、分支数量上限和查询顺序。空分支、链式关系、伪元素、未闭合或尾随
-逗号等输入必须 fail closed；这不是完整 Selectors `:has()` 或任意相对 selector 语法。
-
-TEST1165 覆盖 Core 指针交互状态到 Browser selector 的可选映射：宿主以
-`PBrowserScriptInteractionCallbacks` 读取 `PCore_InteractionStateElementId` 的
-`active`/`hover` id，`matches()`、`closest()`、`querySelector()` 与
-`querySelectorAll()` 只匹配当前精确节点。夹具覆盖 hit-test 后的状态切换、Core
-size-probe 和过小缓冲、`:active`/`:hover` 的参数/伪元素拒绝，以及注销 callback
-后的 fail-closed 行为。Browser 不自动派发 pointer 事件、重做 style/layout 或重绘；
-真实触摸、按下/释放时机、pointer capture 和视觉仍由宿主与设备验收。
-
-TEST1166 覆盖 Core effective-disabled relation 到 Browser selector 与表单提交的统一：
-disabled fieldset 的 first-legend exemption、disabled optgroup 对 option 的继承、
-fieldset/optgroup 属性 mutation、`matches()`/两种 query、关系 size-probe、disabled
-option 的选择拒绝和 successful form submission 排除均由同一离线 fixture 断言。旧宿主
-未提供 relation 44 时 Browser 回退到直接属性；该测试不扩展完整 CSS Selectors、native
-SELECT popup 或设备视觉承诺。
-
-TEST1167 覆盖 Browser selector 对 Core 范围验证结果的有界 `:in-range`/`:out-of-range`
-映射：仅支持 input 的 number/range/date/month/week/time/datetime-local 类型；非空值且
-具有 `min`/`max`/`step`（range 类型的默认范围也算）时读取既有 validation callback 的
-underflow/overflow 标志。空值、bad/type mismatch、disabled/readonly、无范围限制和
-非 input 元素两者都不匹配；stepMismatch 本身不算 out-of-range。夹具覆盖 matches/closest/
-query、值和约束属性 mutation、查询顺序及带参数/伪元素/非法列表的 fail-closed 行为；
-它不扩展完整 Selectors、原生范围控件视觉或本地化 validation UI。
-
-TEST1168 覆盖 Browser selector 的有界 `:read-only`/`:read-write`：文本输入类型与
-`textarea` 在未 readonly 且未 effective-disabled 时匹配 `:read-write`，Core 的
-`isContentEditable` callback 让显式或继承的 editing host 也能匹配；readonly、禁用、
-不支持编辑的 input 类型和普通元素匹配 `:read-only`。夹具覆盖属性 mutation、祖先继承、
-`matches()`、`closest()`、三种 query、结果顺序和注销 contenteditable callback 后的
-fail-closed 行为；不承诺完整 CSS Selectors、富文本编辑或 native 输入视觉。
-
-TEST1169 覆盖 Browser selector 的有界 `:placeholder-shown`：省略 `type` 或使用
-`text`、`search`、`url`、`tel`、`email`、`password` 的 input，以及 textarea，在 live
-`value` 为空且 `placeholder` 值非空时匹配；不支持的 input 类型、空 placeholder、普通
-元素和带参数/伪元素形式必须 fail closed。夹具覆盖初始状态、value/type/placeholder
-mutation、`matches()`、`closest()`、两种 query 的文档顺序和非法输入；不承诺 native
-placeholder 绘制、SIP/IME 或设备视觉。
-
-TEST1170 覆盖 Core 显式 form-owner 到 Browser `Element.form`/`HTMLFormElement.elements` 的
-有界映射：默认最近祖先归属、`form="id"` 的跨树控件、存在属性时不回退祖先、空值/无效
-目标无 owner，以及 form 控件集合的文档顺序、`namedItem()`、label association 和
-mutation 后重新查询。旧集合保持 snapshot identity，不会原地变成 live collection；宿主
-只提供既有 DOM relation/attribute callback，不复制表单归属或集合规则。
-
-TEST1171 覆盖同一显式 form-owner 规则在 Core 生命周期中的消费：form 外的
-`form="primary"` input/textarea 被纳入 DOM-only validation、`reportValidity()` 的
-invalid-event 扫描、urlencoded successful-control 序列和按坐标的外部 submit/reset 激活；
-reset 恢复这些控件的初始值，空 required 值再次阻止提交，另一个 form 的控件不会混入。
-这是离线自动合同，不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
-
-TEST1172 覆盖 `PCore_FormResetById` 的无坐标 state-only reset：同一 owner 规则会恢复
-form 子树内以及显式 `form="primary"` 的外部 input、checkbox、select 和 textarea，
-而无效 owner 的控件保持原值；缺失 id、非 form、空 id 和 NULL 参数均 fail closed。
-调用方仍须在该入口前完成可取消 reset 事件策略，并在成功后重新 layout/paint；该夹具
-不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
-
-TEST1173 覆盖 Browser 脚本 `HTMLFormElement.reset()` 的完整事务：第一次调用由 form id
-派发 `bubbles=1`、`cancelable=1` 的 `reset` 事件，listener 通过 `preventDefault()` 取消
-时，form 子树和显式 `form="primary"` 外部控件的 live state 均保持不变；第二次调用在
-事件允许后进入宿主 reset callback，由 Core 恢复 input、checkbox、select 和 textarea 的
-初始值，并在参考宿主重新 layout。夹具还断言 `event.target === event.currentTarget`、
-事件顺序、两次调用计数、方法返回 `undefined` 以及无重复事件。它验证的是 Browser/Core
-事务和 adapter 合同，不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
-
-TEST1174 覆盖 Browser 脚本 `HTMLFormElement.requestSubmit([submitter])` 的完整事务：
-无效 required 值先阻止默认动作，`formnovalidate` submitter 可绕过约束，listener 的
-`preventDefault()` 会取消提交，省略 submitter 使用无按钮的 successful-control 序列；
-非法 submitter、非 form receiver 和缺少 id 的目标均安全失败。夹具断言 validation→
-可取消 `submit`→Core urlencoded 默认动作的顺序、`target/currentTarget`、POST action/body、
-调用次数及 `undefined` 返回值；宿主只接线和记录导航，不复制验证或 submitter 规则。
-该夹具不承诺 native 表单视觉、SIP/IME、picker、触摸或不同 DPI 结果。
-
-TEST1175 覆盖 Browser 脚本 `HTMLFormElement.submit()` 的直接默认动作：三个带 required
-控件的 form 分别走 urlencoded POST、`method="dialog"` 和 multipart；直接方法返回
-`undefined`，跳过 constraint validation、submit 事件和 submitter，因此空 required 值
-仍进入 Core 的成功控件结果，dialog return value 与 multipart submitter 也保持为空。
-夹具同时检查 validation callback 为零、三个 direct/default callback 各调用一次、方法
-分类、POST body 和 multipart action。宿主只接线到 Core 的 NoValidationById primitive、
-记录应用策略并断言，不复制表单语义；该夹具不承诺 native 表单视觉、SIP/IME、picker、
-触摸或不同 DPI 结果。
-
-TEST1176 覆盖 Browser `new FormData(form)` 的 detached snapshot：Core 按统一 form-owner
-和 successful-control 规则收集 form 子树及显式 `form="id"` 外部控件，保留 checkbox、
-重复 select 和 textarea 顺序，排除 disabled、未勾选、unnamed 与 submit 控件。夹具确认
-返回对象身份、查询/重复项、后续 value mutation 不会改写旧 snapshot，第二次构造读取新
-状态，未派发 submit 事件；宿主只接线
-`PBrowserScriptFormDataCallbacks` 和 Core snapshot API。该桥最多 64 项并有受限 UTF-8
-字段，文件只返回 metadata；不承诺完整 live collection、文件读取或 native 表单视觉、
-SIP/IME、picker、触摸和不同 DPI 结果。
-TEST1177 覆盖 Browser `new FormData(form, submitter)` 的 Ex bridge：启用的 submit-type
-input/button（包括显式 `form="id"` 的外部控件）按 successful-control 与文档顺序加入快照；
-`null`/`undefined` 等同省略 submitter，普通控件、禁用控件、其他 form 的 submitter 和
-伪造的普通对象均安全抛出 `TypeError`。夹具确认每次构造仍是 detached snapshot，且不会
-派发 submit 事件或执行默认动作；宿主只接线 `PBrowserScriptFormDataCallbacksEx` 与
-`PCore_FormDataByIdEx`，不复制表单收集语义。该桥继续受 64 项及 UTF-8 字段容量限制，
-文件只返回 metadata。
-
-TEST1178 覆盖 Browser `new FormData(form[, submitter])` 的 `formdata` 事件：构造完成
-成功控件快照后同步派发非冒泡、不可取消的 `FormDataEvent`，事件的 `formData` 与
-返回对象保持同一身份；监听器可在构造返回前追加字段，`form.onformdata` 也会按正常
-EventTarget 规则接收事件。夹具确认 `target`/`currentTarget`、构造器继承关系、
-阻止默认无效、body 不冒泡且不触发 submit；宿主只提供 fixture 和断言，事件与 FormData
-对象语义仍属于 Browser。
-
-TEST1179 覆盖 Browser selector 的可选 `:visited` 映射：宿主以同一 interaction Ex
-callback 返回明确批准的访问结果，Browser 对 `<a>`/`<area>` 的绝对/相对 href、fragment
-和空 href 在 `matches()`、`closest()`、`querySelector()`、`querySelectorAll()` 中
-保持一致；href mutation 与查询顺序即时更新，带参数、伪元素、尾随逗号和注销 callback
-安全 fail closed。Browser 不写入或持久化 history，也不导航、重做 style/layout/paint；
-宿主负责 URL 解析、历史来源和隐私策略。该离线门不证明真实链接颜色、visited 隐私隔离、
-跨窗口 history 或设备视觉。
-
-TEST1180 覆盖 Browser selector 的有界 `:scope` context：element query 把 receiver
-作为 scope，`:scope > ...` 与 `:scope ...` 分别匹配直接子代和后代，并在带 scope 的
-查询中按文档顺序把 owner 放在结果首位；不带 `:scope` 的 element query 仍排除 owner，
-document query 把 `document.documentElement` 作为 scope。`matches()`/`closest()`
-以 receiver 作为 scope，因此 `node.matches(':scope')` 与 `node.closest(':scope')`
-只命中自身。带参数、伪元素、尾随逗号及嵌套在当前不支持参数中的 scope 必须 fail closed；
-宿主只提供既有 DOM relation callback，不复制 selector 解析、scope 或排序语义。
-
-TEST1181 覆盖 Browser selector 的有界 `:default`：checkbox/radio 读取 content
-`checked` 属性作为 default state，`option` 通过 Core relation 45 读取
-default-selected 快照，submit-capable button/input/image 选择其 form 中按文档顺序的
-第一个 submit control。夹具分别断言初始状态、query 顺序、移除默认属性、live
-`.checked`/`selectedIndex` mutation、`matches()`/`closest()` 以及带参数、伪元素和尾随
-逗号的 fail-closed 行为；宿主只注册既有 Core DOM relation/attribute callback，不复制
-默认状态或 selector 解析。为保持 WM6 上固定的 1.5 MiB Browser heap，初始、mutation 和
-非法输入断言使用多个短脚本 session；这是一种测试编排约束，不是扩大运行时预算的承诺。
-
-TEST1182 覆盖 Browser/Core 的 `<option>` `selected`/`defaultSelected` 属性桥：脚本先读
-取单选与多选的 live/default 状态，再通过 `selected` setter 验证单选互斥、多选独立选择
-和 `selectedIndex` 的一致性；通过 `defaultSelected` setter 验证默认基线可独立更新，
-不会偷偷改写当前 live 选择。非 option 目标、缺失 adapter 和无效 id 必须安全失败；
-宿主只注册独立的 `PBrowserScriptOptionCallbacks` 并转调 Core 按 id API，不复制选择或
-默认状态规则。该离线门不承诺 native SELECT popup、触摸、SIP/IME、视觉或不同 DPI。
-
-TEST1183 覆盖 Browser `<option>` 的基础 `value`/`label`/`text` 属性桥：脚本先验证显式
-`value`/`label` attribute 优先，缺失时分别回退到 option 文本，`text` 读写会更新文本
-以及后续的 option/select 读取；`select.value` 与 `selectedIndex` 在 live 选择变化后
-保持一致。夹具还区分空 attribute 与缺失 attribute，并确认非 option setter、无效目标或
-失败 mutation 安全拒绝。实现复用既有 Core DOM attribute/text callback，不增加 ABI 或
-native slot；宿主只做回调接线和断言。该离线门不承诺 native SELECT popup、键盘/触摸、
-SIP/IME、layout/paint 或不同 DPI 视觉。
-
-TEST1184 覆盖 Browser `select`/`option` collection 的有界组合：`options` 与
-`selectedOptions` 按可寻址 option 的文档顺序生成独立 HTMLCollection snapshot，支持
-`item()`/`namedItem()`；`selected` mutation 会在下一次读取时反映，`select.length` 与
-`option.index` 保持一致，optgroup 本身不进入列表。夹具还确认 snapshot 数组的本地
-修改不会回写 DOM，非 select/option 目标安全返回。实现只复用现有 Core DOM relation、
-selected 和 attribute callback，不增加 ABI 或 native slot；每次最多遍历 256 个节点、
-返回 64 个 option，缺少稳定 id 的元素不可寻址。该离线门不承诺完整 live
-HTMLCollection、`length` setter、append/remove、native SELECT popup、键盘/触摸、
-SIP/IME、layout/paint 或不同 DPI 视觉。
-
-TEST1185 覆盖 Browser `<option>.form` 的有界 owner 投影：嵌套 `optgroup` 通过最多 64 层
-可寻址父链找到所属 `select`，再复用 `select.form`；显式 `select form="id"`、form
-attribute mutation、无 owner、无效 owner 和非 option 目标分别验证成功或 `null`，并
-确认既有 input owner 不回退。宿主只提供现有 DOM relation、attribute mutation 和断言，
-不复制 form-owner 规则；该门不承诺完整 HTML option/form 算法、native SELECT popup、
-键盘/触摸、SIP/IME、layout/paint 或不同 DPI 视觉。
-
-TEST1186 覆盖 Browser 的 select/optgroup 元数据：`select.type` 在 `multiple` 属性的
-live mutation 下保持 `select-one`/`select-multiple`，只读 setter 不写入 `type` attribute；
-`optgroup.label` 读取、mutation 和缺失 attribute 的空字符串回退，`option.label` 的文本
-回退与非目标元素的安全结果同时断言。宿主只提供现有 DOM attribute/text callback、脚本
-接线和 fixture，不复制属性语义；该离线门不承诺 native SELECT popup、键盘/触摸、SIP/IME、
-layout/paint 或不同 DPI 视觉。
-
-TEST1187 覆盖 Browser/Core 的 `HTMLFieldSetElement` 组合：`fieldset.type` 为只读
-`fieldset`，`fieldset.form` 复用祖先与显式 `form="id"` owner 规则，`fieldset.elements`
-按 DOM 顺序返回含嵌套 fieldset 控件的独立 HTMLCollection snapshot；`item()`/
-`namedItem()`、snapshot 隔离、属性 mutation、无效 owner 和非 fieldset 空集合均由同一
-fixture 断言。集合只投影带稳定 id 的 input/select/textarea/button，最多遍历 256 个节点、
-返回 64 项；其他 listed elements、无 id 节点、append/remove、native 控件视觉、键盘/触摸、
-SIP/IME 和不同 DPI 仍不在契约内。
-
-TEST1188 覆盖 `HTMLFormElement.elements` 与 fieldset owner 的组合：form 关系按文档顺序
-返回有 id 的 input、select、fieldset 及其后代控件，并保留 `item()`/`namedItem()`、独立
-snapshot、显式 `form="id"` mutation 和无效 owner 的 fail-closed。Core 关系层同时确认
-fieldset 出现在 `FORM_CONTROL_COUNT/AT`，但 `PCore_FormDataById` 的 successful-control
-快照仍只包含可提交控件，不把 fieldset 当作字段。宿主只提供现有 DOM relation、attribute
-callback 和断言；不新增 ABI、native slot、live collection、append/remove 或视觉/平台输入
-保证，后者仍需人工验收。
-
-TEST1189 覆盖 `output` 的 form-associated 组合：Core/Browser 按文档顺序把 form 内及显式
-`form="id"` 的 output 纳入 `form.elements`，fieldset 子树也能枚举 output；`output.form`、
-`labels`、`item()`/`namedItem()`、snapshot 隔离、name/form mutation 和无效 owner 均有断言。
-同一 fixture 通过 `PCore_FormDataById` 确认 output 不进入 successful-control 快照。该 fixture
-不覆盖 `img` 的 owner-only 投影、其他尚未覆盖的 form-associated 扩展、live collection、
-native 表单视觉或平台输入保证。
-
-TEST1190 覆盖 output 的值状态纵切：Core 直接断言 `value` 反映 descendant text，设置
-`value` 后保留独立的 default override，`defaultValue` 在有 override 时只改默认基线，
-`PCore_FormResetById` 恢复默认并清除 override；随后 `form.reset()` 的 Browser bridge
-验证同一语义可由脚本观察。夹具还确认 output 仍不进入 successful-control/FormData，且
-`output.type` 为只读的 `output`。该门不承诺完整 output listed-content 算法、live collection、
-native 表单视觉或平台输入保证。
-
-TEST1191 覆盖 `<object>` 的 listed form-associated 组合：Core/Browser 按文档顺序枚举
-form 内、fieldset 子树内和显式 `form="id"` 的 object；`object.form`、
-`fieldset.elements`、`item()`/`namedItem()`、owner mutation 与无效 owner 均有断言。
-object 只进入 owner/collection snapshot，不进入 validation、successful-control 或
-FormData，也不触发 plugin、替代内容窗口或 native 控件接线；其他尚未覆盖的
-form-associated 扩展仍不在本批范围。
-
-TEST1192 覆盖 `<img>` 的 form-associated owner-only 组合：Core/Browser 解析 form 内、fieldset
-子树内和显式 `form="id"` 的 img owner，并验证 `form.elements`/`fieldset.elements` 不包含
-img；`img.form`、无效 owner、owner mutation 与 snapshot/命名集合排除均有断言。img 不进入
-validation、successful-control 或 FormData；该门不改变既有图片资源发现、解码、layout/paint，
-也不承诺 native 图像视觉、完整 form-associated 扩展或 live collection。
-
-TEST1193 覆盖 `HTMLImageElement` 的有界元数据与 Core 资源状态：离线 Browser fixture
-断言 `document.images` 的 DOM 顺序 snapshot、raw `src`/`srcset`/`sizes`/`useMap` 等
-attribute reflection、`crossOrigin` 的 `null` 回退、boolean/尺寸 setter 边界、
-非 `img` 的安全结果，以及 `naturalWidth`/`naturalHeight`/`complete` 的资源状态投影；
-Core fixture 另外断言成功 SVG、终态 fetch failure、无 source 和仅有 `srcset` 的状态，
-并验证 layout 后 retained decode 才暴露自然尺寸。候选选择由 TEST1196–1198 单独覆盖；
-本门仍不实现绝对 URL、CORS/referrer enforcement、Promise/事件生命周期、image-map 命中、
-完整 loading/fetch-priority 策略或 native 图像视觉。宿主只提供资源 callback、DOM 接线、
-fixture 与断言，产品语义位于 Core/Browser。
-
-TEST1194 覆盖 `HTMLImageElement.decode()` 与宿主驱动的图像终态事件：脚本先验证无 source、
-pending、成功尺寸、终态失败、非 `img` 目标和 source mutation 的 Promise 状态；Core fetch/
-style/layout 使成功与失败关系可观察后，宿主通过
-`PBrowser_ScriptSessionNotifyImageEvent` 派发可信、非冒泡、不可取消的 `load`/`error`，
-并断言重复通知幂等、相反/过时/缺失 id fail closed、Promise settle 顺序和 page teardown
-对剩余 pending 请求的 `AbortError`；每个 session 的 image/source 终态映射最多 64 项，
-source 改变会释放旧项，超限的新终态通知保持 fail closed。该门不覆盖候选选择的
-实现细节、绝对 URL、CORS/referrer enforcement、完整 loading 策略、image-map 命中或
-native 图像视觉；宿主只负责先更新 Core relation、调用通知入口和泵出 microtask，产品
-语义位于 Browser/Core。
-
-TEST1195 覆盖 Core 的有界 image-map 命中纵切：已布局 `<img usemap>` 解析对应 `<map>`，
-按 DOM 顺序处理 linked `<area>` 的 `rect`、`circle`、`poly`/`polygon` 与 `default`，把
-自然图像坐标缩放到渲染尺寸并对 malformed coords、`nohref`、未知形状和超出预算安全
-忽略。夹具同时断言 area 优先于外层 `<a>` 的 `PCore_LinkAt(Ex)` href/target/rel、
-`PCore_LinkInfoById(Ex)` 的区域几何、`PCore_InteractionSetAt` 的 active/hover 节点，
-以及按坐标 Core 事件沿 `<area> → <map>` 正常冒泡；Browser 事件对象的 `isTrusted`
-和兼容 `trusted` 字段保持一致。该门不扩展 transforms、CORS、完整图像视觉或
-pointer/touch 手势；map 解析和命中语义属于 Core，宿主只接线与断言。
-
-TEST1196 覆盖 Core 与 Browser 共用的有界 `srcset` 密度选择：在两个 DPI 上选择最小的
-足够密度或最高候选，`currentSrc`、资源发现、缓存复用、retained SVG 自然尺寸和
-`complete` 必须指向同一 URL；无 `src` 的有效集合、混合 `w`/`x` 集合和畸形密度分别
-验证候选、raw `src` 回退或 fail closed。Browser fixture 还检查脚本 `currentSrc` 与
-Core 选择一致。实现最多接受 16 个正密度 `x` 候选，候选 URL 最多 2047 字节；绝对 URL、
-CORS/referrer、完整 loading 策略、自动 `load`/`error` 事件和 native 图像视觉仍不在本门
-范围。宿主只提供离线资源 callback、viewport 设置、DOM 接线和断言。
-
-TEST1197 覆盖 Core 与 Browser 共用的有界 `srcset` 宽度选择：`w` 候选按 `sizes` 的
-px/vw/vh 源尺寸与单一 `(min-width|max-width: <length>)` 条件选择，在 240/480 CSS
-视口下验证最小足够宽度或最高候选；无 `sizes` 或不支持的 `sizes` 按 100vw，混合
-descriptor、畸形候选仍回退 raw `src`。`currentSrc`、资源发现、缓存复用、retained SVG
-自然尺寸和 `complete` 必须指向同一 URL，Browser fixture 与 Core 选择保持一致。候选数
-最多 16、URL 最多 2047 字节；复杂媒体条件、绝对 URL、CORS/referrer、完整 loading、
-自动图像事件和 native 图像视觉仍不在本门范围。宿主只提供离线资源 callback、viewport
-设置、DOM 接线和断言。
-
-TEST1198 覆盖 Core 与 Browser 共用的有界 `<picture><source>` 选择：在 240/480 CSS
-视口下，按 source 文档顺序过滤单一 min/max-width media 与受支持 MIME，再用 source 的
-`srcset`/`sizes` 选择；unsupported 或 malformed source 必须跳过并回到后续 source 或
-`img` 的 `srcset`/`src`。fixture 同时验证 WM6 libdom 的 source-ancestor 形状和标准
-direct-child 形状、最多 8 个 source/16 层祖先/64 个 direct-child 节点的边界，以及
-`currentSrc`、资源发现、缓存复用、布局自然尺寸和 Browser 脚本结果的一致性。该门不
-承诺完整媒体查询、绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉；动态
-source mutation 与 viewport 失效由 TEST1199 单独覆盖。宿主只提供离线资源 callback、
-viewport 设置、DOM 接线和断言。
-
-TEST1199 覆盖图片 source identity 的生命周期通知：Browser 反映 `source.media`、
-`source.type`、`source.srcset` 和 `source.sizes`，宿主在 Core 改写 source 或 img 后调用
-`PBrowser_ScriptSessionNotifyImageSourceChange`，Browser 只拒绝 source 已变化的
-pending `decode()` 并清除旧的 `load`/`error` 终态。有效的
-`PBrowser_ScriptSessionNotifyResize` 在媒体和 resize 事件前刷新 source identity，240/480
-CSS 视口切换与 Core relation 49 保持一致；未变化的 source 不被误拒绝。该门不执行
-fetch、选择、layout、paint 或自动资源加载，也不承诺完整媒体查询、通用动态 DOM 插入/删除
-（仅另有 TEST1201、TEST1214–1216 的 removal 与 TEST1217–1219 的
-existing-element insertion/replacement 路径）、
-绝对 URL、CORS/referrer、loading 策略或 native 图像视觉；宿主只负责 mutation、通知、
-microtask pump 与断言。
-
-TEST1200 覆盖脚本图片来源 mutation 的可选 Browser→宿主 typed callback：fixture 分别
-写入 `img.sizes`、`source.media`/`type`/`srcset`/`sizes`，并通过
-`setAttribute`/`removeAttribute` 覆盖 img/source 的同一条 attribute bridge。自动断言
-八次成功 mutation 的元素类型、id、属性名和 removal 标志，重复注册返回
-`PSCRIPT_ERROR_GLOBAL` 且 native-function 数量不变；内部 setter 的不一致元数据不会
-产生伪通知，注销后也不会再回调。callback 是 mutation 成功后的同步 borrowed snapshot，
-只为宿主安排 Core 查询和 replacement pipeline，不执行 I/O、选择、decode、layout 或
-paint；因此该门无新增立即人工风险，也不承诺通用动态 DOM 插入/删除或自动图像加载。
-
-TEST1201 覆盖有界 direct-element DOM removal：Browser 的 `Element.removeChild()` 只能
-删除 receiver 的直接 element child，错误 parent、非 direct child、缺失 id 和
-document/head/body 结构 child token 必须 fail closed；成功后新的 `children`、`childNodes`
-和 query snapshot 排除被移除子树，旧 snapshot 保持不变，detached `Element.remove()`
-是 no-op。Core 的 `PCore_NodeRemoveChildById` 在成功后清除 retained layout，fixture
-重新 style/layout 后才读取几何状态；该入口不派发事件、不插入或 reparent、不删除文本
-节点，也不实现完整 live collection。宿主只注册 typed callback、驱动 fixture 和断言，
-没有新增立即人工视觉风险。
-
-TEST1202 覆盖文本内容 mutation 的 snapshot/lifecycle 合同：`textContent` 与非编辑元素
-的 `innerText` 成功写入后，新的 `childNodes` 生成新的无 id 文本 wrapper，旧 wrapper
-保留原始 `nodeValue`/`textContent`、变为 detached 且不污染新的 `children`/query 结果；
-Core retained layout 在 mutation 后失效，重新 style/layout 后恢复。编辑元素的
-`innerText` 仍复用 contenteditable callback，但共享同一失效规则。该门不实现节点插入、
-reparent、文本节点自身 setter、MutationObserver、完整 live collection 或自动事件；
-宿主只提供已有 text callback、可选 restyle 和断言。
-
-TEST1203 覆盖文本节点自身 mutation 的完整有界纵切：`Text.nodeValue`、`Text.data` 和
-`Text.textContent` 通过 `PBrowserScriptDomWriteCallbacksEx` 的同一 native slot，按未过滤
-`childNodes` 索引调用 `PCore_NodeSetTextChildById`。自动断言确认连接中 wrapper 和
-NodeList snapshot 身份不变、`length`/父级文本实时更新、元素 child 与缺失/越界索引
-fail closed、成功 mutation 使 retained layout 失效，以及父级替换后旧 wrapper 保留最近
-一次成功数据且不能再次写入。该门不实现插入、reparent、其他节点删除、MutationObserver、
-完整 live collection、事件或 native/视觉行为；宿主只负责 callback 接线、可选 restyle、
-fixture 与断言。
-
-TEST1204/1205 覆盖 Text、Comment 的 CharacterData 方法及其 Ex2/Core 纵切：
-`appendData()`、`insertData()`、`deleteData()`、`replaceData()` 和 setter 按 UTF-16
-code-unit 计算后调用 `PCore_NodeSetCharacterDataChildById`。自动断言覆盖返回值、连续
-替换、超长 count 截断、NodeList/wrapper identity、detached 快照，以及负数、非整数、
-越界、element、缺失和越界 child 的 fail-closed 返回码；CDATA 共享 ABI 合同。
-
-TEST1206 覆盖 `substringData()` 的只读范围合同：Text/Comment 使用有限非负整数
-offset/count，超长 count 截断，负数、非整数和越界 offset 抛出脚本错误；读取不改变
-`data`，父级 `textContent` 替换后 detached wrapper 仍保留原始快照。该门只验证
-Browser/Core 的数据与生命周期边界，不实现其他结构 mutation、observer、完整 live
-collection 或 native/视觉行为。
-
-TEST1207 覆盖 `Text.splitText()` 的完整有界纵切：`PBrowserScriptDomWriteCallbacksEx3`
-把 direct Text child 的 UTF-16 offset 转给 `PCore_NodeSplitTextChildById`，自动断言
-原 Text wrapper 保持身份、新 sibling 紧邻插入、静态 NodeList snapshot 不被改写、末尾
-offset 产生空 Text、错误范围/Comment/detached wrapper fail closed，以及成功 mutation
-使 retained layout 失效后可重新 style/layout。Core 侧同时验证 Text/element/缺失/越界
-返回码。offset 落在 astral code point 内部时安全拒绝；通用节点插入、reparent、合并、
-MutationObserver、事件或 native/视觉行为仍不在门内。
-
-TEST1208 覆盖 `Text`/`CDATASection.wholeText`：关系 50 读取逻辑相邻 Text/CDATA，并在
-element、Comment 或其他非文本节点处停止。断言完整/截断读取、astral 字符、错误码、只读
-getter、split/mutation 实时值和 detached 快照；该关系不改 child list，不涉及插入、reparent、
-合并、MutationObserver、live collection 或 native/视觉行为。
-
-TEST1209 覆盖 `Text`/`CDATASection.replaceWholeText()`：Ex4 把 direct Text/CDATA child 的
-索引和 UTF-8 值交给 `PCore_NodeReplaceWholeTextChildById`；断言目标 identity、段首移动、
-相邻节点 detached、非文本边界、astral 值、snapshot、`wholeText` 和父级替换。缺失/错误
-类型/越界/detached/空参数 fail closed；Core 使用有界 sibling walk。宿主只负责接线、fixture、
-可选 restyle 和断言。
-
-TEST1210 覆盖 `Node.normalize()` 的 Core/Browser 结构整理：宿主注册 Ex5 的
-`normalize_child_text` callback，Browser 对有稳定 id 的元素 wrapper 按受控顺序递归，
-Core 则只处理一个元素的 direct child list。自动断言确认空 Text 被移除、连续 Text
-合并到每段第一个非空节点、元素/Comment/CDATA 边界保持不变、首个非空 Text wrapper
-身份与旧 NodeList snapshot 保持一致、被移除节点成为 detached 快照，以及重复调用、
-缺失目标和非 Text 写入安全失败；同时确认变化后的 retained layout 必须重新
-style/layout 才可读取。没有稳定 id 的嵌套元素会被 Browser 跳过，不伪造可写句柄。
-该门不实现通用节点插入、reparent、独立 CharacterData 删除（TEST1214–1216 的窄路径除外）、MutationObserver、完整 live
-collection、事件或 native/视觉行为；宿主只负责 Ex5 接线、fixture、可选 restyle 和
-断言。
-
-TEST1211 覆盖 `Node.cloneNode(deep)` 的 Browser-owned detached snapshot：默认浅克隆与
-`deep=true` 深克隆分别断言节点类型、element 属性、子节点顺序、parent/children 关系、
-源文档不变和克隆数据独立；再次深克隆保持同一有界结构。深度超过 64 层、总节点超过
-256 或不支持的节点必须 fail closed。该路径不注册 Core callback、不使 layout 失效，也
-不实现把克隆节点插入文档、通用节点 mutation、事件 listener 复制或完整 DOM 类型。
-宿主只提供 fixture 与断言。
-
-TEST1212 覆盖 clone 与 live wrapper 的 `Node.isEqualNode()`：相同的浅/深结构、属性、字符
-数据和子节点顺序应当相等，但仍保持不同身份；修改 clone 数据后必须只影响 clone，双向
-比较结果随结构变化而变化。比较使用 64 层/256 节点预算，超限、缺失属性接口或不支持
-类型安全返回 `false`；宿主不注册 callback，也不提供第二份 DOM。
-
-TEST1213 覆盖 Core/Browser 的有界文本结构 mutation：Ex6 callback 将带 id 元素的
-`Element.append(text)`/`prepend(text)` 请求转为 `PCore_NodeInsertTextChildById`，在未过滤
-`childNodes` 的末尾或零位创建一个新的 Text。自动断言覆盖 Core 的插入/索引错误码、父级
-文本、既有 wrapper 与旧 NodeList snapshot 身份、`children` 刷新，以及 Node 参数和超过四值
-请求在脚本侧拒绝且不产生部分 mutation。宿主只负责 Ex6 接线、可选 restyle、fixture 和
-断言；已有节点 reparent、DocumentFragment/Node 插入、其他节点删除、事件、
-MutationObserver 和 live collection 仍不在该门内。
-
-TEST1214/1215 覆盖 `Text.remove()` 与 `Element.removeChild(Text)` 的 Ex2 删除桥：Browser
-按当前 receiver 的未过滤 `childNodes` 索引调用 `PCore_NodeRemoveTextChildById`，保留返回
-wrapper、旧 NodeList snapshot 和 detached 数据，并刷新父级集合/文本。自动断言覆盖成功、
-错误 parent、缺失/越界/非 Text、重复 detached no-op 和 retained-layout 失效；Comment/
-CDATA 的同类路径由 TEST1216 覆盖。
-
-TEST1216 覆盖 Comment CharacterData 的有界结构 mutation：宿主注册
-`PBrowserScriptDomMutationCallbacksEx3`，Browser 以未过滤 `childNodes` 索引和节点类型 8
-通过 `__pcoreRemoveChild` 调用 `PCore_NodeRemoveCharacterDataChildById`，支持连接中
-Comment 的 `remove()` 与 `Element.removeChild(comment)`。自动断言覆盖返回的原 wrapper、
-旧 NodeList snapshot、detached `data`/`nodeValue`、父级 `textContent`、错误 parent 和
-重复 detached no-op，同时验证 Core 对 Text、Comment、CDATA 类型匹配及非法节点类型的
-稳定返回码。节点类型 4（CDATA）沿用同一 Ex3 callback 和 Core API；当前 HTML fixture
-不伪造 CDATA 节点。通用 Node/DocumentFragment、reparent、其他删除、事件、
-MutationObserver、live collection 和 native/视觉行为仍不在门内；宿主只负责接线、fixture
-和断言。
-
-TEST1217 覆盖已有 element 的有界结构 mutation：宿主注册追加 insertion 字段的
-`PBrowserScriptDomMutationCallbacksEx4`，Browser 以 `Node.insertBefore(element, reference)`
-和 `Node.appendChild(element)` 将现有 element child 交给 `PCore_NodeInsertChildById`。
-自动断言覆盖同父级 reorder、跨父级 reparent、`NULL` reference 的 append、moved wrapper
-identity、两侧 `children`/`childNodes` snapshot 失效、旧 snapshot 保持和父级
-`textContent` 更新；Core 另外验证缺失 child、错误 reference parent 和自身层级的返回码。
-Text 节点、错误 reference、DocumentFragment、detached/结构 token 和多余参数必须
-fail closed 且不产生部分 mutation。成功后 retained layout 失效，宿主只负责 Ex4 接线、
-可选 restyle、fixture 和断言；Comment/CDATA 插入、mutation 事件、MutationObserver、
-live collection 和 native/视觉行为仍不在门内。
-
-TEST1218 覆盖已有 element 的有界替换 mutation：宿主注册 Ex5 的 `replace_child`，Browser
-以 `Node.replaceChild(element, oldElement)` 和 `Element.replaceWith(element)` 调用
-`PCore_NodeReplaceElementChildById`。自动断言覆盖跨父替换、同父替换、同节点 no-op、返回
-旧 wrapper、被替换节点的 detached 状态、受影响父级 snapshot/文本刷新以及旧 snapshot
-保持不变；Text、self、错误 parent、缺失 child 和多余参数必须 fail closed 且不产生部分
-mutation。成功后 retained layout 失效，宿主只负责 Ex5 接线、可选 restyle、fixture 和
-断言；DocumentFragment、Comment/CDATA 替换、通用节点替换、mutation 事件、MutationObserver、
-live collection 和 native/视觉行为仍不在门内。
-
-TEST1219 覆盖已有 element 的有界 `Element.append()`/`prepend()`：宿主注册 Ex6 的
-`insert_child_at`，Browser 按未过滤 `childNodes` 的末尾或零位调用
-`PCore_NodeInsertElementChildAtById`。离线 fixture 同时包含 Text 与 element direct child，
-自动断言同父级重排、跨父级迁移、wrapper identity、旧/新 NodeList snapshot、父级
-`textContent` 和同节点 no-op；字符串仍走既有 Text 插入路径。Detached clone、Text、
-越界和超过四值的调用必须 fail closed 且不产生部分 mutation。成功后 retained layout 失效，
-宿主只负责 Ex6 接线、可选 restyle、fixture 与断言；DocumentFragment、Comment/CDATA 插入、
-通用节点 mutation、事件、MutationObserver、live collection 和 native/视觉行为仍不在门内。
-
-TEST1220 覆盖已有 element 的有界相对插入：Browser 从目标 element 的 direct parent
-计算未过滤 `childNodes` 索引，通过 Ex6 的 `insert_child_at` 调用
-`PCore_NodeInsertElementChildAtById`，让单参数 `Element.before(element)`/`after(element)`
-在混合 Text/element 子节点中执行同父级重排和跨父级迁移。自动断言覆盖返回值、目标前后
-顺序、wrapper identity、旧 NodeList snapshot、父级 `textContent` 和零参数 no-op；self、
-detached clone、Text、无 parent 与多参数调用必须 fail closed 且不产生部分 mutation。成功后
-retained layout 失效，宿主只负责 Ex6 接线、可选 restyle、fixture 与断言；DocumentFragment、
-Comment/CDATA、通用节点 mutation、事件、MutationObserver、live collection 和 native/视觉
-行为仍不在门内。
-
-TEST1221 覆盖同一 Ex6 相对入口对单值 primitive 的有界文本插入：Browser 将
-`Element.before(value)`/`after(value)` 的字符串、数字、布尔值、`null`/`undefined` 通过既有
-`insert_text_child` callback 转为目标 direct-parent 位置的新 Text，并保持目标 wrapper、旧
-NodeList snapshot 与父级 `textContent`。自动断言同时验证返回值、mixed Text/element 顺序、
-对象/已有 Text/detached clone/多参数拒绝、零参数 no-op 及失败时无部分 mutation；宿主只负责
-Ex6 接线、fixture 与断言。DocumentFragment、通用节点 mutation、事件、MutationObserver、
-live collection 和 native/视觉行为仍不在门内。
-
-TEST1222 覆盖 `Element.replaceWith(value)` 的有界 primitive 重载：Browser 通过 Ex7
-`replace_child_with_text` callback 调用 Core 的 `PCore_NodeReplaceElementChildWithTextById`，
-在目标 direct-parent 的未过滤 `childNodes` 原位置原子创建 Text，并保留旧 element wrapper
-为 detached、旧 NodeList 为静态快照。fixture 同时验证字符串/数字字符串化、返回值、父级
-`textContent`、缺失/错误 parent、self、非法 UTF-8、对象/已有 Text/detached clone 和多参数
-拒绝，以及失败时无部分 mutation；成功后宿主只负责 snapshot reconciliation 和可选
-style/layout/paint。DocumentFragment、Comment/CDATA/非 element target、MutationObserver、
-live collection 和 native/视觉行为仍不在门内。
-
-TEST1223 覆盖 `Element.insertAdjacentText(position, text)` 的四个有界位置：Browser 复用
-Ex6 的 `insert_text_child` callback，在 receiver 内侧或其 direct parent 的未过滤
-`childNodes` 索引创建一个字符串化 primitive Text。fixture 验证 mixed child 顺序、内外侧
-位置、旧 snapshot 和空元素末尾插入；未知 position、对象/已有 Text、多参数、detached
-target 与失败时的无部分 mutation 必须 fail closed。宿主只负责既有 callback 接线、可选
-restyle/layout/paint；DocumentFragment、Comment/CDATA 插入、mutation event、observer 和
-live collection 仍不在门内。
-
-TEST1224 覆盖 `Element.insertAdjacentElement(position, element)` 的四个有界位置：Browser
-复用 Ex6 的 `insertElementChildAt` callback，在 receiver 内侧或其 direct parent 的未过滤
-`childNodes` 索引移动带 id 的 existing element，并返回该 element。fixture 验证跨父迁移、
-mixed child 顺序、旧 snapshot、detached wrapper 及失败时无部分 mutation；非 element、已
-detached element、未知 position、无 parent 和多参数必须 fail closed。宿主只负责既有 callback
-接线、fixture 与可选 restyle/layout/paint；DocumentFragment、Text/Comment/CDATA 插入、
-mutation event、observer 和 live collection 仍不在门内。
-
-TEST1225 覆盖 `Element.append(...values)`/`prepend(...values)` 的有界多值重载：Browser
-对零至四个 primitive 或当前文档中的 existing element 先做类型、connected、层级和容量
-预检，再按 append 原序或 prepend 逆序复用 Ex6 的两个 callback；primitive 创建 Text，
-element 移动并保留 identity，旧 NodeList snapshot 仍静态。fixture 验证混合顺序、跨父迁移、
-空调用、父级文本和失败时无部分 mutation；spoofed/detached/clone/ancestor/self、Text、
-超过四个值和其他对象必须 fail closed。该能力不增加 Core ABI；宿主只负责 callback 接线、
-可选 restyle/layout/paint，DocumentFragment、通用 Node、事件、observer 和 live collection
-仍不在门内。
-
-TEST1226 覆盖 CharacterData wrapper 的有界 `before(value)`/`after(value)`：Text、Comment
-wrapper 只接受一个 primitive，通过既有 write Ex6 `insert_text_child` 在同一
-direct parent 的未过滤 `childNodes` 索引前后创建 Text，并保留目标 wrapper、旧 snapshot
-和父级文本顺序。fixture 验证字符串化的字符串/数字/布尔值/`null`/`undefined`、零参数
-no-op、对象/已有节点/多参数拒绝，以及 detached wrapper 不产生 mutation；该路径不增加
-Core ABI，宿主只负责既有 callback 接线、可选 restyle/layout/paint；同一 Browser 分支对
-CDATA wrapper 采用相同合同，但当前 HTML fixture 不伪造 CDATA。DocumentFragment、通用节点或
-未覆盖的 CharacterData insertion、mutation event、observer 和 live collection 仍不在门内。
-
-TEST1227 覆盖 `Element.replaceWith(...values)` 的有界多值 primitive 重载：Browser 通过
-Ex8 `replace_child_with_text_list` 把 2–4 个字符串化 primitive 一次交给 Core，Core 在
-fragment 中完整建 Text 后原子替换 direct element child。fixture/断言验证四值顺序、
-返回值、旧 element detached、旧 NodeList snapshot 和父级 `textContent`；对象、existing
-element、clone、零值、超过四值、非法 UTF-8 与 detached target 必须 fail closed，失败不
-产生部分 mutation。设备门同时选择 `TEST1227,999`，确认 Browser heap 预算内的脚本执行、
-完整日志回收、空间预检与 crash check；DocumentFragment、通用 Node、mutation event、
-observer、live collection 和 native/视觉行为仍不在门内。
-
-TEST1228 覆盖 Browser write Ex7 的 `insert_text_child_list`：element 与 Text/Comment/CDATA
-wrapper 的 `before()`/`after()` 在 direct parent 的未过滤 `childNodes` 位置一次插入 2–4
-个字符串化 primitive，宿主只接线到 `PCore_NodeInsertTextChildListById`，Core 在 fragment
-中完整创建 Text 后原子提交。自动断言验证混合 child 顺序、返回值、目标 wrapper 与旧
-snapshot 身份、父级 `textContent` 以及 UTF-8/索引错误；对象、已有节点、超过四值和
-detached target 必须 fail closed，不产生部分 mutation。该门不覆盖 DocumentFragment、
-通用节点 mutation、事件、observer、live collection 或 native/视觉行为。
-
-TEST1229 覆盖 element `before()`/`after()` 的 2–4 值 mixed 列表：Browser 先验证 existing
-element 的 identity、connected、层级、重复和 primitive 类型/容量，再按 relative position
-复用既有 Ex6 `insert_child_at`/`insert_text_child` callback；自动断言同父重排、跨父迁移、
-primitive 字符串化、目标/旧 snapshot 身份、父级顺序和 preflight 失败时无 mutation。对象、
-Text/Comment/CDATA、self/ancestor、重复 element、超过四值和 detached target 必须 fail
-closed；该门不扩展 DocumentFragment、通用 Node、事件、observer、live collection 或
-native/视觉行为。
-
-TEST1230 覆盖 element `replaceWith(...values)` 的 2–4 值 mixed 列表：Browser 先验证
-existing-element 的 identity/connected/层级/重复与 primitive 类型/容量，再按序复用 Ex5
-`replace_child`、Ex6 `insert_child_at`/`insert_text_child` 和 Ex7 primitive replacement
-callbacks。自动断言 element-first/text-first 顺序、同父重排、跨父迁移、旧 target wrapper
-与 NodeList snapshot、父级 `textContent`，以及 object/duplicate/self/ancestor/超过四值/
-detached target 的 preflight 拒绝；预检错误不产生 mutation。该门不扩展 DocumentFragment、
-通用 Node、事件、observer、live collection 或 native/视觉行为。
-
-TEST1231 覆盖 CharacterData wrapper 的 `replaceWith(value[, ...])`：Text/Comment/CDATA
-通过 Ex9 `replace_character_data_with_text_list` 接受 1–4 个 primitive，Core 在 fragment
-中原子创建 Text 列表。自动断言顺序、父级 `textContent`、旧 wrapper 与 childNodes snapshot
-的静态身份、detached 读取，以及 Comment 替换后 remove；对象、零值、超过四值、错误目标
-和 detached target 必须在 preflight 阶段拒绝且不产生部分 mutation。CDATA 共享同一 ABI，
-但 HTML 夹具不伪造 CDATA 节点。宿主只注册 callback、触发重排并读取断言结果；设备门选择
-`TEST1231,999`，确认 1.5 MiB Browser heap、完整日志、空间预检和 crash check。
-
-TEST1232 覆盖 CharacterData 的 existing-node `insertBefore()`/`appendChild()`：Ex10
-`insert_character_data_child_at` 把 Text/Comment/CDATA 的 source/target 父级与未过滤索引
-交给 Core，支持同父重排、跨父迁移和 NULL append。自动断言返回值、wrapper identity、
-source/target 与旧 childNodes snapshot、父级 `textContent`、CharacterData 新 owner，
-以及 object、self、错误 reference、source/target 越界和类型不匹配的 fail-closed 无部分
-mutation；CDATA 共享 ABI，但 HTML fixture 不伪造 CDATA。设备门选择 `TEST1232,999`，
-并与 1230/1231 做相邻回归。
-
-TEST1233 覆盖 CharacterData 的 existing-node `replaceChild()`：Ex11
-`replace_character_data_child` 把 target/source 父级、未过滤索引和显式节点类型交给 Core，
-支持同父替换、跨父迁移、同节点 no-op、旧 wrapper detached 和两侧 snapshot/owner 更新。
-自动断言 Text/Comment 的返回值、父级 `textContent`、对象/元素/detached/错 parent/错类型/
-越界的 fail-closed 无部分 mutation；CDATA 共享 ABI，但 HTML fixture 不伪造 CDATA。设备门
-选择 `TEST1233,999`，并与 1231/1232 做相邻回归。
-
-TEST1234 覆盖 Element target 的 existing CharacterData replacement：Ex12
-`replace_element_child_with_character_data` 把目标 element 的 direct child 与同一文档中已
-连接的 Text/Comment/CDATA 互换，Core 通过
-`PCore_NodeReplaceElementChildWithCharacterDataById` 按 source 未过滤 `childNodes` 索引
-一次提交。`Node.replaceChild(characterData, oldElement)` 与
-`Element.replaceWith(characterData)` 均覆盖同父重排、跨父迁移、旧 element detached、
-新 CharacterData identity/owner 更新、两侧静态 snapshot 和父级 `textContent`；对象、
-element-to-element、detached、错误 parent、类型不匹配和越界必须在 preflight 阶段拒绝，
-不产生部分 mutation。CDATA 共享公共 ABI，但 HTML fixture 不伪造 CDATA。设备门选择
-`TEST1234,1233,1232,999`，确认 Debug ARMV4I、完整日志、空间预检、完成后清理和 crash
-check；该门不扩展 DocumentFragment、通用节点替换、MutationObserver、live collection 或
-native/视觉行为。
-
-TEST1235 覆盖 CharacterData relative existing-node mutation：复用 Ex10/Ex11 的既有
-callback，让 Text/Comment/CDATA 的 `before()`、`after()` 和单节点 `replaceWith()` 支持
-一个已连接 CharacterData，验证同父重排、跨父迁移、返回值、source identity、两侧静态
-snapshot、detached target/source 和父级 `textContent`。元素、fragment、混合列表、对象、
-失效 source 与其他类型在 Browser preflight 阶段拒绝且不产生部分 mutation；CDATA 共享
-同一 ABI，HTML fixture 不伪造 CDATA。设备门选择 `TEST1235,1234,1233,999`，确认
-JavaScript heap、完整日志、空间预检、完成后清理和 crash check；该门仍不扩展
-DocumentFragment、通用 mutation、MutationObserver、live collection 或 native/视觉行为。
-
-TEST1236 覆盖 Element 的 live HTML 投影：Core relation 51/52 在单次有界遍历中生成
-`innerHTML`/`outerHTML`，因此无 `id` 的后代也能被序列化；文本和属性中的 `&`、`<`、`>`
-及属性引号会转义，void 元素、Comment、CDATA 和非法节点按 fail-closed 规则处理。
-夹具还做一次基本 `innerHTML` setter smoke，并确认顶层文本形式的 `outerHTML` assignment
-安全拒绝；getter 预算为 256 个节点、64 层、64 个 direct child/attribute 和 16,384 个
-UTF-8 字节。完整的 replacement、identity 和错误边界由 TEST1237 与 TEST1239 覆盖；
-本合同不扩展 clone snapshot、DocumentFragment、事件、资源或视觉行为。
-
-TEST1237 覆盖 parser-backed `Element.innerHTML` setter 的 Core/Browser 纵切：Core 通过
-`PCore_NodeSetInnerHTMLById` 在同一 document 中预检并原子替换目标的 direct children，输入
-最多 16,384 字节、fragment 最多 256 个节点、64 层、每个元素 64 个 direct child，只接受
-Element/Text/Comment/CDATA。夹具验证目标 Element identity、精确 HTML/textContent、无 id
-后代、空 replacement、旧 wrapper detached，以及重复 id、替换子树外 id 冲突、非法 UTF-8、
-超大输入、documentElement 等结构目标的 fail-closed 无部分 mutation。Browser 通过
-`PBrowserScriptDomWriteCallbacksEx8` 接线，成功后由宿主安排 style/layout/paint；不执行
-script、不抓取资源、不派发 mutation 事件。该门不扩展 clone snapshot、通用
-DocumentFragment、context-sensitive parser 或视觉行为；`outerHTML` setter 由 TEST1239
-单独覆盖。设备门选择
-`TEST1237,1236,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1238 覆盖 parser-backed `Element.insertAdjacentHTML(position, html)` 的 Core/Browser
-纵切。Core 通过 `PCore_NodeInsertAdjacentHTMLById` 在 `beforebegin`、`afterbegin`、
-`beforeend`、`afterend` 四个位置插入同一 document 的有界 UTF-8 fragment；目标和既有
-子节点 identity 保持不变，Browser write Ex9 只刷新受影响的 target/parent snapshot，宿主
-在成功后安排 style/layout/paint。夹具验证新 id lookup、静态 snapshot、空片段，以及未知
-position、document structure、detached target、重复/外部冲突 id、非法 UTF-8 和超大输入
-的 fail-closed 无部分 mutation；不执行 script、不获取资源、不派发 mutation 事件，也不
-扩展 clone 或 DocumentFragment。设备门选择 `1236,1237,1238,999`，
-Debug ARMV4I，日志完整，双空间预检、完成后清理和 crash check 均通过。
-
-TEST1239 覆盖 parser-backed `Element.outerHTML` setter 的 Core/Browser 纵切。Core 通过
-`PCore_NodeSetOuterHTMLById` 预检并原子替换一个 live Element：输入必须产生单一 Element
-根，且不能是 `html`/`head`/`body`；空字符串移除目标。输入最多 16,384 字节，节点、深度、
-direct-child、UTF-8 和 id 预算沿用 TEST1237/1238；重复 id、与旧目标子树外冲突的 id、
-顶层文本/Comment、多根和超限输入在 mutation 前拒绝。成功时新根占据原父级和
-`childNodes` 索引，旧目标及后代 wrapper 变为 detached，父级和文档 id cache 刷新，
-宿主安排新的 style/layout/paint；不执行 script、不获取资源、不派发 mutation 事件。
-夹具同时验证目标/子树/父级 snapshot identity、同 id 重新寻址、失败后内容不变、结构目标
-拒绝和空 setter 移除。设备门选择 `1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、
-完成后清理和 crash check 均通过。
-
-TEST1240 覆盖 Browser-owned text-only `DocumentFragment` staging。夹具验证
-`createDocumentFragment()` 的 nodeType/名称/owner、空 child list、primitive `append()`/
-`prepend()`、fragment `textContent`、子节点 parent/数据、`removeChild()`、最多四个
-Text child 预算，以及 Element 的 `append()`/`prepend()`/`insertBefore()`/`appendChild()`/
-`replaceChild()`/`replaceWith()` 和 CharacterData `replaceWith()` 的一次性消费。成功的
-Core text-list mutation 之后 fragment 才清空；静态 snapshot 与既有 wrapper identity 保持，
-existing element、mixed argument、nested fragment、第五个 child 和其他非 text 形态在提交前
-fail closed。该路径不解析 HTML、不派发事件或资源；除 `replaceChildren()` 使用的 Ex13
-Core text-list 入口外，fragment staging 不暴露 Core fragment handle。设备门选择
-`TEST1240,1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1241 覆盖 `Element.replaceChildren()` 的 Core/Browser Ex13 纵切。夹具验证 0–4 个
-primitive 文本、一个 text-only `DocumentFragment`、`null`/`undefined` 字符串化、空列表
-清空、receiver/旧 wrapper 与静态 snapshot identity，以及成功后 fragment 消费和旧子树
-detached。对象、混合或嵌套 fragment、第五个参数、document body 结构 token 和 callback
-失败必须在提交前 fail closed，且目标与 fragment 保持原状。Core 先创建完整 Text 列表并
-暂存旧 direct children，失败恢复旧子树；总文本最多 16,384 UTF-8 字节，不执行 HTML
-parser、script、资源或 mutation 事件。宿主只接 Ex13 callback、安排重排并断言，不实现
-DOM 语义。设备门选择 `TEST1241,1240,1239,999`，确认 Debug ARMV4I、完整日志、双空间
-预检、完成后清理和 crash check。
-
-TEST1242 覆盖 `Element.replaceChildren()` 的 Core/Browser Ex14 mixed 纵切。夹具以最多
-四项 primitive Text 与当前 receiver 的已连接 direct Element 组合，验证按参数顺序重排、
-保留选中 element 及其后代的 wrapper/静态 snapshot identity，并只将未保留的旧 direct
-子树标为 detached；第二次调用继续验证 primitive `null`/`undefined`/number 字符串化。
-跨父 element、重复/自身 element、带 element 的第五项、fragment、CharacterData 和
-对象输入都必须在提交前 fail closed，目标、外部节点与快照保持不变。Core 通过
-`PCore_NodeReplaceChildrenWithMixedListById` 暂存、一次提交或完整回滚；总文本最多
-16,384 UTF-8 字节，不派发事件、不执行资源或 HTML parser。宿主只接 Ex14 callback、
-安排重排并断言，不实现 DOM 语义。设备门选择 `TEST1242,1241,1239,999`，确认 Debug
-ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1243 覆盖 Ex15 的 node-aware `Element.replaceChildren()` 纵切。夹具以最多四项 primitive
-Text、当前 receiver 的 direct Element 以及按替换前未过滤 `childNodes` 索引指定的 Text/
-Comment 组合，验证同父重排、选中 CharacterData/Element wrapper identity、后代保留、
-字符串化和旧 direct 子树 detached。跨父 CharacterData、重复节点、自身、带 CharacterData
-的第五项、对象输入和错类型/失效 wrapper 都必须在提交前 fail closed，目标与外部节点保持
-不变。Core 通过 `PCore_NodeReplaceChildrenWithNodeListById` 校验 3/4/8 节点类型并暂存、
-一次提交或完整回滚；总文本最多 16,384 UTF-8 字节，不派发事件、不执行资源或 HTML
-parser。宿主只接 Ex15 callback、安排重排并断言，不实现 DOM 语义。设备门选择
-`TEST1243,1242,1239,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash
-check。
-
-TEST1244 覆盖 NetSurf compatibility corpus 中 `document.createTextNode()` 的 detached
-Text 组合。夹具验证新 Text 的 node type/name、owner、detached root/parent/connection、
-数据与 clone identity；随后以同一节点执行 `insertBefore()`、`appendChild()`、`append()`/
-`prepend()`，检查静态 `childNodes` snapshot、兄弟关系、Core 同步的 `nodeValue`/`data`/
-`textContent`/`appendData()`，以及 `remove()` 后数据保留和再次插入。无效节点与 reference
-必须在 mutation 前拒绝，Browser 不创建 Core detached handle，也不增加 callback 表；最多
-64 个 direct child，单个 Text 数据最多 65,535 个脚本字符。该路径不扩展通用 Node、
-DocumentFragment、含 element/fragment 的混合 append、事件、资源或视觉行为。设备门选择
-`TEST1244,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1245 覆盖 NetSurf compatibility corpus 中 `document.createElement()` 的有界 detached
-Element 组合。夹具验证 Element 的 node shape、owner、detached root/parent/connection、
-本地 attribute 与 direct Text staging；带唯一 id 的 Element 物化后检查 Core parent、未过滤
-`childNodes` 位置、wrapper/alias identity、属性/文本同步，以及 `remove()` 后再次插入和
-id rename。无 id、重复 id、结构标签、无效 reference、嵌套 Element 和 Fragment 必须在
-Core mutation 前 fail closed，失败不得改变原树。标签只接受 ASCII `[a-z][a-z0-9-]*`，最多
-32 个 UTF-8 字节；每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64
-个 direct Text child。Browser write Ex11 通过既有 `__pcoreSetText` slot 调用
-`PCore_NodeCreateElementChildAtById`，不引入通用 detached Core handle、parser、事件、
-资源或 observer。宿主只接 callback、安排后续 style/layout/paint 并断言。设备门选择
-`TEST1245,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1246 覆盖 NetSurf compatibility corpus 中 `document.createComment()` 的有界 detached
-Comment 组合。夹具验证 `nodeType`/`nodeName`、owner/root/parent/connection/sibling、
-`data`/`nodeValue`/`textContent`/`length`、`isSameNode()`/`isEqualNode()` 和 detached
-clone；同一 wrapper 通过 `insertBefore()`、`appendChild()`、`appendData()`、数据 setter、
-`remove()`、同父重排和再次插入检查 Core 同步、静态 snapshot 与 identity。无参数/多参数、
-错误 reference、对象节点和超限输入必须在 mutation 前 fail closed，失败不得改变原树。
-Browser write Ex12 追加 `create_comment_child_at`，Core 入口按未过滤 `childNodes` 索引和
-最多 65,535 个 UTF-8 字节原子创建 live Comment；宿主只接 callback、安排后续
-style/layout/paint 并断言。该路径不扩展通用 detached Core handle、DocumentFragment、相对
-`before()`/`after()`/`replaceWith()`、事件、资源或 observer。设备门选择
-`TEST1246,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1247 覆盖 detached Comment 的 CharacterData offset 方法。夹具在 detached 状态验证
-`insertData()`、`deleteData()`、`replaceData()`、`substringData()` 的 UTF-16 code-unit
-偏移、字符串化、尾部截断和 `length`；进入 live Element 后验证同一 wrapper/identity 通过
-Core callback 同步数据，包含 surrogate pair 的偏移仍按 JS code unit 解释。负数、非整数、
-NaN/Infinity、越界 offset 和负 count 必须抛错且不部分提交；超长结果及 callback/Core 失败
-也必须保持旧数据。该门不扩展相对 `before()`/`after()`/`replaceWith()`、通用 detached
-Core handle、Fragment、事件、资源或视觉行为。设备门选择 `1246,1247,999`，确认 Debug
-ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1248 覆盖 detached Text 的同一组 CharacterData offset 方法。夹具从 detached
-`document.createTextNode()` 开始，验证 `insertData()`、`deleteData()`、`replaceData()`、
-`substringData()` 的 UTF-16 code-unit 偏移、字符串化、尾部截断和 `length`；在 detached
-Element staging 子树内保持本地数据，插入 live Element 后再通过既有 Core callback 检查
-wrapper identity、数据同步、surrogate pair 偏移和失败不变性。负数、非整数、NaN/Infinity、
-越界 offset 和负 count 必须抛错且不部分
-提交；该门不扩展通用 Node/Fragment、事件、资源、视觉或其他动态树语义。设备门选择
-`1247,1248,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1249 覆盖 detached `document.createElement()` 的有界 `cloneNode()` staging。第一段
-夹具验证 shallow clone 的属性复制、deep clone 的 direct Text 复制、父级/root/connection
-状态和源/克隆数据独立；第二段把 deep clone 物化到 live Element，验证连接后的 clone 再次
-深克隆、重复 id 在 Core mutation 前拒绝、改名后按 `insertBefore()` 成功插入，以及原有
-wrapper、顺序和文本保持。克隆只接受当前 createElement 边界内的属性与 direct Text，仍不
-扩展嵌套 Element、通用 Node/Fragment、事件、资源或视觉语义。设备门选择
-`1248,1249,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1250 覆盖 detached `document.createElement()` wrapper 的节点身份和关系查询。两个
-仍处于 staging 的同标签、同 id、同文本 wrapper 必须保持不同的 `isSameNode()` 身份，
-互不 `contains()`，并对彼此报告 disconnected 的 `compareDocumentPosition()`；自身关系
-仍成立且 `getRootNode()` 返回各自 detached root。物化到同一 live parent 后，兄弟顺序、
-ancestor `contains()`、following/preceding 位和 `document` root 必须与 wrapper identity
-一致；移除其中一个后关系回到 disconnected，另一个节点保持 connected。该修补只改变
-Browser 的 detached Element identity 判定，不新增 Core ABI，也不扩展通用 Node/Fragment、
-事件、资源或视觉语义。设备门选择 `1249,1250,999`，确认 Debug ARMV4I、完整日志、双空间
-预检、完成后清理和 crash check。
-
-TEST1251 覆盖 detached `document.createElement()` 的 child-query 一致性。空 wrapper 的
-`hasChildNodes()`、`childNodes`、首尾 child 和 `textContent` 必须表示空；追加两个 primitive
-Text 后这些读取必须同步反映两个 direct child，`children` 与 `childElementCount` 仍为空。
-清空 `textContent` 后状态必须回到空。将 wrapper 物化到 live Element、清空、再次追加并移除
-后，`hasChildNodes()` 仍跟随 Browser 自己的有界 direct-Text staging；该门不扩展嵌套 Element、
-通用 Node/Fragment、事件、资源或视觉语义，也不新增 Core ABI。设备门选择
-`1250,1251,999`，确认 Debug ARMV4I、完整日志、双空间预检、完成后清理和 crash check。
-
-TEST1252 覆盖 detached `document.createElement()` 的 `CSSStyleDeclaration.cssText` setter。
-detached wrapper 的 `style.cssText=` 必须通过 Browser 属性 facade 写入并可被 property getter
-读取；`setProperty()` 追加后，物化到 live Element、再次赋值、移除后再赋值和清空都必须保持
-同一 style snapshot。该修补不改变 CSS declaration 的有界解析、Core ABI 或通用节点语义。
-设备门 `1251,1252,999`。
-
-TEST1253 覆盖 detached `document.createElement()` 的 reflected attribute setter。`align` 与
-现有 string、boolean、integer、非负 length 反射在未物化 wrapper 上必须写入同一属性 facade，
-并在物化、live mutation、移除后的再次写入中保持 getter、raw attribute 和连接状态一致；
-非整数 integer 与负 length 在写入前拒绝且不改变旧值。该路径不新增 Core ABI，不扩展嵌套
-Element、通用 Node/Fragment、事件、资源或视觉语义。设备门 `1252,1253,999`。
-
-TEST1254 覆盖 NetSurf compatibility corpus 的 `idl-treatnullas-emptystring.html` 所需
-`HTMLBodyElement.text` 反射。带 `text` attribute 的 `body.text` 必须读回原值；赋值 `null`
-按 `[TreatNullAs=EmptyString]` 写为空字符串，数字和 `undefined` 仍按 JavaScript `String`
-转换；随后通过 `setAttribute()`/`removeAttribute()` 的变化也必须被 getter 观察到。夹具
-同时验证现有 `option.text` 行为不回归，普通非 body 元素的 `text` 仍安全返回/拒绝。该门
-只增加 Browser 属性语义，不新增 Core ABI 或 deprecated presentation-color、通用 DOM
-扩展；设备门 `1253,1254,999`。
-
-TEST1255 覆盖 Browser session 内 `document.cookie` 的有界解析。夹具断言属性空格修剪、
-合法整数 `Max-Age`（正数/非法值保留，`<=0` 删除）、空值删除、`hasOwnProperty` 与
-`__proto__` 等特殊名称、控制字符/超长值拒绝，以及 32 对和 8,192 字符总预算的
-fail-closed 配额；其他属性不会改变会话 cookie。该路径只改 Browser 脚本语义，不新增
-Core ABI 或 HTTP 持久化 jar；设备门选择 `1254,1255,999`。
-
-TEST1256 覆盖 Browser `document.write()`/`document.writeln()` 的有界脚本位置桥。夹具
-在同一 classic script 中传入多个参数并检查字符串化、`writeln()` 的单个换行、插入节点
-位于当前 script 之后，以及包含 `<script>` 的片段被原子拒绝且未执行。Browser 通过
-`PBrowser_ScriptSessionSetCurrentScriptIndex()` 传递脚本发现索引，宿主 callback 转给
-Core 的 `PCore_NodeInsertHTMLAfterScriptByIndex()`；Core 在 fragment parser 前先对带
-tag-name boundary 的 ASCII 大小写不敏感 `<script...` 起始 token fail closed，再复用
-16,384 字节、256 节点、64 层和 id 冲突预算，不抓取资源、不派发 mutation 事件。无
-callback、无效索引、非法 UTF-8 或超限输入均 fail closed。设备门 `1236-1239,1244-1256,999`。
-
-TEST1257 覆盖 Core-backed `document.title` metadata。第一段直接调用
-`PCore_DocumentTitle`/`PCore_DocumentSetTitle`，检查实体解码后的 UTF-8 文本、size
-probe 与截断、首个 title 替换，以及没有 title 时在现有 head 下创建节点；第二段通过
-`PBrowserScriptDomReadCallbacksEx`/`PBrowserScriptDomWriteCallbacksEx13` 验证 Browser
-getter/setter 与同一 Core 文档一致，`null` 仍按 JavaScript `String` 转换。title 不使用
-Element id，不执行事件/脚本/资源副作用；旧宿主未注册扩展时 Browser 保留局部回退。设备门
-`1256,1257,999`。
-
-TEST1258–1261 合并覆盖 Browser-owned `DocumentFragment` 的 bounded Element/Text staging、
-消费/clone、`getElementById()` 和 selector/query 快照：四根、唯一 id、Text 边界、wrapper/
-collection identity、属性变化、克隆隔离和消费均有断言；嵌套、重复/缺失 id、空/过长、后代
-组合及副作用输入 fail closed。相邻门 `1240-1261,999`。
-
-TEST1271–1275 验证 detached `Node.normalize()`、Element `replaceChildren()`/
-`replaceChild()`、Attr/NamedNodeMap 与 `textContent`：Text 删除/合并、原子替换、集合/
-Attr identity、namespace、跨 owner copy、attached wrapper 同步和超限不变。门为
-`1271-1275,999`。
-
-TEST1276 验证 detached Element text-only HTML serialization/staging 与 fail-closed；门
-`1276,999`，相邻 `1275-1276,999`。
-
-TEST1277 验证 Fragment `textContent=` 原子性、超限预检、集合 identity 和 `null` 字符串化；
-门 `1277,999`，相邻 `1276-1277,999`。
-
-TEST1278 验证 bounded Fragment detached Element 的 sibling/element-sibling、重排、消费、
-物化和 wrapper identity；未归属返回 `null`。门 `1278,999`，相邻 `1277-1278,999`。
-
-TEST1279–1283 覆盖 Text/Comment relative、existing CharacterData move/replace、identity、
-snapshot 和 fail-closed；门 `1281-1283,999`，source 限定为单一 live CharacterData。
-
-TEST1284 覆盖 `document.createCDATASection()` 的 node shape、data/offset、clone、relative、
-materialization、existing-source move、remove/reinsert 和 fail-closed；门 `1284,999`，确认
-Debug ARMV4I、双空间预检、日志回收、清理和 crash check。
-
-TEST1285 覆盖 CDATASection 的 Text 合同：`wholeText` 聚合 Text/CDATA，`splitText()` 返回
-Text suffix，`replaceWholeText()` 保留目标并清理相邻节点，同时覆盖 detached/offset 失败；
-门 `1285,999`，确认 Debug ARMV4I、双空间预检、日志回收、清理和 crash check。
-
-TEST1286 覆盖 Browser-owned `DocumentFragment` 的最多四个 CharacterData 根：
-Text/Comment/CDATA 的关系、clone/normalize、data mutation、`textContent`（排除 Comment）与消费后的 wrapper identity；
-Comment/CDATA 通过既有 Core callback 物化。Element 根沿用 id/direct-Text 约束，嵌套、混合、
-超限输入 fail closed。门 `1286,999`，Debug ARMV4I 外置卡部署、日志/空间/清理和 crash check
-均通过。
+自动模式证明断言、资源计数、消息路径和首帧没有失败，不证明字体、边距、抗锯齿、触摸命中、系统 picker、旋转或 OEM 输入法体验。导航日志中的资源终态、失败分类、重试次数、required/optional gate 和脱敏摘要由 Browser DLL 提供，宿主只负责调度、读取和记录。
 
 ### 手动模式
 
-`auto=0` 时保留启动确认、测试说明和人工关闭流程。可视页面通常停留在设备上，验收者按说明操作后用 `Esc`、页面空白处或测试明确提供的关闭入口继续。
+`auto=0` 保留启动确认、测试说明和人工关闭流程。可视页面通常停留在设备上，验收者按页面说明操作，再使用 `Esc`、页面空白处或测试指定入口继续。交互模式不保证完整自动日志；截图、设备信息和操作记录放在本地 `tmp/`。人工观察后如需机器判门，应以相同选择再运行一轮 `auto=1`，但自动日志不能替代人工结果。
 
-交互模式不保证生成完整自动日志；截图、设备信息和操作记录应保存在本地 `tmp/`。需要机器判门时，完成观察后再用相同范围运行一轮 `auto=1`，但自动日志不能替代人工结果。
+### 浏览器 JavaScript 与完成提示音
 
-### 浏览器 JavaScript
+- `javascript=0` 是默认产品路径，不执行页面 classic script。
+- `javascript=1` 显式启用实验性的 Browser script session、受限 DOM/Event/input/navigation bridge 和 classic script。
+- 独立 `positron_script.dll` 测试不依赖这个开关；开启它也不表示支持完整 DOM、Web API、ECMAScript host environment 或浏览器安全沙箱。
+- TEST999 是专用完成提示音。只有显式选中且前序批次未失败时，宿主退出前请求一次系统提示音。声音、窗口关闭或部分 `OK` 都不能替代日志判定。
 
-- `javascript=0`：默认产品路径，不执行页面 classic script。
-- `javascript=1`：显式启用实验性的浏览器 script session、受限 DOM/Event/input/navigation bridge 和 inline/external classic script。
-
-独立 `positron_script.dll` 测试不依赖此开关。开启浏览器 JavaScript 也不表示支持完整 DOM、Web API、ECMAScript host environment 或浏览器安全沙箱。
-
-### 完成提示音
-
-TEST999 是专用完成提示音。只有显式选中、且前序批次未令进程失败时，宿主退出前才请求一次系统提示音。听到声音、进程退出或看到部分 `OK` 都不能替代最终日志判定。
-
-## 四种配置方式
+## 四种常用配置
 
 | 目标 | 配置 |
-|---|---|
-| 部分测试、自动断言 | `auto=1`，`tests=` 写所需编号；通常保留 `javascript=0` |
-| 部分测试、人工模式 | `auto=0`，`tests=` 写所需编号；脚本 fixture 按需要启用 JavaScript |
-| 所有自动安全测试 | 使用 nightly 包自动生成的 INI，或由设备门显式生成当前源码 dispatch 清单 |
-| 所有测试、人工模式 | 在全量自动清单中加入发布说明列出的 manual-only fixture，并设 `auto=0` |
+| --- | --- |
+| 部分测试、自动断言 | `auto=1`，`tests=` 写编号；按需保持 `javascript=0` |
+| 部分测试、人工模式 | `auto=0`，`tests=` 写编号；脚本 fixture 再启用 JavaScript |
+| 所有自动安全测试 | 使用 nightly 生成的 INI，或让设备门按当前 dispatch 生成清单 |
+| 所有测试、人工模式 | 在全量清单中加入发布说明列出的 manual-only fixture，并设 `auto=0` |
 
-移走或改名 INI 只会进入旧式分组选择，不等于“自动运行所有测试”。manual-only fixture 不得放入 `auto=1` 默认清单；它们会主动拒绝自动运行，以免伪造人工验收结果。
+移走或改名 INI 只会进入旧式分组选择，不等于自动运行所有测试。manual-only fixture 不得放进 `auto=1` 清单；它们会主动拒绝自动运行，以免把未观察的人工行为伪装成通过。
 
-Nightly 包会从当前 `run_configured_tests` dispatch 动态生成全量自动清单，不在脚本里硬编码每天变化的测试目录。详情见 [NIGHTLY_RELEASE.md](NIGHTLY_RELEASE.md)。
+## 能力回归分组
+
+逐测试合同仍以源码和组件 README 为准，稳定文档只维护能力分组：
+
+- 资源、导航、history、viewport、页面生命周期、脚本任务队列、焦点和窗口通知由早期资源/会话夹具覆盖；这些夹具共同验证候选 generation、required/optional gate、取消、旧页保留、滚动快照和事件顺序。
+- 几何、overflow、滚动、selector、form owner、validation、submission、FormData、option/select 和图像 source 夹具覆盖 Core/Browser callback 的边界、预算、snapshot 隔离和 fail-closed 行为；真实控件、DPI、触摸和视觉仍属于人工验收。
+- DOM/CharacterData 夹具覆盖 Text、Comment、CDATA、属性、`textContent`、`innerHTML`/`outerHTML`、`document.write`、title、detached Element 与 bounded DocumentFragment。Fragment 只允许文档规定的有限根数和节点形状。
+- 当前最新纵切的 TEST1284–1287 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging，以及 Core、live Element 和 detached Fragment 的 `Node.normalize()`：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界，Browser-created wrapper 的数据与 Core 结果同步。
+
+这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 
 ## 本机验证
-
-### C89 转换回归
 
 修改产品 C、移植代码或 C89 转换脚本后先运行：
 
@@ -1151,178 +75,74 @@ Nightly 包会从当前 `run_configured_tests` dispatch 动态生成全量自动
 python scripts\test_c89ize.py
 ```
 
-对受转换器管理的源码再次执行转换应为幂等，不得靠 VS2008 恰好接受错误输出掩盖脚本回归。
-
-### 仓库审计
-
-提交前运行：
+提交前运行仓库审计：
 
 ```bat
 python scripts\audit_repo.py
 ```
 
-审计覆盖工程输入、版本 pin、许可证、Git 跟踪、UTF-8、Markdown 链接、文档结构和 `test_host` 产品边界（禁止编译产品 `.c` 或定义产品公共入口）。审计成功不代替目标构建、设备行为或对宿主 helper 语义归属的人工审查。
+审计覆盖工程输入、版本 pin、许可证、Git 跟踪、UTF-8、Markdown 链接、文档职责和 `test_host` 产品边界。审计成功不代替构建、设备行为或宿主 helper 语义归属审查。
 
-### ARMV4I 构建
-
-使用正式入口：
+使用正式工程入口构建：
 
 ```bat
 scripts\build.bat
 scripts\build.bat Debug rebuild
 ```
 
-局部低风险修改通常先做增量构建；工程依赖、生成规则、静态库或无法解释的混包问题使用 clean rebuild。不要直接调用 ARM `cl.exe` 拼装一部分目标。
+局部低风险修改可以先增量构建；工程依赖、生成规则、静态库或无法解释的混包问题使用 clean rebuild。不要直接调用 ARM 编译器拼装部分目标。
 
 ## 自动设备门
 
-### 前提
+### 前提与运行
 
-先由用户在 WMDC 或 Device Emulator GUI 中手动建立唯一目标连接。USB 真机和 DMA emulator 都可以。设备门使用 RAPI 1 的“当前 WMDC 会话”，因此它：
-
-- 不枚举或选择设备；
-- 不绑定 emulator VMID；
-- 不启动、cradle、断开、重置或杀死设备；
-- 不能替代 GUI 连接操作。
-
-### 运行
-
-从仓库根目录执行：
+先由用户在 WMDC 或 Device Emulator GUI 中手动建立恰好一个目标连接。设备门只复用当前 RAPI 会话：不枚举或选择设备，不绑定 VMID，不启动、cradle、断开、重置或强杀设备。
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name
 ```
 
-默认测试选择来自 tracked `test_host/test_host.ini`。定向批次使用 staging override，不修改 tracked INI：
+定向批次使用 staging override，不修改 tracked INI：
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name ^
-  -TestSelection "1095-1102,999"
+  -TestSelection "1284-1287,999" -EnableJavaScript
 ```
 
-需要实验性浏览器脚本时显式加：
+脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和判门。本地证据在 `tmp/device-runs/`，不进入 Git。超时后设备进程仍需由用户在设备 UI 正常结束；设备门不提供安全的通用远端终止。
 
-```bat
-scripts\device_gate.bat -Candidate feature-name ^
-  -EnableJavaScript -TestSelection "1095-1102,999"
-```
+### 空间、部署和日志
 
-脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和自动判门。每次运行使用唯一设备目录，并把 `test_host.exe` 复制为带时间戳的唯一远端 basename，以降低 WM6 在超时后复用旧路径/名称的风险；等待窗口结束时还会重开当前 RAPI 会话并尝试一次完整、稳定的日志回收，只有恢复失败才报告超时；超时进程仍需在设备端正常结束。本地证据保存在 `tmp/device-runs/`，不会纳入 Git。
+未指定 `-RemoteBase` 时，设备门优先使用 `\Storage Card\Temp\Positron-device-gate`，路径不可创建或无法做路径级空间查询时回退到 `\Temp\Positron-device-gate`。显式目标不自动回退。两种模式都会查询目标卷和内部 object store；目标硬性余量为 staging 总大小加 1 MiB，内部 object store 另有 64 KiB 缓存告警线。空间字段和选择原因写入预检结果。
 
-部署前的 RAPI 预检会分别记录两类空间。默认不传 `-RemoteBase` 时，设备门先把
-`\Storage Card\Temp\Positron-device-gate` 作为隔离根：先创建目录，再用
-`CeGetDiskFreeSpaceEx` 查询该路径所在外部卷。如果外置目录不可创建、无法取得路径级空间
-或硬性容量不足，门会记录原因并回退到 `\Temp\Positron-device-gate`，然后在内置路径上
-重新执行清理和预检。也可以显式传 `-RemoteBase \Some\Path` 固定目标，此时不启用自动
-回退，继续对外部路径执行严格的路径级容量门。两种模式都会额外查询内部 object store；
-后者只描述 object store，因此外部目标没有路径级 API 时，
-自动模式会回退，显式模式则 fail closed，不会用错误的对象存储数字冒险部署。目标卷的
-硬性要求是 staging 全部文件大小加 1 MiB 运行余量；最终选定目标不足、无法查询或
-路径范围不安全都会在复制第一个文件前停止。
-内部 object store 另设 64 KiB 的系统缓存告警线：外部目标下它只产生
-`LOW_ADVISORY`/`UNAVAILABLE_ADVISORY`，不把内部粗粒度数字误报成目标卷不足；已知内部
-目标则直接用 object store 数字执行硬性容量门。结果文件记录兼容的 `storage_*` 别名，
-以及 `remote_base_*`、`preferred_storage_*`、`target_storage_*`、`internal_storage_*`、
-`internal_cache_reserve_bytes` 和 `internal_storage_check` 字段。
-`remote_base_selection` 为 `external`、`internal_fallback` 或 `explicit`；参考：
-[`GetStoreInformation`（Microsoft Learn）](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms891023%28v%3Dmsdn.10%29)。
-预检失败时也会在本地证据目录写出 `device-gate-preflight.txt`。
+空间不足时只回收设备门自己生成、非当前运行目录的旧目录。每个候选目录必须先把日志成功复制两次并确认稳定的 `TESTBENCH PASS` 或 `TESTBENCH FAIL`；日志缺失、仍增长、复制失败、未知目录和当前目录都保留。回收后重新查询空间，仍不足才阻断部署。
 
-为避免设备空间被旧包逐次吃完，设备门只把名字符合自身时间戳格式的旧目录视为候选。
-每个旧目录都必须先把 `test_host.log` 成功复制两次并得到稳定的 `TESTBENCH PASS` 或
-`TESTBENCH FAIL` 终态，才允许删除；缺失、仍在增长或复制失败的日志会让目录保留并在
-输出中说明原因。若目标卷或已知内部 object store 确认空间不足，设备门会再做一次有界的
-应急回收：只处理门自己生成、且不是当前运行目录的旧目录，先尽力把日志复制到本地
-`prior-logs`；只有日志完整且稳定的目录才允许删除来释放空间，日志不完整的目录始终
-保留。未知目录不会删除，当前运行目录也不会在预检阶段删除。回收后会重新查询空间，仍不足
-才阻止部署。自定义 `-RemoteBase`
-同样遵守这条规则；`device-gate-preflight.txt` 和 `device-gate-result.txt` 会记录
-`prior_cleanup_*`、`space_reclaim_removed/partial/preserved`、最终空间状态、`current_cleanup` 和
-`complete_log_retrieved`。
-
-RAPI 没有安全的通用远端终止语义。等待窗口结束时，设备门会先重开当前会话并尝试回收一份两次稳定的完整日志；仍无法取得终态时才保存可取得的日志并返回非零，且不会强杀设备进程。重试前应在设备 GUI 确认真正结束遗留 `test_host.exe`。WMDC/RAPI 错误按 [故障排查](TROUBLESHOOTING.md#wmdc-自动设备门不要混淆-corecon-与-rapi)处理。
+完整日志必须在清理前复制到电脑。启动头、部分 `OK`、提示音、窗口关闭或单次 RAPI 成功都不是通过证据。
 
 ### 自动通过标准
 
-一次设备门只有同时满足下列条件才通过：
+一次设备门同时满足以下条件才通过：
 
-1. 构建和整包 staging 成功；
-2. 启动日志来自本次唯一候选目录；
-3. 每个所选测试都有预期完成记录；
-4. `ERROR` 和 `FAIL` 计数为零；
-5. 最终只有一个 `TESTBENCH PASS`；
-6. 涉及真实 Browse 时，路由和最终页面序列符合该 fixture 的要求；
-7. 没有旧 EXE/DLL 混包或遗留进程证据。
+1. 正式构建和整包 staging 成功；
+2. 日志来自本次唯一候选目录；
+3. 每个所选测试都有完成记录；
+4. `ERROR`、`FAIL` 均为零；
+5. 恰有一个 `TESTBENCH PASS`；
+6. 涉及真实 Browse 时，路由和最终页面序列符合 fixture；
+7. 没有旧 EXE/DLL 混包、遗留进程或 crash dump 证据。
 
-只有启动头、部分 `OK`、提示音、窗口关闭或 RAPI 成功都不是通过证据。
+## 风险相称的回归范围
 
-## 回归范围
-
-每批测试范围应与风险相称，不需要每次都从头跑到尾。
-
-定向门通常包括：
-
-- 本批新增契约；
-- 直接共享的数据结构或默认动作；
-- 一个真实页面/导航哨兵（若变更触及页面组合）；
-- TEST999。
-
-出现以下情况时运行更宽回归或全量门：
-
-- 多个低风险批次已经累计；
-- 修改公共 ABI、所有权或生命周期；
-- 修改 layout/paint、输入基础设施、网络/TLS 或资源缓存；
-- 准备里程碑交付或 nightly 基线；
-- 出现崩溃、超时、数据错误、混包或无法解释的行为。
-
-全量清单从当前源码生成，不复制到本文。上一次全量与当前累计风险由 handoff 记录。
+每批通常运行新能力、直接共享的 ABI/所有权/默认动作、一个页面或导航哨兵（若相关）以及 TEST999。多个低风险批次累计、修改公共 ABI 或生命周期、触及 layout/paint、输入、网络/TLS、资源缓存、准备里程碑或出现崩溃/超时/数据错误时，再扩大到更宽范围或全量。全量清单从当前源码生成，不复制到本文。
 
 ## 人工验收
 
-以下风险必须由真实设备观察，或明确进入允许累计的人工清单：
+真实设备必须观察字体 fallback、字形、颜色、渐变、左右边距、居中容器、换行、表格、列表、滚动条、触摸命中、键盘焦点、SIP/IME、旋转/DPI、系统 picker、窗口返回、剪贴板互操作、loading、失败网络、旧页保留和深层导航。低风险视觉或输入变化可以累计后集中验收；崩溃、数据损坏、严重布局破坏和核心交互阻塞必须立即复核。
 
-- 字体 fallback、字形、抗锯齿、颜色和渐变；
-- 左右边距、居中容器、换行、表格、列表和滚动条观感；
-- 嵌套 overflow 的滚动条位置、内容裁剪、指针拖动、触摸滚动和不同 DPI 下的可视区域；
-- 真实触摸、链接命中、键盘焦点、滚动和后退；
-- SIP 候选词、IME composition、Unicode 与代理对输入；
-- 旋转、screen/DPI 差异和滚动位置保持；
-- 系统文件选择器、窗口返回和取消后的状态；
-- OEM 剪贴板与其他应用的 copy/paste、CF_TEXT 或富文本格式互操作；自动门只覆盖宿主自备的有界 `CF_UNICODETEXT` contenteditable paste/cut/copy，折叠复制 no-op 和超长/非 Unicode 拒绝也只在该宿主契约内成立；
-- loading、失败网络、旧页保留和深层真实导航。
+每组人工记录至少包含 commit/候选名、精确 `tests=`、设备型号、screen/DPI/方向、初始页面、操作步骤、预期与实际结果，以及必要截图和同批自动日志。截图和日志只放 `tmp/`；比较截图前先确认 viewport、DPI、方向、滚动位置和二进制身份一致。
 
-contenteditable 的自动 fixture 证明有效 editing host 的 WM EDIT 代理、`beforeinput` 取消、Core 文本提交、`input` 顺序、脚本 `selectionStart`/`selectionEnd`/`selectionDirection` 的范围语义，以及只对实际变化分发一次的非冒泡、不可取消 `selectionchange`；设备门还验证这些范围可同步到原生 EDIT，并由原生消息触发同一 Browser 事件。Core 文本 mutation 会暂时释放 retained layout，连续原生操作在下一次 relayout 前必须沿用 native EDIT 的 DOM id 派发同步事件，不能依赖旧坐标命中。TEST1113 用 WM EDIT 的 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 序列验证无修饰拖选的连续 forward/backward 方向和重复范围抑制；TEST1114 覆盖 Shift/方向键方向保持，以及 `WM_CAPTURECHANGED`、`WM_CANCELMODE`、`WM_KILLFOCUS`/`WM_SETFOCUS` 中断时的收尾和去重；TEST1115 覆盖宿主有界 `CF_UNICODETEXT` paste/cut 的精确 `beforeinput.data`、取消回滚、Core 单次提交、折叠选区同步，以及空或不支持格式时的 fail-closed；TEST1116 覆盖 `WM_COPY` 的非空选区复制、折叠选区 no-op、超长 UTF-8 与非 Unicode 格式拒绝，并确认 WinCE 原生 `WM_CUT` 的内部 `WM_COPY` 重入不会破坏剪切。由于 WinCE 直接 `SendMessage` 不会更新键盘状态表，TEST1114 在 key-up 前注入有界原生范围来验证宿主通知路径；真实 OEM 默认键盘、SIP 候选词、完整 IME composition、硬键盘和跨应用剪贴板格式仍应在设备人工矩阵中观察。
+## 网络测试与候选基线
 
-低风险视觉或输入变化可以累计若干批次后集中验收。崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即复核，不能等待累计窗口。
+WM6 镜像时间经常过旧。证书测试前校准时间，并把失败区分为 DNS、TCP、TLS handshake、证书/hostname、HTTP status、redirect、资源获取、页面解析和最终提交。离线 fixture 用于稳定合同，真实端点只作集成哨兵；暂时不可达不能通过放宽离线断言解决。
 
-### 人工记录
-
-每组观察至少记录：
-
-- commit/候选名和精确 `tests=`；
-- 设备型号、screen、DPI、方向和系统时间；
-- 初始页面、操作步骤和最终 URL/状态；
-- 预期行为与实际行为；
-- 必要截图和同批自动日志。
-
-截图和日志只放 `tmp/`。比较两张截图前先确认 viewport、DPI、方向、滚动位置和二进制身份一致，避免把网络波动、旧页、旧 DLL 或不同滚动位置误判为渲染回归。
-
-## 网络测试
-
-WM6 镜像的系统时间经常过旧。证书测试前先校准时间，并把失败分为：DNS、TCP、TLS handshake、证书/hostname、HTTP status、redirect、资源获取、页面解析和最终提交。
-
-离线 fixture 用于稳定契约；真实网页用于集成哨兵。真实端点的暂时不可达不能通过放宽离线断言解决，离线契约通过也不能证明任意互联网网站兼容。资源失败应依据日志分类处理；宿主只对 transport 失败提供每项最多 2 次的有界重试，取消、预算拒绝或 HTTP/resolve/memory 错误不会重试。样式表/`@import` 属于 required，失败或未收敛时不提交候选；图片/script 属于 optional，失败时可在 Core fallback 下继续。Browser 资源事务提供最多 4 项、不含原始 URL 的 `role/failure#hash` 摘要，以及 `resource fallback image/script/other/observed` 粗粒度计数；这些结果由宿主写入日志，不提供逐资源 UI 或视觉保证。TEST1123 在离线夹具中覆盖重复资源、三层 `@import`、摘要脱敏和 fallback observation。不能把资源事务的 gate 或摘要当成完整浏览器降级体验。
-
-## 候选成为基线
-
-只有满足以下条件，候选才能写入当前 handoff：
-
-1. 修改范围、ABI 和所有权清楚；
-2. C89 回归与仓库审计通过；
-3. ARMV4I 正式构建通过；
-4. staging 文件来自同一批构建；
-5. 风险相称的设备日志完整通过；
-6. 必要人工验收完成，或风险明确进入允许累计清单；
-7. handoff、限制、路线图和稳定文档分别只更新自身职责。
-
-逐批设备日志不追加到本文。需要追溯时使用当前 handoff、本地证据、专用历史文档和 Git 历史。
+候选写入当前 handoff 前必须满足：范围、ABI 和所有权清楚；C89 回归、仓库审计和 ARMV4I 正式构建通过；staging 来自同一批构建；风险相称的设备日志完整通过；必要人工验收已完成或明确进入允许累计清单；handoff、限制、路线图和稳定文档各自只更新自身职责。

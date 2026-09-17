@@ -1,714 +1,77 @@
 # `positron_browser.dll`
 
-`positron_browser.dll` 是无窗口会话层，负责 history、脚本、DOM/Event 和导航候选；网络和
-Core 文档不在其所有权内。
+`positron_browser.dll` 是 Positron 的页面 session 层。它把 `positron_core.dll` 的文档/布局关系和 `positron_script.dll` 的 Duktape runtime 组合成一个由宿主显式驱动的、有界浏览器对象模型。它不是窗口库、网络库或完整浏览器。
 
 ## 产物与依赖
 
-- 工程：`positron_browser.vcproj`
-- 公共头：`positron_browser.h`
-- 输出：`bin\<Configuration>\positron_browser.dll` 与 import library
-- 运行时依赖：`positron_script.dll`、`positron_json.dll`
-- 典型组合：宿主另行使用 `positron_core.dll`、HTTP/TLS、窗口和 native 控件
+正式工程输出 `positron_browser.dll` 与对应 import library。调用方只包含 `positron_browser.h`、`positron_core.h` 和需要的 `positron_script.h`，通过公开 callback table 接入 Core 和宿主；不要直接链接 NetSurf/libdom 静态库或引用 Browser 的内部结构。
 
-其他项目链接 `positron_browser.lib` 并部署三个 DLL。不要复制 Browser 内部结构，也不要把 `test_host.exe` 当作运行时依赖。
+Browser 依赖 Core 的 document handle、ID/关系 callback 和布局快照，依赖 Script 的 context/value 生命周期。宿主仍拥有 HWND、消息循环、网络 worker、native 控件、SIP/IME、文件 picker 和实际物理滚动。
 
-### History
+## 最小调用流程
 
-`PBrowser_History*` 管理有界条目、当前位置、state、same-document 操作和 traversal；URL/
-state 查询返回的字符串只在同一 handle 的下一次 mutation 或 destroy 前有效。每个条目还可
-保存非负 `(scroll_x, scroll_y)` viewport snapshot。Browser 只随条目保存/搬移坐标，不知道
-文档高度、不创建窗口、不负责 clamp；宿主在提交或 traversal 后用
-`PBrowser_HistoryEntryScroll()` 读取并按 client area/extent 应用。
+1. 宿主创建 Core document 并完成 parse/style/layout。
+2. 宿主创建 Browser script/history session，注册 Core read/write、resource、focus、scroll、viewport 和 lifecycle callbacks。
+3. 宿主在页面提交、`WM_SIZE`、滚动、焦点和可见性变化时显式通知 Browser。
+4. 宿主按消息循环调用任务 checkpoint，读取 Browser 的 callback 请求并执行平台默认动作。
+5. 关闭页面时先停止回调和 worker，再 teardown session，最后释放 Core/Script handle。
 
-新文档 entry 和同 URL 的新 document 从 `(0, 0)` 开始；`replaceState`/traversal 保留
-snapshot，`pushState` 从零开始，history 裁剪时三者一起移动。History 只管理条目，
-失败候选不得污染它。脚本 `history.scrollRestoration` 默认 `auto`；宿主读取
-`PBrowser_ScriptSessionGetScrollRestoration()`，仅在明确得到 `AUTO` 时自动恢复快照，
-`MANUAL` 或查询失败都保留当前 viewport。fragment reveal 和显式滚动另行处理。
+回调必须同步、有界、不可重入同一 session；借用 buffer 只在调用期间有效。缺失 callback、stale handle、超限参数和不支持的对象返回安全失败或 no-op。
 
-### Page viewport 与脚本滚动
+## 页面 session 能力
 
-注册 `PBrowserScriptScrollCallbacks` 后，Browser bootstrap 的
-`window.scrollTo()`、`scroll()` 和 `scrollBy()` 会把规范化后的非负 CSS
-page 坐标交给宿主。宿主负责按当前 Core document extent 和 client area
-clamp，并通过 `out_x/out_y` 返回实际应用的坐标；候选 session 尚未提交时应
-只回显请求，不能改变旧页面。Browser 只在最终坐标改变时分发一次非冒泡的
-`scroll` 事件。该 callback 结构末尾的 `element_id` 仅在 `Element.scrollTo()`/
-`scrollBy()` 请求中非空；为 `NULL` 时保持原有 page viewport 合同。
+- history entry、fragment、push/replace state、viewport scroll snapshot 与 `scrollRestoration`；
+- navigation candidate/resource observation：generation、取消/退休、终态、required/optional gate、transport retry 预算和脱敏 failure/fallback 摘要；
+- `document.readyState`、DOMContentLoaded/load/pageshow、visibility、beforeunload、focus/blur 和显式 teardown；
+- `window`、`screen`、`visualViewport`、有限 `matchMedia`、timer/animation-frame/message/idle/microtask queue；
+- Browser→宿主的 page scroll、element scroll、resize、focus 和 native-control 请求。
 
-宿主处理滚动条、触摸、键盘、resize 或 fragment reveal 后，应先把物理
-viewport 位置换算为 CSS page 坐标，再调用
-`PBrowser_ScriptSessionNotifyScroll(session, x, y)` 同步脚本侧 viewport。这个
-入口只更新脚本侧 `scrollX`/`scrollY` 并做去重，不会再次调用 scroll adapter，
-因此宿主可以在完成自己的 clamp/apply 后安全调用它。回调同步且不可重入；
-宿主不得在 scroll callback 内再次进入或销毁同一 Browser session。
+Browser 只报告 CSS/page 坐标和语义结果。宿主负责 clamp、物理坐标换算、style/layout/paint、窗口和实际消息调度；Browser 不直接访问 HWND、网络或设备。
 
-宿主完成物理窗口的 style/layout 和 viewport clamp 后，用
-`PBrowser_ScriptSessionNotifyResize(session, width, height, dpr)` 同步 CSS 视口与
-`devicePixelRatio`。Browser 更新 window/screen/orientation 和最多 64 个
-`matchMedia()` 列表；方向翻转时按媒体 `change` → orientation `change` → visual
-viewport `resize` → window `resize` 的顺序通知，同方向尺寸/DPR 变化只通知匹配变化和
-`resize`。宽高可为零，DPR 必须为正有限；相同快照静默，不触发 Core layout 或任务队列。
+## DOM、表单与资源 facade
 
-同一 bootstrap 的 `window.visualViewport` 是稳定的有限 EventTarget：`width`/`height`
-反映 CSS 视口，`pageLeft`/`pageTop` 跟随 page scroll，`scale` 为 1、offset 为 0；有效
-resize/scroll 先通知 visual viewport，再通知 window，并对重复快照去重。宿主仍负责
-frame pump、窗口和真实滚动；不模拟 pinch zoom、视觉偏移、nested overflow 或完整媒体查询。
+Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CDATA 和属性 wrapper 在 mutation 后必须同步 owner、childNodes/children snapshot 与 identity；detached wrapper 只保存 bounded snapshot，不能伪造 connected 关系。
 
-### Layout geometry 与 `getBoundingClientRect()` / `getClientRects()`
+支持的 DOM facade 包括：
 
-DOM relation callback 提供当前 Core layout 的整数 CSS 像素几何。`LAYOUT_RECT_*`
-关系返回一个元素的 border-box union；`LAYOUT_FRAGMENT_COUNT` 与索引化的
-`LAYOUT_FRAGMENT_*_AT` 关系返回同一元素的有界视觉片段快照。块级元素通常只有一个
-片段，参与 inline flow 的元素按实际行片段返回，最多
-`PBROWSER_SCRIPT_LAYOUT_FRAGMENT_MAX`（16）个。未完成 layout、没有可用 box 或
-relation callback 未注册时，查询失败；Browser 不触发 style/layout，也不暴露 Core
-的 box 指针。
+- `textContent`、非编辑元素的 `innerText`、`innerHTML`/`outerHTML`、`document.write` 和 title；
+- selector 的 `matches`、`closest`、`querySelector(All)` 有界子集；
+- form owner、validation、`form.elements`/`FormData` snapshot、option/select metadata 和有限 `HTMLImageElement` metadata；
+- Text/CDATA 的 `data`、CharacterData mutator、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和 wrapper 关系。
 
-`Element.getClientRects()` 每次调用都新建 array-like 集合，并把每个正尺寸片段转换
-为 viewport-relative CSS 像素：`length` 为 0 至 16，片段按文档绘制顺序出现在整数
-索引，`.item(index)` 对合法索引返回同一对象，对越界或非负整数之外的参数返回 `null`。集合
-和其中的矩形不与上一次调用共享身份。`Element.getBoundingClientRect()` 对同一份
-片段集合计算 union，返回有限的 `{left, top, right, bottom, x, y, width, height}`
-快照；空集合返回全零矩形。两种方法都会扣除当前 page-level `scrollX`/`scrollY`，
-并随 Browser 的滚动同步更新。DOM mutation、resize 或页面提交后的 layout 与滚动同步
-仍由宿主驱动。
+这些路径通过 Ex callback table 把父 ID、未过滤 child index、节点类型和 UTF-8 值转给 Core。宿主不遍历、合并或删除产品节点，也不复制第二份 form/selector/resource 语义。
 
-完整几何限制（transforms、Range/Selection、nested overflow、pinch zoom、平滑滚动与
-视觉精度）见 [`KNOWN_LIMITATIONS`](../.agents/KNOWN_LIMITATIONS.md)。
+## `DocumentFragment` 与 normalize
 
-#### 布局尺寸快照
+Browser-owned Fragment 是 bounded staging，不是 Core fragment handle。它最多保存公开合同允许的 direct 根和节点形状；嵌套、不支持类型、重复 id、跨 owner、超长文本或超过容量在消费前 fail closed。Element mutation 消费 Fragment 时复用 Core parser/creation callback，并保留 staged wrapper identity。
 
-当宿主注册 DOM relation callback 后，Browser 为已布局的支持元素安装只读的
-`offsetWidth`、`offsetHeight`、`clientWidth`、`clientHeight`、`scrollWidth` 和
-`scrollHeight` getter。getter 每次从最近一次 Core layout 快照读取整数 CSS 像素：
-offset 包含 border，client 为 retained scrollport 的 padding 区域（滚动条覆盖在边缘，
-不从 client 尺寸再扣除固定宽度），scroll 包含有界后代内容 extent。Core 不提供快照时
-这些属性返回 `0`；它们不会触发 style/layout，也不会改变滚动位置。有 id 的 overflow
-box 及其滚动通知见下方“元素 overflow 滚动桥”。
+`Node.normalize()` 有两条实现路径：live Element 通过 Ex5 `normalize_child_text` 调用 `PCore_NodeNormalizeById`，再同步 Browser-created Text/CDATA wrapper；detached Fragment 直接整理 staging。两条路径都删除空 Text/CDATA、合并相邻 Text/CDATA 到首个非空节点，并以 Element、Comment 和其他节点作为边界。Comment 不计入 Fragment `textContent`。成功 mutation 后宿主必须重新 style/layout/paint。
 
-### 元素 overflow 滚动桥
+## 事件、输入与 native 桥
 
-元素滚动是一个有界的 Core/Browser 组合，而不是宿主自己的第二套布局模型：
+Browser 创建有限 Event、listener、属性 handler、validation 和 focus 对象，维护 target/currentTarget、冒泡/取消、可信标志及规定的顺序。它不自动接管 native default action；宿主决定按钮、SELECT、EDIT、file picker、SIP/IME、触摸和键盘行为，再用 typed callback 或通知入口回传实际结果。
 
-- Core 对已布局的常见 block、replaced、flex box 保留 `overflow: scroll/auto` 的滚动条，
-  通过 relation 38/39 暴露当前 CSS 像素偏移，并由
-  `PCore_NodeOverflowScrollToById()` 执行两个轴的非负 clamp；
-- Browser 的 `Element.scrollLeft`/`scrollTop` 以及 `scrollTo()`/`scrollBy()` 只接受
-  `auto`/`instant`，把目标 id 和请求交给同一 scroll callback，再用 Core 返回的实际值
-  更新脚本状态；重复位置不产生事件；
-- 宿主收到 WM pointer 后调用 `PCore_OverflowPointer()`，按
-  `PCore_OverflowDirtyRect()` 做局部失效，并把 `PCore_OverflowScrollSnapshot()` 的
-  id/位置交给 `PBrowser_ScriptSessionNotifyElementScroll()`。后者只更新脚本状态和派发
-  去重事件，不会再次调用 scroll callback，因此不会递归；
-- 该能力要求目标有稳定 DOM `id` 和可用 layout。关系 40/41 报告两个 retained
-  scrollbar 轴，关系 42/43 报告 padding/client edge 的文档坐标；Browser 用它们为
-  `scrollIntoView()` 选择最近的可寻址祖先，或在 `container:"all"` 下依次处理最多
-  64 层父链。它不实现完整滚动容器树、滚动链、scroll anchoring、scroll-margin、
-  平滑/惯性动画或匿名目标的宿主归因。
+contenteditable 只支持单元素、纯文本、UTF-16 selection offset 和有界 WM EDIT 代理。`beforeinput` 取消不会修改 Core；允许的 native mutation 由宿主提交后再通知 Browser。完整 IME composition、Range/Selection、async clipboard 和富文本不在边界内。
 
-### `Element.scrollIntoView()`
+## 导航与资源组合
 
-Browser 还提供页面级的 `Element.scrollIntoView()`。它读取同一
-`getBoundingClientRect()` 矩形；如果父链中存在可寻址的 retained overflow box，
-最多遍历 64 层。默认选择最近者，用 Core 的轴可用标志与 client edge 坐标在对应轴上
-直接对齐；对象形式的 `container: "all"` 则从最近者向外依次处理每个可寻址的
-retained overflow ancestor，并在每次滚动后重新读取目标矩形。没有适用祖先时把请求
-交给已有的 `window.scrollTo()` page-level callback；`container: "all"` 处理完祖先后，
-仅当目标仍在页面视口外才使用该 fallback。宿主仍负责 extent/client area 的 clamp、
-物理滚动、绘制和实际位置回报。默认等价于 `{block: "start", inline: "nearest"}`，
-布尔值 `false` 选择 block end；对象形式只接受 `block`/`inline` 的 `start`、`center`、
-`end`、`nearest`，`behavior` 的 `auto` 或 `instant`，以及 `container` 的 `nearest`
-或 `all`。无可用 layout、矩形或 nested client bridge 时安全回退/ no-op；没有 scroll
-callback 时不会影响宿主真实 viewport，脚本侧仍遵循既有 `scrollTo()` 的本地状态规则。
-不支持 `smooth`、scroll-margin、完整滚动容器树、anchoring 或匿名祖先/目标。
+宿主为每个请求创建 candidate handle，并用 generation 隔离过时 worker 消息。Browser 持有 resource URL 去重、attempt/终态、required/optional gate 和清理前快照；宿主拥有 DNS/TCP/TLS/HTTP、worker、重试时机、response、页面 swap 和旧页保留策略。提交前调用 commit snapshot，释放前调用 cleanup snapshot，不能在宿主另建分类表。
 
-### Script session
+## 预算与错误
 
-`PBrowser_ScriptSessionCreate` 创建 context（bootstrap heap 为 1.5 MiB），`Destroy`
-释放会话状态。浏览器与独立脚本共用 `positron_script.dll`。
+native function、listener、collection、Fragment 根、selector 深度、字符串、资源项和任务队列均有固定 WM6 预算。所有 public entry 都检查 NULL、UTF-8、容量、索引、句柄和 owner；size-probe 不部分写出，超限不部分 mutation。错误码和 callback table 版本以 `positron_browser.h` 为准，新增能力应追加 Ex 版本而不是改变旧字段含义。
 
-生命周期：
+## 宿主应负责的事情
 
-```c
-HANDLE history;
-HANDLE session;
+宿主必须：
 
-history = PBrowser_HistoryCreate();
-session = PBrowser_ScriptSessionCreate(2500);
-if (history == NULL || session == NULL) {
-    /* fail */
-}
+- 在 Core layout 后提供 viewport/geometry/scroll/focus 结果并安排重绘；
+- 驱动 page lifecycle、resize、scroll、visibility、focus 和任务 checkpoint；
+- 执行网络/资源 worker、native 控件默认动作、SIP/IME、picker、剪贴板和窗口策略；
+- 在 teardown 前停止回调，按 candidate/resource 清理顺序释放对象。
 
-PBrowser_ScriptSessionDestroy(session);
-PBrowser_HistoryDestroy(history);
-```
+`test_host.exe` 只能消费这些公开 DLL 接口，提供 fixture、callback 接线和断言；可复用的 URL、DOM、Event、form、resource 或生命周期语义不得回到宿主。
 
-需 `document.write()`/`writeln()` 时注册 Ex12 callbacks，并在 `Evaluate()` 前设置脚本索引
-（完成后为 `-1`）。Browser 交给 Core：fragment parser 前扫描带标签名边界的 ASCII 不分大小写
-`<script...`，再应用 UTF-8、节点、深度和 id 预算；无效片段拒绝且不执行脚本/资源/事件。
-该扫描仅属 document-write 安全边界，不代表通用 HTML parser 或动态脚本支持。
+## 不保证
 
-### `document.activeElement` 与 Core 焦点桥
-
-`document.activeElement` 是一个按需安装的 Browser 投影，不是 Browser 自己猜测
-native 焦点。宿主在 bootstrap 完成前或完成后注册
-`PBrowserScriptActiveElementCallbacks`，然后在页面脚本运行前确保 Core 的 DOM
-读回调也已注册。回调只需同步返回当前焦点节点的非空 UTF-8 DOM id；返回空值、
-过长 id、已失效 id 或 Core 没有可用的 id-addressable 焦点时，getter 都安全地
-返回 `document.body`。注册后再注销只移除 native id 来源，已安装的 getter 仍会
-回退到 `body`；从未注册该表的 session 不安装这个可选属性，以免增加 WM6 的
-bootstrap 成本。
-
-参考宿主把 Core 的 `PCore_InteractionFocusElementId` 适配到这个 callback：
-
-```c
-PBrowserScriptActiveElementCallbacks active;
-
-memset(&active, 0, sizeof(active));
-active.size = sizeof(active);
-active.pw = bridge;
-active.get_active_element = host_get_active_element_id;
-PBrowser_ScriptSessionRegisterActiveElementCallbacks(session, &active);
-```
-
-`PCore_InteractionFocusElementId` 使用与其他 UTF-8 查询相同的 size-probe 和
-固定容量规则；它只报告当前 Core 交互状态中的 id，不改变焦点、style 或 layout。
-因此这项组合不提供完整浏览器焦点算法、自动初始焦点、焦点矩形、native HWND
-切换或跨窗口策略。回调指针只在同步调用期间借用，宿主仍拥有 native 焦点状态。
-
-#### `:active` / `:hover` interaction bridge
-
-指针状态也可以按需投影到 Browser selector。宿主注册
-`PBrowserScriptInteractionCallbacks`，在 callback 中按 `state`（`"active"` 或
-`"hover"`）返回当前 Core 节点的非空 UTF-8 id；参考接线使用
-`PCore_InteractionStateElementId`，因此不会维护第二份交互模型。初始化 size-tagged
-table 后调用 `PBrowser_ScriptSessionRegisterInteractionElementCallbacks` 即可。
-
-注册后，各 selector 查询都会读取 callback；无 callback、空/过长/失效 id、带参数或伪元素
-安全不匹配。Browser 不派发 pointer 事件、不改变 Core/style/layout/paint；宿主负责
-hit-test、时机、事件、失效和视觉。桥只匹配精确当前元素，不实现祖先 `:hover`、完整
-pointer capture 或其他 pointer/touch 状态。
-
-需要让页面读取宿主访问历史时，使用同一 native function slot 的
-`PBrowserScriptInteractionCallbacksEx`：
-
-```c
-PBrowserScriptInteractionCallbacksEx interaction;
-
-memset(&interaction, 0, sizeof(interaction));
-interaction.size = sizeof(interaction);
-interaction.pw = bridge;
-interaction.get_interaction_element = host_get_interaction_element_id;
-interaction.get_link_visited = host_get_link_visited;
-PBrowser_ScriptSessionRegisterInteractionElementCallbacksEx(session,
-        &interaction);
-```
-
-`get_link_visited` 只为带 `href` 的 `<a>`/`<area>` 同步接收借用的 UTF-8 `element_id` 与
-原始 `href`；正数表示宿主批准已访问，零表示未访问，负数表示无法判断。宿主负责历史
-存储、隐私策略和 URL 解析，Browser 只在 `:visited` 查询时读取结果，不修改 history、
-不导航、不重做 style/layout/paint。未注册 Ex callback、无 id、超长/非法输入或 callback
-失败都安全不匹配。
-旧 `PBrowserScriptInteractionCallbacks` ABI 保持兼容；Ex 与旧表不可在同一 session 重复
-注册，注销使用 `PBrowser_ScriptSessionUnregisterInteractionElementCallbacks`。
-
-#### Selector bridge
-
-`matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 共享有界 selector
-parser；element/document query 的 scope 为 receiver 或 `document.documentElement`，
-`:scope` 可包含 owner，`matches()`/`closest()` 以 receiver 为 scope。支持 compound、
-组合器、属性、结构、form-state 与 focus/link/visited 伪类；复杂输入/未注册回调 fail
-closed。宿主接入 relation/interaction 回调。
-
-#### `HTMLElement.focus()` / `blur()` 请求
-
-脚本主动聚焦是另一条按需安装的桥。宿主注册
-`PBrowserScriptFocusRequestCallbacks` 后，Browser 在 bootstrap 后为每个
-`PElement` 安装 `focus()` 与 `blur()`；旧 callback 只接收当前元素的 id 和
-`focused` 值，返回值保持 `undefined`。宿主应以
-`PCore_FocusTargetInfoById` 检查已布局目标，以
-`PCore_InteractionFocusById` 更新 Core，再切换相应 native HWND 并派发一次
-`blur`/`focusout` 或 `focus`/`focusin`。disabled、hidden、stale、无 id、未布局、
-对非当前目标的 `blur()` 都必须安全 no-op；重复 `focus()` 不再派发额外焦点事件，
-但 Ex callback 仍可按默认规则把已聚焦且不可见的目标 reveal。注销 callback 会
-移除 native 请求来源，已安装的方法仍保留为 no-op；未注册 callback 的 session
-不安装这组可选方法，以控制 WM6 bootstrap 成本。
-
-需要页面级滚动可见性时，宿主注册新增的
-`PBrowserScriptFocusRequestCallbacksEx`。Browser 把
-`focus({preventScroll:true})` 表示为 `prevent_scroll=1`；如果 Browser 能从
-当前目标沿 `parentElement` 找到 retained overflow ancestor，也会把这一位设为
-1，要求宿主先不要做 page-level reveal。宿主在完成自己的 viewport clamp/apply 后，
-把实际 CSS page 坐标写入 `PBrowserScriptFocusRequestResult`。Browser 等 callback
-返回后才更新脚本侧 `scrollX`/`scrollY`，因此滚动事件不会从 native callback 内
-递归进入 runtime。普通 `focus()` 随后由 Browser 调用有界的
-`scrollIntoView({block:"nearest",inline:"nearest",container:"all"})`：先处理
-最近到最外的可寻址 retained overflow ancestor，仍在页面视口外时才使用 page-level
-scroll callback。`preventScroll:true` 完全保持现有页面和元素滚动位置；`blur()` 不滚动。
-
-只需要焦点事务时的最小注册形态如下，`request_focus` 的 `element_id` 只在同步
-callback 期间借用：
-
-```c
-PBrowserScriptFocusRequestCallbacks focus;
-
-memset(&focus, 0, sizeof(focus));
-focus.size = sizeof(focus);
-focus.pw = bridge;
-focus.request_focus = host_request_focus;
-PBrowser_ScriptSessionRegisterFocusRequestCallbacks(session, &focus);
-```
-
-需要页面级滚动扩展时改用同一注册函数的 `PBrowserScriptFocusRequestCallbacksEx` 表；
-Browser 会清零 `out_result`，宿主只在 callback 返回前读取实际 CSS 坐标，
-不得保存指针。
-
-#### 宿主驱动的初始 `autofocus`
-
-Browser 不自主执行 `autofocus`。宿主在 Core layout/native
-子控件完成后调用 `PCore_AutofocusTargetInfo` 与
-`PCore_InteractionFocusAutofocus`；有 id 目标复用 focus bridge，无 id 目标用
-`PCore_EventDispatchFocus` 派发 focus/focusin。无合格目标、过期目标或超长 id 安全回退；
-无 id 的 `document.activeElement` 返回 `body`，事件监听器应按可空 `target` 处理。
-
-该扩展覆盖 id-addressable Core 目标和最多 64 层可寻址的 retained overflow ancestor
-链；完整 focus navigation、scroll tree、跨窗口策略和 OEM 控件视觉仍不在契约内。
-
-### DOM、表单与 validation adapters
-
-Browser 不直接持有 libdom 节点；宿主以 size-tagged UTF-8 callbacks 映射 Core 的 DOM、
-form/event/navigation 查询与 mutation。Browser 负责参数、对象形状、错误映射与 dispatch。
-
-`document.title` 是单独的文档元数据投影，不伪装成带 id 的 Element。支持该投影的宿主
-使用 `PBrowserScriptDomReadCallbacksEx` 与 `PBrowserScriptDomWriteCallbacksEx13` 提供
-有界 UTF-8 读写；Browser getter 每次从宿主读取 Core 的首个直接 `<head><title>` 文本，
-setter 先让宿主更新或创建该节点，再在宿主未提供扩展时回退到当前脚本 session 的局部值。
-因此页面 id 不会与内部 token 冲突。Core 的长度/UTF-8 边界、首个 title 规则和 layout
-失效语义见 `PCore_DocumentTitle`/`PCore_DocumentSetTitle`；这项 metadata 不触发网络、
-事件或窗口标题策略。
-
-`Element.innerHTML`/`outerHTML` 是 HTML 投影；`innerHTML` setter（Ex8 →
-`PCore_NodeSetInnerHTMLById`）、`insertAdjacentHTML()`（Ex9）和 `outerHTML` setter
-（Ex10 → `PCore_NodeSetOuterHTMLById`）复用同一有界 parser。前两者保持目标 identity，
-outerHTML 在原父级/索引以一个 Element 根替换目标，空字符串移除目标；成功刷新受影响
-wrapper/snapshot；拒绝顶层文本、多根、结构元素、重复/外部 id、非法 UTF-8 和超限；
-detached Element 只对属性/direct Text 做 text-only escaping/staging；markup、超长和 detached
-`outerHTML` replacement fail closed，connected wrapper 委托 Core projection。
-`document.createDocumentFragment()` 在 Browser 侧做 bounded staging，最多四个
-Element/Text/Comment/CDATA 根；Element 须唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。
-append/prepend/insertBefore/appendChild/replaceChildren、clone、query、relations、组合、
-`textContent`/`normalize()` 按预算失败；getter 排除 Comment。Fragment roots 的 sibling
-getter 按 staging/live 读取，element-sibling 跳过非 Element；无 owner 返回 `null`。
-Comment/CDATA 消费复用既有 Core creation callback，不新增 fragment ABI；通用 detached tree、
-observer 和完整 live collection 不支持。
-
-`document.createTextNode(value)` 创建 detached Text，支持插入/移除/clone、CharacterData
-mutator 及 bounded `wholeText`/`splitText()`/`replaceWholeText()`。`before()`/`after()`/
-`replaceWith()` 接受 1–4 个 primitive，或一个 live CharacterData source；live regular Element
-复用 Core callback 并保留 identity，跨父更新 owner/index，detached target
-inert，其他 owner fail closed。offset/count 按 UTF-16 校验；detached 保留本地快照，已连接
-staged replacement fail closed。通用节点、混合列表和 observer 不在此范围。
-
-`document.createElement(tag)` 提供 detached Element staging：标签小写化，只接受 ASCII
-`[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），禁止 `html`、`head`、`body`；设唯一非空 id 后可
-按 `childNodes` 索引物化到 live Element。wrapper 最多 64 个属性/Text child，
-`childNodes` 随 staging。
-`attributes` 返回稳定 bounded `NamedNodeMap`；`get/set/removeAttributeNode*`、Attr
-value/namespace/iteration 和跨 owner value-copy 复用 facade，不创建 detached Core handle。
-style/reflected setter 暂存，物化走 Core；`cloneNode` 复制属性/Text 且连接须有 id。
-`textContent` 保持 childNodes，超限不变。
-
-遗留 `HTMLBodyElement.text` getter 反映 `text` attribute（缺失为空）；`null` 按
-`[TreatNullAs=EmptyString]` 转空串，其他值按 `String` 转换。`document.cookie` 为会话
-内存 jar：name/value，32 对/8192 pair 字符上限，`Max-Age<=0` 删除，其余属性忽略，不
-持久化、不参与 HTTP。deprecated presentation-color、body 与 detached staging 不在此范围。
-
-`document.createComment(data)` 提供 detached Comment wrapper：按 `String` 转换，暴露 node
-shape、data/identity、clone、offset、remove、1–4 primitive 或单一 live CharacterData
-source 的 relative；最多 65,535 个脚本字符，Ex12 物化，非法参数、detached source、
-Fragment、混合列表、事件、资源和 observer fail closed。
-
-Comment wrapper 的 offset 方法按 UTF-16 code unit 执行；detached 更新快照，connected 复用
-`__pcoreSetText`，relative 仅接受 live regular Element 中的 primitive 或单一 live source，
-超长、非法参数或 Core 失败保持原数据。
-
-`document.createCDATASection(data)` 提供 detached CharacterData：nodeType、data/offset、
-clone、relative、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和单一
-source move/replace；live parent 中相邻 Text/CDATA 组成同一逻辑段，split 返回 Text suffix。
-Ex14 物化；Comment/CDATA 也可作为 bounded Fragment 根，消费时复用既有 Core creation
-callback；其他 detached/Fragment 混合列表/事件/资源/observer 仍 fail closed。
-
-`<option>` 的 `selected`/`defaultSelected` 及 `value`/`label`/`text` 是可选扩展；注册
-`PBrowserScriptOptionCallbacks` 后由 Core 维护选择，`value`/`label` 缺失时回退到 option
-文本，`text` 写入纯文本；未注册、非 option、无效 id 或 callback/mutation 失败均 fail closed。
-
-`select.options`、`select.selectedOptions`、`select.length` 和 `option.index` 由 Browser
-提供。集合从 DOM relation snapshot 遍历可寻址 option（含 optgroup 后代）按文档顺序返回；
-getter 新建 HTMLCollection，`selectedOptions` 筛选 selected 状态。
-最多遍历 256 个节点、返回 64 个 option；缺少稳定 id 的元素不投影，也没有 live collection/popup。
-
-`Element.form` 和 `HTMLFormElement.elements` 复用 Core form-owner relation：支持控件默认归
-最近祖先 form，`form="id"` 可关联 form 外元素，空/无效目标不回退。`form.elements` 按
-DOM 顺序 snapshot 投影 listed 元素（fieldset/object/output 会出现，img 仅有 owner）；
-`option` 沿最多 64 层父链定位所属 select。完整 live collection 不在契约内。
-
-`select.type` 按 live `multiple` 返回只读的 `select-one`/`select-multiple`；
-`optgroup.label` 反映 `label`（缺失为 `''`），`option.label` 保留文本 fallback 并随 mutation
-更新。仅提供元数据，不创建 popup 或改变 layout/paint。
-
-`fieldset.type` 为只读 `'fieldset'`，`fieldset.form` 复用 Core owner；`fieldset.elements`
-每次读取有界 snapshot（最多 256 节点、64 项），只投影子树中带 id 的控件。`output.type`
-为 `'output'`，`labels`/`value`/`defaultValue` 与 Core 同步，`form.reset()` 清除 override；
-fieldset/output 不进入 successful-control 或 FormData。
-
-启用 `PBrowserScriptFormResetCallbacks` 和按 id 的
-`PBrowserScriptFormEventCallbacksEx` 后，脚本 `HTMLFormElement.reset()` 先派发可冒泡、
-可取消的 `reset`，只有事件未被阻止时才调用宿主 `reset_form` callback；宿主应在其中
-调用 `PCore_FormResetById`，成功后重新 style/layout/paint，方法返回 `undefined`。
-启用 `PBrowserScriptFormSubmitCallbacks` 后还会安装
-`HTMLFormElement.requestSubmit([submitter])`：Browser 先让宿主按 form/submitter id
-调用 Core validation，验证通过后派发可冒泡、可取消的 `submit`，再调用宿主默认动作
-callback。Core 的 by-id submission primitives 负责 enabled submitter、`novalidate`/
-`formnovalidate`、urlencoded/multipart/dialog 结果；宿主负责网络导航或 dialog close。
-启用 `PBrowserScriptFormSubmitDirectCallbacks` 后还会安装
-`HTMLFormElement.submit()`：Browser 只解析当前有 id 的 form，跳过 constraint
-validation、`submit` 事件和 submitter 选择，调用 direct callback 后返回
-`undefined`。宿主应把该 callback 接到
-`PCore_FormSubmissionNoValidationById`、
-`PCore_FormDialogSubmissionNoValidationById` 或
-`PCore_MultipartSubmissionNoValidationById`，再按应用策略执行网络导航或
-dialog close；旧的 form-submit ABI 保持兼容。Direct 缺少 callback、非法目标或 adapter
-失败会安全 no-op；Core state-only 入口不派发事件、导航或操作 native 控件，原有按坐标的
-`PBrowser_ScriptSessionDispatchFormEvent` ABI 不变。
-
-启用 `PBrowserScriptFormDataCallbacks` 后，为有 id 的 `<form>` 安装
-`new FormData(form)`；第二参数使用 `PBrowserScriptFormDataCallbacksEx` 与对应注册函数。
-构造同步读取 count/entry 得到 detached 对象；不做 validation、submit/reset、默认动作、导航
-或重新 layout。成功后在 form 上同步派发非冒泡、不可取消的 `formdata`；
-`event.formData` 就是返回对象，监听器可在返回前用 `append()`/`set()`/`delete()`
-修改它，`form.onformdata` 也可用。Ex callback 收到 form id 和 submitter id，宿主转给
-`PCore_FormDataByIdEx`；旧表只支持无显式 submitter。两种表都用
-`PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 填充借用的 UTF-8 缓冲并配对
-`PCore_FreeFormData`，不得暴露 picker 路径。submitter 必须是 Browser 的 `PElement`、
-启用且归属于该 form 的 submit-type input/button；`null`/`undefined` 等同省略 submitter，
-其他无效 owner 抛出 `TypeError`。
-最多 64 项；名称 64 字节、字符串值 128 字节，文件只保留 filename/type 和空内容。
-
-### `HTMLImageElement` 元数据与资源状态
-
-`PElement` 提供图片元数据、属性反射和 relation 46–49（含 `naturalWidth`、
-`naturalHeight`、`complete`、`currentSrc`）。
-缺失字符串为 `''`、`crossOrigin` 为 `null`，boolean 按 presence，非法尺寸读为 `0` 且
-setter 拒绝；mutation 走 Core callback。自然尺寸和 `complete` 来自 Core，`currentSrc`
-读取 relation 49，并与 picture、fetch、解码和布局共享选择结果。Core 对 `x`/`w`
-候选、`sizes` 的 px/vw/vh 与单一 min/max-width 条件均设固定上限；畸形候选、不支持的
-`sizes` 或 URL 回退到 raw `src`。无 source 或失败资源为零尺寸，`document.images` 是有界
-snapshot。
-
-`PElement.decode()` 是有界 Promise：无 source 在 microtask 中完成，正的 Core 自然尺寸
-完成，失败以 `EncodingError` 拒绝；source mutation 拒绝旧请求，teardown 以 `AbortError`
-拒绝 pending 请求。每个 session 最多 64 个 pending decode 和 64 个 image 终态。宿主在
-Core 完成 fetch/decode/layout 后调用 `PBrowser_ScriptSessionNotifyImageEvent()`；Browser
-只接受当前且 complete 的 `<img>` 终态，派发 trusted、非冒泡、不可取消事件并 settle 同源
-decode，重复或过时通知 fail closed。Core 改写 `img` 或 picture `source` 的
-`media`/`type`/`srcset`/`sizes` 后，宿主调用 `PBrowser_ScriptSessionNotifyImageSourceChange()`；
-Browser 只使变化 source 的 pending decode/旧事件失效，不执行 fetch、选择、layout 或 paint。
-`source.media`、`source.srcset`、`source.sizes` 反射走同一路径；有效
-`PBrowser_ScriptSessionNotifyResize()` 会在媒体和 resize 事件前刷新 source identity。
-
-脚本 mutation 需要宿主安排替换资源时，可在
-`PBrowser_ScriptSessionRegisterDomAttributeCallbacks()` 成功后注册可选的
-`PBrowserScriptImageSourceCallbacks`：
-
-```c
-PBrowserScriptImageSourceCallbacks image_source;
-
-memset(&image_source, 0, sizeof(image_source));
-image_source.size = sizeof(image_source);
-image_source.pw = host;
-image_source.mutation = host_image_source_mutation;
-PBrowser_ScriptSessionRegisterImageSourceCallbacks(session, &image_source);
-```
-
-`host_image_source_mutation` 在 Core attribute mutation 成功后同步收到借用的 UTF-8
-`element_id`、`element_kind`（`PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_IMG` 或
-`PBROWSER_SCRIPT_IMAGE_SOURCE_KIND_SOURCE`）、属性名和 `removed` 标志。它应只记录或
-合并请求，然后查询 Core 并自行启动 replacement fetch/select/layout/paint；回调不能保存
-这些指针、进行 I/O 或重入/销毁 session。该注册复用 DOM attribute bridge 的既有 native
-slot，不增加脚本 native-function 数量；未注册时 mutation 仍成功但不会自动加载或回滚。
-重复注册返回 `PSCRIPT_ERROR_GLOBAL`，注销使用
-`PBrowser_ScriptSessionUnregisterImageSourceCallbacks()`，注销后后续 mutation 不再通知。
-
-### 有界 DOM 子节点 mutation
-
-宿主注册 `PBrowserScriptDomMutationCallbacks` 后，`Element.removeChild()`/`remove()` 将
-element parent/child id 交给 `PCore_NodeRemoveChildById`。成功刷新父级 snapshot 并使
-retained layout 失效；结构 token、错误关系、过长 id 和未注册 callback fail closed，
-detached element 是 no-op。
-
-Ex2/Ex3 在旧表后追加 Text、Comment/CDATA direct-child removal 字段，Browser 按未过滤
-`childNodes` 索引和节点类型调用 Core，成功保留 detached 数据并刷新父 snapshot；错误
-parent、非支持节点、reparent、事件、observer 和 live collection 不产生 mutation。
-
-Ex4–Ex12 的 existing-element、CharacterData 和 relative callbacks 复用稳定的 Core
-direct-child insertion/replacement 入口；它们按未过滤 `childNodes` 索引维护同父重排、
-跨父迁移和 wrapper/snapshot owner。Ex13–Ex15 的 `replaceChildren()` 分别覆盖 0–4 个
-primitive Text、同父 direct Element mixed 列表，以及按索引指定的 Text/Comment/CDATA；
-Browser 先完成类型、连接、重复、fragment 和容量预检，再提交 Core 的原子暂存/回滚。
-成功只使未保留子树 detached，选中节点及后代保留 identity；结构 token、错误 parent/self、
-跨父 CharacterData、对象、nested/mixed fragment、通用 clone 和超限输入均 fail closed。旧
-callback table 只在尾部追加字段，旧注册入口布局和语义保持不变。
-
-所有 mutation 都不派发事件、不执行资源、不自行 style/layout/paint；宿主只接 callback 并
-在成功后安排重排/重绘。`textContent`/`innerText`、CharacterData setter、`splitText()`、
-`wholeText`、`replaceWholeText()` 与 `normalize()` 复用相同的 UTF-16、detached snapshot
-和 retained-layout 合同。`DocumentFragment` staging 由 Browser 管理，Core 仍不暴露
-fragment handle。通用 Node mutation、MutationObserver 和完整 live collection 仍未实现。
-
-### `dialog` 生命周期
-
-启用浏览器 JavaScript 后，`<dialog>` 元素提供一个有界的生命周期接口：
-
-- `show()`/`showModal()` 要求元素已连接且当前未打开；同一 session 只允许一个 modal。
-- `close(value)` 移除 `open`、更新 `returnValue` 并派发非冒泡 `close`；`requestClose(value)`
-  先派发可取消的非冒泡 `cancel`，未被阻止才 close。`open` 反映 DOM 属性，属性变化
-  由宿主 DOM callback 进入正常 restyle/layout，`oncancel`/`onclose` 与监听器均可用。
-- 宿主把 Escape 交给 `PBrowser_ScriptSessionRequestDialogClose`；有活动 modal 时即使
-  `cancel` 阻止关闭也消费手势。Tab 时读取 `PBrowser_ScriptSessionGetActiveDialogId`
-  并交给 `PCore_FocusTargetInfoWithin` 限定 dialog 子树。指针路径由宿主用 Core 几何
-  命中，dialog 外部请求关闭并消费 backdrop，Browser 不读取窗口坐标。
-- `method="dialog"` 表单由宿主让 Core 验证/解析后派发 `submit`；事件允许时调用
-  `PBrowser_ScriptSessionCloseDialogById` 执行 `dialog.close(value)`、更新 `returnValue`
-  并派发 `close`，不发网络导航。显式点击、脚本 `click()` 与隐式 Enter 可复用该路径。
-
-这些方法只维护 Browser 脚本生命周期，不创建 HWND 或绘制 top layer/backdrop。宿主可把
-活动 id 交给 `PCore_PaintDocumentWithModal` 组合有限 backdrop 和 dialog 重绘，并负责
-初始焦点、native HWND、焦点视觉及 nested overflow 指针；跨文档 modal 生命周期未覆盖。
-
-### 单元素 `contenteditable`
-
-注册 `PBrowserScriptContentEditableCallbacks` 后，Browser 为每个元素暴露只读的 `isContentEditable`。该查询由宿主转给 Core，因而也能正确处理没有 id 的祖先和 `true`/空值、`false`、`plaintext-only`、未知值继承。`contentEditable` 仍是原始 attribute reflection，不应拿它代替有效状态。
-
-`innerText` getter 读取 Core 的文本快照；对有效可编辑元素的 setter 走 `__pcoreSetContentEditableText`，由宿主调用 `PCore_ContentEditableSetTextById` 执行有界合法 UTF-8 纯文本替换。setter 是程序化 mutation，不自动产生 `beforeinput`/`input`。宿主若把 Core 的 editing-host 快照映射为 WM EDIT，真实键盘、SIP/IME 或其他输入源必须沿用已有 typed input 事务：先派发可取消 `beforeinput`，仅在允许后提交原生文本并调用 Core mutation，再派发 `input`；Browser 只决定事件、取消和顺序，不创建 HWND。
-
-`selectionStart`、`selectionEnd` 和 `selectionDirection` 使用 JavaScript UTF-16 code-unit 偏移。调用 `setSelectionRange()` 或 `select()` 时，Browser 先更新有界脚本状态，再尝试通过可选的 `PBrowserScriptContentEditableSelectionCallbacks` 同步宿主的原生 editing host；没有原生窗口（例如离线 fixture 或未布局的后代元素）时保留脚本侧回退。宿主的 multiline EDIT 适配器负责把 CRLF 原生位置转换为 Core/Browser 的逻辑 LF 位置。
-
-当范围或方向实际改变时，Browser 只分发一次非冒泡、不可取消的 `selectionchange`；重复赋值保持静默。脚本修改产生不可信事件，宿主在原生 caret/range 更新后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection` 时可标记为可信。该入口负责校验、去重、更新脚本状态和事件分发；宿主不应再通过 Core 重新派发同一事件。参考宿主已将无修饰 WM EDIT 鼠标拖选、Shift/方向键扩展、受限 paste/cut 事务，以及 capture/cancel/focus 中断后的范围通知接入此入口；Browser 本身不拥有 HWND、键盘状态、鼠标 capture、平台剪贴板或平台 hit-test。当前仍只覆盖单元素纯文本，不包含 Range/Selection 对象、OEM 特有键盘自动重复与复杂行导航、富文本、designMode、ClipboardEvent/async clipboard、CF_TEXT 转换或完整 IME 语义。
-
-### Event 与平台事务
-
-Typed callback families 覆盖 input、keyboard、focus、EDIT、SELECT、click、form、invalid 和 navigation。对于 native 控件，推荐使用相应的 `Ex` 注册和 transaction dispatch：
-
-- native EDIT（包括宿主为 contenteditable 创建的代理）：beforeinput、composition/result、commit→input、dirty、blur→change，以及 contenteditable 选区同步和有界 `selectionchange`；宿主可将有界 `CF_UNICODETEXT` paste/cut/copy data 作为 beforeinput payload，复制的折叠选区由宿主在 Browser 事务之外判定为 no-op；
-- native SELECT：focus、key、dropdown candidate/confirm/cancel、commit→input/change；
-- checkbox/radio：click、Core mutation 后的 input/change；
-- button：click、validation、submit/reset/default action；
-- file input：picker request/open/close/cancel 与 selection input/change；
-- anchor/disclosure/programmatic click：可取消 click 与有界默认动作。
-
-通用顺序由 Browser 决定。宿主仍拥有 WM 消息、控件窗口、Core mutation、picker、SIP/IME、HDC、网络和页面生命周期。
-
-脚本三种 form 方法的顺序见上面的 DOM/form 小节；宿主把各默认动作接到对应 Core
-primitive 并执行网络或 dialog 策略，不复制表单 owner、验证或事件规则。
-
-每个事务使用稳定非零 token，并受固定容量限制。控件销毁、文档替换或 session reset 前，宿主必须调用相应 reset/unregister 入口。stale token、非法 phase、几何变化或 adapter error 会 fail closed，不允许部分默认动作。键盘焦点顺序由 Core 的 `PCore_FocusTargetInfo`（或 modal 场景的 `PCore_FocusTargetInfoWithin`）提供；Browser 负责报告活动 modal id，并把宿主的 WM key transaction 按取消和默认动作规则分发给当前目标。
-
-### Navigation 与 target
-
-Browser 可把 anchor/programmatic navigation 分类为 assign、replace、fragment、reload、history traversal 或 open，并把 target 分类为默认、`_self`、`_parent`、`_top`、`_blank` 或 named。
-
-它不解析完整 URL、不连接网络、不创建 HWND，也不决定下载和外部协议。单窗口宿主可以接受当前-context target，并对 `_blank` 或不匹配的 named target 保守返回失败。target、rel、URL 和 context name 都是同步借用快照。
-
-### Navigation resource transaction
-
-`PBrowser_NavigationResource*` 把一次候选页面的资源状态放在 Browser，而不是测试宿主或应用自己的重复结构中。事务 handle 由 `PBrowser_NavigationResourceCreate` 创建、由 `PBrowser_NavigationResourceDestroy` 销毁；它按 UTF-8 URL 去重，合并 stylesheet/script/image role 和 required/optional policy，并拥有成功字节、终态、失败分类、attempt/retry 计数、资源预算、commit gate、hash-only failure summary 与 fallback observation。
-
-Browser 不执行 DNS、TCP、TLS、HTTP 或 worker。宿主（或其他应用）负责发现资源、调度网络和决定取消/重试时机，再按顺序提交结果：
-
-```c
-HANDLE tx;
-int index;
-PBrowserNavigationResourceInfo info;
-const char css_url[] = "https://example.invalid/site.css";
-const char *bytes;
-int byte_count;
-
-tx = PBrowser_NavigationResourceCreate();
-if (tx != NULL &&
-    PBrowser_NavigationResourceRegister(
-        tx, css_url,
-        PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
-        PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET,
-        &index) == PBROWSER_OK &&
-    PBrowser_NavigationResourceBeginAttempt(tx, index) == PBROWSER_OK) {
-    /* Network code owns response bytes until this call returns. */
-    PBrowser_NavigationResourceSetData(tx, index, bytes, byte_count);
-}
-
-if (PBrowser_NavigationResourceCommitGate(tx) ==
-    PBROWSER_NAVIGATION_GATE_READY) {
-    /* The host may now run layout and submit the candidate page. */
-}
-PBrowser_NavigationResourceGet(tx, index, &info);
-PBrowser_NavigationResourceDestroy(tx);
-```
-
-`SetData` 复制输入到 Browser-owned storage，调用方仍拥有 `bytes`；失败/取消走 `Fail`/`Cancel`，
-`ShouldRetry` 受固定 transport 预算约束，`GetStats`/`CopyData` 分别提供日志快照和调用方副本。
-这些 API 同步且需由调用方串行化，不会规范化 URL、跨事务缓存、创建线程或保留 Core 文档指针。
-
-### Candidate/resource commit snapshot
-
-`PBrowser_NavigationCommitGetInfo` composes a candidate handle and its
-independent resource transaction at the page-commit boundary. It does not
-merge either handle or perform a transition. The bounded snapshot reports the
-candidate result, resource gate and `can_commit` flag in one call:
-
-```c
-PBrowserNavigationCommitInfo commit;
-
-memset(&commit, 0, sizeof(commit));
-commit.size = sizeof(commit);
-if (PBrowser_NavigationCommitGetInfo(
-        candidate, tx, current_generation, &commit) == PBROWSER_OK &&
-        commit.decision == PBROWSER_NAVIGATION_COMMIT_READY &&
-        commit.can_commit) {
-    /* Parse/layout/swap are still owned by the host. */
-}
-```
-
-`READY` requires an active, current, uncancelled candidate and a ready
-resource gate. The call does not transition either handle; it may refresh the
-resource transaction's derived gate/summary fields. `RESOURCE_PENDING`, `REQUIRED_FAILED` and
-`RESOURCE_CANCELLED` describe the resource side; `CANDIDATE_CANCEL_REQUESTED`,
-`CANDIDATE_CANCELLED`, `CANDIDATE_STALE`, `CANDIDATE_FAILED` and
-`CANDIDATE_COMMITTED` describe candidate-side exclusion. Optional resource
-failures remain compatible with `READY`, while required failures and any
-cancelled resource remain fail-closed. The snapshot is synchronous;
-`PBrowser_NavigationCandidateMarkCommitted` must still recheck the
-candidate after the host's final layout/swap boundary. The host may log the
-snapshot, but must not reproduce these classifications from worker flags or
-resource counters.
-
-### Navigation cleanup snapshot
-
-`PBrowser_NavigationCleanupGetInfo` 在释放一次 request 的 candidate/resource
-handle 前复制有界终态、resource gate、pending、失败摘要和 fallback 计数到调用方的
-`PBrowserNavigationCleanupInfo`；副本在两个 handle 销毁后仍有效。宿主必须先 join worker、
-取消剩余资源并让 candidate 进入终态，再读取快照；`can_release` 非零才可释放。该 API
-不拥有响应字节、线程、窗口或页面交换，也不替代最终的 committed 重检。
-
-### Navigation candidate lifecycle
-
-`PBrowser_NavigationCandidate*` 只拥有一个待提交 document 的 generation、取消/退休状态和
-终态 admission；它不拥有 document、worker、response、resource transaction 或页面交换。
-`CanApply`/`MarkCommitted` 都要求当前 generation 且未取消，避免迟到的 worker 消息提交旧
-候选；`RequestCancel` 与幂等的 `Retire` 分别表达协作取消和永久失格。宿主保留线程、WM、
-网络与页面策略，完成 worker 后标记 committed/failed：
-
-```c
-HANDLE candidate;
-PBrowserNavigationCandidateInfo info;
-int network_or_document_failure;
-
-candidate = PBrowser_NavigationCandidateCreate(next_generation);
-/* The host starts its worker and keeps candidate with that request. */
-PBrowser_NavigationCandidateRequestCancel(candidate); /* when superseded */
-PBrowser_NavigationCandidateRetire(candidate);
-/* On UI completion, compare against the host's current generation. */
-if (PBrowser_NavigationCandidateCanApply(candidate, current_generation)) {
-    PBrowser_NavigationCandidateMarkCommitted(candidate, current_generation);
-} else if (network_or_document_failure) {
-    PBrowser_NavigationCandidateMarkFailed(candidate);
-} else {
-    /* stale or retired: discard without page teardown/history mutation */
-}
-PBrowser_NavigationCandidateGetInfo(candidate, current_generation, &info);
-PBrowser_NavigationCandidateDestroy(candidate);
-```
-
-取消标志由 worker 协作轮询，其余状态由宿主串行化；这些 API 不会中止阻塞 socket、执行
-teardown 或提交 history。`GetResult` 只返回 Browser 按 generation 分类的诊断快照，宿主
-应复制它而不是从 worker 标志重算分类。
-
-### 队列与生命周期
-
-Browser 提供受限 timer、animation frame、microtask、idle callback、message、visibility、window focus 和 page lifecycle 运行入口。队列由宿主在 UI 消息循环中按预算驱动；DLL 不建立自己的线程或无限 event loop。
-
-宿主可以逐项调用这些入口，也可以用
-`PBrowser_ScriptSessionRunTaskCheckpoint` 驱动一次统一检查点。统一入口按
-`phase_mask` 选择 timer、animation frame、message 和 idle callback；每个已选阶段
-完成后立即运行一次有界 microtask checkpoint。阶段顺序固定为 timer → frame →
-message → idle，未选择的阶段不会被隐式执行；`phase_mask == 0` 只运行
-microtask。宿主传入自己的单调毫秒时钟、frame timestamp、idle deadline 和
-message limit，Browser 不创建线程、不接管时钟，也不拥有窗口消息。参考宿主在
-窗口 UI 线程上以 16 ms `WM_TIMER` 调用 `PBROWSER_SCRIPT_PUMP_ALL`；其他应用可以
-按自己的消息循环和功耗策略选择阶段或继续使用独立入口。任何入口返回脚本错误
-时，宿主都应停止继续调度该 session，并按应用策略记录失败。
-
-```c
-unsigned long now_ms;
-
-now_ms = host_monotonic_ms();
-if (PBrowser_ScriptSessionRunTaskCheckpoint(
-        session, now_ms, now_ms, now_ms, 16UL,
-        PBROWSER_SCRIPT_PUMP_ALL) != PSCRIPT_OK) {
-    /* Stop scheduling this session and keep the host's error policy. */
-}
-```
-
-页面首次完成加载时，宿主在 classic script 执行完毕后调用
-`PBrowser_ScriptSessionDispatchPageLifecycle(session, "complete")`。Browser 按
-`readystatechange`、`DOMContentLoaded`、window/document `load` 的既有顺序
-更新 `document.readyState`，随后只派发一次 window `pageshow`。宿主若再次提交
-`complete` 不会重复这次初始事件。窗口重新可见时，宿主调用
-`PBrowser_ScriptSessionDispatchVisibility(session, 0)`；从可见变为隐藏先派发
-document `visibilitychange` 再派发 window `pagehide`，恢复可见时按同样边界派发
-`visibilitychange` 和一次 `pageshow`。相同的 hidden 值不会产生重复事件，所有
-这些有限 page event 的 `persisted` 都是 `false`，因为 Browser 不实现 bfcache。
-
-顶层窗口的激活状态也由宿主显式推进：每次收到 `WM_ACTIVATE` 时调用
-`PBrowser_ScriptSessionDispatchWindowFocus(session, focused)`，其中非零值表示
-激活、零表示停用。Browser 对输入值归一化，只在状态真正变化时更新
-`document.hasFocus()`，并同步派发一次可信、不可取消、不冒泡的 window `focus`
-或 `blur`；`window.onfocus`/`onblur` 和普通监听器都遵循同一顺序。新 session
-默认从 focused 开始，若宿主在非激活窗口中创建它，必须立即补发一次零值。这个
-入口只描述脚本可见的顶层窗口状态，不创建 HWND，也不代替宿主管理 native
-控件焦点、焦点矩形或跨窗口策略。
-
-跨文档候选准备提交时，宿主仍保留旧 document/session，先调用
-`PBrowser_ScriptSessionDispatchBeforeUnload`。Browser 同步派发当前 window 的
-cancelable、non-bubbling、trusted `beforeunload`，把 `preventDefault()`、非空
-`event.returnValue` 或 handler 的非空返回映射到 `out_prevented`；它不显示提示框、
-不执行导航或 teardown，提示策略由宿主决定，调用/解析失败按取消处理。
-
-只有 `beforeunload` 允许后，宿主才调用
-`PBrowser_ScriptSessionDispatchPageTeardown`；Browser 按既有生命周期顺序派发一次
-teardown 并清理脚本队列，宿主随后停止 native 回调、销毁控件/session，最后释放旧 Core
-document。失败或取消的候选不得 teardown；两个入口都不创建线程或访问 HWND。
-
-## 典型 Core 组合
-
-一个浏览器宿主通常：
-
-1. 用 `positron_core.dll` 创建、style、layout 文档，构造 callback context 并注册所需的
-   DOM/Event/form/navigation 与可选焦点、资源状态表，再显式 bootstrap；
-2. 把 WM/native 输入转换为 Browser typed transaction；默认动作获准后才调用 Core/native
-   mutation，并在 mutation、overflow scroll 或 viewport 变化后重新 layout/paint；
-3. 通过 Core 的 document-space overflow API 与 Browser scroll callback 接线实际滚动，
-   由宿主负责 dirty rect、DPI、窗口和控件；
-4. 在 history/navigation 前后保存或读取 viewport snapshot，由宿主 clamp/apply；
-5. 候选提交先通过 Browser commit/teardown 门，再交换 document/session；失败候选保留旧页，
-   worker 收尾后释放所有 handle。
-
-## 所有权与错误
-
-History、script-session、navigation-resource 和 navigation-candidate handle 均由
-Browser 创建/销毁，不使用 `CloseHandle`；资源 URL/字节、candidate 状态和 history
-snapshot 也由 Browser 拥有。调用方需要副本时使用对应的 `Copy`/info API，并按每个
-`Create` 配对 `Destroy`。返回的字符串、event info、callback 输出和 relation 数据只在
-同步调用期间有效，不能保存指针；callback table 与 `pw` 必须活到 unregister 或 session
-destroy。所有 size-tagged 结构都要设置正确 `cbSize`，较小旧结构保持兼容，未知布局和
-`PBROWSER_OK` 之外的参数、容量、origin、状态、范围或方法错误应安全拒绝。
+Browser 不承诺完整 DOM/Web API、任意网站兼容性、完整 CSS Selectors、通用 Node/Fragment mutation、MutationObserver、完整 live collection、Range/Selection、bfcache、复杂滚动树、pinch zoom、transforms、完整媒体查询、CORS/绝对 URL 策略或 OEM 视觉。真实设备的字体、边距、触摸、SIP/IME、旋转、DPI、picker、失败网络和布局观感按 [`docs/TESTING.md`](../docs/TESTING.md) 人工验收。

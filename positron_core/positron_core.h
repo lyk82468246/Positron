@@ -455,15 +455,16 @@ PCORE_API int PCore_NodeSplitTextChildById(HANDLE hDoc,
 PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
         const char *parent_id, unsigned int child_index, const char *text);
 
-/* Normalize the direct child list of one addressed element. Empty Text
- * children are removed and adjacent Text children are merged into the first
- * non-empty Text node in each run; non-Text children are boundaries. The
- * operation is intentionally bounded to this element's direct children so a
- * caller can control recursive traversal and cache reconciliation. Returns 0
- * after normalization, 2 when the element is unavailable/non-element and 1
- * for invalid input or another DOM failure. A changed list invalidates
- * retained layout; callers must style/layout/paint again. No events,
- * resource fetches, reparenting or general live collection are provided. */
+/* Normalize the direct child list of one addressed element. Empty Text and
+ * CDATASection children are removed and adjacent Text/CDATA children are
+ * merged into the first non-empty node in each run; other children are
+ * boundaries. The operation is intentionally bounded to this element's
+ * direct children so a caller can control recursive traversal and cache
+ * reconciliation. Returns 0 after normalization, 2 when the element is
+ * unavailable/non-element and 1 for invalid input or another DOM failure. A
+ * changed list invalidates retained layout; callers must style/layout/paint
+ * again. No events, resource fetches, reparenting or general live collection
+ * are provided. */
 PCORE_API int PCore_NodeNormalizeById(HANDLE hDoc, const char *element_id);
 
 /* Remove one element child from one element parent. Both arguments are

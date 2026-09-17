@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1286
+#define TEST_MAX_NUMBER 1287
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54710,6 +54710,122 @@ static BOOL test1286_browser_document_fragment_character_data_contract(void)
             " alongside Text, preserves CharacterData identity and relations"
             " through clone/normalize, and materializes the roots through the"
             " Core creation callbacks without merging marker nodes.");
+    return TRUE;
+}
+
+/* TEST 1287 - Text/CDATA normalization keeps the first text-like wrapper. */
+static BOOL test1287_browser_cdata_normalize_contract(void)
+{
+    static const char CORE_HTML[] =
+        "<!doctype html><html><body><div id='text'>AB</div>"
+        "<div id='cdata'>B</div><div id='empty'>X</div>"
+        "<div id='boundary'>A<!--M-->B</div></body></html>";
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='cdata'><span id='tail'>T</span></div>"
+        "<div id='text'><span id='tail2'>U</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,cd=d.getElementById('cdata'),tx="
+        "d.getElementById('text'),tail=d.getElementById('tail'),tail2="
+        "d.getElementById('tail2'),c,empty,t,a,b,c2,f,fs,fc,fe,ok=true;"
+        "try{c=d.createCDATASection('C');empty=d.createCDATASection('');"
+        "t=d.createTextNode('T');cd.insertBefore(c,tail);cd.insertBefore(empty,tail);"
+        "cd.insertBefore(t,tail);cd.normalize();a=cd.childNodes;"
+        "ok=ok&&a.length===2&&a[0]===c&&c.nodeType===4&&c.data==='CT'&&"
+        "empty.parentNode===null&&t.parentNode===null&&a[1]===tail;"
+        "b=d.createTextNode('A');c2=d.createCDATASection('C');"
+        "a=d.createTextNode('B');tx.insertBefore(b,tail2);tx.insertBefore(c2,tail2);"
+        "tx.insertBefore(a,tail2);tx.normalize();fs=tx.childNodes;"
+        "ok=ok&&fs.length===2&&fs[0]===b&&b.nodeType===3&&b.data==='ACB'&&"
+        "c2.parentNode===null&&a.parentNode===null&&fs[1]===tail2;"
+        "f=d.createDocumentFragment();fc=d.createTextNode('A');"
+        "fe=d.createCDATASection('');f.append(fc,fe,d.createCDATASection('B'));"
+        "f.normalize();ok=ok&&f.childNodes.length===1&&f.firstChild===fc&&"
+        "fc.data==='AB'&&fe.parentNode===null;"
+        "f=d.createDocumentFragment();c=d.createCDATASection('C');"
+        "t=d.createTextNode('D');f.append(c,d.createCDATASection(''),t);"
+        "f.normalize();ok=ok&&f.childNodes.length===1&&f.firstChild===c&&"
+        "c.nodeType===4&&c.data==='CD'&&t.parentNode===null;"
+        "}catch(e){ok=false;}d.getElementById('result').textContent=String(ok);})();";
+    HANDLE document;
+    char value[128];
+    char error[768];
+    int bytes;
+    int count;
+    int type;
+    int rc;
+    BOOL core_ok;
+    BOOL script_ok;
+
+    document = NULL;
+    memset(value, 0, sizeof(value));
+    memset(error, 0, sizeof(error));
+    bytes = -1;
+    count = -1;
+    type = -1;
+    core_ok = FALSE;
+    document = PCore_ParseHTML(CORE_HTML, sizeof(CORE_HTML) - 1);
+    if (document != NULL &&
+            PCore_NodeSplitTextChildById(document, "text", 0, 1) == 0 &&
+            PCore_NodeCreateCDATAChildAtById(document, "text", 1, "C") == 0 &&
+            PCore_NodeNormalizeById(document, "text") == 0 &&
+            PCore_NodeRelationById(document, "text",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 1 &&
+            PCore_NodeRelationById(document, "text",
+            PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 0, NULL, 0, NULL,
+            &type) == 0 && type == 3 &&
+            PCore_NodeRelationById(document, "text",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 0, value,
+            sizeof(value), &bytes, NULL) == 0 && strcmp(value, "ACB") == 0 &&
+            PCore_NodeCreateCDATAChildAtById(document, "cdata", 0, "C") == 0 &&
+            PCore_NodeNormalizeById(document, "cdata") == 0 &&
+            PCore_NodeRelationById(document, "cdata",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 1 &&
+            PCore_NodeRelationById(document, "cdata",
+            PCORE_NODE_RELATION_CHILD_NODE_TYPE_AT, 0, NULL, 0, NULL,
+            &type) == 0 && type == 4 &&
+            PCore_NodeRelationById(document, "cdata",
+            PCORE_NODE_RELATION_CHILD_NODE_VALUE_AT, 0, value,
+            sizeof(value), &bytes, NULL) == 0 && strcmp(value, "CB") == 0 &&
+            PCore_NodeCreateCDATAChildAtById(document, "empty", 1, "") == 0 &&
+            PCore_NodeNormalizeById(document, "empty") == 0 &&
+            PCore_NodeRelationById(document, "empty",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 1 &&
+            PCore_NodeCreateCDATAChildAtById(document, "boundary", 1, "") == 0 &&
+            PCore_NodeNormalizeById(document, "boundary") == 0 &&
+            PCore_NodeRelationById(document, "boundary",
+            PCORE_NODE_RELATION_CHILD_NODE_COUNT, 0, NULL, 0, NULL,
+            &count) == 0 && count == 3 &&
+            PCore_NodeNormalizeById(document, "missing") == 2) {
+        core_ok = TRUE;
+    }
+    rc = core_ok ? 0 : 1;
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    script_ok = test_browser_raw_string_fixture_at_url(
+            "http://positron.local/cdata-normalize", HTML, PROBE, "true",
+            error, sizeof(error));
+    if (!core_ok || !script_ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "core=%d script=%d rc=%d value=%s bytes=%d count=%d type=%d",
+                    core_ok, script_ok, rc, value[0] != '\0' ? value : "(null)",
+                    bytes, count, type);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1287 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1287 OK",
+            "Node.normalize now treats Text and CDATASection as one bounded"
+            " text run in Core, live Browser Elements and DocumentFragment"
+            " staging, preserving the first non-empty node and removing"
+            " empty/merged siblings without crossing comment boundaries.");
     return TRUE;
 }
 
@@ -113014,6 +113130,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1284: ok = test1284_browser_create_cdata_contract(); break;
         case 1285: ok = test1285_browser_cdata_text_contract(); break;
         case 1286: ok = test1286_browser_document_fragment_character_data_contract(); break;
+        case 1287: ok = test1287_browser_cdata_normalize_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -1,579 +1,69 @@
 # `positron_core.dll`
 
-`positron_core.dll` 是 Positron 的 HTML/CSS/DOM/layout/paint 产品边界。它把移植后的 NetSurf、libdom、libcss、hubbub 和图像适配隐藏在 UTF-8、opaque `HANDLE` 的公共 C ABI 后。
-
-Core 不创建窗口、不运行消息循环、不连接网络，也不执行 JavaScript。应用只应链接公共 import library，不应直接包含 NetSurf/libdom/libcss 头或依赖内部静态库符号。
+`positron_core.dll` 是 Positron 的文档、样式、布局、命中、资源和有界 DOM mutation 层。它适用于 Windows Mobile 6 / Windows CE 5.2 ARMV4I，使用稳定 C ABI、UTF-8、opaque document handle 和明确错误码。Core 不创建窗口、不执行页面脚本、不派发 Browser 事件，也不直接访问网络。
 
 ## 产物与依赖
 
-- 工程：`positron_core.vcproj`
-- 公共头：`positron_core.h`
-- 输出：`bin\<Configuration>\positron_core.dll` 与 import library
-- 内部静态依赖：hubbub、NetSurf support、libcss、libdom、image adapter
-- 运行时产品依赖：`positron_image.dll`
-- 可选组合：宿主用 `positron_http.dll` 实现 Core 的 fetch/resolve callbacks
-
-其他项目链接 `positron_core.lib`，部署 Core、Image 及应用实际使用的其他 DLL。
+正式工程输出 `positron_core.dll` 与 import library。调用方只包含 `positron_core.h`，通过公开 relation、mutation、layout、resource 和 interaction API 读取/更新文档。NetSurf、libcss、libdom、hubbub、libsvgtiny 和 libjpeg 是内部静态实现，外部应用不应直接链接。
 
 ## 最小调用流程
 
 ```c
-#include "positron_core.h"
+HANDLE document;
 
-HANDLE doc;
-HANDLE sheet;
-
-if (PCore_Init() != 0) {
-    return 1;
+document = PCore_ParseHTML(utf8_html, utf8_length);
+if (document != NULL) {
+    PCore_Style(document, viewport_width, viewport_height);
+    PCore_Layout(document);
+    /* read relations, paint/hit-test, or call bounded mutations */
+    PCore_FreeDocument(document);
 }
-
-doc = PCore_ParseHTML(html_utf8, html_bytes);
-sheet = PCore_ParseCSS(css_utf8, css_bytes, page_url_utf8);
-if (doc != NULL && sheet != NULL &&
-        PCore_StyleDocument(doc, sheet) == 0 &&
-        PCore_LayoutDocument(doc, viewport_w, viewport_h) == 0) {
-    PCore_PaintDocument(doc, hdc, scroll_x, scroll_y);
-}
-
-PCore_FreeStylesheet(sheet);
-PCore_FreeDocument(doc);
-PCore_Shutdown();
 ```
 
-DOM 或控件状态改变后，调用方负责重新执行所需的 style/layout，再 paint。HDC、page-level viewport 和失效区域属于宿主；支持的嵌套 overflow 元素滚动位置由 Core retained，宿主通过公开 API 接线到窗口和脚本。
+实际宿主通常在 parse 后提供资源结果、style/layout 尺寸、GDI paint 和 pointer/focus 输入，再把 Core relation 结果转给 Browser。失败路径必须释放 handle，不把 libdom 指针泄漏到 ABI。
 
-布局成功后，`PCore_DocumentWidth` 和 `PCore_DocumentHeight` 返回最近一次 layout 的 page-level extent。宽度和高度包含页面内容溢出 viewport 的部分，至少不小于传入的 viewport；宿主据此决定页面级滚动条、把 `(scroll_x, scroll_y)` clamp 到 client area，并把相同坐标传给 paint、命中测试和 native child 定位。对带有效 DOM `id` 的常见 block/replaced/flex box，Core 还保留 CSS `overflow` 滚动条及其位置：宿主可用 `PCore_NodeOverflowScrollToById` 设置并读取两个轴，也可用 `PCore_OverflowPointer` 转发文档坐标指针和 `PCore_OverflowScrollSnapshot` 取得最近的目标与位置。Core 不创建窗口；Browser/宿主负责把这些状态映射为脚本属性、事件和 WM 重绘。
+## 解析、样式与资源
 
-## 资源获取
+Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页面 extent、常见 block/inline/flex/table/replaced layout、命中和 GDI paint。资源发现与 cache 由 Core 维护有界状态；宿主负责 DNS/TCP/TLS/HTTP、worker、取消、重试和把成功/失败结果提交回 Core。
 
-真实页面通常使用 `PCore_StyleDocumentEx2`：
+`img`、`srcset` 和 `picture/source` 只支持头文件规定的候选、URL、祖先、source、节点和 `sizes` 预算。Core 可投影 `naturalWidth`、`naturalHeight`、`complete`、`currentSrc`、image-map 几何和 area link metadata，但 relation 查询不会自行 fetch、decode 或 layout。CORS、完整媒体查询、绝对 URL、loading 策略和图像事件由上层决定。
 
-- resolver 把 stylesheet、`@import` 和 `url()` reference 与 owning base URL 合并；
-- fetch 返回临时资源字节；
-- Core 在同步 callback 返回前复制需要保留的数据；
-- Core 随后调用配对 free callback；
-- 同一文档的成功资源进入有界 cache，重排可复用而不重新联网。
+布局 relation 提供 page width/height、元素 border/client/scroll 尺寸、有限 inline fragments、overflow retained scroll 和几何快照。relation 是最近一次 layout 的只读 snapshot；查询不会触发 reflow，mutation 成功后会使 retained layout 失效，调用方必须重新 style/layout/paint。
 
-图片和 script discovery 使用对应的 fetch/enumeration API。Core 只负责发现、缓存和解释，不调度 worker、不拥有 HTTP response，也不执行 script。网络失败应由宿主分类和记录。
+## DOM 与关系 bridge
 
-图片发现会在当前文档 cache 中记住按 URL 的终态失败，因此同一文档的后续扫描不会
-自动反复请求已失败的图片；该失败状态只用于 fail-closed 的 `complete`/自然尺寸投影，
-不会把失败字节或解码对象暴露给调用方。宿主若要重试，应建立新的文档或明确控制自己的
-资源事务，而不是依赖 relation 查询触发网络副作用。
+常用 relation 包括 Element/attribute、未过滤 `childNodes`、节点类型和值、HTML serialization、form owner/effective-disabled、option default-selected、焦点和交互状态。关系读取支持 size-probe 和容量检查，缺失目标、过小 buffer、非法 UTF-8、越界 child index 和 stale document 都安全失败。
 
-`<img srcset>` 的资源选择也由 Core 统一负责。当前实现接受最多 16 个、URL 不超过
-2047 字节的同类候选，以当前 `PCore_SetViewport`/`PCore_SetDeviceViewport` 提供的 DPI
-选择最小的足够来源；`x` 描述符按密度选择，`w` 描述符按 `sizes` 的源尺寸选择，缺失
-或不支持的 `sizes` 按 100vw。`sizes` 仅支持 px/vw/vh 和单一
-`(min-width|max-width: <length>)` 条件。混合/畸形候选和不支持的 URL 语法不会替换 `src`。
-同一个选择结果驱动图片发现、缓存、解码、
-  布局自然尺寸、`complete` 以及关系 49 的 `currentSrc`；relation 查询仍然是只读的，
-不会触发 fetch、decode 或 layout。宿主应在资源扫描和布局前设置 viewport；若候选或
-`src` 超出边界，Core 会安全回退或不发起该请求。
+Core 维护 form owner、validation、successful-control、reset、submission 和 modal paint 的产品语义。`form="id"` 的跨树 owner、fieldset first-legend exemption、optgroup→option disabled 继承和 option live/default-selected 状态由同一 Core 状态提供给 Browser，不在宿主复制。
 
-`<picture>` 中的 `<source>` 也由同一选择器处理。Core 最多扫描最近 picture 的 16 层
-祖先、8 个 preceding source 和 64 个 direct-child 节点；按文档顺序先过滤有界
-`media`/`type`，再按 source 的 `srcset`/`sizes` 选择，全部不合格时回到 `<img>` 自身
-的 `srcset`/`src`。这是针对 WM6 libdom 对省略 source 结束标签的有界兼容路径，不是完整
-媒体查询或任意 DOM 修复；未知 MIME、坏候选、超长 URL 和不支持的条件都会安全跳过。
+## 有界 DOM mutation
 
-## 能力分组
+所有 mutation 都在头文件声明的节点、深度、节点数、direct-child、UTF-8 和文本预算内执行，并在提交前完成预检。失败不留下部分树；成功保留 API 承诺的节点身份并使 retained layout 失效。Core 不派发 mutation 事件、不执行 script、不创建 native 控件、不暴露 fragment handle。
 
-### 解析、样式与布局
+主要入口包括：
 
-- HTML → libdom document；
-- CSS parse、UA/author cascade、media 条件与 inheritance；
-- `<style>`、外链 stylesheet、`@import` 和 inline style；
-- box construction、normalisation、layout、geometry、page-level scroll extent；
-- GDI paint、clip、文字、border、背景和 retained image carrier。
+- `PCore_NodeSetTextContentById`、`PCore_DocumentSetTitle`；
+- `PCore_NodeSetInnerHTMLById`、`PCore_NodeInsertAdjacentHTMLById`、`PCore_NodeSetOuterHTMLById`；
+- direct Element、Text、CharacterData 的 create/insert/replace/remove，以及有限的 child-list replacement；
+- `PCore_NodeSplitTextChildById`、`PCore_NodeReplaceWholeTextChildById`、`PCore_NodeNormalizeById`；
+- 表单 reset、validation、submission 和按 id 的 focus/autofocus/interaction primitives。
 
-Core 支持项目当前经过验证的 HTML/CSS 子集，但不是完整现代浏览器。具体缺口见已知限制。
+`PCore_NodeNormalizeById` 只整理一个 Element 的 direct children：删除空 Text/CDATA，并把连续 Text/CDATA 合并到首个非空节点。Element、Comment、processing-instruction 和其他节点都是边界。该实现使用显式 sibling walk，不依赖 WM6 上可能留下 stale cursor 的 libdom helper。
 
-### 查询与命中
+`PCore_NodeSplitTextChildById` 接受 Text/CDATA，以 UTF-16 code-unit offset 在 UTF-8 code-point 边界分割，并插入一个 Text suffix。`PCore_NodeReplaceWholeTextChildById` 保留目标节点身份，把相邻 Text/CDATA 段合并后移到段首并删除其他 CharacterData。三条路径都不扩展为通用 Node、Range 或 live collection。
 
-布局后可按坐标或 DOM id 查询链接、片段、控件、summary 和 box geometry。扩展查询把 href、target、rel 等 UTF-8 元数据复制到调用方缓冲；容量不足或 stale layout 会 fail closed。
+HTML parser mutation 接受 Element/Text/Comment/CDATA 的 bounded 子集；重复/冲突 id、结构 token、非法 UTF-8、超限输入和 context-sensitive parser 内容在 mutation 前 fail closed。Browser 负责 detached wrapper、snapshot 和后续重排。
 
-图像映射属于同一条 Core 命中路径：带 `usemap` 的已布局 `<img>` 会解析对应的
-`<map>`，按 DOM 顺序检查最多 64 个 `<area>`，支持 `default`、`rect`、`circle` 和
-`poly`/`polygon` 四种有界形状。坐标以图片自然尺寸为基准，按当前渲染宽高分别缩放并
-裁剪到图片边界；缺少 href、`nohref`、未知形状、坏坐标、空区域或超过 64 个坐标时
-安全忽略。映射区域优先于包围图片的 `<a>`，因此 `PCore_LinkAt`、`PCore_LinkAtEx`
-和 `PCore_LinkInfoById(Ex)` 返回 area 的链接/区域几何；`PCore_InteractionSetAt`
-和按坐标事件 dispatch 也以 area 作为 DOM target，沿 `<area> → <map> → ...` 的正常
-事件路径传播。图片加载使用上文的有界密度候选选择；image-map 不改变 CORS、绝对 URL
-策略或 native 图像绘制。固定上限和 malformed-input 回退是 WM6 资源预算的一部分。
+## 调用方所有权
 
-片段 token 按支持的 id/name 规则解析，但 history、URL percent-decoding、viewport scroll 和窗口副作用仍属于 Browser/宿主。
+Core document handle 的创建者负责销毁；输入字符串和输出 buffer 由调用方拥有，借用指针只在同步调用期间有效。size-probe 必须先返回所需字节数，容量不足不得部分改写。Core 不保存宿主 HWND、线程、response、脚本 value 或回调 buffer。
 
-### DOM 与关系 bridge
-
-`PCore_Node*ById` 提供有界 text、attribute、value、checked 和结构查询。
-`PCore_NodeTextContentById` 对没有文本的元素返回成功的零字节 UTF-8 snapshot，
-不会把 libdom 的空结果误判为 getter 失败。关系 API 覆盖：
-
-- `PCore_DocumentTitle` 读取首个直接位于 `head` 下的 `<title>` 文本，按 UTF-8
-  size-probe/truncation 合同返回；没有可用的 head/title 时是成功的空 snapshot。
-  `PCore_DocumentSetTitle` 接受最多 `PCORE_DOCUMENT_TITLE_MAX_BYTES` 个有效 UTF-8
-  字节，替换首个 title 或在现有 head 下创建一个 title，并使 retained layout 失效。
-  这两个入口不把 title 伪装成 id，也不派发事件、执行脚本或抓取资源；缺失 head、
-  非法输入和 DOM 失败分别沿既有 `2`/`3`/`1` 错误码返回。
-
-- parent/child/sibling 与结构 root tokens；
-- element attributes 与 childNodes snapshot；
-- direct Text/CDATA child 的 `PCORE_NODE_RELATION_CHILD_NODE_WHOLE_TEXT`（关系 50）读取：Core
-  按 Text/CDATA 逻辑相邻遍历，按 UTF-8 probe/truncation 合同返回 `wholeText`；元素、
-  Comment、processing-instruction、缺失和越界 child 返回 unavailable。该读取
-  不合并节点、不改变 child list、不触发 layout 或资源 I/O；
-- `PCORE_NODE_RELATION_ELEMENT_INNER_HTML`/`PCORE_NODE_RELATION_ELEMENT_OUTER_HTML`（关系
-  51/52）为带 id 的 Element
-  提供只读、有界 HTML 序列化。Core 直接遍历完整 libdom 子树，涵盖无 id 后代并转义
-  文本/属性；预算为 256 节点、64 层、64 个 direct child/attribute、16,384 个字节。
-  查询不触发 mutation、事件、资源或 layout；clone snapshot 和 DocumentFragment
-  仍不属于该 ABI。
-- `PCore_NodeSetInnerHTMLById(hDoc, element_id, html)` 是同一 DOM 边界的 parser-backed
-  setter。Core 在同一 document 中以 UTF-8 fragment parser 预检并替换目标 Element 的
-  direct children；输入最多 16,384 字节，fragment 最多 256 节点、64 层、每个元素 64 个
-  direct child。只接受 Element/Text/Comment/CDATA；重复 id、与替换子树外冲突的 id、
-  非法 UTF-8、未知节点或超限输入在 mutation 前返回 `3`，目标缺失或 document/head/body
-  结构目标返回 `2`，其他 parser/DOM 失败返回 `1`。成功返回 `0`、保持目标身份并使
-  retained layout 失效；Core 不执行 script、不获取资源、不派发事件，调用方必须重新
-  style/layout/paint。
-- `PCore_NodeInsertAdjacentHTMLById(hDoc, element_id, position, html)` 复用同一
-  parser，在 `BEFORE_BEGIN`、`AFTER_BEGIN`、`BEFORE_END` 或 `AFTER_END` 位置插入片段。
-  预算、节点类型、UTF-8 和 id 冲突规则与 setter 相同；成功返回 `0` 并保持目标/既有
-  子节点身份，结构/位置不可用返回 `2`，非法或超限输入返回 `3`，其他 DOM 失败返回
-  `1`。成功后 retained layout 失效；不执行 script、不获取资源、不派发事件。
-- `PCore_NodeSetOuterHTMLById(hDoc, element_id, html)` 是同一 parser 边界的元素替换
-  setter。Core 预检并原子替换目标 Element 本身：输入必须产生一个 Element 根，且不能是
-  `html`/`head`/`body`；空字符串表示移除目标。输入最多 16,384 字节，节点、深度和 direct
-  child 预算与上面相同；重复 id、与目标子树外冲突的 id、非法 UTF-8、顶层文本/Comment、
-  多根或超限输入在 mutation 前返回 `3`，目标、父级或结构不可用返回 `2`，其他 parser/DOM
-  失败返回 `1`。成功返回 `0`，新根占据原父级和 childNodes 索引，旧目标及后代变为 detached，
-  retained layout 失效；不执行 script、不获取资源、不派发事件，调用方必须重新
-  style/layout/paint。
-- `PCore_NodeReplaceChildrenWithTextListById` 是 Element 子节点列表的有界原子替换入口：
-  Core 在同一 document fragment 中先创建 0–4 个 UTF-8 Text，再把旧 direct children
-  暂存后一次提交；输入总字节数最多 16,384，目标缺失或 document/head/body 结构 token
-  返回 `2`，非法 UTF-8、空指针、列表或字节超限返回 `3`，其他 DOM/分配失败返回 `1`。
-  成功返回 `0`、保持目标 Element 身份并使 retained layout 失效；失败恢复旧子树，不
-  reparent existing node、派发事件、执行资源或暴露 fragment handle。
-- `PCore_NodeReplaceChildrenWithMixedListById` 是同一目标的 mixed 变体。调用方传入 0–4
-  个 `PCoreNodeReplaceChildrenItem`：每项是 UTF-8 primitive Text，或目标当前已连接的
-  direct Element。Core 只接受同一父级、非自身、无重复的 existing element，先暂存全部
-  direct children，再按列表顺序一次性装配；失败恢复原树，成功保留被选 element 及其后代
-  identity 并使 retained layout 失效。总文本最多 16,384 UTF-8 字节；跨父、CharacterData、
-  fragment、结构 token、非法/超限输入沿用 fail-closed 错误码，不派发事件、不执行资源、
-  不暴露 fragment handle。
-- `PCore_NodeReplaceChildrenWithNodeListById` 是 Ex15 的 node-aware 变体。调用方传入 0–4
-  个 `PCoreNodeReplaceChildrenNodeItem`：除 primitive Text 和 direct Element 外，还可按
-  替换前的未过滤 `childNodes` 索引及节点类型 3/4/8 选择同一目标的 Text、Comment 或
-  CDATA。Core 先验证父级、类型、重复和 16,384 字节总预算，再暂存旧 direct children
-  并一次性装配；失败恢复原树，成功保留选中节点 identity、使 retained layout 失效。该
-  ABI 不暴露 fragment 或事件/资源副作用，结构 token、跨父/越界/错类型、非法项和超限
-  输入继续按既有错误码 fail closed。
-- Core 没有 `createTextNode()` 或 detached-node handle；该语义由 Browser 持有。Browser
-  创建的 detached Text 在真正进入 live Element 时复用既有
-  `PCore_NodeInsertTextChildById`/`PCore_NodeInsertCharacterDataChildAtById`，数据更新复用
-  `PCore_NodeSetTextChildById`，移除复用 `PCore_NodeRemoveTextChildById`。这些入口仍只
-  操作 Core DOM、按既有容量/错误码提交并使 retained layout 失效，不保存脚本 wrapper、
-  不暴露 fragment，也不改变公共 ABI。
-- `PCore_NodeCreateElementChildAtById(hDoc, parent_id, tag_name, element_id,
-  child_index)` 是 Browser detached Element 的唯一 Core 物化入口。它要求可寻址的已连接
-  Element（包括 `body`）、非空且全局唯一的 UTF-8 `element_id`，按未过滤 `childNodes`
-  索引创建并插入一个只有 `id` 属性、没有子节点的 Element；`child_index` 等于当前
-  child count 时追加。`tag_name` 最多 32 个字节，id 最多 255 个字节；空值、重复 id、
-  结构 token、不可用父级/索引和非法 DOM 名称 fail closed。返回 `0` 表示成功，`2` 表示
-  目标/名称/索引不可用，`3` 表示非法 UTF-8 或超出边界，`1` 表示其他 DOM/分配失败。
-  成功会使 retained layout 失效，调用方必须重新 style/layout/paint；Core 不保存 detached
-  handle，不创建子节点/其他属性，不派发事件、不执行 script、不抓取资源，也不暴露
-  DocumentFragment。Browser 后续通过既有 attribute/Text callbacks 填充有界状态。
-- `PCore_NodeCreateCommentChildAtById(hDoc, parent_id, child_index, data)` 是 Browser
-  detached Comment 进入 live DOM 的唯一 Core 物化入口。它只接受可寻址且已连接的
-  Element（包括 `body`）和未过滤 `childNodes` 插入索引；`data` 是借用的 UTF-8 文本，
-  最多 65,535 个字节。Core 直接创建并插入 `nodeType=8` 的 Comment，成功返回 `0` 并
-  使 retained layout 失效；目标/索引不可用返回 `2`，空值、非法 UTF-8 或超限返回 `3`，
-  其他 DOM/分配失败返回 `1`。该入口不保存 detached handle、不派发事件、不执行 script、
-  不抓取资源，也不暴露 Fragment；Browser 负责 detached wrapper、后续 data mutation、
-  remove/reinsert 和 identity。
-- `PCore_NodeCreateCDATAChildAtById(hDoc, parent_id, child_index, data)` 是 Browser
-  detached CDATASection 进入 live DOM 的唯一 Core 物化入口。它沿用 Comment 的已连接
-  Element、未过滤 `childNodes` 索引、UTF-8/65,535 字节和返回码合同，直接创建
-  `nodeType=4`，成功后使 retained layout 失效；不保存 detached handle、不派发事件、
-  不执行脚本、不抓取资源，也不暴露 Fragment。Browser 通过 DOM write Ex14 负责 wrapper、
-  数据、relative、remove/reinsert 和 identity。
-- Browser 的 text-only 与 bounded Element/Text/Comment/CDATA `DocumentFragment` staging 均不暴露
-  Core fragment ABI：Browser 只把最多四个 primitive UTF-8 Text 值或满足结构约束的序列化
-  Element/Text 根交给既有 text-list/HTML parser 原子入口，Comment/CDATA 根则调用既有
-  `PCore_NodeCreateCommentChildAtById`/`PCore_NodeCreateCDATAChildAtById` callback。fragment 只在成功消费后清空；
-  Browser-owned `cloneNode(false/true)` 也只复制 detached staging，不创建 Core handle。
-  existing node、nested fragment、超出结构边界的 mixed clone、HTML parser context 和
-  mutation 事件仍不属于 Core ABI。
-- form owner、form controls 和 label/control。支持的 input、select、textarea、button、
-  fieldset、img、object 和 output 元素会按最近祖先 form 归属；存在 `form="id"` 时改为解析文档中
-  对应的 form，空值或无效目标没有 owner，也不回退到祖先。`form.elements` 关系按文档
-  顺序包含这些有 id 的 listed form-associated 元素（包括跨树显式关联的 fieldset/object/output），仍是
-  每次查询生成的有界 snapshot。Core 的 validation、successful control/multipart、
-  dialog/default-submit 和原生激活路径复用 input/select/textarea/button 的 owner 解析；
-  reset 另对 output 运行独立的默认值恢复 visitor，因此跨树元素不会只在 Browser 关系查询
-  中出现；
-- FORM_OWNER 同样解析 `fieldset`/`img`/`object`/`output` 的祖先或显式 `form="id"` owner。
-  fieldset/object/output 会出现在 `form.elements`，img 仅提供 owner，不进入集合；这些元素
-  都不会进入 successful-control 或提交 visitor。Browser 可在此基础上提供 `fieldset.form`、
-  `img.form`、`output.form` 与 fieldset 的独立子树控件 snapshot。output 的
-  `value`/`defaultValue` 由 Core 保存 live text 与 default override；
-  `PCore_FormResetById` 恢复该默认并清除 override，但仍不把 output 变成提交字段；
-- form-control 的 effective-disabled relation（关系 44）：input、button、select、
-  textarea、option 和 optgroup 返回 UTF-8 `"0"`/`"1"`，并统一 disabled fieldset 的
-  first-legend exemption 与 optgroup→option 继承；fieldset 自身及其他元素返回
-  unavailable。该 relation 是只读 size-probe 快照，不触发 layout；
-- option default-selected relation（关系 45）：仅对 `option` 返回数值 `1`/`0`，表示
-  parser/default-selected 状态而不是 live `selected` 状态；其他元素返回 unavailable，
-  查询同样不触发 layout；
-- image resource state relations（关系 46–49）：仅对 `img` 返回
-  `naturalWidth`、`naturalHeight`、`complete` 和 Core 当前选定的 `currentSrc`。
-  Core 从当前文档的 image cache 读取前三项，不在 relation 查询中 fetch、decode 或
-  layout；没有 `src`/`srcset` 的图片立即 complete 且自然尺寸为 0，无法选出候选且
-  没有 `src` 的非空 `srcset` 保持 incomplete，成功资源要等 retained decode attempt
-  后才暴露自然尺寸，终态 fetch failure 则 complete 且尺寸为 0。关系 49 与图片发现、
-  布局共用 `<img>` 与 `<picture><source>` 的选择结果：每个 source 最多扫描 16 层祖先、
-  8 个 source 和 64 个 direct-child 节点，再在 source 的 media/type 通过后使用最多
-  16 个同类 `x`/`w` 候选；`sizes` 的支持范围是 px/vw/vh 和单一 min/max-width 条件，
-  畸形候选和超长 URL 安全回退或不可用。该桥不实现 CORS、
-  `decode()` 或事件；非 `img` 目标返回 unavailable；
-- script/runtime 所需的有限 element metadata。
-
-`PCore_NodeRemoveChildById` 是 Core 拥有的有界 DOM mutation：它按 UTF-8 id 删除一个
-element parent 的一个 direct element child，并拒绝缺失目标、非 direct pair、文本节点和
-document/head/body 等结构 child token。成功后会丢弃 retained box tree；调用方必须重新
-执行 style/layout/paint，并重新取得几何和 native-control 快照。该入口不派发事件、不做
-资源获取或 native 控件操作，返回 `0` 表示成功、`2` 表示目标或关系不可删除、`1` 表示
-参数或 DOM 失败。Browser 的 `Element.removeChild()`/`remove()` 复用这个入口；该删除
-入口不处理 Text/Comment/CDATA、DocumentFragment 或其他节点类型。
-
-`PCore_NodeInsertChildById` 是与删除路径配套的有界已有元素插入：它按 UTF-8 id 将一个
-已连接的 element child 放到目标 element 的指定 direct element child 之前，传入 `NULL`
-则追加到末尾。Core 允许同一父级重排和跨 element 父级迁移，但拒绝 document/head/body
-结构 token、Text/Comment/CDATA、DocumentFragment、detached 节点、错误 reference parent
-和层级环。返回 `0` 表示成功（把节点插到自身之前的合法 no-op 也不改变 DOM），`2` 表示
-目标或关系不可用，`1` 表示参数或其他 DOM 失败；成功后 retained box tree 失效，调用方
-必须重新 style/layout/paint。该入口不派发事件、不获取资源、不操作 native 控件，也不提供
-live collection。
-
-`PCore_NodeInsertElementChildAtById` 是同一边界的未过滤位置变体：它按 `childNodes`
-索引把一个已连接的 element child 插入目标 element，索引等于当前 child count 时追加，
-因此 reference 可以是 Text、Comment、CDATA 或没有 id 的 element。Core 允许同父级重排
-和跨父级迁移，拒绝 document/head/body 结构 child token、detached 节点、越界索引和层级环。
-返回码和 retained-layout 失效规则与 `PCore_NodeInsertChildById` 相同；该入口不派发事件、
-不获取资源、不操作 native 控件，也不提供 live collection。
-
-`PCore_NodeReplaceElementChildById` 是替换路径的有界补充：它按 `parent_id` 的 direct
-child 关系，用同一文档中另一个已连接的 element 替换 `old_child_id`；新 element 可以来自
-另一个父级或同一父级的其他位置。成功返回 `0`（新旧 id 相同是合法 no-op），目标、关系、
-节点类型或层级不可用返回 `2`，参数或其他 DOM 失败返回 `1`。成功会使 retained box tree
-失效，调用方必须重新 style/layout/paint；Core 不派发事件、不获取资源、不操作 native
-控件。Text/Comment/CDATA、DocumentFragment、detached 节点和 live collection 不在该
-公共入口内。
-
-`PCore_NodeReplaceElementChildWithTextById` 是 primitive `Element.replaceWith(value)` 的
-有界 Core 入口：它按 `parent_id`/`old_child_id` 的 direct element-child 关系，在旧节点的
-未过滤 `childNodes` 位置创建一个新的 UTF-8 Text，并令旧 element detached。成功返回 `0`
-并使 retained box tree 失效；缺失 parent/child、非 element、非 direct child 或结构关系不可
-用返回 `2`，参数、非法 UTF-8 或其他 DOM 失败返回 `1`。该入口不 reparent、不派发事件、
-不操作 native 控件，也不提供 DocumentFragment、Comment/CDATA 或 live collection；调用方
-必须在成功后重新 style/layout/paint。
-
-`PCore_NodeReplaceElementChildWithTextListById` 是同一语义的有界多值入口：`texts` 是调用方
-借用的 1–4 个合法 UTF-8 字符串，Core 先在 document fragment 中完整创建 Text，再以一次
-replace 操作替换 direct element child，因此校验或分配失败不会留下部分 mutation。成功返回 `0`
-并使 retained box tree 失效；关系/节点类型不可用返回 `2`，空列表、超限、非法 UTF-8 或
-其他 DOM 失败返回 `1`。它不 reparent、派发事件或暴露 fragment；调用方在成功后必须重新
-取得 snapshot 并执行 style/layout/paint。
-
-`PCore_NodeInsertTextChildById` 是一个互补的结构 mutation 窄入口：它按父元素 UTF-8
-id 和未过滤的 `childNodes` 索引创建一个新的 Text 子节点，索引等于当前 child count
-时追加到末尾，既不复用也不 reparent 已有节点。成功返回 `0` 并使 retained box tree
-失效；父节点或索引不可用返回 `2`，参数、非法 UTF-8 或其他 DOM 失败返回 `1`。该
-入口只改变 Core DOM，不派发事件、不获取资源、不操作 native 控件；调用方必须重新
-style/layout/paint，并重新取得几何和控件快照。它不提供通用 Node/DocumentFragment
-插入、已有节点 reparent、其他节点删除或 live collection。
-
-`PCore_NodeInsertTextChildListById` 是同一位置合同的原子列表变体：`texts` 是调用方
-借用的 1–4 个合法 UTF-8 字符串，Core 先在 document fragment 中创建完整 Text 列表，
-再以一次 `childNodes` 插入提交，因此校验或分配失败不会留下部分 mutation。成功返回
-`0` 并使 retained box tree 失效；父节点/索引不可用返回 `2`，空列表、超限、非法 UTF-8
-或其他 DOM 失败返回 `1`。它不复用已有节点、不派发事件或暴露 fragment；调用方成功后
-必须重新取得 snapshot 并执行 style/layout/paint。
-
-`PCore_NodeReplaceCharacterDataChildWithTextListById` 按父元素 id、未过滤的
-`childNodes` 索引和节点类型 3（Text）、4（CDATA）或 8（Comment）定位 direct child，
-接受 1–4 个借用 UTF-8 字符串，在 fragment 中完整创建 Text 后一次性替换。返回 `0` 表示
-成功并使 retained layout 失效，`2` 表示目标/关系不可用，`1` 表示参数、类型、UTF-8、
-容量或 DOM 失败；它不派发事件、不 reparent、不暴露 fragment。Browser 的 Ex9 callback
-负责 detached wrapper 与 snapshot reconciliation，其他应用只需在成功后重新 style/layout/paint。
-
-`PCore_NodeInsertCharacterDataChildAtById` 是 Ex10 的已有 CharacterData 移动入口：按源/目标
-父元素 id、未过滤 `childNodes` 索引和节点类型 3、4 或 8，将同一文档中已连接的 Text/CDATA/
-Comment 移到目标索引；目标索引等于 child count 时追加，同父级移到自身前不改变结果。成功
-返回 `0` 并使 retained layout 失效，目标/关系/类型不可用返回 `2`，参数或其他 DOM 失败返回
-`1`。它保留节点身份，不派发事件、不获取资源、不操作 native 控件，也不提供 fragment、
-observer 或 live collection；Browser 应在成功后刷新相关 snapshot 并重新 style/layout/paint。
-
-`PCore_NodeReplaceCharacterDataChildById` 是 Ex11 的现有节点替换入口：按 target/source 父元素
-id、未过滤 `childNodes` 索引和显式节点类型，用同一文档中已连接的 Text/CDATA/Comment 替换
-目标 direct child；同节点是 no-op，跨父操作保留新节点身份。成功返回 `0` 并使 retained layout
-失效，关系、类型或索引不可用返回 `2`，参数或其他 DOM 失败返回 `1`。它不创建 fragment、
-派发事件或操作 native 控件；调用方必须刷新两侧 snapshot 并重新 style/layout/paint。
-
-`PCore_NodeReplaceElementChildWithCharacterDataById` 是 Ex12 的互补入口：按 target/source
-父元素 id、old element 子节点 id、source 未过滤 `childNodes` 索引和显式节点类型，把同一
-文档中已连接的 Text/CDATA/Comment 移到目标 element child 的位置，并使旧 element detached。
-同父重排与跨父迁移都保留新 CharacterData 的身份；成功返回 `0` 并使 retained layout 失效，
-父级、direct-child 关系、类型或索引不可用返回 `2`，参数或其他 DOM 失败返回 `1`。它不
-创建 fragment、派发事件或操作 native 控件；调用方必须刷新两侧 snapshot 并重新
-style/layout/paint。DocumentFragment、通用节点替换和 live collection 仍不在该 ABI 内。
-
-`PCore_NodeRemoveTextChildById` 提供与插入互补的 Text-only 删除：调用方按父元素 UTF-8
-id 和未过滤的 `childNodes` 索引指定一个现有 direct Text child，Core 删除该节点并使
-retained box tree 失效。成功返回 `0`；父节点、索引或节点类型不可用返回 `2`；参数或
-其他 DOM 失败返回 `1`。该旧入口不派发事件、不获取资源、不操作 native 控件，且继续
-保持原 ABI。Browser 的 `Text.remove()` 与 `Element.removeChild(Text)` 只复用这条窄路径，
-前者对 detached wrapper 是 no-op，后者的 receiver/child 关系校验和 detached wrapper
-生命周期由 Browser 负责。
-
-`PCore_NodeRemoveCharacterDataChildById` 在同一 direct-child 边界补充带显式节点类型的
-删除：`node_type` 只能是 DOM 值 3（Text）、4（CDATA）或 8（Comment），Core 会再次核对
-索引处 child 的实际类型，避免把错误节点删除。返回码、retained-layout 失效、无事件/资源/
-native 控件副作用与 Text-only 入口一致；它仍不提供通用 Node/DocumentFragment 删除、
-reparent、live collection 或其他节点类型。成功后调用方必须重新 style/layout/paint；Browser
-通过 mutation callback Ex3 将 Comment/CDATA wrapper 的 `remove()` 与
-`Element.removeChild()` 转给该入口。
-
-`PCore_NodeSetTextContentById` 与 `PCore_ContentEditableSetTextById` 在成功替换子内容
-后同样丢弃 retained box tree。它们仍然只改变 Core DOM，不派发事件、不获取资源，也不
-操作 native 控件；Browser/宿主负责 beforeinput/input 策略、更新脚本 snapshot，并重新
-style/layout/paint。Core 只把新的纯文本作为一个子节点写入文档，失败时不作部分提交。
-
-`PCore_NodeSetTextChildById` 是不改变 child list 的有界 Text mutation：调用方提供父元素
-的 UTF-8 id 和未过滤的 `childNodes` 索引，Core 只接受 `DOM_TEXT_NODE`，因此不会把 element、
-comment 或越界索引误写成文本。成功返回 `0` 并使 retained layout 失效；父节点/索引不可用
-或目标不是 Text 返回 `2`，参数或 DOM 失败返回 `1`。该入口不插入、删除或 reparent 节点，
-不派发事件、不获取资源，也不刷新任何 Browser snapshot；宿主应在成功后安排正常的
-style/layout/paint。Browser 的 `Text.nodeValue`、`Text.data` 和 `Text.textContent` setter
-通过 typed callback 复用这一入口，旧的 detached wrapper 保留最近一次成功的字符串，之后
-的写入安全失败。Browser 的 `appendData()`、`insertData()`、`deleteData()` 和
-`replaceData()` 也先在脚本侧按 UTF-16 code-unit 计算新字符串，再复用同一个入口；Core
-仍只负责一次完整 Text 数据替换，不承担 CharacterData 参数转换或事件派发。
-
-`PCore_NodeSetCharacterDataChildById` 是同一边界的通用入口：除 Text 外还接受现有
-`DOM_COMMENT_NODE` 与 `DOM_CDATA_SECTION_NODE`，仍使用未过滤 childNodes 索引，返回码和
-retained-layout 失效规则不变。它只替换一个已有节点的数据，不插入、删除、reparent 或
-派发事件；Browser 的 Ex2 write callback 将 Comment/CDATA 请求转给宿主，再由宿主安排
-正常的 style/layout/paint。
-
-`PCore_NodeSplitTextChildById` 是 Text/CDATA 结构 mutation 的窄入口：按父元素 UTF-8 id 与未
-过滤 childNodes 索引定位现有 `DOM_TEXT_NODE` 或 `DOM_CDATA_SECTION_NODE`，以 UTF-16
-code-unit offset 在 UTF-8 code-point 边界分割，并把 suffix 作为紧邻的新 Text sibling
-插入；offset 等于长度时产生空 sibling。成功返回 `0` 并使 retained layout 失效；父/索引
-不可用或目标不是 Text/CDATA 返回 `2`，越界或落在 astral code point 内部返回 `3`，参数/
-其他 DOM 失败返回 `1`。该入口不派发事件、不合并相邻 Text/CDATA、不做通用插入或 reparent；调用方必须重新
-style/layout/paint，且不能把 libdom 指针泄漏到 ABI。
-
-`PCore_NodeReplaceWholeTextChildById` 补上 Text/CDATA 结构 mutation 的相邻合并路径：它按同一
-父元素和未过滤 childNodes 索引定位直接 Text/CDATA child，先写入新的 UTF-8 数据，再删除目标
-两侧连续的 Text/CDATA sibling；目标保留 DOM 身份并移动到该逻辑相邻文本段的第一位置，
-element、Comment 和 processing-instruction 会截断段落。返回 `0` 表示成功，`2` 表示父节点/
-索引不可用或目标不是 Text/CDATA，`1` 表示参数或 DOM 失败。成功后 retained layout 失效，调用方必须
-重新 style/layout/paint。该入口不派发事件、不获取资源、不做通用插入、reparent 或 live
-collection，也不暴露被删除节点的可写句柄；它在 WM6 上采用有界的
-显式 sibling walk，避免 split 后 libdom helper 的 stale-cursor 风险。
-
-`PCore_NodeNormalizeById` 提供一个同样有界的 direct-child 结构整理：它按元素 id 遍历
-该元素的直接子节点，删除空 Text，并把每段连续 Text 合并到其中第一个非空节点；元素、
-Comment、CDATA 和其他非 Text 节点都是边界。实现使用显式 sibling walk，不依赖 WM6 上
-可能留下 stale cursor 的 libdom helper。成功且列表发生变化时 retained layout 会失效，
-调用方必须重新 style/layout/paint；没有事件、资源获取、reparent 或 live collection
-副作用。返回 `0` 表示成功（包括 no-op），`2` 表示缺失或非 element，`1` 表示参数或
-其他 DOM 失败。递归顺序和 Browser wrapper/cache reconciliation 由上层决定；Core 只
-整理一个已寻址元素的直接子列表。
-
-结果是同步 UTF-8 snapshot，不暴露 libdom 指针，也不承诺完整 live collection、namespace、MutationObserver、Shadow DOM 或通用 selector engine API。
-
-布局完成后，`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_LAYOUT_RECT_*`
-关系返回元素 border-box union 的整数 CSS 像素。对应的
-`PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT` 与
-`PCORE_NODE_RELATION_LAYOUT_FRAGMENT_*_AT` 关系返回有界视觉片段：块级元素通常
-只有一个，inline flow 按实际行分割，最多
-`PCORE_NODE_LAYOUT_FRAGMENT_MAX`（16）个。索引越界、未布局、隐藏或没有可用
-box 时返回 unavailable；成功返回的数值只在当前 document/layout 有效。Browser
-可以直接用这些关系实现 `getClientRects()` 和其 union，但其他宿主不应依赖 NetSurf
-的内部 `struct box` 或复制第二份布局模型。
-
-同一 relation bridge 还提供六个只读布局尺寸快照：
-`PCORE_NODE_RELATION_LAYOUT_OFFSET_WIDTH/HEIGHT`、
-`PCORE_NODE_RELATION_LAYOUT_CLIENT_WIDTH/HEIGHT` 和
-`PCORE_NODE_RELATION_LAYOUT_SCROLL_WIDTH/HEIGHT`。它们是最近一次成功 layout 的
-整数 CSS 像素；offset 尺寸包含 border，client 尺寸表示 retained scrollport 的
-padding 区域（本实现的滚动条覆盖在边缘，不从 client 尺寸再扣除固定宽度），scroll
-尺寸包含有界后代内容 extent。该快照只对已布局的 block、
-replaced、常见 table/flex box 有效；inline/text、隐藏、无 box 或未完成 layout
-返回 unavailable。查询不会触发 relayout，也不会为没有 retained scrollbar 的元素伪造
-滚动范围。带有效 `id` 的支持 box 可以通过 `PCore_NodeOverflowScrollToById` 进行有界、
-立即生效的 `scrollLeft`/`scrollTop` 读写；关系 38/39 返回当前 CSS 像素偏移。
-关系 40/41（`LAYOUT_SCROLLABLE_X/Y`）报告 retained scrollbar 是否拥有对应轴，
-关系 42/43（`LAYOUT_CLIENT_X/Y`）报告该 box 的 padding/client edge 文档坐标。
-这四个只读关系让 Browser 在不暴露 `struct box` 的情况下实现有限的嵌套
-`Element.scrollIntoView()`：它只遍历最多 64 层、且能被 DOM relation 寻址的祖先，
-选择最近的 retained overflow box，并在目标轴上对齐；找不到可用祖先时仍由 Browser
-回退到 page-level scroll。Core 仍不实现完整 scroll tree、scroll chaining、
-scroll-margin、平滑/惯性滚动或匿名目标的宿主指针归因。
-
-### 单元素 `contenteditable`
-
-`PCore_ContentEditableInfoById` 解析元素及其祖先的 `contenteditable` 枚举值：空值/`true` 进入普通纯文本模式，`plaintext-only` 进入显式纯文本模式，`false` 禁用，未知值继续向祖先继承。返回值同时报告有效模式和当前 `textContent` 的 UTF-8 字节数；查询不要求 style/layout，id 不存在或结构不完整时 fail closed。
-
-`PCore_ContentEditableSetTextById` 只允许有效的可编辑元素写入不超过 `PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES` 的合法 UTF-8 文本，并用一个文本节点替换该元素的子内容。它不派发事件，也不保存 caret/selection；这些脚本语义由 Browser 的 `selectionStart`/`selectionEnd`/`selectionDirection` 和有界 `selectionchange` 提供，原生窗口同步则通过 Browser 的 selection callback 由宿主完成。参考宿主对无修饰 WM EDIT 拖选、Shift/方向键扩展和捕获/焦点中断收尾的范围和方向跟踪也留在平台接线，不进入 Core 文档状态。宿主应先通过 Browser 的现有 `beforeinput` 事务，获准后调用该 mutation，再派发 `input` 并按需重新 style/layout/paint。系统剪贴板同样不属于 Core：宿主可把经过容量检查和 CRLF 规范化的 `CF_UNICODETEXT` paste/cut/copy data 交给 Browser 事务，折叠复制由宿主在事务外判定为 no-op，Core 只接收最终 UTF-8 文本 mutation。该 API 的失败码区分 DOM/目标、不可编辑和文本边界，避免把普通 `textContent` 写入误当作用户编辑。
-
-`PCore_ContentEditableTargetInfo` 为 WM/native 宿主提供已布局 editing host 的有界快照：只枚举带非空 `id`、可见且有正尺寸 box 的有效 host，按 DOM 顺序最多 `PCORE_CONTENTEDITABLE_TARGET_MAX`（16）个；每个 host 的文本最多 8192 个 UTF-8 字节。嵌套但仅继承编辑状态的后代不单独出现。宿主可用快照中的几何和复制出的 id/text 创建代理窗口；任何 DOM mutation、重排或页面替换后都必须重新查询，不能缓存旧几何或字符串。
-
-### 表单与 validation
-
-Core 持有控件值、checked/selected、effective-disabled（含 fieldset first-legend exemption
-和 optgroup→option 继承）、required/range/step/pattern/custom validity、submission、
-multipart、reset 和 successful controls 等产品语义。
-
-支持的控件统一按最近祖先 form 或显式 `form="id"` 解析 owner。这个解析同时服务
-`PCore_FormValidation*`、successful-control/urlencoded 或 multipart submission、
-`method="dialog"` 默认动作、reset 和按坐标的 submit/reset 激活；空值或无效目标没有
-owner，也不会回退到祖先。Browser 的 `Element.form`/`form.elements` 关系与这些 Core
-路径共享同一规则。
-
-脚本宿主可通过 `PCore_NodeCheckedById` 读取带 id 的 `input.checked` 或 `option.selected`
-实时状态；后者会随 `PCore_NodeSetSelectedIndexById`、`PCore_SelectSetOptionSelected`
-和 native SELECT 提交的选择变化。`PCore_NodeSetCheckedById`/`defaultChecked` 仍只
-服务 checkbox/radio input，option 的选择应使用 select/option API。
-
-对需要脚本属性语义的宿主，`PCore_NodeSelectedById` 与
-`PCore_NodeSetSelectedById` 读取/修改 option 的 live 选择；单选会清除同一 select
-中其他 option，多选保持独立选择。`PCore_NodeDefaultSelectedById` 与
-`PCore_NodeSetDefaultSelectedById` 读取/修改 parser/default-selected 基线，setter
-不会通过 content attribute 改写 live 选择。这四个入口只改变 Core 文档状态，不触发
-layout、paint 或 native 控件；Browser 的可选 option callback 负责把它们暴露给脚本。
-
-`PCore_NodeRelationById` 的 `PCORE_NODE_RELATION_FORM_CONTROL_DISABLED` 返回上述
-effective-disabled 状态；`PCORE_NODE_RELATION_FORM_OPTION_DEFAULT_SELECTED` 返回
-option 的默认 selected 快照。Browser 可注册同一 relation，把 `:disabled`/`:enabled`
-与 Core 的 fieldset/optgroup 规则保持一致，并让 `:default` 与 live selected state
-保持分离；宿主不应在测试 helper 或 native 控件适配层复制这些判断。
-`PCore_SelectOptionInfo`、`PCore_SelectSetOptionSelected` 和 successful form submission
-同样消费 effective-disabled/live selected 状态，因此 disabled option 不会被选中或提交。
-如果脚本 listener 在 native SELECT 的键盘事件期间使 retained layout 失效，
-`PCore_SelectSetOptionSelected` 会改用 live DOM 完成同一选择提交，不要求宿主先同步重排。
-对应的 native bridge 可用 `PCore_EventDispatchKeyExToSelectIndex` 按 SELECT 的有界文档序号
-派发带完整 key metadata 的 trusted 事件；该入口同样直接定位 live DOM，适合成对的
-`keydown`/`keyup` 跨越一次 layout invalidation。布局恢复后，宿主仍须按原有策略重新
-style/layout/paint，并重新查询几何快照。
-
-Browser/宿主在 dispatch 可取消事件后调用 Core mutation/default action，再按结果派发 input、change、submit/reset 或 invalid。系统 picker、native validation UI、本地化提示、SIP/IME 和 WM 控件视觉不属于 Core。
-
-对于不依赖点击坐标的应用流程，宿主可以在 reset 事件获准后调用
-`PCore_FormResetById(doc, "form-id")`。该 state-only 入口使用同一套 owner 规则恢复表单
-子树内以及带 `form="form-id"` 的外部 input、select、textarea、button；成功返回 0，
-目标不存在、不是 form 或 DOM 恢复失败返回非零。调用方在成功后必须重新 layout/paint，
-不能把该入口当作事件 dispatch 或 native 控件策略。
-
-脚本 `requestSubmit([submitter])` 可使用 `PCore_FormValidationSubmitById` 先解析 form
-和可选的 enabled submit button，并按 `novalidate`/`formnovalidate` 规则取得验证结果；
-随后用 `PCore_FormSubmissionById`、`PCore_FormDialogSubmissionById` 或
-`PCore_MultipartSubmissionById` 读取对应的 urlencoded、dialog 或 multipart 默认动作。
-这些 by-id 入口都只解析/快照 DOM，不派发 `submit`、不导航、不关闭 dialog；Browser 负责
-事件取消顺序，宿主负责把获准结果接到网络或 native/dialog 策略。multipart 返回的
-opaque handle 仍须由调用方配对 `PCore_FreeMultipartSubmission`。
-
-`PCore_FormSubmission*` 使用 `PCORE_FORM_METHOD_*` 常量报告有效提交方法。`method="dialog"` 或 submitter 的 `formmethod="dialog"` 不生成网络 action/body；调用方改用 `PCore_FormDialogSubmissionAt` 或 `PCore_FormDialogSubmissionForTextInput` 两阶段查询，取得最近祖先 dialog 的 UTF-8 id 和 submitter value。Core 在查询时执行约束验证，但不派发 `submit`/`close`、不改变 `open`，这些事务仍由 Browser 和宿主完成。当前 Browser 组合按 id 寻址，因此无 id 或不在 dialog 内的目标会被消费并 fail closed。
-
-脚本 `HTMLFormElement.submit()` 使用三个独立的无验证 by-id 入口：
-`PCore_FormSubmissionNoValidationById` 构造 urlencoded 或报告 multipart/dialog 方法，
-`PCore_FormDialogSubmissionNoValidationById` 返回最近祖先 dialog 的 id（不含 submitter
-value），`PCore_MultipartSubmissionNoValidationById` 返回由调用方释放的 multipart
-snapshot。它们跳过 constraint validation、submitter 选择和事件，不导航、不关闭 dialog、
-不操作 native 控件；Browser 决定脚本方法和事件边界，宿主在 direct callback 中采用对应
-结果并执行网络或 dialog 策略。空/无效 form id、容量不足或不满足方法条件均安全失败。
-
-`PCore_FormDataById` 为脚本 `new FormData(form)` 提供独立的 successful-control snapshot；
-`PCore_FormDataByIdEx` 另外接受可选 `submitter_id`，空值表示没有显式 submitter，非空值必须
-指向一个启用、归属于该 form 的 submit-type input 或 button（包括有效的外部
-`form="id"` 控件），并按文档顺序把它纳入快照。两者复用同一套 form-owner、disabled、
-checkbox/radio、select 和文件控件收集规则，但不读取 method/enctype、不做 constraint
-validation、不派发事件，也不导航；无效 submitter 或 owner 安全失败。
-`PCore_FormDataInfo`/`PCore_FormDataEntryInfo` 按文档顺序读取字符串或文件名，调用方必须
-用 `PCore_FreeFormData` 释放 handle；文件的本地 picker 路径不会从该 API 暴露。快照与
-后续 DOM/value mutation 脱离，空值或无效 form id 安全失败。完整 live `FormData`、文件
-读取和完整 live form-associated collection 仍不在 Core 合同内。
-
-### 交互与事件
-
-Core 提供 hit testing、hover/focus/active/checked 状态、DOM listener/dispatch 和可聚焦目标枚举。Browser 决定脚本事件/默认动作事务，宿主把 WM 消息和 native 控件状态映射进来。
-
-`PCore_InteractionStateElementId` 是对应交互状态的只读 UTF-8 id 查询。调用方以
-`PCORE_INTERACTION_FOCUS`、`PCORE_INTERACTION_ACTIVE` 或
-`PCORE_INTERACTION_HOVER` 之一读取当前节点；size-probe、固定容量、完整字节数和
-fail-closed 返回码与 `PCore_InteractionFocusElementId` 相同。它不改变状态，也不要求
-重新 style/layout。Browser 宿主可把 active/hover 查询接到
-`PBrowserScriptInteractionCallbacks`，使脚本 selector 的 `:active`/`:hover` 读取同一份
-Core 状态；pointer 事件、状态更新、重绘和重新 style 仍由宿主决定。
-
-`PCore_FocusTargetInfo` 返回有界的键盘焦点快照：正值 `tabindex` 按数值升序排列，同值保持 DOM 顺序，随后是缺省/零值组的 DOM 顺序；负值、disabled、hidden、未布局目标和 file picker 会被排除。除支持的链接、表单控件和 `summary` 外，带有效非负 `tabindex` 的普通布局元素也会以 `PCORE_FOCUS_TARGET_GENERIC` 返回。`PCore_FocusTargetInfoWithin` 用 UTF-8 DOM id 将同一快照限制在某个已布局祖先及其后代内，顺序和预算保持一致，适合宿主实现 modal 的 Tab/Shift+Tab 范围。两者都只返回几何与 kind，不改变焦点；页面级 focus reveal、native HWND 切换以及把 Browser 报告的活动 modal id 接入消息循环仍由宿主完成；Core 不调用 `SetFocus`，也不创建控件窗口。
-
-脚本主动聚焦使用两个按 id 的同步入口：`PCore_FocusTargetInfoById` 解析一个已布局且符合相同资格规则的目标，返回其 geometry/kind；`PCore_InteractionFocusById` 只更新 Core 的 focus node。无 id、disabled、hidden、stale、未布局或不支持的目标均 fail closed，重复聚焦返回 no-op。Core 不切换 native HWND、不派发 focus family、不滚动目标、不画焦点矩形；Browser 的 `PBrowserScriptFocusRequestCallbacksEx` 消费这份 geometry 实现 page-level reveal，并在发现可寻址的 retained overflow 祖先时完成有界的嵌套 reveal。Ex 的 `prevent_scroll` 让宿主在 Browser 处理嵌套链前保持页面 viewport 不变，回调结果仍用于同步宿主实际 page scroll。宿主仍负责 native HWND、focus family 和窗口策略，并在文档或 layout 改变后重新查询，不能缓存旧快照。
-
-页面提交后若应用需要遵循 HTML 的 `autofocus` 提示，宿主可在 style/layout 完成并创建 native 子控件后显式调用 `PCore_AutofocusTargetInfo`。Core 按 DOM 顺序扫描带 boolean `autofocus` 属性的元素，复用现有焦点资格、可见性、布局和深度预算；查询只复制 geometry/kind 与可选 UTF-8 id，不改变文档焦点。随后宿主调用 `PCore_InteractionFocusAutofocus` 更新 Core focus node，再自行完成 page-level reveal、native HWND、focus/focusin 事件和重绘。重复调用是 no-op；没有合格目标、过期布局、无 id 或 id 超出宿主桥接容量时必须安全回退。为无 id 目标派发事件时使用 `PCore_EventDispatchFocus`，它在同步 dispatch 期间保留当前焦点节点引用，保证监听器修改焦点不会使目标悬空。该路径是宿主触发的一次性、有界初始焦点事务，不是 Core 自主运行的完整焦点算法；Browser 的 `document.activeElement` 仍只投影可寻址 id，无 id 时按既有合同回退到 `document.body`。
-
-### Modal presentation
-
-宿主先从 Browser session 读取活动 modal 的 UTF-8 id，再在普通文档绘制后调用 `PCore_PaintDocumentWithModal`：
-
-```c
-int paint_result;
-
-paint_result = PCore_PaintDocumentWithModal(doc, hdc, scroll_x, scroll_y,
-        active_modal_id);
-```
-
-该入口先完成普通 `PCore_PaintDocument`，随后在当前 viewport 上覆盖不透明的 `RGB(192,192,192)` WM6 安全遮罩，并把指定的 `<dialog open>` 盒子限制在其几何区域内重绘。`PCORE_MODAL_PAINT_APPLIED` 表示对话框也已重绘；id 过期、对话框已关闭、尚未 layout 或没有可用盒子时仍返回 `PCORE_MODAL_PAINT_BACKDROP_ONLY`，以免把 modal 后的页面泄露出来。传入 `NULL` 或空 id 等同普通绘制并返回 `PCORE_MODAL_PAINT_NONE`。
-
-`dialog_id` 是借用的 UTF-8 字符串，长度必须小于 `PCORE_MODAL_DIALOG_ID_MAX`；文档、HDC、滚动位置和失效区域仍由宿主拥有。实现尊重 HDC 的 GDI invalid-region clip，并在组合步骤间恢复绘制状态。该能力是有界的实体色遮罩与盒子重绘，不等同于 CSS `::backdrop`、透明合成、多个 modal 或跨文档 top layer。
-
-## 所有权
-
-- `PCore_Init`/`PCore_Shutdown` 成对；实现为进程级引用计数。
-- `PCore_ParseHTML` 的 document 用 `PCore_FreeDocument`。
-- `PCore_ParseCSS` 的 stylesheet 用 `PCore_FreeStylesheet`。
-- 文档拥有 DOM、computed styles、box tree、资源 cache、image carriers、表单和交互状态。
-- 从文档查询得到的借用数据在 document free、相关 mutation 或重新 layout 后失效。
-- fetch 输入由宿主持有；Core 只保留自己复制的内容，并按契约调用宿主 free callback。
-- DLL 返回的专用 buffer/handle 必须使用头文件指定的 `PCore_Free*`，不能跨 CRT heap 释放。
-
-同一 document 默认只由一个 UI 线程串行操作。不要从网络 worker 并发调用 parse/style/layout/ paint，也不要在同步 Core callback 中销毁当前文档。
-
-## 宿主应负责什么
-
-- HWND、消息循环、DPI/旋转、invalid region 和 HDC；宿主在 layout 后读取 `PCore_DocumentWidth/Height`，维护 page-level `(scroll_x, scroll_y)`，并负责页面级 clamp、滚动条消息和 native child reposition；对于嵌套 overflow，宿主只把 WM 指针换算为 document 坐标，调用 `PCore_OverflowPointer`，用 `PCore_OverflowDirtyRect` 做局部失效，再把 `PCore_OverflowScrollSnapshot` 的目标/位置通知给 Browser。元素滚动位置、范围和 clamp 规则属于 Core，宿主不得维护第二份模型；
-- HTTP/TLS、后台 worker、取消、loading 和候选页面提交；
-- native EDIT/SELECT/button/file picker 与 SIP/IME；
-- contenteditable 的 WM EDIT 窗口、焦点、键盘和 IME 接线；宿主按 Browser 的 `beforeinput` 取消结果调用 Core 的受限文本 mutation，使用 Browser 的 selection callback 同步原生范围，并在原生范围改变后调用 `PBrowser_ScriptSessionNotifyContentEditableSelection`。无修饰鼠标拖选、Shift/方向键的 anchor 与默认消息跟踪，以及捕获/取消/焦点中断收尾也由宿主维护；受限 `WM_PASTE`/`WM_COPY`/`WM_CUT` 的 `CF_UNICODETEXT` 读取、所有权和 native default 包裹也由宿主维护。Core 只提供 editing-host 快照和文本状态，不创建窗口，也不保存第二份编辑模型或重新派发 `selectionchange`；Range/Selection 对象、富文本和完整 IME 仍不在此边界内；
-- 页面提交后的初始焦点策略；若启用 `autofocus`，宿主须在 style/layout 和 native 子控件创建完成后调用 `PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus`，按结果完成 page-level reveal、native HWND、focus/focusin 事件和重绘。无 id 目标的 focus family 使用 `PCore_EventDispatchFocus`；Core 不在后台或页面解析期间自动抢占焦点；
-- history、浏览器 script session 和新窗口/外部协议策略；
-- 失败回滚、日志、持久化和应用生命周期。
-
-完整浏览器组合可参考 [`../test_host/README.md`](../test_host/README.md)，但通用 DOM、表单、layout 或事件策略不得复制回宿主。
+成功 mutation 后宿主必须决定何时 style/layout/paint、何时重建 native child、何时通知 Browser。宿主不得根据私有 libdom 指针重建 DOM 语义；Browser 应使用公开 relation/mutation callback。
 
 ## 当前边界
 
-- 不支持完整现代 HTML/CSS/DOM；float、复杂 table/position、Grid、custom properties 等仍有限。
-- 字体、SVG、图像格式和高 DPI 结果受 WM6 GDI/依赖版本限制。
-- Core resource cache、DOM bridge、表单集合和深度/数量均有固定预算。
-- 焦点快照支持正值/零值/负值 `tabindex` 的有界排序和普通布局元素，并提供按 DOM id 限定祖先范围的 `PCore_FocusTargetInfoWithin`；`PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus` 让宿主在页面 layout 和 native 子控件创建后显式选择第一个合格的 `autofocus` 目标，`PCore_EventDispatchFocus` 可为无 id 的当前焦点节点保留目标并派发事件。`PCore_InteractionStateElementId` 还以同一 size-probe 合同读取 focus/active/hover 的当前非空 id，供 Browser 的可选 interaction callback 投影 `:active`/`:hover`；查询不改变交互状态。`PCore_PaintDocumentWithModal` 可按宿主提供的活动 id 在已 layout 的 `<dialog open>` 之上组合实体色遮罩与对话框重绘。Core 不自行启动初始焦点、背景点击或跨窗口焦点策略；脚本生命周期、活动 modal id、native 焦点、页面 reveal 和实际关闭仍由宿主/`positron_browser.dll` 组合完成。
-- Core 不执行 JavaScript；请与 `positron_browser.dll`/`positron_script.dll` 组合。Browser 的 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 只覆盖有 id 的、已布局支持 box，并通过本页的 Core API 接线；`Element.scrollIntoView()` 另可使用关系 40–43 沿最多 64 层可寻址父链，从最近到最外处理 `container:"all"` 的有限 reveal，`HTMLElement.focus()` 复用同一条路径。完整滚动树、scroll chaining、scroll-margin、平滑/惯性滚动和匿名目标仍不在范围内。
-- 精确 API、返回码、结构布局和借用期限以 [`positron_core.h`](positron_core.h) 为准。
+Core 不保证完整 CSS/HTML 标准、任意网站兼容性、通用 DocumentFragment、嵌套/无限 DOM mutation、MutationObserver、完整 live collection、Range/Selection、复杂 transforms、pinch zoom、完整滚动树、CORS/绝对 URL 或 OEM 控件视觉。真实触摸、SIP/IME、旋转、DPI、picker、字体、边距和失败网络按 [`docs/TESTING.md`](../docs/TESTING.md) 验收。
 
-整体所有权见 [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)。
+## 其他项目如何调用
+
+Browser 或应用宿主应只通过 `positron_core.h` 调用 Core：解析并持有 document handle，注册/读取 relation，提交有界 mutation，成功后重新 style/layout/paint，再把快照通过 Browser callback 或应用 UI 消费。`test_host` 的职责仅是把这些调用接到 fixture、日志和断言；它不能编译或替代 Core 实现。

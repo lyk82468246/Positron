@@ -156,7 +156,9 @@
   HTMLCollection，按 tag/class 或 namespace/localName 查最多四根；NS 承诺 HTML namespace、
   通配符、大小写 localName 与 null/未知 fail closed；支持
   `item`/`namedItem`，完整 live collection 未实现。
-  detached `normalize()` 限 64 个 direct Text/四个 Fragment 根，删除空并合并相邻 Text；detached
+  detached `normalize()` 限 64 个 direct Text/CDATA 或四个 Fragment 根，删除空并合并相邻
+  Text/CDATA；live Element 的同一有界 Core 路径也合并 Text/CDATA，并在保留 Browser-created
+  wrapper 时同步其数据；detached
   Element 的 `replaceChildren()`（0–4 项）、`replaceChild()`（单项）和 `textContent` 均为
   text-only 有界原子 staging，保留 childNodes/owner；attached `textContent` 同步重建 Text
   wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
@@ -348,73 +350,10 @@
 
 ## 测试覆盖
 
-- next670 已建立一次 1080 项动态全量自动设备 checkpoint；后续定向门仍不能替代下一次按风险触发的全量范围基线。
-- TEST1081/TEST1082 覆盖 Browser-owned history viewport snapshot 的 fragment/traversal 保持、新 entry 清零、横向值存取、宿主 clamp 和非法参数 fail closed；
-- TEST1128 覆盖 Core page-level width、宿主横向/纵向 viewport clamp、Browser 横向 snapshot restore、fragment document-space 命中和直接相邻的离线宽页面路径；不证明嵌套 overflow 容器或真实页面视觉兼容性；
-- 已有离线 compatibility-corpus 流程，仍不代表任意真实网站或完整 Web 标准：
-  - TEST1117–TEST1119 覆盖 contenteditable/dialog/history 组合、重复资源准备、失败旧页保留、页面 teardown、generation 取消、过时消息隔离、退休请求回收和最新候选提交；
-  - TEST1120–TEST1123 覆盖 Browser 资源事务终态、失败分类、transport 重试预算、required/optional gate、重复 script/image、三层 `@import`、最多 4 项 hash-only 摘要和 layout 后 fallback family 观测；
-  - TEST1124–TEST1126 覆盖 candidate generation/取消/退休/终态结果、candidate/resource commit snapshot、`can_commit` 和非法参数；
-  - TEST1127 覆盖 cleanup snapshot 的 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制和 handle 销毁后的快照存活性。
-- TEST1130 覆盖 Core layout relation 与 Browser `getBoundingClientRect()` 的边界、矩形边界算术和 page-level scroll 换算；不证明复杂 CSS 几何、nested overflow 或真实页面视觉。
-- TEST1131 覆盖 WM_SIZE 到 Browser 的 CSS viewport/DPR resize 通知、window 事件字段、重复快照去重和 screen 方向更新；不证明真实旋转、字体/边距、滚动条或 resize handler 中 animation-frame 的视觉结果。
-- TEST1133 覆盖 `visualViewport` 的布局视口/page scroll 快照、visual/window 事件顺序、事件字段、监听器移除和重复 resize/scroll 去重；不证明 pinch zoom、nested overflow 或视觉像素。
-- TEST1134 覆盖 `history.scrollRestoration` 的 Browser→宿主策略门：`manual` 保留当前 viewport，`auto` 恢复并 clamp Browser entry snapshot，且非法查询参数 fail closed；不证明复杂窗口或真实页面的视觉滚动体验。
-- TEST1135 覆盖稳定 `screen.orientation` 对象、方向翻转 `change` 事件、同方向/重复 resize 去重、监听器移除和非法参数保护；不证明设备真实旋转动画、非客户区或视觉像素。
-- TEST1139 覆盖 `document.hasFocus()`、window focus/blur 的状态变化、事件字段、属性 handler、listener、非零归一化和重复通知去重；不证明 OEM 激活通知、native 控件焦点矩形或真实窗口切换视觉。
-- TEST1140 覆盖 Core 焦点 id 到 Browser `document.activeElement` 的可选桥、body 回退、
-  注册/注销、Core size-probe、过小缓冲和失效 id 的 fail-closed 行为；不证明完整
-  浏览器焦点算法、自动初始焦点、native HWND 焦点矩形或真实窗口切换视觉。
-- TEST1141 覆盖按 id 的 `HTMLElement.focus()`/`blur()` 请求、Core 目标资格与
-  focus node 更新、旧目标 blur/focusout→新目标 focus/focusin 顺序、非当前目标
-  blur、不可用目标和注销后的 no-op；不证明完整焦点算法、自动初始焦点、焦点矩形、
-  page-level focus reveal、真实 native HWND/OEM 控件或跨窗口视觉。
-- TEST1142 覆盖 Ex focus request 的默认 page-level focus reveal、callback 后脚本
-  scroll 同步、目标矩形可见性，以及 `focus({preventScroll:true})` 的 viewport 保持
-  和 scroll 事件抑制；它只覆盖页面级目标，不证明 nested overflow、scroll-margin、
-  平滑/惯性滚动、真实触摸滚动、不同 DPI 下的焦点视觉或 OEM 控件行为。
-- TEST1143 覆盖页面级 `Element.scrollIntoView()` 的默认 start/nearest、`false` 末端
-  对齐、center 对齐、已可见目标的 nearest 静默，以及不支持 smooth 行为的安全拒绝；
-  不证明 scroll-margin、nested overflow、平滑/惯性滚动、复杂布局对齐或真实滚动条、
-  触摸和不同 DPI 下的视觉结果。
-- TEST1144 覆盖 `Element.getClientRects()` 的单矩形回归：新集合/新矩形身份、
-  `length`/索引/`.item()` 合同、与 `getBoundingClientRect()` 的几何一致性、page-level
-  scroll 跟随和隐藏元素空集合；不证明多片段文本。
-- TEST1145 覆盖窄容器 inline 文本的多片段组合：Core count/index relations、Browser
-  `getClientRects()` 的按行顺序和新对象身份，以及 `getBoundingClientRect()` union。
-  它不证明 transforms、Range/Selection、nested overflow、pinch zoom、复杂字体度量或
-  视觉像素精度。
-- TEST1146 覆盖支持 box 的六个布局尺寸 relation、Browser 只读 getter、边框/内边距/
-  retained-scrollport 算术、后代 extent 和隐藏元素零值回退；它不证明元素滚动操作或
-  真实滚动条视觉。
-- TEST1147 覆盖带 id 的嵌套 overflow box：Core relation 38/39、按 id setter、两个轴
-  clamp、Browser `scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()`、目标元素 scroll
-  事件去重，以及宿主 pointer snapshot→Browser notification 的同步。它不证明完整
-  滚动容器树、scroll chaining/anchoring、scroll-margin、smooth/inertia、匿名目标、
-  触摸手势或滚动条视觉。
-- TEST1148 覆盖 `Element.scrollIntoView()` 对最近可寻址 retained overflow 祖先的一次
-  有限嵌套 reveal：Core relation 40/41 报告轴可用性、42/43 报告 client edge，Browser
-  最多遍历 64 层并只移动最近祖先；断言包括两个轴的 start 对齐、页面 viewport 保持、
-  一次非冒泡 scroll、重复 nearest 静默和 smooth 拒绝。它不证明完整 scroll tree、
-  scroll chaining/anchoring、scroll-margin、平滑/惯性滚动、匿名目标、复杂布局或真实
-  滚动条视觉。
-- TEST1149 覆盖 `Element.scrollIntoView({container:"all"})` 的两个 retained overflow
-  ancestor 链：Browser 从最近到最外依次重读目标矩形并滚动，断言 inner→outer 事件顺序、
-  页面 viewport 稳定、重复 nearest 静默、未知 container 与 smooth 拒绝。它仍不证明
-  无界滚动树、scroll chaining/anchoring、scroll-margin、平滑/惯性滚动、匿名目标、
-  复杂布局或真实滚动条视觉。
-- TEST1150 覆盖 `HTMLElement.focus()` 对同一嵌套 overflow 链的协调：Browser 发现
-  retained ancestor 后向 Ex host callback 传递有效 `prevent_scroll`，再按 inner→outer
-  顺序完成有限 reveal；断言两个轴、focus/focusin 与 scroll 顺序、重复 focus 静默、
-  `focus({preventScroll:true})` 保持页面和元素位置，以及远端目标 blur 不移动页面。
-  它仍不证明完整焦点算法、滚动树、scroll chaining/anchoring、scroll-margin、平滑/惯性
-  滚动、复杂布局或真实滚动条视觉。
-- TEST1151 覆盖页面提交后由宿主显式触发的有界 `autofocus`：Core 按 DOM 顺序跳过
-  hidden、disabled 和未布局目标，提供 UTF-8 id size-probe 与 geometry 快照，并只更新
-  Core focus node；有 id 目标复用 Browser focus bridge，无 id 目标通过
-  `PCore_EventDispatchFocus` 保留焦点节点并派发 focus/focusin。它同时检查重复应用不
-  重复派发、过小 id buffer 不部分写入，以及无 id 目标的 `document.activeElement` 按
-  id projection 合同回退到 `body`；不证明完整焦点算法、native HWND/焦点矩形或 OEM 视觉。
+- 离线 compatibility corpus 已覆盖 history/viewport、资源 candidate/cleanup、生命周期、
+  focus、geometry、overflow、scroll、selector 和 autofocus 的有界 callback 合同；这些夹具
+  证明 snapshot、事件顺序、预算、clamp 和非法输入 fail closed，但不证明复杂 CSS、无限
+  scroll tree、真实旋转、触摸、OEM 控件或视觉像素。
 - TEST1152 覆盖 Browser selector 的有界列表和关系组合器：`matches()`、`closest()`、
   `querySelector()` 与 `querySelectorAll()` 对顶层逗号、后代/子代/相邻兄弟/一般兄弟
   保持一致，属性值中的逗号不会误拆分，非法或过深输入 fail closed。
@@ -572,24 +511,12 @@
   候选，240/480 CSS 视口下的 `currentSrc`、fetch/cache/layout/natural-size 保持一致。
   完整媒体查询、绝对 URL、CORS/referrer、loading 策略和 native 图像视觉仍未实现或需
   人工观察；source mutation 的生命周期通知由 TEST1199 覆盖。
-- TEST1199 覆盖 Browser 的 source identity 生命周期桥：`source.media`/`type`/`srcset`/
-  `sizes` reflection、Core mutation 后的 `PBrowser_ScriptSessionNotifyImageSourceChange`、
-  source 已变化时的 pending `decode()` `EncodingError`、旧终态清理，以及
-  `PBrowser_ScriptSessionNotifyResize` 在媒体/resize 事件前的 source 刷新。Browser 的
-  pending decode 和 image 终态各限 64 项，未变化的 source 保持 pending；该门不提供
-  自动 fetch、选择、layout、paint、通用动态 DOM 插入/删除（仅另有有界 direct-element、
-  direct-CharacterData 和 existing-element insertion/replacement 路径）、完整媒体查询、绝对 URL、
-  CORS/referrer、loading 策略或 native 图像视觉。
 - TEST1200 覆盖脚本图片来源 mutation 的可选 typed callback：`img.sizes`、source 的
   `media`/`type`/`srcset`/`sizes` 以及 set/remove attribute 都产生正确的 id、kind、
 attribute 和 removed 元数据；重复注册、native-function 数量不变、不一致 metadata
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
-- TEST1156 覆盖 Browser selector 的有限 `:not()`：只接受一个不含伪类、伪元素、列表或
-  组合器的简单 compound（标签、`#id`、`.class`、属性存在或精确 `=` 值）。`matches()`、
-  `closest()`、两种 query、mutation、组合/列表顺序和 `details:not([open])` 等实际场景由
-  夹具验证；空参数、嵌套伪类、组合器、列表和非精确属性操作符安全 fail closed。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

@@ -10728,8 +10728,8 @@ PCORE_API int PCore_NodeReplaceWholeTextChildById(HANDLE hDoc,
 
 /* Normalize one direct child list without using libdom's cursor-based
  * replaceWholeText helper. The caller owns the recursion policy; this helper
- * only removes empty Text nodes and merges adjacent non-empty Text nodes into
- * the first node in each run. */
+ * removes empty Text/CDATA nodes and merges adjacent non-empty Text/CDATA
+ * nodes into the first node in each run. */
 static int pcore_normalize_direct_text_children(dom_node *parent,
         int *out_changed)
 {
@@ -10763,7 +10763,7 @@ static int pcore_normalize_direct_text_children(dom_node *parent,
             dom_node_unref(current);
             return 1;
         }
-        if (type != DOM_TEXT_NODE) {
+        if (!pcore_is_text_like_type(type)) {
             next = NULL;
             err = dom_node_get_next_sibling(current, &next);
             dom_node_unref(current);
@@ -10835,7 +10835,7 @@ static int pcore_normalize_direct_text_children(dom_node *parent,
                 dom_node_unref(current);
                 return 1;
             }
-            if (next_type != DOM_TEXT_NODE) {
+            if (!pcore_is_text_like_type(next_type)) {
                 dom_node_unref(next);
                 break;
             }
