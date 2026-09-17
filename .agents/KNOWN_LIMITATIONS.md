@@ -161,10 +161,10 @@
   text-only 有界原子 staging，保留 childNodes/owner；attached `textContent` 同步重建 Text
   wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
   textContent staging；markup、超长和 detached `outerHTML` setter 在 mutation 前拒绝。
-  Fragment 的 `textContent` setter 先预检 65,535 字符再原地替换；失败保留旧树/集合。
-  relations/namespace、replace/组合由 Browser 预检；Fragment Element 与 CharacterData
+  Fragment `textContent` getter 排除 Comment；setter 预检 65,535 字符，失败保留旧树/集合。
+  Browser 预检 relations/namespace/replace/组合；Fragment Element 与 CharacterData
   的 sibling/element-sibling getter 按 staging/live 提供，未归属为 `null`。
-  `replaceChild()` 展开四根并清空源，空源移除旧节点；不支持输入拒绝。
+  `replaceChild()` 展开四根并清空源；不支持输入拒绝。
 - `document.createTextNode(value)` 提供 detached Text 快照；插入 live Element 后
   保留 wrapper identity，并支持 `insertBefore()`、`appendChild()`、有界 `append()`/`prepend()`、
   CharacterData mutator、`wholeText`、`splitText()`、`replaceWholeText()`、`remove()`、

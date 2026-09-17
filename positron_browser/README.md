@@ -299,8 +299,8 @@ detached Element 只对属性/direct Text 做 text-only escaping/staging；marku
 `document.createDocumentFragment()` 在 Browser 侧做 bounded staging，最多四个
 Element/Text/Comment/CDATA 根；Element 须唯一非空 id、至多一个 direct Text，顶层 Text 不相邻。
 append/prepend/insertBefore/appendChild/replaceChildren、clone、query、relations、组合、
-`textContent=` 与 `normalize()` 均受同一预算并原子失败。Fragment-owned roots 的 sibling
-getter 按 staging/live parent 顺序读取，element-sibling 跳过非 Element；无 owner 返回 `null`。
+`textContent`/`normalize()` 按预算失败；getter 排除 Comment。Fragment roots 的 sibling
+getter 按 staging/live 读取，element-sibling 跳过非 Element；无 owner 返回 `null`。
 Comment/CDATA 消费复用既有 Core creation callback，不新增 fragment ABI；通用 detached tree、
 observer 和完整 live collection 不支持。
 

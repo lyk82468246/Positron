@@ -286,11 +286,11 @@ Core 是渲染和文档模型的产品边界，内部静态链接移植后的 Ne
   重复/外部冲突 id、非法或超限输入在提交前拒绝；不执行 script、不抓取资源、不派发事件；
 - Browser-owned `DocumentFragment` staging（bounded roots、clone、query、relations、组合）由
   `positron_browser.dll` 维护；Core 只接收预检后的 text-list/parser 提交，不暴露 handle。
-  bounded 根最多四个 detached Element/Text/Comment/CDATA；Comment/CDATA 消费复用 Core 创建
-  callback。detached Element/Fragment 的
+  最多四个 detached Element/Text/Comment/CDATA 根；Comment/CDATA 复用 Core callback。
+  detached Element/Fragment 的
   `Node.normalize()` 最多处理 64 个 direct Text/四个根，删除空并合并相邻 Text；嵌套、超限和
-  不支持输入拒绝。Fragment 与 CharacterData 的 sibling
-  按 staging/live 投影，element-sibling 跳过非 Element，未归属为 `null`。
+  不支持输入拒绝。Fragment textContent 排除 Comment、保留 Text/CDATA；CharacterData sibling
+  按 staging/live，未归属为 `null`。
 - CharacterData 自身 mutation：`PCore_NodeSetTextChildById` 保持 Text-only ABI；新增的
   `PCore_NodeSetCharacterDataChildById` 在同一未过滤 `childNodes` 索引边界接受现有
   `DOM_TEXT_NODE`、`DOM_COMMENT_NODE` 或 `DOM_CDATA_SECTION_NODE`，成功后使 retained

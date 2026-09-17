@@ -1106,7 +1106,7 @@ Text suffix，`replaceWholeText()` 保留目标并清理相邻节点，同时覆
 门 `1285,999`，确认 Debug ARMV4I、双空间预检、日志回收、清理和 crash check。
 
 TEST1286 覆盖 Browser-owned `DocumentFragment` 的最多四个 CharacterData 根：
-Text/Comment/CDATA 的关系、clone/normalize、data mutation 与消费后的 wrapper identity；
+Text/Comment/CDATA 的关系、clone/normalize、data mutation、`textContent`（排除 Comment）与消费后的 wrapper identity；
 Comment/CDATA 通过既有 Core callback 物化。Element 根沿用 id/direct-Text 约束，嵌套、混合、
 超限输入 fail closed。门 `1286,999`，Debug ARMV4I 外置卡部署、日志/空间/清理和 crash check
 均通过。
