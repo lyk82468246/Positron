@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1287
+#define TEST_MAX_NUMBER 1288
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54826,6 +54826,65 @@ static BOOL test1287_browser_cdata_normalize_contract(void)
             " text run in Core, live Browser Elements and DocumentFragment"
             " staging, preserving the first non-empty node and removing"
             " empty/merged siblings without crossing comment boundaries.");
+    return TRUE;
+}
+
+/* TEST 1288 - detached Element CharacterData staging and materialization. */
+static BOOL test1288_browser_detached_element_character_data_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><span id='tail'>T</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,target=d.getElementById('target'),result="
+        "d.getElementById('result'),e,c,cd,t,clone,replacement,old,bad=0,ok=true;"
+        "try{e=d.createElement('article');e.id='char-stage';e.className='staged';"
+        "c=d.createComment('hidden');cd=d.createCDATASection('A');t=d.createTextNode('B');"
+        "e.append(c,cd,t);if(e.childNodes.length!==3||e.firstChild!==c||"
+        "e.lastChild!==t||e.textContent!=='AB'||c.parentNode!==e||"
+        "cd.parentNode!==e||cd.getRootNode()!==e||cd.isConnected||"
+        "e.getElementById){ok=false;}c.data='note';cd.appendData('C');"
+        "t.nodeValue='D';if(e.textContent!=='ACD'||c.data!=='note'||"
+        "cd.data!=='AC'||t.data!=='D')ok=false;clone=e.cloneNode(true);"
+        "if(clone===e||clone.childNodes.length!==3||clone.childNodes[0].nodeType!==8||"
+        "clone.childNodes[1].nodeType!==4||clone.childNodes[2].nodeType!==3||"
+        "clone.childNodes[1].data!=='AC'||clone.textContent!=='ACD'||"
+        "clone.childNodes[0]===c)ok=false;try{e.appendChild(d.createElement('i'));}"
+        "catch(e1){bad|=1;}if(e.textContent!=='ACD'||e.childNodes.length!==3)ok=false;"
+        "e.normalize();if(e.childNodes.length!==2||e.childNodes[0]!==c||"
+        "e.childNodes[1]!==cd||cd.data!=='ACD'||t.parentNode!==null||"
+        "e.textContent!=='ACD')ok=false;replacement=d.createCDATASection('R');"
+        "old=e.replaceChild(replacement,cd);if(old!==cd||cd.parentNode!==null||"
+        "e.childNodes.length!==2||e.childNodes[1]!==replacement||"
+        "e.textContent!=='R')ok=false;target.appendChild(e);"
+        "if(!e.isConnected||e.parentNode!==target||d.getElementById('char-stage')!==e||"
+        "c.getRootNode()!==d||replacement.getRootNode()!==d||"
+        "c.isConnected!==true||replacement.isConnected!==true)ok=false;"
+        "replacement.data='live';if(e.textContent!=='live')ok=false;"
+        "e.removeChild(c);if(c.parentNode!==null||e.childNodes.length!==1||"
+        "e.firstChild!==replacement)ok=false;e.appendChild(c);"
+        "if(e.childNodes.length!==2||e.firstChild!==replacement||"
+        "e.lastChild!==c||e.textContent!=='live')ok=false;"
+        "target.removeChild(e);if(e.isConnected||e.parentNode!==null||"
+        "replacement.getRootNode()!==e)ok=false;replacement.data='detached';"
+        "if(replacement.data!=='detached'||e.textContent!=='detached')ok=false;"
+        "}catch(x){ok=false;}result.textContent=String(ok&&bad===1);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/detached-element-character-data", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1288 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1288 OK",
+            "detached Elements now stage bounded Text, Comment and CDATA"
+            " children together. CharacterData identity, textContent and"
+            " normalize boundaries survive clone, replaceChild, direct Core"
+            " materialization, removal and re-insertion without opening"
+            " nested detached trees.");
     return TRUE;
 }
 
@@ -113131,6 +113190,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1285: ok = test1285_browser_cdata_text_contract(); break;
         case 1286: ok = test1286_browser_document_fragment_character_data_contract(); break;
         case 1287: ok = test1287_browser_cdata_normalize_contract(); break;
+        case 1288: ok = test1288_browser_detached_element_character_data_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

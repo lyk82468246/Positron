@@ -38,12 +38,15 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - selector 的 `matches`、`closest`、`querySelector(All)` 有界子集；
 - form owner、validation、`form.elements`/`FormData` snapshot、option/select metadata 和有限 `HTMLImageElement` metadata；
 - Text/CDATA 的 `data`、CharacterData mutator、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和 wrapper 关系。
+- `document.createElement(tag)` 的 detached staging：每个 wrapper 可保存有界属性和最多 64 个直接 Text、Comment 或 CDATA child；`cloneNode`、`normalize`、`replaceChild`、`replaceChildren`、`textContent` 以及带唯一 id 的直接 Core 物化都保留这些 CharacterData wrapper 的关系和数据。嵌套 Element、通用 detached Node graph 和未通过预检的结构仍拒绝。
 
 这些路径通过 Ex callback table 把父 ID、未过滤 child index、节点类型和 UTF-8 值转给 Core。宿主不遍历、合并或删除产品节点，也不复制第二份 form/selector/resource 语义。
 
 ## `DocumentFragment` 与 normalize
 
 Browser-owned Fragment 是 bounded staging，不是 Core fragment handle。它最多保存公开合同允许的 direct 根和节点形状；嵌套、不支持类型、重复 id、跨 owner、超长文本或超过容量在消费前 fail closed。Element mutation 消费 Fragment 时复用 Core parser/creation callback，并保留 staged wrapper identity。
+
+Detached Element 的 CharacterData staging 与 Fragment 是两条不同边界：前者可直接把 Text、Comment、CDATA 交给 Core child-creation callback；Fragment 中的 Element 根仍沿既有 parser 路径，不能借此获得嵌套 Element 或任意 Comment/CDATA 子树。
 
 `Node.normalize()` 有两条实现路径：live Element 通过 Ex5 `normalize_child_text` 调用 `PCore_NodeNormalizeById`，再同步 Browser-created Text/CDATA wrapper；detached Fragment 直接整理 staging。两条路径都删除空 Text/CDATA、合并相邻 Text/CDATA 到首个非空节点，并以 Element、Comment 和其他节点作为边界。Comment 不计入 Fragment `textContent`。成功 mutation 后宿主必须重新 style/layout/paint。
 

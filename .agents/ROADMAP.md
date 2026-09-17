@@ -391,7 +391,13 @@ next848 统一 Core、live Browser Element 与 detached Fragment 的 `Node.norma
 同步保留的 created Text/CDATA wrapper 数据。TEST1287 与 `1287,999` Debug ARMV4I 外置卡
 自动门通过，证据与预算见 `.agents/HANDOFF.md` 和 `docs/TESTING.md`。
 
-下一批（next849）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next849 扩展 detached Element 的直接 staging，从仅 Text 扩展为 Text/Comment/CDATA；
+`normalize()`、clone、replace、`textContent`、移除/重插入和带唯一 id 的直接 Core 物化
+共享有界 wrapper/owner 合同，嵌套 Element 与任意 detached Node graph 仍在 mutation 前
+拒绝。TEST1288 与 `1287-1288,999` Debug ARMV4I 外置卡自动门通过；完整日志、双空间
+预检、清理和 `crash_check` 结果见 `.agents/HANDOFF.md`。
+
+下一批（next850）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

@@ -160,9 +160,11 @@
   Text/CDATA；live Element 的同一有界 Core 路径也合并 Text/CDATA，并在保留 Browser-created
   wrapper 时同步其数据；detached
   Element 的 `replaceChildren()`（0–4 项）、`replaceChild()`（单项）和 `textContent` 均为
-  text-only 有界原子 staging，保留 childNodes/owner；attached `textContent` 同步重建 Text
-  wrapper；detached Element HTML 只做属性/direct Text escaping，纯文本 `innerHTML` 复用
-  textContent staging；markup、超长和 detached `outerHTML` setter 在 mutation 前拒绝。
+  有界原子 staging，保留 childNodes/owner；它们接受直接 Text、Comment、CDATA（以及按
+  既有规则转换的 primitive），`textContent` 仍只生成 Text 并排除 Comment。attached
+  `textContent` 同步重建 Text wrapper；detached Element HTML 只做属性/direct Text
+  escaping，纯文本 `innerHTML` 复用 textContent staging；markup、超长和 detached
+  `outerHTML` setter 在 mutation 前拒绝。
   Fragment `textContent` getter 排除 Comment；setter 预检 65,535 字符，失败保留旧树/集合。
   Browser 预检 relations/namespace/replace/组合；Fragment Element 与 CharacterData
   的 sibling/element-sibling getter 按 staging/live 提供，未归属为 `null`。
@@ -176,13 +178,15 @@
   脚本字符；generic Node、嵌套、复杂 fragment 和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 是 Browser-owned 的有界 detached staging：标签只接受小写化
   ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），物化前须有唯一非空 id；每个 wrapper
-  最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个 direct Text child。Ex11 通过
-  `__pcoreSetText` 创建 Core 节点，只能插入 live Element；remove/reinsert/id rename 仍保留
-  wrapper/alias identity。`cloneNode(false/true)` 复制属性或 direct Text 且与源隔离，连接前
+  最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个 direct CharacterData child
+  （Text、Comment 或 CDATA）。Ex11 通过 `__pcoreSetText` 创建 Core 节点，只能插入 live
+  Element；remove/reinsert/id rename 仍保留 wrapper/alias identity。`cloneNode(false/true)`
+  复制属性或 direct CharacterData 且与源隔离，连接前
   必须修复 id。detached Element 可作 bounded Fragment 根但不能嵌套；事件、资源、observer
   或 live collection，结构/容量错误均 fail
   closed。关系、物化、同父排序和移除后的 `childNodes`、首尾 child、`hasChildNodes()`
-  跟随 staging；`children`/`childElementCount` 不表示嵌套元素。`attributes` 是稳定的 bounded
+  跟随 staging；`children`/`childElementCount` 不表示嵌套元素。直接 CharacterData 的
+  `normalize()` 以 Comment 为边界合并 Text/CDATA；`attributes` 是稳定的 bounded
   `NamedNodeMap`；`get/set/removeAttributeNode*`、value/namespace/iteration 和跨 owner
   value-copy 共用 facade。`style.cssText` 与反射 setter
   在 detached/removed 状态暂存，物化后走 Core；宿主负责 layout/paint，视觉/触摸/SIP 不由

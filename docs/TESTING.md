@@ -63,7 +63,7 @@ tests=1-5 7b 13 20,999
 - 资源、导航、history、viewport、页面生命周期、脚本任务队列、焦点和窗口通知由早期资源/会话夹具覆盖；这些夹具共同验证候选 generation、required/optional gate、取消、旧页保留、滚动快照和事件顺序。
 - 几何、overflow、滚动、selector、form owner、validation、submission、FormData、option/select 和图像 source 夹具覆盖 Core/Browser callback 的边界、预算、snapshot 隔离和 fail-closed 行为；真实控件、DPI、触摸和视觉仍属于人工验收。
 - DOM/CharacterData 夹具覆盖 Text、Comment、CDATA、属性、`textContent`、`innerHTML`/`outerHTML`、`document.write`、title、detached Element 与 bounded DocumentFragment。Fragment 只允许文档规定的有限根数和节点形状。
-- 当前最新纵切的 TEST1284–1287 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging，以及 Core、live Element 和 detached Fragment 的 `Node.normalize()`：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界，Browser-created wrapper 的数据与 Core 结果同步。
+- TEST1284–1288 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging、Core/live Element/detached Fragment 的 `Node.normalize()`，以及 detached Element 的直接 CharacterData staging：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界；Text、Comment、CDATA wrapper 可在 clone、replace、直接物化、移除和再次插入之间保持有界 identity。嵌套 Element 仍在 mutation 前拒绝。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 
@@ -106,7 +106,7 @@ scripts\device_gate.bat -Candidate feature-name
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name ^
-  -TestSelection "1284-1287,999" -EnableJavaScript
+  -TestSelection "1284-1288,999" -EnableJavaScript
 ```
 
 脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和判门。本地证据在 `tmp/device-runs/`，不进入 Git。超时后设备进程仍需由用户在设备 UI 正常结束；设备门不提供安全的通用远端终止。
