@@ -44,9 +44,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   物化共享同一有界 wrapper/owner 合同；嵌套 Element、任意 detached Node graph 和
   Fragment 内的嵌套 CharacterData 子树仍 fail closed。TEST1288 与 `1287-1288,999`
   门通过，证据见下方。
+- next850 为已物化的 Browser-created Element wrapper 补齐有界 primitive
+  `before()`/`after()`/`replaceWith()`：同级文本插入复用现有 Browser/Core mutation
+  callback，目标 wrapper 在插入前后保持 identity，替换成功后回到 detached；未物化目标
+  保持 inert，Element、Fragment、CharacterData 与其他对象参数在 mutation 前拒绝。TEST1289
+  与 `1288-1289,999` 门通过，证据见下方。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1288。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1288,999`。
+- `TEST_MAX_NUMBER` 已为 1289。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1289,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -85,7 +90,8 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   补齐 CDATASection 的 Text 结构合同，next846 补齐 Fragment 的 Comment/CDATA 根 staging 与
   Core 物化，next847 修正 Fragment `textContent` 的 Comment 排除规则，next848 统一 Core、
   live Element 与 Fragment 的 Text/CDATA normalize 并同步 created wrapper 数据，next849 又
-  补齐 detached Element 的直接 Text/Comment/CDATA staging；下一步继续从可复现缺口进入公共 DLL。
+  补齐 detached Element 的直接 Text/Comment/CDATA staging，next850 又补齐已物化
+  Browser-created Element 的 primitive relative mutation；下一步继续从可复现缺口进入公共 DLL。
 - `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
   表单、图像和生命周期语义必须继续位于对应公共 DLL。
 - fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
@@ -196,16 +202,17 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1288。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1288,999`。
+- `TEST_MAX_NUMBER`：1289。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1289,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260917-212821-next849` 是本批最新证据：Debug ARMV4I
-`1287-1288,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-上一个稳定证据为 `tmp/device-runs/20260917-204745-next848` 的 `1287,999`，2/2 PASS。
+`tmp/device-runs/20260918-152259-next850` 是本批最新有效证据：Debug ARMV4I
+`1288-1289,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+上一个稳定证据为 `tmp/device-runs/20260917-212821-next849` 的 `1287-1288,999`，3/3 PASS。
+更早的稳定证据为 `tmp/device-runs/20260917-204745-next848` 的 `1287,999`，2/2 PASS。
 此前 next841 的证据仍保留在 `tmp/device-runs/20260916-205600-next841`。
 
 不完整日志不算通过；旧失败由 Git 与历史文档保留。
@@ -236,13 +243,13 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1288 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1289 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
   detached Element sibling 关系、Browser-owned Text/Comment element-sibling 关系、Fragment
-  CharacterData 根 staging/textContent 投影及 Browser-created Text/Comment 的 CharacterData/relative
-  primitive/现有 CharacterData source、Text/CDATA normalize 夹具均已有相邻设备门；
+  CharacterData 根 staging/textContent 投影及 Browser-created Text/Comment/Element 的
+  CharacterData/relative primitive/现有 CharacterData source、Text/CDATA normalize 夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
@@ -314,10 +321,13 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-选择并实现 next850：先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
-复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现的产品侧
-纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和 crash check）
-以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
+next850 已完成：为已物化 Browser-created Element wrapper 提供 primitive
+`before()`/`after()`/`replaceWith()` 的公共 Browser 纵切，补充 TEST1289 和相邻设备门。
+唯一下一步是选择并实现 next851：仍须先从 compatibility corpus、源码、设备日志或截图固定
+一个新的、可复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现
+的产品侧纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和
+crash check）以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，
+另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

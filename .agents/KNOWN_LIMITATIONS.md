@@ -174,7 +174,10 @@
   CharacterData mutator、`wholeText`、`splitText()`、`replaceWholeText()`、`remove()`、
   `cloneNode()` 和 1–4 个 primitive 的 `before()`/`after()`/`replaceWith()`。UTF-16 code-unit
   offset/count 校验；detached 更新快照，live regular Element 复用 Core callback；detached
-  relative inert，Fragment/staged Element relative fail closed。64 个 direct child、65,535 个
+  relative inert，Fragment/未物化 staged Element relative inert；已物化 Browser-created Element
+  仅接受 1–4 个 primitive 文本参数的 `before()`/`after()`/`replaceWith()`，复用既有 Core
+  callback，替换成功后 wrapper 回到 detached。Element、Fragment、CharacterData 或其他对象参数
+  fail closed。64 个 direct child、65,535 个
   脚本字符；generic Node、嵌套、复杂 fragment 和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 是 Browser-owned 的有界 detached staging：标签只接受小写化
   ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），物化前须有唯一非空 id；每个 wrapper
