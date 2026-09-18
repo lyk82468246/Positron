@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1290
+#define TEST_MAX_NUMBER 1291
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54989,6 +54989,50 @@ static BOOL test1290_browser_created_element_html_mutation_contract(void)
             " child identity after parser-backed innerHTML and use the public"
             " alias for outerHTML replacement, detaching cleanly while"
             " allowing the staged wrapper to be reused after replacement.");
+    return TRUE;
+}
+
+/* TEST 1291 - attached Browser-created Element element-child projection. */
+static BOOL test1291_browser_created_element_children_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='suffix'>S</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,target=d.getElementById('target'),suffix="
+        "d.getElementById('suffix'),result=d.getElementById('result'),e,a,b,c,"
+        "children,ok=true;try{e=d.createElement('article');e.id='created-children';"
+        "e.append('stage');if(e.children.length!==0||e.childElementCount!==0||"
+        "e.firstElementChild!==null||e.lastElementChild!==null)ok=false;"
+        "target.insertBefore(e,suffix);e.innerHTML='<span id=\"created-a\">A"
+        "</span>tail<b id=\"created-b\">B</b>';a=d.getElementById('created-a');"
+        "b=d.getElementById('created-b');children=e.children;if(!children||"
+        "children.length!==2||children[0]!==a||children[1]!==b||"
+        "children.item(0)!==a||children.namedItem('created-a')!==a||"
+        "children.namedItem('created-b')!==b||e.childElementCount!==2||"
+        "e.firstElementChild!==a||e.lastElementChild!==b)ok=false;"
+        "e.innerHTML='text';children=e.children;if(children.length!==0||"
+        "e.childElementCount!==0||e.firstElementChild!==null||"
+        "e.lastElementChild!==null)ok=false;e.innerHTML='<i id=\"created-c\">C"
+        "</i>';c=d.getElementById('created-c');if(e.children.length!==1||"
+        "e.children[0]!==c||e.firstElementChild!==c||e.lastElementChild!==c||"
+        "e.childElementCount!==1)ok=false;}catch(x){ok=false;}"
+        "result.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-children", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1291 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1291 OK",
+            "attached Browser-created Element wrappers now expose bounded"
+            " element-child snapshots, item/namedItem lookup and first/last"
+            " element accessors after parser-backed child mutation; detached"
+            " staging remains text/CharacterData-only and reusable.");
     return TRUE;
 }
 
@@ -113297,6 +113341,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1288: ok = test1288_browser_detached_element_character_data_contract(); break;
         case 1289: ok = test1289_browser_detached_element_relative_contract(); break;
         case 1290: ok = test1290_browser_created_element_html_mutation_contract(); break;
+        case 1291: ok = test1291_browser_created_element_children_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -188,12 +188,15 @@
   必须修复 id。detached Element 可作 bounded Fragment 根但不能嵌套；事件、资源、observer
   或 live collection，结构/容量错误均 fail
   closed。关系、物化、同父排序和移除后的 `childNodes`、首尾 child、`hasChildNodes()`
-  跟随 staging；`children`/`childElementCount` 不表示嵌套元素。直接 CharacterData 的
+  跟随 staging；detached staging 的 `children`/`childElementCount` 不表示嵌套元素。直接 CharacterData 的
   `normalize()` 以 Comment 为边界合并 Text/CDATA；`attributes` 是稳定的 bounded
   `NamedNodeMap`；`get/set/removeAttributeNode*`、value/namespace/iteration 和跨 owner
   value-copy 共用 facade。`style.cssText` 与反射 setter
   在 detached/removed 状态暂存，物化后走 Core；宿主负责 layout/paint，视觉/触摸/SIP 不由
-  该门保证。已物化 wrapper 的 `innerHTML` setter 复用 Core parser 后，会原地保留
+  该门保证。已物化 wrapper 的 `children` 现在从同步后的 direct-child snapshot 生成有界
+  HTMLCollection，并提供 `item()`/`namedItem()`、`childElementCount`、
+  `firstElementChild` 和 `lastElementChild`；detached staging 仍不接受嵌套 Element，
+  collection 也不是完整 live collection。已物化 wrapper 的 `innerHTML` setter 复用 Core parser 后，会原地保留
   `childNodes` collection identity、刷新子节点快照并清理旧 child owner；`outerHTML`
   setter 只能通过 public wrapper alias 进入既有 replacement，成功后 wrapper 变为 detached，
   id alias 被清除但 staged 属性/CharacterData 可再次设置并重新物化。嵌套 Element staging、
