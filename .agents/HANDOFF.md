@@ -49,9 +49,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   callback，目标 wrapper 在插入前后保持 identity，替换成功后回到 detached；未物化目标
   保持 inert，Element、Fragment、CharacterData 与其他对象参数在 mutation 前拒绝。TEST1289
   与 `1288-1289,999` 门通过，证据见下方。
+- next851 补齐已物化 Browser-created Element 的 HTML mutation coherence：`innerHTML`
+  setter 在 Core parser 成功后原地刷新 created wrapper 的 child snapshot 与旧 child
+  detached 状态；`outerHTML` setter 通过 public alias 调用既有 Core replacement，成功后
+  清理 alias 映射并让 staged wrapper 可再次设置 id、插入和使用。TEST1290 与
+  `1289-1290,999` 门通过，证据见下方。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1289。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1289,999`。
+- `TEST_MAX_NUMBER` 已为 1290。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1290,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -202,16 +207,18 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1289。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1289,999`。
+- `TEST_MAX_NUMBER`：1290。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1290,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260918-152259-next850` 是本批最新有效证据：Debug ARMV4I
-`1288-1289,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-上一个稳定证据为 `tmp/device-runs/20260917-212821-next849` 的 `1287-1288,999`，3/3 PASS。
+`tmp/device-runs/20260918-154440-next851` 是本批最新有效证据：Debug ARMV4I
+`1289-1290,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+日志明确记录 TEST1289、TEST1290 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+上一个稳定证据为 `tmp/device-runs/20260918-152259-next850` 的 `1288-1289,999`，3/3 PASS。
+再上一个稳定证据为 `tmp/device-runs/20260917-212821-next849` 的 `1287-1288,999`，3/3 PASS。
 更早的稳定证据为 `tmp/device-runs/20260917-204745-next848` 的 `1287,999`，2/2 PASS。
 此前 next841 的证据仍保留在 `tmp/device-runs/20260916-205600-next841`。
 
@@ -243,7 +250,7 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1289 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1290 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -321,13 +328,13 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next850 已完成：为已物化 Browser-created Element wrapper 提供 primitive
-`before()`/`after()`/`replaceWith()` 的公共 Browser 纵切，补充 TEST1289 和相邻设备门。
-唯一下一步是选择并实现 next851：仍须先从 compatibility corpus、源码、设备日志或截图固定
-一个新的、可复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现
-的产品侧纵切、直接相邻回归、风险相称的正式设备门（完整日志、双空间预检、清理和
-crash check）以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或核心交互阻塞，
-另须立即人工复核。
+next851 已完成：为已物化 Browser-created Element wrapper 提供 attached `innerHTML`
+child-snapshot reconciliation 与 public-alias `outerHTML` replacement/detach，补充
+TEST1290 和相邻设备门。唯一下一步是选择并实现 next852：仍须先从 compatibility corpus、
+源码、设备日志或截图固定一个新的、可复现的用户可见组合缺口，再建立最小离线 fixture 和
+自动断言。完成标准是可复现的产品侧纵切、直接相邻回归、风险相称的正式设备门（完整日志、
+双空间预检、清理和 crash check）以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或
+核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

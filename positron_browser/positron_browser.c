@@ -3218,6 +3218,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "for(i=0;i<e.__children804.length;i++){n=e.__children804[i];op=T(n)?'insertTextChild':(C(n)?'createComment':'createCDATA');if(!g.__pcoreSetText({op:op,parentId:id,index:i,nodeType:n.nodeType,text:T(n)?n.__data803:(C(n)?n.__data805:n.__data806)})){throw new Error('element child insert failed');}if(C(n)){n.__pcoreDetached11=false;}else if(D(n)){n.__pcoreDetached11=false;}}"
         "reindex(e);e.__nodes11=e.__children804;e.__children9=null;return e;}"
         "function gone(e){var id=e.__id;if(id&&by[id]===e){delete by[id];}e.__attached804=false;e.__actual804=null;e.__pcoreDetached11=true;e.__id='';e.__nodes11=e.__children804;e.__children9=null;}"
+        "g.__pcoreSyncCreatedElement804=syncAttached;g.__pcoreDetachCreatedElement804=gone;"
         "function relativeText804(args){var i,v;for(i=0;i<args.length;i++){v=args[i];"
         "if(v!==null&&v!==undefined&&(typeof v==='object'||typeof v==='function')){"
         "throw new Error('element relative only accepts text');}}}"
@@ -3833,13 +3834,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
     /* Detached Element HTML uses the same bounded Browser-owned staging as
      * P14: attributes and direct Text children can be serialized without a
      * Core handle, while markup input is rejected instead of pretending that
-     * a second parser exists.  Connected wrappers continue to delegate to
-     * the existing Core-backed innerHTML/outerHTML descriptors. */
+     * a second parser exists.  Connected wrappers delegate to the Core-backed
+     * descriptors and refresh their staged child snapshot after innerHTML;
+     * outerHTML uses the public alias so the wrapper can be detached cleanly. */
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE[] =
-        "(function(g){var d=g.document,P=g.__pcorePElement,create,oldInner,oldOuter;"
+        "(function(g){var d=g.document,P=g.__pcorePElement,create,oldInner,oldOuter,sync,detach;"
         "if(!d||!P||typeof d.createElement!=='function'){return;}create=d.createElement;"
         "oldInner=Object.getOwnPropertyDescriptor(P.prototype,'innerHTML');"
         "oldOuter=Object.getOwnPropertyDescriptor(P.prototype,'outerHTML');"
+        "sync=g.__pcoreSyncCreatedElement804;detach=g.__pcoreDetachCreatedElement804;"
         "function E(e){return !!(e&&e.__pcoreCreatedElement804&&e.nodeType===1);}"
         "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}"
         "function add(a,b){var s=String(b);if(a.length+s.length>65535){"
@@ -3861,16 +3864,18 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function decorate(e){if(!E(e)||e.__htmlFacade836){return e;}e.__htmlFacade836=true;"
         "Object.defineProperty(e,'innerHTML',{get:function(){if(e.__attached804){"
         "if(!oldInner||typeof oldInner.get!=='function'){throw new Error('innerHTML unavailable');}"
-        "return oldInner.get.call(e.__actual804||e);}return inner(e);},set:function(v){var s=String(v);"
+        "return oldInner.get.call(e.__actual804||e);}return inner(e);},set:function(v){var s=String(v),oldChildren,result;"
         "if(e.__attached804){if(!oldInner||typeof oldInner.set!=='function'){throw new Error('innerHTML unavailable');}"
-        "return oldInner.set.call(e.__actual804||e,v);}if(s.length>65535){throw new Error('innerHTML limit');}"
+        "oldChildren=e.__children804;result=oldInner.set.call(e.__actual804||e,v);e.__nodes11=null;"
+        "if(typeof sync==='function'){sync(e,oldChildren);}return result;}if(s.length>65535){throw new Error('innerHTML limit');}"
         "if(s.indexOf('<')>=0||s.indexOf('>')>=0){throw new Error('detached HTML markup unavailable');}"
         "e.textContent=s;},enumerable:true,configurable:true});"
         "Object.defineProperty(e,'outerHTML',{get:function(){if(e.__attached804){"
         "if(!oldOuter||typeof oldOuter.get!=='function'){throw new Error('outerHTML unavailable');}"
         "return oldOuter.get.call(e.__actual804||e);}return outer(e);},set:function(v){"
         "if(e.__attached804){if(!oldOuter||typeof oldOuter.set!=='function'){throw new Error('outerHTML unavailable');}"
-        "return oldOuter.set.call(e.__actual804||e,v);}throw new Error('detached outerHTML update unavailable');},"
+        "oldOuter.set.call(e,v);if(e.__pcoreDetached11&&typeof detach==='function'){detach(e);}"
+        "return undefined;}throw new Error('detached outerHTML update unavailable');},"
         "enumerable:true,configurable:true});return e;}"
         "d.createElement=function(){return decorate(create.apply(d,arguments));};})(this);";
 

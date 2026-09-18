@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1289
+#define TEST_MAX_NUMBER 1290
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -54940,6 +54940,55 @@ static BOOL test1289_browser_detached_element_relative_contract(void)
             " calls remain inert, wrapper identity survives sibling insertion"
             " and replacement detaches the staged Element cleanly; Element"
             " and other object arguments still fail closed.");
+    return TRUE;
+}
+
+/* TEST 1290 - attached Browser-created Element HTML mutation coherence. */
+static BOOL test1290_browser_created_element_html_mutation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><p id='prefix'>P</p><div id='target'><p id='suffix'>S</p>"
+        "</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,target=d.getElementById('target'),suffix="
+        "d.getElementById('suffix'),result=d.getElementById('result'),e,old,"
+        "nodes,n,bad=0,ok=true;try{e=d.createElement('article');e.id="
+        "'created-html';e.append('old');target.insertBefore(e,suffix);nodes="
+        "e.childNodes;old=e.firstChild;e.innerHTML='<span id=\"created-child\">A"
+        "</span>tail';n=e.firstChild;if(!e.isConnected||e.parentNode!==target||"
+        "d.getElementById('created-html')!==e||nodes!==e.childNodes||"
+        "nodes.length!==2||old.parentNode!==null||old.isConnected||"
+        "n===null||n.nodeType!==1||n.id!=='created-child'||"
+        "d.getElementById('created-child')!==n||e.textContent!=='Atail')ok=false;"
+        "try{e.innerHTML='<i id=\"suffix\">bad</i>';}catch(x1){bad|=1;}"
+        "if(e.textContent!=='Atail'||d.getElementById('created-child')!==n)ok=false;"
+        "e.outerHTML='<section id=\"created-html\"><b id=\"replacement\">N"
+        "</b>tail2</section>';n=d.getElementById('created-html');if(e.parentNode!==null||"
+        "e.isConnected||n===null||n===e||n.parentNode!==target||"
+        "d.getElementById('replacement')!==n.firstElementChild||"
+        "target.textContent!=='Ntail2S')ok=false;e.id='created-reused';"
+        "e.textContent='reuse';target.insertBefore(e,suffix);if(!e.isConnected||"
+        "d.getElementById('created-reused')!==e||e.textContent!=='reuse'||"
+        "target.textContent!=='Ntail2reuseS')ok=false;try{e.outerHTML="
+        "'<i id=\"created-reused\"><b></b></i><u></u>';}catch(x2){bad|=2;}"
+        "if(d.getElementById('created-reused')!==e||e.parentNode!==target||"
+        "e.textContent!=='reuse')ok=false;}catch(x3){ok=false;}"
+        "result.textContent=String(ok&&bad===3);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-html", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1290 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1290 OK",
+            "attached Browser-created Element wrappers now refresh their"
+            " child identity after parser-backed innerHTML and use the public"
+            " alias for outerHTML replacement, detaching cleanly while"
+            " allowing the staged wrapper to be reused after replacement.");
     return TRUE;
 }
 
@@ -113247,6 +113296,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1287: ok = test1287_browser_cdata_normalize_contract(); break;
         case 1288: ok = test1288_browser_detached_element_character_data_contract(); break;
         case 1289: ok = test1289_browser_detached_element_relative_contract(); break;
+        case 1290: ok = test1290_browser_created_element_html_mutation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

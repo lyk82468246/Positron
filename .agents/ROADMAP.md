@@ -404,7 +404,14 @@ Fragment、CharacterData 和其他对象参数在 mutation 前拒绝。TEST1289 
 Debug ARMV4I 外置卡自动门通过；完整日志、双空间预检、清理和 `crash_check` 结果见
 `.agents/HANDOFF.md`。
 
-下一批（next851）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next851 补齐已物化 Browser-created Element 的 HTML mutation coherence：attached
+`innerHTML` setter 在 Core parser 成功后原地刷新 created wrapper 的 child snapshot，
+使旧 child wrapper detached；attached `outerHTML` setter 通过 public alias 进入既有
+replacement，成功后清理 created-element alias 并允许同一 staged wrapper 重新设置 id、
+插入和使用。TEST1290 与 `1289-1290,999` Debug ARMV4I 外置卡自动门通过；完整日志、
+双空间预检、清理和 `crash_check` 结果见 `.agents/HANDOFF.md`。未新增 Core ABI。
+
+下一批（next852）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

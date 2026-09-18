@@ -40,6 +40,7 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - Text/CDATA 的 `data`、CharacterData mutator、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和 wrapper 关系。
 - `document.createElement(tag)` 的 detached staging：每个 wrapper 可保存有界属性和最多 64 个直接 Text、Comment 或 CDATA child；`cloneNode`、`normalize`、`replaceChild`、`replaceChildren`、`textContent` 以及带唯一 id 的直接 Core 物化都保留这些 CharacterData wrapper 的关系和数据。嵌套 Element、通用 detached Node graph 和未通过预检的结构仍拒绝。
 - 已物化的 Browser-created Element wrapper 还支持 1–4 个 primitive 参数的 `before()`、`after()` 和 `replaceWith()`；同级文本插入复用现有 Core mutation callback，替换成功后 wrapper 回到 detached 状态。未物化目标保持 inert，Element、Fragment、CharacterData 或其他对象参数不在这条窄路径内。
+- 已物化的 Browser-created Element wrapper 的 `innerHTML` setter 会在 Core parser 成功后原地刷新 `childNodes` snapshot 并使旧 child wrapper detached；`outerHTML` setter 通过 public wrapper alias 完成既有 Element replacement，成功后清理 alias 并允许同一 staged wrapper 重新设置 id、插入和使用。它不提供第二个 detached HTML parser，也不执行脚本、资源或 mutation event。
 
 这些路径通过 Ex callback table 把父 ID、未过滤 child index、节点类型和 UTF-8 值转给 Core。宿主不遍历、合并或删除产品节点，也不复制第二份 form/selector/resource 语义。
 
