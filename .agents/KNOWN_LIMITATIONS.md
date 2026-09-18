@@ -200,7 +200,11 @@
   `childNodes` collection identity、刷新子节点快照并清理旧 child owner；`outerHTML`
   setter 只能通过 public wrapper alias 进入既有 replacement，成功后 wrapper 变为 detached，
   id alias 被清除但 staged 属性/CharacterData 可再次设置并重新物化。嵌套 Element staging、
-  任意 detached parser、事件/资源执行和完整 live collection 仍不支持。
+  任意 detached parser、事件/资源执行和完整 live collection 仍不支持。已物化 wrapper 的
+  `insertAdjacentText()` 现在覆盖四个位置，复用既有 Core Text-child callback，并在成功后
+  原地同步 `childNodes` 与 wrapper identity；脱离后 direct 普通 Text/CDATA 也保留最近一次
+  快照数据。普通 Element 的 `insertAdjacentHTML()` 已有 Ex9 路径，但 created Element 上
+  仍未声明为 wrapper-coherent 的 parser mutation。
 - `HTMLBodyElement.text` 现在提供一个 live、遗留的 `text` attribute 投影：缺失 getter 返回
   空字符串，setter 对 `null` 使用 `[TreatNullAs=EmptyString]`，其他输入按 JavaScript
   `String` 转换；`setAttribute()`/`removeAttribute()` 的变化会被后续 getter 读取。它不

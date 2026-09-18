@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1291
+#define TEST_MAX_NUMBER 1292
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55033,6 +55033,53 @@ static BOOL test1291_browser_created_element_children_contract(void)
             " element-child snapshots, item/namedItem lookup and first/last"
             " element accessors after parser-backed child mutation; detached"
             " staging remains text/CharacterData-only and reusable.");
+    return TRUE;
+}
+
+/* TEST 1292 - attached Browser-created Element adjacent text coherence. */
+static BOOL test1292_browser_created_element_adjacent_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='prefix'>P</p><p id='suffix'>S</p>"
+        "</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,target=d.getElementById('target'),suffix="
+        "d.getElementById('suffix'),result=d.getElementById('result'),e,nodes,"
+        "old,a,b,ok=true,bad=0;try{e=d.createElement('article');e.id="
+        "'created-adjacent';e.append('old');target.insertBefore(e,suffix);"
+        "nodes=e.childNodes;old=e.firstChild;e.insertAdjacentText('afterbegin',"
+        "'A');a=e.firstChild;if(nodes!==e.childNodes||nodes.length!==2||a===old||"
+        "a.data!=='A'||e.lastChild!==old||old.data!=='old'||old.parentNode!==e||"
+        "e.textContent!=='Aold')ok=false;e.insertAdjacentText('beforeend',7);"
+        "b=e.lastChild;if(nodes!==e.childNodes||nodes.length!==3||b.data!=='7'||"
+        "e.textContent!=='Aold7'||e.firstChild!==a||e.childNodes[1]!==old)ok=false;"
+        "e.insertAdjacentText('BEFOREBEGIN','B');e.insertAdjacentText('afterend',"
+        "false);if(target.textContent!=='PBAold7falseS'||target.childNodes[1].data!=="
+        "'B'||target.childNodes[3].data!=='false')ok=false;try{e.insertAdjacentText("
+        "'middle','x');}catch(x1){bad|=1;}try{e.insertAdjacentText('beforeend',{});"
+        "}catch(x2){bad|=2;}try{e.insertAdjacentText('afterend',old);}catch(x3){"
+        "bad|=4;}try{e.insertAdjacentText('beforeend','x','y');}catch(x4){bad|=8;}"
+        "try{e.insertAdjacentText('beforeend');}catch(x5){bad|=16;}if(e.textContent!=="
+        "'Aold7'||nodes!==e.childNodes||nodes.length!==3||e.childNodes[1]!==old)ok=false;"
+        "e.remove();try{e.insertAdjacentText('beforeend','z');}catch(x6){bad|=32;}"
+        "if(e.parentNode!==null||e.isConnected||e.textContent!=='Aold7'||nodes!=="
+        "e.childNodes)ok=false;}catch(x){ok=false;}result.textContent=String(ok&&"
+        "bad===63);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-adjacent-text", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1292 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1292 OK",
+            "attached Browser-created Element wrappers now reconcile"
+            " insertAdjacentText at all four positions while preserving"
+            " childNodes and CharacterData identity; invalid, detached and"
+            " object/arity calls fail closed.");
     return TRUE;
 }
 
@@ -113342,6 +113389,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1289: ok = test1289_browser_detached_element_relative_contract(); break;
         case 1290: ok = test1290_browser_created_element_html_mutation_contract(); break;
         case 1291: ok = test1291_browser_created_element_children_contract(); break;
+        case 1292: ok = test1292_browser_created_element_adjacent_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

@@ -59,9 +59,14 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `firstElementChild` 和 `lastElementChild` 在 parser-backed child mutation 后与
   `childNodes` 同步；detached staging 仍只接受 CharacterData。TEST1291 与
   `1290-1291,999` 门通过，证据见下方。
+- next853 补齐已物化 Browser-created Element 的 `insertAdjacentText()` 一致性：四个位置
+  复用既有 Core Text-child callback，成功后原地同步 `childNodes` 与 CharacterData wrapper
+  identity；Element 脱离后仍保留 direct Text/CDATA 快照数据，非法位置、对象/arity 和
+  detached 调用 fail closed。TEST1292 与 `1291-1292,999` Debug ARMV4I 外置卡自动门通过，
+  证据见下方；未新增 Core ABI。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 已为 1291。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1291,999`。
+- `TEST_MAX_NUMBER` 已为 1292。tracked `test_host/test_host.ini` 仍是窄 smoke：
+  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1292,999`。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -212,16 +217,18 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1291。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1291,999`。
+- `TEST_MAX_NUMBER`：1292。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1292,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260918-160117-next852` 是本批最新有效证据：Debug ARMV4I
-`1290-1291,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-日志明确记录 TEST1290、TEST1291 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+`tmp/device-runs/20260918-161610-next853` 是本批最新有效证据：Debug ARMV4I
+`1291-1292,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+日志明确记录 TEST1291、TEST1292 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+本次目标卷由 `CeGetDiskFreeSpaceEx` 报告 42,335,502,336 字节可用，内部 object-store
+告警门通过；部署目录在完整日志回收后已删除。
 上一个稳定证据为 `tmp/device-runs/20260918-154440-next851` 的 `1289-1290,999`，3/3 PASS。
 再上一个稳定证据为 `tmp/device-runs/20260917-212821-next849` 的 `1287-1288,999`，3/3 PASS。
 更早的稳定证据为 `tmp/device-runs/20260917-204745-next848` 的 `1287,999`，2/2 PASS。
@@ -255,14 +262,15 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1291 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1292 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
   detached Element sibling 关系、Browser-owned Text/Comment element-sibling 关系、Fragment
   CharacterData 根 staging/textContent 投影及 Browser-created Text/Comment/Element 的
   CharacterData/relative primitive/现有 CharacterData source、Text/CDATA normalize、created
-  Element element-child projection 夹具均已有相邻设备门；
+  Element element-child projection、四位置 `insertAdjacentText()` 与脱离后的 direct
+  CharacterData 快照夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
@@ -334,11 +342,11 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next852 已完成：为已物化 Browser-created Element wrapper 提供有界 `children` HTMLCollection
-snapshot、`item()`/`namedItem()`、`childElementCount`、`firstElementChild` 和
-`lastElementChild` 投影，补充 TEST1291 和相邻设备门。唯一下一步是选择并实现 next853：仍须先从 compatibility corpus、
-源码、设备日志或截图固定一个新的、可复现的用户可见组合缺口，再建立最小离线 fixture 和
-自动断言。完成标准是可复现的产品侧纵切、直接相邻回归、风险相称的正式设备门（完整日志、
+next853 已完成：为已物化 Browser-created Element wrapper 提供四位置 `insertAdjacentText()`
+的一致性同步，并让脱离后的 direct Text/CDATA 快照保留数据，补充 TEST1292 和相邻设备门。
+唯一下一步是选择并实现 next854：仍须先从 compatibility corpus、源码、设备日志或截图固定
+一个新的、可复现的用户可见组合缺口，再建立最小离线 fixture 和自动断言。完成标准是可复现
+的产品侧纵切、直接相邻回归、风险相称的正式设备门（完整日志、
 双空间预检、清理和 crash check）以及职责文档更新；若触及崩溃、数据损坏、严重布局破坏或
 核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带

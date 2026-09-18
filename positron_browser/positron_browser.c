@@ -3091,10 +3091,10 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
      * makes materialization possible.  Nested elements remain unsupported in
      * this staging path. */
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE[] =
-        "(function(g){var P=g.__pcorePElement,d=g.document,find,ins,app,pre,pr,rem,bef,aft,rwf,ga,sa,ra,di,dt,by={},norm;"
+        "(function(g){var P=g.__pcorePElement,d=g.document,find,ins,app,pre,pr,rem,bef,aft,rwf,iat,ga,sa,ra,di,dt,by={},norm;"
         "if(!P||!d||typeof d.getElementById!=='function'){return;}find=d.getElementById;"
         "ins=P.prototype.insertBefore;app=P.prototype.appendChild;pre=P.prototype.append;pr=P.prototype.prepend;norm=P.prototype.normalize;"
-        "rem=P.prototype.removeChild;bef=P.prototype.before;aft=P.prototype.after;rwf=P.prototype.replaceWith;"
+        "rem=P.prototype.removeChild;bef=P.prototype.before;aft=P.prototype.after;rwf=P.prototype.replaceWith;iat=P.prototype.insertAdjacentText;"
         "ga=P.prototype.getAttribute;sa=P.prototype.setAttribute;ra=P.prototype.removeAttribute;"
         "di=Object.getOwnPropertyDescriptor(P.prototype,'id');dt=Object.getOwnPropertyDescriptor(P.prototype,'textContent');"
         "function T(n){return !!(n&&n.__pcoreCreatedText803&&n.nodeType===3);}function C(n){return !!(n&&n.__pcoreCreatedComment805&&n.nodeType===8);}function D(n){return !!(n&&n.__pcoreCreatedCDATA806&&n.nodeType===4);}function X(n){return T(n)||C(n)||D(n);}function E(n){return !!(n&&n.__pcoreCreatedElement804&&n.nodeType===1);}"
@@ -3191,7 +3191,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(e,'firstElementChild',{get:function(){var a=e.__children804,i,n;for(i=0;i<a.length;i++){n=a[i];if(n&&n.nodeType===1){return n;}}return null;},configurable:true});"
         "Object.defineProperty(e,'lastElementChild',{get:function(){var a=e.__children804,i,n;for(i=a.length-1;i>=0;i--){n=a[i];if(n&&n.nodeType===1){return n;}}return null;},configurable:true});"
         "Object.defineProperty(e,'childElementCount',{get:function(){var a=e.__children804,i,n=0;for(i=0;i<a.length;i++){if(a[i]&&a[i].nodeType===1){n++;}}return n;},configurable:true});Object.defineProperty(e,'textContent',{get:function(){var s='',i,n;"
-        "if(e.__attached804&&dt&&dt.get){return dt.get.call(e.__actual804);}for(i=0;i<e.__children804.length;i++){n=e.__children804[i];if(T(n)||D(n)){s+=T(n)?n.__data803:n.__data806;}}return s;},"
+        "if(e.__attached804&&dt&&dt.get){return dt.get.call(e.__actual804);}for(i=0;i<e.__children804.length;i++){n=e.__children804[i];if(T(n)||D(n)||(n&&(n.nodeType===3||n.nodeType===4))){s+=T(n)?n.__data803:D(n)?n.__data806:String(n.data===undefined?n.nodeValue:n.data);}}return s;},"
         "set:function(v){var s=String(v),i,n=null,a,old;if(s.length>65535){throw new Error('textContent limit');}"
         "if(e.__attached804){if(!dt||!dt.set){throw new Error('textContent unavailable');}if(s!==''){n=d.createTextNode(s);if(!T(n)){throw new Error('textContent unavailable');}}"
         "old=e.__children804;dt.set.call(e.__actual804,s);a=old;for(i=0;i<a.length;i++){clearX(a[i]);}"
@@ -3239,6 +3239,11 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "P.prototype.before=function(){return E(this)?relative804(this,0,arguments):bef.apply(this,arguments);};"
         "P.prototype.after=function(){return E(this)?relative804(this,1,arguments):aft.apply(this,arguments);};"
         "P.prototype.replaceWith=function(){return E(this)?relative804(this,2,arguments):rwf.apply(this,arguments);};"
+        "P.prototype.insertAdjacentText=function(position,text){var old,result;"
+        "if(!E(this)){return iat.apply(this,arguments);}if(arguments.length!==2||"
+        "!this.__attached804||!this.__actual804){throw new Error('insertAdjacentText unavailable');}"
+        "old=this.__children804;result=iat.apply(this,arguments);syncAttached(this,old);"
+        "return result;};"
         "P.prototype.appendChild=function(n){return E(n)?attach(this,n,null):app.apply(this,arguments);};P.prototype.insertBefore=function(n,r){return E(n)?attach(this,n,r):ins.apply(this,arguments);};"
         "P.prototype.removeChild=function(n){var r;if(E(n)){if(!n.__attached804||n.parentNode!==this){throw new Error('removeChild failed');}r=rem.call(this,n.__actual804);gone(n);return r;}return rem.apply(this,arguments);};"
         "P.prototype.append=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(E(arguments[i])){has=1;break;}}if(!has){return pre.apply(this,arguments);}"
