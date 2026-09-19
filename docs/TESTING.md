@@ -63,7 +63,7 @@ tests=1-5 7b 13 20,999
 - 资源、导航、history、viewport、页面生命周期、脚本任务队列、焦点和窗口通知由早期资源/会话夹具覆盖；这些夹具共同验证候选 generation、required/optional gate、取消、旧页保留、滚动快照和事件顺序。
 - 几何、overflow、滚动、selector、form owner、validation、submission、FormData、option/select 和图像 source 夹具覆盖 Core/Browser callback 的边界、预算、snapshot 隔离和 fail-closed 行为；真实控件、DPI、触摸和视觉仍属于人工验收。
 - DOM/CharacterData 夹具覆盖 Text、Comment、CDATA、属性、`textContent`、`innerHTML`/`outerHTML`、`document.write`、title、detached Element 与 bounded DocumentFragment。Fragment 只允许文档规定的有限根数和节点形状。
-- TEST1284–1292 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging、Core/live Element/detached Fragment 的 `Node.normalize()`、detached Element 的直接 CharacterData staging，以及 detached Element 物化后的有界 primitive `before()`/`after()`/`replaceWith()`、attached HTML mutation coherence、element-child projection 和四位置 `insertAdjacentText()`：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界；Text、Comment、CDATA wrapper 和物化 Element wrapper 可在 clone、replace、直接物化、移除、再次插入、同级文本突变、parser-backed `innerHTML`/`outerHTML` 替换、`children`/first-last element accessor 读取和 adjacent text 插入之间保持有界 identity，Element 脱离后 direct 普通 Text/CDATA 快照仍保留数据。未物化 Element 的 relative/adjacent 调用保持 inert，嵌套 Element、任意对象参数、完整 detached HTML parser 和完整 live collection 仍在 mutation 前拒绝或不承诺。
+- TEST1284–1293 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging、Core/live Element/detached Fragment 的 `Node.normalize()`、detached Element 的直接 CharacterData staging，以及 detached Element 物化后的有界 primitive `before()`/`after()`/`replaceWith()`、attached HTML mutation coherence、element-child projection 和四位置 `insertAdjacentText()`/`insertAdjacentHTML()`：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界；Text、Comment、CDATA wrapper 和物化 Element wrapper 可在 clone、replace、直接物化、移除、再次插入、同级文本突变、parser-backed `innerHTML`/`outerHTML` 替换、`children`/first-last element accessor 读取和 adjacent mutation 之间保持有界 identity，Element 脱离后 direct 普通 Text/CDATA 快照仍保留数据。未物化 Element 的 relative/adjacent 调用保持 inert，嵌套 Element、任意对象参数、完整 detached HTML parser 和完整 live collection 仍在 mutation 前拒绝或不承诺。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 
@@ -106,7 +106,7 @@ scripts\device_gate.bat -Candidate feature-name
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name ^
-  -TestSelection "1284-1292,999" -EnableJavaScript
+  -TestSelection "1284-1293,999" -EnableJavaScript
 ```
 
 脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和判门。本地证据在 `tmp/device-runs/`，不进入 Git。超时后设备进程仍需由用户在设备 UI 正常结束；设备门不提供安全的通用远端终止。

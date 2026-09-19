@@ -422,10 +422,15 @@ next853 补齐已物化 Browser-created Element 的四位置 `insertAdjacentText
 既有 Core Text-child callback，成功后原地同步 `childNodes` 与 CharacterData wrapper identity，
 并让脱离后的 direct 普通 Text/CDATA 快照保留数据。TEST1292 与 `1291-1292,999` Debug ARMV4I
 外置卡自动门通过；完整日志、双空间预检、清理和 `crash_check` 结果见 `.agents/HANDOFF.md`。
-未新增 Core ABI；普通 Element 的 `insertAdjacentHTML()` 仍是下一批 created-wrapper coherence
-候选。
+未新增 Core ABI。
 
-下一批（next854）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next854 补齐已物化 Browser-created Element 的四位置 `insertAdjacentHTML()` 一致性：复用
+既有 Ex9 parser 路径，成功后原地同步 `childNodes`、parser-created children 与 wrapper
+identity；非法位置、重复 id、超限片段和 detached 调用在 mutation 前 fail closed。TEST1293
+与 `1292-1293,999` Debug ARMV4I 外置卡自动门通过；完整日志、双空间预检、清理和
+`crash_check` 结果见 `.agents/HANDOFF.md`。未新增 Core ABI。
+
+下一批（next855）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

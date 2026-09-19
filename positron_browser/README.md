@@ -42,7 +42,7 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - 已物化的 Browser-created Element wrapper 还支持 1–4 个 primitive 参数的 `before()`、`after()` 和 `replaceWith()`；同级文本插入复用现有 Core mutation callback，替换成功后 wrapper 回到 detached 状态。未物化目标保持 inert，Element、Fragment、CharacterData 或其他对象参数不在这条窄路径内。
 - 已物化的 Browser-created Element wrapper 的 `innerHTML` setter 会在 Core parser 成功后原地刷新 `childNodes` snapshot 并使旧 child wrapper detached；`outerHTML` setter 通过 public wrapper alias 完成既有 Element replacement，成功后清理 alias 并允许同一 staged wrapper 重新设置 id、插入和使用。它不提供第二个 detached HTML parser，也不执行脚本、资源或 mutation event。
 - 同一已物化 wrapper 的 `children` 会从 direct-child snapshot 生成有界 HTMLCollection，提供 `item()`、`namedItem()`、`childElementCount`、`firstElementChild` 和 `lastElementChild`；parser-backed child mutation 后这些读取与 `childNodes` 同步。detached staging 仍不接受嵌套 Element，collection 不承诺完整 live 更新。
-- 同一已物化 wrapper 的 `insertAdjacentText()` 覆盖 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置，复用既有 Core Text-child callback；成功后原地同步 `childNodes` 与 CharacterData wrapper identity。wrapper 脱离后仍保留 direct 普通 Text/CDATA 的最近一次数据快照；非法位置、对象/arity 和 detached 调用 fail closed。普通 Element 的 `insertAdjacentHTML()` 仍复用 Ex9 parser 路径，created Element 上的 parser-wrapper coherence 不在本条承诺内。
+- 同一已物化 wrapper 的 `insertAdjacentText()` 与 `insertAdjacentHTML()` 覆盖 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置，分别复用既有 Core Text-child callback 与 Ex9 parser 路径；成功后原地同步 `childNodes`、parser-created children 和 CharacterData wrapper identity。wrapper 脱离后仍保留 direct 普通 Text/CDATA 的最近一次数据快照；非法位置、对象/arity、重复 id、超限片段和 detached 调用 fail closed。
 
 这些路径通过 Ex callback table 把父 ID、未过滤 child index、节点类型和 UTF-8 值转给 Core。宿主不遍历、合并或删除产品节点，也不复制第二份 form/selector/resource 语义。
 

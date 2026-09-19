@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1292
+#define TEST_MAX_NUMBER 1293
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55080,6 +55080,58 @@ static BOOL test1292_browser_created_element_adjacent_text_contract(void)
             " insertAdjacentText at all four positions while preserving"
             " childNodes and CharacterData identity; invalid, detached and"
             " object/arity calls fail closed.");
+    return TRUE;
+}
+
+/* TEST 1293 - attached Browser-created Element adjacent HTML coherence. */
+static BOOL test1293_browser_created_element_adjacent_html_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='prefix'>P</p><p id='suffix'>S</p>"
+        "</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,t=d.getElementById('target'),s=d.getElementById('suffix'),"
+        "r=d.getElementById('result'),e,n,old,a,b,p,i,j,stable,ok=true,bad=0;"
+        "try{e=d.createElement('article');e.id='created-adjacent-html';e.append('old');"
+        "t.insertBefore(e,s);n=e.childNodes;old=e.firstChild;"
+        "e.insertAdjacentHTML('afterbegin','<span id=\"adj-a\">A</span>mid');"
+        "a=d.getElementById('adj-a');if(n!==e.childNodes||n.length!==3||n[0]!==a||"
+        "n[1].nodeType!==3||n[1].data!=='mid'||n[2]!==old||old.parentNode!==e||"
+        "e.textContent!=='Amidold'||e.children.length!==1||e.firstElementChild!==a)ok=false;"
+        "e.insertAdjacentHTML('beforeend','<b id=\"adj-b\">B</b>');b=d.getElementById('adj-b');"
+        "if(n!==e.childNodes||n.length!==4||n[0]!==a||n[2]!==old||n[3]!==b||"
+        "e.lastElementChild!==b||e.textContent!=='AmidoldB')ok=false;"
+        "e.insertAdjacentHTML('BEFOREBEGIN','<i id=\"adj-before\">I</i>');"
+        "e.insertAdjacentHTML('afterend','tail');p=t.childNodes;i=-1;"
+        "for(j=0;j<p.length;j++){if(p[j]===e){i=j;break;}}"
+        "if(i<1||i+2>=p.length||p[i-1].id!=='adj-before'||p[i+1].nodeType!==3||"
+        "p[i+1].data!=='tail'||t.textContent!=='PIAmidoldBtailS')ok=false;"
+        "stable=t.textContent;try{e.insertAdjacentHTML('middle','x');}catch(x1){bad|=1;}"
+        "try{e.insertAdjacentHTML('beforeend','<u id=\"adj-a\">dup</u>');}catch(x2){bad|=2;}"
+        "try{e.insertAdjacentHTML('beforeend');}catch(x3){bad|=4;}"
+        "try{e.insertAdjacentHTML('beforeend','x','y');}catch(x4){bad|=8;}"
+        "if(t.textContent!==stable||n!==e.childNodes||n.length!==4||n[0]!==a||"
+        "n[2]!==old||n[3]!==b||d.getElementById('adj-a')!==a)ok=false;"
+        "e.remove();try{e.insertAdjacentHTML('beforeend','z');}catch(x5){bad|=16;}"
+        "if(e.parentNode!==null||e.isConnected||n!==e.childNodes||n.length!==4||"
+        "old.data!=='old')ok=false;}catch(x){ok=false;}"
+        "r.textContent=String(ok&&bad===31);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-adjacent-html", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1293 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1293 OK",
+            "attached Browser-created Element wrappers now reconcile"
+            " insertAdjacentHTML at all four positions while preserving"
+            " existing childNodes and CharacterData identity; parser-created"
+            " children, cache refresh and invalid/detached fail-closed paths"
+            " are covered within the bounded mutation contract.");
     return TRUE;
 }
 
@@ -113390,6 +113442,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1290: ok = test1290_browser_created_element_html_mutation_contract(); break;
         case 1291: ok = test1291_browser_created_element_children_contract(); break;
         case 1292: ok = test1292_browser_created_element_adjacent_text_contract(); break;
+        case 1293: ok = test1293_browser_created_element_adjacent_html_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
