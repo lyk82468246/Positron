@@ -93,22 +93,10 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 ## 候选 backlog
 
 候选不是同时实施的任务包。当前脚本队列/页面 teardown 组合已由现有合同、测试和源码核对，
-没有形成新的可复现缺口，因此不再占用候选位。已完成的 bounded live tag collection 也不
-在路线图中重复记账。选择时只能从下面一个候选建立一个完整纵向能力；其余候选保持原状态，
+没有形成新的可复现缺口，因此不再占用候选位。bounded live tag collection 与 nested
+Browser-created Element graph 已完成并由组件 README、测试文档和当前 handoff 说明，不在
+路线图中重复记账。选择时只能从下面一个候选建立一个完整纵向能力；其余候选保持原状态，
 避免用小编号拆分同一子功能。
-
-### A. 嵌套 Browser-created Element 的有界 staging
-
-**状态：待取证。公共所有者：positron_browser.dll，必要时扩展 positron_core.dll。**
-
-当前 detached Element 只承诺 direct CharacterData；已物化 wrapper 可处理 direct Element-child
-的有界插入、移动和移除，但不承诺 detached nested Element graph。上游
-dom-element-create.html、event-onclick-insert.html 和 parameter-error.html 可作为第一轮
-语料审查入口，但不能仅凭“浏览器通常支持嵌套”就进入实现。
-
-进入条件是找到一个真实组合缺口，并先写出深度、根数、唯一 id、属性/文本预算、clone、
-remove/reinsert、失败回滚和 alias identity 的完整合同。若需要 Core ABI，必须先证明 Browser
-侧无法在既有 parser/child callback 上完成；不能为了支持任意 detached graph 引入无界树。
 
 ### B. 图像 source mutation 与 pending decode 的终态一致性
 

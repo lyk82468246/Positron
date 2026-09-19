@@ -181,30 +181,32 @@
   仅接受 1–4 个 primitive 文本参数的 `before()`/`after()`/`replaceWith()`，复用既有 Core
   callback，替换成功后 wrapper 回到 detached。Element、Fragment、CharacterData 或其他对象参数
   fail closed。64 个 direct child、65,535 个
-  脚本字符；generic Node、嵌套、复杂 fragment 和其他动态树语义仍 fail closed。
+  脚本字符；generic Node、复杂 fragment 和其他动态树语义仍 fail closed。
 - `document.createElement(tag)` 是 Browser-owned 的有界 detached staging：标签只接受小写化
-  ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），物化前须有唯一非空 id；每个 wrapper
-  最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个 direct CharacterData child
-  （Text、Comment 或 CDATA）。Ex11 通过 `__pcoreSetText` 创建 Core 节点，只能插入 live
-  Element；remove/reinsert/id rename 仍保留 wrapper/alias identity。`cloneNode(false/true)`
-  复制属性或 direct CharacterData 且与源隔离，连接前
-  必须修复 id。detached Element 可作 bounded Fragment 根但不能嵌套；事件、资源、observer
-  和不支持的动态子树不创建，结构/容量错误均 fail closed。关系、物化、同父排序和移除后的
-  `childNodes`、首尾 child、`hasChildNodes()`
-  跟随 staging；detached staging 的 `children`/`childElementCount` 不表示嵌套元素。直接 CharacterData 的
-  `normalize()` 以 Comment 为边界合并 Text/CDATA；`attributes` 是稳定的 bounded
-  `NamedNodeMap`；`get/set/removeAttributeNode*`、value/namespace/iteration 和跨 owner
-  value-copy 共用 facade。`style.cssText` 与反射 setter
+  ASCII `[a-z][a-z0-9-]*`（最多 32 个 UTF-8 字节），物化前每个 Element 须有唯一非空 id。
+  每个 wrapper 最多 64 个 attribute（值最多 65,535 个脚本字符）和 64 个直接 child；直接
+  child 可以是 Text、Comment、CDATA 或另一个 Browser-created Element。嵌套图的深度最多 4
+  层、总 Element 数最多 64、每个 Element 的 child 数最多 64；重复/缺失 id、循环、连接中的
+  source、混入不支持的节点或超出预算都在 Core 触碰前 fail closed。Ex11/新 nested callback
+  通过 `__pcoreSetText` 递归创建 Core 节点；attach、remove/reinsert、`cloneNode(true)`、
+  递归 `textContent` 与 owner/alias identity 都在 Browser 侧保持一致，不新增 Core fragment ABI。
+  `cloneNode(false/true)` 的属性、字符数据和 nested Element 子树与源隔离，连接前仍须修复 id。
+  nested Element 可作为有界 Fragment 之外的 detached graph 使用；Fragment 内的 Element 仍只
+  接受既有的 direct Text 形状，nested DocumentFragment、任意 detached parser、事件/资源/
+  observer 和其他动态树语义不创建。关系、物化、同父排序和移除后的 `childNodes`、首尾 child、
+  `hasChildNodes()` 跟随 staging；detached staging 的 `children`/`childElementCount` 只反映
+  直接 Element child。直接 CharacterData 的 `normalize()` 以 Comment/Element 为边界合并
+  Text/CDATA；`attributes` 是稳定的 bounded `NamedNodeMap`；`get/set/removeAttributeNode*`、
+  value/namespace/iteration 和跨 owner value-copy 共用 facade。`style.cssText` 与反射 setter
   在 detached/removed 状态暂存，物化后走 Core；宿主负责 layout/paint，视觉/触摸/SIP 不由
   该门保证。已物化 wrapper 的 `children` 现在从同步后的 direct-child snapshot 生成有界
   HTMLCollection，并提供 `item()`/`namedItem()`、`childElementCount`、
-  `firstElementChild` 和 `lastElementChild`；detached staging 仍不接受嵌套 Element，
-  `children` collection 也不是完整 live collection。已物化 wrapper 的 `innerHTML` setter 复用 Core parser 后，会原地保留
-  `childNodes` collection identity、刷新子节点快照并清理旧 child owner；`outerHTML`
-  setter 只能通过 public wrapper alias 进入既有 replacement，成功后 wrapper 变为 detached，
-  id alias 被清除但 staged 属性/CharacterData 可再次设置并重新物化。嵌套 Element staging、
-  任意 detached parser、事件/资源执行，以及除 `Element.getElementsByTagName()` 外的完整
-  live collection 仍不支持。已物化 wrapper 的
+  `firstElementChild` 和 `lastElementChild`；collection 也不是完整 live collection。已物化
+  wrapper 的 `innerHTML` setter 复用 Core parser 后，会原地保留 `childNodes` collection
+  identity、刷新子节点快照并清理旧 child owner；`outerHTML` setter 只能通过 public wrapper
+  alias 进入既有 replacement，成功后 wrapper 变为 detached，id alias 被清除但 staged
+  属性/CharacterData 可再次设置并重新物化。任意 detached parser、事件/资源执行，以及除
+  `Element.getElementsByTagName()` 外的完整 live collection 仍不支持。已物化 wrapper 的
   `insertAdjacentText()` 与 `insertAdjacentHTML()` 现在都覆盖四个位置，分别复用既有 Core
   Text-child callback 与 Ex9 parser 路径，并在成功后原地同步 `childNodes`、parser-created
   children 与 wrapper identity；脱离后 direct 普通 Text/CDATA 也保留最近一次快照数据。
@@ -214,12 +216,13 @@
   已物化 wrapper 的 `appendChild()`、`insertBefore()` 和 `removeChild()` 也支持 direct Element
   child 的有界插入、重排、跨父移动和移除；regular、detached created 与已物化 created source
   都在目标/source snapshot 和 alias identity 同步后返回。detached target、错误 parent/reference、
-  无效对象和超限结构仍 fail closed，不因此开放 detached nested Element graph。
+  无效对象和超限结构仍 fail closed；已物化 nested graph 只沿上述有界 attach/remove 路径
+  更新，不因此开放任意 detached Node tree。
   已物化 wrapper 的 `replaceChildren()` 对零至四个 primitive 值在 Core text-only 替换完成后
   原地重建 Browser-owned Text wrapper，保留 `childNodes` collection identity，并让被替换的
   旧 child 脱离；对象、Element、CharacterData 或 Fragment 参数继续走既有的有界路径，超出
-  参数/文本预算和无效目标 fail closed。detached Element 仍使用原有 staging 合同，不提供
-  除 `Element.getElementsByTagName()` 外的通用 live collection 或任意混合节点树。
+  参数/文本预算和无效目标 fail closed。detached Element 仍受上述 nested graph 预算约束，
+  不提供除 `Element.getElementsByTagName()` 外的通用 live collection 或任意混合节点树。
   这仍是有界 parser-wrapper mutation，不提供完整 detached HTML parser、脚本/资源执行、
   MutationObserver 或除上述 bounded tag collection 外的完整 live collection。
 - `HTMLBodyElement.text` 现在提供一个 live、遗留的 `text` attribute 投影：缺失 getter 返回

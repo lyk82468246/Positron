@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1297
+#define TEST_MAX_NUMBER 1298
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55340,6 +55340,61 @@ static BOOL test1297_browser_live_tag_collection_contract(void)
             " HTMLCollection: one captured object refreshes after child and"
             " id/name mutations while enforcing fixed traversal and result"
             " limits without introducing a new Core ABI.");
+    return TRUE;
+}
+
+/* TEST 1298 - bounded nested Browser-created Element staging. */
+static BOOL test1298_browser_nested_element_staging_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='sentinel'>S</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,t=d.getElementById('target'),r="
+        "d.getElementById('result'),outer=d.createElement('section'),"
+        "inner=d.createElement('span'),clone,ok=true;"
+        "try{outer.id='nested-outer';outer.setAttribute('data-kind','nested');"
+        "inner.id='nested-inner';inner.name='inner-name';inner.append('I');"
+        "outer.appendChild(inner);"
+        "if(outer.parentNode!==null||inner.parentNode!==outer||"
+        "outer.children.length!==1||outer.children[0]!==inner||"
+        "outer.textContent!=='I')ok=false;"
+        "clone=outer.cloneNode(true);"
+        "if(clone===outer||clone.children.length!==1||"
+        "clone.children[0]===inner||clone.children[0].textContent!=='I')ok=false;"
+        "t.insertBefore(outer,t.firstChild);"
+        "if(!outer.isConnected||!inner.isConnected||"
+        "d.getElementById('nested-outer')!==outer||"
+        "d.getElementById('nested-inner')!==inner||"
+        "outer.children[0]!==inner||inner.parentNode!==outer||"
+        "inner.textContent!=='I')ok=false;"
+        "inner.append('!');if(outer.textContent!=='I!'||"
+        "inner.textContent!=='I!')ok=false;"
+        "outer.removeChild(inner);"
+        "if(inner.parentNode!==null||inner.isConnected||"
+        "outer.children.length!==0||outer.textContent!=='')ok=false;"
+        "outer.appendChild(inner);"
+        "if(!inner.isConnected||outer.children[0]!==inner||"
+        "inner.textContent!=='I!')ok=false;"
+        "t.removeChild(outer);"
+        "if(outer.isConnected||inner.isConnected||outer.parentNode!==null||"
+        "inner.parentNode!==outer||d.getElementById('nested-outer')!==null)"
+        "ok=false;}catch(x){ok=false;}r.textContent=String(ok);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/nested-element-staging", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1298 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1298 OK",
+            "Browser-created detached Elements now support a bounded nested"
+            " Element graph through clone, attach, child removal and reinsert;"
+            " identity, parent links and recursive text remain coherent while"
+            " the graph stays fail-closed at its documented limits.");
     return TRUE;
 }
 
@@ -113655,6 +113710,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1295: ok = test1295_browser_created_element_adjacent_element_contract(); break;
         case 1296: ok = test1296_browser_created_element_element_child_contract(); break;
         case 1297: ok = test1297_browser_live_tag_collection_contract(); break;
+        case 1298: ok = test1298_browser_nested_element_staging_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

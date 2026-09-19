@@ -81,7 +81,7 @@ Browser 不创建窗口、不直接读写网络、不替宿主 clamp 物理坐�
 
 #### DOM wrapper 与 Fragment
 
-普通 live wrapper 以 Core id/关系为真值；detached wrapper 保存有界快照，连接、移除和失败 mutation 必须同步 owner、childNodes/children snapshot 与 identity。`DocumentFragment` 只提供文档声明的 bounded staging：最多四个 direct 根，允许的 Element/Text/Comment/CDATA 形状和容量在 mutation 前检查；不支持的嵌套、重复 id、跨 owner 或超限输入 fail closed。
+普通 live wrapper 以 Core id/关系为真值；detached wrapper 保存有界快照，连接、移除和失败 mutation 必须同步 owner、childNodes/children snapshot 与 identity。`document.createElement()` 的 Browser-owned Element graph 允许固定预算内的 nested Element/CharacterData staging：深度最多 4 层、总 Element 最多 64、每个 Element 最多 64 个 child，每个 Element 需要唯一非空 id；递归 attach、clone、textContent、remove/reinsert 和 alias identity 都由 Browser 维护，失败在 Core 触碰前回滚。`DocumentFragment` 仍是独立的 bounded staging：最多四个 direct 根，Element 根只接受既有 direct Text 形状；nested Fragment、任意混合节点图、重复 id、跨 owner 或超限输入 fail closed。
 
 `Node.normalize()` 在 live Element 中通过 Ex5 callback 调用 Core，再同步 Browser-created Text/CDATA wrapper；在 detached Fragment 中直接整理 staging。两条路径都删除空 Text/CDATA、合并相邻 Text/CDATA、保留首个非空节点，并以 Comment 作为边界。Fragment 的 `textContent` 排除 Comment，消费时复用既有 Core creation callback，不新增 Core fragment ABI。
 

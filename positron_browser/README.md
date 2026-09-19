@@ -38,14 +38,14 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - selector 的 `matches`、`closest`、`querySelector(All)` 有界子集；
 - form owner、validation、`form.elements`/`FormData` snapshot、option/select metadata 和有限 `HTMLImageElement` metadata；
 - Text/CDATA 的 `data`、CharacterData mutator、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和 wrapper 关系。
-- `document.createElement(tag)` 的 detached staging：每个 wrapper 可保存有界属性和最多 64 个直接 Text、Comment 或 CDATA child；`cloneNode`、`normalize`、`replaceChild`、`replaceChildren`、`textContent` 以及带唯一 id 的直接 Core 物化都保留这些 CharacterData wrapper 的关系和数据。嵌套 Element、通用 detached Node graph 和未通过预检的结构仍拒绝。
+- `document.createElement(tag)` 的 detached staging：每个 wrapper 可保存有界属性和最多 64 个直接 child，child 可以是 Text、Comment、CDATA 或另一个 Browser-created Element。nested graph 限制为最多 4 层、64 个 Element、每个 Element 64 个 child；每个 Element 都必须有唯一非空 id。`cloneNode(true)`、递归 `textContent`、attach、remove/reinsert 以及带唯一 id 的递归 Core 物化都会保留 wrapper/alias identity；循环、重复/缺失 id、超限或不支持的节点在 mutation 前拒绝。
 - 已物化的 Browser-created Element wrapper 还支持 1–4 个 primitive 参数的 `before()`、`after()` 和 `replaceWith()`；同级文本插入复用现有 Core mutation callback，替换成功后 wrapper 回到 detached 状态。未物化目标保持 inert，Element、Fragment、CharacterData 或其他对象参数不在这条窄路径内。
 - 已物化的 Browser-created Element wrapper 的 `innerHTML` setter 会在 Core parser 成功后原地刷新 `childNodes` snapshot 并使旧 child wrapper detached；`outerHTML` setter 通过 public wrapper alias 完成既有 Element replacement，成功后清理 alias 并允许同一 staged wrapper 重新设置 id、插入和使用。它不提供第二个 detached HTML parser，也不执行脚本、资源或 mutation event。
-- 同一已物化 wrapper 的 `children` 会从 direct-child snapshot 生成有界 HTMLCollection，提供 `item()`、`namedItem()`、`childElementCount`、`firstElementChild` 和 `lastElementChild`；parser-backed child mutation 后这些读取与 `childNodes` 同步。detached staging 仍不接受嵌套 Element，collection 不承诺完整 live 更新。
+- 同一已物化 wrapper 的 `children` 会从 direct-child snapshot 生成有界 HTMLCollection，提供 `item()`、`namedItem()`、`childElementCount`、`firstElementChild` 和 `lastElementChild`；parser-backed child mutation 后这些读取与 `childNodes` 同步。detached staging 的 `children` 只反映直接 Element child，collection 不承诺完整 live 更新。
 - 同一已物化 wrapper 的 `insertAdjacentText()` 与 `insertAdjacentHTML()` 覆盖 `beforebegin`、`afterbegin`、`beforeend` 和 `afterend` 四个位置，分别复用既有 Core Text-child callback 与 Ex9 parser 路径；成功后原地同步 `childNodes`、parser-created children 和 CharacterData wrapper identity。wrapper 脱离后仍保留 direct 普通 Text/CDATA 的最近一次数据快照；非法位置、对象/arity、重复 id、超限片段和 detached 调用 fail closed。
-- 同一已物化 wrapper 的 `insertAdjacentElement()` 也覆盖四个位置，复用既有 Core element-child mutation；移动 regular 或另一个已物化 Browser-created Element 后，目标/来源的有界 snapshot 与 wrapper identity 会同步。未物化 source、非法位置、对象/arity、自引用和 detached target 在 mutation 前 fail closed；不扩展嵌套 detached Element graph 或完整 live collection。
-- 同一已物化 wrapper 的 `appendChild()`、`insertBefore()` 和 `removeChild()` 现在也能处理直接 Element child：既支持 regular source，也支持 detached/已物化 Browser-created source 的有界插入、移动和移除，并在成功后保留目标 `childNodes` 与可寻址 source snapshot、wrapper identity 和返回值。detached target、错误 parent/reference、无效对象和超限结构在 mutation 前 fail closed；这不开放 detached nested Element graph。
-- 同一已物化 wrapper 的 `replaceChildren()` 对零至四个 primitive 值在 Core 替换后原地重建 Browser-owned Text wrapper，保留 `childNodes` collection identity，并使旧 child wrapper 脱离；对象、Element、CharacterData 或 Fragment 参数继续使用既有有界路径，超限和无效目标 fail closed。detached staging 的合同不变，不提供通用 live collection。
+- 同一已物化 wrapper 的 `insertAdjacentElement()` 也覆盖四个位置，复用既有 Core element-child mutation；移动 regular 或另一个已物化 Browser-created Element 后，目标/来源的有界 snapshot 与 wrapper identity 会同步。未物化 source、非法位置、对象/arity、自引用和 detached target 在 mutation 前 fail closed；不扩展为任意 detached Node graph 或完整 live collection。
+- 同一已物化 wrapper 的 `appendChild()`、`insertBefore()` 和 `removeChild()` 现在也能处理直接 Element child：既支持 regular source，也支持 detached/已物化 Browser-created source 的有界插入、移动和移除，并在成功后保留目标 `childNodes` 与可寻址 source snapshot、wrapper identity 和返回值。detached target、错误 parent/reference、无效对象和超限结构在 mutation 前 fail closed；nested graph 只沿上面的 4 层/64 Element 合同工作。
+- 同一已物化 wrapper 的 `replaceChildren()` 对零至四个 primitive 值在 Core 替换后原地重建 Browser-owned Text wrapper，保留 `childNodes` collection identity，并使旧 child wrapper 脱离；对象、Element、CharacterData 或 Fragment 参数继续使用既有有界路径，超限和无效目标 fail closed。detached nested graph 仍受固定预算约束，不提供通用 live collection。
 
 这些路径通过 Ex callback table 把父 ID、未过滤 child index、节点类型和 UTF-8 值转给 Core。宿主不遍历、合并或删除产品节点，也不复制第二份 form/selector/resource 语义。
 
@@ -53,9 +53,9 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 
 Browser-owned Fragment 是 bounded staging，不是 Core fragment handle。它最多保存公开合同允许的 direct 根和节点形状；嵌套、不支持类型、重复 id、跨 owner、超长文本或超过容量在消费前 fail closed。Element mutation 消费 Fragment 时复用 Core parser/creation callback，并保留 staged wrapper identity。
 
-Detached Element 的 CharacterData staging 与 Fragment 是两条不同边界：前者可直接把 Text、Comment、CDATA 交给 Core child-creation callback；Fragment 中的 Element 根仍沿既有 parser 路径，不能借此获得嵌套 Element 或任意 Comment/CDATA 子树。
+Detached Element 的 nested staging 与 Fragment 是两条不同边界：前者可在固定预算内保存并递归物化 Browser-created Element/CharacterData graph；Fragment 中的 Element 根仍沿既有 parser 路径，只接受 direct Text 形状，不能借此获得 nested Element、任意 Comment/CDATA 子树或第二套 detached parser。
 
-Element relative mutation 只对已经以唯一 id 物化到 live Element parent 的 Browser-created wrapper 开放 primitive 文本参数。`before()`/`after()` 保留目标 wrapper，`replaceWith()` 成功后同步清除其 live alias；未物化或已脱离的目标不伪造 parent，直接返回 inert。该能力不扩展嵌套 detached Element、Fragment、CharacterData source 或完整节点列表语义。
+Element relative mutation 只对已经以唯一 id 物化到 live Element parent 的 Browser-created wrapper 开放 primitive 文本参数。`before()`/`after()` 保留目标 wrapper，`replaceWith()` 成功后同步清除其 live alias；未物化或已脱离的目标不伪造 parent，直接返回 inert。该能力不扩展任意 detached Node graph、Fragment、CharacterData source 或完整节点列表语义。
 
 `Node.normalize()` 有两条实现路径：live Element 通过 Ex5 `normalize_child_text` 调用 `PCore_NodeNormalizeById`，再同步 Browser-created Text/CDATA wrapper；detached Fragment 直接整理 staging。两条路径都删除空 Text/CDATA、合并相邻 Text/CDATA 到首个非空节点，并以 Element、Comment 和其他节点作为边界。Comment 不计入 Fragment `textContent`。成功 mutation 后宿主必须重新 style/layout/paint。
 
