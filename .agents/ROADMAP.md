@@ -430,7 +430,13 @@ identity；非法位置、重复 id、超限片段和 detached 调用在 mutatio
 与 `1292-1293,999` Debug ARMV4I 外置卡自动门通过；完整日志、双空间预检、清理和
 `crash_check` 结果见 `.agents/HANDOFF.md`。未新增 Core ABI。
 
-下一批（next855）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next855 补齐已物化 Browser-created Element 的 primitive-only `replaceChildren()` 一致性：
+Core 完成 text-only 替换后，Browser 原地重建 Text wrapper，保留 `childNodes` collection
+identity，并将旧 child 脱离；对象/CharacterData 参数继续复用既有路径，detached staging
+合同不变。TEST1294 与 `1293-1294,999` Debug ARMV4I 外置卡自动门通过；完整日志、双空间
+预检、清理和 `crash_check` 结果见 `.agents/HANDOFF.md`。未新增 Core ABI。
+
+下一批（next856）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque

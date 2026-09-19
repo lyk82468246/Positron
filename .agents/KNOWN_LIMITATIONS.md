@@ -204,6 +204,11 @@
   `insertAdjacentText()` 与 `insertAdjacentHTML()` 现在都覆盖四个位置，分别复用既有 Core
   Text-child callback 与 Ex9 parser 路径，并在成功后原地同步 `childNodes`、parser-created
   children 与 wrapper identity；脱离后 direct 普通 Text/CDATA 也保留最近一次快照数据。
+  已物化 wrapper 的 `replaceChildren()` 对零至四个 primitive 值在 Core text-only 替换完成后
+  原地重建 Browser-owned Text wrapper，保留 `childNodes` collection identity，并让被替换的
+  旧 child 脱离；对象、Element、CharacterData 或 Fragment 参数继续走既有的有界路径，超出
+  参数/文本预算和无效目标 fail closed。detached Element 仍使用原有 staging 合同，不提供
+  通用 live collection 或任意混合节点树。
   这仍是有界 parser-wrapper mutation，不提供完整 detached HTML parser、脚本/资源执行、
   MutationObserver 或完整 live collection。
 - `HTMLBodyElement.text` 现在提供一个 live、遗留的 `text` attribute 投影：缺失 getter 返回

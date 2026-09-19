@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1293
+#define TEST_MAX_NUMBER 1294
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55132,6 +55132,48 @@ static BOOL test1293_browser_created_element_adjacent_html_contract(void)
             " existing childNodes and CharacterData identity; parser-created"
             " children, cache refresh and invalid/detached fail-closed paths"
             " are covered within the bounded mutation contract.");
+    return TRUE;
+}
+
+/* TEST 1294 - attached Browser-created Element replaceChildren text coherence. */
+static BOOL test1294_browser_created_element_replace_children_text_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='suffix'>S</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,t=d.getElementById('target'),s=d.getElementById('suffix'),"
+        "r=d.getElementById('result'),e,n,a,b,target,stable,removed,ok=true,bad=0;"
+        "try{e=d.createElement('article');e.id='replace-children';e.append('old','keep');"
+        "t.insertBefore(e,s);n=e.childNodes;a=n[0];b=n[1];e.replaceChildren('A','B');"
+        "if(n!==e.childNodes||n.length!==2||n[0]===a||n[1]===b||n[0].data!=='A'||"
+        "n[1].data!=='B'||a.parentNode!==null||b.parentNode!==null||a.data!=='old'||"
+        "b.data!=='keep'||e.textContent!=='AB')ok=false;"
+        "n[0].data='AA';if(e.textContent!=='AAB')ok=false;target=n[1];removed=e.removeChild(target);"
+        "if(removed!==target||removed.data!=='B'||removed.parentNode!==null||"
+        "e.childNodes.length!==1)ok=false;e.replaceChildren();"
+        "if(n!==e.childNodes||n.length!==0||e.hasChildNodes())ok=false;"
+        "e.replaceChildren('stable');stable=e.textContent;n=e.childNodes;"
+        "try{e.replaceChildren({});}catch(x1){bad|=1;}"
+        "if(e.textContent!==stable||n!==e.childNodes||n.length!==1||"
+        "n[0].data!=='stable')ok=false;e.remove();e.replaceChildren('detached');"
+        "if(e.parentNode!==null||e.childNodes.length!==1||e.textContent!=='detached')ok=false;"
+        "}catch(x){ok=false;}r.textContent=String(ok&&bad===1);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-replace-children", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1294 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1294 OK",
+            "attached Browser-created Element replaceChildren now rebuilds"
+            " bounded primitive Text wrappers after Core replacement, preserves"
+            " childNodes collection identity, detaches removed children and"
+            " keeps invalid and detached paths fail closed.");
     return TRUE;
 }
 
@@ -113443,6 +113485,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1291: ok = test1291_browser_created_element_children_contract(); break;
         case 1292: ok = test1292_browser_created_element_adjacent_text_contract(); break;
         case 1293: ok = test1293_browser_created_element_adjacent_html_contract(); break;
+        case 1294: ok = test1294_browser_created_element_replace_children_text_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
