@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1296
+#define TEST_MAX_NUMBER 1297
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55286,6 +55286,60 @@ static BOOL test1296_browser_created_element_element_child_contract(void)
             " direct Element appendChild and insertBefore moves, including"
             " created and regular sources, while removeChild refreshes source"
             " identity; detached, wrong-parent and invalid calls fail closed.");
+    return TRUE;
+}
+
+/* TEST 1297 - one bounded Element.getElementsByTagName collection refreshes
+ * in place after structural and name mutations. The returned collection is
+ * live for its lifetime, but repeated method calls are not SameObject. */
+static BOOL test1297_browser_live_tag_collection_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><span id='first'>A</span>"
+        "<span id='second' name='second-name'>B</span></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,t=d.getElementById('target'),r="
+        "d.getElementById('result'),first=d.getElementById('first'),"
+        "second=d.getElementById('second'),c,added,i,j,entry,"
+        "initial,mutated,renamed,removed,current,recovered,iter,ok=true;"
+        "c=t.getElementsByTagName('span');"
+        "initial=c!==t.getElementsByTagName('span')&&c.length===2&&"
+        "c[0]===first&&c.item(1)===second&&c.namedItem('second-name')===second&&"
+        "c.second===second&&c.item(2)===null&&c[2]===undefined;"
+        "added=d.createElement('span');added.id='third';added.name='third-name';"
+        "added.append('C');t.appendChild(added);"
+        "mutated=c.length===3&&c[2]===added&&"
+        "c.namedItem('third-name')===added&&c.third===added&&"
+        "c.namedItem('missing')===null;"
+        "added.id='renamed';added.removeAttribute('name');"
+        "renamed=c.namedItem('renamed')===added&&c.renamed===added&&"
+        "c.namedItem('third-name')===null&&c.third===undefined;"
+        "t.removeChild(first);removed=c.length===2&&c[0]===second&&c[1]===added;"
+        "current=c.length===2&&c.namedItem('second-name')===second&&"
+        "c.namedItem('renamed')===added;"
+        "entry=c.entries();i=entry.next();j=entry.next();"
+        "iter=!i.done&&i.value[0]===0&&i.value[1]===c[0]&&"
+        "!j.done&&j.value[0]===1&&j.value[1]===c[1]&&"
+        "entry.next().done===true;"
+        "recovered=c.length===2&&c.item(0)===second&&c.item(1)===added&&"
+        "c.namedItem('missing')===null;"
+        "r.textContent=String(initial&&mutated&&renamed&&removed&&current&&recovered&&iter);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/live-tag-collection", HTML, PROBE,
+            "true", error, sizeof(error))) {
+        show_error(L"TEST 1297 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1297 OK",
+            "Element.getElementsByTagName now returns a bounded live"
+            " HTMLCollection: one captured object refreshes after child and"
+            " id/name mutations while enforcing fixed traversal and result"
+            " limits without introducing a new Core ABI.");
     return TRUE;
 }
 
@@ -113600,6 +113654,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1294: ok = test1294_browser_created_element_replace_children_text_contract(); break;
         case 1295: ok = test1295_browser_created_element_adjacent_element_contract(); break;
         case 1296: ok = test1296_browser_created_element_element_child_contract(); break;
+        case 1297: ok = test1297_browser_live_tag_collection_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

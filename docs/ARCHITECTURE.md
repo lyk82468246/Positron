@@ -85,6 +85,12 @@ Browser 不创建窗口、不直接读写网络、不替宿主 clamp 物理坐�
 
 `Node.normalize()` 在 live Element 中通过 Ex5 callback 调用 Core，再同步 Browser-created Text/CDATA wrapper；在 detached Fragment 中直接整理 staging。两条路径都删除空 Text/CDATA、合并相邻 Text/CDATA、保留首个非空节点，并以 Comment 作为边界。Fragment 的 `textContent` 排除 Comment，消费时复用既有 Core creation callback，不新增 Core fragment ABI。
 
+`Element.getElementsByTagName()` 是 Browser 当前唯一的 bounded live collection：每次方法调用
+返回一个新的 `HTMLCollection`，已连接 owner 的同一对象在读取时按需重扫，最多访问 256 个
+节点并返回 64 项；索引、`item()`、`namedItem()`、`forEach()` 和 iterator 共用该结果，
+Browser-created wrapper 也保持 identity。刷新超过预算时保留上一次成功结果，detached owner
+返回空集合；其他 collection 仍按各自合同提供 bounded snapshot，因此这不是完整 live DOM。
+
 #### 导航、资源与脚本
 
 Browser 持有 candidate generation、取消/退休状态、资源终态、required/optional gate、重试预算和脱敏失败摘要。宿主拥有 worker、response、网络策略和页面提交时机；提交前通过 Browser snapshot 检查 candidate 与 resource gate，清理前复制 cleanup snapshot，再释放 handle。旧页保留、过时消息隔离和 pending 终态不能由宿主另造一套分类。

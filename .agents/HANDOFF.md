@@ -86,6 +86,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   parent/reference、无效对象和超限结构仍 fail closed。TEST1296 与 `1295-1296,999`
   Debug ARMV4I 外置卡设备门取得完整日志，3/3 PASS、双空间预检、清理和
   `crash_check=PASS`，无新增 Core ABI。
+- 当前已物化 Element 的 `getElementsByTagName()` 另提供唯一的 bounded live
+  `HTMLCollection`：每次调用返回新对象，已连接 owner 的同一对象会在子树、id/name
+  mutation 后刷新，最多访问 256 个节点并返回 64 项；`item()`、`namedItem()`、索引、
+  `forEach()` 与 iterator 共用该快照，created wrapper 也保持 identity，刷新超限时保留
+  上一次成功结果，detached owner 返回空集合。TEST1297 与 `1297,999` Debug ARMV4I
+  外置卡设备门取得完整日志，2/2 PASS、双空间预检、清理和 `crash_check=PASS`，无新增
+  Core ABI。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -108,12 +115,11 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next857 已完成并通过 `1295-1296,999` 设备门。路线图已经重构为未来目标和候选 backlog：
-下一批先复核其中的“脚本异步队列与页面生命周期收尾”候选，确认当前源码、测试和语料仍能
-复现旧 session 队列隔离缺口后再选择；若证据不成立，改选其他明确标为待取证的候选，不得
-把测试宿主扩展当作产品语义实现。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与
-[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，历史 next 细节由 Git 与
-`docs/history/` 保存。
+next858 已完成并通过 `1297,999` 设备门。脚本异步队列与页面生命周期候选经源码、现有夹具
+和语料核对后没有形成新的可复现缺口；下一批先从路线图中仍待取证的嵌套 staging 或图像
+source mutation 方向取证，再选择一个完整纵切，不得把测试宿主扩展当作产品语义实现。稳定
+边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
+历史 next 细节由 Git 与 `docs/history/` 保存。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
 Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
@@ -167,8 +173,9 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
   一次性 parser-backed 消费并保留 staged wrapper identity，或在 Fragment 自身上与另一
   Fragment 做有界组合。Fragment-owned detached Element 的 sibling/element-sibling getter
   按当前 staging 顺序实时读取；未归属的 detached Element 不伪造关系。通用节点/嵌套
-  fragment、超出有界元素约束的 reparent、其他删除、MutationObserver 与完整 live collection
-  仍未实现。detached Element/Fragment 的 `normalize()` 仅限最多 64 个 direct CharacterData
+  fragment、超出有界元素约束的 reparent、其他删除、MutationObserver 与除
+  `Element.getElementsByTagName()` 外的完整 live collection 仍未实现。detached Element/Fragment
+  的 `normalize()` 仅限最多 64 个 direct CharacterData
   （Text/Comment/CDATA）或四个 Fragment 根；嵌套 Element、溢出和不支持节点在 mutation
   前 fail closed。Detached Element 的 replace/clone/textContent 也只接受同一组 direct
   CharacterData。
@@ -224,18 +231,18 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1296。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1296,999`。
+- `TEST_MAX_NUMBER`：1297。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1297,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260919-212452-next857-created-element-child-final` 是本批最新有效证据：
-Debug ARMV4I `1295-1296,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、
-`crash_check` PASS，dump=0。日志明确记录 TEST1295、TEST1296 和 TEST999 均为 OK，
-`TESTBENCH PASS`，无缺失或额外测试。目标卷由 `CeGetDiskFreeSpaceEx` 报告 47,797,469,184
-字节可用，内部 object-store 可用 8,570,880 字节；部署目录在完整日志回收后已删除。
+`tmp/device-runs/20260919-223438-next858` 是本批最新有效证据：Debug ARMV4I
+`1297,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
+日志明确记录 TEST1297 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。目标卷由
+`CeGetDiskFreeSpaceEx` 报告 47,400,747,008 字节可用，内部 object-store 可用 8,570,880
+字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -262,7 +269,7 @@ Debug ARMV4I `1295-1296,999`，3/3 PASS；外置卡双空间预检、完整日�
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1296 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1297 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -274,7 +281,7 @@ Debug ARMV4I `1295-1296,999`，3/3 PASS；外置卡双空间预检、完整日�
   primitive-only `replaceChildren()` wrapper reconciliation 与
   脱离后的 direct CharacterData 快照夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
-  通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
+  通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
   崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
@@ -344,11 +351,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next857 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 的候选卡复核一个公共 DLL
-缺口：优先验证脚本异步队列与页面生命周期收尾；确认后才为该纵向能力分配下一批编号，
-建立最小离线 fixture 与自动断言。完成标准是产品侧纵切、相邻自动回归、风险相称的正式
-设备门（完整日志、双空间预检、清理、`crash_check`）及职责文档更新；若涉及崩溃、数据
-损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
+next858 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 在嵌套 Browser-created Element
+staging 与图像 source mutation 两个候选之间完成源码、compatibility corpus 和现有测试的
+取证，选定一个公共 DLL 所有者明确、预算与失败回滚可验证的完整纵切；在取证完成前不分配
+新的 next 编号。完成标准是产品侧纵切、相邻自动回归、风险相称的正式设备门（完整日志、
+双空间预检、清理、`crash_check`）及职责文档更新；若涉及崩溃、数据损坏、严重布局破坏或
+核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

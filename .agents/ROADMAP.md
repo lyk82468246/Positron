@@ -85,47 +85,19 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 - 所有容量必须固定且可断言；不能用扩大数组、跳过检查或放宽断言掩盖 WM6 资源问题。
 - 不为通用 detached DOM、完整 live collection、完整 HTML parser、Range/Selection、
   MutationObserver、shadow DOM、worker/module 或现代浏览器安全沙箱做无证据的全面扩张。
+  `Element.getElementsByTagName()` 的 bounded live collection 是当前唯一已形成的例外；
+  其他 collection 仍按各自合同使用 bounded snapshot。
 - 代码改动必须兼容 VS2008 / WM6 ARMV4I / C89；公共接口保持 UTF-8、opaque handle 和
   明确内存所有权。
 
 ## 候选 backlog
 
-候选不是同时实施的任务包。选择时只能从一个候选建立一个完整纵向能力；其余候选保持原状态，
+候选不是同时实施的任务包。当前脚本队列/页面 teardown 组合已由现有合同、测试和源码核对，
+没有形成新的可复现缺口，因此不再占用候选位。已完成的 bounded live tag collection 也不
+在路线图中重复记账。选择时只能从下面一个候选建立一个完整纵向能力；其余候选保持原状态，
 避免用小编号拆分同一子功能。
 
-### A. 脚本异步队列与页面生命周期收尾
-
-**状态：准备取舍。公共所有者：positron_browser.dll / positron_script.dll。**
-
-当前合同已经有宿主显式 pump，并规定 timer、animation frame、message、idle 及其间
-microtask 的阶段顺序；现有脚本测试也覆盖基础 timer、microtask、message、MessageChannel、
-Promise 和 frame 行为。仍需把“页面替换或 teardown 时的队列收尾”作为一个独立的组合合同核对：
-旧 session 的 timer、message、frame、microtask 不应在新页面上继续执行，visibility/lifecycle
-切换不能重复派发或泄漏 callback，宿主未 pump 时队列必须保持静止。取证入口是
-test_host/main.c 的现有异步队列夹具、KNOWN_LIMITATIONS.md 的脚本队列限制，以及
-netsurf-all-3.11/netsurf/test/js/settimeout.html 等上游语料。
-
-最小范围是同一 session 的取消、页面替换、可见性切换和重新 pump；不创建后台线程，不扩展
-ES module、worker 或通用调度器。完成标准是公共 DLL 的确定性队列合同、旧页/新页隔离、失败
-不变性、直接相邻回归和定向设备门。
-
-### B. 一种有界 live collection 的失效与刷新合同
-
-**状态：待取证。公共所有者：positron_core.dll + positron_browser.dll。**
-
-当前 children、getElementsBy*、form.elements、options 等路径以 bounded snapshot 为主，
-完整 live collection 明确不在范围内。上游语料
-netsurf-all-3.11/netsurf/test/js/dom-getElementsByTagName.html、
-dom-element-childElementCount.html 和现有 collection 夹具可以用来确认真实消费者是否依赖
-“同一个 collection 对象在一次 mutation 后刷新”。只有在一个具体集合、一个固定容量和一个
-明确 mutation 集合上完成取证后，才可选择本候选。
-
-若进入实现，必须只选一个 collection 类型，定义 SameObject、索引、namedItem、失效、
-owner 生命周期和上限；不得顺便把所有 NodeList、form controls 或 fragment collection
-改成完整 live 语义。完成标准包括成功刷新、旧 wrapper 脱离、失败保留旧 snapshot 和超限
-fail closed。
-
-### C. 嵌套 Browser-created Element 的有界 staging
+### A. 嵌套 Browser-created Element 的有界 staging
 
 **状态：待取证。公共所有者：positron_browser.dll，必要时扩展 positron_core.dll。**
 
@@ -138,7 +110,7 @@ dom-element-create.html、event-onclick-insert.html 和 parameter-error.html 可
 remove/reinsert、失败回滚和 alias identity 的完整合同。若需要 Core ABI，必须先证明 Browser
 侧无法在既有 parser/child callback 上完成；不能为了支持任意 detached graph 引入无界树。
 
-### D. 图像 source mutation 与 pending decode 的终态一致性
+### B. 图像 source mutation 与 pending decode 的终态一致性
 
 **状态：待取证。公共所有者：positron_image.dll / positron_core.dll / positron_browser.dll。**
 
@@ -151,7 +123,7 @@ source mutation callback，但绝对 URL、完整 CORS/referrer、任意 loading
 的一致性；宿主不能重新实现选择算法。完成标准是 source mutation 的旧 promise/终态分类、
 资源清理和失败回滚均有 Core/Browser 自动断言，视觉差异另列人工门。
 
-### E. Native editing 与人工输入矩阵的产品边界
+### C. Native editing 与人工输入矩阵的产品边界
 
 **状态：暂缓为自动产品批次；作为人工验收 backlog 保留。公共所有者：Core/Browser 负责
 语义，宿主负责 WM EDIT、SIP/IME、clipboard 和 picker。**
