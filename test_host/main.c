@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1298
+#define TEST_MAX_NUMBER 1299
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55395,6 +55395,164 @@ static BOOL test1298_browser_nested_element_staging_contract(void)
             " Element graph through clone, attach, child removal and reinsert;"
             " identity, parent links and recursive text remain coherent while"
             " the graph stays fail-closed at its documented limits.");
+    return TRUE;
+}
+
+/* TEST 1299 - image terminal state survives repeated DOM id changes without
+ * exhausting the bounded terminal-state table. */
+static BOOL test1299_browser_image_terminal_id_rename_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><img id='hero' src='/img/test.svg'><p id='result'>idle</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;}img{display:block;width:120px;"
+        "height:60px;}";
+    static const char SETUP[] =
+        "window.__renameImage=document.getElementById('hero');true;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    image_resource_test_ctx ctx;
+    char error[768];
+    char command[128];
+    char id[64];
+    const char *result;
+    int executed;
+    int ignored;
+    int found;
+    int fetched;
+    int vw;
+    int vh;
+    int rc;
+    int i;
+    BOOL ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(error, 0, sizeof(error));
+    memset(command, 0, sizeof(command));
+    memset(id, 0, sizeof(id));
+    result = NULL;
+    executed = -1;
+    ignored = -1;
+    found = 0;
+    fetched = 0;
+    rc = PSCRIPT_ERROR_CALL;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/image-id-rename", NULL, NULL, &executed,
+            &ignored, error, sizeof(error), &runtime, &bridge) != 0 ||
+            executed != 1 || ignored != 0 || runtime == NULL ||
+            bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, SETUP, -1);
+        ok = rc == PSCRIPT_OK;
+    }
+    if (ok) {
+        test_host_set_device_viewport(vw, vh);
+        ok = PCore_FetchImageResources(document, image_svg_fetch,
+                image_resource_free, &ctx, &found, &fetched) == 0 &&
+                found == 1 && fetched == 1 && ctx.calls == 1 &&
+                ctx.matched == 1 && ctx.frees == 1;
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/image-id-rename.css");
+        ok = ok && sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, vw, vh) == 0;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionNotifyImageEvent(
+                g_browser_script_session.session, "hero",
+                PBROWSER_SCRIPT_IMAGE_EVENT_LOAD);
+        ok = rc == PSCRIPT_OK;
+    }
+    for (i = 0; ok && i < 80; i++) {
+        _snprintf(command, sizeof(command) - 1,
+                "window.__renameImage.id='hero-%d';true;", i);
+        command[sizeof(command) - 1] = '\0';
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, command, -1);
+        _snprintf(id, sizeof(id) - 1, "hero-%d", i);
+        id[sizeof(id) - 1] = '\0';
+        if (rc == PSCRIPT_OK) {
+            rc = PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, id,
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD);
+        }
+        ok = rc == PSCRIPT_OK;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session,
+                "String(window.__renameImage.id)+'|'"
+                "+String(window.__renameImage.currentSrc);", -1);
+        result = PBrowser_ScriptSessionGetResult(
+                g_browser_script_session.session);
+        ok = rc == PSCRIPT_OK && result != NULL &&
+                strcmp(result, "hero-79|/img/test.svg") == 0;
+    }
+    if (!ok && error[0] == '\0' &&
+            PBrowser_ScriptSessionGetError(
+            g_browser_script_session.session) != NULL) {
+        cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session));
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "rc=%d result=%s renamed=%d fetch=%d/%d calls=%d",
+                    rc, result != NULL ? result : "(null)", i, found,
+                    fetched, ctx.calls);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1299 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1299 OK",
+            "image load terminal state is reclaimed when the supported"
+            " Element.id setter renames an image, so repeated host terminal"
+            " notifications remain bounded instead of exhausting 64 entries.");
     return TRUE;
 }
 
@@ -113711,6 +113869,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1296: ok = test1296_browser_created_element_element_child_contract(); break;
         case 1297: ok = test1297_browser_live_tag_collection_contract(); break;
         case 1298: ok = test1298_browser_nested_element_staging_contract(); break;
+        case 1299: ok = test1299_browser_image_terminal_id_rename_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

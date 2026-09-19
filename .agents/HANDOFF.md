@@ -85,6 +85,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   DocumentFragment、无 id、重复 id、自引用、超限和不支持节点仍 fail closed。TEST1298
   与 `1297-1298,999` Debug ARMV4I 外置卡设备门取得完整日志，3/3 PASS，双空间预检、
   清理和 `crash_check=PASS`，无新增 Core ABI。
+- next860 修复 Browser 图像终态表在支持的 `Element.id` setter 改名后遗留旧 key 的问题：
+  Browser 在 id 变更成功后回收旧 image/source 终态，再允许新 id 接收 host `load`/`error`；
+  不改变 Core 的 source 选择或自动加载边界。TEST1299 连续改名 80 次并逐次通知 `load`，
+  与 `1299,999` Debug ARMV4I 外置卡设备门取得完整日志，2/2 PASS，双空间预检、清理和
+  `crash_check=PASS`，无新增 dump。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -107,8 +112,8 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next859 已完成并通过 `1297-1298,999` 设备门。嵌套 Browser-created Element staging
-的源码、预算、失败回滚和相邻夹具已经取证；下一批只对路线图中仍待取证的图像 source
+next860 已完成并通过 `1299,999` 设备门。图像终态表在 `Element.id` setter 改名后的
+旧 key 回收和重复 host 终态通知已经取证；下一批只对路线图中仍待取证的图像 source
 mutation/pending decode 组合做证据核对，再选择一个完整纵切，不得把测试宿主扩展当作产品
 语义实现。稳定
 边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
@@ -226,18 +231,18 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1298。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1298,999`。
+- `TEST_MAX_NUMBER`：1299。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1299,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260919-232755-next859` 是本批最新有效证据：Debug ARMV4I
-`1297-1298,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1297、TEST1298 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或
-额外测试。目标卷由 `CeGetDiskFreeSpaceEx` 报告 47,297,953,792 字节可用，内部
-object-store 可用 8,570,880 字节；部署目录在完整日志回收后已删除。
+`tmp/device-runs/20260919-235300-next860` 是本批最新有效证据：Debug ARMV4I
+`1299,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1299 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+目标卷由 `CeGetDiskFreeSpaceEx` 报告 47,273,607,168 字节可用，内部 object-store 可用
+8,570,880 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -264,7 +269,7 @@ object-store 可用 8,570,880 字节；部署目录在完整日志回收后已�
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1298 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1299 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -316,7 +321,8 @@ object-store 可用 8,570,880 字节；部署目录在完整日志回收后已�
   几何；不覆盖 transforms、完整 HTML image-map 算法或 pointer/touch 手势。`decode()`、
   `load`/`error` 只覆盖 Browser 的有界 Promise/事件桥，必须由宿主在 Core 的当前
   complete/natural-size relation 就绪后显式通知；它不提供后台加载、自动事件或完整图像
-  生命周期。
+  生命周期。支持的 `Element.id` setter 改名会先回收旧终态 key，避免反复改名耗尽每个
+  session 的 64 项终态预算；其他通用 id/加载语义仍不在契约内。
 - `<option>` 的 `selected`/`defaultSelected`、`value`/`label`/`text` 与 select 的
   `options`/`selectedOptions`/`length`、option `index` 是可选的 Browser 扩展：前者由
   Core 维护 live 选择并执行单选互斥/多选规则，后三项复用通用 DOM attribute/text
@@ -346,7 +352,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next859 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 对图像 source
+next860 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 对图像 source
 mutation/pending decode 候选完成源码、compatibility corpus 和现有测试的取证；在取证完成
 前不分配新的 next 编号。完成标准是明确的公共 DLL 所有者、固定预算、旧 promise/终态
 退休与失败回滚合同，并在确认存在可复现缺口后取得产品侧纵切、相邻自动回归、风险相称的

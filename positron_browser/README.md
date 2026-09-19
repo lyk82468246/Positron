@@ -37,6 +37,10 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - `textContent`、非编辑元素的 `innerText`、`innerHTML`/`outerHTML`、`document.write` 和 title；
 - selector 的 `matches`、`closest`、`querySelector(All)` 有界子集；
 - form owner、validation、`form.elements`/`FormData` snapshot、option/select metadata 和有限 `HTMLImageElement` metadata；
+- `HTMLImageElement.decode()` 以及 host 驱动的 `load`/`error` 终态桥：宿主必须先让 Core 的
+  current source、complete 和 natural size 就绪，再调用通知入口；source 改变或支持的
+  `Element.id` setter 改名会回收旧 pending/终态 key，每个 session 的终态映射最多 64 项，
+  Browser 不自动抓取、选择、解码或绘制图像；
 - Text/CDATA 的 `data`、CharacterData mutator、`wholeText`、`splitText`、`replaceWholeText`、remove/reinsert 和 wrapper 关系。
 - `document.createElement(tag)` 的 detached staging：每个 wrapper 可保存有界属性和最多 64 个直接 child，child 可以是 Text、Comment、CDATA 或另一个 Browser-created Element。nested graph 限制为最多 4 层、64 个 Element、每个 Element 64 个 child；每个 Element 都必须有唯一非空 id。`cloneNode(true)`、递归 `textContent`、attach、remove/reinsert 以及带唯一 id 的递归 Core 物化都会保留 wrapper/alias identity；循环、重复/缺失 id、超限或不支持的节点在 mutation 前拒绝。
 - 已物化的 Browser-created Element wrapper 还支持 1–4 个 primitive 参数的 `before()`、`after()` 和 `replaceWith()`；同级文本插入复用现有 Core mutation callback，替换成功后 wrapper 回到 detached 状态。未物化目标保持 inert，Element、Fragment、CharacterData 或其他对象参数不在这条窄路径内。

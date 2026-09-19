@@ -103,8 +103,9 @@ Browser-created Element graph 已完成并由组件 README、测试文档和当�
 **状态：待取证。公共所有者：positron_image.dll / positron_core.dll / positron_browser.dll。**
 
 现有能力已经覆盖有界 src/srcset/sizes/picture 选择、decode Promise、load/error 通知和
-source mutation callback，但绝对 URL、完整 CORS/referrer、任意 loading 策略和视觉行为仍
-由边界限制。下一步只有在离线网络 fixture 能稳定复现“source 改变、旧 decode 退休、新候选
+source mutation callback；next860 还证明了支持的 `Element.id` 改名会回收旧图像终态 key，
+但绝对 URL、完整 CORS/referrer、任意 loading 策略和视觉行为仍由边界限制。下一步只有在离线
+网络 fixture 能稳定复现“source 改变、旧 decode 退休、新候选
 提交或失败”的组合时才选择本候选。
 
 实现必须保持 candidate/resource generation、取消、旧资源释放和 optional/required gate

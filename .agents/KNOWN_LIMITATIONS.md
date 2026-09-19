@@ -118,7 +118,8 @@
   `PBrowser_ScriptSessionNotifyImageEvent` 显式派发 `load`/`error`；事件 trusted、非冒泡、
   不可取消，重复同终态幂等，过时/相反/未就绪通知 fail closed。该桥不自动抓取、选择、
   解码或绘制图像；每个 session 的 image/source 终态映射最多 64 项，source 改变会释放
-  旧项，超限的新终态通知保持 fail closed。脚本写入 img 的 `src`/`srcset`/`sizes` 或
+  旧项；支持的 `Element.id` setter 改名也会释放旧 key，避免改名后耗尽终态预算；超限
+  的新终态通知保持 fail closed。脚本写入 img 的 `src`/`srcset`/`sizes` 或
   picture source 的 `media`/`type`/`srcset`/`sizes` 时，宿主可在 DOM attribute callbacks
   之后注册可选的 `PBrowser_ScriptSessionRegisterImageSourceCallbacks`，同步取得借用的
   id/kind/attribute/removed 元数据；该桥复用既有 native slot，不执行自动 I/O、选择、

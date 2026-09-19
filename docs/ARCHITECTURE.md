@@ -75,6 +75,9 @@ Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session�
 
 - history、navigation candidate/resource observation、页面生命周期、viewport、visualViewport、scroll restoration 和任务检查点；
 - 有界 DOM/Element/CharacterData wrapper、属性 facade、selector、form/option metadata、image metadata、Event 和 validation 对象；
+- 有界图像 `decode()` Promise 与 host 驱动的 `load`/`error` 终态；source 或支持的
+  `Element.id` setter 改变会回收旧 pending/终态 key，宿主仍负责 Core relation、资源 I/O、
+  解码和通知时机；
 - `document.activeElement`、focus/blur、`scrollIntoView`、native callback 请求及页面脚本的同步/异步队列。
 
 Browser 不创建窗口、不直接读写网络、不替宿主 clamp 物理坐标，也不决定系统 picker、SIP/IME 或 native 控件默认动作。宿主必须显式调用 resize、scroll、focus、lifecycle 和 task checkpoint 通知；没有 pump，页面异步队列不会自行推进。
