@@ -79,6 +79,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   以及非法/未物化/detached/arity fail-closed。TEST1295 与 `1294-1295,999` Debug ARMV4I
   外置卡设备门取得完整日志，3/3 PASS、双空间预检、清理和 `crash_check=PASS`，无新增
   Core ABI。
+- next857 为已物化 Browser-created Element 增加 direct Element-child 的
+  `appendChild()`/`insertBefore()`/`removeChild()` reconciliation：regular、detached
+  created 与已物化 created source 可在 bounded parent 内插入、跨父移动和移除，目标/source
+  snapshot、alias wrapper identity 和返回值保持一致；detached target、错误
+  parent/reference、无效对象和超限结构仍 fail closed。TEST1296 与 `1295-1296,999`
+  Debug ARMV4I 外置卡设备门取得完整日志，3/3 PASS、双空间预检、清理和
+  `crash_check=PASS`，无新增 Core ABI。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -101,29 +108,15 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-- 当前基线含表单、selector、滚动/几何、生命周期、焦点、图片和有界 DOM；
-  next790–next815 的 parser、fragment、replaceChildren、detached Text/Element/Comment、
-  CharacterData offset、clone/style/reflected-attribute facade、body.text、session cookie
-  和 document.write 纵切已有自动合同。稳定边界见
-  [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
-- next817–next837 的 document.title、DocumentFragment staging/组合、Node 关系、集合快照、
-  detached normalize/replaceChildren/replaceChild、Attr/NamedNodeMap facade、textContent
-  同步、text-only HTML facade 与 Fragment textContent 原子替换均已完成构建、断言和设备门；
-  next838 又补齐 Fragment-owned detached Element sibling/element-sibling 关系，next839 补齐
-  Browser-owned Text/Comment 的 element-sibling 关系，next840 补齐 Browser-created Text 的
-  CharacterData aggregate/split/replace 视图，next841 补齐 relative primitive mutation 并完成
-  相邻门，next842 补齐 Browser-created Comment 的 relative primitive mutation，next843 补齐
-  Browser-created Text/Comment 的单一 existing CharacterData relative mutation，next844 又
-  补齐 Browser-created CDATASection 的 bounded 创建、物化和 CharacterData 生命周期，next845
-  补齐 CDATASection 的 Text 结构合同，next846 补齐 Fragment 的 Comment/CDATA 根 staging 与
-  Core 物化，next847 修正 Fragment `textContent` 的 Comment 排除规则，next848 统一 Core、
-  live Element 与 Fragment 的 Text/CDATA normalize 并同步 created wrapper 数据，next849 又
-  补齐 detached Element 的直接 Text/Comment/CDATA staging，next850 又补齐已物化
-  Browser-created Element 的 primitive relative mutation；下一步继续从可复现缺口进入公共 DLL。
-- `test_host` 只保留 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、Event、
-  表单、图像和生命周期语义必须继续位于对应公共 DLL。
-- fixed-buffer 数值转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已通过正式设备门；
-  历史 next 细节由 Git 与 `docs/history/` 保存。不得把测试宿主扩展当作产品语义实现。
+next857 已完成并通过 `1295-1296,999` 设备门。下一批必须从 compatibility corpus、
+源码和失败证据中选择一个新的、可复现的公共 DLL 缺口；不得把测试宿主扩展当作产品语义
+实现。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，历史 next 细节由 Git 与
+`docs/history/` 保存。
+
+继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
+Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
+转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已有正式设备门证据。
 
 ## 已验证产品事实
 
@@ -230,20 +223,18 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1295。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1295,999`。
+- `TEST_MAX_NUMBER`：1296。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1296,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260919-205821-next856-created-element-adjacent-fixed` 是本批最新有效证据：
-Debug ARMV4I `1294-1295,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、
-`crash_check` PASS，dump=0。日志明确记录 TEST1294、TEST1295 和 TEST999 均为 OK，
-`TESTBENCH PASS`，无缺失或额外测试。目标卷由 `CeGetDiskFreeSpaceEx` 报告 40,973,107,200
-字节可用，内部 object-store 可用 7,262,208 字节；部署目录在完整日志回收后已删除。期间
-曾发现 TEST1295 的脱离态断言错误地要求嵌套 Element 文本聚合，已收窄为 bounded child
-identity/直接文本合同后复跑通过。
+`tmp/device-runs/20260919-212452-next857-created-element-child-final` 是本批最新有效证据：
+Debug ARMV4I `1295-1296,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、
+`crash_check` PASS，dump=0。日志明确记录 TEST1295、TEST1296 和 TEST999 均为 OK，
+`TESTBENCH PASS`，无缺失或额外测试。目标卷由 `CeGetDiskFreeSpaceEx` 报告 47,797,469,184
+字节可用，内部 object-store 可用 8,570,880 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -270,7 +261,7 @@ identity/直接文本合同后复跑通过。
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1295 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1296 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -278,7 +269,8 @@ identity/直接文本合同后复跑通过。
   CharacterData 根 staging/textContent 投影及 Browser-created Text/Comment/Element 的
   CharacterData/relative primitive/现有 CharacterData source、Text/CDATA normalize、created
   Element element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、
-  `insertAdjacentElement()`、primitive-only `replaceChildren()` wrapper reconciliation 与
+  `insertAdjacentElement()`、direct Element-child `appendChild()`/`insertBefore()`/`removeChild()`、
+  primitive-only `replaceChildren()` wrapper reconciliation 与
   脱离后的 direct CharacterData 快照夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
@@ -351,7 +343,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next856 已完成。唯一下一步是从 compatibility corpus 和源码中选择一个新的、可复现的公共
+next857 已完成。唯一下一步是从 compatibility corpus 和源码中选择一个新的、可复现的公共
 DLL 缺口，建立最小离线 fixture 与自动断言。完成标准是产品侧纵切、相邻自动回归、风险
 相称的正式设备门（完整日志、双空间预检、清理、`crash_check`）及职责文档更新；若涉及
 崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

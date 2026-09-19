@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1295
+#define TEST_MAX_NUMBER 1296
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55233,6 +55233,59 @@ static BOOL test1295_browser_created_element_adjacent_element_contract(void)
             " from another created wrapper, while preserving childNodes"
             " identity and rejecting detached, invalid and arity-mismatched"
             " calls without partial mutation.");
+    return TRUE;
+}
+
+/* TEST 1296 - attached Browser-created Element direct Element-child mutation. */
+static BOOL test1296_browser_created_element_element_child_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='prefix'>P</p><p id='suffix'>S</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,t=d.getElementById('target'),s=d.getElementById('suffix'),"
+        "r=d.getElementById('result'),e,a,b,c,regular,nodes,sourceNodes,ret,bad=0,ok=true;"
+        "try{e=d.createElement('article');e.id='created-element-child';e.append('old');"
+        "t.insertBefore(e,s);nodes=e.childNodes;"
+        "a=d.createElement('span');a.id='created-child-a';a.append('A');ret=e.appendChild(a);"
+        "if(ret!==a||!a.isConnected||a.parentNode!==e||nodes!==e.childNodes||"
+        "nodes.length!==2||nodes[1]!==a||e.textContent!=='oldA')ok=false;"
+        "regular=d.createElement('i');regular.id='regular-child';regular.append('R');"
+        "t.insertBefore(regular,s);sourceNodes=t.childNodes;ret=e.appendChild(regular);"
+        "if(ret!==regular||regular.parentNode!==e||nodes!==e.childNodes||nodes[2]!==regular||"
+        "e.textContent!=='oldAR'||sourceNodes.length!==4||t.childNodes.length!==3)ok=false;"
+        "b=d.createElement('b');b.id='regular-before';b.append('B');t.insertBefore(b,s);"
+        "ret=e.insertBefore(b,a);if(ret!==b||b.parentNode!==e||nodes!==e.childNodes||"
+        "nodes.length!==4||nodes[1]!==b||nodes[2]!==a||nodes[3]!==regular||"
+        "e.textContent!=='oldBAR')ok=false;"
+        "ret=e.removeChild(a);if(ret!==a||a.parentNode!==null||a.isConnected||"
+        "nodes!==e.childNodes||nodes.length!==3||nodes[1]!==b||nodes[2]!==regular||"
+        "e.textContent!=='oldBR')ok=false;"
+        "try{e.removeChild(s);}catch(e1){bad|=1;}try{e.insertBefore(b,{});}catch(e2){bad|=2;}"
+        "try{e.appendChild({});}catch(e3){bad|=4;}try{d.createElement('aside').appendChild(a);}"
+        "catch(e4){bad|=8;}"
+        "if(nodes!==e.childNodes||e.textContent!=='oldBR')ok=false;"
+        "c=d.createElement('u');c.id='created-child-c';c.append('C');ret=e.insertBefore(c,regular);"
+        "if(ret!==c||c.parentNode!==e||nodes!==e.childNodes||nodes.length!==4||"
+        "nodes[1]!==b||nodes[2]!==c||nodes[3]!==regular||e.textContent!=='oldBCR')ok=false;"
+        "ret=e.removeChild(c);if(ret!==c||c.parentNode!==null||c.isConnected||"
+        "nodes!==e.childNodes||nodes.length!==3||e.textContent!=='oldBR')ok=false;"
+        "}catch(e5){ok=false;}r.textContent=String(ok&&bad===15);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-element-child", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1296 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1296 OK",
+            "attached Browser-created Element wrappers now accept bounded"
+            " direct Element appendChild and insertBefore moves, including"
+            " created and regular sources, while removeChild refreshes source"
+            " identity; detached, wrong-parent and invalid calls fail closed.");
     return TRUE;
 }
 
@@ -113546,6 +113599,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1293: ok = test1293_browser_created_element_adjacent_html_contract(); break;
         case 1294: ok = test1294_browser_created_element_replace_children_text_contract(); break;
         case 1295: ok = test1295_browser_created_element_adjacent_element_contract(); break;
+        case 1296: ok = test1296_browser_created_element_element_child_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

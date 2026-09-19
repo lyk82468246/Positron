@@ -207,6 +207,10 @@
   `insertAdjacentElement()` 同样覆盖四个位置，复用既有 Core element-child mutation，并在
   regular/已物化 Browser-created source 的移动后同步目标与可寻址 source snapshot；未物化
   source、非法位置、对象/arity、自引用和 detached target 仍在 mutation 前 fail closed。
+  已物化 wrapper 的 `appendChild()`、`insertBefore()` 和 `removeChild()` 也支持 direct Element
+  child 的有界插入、重排、跨父移动和移除；regular、detached created 与已物化 created source
+  都在目标/source snapshot 和 alias identity 同步后返回。detached target、错误 parent/reference、
+  无效对象和超限结构仍 fail closed，不因此开放 detached nested Element graph。
   已物化 wrapper 的 `replaceChildren()` 对零至四个 primitive 值在 Core text-only 替换完成后
   原地重建 Browser-owned Text wrapper，保留 `childNodes` collection identity，并让被替换的
   旧 child 脱离；对象、Element、CharacterData 或 Fragment 参数继续走既有的有界路径，超出

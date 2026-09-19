@@ -443,7 +443,16 @@ regular 与另一个已物化 Browser-created source 的移动、四位置父级
 自动门通过；完整日志、双空间预检、清理和 `crash_check` 结果见 `.agents/HANDOFF.md`。未新增
 Core ABI；脱离后的嵌套 Element 文本聚合仍受 bounded staging 限制。
 
-下一批（next857）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
+next857 补齐已物化 Browser-created Element 的 direct Element-child mutation coherence：
+`appendChild()`、`insertBefore()` 和 `removeChild()` 复用既有 Core element-child mutation，
+支持 regular、detached created 与已物化 created source 的有界插入、跨父移动和移除，并同步
+目标/source snapshot、alias wrapper identity 和返回值；detached target、错误
+parent/reference、无效对象和超限结构仍 fail closed。TEST1296 与 `1295-1296,999` Debug
+ARMV4I 外置卡自动门通过；完整日志、双空间预检、清理和 `crash_check` 结果见
+`.agents/HANDOFF.md`。未新增 Core ABI；不开放 detached nested Element graph 或完整 live
+collection。
+
+下一批（next858）的选择必须先从 compatibility corpus、源码、设备日志或截图固定一个新的、可
 复现的用户可见组合缺口，再为该缺口建立最小离线 fixture 或稳定哨兵。实现时明确旧页
 保留、失败回滚、资源所有权和生命周期预期；通用语义进入对应公共 DLL，宿主只保留 WM、
 线程、网络、native 控件和应用策略。任何新增结构都要保持 C ABI、UTF-8、opaque
