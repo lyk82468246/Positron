@@ -108,9 +108,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next857 已完成并通过 `1295-1296,999` 设备门。下一批必须从 compatibility corpus、
-源码和失败证据中选择一个新的、可复现的公共 DLL 缺口；不得把测试宿主扩展当作产品语义
-实现。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与
+next857 已完成并通过 `1295-1296,999` 设备门。路线图已经重构为未来目标和候选 backlog：
+下一批先复核其中的“脚本异步队列与页面生命周期收尾”候选，确认当前源码、测试和语料仍能
+复现旧 session 队列隔离缺口后再选择；若证据不成立，改选其他明确标为待取证的候选，不得
+把测试宿主扩展当作产品语义实现。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与
 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，历史 next 细节由 Git 与
 `docs/history/` 保存。
 
@@ -343,10 +344,11 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next857 已完成。唯一下一步是从 compatibility corpus 和源码中选择一个新的、可复现的公共
-DLL 缺口，建立最小离线 fixture 与自动断言。完成标准是产品侧纵切、相邻自动回归、风险
-相称的正式设备门（完整日志、双空间预检、清理、`crash_check`）及职责文档更新；若涉及
-崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
+next857 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 的候选卡复核一个公共 DLL
+缺口：优先验证脚本异步队列与页面生命周期收尾；确认后才为该纵向能力分配下一批编号，
+建立最小离线 fixture 与自动断言。完成标准是产品侧纵切、相邻自动回归、风险相称的正式
+设备门（完整日志、双空间预检、清理、`crash_check`）及职责文档更新；若涉及崩溃、数据
+损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、
