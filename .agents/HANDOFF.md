@@ -73,10 +73,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   collection identity，旧 child 脱离；对象/CharacterData 混合参数继续走既有路径，detached
   staging 保持原合同。TEST1294 与 `1293-1294,999` Debug ARMV4I 外置卡设备门取得完整
   日志，3/3 PASS、双空间预检、清理和 `crash_check=PASS`，无新增 Core ABI。
+- next856 为已物化 Browser-created Element 增加四位置 `insertAdjacentElement()`
+  reconciliation：复用既有 Core element-child mutation，成功后刷新目标 snapshot，覆盖
+  regular 与另一个已物化 Browser-created source 的移动、四位置父级重排、wrapper identity
+  以及非法/未物化/detached/arity fail-closed。TEST1295 与 `1294-1295,999` Debug ARMV4I
+  外置卡设备门取得完整日志，3/3 PASS、双空间预检、清理和 `crash_check=PASS`，无新增
+  Core ABI。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- `TEST_MAX_NUMBER` 当前工作区值为 1294。tracked `test_host/test_host.ini` 仍是窄 smoke：
-  `auto=1`、`javascript=0`、选择 `13,20,27,56,58,62,64-67,73,75,1217-1294,999`。
-  1294 已进入当前候选基线。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
 
@@ -227,22 +230,20 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1294。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1294,999`。
+- `TEST_MAX_NUMBER`：1295。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1295,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260919-203006-next855-final` 是本批最新有效证据：Debug ARMV4I
-`1293-1294,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，dump=0。
-日志明确记录 TEST1293、TEST1294 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 40,974,188,544 字节可用，内部 object-store
-可用 7,262,208 字节；部署目录在完整日志回收后已删除。此前 next855 的首次失败是测试
-断言在 `removeChild()` 后读取已左移的数组槽位，修正测试保存目标 wrapper 后，产品门通过。
-稳定前一批证据仍为 `tmp/device-runs/20260919-200327-next854-retry`；更早 next851/849/848
-证据继续保留。
-
+`tmp/device-runs/20260919-205821-next856-created-element-adjacent-fixed` 是本批最新有效证据：
+Debug ARMV4I `1294-1295,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、
+`crash_check` PASS，dump=0。日志明确记录 TEST1294、TEST1295 和 TEST999 均为 OK，
+`TESTBENCH PASS`，无缺失或额外测试。目标卷由 `CeGetDiskFreeSpaceEx` 报告 40,973,107,200
+字节可用，内部 object-store 可用 7,262,208 字节；部署目录在完整日志回收后已删除。期间
+曾发现 TEST1295 的脱离态断言错误地要求嵌套 Element 文本聚合，已收窄为 bounded child
+identity/直接文本合同后复跑通过。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -269,7 +270,7 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1294 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1295 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -277,8 +278,8 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
   CharacterData 根 staging/textContent 投影及 Browser-created Text/Comment/Element 的
   CharacterData/relative primitive/现有 CharacterData source、Text/CDATA normalize、created
   Element element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、
-  primitive-only `replaceChildren()` wrapper reconciliation 与脱离后的 direct CharacterData
-  快照夹具均已有相邻设备门；
+  `insertAdjacentElement()`、primitive-only `replaceChildren()` wrapper reconciliation 与
+  脱离后的 direct CharacterData 快照夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
@@ -350,7 +351,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next855 已完成。唯一下一步是从 compatibility corpus 和源码中选择一个新的、可复现的公共
+next856 已完成。唯一下一步是从 compatibility corpus 和源码中选择一个新的、可复现的公共
 DLL 缺口，建立最小离线 fixture 与自动断言。完成标准是产品侧纵切、相邻自动回归、风险
 相称的正式设备门（完整日志、双空间预检、清理、`crash_check`）及职责文档更新；若涉及
 崩溃、数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。

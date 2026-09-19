@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1294
+#define TEST_MAX_NUMBER 1295
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55174,6 +55174,65 @@ static BOOL test1294_browser_created_element_replace_children_text_contract(void
             " bounded primitive Text wrappers after Core replacement, preserves"
             " childNodes collection identity, detaches removed children and"
             " keeps invalid and detached paths fail closed.");
+    return TRUE;
+}
+
+/* TEST 1295 - attached Browser-created Element adjacent element coherence. */
+static BOOL test1295_browser_created_element_adjacent_element_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><div id='target'><p id='prefix'>P</p><p id='suffix'>S</p></div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "(function(){var d=document,t=d.getElementById('target'),prefix="
+        "d.getElementById('prefix'),suffix=d.getElementById('suffix'),r="
+        "d.getElementById('result'),e,x,y,z,q,n,p,i,j,detached,ok=true,bad=0;"
+        "try{e=d.createElement('article');e.id='created-adjacent-element';"
+        "e.append('old');t.insertBefore(e,suffix);n=e.childNodes;"
+        "x=prefix;if(e.insertAdjacentElement('afterbegin',x)!==x)ok=false;"
+        "if(n!==e.childNodes||n.length!==2||n[0]!==x||n[1].data!=='old'||"
+        "x.parentNode!==e||e.textContent!=='Pold')ok=false;"
+        "y=d.createElement('span');y.id='created-adjacent-source';y.append('Y');"
+        "t.insertBefore(y,suffix);if(e.insertAdjacentElement('beforeend',y)!==y)"
+        "ok=false;if(n!==e.childNodes||n.length!==3||n[2]!==y||"
+        "y.parentNode!==e||e.textContent!=='PoldY'||t.childNodes.length!==2)ok=false;"
+        "z=d.createElement('i');z.id='created-before';z.append('Q');t.insertBefore(z,suffix);"
+        "if(e.insertAdjacentElement('beforebegin',z)!==z)ok=false;p=t.childNodes;"
+        "i=-1;for(j=0;j<p.length;j++){if(p[j]===e){i=j;break;}}"
+        "if(i!==1||p[0]!==z||p[1]!==e||z.parentNode!==t||n!==e.childNodes||"
+        "n.length!==3||n[2]!==y)ok=false;"
+        "q=d.createElement('u');q.id='created-after';q.append('R');t.insertBefore(q,z);"
+        "if(e.insertAdjacentElement('afterend',q)!==q)ok=false;p=t.childNodes;"
+        "if(p.length!==4||p[0]!==z||p[1]!==e||p[2]!==q||p[3]!==suffix||"
+        "q.parentNode!==t||n!==e.childNodes||n[0]!==x||n[2]!==y)ok=false;"
+        "try{e.insertAdjacentElement('middle',z);}catch(e1){bad|=1;}"
+        "try{e.insertAdjacentElement('beforeend',{});}catch(e2){bad|=2;}"
+        "detached=d.createElement('aside');detached.id='created-detached';"
+        "try{e.insertAdjacentElement('beforeend',detached);}catch(e3){bad|=4;}"
+        "try{e.insertAdjacentElement('beforeend',z,'extra');}catch(e4){bad|=8;}"
+        "try{e.insertAdjacentElement('beforeend');}catch(e5){bad|=16;}"
+        "if(e.textContent!=='PoldY'||n!==e.childNodes||n.length!==3||"
+        "n[2]!==y||detached.parentNode!==null)ok=false;e.remove();"
+        "try{e.insertAdjacentElement('beforeend',q);}catch(e6){bad|=32;}"
+        "if(e.parentNode!==null||e.isConnected||n!==e.childNodes||n.length!==3||"
+        "n[0]!==x||n[1].data!=='old'||n[2]!==y)ok=false;}catch(e7){ok=false;}"
+        "r.textContent=String(ok&&bad===63);})();";
+    char error[768];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture_at_url(
+            "http://positron.local/created-element-adjacent-element", HTML,
+            PROBE, "true", error, sizeof(error))) {
+        show_error(L"TEST 1295 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1295 OK",
+            "attached Browser-created Element wrappers now reconcile"
+            " insertAdjacentElement at all four positions, including moves"
+            " from another created wrapper, while preserving childNodes"
+            " identity and rejecting detached, invalid and arity-mismatched"
+            " calls without partial mutation.");
     return TRUE;
 }
 
@@ -113486,6 +113545,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1292: ok = test1292_browser_created_element_adjacent_text_contract(); break;
         case 1293: ok = test1293_browser_created_element_adjacent_html_contract(); break;
         case 1294: ok = test1294_browser_created_element_replace_children_text_contract(); break;
+        case 1295: ok = test1295_browser_created_element_adjacent_element_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

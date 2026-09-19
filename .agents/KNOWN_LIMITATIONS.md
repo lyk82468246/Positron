@@ -204,6 +204,9 @@
   `insertAdjacentText()` 与 `insertAdjacentHTML()` 现在都覆盖四个位置，分别复用既有 Core
   Text-child callback 与 Ex9 parser 路径，并在成功后原地同步 `childNodes`、parser-created
   children 与 wrapper identity；脱离后 direct 普通 Text/CDATA 也保留最近一次快照数据。
+  `insertAdjacentElement()` 同样覆盖四个位置，复用既有 Core element-child mutation，并在
+  regular/已物化 Browser-created source 的移动后同步目标与可寻址 source snapshot；未物化
+  source、非法位置、对象/arity、自引用和 detached target 仍在 mutation 前 fail closed。
   已物化 wrapper 的 `replaceChildren()` 对零至四个 primitive 值在 Core text-only 替换完成后
   原地重建 Browser-owned Text wrapper，保留 `childNodes` collection identity，并让被替换的
   旧 child 脱离；对象、Element、CharacterData 或 Fragment 参数继续走既有的有界路径，超出
