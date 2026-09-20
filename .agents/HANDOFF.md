@@ -14,8 +14,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   session、Storage、Headers、FormData、图像 generation 和特殊键 registry 合同组成；固定
   容量、失败回滚、wrapper identity、旧页保留和生命周期边界集中记录在
   [`docs/TESTING.md`](../docs/TESTING.md)、组件 README 和公开头文件中。最近的 TEST1303–1308
-  已覆盖 FormData/URLSearchParams 配额、Storage/Headers 特殊键和 Browser registry；逐 next
-  证据由 Git 历史与 `tmp/` 设备记录保存，本文件不复制时间线。
+  已覆盖 FormData/URLSearchParams 配额、Storage/Headers 特殊键和 Browser registry；TEST1309
+  另覆盖参考宿主的 WM_SHOWWINDOW 可见性接线；逐 next 证据由 Git 历史与 `tmp/` 设备记录保存，
+  本文件不复制时间线。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -177,18 +178,19 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1308。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`。
+- `TEST_MAX_NUMBER`：1309。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`；1309 是 next873 的定向宿主可见性门，通过 `-TestSelection` 显式加入，不改变窄 smoke 配置。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-113418-next869` 是本批最新有效设备证据：Debug ARMV4I
-`1308,1307,1306,999`，4/4 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1308、TEST1307、TEST1306 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,735,284,224 字节可用，内部 object-store 可用
-2,480,128 字节；部署目录在完整日志回收后已删除。
+`tmp/device-runs/20260920-135159-next873-host-visibility` 是本批最新有效设备证据：Debug ARMV4I
+`1309,1138,1139,999`，4/4 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1309、TEST1138、TEST1139 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+目标卷由 `CeGetDiskFreeSpaceEx` 报告 49,065,689,088 字节可用，内部 object-store 可用
+9,547,776 字节；部署目录在完整日志回收后已删除。next869 的 `1308,1307,1306,999` 证据仍由
+Git 历史和对应 `tmp/` 目录保留，但不再是当前批次快照。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -215,7 +217,7 @@ dump=0。日志明确记录 TEST1308、TEST1307、TEST1306 和 TEST999 均为 OK
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1303 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1309 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -230,7 +232,8 @@ dump=0。日志明确记录 TEST1308、TEST1307、TEST1306 和 TEST999 均为 OK
   independent FormData wire encoder（TEST1302）、Browser script FormData/URLSearchParams
   mutation budget（TEST1303–1304）、Storage quota（TEST1305）、object-property-safe
   Storage map（TEST1306）、Headers special-key snapshot（TEST1307）以及 prototype-safe
-  DOM id/wrapper/event/dataset/BroadcastChannel registry（TEST1308）
+  DOM id/wrapper/event/dataset/BroadcastChannel registry（TEST1308），另有参考宿主
+  WM_SHOWWINDOW 到 Browser visibility lifecycle 的消息接线（TEST1309）
   夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
