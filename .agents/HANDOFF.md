@@ -38,9 +38,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next870 已完成对 Core 表单提交公共头文件的契约校正：multipart/file 返回码 3 明确表示
-“改用对应的 `PCore_MultipartSubmission*` opaque snapshot”，不再误称为“未实现”；实现、
-TEST1301/1302 和组件 README 已与该说明交叉核对。上一批的 Browser 原型安全 registry、
+next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowser_HistoryCreate()` 失败时
+运行自有的 URL/state/document-id 算法；宿主数组只保存从 Browser DLL 同步的断言和平台快照，
+无产品 history handle 时安全失败。history/navigation 定向设备门覆盖 33 项测试并通过，
+崩溃转储增量为 0。上一批 next870 的 Core multipart 返回码 3 契约校正、Browser registry/
 dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持有效；Headers/Request/Response、
 Storage、FormData 和 URLSearchParams 仍保持有界安全合同。当前短期目标是完成路线图候选发现
 审查：只从源码、公开头文件、测试 dispatch 和真实证据中找出新的公共 DLL 缺口，不得把人工
@@ -294,11 +295,11 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next870 已完成源码、实现、TEST1301/1302 和公共头文件的交叉核对；本轮路线图复核没有形成
-新的“准备取舍”候选，队列保持为空。唯一下一步仍是完成 [`ROADMAP.md`](ROADMAP.md) 的候选
-发现审查：若形成满足所有者、预算、失败回滚、fixture 和门标准的公共 DLL 缺口，再分配下
-一个 next；否则继续累计人工验收或维护发布基线。崩溃、数据损坏、严重布局破坏或核心交互
-阻塞须立即人工复核。
+next871 已完成源码、宿主边界、定向设备门和路线图复核；history fallback 已移除，但更广的
+公共 DLL 消费者缺口审查仍未形成新的“准备取舍”候选，队列保持为空。唯一下一步仍是完成
+[`ROADMAP.md`](ROADMAP.md) 的候选发现审查：若形成满足所有者、预算、失败回滚、fixture 和门
+标准的公共 DLL 缺口，再分配下一个 next；否则继续累计人工验收或维护发布基线。崩溃、数据损坏、
+严重布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

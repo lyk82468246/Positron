@@ -6542,7 +6542,6 @@ typedef struct pcore_browse_history {
     char entries[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_URL_MAX];
     char states[PCORE_BROWSE_HISTORY_MAX][PCORE_BROWSE_HISTORY_STATE_MAX];
     unsigned long document_ids[PCORE_BROWSE_HISTORY_MAX];
-    unsigned long next_document_id;
     int count;
     int index;
 } pcore_browse_history;
@@ -6558,8 +6557,8 @@ static void pcore_browser_script_sync_scroll(void);
 static void pcore_browser_script_notify_resize(void);
 
 /* The product DLL owns URL/state/document-id history and viewport snapshots.
- * This fixed-size host mirror carries URL/state/document ids for legacy
- * assertions; navigation and scroll policy remain in the product API. */
+ * This fixed-size host mirror is refreshed from the public API for assertions
+ * and platform bridge bookkeeping only; it never implements history policy. */
 static int pcore_browse_history_product_ensure(void)
 {
     if (g_browse_history_product == NULL) {
@@ -6694,86 +6693,44 @@ static void pcore_browse_history_reset(void)
 
 static const char *pcore_browse_history_current(void)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryCurrentUrl(g_browse_history_product);
-    }
-    if (g_browse_history.index < 0 ||
-            g_browse_history.index >= g_browse_history.count) {
+    if (g_browse_history_product == NULL) {
         return NULL;
     }
-    return g_browse_history.entries[g_browse_history.index];
+    return PBrowser_HistoryCurrentUrl(g_browse_history_product);
 }
 
 static const char *pcore_browse_history_state_at(int index)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryEntryState(g_browse_history_product, index);
+    if (g_browse_history_product == NULL) {
+        return NULL;
     }
-    if (index < 0 || index >= g_browse_history.count ||
-            g_browse_history.states[index][0] == '\0') {
-        return "null";
-    }
-    return g_browse_history.states[index];
+    return PBrowser_HistoryEntryState(g_browse_history_product, index);
 }
 
 static const char *pcore_browse_history_current_state(void)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryCurrentState(g_browse_history_product);
+    if (g_browse_history_product == NULL) {
+        return NULL;
     }
-    return pcore_browse_history_state_at(g_browse_history.index);
-}
-
-static unsigned long pcore_browse_history_new_document_id(void)
-{
-    g_browse_history.next_document_id++;
-    if (g_browse_history.next_document_id == 0) {
-        g_browse_history.next_document_id++;
-    }
-    return g_browse_history.next_document_id;
+    return PBrowser_HistoryCurrentState(g_browse_history_product);
 }
 
 static int pcore_browse_history_same_document_target(int target_index)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryIsSameDocumentTarget(
-                g_browse_history_product, target_index);
-    }
-    if (target_index < 0 || target_index >= g_browse_history.count ||
-            target_index == g_browse_history.index ||
-            g_browse_history.index < 0 ||
-            g_browse_history.index >= g_browse_history.count ||
-            g_browse_history.document_ids[target_index] == 0) {
+    if (g_browse_history_product == NULL) {
         return 0;
     }
-    return g_browse_history.document_ids[target_index] ==
-            g_browse_history.document_ids[g_browse_history.index];
+    return PBrowser_HistoryIsSameDocumentTarget(
+            g_browse_history_product, target_index);
 }
 
 static int pcore_browse_history_same_base_url(const char *left,
         const char *right)
 {
-    const char *left_hash;
-    const char *right_hash;
-    size_t left_length;
-    size_t right_length;
-
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistorySameBaseUrl(left, right);
-    }
-
-    if (left == NULL || right == NULL || left[0] == '\0' ||
-            right[0] == '\0') {
+    if (g_browse_history_product == NULL) {
         return 0;
     }
-    left_hash = strchr(left, '#');
-    right_hash = strchr(right, '#');
-    left_length = (left_hash != NULL) ?
-            (size_t) (left_hash - left) : strlen(left);
-    right_length = (right_hash != NULL) ?
-            (size_t) (right_hash - right) : strlen(right);
-    return left_length == right_length &&
-            memcmp(left, right, left_length) == 0;
+    return PBrowser_HistorySameBaseUrl(left, right);
 }
 
 /* Browser fragment navigation may arrive from an anchor as a fragment-only
@@ -6815,137 +6772,32 @@ static int pcore_browser_script_normalize_fragment_url(
     return 1;
 }
 
-/* History state URLs may change the path/query, but must remain same-origin.
- * This intentionally compares the textual scheme/authority boundary, with
- * only HTTP/HTTPS default-port normalization; it is a narrow browser-script
- * bridge rule, not a complete URL parser. */
-static const char *pcore_browse_history_trim_default_port(
-        const char *scheme, size_t scheme_length,
-        const char *authority_start, const char *authority_end)
-{
-    const char *cursor;
-    const char *colon;
-    int colon_count;
-    size_t port_length;
-
-    colon = NULL;
-    colon_count = 0;
-    for (cursor = authority_start; cursor < authority_end; cursor++) {
-        if (*cursor == ':') {
-            colon = cursor;
-            colon_count++;
-        }
-    }
-    if (colon_count != 1 || colon == NULL ||
-            (scheme_length != 4 && scheme_length != 5)) {
-        return authority_end;
-    }
-    port_length = (size_t) (authority_end - colon - 1);
-    if (scheme_length == 4 && _strnicmp(scheme, "http", 4) == 0 &&
-            port_length == 2 && memcmp(colon + 1, "80", 2) == 0) {
-        return colon;
-    }
-    if (scheme_length == 5 && _strnicmp(scheme, "https", 5) == 0 &&
-            port_length == 3 && memcmp(colon + 1, "443", 3) == 0) {
-        return colon;
-    }
-    return authority_end;
-}
-
 static int pcore_browse_history_same_origin_url(const char *left,
         const char *right)
 {
-    const char *left_scheme;
-    const char *right_scheme;
-    const char *left_authority;
-    const char *right_authority;
-    const char *left_end;
-    const char *right_end;
-    size_t left_scheme_length;
-    size_t right_scheme_length;
-    size_t left_length;
-    size_t right_length;
-
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistorySameOriginUrl(left, right);
-    }
-
-    if (left == NULL || right == NULL || left[0] == '\0' ||
-            right[0] == '\0') {
+    if (g_browse_history_product == NULL) {
         return 0;
     }
-    left_scheme = strstr(left, "://");
-    right_scheme = strstr(right, "://");
-    if (left_scheme == NULL || right_scheme == NULL) {
-        return 0;
-    }
-    left_scheme_length = (size_t) (left_scheme - left);
-    right_scheme_length = (size_t) (right_scheme - right);
-    if (left_scheme_length != right_scheme_length ||
-            _strnicmp(left, right, left_scheme_length) != 0) {
-        return 0;
-    }
-    left_authority = left_scheme + 3;
-    right_authority = right_scheme + 3;
-    left_end = left_authority;
-    while (*left_end != '\0' && *left_end != '/' &&
-            *left_end != '?' && *left_end != '#') {
-        left_end++;
-    }
-    right_end = right_authority;
-    while (*right_end != '\0' && *right_end != '/' &&
-            *right_end != '?' && *right_end != '#') {
-        right_end++;
-    }
-    left_end = pcore_browse_history_trim_default_port(left,
-            left_scheme_length, left_authority, left_end);
-    right_end = pcore_browse_history_trim_default_port(right,
-            right_scheme_length, right_authority, right_end);
-    left_length = (size_t) (left_end - left_authority);
-    right_length = (size_t) (right_end - right_authority);
-    return left_length == right_length &&
-            _strnicmp(left_authority, right_authority, left_length) == 0;
+    return PBrowser_HistorySameOriginUrl(left, right);
 }
 
 static int pcore_browse_history_replace_state_url(const char *url,
         const char *state_json)
 {
-    HANDLE parsed;
     int rc;
 
-    if (g_browse_history_product != NULL) {
-        pcore_browse_history_save_scroll();
-        rc = PBrowser_HistoryReplaceState(
-                g_browse_history_product, url, state_json);
-        pcore_browse_history_product_sync();
-        return rc;
-    }
-
-    if (pcore_browse_history_current() == NULL || url == NULL ||
-            url[0] == '\0' ||
-            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-            !pcore_browse_history_same_origin_url(
-            pcore_browse_history_current(), url) || state_json == NULL ||
-            state_json[0] == '\0' ||
-            strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
+    if (g_browse_history_product == NULL) {
         return 1;
     }
-    parsed = PJson_Parse(state_json);
-    if (parsed == NULL) {
-        return 1;
-    }
-    PJson_Free(parsed);
-    strcpy(g_browse_history.entries[g_browse_history.index], url);
-    strcpy(g_browse_history.states[g_browse_history.index], state_json);
-    return 0;
+    pcore_browse_history_save_scroll();
+    rc = PBrowser_HistoryReplaceState(
+            g_browse_history_product, url, state_json);
+    pcore_browse_history_product_sync();
+    return rc;
 }
 
 static int pcore_browse_history_replace_state(const char *state_json)
 {
-    if (g_browse_history_product != NULL) {
-        return pcore_browse_history_replace_state_url(
-                pcore_browse_history_current(), state_json);
-    }
     return pcore_browse_history_replace_state_url(
             pcore_browse_history_current(), state_json);
 }
@@ -6953,225 +6805,99 @@ static int pcore_browse_history_replace_state(const char *state_json)
 static int pcore_browse_history_push_state(const char *url,
         const char *state_json)
 {
-    HANDLE parsed;
     int i;
 
-    if (g_browse_history_product != NULL) {
-        pcore_browse_history_save_scroll();
-        i = PBrowser_HistoryPushState(g_browse_history_product, url,
-                state_json);
-        pcore_browse_history_product_sync();
-        return i;
-    }
-
-    if (pcore_browse_history_current() == NULL || url == NULL ||
-            url[0] == '\0' || strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX ||
-            !pcore_browse_history_same_origin_url(
-            pcore_browse_history_current(), url) ||
-            state_json == NULL || state_json[0] == '\0' ||
-            strlen(state_json) >= PCORE_BROWSE_HISTORY_STATE_MAX) {
+    if (g_browse_history_product == NULL) {
         return 1;
     }
-    parsed = PJson_Parse(state_json);
-    if (parsed == NULL) {
-        return 1;
-    }
-    PJson_Free(parsed);
-    if (g_browse_history.index + 1 < g_browse_history.count) {
-        g_browse_history.count = g_browse_history.index + 1;
-    }
-    if (g_browse_history.count >= PCORE_BROWSE_HISTORY_MAX) {
-        for (i = 1; i < g_browse_history.count; i++) {
-            memcpy(g_browse_history.entries[i - 1],
-                    g_browse_history.entries[i],
-                    PCORE_BROWSE_HISTORY_URL_MAX);
-            memcpy(g_browse_history.states[i - 1],
-                    g_browse_history.states[i],
-                    PCORE_BROWSE_HISTORY_STATE_MAX);
-            g_browse_history.document_ids[i - 1] =
-                    g_browse_history.document_ids[i];
-        }
-        g_browse_history.count--;
-        g_browse_history.index--;
-    }
-    strcpy(g_browse_history.entries[g_browse_history.count], url);
-    strcpy(g_browse_history.states[g_browse_history.count], state_json);
-    g_browse_history.document_ids[g_browse_history.count] =
-            g_browse_history.document_ids[g_browse_history.index];
-    g_browse_history.count++;
-    g_browse_history.index = g_browse_history.count - 1;
-    return 0;
+    pcore_browse_history_save_scroll();
+    i = PBrowser_HistoryPushState(g_browse_history_product, url,
+            state_json);
+    pcore_browse_history_product_sync();
+    return i;
 }
 
 static int pcore_browse_history_commit_new(const char *url)
 {
     int i;
 
-    if (g_browse_history_product != NULL) {
-        i = PBrowser_HistoryCommitNavigation(
-                g_browse_history_product, url,
-                PBROWSER_HISTORY_METHOD_GET,
-                PBROWSER_HISTORY_TARGET_NEW);
-        pcore_browse_history_product_sync();
-        return i;
-    }
-
-    if (url == NULL || url[0] == '\0' ||
-            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
+    if (g_browse_history_product == NULL) {
         return 1;
     }
-    if (pcore_browse_history_current() != NULL &&
-            strcmp(pcore_browse_history_current(), url) == 0) {
-        g_browse_history.document_ids[g_browse_history.index] =
-                pcore_browse_history_new_document_id();
-        return 0;
-    }
-    if (g_browse_history.index + 1 < g_browse_history.count) {
-        g_browse_history.count = g_browse_history.index + 1;
-    }
-    if (g_browse_history.count >= PCORE_BROWSE_HISTORY_MAX) {
-        for (i = 1; i < g_browse_history.count; i++) {
-            memcpy(g_browse_history.entries[i - 1],
-                    g_browse_history.entries[i],
-                    PCORE_BROWSE_HISTORY_URL_MAX);
-            memcpy(g_browse_history.states[i - 1],
-                    g_browse_history.states[i],
-                    PCORE_BROWSE_HISTORY_STATE_MAX);
-            g_browse_history.document_ids[i - 1] =
-                    g_browse_history.document_ids[i];
-        }
-        g_browse_history.count--;
-        g_browse_history.index--;
-    }
-    strcpy(g_browse_history.entries[g_browse_history.count], url);
-    strcpy(g_browse_history.states[g_browse_history.count], "null");
-    g_browse_history.document_ids[g_browse_history.count] =
-            pcore_browse_history_new_document_id();
-    g_browse_history.count++;
-    g_browse_history.index = g_browse_history.count - 1;
-    return 0;
+    i = PBrowser_HistoryCommitNavigation(
+            g_browse_history_product, url,
+            PBROWSER_HISTORY_METHOD_GET,
+            PBROWSER_HISTORY_TARGET_NEW);
+    pcore_browse_history_product_sync();
+    return i;
 }
 
 static const char *pcore_browse_history_back_target(int *target_index)
 {
-    int target;
-
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryBackTarget(g_browse_history_product,
-                target_index);
-    }
-
-    if (target_index == NULL || g_browse_history.index <= 0 ||
-            g_browse_history.index >= g_browse_history.count) {
+    if (g_browse_history_product == NULL) {
         return NULL;
     }
-    target = g_browse_history.index - 1;
-    *target_index = target;
-    return g_browse_history.entries[target];
+    return PBrowser_HistoryBackTarget(g_browse_history_product,
+            target_index);
 }
 
 static const char *pcore_browse_history_forward_target(int *target_index)
 {
-    int target;
-
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryForwardTarget(g_browse_history_product,
-                target_index);
-    }
-
-    if (target_index == NULL || g_browse_history.index < 0 ||
-            g_browse_history.index + 1 >= g_browse_history.count) {
+    if (g_browse_history_product == NULL) {
         return NULL;
     }
-    target = g_browse_history.index + 1;
-    *target_index = target;
-    return g_browse_history.entries[target];
+    return PBrowser_HistoryForwardTarget(g_browse_history_product,
+            target_index);
 }
 
 static const char *pcore_browse_history_go_target(int delta,
         int *target_index)
 {
-    int target;
-
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryGoTarget(g_browse_history_product, delta,
-                target_index);
-    }
-
-    if (target_index == NULL || g_browse_history.index < 0 ||
-            g_browse_history.index >= g_browse_history.count ||
-            delta < -(PCORE_BROWSE_HISTORY_MAX - 1) ||
-            delta > PCORE_BROWSE_HISTORY_MAX - 1) {
+    if (g_browse_history_product == NULL) {
         return NULL;
     }
-    target = g_browse_history.index + delta;
-    if (target < 0 || target >= g_browse_history.count) {
-        return NULL;
-    }
-    *target_index = target;
-    return g_browse_history.entries[target];
+    return PBrowser_HistoryGoTarget(g_browse_history_product, delta,
+            target_index);
 }
 
 static int pcore_browse_history_commit_target(int target_index)
 {
     int rc;
 
-    if (g_browse_history_product != NULL) {
-        rc = PBrowser_HistoryCommitTarget(
-                g_browse_history_product, target_index);
-        pcore_browse_history_product_sync();
-        return rc;
-    }
-    if (target_index < 0 || target_index >= g_browse_history.count) {
+    if (g_browse_history_product == NULL) {
         return 1;
     }
-    g_browse_history.index = target_index;
-    return 0;
+    rc = PBrowser_HistoryCommitTarget(
+            g_browse_history_product, target_index);
+    pcore_browse_history_product_sync();
+    return rc;
 }
 
 static int pcore_browse_history_commit_target_document(int target_index)
 {
     int rc;
 
-    if (g_browse_history_product != NULL) {
-        if (target_index < 0 || target_index >= g_browse_history.count) {
-            return 1;
-        }
-        rc = PBrowser_HistoryCommitTargetDocument(
-                g_browse_history_product, target_index);
-        pcore_browse_history_product_sync();
-        return rc;
-    }
-    if (pcore_browse_history_commit_target(target_index) != 0) {
+    if (g_browse_history_product == NULL || target_index < 0 ||
+            target_index >= g_browse_history.count) {
         return 1;
     }
-    g_browse_history.document_ids[target_index] =
-            pcore_browse_history_new_document_id();
-    return 0;
+    rc = PBrowser_HistoryCommitTargetDocument(
+            g_browse_history_product, target_index);
+    pcore_browse_history_product_sync();
+    return rc;
 }
 
 static int pcore_browse_history_replace_current(const char *url)
 {
     int rc;
 
-    if (g_browse_history_product != NULL) {
-        rc = PBrowser_HistoryReplaceCurrent(
-                g_browse_history_product, url);
-        pcore_browse_history_product_sync();
-        return rc;
-    }
-    if (url == NULL || url[0] == '\0' ||
-            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
+    if (g_browse_history_product == NULL) {
         return 1;
     }
-    if (pcore_browse_history_current() == NULL) {
-        return pcore_browse_history_commit_new(url);
-    }
-    strcpy(g_browse_history.entries[g_browse_history.index], url);
-    strcpy(g_browse_history.states[g_browse_history.index], "null");
-    g_browse_history.document_ids[g_browse_history.index] =
-            pcore_browse_history_new_document_id();
-    return 0;
+    rc = PBrowser_HistoryReplaceCurrent(
+            g_browse_history_product, url);
+    pcore_browse_history_product_sync();
+    return rc;
 }
 
 static int pcore_browse_history_commit_navigation(const char *url,
@@ -7195,22 +6921,14 @@ static int pcore_browse_history_commit_navigation_with_state(
 {
     int rc;
 
-    if (g_browse_history_product != NULL) {
-        rc = PBrowser_HistoryCommitNavigationWithState(
-                g_browse_history_product, url, method, target_index,
-                state_json);
-        pcore_browse_history_product_sync();
-        return rc;
-    }
-    if (pcore_browse_history_commit_navigation(url, method,
-            target_index) != 0) {
+    if (g_browse_history_product == NULL) {
         return 1;
     }
-    if (state_json != NULL &&
-            pcore_browse_history_replace_state(state_json) != 0) {
-        return 1;
-    }
-    return 0;
+    rc = PBrowser_HistoryCommitNavigationWithState(
+            g_browse_history_product, url, method, target_index,
+            state_json);
+    pcore_browse_history_product_sync();
+    return rc;
 }
 
 static int pcore_browse_history_commit_navigation_with_bridge(
@@ -7242,95 +6960,41 @@ static int pcore_browse_history_commit_navigation_with_bridge(
 
 static int pcore_browse_history_exposed_length(void)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryCount(g_browse_history_product) > 0 ?
-                PBrowser_HistoryCount(g_browse_history_product) : 1;
+    if (g_browse_history_product == NULL) {
+        return 0;
     }
-    return (g_browse_history.count > 0) ? g_browse_history.count : 1;
+    return PBrowser_HistoryCount(g_browse_history_product) > 0 ?
+            PBrowser_HistoryCount(g_browse_history_product) : 1;
 }
 
 static int pcore_browse_history_navigation_length(const char *url,
         int method, int target_index)
 {
-    int count;
-
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryNavigationLength(
-                g_browse_history_product, url, method, target_index);
+    if (g_browse_history_product == NULL) {
+        return 0;
     }
-
-    count = g_browse_history.count;
-    if (method != 1) {
-        return (count > 0) ? count : 1;
-    }
-    if (target_index == PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT ||
-            target_index >= 0) {
-        return (count > 0) ? count : 1;
-    }
-    if (url == NULL || url[0] == '\0' ||
-            strlen(url) >= PCORE_BROWSE_HISTORY_URL_MAX) {
-        return (count > 0) ? count : 1;
-    }
-    if (pcore_browse_history_current() != NULL &&
-            strcmp(pcore_browse_history_current(), url) == 0) {
-        return (count > 0) ? count : 1;
-    }
-    if (g_browse_history.index + 1 < count) {
-        count = g_browse_history.index + 1;
-    }
-    if (count < PCORE_BROWSE_HISTORY_MAX) {
-        count++;
-    }
-    return (count > 0) ? count : 1;
+    return PBrowser_HistoryNavigationLength(
+            g_browse_history_product, url, method, target_index);
 }
 
 static int pcore_browse_history_navigation_index(const char *url,
         int method, int target_index)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryNavigationIndex(
-                g_browse_history_product, url, method, target_index);
+    if (g_browse_history_product == NULL) {
+        return -1;
     }
-    if (method != 1) {
-        return (g_browse_history.index >= 0) ?
-                g_browse_history.index : 0;
-    }
-    if (target_index == PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT) {
-        return (g_browse_history.index >= 0) ?
-                g_browse_history.index : 0;
-    }
-    if (target_index >= 0) {
-        return target_index;
-    }
-    if (pcore_browse_history_current() != NULL && url != NULL &&
-            strcmp(pcore_browse_history_current(), url) == 0) {
-        return g_browse_history.index;
-    }
-    return pcore_browse_history_navigation_length(url, method,
-            target_index) - 1;
+    return PBrowser_HistoryNavigationIndex(
+            g_browse_history_product, url, method, target_index);
 }
 
 static const char *pcore_browse_history_navigation_state(const char *url,
         int method, int target_index)
 {
-    if (g_browse_history_product != NULL) {
-        return PBrowser_HistoryNavigationState(
-                g_browse_history_product, url, method, target_index);
+    if (g_browse_history_product == NULL) {
+        return NULL;
     }
-    if (method != 1) {
-        return "null";
-    }
-    if (target_index == PCORE_BROWSE_HISTORY_TARGET_REPLACE_CURRENT) {
-        return "null";
-    }
-    if (target_index >= 0) {
-        return pcore_browse_history_state_at(target_index);
-    }
-    if (pcore_browse_history_current() != NULL && url != NULL &&
-            strcmp(pcore_browse_history_current(), url) == 0) {
-        return pcore_browse_history_current_state();
-    }
-    return "null";
+    return PBrowser_HistoryNavigationState(
+            g_browse_history_product, url, method, target_index);
 }
 
 typedef struct pcore_native_edit {

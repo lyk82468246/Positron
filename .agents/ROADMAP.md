@@ -94,14 +94,16 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 
 ## 当前规划结论
 
-next869 已完成 Browser 特殊字符串 registry 与 dataset snapshot 的公共 DLL 纵切，相关
-Browser/Core 基线和设备证据以 [`HANDOFF.md`](HANDOFF.md) 为准。对现有源码、测试入口和已知
-限制进行整理后，当前没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不
-意味着可以随意扩大 Web API。下一步应先完成一次候选发现审查，再决定是否分配新的 next。
+next871 已完成一项公共所有权边界修订：`test_host` 的 history fallback 已移除，URL/state/
+document-id/traversal 规则现在只由 `positron_browser.dll` 的 `PBrowser_History*` API 决定；
+宿主保留的数组只是同步快照，供断言和平台桥接读取。相关 history/navigation 夹具已取得
+定向设备证据。对现有源码、测试入口和已知限制继续整理后，当前仍没有一张能够直接进入产品
+实现的“准备取舍”候选卡；这不是缺陷，也不意味着可以随意扩大 Web API。后续仍应先完成候选
+发现审查，再决定是否分配新的 next。
 
-本轮候选发现只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志，
-不得顺手修改产品代码。若审查仍没有可复现的公共 DLL 缺口，就保持路线图的空实现队列，优先
-执行累计人工验收或维护发布基线。
+除上述已收束的 history 边界外，候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件
+README、限制和真实设备日志；不要把人工输入 backlog 或测试宿主扩展当作产品语义。若没有新的
+可复现公共 DLL 缺口，就保持实现队列为空，优先执行累计人工验收或维护发布基线。
 
 ## 候选队列
 
@@ -119,6 +121,10 @@ Browser/Core 基线和设备证据以 [`HANDOFF.md`](HANDOFF.md) 为准。对现
 `test_host` 的 callback 使用和兼容性 corpus，寻找仍由宿主临时决定、但应由 Core/Browser/HTTP/
 Image/Script 拥有的可复用语义。必须记录一个具体调用场景或失败行为，不能只把“现代 API 缺失”
 当作缺口。
+
+已完成的 history fallback 审查不再属于待实现范围：宿主现在只读取 Browser 的 history 快照，
+创建失败时 fail closed。其余消费者缺口仍需独立证据，不得因为这项边界修订而自动扩大到完整
+history、URL 或 Web API。
 
 取证完成的条件是：给出一个顶层 DLL 所有者、最小 C ABI/Ex 入口、固定预算、失败回滚、最小
 fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视觉差异，则转入人工 backlog，不进入
