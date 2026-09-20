@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1305
+#define TEST_MAX_NUMBER 1306
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -56254,6 +56254,44 @@ static BOOL test1305_browser_storage_budget_contract(void)
             "Script session/local Storage enforces bounded entry, key and"
             " value quotas with QuotaExceededError, preserves old state on"
             " failure, and reuses capacity after deletion.");
+    return TRUE;
+}
+
+/* TEST 1306 - Storage preserves keys that collide with object properties. */
+static BOOL test1306_browser_storage_special_keys_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var s=localStorage,json,stored=false,cleared=false,apiSafe=false;"
+        "s.clear();s.setItem('hasOwnProperty','safe');"
+        "s.setItem('__proto__','proto');s.setItem('constructor','ctor');"
+        "s.setItem('toString','string');json=s.toJSON();"
+        "stored=s.length===4&&s.getItem('hasOwnProperty')==='safe'&&"
+        "s.getItem('__proto__')==='proto'&&s.getItem('constructor')==='ctor'&&"
+        "s.getItem('toString')==='string'&&json['hasOwnProperty']==='safe'&&"
+        "json['__proto__']==='proto'&&json['constructor']==='ctor'&&"
+        "json['toString']==='string'&&Object.keys(json).length===4;"
+        "apiSafe=typeof s.hasOwnProperty==='function'&&typeof s.toString==='function';"
+        "s.clear();cleared=s.length===0&&s.getItem('hasOwnProperty')===null&&"
+        "s.getItem('__proto__')===null&&s.getItem('constructor')===null&&"
+        "s.getItem('toString')===null;"
+        "document.getElementById('result').textContent=String(stored)+'|'"
+        "+String(apiSafe)+'|'+String(cleared);";
+    static const char EXPECTED[] = "true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1306 FAIL", error[0] != '\0' ? error :
+                "Browser Storage special-key fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1306 OK",
+            "Script Storage preserves object-property keys without prototype"
+            " corruption and keeps its API methods callable.");
     return TRUE;
 }
 
@@ -114577,6 +114615,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1303: ok = test1303_browser_form_data_mutation_budget_contract(); break;
         case 1304: ok = test1304_browser_urlsearchparams_mutation_budget_contract(); break;
         case 1305: ok = test1305_browser_storage_budget_contract(); break;
+        case 1306: ok = test1306_browser_storage_special_keys_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

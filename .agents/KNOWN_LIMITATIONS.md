@@ -306,7 +306,7 @@
 - 浏览器 JavaScript 默认关闭，启用后仍是实验性的有界 classic-script 组合。
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
-- Storage maps are session-local and independent; quota is 64 entries with 256/4096 UTF-16 key/value characters. Over-limit writes atomically throw `QuotaExceededError`; persistence is not provided.
+- Storage maps are session-local and independent; quota is 64 entries with 256/4096 UTF-16 key/value characters. Over-limit writes atomically throw `QuotaExceededError`; `setItem()`/`getItem()`/`toJSON()` safely preserve object-property names such as `hasOwnProperty` and `__proto__`; persistence is not provided.
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
 - `document.write()`/`writeln()` 仅在 callback 存在时安装；受 16,384 字节和 parser 预算约束，
   不提供动态脚本、资源、`open()`/`close()` 或流式重写。源文本的 `<script...` 保护扫描只
@@ -598,6 +598,7 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
   append、新键 set 和 pair-sequence 构造的 `QuotaExceededError`、失败不变性、已有键替换
   以及删除后的追加。该门不证明 URL 解析、导航、网络发送或 native 表单视觉。
 - TEST1305 covers Storage quota, atomic errors, capacity reuse and session/local independence; persistence is out of scope.
+- TEST1306 covers Storage object-property keys, prototype-safe snapshots, API-method preservation and clear-after-special-key cleanup.
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

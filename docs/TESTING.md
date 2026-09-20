@@ -94,6 +94,9 @@ tests=1-5 7b 13 20,999
   256 字符键和 4096 字符值的新增或 named-property 写入抛出 `QuotaExceededError`，失败
   保留旧状态；既有键替换、删除后重新占用容量和独立 Storage map 仍然有效。该夹具不承诺
   持久磁盘、跨 session 同步或系统设置存储。
+- TEST1306 覆盖 Storage 对 object-property 名称的安全处理：`hasOwnProperty`、`__proto__`、
+  `constructor` 和 `toString` 通过 `setItem()`/`getItem()` 与 `toJSON()` 保持值、顺序和
+  原型隔离，Storage 方法仍可调用，`clear()` 后旧值全部消失。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 
