@@ -36,6 +36,51 @@ Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页
 
 Core 维护 form owner、validation、successful-control、reset、submission 和 modal paint 的产品语义。`form="id"` 的跨树 owner、fieldset first-legend exemption、optgroup→option disabled 继承和 option live/default-selected 状态由同一 Core 状态提供给 Browser，不在宿主复制。
 
+## Multipart 提交
+
+对于 `enctype="multipart/form-data"` 的 form，Core 先把成功控件捕获为 opaque
+submission，再由 `PCore_MultipartSubmissionEncode()` 生成可直接交给 HTTP 层的二进制
+body 和完整 `Content-Type` header。调用方通过 `PCore_MultipartSubmissionById()`、
+`PCore_MultipartSubmissionAt()` 或 `PCore_MultipartSubmissionForTextInput()` 取得
+submission；Core 决定字段顺序、submitter、boundary、quoted `name`/`filename`、CRLF
+分隔符和文件 bytes。`test_host` 以及其他应用只能提供文件 I/O callback，不应重新拼装
+multipart wire format。
+
+```c
+static int read_file(void *pw, const char *path,
+        char **out_data, int *out_len);
+static void free_file(void *pw, char *data);
+PCoreMultipartEncodeInfo info;
+char *body;
+char *content_type;
+HANDLE submission;
+
+body = NULL;
+content_type = NULL;
+submission = PCore_MultipartSubmissionById(document, "upload", "send");
+if (submission != NULL &&
+        PCore_MultipartSubmissionEncode(submission, read_file, free_file, NULL,
+                &info, NULL, 0, NULL, 0) == 2) {
+    body = (char *) malloc((size_t) info.body_bytes);
+    content_type = (char *) malloc((size_t) info.content_type_bytes + 1);
+    if (body != NULL && content_type != NULL &&
+            PCore_MultipartSubmissionEncode(submission, read_file, free_file,
+                NULL, &info, body, info.body_bytes, content_type,
+                info.content_type_bytes + 1) == 1) {
+        /* pass body/content_type to the application's HTTP request */
+    }
+    free(body);
+    free(content_type);
+}
+PCore_FreeMultipartSubmission(submission);
+```
+
+`read_file` 必须同步返回一块新分配的 bytes buffer，`free_file` 必须释放同一块 buffer；
+Core 不保存这两个 callback、路径或 buffer。size probe 或任一容量不足返回 `2`，成功复制
+返回 `1`，参数、callback、读取、分配或固定 1 MiB body 上限失败返回 `0`；返回 `2` 时
+不会部分写入输出。文件内容是 binary-safe 的，空路径不调用 callback。网络、文件权限、
+请求取消和重试不属于 Core。
+
 ## 有界 DOM mutation
 
 所有 mutation 都在头文件声明的节点、深度、节点数、direct-child、UTF-8 和文本预算内执行，并在提交前完成预检。失败不留下部分树；成功保留 API 承诺的节点身份并使 retained layout 失效。Core 不派发 mutation 事件、不执行 script、不创建 native 控件、不暴露 fragment handle。

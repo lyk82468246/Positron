@@ -273,6 +273,10 @@
   的 NoValidationById primitive，再由宿主决定导航或 close。两条脚本提交方法都要求有
   可寻址的 form id，并在 callback 缺失、目标非法或容量不足时 fail closed。文档 mutation
   后调用方仍应重新查询。
+  Core 的 `PCore_MultipartSubmissionEncode()` 现在负责 multipart boundary、CRLF、字段/文件
+  顺序、quoted metadata 和 binary file bytes；宿主必须提供同步的 file read/free callback，
+  body 总量固定不超过 1 MiB，容量不足、读取失败、缺少 callback 或超限均 fail closed 且
+  不产生部分输出。该 API 不执行文件 I/O、网络发送、取消或重试。
   Browser 的 `new FormData(form[, submitter])` 另有独立的 detached snapshot：无显式
   submitter 时使用旧 callback，带第二参数时使用 Ex callback，并复用 successful-control
   与 form-owner 规则；最多返回 64 项，名称最多 64 字节，字符串值最多 128 字节，文件名
@@ -567,6 +571,11 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
   generation 的 `error`。夹具使用带 id 的 `<picture>`/`<img>` 关系；匿名或不可寻址的
   source 关系仍按上述 fail-closed 限制处理。该门不增加自动 fetch/decode/layout/paint，
   也不覆盖绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉。
+- TEST1301 覆盖 Core 的 `PCore_MultipartSubmissionEncode()`：成功控件顺序、boundary/
+  CRLF、quoted 字段与文件名、binary file bytes、size probe、容量不足时无部分输出以及
+  缺少 file callback 的 fail-closed。body 总量固定为 1 MiB 上限；宿主只提供同步文件
+  callback，网络发送、文件权限、请求取消/重试和 Browser `FormData` 的 metadata-only
+  快照仍不在本测试覆盖范围。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

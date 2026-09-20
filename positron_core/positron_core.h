@@ -2060,6 +2060,21 @@ typedef struct PCoreMultipartPartInfo {
     int path_bytes;
 } PCoreMultipartPartInfo;
 
+/* Multipart wire encoding is product-owned, while the embedder owns file
+ * I/O. The read callback must return a newly allocated byte buffer for one
+ * file path; free_file releases that buffer after the encoder has copied it.
+ * Both callbacks run synchronously and are never retained by the DLL. */
+typedef int (*PCoreMultipartFileReadFn)(void *pw, const char *path,
+                                        char **out_data, int *out_len);
+typedef void (*PCoreMultipartFileFreeFn)(void *pw, char *data);
+typedef struct PCoreMultipartEncodeInfo {
+    int body_bytes;
+    int content_type_bytes;
+} PCoreMultipartEncodeInfo;
+
+#define PCORE_MULTIPART_BODY_MAX_BYTES (1 * 1024 * 1024)
+#define PCORE_MULTIPART_PART_MAX       64u
+
 /* Capture the successful-control set of a multipart/form-data POST without
  * exposing NetSurf's fetch_multipart_data ABI. kind is 1 for a normal value
  * and 2 for a file; file `value` is the submitted filename while `path` is
@@ -2094,6 +2109,22 @@ PCORE_API int PCore_MultipartPartInfo(HANDLE hSubmission,
                                     char *name, int name_capacity,
                                     char *value, int value_capacity,
                                     char *path, int path_capacity);
+/* Encode a captured multipart submission into one bounded binary body and a
+ * complete `Content-Type: multipart/form-data; boundary=...` header. A NULL
+ * output buffer or zero capacity performs a size probe; out_info is filled on
+ * both a probe and a successful copy. body_capacity is a byte capacity and
+ * content_type_capacity includes the terminating NUL. Return 1 when both
+ * outputs were copied, 2 when a probe or supplied capacity is insufficient,
+ * and 0 for invalid input, callback failure, overflow or allocation failure.
+ * No output is partially written when the return value is 2. File parts
+ * require both callbacks; empty file paths do not invoke them. The body is
+ * capped by PCORE_MULTIPART_BODY_MAX_BYTES. */
+PCORE_API int PCore_MultipartSubmissionEncode(HANDLE hSubmission,
+        PCoreMultipartFileReadFn read_file,
+        PCoreMultipartFileFreeFn free_file, void *pw,
+        PCoreMultipartEncodeInfo *out_info,
+        void *body, int body_capacity,
+        char *content_type, int content_type_capacity);
 PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
 
 /* Capture the detached successful-control snapshot used by the browser

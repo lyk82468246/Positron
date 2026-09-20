@@ -59,6 +59,7 @@ Core 是文档和渲染的产品边界，内部使用移植后的 NetSurf 组件
 - UTF-8 HTML 解析、CSS cascade、媒体条件、computed style、资源发现和有界 cache；
 - `<img>`、`srcset`、`picture/source` 的有限候选选择，以及 image-map 几何、布局、命中和 GDI paint；
 - page extent、元素几何、overflow retained scroll、form owner、validation、successful controls、submission/reset 和 modal paint；
+- successful-control snapshot 的有界 multipart/form-data wire encoding；Core 生成 boundary、字段/文件顺序、quoted metadata、binary file bytes 和完整 Content-Type，宿主只提供同步文件读取/释放 callback；
 - 以 ID 或受控 child index 执行有界 DOM mutation，并在成功变化后使 retained layout 失效。
 
 HTML parser mutation 只接受头文件声明的节点类型、深度、节点数、direct-child 和 UTF-8 预算。Core 不派发 DOM 事件、不创建 native 控件、不执行页面 script、不暴露 fragment handle，也不提供完整 live collection。
@@ -68,6 +69,13 @@ HTML parser mutation 只接受头文件声明的节点类型、深度、节点�
 `PCore_NodeNormalizeById` 只整理一个 Element 的 direct children：删除空 Text/CDATA，并把连续 Text/CDATA 合并到首个非空节点；Element、Comment、processing-instruction 和其他节点都是边界。`PCore_NodeSplitTextChildById`、`PCore_NodeReplaceWholeTextChildById` 以及 CharacterData 的 insert/replace/remove/create 入口共享 UTF-8、索引、返回码和 retained-layout 规则。调用方必须在成功 mutation 后重新 style/layout/paint。
 
 `PCore_NodeSetTextContentById`、title、innerHTML、outerHTML、insertAdjacentHTML 和有限的 child-list replacement 都是原子、有界的 Core 操作。失败不留下部分树；成功保留头文件承诺的节点身份，Browser 再负责 wrapper/snapshot reconciliation。
+
+Multipart submission 的 wire contract 也由 Core 拥有。调用方先以
+`PCore_MultipartSubmissionById()` 或其他公开 snapshot API 取得 opaque submission，再用
+`PCore_MultipartSubmissionEncode()` 做 size probe 和第二次完整复制。Core 只同步调用
+`PCoreMultipartFileReadFn`/`PCoreMultipartFileFreeFn` 读取文件 bytes，不保存 callback、路径或
+buffer；body 总量受 `PCORE_MULTIPART_BODY_MAX_BYTES` 限制，容量不足、缺少 file callback、
+读取失败或超限都不产生部分输出。网络发送、文件权限和临时 buffer 的生命周期仍由宿主负责。
 
 ### `positron_browser.dll`
 
@@ -113,6 +121,7 @@ Script session 的 native function 数量、listener、collection、Fragment、s
 - 顶层窗口、消息循环、DPI/旋转、page viewport clamp、native child reposition 和 GDI invalidation；
 - EDIT、COMBOBOX、button、file picker、SIP/IME、contenteditable 的 WM 代理以及受限剪贴板；
 - DNS/TCP/TLS/HTTP worker、响应和取消时机、资源调度、页面 swap、外部协议、下载与文件权限；
+- multipart file callback 的实际文件读取、网络 request 创建/发送和失败重试策略；
 - Core/Browser callback 注册、style/layout/paint 调度、平台焦点和 native 控件默认动作；
 - 测试 fixture、断言、日志和设备部署。宿主不得编译公共 DLL 的实现源文件，不得把可复用 URL/DOM/Event/表单/资源语义放进 `test_host`。
 
@@ -123,6 +132,8 @@ Script session 的 native function 数量、listener、collection、Fragment、s
 - 字符串在公共边界使用 UTF-8；size-probe 必须先返回所需字节数，容量不足不得部分改写输出。
 - handle 是 opaque，创建者负责销毁，借用 buffer 只在同步调用期间有效；回调不得保存指针、跨线程调用或重入同一个 script session。
 - 错误码区分成功、参数/容量、目标不可用和 DOM/分配失败；缺失 callback 与 stale handle 不能被解释为成功。
+- multipart 编码 callback 只在同步调用内有效；Core 不执行文件 I/O，宿主必须提供成对的
+  read/free 实现，并在收到完整 body 后自行释放/发送。
 - 新能力优先追加 callback table/Ex 版本，保留旧 ABI 的字段和语义；测试宿主只消费已公开头文件。
 
 ## 线程与移植约束

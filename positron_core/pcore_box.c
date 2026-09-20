@@ -12802,6 +12802,238 @@ PCORE_API int PCore_MultipartPartInfo(HANDLE hSubmission,
     return 1;
 }
 
+typedef struct pcore_multipart_encode_buffer {
+    unsigned char *data;
+    size_t length;
+    size_t capacity;
+} pcore_multipart_encode_buffer;
+
+static int pcore_multipart_encode_reserve(
+        pcore_multipart_encode_buffer *buffer, size_t additional)
+{
+    unsigned char *grown;
+    size_t needed;
+    size_t capacity;
+
+    if (buffer == NULL || buffer->length >
+            (size_t) PCORE_MULTIPART_BODY_MAX_BYTES ||
+            additional > (size_t) PCORE_MULTIPART_BODY_MAX_BYTES -
+                    buffer->length) {
+        return 0;
+    }
+    needed = buffer->length + additional + 1;
+    if (needed <= buffer->capacity) {
+        return 1;
+    }
+    capacity = buffer->capacity > 0 ? buffer->capacity : 512;
+    while (capacity < needed) {
+        if (capacity > ((size_t) PCORE_MULTIPART_BODY_MAX_BYTES + 1) / 2) {
+            capacity = (size_t) PCORE_MULTIPART_BODY_MAX_BYTES + 1;
+            break;
+        }
+        capacity *= 2;
+    }
+    grown = (unsigned char *) realloc(buffer->data, capacity);
+    if (grown == NULL) {
+        return 0;
+    }
+    buffer->data = grown;
+    buffer->capacity = capacity;
+    return 1;
+}
+
+static int pcore_multipart_encode_append(
+        pcore_multipart_encode_buffer *buffer, const void *data,
+        size_t length)
+{
+    if ((length > 0 && data == NULL) ||
+            !pcore_multipart_encode_reserve(buffer, length)) {
+        return 0;
+    }
+    if (length > 0) {
+        memcpy(buffer->data + buffer->length, data, length);
+    }
+    buffer->length += length;
+    buffer->data[buffer->length] = '\0';
+    return 1;
+}
+
+static int pcore_multipart_encode_text(
+        pcore_multipart_encode_buffer *buffer, const char *text)
+{
+    if (text == NULL) {
+        return 0;
+    }
+    return pcore_multipart_encode_append(buffer, text, strlen(text));
+}
+
+static int pcore_multipart_encode_quoted(
+        pcore_multipart_encode_buffer *buffer, const char *text)
+{
+    const unsigned char *cursor;
+    unsigned char value;
+    char escape[2];
+
+    if (text == NULL) {
+        return 0;
+    }
+    cursor = (const unsigned char *) text;
+    while (*cursor != 0) {
+        value = *cursor++;
+        if (value == '\r' || value == '\n') {
+            value = ' ';
+        }
+        if (value == '"' || value == '\\') {
+            escape[0] = '\\';
+            escape[1] = (char) value;
+            if (!pcore_multipart_encode_append(buffer, escape, 2)) {
+                return 0;
+            }
+        } else if (!pcore_multipart_encode_append(buffer, &value, 1)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_multipart_encode_file(
+        pcore_multipart_encode_buffer *buffer, const char *path,
+        PCoreMultipartFileReadFn read_file,
+        PCoreMultipartFileFreeFn free_file, void *pw)
+{
+    char *data;
+    int length;
+    int result;
+
+    if (path == NULL || path[0] == '\0') {
+        return 1;
+    }
+    if (read_file == NULL || free_file == NULL) {
+        return 0;
+    }
+    data = NULL;
+    length = 0;
+    result = read_file(pw, path, &data, &length);
+    if (result != 0 || length < 0 ||
+            (length > 0 && data == NULL)) {
+        if (data != NULL) {
+            free_file(pw, data);
+        }
+        return 0;
+    }
+    result = pcore_multipart_encode_append(buffer, data, (size_t) length);
+    free_file(pw, data);
+    return result;
+}
+
+PCORE_API int PCore_MultipartSubmissionEncode(HANDLE hSubmission,
+        PCoreMultipartFileReadFn read_file,
+        PCoreMultipartFileFreeFn free_file, void *pw,
+        PCoreMultipartEncodeInfo *out_info,
+        void *body, int body_capacity,
+        char *content_type, int content_type_capacity)
+{
+    static unsigned int boundary_sequence;
+    pcore_multipart_submission *submission;
+    pcore_multipart_part *part;
+    pcore_multipart_encode_buffer buffer;
+    char boundary[64];
+    char header[128];
+    size_t header_length;
+    unsigned int index;
+    int body_length;
+    int content_type_length;
+    int result;
+
+    if (out_info != NULL) {
+        memset(out_info, 0, sizeof(*out_info));
+    }
+    if (body_capacity < 0 || content_type_capacity < 0 ||
+            (body == NULL && body_capacity != 0) ||
+            (content_type == NULL && content_type_capacity != 0)) {
+        return 0;
+    }
+    submission = (pcore_multipart_submission *) hSubmission;
+    if (submission == NULL || submission->action == NULL ||
+            submission->part_count > PCORE_MULTIPART_PART_MAX) {
+        return 0;
+    }
+    memset(&buffer, 0, sizeof(buffer));
+    boundary_sequence++;
+    _snprintf(boundary, sizeof(boundary) - 1,
+            "----PositronWM6%08lX%04X",
+            (unsigned long) GetTickCount(),
+            (unsigned int) (boundary_sequence & 0xffff));
+    boundary[sizeof(boundary) - 1] = '\0';
+    part = submission->first;
+    index = 0;
+    while (part != NULL && index < PCORE_MULTIPART_PART_MAX) {
+        if (part->name == NULL || part->value == NULL ||
+                part->path == NULL || (part->kind != 1 && part->kind != 2) ||
+                !pcore_multipart_encode_text(&buffer, "--") ||
+                !pcore_multipart_encode_text(&buffer, boundary) ||
+                !pcore_multipart_encode_text(&buffer,
+                    "\r\nContent-Disposition: form-data; name=\"") ||
+                !pcore_multipart_encode_quoted(&buffer, part->name) ||
+                !pcore_multipart_encode_text(&buffer, "\"")) {
+            free(buffer.data);
+            return 0;
+        }
+        if (part->kind == 2) {
+            result = pcore_multipart_encode_text(&buffer,
+                    "; filename=\"") &&
+                    pcore_multipart_encode_quoted(&buffer, part->value) &&
+                    pcore_multipart_encode_text(&buffer,
+                        "\"\r\nContent-Type: application/octet-stream"
+                        "\r\n\r\n") &&
+                    pcore_multipart_encode_file(&buffer, part->path,
+                        read_file, free_file, pw);
+        } else {
+            result = pcore_multipart_encode_text(&buffer, "\r\n\r\n") &&
+                    pcore_multipart_encode_append(&buffer, part->value,
+                        strlen(part->value));
+        }
+        if (!result || !pcore_multipart_encode_text(&buffer, "\r\n")) {
+            free(buffer.data);
+            return 0;
+        }
+        part = part->next;
+        index++;
+    }
+    if (part != NULL ||
+            !pcore_multipart_encode_text(&buffer, "--") ||
+            !pcore_multipart_encode_text(&buffer, boundary) ||
+            !pcore_multipart_encode_text(&buffer, "--\r\n")) {
+        free(buffer.data);
+        return 0;
+    }
+    _snprintf(header, sizeof(header) - 1,
+            "Content-Type: multipart/form-data; boundary=%s", boundary);
+    header[sizeof(header) - 1] = '\0';
+    header_length = strlen(header);
+    if (buffer.length > INT_MAX || header_length > INT_MAX) {
+        free(buffer.data);
+        return 0;
+    }
+    body_length = (int) buffer.length;
+    content_type_length = (int) header_length;
+    if (out_info != NULL) {
+        out_info->body_bytes = body_length;
+        out_info->content_type_bytes = content_type_length;
+    }
+    if (body == NULL || body_capacity < body_length ||
+            content_type == NULL || content_type_capacity <= content_type_length) {
+        free(buffer.data);
+        return 2;
+    }
+    if (body_length > 0) {
+        memcpy(body, buffer.data, (size_t) body_length);
+    }
+    memcpy(content_type, header, header_length + 1);
+    free(buffer.data);
+    return 1;
+}
+
 PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission)
 {
     pcore_multipart_free((pcore_multipart_submission *) hSubmission);

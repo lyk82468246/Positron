@@ -14,87 +14,25 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   wrapper 生命周期、表单/资源/标题和页面会话；稳定合同与逐项测试见
   [`docs/TESTING.md`](../docs/TESTING.md)，逐批实现证据保留在 Git 历史和 `docs/history/`。
   本文件只保留当前边界、最新证据和下一步，不重复旧 next 时间线。
-- next846–next847 补齐 Browser-owned `DocumentFragment` 的 CharacterData 根 staging：最多四个
-  detached Text/Comment/CDATA 根保持关系、clone/normalize、data mutation 和消费后的 wrapper
-  identity；Comment/CDATA 复用 Core creation callback 物化。next847 统一 Fragment
-  `textContent` 为排除 Comment。next848 将 Core、live Browser Element 与 detached Fragment
-  的 `Node.normalize()` 统一为 Text/CDATA 连续运行：删除空节点、合并到首个非空 wrapper，
-  保留 Comment 边界并同步 created CharacterData 数据；TEST1287 与 `1287,999` 门通过，证据
-  为 `tmp/device-runs/20260917-204745-next848`，外置卡 2/2 PASS，日志、双空间预检、清理和
-  `crash_check` PASS，dump=0。
-- next849 扩展 detached Element 的直接 staging，从仅 Text 扩展为 Text/Comment/CDATA：
-  `normalize()`、clone、replace、`textContent`、移除/重插入和带唯一 id 的直接 Core
-  物化共享同一有界 wrapper/owner 合同；该 direct CharacterData 合同仍不承诺任意
-  detached Node graph，Fragment 内的嵌套 CharacterData 子树也继续 fail closed。随后
-  next859 在这个边界上增加了独立的 bounded nested Element graph，见下方当前能力。
-  TEST1288 与 `1287-1288,999` 门通过，证据见下方。
-- next850 为已物化的 Browser-created Element wrapper 补齐有界 primitive
-  `before()`/`after()`/`replaceWith()`：同级文本插入复用现有 Browser/Core mutation
-  callback，目标 wrapper 在插入前后保持 identity，替换成功后回到 detached；未物化目标
-  保持 inert，Element、Fragment、CharacterData 与其他对象参数在 mutation 前拒绝。TEST1289
-  与 `1288-1289,999` 门通过，证据见下方。
-- next851 补齐已物化 Browser-created Element 的 HTML mutation coherence：`innerHTML`
-  setter 在 Core parser 成功后原地刷新 created wrapper 的 child snapshot 与旧 child
-  detached 状态；`outerHTML` setter 通过 public alias 调用既有 Core replacement，成功后
-  清理 alias 映射并让 staged wrapper 可再次设置 id、插入和使用。TEST1290 与
-  `1289-1290,999` 门通过，证据见下方。
-- next852 补齐已物化 Browser-created Element 的 element-child projection：`children`
-  返回有界 HTMLCollection snapshot，`item()`/`namedItem()`、`childElementCount`、
-  `firstElementChild` 和 `lastElementChild` 在 parser-backed child mutation 后与
-  `childNodes` 同步；detached staging 仍只接受 CharacterData。TEST1291 与
-  `1290-1291,999` 门通过，证据见下方。
-- next853 补齐已物化 Browser-created Element 的 `insertAdjacentText()` 一致性：四个位置
-  复用既有 Core Text-child callback，成功后原地同步 `childNodes` 与 CharacterData wrapper
-  identity；Element 脱离后仍保留 direct Text/CDATA 快照数据，非法位置、对象/arity 和
-  detached 调用 fail closed。TEST1292 与 `1291-1292,999` Debug ARMV4I 外置卡自动门通过，
-  证据见下方；未新增 Core ABI。
-- next854 为已物化 Browser-created Element 增加 `insertAdjacentHTML()` 四位置 child
-  snapshot 同步，并新增 TEST1293；`tmp/device-runs/20260919-200327-next854-retry`
-  的 Debug ARMV4I 外置卡设备门以 `1292-1293,999` 取得完整日志，3/3 PASS、双空间预检、
-  清理和 `crash_check=PASS`，无新增 dump；未新增 Core ABI。
-- next855 为已物化 Browser-created Element 增加有界 primitive-only `replaceChildren()`
-  reconciliation：Core 完成替换后原地重建 Browser-owned Text wrapper，保留 `childNodes`
-  collection identity，旧 child 脱离；对象/CharacterData 混合参数继续走既有路径，detached
-  staging 保持原合同。TEST1294 与 `1293-1294,999` Debug ARMV4I 外置卡设备门取得完整
-  日志，3/3 PASS、双空间预检、清理和 `crash_check=PASS`，无新增 Core ABI。
-- next856 为已物化 Browser-created Element 增加四位置 `insertAdjacentElement()`
-  reconciliation：复用既有 Core element-child mutation，成功后刷新目标 snapshot，覆盖
-  regular 与另一个已物化 Browser-created source 的移动、四位置父级重排、wrapper identity
-  以及非法/未物化/detached/arity fail-closed。TEST1295 与 `1294-1295,999` Debug ARMV4I
-  外置卡设备门取得完整日志，3/3 PASS、双空间预检、清理和 `crash_check=PASS`，无新增
-  Core ABI。
-- next857 为已物化 Browser-created Element 增加 direct Element-child 的
-  `appendChild()`/`insertBefore()`/`removeChild()` reconciliation：regular、detached
-  created 与已物化 created source 可在 bounded parent 内插入、跨父移动和移除，目标/source
-  snapshot、alias wrapper identity 和返回值保持一致；detached target、错误
-  parent/reference、无效对象和超限结构仍 fail closed。TEST1296 与 `1295-1296,999`
-  Debug ARMV4I 外置卡设备门取得完整日志，3/3 PASS、双空间预检、清理和
-  `crash_check=PASS`，无新增 Core ABI。
-- 当前已物化 Element 的 `getElementsByTagName()` 另提供唯一的 bounded live
-  `HTMLCollection`：每次调用返回新对象，已连接 owner 的同一对象会在子树、id/name
-  mutation 后刷新，最多访问 256 个节点并返回 64 项；`item()`、`namedItem()`、索引、
-  `forEach()` 与 iterator 共用该快照，created wrapper 也保持 identity，刷新超限时保留
-  上一次成功结果，detached owner 返回空集合。TEST1297 与 `1297,999` Debug ARMV4I
-  外置卡设备门取得完整日志，2/2 PASS、双空间预检、清理和 `crash_check=PASS`，无新增
-  Core ABI。
-- next859 在 `positron_browser.dll` 增加 detached Browser-created Element 的有界嵌套
-  staging：最多四层、总计 64 个 Element、每个父级 64 个 child，所有 Element 必须有唯一
-  id；clone、递归 textContent、attach、remove/reinsert 和 alias registry 都复用既有
-  Core create-element/child callback，并在失败前保持旧图不变。已物化子 wrapper 的
-  `parentNode`、`isConnected`、`children` 和 wrapper identity 与递归图同步；嵌套
-  DocumentFragment、无 id、重复 id、自引用、超限和不支持节点仍 fail closed。TEST1298
-  与 `1297-1298,999` Debug ARMV4I 外置卡设备门取得完整日志，3/3 PASS，双空间预检、
-  清理和 `crash_check=PASS`，无新增 Core ABI。
-- next860 修复 Browser 图像终态表在支持的 `Element.id` setter 改名后遗留旧 key 的问题：
-  Browser 在 id 变更成功后回收旧 image/source 终态，再允许新 id 接收 host `load`/`error`；
-  不改变 Core 的 source 选择或自动加载边界。TEST1299 连续改名 80 次并逐次通知 `load`，
-  与 `1299,999` Debug ARMV4I 外置卡设备门取得完整日志，2/2 PASS，双空间预检、清理和
-  `crash_check=PASS`，无新增 dump。
+- next846–next858 形成了 Browser-owned Fragment/CharacterData、detached Element、HTML
+  mutation、element-child reconciliation 和 wrapper identity 的有界基线；相关合同、预算
+  和失败回滚已由 TEST1287–1296 覆盖。这里不重复逐批实现细节，当前限制见下方和
+  [`docs/TESTING.md`](../docs/TESTING.md)。
+- next859–next860 继续收紧 detached nested Element graph 与 image terminal-key 回收；
+  TEST1297–1299 的预算、identity 和旧 key 退休合同已有自动/设备证据，具体 API 边界
+  见 [`docs/TESTING.md`](../docs/TESTING.md) 和组件 README。
 - next861 在 `positron_browser.dll` 增加 host-owned 非零 image replacement generation：
   source Ex 退休旧 decode/终态，event Ex 拒绝缺失、过旧或不匹配的 late load/error；
   source 关系不能解析到带 id 的 `<img>` 时 fail closed。A→B→A、失败候选由 TEST1300
   覆盖，generation/终态 map 各自限制为 64 项；`1300,999` Debug ARMV4I 外置卡设备门 2/2 PASS，完整日志、
   双空间预检、清理、`crash_check=PASS`，无新增 dump。
+- next862 将 multipart/form-data wire serialization 从 `test_host/main.c` 迁入
+  `positron_core.dll` 的 `PCore_MultipartSubmissionEncode()`：Core 统一拥有 boundary、
+  CRLF、successful-control 顺序、quoted metadata 和 binary file bytes；宿主只保留同步
+  file read/free callback、HTTP 调度和 buffer 生命周期。TEST1301 覆盖 size probe、容量
+  不足无部分写入、缺少 callback、文件 bytes 和 1 MiB body 上限；在
+  `tmp/device-runs/20260920-101533-next862-multipart-retry` 的 Debug ARMV4I 外置卡门
+  2/2 PASS，完整日志、双空间预检、清理、`crash_check=PASS`，无新增 dump。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -117,8 +55,8 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next861 已完成并通过 `1300,999` 设备门，图像 source mutation、pending decode、
-A→B→A 旧 generation 拒绝和失败候选回滚均已取证。下一批从路线图 C 的人工输入边界或
+next862 已完成并通过 `1301,999` 设备门，Core multipart wire encoder 已脱离宿主并完成
+size/failure/binary-file 合同取证。下一批从路线图 C 的人工输入边界或
 新的可复现公共 DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定
 边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
@@ -135,6 +73,9 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 - NetSurf/libcss/libdom/hubbub、Expat、libsvgtiny、libjpeg 等移植工程是内部实现依赖。
 - 独立脚本和浏览器脚本共用 Duktape；浏览器 JavaScript tracked 默认仍为关闭。
 - 通用 URL、history、DOM、Event、表单、图像和脚本 session 语义位于对应公共 DLL；宿主保留 WM 窗口、消息、控件、SIP/IME、picker、导航调度和资源 I/O。
+- Core 的 multipart wire encoder 也属于公共表单语义：`PCore_MultipartSubmissionEncode()`
+  负责 bounded boundary/CRLF/字段顺序/quoted metadata/binary file bytes；宿主只实现
+  同步 file read/free callback、HTTP 调度和 buffer 生命周期，不再复制 multipart 拼装规则。
 
 ### 当前网页能力
 
@@ -235,17 +176,17 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1300。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1300,999`。
+- `TEST_MAX_NUMBER`：1301。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1301,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-100045-next861-final3` 是本批最新有效证据：Debug ARMV4I
-`1300,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1300 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 51,030,163,456 字节可用，内部 object-store 可用
+`tmp/device-runs/20260920-101533-next862-multipart-retry` 是本批最新有效证据：Debug ARMV4I
+`1301,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1301 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,980,192,256 字节可用，内部 object-store 可用
 2,480,128 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
@@ -273,7 +214,7 @@ dump=0。日志明确记录 TEST1300 和 TEST999 均为 OK，`TESTBENCH PASS`，
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1300 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1301 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -283,8 +224,9 @@ dump=0。日志明确记录 TEST1300 和 TEST999 均为 OK，`TESTBENCH PASS`，
   Element element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、
   `insertAdjacentElement()`、direct Element-child `appendChild()`/`insertBefore()`/`removeChild()`、
   primitive-only `replaceChildren()` wrapper reconciliation、嵌套 Browser-created Element
-  staging、脱离后的 direct CharacterData 快照和 image source generation/late-event
-  rejection（TEST1300）夹具均已有相邻设备门；
+  staging、脱离后的 direct CharacterData 快照、image source generation/late-event
+  rejection（TEST1300）以及 Core multipart wire encoder/host file callback contract（TEST1301）
+  夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
@@ -357,7 +299,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next861 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
+next862 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
 或先记录源码/自动门可复现的公共 DLL 缺口，再分配下一个 next。新纵切必须明确所有者、
 预算、旧状态退休/失败回滚合同，并取得相邻自动回归、正式设备门和职责文档更新；崩溃、
 数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。

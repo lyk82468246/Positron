@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1300
+#define TEST_MAX_NUMBER 1301
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -18981,243 +18981,111 @@ static int pcore_browse_navigate_go(HWND hwnd, int delta)
             target_index) == 0;
 }
 
-typedef struct pcore_multipart_buffer {
-    unsigned char *data;
-    size_t length;
-    size_t capacity;
-} pcore_multipart_buffer;
-
-static int pcore_multipart_buffer_reserve(pcore_multipart_buffer *buffer,
-        size_t additional)
-{
-    unsigned char *grown;
-    size_t needed;
-    size_t capacity;
-
-    if (buffer == NULL || additional > (size_t) INT_MAX - buffer->length) {
-        return 0;
-    }
-    needed = buffer->length + additional + 1;
-    if (needed <= buffer->capacity) {
-        return 1;
-    }
-    capacity = (buffer->capacity > 0) ? buffer->capacity : 512;
-    while (capacity < needed) {
-        if (capacity > ((size_t) INT_MAX + 1) / 2) {
-            capacity = (size_t) INT_MAX + 1;
-            break;
-        }
-        capacity *= 2;
-    }
-    grown = (unsigned char *) realloc(buffer->data, capacity);
-    if (grown == NULL) {
-        return 0;
-    }
-    buffer->data = grown;
-    buffer->capacity = capacity;
-    return 1;
-}
-
-static int pcore_multipart_buffer_append(pcore_multipart_buffer *buffer,
-        const void *data, size_t length)
-{
-    if ((length > 0 && data == NULL) ||
-            !pcore_multipart_buffer_reserve(buffer, length)) {
-        return 0;
-    }
-    if (length > 0) {
-        memcpy(buffer->data + buffer->length, data, length);
-    }
-    buffer->length += length;
-    buffer->data[buffer->length] = '\0';
-    return 1;
-}
-
-static int pcore_multipart_buffer_text(pcore_multipart_buffer *buffer,
-        const char *text)
-{
-    return pcore_multipart_buffer_append(buffer, text, strlen(text));
-}
-
-static int pcore_multipart_buffer_quoted(pcore_multipart_buffer *buffer,
-        const char *text)
-{
-    const unsigned char *cursor;
-    unsigned char value;
-    char escape[2];
-
-    cursor = (const unsigned char *) ((text != NULL) ? text : "");
-    while (*cursor != 0) {
-        value = *cursor++;
-        if (value == '\r' || value == '\n') {
-            value = ' ';
-        }
-        if (value == '"' || value == '\\') {
-            escape[0] = '\\';
-            escape[1] = (char) value;
-            if (!pcore_multipart_buffer_append(buffer, escape, 2)) {
-                return 0;
-            }
-        } else if (!pcore_multipart_buffer_append(buffer, &value, 1)) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-static int pcore_multipart_buffer_file(pcore_multipart_buffer *buffer,
-        const char *path)
+static int pcore_multipart_read_file(void *pw, const char *path,
+        char **out_data, int *out_len)
 {
     WCHAR *wide_path;
     HANDLE file;
     DWORD high;
     DWORD low;
     DWORD read_count;
+    char *data;
     size_t offset;
 
-    if (path == NULL || path[0] == '\0') {
+    (void) pw;
+    if (out_data == NULL || out_len == NULL || path == NULL ||
+            path[0] == '\0') {
         return 1;
     }
+    *out_data = NULL;
+    *out_len = 0;
     wide_path = utf8_to_wide_alloc(path);
     if (wide_path == NULL) {
-        return 0;
+        return 1;
     }
     file = CreateFileW(wide_path, GENERIC_READ, FILE_SHARE_READ,
             NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     free(wide_path);
     if (file == INVALID_HANDLE_VALUE) {
-        return 0;
+        return 1;
     }
     high = 0;
     low = GetFileSize(file, &high);
     if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
-            high != 0 || low > (DWORD) INT_MAX ||
-            !pcore_multipart_buffer_reserve(buffer, (size_t) low)) {
+            high != 0 || low > PCORE_MULTIPART_BODY_MAX_BYTES) {
         CloseHandle(file);
-        return 0;
+        return 1;
+    }
+    data = (char *) malloc(low > 0 ? (size_t) low : 1);
+    if (data == NULL) {
+        CloseHandle(file);
+        return 1;
     }
     offset = 0;
     while (offset < (size_t) low) {
         read_count = 0;
-        if (!ReadFile(file, buffer->data + buffer->length + offset,
-                low - (DWORD) offset, &read_count, NULL) ||
-                read_count == 0) {
+        if (!ReadFile(file, data + offset, low - (DWORD) offset,
+                &read_count, NULL) || read_count == 0) {
+            free(data);
             CloseHandle(file);
-            return 0;
+            return 1;
         }
         offset += read_count;
     }
     CloseHandle(file);
-    buffer->length += (size_t) low;
-    buffer->data[buffer->length] = '\0';
-    return 1;
+    *out_data = data;
+    *out_len = (int) low;
+    return 0;
+}
+
+static void pcore_multipart_free_file(void *pw, char *data)
+{
+    (void) pw;
+    free(data);
 }
 
 static int pcore_multipart_build(HANDLE submission,
         char **out_body, int *out_body_len, char **out_content_type)
 {
-    static unsigned int boundary_sequence = 0;
-    PCoreMultipartSubmissionInfo submission_info;
-    PCoreMultipartPartInfo part_info;
-    pcore_multipart_buffer buffer;
-    char boundary[64];
+    PCoreMultipartEncodeInfo info;
+    char *body;
     char *content_type;
-    char *name;
-    char *value;
-    char *path;
-    unsigned int index;
-    int content_type_length;
     int result;
 
-    if (submission == NULL || out_body == NULL ||
-            out_body_len == NULL || out_content_type == NULL ||
-            PCore_MultipartSubmissionInfo(submission, &submission_info,
-                    NULL, 0) != 1) {
+    if (out_body == NULL || out_body_len == NULL ||
+            out_content_type == NULL) {
         return 0;
     }
     *out_body = NULL;
     *out_body_len = 0;
     *out_content_type = NULL;
-    memset(&buffer, 0, sizeof(buffer));
-    boundary_sequence++;
-    _snprintf(boundary, sizeof(boundary) - 1,
-            "----PositronWM6%08lX%04X",
-            GetTickCount(), boundary_sequence & 0xffff);
-    boundary[sizeof(boundary) - 1] = '\0';
-    for (index = 0; index < submission_info.part_count; index++) {
-        memset(&part_info, 0, sizeof(part_info));
-        if (PCore_MultipartPartInfo(submission, index, &part_info,
-                NULL, 0, NULL, 0, NULL, 0) != 1 ||
-                part_info.name_bytes < 0 ||
-                part_info.value_bytes < 0 ||
-                part_info.path_bytes < 0) {
-            free(buffer.data);
-            return 0;
-        }
-        name = (char *) malloc((size_t) part_info.name_bytes + 1);
-        value = (char *) malloc((size_t) part_info.value_bytes + 1);
-        path = (char *) malloc((size_t) part_info.path_bytes + 1);
-        if (name == NULL || value == NULL || path == NULL) {
-            free(name);
-            free(value);
-            free(path);
-            free(buffer.data);
-            return 0;
-        }
-        result = PCore_MultipartPartInfo(submission, index, &part_info,
-                name, part_info.name_bytes + 1,
-                value, part_info.value_bytes + 1,
-                path, part_info.path_bytes + 1);
-        if (result != 1 ||
-                !pcore_multipart_buffer_text(&buffer, "--") ||
-                !pcore_multipart_buffer_text(&buffer, boundary) ||
-                !pcore_multipart_buffer_text(&buffer,
-                    "\r\nContent-Disposition: form-data; name=\"") ||
-                !pcore_multipart_buffer_quoted(&buffer, name) ||
-                !pcore_multipart_buffer_text(&buffer, "\"")) {
-            free(name);
-            free(value);
-            free(path);
-            free(buffer.data);
-            return 0;
-        }
-        if (part_info.kind == 2) {
-            result = pcore_multipart_buffer_text(&buffer, "; filename=\"") &&
-                    pcore_multipart_buffer_quoted(&buffer, value) &&
-                    pcore_multipart_buffer_text(&buffer,
-                        "\"\r\nContent-Type: application/octet-stream"
-                        "\r\n\r\n") &&
-                    pcore_multipart_buffer_file(&buffer, path);
-        } else {
-            result = pcore_multipart_buffer_text(&buffer, "\r\n\r\n") &&
-                    pcore_multipart_buffer_append(&buffer, value,
-                            (size_t) part_info.value_bytes);
-        }
-        free(name);
-        free(value);
-        free(path);
-        if (!result || !pcore_multipart_buffer_text(&buffer, "\r\n")) {
-            free(buffer.data);
-            return 0;
-        }
-    }
-    if (!pcore_multipart_buffer_text(&buffer, "--") ||
-            !pcore_multipart_buffer_text(&buffer, boundary) ||
-            !pcore_multipart_buffer_text(&buffer, "--\r\n")) {
-        free(buffer.data);
+    memset(&info, 0, sizeof(info));
+    result = PCore_MultipartSubmissionEncode(submission,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &info, NULL, 0, NULL, 0);
+    if (result != 2 || info.body_bytes < 0 ||
+            info.content_type_bytes < 0) {
         return 0;
     }
-    content_type_length = (int) strlen(boundary) + 48;
-    content_type = (char *) malloc((size_t) content_type_length);
-    if (content_type == NULL) {
-        free(buffer.data);
+    body = (char *) malloc(info.body_bytes > 0 ?
+            (size_t) info.body_bytes : 1);
+    content_type = (char *) malloc((size_t) info.content_type_bytes + 1);
+    if (body == NULL || content_type == NULL) {
+        free(body);
+        free(content_type);
         return 0;
     }
-    _snprintf(content_type, content_type_length - 1,
-            "Content-Type: multipart/form-data; boundary=%s", boundary);
-    content_type[content_type_length - 1] = '\0';
-    *out_body = (char *) buffer.data;
-    *out_body_len = (int) buffer.length;
+    result = PCore_MultipartSubmissionEncode(submission,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &info, body, info.body_bytes, content_type,
+            info.content_type_bytes + 1);
+    if (result != 1) {
+        free(body);
+        free(content_type);
+        return 0;
+    }
+    *out_body = body;
+    *out_body_len = info.body_bytes;
     *out_content_type = content_type;
     return 1;
 }
@@ -55862,6 +55730,184 @@ static BOOL test1300_browser_image_source_generation_contract(void)
             "generation-aware image replacement retires pending decode state"
             " and rejects late load/error notifications across source A->B->A"
             " and a failed candidate while the Core-selected currentSrc stays authoritative.");
+    return TRUE;
+}
+
+/* TEST 1301 - public Core multipart wire encoder keeps serialization out of
+ * the host while the host retains only file I/O. */
+static int test70_memory_contains(const unsigned char *data, int data_len,
+        const unsigned char *needle, int needle_len);
+static int test70_part_equals(HANDLE submission, unsigned int index,
+        int kind, const char *name, const char *value, const char *path);
+
+static BOOL test1301_core_multipart_encoder_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form' action='/encode' "
+        "method='post' enctype='multipart/form-data'>"
+        "<input name='alpha' value='A'><input id='upload' type='file' "
+        "name='upload'><button id='send' type='submit' name='go' "
+        "value='send'>Send</button></form></body></html>";
+    static const unsigned char FILE_BYTES[] = { 0x00, 0x58, 0xff, 0x0a };
+    static const unsigned char FILE_NEEDLE[] = {
+        0x0d, 0x0a, 0x0d, 0x0a, 0x00, 0x58, 0xff, 0x0a, 0x0d, 0x0a
+    };
+    static const char DISPOSITION_NEEDLE[] =
+        "Content-Disposition: form-data; name=\"upload\"; filename=\""
+        "tiny.bin\"";
+    static const char CONTENT_NEEDLE[] =
+        "Content-Type: application/octet-stream\r\n\r\n";
+    HANDLE document;
+    HANDLE file;
+    HANDLE submission;
+    PCoreMultipartSubmissionInfo submission_info;
+    PCoreMultipartEncodeInfo encode_info;
+    WCHAR fixture_path[MAX_PATH];
+    char *fixture_utf8;
+    char *body;
+    char *content_type;
+    char *small_body;
+    DWORD written;
+    int result;
+    int small_unchanged;
+    int i;
+    BOOL write_result;
+    BOOL ok;
+
+    document = NULL;
+    file = INVALID_HANDLE_VALUE;
+    submission = NULL;
+    fixture_path[0] = L'\0';
+    fixture_utf8 = NULL;
+    body = NULL;
+    content_type = NULL;
+    small_body = NULL;
+    ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto done;
+    }
+    (void) CreateDirectoryW(L"\\Temp", NULL);
+    memcpy(fixture_path, L"\\Temp\\positron-test1301.bin",
+            sizeof(L"\\Temp\\positron-test1301.bin"));
+    file = CreateFileW(fixture_path, GENERIC_WRITE, 0, NULL,
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        goto done;
+    }
+    written = 0;
+    write_result = WriteFile(file, FILE_BYTES, sizeof(FILE_BYTES),
+            &written, NULL);
+    CloseHandle(file);
+    file = INVALID_HANDLE_VALUE;
+    if (!write_result || written != sizeof(FILE_BYTES)) {
+        goto done;
+    }
+    fixture_utf8 = wide_to_utf8_alloc(fixture_path);
+    if (fixture_utf8 == NULL || PCore_FileInputSetPath(document, 0,
+            "tiny.bin", fixture_utf8) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto done;
+    }
+    submission = PCore_MultipartSubmissionById(document, "form", "send");
+    memset(&submission_info, 0, sizeof(submission_info));
+    if (submission == NULL ||
+            PCore_MultipartSubmissionInfo(submission, &submission_info,
+                    NULL, 0) != 1 || submission_info.part_count != 3 ||
+            !test70_part_equals(submission, 0, 1, "alpha", "A", "") ||
+            !test70_part_equals(submission, 1, 2, "upload", "tiny.bin",
+                    fixture_utf8) ||
+            !test70_part_equals(submission, 2, 1, "go", "send", "")) {
+        goto done;
+    }
+    memset(&encode_info, 0, sizeof(encode_info));
+    result = PCore_MultipartSubmissionEncode(submission,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &encode_info, NULL, 0, NULL, 0);
+    if (result != 2 || encode_info.body_bytes <= (int) sizeof(FILE_BYTES) ||
+            encode_info.content_type_bytes <= 0) {
+        goto done;
+    }
+    small_body = (char *) malloc((size_t) encode_info.body_bytes);
+    body = (char *) malloc((size_t) encode_info.body_bytes);
+    content_type = (char *) malloc((size_t) encode_info.content_type_bytes + 1);
+    if (small_body == NULL || body == NULL || content_type == NULL) {
+        goto done;
+    }
+    memset(small_body, 0xa5, (size_t) encode_info.body_bytes);
+    result = PCore_MultipartSubmissionEncode(submission,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &encode_info, small_body, encode_info.body_bytes - 1,
+            content_type, encode_info.content_type_bytes + 1);
+    small_unchanged = 1;
+    for (i = 0; i < encode_info.body_bytes; i++) {
+        if ((unsigned char) small_body[i] != 0xa5) {
+            small_unchanged = 0;
+            break;
+        }
+    }
+    if (result != 2 || !small_unchanged) {
+        goto done;
+    }
+    result = PCore_MultipartSubmissionEncode(submission,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &encode_info, body, encode_info.body_bytes,
+            content_type, encode_info.content_type_bytes + 1);
+    if (result != 1 ||
+            strncmp(content_type,
+                    "Content-Type: multipart/form-data; boundary=",
+                    strlen("Content-Type: multipart/form-data; boundary=")) != 0 ||
+            !test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes,
+                    (const unsigned char *) DISPOSITION_NEEDLE,
+                    sizeof(DISPOSITION_NEEDLE) - 1) ||
+            !test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes,
+                    (const unsigned char *) CONTENT_NEEDLE,
+                    sizeof(CONTENT_NEEDLE) - 1) ||
+            !test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes, FILE_NEEDLE,
+                    sizeof(FILE_NEEDLE)) ||
+            test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes,
+                    (const unsigned char *) fixture_utf8,
+                    (int) strlen(fixture_utf8))) {
+        goto done;
+    }
+    memset(&encode_info, 0, sizeof(encode_info));
+    result = PCore_MultipartSubmissionEncode(submission, NULL, NULL, NULL,
+            &encode_info, NULL, 0, NULL, 0);
+    if (result != 0) {
+        goto done;
+    }
+    ok = TRUE;
+
+done:
+    if (file != INVALID_HANDLE_VALUE) {
+        CloseHandle(file);
+    }
+    if (submission != NULL) {
+        PCore_FreeMultipartSubmission(submission);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (fixture_path[0] != L'\0') {
+        DeleteFileW(fixture_path);
+    }
+    free(fixture_utf8);
+    free(body);
+    free(content_type);
+    free(small_body);
+    if (!ok) {
+        show_error(L"TEST 1301 FAIL",
+                "Core multipart wire encoder contract failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1301 OK",
+            "Core owns multipart wire encoding; host only supplies file I/O,"
+            " with bounded probe, failure and binary-file checks.");
     return TRUE;
 }
 
@@ -114180,6 +114226,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1298: ok = test1298_browser_nested_element_staging_contract(); break;
         case 1299: ok = test1299_browser_image_terminal_id_rename_contract(); break;
         case 1300: ok = test1300_browser_image_source_generation_contract(); break;
+        case 1301: ok = test1301_core_multipart_encoder_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
