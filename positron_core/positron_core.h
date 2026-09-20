@@ -1930,19 +1930,22 @@ PCORE_API int PCore_FormGetCustomValidityForTextarea(HANDLE hDoc,
                                     unsigned int textarea_index,
                                     char *message, unsigned int capacity);
 
-/* Build the application/x-www-form-urlencoded successful-control set for a
- * submit button at a document-space point. The selected form and controls
- * use the shared owner rule: form="id" can associate controls outside the
- * form subtree, while an empty or invalid target contributes no control.
- * method uses the
- * PCORE_FORM_METHOD_* constants. action/body receive UTF-8 and are
- * NUL-terminated when their capacities are positive.
+/* Resolve the successful-control submission for a submit button at a
+ * document-space point. URL-encoded GET/POST submissions copy their action
+ * and body into the supplied UTF-8 buffers; a multipart/form-data POST is
+ * reported as status 3 so the caller can obtain its opaque snapshot through
+ * PCore_MultipartSubmissionAt. The selected form and controls use the shared
+ * owner rule: form="id" can associate controls outside the form subtree,
+ * while an empty or invalid target contributes no control. method uses the
+ * PCORE_FORM_METHOD_* constants. action/body are NUL-terminated when their
+ * capacities are positive.
  *
  * Return values:
  *   0: no button at the point
  *   1: submission is complete
  *   2: a disabled/reset/ordinary button consumed the point
- *   3: multipart/file submission is not implemented
+ *   3: form selects multipart/file submission; use
+ *      PCore_MultipartSubmissionAt
  *   4: DOM/allocation/output-buffer failure
  *   5: constraint validation blocked submission
  *   6: effective method is dialog; use PCore_FormDialogSubmissionAt
@@ -1959,20 +1962,25 @@ PCORE_API int PCore_FormSubmissionAt(HANDLE hDoc, int x, int y,
  * password control, as when that native EDIT receives Enter. NetSurf's policy
  * is followed: the first enabled submit control is successful when no button
  * was explicitly clicked. A textarea never triggers implicit submission.
- * Return values and output-buffer rules match PCore_FormSubmissionAt. */
+ * Return values and output-buffer rules match PCore_FormSubmissionAt; status 3
+ * selects multipart/file submission and pairs with
+ * PCore_MultipartSubmissionForTextInput. */
 PCORE_API int PCore_FormSubmissionForTextInput(HANDLE hDoc,
                                     unsigned int text_index,
                                     PCoreFormSubmissionInfo *out_info,
                                     char *action, int action_capacity,
                                     char *body, int body_capacity);
 
-/* Build a urlencoded submission for a form addressed by form_id, as used by
- * script requestSubmit(). NULL or an empty submitter_id omits a submit button;
- * otherwise the id must name an enabled submit button owned by the form. The
- * return values and output-buffer rules match PCore_FormSubmissionAt. A zero
- * result means the form or optional submitter could not be resolved. This is
- * a Core default-action primitive: it does not dispatch submit events or start
- * navigation, and the embedder owns those steps. */
+/* Resolve the submission for a form addressed by form_id, as used by script
+ * requestSubmit(). URL-encoded forms copy action/body to the supplied UTF-8
+ * buffers; multipart forms return status 3 and must be captured with
+ * PCore_MultipartSubmissionById. NULL or an empty submitter_id omits a submit
+ * button; otherwise the id must name an enabled submit button owned by the
+ * form. The return values and output-buffer rules match
+ * PCore_FormSubmissionAt. A zero result means the form or optional submitter
+ * could not be resolved. This is a Core default-action primitive: it does not
+ * dispatch submit events or start navigation, and the embedder owns those
+ * steps. */
 PCORE_API int PCore_FormSubmissionById(HANDLE hDoc, const char *form_id,
                                      const char *submitter_id,
                                      PCoreFormSubmissionInfo *out_info,
@@ -1982,10 +1990,11 @@ PCORE_API int PCore_FormSubmissionById(HANDLE hDoc, const char *form_id,
 /* Build the direct HTMLFormElement.submit() default action for form_id. This
  * intentionally skips constraint validation, submitter selection and submit
  * event dispatch; no submit button is included in the successful-control set.
- * The return values and output-buffer rules match PCore_FormSubmissionAt. A
- * zero result means that the form cannot be resolved or the DOM/output data
- * cannot be built. The caller owns navigation and any surrounding event or
- * lifecycle policy. */
+ * The return values and output-buffer rules match PCore_FormSubmissionAt; a
+ * status 3 result selects multipart/file submission and pairs with
+ * PCore_MultipartSubmissionNoValidationById. A zero result means that the
+ * form cannot be resolved or the DOM/output data cannot be built. The caller
+ * owns navigation and any surrounding event or lifecycle policy. */
 PCORE_API int PCore_FormSubmissionNoValidationById(HANDLE hDoc,
                                      const char *form_id,
                                      PCoreFormSubmissionInfo *out_info,

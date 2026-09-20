@@ -38,11 +38,13 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next869 已完成 Browser 原型安全 registry、dataset snapshot、TEST1308 和
-`1308,1307,1306,999` 设备门；Headers/Request/Response、Storage、FormData 和
-URLSearchParams 仍保持有界安全合同。当前短期目标是完成路线图候选发现审查：只从源码、
-公开头文件、测试 dispatch 和真实证据中找出新的公共 DLL 缺口，不得把人工输入 backlog 或
-测试宿主扩展当作产品语义。稳定边界见
+next870 已完成对 Core 表单提交公共头文件的契约校正：multipart/file 返回码 3 明确表示
+“改用对应的 `PCore_MultipartSubmission*` opaque snapshot”，不再误称为“未实现”；实现、
+TEST1301/1302 和组件 README 已与该说明交叉核对。上一批的 Browser 原型安全 registry、
+dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持有效；Headers/Request/Response、
+Storage、FormData 和 URLSearchParams 仍保持有界安全合同。当前短期目标是完成路线图候选发现
+审查：只从源码、公开头文件、测试 dispatch 和真实证据中找出新的公共 DLL 缺口，不得把人工
+输入 backlog 或测试宿主扩展当作产品语义。稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
@@ -292,10 +294,11 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next869 已完成源码、静态验证和 `1308,1307,1306,999` 正式设备门。唯一下一步是完成
-[`ROADMAP.md`](ROADMAP.md) 的候选发现审查：若形成满足所有者、预算、失败回滚、fixture 和
-门标准的公共 DLL 缺口，再分配下一个 next；否则保持实现队列为空，继续累计人工验收或维护
-发布基线。崩溃、数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。
+next870 已完成源码、实现、TEST1301/1302 和公共头文件的交叉核对；本轮路线图复核没有形成
+新的“准备取舍”候选，队列保持为空。唯一下一步仍是完成 [`ROADMAP.md`](ROADMAP.md) 的候选
+发现审查：若形成满足所有者、预算、失败回滚、fixture 和门标准的公共 DLL 缺口，再分配下
+一个 next；否则继续累计人工验收或维护发布基线。崩溃、数据损坏、严重布局破坏或核心交互
+阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、
