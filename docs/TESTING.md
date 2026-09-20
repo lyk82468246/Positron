@@ -97,6 +97,9 @@ tests=1-5 7b 13 20,999
 - TEST1306 覆盖 Storage 对 object-property 名称的安全处理：`hasOwnProperty`、`__proto__`、
   `constructor` 和 `toString` 通过 `setItem()`/`getItem()` 与 `toJSON()` 保持值、顺序和
   原型隔离，Storage 方法仍可调用，`clear()` 后旧值全部消失。
+- TEST1307 覆盖 Browser `Headers` 的 object-property 名称：`set()`/`get()`、对象初始化和
+  `toJSON()` 对 `hasOwnProperty`、`__proto__`、`constructor`、`toString` 保持 canonical
+  header 值和原型隔离；`Request`/`Response` 的 metadata snapshot 复用这条 facade。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

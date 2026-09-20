@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1306
+#define TEST_MAX_NUMBER 1307
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -56292,6 +56292,46 @@ static BOOL test1306_browser_storage_special_keys_contract(void)
     show_info(L"TEST 1306 OK",
             "Script Storage preserves object-property keys without prototype"
             " corruption and keeps its API methods callable.");
+    return TRUE;
+}
+
+/* TEST 1307 - Headers preserves object-property header names in snapshots. */
+static BOOL test1307_browser_headers_special_keys_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var h=new Headers(),init={},copy,ok=false,initOk=false;"
+        "h.set('hasOwnProperty','one');h.set('__proto__','two');"
+        "h.set('constructor','three');h.set('toString','four');copy=h.toJSON();"
+        "ok=h.size===4&&h.get('hasOwnProperty')==='one'&&h.get('__proto__')==='two'&&"
+        "h.get('constructor')==='three'&&h.get('toString')==='four'&&"
+        "copy['hasownproperty']==='one'&&copy['__proto__']==='two'&&"
+        "copy['constructor']==='three'&&copy['tostring']==='four'&&"
+        "Object.keys(copy).length===4;"
+        "Object.defineProperty(init,'hasOwnProperty',{value:'a',enumerable:true});"
+        "Object.defineProperty(init,'__proto__',{value:'b',enumerable:true});"
+        "Object.defineProperty(init,'constructor',{value:'c',enumerable:true});"
+        "Object.defineProperty(init,'toString',{value:'d',enumerable:true});"
+        "copy=new Headers(init);initOk=copy.size===4&&copy.get('hasOwnProperty')==='a'&&"
+        "copy.get('__proto__')==='b'&&copy.get('constructor')==='c'&&"
+        "copy.get('toString')==='d';"
+        "document.getElementById('result').textContent=String(ok)+'|'"
+        "+String(initOk);";
+    static const char EXPECTED[] = "true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1307 FAIL", error[0] != '\0' ? error :
+                "Browser Headers special-key fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1307 OK",
+            "Script Headers preserves object-property names in construction"
+            " and JSON snapshots.");
     return TRUE;
 }
 
@@ -114616,6 +114656,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1304: ok = test1304_browser_urlsearchparams_mutation_budget_contract(); break;
         case 1305: ok = test1305_browser_storage_budget_contract(); break;
         case 1306: ok = test1306_browser_storage_special_keys_contract(); break;
+        case 1307: ok = test1307_browser_headers_special_keys_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

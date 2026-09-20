@@ -88,6 +88,7 @@ Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session�
 - history、navigation candidate/resource observation、页面生命周期、viewport、visualViewport、scroll restoration 和任务检查点；
 - 有界 DOM/Element/CharacterData wrapper、属性 facade、selector、form/option metadata、image metadata、Event 和 validation 对象；
 - `FormData(form[, submitter])` 的 detached successful-control snapshot、同步 `formdata` 事件和脚本对象；脚本 `append()` 及新键 `set()` 与构造器共享 64 项预算，超限抛出 `QuotaExceededError` 且不部分修改；脚本 `URLSearchParams` 的 `append()`、新键 `set()` 与 pair-sequence 构造共享头文件定义的 `PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS`（当前 64）项预算，超限同样不部分修改；
+- 有界 `Headers`/`Request`/`Response` metadata facade；Header 名称按 ASCII 不敏感规则归一化，`Headers` 的对象初始化与 JSON snapshot 对 object-property 名称使用安全 own-property 处理，避免合法 header 名改变快照原型或覆盖方法；
 - `sessionStorage`/`localStorage` 的独立 Storage facade；条目、键和值受头文件固定预算约束，新增/超长写入在 mutation 前抛出 `QuotaExceededError`，替换和删除后的容量回收保持可用；内部 map 对 object-property 名称使用安全 own-property 处理，不把 `hasOwnProperty`、`__proto__` 等合法键解释为原型或内部方法；宿主不提供持久磁盘或跨 session 存储。
 - 有界图像 `decode()` Promise 与 host 驱动的 `load`/`error` 终态；source 或支持的
   `Element.id` setter 改变会回收旧 pending/终态 key，宿主仍负责 Core relation、资源 I/O、
