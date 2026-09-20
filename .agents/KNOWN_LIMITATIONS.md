@@ -294,11 +294,10 @@
   独立脚本 `URLSearchParams` 的 `append()`、新键 `set()` 和 pair-sequence 构造也共享
   `PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS`（当前 64）项预算；超限同样抛出
   `QuotaExceededError`，失败不改变旧 pairs，替换已有键和删除后的追加仍可用。
-  它不触发 validation、submit/reset 事件、默认动作或导航。Browser 对象仍只
-  返回 filename/type 和空内容；应用若需发出 multipart 请求，必须把 Core snapshot 交给
-  `PCore_FormDataEncode()` 并自行提供同步 file callback。完整 live
-  HTMLFormControlsCollection、File/Blob 读取和其他 form-associated 扩展及浏览器完整表单树
-  规则仍未实现。
+  它不触发 validation、submit/reset 事件、默认动作或导航。native file 对象只返回
+  filename/type；脚本 File/Blob 只保留有界内存，不能转为 Core
+  FormData handle。multipart 需应用提供 Core snapshot 和 file callback。live
+  HTMLFormControlsCollection、File/Blob 读取和其他 form-associated 扩展及表单树规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；Core mutation 暂时释放 retained layout，宿主在下一次 relayout 前必须用 native EDIT 的 DOM id 维持连续 beforeinput/input/change 的目标身份；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 

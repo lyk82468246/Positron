@@ -21,8 +21,9 @@ handle、缺失 callback 和 unsupported 输入都会在状态改变前失败；
 body、部分 DOM mutation 或意外 callback。新增入口应优先使用 size/version 或 `Ex` 形式，旧
 ABI 的字段和成功语义不得被改写。
 
-本轮只建立能力矩阵和文档规则，没有新增产品入口或测试编号。下一条实现纵切仍须先取得真实
-消费者/页面/可复现失败证据，再按矩阵中的 owner、预算、fixture、设备门和人工门完成提升。
+本轮建立能力矩阵并完成公开头文件/消费者审计，没有新增产品入口或测试编号。下一条实现纵切
+仍须先取得真实消费者/页面/可复现失败证据，再按矩阵中的 owner、预算、fixture、设备门和
+人工门完成提升。
 
 ## `test_host.ini`
 
@@ -94,12 +95,13 @@ tests=1-5 7b 13 20,999
 - TEST1302 覆盖 `PCore_FormDataEncode()` 的独立快照合同：默认 GET/urlencoded form 仍能
   通过 `PCore_FormDataByIdEx()` 生成 multipart body，successful-control 顺序、文件名、
   binary bytes、size probe、容量不足时无部分输出和缺少 file callback 均由 Core 断言；
-  这证明 FormData 编码不依赖 form 的默认 method/enctype/action。文件 I/O、网络发送、
-  Browser `formdata` 事件修改和 native 表单视觉仍由宿主或人工矩阵负责。
+  这证明 FormData 编码不依赖 form 的默认 method/enctype/action。它只编码 Core-owned
+  snapshot，不接收 Browser JavaScript `FormData` pairs。文件 I/O、网络发送、Browser
+  `formdata` 事件修改和 native 表单视觉仍由宿主或人工矩阵负责。
 - TEST1303 覆盖 Browser 脚本 `FormData` 的固定 64 项预算：满容量时 `append()`、新键
   `set()` 和数组构造均抛出 `QuotaExceededError`，失败不改变既有 pairs；替换已有键以及
   删除后再次追加仍然成功。该夹具只证明脚本对象的内存边界，不扩展 File/Blob 内容、网络
-  发送或 native 表单视觉。
+  发送或 native 表单视觉；它也不证明脚本对象可以交给 `PCore_FormDataEncode()`。
 - TEST1304 覆盖 Browser 脚本 `URLSearchParams` 的固定 64 项预算：满容量时
   `append()`、新键 `set()` 和 pair-sequence 构造均抛出 `QuotaExceededError`，失败不改变
   既有 pairs；替换已有键以及删除后再次追加仍然成功。该夹具只证明脚本对象的内存边界，

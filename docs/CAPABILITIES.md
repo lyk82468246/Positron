@@ -85,7 +85,7 @@
 | DOM/attribute/CharacterData/HTML mutation | `PCore_Node*ById`、relation、serialization 和 Ex mutation callbacks | 已实现但有界 | 失败前预检 id、节点形状、深度、child 数、UTF-8 和容量；成功后 layout retained 失效 | TEST1284–1298 及设备门；通用 Node/Fragment mutation 仍不承诺 |
 | form owner、validation、selection、reset、modal 和 successful-control snapshot | `PCore_Form*`、`PCore_NodeFormControl*`、interaction/focus APIs | 已实现但有界 | owner、listed controls、fieldset/option state 和提交快照有界；非法/stale target fail closed | TEST1170–1188、1301–1302 和设备门 |
 | multipart/default submission 和 FormData encoding | `PCore_MultipartSubmissionEncode`、`PCore_FormDataEncode` | 已实现 | body 上限 1 MiB；file read/free callback 同步借用；缺 callback、读取失败或容量不足不部分写出 | TEST1301/1302；宿主只提供文件 I/O 和 HTTP 调度 |
-| File/Blob 对象、异步文件读取和浏览器式上传策略 | 当前只有 metadata 与 encoder callback 边界 | 有界待扩展 | Browser 负责 bounded metadata，Core 负责 wire encoding，宿主负责同步 read/free；不改变旧 pairs 或旧页面 | 只有真实消费者证明“picker→FormData→multipart”阻塞时才提升 |
+| File/Blob 对象、异步文件读取和浏览器式上传策略 | 当前只有 Browser 的有界内存 metadata/文本对象、Core DOM snapshot encoder 和宿主同步 file callback；没有 Browser JS FormData→Core body 交接入口 | 有界待扩展 | Browser 不暴露本地路径或持久 byte handle；Core 只接受自己的 FormData snapshot；缺 callback、权限/大小失败和 stale handle 必须在 body 输出前拒绝 | 本轮仓库审计只找到 `test_host` 夹具，没有生产消费者；只有真实消费者证明“picker→FormData→multipart”阻塞时才提升 |
 | Range/Selection、MutationObserver、通用 live collection 和完整滚动树 | 当前没有公共承诺 | 暂缓 | 需要额外状态、事件队列和更大资源预算 | 保留在限制文档，不因标准名称直接立项 |
 
 ## Browser：`positron_browser.dll`
@@ -95,7 +95,7 @@
 | history、fragment、push/replace state、scroll snapshot | `PBrowser_History*` | 已实现但有界 | entry、URL、state 和 scroll snapshot 有界；失败保留旧 entry/旧页面 | next871、history/viewport fixtures 和设备门 |
 | navigation candidate/resource transaction | `PBrowser_NavigationCandidate*`、`PBrowser_NavigationResource*`、commit/cleanup snapshot | 已实现但有界 | generation、required/optional gate、retry、fallback、cancel 和 cleanup 都固定；过时 worker 不能提交 | TEST1119–1127、设备门；宿主只调度网络/worker |
 | script session、DOM/Event/form/input/lifecycle/viewport bridge | `PBrowser_ScriptSession*` callback tables and dispatch APIs | 已实现但有界 | heap、native functions、listeners、collections、strings、FormData/URLSearchParams、Storage 和任务队列固定 | TEST1138/1139、1152–1309 及相邻门；脚本默认关闭 |
-| File/Blob metadata and multipart consumer bridge | 当前 FormData metadata、Core encoder 和 native file callback 可组合 | 有界待扩展 | Browser 不直接读文件；缺 callback、权限/大小失败和 stale handle 必须在 body 输出前拒绝 | 先完成能力证据；优先候选为 picker→FormData→multipart，但未有消费者证据前不实现 |
+| File/Blob metadata and multipart consumer bridge | Browser `new FormData(form[, submitter])` 只通过 callback 取得 Core successful-control metadata；`PCore_FormDataEncode()` 只接受 Core-owned snapshot，二者没有 JS pairs 的公共转换入口 | 有界待扩展 | Browser 不直接读文件、不暴露路径或 byte buffer；Core/宿主的同步 read/free、1 MiB body 和 stale/权限失败边界保持不变 | 本轮仓库审计只找到 `test_host` 夹具，没有生产消费者；优先候选仍为 picker→FormData→multipart，但未有消费者证据前不实现 |
 | CORS/referrer、absolute URL policy、完整 image loading | 当前没有完整公共承诺 | 有界待扩展 | 必须为安全边界、旧页保留、generation 和取消建立独立合同；不能由宿主临时决定 | 需要真实页面/消费者和 loopback fixture |
 | 多个窗口、bfcache 和跨窗口 history | 当前没有公共承诺 | 暂缓 | 需要额外 browsing context、持久状态和资源预算 | 只有新的明确产品范围才重新评估 |
 

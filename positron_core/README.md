@@ -90,6 +90,12 @@ boundary、字段顺序、quoted metadata、binary file bytes、size-probe、1 M
 encode 调用中通过应用提供的 read/free callback 读取；`PCore_FormDataEntryInfo()` 只
 返回文件名和类型元数据，不把本地路径或文件 buffer 暴露为长期状态。
 
+这里的 `FormData` handle 只来自 Core 文档的 successful-control snapshot；它不是 Browser
+脚本里的 `FormData` 对象。Browser 的 `append()`/`set()` pairs 和 `File`/`Blob` metadata
+当前没有公共转换入口进入 Core encoder。应用若需要 multipart body，必须在 Core 侧取得
+snapshot，并在同步 encode 调用中提供自己的 file read/free callback；文件 picker、权限、
+网络发送和取消仍由应用宿主负责。
+
 ## 有界 DOM mutation
 
 所有 mutation 都在头文件声明的节点、深度、节点数、direct-child、UTF-8 和文本预算内执行，并在提交前完成预检。失败不留下部分树；成功保留 API 承诺的节点身份并使 retained layout 失效。Core 不派发 mutation 事件、不执行 script、不创建 native 控件、不暴露 fragment handle。

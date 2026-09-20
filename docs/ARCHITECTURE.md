@@ -83,6 +83,12 @@ buffer；body 总量受 `PCORE_MULTIPART_BODY_MAX_BYTES` 限制，容量不足�
 默认提交事件约束，适合应用自行构造 multipart HTTP 请求。FormData entry 查询仍只返回
 文件名/type 元数据，实际路径只作为同步 file callback 的借用参数。
 
+这条 Core encoder 不接收 Browser JavaScript `FormData` 对象。Browser 的 `FormData(form[, submitter])`
+只通过 callback 暴露有界的 successful-control metadata，脚本自行 `append()`/`set()` 产生的
+pairs 仍留在 Browser session 内；当前没有把这些 pairs 或 Browser `File`/`Blob` bytes 转换成
+Core-owned snapshot 的公共入口。因而“文件选择→脚本 FormData→multipart body”仍是待取证的
+扩展方向，而不是当前已实现的组合能力。
+
 ### `positron_browser.dll`
 
 Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session。它负责：
@@ -90,6 +96,7 @@ Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session�
 - history、navigation candidate/resource observation、页面生命周期、viewport、visualViewport、scroll restoration 和任务检查点；
 - 有界 DOM/Element/CharacterData wrapper、属性 facade、selector、form/option metadata、image metadata、Event 和 validation 对象；
 - `FormData(form[, submitter])` 的 detached successful-control snapshot、同步 `formdata` 事件和脚本对象；脚本 `append()` 及新键 `set()` 与构造器共享 64 项预算，超限抛出 `QuotaExceededError` 且不部分修改；脚本 `URLSearchParams` 的 `append()`、新键 `set()` 与 pair-sequence 构造共享头文件定义的 `PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS`（当前 64）项预算，超限同样不部分修改；
+- Browser `File`/`Blob` 目前是有界的 session 内存对象，只保留受限文本、名称、类型和大小；它们不读本地文件，也没有把脚本 `FormData` pairs 交给 Core multipart encoder 的公共入口。实际 picker、权限、同步 file read/free 和 HTTP 发送仍属于宿主/Core 已声明的边界；完整组合流程只有在真实消费者证据出现后才立项；
 - 有界 `Headers`/`Request`/`Response` metadata facade；Header 名称按 ASCII 不敏感规则归一化，`Headers` 的对象初始化与 JSON snapshot 对 object-property 名称使用安全 own-property 处理，避免合法 header 名改变快照原型或覆盖方法；
 - `sessionStorage`/`localStorage` 的独立 Storage facade；条目、键和值受头文件固定预算约束，新增/超长写入在 mutation 前抛出 `QuotaExceededError`，替换和删除后的容量回收保持可用；内部 map 对 object-property 名称使用安全 own-property 处理，不把 `hasOwnProperty`、`__proto__` 等合法键解释为原型或内部方法；宿主不提供持久磁盘或跨 session 存储。
 - Browser 内部以 DOM id、dataset 名称和 BroadcastChannel 名称索引的 bounded registry 使用原型安全 map；`document.getElementById()`、wrapper/事件 listener、`DOMStringMap.toJSON()` 与特殊 channel name 不会因 `__proto__`、`constructor` 或 `toString` 发生 prototype collision。该保证属于 Browser session，不增加 Core ABI，也不承诺完整 named-property 语义。

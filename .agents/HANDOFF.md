@@ -52,7 +52,8 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 当前短期目标是完成七个顶层 DLL 的主干能力覆盖：能力状态、owner、预算、失败边界、fixture
 和提升条件统一记录在 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)，并以有界 fail-closed
 规则约束“先声明、后实现”的接口。第一优先调查方向是有限 File/Blob→FormData→multipart
-流程，但在真实消费者证据出现前不进入产品实现；参考宿主的窗口可见性仅作为平台接线，不得把
+流程；next874 的公开头文件与消费者审计已确认仓库内没有生产消费者，因此在真实消费者证据
+出现前不进入产品实现；参考宿主的窗口可见性仅作为平台接线，不得把
 人工输入 backlog 或测试宿主扩展当作产品语义。稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
@@ -83,6 +84,26 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
   `PCore_FormDataEncode()` 负责独立 FormData snapshot；两者共享 bounded boundary/CRLF/字段
   顺序/quoted metadata/binary file bytes。宿主只实现同步 file read/free callback、HTTP 调度
   和 buffer 生命周期，不再复制 multipart 拼装规则。
+
+## next874 头文件与消费者审计
+
+本轮逐项核对七个顶层 DLL 的公开头文件、组件 README、`test_host` callback 接线、测试
+dispatch、限制文档和 tracked 源码引用。未新增 public export；现有公开入口已有对应 DLL
+owner、UTF-8/opaque handle 或明确的兼容遗留语义，FormData/multipart 的预算和失败边界已在
+能力矩阵与头文件中对齐。
+
+对第一候选的取证结论如下：Core 的 `PCore_FormDataById[Ex]()` 与
+`PCore_FormDataEncode()` 只处理 Core-owned successful-control snapshot；Browser 的
+`PBrowserScriptFormDataCallbacks[Ex]()` 以及脚本 `FormData` 只返回/保存有界名称、字符串或
+文件 metadata，不能把 Browser pairs 或本地路径交给 Core encoder。仓库范围搜索（排除
+`test_host`、历史、第三方和生成证据）没有找到生产调用方，只有 `test_host` 的 fixture
+使用这组入口。因此当前没有“真实消费者被阻塞”的证据，也没有可安全分配的产品实现纵切。
+
+已将这个边界同步到 `docs/CAPABILITIES.md`、`docs/ARCHITECTURE.md`、
+`docs/TESTING.md`、`positron_browser/README.md` 和 `positron_core/README.md`。下一次只有
+真实应用/页面或可重复失败证明“picker→Browser FormData→multipart body”确实阻塞，并给出
+同步 callback、容量、权限、取消和失败回滚的最小合同，才可把候选 C 提升为准备取舍；否则
+保持产品代码和测试编号不变。
 
 ### 当前网页能力
 
@@ -314,14 +335,13 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next873 已完成参考宿主 `WM_SHOWWINDOW` 可见性接线、相邻源码审查和定向设备门；Browser
+next874 已完成公开头文件与消费者审计；next873 已完成参考宿主 `WM_SHOWWINDOW` 可见性接线、相邻源码审查和定向设备门；Browser
 仍拥有 visibility state、事件顺序和去重，宿主没有新增产品状态。history fallback 已移除，
 Core URL callback 的 WinInet 重复实现也已删除。本轮已建立七个顶层 DLL 的能力矩阵和有界
-fail-closed 公开规则；唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 完成公开头文件审计，补齐
-主干能力的 owner/预算/错误分类，并验证有限 File/Blob→FormData→multipart 是否有真实消费者
-证据。只有形成满足所有者、预算、失败回滚、fixture 和门标准的候选，才分配下一个 next；否则
-保持产品代码不变并维护发布/人工验收基线。崩溃、数据损坏、严重布局破坏或核心交互阻塞须立即
-人工复核。
+fail-closed 公开规则，并确认当前没有可进入产品实现的消费者缺口；唯一下一步是等待真实
+消费者/可复现失败证据，或维护发布与人工验收基线。只有形成满足所有者、预算、失败回滚、
+fixture 和门标准的候选，才分配下一个 next；否则保持产品代码不变。崩溃、数据损坏、严重布局
+破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

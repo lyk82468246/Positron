@@ -149,17 +149,18 @@ README、限制和真实设备日志；不要把人工输入 backlog 或测试�
 
 #### A. 公共 DLL 消费者缺口审查
 
-**状态：待取证。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
+**状态：next874 已完成取证，未发现生产消费者。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
 `test_host` 的 callback 使用和兼容性 corpus，寻找仍由宿主临时决定、但应由 Core/Browser/HTTP/
 Image/Script 拥有的可复用语义。必须记录一个具体调用场景或失败行为，不能只把“现代 API 缺失”
-当作缺口。
+当作缺口。本轮只在 `test_host` fixture 中找到 FormData/File/multipart 的调用；排除宿主、历史、
+第三方和生成证据后，没有生产应用调用这些入口，因此没有可进入产品实现的具体阻塞。
 
 已完成的 history fallback 和 Core URL callback 重复规则审查不再属于待实现范围：宿主现在只
 读取 Browser 的 history 快照，并通过 HTTP DLL 解析 Core 的 URL reference；创建失败或解析
 失败时均 fail closed。其余消费者缺口仍需独立证据，不得因为这两项边界修订而自动扩大到完整
 history、URL 或 Web API。
 
-取证完成的条件是：给出一个顶层 DLL 所有者、最小 C ABI/Ex 入口、固定预算、失败回滚、最小
+下一步只有在真实消费者或可复现失败出现后，才能给出一个顶层 DLL 所有者、最小 C ABI/Ex 入口、固定预算、失败回滚、最小
 fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视觉差异，则转入人工 backlog，不进入
 产品批次。
 
@@ -172,7 +173,7 @@ fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视
 
 #### C. 文件对象与表单消费者缺口
 
-**状态：待取证。** Core 已拥有成功控件 snapshot 和 multipart wire encoding，Browser 的
+**状态：待取证，且本轮审计未发现生产消费者。** Core 已拥有成功控件 snapshot 和 multipart wire encoding，Browser 的
 `FormData` 仍是有界对象/metadata 合同，完整 File/Blob、异步文件读取和浏览器式上传尚未实现。
 只有消费者确实需要“从 WM6 文件选择到 multipart body”的完整流程，且能在同步 callback、容量、
 权限和取消边界内形成最小 fixture，才进入候选；系统 picker 本身仍属于宿主人工 backlog。
