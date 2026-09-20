@@ -90,6 +90,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   不改变 Core 的 source 选择或自动加载边界。TEST1299 连续改名 80 次并逐次通知 `load`，
   与 `1299,999` Debug ARMV4I 外置卡设备门取得完整日志，2/2 PASS，双空间预检、清理和
   `crash_check=PASS`，无新增 dump。
+- next861 在 `positron_browser.dll` 增加 host-owned 非零 image replacement generation：
+  source Ex 退休旧 decode/终态，event Ex 拒绝缺失、过旧或不匹配的 late load/error；
+  source 关系不能解析到带 id 的 `<img>` 时 fail closed。A→B→A、失败候选由 TEST1300
+  覆盖，generation/终态 map 各自限制为 64 项；`1300,999` Debug ARMV4I 外置卡设备门 2/2 PASS，完整日志、
+  双空间预检、清理、`crash_check=PASS`，无新增 dump。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -112,10 +117,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next860 已完成并通过 `1299,999` 设备门。图像终态表在 `Element.id` setter 改名后的
-旧 key 回收和重复 host 终态通知已经取证；下一批只对路线图中仍待取证的图像 source
-mutation/pending decode 组合做证据核对，再选择一个完整纵切，不得把测试宿主扩展当作产品
-语义实现。稳定
+next861 已完成并通过 `1300,999` 设备门，图像 source mutation、pending decode、
+A→B→A 旧 generation 拒绝和失败候选回滚均已取证。下一批从路线图 C 的人工输入边界或
+新的可复现公共 DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定
 边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
@@ -231,18 +235,18 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1299。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1299,999`。
+- `TEST_MAX_NUMBER`：1300。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1300,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260919-235300-next860` 是本批最新有效证据：Debug ARMV4I
-`1299,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1299 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 47,273,607,168 字节可用，内部 object-store 可用
-8,570,880 字节；部署目录在完整日志回收后已删除。
+`tmp/device-runs/20260920-100045-next861-final3` 是本批最新有效证据：Debug ARMV4I
+`1300,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1300 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+目标卷由 `CeGetDiskFreeSpaceEx` 报告 51,030,163,456 字节可用，内部 object-store 可用
+2,480,128 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -269,7 +273,7 @@ dump=0。日志明确记录 TEST1299 和 TEST999 均为 OK，`TESTBENCH PASS`，
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1299 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1300 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -279,7 +283,8 @@ dump=0。日志明确记录 TEST1299 和 TEST999 均为 OK，`TESTBENCH PASS`，
   Element element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、
   `insertAdjacentElement()`、direct Element-child `appendChild()`/`insertBefore()`/`removeChild()`、
   primitive-only `replaceChildren()` wrapper reconciliation、嵌套 Browser-created Element
-  staging 与脱离后的 direct CharacterData 快照夹具均已有相邻设备门；
+  staging、脱离后的 direct CharacterData 快照和 image source generation/late-event
+  rejection（TEST1300）夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
@@ -352,12 +357,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next860 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 对图像 source
-mutation/pending decode 候选完成源码、compatibility corpus 和现有测试的取证；在取证完成
-前不分配新的 next 编号。完成标准是明确的公共 DLL 所有者、固定预算、旧 promise/终态
-退休与失败回滚合同，并在确认存在可复现缺口后取得产品侧纵切、相邻自动回归、风险相称的
-正式设备门（完整日志、双空间预检、清理、`crash_check`）及职责文档更新。若涉及崩溃、
-数据损坏、严重布局破坏或核心交互阻塞，另须立即人工复核。
+next861 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
+或先记录源码/自动门可复现的公共 DLL 缺口，再分配下一个 next。新纵切必须明确所有者、
+预算、旧状态退休/失败回滚合同，并取得相邻自动回归、正式设备门和职责文档更新；崩溃、
+数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

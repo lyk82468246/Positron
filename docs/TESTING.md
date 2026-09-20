@@ -67,6 +67,11 @@ tests=1-5 7b 13 20,999
 - TEST1297 在同一离线夹具中覆盖唯一的 bounded live `Element.getElementsByTagName()` collection：每次调用返回新对象，已连接 owner 的同一 collection 在子节点、id/name mutation 后刷新，created wrapper 保持 identity，索引、`item()`、`namedItem()`、`entries()` 和结束标记保持一致；最多访问 256 个节点并返回 64 项，刷新超限保留最近成功结果。其他 collection 仍按各自合同使用 bounded snapshot；这不是完整浏览器 live collection。
 - TEST1298 覆盖 detached Browser-created Element 的 nested graph：最多 4 层、64 个 Element、每个 Element 64 个 child，所有 Element 需要唯一非空 id；递归 `parentNode`/`children`/`textContent`、`cloneNode(true)`、Core 物化、wrapper registry、remove/reinsert 和失败后的 detached owner 保持一致。循环、重复/缺失 id、超出预算和 nested Fragment 仍在 Core 触碰前拒绝。
 - TEST1299 覆盖图像终态表与 `Element.id` setter 改名的边界：图像完成一次 `load` 后连续改名 80 次，并在每个新 id 上发送 host `load` 通知；旧 image/source 终态 key 必须回收，64 项上限不能因改名泄漏，最终 `currentSrc` 保持稳定。
+- TEST1300 覆盖 generation-aware image source replacement：宿主以非零 generation 通知
+  source A→B→A，旧 `decode()` 以 `EncodingError` 退休，Core 的 `currentSrc` 保持权威；
+  legacy/旧 generation/相反终态通知 fail closed，失败候选只接受匹配 generation 的
+  `error`。source Ex 只接受能解析到带 id `<img>` 的有界 `<picture>` 关系；Core 选择、
+  fetch、decode、layout 和 paint 仍由宿主/Core 负责。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

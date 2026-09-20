@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1299
+#define TEST_MAX_NUMBER 1300
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55553,6 +55553,315 @@ static BOOL test1299_browser_image_terminal_id_rename_contract(void)
             "image load terminal state is reclaimed when the supported"
             " Element.id setter renames an image, so repeated host terminal"
             " notifications remain bounded instead of exhausting 64 entries.");
+    return TRUE;
+}
+
+/* TEST 1300 - generation-aware image replacement rejects late events while
+ * a pending decode follows source A -> B -> A and a failed candidate. */
+static BOOL test1300_browser_image_source_generation_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script></head>"
+        "<body><picture id='picture'><source id='source' type='image/svg+xml' "
+        "srcset='/img/one.svg 1x'><img id='hero' src='/img/fallback.svg'>"
+        "</picture><p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;}img{display:block;width:120px;"
+        "height:60px;}";
+    static const char SETUP[] =
+        "window.__transitionImage=document.getElementById('hero');"
+        "window.__oldState='pending';window.__transitionImage.decode().then("
+        "function(){window.__oldState='fulfilled';},function(e){"
+        "window.__oldState='rejected:'+e.name;});true;";
+    static const char OLD_PROBE[] =
+        "window.__oldState+'|'+window.__transitionImage.currentSrc+'|'"
+        "+String(window.__transitionImage.complete);";
+    static const char NEW_SETUP[] =
+        "window.__newState='pending';window.__transitionImage.decode().then("
+        "function(){window.__newState='fulfilled';},function(e){"
+        "window.__newState='rejected:'+e.name;});true;";
+    static const char NEW_PROBE[] =
+        "window.__oldState+'|'+window.__newState+'|'"
+        "+window.__transitionImage.currentSrc+'|'"
+        "+String(window.__transitionImage.complete);";
+    static const char SECOND_SETUP[] =
+        "window.__secondState='pending';window.__transitionImage.decode().then("
+        "function(){window.__secondState='fulfilled';},function(e){"
+        "window.__secondState='rejected:'+e.name;});true;";
+    static const char SECOND_PROBE[] =
+        "window.__secondState+'|'+window.__transitionImage.currentSrc+'|'"
+        "+String(window.__transitionImage.complete);";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    image_srcset_resource_test_ctx ctx;
+    char error[768];
+    char result_text[256];
+    const char *result;
+    const char *stage;
+    int executed;
+    int ignored;
+    int found;
+    int fetched;
+    int number;
+    int relation_rc;
+    int rc;
+    int vw;
+    int vh;
+    BOOL ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    memset(error, 0, sizeof(error));
+    memset(result_text, 0, sizeof(result_text));
+    result = NULL;
+    stage = "parse";
+    executed = -1;
+    ignored = -1;
+    found = 0;
+    fetched = 0;
+    number = 0;
+    relation_rc = -1;
+    rc = PSCRIPT_ERROR_CALL;
+    vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+    vh = GetSystemMetrics(SM_CYSCREEN);
+    if (vw <= 0) { vw = 224; }
+    if (vh <= 0) { vh = 320; }
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    PCore_SetViewport(240, 320, 96);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/image-source-generation", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "setup";
+        rc = PBrowser_ScriptSessionEvaluate(
+                g_browser_script_session.session, SETUP, -1);
+        ok = rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+    }
+    if (ok) {
+        stage = "initial-fetch";
+        test_host_set_device_viewport(240, 320);
+        ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                found == 1 && fetched == 1 && ctx.calls == 1 &&
+                ctx.matched == 1 && ctx.frees == 1;
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/image-source-generation.css");
+        ok = ok && sheet != NULL && PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0;
+        relation_rc = PCore_NodeRelationById(document, "hero",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0,
+                NULL, &number);
+        ok = ok && relation_rc == 0 && number > 0;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, OLD_PROBE, -1);
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && result != NULL &&
+                    strcmp(result, "pending|/img/one.svg|true") == 0;
+        }
+    }
+    if (ok) {
+        stage = "source-to-two";
+        relation_rc = PCore_NodeSetAttributeById(document, "source",
+                "srcset", "/img/two.svg 1x");
+        rc = PBrowser_ScriptSessionNotifyImageSourceChangeEx(
+                g_browser_script_session.session, "source", 1UL);
+        ok = relation_rc == 0 && rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, OLD_PROBE, -1);
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && result != NULL &&
+                    strcmp(result, "rejected:EncodingError|/img/two.svg|false") == 0;
+        }
+    }
+    if (ok) {
+        stage = "commit-two";
+        memset(&ctx, 0, sizeof(ctx));
+        ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                found == 1 && fetched == 1 && ctx.calls == 1 &&
+                ctx.matched == 1 && ctx.frees == 1 &&
+                PCore_StyleDocument(document, sheet) == 0 &&
+                PCore_LayoutDocument(document, 240, 320) == 0;
+        relation_rc = PCore_NodeRelationById(document, "hero",
+                PCORE_NODE_RELATION_IMAGE_NATURAL_WIDTH, 0, NULL, 0,
+                NULL, &number);
+        ok = ok && relation_rc == 0 && number > 0;
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, NEW_SETUP, -1);
+            ok = rc == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionRunMicrotasks(
+                    g_browser_script_session.session) == PSCRIPT_OK;
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, NEW_PROBE, -1);
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && result != NULL &&
+                    strcmp(result, "rejected:EncodingError|fulfilled|/img/two.svg|true") == 0;
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD, 1UL);
+            ok = rc == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionNotifyImageEvent(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD) == PSCRIPT_ERROR_ARGUMENT &&
+                    PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD, 2UL) ==
+                    PSCRIPT_ERROR_ARGUMENT;
+        }
+    }
+    if (ok) {
+        stage = "source-back-to-one";
+        relation_rc = PCore_NodeSetAttributeById(document, "source",
+                "srcset", "/img/one.svg 1x");
+        rc = PBrowser_ScriptSessionNotifyImageSourceChangeEx(
+                g_browser_script_session.session, "source", 2UL);
+        ok = relation_rc == 0 && rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+        if (ok) {
+            memset(&ctx, 0, sizeof(ctx));
+            ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                    image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                    found == 1 && fetched == 1 &&
+                    PCore_StyleDocument(document, sheet) == 0 &&
+                    PCore_LayoutDocument(document, 240, 320) == 0;
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, SECOND_SETUP, -1);
+            ok = rc == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionRunMicrotasks(
+                    g_browser_script_session.session) == PSCRIPT_OK;
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionEvaluate(
+                    g_browser_script_session.session, SECOND_PROBE, -1);
+            result = PBrowser_ScriptSessionGetResult(
+                    g_browser_script_session.session);
+            ok = rc == PSCRIPT_OK && result != NULL &&
+                    strcmp(result, "fulfilled|/img/one.svg|true") == 0 &&
+                    PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD, 2UL) == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD, 1UL) ==
+                    PSCRIPT_ERROR_ARGUMENT;
+        }
+    }
+    if (ok) {
+        stage = "failed-candidate";
+        relation_rc = PCore_NodeSetAttributeById(document, "source",
+                "srcset", "/img/missing.svg 1x");
+        rc = PBrowser_ScriptSessionNotifyImageSourceChangeEx(
+                g_browser_script_session.session, "source", 3UL);
+        ok = relation_rc == 0 && rc == PSCRIPT_OK &&
+                PBrowser_ScriptSessionRunMicrotasks(
+                g_browser_script_session.session) == PSCRIPT_OK;
+        if (ok) {
+            memset(&ctx, 0, sizeof(ctx));
+            ok = PCore_FetchImageResources(document, image_srcset_fetch,
+                    image_srcset_free, &ctx, &found, &fetched) == 0 &&
+                    found == 1 && fetched == 0 && ctx.calls == 1 &&
+                    ctx.matched == 0 && ctx.frees == 0 &&
+                    PCore_StyleDocument(document, sheet) == 0 &&
+                    PCore_LayoutDocument(document, 240, 320) == 0;
+        }
+        if (ok) {
+            relation_rc = PCore_NodeRelationById(document, "hero",
+                    PCORE_NODE_RELATION_IMAGE_COMPLETE, 0, NULL, 0,
+                    NULL, &number);
+            ok = relation_rc == 0 && number == 1 &&
+                    PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_ERROR, 3UL) == PSCRIPT_OK &&
+                    PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_LOAD, 3UL) ==
+                    PSCRIPT_ERROR_ARGUMENT &&
+                    PBrowser_ScriptSessionNotifyImageEventEx(
+                    g_browser_script_session.session, "hero",
+                    PBROWSER_SCRIPT_IMAGE_EVENT_ERROR, 2UL) ==
+                    PSCRIPT_ERROR_ARGUMENT;
+        }
+    }
+    if (result != NULL) {
+        cstr_copy(result_text, sizeof(result_text), result);
+    }
+    if (!ok && error[0] == '\0' &&
+            PBrowser_ScriptSessionGetError(
+            g_browser_script_session.session) != NULL) {
+        cstr_copy(error, sizeof(error), PBrowser_ScriptSessionGetError(
+                g_browser_script_session.session));
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    test_host_set_device_viewport(vw, vh);
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d relation=%d result=%s number=%d",
+                    stage, rc, relation_rc,
+                    result_text[0] != '\0' ? result_text : "(null)",
+                    number);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1300 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1300 OK",
+            "generation-aware image replacement retires pending decode state"
+            " and rejects late load/error notifications across source A->B->A"
+            " and a failed candidate while the Core-selected currentSrc stays authoritative.");
     return TRUE;
 }
 
@@ -113870,6 +114179,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1297: ok = test1297_browser_live_tag_collection_contract(); break;
         case 1298: ok = test1298_browser_nested_element_staging_contract(); break;
         case 1299: ok = test1299_browser_image_terminal_id_rename_contract(); break;
+        case 1300: ok = test1300_browser_image_source_generation_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

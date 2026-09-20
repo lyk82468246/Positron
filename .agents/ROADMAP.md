@@ -100,17 +100,17 @@ Browser-created Element graph 已完成并由组件 README、测试文档和当�
 
 ### B. 图像 source mutation 与 pending decode 的终态一致性
 
-**状态：待取证。公共所有者：positron_image.dll / positron_core.dll / positron_browser.dll。**
+**状态：已完成（next861）。公共所有者：positron_browser.dll，并复用 Core 的 source
+选择结果。**
 
-现有能力已经覆盖有界 src/srcset/sizes/picture 选择、decode Promise、load/error 通知和
-source mutation callback；next860 还证明了支持的 `Element.id` 改名会回收旧图像终态 key，
-但绝对 URL、完整 CORS/referrer、任意 loading 策略和视觉行为仍由边界限制。下一步只有在离线
-网络 fixture 能稳定复现“source 改变、旧 decode 退休、新候选
-提交或失败”的组合时才选择本候选。
-
-实现必须保持 candidate/resource generation、取消、旧资源释放和 optional/required gate
-的一致性；宿主不能重新实现选择算法。完成标准是 source mutation 的旧 promise/终态分类、
-资源清理和失败回滚均有 Core/Browser 自动断言，视觉差异另列人工门。
+`PBrowser_ScriptSessionNotifyImageSourceChangeEx` 与
+`PBrowser_ScriptSessionNotifyImageEventEx` 以宿主递增的非零 generation 隔离 source
+A→B→A：旧 pending decode、旧终态和缺失/过旧/不匹配事件都会 fail closed，失败候选只
+接受匹配 generation 的 `error`。source 入口对不可寻址的 `<picture>` 关系保持拒绝；
+宿主仍负责 Core 选择、fetch、decode、layout 和 paint。TEST1300 已覆盖旧 promise、
+终态分类和失败候选；generation/终态 map 各自保持 64 项预算，并取得正式设备门；证据与剩余绝对 URL、CORS/referrer、
+loading 和视觉限制分别见 [`HANDOFF.md`](HANDOFF.md) 与
+[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。本节不再作为待选 backlog。
 
 ### C. Native editing 与人工输入矩阵的产品边界
 

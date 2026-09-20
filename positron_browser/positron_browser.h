@@ -3243,6 +3243,15 @@ PBROWSER_API unsigned int PBrowser_ScriptSessionDispatchEvent(
  * a failed script call returns PSCRIPT_ERROR_CALL. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
         const char *element_id, unsigned int event_kind);
+/* Generation-aware image terminal notification. `generation` is a non-zero
+ * host-owned replacement generation for this image. Once a generation has
+ * been established, notifications without the same generation are rejected;
+ * this lets a host discard a late event from an older A->B->A replacement.
+ * The legacy entry above remains available for sessions that do not use
+ * generation-aware source notifications. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageEventEx(HANDLE hSession,
+        const char *element_id, unsigned int event_kind,
+        unsigned long generation);
 /* Notify the Browser that a Core-owned image or picture source changed after
  * the host mutated the document. `element_id` names either the img or a
  * source inside its nearest picture. The host must call this after the Core
@@ -3251,6 +3260,15 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
  * not fetch, select, decode, lay out or paint the image. */
 PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
         HANDLE hSession, const char *element_id);
+/* Generation-aware source replacement notification. The host must increment
+ * `generation` for each replacement before starting a new fetch/layout pass;
+ * a lower generation is rejected. For a <source> owner the bounded Browser
+ * relation must resolve its nearest <picture> and an ID-addressable img;
+ * otherwise this call fails closed and the host should notify that img by
+ * ID. This only invalidates Browser decode/event state; Core selection,
+ * fetching, decoding, layout and paint remain host/Core responsibilities. */
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChangeEx(
+        HANDLE hSession, const char *element_id, unsigned long generation);
 /* Register/unregister the optional synchronous request bridge described
  * above. Register after PBrowser_ScriptSessionRegisterDomAttributeCallbacks;
  * mutation metadata travels through that existing attribute native slot and

@@ -119,7 +119,12 @@
   不可取消，重复同终态幂等，过时/相反/未就绪通知 fail closed。该桥不自动抓取、选择、
   解码或绘制图像；每个 session 的 image/source 终态映射最多 64 项，source 改变会释放
   旧项；支持的 `Element.id` setter 改名也会释放旧 key，避免改名后耗尽终态预算；超限
-  的新终态通知保持 fail closed。脚本写入 img 的 `src`/`srcset`/`sizes` 或
+  的新终态通知保持 fail closed。generation-aware 的 Ex 入口接受宿主递增的非零替换
+  generation；一旦某个 image/source key 建立 generation，缺失 generation 的旧入口、
+  较低或不匹配的 Ex 通知均 fail closed。source Ex 入口只在有界关系能解析最近
+  `<picture>` 与带 id 的 `<img>` 时建立 generation；匿名或不可寻址关系直接拒绝，宿主
+  应改为通知该 img。generation map 与终态 map 都受每 session 64 项预算约束。脚本写入
+  img 的 `src`/`srcset`/`sizes` 或
   picture source 的 `media`/`type`/`srcset`/`sizes` 时，宿主可在 DOM attribute callbacks
   之后注册可选的 `PBrowser_ScriptSessionRegisterImageSourceCallbacks`，同步取得借用的
   id/kind/attribute/removed 元数据；该桥复用既有 native slot，不执行自动 I/O、选择、
@@ -556,6 +561,12 @@ attribute 和 removed 元数据；重复注册、native-function 数量不变、
 fail closed 和注销后的静默均已自动断言。该门不执行自动资源替换，也不覆盖通用动态 DOM
   插入/删除（TEST1201、TEST1214–1216 仅覆盖有界 removal 路径）、完整 loading、
   视觉或触摸/SIP 风险。
+- TEST1300 覆盖 generation-aware image source replacement：source A→B→A 时旧
+  `decode()` 以 `EncodingError` 退休，Core 选出的 `currentSrc` 仍是唯一真值；旧
+  generation、缺失 generation 的 legacy event 和相反终态均被拒绝，失败候选只接受匹配
+  generation 的 `error`。夹具使用带 id 的 `<picture>`/`<img>` 关系；匿名或不可寻址的
+  source 关系仍按上述 fail-closed 限制处理。该门不增加自动 fetch/decode/layout/paint，
+  也不覆盖绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

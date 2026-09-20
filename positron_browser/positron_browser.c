@@ -6154,13 +6154,30 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "v=owner.getAttribute(attr);return v===null?'':v;}"
         "var imageDecodePending9=[];var imageDecodeMax9=64;"
         "var imageEventStates9={};var imageEventStateCount9=0;"
-        "var imageEventStateMax9=64;"
-        "function imageIdChanged9(owner,oldId,newId){var key;"
+        "var imageSourceGenerations9={};var imageSourceGenerationCount9=0;"
+        "var imageSourceGenerationMax9=64;var imageEventStateMax9=64;"
+        "function imageGeneration9(info){var value;"
+        "if(!info||info.generation===undefined){return 0;}"
+        "value=Number(info.generation);if(!isFinite(value)||value<=0||"
+        "value!==Math.floor(value)||value>4294967295){return -1;}return value;}"
+        "function imageIdChanged9(owner,oldId,newId){var key;var nextKey;"
+        "var generation;"
         "if(!image9(owner)||oldId===undefined||oldId===null||"
         "String(oldId)===''||String(oldId)===String(newId)){return;}"
-        "key='$'+String(oldId);if(imageEventStates9[key]!==undefined){"
+        "key='$'+String(oldId);nextKey='$'+String(newId);"
+        "if(imageEventStates9[key]!==undefined){"
         "delete imageEventStates9[key];if(imageEventStateCount9>0){"
-        "imageEventStateCount9--;}}}"
+        "imageEventStateCount9--;}}"
+        "if(String(newId)===''){"
+        "if(imageSourceGenerations9[key]!==undefined){"
+        "delete imageSourceGenerations9[key];if(imageSourceGenerationCount9>0){"
+        "imageSourceGenerationCount9--;}}return;}"
+        "generation=imageSourceGenerations9[key];"
+        "if(generation===undefined){return;}"
+        "if(imageSourceGenerations9[nextKey]===undefined){"
+        "imageSourceGenerations9[nextKey]=generation;delete imageSourceGenerations9[key];}"
+        "else{delete imageSourceGenerations9[key];if(imageSourceGenerationCount9>0){"
+        "imageSourceGenerationCount9--;}}}"
         "g.__pcoreImageIdChanged9=imageIdChanged9;"
         "function imageException9(message,name){var e;"
         "if(typeof g.DOMException==='function'){return new g.DOMException(message,name);}"
@@ -6212,12 +6229,37 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(!doc||typeof doc.getElementsByTagName!=='function'){return false;}"
         "images=doc.getElementsByTagName('img');limit=images.length;if(limit>64){limit=64;}"
         "for(i=0;i<limit;i++){imageRefresh9(images[i]);}return true;}"
+        "function imageApplyGeneration9(owner,generation){var picture;var images;"
+        "var i;var limit;var key;var current;var found=0;var needed=0;"
+        "if(image9(owner)){key=imageEventKey9(owner);current=imageSourceGenerations9[key];"
+        "if(current!==undefined&&generation<current){return false;}"
+        "if(current===undefined&&imageSourceGenerationCount9>=imageSourceGenerationMax9){"
+        "return false;}if(current===undefined){imageSourceGenerationCount9++;}"
+        "imageSourceGenerations9[key]=generation;return true;}"
+        "if(!source9(owner)||!doc||typeof doc.getElementsByTagName!=="
+        "'function'||(picture=picture9(owner))===null){return false;}"
+        "images=doc.getElementsByTagName('img');limit=images.length;if(limit>64){limit=64;}"
+        "for(i=0;i<limit;i++){if(picture9(images[i])===picture){"
+        "key=imageEventKey9(images[i]);current=imageSourceGenerations9[key];"
+        "if(current!==undefined&&generation<current){return false;}found++;}}"
+        "if(found===0){return false;}for(i=0;i<limit;i++){"
+        "if(picture9(images[i])===picture&&imageSourceGenerations9[imageEventKey9(images[i])]===undefined){"
+        "needed++;}}if(imageSourceGenerationCount9+needed>imageSourceGenerationMax9){"
+        "return false;}for(i=0;i<limit;i++){if(picture9(images[i])===picture){"
+        "key=imageEventKey9(images[i]);if(imageSourceGenerations9[key]===undefined){"
+        "imageSourceGenerationCount9++;}imageSourceGenerations9[key]=generation;}}return true;}"
         "g.__pcoreImageViewportChanged9=function(){return imageRefreshAll9();};"
-        "g.__pcoreImageSourceChanged=function(info){var owner;var id;"
+        "function imageSourceChanged9(info,withGeneration){var owner;var id;"
+        "var generation;"
         "if(!info||!doc||typeof doc.getElementById!=='function'){return false;}"
         "id=String(info.id||'');if(id===''){return false;}owner=doc.getElementById(id);"
-        "if(image9(owner)){return imageRefresh9(owner);}if(source9(owner)){"
-        "return imageRefreshPicture9(owner);}return false;};"
+        "if(!image9(owner)&&!source9(owner)){return false;}"
+        "if(withGeneration){generation=imageGeneration9(info);if(generation<=0||"
+        "!imageApplyGeneration9(owner,generation)){return false;}}"
+        "if(image9(owner)){return imageRefresh9(owner);}"
+        "return imageRefreshPicture9(owner);}"
+        "g.__pcoreImageSourceChanged=function(info){return imageSourceChanged9(info,false);};"
+        "g.__pcoreImageSourceChangedEx=function(info){return imageSourceChanged9(info,true);};"
         "function imageCheckDecode9(owner,source){var current;var complete;"
         "var width;var height;if(!image9(owner)){imagePendingSettle9(owner,source,"
         "false,imageException9('Image is not active','InvalidStateError'));return;}"
@@ -6244,20 +6286,28 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "imageDecodePending9.splice(i,1);try{p.reject(error);}catch(imageTeardownError){}}"
         "return true;};"
         "g.__pcoreDispatchImageEvent=function(info){var owner;var type;var source;"
-        "var state;var complete;var width;var height;var event;"
+        "var state;var complete;var width;var height;var event;var key;"
+        "var generation;var expected;"
         "if(!info||!g.document||typeof g.document.getElementById!=='function'){return false;}"
         "type=String(info.type||'');if(type!=='load'&&type!=='error'){return false;}"
         "owner=g.document.getElementById(String(info.id||''));if(!image9(owner)||"
-        "!imageHasSource9(owner)){return false;}source=imageSource9(owner);"
+        "!imageHasSource9(owner)){return false;}key=imageEventKey9(owner);"
+        "generation=imageGeneration9(info);if(generation<0){return false;}"
+        "expected=imageSourceGenerations9[key];if(expected!==undefined&&"
+        "(generation===0||generation!==expected)){return false;}"
+        "if(expected===undefined&&generation>0){if(imageSourceGenerationCount9>="
+        "imageSourceGenerationMax9){return false;}imageSourceGenerations9[key]=generation;"
+        "imageSourceGenerationCount9++;}"
+        "source=imageSource9(owner);"
         "try{complete=owner.complete;width=owner.naturalWidth;height=owner.naturalHeight;}"
         "catch(imageEventStateError){return false;}if(!complete){return false;}"
         "if(type==='load'&&(width<=0||height<=0)){return false;}"
         "if(type==='error'&&(width>0&&height>0)){return false;}"
-        "state=imageEventStates9[imageEventKey9(owner)];if(state&&state.source===source){"
+        "state=imageEventStates9[key];if(state&&state.source===source){"
         "if(state.state===type){return true;}if(state.state!==''&&state.state!==type){return false;}}"
         "if(!state&&imageEventStateCount9>=imageEventStateMax9){return false;}"
         "event=new g.Event(type,{bubbles:false,cancelable:false});event.isTrusted=true;"
-        "imageEventStates9[imageEventKey9(owner)]={source:source,state:type};"
+        "imageEventStates9[key]={source:source,state:type};"
         "if(!state){imageEventStateCount9++;}"
         "owner.dispatchEvent(event);if(type==='load'){imagePendingSettle9(owner,"
         "source,true,null);}else{imagePendingSettle9(owner,source,false,"
@@ -18645,6 +18695,55 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyImageEvent(HANDLE hSession,
             PSCRIPT_ERROR_ARGUMENT;
 }
 
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageEventEx(HANDLE hSession,
+        const char *element_id, unsigned int event_kind,
+        unsigned long generation)
+{
+    p_browser_script_session *session;
+    char id_json[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX * 6 + 1];
+    char args[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX * 6 + 128];
+    const char *event_type;
+    const char *result;
+    int escaped;
+    int length;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || element_id == NULL ||
+            element_id[0] == '\0' ||
+            strlen(element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            (event_kind != PBROWSER_SCRIPT_IMAGE_EVENT_LOAD &&
+            event_kind != PBROWSER_SCRIPT_IMAGE_EVENT_ERROR) ||
+            generation == 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    event_type = event_kind == PBROWSER_SCRIPT_IMAGE_EVENT_LOAD ?
+            "load" : "error";
+    escaped = p_browser_script_json_escape(element_id, id_json,
+            sizeof(id_json));
+    if (escaped < 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    length = _snprintf(args, sizeof(args) - 1,
+            "[{\"id\":\"%s\",\"type\":\"%s\",\"generation\":%lu}]",
+            id_json, event_type, generation);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreDispatchImageEvent", args);
+    if (rc != PSCRIPT_OK) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    if (result == NULL) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    return strcmp(result, "true") == 0 ? PSCRIPT_OK :
+            PSCRIPT_ERROR_ARGUMENT;
+}
+
 PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
         HANDLE hSession, const char *element_id)
 {
@@ -18675,6 +18774,49 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChange(
     args[length] = '\0';
     rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
             "__pcoreImageSourceChanged", args);
+    if (rc != PSCRIPT_OK) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    result = PBrowser_ScriptSessionGetResult(hSession);
+    if (result == NULL) {
+        return PSCRIPT_ERROR_CALL;
+    }
+    return strcmp(result, "true") == 0 ? PSCRIPT_OK :
+            PSCRIPT_ERROR_ARGUMENT;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionNotifyImageSourceChangeEx(
+        HANDLE hSession, const char *element_id, unsigned long generation)
+{
+    p_browser_script_session *session;
+    char id_json[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX * 6 + 1];
+    char args[PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX * 6 + 64];
+    const char *result;
+    int escaped;
+    int length;
+    int rc;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || element_id == NULL ||
+            element_id[0] == '\0' ||
+            strlen(element_id) >= PBROWSER_SCRIPT_ACTIVE_ELEMENT_ID_MAX ||
+            generation == 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    escaped = p_browser_script_json_escape(element_id, id_json,
+            sizeof(id_json));
+    if (escaped < 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    length = _snprintf(args, sizeof(args) - 1,
+            "[{\"id\":\"%s\",\"generation\":%lu}]",
+            id_json, generation);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    args[length] = '\0';
+    rc = PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreImageSourceChangedEx", args);
     if (rc != PSCRIPT_OK) {
         return PSCRIPT_ERROR_CALL;
     }
