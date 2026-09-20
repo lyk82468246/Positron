@@ -288,7 +288,9 @@
   input/button；普通、禁用、跨 form、伪造对象、无 id、超限或缺少 callback 均安全失败。
   构造成功后 Browser 在 form 上同步派发非冒泡、不可取消的 `formdata` 事件，事件的
   `formData` 指向正在返回的对象；监听器可在构造返回前修改字段，`form.onformdata`
-  也可用。它不触发 validation、submit/reset 事件、默认动作或导航。Browser 对象仍只
+  也可用。脚本对象的 `append()`、新键 `set()` 和数组构造与原生快照共享 64 项预算；
+  超限抛出 `QuotaExceededError`，失败不改变旧 pairs，替换已有键和删除后的追加仍可用。
+  它不触发 validation、submit/reset 事件、默认动作或导航。Browser 对象仍只
   返回 filename/type 和空内容；应用若需发出 multipart 请求，必须把 Core snapshot 交给
   `PCore_FormDataEncode()` 并自行提供同步 file callback。完整 live
   HTMLFormControlsCollection、File/Blob 读取和其他 form-associated 扩展及浏览器完整表单树
@@ -585,6 +587,9 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
   snapshot 仍可生成 multipart body，并断言成功控件顺序、文件 bytes、容量/size-probe
   原子性和 callback 缺失失败。Browser `FormData` 对象本身仍是 metadata-only；事件修改、
   File/Blob API、网络发送和 native 表单视觉不由该夹具承诺。
+- TEST1303 覆盖 Browser 脚本 `FormData` 的 64 项 mutation budget：满容量时 append、
+  新键 set 和数组构造的 `QuotaExceededError`、失败不变性、已有键替换以及删除后的追加。
+  这只约束 pairs 数量，不提供完整 File/Blob 内容、网络发送或 native 表单视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

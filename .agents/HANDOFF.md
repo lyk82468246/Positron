@@ -39,6 +39,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   form、submitter 顺序、binary file bytes、size probe、容量不足无部分写入和缺少 callback；
   相邻 TEST1301 与 TEST999 一并回归后，`tmp/device-runs/20260920-103450-next863-formdata-regression`
   的 Debug ARMV4I 外置卡门为 3/3 PASS，完整日志、双空间预检、清理、`crash_check=PASS`，无新增 dump。
+- next864 在 `positron_browser.dll` 收紧脚本 `FormData` 的固定容量：`append()`、新键
+  `set()` 与数组构造共享 64 项上限，满容量操作抛出 `QuotaExceededError` 且不改变旧 pairs，
+  已有键替换和删除后的追加仍可用。TEST1303 与 TEST999 的 Debug ARMV4I 外置卡设备门在
+  `tmp/device-runs/20260920-104543-next864` 为 2/2 PASS；日志完整回收，双空间预检、
+  外置部署清理、`crash_check=PASS`，无新增 dump。首次设备门发现并修正了跨 bootstrap IIFE
+  的异常构造引用，修复后才形成有效证据。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -61,8 +67,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next863 已完成并通过 `1301-1302,999` 设备门，Core 现在同时支持 submission 与独立 FormData
-multipart wire encoding，并完成普通 form、size/failure/binary-file 合同取证。下一批从路线图 C 的人工输入边界或
+next864 已完成并通过 `1303,999` 设备门，Browser 脚本 FormData 现在有共享的 64 项 mutation
+budget 和 fail-closed 异常合同；Core submission/独立 FormData multipart wire encoding 的
+普通 form、size/failure/binary-file 合同也保持通过。下一批从路线图 C 的人工输入边界或
 新的可复现公共 DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定
 边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
@@ -184,17 +191,17 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1302。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1302,999`。
+- `TEST_MAX_NUMBER`：1303。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1303,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-103450-next863-formdata-regression` 是本批最新有效证据：Debug ARMV4I
-`1301-1302,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1301、TEST1302 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,980,192,256 字节可用，内部 object-store 可用
+`tmp/device-runs/20260920-104543-next864` 是本批最新有效证据：Debug ARMV4I
+`1303,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1303 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,862,489,600 字节可用，内部 object-store 可用
 2,480,128 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
@@ -222,7 +229,7 @@ dump=0。日志明确记录 TEST1301、TEST1302 和 TEST999 均为 OK，`TESTBEN
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1302 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
+- TEST1201–1303 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
   body.text、session cookie、document.write、Core-backed document.title 与 bounded
   DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
   detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
@@ -233,8 +240,9 @@ dump=0。日志明确记录 TEST1301、TEST1302 和 TEST999 均为 OK，`TESTBEN
   `insertAdjacentElement()`、direct Element-child `appendChild()`/`insertBefore()`/`removeChild()`、
   primitive-only `replaceChildren()` wrapper reconciliation、嵌套 Browser-created Element
   staging、脱离后的 direct CharacterData 快照、image source generation/late-event
-  rejection（TEST1300）、Core multipart wire encoder/host file callback contract（TEST1301）
-  以及 independent FormData wire encoder（TEST1302）
+  rejection（TEST1300）、Core multipart wire encoder/host file callback contract（TEST1301）、
+  independent FormData wire encoder（TEST1302）以及 Browser script FormData mutation budget
+  （TEST1303）
   夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
@@ -300,7 +308,8 @@ submission/multipart、dialog/default-submit、reset、按坐标的 submit/reset
 `HTMLFormElement.submit()` direct path 以及 `new FormData(form[, submitter])` snapshot 也
 复用这条 owner 规则。direct path 和 FormData bridge 仅支持有 id form；前者跳过 validation、
 submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled submit-type input/button，
-最多返回 64 项且 Browser 对象仍只返回 filename/type metadata。应用可将 Core snapshot 交给
+最多返回 64 项且 Browser 对象仍只返回 filename/type metadata；脚本对象的 append、新键 set 和
+数组构造也共享这 64 项预算，超限抛出 QuotaExceededError 并保留旧 pairs。应用可将 Core snapshot 交给
 `PCore_FormDataEncode()` 生成 multipart body；Browser 构造成功后同步派发非冒泡、不可取消的
 `formdata` 事件，监听器可修改返回对象。完整 live collection、File/Blob API、异步文件读取、
 复杂 parser 重构和 native 表单视觉仍未实现。
@@ -309,7 +318,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next863 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
+next864 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
 或先记录源码/自动门可复现的公共 DLL 缺口，再分配下一个 next。新纵切必须明确所有者、
 预算、旧状态退休/失败回滚合同，并取得相邻自动回归、正式设备门和职责文档更新；崩溃、
 数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。

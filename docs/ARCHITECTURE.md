@@ -87,6 +87,7 @@ Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session�
 
 - history、navigation candidate/resource observation、页面生命周期、viewport、visualViewport、scroll restoration 和任务检查点；
 - 有界 DOM/Element/CharacterData wrapper、属性 facade、selector、form/option metadata、image metadata、Event 和 validation 对象；
+- `FormData(form[, submitter])` 的 detached successful-control snapshot、同步 `formdata` 事件和脚本对象；脚本 `append()` 及新键 `set()` 与构造器共享 64 项预算，超限抛出 `QuotaExceededError` 且不部分修改；
 - 有界图像 `decode()` Promise 与 host 驱动的 `load`/`error` 终态；source 或支持的
   `Element.id` setter 改变会回收旧 pending/终态 key，宿主仍负责 Core relation、资源 I/O、
   解码和通知时机。generation-aware Ex 通知可隔离 source A→B→A 的旧 promise/终态；
@@ -112,7 +113,7 @@ Browser-created wrapper 也保持 identity。刷新超过预算时保留上一�
 
 Browser 持有 candidate generation、取消/退休状态、资源终态、required/optional gate、重试预算和脱敏失败摘要。宿主拥有 worker、response、网络策略和页面提交时机；提交前通过 Browser snapshot 检查 candidate 与 resource gate，清理前复制 cleanup snapshot，再释放 handle。旧页保留、过时消息隔离和 pending 终态不能由宿主另造一套分类。
 
-Script session 的 native function 数量、listener、collection、Fragment、selector、字符串和任务队列都受固定预算约束。超限、参数错误、回调缺失、stale handle 和不支持的 Web API 均按头文件约定返回安全失败或 no-op，不伪造完整浏览器行为。
+Script session 的 native function 数量、listener、collection、Fragment、selector、字符串、FormData pairs 和任务队列都受固定预算约束。超限、参数错误、回调缺失、stale handle 和不支持的 Web API 均按头文件约定返回安全失败或 no-op，不伪造完整浏览器行为。
 
 ## 内部静态库
 

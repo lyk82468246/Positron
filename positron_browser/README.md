@@ -36,7 +36,7 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 
 - `textContent`、非编辑元素的 `innerText`、`innerHTML`/`outerHTML`、`document.write` 和 title；
 - selector 的 `matches`、`closest`、`querySelector(All)` 有界子集；
-- form owner、validation、`form.elements`/`FormData` snapshot、option/select metadata 和有限 `HTMLImageElement` metadata；
+- form owner、validation、`form.elements`/`FormData` snapshot、同步 `formdata` 事件、option/select metadata 和有限 `HTMLImageElement` metadata；脚本 `FormData` 的 `append()`、新键 `set()` 与数组构造共享 64 项上限，超限抛出 `QuotaExceededError` 并保留旧 pairs；
 - `HTMLImageElement.decode()` 以及 host 驱动的 `load`/`error` 终态桥：宿主必须先让 Core 的
   current source、complete 和 natural size 就绪，再调用通知入口；source 改变或支持的
   `Element.id` setter 改名会回收旧 pending/终态 key，每个 session 的终态映射最多 64 项，
@@ -80,7 +80,7 @@ contenteditable 只支持单元素、纯文本、UTF-16 selection offset 和有�
 
 ## 预算与错误
 
-native function、listener、collection、Fragment 根、selector 深度、字符串、资源项和任务队列均有固定 WM6 预算。所有 public entry 都检查 NULL、UTF-8、容量、索引、句柄和 owner；size-probe 不部分写出，超限不部分 mutation。错误码和 callback table 版本以 `positron_browser.h` 为准，新增能力应追加 Ex 版本而不是改变旧字段含义。
+native function、listener、collection、Fragment 根、selector 深度、字符串、FormData pairs、资源项和任务队列均有固定 WM6 预算。所有 public entry 都检查 NULL、UTF-8、容量、索引、句柄和 owner；size-probe 不部分写出，超限不部分 mutation。错误码和 callback table 版本以 `positron_browser.h` 为准，新增能力应追加 Ex 版本而不是改变旧字段含义。
 
 ## 宿主应负责的事情
 
