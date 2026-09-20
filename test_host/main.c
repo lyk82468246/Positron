@@ -6143,6 +6143,12 @@ static char   g_sequential_focus_modal_id[
         PBROWSER_SCRIPT_DIALOG_ID_MAX] = "";
 static int    g_file_picker_pending = 0;
 static int    g_file_picker_active = 0;
+/* A file input listener may mutate the DOM while the browser-owned native
+ * file transaction is dispatching its input -> change pair.  Keep the
+ * intermediate layout repair outside the input callback itself; rebuilding
+ * Core's retained box tree from inside that callback can invalidate the
+ * browser transaction's active event path. */
+static int    g_file_input_restyle_pending = 0;
 static HANDLE g_file_picker_pending_document = NULL;
 static HWND   g_file_picker_pending_hwnd = NULL;
 static unsigned int g_file_picker_pending_index = 0;
@@ -6327,6 +6333,22 @@ static void pcore_file_picker_clear_pending(void)
     g_file_picker_pending_index = 0;
 }
 
+/* A window can be closed while an interaction or deferred picker message is
+ * still posted to it.  Do not let a recycled HWND receive that old host work
+ * during the next manual fixture. */
+static void pcore_discard_window_messages(HWND hwnd)
+{
+    MSG message;
+
+    if (hwnd == NULL) {
+        return;
+    }
+    while (PeekMessage(&message, hwnd, WM_PCORE_INTERACTION_RESTYLE,
+            WM_PCORE_FILE_PICKER, PM_REMOVE)) {
+        /* The corresponding state is cleared by the caller. */
+    }
+}
+
 static void pcore_toggle_focus_clear(void)
 {
     g_toggle_focus_document = NULL;
@@ -6375,6 +6397,7 @@ static void pcore_browser_script_session_destroy(void)
     pcore_disclosure_focus_clear();
     pcore_sequential_focus_clear();
     pcore_file_picker_clear_pending();
+    g_file_input_restyle_pending = 0;
     if (g_browser_script_session.session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeFilePickerState(
                 g_browser_script_session.session);
@@ -10621,6 +10644,20 @@ static int pcore_browser_script_select_dispatch(void *pw,
             strcmp(info->event_type, "change") != 0)) {
         return -1;
     }
+    /* File listeners commonly update a visible status node from the input
+     * callback.  Core then releases its retained layout before Browser asks
+     * for the following change event.  Repair that layout only after the
+     * input callback has returned; doing it inside the input callback can
+     * invalidate Browser's active native-file transaction. */
+    if (strcmp(info->event_type, "change") == 0 &&
+            g_file_input_restyle_pending) {
+        g_file_input_restyle_pending = 0;
+        if (g_browser_script_session.bridge == bridge &&
+                bridge->hwnd != NULL && IsWindow(bridge->hwnd) &&
+                pcore_restyle_form_state(bridge->hwnd, 1) != 0) {
+            return -1;
+        }
+    }
     result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
             info->event_type, info->bubbles ? 1 : 0,
             info->cancelable ? 1 : 0, NULL);
@@ -11648,15 +11685,13 @@ static int pcore_browser_script_input_dispatch(void *pw,
     /* A trusted file selection dispatches input and change back-to-back.  An
      * input listener is allowed to mutate another node; Core then invalidates
      * the retained box tree before Browser asks for the following change
-     * event.  Restore the host-owned layout between those two callbacks so
-     * the second event still resolves the same file control.  This is kept
-     * specific to insertFromFile and does not turn ordinary script input into
-     * an implicit layout transaction. */
+     * event.  Mark the boundary here; the select callback repairs the layout
+     * after this input callback has returned. */
     if (result >= 0 && info->input_type != NULL &&
             strcmp(info->input_type, "insertFromFile") == 0 &&
             bridge->hwnd != NULL && IsWindow(bridge->hwnd) &&
-            pcore_restyle_form_state(bridge->hwnd, 1) != 0) {
-        return -1;
+            g_browser_script_session.bridge == bridge) {
+        g_file_input_restyle_pending = 1;
     }
     return (result < 0) ? -1 : 0;
 }
@@ -24472,6 +24507,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         KillTimer(hwnd, PCORE_SCRIPT_PUMP_TIMER);
         g_mouse_tracking = 0;
         g_interaction_restyle_pending = 0;
+        pcore_discard_window_messages(hwnd);
         pcore_native_edits_destroy();
         pcore_native_selects_destroy();
         if (g_browser_script_session.session != NULL) {

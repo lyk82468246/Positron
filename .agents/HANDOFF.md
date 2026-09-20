@@ -64,11 +64,12 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 metadata；它不声称脚本 File/Blob 已能向 Core 交付 multipart bytes。宿主只提供 picker、
 窗口和断言，产品语义仍归 Browser/Core。
 
-本轮还修复了 TEST232 暴露的宿主事件桥接缺口：文件选择的 `input` 监听器可以先修改页面
-文本，从而使 Core 的 retained layout 失效；参考宿主现在只对 `insertFromFile` 的连续
-`input`→`change` 事务在两次回调之间执行一次宿主拥有的有界重排，保持同一个 file 控件可
-命中。TEST231 使用真实窗口句柄覆盖取消、选择、错误和再次取消，定向设备门
-`231,999` 已 2/2 通过；TEST232/1310 仍需真实 GUI picker 的人工验收，不能以该自动证据代替。
+本轮回归审查对照 `c32e2222` 与 `b5debcec` 发现：活动 `input` 回调内重排会在事务返回前
+重建 Core retained box tree。当前宿主只记录有界待重排标记，等回调返回后由 `change`
+入口执行一次；session 销毁清除标记，`WM_DESTROY` 移除该 HWND 的交互/picker 消息。
+`tmp/device-runs/20260920-183530-next222` 的 `231,999` 定向门 2/2 通过，crash/dump=0；
+TEST232/263/1310 仍须真实 GUI picker 验收，不能以自动证据代替。完整报告见
+[`docs/history/TEST232-263-regression-review-20260920.md`](../docs/history/TEST232-263-regression-review-20260920.md)。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
 Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
@@ -219,14 +220,15 @@ owner、UTF-8/opaque handle 或明确的兼容遗留语义，FormData/multipart 
 - `TEST_MAX_NUMBER`：1310。
 - tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`；1309 是定向宿主可见性门，1310 是 manual-only FormData 证据夹具，两者都通过 `-TestSelection` 或专用 INI 显式加入，不改变窄 smoke 配置。
 - `test_host/test_host_manual_picker.ini`：`auto=0`、`javascript=1`，选择 `232,263,1310,999`；
-  `scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next232-fix` 已生成本轮
-  修复后的可运行手动包；旧的 `C:\WMShare\Positron-manual-next1310` 不应再用于 TEST232。
+  `scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next232-lifecycle-fix` 已生成
+  本轮修复后的可运行手动包；旧的 `C:\WMShare\Positron-manual-next232-fix` 和
+  `C:\WMShare\Positron-manual-next1310` 不应再用于这次连续验收。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-171804-next222` 是本轮最新有效自动证据：Debug ARMV4I
+`tmp/device-runs/20260920-183530-next222` 是本轮最新有效自动证据：Debug ARMV4I
 `231,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理和 `crash_check` 均 PASS，
 dump=0，日志含唯一 `TESTBENCH PASS`。它覆盖了 TEST232 所共享的文件选择事件桥接，并
 证明修复后的连续 `input`→`change` 路径不会因监听器重排而丢失目标。较早的 1302–1309
@@ -353,12 +355,14 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 next874 已完成公开头文件与消费者审计；next873 已完成参考宿主 `WM_SHOWWINDOW` 可见性接线、相邻源码审查和定向设备门；Browser
 仍拥有 visibility state、事件顺序和去重，宿主没有新增产品状态。history fallback 已移除，
-Core URL callback 的 WinInet 重复实现也已删除。本轮针对真实复现的 TEST232 文件选择失败，
-仅修复了宿主的 `insertFromFile` 重排接线，并以 TEST231 自动门验证；没有新增公共 DLL API，
-也没有改变路线图中的产品候选。唯一下一步是用刷新后的手动包完成 TEST232/1310 的 GUI
-picker 验收；若人工结果仍失败，保留完整日志并记录具体阶段，再决定是否形成新的公共能力
-候选。只有形成满足所有者、预算、失败回滚、fixture 和门标准的候选，才分配下一个 next；
-否则保持产品代码不变。崩溃、数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。
+Core URL callback 的 WinInet 重复实现也已删除。本轮针对 TEST232 的真实复现修复了宿主
+`insertFromFile` 重排时序和窗口销毁清理，并以 TEST231 自动门验证；没有新增公共 DLL API，
+也没有改变路线图中的产品候选。唯一下一步是用
+`C:\WMShare\Positron-manual-next232-lifecycle-fix` 完成 TEST232/263/1310 的 GUI picker
+连续验收；若 TEST232 仍失败，保留完整日志并记录精确阶段。TEST262/264 的自动失败已在
+审查报告中作为独立未决问题隔离，不能混入本次判断。只有形成满足所有者、预算、失败回滚、
+fixture 和门标准的候选，才分配下一个 next；否则保持产品代码不变。崩溃、数据损坏、严重
+布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、
