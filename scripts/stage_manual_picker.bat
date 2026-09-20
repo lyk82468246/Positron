@@ -17,7 +17,7 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 copy /Y "%ROOT%\test_host\test_host_manual_picker.ini" "%STAGE%\test_host.ini" || goto :fail
 
 echo.
-echo Manual picker package staged to %STAGE%.
+echo Manual picker and FormData probe package staged to %STAGE%.
 echo Run test_host.exe from the shared-folder equivalent on the connected WM6 device.
 exit /b 0
 

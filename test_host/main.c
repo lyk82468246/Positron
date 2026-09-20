@@ -382,7 +382,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1309
+#define TEST_MAX_NUMBER 1310
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -56102,7 +56102,11 @@ static BOOL test1309_browser_host_visibility_message_contract(void)
     ok = 1;
     pcore_browser_script_session_destroy();
     g_render_doc = (HANDLE) 1;
-    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    /* Keep this host-side lifecycle probe on the same one-time bootstrap
+     * headroom as a real page.  The Browser bootstrap is a large product
+     * program on a slow WM6 CPU; the public default budget remains unchanged
+     * for application scripts. */
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 4UL);
     g_browser_script_session.document = g_render_doc;
     g_browser_script_session.runtime = session;
     g_browser_script_session.session = session;
@@ -88961,6 +88965,224 @@ static BOOL test232_browser_file_picker_manual(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 1310 - file picker -> Browser FormData manual probe              */
+/* The picker and file bytes remain host/Core responsibilities. This page */
+/* only records the public Browser metadata boundary after a real WM6       */
+/* selection; it must not be treated as proof that script FormData can yet  */
+/* produce a Core multipart body.                                          */
+/* -------------------------------------------------------------------- */
+static BOOL test1310_browser_file_form_data_manual(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><h2>File upload / FormData probe</h2>"
+        "<p>Select the staged test_host.ini file, then inspect the detached "
+        "Browser FormData snapshot.</p>"
+        "<form id='upload-form' method='post' action='/positron-file-upload' "
+        "enctype='multipart/form-data'>"
+        "<label for='upload'>Upload file:</label>"
+        "<input id='upload' name='upload' type='file'>"
+        "<button id='inspect' type='button'>Inspect FormData</button>"
+        "</form><div id='events'>none</div>"
+        "<pre id='result'>waiting for a file</pre>"
+        "<p class='hint'>Expected current boundary: filename/type metadata is "
+        "visible to script; local path and file bytes are not exposed.</p>"
+        "<p class='hint'>Tap blank space or press Esc to finish.</p>"
+        "</body></html>";
+    static const char CSS[] =
+        "body{font:12px sans-serif;line-height:15px;margin:6px;"
+        "color:#202020;background:#ffffff;}"
+        "h2{font-size:16px;line-height:19px;color:#800000;"
+        "margin:0 0 4px 0;}"
+        "p{margin:4px 0;}"
+        "form{display:block;width:92%;border:1px solid #4060a0;"
+        "padding:5px;background:#eef6ff;}"
+        "label{display:block;margin-bottom:2px;}"
+        "input{display:block;width:92%;height:24px;}"
+        "button{display:block;margin-top:4px;height:24px;}"
+        "#events{display:block;width:92%;min-height:15px;"
+        "border:1px solid #808080;padding:2px;background:#f4f4f4;}"
+        "#result{display:block;width:92%;min-height:38px;"
+        "border:1px solid #808080;padding:2px;background:#fff8e8;"
+        "white-space:pre-wrap;word-wrap:break-word;}"
+        ".hint{font-size:11px;line-height:13px;}";
+    static const char LISTENER[] =
+        "window.fileEvents='';"
+        "function inspect(){var fd,f,r;try{"
+        "fd=new FormData(document.getElementById('upload-form'));"
+        "f=fd.get('upload');r=document.getElementById('result');"
+        "if(f===null){r.textContent='no-file';return;}"
+        "r.textContent='filename='+String(f.name)+'|type='+String(f.type)+'|"
+        "size='+String(f.size)+'|text='+String(f.text())+'|query='+"
+        "fd.toQueryString();}catch(e){r.textContent='error='+"
+        "String(e&&e.name||e);}}"
+        "function record(e){window.fileEvents+=e.type+'|'+"
+        "String(e.target.id||'')+';';"
+        "document.getElementById('events').textContent=window.fileEvents;"
+        "if(e.type==='change'){inspect();}}"
+        "var form=document.getElementById('upload-form');"
+        "form.addEventListener('input',record);"
+        "form.addEventListener('change',record);"
+        "document.getElementById('inspect').addEventListener('click',inspect);";
+    static const char EXPECTED_EVENTS[] = "input|upload;change|upload;";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PCoreFileInputInfo info;
+    char events[256];
+    char value[256];
+    char path[512];
+    char result[1024];
+    char error[384];
+    char summary[1536];
+    const char *stage;
+    int executed;
+    int ignored;
+    int vw;
+    int vh;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(events, 0, sizeof(events));
+    memset(value, 0, sizeof(value));
+    memset(path, 0, sizeof(path));
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    memset(summary, 0, sizeof(summary));
+    stage = "create";
+    executed = -1;
+    ignored = -1;
+    ok = 1;
+
+    if (g_testbench_auto) {
+        show_error(L"TEST 1310 SKIPPED",
+                "This test is manual-only; use the dedicated auto=0 upload INI.");
+        return FALSE;
+    }
+    if (!g_browser_javascript_enabled) {
+        show_error(L"TEST 1310 FAIL",
+                "Set javascript=1 in the manual upload INI so FormData metadata is visible.");
+        return FALSE;
+    }
+
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0, NULL, NULL,
+            NULL, &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        stage = "style-layout";
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/file-form-data-manual.css");
+        vw = GetSystemMetrics(SM_CXSCREEN) - GetSystemMetrics(SM_CXVSCROLL);
+        vh = GetSystemMetrics(SM_CYSCREEN);
+        if (vw <= 0) { vw = 224; }
+        if (vh <= 0) { vh = 320; }
+        test_host_set_device_viewport(vw, vh);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, vw, vh) != 0 ||
+                PCore_FileInputInfo(document, 0, &info, NULL, 0,
+                NULL, 0) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "install-session";
+        g_render_doc = document;
+        g_render_sheet = sheet;
+        g_doc_h = PCore_DocumentHeight(document);
+        g_scroll_y = 0;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        stage = "listener";
+        if (pcore_browser_script_session_evaluate(LISTENER, -1,
+                error, sizeof(error)) != 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        show_info(L"TEST 1310",
+                "A real WM6 file picker will open from the Upload file control.\n\n"
+                "1. Select the staged test_host.ini and confirm.\n"
+                "2. The page must show filename=test_host.ini (or the file you chose),\n"
+                "   a FormData query containing that filename, and input/change events.\n"
+                "3. The current public boundary intentionally exposes only bounded\n"
+                "   File metadata to script: local path and file bytes are not shown.\n"
+                "   This is evidence for the pending Browser->Core upload decision,\n"
+                "   not a claim that a multipart body was sent.\n\n"
+                "Tap blank space or press Esc to close and finish.");
+        stage = "window";
+        if (!show_render_window()) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        stage = "manual-result";
+        if (PCore_FileInputInfo(document, 0, &info, value,
+                sizeof(value), path, sizeof(path)) != 0 ||
+                value[0] == '\0' || path[0] == '\0' ||
+                PCore_NodeTextContentById(document, "events", events,
+                sizeof(events), NULL) != 0 ||
+                strcmp(events, EXPECTED_EVENTS) != 0 ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), NULL) != 0 ||
+                strstr(result, "filename=") == NULL ||
+                strstr(result, "size=") == NULL ||
+                strstr(result, "text=") == NULL) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s events=%s value=%s path=%s result=%s",
+                    stage, events, value, path, result);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1310 FAIL", error);
+        return FALSE;
+    }
+    _snprintf(summary, sizeof(summary) - 1,
+            "File picker returned a file and Browser FormData stayed bounded.\n"
+            "value=%s\npath=%s\nevents=%s\nresult=%s",
+            value, path, events, result);
+    summary[sizeof(summary) - 1] = '\0';
+    show_info(L"TEST 1310 OK", summary);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 233 - number min/max and malformed-value validation              */
 /* -------------------------------------------------------------------- */
 static BOOL test233_form_number_range(void)
@@ -114515,6 +114737,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1307: ok = test1307_browser_headers_special_keys_contract(); break;
         case 1308: ok = test1308_browser_special_key_registries_contract(); break;
         case 1309: ok = test1309_browser_host_visibility_message_contract(); break;
+        case 1310: ok = test1310_browser_file_form_data_manual(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

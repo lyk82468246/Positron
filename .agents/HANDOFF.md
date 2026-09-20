@@ -15,8 +15,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   容量、失败回滚、wrapper identity、旧页保留和生命周期边界集中记录在
   [`docs/TESTING.md`](../docs/TESTING.md)、组件 README 和公开头文件中。最近的 TEST1303–1308
   已覆盖 FormData/URLSearchParams 配额、Storage/Headers 特殊键和 Browser registry；TEST1309
-  另覆盖参考宿主的 WM_SHOWWINDOW 可见性接线；逐 next 证据由 Git 历史与 `tmp/` 设备记录保存，
-  本文件不复制时间线。
+  另覆盖参考宿主的 WM_SHOWWINDOW 可见性接线；本轮新增的 TEST1310 只提供真实文件选择器到
+  Browser FormData metadata 的 manual-only 证据，不新增公共 DLL 入口；逐批证据由 Git 历史与
+  `tmp/` 设备记录保存，本文件不复制时间线。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -57,6 +58,11 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 人工输入 backlog 或测试宿主扩展当作产品语义。稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
+
+本轮新增的 TEST1310 仍然保持该取舍：它在 `auto=0` 的真实 WM6 页面中选择一个文件，
+断言 `input`/`change` 顺序，并展示 Browser 当前可见的 filename/type/size/text/query
+metadata；它不声称脚本 File/Blob 已能向 Core 交付 multipart bytes。宿主只提供 picker、
+窗口和断言，产品语义仍归 Browser/Core。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
 Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
@@ -204,19 +210,22 @@ owner、UTF-8/opaque handle 或明确的兼容遗留语义，FormData/multipart 
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1309。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`；1309 是 next873 的定向宿主可见性门，通过 `-TestSelection` 显式加入，不改变窄 smoke 配置。
+- `TEST_MAX_NUMBER`：1310。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`；1309 是定向宿主可见性门，1310 是 manual-only FormData 证据夹具，两者都通过 `-TestSelection` 或专用 INI 显式加入，不改变窄 smoke 配置。
+- `test_host/test_host_manual_picker.ini`：`auto=0`、`javascript=1`，选择 `232,263,1310,999`；
+  `scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-next1310` 已生成可运行的
+  手动包，等待真实文件选择器观察。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-135159-next873-host-visibility` 是本批最新有效设备证据：Debug ARMV4I
-`1309,1138,1139,999`，4/4 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1309、TEST1138、TEST1139 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 49,065,689,088 字节可用，内部 object-store 可用
-9,547,776 字节；部署目录在完整日志回收后已删除。next869 的 `1308,1307,1306,999` 证据仍由
-Git 历史和对应 `tmp/` 目录保留，但不再是当前批次快照。
+`tmp/device-runs/20260920-153441-next875-file-upload-baseline` 是本轮最新有效自动证据：Debug
+ARMV4I `1302,1303,1308,1309,999`，5/5 PASS；外置卡双空间预检、完整日志回收、清理和
+`crash_check` 均 PASS，dump=0，日志含唯一 `TESTBENCH PASS`。TEST1309 首次在默认 1 秒
+bootstrap 预算下出现可复现 timeout；将宿主夹具改用既有页面 bootstrap 的 4× headroom 后，
+`tmp/device-runs/20260920-153337-next875-visibility-budget-fix` 的 `1309,999` 已 2/2 PASS，
+证明不是 WMDC、DLL 或设备空间故障。早先失败日志保留在 `tmp/` 供审计，不作为产品基线。
 ## 当前人工验收状态
 
 以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
@@ -260,7 +269,8 @@ Git 历史和对应 `tmp/` 目录保留，但不再是当前批次快照。
   Storage map（TEST1306）、Headers special-key snapshot（TEST1307）以及 prototype-safe
   DOM id/wrapper/event/dataset/BroadcastChannel registry（TEST1308），另有参考宿主
   WM_SHOWWINDOW 到 Browser visibility lifecycle 的消息接线（TEST1309）
-  夹具均已有相邻设备门；
+  夹具均已有相邻设备门；TEST1310 的 picker/FormData metadata 页面已构建并 staged，但尚未
+  完成需要人工选择文件的 GUI 验收；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；

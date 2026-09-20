@@ -23,7 +23,7 @@ fonts\...
 
 ## 四种测试方式
 
-包内 INI 默认是“当前源码实际 dispatch 且可自动运行的所有测试 + 自动断言”：`auto=1`，`javascript=0`，`tests=` 由脚本读取 `test_host/main.c` 的 `run_configured_tests` 自动生成，并补上特殊的 TEST7b 和 TEST999。源码明确标记为 `manual-only` 的测试（当前是 TEST232、TEST263）会从 `auto=1` 清单中排除，避免启动后被测试自身判为失败；源码中没有实际 dispatch 的编号（包括历史撤回或尚未接入的编号）也不会被伪造成可用测试。自动模式不弹测试确认框，结果写入同目录的 `test_host.log`，失败会在日志中留下 `ERROR`/`FAIL`。
+包内 INI 默认是“当前源码实际 dispatch 且可自动运行的所有测试 + 自动断言”：`auto=1`，`javascript=0`，`tests=` 由脚本读取 `test_host/main.c` 的 `run_configured_tests` 自动生成，并补上特殊的 TEST7b 和 TEST999。源码明确标记为 `manual-only` 的测试（当前是 TEST232、TEST263、TEST1310）会从 `auto=1` 清单中排除，避免启动后被测试自身判为失败；TEST1310 是真实 WM6 文件选择器到 Browser `FormData` 元数据的证据页面，不声称已经把脚本对象转换成 Core multipart body。源码中没有实际 dispatch 的编号（包括历史撤回或尚未接入的编号）也不会被伪造成可用测试。自动模式不弹测试确认框，结果写入同目录的 `test_host.log`，失败会在日志中留下 `ERROR`/`FAIL`。
 
 因此，新增自动测试时只要在源码中完成测试函数、`TEST_MAX_NUMBER`（如需）和 `run_configured_tests` dispatch，并重新编译对应的一套完整产物，下一次打包就会自动看到新编号。若新增测试是 manual-only，只会进入手动覆盖说明，不会进入默认自动清单。脚本不编译；若源码和二进制不是同一提交，测试清单可能领先于二进制，发布前应先完成构建。
 

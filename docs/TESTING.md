@@ -69,7 +69,7 @@ tests=1-5 7b 13 20,999
 | 所有自动安全测试 | 使用 nightly 生成的 INI，或让设备门按当前 dispatch 生成清单 |
 | 所有测试、人工模式 | 在全量清单中加入发布说明列出的 manual-only fixture，并设 `auto=0` |
 
-移走或改名 INI 只会进入旧式分组选择，不等于自动运行所有测试。manual-only fixture 不得放进 `auto=1` 清单；它们会主动拒绝自动运行，以免把未观察的人工行为伪装成通过。
+移走或改名 INI 只会进入旧式分组选择，不等于自动运行所有测试。manual-only fixture（当前为 TEST232、TEST263、TEST1310）不得放进 `auto=1` 清单；它们会主动拒绝自动运行，以免把未观察的人工行为伪装成通过。
 
 ## 能力回归分组
 
@@ -125,6 +125,11 @@ tests=1-5 7b 13 20,999
   消息由 Browser 去重，并保持 `visibilitychange`→`pagehide`/`pageshow` 顺序。该夹具只证明
   平台消息到公共 Browser 合同的映射，不把窗口可见性、bfcache 或系统 shell 策略扩展为
   Browser 自主行为。
+- TEST1310 是 manual-only 的真实页面证据夹具：它通过 WM6 文件选择器选择 `test_host.ini`，
+  在 `multipart/form-data` form 上构造 Browser `FormData`，并在页面显示文件名、类型、大小、
+  `text()` 与 query 摘要，同时记录 `input`/`change` 顺序。当前预期是脚本只能看到有界的
+  `File` metadata（通常 size/text 为空），本地路径和文件 bytes 不会进入 Browser；这条证据
+  用来审查待取证的 Browser→Core 上传组合，不等于 multipart body 已经发送。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 
