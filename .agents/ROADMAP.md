@@ -239,6 +239,8 @@ live collection、MutationObserver、Range/Selection、shadow DOM、worker/modul
 - 所需人工门完成，或明确进入允许累计的人工 backlog；
 - HANDOFF.md 覆盖为当前快照，KNOWN_LIMITATIONS.md 删除已完成边界并保留未完成边界；
 - 只有长期读者需要知道的稳定行为才更新 README、架构或测试文档；
+- 每轮开发结束都复核本路线图：已完成或过时的候选必须移除或降级，仍有效的候选必须更新状态，
+  有证据的新方向才可加入；若无需改动，也要在 HANDOFF 的交接检查中明确记录已复核；
 - 只提交本批 tracked 文件并推送当前分支，临时截图、日志和 tmp/ 不入 Git。
 
 完成后，候选从本路线图移除或改写为新的未完成边界；不得把完成段落重新追加回来。下一批
