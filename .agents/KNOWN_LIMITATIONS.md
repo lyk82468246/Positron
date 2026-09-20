@@ -290,6 +290,9 @@
   `formData` 指向正在返回的对象；监听器可在构造返回前修改字段，`form.onformdata`
   也可用。脚本对象的 `append()`、新键 `set()` 和数组构造与原生快照共享 64 项预算；
   超限抛出 `QuotaExceededError`，失败不改变旧 pairs，替换已有键和删除后的追加仍可用。
+  独立脚本 `URLSearchParams` 的 `append()`、新键 `set()` 和 pair-sequence 构造也共享
+  `PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS`（当前 64）项预算；超限同样抛出
+  `QuotaExceededError`，失败不改变旧 pairs，替换已有键和删除后的追加仍可用。
   它不触发 validation、submit/reset 事件、默认动作或导航。Browser 对象仍只
   返回 filename/type 和空内容；应用若需发出 multipart 请求，必须把 Core snapshot 交给
   `PCore_FormDataEncode()` 并自行提供同步 file callback。完整 live
@@ -590,6 +593,9 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
 - TEST1303 覆盖 Browser 脚本 `FormData` 的 64 项 mutation budget：满容量时 append、
   新键 set 和数组构造的 `QuotaExceededError`、失败不变性、已有键替换以及删除后的追加。
   这只约束 pairs 数量，不提供完整 File/Blob 内容、网络发送或 native 表单视觉。
+- TEST1304 覆盖 Browser 脚本 `URLSearchParams` 的 64 项 mutation budget：满容量时
+  append、新键 set 和 pair-sequence 构造的 `QuotaExceededError`、失败不变性、已有键替换
+  以及删除后的追加。该门不证明 URL 解析、导航、网络发送或 native 表单视觉。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

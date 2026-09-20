@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1303
+#define TEST_MAX_NUMBER 1304
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -56157,6 +56157,52 @@ static BOOL test1303_browser_form_data_mutation_budget_contract(void)
             " fixed 64-entry budget, throw QuotaExceededError without"
             " partial mutation, and still allow replacement or append after"
             " a deletion.");
+    return TRUE;
+}
+
+/* TEST 1304 - script URLSearchParams mutations share a fixed pair budget and
+ * reject over-limit append/set/constructor operations atomically. */
+static BOOL test1304_browser_urlsearchparams_mutation_budget_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var p=new URLSearchParams(),i,appendError=false,setError=false,"
+        "replaceOk=false,appendAfterDelete=false,constructorError=false;"
+        "for(i=0;i<64;i++){p.append('k'+i,'v'+i);}"
+        "try{p.append('overflow','x');}catch(e){appendError=e&&"
+        "e.name==='QuotaExceededError';}"
+        "try{p.set('new','x');}catch(e2){setError=e2&&"
+        "e2.name==='QuotaExceededError';}"
+        "replaceOk=p.size===64&&p.get('k0')==='v0'&&"
+        "p.get('overflow')===null&&p.get('new')===null;"
+        "p.set('k0','changed');replaceOk=replaceOk&&p.size===64&&"
+        "p.get('k0')==='changed';"
+        "p.delete('k0');p.append('after','ok');"
+        "appendAfterDelete=p.size===64&&p.get('k0')===null&&"
+        "p.get('after')==='ok';"
+        "try{var many=[];for(i=0;i<65;i++){many.push(['a'+i,'v']);}"
+        "new URLSearchParams(many);}catch(e3){constructorError=e3&&"
+        "e3.name==='QuotaExceededError';}"
+        "document.getElementById('result').textContent="
+        "String(appendError)+'|'+String(setError)+'|'+String(replaceOk)+'|'"
+        "+String(appendAfterDelete)+'|'+String(constructorError);";
+    static const char EXPECTED[] = "true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1304 FAIL", error[0] != '\0' ? error :
+                "Browser URLSearchParams mutation budget fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1304 OK",
+            "Script URLSearchParams append/set and pair-sequence"
+            " construction share the fixed 64-pair budget, throw"
+            " QuotaExceededError without partial mutation, and still allow"
+            " replacement or append after a deletion.");
     return TRUE;
 }
 
@@ -114478,6 +114524,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1301: ok = test1301_core_multipart_encoder_contract(); break;
         case 1302: ok = test1302_core_form_data_encoder_contract(); break;
         case 1303: ok = test1303_browser_form_data_mutation_budget_contract(); break;
+        case 1304: ok = test1304_browser_urlsearchparams_mutation_budget_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

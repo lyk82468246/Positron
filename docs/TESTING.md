@@ -86,6 +86,10 @@ tests=1-5 7b 13 20,999
   `set()` 和数组构造均抛出 `QuotaExceededError`，失败不改变既有 pairs；替换已有键以及
   删除后再次追加仍然成功。该夹具只证明脚本对象的内存边界，不扩展 File/Blob 内容、网络
   发送或 native 表单视觉。
+- TEST1304 覆盖 Browser 脚本 `URLSearchParams` 的固定 64 项预算：满容量时
+  `append()`、新键 `set()` 和 pair-sequence 构造均抛出 `QuotaExceededError`，失败不改变
+  既有 pairs；替换已有键以及删除后再次追加仍然成功。该夹具只证明脚本对象的内存边界，
+  不扩展 URL 解析、导航、网络发送或 native 表单视觉。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

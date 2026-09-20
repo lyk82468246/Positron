@@ -45,6 +45,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   `tmp/device-runs/20260920-104543-next864` 为 2/2 PASS；日志完整回收，双空间预检、
   外置部署清理、`crash_check=PASS`，无新增 dump。首次设备门发现并修正了跨 bootstrap IIFE
   的异常构造引用，修复后才形成有效证据。
+- next865 在 `positron_browser.dll` 为脚本 `URLSearchParams` 增加与公开头文件一致的固定
+  64 项 pair budget：`append()`、新键 `set()` 和 pair-sequence 构造超限抛出
+  `QuotaExceededError`，失败不改变旧 pairs；已有键替换和删除后的追加仍可用。TEST1304
+  与相邻 TEST1303、TEST999 在 `tmp/device-runs/20260920-105628-next865` 的 Debug ARMV4I
+  外置卡设备门为 3/3 PASS；日志完整回收，双空间预检、外置部署清理、`crash_check=PASS`，
+  无新增 dump。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -67,10 +73,11 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next864 已完成并通过 `1303,999` 设备门，Browser 脚本 FormData 现在有共享的 64 项 mutation
-budget 和 fail-closed 异常合同；Core submission/独立 FormData multipart wire encoding 的
-普通 form、size/failure/binary-file 合同也保持通过。下一批从路线图 C 的人工输入边界或
-新的可复现公共 DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定
+next865 的 Browser 脚本 URLSearchParams pair budget 已完成源码、头文件、TEST1304 夹具和
+`1304,1303,999` 设备门；Browser 的 FormData/URLSearchParams 两条脚本集合都具备显式的
+固定容量和 fail-closed 异常合同。Core submission/独立 FormData multipart wire encoding 的普通 form、
+size/failure/binary-file 合同也保持通过。下一批从路线图 C 的人工输入边界或新的可复现公共
+DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定
 边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
@@ -191,16 +198,16 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1303。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1303,999`。
+- `TEST_MAX_NUMBER`：1304。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1304,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-104543-next864` 是本批最新有效证据：Debug ARMV4I
-`1303,999`，2/2 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1303 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+`tmp/device-runs/20260920-105628-next865` 是本批最新有效设备证据：Debug ARMV4I
+`1304,1303,999`，3/3 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1304、TEST1303 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
 目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,862,489,600 字节可用，内部 object-store 可用
 2,480,128 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
@@ -318,7 +325,8 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next864 已完成。唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
+next865 已完成源码、静态验证和 `1304,1303,999` 正式设备门，唯一下一步是按
+[`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
 或先记录源码/自动门可复现的公共 DLL 缺口，再分配下一个 next。新纵切必须明确所有者、
 预算、旧状态退休/失败回滚合同，并取得相邻自动回归、正式设备门和职责文档更新；崩溃、
 数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。
