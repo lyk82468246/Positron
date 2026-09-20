@@ -11645,6 +11645,19 @@ static int pcore_browser_script_input_dispatch(void *pw,
                 info->cancelable ? 1 : 0, &input_data,
                 out_default_allowed);
     }
+    /* A trusted file selection dispatches input and change back-to-back.  An
+     * input listener is allowed to mutate another node; Core then invalidates
+     * the retained box tree before Browser asks for the following change
+     * event.  Restore the host-owned layout between those two callbacks so
+     * the second event still resolves the same file control.  This is kept
+     * specific to insertFromFile and does not turn ordinary script input into
+     * an implicit layout transaction. */
+    if (result >= 0 && info->input_type != NULL &&
+            strcmp(info->input_type, "insertFromFile") == 0 &&
+            bridge->hwnd != NULL && IsWindow(bridge->hwnd) &&
+            pcore_restyle_form_state(bridge->hwnd, 1) != 0) {
+        return -1;
+    }
     return (result < 0) ? -1 : 0;
 }
 
@@ -88597,6 +88610,7 @@ static BOOL test231_browser_file_picker_boundary(void)
     int ignored;
     int click_x;
     int click_y;
+    HWND test_hwnd;
     int ok;
 
     document = NULL;
@@ -88617,6 +88631,7 @@ static BOOL test231_browser_file_picker_boundary(void)
     ignored = -1;
     click_x = 0;
     click_y = 0;
+    test_hwnd = NULL;
     ok = 1;
     picker_state.result = 0;
     pcore_browser_script_session_destroy();
@@ -88657,6 +88672,16 @@ static BOOL test231_browser_file_picker_boundary(void)
             ok = 0;
         }
     }
+    if (ok) {
+        test_hwnd = CreateWindowW(L"STATIC", L"", WS_VISIBLE,
+                0, 0, 320, 240, NULL, NULL, GetModuleHandle(NULL), NULL);
+        if (test_hwnd == NULL) {
+            ok = 0;
+            strcpy(error, "test window creation failed");
+        } else if (g_browser_script_session.bridge != NULL) {
+            g_browser_script_session.bridge->hwnd = test_hwnd;
+        }
+    }
     click_x = info.x + info.width / 2;
     click_y = info.y + info.height / 2;
     if (ok) {
@@ -88664,7 +88689,7 @@ static BOOL test231_browser_file_picker_boundary(void)
         picker_state.result = 0;
         picker_state.calls = 0;
         picker_state.active = 0;
-        if (pcore_handle_file_input_with_picker(NULL, click_x, click_y,
+        if (pcore_handle_file_input_with_picker(test_hwnd, click_x, click_y,
                 test231_picker_callback, &picker_state) != 1 ||
                 picker_state.calls != 1 || picker_state.active != 0 ||
                 picker_state.max_active != 1 ||
@@ -88702,7 +88727,7 @@ static BOOL test231_browser_file_picker_boundary(void)
                 sizeof(WCHAR), L"\\Storage Card\\picked.txt") ||
                 !test231_copy_wide(picker_state.title,
                 sizeof(picker_state.title) / sizeof(WCHAR), L"picked.txt") ||
-                pcore_handle_file_input_with_picker(NULL, click_x, click_y,
+                pcore_handle_file_input_with_picker(test_hwnd, click_x, click_y,
                 test231_picker_callback, &picker_state) != 1 ||
                 picker_state.calls != 1 || picker_state.active != 0 ||
                 PCore_FileInputInfo(document, 0, &info, value,
@@ -88725,7 +88750,7 @@ static BOOL test231_browser_file_picker_boundary(void)
         picker_state.result = 0;
         picker_state.calls = 0;
         picker_state.active = 0;
-        if (pcore_handle_file_input_with_picker(NULL, click_x, click_y,
+        if (pcore_handle_file_input_with_picker(test_hwnd, click_x, click_y,
                 test231_picker_callback, &picker_state) != 1 ||
                 picker_state.calls != 1 || picker_state.active != 0 ||
                 PCore_FileInputInfo(document, 0, &info, value,
@@ -88746,6 +88771,9 @@ static BOOL test231_browser_file_picker_boundary(void)
         error[sizeof(error) - 1] = '\0';
     }
     pcore_browser_script_session_destroy();
+    if (test_hwnd != NULL) {
+        DestroyWindow(test_hwnd);
+    }
     g_render_doc = NULL;
     g_render_sheet = NULL;
     if (runtime != NULL) {
