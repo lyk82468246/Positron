@@ -37,6 +37,7 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - `textContent`、非编辑元素的 `innerText`、`innerHTML`/`outerHTML`、`document.write` 和 title；
 - selector 的 `matches`、`closest`、`querySelector(All)` 有界子集；
 - form owner、validation、`form.elements`/`FormData` snapshot、同步 `formdata` 事件、option/select metadata 和有限 `HTMLImageElement` metadata；脚本 `FormData` 的 `append()`、新键 `set()` 与数组构造共享 64 项上限，超限抛出 `QuotaExceededError` 并保留旧 pairs；脚本 `URLSearchParams` 的 `append()`、新键 `set()` 与 pair-sequence 构造共享 `PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS`（当前为 64）项上限，同样 fail closed，已有键替换和删除后的追加仍可用；
+- `sessionStorage` 与 `localStorage` 是 session-owned、彼此独立的 Storage facade；每个对象最多 `PBROWSER_SCRIPT_STORAGE_MAX_ENTRIES`（当前 64）项，键和值分别限制为 256/4096 个 UTF-16 code units。新增条目、named-property 写入或超长键值会在 mutation 前抛出 `QuotaExceededError`；替换既有键和删除后重新占用容量仍可用。
 - `HTMLImageElement.decode()` 以及 host 驱动的 `load`/`error` 终态桥：宿主必须先让 Core 的
   current source、complete 和 natural size 就绪，再调用通知入口；source 改变或支持的
   `Element.id` setter 改名会回收旧 pending/终态 key，每个 session 的终态映射最多 64 项，

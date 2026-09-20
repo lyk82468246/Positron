@@ -53,6 +53,12 @@ extern "C" {
 #define PBROWSER_SCRIPT_CREATE_COMMENT_DATA_MAX 65535
 #define PBROWSER_SCRIPT_INTERACTION_STATE_MAX 16
 #define PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS 64
+/* Script session/local Storage keeps at most this many entries. Keys and
+ * values are bounded JavaScript UTF-16 code-unit strings; setItem() and the
+ * named-property proxy throw QuotaExceededError before mutation on overflow. */
+#define PBROWSER_SCRIPT_STORAGE_MAX_ENTRIES 64
+#define PBROWSER_SCRIPT_STORAGE_KEY_MAX_CHARS 256
+#define PBROWSER_SCRIPT_STORAGE_VALUE_MAX_CHARS 4096
 #define PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_BEGIN 1U
 #define PBROWSER_SCRIPT_ADJACENT_HTML_AFTER_BEGIN 2U
 #define PBROWSER_SCRIPT_ADJACENT_HTML_BEFORE_END 3U

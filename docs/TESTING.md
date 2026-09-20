@@ -90,6 +90,10 @@ tests=1-5 7b 13 20,999
   `append()`、新键 `set()` 和 pair-sequence 构造均抛出 `QuotaExceededError`，失败不改变
   既有 pairs；替换已有键以及删除后再次追加仍然成功。该夹具只证明脚本对象的内存边界，
   不扩展 URL 解析、导航、网络发送或 native 表单视觉。
+- TEST1305 覆盖 Browser 脚本 `sessionStorage`/`localStorage` 的固定配额：64 项满容量、
+  256 字符键和 4096 字符值的新增或 named-property 写入抛出 `QuotaExceededError`，失败
+  保留旧状态；既有键替换、删除后重新占用容量和独立 Storage map 仍然有效。该夹具不承诺
+  持久磁盘、跨 session 同步或系统设置存储。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

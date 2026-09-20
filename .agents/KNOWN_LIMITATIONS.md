@@ -306,13 +306,14 @@
 - 浏览器 JavaScript 默认关闭，启用后仍是实验性的有界 classic-script 组合。
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
+- Storage maps are session-local and independent; quota is 64 entries with 256/4096 UTF-16 key/value characters. Over-limit writes atomically throw `QuotaExceededError`; persistence is not provided.
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
 - `document.write()`/`writeln()` 仅在 callback 存在时安装；受 16,384 字节和 parser 预算约束，
   不提供动态脚本、资源、`open()`/`close()` 或流式重写。源文本的 `<script...` 保护扫描只
   属于 document-write 边界，不改变其他 HTML mutation parser 的合同。
   `PScript_CollectGarbage()` 只回收
   引导临时对象，不改变 heap/globals。
-- Browser 的 `matches()`、`closest()`、`querySelector()` 和 `querySelectorAll()` 支持有界 selector 列表与关系组合器：标签、`#id`、`.class`、存在属性和属性值的 `=`, `^=`, `$=`, `*=`, `~=`, `|=` 匹配可通过空格、`>`、`+`、`~` 连接；组合链及祖先/兄弟遍历各自最多 64 步。属性值中的引号、空格、逗号和引号内的 `]` 会被保留，空操作数、未闭合引号、非法或过深 selector fail closed。结构伪类只限 `:root`、`:empty`、child/of-type 与四种 `nth-*` 变体；表单状态伪类只限 input/option 的实时 `:checked`、通过 Core effective-disabled relation 得到的 input/button/select/textarea/option/optgroup `:disabled`/`:enabled`（fieldset 自身回退到直接属性）、直接 `required` 属性对应的 `:required`/`:optional`，以及 `form`、input、select、textarea 通过 validation callback 得到的 `:valid`/`:invalid`；焦点状态只限通过 activeElement callback 获取当前焦点的 `:focus`/`:focus-within`；链接状态包括带 `href` 属性的 `<a>`/`<area>` 的静态 `:link`/`:any-link`（空值也算带属性），以及在宿主注册 `PBrowserScriptInteractionCallbacksEx` 后由宿主明确批准的 `:visited`；`:visited` 只收到元素 id 与原始 href，Browser 不保存或推断 history，宿主负责 URL 解析、历史来源和隐私策略，callback 缺失、失败、无效输入或超长值均安全不匹配；`:target` 只在当前 URL fragment 解码后等于元素当前非空 `id` 时匹配，无 fragment、malformed percent-encoding、仅有 `name` 的 named anchor 或 stale wrapper 都安全不匹配；`:not()` 只接受单一简单 compound 参数，`:is()`/`:where()` 只接受最多 16 个逗号分隔的简单 compound 分支，`:has()` 只接受最多 16 个相对简单 compound 分支，且每个后代/兄弟遍历最多 64 步；`:active`/`:hover` 仅在宿主注册 interaction callback 并返回当前 Core 状态的精确 id 时匹配。伪元素、namespace、shadow DOM、属性大小写修饰符和完整 CSS Selectors 语法仍未实现。`:has()` 的链式相对 selector、完整分支语法和更深遍历仍未实现；`:target` 不拥有 fragment reveal 或页面滚动，真实页面视觉仍需宿主验收。
+- Selector remains a bounded subset with finite relation/list/branch budgets; unsupported pseudo-elements, namespaces, shadow DOM, full grammar, chained `:has()` and `:target` reveal fail closed. Exact supported states and limits are maintained in [`docs/TESTING.md`](../docs/TESTING.md).
 - `:lang()` 是同一 selector 子集中的有界扩展：只接受单一 ASCII 语言标签，沿最多 64 层 `parentElement` 读取继承语言，`lang` 优先于 `xml:lang`，按大小写不敏感的精确值或 `-` 子标签前缀匹配；空值、非法参数、语言标签列表和引号形式 fail closed。该实现不代表完整 BCP 47 解析或 namespace 语言规则。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的
   有限 block/inline 对齐，只有在宿主注册 `PBrowserScriptScrollCallbacks` 时才会应用到
@@ -596,6 +597,7 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
 - TEST1304 覆盖 Browser 脚本 `URLSearchParams` 的 64 项 mutation budget：满容量时
   append、新键 set 和 pair-sequence 构造的 `QuotaExceededError`、失败不变性、已有键替换
   以及删除后的追加。该门不证明 URL 解析、导航、网络发送或 native 表单视觉。
+- TEST1305 covers Storage quota, atomic errors, capacity reuse and session/local independence; persistence is out of scope.
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

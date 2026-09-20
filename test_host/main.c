@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1304
+#define TEST_MAX_NUMBER 1305
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -56203,6 +56203,57 @@ static BOOL test1304_browser_urlsearchparams_mutation_budget_contract(void)
             " construction share the fixed 64-pair budget, throw"
             " QuotaExceededError without partial mutation, and still allow"
             " replacement or append after a deletion.");
+    return TRUE;
+}
+
+/* TEST 1305 - script Storage mutations enforce bounded quota atomically. */
+static BOOL test1305_browser_storage_budget_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var s=localStorage,t=sessionStorage,i,appendError=false,valueError=false,"
+        "keyError=false,replaceOk=false,appendAfterDelete=false,stable=false,"
+        "independent=false,longValue='',longKey='';"
+        "s.clear();t.clear();t.setItem('shared','session');"
+        "for(i=0;i<64;i++){s.setItem('k'+i,'v'+i);}"
+        "try{s.setItem('overflow','x');}catch(e){appendError=e&&"
+        "e.name==='QuotaExceededError';}"
+        "replaceOk=s.length===64&&s.getItem('k0')==='v0'&&"
+        "s.getItem('overflow')===null;"
+        "s.setItem('k0','changed');replaceOk=replaceOk&&s.length===64&&"
+        "s.getItem('k0')==='changed';"
+        "s.removeItem('k0');s.after='ok';"
+        "appendAfterDelete=s.length===64&&s.getItem('k0')===null&&"
+        "s.after==='ok';"
+        "s.removeItem('k1');for(i=0;i<4097;i++){longValue+='x';}"
+        "try{s.setItem('too',longValue);}catch(e2){valueError=e2&&"
+        "e2.name==='QuotaExceededError';}"
+        "for(i=0;i<257;i++){longKey+='k';}"
+        "try{s.setItem(longKey,'x');}catch(e3){keyError=e3&&"
+        "e3.name==='QuotaExceededError';}"
+        "stable=s.length===63&&s.getItem('too')===null&&"
+        "s.getItem(longKey)===null;independent=t.getItem('shared')==='session'&&"
+        "s.getItem('shared')===null;"
+        "document.getElementById('result').textContent="
+        "String(appendError)+'|'+String(valueError)+'|'+String(keyError)+'|'"
+        "+String(replaceOk)+'|'+String(appendAfterDelete)+'|'+String(stable)+'|'"
+        "+String(independent);";
+    static const char EXPECTED[] = "true|true|true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1305 FAIL", error[0] != '\0' ? error :
+                "Browser Storage budget fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1305 OK",
+            "Script session/local Storage enforces bounded entry, key and"
+            " value quotas with QuotaExceededError, preserves old state on"
+            " failure, and reuses capacity after deletion.");
     return TRUE;
 }
 
@@ -114525,6 +114576,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1302: ok = test1302_core_form_data_encoder_contract(); break;
         case 1303: ok = test1303_browser_form_data_mutation_budget_contract(); break;
         case 1304: ok = test1304_browser_urlsearchparams_mutation_budget_contract(); break;
+        case 1305: ok = test1305_browser_storage_budget_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {
