@@ -13,12 +13,14 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 具备进入条件”，不等于已经承诺实现；只有完成一次取证并选定纵向能力后，才分配下一批的
 内部编号。
 
-候选使用三种状态：
+候选使用四种状态：
 
 - **准备取舍**：已有可复现的用户/消费者缺口、明确的公共 DLL 所有者、最小 fixture 形状和
   可验证的完成标准，可以在下一次规划时直接选择。
 - **待取证**：问题真实存在或边界明确，但还缺少当前源码与 corpus 的组合证据；只能先做
   离线调查，不能直接改产品代码。
+- **人工 backlog**：语义已有自动合同或明确的宿主边界，但真实触摸、SIP/IME、picker、
+  旋转、DPI 或视觉结果必须由人观察；它不是自动产品批次。
 - **暂缓**：需要完整浏览器能力、无法在 WM6 约束下给出有界合同，或主要依赖人工/厂商环境。
   暂缓不是已实现，也不应被下一批默认复活。
 
@@ -90,37 +92,71 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 - 代码改动必须兼容 VS2008 / WM6 ARMV4I / C89；公共接口保持 UTF-8、opaque handle 和
   明确内存所有权。
 
-## 候选 backlog
+## 当前规划结论
 
-候选不是同时实施的任务包。当前脚本队列/页面 teardown 组合已由现有合同、测试和源码核对，
-没有形成新的可复现缺口，因此不再占用候选位。bounded live tag collection 与 nested
-Browser-created Element graph 已完成并由组件 README、测试文档和当前 handoff 说明，不在
-路线图中重复记账。选择时只能从下面一个候选建立一个完整纵向能力；其余候选保持原状态，
-避免用小编号拆分同一子功能。
+next869 已完成 Browser 特殊字符串 registry 与 dataset snapshot 的公共 DLL 纵切，相关
+Browser/Core 基线和设备证据以 [`HANDOFF.md`](HANDOFF.md) 为准。对现有源码、测试入口和已知
+限制进行整理后，当前没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不
+意味着可以随意扩大 Web API。下一步应先完成一次候选发现审查，再决定是否分配新的 next。
 
-### B. 图像 source mutation 与 pending decode 的终态一致性
+本轮候选发现只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志，
+不得顺手修改产品代码。若审查仍没有可复现的公共 DLL 缺口，就保持路线图的空实现队列，优先
+执行累计人工验收或维护发布基线。
 
-**状态：已完成（next861）。公共所有者：positron_browser.dll，并复用 Core 的 source
-选择结果。**
+## 候选队列
 
-`PBrowser_ScriptSessionNotifyImageSourceChangeEx` 与
-`PBrowser_ScriptSessionNotifyImageEventEx` 以宿主递增的非零 generation 隔离 source
-A→B→A：旧 pending decode、旧终态和缺失/过旧/不匹配事件都会 fail closed，失败候选只
-接受匹配 generation 的 `error`。source 入口对不可寻址的 `<picture>` 关系保持拒绝；
-宿主仍负责 Core 选择、fetch、decode、layout 和 paint。TEST1300 已覆盖旧 promise、
-终态分类和失败候选；generation/终态 map 各自保持 64 项预算，并取得正式设备门；证据与剩余绝对 URL、CORS/referrer、
-loading 和视觉限制分别见 [`HANDOFF.md`](HANDOFF.md) 与
-[`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。本节不再作为待选 backlog。
+### 准备取舍
 
-### C. Native editing 与人工输入矩阵的产品边界
+当前为空。已有的 Browser/Core、FormData、Storage、Headers 和特殊键 registry 合同已经取得
+相邻设备门；没有新的用户失败、消费者需求或源码缺口同时满足候选卡的五项要求。下一次实现
+批次必须先把某一张“待取证”卡提升到这里，不能从已完成测试编号顺延出功能。
 
-**状态：暂缓为自动产品批次；作为人工验收 backlog 保留。公共所有者：Core/Browser 负责
-语义，宿主负责 WM EDIT、SIP/IME、clipboard 和 picker。**
+### 待取证
 
-已有自动门能证明受限 selection、CF_UNICODETEXT paste/cut/copy、方向和生命周期事务，
-但 OEM 键盘状态、候选词、真实 IME、SIP 视觉、文件 picker 和旋转仍必须在真实设备上观察。
-除非出现崩溃、数据损坏或核心交互阻塞，否则这些风险可以累计到人工矩阵，不应为了自动化
-方便把 native 行为搬进公共 DLL 或 test_host 业务 helper。
+#### A. 公共 DLL 消费者缺口审查
+
+**状态：待取证。** 这是发现工作，不是产品实现任务。审查公开头文件、现有组件 README、
+`test_host` 的 callback 使用和兼容性 corpus，寻找仍由宿主临时决定、但应由 Core/Browser/HTTP/
+Image/Script 拥有的可复用语义。必须记录一个具体调用场景或失败行为，不能只把“现代 API 缺失”
+当作缺口。
+
+取证完成的条件是：给出一个顶层 DLL 所有者、最小 C ABI/Ex 入口、固定预算、失败回滚、最小
+fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视觉差异，则转入人工 backlog，不进入
+产品批次。
+
+#### B. 资源策略缺口
+
+**状态：待取证。** `absolute URL`、CORS/referrer、loading/fetch-priority 和更完整的网络
+资源策略仍在限制文档中，但目前不能仅凭“标准尚未实现”立项。只有真实页面、消费者或可复现
+失败证明它阻塞目标应用时，才分别为 Core/Browser/HTTP 划定所有权；网络、缓存、旧页保留和
+取消必须保持可解释的 generation/失败合同。外网不可达本身不构成产品回归证据。
+
+#### C. 文件对象与表单消费者缺口
+
+**状态：待取证。** Core 已拥有成功控件 snapshot 和 multipart wire encoding，Browser 的
+`FormData` 仍是有界对象/metadata 合同，完整 File/Blob、异步文件读取和浏览器式上传尚未实现。
+只有消费者确实需要“从 WM6 文件选择到 multipart body”的完整流程，且能在同步 callback、容量、
+权限和取消边界内形成最小 fixture，才进入候选；系统 picker 本身仍属于宿主人工 backlog。
+
+### 人工 backlog
+
+这些方向不自动产生 next：
+
+- OEM 键盘、SIP/IME 候选词整词提交、contenteditable 自动重复和跨应用剪贴板；
+- native SELECT popup、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表
+  和失败网络的整体视觉；
+- `example.com`/IANA 深层导航、旧页保留等真实网页观察。
+
+它们可以按风险累计后集中验收，但出现崩溃、数据损坏、严重布局破坏或核心交互阻塞时必须立即
+复核。人工结果只有在形成可复现、可归属、可有界的公共 DLL 语义缺口后，才转为“待取证”或
+“准备取舍”。
+
+### 暂缓
+
+以下方向不作为当前开发目标：完整现代 Web API、通用 detached DOM/Node tree mutation、完整
+live collection、MutationObserver、Range/Selection、shadow DOM、worker/module、bfcache、
+多窗口持久 history、完整滚动树、pinch zoom、transforms、复杂媒体查询、完整图像 loading、
+任意 CORS/安全沙箱和无界 CSS/HTML 兼容。除非目标应用提供新的有界证据，否则保持在限制文档中。
 
 ## 长期工作流
 

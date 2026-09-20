@@ -10,70 +10,12 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
 
-- 早期 Browser/Core 纵切已覆盖 HTML parser、CharacterData、DocumentFragment、属性与
-  wrapper 生命周期、表单/资源/标题和页面会话；稳定合同与逐项测试见
-  [`docs/TESTING.md`](../docs/TESTING.md)，逐批实现证据保留在 Git 历史和 `docs/history/`。
-  本文件只保留当前边界、最新证据和下一步，不重复旧 next 时间线。
-- next846–next858 形成了 Browser-owned Fragment/CharacterData、detached Element、HTML
-  mutation、element-child reconciliation 和 wrapper identity 的有界基线；相关合同、预算
-  和失败回滚已由 TEST1287–1296 覆盖。这里不重复逐批实现细节，当前限制见下方和
-  [`docs/TESTING.md`](../docs/TESTING.md)。
-- next859–next860 继续收紧 detached nested Element graph 与 image terminal-key 回收；
-  TEST1297–1299 的预算、identity 和旧 key 退休合同已有自动/设备证据，具体 API 边界
-  见 [`docs/TESTING.md`](../docs/TESTING.md) 和组件 README。
-- next861 在 `positron_browser.dll` 增加 host-owned 非零 image replacement generation：
-  source Ex 退休旧 decode/终态，event Ex 拒绝缺失、过旧或不匹配的 late load/error；
-  source 关系不能解析到带 id 的 `<img>` 时 fail closed。A→B→A、失败候选由 TEST1300
-  覆盖，generation/终态 map 各自限制为 64 项；`1300,999` Debug ARMV4I 外置卡设备门 2/2 PASS，完整日志、
-  双空间预检、清理、`crash_check=PASS`，无新增 dump。
-- next862 将 multipart/form-data wire serialization 从 `test_host/main.c` 迁入
-  `positron_core.dll` 的 `PCore_MultipartSubmissionEncode()`：Core 统一拥有 boundary、
-  CRLF、successful-control 顺序、quoted metadata 和 binary file bytes；宿主只保留同步
-  file read/free callback、HTTP 调度和 buffer 生命周期。TEST1301 覆盖 size probe、容量
-  不足无部分写入、缺少 callback、文件 bytes 和 1 MiB body 上限；在
-  `tmp/device-runs/20260920-101533-next862-multipart-retry` 的 Debug ARMV4I 外置卡门
-  2/2 PASS，完整日志、双空间预检、清理、`crash_check=PASS`，无新增 dump。
-- next863 在 `positron_core.dll` 增加 `PCore_FormDataEncode()`：普通
-  `FormData(form[, submitter])` successful-control snapshot 现在可以独立于源 form 的
-  method、action 和 enctype 生成同一 bounded multipart body。TEST1302 覆盖 GET/urlencoded
-  form、submitter 顺序、binary file bytes、size probe、容量不足无部分写入和缺少 callback；
-  相邻 TEST1301 与 TEST999 一并回归后，`tmp/device-runs/20260920-103450-next863-formdata-regression`
-  的 Debug ARMV4I 外置卡门为 3/3 PASS，完整日志、双空间预检、清理、`crash_check=PASS`，无新增 dump。
-- next864 在 `positron_browser.dll` 收紧脚本 `FormData` 的固定容量：`append()`、新键
-  `set()` 与数组构造共享 64 项上限，满容量操作抛出 `QuotaExceededError` 且不改变旧 pairs，
-  已有键替换和删除后的追加仍可用。TEST1303 与 TEST999 的 Debug ARMV4I 外置卡设备门在
-  `tmp/device-runs/20260920-104543-next864` 为 2/2 PASS；日志完整回收，双空间预检、
-  外置部署清理、`crash_check=PASS`，无新增 dump。首次设备门发现并修正了跨 bootstrap IIFE
-  的异常构造引用，修复后才形成有效证据。
-- next865 在 `positron_browser.dll` 为脚本 `URLSearchParams` 增加与公开头文件一致的固定
-  64 项 pair budget：`append()`、新键 `set()` 和 pair-sequence 构造超限抛出
-  `QuotaExceededError`，失败不改变旧 pairs；已有键替换和删除后的追加仍可用。TEST1304
-  与相邻 TEST1303、TEST999 在 `tmp/device-runs/20260920-105628-next865` 的 Debug ARMV4I
-  外置卡设备门为 3/3 PASS；日志完整回收，双空间预检、外置部署清理、`crash_check=PASS`，
-  无新增 dump。
-- next866 在 `positron_browser.dll` 为 `sessionStorage`/`localStorage` 增加固定 Storage
-  配额：每个 map 最多 64 项，键和值分别最多 256/4096 个 UTF-16 code units；新增或
-  named-property 超限写入原子抛出 `QuotaExceededError`，替换既有键和删除后的容量回收仍可用。
-  TEST1305 与相邻 TEST1304、TEST1303、TEST999 在 `tmp/device-runs/20260920-110918-next866`
-  的 Debug ARMV4I 外置卡设备门为 4/4 PASS；日志完整回收，双空间预检、外置部署清理、
-  `crash_check=PASS`，无新增 dump。
-- next867 在 `positron_browser.dll` 修复 Storage 内部 map 对 object-property 键的处理：
-  `setItem()`/`getItem()`/`toJSON()` 对 `hasOwnProperty`、`__proto__`、`constructor` 和
-  `toString` 使用 own-property-safe 定义与读取，`clear()` 原地清理并保留 Storage 方法可调用。
-  TEST1306 与相邻 TEST1305、TEST1304、TEST999 在 `tmp/device-runs/20260920-111835-next867`
-  的 Debug ARMV4I 外置卡设备门为 4/4 PASS；日志完整回收，双空间预检、外置部署清理、
-  `crash_check=PASS`，无新增 dump。
-- next868 在 `positron_browser.dll` 修复 `Headers` 对 object-property header 名称的处理：
-  对象初始化使用安全 own-property 检查，`toJSON()` 用安全 own-property 定义，保留
-  `hasOwnProperty`、`__proto__`、`constructor` 和 `toString` 的 canonical header 值。
-  TEST1307 与相邻 TEST1306、TEST1305、TEST999 在 `tmp/device-runs/20260920-112337-next868`
-  的 Debug ARMV4I 外置卡设备门为 4/4 PASS；日志完整回收，双空间预检、外置部署清理、
-  `crash_check=PASS`，无新增 dump。
-- next869 在 `positron_browser.dll` 将 DOM id/wrapper、事件、dataset 和 BroadcastChannel
-  registry 改为原型安全 map，并让 `DOMStringMap.set()`/`toJSON()` 保留特殊键。TEST1308
-  与相邻 TEST1307、TEST1306、TEST999 在 `tmp/device-runs/20260920-113418-next869` 的
-  Debug ARMV4I 外置卡设备门为 4/4 PASS；日志回收、双空间预检、清理、`crash_check=PASS`，
-  无新增 dump。
+- 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
+  session、Storage、Headers、FormData、图像 generation 和特殊键 registry 合同组成；固定
+  容量、失败回滚、wrapper identity、旧页保留和生命周期边界集中记录在
+  [`docs/TESTING.md`](../docs/TESTING.md)、组件 README 和公开头文件中。最近的 TEST1303–1308
+  已覆盖 FormData/URLSearchParams 配额、Storage/Headers 特殊键和 Browser registry；逐 next
+  证据由 Git 历史与 `tmp/` 设备记录保存，本文件不复制时间线。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -98,8 +40,9 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 next869 已完成 Browser 原型安全 registry、dataset snapshot、TEST1308 和
 `1308,1307,1306,999` 设备门；Headers/Request/Response、Storage、FormData 和
-URLSearchParams 仍保持有界安全合同。下一批从路线图 C 的人工输入边界或新的可复现公共
-DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定边界见
+URLSearchParams 仍保持有界安全合同。当前短期目标是完成路线图候选发现审查：只从源码、
+公开头文件、测试 dispatch 和真实证据中找出新的公共 DLL 缺口，不得把人工输入 backlog 或
+测试宿主扩展当作产品语义。稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
@@ -349,11 +292,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next869 已完成源码、静态验证和 `1308,1307,1306,999` 正式设备门，唯一下一步是按
-[`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
-或先记录源码/自动门可复现的公共 DLL 缺口，再分配下一个 next。新纵切必须明确所有者、
-预算、旧状态退休/失败回滚合同，并取得相邻自动回归、正式设备门和职责文档更新；崩溃、
-数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。
+next869 已完成源码、静态验证和 `1308,1307,1306,999` 正式设备门。唯一下一步是完成
+[`ROADMAP.md`](ROADMAP.md) 的候选发现审查：若形成满足所有者、预算、失败回滚、fixture 和
+门标准的公共 DLL 缺口，再分配下一个 next；否则保持实现队列为空，继续累计人工验收或维护
+发布基线。崩溃、数据损坏、严重布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、
