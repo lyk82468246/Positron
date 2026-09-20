@@ -69,6 +69,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
   TEST1307 与相邻 TEST1306、TEST1305、TEST999 在 `tmp/device-runs/20260920-112337-next868`
   的 Debug ARMV4I 外置卡设备门为 4/4 PASS；日志完整回收，双空间预检、外置部署清理、
   `crash_check=PASS`，无新增 dump。
+- next869 在 `positron_browser.dll` 将 DOM id/wrapper、事件、dataset 和 BroadcastChannel
+  registry 改为原型安全 map，并让 `DOMStringMap.set()`/`toJSON()` 保留特殊键。TEST1308
+  与相邻 TEST1307、TEST1306、TEST999 在 `tmp/device-runs/20260920-113418-next869` 的
+  Debug ARMV4I 外置卡设备门为 4/4 PASS；日志回收、双空间预检、清理、`crash_check=PASS`，
+  无新增 dump。
 - 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
 - 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
   当前会话，不连接、选择、cradle、重置或强杀设备。
@@ -91,12 +96,11 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next868 的 Browser Headers 特殊键安全处理已完成源码、TEST1307 夹具和
-`1307,1306,1305,999` 设备门；Browser 的 Headers/Request/Response、Storage、FormData 和
-URLSearchParams 脚本集合都具备显式的固定容量、原子失败和 metadata snapshot 安全 own-property 合同。Core submission/独立 FormData multipart wire encoding 的普通 form、
-size/failure/binary-file 合同也保持通过。下一批从路线图 C 的人工输入边界或新的可复现公共
-DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定
-边界见 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
+next869 已完成 Browser 原型安全 registry、dataset snapshot、TEST1308 和
+`1308,1307,1306,999` 设备门；Headers/Request/Response、Storage、FormData 和
+URLSearchParams 仍保持有界安全合同。下一批从路线图 C 的人工输入边界或新的可复现公共
+DLL 缺口中选择完整纵切，不得把测试宿主扩展当作产品语义。稳定边界见
+[`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
@@ -216,17 +220,17 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 
 ### 当前测试入口
 
-- `TEST_MAX_NUMBER`：1307。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1307,999`。
+- `TEST_MAX_NUMBER`：1308。
+- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`。
 - tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
 - 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-112337-next868` 是本批最新有效设备证据：Debug ARMV4I
-`1307,1306,1305,999`，4/4 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
-dump=0。日志明确记录 TEST1307、TEST1306、TEST1305 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
-目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,707,791,872 字节可用，内部 object-store 可用
+`tmp/device-runs/20260920-113418-next869` 是本批最新有效设备证据：Debug ARMV4I
+`1308,1307,1306,999`，4/4 PASS；外置卡双空间预检、完整日志回收、清理、`crash_check` PASS，
+dump=0。日志明确记录 TEST1308、TEST1307、TEST1306 和 TEST999 均为 OK，`TESTBENCH PASS`，无缺失或额外测试。
+目标卷由 `CeGetDiskFreeSpaceEx` 报告 50,735,284,224 字节可用，内部 object-store 可用
 2,480,128 字节；部署目录在完整日志回收后已删除。
 ## 当前人工验收状态
 
@@ -268,7 +272,8 @@ dump=0。日志明确记录 TEST1307、TEST1306、TEST1305 和 TEST999 均为 OK
   rejection（TEST1300）、Core multipart wire encoder/host file callback contract（TEST1301）、
   independent FormData wire encoder（TEST1302）、Browser script FormData/URLSearchParams
   mutation budget（TEST1303–1304）、Storage quota（TEST1305）、object-property-safe
-  Storage map（TEST1306）以及 Headers special-key snapshot（TEST1307）
+  Storage map（TEST1306）、Headers special-key snapshot（TEST1307）以及 prototype-safe
+  DOM id/wrapper/event/dataset/BroadcastChannel registry（TEST1308）
   夹具均已有相邻设备门；
   逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
   通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
@@ -344,7 +349,7 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next868 已完成源码、静态验证和 `1307,1306,1305,999` 正式设备门，唯一下一步是按
+next869 已完成源码、静态验证和 `1308,1307,1306,999` 正式设备门，唯一下一步是按
 [`ROADMAP.md`](ROADMAP.md) 核对 C 的人工输入边界，
 或先记录源码/自动门可复现的公共 DLL 缺口，再分配下一个 next。新纵切必须明确所有者、
 预算、旧状态退休/失败回滚合同，并取得相邻自动回归、正式设备门和职责文档更新；崩溃、

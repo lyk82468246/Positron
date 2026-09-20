@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1307
+#define TEST_MAX_NUMBER 1308
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -56332,6 +56332,53 @@ static BOOL test1307_browser_headers_special_keys_contract(void)
     show_info(L"TEST 1307 OK",
             "Script Headers preserves object-property names in construction"
             " and JSON snapshots.");
+    return TRUE;
+}
+
+/* TEST 1308 - Browser author-controlled string registries preserve special
+ * DOM ids, dataset snapshot names and BroadcastChannel names. */
+static BOOL test1308_browser_special_key_registries_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><div id='__proto__'><span id='constructor'>child</span>"
+        "</div><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var d=document,p=d.getElementById('__proto__'),p2=d.getElementById('__proto__'),"
+        "q=d.querySelector('#__proto__'),c=d.getElementById('constructor'),kids,"
+        "eventCount=0,eventOk=true,dataset,json,datasetOk=false,bc1,bc2,bcOk=false,"
+        "bcError=false;"
+        "try{kids=p.getElementsByTagName('span');}catch(e){kids=[];}"
+        "try{p.addEventListener('special',function(){eventCount++;});"
+        "eventOk=p.dispatchEvent(new Event('special',{cancelable:true}));}"
+        "catch(e2){eventOk=false;}"
+        "dataset=d.getElementById('result').dataset;dataset.set('__proto__','proto');"
+        "dataset.set('constructor','ctor');dataset.set('toString','string');json=dataset.toJSON();"
+        "datasetOk=json['__proto__']==='proto'&&json['constructor']==='ctor'&&"
+        "json['toString']==='string'&&Object.keys(json).length===3;"
+        "try{bc1=new BroadcastChannel('__proto__');bc2=new BroadcastChannel('__proto__');"
+        "bc2.onmessage=function(e){bcOk=e.data==='ok';};bc1.postMessage('ok');"
+        "__pcoreRunMessages(4);bc1.close();bc2.close();}catch(e3){bcError=true;}"
+        "document.getElementById('result').textContent=String(p!==null&&p2===p&&"
+        "p.id==='__proto__'&&q===p)+'|'+String(kids.length===1&&"
+        "kids[0]===c&&kids[0].id==='constructor'&&kids[0].textContent==='child')+'|'"
+        "+String(eventOk&&eventCount===1)+'|'+String(datasetOk)+'|'"
+        "+String(bcOk&&!bcError);";
+    static const char EXPECTED[] = "true|true|true|true|true";
+    char error[512];
+
+    memset(error, 0, sizeof(error));
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1308 FAIL", error[0] != '\0' ? error :
+                "Browser special-key registry fixture failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1308 OK",
+            "Browser internal string registries use prototype-safe bounded"
+            " maps: special DOM ids remain same-object and event-safe,"
+            " dataset JSON preserves special names, and BroadcastChannel"
+            " delivery remains isolated for a special channel name.");
     return TRUE;
 }
 
@@ -114657,6 +114704,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1305: ok = test1305_browser_storage_budget_contract(); break;
         case 1306: ok = test1306_browser_storage_special_keys_contract(); break;
         case 1307: ok = test1307_browser_headers_special_keys_contract(); break;
+        case 1308: ok = test1308_browser_special_key_registries_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

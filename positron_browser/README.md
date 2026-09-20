@@ -39,6 +39,7 @@ Browser wrapper 以 Core ID/关系为真值。live Element、Text、Comment、CD
 - form owner、validation、`form.elements`/`FormData` snapshot、同步 `formdata` 事件、option/select metadata 和有限 `HTMLImageElement` metadata；脚本 `FormData` 的 `append()`、新键 `set()` 与数组构造共享 64 项上限，超限抛出 `QuotaExceededError` 并保留旧 pairs；脚本 `URLSearchParams` 的 `append()`、新键 `set()` 与 pair-sequence 构造共享 `PBROWSER_SCRIPT_URL_SEARCH_PARAMS_MAX_PAIRS`（当前为 64）项上限，同样 fail closed，已有键替换和删除后的追加仍可用；
 - `Headers`、`Request` 和 `Response` 的有界 metadata/body facade；Header 名称按 ASCII 不敏感规则 canonicalize，最多 128 个 pair，`toJSON()` 与对象初始化对 `hasOwnProperty`、`__proto__`、`constructor`、`toString` 等合法 header 名保持安全，不污染快照原型。
 - `sessionStorage` 与 `localStorage` 是 session-owned、彼此独立的 Storage facade；每个对象最多 `PBROWSER_SCRIPT_STORAGE_MAX_ENTRIES`（当前 64）项，键和值分别限制为 256/4096 个 UTF-16 code units。新增条目、named-property 写入或超长键值会在 mutation 前抛出 `QuotaExceededError`；替换既有键和删除后重新占用容量仍可用。`setItem()`、`getItem()` 和 `toJSON()` 对 `hasOwnProperty`、`__proto__`、`constructor`、`toString` 等 object-property 名称保持独立，不破坏 Storage 方法或对象原型。
+- DOM id、Browser-created wrapper、事件监听器、dataset JSON 和 BroadcastChannel registry 使用原型安全的内部 map；`__proto__`、`constructor`、`toString` 等作者可控字符串不会返回错误 wrapper、覆盖事件注册表或改变快照原型。`DOMStringMap.set()` 会把有界名称纳入 `keys()`/`toJSON()`，JSON 快照按 own property 定义；这不扩展为完整 named-property 或无限 DOM registry。
 - `HTMLImageElement.decode()` 以及 host 驱动的 `load`/`error` 终态桥：宿主必须先让 Core 的
   current source、complete 和 natural size 就绪，再调用通知入口；source 改变或支持的
   `Element.id` setter 改名会回收旧 pending/终态 key，每个 session 的终态映射最多 64 项，

@@ -601,6 +601,7 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
 - TEST1305 covers Storage quota, atomic errors, capacity reuse and session/local independence; persistence is out of scope.
 - TEST1306 covers Storage object-property keys, prototype-safe snapshots, API-method preservation and clear-after-special-key cleanup.
 - TEST1307 covers Headers special-key construction and JSON snapshots; Request/Response metadata reuse the same bounded facade.
+- TEST1308 covers prototype-safe special-key maps; full named-property precedence and cross-window delivery remain out of scope.
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。

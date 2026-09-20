@@ -100,6 +100,10 @@ tests=1-5 7b 13 20,999
 - TEST1307 覆盖 Browser `Headers` 的 object-property 名称：`set()`/`get()`、对象初始化和
   `toJSON()` 对 `hasOwnProperty`、`__proto__`、`constructor`、`toString` 保持 canonical
   header 值和原型隔离；`Request`/`Response` 的 metadata snapshot 复用这条 facade。
+- TEST1308 覆盖 Browser 作者可控字符串 registry：特殊 DOM id 的 lookup/cache、事件 listener
+  dispatch、`DOMStringMap.set()`/`toJSON()` 的 `__proto__`/`constructor`/`toString` 名称，以及
+  `BroadcastChannel('__proto__')` 的消息隔离；这些断言只证明原型安全和同一 session 内的
+  有界 identity，不扩展完整 named-property、异步网络或多窗口语义。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 
