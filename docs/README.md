@@ -8,6 +8,7 @@
 |---|---|
 | 了解项目和快速开始 | [根 README](../README.md) |
 | 理解 DLL 职责、所有权、数据流和非目标 | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 查看七个公共 DLL 的主干能力、边界和提升条件 | [CAPABILITIES.md](CAPABILITIES.md) |
 | 配置 VS2008/WM6 工具链并构建 | [BUILDING.md](BUILDING.md) |
 | 配置 INI、运行自动设备门或做人工验收 | [TESTING.md](TESTING.md) |
 | 修复构建、stage、WMDC/RAPI、网络或输入问题 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
@@ -22,6 +23,7 @@
 
 - 根 `README.md`：项目定位、产物、快速开始和导航。
 - `ARCHITECTURE.md`：稳定设计、公共边界、所有权和平台原则。
+- `CAPABILITIES.md`：七个公共 DLL 的主干能力状态、预算、失败边界和进入实现的条件。
 - `BUILDING.md`、`TESTING.md`、`TROUBLESHOOTING.md`：可重复的操作与判定方法。
 - 组件 `README.md`：单个 DLL/工程的用途、依赖、调用流程和限制。
 - `.agents/HANDOFF.md`：当前提交、最新证据、短期目标和唯一下一步。

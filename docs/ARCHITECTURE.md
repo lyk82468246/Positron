@@ -1,6 +1,6 @@
 # Positron 架构与公共边界
 
-Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、HTTP、图像、脚本、文档模型、渲染和浏览器会话 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。
+Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、HTTP、图像、脚本、文档模型、渲染和浏览器会话 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。七个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
 
 ## 设计目标
 
@@ -8,6 +8,8 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
 - 让公共 DLL 拥有可复用的 URL、资源、DOM、事件、表单、图像、脚本和生命周期语义。
 - 让 `test_host.exe` 以及未来应用只负责平台接线、调度、fixture、应用策略和断言。
 - 对不支持、超限、失效句柄和回调缺失的情况 fail closed，不以静默扩大预算或私有状态补齐标准行为。
+- 允许先公开有界的主干接口、再分阶段补实现，但未实现入口必须返回稳定的 unsupported 类错误，
+  且不得修改状态、创建伪 handle、调用 callback 或留下部分输出。
 
 ## 总体分层
 
@@ -143,6 +145,8 @@ Script session 的 native function 数量、listener、collection、Fragment、s
 - multipart 编码 callback 只在同步调用内有效；Core 不执行文件 I/O，宿主必须提供成对的
   read/free 实现，并在收到完整 body 后自行释放/发送。
 - 新能力优先追加 callback table/Ex 版本，保留旧 ABI 的字段和语义；测试宿主只消费已公开头文件。
+- 主干能力可以按矩阵分阶段实现，但“已声明”不等于“已支持”；如果公开暂未实现的入口，
+  必须定义 owner、固定预算、unsupported 类错误和失败不变性，并先补离线 fail-closed 测试。
 
 ## 线程与移植约束
 

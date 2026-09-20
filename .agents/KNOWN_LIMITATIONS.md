@@ -1,6 +1,7 @@
 # 当前已知限制
 
-本文件只列仍然存在、会影响设计或验收的限制。已解决问题不保留在这里；失败路线见 [`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md)，旧事故见 [`docs/history/`](../docs/history/README.md)。
+能力矩阵见 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)；详见
+[`FAILED_EXPERIMENTS.md`](FAILED_EXPERIMENTS.md) 与 [`docs/history/`](../docs/history/README.md)
 
 ## 平台与工具链
 

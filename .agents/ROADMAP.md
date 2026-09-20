@@ -2,13 +2,15 @@
 
 本文件只描述尚未完成的目标、候选能力和选择规则。当前产品事实见
 [HANDOFF.md](HANDOFF.md)，仍存在的边界见 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)，
-稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)。已经
+稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，七个公共 DLL
+的能力状态见 [docs/CAPABILITIES.md](../docs/CAPABILITIES.md)。已经
 完成的批次不在这里建立时间线；具体实现由 Git 保存，只有会影响未来取舍的失败实验才进入
 [FAILED_EXPERIMENTS.md](FAILED_EXPERIMENTS.md) 或 docs/history/。
 
 ## 如何使用这份路线图
 
-路线图不是任务日志，也不是 API 清单。每次接管时先读交接、限制和路线图，再用源码、
+路线图不是任务日志，也不是 API 清单；能力状态和当前边界统一见 `docs/CAPABILITIES.md`。
+每次接管时先读交接、限制和路线图，再用源码、
 compatibility corpus、自动测试和设备证据核对候选。路线图中的候选只表示“值得调查或
 具备进入条件”，不等于已经承诺实现；只有完成一次取证并选定纵向能力后，才分配下一批的
 内部编号。
@@ -52,29 +54,54 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 
 ## 中期里程碑
 
-### 1. 形成可复用的页面组合基线
+### 1. 形成全顶层 DLL 的主干能力覆盖
+
+TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干能力状态。公开入口可以
+分阶段实现，但每个入口必须先确定 owner、固定预算、所有权、错误分类和失败不变性；未实现入口
+只能以稳定的 unsupported 结果 fail closed，不能用假成功填补矩阵。
+
+### 2. 形成可复用的页面组合基线
 
 用小型、离线、可重复的 compatibility corpus 驱动导航、资源、脚本 session、DOM、表单、
 图像、滚动和布局的纵向能力。每项能力都必须同时说明旧页面保留、候选 generation、取消、
 失败回滚和资源释放，而不是只增加一个孤立的 JavaScript 方法。
 
-### 2. 保持产品所有权边界
+### 3. 保持产品所有权边界
 
 可由其他 WM6 应用复用的 URL、资源事务、DOM、Event、表单、图像、脚本和生命周期语义必须
 进入对应公共 DLL 的源文件和公共头文件。test_host 只允许拥有平台接线、调度、fixture、
 断言和示例策略；如果宿主代码决定了产品语义，应先迁移再补测试。
 
-### 3. 把有限合同做成可持续的发布基线
+### 4. 把有限合同做成可持续的发布基线
 
 每个纵向能力都要有固定容量、失败状态和所有权说明；公共 ABI、构建、设备部署、日志回收、
 空间预检和清理必须可重复。自动断言负责语义，视觉、触摸、SIP/IME、picker 和旋转由
 可累计的人工矩阵负责；崩溃、数据损坏、严重布局破坏和核心交互阻塞不得延后。
 
-### 4. 让文档反映职责而不是开发流水
+### 5. 让文档反映职责而不是开发流水
 
 根 README 只讲项目入口；架构文档只讲边界；组件 README 只讲调用；测试文档只讲测试合同；
 交接只讲当前事实和唯一下一步；限制文档只保留仍未完成的边界。历史批次不再复制到多个
 当前文档。
+
+## 当前短期目标与实现指导
+
+当前短期目标是完成“主干能力覆盖”，而不是按测试编号继续堆叠孤立功能：
+
+1. 维护 `docs/CAPABILITIES.md`，为七个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
+   并为每项能力写明入口、预算、失败边界、fixture、设备/人工门和提升条件。
+2. 审计公开头文件和导出入口，发现缺失的主干类别时只提出有 owner、有预算、有错误分类的
+   `Ex`/size-version 边界；本阶段不声明完整现代 Web API，也不改变旧 ABI。
+3. 若要先声明后实现，入口必须在未实现阶段返回稳定 unsupported 类错误，且在返回前不改状态、
+   不创建伪 handle、不调用 callback、不产生部分 body 或部分 DOM mutation。
+4. 第一条实现候选优先调查有限的 File/Blob→FormData→multipart 流程：Browser 负责 bounded
+   metadata 和对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、
+   权限和网络调度。没有真实消费者证据时，只完成合同和矩阵，不进入产品实现。
+5. 每个被提升的能力必须先有离线成功/失败不变性/容量/stale/cancel fixture，再运行 C89、正式
+   ARMV4I 构建、仓库审计和相称的设备门；`test_host` 只增加接线、fixture 和断言。
+
+短期完成标准是：七个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
+至少一条真实消费者驱动的纵切进入“准备取舍”；路线图能指出下一条实现纵切，而不是只写“继续寻找”。
 
 ## 当前选择边界
 
@@ -103,7 +130,8 @@ HTTP(S)、fragment stripping 和不安全 scheme 的结果仍一致。对现有�
 继续整理后，next873 又补齐参考宿主顶层 `WM_SHOWWINDOW` 到 Browser visibility lifecycle 的
 平台接线；1309/1138/1139/999 只验证消息映射、Browser 去重和事件顺序，没有新增宿主产品
 语义。当前仍没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不意味着
-可以随意扩大 Web API。后续仍应先完成候选发现审查，再决定是否分配新的 next。
+可以随意扩大 Web API。本轮把主干能力状态集中到 `docs/CAPABILITIES.md`，并把“先声明、后实现”
+收束为有界 fail-closed 规则；后续仍应先完成消费者证据审查，再决定是否分配新的 next。
 
 除上述已收束的 history 边界外，候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件
 README、限制和真实设备日志；不要把人工输入 backlog 或测试宿主扩展当作产品语义。若没有新的
@@ -121,7 +149,7 @@ README、限制和真实设备日志；不要把人工输入 backlog 或测试�
 
 #### A. 公共 DLL 消费者缺口审查
 
-**状态：待取证。** 这是发现工作，不是产品实现任务。审查公开头文件、现有组件 README、
+**状态：待取证。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
 `test_host` 的 callback 使用和兼容性 corpus，寻找仍由宿主临时决定、但应由 Core/Browser/HTTP/
 Image/Script 拥有的可复用语义。必须记录一个具体调用场景或失败行为，不能只把“现代 API 缺失”
 当作缺口。
@@ -148,6 +176,7 @@ fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视
 `FormData` 仍是有界对象/metadata 合同，完整 File/Blob、异步文件读取和浏览器式上传尚未实现。
 只有消费者确实需要“从 WM6 文件选择到 multipart body”的完整流程，且能在同步 callback、容量、
 权限和取消边界内形成最小 fixture，才进入候选；系统 picker 本身仍属于宿主人工 backlog。
+在当前候选中，它是第一优先调查方向，但在证据出现前仍不是“准备取舍”。
 
 ### 人工 backlog
 

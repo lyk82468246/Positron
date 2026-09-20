@@ -49,9 +49,11 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 隐藏→显示顺序和重复消息去重，崩溃转储增量为 0。上一批 next870 的 Core multipart 返回码 3
 契约校正、Browser registry/dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持
 有效；Headers/Request/Response、Storage、FormData 和 URLSearchParams 仍保持有界安全合同。
-当前短期目标是继续完成路线图候选发现审查：只从源码、公开头文件、测试 dispatch 和真实证据中
-找出新的公共 DLL 缺口；参考宿主的窗口可见性仅作为平台接线，不得把人工输入 backlog 或测试
-宿主扩展当作产品语义。稳定边界见
+当前短期目标是完成七个顶层 DLL 的主干能力覆盖：能力状态、owner、预算、失败边界、fixture
+和提升条件统一记录在 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)，并以有界 fail-closed
+规则约束“先声明、后实现”的接口。第一优先调查方向是有限 File/Blob→FormData→multipart
+流程，但在真实消费者证据出现前不进入产品实现；参考宿主的窗口可见性仅作为平台接线，不得把
+人工输入 backlog 或测试宿主扩展当作产品语义。稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
@@ -73,6 +75,9 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 - Browser 的 visibility lifecycle 由公共 DLL 保持状态和事件顺序；参考宿主在顶层
   `WM_SHOWWINDOW` 中只传递 hidden/visible 值，重复值、`pagehide`/`pageshow` 顺序和 teardown
   仍由 Browser 决定，其他宿主必须自行完成等价的消息接线。
+- 七个顶层 DLL 的主干能力状态、预算、错误边界和提升条件集中在
+  [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)；“有界待扩展”不等于已支持，未实现入口
+  只能在不修改状态的前提下返回稳定 unsupported 类错误。
 - Core 的 multipart wire encoder 也属于公共表单语义：
   `PCore_MultipartSubmissionEncode()` 负责 form default submission，
   `PCore_FormDataEncode()` 负责独立 FormData snapshot；两者共享 bounded boundary/CRLF/字段
@@ -311,11 +316,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 next873 已完成参考宿主 `WM_SHOWWINDOW` 可见性接线、相邻源码审查和定向设备门；Browser
 仍拥有 visibility state、事件顺序和去重，宿主没有新增产品状态。history fallback 已移除，
-Core URL callback 的 WinInet 重复实现也已删除，但更广的公共 DLL 消费者缺口审查仍未形成
-新的“准备取舍”候选，队列保持为空。唯一下一步仍是完成
-[`ROADMAP.md`](ROADMAP.md) 的候选发现审查：若形成满足所有者、预算、失败回滚、fixture 和门
-标准的公共 DLL 缺口，再分配下一个 next；否则继续累计人工验收或维护发布基线。崩溃、数据损坏、
-严重布局破坏或核心交互阻塞须立即人工复核。
+Core URL callback 的 WinInet 重复实现也已删除。本轮已建立七个顶层 DLL 的能力矩阵和有界
+fail-closed 公开规则；唯一下一步是按 [`ROADMAP.md`](ROADMAP.md) 完成公开头文件审计，补齐
+主干能力的 owner/预算/错误分类，并验证有限 File/Blob→FormData→multipart 是否有真实消费者
+证据。只有形成满足所有者、预算、失败回滚、fixture 和门标准的候选，才分配下一个 next；否则
+保持产品代码不变并维护发布/人工验收基线。崩溃、数据损坏、严重布局破坏或核心交互阻塞须立即
+人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、
