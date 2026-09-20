@@ -383,7 +383,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1301
+#define TEST_MAX_NUMBER 1302
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -55908,6 +55908,209 @@ done:
     show_info(L"TEST 1301 OK",
             "Core owns multipart wire encoding; host only supplies file I/O,"
             " with bounded probe, failure and binary-file checks.");
+    return TRUE;
+}
+
+/* TEST 1302 - FormData snapshots can be encoded independently of the
+ * source form's method/enctype, while the Core still owns the wire format. */
+static int test1302_form_data_entry_equals(HANDLE form_data,
+        unsigned int index, int kind, const char *name, const char *value)
+{
+    PCoreFormDataEntryInfo info;
+    char actual_name[64];
+    char actual_value[96];
+    int result;
+
+    memset(&info, 0, sizeof(info));
+    memset(actual_name, 0, sizeof(actual_name));
+    memset(actual_value, 0, sizeof(actual_value));
+    result = PCore_FormDataEntryInfo(form_data, index, &info,
+            actual_name, sizeof(actual_name), actual_value,
+            sizeof(actual_value));
+    return result == 1 && info.kind == kind &&
+            strcmp(actual_name, name) == 0 &&
+            strcmp(actual_value, value) == 0;
+}
+
+static BOOL test1302_core_form_data_encoder_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><form id='form' action='/encode' "
+        "method='get' enctype='application/x-www-form-urlencoded'>"
+        "<input name='alpha' value='A'><input id='upload' type='file' "
+        "name='upload'><button id='send' type='submit' name='go' "
+        "value='send'>Send</button></form></body></html>";
+    static const unsigned char FILE_BYTES[] = { 0x00, 0x7f, 0xff, 0x0a };
+    static const unsigned char FILE_NEEDLE[] = {
+        0x0d, 0x0a, 0x0d, 0x0a, 0x00, 0x7f, 0xff, 0x0a, 0x0d, 0x0a
+    };
+    static const char DISPOSITION_NEEDLE[] =
+        "Content-Disposition: form-data; name=\"upload\"; filename=\""
+        "formdata.bin\"";
+    static const char CONTENT_NEEDLE[] =
+        "Content-Type: application/octet-stream\r\n\r\n";
+    HANDLE document;
+    HANDLE file;
+    HANDLE form_data;
+    HANDLE multipart;
+    PCoreFormDataInfo form_data_info;
+    PCoreMultipartEncodeInfo encode_info;
+    WCHAR fixture_path[MAX_PATH];
+    char *fixture_utf8;
+    char *body;
+    char *content_type;
+    char *small_body;
+    DWORD written;
+    int result;
+    int small_unchanged;
+    int i;
+    BOOL write_result;
+    BOOL ok;
+
+    document = NULL;
+    file = INVALID_HANDLE_VALUE;
+    form_data = NULL;
+    multipart = NULL;
+    fixture_path[0] = L'\0';
+    fixture_utf8 = NULL;
+    body = NULL;
+    content_type = NULL;
+    small_body = NULL;
+    ok = FALSE;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL || PCore_StyleDocument(document, NULL) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto done;
+    }
+    (void) CreateDirectoryW(L"\\Temp", NULL);
+    memcpy(fixture_path, L"\\Temp\\positron-test1302.bin",
+            sizeof(L"\\Temp\\positron-test1302.bin"));
+    file = CreateFileW(fixture_path, GENERIC_WRITE, 0, NULL,
+            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        goto done;
+    }
+    written = 0;
+    write_result = WriteFile(file, FILE_BYTES, sizeof(FILE_BYTES),
+            &written, NULL);
+    CloseHandle(file);
+    file = INVALID_HANDLE_VALUE;
+    if (!write_result || written != sizeof(FILE_BYTES)) {
+        goto done;
+    }
+    fixture_utf8 = wide_to_utf8_alloc(fixture_path);
+    if (fixture_utf8 == NULL || PCore_FileInputSetPath(document, 0,
+            "formdata.bin", fixture_utf8) != 0 ||
+            PCore_LayoutDocument(document, 240, 320) != 0) {
+        goto done;
+    }
+    /* A GET/urlencoded form has no multipart submission, but FormData is
+     * explicitly independent of that default action. */
+    multipart = PCore_MultipartSubmissionById(document, "form", "send");
+    form_data = PCore_FormDataByIdEx(document, "form", "send");
+    memset(&form_data_info, 0, sizeof(form_data_info));
+    if (multipart != NULL || form_data == NULL ||
+            PCore_FormDataInfo(form_data, &form_data_info) != 1 ||
+            form_data_info.entry_count != 3 ||
+            !test1302_form_data_entry_equals(form_data, 0, 1,
+                    "alpha", "A") ||
+            !test1302_form_data_entry_equals(form_data, 1, 2,
+                    "upload", "formdata.bin") ||
+            !test1302_form_data_entry_equals(form_data, 2, 1,
+                    "go", "send")) {
+        goto done;
+    }
+    memset(&encode_info, 0, sizeof(encode_info));
+    result = PCore_FormDataEncode(form_data,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &encode_info, NULL, 0, NULL, 0);
+    if (result != 2 || encode_info.body_bytes <= (int) sizeof(FILE_BYTES) ||
+            encode_info.content_type_bytes <= 0) {
+        goto done;
+    }
+    small_body = (char *) malloc((size_t) encode_info.body_bytes);
+    body = (char *) malloc((size_t) encode_info.body_bytes);
+    content_type = (char *) malloc((size_t) encode_info.content_type_bytes + 1);
+    if (small_body == NULL || body == NULL || content_type == NULL) {
+        goto done;
+    }
+    memset(small_body, 0xa5, (size_t) encode_info.body_bytes);
+    result = PCore_FormDataEncode(form_data,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &encode_info, small_body, encode_info.body_bytes - 1,
+            content_type, encode_info.content_type_bytes + 1);
+    small_unchanged = 1;
+    for (i = 0; i < encode_info.body_bytes; i++) {
+        if ((unsigned char) small_body[i] != 0xa5) {
+            small_unchanged = 0;
+            break;
+        }
+    }
+    if (result != 2 || !small_unchanged) {
+        goto done;
+    }
+    result = PCore_FormDataEncode(form_data,
+            pcore_multipart_read_file, pcore_multipart_free_file, NULL,
+            &encode_info, body, encode_info.body_bytes,
+            content_type, encode_info.content_type_bytes + 1);
+    if (result != 1 ||
+            strncmp(content_type,
+                    "Content-Type: multipart/form-data; boundary=",
+                    strlen("Content-Type: multipart/form-data; boundary=")) != 0 ||
+            !test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes,
+                    (const unsigned char *) DISPOSITION_NEEDLE,
+                    sizeof(DISPOSITION_NEEDLE) - 1) ||
+            !test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes,
+                    (const unsigned char *) CONTENT_NEEDLE,
+                    sizeof(CONTENT_NEEDLE) - 1) ||
+            !test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes, FILE_NEEDLE,
+                    sizeof(FILE_NEEDLE)) ||
+            test70_memory_contains((const unsigned char *) body,
+                    encode_info.body_bytes,
+                    (const unsigned char *) fixture_utf8,
+                    (int) strlen(fixture_utf8))) {
+        goto done;
+    }
+    memset(&encode_info, 0, sizeof(encode_info));
+    result = PCore_FormDataEncode(form_data, NULL, NULL, NULL,
+            &encode_info, NULL, 0, NULL, 0);
+    if (result != 0) {
+        goto done;
+    }
+    ok = TRUE;
+
+done:
+    if (file != INVALID_HANDLE_VALUE) {
+        CloseHandle(file);
+    }
+    if (multipart != NULL) {
+        PCore_FreeMultipartSubmission(multipart);
+    }
+    if (form_data != NULL) {
+        PCore_FreeFormData(form_data);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (fixture_path[0] != L'\0') {
+        DeleteFileW(fixture_path);
+    }
+    free(fixture_utf8);
+    free(body);
+    free(content_type);
+    free(small_body);
+    if (!ok) {
+        show_error(L"TEST 1302 FAIL",
+                "Core FormData multipart encoder contract failed.");
+        return FALSE;
+    }
+    show_info(L"TEST 1302 OK",
+            "Core encodes an ordinary FormData snapshot independently of"
+            " the source form action, method and enctype, with binary-file"
+            " and capacity/failure checks.");
     return TRUE;
 }
 
@@ -114227,6 +114430,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1299: ok = test1299_browser_image_terminal_id_rename_contract(); break;
         case 1300: ok = test1300_browser_image_source_generation_contract(); break;
         case 1301: ok = test1301_core_multipart_encoder_contract(); break;
+        case 1302: ok = test1302_core_form_data_encoder_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

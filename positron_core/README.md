@@ -81,6 +81,15 @@ Core 不保存这两个 callback、路径或 buffer。size probe 或任一容量
 不会部分写入输出。文件内容是 binary-safe 的，空路径不调用 callback。网络、文件权限、
 请求取消和重试不属于 Core。
 
+`FormData(form[, submitter])` 是独立于 form 的 `method`、`action` 和 `enctype` 的成功控件
+快照。应用可以用 `PCore_FormDataById()` 或 `PCore_FormDataByIdEx()` 创建它，再调用
+`PCore_FormDataEncode()` 生成同样有界的 multipart body；因此一个默认 GET/urlencoded
+form 也能由应用自行构造 multipart HTTP 请求。这个入口与 submission encoder 共享
+boundary、字段顺序、quoted metadata、binary file bytes、size-probe、1 MiB 上限和
+失败原子性合同，但不会执行 form 默认动作、validation、事件或导航。文件仍只在同步
+encode 调用中通过应用提供的 read/free callback 读取；`PCore_FormDataEntryInfo()` 只
+返回文件名和类型元数据，不把本地路径或文件 buffer 暴露为长期状态。
+
 ## 有界 DOM mutation
 
 所有 mutation 都在头文件声明的节点、深度、节点数、direct-child、UTF-8 和文本预算内执行，并在提交前完成预检。失败不留下部分树；成功保留 API 承诺的节点身份并使 retained layout 失效。Core 不派发 mutation 事件、不执行 script、不创建 native 控件、不暴露 fragment handle。

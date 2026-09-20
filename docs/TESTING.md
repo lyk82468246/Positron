@@ -76,7 +76,12 @@ tests=1-5 7b 13 20,999
   `Content-Type` 容量不足时无部分写入、成功控件顺序、quoted 字段/文件名、binary file
   bytes、缺少 file callback 的 fail-closed，以及 1 MiB body 上限。宿主只提供同步文件
   读取/释放 callback；Core 负责 boundary、CRLF 和 wire serialization。网络发送、文件
-  权限、Browser `FormData` 的 metadata-only 快照和 native 表单视觉仍不在该夹具范围。
+  权限和 native 表单视觉仍不在该夹具范围。
+- TEST1302 覆盖 `PCore_FormDataEncode()` 的独立快照合同：默认 GET/urlencoded form 仍能
+  通过 `PCore_FormDataByIdEx()` 生成 multipart body，successful-control 顺序、文件名、
+  binary bytes、size probe、容量不足时无部分输出和缺少 file callback 均由 Core 断言；
+  这证明 FormData 编码不依赖 form 的默认 method/enctype/action。文件 I/O、网络发送、
+  Browser `formdata` 事件修改和 native 表单视觉仍由宿主或人工矩阵负责。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

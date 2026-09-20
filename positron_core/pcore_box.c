@@ -13149,6 +13149,22 @@ PCORE_API int PCore_FormDataEntryInfo(HANDLE hFormData,
     return result;
 }
 
+PCORE_API int PCore_FormDataEncode(HANDLE hFormData,
+        PCoreMultipartFileReadFn read_file,
+        PCoreMultipartFileFreeFn free_file, void *pw,
+        PCoreMultipartEncodeInfo *out_info,
+        void *body, int body_capacity,
+        char *content_type, int content_type_capacity)
+{
+    /* FormData snapshots and multipart submission snapshots deliberately
+     * share the same private successful-control representation. Keep the
+     * wire encoder in one implementation so boundary, ordering, budgets and
+     * failure atomicity cannot drift between the two public entry points. */
+    return PCore_MultipartSubmissionEncode(hFormData, read_file, free_file,
+            pw, out_info, body, body_capacity, content_type,
+            content_type_capacity);
+}
+
 PCORE_API void PCore_FreeFormData(HANDLE hFormData)
 {
     pcore_multipart_free((pcore_multipart_submission *) hFormData);

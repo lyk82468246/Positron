@@ -59,7 +59,7 @@ Core 是文档和渲染的产品边界，内部使用移植后的 NetSurf 组件
 - UTF-8 HTML 解析、CSS cascade、媒体条件、computed style、资源发现和有界 cache；
 - `<img>`、`srcset`、`picture/source` 的有限候选选择，以及 image-map 几何、布局、命中和 GDI paint；
 - page extent、元素几何、overflow retained scroll、form owner、validation、successful controls、submission/reset 和 modal paint；
-- successful-control snapshot 的有界 multipart/form-data wire encoding；Core 生成 boundary、字段/文件顺序、quoted metadata、binary file bytes 和完整 Content-Type，宿主只提供同步文件读取/释放 callback；
+- successful-control snapshot 的有界 multipart/form-data wire encoding；Core 为默认 form submission 与独立 `FormData` snapshot 生成 boundary、字段/文件顺序、quoted metadata、binary file bytes 和完整 Content-Type，宿主只提供同步文件读取/释放 callback；
 - 以 ID 或受控 child index 执行有界 DOM mutation，并在成功变化后使 retained layout 失效。
 
 HTML parser mutation 只接受头文件声明的节点类型、深度、节点数、direct-child 和 UTF-8 预算。Core 不派发 DOM 事件、不创建 native 控件、不执行页面 script、不暴露 fragment handle，也不提供完整 live collection。
@@ -76,6 +76,10 @@ Multipart submission 的 wire contract 也由 Core 拥有。调用方先以
 `PCoreMultipartFileReadFn`/`PCoreMultipartFileFreeFn` 读取文件 bytes，不保存 callback、路径或
 buffer；body 总量受 `PCORE_MULTIPART_BODY_MAX_BYTES` 限制，容量不足、缺少 file callback、
 读取失败或超限都不产生部分输出。网络发送、文件权限和临时 buffer 的生命周期仍由宿主负责。
+`PCore_FormDataById[Ex]()` 创建的成功控件 snapshot 也可以通过
+`PCore_FormDataEncode()` 走同一 wire contract；它不受源 form 的 method/enctype/action 或
+默认提交事件约束，适合应用自行构造 multipart HTTP 请求。FormData entry 查询仍只返回
+文件名/type 元数据，实际路径只作为同步 file callback 的借用参数。
 
 ### `positron_browser.dll`
 

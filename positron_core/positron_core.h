@@ -2135,7 +2135,9 @@ PCORE_API void PCore_FreeMultipartSubmission(HANDLE hSubmission);
  * document order. Controls use the shared ancestor/explicit form="id" owner
  * rule. The returned handle is opaque and caller-owned until
  * PCore_FreeFormData. File entries have kind 2 and expose their submitted
- * filename as value; the local picker path remains private to Core. */
+ * filename as value; PCore_FormDataEntryInfo does not return the local picker
+ * path, while PCore_FormDataEncode may borrow it for the synchronous file
+ * callback. */
 typedef struct PCoreFormDataInfo {
     unsigned int entry_count;
 } PCoreFormDataInfo;
@@ -2155,6 +2157,20 @@ PCORE_API int PCore_FormDataEntryInfo(HANDLE hFormData,
         unsigned int entry_index, PCoreFormDataEntryInfo *out_info,
         char *name, int name_capacity,
         char *value, int value_capacity);
+/* Encode a FormData(form[, submitter]) snapshot as a bounded binary
+ * multipart/form-data body. This is independent of the source form's
+ * method/enctype and is intended for applications that construct a
+ * FormData request themselves. The snapshot must still be alive; ownership
+ * and return values match PCore_MultipartSubmissionEncode(). File entries
+ * require both synchronous callbacks, and the callback receives Core's
+ * private picker path only for the duration of the call. Core does not
+ * perform file I/O, retain callbacks or send a request. */
+PCORE_API int PCore_FormDataEncode(HANDLE hFormData,
+        PCoreMultipartFileReadFn read_file,
+        PCoreMultipartFileFreeFn free_file, void *pw,
+        PCoreMultipartEncodeInfo *out_info,
+        void *body, int body_capacity,
+        char *content_type, int content_type_capacity);
 PCORE_API void PCore_FreeFormData(HANDLE hFormData);
 
 /* Perform the state portion of the default action for a reset button at a

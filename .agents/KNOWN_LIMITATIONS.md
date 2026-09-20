@@ -277,6 +277,10 @@
   顺序、quoted metadata 和 binary file bytes；宿主必须提供同步的 file read/free callback，
   body 总量固定不超过 1 MiB，容量不足、读取失败、缺少 callback 或超限均 fail closed 且
   不产生部分输出。该 API 不执行文件 I/O、网络发送、取消或重试。
+  `PCore_FormDataById[Ex]()` 创建的独立 successful-control snapshot 也可通过
+  `PCore_FormDataEncode()` 生成同一 bounded multipart body；它不受源 form 的 method、action
+  或 enctype 约束。FormData entry 查询仍只提供文件名/type 元数据，实际文件读取只在同步
+  encode callback 中发生，完整 File/Blob 对象、异步读取和浏览器安全策略仍未实现。
   Browser 的 `new FormData(form[, submitter])` 另有独立的 detached snapshot：无显式
   submitter 时使用旧 callback，带第二参数时使用 Ex callback，并复用 successful-control
   与 form-owner 规则；最多返回 64 项，名称最多 64 字节，字符串值最多 128 字节，文件名
@@ -284,9 +288,11 @@
   input/button；普通、禁用、跨 form、伪造对象、无 id、超限或缺少 callback 均安全失败。
   构造成功后 Browser 在 form 上同步派发非冒泡、不可取消的 `formdata` 事件，事件的
   `formData` 指向正在返回的对象；监听器可在构造返回前修改字段，`form.onformdata`
-  也可用。它不触发 validation、submit/reset 事件、默认动作或导航。文件只返回 filename/type
-  和空内容，不暴露 picker 路径；完整 live HTMLFormControlsCollection、文件读取和
-  其他 form-associated 扩展及浏览器完整表单树规则仍未实现。
+  也可用。它不触发 validation、submit/reset 事件、默认动作或导航。Browser 对象仍只
+  返回 filename/type 和空内容；应用若需发出 multipart 请求，必须把 Core snapshot 交给
+  `PCore_FormDataEncode()` 并自行提供同步 file callback。完整 live
+  HTMLFormControlsCollection、File/Blob 读取和其他 form-associated 扩展及浏览器完整表单树
+  规则仍未实现。
 - 事件系统覆盖常用 capture/target/bubble、取消和默认动作，但不支持所有 DOM Event 子类、pointer/touch/drag/drop/clipboard 或浏览器手势。宿主对单元素 `contenteditable` 另有受限 `CF_UNICODETEXT` paste/cut/copy 接线：非空选区才复制，折叠选区保持剪贴板不变，超长或非 Unicode 格式在 native mutation 前拒绝；Core mutation 暂时释放 retained layout，宿主在下一次 relayout 前必须用 native EDIT 的 DOM id 维持连续 beforeinput/input/change 的目标身份；它不是通用 DOM ClipboardEvent 或 async clipboard API。
 - native 控件状态由 Core、Browser 和宿主共同提交；回调错误、stale token 或几何变化会 fail closed，可能表现为本次默认动作不执行。
 
@@ -574,8 +580,11 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
 - TEST1301 覆盖 Core 的 `PCore_MultipartSubmissionEncode()`：成功控件顺序、boundary/
   CRLF、quoted 字段与文件名、binary file bytes、size probe、容量不足时无部分输出以及
   缺少 file callback 的 fail-closed。body 总量固定为 1 MiB 上限；宿主只提供同步文件
-  callback，网络发送、文件权限、请求取消/重试和 Browser `FormData` 的 metadata-only
-  快照仍不在本测试覆盖范围。
+  callback，网络发送、文件权限和请求取消/重试仍不在本测试覆盖范围。
+- TEST1302 覆盖 `PCore_FormDataEncode()`：默认 GET/urlencoded form 的独立 FormData
+  snapshot 仍可生成 multipart body，并断言成功控件顺序、文件 bytes、容量/size-probe
+  原子性和 callback 缺失失败。Browser `FormData` 对象本身仍是 metadata-only；事件修改、
+  File/Blob API、网络发送和 native 表单视觉不由该夹具承诺。
 - tracked INI 是快速 smoke，不是测试全集；全量自动清单由打包/门脚本从源码 dispatch 生成。
 - manual-only fixture 必须在 `auto=0` 下运行，不能放入自动全量并把主动跳过视为通过。
 - TEST13 是一个真实网页哨兵，不代表任意互联网网站兼容性。
