@@ -33,7 +33,6 @@
 #include <stdlib.h>     /* malloc / free for fetched-CSS buffers */
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 #include <commctrl.h>   /* WM6 common-controls progress bar */
-#include <wininet.h>    /* InternetCombineUrlA - WM-native URL resolution */
 #include <imm.h>        /* WM6 input-method composition strings */
 
 #include "positron_tls.h"
@@ -13657,28 +13656,6 @@ static void cstr_copy(char *d, int cap, const char *s)
     d[n] = '\0';
 }
 
-/* Keep URL policy at the WM host boundary. The engine supplies the CSS base
- * URL; WinINet supplies RFC-style relative/dot-segment resolution. */
-static int wm_combine_url(void *pw, const char *base_url,
-        const char *reference, char *out_url, int out_capacity)
-{
-    DWORD length;
-
-    (void) pw;
-    if (base_url == NULL || reference == NULL || out_url == NULL ||
-            out_capacity <= 1) {
-        return 1;
-    }
-    length = (DWORD) out_capacity;
-    if (!InternetCombineUrlA(base_url, reference, out_url, &length,
-            ICU_NO_ENCODE)) {
-        out_url[0] = '\0';
-        return 1;
-    }
-    out_url[out_capacity - 1] = '\0';
-    return 0;
-}
-
 static int pcore_document_url(const char *host, const char *path, int port,
         char *out_url, int out_capacity)
 {
@@ -13701,6 +13678,43 @@ static int pcore_document_url(const char *host, const char *path, int port,
     }
     out_url[out_capacity - 1] = '\0';
     return (n < 0 || n >= out_capacity - 1) ? 1 : 0;
+}
+
+/* The public HTTP DLL owns bounded HTTP(S) reference resolution. Keep this
+ * Core callback as a thin adapter that converts its host/path result back to
+ * the absolute UTF-8 URL expected by the parser; the host must not maintain a
+ * second WinInet URL policy. */
+static int wm_combine_url(void *pw, const char *base_url,
+        const char *reference, char *out_url, int out_capacity)
+{
+    char base_host[256];
+    char base_path[1024];
+    char host[256];
+    char path[1024];
+    int base_port;
+    int port;
+
+    (void) pw;
+    if (base_url == NULL || reference == NULL || out_url == NULL ||
+            out_capacity <= 1) {
+        return 1;
+    }
+    out_url[0] = '\0';
+    base_port = 0;
+    if (PHttp_ResolveReference(NULL, 443, NULL, base_url,
+            base_host, sizeof(base_host), base_path, sizeof(base_path),
+            &base_port) != 0) {
+        return 1;
+    }
+    port = 0;
+    if (PHttp_ResolveReference(base_host, base_port, base_path, reference,
+            host, sizeof(host), path, sizeof(path), &port) != 0 ||
+            pcore_document_url(host, path, port, out_url,
+            out_capacity) != 0) {
+        out_url[0] = '\0';
+        return 1;
+    }
+    return 0;
 }
 
 /* Copy an absolute path (starts with '/') into dst, stripping any #fragment.
@@ -96691,6 +96705,7 @@ static BOOL test1064_navigation_url_resolution_contract(void)
 {
     char host[128];
     char path[512];
+    char combined[512];
     char error[512];
     int port;
     int relative_ok;
@@ -96700,9 +96715,13 @@ static BOOL test1064_navigation_url_resolution_contract(void)
     int empty_ok;
     int absolute_ok;
     int rejected_ok;
+    int wm_relative_ok;
+    int wm_query_ok;
+    int wm_rejected_ok;
 
     memset(host, 0, sizeof(host));
     memset(path, 0, sizeof(path));
+    memset(combined, 0, sizeof(combined));
     memset(error, 0, sizeof(error));
     port = 0;
     relative_ok = resolve_url_from("example.test",
@@ -96740,21 +96759,37 @@ static BOOL test1064_navigation_url_resolution_contract(void)
             "javascript:alert(1)", host, sizeof(host), path, sizeof(path),
             &port) && !resolve_url_from(NULL, NULL, 443, "relative.html",
             host, sizeof(host), path, sizeof(path), &port);
+    wm_relative_ok = wm_combine_url(NULL,
+            "https://example.test/dir/page.css?old=1",
+            "../img/logo.png?new=2#fragment", combined,
+            sizeof(combined)) == 0 &&
+            strcmp(combined, "https://example.test/img/logo.png?new=2") == 0;
+    wm_query_ok = wm_combine_url(NULL,
+            "https://example.test/dir/page.css?old=1", "?next=1",
+            combined, sizeof(combined)) == 0 &&
+            strcmp(combined, "https://example.test/dir/page.css?next=1") == 0;
+    wm_rejected_ok = wm_combine_url(NULL,
+            "https://example.test/dir/page.css", "javascript:alert(1)",
+            combined, sizeof(combined)) != 0 && combined[0] == '\0';
     if (!relative_ok || !query_ok || !root_ok || !network_ok || !empty_ok ||
-            !absolute_ok || !rejected_ok) {
+            !absolute_ok || !rejected_ok || !wm_relative_ok ||
+            !wm_query_ok || !wm_rejected_ok) {
         _snprintf(error, sizeof(error) - 1,
                 "relative=%d query=%d root=%d network=%d empty=%d "
-                "absolute=%d rejected=%d host=%s path=%s port=%d",
+                "absolute=%d rejected=%d wm=%d/%d/%d host=%s path=%s "
+                "port=%d combined=%s",
                 relative_ok, query_ok, root_ok, network_ok, empty_ok,
-                absolute_ok, rejected_ok, host, path, port);
+                absolute_ok, rejected_ok, wm_relative_ok, wm_query_ok,
+                wm_rejected_ok, host, path, port, combined);
         error[sizeof(error) - 1] = '\0';
         show_error(L"TEST 1064 FAIL", error);
         return FALSE;
     }
     show_info(L"TEST 1064 OK",
             "HTTP(S) navigation and resource references now share bounded "
-            "WinINet resolution for directory, query, network-path and "
-            "dot-segment cases; fragments and unsupported schemes fail safe.");
+            "positron_http resolution for directory, query, network-path and "
+            "dot-segment cases; the Core URL callback uses the same product "
+            "resolver and rejects unsupported schemes.");
     return TRUE;
 }
 
