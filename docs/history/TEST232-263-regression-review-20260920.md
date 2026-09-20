@@ -31,6 +31,23 @@
 仍产生了不应有的 `click|disabled`，TEST264 的 disabled validation 结果仍异常。它们没有
 改变本次 TEST232 修复，也没有被写成 TEST232 的失败证据；需要另行取证和分批处理。
 
+## 追加审查证据与当前边界
+
+对 `b5debcec` 的时序取舍又做了一次反向验证。把重排版推迟到 `input`/`change` 两个
+回调完成之后，会使自动 TEST231 的结果只剩 `input|file;`，因为 Core 的坐标命中树已
+在监听器 mutation 后失效；该实验已撤回。当前保留“`input` 返回后、`change` 派发前
+恢复布局”的顺序，并清理每次选择前后的待重排标志；`231,1068,999` 的设备门记录在
+`tmp/device-runs/20260920-194523-test232-lifecycle-final-audit`，三项通过且无新 dump。
+
+连续自动渲染窗口的消息循环在新实现下通过了
+`tmp/device-runs/20260920-194247-render-window-sequence-audit`。临时恢复旧
+`PostQuitMessage` 实现的对照也通过了 `tmp/device-runs/20260920-194336-render-window-sequence-old-control`，
+因此不能把 `WM_QUIT` 单独认定为 TEST232→TEST263 失效的已证实根因；当前改动仍保留
+per-window closed flag，避免可复用的 `show_render_window()` 向宿主线程投递退出语义。
+同时，session 销毁现在明确清除 host 的 active picker guard，防止窗口在 picker unwind
+期间关闭后抑制下一个页面的 `file.click()`。这两项仍需真实 GUI 连续序列确认，未以自动
+窗口门替代人工 TEST232/263 结论。
+
 ## 人工验收包
 
 新的手动包位于：

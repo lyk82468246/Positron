@@ -6143,6 +6143,11 @@ static char   g_sequential_focus_modal_id[
         PBROWSER_SCRIPT_DIALOG_ID_MAX] = "";
 static int    g_file_picker_pending = 0;
 static int    g_file_picker_active = 0;
+/* Each manual/visual fixture owns one render window, but several fixtures
+ * can run consecutively in the same test_host process.  A WM_QUIT posted by
+ * one fixture would otherwise terminate the next fixture's message loop
+ * before its controls can receive input. */
+static int    g_render_window_closed = 0;
 /* A file input listener may mutate the DOM while the browser-owned native
  * file transaction is dispatching its input -> change pair.  Keep the
  * intermediate layout repair outside the input callback itself; rebuilding
@@ -6397,6 +6402,10 @@ static void pcore_browser_script_session_destroy(void)
     pcore_disclosure_focus_clear();
     pcore_sequential_focus_clear();
     pcore_file_picker_clear_pending();
+    /* A session can be torn down from WM_DESTROY while a host-owned picker
+     * is unwinding.  Do not let that modal guard suppress the next fixture's
+     * script-visible file.click(). */
+    g_file_picker_active = 0;
     g_file_input_restyle_pending = 0;
     if (g_browser_script_session.session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeFilePickerState(
@@ -10644,11 +10653,10 @@ static int pcore_browser_script_select_dispatch(void *pw,
             strcmp(info->event_type, "change") != 0)) {
         return -1;
     }
-    /* File listeners commonly update a visible status node from the input
-     * callback.  Core then releases its retained layout before Browser asks
-     * for the following change event.  Repair that layout only after the
-     * input callback has returned; doing it inside the input callback can
-     * invalidate Browser's active native-file transaction. */
+    /* Core's coordinate hit-test may be invalidated by a file input listener
+     * that updates the visible status nodes.  Restore the retained layout
+     * before resolving the following change event; the Browser transaction
+     * remains synchronous and the listener pair stays ordered. */
     if (strcmp(info->event_type, "change") == 0 &&
             g_file_input_restyle_pending) {
         g_file_input_restyle_pending = 0;
@@ -22022,6 +22030,7 @@ static int pcore_handle_file_input_index_with_picker(HWND hwnd,
     if (info.disabled) {
         return 1;
     }
+    g_file_input_restyle_pending = 0;
     center_x = info.x + info.width / 2;
     center_y = info.y + info.height / 2;
     transaction_started = pcore_browser_script_dispatch_native_file_phase(
@@ -22090,6 +22099,7 @@ static int pcore_handle_file_input_index_with_picker(HWND hwnd,
             InvalidateRect(hwnd, NULL, TRUE);
         }
     }
+    g_file_input_restyle_pending = 0;
     return 1;
 }
 
@@ -24520,7 +24530,7 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         SHSipPreference(hwnd, SIP_FORCEDOWN);
         pcore_navigation_set_loading(hwnd, 0);
         pcore_navigation_discard_progress_messages(hwnd);
-        PostQuitMessage(0);
+        g_render_window_closed = 1;
         return 0;
     }
     return DefWindowProc(hwnd, msg, wp, lp);
@@ -24883,6 +24893,7 @@ static BOOL show_render_window(void)
     if (hwnd == NULL) {
         return FALSE;
     }
+    g_render_window_closed = 0;
     pcore_set_scrollbar(hwnd);
     if (g_browser_script_session.bridge != NULL &&
             g_browser_script_session.document == g_render_doc) {
@@ -25171,7 +25182,7 @@ static BOOL show_render_window(void)
         }
     }
 
-    while (GetMessage(&m, NULL, 0, 0)) {
+    while (!g_render_window_closed && GetMessage(&m, NULL, 0, 0) > 0) {
         TranslateMessage(&m);
         DispatchMessage(&m);
     }

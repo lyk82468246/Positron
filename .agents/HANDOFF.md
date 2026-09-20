@@ -64,11 +64,12 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 metadata；它不声称脚本 File/Blob 已能向 Core 交付 multipart bytes。宿主只提供 picker、
 窗口和断言，产品语义仍归 Browser/Core。
 
-本轮回归审查对照 `c32e2222` 与 `b5debcec` 发现：活动 `input` 回调内重排会在事务返回前
-重建 Core retained box tree。当前宿主只记录有界待重排标记，等回调返回后由 `change`
-入口执行一次；session 销毁清除标记，`WM_DESTROY` 移除该 HWND 的交互/picker 消息。
-`tmp/device-runs/20260920-183530-next222` 的 `231,999` 定向门 2/2 通过，crash/dump=0；
-TEST232/263/1310 仍须真实 GUI picker 验收，不能以自动证据代替。完整报告见
+本轮对照 `c32e2222`/`b5debcec` 确认：`input` 回调内重排会过早重建 Core box tree；当前由
+`change` 入口执行一次，并在 session/窗口销毁时清理 picker、重排和消息状态。
+`tmp/device-runs/20260920-194523-test232-lifecycle-final-audit` 的 `231,1068,999` 门 3/3
+通过，crash/dump=0；连续窗口及旧实现对照均通过，`WM_QUIT` 未证实为根因。
+TEST232/263/1310 仍须真实 GUI picker 验收，不能以
+自动证据代替。完整报告见
 [`docs/history/TEST232-263-regression-review-20260920.md`](../docs/history/TEST232-263-regression-review-20260920.md)。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
