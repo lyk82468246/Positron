@@ -100,7 +100,9 @@ document-id/traversal 规则现在只由 `positron_browser.dll` 的 `PBrowser_Hi
 URL callback 对 WinInet `InternetCombineUrlA` 的重复实现，改为调用 `positron_http.dll` 的
 `PHttp_ResolveReference()`；1064/1065/999 设备门证明目录相对、query、network-path、绝对
 HTTP(S)、fragment stripping 和不安全 scheme 的结果仍一致。对现有源码、测试入口和已知限制
-继续整理后，当前仍没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不意味着
+继续整理后，next873 又补齐参考宿主顶层 `WM_SHOWWINDOW` 到 Browser visibility lifecycle 的
+平台接线；1309/1138/1139/999 只验证消息映射、Browser 去重和事件顺序，没有新增宿主产品
+语义。当前仍没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不意味着
 可以随意扩大 Web API。后续仍应先完成候选发现审查，再决定是否分配新的 next。
 
 除上述已收束的 history 边界外，候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件

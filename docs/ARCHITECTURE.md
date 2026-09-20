@@ -98,7 +98,7 @@ Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session�
   fail closed；
 - `document.activeElement`、focus/blur、`scrollIntoView`、native callback 请求及页面脚本的同步/异步队列。
 
-Browser 不创建窗口、不直接读写网络、不替宿主 clamp 物理坐标，也不决定系统 picker、SIP/IME 或 native 控件默认动作。宿主必须显式调用 resize、scroll、focus、lifecycle 和 task checkpoint 通知；没有 pump，页面异步队列不会自行推进。
+Browser 不创建窗口、不直接读写网络、不替宿主 clamp 物理坐标，也不决定系统 picker、SIP/IME 或 native 控件默认动作。宿主必须显式调用 resize、scroll、focus、lifecycle 和 task checkpoint 通知；参考宿主把顶层 `WM_SHOWWINDOW` 映射到 visibility lifecycle，其他宿主仍需自行接线；没有 pump，页面异步队列不会自行推进。
 
 #### DOM wrapper 与 Fragment
 

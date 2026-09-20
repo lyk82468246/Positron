@@ -104,6 +104,11 @@ tests=1-5 7b 13 20,999
   dispatch、`DOMStringMap.set()`/`toJSON()` 的 `__proto__`/`constructor`/`toString` 名称，以及
   `BroadcastChannel('__proto__')` 的消息隔离；这些断言只证明原型安全和同一 session 内的
   有界 identity，不扩展完整 named-property、异步网络或多窗口语义。
+- TEST1309 覆盖参考宿主的顶层可见性接线：`PCoreWndProc` 收到
+  `WM_SHOWWINDOW(FALSE/TRUE)` 时调用 Browser 的公开 visibility lifecycle API；重复的隐藏/显示
+  消息由 Browser 去重，并保持 `visibilitychange`→`pagehide`/`pageshow` 顺序。该夹具只证明
+  平台消息到公共 Browser 合同的映射，不把窗口可见性、bfcache 或系统 shell 策略扩展为
+  Browser 自主行为。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

@@ -382,7 +382,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1308
+#define TEST_MAX_NUMBER 1309
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -23595,6 +23595,17 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
         return 0;
     case WM_ERASEBKGND:
         return 1;   /* WM_PAINT clears the invalid region itself; skip erase */
+    case WM_SHOWWINDOW:
+        /* The Browser DLL owns document.hidden/visibilityState and the
+         * visibilitychange/pagehide/pageshow ordering.  The reference host
+         * only translates the top-level native visibility message; duplicate
+         * values and teardown ordering remain product-owned. */
+        if (pcore_native_script_active() &&
+                g_browser_script_session.session != NULL) {
+            (void) PBrowser_ScriptSessionDispatchVisibility(
+                    g_browser_script_session.session, wp ? 0 : 1);
+        }
+        break;
     case WM_SIZE: {
         int cw = LOWORD(lp);    /* new client width  */
         int chh = HIWORD(lp);   /* new client height */
@@ -56057,6 +56068,105 @@ static BOOL test1308_browser_special_key_registries_contract(void)
             " maps: special DOM ids remain same-object and event-safe,"
             " dataset JSON preserves special names, and BroadcastChannel"
             " delivery remains isolated for a special channel name.");
+    return TRUE;
+}
+
+/* TEST 1309 - the reference host maps top-level WM_SHOWWINDOW to the
+ * Browser-owned visibility lifecycle.  This deliberately exercises the
+ * window-procedure bridge rather than calling the public visibility API
+ * directly; duplicate native messages must remain silent in Browser. */
+static BOOL test1309_browser_host_visibility_message_contract(void)
+{
+    static const char URL[] = "https://positron.local/host-visibility";
+    static const char SETUP[] =
+            "var trace=[];"
+            "document.addEventListener('visibilitychange',function(){"
+            "trace.push('visibility:'+document.visibilityState);},false);"
+            "window.addEventListener('pagehide',function(){"
+            "trace.push('pagehide:'+document.visibilityState);},false);"
+            "window.addEventListener('pageshow',function(){"
+            "trace.push('pageshow:'+document.visibilityState);},false);";
+    static const char EXPECTED[] =
+            "pageshow:visible|visibility:hidden|pagehide:hidden|"
+            "visibility:visible|pageshow:visible";
+    HANDLE session;
+    const char *result;
+    const char *session_error;
+    char error[512];
+    int ok;
+
+    session = NULL;
+    result = NULL;
+    session_error = NULL;
+    memset(error, 0, sizeof(error));
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = (HANDLE) 1;
+    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    g_browser_script_session.document = g_render_doc;
+    g_browser_script_session.runtime = session;
+    g_browser_script_session.session = session;
+    g_browser_script_session.bridge = NULL;
+    if (session == NULL ||
+            PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", URL) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportWidth", 320.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreViewportHeight", 240.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreDevicePixelRatio", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+        session_error = session != NULL ?
+                PBrowser_ScriptSessionGetError(session) : NULL;
+        if (session_error != NULL && session_error[0] != '\0') {
+            cstr_copy(error, sizeof(error), session_error);
+        } else {
+            cstr_copy(error, sizeof(error), "visibility bootstrap failed");
+        }
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionEvaluate(session, SETUP, -1) !=
+            PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "visibility listener setup failed");
+        ok = 0;
+    }
+    if (ok && PBrowser_ScriptSessionDispatchPageLifecycle(session,
+            "complete") != PSCRIPT_OK) {
+        cstr_copy(error, sizeof(error), "initial lifecycle failed");
+        ok = 0;
+    }
+    if (ok) {
+        /* Exercise the same PCoreWndProc entry used by a real top-level
+         * window.  No HWND state is needed by the WM_SHOWWINDOW bridge. */
+        (void) PCoreWndProc((HWND) 1, WM_SHOWWINDOW, FALSE, 0);
+        (void) PCoreWndProc((HWND) 1, WM_SHOWWINDOW, FALSE, 0);
+        (void) PCoreWndProc((HWND) 1, WM_SHOWWINDOW, TRUE, 0);
+        (void) PCoreWndProc((HWND) 1, WM_SHOWWINDOW, TRUE, 0);
+    }
+    if (ok && (PBrowser_ScriptSessionEvaluate(session,
+            "trace.join('|');", -1) != PSCRIPT_OK ||
+            (result = PBrowser_ScriptSessionGetResult(session)) == NULL ||
+            strcmp(result, EXPECTED) != 0)) {
+        cstr_copy(error, sizeof(error),
+                "WM_SHOWWINDOW visibility ordering or deduplication failed");
+        ok = 0;
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    if (!ok) {
+        show_error(L"TEST 1309 FAIL", error[0] != '\0' ? error :
+                "host visibility message contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1309 OK",
+            "The reference host maps top-level WM_SHOWWINDOW to Browser"
+            " visibility/page lifecycle; duplicate native messages remain"
+            " silent and teardown ownership stays in Browser.");
     return TRUE;
 }
 
@@ -114404,6 +114514,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1306: ok = test1306_browser_storage_special_keys_contract(); break;
         case 1307: ok = test1307_browser_headers_special_keys_contract(); break;
         case 1308: ok = test1308_browser_special_key_registries_contract(); break;
+        case 1309: ok = test1309_browser_host_visibility_message_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

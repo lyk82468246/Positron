@@ -43,11 +43,14 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 无产品 history handle 时安全失败。next872 又收束了 Core 的 URL callback：`wm_combine_url`
 不再直接调用 WinInet 或维护第二套解析规则，而是把 base/reference 交给
 `PHttp_ResolveReference()`，只做 host/path 到绝对 URL 的薄转换。1064/1065/999 定向设备门
-已通过，崩溃转储增量为 0。上一批 next870 的 Core multipart 返回码 3 契约校正、Browser
-registry/dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持有效；
-Headers/Request/Response、Storage、FormData 和 URLSearchParams 仍保持有界安全合同。当前
-短期目标是完成路线图候选发现审查：只从源码、公开头文件、测试 dispatch 和真实证据中找出
-新的公共 DLL 缺口，不得把人工输入 backlog 或测试宿主扩展当作产品语义。稳定边界见
+已通过，崩溃转储增量为 0。next873 补齐参考宿主顶层 `WM_SHOWWINDOW` 到
+`PBrowser_ScriptSessionDispatchVisibility()` 的平台接线；1309/1138/1139/999 定向门验证
+隐藏→显示顺序和重复消息去重，崩溃转储增量为 0。上一批 next870 的 Core multipart 返回码 3
+契约校正、Browser registry/dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持
+有效；Headers/Request/Response、Storage、FormData 和 URLSearchParams 仍保持有界安全合同。
+当前短期目标是继续完成路线图候选发现审查：只从源码、公开头文件、测试 dispatch 和真实证据中
+找出新的公共 DLL 缺口；参考宿主的窗口可见性仅作为平台接线，不得把人工输入 backlog 或测试
+宿主扩展当作产品语义。稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
 历史 next 细节由 Git 与 `docs/history/` 保存。
 
@@ -66,6 +69,9 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 - Core 的 URL resolver callback 由宿主接线，但解析规则来自 `positron_http.dll` 的
   `PHttp_ResolveReference()`；宿主不再直接链接 WinInet URL 合并函数，也不复制 HTTP(S)
   reference/fragment/authority 规则。
+- Browser 的 visibility lifecycle 由公共 DLL 保持状态和事件顺序；参考宿主在顶层
+  `WM_SHOWWINDOW` 中只传递 hidden/visible 值，重复值、`pagehide`/`pageshow` 顺序和 teardown
+  仍由 Browser 决定，其他宿主必须自行完成等价的消息接线。
 - Core 的 multipart wire encoder 也属于公共表单语义：
   `PCore_MultipartSubmissionEncode()` 负责 form default submission，
   `PCore_FormDataEncode()` 负责独立 FormData snapshot；两者共享 bounded boundary/CRLF/字段
@@ -300,9 +306,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next872 已完成源码、宿主边界、定向设备门和路线图复核；history fallback 已移除，Core URL
-callback 的 WinInet 重复实现也已删除，但更广的公共 DLL 消费者缺口审查仍未形成新的“准备
-取舍”候选，队列保持为空。唯一下一步仍是完成
+next873 已完成参考宿主 `WM_SHOWWINDOW` 可见性接线、相邻源码审查和定向设备门；Browser
+仍拥有 visibility state、事件顺序和去重，宿主没有新增产品状态。history fallback 已移除，
+Core URL callback 的 WinInet 重复实现也已删除，但更广的公共 DLL 消费者缺口审查仍未形成
+新的“准备取舍”候选，队列保持为空。唯一下一步仍是完成
 [`ROADMAP.md`](ROADMAP.md) 的候选发现审查：若形成满足所有者、预算、失败回滚、fixture 和门
 标准的公共 DLL 缺口，再分配下一个 next；否则继续累计人工验收或维护发布基线。崩溃、数据损坏、
 严重布局破坏或核心交互阻塞须立即人工复核。
