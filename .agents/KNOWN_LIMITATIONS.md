@@ -84,8 +84,10 @@
 - Browser script session 已能由宿主显式维护顶层窗口 focus/blur 状态，并让 `document.hasFocus()` 与去重后的 window 事件保持一致；这不等于完整浏览器焦点策略，native 控件焦点、焦点矩形、焦点陷阱和 OEM/跨窗口激活仍由宿主负责。
 - Core 的 `PCore_InteractionFocusElementId` 与 `PCore_InteractionStateElementId` 只报告当前交互状态中、带非空 UTF-8 id 的节点；没有对应状态、没有 id、节点过时、状态组合非法或缓冲不足时调用方必须按失败/回退处理。Browser 的 `document.activeElement` 是显式 callback 注册后才安装的可选 projection，通过现有 ID lookup 返回元素，否则返回 `document.body`；`:active`/`:hover` 另由显式 interaction callback 投影当前精确节点，注销或无效来源时安全不匹配。Browser 不自主执行初始 `autofocus`，宿主可在 layout/native 子控件创建后显式调用 Core 的有界入口；这仍不提供完整焦点算法、pointer capture、native 焦点矩形或跨窗口焦点。
 - `contenteditable` 目前覆盖单元素的祖先继承、`isContentEditable`、有界纯文本 mutation、宿主编排的 `beforeinput`/`input`，Browser 的 `selectionStart`/`selectionEnd`/`selectionDirection`，以及去重后的非冒泡、不可取消 `selectionchange`。带 id 且已布局的有效 editing host 可由宿主映射为最多 16 个 WM multiline EDIT 代理；无修饰鼠标拖选和 Shift/方向键扩展会把 CRLF 位置转换为逻辑 UTF-16 并报告 forward/backward 方向，捕获丢失、取消模式和焦点切换会结束未完成手势而不重复通知。文本上限为 8192 UTF-8 字节，嵌套继承后代不重复代理。宿主另有受限 `CF_UNICODETEXT` paste/cut 事务，但 Range/Selection 对象、ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有的自动重复与复杂行导航、design mode 和完整 IME 组合仍未实现。
-- 字体 fallback 使用 bundled 子集与系统 GDI，不能保证桌面浏览器字形、kerning、emoji 彩色渲染或抗锯齿一致。
-- WM6 高 DPI、字体度量和设备色深会产生量化差异；自动像素断言不能取代整体视觉判断。
+- 字体 fallback 使用 bundled 子集与系统 GDI；桌面字形、kerning、emoji 彩色渲染和抗锯齿不保证。
+  Core 的 GDI 测量/绘制共用 `PCore_SetDeviceViewport` DPI 和字号定点精度；TEST1311 已在
+  当前 192-DPI WM6 目标通过 96/192 fragment 断言。高 DPI、色深、边距和抗锯齿仍可能量化，
+  像素门不取代整体视觉判断。
 
 ## 图像与 SVG
 
@@ -384,7 +386,9 @@
 ## Native 控件、SIP 与设备 UI
 
 - Windows Mobile EDIT/COMBOBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
-- synthetic `WM_CHAR`/key/composition/mouse 测试可以证明 WM EDIT 代理的事务边界、有界脚本选区同步、selectionchange 去重、无修饰拖选方向、Shift/捕获/焦点中断的收尾，以及 TEST1115 的受限 `CF_UNICODETEXT` paste/cut data、取消和 fail-closed 路径、TEST1116 的 `WM_COPY` 非空/折叠选区和超长/非 Unicode 拒绝；由于 WinCE 的直接 `SendMessage` 不会更新键盘状态表，TEST1114 对 Shift 扩展在 key-up 前注入有界原生范围，不能替代 OEM 默认键盘行为。CF_TEXT/富文本转换、不同应用的剪贴板互操作、候选词窗口、完整 IME、真实硬键盘、自动重复或 SIP 视觉仍需人工验收。
+- synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT 事务、有限选区/剪贴板同步及
+  fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。CF_TEXT/富文本、
+  跨应用剪贴板、候选词窗口、完整 IME、真实硬键盘、自动重复和 SIP 视觉仍需人工验收。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
 - select popup、焦点矩形和滚动可见性仍可能受控件窗口层级与 DPI 影响；next670 已修复并在 192-DPI 设备验证 block 文本 label forwarding，复杂嵌套 label 或其他窗口层级组合仍需人工观察。
 - 旋转、不同 screen/DPI、软键盘占用区域和系统非客户区只能通过设备观察确认。

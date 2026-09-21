@@ -384,6 +384,14 @@ const css_unit_ctx *pcore_get_unit_ctx(void)
     return &pcore_unit_ctx;
 }
 
+int pcore_get_device_dpi(void)
+{
+    int dpi;
+
+    dpi = FIXTOINT(pcore_unit_ctx.device_dpi);
+    return (dpi > 0) ? dpi : 96;
+}
+
 /* libcss keeps CSS media-query dimensions separate from css_unit_ctx. A zero
  * media width makes every max-width query look mobile and every min-width
  * query fail, even when ordinary vw units use the right viewport. Keep both

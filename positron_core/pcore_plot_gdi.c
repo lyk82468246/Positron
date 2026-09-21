@@ -33,6 +33,7 @@
 
 #include "positron_core.h"
 #include "positron_image.h"
+#include "pcore_internal.h"
 #include "pcore_font_coverage.h"
 
 #define PCORE_FONT_BASE          0
@@ -370,15 +371,26 @@ static HFONT pcore_plot_font(HDC hdc, const plot_font_style_t *fstyle,
 
     memset(&lf, 0, sizeof(lf));
 
-    dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    /* Core's viewport setter is authoritative. A paint HDC and a compatible
+     * memory DC can report different LOGPIXELS values on WM6, so measuring
+     * from one DC and painting from another would otherwise split line boxes
+     * from the glyphs they are meant to contain. */
+    dpi = pcore_get_device_dpi();
+    if (dpi <= 0) {
+        dpi = (hdc != NULL) ? GetDeviceCaps(hdc, LOGPIXELSY) : 96;
+    }
     if (dpi <= 0) {
         dpi = 96;
     }
-    pt = plot_style_fixed_to_int(fstyle->size);   /* size is in pt (fixed) */
-    if (pt < 1) {
+    /* fstyle->size is fixed-point points. Keep the fraction until the final
+     * device-pixel conversion; truncating to whole points makes the paint
+     * font smaller than the CSS/device line metrics at high DPI. */
+    if (fstyle->size < 1) {
         pt = 1;
+    } else {
+        pt = fstyle->size;
     }
-    px = MulDiv(pt, dpi, 72);
+    px = MulDiv(pt, dpi, 72 * PLOT_STYLE_SCALE);
     if (px < 1) {
         px = 1;
     }
@@ -771,8 +783,9 @@ static HDC pcore_measure_dc(void)
 }
 
 /* Small font cache shared by the measurement table (the hot path during
- * layout). Keyed on the resolved px size + weight + italic + family. */
+ * layout). Keyed on DPI, resolved px size, weight, italic and family. */
 typedef struct pcore_fc2 {
+    int   dpi;
     int   px;
     int   weight;
     int   italic;
@@ -783,8 +796,9 @@ typedef struct pcore_fc2 {
 
 static pcore_fc2 g_fc[72];
 static int       g_fc_n = 0;
+static int       g_font_cache_dpi = 0;
 
-static void pcore_font_cache_reset(void)
+static void pcore_font_cache_clear(void)
 {
     int i;
 
@@ -795,6 +809,12 @@ static void pcore_font_cache_reset(void)
     }
     memset(g_fc, 0, sizeof(g_fc));
     g_fc_n = 0;
+    g_font_cache_dpi = 0;
+}
+
+static void pcore_font_cache_reset(void)
+{
+    pcore_font_cache_clear();
     if (g_measure_dc != NULL) {
         DeleteDC(g_measure_dc);
         g_measure_dc = NULL;
@@ -803,24 +823,29 @@ static void pcore_font_cache_reset(void)
 
 static int pcore_font_px(HDC dc, const plot_font_style_t *fstyle)
 {
-    int dpi = GetDeviceCaps(dc, LOGPIXELSY);
+    int dpi = pcore_get_device_dpi();
     int pt;
     int px;
 
     if (dpi <= 0) {
+        dpi = (dc != NULL) ? GetDeviceCaps(dc, LOGPIXELSY) : 96;
+    }
+    if (dpi <= 0) {
         dpi = 96;
     }
-    pt = plot_style_fixed_to_int(fstyle->size);
-    if (pt < 1) {
+    if (fstyle->size < 1) {
         pt = 1;
+    } else {
+        pt = fstyle->size;
     }
-    px = MulDiv(pt, dpi, 72);
+    px = MulDiv(pt, dpi, 72 * PLOT_STYLE_SCALE);
     return (px < 1) ? 1 : px;
 }
 
 static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
         int font_kind, int *cached_out)
 {
+    int dpi = pcore_get_device_dpi();
     int px = pcore_font_px(dc, fstyle);
     int italic = (fstyle->flags & (FONTF_ITALIC | FONTF_OBLIQUE)) ? 1 : 0;
     int weight = fstyle->weight;
@@ -832,8 +857,20 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
         *cached_out = 0;
     }
 
+    if (dpi <= 0) {
+        dpi = 96;
+    }
+    if (g_font_cache_dpi != 0 && g_font_cache_dpi != dpi) {
+        /* A rotation or host DPI change must not retain measurement fonts
+         * from the previous device scale. Keep the DC itself alive, because
+         * this function is called with it already selected by the caller. */
+        pcore_font_cache_clear();
+    }
+    g_font_cache_dpi = dpi;
+
     for (i = 0; i < g_fc_n; i++) {
-        if (g_fc[i].px == px && g_fc[i].weight == weight &&
+        if (g_fc[i].dpi == dpi && g_fc[i].px == px &&
+                g_fc[i].weight == weight &&
                 g_fc[i].italic == italic && g_fc[i].family == family &&
                 g_fc[i].font_kind == font_kind) {
             if (cached_out != NULL) {
@@ -844,6 +881,7 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
     }
     f = pcore_plot_font(dc, fstyle, font_kind);
     if (f != NULL && g_fc_n < 72) {
+        g_fc[g_fc_n].dpi = dpi;
         g_fc[g_fc_n].px = px;
         g_fc[g_fc_n].weight = weight;
         g_fc[g_fc_n].italic = italic;

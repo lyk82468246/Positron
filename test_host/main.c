@@ -382,7 +382,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1310
+#define TEST_MAX_NUMBER 1311
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -89326,6 +89326,272 @@ static BOOL test1310_browser_file_form_data_manual(void)
 }
 
 /* -------------------------------------------------------------------- */
+/* TEST 1311 - Core high-DPI text measurement/paint contract            */
+/* This is an offline, device-backed GDI fixture.  It deliberately paints */
+/* the same CSS text at 96 and 192 DPI through PCore_SetDeviceViewport.   */
+/* The host only supplies the bitmap and assertions; font sizing and line */
+/* metrics remain owned by positron_core.dll.                            */
+/* -------------------------------------------------------------------- */
+static int test1311_paint_case(int dpi, int *out_first_rows,
+        int *out_min_rows, int *out_fragments, char *error, int error_cap)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><title>DPI text</title></head>"
+        "<body><p><span id='target'>High DPI text must remain fully "
+        "visible when the device scale changes. This sentence is long "
+        "enough to wrap into several independent visual line fragments, "
+        "and every fragment must contain real glyph pixels rather than a "
+        "thin clipped sliver.</span></p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#ffffff;color:#000000;}"
+        "body{font-family:sans-serif;font-size:14px;line-height:20px;}"
+        "p{display:block;width:90%;margin:10px;padding:0;}";
+    HANDLE document;
+    HANDLE sheet;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    int device_width;
+    int device_height;
+    int count;
+    int index;
+    int x;
+    int y;
+    int width;
+    int height;
+    int device_x;
+    int device_y;
+    int device_width_fragment;
+    int device_height_fragment;
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+    int row;
+    int column;
+    int row_ink;
+    int fragment_rows;
+    int first_rows;
+    int min_rows;
+    int total_rows;
+    int ink_pixels;
+    int status;
+    COLORREF pixel;
+
+    document = NULL;
+    sheet = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    device_width = 480;
+    device_height = 640;
+    count = 0;
+    first_rows = 0;
+    min_rows = INT_MAX;
+    total_rows = 0;
+    ink_pixels = 0;
+    if (out_first_rows != NULL) {
+        *out_first_rows = 0;
+    }
+    if (out_min_rows != NULL) {
+        *out_min_rows = 0;
+    }
+    if (out_fragments != NULL) {
+        *out_fragments = 0;
+    }
+    if (error != NULL && error_cap > 0) {
+        error[0] = '\0';
+    }
+
+    PCore_SetDeviceViewport(device_width, device_height, dpi);
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "https://positron.local/core-high-dpi-text.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_LayoutDocument(document, device_width, device_height) != 0) {
+        if (error != NULL && error_cap > 0) {
+            _snprintf(error, error_cap - 1,
+                    "dpi=%d: Core parse/style/layout failed", dpi);
+            error[error_cap - 1] = '\0';
+        }
+        goto cleanup;
+    }
+    status = PCore_NodeRelationById(document, "target",
+            PCORE_NODE_RELATION_LAYOUT_FRAGMENT_COUNT, 0, NULL, 0,
+            NULL, &count);
+    if (status != 0 || count < 2 ||
+            count > (int) PCORE_NODE_LAYOUT_FRAGMENT_MAX) {
+        if (error != NULL && error_cap > 0) {
+            _snprintf(error, error_cap - 1,
+                    "dpi=%d: unexpected fragment count=%d rc=%d",
+                    dpi, count, status);
+            error[error_cap - 1] = '\0';
+        }
+        goto cleanup;
+    }
+
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ? CreateCompatibleBitmap(screen_dc,
+            device_width, device_height) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (error != NULL && error_cap > 0) {
+            _snprintf(error, error_cap - 1,
+                    "dpi=%d: could not allocate GDI bitmap", dpi);
+            error[error_cap - 1] = '\0';
+        }
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, device_width, device_height);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+
+    for (index = 0; index < count; index++) {
+        if (PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_FRAGMENT_X_AT,
+                (unsigned int) index, NULL, 0, NULL, &x) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_FRAGMENT_Y_AT,
+                (unsigned int) index, NULL, 0, NULL, &y) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_FRAGMENT_WIDTH_AT,
+                (unsigned int) index, NULL, 0, NULL, &width) != 0 ||
+                PCore_NodeRelationById(document, "target",
+                PCORE_NODE_RELATION_LAYOUT_FRAGMENT_HEIGHT_AT,
+                (unsigned int) index, NULL, 0, NULL, &height) != 0 ||
+                width <= 0 || height <= 0) {
+            if (error != NULL && error_cap > 0) {
+                _snprintf(error, error_cap - 1,
+                        "dpi=%d: fragment[%d] relation failed", dpi, index);
+                error[error_cap - 1] = '\0';
+            }
+            goto cleanup;
+        }
+        device_x = MulDiv(x, dpi, 96);
+        device_y = MulDiv(y, dpi, 96);
+        device_width_fragment = MulDiv(width, dpi, 96);
+        device_height_fragment = MulDiv(height, dpi, 96);
+        x0 = device_x - 2;
+        y0 = device_y - 2;
+        x1 = device_x + device_width_fragment + 2;
+        y1 = device_y + device_height_fragment + 2;
+        if (x0 < 0) { x0 = 0; }
+        if (y0 < 0) { y0 = 0; }
+        if (x1 > device_width) { x1 = device_width; }
+        if (y1 > device_height) { y1 = device_height; }
+        fragment_rows = 0;
+        for (row = y0; row < y1; row++) {
+            row_ink = 0;
+            for (column = x0; column < x1; column++) {
+                pixel = GetPixel(memory_dc, column, row);
+                if (pixel != CLR_INVALID && GetRValue(pixel) < 240 &&
+                        GetGValue(pixel) < 240 && GetBValue(pixel) < 240) {
+                    row_ink = 1;
+                    ink_pixels++;
+                }
+            }
+            if (row_ink) {
+                fragment_rows++;
+            }
+        }
+        if (index == 0) {
+            first_rows = fragment_rows;
+        }
+        if (fragment_rows < min_rows) {
+            min_rows = fragment_rows;
+        }
+        total_rows += fragment_rows;
+    }
+    if (out_first_rows != NULL) {
+        *out_first_rows = first_rows;
+    }
+    if (out_min_rows != NULL) {
+        *out_min_rows = (min_rows == INT_MAX) ? 0 : min_rows;
+    }
+    if (out_fragments != NULL) {
+        *out_fragments = count;
+    }
+    if (first_rows < 4 || min_rows < 4 || ink_pixels < 20 ||
+            total_rows < count * 4) {
+        if (error != NULL && error_cap > 0) {
+            _snprintf(error, error_cap - 1,
+                    "dpi=%d: fragments=%d first-rows=%d min-rows=%d "
+                    "total-rows=%d ink=%d", dpi, count, first_rows,
+                    min_rows, total_rows, ink_pixels);
+            error[error_cap - 1] = '\0';
+        }
+    }
+
+cleanup:
+    if (memory_dc != NULL && old_bitmap != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    return (error != NULL && error_cap > 0 && error[0] != '\0') ? 1 : 0;
+}
+
+static BOOL test1311_core_high_dpi_text_paint(void)
+{
+    char error[512];
+    int rows96;
+    int rows192;
+    int min96;
+    int min192;
+    int fragments96;
+    int fragments192;
+
+    memset(error, 0, sizeof(error));
+    rows96 = 0;
+    rows192 = 0;
+    min96 = 0;
+    min192 = 0;
+    fragments96 = 0;
+    fragments192 = 0;
+    if (test1311_paint_case(96, &rows96, &min96, &fragments96,
+            error, sizeof(error)) != 0 ||
+            test1311_paint_case(192, &rows192, &min192, &fragments192,
+            error, sizeof(error)) != 0 ||
+            fragments96 < 2 || fragments192 < 2 ||
+            min192 < 6 || min192 + 4 < min96) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "96dpi rows=%d min=%d fragments=%d; 192dpi rows=%d "
+                    "min=%d fragments=%d", rows96, min96, fragments96,
+                    rows192, min192, fragments192);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1311 FAIL", error);
+        return FALSE;
+    }
+    _snprintf(error, sizeof(error) - 1,
+            "Core painted %d/%d visible text rows across %d/%d fragments "
+            "at 96/192 DPI (minimum fragment rows %d/%d).",
+            rows96, rows192, fragments96, fragments192, min96, min192);
+    error[sizeof(error) - 1] = '\0';
+    show_info(L"TEST 1311 OK", error);
+    return TRUE;
+}
+
+/* -------------------------------------------------------------------- */
 /* TEST 233 - number min/max and malformed-value validation              */
 /* -------------------------------------------------------------------- */
 static BOOL test233_form_number_range(void)
@@ -114915,6 +115181,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1308: ok = test1308_browser_special_key_registries_contract(); break;
         case 1309: ok = test1309_browser_host_visibility_message_contract(); break;
         case 1310: ok = test1310_browser_file_form_data_manual(); break;
+        case 1311: ok = test1311_core_high_dpi_text_paint(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

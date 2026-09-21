@@ -62,14 +62,13 @@ SIP/IME、picker、书签和持久设置仍不在当前范围内。ROADMAP.md �
 
 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-本轮对照 `c32e2222`/`b5debcec` 确认：`input` 回调内重排会过早重建 Core box tree；当前由
-`change` 入口执行一次，并在 session/窗口销毁时清理 picker、重排和消息状态。
-`tmp/device-runs/20260920-194523-test232-lifecycle-final-audit` 的 `231,1068,999` 门 3/3
-通过，crash/dump=0；连续窗口及旧实现对照均通过，`WM_QUIT` 未证实为根因。随后 TEST263
-自动 pointer probe 在 `tmp/device-runs/20260920-213339-test263-pointer-repro` 以 `263,999`
-通过；`auto=0` 手动包的 TEST263/1310 用户验收，TEST232 已确认
-通过，本组无待完成 GUI picker 门。完整报告见
-[`docs/history/TEST232-263-regression-review-20260920.md`](../docs/history/TEST232-263-regression-review-20260920.md)。
+本轮修复了消费者报告的 WM6 高 DPI 文本裁剪：Core 的 GDI 测量/绘制统一使用
+`PCore_SetDeviceViewport` DPI 并保留字号定点精度；TEST1311 的 `1311,999` 已在当前
+480x480、192-DPI 目标通过（96/192 均为 8 个完整 fragment，crash=0）。ROADMAP 已复核，
+阶段 B 网络导航和 File/Blob 待取证状态不变；应用字体、边距、旋转、触摸仍需人工门。
+
+TEST232/263 的自动与手动门均按回归报告通过，picker 门无待完成 GUI；`input` 回调重排、
+窗口收尾和事件顺序的边界见 [`docs/history/TEST232-263-regression-review-20260920.md`](../docs/history/TEST232-263-regression-review-20260920.md)。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
 Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值

@@ -22,6 +22,12 @@ if (document != NULL) {
 
 实际宿主通常在 parse 后提供资源结果、style/layout 尺寸、GDI paint 和 pointer/focus 输入，再把 Core relation 结果转给 Browser。失败路径必须释放 handle，不把 libdom 指针泄漏到 ABI。
 
+WM6 宿主有设备缩放时，应在首次 style/layout 前用实际物理客户区尺寸调用
+`PCore_SetDeviceViewport(device_width, device_height, dpi)`，随后继续使用同一物理尺寸调用
+`PCore_LayoutDocument` 和 `PCore_PaintDocument`。Core 会把该 DPI 同时用于布局测量和 GDI
+绘制；paint HDC 的 `LOGPIXELS` 不再作为另一份字号来源。窗口尺寸或 DPI 改变后，宿主必须
+重新设置 viewport、style/layout 并重绘，不能只替换 HDC。
+
 ## 解析、样式与资源
 
 Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页面 extent、常见 block/inline/flex/table/replaced layout、命中和 GDI paint。资源发现与 cache 由 Core 维护有界状态；宿主负责 DNS/TCP/TLS/HTTP、worker、取消、重试和把成功/失败结果提交回 Core。

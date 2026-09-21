@@ -130,6 +130,11 @@ tests=1-5 7b 13 20,999
   `text()` 与 query 摘要，同时记录 `input`/`change` 顺序。当前预期是脚本只能看到有界的
   `File` metadata（通常 size/text 为空），本地路径和文件 bytes 不会进入 Browser；这条证据
   用来审查待取证的 Browser→Core 上传组合，不等于 multipart body 已经发送。
+- TEST1311 是自动的 Core/GDI 高 DPI 回归：同一个多行 inline 文本在显式的 96 与 192 DPI
+  device-backed viewport 中分别 style、layout 和离屏 paint，再按 Core 返回的每个 visual
+  fragment 检查实际 glyph 行。它验证测量与绘制共用 `PCore_SetDeviceViewport` 的 DPI、字号
+  定点精度不会因 paint HDC 的 `LOGPIXELS` 分叉，以及高 DPI 不会退化为少数裁剪像素；它不
+  取代真实设备的字体、边距、旋转和触摸视觉验收。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

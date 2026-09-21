@@ -122,6 +122,12 @@ int pcore_contenteditable_mode(struct dom_node *node, int *out_mode);
  * layout's html_content.unit_len_ctx. Implemented in pcore_select.c. */
 const css_unit_ctx *pcore_get_unit_ctx(void);
 
+/* Return the authoritative device DPI for Core layout and GDI paint. The
+ * public viewport setters update this value before styling/layout; keeping
+ * the helper internal prevents measurement code from selecting a different
+ * DPI from the paint HDC. */
+int pcore_get_device_dpi(void);
+
 /* True when the next public layout must preserve the CSS viewport installed
  * by PCore_SetDeviceViewport while using its physical layout extent. */
 extern int pcore_device_viewport_pending;
