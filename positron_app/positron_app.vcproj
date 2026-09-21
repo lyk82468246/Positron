@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject ProjectType="Visual C++" Version="9.00"
+	Name="positron_app"
+	ProjectGUID="{6D6E1A60-3E69-4A79-B2A1-9CE4A0E1F7C2}"
+	RootNamespace="positron_app" Keyword="Win32Proj"
+	TargetFrameworkVersion="196613">
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles />
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="1" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
+				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
+				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool"
+				AdditionalDependencies="positron_core.lib positron_browser.lib aygshell.lib commctrl.lib"
+				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName)"
+				AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron.exe" LinkIncremental="2"
+				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)/positron.pdb" SubSystem="0"
+				StackReserveSize="65536" StackCommitSize="4096"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1"
+				RemoteDirectory="\Program Files\Positron"
+				RegisterOutput="0"
+				AdditionalFiles="positron_core.dll|..\positron_core\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_browser.dll|..\positron_browser\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_script.dll|..\positron_script\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_image.dll|..\positron_image\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\Positron|0" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="1" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
+				FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
+				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool"
+				AdditionalDependencies="positron_core.lib positron_browser.lib aygshell.lib commctrl.lib"
+				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName)"
+				AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron.exe" LinkIncremental="1"
+				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)/positron.pdb" SubSystem="0"
+				StackReserveSize="65536" StackCommitSize="4096"
+				OptimizeReferences="2" EnableCOMDATFolding="2"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1"
+				RemoteDirectory="\Program Files\Positron"
+				RegisterOutput="0"
+				AdditionalFiles="positron_core.dll|..\positron_core\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_browser.dll|..\positron_browser\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_script.dll|..\positron_script\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_image.dll|..\positron_image\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\Positron|0" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References />
+	<Files>
+		<File RelativePath=".\main.c" />
+		<File RelativePath=".\positron_app.rc" />
+		<File RelativePath=".\resource.h" />
+		<File RelativePath=".\README.md" />
+	</Files>
+	<Globals />
+</VisualStudioProject>

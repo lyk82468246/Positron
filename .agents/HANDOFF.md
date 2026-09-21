@@ -4,7 +4,7 @@
 
 ## 项目使命
 
-Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON、HTTP、图像、脚本、渲染与浏览器会话 DLL。公共边界保持 C ABI、UTF-8、opaque handle 和显式所有权；`test_host.exe` 只是回归宿主与示例消费者。
+Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON、HTTP、图像、脚本、渲染与浏览器会话 DLL，并提供正式的 `positron.exe` 独立应用消费者。公共边界保持 C ABI、UTF-8、opaque handle 和显式所有权；`test_host.exe` 只是回归宿主与示例消费者。
 
 ## 当前 Git 与工作区
 
@@ -50,14 +50,16 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 隐藏→显示顺序和重复消息去重，崩溃转储增量为 0。上一批 next870 的 Core multipart 返回码 3
 契约校正、Browser registry/dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持
 有效；Headers/Request/Response、Storage、FormData 和 URLSearchParams 仍保持有界安全合同。
-当前短期目标是完成七个顶层 DLL 的主干能力覆盖：能力状态、owner、预算、失败边界、fixture
-和提升条件统一记录在 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)，并以有界 fail-closed
-规则约束“先声明、后实现”的接口。第一优先调查方向是有限 File/Blob→FormData→multipart
-流程；next874 的公开头文件与消费者审计已确认仓库内没有生产消费者，因此在真实消费者证据
-出现前不进入产品实现；参考宿主的窗口可见性仅作为平台接线，不得把
-人工输入 backlog 或测试宿主扩展当作产品语义。稳定边界见
-[`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，
-历史 next 细节由 Git 与 `docs/history/` 保存。
+当前短期目标已转为验证独立 `positron.exe` 阶段 A：应用通过公开 Core/Browser import
+library 启动内置离线页面，拥有 WM6 caption、地址栏、Shell command bar、菜单及
+paint/resize/scroll/focus 接线；
+清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release ARMV4I 构建已通过，
+stage 与 WM6 触摸、旋转、DPI、硬键盘观察仍未完成，不能写成设备基线。下一候选是把已有
+Browser navigation/resource transaction 与 HTTP worker 接入应用；网络、native 表单、
+SIP/IME、picker、书签和持久设置仍不在当前范围内。ROADMAP.md 已复核：本批只调整应用壳层，
+下一候选仍是设备门通过后的阶段 B 网络导航。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)
+
+与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
 本轮对照 `c32e2222`/`b5debcec` 确认：`input` 回调内重排会过早重建 Core box tree；当前由
 `change` 入口执行一次，并在 session/窗口销毁时清理 picker、重排和消息状态。
@@ -77,6 +79,8 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
 ### 公共边界
 
 - 顶层公共 DLL 为 TLS、JSON、HTTP、image、script、core 和 browser。
+- `positron.exe` 是正式的独立应用消费者；它拥有 WM 窗口、native 控件、输入路由和应用策略，
+  不编译公共 DLL 实现源文件。`test_host.exe` 仍只拥有回归 fixture、平台接线和断言。
 - NetSurf/libcss/libdom/hubbub、Expat、libsvgtiny、libjpeg 等移植工程是内部实现依赖。
 - 独立脚本和浏览器脚本共用 Duktape；浏览器 JavaScript tracked 默认仍为关闭。
 - 通用 URL、history、DOM、Event、表单、图像和脚本 session 语义位于对应公共 DLL；宿主保留 WM 窗口、消息、控件、SIP/IME、picker、导航调度和资源 I/O。
@@ -95,25 +99,21 @@ Event、表单、图像、生命周期和脚本 session 语义必须位于对应
   顺序/quoted metadata/binary file bytes。宿主只实现同步 file read/free callback、HTTP 调度
   和 buffer 生命周期，不再复制 multipart 拼装规则。
 
-## next874 头文件与消费者审计
+## 独立应用消费者接管结果
 
-本轮逐项核对七个顶层 DLL 的公开头文件、组件 README、`test_host` callback 接线、测试
-dispatch、限制文档和 tracked 源码引用。未新增 public export；现有公开入口已有对应 DLL
-owner、UTF-8/opaque handle 或明确的兼容遗留语义，FormData/multipart 的预算和失败边界已在
-能力矩阵与头文件中对齐。
+本轮新增 `positron_app/`，未新增公共 export。应用只消费公开
+`PCore_*`/`PBrowser_History*` ABI；Core 负责 HTML/CSS style/layout/paint 与链接/焦点几何，
+Browser 负责有界 history，窗口、native EDIT、WM6 Shell command bar、菜单、输入优先级和离线 URL 策略由
+应用拥有。`test_host` 没有编译应用实现源文件，也没有承接应用 UI。
 
-对第一候选的取证结论如下：Core 的 `PCore_FormDataById[Ex]()` 与
-`PCore_FormDataEncode()` 只处理 Core-owned successful-control snapshot；Browser 的
-`PBrowserScriptFormDataCallbacks[Ex]()` 以及脚本 `FormData` 只返回/保存有界名称、字符串或
-文件 metadata，不能把 Browser pairs 或本地路径交给 Core encoder。仓库范围搜索（排除
-`test_host`、历史、第三方和生成证据）没有找到生产调用方，只有 `test_host` 的 fixture
-使用这组入口。因此当前没有“真实消费者被阻塞”的证据，也没有可安全分配的产品实现纵切。
+阶段 A 只允许 `welcome`、`controls` 及对应的 `https://positron.local/...` 地址；其他地址
+失败并保留旧页面。README 已给出链接、空白点击、滚动、方向键焦点、Shell command bar 和退出的验收项。
+正式 Debug ARMV4I 构建通过后，仍需同批 stage 到 WM6 设备或模拟器观察窗口/输入；未通过前
+不写成设备基线。
 
-已将这个边界同步到 `docs/CAPABILITIES.md`、`docs/ARCHITECTURE.md`、
-`docs/TESTING.md`、`positron_browser/README.md` 和 `positron_core/README.md`。下一次只有
-真实应用/页面或可重复失败证明“picker→Browser FormData→multipart body”确实阻塞，并给出
-同步 callback、容量、权限、取消和失败回滚的最小合同，才可把候选 C 提升为准备取舍；否则
-保持产品代码和测试编号不变。
+原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
+把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、
+容量、权限、取消和失败回滚证据后，才提升该候选。
 
 ### 当前网页能力
 
@@ -351,15 +351,15 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-next874 已完成公开头文件与消费者审计；next873 已完成参考宿主 `WM_SHOWWINDOW` 可见性接线、相邻源码审查和定向设备门；Browser
-仍拥有 visibility state、事件顺序和去重，宿主没有新增产品状态。history fallback 已移除，
-Core URL callback 的 WinInet 重复实现也已删除。本轮针对 TEST232 的真实复现修复了宿主
-`insertFromFile` 重排时序和窗口销毁清理，补充 TEST263 的 id 延迟解析与 native toggle 取消
-保护，并以自动设备门和手动包验证；没有新增公共 DLL API，也没有改变路线图候选。TEST232/263/1310
-GUI picker 门现已关闭，唯一下一步不是再分配测试编号，而是按路线图审查真实消费者或可复现
-公共 DLL 缺口；没有满足 owner、预算、回滚、fixture 和设备/人工门标准的候选时保持产品代码不变。
-TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断。崩溃、数据损坏、严重布局破坏或
-核心交互阻塞须立即人工复核。
+完成阶段 A 的同批 stage 和 WM6 人工验收：启动 `positron.exe`，检查两页、caption、地址栏、链接、
+空白点击、滚动、方向键焦点、Shell command bar 和退出，并观察触摸、旋转、DPI、字体和 OEM 硬键盘。
+结果写入本文件；未连接设备时保持“构建已通过、设备未验收”。
+
+阶段 A 设备门通过后，再按路线图决定阶段 B 的连续网络导航：复用 Browser 的 generation/
+resource gate 和 HTTP/TLS 公共边界，由应用只增加 worker、消息泵和页面 swap 接线，继续保留
+旧页和失败回滚。不要在阶段 A 中提前接入 File/Blob、native 表单、SIP/IME、picker 或持久
+设置。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、严重
+布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
 DocumentFragment 插入、

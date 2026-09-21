@@ -94,14 +94,18 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    `Ex`/size-version 边界；本阶段不声明完整现代 Web API，也不改变旧 ABI。
 3. 若要先声明后实现，入口必须在未实现阶段返回稳定 unsupported 类错误，且在返回前不改状态、
    不创建伪 handle、不调用 callback、不产生部分 body 或部分 DOM mutation。
-4. 第一条实现候选优先调查有限的 File/Blob→FormData→multipart 流程：Browser 负责 bounded
-   metadata 和对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、
-   权限和网络调度。没有真实消费者证据时，只完成合同和矩阵，不进入产品实现。
-5. 每个被提升的能力必须先有离线成功/失败不变性/容量/stale/cancel fixture，再运行 C89、正式
+4. 独立 `positron.exe` 的阶段 A 离线消费者已经落地，先完成同批 stage 与 WM6 设备人工门；
+   设备门通过后，再调查阶段 B 的连续网络导航：Browser 负责 generation/resource gate 和
+   页面生命周期，HTTP/TLS 负责公共 transport 边界，应用只负责 worker、消息泵、窗口和策略。
+5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
+   对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
+   没有证据时不进入产品实现。
+6. 每个被提升的能力必须先有离线成功/失败不变性/容量/stale/cancel fixture，再运行 C89、正式
    ARMV4I 构建、仓库审计和相称的设备门；`test_host` 只增加接线、fixture 和断言。
 
 短期完成标准是：七个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
-至少一条真实消费者驱动的纵切进入“准备取舍”；路线图能指出下一条实现纵切，而不是只写“继续寻找”。
+独立应用阶段 A 有设备证据，阶段 B 网络候选有明确 owner/预算/回滚和最小 fixture；路线图能
+指出下一条实现纵切，而不是只写“继续寻找”。
 
 ## 当前选择边界
 
@@ -121,41 +125,46 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
 
 ## 当前规划结论
 
-next871 已完成一项公共所有权边界修订：`test_host` 的 history fallback 已移除，URL/state/
-document-id/traversal 规则现在只由 `positron_browser.dll` 的 `PBrowser_History*` API 决定；
-宿主保留的数组只是同步快照，供断言和平台桥接读取。next872 又删除了 `test_host` Core
-URL callback 对 WinInet `InternetCombineUrlA` 的重复实现，改为调用 `positron_http.dll` 的
-`PHttp_ResolveReference()`；1064/1065/999 设备门证明目录相对、query、network-path、绝对
-HTTP(S)、fragment stripping 和不安全 scheme 的结果仍一致。对现有源码、测试入口和已知限制
-继续整理后，next873 又补齐参考宿主顶层 `WM_SHOWWINDOW` 到 Browser visibility lifecycle 的
-平台接线；1309/1138/1139/999 只验证消息映射、Browser 去重和事件顺序，没有新增宿主产品
-语义。当前仍没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不意味着
-可以随意扩大 Web API。本轮把主干能力状态集中到 `docs/CAPABILITIES.md`，并把“先声明、后实现”
-收束为有界 fail-closed 规则；TEST263 的 deferred-id picker 自动探针与 TEST1310 的真实文件
-选择 GUI 验收现已关闭当前回归门，但不代表所有 ROM/OEM picker 视觉和权限差异已解决；后续仍
-应先完成消费者证据审查，再决定是否分配新的 next。
+history fallback、Core URL callback 的重复解析和参考宿主的 visibility lifecycle 接线仍按
+既有公共边界维护；它们没有把产品语义搬回 `test_host`。本轮已经出现真实的独立应用消费者：
+`positron.exe` 用公开 Core/Browser ABI 完成阶段 A 的离线导航、绘制、滚动、焦点和有限 history，
+因此下一条路线不再是继续寻找“是否有生产消费者”，而是先完成该应用的设备门，再选择连续
+网络导航纵切。File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
-除上述已收束的 history 边界外，候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件
-README、限制和真实设备日志；不要把人工输入 backlog 或测试宿主扩展当作产品语义。若没有新的
-可复现公共 DLL 缺口，就保持实现队列为空，优先执行累计人工验收或维护发布基线。
+候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
+不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的触摸、旋转、DPI、字体、OEM
+硬键盘和失败网络观察仍属于人工/设备门，不能由桌面构建或 synthetic 消息替代。
 
 ## 候选队列
 
 ### 准备取舍
 
-当前为空。已有的 Browser/Core、FormData、Storage、Headers 和特殊键 registry 合同已经取得
-相邻设备门；没有新的用户失败、消费者需求或源码缺口同时满足候选卡的五项要求。下一次实现
-批次必须先把某一张“待取证”卡提升到这里，不能从已完成测试编号顺延出功能。
+#### A. 独立应用阶段 B：连续网络导航与页面提交
+
+**状态：准备取舍，等待阶段 A 设备门。** `positron.exe` 已证明真实应用消费者会组合
+Core 的 document/style/layout/paint、链接/焦点几何与 Browser history；下一步用户结果是
+地址栏或页面链接发起真实 HTTP(S) 导航，并在资源失败、取消或过时响应时保留旧页。
+
+- **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
+  worker、WM 消息泵、窗口重绘、配置策略和页面 swap。
+- **边界：** 复用 generation、required/optional resource gate、取消、旧页保留和清理快照；
+  不在应用中复制 URL、history、资源终态或 multipart 语义。预算沿用公开 Browser/HTTP 上限，
+  新增 worker 消息、页面候选和错误摘要必须有固定上限。
+- **最小 fixture：** loopback/offline response 的成功 HTML、required stylesheet 失败、
+  optional image 失败、取消/过时响应和地址栏失败后旧页保持；同时保留当前两个内置页面回归。
+- **门：** Debug/Release ARMV4I 构建、仓库审计、自动旧页/取消断言，以及设备网络、旋转、
+  DPI 和真实输入观察；外网不作为唯一证据。
 
 ### 待取证
 
 #### A. 公共 DLL 消费者缺口审查
 
-**状态：next874 已完成取证，未发现生产消费者。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
+**状态：已完成当前审计，未发现 File/Blob 生产消费者。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
 `test_host` 的 callback 使用和兼容性 corpus，寻找仍由宿主临时决定、但应由 Core/Browser/HTTP/
 Image/Script 拥有的可复用语义。必须记录一个具体调用场景或失败行为，不能只把“现代 API 缺失”
 当作缺口。本轮只在 `test_host` fixture 中找到 FormData/File/multipart 的调用；排除宿主、历史、
-第三方和生成证据后，没有生产应用调用这些入口，因此没有可进入产品实现的具体阻塞。
+第三方和生成证据后，新增 `positron.exe` 只使用离线导航、Core paint 和 Browser history，仍
+没有生产应用调用 File/Blob/FormData/multipart 上传入口，因此没有可进入该候选的具体阻塞。
 
 已完成的 history fallback 和 Core URL callback 重复规则审查不再属于待实现范围：宿主现在只
 读取 Browser 的 history 快照，并通过 HTTP DLL 解析 Core 的 URL reference；创建失败或解析

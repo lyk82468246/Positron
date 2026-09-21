@@ -14,7 +14,7 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
 ## 总体分层
 
 ```text
-应用宿主 / test_host.exe
+应用宿主 / positron.exe、test_host.exe
     ├─ WM 窗口、消息、DPI/旋转、native 控件、SIP/IME、picker
     ├─ 网络 worker、RAPI/设备部署、应用策略和测试断言
     └─ callback 接线与 Core/Browser 生命周期调度
@@ -31,6 +31,11 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
 ```
 
 宿主可以组合 DLL，但不能直接把内部静态库当作公共 ABI。Core 不访问窗口，Browser 不访问 HWND 或网络；宿主通过头文件中的 callback table 把两者与平台连接起来。
+
+`positron.exe` 是当前正式的独立应用消费者：它只链接 `positron_core.dll` 和
+`positron_browser.dll` 的公开 import library，拥有 WM 窗口、native 地址栏、WM6 Shell
+command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继续只承担回归 fixture、平台接线和断言，
+不得作为应用 UI 或公共浏览器语义的所有者。
 
 ## 公共 DLL
 

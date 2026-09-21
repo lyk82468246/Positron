@@ -67,6 +67,7 @@ positron_core.dll
 positron_image.dll
 positron_script.dll
 positron_browser.dll
+positron.exe
 test_host.exe
 ```
 
@@ -90,7 +91,8 @@ scripts\stage.bat Debug C:\WMShare\Positron-candidate
 `stage.bat` 会先调用同配置的增量构建。只有构建成功后才复制：
 
 - 七个产品 DLL；
-- `test_host.exe`；
+- `positron.exe` 独立浏览器应用；
+- `test_host.exe` 回归宿主；
 - `test_host.ini`；
 - `fonts\` 下的 Positron symbol/emoji fallback 字体及许可证。
 
@@ -101,7 +103,7 @@ scripts\stage.bat Debug C:\WMShare\Positron-candidate
 1. 启动 WM6 Professional Emulator。
 2. 在 Emulator 的设置中配置 Shared Folder，指向 `C:\WMShare\` 或本次指定的 stage 根目录。
 3. 在设备 File Explorer 中打开对应的 Storage Card 共享路径。
-4. 运行 `test_host.exe`。
+4. 运行 `positron.exe` 验收独立浏览器应用；需要回归测试时再运行 `test_host.exe`。
 
 VS2008 Smart Device deploy 会覆盖当前工程需要的部署路径，项目正式流程不依赖它。
 
@@ -109,10 +111,10 @@ VS2008 Smart Device deploy 会覆盖当前工程需要的部署路径，项目�
 
 Windows Mobile 的关闭按钮通常只是 Smart Minimize。重新 stage 前：
 
-1. 在设备任务管理器确认旧 `test_host.exe` 已真正退出；
+1. 在设备任务管理器确认旧 `positron.exe` 或 `test_host.exe` 已真正退出；
 2. 如 DLL 仍被系统进程加载，关闭相关窗口或重启模拟器；
 3. 优先 stage 到一个新的隔离目录；
-4. 确认同一目录中的八个二进制来自同一次构建。
+4. 确认同一目录中的九个运行时二进制来自同一次构建。
 
 文件锁、旧进程和系统级 DLL 复用都可能让源码正确但设备运行错误版本。
 
@@ -148,7 +150,7 @@ Release 包仍需通过与风险相称的设备测试。成功编译不代表网
 scripts\package_nightly.bat
 ```
 
-默认自动比较两套完整产物，选择所有八个运行时文件中“最旧的那个”仍然最新的一套；因此通常会选中最近一次完整的 Debug 构建（`build.bat`/`stage.bat` 默认就是 Debug），如果最近一次完整构建是 Release 则会选 Release。也可以显式固定配置。测试清单从当前 `test_host/main.c` 的 `run_configured_tests` dispatch 动态生成；明确标记为 `manual-only` 的测试会从默认 `auto=1` 清单排除，新增并接入 dispatch 的自动测试会自动进入下一次包。脚本不复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和 SHA-256 清单，创建不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
+默认自动比较两套完整产物，选择所有九个运行时文件中“最旧的那个”仍然最新的一套；因此通常会选中最近一次完整的 Debug 构建（`build.bat`/`stage.bat` 默认就是 Debug），如果最近一次完整构建是 Release 则会选 Release。也可以显式固定配置。测试清单从当前 `test_host/main.c` 的 `run_configured_tests` dispatch 动态生成；明确标记为 `manual-only` 的测试会从默认 `auto=1` 清单排除，新增并接入 dispatch 的自动测试会自动进入下一次包。脚本不复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和 SHA-256 清单，创建不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
 
 ```bat
 scripts\package_nightly.bat -Configuration Debug

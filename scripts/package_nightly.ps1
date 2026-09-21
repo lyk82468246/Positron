@@ -98,6 +98,7 @@ function Get-ArtifactSpecs([string] $Config)
         @{ Relative = ("positron_image\bin\{0}\positron_image.dll" -f $Config); Archive = "positron_image.dll" },
         @{ Relative = ("positron_script\bin\{0}\positron_script.dll" -f $Config); Archive = "positron_script.dll" },
         @{ Relative = ("positron_browser\bin\{0}\positron_browser.dll" -f $Config); Archive = "positron_browser.dll" },
+        @{ Relative = ("positron_app\bin\{0}\positron.exe" -f $Config); Archive = "positron.exe" },
         @{ Relative = ("test_host\bin\{0}\test_host.exe" -f $Config); Archive = "test_host.exe" }
     )
 }

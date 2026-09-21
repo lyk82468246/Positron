@@ -1,0 +1,50 @@
+# Positron 浏览器应用
+
+`positron_app` 是 Positron 的独立 WM6 Professional 应用消费者，输出固定名称
+`positron.exe`。它只通过 `positron_core.dll` 和 `positron_browser.dll` 的公开 import
+library 访问产品能力；WM6 窗口、地址栏、Shell command bar、菜单、输入优先级和离线
+页面策略属于应用。
+
+## 当前阶段 A 范围
+
+当前版本提供一个内置离线欢迎页和一个键盘/焦点验收页：
+
+- 使用标准 WM6 caption 和 `SHCreateMenuBar` softkey command bar；左 softkey 为 `Back`，
+  右 softkey 打开原生菜单，菜单包含前进、主页、地址栏、刷新和明确退出；
+- caption 下只有一行紧凑 native EDIT 地址栏；Enter 提交，Escape 恢复最近一次已提交地址；
+- Core 负责 HTML/CSS 解析、style、layout 和 GDI paint；页面支持垂直/水平滚动；
+- Browser DLL 负责应用使用的有界 history handle；失败的离线地址不会替换当前页面；
+- 页面空白点击不会关闭窗口；页面链接可用触摸或鼠标点击激活；页面焦点可用
+  Up/Down/Enter 操作，Backspace 保留给 native 地址栏编辑。
+
+网络请求、真实表单 native 控件、SIP/IME、文件选择器、书签、持久偏好和 WM6 Standard
+尚未接入。缺少 `positron.ini` 不影响当前阶段启动；当前阶段没有需要用户编辑的配置项。
+
+## 构建与运行
+
+从仓库根目录使用正式入口：
+
+```bat
+scripts\build.bat Debug rebuild
+scripts\stage.bat Debug C:\WMShare\Positron-app
+```
+
+stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应的七个公共 DLL 和
+`fonts\`；不要把 `test_host.ini` 当作应用配置，也不要从不同 stage 目录混用 DLL。
+
+## 阶段 A 验收
+
+在 WM6 Professional 设备或模拟器上确认：
+
+1. 直接启动 `positron.exe`，不出现测试选择界面，能看到欢迎页和地址栏；
+2. 点按 `Open the keyboard and focus page`，再用 Back/Home/Menu 返回或退出；
+3. 在页面区域点空白，窗口仍保持打开；拖动滚动条或使用方向键/PageUp/PageDown，页面
+   位置随之改变；
+4. 只用硬键盘/方向键时，用 Tab 经过 native 控件；页面获得焦点后用 Up/Down 选择链接、
+   Enter 激活；
+5. 地址栏中输入 `controls` 或 `welcome`，按 Enter 导航；编辑时按 Backspace 删除，
+   按 Escape 取消编辑并恢复已提交地址；
+6. 菜单中的 `Exit` 真正结束应用，重复启动/关闭不新增崩溃。
+
+真实设备的触摸命中、SIP、旋转、DPI 和 OEM 键盘行为仍属于人工验收；本阶段不把桌面
+构建或 synthetic 消息当作这些门的替代证据。
