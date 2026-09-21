@@ -20,6 +20,14 @@ library 访问产品能力；WM6 窗口、地址栏、Shell command bar、菜单
 网络请求、真实表单 native 控件、SIP/IME、文件选择器、书签、持久偏好和 WM6 Standard
 尚未接入。缺少 `positron.ini` 不影响当前阶段启动；当前阶段没有需要用户编辑的配置项。
 
+## 界面语言
+
+启动时从 WM6 的 UI 语言选择 EXE 私有资源：简体中文（中国大陆、新加坡）使用 `zh-CN`，
+其他语言统一使用 `en-US`。菜单、softkey、状态栏标题、启动错误框以及 welcome/controls
+两个离线页面都随该选择切换；资源直接嵌入 `positron.exe`，stage 目录不需要语言文件。
+语言在进程启动时确定，设备语言改变后需要重启应用。Browser DLL 的
+`navigator.language` 等语义不在本应用批次内修改。
+
 ## 构建与运行
 
 从仓库根目录使用正式入口：
@@ -36,15 +44,16 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
 
 在 WM6 Professional 设备或模拟器上确认：
 
-1. 直接启动 `positron.exe`，不出现测试选择界面，能看到欢迎页和地址栏；
-2. 点按 `Open the keyboard and focus page`，再用 Back/Home/Menu 返回或退出；
+1. 在英语设备和简体中文设备上分别直接启动 `positron.exe`，不出现测试选择界面，确认欢迎页、
+   地址栏、softkey、菜单和状态栏标题使用对应语言；在其他语言设备上确认回退英语；
+2. 点按对应语言的键盘与焦点页面链接，再用 Back/Home/Menu 返回或退出；
 3. 在页面区域点空白，窗口仍保持打开；拖动滚动条或使用方向键/PageUp/PageDown，页面
    位置随之改变；
 4. 只用硬键盘/方向键时，用 Tab 经过 native 控件；页面获得焦点后用 Up/Down 选择链接、
    Enter 激活；
 5. 地址栏中输入 `controls` 或 `welcome`，按 Enter 导航；编辑时按 Backspace 删除，
    按 Escape 取消编辑并恢复已提交地址；
-6. 菜单中的 `Exit` 真正结束应用，重复启动/关闭不新增崩溃。
+6. 菜单中的 `Exit`/`退出` 真正结束应用，重复启动/关闭不新增崩溃。
 
 真实设备的触摸命中、SIP、旋转、DPI 和 OEM 键盘行为仍属于人工验收；本阶段不把桌面
 构建或 synthetic 消息当作这些门的替代证据。

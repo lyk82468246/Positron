@@ -3,17 +3,21 @@
 #include <commctrl.h>
 #include <aygshell.h>
 
-IDR_APP_MENUBAR RCDATA
+#pragma code_page(65001)
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+IDR_APP_MENUBAR_EN RCDATA
 BEGIN
-    IDR_APP_MENU,
+    IDR_APP_MENU_EN,
     2,
     I_IMAGENONE, APP_CMD_BACK, TBSTATE_ENABLED,
-        TBSTYLE_AUTOSIZE | TBSTYLE_BUTTON, IDS_APP_BACK, 0, NOMENU,
+        TBSTYLE_AUTOSIZE | TBSTYLE_BUTTON, IDS_APP_BACK_EN, 0, NOMENU,
     I_IMAGENONE, APP_CMD_MENU, TBSTATE_ENABLED,
-        TBSTYLE_AUTOSIZE | TBSTYLE_DROPDOWN, IDS_APP_MENU, 0, 0,
+        TBSTYLE_AUTOSIZE | TBSTYLE_DROPDOWN, IDS_APP_MENU_EN, 0, 0,
 END
 
-IDR_APP_MENU MENU
+IDR_APP_MENU_EN MENU
 BEGIN
     POPUP ""
     BEGIN
@@ -29,6 +33,80 @@ END
 
 STRINGTABLE
 BEGIN
-    IDS_APP_BACK "Back"
-    IDS_APP_MENU "Menu"
+    IDS_APP_BACK_EN "Back"
+    IDS_APP_MENU_EN "Menu"
+    IDS_APP_FORWARD_EN "Forward"
+    IDS_APP_HOME_EN "Home"
+    IDS_APP_ADDRESS_EN "Open Address"
+    IDS_APP_REFRESH_EN "Refresh"
+    IDS_APP_EXIT_EN "Exit"
+    IDS_STATUS_OFFLINE_EN "This address is not available in the Phase A offline shell."
+    IDS_STATUS_HISTORY_EN "The browser history rejected this navigation."
+    IDS_STATUS_READY_WELCOME_EN "Ready - offline welcome page"
+    IDS_STATUS_READY_CONTROLS_EN "Ready - keyboard and focus page"
+    IDS_STATUS_ADDRESS_INVALID_EN "Enter welcome or controls for an offline page."
+    IDS_STATUS_NO_BACK_EN "There is no previous page."
+    IDS_STATUS_NO_FORWARD_EN "There is no next page."
+    IDS_STATUS_LAYOUT_EN "The page could not be laid out after resize."
+    IDS_STATUS_ADDRESS_CANCELLED_EN "Address edit cancelled."
+    IDS_ERROR_CORE_INIT_EN "The Positron rendering core could not start."
+    IDS_ERROR_HISTORY_INIT_EN "The browser history service could not start."
+    IDS_ERROR_CLASS_REGISTER_EN "The Positron window class could not register."
+    IDS_ERROR_WINDOW_CREATE_EN "The Positron window could not be created."
 END
+
+IDR_APP_WELCOME_EN RCDATA "resources/en-US/welcome.html"
+IDR_APP_CONTROLS_EN RCDATA "resources/en-US/controls.html"
+
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+
+IDR_APP_MENUBAR_ZH RCDATA
+BEGIN
+    IDR_APP_MENU_ZH,
+    2,
+    I_IMAGENONE, APP_CMD_BACK, TBSTATE_ENABLED,
+        TBSTYLE_AUTOSIZE | TBSTYLE_BUTTON, IDS_APP_BACK_ZH, 0, NOMENU,
+    I_IMAGENONE, APP_CMD_MENU, TBSTATE_ENABLED,
+        TBSTYLE_AUTOSIZE | TBSTYLE_DROPDOWN, IDS_APP_MENU_ZH, 0, 0,
+END
+
+IDR_APP_MENU_ZH MENU
+BEGIN
+    POPUP ""
+    BEGIN
+        MENUITEM "返回", APP_CMD_BACK, GRAYED
+        MENUITEM "前进", APP_CMD_FORWARD, GRAYED
+        MENUITEM "主页", APP_CMD_HOME
+        MENUITEM "打开地址", APP_CMD_ADDRESS
+        MENUITEM "刷新", APP_CMD_REFRESH
+        MENUITEM SEPARATOR
+        MENUITEM "退出", APP_CMD_EXIT
+    END
+END
+
+STRINGTABLE
+BEGIN
+    IDS_APP_BACK_ZH "返回"
+    IDS_APP_MENU_ZH "菜单"
+    IDS_APP_FORWARD_ZH "前进"
+    IDS_APP_HOME_ZH "主页"
+    IDS_APP_ADDRESS_ZH "打开地址"
+    IDS_APP_REFRESH_ZH "刷新"
+    IDS_APP_EXIT_ZH "退出"
+    IDS_STATUS_OFFLINE_ZH "当前地址在 A 阶段离线浏览外壳中不可用。"
+    IDS_STATUS_HISTORY_ZH "浏览器历史记录拒绝了此次导航。"
+    IDS_STATUS_READY_WELCOME_ZH "就绪 - 离线欢迎页面"
+    IDS_STATUS_READY_CONTROLS_ZH "就绪 - 键盘和焦点页面"
+    IDS_STATUS_ADDRESS_INVALID_ZH "请输入 welcome 或 controls 以打开离线页面。"
+    IDS_STATUS_NO_BACK_ZH "没有上一页。"
+    IDS_STATUS_NO_FORWARD_ZH "没有下一页。"
+    IDS_STATUS_LAYOUT_ZH "调整大小后无法重新布局页面。"
+    IDS_STATUS_ADDRESS_CANCELLED_ZH "已取消地址编辑。"
+    IDS_ERROR_CORE_INIT_ZH "Positron 渲染核心无法启动。"
+    IDS_ERROR_HISTORY_INIT_ZH "浏览器历史记录服务无法启动。"
+    IDS_ERROR_CLASS_REGISTER_ZH "Positron 窗口类注册失败。"
+    IDS_ERROR_WINDOW_CREATE_ZH "Positron 窗口创建失败。"
+END
+
+IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"
+IDR_APP_CONTROLS_ZH RCDATA "resources/zh-CN/controls.html"

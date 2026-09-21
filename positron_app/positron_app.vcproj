@@ -94,9 +94,15 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_i18n.c" />
+		<File RelativePath=".\app_i18n.h" />
 		<File RelativePath=".\main.c" />
 		<File RelativePath=".\positron_app.rc" />
 		<File RelativePath=".\resource.h" />
+		<File RelativePath=".\resources\en-US\controls.html" />
+		<File RelativePath=".\resources\en-US\welcome.html" />
+		<File RelativePath=".\resources\zh-CN\controls.html" />
+		<File RelativePath=".\resources\zh-CN\welcome.html" />
 		<File RelativePath=".\README.md" />
 	</Files>
 	<Globals />

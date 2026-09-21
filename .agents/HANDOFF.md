@@ -52,9 +52,10 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 有效；Headers/Request/Response、Storage、FormData 和 URLSearchParams 仍保持有界安全合同。
 当前短期目标已转为验证独立 `positron.exe` 阶段 A：应用通过公开 Core/Browser import
 library 启动内置离线页面，拥有 WM6 caption、地址栏、Shell command bar、菜单及
-paint/resize/scroll/focus 接线；
-清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release ARMV4I 构建已通过，
-stage 与 WM6 触摸、旋转、DPI、硬键盘观察仍未完成，不能写成设备基线。下一候选是把已有
+paint/resize/scroll/focus 接线；EXE 私有资源支持英语/简体中文，按 WM6 UI 语言选择，其他语言
+回退英语，stage 无外置语言文件。
+清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建已通过，
+stage 与语言、触摸、旋转、DPI、硬键盘观察仍未完成，不能写成设备基线。下一候选是把已有
 Browser navigation/resource transaction 与 HTTP worker 接入应用；网络、native 表单、
 SIP/IME、picker、书签和持久设置仍不在当前范围内。ROADMAP.md 已复核：本批只调整应用壳层，
 下一候选仍是设备门通过后的阶段 B 网络导航。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)
@@ -107,9 +108,9 @@ Browser 负责有界 history，窗口、native EDIT、WM6 Shell command bar、�
 应用拥有。`test_host` 没有编译应用实现源文件，也没有承接应用 UI。
 
 阶段 A 只允许 `welcome`、`controls` 及对应的 `https://positron.local/...` 地址；其他地址
-失败并保留旧页面。README 已给出链接、空白点击、滚动、方向键焦点、Shell command bar 和退出的验收项。
-正式 Debug ARMV4I 构建通过后，仍需同批 stage 到 WM6 设备或模拟器观察窗口/输入；未通过前
-不写成设备基线。
+失败并保留旧页面。菜单、softkey、状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文
+资源提供；README 已给出语言回退及交互验收项。Debug/Release 构建通过后，仍需
+同批 stage 到 WM6 设备或模拟器观察窗口、语言和输入；未通过前不写成设备基线。
 
 原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
 把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、
@@ -351,8 +352,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-完成阶段 A 的同批 stage 和 WM6 人工验收：启动 `positron.exe`，检查两页、caption、地址栏、链接、
-空白点击、滚动、方向键焦点、Shell command bar 和退出，并观察触摸、旋转、DPI、字体和 OEM 硬键盘。
+完成阶段 A 的同批 stage 和 WM6 人工验收：分别在英语、简体中文和其他语言设备上启动
+`positron.exe`，检查语言/英语回退、两页、caption、地址栏、链接、softkey、菜单、状态、错误提示、
+空白点击、滚动、焦点、Shell command bar 和退出，并观察触摸、旋转、DPI、字体和 OEM 硬键盘；确认
+新鲜 stage 中没有额外语言文件。
 结果写入本文件；未连接设备时保持“构建已通过、设备未验收”。
 
 阶段 A 设备门通过后，再按路线图决定阶段 B 的连续网络导航：复用 Browser 的 generation/

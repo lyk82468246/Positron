@@ -16,6 +16,7 @@
 #include <aygshell.h>
 #include <string.h>
 
+#include "app_i18n.h"
 #include "positron_core.h"
 #include "positron_browser.h"
 #include "resource.h"
@@ -34,8 +35,8 @@
 
 #define APP_ID_ADDRESS            100
 
-#define APP_PAGE_WELCOME            1
-#define APP_PAGE_CONTROLS           2
+#define APP_PAGE_WELCOME            APP_I18N_PAGE_WELCOME
+#define APP_PAGE_CONTROLS           APP_I18N_PAGE_CONTROLS
 
 #define APP_HISTORY_NEW             1
 #define APP_HISTORY_TARGET          2
@@ -68,56 +69,6 @@ static int g_focus_count = 0;
 static const char *g_focus_ids[APP_FOCUS_MAX];
 static char g_focus_id[APP_FOCUS_ID_MAX];
 static char g_current_url[APP_URL_MAX];
-
-static const char g_welcome_html[] =
-        "<!doctype html><html><head><title>Positron</title></head>"
-        "<body><h1>Positron</h1>"
-        "<p>This is the first independent Positron browser shell.</p>"
-        "<p>The page below is rendered by positron_core.dll.</p>"
-        "<p><a id=\"controls\" tabindex=\"0\" "
-        "href=\"https://positron.local/controls\">"
-        "Open the keyboard and focus page</a></p>"
-        "<p><a id=\"reload\" tabindex=\"0\" "
-        "href=\"https://positron.local/welcome\">"
-        "Open this welcome page again</a></p>"
-        "<h2>Phase A checks</h2>"
-        "<p>Use the address bar, the WM6 command bar, a stylus or the hardware"
-        " arrow keys. The page has a real Core layout and a real scroll range.</p>"
-        "<p>Clicking empty page space is intentionally a no-op.</p>"
-        "<p>More content is kept below the fold so the device scrollbar can be"
-        " exercised without a network connection.</p>"
-        "<p>Positron keeps the current document visible while a later page is"
-        " being prepared. Network navigation will be added in a later batch.</p>"
-        "<p>Public DLL boundaries remain independent of this application shell.</p>"
-        "<p>The browser history handle is supplied by positron_browser.dll.</p>"
-        "<p>Resize and rotation cause Core layout to run again against the new"
-        " page viewport.</p>"
-        "<p>Scroll down to the final link, then use the Back softkey or Home in"
-        " the Menu to return here.</p>"
-        "<p><a id=\"final\" tabindex=\"0\" "
-        "href=\"https://positron.local/controls\">Continue to controls</a></p>"
-        "</body></html>";
-
-static const char g_controls_html[] =
-        "<!doctype html><html><head><title>Keyboard and focus</title></head>"
-        "<body><h1>Keyboard and focus</h1>"
-        "<p>Tab moves through native application controls. When the page owns"
-        " focus, Up and Down visit these links and Enter activates one.</p>"
-        "<p>Left and Right scroll horizontally. Page Up and Page Down scroll"
-        " vertically. Escape never turns into an accidental history Back.</p>"
-        "<p><a id=\"welcome\" tabindex=\"0\" "
-        "href=\"https://positron.local/welcome\">Back to the welcome page</a></p>"
-        "<p><a id=\"welcome2\" tabindex=\"0\" "
-        "href=\"https://positron.local/welcome\">Return using this second link</a></p>"
-        "<h2>Input contract</h2>"
-        "<p>The address bar uses a native EDIT control. Enter submits it and"
-        " Escape restores the last committed address. Backspace remains the"
-        " EDIT control's deletion key.</p>"
-        "<p>Native text fields, SELECT controls, SIP and file picking will be"
-        " connected to this shell in the next input batch.</p>"
-        "<p><a id=\"home\" tabindex=\"0\" "
-        "href=\"https://positron.local/welcome\">Home</a></p>"
-        "</body></html>";
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -200,14 +151,17 @@ static int app_wide_to_utf8(HWND edit, char *target, int target_capacity)
     return 0;
 }
 
-static void app_set_status(const char *status)
+static void app_set_status(AppTextId text_id)
 {
     WCHAR wide[APP_WIDE_TEXT_MAX];
 
     if (g_window == NULL) {
         return;
     }
-    app_utf8_to_wide(status, wide, sizeof(wide) / sizeof(wide[0]));
+    if (AppI18n_LoadString(text_id, wide,
+            sizeof(wide) / sizeof(wide[0])) <= 0) {
+        return;
+    }
     SetWindowTextW(g_window, wide);
 }
 
@@ -483,12 +437,6 @@ static int app_page_kind(const char *url)
     return 0;
 }
 
-static const char *app_page_html(int page_kind)
-{
-    return (page_kind == APP_PAGE_CONTROLS) ?
-            g_controls_html : g_welcome_html;
-}
-
 static int app_style_and_layout(HANDLE document, HANDLE stylesheet)
 {
     if (document == NULL || stylesheet == NULL || g_page_width <= 0 ||
@@ -510,6 +458,8 @@ static int app_build_page(const char *url, HANDLE *out_document,
 {
     HANDLE document;
     HANDLE stylesheet;
+    char *html;
+    unsigned int html_length;
     int page_kind;
 
     if (out_document == NULL || out_stylesheet == NULL ||
@@ -523,7 +473,13 @@ static int app_build_page(const char *url, HANDLE *out_document,
     if (page_kind == 0) {
         return 1;
     }
-    document = PCore_ParseHTML(app_page_html(page_kind), 0);
+    html = NULL;
+    html_length = 0;
+    if (AppI18n_LoadPage(page_kind, &html, &html_length) != 0) {
+        return 1;
+    }
+    document = PCore_ParseHTML(html, html_length);
+    AppI18n_FreePage(html);
     if (document == NULL) {
         return 1;
     }
@@ -568,9 +524,13 @@ static int app_create_menu_bar(HWND hwnd)
     memset(&menu_info, 0, sizeof(menu_info));
     menu_info.cbSize = sizeof(menu_info);
     menu_info.hwndParent = hwnd;
-    menu_info.nToolBarId = IDR_APP_MENUBAR;
+    menu_info.nToolBarId = AppI18n_MenuBarResource();
     menu_info.hInstRes = (g_instance != NULL) ? g_instance :
             GetModuleHandle(NULL);
+    if (menu_info.nToolBarId == 0) {
+        g_menu_bar = NULL;
+        return 1;
+    }
     if (!SHCreateMenuBar(&menu_info) || menu_info.hwndMB == NULL) {
         g_menu_bar = NULL;
         return 1;
@@ -621,7 +581,7 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
 
     if (app_build_page(url, &new_document, &new_stylesheet,
             &new_page_kind) != 0) {
-        app_set_status("This address is not available in the Phase A offline shell.");
+        app_set_status(APP_TEXT_STATUS_OFFLINE);
         app_set_address(g_current_url);
         return 0;
     }
@@ -636,7 +596,7 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
     if (history_rc != PBROWSER_OK) {
         PCore_FreeStylesheet(new_stylesheet);
         PCore_FreeDocument(new_document);
-        app_set_status("The browser history rejected this navigation.");
+        app_set_status(APP_TEXT_STATUS_HISTORY);
         app_set_address(g_current_url);
         return 0;
     }
@@ -661,8 +621,8 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
     app_update_scrollbars(hwnd);
     app_update_history_buttons();
     app_set_status((g_page_kind == APP_PAGE_CONTROLS) ?
-            "Ready - keyboard and focus page" :
-            "Ready - offline welcome page");
+            APP_TEXT_STATUS_READY_CONTROLS :
+            APP_TEXT_STATUS_READY_WELCOME);
     if (old_stylesheet != NULL) {
         PCore_FreeStylesheet(old_stylesheet);
     }
@@ -734,7 +694,7 @@ static void app_go_from_address(HWND hwnd)
 
     if (app_wide_to_utf8(g_address, input, sizeof(input)) != 0 ||
             app_normalize_address(input, url, sizeof(url)) != 0) {
-        app_set_status("Enter welcome or controls for an offline page.");
+        app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
         app_set_address(g_current_url);
         return;
     }
@@ -755,7 +715,7 @@ static void app_go_back(HWND hwnd)
 
     target = PBrowser_HistoryBackTarget(g_history, &index);
     if (target == NULL || strlen(target) >= sizeof(url)) {
-        app_set_status("There is no previous page.");
+        app_set_status(APP_TEXT_STATUS_NO_BACK);
         return;
     }
     app_copy_text(url, sizeof(url), target);
@@ -770,7 +730,7 @@ static void app_go_forward(HWND hwnd)
 
     target = PBrowser_HistoryForwardTarget(g_history, &index);
     if (target == NULL || strlen(target) >= sizeof(url)) {
-        app_set_status("There is no next page.");
+        app_set_status(APP_TEXT_STATUS_NO_FORWARD);
         return;
     }
     app_copy_text(url, sizeof(url), target);
@@ -882,7 +842,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
                 g_page_height = 1;
             }
             if (g_document != NULL && app_relayout() != 0) {
-                app_set_status("The page could not be laid out after resize.");
+                app_set_status(APP_TEXT_STATUS_LAYOUT);
             }
         }
         InvalidateRect(hwnd, NULL, TRUE);
@@ -937,7 +897,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         return 0;
     case APP_WM_ADDRESS_CANCEL:
         app_set_address(g_current_url);
-        app_set_status("Address edit cancelled.");
+        app_set_status(APP_TEXT_STATUS_ADDRESS_CANCELLED);
         SetFocus(hwnd);
         return 0;
     case WM_LBUTTONDOWN:
@@ -1102,6 +1062,17 @@ static int app_create_controls(HWND hwnd)
     return (g_address_original_proc == NULL) ? 1 : 0;
 }
 
+static void app_show_error(AppTextId text_id)
+{
+    WCHAR text[APP_WIDE_TEXT_MAX];
+
+    if (AppI18n_LoadString(text_id, text,
+            sizeof(text) / sizeof(text[0])) <= 0) {
+        lstrcpyW(text, L"Positron");
+    }
+    MessageBoxW(NULL, text, L"Positron", MB_OK | MB_ICONERROR);
+}
+
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         LPWSTR command_line, int show_command)
 {
@@ -1113,17 +1084,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
     (void) command_line;
     g_instance = instance;
+    if (AppI18n_Init(g_instance) != 0) {
+        MessageBoxW(NULL, L"Positron", L"Positron",
+                MB_OK | MB_ICONERROR);
+        return 1;
+    }
     g_dpi = app_device_dpi();
     if (PCore_Init() != 0) {
-        MessageBoxW(NULL, L"The Positron rendering core could not start.",
-                L"Positron", MB_OK | MB_ICONERROR);
+        app_show_error(APP_TEXT_ERROR_CORE_INIT);
         return 1;
     }
     g_history = PBrowser_HistoryCreate();
     if (g_history == NULL) {
         PCore_Shutdown();
-        MessageBoxW(NULL, L"The browser history service could not start.",
-                L"Positron", MB_OK | MB_ICONERROR);
+        app_show_error(APP_TEXT_ERROR_HISTORY_INIT);
         return 1;
     }
     memset(&window_class, 0, sizeof(window_class));
@@ -1136,8 +1110,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         PBrowser_HistoryDestroy(g_history);
         g_history = NULL;
         PCore_Shutdown();
-        MessageBoxW(NULL, L"The Positron window class could not register.",
-                L"Positron", MB_OK | MB_ICONERROR);
+        app_show_error(APP_TEXT_ERROR_CLASS_REGISTER);
         return 1;
     }
     hwnd = CreateWindowExW(WS_EX_CONTROLPARENT,
@@ -1151,8 +1124,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         PBrowser_HistoryDestroy(g_history);
         g_history = NULL;
         PCore_Shutdown();
-        MessageBoxW(NULL, L"The Positron window could not be created.",
-                L"Positron", MB_OK | MB_ICONERROR);
+        app_show_error(APP_TEXT_ERROR_WINDOW_CREATE);
         return 1;
     }
     g_window = hwnd;

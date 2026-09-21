@@ -94,9 +94,10 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    `Ex`/size-version 边界；本阶段不声明完整现代 Web API，也不改变旧 ABI。
 3. 若要先声明后实现，入口必须在未实现阶段返回稳定 unsupported 类错误，且在返回前不改状态、
    不创建伪 handle、不调用 callback、不产生部分 body 或部分 DOM mutation。
-4. 独立 `positron.exe` 的阶段 A 离线消费者已经落地，先完成同批 stage 与 WM6 设备人工门；
-   设备门通过后，再调查阶段 B 的连续网络导航：Browser 负责 generation/resource gate 和
-   页面生命周期，HTTP/TLS 负责公共 transport 边界，应用只负责 worker、消息泵、窗口和策略。
+4. 独立 `positron.exe` 的阶段 A 离线消费者已经落地，包含 EXE 内嵌的英语/简体中文资源和
+   非目标语言回退；先完成同批 stage 与 WM6 设备人工门。设备门通过后，再调查阶段 B 的连续
+   网络导航：Browser 负责 generation/resource gate 和页面生命周期，HTTP/TLS 负责公共 transport
+   边界，应用只负责 worker、消息泵、窗口和策略。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    没有证据时不进入产品实现。
@@ -104,8 +105,8 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    ARMV4I 构建、仓库审计和相称的设备门；`test_host` 只增加接线、fixture 和断言。
 
 短期完成标准是：七个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
-独立应用阶段 A 有设备证据，阶段 B 网络候选有明确 owner/预算/回滚和最小 fixture；路线图能
-指出下一条实现纵切，而不是只写“继续寻找”。
+独立应用阶段 A（包括英语/简体中文/回退英语语言矩阵）有设备证据，阶段 B 网络候选有明确
+owner/预算/回滚和最小 fixture；路线图能指出下一条实现纵切，而不是只写“继续寻找”。
 
 ## 当前选择边界
 
@@ -128,12 +129,13 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
 history fallback、Core URL callback 的重复解析和参考宿主的 visibility lifecycle 接线仍按
 既有公共边界维护；它们没有把产品语义搬回 `test_host`。本轮已经出现真实的独立应用消费者：
 `positron.exe` 用公开 Core/Browser ABI 完成阶段 A 的离线导航、绘制、滚动、焦点和有限 history，
+并由 EXE 私有资源提供英语/简体中文 UI，
 因此下一条路线不再是继续寻找“是否有生产消费者”，而是先完成该应用的设备门，再选择连续
 网络导航纵切。File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
-不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的触摸、旋转、DPI、字体、OEM
-硬键盘和失败网络观察仍属于人工/设备门，不能由桌面构建或 synthetic 消息替代。
+不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
+字体、OEM 硬键盘和失败网络观察仍属于人工/设备门，不能由桌面构建或 synthetic 消息替代。
 
 ## 候选队列
 
@@ -195,8 +197,8 @@ fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视
 这些方向不自动产生 next：
 
 - OEM 键盘、SIP/IME 候选词整词提交、contenteditable 自动重复和跨应用剪贴板；
-- native SELECT popup、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表
-  和失败网络的整体视觉；
+- native SELECT popup、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表、
+  应用英语/简体中文/回退语言矩阵和失败网络的整体视觉；
 - `example.com`/IANA 深层导航、旧页保留等真实网页观察。
 
 它们可以按风险累计后集中验收，但出现崩溃、数据损坏、严重布局破坏或核心交互阻塞时必须立即
