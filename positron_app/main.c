@@ -29,8 +29,10 @@
 #define APP_WIDE_TEXT_MAX       1024
 #define APP_FOCUS_ID_MAX        128
 #define APP_FOCUS_MAX           8
+#define APP_PAGE_CLASS_NAME     L"PositronBrowserPage"
 
 #define APP_ADDRESS_HEIGHT       28
+#define APP_ADDRESS_INSET         2
 #define APP_COMMAND_FALLBACK_HEIGHT 26
 
 #define APP_ID_ADDRESS            100
@@ -47,6 +49,7 @@
 
 static HWND g_window = NULL;
 static HWND g_address = NULL;
+static HWND g_page_window = NULL;
 static HWND g_menu_bar = NULL;
 static WNDPROC g_address_original_proc = NULL;
 static SHACTIVATEINFO g_shell_activate;
@@ -192,6 +195,25 @@ static int app_device_dpi(void)
     return dpi;
 }
 
+static int app_scale_dpi(int logical_pixels)
+{
+    int scaled;
+
+    if (logical_pixels <= 0) {
+        return 0;
+    }
+    scaled = MulDiv(logical_pixels, (g_dpi > 0) ? g_dpi : 96, 96);
+    if (scaled < 1) {
+        scaled = 1;
+    }
+    return scaled;
+}
+
+static int app_address_height(void)
+{
+    return app_scale_dpi(APP_ADDRESS_HEIGHT);
+}
+
 static int app_command_bar_top(HWND hwnd, const RECT *client)
 {
     RECT command_bar;
@@ -210,7 +232,7 @@ static int app_command_bar_top(HWND hwnd, const RECT *client)
             return client->bottom;
         }
     }
-    return client->bottom - APP_COMMAND_FALLBACK_HEIGHT;
+    return client->bottom - app_scale_dpi(APP_COMMAND_FALLBACK_HEIGHT);
 }
 
 static void app_page_rect(HWND hwnd, RECT *rect)
@@ -224,7 +246,7 @@ static void app_page_rect(HWND hwnd, RECT *rect)
     GetClientRect(hwnd, &client);
     rect->left = 0;
     rect->right = client.right;
-    rect->top = APP_ADDRESS_HEIGHT;
+    rect->top = app_address_height();
     rect->bottom = app_command_bar_top(hwnd, &client);
     if (rect->right < rect->left) {
         rect->right = rect->left;
@@ -237,22 +259,41 @@ static void app_page_rect(HWND hwnd, RECT *rect)
 static void app_reposition_controls(HWND hwnd)
 {
     RECT client;
+    int address_height;
     int width;
     int address_width;
+    int inset;
 
     GetClientRect(hwnd, &client);
+    address_height = app_address_height();
+    inset = app_scale_dpi(APP_ADDRESS_INSET);
     width = client.right - client.left;
     if (width < 1) {
         width = 1;
     }
-    address_width = width - 4;
+    address_width = width - (inset * 2);
     if (address_width < 1) {
         address_width = 1;
     }
     if (g_address != NULL) {
-        MoveWindow(g_address, 2, 2, address_width,
-                APP_ADDRESS_HEIGHT - 4, TRUE);
+        if (address_height - (inset * 2) < 1) {
+            address_height = (inset * 2) + 1;
+        }
+        MoveWindow(g_address, inset, inset, address_width,
+                address_height - (inset * 2), TRUE);
     }
+}
+
+static void app_reposition_page(HWND hwnd)
+{
+    RECT page;
+
+    if (g_page_window == NULL) {
+        return;
+    }
+    app_page_rect(hwnd, &page);
+    MoveWindow(g_page_window, page.left, page.top,
+            page.right - page.left, page.bottom - page.top, TRUE);
 }
 
 static void app_clamp_scroll(void)
@@ -286,6 +327,9 @@ static void app_update_scrollbars(HWND hwnd)
 {
     SCROLLINFO info;
 
+    if (hwnd == NULL) {
+        return;
+    }
     app_clamp_scroll();
     memset(&info, 0, sizeof(info));
     info.cbSize = sizeof(info);
@@ -413,6 +457,7 @@ static int app_activate_focus(HWND hwnd)
     int top;
     int width;
     int height;
+    HWND target;
 
     if (g_document == NULL || g_focus_index < 0 ||
             g_focus_index >= g_focus_count) {
@@ -422,7 +467,8 @@ static int app_activate_focus(HWND hwnd)
             &left, &top, &width, &height, href, sizeof(href)) != 0) {
         return 0;
     }
-    return (int) SendMessage(hwnd, APP_WM_ADDRESS_GO, 1,
+    target = (g_window != NULL) ? g_window : GetParent(hwnd);
+    return (int) SendMessage(target, APP_WM_ADDRESS_GO, 1,
             (LPARAM) href);
 }
 
@@ -513,7 +559,7 @@ static int app_relayout(void)
         g_document_height = g_page_height;
     }
     app_clamp_scroll();
-    app_update_scrollbars(g_window);
+    app_update_scrollbars(g_page_window);
     return 0;
 }
 
@@ -618,7 +664,7 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
     if (g_document_height < g_page_height) {
         g_document_height = g_page_height;
     }
-    app_update_scrollbars(hwnd);
+    app_update_scrollbars(g_page_window);
     app_update_history_buttons();
     app_set_status((g_page_kind == APP_PAGE_CONTROLS) ?
             APP_TEXT_STATUS_READY_CONTROLS :
@@ -629,7 +675,11 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
     if (old_document != NULL) {
         PCore_FreeDocument(old_document);
     }
-    InvalidateRect(hwnd, NULL, TRUE);
+    if (g_page_window != NULL) {
+        InvalidateRect(g_page_window, NULL, TRUE);
+    } else {
+        InvalidateRect(hwnd, NULL, TRUE);
+    }
     return 1;
 }
 
@@ -768,21 +818,20 @@ static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
 
 static void app_paint_page(HWND hwnd, HDC dc)
 {
-    RECT page;
+    RECT client;
     RECT clear;
     RECT focus_rect;
     PCoreFocusTargetInfo focus_info;
     int saved;
 
-    app_page_rect(hwnd, &page);
+    GetClientRect(hwnd, &client);
     saved = SaveDC(dc);
-    SetViewportOrgEx(dc, page.left, page.top, NULL);
-    IntersectClipRect(dc, 0, 0, page.right - page.left,
-            page.bottom - page.top);
+    IntersectClipRect(dc, client.left, client.top,
+            client.right, client.bottom);
     clear.left = 0;
     clear.top = 0;
-    clear.right = page.right - page.left;
-    clear.bottom = page.bottom - page.top;
+    clear.right = client.right - client.left;
+    clear.bottom = client.bottom - client.top;
     FillRect(dc, &clear, (HBRUSH) GetStockObject(WHITE_BRUSH));
     if (g_document != NULL) {
         PCore_PaintDocument(g_document, dc, g_scroll_x, g_scroll_y);
@@ -817,24 +866,17 @@ static void app_paint_page(HWND hwnd, HDC dc)
     RestoreDC(dc, saved);
 }
 
-static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
+static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
     switch (message) {
-    case WM_CREATE:
-        memset(&g_shell_activate, 0, sizeof(g_shell_activate));
-        g_shell_activate.cbSize = sizeof(g_shell_activate);
-        if (app_create_menu_bar(hwnd) != 0) {
-            return -1;
-        }
-        return 0;
     case WM_SIZE:
-        app_reposition_controls(hwnd);
         {
-            RECT page;
-            app_page_rect(hwnd, &page);
-            g_page_width = page.right - page.left;
-            g_page_height = page.bottom - page.top;
+            RECT client;
+
+            GetClientRect(hwnd, &client);
+            g_page_width = client.right - client.left;
+            g_page_height = client.bottom - client.top;
             if (g_page_width < 1) {
                 g_page_width = 1;
             }
@@ -844,19 +886,14 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             if (g_document != NULL && app_relayout() != 0) {
                 app_set_status(APP_TEXT_STATUS_LAYOUT);
             }
+            InvalidateRect(hwnd, NULL, TRUE);
         }
-        InvalidateRect(hwnd, NULL, TRUE);
-        return 0;
-    case WM_ACTIVATE:
-        SHHandleWMActivate(hwnd, wparam, lparam, &g_shell_activate, FALSE);
-        return 0;
-    case WM_SETTINGCHANGE:
-        SHHandleWMSettingChange(hwnd, wparam, lparam, &g_shell_activate);
         return 0;
     case WM_PAINT:
         {
             PAINTSTRUCT paint;
             HDC dc;
+
             dc = BeginPaint(hwnd, &paint);
             app_paint_page(hwnd, dc);
             EndPaint(hwnd, &paint);
@@ -864,45 +901,8 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         return 0;
     case WM_ERASEBKGND:
         return 1;
-    case WM_COMMAND:
-        switch (LOWORD(wparam)) {
-        case APP_CMD_BACK:
-            app_go_back(hwnd);
-            return 0;
-        case APP_CMD_FORWARD:
-            app_go_forward(hwnd);
-            return 0;
-        case APP_CMD_HOME:
-            app_go_home(hwnd);
-            return 0;
-        case APP_CMD_ADDRESS:
-            SetFocus(g_address);
-            SendMessage(g_address, EM_SETSEL, 0, -1);
-            return 0;
-        case APP_CMD_REFRESH:
-            app_refresh(hwnd);
-            return 0;
-        case APP_CMD_EXIT:
-            PostMessage(hwnd, WM_CLOSE, 0, 0);
-            return 0;
-        }
-        break;
-    case APP_WM_ADDRESS_GO:
-        if (lparam != 0) {
-            (void) app_load_page(hwnd, (const char *) lparam,
-                    APP_HISTORY_NEW, -1);
-        } else {
-            app_go_from_address(hwnd);
-        }
-        return 0;
-    case APP_WM_ADDRESS_CANCEL:
-        app_set_address(g_current_url);
-        app_set_status(APP_TEXT_STATUS_ADDRESS_CANCELLED);
-        SetFocus(hwnd);
-        return 0;
     case WM_LBUTTONDOWN:
         {
-            RECT page;
             int x;
             int y;
             int document_x;
@@ -912,14 +912,9 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
 
             x = (int) (short) LOWORD(lparam);
             y = (int) (short) HIWORD(lparam);
-            app_page_rect(hwnd, &page);
-            if (x < page.left || x >= page.right || y < page.top ||
-                    y >= page.bottom) {
-                break;
-            }
             SetFocus(hwnd);
-            document_x = x - page.left + g_scroll_x;
-            document_y = y - page.top + g_scroll_y;
+            document_x = x + g_scroll_x;
+            document_y = y + g_scroll_y;
             focus_index = app_focus_at(document_x, document_y);
             if (focus_index >= 0) {
                 (void) app_focus_set(hwnd, focus_index);
@@ -927,13 +922,14 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             href[0] = '\0';
             if (g_document != NULL && PCore_LinkAt(g_document,
                     document_x, document_y, href, sizeof(href)) == 1) {
-                (void) app_load_page(hwnd, href, APP_HISTORY_NEW, -1);
+                (void) app_load_page(g_window, href, APP_HISTORY_NEW, -1);
             }
         }
         return 0;
     case WM_VSCROLL:
         {
             int amount;
+
             amount = 16;
             if (LOWORD(wparam) == SB_PAGEUP ||
                     LOWORD(wparam) == SB_PAGEDOWN) {
@@ -945,7 +941,8 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             }
             if (LOWORD(wparam) == SB_THUMBPOSITION ||
                     LOWORD(wparam) == SB_THUMBTRACK) {
-                app_scroll_by(hwnd, 0, (int) HIWORD(wparam) - g_scroll_y);
+                app_scroll_by(hwnd, 0,
+                        (int) HIWORD(wparam) - g_scroll_y);
             } else {
                 app_scroll_by(hwnd, 0, amount);
             }
@@ -954,6 +951,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
     case WM_HSCROLL:
         {
             int amount;
+
             amount = 16;
             if (LOWORD(wparam) == SB_PAGELEFT ||
                     LOWORD(wparam) == SB_PAGERIGHT) {
@@ -965,7 +963,8 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             }
             if (LOWORD(wparam) == SB_THUMBPOSITION ||
                     LOWORD(wparam) == SB_THUMBTRACK) {
-                app_scroll_by(hwnd, (int) HIWORD(wparam) - g_scroll_x, 0);
+                app_scroll_by(hwnd,
+                        (int) HIWORD(wparam) - g_scroll_x, 0);
             } else {
                 app_scroll_by(hwnd, amount, 0);
             }
@@ -1012,13 +1011,83 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             return 0;
         }
         if (wparam == VK_F5) {
-            app_refresh(hwnd);
+            app_refresh(g_window);
             return 0;
         }
         if (wparam == VK_TAB) {
             SetFocus(g_address);
             return 0;
         }
+        return 0;
+    }
+    return DefWindowProc(hwnd, message, wparam, lparam);
+}
+
+static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
+        WPARAM wparam, LPARAM lparam)
+{
+    switch (message) {
+    case WM_CREATE:
+        memset(&g_shell_activate, 0, sizeof(g_shell_activate));
+        g_shell_activate.cbSize = sizeof(g_shell_activate);
+        if (app_create_menu_bar(hwnd) != 0) {
+            return -1;
+        }
+        return 0;
+    case WM_SIZE:
+        app_reposition_controls(hwnd);
+        app_reposition_page(hwnd);
+        return 0;
+    case WM_ACTIVATE:
+        SHHandleWMActivate(hwnd, wparam, lparam, &g_shell_activate, FALSE);
+        return 0;
+    case WM_SETTINGCHANGE:
+        SHHandleWMSettingChange(hwnd, wparam, lparam, &g_shell_activate);
+        return 0;
+    case WM_PAINT:
+        {
+            PAINTSTRUCT paint;
+            BeginPaint(hwnd, &paint);
+            EndPaint(hwnd, &paint);
+        }
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_COMMAND:
+        switch (LOWORD(wparam)) {
+        case APP_CMD_BACK:
+            app_go_back(hwnd);
+            return 0;
+        case APP_CMD_FORWARD:
+            app_go_forward(hwnd);
+            return 0;
+        case APP_CMD_HOME:
+            app_go_home(hwnd);
+            return 0;
+        case APP_CMD_ADDRESS:
+            SetFocus(g_address);
+            SendMessage(g_address, EM_SETSEL, 0, -1);
+            return 0;
+        case APP_CMD_REFRESH:
+            app_refresh(hwnd);
+            return 0;
+        case APP_CMD_EXIT:
+            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        }
+        break;
+    case APP_WM_ADDRESS_GO:
+        if (lparam != 0) {
+            (void) app_load_page(hwnd, (const char *) lparam,
+                    APP_HISTORY_NEW, -1);
+        } else {
+            app_go_from_address(hwnd);
+        }
+        return 0;
+    case APP_WM_ADDRESS_CANCEL:
+        app_set_address(g_current_url);
+        app_set_status(APP_TEXT_STATUS_ADDRESS_CANCELLED);
+        SetFocus((g_page_window != NULL) ? g_page_window : hwnd);
         return 0;
     case WM_CLOSE:
         DestroyWindow(hwnd);
@@ -1060,6 +1129,29 @@ static int app_create_controls(HWND hwnd)
     g_address_original_proc = (WNDPROC) SetWindowLong(g_address,
             GWL_WNDPROC, (LONG) app_address_proc);
     return (g_address_original_proc == NULL) ? 1 : 0;
+}
+
+static int app_create_page_window(HWND hwnd)
+{
+    /* Match the WM6 SDK PViewCE pattern: the parent owns the command bar,
+     * while the same top-level window's content child owns native scrolling. */
+    g_page_window = CreateWindowExW(0, APP_PAGE_CLASS_NAME, L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_HSCROLL | WS_VSCROLL,
+            0, 0, 1, 1, hwnd, NULL, g_instance, NULL);
+    return (g_page_window == NULL) ? 1 : 0;
+}
+
+static int app_register_page_class(void)
+{
+    WNDCLASSW page_class;
+
+    memset(&page_class, 0, sizeof(page_class));
+    page_class.style = CS_HREDRAW | CS_VREDRAW;
+    page_class.lpfnWndProc = app_page_window_proc;
+    page_class.hInstance = g_instance;
+    page_class.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
+    page_class.lpszClassName = APP_PAGE_CLASS_NAME;
+    return (RegisterClassW(&page_class) == 0) ? 1 : 0;
 }
 
 static void app_show_error(AppTextId text_id)
@@ -1106,6 +1198,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     window_class.hInstance = g_instance;
     window_class.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
     window_class.lpszClassName = L"PositronBrowserWindow";
+    if (app_register_page_class() != 0) {
+        PBrowser_HistoryDestroy(g_history);
+        g_history = NULL;
+        PCore_Shutdown();
+        app_show_error(APP_TEXT_ERROR_CLASS_REGISTER);
+        return 1;
+    }
     if (RegisterClassW(&window_class) == 0) {
         PBrowser_HistoryDestroy(g_history);
         g_history = NULL;
@@ -1116,7 +1215,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     hwnd = CreateWindowExW(WS_EX_CONTROLPARENT,
             L"PositronBrowserWindow", L"Positron",
             WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN |
-            WS_CLIPSIBLINGS | WS_HSCROLL | WS_VSCROLL,
+            WS_CLIPSIBLINGS,
             0, 0, GetSystemMetrics(SM_CXSCREEN),
             GetSystemMetrics(SM_CYSCREEN), NULL, NULL,
             g_instance, NULL);
@@ -1132,19 +1231,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         DestroyWindow(hwnd);
         return 1;
     }
-    app_reposition_controls(hwnd);
-    {
-        RECT page;
-        app_page_rect(hwnd, &page);
-        g_page_width = page.right - page.left;
-        g_page_height = page.bottom - page.top;
-        if (g_page_width < 1) {
-            g_page_width = 1;
-        }
-        if (g_page_height < 1) {
-            g_page_height = 1;
-        }
+    if (app_create_page_window(hwnd) != 0) {
+        DestroyWindow(hwnd);
+        return 1;
     }
+    app_reposition_controls(hwnd);
+    app_reposition_page(hwnd);
     result = app_load_page(hwnd, "https://positron.local/welcome",
             APP_HISTORY_NEW, -1) ? 0 : 1;
     if (result != 0) {
