@@ -289,10 +289,70 @@ static int pcore_gdi_wide_normalize(WCHAR *text, int length)
     return write_index;
 }
 
-/* Private context behind redraw_context.priv. */
-typedef struct pcore_plot_ctx {
-    HDC hdc;
-} pcore_plot_ctx;
+void pcore_plot_context_begin(pcore_plot_ctx *ctx, HDC hdc)
+{
+    if (ctx == NULL) {
+        return;
+    }
+    ctx->hdc = hdc;
+    ctx->base_save = 0;
+    ctx->base_active = 0;
+    if (hdc != NULL) {
+        ctx->base_save = SaveDC(hdc);
+        ctx->base_active = (ctx->base_save != 0) ? 1 : 0;
+    }
+}
+
+void pcore_plot_context_end(pcore_plot_ctx *ctx)
+{
+    if (ctx == NULL || ctx->hdc == NULL) {
+        return;
+    }
+    if (ctx->base_active) {
+        RestoreDC(ctx->hdc, ctx->base_save);
+    }
+    ctx->base_save = 0;
+    ctx->base_active = 0;
+}
+
+static void pcore_select_device_clip(HDC hdc, const struct rect *clip)
+{
+    POINT viewport_org;
+    POINT window_org;
+    HRGN plot_rgn;
+    int offset_x;
+    int offset_y;
+
+    if (hdc == NULL || clip == NULL) {
+        return;
+    }
+    /* SelectClipRgn uses device coordinates on WM6.  The plot callbacks use
+     * the same logical page coordinates as GDI drawing calls, so account for
+     * the current MM_TEXT origin explicitly instead of letting a region be
+     * offset a second time (or not at all) by the CE GDI implementation. */
+    offset_x = 0;
+    offset_y = 0;
+    if (GetViewportOrgEx(hdc, &viewport_org) &&
+            GetWindowOrgEx(hdc, &window_org)) {
+        offset_x = viewport_org.x - window_org.x;
+        offset_y = viewport_org.y - window_org.y;
+    }
+
+    plot_rgn = CreateRectRgn(offset_x + clip->x0,
+            offset_y + clip->y0, offset_x + clip->x1,
+            offset_y + clip->y1);
+    if (plot_rgn == NULL) {
+        return;
+    }
+
+    /* The root redraw clip is already limited to the page viewport. Replacing
+     * the host region with this absolute device-space clip avoids the CE GDI
+     * implementations that report a stale/logical GetClipBox after a
+     * viewport-origin change. The outer update region is still restored by
+     * the next plot callback and by pcore_plot_context_end. */
+    SelectClipRgn(hdc, plot_rgn);
+    DeleteObject(plot_rgn);
+}
 
 /* NetSurf `colour` is XBGR (red in the low byte) - identical byte order to a
  * Win32 COLORREF (0x00BBGGRR), so the conversion is just masking the alpha. */
@@ -441,11 +501,25 @@ static nserror plot_clip(const struct redraw_context *ctx,
         const struct rect *clip)
 {
     pcore_plot_ctx *p = (pcore_plot_ctx *) ctx->priv;
-    HRGN rgn = CreateRectRgn(clip->x0, clip->y0, clip->x1, clip->y1);
-    if (rgn != NULL) {
-        SelectClipRgn(p->hdc, rgn);
-        DeleteObject(rgn);
+    int next_save;
+
+    if (p == NULL || p->hdc == NULL || clip == NULL) {
+        return NSERROR_INVALID;
     }
+    if (p->base_active) {
+        /* plot_clip receives an absolute redraw clip. Restore the page/update
+         * state before applying it so sibling boxes do not intersect with the
+         * previous sibling's clip. Re-save that state for the next callback. */
+        if (!RestoreDC(p->hdc, p->base_save)) {
+            p->base_active = 0;
+            p->base_save = 0;
+        } else {
+            next_save = SaveDC(p->hdc);
+            p->base_save = next_save;
+            p->base_active = (next_save != 0) ? 1 : 0;
+        }
+    }
+    pcore_select_device_clip(p->hdc, clip);
     return NSERROR_OK;
 }
 
@@ -1245,7 +1319,7 @@ PCORE_API void PCore_PlotTest(HDC hdc)
         return;
     }
 
-    pctx.hdc = hdc;
+    pcore_plot_context_begin(&pctx, hdc);
     memset(&rc, 0, sizeof(rc));
     rc.interactive = false;
     rc.background_images = false;
@@ -1290,6 +1364,7 @@ PCORE_API void PCore_PlotTest(HDC hdc)
     ln.stroke_colour = 0x0000ff00;                 /* XBGR: green */
     r.x0 = 10; r.y0 = 134; r.x1 = 220; r.y1 = 134;
     rc.plot->line(&rc, &ln, &r);
+    pcore_plot_context_end(&pctx);
 }
 
 /* M2 self-test: measure a known string and find a split point, formatting a

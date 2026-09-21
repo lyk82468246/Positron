@@ -3333,7 +3333,7 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
     struct redraw_context     rc;
     struct content_redraw_data data;
     struct rect   clip;
-    struct { HDC hdc; } pv;   /* layout matches pcore_plot_ctx (one HDC) */
+    pcore_plot_ctx pv;
 
     if (hdc == NULL || cw <= 0 || ch <= 0) {
         return;
@@ -3368,7 +3368,7 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
         PCore_SetViewport(cw, ch, 0);
         layout_document(&c, cw, ch);
 
-        pv.hdc = hdc;
+        pcore_plot_context_begin(&pv, hdc);
         memset(&rc, 0, sizeof(rc));
         /* Must be true or html_redraw_background() returns early and paints
          * NO background at all - not even background-color. This self-test
@@ -3390,6 +3390,7 @@ PCORE_API void PCore_NsRenderTest(HDC hdc, int cw, int ch)
         clip.y1 = ch;
 
         html_redraw((struct content *) &c, &data, &clip, &rc);
+        pcore_plot_context_end(&pv);
     }
 
     if (ctx != NULL) {
@@ -15676,14 +15677,14 @@ PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
     struct redraw_context      rc;
     struct content_redraw_data data;
     struct rect   clip;
-    struct { HDC hdc; } pv;   /* layout matches pcore_plot_ctx (one HDC) */
-    RECT          cb;
+    pcore_plot_ctx pv;
+    RECT          update_clip;
 
     if (st == NULL || hdc == NULL) {
         return;
     }
 
-    pv.hdc = hdc;
+    pcore_plot_context_begin(&pv, hdc);
     memset(&rc, 0, sizeof(rc));
     rc.background_images = true;   /* else html_redraw_background paints nothing */
     rc.plot = &pcore_gdi_plotters;
@@ -15697,14 +15698,28 @@ PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
     data.background_colour = 0x00ffffff;
     data.scale = 1.0f;
 
-    /* Clip to the DC's update region (the WM_PAINT invalid rect), falling back
-     * to the layout viewport. */
-    if (GetClipBox(hdc, &cb) != ERROR &&
-            cb.right > cb.left && cb.bottom > cb.top) {
-        clip.x0 = cb.left;
-        clip.y0 = cb.top;
-        clip.x1 = cb.right;
-        clip.y1 = cb.bottom;
+    /* GetClipBox is expressed in the HDC's logical space. With the page's
+     * non-zero viewport origin its top/left can be negative; clamp it to the
+     * Core page space before handing it to NetSurf, otherwise the same page
+     * origin is effectively applied twice. If the host reports no usable
+     * update rectangle, redraw the complete page viewport. */
+    if (GetClipBox(hdc, &update_clip) != ERROR &&
+            update_clip.right > update_clip.left &&
+            update_clip.bottom > update_clip.top) {
+        clip.x0 = update_clip.left;
+        clip.y0 = update_clip.top;
+        clip.x1 = update_clip.right;
+        clip.y1 = update_clip.bottom;
+        if (clip.x0 < 0) { clip.x0 = 0; }
+        if (clip.y0 < 0) { clip.y0 = 0; }
+        if (clip.x1 > st->vw) { clip.x1 = st->vw; }
+        if (clip.y1 > st->vh) { clip.y1 = st->vh; }
+        if (clip.x1 <= clip.x0 || clip.y1 <= clip.y0) {
+            clip.x0 = 0;
+            clip.y0 = 0;
+            clip.x1 = st->vw;
+            clip.y1 = st->vh;
+        }
     } else {
         clip.x0 = 0;
         clip.y0 = 0;
@@ -15713,6 +15728,7 @@ PCORE_API void PCore_PaintDocument(HANDLE hDoc, HDC hdc,
     }
 
     html_redraw((struct content *) &st->content, &data, &clip, &rc);
+    pcore_plot_context_end(&pv);
 }
 
 /* Compose a modal presentation after the normal document has been painted.
@@ -15738,7 +15754,7 @@ static int pcore_paint_modal_overlay(pcore_render *st, dom_document *doc,
     struct redraw_context rc;
     struct content_redraw_data data;
     struct rect clip;
-    struct { HDC hdc; } pv;
+    pcore_plot_ctx pv;
 
     if (st == NULL || doc == NULL || hdc == NULL || dialog_id == NULL ||
             dialog_id[0] == '\0') {
@@ -15802,7 +15818,7 @@ static int pcore_paint_modal_overlay(pcore_render *st, dom_document *doc,
         dom_node_unref((dom_node *) element);
         return status;
     }
-    pv.hdc = hdc;
+    pcore_plot_context_begin(&pv, hdc);
     memset(&rc, 0, sizeof(rc));
     rc.background_images = true;
     rc.plot = &pcore_gdi_plotters;
@@ -15819,6 +15835,7 @@ static int pcore_paint_modal_overlay(pcore_render *st, dom_document *doc,
     clip.x1 = dialog_clip.right;
     clip.y1 = dialog_clip.bottom;
     html_redraw((struct content *) &st->content, &data, &clip, &rc);
+    pcore_plot_context_end(&pv);
     status = PCORE_MODAL_PAINT_APPLIED;
     dom_node_unref((dom_node *) element);
     return status;

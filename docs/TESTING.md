@@ -195,6 +195,11 @@ scripts\device_gate.bat -Candidate feature-name ^
 
 完整日志必须在清理前复制到电脑。启动头、部分 `OK`、提示音、窗口关闭或单次 RAPI 成功都不是通过证据。
 
+Windows CE 会按 DLL 基名复用已加载模块。自动宿主在日志头记录实际的 `Core module path`，
+设备门必须确认它等于本次 staging 目录中的 `positron_core.dll`；缺失或不一致会以
+`core_module_check=UNAVAILABLE/STALE_MODULE` 拒绝本批，不能把旧模块的断言或像素结果当作源码证据。
+此时先在设备上结束持有旧 DLL 的进程，必要时重启设备，再重跑设备门。
+
 ### 自动通过标准
 
 一次设备门同时满足以下条件才通过：

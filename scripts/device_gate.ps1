@@ -1596,6 +1596,25 @@ try {
 
 $logText = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
 $metricOk = $logText -match "(?m)^Device metrics: screen=\d+x\d+ dpi=\d+\s*$"
+$coreModuleMatch = [regex]::Match($logText,
+        "(?m)^Core module path: (.+)\s*$")
+$coreModulePath = if ($coreModuleMatch.Success) {
+    $coreModuleMatch.Groups[1].Value.Trim()
+} else {
+    "unavailable"
+}
+$expectedCoreModulePath = ($remoteRoot.TrimEnd("\") + "\positron_core.dll").ToLowerInvariant()
+$coreModuleCheck = if (!$coreModuleMatch.Success) {
+    "UNAVAILABLE"
+} elseif ($coreModulePath.ToLowerInvariant() -eq $expectedCoreModulePath) {
+    "PASS"
+} else {
+    "STALE_MODULE"
+}
+$coreModuleHolders = @([regex]::Matches($logText,
+        "(?m)^Core module holder: (.+)\s*$") | ForEach-Object {
+    $_.Groups[1].Value.Trim()
+})
 $errorCount = ([regex]::Matches($logText, "(?m)^\[ERROR\]")).Count
 $failCount = ([regex]::Matches($logText, "(?m)^\[[A-Z]+\].*\bFAIL\b")).Count
 $passCount = ([regex]::Matches($logText, "(?m)^\[INFO\] TESTBENCH PASS\s*$")).Count
@@ -1626,6 +1645,10 @@ if ($expectedTests.Contains("13")) {
 }
 
 $checkLines += "metrics_ok=$metricOk"
+$checkLines += "core_module_check=$coreModuleCheck"
+$checkLines += "core_module_path=$coreModulePath"
+$checkLines += "core_module_expected=$expectedCoreModulePath"
+$checkLines += "core_module_holders=$($coreModuleHolders -join '|')"
 $checkLines += "selected_test_count=$($expectedTests.Count)"
 $checkLines += "observed_ok_test_count=$($actualTests.Count)"
 $checkLines += "missing_tests=$($missing -join ',')"
@@ -1692,7 +1715,8 @@ $checkLines += "new_crash_dump_count=$($newCrashDumps.Count)"
 $checkLines += "new_crash_dumps=$($newCrashDumps -join '|')"
 
 $storageGateOk = $storageCheck -match "^PASS"
-$passed = $storageGateOk -and $crashCheck -eq 'PASS' -and
+$passed = $storageGateOk -and $coreModuleCheck -eq 'PASS' -and
+        $crashCheck -eq 'PASS' -and
         $completionMarker -eq "PASS" -and $metricOk -and
         $missing.Count -eq 0 -and $unexpected.Count -eq 0 -and
         $errorCount -eq 0 -and $failCount -eq 0 -and

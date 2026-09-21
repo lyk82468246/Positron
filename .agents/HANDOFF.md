@@ -62,13 +62,13 @@ SIP/IME、picker、书签和持久设置仍不在当前范围内。ROADMAP.md �
 
 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-本轮修复了消费者报告的 WM6 高 DPI 文本裁剪：Core 的 GDI 测量/绘制统一使用
-`PCore_SetDeviceViewport` DPI 并保留字号定点精度；TEST1311 的 `1311,999` 已在当前
-480x480、192-DPI 目标通过（96/192 均为 8 个完整 fragment，crash=0）。ROADMAP 已复核，
-阶段 B 网络导航和 File/Blob 待取证状态不变；应用字体、边距、旋转、触摸仍需人工门。
+消费者报告的 WM6 高 DPI 文本裁剪修复已通过 192-DPI Core 回归门，
+但消费者的字体、边距和旋转视觉仍需人工观察。此前旧的
+`consumer-dpi-current-20260921-180119\positron_core.dll` 被 `positron.exe` 持有；
+清除持有者后，新 staging 目录已加载，不能把旧结果归因于源码。
+ROADMAP 已复核。
 
-TEST232/263 的自动与手动门均按回归报告通过，picker 门无待完成 GUI；`input` 回调重排、
-窗口收尾和事件顺序的边界见 [`docs/history/TEST232-263-regression-review-20260920.md`](../docs/history/TEST232-263-regression-review-20260920.md)。
+TEST232/263 的自动与手动门均通过；边界见 [`docs/history/TEST232-263-regression-review-20260920.md`](../docs/history/TEST232-263-regression-review-20260920.md)。
 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
 Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
@@ -225,10 +225,14 @@ Browser 负责有界 history，窗口、native EDIT、WM6 Shell command bar、�
 
 ## 最新有效设备证据
 
-`tmp/device-runs/20260920-213339-test263-pointer-repro` 是本轮最新自动证据：Debug ARMV4I
-`263,999` 2/2 PASS；双空间预检、日志回收、清理和 `crash_check` 均 PASS，dump=0，含唯一
-`TESTBENCH PASS`。窗口坐标探针在布局失效后仍经元素 id 延迟解析排队 file picker，并保留
-选择/取消事件桥。`C:\WMShare\Positron-manual-test263-deferred-id` 也由用户操作通过 TEST263
+`tmp/device-runs/20260921-232526-dpi-clip-final` 的 `1311,999` 已正常 `PASS`：
+`core_module_check=PASS`，路径等于本次 staging 目录，TEST1311 报告 14/27 行、
+最低 14/21 行，999 PASS、dump=0；回收清理。
+`tmp/device-runs/20260921-231158-dpi-clip-holders` 记录了旧 `positron.exe` 持有者；
+设备门现在先检查路径并记录持有者。
+`tmp/device-runs/20260920-213339-test263-pointer-repro` 是 TEST263 证据：
+`263,999` 2/2 PASS；双空间预检、日志回收、清理和 `crash_check` 均 PASS，dump=0。
+`C:\WMShare\Positron-manual-test263-deferred-id` 也由用户操作通过 TEST263
 与 TEST1310；手动 picker 的视觉和 OEM 行为仍不应外推到其他 ROM。较早的 1302–1309 基线仍由
 `tmp/device-runs/20260920-153441-next875-file-upload-baseline` 保存；失败实验日志保留在
 `tmp/` 供审计，不作为产品基线。
@@ -351,11 +355,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-完成阶段 A 的同批 stage 和 WM6 人工验收：分别在英语、简体中文和其他语言设备上启动
-`positron.exe`，检查语言/英语回退、两页、caption、地址栏、链接、softkey、菜单、状态、错误提示、
-空白点击、滚动、焦点、Shell command bar 和退出，并观察触摸、旋转、DPI、字体和 OEM 硬键盘；确认
-新鲜 stage 中没有额外语言文件。
-结果写入本文件；未连接设备时保持“构建已通过、设备未验收”。
+先在 WMDC 设备上关闭旧 `positron.exe`，并确认其他 `test_host.exe` 也已退出；
+仍复用旧模块时重启设备。随后用新鲜 Debug stage 运行
+`scripts\device_gate.bat -Candidate dpi-clip-module-guard -TestSelection 1311,999 -PreserveDeployment`，
+确认日志路径切换到本次目录后再判断 TEST1311；路径仍旧时不得把失败写成 Core 回归。
 
 阶段 A 设备门通过后，再按路线图决定阶段 B 的连续网络导航：复用 Browser 的 generation/
 resource gate 和 HTTP/TLS 公共边界，由应用只增加 worker、消息泵和页面 swap 接线，继续保留

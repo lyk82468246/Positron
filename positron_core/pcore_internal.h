@@ -14,6 +14,18 @@
 
 #include "positron_core.h"
 
+/* Redraw-private GDI context. NetSurf calls plot_clip repeatedly with an
+ * absolute logical rectangle; the plotter restores the host page/update clip
+ * before applying each one so sibling clips do not accumulate. */
+typedef struct pcore_plot_ctx {
+    HDC hdc;
+    int base_save;
+    int base_active;
+} pcore_plot_ctx;
+
+void pcore_plot_context_begin(pcore_plot_ctx *ctx, HDC hdc);
+void pcore_plot_context_end(pcore_plot_ctx *ctx);
+
 /* Source selection is intentionally bounded for WM6 callers.  The public
  * relation bridge may still truncate a returned string to its caller-owned
  * buffer, but Core never allocates an unbounded candidate while scanning or

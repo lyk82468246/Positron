@@ -34,6 +34,7 @@
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 #include <commctrl.h>   /* WM6 common-controls progress bar */
 #include <imm.h>        /* WM6 input-method composition strings */
+#include <tlhelp32.h>   /* read-only process/module inventory for device logs */
 
 #include "positron_tls.h"
 #include "positron_json.h"
@@ -188,6 +189,103 @@ static void testbench_log_bytes(const char *text)
     }
 }
 
+/* Windows CE maps a DLL once per basename across processes. Record the
+ * module path actually mapped into this host so the RAPI gate can reject a
+ * stale same-name DLL before interpreting product assertions. */
+static void testbench_log_core_module_path(void)
+{
+    HMODULE module;
+    WCHAR path[MAX_PATH];
+    char utf8[MAX_PATH * 3];
+    DWORD length;
+    int converted;
+
+    module = GetModuleHandleW(L"positron_core.dll");
+    path[0] = L'\0';
+    utf8[0] = '\0';
+    length = (module != NULL) ? GetModuleFileNameW(module, path, MAX_PATH) : 0;
+    if (length > 0 && length < MAX_PATH) {
+        converted = WideCharToMultiByte(CP_UTF8, 0, path, -1,
+                utf8, sizeof(utf8), NULL, NULL);
+        if (converted <= 0) {
+            utf8[0] = '\0';
+        }
+    }
+    if (utf8[0] == '\0') {
+        strcpy(utf8, "unavailable");
+    }
+    testbench_log_bytes("Core module path: ");
+    testbench_log_bytes(utf8);
+    testbench_log_bytes("\r\n\r\n");
+}
+
+/* Do not terminate anything here. This inventory only explains why Windows
+ * CE may keep returning an older same-basename DLL to a fresh test process. */
+static void testbench_log_core_module_holders(void)
+{
+    HANDLE process_snapshot;
+    HANDLE module_snapshot;
+    PROCESSENTRY32 process_entry;
+    MODULEENTRY32 module_entry;
+    BOOL process_ok;
+    BOOL module_ok;
+    int found;
+    char process_name[128];
+    char module_path[MAX_PATH * 3];
+    char line[512];
+
+    process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (process_snapshot == INVALID_HANDLE_VALUE) {
+        testbench_log_bytes("Core module holders: unavailable\r\n\r\n");
+        return;
+    }
+    process_entry.dwSize = sizeof(process_entry);
+    process_ok = Process32First(process_snapshot, &process_entry);
+    found = 0;
+    while (process_ok) {
+        module_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE,
+                process_entry.th32ProcessID);
+        if (module_snapshot != INVALID_HANDLE_VALUE) {
+            module_entry.dwSize = sizeof(module_entry);
+            module_ok = Module32First(module_snapshot, &module_entry);
+            while (module_ok) {
+                if (lstrcmpiW(module_entry.szModule,
+                        L"positron_core.dll") == 0) {
+                    process_name[0] = '\0';
+                    module_path[0] = '\0';
+                    if (WideCharToMultiByte(CP_UTF8, 0,
+                            process_entry.szExeFile, -1, process_name,
+                            sizeof(process_name), NULL, NULL) <= 0) {
+                        strcpy(process_name, "unavailable");
+                    }
+                    if (WideCharToMultiByte(CP_UTF8, 0,
+                            module_entry.szExePath, -1, module_path,
+                            sizeof(module_path), NULL, NULL) <= 0) {
+                        strcpy(module_path, "unavailable");
+                    }
+                    _snprintf(line, sizeof(line) - 1,
+                            "Core module holder: pid=%lu process=%s "
+                            "module=%s\r\n",
+                            (unsigned long) process_entry.th32ProcessID,
+                            process_name, module_path);
+                    line[sizeof(line) - 1] = '\0';
+                    testbench_log_bytes(line);
+                    found = 1;
+                    break;
+                }
+                module_ok = Module32Next(module_snapshot, &module_entry);
+            }
+            CloseToolhelp32Snapshot(module_snapshot);
+        }
+        process_ok = Process32Next(process_snapshot, &process_entry);
+    }
+    CloseToolhelp32Snapshot(process_snapshot);
+    if (!found) {
+        testbench_log_bytes("Core module holders: none\r\n");
+    }
+    testbench_log_bytes("\r\n");
+}
+
 static void testbench_log_message(const char *kind, const WCHAR *title,
         const char *body)
 {
@@ -236,6 +334,8 @@ static int testbench_log_open(void)
         environment[sizeof(environment) - 1] = '\0';
         testbench_log_bytes(environment);
     }
+    testbench_log_core_module_path();
+    testbench_log_core_module_holders();
     FlushFileBuffers(g_testbench_log);
     return 0;
 }
@@ -89355,6 +89455,9 @@ static int test1311_paint_case(int dpi, int *out_first_rows,
     RECT rect;
     int device_width;
     int device_height;
+    int bitmap_width;
+    int bitmap_height;
+    int origin_y;
     int count;
     int index;
     int x;
@@ -89388,6 +89491,11 @@ static int test1311_paint_case(int dpi, int *out_first_rows,
     old_bitmap = NULL;
     device_width = 480;
     device_height = 640;
+    /* Match positron.exe: the page is painted below its native address bar
+     * through a non-zero page origin at both comparison DPIs. */
+    origin_y = 28;
+    bitmap_width = device_width + 4;
+    bitmap_height = device_height + origin_y + 4;
     count = 0;
     first_rows = 0;
     min_rows = INT_MAX;
@@ -89437,7 +89545,7 @@ static int test1311_paint_case(int dpi, int *out_first_rows,
     screen_dc = GetDC(NULL);
     memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
     bitmap = (screen_dc != NULL) ? CreateCompatibleBitmap(screen_dc,
-            device_width, device_height) : NULL;
+            bitmap_width, bitmap_height) : NULL;
     if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
         if (error != NULL && error_cap > 0) {
             _snprintf(error, error_cap - 1,
@@ -89447,9 +89555,16 @@ static int test1311_paint_case(int dpi, int *out_first_rows,
         goto cleanup;
     }
     old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
-    SetRect(&rect, 0, 0, device_width, device_height);
+    SetRect(&rect, 0, 0, bitmap_width, bitmap_height);
     FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    SetViewportOrgEx(memory_dc, 0, origin_y, NULL);
+    /* Mirror positron.exe's page clip after installing the page mapping. */
+    IntersectClipRect(memory_dc, 0, 0, device_width, device_height);
     PCore_PaintDocument(document, memory_dc, 0, 0);
+    /* Inspect bitmap pixels in physical coordinates after painting through
+     * the same non-zero page origin used by the application. */
+    SetViewportOrgEx(memory_dc, 0, 0, NULL);
+    SelectClipRgn(memory_dc, NULL);
 
     for (index = 0; index < count; index++) {
         if (PCore_NodeRelationById(document, "target",
@@ -89477,13 +89592,13 @@ static int test1311_paint_case(int dpi, int *out_first_rows,
         device_width_fragment = MulDiv(width, dpi, 96);
         device_height_fragment = MulDiv(height, dpi, 96);
         x0 = device_x - 2;
-        y0 = device_y - 2;
+        y0 = device_y + origin_y - 2;
         x1 = device_x + device_width_fragment + 2;
-        y1 = device_y + device_height_fragment + 2;
+        y1 = device_y + origin_y + device_height_fragment + 2;
         if (x0 < 0) { x0 = 0; }
         if (y0 < 0) { y0 = 0; }
-        if (x1 > device_width) { x1 = device_width; }
-        if (y1 > device_height) { y1 = device_height; }
+        if (x1 > bitmap_width) { x1 = bitmap_width; }
+        if (y1 > bitmap_height) { y1 = bitmap_height; }
         fragment_rows = 0;
         for (row = y0; row < y1; row++) {
             row_ink = 0;
@@ -89517,17 +89632,22 @@ static int test1311_paint_case(int dpi, int *out_first_rows,
         *out_fragments = count;
     }
     if (first_rows < 4 || min_rows < 4 || ink_pixels < 20 ||
-            total_rows < count * 4) {
+            total_rows < count * 4 || min_rows < 6) {
         if (error != NULL && error_cap > 0) {
             _snprintf(error, error_cap - 1,
                     "dpi=%d: fragments=%d first-rows=%d min-rows=%d "
-                    "total-rows=%d ink=%d", dpi, count, first_rows,
-                    min_rows, total_rows, ink_pixels);
+                    "total-rows=%d ink=%d origin-y=%d",
+                    dpi, count, first_rows, min_rows, total_rows,
+                    ink_pixels, origin_y);
             error[error_cap - 1] = '\0';
         }
     }
 
 cleanup:
+    if (memory_dc != NULL) {
+        SetViewportOrgEx(memory_dc, 0, 0, NULL);
+        SelectClipRgn(memory_dc, NULL);
+    }
     if (memory_dc != NULL && old_bitmap != NULL) {
         SelectObject(memory_dc, old_bitmap);
     }
