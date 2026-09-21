@@ -131,7 +131,9 @@ HTTP(S)、fragment stripping 和不安全 scheme 的结果仍一致。对现有�
 平台接线；1309/1138/1139/999 只验证消息映射、Browser 去重和事件顺序，没有新增宿主产品
 语义。当前仍没有一张能够直接进入产品实现的“准备取舍”候选卡；这不是缺陷，也不意味着
 可以随意扩大 Web API。本轮把主干能力状态集中到 `docs/CAPABILITIES.md`，并把“先声明、后实现”
-收束为有界 fail-closed 规则；后续仍应先完成消费者证据审查，再决定是否分配新的 next。
+收束为有界 fail-closed 规则；TEST263 的 deferred-id picker 自动探针与 TEST1310 的真实文件
+选择 GUI 验收现已关闭当前回归门，但不代表所有 ROM/OEM picker 视觉和权限差异已解决；后续仍
+应先完成消费者证据审查，再决定是否分配新的 next。
 
 除上述已收束的 history 边界外，候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件
 README、限制和真实设备日志；不要把人工输入 backlog 或测试宿主扩展当作产品语义。若没有新的

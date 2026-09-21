@@ -48,24 +48,28 @@ per-window closed flag，避免可复用的 `show_render_window()` 向宿主线�
 期间关闭后抑制下一个页面的 `file.click()`。这两项仍需真实 GUI 连续序列确认，未以自动
 窗口门替代人工 TEST232/263 结论。
 
+## TEST263 点击失效的后续定位
+
+用户已确认 TEST232 通过，后续人工包移除 232。截图 `tmp/QQ20260920-212821.png` 显示固定 24px checkbox 变得过大，点击仍然退出；仅修改控件尺寸或保护已经排队的 picker 都不足以修复。固定尺寸已撤回。
+
+TEST263 的 file click 监听器会更新 Events/value 文本，Core 随即丢弃 retained layout。宿主随后通过旧坐标调用 `PCore_FileInputAt`，无法找到目标，picker 根本没有排队；同一鼠标消息后续无法识别 checkbox，又进入空白退出路径。当前候选在布局缺失时暂存文件目标 ID 和窗口/document，事件返回后重排并重新解析控件，再进入既有 Browser picker 仲裁。已删除、disabled 或无布局目标不打开 picker；窗口/session 清理释放待处理 ID。无法提交的 checkbox 事务取消，避免下次点击被残留事务阻塞。
+
+TEST263 新增自动分支：使用同一个 HTML 和 listener，向真实渲染窗口发送两次 checkbox 点击，用模拟 picker callback 完成选择和取消，并断言窗口存活、请求排队和完整事件序列。`tmp/device-runs/20260920-213339-test263-pointer-repro` 的 `263,999` 通过且无新 crash dump；此证据覆盖鼠标消息到脚本和 picker 接线，不代表系统对话框人工通过。路线图已复核：仍是当前交互回归修复，没有新增产品 API 或 next 候选。
+
 ## 人工验收包
 
 新的手动包位于：
 
-`C:\WMShare\Positron-manual-next232-lifecycle-fix`
+`C:\WMShare\Positron-manual-test263-deferred-id`
 
-其中 `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=232,263,1310,999`。必须使用
-这个新目录，不要复用旧的 `next232-fix` 或 `next1310` 包。
+其中 `test_host.ini` 为 `auto=0`、`javascript=1`、`tests=263,1310,999`。旧的 checkbox-fix/fix2 包没有解决本次问题，不再用于验收。
 
 1. 在已由 GUI 连接的 WM6 设备上启动包内 `test_host.exe`。
-2. TEST232 选择一个小文件并确认。页面应显示文件名，事件必须恰好为
-   `input|file;change|file;`。再次打开同一控件并取消，文件名和事件文本都不得改变；
-   然后按页面说明退出。
-3. TEST263 点击“Script click file input”控件，而不是直接点击 file 控件。选择文件后，
+2. TEST263 点击“Script click file input”控件，而不是直接点击 file 控件。选择文件后，
    事件应以 `click|file;input|file;change|file;` 开头；再次触发并取消时只允许追加一个
    `click|file;`，不得新增 `input`/`change`。
-4. TEST1310 选择包内的 `test_host.ini`，检查页面显示的 filename/type/size/text/query
+3. TEST1310 选择包内的 `test_host.ini`，检查页面显示的 filename/type/size/text/query
    metadata，然后退出。
 
-如果 TEST232 仍失败，应保留完整 `test_host.log`、失败阶段和截图，不要用自动门通过替代
+如果 TEST263 仍失败，应保留完整 `test_host.log`、失败阶段和截图，不要用自动门通过替代
 人工结论。只有获得该序列的真实设备结果后，才能决定是否进入下一条公共能力候选。

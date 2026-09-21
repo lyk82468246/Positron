@@ -6142,6 +6142,10 @@ static int    g_sequential_focus_valid = 0;
 static char   g_sequential_focus_modal_id[
         PBROWSER_SCRIPT_DIALOG_ID_MAX] = "";
 static int    g_file_picker_pending = 0;
+static int g_test263_probe = 0;
+static int g_test263_probe_ok = 0;
+static void test263_pointer_probe(HWND hwnd);
+static char  *g_file_picker_pending_id = NULL;
 static int    g_file_picker_active = 0;
 /* Each manual/visual fixture owns one render window, but several fixtures
  * can run consecutively in the same test_host process.  A WM_QUIT posted by
@@ -6332,6 +6336,8 @@ static void pcore_browser_script_bridge_destroy(
 
 static void pcore_file_picker_clear_pending(void)
 {
+    free(g_file_picker_pending_id);
+    g_file_picker_pending_id = NULL;
     g_file_picker_pending = 0;
     g_file_picker_pending_document = NULL;
     g_file_picker_pending_hwnd = NULL;
@@ -10931,6 +10937,25 @@ static int pcore_browser_script_programmatic_click_default(void *pw,
         return 0;
     }
     if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_FILE) {
+        /* A click listener can invalidate layout. Resolve the platform
+         * request by id after the event stack unwinds, not by stale pixels. */
+        if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
+                !g_file_picker_pending && !g_file_picker_active &&
+                PCore_FormControlInfoById(bridge->document,
+                info->element_id, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL) != 0) {
+            g_file_picker_pending_id =
+                    pcore_browser_script_copy_string(info->element_id);
+            if (g_file_picker_pending_id == NULL) { return -1; }
+            g_file_picker_pending = 1;
+            g_file_picker_pending_document = bridge->document;
+            g_file_picker_pending_hwnd = bridge->hwnd;
+            if (!PostMessage(bridge->hwnd, WM_PCORE_FILE_PICKER, 0, 0)) {
+                pcore_file_picker_clear_pending();
+                return -1;
+            }
+            return 0;
+        }
         if (bridge->document == g_render_doc && bridge->hwnd != NULL &&
                 pcore_queue_file_input_picker(bridge, center_x, center_y) != 0) {
             return -1;
@@ -22209,6 +22234,28 @@ static int pcore_process_pending_file_picker(HWND hwnd,
         pcore_file_picker_clear_pending();
         return 0;
     }
+    if (g_file_picker_pending_id != NULL) {
+        int left;
+        int top;
+        int width;
+        int height;
+        int kind;
+        int disabled;
+
+        if (pcore_restyle_form_state(hwnd, 1) != 0 ||
+                PCore_FormControlInfoById(g_render_doc,
+                g_file_picker_pending_id, &left, &top, &width, &height,
+                &kind, NULL, &disabled) != 0 || kind != 10 || disabled ||
+                width <= 0 || height <= 0) {
+            pcore_file_picker_clear_pending();
+            return 0;
+        }
+        pcore_file_picker_clear_pending();
+        if (pcore_queue_file_input_picker(bridge, left + width / 2,
+                top + height / 2) != 0 || !g_file_picker_pending) {
+            return 0;
+        }
+    }
     file_index = g_file_picker_pending_index;
     pcore_file_picker_clear_pending();
     if (g_file_picker_active) {
@@ -24437,6 +24484,24 @@ static LRESULT CALLBACK PCoreWndProc(HWND hwnd, UINT msg,
                 pcore_handle_label(hwnd, doc_x, doc_y)) {
             return 0;
         }
+        /* HTMLElement.click() may queue the host-owned file picker from the
+         * native control's trusted click callback.  The callback is allowed
+         * to invalidate Core's retained boxes before this WM message reaches
+         * the fallback hit-test, so the original checkbox point can no
+         * longer be recognised by the legacy form helper.  A picker queued
+         * for this live window is nevertheless a consumed interaction; do
+         * not misclassify it as a blank tap and destroy the render window. */
+        if (g_file_picker_pending &&
+                g_file_picker_pending_document == g_render_doc &&
+                g_file_picker_pending_hwnd == hwnd) {
+            if (toggle_product_started) {
+                (void) pcore_browser_script_dispatch_native_toggle_phase(
+                        toggle_index, toggle_kind, doc_x, doc_y,
+                        PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL, toggle_disabled,
+                        toggle_selected_before, toggle_selected_before, NULL);
+            }
+            return 0;
+        }
         if (disclosure_found) {
             (void) pcore_handle_disclosure(hwnd, doc_x, doc_y);
             return 0;
@@ -25036,6 +25101,9 @@ static BOOL show_render_window(void)
         UpdateWindow(hwnd);
     }
     SetForegroundWindow(hwnd);   /* WinCE: grab focus, come to front */
+    if (g_test263_probe) {
+        test263_pointer_probe(hwnd);
+    }
     if (g_native_select_key_probe && g_native_select_count > 0 &&
             g_native_selects[0].hwnd != NULL) {
         PCoreSelectInfo key_probe_info;
@@ -91271,6 +91339,38 @@ static BOOL test262_browser_file_programmatic_picker(void)
 /* -------------------------------------------------------------------- */
 /* TEST 263 - real WM6 picker opened by script-visible file.click()       */
 /* -------------------------------------------------------------------- */
+static void test263_pointer_probe(HWND hwnd)
+{
+    test231_picker_state picker;
+    int x;
+    int y;
+    int w;
+    int h;
+    int i;
+
+    memset(&picker, 0, sizeof(picker));
+    g_test263_probe_ok = 0;
+    for (i = 0; i < 2; i++) {
+        if (!IsWindow(hwnd) || PCore_FormControlInfoById(g_render_doc,
+                "launch", &x, &y, &w, &h, NULL, NULL, NULL) != 0 ||
+                w <= 0 || h <= 0) { return; }
+        SendMessage(hwnd, WM_LBUTTONDOWN, MK_LBUTTON,
+                MAKELPARAM(x + w / 2 - g_scroll_x,
+                y + h / 2 - g_scroll_y));
+        if (!IsWindow(hwnd) || !g_file_picker_pending) { return; }
+        picker.result = i == 0 ? 1 : 0;
+        test231_copy_wide(picker.path,
+                sizeof(picker.path) / sizeof(picker.path[0]),
+                L"\\Storage Card\\test_host.ini");
+        test231_copy_wide(picker.title,
+                sizeof(picker.title) / sizeof(picker.title[0]),
+                L"test_host.ini");
+        if (pcore_process_pending_file_picker(hwnd,
+                test231_picker_callback, &picker) != 1) { return; }
+    }
+    g_test263_probe_ok = picker.calls == 2;
+}
+
 static BOOL test263_browser_file_programmatic_picker_manual(void)
 {
     static const char HTML[] =
@@ -91278,8 +91378,8 @@ static BOOL test263_browser_file_programmatic_picker_manual(void)
         "</head><body><h2>Programmatic WM6 file picker</h2>"
         "<p>Tap the Script click checkbox; do not tap the File control."
         " Choose a small file, then tap the checkbox again and press Cancel.</p>"
-        "<form id='root'><label><input id='launch' type='checkbox'>"
-        " Script click file input</label>"
+        "<form id='root'><input id='launch' type='checkbox'>"
+        "<label for='launch'>Script click file input</label>"
         "<label for='file'>File:</label><input id='file' type='file'></form>"
         "<div class='status'>Events: <span id='events'>none</span></div>"
         "<div class='status'>Value: <span id='value'>empty</span></div>"
@@ -91296,7 +91396,7 @@ static BOOL test263_browser_file_programmatic_picker_manual(void)
         "padding:6px;background:#eef6ff;}"
         "label{display:block;margin-bottom:3px;}"
         "input{display:block;width:90%;height:24px;}"
-        "label input{display:inline;width:auto;height:auto;}"
+        "#launch{width:auto;height:auto;margin:0 0 3px 0;}"
         ".status{display:block;width:90%;min-height:16px;"
         "border:1px solid #808080;padding:2px;background:#f4f4f4;"
         "white-space:pre-wrap;}"
@@ -91345,11 +91445,6 @@ static BOOL test263_browser_file_programmatic_picker_manual(void)
     executed = -1;
     ignored = -1;
     ok = 1;
-    if (g_testbench_auto) {
-        show_error(L"TEST 263 SKIPPED",
-                "This test is manual-only; use the dedicated auto=0 picker INI.");
-        return FALSE;
-    }
     if (!g_browser_javascript_enabled) {
         show_error(L"TEST 263 FAIL",
                 "Set javascript=1 in the manual picker INI so file.click() can run.");
@@ -91414,9 +91509,13 @@ static BOOL test263_browser_file_programmatic_picker_manual(void)
                 "   but no second input/change.\n\n"
                 "Tap blank space or press Esc to close; re-running starts fresh.");
         stage = "window";
+        g_test263_probe = g_testbench_auto;
+        g_test263_probe_ok = 0;
         if (!show_render_window()) {
             ok = 0;
         }
+        g_test263_probe = 0;
+        if (g_testbench_auto && !g_test263_probe_ok) { ok = 0; }
     }
     if (ok) {
         stage = "manual-result";
@@ -91456,7 +91555,10 @@ static BOOL test263_browser_file_programmatic_picker_manual(void)
         show_error(L"TEST 263 FAIL", error);
         return FALSE;
     }
-    show_info(L"TEST 263 OK",
+    show_info(L"TEST 263 OK", g_testbench_auto ?
+            "Window pointer clicks queued file.click() picker requests; "
+            "simulated selection/cancel preserved events and state. "
+            "Real system picker UI still requires manual acceptance." :
             "Real WM6 picker opened from a script-visible file.click();"
             " selection and same-window cancellation preserved the file state.");
     return TRUE;
