@@ -14,8 +14,8 @@ arrow keys. The page has a real Core layout and a real scroll range.</p>
 <p>Clicking empty page space is intentionally a no-op.</p>
 <p>More content is kept below the fold so the device scrollbar can be
 exercised without a network connection.</p>
-<p>Positron keeps the current document visible while a later page is
-being prepared. Network navigation will be added in a later batch.</p>
+<p>Positron keeps the current document visible while a network page is
+being prepared, and swaps it only after the new document is ready.</p>
 <p>Public DLL boundaries remain independent of this application shell.</p>
 <p>The browser history handle is supplied by positron_browser.dll.</p>
 <p>Resize and rotation cause Core layout to run again against the new

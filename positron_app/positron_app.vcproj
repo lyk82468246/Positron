@@ -19,7 +19,7 @@
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
-				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\compat"
+				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\compat"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
 				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
 				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
@@ -29,8 +29,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_core.lib positron_browser.lib aygshell.lib commctrl.lib"
-				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_core.lib positron_browser.lib positron_http.lib aygshell.lib commctrl.lib"
+				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron.exe" LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
@@ -60,7 +60,7 @@
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\compat"
+				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\compat"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
 				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
 				DebugInformationFormat="3" CompileAs="1" />
@@ -70,8 +70,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_core.lib positron_browser.lib aygshell.lib commctrl.lib"
-				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_core.lib positron_browser.lib positron_http.lib aygshell.lib commctrl.lib"
+				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron.exe" LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
