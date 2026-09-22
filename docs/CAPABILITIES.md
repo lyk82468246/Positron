@@ -28,6 +28,13 @@
 - `test_host.exe` 只提供 fixture、断言、窗口/线程/网络和平台 callback；它不拥有下表中的
   URL、资源、DOM、Event、表单、图像、脚本或生命周期语义。
 
+## 独立应用消费者的宿主边界
+
+`positron.exe` 的私有 `AppHostContext` 只收拢 WM6 窗口、页面句柄、导航候选、history、资源
+和 DLL 初始化/清理的生命周期；Core/Browser/HTTP 仍拥有文档、URL、history、资源事务和
+页面语义。阶段 0 不新增公共 ABI，也不扩展现有离线页面、英语/简体中文 i18n 或主文档
+HTTP(S) GET 能力；后续接线顺序与阶段门见 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
+
 ## TLS：`positron_tls.dll`
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |

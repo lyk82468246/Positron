@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app_host.h"
 #include "app_i18n.h"
 #include "positron_core.h"
 #include "positron_browser.h"
@@ -30,10 +31,10 @@
 #define WS_EX_CONTROLPARENT 0x00010000L
 #endif
 
-#define APP_URL_MAX             1024
+#define APP_URL_MAX             APP_HOST_URL_MAX
 #define APP_WIDE_TEXT_MAX       1024
-#define APP_FOCUS_ID_MAX        128
-#define APP_FOCUS_MAX           8
+#define APP_FOCUS_ID_MAX        APP_HOST_FOCUS_ID_MAX
+#define APP_FOCUS_MAX           APP_HOST_FOCUS_MAX
 #define APP_PAGE_CLASS_NAME     L"PositronBrowserPage"
 
 #define APP_ADDRESS_HEIGHT       28
@@ -54,61 +55,41 @@
 #define APP_WM_NAV_DONE         (WM_APP + 3)
 
 #define APP_NAV_MAX_RETIRED     4
-#define APP_NAV_HOST_MAX        256
-#define APP_NAV_PATH_MAX        APP_URL_MAX
+#define APP_NAV_HOST_MAX        APP_HOST_NAV_HOST_MAX
+#define APP_NAV_PATH_MAX        APP_HOST_NAV_PATH_MAX
 
-static HWND g_window = NULL;
-static HWND g_address = NULL;
-static HWND g_page_window = NULL;
-static HWND g_menu_bar = NULL;
-static WNDPROC g_address_original_proc = NULL;
-static SHACTIVATEINFO g_shell_activate;
-static HINSTANCE g_instance = NULL;
-
-static HANDLE g_document = NULL;
-static HANDLE g_stylesheet = NULL;
-static HANDLE g_history = NULL;
-static int g_http_initialized = 0;
-
-typedef struct AppNavigationRequest AppNavigationRequest;
-
-struct AppNavigationRequest {
-    HWND hwnd;
-    HANDLE candidate;
-    HANDLE worker_thread;
-    HANDLE resource_transaction;
-    AppNavigationRequest *retired_next;
-    unsigned long generation;
-    int history_mode;
-    int history_target;
-    int resource_index;
-    int worker_succeeded;
-    int worker_failure_class;
-    int worker_status_code;
-    char url[APP_URL_MAX];
-    char host[APP_NAV_HOST_MAX];
-    char path[APP_NAV_PATH_MAX];
-    int port;
-};
-
-static AppNavigationRequest *g_navigation_request = NULL;
-static AppNavigationRequest *g_retired_navigation = NULL;
-static LONG g_navigation_generation = 0;
-static int g_navigation_closing = 0;
-
-static int g_page_kind = APP_PAGE_WELCOME;
-static int g_page_width = 1;
-static int g_page_height = 1;
-static int g_document_width = 1;
-static int g_document_height = 1;
-static int g_scroll_x = 0;
-static int g_scroll_y = 0;
-static int g_dpi = 96;
-static int g_focus_index = -1;
-static int g_focus_count = 0;
-static const char *g_focus_ids[APP_FOCUS_MAX];
-static char g_focus_id[APP_FOCUS_ID_MAX];
-static char g_current_url[APP_URL_MAX];
+/* Keep the existing UI/navigation helper names stable while the ownership of
+ * all host state moves into one private lifecycle object. */
+static AppHostContext g_app;
+#define g_window                 (g_app.window)
+#define g_address                (g_app.address)
+#define g_page_window            (g_app.page_window)
+#define g_menu_bar               (g_app.menu_bar)
+#define g_address_original_proc  (g_app.address_original_proc)
+#define g_shell_activate         (g_app.shell_activate)
+#define g_instance               (g_app.instance)
+#define g_document               (g_app.document)
+#define g_stylesheet             (g_app.stylesheet)
+#define g_history                (g_app.history)
+#define g_core_initialized       (g_app.core_initialized)
+#define g_http_initialized       (g_app.http_initialized)
+#define g_navigation_request     (g_app.navigation_request)
+#define g_retired_navigation     (g_app.retired_navigation)
+#define g_navigation_generation  (g_app.navigation_generation)
+#define g_navigation_closing     (g_app.navigation_closing)
+#define g_page_kind              (g_app.page_kind)
+#define g_page_width             (g_app.page_width)
+#define g_page_height            (g_app.page_height)
+#define g_document_width         (g_app.document_width)
+#define g_document_height        (g_app.document_height)
+#define g_scroll_x               (g_app.scroll_x)
+#define g_scroll_y               (g_app.scroll_y)
+#define g_dpi                    (g_app.dpi)
+#define g_focus_index            (g_app.focus_index)
+#define g_focus_count            (g_app.focus_count)
+#define g_focus_ids              (g_app.focus_ids)
+#define g_focus_id               (g_app.focus_id)
+#define g_current_url            (g_app.current_url)
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -668,14 +649,14 @@ static int app_create_menu_bar(HWND hwnd)
     menu_info.hInstRes = (g_instance != NULL) ? g_instance :
             GetModuleHandle(NULL);
     if (menu_info.nToolBarId == 0) {
-        g_menu_bar = NULL;
+        AppHostContext_SetMenuBar(&g_app, NULL);
         return 1;
     }
     if (!SHCreateMenuBar(&menu_info) || menu_info.hwndMB == NULL) {
-        g_menu_bar = NULL;
+        AppHostContext_SetMenuBar(&g_app, NULL);
         return 1;
     }
-    g_menu_bar = menu_info.hwndMB;
+    AppHostContext_SetMenuBar(&g_app, menu_info.hwndMB);
     return 0;
 }
 
@@ -714,8 +695,6 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
 {
     HANDLE new_document;
     HANDLE new_stylesheet;
-    HANDLE old_document;
-    HANDLE old_stylesheet;
     int new_page_kind;
     int history_rc;
 
@@ -740,14 +719,14 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         app_set_address(g_current_url);
         return 0;
     }
-    old_document = g_document;
-    old_stylesheet = g_stylesheet;
-    g_document = new_document;
-    g_stylesheet = new_stylesheet;
-    g_page_kind = new_page_kind;
-    app_copy_text(g_current_url, sizeof(g_current_url), url);
-    g_scroll_x = 0;
-    g_scroll_y = 0;
+    if (AppHostContext_ReplacePage(&g_app, new_document, new_stylesheet,
+            new_page_kind, url) != 0) {
+        PCore_FreeStylesheet(new_stylesheet);
+        PCore_FreeDocument(new_document);
+        app_set_status(APP_TEXT_STATUS_OFFLINE);
+        app_set_address(g_current_url);
+        return 0;
+    }
     app_set_focus_ids(g_page_kind);
     app_set_address(g_current_url);
     g_document_width = PCore_DocumentWidth(g_document);
@@ -763,12 +742,6 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     app_set_status((g_page_kind == APP_PAGE_CONTROLS) ?
             APP_TEXT_STATUS_READY_CONTROLS :
             APP_TEXT_STATUS_READY_WELCOME);
-    if (old_stylesheet != NULL) {
-        PCore_FreeStylesheet(old_stylesheet);
-    }
-    if (old_document != NULL) {
-        PCore_FreeDocument(old_document);
-    }
     if (g_page_window != NULL) {
         InvalidateRect(g_page_window, NULL, TRUE);
     } else {
@@ -1160,39 +1133,27 @@ static void app_navigation_handle_done(HWND hwnd,
         app_navigation_finish(request, 0, document, stylesheet);
         return;
     }
-    {
-        HANDLE old_document;
-        HANDLE old_stylesheet;
-
-        old_document = g_document;
-        old_stylesheet = g_stylesheet;
-        g_document = document;
-        g_stylesheet = stylesheet;
-        g_page_kind = 0;
-        g_scroll_x = 0;
-        g_scroll_y = 0;
-        app_copy_text(g_current_url, sizeof(g_current_url), request->url);
-        app_set_focus_ids(g_page_kind);
-        app_set_address(g_current_url);
-        g_document_width = PCore_DocumentWidth(g_document);
-        g_document_height = PCore_DocumentHeight(g_document);
-        if (g_document_width < g_page_width) {
-            g_document_width = g_page_width;
-        }
-        if (g_document_height < g_page_height) {
-            g_document_height = g_page_height;
-        }
-        app_update_scrollbars(g_page_window);
-        app_update_history_buttons();
-        app_set_status(APP_TEXT_STATUS_READY_REMOTE);
-        if (old_stylesheet != NULL) {
-            PCore_FreeStylesheet(old_stylesheet);
-        }
-        if (old_document != NULL) {
-            PCore_FreeDocument(old_document);
-        }
-        InvalidateRect(g_page_window, NULL, TRUE);
+    if (AppHostContext_ReplacePage(&g_app, document, stylesheet, 0,
+            request->url) != 0) {
+        app_navigation_finish(request, 0, document, stylesheet);
+        return;
     }
+    document = NULL;
+    stylesheet = NULL;
+    app_set_focus_ids(g_page_kind);
+    app_set_address(g_current_url);
+    g_document_width = PCore_DocumentWidth(g_document);
+    g_document_height = PCore_DocumentHeight(g_document);
+    if (g_document_width < g_page_width) {
+        g_document_width = g_page_width;
+    }
+    if (g_document_height < g_page_height) {
+        g_document_height = g_page_height;
+    }
+    app_update_scrollbars(g_page_window);
+    app_update_history_buttons();
+    app_set_status(APP_TEXT_STATUS_READY_REMOTE);
+    InvalidateRect(g_page_window, NULL, TRUE);
     app_navigation_finish(request, 1, NULL, NULL);
 }
 
@@ -1725,27 +1686,10 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
-        if (g_stylesheet != NULL) {
-            PCore_FreeStylesheet(g_stylesheet);
-            g_stylesheet = NULL;
-        }
-        if (g_document != NULL) {
-            PCore_FreeDocument(g_document);
-            g_document = NULL;
-        }
-        if (g_history != NULL) {
-            PBrowser_HistoryDestroy(g_history);
-            g_history = NULL;
-        }
-        if (g_menu_bar != NULL) {
-            CommandBar_Destroy(g_menu_bar);
-            g_menu_bar = NULL;
-        }
-        if (g_http_initialized) {
-            PHttp_Cleanup();
-            g_http_initialized = 0;
-        }
-        PCore_Shutdown();
+        /* Navigation has already drained before WM_DESTROY.  The private
+         * host context is the single owner of the remaining page, history,
+         * command bar and DLL shutdown sequence. */
+        AppHostContext_Shutdown(&g_app);
         PostQuitMessage(0);
         return 0;
     }
@@ -1754,27 +1698,34 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
 
 static int app_create_controls(HWND hwnd)
 {
-    g_address = CreateWindowW(L"EDIT", L"",
+    HWND address;
+    WNDPROC original_proc;
+
+    address = CreateWindowW(L"EDIT", L"",
             WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP |
             ES_LEFT | ES_AUTOHSCROLL,
             0, 0, 1, 1, hwnd, (HMENU) APP_ID_ADDRESS,
             g_instance, NULL);
-    if (g_address == NULL) {
+    if (address == NULL) {
         return 1;
     }
-    g_address_original_proc = (WNDPROC) SetWindowLong(g_address,
+    original_proc = (WNDPROC) SetWindowLong(address,
             GWL_WNDPROC, (LONG) app_address_proc);
-    return (g_address_original_proc == NULL) ? 1 : 0;
+    AppHostContext_SetAddress(&g_app, address, original_proc);
+    return (original_proc == NULL) ? 1 : 0;
 }
 
 static int app_create_page_window(HWND hwnd)
 {
+    HWND page_window;
+
     /* Match the WM6 SDK PViewCE pattern: the parent owns the command bar,
      * while the same top-level window's content child owns native scrolling. */
-    g_page_window = CreateWindowExW(0, APP_PAGE_CLASS_NAME, L"",
+    page_window = CreateWindowExW(0, APP_PAGE_CLASS_NAME, L"",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_HSCROLL | WS_VSCROLL,
             0, 0, 1, 1, hwnd, NULL, g_instance, NULL);
-    return (g_page_window == NULL) ? 1 : 0;
+    AppHostContext_SetPageWindow(&g_app, page_window);
+    return (page_window == NULL) ? 1 : 0;
 }
 
 static int app_register_page_class(void)
@@ -1811,7 +1762,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
 
     (void) previous;
     (void) command_line;
-    g_instance = instance;
+    AppHostContext_Init(&g_app);
+    AppHostContext_SetInstance(&g_app, instance);
     if (AppI18n_Init(g_instance) != 0) {
         MessageBoxW(NULL, L"Positron", L"Positron",
                 MB_OK | MB_ICONERROR);
@@ -1822,13 +1774,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         app_show_error(APP_TEXT_ERROR_CORE_INIT);
         return 1;
     }
-    g_history = PBrowser_HistoryCreate();
+    AppHostContext_SetCoreInitialized(&g_app, 1);
+    AppHostContext_SetHistory(&g_app, PBrowser_HistoryCreate());
     if (g_history == NULL) {
-        PCore_Shutdown();
+        AppHostContext_Shutdown(&g_app);
         app_show_error(APP_TEXT_ERROR_HISTORY_INIT);
         return 1;
     }
-    g_http_initialized = PHttp_Init() ? 1 : 0;
+    AppHostContext_SetHttpInitialized(&g_app, PHttp_Init() ? 1 : 0);
     memset(&window_class, 0, sizeof(window_class));
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = app_window_proc;
@@ -1836,16 +1789,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     window_class.hbrBackground = (HBRUSH) GetStockObject(WHITE_BRUSH);
     window_class.lpszClassName = L"PositronBrowserWindow";
     if (app_register_page_class() != 0) {
-        PBrowser_HistoryDestroy(g_history);
-        g_history = NULL;
-        PCore_Shutdown();
+        AppHostContext_Shutdown(&g_app);
         app_show_error(APP_TEXT_ERROR_CLASS_REGISTER);
         return 1;
     }
     if (RegisterClassW(&window_class) == 0) {
-        PBrowser_HistoryDestroy(g_history);
-        g_history = NULL;
-        PCore_Shutdown();
+        AppHostContext_Shutdown(&g_app);
         app_show_error(APP_TEXT_ERROR_CLASS_REGISTER);
         return 1;
     }
@@ -1857,13 +1806,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
             GetSystemMetrics(SM_CYSCREEN), NULL, NULL,
             g_instance, NULL);
     if (hwnd == NULL) {
-        PBrowser_HistoryDestroy(g_history);
-        g_history = NULL;
-        PCore_Shutdown();
+        AppHostContext_Shutdown(&g_app);
         app_show_error(APP_TEXT_ERROR_WINDOW_CREATE);
         return 1;
     }
-    g_window = hwnd;
+    AppHostContext_SetWindow(&g_app, hwnd);
     if (app_create_controls(hwnd) != 0) {
         DestroyWindow(hwnd);
         return 1;

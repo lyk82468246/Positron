@@ -55,10 +55,9 @@ Core/Browser/HTTP import library 启动内置离线页面，并可在 worker 中
 Browser candidate/resource transaction 负责 generation、取消、stale 和 required-document
 commit gate，页面只有在 Core 完成 parse/style/layout 后才替换。EXE 私有资源支持英语/简体中文，
 按 WM6 UI 语言选择，其他语言回退英语，stage 无外置语言文件。
-清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建、C89 检查和
-仓库审计已通过；新鲜 Debug 包已 stage 到 `C:\WMShare\Positron-stageB-20260922`，但
-真实网络页面、取消/stale、失败回滚和语言/触摸/旋转/DPI/硬键盘仍需设备人工验收，不能写成
-阶段 B 设备基线。外部 CSS/图片/脚本资源、native 表单、SIP/IME、picker、书签和持久设置仍
+清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建、C89 和仓库审计
+已通过；阶段 0 Release 包已 stage 到 `C:\WMShare\Positron-phase0-20260922`；网络、失败回滚、
+语言/触摸/旋转/DPI 仍需设备验收，不能写成阶段 B 基线。外部 CSS/图片/脚本资源、native 表单、SIP/IME、picker、书签和持久设置仍
 不在当前范围内。ROADMAP.md 已复核。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)
 
 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
@@ -68,6 +67,10 @@ commit gate，页面只有在 Core 完成 parse/style/layout 后才替换。EXE 
 继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
 Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
 转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已有正式设备门证据。
+
+阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期，不改变离线页、
+i18n、主文档 GET 或公共 ABI；C89/审计/Debug/Release 已通过，设备门待验收（WMDC script DLL
+0x80072746×2，未跑 TEST999）。
 
 ## 已验证产品事实
 
@@ -352,15 +355,14 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-先在 WMDC 设备上关闭旧 `positron.exe`，并确认其他 `test_host.exe` 也已退出；
-仍复用旧模块时重启设备。随后从新鲜 `C:\WMShare\Positron-stageB-20260922` 启动
-`positron.exe`，人工验证 `https://example.com/` 或 IANA 页面、加载期间旧页保持、成功提交、
-失败回滚，以及在加载期间输入第二个地址时旧候选不能覆盖新页面。当前共享目录被旧进程锁住，
-不得把它当作本批部署结果，也不得把 stale module 路径误写成网络产品回归。
+阶段 0 的仓库审计、Release 正式重建和新鲜 stage 已完成；随后在 WMDC/Device Emulator 上关闭
+旧 `positron.exe`，确认没有其他宿主进程持有旧 DLL，再验证内置 welcome/controls、语言资源、
+history、旋转、DPI、软键、标准滚动条和关闭清理。阶段 0 通过后，下一批才进入阶段 1 的外部
+CSS/图片资源 required/optional gate 和设备网络证据；脚本、native 表单、SIP/IME、picker 和
+File/Blob 仍不得提前接入。
 
-阶段 B 这批只提交主文档；下一步是补齐外部 CSS/图片资源的 required/optional gate 和设备网络
-证据，再评估脚本或其他页面能力。不要提前接入 File/Blob、native 表单、SIP/IME、picker 或
-持久设置。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、
+阶段 0 的本批变更只收口 EXE 私有宿主状态和生命周期；阶段 B 的主文档行为、离线页面和
+i18n 不变。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、
 严重布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套

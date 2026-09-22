@@ -98,7 +98,9 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    非目标语言回退；阶段 B 的主文档 HTTP(S) GET 纵切也已接入：Browser 负责
    generation/resource gate 和页面生命周期，HTTP/TLS 负责公共 transport 边界，应用只负责
    worker、消息泵、窗口、策略和页面 swap。当前仍需设备网络、失败回滚和 stale/cancel 人工门，
-   外部 CSS/图片/脚本资源尚未接入。
+   外部 CSS/图片/脚本资源尚未接入。独立应用接线阶段 0 已在工作树建立 `AppHostContext`
+   私有生命周期边界和 `positron_app/INTEGRATION_PLAN.md`；它不改变现有行为，本地审计、Release
+   构建和新鲜 stage 已通过，设备门仍待人工验收，随后才能进入外部资源阶段。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    没有证据时不进入产品实现。
@@ -114,7 +116,9 @@ owner/预算/回滚和最小 fixture；路线图能指出下一条实现纵切�
 当前已形成的 Browser/Core 基线和设备门事实以 HANDOFF.md 为准。路线图不复制 DOM、表单、
 资源或测试编号清单，只保留下一批选择需要的缺口。以下约束在所有候选中都不变：
 
-- 默认不执行浏览器 JavaScript；启用脚本仍是明确 opt-in 的有界 classic-script session。
+- 当前阶段 0/阶段 B 构建仍不执行浏览器 JavaScript；后续阶段 2 将按已批准计划把应用默认
+  切换为有界 classic-script session，并继续使用固定 heap、source、native-function 和任务
+  预算。`test_host` 的默认配置仍可保持关闭。
 - Core、Browser 和宿主的 callback 同步且不可重入；失败必须 fail closed，并保留旧页面或
   旧资源状态。
 - 所有容量必须固定且可断言；不能用扩大数组、跳过检查或放宽断言掩盖 WM6 资源问题。
