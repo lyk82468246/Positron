@@ -22,6 +22,7 @@
 #define APP_HOST_NAV_PATH_MAX  APP_HOST_URL_MAX
 
 typedef struct AppNavigationRequest AppNavigationRequest;
+typedef struct AppNavigationResource AppNavigationResource;
 
 struct AppNavigationRequest {
     HWND hwnd;
@@ -33,6 +34,15 @@ struct AppNavigationRequest {
     int history_mode;
     int history_target;
     int resource_index;
+    AppNavigationResource *resources;
+    int resource_count;
+    int resource_policy;
+    unsigned int resource_role_mask;
+    HANDLE document_candidate;
+    HANDLE stylesheet_candidate;
+    int worker_stage;
+    int commit_stage;
+    int resource_registration_failed;
     int worker_succeeded;
     int worker_failure_class;
     int worker_status_code;

@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "app_host.h"
+#include "app_resources.h"
 #include "app_i18n.h"
 #include "positron_core.h"
 #include "positron_browser.h"
@@ -57,6 +58,12 @@
 #define APP_NAV_MAX_RETIRED     4
 #define APP_NAV_HOST_MAX        APP_HOST_NAV_HOST_MAX
 #define APP_NAV_PATH_MAX        APP_HOST_NAV_PATH_MAX
+#define APP_NAV_WORK_DOCUMENT   1
+#define APP_NAV_WORK_RESOURCES  2
+#define APP_NAV_COMMIT_STYLE    1
+#define APP_NAV_COMMIT_SCRIPTS  2
+#define APP_NAV_COMMIT_IMAGES   3
+#define APP_NAV_COMMIT_LAYOUT   4
 
 /* Keep the existing UI/navigation helper names stable while the ownership of
  * all host state moves into one private lifecycle object. */
@@ -821,6 +828,15 @@ static void app_navigation_request_destroy(AppNavigationRequest *request)
         CloseHandle(request->worker_thread);
         request->worker_thread = NULL;
     }
+    if (request->document_candidate != NULL) {
+        PCore_FreeDocument(request->document_candidate);
+        request->document_candidate = NULL;
+    }
+    if (request->stylesheet_candidate != NULL) {
+        PCore_FreeStylesheet(request->stylesheet_candidate);
+        request->stylesheet_candidate = NULL;
+    }
+    AppResources_DestroyRequest(request);
     if (request->resource_transaction != NULL) {
         PBrowser_NavigationResourceDestroy(request->resource_transaction);
         request->resource_transaction = NULL;
@@ -873,100 +889,173 @@ static void app_navigation_cancel_all(void)
 }
 
 static int app_navigation_resource_fail(AppNavigationRequest *request,
-        int failure_class)
+        int index, int failure_class)
 {
     if (request == NULL || request->resource_transaction == NULL ||
-            request->resource_index < 0) {
+            index < 0) {
         return 1;
     }
     return PBrowser_NavigationResourceFail(request->resource_transaction,
-            request->resource_index, failure_class) == PBROWSER_OK ? 0 : 1;
+            index, failure_class) == PBROWSER_OK ? 0 : 1;
 }
 
-static DWORD WINAPI app_navigation_worker(LPVOID parameter)
+static int app_navigation_fetch_resource(AppNavigationRequest *request,
+        int index, const char *reference)
 {
-    AppNavigationRequest *request;
+    PBrowserNavigationResourceInfo info;
     PHttpResponse *response;
+    char host[APP_NAV_HOST_MAX];
+    char path[APP_NAV_PATH_MAX];
+    int port;
     int retry;
     int transport_failure;
 
-    request = (AppNavigationRequest *) parameter;
+    if (request == NULL || request->resource_transaction == NULL ||
+            reference == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (PBrowser_NavigationResourceGet(request->resource_transaction, index,
+            &info) != PBROWSER_OK) {
+        return 1;
+    }
+    if (info.state != PBROWSER_NAVIGATION_RESOURCE_PENDING ||
+            info.attempted) {
+        return 0;
+    }
+    if (app_navigation_is_cancelled(request)) {
+        (void) PBrowser_NavigationResourceCancelAll(
+                request->resource_transaction);
+        return 1;
+    }
+    host[0] = '\0';
+    path[0] = '\0';
+    port = 443;
+    if (AppResources_ResolveTransport(request, reference, host, sizeof(host),
+            path, sizeof(path), &port) != 0) {
+        (void) app_navigation_resource_fail(request, index,
+                PBROWSER_NAVIGATION_FAILURE_RESOLVE);
+        return 0;
+    }
     response = NULL;
     retry = 0;
-    request->worker_succeeded = 0;
-    request->worker_failure_class = PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
-    request->worker_status_code = 0;
-    if (!g_http_initialized || app_navigation_is_cancelled(request)) {
-        goto done;
-    }
     for (;;) {
         if (app_navigation_is_cancelled(request)) {
             (void) PBrowser_NavigationResourceCancelAll(
                     request->resource_transaction);
-            goto done;
+            return 1;
         }
         if (PBrowser_NavigationResourceBeginAttempt(
-                request->resource_transaction, request->resource_index) !=
-                PBROWSER_OK) {
-            request->worker_failure_class =
-                    PBROWSER_NAVIGATION_FAILURE_MEMORY;
-            goto done;
+                request->resource_transaction, index) != PBROWSER_OK) {
+            (void) app_navigation_resource_fail(request, index,
+                    PBROWSER_NAVIGATION_FAILURE_MEMORY);
+            return 0;
         }
-        response = PHttp_GetEx(request->host, request->port, request->path,
-                NULL, NULL, NULL);
+        response = PHttp_GetEx(host, port, path, NULL, NULL, NULL);
         if (app_navigation_is_cancelled(request)) {
             PHttp_FreeResponse(response);
             response = NULL;
             (void) PBrowser_NavigationResourceCancelAll(
                     request->resource_transaction);
-            goto done;
+            return 1;
         }
         transport_failure = response == NULL || response->status_code == 0;
-        if (transport_failure && response != NULL &&
+        if (transport_failure &&
                 PBrowser_NavigationResourceShouldRetry(
-                request->resource_transaction, request->resource_index, 1,
+                request->resource_transaction, index, 1,
                 &retry) == PBROWSER_OK && retry) {
             PHttp_FreeResponse(response);
             response = NULL;
             continue;
         }
-        if (response != NULL) {
+        if (index == request->resource_index && response != NULL) {
             request->worker_status_code = response->status_code;
         }
         if (response != NULL && response->status_code >= 200 &&
                 response->status_code < 300 && response->body != NULL &&
                 response->body_len > 0 &&
                 response->body_len <= (int)
-                PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX &&
-                PBrowser_NavigationResourceSetData(
-                request->resource_transaction, request->resource_index,
-                response->body, response->body_len) == PBROWSER_OK) {
-            request->worker_succeeded = 1;
+                PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX) {
+            if (PBrowser_NavigationResourceSetData(
+                    request->resource_transaction, index, response->body,
+                    response->body_len) == PBROWSER_OK) {
+                PHttp_FreeResponse(response);
+                return 0;
+            }
+            request->worker_failure_class =
+                    PBROWSER_NAVIGATION_FAILURE_MEMORY;
+            (void) app_navigation_resource_fail(request, index,
+                    PBROWSER_NAVIGATION_FAILURE_MEMORY);
         } else if (transport_failure) {
             request->worker_failure_class =
                     PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
-            (void) app_navigation_resource_fail(request,
+            (void) app_navigation_resource_fail(request, index,
                     PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
         } else if (response != NULL && response->body_len >
                 (int) PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX) {
             request->worker_failure_class =
                     PBROWSER_NAVIGATION_FAILURE_BUDGET;
-            (void) app_navigation_resource_fail(request,
+            (void) app_navigation_resource_fail(request, index,
                     PBROWSER_NAVIGATION_FAILURE_BUDGET);
         } else {
             request->worker_failure_class =
                     PBROWSER_NAVIGATION_FAILURE_HTTP;
-            (void) app_navigation_resource_fail(request,
+            (void) app_navigation_resource_fail(request, index,
                     PBROWSER_NAVIGATION_FAILURE_HTTP);
         }
         PHttp_FreeResponse(response);
         response = NULL;
-        break;
+        return 0;
+    }
+}
+
+static DWORD WINAPI app_navigation_worker(LPVOID parameter)
+{
+    AppNavigationRequest *request;
+    AppNavigationResource *resource;
+    PBrowserNavigationResourceInfo info;
+
+    request = (AppNavigationRequest *) parameter;
+    if (request == NULL) {
+        return 0;
+    }
+    request->worker_succeeded = 0;
+    request->worker_failure_class = PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
+    request->worker_status_code = 0;
+    if (!g_http_initialized || app_navigation_is_cancelled(request)) {
+        goto done;
+    }
+    if (request->worker_stage == APP_NAV_WORK_DOCUMENT) {
+        if (app_navigation_fetch_resource(request, request->resource_index,
+                request->url) != 0) {
+            goto done;
+        }
+    } else {
+        for (;;) {
+            if (app_navigation_is_cancelled(request)) {
+                (void) PBrowser_NavigationResourceCancelAll(
+                        request->resource_transaction);
+                goto done;
+            }
+            if (AppResources_FindPending(request, &resource) != 0) {
+                break;
+            }
+            if (app_navigation_fetch_resource(request, resource->index,
+                    resource->url) != 0) {
+                goto done;
+            }
+        }
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (PBrowser_NavigationResourceGet(request->resource_transaction,
+            request->resource_index, &info) == PBROWSER_OK &&
+            info.state == PBROWSER_NAVIGATION_RESOURCE_READY &&
+            info.data_bytes > 0) {
+        request->worker_succeeded = 1;
     }
 done:
-    if (response != NULL) {
-        PHttp_FreeResponse(response);
-    }
     if (!PostMessage(request->hwnd, APP_WM_NAV_DONE, 0,
             (LPARAM) request)) {
         /* The UI keeps the window alive until this message is processed. */
@@ -974,8 +1063,7 @@ done:
     return 0;
 }
 
-static int app_navigation_copy_document(AppNavigationRequest *request,
-        HANDLE *out_document, HANDLE *out_stylesheet)
+static int app_navigation_parse_document(AppNavigationRequest *request)
 {
     PBrowserNavigationResourceInfo info;
     HANDLE document;
@@ -983,12 +1071,11 @@ static int app_navigation_copy_document(AppNavigationRequest *request,
     char *bytes;
     int copied;
 
-    if (out_document == NULL || out_stylesheet == NULL ||
-            request == NULL || request->resource_transaction == NULL) {
+    if (request == NULL || request->resource_transaction == NULL) {
         return 1;
     }
-    *out_document = NULL;
-    *out_stylesheet = NULL;
+    request->document_candidate = NULL;
+    request->stylesheet_candidate = NULL;
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     if (PBrowser_NavigationResourceGet(request->resource_transaction,
@@ -1020,28 +1107,29 @@ static int app_navigation_copy_document(AppNavigationRequest *request,
         PCore_FreeDocument(document);
         return 1;
     }
-    PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
-    if (PCore_StyleDocument(document, stylesheet) != 0 ||
-            PCore_LayoutDocument(document, g_page_width,
-            g_page_height) != 0) {
-        PCore_FreeStylesheet(stylesheet);
-        PCore_FreeDocument(document);
-        return 1;
-    }
-    *out_document = document;
-    *out_stylesheet = stylesheet;
+    request->document_candidate = document;
+    request->stylesheet_candidate = stylesheet;
     return 0;
 }
 
-static void app_navigation_finish(AppNavigationRequest *request,
-        int committed, HANDLE document, HANDLE stylesheet)
+static int app_navigation_pending_count(AppNavigationRequest *request)
 {
-    if (document != NULL && !committed) {
-        PCore_FreeDocument(document);
+    return AppResources_PendingCount(request);
+}
+
+static int app_navigation_start_worker(AppNavigationRequest *request)
+{
+    if (request == NULL || request->worker_thread != NULL) {
+        return 1;
     }
-    if (stylesheet != NULL && !committed) {
-        PCore_FreeStylesheet(stylesheet);
-    }
+    request->worker_thread = CreateThread(NULL, 0, app_navigation_worker,
+            request, 0, NULL);
+    return request->worker_thread == NULL ? 1 : 0;
+}
+
+static void app_navigation_finish(AppNavigationRequest *request,
+        int committed)
+{
     if (request == g_navigation_request) {
         g_navigation_request = NULL;
     }
@@ -1082,12 +1170,152 @@ static void app_navigation_remove_retired(AppNavigationRequest *request)
     current->retired_next = NULL;
 }
 
+static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
+{
+    int result;
+    int history_rc;
+
+    if (request == NULL) {
+        return -1;
+    }
+    for (;;) {
+        if (!app_navigation_can_apply(request)) {
+            return -1;
+        }
+        if (request->commit_stage == APP_NAV_COMMIT_STYLE) {
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_REQUIRED;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET;
+            result = PCore_StyleDocumentEx2(request->document_candidate,
+                    request->stylesheet_candidate, request->url,
+                    AppResources_Resolve, AppResources_Fetch,
+                    AppResources_Free, request);
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
+            if (result != 0 || request->resource_registration_failed) {
+                return -1;
+            }
+            if (app_navigation_pending_count(request) > 0) {
+                request->worker_stage = APP_NAV_WORK_RESOURCES;
+                if (app_navigation_start_worker(request) != 0) {
+                    return -1;
+                }
+                return 0;
+            }
+            request->commit_stage = APP_NAV_COMMIT_SCRIPTS;
+            continue;
+        }
+        if (request->commit_stage == APP_NAV_COMMIT_SCRIPTS) {
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
+            result = PCore_FetchScriptResourcesEx(request->document_candidate,
+                    request->url, AppResources_Resolve, AppResources_Fetch,
+                    AppResources_Free, request, NULL, NULL);
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
+            if (result != 0) {
+                /* Script discovery is optional; the document may still
+                 * commit when Core reports a non-fatal scan limitation. */
+            }
+            if (app_navigation_pending_count(request) > 0) {
+                request->worker_stage = APP_NAV_WORK_RESOURCES;
+                if (app_navigation_start_worker(request) != 0) {
+                    return -1;
+                }
+                return 0;
+            }
+            request->commit_stage = APP_NAV_COMMIT_IMAGES;
+            continue;
+        }
+        if (request->commit_stage == APP_NAV_COMMIT_IMAGES) {
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE;
+            (void) PCore_FetchImageResources(request->document_candidate,
+                    AppResources_Fetch, AppResources_Free, request,
+                    NULL, NULL);
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
+            if (app_navigation_pending_count(request) > 0) {
+                request->worker_stage = APP_NAV_WORK_RESOURCES;
+                if (app_navigation_start_worker(request) != 0) {
+                    return -1;
+                }
+                return 0;
+            }
+            if (!app_navigation_commit_ready(request)) {
+                return -1;
+            }
+            request->commit_stage = APP_NAV_COMMIT_LAYOUT;
+            continue;
+        }
+        if (request->commit_stage != APP_NAV_COMMIT_LAYOUT ||
+                request->document_candidate == NULL ||
+                request->stylesheet_candidate == NULL ||
+                !app_navigation_commit_ready(request)) {
+            return -1;
+        }
+        PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
+        if (PCore_LayoutDocument(request->document_candidate, g_page_width,
+                g_page_height) != 0) {
+            return -1;
+        }
+        (void) PBrowser_NavigationResourceObserveFallbacks(
+                request->resource_transaction);
+        if (request->history_mode == APP_HISTORY_NEW) {
+            history_rc = PBrowser_HistoryCommitNavigation(g_history,
+                    request->url, PBROWSER_HISTORY_METHOD_GET,
+                    PBROWSER_HISTORY_TARGET_NEW);
+        } else if (request->history_mode == APP_HISTORY_TARGET) {
+            history_rc = PBrowser_HistoryCommitTargetDocument(g_history,
+                    request->history_target);
+        } else {
+            history_rc = PBROWSER_OK;
+        }
+        if (history_rc != PBROWSER_OK ||
+                PBrowser_NavigationCandidateMarkCommitted(request->candidate,
+                (unsigned long) g_navigation_generation) != PBROWSER_OK) {
+            return -1;
+        }
+        if (AppHostContext_ReplacePage(&g_app,
+                request->document_candidate, request->stylesheet_candidate,
+                0, request->url) != 0) {
+            return -1;
+        }
+        request->document_candidate = NULL;
+        request->stylesheet_candidate = NULL;
+        app_set_focus_ids(g_page_kind);
+        app_set_address(g_current_url);
+        g_document_width = PCore_DocumentWidth(g_document);
+        g_document_height = PCore_DocumentHeight(g_document);
+        if (g_document_width < g_page_width) {
+            g_document_width = g_page_width;
+        }
+        if (g_document_height < g_page_height) {
+            g_document_height = g_page_height;
+        }
+        app_update_scrollbars(g_page_window);
+        app_update_history_buttons();
+        app_set_status(APP_TEXT_STATUS_READY_REMOTE);
+        InvalidateRect(g_page_window, NULL, TRUE);
+        return 1;
+    }
+}
+
 static void app_navigation_handle_done(HWND hwnd,
         AppNavigationRequest *request)
 {
-    HANDLE document;
-    HANDLE stylesheet;
-    int history_rc;
+    int advance_result;
 
     if (request == NULL) {
         return;
@@ -1106,55 +1334,23 @@ static void app_navigation_handle_done(HWND hwnd,
         }
         return;
     }
-    if (!request->worker_succeeded || !app_navigation_can_apply(request) ||
-            !app_navigation_commit_ready(request)) {
-        app_navigation_finish(request, 0, NULL, NULL);
+    if (!request->worker_succeeded || !app_navigation_can_apply(request)) {
+        app_navigation_finish(request, 0);
         return;
     }
-    document = NULL;
-    stylesheet = NULL;
-    if (app_navigation_copy_document(request, &document, &stylesheet) != 0 ||
-            !app_navigation_commit_ready(request)) {
-        app_navigation_finish(request, 0, document, stylesheet);
-        return;
+    if (request->worker_stage == APP_NAV_WORK_DOCUMENT) {
+        if (app_navigation_parse_document(request) != 0) {
+            app_navigation_finish(request, 0);
+            return;
+        }
+        request->worker_stage = APP_NAV_WORK_RESOURCES;
     }
-    if (request->history_mode == APP_HISTORY_NEW) {
-        history_rc = PBrowser_HistoryCommitNavigation(g_history, request->url,
-                PBROWSER_HISTORY_METHOD_GET, PBROWSER_HISTORY_TARGET_NEW);
-    } else if (request->history_mode == APP_HISTORY_TARGET) {
-        history_rc = PBrowser_HistoryCommitTargetDocument(g_history,
-                request->history_target);
-    } else {
-        history_rc = PBROWSER_OK;
+    advance_result = app_navigation_advance(hwnd, request);
+    if (advance_result < 0) {
+        app_navigation_finish(request, 0);
+    } else if (advance_result > 0) {
+        app_navigation_finish(request, 1);
     }
-    if (history_rc != PBROWSER_OK ||
-            PBrowser_NavigationCandidateMarkCommitted(request->candidate,
-            (unsigned long) g_navigation_generation) != PBROWSER_OK) {
-        app_navigation_finish(request, 0, document, stylesheet);
-        return;
-    }
-    if (AppHostContext_ReplacePage(&g_app, document, stylesheet, 0,
-            request->url) != 0) {
-        app_navigation_finish(request, 0, document, stylesheet);
-        return;
-    }
-    document = NULL;
-    stylesheet = NULL;
-    app_set_focus_ids(g_page_kind);
-    app_set_address(g_current_url);
-    g_document_width = PCore_DocumentWidth(g_document);
-    g_document_height = PCore_DocumentHeight(g_document);
-    if (g_document_width < g_page_width) {
-        g_document_width = g_page_width;
-    }
-    if (g_document_height < g_page_height) {
-        g_document_height = g_page_height;
-    }
-    app_update_scrollbars(g_page_window);
-    app_update_history_buttons();
-    app_set_status(APP_TEXT_STATUS_READY_REMOTE);
-    InvalidateRect(g_page_window, NULL, TRUE);
-    app_navigation_finish(request, 1, NULL, NULL);
 }
 
 static int app_navigation_start(HWND hwnd, const char *url,
@@ -1192,14 +1388,16 @@ static int app_navigation_start(HWND hwnd, const char *url,
     }
     request->resource_transaction = PBrowser_NavigationResourceCreate();
     if (request->resource_transaction == NULL ||
-            PBrowser_NavigationResourceRegister(request->resource_transaction,
-            request->url, PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
-            PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE, &index) != PBROWSER_OK) {
+            AppResources_Register(request, request->url,
+            PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
+            PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE, &index) != 0) {
         app_navigation_request_destroy(request);
         app_set_status(APP_TEXT_STATUS_NETWORK);
         return 0;
     }
     request->resource_index = index;
+    request->worker_stage = APP_NAV_WORK_DOCUMENT;
+    request->commit_stage = APP_NAV_COMMIT_STYLE;
     generation = InterlockedIncrement(&g_navigation_generation);
     if (generation <= 0) {
         generation = InterlockedIncrement(&g_navigation_generation);
@@ -1220,11 +1418,9 @@ static int app_navigation_start(HWND hwnd, const char *url,
     g_navigation_request = request;
     app_set_status(APP_TEXT_STATUS_LOADING);
     app_set_address(request->url);
-    request->worker_thread = CreateThread(NULL, 0, app_navigation_worker,
-            request, 0, NULL);
-    if (request->worker_thread == NULL) {
+    if (app_navigation_start_worker(request) != 0) {
         g_navigation_request = NULL;
-        app_navigation_finish(request, 0, NULL, NULL);
+        app_navigation_finish(request, 0);
         return 0;
     }
     return 1;

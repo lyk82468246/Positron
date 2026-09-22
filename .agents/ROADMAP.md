@@ -95,12 +95,12 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
 3. 若要先声明后实现，入口必须在未实现阶段返回稳定 unsupported 类错误，且在返回前不改状态、
    不创建伪 handle、不调用 callback、不产生部分 body 或部分 DOM mutation。
 4. 独立 `positron.exe` 的阶段 A 离线消费者已经落地，包含 EXE 内嵌的英语/简体中文资源和
-   非目标语言回退；阶段 B 的主文档 HTTP(S) GET 纵切也已接入：Browser 负责
+   非目标语言回退；阶段 B 的主文档 HTTP(S) GET 与阶段 1 外部资源纵切已接入：Browser 负责
    generation/resource gate 和页面生命周期，HTTP/TLS 负责公共 transport 边界，应用只负责
-   worker、消息泵、窗口、策略和页面 swap。当前仍需设备网络、失败回滚和 stale/cancel 人工门，
-   外部 CSS/图片/脚本资源尚未接入。独立应用接线阶段 0 已在工作树建立 `AppHostContext`
-   私有生命周期边界和 `positron_app/INTEGRATION_PLAN.md`；它不改变现有行为，本地审计、Release
-   构建和新鲜 stage 已通过，设备门仍待人工验收，随后才能进入外部资源阶段。
+   worker、消息泵、窗口、策略和页面 swap。required CSS/`@import` 阻止提交，optional 脚本/图片
+   允许 Core fallback；当前仍需设备网络、失败回滚和 stale/cancel 人工门。独立应用接线阶段 0
+   已建立 `AppHostContext` 私有生命周期边界，阶段 1 建立 `app_resources` 适配层；本地 C89 和
+   Debug/Release 构建已通过，设备门仍待人工验收，随后才能进入 Browser ScriptSession 阶段。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    没有证据时不进入产品实现。
@@ -135,8 +135,8 @@ history fallback、Core URL callback 的重复解析和参考宿主的 visibilit
 既有公共边界维护；它们没有把产品语义搬回 `test_host`。本轮已经出现真实的独立应用消费者：
 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成阶段 A 的离线导航、绘制、滚动、焦点、有限
 history 和阶段 B 主文档网络 GET，
-并由 EXE 私有资源提供英语/简体中文 UI；当前选择是先完成阶段 B 的设备网络与失败回滚门，
-再决定外部 CSS/图片资源纵切。File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在
+并由 EXE 私有资源提供英语/简体中文 UI；当前选择是先完成阶段 B/阶段 1 的设备网络、外部资源
+和失败回滚门，再进入 Browser ScriptSession。File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在
 待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
@@ -149,10 +149,10 @@ history 和阶段 B 主文档网络 GET，
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 
-**状态：准备取舍，等待阶段 B 设备门。** `positron.exe` 已证明真实应用消费者会组合
+**状态：准备取舍，阶段 1 源码已接入，等待阶段 B/资源设备门。** `positron.exe` 已证明真实应用消费者会组合
 Core 的 document/style/layout/paint、链接/焦点几何、Browser history/candidate gate 和 HTTP
-transport；当前实现已支持主文档 HTTP(S) 导航，下一步用户结果是确认真实页面、失败、取消或
-过时响应时保留旧页，并为外部资源补齐同一事务。
+transport；当前实现已支持主文档 HTTP(S) 导航，并把外部 CSS/`@import`、脚本发现和图片发现
+纳入同一事务。下一步用户结果是确认真实页面、失败、取消或过时响应时保留旧页。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。

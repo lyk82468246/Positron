@@ -8,7 +8,7 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。产品侧的 Duktape Dragon4 数值转换上下文移出原生线程栈，参考宿主也在同步嵌套 `WM_SIZE` 期间暂缓 Browser 脚本通知和 native child 重建，并在最外层完成布局后按顺序发布 scroll/resize。
+工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。
 
 - 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
   session、Storage、Headers、FormData、图像 generation 和特殊键 registry 合同组成；固定
@@ -56,21 +56,19 @@ Browser candidate/resource transaction 负责 generation、取消、stale 和 re
 commit gate，页面只有在 Core 完成 parse/style/layout 后才替换。EXE 私有资源支持英语/简体中文，
 按 WM6 UI 语言选择，其他语言回退英语，stage 无外置语言文件。
 清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建、C89 和仓库审计
-已通过；阶段 0 Release 包已 stage 到 `C:\WMShare\Positron-phase0-20260922`；网络、失败回滚、
-语言/触摸/旋转/DPI 仍需设备验收，不能写成阶段 B 基线。外部 CSS/图片/脚本资源、native 表单、SIP/IME、picker、书签和持久设置仍
+已通过；阶段 1 已把外部 CSS/`@import`、脚本发现和图片发现接入同一候选资源事务，required
+CSS 失败会阻止提交，optional 资源失败保留 Core fallback。阶段 1 的网络、失败回滚、语言/触摸/
+旋转/DPI 仍需设备验收，不能写成设备基线；新鲜 Release 包已 stage 到
+`C:\WMShare\Positron-phase1-20260922`。设备门运行 `tmp/device-runs/20260922-222922-phase1`
+复制 `positron_script.dll` 时重试后仍以 `RAPI=0x80072746` 失败，TEST999 未启动；阶段 0 包仍在
+`C:\WMShare\Positron-phase0-20260922`。脚本执行、native 表单、SIP/IME、picker、书签和持久设置仍
 不在当前范围内。ROADMAP.md 已复核。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)
 
 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
-高 DPI Core 回归已通过；旧 `positron.exe` 曾持有旧 DLL，当前视觉结论必须以新 staging 为准。
-
-继续保持 `test_host` 只负责 callback 接线、平台调度、fixture 和断言；可复用的 URL、DOM、
-Event、表单、图像、生命周期和脚本 session 语义必须位于对应公共 DLL。fixed-buffer 数值
-转换、原子部署、RAPI 日志恢复和最近的 DOM 纵切均已有正式设备门证据。
-
-阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期，不改变离线页、
-i18n、主文档 GET 或公共 ABI；C89/审计/Debug/Release 已通过，设备门待验收（WMDC script DLL
-0x80072746×2，未跑 TEST999）。
+阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
+`app_resources.c/.h`，把资源解析、注册、下载、重试和回收留在 EXE 私有适配层，不改变公共 ABI。
+C89/Debug/Release/审计已通过；设备门结果见上。
 
 ## 已验证产品事实
 
@@ -108,8 +106,9 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 阶段 A 的 `welcome`、`controls` 及对应的 `https://positron.local/...` 地址继续离线工作；
 阶段 B 当前支持绝对 HTTP(S) 主文档 GET，失败、取消或 stale 响应不会替换旧页面。菜单、softkey、
 状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
-交互验收项。外部 CSS/图片/脚本资源尚未接入，Debug/Release 构建通过并已生成独立 stage，
-但网络页面和导航失败回滚仍需设备人工验收，不能写成设备基线。
+交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
+脚本/图片属于 optional fallback；Debug/Release 构建通过，但网络页面和导航失败回滚仍需设备
+人工验收，不能写成设备基线。
 
 原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
 把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、
@@ -355,11 +354,12 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-阶段 0 的仓库审计、Release 正式重建和新鲜 stage 已完成；随后在 WMDC/Device Emulator 上关闭
-旧 `positron.exe`，确认没有其他宿主进程持有旧 DLL，再验证内置 welcome/controls、语言资源、
-history、旋转、DPI、软键、标准滚动条和关闭清理。阶段 0 通过后，下一批才进入阶段 1 的外部
-CSS/图片资源 required/optional gate 和设备网络证据；脚本、native 表单、SIP/IME、picker 和
-File/Blob 仍不得提前接入。
+阶段 1 与 stage 完成；阻塞是
+WMDC/Device Emulator 复制 `positron_script.dll` 时的 `RAPI=0x80072746`。传输恢复后重新跑
+TEST999，并在设备上验证内置 welcome/controls、外部 CSS、`@import`、optional 图片/脚本
+fallback、取消/stale、required 失败旧页保留、语言资源、history、旋转、DPI、软键、标准滚动条
+和关闭清理。设备门通过后再进入阶段 2 的 Browser
+ScriptSession；native 表单、SIP/IME、picker 和 File/Blob 仍不得提前接入。
 
 阶段 0 的本批变更只收口 EXE 私有宿主状态和生命周期；阶段 B 的主文档行为、离线页面和
 i18n 不变。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、

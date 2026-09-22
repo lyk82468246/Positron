@@ -94,11 +94,13 @@
 	</Configurations>
 	<References />
 	<Files>
-		<File RelativePath=".\app_host.c" />
-		<File RelativePath=".\app_host.h" />
-		<File RelativePath=".\app_i18n.c" />
-		<File RelativePath=".\app_i18n.h" />
-		<File RelativePath=".\main.c" />
+	<File RelativePath=".\app_host.c" />
+	<File RelativePath=".\app_host.h" />
+	<File RelativePath=".\app_i18n.c" />
+	<File RelativePath=".\app_i18n.h" />
+	<File RelativePath=".\app_resources.c" />
+	<File RelativePath=".\app_resources.h" />
+	<File RelativePath=".\main.c" />
 		<File RelativePath=".\positron_app.rc" />
 		<File RelativePath=".\resource.h" />
 		<File RelativePath=".\resources\en-US\controls.html" />
