@@ -14,6 +14,7 @@
 #define APP_CONTROLS_ID_BASE         1000
 #define APP_CONTROLS_KIND_TEXT       1
 #define APP_CONTROLS_KIND_SELECT     2
+#define APP_CONTROLS_KIND_TOGGLE     3
 #define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
 
 typedef struct AppControlsItem AppControlsItem;
@@ -23,12 +24,17 @@ struct AppControlsItem {
     int kind;
     unsigned int text_index;
     unsigned int select_index;
+    unsigned int toggle_index;
+    unsigned int form_index;
     unsigned long target_token;
     WNDPROC original_proc;
     int multiline;
     int password;
     int read_only;
     int disabled;
+    int toggle_kind;
+    int selected;
+    int toggle_space_pending;
     int multiple;
     int option_count;
     unsigned long option_fingerprint;
@@ -61,6 +67,9 @@ static int app_controls_item_geometry(AppControlsContext *context,
 {
     PCoreTextInputInfo info;
     PCoreSelectInfo select_info;
+    int form_kind;
+    int selected;
+    int disabled;
 
     if (context == NULL || item == NULL || context->document == NULL) {
         return 0;
@@ -85,6 +94,19 @@ static int app_controls_item_geometry(AppControlsContext *context,
         item->y = select_info.y;
         item->width = select_info.width > 0 ? select_info.width : 1;
         item->height = select_info.height > 0 ? select_info.height : 1;
+    } else if (item->kind == APP_CONTROLS_KIND_TOGGLE) {
+        if (PCore_FormControlInfo(context->document, item->form_index,
+                &item->x, &item->y, &item->width, &item->height,
+                &form_kind, &selected, &disabled) != 0 ||
+                (form_kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX &&
+                form_kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO)) {
+            return 0;
+        }
+        item->width = item->width > 0 ? item->width : 1;
+        item->height = item->height > 0 ? item->height : 1;
+        item->toggle_kind = form_kind;
+        item->selected = selected ? 1 : 0;
+        item->disabled = disabled ? 1 : 0;
     } else {
         return 0;
     }
@@ -101,6 +123,91 @@ static int app_controls_item_geometry(AppControlsContext *context,
         *out_height = item->height;
     }
     return 1;
+}
+
+/* Core enumerates all laid-out form controls together, while the native
+ * adapter keeps independent text/select/toggle arrays. Resolve the toggle
+ * ordinal without exposing any Core internals to the EXE. */
+static int app_controls_toggle_info_at(HANDLE document,
+        unsigned int toggle_index, unsigned int *out_form_index,
+        int *out_x, int *out_y, int *out_width, int *out_height,
+        int *out_kind, int *out_selected, int *out_disabled)
+{
+    unsigned int form_index;
+    unsigned int ordinal;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+
+    if (document == NULL) {
+        return 1;
+    }
+    ordinal = 0;
+    form_index = 0;
+    while (PCore_FormControlInfo(document, form_index, &x, &y, &width,
+            &height, &kind, &selected, &disabled) == 0) {
+        if (kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX ||
+                kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO) {
+            if (ordinal == toggle_index) {
+                if (out_form_index != NULL) {
+                    *out_form_index = form_index;
+                }
+                if (out_x != NULL) {
+                    *out_x = x;
+                }
+                if (out_y != NULL) {
+                    *out_y = y;
+                }
+                if (out_width != NULL) {
+                    *out_width = width;
+                }
+                if (out_height != NULL) {
+                    *out_height = height;
+                }
+                if (out_kind != NULL) {
+                    *out_kind = kind;
+                }
+                if (out_selected != NULL) {
+                    *out_selected = selected ? 1 : 0;
+                }
+                if (out_disabled != NULL) {
+                    *out_disabled = disabled ? 1 : 0;
+                }
+                return 0;
+            }
+            ordinal++;
+        }
+        form_index++;
+    }
+    return 1;
+}
+
+static int app_controls_toggle_count(HANDLE document,
+        unsigned int *out_count)
+{
+    unsigned int form_index;
+    unsigned int count;
+    int kind;
+
+    if (document == NULL || out_count == NULL) {
+        return 1;
+    }
+    form_index = 0;
+    count = 0;
+    while (PCore_FormControlInfo(document, form_index, NULL, NULL, NULL,
+            NULL, &kind, NULL, NULL) == 0) {
+        if (kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX ||
+                kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO) {
+            count++;
+        }
+        form_index++;
+    }
+    *out_count = count;
+    return 0;
 }
 
 static AppControlsItem *app_controls_find(HWND hwnd)
@@ -508,6 +615,40 @@ static void app_controls_sync_select(AppControlsContext *context,
     EnableWindow(item->hwnd, item->disabled ? FALSE : TRUE);
 }
 
+static void app_controls_sync_toggle(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+
+    if (context == NULL || item == NULL || item->kind !=
+            APP_CONTROLS_KIND_TOGGLE || item->hwnd == NULL ||
+            context->document == NULL || context->syncing) {
+        return;
+    }
+    if (PCore_FormControlInfo(context->document, item->form_index, &x, &y,
+            &width, &height, &kind, &selected, &disabled) != 0 ||
+            kind != item->toggle_kind) {
+        return;
+    }
+    context->syncing = 1;
+    SendMessage(item->hwnd, BM_SETCHECK,
+            (WPARAM) (selected ? BST_CHECKED : BST_UNCHECKED), 0);
+    EnableWindow(item->hwnd, disabled ? FALSE : TRUE);
+    context->syncing = 0;
+    item->x = x;
+    item->y = y;
+    item->width = width > 0 ? width : 1;
+    item->height = height > 0 ? height : 1;
+    item->selected = selected ? 1 : 0;
+    item->disabled = disabled ? 1 : 0;
+}
+
 static void app_controls_item_point(AppControlsContext *context,
         AppControlsItem *item, int *out_x, int *out_y)
 {
@@ -687,6 +828,145 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
                 "deleteByCut", "")) {
             return 0;
         }
+    }
+    return app_controls_call_original(item, hwnd, message, wparam, lparam);
+}
+
+static const char *app_controls_toggle_key_name(WPARAM wparam)
+{
+    if (wparam == VK_SPACE) {
+        return "Space";
+    }
+    if (wparam == VK_RETURN) {
+        return "Enter";
+    }
+    return "Unidentified";
+}
+
+static int app_controls_toggle_key(AppControlsContext *context,
+        AppControlsItem *item, const char *event_type, WPARAM wparam,
+        LPARAM lparam)
+{
+    int x;
+    int y;
+    int allowed;
+
+    if (context == NULL || item == NULL || event_type == NULL) {
+        return 0;
+    }
+    if (context->script == NULL) {
+        return 1;
+    }
+    app_controls_item_point(context, item, &x, &y);
+    allowed = 0;
+    if (AppScript_DispatchKeyEvent(context->script, x, y, event_type,
+            app_controls_toggle_key_name(wparam), (unsigned int) wparam, 0,
+            ((lparam & 0x40000000L) != 0) ? 1 : 0,
+            GetKeyState(VK_SHIFT) < 0 ? 1 : 0,
+            GetKeyState(VK_CONTROL) < 0 ? 1 : 0,
+            GetKeyState(VK_MENU) < 0 ? 1 : 0, 0, &allowed) != 0) {
+        return 0;
+    }
+    return allowed ? 1 : 0;
+}
+
+static int app_controls_toggle_focus(AppControlsContext *context,
+        AppControlsItem *item, int focused)
+{
+    int x;
+    int y;
+
+    if (context == NULL || item == NULL || context->document == NULL) {
+        return -1;
+    }
+    app_controls_item_point(context, item, &x, &y);
+    if (context->script == NULL) {
+        app_controls_dispatch_focus(context, item, focused);
+        return 1;
+    }
+    if (focused) {
+        if (PCore_InteractionSetAt(context->document, x, y,
+                PCORE_INTERACTION_FOCUS) < 0 ||
+                AppScript_DispatchFocusEvent(context->script, x, y,
+                "focus", 0, 0) != 0 ||
+                AppScript_DispatchFocusEvent(context->script, x, y,
+                "focusin", 1, 0) != 0) {
+            return -1;
+        }
+    } else {
+        (void) AppScript_DispatchFocusEvent(context->script, x, y,
+                "blur", 0, 0);
+        (void) AppScript_DispatchFocusEvent(context->script, x, y,
+                "focusout", 1, 0);
+        if (PCore_InteractionClear(context->document,
+                PCORE_INTERACTION_FOCUS) < 0) {
+            return -1;
+        }
+    }
+    return 1;
+}
+
+static LRESULT CALLBACK app_controls_toggle_proc(HWND hwnd, UINT message,
+        WPARAM wparam, LPARAM lparam)
+{
+    AppControlsItem *item;
+    LRESULT result;
+    int allowed;
+    int repeat;
+
+    item = app_controls_find(hwnd);
+    if (item == NULL || g_app_controls == NULL) {
+        return DefWindowProc(hwnd, message, wparam, lparam);
+    }
+    if (message == WM_SETFOCUS) {
+        result = app_controls_call_original(item, hwnd, message,
+                wparam, lparam);
+        if (!g_app_controls->syncing) {
+            if (app_controls_toggle_focus(g_app_controls, item, 1) > 0) {
+                app_controls_notify(g_app_controls);
+            }
+        }
+        return result;
+    }
+    if (message == WM_KILLFOCUS) {
+        result = app_controls_call_original(item, hwnd, message,
+                wparam, lparam);
+        if (!g_app_controls->syncing) {
+            if (app_controls_toggle_focus(g_app_controls, item, 0) > 0) {
+                app_controls_notify(g_app_controls);
+            }
+        }
+        return result;
+    }
+    if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
+            (wparam == VK_SPACE || wparam == VK_RETURN)) {
+        repeat = (lparam & 0x40000000L) != 0;
+        allowed = app_controls_toggle_key(g_app_controls, item, "keydown",
+                wparam, lparam);
+        if (!allowed) {
+            item->toggle_space_pending = 0;
+            return 0;
+        }
+        if (wparam == VK_SPACE) {
+            if (!repeat) {
+                item->toggle_space_pending = 1;
+            }
+        } else if (!repeat) {
+            (void) SendMessage(hwnd, BM_CLICK, 0, 0);
+        }
+        return 0;
+    }
+    if ((message == WM_KEYUP || message == WM_SYSKEYUP) &&
+            (wparam == VK_SPACE || wparam == VK_RETURN)) {
+        allowed = app_controls_toggle_key(g_app_controls, item, "keyup",
+                wparam, lparam);
+        if (wparam == VK_SPACE && item->toggle_space_pending) {
+            item->toggle_space_pending = 0;
+            if (allowed) {
+                (void) SendMessage(hwnd, BM_CLICK, 0, 0);
+            }
+        }
+        return 0;
     }
     return app_controls_call_original(item, hwnd, message, wparam, lparam);
 }
@@ -1107,6 +1387,104 @@ static LRESULT CALLBACK app_controls_select_proc(HWND hwnd, UINT message,
     return result;
 }
 
+static void app_controls_sync_all_toggles(AppControlsContext *context)
+{
+    unsigned int i;
+
+    if (context == NULL) {
+        return;
+    }
+    for (i = 0; i < context->count; i++) {
+        if (context->items[i].kind == APP_CONTROLS_KIND_TOGGLE) {
+            app_controls_sync_toggle(context, &context->items[i]);
+        }
+    }
+}
+
+static int app_controls_toggle_activate(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int selected_before;
+    int selected_after;
+    int disabled;
+    int dirty_x;
+    int dirty_y;
+    int dirty_width;
+    int dirty_height;
+    int default_allowed;
+    int product_started;
+    int consumed;
+    int changed;
+
+    if (context == NULL || item == NULL || context->document == NULL ||
+            item->kind != APP_CONTROLS_KIND_TOGGLE) {
+        return 0;
+    }
+    if (PCore_FormControlInfo(context->document, item->form_index, &x, &y,
+            &width, &height, &kind, &selected_before, &disabled) != 0 ||
+            (kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX &&
+            kind != PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO)) {
+        return 1;
+    }
+    x += width / 2;
+    y += height / 2;
+    if (disabled) {
+        app_controls_sync_toggle(context, item);
+        return 1;
+    }
+    product_started = 0;
+    if (context->script != NULL) {
+        default_allowed = 1;
+        if (AppScript_DispatchNativeToggle(context->script,
+                item->target_token, x, y,
+                PBROWSER_SCRIPT_NATIVE_TOGGLE_CLICK, kind, 0,
+                selected_before ? 1 : 0, selected_before ? 1 : 0,
+                &default_allowed) != 0 || !default_allowed) {
+            app_controls_sync_toggle(context, item);
+            return 1;
+        }
+        product_started = 1;
+    }
+    consumed = PCore_FormActivateAt(context->document, x, y, &dirty_x,
+            &dirty_y, &dirty_width, &dirty_height);
+    if (!consumed || PCore_FormControlInfo(context->document,
+            item->form_index, NULL, NULL, NULL, NULL, NULL,
+            &selected_after, NULL) != 0) {
+        if (product_started) {
+            (void) AppScript_DispatchNativeToggle(context->script,
+                    item->target_token, x, y,
+                    PBROWSER_SCRIPT_NATIVE_TOGGLE_CANCEL, kind, 0,
+                    selected_before ? 1 : 0, selected_before ? 1 : 0,
+                    &default_allowed);
+        }
+        app_controls_sync_toggle(context, item);
+        return 1;
+    }
+    changed = selected_before != (selected_after ? 1 : 0);
+    app_controls_sync_all_toggles(context);
+    if (product_started) {
+        (void) AppScript_DispatchNativeToggle(context->script,
+                item->target_token, x, y,
+                PBROWSER_SCRIPT_NATIVE_TOGGLE_COMMIT, kind, 0,
+                selected_before ? 1 : 0, selected_after ? 1 : 0,
+                &default_allowed);
+    } else if (changed) {
+        (void) PCore_EventDispatchAt(context->document, x, y, "input",
+                1, 0, NULL);
+        (void) PCore_EventDispatchAt(context->document, x, y, "change",
+                1, 0, NULL);
+    }
+    if (changed) {
+        app_controls_notify(context);
+    }
+    return 1;
+}
+
 static int app_controls_rebuild_item(AppControlsContext *context,
         AppControlsItem *item, unsigned int index, int control_id,
         int scroll_x, int scroll_y)
@@ -1313,6 +1691,69 @@ static int app_controls_rebuild_select_item(AppControlsContext *context,
     return 0;
 }
 
+static int app_controls_rebuild_toggle_item(AppControlsContext *context,
+        AppControlsItem *item, unsigned int toggle_index,
+        unsigned int form_index, int control_id, int scroll_x, int scroll_y)
+{
+    DWORD style;
+    HWND hwnd;
+    WNDPROC original_proc;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int selected;
+    int disabled;
+
+    if (context == NULL || item == NULL || context->document == NULL ||
+            app_controls_toggle_info_at(context->document, toggle_index,
+            NULL, &x, &y, &width, &height, &kind, &selected,
+            &disabled) != 0 || (kind !=
+            PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX && kind !=
+            PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO)) {
+        return 1;
+    }
+    style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_NOTIFY;
+    style |= kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO ?
+            BS_RADIOBUTTON : BS_CHECKBOX;
+    hwnd = CreateWindowW(L"BUTTON", L"", style,
+            x - scroll_x, y - scroll_y, width > 0 ? width : 1,
+            height > 0 ? height : 1, context->parent,
+            (HMENU) (APP_CONTROLS_ID_BASE + control_id),
+            context->instance, NULL);
+    if (hwnd == NULL) {
+        return 1;
+    }
+    memset(item, 0, sizeof(*item));
+    item->hwnd = hwnd;
+    item->kind = APP_CONTROLS_KIND_TOGGLE;
+    item->toggle_index = toggle_index;
+    item->form_index = form_index;
+    item->target_token = (unsigned long) toggle_index + 1UL;
+    item->toggle_kind = kind;
+    item->selected = selected ? 1 : 0;
+    item->disabled = disabled ? 1 : 0;
+    item->x = x;
+    item->y = y;
+    item->width = width > 0 ? width : 1;
+    item->height = height > 0 ? height : 1;
+    original_proc = (WNDPROC) SetWindowLong(hwnd, GWL_WNDPROC,
+            (LONG) app_controls_toggle_proc);
+    item->original_proc = original_proc;
+    if (original_proc == NULL) {
+        DestroyWindow(hwnd);
+        memset(item, 0, sizeof(*item));
+        return 1;
+    }
+    SendMessage(hwnd, WM_SETFONT, (WPARAM) GetStockObject(SYSTEM_FONT),
+            TRUE);
+    SendMessage(hwnd, BM_SETCHECK,
+            (WPARAM) (item->selected ? BST_CHECKED : BST_UNCHECKED), 0);
+    EnableWindow(hwnd, item->disabled ? FALSE : TRUE);
+    return 0;
+}
+
 AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
         void *pw, AppControlsChangedFn changed)
 {
@@ -1343,6 +1784,7 @@ void AppControls_ClearPage(AppControlsContext *context)
     if (context->script != NULL) {
         AppScript_ResetNativeEditState(context->script);
         AppScript_ResetNativeSelectState(context->script);
+        AppScript_ResetNativeToggleState(context->script);
     }
     /* Detaching the document before DestroyWindow prevents the native
      * child's WM_KILLFOCUS path from dispatching a stale blur while the old
@@ -1380,6 +1822,9 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y)
 {
     unsigned int index;
+    unsigned int form_index;
+    unsigned int toggle_index;
+    int form_kind;
 
     if (context == NULL || document == NULL) {
         return 1;
@@ -1409,6 +1854,26 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         }
         index++;
         context->count++;
+    }
+    form_index = 0;
+    toggle_index = 0;
+    while (PCore_FormControlInfo(document, form_index, NULL, NULL, NULL,
+            NULL, &form_kind, NULL, NULL) == 0) {
+        if (form_kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX ||
+                form_kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO) {
+            if (toggle_index >= PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS ||
+                    context->count >= APP_CONTROLS_MAX ||
+                    app_controls_rebuild_toggle_item(context,
+                    &context->items[context->count], toggle_index,
+                    form_index, (int) context->count, scroll_x,
+                    scroll_y) != 0) {
+                AppControls_ClearPage(context);
+                return 1;
+            }
+            toggle_index++;
+            context->count++;
+        }
+        form_index++;
     }
     AppControls_Reposition(context, document, scroll_x, scroll_y);
     return 0;
@@ -1490,8 +1955,13 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
     unsigned long fingerprint;
     unsigned int text_count;
     unsigned int select_count;
+    unsigned int toggle_count;
+    unsigned int toggle_offset;
+    unsigned int toggle_index;
+    unsigned int form_index;
     unsigned int i;
     int multiline;
+    int toggle_kind;
     int rebuild_selects;
 
     if (context == NULL || document == NULL) {
@@ -1517,8 +1987,12 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
             PCore_SelectInfo(document, select_count, NULL) == 0) {
         return 1;
     }
-    if (text_count + select_count != context->count ||
-            text_count + select_count > APP_CONTROLS_MAX) {
+    if (app_controls_toggle_count(document, &toggle_count) != 0) {
+        return 1;
+    }
+    if (text_count + select_count + toggle_count != context->count ||
+            text_count + select_count + toggle_count > APP_CONTROLS_MAX ||
+            toggle_count > PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS) {
         return AppControls_Rebuild(context, document, script, scroll_x,
                 scroll_y);
     }
@@ -1563,6 +2037,25 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
         return AppControls_Rebuild(context, document, script, scroll_x,
                 scroll_y);
     }
+    toggle_offset = text_count + select_count;
+    toggle_index = 0;
+    form_index = 0;
+    while (PCore_FormControlInfo(document, form_index, NULL, NULL, NULL,
+            NULL, &toggle_kind, NULL, NULL) == 0) {
+        if (toggle_kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_CHECKBOX ||
+                toggle_kind == PBROWSER_SCRIPT_NATIVE_TOGGLE_RADIO) {
+            item = &context->items[toggle_offset + toggle_index];
+            if (item->kind != APP_CONTROLS_KIND_TOGGLE ||
+                    item->toggle_index != toggle_index ||
+                    item->form_index != form_index ||
+                    item->toggle_kind != toggle_kind) {
+                return AppControls_Rebuild(context, document, script,
+                        scroll_x, scroll_y);
+            }
+            toggle_index++;
+        }
+        form_index++;
+    }
     AppControls_Reposition(context, document, scroll_x, scroll_y);
     return 0;
 }
@@ -1587,6 +2080,8 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
     for (i = 0; i < context->count; i++) {
         if (context->items[i].kind == APP_CONTROLS_KIND_SELECT) {
             app_controls_sync_select(context, &context->items[i]);
+        } else if (context->items[i].kind == APP_CONTROLS_KIND_TOGGLE) {
+            app_controls_sync_toggle(context, &context->items[i]);
         }
         if (context->items[i].hwnd == NULL ||
                 !app_controls_item_geometry(context, &context->items[i],
@@ -1635,6 +2130,12 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
         return 0;
     }
     if (context->syncing || context->document == NULL) {
+        return 1;
+    }
+    if (item->kind == APP_CONTROLS_KIND_TOGGLE) {
+        if (HIWORD(wparam) == BN_CLICKED) {
+            return app_controls_toggle_activate(context, item);
+        }
         return 1;
     }
     if (item->kind == APP_CONTROLS_KIND_SELECT) {

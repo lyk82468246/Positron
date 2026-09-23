@@ -1360,6 +1360,58 @@ int AppScript_DispatchHashNavigation(AppScriptContext *context,
             url, history_length) == PSCRIPT_OK ? 0 : 1;
 }
 
+int AppScript_DispatchKeyEvent(AppScriptContext *context, int x, int y,
+        const char *event_type, const char *key, unsigned int key_code,
+        unsigned int char_code, int repeat, int shift, int ctrl, int alt,
+        int is_composing, int *out_default_allowed)
+{
+    PBrowserScriptKeyEventInfo info;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    if (context == NULL || context->session == NULL ||
+            event_type == NULL || event_type[0] == '\0' || key == NULL ||
+            key[0] == '\0' || out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.x = x;
+    info.y = y;
+    info.event_type = event_type;
+    info.key = key;
+    info.key_code = key_code;
+    info.char_code = char_code;
+    info.repeat = repeat ? 1 : 0;
+    info.shift = shift ? 1 : 0;
+    info.ctrl = ctrl ? 1 : 0;
+    info.alt = alt ? 1 : 0;
+    info.is_composing = is_composing ? 1 : 0;
+    return PBrowser_ScriptSessionDispatchKeyEvent(context->session, &info,
+            out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchFocusEvent(AppScriptContext *context, int x, int y,
+        const char *event_type, int bubbles, int cancelable)
+{
+    PBrowserScriptFocusEventInfo info;
+
+    if (context == NULL || context->session == NULL || event_type == NULL ||
+            event_type[0] == '\0') {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.x = x;
+    info.y = y;
+    info.event_type = event_type;
+    info.bubbles = bubbles ? 1 : 0;
+    info.cancelable = cancelable ? 1 : 0;
+    return PBrowser_ScriptSessionDispatchFocusEvent(context->session, &info)
+            == PSCRIPT_OK ? 0 : 1;
+}
+
 int AppScript_DispatchNativeEditBeforeInput(AppScriptContext *context,
         unsigned long target_token, int x, int y, const char *input_type,
         const char *data, int cancelable, int is_composing,
@@ -1547,6 +1599,41 @@ void AppScript_ResetNativeSelectState(AppScriptContext *context)
 {
     if (context != NULL && context->session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeSelectState(context->session);
+    }
+}
+
+int AppScript_DispatchNativeToggle(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase, int kind,
+        int disabled, int selected_before, int selected_after,
+        int *out_default_allowed)
+{
+    PBrowserScriptNativeToggleInfo info;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    info.kind = kind;
+    info.disabled = disabled ? 1 : 0;
+    info.selected_before = selected_before ? 1 : 0;
+    info.selected_after = selected_after ? 1 : 0;
+    return PBrowser_ScriptSessionDispatchNativeToggle(context->session, &info,
+            out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+}
+
+void AppScript_ResetNativeToggleState(AppScriptContext *context)
+{
+    if (context != NULL && context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeToggleState(context->session);
     }
 }
 

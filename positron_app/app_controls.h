@@ -2,9 +2,10 @@
  * positron_app/app_controls.h - private native page-control adapter.
  *
  * The Core document remains the owner of form values, options and geometry.
- * This module projects text-like controls into WM6 EDIT children and SELECT
- * controls into WM6 COMBOBOX/LISTBOX children; Browser owns the bounded
- * native event transactions.
+ * This module projects text-like controls into WM6 EDIT children, SELECT
+ * controls into WM6 COMBOBOX/LISTBOX children, and checkbox/radio controls
+ * into WM6 BUTTON children; Browser owns the bounded native event
+ * transactions.
  */
 
 #ifndef POSITRON_APP_CONTROLS_H

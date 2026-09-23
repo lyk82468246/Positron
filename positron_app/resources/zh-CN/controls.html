@@ -24,6 +24,11 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <p><label for="topics">主题</label><br>
 <select id="topics" multiple size="3"><option value="core" selected>Core</option>
 <option value="browser">Browser</option><option value="wm6">WM6</option></select></p>
+<h2>原生开关控件</h2>
+<p>复选框和单选按钮使用原生 WM6 BUTTON 子窗口。勾选状态和单选组规则仍由 Core 管理，Browser 接收可信的 click、input 和 change 事件。</p>
+<p><input id="remember" type="checkbox" checked> 记住此设备</p>
+<p><input id="mode-fast" type="radio" name="mode" checked> 快速模式<br>
+<input id="mode-safe" type="radio" name="mode"> 安全模式</p>
 <p>按钮、SIP/IME、文件选择和表单提交将在后续输入批次中接入。</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">主页</a></p>

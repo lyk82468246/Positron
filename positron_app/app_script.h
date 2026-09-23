@@ -73,6 +73,15 @@ int AppScript_NotifyResize(AppScriptContext *context, int viewport_width,
 int AppScript_DispatchHashNavigation(AppScriptContext *context,
         const char *url, int history_length);
 
+/* Native controls use the Browser-owned keyboard/focus event adapters while
+ * Core remains the owner of hit-testing and interaction state. */
+int AppScript_DispatchKeyEvent(AppScriptContext *context, int x, int y,
+        const char *event_type, const char *key, unsigned int key_code,
+        unsigned int char_code, int repeat, int shift, int ctrl, int alt,
+        int is_composing, int *out_default_allowed);
+int AppScript_DispatchFocusEvent(AppScriptContext *context, int x, int y,
+        const char *event_type, int bubbles, int cancelable);
+
 /* Native EDIT transactions remain host-owned at the WM6 boundary while the
  * Browser session owns beforeinput/input/change ordering and dirty state. */
 int AppScript_DispatchNativeEditBeforeInput(AppScriptContext *context,
@@ -104,6 +113,14 @@ int AppScript_DispatchNativeSelectKey(AppScriptContext *context,
         int repeat, int shift, int ctrl, int alt, int is_composing,
         int *out_default_allowed);
 void AppScript_ResetNativeSelectState(AppScriptContext *context);
+
+/* Native checkbox/radio activation keeps Core's checked state in the host
+ * while Browser owns trusted click cancellation and input/change ordering. */
+int AppScript_DispatchNativeToggle(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase, int kind,
+        int disabled, int selected_before, int selected_after,
+        int *out_default_allowed);
+void AppScript_ResetNativeToggleState(AppScriptContext *context);
 
 HANDLE AppScript_Document(AppScriptContext *context);
 int AppScript_QueueNavigation(AppScriptContext *context,

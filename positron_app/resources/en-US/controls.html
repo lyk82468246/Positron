@@ -32,6 +32,13 @@ Browser input/change bridge.</p>
 <p><label for="topics">Topics</label><br>
 <select id="topics" multiple size="3"><option value="core" selected>Core</option>
 <option value="browser">Browser</option><option value="wm6">WM6</option></select></p>
+<h2>Native toggles</h2>
+<p>Checkboxes and radio buttons use native WM6 BUTTON children. Core keeps
+the checked state and radio-group rules; Browser receives trusted click,
+input and change events.</p>
+<p><input id="remember" type="checkbox" checked> Remember this device</p>
+<p><input id="mode-fast" type="radio" name="mode" checked> Fast mode<br>
+<input id="mode-safe" type="radio" name="mode"> Safe mode</p>
 <p>Buttons, SIP/IME, file picking and form submission remain in the next
 input batches.</p>
 <p><a id="home" tabindex="0"
