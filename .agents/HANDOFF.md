@@ -57,9 +57,9 @@ commit gate，页面只有在 Core 完成 parse/style/layout 后才替换。EXE 
 按 WM6 UI 语言选择，其他语言回退英语，stage 无外置语言文件。
 清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建、C89 和仓库审计
 已通过；阶段 1 已把外部 CSS/`@import`、脚本发现和图片发现接入同一候选资源事务，required
-CSS 失败会阻止提交，optional 资源失败保留 Core fallback。阶段 1 的网络、失败回滚、语言/触摸/
-旋转/DPI 仍需设备验收，不能写成设备基线；新鲜 Release 包已 stage 到
-`C:\WMShare\Positron-phase1-20260922`。设备门运行 `tmp/device-runs/20260922-222922-phase1`
+CSS 失败会阻止提交，optional 资源失败保留 Core fallback。阶段 1 网络/回滚及标题/窗口 UI
+仍需设备验收，不能写成设备基线；新鲜 Release 包已 stage 到
+`C:\WMShare\Positron-ui-20260923`。设备门运行 `tmp/device-runs/20260923-084512-phase1-ui-fix`
 复制 `positron_script.dll` 时重试后仍以 `RAPI=0x80072746` 失败，TEST999 未启动；阶段 0 包仍在
 `C:\WMShare\Positron-phase0-20260922`。脚本执行、native 表单、SIP/IME、picker、书签和持久设置仍
 不在当前范围内。ROADMAP.md 已复核。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)

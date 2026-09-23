@@ -193,6 +193,24 @@ static void app_set_status(AppTextId text_id)
     SetWindowTextW(g_window, wide);
 }
 
+static AppTextId app_ready_status(void)
+{
+    if (g_page_kind == APP_PAGE_WELCOME) {
+        return APP_TEXT_STATUS_READY_WELCOME;
+    }
+    if (g_page_kind == APP_PAGE_CONTROLS) {
+        return APP_TEXT_STATUS_READY_CONTROLS;
+    }
+    return APP_TEXT_STATUS_READY_REMOTE;
+}
+
+static void app_restore_page_status(void)
+{
+    if (g_document != NULL) {
+        app_set_status(app_ready_status());
+    }
+}
+
 static void app_set_address(const char *url)
 {
     WCHAR wide[APP_WIDE_TEXT_MAX];
@@ -648,6 +666,7 @@ static int app_relayout(void)
 static int app_create_menu_bar(HWND hwnd)
 {
     SHMENUBARINFO menu_info;
+    SHINITDLGINFO shell_init;
 
     memset(&menu_info, 0, sizeof(menu_info));
     menu_info.cbSize = sizeof(menu_info);
@@ -664,6 +683,15 @@ static int app_create_menu_bar(HWND hwnd)
         return 1;
     }
     AppHostContext_SetMenuBar(&g_app, menu_info.hwndMB);
+    memset(&shell_init, 0, sizeof(shell_init));
+    shell_init.dwMask = SHIDIM_FLAGS;
+    shell_init.dwFlags = SHIDIF_SIZEDLGFULLSCREEN | SHIDIF_SIPDOWN;
+    shell_init.hDlg = hwnd;
+    if (!SHInitDialog(&shell_init)) {
+        CommandBar_Destroy(menu_info.hwndMB);
+        AppHostContext_SetMenuBar(&g_app, NULL);
+        return 1;
+    }
     return 0;
 }
 
@@ -707,7 +735,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
 
     if (app_build_page(url, &new_document, &new_stylesheet,
             &new_page_kind) != 0) {
-        app_set_status(APP_TEXT_STATUS_OFFLINE);
+        app_restore_page_status();
         app_set_address(g_current_url);
         return 0;
     }
@@ -722,7 +750,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     if (history_rc != PBROWSER_OK) {
         PCore_FreeStylesheet(new_stylesheet);
         PCore_FreeDocument(new_document);
-        app_set_status(APP_TEXT_STATUS_HISTORY);
+        app_restore_page_status();
         app_set_address(g_current_url);
         return 0;
     }
@@ -730,7 +758,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
             new_page_kind, url) != 0) {
         PCore_FreeStylesheet(new_stylesheet);
         PCore_FreeDocument(new_document);
-        app_set_status(APP_TEXT_STATUS_OFFLINE);
+        app_restore_page_status();
         app_set_address(g_current_url);
         return 0;
     }
@@ -746,9 +774,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     }
     app_update_scrollbars(g_page_window);
     app_update_history_buttons();
-    app_set_status((g_page_kind == APP_PAGE_CONTROLS) ?
-            APP_TEXT_STATUS_READY_CONTROLS :
-            APP_TEXT_STATUS_READY_WELCOME);
+    app_set_status(app_ready_status());
     if (g_page_window != NULL) {
         InvalidateRect(g_page_window, NULL, TRUE);
     } else {
@@ -1134,7 +1160,7 @@ static void app_navigation_finish(AppNavigationRequest *request,
         g_navigation_request = NULL;
     }
     if (!committed) {
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         app_set_address(g_current_url);
         if (request->candidate != NULL) {
             (void) PBrowser_NavigationCandidateMarkFailed(
@@ -1306,7 +1332,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         app_update_scrollbars(g_page_window);
         app_update_history_buttons();
-        app_set_status(APP_TEXT_STATUS_READY_REMOTE);
+        app_set_status(app_ready_status());
         InvalidateRect(g_page_window, NULL, TRUE);
         return 1;
     }
@@ -1361,17 +1387,17 @@ static int app_navigation_start(HWND hwnd, const char *url,
     int index;
 
     if (!g_http_initialized || url == NULL || url[0] == '\0') {
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         return 0;
     }
     if (g_navigation_request != NULL &&
             app_navigation_retired_count() >= APP_NAV_MAX_RETIRED) {
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         return 0;
     }
     request = (AppNavigationRequest *) malloc(sizeof(*request));
     if (request == NULL) {
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         return 0;
     }
     memset(request, 0, sizeof(*request));
@@ -1383,7 +1409,7 @@ static int app_navigation_start(HWND hwnd, const char *url,
             request->host, sizeof(request->host), request->path,
             sizeof(request->path), &request->port) != 0) {
         free(request);
-        app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
+        app_restore_page_status();
         return 0;
     }
     request->resource_transaction = PBrowser_NavigationResourceCreate();
@@ -1392,7 +1418,7 @@ static int app_navigation_start(HWND hwnd, const char *url,
             PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
             PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE, &index) != 0) {
         app_navigation_request_destroy(request);
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         return 0;
     }
     request->resource_index = index;
@@ -1407,12 +1433,12 @@ static int app_navigation_start(HWND hwnd, const char *url,
             request->generation);
     if (request->candidate == NULL) {
         app_navigation_request_destroy(request);
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         return 0;
     }
     if (g_navigation_request != NULL && app_navigation_cancel_active() != 0) {
         app_navigation_request_destroy(request);
-        app_set_status(APP_TEXT_STATUS_NETWORK);
+        app_restore_page_status();
         return 0;
     }
     g_navigation_request = request;
@@ -1437,14 +1463,14 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
     if (app_page_kind(url) != 0) {
         if (g_navigation_request != NULL &&
                 app_navigation_cancel_active() != 0) {
-            app_set_status(APP_TEXT_STATUS_NETWORK);
+            app_restore_page_status();
             return 0;
         }
         return app_load_local_page(hwnd, url, history_mode, history_target);
     }
     if (app_canonicalize_url(g_current_url, url, canonical,
             sizeof(canonical)) != 0) {
-        app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
+        app_restore_page_status();
         return 0;
     }
     return app_navigation_start(hwnd, canonical, history_mode,
@@ -1521,7 +1547,7 @@ static void app_go_from_address(HWND hwnd)
 
     if (app_wide_to_utf8(g_address, input, sizeof(input)) != 0 ||
             app_normalize_address(input, url, sizeof(url)) != 0) {
-        app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
+        app_restore_page_status();
         app_set_address(g_current_url);
         return;
     }
@@ -1996,10 +2022,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     hwnd = CreateWindowExW(WS_EX_CONTROLPARENT,
             L"PositronBrowserWindow", L"Positron",
-            WS_VISIBLE | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN |
+            WS_OVERLAPPED | WS_SYSMENU | WS_CLIPCHILDREN |
             WS_CLIPSIBLINGS,
-            0, 0, GetSystemMetrics(SM_CXSCREEN),
-            GetSystemMetrics(SM_CYSCREEN), NULL, NULL,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            NULL, NULL,
             g_instance, NULL);
     if (hwnd == NULL) {
         AppHostContext_Shutdown(&g_app);
