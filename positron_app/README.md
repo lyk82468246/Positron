@@ -21,8 +21,14 @@ bar、菜单、输入优先级和页面导航策略属于应用。
 - 页面空白点击不会关闭窗口；页面链接可用触摸或鼠标点击激活；页面焦点可用
   Up/Down/Enter 操作，Backspace 保留给 native 地址栏编辑。
 
-外部 CSS/图片/脚本资源、真实表单 native 控件、SIP/IME、文件选择器、书签、持久偏好和
-WM6 Standard 尚未接入。当前网络纵切只提交主文档；缺少 `positron.ini` 不影响启动，当前
+网络页面的外部 CSS/`@import` 属于 required 资源，图片和 classic script 属于 optional
+资源；它们都在同一个 Browser candidate/resource transaction 中发现、下载和释放。网络
+候选现在会创建 EXE 私有 `AppScriptContext`，按 DOM 顺序执行有界的 inline 与已下载的
+external classic script；脚本异常不回滚已解析页面，session/bridge 初始化失败则关闭该
+候选的脚本能力而继续走页面提交。脚本可以使用当前已接入的 DOM 读写、属性、有限表单值、
+事件监听/取消默认动作、history/fragment 导航、focus、visibility、resize、scroll、timer
+和页面 teardown 生命周期桥。真实表单 native 控件、form submit/formdata、SIP/IME、文件
+选择器、书签、持久偏好和 WM6 Standard 仍未接入；缺少 `positron.ini` 不影响启动，当前
 没有需要用户编辑的配置项。
 
 ## 界面语言
@@ -60,7 +66,9 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    按 Escape 取消编辑并恢复已提交地址；
 6. 菜单中的 `Exit`/`退出` 真正结束应用，重复启动/关闭不新增崩溃。
 7. 在设备网络可用时输入绝对 `http://` 或 `https://` 地址；加载期间旧页面保持可见，
-   成功后才替换页面；失败、取消或输入另一个地址时不显示半成品页面。
+   成功后才替换页面。检查一个包含 inline/classic external script 的页面：脚本 DOM
+   mutation、事件监听和 timer 在提交后生效；脚本错误、optional script/image 失败、
+   取消或输入另一个地址时不显示半成品页面，旧页面仍可用。
 
 真实设备的触摸命中、SIP、旋转、DPI 和 OEM 键盘行为仍属于人工验收；本阶段不把桌面
 构建或 synthetic 消息当作这些门的替代证据。

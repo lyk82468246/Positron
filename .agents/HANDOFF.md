@@ -8,7 +8,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-工作区仍在 `main`。当前设备门基础设施使用唯一 `.part-*` 文件、同卷原子改名、16 KiB RAPI 传输块和有界的超时后会话重开；某些 DMA 镜像在 512 KiB 边界启动 32 KiB 写入时会复现 `0x80072746`，已由 16 KiB 传输并在更换后的仿真器上验证。日志复制期间的瞬时 `CeReadFile` 失败仍只视为可重试快照。
+工作区在 `main`；本轮 `positron_app` 的 `app_script.c/.h`、宿主生命周期和导航接线已完成。
+C89、Debug/Release 构建和文档审计已通过，但不宣称设备通过；设备门按用户决定暂缓，
+`RAPI=0x80072746` 不重复尝试。
 
 - 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
   session、Storage、Headers、FormData、图像 generation 和特殊键 registry 合同组成；固定
@@ -54,14 +56,15 @@ next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowse
 Core/Browser/HTTP import library 启动内置离线页面，并可在 worker 中发起绝对 HTTP(S) GET；
 Browser candidate/resource transaction 负责 generation、取消、stale 和 required-document
 commit gate，页面只有在 Core 完成 parse/style/layout 后才替换。EXE 私有资源支持英语/简体中文，
-按 WM6 UI 语言选择，其他语言回退英语，stage 无外置语言文件。
+按 WM6 UI 语言选择，其他语言回退英语，stage 无外置语言文件。阶段 2 已加入 EXE 私有
+`AppScriptContext`，网络候选按 DOM 顺序执行有界 classic script，并接回 DOM、事件、导航、
+滚动、焦点、任务和 teardown；脚本异常不回滚，bridge 初始化失败则关闭脚本能力。
 清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建、C89 和仓库审计
 已通过；阶段 1 已把外部 CSS/`@import`、脚本发现和图片发现接入同一候选资源事务，required
-CSS 失败会阻止提交，optional 资源失败保留 Core fallback。阶段 1 网络/回滚及标题/窗口 UI
-仍需设备验收，不能写成设备基线；新鲜 Release 包已 stage 到
-`C:\WMShare\Positron-ui-20260923`。设备门运行 `tmp/device-runs/20260923-084512-phase1-ui-fix`
-复制 `positron_script.dll` 时重试后仍以 `RAPI=0x80072746` 失败，TEST999 未启动；阶段 0 包仍在
-`C:\WMShare\Positron-phase0-20260922`。脚本执行、native 表单、SIP/IME、picker、书签和持久设置仍
+CSS 失败会阻止提交，optional 资源失败保留 Core fallback；阶段 2 已把网络候选的 classic
+ScriptSession 接入同一提交前流程。阶段 1/2 网络、脚本、回滚及标题/窗口 UI
+仍需设备验收，不能写成设备基线；最近一次传输在复制 `positron_script.dll` 时以
+`RAPI=0x80072746` 失败，TEST999 未启动。native 表单、SIP/IME、picker、书签和持久设置仍
 不在当前范围内。ROADMAP.md 已复核。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)
 
 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
@@ -107,8 +110,9 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 阶段 B 当前支持绝对 HTTP(S) 主文档 GET，失败、取消或 stale 响应不会替换旧页面。菜单、softkey、
 状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
 交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
-脚本/图片属于 optional fallback；Debug/Release 构建通过，但网络页面和导航失败回滚仍需设备
-人工验收，不能写成设备基线。
+脚本/图片属于 optional fallback；阶段 2 的网络候选已按 DOM 顺序创建并执行有界 classic
+ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥。Debug/Release 构建通过，
+但网络页面、脚本和导航失败回滚仍需设备人工验收，不能写成设备基线。
 
 原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
 把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、
@@ -354,12 +358,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-阶段 1 与 stage 完成；阻塞是
-WMDC/Device Emulator 复制 `positron_script.dll` 时的 `RAPI=0x80072746`。传输恢复后重新跑
-TEST999，并在设备上验证内置 welcome/controls、外部 CSS、`@import`、optional 图片/脚本
-fallback、取消/stale、required 失败旧页保留、语言资源、history、旋转、DPI、软键、标准滚动条
-和关闭清理。设备门通过后再进入阶段 2 的 Browser
-ScriptSession；native 表单、SIP/IME、picker 和 File/Blob 仍不得提前接入。
+本轮阶段 2 源码接线、C89、Debug/Release 和审计已通过；设备门仍因 `RAPI=0x80072746` 暂缓。
+恢复传输后跑 TEST999，验收 classic script 顺序、DOM/事件/任务、生命周期、资源失败、取消/
+stale、旧页保留、语言、history、旋转、DPI、软键、标准滚动条和清理；之后才进入阶段 3
+native 表单、SIP/IME、picker，File/Blob 不提前接入。
 
 阶段 0 的本批变更只收口 EXE 私有宿主状态和生命周期；阶段 B 的主文档行为、离线页面和
 i18n 不变。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、

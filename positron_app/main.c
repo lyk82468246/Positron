@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "app_host.h"
+#include "app_script.h"
 #include "app_resources.h"
 #include "app_i18n.h"
 #include "positron_core.h"
@@ -50,18 +51,21 @@
 #define APP_HISTORY_NEW             1
 #define APP_HISTORY_TARGET          2
 #define APP_HISTORY_REFRESH         3
+#define APP_HISTORY_REPLACE         4
 
 #define APP_WM_ADDRESS_GO       (WM_APP + 1)
 #define APP_WM_ADDRESS_CANCEL   (WM_APP + 2)
 #define APP_WM_NAV_DONE         (WM_APP + 3)
+#define APP_WM_SCRIPT_NAVIGATE  (WM_APP + 4)
+#define APP_SCRIPT_TIMER_ID     7
 
 #define APP_NAV_MAX_RETIRED     4
 #define APP_NAV_HOST_MAX        APP_HOST_NAV_HOST_MAX
 #define APP_NAV_PATH_MAX        APP_HOST_NAV_PATH_MAX
 #define APP_NAV_WORK_DOCUMENT   1
 #define APP_NAV_WORK_RESOURCES  2
-#define APP_NAV_COMMIT_STYLE    1
-#define APP_NAV_COMMIT_SCRIPTS  2
+#define APP_NAV_COMMIT_SCRIPTS  1
+#define APP_NAV_COMMIT_STYLE    2
 #define APP_NAV_COMMIT_IMAGES   3
 #define APP_NAV_COMMIT_LAYOUT   4
 
@@ -77,6 +81,7 @@ static AppHostContext g_app;
 #define g_instance               (g_app.instance)
 #define g_document               (g_app.document)
 #define g_stylesheet             (g_app.stylesheet)
+#define g_script                 (g_app.script)
 #define g_history                (g_app.history)
 #define g_core_initialized       (g_app.core_initialized)
 #define g_http_initialized       (g_app.http_initialized)
@@ -97,6 +102,11 @@ static AppHostContext g_app;
 #define g_focus_ids              (g_app.focus_ids)
 #define g_focus_id               (g_app.focus_id)
 #define g_current_url            (g_app.current_url)
+
+static int app_relayout(void);
+static int app_load_page(HWND hwnd, const char *url, int history_mode,
+        int history_target);
+static void app_update_history_buttons(void);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -400,6 +410,11 @@ static void app_scroll_by(HWND hwnd, int dx, int dy)
     app_clamp_scroll();
     if (old_x != g_scroll_x || old_y != g_scroll_y) {
         app_update_scrollbars(hwnd);
+        if (g_script != NULL) {
+            (void) AppScript_NotifyScroll(g_script,
+                    MulDiv(g_scroll_x, 96, g_dpi > 0 ? g_dpi : 96),
+                    MulDiv(g_scroll_y, 96, g_dpi > 0 ? g_dpi : 96));
+        }
         InvalidateRect(hwnd, NULL, FALSE);
     }
 }
@@ -418,6 +433,134 @@ static void app_set_focus_ids(int page_kind)
         g_focus_ids[g_focus_count++] = "welcome2";
         g_focus_ids[g_focus_count++] = "home";
     }
+}
+
+static void app_script_mutated(void *pw, AppScriptContext *context)
+{
+    AppHostContext *host;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || context == NULL || host->script != context ||
+            host->document == NULL) {
+        return;
+    }
+    if (app_relayout() != 0) {
+        app_set_status(APP_TEXT_STATUS_LAYOUT);
+        return;
+    }
+    InvalidateRect(host->page_window, NULL, TRUE);
+}
+
+static int app_script_scroll(void *pw, AppScriptContext *context,
+        const PBrowserScriptScrollInfo *info, int *out_x, int *out_y)
+{
+    AppHostContext *host;
+    int device_x;
+    int device_y;
+    int result;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || context == NULL || info == NULL || out_x == NULL ||
+            out_y == NULL || info->size < sizeof(*info) ||
+            info->scroll_x < 0 || info->scroll_y < 0) {
+        return -1;
+    }
+    if (host->script != context || host->document == NULL) {
+        *out_x = info->scroll_x;
+        *out_y = info->scroll_y;
+        return 0;
+    }
+    if (info->element_id != NULL && info->element_id[0] != '\0') {
+        result = PCore_NodeOverflowScrollToById(host->document,
+                info->element_id, info->scroll_x, info->scroll_y,
+                out_x, out_y);
+        if (result == 2) {
+            *out_x = 0;
+            *out_y = 0;
+            return 0;
+        }
+        if (result != 0) {
+            return -1;
+        }
+        InvalidateRect(host->page_window, NULL, FALSE);
+        return 0;
+    }
+    device_x = MulDiv(info->scroll_x, host->dpi > 0 ? host->dpi : 96,
+            96);
+    device_y = MulDiv(info->scroll_y, host->dpi > 0 ? host->dpi : 96,
+            96);
+    host->scroll_x = device_x;
+    host->scroll_y = device_y;
+    app_clamp_scroll();
+    app_update_scrollbars(host->page_window);
+    InvalidateRect(host->page_window, NULL, FALSE);
+    *out_x = MulDiv(host->scroll_x, 96, host->dpi > 0 ? host->dpi : 96);
+    *out_y = MulDiv(host->scroll_y, 96, host->dpi > 0 ? host->dpi : 96);
+    return 0;
+}
+
+static int app_script_navigate(void *pw, AppScriptContext *context,
+        const PBrowserScriptNavigationInfo *info, int *out_value)
+{
+    AppHostContext *host;
+    int history_result;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || context == NULL || info == NULL ||
+            out_value == NULL || info->size < sizeof(*info)) {
+        return -1;
+    }
+    *out_value = 0;
+    if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE ||
+            info->kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE_STATE) {
+        if (host->script != context || host->history == NULL ||
+                info->url == NULL || info->state_json == NULL ||
+                info->url[0] == '\0' || info->state_json[0] == '\0' ||
+                PBrowser_HistorySameOriginUrl(host->current_url,
+                info->url) != 1) {
+            return 0;
+        }
+        if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
+            history_result = PBrowser_HistoryPushState(host->history,
+                    info->url, info->state_json);
+        } else {
+            history_result = PBrowser_HistoryReplaceState(host->history,
+                    info->url, info->state_json);
+        }
+        if (history_result != PBROWSER_OK) {
+            return 0;
+        }
+        app_copy_text(host->current_url, sizeof(host->current_url),
+                info->url);
+        app_set_address(host->current_url);
+        app_update_history_buttons();
+        if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
+            *out_value = PBrowser_HistoryCount(host->history);
+        }
+        return 1;
+    }
+    if (info->kind != PBROWSER_SCRIPT_NAVIGATION_BACK &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_FORWARD &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_GO &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_ASSIGN &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_RELOAD &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_REPLACE &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_FRAGMENT &&
+            info->kind != PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
+        return 0;
+    }
+    if (info->target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_BLANK ||
+            info->target_kind == PBROWSER_SCRIPT_NAVIGATION_TARGET_NAMED) {
+        return 0;
+    }
+    if (AppScript_QueueNavigation(context, info) != 0) {
+        return 0;
+    }
+    if (host->script == context && host->window != NULL) {
+        PostMessage(host->window, APP_WM_SCRIPT_NAVIGATE, 0,
+                (LPARAM) context);
+    }
+    return 1;
 }
 
 static int app_focus_set(HWND hwnd, int index)
@@ -739,6 +882,19 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         app_set_address(g_current_url);
         return 0;
     }
+    if (g_script != NULL) {
+        int prevented;
+
+        prevented = 0;
+        if (AppScript_BeforeUnload(g_script, &prevented) != 0 ||
+                prevented) {
+            PCore_FreeStylesheet(new_stylesheet);
+            PCore_FreeDocument(new_document);
+            app_restore_page_status();
+            app_set_address(g_current_url);
+            return 0;
+        }
+    }
     history_rc = PBROWSER_OK;
     if (history_mode == APP_HISTORY_NEW) {
         history_rc = PBrowser_HistoryCommitNavigation(g_history, url,
@@ -746,6 +902,10 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     } else if (history_mode == APP_HISTORY_TARGET) {
         history_rc = PBrowser_HistoryCommitTargetDocument(g_history,
                 history_target);
+    } else if (history_mode == APP_HISTORY_REPLACE) {
+        history_rc = PBrowser_HistoryCommitNavigation(g_history, url,
+                PBROWSER_HISTORY_METHOD_GET,
+                PBROWSER_HISTORY_TARGET_REPLACE_CURRENT);
     }
     if (history_rc != PBROWSER_OK) {
         PCore_FreeStylesheet(new_stylesheet);
@@ -753,6 +913,9 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         app_restore_page_status();
         app_set_address(g_current_url);
         return 0;
+    }
+    if (g_script != NULL) {
+        (void) AppScript_PageTeardown(g_script);
     }
     if (AppHostContext_ReplacePage(&g_app, new_document, new_stylesheet,
             new_page_kind, url) != 0) {
@@ -853,6 +1016,10 @@ static void app_navigation_request_destroy(AppNavigationRequest *request)
         WaitForSingleObject(request->worker_thread, INFINITE);
         CloseHandle(request->worker_thread);
         request->worker_thread = NULL;
+    }
+    if (request->script_candidate != NULL) {
+        AppScript_Destroy(request->script_candidate);
+        request->script_candidate = NULL;
     }
     if (request->document_candidate != NULL) {
         PCore_FreeDocument(request->document_candidate);
@@ -1208,6 +1375,91 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         if (!app_navigation_can_apply(request)) {
             return -1;
         }
+        if (request->commit_stage == APP_NAV_COMMIT_SCRIPTS) {
+            AppScriptHostCallbacks script_callbacks;
+            const char *history_state;
+            int history_length;
+            int history_index;
+            int script_errors;
+
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
+            result = PCore_FetchScriptResourcesEx(request->document_candidate,
+                    request->url, AppResources_Resolve, AppResources_Fetch,
+                    AppResources_Free, request, NULL, NULL);
+            request->resource_policy =
+                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
+            request->resource_role_mask =
+                    PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
+            if (result != 0) {
+                /* Script discovery is optional; the document may still
+                 * commit when Core reports a non-fatal scan limitation. */
+            }
+            if (app_navigation_pending_count(request) > 0) {
+                request->worker_stage = APP_NAV_WORK_RESOURCES;
+                if (app_navigation_start_worker(request) != 0) {
+                    return -1;
+                }
+                return 0;
+            }
+            if (PCore_GetScriptCount(request->document_candidate) > 0) {
+                if (request->history_mode == APP_HISTORY_NEW) {
+                    history_length = PBrowser_HistoryNavigationLength(
+                            g_history, request->url,
+                            PBROWSER_HISTORY_METHOD_GET,
+                            PBROWSER_HISTORY_TARGET_NEW);
+                    history_index = PBrowser_HistoryNavigationIndex(
+                            g_history, request->url,
+                            PBROWSER_HISTORY_METHOD_GET,
+                            PBROWSER_HISTORY_TARGET_NEW);
+                    history_state = PBrowser_HistoryNavigationState(
+                            g_history, request->url,
+                            PBROWSER_HISTORY_METHOD_GET,
+                            PBROWSER_HISTORY_TARGET_NEW);
+                } else if (request->history_mode == APP_HISTORY_TARGET) {
+                    history_length = PBrowser_HistoryNavigationLength(
+                            g_history, request->url,
+                            PBROWSER_HISTORY_METHOD_GET,
+                            request->history_target);
+                    history_index = PBrowser_HistoryNavigationIndex(
+                            g_history, request->url,
+                            PBROWSER_HISTORY_METHOD_GET,
+                            request->history_target);
+                    history_state = PBrowser_HistoryNavigationState(
+                            g_history, request->url,
+                            PBROWSER_HISTORY_METHOD_GET,
+                            request->history_target);
+                } else {
+                    history_length = PBrowser_HistoryCount(g_history);
+                    history_index = PBrowser_HistoryIndex(g_history);
+                    history_state = PBrowser_HistoryCurrentState(g_history);
+                }
+                memset(&script_callbacks, 0, sizeof(script_callbacks));
+                script_callbacks.size = sizeof(script_callbacks);
+                script_callbacks.pw = &g_app;
+                script_callbacks.navigate = app_script_navigate;
+                script_callbacks.scroll = app_script_scroll;
+                script_callbacks.mutation = app_script_mutated;
+                request->script_candidate = AppScript_Create(
+                        request->document_candidate, request->url,
+                        history_length, history_index, 1, history_state,
+                        g_page_width, g_page_height, g_dpi,
+                        &script_callbacks);
+                if (request->script_candidate != NULL) {
+                    script_errors = 0;
+                    if (AppScript_Execute(request->script_candidate, 1,
+                            AppResources_Resolve, request, NULL, NULL,
+                            &script_errors) != 0) {
+                        AppScript_Destroy(request->script_candidate);
+                        request->script_candidate = NULL;
+                    }
+                }
+            }
+            request->commit_stage = APP_NAV_COMMIT_STYLE;
+            continue;
+        }
         if (request->commit_stage == APP_NAV_COMMIT_STYLE) {
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_REQUIRED;
@@ -1223,32 +1475,6 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                     PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
             if (result != 0 || request->resource_registration_failed) {
                 return -1;
-            }
-            if (app_navigation_pending_count(request) > 0) {
-                request->worker_stage = APP_NAV_WORK_RESOURCES;
-                if (app_navigation_start_worker(request) != 0) {
-                    return -1;
-                }
-                return 0;
-            }
-            request->commit_stage = APP_NAV_COMMIT_SCRIPTS;
-            continue;
-        }
-        if (request->commit_stage == APP_NAV_COMMIT_SCRIPTS) {
-            request->resource_policy =
-                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
-            request->resource_role_mask =
-                    PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
-            result = PCore_FetchScriptResourcesEx(request->document_candidate,
-                    request->url, AppResources_Resolve, AppResources_Fetch,
-                    AppResources_Free, request, NULL, NULL);
-            request->resource_policy =
-                    PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
-            request->resource_role_mask =
-                    PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
-            if (result != 0) {
-                /* Script discovery is optional; the document may still
-                 * commit when Core reports a non-fatal scan limitation. */
             }
             if (app_navigation_pending_count(request) > 0) {
                 request->worker_stage = APP_NAV_WORK_RESOURCES;
@@ -1298,6 +1524,15 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         (void) PBrowser_NavigationResourceObserveFallbacks(
                 request->resource_transaction);
+        if (g_script != NULL) {
+            int prevented;
+
+            prevented = 0;
+            if (AppScript_BeforeUnload(g_script, &prevented) != 0 ||
+                    prevented) {
+                return -1;
+            }
+        }
         if (request->history_mode == APP_HISTORY_NEW) {
             history_rc = PBrowser_HistoryCommitNavigation(g_history,
                     request->url, PBROWSER_HISTORY_METHOD_GET,
@@ -1305,6 +1540,10 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         } else if (request->history_mode == APP_HISTORY_TARGET) {
             history_rc = PBrowser_HistoryCommitTargetDocument(g_history,
                     request->history_target);
+        } else if (request->history_mode == APP_HISTORY_REPLACE) {
+            history_rc = PBrowser_HistoryCommitNavigation(g_history,
+                    request->url, PBROWSER_HISTORY_METHOD_GET,
+                    PBROWSER_HISTORY_TARGET_REPLACE_CURRENT);
         } else {
             history_rc = PBROWSER_OK;
         }
@@ -1313,13 +1552,17 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 (unsigned long) g_navigation_generation) != PBROWSER_OK) {
             return -1;
         }
-        if (AppHostContext_ReplacePage(&g_app,
+        if (g_script != NULL) {
+            (void) AppScript_PageTeardown(g_script);
+        }
+        if (AppHostContext_ReplacePageWithScript(&g_app,
                 request->document_candidate, request->stylesheet_candidate,
-                0, request->url) != 0) {
+                request->script_candidate, 0, request->url) != 0) {
             return -1;
         }
         request->document_candidate = NULL;
         request->stylesheet_candidate = NULL;
+        request->script_candidate = NULL;
         app_set_focus_ids(g_page_kind);
         app_set_address(g_current_url);
         g_document_width = PCore_DocumentWidth(g_document);
@@ -1333,6 +1576,17 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         app_update_scrollbars(g_page_window);
         app_update_history_buttons();
         app_set_status(app_ready_status());
+        if (g_script != NULL) {
+            (void) AppScript_SetVisibility(g_script,
+                    IsWindowVisible(g_window) ? 0 : 1);
+            (void) AppScript_SetFocus(g_script,
+                    GetForegroundWindow() == g_window ? 1 : 0);
+            (void) AppScript_PageLifecycleComplete(g_script);
+            if (AppScript_HasPendingNavigation(g_script)) {
+                PostMessage(g_window, APP_WM_SCRIPT_NAVIGATE, 0,
+                        (LPARAM) g_script);
+            }
+        }
         InvalidateRect(g_page_window, NULL, TRUE);
         return 1;
     }
@@ -1423,7 +1677,7 @@ static int app_navigation_start(HWND hwnd, const char *url,
     }
     request->resource_index = index;
     request->worker_stage = APP_NAV_WORK_DOCUMENT;
-    request->commit_stage = APP_NAV_COMMIT_STYLE;
+    request->commit_stage = APP_NAV_COMMIT_SCRIPTS;
     generation = InterlockedIncrement(&g_navigation_generation);
     if (generation <= 0) {
         generation = InterlockedIncrement(&g_navigation_generation);
@@ -1598,6 +1852,74 @@ static void app_refresh(HWND hwnd)
     }
 }
 
+static void app_handle_script_navigation(HWND hwnd,
+        AppScriptContext *context)
+{
+    AppScriptPendingNavigation navigation;
+    const char *target;
+    int target_index;
+    int history_result;
+
+    if (context == NULL || context != g_script ||
+            AppScript_TakeNavigation(context, &navigation) != 0) {
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_BACK) {
+        app_go_back(hwnd);
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FORWARD) {
+        app_go_forward(hwnd);
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_GO) {
+        target = PBrowser_HistoryGoTarget(g_history, navigation.delta,
+                &target_index);
+        if (target != NULL) {
+            app_load_page(hwnd, target, APP_HISTORY_TARGET, target_index);
+        }
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_RELOAD) {
+        app_refresh(hwnd);
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
+            navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
+        if (navigation.url[0] == '\0' ||
+                !PBrowser_HistorySameBaseUrl(g_current_url,
+                navigation.url)) {
+            return;
+        }
+        if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT) {
+            history_result = PBrowser_HistoryPushState(g_history,
+                    navigation.url, "null");
+        } else {
+            history_result = PBrowser_HistoryReplaceState(g_history,
+                    navigation.url, "null");
+        }
+        if (history_result == PBROWSER_OK) {
+            app_copy_text(g_current_url, sizeof(g_current_url),
+                    navigation.url);
+            app_set_address(g_current_url);
+            app_update_history_buttons();
+            (void) AppScript_DispatchHashNavigation(g_script,
+                    g_current_url, PBrowser_HistoryCount(g_history));
+        }
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE) {
+        if (navigation.url[0] != '\0') {
+            app_load_page(hwnd, navigation.url, APP_HISTORY_REPLACE, -1);
+        }
+        return;
+    }
+    if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_ASSIGN &&
+            navigation.url[0] != '\0') {
+        app_load_page(hwnd, navigation.url, APP_HISTORY_NEW, -1);
+    }
+}
+
 static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
@@ -1689,6 +2011,10 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             if (g_document != NULL && app_relayout() != 0) {
                 app_set_status(APP_TEXT_STATUS_LAYOUT);
             }
+            if (g_script != NULL) {
+                (void) AppScript_NotifyResize(g_script, g_page_width,
+                        g_page_height, g_dpi);
+            }
             InvalidateRect(hwnd, NULL, TRUE);
         }
         return 0;
@@ -1711,6 +2037,7 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             int document_x;
             int document_y;
             int focus_index;
+            int default_allowed;
             char href[APP_URL_MAX];
 
             x = (int) (short) LOWORD(lparam);
@@ -1722,8 +2049,14 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             if (focus_index >= 0) {
                 (void) app_focus_set(hwnd, focus_index);
             }
+            default_allowed = 1;
+            if (g_document != NULL) {
+                (void) PCore_EventDispatchAt(g_document, document_x,
+                        document_y, "click", 1, 1, &default_allowed);
+            }
             href[0] = '\0';
-            if (g_document != NULL && PCore_LinkAt(g_document,
+            if (default_allowed && g_document != NULL && PCore_LinkAt(
+                    g_document,
                     document_x, document_y, href, sizeof(href)) == 1) {
                 (void) app_load_page(g_window, href, APP_HISTORY_NEW, -1);
             }
@@ -1836,6 +2169,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         if (app_create_menu_bar(hwnd) != 0) {
             return -1;
         }
+        SetTimer(hwnd, APP_SCRIPT_TIMER_ID, 250, NULL);
         return 0;
     case WM_SIZE:
         app_reposition_controls(hwnd);
@@ -1843,6 +2177,15 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         return 0;
     case WM_ACTIVATE:
         SHHandleWMActivate(hwnd, wparam, lparam, &g_shell_activate, FALSE);
+        if (g_script != NULL) {
+            (void) AppScript_SetFocus(g_script,
+                    LOWORD(wparam) != WA_INACTIVE ? 1 : 0);
+        }
+        return 0;
+    case WM_SHOWWINDOW:
+        if (g_script != NULL) {
+            (void) AppScript_SetVisibility(g_script, wparam ? 0 : 1);
+        }
         return 0;
     case WM_SETTINGCHANGE:
         SHHandleWMSettingChange(hwnd, wparam, lparam, &g_shell_activate);
@@ -1896,6 +2239,14 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         app_navigation_handle_done(hwnd,
                 (AppNavigationRequest *) lparam);
         return 0;
+    case APP_WM_SCRIPT_NAVIGATE:
+        app_handle_script_navigation(hwnd, (AppScriptContext *) lparam);
+        return 0;
+    case WM_TIMER:
+        if (wparam == APP_SCRIPT_TIMER_ID && g_script != NULL) {
+            (void) AppScript_RunTaskCheckpoint(g_script, GetTickCount());
+        }
+        return 0;
     case WM_CLOSE:
         if (g_navigation_request != NULL || g_retired_navigation != NULL) {
             g_navigation_closing = 1;
@@ -1911,6 +2262,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         /* Navigation has already drained before WM_DESTROY.  The private
          * host context is the single owner of the remaining page, history,
          * command bar and DLL shutdown sequence. */
+        KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
         AppHostContext_Shutdown(&g_app);
         PostQuitMessage(0);
         return 0;

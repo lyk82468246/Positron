@@ -34,7 +34,10 @@
 和 DLL 初始化/清理的生命周期；Core/Browser/HTTP 仍拥有文档、URL、history、资源事务和
 页面语义。阶段 0 保持离线页面、英语/简体中文 i18n 和主文档 HTTP(S) GET 不变；阶段 1
 通过 EXE 私有适配层接入外部 CSS/`@import`、脚本发现和图片发现，沿用 Browser 的 required/
-optional gate，脚本本批只下载不执行。网络和失败回滚尚需 WM6 设备门；后续接线顺序与阶段门见
+optional gate；阶段 2 再由 `app_script.c` 创建有界 ScriptSession，按 DOM 顺序执行网络
+候选的 classic inline/external script，并把 DOM、事件、导航、滚动、焦点和生命周期回接到
+当前窗口。脚本异常不回滚页面，bridge 初始化失败则 fail closed 为无脚本页面。网络、脚本
+和失败回滚仍需 WM6 设备门；后续接线顺序与阶段门见
 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
 
 ## TLS：`positron_tls.dll`

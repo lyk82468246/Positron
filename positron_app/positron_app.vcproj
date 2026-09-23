@@ -19,7 +19,7 @@
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
-				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\compat"
+				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\positron_script;..\compat"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
 				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
 				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
@@ -60,7 +60,7 @@
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\compat"
+				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\positron_script;..\compat"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
 				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
 				DebugInformationFormat="3" CompileAs="1" />
@@ -96,6 +96,8 @@
 	<Files>
 	<File RelativePath=".\app_host.c" />
 	<File RelativePath=".\app_host.h" />
+	<File RelativePath=".\app_script.c" />
+	<File RelativePath=".\app_script.h" />
 	<File RelativePath=".\app_i18n.c" />
 	<File RelativePath=".\app_i18n.h" />
 	<File RelativePath=".\app_resources.c" />

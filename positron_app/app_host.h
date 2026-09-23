@@ -23,6 +23,7 @@
 
 typedef struct AppNavigationRequest AppNavigationRequest;
 typedef struct AppNavigationResource AppNavigationResource;
+typedef struct AppScriptContext AppScriptContext;
 
 struct AppNavigationRequest {
     HWND hwnd;
@@ -40,6 +41,7 @@ struct AppNavigationRequest {
     unsigned int resource_role_mask;
     HANDLE document_candidate;
     HANDLE stylesheet_candidate;
+    AppScriptContext *script_candidate;
     int worker_stage;
     int commit_stage;
     int resource_registration_failed;
@@ -63,6 +65,7 @@ typedef struct AppHostContext {
 
     HANDLE document;
     HANDLE stylesheet;
+    AppScriptContext *script;
     HANDLE history;
     int core_initialized;
     int http_initialized;
@@ -99,6 +102,9 @@ void AppHostContext_SetPageWindow(AppHostContext *context, HWND page_window);
 void AppHostContext_SetMenuBar(AppHostContext *context, HWND menu_bar);
 int AppHostContext_ReplacePage(AppHostContext *context, HANDLE document,
         HANDLE stylesheet, int page_kind, const char *url);
+int AppHostContext_ReplacePageWithScript(AppHostContext *context,
+        HANDLE document, HANDLE stylesheet, AppScriptContext *script,
+        int page_kind, const char *url);
 void AppHostContext_ReleasePage(AppHostContext *context);
 void AppHostContext_Shutdown(AppHostContext *context);
 

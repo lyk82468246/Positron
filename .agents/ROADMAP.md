@@ -98,9 +98,11 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    非目标语言回退；阶段 B 的主文档 HTTP(S) GET 与阶段 1 外部资源纵切已接入：Browser 负责
    generation/resource gate 和页面生命周期，HTTP/TLS 负责公共 transport 边界，应用只负责
    worker、消息泵、窗口、策略和页面 swap。required CSS/`@import` 阻止提交，optional 脚本/图片
-   允许 Core fallback；当前仍需设备网络、失败回滚和 stale/cancel 人工门。独立应用接线阶段 0
-   已建立 `AppHostContext` 私有生命周期边界，阶段 1 建立 `app_resources` 适配层；本地 C89 和
-   Debug/Release 构建已通过，设备门仍待人工验收，随后才能进入 Browser ScriptSession 阶段。
+   允许 Core fallback。阶段 2 已在 `app_script.c/.h` 建立 EXE 私有 ScriptSession 适配层：
+   网络候选按 DOM 顺序执行有界 classic inline/external script，并接入 DOM 读写、属性、有限
+   form value、事件、history/fragment、focus、scroll、resize、visibility、任务 checkpoint
+   和 teardown；脚本异常不回滚页面，session 初始化失败则关闭脚本能力。阶段 1/2 仍需设备
+   网络、失败回滚、stale/cancel 和脚本运行人工门；本地 C89、Debug/Release 构建和审计已通过。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    没有证据时不进入产品实现。
@@ -116,9 +118,10 @@ owner/预算/回滚和最小 fixture；路线图能指出下一条实现纵切�
 当前已形成的 Browser/Core 基线和设备门事实以 HANDOFF.md 为准。路线图不复制 DOM、表单、
 资源或测试编号清单，只保留下一批选择需要的缺口。以下约束在所有候选中都不变：
 
-- 当前阶段 0/阶段 B 构建仍不执行浏览器 JavaScript；后续阶段 2 将按已批准计划把应用默认
-  切换为有界 classic-script session，并继续使用固定 heap、source、native-function 和任务
-  预算。`test_host` 的默认配置仍可保持关闭。
+- `test_host` 的默认配置仍可保持关闭；`positron.exe` 的网络候选已显式启用有界 classic-
+  script session，并继续使用固定 heap、source、native-function 和任务预算。离线页面没有
+  脚本时不创建 session；不支持类型、资源失败、脚本异常和 bridge 初始化失败都必须安全
+  忽略或关闭脚本能力，不得替换旧页面。
 - Core、Browser 和宿主的 callback 同步且不可重入；失败必须 fail closed，并保留旧页面或
   旧资源状态。
 - 所有容量必须固定且可断言；不能用扩大数组、跳过检查或放宽断言掩盖 WM6 资源问题。
@@ -134,10 +137,10 @@ owner/预算/回滚和最小 fixture；路线图能指出下一条实现纵切�
 history fallback、Core URL callback 的重复解析和参考宿主的 visibility lifecycle 接线仍按
 既有公共边界维护；它们没有把产品语义搬回 `test_host`。本轮已经出现真实的独立应用消费者：
 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成阶段 A 的离线导航、绘制、滚动、焦点、有限
-history 和阶段 B 主文档网络 GET，
-并由 EXE 私有资源提供英语/简体中文 UI；当前选择是先完成阶段 B/阶段 1 的设备网络、外部资源
-和失败回滚门，再进入 Browser ScriptSession。File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在
-待取证状态。
+history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 classic ScriptSession 基线，
+并由 EXE 私有资源提供英语/简体中文 UI。当前选择是先完成阶段 1/2 的设备网络、脚本错误和
+失败回滚门，再进入阶段 3 的 native 控件/输入接线。File/Blob→FormData→multipart 仍没有
+真实应用证据，继续保留在待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
@@ -149,10 +152,11 @@ history 和阶段 B 主文档网络 GET，
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 
-**状态：准备取舍，阶段 1 源码已接入，等待阶段 B/资源设备门。** `positron.exe` 已证明真实应用消费者会组合
+**状态：准备取舍，阶段 1/2 源码已接入，等待阶段 B/脚本资源设备门。** `positron.exe` 已证明真实应用消费者会组合
 Core 的 document/style/layout/paint、链接/焦点几何、Browser history/candidate gate 和 HTTP
-transport；当前实现已支持主文档 HTTP(S) 导航，并把外部 CSS/`@import`、脚本发现和图片发现
-纳入同一事务。下一步用户结果是确认真实页面、失败、取消或过时响应时保留旧页。
+transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@import`、脚本发现和图片发现
+纳入同一事务，并在候选提交前按 DOM 顺序执行有界 classic script。下一步用户结果是确认
+真实页面、脚本 mutation/事件/导航、失败、取消或过时响应时保留旧页。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。

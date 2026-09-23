@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "app_host.h"
+#include "app_script.h"
 #include "positron_core.h"
 #include "positron_http.h"
 
@@ -106,16 +107,27 @@ void AppHostContext_SetMenuBar(AppHostContext *context, HWND menu_bar)
 int AppHostContext_ReplacePage(AppHostContext *context, HANDLE document,
         HANDLE stylesheet, int page_kind, const char *url)
 {
+    return AppHostContext_ReplacePageWithScript(context, document,
+            stylesheet, NULL, page_kind, url);
+}
+
+int AppHostContext_ReplacePageWithScript(AppHostContext *context,
+        HANDLE document, HANDLE stylesheet, AppScriptContext *script,
+        int page_kind, const char *url)
+{
     HANDLE old_document;
     HANDLE old_stylesheet;
+    AppScriptContext *old_script;
 
     if (context == NULL || document == NULL || stylesheet == NULL) {
         return 1;
     }
     old_document = context->document;
     old_stylesheet = context->stylesheet;
+    old_script = context->script;
     context->document = document;
     context->stylesheet = stylesheet;
+    context->script = script;
     context->page_kind = page_kind;
     context->document_width = 1;
     context->document_height = 1;
@@ -129,6 +141,9 @@ int AppHostContext_ReplacePage(AppHostContext *context, HANDLE document,
     if (old_stylesheet != NULL) {
         PCore_FreeStylesheet(old_stylesheet);
     }
+    if (old_script != NULL) {
+        AppScript_Destroy(old_script);
+    }
     if (old_document != NULL) {
         PCore_FreeDocument(old_document);
     }
@@ -139,6 +154,10 @@ void AppHostContext_ReleasePage(AppHostContext *context)
 {
     if (context == NULL) {
         return;
+    }
+    if (context->script != NULL) {
+        AppScript_Destroy(context->script);
+        context->script = NULL;
     }
     if (context->stylesheet != NULL) {
         PCore_FreeStylesheet(context->stylesheet);
