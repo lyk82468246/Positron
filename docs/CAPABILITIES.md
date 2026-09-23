@@ -40,8 +40,10 @@ optional gate；阶段 2 再由 `app_script.c` 创建有界 ScriptSession，按 
 第一条宿主纵切已由 EXE 私有 `app_controls.c/.h` 接入：`text`、`password` 和 `textarea`
 映射为同一窗口体系下的 WM6 native `EDIT` 子控件；单选/多选 `SELECT` 映射为原生
 `COMBOBOX`/`LISTBOX`。Core 负责控件 value、选项状态与几何，Browser native-edit/native-select
-bridge 负责输入、选择、input/change、focus、单选下拉事务和重置，宿主负责消息路由、重排和
-teardown。该纵切已通过源码级 C89、Debug/Release 和仓库审计，仍需设备人工验收；toggle、
+bridge 负责输入、选择、input/change、focus、单选下拉事务和重置；成功的有界 DOM mutation
+返回 UI 消息泵后，宿主按 option 集合/标签 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT
+焦点。宿主负责消息路由、重排和 teardown。该纵切已通过源码级 C89、Debug/Release 和仓库审计，
+仍需设备人工验收；toggle、
 button、dialog、contenteditable、form submit/formdata、SIP/IME 与 file picker 不因这条
 接线而宣称完成。网络、脚本、失败回滚和原生控件仍需 WM6 设备门；后续
 接线顺序与阶段门见

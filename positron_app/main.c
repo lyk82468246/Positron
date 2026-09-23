@@ -58,6 +58,7 @@
 #define APP_WM_ADDRESS_CANCEL   (WM_APP + 2)
 #define APP_WM_NAV_DONE         (WM_APP + 3)
 #define APP_WM_SCRIPT_NAVIGATE  (WM_APP + 4)
+#define APP_WM_CONTROLS_REFRESH (WM_APP + 5)
 #define APP_SCRIPT_TIMER_ID     7
 
 #define APP_NAV_MAX_RETIRED     4
@@ -460,6 +461,10 @@ static void app_script_mutated(void *pw, AppScriptContext *context)
                 g_scroll_y);
     }
     InvalidateRect(host->page_window, NULL, TRUE);
+    if (host->window != NULL) {
+        (void) PostMessage(host->window, APP_WM_CONTROLS_REFRESH, 0,
+                (LPARAM) context);
+    }
 }
 
 static void app_controls_changed(void *pw)
@@ -2296,6 +2301,17 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         return 0;
     case APP_WM_SCRIPT_NAVIGATE:
         app_handle_script_navigation(hwnd, (AppScriptContext *) lparam);
+        return 0;
+    case APP_WM_CONTROLS_REFRESH:
+        if (lparam == (LPARAM) g_script && g_document != NULL &&
+                g_controls != NULL) {
+            if (app_relayout() != 0 || AppControls_Reconcile(g_controls,
+                    g_document, g_script, g_scroll_x, g_scroll_y) != 0) {
+                app_set_status(APP_TEXT_STATUS_LAYOUT);
+            } else {
+                InvalidateRect(g_page_window, NULL, TRUE);
+            }
+        }
         return 0;
     case WM_TIMER:
         if (wparam == APP_SCRIPT_TIMER_ID && g_script != NULL) {

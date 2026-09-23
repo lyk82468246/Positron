@@ -381,8 +381,8 @@
 - Browser 资源事务按 URL 拥有 `pending`、`ready`、`failed`、`cancelled` 终态、失败分类和成功字节；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。样式表/`@import` 是 required，脚本/图片是 optional；`PBrowser_NavigationCommitGetInfo` 在 layout/swap 前提供 candidate/resource 组合 gate，required 失败、未收敛 pending、资源取消、候选过时或 cancellation 保留旧 document/history，optional 失败交给 Core fallback。统计最多保留 4 项 `role/failure#hash`，fallback family 计数是粗粒度观测，不等于逐元素归因或可见 UI；重复 URL 和深层 `@import` 的去重与分类已由 TEST1123 覆盖，但不能保证任意真实站点的 fallback 视觉。
 - 阶段 1/2 的 required CSS/optional 资源/ScriptSession 失败边界已接入；required 阻止提交，
   optional 回退，异常不回滚。`positron.exe` 已接入 text/password/textarea native `EDIT` 以及
-  单选/多选 `SELECT` 的 native `COMBOBOX`/`LISTBOX`；动态 option 列表重建仍未接线，其他
-  控件、提交、SIP/IME 和 picker 未接线。
+  单选/多选 `SELECT` 的 `COMBOBOX`/`LISTBOX`；mutation 按 fingerprint 重建 SELECT 并保留
+  焦点；插入受 Browser callback 限制，控件未接线。
 
 - 清理边界由宿主在 worker join 后编排：失败或过时 request 必须先让 Browser 资源事务中的 pending 项进入 `cancelled` 等终态，再读取 `PBrowser_NavigationCleanupGetInfo`。该 API 只复制 candidate result、resource gate、pending、hash-only failure summary 和 fallback 计数；`can_release` 对未收敛工作保持为 0，committed candidate 还要求 READY gate。复制值在 candidate/resource handle 销毁后仍然有效，但它不保证任意网络调用已即时中断，也不提供逐资源 UI 或页面视觉归因。
 
@@ -393,8 +393,8 @@
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
-- SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建、复杂嵌套 label 和其他
-  层级组合仍需人工观察。
+- SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建的 OEM popup、触摸、
+  复杂嵌套 label 和其他层级组合仍需人工观察。
 - 旋转、不同 screen/DPI、软键盘占用区域和系统非客户区只能通过设备观察确认。
 
 ## WMDC 与自动化

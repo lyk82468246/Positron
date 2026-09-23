@@ -10,8 +10,9 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 工作区在 `main`；本轮 `positron_app` 的阶段 3 第一条原生控件纵切已扩展完成：
 `app_controls.c/.h` 将 `text`、`password`、`textarea` 接入 WM6 native `EDIT`，并将单选/多选
-`SELECT` 接入同一窗口体系下的 `COMBOBOX`/`LISTBOX`。Core 拥有 value、选项状态和几何，
-Browser 拥有 native-edit/native-select 的事件与下拉事务，宿主拥有 WM6 消息、重排和 teardown。
+`SELECT` 接入同一窗口体系下的 `COMBOBOX`/`LISTBOX`，并补齐 mutation 后的动态 option
+列表/标签检测、延迟重建和焦点保留。Core 拥有 value、选项状态和几何，Browser 拥有
+native-edit/native-select 的事件与下拉事务，宿主拥有 WM6 消息、重排和 teardown。
 本轮最终 C89、Debug/Release 构建和文档审计均已通过；不宣称设备通过。设备门按用户决定暂缓，
 `RAPI=0x80072746` 不重复尝试。
 
@@ -54,8 +55,8 @@ stale 候选仍保留旧页。阶段 3 第一条纵切另已接入 text/password
 [`positron_app/README.md`](../positron_app/README.md)。本地 C89、Debug/Release 和仓库审计
 已通过；阶段 1/2 网络、脚本、回滚、标题/窗口 UI 以及本轮 native 控件仍需设备验收，不能
 写成设备基线。最近一次传输在复制 `positron_script.dll` 时以 `RAPI=0x80072746` 失败，
-TEST999 未启动。动态 option 列表重建、toggle、button、dialog、contenteditable、form submit/formdata、
-SIP/IME、picker、书签和持久设置仍不在当前范围内。ROADMAP.md 已复核；稳定边界见
+TEST999 未启动。toggle、button、dialog、contenteditable、form submit/formdata、SIP/IME、
+picker、书签和持久设置仍不在当前范围内；动态 option 重建尚未取得设备门证据。ROADMAP.md 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
 阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
@@ -354,8 +355,9 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 生命周期、资源失败、取消/stale、旧页保留、语言、history、旋转、DPI、软键、标准滚动条、
 原生文本/SELECT 控件和清理。
 
-设备门通过后，下一条代码纵切优先处理动态 option 列表重建；随后再根据真实页面或设备失败证据
-选择 toggle、button、dialog、contenteditable、SIP/IME 或 picker。File/Blob 不提前接入。
+设备门通过后，下一条代码纵切根据真实页面或设备失败证据选择 toggle、button、dialog、
+contenteditable、SIP/IME 或 picker；动态 option 重建的设备行为并入本轮原生 SELECT 验收。
+File/Blob 不提前接入。
 
 阶段 0 的本批变更只收口 EXE 私有宿主状态和生命周期；阶段 B 的主文档行为、离线页面和
 i18n 不变。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、

@@ -14,6 +14,7 @@
 #define APP_CONTROLS_ID_BASE         1000
 #define APP_CONTROLS_KIND_TEXT       1
 #define APP_CONTROLS_KIND_SELECT     2
+#define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
 
 typedef struct AppControlsItem AppControlsItem;
 
@@ -30,6 +31,7 @@ struct AppControlsItem {
     int disabled;
     int multiple;
     int option_count;
+    unsigned long option_fingerprint;
     int dropdown_active;
     int select_candidate_index;
     int select_candidate_count;
@@ -343,6 +345,90 @@ static int app_controls_select_option_label(AppControlsContext *context,
     }
     free(label);
     *out_label = wide_label;
+    return 0;
+}
+
+static void app_controls_hash_bytes(unsigned long *hash, const char *bytes,
+        int length)
+{
+    int i;
+
+    if (hash == NULL || bytes == NULL || length < 0) {
+        return;
+    }
+    for (i = 0; i < length; i++) {
+        *hash ^= (unsigned long) ((const unsigned char *) bytes)[i];
+        *hash *= 16777619UL;
+    }
+}
+
+static void app_controls_hash_int(unsigned long *hash, int value)
+{
+    unsigned long number;
+    int i;
+
+    if (hash == NULL) {
+        return;
+    }
+    number = (unsigned long) value;
+    for (i = 0; i < 4; i++) {
+        *hash ^= number & 0xffUL;
+        *hash *= 16777619UL;
+        number >>= 8;
+    }
+}
+
+static int app_controls_select_fingerprint(AppControlsContext *context,
+        AppControlsItem *item, unsigned long *out_fingerprint)
+{
+    PCoreSelectInfo info;
+    char *label;
+    unsigned int option_index;
+    int label_bytes;
+    int label_capacity;
+    unsigned long hash;
+
+    if (context == NULL || item == NULL || out_fingerprint == NULL ||
+            context->document == NULL || item->kind !=
+            APP_CONTROLS_KIND_SELECT) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, item->select_index, &info) != 0 ||
+            info.option_count < 0 || info.option_count >
+            APP_CONTROLS_OPTION_TEXT_CAP) {
+        return 1;
+    }
+    hash = 2166136261UL;
+    app_controls_hash_int(&hash, info.option_count);
+    app_controls_hash_int(&hash, info.multiple ? 1 : 0);
+    for (option_index = 0; option_index < (unsigned int) info.option_count;
+            option_index++) {
+        label_bytes = 0;
+        if (PCore_SelectOptionInfo(context->document, item->select_index,
+                option_index, NULL, 0, NULL, 0, NULL, NULL, &label_bytes,
+                NULL) != 0 || label_bytes < 0 || label_bytes >=
+                APP_CONTROLS_OPTION_TEXT_CAP) {
+            return 1;
+        }
+        label_capacity = label_bytes + 1;
+        label = (char *) malloc((size_t) label_capacity);
+        if (label == NULL) {
+            return 1;
+        }
+        if (PCore_SelectOptionInfo(context->document, item->select_index,
+                option_index, label, label_capacity, NULL, 0, NULL, NULL,
+                NULL, NULL) != 0) {
+            free(label);
+            return 1;
+        }
+        app_controls_hash_int(&hash, label_bytes);
+        app_controls_hash_bytes(&hash, label, label_bytes);
+        hash ^= 0xffUL;
+        hash *= 16777619UL;
+        free(label);
+    }
+    *out_fingerprint = hash;
     return 0;
 }
 
@@ -980,6 +1066,9 @@ static LRESULT CALLBACK app_controls_select_proc(HWND hwnd, UINT message,
     if (message == WM_SETFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
+        if (g_app_controls->syncing) {
+            return result;
+        }
         if (g_app_controls->script == NULL) {
             app_controls_dispatch_focus(g_app_controls, item, 1);
         } else if (app_controls_select_focus(g_app_controls, item, 1) > 0) {
@@ -990,6 +1079,9 @@ static LRESULT CALLBACK app_controls_select_proc(HWND hwnd, UINT message,
     if (message == WM_KILLFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
+        if (g_app_controls->syncing) {
+            return result;
+        }
         if (g_app_controls->script == NULL) {
             app_controls_dispatch_focus(g_app_controls, item, 0);
         } else if (app_controls_select_focus(g_app_controls, item, 0) > 0) {
@@ -1211,6 +1303,13 @@ static int app_controls_rebuild_select_item(AppControlsContext *context,
                 info.selected_index : -1), 0);
     }
     EnableWindow(hwnd, item->disabled ? FALSE : TRUE);
+    if (app_controls_select_fingerprint(context, item,
+            &item->option_fingerprint) != 0) {
+        SetWindowLong(hwnd, GWL_WNDPROC, (LONG) original_proc);
+        DestroyWindow(hwnd);
+        memset(item, 0, sizeof(*item));
+        return 1;
+    }
     return 0;
 }
 
@@ -1310,6 +1409,159 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         }
         index++;
         context->count++;
+    }
+    AppControls_Reposition(context, document, scroll_x, scroll_y);
+    return 0;
+}
+
+static int app_controls_rebuild_selects(AppControlsContext *context,
+        HANDLE document, AppScriptContext *script, int scroll_x, int scroll_y,
+        unsigned int text_count, unsigned int select_count)
+{
+    HWND old_focus;
+    unsigned int focus_index;
+    unsigned int i;
+    unsigned int select_index;
+    AppControlsItem *item;
+
+    if (context == NULL || document == NULL ||
+            text_count + select_count > context->count) {
+        return 1;
+    }
+    old_focus = GetFocus();
+    focus_index = APP_CONTROLS_NO_SELECT_INDEX;
+    for (i = 0; i < select_count; i++) {
+        item = &context->items[text_count + i];
+        if (item->kind == APP_CONTROLS_KIND_SELECT &&
+                item->hwnd == old_focus) {
+            focus_index = item->select_index;
+            break;
+        }
+    }
+    if (script != NULL) {
+        AppScript_ResetNativeSelectState(script);
+    }
+    context->syncing = 1;
+    for (i = 0; i < select_count; i++) {
+        item = &context->items[text_count + i];
+        select_index = item->select_index;
+        if (item->hwnd != NULL) {
+            if (item->original_proc != NULL) {
+                SetWindowLong(item->hwnd, GWL_WNDPROC,
+                        (LONG) item->original_proc);
+            }
+            DestroyWindow(item->hwnd);
+        }
+        item->hwnd = NULL;
+        item->original_proc = NULL;
+        item->kind = APP_CONTROLS_KIND_SELECT;
+        item->select_index = select_index;
+    }
+    for (i = 0; i < select_count; i++) {
+        item = &context->items[text_count + i];
+        if (app_controls_rebuild_select_item(context, item,
+                item->select_index, (int) (text_count + i), scroll_x,
+                scroll_y) != 0) {
+            context->syncing = 0;
+            return 1;
+        }
+    }
+    context->syncing = 0;
+    AppControls_Reposition(context, document, scroll_x, scroll_y);
+    if (focus_index != APP_CONTROLS_NO_SELECT_INDEX) {
+        for (i = 0; i < select_count; i++) {
+            item = &context->items[text_count + i];
+            if (item->select_index == focus_index && item->hwnd != NULL &&
+                    IsWindowEnabled(item->hwnd)) {
+                SetFocus(item->hwnd);
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
+        AppScriptContext *script, int scroll_x, int scroll_y)
+{
+    PCoreTextInputInfo text_info;
+    PCoreSelectInfo select_info;
+    AppControlsItem *item;
+    unsigned long fingerprint;
+    unsigned int text_count;
+    unsigned int select_count;
+    unsigned int i;
+    int multiline;
+    int rebuild_selects;
+
+    if (context == NULL || document == NULL) {
+        return 1;
+    }
+    context->document = document;
+    context->script = script;
+    text_count = 0;
+    while (text_count < APP_CONTROLS_MAX &&
+            PCore_TextInputInfo(document, text_count, NULL, NULL, 0) == 0) {
+        text_count++;
+    }
+    if (text_count == APP_CONTROLS_MAX &&
+            PCore_TextInputInfo(document, text_count, NULL, NULL, 0) == 0) {
+        return 1;
+    }
+    select_count = 0;
+    while (select_count < APP_CONTROLS_MAX &&
+            PCore_SelectInfo(document, select_count, NULL) == 0) {
+        select_count++;
+    }
+    if (select_count == APP_CONTROLS_MAX &&
+            PCore_SelectInfo(document, select_count, NULL) == 0) {
+        return 1;
+    }
+    if (text_count + select_count != context->count ||
+            text_count + select_count > APP_CONTROLS_MAX) {
+        return AppControls_Rebuild(context, document, script, scroll_x,
+                scroll_y);
+    }
+    for (i = 0; i < text_count; i++) {
+        item = &context->items[i];
+        memset(&text_info, 0, sizeof(text_info));
+        if (item->kind != APP_CONTROLS_KIND_TEXT || item->text_index != i ||
+                PCore_TextInputInfo(document, i, &text_info, NULL, 0) != 0 ||
+                PCore_TextInputIsMultiline(document, i, &multiline) != 0 ||
+                (multiline ? 1 : 0) != item->multiline ||
+                (text_info.password ? 1 : 0) != item->password ||
+                (text_info.read_only ? 1 : 0) != item->read_only) {
+            return AppControls_Rebuild(context, document, script, scroll_x,
+                    scroll_y);
+        }
+    }
+    rebuild_selects = 0;
+    for (i = 0; i < select_count; i++) {
+        item = &context->items[text_count + i];
+        memset(&select_info, 0, sizeof(select_info));
+        if (item->kind != APP_CONTROLS_KIND_SELECT ||
+                item->select_index != i || PCore_SelectInfo(document, i,
+                &select_info) != 0) {
+            return AppControls_Rebuild(context, document, script, scroll_x,
+                    scroll_y);
+        }
+        if ((select_info.multiple ? 1 : 0) != item->multiple ||
+                select_info.option_count != item->option_count) {
+            rebuild_selects = 1;
+        }
+        if (app_controls_select_fingerprint(context, item,
+                &fingerprint) != 0) {
+            return AppControls_Rebuild(context, document, script, scroll_x,
+                    scroll_y);
+        }
+        if (fingerprint != item->option_fingerprint) {
+            rebuild_selects = 1;
+        }
+    }
+    if (rebuild_selects && app_controls_rebuild_selects(context, document,
+            script, scroll_x, scroll_y, text_count, select_count) != 0) {
+        return AppControls_Rebuild(context, document, script, scroll_x,
+                scroll_y);
     }
     AppControls_Reposition(context, document, scroll_x, scroll_y);
     return 0;

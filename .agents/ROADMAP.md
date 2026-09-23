@@ -105,8 +105,10 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    网络、失败回滚、stale/cancel 和脚本运行人工门；阶段 3 的第一条宿主纵切也已接入：
    `text`、`password`、`textarea` 使用同一窗口体系下的 native `EDIT`，单选/多选 `SELECT`
    使用 native `COMBOBOX`/`LISTBOX`；Core 拥有 value/选项/几何，Browser 拥有 native
-   事件事务，宿主拥有窗口、消息和 teardown。该部分仍需设备输入、DPI、旋转和软键盘人工门；
-   动态 option 列表重建仍未接入。本地 C89、Debug/Release 构建和审计已通过；设备人工门仍待
+  事件事务，宿主拥有窗口、消息和 teardown；mutation 后的 option 集合/标签变化会在 UI 消息
+  返回后按 fingerprint 重建 SELECT，并保留 EDIT 与 SELECT 焦点。该部分仍需设备输入、DPI、
+  旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser 当前有界 mutation callback 限制。本地
+  C89、Debug/Release 构建和审计已通过；设备人工门仍待
    恢复 WMDC 传输后执行。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
@@ -144,8 +146,8 @@ history fallback、Core URL callback 的重复解析和参考宿主的 visibilit
 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成阶段 A 的离线导航、绘制、滚动、焦点、有限
 history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 classic ScriptSession 基线，
 并由 EXE 私有资源提供英语/简体中文 UI；阶段 3 已完成 text/password/textarea 的 native
-`EDIT` 与单选/多选 `SELECT`（native `COMBOBOX`/`LISTBOX`）第一条投影纵切。当前选择是先
-完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再继续阶段 3 的动态 option 重建、toggle、
+`EDIT` 与单选/多选 `SELECT`（native `COMBOBOX`/`LISTBOX`）第一条投影纵切，包含动态 option
+重建。当前选择是先完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再继续阶段 3 的 toggle、
 button、dialog、contenteditable、SIP/IME 与 picker 取舍。
 File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
@@ -180,8 +182,9 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
 **状态：准备取舍，文本与 SELECT 第一条纵切已接入，设备门未完成。** `positron.exe` 已有
 `AppControlsContext`，把 `text`、`password`、`textarea` 投影为 native `EDIT`，把单选/多选
 `SELECT` 投影为 native `COMBOBOX`/`LISTBOX`，并保持页面替换、滚动、布局和脚本 native
-事务的生命周期顺序。下一条候选应从动态 option 重建、toggle、button、dialog/contenteditable、
-SIP/IME、clipboard 和 file picker 中选择一个有真实页面或设备失败证据的最小纵切；不得把
+事务的生命周期顺序；动态 option 列表/标签变化也已接入延迟检测与原生重建。下一条候选应从
+toggle、button、dialog/contenteditable、SIP/IME、clipboard 和 file picker 中选择一个有真实
+页面或设备失败证据的最小纵切；不得把
 所有原生交互一次性合并。
 
 - **Owner：** Core/Browser 负责控件状态、事件/default-action 和生命周期语义；应用负责
@@ -190,8 +193,8 @@ SIP/IME、clipboard 和 file picker 中选择一个有真实页面或设备失�
 - **边界：** native 子控件必须属于同一顶层窗口体系，旧页保留、stale/cancel、隐藏/禁用、
   geometry、DPI、旋转和重复 teardown 都要 fail closed；禁止自绘滚动条替代系统控件。
 - **最小 fixture：** `controls` 离线页的文本/密码/多行输入、单选/多选 SELECT 成功、退格/
-  Delete/换行、焦点变化、脚本取消 beforeinput、下拉 commit/cancel、禁用项、页面切换销毁
-  和旧页保留；新增控件必须补相邻失败和容量断言。
+  Delete/换行、焦点变化、脚本取消 beforeinput、下拉 commit/cancel、option mutation 后的
+  标签/数量重建、禁用项、页面切换销毁和旧页保留；新增控件必须补相邻失败和容量断言。
 - **门：** C89、正式 ARMV4I Debug/Release、仓库审计后，设备人工验收真实键盘、SIP/IME、
   触摸、旋转、DPI、软键和控件销毁；桌面 synthetic 消息不能替代设备证据。
 
