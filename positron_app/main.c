@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "app_host.h"
+#include "app_controls.h"
 #include "app_script.h"
 #include "app_resources.h"
 #include "app_i18n.h"
@@ -72,6 +73,7 @@
 /* Keep the existing UI/navigation helper names stable while the ownership of
  * all host state moves into one private lifecycle object. */
 static AppHostContext g_app;
+static AppControlsContext *g_controls;
 #define g_window                 (g_app.window)
 #define g_address                (g_app.address)
 #define g_page_window            (g_app.page_window)
@@ -107,6 +109,7 @@ static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
         int history_target);
 static void app_update_history_buttons(void);
+static void app_controls_changed(void *pw);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -410,6 +413,10 @@ static void app_scroll_by(HWND hwnd, int dx, int dy)
     app_clamp_scroll();
     if (old_x != g_scroll_x || old_y != g_scroll_y) {
         app_update_scrollbars(hwnd);
+        if (g_controls != NULL) {
+            AppControls_Reposition(g_controls, g_document, g_scroll_x,
+                    g_scroll_y);
+        }
         if (g_script != NULL) {
             (void) AppScript_NotifyScroll(g_script,
                     MulDiv(g_scroll_x, 96, g_dpi > 0 ? g_dpi : 96),
@@ -448,6 +455,28 @@ static void app_script_mutated(void *pw, AppScriptContext *context)
         app_set_status(APP_TEXT_STATUS_LAYOUT);
         return;
     }
+    if (g_controls != NULL) {
+        AppControls_Reposition(g_controls, host->document, g_scroll_x,
+                g_scroll_y);
+    }
+    InvalidateRect(host->page_window, NULL, TRUE);
+}
+
+static void app_controls_changed(void *pw)
+{
+    AppHostContext *host;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || host != &g_app || g_controls == NULL ||
+            host->document == NULL) {
+        return;
+    }
+    if (app_relayout() != 0) {
+        app_set_status(APP_TEXT_STATUS_LAYOUT);
+        return;
+    }
+    AppControls_Reposition(g_controls, host->document, host->scroll_x,
+            host->scroll_y);
     InvalidateRect(host->page_window, NULL, TRUE);
 }
 
@@ -803,6 +832,10 @@ static int app_relayout(void)
     }
     app_clamp_scroll();
     app_update_scrollbars(g_page_window);
+    if (g_controls != NULL) {
+        AppControls_Reposition(g_controls, g_document, g_scroll_x,
+                g_scroll_y);
+    }
     return 0;
 }
 
@@ -917,6 +950,9 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     if (g_script != NULL) {
         (void) AppScript_PageTeardown(g_script);
     }
+    if (g_controls != NULL) {
+        AppControls_ClearPage(g_controls);
+    }
     if (AppHostContext_ReplacePage(&g_app, new_document, new_stylesheet,
             new_page_kind, url) != 0) {
         PCore_FreeStylesheet(new_stylesheet);
@@ -936,6 +972,10 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         g_document_height = g_page_height;
     }
     app_update_scrollbars(g_page_window);
+    if (g_controls != NULL) {
+        (void) AppControls_Rebuild(g_controls, g_document, g_script,
+                g_scroll_x, g_scroll_y);
+    }
     app_update_history_buttons();
     app_set_status(app_ready_status());
     if (g_page_window != NULL) {
@@ -1555,6 +1595,9 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         if (g_script != NULL) {
             (void) AppScript_PageTeardown(g_script);
         }
+        if (g_controls != NULL) {
+            AppControls_ClearPage(g_controls);
+        }
         if (AppHostContext_ReplacePageWithScript(&g_app,
                 request->document_candidate, request->stylesheet_candidate,
                 request->script_candidate, 0, request->url) != 0) {
@@ -1574,6 +1617,10 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             g_document_height = g_page_height;
         }
         app_update_scrollbars(g_page_window);
+        if (g_controls != NULL) {
+            (void) AppControls_Rebuild(g_controls, g_document, g_script,
+                    g_scroll_x, g_scroll_y);
+        }
         app_update_history_buttons();
         app_set_status(app_ready_status());
         if (g_script != NULL) {
@@ -1994,6 +2041,10 @@ static void app_paint_page(HWND hwnd, HDC dc)
 static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
+    if (message == WM_COMMAND && g_controls != NULL &&
+            AppControls_HandleCommand(g_controls, wparam, lparam)) {
+        return 0;
+    }
     switch (message) {
     case WM_SIZE:
         {
@@ -2010,6 +2061,10 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             }
             if (g_document != NULL && app_relayout() != 0) {
                 app_set_status(APP_TEXT_STATUS_LAYOUT);
+            }
+            if (g_controls != NULL && g_document != NULL) {
+                AppControls_Reposition(g_controls, g_document, g_scroll_x,
+                        g_scroll_y);
             }
             if (g_script != NULL) {
                 (void) AppScript_NotifyResize(g_script, g_page_width,
@@ -2263,6 +2318,10 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
          * host context is the single owner of the remaining page, history,
          * command bar and DLL shutdown sequence. */
         KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
+        if (g_controls != NULL) {
+            AppControls_Destroy(g_controls);
+            g_controls = NULL;
+        }
         AppHostContext_Shutdown(&g_app);
         PostQuitMessage(0);
         return 0;
@@ -2390,6 +2449,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         return 1;
     }
     if (app_create_page_window(hwnd) != 0) {
+        DestroyWindow(hwnd);
+        return 1;
+    }
+    g_controls = AppControls_Create(g_page_window, g_instance, &g_app,
+            app_controls_changed);
+    if (g_controls == NULL) {
         DestroyWindow(hwnd);
         return 1;
     }

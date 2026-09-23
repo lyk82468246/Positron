@@ -8,8 +8,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-工作区在 `main`；本轮 `positron_app` 的 `app_script.c/.h`、宿主生命周期和导航接线已完成。
-C89、Debug/Release 构建和文档审计已通过，但不宣称设备通过；设备门按用户决定暂缓，
+工作区在 `main`；本轮 `positron_app` 的阶段 3 第一条原生控件纵切已完成：
+`app_controls.c/.h` 将 `text`、`password` 和 `textarea` 接入同一窗口体系下的 WM6 native
+`EDIT`，并与 Core value/几何、Browser native-edit 事件事务和页面 teardown 相连。C89、
+Debug/Release 构建和文档审计已通过，但不宣称设备通过；设备门按用户决定暂缓，
 `RAPI=0x80072746` 不重复尝试。
 
 - 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
@@ -42,32 +44,17 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 
 ## 当前短期目标
 
-next871 已完成 history 所有权边界修订：`test_host` 不再在 `PBrowser_HistoryCreate()` 失败时
-运行自有的 URL/state/document-id 算法；宿主数组只保存从 Browser DLL 同步的断言和平台快照，
-无产品 history handle 时安全失败。next872 又收束了 Core 的 URL callback：`wm_combine_url`
-不再直接调用 WinInet 或维护第二套解析规则，而是把 base/reference 交给
-`PHttp_ResolveReference()`，只做 host/path 到绝对 URL 的薄转换。1064/1065/999 定向设备门
-已通过，崩溃转储增量为 0。next873 补齐参考宿主顶层 `WM_SHOWWINDOW` 到
-`PBrowser_ScriptSessionDispatchVisibility()` 的平台接线；1309/1138/1139/999 定向门验证
-隐藏→显示顺序和重复消息去重，崩溃转储增量为 0。上一批 next870 的 Core multipart 返回码 3
-契约校正、Browser registry/dataset snapshot、TEST1308 和 `1308,1307,1306,999` 设备门仍保持
-有效；Headers/Request/Response、Storage、FormData 和 URLSearchParams 仍保持有界安全合同。
-当前短期目标已推进到独立 `positron.exe` 阶段 B 的主文档网络纵切：应用通过公开
-Core/Browser/HTTP import library 启动内置离线页面，并可在 worker 中发起绝对 HTTP(S) GET；
-Browser candidate/resource transaction 负责 generation、取消、stale 和 required-document
-commit gate，页面只有在 Core 完成 parse/style/layout 后才替换。EXE 私有资源支持英语/简体中文，
-按 WM6 UI 语言选择，其他语言回退英语，stage 无外置语言文件。阶段 2 已加入 EXE 私有
-`AppScriptContext`，网络候选按 DOM 顺序执行有界 classic script，并接回 DOM、事件、导航、
-滚动、焦点、任务和 teardown；脚本异常不回滚，bridge 初始化失败则关闭脚本能力。
-清单见 [`positron_app/README.md`](../positron_app/README.md)。Debug/Release 构建、C89 和仓库审计
-已通过；阶段 1 已把外部 CSS/`@import`、脚本发现和图片发现接入同一候选资源事务，required
-CSS 失败会阻止提交，optional 资源失败保留 Core fallback；阶段 2 已把网络候选的 classic
-ScriptSession 接入同一提交前流程。阶段 1/2 网络、脚本、回滚及标题/窗口 UI
-仍需设备验收，不能写成设备基线；最近一次传输在复制 `positron_script.dll` 时以
-`RAPI=0x80072746` 失败，TEST999 未启动。native 表单、SIP/IME、picker、书签和持久设置仍
-不在当前范围内。ROADMAP.md 已复核。稳定边界见 [`docs/TESTING.md`](../docs/TESTING.md)
-
-与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
+当前短期目标是让独立 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成有界网页纵切：
+主文档 HTTP(S) GET、Browser generation/resource gate、required CSS/`@import`、optional
+脚本/图片、英语/简体中文 EXE 资源以及阶段 2 classic ScriptSession 已接入；失败、取消和
+stale 候选仍保留旧页。阶段 3 第一条纵切另已接入 text/password/textarea 的 native EDIT、
+Core value/几何同步、Browser native-edit 事件和 teardown。清单见
+[`positron_app/README.md`](../positron_app/README.md)。本地 C89、Debug/Release 和仓库审计
+已通过；阶段 1/2 网络、脚本、回滚、标题/窗口 UI 以及本轮 native EDIT 仍需设备验收，不能
+写成设备基线。最近一次传输在复制 `positron_script.dll` 时以 `RAPI=0x80072746` 失败，
+TEST999 未启动。SELECT、toggle、button、dialog、contenteditable、form submit/formdata、
+SIP/IME、picker、书签和持久设置仍不在当前范围内。ROADMAP.md 已复核；稳定边界见
+[`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
 阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
 `app_resources.c/.h`，把资源解析、注册、下载、重试和回收留在 EXE 私有适配层，不改变公共 ABI。
@@ -111,8 +98,10 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
 交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
 脚本/图片属于 optional fallback；阶段 2 的网络候选已按 DOM 顺序创建并执行有界 classic
-ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥。Debug/Release 构建通过，
-但网络页面、脚本和导航失败回滚仍需设备人工验收，不能写成设备基线。
+ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；阶段 3 的第一条纵切另由
+EXE 私有 `AppControlsContext` 投影 text/password/textarea，按 Core 几何随布局、滚动和
+DPI 重排，并在页面替换前重置 Browser native-edit 状态。Debug/Release 构建通过，但网络
+页面、脚本和导航失败回滚以及 native EDIT 的真实输入仍需设备人工验收，不能写成设备基线。
 
 原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
 把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、

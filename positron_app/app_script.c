@@ -705,6 +705,51 @@ static int app_script_scroll(void *pw,
             out_x, out_y);
 }
 
+static int app_script_input_dispatch(void *pw,
+        const PBrowserScriptInputEventInfo *info, int *out_default_allowed)
+{
+    AppScriptContext *context;
+    PCoreInputEventDataEx data;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->event_type == NULL ||
+            info->event_type[0] == '\0' || info->input_type == NULL ||
+            info->data == NULL || out_default_allowed == NULL) {
+        return -1;
+    }
+    memset(&data, 0, sizeof(data));
+    data.struct_size = sizeof(data);
+    data.input_type = info->input_type;
+    data.data = info->data;
+    data.is_composing = info->is_composing ? 1 : 0;
+    result = PCore_EventDispatchInputExAt(context->document, info->x,
+            info->y, info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, &data, out_default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
+static int app_script_edit_dispatch(void *pw,
+        const PBrowserScriptEditEventInfo *info)
+{
+    AppScriptContext *context;
+    int default_allowed;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->event_type == NULL ||
+            info->event_type[0] == '\0') {
+        return -1;
+    }
+    default_allowed = 1;
+    result = PCore_EventDispatchAt(context->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, &default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
 static int app_script_register_callbacks(AppScriptContext *context)
 {
     PBrowserScriptDomReadCallbacksEx dom_read;
@@ -723,6 +768,9 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptActiveElementCallbacks active;
     PBrowserScriptInteractionCallbacks interaction;
     PBrowserScriptFocusRequestCallbacks focus_request;
+    PBrowserScriptInputCallbacks input_callbacks;
+    PBrowserScriptEditCallbacks edit_callbacks;
+    PBrowserScriptNativeEditCallbacksEx native_edit_callbacks;
 
     memset(&dom_read, 0, sizeof(dom_read));
     dom_read.size = sizeof(dom_read);
@@ -804,6 +852,19 @@ static int app_script_register_callbacks(AppScriptContext *context)
     focus_request.size = sizeof(focus_request);
     focus_request.pw = context;
     focus_request.request_focus = app_script_focus_request;
+    memset(&input_callbacks, 0, sizeof(input_callbacks));
+    input_callbacks.size = sizeof(input_callbacks);
+    input_callbacks.pw = context;
+    input_callbacks.dispatch_input = app_script_input_dispatch;
+    memset(&edit_callbacks, 0, sizeof(edit_callbacks));
+    edit_callbacks.size = sizeof(edit_callbacks);
+    edit_callbacks.pw = context;
+    edit_callbacks.dispatch_edit = app_script_edit_dispatch;
+    memset(&native_edit_callbacks, 0, sizeof(native_edit_callbacks));
+    native_edit_callbacks.size = sizeof(native_edit_callbacks);
+    native_edit_callbacks.pw = context;
+    native_edit_callbacks.dispatch_input = app_script_input_dispatch;
+    native_edit_callbacks.dispatch_change = app_script_edit_dispatch;
     if (PBrowser_ScriptSessionRegisterDomReadCallbacksEx(context->session,
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
@@ -836,7 +897,13 @@ static int app_script_register_callbacks(AppScriptContext *context)
             PBrowser_ScriptSessionRegisterInteractionElementCallbacks(
             context->session, &interaction) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFocusRequestCallbacks(
-            context->session, &focus_request) != PSCRIPT_OK) {
+            context->session, &focus_request) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterInputCallbacks(context->session,
+            &input_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterEditCallbacks(context->session,
+            &edit_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
+            context->session, &native_edit_callbacks) != PSCRIPT_OK) {
         return 1;
     }
     return 0;
@@ -1190,6 +1257,76 @@ int AppScript_DispatchHashNavigation(AppScriptContext *context,
     }
     return PBrowser_ScriptSessionDispatchHashNavigation(context->session,
             url, history_length) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchNativeEditBeforeInput(AppScriptContext *context,
+        unsigned long target_token, int x, int y, const char *input_type,
+        const char *data, int cancelable, int is_composing,
+        int *out_default_allowed)
+{
+    PBrowserScriptNativeEditInputInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            input_type == NULL || data == NULL ||
+            out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.input_type = input_type;
+    info.data = data;
+    info.cancelable = cancelable ? 1 : 0;
+    info.is_composing = is_composing ? 1 : 0;
+    return PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+            context->session, &info, out_default_allowed) == PSCRIPT_OK ?
+            0 : 1;
+}
+
+int AppScript_DispatchNativeEditInput(AppScriptContext *context,
+        unsigned long target_token, int x, int y, const char *input_type,
+        const char *data)
+{
+    PBrowserScriptNativeEditInputInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.input_type = input_type;
+    info.data = data;
+    return PBrowser_ScriptSessionDispatchNativeEditInput(context->session,
+            &info) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchNativeEditBlur(AppScriptContext *context,
+        unsigned long target_token, int x, int y)
+{
+    PBrowserScriptNativeEditInputInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    return PBrowser_ScriptSessionDispatchNativeEditBlur(context->session,
+            &info) == PSCRIPT_OK ? 0 : 1;
+}
+
+void AppScript_ResetNativeEditState(AppScriptContext *context)
+{
+    if (context != NULL && context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeEditState(context->session);
+    }
 }
 
 HANDLE AppScript_Document(AppScriptContext *context)

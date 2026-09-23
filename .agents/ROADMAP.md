@@ -102,7 +102,10 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    网络候选按 DOM 顺序执行有界 classic inline/external script，并接入 DOM 读写、属性、有限
    form value、事件、history/fragment、focus、scroll、resize、visibility、任务 checkpoint
    和 teardown；脚本异常不回滚页面，session 初始化失败则关闭脚本能力。阶段 1/2 仍需设备
-   网络、失败回滚、stale/cancel 和脚本运行人工门；本地 C89、Debug/Release 构建和审计已通过。
+   网络、失败回滚、stale/cancel 和脚本运行人工门；阶段 3 的第一条宿主纵切也已接入：
+   `text`、`password` 和 `textarea` 使用同一窗口体系下的 native `EDIT`，Core 拥有
+   value/几何，Browser 拥有 native-edit 事件事务，宿主拥有窗口、消息和 teardown；该部分
+   仍需设备输入、DPI、旋转和软键盘人工门。本地 C89、Debug/Release 构建和审计已通过。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    没有证据时不进入产品实现。
@@ -138,9 +141,10 @@ history fallback、Core URL callback 的重复解析和参考宿主的 visibilit
 既有公共边界维护；它们没有把产品语义搬回 `test_host`。本轮已经出现真实的独立应用消费者：
 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成阶段 A 的离线导航、绘制、滚动、焦点、有限
 history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 classic ScriptSession 基线，
-并由 EXE 私有资源提供英语/简体中文 UI。当前选择是先完成阶段 1/2 的设备网络、脚本错误和
-失败回滚门，再进入阶段 3 的 native 控件/输入接线。File/Blob→FormData→multipart 仍没有
-真实应用证据，继续保留在待取证状态。
+并由 EXE 私有资源提供英语/简体中文 UI；阶段 3 已完成 text/password/textarea 的第一条
+native `EDIT` 投影纵切。当前选择是先完成阶段 1/2 的设备网络、脚本错误和失败回滚门，
+再继续阶段 3 的 SELECT、toggle、button、dialog、contenteditable、SIP/IME 与 picker 取舍。
+File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
@@ -167,6 +171,24 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
   optional image 失败、取消/过时响应和地址栏失败后旧页保持；同时保留当前两个内置页面回归。
 - **门：** Debug/Release ARMV4I 构建、仓库审计、自动旧页/取消断言，以及设备网络、旋转、
   DPI 和真实输入观察；外网不作为唯一证据。
+
+#### B. 独立应用阶段 3：剩余原生控件与输入
+
+**状态：准备取舍，文本控件第一条纵切已接入，设备门未完成。** `positron.exe` 已有
+`AppControlsContext`，把 `text`、`password` 和 `textarea` 的 Core 控件投影为 native
+`EDIT`，并保持页面替换、滚动、布局和脚本 native-edit 事务的生命周期顺序。下一条候选
+应从 SELECT/toggle/button/dialog/contenteditable、SIP/IME、clipboard 和 file picker 中
+选择一个有真实页面或设备失败证据的最小纵切；不得把所有原生交互一次性合并。
+
+- **Owner：** Core/Browser 负责控件状态、事件/default-action 和生命周期语义；应用负责
+  WM6 原生窗口、消息、输入法/系统 picker 调度及失败策略；不新增公共 ABI，除非出现
+  File/Blob 上传的真实消费者。
+- **边界：** native 子控件必须属于同一顶层窗口体系，旧页保留、stale/cancel、隐藏/禁用、
+  geometry、DPI、旋转和重复 teardown 都要 fail closed；禁止自绘滚动条替代系统控件。
+- **最小 fixture：** `controls` 离线页的文本/密码/多行输入成功、退格/Delete/换行、焦点
+  变化、脚本取消 beforeinput、页面切换销毁和旧页保留；新增控件必须补相邻失败和容量断言。
+- **门：** C89、正式 ARMV4I Debug/Release、仓库审计后，设备人工验收真实键盘、SIP/IME、
+  触摸、旋转、DPI、软键和控件销毁；桌面 synthetic 消息不能替代设备证据。
 
 ### 待取证
 

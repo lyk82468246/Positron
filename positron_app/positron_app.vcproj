@@ -96,6 +96,8 @@
 	<Files>
 	<File RelativePath=".\app_host.c" />
 	<File RelativePath=".\app_host.h" />
+	<File RelativePath=".\app_controls.c" />
+	<File RelativePath=".\app_controls.h" />
 	<File RelativePath=".\app_script.c" />
 	<File RelativePath=".\app_script.h" />
 	<File RelativePath=".\app_i18n.c" />

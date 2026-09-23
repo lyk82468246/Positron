@@ -36,8 +36,14 @@
 通过 EXE 私有适配层接入外部 CSS/`@import`、脚本发现和图片发现，沿用 Browser 的 required/
 optional gate；阶段 2 再由 `app_script.c` 创建有界 ScriptSession，按 DOM 顺序执行网络
 候选的 classic inline/external script，并把 DOM、事件、导航、滚动、焦点和生命周期回接到
-当前窗口。脚本异常不回滚页面，bridge 初始化失败则 fail closed 为无脚本页面。网络、脚本
-和失败回滚仍需 WM6 设备门；后续接线顺序与阶段门见
+当前窗口。脚本异常不回滚页面，bridge 初始化失败则 fail closed 为无脚本页面。阶段 3 的
+第一条宿主纵切已由 EXE 私有 `app_controls.c/.h` 接入：`text`、`password` 和 `textarea`
+映射为同一窗口体系下的 WM6 native `EDIT` 子控件，Core 负责控件 value 与几何，Browser
+native-edit bridge 负责 beforeinput、input、change、focus 和重置事务，宿主负责消息路由、
+重排和 teardown。该纵切已通过源码级 C89、Debug/Release 和仓库审计，仍需设备人工验收；
+SELECT、toggle、button、dialog、contenteditable、form submit/formdata、SIP/IME 与 file
+picker 不因这条接线而宣称完成。网络、脚本、失败回滚和原生控件仍需 WM6 设备门；后续
+接线顺序与阶段门见
 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
 
 ## TLS：`positron_tls.dll`

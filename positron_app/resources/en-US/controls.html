@@ -12,8 +12,18 @@ href="https://positron.local/welcome">Return using this second link</a></p>
 <p>The address bar uses a native EDIT control. Enter submits it and
 Escape restores the last committed address. Backspace remains the
 EDIT control's deletion key.</p>
-<p>Native text fields, SELECT controls, SIP and file picking will be
-connected to this shell in the next input batch.</p>
+<h2>Native text controls</h2>
+<p>The following text, password and multiline fields are native WM6 EDIT
+children. Their value, focus and beforeinput/input/change path is connected
+to the Core document.</p>
+<p><label for="display-name">Display name</label><br>
+<input id="display-name" type="text" value="WM6 user"></p>
+<p><label for="secret">Password</label><br>
+<input id="secret" type="password" value="positron"></p>
+<p><label for="notes">Notes</label><br>
+<textarea id="notes" rows="3">Native multiline text.</textarea></p>
+<p>SELECT, buttons, SIP/IME, file picking and form submission remain in the
+next input batches.</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">Home</a></p>
 </body></html>
