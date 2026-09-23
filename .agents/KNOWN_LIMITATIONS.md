@@ -37,9 +37,8 @@
 - `<option>` 的脚本 `selected`/`defaultSelected` 属性只在宿主注册
   `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
   选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
-  attribute 或当前 live 选择。该可选表复用既有 Browser form-property native slot，
-  缺失、非 option、无效 id 或 callback 错误均 fail closed；这个 property bridge 本身不
-  实现 native SELECT popup 或平台输入编排；有限的关闭态单选键盘桥另见下文。
+  attribute 或当前 live 选择。缺失、非 option、无效 id 或 callback 错误均 fail closed；
+  平台输入见下文。
 - Native SELECT 平台输入仅有一条有界路径：关闭态单选 COMBOBOX 可通过
   `PCore_EventDispatchKeyExToSelectIndex` 把 `keydown`/`keyup` metadata 送到 live DOM，
   允许默认动作后同步 Core/native selection；listener 使 retained layout 失效时仍可用。
@@ -381,19 +380,21 @@
 - Browser candidate 以不可变 generation、取消请求、退休状态和 committed/failed 终态保护 UI 文档提交；`CanApply` 同时检查 generation 与 active 状态。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列和页面 swap；退休队列有界，达到上限时新导航 fail closed 并保留当前页。取消是协作式的：worker 若已进入阻塞的 PHttp 调用，不能保证 socket 立即中断；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。
 - Browser 资源事务按 URL 拥有 `pending`、`ready`、`failed`、`cancelled` 终态、失败分类和成功字节；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。样式表/`@import` 是 required，脚本/图片是 optional；`PBrowser_NavigationCommitGetInfo` 在 layout/swap 前提供 candidate/resource 组合 gate，required 失败、未收敛 pending、资源取消、候选过时或 cancellation 保留旧 document/history，optional 失败交给 Core fallback。统计最多保留 4 项 `role/failure#hash`，fallback family 计数是粗粒度观测，不等于逐元素归因或可见 UI；重复 URL 和深层 `@import` 的去重与分类已由 TEST1123 覆盖，但不能保证任意真实站点的 fallback 视觉。
 - 阶段 1/2 的 required CSS/optional 资源/ScriptSession 失败边界已接入；required 阻止提交，
-  optional 回退，异常不回滚。`positron.exe` 仅接入 text/password/textarea native `EDIT`；
-  其他控件、提交、SIP/IME 和 picker 未接线。
+  optional 回退，异常不回滚。`positron.exe` 已接入 text/password/textarea native `EDIT` 以及
+  单选/多选 `SELECT` 的 native `COMBOBOX`/`LISTBOX`；动态 option 列表重建仍未接线，其他
+  控件、提交、SIP/IME 和 picker 未接线。
 
 - 清理边界由宿主在 worker join 后编排：失败或过时 request 必须先让 Browser 资源事务中的 pending 项进入 `cancelled` 等终态，再读取 `PBrowser_NavigationCleanupGetInfo`。该 API 只复制 candidate result、resource gate、pending、hash-only failure summary 和 fallback 计数；`can_release` 对未收敛工作保持为 0，committed candidate 还要求 READY gate。复制值在 candidate/resource handle 销毁后仍然有效，但它不保证任意网络调用已即时中断，也不提供逐资源 UI 或页面视觉归因。
 
 ## Native 控件、SIP 与设备 UI
 
-- Windows Mobile EDIT/COMBOBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
-- synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT 事务、有限选区/剪贴板同步及
-  fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实键盘、
-  IME、SIP 和跨应用剪贴板仍需人工验收。
+- Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
+- synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
+  同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
+  键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
-- select popup 和滚动可见性仍受窗口层级与 DPI 影响；复杂嵌套 label 和其他层级组合仍需人工观察。
+- SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建、复杂嵌套 label 和其他
+  层级组合仍需人工观察。
 - 旋转、不同 screen/DPI、软键盘占用区域和系统非客户区只能通过设备观察确认。
 
 ## WMDC 与自动化

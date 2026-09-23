@@ -28,10 +28,11 @@ external classic script；脚本异常不回滚已解析页面，session/bridge 
 候选的脚本能力而继续走页面提交。脚本可以使用当前已接入的 DOM 读写、属性、有限表单值、
 事件监听/取消默认动作、history/fragment 导航、focus、visibility、resize、scroll、timer
 和页面 teardown 生命周期桥。`text`、`password` 和 `textarea` 已由同一窗口体系下的
-native `EDIT` 子控件承载：Core 仍拥有 value/几何，Browser native-edit bridge 负责
-beforeinput、input、change 和 focus 事务，宿主负责 WM6 消息、重排和销毁。SELECT、toggle、
-button、dialog、contenteditable、form submit/formdata、SIP/IME、文件选择器、书签、持久
-偏好和 WM6 Standard 仍未接入；缺少 `positron.ini` 不影响启动，当前没有需要用户编辑的
+native `EDIT` 子控件承载；单选和多选 `SELECT` 分别使用原生 `COMBOBOX`/`LISTBOX`。
+Core 仍拥有 value、选项状态和几何，Browser native-edit/native-select bridge 负责输入、
+选择、change 和 focus 事务，宿主负责 WM6 消息、重排和销毁。toggle、button、dialog、
+contenteditable、form submit/formdata、SIP/IME、文件选择器、书签、持久偏好和 WM6 Standard
+仍未接入；缺少 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
 
 ## 界面语言
@@ -67,7 +68,8 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    Enter 激活；
 5. 地址栏中输入 `controls` 或 `welcome`，按 Enter 导航；在 `controls` 页分别点击或用
    Tab 进入文本、密码和多行文本框，输入、退格、Delete、Enter/换行并离开焦点，确认页面
-   值、光标焦点和滚动位置保持一致；
+   值、光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT，确认选择状态回写页面，
+   滚动、旋转和页面切换后没有残留 native 控件；
 6. 编辑地址栏时按 Backspace 删除，按 Escape 取消编辑并恢复已提交地址；
 7. 菜单中的 `Exit`/`退出` 真正结束应用，重复启动/关闭不新增崩溃。
 8. 在设备网络可用时输入绝对 `http://` 或 `https://` 地址；加载期间旧页面保持可见，

@@ -86,6 +86,25 @@ int AppScript_DispatchNativeEditBlur(AppScriptContext *context,
         unsigned long target_token, int x, int y);
 void AppScript_ResetNativeEditState(AppScriptContext *context);
 
+/* Native SELECT keeps the WM6 control and Core selection in the host while
+ * Browser owns the input/change ordering and single-select dropdown
+ * candidate transaction. */
+int AppScript_DispatchNativeSelectCommit(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int multiple,
+        int selected_index, int selected_count);
+int AppScript_DispatchNativeSelectInteraction(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int multiple,
+        int selected_index, int selected_count, int phase,
+        int *out_should_commit);
+int AppScript_DispatchNativeSelectFocus(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int focused);
+int AppScript_DispatchNativeSelectKey(AppScriptContext *context,
+        unsigned long target_token, int x, int y, const char *event_type,
+        const char *key, unsigned int key_code, unsigned int char_code,
+        int repeat, int shift, int ctrl, int alt, int is_composing,
+        int *out_default_allowed);
+void AppScript_ResetNativeSelectState(AppScriptContext *context);
+
 HANDLE AppScript_Document(AppScriptContext *context);
 int AppScript_QueueNavigation(AppScriptContext *context,
         const PBrowserScriptNavigationInfo *info);

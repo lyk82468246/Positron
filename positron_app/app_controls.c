@@ -1,5 +1,5 @@
 /*
- * positron_app/app_controls.c - private WM6 native text-control adapter.
+ * positron_app/app_controls.c - private WM6 native form-control adapter.
  */
 
 #include <windows.h>
@@ -10,19 +10,29 @@
 
 #define APP_CONTROLS_MAX             PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS
 #define APP_CONTROLS_TEXT_CAP        32768
+#define APP_CONTROLS_OPTION_TEXT_CAP 4096
 #define APP_CONTROLS_ID_BASE         1000
+#define APP_CONTROLS_KIND_TEXT       1
+#define APP_CONTROLS_KIND_SELECT     2
 
 typedef struct AppControlsItem AppControlsItem;
 
 struct AppControlsItem {
     HWND hwnd;
+    int kind;
     unsigned int text_index;
+    unsigned int select_index;
     unsigned long target_token;
     WNDPROC original_proc;
     int multiline;
     int password;
     int read_only;
     int disabled;
+    int multiple;
+    int option_count;
+    int dropdown_active;
+    int select_candidate_index;
+    int select_candidate_count;
     int x;
     int y;
     int width;
@@ -48,19 +58,34 @@ static int app_controls_item_geometry(AppControlsContext *context,
         int *out_height)
 {
     PCoreTextInputInfo info;
+    PCoreSelectInfo select_info;
 
     if (context == NULL || item == NULL || context->document == NULL) {
         return 0;
     }
-    memset(&info, 0, sizeof(info));
-    if (PCore_TextInputInfo(context->document, item->text_index, &info,
-            NULL, 0) != 0) {
+    if (item->kind == APP_CONTROLS_KIND_TEXT) {
+        memset(&info, 0, sizeof(info));
+        if (PCore_TextInputInfo(context->document, item->text_index, &info,
+                NULL, 0) != 0) {
+            return 0;
+        }
+        item->x = info.x;
+        item->y = info.y;
+        item->width = info.width > 0 ? info.width : 1;
+        item->height = info.height > 0 ? info.height : 1;
+    } else if (item->kind == APP_CONTROLS_KIND_SELECT) {
+        memset(&select_info, 0, sizeof(select_info));
+        if (PCore_SelectInfo(context->document, item->select_index,
+                &select_info) != 0) {
+            return 0;
+        }
+        item->x = select_info.x;
+        item->y = select_info.y;
+        item->width = select_info.width > 0 ? select_info.width : 1;
+        item->height = select_info.height > 0 ? select_info.height : 1;
+    } else {
         return 0;
     }
-    item->x = info.x;
-    item->y = info.y;
-    item->width = info.width > 0 ? info.width : 1;
-    item->height = info.height > 0 ? info.height : 1;
     if (out_x != NULL) {
         *out_x = item->x;
     }
@@ -106,20 +131,20 @@ static int app_controls_utf8_to_wide(const char *source, WCHAR *target,
 {
     int chars;
 
-    if (source == NULL || target == NULL || target_capacity <= 1) {
+    if (source == NULL || target == NULL || target_capacity <= 0) {
         return 0;
     }
     target[0] = L'\0';
     chars = MultiByteToWideChar(CP_UTF8, 0, source, -1, target,
-            target_capacity - 1);
+            target_capacity);
     if (chars <= 0) {
         chars = MultiByteToWideChar(CP_ACP, 0, source, -1, target,
-                target_capacity - 1);
+                target_capacity);
     }
     if (chars <= 0) {
         return 0;
     }
-    target[chars] = L'\0';
+    target[target_capacity - 1] = L'\0';
     return chars;
 }
 
@@ -277,6 +302,126 @@ static void app_controls_set_value(AppControlsContext *context,
     free(edit_value);
 }
 
+static int app_controls_select_option_label(AppControlsContext *context,
+        AppControlsItem *item, unsigned int option_index,
+        WCHAR **out_label)
+{
+    char *label;
+    WCHAR *wide_label;
+    int label_bytes;
+    int label_capacity;
+
+    if (context == NULL || item == NULL || out_label == NULL ||
+            context->document == NULL) {
+        return 1;
+    }
+    *out_label = NULL;
+    label_bytes = 0;
+    if (PCore_SelectOptionInfo(context->document, item->select_index,
+            option_index, NULL, 0, NULL, 0, NULL, NULL, &label_bytes,
+            NULL) != 0 || label_bytes < 0 ||
+            label_bytes >= APP_CONTROLS_OPTION_TEXT_CAP) {
+        return 1;
+    }
+    label_capacity = label_bytes + 1;
+    label = (char *) malloc((size_t) label_capacity);
+    if (label == NULL) {
+        return 1;
+    }
+    if (PCore_SelectOptionInfo(context->document, item->select_index,
+            option_index, label, label_capacity, NULL, 0, NULL, NULL,
+            NULL, NULL) != 0) {
+        free(label);
+        return 1;
+    }
+    wide_label = (WCHAR *) malloc((strlen(label) + 1) * sizeof(WCHAR));
+    if (wide_label == NULL || app_controls_utf8_to_wide(label, wide_label,
+            (int) strlen(label) + 1) <= 0) {
+        free(label);
+        free(wide_label);
+        return 1;
+    }
+    free(label);
+    *out_label = wide_label;
+    return 0;
+}
+
+static int app_controls_select_window_height(const PCoreSelectInfo *info)
+{
+    int visible_items;
+    int height;
+
+    if (info == NULL) {
+        return 1;
+    }
+    visible_items = info->option_count;
+    if (visible_items > 6) {
+        visible_items = 6;
+    }
+    if (visible_items < 1) {
+        visible_items = 1;
+    }
+    height = info->height * (visible_items + 1);
+    if (height < info->height + 1) {
+        height = info->height + 1;
+    }
+    return height;
+}
+
+static int app_controls_select_selected(AppControlsContext *context,
+        AppControlsItem *item, unsigned int option_index, int *out_selected)
+{
+    if (context == NULL || item == NULL || out_selected == NULL ||
+            context->document == NULL) {
+        return 1;
+    }
+    return PCore_SelectOptionInfo(context->document, item->select_index,
+            option_index, NULL, 0, NULL, 0, out_selected, NULL, NULL,
+            NULL) == 0 ? 0 : 1;
+}
+
+static void app_controls_sync_select(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    PCoreSelectInfo info;
+    unsigned int i;
+    int selected;
+
+    if (context == NULL || item == NULL || item->kind !=
+            APP_CONTROLS_KIND_SELECT || item->hwnd == NULL ||
+            context->document == NULL || context->syncing) {
+        return;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, item->select_index, &info) != 0) {
+        return;
+    }
+    if ((info.multiple ? 1 : 0) != item->multiple ||
+            info.option_count != item->option_count) {
+        return;
+    }
+    context->syncing = 1;
+    if (info.multiple) {
+        for (i = 0; i < (unsigned int) info.option_count; i++) {
+            selected = 0;
+            if (app_controls_select_selected(context, item, i,
+                    &selected) == 0) {
+                (void) SendMessage(item->hwnd, LB_SETSEL,
+                        (WPARAM) (selected ? TRUE : FALSE), (LPARAM) i);
+            }
+        }
+    } else {
+        SendMessage(item->hwnd, CB_SETCURSEL,
+                (WPARAM) (info.selected_index >= 0 ?
+                info.selected_index : -1), 0);
+    }
+    context->syncing = 0;
+    item->multiple = info.multiple ? 1 : 0;
+    item->disabled = info.disabled ? 1 : 0;
+    item->option_count = info.option_count;
+    EnableWindow(item->hwnd, item->disabled ? FALSE : TRUE);
+}
+
 static void app_controls_item_point(AppControlsContext *context,
         AppControlsItem *item, int *out_x, int *out_y)
 {
@@ -325,7 +470,8 @@ static void app_controls_dispatch_focus(AppControlsContext *context,
         (void) PCore_EventDispatchAt(context->document, x, y, "focusin",
                 1, 0, &allowed);
     } else {
-        if (context->script != NULL) {
+        if (context->script != NULL && item->kind ==
+                APP_CONTROLS_KIND_TEXT) {
             (void) AppScript_DispatchNativeEditBlur(context->script,
                     item->target_token, x, y);
         }
@@ -459,8 +605,419 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
     return app_controls_call_original(item, hwnd, message, wparam, lparam);
 }
 
+static int app_controls_select_native_state(AppControlsItem *item,
+        int *out_selected_index, int *out_selected_count)
+{
+    int selected_index;
+    int selected_count;
+    int i;
+
+    if (item == NULL || item->hwnd == NULL || out_selected_index == NULL ||
+            out_selected_count == NULL) {
+        return 1;
+    }
+    selected_index = -1;
+    selected_count = 0;
+    if (item->multiple) {
+        selected_count = (int) SendMessage(item->hwnd, LB_GETSELCOUNT,
+                0, 0);
+        if (selected_count < 0) {
+            return 1;
+        }
+        if (selected_count == 1) {
+            for (i = 0; i < item->option_count; i++) {
+                if (SendMessage(item->hwnd, LB_GETSEL,
+                        (WPARAM) i, 0) > 0) {
+                    selected_index = i;
+                    break;
+                }
+            }
+        }
+    } else {
+        selected_index = (int) SendMessage(item->hwnd, CB_GETCURSEL, 0, 0);
+        if (selected_index == CB_ERR) {
+            selected_index = -1;
+        } else {
+            selected_count = 1;
+        }
+    }
+    *out_selected_index = selected_index;
+    *out_selected_count = selected_count;
+    return 0;
+}
+
+static int app_controls_select_dispatch_commit(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    PCoreSelectInfo info;
+    int x;
+    int y;
+    int result;
+
+    if (context == NULL || item == NULL || context->document == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, item->select_index,
+            &info) != 0) {
+        return 1;
+    }
+    app_controls_item_point(context, item, &x, &y);
+    if (context->script != NULL) {
+        result = AppScript_DispatchNativeSelectCommit(context->script,
+                item->target_token, x, y, info.multiple ? 1 : 0,
+                info.selected_index, info.selected_count);
+    } else {
+        result = PCore_EventDispatchAt(context->document, x, y,
+                "input", 1, 0, NULL) < 0 ? 1 : 0;
+        if (result == 0 && PCore_EventDispatchAt(context->document, x, y,
+                "change", 1, 0, NULL) < 0) {
+            result = 1;
+        }
+    }
+    return result;
+}
+
+static void app_controls_select_restore_core(AppControlsContext *context,
+        AppControlsItem *item, const unsigned char *selected,
+        int selected_count)
+{
+    int i;
+    int current;
+
+    if (context == NULL || item == NULL || selected == NULL ||
+            selected_count < 0) {
+        return;
+    }
+    for (i = 0; i < selected_count; i++) {
+        current = 0;
+        if (app_controls_select_selected(context, item, (unsigned int) i,
+                &current) == 0 && current != (selected[i] ? 1 : 0)) {
+            (void) PCore_SelectSetOptionSelected(context->document,
+                    item->select_index, (unsigned int) i,
+                    selected[i] ? 1 : 0);
+        }
+    }
+}
+
+static int app_controls_select_commit_single(AppControlsContext *context,
+        AppControlsItem *item, int selected_index)
+{
+    PCoreSelectInfo info;
+    int previous_index;
+    int result;
+    int i;
+
+    if (context == NULL || item == NULL || context->document == NULL ||
+            selected_index < 0 || selected_index >= item->option_count) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, item->select_index, &info) != 0) {
+        return 1;
+    }
+    previous_index = info.selected_index;
+    if (previous_index == selected_index) {
+        return 0;
+    }
+    result = PCore_SelectSetOptionSelected(context->document,
+            item->select_index, (unsigned int) selected_index, 1);
+    if (result != 0 || app_controls_select_dispatch_commit(context, item) !=
+            0) {
+        if (previous_index >= 0) {
+            (void) PCore_SelectSetOptionSelected(context->document,
+                    item->select_index, (unsigned int) previous_index, 1);
+        } else {
+            for (i = 0; i < item->option_count; i++) {
+                (void) PCore_SelectSetOptionSelected(context->document,
+                        item->select_index, (unsigned int) i, 0);
+            }
+        }
+        app_controls_sync_select(context, item);
+        return 1;
+    }
+    app_controls_notify(context);
+    return 0;
+}
+
+static int app_controls_select_commit_multiple(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    PCoreSelectInfo info;
+    unsigned char *previous;
+    int i;
+    int native_selected;
+    int core_selected;
+    int changed;
+    int result;
+
+    if (context == NULL || item == NULL || context->document == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, item->select_index, &info) !=
+            0 || info.option_count < 0 || info.option_count >
+            APP_CONTROLS_OPTION_TEXT_CAP) {
+        return 1;
+    }
+    previous = (unsigned char *) calloc((size_t) info.option_count + 1,
+            sizeof(unsigned char));
+    if (previous == NULL && info.option_count > 0) {
+        return 1;
+    }
+    changed = 0;
+    for (i = 0; i < info.option_count; i++) {
+        core_selected = 0;
+        if (app_controls_select_selected(context, item, (unsigned int) i,
+                &core_selected) != 0) {
+            free(previous);
+            return 1;
+        }
+        previous[i] = (unsigned char) (core_selected ? 1 : 0);
+    }
+    for (i = 0; i < info.option_count; i++) {
+        native_selected = SendMessage(item->hwnd, LB_GETSEL,
+                (WPARAM) i, 0) > 0 ? 1 : 0;
+        core_selected = previous[i] ? 1 : 0;
+        if (native_selected != core_selected) {
+            result = PCore_SelectSetOptionSelected(context->document,
+                    item->select_index, (unsigned int) i,
+                    native_selected);
+            if (result != 0) {
+                app_controls_select_restore_core(context, item, previous,
+                        info.option_count);
+                app_controls_sync_select(context, item);
+                free(previous);
+                return 1;
+            }
+            changed = 1;
+        }
+    }
+    if (changed && app_controls_select_dispatch_commit(context, item) != 0) {
+        app_controls_select_restore_core(context, item, previous,
+                info.option_count);
+        app_controls_sync_select(context, item);
+        free(previous);
+        return 1;
+    }
+    free(previous);
+    if (changed) {
+        app_controls_notify(context);
+    }
+    return 0;
+}
+
+static int app_controls_select_interaction(AppControlsContext *context,
+        AppControlsItem *item, int phase, int *out_should_commit)
+{
+    PCoreSelectInfo info;
+    int selected_index;
+    int selected_count;
+    int x;
+    int y;
+
+    if (out_should_commit != NULL) {
+        *out_should_commit = 0;
+    }
+    if (context == NULL || item == NULL || out_should_commit == NULL ||
+            context->document == NULL) {
+        return -1;
+    }
+    if (context->script == NULL) {
+        return 0;
+    }
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, item->select_index, &info) !=
+            0 || app_controls_select_native_state(item, &selected_index,
+            &selected_count) != 0) {
+        return -1;
+    }
+    if (phase == PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN) {
+        selected_index = info.selected_index;
+        selected_count = info.selected_count;
+    }
+    app_controls_item_point(context, item, &x, &y);
+    if (AppScript_DispatchNativeSelectInteraction(context->script,
+            item->target_token, x, y, 0, selected_index, selected_count,
+            phase, out_should_commit) != 0) {
+        return -1;
+    }
+    return 1;
+}
+
+static int app_controls_select_focus(AppControlsContext *context,
+        AppControlsItem *item, int focused)
+{
+    int x;
+    int y;
+    int result;
+
+    if (context == NULL || item == NULL || context->document == NULL) {
+        return -1;
+    }
+    if (context->script == NULL) {
+        return 0;
+    }
+    app_controls_item_point(context, item, &x, &y);
+    if (focused) {
+        result = PCore_InteractionSetAt(context->document, x, y,
+                PCORE_INTERACTION_FOCUS);
+        if (result < 0) {
+            return -1;
+        }
+    }
+    result = AppScript_DispatchNativeSelectFocus(context->script,
+            item->target_token, x, y, focused);
+    if (!focused) {
+        if (PCore_InteractionClear(context->document,
+                PCORE_INTERACTION_FOCUS) < 0) {
+            return -1;
+        }
+    } else if (result != 0) {
+        (void) PCore_InteractionClear(context->document,
+                PCORE_INTERACTION_FOCUS);
+    }
+    return result == 0 ? 1 : -1;
+}
+
+static const char *app_controls_select_key_name(WPARAM wparam)
+{
+    switch (wparam) {
+    case VK_BACK:
+        return "Backspace";
+    case VK_TAB:
+        return "Tab";
+    case VK_RETURN:
+        return "Enter";
+    case VK_ESCAPE:
+        return "Escape";
+    case VK_LEFT:
+        return "ArrowLeft";
+    case VK_RIGHT:
+        return "ArrowRight";
+    case VK_UP:
+        return "ArrowUp";
+    case VK_DOWN:
+        return "ArrowDown";
+    case VK_HOME:
+        return "Home";
+    case VK_END:
+        return "End";
+    case VK_PRIOR:
+        return "PageUp";
+    case VK_NEXT:
+        return "PageDown";
+    case VK_SPACE:
+        return "Space";
+    default:
+        return "Unidentified";
+    }
+}
+
+static int app_controls_select_key(AppControlsContext *context,
+        AppControlsItem *item, const char *event_type, WPARAM wparam,
+        LPARAM lparam)
+{
+    int x;
+    int y;
+    int default_allowed;
+
+    if (context == NULL || item == NULL || event_type == NULL) {
+        return 1;
+    }
+    if (context->script == NULL) {
+        return 1;
+    }
+    app_controls_item_point(context, item, &x, &y);
+    default_allowed = 1;
+    if (AppScript_DispatchNativeSelectKey(context->script,
+            item->target_token, x, y, event_type,
+            app_controls_select_key_name(wparam), (unsigned int) wparam, 0,
+            ((lparam & 0x40000000L) != 0) ? 1 : 0,
+            GetKeyState(VK_SHIFT) < 0 ? 1 : 0,
+            GetKeyState(VK_CONTROL) < 0 ? 1 : 0,
+            GetKeyState(VK_MENU) < 0 ? 1 : 0, 0, &default_allowed) != 0) {
+        return 1;
+    }
+    return default_allowed ? 1 : 0;
+}
+
+static void app_controls_select_sync_after_key(AppControlsContext *context,
+        AppControlsItem *item, int before)
+{
+    LRESULT after;
+
+    if (context == NULL || item == NULL || item->multiple ||
+            item->dropdown_active || before < 0 || item->hwnd == NULL ||
+            SendMessage(item->hwnd, CB_GETDROPPEDSTATE, 0, 0) != 0) {
+        return;
+    }
+    after = SendMessage(item->hwnd, CB_GETCURSEL, 0, 0);
+    if (after == CB_ERR || after == before) {
+        return;
+    }
+    (void) app_controls_select_commit_single(context, item, (int) after);
+}
+
+static LRESULT CALLBACK app_controls_select_proc(HWND hwnd, UINT message,
+        WPARAM wparam, LPARAM lparam)
+{
+    AppControlsItem *item;
+    LRESULT result;
+    int key_message;
+    int key_before;
+
+    item = app_controls_find(hwnd);
+    if (item == NULL || g_app_controls == NULL) {
+        return DefWindowProc(hwnd, message, wparam, lparam);
+    }
+    key_message = message == WM_KEYDOWN || message == WM_KEYUP ||
+            message == WM_SYSKEYDOWN || message == WM_SYSKEYUP;
+    key_before = -1;
+    if (key_message && !item->multiple) {
+        key_before = (int) SendMessage(hwnd, CB_GETCURSEL, 0, 0);
+    }
+    if (message == WM_SETFOCUS) {
+        result = app_controls_call_original(item, hwnd, message,
+                wparam, lparam);
+        if (g_app_controls->script == NULL) {
+            app_controls_dispatch_focus(g_app_controls, item, 1);
+        } else if (app_controls_select_focus(g_app_controls, item, 1) > 0) {
+            app_controls_notify(g_app_controls);
+        }
+        return result;
+    }
+    if (message == WM_KILLFOCUS) {
+        result = app_controls_call_original(item, hwnd, message,
+                wparam, lparam);
+        if (g_app_controls->script == NULL) {
+            app_controls_dispatch_focus(g_app_controls, item, 0);
+        } else if (app_controls_select_focus(g_app_controls, item, 0) > 0) {
+            app_controls_notify(g_app_controls);
+        }
+        return result;
+    }
+    if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
+        if (!app_controls_select_key(g_app_controls, item, "keydown",
+                wparam, lparam)) {
+            return 0;
+        }
+    } else if (message == WM_KEYUP || message == WM_SYSKEYUP) {
+        if (!app_controls_select_key(g_app_controls, item, "keyup",
+                wparam, lparam)) {
+            return 0;
+        }
+    }
+    result = app_controls_call_original(item, hwnd, message, wparam, lparam);
+    if (key_message) {
+        app_controls_select_sync_after_key(g_app_controls, item, key_before);
+    }
+    return result;
+}
+
 static int app_controls_rebuild_item(AppControlsContext *context,
-        AppControlsItem *item, unsigned int index, int scroll_x, int scroll_y)
+        AppControlsItem *item, unsigned int index, int control_id,
+        int scroll_x, int scroll_y)
 {
     PCoreTextInputInfo info;
     WCHAR *wide_value;
@@ -514,7 +1071,7 @@ static int app_controls_rebuild_item(AppControlsContext *context,
             info.x - scroll_x, info.y - scroll_y,
             info.width > 0 ? info.width : 1,
             info.height > 0 ? info.height : 1, context->parent,
-            (HMENU) (APP_CONTROLS_ID_BASE + (int) index),
+            (HMENU) (APP_CONTROLS_ID_BASE + control_id),
             context->instance, NULL);
     free(wide_value);
     free(edit_value);
@@ -523,6 +1080,7 @@ static int app_controls_rebuild_item(AppControlsContext *context,
     }
     memset(item, 0, sizeof(*item));
     item->hwnd = hwnd;
+    item->kind = APP_CONTROLS_KIND_TEXT;
     item->text_index = index;
     item->target_token = (unsigned long) index + 1UL;
     item->multiline = multiline ? 1 : 0;
@@ -548,6 +1106,109 @@ static int app_controls_rebuild_item(AppControlsContext *context,
     }
     if (item->read_only) {
         SendMessage(hwnd, EM_SETREADONLY, TRUE, 0);
+    }
+    EnableWindow(hwnd, item->disabled ? FALSE : TRUE);
+    return 0;
+}
+
+static int app_controls_rebuild_select_item(AppControlsContext *context,
+        AppControlsItem *item, unsigned int index, int control_id,
+        int scroll_x, int scroll_y)
+{
+    PCoreSelectInfo info;
+    WCHAR *wide_label;
+    const WCHAR *class_name;
+    DWORD style;
+    HWND hwnd;
+    WNDPROC original_proc;
+    LRESULT add_result;
+    unsigned int option_index;
+    int selected;
+
+    memset(&info, 0, sizeof(info));
+    if (PCore_SelectInfo(context->document, index, &info) != 0 ||
+            info.option_count < 0 || info.option_count >
+            APP_CONTROLS_OPTION_TEXT_CAP) {
+        return 1;
+    }
+    if (info.multiple) {
+        class_name = L"LISTBOX";
+        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
+                WS_BORDER | LBS_NOTIFY | LBS_MULTIPLESEL |
+                LBS_NOINTEGRALHEIGHT;
+    } else {
+        class_name = L"COMBOBOX";
+        style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
+                CBS_DROPDOWNLIST;
+    }
+    hwnd = CreateWindowW(class_name, L"", style,
+            info.x - scroll_x, info.y - scroll_y,
+            info.width > 0 ? info.width : 1,
+            info.multiple ? (info.height > 0 ? info.height : 1) :
+            app_controls_select_window_height(&info), context->parent,
+            (HMENU) (APP_CONTROLS_ID_BASE + control_id),
+            context->instance, NULL);
+    if (hwnd == NULL) {
+        return 1;
+    }
+    memset(item, 0, sizeof(*item));
+    item->hwnd = hwnd;
+    item->kind = APP_CONTROLS_KIND_SELECT;
+    item->select_index = index;
+    item->target_token = (unsigned long) index + 1UL;
+    item->multiple = info.multiple ? 1 : 0;
+    item->disabled = info.disabled ? 1 : 0;
+    item->option_count = info.option_count;
+    item->x = info.x;
+    item->y = info.y;
+    item->width = info.width > 0 ? info.width : 1;
+    item->height = info.height > 0 ? info.height : 1;
+    original_proc = (WNDPROC) SetWindowLong(hwnd, GWL_WNDPROC,
+            (LONG) app_controls_select_proc);
+    item->original_proc = original_proc;
+    if (original_proc == NULL) {
+        DestroyWindow(hwnd);
+        memset(item, 0, sizeof(*item));
+        return 1;
+    }
+    SendMessage(hwnd, WM_SETFONT, (WPARAM) GetStockObject(SYSTEM_FONT),
+            TRUE);
+    for (option_index = 0; option_index < (unsigned int) info.option_count;
+            option_index++) {
+        wide_label = NULL;
+        if (app_controls_select_option_label(context, item, option_index,
+                &wide_label) != 0) {
+            SetWindowLong(hwnd, GWL_WNDPROC, (LONG) original_proc);
+            DestroyWindow(hwnd);
+            memset(item, 0, sizeof(*item));
+            return 1;
+        }
+        add_result = SendMessage(hwnd, info.multiple ? LB_ADDSTRING :
+                CB_ADDSTRING, 0, (LPARAM) wide_label);
+        free(wide_label);
+        if (info.multiple) {
+            if (add_result == LB_ERR || add_result == LB_ERRSPACE) {
+                SetWindowLong(hwnd, GWL_WNDPROC, (LONG) original_proc);
+                DestroyWindow(hwnd);
+                memset(item, 0, sizeof(*item));
+                return 1;
+            }
+            selected = 0;
+            if (app_controls_select_selected(context, item, option_index,
+                    &selected) != 0) {
+                SetWindowLong(hwnd, GWL_WNDPROC, (LONG) original_proc);
+                DestroyWindow(hwnd);
+                memset(item, 0, sizeof(*item));
+                return 1;
+            }
+            SendMessage(hwnd, LB_SETSEL, (WPARAM) (selected ? TRUE : FALSE),
+                    (LPARAM) add_result);
+        }
+    }
+    if (!info.multiple) {
+        SendMessage(hwnd, CB_SETCURSEL,
+                (WPARAM) (info.selected_index >= 0 ?
+                info.selected_index : -1), 0);
     }
     EnableWindow(hwnd, item->disabled ? FALSE : TRUE);
     return 0;
@@ -582,6 +1243,7 @@ void AppControls_ClearPage(AppControlsContext *context)
     }
     if (context->script != NULL) {
         AppScript_ResetNativeEditState(context->script);
+        AppScript_ResetNativeSelectState(context->script);
     }
     /* Detaching the document before DestroyWindow prevents the native
      * child's WM_KILLFOCUS path from dispatching a stale blur while the old
@@ -627,15 +1289,27 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
     context->document = document;
     context->script = script;
     index = 0;
-    while (index < APP_CONTROLS_MAX && PCore_TextInputInfo(document,
-            index, NULL, NULL, 0) == 0) {
+    while (context->count < APP_CONTROLS_MAX &&
+            PCore_TextInputInfo(document, index, NULL, NULL, 0) == 0) {
         if (app_controls_rebuild_item(context, &context->items[index],
-                index, scroll_x, scroll_y) != 0) {
+                index, (int) context->count, scroll_x, scroll_y) != 0) {
             AppControls_ClearPage(context);
             return 1;
         }
         index++;
-        context->count = index;
+        context->count++;
+    }
+    index = 0;
+    while (context->count < APP_CONTROLS_MAX &&
+            PCore_SelectInfo(document, index, NULL) == 0) {
+        if (app_controls_rebuild_select_item(context,
+                &context->items[context->count], index,
+                (int) context->count, scroll_x, scroll_y) != 0) {
+            AppControls_ClearPage(context);
+            return 1;
+        }
+        index++;
+        context->count++;
     }
     AppControls_Reposition(context, document, scroll_x, scroll_y);
     return 0;
@@ -645,11 +1319,13 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         int scroll_x, int scroll_y)
 {
     RECT client;
+    PCoreSelectInfo select_info;
     unsigned int i;
     int x;
     int y;
     int width;
     int height;
+    int visible_height;
 
     if (context == NULL || document == NULL || context->parent == NULL) {
         return;
@@ -657,16 +1333,28 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
     context->document = document;
     GetClientRect(context->parent, &client);
     for (i = 0; i < context->count; i++) {
+        if (context->items[i].kind == APP_CONTROLS_KIND_SELECT) {
+            app_controls_sync_select(context, &context->items[i]);
+        }
         if (context->items[i].hwnd == NULL ||
                 !app_controls_item_geometry(context, &context->items[i],
                 &x, &y, &width, &height)) {
             continue;
         }
+        visible_height = height;
         x -= scroll_x;
         y -= scroll_y;
+        if (context->items[i].kind == APP_CONTROLS_KIND_SELECT &&
+                !context->items[i].multiple) {
+            memset(&select_info, 0, sizeof(select_info));
+            if (PCore_SelectInfo(document, context->items[i].select_index,
+                    &select_info) == 0) {
+                height = app_controls_select_window_height(&select_info);
+            }
+        }
         MoveWindow(context->items[i].hwnd, x, y, width, height, TRUE);
         if (x + width <= client.left || x >= client.right ||
-                y + height <= client.top || y >= client.bottom) {
+                y + visible_height <= client.top || y >= client.bottom) {
             ShowWindow(context->items[i].hwnd, SW_HIDE);
         } else {
             ShowWindow(context->items[i].hwnd, SW_SHOW);
@@ -682,13 +1370,97 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
     int x;
     int y;
     int result;
+    int selected_index;
+    int selected_count;
+    int should_commit;
+    int interaction_result;
 
-    if (context == NULL || lparam == 0 || HIWORD(wparam) != EN_CHANGE) {
+    if (context == NULL || lparam == 0) {
         return 0;
     }
     item = app_controls_find((HWND) lparam);
-    if (item == NULL || context->syncing || context->document == NULL) {
-        return item != NULL ? 1 : 0;
+    if (item == NULL) {
+        return 0;
+    }
+    if (context->syncing || context->document == NULL) {
+        return 1;
+    }
+    if (item->kind == APP_CONTROLS_KIND_SELECT) {
+        if (!item->multiple && HIWORD(wparam) == CBN_DROPDOWN) {
+            item->dropdown_active = 0;
+            item->select_candidate_index = -1;
+            item->select_candidate_count = 0;
+            interaction_result = app_controls_select_interaction(context,
+                    item, PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_BEGIN,
+                    &should_commit);
+            if (interaction_result > 0) {
+                item->dropdown_active = 1;
+            }
+            return 1;
+        }
+        if (!item->multiple && HIWORD(wparam) == CBN_SELCHANGE) {
+            if (app_controls_select_native_state(item, &selected_index,
+                    &selected_count) != 0) {
+                return 1;
+            }
+            if (item->dropdown_active) {
+                interaction_result = app_controls_select_interaction(context,
+                        item,
+                        PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_CANDIDATE,
+                        &should_commit);
+                if (interaction_result > 0) {
+                    item->select_candidate_index = selected_index;
+                    item->select_candidate_count = selected_count;
+                    return 1;
+                }
+                item->dropdown_active = 0;
+                app_controls_sync_select(context, item);
+                return 1;
+            }
+            (void) app_controls_select_commit_single(context, item,
+                    selected_index);
+            return 1;
+        }
+        if (!item->multiple && HIWORD(wparam) == CBN_SELENDOK) {
+            if (item->dropdown_active) {
+                should_commit = 0;
+                interaction_result = app_controls_select_interaction(context,
+                        item,
+                        PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_OK,
+                        &should_commit);
+                item->dropdown_active = 0;
+                if (interaction_result > 0 && should_commit &&
+                        item->select_candidate_index >= 0) {
+                    (void) app_controls_select_commit_single(context, item,
+                            item->select_candidate_index);
+                } else if (interaction_result < 0) {
+                    app_controls_sync_select(context, item);
+                }
+            }
+            return 1;
+        }
+        if (!item->multiple && HIWORD(wparam) == CBN_SELENDCANCEL) {
+            if (item->dropdown_active) {
+                should_commit = 0;
+                (void) app_controls_select_interaction(context, item,
+                        PBROWSER_SCRIPT_NATIVE_SELECT_INTERACTION_END_CANCEL,
+                        &should_commit);
+                item->dropdown_active = 0;
+                app_controls_sync_select(context, item);
+            }
+            return 1;
+        }
+        if (!item->multiple && HIWORD(wparam) == CBN_CLOSEUP) {
+            return 1;
+        }
+        if (item->multiple && HIWORD(wparam) == LBN_SELCHANGE) {
+            (void) app_controls_select_commit_multiple(context, item);
+            return 1;
+        }
+        return 1;
+    }
+    if (item->kind != APP_CONTROLS_KIND_TEXT || HIWORD(wparam) != EN_CHANGE) {
+        return 1;
     }
     value = app_controls_read_value(item);
     if (value == NULL) {

@@ -10,6 +10,7 @@
 
 #define APP_SCRIPT_EVENT_MAX          64
 #define APP_SCRIPT_MAX_SOURCE_BYTES   (64 * 1024)
+#define APP_SCRIPT_NO_SELECT_KEY      0xffffffffUL
 
 typedef struct AppScriptEventBinding AppScriptEventBinding;
 
@@ -36,6 +37,7 @@ struct AppScriptContext {
     int viewport_width;
     int viewport_height;
     int dpi;
+    unsigned int native_select_key_index;
 };
 
 static void app_script_copy_text(char *target, int capacity,
@@ -750,6 +752,82 @@ static int app_script_edit_dispatch(void *pw,
     return result < 0 ? -1 : 0;
 }
 
+static int app_script_key_dispatch(void *pw,
+        const PBrowserScriptKeyEventInfo *info, int *out_default_allowed)
+{
+    AppScriptContext *context;
+    PCoreKeyEventDataEx data;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            out_default_allowed == NULL || info->size < sizeof(*info) ||
+            info->event_type == NULL || info->event_type[0] == '\0' ||
+            info->key == NULL || info->key[0] == '\0') {
+        return -1;
+    }
+    memset(&data, 0, sizeof(data));
+    data.struct_size = sizeof(data);
+    data.key = info->key;
+    data.key_code = info->key_code;
+    data.char_code = info->char_code;
+    data.repeat = info->repeat ? 1 : 0;
+    data.shift = info->shift ? 1 : 0;
+    data.ctrl = info->ctrl ? 1 : 0;
+    data.alt = info->alt ? 1 : 0;
+    data.is_composing = info->is_composing ? 1 : 0;
+    *out_default_allowed = 1;
+    if (context->native_select_key_index != APP_SCRIPT_NO_SELECT_KEY) {
+        result = PCore_EventDispatchKeyExToSelectIndex(context->document,
+                context->native_select_key_index, info->event_type,
+                info->bubbles ? 1 : 0, info->cancelable ? 1 : 0, &data,
+                out_default_allowed);
+    } else {
+        result = PCore_EventDispatchKeyExAt(context->document, info->x,
+                info->y, info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, &data, out_default_allowed);
+    }
+    return result < 0 ? -1 : 0;
+}
+
+static int app_script_focus_dispatch(void *pw,
+        const PBrowserScriptFocusEventInfo *info)
+{
+    AppScriptContext *context;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->event_type == NULL ||
+            info->event_type[0] == '\0') {
+        return -1;
+    }
+    result = PCore_EventDispatchAt(context->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, NULL);
+    return result < 0 ? -1 : 0;
+}
+
+static int app_script_native_select_dispatch(void *pw,
+        const PBrowserScriptNativeSelectEventInfo *info)
+{
+    AppScriptContext *context;
+    int default_allowed;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->event_type == NULL ||
+            info->event_type[0] == '\0') {
+        return -1;
+    }
+    default_allowed = 1;
+    result = PCore_EventDispatchAt(context->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, &default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
 static int app_script_register_callbacks(AppScriptContext *context)
 {
     PBrowserScriptDomReadCallbacksEx dom_read;
@@ -769,8 +847,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptInteractionCallbacks interaction;
     PBrowserScriptFocusRequestCallbacks focus_request;
     PBrowserScriptInputCallbacks input_callbacks;
+    PBrowserScriptKeyCallbacks key_callbacks;
+    PBrowserScriptFocusCallbacks focus_callbacks;
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptNativeEditCallbacksEx native_edit_callbacks;
+    PBrowserScriptNativeSelectCallbacksEx native_select_callbacks;
 
     memset(&dom_read, 0, sizeof(dom_read));
     dom_read.size = sizeof(dom_read);
@@ -856,6 +937,14 @@ static int app_script_register_callbacks(AppScriptContext *context)
     input_callbacks.size = sizeof(input_callbacks);
     input_callbacks.pw = context;
     input_callbacks.dispatch_input = app_script_input_dispatch;
+    memset(&key_callbacks, 0, sizeof(key_callbacks));
+    key_callbacks.size = sizeof(key_callbacks);
+    key_callbacks.pw = context;
+    key_callbacks.dispatch_key = app_script_key_dispatch;
+    memset(&focus_callbacks, 0, sizeof(focus_callbacks));
+    focus_callbacks.size = sizeof(focus_callbacks);
+    focus_callbacks.pw = context;
+    focus_callbacks.dispatch_focus = app_script_focus_dispatch;
     memset(&edit_callbacks, 0, sizeof(edit_callbacks));
     edit_callbacks.size = sizeof(edit_callbacks);
     edit_callbacks.pw = context;
@@ -865,6 +954,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
     native_edit_callbacks.pw = context;
     native_edit_callbacks.dispatch_input = app_script_input_dispatch;
     native_edit_callbacks.dispatch_change = app_script_edit_dispatch;
+    memset(&native_select_callbacks, 0, sizeof(native_select_callbacks));
+    native_select_callbacks.size = sizeof(native_select_callbacks);
+    native_select_callbacks.pw = context;
+    native_select_callbacks.dispatch_select =
+            app_script_native_select_dispatch;
     if (PBrowser_ScriptSessionRegisterDomReadCallbacksEx(context->session,
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
@@ -900,10 +994,16 @@ static int app_script_register_callbacks(AppScriptContext *context)
             context->session, &focus_request) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterInputCallbacks(context->session,
             &input_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterKeyCallbacks(context->session,
+            &key_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFocusCallbacks(context->session,
+            &focus_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEditCallbacks(context->session,
             &edit_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
-            context->session, &native_edit_callbacks) != PSCRIPT_OK) {
+            context->session, &native_edit_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
+            context->session, &native_select_callbacks) != PSCRIPT_OK) {
         return 1;
     }
     return 0;
@@ -933,6 +1033,7 @@ AppScriptContext *AppScript_Create(HANDLE document,
             sizeof(context->document_url), document_url);
     memcpy(&context->callbacks, callbacks, sizeof(context->callbacks));
     context->next_listener = 1;
+    context->native_select_key_index = APP_SCRIPT_NO_SELECT_KEY;
     context->history_length = history_length < 1 ? 1 : history_length;
     context->history_index = history_index;
     if (context->history_index < 0 ||
@@ -1326,6 +1427,126 @@ void AppScript_ResetNativeEditState(AppScriptContext *context)
 {
     if (context != NULL && context->session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeEditState(context->session);
+    }
+}
+
+int AppScript_DispatchNativeSelectCommit(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int multiple,
+        int selected_index, int selected_count)
+{
+    PBrowserScriptNativeSelectCommitInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.multiple = multiple ? 1 : 0;
+    info.selected_index = selected_index;
+    info.selected_count = selected_count;
+    return PBrowser_ScriptSessionDispatchNativeSelectCommit(
+            context->session, &info) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchNativeSelectInteraction(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int multiple,
+        int selected_index, int selected_count, int phase,
+        int *out_should_commit)
+{
+    PBrowserScriptNativeSelectInteractionInfo info;
+
+    if (out_should_commit != NULL) {
+        *out_should_commit = 0;
+    }
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            out_should_commit == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.multiple = multiple ? 1 : 0;
+    info.selected_index = selected_index;
+    info.selected_count = selected_count;
+    info.phase = phase;
+    return PBrowser_ScriptSessionDispatchNativeSelectInteraction(
+            context->session, &info, out_should_commit) == PSCRIPT_OK ?
+            0 : 1;
+}
+
+int AppScript_DispatchNativeSelectFocus(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int focused)
+{
+    PBrowserScriptNativeSelectFocusInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            (focused != 0 && focused != 1)) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.focused = focused;
+    return PBrowser_ScriptSessionDispatchNativeSelectFocus(
+            context->session, &info) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchNativeSelectKey(AppScriptContext *context,
+        unsigned long target_token, int x, int y, const char *event_type,
+        const char *key, unsigned int key_code, unsigned int char_code,
+        int repeat, int shift, int ctrl, int alt, int is_composing,
+        int *out_default_allowed)
+{
+    PBrowserScriptNativeSelectKeyInfo info;
+    unsigned int previous_index;
+    int default_allowed;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            event_type == NULL || event_type[0] == '\0' || key == NULL ||
+            key[0] == '\0' || out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.event_type = event_type;
+    info.key = key;
+    info.key_code = key_code;
+    info.char_code = char_code;
+    info.repeat = repeat ? 1 : 0;
+    info.shift = shift ? 1 : 0;
+    info.ctrl = ctrl ? 1 : 0;
+    info.alt = alt ? 1 : 0;
+    info.is_composing = is_composing ? 1 : 0;
+    default_allowed = 1;
+    previous_index = context->native_select_key_index;
+    context->native_select_key_index = (unsigned int) (target_token - 1UL);
+    if (PBrowser_ScriptSessionDispatchNativeSelectKey(context->session,
+            &info, &default_allowed) != PSCRIPT_OK) {
+        context->native_select_key_index = previous_index;
+        return 1;
+    }
+    context->native_select_key_index = previous_index;
+    *out_default_allowed = default_allowed ? 1 : 0;
+    return 0;
+}
+
+void AppScript_ResetNativeSelectState(AppScriptContext *context)
+{
+    if (context != NULL && context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeSelectState(context->session);
     }
 }
 

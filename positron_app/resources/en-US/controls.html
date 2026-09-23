@@ -22,8 +22,18 @@ to the Core document.</p>
 <input id="secret" type="password" value="positron"></p>
 <p><label for="notes">Notes</label><br>
 <textarea id="notes" rows="3">Native multiline text.</textarea></p>
-<p>SELECT, buttons, SIP/IME, file picking and form submission remain in the
-next input batches.</p>
+<h2>Native selections</h2>
+<p>Single and multiple SELECT controls use the WM6 COMBOBOX/LISTBOX
+controls. Selection changes are committed to the Core document and the
+Browser input/change bridge.</p>
+<p><label for="region">Region</label><br>
+<select id="region"><option value="cn" selected>China</option>
+<option value="us">United States</option><option value="uk">United Kingdom</option></select></p>
+<p><label for="topics">Topics</label><br>
+<select id="topics" multiple size="3"><option value="core" selected>Core</option>
+<option value="browser">Browser</option><option value="wm6">WM6</option></select></p>
+<p>Buttons, SIP/IME, file picking and form submission remain in the next
+input batches.</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">Home</a></p>
 </body></html>

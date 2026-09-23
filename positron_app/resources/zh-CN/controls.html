@@ -16,7 +16,15 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <input id="secret" type="password" value="positron"></p>
 <p><label for="notes">备注</label><br>
 <textarea id="notes" rows="3">原生多行文本。</textarea></p>
-<p>SELECT、按钮、SIP/IME、文件选择和表单提交将在后续输入批次中接入。</p>
+<h2>原生选择控件</h2>
+<p>单选和多选 SELECT 使用 WM6 的 COMBOBOX/LISTBOX 原生控件。选中状态会提交回 Core 文档，并接入 Browser 的 input/change 事件桥。</p>
+<p><label for="region">地区</label><br>
+<select id="region"><option value="cn" selected>中国大陆</option>
+<option value="sg">新加坡</option><option value="us">美国</option></select></p>
+<p><label for="topics">主题</label><br>
+<select id="topics" multiple size="3"><option value="core" selected>Core</option>
+<option value="browser">Browser</option><option value="wm6">WM6</option></select></p>
+<p>按钮、SIP/IME、文件选择和表单提交将在后续输入批次中接入。</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">主页</a></p>
 </body></html>
