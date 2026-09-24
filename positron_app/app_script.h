@@ -28,6 +28,8 @@ typedef int (*AppScriptNavigateFn)(void *pw, AppScriptContext *context,
 typedef int (*AppScriptScrollFn)(void *pw, AppScriptContext *context,
         const PBrowserScriptScrollInfo *info, int *out_x, int *out_y);
 typedef void (*AppScriptMutationFn)(void *pw, AppScriptContext *context);
+typedef void (*AppScriptFormResetAppliedFn)(void *pw,
+        AppScriptContext *context);
 typedef int (*AppScriptGetContentEditableSelectionFn)(void *pw,
         AppScriptContext *context, const char *id, int *out_start,
         int *out_end, int *out_direction);
@@ -41,6 +43,7 @@ typedef struct AppScriptHostCallbacks {
     AppScriptNavigateFn navigate;
     AppScriptScrollFn scroll;
     AppScriptMutationFn mutation;
+    AppScriptFormResetAppliedFn form_reset_applied;
     AppScriptGetContentEditableSelectionFn get_contenteditable_selection;
     AppScriptSetContentEditableSelectionFn set_contenteditable_selection;
 } AppScriptHostCallbacks;

@@ -44,6 +44,12 @@ EDIT、SELECT 和 toggle；不增加 DLL ABI。`type=submit` 按钮现在也复�
 执行约束校验并生成成功控件数据，Browser 在有效时派发可取消的 submit，EXE 目前只接入
 URL-encoded GET，再交给既有导航候选；校验失败、事件取消、目标过长或候选失败都不会替换旧页。
 POST、multipart、dialog、隐式 Enter 提交及脚本 `requestSubmit()`/`submit()` 仍不在本纵切范围。
+网络页面的 ScriptSession 另已接入带 id 表单的 `form.reset()`：Browser 按表单 id 派发可取消
+reset 事件，获准后由 Core 恢复初值；活动页面随后重新 layout，并在 UI 消息中 reconcile
+native 控件：SELECT/toggle 沿用现有 Core 同步，EDIT 值只在 reset 专用路径写回现有窗口；
+表单结构未变时不因值同步而重建控件并保留焦点。若 reset 事件处理器改变结构，仍按通用
+reconcile 规则处理。普通 DOM mutation 不会因此覆盖用户正在编辑的 EDIT。内置离线页不创建
+ScriptSession，因此该脚本方法只能在启用脚本的网络页面上验收。
 内置 controls 页面有离线 GET 表单，提交成功会在地址栏显示编码后的查询并重新载入该页。
 带 id 且已布局的 `contenteditable` editing host 现在也
 投影为同一窗口体系下的原生多行 EDIT；Core 保存最多 8192 UTF-8 字节的纯文本，Browser 的
@@ -57,7 +63,8 @@ CRLF 索引会换算为 Browser 使用的逻辑 LF/UTF-16 偏移；鼠标拖选�
 `selectionDirection` 与 `setSelectionRange()` 可同步到 native EDIT；候选页或失效 EDIT 不提供原生选区，
 Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `contenteditable` 编辑提交到 Core 时仍会
 以纯文本替换其子树，不支持富文本编辑；Range/Selection 对象不在本批范围，设备端 OEM 键盘、
-触摸和视觉尚待验收。脚本 `form.reset()`、完整表单提交与 FormData 仍未接入；dialog、SIP/IME、文件选择器、
+触摸和视觉尚待验收。脚本 `form.reset()` 的 native 控件同步仍未设备验收；完整表单提交与 FormData
+仍未接入；dialog、SIP/IME、文件选择器、
 书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
@@ -111,7 +118,9 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    mutation、事件监听和 timer 在提交后生效，并让 click listener 更新页面确认按钮事件到达；
    对有效 native submit button 检查 click→validation→submit 顺序，并用 click/submit
    `preventDefault()` 确认取消后没有 GET 请求；尝试 POST 表单确认其安全拒绝。脚本错误、optional script/image 失败、
-   取消或输入另一个地址时不显示半成品页面，旧页面仍可用。
+   取消或输入另一个地址时不显示半成品页面，旧页面仍可用。对带 id 的脚本表单调用
+   `form.reset()`，分别验证 reset 事件以该表单为 target、`preventDefault()` 保留原值，以及
+   允许默认动作后 Core 值和 native 控件恢复初值。
 
 真实设备的触摸命中、SIP、旋转、DPI 和 OEM 键盘行为仍属于人工验收；本阶段不把桌面
 构建或 synthetic 消息当作这些门的替代证据。

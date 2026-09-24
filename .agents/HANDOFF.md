@@ -18,8 +18,12 @@ checkbox/radio `BUTTON`、Core 绘制普通 `type=button` 的点按/Space/Enter 
 ScriptSession 注册 click callback，经 Core 派发坐标事件，也补齐 toggle 的 Browser click 事务；
 native `type=reset` 通过可取消 click/reset 事务后由 Core `PCore_FormResetAt()` 恢复初值，宿主重建
 native 控件；本轮又接入 native `type=submit` 的 click→Core validation→Browser 可取消 submit→Core
-successful-control snapshot→URL-encoded GET 导航。EXE 不复制验证、submit 事件或字段编码；POST、
-multipart、dialog、隐式 Enter 和脚本提交仍未接。内置 controls 页含 required GET 表单，离线页不创建
+successful-control snapshot→URL-encoded GET 导航。EXE 不复制验证、submit 事件或字段编码；网络
+ScriptSession 现注册按 id 派发的可取消 form event 与 Core `PCore_FormResetById()`，脚本
+`form.reset()` 获准后重排活动页并排队 reset 专用控件同步：EDIT 值写回现有窗口，SELECT/toggle
+沿用 Core 同步；结构未变时不因值同步而重建控件，结构变化仍按通用 reconcile 处理。普通 DOM
+mutation 不回写 EDIT。脚本 `requestSubmit()`/`submit()`、
+POST、multipart、dialog 和隐式 Enter 仍未接。内置 controls 页含 required GET 表单，离线页不创建
 ScriptSession，inline script 不执行。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责
 WM6 消息、窗口、焦点/输入接线、重排和 teardown。本轮 C89、Debug/Release ARMV4I 重编与仓库审计
 均已通过；不宣称设备通过。设备门按用户决定暂缓，`RAPI=0x80072746` 不重试。
@@ -55,9 +59,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 ## 当前短期目标
 
 当前短期目标是完成独立 `positron.exe` 的 HTTP(S)、资源事务、ScriptSession 和原生控件纵切，
-维持失败/取消/stale 时旧页不变。本轮新增 native submit button→URL-encoded GET，C89、Debug/Release
-ARMV4I 重编与仓库审计均通过；Core/Browser 所有权及剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。仍需设备验收；
-RAPI `0x80072746` 按用户决定暂停，不重试、不写设备基线。POST/multipart、脚本 reset/submit、FormData、
+维持失败/取消/stale 时旧页不变。本轮在 native submit button→URL-encoded GET 后接入
+ScriptSession `form.reset()` 的 Browser by-id event、Core reset 与 native 控件值同步；C89、Debug/Release ARMV4I
+重编与仓库审计均通过，未部署设备。剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。
+RAPI `0x80072746` 按用户决定暂停，不重试、不写设备基线。脚本 `requestSubmit()`/`submit()`、POST/multipart、FormData、
 dialog、SIP/IME、picker、书签和持久设置仍未进入 EXE。ROADMAP 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -103,7 +108,9 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
 交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
 脚本/图片属于 optional fallback；阶段 2 的网络候选已按 DOM 顺序创建并执行有界 classic
-ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；阶段 3 由 EXE 私有
+ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；脚本 `form.reset()` 另由 Browser
+Ex form-event adapter 按 id 派发 reset，并在获准后执行 Core state reset、活动页 relayout 与 reset 专用
+native 值同步；阶段 3 由 EXE 私有
 `AppControlsContext` 投影 text/password/textarea、SELECT、checkbox/radio 与 identified contenteditable
 为原生子控件，并路由普通 `type=button` click。Core/Browser 保留状态与事件语义，宿主按 Core 几何
 重排并负责 WM6 输入/teardown；contenteditable 另用现有 Browser callbacks 同步可寻址 native EDIT
@@ -355,17 +362,19 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-本轮 native submit GET 源码接线、双语离线表单示例、C89、仓库审计及 Debug/Release ARMV4I 重编均已
-通过；未部署设备。RAPI `0x80072746` 仍按用户决定搁置，不重试。恢复设备门后，在 controls 页清空必填项
+本轮 ScriptSession `form.reset()` 源码接线，以及此前 native submit GET 的本地门均已通过 C89、
+仓库审计和 Debug/Release ARMV4I 重编；未部署设备。RAPI `0x80072746` 仍按用户决定搁置，不重试。
+恢复设备门后，在启用 ScriptSession 的网络表单验证脚本 reset 的取消/允许路径和 native 控件同步，再在 controls 页清空必填项
 激活 submit，确认不导航；填入带空格的值并选一个 scope，确认 Core 编码的 q/scope/submitter 参数出现在
 地址栏且旧页只在提交成功后替换。再用有 ScriptSession 的网络表单分别取消 click/submit，确认不发 GET；
-确认 POST/multipart 被安全拒绝。reset 在该页仍应恢复初值。其余 TEST999 的网络、脚本、失败回滚、语言、
+确认 POST/multipart 被安全拒绝。reset 在该页仍应恢复 Core/native 初值；表单结构未变时保留 EDIT 焦点。其余 TEST999 的网络、脚本、失败回滚、语言、
 history、旋转/DPI、滚动条、原生控件和清理验收继续有效。
 
-设备验收未通过前不写成设备基线。阶段 4 的 native submit button→URL-encoded GET 源码纵切及本地门已完成；后续
-可取舍项为脚本 `requestSubmit()`/`submit()` 或 POST，仍需分别确定边界与门。File/Blob 上传继续待真实
-消费者证据。本轮改动限于 EXE 私有 controls/导航适配、i18n 状态、双语 controls 示例和职责文档；不改公共
-DLL ABI 或 `test_host`。路线图已按源码门与尚未运行的设备门复核，仍将本能力保留为待设备验收。TEST262/264
+设备验收未通过前不写成设备基线。阶段 4 的 native reset、native submit GET 和 ScriptSession
+`form.reset()` 源码纵切及本地门已完成；后续可取舍项为脚本 `requestSubmit()`/`submit()` 或 POST，
+仍需分别确定边界与门。File/Blob 上传继续待真实
+消费者证据。本批改动限于 EXE 私有 ScriptSession 表单事件/reset 接线、应用验收说明与动态交接文档；不改公共
+DLL ABI 或 `test_host`。路线图已按源码门与尚未运行的设备门复核；此能力仍待设备验收。TEST262/264
 的自动失败仍隔离在审查报告；崩溃、数据损坏、严重布局破坏或
 核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带

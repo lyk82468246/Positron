@@ -61,6 +61,7 @@
 #define APP_WM_NAV_DONE         (WM_APP + 3)
 #define APP_WM_SCRIPT_NAVIGATE  (WM_APP + 4)
 #define APP_WM_CONTROLS_REFRESH (WM_APP + 5)
+#define APP_CONTROLS_REFRESH_FORM_RESET 1
 #define APP_SCRIPT_TIMER_ID     7
 
 #define APP_NAV_MAX_RETIRED     4
@@ -447,7 +448,8 @@ static void app_set_focus_ids(int page_kind)
     }
 }
 
-static void app_script_mutated(void *pw, AppScriptContext *context)
+static void app_script_schedule_refresh(void *pw, AppScriptContext *context,
+        int form_reset)
 {
     AppHostContext *host;
 
@@ -466,9 +468,21 @@ static void app_script_mutated(void *pw, AppScriptContext *context)
     }
     InvalidateRect(host->page_window, NULL, TRUE);
     if (host->window != NULL) {
-        (void) PostMessage(host->window, APP_WM_CONTROLS_REFRESH, 0,
+        (void) PostMessage(host->window, APP_WM_CONTROLS_REFRESH,
+                form_reset ? APP_CONTROLS_REFRESH_FORM_RESET : 0,
                 (LPARAM) context);
     }
+}
+
+static void app_script_mutated(void *pw, AppScriptContext *context)
+{
+    app_script_schedule_refresh(pw, context, 0);
+}
+
+static void app_script_form_reset_applied(void *pw,
+        AppScriptContext *context)
+{
+    app_script_schedule_refresh(pw, context, 1);
 }
 
 static int app_script_contenteditable_selection_get(void *pw,
@@ -1638,6 +1652,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 script_callbacks.navigate = app_script_navigate;
                 script_callbacks.scroll = app_script_scroll;
                 script_callbacks.mutation = app_script_mutated;
+                script_callbacks.form_reset_applied =
+                        app_script_form_reset_applied;
                 script_callbacks.get_contenteditable_selection =
                         app_script_contenteditable_selection_get;
                 script_callbacks.set_contenteditable_selection =
@@ -2526,8 +2542,12 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         if (lparam == (LPARAM) g_script && g_document != NULL &&
                 g_controls != NULL) {
             AppControls_PrepareReconcile(g_controls);
-            if (app_relayout() != 0 || AppControls_Reconcile(g_controls,
-                    g_document, g_script, g_scroll_x, g_scroll_y) != 0) {
+            if (app_relayout() != 0 ||
+                    ((wparam == APP_CONTROLS_REFRESH_FORM_RESET) ?
+                    AppControls_ReconcileAfterFormReset(g_controls,
+                    g_document, g_script, g_scroll_x, g_scroll_y) :
+                    AppControls_Reconcile(g_controls, g_document,
+                    g_script, g_scroll_x, g_scroll_y)) != 0) {
                 app_set_status(APP_TEXT_STATUS_LAYOUT);
             } else {
                 InvalidateRect(g_page_window, NULL, TRUE);

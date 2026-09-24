@@ -3297,6 +3297,70 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
     return 0;
 }
 
+int AppControls_ReconcileAfterFormReset(AppControlsContext *context,
+        HANDLE document, AppScriptContext *script, int scroll_x,
+        int scroll_y)
+{
+    PCoreTextInputInfo info;
+    AppControlsItem *item;
+    char *core_value;
+    char *native_value;
+    char *verified_value;
+    unsigned int index;
+    int value_capacity;
+    int result;
+
+    if (context == NULL || document == NULL ||
+            AppControls_Reconcile(context, document, script, scroll_x,
+            scroll_y) != 0) {
+        return 1;
+    }
+    index = 0;
+    for (;;) {
+        memset(&info, 0, sizeof(info));
+        result = PCore_TextInputInfo(document, index, &info, NULL, 0);
+        if (result != 0) {
+            break;
+        }
+        if (index >= context->count ||
+                context->items[index].kind != APP_CONTROLS_KIND_TEXT ||
+                context->items[index].text_index != index ||
+                info.value_bytes < 0 ||
+                info.value_bytes >= APP_CONTROLS_TEXT_CAP) {
+            return 1;
+        }
+        item = &context->items[index];
+        value_capacity = info.value_bytes + 1;
+        core_value = (char *) malloc((size_t) value_capacity);
+        if (core_value == NULL || PCore_TextInputInfo(document, index,
+                NULL, core_value, value_capacity) != 0) {
+            free(core_value);
+            return 1;
+        }
+        native_value = app_controls_read_value(item);
+        if (native_value == NULL) {
+            free(core_value);
+            return 1;
+        }
+        if (strcmp(core_value, native_value) != 0) {
+            app_controls_set_value(context, item, core_value);
+            verified_value = app_controls_read_value(item);
+            if (verified_value == NULL ||
+                    strcmp(core_value, verified_value) != 0) {
+                free(verified_value);
+                free(native_value);
+                free(core_value);
+                return 1;
+            }
+            free(verified_value);
+        }
+        free(native_value);
+        free(core_value);
+        index++;
+    }
+    return 0;
+}
+
 void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         int scroll_x, int scroll_y)
 {

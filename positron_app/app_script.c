@@ -954,6 +954,49 @@ static int app_script_form_event_dispatch(void *pw,
     return result < 0 ? -1 : 0;
 }
 
+static int app_script_form_event_dispatch_by_id(void *pw,
+        const PBrowserScriptFormEventInfoEx *info, int *out_default_allowed)
+{
+    AppScriptContext *context;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->element_id == NULL ||
+            info->element_id[0] == '\0' || info->event_type == NULL ||
+            (strcmp(info->event_type, "submit") != 0 &&
+            strcmp(info->event_type, "reset") != 0) ||
+            out_default_allowed == NULL) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchToId(context->document, info->element_id,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, out_default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
+static int app_script_reset_form(void *pw, const char *form_id)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || form_id == NULL ||
+            form_id[0] == '\0') {
+        return -1;
+    }
+    if (PCore_FormResetById(context->document, form_id) != 0) {
+        return 0;
+    }
+    if (context->callbacks.form_reset_applied != NULL) {
+        context->callbacks.form_reset_applied(context->callbacks.pw,
+                context);
+    } else if (context->callbacks.mutation != NULL) {
+        context->callbacks.mutation(context->callbacks.pw, context);
+    }
+    return 1;
+}
+
 static int app_script_register_callbacks(AppScriptContext *context)
 {
     PBrowserScriptDomReadCallbacksEx dom_read;
@@ -982,6 +1025,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptNativeSelectCallbacksEx native_select_callbacks;
     PBrowserScriptClickCallbacks click_callbacks;
     PBrowserScriptFormEventCallbacks form_event;
+    PBrowserScriptFormResetCallbacks form_reset;
+    PBrowserScriptFormEventCallbacksEx form_event_ex;
 
     memset(&dom_read, 0, sizeof(dom_read));
     dom_read.size = sizeof(dom_read);
@@ -1043,6 +1088,10 @@ static int app_script_register_callbacks(AppScriptContext *context)
     form.set_default_checked = app_script_set_default_checked;
     form.get_selected_index = app_script_get_selected_index;
     form.set_selected_index = app_script_set_selected_index;
+    memset(&form_reset, 0, sizeof(form_reset));
+    form_reset.size = sizeof(form_reset);
+    form_reset.pw = context;
+    form_reset.reset_form = app_script_reset_form;
     memset(&option, 0, sizeof(option));
     option.size = sizeof(option);
     option.pw = context;
@@ -1109,6 +1158,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
     form_event.size = sizeof(form_event);
     form_event.pw = context;
     form_event.dispatch_form_event = app_script_form_event_dispatch;
+    memset(&form_event_ex, 0, sizeof(form_event_ex));
+    form_event_ex.size = sizeof(form_event_ex);
+    form_event_ex.pw = context;
+    form_event_ex.dispatch_form_event =
+            app_script_form_event_dispatch_by_id;
     if (PBrowser_ScriptSessionRegisterDomReadCallbacksEx(context->session,
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
@@ -1132,6 +1186,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
             context->session, &checked) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(context->session,
             &form) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormResetCallbacks(
+            context->session, &form_reset) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterOptionCallbacks(context->session,
             &option) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterEventCallbacks(context->session,
@@ -1161,7 +1217,9 @@ static int app_script_register_callbacks(AppScriptContext *context)
             PBrowser_ScriptSessionRegisterClickCallbacks(context->session,
             &click_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormEventCallbacks(
-            context->session, &form_event) != PSCRIPT_OK) {
+            context->session, &form_event) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormEventCallbacksEx(
+            context->session, &form_event_ex) != PSCRIPT_OK) {
         return 1;
     }
     return 0;

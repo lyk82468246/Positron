@@ -113,8 +113,11 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    EDIT/SELECT 焦点。该部分仍需设备输入、DPI、旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser
    当前有界 mutation callback 限制。阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
    click→Core validation→Browser 可取消 submit→Core successful-control URL-encoded GET 路径；EXE 只组合
-   GET 目标并调用既有 navigation candidate。离线 controls 表单覆盖 required、命名字段、select、submitter
-   和带查询的本地路由。POST/multipart/dialog、脚本 reset/submit、隐式 Enter 和 FormData default action
+   GET 目标并调用既有 navigation candidate。另已把 ScriptSession `form.reset()` 接到 Browser 按 id
+   派发的 cancelable reset 与 Core state-only reset；活动页 relayout 后，reset 专用 reconcile 同步
+   EDIT 值至原有窗口，并由现有路径同步 SELECT/toggle，普通 mutation 不覆盖 EDIT。
+   离线 controls 表单覆盖 required、命名字段、select、submitter 和带查询的本地路由。
+   POST/multipart/dialog、脚本 `requestSubmit()`/`submit()`、隐式 Enter 和 FormData default action
    仍未接入。内置离线页不创建 ScriptSession，inline script 不执行；脚本取消和 selection 示例须使用网络
    ScriptSession 页面验收。本轮 C89、Debug/Release 构建和审计均已通过，设备门按用户决定等待 RAPI 恢复，
    不据此写入设备基线。
@@ -158,9 +161,10 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 `BUTTON`）、Core 绘制普通按钮的 click transaction，以及带 id、已布局 contenteditable host 的
 纯文本 EDIT 投影和按 id 的 `beforeinput`/`input`。EXE 现已用已有 Browser selection callbacks
 接入已提交 native EDIT 的选区读写、CRLF↔逻辑 LF/UTF-16 换算、鼠标/键盘变化通知和
-`selectionchange`；此源码接线尚未设备验收，不代表 OEM 真实输入通过。阶段 4 的 native reset 与
-URL-encoded GET submit 源码路径已接入并通过本轮本地构建/审计，仍未通过设备门。POST/multipart、脚本
-reset/submit、formdata default action、隐式 Enter、富文本与 Range/Selection 对象仍未接入。RAPI 设备
+`selectionchange`；此源码接线尚未设备验收，不代表 OEM 真实输入通过。阶段 4 的 native reset、
+URL-encoded GET submit 与 ScriptSession `form.reset()` 源码路径已接入并通过本地构建/审计，仍未通过设备门。
+POST/multipart、脚本 `requestSubmit()`/`submit()`、formdata default action、隐式 Enter、富文本与
+Range/Selection 对象仍未接入。RAPI 设备
 传输按用户决定暂停，不据此宣布设备基线；恢复设备传输后验收 validation、取消、
 GET query 与旧页保留，再取舍下一个阶段 4 能力。
 dialog、SIP/IME、clipboard 或 picker 不因候选排序自动进入实现。

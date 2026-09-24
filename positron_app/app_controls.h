@@ -32,6 +32,9 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y);
 int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y);
+int AppControls_ReconcileAfterFormReset(AppControlsContext *context,
+        HANDLE document, AppScriptContext *script, int scroll_x,
+        int scroll_y);
 void AppControls_PrepareReconcile(AppControlsContext *context);
 void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         int scroll_x, int scroll_y);
