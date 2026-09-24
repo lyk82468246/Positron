@@ -9,11 +9,13 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 ## 当前 Git 与工作区
 
 工作区在 `main`。阶段 3 当前接入 text/password/textarea `EDIT`、单选/多选 `SELECT`、
-checkbox/radio `BUTTON` 和 Core 绘制普通 `type=button` 的点按、Space/Enter 路径。ScriptSession
-注册 click callback，经 Core 派发坐标事件，也补齐 toggle 的 Browser click 事务；submit/reset
-默认动作未接。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责 WM6 消息、窗口、
-焦点/输入接线、重排和 teardown。C89、Debug/Release 与仓库审计通过；不宣称设备通过。设备门按用户决定暂缓，
-`RAPI=0x80072746` 不重复尝试。
+checkbox/radio `BUTTON`、Core 绘制普通 `type=button` 的点按/Space/Enter 路径，以及带 id、已布局
+`contenteditable` host 的原生多行 EDIT 纯文本投影。后者经 Core 的有界 text API 保存输入，Browser
+处理可取消 `beforeinput` 并按 DOM id 派发 `input`；尚未接入原生 caret/selection 同步或富文本保留。
+ScriptSession 注册 click callback，经 Core 派发坐标事件，也补齐 toggle 的 Browser click 事务；
+submit/reset 默认动作未接。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责 WM6
+消息、窗口、焦点/输入接线、重排和 teardown。本轮 C89、Debug/Release 与仓库审计已通过；不宣称
+设备通过。设备门按用户决定暂缓，`RAPI=0x80072746` 不重复尝试。
 
 - 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
   session、Storage、Headers、FormData、图像 generation 和特殊键 registry 合同组成；固定
@@ -50,14 +52,16 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 脚本/图片、英语/简体中文 EXE 资源以及阶段 2 classic ScriptSession 已接入；失败、取消和
 stale 候选仍保留旧页。阶段 3 已接入 text/password/textarea 的 native EDIT、单选/多选
 SELECT 的 native COMBOBOX/LISTBOX、checkbox/radio 的 native BUTTON，以及 Core 绘制普通
-`type=button` 的点按和 Space/Enter 激活。Core 管值、选项、checked/radio-group 状态和几何；
-Browser 管 native edit/select/toggle/button 的事件事务；宿主管消息、原生窗口、输入路由和 teardown。
-submit/reset 默认动作仍在阶段 4。清单见
+`type=button` 的点按和 Space/Enter 激活，并为带 id、已布局的 `contenteditable` host 创建纯文本
+EDIT 代理。Core 管值、选项、checked/radio-group 状态和几何；Browser 管 native
+edit/select/toggle/button 事件事务及 contenteditable 的 `beforeinput`/`input`；宿主管消息、原生窗口、
+输入路由和 teardown。contenteditable 尚无原生选区同步/富文本保留；submit/reset 默认动作仍在阶段 4。清单见
 [`positron_app/README.md`](../positron_app/README.md)。本地 C89、Debug/Release 和仓库审计
 已通过；阶段 1/2 网络、脚本、回滚、标题/窗口 UI 以及阶段 3 输入仍需设备验收，不能
 写成设备基线。最近一次传输在复制 `positron_script.dll` 时以 `RAPI=0x80072746` 失败，
-TEST999 未启动。dialog、contenteditable、form submit/formdata、SIP/IME、picker、书签和持久
-设置仍不在当前范围内；native 控件尚未取得设备门证据。ROADMAP.md 已复核；稳定边界见
+TEST999 未启动，按用户决定暂不重试设备传输。dialog、form submit/formdata、SIP/IME、picker、书签和持久
+设置仍不在当前范围内；contenteditable 原生选区同步/富文本和所有 native 控件的设备验收仍未完成。
+ROADMAP.md 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
 阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
@@ -102,11 +106,12 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
 交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
 脚本/图片属于 optional fallback；阶段 2 的网络候选已按 DOM 顺序创建并执行有界 classic
-ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；阶段 3 的第一条纵切另由
-EXE 私有 `AppControlsContext` 投影 text/password/textarea、单选/多选 SELECT 与 checkbox/radio，
-按 Core 几何随布局、滚动和 DPI 重排；普通 `type=button` 保持 Core 绘制，宿主只路由触摸和
-Space/Enter 到 Browser click transaction。页面替换前重置 Browser native 状态。网络页面、脚本和
-导航失败回滚以及 native 控件的真实输入仍需设备人工验收，不能写成设备基线。
+ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；阶段 3 由 EXE 私有
+`AppControlsContext` 投影 text/password/textarea、SELECT、checkbox/radio 与 identified contenteditable
+为原生子控件，并路由普通 `type=button` click。Core/Browser 保留状态与事件语义，宿主按 Core 几何
+重排并负责 WM6 输入/teardown；contenteditable 目前仅为纯文本 EDIT，不同步原生选区。页面替换前
+重置 Browser native 状态。网络页面、脚本和导航失败回滚以及 native 控件真实输入仍需设备人工验收，
+不能写成设备基线。
 
 原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
 把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、
@@ -206,7 +211,7 @@ Space/Enter 到 Browser click transaction。页面替换前重置 Browser native
   不创建 native SELECT 或改变 layout/paint。
 - 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。Browser 报告活动 modal id 后，宿主可用 Core 的 scoped snapshot 将顺序焦点限制在 dialog 子树；宿主仍同步焦点事件、原生焦点和滚动可见性。
 - `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id 查询、宿主驱动的 Escape 请求桥接、有界 backdrop 指针策略、`method="dialog"` 默认动作和 Core modal paint 已形成契约。显式点击、脚本 `click()` 和单行输入隐式 Enter 都遵循 validation→可取消 submit→直接 close/returnValue；CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 仍未实现。
-- 单元素 `contenteditable` 已形成 Core/Browser/宿主边界：Core 解析祖先继承并限制合法 UTF-8 纯文本 mutation，Browser 暴露 `isContentEditable`/`innerText`、`selectionStart`/`selectionEnd`/`selectionDirection` 与 typed input 事务，宿主为带 id 且已布局的有效 editing host 创建有界 WM multiline EDIT 代理。允许的 `WM_CHAR` 在默认处理完成后回读最终文本并派发 `input`；取消的 `beforeinput` 不修改 Core，重复/提前 `EN_CHANGE` 不会制造空事件。Browser 选区偏移使用 UTF-16 code unit；宿主将 WM EDIT 的 CRLF 位置转换为逻辑 LF，并在可用时同步原生 HWND。无修饰鼠标拖选以及 Shift/方向键扩展由宿主短暂保存 anchor；捕获丢失、取消模式和焦点切换会先结束手势，再通过 Browser 的去重通知入口刷新范围。宿主对 `WM_PASTE`/`WM_CUT` 只接受有界 `CF_UNICODETEXT`，把规范化后的 UTF-8 data 交给 `beforeinput`，允许后执行 native default，再提交 Core/input 和折叠选区；`WM_COPY` 只写入非空的有界 Unicode 选区，折叠选区保持现有剪贴板不变；格式缺失、超长或读取失败时 fail closed。为兼容 WinCE 原生剪切的内部重入，宿主只在外层 `WM_CUT` 默认处理期间放行同一 HWND 的嵌套 `WM_COPY`。每页最多 16 个宿主、文本最多 8192 UTF-8 字节；嵌套继承后代不重复创建 host。
+- `contenteditable` 的 Core/Browser 与参考宿主完整边界见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)；`positron.exe` 当前只接入带 id host 的 bounded plain-text EDIT、可取消 `beforeinput` 和按 id `input`，未同步 native selection 或保留富文本。
 离线 compatibility corpus 已覆盖导航资源事务、候选提交与回滚、history/viewport、页面生命周期、脚本调度、焦点、滚动、Core/Browser 几何和显式 form-owner 组合。每项测试的 fixture 与断言说明统一见 [`docs/TESTING.md`](../docs/TESTING.md)；handoff 只保留当前门和仍未完成的边界。
 
 ### 当前测试入口
@@ -305,7 +310,7 @@ Space/Enter 到 Browser click transaction。页面替换前重置 Browser native
 
 - 已建立固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119–TEST1150 已覆盖导航事务、资源 gate、页面生命周期、滚动/几何、布局尺寸、元素 overflow、媒体/焦点和脚本调度的有界合同。取消仍是协作式的，脚本队列仍依赖宿主调度；任意真实站点的 fallback 视觉、复杂布局、Range/Selection、inline 嵌套、完整滚动容器树、scroll chaining、pinch zoom、精确逐元素归因和自定义 prompt 仍未保证。
 - `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
-- `contenteditable` 具有单元素纯文本状态/mutation、Browser 的 bounded selectionStart/End/Direction、去重后的 `selectionchange` 和带 id、已布局 editing host 的有界 WM EDIT 代理；宿主在无修饰 `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`/`WM_LBUTTONUP` 以及键盘扩展后报告范围与 forward/backward 方向，捕获/取消/焦点中断会收尾而不重复派发，每页最多 16 个 host、文本最多 8192 UTF-8 字节，嵌套继承后代不重复代理。当前另有宿主级受限 `CF_UNICODETEXT` 粘贴/剪切/复制事务：`WM_COPY` 的非空选区才写入剪贴板，折叠选区是 no-op；不支持的格式和超长数据在 native mutation 前 fail closed。Range/Selection 对象、完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换、OEM 特有键盘自动重复与复杂行导航、designMode、完整 IME 组合尚未实现。
+- contenteditable 的 OEM 键盘、选区和剪贴板细节及应用差异统一见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)；真实输入与视觉仍需设备门。
 - float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
 - 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
 - Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 1.5 MiB Browser heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
@@ -352,14 +357,16 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-本轮阶段 2 源码接线、阶段 3 EDIT/SELECT/toggle 纵切、C89、Debug/Release 和审计均已通过；设备门
+本轮阶段 2 源码接线、阶段 3 EDIT/SELECT/toggle/button 与纯文本 contenteditable 纵切、C89、
+Debug/Release 和审计均已通过；设备门
 仍因 `RAPI=0x80072746` 暂缓。恢复传输后跑 TEST999，验收 classic script 顺序、DOM/事件/任务、
 生命周期、资源失败、取消/stale、旧页保留、语言、history、旋转、DPI、软键、标准滚动条、
-原生文本/SELECT/toggle 控件和清理。
+原生文本/SELECT/toggle/contenteditable 控件和清理；在 controls 页确认感叹号被
+`beforeinput` 取消、普通编辑触发状态更新，并观察 focus、换行、滚动及 DPI 下的原生 EDIT。
 
-设备门通过后，下一条代码纵切根据真实页面或设备失败证据选择 button、dialog、
-contenteditable、SIP/IME 或 picker；动态 option 重建的设备行为并入本轮原生 SELECT 验收。
-File/Blob 不提前接入。
+设备门通过后，再依据实测决定是否把原生 caret/selection 同步接到现有 Browser selection API，
+或转向 dialog、SIP/IME、picker；这不需要新增公共 ABI。当前不实现富文本 editing、完整
+ClipboardEvent/async clipboard 或 File/Blob 上传。动态 option 重建的设备行为并入原生 SELECT 验收。
 
 阶段 0 的本批变更只收口 EXE 私有宿主状态和生命周期；阶段 B 的主文档行为、离线页面和
 i18n 不变。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、

@@ -42,7 +42,30 @@ input and change events.</p>
 <h2>Ordinary button</h2>
 <p><button id="sample-button" type="button">Tap, then press Space or Enter</button></p>
 <p>This ordinary button dispatches click; it does not submit a form.</p>
-<p>Submit/reset defaults, SIP/IME and file picking remain future input batches.</p>
+<h2>Plain-text editing</h2>
+<p>This contenteditable region uses a native multiline EDIT. Typing an
+exclamation mark is canceled by beforeinput; accepted edits update the status.</p>
+<div id="plain-editor" contenteditable="plaintext-only">Edit this text.</div>
+<p id="plain-editor-status">Waiting for an accepted input event.</p>
+<script>
+(function () {
+    var editor = document.getElementById("plain-editor");
+    var status = document.getElementById("plain-editor-status");
+    if (!editor || !status) {
+        return;
+    }
+    editor.addEventListener("beforeinput", function (event) {
+        if (event.data == "!") {
+            event.preventDefault();
+        }
+    });
+    editor.addEventListener("input", function () {
+        status.innerText = "Input event received.";
+    });
+}());
+</script>
+<p>Rich-text editing, full clipboard events, SIP/IME and file picking remain
+future input batches.</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">Home</a></p>
 </body></html>

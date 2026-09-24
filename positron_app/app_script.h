@@ -85,12 +85,12 @@ int AppScript_DispatchFocusEvent(AppScriptContext *context, int x, int y,
 /* Native EDIT transactions remain host-owned at the WM6 boundary while the
  * Browser session owns beforeinput/input/change ordering and dirty state. */
 int AppScript_DispatchNativeEditBeforeInput(AppScriptContext *context,
-        unsigned long target_token, int x, int y, const char *input_type,
-        const char *data, int cancelable, int is_composing,
-        int *out_default_allowed);
+        unsigned long target_token, const char *target_id, int x, int y,
+        const char *input_type, const char *data, int cancelable,
+        int is_composing, int *out_default_allowed);
 int AppScript_DispatchNativeEditInput(AppScriptContext *context,
-        unsigned long target_token, int x, int y, const char *input_type,
-        const char *data);
+        unsigned long target_token, const char *target_id, int x, int y,
+        const char *input_type, const char *data);
 int AppScript_DispatchNativeEditBlur(AppScriptContext *context,
         unsigned long target_token, int x, int y);
 void AppScript_ResetNativeEditState(AppScriptContext *context);

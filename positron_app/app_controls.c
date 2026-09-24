@@ -11,10 +11,12 @@
 #define APP_CONTROLS_MAX             PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS
 #define APP_CONTROLS_TEXT_CAP        32768
 #define APP_CONTROLS_OPTION_TEXT_CAP 4096
+#define APP_CONTROLS_ID_CAP          APP_SCRIPT_URL_MAX
 #define APP_CONTROLS_ID_BASE         1000
 #define APP_CONTROLS_KIND_TEXT       1
 #define APP_CONTROLS_KIND_SELECT     2
 #define APP_CONTROLS_KIND_TOGGLE     3
+#define APP_CONTROLS_KIND_CONTENTEDITABLE 4
 #define APP_CONTROLS_FORM_BUTTON     9
 #define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
 
@@ -26,6 +28,7 @@ struct AppControlsItem {
     unsigned int text_index;
     unsigned int select_index;
     unsigned int toggle_index;
+    unsigned int contenteditable_index;
     unsigned int form_index;
     unsigned long target_token;
     WNDPROC original_proc;
@@ -37,6 +40,7 @@ struct AppControlsItem {
     int selected;
     int toggle_space_pending;
     int multiple;
+    int contenteditable_mode;
     int option_count;
     unsigned long option_fingerprint;
     int dropdown_active;
@@ -46,6 +50,7 @@ struct AppControlsItem {
     int y;
     int width;
     int height;
+    char contenteditable_id[APP_CONTROLS_ID_CAP];
 };
 
 struct AppControlsContext {
@@ -73,6 +78,8 @@ static int app_controls_item_geometry(AppControlsContext *context,
 {
     PCoreTextInputInfo info;
     PCoreSelectInfo select_info;
+    PCoreContentEditableTargetInfo contenteditable_info;
+    char contenteditable_id[APP_CONTROLS_ID_CAP];
     int form_kind;
     int selected;
     int disabled;
@@ -113,6 +120,22 @@ static int app_controls_item_geometry(AppControlsContext *context,
         item->toggle_kind = form_kind;
         item->selected = selected ? 1 : 0;
         item->disabled = disabled ? 1 : 0;
+    } else if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE) {
+        memset(&contenteditable_info, 0, sizeof(contenteditable_info));
+        contenteditable_info.size = sizeof(contenteditable_info);
+        if (PCore_ContentEditableTargetInfo(context->document,
+                item->contenteditable_index, &contenteditable_info,
+                contenteditable_id, sizeof(contenteditable_id), NULL, 0) !=
+                0 || strcmp(contenteditable_id,
+                item->contenteditable_id) != 0) {
+            return 0;
+        }
+        item->x = contenteditable_info.x;
+        item->y = contenteditable_info.y;
+        item->width = contenteditable_info.width > 0 ?
+                contenteditable_info.width : 1;
+        item->height = contenteditable_info.height > 0 ?
+                contenteditable_info.height : 1;
     } else {
         return 0;
     }
@@ -685,6 +708,8 @@ static void app_controls_notify(AppControlsContext *context)
 static void app_controls_dispatch_focus(AppControlsContext *context,
         AppControlsItem *item, int focused)
 {
+    char focus_id[APP_CONTROLS_ID_CAP];
+    int focus_bytes;
     int x;
     int y;
     int allowed;
@@ -693,7 +718,39 @@ static void app_controls_dispatch_focus(AppControlsContext *context,
         return;
     }
     app_controls_item_point(context, item, &x, &y);
-    if (focused) {
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE) {
+        if (focused) {
+            (void) PCore_InteractionFocusById(context->document,
+                    item->contenteditable_id);
+            focus_bytes = 0;
+            if (PCore_InteractionStateElementId(context->document,
+                    PCORE_INTERACTION_FOCUS, focus_id,
+                    sizeof(focus_id), &focus_bytes) == 0 &&
+                    strcmp(focus_id, item->contenteditable_id) == 0) {
+                allowed = 1;
+                (void) PCore_EventDispatchFocus(context->document, "focus",
+                        0, 0, &allowed);
+                allowed = 1;
+                (void) PCore_EventDispatchFocus(context->document,
+                        "focusin", 1, 0, &allowed);
+            }
+        } else {
+            focus_bytes = 0;
+            if (PCore_InteractionStateElementId(context->document,
+                    PCORE_INTERACTION_FOCUS, focus_id,
+                    sizeof(focus_id), &focus_bytes) == 0 &&
+                    strcmp(focus_id, item->contenteditable_id) == 0) {
+                allowed = 1;
+                (void) PCore_EventDispatchFocus(context->document, "blur",
+                        0, 0, &allowed);
+                allowed = 1;
+                (void) PCore_EventDispatchFocus(context->document,
+                        "focusout", 1, 0, &allowed);
+                (void) PCore_InteractionClear(context->document,
+                        PCORE_INTERACTION_FOCUS);
+            }
+        }
+    } else if (focused) {
         (void) PCore_InteractionSetAt(context->document, x, y,
                 PCORE_INTERACTION_FOCUS);
         allowed = 1;
@@ -839,6 +896,7 @@ static int app_controls_button_focus(AppControlsContext *context,
 static int app_controls_before_input(AppControlsContext *context,
         AppControlsItem *item, const char *input_type, const char *data)
 {
+    const char *target_id;
     int x;
     int y;
     int allowed;
@@ -851,9 +909,11 @@ static int app_controls_before_input(AppControlsContext *context,
         return 1;
     }
     app_controls_item_point(context, item, &x, &y);
+    target_id = item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE ?
+            item->contenteditable_id : NULL;
     allowed = 0;
     if (AppScript_DispatchNativeEditBeforeInput(context->script,
-            item->target_token, x, y, input_type, data, 1, 0,
+            item->target_token, target_id, x, y, input_type, data, 1, 0,
             &allowed) != 0) {
         return 0;
     }
@@ -1870,6 +1930,107 @@ static int app_controls_rebuild_item(AppControlsContext *context,
     return 0;
 }
 
+static int app_controls_contenteditable_target(HANDLE document,
+        unsigned int index, PCoreContentEditableTargetInfo *out_info,
+        char *element_id, int id_capacity, char *text, int text_capacity)
+{
+    if (document == NULL || out_info == NULL || id_capacity < 0 ||
+            text_capacity < 0) {
+        return 1;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->size = sizeof(*out_info);
+    return PCore_ContentEditableTargetInfo(document, index, out_info,
+            element_id, id_capacity, text, text_capacity);
+}
+
+static int app_controls_rebuild_contenteditable_item(
+        AppControlsContext *context, AppControlsItem *item,
+        unsigned int index, unsigned long target_token, int control_id,
+        int scroll_x, int scroll_y)
+{
+    PCoreContentEditableTargetInfo info;
+    char element_id[APP_CONTROLS_ID_CAP];
+    char *text;
+    char *edit_value;
+    WCHAR *wide_value;
+    DWORD style;
+    HWND hwnd;
+    WNDPROC original_proc;
+    int text_capacity;
+    int wide_capacity;
+
+    if (context == NULL || item == NULL || context->document == NULL ||
+            app_controls_contenteditable_target(context->document, index,
+            &info, NULL, 0, NULL, 0) != 0 || info.id_bytes < 1 ||
+            info.id_bytes >= APP_CONTROLS_ID_CAP || info.text_bytes < 0 ||
+            info.text_bytes > PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES ||
+            (info.mode != PCORE_CONTENTEDITABLE_MODE_TEXT &&
+            info.mode != PCORE_CONTENTEDITABLE_MODE_PLAINTEXT_ONLY)) {
+        return 1;
+    }
+    text_capacity = info.text_bytes + 1;
+    text = (char *) malloc((size_t) text_capacity);
+    if (text == NULL || app_controls_contenteditable_target(
+            context->document, index, &info, element_id,
+            sizeof(element_id), text, text_capacity) != 0) {
+        free(text);
+        return 1;
+    }
+    edit_value = app_controls_edit_value(text, 1);
+    free(text);
+    if (edit_value == NULL) {
+        return 1;
+    }
+    wide_capacity = (int) strlen(edit_value) + 1;
+    wide_value = (WCHAR *) malloc((size_t) wide_capacity * sizeof(WCHAR));
+    if (wide_value == NULL || app_controls_utf8_to_wide(edit_value,
+            wide_value, wide_capacity) <= 0) {
+        free(wide_value);
+        free(edit_value);
+        return 1;
+    }
+    style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_LEFT | ES_MULTILINE |
+            ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL;
+    hwnd = CreateWindowW(L"EDIT", wide_value, style,
+            info.x - scroll_x, info.y - scroll_y,
+            info.width > 0 ? info.width : 1,
+            info.height > 0 ? info.height : 1, context->parent,
+            (HMENU) (APP_CONTROLS_ID_BASE + control_id),
+            context->instance, NULL);
+    free(wide_value);
+    free(edit_value);
+    if (hwnd == NULL) {
+        return 1;
+    }
+    memset(item, 0, sizeof(*item));
+    item->hwnd = hwnd;
+    item->kind = APP_CONTROLS_KIND_CONTENTEDITABLE;
+    item->contenteditable_index = index;
+    item->contenteditable_mode = info.mode;
+    item->target_token = target_token;
+    item->multiline = 1;
+    item->x = info.x;
+    item->y = info.y;
+    item->width = info.width > 0 ? info.width : 1;
+    item->height = info.height > 0 ? info.height : 1;
+    memcpy(item->contenteditable_id, element_id,
+            strlen(element_id) + 1);
+    original_proc = (WNDPROC) SetWindowLong(hwnd, GWL_WNDPROC,
+            (LONG) app_controls_edit_proc);
+    item->original_proc = original_proc;
+    if (original_proc == NULL) {
+        DestroyWindow(hwnd);
+        memset(item, 0, sizeof(*item));
+        return 1;
+    }
+    SendMessage(hwnd, WM_SETFONT, (WPARAM) GetStockObject(SYSTEM_FONT),
+            TRUE);
+    SendMessage(hwnd, EM_LIMITTEXT,
+            (WPARAM) PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES, 0);
+    return 0;
+}
+
 static int app_controls_rebuild_select_item(AppControlsContext *context,
         AppControlsItem *item, unsigned int index, int control_id,
         int scroll_x, int scroll_y)
@@ -2113,9 +2274,12 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y)
 {
     unsigned int index;
+    unsigned int text_count;
     unsigned int form_index;
     unsigned int toggle_index;
+    unsigned int contenteditable_index;
     int form_kind;
+    PCoreContentEditableTargetInfo contenteditable_info;
 
     if (context == NULL || document == NULL) {
         return 1;
@@ -2134,6 +2298,7 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         index++;
         context->count++;
     }
+    text_count = index;
     index = 0;
     while (context->count < APP_CONTROLS_MAX &&
             PCore_SelectInfo(document, index, NULL) == 0) {
@@ -2165,6 +2330,21 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
             context->count++;
         }
         form_index++;
+    }
+    contenteditable_index = 0;
+    while (context->count < APP_CONTROLS_MAX &&
+            app_controls_contenteditable_target(document,
+            contenteditable_index, &contenteditable_info, NULL, 0,
+            NULL, 0) == 0) {
+        if (app_controls_rebuild_contenteditable_item(context,
+                &context->items[context->count], contenteditable_index,
+                (unsigned long) text_count + contenteditable_index + 1UL,
+                (int) context->count, scroll_x, scroll_y) != 0) {
+            AppControls_ClearPage(context);
+            return 1;
+        }
+        contenteditable_index++;
+        context->count++;
     }
     AppControls_Reposition(context, document, scroll_x, scroll_y);
     return 0;
@@ -2237,17 +2417,94 @@ static int app_controls_rebuild_selects(AppControlsContext *context,
     return 0;
 }
 
+static char *app_controls_contenteditable_text(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    PCoreContentEditableTargetInfo info;
+    char element_id[APP_CONTROLS_ID_CAP];
+    char *text;
+    int text_capacity;
+
+    if (context == NULL || item == NULL || context->document == NULL ||
+            item->kind != APP_CONTROLS_KIND_CONTENTEDITABLE ||
+            app_controls_contenteditable_target(context->document,
+            item->contenteditable_index, &info, NULL, 0, NULL, 0) != 0 ||
+            info.id_bytes < 1 || info.id_bytes >= APP_CONTROLS_ID_CAP ||
+            info.text_bytes < 0 || info.text_bytes >
+            PCORE_CONTENTEDITABLE_TEXT_MAX_BYTES) {
+        return NULL;
+    }
+    text_capacity = info.text_bytes + 1;
+    text = (char *) malloc((size_t) text_capacity);
+    if (text == NULL || app_controls_contenteditable_target(
+            context->document, item->contenteditable_index, &info,
+            element_id, sizeof(element_id), text, text_capacity) != 0 ||
+            strcmp(element_id, item->contenteditable_id) != 0) {
+        free(text);
+        return NULL;
+    }
+    return text;
+}
+
+static int app_controls_sync_contenteditable(AppControlsContext *context,
+        AppControlsItem *item)
+{
+    char *core_value;
+    char *native_value;
+    int selection_start;
+    int selection_end;
+    int native_length;
+
+    if (context == NULL || item == NULL || item->hwnd == NULL) {
+        return 1;
+    }
+    core_value = app_controls_contenteditable_text(context, item);
+    native_value = app_controls_read_value(item);
+    if (core_value == NULL || native_value == NULL) {
+        free(core_value);
+        free(native_value);
+        return 1;
+    }
+    if (strcmp(core_value, native_value) == 0) {
+        free(core_value);
+        free(native_value);
+        return 0;
+    }
+    selection_start = 0;
+    selection_end = 0;
+    SendMessage(item->hwnd, EM_GETSEL, (WPARAM) &selection_start,
+            (LPARAM) &selection_end);
+    app_controls_set_value(context, item, core_value);
+    native_length = GetWindowTextLengthW(item->hwnd);
+    if (selection_start > native_length) {
+        selection_start = native_length;
+    }
+    if (selection_end > native_length) {
+        selection_end = native_length;
+    }
+    SendMessage(item->hwnd, EM_SETSEL, (WPARAM) selection_start,
+            (LPARAM) selection_end);
+    free(core_value);
+    free(native_value);
+    return 0;
+}
+
 int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y)
 {
     PCoreTextInputInfo text_info;
     PCoreSelectInfo select_info;
+    PCoreContentEditableTargetInfo contenteditable_info;
     AppControlsItem *item;
+    char contenteditable_id[APP_CONTROLS_ID_CAP];
     unsigned long fingerprint;
     unsigned int text_count;
     unsigned int select_count;
     unsigned int toggle_count;
+    unsigned int contenteditable_count;
+    unsigned int contenteditable_capacity;
     unsigned int toggle_offset;
+    unsigned int contenteditable_offset;
     unsigned int toggle_index;
     unsigned int form_index;
     unsigned int i;
@@ -2281,9 +2538,25 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
     if (app_controls_toggle_count(document, &toggle_count) != 0) {
         return 1;
     }
-    if (text_count + select_count + toggle_count != context->count ||
-            text_count + select_count + toggle_count > APP_CONTROLS_MAX ||
-            toggle_count > PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS) {
+    if (toggle_count > PBROWSER_SCRIPT_NATIVE_TOGGLE_MAX_TARGETS) {
+        return AppControls_Rebuild(context, document, script, scroll_x,
+                scroll_y);
+    }
+    if (text_count + select_count + toggle_count > APP_CONTROLS_MAX) {
+        return AppControls_Rebuild(context, document, script, scroll_x,
+                scroll_y);
+    }
+    contenteditable_capacity = APP_CONTROLS_MAX - text_count -
+            select_count - toggle_count;
+    contenteditable_count = 0;
+    while (contenteditable_count < contenteditable_capacity &&
+            app_controls_contenteditable_target(document,
+            contenteditable_count, &contenteditable_info, NULL, 0,
+            NULL, 0) == 0) {
+        contenteditable_count++;
+    }
+    if (text_count + select_count + toggle_count +
+            contenteditable_count != context->count) {
         return AppControls_Rebuild(context, document, script, scroll_x,
                 scroll_y);
     }
@@ -2346,6 +2619,21 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
             toggle_index++;
         }
         form_index++;
+    }
+    contenteditable_offset = toggle_offset + toggle_count;
+    for (i = 0; i < contenteditable_count; i++) {
+        item = &context->items[contenteditable_offset + i];
+        if (app_controls_contenteditable_target(document, i,
+                &contenteditable_info, contenteditable_id,
+                sizeof(contenteditable_id), NULL, 0) != 0 ||
+                contenteditable_info.mode != item->contenteditable_mode ||
+                item->kind != APP_CONTROLS_KIND_CONTENTEDITABLE ||
+                item->contenteditable_index != i ||
+                strcmp(contenteditable_id, item->contenteditable_id) != 0 ||
+                app_controls_sync_contenteditable(context, item) != 0) {
+            return AppControls_Rebuild(context, document, script, scroll_x,
+                    scroll_y);
+        }
     }
     AppControls_Reposition(context, document, scroll_x, scroll_y);
     return 0;
@@ -2520,7 +2808,9 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
         }
         return 1;
     }
-    if (item->kind != APP_CONTROLS_KIND_TEXT || HIWORD(wparam) != EN_CHANGE) {
+    if ((item->kind != APP_CONTROLS_KIND_TEXT && item->kind !=
+            APP_CONTROLS_KIND_CONTENTEDITABLE) ||
+            HIWORD(wparam) != EN_CHANGE) {
         return 1;
     }
     value = app_controls_read_value(item);
@@ -2528,6 +2818,26 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
         return 1;
     }
     app_controls_item_point(context, item, &x, &y);
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE) {
+        result = PCore_ContentEditableSetTextById(context->document,
+                item->contenteditable_id, value);
+        if (result != 0) {
+            if (context->script != NULL) {
+                AppScript_ResetNativeEditState(context->script);
+            }
+            (void) app_controls_sync_contenteditable(context, item);
+            free(value);
+            return 1;
+        }
+        if (context->script != NULL) {
+            (void) AppScript_DispatchNativeEditInput(context->script,
+                    item->target_token, item->contenteditable_id, x, y,
+                    NULL, NULL);
+        }
+        app_controls_notify(context);
+        free(value);
+        return 1;
+    }
     result = PCore_TextInputSetValue(context->document, item->text_index,
             value);
     if (result != 0) {
@@ -2550,7 +2860,7 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
     } else {
         if (context->script != NULL) {
             (void) AppScript_DispatchNativeEditInput(context->script,
-                    item->target_token, x, y, NULL, NULL);
+                    item->target_token, NULL, x, y, NULL, NULL);
         }
         app_controls_notify(context);
     }

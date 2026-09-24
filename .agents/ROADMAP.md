@@ -106,10 +106,12 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    `text`、`password`、`textarea` 使用同一窗口体系下的 native `EDIT`，单选/多选 `SELECT`
    使用 native `COMBOBOX`/`LISTBOX`，checkbox/radio 使用 native `BUTTON`；普通 `type=button`
    保持 Core 绘制，由宿主把点按和 Space/Enter 接到 Browser native-button click transaction。
-   Core 拥有 value/选项/checked/radio-group 状态与几何，Browser 拥有 native edit/select/toggle/
-   button 事件事务，宿主拥有窗口、消息和 teardown；mutation 后的 option 集合/标签变化会在 UI
-   消息返回后按 fingerprint 重建 SELECT，并保留 EDIT/SELECT 焦点。该部分仍需设备输入、DPI、
-   旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser 当前有界 mutation callback 限制。本地
+   带 id、已布局的 contenteditable host 另有纯文本 EDIT 投影，Browser 处理 `beforeinput`/`input`，
+   但原生选区尚未同步，普通编辑不保留富文本子树。Core 拥有 value/选项/checked/radio-group 状态
+   与几何，Browser 拥有 native edit/select/toggle/button 事件事务，宿主拥有窗口、消息和 teardown；
+   mutation 后的 option 集合/标签变化会在 UI 消息返回后按 fingerprint 重建 SELECT，并保留
+   EDIT/SELECT 焦点。该部分仍需设备输入、DPI、旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser
+   当前有界 mutation callback 限制。本地
    C89、Debug/Release 构建和审计已通过；设备人工门仍待
    恢复 WMDC 传输后执行。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
@@ -149,10 +151,11 @@ history fallback、Core URL callback 的重复解析和参考宿主的 visibilit
 history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 classic ScriptSession 基线，
 并由 EXE 私有资源提供英语/简体中文 UI；阶段 3 已接入 text/password/textarea 的 native
 `EDIT`、单选/多选 `SELECT`（native `COMBOBOX`/`LISTBOX`）、checkbox/radio（native
-`BUTTON`）与 Core 绘制普通 `type=button` 的点按/Space/Enter→Browser click transaction，
-并包含动态 option 重建和 click callback 注册。普通按钮没有 submit/reset 默认动作。当前选择是
-先完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再对 dialog、contenteditable、SIP/IME、
-clipboard 与 picker 取舍；阶段 4 承担 submit/reset/formdata 的应用默认动作。
+`BUTTON`）、Core 绘制普通按钮的 click transaction，以及带 id、已布局 contenteditable host 的
+纯文本 EDIT 投影和按 id 的 `beforeinput`/`input`。原生选区同步和富文本仍未接入；普通按钮没有
+submit/reset 默认动作。当前选择是先完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再依据
+controls 页设备观察决定原生选区同步、dialog、SIP/IME、clipboard 与 picker 中的下一条最小纵切；
+阶段 4 承担 submit/reset/formdata 的应用默认动作。
 File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
@@ -183,15 +186,15 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
 
 #### B. 独立应用阶段 3：剩余原生控件与输入
 
-**状态：准备取舍，文本、SELECT、toggle 与普通按钮 click 接线已接入，设备门未完成。** `positron.exe` 已有
+**状态：准备取舍，文本、SELECT、toggle、普通按钮 click 和纯文本 contenteditable 投影已接入，设备门未完成。** `positron.exe` 已有
 `AppControlsContext`，把 `text`、`password`、`textarea` 投影为 native `EDIT`，把单选/多选
 `SELECT` 投影为 native `COMBOBOX`/`LISTBOX`，把 checkbox/radio 投影为 native `BUTTON`；普通
-`type=button` 仍由 Core 绘制，宿主接入点按、Space/Enter 和 Browser click transaction，并保持
-页面替换、滚动、布局和脚本 native 事务的生命周期顺序；动态 option 列表/标签变化也已接入
-延迟检测与原生重建。下一条候选应从 dialog/contenteditable、SIP/IME、clipboard 和 file picker
-中选择一个有真实
-页面或设备失败证据的最小纵切；不得把
-所有原生交互一次性合并。
+`type=button` 仍由 Core 绘制，宿主接入点按、Space/Enter 和 Browser click transaction；带 id 且已布局的
+contenteditable host 使用多行 EDIT 代理，Core 持有有界纯文本，Browser 接收可取消 `beforeinput`
+和按 id 派发的 `input`。应用未同步原生 caret/selection，常规 contenteditable 编辑可能将其子树
+压平为纯文本。动态 option 列表/标签变化也已接入延迟检测与原生重建。下一条候选可调查现有
+Browser selection API 与原生 EDIT 的 selection 同步，或根据真实页面/设备证据选择 dialog、SIP/IME、
+clipboard 或 file picker；不得把所有原生交互一次性合并。
 
 - **Owner：** Core/Browser 负责控件状态、事件/default-action 和生命周期语义；应用负责
   WM6 原生窗口、消息、输入法/系统 picker 调度及失败策略；不新增公共 ABI，除非出现
@@ -201,7 +204,9 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
 - **最小 fixture：** `controls` 离线页的文本/密码/多行输入、单选/多选 SELECT 和
   checkbox/radio toggle 成功、退格/Delete/换行、Space/Enter、焦点变化、脚本取消
   beforeinput/click、普通按钮点按及 Space/Enter（不提交）、下拉 commit/cancel、option mutation
-  后的标签/数量重建、禁用项、页面切换销毁和旧页保留；submit/reset 默认动作不属于本阶段。
+  后的标签/数量重建、禁用项、页面切换销毁和旧页保留；contenteditable 另验证原生纯文本输入、
+  `beforeinput` 取消、按 DOM id 的 `input`、换行与布局更新；caret/selection 同步及富文本不属于当前
+  接线。submit/reset 默认动作不属于本阶段。
   新增控件必须补相邻失败和容量断言。
 - **门：** C89、正式 ARMV4I Debug/Release、仓库审计后，设备人工验收真实键盘、SIP/IME、
   触摸、旋转、DPI、软键和控件销毁；桌面 synthetic 消息不能替代设备证据。

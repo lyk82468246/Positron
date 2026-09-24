@@ -38,6 +38,7 @@ struct AppScriptContext {
     int viewport_height;
     int dpi;
     unsigned int native_select_key_index;
+    char native_edit_target_id[APP_SCRIPT_URL_MAX];
 };
 
 static void app_script_copy_text(char *target, int capacity,
@@ -111,6 +112,47 @@ static int app_script_get_text(void *pw, const char *id, char *out_text,
     }
     return PCore_NodeTextContentById(context->document, id, out_text,
             out_capacity, out_len) == 0 ? 0 : -1;
+}
+
+static int app_script_get_content_editable(void *pw, const char *id,
+        int *out_editable)
+{
+    AppScriptContext *context;
+    PCoreContentEditableInfo info;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL ||
+            out_editable == NULL) {
+        return -1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    if (PCore_ContentEditableInfoById(context->document, id, &info) != 0) {
+        return -1;
+    }
+    *out_editable = info.editable ? 1 : 0;
+    return *out_editable;
+}
+
+static int app_script_set_content_editable_text(void *pw, const char *id,
+        const char *text)
+{
+    AppScriptContext *context;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL ||
+            text == NULL) {
+        return -1;
+    }
+    result = PCore_ContentEditableSetTextById(context->document, id, text);
+    if (result == 0) {
+        return app_script_mutation_result(context, 0);
+    }
+    if (result == 1 || result == 2) {
+        return 0;
+    }
+    return -1;
 }
 
 static int app_script_get_document_title(void *pw, char *out_text,
@@ -726,9 +768,16 @@ static int app_script_input_dispatch(void *pw,
     data.input_type = info->input_type;
     data.data = info->data;
     data.is_composing = info->is_composing ? 1 : 0;
-    result = PCore_EventDispatchInputExAt(context->document, info->x,
-            info->y, info->event_type, info->bubbles ? 1 : 0,
-            info->cancelable ? 1 : 0, &data, out_default_allowed);
+    if (context->native_edit_target_id[0] != '\0') {
+        result = PCore_EventDispatchInputExToId(context->document,
+                context->native_edit_target_id, info->event_type,
+                info->bubbles ? 1 : 0, info->cancelable ? 1 : 0, &data,
+                out_default_allowed);
+    } else {
+        result = PCore_EventDispatchInputExAt(context->document, info->x,
+                info->y, info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, &data, out_default_allowed);
+    }
     return result < 0 ? -1 : 0;
 }
 
@@ -853,6 +902,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptDomReadCallbacksEx dom_read;
     PBrowserScriptDomRelationCallbacks relation;
     PBrowserScriptDomWriteCallbacksEx13 write;
+    PBrowserScriptContentEditableCallbacks content_editable;
     PBrowserScriptDocumentWriteCallbacks document_write;
     PBrowserScriptDomMutationCallbacks mutation;
     PBrowserScriptDomAttributeCallbacks attribute;
@@ -889,6 +939,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
     write.pw = context;
     write.set_text = app_script_set_text;
     write.set_document_title = app_script_set_document_title;
+    memset(&content_editable, 0, sizeof(content_editable));
+    content_editable.size = sizeof(content_editable);
+    content_editable.pw = context;
+    content_editable.get_editable = app_script_get_content_editable;
+    content_editable.set_text = app_script_set_content_editable_text;
     memset(&document_write, 0, sizeof(document_write));
     document_write.size = sizeof(document_write);
     document_write.pw = context;
@@ -991,6 +1046,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
             PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(
             context->session,
             &write) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterContentEditableCallbacks(
+            context->session, &content_editable) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(
             context->session, &document_write) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(
@@ -1439,16 +1496,48 @@ int AppScript_DispatchFocusEvent(AppScriptContext *context, int x, int y,
             == PSCRIPT_OK ? 0 : 1;
 }
 
+static int app_script_native_edit_target_push(AppScriptContext *context,
+        const char *target_id, char *previous_id, int previous_capacity)
+{
+    if (context == NULL || previous_id == NULL || previous_capacity <= 0) {
+        return 1;
+    }
+    app_script_copy_text(previous_id, previous_capacity,
+            context->native_edit_target_id);
+    if (target_id == NULL || target_id[0] == '\0') {
+        context->native_edit_target_id[0] = '\0';
+        return 0;
+    }
+    if (app_script_copy_bounded(context->native_edit_target_id,
+            sizeof(context->native_edit_target_id), target_id) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static void app_script_native_edit_target_pop(AppScriptContext *context,
+        const char *previous_id)
+{
+    if (context != NULL && previous_id != NULL) {
+        app_script_copy_text(context->native_edit_target_id,
+                sizeof(context->native_edit_target_id), previous_id);
+    }
+}
+
 int AppScript_DispatchNativeEditBeforeInput(AppScriptContext *context,
-        unsigned long target_token, int x, int y, const char *input_type,
-        const char *data, int cancelable, int is_composing,
-        int *out_default_allowed)
+        unsigned long target_token, const char *target_id, int x, int y,
+        const char *input_type, const char *data, int cancelable,
+        int is_composing, int *out_default_allowed)
 {
     PBrowserScriptNativeEditInputInfo info;
+    char previous_id[APP_SCRIPT_URL_MAX];
+    int result;
 
     if (context == NULL || context->session == NULL || target_token == 0 ||
             input_type == NULL || data == NULL ||
-            out_default_allowed == NULL) {
+            out_default_allowed == NULL ||
+            app_script_native_edit_target_push(context, target_id,
+            previous_id, sizeof(previous_id)) != 0) {
         return 1;
     }
     memset(&info, 0, sizeof(info));
@@ -1460,18 +1549,24 @@ int AppScript_DispatchNativeEditBeforeInput(AppScriptContext *context,
     info.data = data;
     info.cancelable = cancelable ? 1 : 0;
     info.is_composing = is_composing ? 1 : 0;
-    return PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
+    result = PBrowser_ScriptSessionDispatchNativeEditBeforeInput(
             context->session, &info, out_default_allowed) == PSCRIPT_OK ?
             0 : 1;
+    app_script_native_edit_target_pop(context, previous_id);
+    return result;
 }
 
 int AppScript_DispatchNativeEditInput(AppScriptContext *context,
-        unsigned long target_token, int x, int y, const char *input_type,
-        const char *data)
+        unsigned long target_token, const char *target_id, int x, int y,
+        const char *input_type, const char *data)
 {
     PBrowserScriptNativeEditInputInfo info;
+    char previous_id[APP_SCRIPT_URL_MAX];
+    int result;
 
-    if (context == NULL || context->session == NULL || target_token == 0) {
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            app_script_native_edit_target_push(context, target_id,
+            previous_id, sizeof(previous_id)) != 0) {
         return 1;
     }
     memset(&info, 0, sizeof(info));
@@ -1481,8 +1576,10 @@ int AppScript_DispatchNativeEditInput(AppScriptContext *context,
     info.y = y;
     info.input_type = input_type;
     info.data = data;
-    return PBrowser_ScriptSessionDispatchNativeEditInput(context->session,
+    result = PBrowser_ScriptSessionDispatchNativeEditInput(context->session,
             &info) == PSCRIPT_OK ? 0 : 1;
+    app_script_native_edit_target_pop(context, previous_id);
+    return result;
 }
 
 int AppScript_DispatchNativeEditBlur(AppScriptContext *context,

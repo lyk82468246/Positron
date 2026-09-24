@@ -32,7 +32,29 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <h2>普通按钮</h2>
 <p><button id="sample-button" type="button">点按后可按 Space 或 Enter</button></p>
 <p>此普通按钮会派发 click 事件，不会提交表单。</p>
-<p>提交/重置默认动作、SIP/IME 和文件选择仍在后续输入批次中。</p>
+<h2>纯文本编辑</h2>
+<p>此 contenteditable 区域使用原生多行 EDIT。输入感叹号会被 beforeinput
+取消；其他被接受的编辑会更新状态文字。</p>
+<div id="plain-editor" contenteditable="plaintext-only">编辑此文本。</div>
+<p id="plain-editor-status">等待已接受的 input 事件。</p>
+<script>
+(function () {
+    var editor = document.getElementById("plain-editor");
+    var status = document.getElementById("plain-editor-status");
+    if (!editor || !status) {
+        return;
+    }
+    editor.addEventListener("beforeinput", function (event) {
+        if (event.data == "!") {
+            event.preventDefault();
+        }
+    });
+    editor.addEventListener("input", function () {
+        status.innerText = "已收到 input 事件。";
+    });
+}());
+</script>
+<p>富文本编辑、完整剪贴板事件、SIP/IME 和文件选择仍在后续输入批次中。</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">主页</a></p>
 </body></html>

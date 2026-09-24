@@ -36,8 +36,13 @@ checked/radio-group 状态和几何，Browser native-edit/native-select/native-t
 负责输入、选择、可信 click、input/change 和 focus 事务，宿主负责 WM6 消息、重排和销毁。
 Core 绘制的普通 `type=button` 也已接入：点按命中后（有 ScriptSession 时）经 Browser 派发
 click，按下 Space/Enter 可激活当前按钮；不额外创建 WM6 子窗口。Native-button transaction 和
-Core click callback 复用于 toggle 路径。此批不接 submit/reset 默认动作或表单提交；dialog、
-contenteditable、SIP/IME、文件选择器、书签、持久偏好和 WM6 Standard 仍未接入；缺少
+Core click callback 复用于 toggle 路径。带 id 且已布局的 `contenteditable` editing host 现在也
+投影为同一窗口体系下的原生多行 EDIT；Core 保存最多 8192 UTF-8 字节的纯文本，Browser 的
+`beforeinput` 可取消输入，并按 DOM id 派发接受后的 `input`。离线 controls 页的
+`plaintext-only` 示例可输入普通文本、换行，并演示感叹号取消。此适配尚不把原生 caret/selection
+同步到 Browser 的 selection API；将普通 `contenteditable` 编辑提交到 Core 时会以纯文本替换其
+子树，不支持富文本编辑。此批不接 submit/reset 默认动作或表单提交；dialog、SIP/IME、文件选择器、
+书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
 
@@ -76,7 +81,10 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    Tab 进入文本、密码和多行文本框，输入、退格、Delete、Enter/换行并离开焦点，确认页面
    值、光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT 以及 checkbox/radio，
    确认选择、checked 状态和 radio-group 规则回写页面，Space/Enter 不产生重复切换；点按普通
-   按钮后再按 Space/Enter，确认不导航也不提交；让脚本改变一个 option 的文本或从集合中移除
+   按钮后再按 Space/Enter，确认不导航也不提交；在 `plaintext-only` 编辑区输入普通字符、换行
+   和感叹号，确认普通输入更新状态、感叹号被 `beforeinput` 取消；随后确认脚本读写页面时原生
+   EDIT 仍留在布局位置。contenteditable 的 caret/selection 与脚本 selection 属性同步尚不支持。
+   让脚本改变一个 option 的文本或从集合中移除
    option，确认 native SELECT 在 callback 返回后更新且 EDIT/SELECT 焦点不丢失；滚动、旋转和
    页面切换后没有残留 native 控件；
 6. 编辑地址栏时按 Backspace 删除，按 Escape 取消编辑并恢复已提交地址；
