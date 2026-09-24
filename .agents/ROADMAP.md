@@ -104,12 +104,13 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    和 teardown；脚本异常不回滚页面，session 初始化失败则关闭脚本能力。阶段 1/2 仍需设备
    网络、失败回滚、stale/cancel 和脚本运行人工门；阶段 3 的第一条宿主纵切也已接入：
    `text`、`password`、`textarea` 使用同一窗口体系下的 native `EDIT`，单选/多选 `SELECT`
-   使用 native `COMBOBOX`/`LISTBOX`，checkbox/radio 使用 native `BUTTON`；Core 拥有
-   value/选项/checked/radio-group 状态与几何，Browser 拥有 native 事件事务，宿主拥有窗口、
-  消息和 teardown；mutation 后的 option 集合/标签变化会在 UI 消息返回后按 fingerprint
-  重建 SELECT，并保留 EDIT 与 SELECT 焦点。该部分仍需设备输入、DPI、旋转和软键盘人工门；
-  动态 DOM 插入能力仍受 Browser 当前有界 mutation callback 限制。本地
-  C89、Debug/Release 构建和审计已通过；设备人工门仍待
+   使用 native `COMBOBOX`/`LISTBOX`，checkbox/radio 使用 native `BUTTON`；普通 `type=button`
+   保持 Core 绘制，由宿主把点按和 Space/Enter 接到 Browser native-button click transaction。
+   Core 拥有 value/选项/checked/radio-group 状态与几何，Browser 拥有 native edit/select/toggle/
+   button 事件事务，宿主拥有窗口、消息和 teardown；mutation 后的 option 集合/标签变化会在 UI
+   消息返回后按 fingerprint 重建 SELECT，并保留 EDIT/SELECT 焦点。该部分仍需设备输入、DPI、
+   旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser 当前有界 mutation callback 限制。本地
+   C89、Debug/Release 构建和审计已通过；设备人工门仍待
    恢复 WMDC 传输后执行。
 5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
@@ -146,11 +147,12 @@ history fallback、Core URL callback 的重复解析和参考宿主的 visibilit
 既有公共边界维护；它们没有把产品语义搬回 `test_host`。本轮已经出现真实的独立应用消费者：
 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成阶段 A 的离线导航、绘制、滚动、焦点、有限
 history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 classic ScriptSession 基线，
-并由 EXE 私有资源提供英语/简体中文 UI；阶段 3 已完成 text/password/textarea 的 native
-`EDIT`、单选/多选 `SELECT`（native `COMBOBOX`/`LISTBOX`）和 checkbox/radio（native
-`BUTTON`）第一条投影纵切，包含动态 option 重建与 Browser toggle 事件事务。当前选择是先
-完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再继续阶段 3 的 button、dialog、
-contenteditable、SIP/IME 与 picker 取舍。
+并由 EXE 私有资源提供英语/简体中文 UI；阶段 3 已接入 text/password/textarea 的 native
+`EDIT`、单选/多选 `SELECT`（native `COMBOBOX`/`LISTBOX`）、checkbox/radio（native
+`BUTTON`）与 Core 绘制普通 `type=button` 的点按/Space/Enter→Browser click transaction，
+并包含动态 option 重建和 click callback 注册。普通按钮没有 submit/reset 默认动作。当前选择是
+先完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再对 dialog、contenteditable、SIP/IME、
+clipboard 与 picker 取舍；阶段 4 承担 submit/reset/formdata 的应用默认动作。
 File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
@@ -181,11 +183,13 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
 
 #### B. 独立应用阶段 3：剩余原生控件与输入
 
-**状态：准备取舍，文本、SELECT 与 checkbox/radio toggle 第一条纵切已接入，设备门未完成。** `positron.exe` 已有
+**状态：准备取舍，文本、SELECT、toggle 与普通按钮 click 接线已接入，设备门未完成。** `positron.exe` 已有
 `AppControlsContext`，把 `text`、`password`、`textarea` 投影为 native `EDIT`，把单选/多选
-`SELECT` 投影为 native `COMBOBOX`/`LISTBOX`，把 checkbox/radio 投影为 native `BUTTON`，并保持页面替换、滚动、布局和脚本 native
-事务的生命周期顺序；动态 option 列表/标签变化也已接入延迟检测与原生重建。下一条候选应从
-button、dialog/contenteditable、SIP/IME、clipboard 和 file picker 中选择一个有真实
+`SELECT` 投影为 native `COMBOBOX`/`LISTBOX`，把 checkbox/radio 投影为 native `BUTTON`；普通
+`type=button` 仍由 Core 绘制，宿主接入点按、Space/Enter 和 Browser click transaction，并保持
+页面替换、滚动、布局和脚本 native 事务的生命周期顺序；动态 option 列表/标签变化也已接入
+延迟检测与原生重建。下一条候选应从 dialog/contenteditable、SIP/IME、clipboard 和 file picker
+中选择一个有真实
 页面或设备失败证据的最小纵切；不得把
 所有原生交互一次性合并。
 
@@ -196,8 +200,9 @@ button、dialog/contenteditable、SIP/IME、clipboard 和 file picker 中选择�
   geometry、DPI、旋转和重复 teardown 都要 fail closed；禁止自绘滚动条替代系统控件。
 - **最小 fixture：** `controls` 离线页的文本/密码/多行输入、单选/多选 SELECT 和
   checkbox/radio toggle 成功、退格/Delete/换行、Space/Enter、焦点变化、脚本取消
-  beforeinput/click、下拉 commit/cancel、option mutation 后的标签/数量重建、禁用项、页面切换
-  销毁和旧页保留；新增控件必须补相邻失败和容量断言。
+  beforeinput/click、普通按钮点按及 Space/Enter（不提交）、下拉 commit/cancel、option mutation
+  后的标签/数量重建、禁用项、页面切换销毁和旧页保留；submit/reset 默认动作不属于本阶段。
+  新增控件必须补相邻失败和容量断言。
 - **门：** C89、正式 ARMV4I Debug/Release、仓库审计后，设备人工验收真实键盘、SIP/IME、
   触摸、旋转、DPI、软键和控件销毁；桌面 synthetic 消息不能替代设备证据。
 

@@ -34,8 +34,10 @@ checkbox/radio 使用同一窗口体系下的 WM6 `BUTTON` 子控件。有界 DO
 SELECT，并保留正在编辑的 EDIT 与 SELECT 焦点。Core 仍拥有 value、选项状态、
 checked/radio-group 状态和几何，Browser native-edit/native-select/native-toggle bridge
 负责输入、选择、可信 click、input/change 和 focus 事务，宿主负责 WM6 消息、重排和销毁。
-toggle 已接入 checkbox/radio 的点击与 Space/Enter 键盘路径；button、dialog、contenteditable、
-form submit/formdata、SIP/IME、文件选择器、书签、持久偏好和 WM6 Standard 仍未接入；缺少
+Core 绘制的普通 `type=button` 也已接入：点按命中后（有 ScriptSession 时）经 Browser 派发
+click，按下 Space/Enter 可激活当前按钮；不额外创建 WM6 子窗口。Native-button transaction 和
+Core click callback 复用于 toggle 路径。此批不接 submit/reset 默认动作或表单提交；dialog、
+contenteditable、SIP/IME、文件选择器、书签、持久偏好和 WM6 Standard 仍未接入；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
 
@@ -73,14 +75,16 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
 5. 地址栏中输入 `controls` 或 `welcome`，按 Enter 导航；在 `controls` 页分别点击或用
    Tab 进入文本、密码和多行文本框，输入、退格、Delete、Enter/换行并离开焦点，确认页面
    值、光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT 以及 checkbox/radio，
-   确认选择、checked 状态和 radio-group 规则回写页面，Space/Enter 不产生重复切换；让脚本
-   改变一个 option 的文本或从集合中移除 option，确认 native SELECT 在 callback 返回后更新
-   且 EDIT/SELECT 焦点不丢失；滚动、旋转和页面切换后没有残留 native 控件；
+   确认选择、checked 状态和 radio-group 规则回写页面，Space/Enter 不产生重复切换；点按普通
+   按钮后再按 Space/Enter，确认不导航也不提交；让脚本改变一个 option 的文本或从集合中移除
+   option，确认 native SELECT 在 callback 返回后更新且 EDIT/SELECT 焦点不丢失；滚动、旋转和
+   页面切换后没有残留 native 控件；
 6. 编辑地址栏时按 Backspace 删除，按 Escape 取消编辑并恢复已提交地址；
 7. 菜单中的 `Exit`/`退出` 真正结束应用，重复启动/关闭不新增崩溃。
 8. 在设备网络可用时输入绝对 `http://` 或 `https://` 地址；加载期间旧页面保持可见，
    成功后才替换页面。检查一个包含 inline/classic external script 的页面：脚本 DOM
-   mutation、事件监听和 timer 在提交后生效；脚本错误、optional script/image 失败、
+   mutation、事件监听和 timer 在提交后生效，并让 click listener 更新页面确认按钮事件到达；
+   脚本错误、optional script/image 失败、
    取消或输入另一个地址时不显示半成品页面，旧页面仍可用。
 
 真实设备的触摸命中、SIP、旋转、DPI 和 OEM 键盘行为仍属于人工验收；本阶段不把桌面

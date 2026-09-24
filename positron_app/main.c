@@ -608,6 +608,7 @@ static int app_focus_set(HWND hwnd, int index)
             &info) != 0) {
         return 0;
     }
+    AppControls_ClearButtonFocus(g_controls);
     if (PCore_InteractionFocusById(g_document, g_focus_ids[index]) < 0) {
         return 0;
     }
@@ -2090,6 +2091,9 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         return 0;
     case WM_ERASEBKGND:
         return 1;
+    case WM_KILLFOCUS:
+        AppControls_ClearButtonFocus(g_controls);
+        break;
     case WM_LBUTTONDOWN:
         {
             int x;
@@ -2105,6 +2109,11 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             SetFocus(hwnd);
             document_x = x + g_scroll_x;
             document_y = y + g_scroll_y;
+            if (AppControls_HandleButtonPointer(g_controls, document_x,
+                    document_y)) {
+                return 0;
+            }
+            AppControls_ClearButtonFocus(g_controls);
             focus_index = app_focus_at(document_x, document_y);
             if (focus_index >= 0) {
                 (void) app_focus_set(hwnd, focus_index);
@@ -2170,6 +2179,10 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         if (GetFocus() != hwnd) {
             break;
         }
+        if (AppControls_HandleButtonKey(g_controls, WM_KEYDOWN, wparam,
+                lparam)) {
+            return 0;
+        }
         if (wparam == VK_UP) {
             if (g_focus_index >= 0 && g_focus_count > 0) {
                 app_focus_move(hwnd, -1);
@@ -2215,6 +2228,12 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             return 0;
         }
         return 0;
+    case WM_KEYUP:
+        if (GetFocus() == hwnd && AppControls_HandleButtonKey(g_controls,
+                WM_KEYUP, wparam, lparam)) {
+            return 0;
+        }
+        break;
     }
     return DefWindowProc(hwnd, message, wparam, lparam);
 }
@@ -2305,6 +2324,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
     case APP_WM_CONTROLS_REFRESH:
         if (lparam == (LPARAM) g_script && g_document != NULL &&
                 g_controls != NULL) {
+            AppControls_PrepareReconcile(g_controls);
             if (app_relayout() != 0 || AppControls_Reconcile(g_controls,
                     g_document, g_script, g_scroll_x, g_scroll_y) != 0) {
                 app_set_status(APP_TEXT_STATUS_LAYOUT);

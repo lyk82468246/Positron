@@ -4,8 +4,8 @@
  * The Core document remains the owner of form values, options and geometry.
  * This module projects text-like controls into WM6 EDIT children, SELECT
  * controls into WM6 COMBOBOX/LISTBOX children, and checkbox/radio controls
- * into WM6 BUTTON children; Browser owns the bounded native event
- * transactions.
+ * into WM6 BUTTON children. Core-painted ordinary buttons use the same
+ * document/event hit path; Browser owns their bounded click transaction.
  */
 
 #ifndef POSITRON_APP_CONTROLS_H
@@ -27,9 +27,15 @@ int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y);
 int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y);
+void AppControls_PrepareReconcile(AppControlsContext *context);
 void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         int scroll_x, int scroll_y);
 int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
         LPARAM lparam);
+int AppControls_HandleButtonPointer(AppControlsContext *context,
+        int document_x, int document_y);
+int AppControls_HandleButtonKey(AppControlsContext *context, UINT message,
+        WPARAM key, LPARAM flags);
+void AppControls_ClearButtonFocus(AppControlsContext *context);
 
 #endif /* POSITRON_APP_CONTROLS_H */

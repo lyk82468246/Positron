@@ -8,13 +8,11 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 
 ## 当前 Git 与工作区
 
-工作区在 `main`；本轮 `positron_app` 的阶段 3 第一条原生控件纵切已扩展完成：
-`app_controls.c/.h` 将 `text`、`password`、`textarea` 接入 WM6 native `EDIT`，并将单选/多选
-`SELECT` 接入同一窗口体系下的 `COMBOBOX`/`LISTBOX`，并将 checkbox/radio 接入同一窗口体系
-下的 `BUTTON`，补齐 mutation 后的动态 option 列表/标签检测、延迟重建和焦点保留。Core
-拥有 value、选项状态、checked/radio-group 状态和几何，Browser 拥有 native-edit/native-select/
-native-toggle 的事件与下拉/点击事务，宿主拥有 WM6 消息、重排和 teardown。
-本轮最终 C89、Debug/Release 构建和文档审计均已通过；不宣称设备通过。设备门按用户决定暂缓，
+工作区在 `main`。阶段 3 当前接入 text/password/textarea `EDIT`、单选/多选 `SELECT`、
+checkbox/radio `BUTTON` 和 Core 绘制普通 `type=button` 的点按、Space/Enter 路径。ScriptSession
+注册 click callback，经 Core 派发坐标事件，也补齐 toggle 的 Browser click 事务；submit/reset
+默认动作未接。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责 WM6 消息、窗口、
+焦点/输入接线、重排和 teardown。C89、Debug/Release 与仓库审计通过；不宣称设备通过。设备门按用户决定暂缓，
 `RAPI=0x80072746` 不重复尝试。
 
 - 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
@@ -50,15 +48,16 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 当前短期目标是让独立 `positron.exe` 用公开 Core/Browser/HTTP ABI 完成有界网页纵切：
 主文档 HTTP(S) GET、Browser generation/resource gate、required CSS/`@import`、optional
 脚本/图片、英语/简体中文 EXE 资源以及阶段 2 classic ScriptSession 已接入；失败、取消和
-stale 候选仍保留旧页。阶段 3 第一条纵切另已接入 text/password/textarea 的 native EDIT、
-单选/多选 SELECT 的 native COMBOBOX/LISTBOX、checkbox/radio 的 native BUTTON、Core
-value/选项/几何同步、Browser native 事件事务、toggle 的可信 click/input/change 顺序和
-teardown。清单见
+stale 候选仍保留旧页。阶段 3 已接入 text/password/textarea 的 native EDIT、单选/多选
+SELECT 的 native COMBOBOX/LISTBOX、checkbox/radio 的 native BUTTON，以及 Core 绘制普通
+`type=button` 的点按和 Space/Enter 激活。Core 管值、选项、checked/radio-group 状态和几何；
+Browser 管 native edit/select/toggle/button 的事件事务；宿主管消息、原生窗口、输入路由和 teardown。
+submit/reset 默认动作仍在阶段 4。清单见
 [`positron_app/README.md`](../positron_app/README.md)。本地 C89、Debug/Release 和仓库审计
-已通过；阶段 1/2 网络、脚本、回滚、标题/窗口 UI 以及本轮 native 控件仍需设备验收，不能
+已通过；阶段 1/2 网络、脚本、回滚、标题/窗口 UI 以及阶段 3 输入仍需设备验收，不能
 写成设备基线。最近一次传输在复制 `positron_script.dll` 时以 `RAPI=0x80072746` 失败，
-TEST999 未启动。button、dialog、contenteditable、form submit/formdata、SIP/IME、picker、
-书签和持久设置仍不在当前范围内；toggle 与动态 option 重建尚未取得设备门证据。ROADMAP.md 已复核；稳定边界见
+TEST999 未启动。dialog、contenteditable、form submit/formdata、SIP/IME、picker、书签和持久
+设置仍不在当前范围内；native 控件尚未取得设备门证据。ROADMAP.md 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
 阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
@@ -104,9 +103,10 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
 脚本/图片属于 optional fallback；阶段 2 的网络候选已按 DOM 顺序创建并执行有界 classic
 ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；阶段 3 的第一条纵切另由
-EXE 私有 `AppControlsContext` 投影 text/password/textarea 与单选/多选 SELECT，按 Core 几何随
-布局、滚动和 DPI 重排，并在页面替换前重置 Browser native 状态。网络页面、脚本和导航失败
-回滚以及 native 控件的真实输入仍需设备人工验收，不能写成设备基线。
+EXE 私有 `AppControlsContext` 投影 text/password/textarea、单选/多选 SELECT 与 checkbox/radio，
+按 Core 几何随布局、滚动和 DPI 重排；普通 `type=button` 保持 Core 绘制，宿主只路由触摸和
+Space/Enter 到 Browser click transaction。页面替换前重置 Browser native 状态。网络页面、脚本和
+导航失败回滚以及 native 控件的真实输入仍需设备人工验收，不能写成设备基线。
 
 原有 File/Blob→FormData→multipart 候选仍保持“待取证”：本应用当前没有表单或 picker，不能
 把阶段 A 的离线导航消费者误写成上传消费者。只有阶段 B 的真实流程形成同步 file callback、

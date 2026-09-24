@@ -41,11 +41,14 @@ optional gate；阶段 2 再由 `app_script.c` 创建有界 ScriptSession，按 
 映射为同一窗口体系下的 WM6 native `EDIT` 子控件；单选/多选 `SELECT` 映射为原生
 `COMBOBOX`/`LISTBOX`；checkbox/radio 映射为同一窗口体系下的 WM6 native `BUTTON`。Core
 负责控件 value、选项状态、checked/radio-group 状态与几何，Browser native-edit/native-select/
-native-toggle bridge 负责输入、选择、trusted click、input/change、focus、单选下拉事务和重置；成功的有界 DOM mutation
-返回 UI 消息泵后，宿主按 option 集合/标签 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT
-焦点。宿主负责消息路由、重排和 teardown。该纵切已通过源码级 C89、Debug/Release 和仓库审计，
-仍需设备人工验收；button、dialog、contenteditable、form submit/formdata、SIP/IME 与 file picker 不因这条
-接线而宣称完成。网络、脚本、失败回滚和原生控件仍需 WM6 设备门；后续
+native-toggle bridge 负责输入、选择、trusted click、input/change、focus、单选下拉事务和重置；
+EXE 另把 Core 绘制的普通 `type=button` 命中及 Space/Enter 激活接入 Browser 的 native-button
+click transaction。Browser click callback 经 Core 按坐标派发；普通按钮不额外创建 WM6 子窗口，
+submit/reset 默认动作仍属于阶段 4。有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
+fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。宿主负责消息路由、指针/按键接线、重排
+和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但新增交互仍需设备人工验收；dialog、
+contenteditable、form submit/formdata、SIP/IME 与 file picker 不因该接线而宣称完成。网络、脚本、
+失败回滚和原生控件仍需 WM6 设备门；后续
 接线顺序与阶段门见
 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
 

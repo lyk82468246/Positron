@@ -828,6 +828,26 @@ static int app_script_native_select_dispatch(void *pw,
     return result < 0 ? -1 : 0;
 }
 
+static int app_script_click_dispatch(void *pw,
+        const PBrowserScriptClickEventInfo *info, int *out_default_allowed)
+{
+    AppScriptContext *context;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->event_type == NULL ||
+            strcmp(info->event_type, "click") != 0 ||
+            out_default_allowed == NULL) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchAt(context->document, info->x, info->y,
+            info->event_type, info->bubbles ? 1 : 0,
+            info->cancelable ? 1 : 0, out_default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
 static int app_script_register_callbacks(AppScriptContext *context)
 {
     PBrowserScriptDomReadCallbacksEx dom_read;
@@ -852,6 +872,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptEditCallbacks edit_callbacks;
     PBrowserScriptNativeEditCallbacksEx native_edit_callbacks;
     PBrowserScriptNativeSelectCallbacksEx native_select_callbacks;
+    PBrowserScriptClickCallbacks click_callbacks;
 
     memset(&dom_read, 0, sizeof(dom_read));
     dom_read.size = sizeof(dom_read);
@@ -959,6 +980,10 @@ static int app_script_register_callbacks(AppScriptContext *context)
     native_select_callbacks.pw = context;
     native_select_callbacks.dispatch_select =
             app_script_native_select_dispatch;
+    memset(&click_callbacks, 0, sizeof(click_callbacks));
+    click_callbacks.size = sizeof(click_callbacks);
+    click_callbacks.pw = context;
+    click_callbacks.dispatch_click = app_script_click_dispatch;
     if (PBrowser_ScriptSessionRegisterDomReadCallbacksEx(context->session,
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
@@ -1003,7 +1028,9 @@ static int app_script_register_callbacks(AppScriptContext *context)
             PBrowser_ScriptSessionRegisterNativeEditCallbacksEx(
             context->session, &native_edit_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterNativeSelectCallbacksEx(
-            context->session, &native_select_callbacks) != PSCRIPT_OK) {
+            context->session, &native_select_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterClickCallbacks(context->session,
+            &click_callbacks) != PSCRIPT_OK) {
         return 1;
     }
     return 0;
@@ -1634,6 +1661,39 @@ void AppScript_ResetNativeToggleState(AppScriptContext *context)
 {
     if (context != NULL && context->session != NULL) {
         (void) PBrowser_ScriptSessionResetNativeToggleState(context->session);
+    }
+}
+
+int AppScript_DispatchNativeButton(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase, int kind,
+        int disabled, int validation_valid, int *out_default_allowed)
+{
+    PBrowserScriptNativeButtonInfo info;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    info.kind = kind;
+    info.disabled = disabled ? 1 : 0;
+    info.validation_valid = validation_valid ? 1 : 0;
+    return PBrowser_ScriptSessionDispatchNativeButton(context->session,
+            &info, out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+}
+
+void AppScript_ResetNativeButtonState(AppScriptContext *context)
+{
+    if (context != NULL && context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeButtonState(context->session);
     }
 }
 

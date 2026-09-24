@@ -122,6 +122,14 @@ int AppScript_DispatchNativeToggle(AppScriptContext *context,
         int *out_default_allowed);
 void AppScript_ResetNativeToggleState(AppScriptContext *context);
 
+/* Native button activation uses Browser's bounded click/default transaction;
+ * the host supplies the hit-tested Core point and keeps submit/reset actions
+ * for the form integration stage. */
+int AppScript_DispatchNativeButton(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase, int kind,
+        int disabled, int validation_valid, int *out_default_allowed);
+void AppScript_ResetNativeButtonState(AppScriptContext *context);
+
 HANDLE AppScript_Document(AppScriptContext *context);
 int AppScript_QueueNavigation(AppScriptContext *context,
         const PBrowserScriptNavigationInfo *info);

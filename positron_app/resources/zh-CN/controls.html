@@ -29,7 +29,10 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <p><input id="remember" type="checkbox" checked> 记住此设备</p>
 <p><input id="mode-fast" type="radio" name="mode" checked> 快速模式<br>
 <input id="mode-safe" type="radio" name="mode"> 安全模式</p>
-<p>按钮、SIP/IME、文件选择和表单提交将在后续输入批次中接入。</p>
+<h2>普通按钮</h2>
+<p><button id="sample-button" type="button">点按后可按 Space 或 Enter</button></p>
+<p>此普通按钮会派发 click 事件，不会提交表单。</p>
+<p>提交/重置默认动作、SIP/IME 和文件选择仍在后续输入批次中。</p>
 <p><a id="home" tabindex="0"
 href="https://positron.local/welcome">主页</a></p>
 </body></html>
