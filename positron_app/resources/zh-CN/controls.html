@@ -3,9 +3,9 @@
 <p>Tab 会在原生应用控件之间移动。当页面拥有焦点时，向上和向下方向键会访问这些链接，Enter 会激活当前链接。</p>
 <p>向左和向右方向键水平滚动。Page Up 和 Page Down 垂直滚动。Escape 不会意外变成历史记录返回操作。</p>
 <p><a id="welcome" tabindex="0"
-href="https://positron.local/welcome">返回欢迎页面</a></p>
+href="positron://welcome">返回欢迎页面</a></p>
 <p><a id="welcome2" tabindex="0"
-href="https://positron.local/welcome">使用第二个链接返回</a></p>
+href="positron://welcome">使用第二个链接返回</a></p>
 <h2>输入约定</h2>
 <p>地址栏使用原生 EDIT 控件。Enter 提交地址，Escape 恢复最近一次提交的地址。Backspace 仍然是 EDIT 控件的删除键。</p>
 <h2>原生文本控件</h2>
@@ -34,7 +34,7 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <p>此普通按钮会派发 click 事件，不会提交表单。</p>
 <h2>URL 编码的 GET 表单</h2>
 <p>提交有效表单会重新加载此离线页面。编码后的字段和提交按钮会显示在地址栏中；必填项为空时不得导航。</p>
-<form id="get-demo" method="get" action="https://positron.local/controls">
+<form id="get-demo" method="get" action="positron://controls">
 <p><label for="get-query">搜索内容</label><br>
 <input id="get-query" name="q" type="text" required value="WM6 browser"></p>
 <p><label for="get-scope">范围</label><br>
@@ -118,5 +118,5 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 </script>
 <p>富文本编辑、完整剪贴板事件、SIP/IME 和文件选择仍在后续输入批次中。</p>
 <p><a id="home" tabindex="0"
-href="https://positron.local/welcome">主页</a></p>
+href="positron://welcome">主页</a></p>
 </body></html>

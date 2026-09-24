@@ -12,6 +12,8 @@ bar、菜单、输入优先级和页面导航策略属于应用。
 - 使用标准 WM6 caption 和 `SHCreateMenuBar` softkey command bar；左 softkey 为 `Back`，
   右 softkey 打开原生菜单，菜单包含前进、主页、地址栏、刷新和明确退出；
 - caption 下只有一行紧凑 native EDIT 地址栏；Enter 提交，Escape 恢复最近一次已提交地址；
+- 内置离线页使用应用私有地址 `positron://welcome` 与 `positron://controls`，只解析这两个
+  嵌入页面路由；地址栏仍接受 `welcome`/`controls` 快捷输入，外部网页继续使用 HTTP(S)。
 - Core 负责 HTML/CSS 解析、style、layout 和 GDI paint；页面支持垂直/水平滚动；
 - Browser DLL 负责应用使用的有界 history handle；失败的导航不会替换当前页面；
 - 地址栏和页面链接支持绝对 HTTP(S) URL。主文档请求在 worker 中通过
@@ -91,7 +93,8 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    位置随之改变；
 4. 只用硬键盘/方向键时，用 Tab 经过 native 控件；页面获得焦点后用 Up/Down 选择链接、
    Enter 激活；
-5. 地址栏中输入 `controls` 或 `welcome`，按 Enter 导航；在 `controls` 页分别点击或用
+5. 地址栏中输入 `positron://controls` 或 `positron://welcome`，按 Enter 导航；确认 `controls`/`welcome`
+   快捷输入仍可用；在 `controls` 页分别点击或用
    Tab 进入文本、密码和多行文本框，输入、退格、Delete、Enter/换行并离开焦点，确认页面
    值、光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT 以及 checkbox/radio，
    确认选择、checked 状态和 radio-group 规则回写页面，Space/Enter 不产生重复切换；点按普通

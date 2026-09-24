@@ -98,7 +98,7 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 窗口、native EDIT/COMBOBOX/LISTBOX、WM6 Shell command bar、菜单、worker、消息泵、输入优先级和页面 swap 由应用拥有。
 `test_host` 没有编译应用实现源文件，也没有承接应用 UI。
 
-阶段 A 的 `welcome`、`controls` 及对应的 `https://positron.local/...` 地址继续离线工作；
+阶段 A 的内置页现由应用私有 `positron://welcome` 和 `positron://controls` 地址离线路由；
 阶段 B 当前支持绝对 HTTP(S) 主文档 GET，失败、取消或 stale 响应不会替换旧页面。菜单、softkey、
 状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
 交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，

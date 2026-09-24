@@ -48,6 +48,8 @@
 
 #define APP_PAGE_WELCOME            APP_I18N_PAGE_WELCOME
 #define APP_PAGE_CONTROLS           APP_I18N_PAGE_CONTROLS
+#define APP_URL_WELCOME             "positron://welcome"
+#define APP_URL_CONTROLS            "positron://controls"
 
 #define APP_HISTORY_NEW             1
 #define APP_HISTORY_TARGET          2
@@ -729,6 +731,33 @@ static int app_activate_focus(HWND hwnd)
             (LPARAM) href);
 }
 
+static int app_ascii_prefix_equal(const char *value, const char *prefix)
+{
+    unsigned char value_char;
+    unsigned char prefix_char;
+
+    if (value == NULL || prefix == NULL) {
+        return 0;
+    }
+    while (*prefix != '\0') {
+        value_char = (unsigned char) *value++;
+        if (value_char == '\0') {
+            return 0;
+        }
+        prefix_char = (unsigned char) *prefix++;
+        if (value_char >= 'A' && value_char <= 'Z') {
+            value_char = (unsigned char) (value_char + ('a' - 'A'));
+        }
+        if (prefix_char >= 'A' && prefix_char <= 'Z') {
+            prefix_char = (unsigned char) (prefix_char + ('a' - 'A'));
+        }
+        if (value_char != prefix_char) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int app_url_matches_local_page(const char *url,
         const char *page_url)
 {
@@ -741,19 +770,17 @@ static int app_url_matches_local_page(const char *url,
     page_length = (int) strlen(page_url);
     url_length = (int) strlen(url);
     return url_length >= page_length &&
-            strncmp(url, page_url, (size_t) page_length) == 0 &&
+            app_ascii_prefix_equal(url, page_url) &&
             (url[page_length] == '\0' || url[page_length] == '?' ||
             url[page_length] == '#');
 }
 
 static int app_page_kind(const char *url)
 {
-    if (app_url_matches_local_page(url,
-            "https://positron.local/welcome")) {
+    if (app_url_matches_local_page(url, APP_URL_WELCOME)) {
         return APP_PAGE_WELCOME;
     }
-    if (app_url_matches_local_page(url,
-            "https://positron.local/controls")) {
+    if (app_url_matches_local_page(url, APP_URL_CONTROLS)) {
         return APP_PAGE_CONTROLS;
     }
     return 0;
@@ -792,6 +819,7 @@ static int app_canonicalize_url(const char *base_url, const char *reference,
     char path[APP_NAV_PATH_MAX];
     int base_port;
     int port;
+    int absolute_network_reference;
 
     if (reference == NULL || output == NULL || output_capacity <= 1) {
         return 1;
@@ -799,7 +827,12 @@ static int app_canonicalize_url(const char *base_url, const char *reference,
     base_host[0] = '\0';
     base_path[0] = '\0';
     base_port = 443;
-    if (base_url != NULL && base_url[0] != '\0' &&
+    absolute_network_reference =
+            app_ascii_prefix_equal(reference, "http://") ||
+            app_ascii_prefix_equal(reference, "https://") ||
+            (reference[0] == '/' && reference[1] == '/');
+    if (!absolute_network_reference && base_url != NULL &&
+            base_url[0] != '\0' &&
             PHttp_ResolveReference(NULL, 443, NULL, base_url,
             base_host, sizeof(base_host), base_path, sizeof(base_path),
             &base_port) != 0) {
@@ -814,6 +847,26 @@ static int app_canonicalize_url(const char *base_url, const char *reference,
         return 1;
     }
     return app_format_url(host, path, port, output, output_capacity);
+}
+
+static int app_resolve_app_url(const char *base_url, const char *reference,
+        char *output, int output_capacity)
+{
+    int length;
+
+    if (reference == NULL || output == NULL || output_capacity <= 1) {
+        return 1;
+    }
+    if (app_page_kind(reference) != 0) {
+        length = (int) strlen(reference);
+        if (length >= output_capacity) {
+            return 1;
+        }
+        memcpy(output, reference, (size_t) length + 1);
+        return 0;
+    }
+    return app_canonicalize_url(base_url, reference, output,
+            output_capacity);
 }
 
 static int app_form_get_target(const char *action, const char *encoded_data,
@@ -832,7 +885,7 @@ static int app_form_get_target(const char *action, const char *encoded_data,
     effective_action = (action != NULL && action[0] != '\0') ? action :
             g_current_url;
     if (effective_action == NULL || effective_action[0] == '\0' ||
-            app_canonicalize_url(g_current_url, effective_action, resolved,
+            app_resolve_app_url(g_current_url, effective_action, resolved,
             sizeof(resolved)) != 0) {
         return 1;
     }
@@ -905,7 +958,7 @@ static int app_build_page(const char *url, HANDLE *out_document,
         return 1;
     }
     stylesheet = PCore_ParseCSS(g_app_css, 0,
-            "https://positron.local/app.css");
+            "https://positron.invalid/app.css");
     if (stylesheet == NULL || app_style_and_layout(document, stylesheet) != 0) {
         PCore_FreeStylesheet(stylesheet);
         PCore_FreeDocument(document);
@@ -1967,28 +2020,15 @@ static int app_normalize_address(const char *input, char *output,
     }
     length = (int) (end - start);
     if (length == 0) {
-        app_copy_text(output, output_capacity,
-                "https://positron.local/welcome");
+        app_copy_text(output, output_capacity, APP_URL_WELCOME);
         return 0;
     }
     if (length == 7 && strncmp(start, "welcome", 7) == 0) {
-        app_copy_text(output, output_capacity,
-                "https://positron.local/welcome");
+        app_copy_text(output, output_capacity, APP_URL_WELCOME);
         return 0;
     }
     if (length == 8 && strncmp(start, "controls", 8) == 0) {
-        app_copy_text(output, output_capacity,
-                "https://positron.local/controls");
-        return 0;
-    }
-    if (length == 18 && strncmp(start, "positron://welcome", 18) == 0) {
-        app_copy_text(output, output_capacity,
-                "https://positron.local/welcome");
-        return 0;
-    }
-    if (length == 19 && strncmp(start, "positron://controls", 19) == 0) {
-        app_copy_text(output, output_capacity,
-                "https://positron.local/controls");
+        app_copy_text(output, output_capacity, APP_URL_CONTROLS);
         return 0;
     }
     if (length >= output_capacity) {
@@ -2024,7 +2064,7 @@ static void app_go_from_address(HWND hwnd)
 
 static void app_go_home(HWND hwnd)
 {
-    (void) app_load_page(hwnd, "https://positron.local/welcome",
+    (void) app_load_page(hwnd, APP_URL_WELCOME,
             APP_HISTORY_NEW, -1);
 }
 
@@ -2657,7 +2697,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     app_reposition_controls(hwnd);
     app_reposition_page(hwnd);
-    result = app_load_page(hwnd, "https://positron.local/welcome",
+    result = app_load_page(hwnd, APP_URL_WELCOME,
             APP_HISTORY_NEW, -1) ? 0 : 1;
     if (result != 0) {
         DestroyWindow(hwnd);
