@@ -32,6 +32,37 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <h2>普通按钮</h2>
 <p><button id="sample-button" type="button">点按后可按 Space 或 Enter</button></p>
 <p>此普通按钮会派发 click 事件，不会提交表单。</p>
+<h2>重置按钮事务</h2>
+<p>重置按钮会恢复表单中的文本、选项和开关初始值。勾选“取消重置事件”可阻止重置。</p>
+<form id="reset-demo">
+<p><label for="reset-name">姓名</label><br>
+<input id="reset-name" type="text" value="初始值"></p>
+<p><label for="reset-region">初始地区：中国大陆</label><br>
+<select id="reset-region"><option value="cn" selected>中国大陆</option>
+<option value="us">美国</option></select></p>
+<p><input id="reset-checked" type="checkbox" checked> 初始为选中</p>
+<p><input id="cancel-reset" type="checkbox"> 取消重置事件</p>
+<p><button id="reset-button" type="reset">重置此表单</button></p>
+</form>
+<p id="reset-status">修改控件后，激活“重置此表单”。</p>
+<script>
+(function () {
+    var form = document.getElementById("reset-demo");
+    var cancel = document.getElementById("cancel-reset");
+    var status = document.getElementById("reset-status");
+    if (!form || !cancel || !status) {
+        return;
+    }
+    form.addEventListener("reset", function (event) {
+        if (cancel.checked) {
+            event.preventDefault();
+            status.innerText = "重置已取消；已修改的值会保留。";
+        } else {
+            status.innerText = "重置事件已接受；初始值已恢复。";
+        }
+    });
+}());
+</script>
 <h2>纯文本编辑</h2>
 <p>此 contenteditable 区域使用原生多行 EDIT。输入感叹号会被 beforeinput
 取消。可拖动选择文字或使用 Shift+方向键，然后点击报告按钮查看逻辑 UTF-16

@@ -18,6 +18,7 @@
 #define APP_CONTROLS_KIND_SELECT     2
 #define APP_CONTROLS_KIND_TOGGLE     3
 #define APP_CONTROLS_KIND_CONTENTEDITABLE 4
+#define APP_CONTROLS_FORM_RESET      8
 #define APP_CONTROLS_FORM_BUTTON     9
 #define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
 
@@ -76,6 +77,8 @@ struct AppControlsContext {
     unsigned int button_focus_form_index;
     int button_focus_x;
     int button_focus_y;
+    int scroll_x;
+    int scroll_y;
     int button_focus_active;
     int button_space_pending;
     int syncing;
@@ -716,6 +719,64 @@ static void app_controls_notify(AppControlsContext *context)
     }
 }
 
+static int app_controls_is_focusable_button(int kind)
+{
+    return kind == APP_CONTROLS_FORM_RESET ||
+            kind == APP_CONTROLS_FORM_BUTTON;
+}
+
+static void app_controls_restore_button_focus(AppControlsContext *context,
+        unsigned int form_index)
+{
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+
+    if (context == NULL || context->document == NULL ||
+            PCore_FormControlInfo(context->document, form_index, &x, &y,
+            &width, &height, &kind, NULL, &disabled) != 0 ||
+            !app_controls_is_focusable_button(kind) || disabled ||
+            width <= 0 || height <= 0) {
+        return;
+    }
+    x += width / 2;
+    y += height / 2;
+    if (PCore_InteractionSetAt(context->document, x, y,
+            PCORE_INTERACTION_FOCUS) < 0) {
+        return;
+    }
+    context->button_focus_active = 1;
+    context->button_focus_form_index = form_index;
+    context->button_focus_x = x;
+    context->button_focus_y = y;
+    context->button_space_pending = 0;
+}
+
+static void app_controls_finish_reset(AppControlsContext *context,
+        unsigned int form_index)
+{
+    HANDLE document;
+    AppScriptContext *script;
+    int scroll_x;
+    int scroll_y;
+
+    if (context == NULL || context->document == NULL) {
+        return;
+    }
+    document = context->document;
+    script = context->script;
+    scroll_x = context->scroll_x;
+    scroll_y = context->scroll_y;
+    app_controls_notify(context);
+    if (AppControls_Rebuild(context, document, script, scroll_x,
+            scroll_y) == 0) {
+        app_controls_restore_button_focus(context, form_index);
+    }
+}
+
 static void app_controls_dispatch_focus(AppControlsContext *context,
         AppControlsItem *item, int focused)
 {
@@ -869,7 +930,7 @@ static int app_controls_button_focus(AppControlsContext *context,
             context->button_focus_form_index == form_index) {
         if (PCore_FormControlInfo(context->document, form_index, &x, &y,
                 &width, &height, &kind, NULL, &disabled) == 0 &&
-                kind == APP_CONTROLS_FORM_BUTTON && !disabled &&
+                app_controls_is_focusable_button(kind) && !disabled &&
                 width > 0 && height > 0) {
             context->button_focus_x = x + width / 2;
             context->button_focus_y = y + height / 2;
@@ -880,7 +941,8 @@ static int app_controls_button_focus(AppControlsContext *context,
     AppControls_ClearButtonFocus(context);
     if (PCore_FormControlInfo(context->document, form_index, &x, &y,
             &width, &height, &kind, NULL, &disabled) != 0 ||
-            kind != APP_CONTROLS_FORM_BUTTON || disabled || width <= 0 ||
+            !app_controls_is_focusable_button(kind) || disabled ||
+            width <= 0 ||
             height <= 0) {
         return 1;
     }
@@ -2119,44 +2181,70 @@ static int app_controls_button_activate(AppControlsContext *context,
     int kind;
     int disabled;
     int default_allowed;
+    int result;
+    int button_kind;
 
     if (context == NULL || context->document == NULL) {
         return 1;
     }
     if (PCore_FormControlInfo(context->document, form_index, &left, &top,
             &width, &height, &kind, NULL, &disabled) != 0 ||
-            kind != APP_CONTROLS_FORM_BUTTON || disabled || width <= 0 ||
+            !app_controls_is_focusable_button(kind) || disabled ||
+            width <= 0 ||
             height <= 0 || x < left || x >= left + width || y < top ||
             y >= top + height) {
         return 1;
     }
+    button_kind = kind == APP_CONTROLS_FORM_RESET ?
+            PBROWSER_SCRIPT_NATIVE_BUTTON_RESET :
+            PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
     target_token = (unsigned long) form_index + 1UL;
     if (context->script == NULL) {
         default_allowed = 1;
-        (void) PCore_EventDispatchAt(context->document, x, y, "click",
+        result = PCore_EventDispatchAt(context->document, x, y, "click",
                 1, 1, &default_allowed);
+        if (result < 0 || !default_allowed ||
+                kind != APP_CONTROLS_FORM_RESET) {
+            return 1;
+        }
+        default_allowed = 1;
+        result = PCore_EventDispatchAt(context->document, x, y, "reset",
+                1, 1, &default_allowed);
+        if (result < 0 || !default_allowed) {
+            return 1;
+        }
+        result = PCore_FormResetAt(context->document, x, y);
+        if (result == 1) {
+            app_controls_finish_reset(context, form_index);
+        }
         return 1;
     }
     default_allowed = 1;
     if (AppScript_DispatchNativeButton(context->script, target_token, x, y,
             PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK,
-            PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON, 0, 0,
+            button_kind, 0, 0,
             &default_allowed) != 0 || !default_allowed) {
         (void) AppScript_DispatchNativeButton(context->script, target_token,
                 x, y, PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
-                PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON, 0, 0,
+                button_kind, 0, 0,
                 &default_allowed);
         AppScript_ResetNativeButtonState(context->script);
         return 1;
     }
-    if (AppScript_DispatchNativeButton(context->script, target_token, x, y,
+    result = AppScript_DispatchNativeButton(context->script, target_token,
+            x, y,
             PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT,
-            PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON, 0, 0,
-            &default_allowed) != 0) {
+            button_kind, 0, 0, &default_allowed);
+    if (result != 0) {
         (void) AppScript_DispatchNativeButton(context->script, target_token,
                 x, y, PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
-                PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON, 0, 0,
+                button_kind, 0, 0,
                 &default_allowed);
+    } else if (kind == APP_CONTROLS_FORM_RESET && default_allowed) {
+        result = PCore_FormResetAt(context->document, x, y);
+        if (result == 1) {
+            app_controls_finish_reset(context, form_index);
+        }
     }
     AppScript_ResetNativeButtonState(context->script);
     return 1;
@@ -2179,7 +2267,8 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
     form_index = 0;
     while (PCore_FormControlInfo(context->document, form_index, &x, &y,
             &width, &height, &kind, NULL, &disabled) == 0) {
-        if (kind == APP_CONTROLS_FORM_BUTTON && width > 0 && height > 0 &&
+        if (app_controls_is_focusable_button(kind) && width > 0 &&
+                height > 0 &&
                 document_x >= x && document_x < x + width &&
                 document_y >= y && document_y < y + height) {
             if (disabled) {
@@ -2218,7 +2307,8 @@ int AppControls_HandleButtonKey(AppControlsContext *context, UINT message,
     if (context->document == NULL || PCore_FormControlInfo(
             context->document, context->button_focus_form_index, &x, &y,
             &width, &height, &kind, NULL, &disabled) != 0 ||
-            kind != APP_CONTROLS_FORM_BUTTON || disabled || width <= 0 ||
+            !app_controls_is_focusable_button(kind) || disabled ||
+            width <= 0 ||
             height <= 0) {
         app_controls_button_focus_forget(context, 1);
         return 1;
@@ -3183,12 +3273,15 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         return;
     }
     context->document = document;
+    context->scroll_x = scroll_x;
+    context->scroll_y = scroll_y;
     GetClientRect(context->parent, &client);
     if (context->button_focus_active) {
         if (PCore_FormControlInfo(document,
                 context->button_focus_form_index, &button_x, &button_y,
                 &button_width, &button_height, &form_kind, NULL, NULL) == 0 &&
-                form_kind == APP_CONTROLS_FORM_BUTTON && button_width > 0 &&
+                app_controls_is_focusable_button(form_kind) &&
+                button_width > 0 &&
                 button_height > 0) {
             context->button_focus_x = button_x + button_width / 2;
             context->button_focus_y = button_y + button_height / 2;

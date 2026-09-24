@@ -4,8 +4,9 @@
  * The Core document remains the owner of form values, options and geometry.
  * This module projects text-like controls into WM6 EDIT children, SELECT
  * controls into WM6 COMBOBOX/LISTBOX children, and checkbox/radio controls
- * into WM6 BUTTON children. Core-painted ordinary buttons use the same
- * document/event hit path; Browser owns their bounded click transaction.
+ * into WM6 BUTTON children. Core-painted buttons use the same document/event
+ * hit path; Browser owns click/reset event transactions, while Core owns the
+ * reset state change.
  */
 
 #ifndef POSITRON_APP_CONTROLS_H

@@ -42,6 +42,38 @@ input and change events.</p>
 <h2>Ordinary button</h2>
 <p><button id="sample-button" type="button">Tap, then press Space or Enter</button></p>
 <p>This ordinary button dispatches click; it does not submit a form.</p>
+<h2>Reset button transaction</h2>
+<p>A reset button restores the form's initial text, selection and toggle
+values. Check the cancellation option to prevent the reset event.</p>
+<form id="reset-demo">
+<p><label for="reset-name">Name</label><br>
+<input id="reset-name" type="text" value="Initial value"></p>
+<p><label for="reset-region">Initial region: China</label><br>
+<select id="reset-region"><option value="cn" selected>China</option>
+<option value="us">United States</option></select></p>
+<p><input id="reset-checked" type="checkbox" checked> Initially checked</p>
+<p><input id="cancel-reset" type="checkbox"> Cancel reset event</p>
+<p><button id="reset-button" type="reset">Reset this form</button></p>
+</form>
+<p id="reset-status">Change the controls, then activate Reset this form.</p>
+<script>
+(function () {
+    var form = document.getElementById("reset-demo");
+    var cancel = document.getElementById("cancel-reset");
+    var status = document.getElementById("reset-status");
+    if (!form || !cancel || !status) {
+        return;
+    }
+    form.addEventListener("reset", function (event) {
+        if (cancel.checked) {
+            event.preventDefault();
+            status.innerText = "Reset canceled; changed values are kept.";
+        } else {
+            status.innerText = "Reset event accepted; initial values restored.";
+        }
+    });
+}());
+</script>
 <h2>Plain-text editing</h2>
 <p>This contenteditable region uses a native multiline EDIT. Typing an
 exclamation mark is canceled by beforeinput. Drag or use Shift+Arrow to change
