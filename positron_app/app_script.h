@@ -134,9 +134,9 @@ int AppScript_DispatchNativeToggle(AppScriptContext *context,
 void AppScript_ResetNativeToggleState(AppScriptContext *context);
 
 /* Native button activation uses Browser's bounded click/default transaction;
- * the host supplies the hit-tested Core point and applies the Core reset
- * default only after Browser accepts the reset event. Submit remains for the
- * form integration stage. */
+ * the host supplies the hit-tested Core point. After validation and an
+ * accepted submit event, the app's form callback may schedule the supported
+ * URL-encoded GET default; reset applies Core state only after acceptance. */
 int AppScript_DispatchNativeButton(AppScriptContext *context,
         unsigned long target_token, int x, int y, int phase, int kind,
         int disabled, int validation_valid, int *out_default_allowed);

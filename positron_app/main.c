@@ -111,6 +111,8 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
         int history_target);
 static void app_update_history_buttons(void);
 static void app_controls_changed(void *pw);
+static void app_handle_form_submit(void *pw, int document_x,
+        int document_y, int validation_valid);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -727,12 +729,31 @@ static int app_activate_focus(HWND hwnd)
             (LPARAM) href);
 }
 
+static int app_url_matches_local_page(const char *url,
+        const char *page_url)
+{
+    int page_length;
+    int url_length;
+
+    if (url == NULL || page_url == NULL) {
+        return 0;
+    }
+    page_length = (int) strlen(page_url);
+    url_length = (int) strlen(url);
+    return url_length >= page_length &&
+            strncmp(url, page_url, (size_t) page_length) == 0 &&
+            (url[page_length] == '\0' || url[page_length] == '?' ||
+            url[page_length] == '#');
+}
+
 static int app_page_kind(const char *url)
 {
-    if (strcmp(url, "https://positron.local/welcome") == 0) {
+    if (app_url_matches_local_page(url,
+            "https://positron.local/welcome")) {
         return APP_PAGE_WELCOME;
     }
-    if (strcmp(url, "https://positron.local/controls") == 0) {
+    if (app_url_matches_local_page(url,
+            "https://positron.local/controls")) {
         return APP_PAGE_CONTROLS;
     }
     return 0;
@@ -793,6 +814,48 @@ static int app_canonicalize_url(const char *base_url, const char *reference,
         return 1;
     }
     return app_format_url(host, path, port, output, output_capacity);
+}
+
+static int app_form_get_target(const char *action, const char *encoded_data,
+        char *target, int target_capacity)
+{
+    char resolved[APP_URL_MAX];
+    const char *effective_action;
+    int resolved_length;
+    int base_length;
+    int data_length;
+    int target_length;
+
+    if (encoded_data == NULL || target == NULL || target_capacity <= 1) {
+        return 1;
+    }
+    effective_action = (action != NULL && action[0] != '\0') ? action :
+            g_current_url;
+    if (effective_action == NULL || effective_action[0] == '\0' ||
+            app_canonicalize_url(g_current_url, effective_action, resolved,
+            sizeof(resolved)) != 0) {
+        return 1;
+    }
+    resolved_length = (int) strlen(resolved);
+    base_length = 0;
+    while (base_length < resolved_length && resolved[base_length] != '?' &&
+            resolved[base_length] != '#') {
+        base_length++;
+    }
+    data_length = (int) strlen(encoded_data);
+    target_length = base_length +
+            ((data_length > 0) ? data_length + 1 : 0);
+    if (base_length <= 0 || target_length >= target_capacity) {
+        return 1;
+    }
+    memcpy(target, resolved, (size_t) base_length);
+    if (data_length > 0) {
+        target[base_length] = '?';
+        memcpy(target + base_length + 1, encoded_data,
+                (size_t) data_length);
+    }
+    target[target_length] = '\0';
+    return 0;
 }
 
 static int app_style_and_layout(HANDLE document, HANDLE stylesheet)
@@ -1822,6 +1885,66 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
             history_target);
 }
 
+static void app_handle_form_submit(void *pw, int document_x,
+        int document_y, int validation_valid)
+{
+    PCoreFormSubmissionInfo submission;
+    char action_probe[1];
+    char body_probe[1];
+    char action[APP_URL_MAX];
+    char body[APP_URL_MAX];
+    char target[APP_URL_MAX];
+    int result;
+
+    if (pw != &g_app || g_document == NULL || !validation_valid) {
+        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        return;
+    }
+    memset(&submission, 0, sizeof(submission));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    result = PCore_FormSubmissionAt(g_document, document_x, document_y,
+            &submission, action_probe, sizeof(action_probe), body_probe,
+            sizeof(body_probe));
+    if (result == 5) {
+        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        return;
+    }
+    if (result == 3 || result == 6 ||
+            ((result == 1 || result == 4) &&
+            submission.method != PCORE_FORM_METHOD_GET)) {
+        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        return;
+    }
+    if ((result != 1 && result != 4) ||
+            submission.action_bytes < 0 || submission.body_bytes < 0 ||
+            submission.action_bytes >= (int) sizeof(action) ||
+            submission.body_bytes >= (int) sizeof(body)) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+    result = PCore_FormSubmissionAt(g_document, document_x, document_y,
+            &submission, action, sizeof(action), body, sizeof(body));
+    if (result == 5) {
+        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        return;
+    }
+    if (result == 3 || result == 6 ||
+            ((result == 1 || result == 4) &&
+            submission.method != PCORE_FORM_METHOD_GET)) {
+        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        return;
+    }
+    if (result != 1 || submission.method != PCORE_FORM_METHOD_GET ||
+            app_form_get_target(action, body, target, sizeof(target)) != 0) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+    if (!app_load_page(g_window, target, APP_HISTORY_NEW, -1)) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+    }
+}
+
 static int app_normalize_address(const char *input, char *output,
         int output_capacity)
 {
@@ -2527,7 +2650,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         return 1;
     }
     g_controls = AppControls_Create(g_page_window, g_instance, &g_app,
-            app_controls_changed);
+            app_controls_changed, app_handle_form_submit);
     if (g_controls == NULL) {
         DestroyWindow(hwnd);
         return 1;

@@ -32,6 +32,16 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <h2>普通按钮</h2>
 <p><button id="sample-button" type="button">点按后可按 Space 或 Enter</button></p>
 <p>此普通按钮会派发 click 事件，不会提交表单。</p>
+<h2>URL 编码的 GET 表单</h2>
+<p>提交有效表单会重新加载此离线页面。编码后的字段和提交按钮会显示在地址栏中；必填项为空时不得导航。</p>
+<form id="get-demo" method="get" action="https://positron.local/controls">
+<p><label for="get-query">搜索内容</label><br>
+<input id="get-query" name="q" type="text" required value="WM6 browser"></p>
+<p><label for="get-scope">范围</label><br>
+<select id="get-scope" name="scope"><option value="all" selected>全部</option>
+<option value="core">Core</option><option value="browser">Browser</option></select></p>
+<p><button id="get-submit" type="submit" name="mode" value="search">提交 GET</button></p>
+</form>
 <h2>重置按钮事务</h2>
 <p>重置按钮会恢复表单中的文本、选项和开关初始值。勾选“取消重置事件”可阻止重置。</p>
 <form id="reset-demo">

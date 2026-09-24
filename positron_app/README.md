@@ -38,19 +38,24 @@ Core 绘制的普通 `type=button` 也已接入：点按命中后（有 ScriptSe
 click，按下 Space/Enter 可激活当前按钮；不额外创建 WM6 子窗口。Native-button transaction 和
 Core click callback 复用于 toggle 路径。Core 绘制的 `type=reset` 按钮也已接入：Browser
 依次处理可取消的 click/reset 事务，获准后 Core 恢复表单初值，宿主重建 native 控件以同步
-EDIT、SELECT 和 toggle；不增加 DLL ABI。带 id 且已布局的 `contenteditable` editing host 现在也
+EDIT、SELECT 和 toggle；不增加 DLL ABI。`type=submit` 按钮现在也复用同一激活路径：Core
+执行约束校验并生成成功控件数据，Browser 在有效时派发可取消的 submit，EXE 目前只接入
+URL-encoded GET，再交给既有导航候选；校验失败、事件取消、目标过长或候选失败都不会替换旧页。
+POST、multipart、dialog、隐式 Enter 提交及脚本 `requestSubmit()`/`submit()` 仍不在本纵切范围。
+内置 controls 页面有离线 GET 表单，提交成功会在地址栏显示编码后的查询并重新载入该页。
+带 id 且已布局的 `contenteditable` editing host 现在也
 投影为同一窗口体系下的原生多行 EDIT；Core 保存最多 8192 UTF-8 字节的纯文本，Browser 的
 `beforeinput` 可取消输入，并按 DOM id 派发接受后的 `input`。离线 controls 页的
-`plaintext-only` 示例可输入普通文本、换行，并演示感叹号取消。原生 caret/selection 已通过现有
+`plaintext-only` 示例展示控件外观；但内置离线页不创建 ScriptSession，因此 HTML inline script
+不执行，脚本驱动的取消、状态文字和 selection 示例尚不能在离线页验收。网络页有 ScriptSession
+时，原生 caret/selection 才通过现有
 Browser callbacks 同步：仅当前已提交页面中已物化的带 id EDIT 提供 getter/setter，WM EDIT 的
 CRLF 索引会换算为 Browser 使用的逻辑 LF/UTF-16 偏移；鼠标拖选、Shift+方向键、焦点/捕获结束
 通知 Browser，并由 Browser 去重 `selectionchange`。脚本的 `selectionStart`/`selectionEnd`/
-`selectionDirection` 与 `setSelectionRange()` 可同步到 native EDIT；controls 页包含选区计数、
-“报告当前选区”和“全选”脚本按钮。候选页或失效 EDIT 不提供原生选区，Browser 保留其有界脚本回退；本批没有新增
-ABI。将普通 `contenteditable` 编辑提交到 Core 时仍会以纯文本替换其子树，不支持富文本编辑；
-Range/Selection 对象不在本批范围，设备端 OEM 键盘、触摸和视觉尚待验收。当前只接入 native
-`type=reset` 按钮；`type=submit`、脚本 `form.reset()`、validation、表单提交与 FormData 仍未接入；
-dialog、SIP/IME、文件选择器、
+`selectionDirection` 与 `setSelectionRange()` 可同步到 native EDIT；候选页或失效 EDIT 不提供原生选区，
+Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `contenteditable` 编辑提交到 Core 时仍会
+以纯文本替换其子树，不支持富文本编辑；Range/Selection 对象不在本批范围，设备端 OEM 键盘、
+触摸和视觉尚待验收。脚本 `form.reset()`、完整表单提交与 FormData 仍未接入；dialog、SIP/IME、文件选择器、
 书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
@@ -90,22 +95,19 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    Tab 进入文本、密码和多行文本框，输入、退格、Delete、Enter/换行并离开焦点，确认页面
    值、光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT 以及 checkbox/radio，
    确认选择、checked 状态和 radio-group 规则回写页面，Space/Enter 不产生重复切换；点按普通
-   按钮后再按 Space/Enter，确认不导航也不提交；在 reset 示例中修改文本、SELECT 和 checkbox，
-   分别点按及用 Space/Enter 激活重置按钮，确认初值恢复；勾选取消选项后再次重置，确认事件被取消
-   且修改值保留；在 `plaintext-only` 编辑区输入普通字符、换行
-   和感叹号，确认普通输入更新状态、感叹号被 `beforeinput` 取消；随后确认脚本读写页面时原生
-   EDIT 仍留在布局位置。contenteditable 区先拖选文字，再用 Shift+方向键扩展/缩短范围，确认状态
-   然后点击“报告当前选区”，确认显示逻辑 UTF-16 起止偏移和方向；点击“全选编辑区文字”按钮，
-   确认脚本 `setSelectionRange()` 更新同一 native EDIT 选区，随后继续输入并确认 input 状态仍正确。
-   让脚本改变一个 option 的文本或从集合中移除
-   option，确认 native SELECT 在 callback 返回后更新且 EDIT/SELECT 焦点不丢失；滚动、旋转和
-   页面切换后没有残留 native 控件；
+   按钮后再按 Space/Enter，确认不导航也不提交；在 URL-encoded GET 表单中先清空必填项并激活
+   submit，确认地址和页面不变；填入值后激活 submit，确认页面重新加载且地址栏包含 Core 编码的
+   `q`、`scope` 和 submitter `mode` 参数。再修改 reset 示例的文本、SELECT 和 checkbox，激活重置按钮，
+   确认初值恢复。内置离线页面不执行 inline script；`beforeinput`/可取消 submit、脚本选区和
+   option mutation 应在启用 ScriptSession 的网络页面上另行验收。滚动、旋转和页面切换后没有残留
+   native 控件；
 6. 编辑地址栏时按 Backspace 删除，按 Escape 取消编辑并恢复已提交地址；
 7. 菜单中的 `Exit`/`退出` 真正结束应用，重复启动/关闭不新增崩溃。
 8. 在设备网络可用时输入绝对 `http://` 或 `https://` 地址；加载期间旧页面保持可见，
    成功后才替换页面。检查一个包含 inline/classic external script 的页面：脚本 DOM
    mutation、事件监听和 timer 在提交后生效，并让 click listener 更新页面确认按钮事件到达；
-   脚本错误、optional script/image 失败、
+   对有效 native submit button 检查 click→validation→submit 顺序，并用 click/submit
+   `preventDefault()` 确认取消后没有 GET 请求；尝试 POST 表单确认其安全拒绝。脚本错误、optional script/image 失败、
    取消或输入另一个地址时不显示半成品页面，旧页面仍可用。
 
 真实设备的触摸命中、SIP、旋转、DPI 和 OEM 键盘行为仍属于人工验收；本阶段不把桌面

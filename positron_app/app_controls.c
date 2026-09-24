@@ -18,6 +18,7 @@
 #define APP_CONTROLS_KIND_SELECT     2
 #define APP_CONTROLS_KIND_TOGGLE     3
 #define APP_CONTROLS_KIND_CONTENTEDITABLE 4
+#define APP_CONTROLS_FORM_SUBMIT     7
 #define APP_CONTROLS_FORM_RESET      8
 #define APP_CONTROLS_FORM_BUTTON     9
 #define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
@@ -70,6 +71,7 @@ struct AppControlsContext {
     HINSTANCE instance;
     void *pw;
     AppControlsChangedFn changed;
+    AppControlsSubmitFn submit;
     HANDLE document;
     AppScriptContext *script;
     AppControlsItem items[APP_CONTROLS_MAX];
@@ -721,7 +723,8 @@ static void app_controls_notify(AppControlsContext *context)
 
 static int app_controls_is_focusable_button(int kind)
 {
-    return kind == APP_CONTROLS_FORM_RESET ||
+    return kind == APP_CONTROLS_FORM_SUBMIT ||
+            kind == APP_CONTROLS_FORM_RESET ||
             kind == APP_CONTROLS_FORM_BUTTON;
 }
 
@@ -2183,6 +2186,8 @@ static int app_controls_button_activate(AppControlsContext *context,
     int default_allowed;
     int result;
     int button_kind;
+    int validation_valid;
+    PCoreFormValidationInfo validation;
 
     if (context == NULL || context->document == NULL) {
         return 1;
@@ -2195,16 +2200,43 @@ static int app_controls_button_activate(AppControlsContext *context,
             y >= top + height) {
         return 1;
     }
-    button_kind = kind == APP_CONTROLS_FORM_RESET ?
-            PBROWSER_SCRIPT_NATIVE_BUTTON_RESET :
-            PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
+    if (kind == APP_CONTROLS_FORM_SUBMIT) {
+        button_kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+    } else if (kind == APP_CONTROLS_FORM_RESET) {
+        button_kind = PBROWSER_SCRIPT_NATIVE_BUTTON_RESET;
+    } else {
+        button_kind = PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
+    }
     target_token = (unsigned long) form_index + 1UL;
     if (context->script == NULL) {
         default_allowed = 1;
         result = PCore_EventDispatchAt(context->document, x, y, "click",
                 1, 1, &default_allowed);
-        if (result < 0 || !default_allowed ||
-                kind != APP_CONTROLS_FORM_RESET) {
+        if (result < 0 || !default_allowed) {
+            return 1;
+        }
+        if (kind == APP_CONTROLS_FORM_SUBMIT) {
+            memset(&validation, 0, sizeof(validation));
+            validation_valid = PCore_FormValidationAt(context->document,
+                    x, y, &validation) == 1 && validation.valid;
+            if (!validation_valid) {
+                if (context->submit != NULL) {
+                    context->submit(context->pw, x, y, 0);
+                }
+                return 1;
+            }
+            default_allowed = 1;
+            result = PCore_EventDispatchAt(context->document, x, y,
+                    "submit", 1, 1, &default_allowed);
+            if (result < 0 || !default_allowed) {
+                return 1;
+            }
+            if (context->submit != NULL) {
+                context->submit(context->pw, x, y, 1);
+            }
+            return 1;
+        }
+        if (kind != APP_CONTROLS_FORM_RESET) {
             return 1;
         }
         default_allowed = 1;
@@ -2231,10 +2263,18 @@ static int app_controls_button_activate(AppControlsContext *context,
         AppScript_ResetNativeButtonState(context->script);
         return 1;
     }
+    validation_valid = 0;
+    if (kind == APP_CONTROLS_FORM_SUBMIT) {
+        memset(&validation, 0, sizeof(validation));
+        if (PCore_FormValidationAt(context->document, x, y,
+                &validation) == 1 && validation.valid) {
+            validation_valid = 1;
+        }
+    }
     result = AppScript_DispatchNativeButton(context->script, target_token,
             x, y,
             PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT,
-            button_kind, 0, 0, &default_allowed);
+            button_kind, 0, validation_valid, &default_allowed);
     if (result != 0) {
         (void) AppScript_DispatchNativeButton(context->script, target_token,
                 x, y, PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
@@ -2245,6 +2285,9 @@ static int app_controls_button_activate(AppControlsContext *context,
         if (result == 1) {
             app_controls_finish_reset(context, form_index);
         }
+    } else if (kind == APP_CONTROLS_FORM_SUBMIT && default_allowed &&
+            context->submit != NULL) {
+        context->submit(context->pw, x, y, validation_valid);
     }
     AppScript_ResetNativeButtonState(context->script);
     return 1;
@@ -2736,7 +2779,8 @@ static int app_controls_rebuild_toggle_item(AppControlsContext *context,
 }
 
 AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
-        void *pw, AppControlsChangedFn changed)
+        void *pw, AppControlsChangedFn changed,
+        AppControlsSubmitFn submit)
 {
     AppControlsContext *context;
 
@@ -2751,6 +2795,7 @@ AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
     context->instance = instance != NULL ? instance : GetModuleHandle(NULL);
     context->pw = pw;
     context->changed = changed;
+    context->submit = submit;
     g_app_controls = context;
     return context;
 }

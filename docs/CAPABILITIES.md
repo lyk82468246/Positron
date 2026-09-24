@@ -45,8 +45,13 @@ native-toggle bridge 负责输入、选择、trusted click、input/change、focu
 EXE 另把 Core 绘制的普通 `type=button` 命中及 Space/Enter 激活接入 Browser 的 native-button
 click transaction。Browser click callback 经 Core 按坐标派发；Core 绘制的按钮不额外创建 WM6
 子窗口。`type=reset` 按钮也使用 Browser 可取消的 click/reset 事务，获准后调用 Core
-`PCore_FormResetAt()`，再重建 native 控件以同步初值；该应用接线未新增 ABI。`type=submit`、脚本
-`form.reset()`、表单提交和 FormData 仍属于阶段 4 后续能力。有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
+`PCore_FormResetAt()`，再重建 native 控件以同步初值；该应用接线未新增 ABI。`type=submit`
+按钮也已接入：Core 按坐标校验并生成成功控件数据，Browser 的 native-button transaction 在校验
+通过后派发可取消 submit，EXE 只组合 URL-encoded GET 目标并调用既有导航候选。非法值、取消、
+不支持的 POST/multipart/dialog、容量错误或候选失败不会替换旧页。内置 controls 页带 required
+GET 表单；内置离线页面不创建 ScriptSession，其 inline script 不执行，因此脚本取消示例仍须在
+网络 ScriptSession 页面验收。脚本 `form.reset()`、脚本提交与 FormData 仍属于阶段 4 后续能力。
+有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另接入带 id 且已布局的
 `contenteditable` editing host：EXE 将其投影为同一窗口体系下的原生多行 EDIT，Core 保留有界
 纯文本，Browser 处理 `beforeinput`/`input`；同一纵切还通过现有 Browser selection callbacks

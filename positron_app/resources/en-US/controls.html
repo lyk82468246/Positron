@@ -42,6 +42,17 @@ input and change events.</p>
 <h2>Ordinary button</h2>
 <p><button id="sample-button" type="button">Tap, then press Space or Enter</button></p>
 <p>This ordinary button dispatches click; it does not submit a form.</p>
+<h2>URL-encoded GET form</h2>
+<p>Submit a valid form to reload this offline page. The encoded values and
+submitter appear in the address bar; an empty required field must not navigate.</p>
+<form id="get-demo" method="get" action="https://positron.local/controls">
+<p><label for="get-query">Search text</label><br>
+<input id="get-query" name="q" type="text" required value="WM6 browser"></p>
+<p><label for="get-scope">Scope</label><br>
+<select id="get-scope" name="scope"><option value="all" selected>All</option>
+<option value="core">Core</option><option value="browser">Browser</option></select></p>
+<p><button id="get-submit" type="submit" name="mode" value="search">Submit GET</button></p>
+</form>
 <h2>Reset button transaction</h2>
 <p>A reset button restores the form's initial text, selection and toggle
 values. Check the cancellation option to prevent the reset event.</p>

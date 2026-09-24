@@ -380,16 +380,14 @@
 - Browser candidate 以不可变 generation、取消请求、退休状态和 committed/failed 终态保护 UI 文档提交；`CanApply` 同时检查 generation 与 active 状态。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列和页面 swap；退休队列有界，达到上限时新导航 fail closed 并保留当前页。取消是协作式的：worker 若已进入阻塞的 PHttp 调用，不能保证 socket 立即中断；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。
 - Browser 资源事务按 URL 拥有 `pending`、`ready`、`failed`、`cancelled` 终态、失败分类和成功字节；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。样式表/`@import` 是 required，脚本/图片是 optional；`PBrowser_NavigationCommitGetInfo` 在 layout/swap 前提供 candidate/resource 组合 gate，required 失败、未收敛 pending、资源取消、候选过时或 cancellation 保留旧 document/history，optional 失败交给 Core fallback。统计最多保留 4 项 `role/failure#hash`，fallback family 计数是粗粒度观测，不等于逐元素归因或可见 UI；重复 URL 和深层 `@import` 的去重与分类已由 TEST1123 覆盖，但不能保证任意真实站点的 fallback 视觉。
 - 阶段 1/2 的资源失败边界已接入：required CSS 阻止提交，optional 资源回退，脚本异常不回滚。
-  EXE 已接入 EDIT/SELECT/toggle、普通 button click 和 native `type=reset`；reset 经 Browser 可取消
-  事务、Core `PCore_FormResetAt()` 和 native 控件重建完成。submit、脚本 reset、validation 与表单提交
-  仍未接；mutation 后 SELECT 会重建，新增交互未过设备门。
+  EXE 接入 EDIT/SELECT/toggle、click/reset、GET submit；复用 Core 校验/字段快照与 Browser 可取消事务，失败保留旧页。POST/multipart/dialog、Enter 隐式提交、脚本提交未接。离线页无 ScriptSession，inline script 不运行；脚本事件须用网络页验收。submit 未过设备门。
 
 - 清理边界由宿主在 worker join 后编排：失败或过时 request 必须先让 Browser 资源事务中的 pending 项进入 `cancelled` 等终态，再读取 `PBrowser_NavigationCleanupGetInfo`。该 API 只复制 candidate result、resource gate、pending、hash-only failure summary 和 fallback 计数；`can_release` 对未收敛工作保持为 0，committed candidate 还要求 READY gate。复制值在 candidate/resource handle 销毁后仍然有效，但它不保证任意网络调用已即时中断，也不提供逐资源 UI 或页面视觉归因。
 
 ## Native 控件、SIP 与设备 UI
 
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
-- `positron.exe` 的 native contenteditable selection 与 reset 均尚未设备验收；WM6 需观察键盘、拖选/Shift、程序化选区、SIP/IME、触摸/Space/Enter，以及 reset 初值恢复和取消事件后的值保留。
+- `positron.exe` 的 native contenteditable selection、reset 与 submit GET 尚未设备验收；WM6 需观察键盘/选区、SIP/IME、触摸、reset 初值，以及 submit 校验、取消、GET URL 和旧页保留。
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。

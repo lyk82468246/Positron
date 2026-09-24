@@ -5,8 +5,9 @@
  * This module projects text-like controls into WM6 EDIT children, SELECT
  * controls into WM6 COMBOBOX/LISTBOX children, and checkbox/radio controls
  * into WM6 BUTTON children. Core-painted buttons use the same document/event
- * hit path; Browser owns click/reset event transactions, while Core owns the
- * reset state change.
+ * hit path; Browser owns click/submit/reset event transactions, Core owns
+ * validation, successful-control and reset state, and the shell owns GET
+ * navigation scheduling.
  */
 
 #ifndef POSITRON_APP_CONTROLS_H
@@ -19,9 +20,12 @@
 
 typedef struct AppControlsContext AppControlsContext;
 typedef void (*AppControlsChangedFn)(void *pw);
+typedef void (*AppControlsSubmitFn)(void *pw, int document_x,
+        int document_y, int validation_valid);
 
 AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
-        void *pw, AppControlsChangedFn changed);
+        void *pw, AppControlsChangedFn changed,
+        AppControlsSubmitFn submit);
 void AppControls_Destroy(AppControlsContext *context);
 void AppControls_ClearPage(AppControlsContext *context);
 int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
