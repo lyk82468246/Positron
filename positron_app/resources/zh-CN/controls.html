@@ -34,14 +34,25 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
 <p>此普通按钮会派发 click 事件，不会提交表单。</p>
 <h2>纯文本编辑</h2>
 <p>此 contenteditable 区域使用原生多行 EDIT。输入感叹号会被 beforeinput
-取消；其他被接受的编辑会更新状态文字。</p>
+取消。可拖动选择文字或使用 Shift+方向键，然后点击报告按钮查看逻辑 UTF-16
+偏移和方向。</p>
 <div id="plain-editor" contenteditable="plaintext-only">编辑此文本。</div>
-<p id="plain-editor-status">等待已接受的 input 事件。</p>
+<p id="plain-editor-status">选择文字后可报告选区；输入后此处也会更新。</p>
+<p><button id="plain-editor-select" type="button">选中编辑区全部文字</button>
+<button id="plain-editor-report" type="button">报告当前选区</button></p>
 <script>
 (function () {
     var editor = document.getElementById("plain-editor");
     var status = document.getElementById("plain-editor-status");
-    if (!editor || !status) {
+    var selectButton = document.getElementById("plain-editor-select");
+    var reportButton = document.getElementById("plain-editor-report");
+    var selectionEvents = 0;
+    function updateStatus(prefix) {
+        status.innerText = prefix + "选区：" + editor.selectionStart +
+                "-" + editor.selectionEnd + "（" + editor.selectionDirection +
+                "）；selectionchange 事件数：" + selectionEvents + "。";
+    }
+    if (!editor || !status || !selectButton || !reportButton) {
         return;
     }
     editor.addEventListener("beforeinput", function (event) {
@@ -50,7 +61,17 @@ href="https://positron.local/welcome">使用第二个链接返回</a></p>
         }
     });
     editor.addEventListener("input", function () {
-        status.innerText = "已收到 input 事件。";
+        updateStatus("已收到 input 事件。 ");
+    });
+    editor.addEventListener("selectionchange", function () {
+        selectionEvents++;
+    });
+    selectButton.addEventListener("click", function () {
+        editor.setSelectionRange(0, editor.innerText.length, "forward");
+        updateStatus("脚本已设置选区。 ");
+    });
+    reportButton.addEventListener("click", function () {
+        updateStatus("当前选区。 ");
     });
 }());
 </script>

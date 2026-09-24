@@ -32,6 +32,12 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         int scroll_x, int scroll_y);
 int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
         LPARAM lparam);
+int AppControls_GetContentEditableSelection(AppControlsContext *context,
+        AppScriptContext *script, const char *element_id, int *out_start,
+        int *out_end, int *out_direction);
+int AppControls_SetContentEditableSelection(AppControlsContext *context,
+        AppScriptContext *script, const char *element_id, int start, int end,
+        int direction);
 int AppControls_HandleButtonPointer(AppControlsContext *context,
         int document_x, int document_y);
 int AppControls_HandleButtonKey(AppControlsContext *context, UINT message,

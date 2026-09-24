@@ -82,7 +82,7 @@
 - Core/Browser 对带 DOM `id` 的常见 block/replaced/flex overflow box 提供 retained scrollbar offset、`scrollLeft`/`scrollTop`、`scrollTo()`/`scrollBy()` 和宿主 pointer 同步；这只是有界的两个轴桥接，不能代表完整 CSS overflow 语义。client 尺寸是 retained scrollport 的 padding 区域，滚动条覆盖在边缘。
 - Browser script session 已能由宿主显式维护顶层窗口 focus/blur 状态，并让 `document.hasFocus()` 与去重后的 window 事件保持一致；这不等于完整浏览器焦点策略，native 控件焦点、焦点矩形、焦点陷阱和 OEM/跨窗口激活仍由宿主负责。
 - Core 的 `PCore_InteractionFocusElementId` 与 `PCore_InteractionStateElementId` 只报告当前交互状态中、带非空 UTF-8 id 的节点；没有对应状态、没有 id、节点过时、状态组合非法或缓冲不足时调用方必须按失败/回退处理。Browser 的 `document.activeElement` 是显式 callback 注册后才安装的可选 projection，通过现有 ID lookup 返回元素，否则返回 `document.body`；`:active`/`:hover` 另由显式 interaction callback 投影当前精确节点，注销或无效来源时安全不匹配。Browser 不自主执行初始 `autofocus`，宿主可在 layout/native 子控件创建后显式调用 Core 的有界入口；这仍不提供完整焦点算法、pointer capture、native 焦点矩形或跨窗口焦点。
-- Core/Browser 的 `contenteditable` 合同包括祖先继承、`isContentEditable`、有界纯文本 mutation、`beforeinput`/`input`、selectionStart/End/Direction 与去重的 `selectionchange`。参考宿主同步原生选区并提供受限 `CF_UNICODETEXT` paste/cut/copy；最多 16 个带 id、已布局的 EDIT host，每项文本最多 8192 UTF-8 字节。`positron.exe` 仅接入带 id host 的纯文本 EDIT 与按 id 输入事件；未注册 selection callbacks，脚本 selection 属性不代表原生选区，普通编辑会将子树压平为文本。Range/Selection 对象、通用 ClipboardEvent/async clipboard、富文本转换、design mode 和完整 IME 仍未实现。
+- Core/Browser 的 `contenteditable` 合同包括祖先继承、`isContentEditable`、有界纯文本 mutation、`beforeinput`/`input`、selectionStart/End/Direction 与去重的 `selectionchange`。参考宿主同步原生选区并提供受限 `CF_UNICODETEXT` paste/cut/copy；最多 16 个带 id、已布局的 EDIT host，每项文本最多 8192 UTF-8 字节。`positron.exe` 也已注册现有 selection callbacks：仅当前已提交页面中已物化的带 id EDIT 可读写原生范围；宿主把 WM EDIT 的 CRLF 索引换算为 Browser 的逻辑 LF/UTF-16 偏移，并把 native 鼠标拖选、Shift+方向键、焦点/捕获终止同步为去重的 `selectionchange`。候选页、失效 id 或尚未创建的 native surface 仍走 Browser 有界脚本回退；普通编辑会将子树压平为文本。该 EXE 接线尚未设备验收；Range/Selection 对象、通用 ClipboardEvent/async clipboard、富文本转换、design mode 和完整 IME 仍未实现。
 - 字体 fallback 使用 bundled 子集与系统 GDI；桌面字形、kerning、emoji 彩色渲染和抗锯齿不保证。
   Core 的 GDI 测量/绘制共用 `PCore_SetDeviceViewport` DPI 和字号定点精度；TEST1311 已在
   当前 192-DPI WM6 目标通过 96/192 fragment 断言。高 DPI、色深、边距和抗锯齿仍可能量化，
@@ -388,7 +388,7 @@
 ## Native 控件、SIP 与设备 UI
 
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
-- `positron.exe` 的 native `contenteditable` EDIT 接线尚未经过设备验收；真实键盘、选区、换行、焦点、滚动、旋转/DPI、SIP/IME 和剪贴板行为仍需 WM6 设备观察。
+- `positron.exe` 的 native `contenteditable` EDIT 与现有 Browser selection callbacks 已在源码中接线，但尚未经过设备验收；真实键盘、拖选/Shift 方向键、程序化选区、换行、焦点、滚动、旋转/DPI、SIP/IME 和剪贴板行为仍需 WM6 设备观察。
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。

@@ -134,6 +134,42 @@ static int app_script_get_content_editable(void *pw, const char *id,
     return *out_editable;
 }
 
+static int app_script_get_content_editable_selection(void *pw,
+        const char *id, int *out_start, int *out_end, int *out_direction)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || id == NULL || out_start == NULL ||
+            out_end == NULL || out_direction == NULL) {
+        return -1;
+    }
+    if (context->callbacks.get_contenteditable_selection == NULL) {
+        return 0;
+    }
+    return context->callbacks.get_contenteditable_selection(
+            context->callbacks.pw, context, id, out_start, out_end,
+            out_direction);
+}
+
+static int app_script_set_content_editable_selection(void *pw,
+        const char *id, int start, int end, int direction)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || id == NULL || start < 0 || end < 0 ||
+            direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        return -1;
+    }
+    if (context->callbacks.set_contenteditable_selection == NULL) {
+        return 0;
+    }
+    return context->callbacks.set_contenteditable_selection(
+            context->callbacks.pw, context, id, start, end, direction);
+}
+
 static int app_script_set_content_editable_text(void *pw, const char *id,
         const char *text)
 {
@@ -903,6 +939,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptDomRelationCallbacks relation;
     PBrowserScriptDomWriteCallbacksEx13 write;
     PBrowserScriptContentEditableCallbacks content_editable;
+    PBrowserScriptContentEditableSelectionCallbacks content_selection;
     PBrowserScriptDocumentWriteCallbacks document_write;
     PBrowserScriptDomMutationCallbacks mutation;
     PBrowserScriptDomAttributeCallbacks attribute;
@@ -944,6 +981,13 @@ static int app_script_register_callbacks(AppScriptContext *context)
     content_editable.pw = context;
     content_editable.get_editable = app_script_get_content_editable;
     content_editable.set_text = app_script_set_content_editable_text;
+    memset(&content_selection, 0, sizeof(content_selection));
+    content_selection.size = sizeof(content_selection);
+    content_selection.pw = context;
+    content_selection.get_selection =
+            app_script_get_content_editable_selection;
+    content_selection.set_selection =
+            app_script_set_content_editable_selection;
     memset(&document_write, 0, sizeof(document_write));
     document_write.size = sizeof(document_write);
     document_write.pw = context;
@@ -1048,6 +1092,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
             &write) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(
             context->session, &content_editable) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterContentEditableSelectionCallbacks(
+            context->session, &content_selection) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDocumentWriteCallbacks(
             context->session, &document_write) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomMutationCallbacks(
@@ -1597,6 +1643,21 @@ int AppScript_DispatchNativeEditBlur(AppScriptContext *context,
     info.y = y;
     return PBrowser_ScriptSessionDispatchNativeEditBlur(context->session,
             &info) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_NotifyNativeContentEditableSelection(AppScriptContext *context,
+        const char *element_id, int start, int end, int direction,
+        int trusted)
+{
+    if (context == NULL || context->session == NULL || element_id == NULL ||
+            element_id[0] == '\0' || start < 0 || end < start ||
+            direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        return 1;
+    }
+    return PBrowser_ScriptSessionNotifyContentEditableSelection(
+            context->session, element_id, start, end, direction,
+            trusted ? 1 : 0, NULL) == PSCRIPT_OK ? 0 : 1;
 }
 
 void AppScript_ResetNativeEditState(AppScriptContext *context)

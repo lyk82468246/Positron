@@ -44,14 +44,26 @@ input and change events.</p>
 <p>This ordinary button dispatches click; it does not submit a form.</p>
 <h2>Plain-text editing</h2>
 <p>This contenteditable region uses a native multiline EDIT. Typing an
-exclamation mark is canceled by beforeinput; accepted edits update the status.</p>
+exclamation mark is canceled by beforeinput. Drag or use Shift+Arrow to change
+the selection, then report it to read logical UTF-16 offsets and direction.</p>
 <div id="plain-editor" contenteditable="plaintext-only">Edit this text.</div>
-<p id="plain-editor-status">Waiting for an accepted input event.</p>
+<p id="plain-editor-status">Select text, then report it; input also updates this status.</p>
+<p><button id="plain-editor-select" type="button">Select all editor text</button>
+<button id="plain-editor-report" type="button">Report current selection</button></p>
 <script>
 (function () {
     var editor = document.getElementById("plain-editor");
     var status = document.getElementById("plain-editor-status");
-    if (!editor || !status) {
+    var selectButton = document.getElementById("plain-editor-select");
+    var reportButton = document.getElementById("plain-editor-report");
+    var selectionEvents = 0;
+    function updateStatus(prefix) {
+        status.innerText = prefix + " Selection: " + editor.selectionStart +
+                "-" + editor.selectionEnd + " (" +
+                editor.selectionDirection + "); selectionchange events: " +
+                selectionEvents + ".";
+    }
+    if (!editor || !status || !selectButton || !reportButton) {
         return;
     }
     editor.addEventListener("beforeinput", function (event) {
@@ -60,7 +72,17 @@ exclamation mark is canceled by beforeinput; accepted edits update the status.</
         }
     });
     editor.addEventListener("input", function () {
-        status.innerText = "Input event received.";
+        updateStatus("Input event received.");
+    });
+    editor.addEventListener("selectionchange", function () {
+        selectionEvents++;
+    });
+    selectButton.addEventListener("click", function () {
+        editor.setSelectionRange(0, editor.innerText.length, "forward");
+        updateStatus("Script selection set.");
+    });
+    reportButton.addEventListener("click", function () {
+        updateStatus("Current selection.");
     });
 }());
 </script>

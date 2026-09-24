@@ -28,6 +28,12 @@ typedef int (*AppScriptNavigateFn)(void *pw, AppScriptContext *context,
 typedef int (*AppScriptScrollFn)(void *pw, AppScriptContext *context,
         const PBrowserScriptScrollInfo *info, int *out_x, int *out_y);
 typedef void (*AppScriptMutationFn)(void *pw, AppScriptContext *context);
+typedef int (*AppScriptGetContentEditableSelectionFn)(void *pw,
+        AppScriptContext *context, const char *id, int *out_start,
+        int *out_end, int *out_direction);
+typedef int (*AppScriptSetContentEditableSelectionFn)(void *pw,
+        AppScriptContext *context, const char *id, int start, int end,
+        int direction);
 
 typedef struct AppScriptHostCallbacks {
     unsigned long size;
@@ -35,6 +41,8 @@ typedef struct AppScriptHostCallbacks {
     AppScriptNavigateFn navigate;
     AppScriptScrollFn scroll;
     AppScriptMutationFn mutation;
+    AppScriptGetContentEditableSelectionFn get_contenteditable_selection;
+    AppScriptSetContentEditableSelectionFn set_contenteditable_selection;
 } AppScriptHostCallbacks;
 
 typedef struct AppScriptPendingNavigation {
@@ -93,6 +101,9 @@ int AppScript_DispatchNativeEditInput(AppScriptContext *context,
         const char *input_type, const char *data);
 int AppScript_DispatchNativeEditBlur(AppScriptContext *context,
         unsigned long target_token, int x, int y);
+int AppScript_NotifyNativeContentEditableSelection(AppScriptContext *context,
+        const char *element_id, int start, int end, int direction,
+        int trusted);
 void AppScript_ResetNativeEditState(AppScriptContext *context);
 
 /* Native SELECT keeps the WM6 control and Core selection in the host while

@@ -11,7 +11,10 @@ Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON
 工作区在 `main`。阶段 3 当前接入 text/password/textarea `EDIT`、单选/多选 `SELECT`、
 checkbox/radio `BUTTON`、Core 绘制普通 `type=button` 的点按/Space/Enter 路径，以及带 id、已布局
 `contenteditable` host 的原生多行 EDIT 纯文本投影。后者经 Core 的有界 text API 保存输入，Browser
-处理可取消 `beforeinput` 并按 DOM id 派发 `input`；尚未接入原生 caret/selection 同步或富文本保留。
+处理可取消 `beforeinput` 并按 DOM id 派发 `input`；本批又通过已有 Browser selection callbacks
+接入当前已提交页面的 native caret/selection getter/setter、LF/CRLF 与 UTF-16 偏移换算，以及
+鼠标拖选、Shift+方向键和焦点/捕获收尾时的 `selectionchange` 通知。Range/Selection 对象、富文本
+保留仍未实现，selection 接线尚无新设备证据。
 ScriptSession 注册 click callback，经 Core 派发坐标事件，也补齐 toggle 的 Browser click 事务；
 submit/reset 默认动作未接。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责 WM6
 消息、窗口、焦点/输入接线、重排和 teardown。本轮 C89、Debug/Release 与仓库审计已通过；不宣称
@@ -53,14 +56,18 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 stale 候选仍保留旧页。阶段 3 已接入 text/password/textarea 的 native EDIT、单选/多选
 SELECT 的 native COMBOBOX/LISTBOX、checkbox/radio 的 native BUTTON，以及 Core 绘制普通
 `type=button` 的点按和 Space/Enter 激活，并为带 id、已布局的 `contenteditable` host 创建纯文本
-EDIT 代理。Core 管值、选项、checked/radio-group 状态和几何；Browser 管 native
-edit/select/toggle/button 事件事务及 contenteditable 的 `beforeinput`/`input`；宿主管消息、原生窗口、
-输入路由和 teardown。contenteditable 尚无原生选区同步/富文本保留；submit/reset 默认动作仍在阶段 4。清单见
+EDIT 代理。Browser selection callbacks 现让当前已提交、已物化的 EDIT 同步原生 selection 与
+`selectionStart`/`selectionEnd`/`selectionDirection`/`setSelectionRange()`，并接收 native
+拖选/键盘范围变化；候选页和 stale host 保持无 native surface 的安全回退。Core 管值、选项、
+checked/radio-group 状态和几何；Browser 管 native edit/select/toggle/button 事务和
+contenteditable 输入/selection 事件；宿主管消息、原生窗口、输入路由和 teardown。普通编辑仍会
+压平为纯文本，不保留富文本；Range/Selection 对象、submit/reset 默认动作仍未接入。清单见
 [`positron_app/README.md`](../positron_app/README.md)。本地 C89、Debug/Release 和仓库审计
 已通过；阶段 1/2 网络、脚本、回滚、标题/窗口 UI 以及阶段 3 输入仍需设备验收，不能
 写成设备基线。最近一次传输在复制 `positron_script.dll` 时以 `RAPI=0x80072746` 失败，
 TEST999 未启动，按用户决定暂不重试设备传输。dialog、form submit/formdata、SIP/IME、picker、书签和持久
-设置仍不在当前范围内；contenteditable 原生选区同步/富文本和所有 native 控件的设备验收仍未完成。
+设置仍不在当前范围内；contenteditable 选区同步已进入源码但与所有 native 控件一样仍待设备验收，
+富文本保持未实现。
 ROADMAP.md 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -109,7 +116,8 @@ Browser 负责有界 history 和 navigation candidate/resource transaction，HTT
 ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；阶段 3 由 EXE 私有
 `AppControlsContext` 投影 text/password/textarea、SELECT、checkbox/radio 与 identified contenteditable
 为原生子控件，并路由普通 `type=button` click。Core/Browser 保留状态与事件语义，宿主按 Core 几何
-重排并负责 WM6 输入/teardown；contenteditable 目前仅为纯文本 EDIT，不同步原生选区。页面替换前
+重排并负责 WM6 输入/teardown；contenteditable 另用现有 Browser callbacks 同步可寻址 native EDIT
+的选区和 selectionchange，但不提供 Range/Selection 对象，编辑仍为纯文本。页面替换前
 重置 Browser native 状态。网络页面、脚本和导航失败回滚以及 native 控件真实输入仍需设备人工验收，
 不能写成设备基线。
 
@@ -362,14 +370,16 @@ Debug/Release 和审计均已通过；设备门
 仍因 `RAPI=0x80072746` 暂缓。恢复传输后跑 TEST999，验收 classic script 顺序、DOM/事件/任务、
 生命周期、资源失败、取消/stale、旧页保留、语言、history、旋转、DPI、软键、标准滚动条、
 原生文本/SELECT/toggle/contenteditable 控件和清理；在 controls 页确认感叹号被
-`beforeinput` 取消、普通编辑触发状态更新，并观察 focus、换行、滚动及 DPI 下的原生 EDIT。
+`beforeinput` 取消、普通编辑触发状态更新，拖选及 Shift+方向键反馈正确 UTF-16 范围和方向，
+“报告当前选区”按钮读回正确范围/方向，“全选”脚本按钮能更新 native EDIT 选区；并观察 focus、
+换行、滚动及 DPI 下的原生 EDIT。
 
-设备门通过后，再依据实测决定是否把原生 caret/selection 同步接到现有 Browser selection API，
-或转向 dialog、SIP/IME、picker；这不需要新增公共 ABI。当前不实现富文本 editing、完整
+设备门通过后，再依据实测选择 dialog、SIP/IME、picker 等下一条最小纵切；选区同步使用已有
+Browser API，不新增公共 ABI。当前不实现富文本 editing、完整
 ClipboardEvent/async clipboard 或 File/Blob 上传。动态 option 重建的设备行为并入原生 SELECT 验收。
 
-阶段 0 的本批变更只收口 EXE 私有宿主状态和生命周期；阶段 B 的主文档行为、离线页面和
-i18n 不变。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、
+本次接线只修改 EXE 私有 selection adapter、controls 离线示例和对应职责文档；不改公共 DLL ABI、
+`test_host`、阶段 B 导航或 i18n。TEST262/264 的自动失败仍在审查报告中隔离，不能混入本次判断；崩溃、数据损坏、
 严重布局破坏或核心交互阻塞须立即人工复核。
 新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
 相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套

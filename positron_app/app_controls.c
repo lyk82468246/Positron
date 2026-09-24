@@ -3,6 +3,7 @@
  */
 
 #include <windows.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -39,6 +40,16 @@ struct AppControlsItem {
     int toggle_kind;
     int selected;
     int toggle_space_pending;
+    int native_selection_direction;
+    int native_selection_direction_valid;
+    int native_selection_mouse_active;
+    int native_selection_mouse_anchor;
+    int native_selection_mouse_anchor_valid;
+    int native_selection_keyboard_active;
+    int native_selection_keyboard_anchor;
+    int native_selection_keyboard_anchor_valid;
+    int native_selection_shift_down;
+    int native_selection_syncing;
     int multiple;
     int contenteditable_mode;
     int option_count;
@@ -958,6 +969,348 @@ static int app_controls_before_input_char(AppControlsItem *item,
     return 1;
 }
 
+/* WM EDIT counts CRLF as two UTF-16 code units. Core and Browser expose the
+ * same text with a single logical LF, so selection offsets cross this small
+ * host boundary with an explicit conversion. */
+static int app_controls_selection_load_text(HWND hwnd, WCHAR **out_text,
+        int *out_length)
+{
+    WCHAR *text;
+    int length;
+
+    if (hwnd == NULL || out_text == NULL || out_length == NULL) {
+        return 0;
+    }
+    *out_text = NULL;
+    *out_length = 0;
+    length = GetWindowTextLengthW(hwnd);
+    if (length < 0 || length >= INT_MAX / (int) sizeof(WCHAR)) {
+        return 0;
+    }
+    text = (WCHAR *) malloc((size_t) (length + 1) * sizeof(WCHAR));
+    if (text == NULL) {
+        return 0;
+    }
+    if (GetWindowTextW(hwnd, text, length + 1) < 0) {
+        free(text);
+        return 0;
+    }
+    text[length] = L'\0';
+    *out_text = text;
+    *out_length = length;
+    return 1;
+}
+
+static int app_controls_selection_position(const WCHAR *text,
+        int text_length, int position, int to_native)
+{
+    int i;
+    int logical;
+
+    if (text == NULL || text_length < 0) {
+        return 0;
+    }
+    if (position < 0) {
+        position = 0;
+    }
+    if (to_native) {
+        logical = 0;
+        i = 0;
+        while (i < text_length && logical < position) {
+            if (text[i] == L'\r' && i + 1 < text_length &&
+                    text[i + 1] == L'\n') {
+                i += 2;
+            } else {
+                i++;
+            }
+            logical++;
+        }
+        return i;
+    }
+    if (position > text_length) {
+        position = text_length;
+    }
+    logical = 0;
+    i = 0;
+    while (i < text_length && i < position) {
+        if (text[i] == L'\r' && i + 1 < text_length &&
+                text[i + 1] == L'\n') {
+            if (i + 1 >= position) {
+                return logical + 1;
+            }
+            i += 2;
+        } else {
+            i++;
+        }
+        logical++;
+    }
+    return logical;
+}
+
+static int app_controls_selection_native_range(
+        const AppControlsItem *item, int *out_start, int *out_end)
+{
+    DWORD native_start;
+    DWORD native_end;
+
+    if (item == NULL || item->hwnd == NULL || out_start == NULL ||
+            out_end == NULL) {
+        return 0;
+    }
+    native_start = 0;
+    native_end = 0;
+    SendMessage(item->hwnd, EM_GETSEL, (WPARAM) &native_start,
+            (LPARAM) &native_end);
+    if (native_start > (DWORD) INT_MAX || native_end > (DWORD) INT_MAX) {
+        return 0;
+    }
+    *out_start = (int) native_start;
+    *out_end = (int) native_end;
+    return 1;
+}
+
+static int app_controls_selection_snapshot(const AppControlsItem *item,
+        int *out_start, int *out_end, int *out_direction)
+{
+    DWORD native_start;
+    DWORD native_end;
+    WCHAR *text;
+    int text_length;
+
+    if (item == NULL || item->hwnd == NULL || out_start == NULL ||
+            out_end == NULL || out_direction == NULL) {
+        return 0;
+    }
+    native_start = 0;
+    native_end = 0;
+    SendMessage(item->hwnd, EM_GETSEL, (WPARAM) &native_start,
+            (LPARAM) &native_end);
+    if (native_start > (DWORD) INT_MAX || native_end > (DWORD) INT_MAX ||
+            !app_controls_selection_load_text(item->hwnd, &text,
+            &text_length)) {
+        return 0;
+    }
+    *out_start = app_controls_selection_position(text, text_length,
+            (int) native_start, 0);
+    *out_end = app_controls_selection_position(text, text_length,
+            (int) native_end, 0);
+    free(text);
+    if (*out_end < *out_start) {
+        *out_end = *out_start;
+    }
+    *out_direction = item->native_selection_direction_valid ?
+            item->native_selection_direction :
+            PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    return 1;
+}
+
+static int app_controls_selection_apply(AppControlsItem *item, int start,
+        int end, int direction)
+{
+    WCHAR *text;
+    int text_length;
+    int native_start;
+    int native_end;
+
+    if (item == NULL || item->hwnd == NULL || start < 0 || end < 0 ||
+            direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD ||
+            !app_controls_selection_load_text(item->hwnd, &text,
+            &text_length)) {
+        return 0;
+    }
+    native_start = app_controls_selection_position(text, text_length,
+            start, 1);
+    native_end = app_controls_selection_position(text, text_length, end, 1);
+    free(text);
+    if (native_end < native_start) {
+        native_end = native_start;
+    }
+    item->native_selection_syncing = 1;
+    SendMessage(item->hwnd, EM_SETSEL, (WPARAM) native_start,
+            (LPARAM) native_end);
+    item->native_selection_syncing = 0;
+    item->native_selection_direction = direction;
+    item->native_selection_direction_valid = 1;
+    return 1;
+}
+
+static void app_controls_selection_changed(AppControlsContext *context,
+        AppControlsItem *item, int trusted)
+{
+    int start;
+    int end;
+    int direction;
+
+    if (context == NULL || item == NULL || item->native_selection_syncing ||
+            item->kind != APP_CONTROLS_KIND_CONTENTEDITABLE ||
+            context->script == NULL || context->document == NULL) {
+        return;
+    }
+    if (!app_controls_selection_snapshot(item, &start, &end, &direction)) {
+        return;
+    }
+    (void) AppScript_NotifyNativeContentEditableSelection(context->script,
+            item->contenteditable_id, start, end, direction, trusted);
+}
+
+static void app_controls_selection_mouse_direction(AppControlsItem *item)
+{
+    int native_start;
+    int native_end;
+    int direction;
+
+    if (item == NULL || !item->native_selection_mouse_active ||
+            !item->native_selection_mouse_anchor_valid ||
+            !app_controls_selection_native_range(item, &native_start,
+            &native_end)) {
+        if (item != NULL) {
+            item->native_selection_direction_valid = 0;
+        }
+        return;
+    }
+    if (native_end <= native_start) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    } else if (item->native_selection_mouse_anchor <= native_start) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD;
+    } else if (item->native_selection_mouse_anchor >= native_end) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD;
+    } else {
+        item->native_selection_direction_valid = 0;
+        return;
+    }
+    item->native_selection_direction = direction;
+    item->native_selection_direction_valid = 1;
+}
+
+static void app_controls_selection_mouse_begin(AppControlsItem *item,
+        WPARAM wparam)
+{
+    int native_start;
+    int native_end;
+
+    if (item == NULL) {
+        return;
+    }
+    item->native_selection_mouse_active = 1;
+    item->native_selection_mouse_anchor_valid = 0;
+    item->native_selection_direction_valid = 0;
+    if ((wparam & MK_SHIFT) != 0 || item->native_selection_shift_down ||
+            GetKeyState(VK_SHIFT) < 0 ||
+            !app_controls_selection_native_range(item, &native_start,
+            &native_end)) {
+        return;
+    }
+    item->native_selection_mouse_anchor = native_start;
+    item->native_selection_mouse_anchor_valid = 1;
+}
+
+static void app_controls_selection_mouse_update(AppControlsContext *context,
+        AppControlsItem *item, int final_update)
+{
+    if (item == NULL || !item->native_selection_mouse_active) {
+        return;
+    }
+    app_controls_selection_mouse_direction(item);
+    app_controls_selection_changed(context, item, 1);
+    if (final_update) {
+        item->native_selection_mouse_active = 0;
+        item->native_selection_mouse_anchor_valid = 0;
+    }
+}
+
+static int app_controls_selection_navigation_key(UINT message,
+        WPARAM wparam)
+{
+    return message == WM_KEYDOWN &&
+            (wparam == VK_LEFT || wparam == VK_RIGHT || wparam == VK_UP ||
+            wparam == VK_DOWN || wparam == VK_HOME || wparam == VK_END);
+}
+
+static void app_controls_selection_keyboard_begin(AppControlsItem *item)
+{
+    int native_start;
+    int native_end;
+    int anchor;
+    int shift;
+    int previous_direction;
+    int previous_direction_valid;
+
+    if (item == NULL || item->native_selection_keyboard_active) {
+        return;
+    }
+    previous_direction = item->native_selection_direction;
+    previous_direction_valid = item->native_selection_direction_valid;
+    item->native_selection_keyboard_active = 1;
+    item->native_selection_keyboard_anchor_valid = 0;
+    item->native_selection_direction_valid = 0;
+    if (!app_controls_selection_native_range(item, &native_start,
+            &native_end)) {
+        return;
+    }
+    shift = item->native_selection_shift_down || GetKeyState(VK_SHIFT) < 0;
+    anchor = native_end;
+    if (native_start == native_end) {
+        anchor = native_start;
+    } else if (shift && previous_direction_valid) {
+        if (previous_direction == PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD) {
+            anchor = native_start;
+        } else if (previous_direction ==
+                PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+            anchor = native_end;
+        }
+    } else if (!shift && previous_direction_valid &&
+            previous_direction == PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        anchor = native_start;
+    }
+    item->native_selection_keyboard_anchor = anchor;
+    item->native_selection_keyboard_anchor_valid = 1;
+}
+
+static void app_controls_selection_keyboard_direction(AppControlsItem *item)
+{
+    int native_start;
+    int native_end;
+    int direction;
+
+    if (item == NULL || !item->native_selection_keyboard_active ||
+            !item->native_selection_keyboard_anchor_valid ||
+            !app_controls_selection_native_range(item, &native_start,
+            &native_end)) {
+        if (item != NULL) {
+            item->native_selection_direction_valid = 0;
+        }
+        return;
+    }
+    if (native_end <= native_start) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    } else if (item->native_selection_keyboard_anchor <= native_start) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_FORWARD;
+    } else if (item->native_selection_keyboard_anchor >= native_end) {
+        direction = PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD;
+    } else {
+        item->native_selection_direction_valid = 0;
+        return;
+    }
+    item->native_selection_direction = direction;
+    item->native_selection_direction_valid = 1;
+}
+
+static void app_controls_selection_keyboard_update(
+        AppControlsContext *context, AppControlsItem *item,
+        int final_update)
+{
+    if (item == NULL || !item->native_selection_keyboard_active) {
+        return;
+    }
+    app_controls_selection_keyboard_direction(item);
+    app_controls_selection_changed(context, item, 1);
+    if (final_update) {
+        item->native_selection_keyboard_active = 0;
+        item->native_selection_keyboard_anchor_valid = 0;
+    }
+}
+
 static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
@@ -965,25 +1318,47 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
     const char *input_type;
     const char *input_data;
     char data[16];
+    LRESULT result;
 
     item = app_controls_find(hwnd);
     if (item == NULL || g_app_controls == NULL) {
         return DefWindowProc(hwnd, message, wparam, lparam);
     }
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
+            wparam == VK_SHIFT) {
+        item->native_selection_shift_down = 1;
+    }
     if (message == WM_SETFOCUS) {
-        LRESULT result;
-
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
         app_controls_dispatch_focus(g_app_controls, item, 1);
+        if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+                !item->native_selection_syncing) {
+            if (item->native_selection_mouse_active) {
+                app_controls_selection_mouse_update(g_app_controls, item, 1);
+            } else if (item->native_selection_keyboard_active) {
+                app_controls_selection_keyboard_update(g_app_controls,
+                        item, 1);
+            }
+            app_controls_selection_changed(g_app_controls, item, 1);
+        }
         return result;
     }
     if (message == WM_KILLFOCUS) {
-        LRESULT result;
-
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
         app_controls_dispatch_focus(g_app_controls, item, 0);
+        if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+                !item->native_selection_syncing) {
+            if (item->native_selection_mouse_active) {
+                app_controls_selection_mouse_update(g_app_controls, item, 1);
+            } else if (item->native_selection_keyboard_active) {
+                app_controls_selection_keyboard_update(g_app_controls,
+                        item, 1);
+            }
+            app_controls_selection_changed(g_app_controls, item, 1);
+        }
         return result;
     }
     if (message == WM_CHAR) {
@@ -1011,7 +1386,73 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
             return 0;
         }
     }
-    return app_controls_call_original(item, hwnd, message, wparam, lparam);
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            !item->native_selection_syncing &&
+            app_controls_selection_navigation_key(message, wparam)) {
+        app_controls_selection_keyboard_begin(item);
+    }
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            message == WM_LBUTTONDOWN && !item->native_selection_syncing) {
+        result = app_controls_call_original(item, hwnd, message, wparam,
+                lparam);
+        app_controls_selection_mouse_begin(item, wparam);
+        app_controls_selection_mouse_update(g_app_controls, item, 0);
+        return result;
+    }
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            message == WM_MOUSEMOVE && item->native_selection_mouse_active &&
+            !item->native_selection_syncing) {
+        result = app_controls_call_original(item, hwnd, message, wparam,
+                lparam);
+        app_controls_selection_mouse_update(g_app_controls, item, 0);
+        return result;
+    }
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            (message == WM_CAPTURECHANGED || message == WM_CANCELMODE) &&
+            !item->native_selection_syncing) {
+        result = app_controls_call_original(item, hwnd, message, wparam,
+                lparam);
+        if (item->native_selection_mouse_active) {
+            app_controls_selection_mouse_update(g_app_controls, item, 1);
+        } else if (item->native_selection_keyboard_active) {
+            app_controls_selection_keyboard_update(g_app_controls, item, 1);
+        } else {
+            app_controls_selection_changed(g_app_controls, item, 1);
+        }
+        return result;
+    }
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            message == WM_LBUTTONUP && !item->native_selection_syncing) {
+        result = app_controls_call_original(item, hwnd, message, wparam,
+                lparam);
+        if (item->native_selection_mouse_active) {
+            app_controls_selection_mouse_update(g_app_controls, item, 1);
+        } else {
+            app_controls_selection_changed(g_app_controls, item, 1);
+        }
+        return result;
+    }
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            (message == WM_KEYUP || message == WM_SYSKEYUP) &&
+            !item->native_selection_syncing) {
+        result = app_controls_call_original(item, hwnd, message, wparam,
+                lparam);
+        if (item->native_selection_keyboard_active) {
+            app_controls_selection_keyboard_update(g_app_controls, item, 1);
+        }
+        app_controls_selection_changed(g_app_controls, item, 1);
+        if (wparam == VK_SHIFT) {
+            item->native_selection_shift_down = 0;
+        }
+        return result;
+    }
+    result = app_controls_call_original(item, hwnd, message, wparam, lparam);
+    if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+            app_controls_selection_navigation_key(message, wparam) &&
+            !item->native_selection_syncing) {
+        app_controls_selection_keyboard_update(g_app_controls, item, 0);
+    }
+    return result;
 }
 
 static const char *app_controls_toggle_key_name(WPARAM wparam)
@@ -2453,7 +2894,7 @@ static int app_controls_sync_contenteditable(AppControlsContext *context,
     char *native_value;
     int selection_start;
     int selection_end;
-    int native_length;
+    int selection_direction;
 
     if (context == NULL || item == NULL || item->hwnd == NULL) {
         return 1;
@@ -2472,21 +2913,103 @@ static int app_controls_sync_contenteditable(AppControlsContext *context,
     }
     selection_start = 0;
     selection_end = 0;
-    SendMessage(item->hwnd, EM_GETSEL, (WPARAM) &selection_start,
-            (LPARAM) &selection_end);
+    selection_direction = PBROWSER_SCRIPT_CONTENT_SELECTION_NONE;
+    (void) app_controls_selection_snapshot(item, &selection_start,
+            &selection_end, &selection_direction);
     app_controls_set_value(context, item, core_value);
-    native_length = GetWindowTextLengthW(item->hwnd);
-    if (selection_start > native_length) {
-        selection_start = native_length;
+    if (!app_controls_selection_apply(item, selection_start, selection_end,
+            selection_direction)) {
+        free(core_value);
+        free(native_value);
+        return 1;
     }
-    if (selection_end > native_length) {
-        selection_end = native_length;
-    }
-    SendMessage(item->hwnd, EM_SETSEL, (WPARAM) selection_start,
-            (LPARAM) selection_end);
     free(core_value);
     free(native_value);
     return 0;
+}
+
+static AppControlsItem *app_controls_contenteditable_find(
+        AppControlsContext *context, const char *element_id)
+{
+    unsigned int i;
+
+    if (context == NULL || element_id == NULL || element_id[0] == '\0') {
+        return NULL;
+    }
+    for (i = 0; i < context->count; i++) {
+        if (context->items[i].kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
+                strcmp(context->items[i].contenteditable_id,
+                element_id) == 0) {
+            return &context->items[i];
+        }
+    }
+    return NULL;
+}
+
+static int app_controls_contenteditable_target_matches(
+        AppControlsContext *context, AppControlsItem *item)
+{
+    PCoreContentEditableTargetInfo info;
+    char element_id[APP_CONTROLS_ID_CAP];
+
+    if (context == NULL || item == NULL || context->document == NULL ||
+            item->kind != APP_CONTROLS_KIND_CONTENTEDITABLE ||
+            item->hwnd == NULL) {
+        return 0;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    return PCore_ContentEditableTargetInfo(context->document,
+            item->contenteditable_index, &info, element_id,
+            sizeof(element_id), NULL, 0) == 0 &&
+            strcmp(element_id, item->contenteditable_id) == 0;
+}
+
+int AppControls_GetContentEditableSelection(AppControlsContext *context,
+        AppScriptContext *script, const char *element_id, int *out_start,
+        int *out_end, int *out_direction)
+{
+    AppControlsItem *item;
+
+    if (context == NULL || script == NULL || element_id == NULL ||
+            out_start == NULL || out_end == NULL || out_direction == NULL) {
+        return -1;
+    }
+    if (context->script != script ||
+            AppScript_Document(script) != context->document) {
+        return 0;
+    }
+    item = app_controls_contenteditable_find(context, element_id);
+    if (item == NULL || !app_controls_contenteditable_target_matches(
+            context, item)) {
+        return 0;
+    }
+    return app_controls_selection_snapshot(item, out_start, out_end,
+            out_direction) ? 1 : -1;
+}
+
+int AppControls_SetContentEditableSelection(AppControlsContext *context,
+        AppScriptContext *script, const char *element_id, int start, int end,
+        int direction)
+{
+    AppControlsItem *item;
+
+    if (context == NULL || script == NULL || element_id == NULL ||
+            start < 0 || end < start ||
+            direction < PBROWSER_SCRIPT_CONTENT_SELECTION_NONE ||
+            direction > PBROWSER_SCRIPT_CONTENT_SELECTION_BACKWARD) {
+        return -1;
+    }
+    if (context->script != script ||
+            AppScript_Document(script) != context->document) {
+        return 0;
+    }
+    item = app_controls_contenteditable_find(context, element_id);
+    if (item == NULL || !app_controls_contenteditable_target_matches(
+            context, item)) {
+        return 0;
+    }
+    return app_controls_selection_apply(item, start, end, direction) ? 1 : -1;
 }
 
 int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
@@ -2826,14 +3349,17 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
                 AppScript_ResetNativeEditState(context->script);
             }
             (void) app_controls_sync_contenteditable(context, item);
+            app_controls_selection_changed(context, item, 0);
             free(value);
             return 1;
         }
+        item->native_selection_direction_valid = 0;
         if (context->script != NULL) {
             (void) AppScript_DispatchNativeEditInput(context->script,
                     item->target_token, item->contenteditable_id, x, y,
                     NULL, NULL);
         }
+        app_controls_selection_changed(context, item, 1);
         app_controls_notify(context);
         free(value);
         return 1;

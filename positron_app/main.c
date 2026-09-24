@@ -467,6 +467,40 @@ static void app_script_mutated(void *pw, AppScriptContext *context)
     }
 }
 
+static int app_script_contenteditable_selection_get(void *pw,
+        AppScriptContext *context, const char *element_id, int *out_start,
+        int *out_end, int *out_direction)
+{
+    AppHostContext *host;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || context == NULL || host->script != context ||
+            host->document == NULL ||
+            AppScript_Document(context) != host->document ||
+            g_controls == NULL) {
+        return 0;
+    }
+    return AppControls_GetContentEditableSelection(g_controls, context,
+            element_id, out_start, out_end, out_direction);
+}
+
+static int app_script_contenteditable_selection_set(void *pw,
+        AppScriptContext *context, const char *element_id, int start,
+        int end, int direction)
+{
+    AppHostContext *host;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || context == NULL || host->script != context ||
+            host->document == NULL ||
+            AppScript_Document(context) != host->document ||
+            g_controls == NULL) {
+        return 0;
+    }
+    return AppControls_SetContentEditableSelection(g_controls, context,
+            element_id, start, end, direction);
+}
+
 static void app_controls_changed(void *pw)
 {
     AppHostContext *host;
@@ -1488,6 +1522,10 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 script_callbacks.navigate = app_script_navigate;
                 script_callbacks.scroll = app_script_scroll;
                 script_callbacks.mutation = app_script_mutated;
+                script_callbacks.get_contenteditable_selection =
+                        app_script_contenteditable_selection_get;
+                script_callbacks.set_contenteditable_selection =
+                        app_script_contenteditable_selection_set;
                 request->script_candidate = AppScript_Create(
                         request->document_candidate, request->url,
                         history_length, history_index, 1, history_state,

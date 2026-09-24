@@ -47,9 +47,12 @@ click transaction。Browser click callback 经 Core 按坐标派发；普通按�
 submit/reset 默认动作仍属于阶段 4。有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另接入带 id 且已布局的
 `contenteditable` editing host：EXE 将其投影为同一窗口体系下的原生多行 EDIT，Core 保留有界
-纯文本，Browser 处理 `beforeinput`/`input`；layout 更新间按 DOM id 派发输入事件。此接线不提供
-原生选区与 Browser selection 状态同步，且编辑提交不保留富文本子树。宿主负责消息路由、指针/按键
-接线、重排和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但新增交互仍需设备人工验收；
+纯文本，Browser 处理 `beforeinput`/`input`；同一纵切还通过现有 Browser selection callbacks
+在当前已提交且已物化的带 id EDIT 上同步 native range、selectionStart/End/Direction 与
+`setSelectionRange()`，按逻辑 LF/UTF-16 偏移换算 WM EDIT 的 CRLF 索引，并把鼠标拖选、Shift+方向键
+及焦点/捕获收尾通知为去重的 `selectionchange`。候选页、stale host 或未物化 surface 使用 Browser
+有界脚本回退；该接线不新增 ABI，也不保留富文本子树或提供 Range/Selection 对象。宿主负责消息路由、
+指针/按键接线、重排和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但新增交互仍需设备人工验收；
 dialog、form submit/formdata、SIP/IME 与 file picker 不因该接线而宣称完成。网络、脚本、失败回滚
 和原生控件仍需 WM6 设备门；后续
 接线顺序与阶段门见

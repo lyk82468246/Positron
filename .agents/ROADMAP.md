@@ -152,10 +152,12 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 并由 EXE 私有资源提供英语/简体中文 UI；阶段 3 已接入 text/password/textarea 的 native
 `EDIT`、单选/多选 `SELECT`（native `COMBOBOX`/`LISTBOX`）、checkbox/radio（native
 `BUTTON`）、Core 绘制普通按钮的 click transaction，以及带 id、已布局 contenteditable host 的
-纯文本 EDIT 投影和按 id 的 `beforeinput`/`input`。原生选区同步和富文本仍未接入；普通按钮没有
-submit/reset 默认动作。当前选择是先完成阶段 1/2 的设备网络、脚本错误和失败回滚门，再依据
-controls 页设备观察决定原生选区同步、dialog、SIP/IME、clipboard 与 picker 中的下一条最小纵切；
-阶段 4 承担 submit/reset/formdata 的应用默认动作。
+纯文本 EDIT 投影和按 id 的 `beforeinput`/`input`。EXE 现已用已有 Browser selection callbacks
+接入已提交 native EDIT 的选区读写、CRLF↔逻辑 LF/UTF-16 换算、鼠标/键盘变化通知和
+`selectionchange`；此源码接线尚未设备验收，不代表 OEM 真实输入通过。富文本与 Range/Selection
+对象仍未接入；普通按钮没有 submit/reset 默认动作。当前选择是先恢复设备门并完成阶段 1/2 网络、
+脚本错误、失败回滚及阶段 3 controls/selection 观察，再依据实测选择 dialog、SIP/IME、clipboard
+或 picker 中的下一条最小纵切；阶段 4 承担 submit/reset/formdata 的应用默认动作。
 File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
@@ -186,15 +188,17 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
 
 #### B. 独立应用阶段 3：剩余原生控件与输入
 
-**状态：准备取舍，文本、SELECT、toggle、普通按钮 click 和纯文本 contenteditable 投影已接入，设备门未完成。** `positron.exe` 已有
+**状态：准备取舍，文本、SELECT、toggle、普通按钮 click、纯文本 contenteditable 投影及现有 Browser selection API 的 native EDIT 接线均已写入，设备门未完成。** `positron.exe` 已有
 `AppControlsContext`，把 `text`、`password`、`textarea` 投影为 native `EDIT`，把单选/多选
 `SELECT` 投影为 native `COMBOBOX`/`LISTBOX`，把 checkbox/radio 投影为 native `BUTTON`；普通
 `type=button` 仍由 Core 绘制，宿主接入点按、Space/Enter 和 Browser click transaction；带 id 且已布局的
 contenteditable host 使用多行 EDIT 代理，Core 持有有界纯文本，Browser 接收可取消 `beforeinput`
-和按 id 派发的 `input`。应用未同步原生 caret/selection，常规 contenteditable 编辑可能将其子树
-压平为纯文本。动态 option 列表/标签变化也已接入延迟检测与原生重建。下一条候选可调查现有
-Browser selection API 与原生 EDIT 的 selection 同步，或根据真实页面/设备证据选择 dialog、SIP/IME、
-clipboard 或 file picker；不得把所有原生交互一次性合并。
+和按 id 派发的 `input`；EXE 通过已有 callback 同步当前 native EDIT 的 selectionStart/End/Direction、
+`setSelectionRange()`，并将鼠标拖选、Shift+方向键和中断收尾通知 Browser。controls 离线页提供
+selectionchange 计数、当前选区报告和脚本全选动作，但本轮没有新增产品 ABI 或宿主回归夹具；设备人工门仍须确认真实
+WM EDIT 的键盘、拖选、程序化选区和方向。普通编辑可能将 contenteditable 子树压平为纯文本。
+动态 option 列表/标签变化也已接入延迟检测与原生重建。下一条候选应等待设备观察后，再在 dialog、
+SIP/IME、clipboard 或 file picker 中取舍；不得把所有原生交互一次性合并。
 
 - **Owner：** Core/Browser 负责控件状态、事件/default-action 和生命周期语义；应用负责
   WM6 原生窗口、消息、输入法/系统 picker 调度及失败策略；不新增公共 ABI，除非出现
@@ -205,7 +209,8 @@ clipboard 或 file picker；不得把所有原生交互一次性合并。
   checkbox/radio toggle 成功、退格/Delete/换行、Space/Enter、焦点变化、脚本取消
   beforeinput/click、普通按钮点按及 Space/Enter（不提交）、下拉 commit/cancel、option mutation
   后的标签/数量重建、禁用项、页面切换销毁和旧页保留；contenteditable 另验证原生纯文本输入、
-  `beforeinput` 取消、按 DOM id 的 `input`、换行与布局更新；caret/selection 同步及富文本不属于当前
+  `beforeinput` 取消、按 DOM id 的 `input`、换行与布局更新，以及 logical LF/UTF-16 选区读写、拖选/
+  Shift+方向键方向和脚本 selection setter。富文本、Range/Selection 对象与完整 ClipboardEvent 不属于当前
   接线。submit/reset 默认动作不属于本阶段。
   新增控件必须补相邻失败和容量断言。
 - **门：** C89、正式 ARMV4I Debug/Release、仓库审计后，设备人工验收真实键盘、SIP/IME、
