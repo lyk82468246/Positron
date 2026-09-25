@@ -21,12 +21,13 @@ native 控件；native `type=submit` 通过 click→Core validation→Browser �
 successful-control snapshot→URL-encoded GET 导航。网络 ScriptSession 另接入 `form.requestSubmit()`：
 Browser 拥有 validation/event/default-action 顺序，EXE 通过 by-id Core primitives 读取成功控件并将
 GET 目标交给既有候选导航；空/相对 action 以候选文档 URL 为基准。EXE 不复制验证、submit 事件或
-字段编码。脚本 `form.reset()` 获准后重排活动页并排队 reset 专用控件同步：EDIT 值写回现有窗口，
+字段编码。脚本直接 `form.submit()` 另走 Browser direct-submit callback 与 Core `PCore_FormSubmissionNoValidationById`，
+跳过验证、submit 事件和 submitter，当前只接 URL-encoded GET 并复用同一导航候选。脚本 `form.reset()` 获准后重排活动页并排队 reset 专用控件同步：EDIT 值写回现有窗口，
 SELECT/toggle 沿用 Core 同步；结构未变时不因值同步而重建控件，结构变化仍按通用 reconcile 处理。
-普通 DOM mutation 不回写 EDIT。POST、multipart、dialog、隐式 Enter 和直接脚本 `form.submit()` 仍未接。
+普通 DOM mutation 不回写 EDIT。POST、multipart、dialog 和隐式 Enter 仍未接。
 内置 controls 页含 required GET 表单，离线页不创建
 ScriptSession，inline script 不执行。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责
-WM6 消息、窗口、焦点/输入接线、重排和 teardown。本轮 `requestSubmit()` 改动已通过 C89、仓库审计与
+WM6 消息、窗口、焦点/输入接线、重排和 teardown。本轮 direct `form.submit()` 改动已通过 C89、仓库审计与
 Debug/Release ARMV4I 重编；不宣称设备通过。设备门按用户决定暂缓，
 `RAPI=0x80072746` 不重试。
 
@@ -61,10 +62,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 ## 当前短期目标
 
 当前短期目标是完成独立 `positron.exe` 的 HTTP(S)、资源事务、ScriptSession 和原生控件纵切，
-维持失败/取消/stale 时旧页不变。EXE 已接入 native submit GET、脚本 `form.reset()` 和脚本
-`form.requestSubmit()` 的 URL-encoded GET；C89、Debug/Release ARMV4I 重编与仓库审计均通过，
+维持失败/取消/stale 时旧页不变。EXE 已接入 native submit GET、脚本 `form.reset()`、脚本
+`form.requestSubmit()` 与 direct `form.submit()` 的 URL-encoded GET；C89、Debug/Release ARMV4I 重编与仓库审计均通过，
 设备未部署。剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。RAPI `0x80072746` 按用户决定暂停，
-不重试、不写设备基线。脚本直接 `form.submit()`、POST/multipart、FormData、
+不重试、不写设备基线。POST/multipart、FormData、
 dialog、SIP/IME、picker、书签和持久设置仍未进入 EXE。ROADMAP 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
@@ -364,13 +365,15 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-脚本 `requestSubmit()` GET 源码接线已加入，C89、仓库审计及 Debug/Release 本地门均通过；本批未改
-Browser/Core/test_host。RAPI `0x80072746` 按用户决定搁置，不部署、不重试。
-恢复设备门后，先在启用 ScriptSession 的网络表单验收 requestSubmit：required 无效时不派发 submit/不导航，
-submit `preventDefault()` 保留旧页且不发 GET，显式 submitter 与空/相对 action 产生预期查询；候选 GET
-成功后才替换页面。随后累计其余设备矩阵；设备验收未通过前不写成设备基线。
+脚本 `requestSubmit()` 与 direct `form.submit()` 的 URL-encoded GET 源码接线已加入，C89、仓库审计及
+Debug/Release 本地门均通过；本批只改 EXE 私有适配，未改公共 ABI、Browser/Core/test_host。RAPI
+`0x80072746` 按用户决定搁置，不部署、不重试。
+恢复设备门后，在启用 ScriptSession 的网络表单验收：requestSubmit 的 required 校验与 submit 取消；
+direct submit 对 required 空值仍跳过校验、submit 事件和 submitter；两者的 GET URL、相对 action、旧页保留
+及候选成功后页面替换。POST/multipart/dialog 必须 fail closed。随后累计其余设备矩阵；设备验收未通过前
+不写成设备基线。
 
-阶段 4 的 reset/native submit/requestSubmit GET 设备门仍待完成；直接 `form.submit()` 与 POST 另行取舍，
+阶段 4 的 reset/native submit/requestSubmit/direct-submit GET 设备门仍待完成；POST 另行取舍，
 File/Blob 上传继续待真实消费者证据。路线图已复核。本轮只改 EXE 私有适配和职责文档，不改公共 ABI。
 TEST262/264
 的自动失败仍隔离在审查报告；崩溃、数据损坏、严重布局破坏或

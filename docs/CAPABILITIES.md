@@ -50,7 +50,10 @@ click transaction。Browser click callback 经 Core 按坐标派发；Core 绘�
 通过后派发可取消 submit，EXE 只组合 URL-encoded GET 目标并调用既有导航候选。非法值、取消、
 不支持的 POST/multipart/dialog、容量错误或候选失败不会替换旧页。内置 controls 页带 required
 GET 表单；内置离线页面不创建 ScriptSession，其 inline script 不执行，因此脚本取消示例仍须在
-网络 ScriptSession 页面验收。脚本 `form.reset()`、脚本提交与 FormData 仍属于阶段 4 后续能力。
+网络 ScriptSession 页面验收。阶段 4 已由 EXE 接入脚本 `form.reset()`、native GET submit、脚本
+`requestSubmit()` GET 和 direct `form.submit()` GET；后者按 Core/Browser 合同跳过 validation、submit
+event 和 submitter。提交仍限 URL-encoded GET，不新增 ABI；POST/multipart、dialog 与提交期 FormData
+仍未接入。
 有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另接入带 id 且已布局的
 `contenteditable` editing host：EXE 将其投影为同一窗口体系下的原生多行 EDIT，Core 保留有界
@@ -59,10 +62,9 @@ fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另
 `setSelectionRange()`，按逻辑 LF/UTF-16 偏移换算 WM EDIT 的 CRLF 索引，并把鼠标拖选、Shift+方向键
 及焦点/捕获收尾通知为去重的 `selectionchange`。候选页、stale host 或未物化 surface 使用 Browser
 有界脚本回退；该接线不新增 ABI，也不保留富文本子树或提供 Range/Selection 对象。宿主负责消息路由、
-指针/按键接线、重排和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但新增交互仍需设备人工验收；
-dialog、form submit/formdata、脚本 `form.reset()`、SIP/IME 与 file picker 不因该接线而宣称完成。
-reset 按钮接线尚未通过 WM6 设备验收；网络、脚本、失败回滚
-和原生控件仍需 WM6 设备门；后续
+指针/按键接线、重排和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
+native/script submit 与 reset、网络导航/失败回滚及原生控件；SIP/IME 与 file picker 不因该接线而宣称完成。
+后续
 接线顺序与阶段门见
 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
 

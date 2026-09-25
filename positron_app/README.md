@@ -45,8 +45,9 @@ EDIT、SELECT 和 toggle；不增加 DLL ABI。`type=submit` 按钮现在也复�
 URL-encoded GET，再交给既有导航候选；校验失败、事件取消、目标过长或候选失败都不会替换旧页。
 网络 ScriptSession 还接入 `form.requestSubmit([submitter])`：Browser 保持 validation→可取消
 submit→默认动作顺序，EXE 只读取 Core 的成功控件快照并将 URL-encoded GET 目标交给同一导航候选；
-空 action 和相对 action 以当前文档 URL 为基准。POST、multipart、dialog、隐式 Enter 提交及脚本
-`form.submit()` 仍未接入。
+空 action 和相对 action 以当前文档 URL 为基准。脚本 `form.submit()` 也已通过 Browser direct-submit
+callback 接到 Core 的 no-validation successful-control snapshot，并复用同一 GET 导航候选；它按合同
+跳过校验、submit 事件和 submitter。POST、multipart、dialog 和隐式 Enter 提交仍未接入。
 网络页面的 ScriptSession 另已接入带 id 表单的 `form.reset()`：Browser 按表单 id 派发可取消
 reset 事件，获准后由 Core 恢复初值；活动页面随后重新 layout，并在 UI 消息中 reconcile
 native 控件：SELECT/toggle 沿用现有 Core 同步，EDIT 值只在 reset 专用路径写回现有窗口；
@@ -66,8 +67,8 @@ CRLF 索引会换算为 Browser 使用的逻辑 LF/UTF-16 偏移；鼠标拖选�
 `selectionDirection` 与 `setSelectionRange()` 可同步到 native EDIT；候选页或失效 EDIT 不提供原生选区，
 Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `contenteditable` 编辑提交到 Core 时仍会
 以纯文本替换其子树，不支持富文本编辑；Range/Selection 对象不在本批范围，设备端 OEM 键盘、
-触摸和视觉尚待验收。脚本 `form.reset()` 的 native 控件同步及脚本 `requestSubmit()` 路径仍未设备验收；
-POST/multipart/dialog、隐式 Enter、脚本 `form.submit()` 与提交期 FormData default action
+触摸和视觉尚待验收。脚本 `form.reset()` 的 native 控件同步、脚本 `requestSubmit()` 与 direct
+`form.submit()` 路径仍未设备验收；POST/multipart/dialog、隐式 Enter 与提交期 FormData default action
 仍未接入；SIP/IME、文件选择器、
 书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
@@ -123,8 +124,9 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    对有效 native submit button 检查 click→validation→submit 顺序，并用 click/submit
    `preventDefault()` 确认取消后没有 GET 请求；对带 id 的脚本表单调用
    `requestSubmit()`，检查 required 校验、取消 submit 不发请求、显式 submitter 参数及相对 action
-   生成的 URL-encoded GET；尝试 native/script POST 表单确认其安全拒绝，并确认直接
-   `form.submit()` 不触发未接入的导航。脚本错误、optional script/image 失败、
+   生成的 URL-encoded GET；调用直接 `form.submit()` 时确认它跳过 validation、submit 事件和 submitter，
+   即使 required 字段无效也只把 Core 成功控件数据导航为 GET；候选失败仍保留旧页。尝试 native/script
+   POST 表单确认其安全拒绝，确认 direct submit 的 POST/multipart/dialog 同样 fail closed。脚本错误、optional script/image 失败、
    取消或输入另一个地址时不显示半成品页面，旧页面仍可用。对带 id 的脚本表单调用
    `form.reset()`，分别验证 reset 事件以该表单为 target、`preventDefault()` 保留原值，以及
    允许默认动作后 Core 值和 native 控件恢复初值。

@@ -55,6 +55,8 @@ typedef struct AppScriptHostCallbacks {
     AppScriptSetContentEditableSelectionFn set_contenteditable_selection;
     AppScriptValidateFormSubmitFn validate_form_submit;
     AppScriptFormSubmitFn submit_form;
+    /* Browser direct-submit callback; Core supplies the no-validation data. */
+    AppScriptFormSubmitFn submit_form_direct;
 } AppScriptHostCallbacks;
 
 typedef struct AppScriptPendingNavigation {

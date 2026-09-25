@@ -123,6 +123,14 @@ static int app_script_submit_form(void *pw, AppScriptContext *context,
         HANDLE document, const char *document_url,
         const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
         int target_url_capacity);
+static int app_script_submit_form_direct(void *pw,
+        AppScriptContext *context, HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity);
+static int app_script_build_form_get_target(void *pw,
+        AppScriptContext *context, HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity, int validate);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -1669,6 +1677,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 script_callbacks.validate_form_submit =
                         app_script_validate_form_submit;
                 script_callbacks.submit_form = app_script_submit_form;
+                script_callbacks.submit_form_direct =
+                        app_script_submit_form_direct;
                 request->script_candidate = AppScript_Create(
                         request->document_candidate, request->url,
                         history_length, history_index, 1, history_state,
@@ -2061,6 +2071,28 @@ static int app_script_submit_form(void *pw, AppScriptContext *context,
         const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
         int target_url_capacity)
 {
+    return app_script_build_form_get_target(pw, context, document,
+            document_url, info, out_target_url, target_url_capacity, 1);
+}
+
+static int app_script_submit_form_direct(void *pw,
+        AppScriptContext *context, HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity)
+{
+    if (info == NULL || info->submitter_id == NULL ||
+            info->submitter_id[0] != '\0') {
+        return -1;
+    }
+    return app_script_build_form_get_target(pw, context, document,
+            document_url, info, out_target_url, target_url_capacity, 0);
+}
+
+static int app_script_build_form_get_target(void *pw,
+        AppScriptContext *context, HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity, int validate)
+{
     AppHostContext *host;
     PCoreFormSubmissionInfo submission;
     char action_probe[1];
@@ -2082,11 +2114,17 @@ static int app_script_submit_form(void *pw, AppScriptContext *context,
     memset(&submission, 0, sizeof(submission));
     action_probe[0] = '\0';
     body_probe[0] = '\0';
-    result = PCore_FormSubmissionById(document, info->form_id,
-            info->submitter_id, &submission, action_probe,
-            sizeof(action_probe), body_probe, sizeof(body_probe));
+    if (validate) {
+        result = PCore_FormSubmissionById(document, info->form_id,
+                info->submitter_id, &submission, action_probe,
+                sizeof(action_probe), body_probe, sizeof(body_probe));
+    } else {
+        result = PCore_FormSubmissionNoValidationById(document,
+                info->form_id, &submission, action_probe,
+                sizeof(action_probe), body_probe, sizeof(body_probe));
+    }
     if (result == 5) {
-        if (host->script == context) {
+        if (validate && host->script == context) {
             app_set_status(APP_TEXT_STATUS_FORM_INVALID);
         }
         return 0;
@@ -2108,11 +2146,17 @@ static int app_script_submit_form(void *pw, AppScriptContext *context,
         }
         return 0;
     }
-    result = PCore_FormSubmissionById(document, info->form_id,
-            info->submitter_id, &submission, action, sizeof(action), body,
-            sizeof(body));
+    if (validate) {
+        result = PCore_FormSubmissionById(document, info->form_id,
+                info->submitter_id, &submission, action, sizeof(action),
+                body, sizeof(body));
+    } else {
+        result = PCore_FormSubmissionNoValidationById(document,
+                info->form_id, &submission, action, sizeof(action), body,
+                sizeof(body));
+    }
     if (result == 5) {
-        if (host->script == context) {
+        if (validate && host->script == context) {
             app_set_status(APP_TEXT_STATUS_FORM_INVALID);
         }
         return 0;

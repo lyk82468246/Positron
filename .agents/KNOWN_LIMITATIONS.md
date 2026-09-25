@@ -382,8 +382,9 @@
 - 阶段 1/2 的资源失败边界已接入：required CSS 阻止提交，optional 资源回退，脚本异常不回滚。
   EXE 接入 native reset/GET submit 与脚本 `form.reset()`（按 id 可取消；Core reset 后同步 native
   控件），并接入脚本 `form.requestSubmit([submitter])` 的 validation→可取消 submit→URL-encoded
-  GET 路径；relative/empty action 以当前候选文档 URL 解析，导航复用既有 Browser candidate。脚本
-  直接 `form.submit()`、POST/multipart/dialog 与隐式 Enter 仍未接。离线页无 ScriptSession；脚本
+  GET 路径；direct `form.submit()` 另用 Core `PCore_FormSubmissionNoValidationById`，跳过 validation、submit 事件与 submitter，
+  当前仅允许 URL-encoded GET；两者都按当前候选文档 URL 解析 relative/empty action，并复用既有 Browser
+  candidate。POST/multipart/dialog 与隐式 Enter 仍未接。离线页无 ScriptSession；脚本
   路径需网络页验收，设备门未通过。
 
 - 清理边界由宿主在 worker join 后编排：失败或过时 request 必须先让 Browser 资源事务中的 pending 项进入 `cancelled` 等终态，再读取 `PBrowser_NavigationCleanupGetInfo`。该 API 只复制 candidate result、resource gate、pending、hash-only failure summary 和 fallback 计数；`can_release` 对未收敛工作保持为 0，committed candidate 还要求 READY gate。复制值在 candidate/resource handle 销毁后仍然有效，但它不保证任意网络调用已即时中断，也不提供逐资源 UI 或页面视觉归因。
@@ -391,9 +392,9 @@
 ## Native 控件、SIP 与设备 UI
 
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
-- EXE 的 contenteditable selection、native/script reset、native submit 与脚本
-  `requestSubmit()` 尚未设备验收；需检查 WM6 输入、SIP/IME、触摸、reset 初值/取消、submit
-  校验/取消、submitter/GET URL 与旧页保留。
+- EXE 的 contenteditable selection、native/script reset、native submit、脚本
+  `requestSubmit()` 与 direct `form.submit()` 尚未设备验收；需检查 WM6 输入、SIP/IME、触摸、reset
+  初值/取消、requestSubmit 校验/取消、direct submit 跳过校验/事件/submitter、GET URL 与旧页保留。
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
