@@ -116,6 +116,13 @@ static void app_update_history_buttons(void);
 static void app_controls_changed(void *pw);
 static void app_handle_form_submit(void *pw, int document_x,
         int document_y, int validation_valid);
+static int app_script_validate_form_submit(void *pw,
+        AppScriptContext *context, HANDLE document,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid);
+static int app_script_submit_form(void *pw, AppScriptContext *context,
+        HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -883,8 +890,8 @@ static int app_resolve_app_url(const char *base_url, const char *reference,
             output_capacity);
 }
 
-static int app_form_get_target(const char *action, const char *encoded_data,
-        char *target, int target_capacity)
+static int app_form_get_target(const char *base_url, const char *action,
+        const char *encoded_data, char *target, int target_capacity)
 {
     char resolved[APP_URL_MAX];
     const char *effective_action;
@@ -893,13 +900,14 @@ static int app_form_get_target(const char *action, const char *encoded_data,
     int data_length;
     int target_length;
 
-    if (encoded_data == NULL || target == NULL || target_capacity <= 1) {
+    if (base_url == NULL || base_url[0] == '\0' || encoded_data == NULL ||
+            target == NULL || target_capacity <= 1) {
         return 1;
     }
     effective_action = (action != NULL && action[0] != '\0') ? action :
-            g_current_url;
+            base_url;
     if (effective_action == NULL || effective_action[0] == '\0' ||
-            app_resolve_app_url(g_current_url, effective_action, resolved,
+            app_resolve_app_url(base_url, effective_action, resolved,
             sizeof(resolved)) != 0) {
         return 1;
     }
@@ -1658,6 +1666,9 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                         app_script_contenteditable_selection_get;
                 script_callbacks.set_contenteditable_selection =
                         app_script_contenteditable_selection_set;
+                script_callbacks.validate_form_submit =
+                        app_script_validate_form_submit;
+                script_callbacks.submit_form = app_script_submit_form;
                 request->script_candidate = AppScript_Create(
                         request->document_candidate, request->url,
                         history_length, history_index, 1, history_state,
@@ -2005,13 +2016,124 @@ static void app_handle_form_submit(void *pw, int document_x,
         return;
     }
     if (result != 1 || submission.method != PCORE_FORM_METHOD_GET ||
-            app_form_get_target(action, body, target, sizeof(target)) != 0) {
+            app_form_get_target(g_current_url, action, body, target,
+            sizeof(target)) != 0) {
         app_set_status(APP_TEXT_STATUS_FORM_FAILED);
         return;
     }
     if (!app_load_page(g_window, target, APP_HISTORY_NEW, -1)) {
         app_set_status(APP_TEXT_STATUS_FORM_FAILED);
     }
+}
+
+static int app_script_validate_form_submit(void *pw,
+        AppScriptContext *context, HANDLE document,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid)
+{
+    AppHostContext *host;
+    PCoreFormValidationInfo validation;
+
+    host = (AppHostContext *) pw;
+    if (out_valid == NULL) {
+        return -1;
+    }
+    *out_valid = -1;
+    if (host != &g_app || context == NULL || document == NULL ||
+            AppScript_Document(context) != document || info == NULL ||
+            info->size < sizeof(*info) || info->form_id == NULL ||
+            info->form_id[0] == '\0') {
+        return 0;
+    }
+    memset(&validation, 0, sizeof(validation));
+    if (PCore_FormValidationSubmitById(document, info->form_id,
+            info->submitter_id, &validation) != 0) {
+        return 0;
+    }
+    *out_valid = validation.valid ? 1 : 0;
+    if (!*out_valid && host->script == context) {
+        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+    }
+    return 0;
+}
+
+static int app_script_submit_form(void *pw, AppScriptContext *context,
+        HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity)
+{
+    AppHostContext *host;
+    PCoreFormSubmissionInfo submission;
+    char action_probe[1];
+    char body_probe[1];
+    char action[APP_URL_MAX];
+    char body[APP_URL_MAX];
+    int result;
+
+    host = (AppHostContext *) pw;
+    if (host != &g_app || context == NULL || document == NULL ||
+            AppScript_Document(context) != document || document_url == NULL ||
+            document_url[0] == '\0' || info == NULL ||
+            info->size < sizeof(*info) || info->form_id == NULL ||
+            info->form_id[0] == '\0' || out_target_url == NULL ||
+            target_url_capacity <= 1) {
+        return -1;
+    }
+    out_target_url[0] = '\0';
+    memset(&submission, 0, sizeof(submission));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    result = PCore_FormSubmissionById(document, info->form_id,
+            info->submitter_id, &submission, action_probe,
+            sizeof(action_probe), body_probe, sizeof(body_probe));
+    if (result == 5) {
+        if (host->script == context) {
+            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        }
+        return 0;
+    }
+    if (result == 3 || result == 6 ||
+            ((result == 1 || result == 4) &&
+            submission.method != PCORE_FORM_METHOD_GET)) {
+        if (host->script == context) {
+            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        }
+        return 0;
+    }
+    if ((result != 1 && result != 4) || submission.action_bytes < 0 ||
+            submission.body_bytes < 0 ||
+            submission.action_bytes >= (int) sizeof(action) ||
+            submission.body_bytes >= (int) sizeof(body)) {
+        if (host->script == context) {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        }
+        return 0;
+    }
+    result = PCore_FormSubmissionById(document, info->form_id,
+            info->submitter_id, &submission, action, sizeof(action), body,
+            sizeof(body));
+    if (result == 5) {
+        if (host->script == context) {
+            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        }
+        return 0;
+    }
+    if (result == 3 || result == 6 ||
+            ((result == 1 || result == 4) &&
+            submission.method != PCORE_FORM_METHOD_GET)) {
+        if (host->script == context) {
+            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        }
+        return 0;
+    }
+    if (result != 1 || submission.method != PCORE_FORM_METHOD_GET ||
+            app_form_get_target(document_url, action, body, out_target_url,
+            target_url_capacity) != 0) {
+        if (host->script == context) {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        }
+        return 0;
+    }
+    return 1;
 }
 
 static int app_normalize_address(const char *input, char *output,

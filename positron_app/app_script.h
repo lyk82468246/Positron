@@ -36,6 +36,13 @@ typedef int (*AppScriptGetContentEditableSelectionFn)(void *pw,
 typedef int (*AppScriptSetContentEditableSelectionFn)(void *pw,
         AppScriptContext *context, const char *id, int start, int end,
         int direction);
+typedef int (*AppScriptValidateFormSubmitFn)(void *pw,
+        AppScriptContext *context, HANDLE document,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid);
+typedef int (*AppScriptFormSubmitFn)(void *pw, AppScriptContext *context,
+        HANDLE document, const char *document_url,
+        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
+        int target_url_capacity);
 
 typedef struct AppScriptHostCallbacks {
     unsigned long size;
@@ -46,6 +53,8 @@ typedef struct AppScriptHostCallbacks {
     AppScriptFormResetAppliedFn form_reset_applied;
     AppScriptGetContentEditableSelectionFn get_contenteditable_selection;
     AppScriptSetContentEditableSelectionFn set_contenteditable_selection;
+    AppScriptValidateFormSubmitFn validate_form_submit;
+    AppScriptFormSubmitFn submit_form;
 } AppScriptHostCallbacks;
 
 typedef struct AppScriptPendingNavigation {

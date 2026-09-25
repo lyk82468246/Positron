@@ -767,6 +767,56 @@ static int app_script_navigate(void *pw,
     return 1;
 }
 
+static int app_script_validate_form_submit(void *pw,
+        const PBrowserScriptFormSubmitInfo *info, int *out_valid)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || info == NULL || out_valid == NULL ||
+            info->size < sizeof(*info) ||
+            context->callbacks.validate_form_submit == NULL) {
+        return -1;
+    }
+    *out_valid = -1;
+    return context->callbacks.validate_form_submit(
+            context->callbacks.pw, context, context->document, info,
+            out_valid);
+}
+
+static int app_script_submit_form(void *pw,
+        const PBrowserScriptFormSubmitInfo *info)
+{
+    AppScriptContext *context;
+    PBrowserScriptNavigationInfo navigation;
+    char target_url[APP_SCRIPT_URL_MAX];
+    int out_value;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || info == NULL || info->size < sizeof(*info) ||
+            context->callbacks.submit_form == NULL) {
+        return -1;
+    }
+    target_url[0] = '\0';
+    result = context->callbacks.submit_form(context->callbacks.pw,
+            context, context->document, context->document_url, info,
+            target_url, sizeof(target_url));
+    if (result <= 0) {
+        return result;
+    }
+    if (target_url[0] == '\0' ||
+            strlen(target_url) >= sizeof(target_url)) {
+        return -1;
+    }
+    memset(&navigation, 0, sizeof(navigation));
+    navigation.size = sizeof(navigation);
+    navigation.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
+    navigation.url = target_url;
+    out_value = 0;
+    return app_script_navigate(context, &navigation, &out_value);
+}
+
 static int app_script_scroll(void *pw,
         const PBrowserScriptScrollInfo *info, int *out_x, int *out_y)
 {
@@ -1010,6 +1060,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptDomValueCallbacks value;
     PBrowserScriptDomCheckedCallbacks checked;
     PBrowserScriptFormCallbacks form;
+    PBrowserScriptFormSubmitCallbacks form_submit;
     PBrowserScriptOptionCallbacks option;
     PBrowserScriptEventCallbacks event_callbacks;
     PBrowserScriptNavigationCallbacks navigation;
@@ -1088,6 +1139,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
     form.set_default_checked = app_script_set_default_checked;
     form.get_selected_index = app_script_get_selected_index;
     form.set_selected_index = app_script_set_selected_index;
+    memset(&form_submit, 0, sizeof(form_submit));
+    form_submit.size = sizeof(form_submit);
+    form_submit.pw = context;
+    form_submit.validate_submit = app_script_validate_form_submit;
+    form_submit.submit_form = app_script_submit_form;
     memset(&form_reset, 0, sizeof(form_reset));
     form_reset.size = sizeof(form_reset);
     form_reset.pw = context;
@@ -1186,6 +1242,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
             context->session, &checked) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(context->session,
             &form) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormSubmitCallbacks(
+            context->session, &form_submit) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormResetCallbacks(
             context->session, &form_reset) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterOptionCallbacks(context->session,
