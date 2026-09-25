@@ -24,11 +24,16 @@ GET 目标交给既有候选导航；空/相对 action 以候选文档 URL 为�
 字段编码。脚本直接 `form.submit()` 另走 Browser direct-submit callback 与 Core `PCore_FormSubmissionNoValidationById`，
 跳过验证、submit 事件和 submitter，当前只接 URL-encoded GET 并复用同一导航候选。脚本 `form.reset()` 获准后重排活动页并排队 reset 专用控件同步：EDIT 值写回现有窗口，
 SELECT/toggle 沿用 Core 同步；结构未变时不因值同步而重建控件，结构变化仍按通用 reconcile 处理。
-普通 DOM mutation 不回写 EDIT。POST、multipart、dialog 和隐式 Enter 仍未接。
+单行文本/密码 EDIT 的 Enter 另调用 Core `PCore_FormSubmissionForTextInput`，由 Core 选择
+默认 submitter 并生成成功控件数据；EXE 派发可取消 submit，获准后只接 URL-encoded GET。
+required 校验失败时 EXE 通过 Browser invalid callback 派发首个无效控件的非冒泡、可取消
+`invalid`；未取消则滚动到控件、聚焦对应原生控件并提示，取消时抑制这些默认反馈。native
+submit 按钮复用同一 invalid 反馈。textarea Enter 保持换行。普通 DOM mutation 不回写 EDIT。
+POST、multipart 和 dialog 仍未接。
 内置 controls 页含 required GET 表单，离线页不创建
 ScriptSession，inline script 不执行。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责
-WM6 消息、窗口、焦点/输入接线、重排和 teardown。本轮 direct `form.submit()` 改动已通过 C89、仓库审计与
-Debug/Release ARMV4I 重编；不宣称设备通过。设备门按用户决定暂缓，
+WM6 消息、窗口、焦点/输入接线、重排和 teardown。本批已通过 C89、仓库审计及 Debug/Release
+ARMV4I 全量重编；这不代表设备验收通过。设备门按用户决定暂缓，
 `RAPI=0x80072746` 不重试。
 
 - 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
@@ -62,9 +67,10 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 ## 当前短期目标
 
 当前短期目标是完成独立 `positron.exe` 的 HTTP(S)、资源事务、ScriptSession 和原生控件纵切，
-维持失败/取消/stale 时旧页不变。EXE 已接入 native submit GET、脚本 `form.reset()`、脚本
-`form.requestSubmit()` 与 direct `form.submit()` 的 URL-encoded GET；C89、Debug/Release ARMV4I 重编与仓库审计均通过，
-设备未部署。剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。RAPI `0x80072746` 按用户决定暂停，
+维持失败/取消/stale 时旧页不变。EXE 已接入 native submit GET、单行文本/密码框 implicit Enter GET
+及首个无效控件的可取消 invalid 事件/滚动/原生聚焦反馈、
+脚本 `form.reset()`、`form.requestSubmit()` 与 direct `form.submit()` GET；本批已通过 C89、仓库审计和
+Debug/Release ARMV4I 全量重编，设备未部署。剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。RAPI `0x80072746` 按用户决定暂停，
 不重试、不写设备基线。POST/multipart、FormData、
 dialog、SIP/IME、picker、书签和持久设置仍未进入 EXE。ROADMAP 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
@@ -115,7 +121,9 @@ ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；
 Ex form-event adapter 按 id 派发 reset，并在获准后执行 Core state reset、活动页 relayout 与 reset 专用
 native 值同步；阶段 3 由 EXE 私有
 `AppControlsContext` 投影 text/password/textarea、SELECT、checkbox/radio 与 identified contenteditable
-为原生子控件，并路由普通 `type=button` click。Core/Browser 保留状态与事件语义，宿主按 Core 几何
+为原生子控件，并路由普通 `type=button` click。单行 text/password EDIT 的 Enter 经 Core 默认提交接口、
+Browser 可取消 submit/invalid 事件、首个无效控件的原生滚动聚焦反馈和既有 GET candidate 接入；
+native submit 按钮复用 invalid 反馈，textarea 不走 implicit submit 路径。Core/Browser 保留状态与事件语义，宿主按 Core 几何
 重排并负责 WM6 输入/teardown；contenteditable 另用现有 Browser callbacks 同步可寻址 native EDIT
 的选区和 selectionchange，但不提供 Range/Selection 对象，编辑仍为纯文本。页面替换前
 重置 Browser native 状态。网络页面、脚本和导航失败回滚以及 native 控件真实输入仍需设备人工验收，
@@ -129,16 +137,9 @@ native 值同步；阶段 3 由 EXE 私有
 
 - HTML/CSS/DOM、整树 style、NetSurf layout/redraw、GDI 绘制与资源缓存已形成正式 Core 路径。
 - 常用 block/inline/flex/table、图片/SVG、背景、列表、有限定位、表单控件、验证、提交、reset 与 FormData successful-control snapshot（含可选 submitter、formdata 事件）已有设备回归；这不代表完整 CSS/HTML 或完整 Web API。
-- Core 的有界 image-map 命中已与链接、area 几何、active/hover 和坐标事件 target 统一：
-  已布局 `<img usemap>` 最多解析 64 个 linked `<area>` 和 64 个坐标，支持
-  default/rect/circle/poly，并把自然坐标缩放到渲染尺寸；Browser 只接收 Core/宿主的
-  click 事务，不复制 map 解析。
-- `<img srcset>` 的 Core 选择最多接受 16 个、每个 URL 最多 2047 字节的同类候选：正
-  密度 `x` 按 viewport DPI 选择，正宽度 `w` 按 `sizes` 解析出的源尺寸与 DPI 选择；
-  `sizes` 仅支持 px/vw/vh 及单一 `(min-width|max-width: <length>)` 条件，缺失或不支持
-  时按 100vw。图片发现、缓存、retained decode、布局自然尺寸、complete 和 Browser
-  `currentSrc` 共用该结果；混合/畸形候选安全回退。绝对 URL、CORS/referrer 和完整
-  loading 策略仍不支持。
+- image-map 与 `srcset`/`picture` 均为 Core/Browser 的有界选择及命中合同；精确预算、
+  URL/source 规则和剩余资源限制见 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)
+  与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，此处不重复列举。
 - `textContent` 与非编辑元素的 `innerText` setter 通过 Browser 的既有 text callback
   调用 Core；空元素的 getter 返回成功的零字节字符串。成功 setter 后 Core 丢弃 retained
   layout，Browser 刷新目标的
@@ -272,27 +273,9 @@ native 值同步；阶段 3 由 EXE 私有
 - TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
   选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
   [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1309 的 DOM/CharacterData、HTML parser、detached wrapper、属性 facade、
-  body.text、session cookie、document.write、Core-backed document.title 与 bounded
-  DocumentFragment lookup/clone/selector/relations/replace/composition/collection/normalize、
-  detached Element HTML serialization、Fragment textContent 原子替换、Fragment-owned
-  detached Element sibling 关系、Browser-owned Text/Comment element-sibling 关系、Fragment
-  CharacterData 根 staging/textContent 投影及 Browser-created Text/Comment/Element 的
-  CharacterData/relative primitive/现有 CharacterData source、Text/CDATA normalize、created
-  Element element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、
-  `insertAdjacentElement()`、direct Element-child `appendChild()`/`insertBefore()`/`removeChild()`、
-  primitive-only `replaceChildren()` wrapper reconciliation、嵌套 Browser-created Element
-  staging、脱离后的 direct CharacterData 快照、image source generation/late-event
-  rejection（TEST1300）、Core multipart wire encoder/host file callback contract（TEST1301）、
-  independent FormData wire encoder（TEST1302）、Browser script FormData/URLSearchParams
-  mutation budget（TEST1303–1304）、Storage quota（TEST1305）、object-property-safe
-  Storage map（TEST1306）、Headers special-key snapshot（TEST1307）以及 prototype-safe
-  DOM id/wrapper/event/dataset/BroadcastChannel registry（TEST1308），另有参考宿主
-  WM_SHOWWINDOW 到 Browser visibility lifecycle 的消息接线（TEST1309）
-  夹具均已有相邻设备门；TEST263 的 deferred-id picker 探针和 TEST1310 的 picker/FormData
-  metadata 页面已构建，当前手动包中的两项均已完成需要人工选择文件的 GUI 验收；
-  逐项合同、预算和选择集中在 [`docs/TESTING.md`](../docs/TESTING.md)，本文件不重复维护历史清单。
-  通用节点、observer、除 TEST1297 外的完整 live collection、native/OEM 视觉和 SIP/IME 仍不在自动门范围。
+- TEST1201–1310 涵盖的 DOM/parser、资源、FormData/Storage/Headers 与宿主桥合同，以及
+  TEST263/1310 的 picker 人工验收证据，统一见 [`docs/TESTING.md`](../docs/TESTING.md)。
+  通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍未由自动门保证。
 - 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
   崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
 
@@ -365,16 +348,18 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 
 ## 唯一下一步
 
-脚本 `requestSubmit()` 与 direct `form.submit()` 的 URL-encoded GET 源码接线已加入，C89、仓库审计及
-Debug/Release 本地门均通过；本批只改 EXE 私有适配，未改公共 ABI、Browser/Core/test_host。RAPI
-`0x80072746` 按用户决定搁置，不部署、不重试。
-恢复设备门后，在启用 ScriptSession 的网络表单验收：requestSubmit 的 required 校验与 submit 取消；
-direct submit 对 required 空值仍跳过校验、submit 事件和 submitter；两者的 GET URL、相对 action、旧页保留
-及候选成功后页面替换。POST/multipart/dialog 必须 fail closed。随后累计其余设备矩阵；设备验收未通过前
-不写成设备基线。
+native submit、单行文本/密码框 implicit Enter、`requestSubmit()` 与 direct `form.submit()` 的
+URL-encoded GET 源码接线均已加入；Enter/native click 校验失败现派发可取消 invalid 事件，未取消时
+滚动并聚焦首个无效原生控件。批次只改 EXE 私有适配，未改公共 ABI、Browser/Core/test_host。
+RAPI `0x80072746` 按用户决定搁置，不部署、不重试。本批 C89、审计、Debug/Release ARMV4I 全量重编均已通过；设备验收仍待恢复设备通道后执行。
+恢复设备门后，验收 native click 与 Enter 的校验、invalid/submit 取消、无效控件滚动聚焦、默认 submitter 和 GET URL；Enter
+只从单行文本/密码框触发，textarea 仍换行。另验收 requestSubmit 的 required 校验/invalid 事件/取消，direct submit
+对 required 空值跳过校验、submit 事件和 submitter，以及相对 action、旧页保留和候选成功后页面替换。
+POST/multipart/dialog 继续 fail closed。设备验收未通过前不写成设备基线。
 
-阶段 4 的 reset/native submit/requestSubmit/direct-submit GET 设备门仍待完成；POST 另行取舍，
-File/Blob 上传继续待真实消费者证据。路线图已复核。本轮只改 EXE 私有适配和职责文档，不改公共 ABI。
+POST 尚不进入实现：当前 Browser history commit 明确只接受 GET，且 EXE 私有 ScriptSession submit callback
+只交付目标 URL，没有 method/body 携带契约；须先形成不误报 history 与回退行为的合同。File/Blob 上传继续
+待真实消费者证据。ROADMAP 已复核。本轮只改 EXE 私有适配和职责文档，不改公共 ABI。
 TEST262/264
 的自动失败仍隔离在审查报告；崩溃、数据损坏、严重布局破坏或
 核心交互阻塞须立即人工复核。

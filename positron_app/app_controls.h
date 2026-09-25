@@ -22,10 +22,13 @@ typedef struct AppControlsContext AppControlsContext;
 typedef void (*AppControlsChangedFn)(void *pw);
 typedef void (*AppControlsSubmitFn)(void *pw, int document_x,
         int document_y, int validation_valid);
+typedef void (*AppControlsImplicitSubmitFn)(void *pw,
+        unsigned int text_index);
 
 AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
         void *pw, AppControlsChangedFn changed,
-        AppControlsSubmitFn submit);
+        AppControlsSubmitFn submit,
+        AppControlsImplicitSubmitFn implicit_submit);
 void AppControls_Destroy(AppControlsContext *context);
 void AppControls_ClearPage(AppControlsContext *context);
 int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
@@ -51,5 +54,8 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
 int AppControls_HandleButtonKey(AppControlsContext *context, UINT message,
         WPARAM key, LPARAM flags);
 void AppControls_ClearButtonFocus(AppControlsContext *context);
+/* Focus the native EDIT/SELECT/toggle that owns the Core validation point. */
+int AppControls_FocusFormControlAt(AppControlsContext *context,
+        int control_kind, int document_x, int document_y);
 
 #endif /* POSITRON_APP_CONTROLS_H */

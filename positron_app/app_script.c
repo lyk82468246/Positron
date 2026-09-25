@@ -1037,6 +1037,26 @@ static int app_script_form_event_dispatch(void *pw,
     return result < 0 ? -1 : 0;
 }
 
+static int app_script_invalid_event_dispatch(void *pw,
+        const PBrowserScriptInvalidEventInfo *info,
+        int *out_default_allowed)
+{
+    AppScriptContext *context;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || info == NULL ||
+            info->size < sizeof(*info) || info->event_type == NULL ||
+            strcmp(info->event_type, "invalid") != 0 || info->bubbles ||
+            !info->cancelable || out_default_allowed == NULL) {
+        return -1;
+    }
+    *out_default_allowed = 1;
+    result = PCore_EventDispatchAt(context->document, info->x, info->y,
+            info->event_type, 0, 1, out_default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
 static int app_script_form_event_dispatch_by_id(void *pw,
         const PBrowserScriptFormEventInfoEx *info, int *out_default_allowed)
 {
@@ -1111,6 +1131,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptFormEventCallbacks form_event;
     PBrowserScriptFormResetCallbacks form_reset;
     PBrowserScriptFormEventCallbacksEx form_event_ex;
+    PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptFormSubmitDirectCallbacks form_submit_direct;
 
     memset(&dom_read, 0, sizeof(dom_read));
@@ -1257,6 +1278,10 @@ static int app_script_register_callbacks(AppScriptContext *context)
     form_event_ex.pw = context;
     form_event_ex.dispatch_form_event =
             app_script_form_event_dispatch_by_id;
+    memset(&invalid_callbacks, 0, sizeof(invalid_callbacks));
+    invalid_callbacks.size = sizeof(invalid_callbacks);
+    invalid_callbacks.pw = context;
+    invalid_callbacks.dispatch_invalid = app_script_invalid_event_dispatch;
     if (PBrowser_ScriptSessionRegisterDomReadCallbacksEx(context->session,
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
@@ -1317,7 +1342,9 @@ static int app_script_register_callbacks(AppScriptContext *context)
             PBrowser_ScriptSessionRegisterFormEventCallbacks(
             context->session, &form_event) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormEventCallbacksEx(
-            context->session, &form_event_ex) != PSCRIPT_OK) {
+            context->session, &form_event_ex) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterInvalidCallbacks(
+            context->session, &invalid_callbacks) != PSCRIPT_OK) {
         return 1;
     }
     return 0;
@@ -2029,6 +2056,53 @@ int AppScript_DispatchNativeButton(AppScriptContext *context,
     info.disabled = disabled ? 1 : 0;
     info.validation_valid = validation_valid ? 1 : 0;
     return PBrowser_ScriptSessionDispatchNativeButton(context->session,
+            &info, out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchFormEvent(AppScriptContext *context, int x, int y,
+        const char *event_type, int *out_default_allowed)
+{
+    PBrowserScriptFormEventInfo info;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    if (context == NULL || context->session == NULL || event_type == NULL ||
+            strcmp(event_type, "submit") != 0 ||
+            out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.x = x;
+    info.y = y;
+    info.event_type = event_type;
+    info.bubbles = 1;
+    info.cancelable = 1;
+    return PBrowser_ScriptSessionDispatchFormEvent(context->session, &info,
+            out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchInvalidEvent(AppScriptContext *context, int x, int y,
+        int *out_default_allowed)
+{
+    PBrowserScriptInvalidEventInfo info;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 0;
+    }
+    if (context == NULL || context->session == NULL ||
+            out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.x = x;
+    info.y = y;
+    info.event_type = "invalid";
+    info.bubbles = 0;
+    info.cancelable = 1;
+    return PBrowser_ScriptSessionDispatchInvalidEvent(context->session,
             &info, out_default_allowed) == PSCRIPT_OK ? 0 : 1;
 }
 

@@ -116,6 +116,10 @@ static void app_update_history_buttons(void);
 static void app_controls_changed(void *pw);
 static void app_handle_form_submit(void *pw, int document_x,
         int document_y, int validation_valid);
+static void app_handle_form_enter(void *pw, unsigned int text_index);
+static void app_handle_invalid_form(unsigned int text_index);
+static void app_handle_invalid_validation(
+        PCoreFormValidationInfo *validation);
 static int app_script_validate_form_submit(void *pw,
         AppScriptContext *context, HANDLE document,
         const PBrowserScriptFormSubmitInfo *info, int *out_valid);
@@ -1986,8 +1990,19 @@ static void app_handle_form_submit(void *pw, int document_x,
     char target[APP_URL_MAX];
     int result;
 
-    if (pw != &g_app || g_document == NULL || !validation_valid) {
-        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+    if (pw != &g_app || g_document == NULL) {
+        return;
+    }
+    if (!validation_valid) {
+        PCoreFormValidationInfo validation;
+
+        memset(&validation, 0, sizeof(validation));
+        if (PCore_FormValidationAt(g_document, document_x, document_y,
+                &validation) == 1) {
+            app_handle_invalid_validation(&validation);
+        } else {
+            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        }
         return;
     }
     memset(&submission, 0, sizeof(submission));
@@ -1997,7 +2012,15 @@ static void app_handle_form_submit(void *pw, int document_x,
             &submission, action_probe, sizeof(action_probe), body_probe,
             sizeof(body_probe));
     if (result == 5) {
-        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        PCoreFormValidationInfo validation;
+
+        memset(&validation, 0, sizeof(validation));
+        if (PCore_FormValidationAt(g_document, document_x, document_y,
+                &validation) == 1) {
+            app_handle_invalid_validation(&validation);
+        } else {
+            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        }
         return;
     }
     if (result == 3 || result == 6 ||
@@ -2016,7 +2039,15 @@ static void app_handle_form_submit(void *pw, int document_x,
     result = PCore_FormSubmissionAt(g_document, document_x, document_y,
             &submission, action, sizeof(action), body, sizeof(body));
     if (result == 5) {
-        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        PCoreFormValidationInfo validation;
+
+        memset(&validation, 0, sizeof(validation));
+        if (PCore_FormValidationAt(g_document, document_x, document_y,
+                &validation) == 1) {
+            app_handle_invalid_validation(&validation);
+        } else {
+            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        }
         return;
     }
     if (result == 3 || result == 6 ||
@@ -2034,6 +2065,190 @@ static void app_handle_form_submit(void *pw, int document_x,
     if (!app_load_page(g_window, target, APP_HISTORY_NEW, -1)) {
         app_set_status(APP_TEXT_STATUS_FORM_FAILED);
     }
+}
+
+static void app_handle_form_enter(void *pw, unsigned int text_index)
+{
+    PCoreFormSubmissionInfo submission;
+    PCoreTextInputInfo text_info;
+    char action_probe[1];
+    char body_probe[1];
+    char action[APP_URL_MAX];
+    char body[APP_URL_MAX];
+    char target[APP_URL_MAX];
+    int result;
+    int default_allowed;
+    int event_result;
+    int event_x;
+    int event_y;
+
+    if (pw != &g_app || g_document == NULL) {
+        return;
+    }
+    memset(&submission, 0, sizeof(submission));
+    action_probe[0] = '\0';
+    body_probe[0] = '\0';
+    result = PCore_FormSubmissionForTextInput(g_document, text_index,
+            &submission, action_probe, sizeof(action_probe), body_probe,
+            sizeof(body_probe));
+    if (result == 0 || result == 2) {
+        return;
+    }
+    if (result == 5) {
+        app_handle_invalid_form(text_index);
+        return;
+    }
+    if (result != 1 && result != 3 && result != 4 && result != 6) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+
+    memset(&text_info, 0, sizeof(text_info));
+    if (PCore_TextInputInfo(g_document, text_index, &text_info, NULL, 0) != 0 ||
+            text_info.width <= 0 || text_info.height <= 0) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+    event_x = text_info.x + text_info.width / 2;
+    event_y = text_info.y + text_info.height / 2;
+    default_allowed = 1;
+    if (g_script != NULL) {
+        event_result = AppScript_DispatchFormEvent(g_script, event_x,
+                event_y, "submit", &default_allowed);
+        if (event_result != 0) {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+            return;
+        }
+    } else {
+        event_result = PCore_EventDispatchAt(g_document, event_x, event_y,
+                "submit", 1, 1, &default_allowed);
+        if (event_result < 0) {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+            return;
+        }
+    }
+    if (!default_allowed) {
+        return;
+    }
+
+    action[0] = '\0';
+    body[0] = '\0';
+    result = PCore_FormSubmissionForTextInput(g_document, text_index,
+            &submission, action, sizeof(action), body, sizeof(body));
+    if (result == 5) {
+        app_handle_invalid_form(text_index);
+        return;
+    }
+    if (result != 1) {
+        if (result == 3 || result == 6 ||
+                submission.method != PCORE_FORM_METHOD_GET) {
+            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        } else {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        }
+        return;
+    }
+    if (submission.method != PCORE_FORM_METHOD_GET) {
+        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        return;
+    }
+    if (app_form_get_target(g_current_url, action, body, target,
+            sizeof(target)) != 0) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+    if (!app_load_page(g_window, target, APP_HISTORY_NEW, -1)) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+    }
+}
+
+static void app_handle_invalid_form(unsigned int text_index)
+{
+    PCoreFormValidationInfo validation;
+    int result;
+
+    if (g_document == NULL) {
+        return;
+    }
+    memset(&validation, 0, sizeof(validation));
+    result = PCore_FormValidationForTextInput(g_document, text_index,
+            &validation);
+    if (!result || validation.valid || validation.invalid_count <= 0) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+    app_handle_invalid_validation(&validation);
+}
+
+static void app_handle_invalid_validation(
+        PCoreFormValidationInfo *validation)
+{
+    int result;
+    int event_result;
+    int default_allowed;
+    int target_scroll_x;
+    int target_scroll_y;
+    int left;
+    int right;
+    int top;
+    int bottom;
+    int center_x;
+    int center_y;
+
+    if (g_document == NULL || validation == NULL || validation->valid ||
+            validation->invalid_count <= 0) {
+        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        return;
+    }
+    center_x = validation->first_x + validation->first_width / 2;
+    center_y = validation->first_y + validation->first_height / 2;
+    default_allowed = 1;
+    if (g_script != NULL) {
+        event_result = AppScript_DispatchInvalidEvent(g_script, center_x,
+                center_y, &default_allowed);
+        if (event_result != 0) {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+            return;
+        }
+    } else {
+        result = PCore_EventDispatchAt(g_document, center_x, center_y,
+                "invalid", 0, 1, &default_allowed);
+        if (result < 0) {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+            return;
+        }
+    }
+    if (!default_allowed) {
+        return;
+    }
+
+    if (validation->first_width > 0 && validation->first_height > 0) {
+        left = validation->first_x;
+        right = left + validation->first_width;
+        target_scroll_x = g_scroll_x;
+        if (left < g_scroll_x + 8) {
+            target_scroll_x = left - 8;
+        } else if (right > g_scroll_x + g_page_width - 8) {
+            target_scroll_x = right - g_page_width + 8;
+        }
+        top = validation->first_y;
+        bottom = top + validation->first_height;
+        target_scroll_y = g_scroll_y;
+        if (top < g_scroll_y + 8) {
+            target_scroll_y = top - 8;
+        } else if (bottom > g_scroll_y + g_page_height - 8) {
+            target_scroll_y = bottom - g_page_height + 8;
+        }
+        app_scroll_by(g_page_window, target_scroll_x - g_scroll_x,
+                target_scroll_y - g_scroll_y);
+        if (g_controls != NULL) {
+            (void) AppControls_FocusFormControlAt(g_controls,
+                    validation->first_control_kind, center_x, center_y);
+        }
+        InvalidateRect(g_page_window, NULL, FALSE);
+    }
+    MessageBeep(MB_ICONEXCLAMATION);
+    app_set_status(APP_TEXT_STATUS_FORM_INVALID);
 }
 
 static int app_script_validate_form_submit(void *pw,
@@ -2876,7 +3091,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         return 1;
     }
     g_controls = AppControls_Create(g_page_window, g_instance, &g_app,
-            app_controls_changed, app_handle_form_submit);
+            app_controls_changed, app_handle_form_submit,
+            app_handle_form_enter);
     if (g_controls == NULL) {
         DestroyWindow(hwnd);
         return 1;

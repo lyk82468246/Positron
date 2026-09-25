@@ -154,6 +154,14 @@ void AppScript_ResetNativeToggleState(AppScriptContext *context);
 int AppScript_DispatchNativeButton(AppScriptContext *context,
         unsigned long target_token, int x, int y, int phase, int kind,
         int disabled, int validation_valid, int *out_default_allowed);
+/* Native implicit submission dispatches the form's cancelable submit event
+ * at the owning text input's Core geometry before the host applies GET. */
+int AppScript_DispatchFormEvent(AppScriptContext *context, int x, int y,
+        const char *event_type, int *out_default_allowed);
+/* Constraint validation dispatches a non-bubbling, cancelable invalid event
+ * through Browser before the host reveals and focuses the first bad control. */
+int AppScript_DispatchInvalidEvent(AppScriptContext *context, int x, int y,
+        int *out_default_allowed);
 void AppScript_ResetNativeButtonState(AppScriptContext *context);
 
 HANDLE AppScript_Document(AppScriptContext *context);

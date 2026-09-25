@@ -21,6 +21,12 @@
 #define APP_CONTROLS_FORM_SUBMIT     7
 #define APP_CONTROLS_FORM_RESET      8
 #define APP_CONTROLS_FORM_BUTTON     9
+#define APP_CONTROLS_FORM_CHECKBOX   1
+#define APP_CONTROLS_FORM_RADIO      2
+#define APP_CONTROLS_FORM_TEXT       3
+#define APP_CONTROLS_FORM_PASSWORD   4
+#define APP_CONTROLS_FORM_TEXTAREA   5
+#define APP_CONTROLS_FORM_SELECT     6
 #define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
 
 typedef struct AppControlsItem AppControlsItem;
@@ -72,6 +78,7 @@ struct AppControlsContext {
     void *pw;
     AppControlsChangedFn changed;
     AppControlsSubmitFn submit;
+    AppControlsImplicitSubmitFn implicit_submit;
     HANDLE document;
     AppScriptContext *script;
     AppControlsItem items[APP_CONTROLS_MAX];
@@ -916,6 +923,55 @@ void AppControls_ClearButtonFocus(AppControlsContext *context)
     app_controls_notify(context);
 }
 
+int AppControls_FocusFormControlAt(AppControlsContext *context,
+        int control_kind, int document_x, int document_y)
+{
+    AppControlsItem *item;
+    int expected_kind;
+    int x;
+    int y;
+    int width;
+    int height;
+    unsigned int i;
+
+    if (context == NULL || context->document == NULL) {
+        return 0;
+    }
+    if (control_kind == APP_CONTROLS_FORM_CHECKBOX ||
+            control_kind == APP_CONTROLS_FORM_RADIO) {
+        expected_kind = APP_CONTROLS_KIND_TOGGLE;
+    } else if (control_kind == APP_CONTROLS_FORM_TEXT ||
+            control_kind == APP_CONTROLS_FORM_PASSWORD ||
+            control_kind == APP_CONTROLS_FORM_TEXTAREA) {
+        expected_kind = APP_CONTROLS_KIND_TEXT;
+    } else if (control_kind == APP_CONTROLS_FORM_SELECT) {
+        expected_kind = APP_CONTROLS_KIND_SELECT;
+    } else {
+        return 0;
+    }
+    for (i = 0; i < context->count; i++) {
+        item = &context->items[i];
+        if (item->kind != expected_kind || item->hwnd == NULL) {
+            continue;
+        }
+        if (item->kind == APP_CONTROLS_KIND_SELECT) {
+            app_controls_sync_select(context, item);
+        } else if (item->kind == APP_CONTROLS_KIND_TOGGLE) {
+            app_controls_sync_toggle(context, item);
+        }
+        if (!IsWindowEnabled(item->hwnd) ||
+                !app_controls_item_geometry(context, item, &x, &y,
+                &width, &height) || width <= 0 || height <= 0 ||
+                document_x < x || document_x >= x + width ||
+                document_y < y || document_y >= y + height) {
+            continue;
+        }
+        SetFocus(item->hwnd);
+        return GetFocus() == item->hwnd ? 1 : 0;
+    }
+    return 0;
+}
+
 static int app_controls_button_focus(AppControlsContext *context,
         unsigned int form_index)
 {
@@ -1388,6 +1444,15 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
     item = app_controls_find(hwnd);
     if (item == NULL || g_app_controls == NULL) {
         return DefWindowProc(hwnd, message, wparam, lparam);
+    }
+    if (message == WM_KEYDOWN && wparam == VK_RETURN &&
+            item->kind == APP_CONTROLS_KIND_TEXT && !item->multiline) {
+        if ((lparam & 0x40000000L) == 0 &&
+                g_app_controls->implicit_submit != NULL) {
+            g_app_controls->implicit_submit(g_app_controls->pw,
+                    item->text_index);
+        }
+        return 0;
     }
     if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
             (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
@@ -2780,7 +2845,8 @@ static int app_controls_rebuild_toggle_item(AppControlsContext *context,
 
 AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
         void *pw, AppControlsChangedFn changed,
-        AppControlsSubmitFn submit)
+        AppControlsSubmitFn submit,
+        AppControlsImplicitSubmitFn implicit_submit)
 {
     AppControlsContext *context;
 
@@ -2796,6 +2862,7 @@ AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
     context->pw = pw;
     context->changed = changed;
     context->submit = submit;
+    context->implicit_submit = implicit_submit;
     g_app_controls = context;
     return context;
 }

@@ -52,7 +52,10 @@ click transaction。Browser click callback 经 Core 按坐标派发；Core 绘�
 GET 表单；内置离线页面不创建 ScriptSession，其 inline script 不执行，因此脚本取消示例仍须在
 网络 ScriptSession 页面验收。阶段 4 已由 EXE 接入脚本 `form.reset()`、native GET submit、脚本
 `requestSubmit()` GET 和 direct `form.submit()` GET；后者按 Core/Browser 合同跳过 validation、submit
-event 和 submitter。提交仍限 URL-encoded GET，不新增 ABI；POST/multipart、dialog 与提交期 FormData
+event 和 submitter。单行文本/密码 native EDIT 的 Enter 另调用 Core 隐式提交接口、派发可取消 submit，
+并只接 URL-encoded GET；required 校验失败时 EXE 通过 Browser invalid callback 派发首个无效控件的
+non-bubbling/cancelable `invalid` 事件，获准时按 Core 几何滚动并聚焦原生控件，取消时抑制默认反馈；
+native submit 按钮复用该反馈。textarea Enter 保持换行。提交仍不新增 ABI；POST/multipart、dialog 与提交期 FormData
 仍未接入。
 有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另接入带 id 且已布局的

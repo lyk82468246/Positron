@@ -47,7 +47,11 @@ URL-encoded GET，再交给既有导航候选；校验失败、事件取消、�
 submit→默认动作顺序，EXE 只读取 Core 的成功控件快照并将 URL-encoded GET 目标交给同一导航候选；
 空 action 和相对 action 以当前文档 URL 为基准。脚本 `form.submit()` 也已通过 Browser direct-submit
 callback 接到 Core 的 no-validation successful-control snapshot，并复用同一 GET 导航候选；它按合同
-跳过校验、submit 事件和 submitter。POST、multipart、dialog 和隐式 Enter 提交仍未接入。
+跳过校验、submit 事件和 submitter。单行文本/密码 EDIT 的 Enter 也已接入 Core 隐式提交：
+Core 选择默认 submitter 并生成 successful-control 数据，EXE 派发可取消 submit 后仅导航
+URL-encoded GET；required 校验失败时 EXE 经 Browser invalid callback 派发首个无效控件的非冒泡、
+可取消 `invalid` 事件，未取消时滚动到并聚焦原生控件，取消时抑制宿主默认反馈；native submit
+按钮复用该验证反馈。textarea Enter 仍是换行。POST、multipart 和 dialog 提交仍未接入。
 网络页面的 ScriptSession 另已接入带 id 表单的 `form.reset()`：Browser 按表单 id 派发可取消
 reset 事件，获准后由 Core 恢复初值；活动页面随后重新 layout，并在 UI 消息中 reconcile
 native 控件：SELECT/toggle 沿用现有 Core 同步，EDIT 值只在 reset 专用路径写回现有窗口；
@@ -68,8 +72,8 @@ CRLF 索引会换算为 Browser 使用的逻辑 LF/UTF-16 偏移；鼠标拖选�
 Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `contenteditable` 编辑提交到 Core 时仍会
 以纯文本替换其子树，不支持富文本编辑；Range/Selection 对象不在本批范围，设备端 OEM 键盘、
 触摸和视觉尚待验收。脚本 `form.reset()` 的 native 控件同步、脚本 `requestSubmit()` 与 direct
-`form.submit()` 路径仍未设备验收；POST/multipart/dialog、隐式 Enter 与提交期 FormData default action
-仍未接入；SIP/IME、文件选择器、
+`form.submit()` 与单行 EDIT 隐式 Enter 路径仍未设备验收；POST/multipart/dialog 与提交期
+FormData default action 仍未接入；SIP/IME、文件选择器、
 书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
@@ -107,12 +111,15 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    Enter 激活；
 5. 地址栏中输入 `positron://controls` 或 `positron://welcome`，按 Enter 导航；确认 `controls`/`welcome`
    快捷输入仍可用；在 `controls` 页分别点击或用
-   Tab 进入文本、密码和多行文本框，输入、退格、Delete、Enter/换行并离开焦点，确认页面
-   值、光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT 以及 checkbox/radio，
+   Tab 进入文本、密码和多行文本框，输入、退格、Delete 并离开焦点；先清空 required 字段按 Enter，
+   确认 invalid 事件及默认滚动/聚焦反馈；在网络 ScriptSession 页面取消 invalid，确认宿主反馈被抑制。
+   在单行 q 字段填入有效值按 Enter，确认与默认 submitter 的 GET 结果一致，在 textarea 按 Enter
+   则只插入换行；确认页面值、
+   光标焦点和滚动位置保持一致；再分别操作单选和多选 SELECT 以及 checkbox/radio，
    确认选择、checked 状态和 radio-group 规则回写页面，Space/Enter 不产生重复切换；点按普通
-   按钮后再按 Space/Enter，确认不导航也不提交；在 URL-encoded GET 表单中先清空必填项并激活
-   submit，确认地址和页面不变；填入值后激活 submit，确认页面重新加载且地址栏包含 Core 编码的
-   `q`、`scope` 和 submitter `mode` 参数。再修改 reset 示例的文本、SELECT 和 checkbox，激活重置按钮，
+   按钮后再按 Space/Enter，确认不导航也不提交；在 URL-encoded GET 表单中先清空必填项并按 Enter，
+   确认 invalid 默认反馈可取消、地址和页面不变；填入值后按 Enter，确认页面重新加载且地址栏包含 Core 编码的 `q`、`scope`
+   和默认 submitter `mode` 参数。再修改 reset 示例的文本、SELECT 和 checkbox，激活重置按钮，
    确认初值恢复。内置离线页面不执行 inline script；`beforeinput`/可取消 submit、脚本选区和
    option mutation 应在启用 ScriptSession 的网络页面上另行验收。滚动、旋转和页面切换后没有残留
    native 控件；
@@ -122,7 +129,8 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    成功后才替换页面。检查一个包含 inline/classic external script 的页面：脚本 DOM
    mutation、事件监听和 timer 在提交后生效，并让 click listener 更新页面确认按钮事件到达；
    对有效 native submit button 检查 click→validation→submit 顺序，并用 click/submit
-   `preventDefault()` 确认取消后没有 GET 请求；对带 id 的脚本表单调用
+   `preventDefault()` 确认取消后没有 GET 请求；对无效 native submit/Enter 确认 `invalid` 先于原生
+   reveal/focus 反馈，`invalid.preventDefault()` 可抑制该反馈；对带 id 的脚本表单调用
    `requestSubmit()`，检查 required 校验、取消 submit 不发请求、显式 submitter 参数及相对 action
    生成的 URL-encoded GET；调用直接 `form.submit()` 时确认它跳过 validation、submit 事件和 submitter，
    即使 required 字段无效也只把 Core 成功控件数据导航为 GET；候选失败仍保留旧页。尝试 native/script
