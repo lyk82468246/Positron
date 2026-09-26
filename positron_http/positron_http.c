@@ -911,6 +911,8 @@ static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
     int port;
     int digits;
     int n;
+    size_t suffix_length;
+    char path_source[PHTTP_URL_MAX];
 
     if (url == NULL || host == NULL || hostcap <= 1 || path == NULL ||
             pathcap <= 1 || out_port == NULL || out_scheme == NULL) {
@@ -985,7 +987,36 @@ static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
             return 1;
         }
     }
-    if (phttp_normalize_path(authority_end, path, pathcap) != 0) {
+    /* A URL authority may be followed directly by a query or fragment.  The
+     * path normalizer intentionally requires a leading slash, so provide the
+     * implicit root path before handing those forms to it. */
+    if (*authority_end == '\0' || *authority_end == '#') {
+        if (phttp_normalize_path("/", path, pathcap) != 0) {
+            host[0] = '\0';
+            path[0] = '\0';
+            *out_port = 0;
+            *out_scheme = 0;
+            return 1;
+        }
+    } else if (*authority_end == '?') {
+        suffix_length = strlen(authority_end);
+        if (suffix_length >= sizeof(path_source) - 1) {
+            host[0] = '\0';
+            path[0] = '\0';
+            *out_port = 0;
+            *out_scheme = 0;
+            return 1;
+        }
+        path_source[0] = '/';
+        memcpy(path_source + 1, authority_end, suffix_length + 1);
+        if (phttp_normalize_path(path_source, path, pathcap) != 0) {
+            host[0] = '\0';
+            path[0] = '\0';
+            *out_port = 0;
+            *out_scheme = 0;
+            return 1;
+        }
+    } else if (phttp_normalize_path(authority_end, path, pathcap) != 0) {
         host[0] = '\0';
         path[0] = '\0';
         *out_port = 0;
