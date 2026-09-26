@@ -1,0 +1,67 @@
+diff --git a/libavformat/flvdec.c b/libavformat/flvdec.c
+--- a/libavformat/flvdec.c
++++ b/libavformat/flvdec.c
+@@ -1000,5 +1000,5 @@ retry:
+ 
+         if (size == 0) {
+             ret = FFERROR_REDO;
+-            goto leave;
++            goto flv_leave;
+         }
+@@ -1051,11 +1051,11 @@ skip:
+                  return AVERROR_INVALIDDATA;
+             }
+             ret = FFERROR_REDO;
+-            goto leave;
++            goto flv_leave;
+         }
+ 
+         /* skip empty data packets */
+         if (!size) {
+             ret = FFERROR_REDO;
+-            goto leave;
++            goto flv_leave;
+         }
+@@ -1096,5 +1096,5 @@ skip:
+         ) {
+             avio_seek(s->pb, next, SEEK_SET);
+             ret = FFERROR_REDO;
+-            goto leave;
++            goto flv_leave;
+         }
+@@ -1158,5 +1158,5 @@ retry_duration:
+             AVCodecParameters *par = avcodec_parameters_alloc();
+             if (!par) {
+                 ret = AVERROR(ENOMEM);
+-                goto leave;
++                goto flv_leave;
+             }
+@@ -1203,5 +1203,5 @@ retry_duration:
+                 if ((ret = flv_queue_extradata(flv, s->pb, stream_type, size)) < 0)
+                     return ret;
+                 ret = FFERROR_REDO;
+-                goto leave;
++                goto flv_leave;
+             }
+@@ -1230,12 +1230,12 @@ retry_duration:
+             }
+ 
+             ret = FFERROR_REDO;
+-            goto leave;
++            goto flv_leave;
+         }
+     }
+ 
+     /* skip empty data packets */
+     if (!size) {
+         ret = FFERROR_REDO;
+-        goto leave;
++        goto flv_leave;
+     }
+@@ -1270,5 +1270,5 @@ retry_duration:
+             stream_type == FLV_STREAM_TYPE_DATA)
+         pkt->flags |= AV_PKT_FLAG_KEY;
+ 
+-leave:
++flv_leave:
+     last = avio_rb32(s->pb);

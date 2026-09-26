@@ -1,6 +1,6 @@
 # Positron 架构与公共边界
 
-Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、HTTP、图像、脚本、文档模型、渲染和浏览器会话 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。七个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
+Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、HTTP、图像、媒体、脚本、文档模型、渲染和浏览器会话 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。八个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
 
 ## 设计目标
 
@@ -23,6 +23,7 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
     ├─ positron_json.dll      有界 JSON 解析与生成
     ├─ positron_http.dll      HTTP 消息、header、body 与 transport 边界
     ├─ positron_image.dll     有界图像解码/元数据接口
+    ├─ positron_media.dll     WM6 原生媒体探测与有界软解/播放接口
     ├─ positron_script.dll    独立 Duktape 嵌入服务
     ├─ positron_core.dll      文档、CSS、布局、命中、资源与 Core mutation
     └─ positron_browser.dll   页面 session、有限 Web 对象、事件和队列
@@ -54,6 +55,16 @@ command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继�
 ### `positron_image.dll`
 
 提供有界图像解码和元数据读取。Core 负责来源选择、资源状态、cache key 和 layout 投影；图像 DLL 不决定 URL、CORS、页面事件或 native 绘制窗口。
+
+### `positron_media.dll`
+
+提供 decoder/playback-only 的媒体边界。宿主通过 source callback 提供字节，通过 `pm_pump()` 提供
+时钟和预算；媒体 DLL 自己拥有 session、探测结果、软解缓冲和回调生命周期，但不拥有 URL、HTTP、
+直播协议或长期工作线程。`AUTO` 对 WAV PCM 先尝试设备 WaveOut，其他 native graph 能力只作为
+运行时探测，不等于固定 codec 保证；软解必须来自仓库固定的 ARMV4I 构建组件。首版公开输出为
+borrowed I420 视频帧和 S16LE 交错 PCM，关闭后不再回调；视频软解上限为 VGA，AV1/HEVC/VP9、
+编码、DRM 和字幕不属于公共边界。DirectShow callback source filter 与 native 视频 renderer
+生命周期尚未进入公共承诺。
 
 ### `positron_script.dll`
 

@@ -58,6 +58,8 @@
  * libs, exactly as a real Positron app would consume it. */
 #include "positron_core.h"
 
+extern BOOL test1312_media_wav_callback_contract(void);
+
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x36, 0x00, 0x00, 0x00, 0x28, 0x00,
@@ -551,7 +553,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1311
+#define TEST_MAX_NUMBER 1312
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -115517,6 +115519,7 @@ static int run_configured_tests(const unsigned char *selected,
         case 1309: ok = test1309_browser_host_visibility_message_contract(); break;
         case 1310: ok = test1310_browser_file_form_data_manual(); break;
         case 1311: ok = test1311_core_high_dpi_text_paint(); break;
+        case 1312: ok = test1312_media_wav_callback_contract(); break;
         default: ok = FALSE; break;
         }
         if (!ok) {

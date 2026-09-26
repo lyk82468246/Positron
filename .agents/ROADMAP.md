@@ -2,7 +2,7 @@
 
 本文件只描述尚未完成的目标、候选能力和选择规则。当前产品事实见
 [HANDOFF.md](HANDOFF.md)，仍存在的边界见 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)，
-稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，七个公共 DLL
+稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，八个公共 DLL
 的能力状态见 [docs/CAPABILITIES.md](../docs/CAPABILITIES.md)。已经
 完成的批次不在这里建立时间线；具体实现由 Git 保存，只有会影响未来取舍的失败实验才进入
 [FAILED_EXPERIMENTS.md](FAILED_EXPERIMENTS.md) 或 docs/history/。
@@ -41,7 +41,7 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 
 让 Windows Mobile 6 / Windows CE 应用能够按需组合一组稳定、资源有界、可部署的公共 DLL：
 
-- positron_tls.dll、positron_json.dll、positron_http.dll、positron_image.dll 和
+- positron_tls.dll、positron_json.dll、positron_http.dll、positron_image.dll、positron_media.dll 和
   positron_script.dll 提供可独立消费的基础设施；
 - positron_core.dll 提供无窗口依赖的 HTML/CSS/DOM/layout/paint 与表单基础；
 - positron_browser.dll 提供 Browser session、history、资源事务和脚本到 Core 的协调；
@@ -56,7 +56,7 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 
 ### 1. 形成全顶层 DLL 的主干能力覆盖
 
-TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干能力状态。公开入口可以
+TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的主干能力状态。公开入口可以
 分阶段实现，但每个入口必须先确定 owner、固定预算、所有权、错误分类和失败不变性；未实现入口
 只能以稳定的 unsupported 结果 fail closed，不能用假成功填补矩阵。
 
@@ -88,7 +88,7 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
 
 当前短期目标是完成“主干能力覆盖”，而不是按测试编号继续堆叠孤立功能：
 
-1. 维护 `docs/CAPABILITIES.md`，为七个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
+1. 维护 `docs/CAPABILITIES.md`，为八个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
    并为每项能力写明入口、预算、失败边界、fixture、设备/人工门和提升条件。
 2. 审计公开头文件和导出入口，发现缺失的主干类别时只提出有 owner、有预算、有错误分类的
    `Ex`/size-version 边界；本阶段不声明完整现代 Web API，也不改变旧 ABI。
@@ -185,6 +185,27 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 ## 候选队列
 
 ### 准备取舍
+
+#### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
+
+**状态：软解纵切与 WAV PCM WaveOut 已接入，DirectShow source filter 与设备门仍待完成。**
+`positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
+运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
+Debug/Release 链接，并由 custom memory AVIO 驱动有界的 H.264/AAC/MP3/AMR、常见
+MPEG/AVI/MP4/TS/FLV/WAV/裸流软解。下一步在不改变公共 ABI 的前提下，实现不会破坏不可 seek
+输入的 DirectShow callback source filter/native 视频播放生命周期，再用 test_host fixture 和
+WM6 emulator/真实设备验证实际 filter、WaveOut 格式、帧率、音频 underrun 与资源峰值。桌面
+DirectShow 格式表不能替代设备 filter 探测。
+
+- **Owner：** `positron_media.dll` 拥有 codec/container/session/timestamp/borrowed-buffer 语义；
+  宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
+- **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
+  永不进入首版软解；native 与 soft 每 session 只选一个 backend。
+- **最小 fixture：** seek/non-seek、WOULD_BLOCK/EOF/read/seek error、损坏/截断、H.264 Baseline
+  320×240/640×480、AAC-LC/MP3/PCM/AMR-NB、native codec 存在/缺失和 AUTO fallback。
+- **门：** `test_c89ize.py`、`audit_repo.py`、Debug/Release ARMV4I、离线 host I/O/ABI 回归和
+  WM6 emulator/真实设备的无崩溃、时间戳、underrun、峰值内存与关闭耗时证据；发布前单独
+  审查 FFmpeg GPL 组合、AVC 专利和设备 codec/许可证义务。
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 

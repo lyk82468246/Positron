@@ -12,7 +12,7 @@ Positron 的验证分为主机静态检查、VS2008 ARMV4I 构建、自动设备
 
 ## 能力矩阵与未实现入口
 
-七个顶层 DLL 的主干能力状态、预算、错误边界和提升条件统一见
+八个顶层 DLL 的主干能力状态、预算、错误边界和提升条件统一见
 [`CAPABILITIES.md`](CAPABILITIES.md)。矩阵中的“有界待扩展”不是已支持行为；它只表示已有
 相邻公共边界，或已确认值得调查但仍缺少消费者证据。
 
@@ -146,6 +146,22 @@ tests=1-5 7b 13 20,999
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考
   宿主会在这条 `insertFromFile` 连续事务的两个事件之间执行一次有界重排；该调度只属于
   宿主的窗口/layout 接线，不把 file bytes 或 picker 语义复制进公共 DLL。
+
+### Media 回归与设备门
+
+`positron_media.dll` 的离线 fixture 应通过公开 source/output callback 验证：可 seek 与不可 seek
+输入、`WOULD_BLOCK`、EOF、read/seek error、损坏/截断输入、重复 close、非法状态和 16 MiB
+上限。WAV PCM/IMA ADPCM 还要断言 S16LE block 的 sample rate、声道、时间戳、暂停/恢复、seek
+和 EOF；host fixture 不得把媒体实现源文件编译进 `test_host.exe`。
+
+FFmpeg fixture 只使用仓库固定的 3.4.14 ARMV4I archive，覆盖 MP4/H.264/AAC、AVI/MJPEG/MP3、
+WAV/PCM、MPEG-PS/TS、AMR 及选定裸流，并断言 I420、S16LE、profile/layout 拒绝、640×480
+上限、回调停止和关闭后无回调。没有样本时不能把 `pm_probe()` 的桌面识别结果写成设备能力。
+
+设备门在用户手动连接恰好一个 WM6 Emulator/真实 ARMV4I 目标后，使用同一批 staging 验证 WaveOut
+格式接受、软解首帧/音频输出、启动延迟、帧率、丢帧、音频 underrun、峰值内存、时间戳与关闭耗时。
+DirectShow graph 存在只能证明图创建，不足以证明 filter/codec、callback source filter 或 native
+视频 renderer 可用；失败或 RAPI 阻塞必须保留为未验证，不放宽断言。
 
 这些夹具证明的是有界公共合同，不是完整浏览器标准、任意网站兼容性、除 TEST1297 外的完整 live collection、MutationObserver、Range/Selection、通用嵌套 Fragment 或无限 DOM mutation。
 

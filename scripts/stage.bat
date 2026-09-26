@@ -5,7 +5,7 @@ REM
 REM VS2008 Smart Device deploy is broken for this project
 REM (see docs\history\PHASE1.md).
 REM Workaround: use the emulator's shared folder. This script collects
-REM the nine runtime binaries and optional test selection file we need. Optional arg 2
+REM the ten runtime binaries and optional test selection file we need. Optional arg 2
 REM selects an alternate folder.
 
 setlocal
@@ -24,6 +24,7 @@ if not exist "%STAGE%" mkdir "%STAGE%"
 echo Staging %CFG% artifacts to %STAGE% ...
 copy /Y "%ROOT%\positron_tls\bin\%CFG%\positron_tls.dll"   "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_json\bin\%CFG%\positron_json.dll" "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\positron_media\bin\%CFG%\positron_media.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_http\bin\%CFG%\positron_http.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_core\bin\%CFG%\positron_core.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_image\bin\%CFG%\positron_image.dll" "%STAGE%\" || goto :fail

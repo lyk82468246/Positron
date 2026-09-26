@@ -121,14 +121,15 @@ SIP/IME 不因该接线而宣称完成。
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 已实现但有界 | 输入一次性受 16 MiB 上限；软解不要求 source 可 seek；回调 buffer 只在同步回调期间有效；关闭后不再回调；无长期线程/网络 | 正式 Debug/Release ARMV4I 链接、离线 ABI/WAV 回归；仍需完整 I/O 错误、设备生命周期和媒体 fixture |
-| WAV PCM/IMA ADPCM 软件音频 | `pm_audio_block` S16LE callback | 已实现但有界 | 8/16-bit、mono/stereo、固定 2048 frame pump block；损坏 chunk、越界和不支持格式 fail closed | 离线 WAV/非 seek/WOULD_BLOCK/EOF/seek 回归；设备 WaveOut 接线仍需门 |
-| WM6 DirectShow/ACM/WaveOut 原生能力 | 内部 `CLSID_FilterGraphNoThread` 探测；公共头不暴露 COM | 有界待扩展 | 只报告 graph 是否可创建；callback-backed source filter 尚未宣称完成，不把 graph 存在误报为 codec 可用 | 实现 source filter、设备 filter/ACM 枚举和 native playback 生命周期后再提升 |
+| WAV PCM/IMA ADPCM 软件音频 | `pm_audio_block` S16LE callback | 已实现但有界 | 8/16-bit、mono/stereo、固定 2048 frame pump block；损坏 chunk、越界和不支持格式 fail closed；`AUTO` 对 PCM 先尝试设备 WaveOut | 离线 WAV/非 seek/WOULD_BLOCK/EOF/seek 回归；WaveOut 真实设备格式和 underrun 仍需门 |
+| WM6 DirectShow/ACM/WaveOut 原生能力 | 内部 `CLSID_FilterGraphNoThread` 探测、PCM `WaveOut`；公共头不暴露 COM | 有界待扩展 | WaveOut 仅覆盖设备接受的 WAV PCM，仍同步发出借用 PCM block；callback-backed DirectShow source filter、native 视频 renderer 和完整 ACM/filter 枚举尚未宣称完成，不把 graph 存在误报为 codec 可用 | 设备 WaveOut/DirectShow filter 枚举、native PCM 生命周期和未来 source filter 需要独立门 |
 | FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14`、ARMV4I archive 和 `POSITRON_PORT.md` | 已实现但有界 | custom memory AVIO；AVI/MP4/MOV/MPEG-PS/MPEG-TS/FLV/WAV/选定裸流；H.264 Baseline/Main、MPEG-4 Part 2、MPEG-1/2、MJPEG、H.263、AAC-LC、MP2/MP3、AMR-NB/WB、PCM/IMA ADPCM；视频 I420、默认最多 640×480，音频最多双声道；不支持布局 fail closed | Debug/Release ARMV4I 正式链接及静态 smoke；仍需 test_host/设备真实解码、帧率、underrun、峰值内存和关闭门；AVC 专利与 GPL 组合需发布前审查 |
 
 Media 首版的目标边界是 decoder/playback only；不包含编码、DRM、字幕、直播协议、长期工作线程、
 AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件视频。DirectShow
-当前只做 graph 可创建性探测，`PMEDIA_BACKEND_NATIVE` 仍 fail closed；桌面格式表不能替代设备
-运行时 filter/codec 探测。FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载。
+当前只做 graph 可创建性探测，原生播放只落实设备接受的 WAV PCM WaveOut；其他
+`PMEDIA_BACKEND_NATIVE` 输入仍 fail closed。桌面格式表不能替代设备运行时 filter/codec 探测。
+FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载。
 
 ## Script：`positron_script.dll`
 

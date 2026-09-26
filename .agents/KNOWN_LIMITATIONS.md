@@ -11,6 +11,14 @@
 - VS/WMDC/Device Emulator 属于外部专有工具链，仓库不能提供或重现完整安装环境。
 - WM6 的 Smart Minimize 可能保留进程和系统级 DLL 映射；跨 stage 运行存在混用旧 DLL 的风险。
 
+## Media
+
+- `positron_media.dll` 输入上限 16 MiB；FFmpeg ARMV4I 集合及 I420/S16LE、640x480、双声道和
+  fail-closed 边界见 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)。
+- DirectShow 只有 graph 创建探测，缺少 callback source/full graph/native video renderer。WAV PCM
+  WaveOut，Native 非 PCM fail closed，`AUTO` 可回退软解；AV1/HEVC/VP9、软编码、DRM、
+  字幕等也不保证
+
 ## TLS 与 HTTP
 
 - mbed TLS 固定在 2.16.12，已结束上游支持；没有 TLS 1.3，发布前必须审查当前漏洞与信任数据。

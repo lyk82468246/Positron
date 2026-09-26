@@ -1,0 +1,4 @@
+#ifndef FFMPEG_FFVERSION_H
+#define FFMPEG_FFVERSION_H
+#define FFMPEG_VERSION "3.4.14"
+#endif

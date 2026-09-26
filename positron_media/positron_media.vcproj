@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject
+	ProjectType="Visual C++"
+	Version="9.00"
+	Name="positron_media"
+	ProjectGUID="{2F4B1D90-5C86-4A9A-BB90-1A2C3D4E5F60}"
+	RootNamespace="positron_media"
+	Keyword="Win32Proj"
+	TargetFrameworkVersion="196613">
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles />
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="2" CharacterSet="1">
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				AdditionalIncludeDirectories=".;.\ffmpeg_config;..\third_party\ffmpeg-3.4.14;..\compat"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_MEDIA_EXPORTS;PMEDIA_HAS_FFMPEG;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
+				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
+				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCResourceCompilerTool" PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)" Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCLinkerTool" AdditionalDependencies="..\third_party\ffmpeg-3.4.14\positron_ffmpeg_armv4i.lib ole32.lib strmiids.lib" AdditionalOptions=" /subsystem:windowsce,5.02" OutputFile="$(OutDir)\positron_media.dll" LinkIncremental="2" DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true" ProgramDatabaseFile="$(OutDir)\positron_media.pdb" SubSystem="0" StackReserveSize="65536" StackCommitSize="4096" RandomizedBaseAddress="1" DataExecutionPrevention="0" ImportLibrary="$(OutDir)\positron_media.lib" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" AdditionalFiles="" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="2" CharacterSet="1">
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2" FavorSizeOrSpeed="2"
+				AdditionalIncludeDirectories=".;.\ffmpeg_config;..\third_party\ffmpeg-3.4.14;..\compat"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_MEDIA_EXPORTS;PMEDIA_HAS_FFMPEG;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
+				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCResourceCompilerTool" PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)" Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCLinkerTool" AdditionalDependencies="..\third_party\ffmpeg-3.4.14\positron_ffmpeg_armv4i.lib ole32.lib strmiids.lib" AdditionalOptions=" /subsystem:windowsce,5.02" OutputFile="$(OutDir)\positron_media.dll" LinkIncremental="1" DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true" ProgramDatabaseFile="$(OutDir)\positron_media.pdb" SubSystem="0" StackReserveSize="65536" StackCommitSize="4096" OptimizeReferences="2" EnableCOMDATFolding="2" RandomizedBaseAddress="1" DataExecutionPrevention="0" ImportLibrary="$(OutDir)\positron_media.lib" />
+			<DeploymentTool ForceDirty="-1" RemoteDirectory="" RegisterOutput="0" AdditionalFiles="" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References />
+	<Files>
+		<File RelativePath=".\positron_media.c" />
+		<File RelativePath=".\positron_media_ffmpeg.c" />
+		<File RelativePath=".\pmedia_ffmpeg_runtime.c" />
+		<File RelativePath=".\pmedia_waveout.c" />
+		<File RelativePath=".\positron_media_ffmpeg.h" />
+		<File RelativePath=".\pmedia_waveout.h" />
+		<File RelativePath=".\positron_media_system.cpp">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"><Tool Name="VCCLCompilerTool" CompileAs="2" /></FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"><Tool Name="VCCLCompilerTool" CompileAs="2" /></FileConfiguration>
+		</File>
+		<File RelativePath=".\positron_media.h" />
+	</Files>
+	<Globals />
+</VisualStudioProject>
