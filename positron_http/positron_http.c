@@ -572,82 +572,217 @@ static int phttp_trim_reference(const char* source, char* destination,
     return 0;
 }
 
-static int phttp_document_url(const char* host, int port, const char* path,
-                              char* url, int capacity)
+static const char* phttp_scheme_name(int scheme)
 {
-    const char* scheme;
+    return scheme == PHTTP_SCHEME_HTTP ? "http" : "https";
+}
+
+static int phttp_default_port(int scheme)
+{
+    return scheme == PHTTP_SCHEME_HTTP ? 80 : 443;
+}
+
+static int phttp_document_url(int scheme, const char* host, int port,
+                              const char* path, char* url, int capacity)
+{
     int default_port;
     int n;
 
-    if (host == NULL || host[0] == '\0' || path == NULL || path[0] != '/' ||
-            url == NULL || capacity <= 1 || port <= 0 || port > 65535) {
+    if ((scheme != PHTTP_SCHEME_HTTP && scheme != PHTTP_SCHEME_HTTPS) ||
+            host == NULL || host[0] == '\0' || path == NULL ||
+            path[0] != '/' || url == NULL || capacity <= 1 || port <= 0 ||
+            port > 65535) {
         return 1;
     }
-    scheme = (port == 80) ? "http" : "https";
-    default_port = (port == 80 || port == 443);
+    default_port = port == phttp_default_port(scheme);
     if (default_port) {
-        n = _snprintf(url, capacity - 1, "%s://%s%s", scheme, host, path);
+        n = _snprintf(url, capacity - 1, "%s://%s%s",
+                phttp_scheme_name(scheme), host, path);
     } else {
-        n = _snprintf(url, capacity - 1, "%s://%s:%d%s", scheme, host,
-                port, path);
+        n = _snprintf(url, capacity - 1, "%s://%s:%d%s",
+                phttp_scheme_name(scheme), host, port, path);
     }
     url[capacity - 1] = '\0';
     return n < 0 || n >= capacity - 1 ? 1 : 0;
 }
 
-static int phttp_copy_resolved_path(const char* source, char* path,
-                                    int capacity)
+static int phttp_normalize_path(const char* source, char* path, int capacity)
 {
+    int segment_start[128];
+    int segment_count;
+    int segment_length;
     int n;
+    int ended_with_slash;
+    const char* p;
+    const char* segment;
 
-    if (source == NULL || path == NULL || capacity <= 1) {
+    if (source == NULL || path == NULL || capacity <= 1 || source[0] != '/') {
         return 1;
     }
-    n = 0;
-    if (source[0] == '?') {
-        path[n++] = '/';
-    } else if (source[0] != '/') {
-        return 1;
+    path[0] = '\0';
+    n = 1;
+    path[0] = '/';
+    segment_count = 0;
+    ended_with_slash = 1;
+    p = source + 1;
+    while (*p != '\0' && *p != '?' && *p != '#') {
+        segment = p;
+        segment_length = 0;
+        while (*p != '\0' && *p != '/' && *p != '?' && *p != '#') {
+            if (*p == '\r' || *p == '\n' ||
+                    (unsigned char)*p < 0x20) {
+                path[0] = '\0';
+                return 1;
+            }
+            p++;
+            segment_length++;
+        }
+        if (segment_length == 0) {
+            ended_with_slash = 1;
+        } else if (segment_length == 1 && segment[0] == '.') {
+            ended_with_slash = 0;
+        } else if (segment_length == 2 && segment[0] == '.' &&
+                segment[1] == '.') {
+            if (segment_count > 0) {
+                n = segment_start[segment_count - 1];
+                segment_count--;
+            }
+            ended_with_slash = 0;
+        } else {
+            if (segment_count >=
+                    (int)(sizeof(segment_start) / sizeof(segment_start[0]))) {
+                path[0] = '\0';
+                return 1;
+            }
+            if (n > 1 && path[n - 1] != '/') {
+                if (n >= capacity - 1) {
+                    path[0] = '\0';
+                    return 1;
+                }
+                path[n++] = '/';
+            }
+            segment_start[segment_count++] = n;
+            if (n + segment_length >= capacity) {
+                path[0] = '\0';
+                return 1;
+            }
+            memcpy(path + n, segment, (size_t)segment_length);
+            n += segment_length;
+            ended_with_slash = 0;
+        }
+        if (*p == '/') {
+            p++;
+            ended_with_slash = 1;
+        }
     }
-    while (*source != '\0' && *source != '#') {
-        if (n >= capacity - 1 || *source == '\r' || *source == '\n') {
+    if (ended_with_slash && n > 1) {
+        if (n >= capacity - 1) {
             path[0] = '\0';
             return 1;
         }
-        path[n++] = *source++;
-    }
-    if (n == 0) {
         path[n++] = '/';
+    }
+    if (*p == '?') {
+        while (*p != '\0' && *p != '#') {
+            if (*p == '\r' || *p == '\n' ||
+                    (unsigned char)*p < 0x20 || n >= capacity - 1) {
+                path[0] = '\0';
+                return 1;
+            }
+            path[n++] = *p++;
+        }
     }
     path[n] = '\0';
     return 0;
 }
 
+static int phttp_merge_reference_path(const char* base_path,
+                                      const char* reference, char* output,
+                                      int capacity)
+{
+    const char* query;
+    const char* slash;
+    int base_length;
+    int prefix_length;
+    int reference_length;
+    int n;
+
+    if (base_path == NULL || base_path[0] != '/' || reference == NULL ||
+            output == NULL || capacity <= 1) {
+        return 1;
+    }
+    query = strchr(base_path, '?');
+    base_length = query == NULL ? (int)strlen(base_path) :
+            (int)(query - base_path);
+    if (reference[0] == '\0' || reference[0] == '#') {
+        if (base_length + (query == NULL ? 0 : (int)strlen(query)) >=
+                capacity) {
+            return 1;
+        }
+        cstrcpy(output, capacity, base_path);
+        return 0;
+    }
+    if (reference[0] == '?') {
+        reference_length = (int)strlen(reference);
+        if (base_length + reference_length >= capacity) {
+            return 1;
+        }
+        memcpy(output, base_path, (size_t)base_length);
+        memcpy(output + base_length, reference, (size_t)reference_length);
+        output[base_length + reference_length] = '\0';
+        return 0;
+    }
+    if (reference[0] == '/') {
+        if ((int)strlen(reference) >= capacity) {
+            return 1;
+        }
+        cstrcpy(output, capacity, reference);
+        return 0;
+    }
+    slash = base_path + base_length;
+    while (slash > base_path && slash[-1] != '/') {
+        slash--;
+    }
+    prefix_length = (int)(slash - base_path);
+    reference_length = (int)strlen(reference);
+    n = prefix_length + reference_length;
+    if (n >= capacity) {
+        return 1;
+    }
+    memcpy(output, base_path, (size_t)prefix_length);
+    memcpy(output + prefix_length, reference, (size_t)reference_length);
+    output[n] = '\0';
+    return 0;
+}
+
 static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
-                                    char* path, int pathcap, int* out_port)
+                                    char* path, int pathcap, int* out_port,
+                                    int* out_scheme)
 {
     const char* p;
     const char* authority_end;
     const char* host_end;
     const char* colon;
     const char* q;
-    int is_http;
+    int scheme;
     int port;
     int digits;
     int n;
 
     if (url == NULL || host == NULL || hostcap <= 1 || path == NULL ||
-            pathcap <= 1 || out_port == NULL) {
+            pathcap <= 1 || out_port == NULL || out_scheme == NULL) {
         return 1;
     }
     host[0] = '\0';
     path[0] = '\0';
+    *out_port = 0;
+    *out_scheme = 0;
     if (phttp_starts_with_ci(url, "http://")) {
         p = url + 7;
-        is_http = 1;
+        scheme = PHTTP_SCHEME_HTTP;
     } else if (phttp_starts_with_ci(url, "https://")) {
         p = url + 8;
-        is_http = 0;
+        scheme = PHTTP_SCHEME_HTTPS;
     } else {
         return 1;
     }
@@ -683,7 +818,7 @@ static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
     }
     memcpy(host, p, (size_t)n);
     host[n] = '\0';
-    port = is_http ? 80 : 443;
+    port = phttp_default_port(scheme);
     if (colon != NULL) {
         port = 0;
         digits = 0;
@@ -693,6 +828,7 @@ static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
                 host[0] = '\0';
                 path[0] = '\0';
                 *out_port = 0;
+                *out_scheme = 0;
                 return 1;
             }
             port = port * 10 + (*q - '0');
@@ -702,17 +838,144 @@ static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
             host[0] = '\0';
             path[0] = '\0';
             *out_port = 0;
+            *out_scheme = 0;
             return 1;
         }
     }
-    if (phttp_copy_resolved_path(authority_end, path, pathcap) != 0) {
+    if (phttp_normalize_path(authority_end, path, pathcap) != 0) {
         host[0] = '\0';
         path[0] = '\0';
         *out_port = 0;
+        *out_scheme = 0;
         return 1;
     }
     *out_port = port;
+    *out_scheme = scheme;
     return 0;
+}
+
+/* Turn a URL-like request into an absolute URL.  An omitted scheme is a
+ * deliberate HTTPS default; callers that need plaintext must say http://. */
+static int phttp_prepare_absolute_url(const char* source, char* output,
+                                      int capacity)
+{
+    char trimmed[2048];
+    int n;
+
+    if (source == NULL || output == NULL || capacity <= 1 ||
+            phttp_trim_reference(source, trimmed, sizeof(trimmed)) != 0 ||
+            trimmed[0] == '\0') {
+        return 1;
+    }
+    if (phttp_starts_with_ci(trimmed, "http://") ||
+            phttp_starts_with_ci(trimmed, "https://")) {
+        n = _snprintf(output, capacity - 1, "%s", trimmed);
+    } else if (trimmed[0] == '/' && trimmed[1] == '/') {
+        n = _snprintf(output, capacity - 1, "https:%s", trimmed);
+    } else {
+        n = _snprintf(output, capacity - 1, "https://%s", trimmed);
+    }
+    output[capacity - 1] = '\0';
+    return n < 0 || n >= capacity - 1 ? 1 : 0;
+}
+
+static int phttp_reference_has_scheme(const char* reference)
+{
+    const char* p;
+
+    if (reference == NULL ||
+            !((reference[0] >= 'A' && reference[0] <= 'Z') ||
+            (reference[0] >= 'a' && reference[0] <= 'z'))) {
+        return 0;
+    }
+    p = reference + 1;
+    while ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+            (*p >= '0' && *p <= '9') || *p == '+' || *p == '-' ||
+            *p == '.') {
+        p++;
+    }
+    return *p == ':';
+}
+
+/* Resolve a URL reference and return a canonical absolute URL. */
+static int phttp_resolve_url_text(const char* base_url,
+                                  const char* reference, char* out_url,
+                                  int out_url_capacity)
+{
+    char ref[2048];
+    char base[2048];
+    char combined[2048];
+    char base_host[256];
+    char base_path[1024];
+    char merged_path[2048];
+    char normalized_path[1024];
+    char host[256];
+    char path[1024];
+    int base_port;
+    int base_scheme;
+    int port;
+    int scheme;
+    int n;
+
+    if (reference == NULL || out_url == NULL || out_url_capacity <= 1 ||
+            phttp_trim_reference(reference, ref, sizeof(ref)) != 0) {
+        return 1;
+    }
+    out_url[0] = '\0';
+    if (phttp_reference_has_scheme(ref) &&
+            !phttp_starts_with_ci(ref, "http://") &&
+            !phttp_starts_with_ci(ref, "https://")) {
+        return 1;
+    }
+    if (base_url != NULL && base_url[0] != '\0') {
+        if (phttp_prepare_absolute_url(base_url, base, sizeof(base)) != 0) {
+            return 1;
+        }
+        if (phttp_parse_resolved_url(base, base_host, sizeof(base_host),
+                base_path, sizeof(base_path), &base_port, &base_scheme) != 0) {
+            return 1;
+        }
+        if (phttp_starts_with_ci(ref, "http://") ||
+                phttp_starts_with_ci(ref, "https://")) {
+            cstrcpy(combined, sizeof(combined), ref);
+            if (phttp_parse_resolved_url(combined, host, sizeof(host), path,
+                    sizeof(path), &port, &scheme) != 0) {
+                return 1;
+            }
+            return phttp_document_url(scheme, host, port, path, out_url,
+                    out_url_capacity);
+        }
+        if (ref[0] == '/' && ref[1] == '/') {
+            n = _snprintf(combined, sizeof(combined) - 1, "%s:%s",
+                    phttp_scheme_name(base_scheme), ref);
+            combined[sizeof(combined) - 1] = '\0';
+            if (n < 0 || n >= (int)sizeof(combined) - 1 ||
+                    phttp_parse_resolved_url(combined, host, sizeof(host),
+                    path, sizeof(path), &port, &scheme) != 0) {
+                return 1;
+            }
+            return phttp_document_url(scheme, host, port, path, out_url,
+                    out_url_capacity);
+        }
+        if (phttp_merge_reference_path(base_path, ref, merged_path,
+                sizeof(merged_path)) != 0 ||
+                phttp_normalize_path(merged_path, normalized_path,
+                sizeof(normalized_path)) != 0) {
+            return 1;
+        }
+        return phttp_document_url(base_scheme, base_host, base_port,
+                normalized_path, out_url, out_url_capacity);
+    } else {
+        if (phttp_prepare_absolute_url(ref, combined, sizeof(combined)) != 0) {
+            return 1;
+        }
+        if (phttp_parse_resolved_url(combined, host, sizeof(host), path,
+                sizeof(path), &port, &scheme) != 0) {
+            return 1;
+        }
+        return phttp_document_url(scheme, host, port, path, out_url,
+                out_url_capacity);
+    }
 }
 
 PHTTP_API int PHttp_ResolveReference(const char* base_host, int base_port,
@@ -723,8 +986,10 @@ PHTTP_API int PHttp_ResolveReference(const char* base_host, int base_port,
 {
     char ref[2048];
     char base_url[2048];
-    char combined[2048];
-    DWORD combined_length;
+    char resolved[2048];
+    int base_scheme;
+    int effective_base_port;
+    int scheme;
 
     if (out_host == NULL || out_host_capacity <= 1 || out_path == NULL ||
             out_path_capacity <= 1 || out_port == NULL || reference == NULL) {
@@ -737,8 +1002,15 @@ PHTTP_API int PHttp_ResolveReference(const char* base_host, int base_port,
         return 1;
     }
     if (base_host != NULL && base_host[0] != '\0' && base_path != NULL) {
-        if (phttp_document_url(base_host, base_port, base_path, base_url,
-                sizeof(base_url)) != 0) {
+        effective_base_port = base_port == 0 ? 443 : base_port;
+        base_scheme = effective_base_port == 80 ? PHTTP_SCHEME_HTTP :
+                PHTTP_SCHEME_HTTPS;
+        if (phttp_document_url(base_scheme, base_host, effective_base_port,
+                base_path, base_url, sizeof(base_url)) != 0) {
+            return 1;
+        }
+        if (phttp_resolve_url_text(base_url, ref, resolved,
+                sizeof(resolved)) != 0) {
             return 1;
         }
     } else {
@@ -747,38 +1019,43 @@ PHTTP_API int PHttp_ResolveReference(const char* base_host, int base_port,
                 (ref[0] == '/' && ref[1] == '/'))) {
             return 1;
         }
-        cstrcpy(base_url, sizeof(base_url), "https://positron.invalid/");
-    }
-    if (ref[0] == '\0') {
-        cstrcpy(combined, sizeof(combined), base_url);
-    } else {
-        combined_length = (DWORD)sizeof(combined);
-        if (!InternetCombineUrlA(base_url, ref, combined, &combined_length,
-                ICU_NO_ENCODE) || combined_length == 0 ||
-                combined_length >= (DWORD)sizeof(combined)) {
+        if (phttp_resolve_url_text(NULL, ref, resolved,
+                sizeof(resolved)) != 0) {
             return 1;
         }
-        combined[sizeof(combined) - 1] = '\0';
     }
-    return phttp_parse_resolved_url(combined, out_host, out_host_capacity,
-            out_path, out_path_capacity, out_port);
+    return phttp_parse_resolved_url(resolved, out_host, out_host_capacity,
+            out_path, out_path_capacity, out_port, &scheme);
 }
 
-/* Resolve a counted Location header against the current request. */
-static int resolve_redirect(const char* loc, size_t loclen,
-                            const char* cur_host, const char* cur_path,
-                            int cur_port, char* out_host, int hostcap,
-                            char* out_path, int pathcap, int* out_port)
+PHTTP_API int PHttp_ResolveReferenceUrl(const char* base_url,
+                                         const char* reference,
+                                         char* out_url,
+                                         int out_url_capacity)
+{
+    if (out_url == NULL || out_url_capacity <= 1 || reference == NULL) {
+        return 1;
+    }
+    out_url[0] = '\0';
+    return phttp_resolve_url_text(base_url, reference, out_url,
+            out_url_capacity);
+}
+
+/* Resolve a counted Location header against the current absolute URL. */
+static int resolve_redirect_url(const char* loc, size_t loclen,
+                               const char* cur_url, char* out_url,
+                               int out_capacity)
 {
     char location[2048];
 
-    if (loc == NULL || loclen >= sizeof(location)) {
+    if (loc == NULL || cur_url == NULL || out_url == NULL ||
+            loclen >= sizeof(location)) {
         return 0;
     }
     memcpy(location, loc, loclen);
     location[loclen] = '\0';
-    return PHttp_ResolveReference(cur_host, cur_port, cur_path, location,
-            out_host, hostcap, out_path, pathcap, out_port) == 0;
+    return PHttp_ResolveReferenceUrl(cur_url, location, out_url,
+            out_capacity) == 0;
 }
 
 /* ---- plaintext HTTP via WinInet (WM6 built-in) ------------------- */
@@ -929,22 +1206,24 @@ wdone:
 
 /* ---- worker ------------------------------------------------------ */
 
-static PHttpResponse* http_request(const char* method, const char* host,
-                                   int port, const char* path,
-                                   const char** headers,
-                                   const char* body, int body_len,
-                                   PHttpProgressCallback progress,
-                                   void* user_data)
+static PHttpResponse* http_request_url(const char* method, const char* url,
+                                       const char** headers,
+                                       const char* body, int body_len,
+                                       PHttpProgressCallback progress,
+                                       void* user_data)
 {
     PHttpResponse* resp;
     HANDLE         conn;
     char*          request;
     bytebuf        recvbuf;
     bytebuf        bodybuf;
+    char           cur_url[2048];
     int            body_start;
     int            req_len;
     int            wrote;
     int            cl;
+    int            redirects;
+    int            follow;
 
     resp = resp_new();
     if (resp == NULL) {
@@ -954,214 +1233,198 @@ static PHttpResponse* http_request(const char* method, const char* host,
     request = NULL;
     recvbuf.data = NULL;
     bodybuf.data = NULL;
+    redirects = 0;
+    follow = (method != NULL && strcmp(method, "GET") == 0) ? 1 : 0;
 
     if (!g_initialized) {
         resp_set_error(resp, "PHttp_Init not called");
         return resp;
     }
-    if (host == NULL || path == NULL || method == NULL) {
+    if (method == NULL || url == NULL) {
         resp_set_error(resp, "invalid arguments");
         return resp;
     }
     if (body != NULL && body_len < 0) {
         body_len = (int)strlen(body);
     }
+    if (phttp_resolve_url_text(NULL, url, cur_url, sizeof(cur_url)) != 0) {
+        resp_set_error(resp, "invalid HTTP(S) URL");
+        return resp;
+    }
+    if (bb_init(&bodybuf) != 0) {
+        resp_set_error(resp, "OOM body buffer");
+        return resp;
+    }
 
-    {
-        char cur_host[256];
-        char cur_path[1024];
-        int  cur_port = port;
-        int  redirects = 0;
-        int  follow = (strcmp(method, "GET") == 0) ? 1 : 0;
+    for (;;) {
+        char        cur_host[256];
+        char        cur_path[1024];
+        char        location[1024];
+        char        next_url[2048];
+        const char* loc;
+        size_t      loclen;
+        int         cur_port;
+        int         cur_scheme;
+        int         status;
 
-        cstrcpy(cur_host, sizeof(cur_host), host);
-        cstrcpy(cur_path, sizeof(cur_path), path);
-
-        if (bb_init(&bodybuf) != 0) {
-            resp_set_error(resp, "OOM body buffer");
+        cur_host[0] = '\0';
+        cur_path[0] = '\0';
+        location[0] = '\0';
+        next_url[0] = '\0';
+        loc = NULL;
+        loclen = 0;
+        if (phttp_parse_resolved_url(cur_url, cur_host, sizeof(cur_host),
+                cur_path, sizeof(cur_path), &cur_port, &cur_scheme) != 0) {
+            resp_set_error(resp, "invalid resolved URL");
             goto done;
         }
 
-        for (;;) {
-            char        location[1024];
-            const char* loc = NULL;
-            size_t      loclen = 0;
-            int         status;
-
-            location[0] = '\0';
-
-            /* Transport by scheme/port: port 80 = plaintext http via WinInet
-             * (WM6 built-in); anything else = TLS via mbedTLS. */
-            if (cur_port == 80) {
-                if (wininet_fetch(method, cur_host, cur_port, cur_path,
-                        headers, body, body_len, &status,
-                        location, sizeof(location), &bodybuf, resp,
-                        progress, user_data) != 0) {
-                    goto done;   /* error already set */
-                }
-                resp->status_code = status;
-
-                if (follow && is_redirect_code(status) &&
-                        redirects < MAX_REDIRECTS && location[0] != '\0') {
-                    char nhost[256];
-                    char npath[1024];
-                    int  nport;
-                    if (resolve_redirect(location, strlen(location),
-                            cur_host, cur_path, cur_port,
-                            nhost, sizeof(nhost), npath, sizeof(npath),
-                            &nport)) {
-                        redirects++;
-                        cstrcpy(cur_host, sizeof(cur_host), nhost);
-                        cstrcpy(cur_path, sizeof(cur_path), npath);
-                        cur_port = nport;
-                        bb_free(&bodybuf);   /* discard the 3xx body */
-                        if (bb_init(&bodybuf) != 0) {
-                            resp_set_error(resp, "OOM body buffer");
-                            goto done;
-                        }
-                        continue;
-                    }
-                }
-                break;   /* final response; body already in bodybuf */
-            }
-
-            /* ---- TLS https:// via mbedTLS ---- */
-            request = build_request(method, cur_host, cur_path, headers,
-                                    body, body_len);
-            if (request == NULL) {
-                resp_set_error(resp, "OOM building request");
+        if (cur_scheme == PHTTP_SCHEME_HTTP) {
+            if (wininet_fetch(method, cur_host, cur_port, cur_path,
+                    headers, body, body_len, &status, location,
+                    sizeof(location), &bodybuf, resp, progress,
+                    user_data) != 0) {
                 goto done;
             }
-
-            conn = g_insecure ? PTls_Connect(cur_host, cur_port)
-                              : PTls_ConnectVerified(cur_host, cur_port);
-            if (conn == NULL) {
-                char eb[320];
-                _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
-                          cur_host, cur_port, redirects, PTls_LastError());
-                eb[sizeof(eb) - 1] = '\0';
-                resp_set_error(resp, eb);
-                goto done;
-            }
-
-            req_len = (int)strlen(request);
-            wrote = PTls_Write(conn, request, req_len);
-            if (wrote != req_len) {
-                resp_set_error(resp, "PTls_Write incomplete");
-                goto done;
-            }
-
-            if (bb_init(&recvbuf) != 0) {
-                resp_set_error(resp, "OOM recv buffer");
-                goto done;
-            }
-
-            body_start = read_until_headers(conn, &recvbuf);
-            if (body_start <= 0) {
-                resp_set_error(resp, "header block read failed");
-                goto done;
-            }
-
-            status = parse_status(recvbuf.data, (size_t)body_start);
             resp->status_code = status;
-
-            /* Follow a 3xx Location (GET only) before reading the body. */
             if (follow && is_redirect_code(status) &&
-                    redirects < MAX_REDIRECTS) {
-                char nhost[256];
-                char npath[1024];
-                int  nport;
-
-                loc = find_header(recvbuf.data, (size_t)body_start,
-                                  "Location", &loclen);
-                if (loc != NULL && loclen > 0 &&
-                        resolve_redirect(loc, loclen, cur_host, cur_path,
-                                cur_port, nhost, sizeof(nhost),
-                                npath, sizeof(npath), &nport)) {
-                    redirects++;
-                    cstrcpy(cur_host, sizeof(cur_host), nhost);
-                    cstrcpy(cur_path, sizeof(cur_path), npath);
-                    cur_port = nport;
-                    HeapFree(GetProcessHeap(), 0, request);
-                    request = NULL;
-                    bb_free(&recvbuf);
-                    recvbuf.data = NULL;
-                    PTls_Close(conn);
-                    conn = NULL;
-                    continue;
+                    redirects < MAX_REDIRECTS && location[0] != '\0' &&
+                    resolve_redirect_url(location, strlen(location), cur_url,
+                    next_url, sizeof(next_url))) {
+                redirects++;
+                cstrcpy(cur_url, sizeof(cur_url), next_url);
+                bb_free(&bodybuf);
+                if (bb_init(&bodybuf) != 0) {
+                    resp_set_error(resp, "OOM body buffer");
+                    goto done;
                 }
-                /* No usable Location: return the 3xx response as-is. */
+                continue;
             }
+            break;   /* final response; WinInet already read the body */
+        }
 
-            /* Final TLS response: read the body into bodybuf. */
-            if (is_chunked(recvbuf.data, (size_t)body_start)) {
-                const char* prefix = recvbuf.data + body_start;
-                int prefix_len = (int)recvbuf.len - body_start;
-                report_progress(progress, user_data, 0, -1);
-                if (decode_chunked(conn, prefix, prefix_len, &bodybuf,
-                        progress, user_data) != 0) {
-                    resp_set_error(resp, "chunked decode failed");
-                    /* still keep partial body */
+        /* ---- TLS https:// via mbedTLS ---- */
+        request = build_request(method, cur_host, cur_path, headers,
+                                body, body_len);
+        if (request == NULL) {
+            resp_set_error(resp, "OOM building request");
+            goto done;
+        }
+        conn = g_insecure ? PTls_Connect(cur_host, cur_port)
+                          : PTls_ConnectVerified(cur_host, cur_port);
+        if (conn == NULL) {
+            char eb[320];
+            _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
+                      cur_host, cur_port, redirects, PTls_LastError());
+            eb[sizeof(eb) - 1] = '\0';
+            resp_set_error(resp, eb);
+            goto done;
+        }
+        req_len = (int)strlen(request);
+        wrote = PTls_Write(conn, request, req_len);
+        if (wrote != req_len) {
+            resp_set_error(resp, "PTls_Write incomplete");
+            goto done;
+        }
+        if (bb_init(&recvbuf) != 0) {
+            resp_set_error(resp, "OOM recv buffer");
+            goto done;
+        }
+        body_start = read_until_headers(conn, &recvbuf);
+        if (body_start <= 0) {
+            resp_set_error(resp, "header block read failed");
+            goto done;
+        }
+        status = parse_status(recvbuf.data, (size_t)body_start);
+        resp->status_code = status;
+
+        /* Follow a 3xx Location (GET only) before reading the body. */
+        if (follow && is_redirect_code(status) &&
+                redirects < MAX_REDIRECTS) {
+            loc = find_header(recvbuf.data, (size_t)body_start,
+                              "Location", &loclen);
+            if (loc != NULL && loclen > 0 &&
+                    resolve_redirect_url(loc, loclen, cur_url, next_url,
+                    sizeof(next_url))) {
+                redirects++;
+                cstrcpy(cur_url, sizeof(cur_url), next_url);
+                HeapFree(GetProcessHeap(), 0, request);
+                request = NULL;
+                bb_free(&recvbuf);
+                recvbuf.data = NULL;
+                PTls_Close(conn);
+                conn = NULL;
+                continue;
+            }
+            /* No usable Location: return the 3xx response as-is. */
+        }
+
+        /* Final TLS response: read the body into bodybuf. */
+        if (is_chunked(recvbuf.data, (size_t)body_start)) {
+            const char* prefix = recvbuf.data + body_start;
+            int prefix_len = (int)recvbuf.len - body_start;
+            report_progress(progress, user_data, 0, -1);
+            if (decode_chunked(conn, prefix, prefix_len, &bodybuf,
+                    progress, user_data) != 0) {
+                resp_set_error(resp, "chunked decode failed");
+            }
+        } else {
+            cl = parse_content_length(recvbuf.data, (size_t)body_start);
+            report_progress(progress, user_data, 0, cl);
+            if (recvbuf.len > (size_t)body_start) {
+                size_t prefix_len;
+
+                prefix_len = recvbuf.len - (size_t)body_start;
+                if (cl >= 0 && prefix_len > (size_t)cl) {
+                    prefix_len = (size_t)cl;
                 }
-            } else {
-                cl = parse_content_length(recvbuf.data, (size_t)body_start);
-                report_progress(progress, user_data, 0, cl);
-                if (recvbuf.len > (size_t)body_start) {
-                    size_t prefix_len;
-
-                    prefix_len = recvbuf.len - (size_t)body_start;
-                    if (cl >= 0 && prefix_len > (size_t)cl) {
-                        prefix_len = (size_t)cl;
+                if (bb_append(&bodybuf, recvbuf.data + body_start,
+                        prefix_len) != 0) {
+                    resp_set_error(resp, "response body too large");
+                    goto done;
+                }
+                report_progress(progress, user_data,
+                        (int)bodybuf.len, cl);
+            }
+            if (cl >= 0) {
+                char tmp[2048];
+                int  remaining = cl - (int)bodybuf.len;
+                int  got;
+                int  want;
+                while (remaining > 0) {
+                    want = remaining < (int)sizeof(tmp)
+                           ? remaining : (int)sizeof(tmp);
+                    got = PTls_Read(conn, tmp, want);
+                    if (got <= 0) {
+                        break;
                     }
-                    if (bb_append(&bodybuf, recvbuf.data + body_start,
-                            prefix_len) != 0) {
-                        resp_set_error(resp, "response body too large");
-                        goto done;
+                    if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
+                        break;
                     }
+                    remaining -= got;
                     report_progress(progress, user_data,
                             (int)bodybuf.len, cl);
                 }
-                if (cl >= 0) {
-                    char tmp[2048];
-                    int  remaining = cl - (int)bodybuf.len;
-                    int  got;
-                    int  want;
-                    while (remaining > 0) {
-                        want = remaining < (int)sizeof(tmp)
-                               ? remaining : (int)sizeof(tmp);
-                        got = PTls_Read(conn, tmp, want);
-                        if (got <= 0) {
-                            break;
-                        }
-                        if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
-                            break;
-                        }
-                        remaining -= got;
-                        report_progress(progress, user_data,
-                                (int)bodybuf.len, cl);
+            } else {
+                char tmp[2048];
+                int  got;
+                while (1) {
+                    got = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                    if (got <= 0) {
+                        break;
                     }
-                } else {
-                    /* No CL, not chunked: read until close. */
-                    char tmp[2048];
-                    int  got;
-                    while (1) {
-                        got = PTls_Read(conn, tmp, (int)sizeof(tmp));
-                        if (got <= 0) {
-                            break;
-                        }
-                        if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
-                            break;
-                        }
-                        report_progress(progress, user_data,
-                                (int)bodybuf.len, -1);
-                        if (bodybuf.len >= MAX_RESP_BODY) {
-                            break;
-                        }
+                    if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
+                        break;
+                    }
+                    report_progress(progress, user_data,
+                            (int)bodybuf.len, -1);
+                    if (bodybuf.len >= MAX_RESP_BODY) {
+                        break;
                     }
                 }
             }
-            break;   /* final TLS response complete */
         }
+        break;   /* final TLS response complete */
     }
 
     /* transfer body ownership into response */
@@ -1185,6 +1448,36 @@ done:
     return resp;
 }
 
+/* Legacy host/port entry point.  It retains the historical port mapping;
+ * callers that need an explicit non-default plaintext port should use the
+ * URL-aware entry point so the scheme cannot be lost. */
+static PHttpResponse* http_request(const char* method, const char* host,
+                                   int port, const char* path,
+                                   const char** headers,
+                                   const char* body, int body_len,
+                                   PHttpProgressCallback progress,
+                                   void* user_data)
+{
+    char url[2048];
+    int scheme;
+    PHttpResponse* resp;
+
+    if (port == 0) {
+        port = 443;
+    }
+    scheme = port == 80 ? PHTTP_SCHEME_HTTP : PHTTP_SCHEME_HTTPS;
+    if (phttp_document_url(scheme, host, port, path, url,
+            sizeof(url)) != 0) {
+        resp = resp_new();
+        if (resp != NULL) {
+            resp_set_error(resp, "invalid host/port/path");
+        }
+        return resp;
+    }
+    return http_request_url(method, url, headers, body, body_len,
+            progress, user_data);
+}
+
 /* ------------------------------------------------------------------- */
 /* Public API                                                           */
 /* ------------------------------------------------------------------- */
@@ -1206,6 +1499,21 @@ PHTTP_API PHttpResponse* PHttp_GetEx(const char* host, int port,
                         progress, user_data);
 }
 
+PHTTP_API PHttpResponse* PHttp_GetUrl(const char* url,
+                                      const char** headers)
+{
+    return PHttp_GetUrlEx(url, headers, NULL, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_GetUrlEx(const char* url,
+                                        const char** headers,
+                                        PHttpProgressCallback progress,
+                                        void* user_data)
+{
+    return http_request_url("GET", url, headers, NULL, 0,
+            progress, user_data);
+}
+
 PHTTP_API PHttpResponse* PHttp_Post(const char* host, int port,
                                     const char* path,
                                     const char** headers,
@@ -1224,6 +1532,23 @@ PHTTP_API PHttpResponse* PHttp_PostEx(const char* host, int port,
 {
     return http_request("POST", host, port, path, headers, body, body_len,
                         progress, user_data);
+}
+
+PHTTP_API PHttpResponse* PHttp_PostUrl(const char* url,
+                                       const char** headers,
+                                       const char* body, int body_len)
+{
+    return PHttp_PostUrlEx(url, headers, body, body_len, NULL, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_PostUrlEx(const char* url,
+                                         const char** headers,
+                                         const char* body, int body_len,
+                                         PHttpProgressCallback progress,
+                                         void* user_data)
+{
+    return http_request_url("POST", url, headers, body, body_len,
+            progress, user_data);
 }
 
 PHTTP_API void PHttp_FreeResponse(PHttpResponse* resp)

@@ -4,7 +4,7 @@
 
 ## 项目使命
 
-Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON、HTTP、图像、脚本、渲染与浏览器会话 DLL，并提供正式的 `positron.exe` 独立应用消费者。公共边界保持 C ABI、UTF-8、opaque handle 和显式所有权；`test_host.exe` 只是回归宿主与示例消费者。
+Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON、HTTP、图像、媒体、脚本、渲染与浏览器会话 DLL，并提供正式的 `positron.exe` 独立应用消费者。公共边界保持 C ABI、UTF-8、opaque handle 和显式所有权；`test_host.exe` 只是回归宿主与示例消费者。
 
 ## 当前 Git 与工作区
 
@@ -76,22 +76,28 @@ Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表
 单行文本/密码框 implicit Enter、首个无效控件的可取消 invalid 事件/滚动/原生聚焦反馈、
 脚本 `form.reset()`、`form.requestSubmit()` 与 direct `form.submit()`，并接入 native file picker、
 anchor target/rel、details/summary 和 label forwarding；本批已通过 C89、仓库审计和 Debug/Release
-ARMV4I 全量重编，设备未部署。剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。RAPI `0x80072746` 按用户决定暂停，
-不重试、不写设备基线。脚本自行构造的 File/Blob 上传、SIP/IME、书签和持久设置仍未进入 EXE。ROADMAP 已复核；稳定边界见
+ARMV4I 全量重编；本次 HTTP 窄门先修复了 `CeCreateProcess` `device=193` 的加载兼容性，
+再以纯 C89 resolver 修复 WM6 的跨主机、自定义端口和 unsupported-scheme 行为；定向
+`1064,1065,999` 已通过，当前 Core 路径和 crash 检查均通过。
+剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。RAPI `0x80072746` 按用户决定暂停，
+不重试、不把本次启动错误误记为产品断言失败。脚本自行构造的 File/Blob 上传、SIP/IME、书签和持久设置仍未进入 EXE。ROADMAP 已复核；稳定边界见
 [`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
 
 阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
 `app_resources.c/.h`，把资源解析、注册、下载、重试和回收留在 EXE 私有适配层，不改变公共 ABI。
-C89/Debug/Release/审计已通过；设备门结果见上。
+C89/Debug/Release/审计已通过；设备门结果见上。网络候选不再追加只属于
+`welcome`/`controls` 的 EXE 私有 CSS；网络页面由 Core 的 UA 样式和文档自身的 inline/link CSS
+决定，旋转/DPI 重排复用该文档的样式资源缓存，离线页仍使用 EXE 私有样式。
 
 ## 已验证产品事实
 
 ### 公共边界
 
-- 顶层公共 DLL 为 TLS、JSON、HTTP、image、script、core 和 browser。
+- 顶层公共 DLL 为 TLS、JSON、HTTP、image、media、script、core 和 browser。
 - `positron.exe` 是正式的独立应用消费者；它拥有 WM 窗口、native 控件、输入路由和应用策略，
   不编译公共 DLL 实现源文件。`test_host.exe` 仍只拥有回归 fixture、平台接线和断言。
 - NetSurf/libcss/libdom/hubbub、Expat、libsvgtiny、libjpeg 等移植工程是内部实现依赖。
+- `positron_media.dll` 已加入解决方案和 stage/nightly；当前 ARMV4I 构建只提供 16 MiB 上限内的 WAV PCM/IMA ADPCM S16LE 软音频。DirectShow 仅做 graph 探测，FFmpeg 3.4.14 已固定但 H.264/AAC/MP3/AMR/AVI/MP4/TS 软解仍待接入。
 - 独立脚本和浏览器脚本共用 Duktape；浏览器 JavaScript tracked 默认仍为关闭。
 - 通用 URL、history、DOM、Event、表单、图像和脚本 session 语义位于对应公共 DLL；宿主保留 WM 窗口、消息、控件、SIP/IME、picker、导航调度和资源 I/O。
 - Core 的 URL resolver callback 由宿主接线，但解析规则来自 `positron_http.dll` 的
@@ -100,7 +106,7 @@ C89/Debug/Release/审计已通过；设备门结果见上。
 - Browser 的 visibility lifecycle 由公共 DLL 保持状态和事件顺序；参考宿主在顶层
   `WM_SHOWWINDOW` 中只传递 hidden/visible 值，重复值、`pagehide`/`pageshow` 顺序和 teardown
   仍由 Browser 决定，其他宿主必须自行完成等价的消息接线。
-- 七个顶层 DLL 的主干能力状态、预算、错误边界和提升条件集中在
+- 八个顶层 DLL 的主干能力状态、预算、错误边界和提升条件集中在
   [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)；“有界待扩展”不等于已支持，未实现入口
   只能在不修改状态的前提下返回稳定 unsupported 类错误。
 - Core 的 multipart wire encoder 也属于公共表单语义：
@@ -242,6 +248,10 @@ snapshot 公共转换。不能把 native picker 的源码接线误写成设备�
 
 ## 最新有效设备证据
 
+`tmp/device-runs/20260926-113339-http-scheme-port-fix-adjacent` 的 `1064,1065,999` 已
+`PASS`：`core_module_check=PASS`、三项均 OK、双空间预检 PASS、日志完整回收、
+`crash_check=PASS` 且无新 dump。较早的 `20260926-112250` 记录了旧模块持有导致的
+`STALE_MODULE`，随后用户退出旧 Positron，问题已消除。
 `tmp/device-runs/20260921-232526-dpi-clip-final` 的 `1311,999` 已正常 `PASS`：
 `core_module_check=PASS`，路径等于本次 staging 目录，TEST1311 报告 14/27 行、
 最低 14/21 行，999 PASS、dump=0；回收清理。
@@ -361,11 +371,10 @@ submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled
 没有修改公共 ABI、Browser/Core 或 test_host 的产品语义。脚本自行构造的 File/Blob pairs 仍无公共
 转换入口，不能宣称浏览器式脚本上传完成。
 
-本批源码已通过 C89、审计、Debug/Release ARMV4I 全量重编；设备验收仍待恢复设备通道后执行。
-RAPI `0x80072746` 按用户决定搁置，不部署、不重试。恢复设备门后，验收 native/script submit
-的 GET/POST/multipart/dialog、文件选择器取消/权限/超限、旧页保留、stale/cancel、label/anchor/
-disclosure 默认动作、native 控件、SIP/IME、旋转和 DPI；设备验收未通过前不写成设备基线。
-ROADMAP 已复核。本轮只改 EXE 私有适配和职责文档，不改公共 ABI。
+本批源码已通过 C89、审计、Debug/Release ARMV4I 全量重编；HTTP scheme/port 纵切及相邻
+Core URL callback 已通过当前目标的定向设备门。下一步只在后续 HTTP/导航代码变更时重跑
+该窄门，其余时间回到路线图中的下一条真实消费者纵切；不再重复本次已完成的启动排障。
+ROADMAP 已复核。本轮未新增公共 ABI。
 TEST262/264
 的自动失败仍隔离在审查报告；崩溃、数据损坏、严重布局破坏或
 核心交互阻塞须立即人工复核。

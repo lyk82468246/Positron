@@ -1,6 +1,6 @@
 # 公共能力覆盖矩阵
 
-本文件描述 Positron 七个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
+本文件描述 Positron 八个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
 应用开发者和维护者的稳定说明，不记录 next 编号、提交时间、设备运行目录或逐测试流水。
 精确函数签名、结构体大小和错误码仍以对应的公开头文件为准。
 
@@ -100,8 +100,8 @@ SIP/IME 不因该接线而宣称完成。
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
-| reference 解析 | `PHttp_ResolveReference` | 已实现 | 仅接受头文件规定的 HTTP(S) 参考；非法 scheme、端口、控制字符和截断安全失败 | TEST1064/1065/999 及 Core callback 复用证据 |
-| HTTPS GET/POST、进度和 response 释放 | `PHttp_Get[Ex]`、`PHttp_Post[Ex]`、`PHttp_FreeResponse` | 已实现 | response body 受实现中的 1 MiB 上限；redirect 有界；取消/进度 callback 不得重入 HTTP 状态 | HTTP 离线/集成合同；超限、TLS、HTTP status 和网络错误必须保持可区分 |
+| reference 解析 | `PHttp_ResolveReference`、`PHttp_ResolveReferenceUrl` | 已实现 | host/port 入口保持兼容；URL 入口保留显式 scheme 和非标准端口，非法 scheme、端口、控制字符和截断安全失败 | TEST1064/1065/999 及 Core/应用 callback 复用证据 |
+| HTTP/HTTPS GET/POST、进度和 response 释放 | `PHttp_Get[Ex]`、`PHttp_GetUrl[Ex]`、`PHttp_Post[Ex]`、`PHttp_PostUrl[Ex]`、`PHttp_FreeResponse` | 已实现 | response body 受实现中的 1 MiB 上限；redirect 有界；URL 省略协议只默认 HTTPS，不静默降级 HTTP；取消/进度 callback 不得重入 HTTP 状态 | HTTP 离线/集成合同；超限、TLS、HTTP status 和网络错误必须保持可区分 |
 | TLS 初始化和安全开关 | `PHttp_Init/Cleanup`、`PHttp_SetInsecure` | 已实现但默认安全 | insecure 只可由应用显式打开；证书/hostname 风险不能由 HTTP 静默吞掉 | TLS/HTTP 组合门；发布前继续审查旧 mbed TLS 风险 |
 | CORS、referrer、loading/fetch-priority、缓存策略 | 当前没有稳定公共策略入口 | 有界待扩展 | 必须先确定 Browser/HTTP/Core owner、请求代际、旧页保留和取消语义；不能只按标准名称添加字段 | 需要真实页面或消费者证明阻塞，并提供 loopback/offline fixture |
 | HTTP/2、WebSocket、完整代理和无限缓存 | 当前没有公共承诺 | 暂缓 | 超出 WM6 资源和当前请求模型 | 只有新的明确产品范围才重新评估 |
@@ -115,6 +115,19 @@ SIP/IME 不因该接线而宣称完成。
 | bitmap 编码 | `PImage_EncodeBitmap[Ex]` | 已实现但按格式裁剪 | 缺少 encoder 返回 `PIMAGE_ERROR_UNSUPPORTED`；输出 buffer 由对应 free 入口释放 | 格式能力以头文件和组件 README 为准，不扩大为无界格式集 |
 | picture/source 选择、generation 和事件 | Core/Browser 公开 relation/notification 组合 | 有界待扩展 | Core 选择、Browser generation，宿主 I/O/decode；过时事件不得改变 current source | TEST1299/1300 已验证 generation/终态；完整 loading 仍需消费者证据 |
 | 视频、canvas、动画图像和完整色彩管理 | 当前没有公共承诺 | 暂缓 | 需要额外线程、内存和绘制合同 | 不作为当前 WM6 主干目标 |
+
+## Media：`positron_media.dll`
+
+| 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
+| --- | --- | --- | --- | --- |
+| source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 有界待扩展 | 输入一次性受 16 MiB 上限；回调 buffer 只在同步回调期间有效；关闭后不再回调；无长期线程/网络 | DLL ABI 与正式 Debug 构建；需要 test_host/设备生命周期和 I/O 错误 fixture |
+| WAV PCM/IMA ADPCM 软件音频 | `pm_audio_block` S16LE callback | 已实现但有界 | 8/16-bit、mono/stereo、固定 2048 frame pump block；损坏 chunk、越界和不支持格式 fail closed | 离线 WAV/非 seek/WOULD_BLOCK/EOF/seek 回归，以及 WM6 WaveOut/真实设备门 |
+| WM6 DirectShow/ACM/WaveOut 原生能力 | 内部 `CLSID_FilterGraphNoThread` 探测；公共头不暴露 COM | 有界待扩展 | 只报告 graph 是否可创建；callback-backed source filter 尚未宣称完成，不把 graph 存在误报为 codec 可用 | 实现 source filter、设备 filter/ACM 枚举和 native playback 生命周期后再提升 |
+| FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14` 基线及 `POSITRON_PORT.md` | 有界待扩展 | 当前 DLL 不链接桌面或预编译 FFmpeg，H.264/AAC/MP3/AMR/AVI/MP4/TS 仍返回 unsupported；AV1/HEVC/VP9 永不进入此边界 | 生成审计过的 ARMV4I 源码 manifest、VS2008 C89 转换、Debug/Release、主机/设备解码门和 GPL/专利审查 |
+
+Media 首版的目标边界是 decoder/playback only；不包含编码、DRM、字幕、直播协议、长期工作线程、
+AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件视频。DirectShow
+桌面格式表不能替代设备运行时 filter/codec 探测。
 
 ## Script：`positron_script.dll`
 

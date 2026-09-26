@@ -119,7 +119,7 @@ int AppHostContext_ReplacePageWithScript(AppHostContext *context,
     HANDLE old_stylesheet;
     AppScriptContext *old_script;
 
-    if (context == NULL || document == NULL || stylesheet == NULL) {
+    if (context == NULL || document == NULL) {
         return 1;
     }
     old_document = context->document;

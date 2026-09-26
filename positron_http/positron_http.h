@@ -2,8 +2,8 @@
  * positron_http.h - HTTP/1.1 client for the Positron framework.
  * Modern HTTPS is built on positron_tls; plaintext HTTP uses WM WinInet.
  *
- * Phase 3 status:
- *   - HTTPS only (port is for clarity / future plain HTTP)
+ * Current transport contract:
+ *   - HTTPS uses positron_tls; plaintext HTTP uses WM6 WinInet
  *   - "Connection: close"; no keep-alive
  *   - Response body capped at 1 MB
  *   - Cert chain + hostname verified by default via the embedded
@@ -26,6 +26,12 @@ extern "C" {
 #  define PHTTP_API __declspec(dllimport)
 #endif
 
+/* Scheme values used by additive URL-aware helpers.  The legacy host/port
+ * entry points remain ABI-compatible; use the URL entry points when a
+ * non-default port must retain an explicit http/https scheme. */
+#define PHTTP_SCHEME_HTTP  1
+#define PHTTP_SCHEME_HTTPS 2
+
 /* Response object returned by PHttp_Get / PHttp_Post.
  * Always free with PHttp_FreeResponse. */
 typedef struct PHttpResponse {
@@ -40,7 +46,8 @@ typedef struct PHttpResponse {
 
 /* Resolve one bounded HTTP(S) reference against an existing request origin.
  *
- * base_host/base_port/base_path describe the current request.  A NULL or
+ * base_host/base_port/base_path describe the current request.  base_port 0
+ * means the HTTPS default port.  A NULL or
  * empty base host is accepted only for an absolute http(s) reference or a
  * network-path reference beginning with "//".  The resolver trims ASCII
  * whitespace, follows directory/query/dot-segment rules, strips fragments,
@@ -61,6 +68,20 @@ PHTTP_API int PHttp_ResolveReference(
     char*       out_path,
     int         out_path_capacity,
     int*        out_port
+);
+
+/* Resolve a reference and retain the complete absolute URL.  base_url may be
+ * NULL/empty only when reference is an absolute, network-path, or
+ * scheme-less host reference.  A scheme-less reference is treated as HTTPS;
+ * it is never silently downgraded to HTTP.  The returned URL is written to
+ * caller-owned UTF-8 storage, has a '/' path, strips fragments, applies the
+ * scheme's default port, and preserves explicit non-default ports.  This
+ * helper performs no network I/O and does not require PHttp_Init. */
+PHTTP_API int PHttp_ResolveReferenceUrl(
+    const char* base_url,
+    const char* reference,
+    char*       out_url,
+    int         out_url_capacity
 );
 
 /* Called synchronously on the thread running PHttp_GetEx/PHttp_PostEx.
@@ -86,7 +107,11 @@ PHTTP_API void PHttp_Cleanup(void);
 PHTTP_API BOOL PHttp_SetInsecure(BOOL insecure);
 
 /*
- * Perform HTTPS GET.
+ * Perform a GET using the legacy host/port ABI.  Port 80 selects plaintext
+ * HTTP; port 443 and other positive ports select HTTPS.  Port 0 means HTTPS
+ * on the default port.  For an explicit plaintext non-default port use
+ * PHttp_GetUrl/PHttp_GetUrlEx with an `http://` URL so the scheme is not
+ * ambiguous.
  *
  * host    : "api.example.com"
  * port    : 443
@@ -117,8 +142,26 @@ PHTTP_API PHttpResponse* PHttp_GetEx(
     void*                 user_data
 );
 
+/* URL-aware GET.  The URL may be absolute http(s), or a scheme-less host
+ * reference which defaults to HTTPS.  Omitted ports use 80 for http and 443
+ * for https; explicit ports are preserved.  HTTPS failures are not retried
+ * over HTTP. */
+PHTTP_API PHttpResponse* PHttp_GetUrl(
+    const char*           url,
+    const char**          headers
+);
+
+PHTTP_API PHttpResponse* PHttp_GetUrlEx(
+    const char*           url,
+    const char**          headers,
+    PHttpProgressCallback progress,
+    void*                 user_data
+);
+
 /*
- * Perform HTTPS POST. Same conventions as PHttp_Get.
+ * Perform a POST using the legacy host/port ABI.  Same conventions as
+ * PHttp_Get.  Use PHttp_PostUrl/PHttp_PostUrlEx for an explicit scheme and a
+ * non-default port.
  *
  * body     : raw request body bytes (typically JSON)
  * body_len : byte length of body. Pass -1 to use strlen(body).
@@ -140,6 +183,24 @@ PHTTP_API PHttpResponse* PHttp_PostEx(
     const char*           host,
     int                   port,
     const char*           path,
+    const char**          headers,
+    const char*           body,
+    int                   body_len,
+    PHttpProgressCallback progress,
+    void*                 user_data
+);
+
+/* URL-aware POST.  Scheme, default port, explicit port and redirect policy
+ * follow the URL-aware GET contract. */
+PHTTP_API PHttpResponse* PHttp_PostUrl(
+    const char*           url,
+    const char**          headers,
+    const char*           body,
+    int                   body_len
+);
+
+PHTTP_API PHttpResponse* PHttp_PostUrlEx(
+    const char*           url,
     const char**          headers,
     const char*           body,
     int                   body_len,

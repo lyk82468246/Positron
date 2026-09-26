@@ -257,60 +257,14 @@ void AppResources_Free(void *pw, char *data)
     free(data);
 }
 
-static int app_resources_format_url(const char *host, const char *path,
-        int port, char *output, int capacity)
-{
-    const char *scheme;
-    int default_port;
-    int length;
-
-    if (host == NULL || host[0] == '\0' || path == NULL ||
-            output == NULL || capacity <= 1) {
-        return 1;
-    }
-    scheme = (port == 80) ? "http" : "https";
-    default_port = (port == 80 || port == 443);
-    if (default_port) {
-        length = _snprintf(output, capacity - 1, "%s://%s%s",
-                scheme, host, path);
-    } else {
-        length = _snprintf(output, capacity - 1, "%s://%s:%d%s",
-                scheme, host, port, path);
-    }
-    output[capacity - 1] = '\0';
-    return (length < 0 || length >= capacity - 1) ? 1 : 0;
-}
-
 int AppResources_Resolve(void *pw, const char *base_url,
         const char *reference, char *out_url, int out_capacity)
 {
-    char base_host[APP_HOST_NAV_HOST_MAX];
-    char base_path[APP_HOST_NAV_PATH_MAX];
-    char host[APP_HOST_NAV_HOST_MAX];
-    char path[APP_HOST_NAV_PATH_MAX];
-    int base_port;
-    int port;
-
     (void) pw;
     if (reference == NULL || out_url == NULL || out_capacity <= 1) {
         return 1;
     }
-    base_host[0] = '\0';
-    base_path[0] = '\0';
-    base_port = 443;
-    if (base_url != NULL && base_url[0] != '\0' &&
-            PHttp_ResolveReference(NULL, 443, NULL, base_url,
-            base_host, sizeof(base_host), base_path, sizeof(base_path),
-            &base_port) != 0) {
-        return 1;
-    }
-    if (PHttp_ResolveReference(base_host[0] != '\0' ? base_host : NULL,
-            base_host[0] != '\0' ? base_port : 443,
-            base_host[0] != '\0' ? base_path : NULL, reference,
-            host, sizeof(host), path, sizeof(path), &port) != 0) {
-        return 1;
-    }
-    return app_resources_format_url(host, path, port, out_url,
+    return PHttp_ResolveReferenceUrl(base_url, reference, out_url,
             out_capacity);
 }
 

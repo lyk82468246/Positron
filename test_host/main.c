@@ -220,9 +220,24 @@ static void testbench_log_core_module_path(void)
 }
 
 /* Do not terminate anything here. This inventory only explains why Windows
- * CE may keep returning an older same-basename DLL to a fresh test process. */
+ * CE may keep returning an older same-basename DLL to a fresh test process.
+ * toolhelp.dll is optional across WM6 images, so resolve it at runtime rather
+ * than making the entire test host unloadable on images without that module. */
 static void testbench_log_core_module_holders(void)
 {
+    typedef HANDLE (WINAPI *CreateSnapshotFn)(DWORD, DWORD);
+    typedef BOOL (WINAPI *ProcessFirstFn)(HANDLE, LPPROCESSENTRY32);
+    typedef BOOL (WINAPI *ProcessNextFn)(HANDLE, LPPROCESSENTRY32);
+    typedef BOOL (WINAPI *ModuleFirstFn)(HANDLE, LPMODULEENTRY32);
+    typedef BOOL (WINAPI *ModuleNextFn)(HANDLE, LPMODULEENTRY32);
+    typedef BOOL (WINAPI *CloseSnapshotFn)(HANDLE);
+    HMODULE toolhelp;
+    CreateSnapshotFn create_snapshot;
+    ProcessFirstFn process_first;
+    ProcessNextFn process_next;
+    ModuleFirstFn module_first;
+    ModuleNextFn module_next;
+    CloseSnapshotFn close_snapshot;
     HANDLE process_snapshot;
     HANDLE module_snapshot;
     PROCESSENTRY32 process_entry;
@@ -234,20 +249,46 @@ static void testbench_log_core_module_holders(void)
     char module_path[MAX_PATH * 3];
     char line[512];
 
-    process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    toolhelp = LoadLibraryW(L"toolhelp.dll");
+    if (toolhelp == NULL) {
+        testbench_log_bytes("Core module holders: toolhelp unavailable\r\n\r\n");
+        return;
+    }
+    create_snapshot = (CreateSnapshotFn) GetProcAddress(toolhelp,
+            L"CreateToolhelp32Snapshot");
+    process_first = (ProcessFirstFn) GetProcAddress(toolhelp,
+            L"Process32First");
+    process_next = (ProcessNextFn) GetProcAddress(toolhelp,
+            L"Process32Next");
+    module_first = (ModuleFirstFn) GetProcAddress(toolhelp,
+            L"Module32First");
+    module_next = (ModuleNextFn) GetProcAddress(toolhelp,
+            L"Module32Next");
+    close_snapshot = (CloseSnapshotFn) GetProcAddress(toolhelp,
+            L"CloseToolhelp32Snapshot");
+    if (create_snapshot == NULL || process_first == NULL ||
+            process_next == NULL || module_first == NULL ||
+            module_next == NULL || close_snapshot == NULL) {
+        testbench_log_bytes("Core module holders: toolhelp incomplete\r\n\r\n");
+        FreeLibrary(toolhelp);
+        return;
+    }
+
+    process_snapshot = create_snapshot(TH32CS_SNAPPROCESS, 0);
     if (process_snapshot == INVALID_HANDLE_VALUE) {
         testbench_log_bytes("Core module holders: unavailable\r\n\r\n");
+        FreeLibrary(toolhelp);
         return;
     }
     process_entry.dwSize = sizeof(process_entry);
-    process_ok = Process32First(process_snapshot, &process_entry);
+    process_ok = process_first(process_snapshot, &process_entry);
     found = 0;
     while (process_ok) {
-        module_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE,
+        module_snapshot = create_snapshot(TH32CS_SNAPMODULE,
                 process_entry.th32ProcessID);
         if (module_snapshot != INVALID_HANDLE_VALUE) {
             module_entry.dwSize = sizeof(module_entry);
-            module_ok = Module32First(module_snapshot, &module_entry);
+            module_ok = module_first(module_snapshot, &module_entry);
             while (module_ok) {
                 if (lstrcmpiW(module_entry.szModule,
                         L"positron_core.dll") == 0) {
@@ -273,17 +314,45 @@ static void testbench_log_core_module_holders(void)
                     found = 1;
                     break;
                 }
-                module_ok = Module32Next(module_snapshot, &module_entry);
+                module_ok = module_next(module_snapshot, &module_entry);
             }
-            CloseToolhelp32Snapshot(module_snapshot);
+            close_snapshot(module_snapshot);
         }
-        process_ok = Process32Next(process_snapshot, &process_entry);
+        process_ok = process_next(process_snapshot, &process_entry);
     }
-    CloseToolhelp32Snapshot(process_snapshot);
+    close_snapshot(process_snapshot);
+    FreeLibrary(toolhelp);
     if (!found) {
         testbench_log_bytes("Core module holders: none\r\n");
     }
     testbench_log_bytes("\r\n");
+}
+
+/* Keep the regression host loadable when a WM6 image still has an older
+ * same-basename positron_http.dll mapped.  A missing additive export should
+ * become a TEST1065 failure with evidence, not a process-create ERROR_BAD_EXE_FORMAT
+ * before the host can write its log.  Production consumers continue to link
+ * the public header normally. */
+typedef int (*TestHttpResolveReferenceUrlFn)(const char *, const char *,
+        char *, int);
+
+static int test_host_resolve_reference_url(const char *base_url,
+        const char *reference, char *out_url, int out_capacity)
+{
+    HMODULE module;
+    FARPROC address;
+    TestHttpResolveReferenceUrlFn resolve;
+
+    module = GetModuleHandleW(L"positron_http.dll");
+    if (module == NULL) {
+        return 1;
+    }
+    address = GetProcAddress(module, L"PHttp_ResolveReferenceUrl");
+    if (address == NULL) {
+        return 1;
+    }
+    resolve = (TestHttpResolveReferenceUrlFn) address;
+    return resolve(base_url, reference, out_url, out_capacity);
 }
 
 static void testbench_log_message(const char *kind, const WCHAR *title,
@@ -13868,34 +13937,14 @@ static int pcore_document_url(const char *host, const char *path, int port,
 static int wm_combine_url(void *pw, const char *base_url,
         const char *reference, char *out_url, int out_capacity)
 {
-    char base_host[256];
-    char base_path[1024];
-    char host[256];
-    char path[1024];
-    int base_port;
-    int port;
-
     (void) pw;
     if (base_url == NULL || reference == NULL || out_url == NULL ||
             out_capacity <= 1) {
         return 1;
     }
     out_url[0] = '\0';
-    base_port = 0;
-    if (PHttp_ResolveReference(NULL, 443, NULL, base_url,
-            base_host, sizeof(base_host), base_path, sizeof(base_path),
-            &base_port) != 0) {
-        return 1;
-    }
-    port = 0;
-    if (PHttp_ResolveReference(base_host, base_port, base_path, reference,
-            host, sizeof(host), path, sizeof(path), &port) != 0 ||
-            pcore_document_url(host, path, port, out_url,
-            out_capacity) != 0) {
-        out_url[0] = '\0';
-        return 1;
-    }
-    return 0;
+    return test_host_resolve_reference_url(base_url, reference, out_url,
+            out_capacity);
 }
 
 /* Copy an absolute path (starts with '/') into dst, stripping any #fragment.
@@ -97693,6 +97742,7 @@ static BOOL test1065_http_reference_product_contract(void)
 {
     char host[128];
     char path[512];
+    char resolved_url[512];
     char error[512];
     int port;
     int relative_ok;
@@ -97706,9 +97756,13 @@ static BOOL test1065_http_reference_product_contract(void)
     int fail_scheme;
     int fail_no_base;
     int fail_capacity;
+    int url_http_custom_ok;
+    int url_https_custom_ok;
+    int url_implicit_ok;
 
     memset(host, 0, sizeof(host));
     memset(path, 0, sizeof(path));
+    memset(resolved_url, 0, sizeof(resolved_url));
     memset(error, 0, sizeof(error));
     port = 0;
     relative_ok = PHttp_ResolveReference("example.test", 443,
@@ -97766,14 +97820,28 @@ static BOOL test1065_http_reference_product_contract(void)
     fail_capacity = PHttp_ResolveReference("example.test", 443,
             "/dir/page.html", "/x", host, 4, path, sizeof(path), &port) != 0 &&
             host[0] == '\0' && path[0] == '\0' && port == 0;
+    url_http_custom_ok = test_host_resolve_reference_url(
+            "http://plain.test:8080/dir/page.html", "../x#fragment",
+            resolved_url, sizeof(resolved_url)) == 0 &&
+            strcmp(resolved_url, "http://plain.test:8080/x") == 0;
+    url_https_custom_ok = test_host_resolve_reference_url(
+            "https://secure.test:8443/dir/page.html", "../x",
+            resolved_url, sizeof(resolved_url)) == 0 &&
+            strcmp(resolved_url, "https://secure.test:8443/x") == 0;
+    url_implicit_ok = test_host_resolve_reference_url(NULL,
+            "plain.test/status", resolved_url, sizeof(resolved_url)) == 0 &&
+            strcmp(resolved_url, "https://plain.test/status") == 0;
     if (!relative_ok || !query_ok || !network_ok || !absolute_ok ||
             !empty_ok || !fail_userinfo || !fail_ipv6 || !fail_port ||
-            !fail_scheme || !fail_no_base || !fail_capacity) {
+            !fail_scheme || !fail_no_base || !fail_capacity ||
+            !url_http_custom_ok || !url_https_custom_ok || !url_implicit_ok) {
         _snprintf(error, sizeof(error) - 1,
-                "ok=%d/%d/%d/%d/%d fail=%d/%d/%d/%d/%d/%d host=%s path=%s port=%d",
+                "ok=%d/%d/%d/%d/%d url=%d/%d/%d "
+                "fail=%d/%d/%d/%d/%d/%d host=%s path=%s port=%d url=%s",
                 relative_ok, query_ok, network_ok, absolute_ok, empty_ok,
+                url_http_custom_ok, url_https_custom_ok, url_implicit_ok,
                 fail_userinfo, fail_ipv6, fail_port, fail_scheme,
-                fail_no_base, fail_capacity, host, path, port);
+                fail_no_base, fail_capacity, host, path, port, resolved_url);
         error[sizeof(error) - 1] = '\0';
         show_error(L"TEST 1065 FAIL", error);
         return FALSE;
@@ -97781,7 +97849,8 @@ static BOOL test1065_http_reference_product_contract(void)
     show_info(L"TEST 1065 OK",
             "positron_http owns bounded reference and redirect resolution: "
             "relative, query, network-path, absolute and fragment cases "
-            "pass, while unsafe authority, scheme, port and capacity inputs "
+            "pass, custom-port schemes stay intact through the URL entry "
+            "point, and unsafe authority, scheme, port and capacity inputs "
             "fail closed.");
     return TRUE;
 }

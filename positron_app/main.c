@@ -1512,67 +1512,14 @@ static int app_page_kind(const char *url)
     return 0;
 }
 
-static int app_format_url(const char *host, const char *path, int port,
-        char *output, int output_capacity)
-{
-    const char *scheme;
-    int default_port;
-    int length;
-
-    if (host == NULL || host[0] == '\0' || path == NULL ||
-            output == NULL || output_capacity <= 1) {
-        return 1;
-    }
-    scheme = (port == 80) ? "http" : "https";
-    default_port = (port == 80 || port == 443);
-    if (default_port) {
-        length = _snprintf(output, output_capacity - 1, "%s://%s%s",
-                scheme, host, path);
-    } else {
-        length = _snprintf(output, output_capacity - 1,
-                "%s://%s:%d%s", scheme, host, port, path);
-    }
-    output[output_capacity - 1] = '\0';
-    return (length < 0 || length >= output_capacity - 1) ? 1 : 0;
-}
-
 static int app_canonicalize_url(const char *base_url, const char *reference,
         char *output, int output_capacity)
 {
-    char base_host[APP_NAV_HOST_MAX];
-    char base_path[APP_NAV_PATH_MAX];
-    char host[APP_NAV_HOST_MAX];
-    char path[APP_NAV_PATH_MAX];
-    int base_port;
-    int port;
-    int absolute_network_reference;
-
     if (reference == NULL || output == NULL || output_capacity <= 1) {
         return 1;
     }
-    base_host[0] = '\0';
-    base_path[0] = '\0';
-    base_port = 443;
-    absolute_network_reference =
-            app_ascii_prefix_equal(reference, "http://") ||
-            app_ascii_prefix_equal(reference, "https://") ||
-            (reference[0] == '/' && reference[1] == '/');
-    if (!absolute_network_reference && base_url != NULL &&
-            base_url[0] != '\0' &&
-            PHttp_ResolveReference(NULL, 443, NULL, base_url,
-            base_host, sizeof(base_host), base_path, sizeof(base_path),
-            &base_port) != 0) {
-        return 1;
-    }
-    port = 0;
-    if (PHttp_ResolveReference(
-            (base_host[0] != '\0') ? base_host : NULL,
-            (base_host[0] != '\0') ? base_port : 443,
-            (base_host[0] != '\0') ? base_path : NULL,
-            reference, host, sizeof(host), path, sizeof(path), &port) != 0) {
-        return 1;
-    }
-    return app_format_url(host, path, port, output, output_capacity);
+    return PHttp_ResolveReferenceUrl(base_url, reference, output,
+            output_capacity);
 }
 
 static int app_resolve_app_url(const char *base_url, const char *reference,
@@ -1675,10 +1622,22 @@ static int app_build_page(const char *url, HANDLE *out_document,
 
 static int app_relayout(void)
 {
-    if (g_document == NULL || g_stylesheet == NULL) {
+    if (g_document == NULL) {
         return 0;
     }
-    if (app_style_and_layout(g_document, g_stylesheet) != 0) {
+    PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
+    if (g_page_kind == 0) {
+        if (g_current_url[0] == '\0' ||
+                PCore_StyleDocumentEx2(g_document, NULL, g_current_url,
+                AppResources_Resolve, NULL, NULL, NULL) != 0) {
+            return 1;
+        }
+        if (PCore_LayoutDocument(g_document, g_page_width,
+                g_page_height) != 0) {
+            return 1;
+        }
+    } else if (g_stylesheet == NULL ||
+            app_style_and_layout(g_document, g_stylesheet) != 0) {
         return 1;
     }
     g_document_width = PCore_DocumentWidth(g_document);
@@ -2124,9 +2083,6 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
 {
     PBrowserNavigationResourceInfo info;
     PHttpResponse *response;
-    char host[APP_NAV_HOST_MAX];
-    char path[APP_NAV_PATH_MAX];
-    int port;
     int retry;
     int transport_failure;
     int is_main_request;
@@ -2152,15 +2108,6 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
         (void) PBrowser_NavigationResourceCancelAll(
                 request->resource_transaction);
         return 1;
-    }
-    host[0] = '\0';
-    path[0] = '\0';
-    port = 443;
-    if (AppResources_ResolveTransport(request, reference, host, sizeof(host),
-            path, sizeof(path), &port) != 0) {
-        (void) app_navigation_resource_fail(request, index,
-                PBROWSER_NAVIGATION_FAILURE_RESOLVE);
-        return 0;
     }
     response = NULL;
     retry = 0;
@@ -2190,10 +2137,10 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                 headers[0] = "Content-Type: application/x-www-form-urlencoded";
             }
             headers[1] = NULL;
-            response = PHttp_PostEx(host, port, path, headers, request->body,
+            response = PHttp_PostUrlEx(reference, headers, request->body,
                     request->body_bytes, NULL, NULL);
         } else {
-            response = PHttp_GetEx(host, port, path, NULL, NULL, NULL);
+            response = PHttp_GetUrlEx(reference, NULL, NULL, NULL);
         }
         if (app_navigation_is_cancelled(request)) {
             PHttp_FreeResponse(response);
@@ -2309,7 +2256,6 @@ static int app_navigation_parse_document(AppNavigationRequest *request)
 {
     PBrowserNavigationResourceInfo info;
     HANDLE document;
-    HANDLE stylesheet;
     char *bytes;
     int copied;
 
@@ -2344,13 +2290,10 @@ static int app_navigation_parse_document(AppNavigationRequest *request)
     if (document == NULL) {
         return 1;
     }
-    stylesheet = PCore_ParseCSS(g_app_css, 0, request->url);
-    if (stylesheet == NULL) {
-        PCore_FreeDocument(document);
-        return 1;
-    }
     request->document_candidate = document;
-    request->stylesheet_candidate = stylesheet;
+    /* The embedded application stylesheet belongs only to welcome/controls.
+     * Network pages supply their own inline/link author sheets to Core. */
+    request->stylesheet_candidate = NULL;
     return 0;
 }
 
@@ -2538,7 +2481,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             request->resource_role_mask =
                     PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET;
             result = PCore_StyleDocumentEx2(request->document_candidate,
-                    request->stylesheet_candidate, request->url,
+                    NULL, request->url,
                     AppResources_Resolve, AppResources_Fetch,
                     AppResources_Free, request);
             request->resource_policy =
@@ -2585,7 +2528,6 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         if (request->commit_stage != APP_NAV_COMMIT_LAYOUT ||
                 request->document_candidate == NULL ||
-                request->stylesheet_candidate == NULL ||
                 !app_navigation_commit_ready(request)) {
             return -1;
         }
@@ -2722,6 +2664,7 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
         int history_mode, int history_target)
 {
     AppNavigationRequest *request;
+    char canonical[APP_HOST_URL_MAX];
     LONG generation;
     int index;
 
@@ -2762,14 +2705,13 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     }
     app_copy_text(request->content_type,
             sizeof(request->content_type), content_type);
-    app_copy_text(request->url, sizeof(request->url), url);
-    if (PHttp_ResolveReference(NULL, 443, NULL, request->url,
-            request->host, sizeof(request->host), request->path,
-            sizeof(request->path), &request->port) != 0) {
+    if (PHttp_ResolveReferenceUrl(NULL, url, canonical, sizeof(canonical)) !=
+            0) {
         free(request);
         app_restore_page_status();
         return 0;
     }
+    app_copy_text(request->url, sizeof(request->url), canonical);
     request->resource_transaction = PBrowser_NavigationResourceCreate();
     if (request->resource_transaction == NULL ||
             AppResources_Register(request, request->url,

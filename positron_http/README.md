@@ -2,6 +2,8 @@
 
 `positron_http.dll` 是 Positron 的同步 HTTP/HTTPS 客户端公共 DLL。它提供 HTTP/1.1 GET、POST、响应进度回调、统一响应对象，以及不执行网络 I/O 的有界 HTTP(S) reference/Location 解析；HTTPS 通过 `positron_tls.dll`，明文 HTTP 使用 WM6 WinInet 路径。
 
+协议和端口属于同一个 URL origin，不能只靠端口猜测。推荐使用 URL 入口：显式写出 `http://` 或 `https://`，端口可以省略（分别默认为 80/443），也可以写成非标准端口。省略协议的 URL 只默认 HTTPS，不会在 TLS 失败后静默降级到 HTTP；需要明文时必须显式写 `http://`。
+
 ## 输出与依赖
 
 - 工程：`positron_http.vcproj`
@@ -32,6 +34,13 @@ PHttp_FreeResponse(response);
 PHttp_Cleanup();
 ```
 
+需要保留非标准端口的协议时，使用 URL 入口。旧的 host/port 入口保持 ABI 和历史约定：80 选择明文 HTTP，443 或其他正端口选择 HTTPS，0 表示 HTTPS 默认端口。
+
+```c
+response = PHttp_GetUrl("http://device.local:8080/status", headers);
+/* 或：PHttp_GetUrl("https://api.example.com/status", headers); */
+```
+
 页面宿主或其他需要自行维护导航的消费者，可以复用同一套解析策略，而不用复制重定向或目录相对拼接逻辑：
 
 ```c
@@ -48,9 +57,11 @@ if (PHttp_ResolveReference("api.example.com", 443, "/v1/page.html",
 
 `PHttp_ResolveReference` 只写入调用者提供的 UTF-8 缓冲区，不分配内存，也不发起请求。它支持目录相对、`.`/`..`、query-only、network-path、绝对 HTTP(S) 和 fragment stripping；userinfo、IPv6、非法端口、非 HTTP(S)、无 origin 的普通相对引用和容量不足都会失败。返回成功后 `path` 总是以 `/` 开头。HTTP GET 的 3xx `Location` 自动跟随后也使用此函数；POST 不自动跟随。
 
+需要让解析结果继续携带协议时，使用 `PHttp_ResolveReferenceUrl`。它返回完整的绝对 URL，因此 `http://device.local:8080/dir/` 的相对链接不会被改写为 HTTPS。`base_url` 为空时，`reference` 可以是带协议的 URL，也可以是省略协议的 host/path（按 HTTPS 解释）。
+
 需要响应进度时使用 `PHttp_GetEx` / `PHttp_PostEx`；回调同步发生在请求线程，应保持短小，不能在回调中调用 `PHttp_Cleanup`。POST 的 `body` 是原始字节，`body_len` 为负数时按 NUL 结尾字符串处理，`Content-Type` 由调用者通过 headers 设置。响应对象无论 HTTP 状态还是传输失败都应由 `PHttp_FreeResponse` 释放；传输失败时通常 `status_code == 0` 且 `error_msg` 非空。
 
-默认校验证书链和主机名。`PHttp_SetInsecure(TRUE)` 会对后续请求关闭验证，只适合自签名诊断，不能作为生产默认值。当前连接采用短连接，响应体有设备侧上限；具体限制以 `positron_http.h` 为准。
+默认校验证书链和主机名。`PHttp_SetInsecure(TRUE)` 会对后续 HTTPS 请求关闭验证，只适合自签名诊断，不能作为生产默认值。当前连接采用短连接，响应体有设备侧上限；具体限制以 `positron_http.h` 为准。显式 `http://` 请求不经过 TLS，也不会因为端口不是 80 而被错误送入 TLS。
 
 ## 构建与验证
 
