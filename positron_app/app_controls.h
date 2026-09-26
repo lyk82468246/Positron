@@ -51,6 +51,8 @@ int AppControls_SetContentEditableSelection(AppControlsContext *context,
         int direction);
 int AppControls_HandleButtonPointer(AppControlsContext *context,
         int document_x, int document_y);
+int AppControls_HandleTogglePointer(AppControlsContext *context,
+        int document_x, int document_y);
 int AppControls_HandleButtonKey(AppControlsContext *context, UINT message,
         WPARAM key, LPARAM flags);
 void AppControls_ClearButtonFocus(AppControlsContext *context);

@@ -20,6 +20,7 @@
 #define APP_HOST_FOCUS_MAX     8
 #define APP_HOST_NAV_HOST_MAX  256
 #define APP_HOST_NAV_PATH_MAX  APP_HOST_URL_MAX
+#define APP_HOST_CONTENT_TYPE_MAX 256
 
 typedef struct AppNavigationRequest AppNavigationRequest;
 typedef struct AppNavigationResource AppNavigationResource;
@@ -48,6 +49,10 @@ struct AppNavigationRequest {
     int worker_succeeded;
     int worker_failure_class;
     int worker_status_code;
+    int method;
+    char *body;
+    int body_bytes;
+    char content_type[APP_HOST_CONTENT_TYPE_MAX];
     char url[APP_HOST_URL_MAX];
     char host[APP_HOST_NAV_HOST_MAX];
     char path[APP_HOST_NAV_PATH_MAX];

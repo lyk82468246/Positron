@@ -16,6 +16,7 @@
 
 #include <windows.h>
 #include <aygshell.h>
+#include <commdlg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +24,7 @@
 #include "app_host.h"
 #include "app_controls.h"
 #include "app_script.h"
+#include "app_forms.h"
 #include "app_resources.h"
 #include "app_i18n.h"
 #include "positron_core.h"
@@ -61,6 +63,7 @@
 #define APP_WM_NAV_DONE         (WM_APP + 3)
 #define APP_WM_SCRIPT_NAVIGATE  (WM_APP + 4)
 #define APP_WM_CONTROLS_REFRESH (WM_APP + 5)
+#define APP_WM_FILE_PICKER      (WM_APP + 6)
 #define APP_CONTROLS_REFRESH_FORM_RESET 1
 #define APP_SCRIPT_TIMER_ID     7
 
@@ -109,9 +112,19 @@ static AppControlsContext *g_controls;
 #define g_focus_id               (g_app.focus_id)
 #define g_current_url            (g_app.current_url)
 
+static int g_file_picker_pending;
+static int g_file_picker_active;
+static HANDLE g_file_picker_document;
+static AppScriptContext *g_file_picker_script;
+static unsigned int g_file_picker_index;
+static int g_file_picker_x;
+static int g_file_picker_y;
+static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
         int history_target);
+static int app_load_form_request(HWND hwnd, const AppFormRequest *request);
 static void app_update_history_buttons(void);
 static void app_controls_changed(void *pw);
 static void app_handle_form_submit(void *pw, int document_x,
@@ -125,16 +138,46 @@ static int app_script_validate_form_submit(void *pw,
         const PBrowserScriptFormSubmitInfo *info, int *out_valid);
 static int app_script_submit_form(void *pw, AppScriptContext *context,
         HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity);
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request);
 static int app_script_submit_form_direct(void *pw,
         AppScriptContext *context, HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity);
-static int app_script_build_form_get_target(void *pw,
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request);
+static int app_script_build_form_request(void *pw,
         AppScriptContext *context, HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity, int validate);
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request, int validate);
+static int app_script_form_navigation(void *pw, AppScriptContext *context);
+static int app_script_programmatic_click_target(void *pw,
+        AppScriptContext *context, const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info);
+static int app_script_programmatic_click_validate(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid);
+static int app_script_programmatic_click_default(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info);
+static int app_script_programmatic_click_generic(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickInfo *info);
+static int app_script_programmatic_anchor_target(void *pw,
+        AppScriptContext *context, const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info);
+static int app_file_input_at(HANDLE document, int x, int y,
+        unsigned int *out_index, int *out_disabled);
+static int app_file_input_open(HWND hwnd, HANDLE document,
+        AppScriptContext *script, unsigned int file_index, int x, int y,
+        int picker_requested);
+static int app_file_picker_queue_by_id(HWND hwnd, HANDLE document,
+        AppScriptContext *script, const char *element_id);
+static int app_file_picker_process(HWND hwnd);
+static void app_file_picker_cancel_pending(void);
+static void app_forms_adapter_init(AppFormsAdapter *adapter);
+static int app_handle_disclosure(HWND hwnd, int x, int y);
+static int app_handle_label(HWND hwnd, int x, int y);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -604,6 +647,656 @@ static int app_script_scroll(void *pw, AppScriptContext *context,
     return 0;
 }
 
+static int app_forms_read_file(void *pw, const char *path,
+        char **out_data, int *out_len)
+{
+    int wide_chars;
+    WCHAR *wide_path;
+    HANDLE file;
+    DWORD high;
+    DWORD low;
+    DWORD read_count;
+    char *data;
+    DWORD offset;
+
+    (void) pw;
+    if (path == NULL || path[0] == '\0' || out_data == NULL ||
+            out_len == NULL) {
+        return 1;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    wide_chars = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    if (wide_chars <= 0) {
+        wide_chars = MultiByteToWideChar(CP_ACP, 0, path, -1, NULL, 0);
+    }
+    if (wide_chars <= 0) {
+        return 1;
+    }
+    wide_path = (WCHAR *) malloc((size_t) wide_chars * sizeof(WCHAR));
+    if (wide_path == NULL) {
+        return 1;
+    }
+    if (MultiByteToWideChar(CP_UTF8, 0, path, -1, wide_path,
+            wide_chars) <= 0 && MultiByteToWideChar(CP_ACP, 0, path, -1,
+            wide_path, wide_chars) <= 0) {
+        free(wide_path);
+        return 1;
+    }
+    file = CreateFileW(wide_path, GENERIC_READ, FILE_SHARE_READ, NULL,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    free(wide_path);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+    high = 0;
+    low = GetFileSize(file, &high);
+    if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
+            high != 0 || low > APP_FORMS_BODY_MAX_BYTES) {
+        CloseHandle(file);
+        return 1;
+    }
+    data = (char *) malloc(low > 0 ? (size_t) low : 1U);
+    if (data == NULL) {
+        CloseHandle(file);
+        return 1;
+    }
+    offset = 0;
+    while (offset < low) {
+        read_count = 0;
+        if (!ReadFile(file, data + offset, low - offset, &read_count, NULL) ||
+                read_count == 0) {
+            free(data);
+            CloseHandle(file);
+            return 1;
+        }
+        offset += read_count;
+    }
+    CloseHandle(file);
+    *out_data = data;
+    *out_len = (int) low;
+    return 0;
+}
+
+static void app_forms_free_file(void *pw, char *data)
+{
+    (void) pw;
+    free(data);
+}
+
+static int app_wide_text_to_utf8(const WCHAR *source, char *target,
+        int target_capacity)
+{
+    int source_length;
+    int bytes;
+
+    if (source == NULL || target == NULL || target_capacity <= 1) {
+        return 1;
+    }
+    target[0] = '\0';
+    source_length = lstrlenW(source);
+    bytes = WideCharToMultiByte(CP_UTF8, 0, source, source_length,
+            target, target_capacity - 1, NULL, NULL);
+    if (bytes <= 0) {
+        bytes = WideCharToMultiByte(CP_ACP, 0, source, source_length,
+                target, target_capacity - 1, NULL, NULL);
+    }
+    if (bytes <= 0 || bytes >= target_capacity) {
+        target[0] = '\0';
+        return 1;
+    }
+    target[bytes] = '\0';
+    return 0;
+}
+
+static int app_script_programmatic_click_target(void *pw,
+        AppScriptContext *context, const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info)
+{
+    HANDLE document;
+    int core_kind;
+    int core_disabled;
+
+    (void) pw;
+    document = AppScript_Document(context);
+    if (document == NULL || element_id == NULL || element_id[0] == '\0' ||
+            out_info == NULL || out_info->size < sizeof(*out_info)) {
+        return -1;
+    }
+    out_info->found = 0;
+    out_info->x = 0;
+    out_info->y = 0;
+    out_info->width = 0;
+    out_info->height = 0;
+    out_info->kind = 0;
+    out_info->disabled = 0;
+    if (PCore_DisclosureInfoById(document, element_id, &out_info->x,
+            &out_info->y, &out_info->width, &out_info->height, NULL) == 0) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_DISCLOSURE;
+        out_info->found = 1;
+        return 0;
+    }
+    core_kind = 0;
+    core_disabled = 0;
+    if (PCore_FormControlInfoById(document, element_id, &out_info->x,
+            &out_info->y, &out_info->width, &out_info->height, &core_kind,
+            NULL, &core_disabled) != 0) {
+        return 0;
+    }
+    if (core_kind == 1) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_CHECKBOX;
+    } else if (core_kind == 2) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_RADIO;
+    } else if (core_kind == 7) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT;
+    } else if (core_kind == 8) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_RESET;
+    } else if (core_kind == 10) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_FILE;
+    } else if (core_kind == 3) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_TEXT;
+    } else if (core_kind == 4) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD;
+    } else if (core_kind == 5) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA;
+    } else if (core_kind == 6) {
+        out_info->kind = PBROWSER_SCRIPT_CLICK_TARGET_SELECT;
+    } else {
+        return 0;
+    }
+    out_info->disabled = core_disabled ? 1 : 0;
+    out_info->found = 1;
+    return 0;
+}
+
+static int app_script_programmatic_click_validate(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid)
+{
+    HANDLE document;
+    PCoreFormValidationInfo validation;
+
+    (void) pw;
+    if (info == NULL || target == NULL || out_valid == NULL ||
+            info->size < sizeof(*info) || target->size < sizeof(*target)) {
+        return -1;
+    }
+    document = AppScript_Document(context);
+    if (document == NULL) {
+        return -1;
+    }
+    *out_valid = 1;
+    if (target->kind != PBROWSER_SCRIPT_CLICK_TARGET_SUBMIT) {
+        return 0;
+    }
+    memset(&validation, 0, sizeof(validation));
+    if (PCore_FormValidationAt(document,
+            target->x + target->width / 2,
+            target->y + target->height / 2, &validation) != 1 ||
+            !validation.valid) {
+        *out_valid = 0;
+    }
+    return 0;
+}
+
+static int app_script_programmatic_click_generic(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickInfo *info)
+{
+    HANDLE document;
+    int default_allowed;
+    int result;
+
+    (void) pw;
+    document = AppScript_Document(context);
+    if (document == NULL || info == NULL || info->size < sizeof(*info) ||
+            info->element_id == NULL || info->element_id[0] == '\0') {
+        return -1;
+    }
+    default_allowed = 1;
+    result = PCore_EventDispatchToId(document, info->element_id, "click",
+            1, 1, &default_allowed);
+    return result < 0 ? -1 : 0;
+}
+
+static int app_script_programmatic_anchor_target(void *pw,
+        AppScriptContext *context, const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info)
+{
+    HANDLE document;
+
+    (void) pw;
+    document = AppScript_Document(context);
+    if (document == NULL || element_id == NULL || element_id[0] == '\0' ||
+            out_info == NULL || out_info->size < sizeof(*out_info) ||
+            out_info->href == NULL || out_info->href_capacity <= 0 ||
+            out_info->target == NULL || out_info->target_capacity <= 0 ||
+            out_info->rel == NULL || out_info->rel_capacity <= 0) {
+        return -1;
+    }
+    out_info->found = 0;
+    out_info->x = 0;
+    out_info->y = 0;
+    out_info->width = 0;
+    out_info->height = 0;
+    out_info->href[0] = '\0';
+    out_info->target[0] = '\0';
+    out_info->rel[0] = '\0';
+    if (PCore_LinkInfoByIdEx(document, element_id, &out_info->x,
+            &out_info->y, &out_info->width, &out_info->height,
+            out_info->href, out_info->href_capacity, out_info->target,
+            out_info->target_capacity, out_info->rel,
+            out_info->rel_capacity) != 0) {
+        return 0;
+    }
+    out_info->found = 1;
+    return 0;
+}
+
+static int app_file_input_at(HANDLE document, int x, int y,
+        unsigned int *out_index, int *out_disabled)
+{
+    if (document == NULL || out_index == NULL || out_disabled == NULL) {
+        return 0;
+    }
+    *out_index = 0;
+    *out_disabled = 0;
+    return PCore_FileInputAt(document, x, y, out_index, out_disabled) ?
+            1 : 0;
+}
+
+static int app_file_picker_system(HWND owner, WCHAR *file_path,
+        int file_path_capacity, WCHAR *file_title, int file_title_capacity)
+{
+    OPENFILENAMEEX picker;
+    WCHAR title[APP_WIDE_TEXT_MAX];
+
+    if (file_path == NULL || file_path_capacity <= 0 ||
+            file_title == NULL || file_title_capacity <= 0) {
+        return -1;
+    }
+    memset(&picker, 0, sizeof(picker));
+    memset(title, 0, sizeof(title));
+    if (AppI18n_LoadString(APP_TEXT_FILE_PICKER_TITLE, title,
+            sizeof(title) / sizeof(title[0])) <= 0) {
+        app_utf8_to_wide("Choose a file", title,
+                sizeof(title) / sizeof(title[0]));
+    }
+    picker.lStructSize = sizeof(picker);
+    picker.hwndOwner = owner;
+    picker.lpstrFilter = L"All files (*.*)\0*.*\0\0";
+    picker.lpstrFile = file_path;
+    picker.nMaxFile = (DWORD) file_path_capacity;
+    picker.lpstrFileTitle = file_title;
+    picker.nMaxFileTitle = (DWORD) file_title_capacity;
+    picker.lpstrTitle = title;
+    picker.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    picker.ExFlags = OFN_EXFLAG_NOFILECREATE;
+    return GetOpenFileNameEx(&picker) ? 1 : 0;
+}
+
+static void app_file_picker_clear(void)
+{
+    g_file_picker_pending = 0;
+    g_file_picker_document = NULL;
+    g_file_picker_script = NULL;
+    g_file_picker_index = 0;
+    g_file_picker_x = 0;
+    g_file_picker_y = 0;
+    g_file_picker_pending_id[0] = '\0';
+}
+
+static void app_file_picker_cancel_pending(void)
+{
+    int accepted;
+
+    if (g_file_picker_pending && g_file_picker_script != NULL) {
+        accepted = 0;
+        (void) AppScript_DispatchNativeFilePicker(g_file_picker_script,
+                (unsigned long) g_file_picker_index + 1UL,
+                g_file_picker_x, g_file_picker_y,
+                PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL, &accepted);
+    }
+    app_file_picker_clear();
+}
+
+static int app_file_input_open(HWND hwnd, HANDLE document,
+        AppScriptContext *script, unsigned int file_index, int x, int y,
+        int picker_requested)
+{
+    PCoreFileInputInfo core_info;
+    WCHAR file_path[MAX_PATH];
+    WCHAR file_title[MAX_PATH];
+    char *path;
+    char *value;
+    int disabled;
+    int selection_started;
+    int picker_opened;
+    int accepted;
+    int picker_result;
+    int result;
+
+    if (document == NULL || hwnd == NULL ||
+            PCore_FileInputInfo(document, file_index, &core_info, NULL, 0,
+            NULL, 0) != 0) {
+        return 1;
+    }
+    disabled = core_info.disabled ? 1 : 0;
+    if (disabled) {
+        return 1;
+    }
+    selection_started = 0;
+    picker_opened = picker_requested ? 1 : 0;
+    if (script != NULL && script == g_script && document == g_document) {
+        if (AppScript_DispatchNativeFileSelection(script,
+                (unsigned long) file_index + 1UL, x, y,
+                PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_BEGIN) != 0) {
+            app_set_status(APP_TEXT_STATUS_FILE_FAILED);
+            return 1;
+        }
+        selection_started = 1;
+        if (!picker_requested) {
+            accepted = 0;
+            if (AppScript_DispatchNativeFilePicker(script,
+                    (unsigned long) file_index + 1UL, x, y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST,
+                    &accepted) != 0 || !accepted) {
+                (void) AppScript_DispatchNativeFileSelection(script,
+                        (unsigned long) file_index + 1UL, x, y,
+                        PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL);
+                return 1;
+            }
+            picker_opened = 1;
+        }
+        if (picker_opened) {
+            accepted = 0;
+            if (AppScript_DispatchNativeFilePicker(script,
+                    (unsigned long) file_index + 1UL, x, y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_PICKER_OPEN,
+                    &accepted) != 0 || !accepted) {
+                (void) AppScript_DispatchNativeFilePicker(script,
+                        (unsigned long) file_index + 1UL, x, y,
+                        PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CANCEL,
+                        &accepted);
+                (void) AppScript_DispatchNativeFileSelection(script,
+                        (unsigned long) file_index + 1UL, x, y,
+                        PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL);
+                return 1;
+            }
+        }
+    }
+    memset(file_path, 0, sizeof(file_path));
+    memset(file_title, 0, sizeof(file_title));
+    g_file_picker_active = 1;
+    picker_result = app_file_picker_system(hwnd, file_path, MAX_PATH,
+            file_title, MAX_PATH);
+    g_file_picker_active = 0;
+    if (picker_result < 0) {
+        app_set_status(APP_TEXT_STATUS_FILE_FAILED);
+        result = 1;
+    } else if (picker_result == 0) {
+        result = 0;
+    } else {
+        if (file_title[0] == L'\0') {
+            memcpy(file_title, file_path, sizeof(file_title));
+            file_title[MAX_PATH - 1] = L'\0';
+        }
+        path = (char *) malloc(APP_FORMS_URL_MAX);
+        value = (char *) malloc(APP_FORMS_URL_MAX);
+        if (path == NULL || value == NULL ||
+                app_wide_text_to_utf8(file_path, path, APP_FORMS_URL_MAX) !=
+                0 || app_wide_text_to_utf8(file_title, value,
+                APP_FORMS_URL_MAX) != 0 ||
+                PCore_FileInputSetPath(document, file_index, value, path) !=
+                0) {
+            app_set_status(APP_TEXT_STATUS_FILE_FAILED);
+            result = 1;
+        } else {
+            result = 0;
+        }
+        free(path);
+        free(value);
+    }
+    if (result != 0 || picker_result == 0) {
+        if (selection_started) {
+            (void) AppScript_DispatchNativeFileSelection(script,
+                    (unsigned long) file_index + 1UL, x, y,
+                    PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_CANCEL);
+        }
+    } else if (selection_started) {
+        if (AppScript_DispatchNativeFileSelection(script,
+                (unsigned long) file_index + 1UL, x, y,
+                PBROWSER_SCRIPT_NATIVE_FILE_SELECTION_COMMIT) != 0) {
+            app_set_status(APP_TEXT_STATUS_FILE_FAILED);
+        }
+    } else {
+        (void) PCore_EventDispatchAt(document, x, y, "input", 1, 0, NULL);
+        (void) PCore_EventDispatchAt(document, x, y, "change", 1, 0, NULL);
+    }
+    if (picker_opened && script != NULL && script == g_script) {
+        accepted = 0;
+        (void) AppScript_DispatchNativeFilePicker(script,
+                (unsigned long) file_index + 1UL, x, y,
+                PBROWSER_SCRIPT_NATIVE_FILE_PICKER_CLOSE, &accepted);
+    }
+    if (result == 0 && g_script != NULL && g_document == document) {
+        app_script_schedule_refresh(&g_app, g_script, 0);
+    }
+    return 1;
+}
+
+static int app_file_picker_queue_by_id(HWND hwnd, HANDLE document,
+        AppScriptContext *script, const char *element_id)
+{
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+    unsigned int file_index;
+    int accepted;
+
+    if (hwnd == NULL || document == NULL || script == NULL ||
+            script != g_script || document != g_document || element_id == NULL ||
+            element_id[0] == '\0' || g_file_picker_pending ||
+            g_file_picker_active) {
+        return 0;
+    }
+    if (PCore_FormControlInfoById(document, element_id, &x, &y, &width,
+            &height, &kind, NULL, &disabled) != 0 || kind != 10 || disabled ||
+            width <= 0 || height <= 0 || !app_file_input_at(document,
+            x + width / 2, y + height / 2, &file_index, &disabled) ||
+            disabled) {
+        return 0;
+    }
+    accepted = 0;
+    if (AppScript_DispatchNativeFilePicker(script,
+            (unsigned long) file_index + 1UL, x + width / 2,
+            y + height / 2, PBROWSER_SCRIPT_NATIVE_FILE_PICKER_REQUEST,
+            &accepted) != 0 || !accepted) {
+        return 0;
+    }
+    g_file_picker_pending = 1;
+    g_file_picker_document = document;
+    g_file_picker_script = script;
+    g_file_picker_index = file_index;
+    g_file_picker_x = x + width / 2;
+    g_file_picker_y = y + height / 2;
+    app_copy_text(g_file_picker_pending_id,
+            sizeof(g_file_picker_pending_id), element_id);
+    if (!PostMessage(hwnd, APP_WM_FILE_PICKER, 0, 0)) {
+        app_file_picker_cancel_pending();
+        return -1;
+    }
+    return 0;
+}
+
+static int app_file_picker_process(HWND hwnd)
+{
+    HANDLE document;
+    AppScriptContext *script;
+    unsigned int file_index;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+    if (!g_file_picker_pending) {
+        return 0;
+    }
+    document = g_file_picker_document;
+    script = g_file_picker_script;
+    file_index = g_file_picker_index;
+    x = g_file_picker_x;
+    y = g_file_picker_y;
+    if (document != g_document || script != g_script || hwnd != g_window) {
+        app_file_picker_cancel_pending();
+        return 0;
+    }
+    if (g_file_picker_pending_id[0] != '\0') {
+        if (PCore_FormControlInfoById(document, g_file_picker_pending_id,
+                &x, &y, &width, &height, &kind, NULL, &disabled) != 0 ||
+                kind != 10 || disabled || width <= 0 || height <= 0 ||
+                !app_file_input_at(document, x + width / 2, y + height / 2,
+                &file_index, &disabled) || disabled) {
+            app_file_picker_cancel_pending();
+            return 0;
+        }
+        x += width / 2;
+        y += height / 2;
+    }
+    app_file_picker_clear();
+    return app_file_input_open(hwnd, document, script, file_index, x, y, 1);
+}
+
+static int app_script_programmatic_click_default(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info)
+{
+    AppHostContext *host;
+    HANDLE document;
+    AppFormsAdapter adapter;
+    AppFormRequest request;
+    int center_x;
+    int center_y;
+    int native_kind;
+    int dirty_x;
+    int dirty_y;
+    int dirty_width;
+    int dirty_height;
+    int result;
+
+    host = (AppHostContext *) pw;
+    document = AppScript_Document(context);
+    if (host == NULL || context == NULL || info == NULL ||
+            info->size < sizeof(*info) || document == NULL) {
+        return -1;
+    }
+    /* A candidate session may evaluate script before it becomes the visible
+     * page. It may mutate its own Core document, but must not open WM UI or
+     * schedule navigation from the candidate worker path. */
+    if (host != &g_app || host->script != context ||
+            host->document != document) {
+        if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE) {
+            dirty_x = 0;
+            dirty_y = 0;
+            dirty_width = 0;
+            dirty_height = 0;
+            (void) PCore_FormActivateAt(document,
+                    info->x + info->width / 2, info->y + info->height / 2,
+                    &dirty_x, &dirty_y, &dirty_width, &dirty_height);
+        } else if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_DISCLOSURE) {
+            (void) PCore_DisclosureToggleById(document, info->element_id,
+                    NULL);
+        }
+        return 0;
+    }
+    center_x = info->x + info->width / 2;
+    center_y = info->y + info->height / 2;
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_TOGGLE) {
+        dirty_x = 0;
+        dirty_y = 0;
+        dirty_width = 0;
+        dirty_height = 0;
+        result = PCore_FormActivateAt(document, center_x, center_y,
+                &dirty_x, &dirty_y, &dirty_width, &dirty_height);
+        if (result < 0) {
+            return -1;
+        }
+        app_script_schedule_refresh(host, context, 0);
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_DISCLOSURE) {
+        if (PCore_DisclosureToggleById(document, info->element_id,
+                NULL) < 0) {
+            return -1;
+        }
+        app_script_schedule_refresh(host, context, 0);
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_FILE) {
+        return app_file_picker_queue_by_id(host->window, document, context,
+                info->element_id);
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_FOCUS) {
+        native_kind = 0;
+        if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXT) {
+            native_kind = 3;
+        } else if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_PASSWORD) {
+            native_kind = 4;
+        } else if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_TEXTAREA) {
+            native_kind = 5;
+        } else if (info->kind == PBROWSER_SCRIPT_CLICK_TARGET_SELECT) {
+            native_kind = 6;
+        }
+        if (native_kind == 0 || g_controls == NULL ||
+                !AppControls_FocusFormControlAt(g_controls, native_kind,
+                center_x, center_y)) {
+            return 0;
+        }
+        return 0;
+    }
+    if (info->action == PBROWSER_SCRIPT_CLICK_DEFAULT_RESET) {
+        result = PCore_FormResetAt(document, center_x, center_y);
+        if (result == 1) {
+            app_script_schedule_refresh(host, context, 1);
+        }
+        return result < 0 ? -1 : 0;
+    }
+    if (info->action != PBROWSER_SCRIPT_CLICK_DEFAULT_SUBMIT) {
+        return -1;
+    }
+    app_forms_adapter_init(&adapter);
+    AppForms_InitRequest(&request);
+    result = AppForms_BuildAt(document, AppScript_DocumentUrl(context),
+            center_x, center_y, &adapter, &request);
+    if (result != APP_FORMS_RESULT_OK || !request.valid) {
+        AppForms_ClearRequest(&request);
+        if (result == APP_FORMS_RESULT_INVALID) {
+            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        } else if (result == APP_FORMS_RESULT_UNSUPPORTED) {
+            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        } else {
+            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        }
+        return 0;
+    }
+    if (AppScript_QueueFormNavigation(context, &request) != 0) {
+        AppForms_ClearRequest(&request);
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return 0;
+    }
+    if (app_script_form_navigation(host, context) != 0) {
+        AppScript_ClearPendingNavigation(context);
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+    }
+    return 0;
+}
+
 static int app_script_navigate(void *pw, AppScriptContext *context,
         const PBrowserScriptNavigationInfo *info, int *out_value)
 {
@@ -902,47 +1595,23 @@ static int app_resolve_app_url(const char *base_url, const char *reference,
             output_capacity);
 }
 
-static int app_form_get_target(const char *base_url, const char *action,
-        const char *encoded_data, char *target, int target_capacity)
+static int app_forms_resolve_url(void *pw, const char *base_url,
+        const char *reference, char *output, int output_capacity)
 {
-    char resolved[APP_URL_MAX];
-    const char *effective_action;
-    int resolved_length;
-    int base_length;
-    int data_length;
-    int target_length;
+    (void) pw;
+    return app_resolve_app_url(base_url, reference, output, output_capacity);
+}
 
-    if (base_url == NULL || base_url[0] == '\0' || encoded_data == NULL ||
-            target == NULL || target_capacity <= 1) {
-        return 1;
+static void app_forms_adapter_init(AppFormsAdapter *adapter)
+{
+    if (adapter == NULL) {
+        return;
     }
-    effective_action = (action != NULL && action[0] != '\0') ? action :
-            base_url;
-    if (effective_action == NULL || effective_action[0] == '\0' ||
-            app_resolve_app_url(base_url, effective_action, resolved,
-            sizeof(resolved)) != 0) {
-        return 1;
-    }
-    resolved_length = (int) strlen(resolved);
-    base_length = 0;
-    while (base_length < resolved_length && resolved[base_length] != '?' &&
-            resolved[base_length] != '#') {
-        base_length++;
-    }
-    data_length = (int) strlen(encoded_data);
-    target_length = base_length +
-            ((data_length > 0) ? data_length + 1 : 0);
-    if (base_length <= 0 || target_length >= target_capacity) {
-        return 1;
-    }
-    memcpy(target, resolved, (size_t) base_length);
-    if (data_length > 0) {
-        target[base_length] = '?';
-        memcpy(target + base_length + 1, encoded_data,
-                (size_t) data_length);
-    }
-    target[target_length] = '\0';
-    return 0;
+    memset(adapter, 0, sizeof(*adapter));
+    adapter->size = sizeof(*adapter);
+    adapter->resolve_url = app_forms_resolve_url;
+    adapter->read_file = app_forms_read_file;
+    adapter->free_file = app_forms_free_file;
 }
 
 static int app_style_and_layout(HANDLE document, HANDLE stylesheet)
@@ -1027,6 +1696,131 @@ static int app_relayout(void)
                 g_scroll_y);
     }
     return 0;
+}
+
+static int app_handle_disclosure(HWND hwnd, int x, int y)
+{
+    int default_allowed;
+    int result;
+
+    if (g_document == NULL || PCore_DisclosureInfoAt(g_document, x, y,
+            NULL, NULL, NULL, NULL, NULL) != 1) {
+        return 0;
+    }
+    default_allowed = 1;
+    if (g_script != NULL) {
+        if (AppScript_DispatchClickEvent(g_script, x, y,
+                &default_allowed) != 0) {
+            return 1;
+        }
+    } else {
+        result = PCore_EventDispatchAt(g_document, x, y, "click", 1, 1,
+                &default_allowed);
+        if (result < 0) {
+            return 1;
+        }
+    }
+    if (!default_allowed) {
+        return 1;
+    }
+    result = PCore_DisclosureToggleAt(g_document, x, y, NULL);
+    if (result > 0) {
+        if (app_relayout() != 0) {
+            app_set_status(APP_TEXT_STATUS_LAYOUT);
+        } else {
+            InvalidateRect(hwnd, NULL, TRUE);
+        }
+    }
+    return 1;
+}
+
+static int app_handle_label(HWND hwnd, int x, int y)
+{
+    int target_x;
+    int target_y;
+    int target_kind;
+    int default_allowed;
+    unsigned int file_index;
+    int file_disabled;
+
+    if (g_document == NULL || PCore_LabelTargetAt(g_document, x, y,
+            &target_x, &target_y, &target_kind) != 1) {
+        return 0;
+    }
+    if (PCore_InteractionSetAt(g_document, target_x, target_y,
+            PCORE_INTERACTION_FOCUS) > 0) {
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+    AppControls_ClearButtonFocus(g_controls);
+    default_allowed = 1;
+    if (g_script != NULL) {
+        if (AppScript_DispatchClickEvent(g_script, x, y,
+                &default_allowed) != 0) {
+            return 1;
+        }
+    } else {
+        if (PCore_EventDispatchAt(g_document, x, y, "click", 1, 1,
+                &default_allowed) < 0) {
+            return 1;
+        }
+    }
+    if (!default_allowed) {
+        return 1;
+    }
+    if (target_kind >= 7 && target_kind <= 9) {
+        (void) AppControls_HandleButtonPointer(g_controls, target_x,
+                target_y);
+        return 1;
+    }
+    if (target_kind == 1 || target_kind == 2) {
+        (void) AppControls_HandleTogglePointer(g_controls, target_x,
+                target_y);
+        return 1;
+    }
+    if (target_kind == 10) {
+        file_index = 0;
+        file_disabled = 0;
+        if (!app_file_input_at(g_document, target_x, target_y,
+                &file_index, &file_disabled) || file_disabled) {
+            return 1;
+        }
+        default_allowed = 1;
+        if (g_script != NULL) {
+            if (AppScript_DispatchClickEvent(g_script, target_x, target_y,
+                    &default_allowed) != 0) {
+                return 1;
+            }
+        } else {
+            if (PCore_EventDispatchAt(g_document, target_x, target_y,
+                    "click", 1, 1, &default_allowed) < 0) {
+                return 1;
+            }
+        }
+        if (default_allowed && !g_file_picker_pending) {
+            (void) app_file_input_open(hwnd, g_document, g_script,
+                    file_index, target_x, target_y, 0);
+        }
+        return 1;
+    }
+    if (target_kind >= 3 && target_kind <= 6) {
+        default_allowed = 1;
+        if (g_script != NULL) {
+            if (AppScript_DispatchClickEvent(g_script, target_x, target_y,
+                    &default_allowed) != 0) {
+                return 1;
+            }
+        } else {
+            if (PCore_EventDispatchAt(g_document, target_x, target_y,
+                    "click", 1, 1, &default_allowed) < 0) {
+                return 1;
+            }
+        }
+        if (default_allowed) {
+            (void) AppControls_FocusFormControlAt(g_controls, target_kind,
+                    target_x, target_y);
+        }
+    }
+    return 1;
 }
 
 static int app_create_menu_bar(HWND hwnd)
@@ -1268,6 +2062,9 @@ static void app_navigation_request_destroy(AppNavigationRequest *request)
         PBrowser_NavigationCandidateDestroy(request->candidate);
         request->candidate = NULL;
     }
+    free(request->body);
+    request->body = NULL;
+    request->body_bytes = 0;
     free(request);
 }
 
@@ -1332,6 +2129,10 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     int port;
     int retry;
     int transport_failure;
+    int is_main_request;
+    int retry_allowed;
+    char content_type_header[APP_HOST_CONTENT_TYPE_MAX + 32];
+    const char *headers[2];
 
     if (request == NULL || request->resource_transaction == NULL ||
             reference == NULL) {
@@ -1363,6 +2164,9 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     }
     response = NULL;
     retry = 0;
+    is_main_request = index == request->resource_index;
+    retry_allowed = !is_main_request || request->method ==
+            PCORE_FORM_METHOD_GET;
     for (;;) {
         if (app_navigation_is_cancelled(request)) {
             (void) PBrowser_NavigationResourceCancelAll(
@@ -1375,7 +2179,22 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                     PBROWSER_NAVIGATION_FAILURE_MEMORY);
             return 0;
         }
-        response = PHttp_GetEx(host, port, path, NULL, NULL, NULL);
+        if (is_main_request && request->method != PCORE_FORM_METHOD_GET) {
+            if (request->content_type[0] != '\0') {
+                _snprintf(content_type_header,
+                        sizeof(content_type_header) - 1,
+                        "Content-Type: %s", request->content_type);
+                content_type_header[sizeof(content_type_header) - 1] = '\0';
+                headers[0] = content_type_header;
+            } else {
+                headers[0] = "Content-Type: application/x-www-form-urlencoded";
+            }
+            headers[1] = NULL;
+            response = PHttp_PostEx(host, port, path, headers, request->body,
+                    request->body_bytes, NULL, NULL);
+        } else {
+            response = PHttp_GetEx(host, port, path, NULL, NULL, NULL);
+        }
         if (app_navigation_is_cancelled(request)) {
             PHttp_FreeResponse(response);
             response = NULL;
@@ -1384,7 +2203,7 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
             return 1;
         }
         transport_failure = response == NULL || response->status_code == 0;
-        if (transport_failure &&
+        if (transport_failure && retry_allowed &&
                 PBrowser_NavigationResourceShouldRetry(
                 request->resource_transaction, index, 1,
                 &retry) == PBROWSER_OK && retry) {
@@ -1683,6 +2502,18 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 script_callbacks.submit_form = app_script_submit_form;
                 script_callbacks.submit_form_direct =
                         app_script_submit_form_direct;
+                script_callbacks.form_navigation =
+                        app_script_form_navigation;
+                script_callbacks.get_programmatic_click_target =
+                        app_script_programmatic_click_target;
+                script_callbacks.validate_programmatic_click =
+                        app_script_programmatic_click_validate;
+                script_callbacks.programmatic_click_default =
+                        app_script_programmatic_click_default;
+                script_callbacks.programmatic_click_generic =
+                        app_script_programmatic_click_generic;
+                script_callbacks.get_programmatic_anchor_target =
+                        app_script_programmatic_anchor_target;
                 request->script_candidate = AppScript_Create(
                         request->document_candidate, request->url,
                         history_length, history_index, 1, history_state,
@@ -1774,7 +2605,12 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 return -1;
             }
         }
-        if (request->history_mode == APP_HISTORY_NEW) {
+        if (request->method != PCORE_FORM_METHOD_GET) {
+            /* The current Browser history ABI records GET document entries;
+             * POST/multipart still replace the visible document but do not
+             * invent a replayable history entry. */
+            history_rc = PBROWSER_OK;
+        } else if (request->history_mode == APP_HISTORY_NEW) {
             history_rc = PBrowser_HistoryCommitNavigation(g_history,
                     request->url, PBROWSER_HISTORY_METHOD_GET,
                     PBROWSER_HISTORY_TARGET_NEW);
@@ -1881,17 +2717,24 @@ static void app_navigation_handle_done(HWND hwnd,
     }
 }
 
-static int app_navigation_start(HWND hwnd, const char *url,
+static int app_navigation_start(HWND hwnd, const char *url, int method,
+        const void *body, int body_bytes, const char *content_type,
         int history_mode, int history_target)
 {
     AppNavigationRequest *request;
     LONG generation;
     int index;
 
-    if (!g_http_initialized || url == NULL || url[0] == '\0') {
+    if (!g_http_initialized || url == NULL || url[0] == '\0' ||
+            (method != PCORE_FORM_METHOD_GET && method !=
+            PCORE_FORM_METHOD_POST && method != PCORE_FORM_METHOD_MULTIPART) ||
+            body_bytes < 0 || body_bytes > APP_FORMS_BODY_MAX_BYTES ||
+            (body_bytes > 0 && body == NULL) || (content_type != NULL &&
+            (int) strlen(content_type) >= APP_HOST_CONTENT_TYPE_MAX)) {
         app_restore_page_status();
         return 0;
     }
+    app_file_picker_cancel_pending();
     if (g_navigation_request != NULL &&
             app_navigation_retired_count() >= APP_NAV_MAX_RETIRED) {
         app_restore_page_status();
@@ -1904,8 +2747,21 @@ static int app_navigation_start(HWND hwnd, const char *url,
     }
     memset(request, 0, sizeof(*request));
     request->hwnd = hwnd;
+    request->method = method;
     request->history_mode = history_mode;
     request->history_target = history_target;
+    if (body_bytes > 0) {
+        request->body = (char *) malloc((size_t) body_bytes);
+        if (request->body == NULL) {
+            free(request);
+            app_restore_page_status();
+            return 0;
+        }
+        memcpy(request->body, body, (size_t) body_bytes);
+        request->body_bytes = body_bytes;
+    }
+    app_copy_text(request->content_type,
+            sizeof(request->content_type), content_type);
     app_copy_text(request->url, sizeof(request->url), url);
     if (PHttp_ResolveReference(NULL, 443, NULL, request->url,
             request->host, sizeof(request->host), request->path,
@@ -1975,19 +2831,78 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
         app_restore_page_status();
         return 0;
     }
-    return app_navigation_start(hwnd, canonical, history_mode,
-            history_target);
+    return app_navigation_start(hwnd, canonical, PCORE_FORM_METHOD_GET,
+            NULL, 0, NULL, history_mode, history_target);
+}
+
+static int app_load_form_request(HWND hwnd, const AppFormRequest *request)
+{
+    char canonical[APP_URL_MAX];
+
+    if (request == NULL || !request->valid || request->target_url[0] == '\0' ||
+            request->method == PCORE_FORM_METHOD_DIALOG) {
+        return 0;
+    }
+    if (request->method == PCORE_FORM_METHOD_GET) {
+        return app_load_page(hwnd, request->target_url, APP_HISTORY_NEW, -1);
+    }
+    if (app_page_kind(request->target_url) != 0 ||
+            app_canonicalize_url(g_current_url, request->target_url,
+            canonical, sizeof(canonical)) != 0) {
+        app_restore_page_status();
+        return 0;
+    }
+    return app_navigation_start(hwnd, canonical, request->method,
+            request->body, request->body_bytes, request->content_type,
+            APP_HISTORY_NEW, -1);
+}
+
+static void app_apply_form_request(int result, AppFormRequest *request)
+{
+    int closed;
+
+    if (request == NULL) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        return;
+    }
+    if (result == APP_FORMS_RESULT_INVALID) {
+        app_set_status(APP_TEXT_STATUS_FORM_INVALID);
+        AppForms_ClearRequest(request);
+        return;
+    }
+    if (result == APP_FORMS_RESULT_UNSUPPORTED) {
+        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        AppForms_ClearRequest(request);
+        return;
+    }
+    if (result != APP_FORMS_RESULT_OK || !request->valid) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+        AppForms_ClearRequest(request);
+        return;
+    }
+    if (request->method == PCORE_FORM_METHOD_DIALOG) {
+        closed = 0;
+        if (g_script == NULL || AppScript_CloseDialog(g_script,
+                request->dialog_id, request->return_value, &closed) != 0 ||
+                !closed) {
+            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
+        } else {
+            app_script_schedule_refresh(&g_app, g_script, 0);
+        }
+        AppForms_ClearRequest(request);
+        return;
+    }
+    if (!app_load_form_request(g_window, request)) {
+        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
+    }
+    AppForms_ClearRequest(request);
 }
 
 static void app_handle_form_submit(void *pw, int document_x,
         int document_y, int validation_valid)
 {
-    PCoreFormSubmissionInfo submission;
-    char action_probe[1];
-    char body_probe[1];
-    char action[APP_URL_MAX];
-    char body[APP_URL_MAX];
-    char target[APP_URL_MAX];
+    AppFormsAdapter adapter;
+    AppFormRequest request;
     int result;
 
     if (pw != &g_app || g_document == NULL) {
@@ -2005,77 +2920,21 @@ static void app_handle_form_submit(void *pw, int document_x,
         }
         return;
     }
-    memset(&submission, 0, sizeof(submission));
-    action_probe[0] = '\0';
-    body_probe[0] = '\0';
-    result = PCore_FormSubmissionAt(g_document, document_x, document_y,
-            &submission, action_probe, sizeof(action_probe), body_probe,
-            sizeof(body_probe));
-    if (result == 5) {
-        PCoreFormValidationInfo validation;
-
-        memset(&validation, 0, sizeof(validation));
-        if (PCore_FormValidationAt(g_document, document_x, document_y,
-                &validation) == 1) {
-            app_handle_invalid_validation(&validation);
-        } else {
-            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
-        }
-        return;
-    }
-    if (result == 3 || result == 6 ||
-            ((result == 1 || result == 4) &&
-            submission.method != PCORE_FORM_METHOD_GET)) {
-        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
-        return;
-    }
-    if ((result != 1 && result != 4) ||
-            submission.action_bytes < 0 || submission.body_bytes < 0 ||
-            submission.action_bytes >= (int) sizeof(action) ||
-            submission.body_bytes >= (int) sizeof(body)) {
-        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-        return;
-    }
-    result = PCore_FormSubmissionAt(g_document, document_x, document_y,
-            &submission, action, sizeof(action), body, sizeof(body));
-    if (result == 5) {
-        PCoreFormValidationInfo validation;
-
-        memset(&validation, 0, sizeof(validation));
-        if (PCore_FormValidationAt(g_document, document_x, document_y,
-                &validation) == 1) {
-            app_handle_invalid_validation(&validation);
-        } else {
-            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
-        }
-        return;
-    }
-    if (result == 3 || result == 6 ||
-            ((result == 1 || result == 4) &&
-            submission.method != PCORE_FORM_METHOD_GET)) {
-        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
-        return;
-    }
-    if (result != 1 || submission.method != PCORE_FORM_METHOD_GET ||
-            app_form_get_target(g_current_url, action, body, target,
-            sizeof(target)) != 0) {
-        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-        return;
-    }
-    if (!app_load_page(g_window, target, APP_HISTORY_NEW, -1)) {
-        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-    }
+    app_forms_adapter_init(&adapter);
+    AppForms_InitRequest(&request);
+    result = AppForms_BuildAt(g_document, g_current_url, document_x,
+            document_y, &adapter, &request);
+    app_apply_form_request(result, &request);
 }
 
 static void app_handle_form_enter(void *pw, unsigned int text_index)
 {
+    AppFormsAdapter adapter;
+    AppFormRequest request;
     PCoreFormSubmissionInfo submission;
     PCoreTextInputInfo text_info;
     char action_probe[1];
     char body_probe[1];
-    char action[APP_URL_MAX];
-    char body[APP_URL_MAX];
-    char target[APP_URL_MAX];
     int result;
     int default_allowed;
     int event_result;
@@ -2102,7 +2961,6 @@ static void app_handle_form_enter(void *pw, unsigned int text_index)
         app_set_status(APP_TEXT_STATUS_FORM_FAILED);
         return;
     }
-
     memset(&text_info, 0, sizeof(text_info));
     if (PCore_TextInputInfo(g_document, text_index, &text_info, NULL, 0) != 0 ||
             text_info.width <= 0 || text_info.height <= 0) {
@@ -2130,36 +2988,11 @@ static void app_handle_form_enter(void *pw, unsigned int text_index)
     if (!default_allowed) {
         return;
     }
-
-    action[0] = '\0';
-    body[0] = '\0';
-    result = PCore_FormSubmissionForTextInput(g_document, text_index,
-            &submission, action, sizeof(action), body, sizeof(body));
-    if (result == 5) {
-        app_handle_invalid_form(text_index);
-        return;
-    }
-    if (result != 1) {
-        if (result == 3 || result == 6 ||
-                submission.method != PCORE_FORM_METHOD_GET) {
-            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
-        } else {
-            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-        }
-        return;
-    }
-    if (submission.method != PCORE_FORM_METHOD_GET) {
-        app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
-        return;
-    }
-    if (app_form_get_target(g_current_url, action, body, target,
-            sizeof(target)) != 0) {
-        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-        return;
-    }
-    if (!app_load_page(g_window, target, APP_HISTORY_NEW, -1)) {
-        app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-    }
+    app_forms_adapter_init(&adapter);
+    AppForms_InitRequest(&request);
+    result = AppForms_BuildForTextInput(g_document, g_current_url,
+            text_index, &adapter, &request);
+    app_apply_form_request(result, &request);
 }
 
 static void app_handle_invalid_form(unsigned int text_index)
@@ -2283,37 +3116,33 @@ static int app_script_validate_form_submit(void *pw,
 
 static int app_script_submit_form(void *pw, AppScriptContext *context,
         HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity)
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request)
 {
-    return app_script_build_form_get_target(pw, context, document,
-            document_url, info, out_target_url, target_url_capacity, 1);
+    return app_script_build_form_request(pw, context, document, document_url,
+            info, out_request, 1);
 }
 
 static int app_script_submit_form_direct(void *pw,
         AppScriptContext *context, HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity)
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request)
 {
     if (info == NULL || info->submitter_id == NULL ||
             info->submitter_id[0] != '\0') {
         return -1;
     }
-    return app_script_build_form_get_target(pw, context, document,
-            document_url, info, out_target_url, target_url_capacity, 0);
+    return app_script_build_form_request(pw, context, document, document_url,
+            info, out_request, 0);
 }
 
-static int app_script_build_form_get_target(void *pw,
+static int app_script_build_form_request(void *pw,
         AppScriptContext *context, HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity, int validate)
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request, int validate)
 {
     AppHostContext *host;
-    PCoreFormSubmissionInfo submission;
-    char action_probe[1];
-    char body_probe[1];
-    char action[APP_URL_MAX];
-    char body[APP_URL_MAX];
+    AppFormsAdapter adapter;
     int result;
 
     host = (AppHostContext *) pw;
@@ -2321,78 +3150,42 @@ static int app_script_build_form_get_target(void *pw,
             AppScript_Document(context) != document || document_url == NULL ||
             document_url[0] == '\0' || info == NULL ||
             info->size < sizeof(*info) || info->form_id == NULL ||
-            info->form_id[0] == '\0' || out_target_url == NULL ||
-            target_url_capacity <= 1) {
+            info->form_id[0] == '\0' || out_request == NULL) {
         return -1;
     }
-    out_target_url[0] = '\0';
-    memset(&submission, 0, sizeof(submission));
-    action_probe[0] = '\0';
-    body_probe[0] = '\0';
-    if (validate) {
-        result = PCore_FormSubmissionById(document, info->form_id,
-                info->submitter_id, &submission, action_probe,
-                sizeof(action_probe), body_probe, sizeof(body_probe));
-    } else {
-        result = PCore_FormSubmissionNoValidationById(document,
-                info->form_id, &submission, action_probe,
-                sizeof(action_probe), body_probe, sizeof(body_probe));
+    app_forms_adapter_init(&adapter);
+    AppForms_InitRequest(out_request);
+    result = AppForms_BuildById(document, document_url, info->form_id,
+            info->submitter_id, validate, &adapter, out_request);
+    if (result == APP_FORMS_RESULT_OK) {
+        return 1;
     }
-    if (result == 5) {
-        if (validate && host->script == context) {
+    AppForms_ClearRequest(out_request);
+    if (host->script == context) {
+        if (result == APP_FORMS_RESULT_INVALID) {
             app_set_status(APP_TEXT_STATUS_FORM_INVALID);
-        }
-        return 0;
-    }
-    if (result == 3 || result == 6 ||
-            ((result == 1 || result == 4) &&
-            submission.method != PCORE_FORM_METHOD_GET)) {
-        if (host->script == context) {
+        } else if (result == APP_FORMS_RESULT_UNSUPPORTED) {
             app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
-        }
-        return 0;
-    }
-    if ((result != 1 && result != 4) || submission.action_bytes < 0 ||
-            submission.body_bytes < 0 ||
-            submission.action_bytes >= (int) sizeof(action) ||
-            submission.body_bytes >= (int) sizeof(body)) {
-        if (host->script == context) {
+        } else if (result != APP_FORMS_RESULT_NONE) {
             app_set_status(APP_TEXT_STATUS_FORM_FAILED);
         }
-        return 0;
     }
-    if (validate) {
-        result = PCore_FormSubmissionById(document, info->form_id,
-                info->submitter_id, &submission, action, sizeof(action),
-                body, sizeof(body));
-    } else {
-        result = PCore_FormSubmissionNoValidationById(document,
-                info->form_id, &submission, action, sizeof(action), body,
-                sizeof(body));
+    return result == APP_FORMS_RESULT_NONE ||
+            result == APP_FORMS_RESULT_INVALID ||
+            result == APP_FORMS_RESULT_UNSUPPORTED ? 0 : -1;
+}
+
+static int app_script_form_navigation(void *pw, AppScriptContext *context)
+{
+    AppHostContext *host;
+
+    host = (AppHostContext *) pw;
+    if (host == NULL || host != &g_app || context == NULL ||
+            host->script != context || host->window == NULL) {
+        return 1;
     }
-    if (result == 5) {
-        if (validate && host->script == context) {
-            app_set_status(APP_TEXT_STATUS_FORM_INVALID);
-        }
-        return 0;
-    }
-    if (result == 3 || result == 6 ||
-            ((result == 1 || result == 4) &&
-            submission.method != PCORE_FORM_METHOD_GET)) {
-        if (host->script == context) {
-            app_set_status(APP_TEXT_STATUS_FORM_UNSUPPORTED);
-        }
-        return 0;
-    }
-    if (result != 1 || submission.method != PCORE_FORM_METHOD_GET ||
-            app_form_get_target(document_url, action, body, out_target_url,
-            target_url_capacity) != 0) {
-        if (host->script == context) {
-            app_set_status(APP_TEXT_STATUS_FORM_FAILED);
-        }
-        return 0;
-    }
-    return 1;
+    return PostMessage(host->window, APP_WM_SCRIPT_NAVIGATE, 0,
+            (LPARAM) context) ? 1 : 0;
 }
 
 static int app_normalize_address(const char *input, char *output,
@@ -2513,6 +3306,10 @@ static void app_handle_script_navigation(HWND hwnd,
 
     if (context == NULL || context != g_script ||
             AppScript_TakeNavigation(context, &navigation) != 0) {
+        return;
+    }
+    if (navigation.form_valid) {
+        app_apply_form_request(APP_FORMS_RESULT_OK, &navigation.form);
         return;
     }
     if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_BACK) {
@@ -2700,7 +3497,13 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             int document_y;
             int focus_index;
             int default_allowed;
+            unsigned int file_index;
+            int file_disabled;
             char href[APP_URL_MAX];
+            char link_target[APP_SCRIPT_TARGET_MAX];
+            char link_rel[APP_SCRIPT_REL_MAX];
+            int link_found;
+            int navigated;
 
             x = (int) (short) LOWORD(lparam);
             y = (int) (short) HIWORD(lparam);
@@ -2711,6 +3514,53 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
                     document_y)) {
                 return 0;
             }
+            file_index = 0;
+            file_disabled = 0;
+            if (g_document != NULL && app_file_input_at(g_document,
+                    document_x, document_y, &file_index, &file_disabled)) {
+                if (file_disabled) {
+                    return 0;
+                }
+                default_allowed = 1;
+                if (g_script != NULL) {
+                    if (AppScript_DispatchClickEvent(g_script, document_x,
+                            document_y, &default_allowed) != 0) {
+                        return 0;
+                    }
+                } else {
+                    (void) PCore_EventDispatchAt(g_document, document_x,
+                            document_y, "click", 1, 1, &default_allowed);
+                }
+                if (default_allowed && !g_file_picker_pending) {
+                    (void) app_file_input_open(hwnd, g_document, g_script,
+                            file_index, document_x, document_y, 0);
+                }
+                return 0;
+            }
+            if (g_document != NULL && PCore_DisclosureInfoAt(g_document,
+                    document_x, document_y, NULL, NULL, NULL, NULL,
+                    NULL) == 1) {
+                (void) app_handle_disclosure(hwnd, document_x, document_y);
+                return 0;
+            }
+            if (g_document != NULL && app_handle_label(hwnd, document_x,
+                    document_y)) {
+                return 0;
+            }
+            href[0] = '\0';
+            link_target[0] = '\0';
+            link_rel[0] = '\0';
+            link_found = g_document != NULL && PCore_LinkAtEx(g_document,
+                    document_x, document_y, href, sizeof(href),
+                    link_target, sizeof(link_target), link_rel,
+                    sizeof(link_rel)) == 0;
+            if (link_found && g_script != NULL) {
+                navigated = 0;
+                (void) AppScript_DispatchAnchorClick(g_script, document_x,
+                        document_y, href, link_target, link_rel,
+                        &navigated);
+                return 0;
+            }
             AppControls_ClearButtonFocus(g_controls);
             focus_index = app_focus_at(document_x, document_y);
             if (focus_index >= 0) {
@@ -2718,13 +3568,17 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             }
             default_allowed = 1;
             if (g_document != NULL) {
-                (void) PCore_EventDispatchAt(g_document, document_x,
-                        document_y, "click", 1, 1, &default_allowed);
+                if (g_script != NULL) {
+                    if (AppScript_DispatchClickEvent(g_script, document_x,
+                            document_y, &default_allowed) != 0) {
+                        return 0;
+                    }
+                } else {
+                    (void) PCore_EventDispatchAt(g_document, document_x,
+                            document_y, "click", 1, 1, &default_allowed);
+                }
             }
-            href[0] = '\0';
-            if (default_allowed && g_document != NULL && PCore_LinkAt(
-                    g_document,
-                    document_x, document_y, href, sizeof(href)) == 1) {
+            if (default_allowed && link_found) {
                 (void) app_load_page(g_window, href, APP_HISTORY_NEW, -1);
             }
         }
@@ -2919,6 +3773,9 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
     case APP_WM_SCRIPT_NAVIGATE:
         app_handle_script_navigation(hwnd, (AppScriptContext *) lparam);
         return 0;
+    case APP_WM_FILE_PICKER:
+        (void) app_file_picker_process(hwnd);
+        return 0;
     case APP_WM_CONTROLS_REFRESH:
         if (lparam == (LPARAM) g_script && g_document != NULL &&
                 g_controls != NULL) {
@@ -2956,6 +3813,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
          * host context is the single owner of the remaining page, history,
          * command bar and DLL shutdown sequence. */
         KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
+        app_file_picker_cancel_pending();
         if (g_controls != NULL) {
             AppControls_Destroy(g_controls);
             g_controls = NULL;

@@ -14,6 +14,7 @@
 
 #include "positron_core.h"
 #include "positron_browser.h"
+#include "app_forms.h"
 
 #define APP_SCRIPT_URL_MAX       PBROWSER_HISTORY_URL_MAX
 #define APP_SCRIPT_STATE_MAX     PBROWSER_HISTORY_STATE_MAX
@@ -41,8 +42,27 @@ typedef int (*AppScriptValidateFormSubmitFn)(void *pw,
         const PBrowserScriptFormSubmitInfo *info, int *out_valid);
 typedef int (*AppScriptFormSubmitFn)(void *pw, AppScriptContext *context,
         HANDLE document, const char *document_url,
-        const PBrowserScriptFormSubmitInfo *info, char *out_target_url,
-        int target_url_capacity);
+        const PBrowserScriptFormSubmitInfo *info,
+        AppFormRequest *out_request);
+typedef int (*AppScriptFormNavigationFn)(void *pw,
+        AppScriptContext *context);
+typedef int (*AppScriptGetProgrammaticClickTargetFn)(void *pw,
+        AppScriptContext *context, const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info);
+typedef int (*AppScriptValidateProgrammaticClickFn)(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid);
+typedef int (*AppScriptProgrammaticClickDefaultFn)(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info);
+typedef int (*AppScriptProgrammaticClickFn)(void *pw,
+        AppScriptContext *context,
+        const PBrowserScriptProgrammaticClickInfo *info);
+typedef int (*AppScriptGetProgrammaticAnchorTargetFn)(void *pw,
+        AppScriptContext *context, const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info);
 
 typedef struct AppScriptHostCallbacks {
     unsigned long size;
@@ -57,6 +77,12 @@ typedef struct AppScriptHostCallbacks {
     AppScriptFormSubmitFn submit_form;
     /* Browser direct-submit callback; Core supplies the no-validation data. */
     AppScriptFormSubmitFn submit_form_direct;
+    AppScriptFormNavigationFn form_navigation;
+    AppScriptGetProgrammaticClickTargetFn get_programmatic_click_target;
+    AppScriptValidateProgrammaticClickFn validate_programmatic_click;
+    AppScriptProgrammaticClickDefaultFn programmatic_click_default;
+    AppScriptProgrammaticClickFn programmatic_click_generic;
+    AppScriptGetProgrammaticAnchorTargetFn get_programmatic_anchor_target;
 } AppScriptHostCallbacks;
 
 typedef struct AppScriptPendingNavigation {
@@ -69,6 +95,8 @@ typedef struct AppScriptPendingNavigation {
     char target[APP_SCRIPT_TARGET_MAX];
     char rel[APP_SCRIPT_REL_MAX];
     char context_name[APP_SCRIPT_CONTEXT_MAX];
+    int form_valid;
+    AppFormRequest form;
 } AppScriptPendingNavigation;
 
 AppScriptContext *AppScript_Create(HANDLE document,
@@ -103,6 +131,11 @@ int AppScript_DispatchKeyEvent(AppScriptContext *context, int x, int y,
         int is_composing, int *out_default_allowed);
 int AppScript_DispatchFocusEvent(AppScriptContext *context, int x, int y,
         const char *event_type, int bubbles, int cancelable);
+int AppScript_DispatchClickEvent(AppScriptContext *context, int x, int y,
+        int *out_default_allowed);
+int AppScript_DispatchAnchorClick(AppScriptContext *context, int x, int y,
+        const char *href, const char *target, const char *rel,
+        int *out_navigated);
 
 /* Native EDIT transactions remain host-owned at the WM6 boundary while the
  * Browser session owns beforeinput/input/change ordering and dirty state. */
@@ -165,11 +198,23 @@ int AppScript_DispatchInvalidEvent(AppScriptContext *context, int x, int y,
 void AppScript_ResetNativeButtonState(AppScriptContext *context);
 
 HANDLE AppScript_Document(AppScriptContext *context);
+const char *AppScript_DocumentUrl(AppScriptContext *context);
 int AppScript_QueueNavigation(AppScriptContext *context,
         const PBrowserScriptNavigationInfo *info);
+int AppScript_QueueFormNavigation(AppScriptContext *context,
+        AppFormRequest *request);
 void AppScript_ClearPendingNavigation(AppScriptContext *context);
 int AppScript_TakeNavigation(AppScriptContext *context,
         AppScriptPendingNavigation *out_navigation);
 int AppScript_HasPendingNavigation(AppScriptContext *context);
+int AppScript_CloseDialog(AppScriptContext *context, const char *dialog_id,
+        const char *return_value, int *out_closed);
+int AppScript_DispatchNativeFileSelection(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase);
+int AppScript_DispatchNativeFilePicker(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase,
+        int *out_accepted);
+void AppScript_ResetNativeFileState(AppScriptContext *context);
+void AppScript_ResetNativeFilePickerState(AppScriptContext *context);
 
 #endif /* POSITRON_APP_SCRIPT_H */

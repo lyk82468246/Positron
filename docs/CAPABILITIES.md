@@ -47,16 +47,21 @@ click transaction。Browser click callback 经 Core 按坐标派发；Core 绘�
 子窗口。`type=reset` 按钮也使用 Browser 可取消的 click/reset 事务，获准后调用 Core
 `PCore_FormResetAt()`，再重建 native 控件以同步初值；该应用接线未新增 ABI。`type=submit`
 按钮也已接入：Core 按坐标校验并生成成功控件数据，Browser 的 native-button transaction 在校验
-通过后派发可取消 submit，EXE 只组合 URL-encoded GET 目标并调用既有导航候选。非法值、取消、
-不支持的 POST/multipart/dialog、容量错误或候选失败不会替换旧页。内置 controls 页带 required
+通过后派发可取消 submit，EXE 私有 `AppForms` 适配层按 Core 返回的 method/enctype 组合
+URL-encoded GET/POST、multipart POST 或 `method="dialog"` 默认动作并调用既有导航候选/关闭路径。
+Core 负责 successful-control snapshot 与 multipart wire encoding；EXE 只提供同步文件 I/O、HTTP
+body/Content-Type 调度和 dialog close。非法值、取消、容量错误或候选失败不会替换旧页，非 GET
+提交不伪造可重放的 Browser history entry。内置 controls 页带 required
 GET 表单；内置离线页面不创建 ScriptSession，其 inline script 不执行，因此脚本取消示例仍须在
-网络 ScriptSession 页面验收。阶段 4 已由 EXE 接入脚本 `form.reset()`、native GET submit、脚本
-`requestSubmit()` GET 和 direct `form.submit()` GET；后者按 Core/Browser 合同跳过 validation、submit
-event 和 submitter。单行文本/密码 native EDIT 的 Enter 另调用 Core 隐式提交接口、派发可取消 submit，
-并只接 URL-encoded GET；required 校验失败时 EXE 通过 Browser invalid callback 派发首个无效控件的
+网络 ScriptSession 页面验收。阶段 4 已由 EXE 接入脚本 `form.reset()`、native GET/POST submit、脚本
+`requestSubmit()` 与 direct `form.submit()` 的 GET/POST/multipart/dialog 路径；direct 方法按
+Core/Browser 合同跳过 validation、submit event 和 submitter。单行文本/密码 native EDIT 的 Enter
+另调用 Core 隐式提交接口、派发可取消 submit，并按表单 method/enctype 进入相应默认动作；required 校验失败时 EXE 通过 Browser invalid callback 派发首个无效控件的
 non-bubbling/cancelable `invalid` 事件，获准时按 Core 几何滚动并聚焦原生控件，取消时抑制默认反馈；
-native submit 按钮复用该反馈。textarea Enter 保持换行。提交仍不新增 ABI；POST/multipart、dialog 与提交期 FormData
-仍未接入。
+native submit 按钮复用该反馈。textarea Enter 保持换行。native `input type=file` 通过 WM6
+系统选择器和 Browser file-selection transaction 接入 Core multipart 的同步 file read/free callback。
+提交仍不新增 ABI；脚本自行构造的 Browser File/Blob pairs 没有转换为 Core-owned multipart snapshot
+的公共入口。
 有界 DOM mutation 返回 UI 消息泵后，宿主按 option 集合/标签
 fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另接入带 id 且已布局的
 `contenteditable` editing host：EXE 将其投影为同一窗口体系下的原生多行 EDIT，Core 保留有界
@@ -66,7 +71,8 @@ fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另
 及焦点/捕获收尾通知为去重的 `selectionchange`。候选页、stale host 或未物化 surface 使用 Browser
 有界脚本回退；该接线不新增 ABI，也不保留富文本子树或提供 Range/Selection 对象。宿主负责消息路由、
 指针/按键接线、重排和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
-native/script submit 与 reset、网络导航/失败回滚及原生控件；SIP/IME 与 file picker 不因该接线而宣称完成。
+native/script submit/reset、POST/multipart/dialog、file picker、网络导航/失败回滚及原生控件；
+SIP/IME 不因该接线而宣称完成。
 后续
 接线顺序与阶段门见
 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
@@ -128,7 +134,7 @@ native/script submit 与 reset、网络导航/失败回滚及原生控件；SIP/
 | DOM/attribute/CharacterData/HTML mutation | `PCore_Node*ById`、relation、serialization 和 Ex mutation callbacks | 已实现但有界 | 失败前预检 id、节点形状、深度、child 数、UTF-8 和容量；成功后 layout retained 失效 | TEST1284–1298 及设备门；通用 Node/Fragment mutation 仍不承诺 |
 | form owner、validation、selection、reset、modal 和 successful-control snapshot | `PCore_Form*`、`PCore_NodeFormControl*`、interaction/focus APIs | 已实现但有界 | owner、listed controls、fieldset/option state 和提交快照有界；非法/stale target fail closed | TEST1170–1188、1301–1302 和设备门 |
 | multipart/default submission 和 FormData encoding | `PCore_MultipartSubmissionEncode`、`PCore_FormDataEncode` | 已实现 | body 上限 1 MiB；file read/free callback 同步借用；缺 callback、读取失败或容量不足不部分写出 | TEST1301/1302；宿主只提供文件 I/O 和 HTTP 调度 |
-| File/Blob 对象、异步文件读取和浏览器式上传策略 | 当前只有 Browser 的有界内存 metadata/文本对象、Core DOM snapshot encoder 和宿主同步 file callback；没有 Browser JS FormData→Core body 交接入口 | 有界待扩展 | Browser 不暴露本地路径或持久 byte handle；Core 只接受自己的 FormData snapshot；缺 callback、权限/大小失败和 stale handle 必须在 body 输出前拒绝 | 本轮仓库审计只找到 `test_host` 夹具，没有生产消费者；只有真实消费者证明“picker→FormData→multipart”阻塞时才提升 |
+| File/Blob 对象、异步文件读取和浏览器式上传策略 | native `input type=file` 已由 `positron.exe` 通过 WM6 picker、Core snapshot encoder 和宿主同步 file callback 接入；脚本 File/Blob 仍没有 Browser JS FormData→Core body 交接入口 | 有界待扩展 | Browser 不暴露本地路径或持久 byte handle；Core 只接受自己的 FormData snapshot；缺 callback、权限/大小失败和 stale handle 必须在 body 输出前拒绝 | native picker 进入应用人工门；只有脚本 pairs→Core snapshot 的真实消费者证明阻塞时才提升 |
 | Range/Selection、MutationObserver、通用 live collection 和完整滚动树 | 当前没有公共承诺 | 暂缓 | 需要额外状态、事件队列和更大资源预算 | 保留在限制文档，不因标准名称直接立项 |
 
 ## Browser：`positron_browser.dll`
@@ -138,7 +144,7 @@ native/script submit 与 reset、网络导航/失败回滚及原生控件；SIP/
 | history、fragment、push/replace state、scroll snapshot | `PBrowser_History*` | 已实现但有界 | entry、URL、state 和 scroll snapshot 有界；失败保留旧 entry/旧页面 | next871、history/viewport fixtures 和设备门 |
 | navigation candidate/resource transaction | `PBrowser_NavigationCandidate*`、`PBrowser_NavigationResource*`、commit/cleanup snapshot | 已实现但有界 | generation、required/optional gate、retry、fallback、cancel 和 cleanup 都固定；过时 worker 不能提交 | TEST1119–1127、设备门；宿主只调度网络/worker |
 | script session、DOM/Event/form/input/lifecycle/viewport bridge | `PBrowser_ScriptSession*` callback tables and dispatch APIs | 已实现但有界 | heap、native functions、listeners、collections、strings、FormData/URLSearchParams、Storage 和任务队列固定 | TEST1138/1139、1152–1309 及相邻门；脚本默认关闭 |
-| File/Blob metadata and multipart consumer bridge | Browser `new FormData(form[, submitter])` 只通过 callback 取得 Core successful-control metadata；`PCore_FormDataEncode()` 只接受 Core-owned snapshot，二者没有 JS pairs 的公共转换入口 | 有界待扩展 | Browser 不直接读文件、不暴露路径或 byte buffer；Core/宿主的同步 read/free、1 MiB body 和 stale/权限失败边界保持不变 | 本轮仓库审计只找到 `test_host` 夹具，没有生产消费者；优先候选仍为 picker→FormData→multipart，但未有消费者证据前不实现 |
+| File/Blob metadata and multipart consumer bridge | Browser `new FormData(form[, submitter])` 只通过 callback 取得 Core successful-control metadata；`PCore_FormDataEncode()` 只接受 Core-owned snapshot，二者没有 JS pairs 的公共转换入口；native picker→form multipart 已由 EXE 接线 | 有界待扩展 | Browser 不直接读文件、不暴露路径或 byte buffer；Core/宿主的同步 read/free、1 MiB body 和 stale/权限失败边界保持不变 | native picker 由应用人工门验收；脚本 pairs→Core snapshot 只有在真实消费者出现后才提议公共 ABI |
 | CORS/referrer、absolute URL policy、完整 image loading | 当前没有完整公共承诺 | 有界待扩展 | 必须为安全边界、旧页保留、generation 和取消建立独立合同；不能由宿主临时决定 | 需要真实页面/消费者和 loopback fixture |
 | 多个窗口、bfcache 和跨窗口 history | 当前没有公共承诺 | 暂缓 | 需要额外 browsing context、持久状态和资源预算 | 只有新的明确产品范围才重新评估 |
 

@@ -95,6 +95,9 @@ struct AppControlsContext {
 
 static AppControlsContext *g_app_controls;
 
+static int app_controls_toggle_activate(AppControlsContext *context,
+        AppControlsItem *item);
+
 static int app_controls_item_geometry(AppControlsContext *context,
         AppControlsItem *item, int *out_x, int *out_y, int *out_width,
         int *out_height)
@@ -968,6 +971,34 @@ int AppControls_FocusFormControlAt(AppControlsContext *context,
         }
         SetFocus(item->hwnd);
         return GetFocus() == item->hwnd ? 1 : 0;
+    }
+    return 0;
+}
+
+int AppControls_HandleTogglePointer(AppControlsContext *context,
+        int document_x, int document_y)
+{
+    AppControlsItem *item;
+    unsigned int i;
+    int x;
+    int y;
+    int width;
+    int height;
+
+    if (context == NULL || context->document == NULL) {
+        return 0;
+    }
+    for (i = 0; i < context->count; i++) {
+        item = &context->items[i];
+        if (item->kind != APP_CONTROLS_KIND_TOGGLE || item->hwnd == NULL ||
+                !app_controls_item_geometry(context, item, &x, &y, &width,
+                &height) || width <= 0 || height <= 0 ||
+                document_x < x || document_x >= x + width ||
+                document_y < y || document_y >= y + height) {
+            continue;
+        }
+        (void) app_controls_toggle_activate(context, item);
+        return 1;
     }
     return 0;
 }

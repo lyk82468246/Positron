@@ -111,25 +111,27 @@ TLS、JSON、HTTP、Image、Script、Core 和 Browser 都要有明确的主干�
    拥有 value/选项/checked/radio-group 状态与几何，Browser 拥有 native edit/select/toggle/button 事件事务，宿主拥有窗口、消息和 teardown；
    mutation 后的 option 集合/标签变化会在 UI 消息返回后按 fingerprint 重建 SELECT，并保留
    EDIT/SELECT 焦点。该部分仍需设备输入、DPI、旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser
-   当前有界 mutation callback 限制。阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
-   click→Core validation→Browser 可取消 submit→Core successful-control URL-encoded GET 路径；EXE 只组合
-   GET 目标并调用既有 navigation candidate。另已把 ScriptSession `form.reset()` 接到 Browser 按 id
+    当前有界 mutation callback 限制。阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
+    click→Core validation→Browser 可取消 submit→Core successful-control GET/POST/multipart/dialog 路径；
+    EXE 只组合 Core 结果并调用既有 navigation candidate 或 dialog close。另已把 ScriptSession `form.reset()` 接到 Browser 按 id
    派发的 cancelable reset 与 Core state-only reset；活动页 relayout 后，reset 专用 reconcile 同步
    EDIT 值至原有窗口，并由现有路径同步 SELECT/toggle，普通 mutation 不覆盖 EDIT。
    ScriptSession `form.requestSubmit([submitter])` 由 EXE 接到 Core by-id validation/submission
-   primitives；direct `form.submit()` 由 Browser direct callback 接到 Core `PCore_FormSubmissionNoValidationById`，并复用同一
-   GET candidate；空/相对 action 以候选文档 URL 为基准。direct 方法按合同跳过 validation、submit event 和 submitter。
+    primitives；direct `form.submit()` 由 Browser direct callback 接到 Core `PCore_FormSubmissionNoValidationById`，并复用同一
+    GET/POST/multipart/dialog candidate；空/相对 action 以候选文档 URL 为基准。direct 方法按合同跳过 validation、submit event 和 submitter。
    单行文本/密码 EDIT 的 Enter 另调用 Core `PCore_FormSubmissionForTextInput`，使用 Core 的默认 submitter
    与成功控件快照；required 失败时 EXE 经 Browser invalid callback 派发首个无效控件的非冒泡、可取消
    `invalid`，获准后滚动并聚焦对应 native 控件，取消时抑制默认反馈；native submit 按钮复用此路径。
-   有效输入的可取消 submit 获准后只导航 URL-encoded GET，textarea Enter 保持换行。
+    有效输入的可取消 submit 获准后按 method/enctype 导航或关闭 dialog，textarea Enter 保持换行。
    离线 controls 表单覆盖 required、命名字段、select、submitter 和带查询的本地路由。
-   POST/multipart/dialog 与 FormData default action 仍未接入。native、implicit Enter 与两种脚本 GET 路径均待设备验收。
+    native file picker 已接到 Browser file-selection transaction 与 Core multipart file callback；脚本自行构造的
+    File/Blob→Core multipart 转换仍无公共入口。native、implicit Enter 与脚本提交路径均待设备验收。
    内置离线页不创建 ScriptSession，inline script 不执行；脚本取消和 selection 示例须使用网络
    ScriptSession 页面验收。阶段 4 的脚本提交设备门仍按用户决定等待 RAPI 恢复，不据此写入设备基线。
-5. File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
+5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
-   没有证据时不进入产品实现。
+   当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，
+   不因 native picker 已接入而扩大 ABI。
 6. 每个被提升的能力必须先有离线成功/失败不变性/容量/stale/cancel fixture，再运行 C89、正式
    ARMV4I 构建、仓库审计和相称的设备门；`test_host` 只增加接线、fixture 和断言。
 
@@ -167,15 +169,14 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 `BUTTON`）、Core 绘制普通按钮的 click transaction，以及带 id、已布局 contenteditable host 的
 纯文本 EDIT 投影和按 id 的 `beforeinput`/`input`。EXE 现已用已有 Browser selection callbacks
 接入已提交 native EDIT 的选区读写、CRLF↔逻辑 LF/UTF-16 换算、鼠标/键盘变化通知和
-`selectionchange`；此源码接线尚未设备验收，不代表 OEM 真实输入通过。阶段 4 的 native reset、
-   URL-encoded GET submit、单行 EDIT implicit Enter、ScriptSession `form.reset()`、`form.requestSubmit()` 与 direct
-   `form.submit()` GET 源码路径均已接入；implicit Enter/native submit 的 invalid-event 默认反馈也已接线，
-   本批 C89、仓库审计及 Debug/Release ARMV4I 全量重编已通过。设备门仍未完成。POST/multipart、
-formdata default action、富文本与 Range/Selection 对象仍未接入。RAPI 设备传输按用户决定暂停，
-不据此宣布设备基线；恢复设备传输后验收 native click/Enter 与脚本提交的 validation、取消、GET query
-及旧页保留，再取舍下一个阶段 4 能力。
-dialog、SIP/IME、clipboard 或 picker 不因候选排序自动进入实现。
-File/Blob→FormData→multipart 仍没有真实应用证据，继续保留在待取证状态。
+    `selectionchange`；此源码接线尚未设备验收，不代表 OEM 真实输入通过。阶段 4 的 native reset、
+    GET/POST/multipart/dialog submit、单行 EDIT implicit Enter、ScriptSession `form.reset()`、
+    `form.requestSubmit()` 与 direct `form.submit()`、native file picker、anchor/disclosure/label
+    forwarding 均已源码接入；implicit Enter/native submit 的 invalid-event 默认反馈也已接线。
+    本批 C89、仓库审计及 Debug/Release ARMV4I 全量重编已通过。设备门仍未完成。脚本自行构造的
+    File/Blob→Core multipart 转换、formdata 对象上传、富文本与 Range/Selection 对象仍未接入。
+    RAPI 设备传输按用户决定暂停，不据此宣布设备基线；恢复设备传输后先验收本纵切的 method/enctype、
+    picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
@@ -229,49 +230,51 @@ default action 已另列为阶段 4 纵切。不得把剩余原生交互一次�
   后的标签/数量重建、禁用项、页面切换销毁和旧页保留；contenteditable 另验证原生纯文本输入、
   `beforeinput` 取消、按 DOM id 的 `input`、换行与布局更新，以及 logical LF/UTF-16 选区读写、拖选/
   Shift+方向键方向和脚本 selection setter。富文本、Range/Selection 对象与完整 ClipboardEvent 不属于当前
-  接线。reset default action、native submit、脚本 `form.requestSubmit()` 与单行 EDIT implicit Enter 的
-  URL-encoded GET 分属阶段 4 纵切；POST/multipart 仍未接入。
+  接线。reset default action、native/script submit、implicit Enter、label/anchor/disclosure 和 file
+  picker 现分属阶段 4 纵切；脚本 File/Blob pairs 转 Core multipart 仍不在应用边界。
   新增控件必须补相邻失败和容量断言。
 - **门：** C89、正式 ARMV4I Debug/Release、仓库审计后，设备人工验收真实键盘、SIP/IME、
   触摸、旋转、DPI、软键和控件销毁；桌面 synthetic 消息不能替代设备证据。
 
-#### C. 独立应用阶段 4：native / ScriptSession submit 与 URL-encoded GET
+#### C. 独立应用阶段 4：native / ScriptSession form method 与 default action
 
-**状态：native、单行 EDIT implicit Enter、`requestSubmit()` 与 direct `form.submit()` 的 GET 源码路径已接入；invalid 默认反馈已接线，设备门按用户决定暂缓。**
-Core/Browser 已提供有界校验、successful-control snapshot、可取消 submit 顺序与 URL-encoded 编码；
-`positron.exe` 的 native submit、单行文本/密码 EDIT 的 Enter、ScriptSession `form.requestSubmit([submitter])` 和 direct `form.submit()` 都复用
-这些语义，EXE 只组合 GET 目标并调用既有 navigation candidate，不复制验证、事件或字段编码。direct 方法
-通过 Core no-validation snapshot 跳过 validation、submit event 和 submitter；空/相对 action 以提交文档 URL
-为基准。implicit Enter 使用 Core 的 `PCore_FormSubmissionForTextInput`，只对单行文本/密码控件触发；
-获准的 submit 事件后重新读取 Core 快照；required 失败会派发 Browser-owned invalid event，并由 EXE
-按 Core 几何 reveal/focus 首个无效原生控件，textarea Enter 仍由 native EDIT 处理为换行。离线 controls 页覆盖
-native required/select/submitter GET；脚本方法仍须用网络 ScriptSession 页面验收。
+**状态：源码纵切已接入，设备门按用户决定暂缓。** Core/Browser 已提供有界校验、successful-control
+snapshot、可取消 submit 顺序、method/enctype 结果和 multipart encoder；`positron.exe` 的 native
+submit、单行文本/密码 EDIT 的 Enter、ScriptSession `form.requestSubmit([submitter])` 与 direct
+`form.submit()` 都复用这些语义。EXE 私有 `AppForms` 只负责读取 Core 结果、同步文件 I/O、HTTP
+body/Content-Type 调度或 dialog close，不复制验证、事件、字段编码或 multipart 拼装。direct 方法
+通过 Core no-validation snapshot 跳过 validation、submit event 和 submitter；空/相对 action 以提交
+文档 URL 为基准。implicit Enter 只对单行文本/密码控件触发，textarea Enter 仍由 native EDIT 处理
+为换行；required 失败会派发 Browser-owned invalid event，并由 EXE 按 Core 几何 reveal/focus
+首个无效原生控件。native `input type=file` 另接入 WM6 系统 picker、Browser file-selection
+transaction 和 Core multipart file callback。离线 controls 页仍只覆盖内置 GET；脚本方法须用网络
+ScriptSession 页面验收。
 
-- **Owner：** Core 拥有 validation 和成功控件快照，Browser 拥有 native click、脚本
-  `requestSubmit()` 事务与 direct `form.submit()` 方法语义，EXE 负责 native 控件 Enter 接线、URL-encoded GET 请求调度和候选页面提交。
-- **边界：** native click/Space/Enter 与单行文本/密码 EDIT implicit Enter、脚本 requestSubmit 遵循 validation→可取消 submit→GET；textarea 不触发隐式提交。direct
-  `form.submit()` 则按 Browser/Core 合同跳过 validation、submit event 与 submitter，目前只接 GET；
-  无效值或取消不发请求并保留旧页，网络失败、取消、stale 和解析失败也保留旧页。首批限制为 GET；
-  POST、multipart、dialog 和 File/Blob 上传另立纵切。POST 需要先处理 Browser history 当前只允许 GET 的提交合同，以及 EXE 私有脚本提交 callback 尚无 method/body 参数的边界；不得隐式假设回退会重放或丢弃 POST body。
-- **最小 fixture：** 离线表单覆盖 native required 控件、submitter 和 URL 参数；Enter 对 required 空值派发 invalid、未取消时 reveal/focus 且不导航，取消 invalid 时抑制宿主反馈；有效值使用默认 submitter；textarea Enter 只换行。Browser/Core 自动合同
-  覆盖 requestSubmit 顺序，以及 direct submit 无 validation/event/submitter 的 Core snapshot。网络
-  ScriptSession 页面需确认 requestSubmit 的无效值/取消、direct submit 对无效必填值的 GET、空/相对
-  action、submitter 排除、最终 URL 和导航失败后旧页保留；内置离线页不执行脚本。
-- **门：** 本批已通过 C89、仓库审计及正式 Debug/Release ARMV4I 全量重编；TEST1174 验证 Browser/Core
-  `requestSubmit()` 顺序、TEST1175 验证 direct submit Core/Browser 合同，但均不运行 EXE callback。设备恢复后
-  仍须验收 native 点击/Space、文本框 Enter 的校验/invalid 与 submit 取消/滚动聚焦/默认 submitter、textarea 换行、requestSubmit 的校验/invalid/取消和 direct submit 的跳过语义、GET URL、软键与旧页保留；
-  本轮不因 RAPI 暂停而写成设备基线。
+- **Owner：** Core 拥有 validation、successful-control snapshot 和 multipart wire encoding，Browser
+  拥有 native click、脚本 `requestSubmit()`/direct submit 方法语义，EXE 负责 native 控件 Enter、
+  file picker、HTTP request body/Content-Type、dialog close、候选页面提交和失败策略。
+- **边界：** native click/Space/Enter 与脚本 requestSubmit 遵循 validation→可取消 submit→GET/POST/
+  multipart/dialog；direct `form.submit()` 跳过 validation、submit event 与 submitter。无效值、取消、
+  网络失败、资源失败、stale 和解析失败保留旧页；非 GET 提交不伪造可重放的 Browser history entry。
+  脚本自行构造的 File/Blob pairs 仍无 Browser→Core multipart 公共转换入口。
+- **最小 fixture：** 离线表单继续覆盖 native required 控件、submitter 和 URL 参数；网络 ScriptSession
+  页面需确认 GET/POST、multipart 文件选择/取消/权限/容量失败、`method="dialog"` returnValue/close、
+  requestSubmit 的无效值/取消、direct submit 的 no-validation/no-event/no-submitter、空/相对 action、
+  native/implicit Enter、label/anchor/disclosure 默认动作、候选失败后的旧页保留；内置离线页不执行脚本。
+- **门：** 本批已通过 C89、仓库审计及正式 Debug/Release ARMV4I 全量重编；TEST1174/1175 仍验证
+  Browser/Core submit 合同，但不运行 EXE callback。设备恢复后验收上述 method/enctype、picker、默认动作、
+  软键、真实 native 控件、SIP/IME、旋转、DPI 和旧页保留；本轮不因 RAPI 暂停而写成设备基线。
 
 ### 待取证
 
 #### A. 公共 DLL 消费者缺口审查
 
-**状态：已完成当前审计，未发现 File/Blob 生产消费者。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
+**状态：已完成当前审计，native picker 生产消费者已接入，脚本 File/Blob 仍无生产消费者。** 这是当前短期的发现和覆盖工作，不是产品实现任务。审查公开头文件、现有组件 README、
 `test_host` 的 callback 使用和兼容性 corpus，寻找仍由宿主临时决定、但应由 Core/Browser/HTTP/
 Image/Script 拥有的可复用语义。必须记录一个具体调用场景或失败行为，不能只把“现代 API 缺失”
-当作缺口。本轮只在 `test_host` fixture 中找到 FormData/File/multipart 的调用；排除宿主、历史、
-第三方和生成证据后，新增 `positron.exe` 只使用离线导航、Core paint 和 Browser history，仍
-没有生产应用调用 File/Blob/FormData/multipart 上传入口，因此没有可进入该候选的具体阻塞。
+当作缺口。本轮确认 `positron.exe` 的 native `input type=file` 已使用 Core/Browser multipart
+路径；脚本自行构造的 File/Blob/FormData pairs 仍只有 `test_host`/Browser fixture，没有生产应用
+调用入口，因此公共转换 ABI 没有可进入该候选的具体阻塞。
 
 已完成的 history fallback 和 Core URL callback 重复规则审查不再属于待实现范围：宿主现在只
 读取 Browser 的 history 快照，并通过 HTTP DLL 解析 Core 的 URL reference；创建失败或解析
@@ -291,11 +294,12 @@ fixture、直接相邻回归和设备/人工门；若只发现宿主输入或视
 
 #### C. 文件对象与表单消费者缺口
 
-**状态：待取证，且本轮审计未发现生产消费者。** Core 已拥有成功控件 snapshot 和 multipart wire encoding，Browser 的
-`FormData` 仍是有界对象/metadata 合同，完整 File/Blob、异步文件读取和浏览器式上传尚未实现。
-只有消费者确实需要“从 WM6 文件选择到 multipart body”的完整流程，且能在同步 callback、容量、
-权限和取消边界内形成最小 fixture，才进入候选；系统 picker 本身仍属于宿主人工 backlog。
-在当前候选中，它是第一优先调查方向，但在证据出现前仍不是“准备取舍”。
+**状态：native picker 路径已进入 EXE，脚本 File/Blob 路径仍待取证。** Core 已拥有成功控件
+snapshot 和 multipart wire encoding；`positron.exe` 已把 native `input type=file` 的 WM6 系统选择器、
+Browser file-selection transaction、同步 file read/free callback 与 multipart POST 接起来。
+Browser 的脚本 `FormData`/File/Blob 仍是有界 metadata/内存对象，没有把脚本 pairs 转换为 Core-owned
+multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞目标应用，并能给出固定容量、权限、
+取消、stale 和失败回滚 fixture，才为公共 ABI 提案；native picker 的 ROM/OEM 视觉仍属于人工 backlog。
 
 ### 人工 backlog
 

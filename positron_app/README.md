@@ -36,29 +36,46 @@ checkbox/radio 使用同一窗口体系下的 WM6 `BUTTON` 子控件。有界 DO
 SELECT，并保留正在编辑的 EDIT 与 SELECT 焦点。Core 仍拥有 value、选项状态、
 checked/radio-group 状态和几何，Browser native-edit/native-select/native-toggle bridge
 负责输入、选择、可信 click、input/change 和 focus 事务，宿主负责 WM6 消息、重排和销毁。
+页面 anchor click 通过 Browser 的 trusted anchor adapter 传递 href、target、rel；details/summary
+的 click/default toggle 也沿用同一 Browser/Core 路径。Core 的 label association（`for` 或包裹
+控件）由宿主转发到现有 native button/toggle/focus/file-picker transaction，标签 click 被取消时
+不会触发关联控件默认动作。
+
 Core 绘制的普通 `type=button` 也已接入：点按命中后（有 ScriptSession 时）经 Browser 派发
 click，按下 Space/Enter 可激活当前按钮；不额外创建 WM6 子窗口。Native-button transaction 和
 Core click callback 复用于 toggle 路径。Core 绘制的 `type=reset` 按钮也已接入：Browser
 依次处理可取消的 click/reset 事务，获准后 Core 恢复表单初值，宿主重建 native 控件以同步
 EDIT、SELECT 和 toggle；不增加 DLL ABI。`type=submit` 按钮现在也复用同一激活路径：Core
-执行约束校验并生成成功控件数据，Browser 在有效时派发可取消的 submit，EXE 目前只接入
-URL-encoded GET，再交给既有导航候选；校验失败、事件取消、目标过长或候选失败都不会替换旧页。
+执行约束校验并生成成功控件数据，Browser 在有效时派发可取消的 submit，EXE 通过私有
+`AppForms` 适配层接入 URL-encoded GET/POST、multipart POST 和 `method="dialog"`；Core
+负责成功控件快照及 multipart wire encoding，EXE 只负责文件 I/O、HTTP 调度和 dialog close。
+校验失败、事件取消、目标过长、资源失败或候选失败都不会替换旧页；非 GET 提交不会伪造可
+重放的 Browser history entry。
+
 网络 ScriptSession 还接入 `form.requestSubmit([submitter])`：Browser 保持 validation→可取消
-submit→默认动作顺序，EXE 只读取 Core 的成功控件快照并将 URL-encoded GET 目标交给同一导航候选；
+submit→默认动作顺序，EXE 读取 Core 的成功控件快照并将相应 GET/POST/dialog 结果交给同一导航候选；
 空 action 和相对 action 以当前文档 URL 为基准。脚本 `form.submit()` 也已通过 Browser direct-submit
-callback 接到 Core 的 no-validation successful-control snapshot，并复用同一 GET 导航候选；它按合同
-跳过校验、submit 事件和 submitter。单行文本/密码 EDIT 的 Enter 也已接入 Core 隐式提交：
-Core 选择默认 submitter 并生成 successful-control 数据，EXE 派发可取消 submit 后仅导航
-URL-encoded GET；required 校验失败时 EXE 经 Browser invalid callback 派发首个无效控件的非冒泡、
+callback 接到 Core 的 no-validation successful-control snapshot，并复用同一导航候选；它按合同
+跳过校验、submit 事件和 submitter，并支持 GET/POST/multipart/dialog 默认动作。单行文本/密码
+EDIT 的 Enter 也已接入 Core 隐式提交：Core 选择默认 submitter 并生成成功控件数据，EXE 派发
+可取消 submit 后按表单 method/enctype 导航或关闭 dialog；required 校验失败时 EXE 经 Browser invalid callback 派发首个无效控件的非冒泡、
 可取消 `invalid` 事件，未取消时滚动到并聚焦原生控件，取消时抑制宿主默认反馈；native submit
-按钮复用该验证反馈。textarea Enter 仍是换行。POST、multipart 和 dialog 提交仍未接入。
+按钮复用该验证反馈。textarea Enter 仍是换行。
+
 网络页面的 ScriptSession 另已接入带 id 表单的 `form.reset()`：Browser 按表单 id 派发可取消
 reset 事件，获准后由 Core 恢复初值；活动页面随后重新 layout，并在 UI 消息中 reconcile
 native 控件：SELECT/toggle 沿用现有 Core 同步，EDIT 值只在 reset 专用路径写回现有窗口；
 表单结构未变时不因值同步而重建控件并保留焦点。若 reset 事件处理器改变结构，仍按通用
 reconcile 规则处理。普通 DOM mutation 不会因此覆盖用户正在编辑的 EDIT。内置离线页不创建
 ScriptSession，因此该脚本方法只能在启用脚本的网络页面上验收。
+
+Native `input type=file` 通过 WM6 系统选择器接入 Browser 的 file-selection transaction；
+选择成功后 Core 保存路径/文件名，multipart 编码通过同步 file read/free callback 读取文件，
+取消、过时页面、权限或容量失败均不提交候选。脚本自行构造的 File/Blob 仍只保留 Browser
+内存 metadata，不能绕过该公共边界生成上传 body。
+
 内置 controls 页面有离线 GET 表单，提交成功会在地址栏显示编码后的查询并重新载入该页。
+
 带 id 且已布局的 `contenteditable` editing host 现在也
 投影为同一窗口体系下的原生多行 EDIT；Core 保存最多 8192 UTF-8 字节的纯文本，Browser 的
 `beforeinput` 可取消输入，并按 DOM id 派发接受后的 `input`。离线 controls 页的
@@ -71,9 +88,11 @@ CRLF 索引会换算为 Browser 使用的逻辑 LF/UTF-16 偏移；鼠标拖选�
 `selectionDirection` 与 `setSelectionRange()` 可同步到 native EDIT；候选页或失效 EDIT 不提供原生选区，
 Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `contenteditable` 编辑提交到 Core 时仍会
 以纯文本替换其子树，不支持富文本编辑；Range/Selection 对象不在本批范围，设备端 OEM 键盘、
-触摸和视觉尚待验收。脚本 `form.reset()` 的 native 控件同步、脚本 `requestSubmit()` 与 direct
-`form.submit()` 与单行 EDIT 隐式 Enter 路径仍未设备验收；POST/multipart/dialog 与提交期
-FormData default action 仍未接入；SIP/IME、文件选择器、
+触摸和视觉尚待验收。
+
+脚本 `form.reset()` 的 native 控件同步、脚本 `requestSubmit()` 与 direct
+`form.submit()`、单行 EDIT 隐式 Enter、POST/multipart/dialog 以及 native file picker 仍未设备验收；
+脚本自行构造的 File/Blob→multipart 仍没有公共转换入口；SIP/IME、
 书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
@@ -131,10 +150,11 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
    对有效 native submit button 检查 click→validation→submit 顺序，并用 click/submit
    `preventDefault()` 确认取消后没有 GET 请求；对无效 native submit/Enter 确认 `invalid` 先于原生
    reveal/focus 反馈，`invalid.preventDefault()` 可抑制该反馈；对带 id 的脚本表单调用
-   `requestSubmit()`，检查 required 校验、取消 submit 不发请求、显式 submitter 参数及相对 action
-   生成的 URL-encoded GET；调用直接 `form.submit()` 时确认它跳过 validation、submit 事件和 submitter，
-   即使 required 字段无效也只把 Core 成功控件数据导航为 GET；候选失败仍保留旧页。尝试 native/script
-   POST 表单确认其安全拒绝，确认 direct submit 的 POST/multipart/dialog 同样 fail closed。脚本错误、optional script/image 失败、
+    `requestSubmit()`，检查 required 校验、取消 submit 不发请求、显式 submitter 参数及相对 action
+    生成的 URL-encoded GET/POST；调用直接 `form.submit()` 时确认它跳过 validation、submit 事件和 submitter，
+    即使 required 字段无效也只把 Core 成功控件数据交给对应的 GET/POST/multipart/dialog 动作；候选失败仍保留旧页。
+    验证 multipart 的 native file picker、取消/权限/超限失败，以及 `method="dialog"` 的 returnValue 和 close 事件。
+    脚本错误、optional script/image 失败、
    取消或输入另一个地址时不显示半成品页面，旧页面仍可用。对带 id 的脚本表单调用
    `form.reset()`，分别验证 reset 事件以该表单为 target、`preventDefault()` 保留原值，以及
    允许默认动作后 Core 值和 native 控件恢复初值。

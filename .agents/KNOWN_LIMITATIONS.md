@@ -380,26 +380,28 @@
 - Browser candidate 以不可变 generation、取消请求、退休状态和 committed/failed 终态保护 UI 文档提交；`CanApply` 同时检查 generation 与 active 状态。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列和页面 swap；退休队列有界，达到上限时新导航 fail closed 并保留当前页。取消是协作式的：worker 若已进入阻塞的 PHttp 调用，不能保证 socket 立即中断；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。
 - Browser 资源事务按 URL 拥有 `pending`、`ready`、`failed`、`cancelled` 终态、失败分类和成功字节；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。样式表/`@import` 是 required，脚本/图片是 optional；`PBrowser_NavigationCommitGetInfo` 在 layout/swap 前提供 candidate/resource 组合 gate，required 失败、未收敛 pending、资源取消、候选过时或 cancellation 保留旧 document/history，optional 失败交给 Core fallback。统计最多保留 4 项 `role/failure#hash`，fallback family 计数是粗粒度观测，不等于逐元素归因或可见 UI；重复 URL 和深层 `@import` 的去重与分类已由 TEST1123 覆盖，但不能保证任意真实站点的 fallback 视觉。
 - 阶段 1/2 的资源失败边界已接入：required CSS 阻止提交，optional 资源回退，脚本异常不回滚。
-  EXE 接入 native reset/GET submit 与脚本 `form.reset()`（按 id 可取消；Core reset 后同步 native
-  控件），并接入脚本 `form.requestSubmit([submitter])` 的 validation→可取消 submit→URL-encoded
-  GET 路径；direct `form.submit()` 另用 Core `PCore_FormSubmissionNoValidationById`，跳过 validation、submit 事件与 submitter，
-  当前仅允许 URL-encoded GET；两者都按当前候选文档 URL 解析 relative/empty action，并复用既有 Browser
-  candidate。单行文本/密码 EDIT 的隐式 Enter 已通过 Core
-  `PCore_FormSubmissionForTextInput` 接入：有效输入派发可取消 submit，获准后只导航
-  URL-encoded GET；required 校验失败时派发首个无效控件的 non-bubbling/cancelable `invalid`，
+  EXE 接入 native reset/submit 与脚本 `form.reset()`（按 id 可取消；Core reset 后同步 native
+  控件），并接入脚本 `form.requestSubmit([submitter])` 的 validation→可取消 submit→GET/POST/
+  multipart/dialog 默认动作；direct `form.submit()` 另用 Core
+  `PCore_FormSubmissionNoValidationById`，跳过 validation、submit 事件与 submitter，并复用同一
+  candidate。空/相对 action 以当前候选文档 URL 为基准。单行文本/密码 EDIT 的隐式 Enter 已通过
+  `PCore_FormSubmissionForTextInput` 接入：有效输入派发可取消 submit，获准后按 method/enctype
+  导航或关闭 dialog；required 校验失败时派发首个无效控件的 non-bubbling/cancelable `invalid`，
   未取消则按 Core 几何滚动并聚焦对应 native control，取消则抑制宿主默认反馈；native submit
-  按钮也复用该 invalid 反馈。textarea 不触发隐式提交。POST/multipart/dialog 仍未接。离线页无
-  ScriptSession；脚本路径需网络页验收，设备门未通过。
+  按钮也复用该 invalid 反馈。textarea 不触发隐式提交。native `input type=file` 通过 WM6
+  picker、Browser file-selection transaction 和 Core multipart file read/free callback 接入；
+  设备门未通过。
 
 - 清理边界由宿主在 worker join 后编排：失败或过时 request 必须先让 Browser 资源事务中的 pending 项进入 `cancelled` 等终态，再读取 `PBrowser_NavigationCleanupGetInfo`。该 API 只复制 candidate result、resource gate、pending、hash-only failure summary 和 fallback 计数；`can_release` 对未收敛工作保持为 0，committed candidate 还要求 READY gate。复制值在 candidate/resource handle 销毁后仍然有效，但它不保证任意网络调用已即时中断，也不提供逐资源 UI 或页面视觉归因。
 
 ## Native 控件、SIP 与设备 UI
 
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
-- EXE 的 contenteditable selection、native/script reset、native submit、单行 EDIT 隐式 Enter、脚本
-  `requestSubmit()` 与 direct `form.submit()` 尚未设备验收；需检查 WM6 输入、SIP/IME、触摸、reset
-  初值/取消、Enter 校验/invalid 取消/滚动聚焦/submit 取消/默认 submitter、requestSubmit 校验/invalid/取消、
-  direct submit 跳过校验/事件/submitter、GET URL 与旧页保留。
+- EXE 的 contenteditable selection、native/script reset、native/script submit、单行 EDIT 隐式 Enter、
+  GET/POST/multipart/dialog、native file picker、anchor/label/disclosure 默认动作尚未设备验收；需检查
+  WM6 输入、SIP/IME、触摸、reset 初值/取消、Enter 校验/invalid 取消/滚动聚焦/submit 取消/默认 submitter、
+  requestSubmit 校验/invalid/取消、direct submit 跳过校验/事件/submitter、Content-Type/body、dialog
+  returnValue/close、picker 取消与权限失败、旧页保留、旋转和 DPI。
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。

@@ -788,9 +788,7 @@ static int app_script_submit_form(void *pw,
         const PBrowserScriptFormSubmitInfo *info)
 {
     AppScriptContext *context;
-    PBrowserScriptNavigationInfo navigation;
-    char target_url[APP_SCRIPT_URL_MAX];
-    int out_value;
+    AppFormRequest request;
     int result;
 
     context = (AppScriptContext *) pw;
@@ -798,32 +796,39 @@ static int app_script_submit_form(void *pw,
             context->callbacks.submit_form == NULL) {
         return -1;
     }
-    target_url[0] = '\0';
+    AppForms_InitRequest(&request);
     result = context->callbacks.submit_form(context->callbacks.pw,
             context, context->document, context->document_url, info,
-            target_url, sizeof(target_url));
+            &request);
     if (result <= 0) {
+        AppForms_ClearRequest(&request);
         return result;
     }
-    if (target_url[0] == '\0' ||
-            strlen(target_url) >= sizeof(target_url)) {
+    if (!request.valid) {
+        AppForms_ClearRequest(&request);
         return -1;
     }
-    memset(&navigation, 0, sizeof(navigation));
-    navigation.size = sizeof(navigation);
-    navigation.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
-    navigation.url = target_url;
-    out_value = 0;
-    return app_script_navigate(context, &navigation, &out_value);
+    if (AppScript_QueueFormNavigation(context, &request) != 0) {
+        AppForms_ClearRequest(&request);
+        return -1;
+    }
+    if (context->callbacks.form_navigation == NULL) {
+        AppScript_ClearPendingNavigation(context);
+        return 0;
+    }
+    result = context->callbacks.form_navigation(context->callbacks.pw,
+            context);
+    if (result <= 0) {
+        AppScript_ClearPendingNavigation(context);
+    }
+    return result;
 }
 
 static int app_script_submit_form_direct(void *pw,
         const PBrowserScriptFormSubmitInfo *info)
 {
     AppScriptContext *context;
-    PBrowserScriptNavigationInfo navigation;
-    char target_url[APP_SCRIPT_URL_MAX];
-    int out_value;
+    AppFormRequest request;
     int result;
 
     context = (AppScriptContext *) pw;
@@ -831,23 +836,133 @@ static int app_script_submit_form_direct(void *pw,
             context->callbacks.submit_form_direct == NULL) {
         return -1;
     }
-    target_url[0] = '\0';
+    AppForms_InitRequest(&request);
     result = context->callbacks.submit_form_direct(context->callbacks.pw,
             context, context->document, context->document_url, info,
-            target_url, sizeof(target_url));
+            &request);
     if (result <= 0) {
+        AppForms_ClearRequest(&request);
         return result;
     }
-    if (target_url[0] == '\0' ||
-            strlen(target_url) >= sizeof(target_url)) {
+    if (!request.valid) {
+        AppForms_ClearRequest(&request);
         return -1;
     }
-    memset(&navigation, 0, sizeof(navigation));
-    navigation.size = sizeof(navigation);
-    navigation.kind = PBROWSER_SCRIPT_NAVIGATION_ASSIGN;
-    navigation.url = target_url;
-    out_value = 0;
-    return app_script_navigate(context, &navigation, &out_value);
+    if (AppScript_QueueFormNavigation(context, &request) != 0) {
+        AppForms_ClearRequest(&request);
+        return -1;
+    }
+    if (context->callbacks.form_navigation == NULL) {
+        AppScript_ClearPendingNavigation(context);
+        return 0;
+    }
+    result = context->callbacks.form_navigation(context->callbacks.pw,
+            context);
+    if (result <= 0) {
+        AppScript_ClearPendingNavigation(context);
+    }
+    return result;
+}
+
+static int app_script_form_data_count(void *pw, const char *form_id,
+        const char *submitter_id, int *out_count)
+{
+    AppScriptContext *context;
+    HANDLE form_data;
+    PCoreFormDataInfo info;
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || form_id == NULL ||
+            form_id[0] == '\0' || out_count == NULL) {
+        return -1;
+    }
+    form_data = PCore_FormDataByIdEx(context->document, form_id,
+            submitter_id);
+    if (form_data == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    result = PCore_FormDataInfo(form_data, &info);
+    if (result != 1 || info.entry_count >
+            PBROWSER_SCRIPT_FORM_DATA_MAX_ENTRIES) {
+        PCore_FreeFormData(form_data);
+        return 1;
+    }
+    *out_count = (int) info.entry_count;
+    PCore_FreeFormData(form_data);
+    return 0;
+}
+
+static int app_script_form_data_entry(void *pw, const char *form_id,
+        const char *submitter_id, unsigned int entry_index,
+        PBrowserScriptFormDataEntryInfo *out_info)
+{
+    AppScriptContext *context;
+    HANDLE form_data;
+    PCoreFormDataEntryInfo core_info;
+    char name[PBROWSER_SCRIPT_FORM_DATA_NAME_MAX_BYTES + 1];
+    char value[PBROWSER_SCRIPT_FORM_DATA_VALUE_MAX_BYTES + 1];
+    int result;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || form_id == NULL ||
+            form_id[0] == '\0' || out_info == NULL ||
+            out_info->size < sizeof(*out_info) || out_info->name == NULL ||
+            out_info->value == NULL || out_info->filename == NULL ||
+            out_info->type == NULL || out_info->name_capacity <= 0 ||
+            out_info->value_capacity <= 0 || out_info->filename_capacity <= 0 ||
+            out_info->type_capacity <= 0) {
+        return -1;
+    }
+    if (out_info->name_capacity > PBROWSER_SCRIPT_FORM_DATA_NAME_MAX_BYTES + 1 ||
+            out_info->value_capacity > PBROWSER_SCRIPT_FORM_DATA_VALUE_MAX_BYTES + 1 ||
+            out_info->filename_capacity > PBROWSER_SCRIPT_FORM_DATA_FILENAME_MAX_BYTES + 1 ||
+            out_info->type_capacity > PBROWSER_SCRIPT_FORM_DATA_TYPE_MAX_BYTES + 1) {
+        return -1;
+    }
+    form_data = PCore_FormDataByIdEx(context->document, form_id,
+            submitter_id);
+    if (form_data == NULL) {
+        return 1;
+    }
+    memset(&core_info, 0, sizeof(core_info));
+    memset(name, 0, sizeof(name));
+    memset(value, 0, sizeof(value));
+    result = PCore_FormDataEntryInfo(form_data, entry_index, &core_info,
+            name, sizeof(name), value, sizeof(value));
+    PCore_FreeFormData(form_data);
+    if (result != 1 || (core_info.kind != PBROWSER_SCRIPT_FORM_DATA_STRING &&
+            core_info.kind != PBROWSER_SCRIPT_FORM_DATA_FILE) ||
+            core_info.name_bytes < 0 || core_info.name_bytes >=
+            (int) sizeof(name) || core_info.value_bytes < 0 ||
+            core_info.value_bytes >= (int) sizeof(value)) {
+        return 1;
+    }
+    if (core_info.name_bytes >= out_info->name_capacity ||
+            (core_info.kind == PBROWSER_SCRIPT_FORM_DATA_STRING &&
+            core_info.value_bytes >= out_info->value_capacity) ||
+            (core_info.kind == PBROWSER_SCRIPT_FORM_DATA_FILE &&
+            core_info.value_bytes >= out_info->filename_capacity)) {
+        return -1;
+    }
+    memcpy(out_info->name, name, (size_t) core_info.name_bytes + 1U);
+    out_info->name_bytes = core_info.name_bytes;
+    out_info->value[0] = '\0';
+    out_info->value_bytes = 0;
+    out_info->filename[0] = '\0';
+    out_info->filename_bytes = 0;
+    out_info->type[0] = '\0';
+    out_info->type_bytes = 0;
+    if (core_info.kind == PBROWSER_SCRIPT_FORM_DATA_FILE) {
+        memcpy(out_info->filename, value, (size_t) core_info.value_bytes + 1U);
+        out_info->filename_bytes = core_info.value_bytes;
+    } else {
+        memcpy(out_info->value, value, (size_t) core_info.value_bytes + 1U);
+        out_info->value_bytes = core_info.value_bytes;
+    }
+    out_info->kind = core_info.kind;
+    return 0;
 }
 
 static int app_script_scroll(void *pw,
@@ -1079,6 +1194,80 @@ static int app_script_form_event_dispatch_by_id(void *pw,
     return result < 0 ? -1 : 0;
 }
 
+static int app_script_programmatic_click_target(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticClickTargetInfo *out_info)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->callbacks.get_programmatic_click_target ==
+            NULL) {
+        return -1;
+    }
+    return context->callbacks.get_programmatic_click_target(
+            context->callbacks.pw, context, element_id, out_info);
+}
+
+static int app_script_programmatic_click_validate(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info,
+        const PBrowserScriptProgrammaticClickTargetInfo *target,
+        int *out_valid)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->callbacks.validate_programmatic_click ==
+            NULL) {
+        return -1;
+    }
+    return context->callbacks.validate_programmatic_click(
+            context->callbacks.pw, context, info, target, out_valid);
+}
+
+static int app_script_programmatic_click_default(void *pw,
+        const PBrowserScriptProgrammaticClickDefaultInfo *info)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->callbacks.programmatic_click_default ==
+            NULL) {
+        return -1;
+    }
+    return context->callbacks.programmatic_click_default(
+            context->callbacks.pw, context, info);
+}
+
+static int app_script_programmatic_click_generic(void *pw,
+        const PBrowserScriptProgrammaticClickInfo *info)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->callbacks.programmatic_click_generic ==
+            NULL) {
+        return -1;
+    }
+    return context->callbacks.programmatic_click_generic(
+            context->callbacks.pw, context, info);
+}
+
+static int app_script_programmatic_anchor_target(void *pw,
+        const char *element_id,
+        PBrowserScriptProgrammaticAnchorTargetInfo *out_info)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->callbacks.get_programmatic_anchor_target ==
+            NULL) {
+        return -1;
+    }
+    return context->callbacks.get_programmatic_anchor_target(
+            context->callbacks.pw, context, element_id, out_info);
+}
+
 static int app_script_reset_form(void *pw, const char *form_id)
 {
     AppScriptContext *context;
@@ -1113,6 +1302,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptDomValueCallbacks value;
     PBrowserScriptDomCheckedCallbacks checked;
     PBrowserScriptFormCallbacks form;
+    PBrowserScriptFormDataCallbacksEx form_data;
     PBrowserScriptFormSubmitCallbacks form_submit;
     PBrowserScriptOptionCallbacks option;
     PBrowserScriptEventCallbacks event_callbacks;
@@ -1133,6 +1323,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
     PBrowserScriptFormEventCallbacksEx form_event_ex;
     PBrowserScriptInvalidCallbacks invalid_callbacks;
     PBrowserScriptFormSubmitDirectCallbacks form_submit_direct;
+    PBrowserScriptProgrammaticClickCallbacksEx programmatic_click;
+    PBrowserScriptProgrammaticAnchorCallbacks programmatic_anchor;
 
     memset(&dom_read, 0, sizeof(dom_read));
     dom_read.size = sizeof(dom_read);
@@ -1194,6 +1386,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
     form.set_default_checked = app_script_set_default_checked;
     form.get_selected_index = app_script_get_selected_index;
     form.set_selected_index = app_script_set_selected_index;
+    memset(&form_data, 0, sizeof(form_data));
+    form_data.size = sizeof(form_data);
+    form_data.pw = context;
+    form_data.get_count = app_script_form_data_count;
+    form_data.get_entry = app_script_form_data_entry;
     memset(&form_submit, 0, sizeof(form_submit));
     form_submit.size = sizeof(form_submit);
     form_submit.pw = context;
@@ -1282,6 +1479,18 @@ static int app_script_register_callbacks(AppScriptContext *context)
     invalid_callbacks.size = sizeof(invalid_callbacks);
     invalid_callbacks.pw = context;
     invalid_callbacks.dispatch_invalid = app_script_invalid_event_dispatch;
+    memset(&programmatic_click, 0, sizeof(programmatic_click));
+    programmatic_click.size = sizeof(programmatic_click);
+    programmatic_click.pw = context;
+    programmatic_click.get_target = app_script_programmatic_click_target;
+    programmatic_click.validate_submit =
+            app_script_programmatic_click_validate;
+    programmatic_click.perform_default = app_script_programmatic_click_default;
+    programmatic_click.dispatch_generic = app_script_programmatic_click_generic;
+    memset(&programmatic_anchor, 0, sizeof(programmatic_anchor));
+    programmatic_anchor.size = sizeof(programmatic_anchor);
+    programmatic_anchor.pw = context;
+    programmatic_anchor.get_target = app_script_programmatic_anchor_target;
     if (PBrowser_ScriptSessionRegisterDomReadCallbacksEx(context->session,
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
@@ -1305,6 +1514,8 @@ static int app_script_register_callbacks(AppScriptContext *context)
             context->session, &checked) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormCallbacks(context->session,
             &form) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterFormDataCallbacksEx(
+            context->session, &form_data) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormSubmitDirectCallbacks(
             context->session, &form_submit_direct) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterFormSubmitCallbacks(
@@ -1344,7 +1555,11 @@ static int app_script_register_callbacks(AppScriptContext *context)
             PBrowser_ScriptSessionRegisterFormEventCallbacksEx(
             context->session, &form_event_ex) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterInvalidCallbacks(
-            context->session, &invalid_callbacks) != PSCRIPT_OK) {
+            context->session, &invalid_callbacks) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterProgrammaticClickCallbacksEx(
+            context->session, &programmatic_click) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionRegisterProgrammaticAnchorCallbacks(
+            context->session, &programmatic_anchor) != PSCRIPT_OK) {
         return 1;
     }
     return 0;
@@ -1584,6 +1799,7 @@ void AppScript_Destroy(AppScriptContext *context)
     if (context == NULL) {
         return;
     }
+    AppScript_ClearPendingNavigation(context);
     binding = context->events;
     while (binding != NULL) {
         next = binding->next;
@@ -1596,6 +1812,9 @@ void AppScript_Destroy(AppScriptContext *context)
     }
     context->events = NULL;
     if (context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeFileState(context->session);
+        (void) PBrowser_ScriptSessionResetNativeFilePickerState(
+                context->session);
         PBrowser_ScriptSessionDestroy(context->session);
         context->session = NULL;
     }
@@ -1751,6 +1970,53 @@ int AppScript_DispatchFocusEvent(AppScriptContext *context, int x, int y,
     info.cancelable = cancelable ? 1 : 0;
     return PBrowser_ScriptSessionDispatchFocusEvent(context->session, &info)
             == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchClickEvent(AppScriptContext *context, int x, int y,
+        int *out_default_allowed)
+{
+    PBrowserScriptClickEventInfo info;
+
+    if (out_default_allowed != NULL) {
+        *out_default_allowed = 1;
+    }
+    if (context == NULL || context->session == NULL ||
+            out_default_allowed == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.x = x;
+    info.y = y;
+    info.event_type = "click";
+    info.bubbles = 1;
+    info.cancelable = 1;
+    return PBrowser_ScriptSessionDispatchClickEvent(context->session, &info,
+            out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchAnchorClick(AppScriptContext *context, int x, int y,
+        const char *href, const char *target, const char *rel,
+        int *out_navigated)
+{
+    PBrowserScriptAnchorClickInfoEx info;
+
+    if (out_navigated != NULL) {
+        *out_navigated = 0;
+    }
+    if (context == NULL || context->session == NULL || href == NULL ||
+            href[0] == '\0' || out_navigated == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.x = x;
+    info.y = y;
+    info.href = href;
+    info.target = target != NULL ? target : "";
+    info.rel = rel != NULL ? rel : "";
+    return PBrowser_ScriptSessionDispatchAnchorClickEx(context->session,
+            &info, out_navigated) == PSCRIPT_OK ? 0 : 1;
 }
 
 static int app_script_native_edit_target_push(AppScriptContext *context,
@@ -2118,6 +2384,11 @@ HANDLE AppScript_Document(AppScriptContext *context)
     return context == NULL ? NULL : context->document;
 }
 
+const char *AppScript_DocumentUrl(AppScriptContext *context)
+{
+    return context == NULL ? NULL : context->document_url;
+}
+
 int AppScript_QueueNavigation(AppScriptContext *context,
         const PBrowserScriptNavigationInfo *info)
 {
@@ -2138,6 +2409,7 @@ int AppScript_QueueNavigation(AppScriptContext *context,
             sizeof(context->pending_navigation.context_name))) {
         return 1;
     }
+    AppScript_ClearPendingNavigation(context);
     memset(&context->pending_navigation, 0,
             sizeof(context->pending_navigation));
     context->pending_navigation.valid = 1;
@@ -2162,9 +2434,26 @@ int AppScript_QueueNavigation(AppScriptContext *context,
     return 0;
 }
 
+int AppScript_QueueFormNavigation(AppScriptContext *context,
+        AppFormRequest *request)
+{
+    if (context == NULL || request == NULL || !request->valid) {
+        return 1;
+    }
+    AppScript_ClearPendingNavigation(context);
+    context->pending_navigation.valid = 1;
+    context->pending_navigation.form_valid = 1;
+    memcpy(&context->pending_navigation.form, request, sizeof(*request));
+    request->body = NULL;
+    request->body_bytes = 0;
+    memset(request, 0, sizeof(*request));
+    return 0;
+}
+
 void AppScript_ClearPendingNavigation(AppScriptContext *context)
 {
     if (context != NULL) {
+        AppForms_ClearRequest(&context->pending_navigation.form);
         memset(&context->pending_navigation, 0,
                 sizeof(context->pending_navigation));
     }
@@ -2190,4 +2479,69 @@ int AppScript_TakeNavigation(AppScriptContext *context,
 int AppScript_HasPendingNavigation(AppScriptContext *context)
 {
     return context != NULL && context->pending_navigation.valid;
+}
+
+int AppScript_CloseDialog(AppScriptContext *context, const char *dialog_id,
+        const char *return_value, int *out_closed)
+{
+    if (context == NULL || context->session == NULL || dialog_id == NULL ||
+            dialog_id[0] == '\0' || out_closed == NULL) {
+        return 1;
+    }
+    return PBrowser_ScriptSessionCloseDialogById(context->session,
+            dialog_id, return_value != NULL ? return_value : "", out_closed)
+            == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchNativeFileSelection(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase)
+{
+    PBrowserScriptNativeFileSelectionInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    return PBrowser_ScriptSessionDispatchNativeFileSelection(context->session,
+            &info) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_DispatchNativeFilePicker(AppScriptContext *context,
+        unsigned long target_token, int x, int y, int phase,
+        int *out_accepted)
+{
+    PBrowserScriptNativeFilePickerInfo info;
+
+    if (context == NULL || context->session == NULL || target_token == 0 ||
+            out_accepted == NULL) {
+        return 1;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.target_token = target_token;
+    info.x = x;
+    info.y = y;
+    info.phase = phase;
+    return PBrowser_ScriptSessionDispatchNativeFilePicker(context->session,
+            &info, out_accepted) == PSCRIPT_OK ? 0 : 1;
+}
+
+void AppScript_ResetNativeFileState(AppScriptContext *context)
+{
+    if (context != NULL && context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeFileState(context->session);
+    }
+}
+
+void AppScript_ResetNativeFilePickerState(AppScriptContext *context)
+{
+    if (context != NULL && context->session != NULL) {
+        (void) PBrowser_ScriptSessionResetNativeFilePickerState(
+                context->session);
+    }
 }
