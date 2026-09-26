@@ -260,35 +260,46 @@ void AppResources_Free(void *pw, char *data)
 int AppResources_Resolve(void *pw, const char *base_url,
         const char *reference, char *out_url, int out_capacity)
 {
-    (void) pw;
+    AppNavigationRequest *request;
+    AppNavigationResource *resource;
+    const char *effective_base;
+
     if (reference == NULL || out_url == NULL || out_capacity <= 1) {
         return 1;
     }
-    return AppUrlRouter_ResolveNetworkReference(base_url, reference, out_url,
-            out_capacity);
+    request = (AppNavigationRequest *) pw;
+    effective_base = base_url;
+    if (request != NULL && base_url != NULL) {
+        for (resource = request->resources; resource != NULL;
+                resource = resource->next) {
+            if (strcmp(resource->url, base_url) == 0 &&
+                    resource->effective_url[0] != '\0') {
+                effective_base = resource->effective_url;
+                break;
+            }
+        }
+    }
+    return AppUrlRouter_ResolveNetworkReference(effective_base, reference,
+            out_url, out_capacity);
 }
 
-int AppResources_ResolveTransport(AppNavigationRequest *request,
-        const char *reference, char *out_host, int out_host_capacity,
-        char *out_path, int out_path_capacity, int *out_port)
+int AppResources_SetEffectiveUrl(AppNavigationRequest *request, int index,
+        const char *effective_url)
 {
-    char base_host[APP_HOST_NAV_HOST_MAX];
-    char base_path[APP_HOST_NAV_PATH_MAX];
-    int base_port;
+    AppNavigationResource *resource;
+    size_t length;
 
-    if (request == NULL || reference == NULL || out_host == NULL ||
-            out_path == NULL || out_port == NULL) {
+    if (request == NULL || index < 0 || effective_url == NULL) {
         return 1;
     }
-    base_host[0] = '\0';
-    base_path[0] = '\0';
-    base_port = 443;
-    if (PHttp_ResolveReference(NULL, 443, NULL, request->url,
-            base_host, sizeof(base_host), base_path, sizeof(base_path),
-            &base_port) != 0) {
+    resource = app_resources_find_index(request, index);
+    if (resource == NULL) {
         return 1;
     }
-    return PHttp_ResolveReference(base_host, base_port, base_path,
-            reference, out_host, out_host_capacity, out_path,
-            out_path_capacity, out_port);
+    length = strlen(effective_url);
+    if (length == 0 || length >= sizeof(resource->effective_url)) {
+        return 1;
+    }
+    memcpy(resource->effective_url, effective_url, length + 1);
+    return 0;
 }

@@ -69,8 +69,6 @@
 #define APP_SCRIPT_TIMER_ID     7
 
 #define APP_NAV_MAX_RETIRED     4
-#define APP_NAV_HOST_MAX        APP_HOST_NAV_HOST_MAX
-#define APP_NAV_PATH_MAX        APP_HOST_NAV_PATH_MAX
 #define APP_NAV_WORK_DOCUMENT   1
 #define APP_NAV_WORK_RESOURCES  2
 #define APP_NAV_COMMIT_SCRIPTS  1
@@ -2107,6 +2105,7 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     int is_main_request;
     int retry_allowed;
     char content_type_header[APP_HOST_CONTENT_TYPE_MAX + 32];
+    char final_url[PHTTP_URL_MAX];
     const char *headers[2];
 
     if (request == NULL || request->resource_transaction == NULL ||
@@ -2168,7 +2167,8 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                     request->resource_transaction);
             return 1;
         }
-        transport_failure = response == NULL || response->status_code == 0;
+        transport_failure = response == NULL || response->status_code == 0 ||
+                (response != NULL && response->error_msg[0] != '\0');
         if (transport_failure && retry_allowed &&
                 PBrowser_NavigationResourceShouldRetry(
                 request->resource_transaction, index, 1,
@@ -2185,9 +2185,30 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                 response->body_len > 0 &&
                 response->body_len <= (int)
                 PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX) {
-            if (PBrowser_NavigationResourceSetData(
+            final_url[0] = '\0';
+            if (PHttp_ResponseGetFinalUrl(response, final_url,
+                    sizeof(final_url)) != 0) {
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
+            } else if (strlen(final_url) >= APP_HOST_URL_MAX) {
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_BUDGET;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_BUDGET);
+            } else if (AppResources_SetEffectiveUrl(request, index,
+                    final_url) != 0) {
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_MEMORY;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_MEMORY);
+            } else if (PBrowser_NavigationResourceSetData(
                     request->resource_transaction, index, response->body,
                     response->body_len) == PBROWSER_OK) {
+                if (is_main_request) {
+                    memcpy(request->url, final_url, strlen(final_url) + 1);
+                }
                 PHttp_FreeResponse(response);
                 return 0;
             }

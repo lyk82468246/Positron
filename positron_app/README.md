@@ -41,6 +41,12 @@ checked/radio-group 状态和几何，Browser native-edit/native-select/native-t
 控件）由宿主转发到现有 native button/toggle/focus/file-picker transaction，标签 click 被取消时
 不会触发关联控件默认动作。
 
+应用私有 `app_url_router` 只负责 scheme 分流：`positron://` 留在 EXE 的离线页面路由，
+HTTP(S) reference 交给 `positron_http.dll`，其他显式 scheme fail closed。网络请求统一使用
+URL-aware API；每个成功资源都会查询 `PHttp_ResponseGetFinalUrl()`，主文档用最终 URL 更新
+地址/history，CSS、图片和 `@import` 以对应资源的最终 URL 解析相对引用。应用不再维护
+host/path/port 的第二套 scheme 推断；旧 host/port HTTP 入口只由公共 ABI 回归测试保留。
+
 Core 绘制的普通 `type=button` 也已接入：点按命中后（有 ScriptSession 时）经 Browser 派发
 click，按下 Space/Enter 可激活当前按钮；不额外创建 WM6 子窗口。Native-button transaction 和
 Core click callback 复用于 toggle 路径。Core 绘制的 `type=reset` 按钮也已接入：Browser

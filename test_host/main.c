@@ -1125,6 +1125,7 @@ static BOOL test3_get(void)
     const char*    url;
     http_progress_probe progress;
     char           msg[512];
+    char           final_url[PHTTP_URL_MAX];
 
     memset(&progress, 0, sizeof(progress));
     progress.monotonic = 1;
@@ -1140,6 +1141,16 @@ static BOOL test3_get(void)
                   "HTTPS GET postman-echo -> status=%d err=%s\nbody (first 200):\n%.200s",
                   resp->status_code, resp->error_msg,
                   resp->body ? resp->body : "(none)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 3 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+    final_url[0] = '\0';
+    if (PHttp_ResponseGetFinalUrl(resp, final_url, sizeof(final_url)) != 0 ||
+            strstr(final_url, "https://postman-echo.com/get") == NULL) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "final URL query failed: %s", final_url);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 3 FAIL", msg);
         PHttp_FreeResponse(resp);
@@ -1180,7 +1191,9 @@ static BOOL test3_get(void)
 
     _snprintf(msg, sizeof(msg) - 1,
               "HTTPS GET postman-echo OK\n\nEcho URL:\n%s\n\n"
-              "(TLS 1.2 GET + monotonic body progress + JSON response.)", url);
+              "Final URL:\n%s\n\n"
+              "(TLS 1.2 GET + monotonic body progress + JSON response.)",
+              url, final_url);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 3 OK", msg);
 
@@ -6416,6 +6429,7 @@ typedef struct pcore_navigation_resource {
     struct pcore_navigation_resource *next;
     int index;
     char *url;
+    char *effective_url;
 } pcore_navigation_resource;
 
 typedef struct pcore_browser_script_bridge pcore_browser_script_bridge;
@@ -6690,6 +6704,7 @@ typedef struct pcore_navigation_request {
     struct pcore_navigation_request *retired_next;
     char           host[256];
     char           path[1024];
+    char           url[PCORE_BROWSE_HISTORY_URL_MAX];
     int            port;
     int            method;
     char          *request_body;
@@ -13930,6 +13945,49 @@ static int pcore_document_url(const char *host, const char *path, int port,
     return (n < 0 || n >= out_capacity - 1) ? 1 : 0;
 }
 
+/* Navigation transport uses the complete URL so an explicit scheme and
+ * non-default port survive from the request through redirects and resource
+ * resolution. Older fixture requests only populate host/path/port, so keep
+ * a bounded compatibility fallback for them. */
+static int pcore_navigation_request_url(
+        const pcore_navigation_request *request, char *out_url,
+        int out_capacity)
+{
+    int length;
+
+    if (request == NULL || out_url == NULL || out_capacity <= 1) {
+        return 1;
+    }
+    out_url[0] = '\0';
+    if (request->url[0] != '\0') {
+        length = (int) strlen(request->url);
+        if (length >= out_capacity) {
+            return 1;
+        }
+        memcpy(out_url, request->url, (size_t) length + 1);
+        return 0;
+    }
+    return pcore_document_url(request->host, request->path, request->port,
+            out_url, out_capacity);
+}
+
+static const char *pcore_navigation_resource_base(
+        const pcore_navigation_request *request, const char *base_url)
+{
+    const pcore_navigation_resource *entry;
+
+    if (request == NULL || base_url == NULL) {
+        return base_url;
+    }
+    for (entry = request->resources; entry != NULL; entry = entry->next) {
+        if (entry->effective_url != NULL &&
+                strcmp(entry->url, base_url) == 0) {
+            return entry->effective_url;
+        }
+    }
+    return base_url;
+}
+
 /* The public HTTP DLL owns bounded HTTP(S) reference resolution. Keep this
  * Core callback as a thin adapter that converts its host/path result back to
  * the absolute UTF-8 URL expected by the parser; the host must not maintain a
@@ -13937,14 +13995,17 @@ static int pcore_document_url(const char *host, const char *path, int port,
 static int wm_combine_url(void *pw, const char *base_url,
         const char *reference, char *out_url, int out_capacity)
 {
-    (void) pw;
+    const pcore_navigation_request *request;
+
+    request = (const pcore_navigation_request *) pw;
     if (base_url == NULL || reference == NULL || out_url == NULL ||
             out_capacity <= 1) {
         return 1;
     }
     out_url[0] = '\0';
-    return test_host_resolve_reference_url(base_url, reference, out_url,
-            out_capacity);
+    return test_host_resolve_reference_url(
+            pcore_navigation_resource_base(request, base_url), reference,
+            out_url, out_capacity);
 }
 
 /* Copy an absolute path (starts with '/') into dst, stripping any #fragment.
@@ -14558,6 +14619,29 @@ static void pcore_navigation_resource_cancel_all(
             request->resource_transaction);
 }
 
+static int pcore_navigation_resource_set_effective_url(
+        pcore_navigation_resource *entry, const char *effective_url)
+{
+    size_t length;
+    char *copy;
+
+    if (entry == NULL || effective_url == NULL) {
+        return 1;
+    }
+    length = strlen(effective_url);
+    if (length == 0 || length >= PCORE_BROWSE_HISTORY_URL_MAX) {
+        return 1;
+    }
+    copy = (char *) malloc(length + 1);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, effective_url, length + 1);
+    free(entry->effective_url);
+    entry->effective_url = copy;
+    return 0;
+}
+
 /* Record one completed worker response. The response remains owned by the
  * caller, while the request receives a bounded copy only for a successful
  * body. Every other outcome becomes one terminal, classified entry. */
@@ -14652,6 +14736,7 @@ static void pcore_navigation_request_free(
 
         next = entry->next;
         free(entry->url);
+        free(entry->effective_url);
         free(entry);
         entry = next;
     }
@@ -14866,13 +14951,12 @@ static void pcore_navigation_progress(void *pw, int received, int total)
 }
 
 static PHttpResponse *pcore_navigation_get(
-        pcore_navigation_request *request, const char *host, int port,
-        const char *path)
+        pcore_navigation_request *request, const char *url)
 {
     request->progress_last_total = -2;
     request->progress_last_percent = -2;
     request->progress_last_received = -16384;
-    return PHttp_GetEx(host, port, path, NULL,
+    return PHttp_GetUrlEx(url, NULL,
             pcore_navigation_progress, request);
 }
 
@@ -14899,6 +14983,11 @@ static PHttpResponse *pcore_navigation_fetch_document(
 {
     const char *headers[2];
     PHttpResponse *response;
+    char url[PCORE_BROWSE_HISTORY_URL_MAX];
+
+    if (pcore_navigation_request_url(request, url, sizeof(url)) != 0) {
+        return NULL;
+    }
 
     if (request->method == 2 || request->method == 3) {
         headers[0] = (request->request_content_type != NULL) ?
@@ -14908,18 +14997,16 @@ static PHttpResponse *pcore_navigation_fetch_document(
         request->progress_last_total = -2;
         request->progress_last_percent = -2;
         request->progress_last_received = -16384;
-        return PHttp_PostEx(request->host, request->port, request->path,
-                headers, request->request_body, request->request_body_len,
+        return PHttp_PostUrlEx(url, headers, request->request_body,
+                request->request_body_len,
                 pcore_navigation_progress, request);
     }
-    response = pcore_navigation_get(request, request->host,
-            request->port, request->path);
+    response = pcore_navigation_get(request, url);
     if (pcore_navigation_retryable_document_response(request, response)) {
         PHttp_FreeResponse(response);
         request->stats.document_retries++;
         Sleep(250);
-        response = pcore_navigation_get(request, request->host,
-                request->port, request->path);
+        response = pcore_navigation_get(request, url);
     }
     return response;
 }
@@ -14928,18 +15015,21 @@ static int pcore_navigation_response_error(
         const pcore_navigation_request *request, char *message, int capacity)
 {
     const PHttpResponse *resp;
+    char url[PCORE_BROWSE_HISTORY_URL_MAX];
 
     resp = request->response;
     if (resp != NULL && resp->status_code == 200 && resp->body != NULL &&
             resp->body_len > 0) {
         return 0;
     }
+    if (pcore_navigation_request_url(request, url, sizeof(url)) != 0) {
+        cstr_copy(url, sizeof(url), "(invalid URL)");
+    }
     _snprintf(message, capacity - 1,
-              "%s %s://%s%s -> status=%d %s",
+              "%s %s -> status=%d %s",
               (request->method == 2 || request->method == 3) ?
                       "POST" : "GET",
-              (request->port == 80) ? "http" : "https",
-              request->host, request->path,
+              url,
               (resp != NULL) ? resp->status_code : 0,
               (resp != NULL) ? resp->error_msg : "(null)");
     message[capacity - 1] = '\0';
@@ -14952,9 +15042,9 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
     pcore_navigation_resource *entry;
     PHttpResponse *resp;
     PBrowserNavigationResourceInfo info;
-    char host[256];
-    char path[1024];
-    int port;
+    char document_url[PCORE_BROWSE_HISTORY_URL_MAX];
+    char resource_url[PCORE_BROWSE_HISTORY_URL_MAX];
+    char final_url[PCORE_BROWSE_HISTORY_URL_MAX];
 
     request = (pcore_navigation_request *) param;
     if (pcore_navigation_is_cancelled(request)) {
@@ -14974,6 +15064,21 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                 request->response->body != NULL &&
                 request->response->body_len > 0) {
             request->stats.document_bytes = request->response->body_len;
+            final_url[0] = '\0';
+            if (PHttp_ResponseGetFinalUrl(request->response, final_url,
+                    sizeof(final_url)) != 0) {
+                request->response->status_code = 0;
+                cstr_copy(request->response->error_msg,
+                        sizeof(request->response->error_msg),
+                        "final URL unavailable");
+            } else if (strlen(final_url) >= sizeof(request->url)) {
+                request->response->status_code = 0;
+                cstr_copy(request->response->error_msg,
+                        sizeof(request->response->error_msg),
+                        "final URL too long");
+            } else {
+                memcpy(request->url, final_url, strlen(final_url) + 1);
+            }
         }
     } else {
         for (entry = request->resources; entry != NULL;
@@ -14988,10 +15093,10 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                     info.state != PCORE_NAV_RESOURCE_PENDING) {
                 continue;
             }
-            port = request->port;
-            if (!resolve_url_from(request->host, request->path,
-                    request->port, entry->url, host, sizeof(host), path,
-                    sizeof(path), &port)) {
+            if (pcore_navigation_request_url(request, document_url,
+                    sizeof(document_url)) != 0 ||
+                    test_host_resolve_reference_url(document_url, entry->url,
+                    resource_url, sizeof(resource_url)) != 0) {
                 if (pcore_navigation_is_cancelled(request)) {
                     break;
                 }
@@ -15004,7 +15109,7 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                     break;
                 }
                 pcore_navigation_resource_begin_attempt(request, entry);
-                resp = pcore_navigation_get(request, host, port, path);
+                resp = pcore_navigation_get(request, resource_url);
                 if (pcore_navigation_is_cancelled(request)) {
                     if (resp != NULL) {
                         PHttp_FreeResponse(resp);
@@ -15017,6 +15122,31 @@ static DWORD WINAPI pcore_navigation_worker(LPVOID param)
                         PHttp_FreeResponse(resp);
                     }
                     continue;
+                }
+                if (resp != NULL && resp->status_code == 200 &&
+                        resp->body != NULL && resp->body_len > 0) {
+                    final_url[0] = '\0';
+                    if (PHttp_ResponseGetFinalUrl(resp, final_url,
+                            sizeof(final_url)) != 0) {
+                        pcore_navigation_resource_fail(request, entry,
+                                PCORE_NAV_FAILURE_TRANSPORT);
+                        PHttp_FreeResponse(resp);
+                        break;
+                    }
+                    if (strlen(final_url) >=
+                            PCORE_BROWSE_HISTORY_URL_MAX) {
+                        pcore_navigation_resource_fail(request, entry,
+                                PCORE_NAV_FAILURE_BUDGET);
+                        PHttp_FreeResponse(resp);
+                        break;
+                    }
+                    if (pcore_navigation_resource_set_effective_url(entry,
+                            final_url) != 0) {
+                        pcore_navigation_resource_fail(request, entry,
+                                PCORE_NAV_FAILURE_MEMORY);
+                        PHttp_FreeResponse(resp);
+                        break;
+                    }
                 }
                 (void) pcore_navigation_resource_store_response(request,
                         entry, resp);
@@ -18308,8 +18438,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_SCRIPT;
         if (g_browser_javascript_enabled &&
-                pcore_document_url(request->host, request->path,
-                request->port, document_url, sizeof(document_url)) == 0 &&
+                pcore_navigation_request_url(request, document_url,
+                sizeof(document_url)) == 0 &&
                 PCore_FetchScriptResourcesEx(request->document, document_url,
                 wm_combine_url, pcore_navigation_resource_cb,
                 page_resource_free_cb, request, NULL, NULL) != 0) {
@@ -18367,8 +18497,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
         if (chh <= 0) { chh = 320; }
         test_host_set_device_viewport(cw, chh);
         started = GetTickCount();
-        style_result = pcore_document_url(request->host, request->path,
-                request->port, document_url, sizeof(document_url));
+        style_result = pcore_navigation_request_url(request, document_url,
+                sizeof(document_url));
         if (style_result == 0) {
             request->resource_policy = PCORE_NAV_RESOURCE_REQUIRED;
             request->resource_role_mask =
@@ -18571,8 +18701,7 @@ static int pcore_navigation_commit_step(HWND hwnd,
     cstr_copy(g_cur_path, sizeof(g_cur_path), request->path);
     g_cur_port = request->port;
     if (request->method == 1 &&
-            pcore_document_url(request->host, request->path,
-                    request->port, document_url,
+            pcore_navigation_request_url(request, document_url,
                     sizeof(document_url)) == 0) {
         history_commit_rc = pcore_browse_history_commit_navigation_with_bridge(
                 document_url, request->method,
@@ -18681,6 +18810,8 @@ static pcore_navigation_request *pcore_navigation_request_create_ex(
     pcore_navigation_request *request;
     size_t href_len;
     size_t content_type_len;
+    char base_url[PCORE_BROWSE_HISTORY_URL_MAX];
+    int url_rc;
 
     if (href == NULL) {
         return NULL;
@@ -18702,6 +18833,21 @@ static pcore_navigation_request *pcore_navigation_request_create_ex(
     request->history_target_index = PCORE_BROWSE_HISTORY_TARGET_NEW;
     if (!resolve_url(href, request->host, sizeof(request->host),
             request->path, sizeof(request->path), &request->port)) {
+        pcore_navigation_request_free(request);
+        return NULL;
+    }
+    request->url[0] = '\0';
+    url_rc = pcore_document_url(g_cur_host, g_cur_path, g_cur_port,
+            base_url, sizeof(base_url));
+    if (url_rc == 0) {
+        url_rc = test_host_resolve_reference_url(base_url, href,
+                request->url, sizeof(request->url));
+    } else {
+        url_rc = test_host_resolve_reference_url(NULL, href,
+                request->url, sizeof(request->url));
+    }
+    if (url_rc != 0 && pcore_document_url(request->host, request->path,
+            request->port, request->url, sizeof(request->url)) != 0) {
         pcore_navigation_request_free(request);
         return NULL;
     }
@@ -97766,7 +97912,7 @@ static BOOL test1065_http_reference_product_contract(void)
     memset(error, 0, sizeof(error));
     port = 0;
     relative_ok = PHttp_ResolveReference("example.test", 443,
-            "/dir/page.html?old=1", "  ../img/logo.png?new=2#fragment \t",
+            "/dir/page.html?old=1", "  ../img/logo.png?new=2#fragment  ",
             host, sizeof(host), path, sizeof(path), &port) == 0 &&
             strcmp(host, "example.test") == 0 &&
             strcmp(path, "/img/logo.png?new=2") == 0 && port == 443;

@@ -101,7 +101,7 @@ SIP/IME 不因该接线而宣称完成。
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | reference 解析 | `PHttp_ResolveReference`、`PHttp_ResolveReferenceUrl` | 已实现 | host/port 入口保持兼容；URL 入口保留显式 scheme 和非标准端口，非法 scheme、端口、控制字符和截断安全失败 | TEST1064/1065/999 及 Core/应用 callback 复用证据 |
-| HTTP/HTTPS GET/POST、进度和 response 释放 | `PHttp_Get[Ex]`、`PHttp_GetUrl[Ex]`、`PHttp_Post[Ex]`、`PHttp_PostUrl[Ex]`、`PHttp_FreeResponse` | 已实现 | response body 受实现中的 1 MiB 上限；redirect 有界；URL 省略协议只默认 HTTPS，不静默降级 HTTP；取消/进度 callback 不得重入 HTTP 状态 | HTTP 离线/集成合同；超限、TLS、HTTP status 和网络错误必须保持可区分 |
+| HTTP/HTTPS GET/POST、进度、最终 URL 和 response 释放 | `PHttp_Get[Ex]`、`PHttp_GetUrl[Ex]`、`PHttp_Post[Ex]`、`PHttp_PostUrl[Ex]`、`PHttp_ResponseGetFinalUrl`、`PHttp_FreeResponse` | 已实现 | response body 受 1 MiB 上限；Content-Length 截断、分块/读取/分配失败均丢弃 body 并返回 `status_code=0`；redirect 有界；URL 省略协议只默认 HTTPS，HTTPS→HTTP 降级被拒绝；旧 `PHttpResponse` 布局不变 | TEST3 的 final-URL 断言、TEST1064/1065/999、应用资源接线；继续用受控重定向和超限 fixture 检查一致错误 |
 | TLS 初始化和安全开关 | `PHttp_Init/Cleanup`、`PHttp_SetInsecure` | 已实现但默认安全 | insecure 只可由应用显式打开；证书/hostname 风险不能由 HTTP 静默吞掉 | TLS/HTTP 组合门；发布前继续审查旧 mbed TLS 风险 |
 | CORS、referrer、loading/fetch-priority、缓存策略 | 当前没有稳定公共策略入口 | 有界待扩展 | 必须先确定 Browser/HTTP/Core owner、请求代际、旧页保留和取消语义；不能只按标准名称添加字段 | 需要真实页面或消费者证明阻塞，并提供 loopback/offline fixture |
 | HTTP/2、WebSocket、完整代理和无限缓存 | 当前没有公共承诺 | 暂缓 | 超出 WM6 资源和当前请求模型 | 只有新的明确产品范围才重新评估 |
@@ -120,14 +120,15 @@ SIP/IME 不因该接线而宣称完成。
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
-| source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 有界待扩展 | 输入一次性受 16 MiB 上限；回调 buffer 只在同步回调期间有效；关闭后不再回调；无长期线程/网络 | DLL ABI 与正式 Debug 构建；需要 test_host/设备生命周期和 I/O 错误 fixture |
-| WAV PCM/IMA ADPCM 软件音频 | `pm_audio_block` S16LE callback | 已实现但有界 | 8/16-bit、mono/stereo、固定 2048 frame pump block；损坏 chunk、越界和不支持格式 fail closed | 离线 WAV/非 seek/WOULD_BLOCK/EOF/seek 回归，以及 WM6 WaveOut/真实设备门 |
+| source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 已实现但有界 | 输入一次性受 16 MiB 上限；软解不要求 source 可 seek；回调 buffer 只在同步回调期间有效；关闭后不再回调；无长期线程/网络 | 正式 Debug/Release ARMV4I 链接、离线 ABI/WAV 回归；仍需完整 I/O 错误、设备生命周期和媒体 fixture |
+| WAV PCM/IMA ADPCM 软件音频 | `pm_audio_block` S16LE callback | 已实现但有界 | 8/16-bit、mono/stereo、固定 2048 frame pump block；损坏 chunk、越界和不支持格式 fail closed | 离线 WAV/非 seek/WOULD_BLOCK/EOF/seek 回归；设备 WaveOut 接线仍需门 |
 | WM6 DirectShow/ACM/WaveOut 原生能力 | 内部 `CLSID_FilterGraphNoThread` 探测；公共头不暴露 COM | 有界待扩展 | 只报告 graph 是否可创建；callback-backed source filter 尚未宣称完成，不把 graph 存在误报为 codec 可用 | 实现 source filter、设备 filter/ACM 枚举和 native playback 生命周期后再提升 |
-| FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14` 基线及 `POSITRON_PORT.md` | 有界待扩展 | 当前 DLL 不链接桌面或预编译 FFmpeg，H.264/AAC/MP3/AMR/AVI/MP4/TS 仍返回 unsupported；AV1/HEVC/VP9 永不进入此边界 | 生成审计过的 ARMV4I 源码 manifest、VS2008 C89 转换、Debug/Release、主机/设备解码门和 GPL/专利审查 |
+| FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14`、ARMV4I archive 和 `POSITRON_PORT.md` | 已实现但有界 | custom memory AVIO；AVI/MP4/MOV/MPEG-PS/MPEG-TS/FLV/WAV/选定裸流；H.264 Baseline/Main、MPEG-4 Part 2、MPEG-1/2、MJPEG、H.263、AAC-LC、MP2/MP3、AMR-NB/WB、PCM/IMA ADPCM；视频 I420、默认最多 640×480，音频最多双声道；不支持布局 fail closed | Debug/Release ARMV4I 正式链接及静态 smoke；仍需 test_host/设备真实解码、帧率、underrun、峰值内存和关闭门；AVC 专利与 GPL 组合需发布前审查 |
 
 Media 首版的目标边界是 decoder/playback only；不包含编码、DRM、字幕、直播协议、长期工作线程、
 AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件视频。DirectShow
-桌面格式表不能替代设备运行时 filter/codec 探测。
+当前只做 graph 可创建性探测，`PMEDIA_BACKEND_NATIVE` 仍 fail closed；桌面格式表不能替代设备
+运行时 filter/codec 探测。FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载。
 
 ## Script：`positron_script.dll`
 

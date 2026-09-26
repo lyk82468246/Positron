@@ -11,6 +11,7 @@ struct AppNavigationResource {
     AppNavigationResource *next;
     int index;
     char url[APP_HOST_URL_MAX];
+    char effective_url[APP_HOST_URL_MAX];
 };
 
 void AppResources_DestroyRequest(AppNavigationRequest *request);
@@ -27,8 +28,7 @@ int AppResources_Fetch(void *pw, const char *url,
 void AppResources_Free(void *pw, char *data);
 int AppResources_Resolve(void *pw, const char *base_url,
         const char *reference, char *out_url, int out_capacity);
-int AppResources_ResolveTransport(AppNavigationRequest *request,
-        const char *reference, char *out_host, int out_host_capacity,
-        char *out_path, int out_path_capacity, int *out_port);
+int AppResources_SetEffectiveUrl(AppNavigationRequest *request, int index,
+        const char *effective_url);
 
 #endif /* POSITRON_APP_RESOURCES_H */

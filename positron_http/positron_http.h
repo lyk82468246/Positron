@@ -32,6 +32,10 @@ extern "C" {
 #define PHTTP_SCHEME_HTTP  1
 #define PHTTP_SCHEME_HTTPS 2
 
+/* Maximum UTF-8 URL length accepted by URL-aware entry points and returned
+ * by PHttp_ResponseGetFinalUrl. */
+#define PHTTP_URL_MAX 2048
+
 /* Response object returned by PHttp_Get / PHttp_Post.
  * Always free with PHttp_FreeResponse. */
 typedef struct PHttpResponse {
@@ -49,10 +53,10 @@ typedef struct PHttpResponse {
  * base_host/base_port/base_path describe the current request.  base_port 0
  * means the HTTPS default port.  A NULL or
  * empty base host is accepted only for an absolute http(s) reference or a
- * network-path reference beginning with "//".  The resolver trims ASCII
- * whitespace, follows directory/query/dot-segment rules, strips fragments,
+ * network-path reference beginning with "//".  The resolver trims
+ * surrounding ASCII spaces, follows directory/query/dot-segment rules, strips fragments,
  * and returns caller-owned UTF-8 host/path buffers.  Userinfo, IPv6,
- * unsupported schemes, malformed ports, control characters and truncation
+ * unsupported schemes, malformed ports, C0/DEL control characters and truncation
  * fail closed.  The path always begins with '/'.
  *
  * Returns 0 on success and non-zero on invalid input or insufficient output
@@ -206,6 +210,19 @@ PHTTP_API PHttpResponse* PHttp_PostUrlEx(
     int                   body_len,
     PHttpProgressCallback progress,
     void*                 user_data
+);
+
+/* Copy the final absolute URL reached by a response, including the last
+ * successful redirect target.  Fragments are excluded because they are
+ * browser history state and are never sent on the wire.  The response
+ * layout remains ABI-compatible; this additive query is the supported way
+ * to retrieve the final URL.  Returns 0 on success.  Invalid input, an empty
+ * final URL, or insufficient capacity returns non-zero and writes an empty
+ * string without partial output. */
+PHTTP_API int PHttp_ResponseGetFinalUrl(
+    const PHttpResponse* response,
+    char*                out_url,
+    int                  out_url_capacity
 );
 
 /* Free a response returned by PHttp_Get / PHttp_Post. NULL-safe. */

@@ -21,6 +21,12 @@
 #define INITIAL_BUFCAP   8192
 #define MAX_REDIRECTS    5                    /* 3xx Location follow limit */
 
+#define PHTTP_BODY_OK          0
+#define PHTTP_BODY_READ_ERROR -1
+#define PHTTP_BODY_TOO_LARGE  -2
+#define PHTTP_BODY_NO_MEMORY  -3
+#define PHTTP_CHUNK_BUFFER_MAX (MAX_RESP_BODY + 4096)
+
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
 
@@ -152,6 +158,55 @@ static int bb_append(bytebuf* b, const char* src, size_t n)
     return 0;
 }
 
+/* Keep the response body limit separate from the generic request/header
+ * buffer so all response paths fail closed at the same boundary. */
+static int phttp_body_append(bytebuf* b, const char* src, size_t n)
+{
+    if (n > (size_t)MAX_RESP_BODY ||
+            b->len > (size_t)MAX_RESP_BODY - n) {
+        return PHTTP_BODY_TOO_LARGE;
+    }
+    if (bb_append(b, src, n) != 0) {
+        return PHTTP_BODY_NO_MEMORY;
+    }
+    return PHTTP_BODY_OK;
+}
+
+/* Keep chunk framing bounded independently from the decoded body.  The
+ * consumed prefix is compacted before each append, so many small chunks do
+ * not accumulate their framing overhead for the lifetime of a response. */
+static int phttp_chunk_append(bytebuf* raw, size_t* consumed,
+                              const char* src, size_t n)
+{
+    size_t remaining;
+
+    if (raw == NULL || consumed == NULL || src == NULL) {
+        return PHTTP_BODY_READ_ERROR;
+    }
+    if (*consumed > raw->len) {
+        return PHTTP_BODY_READ_ERROR;
+    }
+    if (*consumed > 0) {
+        remaining = raw->len - *consumed;
+        if (remaining > 0) {
+            memmove(raw->data, raw->data + *consumed, remaining);
+        }
+        raw->len = remaining;
+        if (raw->data != NULL) {
+            raw->data[raw->len] = '\0';
+        }
+        *consumed = 0;
+    }
+    if (n > (size_t)PHTTP_CHUNK_BUFFER_MAX ||
+            raw->len > (size_t)PHTTP_CHUNK_BUFFER_MAX - n) {
+        return PHTTP_BODY_TOO_LARGE;
+    }
+    if (bb_append(raw, src, n) != 0) {
+        return PHTTP_BODY_NO_MEMORY;
+    }
+    return PHTTP_BODY_OK;
+}
+
 static void bb_free(bytebuf* b)
 {
     if (b->data != NULL) {
@@ -164,13 +219,45 @@ static void bb_free(bytebuf* b)
 
 /* ---- response object --------------------------------------------- */
 
+/* The public response is the first member.  Private metadata therefore does
+ * not change the published PHttpResponse layout or its ABI. */
+typedef struct {
+    PHttpResponse public_response;
+    char          final_url[PHTTP_URL_MAX];
+} phttp_response_private;
+
 static PHttpResponse* resp_new(void)
 {
-    PHttpResponse* r;
-    r = (PHttpResponse*)HeapAlloc(GetProcessHeap(),
+    phttp_response_private* r;
+    r = (phttp_response_private*)HeapAlloc(GetProcessHeap(),
                                   HEAP_ZERO_MEMORY,
-                                  sizeof(PHttpResponse));
-    return r;
+                                  sizeof(phttp_response_private));
+    return r == NULL ? NULL : &r->public_response;
+}
+
+static phttp_response_private* resp_private(PHttpResponse* response)
+{
+    return (phttp_response_private*)response;
+}
+
+static void resp_set_final_url(PHttpResponse* response, const char* url)
+{
+    phttp_response_private* private_response;
+    size_t length;
+
+    if (response == NULL) {
+        return;
+    }
+    private_response = resp_private(response);
+    private_response->final_url[0] = '\0';
+    if (url == NULL) {
+        return;
+    }
+    length = strlen(url);
+    if (length >= sizeof(private_response->final_url)) {
+        return;
+    }
+    memcpy(private_response->final_url, url, length + 1);
 }
 
 static void resp_set_error(PHttpResponse* r, const char* msg)
@@ -180,6 +267,20 @@ static void resp_set_error(PHttpResponse* r, const char* msg)
     }
     _snprintf(r->error_msg, sizeof(r->error_msg) - 1, "%s", msg);
     r->error_msg[sizeof(r->error_msg) - 1] = '\0';
+}
+
+static void resp_set_body_result(PHttpResponse* response, int result)
+{
+    if (result == PHTTP_BODY_TOO_LARGE) {
+        resp_set_error(response, "response body too large");
+    } else if (result == PHTTP_BODY_NO_MEMORY) {
+        resp_set_error(response, "response body allocation failed");
+    } else {
+        resp_set_error(response, "response body read failed");
+    }
+    if (response != NULL) {
+        response->status_code = 0;
+    }
 }
 
 /* ---- request building -------------------------------------------- */
@@ -408,21 +509,24 @@ static int decode_chunked(HANDLE conn,
     size_t  pos;
     char    tmp[2048];
     int     n;
+    int     append_result;
     size_t  chunk_size;
     const char* nl;
     size_t  i;
     char    sizebuf[24];
 
     if (bb_init(&raw) != 0) {
-        return -1;
-    }
-    if (prefix_len > 0) {
-        if (bb_append(&raw, prefix, (size_t)prefix_len) != 0) {
-            bb_free(&raw);
-            return -1;
-        }
+        return PHTTP_BODY_NO_MEMORY;
     }
     pos = 0;
+    if (prefix_len > 0) {
+        append_result = phttp_chunk_append(&raw, &pos, prefix,
+                (size_t)prefix_len);
+        if (append_result != PHTTP_BODY_OK) {
+            bb_free(&raw);
+            return append_result;
+        }
+    }
 
     while (1) {
         /* find \r\n marking end of chunk-size line */
@@ -435,13 +539,19 @@ static int decode_chunked(HANDLE conn,
         }
         if (nl == NULL) {
             n = PTls_Read(conn, tmp, (int)sizeof(tmp));
-            if (n <= 0) {
+            if (n < 0) {
                 bb_free(&raw);
-                return -1;
+                return PHTTP_BODY_READ_ERROR;
             }
-            if (bb_append(&raw, tmp, (size_t)n) != 0) {
+            if (n == 0) {
                 bb_free(&raw);
-                return -1;
+                return PHTTP_BODY_READ_ERROR;
+            }
+            append_result = phttp_chunk_append(&raw, &pos, tmp,
+                    (size_t)n);
+            if (append_result != PHTTP_BODY_OK) {
+                bb_free(&raw);
+                return append_result;
             }
             continue;
         }
@@ -449,9 +559,11 @@ static int decode_chunked(HANDLE conn,
         /* extract size (hex, possibly with ;ext) */
         {
             size_t size_str_len = (size_t)(nl - (raw.data + pos));
+            char* size_end;
+            unsigned long parsed_size;
             if (size_str_len >= sizeof(sizebuf)) {
                 bb_free(&raw);
-                return -1;
+                return PHTTP_BODY_READ_ERROR;
             }
             memcpy(sizebuf, raw.data + pos, size_str_len);
             sizebuf[size_str_len] = '\0';
@@ -462,7 +574,16 @@ static int decode_chunked(HANDLE conn,
                     *semi = '\0';
                 }
             }
-            chunk_size = (size_t)strtoul(sizebuf, NULL, 16);
+            parsed_size = strtoul(sizebuf, &size_end, 16);
+            if (size_end == sizebuf || *size_end != '\0') {
+                bb_free(&raw);
+                return PHTTP_BODY_READ_ERROR;
+            }
+            if (parsed_size > (unsigned long)MAX_RESP_BODY) {
+                bb_free(&raw);
+                return PHTTP_BODY_TOO_LARGE;
+            }
+            chunk_size = (size_t)parsed_size;
         }
         pos = (size_t)(nl - raw.data) + 2;
 
@@ -474,25 +595,37 @@ static int decode_chunked(HANDLE conn,
 
         if (out_body->len + chunk_size > MAX_RESP_BODY) {
             bb_free(&raw);
-            return -1;
+            return PHTTP_BODY_TOO_LARGE;
         }
 
         /* ensure we have chunk_size + 2 (trailing \r\n) bytes past pos */
         while (raw.len - pos < chunk_size + 2) {
             n = PTls_Read(conn, tmp, (int)sizeof(tmp));
-            if (n <= 0) {
+            if (n < 0) {
                 bb_free(&raw);
-                return -1;
+                return PHTTP_BODY_READ_ERROR;
             }
-            if (bb_append(&raw, tmp, (size_t)n) != 0) {
+            if (n == 0) {
                 bb_free(&raw);
-                return -1;
+                return PHTTP_BODY_READ_ERROR;
+            }
+            append_result = phttp_chunk_append(&raw, &pos, tmp,
+                    (size_t)n);
+            if (append_result != PHTTP_BODY_OK) {
+                bb_free(&raw);
+                return append_result;
             }
         }
 
-        if (bb_append(out_body, raw.data + pos, chunk_size) != 0) {
+        if (raw.data[pos + chunk_size] != '\r' ||
+                raw.data[pos + chunk_size + 1] != '\n') {
             bb_free(&raw);
-            return -1;
+            return PHTTP_BODY_READ_ERROR;
+        }
+        n = phttp_body_append(out_body, raw.data + pos, chunk_size);
+        if (n != PHTTP_BODY_OK) {
+            bb_free(&raw);
+            return n;
         }
         report_progress(progress, user_data, (int)out_body->len, -1);
         pos += chunk_size + 2;   /* skip data + trailing \r\n */
@@ -526,6 +659,11 @@ static int phttp_is_ascii_space(int c)
            c == '\f' || c == '\v';
 }
 
+static int phttp_is_control(int c)
+{
+    return c < 0x20 || c == 0x7f;
+}
+
 static int phttp_starts_with_ci(const char* value, const char* prefix)
 {
     size_t i;
@@ -550,16 +688,23 @@ static int phttp_trim_reference(const char* source, char* destination,
     const char* start;
     const char* end;
     size_t length;
+    const char* scan;
 
     if (source == NULL || destination == NULL || capacity <= 1) {
         return 1;
     }
+    for (scan = source; *scan != '\0'; scan++) {
+        if (phttp_is_control((unsigned char)*scan)) {
+            destination[0] = '\0';
+            return 1;
+        }
+    }
     start = source;
-    while (*start != '\0' && phttp_is_ascii_space((unsigned char)*start)) {
+    while (*start == ' ') {
         start++;
     }
     end = start + strlen(start);
-    while (end > start && phttp_is_ascii_space((unsigned char)end[-1])) {
+    while (end > start && end[-1] == ' ') {
         end--;
     }
     length = (size_t)(end - start);
@@ -629,8 +774,7 @@ static int phttp_normalize_path(const char* source, char* path, int capacity)
         segment = p;
         segment_length = 0;
         while (*p != '\0' && *p != '/' && *p != '?' && *p != '#') {
-            if (*p == '\r' || *p == '\n' ||
-                    (unsigned char)*p < 0x20) {
+            if (phttp_is_control((unsigned char)*p)) {
                 path[0] = '\0';
                 return 1;
             }
@@ -684,8 +828,7 @@ static int phttp_normalize_path(const char* source, char* path, int capacity)
     }
     if (*p == '?') {
         while (*p != '\0' && *p != '#') {
-            if (*p == '\r' || *p == '\n' ||
-                    (unsigned char)*p < 0x20 || n >= capacity - 1) {
+            if (phttp_is_control((unsigned char)*p) || n >= capacity - 1) {
                 path[0] = '\0';
                 return 1;
             }
@@ -799,7 +942,7 @@ static int phttp_parse_resolved_url(const char* url, char* host, int hostcap,
     for (q = p; q < authority_end; q++) {
         if (*q == '@' || *q == '[' || *q == ']' ||
                 phttp_is_ascii_space((unsigned char)*q) ||
-                (unsigned char)*q < 0x20) {
+                phttp_is_control((unsigned char)*q)) {
             return 1;
         }
         if (*q == ':') {
@@ -1058,6 +1201,26 @@ static int resolve_redirect_url(const char* loc, size_t loclen,
             out_capacity) == 0;
 }
 
+/* Do not let a secure URL silently cross onto plaintext through a redirect.
+ * The policy is enforced after resolution, so relative and network-path
+ * Locations are covered as well as absolute URLs. */
+static int phttp_redirect_allowed(int current_scheme, const char* next_url)
+{
+    char host[256];
+    char path[1024];
+    int port;
+    int next_scheme;
+
+    if (current_scheme != PHTTP_SCHEME_HTTPS) {
+        return 1;
+    }
+    if (phttp_parse_resolved_url(next_url, host, sizeof(host), path,
+            sizeof(path), &port, &next_scheme) != 0) {
+        return 0;
+    }
+    return next_scheme != PHTTP_SCHEME_HTTP;
+}
+
 /* ---- plaintext HTTP via WinInet (WM6 built-in) ------------------- */
 
 /* Fetch a plain http:// resource using WM6's own WinInet stack rather than a
@@ -1144,8 +1307,12 @@ static int wininet_fetch(const char* method, const char* host, int port,
 
     code = 0;
     sz = sizeof(code);
-    HttpQueryInfoW(hReq, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
-                   &code, &sz, NULL);
+    if (!HttpQueryInfoW(hReq,
+            HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
+            &code, &sz, NULL)) {
+        resp_set_error(resp, "HttpQueryInfo status failed");
+        goto wdone;
+    }
     *out_status = (int)code;
 
     {
@@ -1167,6 +1334,11 @@ static int wininet_fetch(const char* method, const char* host, int port,
         total = (content_length <= 0x7fffffffUL) ?
                 (int)content_length : -1;
     }
+    if (total > MAX_RESP_BODY) {
+        *out_status = 0;
+        resp_set_error(resp, "response body too large");
+        goto wdone;
+    }
     report_progress(progress, user_data, 0, total);
 
     {
@@ -1174,19 +1346,33 @@ static int wininet_fetch(const char* method, const char* host, int port,
         DWORD got;
         for (;;) {
             if (!InternetReadFile(hReq, tmp, sizeof(tmp), &got)) {
-                break;
+                *out_status = 0;
+                resp_set_error(resp, "response body read failed");
+                goto wdone;
             }
             if (got == 0) {
                 break;
             }
-            if (bb_append(outbody, tmp, (size_t)got) != 0) {
-                break;
+            {
+                int append_result = phttp_body_append(outbody, tmp,
+                        (size_t)got);
+                if (append_result != PHTTP_BODY_OK) {
+                    *out_status = 0;
+                    resp_set_error(resp, append_result ==
+                            PHTTP_BODY_TOO_LARGE ?
+                            "response body too large" :
+                            "response body allocation failed");
+                    goto wdone;
+                }
             }
             report_progress(progress, user_data, (int)outbody->len, total);
-            if (outbody->len >= MAX_RESP_BODY) {
-                break;
-            }
         }
+    }
+
+    if (total >= 0 && outbody->len != (size_t)total) {
+        *out_status = 0;
+        resp_set_error(resp, "response body truncated");
+        goto wdone;
     }
 
     rc = 0;
@@ -1251,6 +1437,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
         resp_set_error(resp, "invalid HTTP(S) URL");
         return resp;
     }
+    resp_set_final_url(resp, cur_url);
     if (bb_init(&bodybuf) != 0) {
         resp_set_error(resp, "OOM body buffer");
         return resp;
@@ -1278,6 +1465,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             resp_set_error(resp, "invalid resolved URL");
             goto done;
         }
+        resp_set_final_url(resp, cur_url);
 
         if (cur_scheme == PHTTP_SCHEME_HTTP) {
             if (wininet_fetch(method, cur_host, cur_port, cur_path,
@@ -1291,6 +1479,10 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                     redirects < MAX_REDIRECTS && location[0] != '\0' &&
                     resolve_redirect_url(location, strlen(location), cur_url,
                     next_url, sizeof(next_url))) {
+                if (!phttp_redirect_allowed(cur_scheme, next_url)) {
+                    resp_set_error(resp, "HTTPS redirect to HTTP rejected");
+                    break;
+                }
                 redirects++;
                 cstrcpy(cur_url, sizeof(cur_url), next_url);
                 bb_free(&bodybuf);
@@ -1346,6 +1538,10 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             if (loc != NULL && loclen > 0 &&
                     resolve_redirect_url(loc, loclen, cur_url, next_url,
                     sizeof(next_url))) {
+                if (!phttp_redirect_allowed(cur_scheme, next_url)) {
+                    resp_set_error(resp, "HTTPS redirect to HTTP rejected");
+                    break;
+                }
                 redirects++;
                 cstrcpy(cur_url, sizeof(cur_url), next_url);
                 HeapFree(GetProcessHeap(), 0, request);
@@ -1361,26 +1557,39 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
 
         /* Final TLS response: read the body into bodybuf. */
         if (is_chunked(recvbuf.data, (size_t)body_start)) {
-            const char* prefix = recvbuf.data + body_start;
-            int prefix_len = (int)recvbuf.len - body_start;
+            const char* prefix;
+            int prefix_len;
+            int chunk_result;
+
+            prefix = recvbuf.data + body_start;
+            prefix_len = (int)recvbuf.len - body_start;
             report_progress(progress, user_data, 0, -1);
-            if (decode_chunked(conn, prefix, prefix_len, &bodybuf,
-                    progress, user_data) != 0) {
-                resp_set_error(resp, "chunked decode failed");
+            chunk_result = decode_chunked(conn, prefix, prefix_len,
+                    &bodybuf, progress, user_data);
+            if (chunk_result != PHTTP_BODY_OK) {
+                resp_set_body_result(resp, chunk_result);
+                goto done;
             }
         } else {
-            cl = parse_content_length(recvbuf.data, (size_t)body_start);
-            report_progress(progress, user_data, 0, cl);
-            if (recvbuf.len > (size_t)body_start) {
-                size_t prefix_len;
+            size_t prefix_len;
+            int append_result;
 
+            cl = parse_content_length(recvbuf.data, (size_t)body_start);
+            if (cl > MAX_RESP_BODY) {
+                resp_set_body_result(resp, PHTTP_BODY_TOO_LARGE);
+                goto done;
+            }
+            report_progress(progress, user_data, 0, cl);
+            prefix_len = 0;
+            if (recvbuf.len > (size_t)body_start) {
                 prefix_len = recvbuf.len - (size_t)body_start;
                 if (cl >= 0 && prefix_len > (size_t)cl) {
                     prefix_len = (size_t)cl;
                 }
-                if (bb_append(&bodybuf, recvbuf.data + body_start,
-                        prefix_len) != 0) {
-                    resp_set_error(resp, "response body too large");
+                append_result = phttp_body_append(&bodybuf,
+                        recvbuf.data + body_start, prefix_len);
+                if (append_result != PHTTP_BODY_OK) {
+                    resp_set_body_result(resp, append_result);
                     goto done;
                 }
                 report_progress(progress, user_data,
@@ -1388,18 +1597,29 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             }
             if (cl >= 0) {
                 char tmp[2048];
-                int  remaining = cl - (int)bodybuf.len;
+                int  remaining;
                 int  got;
                 int  want;
+
+                remaining = cl - (int)bodybuf.len;
                 while (remaining > 0) {
                     want = remaining < (int)sizeof(tmp)
                            ? remaining : (int)sizeof(tmp);
                     got = PTls_Read(conn, tmp, want);
-                    if (got <= 0) {
-                        break;
+                    if (got < 0) {
+                        resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
+                        goto done;
                     }
-                    if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
-                        break;
+                    if (got == 0) {
+                        resp_set_error(resp, "response body truncated");
+                        resp->status_code = 0;
+                        goto done;
+                    }
+                    append_result = phttp_body_append(&bodybuf, tmp,
+                            (size_t)got);
+                    if (append_result != PHTTP_BODY_OK) {
+                        resp_set_body_result(resp, append_result);
+                        goto done;
                     }
                     remaining -= got;
                     report_progress(progress, user_data,
@@ -1408,19 +1628,24 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             } else {
                 char tmp[2048];
                 int  got;
+
                 while (1) {
                     got = PTls_Read(conn, tmp, (int)sizeof(tmp));
-                    if (got <= 0) {
+                    if (got < 0) {
+                        resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
+                        goto done;
+                    }
+                    if (got == 0) {
                         break;
                     }
-                    if (bb_append(&bodybuf, tmp, (size_t)got) != 0) {
-                        break;
+                    append_result = phttp_body_append(&bodybuf, tmp,
+                            (size_t)got);
+                    if (append_result != PHTTP_BODY_OK) {
+                        resp_set_body_result(resp, append_result);
+                        goto done;
                     }
                     report_progress(progress, user_data,
                             (int)bodybuf.len, -1);
-                    if (bodybuf.len >= MAX_RESP_BODY) {
-                        break;
-                    }
                 }
             }
         }
@@ -1551,6 +1776,32 @@ PHTTP_API PHttpResponse* PHttp_PostUrlEx(const char* url,
             progress, user_data);
 }
 
+PHTTP_API int PHttp_ResponseGetFinalUrl(const PHttpResponse* response,
+                                        char* out_url,
+                                        int out_url_capacity)
+{
+    const phttp_response_private* private_response;
+    size_t length;
+
+    if (out_url == NULL || out_url_capacity <= 1) {
+        return 1;
+    }
+    out_url[0] = '\0';
+    if (response == NULL) {
+        return 1;
+    }
+    private_response = (const phttp_response_private*)response;
+    if (private_response->final_url[0] == '\0') {
+        return 1;
+    }
+    length = strlen(private_response->final_url);
+    if (length >= (size_t)out_url_capacity) {
+        return 1;
+    }
+    memcpy(out_url, private_response->final_url, length + 1);
+    return 0;
+}
+
 PHTTP_API void PHttp_FreeResponse(PHttpResponse* resp)
 {
     if (resp == NULL) {
@@ -1559,5 +1810,5 @@ PHTTP_API void PHttp_FreeResponse(PHttpResponse* resp)
     if (resp->body != NULL) {
         HeapFree(GetProcessHeap(), 0, resp->body);
     }
-    HeapFree(GetProcessHeap(), 0, resp);
+    HeapFree(GetProcessHeap(), 0, resp_private(resp));
 }

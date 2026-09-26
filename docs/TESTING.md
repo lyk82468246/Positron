@@ -25,6 +25,12 @@ ABI 的字段和成功语义不得被改写。
 仍须先取得真实消费者/页面/可复现失败证据，再按矩阵中的 owner、预算、fixture、设备门和
 人工门完成提升。
 
+HTTP 消费者接线使用 URL-aware `PHttp_GetUrl[Ex]`/`PHttp_PostUrl[Ex]`，并在资源成功后
+查询 `PHttp_ResponseGetFinalUrl()`，以便重定向后的 CSS、图片和 `@import` 继续以最终 URL
+解析相对引用。旧 `PHttp_Get[Ex]`/`PHttp_Post[Ex]` 只保留给 ABI 回归；新增 HTTP 响应字段
+不得直接扩展 `PHttpResponse`。HTTP body 读取、Content-Length 截断、chunked 解码、TLS→HTTP
+降级和容量失败都必须在宿主看到 body 前变成可判定的失败。
+
 ## `test_host.ini`
 
 INI 必须和 `test_host.exe` 位于同一目录。最小自动配置如下：

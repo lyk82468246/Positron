@@ -1,387 +1,82 @@
 # 当前交接
 
-本文件只描述当前产品基线、最近有效证据、未决风险和唯一下一步。逐批实现过程由 Git 历史保存，历史事故见 `docs/history/`，未来方向见 `ROADMAP.md`。
+本文件只保留接管当前工作所必需的事实、证据、风险和唯一下一步。稳定能力合同见
+[`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)、[`docs/TESTING.md`](../docs/TESTING.md)、
+[`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) 及各组件 README；逐批历史不在这里重复。
 
 ## 项目使命
 
-Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化 TLS、JSON、HTTP、图像、媒体、脚本、渲染与浏览器会话 DLL，并提供正式的 `positron.exe` 独立应用消费者。公共边界保持 C ABI、UTF-8、opaque handle 和显式所有权；`test_host.exe` 只是回归宿主与示例消费者。
+Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化的 TLS、JSON、HTTP、图像、
+媒体、脚本、Core 与 Browser DLL，并提供正式的 `positron.exe` 消费者。公共接口保持稳定 C ABI、
+UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` 只负责平台接线、fixture 和
+断言，不拥有产品语义。
 
-## 当前 Git 与工作区
+## 当前里程碑
 
-工作区在 `main`。阶段 3 当前接入 text/password/textarea `EDIT`、单选/多选 `SELECT`、
-checkbox/radio `BUTTON`、Core 绘制普通 `type=button` 的点按/Space/Enter 路径，以及带 id、已布局
-`contenteditable` host 的原生多行 EDIT 纯文本投影。后者经 Core 的有界 text API 保存输入，Browser
-处理可取消 `beforeinput` 并按 DOM id 派发 `input`；本批又通过已有 Browser selection callbacks
-接入当前已提交页面的 native caret/selection getter/setter、LF/CRLF 与 UTF-16 偏移换算，以及
-鼠标拖选、Shift+方向键和焦点/捕获收尾时的 `selectionchange` 通知。Range/Selection 对象、富文本
-保留仍未实现，selection 接线尚无新设备证据。
-ScriptSession 注册 click callback，经 Core 派发坐标事件，也补齐 toggle、anchor、disclosure 和
-label forwarding 的 Browser click 事务；标签关联控件由 EXE 复用现有 button/toggle/native focus/
-file-picker transaction。
-native `type=reset` 通过可取消 click/reset 事务后由 Core `PCore_FormResetAt()` 恢复初值，宿主重建
-native 控件；native `type=submit` 通过 click→Core validation→Browser 可取消 submit→Core
-successful-control snapshot→`AppForms` 的 GET/POST/multipart/dialog 默认动作。网络 ScriptSession
-另接入 `form.requestSubmit()`：Browser 拥有 validation/event/default-action 顺序，EXE 通过 by-id
-Core primitives 读取成功控件并将相应结果交给既有候选导航或 dialog close；空/相对 action 以候选
-文档 URL 为基准。EXE 不复制验证、submit 事件、字段编码或 multipart 拼装。脚本直接 `form.submit()`
-另走 Browser direct-submit callback 与 Core `PCore_FormSubmissionNoValidationById`，跳过验证、
-submit 事件和 submitter，并复用同一 GET/POST/multipart/dialog 默认动作。脚本 `form.reset()` 获准后重排活动页并排队 reset 专用控件同步：EDIT 值写回现有窗口，
-SELECT/toggle 沿用 Core 同步；结构未变时不因值同步而重建控件，结构变化仍按通用 reconcile 处理。
-单行文本/密码 EDIT 的 Enter 另调用 Core `PCore_FormSubmissionForTextInput`，由 Core 选择
-默认 submitter 并生成成功控件数据；EXE 派发可取消 submit，获准后按 method/enctype 进入相应
-默认动作。
-required 校验失败时 EXE 通过 Browser invalid callback 派发首个无效控件的非冒泡、可取消
-`invalid`；未取消则滚动到控件、聚焦对应原生控件并提示，取消时抑制这些默认反馈。native
-submit 按钮复用同一 invalid 反馈。textarea Enter 保持换行。native `input type=file` 通过 WM6
-系统选择器接入 Browser file-selection transaction 和 Core multipart 的同步 file read/free callback；
-脚本自行构造的 File/Blob 仍不能转为 Core-owned multipart snapshot。普通 DOM mutation 不回写 EDIT。
-内置 controls 页含 required GET 表单，离线页不创建
-ScriptSession，inline script 不执行。mutation 后 SELECT 重建及 EDIT/SELECT 焦点保留不变。宿主只负责
-WM6 消息、窗口、焦点/输入接线、重排和 teardown。本批已通过 C89、仓库审计及 Debug/Release
-ARMV4I 全量重编；这不代表设备验收通过。设备门按用户决定暂缓，
-`RAPI=0x80072746` 不重试。
+当前中期里程碑是把 Core、Browser、HTTP/TLS 与 WM6 应用接线收束为可由真实页面驱动的有界
+运行时。当前短期纵切是 HTTP(S) 导航和资源事务：地址解析、重定向后的最终 URL、旧页保留、
+取消/stale 门控以及资源相对 URL 必须在公共 DLL 与正式应用中保持同一语义。
 
-- 已验证基线由 Browser/Core 的 DOM、CharacterData、DocumentFragment、表单、资源、脚本
-  session、Storage、Headers、FormData、图像 generation 和特殊键 registry 合同组成；固定
-  容量、失败回滚、wrapper identity、旧页保留和生命周期边界集中记录在
-  [`docs/TESTING.md`](../docs/TESTING.md)、组件 README 和公开头文件中。最近的 TEST1303–1308
-  已覆盖 FormData/URLSearchParams 配额、Storage/Headers 特殊键和 Browser registry；TEST1309
-  另覆盖参考宿主的 WM_SHOWWINDOW 可见性接线；本轮新增的 TEST1310 只提供真实文件选择器到
-  Browser FormData metadata 的 manual-only 证据，不新增公共 DLL 入口；它已在当前手动包中
-  完成 GUI 验收，逐批证据由 Git 历史与 `tmp/` 设备记录保存，本文件不复制时间线。
-- 设备门复用 WMDC RAPI；超时进程需在设备端结束，`tmp/` 证据不入库。
-- 设备门继续假定用户已在 WMDC/Device Emulator GUI 手动连接恰好一个目标；RAPI 只复用
-  当前会话，不连接、选择、cradle、重置或强杀设备。
+## 当前源码事实
 
-## 近期已完成能力摘要
+- `positron_http.dll` 新增了 additive 的 `PHttp_ResponseGetFinalUrl()`；未改变 `PHttpResponse`
+  公共结构或旧 `PHttp_Get`/`PHttp_Post`/`PHttp_ResolveReference` ABI。
+- URL resolver 只接受有界、无控制字符的输入，保留显式 scheme 和非标准端口，分片不进入
+  网络请求；HTTPS 不允许静默降级，也不允许重定向到 HTTP。非法 scheme、userinfo、IPv6、
+  控制字符、超长输入和超限端口均 fail closed。
+- TLS/WinInet body 读取对已知长度、chunked、截断、读取错误、分配失败和超过 1 MiB 的结果
+  统一 fail closed；部分 body 不会交给消费者，失败响应的状态码为 0。chunk framing 缓冲也
+  有独立上限。
+- `positron_app` 和真实网络路径的 `test_host` 已改用 `PHttp_GetUrlEx`/`PHttp_PostUrlEx`；
+  主文档与资源在成功后查询 final URL，并用它解析 CSS、图片、脚本和 `@import` 的相对引用。
+  应用已移除旧的 host/path/port 二次 scheme 推断；`test_host` 保留这些字段仅用于旧 fixture
+  和 ABI 回归。
+- 旧页、旧资源和旧 history 在失败、取消或 stale 导航时保留；final URL 查询失败不会继续
+  使用原始 URL 伪装成功。产品实现未移入 `test_host`。
 
-最近的产品纵切已覆盖导航/资源、history/viewport、生命周期、脚本、焦点、滚动/几何、
-表单、selector、图像和有界 DOM/CharacterData mutation。HTML parser mutation、
-text-only 与 bounded Element/Text `DocumentFragment`、detached Text/Comment/Element、
-属性 facade、cookie、document.write 和 document.title 的合同与预算集中在
-[`docs/TESTING.md`](../docs/TESTING.md)；宿主仍只拥有平台接线、调度、fixture 和断言。
+## 文档与路线图
 
-Browser script session 由宿主显式推进，不复制 URL、DOM、Event、表单、图像或生命周期
-语义。设备门的外置优先/内置回退、双空间预检、日志回收、超时恢复和完成后清理集中在
-`scripts\device_gate.ps1`；`tmp/` 只保存本地证据。
+本批同步更新了 HTTP、应用、能力矩阵和测试文档。已复核 `.agents/ROADMAP.md`；当前没有由
+源码、消费者或失败证据支持的新候选，因此本批不修改路线图。下一轮仍须重新复核路线图，
+不得用“继续寻找”掩盖缺少证据。
 
-## 当前中期里程碑
+## 已验证的自动证据
 
-在保持 VS2008/WM6 约束的前提下，把已经形成的 Core、Browser 和平台宿主能力整合为可由真实页面驱动的有界网页运行时。重点是完成用户可感知的纵向能力、把通用语义留在公共 DLL，并以小型真实页面/交互语料库防止只增加孤立 API。
+- `python scripts/test_c89ize.py`：通过。
+- 本批 `positron_tls`/`positron_http`、`positron_app`、`test_host` 的定向 Release 正式构建：
+  通过；完整 Release 增量构建报告 18/18 成功。此前完整 Debug/Release 重建也有通过记录。
+- 本批源码的选定路径 `git diff --check`：通过。
+- 仓库审计只剩工作区既有的 `positron_media/` 未跟踪源文件被其工程引用，以及本文件角色大小
+  门；媒体工程不属于本批，角色大小问题已通过本次重写消除。审计结果不得被解释为 HTTP
+  逻辑失败，也不得把媒体改动混入本批提交。
 
-## 当前短期目标
+## 设备证据与限制
 
-当前短期目标是完成独立 `positron.exe` 的 HTTP(S)、资源事务、ScriptSession 和原生控件纵切，
-维持失败/取消/stale 时旧页不变。EXE 已接入 native/script submit 的 GET/POST/multipart/dialog、
-单行文本/密码框 implicit Enter、首个无效控件的可取消 invalid 事件/滚动/原生聚焦反馈、
-脚本 `form.reset()`、`form.requestSubmit()` 与 direct `form.submit()`，并接入 native file picker、
-anchor target/rel、details/summary 和 label forwarding；本批已通过 C89、仓库审计和 Debug/Release
-ARMV4I 全量重编；本次 HTTP 窄门先修复了 `CeCreateProcess` `device=193` 的加载兼容性，
-再以纯 C89 resolver 修复 WM6 的跨主机、自定义端口和 unsupported-scheme 行为；定向
-`1064,1065,999` 已通过，当前 Core 路径和 crash 检查均通过。
-剩余缺口见 [`positron_app/README.md`](../positron_app/README.md)。RAPI `0x80072746` 按用户决定暂停，
-不重试、不把本次启动错误误记为产品断言失败。脚本自行构造的 File/Blob 上传、SIP/IME、书签和持久设置仍未进入 EXE。ROADMAP 已复核；稳定边界见
-[`docs/TESTING.md`](../docs/TESTING.md) 与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
+此前 `1064,1065,999` 窄门已通过，包含双空间预检、日志回收、crash check 和无新 dump。
+本批最近一次门记录为 `tmp/device-runs/20260926-155007-http-url-aware-final`：构建、staging、
+外置卡优先和空间预检均完成，但复制 `positron_script.dll` 时 WMDC/RAPI 返回 `0x80072746`，
+尚未启动测试程序，因此没有新的 HTTP 产品断言。这是环境阻塞，不是回归结果。
 
-阶段 0 已以 `app_host.h/.c` 收拢 EXE 私有 `AppHostContext` 的页面和 DLL 生命周期；阶段 1 新增
-`app_resources.c/.h`，把资源解析、注册、下载、重试和回收留在 EXE 私有适配层，不改变公共 ABI。
-C89/Debug/Release/审计已通过；设备门结果见上。网络候选不再追加只属于
-`welcome`/`controls` 的 EXE 私有 CSS；网络页面由 Core 的 UA 样式和文档自身的 inline/link CSS
-决定，旋转/DPI 重排复用该文档的样式资源缓存，离线页仍使用 EXE 私有样式。
+设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
+会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
+日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
 
-## 已验证产品事实
+## 当前未决边界
 
-### 公共边界
-
-- 顶层公共 DLL 为 TLS、JSON、HTTP、image、media、script、core 和 browser。
-- `positron.exe` 是正式的独立应用消费者；它拥有 WM 窗口、native 控件、输入路由和应用策略，
-  不编译公共 DLL 实现源文件。`test_host.exe` 仍只拥有回归 fixture、平台接线和断言。
-- NetSurf/libcss/libdom/hubbub、Expat、libsvgtiny、libjpeg 等移植工程是内部实现依赖。
-- `positron_media.dll` 已加入解决方案和 stage/nightly；当前 ARMV4I 构建只提供 16 MiB 上限内的 WAV PCM/IMA ADPCM S16LE 软音频。DirectShow 仅做 graph 探测，FFmpeg 3.4.14 已固定但 H.264/AAC/MP3/AMR/AVI/MP4/TS 软解仍待接入。
-- 独立脚本和浏览器脚本共用 Duktape；浏览器 JavaScript tracked 默认仍为关闭。
-- 通用 URL、history、DOM、Event、表单、图像和脚本 session 语义位于对应公共 DLL；宿主保留 WM 窗口、消息、控件、SIP/IME、picker、导航调度和资源 I/O。
-- Core 的 URL resolver callback 由宿主接线，但解析规则来自 `positron_http.dll` 的
-  `PHttp_ResolveReference()`；宿主不再直接链接 WinInet URL 合并函数，也不复制 HTTP(S)
-  reference/fragment/authority 规则。
-- Browser 的 visibility lifecycle 由公共 DLL 保持状态和事件顺序；参考宿主在顶层
-  `WM_SHOWWINDOW` 中只传递 hidden/visible 值，重复值、`pagehide`/`pageshow` 顺序和 teardown
-  仍由 Browser 决定，其他宿主必须自行完成等价的消息接线。
-- 八个顶层 DLL 的主干能力状态、预算、错误边界和提升条件集中在
-  [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)；“有界待扩展”不等于已支持，未实现入口
-  只能在不修改状态的前提下返回稳定 unsupported 类错误。
-- Core 的 multipart wire encoder 也属于公共表单语义：
-  `PCore_MultipartSubmissionEncode()` 负责 form default submission，
-  `PCore_FormDataEncode()` 负责独立 FormData snapshot；两者共享 bounded boundary/CRLF/字段
-  顺序/quoted metadata/binary file bytes。宿主只实现同步 file read/free callback、HTTP 调度
-  和 buffer 生命周期，不再复制 multipart 拼装规则。
-
-## 独立应用消费者接管结果
-
-本轮新增 `positron_app/`，未新增公共 export。应用消费公开
-`PCore_*`/`PBrowser_History*`/`PHttp_*` ABI；Core 负责 HTML/CSS style/layout/paint 与链接/焦点几何，
-Browser 负责有界 history 和 navigation candidate/resource transaction，HTTP DLL 负责 transport，
-窗口、native EDIT/COMBOBOX/LISTBOX、WM6 Shell command bar、菜单、worker、消息泵、输入优先级和页面 swap 由应用拥有。
-`test_host` 没有编译应用实现源文件，也没有承接应用 UI。
-
-阶段 A 的内置页现由应用私有 `positron://welcome` 和 `positron://controls` 地址离线路由；
-阶段 B 当前支持绝对 HTTP(S) 主文档 GET，失败、取消或 stale 响应不会替换旧页面。菜单、softkey、
-状态标题、错误框和两页离线内容由 EXE 私有英语/简体中文资源提供；README 已给出语言回退及
-交互验收项。阶段 1 已接入外部 CSS/`@import`、脚本发现和图片发现：CSS 属于 required gate，
-脚本/图片属于 optional fallback；阶段 2 的网络候选已按 DOM 顺序创建并执行有界 classic
-ScriptSession，接入 DOM/属性/事件/导航/滚动/焦点/生命周期桥；脚本 `form.reset()` 另由 Browser
-Ex form-event adapter 按 id 派发 reset，并在获准后执行 Core state reset、活动页 relayout 与 reset 专用
-native 值同步；阶段 3 由 EXE 私有
-`AppControlsContext` 投影 text/password/textarea、SELECT、checkbox/radio 与 identified contenteditable
-为原生子控件，并路由普通 `type=button` click。单行 text/password EDIT 的 Enter 经 Core 默认提交接口、
-Browser 可取消 submit/invalid 事件、首个无效控件的原生滚动聚焦反馈和既有 GET candidate 接入；
-native submit 按钮复用 invalid 反馈，textarea 不走 implicit submit 路径。Core/Browser 保留状态与事件语义，宿主按 Core 几何
-重排并负责 WM6 输入/teardown；contenteditable 另用现有 Browser callbacks 同步可寻址 native EDIT
-的选区和 selectionchange，但不提供 Range/Selection 对象，编辑仍为纯文本。页面替换前
-重置 Browser native 状态。网络页面、脚本和导航失败回滚以及 native 控件真实输入仍需设备人工验收，
-不能写成设备基线。
-
-native `input type=file`→multipart 已由本应用形成同步 file callback、容量、权限、取消和失败回滚
-源码路径；当前仍待取证的是脚本自行构造的 File/Blob→Browser FormData pairs→Core multipart
-snapshot 公共转换。不能把 native picker 的源码接线误写成设备上传基线，只有设备门和真实脚本消费者
-证据出现后才提升该候选。
-
-### 当前网页能力
-
-- HTML/CSS/DOM、整树 style、NetSurf layout/redraw、GDI 绘制与资源缓存已形成正式 Core 路径。
-- 常用 block/inline/flex/table、图片/SVG、背景、列表、有限定位、表单控件、验证、提交、reset 与 FormData successful-control snapshot（含可选 submitter、formdata 事件）已有设备回归；这不代表完整 CSS/HTML 或完整 Web API。
-- image-map 与 `srcset`/`picture` 均为 Core/Browser 的有界选择及命中合同；精确预算、
-  URL/source 规则和剩余资源限制见 [`docs/CAPABILITIES.md`](../docs/CAPABILITIES.md)
-  与 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)，此处不重复列举。
-- `textContent` 与非编辑元素的 `innerText` setter 通过 Browser 的既有 text callback
-  调用 Core；空元素的 getter 返回成功的零字节字符串。成功 setter 后 Core 丢弃 retained
-  layout，Browser 刷新目标的
-  `children`/`childNodes`/query snapshot，并让旧的无 id 文本 wrapper 保留数据但变为
-  detached。contenteditable 的 `innerText` 复用同一失效规则；Text 的
-  `Text`/`Comment`/`CDATA` 的 `nodeValue`/`data`/`textContent` 与四个 CharacterData
-  mutator 保持 child list 和连接中 wrapper 身份，非法/失效目标 fail closed。`Text`/`CDATASection.splitText()`
-  通过 Ex3/`PCore_NodeSplitTextChildById` 对 direct CharacterData child 插入紧邻 Text sibling，保留
-  原 wrapper、旧 NodeList snapshot，并对 UTF-16→UTF-8 不可表示边界 fail closed；关系 50 的
-  `wholeText` 由 Core/libdom 拼接逻辑相邻 Text/CDATA，非文本边界和无效 child fail closed，
-  detached wrapper 保留最近一次数据快照。Ex4/`PCore_NodeReplaceWholeTextChildById` 将一个
-  有界相邻 Text/CDATA 段替换为目标 wrapper，目标移动到段首，其他 CharacterData wrapper
-  变为 detached，成功后使 retained layout 失效。
-  `Node.normalize()` 通过 Ex5/`PCore_NodeNormalizeById` 删除空 Text/CDATA，并将每段连续
-  Text/CDATA 合并到第一个非空节点；Browser 对带 id 的后代 wrapper 按受控顺序递归并保持
-  首个非空 wrapper 与旧 snapshot。write Ex6 的 `Element.append()`/`prepend()` 按零至四值为带 id 元素
-  创建 Text child；mutation Ex6 另按未过滤位置移动 existing element。Ex2 的 `Text.remove()`
-  与 `Element.removeChild(Text)` 删除连接中的
-  direct Text child，Ex3 再为 Comment/CDATA 提供相同的 `remove()`/`removeChild()`
-  路径。各路径都保留 detached wrapper、刷新父级 snapshot，并由宿主在成功后重排；
-  Browser 现在另支持最多四个 primitive Text 的 text-only `DocumentFragment` staging，及
-  最多四个 detached Element/Text/Comment/CDATA 根的 bounded staging；后者可由指定的 Element mutation
-  一次性 parser-backed 消费并保留 staged wrapper identity，或在 Fragment 自身上与另一
-  Fragment 做有界组合。Fragment-owned detached Element 的 sibling/element-sibling getter
-  按当前 staging 顺序实时读取；未归属的 detached Element 不伪造关系。detached
-  Browser-created Element 另支持最多四层、总计 64 个 Element、每个父级 64 个 child 的
-  嵌套图；每个 Element 必须有唯一 id，clone、递归 textContent、attach、remove/reinsert
-  和 alias lookup 保持 wrapper/owner identity，超限、重复 id、自引用和不支持节点在
-  mutation 前 fail closed。嵌套 DocumentFragment、通用节点、超出预算的 reparent、其他
-  删除、MutationObserver 与除 `Element.getElementsByTagName()` 外的完整 live collection
-  仍未实现。detached Element/Fragment 的 `normalize()` 仍仅限最多 64 个 direct
-  CharacterData（Text/Comment/CDATA）或四个 Fragment 根；嵌套 Element、溢出和不支持节点
-  在 normalize 前 fail closed。
-- Browser 的 `Node.cloneNode(deep)` 返回 Browser-owned detached snapshot：浅/深克隆保留
-  有界 element 属性、子节点顺序、parent links 和独立数据，超限或不支持类型 fail closed；
-  它不改变 Core 文档、retained layout 或事件 listener。
-- `Element.innerHTML` setter 通过 Browser write Ex8 调用 Core 的
-  `PCore_NodeSetInnerHTMLById`。Core 在同一 document 中用 UTF-8 fragment parser 预检节点、
-  深度、direct-child 数量和 id 冲突后再替换子树；失败不改变原子树，成功保留目标身份并
-  使 retained layout 失效。Browser 只在其 256 节点/64 层 wrapper reconciliation 预算内
-  让旧 wrapper 变为 detached，再刷新目标的 `children`/`childNodes`/query snapshot；
-  同一 parser 边界的 Ex9 `insertAdjacentHTML()` 在四个位置插入片段并刷新受影响
-  target/parent snapshot；Ex10 `outerHTML` setter 则以单一 Element 根替换目标或以空字符串
-  移除目标，并刷新父级/id cache；三条 HTML 路径都不是通用 `DocumentFragment`、mutation
-  event 或资源执行 API。Browser 的 fragment staging 另有 text-only 与 bounded Element/Text
-  子集，但不新增 Core fragment ABI。
-- Browser 层还提供由宿主显式驱动的 viewport resize 合同：`PBrowser_ScriptSessionNotifyResize` 更新 CSS viewport/DPR 和动态 `screen` 方向，值变化时同步派发一次 window `resize`；同一 session 的 `screen.orientation` 对象保持身份稳定，方向翻转时在媒体列表刷新后先派发一次可信 `change`，再进入 visual/window `resize`；调用不负责 Core relayout 或 frame scheduling。
-- 同一 Browser session 还提供布局视口对应的 `visualViewport`：`width`/`height` 与 CSS viewport 同步，`pageLeft`/`pageTop` 与 page scroll 同步，`scale` 为 1、offset 为 0；有效 resize/scroll 先派发 visual viewport 事件，再派发 window 事件，并对重复快照去重。TEST1133 覆盖该合同。
-- Browser history entry 同时拥有非负的 `(scroll_x, scroll_y)` viewport snapshot；新 document entry 和同 URL 新 document 从零开始，`replaceState`/traversal 保留目标值，`pushState` 新 entry 从零开始，history 裁剪会同步搬移 snapshot。Browser 不访问窗口、不知道 Core 的页面 extent；宿主读取 `PCore_DocumentWidth/Height` 后保存/读取并对两个轴 clamp/apply。
-- Browser script session 的 `PBrowser_ScriptSessionGetScrollRestoration` 暴露脚本的 `auto`/`manual` 策略。宿主在非 fragment history traversal 前只对 `AUTO` 自动读取并应用 entry snapshot；`MANUAL` 保留当前 viewport，查询失败按默认 `AUTO` 处理。fragment reveal 与显式脚本滚动不受该自动恢复门影响。
-- Browser script session 的 `window.scrollTo`/`scrollBy` 经过 `PBrowserScriptScrollCallbacks` 交给活动宿主；宿主返回实际 page 坐标后，Browser 只派发一次 `scroll`。宿主的物理滚动路径用 `PBrowser_ScriptSessionNotifyScroll` 反向同步，重复坐标不派发事件，回调内不会重入 runtime。
-- Core 的布局 relation 在成功 layout 后提供单元素 border-box union、最多 16 个
-  inline 行片段以及 retained overflow 的滚动/scrollport 快照；Browser 用这些有界
-  快照生成 viewport-relative `getBoundingClientRect()`/`getClientRects()`，并执行
-  页面级或最近 addressable ancestor 的有限 `scrollIntoView()`，也支持显式
-  `container:"all"` 的有界祖先链。未布局、无对应 box
-  或没有正尺寸片段时分别返回全零/空集合；不承诺 transforms、Range/Selection、完整
-  scroll tree、scroll chaining、pinch zoom、平滑滚动或视觉像素精度。
-- Core 的 `PCore_DocumentWidth` 与 `PCore_DocumentHeight` 在最近一次 layout 后报告 page-level extent；宽度包含页面内容的水平溢出且不小于 layout viewport。宿主把同一 `(scroll_x, scroll_y)` 用于 paint、命中测试、fragment reveal、滚动条和 native child reposition；嵌套 overflow 的完整树、chaining/anchoring 和匿名目标仍未实现。
-- next702–704 已补齐有界的元素 overflow 滚动：Core 对带 DOM `id` 的常见 block/replaced/flex box 保留 scrollbar offset，关系 38/39 返回/设置 CSS 像素并执行 clamp，关系 40–43 为 Browser 提供 axis availability 和 client-edge origin；`PCore_OverflowPointer`/`PCore_OverflowScrollSnapshot` 把 WM pointer 的目标和位置交给宿主。Browser 通过 `PBrowserScriptScrollInfo.element_id` 接入 `Element.scrollLeft`/`scrollTop`/`scrollTo()`/`scrollBy()` 和有限 nested `scrollIntoView()`；默认选择最近祖先，`container:"all"` 沿最多 64 层向外处理，`PBrowser_ScriptSessionNotifyElementScroll` 更新脚本状态并去重派发目标元素 scroll。完整 scroll tree、scroll chaining/anchoring、scroll-margin、smooth/inertia 和非 addressable/匿名目标仍不支持。
-- 页面导航保留旧页到候选文档成功提交；主文档和资源网络阶段与 UI 文档操作分离。Browser candidate handle 拥有 generation、取消/退休、提交资格和结果分类，宿主用它门控 worker 完成/进度消息并在 worker 收尾后回收旧候选；旧候选不能越过 generation 门。layout/swap 前，宿主通过 `PBrowser_NavigationCommitGetInfo` 读取独立 candidate/resource 的组合 decision 与 `can_commit`，不在宿主复制失败/过时提交规则。
-- Browser 资源事务按 URL 去重并拥有 `pending`、`ready`、`failed`、`cancelled` 四种终态、成功字节、失败分类、required/optional gate、transport 重试预算、最多 4 项 hash-only 摘要和 fallback family 计数。宿主负责网络 I/O、worker、取消/重试时机和页面提交，只保留 URL→resource-index 短引用；HTTP、resolve、budget、memory 和取消不重试，取消也不会重新暴露为可用缓存。
-- 导航 request 在 worker join 后由宿主先收敛失败/过时资源，再调用 Browser 的 `PBrowser_NavigationCleanupGetInfo` 复制 cleanup decision、candidate/resource 终态、pending、`can_release`、hash-only failure summary 和 fallback 计数；复制值在 candidate/resource handle 销毁后仍可用于日志。TEST1127 同时覆盖 pending/terminal decision、required failure、optional fallback、取消、stale、清理前复制、释放后快照存活，以及成功/失败 `pcore_navigation_finish` 的真实回收路径。
-- Core 的 form owner relation 对支持的 input、select、textarea、button、fieldset、img、object、output 解析
-  最近祖先或显式 `form="id"` 目标；Browser 的 `Element.form` 与 `form.elements` 复用这条
-  规则，后者从整棵文档按顺序返回跨树 listed form-associated 元素的有界 snapshot，img
-  仅保留 owner、不进入 collection，空值/无效目标不回退祖先。fieldset/object/output 只进入
-  relation collection（以及 output 的 labels），
-  不进入 successful-control、提交或 FormData；Core validation、reportValidity、
-  successful-control/multipart submission、
-  dialog/default-submit、reset 和按坐标的 submit/reset 激活仍只消费可提交控件 owner。
-- `<option>.form` 由 Browser 沿最多 64 层可寻址父链定位所属 select，再复用其 form owner；
-  嵌套 optgroup、显式 `select form="id"` 和 attribute mutation 已由 TEST1185 及设备门验证，
-  缺失或无效 owner 安全返回 `null`，不改变 Core ABI。
-- `select.type` 依据 live `multiple` attribute 提供只读的 `select-one`/
-  `select-multiple` 模式，`optgroup.label` 反映 label attribute 且缺失回退为空字符串；
-  `option.label` 的文本 fallback 保持不变。TEST1186 及设备门已验证这组 Browser metadata，
-  不创建 native SELECT 或改变 layout/paint。
-- 支持的链接、summary、native EDIT/SELECT/button/file 等目标，以及带有效非负 `tabindex` 的普通布局元素按有界顺序响应 Tab/Shift+Tab：正值升序、同值 DOM 稳定排序，随后零/缺省组；负值、disabled/hidden/stale 目标和 file picker 仍被排除。Browser 报告活动 modal id 后，宿主可用 Core 的 scoped snapshot 将顺序焦点限制在 dialog 子树；宿主仍同步焦点事件、原生焦点和滚动可见性。
-- `<dialog>` 的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id 查询、宿主驱动的 Escape 请求桥接、有界 backdrop 指针策略、`method="dialog"` 默认动作和 Core modal paint 已形成契约。显式点击、脚本 `click()` 和单行输入隐式 Enter 都遵循 validation→可取消 submit→直接 close/returnValue；CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 仍未实现。
-- `contenteditable` 的 Core/Browser 与参考宿主完整边界见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)；`positron.exe` 当前接入带 id host 的 bounded plain-text EDIT、可取消 `beforeinput`、按 id `input` 和 native selection 同步，但尚未设备验收且不保留富文本。
-离线 compatibility corpus 已覆盖导航资源事务、候选提交与回滚、history/viewport、页面生命周期、脚本调度、焦点、滚动、Core/Browser 几何和显式 form-owner 组合。每项测试的 fixture 与断言说明统一见 [`docs/TESTING.md`](../docs/TESTING.md)；handoff 只保留当前门和仍未完成的边界。
-
-### 当前测试入口
-
-- `TEST_MAX_NUMBER`：1310。
-- tracked `test_host/test_host.ini`：`auto=1`、`javascript=0`，选择 `13,20,27,56,58,62,64-67,73,75,1217-1308,999`；1309 是定向宿主可见性门，1310 是 manual-only FormData 证据夹具，两者都通过 `-TestSelection` 或专用 INI 显式加入，不改变窄 smoke 配置。
-- `test_host/test_host_manual_picker.ini`：`auto=0`、`javascript=1`，选择 `263,1310,999`；
-  `scripts\stage_manual_picker.bat Debug C:\WMShare\Positron-manual-test263-deferred-id` 已生成
-  本轮手动包，TEST263/1310 已通过。TEST232 已单独验收，未重复加入；旧的
-  `C:\WMShare\Positron-manual-next232-fix` 和 `C:\WMShare\Positron-manual-next1310` 不应再用于当前基线。
-- tracked INI 是窄 smoke，不是全量目录；nightly 打包脚本从源码 dispatch 动态生成全量自动清单。
-- 设备连接必须先由用户在 WMDC/Device Emulator GUI 手动完成；RAPI gate 只使用当前唯一会话。
-
-## 最新有效设备证据
-
-`tmp/device-runs/20260926-113339-http-scheme-port-fix-adjacent` 的 `1064,1065,999` 已
-`PASS`：`core_module_check=PASS`、三项均 OK、双空间预检 PASS、日志完整回收、
-`crash_check=PASS` 且无新 dump。较早的 `20260926-112250` 记录了旧模块持有导致的
-`STALE_MODULE`，随后用户退出旧 Positron，问题已消除。
-`tmp/device-runs/20260921-232526-dpi-clip-final` 的 `1311,999` 已正常 `PASS`：
-`core_module_check=PASS`，路径等于本次 staging 目录，TEST1311 报告 14/27 行、
-最低 14/21 行，999 PASS、dump=0；回收清理。
-`tmp/device-runs/20260921-231158-dpi-clip-holders` 记录了旧 `positron.exe` 持有者；
-设备门现在先检查路径并记录持有者。
-`tmp/device-runs/20260920-213339-test263-pointer-repro` 是 TEST263 证据：
-`263,999` 2/2 PASS；双空间预检、日志回收、清理和 `crash_check` 均 PASS，dump=0。
-`C:\WMShare\Positron-manual-test263-deferred-id` 也由用户操作通过 TEST263
-与 TEST1310；手动 picker 的视觉和 OEM 行为仍不应外推到其他 ROM。较早的 1302–1309 基线仍由
-`tmp/device-runs/20260920-153441-next875-file-upload-baseline` 保存；失败实验日志保留在
-`tmp/` 供审计，不作为产品基线。
-## 当前人工验收状态
-
-以下路径已有过真实设备确认，但后续触及相邻基础设施时仍需重新评估：
-
-- example.com → IANA 的容器边距、深层导航和旧页保留；
-- SIP 候选词整词提交；
-- bitmap/SVG、表格、列表和常见布局的可见结果；
-- native EDIT/SELECT、真实 file picker、旋转和 DPI 路径。
-- 带 `tabindex` 的普通元素的设备焦点矩形、触摸命中和不同 DPI 视觉仍需人工观察；语义顺序已有自动断言。
-- `<dialog>` backdrop 的整体色彩、边界、滚动/旋转下的视觉仍属于可累计的人工观察；Core 的绘制顺序和设备门像素契约已有自动断言。
-- contenteditable 的 OEM 硬键盘/自动重复、SIP/IME 候选词、跨应用剪贴板互操作、滚动/旋转和不同 DPI 下的文本视觉仍属于可累计人工风险；1113 已在真实 WM EDIT 上验证无修饰鼠标拖选的连续范围/方向通知，1114 验证了 Shift/方向键、捕获丢失和焦点切换的有界通知收尾，1112 覆盖脚本 `selectionchange` 去重，1115 覆盖宿主自备的 `CF_UNICODETEXT` 连续 paste/cut（包括 retained layout 暂失时的按 id 事件派发），1116 覆盖宿主 `WM_COPY` 与格式/容量拒绝。完整 ClipboardEvent/async clipboard、CF_TEXT/富文本转换仍不在契约内。
-- TEST1151 autofocus 夹具仅证明 DOM/焦点桥合同；初始焦点矩形、native HWND、触摸/SIP、滚动条裁剪和不同 DPI 仍需宿主观察。
-- TEST1152–1169 是离线的 Browser selector、validation、焦点和 placeholder 夹具，
-  自动门已证明各自的有界查询、mutation、顺序、callback 边界和非法输入 fail-closed；
-  真实页面完整 Selectors、native 输入、SIP/IME、触摸、布局视觉和不同 DPI 仍由宿主观察。
-- TEST1170–1188 是离线的 Core/Browser form-owner、validation、submission、reset、
-  FormData、selector 默认状态、option 属性/collection、fieldset projection 与
-  `form.elements` 夹具；自动门已证明跨树 owner、成功控件排除、默认动作顺序、snapshot
-  隔离和有界错误回退。它们不保证完整 live collection、native 表单/SELECT 视觉、picker、
-  键盘/触摸、SIP/IME 或不同 DPI 行为；逐测试合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- 低号 TEST118 是 native SELECT 键盘桥的例外：本批自动设备门覆盖关闭态 COMBOBOX 的
-  ArrowDown `keydown`/`keyup`、target/bubble 顺序和 layout invalidation 后的 live
-  selection 回退；它不覆盖展开 popup、触摸、SIP/IME、OEM 重复键或视觉保证。
-- TEST1189–1199 的 form-owner、output/object/img metadata、image-map、srcset/picture
-  选择和 source lifecycle 夹具均已有自动门证据；详细合同、边界和逐项结果统一见
-  [`docs/TESTING.md`](../docs/TESTING.md)，这里不重复维护历史清单。
-- TEST1201–1310 涵盖的 DOM/parser、资源、FormData/Storage/Headers 与宿主桥合同，以及
-  TEST263/1310 的 picker 人工验收证据，统一见 [`docs/TESTING.md`](../docs/TESTING.md)。
-  通用节点、observer、完整 live collection、native/OEM 视觉和 SIP/IME 仍未由自动门保证。
-- 允许累计的人工风险包括低风险视觉、触摸、SIP/IME、旋转、picker 和失败网络观察；
-  崩溃、数据损坏、严重布局破坏或核心交互阻塞必须立即人工复核。
-
-## 当前未决风险
-
-- next700 的 `Element.getClientRects()` 已能把普通 inline flow 的实际行片段暴露为最多
-  16 个 viewport-relative 矩形，并以同一集合计算 union。它不是完整的 CSSOM 几何算法：
-  Range/Selection、transforms、nested overflow、pinch zoom、平滑滚动、复杂 inline
-  嵌套、字体精确度量和视觉像素仍需宿主集成观察。TEST1145 只证明离线窄容器中的
-  Core/Browser 一致性、顺序、identity 和 union。
-
-- next701 的六个布局尺寸 getter 只消费最近一次 Core layout 的有界快照。支持范围是
-  常见 block、replaced、table/flex box；完整 CSSOM box model、实时 reflow、transforms、
-  pinch zoom、字体精确度量和真实滚动条视觉仍未实现。next702–704 只在带 id 的常见
-  overflow box 上增加 retained 两轴滚动和有限 nested `scrollIntoView()`；默认选择最近
-  ancestor，`container:"all"` 才沿最多 64 层向外处理，完整滚动容器树、scroll
-  chaining/anchoring、scroll-margin、smooth/inertia 和匿名目标仍未实现。
-  next705 又让 `HTMLElement.focus()` 复用同一条 Browser-owned 嵌套 reveal 路径，并由
-  Ex `prevent_scroll` 让宿主延后 page-level reveal；next706 再增加宿主显式触发的
-  `autofocus` 查询/设置和无 id 目标事件 dispatch，但 Browser 不自主执行初始焦点，
-  完整滚动树和焦点导航仍未实现。TEST1146–1151 只证明离线 fixture 中 Core/Browser
-  的整数值、clamp、事件、size-probe 和 fail-closed 回退一致。
-
-- 已建立固定、小型、可重复的离线 corpus 流程，但它们仍不能代表任意真实网站；TEST13 仍只是单一网络哨兵。TEST1119–TEST1150 已覆盖导航事务、资源 gate、页面生命周期、滚动/几何、布局尺寸、元素 overflow、媒体/焦点和脚本调度的有界合同。取消仍是协作式的，脚本队列仍依赖宿主调度；任意真实站点的 fallback 视觉、复杂布局、Range/Selection、inline 嵌套、完整滚动容器树、scroll chaining、pinch zoom、精确逐元素归因和自定义 prompt 仍未保证。
-- `<dialog>` 已有已验证的有界脚本生命周期、`method="dialog"` 默认动作、活动 modal id、Escape→`requestClose()` 桥接、宿主顺序 Tab/Shift+Tab 子树范围、有界 backdrop 指针策略和 Core 实体色 modal paint；当前表单桥要求最近祖先 dialog 有非空 id。CSS `::backdrop`、透明合成、多个 modal 和跨文档 modal 生命周期尚未实现，初始焦点、native 窗口视觉和非顺序平台焦点仍由宿主决定。
-- contenteditable 的 OEM 键盘、选区和剪贴板细节及应用差异统一见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)；真实输入与视觉仍需设备门。
-- float、复杂 table/position、现代 CSS 与任意畸形页面仍有明显边界。
-- 浏览器 JavaScript 是有限组合，不具备完整 DOM/Web API 或现代浏览器安全沙箱。
-- Browser selector 仍是有界子集：支持列表/关系/属性/结构伪类、表单状态、focus/link/visited/target/lang、`:not()`/`:is()`/`:where()`/`:has()`、可选 interaction 的 `:active`/`:hover`、Core validation 的 `:in-range`/`:out-of-range`、依据 readonly/effective-disabled 和可选 contenteditable callback 判定的 `:read-only`/`:read-write`、text-like input/textarea 的 `:placeholder-shown`、依据默认 checked/default-selected 与首个 submit control 的 `:default`，以及直接、无参数的 `:scope` context。TEST1152–1169、TEST1179–1183 已覆盖这些路径的查询、mutation、预算和非法输入回退。范围伪类只接受非空且受约束的 input number/range/date/month/week/time/datetime-local，underflow/overflow 才构成 out-of-range；空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 安全不匹配。显式 contenteditable 在 callback 缺失或查询失败时两种编辑伪类都不匹配；placeholder 伪类不匹配空 placeholder、其他 input 类型、普通元素或带参数形式。`:visited` 只由宿主 Ex callback 明确批准，Browser 不保存或推断 history；`:scope` 的 receiver/document owner 规则不扩展为嵌套参数或完整 Selectors；`:default` 不提供完整默认按钮算法，relation 45 缺失时保守不匹配。完整 CSS Selectors、visited 的持久化/隐私隔离/真实颜色、伪元素/namespace/shadow DOM、`:has()` 链式关系、`:target` reveal 以及复杂页面的 1.5 MiB Browser heap 预算边界仍未承诺；详细合同见 [`docs/TESTING.md`](../docs/TESTING.md)。
-- 图片资源的候选选择覆盖 Core 的最多 16 个同类正密度 `x` 或正宽度 `w` 候选（每个
-  URL 最多 2047 字节），以及每个 `<picture>` 最多 8 个 preceding `<source>`、16 层
-  ancestor 和 64 个 direct-child 节点的有界扫描。source 先按 document order 过滤
-  media/type，再用同一 `srcset`/`sizes` 选择器；结果由 fetch/cache/layout/currentSrc
-  共用。`sizes` 只支持 px/vw/vh 和单一 min/max-width 条件，完整媒体查询、绝对 URL、
-  CORS/referrer enforcement、完整 loading/fetch-priority 策略或 native 图像视觉仍未
-  实现。Core 的 image-map 只有有界的 default/rect/circle/poly 命中和 area
-  几何；不覆盖 transforms、完整 HTML image-map 算法或 pointer/touch 手势。`decode()`、
-  `load`/`error` 只覆盖 Browser 的有界 Promise/事件桥，必须由宿主在 Core 的当前
-  complete/natural-size relation 就绪后显式通知；它不提供后台加载、自动事件或完整图像
-  生命周期。支持的 `Element.id` setter 改名会先回收旧终态 key，避免反复改名耗尽每个
-  session 的 64 项终态预算；其他通用 id/加载语义仍不在契约内。
-- `<option>` 的 `selected`/`defaultSelected`、`value`/`label`/`text` 与 select 的
-  `options`/`selectedOptions`/`length`、option `index` 是可选的 Browser 扩展：前者由
-  Core 维护 live 选择并执行单选互斥/多选规则，后三项复用通用 DOM attribute/text
-  callback，显式属性优先、缺失时回退到 option 文本；集合是按可寻址 id 遍历得到的有界
-  snapshot，selected mutation 会在下一次读取时反映，snapshot 自身的数组修改不回写 DOM。
-  集合最多遍历 256 个节点并返回 64 个 option，缺失 id 的元素不可被当前 wrapper 寻址；
-  不实现完整 live HTMLCollection、option form/disabled 全部算法、append/remove、native
-  popup、键盘/触摸、SIP/IME 或视觉结果，缺失 callback、非目标和无效 id 均安全失败。
-- 多窗口、持久 history、完整下载/外部协议策略仍属于宿主或未实现范围。
-- mbed TLS 2.16.12 等依赖为旧平台兼容 pin，发布前必须审查当前安全风险。
-- OEM SIP/IME、系统 picker、视觉和旋转不能仅凭 synthetic 自动测试保证。
-
-Core/Browser form owner 目前覆盖 input、select、textarea、button、fieldset、img、object 和 output；这些元素
-（包括显式 `form="id"` 的跨树元素）按文档顺序把 listed 项加入有界 `form.elements` snapshot；img
-只提供 owner，不进入 form collections。fieldset、object 和 output 只属于 DOM relation enumeration，
-仍不进入 successful-control visitor、submission 或 FormData；output 的 labels、descendant-text `value`、
-独立 default override、只读 `type` 和 reset 恢复已覆盖。validation、
-submission/multipart、dialog/default-submit、reset、按坐标的 submit/reset 激活和脚本
-`HTMLFormElement.submit()` direct path 以及 `new FormData(form[, submitter])` snapshot 也
-复用这条 owner 规则。direct path 和 FormData bridge 仅支持有 id form；前者跳过 validation、
-submit event 和 submitter，后者的 Ex 路径只接受目标 form 的 enabled submit-type input/button，
-最多返回 64 项且 Browser 对象仍只返回 filename/type metadata；脚本对象的 append、新键 set 和
-数组构造也共享这 64 项预算，超限抛出 QuotaExceededError 并保留旧 pairs。应用可将 Core snapshot 交给
-`PCore_FormDataEncode()` 生成 multipart body；Browser 构造成功后同步派发非冒泡、不可取消的
-`formdata` 事件，监听器可修改返回对象。完整 live collection、File/Blob API、异步文件读取、
-复杂 parser 重构和 native 表单视觉仍未实现。
-
-完整列表见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。
+- 脚本自行构造的 File/Blob 尚未形成 Browser FormData 到 Core multipart 的公共转换；native
+  picker 的源码接线不能写成已完成的设备上传基线。
+- OEM SIP/IME、真实触摸、旋转/DPI、复杂 CSS/布局、完整现代 Web API 和浏览器安全沙箱仍受
+  [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 约束，合成按键不能替代人工设备验收。
+- 失败网络、重定向、资源相对 URL 和应用输入仍需设备门确认；稳定合同和测试矩阵见
+  [`docs/TESTING.md`](../docs/TESTING.md)。
 
 ## 唯一下一步
 
-当前源码纵切已把 Core/Browser 的 form method/enctype/default-action 结果接到 EXE 私有
-`AppForms`/navigation request：GET、URL-encoded POST、Core multipart POST 和 `method="dialog"`
-均有明确的 body/content-type、dialog close、旧页保留、stale/cancel 和资源释放路径；非 GET
-不伪造 Browser history replay。native file picker、trusted anchor/disclosure/label 路由也已接入，
-没有修改公共 ABI、Browser/Core 或 test_host 的产品语义。脚本自行构造的 File/Blob pairs 仍无公共
-转换入口，不能宣称浏览器式脚本上传完成。
+用户确认 WMDC/Device Emulator 已重新连接恰好一个目标后，重试窄门：
 
-本批源码已通过 C89、审计、Debug/Release ARMV4I 全量重编；HTTP scheme/port 纵切及相邻
-Core URL callback 已通过当前目标的定向设备门。下一步只在后续 HTTP/导航代码变更时重跑
-该窄门，其余时间回到路线图中的下一条真实消费者纵切；不再重复本次已完成的启动排障。
-ROADMAP 已复核。本轮未新增公共 ABI。
-TEST262/264
-的自动失败仍隔离在审查报告；崩溃、数据损坏、严重布局破坏或
-核心交互阻塞须立即人工复核。
-新批次仍须把可复用语义放入公共 DLL，宿主只保留平台接线、调度、fixture 与断言，并附带
-相邻回归和职责文档更新。超出 bounded Element/Text 子集的通用节点、混合/嵌套
-DocumentFragment 插入、
-超出有界元素约束的 reparent、其他删除、
-Range/Selection、完整 live collection、MutationObserver、完整滚动容器树、pinch zoom、
-transforms、scroll-margin、平滑/惯性滚动、完整媒体查询语法、bfcache、绝对 URL、CORS、
-完整图像 loading 和 image-map 扩展仍是候选限制，不能在证据之前写成已支持行为。
+```text
+scripts\device_gate.bat -Candidate http-url-aware-final -Configuration Release -TestSelection "1064,1065,999" -TimeoutSeconds 300
+```
+
+完成标准是 staging 成功、三项通过、日志完整回收、`crash_check=PASS` 且无新 dump。若仍为
+`RAPI=0x80072746`，保留源码和现有自动证据，报告 WMDC 环境阻塞，不继续修改 HTTP 代码。
