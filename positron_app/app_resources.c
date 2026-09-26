@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "app_resources.h"
-#include "positron_http.h"
+#include "app_url_router.h"
 
 static void app_resources_copy_text(char *target, int capacity,
         const char *source)
@@ -264,7 +264,7 @@ int AppResources_Resolve(void *pw, const char *base_url,
     if (reference == NULL || out_url == NULL || out_capacity <= 1) {
         return 1;
     }
-    return PHttp_ResolveReferenceUrl(base_url, reference, out_url,
+    return AppUrlRouter_ResolveNetworkReference(base_url, reference, out_url,
             out_capacity);
 }
 

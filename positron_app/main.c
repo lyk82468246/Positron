@@ -26,6 +26,7 @@
 #include "app_script.h"
 #include "app_forms.h"
 #include "app_resources.h"
+#include "app_url_router.h"
 #include "app_i18n.h"
 #include "positron_core.h"
 #include "positron_browser.h"
@@ -1515,10 +1516,28 @@ static int app_page_kind(const char *url)
 static int app_canonicalize_url(const char *base_url, const char *reference,
         char *output, int output_capacity)
 {
+    AppUrlSchemeKind reference_scheme;
+    int length;
+
     if (reference == NULL || output == NULL || output_capacity <= 1) {
         return 1;
     }
-    return PHttp_ResolveReferenceUrl(base_url, reference, output,
+    reference_scheme = AppUrlRouter_ClassifyScheme(reference);
+    if (reference_scheme == APP_URL_SCHEME_POSITRON) {
+        if (app_page_kind(reference) == 0) {
+            return 1;
+        }
+        length = (int) strlen(reference);
+        if (length >= output_capacity) {
+            return 1;
+        }
+        memcpy(output, reference, (size_t) length + 1);
+        return 0;
+    }
+    if (reference_scheme == APP_URL_SCHEME_OTHER) {
+        return 1;
+    }
+    return AppUrlRouter_ResolveNetworkReference(base_url, reference, output,
             output_capacity);
 }
 
@@ -2705,8 +2724,8 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     }
     app_copy_text(request->content_type,
             sizeof(request->content_type), content_type);
-    if (PHttp_ResolveReferenceUrl(NULL, url, canonical, sizeof(canonical)) !=
-            0) {
+    if (AppUrlRouter_ResolveNetworkReference(NULL, url, canonical,
+            sizeof(canonical)) != 0) {
         free(request);
         app_restore_page_status();
         return 0;
