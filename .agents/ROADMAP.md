@@ -213,11 +213,17 @@ filter 探测。
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 
-**状态：准备取舍，阶段 1/2 源码已接入，等待阶段 B/脚本资源设备门。** `positron.exe` 已证明真实应用消费者会组合
+**状态：Core 图片 pending/retry 纵切已完成，阶段 B/脚本资源设备门仍待完成。** `positron.exe` 已证明真实应用消费者会组合
 Core 的 document/style/layout/paint、链接/焦点几何、Browser history/candidate gate 和 HTTP
 transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@import`、脚本发现和图片发现
-纳入同一事务，并在候选提交前按 DOM 顺序执行有界 classic script。下一步用户结果是确认
-真实页面、脚本 mutation/事件/导航、失败、取消或过时响应时保留旧页。
+纳入同一事务，并在候选提交前按 DOM 顺序执行有界 classic script。EXE 接线现在包括：
+异步脚本、样式和图片等待会恢复到与 `test_host` TEST13 相同的 commit stage，图片 pending
+会先回到 STYLE 再重新扫描，图片 worker 也会先解析原始引用到文档最终 URL；同时提供不改变
+ABI 的 `positron image-state` 调试摘要；Core 新增 additive 的
+`PCore_FetchImageResourcesEx()` READY/PENDING/TERMINAL_FAIL 合同，TEST1313 离线及 `1313,999`
+设备门均证明 pending SVG 会在后续扫描成功缓存、解码和布局，而终态失败不重试。下一步用
+匹配 DLL 运行真实图片页面设备门，再确认脚本 mutation/事件/导航、失败、取消或过时响应时
+保留旧页。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。
