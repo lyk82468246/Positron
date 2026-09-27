@@ -115519,7 +115519,16 @@ static int run_configured_tests(const unsigned char *selected,
         case 1309: ok = test1309_browser_host_visibility_message_contract(); break;
         case 1310: ok = test1310_browser_file_form_data_manual(); break;
         case 1311: ok = test1311_core_high_dpi_text_paint(); break;
-        case 1312: ok = test1312_media_wav_callback_contract(); break;
+        case 1312:
+            ok = test1312_media_wav_callback_contract();
+            if (ok) {
+                show_info(L"TEST 1312 OK",
+                        "positron_media WAV callback/backend contract passed.");
+            } else {
+                show_error(L"TEST 1312 FAIL",
+                        "positron_media WAV callback/backend contract failed.");
+            }
+            break;
         default: ok = FALSE; break;
         }
         if (!ok) {

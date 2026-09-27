@@ -54,9 +54,9 @@ native 视频生命周期仍是后续边界；此前 HTTP(S) 导航与资源事�
 ## 文档与路线图
 
 本批同步更新了媒体组件 README、架构/能力/限制/第三方说明、构建 staging 与 nightly 清单，
-并复核 `.agents/ROADMAP.md`：Media 候选已改为“软解与 WAV PCM WaveOut 已接入，DirectShow
-source filter/native 视频与设备门待完成”。下一轮仍须重新复核路线图，不得用“继续寻找”掩盖
-缺少证据。
+并复核 `.agents/ROADMAP.md`：Media 候选已改为“软解与 WAV PCM WaveOut 已接入，TEST1312/999
+在 Microsoft DeviceEmulator 定向门通过，DirectShow source filter/native 视频与完整媒体设备门
+仍待完成”。下一轮仍须重新复核路线图，不得用“继续寻找”掩盖缺少证据。
 
 ## 已验证的自动证据
 
@@ -68,13 +68,19 @@ source filter/native 视频与设备门待完成”。下一轮仍须重新复�
 - `tmp\media_host_test.exe`：离线 WAV callback/暂停/恢复/seek/EOF 回归通过，输出
   `media_host_test: PASS blocks=2 samples=8 bytes=16`；该 fixture 在 `tmp/`，不属于产品工程。
 - `test_host` 已按消费者边界加入 WAV PCM `pm_probe`/soft/AUTO/pause/resume/seek/EOF fixture；
-  它只链接 `positron_media.lib`，不编译媒体产品源文件。
+  它只链接 `positron_media.lib`，不编译媒体产品源文件；TEST1312 现在显式写出成功/失败标记，
+  供设备门验证选中的断言确实执行。
 - `python scripts/audit_repo.py`：通过；项目路径的 staged/working-tree `git diff --check` 通过。
   FFmpeg 原始测试资产保留其上游空白，不为 diff 门改写；临时 `tmp/` 产物未加入仓库。
 
 ## 设备证据与限制
 
 此前 `1064,1065,999` 窄门已通过，包含双空间预检、日志回收、crash check 和无新 dump。
+本批 `tmp/device-runs/20260927-130307-media-host-smoke` 通过 `1312,999` 定向门：完整日志包含
+`TEST 1312 OK`、`TEST 999 OK` 和唯一 `TESTBENCH PASS`；selected/observed 为 `2/2`，
+`ERROR`/`FAIL` 为 0，`crash_check=PASS` 且新增 dump 为 0。该门验证了 WM6 Emulator 上的 WAV
+PCM soft callback、暂停/恢复、seek/EOF、AUTO backend 选择和 session 生命周期；不等同于
+WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收。
 本批最近一次门记录为 `tmp/device-runs/20260926-155007-http-url-aware-final`：构建、staging、
 外置卡优先和空间预检均完成，但复制 `positron_script.dll` 时 WMDC/RAPI 返回 `0x80072746`，
 尚未启动测试程序，因此没有新的 HTTP 产品断言。这是环境阻塞，不是回归结果。
@@ -85,9 +91,10 @@ source filter/native 视频与设备门待完成”。下一轮仍须重新复�
 
 ## 当前未决边界
 
-- `positron_media.dll` 尚未在 WM6 Emulator/真实 ARMV4I 设备上验证 WaveOut 格式接受、音频
-  underrun、FFmpeg 帧率/时间戳、峰值内存和关闭耗时；DirectShow callback source filter/native
-  视频播放仍未实现。AV1/HEVC/VP9、编码、DRM、字幕和直播协议明确排除。
+- `positron_media.dll` 仅完成 WM6 Emulator 上 WAV PCM 定向 callback/AUTO smoke；WaveOut 格式接受、
+  音频 underrun、FFmpeg 帧率/时间戳、峰值内存和关闭耗时，以及真实 ARMV4I 设备仍未验证；
+  DirectShow callback source filter/native 视频播放仍未实现。AV1/HEVC/VP9、编码、DRM、字幕和
+  直播协议明确排除。
 - 脚本自行构造的 File/Blob 尚未形成 Browser FormData 到 Core multipart 的公共转换；native
   picker 的源码接线不能写成已完成的设备上传基线。
 - OEM SIP/IME、真实触摸、旋转/DPI、复杂 CSS/布局、完整现代 Web API 和浏览器安全沙箱仍受
@@ -98,7 +105,7 @@ source filter/native 视频与设备门待完成”。下一轮仍须重新复�
 ## 唯一下一步
 
 扩展 `test_host` 的媒体 fixture（损坏/截断、非 seek、`WOULD_BLOCK`、read/seek error、FFmpeg
-H.264/AAC/MP3/AMR 以及 AUTO fallback），再在用户手动连接恰好一个 WM6 Emulator/真实
-ARMV4I 目标后验证 WaveOut 与软解设备门。设备门必须记录启动延迟、帧率、丢帧、underrun、
-峰值内存、时间戳和关闭耗时；若 RAPI 仍返回现有 `0x80072746`，保留源码与自动证据并报告
-环境阻塞，不把未运行写成通过。
+H.264/AAC/MP3/AMR 以及 AUTO fallback），再在用户手动连接恰好一个 WM6 Emulator/真实 ARMV4I
+目标后验证 WaveOut 与软解设备门。设备门必须记录启动延迟、帧率、丢帧、underrun、峰值内存、
+时间戳和关闭耗时；若 RAPI 仍返回现有 `0x80072746`，保留源码与自动证据并报告环境阻塞，不把
+未运行写成通过。

@@ -188,14 +188,18 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
-**状态：软解纵切与 WAV PCM WaveOut 已接入，DirectShow source filter 与设备门仍待完成。**
+**状态：软解纵切与 WAV PCM WaveOut 已接入，WAV PCM 定向 test_host 设备门已通过；DirectShow
+source filter、压缩媒体门和完整设备性能门仍待完成。**
 `positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
 运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
 Debug/Release 链接，并由 custom memory AVIO 驱动有界的 H.264/AAC/MP3/AMR、常见
-MPEG/AVI/MP4/TS/FLV/WAV/裸流软解。下一步在不改变公共 ABI 的前提下，实现不会破坏不可 seek
-输入的 DirectShow callback source filter/native 视频播放生命周期，再用 test_host fixture 和
-WM6 emulator/真实设备验证实际 filter、WaveOut 格式、帧率、音频 underrun 与资源峰值。桌面
-DirectShow 格式表不能替代设备 filter 探测。
+MPEG/AVI/MP4/TS/FLV/WAV/裸流软解。`TEST1312,999` 已在 Microsoft DeviceEmulator 上完成
+完整日志回收、selected/observed `2/2`、零 ERROR/FAIL 和零新增 dump；该 fixture 证明 WAV
+PCM soft callback、生命周期和 AUTO 选择，不证明 WaveOut underrun 或压缩媒体实时性能。下一步
+在不改变公共 ABI 的前提下，实现不会破坏不可 seek 输入的 DirectShow callback source filter/
+native 视频播放生命周期，再用 test_host fixture 和 WM6 emulator/真实设备验证实际 filter、
+WaveOut 格式、FFmpeg 帧率、音频 underrun 与资源峰值。桌面 DirectShow 格式表不能替代设备
+filter 探测。
 
 - **Owner：** `positron_media.dll` 拥有 codec/container/session/timestamp/borrowed-buffer 语义；
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
