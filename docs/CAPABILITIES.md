@@ -70,7 +70,10 @@ fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另
 `setSelectionRange()`，按逻辑 LF/UTF-16 偏移换算 WM EDIT 的 CRLF 索引，并把鼠标拖选、Shift+方向键
 及焦点/捕获收尾通知为去重的 `selectionchange`。候选页、stale host 或未物化 surface 使用 Browser
 有界脚本回退；该接线不新增 ABI，也不保留富文本子树或提供 Range/Selection 对象。宿主负责消息路由、
-指针/按键接线、重排和 teardown。源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
+指针/按键接线、重排和 teardown。顶层物理页面滚动沿 `test_host` 的 retained-pixel 路径使用系统
+滚动条和 `ScrollWindowEx`：纯滚动只移动已有像素、补绘暴露区域并重定位 native 子控件，不重复
+执行 Core layout 或 SELECT/toggle 状态同步；WM_SIZE、Core/DOM mutation 和真实 viewport 变化仍
+进入完整 layout。源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
 native/script submit/reset、POST/multipart/dialog、file picker、网络导航/失败回滚及原生控件；
 SIP/IME 不因该接线而宣称完成。
 后续

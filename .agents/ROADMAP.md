@@ -128,6 +128,13 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     File/Blob→Core multipart 转换仍无公共入口。native、implicit Enter 与脚本提交路径均待设备验收。
    内置离线页不创建 ScriptSession，inline script 不执行；脚本取消和 selection 示例须使用网络
    ScriptSession 页面验收。阶段 4 的脚本提交设备门仍按用户决定等待 RAPI 恢复，不据此写入设备基线。
+   `positron.exe` 的顶层物理页面滚动现沿 `test_host` 的 retained-pixel 路径：纯滚动只更新系统
+   滚动条位置、移动已有像素、补绘暴露条带并重定位 native 子控件；WM_SIZE、Core/DOM mutation
+   和真实 viewport 变化才进入完整 layout。该宿主修正已通过 C89、审计及 Debug/Release ARMV4I
+   构建；Debug 完整包已部署并通过最小 `test_host` `999` 门，设备上的 `positron.exe` 连续拖动、
+   SVG 可见性及旋转/DPI 人工门仍待完成。与 TEST13 对比后，页面子窗口已补上
+   `WS_CLIPCHILDREN`，页面绘制也显式限制到 `PAINTSTRUCT.rcPaint`；ScriptSession 的 scroll
+   事件仍保持语义，脚本造成的 DOM mutation 不会被错误地当作纯滚动而屏蔽。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，

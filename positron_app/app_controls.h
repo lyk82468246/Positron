@@ -41,6 +41,10 @@ int AppControls_ReconcileAfterFormReset(AppControlsContext *context,
 void AppControls_PrepareReconcile(AppControlsContext *context);
 void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         int scroll_x, int scroll_y);
+/* Move existing native children for a viewport scroll without synchronizing
+ * their Core state. State reconciliation belongs to layout/mutation paths. */
+void AppControls_RepositionForScroll(AppControlsContext *context,
+        HANDLE document, int scroll_x, int scroll_y);
 int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
         LPARAM lparam);
 int AppControls_GetContentEditableSelection(AppControlsContext *context,

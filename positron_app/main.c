@@ -469,28 +469,67 @@ static void app_update_scrollbars(HWND hwnd)
     SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
 }
 
-static void app_scroll_by(HWND hwnd, int dx, int dy)
+/* Keep the scrollbar range/page stable during a drag or keyboard scroll.
+ * Reapplying the full SCROLLINFO causes the native scrollbar and its parent
+ * to redraw on every thumb-track message.  The range is owned by layout;
+ * scrolling only changes the current positions. */
+static void app_set_scrollbar_positions(HWND hwnd)
 {
+    if (hwnd == NULL) {
+        return;
+    }
+    SetScrollPos(hwnd, SB_HORZ, g_scroll_x, TRUE);
+    SetScrollPos(hwnd, SB_VERT, g_scroll_y, TRUE);
+}
+
+/* Move an already laid-out page without changing its document geometry.
+ * This mirrors the test_host viewport path: shift retained pixels, invalidate
+ * only the newly exposed strip, then synchronously paint that strip.  Layout
+ * and native-control reconciliation remain on the resize/content paths. */
+static int app_scroll_to_position(HWND hwnd, int target_x, int target_y)
+{
+    RECT client;
+    RECT scroll_rect;
     int old_x;
     int old_y;
+    int applied_x;
+    int applied_y;
 
+    if (hwnd == NULL || !IsWindow(hwnd) ||
+            !GetClientRect(hwnd, &client)) {
+        return 0;
+    }
     old_x = g_scroll_x;
     old_y = g_scroll_y;
-    g_scroll_x += dx;
-    g_scroll_y += dy;
+    g_scroll_x = target_x;
+    g_scroll_y = target_y;
     app_clamp_scroll();
-    if (old_x != g_scroll_x || old_y != g_scroll_y) {
-        app_update_scrollbars(hwnd);
-        if (g_controls != NULL) {
-            AppControls_Reposition(g_controls, g_document, g_scroll_x,
-                    g_scroll_y);
-        }
+    applied_x = g_scroll_x - old_x;
+    applied_y = g_scroll_y - old_y;
+    if (applied_x == 0 && applied_y == 0) {
+        return 0;
+    }
+    app_set_scrollbar_positions(hwnd);
+    if (g_controls != NULL) {
+        AppControls_RepositionForScroll(g_controls, g_document, g_scroll_x,
+                g_scroll_y);
+    }
+    scroll_rect = client;
+    ScrollWindowEx(hwnd, -applied_x, -applied_y, &scroll_rect, &scroll_rect,
+            NULL, NULL, SW_INVALIDATE);
+    UpdateWindow(hwnd);
+    return 1;
+}
+
+static void app_scroll_by(HWND hwnd, int dx, int dy)
+{
+    if (app_scroll_to_position(hwnd, g_scroll_x + dx,
+            g_scroll_y + dy)) {
         if (g_script != NULL) {
             (void) AppScript_NotifyScroll(g_script,
                     MulDiv(g_scroll_x, 96, g_dpi > 0 ? g_dpi : 96),
                     MulDiv(g_scroll_y, 96, g_dpi > 0 ? g_dpi : 96));
         }
-        InvalidateRect(hwnd, NULL, FALSE);
     }
 }
 
@@ -637,11 +676,7 @@ static int app_script_scroll(void *pw, AppScriptContext *context,
             96);
     device_y = MulDiv(info->scroll_y, host->dpi > 0 ? host->dpi : 96,
             96);
-    host->scroll_x = device_x;
-    host->scroll_y = device_y;
-    app_clamp_scroll();
-    app_update_scrollbars(host->page_window);
-    InvalidateRect(host->page_window, NULL, FALSE);
+    (void) app_scroll_to_position(host->page_window, device_x, device_y);
     *out_x = MulDiv(host->scroll_x, 96, host->dpi > 0 ? host->dpi : 96);
     *out_y = MulDiv(host->scroll_y, 96, host->dpi > 0 ? host->dpi : 96);
     return 0;
@@ -3182,7 +3217,6 @@ static void app_handle_invalid_validation(
             (void) AppControls_FocusFormControlAt(g_controls,
                     validation->first_control_kind, center_x, center_y);
         }
-        InvalidateRect(g_page_window, NULL, FALSE);
     }
     MessageBeep(MB_ICONEXCLAMATION);
     app_set_status(APP_TEXT_STATUS_FORM_INVALID);
@@ -3493,7 +3527,7 @@ static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
     return DefWindowProc(hwnd, message, wparam, lparam);
 }
 
-static void app_paint_page(HWND hwnd, HDC dc)
+static void app_paint_page(HWND hwnd, HDC dc, const RECT *paint_rect)
 {
     RECT client;
     RECT clear;
@@ -3502,13 +3536,16 @@ static void app_paint_page(HWND hwnd, HDC dc)
     int saved;
 
     GetClientRect(hwnd, &client);
+    if (paint_rect != NULL) {
+        clear = *paint_rect;
+    } else {
+        clear = client;
+    }
     saved = SaveDC(dc);
     IntersectClipRect(dc, client.left, client.top,
             client.right, client.bottom);
-    clear.left = 0;
-    clear.top = 0;
-    clear.right = client.right - client.left;
-    clear.bottom = client.bottom - client.top;
+    IntersectClipRect(dc, clear.left, clear.top,
+            clear.right, clear.bottom);
     FillRect(dc, &clear, (HBRUSH) GetStockObject(WHITE_BRUSH));
     if (g_document != NULL) {
         PCore_PaintDocument(g_document, dc, g_scroll_x, g_scroll_y);
@@ -3584,7 +3621,7 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             HDC dc;
 
             dc = BeginPaint(hwnd, &paint);
-            app_paint_page(hwnd, dc);
+            app_paint_page(hwnd, dc, &paint.rcPaint);
             EndPaint(hwnd, &paint);
         }
         return 0;
@@ -3955,7 +3992,8 @@ static int app_create_page_window(HWND hwnd)
     /* Match the WM6 SDK PViewCE pattern: the parent owns the command bar,
      * while the same top-level window's content child owns native scrolling. */
     page_window = CreateWindowExW(0, APP_PAGE_CLASS_NAME, L"",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_HSCROLL | WS_VSCROLL,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_HSCROLL | WS_VSCROLL |
+            WS_CLIPCHILDREN,
             0, 0, 1, 1, hwnd, NULL, g_instance, NULL);
     AppHostContext_SetPageWindow(&g_app, page_window);
     return (page_window == NULL) ? 1 : 0;

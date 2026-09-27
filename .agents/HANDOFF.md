@@ -51,6 +51,15 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   无法安全规范化的输入 fail closed。`test_host` TEST1314 的诊断先复现了两个 SVG 全黑，修复后
   采样到绿色/蓝色/非黑渐变且坏 SVG 句柄为空，证明根因在 Image DLL 而非 Core background
   image 尺寸或 HTTP/应用接线。
+- `positron.exe` 的顶层物理页面滚动已沿 `test_host` 的 retained-pixel 路径接线：纯滚动只更新
+  系统滚动条位置、用 `ScrollWindowEx` 移动已有像素并重绘暴露条带，再重定位同一窗口体系下的
+  native 子控件；不会在每个滚动步重新执行 Core layout，也不会重复同步 SELECT/toggle 状态。
+  `WM_SIZE`、Core/DOM mutation 和真正的 viewport 变化仍可触发完整 layout；该 EXE 路径已通过
+  C89、审计及 Debug/Release ARMV4I 构建，但尚未取得设备上的流畅性人工证据。与 TEST13
+  对比发现，参考宿主的实际渲染 HWND 带 `WS_CLIPCHILDREN` 并按 `PAINTSTRUCT.rcPaint` 清理；
+  EXE 的页面子窗口此前缺少该样式且按完整 client 矩形清理。本轮已补齐页面子窗口裁剪和
+  `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
+  时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -72,7 +81,8 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 
 本批更新了 `positron_image` README、能力矩阵、测试合同和当前状态，并复核 `.agents/ROADMAP.md`：
 IANA class-style 的 Image DLL 纵切与 TEST1314 自动/设备证据已完成，阶段 B 候选只保留应用图片
-可见性设备门和原有 Media 未完成边界；不得把离线 decode 证据写成设备视觉通过。
+可见性设备门和原有 Media 未完成边界；EXE 顶层滚动的 retained-pixel 修正已落地，但仍需设备
+人工确认连续拖动时无整页重排/闪烁；不得把离线 decode 或桌面构建证据写成设备视觉通过。
 
 ## 已验证的自动证据
 
@@ -80,7 +90,8 @@ IANA class-style 的 Image DLL 纵切与 TEST1314 自动/设备证据已完成�
 - `scripts/build_ffmpeg_armv4i.bat`：离线重建 255 个 FFmpeg 源对象和 runtime object 成功；
   归档 SHA-256 为 `9a0615f9ceee423145a3495466511197af6385f61db92e8a212f80b117069797`。
 - `scripts\build.bat Debug rebuild` 与 `scripts\build.bat Release rebuild`：完整解决方案各 18
-  个项目成功；`positron_app` 的本轮导航接线、资源编译和链接均为 0 错误、0 警告。第三方
+  个项目成功；`positron_app` 的本轮导航、retained-pixel 滚动接线、资源编译和链接均为 0
+  错误、0 警告。第三方
   libcss/libsvgtiny/Core 的既有转换警告仍存在，但未产生构建错误。
 - `tmp\media_host_test.exe`：离线 WAV callback/暂停/恢复/seek/EOF 回归通过，输出
   `media_host_test: PASS blocks=2 samples=8 bytes=16`；该 fixture 在 `tmp/`，不属于产品工程。
@@ -128,6 +139,17 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
 远端保留在 `\Storage Card\Temp\Positron-device-gate\image-exe-test-20260927-172004`，
 并已从该目录启动 `positron.exe`。当前只有启动和无崩溃证据，尚未取得 EXE 页面截图或
 `image-state` 摘要，因此不能把真实网络图片写成已验收。
+本轮 retained-pixel 滚动修正已在移除上一轮 `svg-scroll*` 部署后，随 Debug 完整包重新部署到同一
+320x320、DPI 128 目标：最新远端目录为
+`\Storage Card\Temp\Positron-device-gate\svg-scroll-final-20260927-20260927-213538`，共复制 19 个
+运行时/字体/fixture/config 文件；本地证据为
+`tmp/device-runs/20260927-213538-svg-scroll-final-20260927/device-gate-result.txt`。最小
+`test_host` `999` 门的 selected/observed 为 `1/1`，`core_module_check=PASS`、`crash_check=PASS`、
+新增 dump 为 0，部署目录已保留。设备 gate 对缺少完整日志或非 gate 命名的历史诊断目录仍按安全
+策略保留；它们不参与新包运行。该包包含页面子窗口 `WS_CLIPCHILDREN` 和 `PAINTSTRUCT.rcPaint`
+绘制边界；`positron.exe` 的 SVG 可见性和 retained-pixel 滚动仍待用户手测：长页面连续拖动时
+应无整页闪烁/重排、暴露区域应正常补绘、native 控件应保持相对位置；旋转或真实 viewport 改变
+仍应触发 layout。
 
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
@@ -156,9 +178,10 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
 
 ## 唯一下一步
 
-在已启动的远端 `positron.exe` 中打开 `https://www.iana.org/`，复现图片页面并回收
-`positron image-state` 摘要：应看到 pending 资源在 worker 完成后再次扫描，`box tree/image`
-与 SVG 创建计数增加，且无 crash/旧 DLL 混包。若 RAPI 仍返回现有 `0x80072746`，保留源码与
-自动证据并报告环境阻塞，不把未运行写成通过；真实图片门通过后再回到 Media fixture
+在最新远端目录中启动 `positron.exe`，打开 `https://www.iana.org/` 并连续拖动页面滚动条；
+确认视窗大小不变时只移动 retained pixels 和暴露条带，不出现整页闪屏、重新排版或 native 控件
+乱飞，再单独观察 SVG/图片是否显示。若仍有闪屏，下一步只追踪同步的 ScriptSession scroll
+通知及其合法 DOM mutation 路径，不关闭脚本事件来掩盖语义；若 RAPI 仍返回现有 `0x80072746`，
+保留源码与自动证据并报告环境阻塞，不把未运行写成通过。滚动人工门通过后再回到 Media fixture
 （损坏/截断、非 seek、`WOULD_BLOCK`、read/seek error、FFmpeg H.264/AAC/MP3/AMR 与 AUTO
 fallback）。

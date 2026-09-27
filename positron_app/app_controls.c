@@ -3459,8 +3459,8 @@ int AppControls_ReconcileAfterFormReset(AppControlsContext *context,
     return 0;
 }
 
-void AppControls_Reposition(AppControlsContext *context, HANDLE document,
-        int scroll_x, int scroll_y)
+static void app_controls_reposition(AppControlsContext *context,
+        HANDLE document, int scroll_x, int scroll_y, int sync_state)
 {
     RECT client;
     int form_kind;
@@ -3497,9 +3497,11 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
         }
     }
     for (i = 0; i < context->count; i++) {
-        if (context->items[i].kind == APP_CONTROLS_KIND_SELECT) {
+        if (sync_state && context->items[i].kind ==
+                APP_CONTROLS_KIND_SELECT) {
             app_controls_sync_select(context, &context->items[i]);
-        } else if (context->items[i].kind == APP_CONTROLS_KIND_TOGGLE) {
+        } else if (sync_state && context->items[i].kind ==
+                APP_CONTROLS_KIND_TOGGLE) {
             app_controls_sync_toggle(context, &context->items[i]);
         }
         if (context->items[i].hwnd == NULL ||
@@ -3526,6 +3528,18 @@ void AppControls_Reposition(AppControlsContext *context, HANDLE document,
             ShowWindow(context->items[i].hwnd, SW_SHOW);
         }
     }
+}
+
+void AppControls_Reposition(AppControlsContext *context, HANDLE document,
+        int scroll_x, int scroll_y)
+{
+    app_controls_reposition(context, document, scroll_x, scroll_y, 1);
+}
+
+void AppControls_RepositionForScroll(AppControlsContext *context,
+        HANDLE document, int scroll_x, int scroll_y)
+{
+    app_controls_reposition(context, document, scroll_x, scroll_y, 0);
 }
 
 int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
