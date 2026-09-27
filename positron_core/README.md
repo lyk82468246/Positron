@@ -34,6 +34,16 @@ Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页
 
 `img`、`srcset` 和 `picture/source` 只支持头文件规定的候选、URL、祖先、source、节点和 `sizes` 预算。Core 可投影 `naturalWidth`、`naturalHeight`、`complete`、`currentSrc`、image-map 几何和 area link metadata，但 relation 查询不会自行 fetch、decode 或 layout。CORS、完整媒体查询、绝对 URL、loading 策略和图像事件由上层决定。
 
+异步图片资源使用 `PCore_FetchImageResourcesEx()`。同步消费者可以继续使用旧的
+`PCore_FetchImageResources()`：其中 `0` 加非空 body 表示成功，非零表示终态失败；旧 ABI
+不变。Ex callback 返回 `PCORE_IMAGE_FETCH_READY`、`PCORE_IMAGE_FETCH_PENDING` 或
+`PCORE_IMAGE_FETCH_TERMINAL_FAIL`。READY 的 body 会复制到 Core image cache，随后调用方的
+`freefn` 可以释放原 buffer；PENDING 不会建立 failed cache entry，宿主在 worker 完成后再次
+扫描即可重试同一 URL；TERMINAL_FAIL（以及未知状态或不完整的 READY 输出）保留终态 fallback。
+PENDING callback 不应返回 body。Core 不解析相对 URL，也不访问文件系统；宿主/HTTP resolver
+仍负责把资源引用变成可请求 URL。资源进入 cache 后，调用方必须重新 layout/paint，才能得到
+image box 与 SVG/PNG/JPEG/GIF 的解码结果。
+
 布局 relation 提供 page width/height、元素 border/client/scroll 尺寸、有限 inline fragments、overflow retained scroll 和几何快照。relation 是最近一次 layout 的只读 snapshot；查询不会触发 reflow，mutation 成功后会使 retained layout 失效，调用方必须重新 style/layout/paint。
 
 ## DOM 与关系 bridge

@@ -59,6 +59,7 @@
 #include "positron_core.h"
 
 extern BOOL test1312_media_wav_callback_contract(void);
+extern BOOL test1313_core_image_pending_retry_contract(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -553,7 +554,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1312
+#define TEST_MAX_NUMBER 1313
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -14457,6 +14458,29 @@ static int pcore_navigation_resource_cb(void *pw, const char *url,
     return 0;
 }
 
+/* The legacy navigation callback deliberately keeps its non-zero pending
+ * result for script/style callers.  Image discovery uses the versioned Core
+ * contract so an asynchronous resource is not mistaken for a terminal image
+ * failure and can be retried on the next scan. */
+static int pcore_navigation_image_resource_cb(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    pcore_navigation_request *request;
+    pcore_navigation_resource *entry;
+    PBrowserNavigationResourceInfo info;
+
+    if (pcore_navigation_resource_cb(pw, url, out_data, out_len) == 0) {
+        return PCORE_IMAGE_FETCH_READY;
+    }
+    request = (pcore_navigation_request *) pw;
+    entry = pcore_navigation_resource_find(request, url);
+    if (entry != NULL && pcore_navigation_resource_info(request, entry,
+            &info) == 0 && info.state == PCORE_NAV_RESOURCE_PENDING) {
+        return PCORE_IMAGE_FETCH_PENDING;
+    }
+    return PCORE_IMAGE_FETCH_TERMINAL_FAIL;
+}
+
 static void page_resource_free_cb(void *pw, char *data)
 {
     (void) pw;
@@ -18548,8 +18572,8 @@ static int pcore_navigation_commit_step(HWND hwnd,
         started = GetTickCount();
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_IMAGE;
-        (void) PCore_FetchImageResources(request->document,
-                pcore_navigation_resource_cb, page_resource_free_cb,
+        (void) PCore_FetchImageResourcesEx(request->document,
+                pcore_navigation_image_resource_cb, page_resource_free_cb,
                 request, NULL, NULL);
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_NONE;
@@ -34307,8 +34331,8 @@ static BOOL test1123_navigation_resource_observability(void)
     if (ok) {
         request->resource_policy = PCORE_NAV_RESOURCE_OPTIONAL;
         request->resource_role_mask = PCORE_NAV_RESOURCE_ROLE_IMAGE;
-        if (PCore_FetchImageResources(request->document,
-                pcore_navigation_resource_cb, page_resource_free_cb,
+        if (PCore_FetchImageResourcesEx(request->document,
+                pcore_navigation_image_resource_cb, page_resource_free_cb,
                 request, NULL, NULL) != 0) {
             cstr_copy(error, sizeof(error), "image resource scan failed");
             ok = 0;
@@ -115527,6 +115551,16 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1312 FAIL",
                         "positron_media WAV callback/backend contract failed.");
+            }
+            break;
+        case 1313:
+            ok = test1313_core_image_pending_retry_contract();
+            if (ok) {
+                show_info(L"TEST 1313 OK",
+                        "Core image pending/retry and terminal failure contract passed.");
+            } else {
+                show_error(L"TEST 1313 FAIL",
+                        "Core image pending/retry and terminal failure contract failed.");
             }
             break;
         default: ok = FALSE; break;

@@ -207,6 +207,7 @@
 			>
 			<File RelativePath=".\main.c"></File>
 			<File RelativePath=".\media_tests.c"></File>
+			<File RelativePath=".\image_tests.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"

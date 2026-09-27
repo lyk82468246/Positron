@@ -71,6 +71,7 @@
 #define APP_NAV_MAX_RETIRED     4
 #define APP_NAV_WORK_DOCUMENT   1
 #define APP_NAV_WORK_RESOURCES  2
+#define APP_NAV_COMMIT_NONE     0
 #define APP_NAV_COMMIT_SCRIPTS  1
 #define APP_NAV_COMMIT_STYLE    2
 #define APP_NAV_COMMIT_IMAGES   3
@@ -2007,6 +2008,95 @@ static int app_navigation_commit_ready(AppNavigationRequest *request)
             info.can_commit;
 }
 
+static void app_navigation_image_resource_counts(
+        AppNavigationRequest *request, int *out_queued, int *out_ready,
+        int *out_failed, int *out_pending)
+{
+    AppNavigationResource *resource;
+    PBrowserNavigationResourceInfo info;
+
+    if (out_queued != NULL) { *out_queued = 0; }
+    if (out_ready != NULL) { *out_ready = 0; }
+    if (out_failed != NULL) { *out_failed = 0; }
+    if (out_pending != NULL) { *out_pending = 0; }
+    if (request == NULL) {
+        return;
+    }
+    for (resource = request->resources; resource != NULL;
+            resource = resource->next) {
+        if (AppResources_GetInfo(request, resource, &info) != 0 ||
+                (info.role_mask & PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE) ==
+                0) {
+            continue;
+        }
+        if (out_queued != NULL) { (*out_queued)++; }
+        if (info.state == PBROWSER_NAVIGATION_RESOURCE_READY) {
+            if (out_ready != NULL) { (*out_ready)++; }
+        } else if (info.state == PBROWSER_NAVIGATION_RESOURCE_FAILED) {
+            if (out_failed != NULL) { (*out_failed)++; }
+        } else if (info.state == PBROWSER_NAVIGATION_RESOURCE_PENDING) {
+            if (out_pending != NULL) { (*out_pending)++; }
+        }
+    }
+}
+
+/* Keep the EXE-only resource transaction diagnosable without changing the
+ * public ABI or making telemetry part of the visible WM6 UI. The image scan
+ * counters come from Core; the resource counters come from Browser; the box
+ * and SVG counters are the closest public boundary for decoded/layout work. */
+static void app_navigation_trace_image_state(AppNavigationRequest *request)
+{
+    PBrowserNavigationResourceStats resource_stats;
+    PCoreBoxStats box_stats;
+    PCoreImageDecodeStats image_stats;
+    WCHAR message[640];
+    int queued;
+    int ready;
+    int failed;
+    int pending;
+    int resource_ok;
+    int box_ok;
+    int image_ok;
+
+    if (request == NULL) {
+        return;
+    }
+    queued = 0;
+    ready = 0;
+    failed = 0;
+    pending = 0;
+    app_navigation_image_resource_counts(request, &queued, &ready,
+            &failed, &pending);
+    memset(&resource_stats, 0, sizeof(resource_stats));
+    resource_stats.size = sizeof(resource_stats);
+    resource_ok = request->resource_transaction != NULL &&
+            PBrowser_NavigationResourceGetStats(
+            request->resource_transaction, &resource_stats) == PBROWSER_OK;
+    memset(&box_stats, 0, sizeof(box_stats));
+    box_ok = request->document_candidate != NULL &&
+            PCore_GetBoxStats(request->document_candidate, &box_stats) == 0;
+    memset(&image_stats, 0, sizeof(image_stats));
+    image_ok = request->document_candidate != NULL &&
+            PCore_GetImageDecodeStats(request->document_candidate,
+            &image_stats) == 0;
+    _snwprintf(message, sizeof(message) / sizeof(message[0]) - 1,
+            L"positron image-state gen=%lu "
+            L"scan=%d/%d resources=%d/%d/%d/%d "
+            L"browser=%d/%d/%d box=%d/%u/%u/%u svg=%d/%u\r\n",
+            request->generation, request->image_scan_found,
+            request->image_scan_fetched, queued, ready, failed, pending,
+            resource_ok ? resource_stats.resources_ready : -1,
+            resource_ok ? resource_stats.resources_fetched : -1,
+            resource_ok ? resource_stats.resource_fallback_images : -1,
+            box_ok ? 1 : 0,
+            box_ok ? box_stats.image_calls : 0,
+            box_ok ? box_stats.image_reuses : 0,
+            box_ok ? box_stats.image_markup_first : 0,
+            image_ok ? 1 : 0, image_ok ? image_stats.svg_creates : 0);
+    message[(sizeof(message) / sizeof(message[0])) - 1] = L'\0';
+    OutputDebugStringW(message);
+}
+
 static void app_navigation_request_destroy(AppNavigationRequest *request)
 {
     if (request == NULL) {
@@ -2106,6 +2196,8 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     int retry_allowed;
     char content_type_header[APP_HOST_CONTENT_TYPE_MAX + 32];
     char final_url[PHTTP_URL_MAX];
+    char resolved_url[PHTTP_URL_MAX];
+    const char *fetch_url;
     const char *headers[2];
 
     if (request == NULL || request->resource_transaction == NULL ||
@@ -2122,6 +2214,20 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
             info.attempted) {
         return 0;
     }
+    /* PCore_FetchImageResources reports the selected image source directly;
+     * unlike script/style discovery it has no resolver callback parameter.
+     * TEST13 resolves that source against the document's effective URL before
+     * calling HTTP. Do the same in the EXE so `/img/logo.svg` does not reach
+     * PHttp_GetUrlEx as an origin-less URL. */
+    resolved_url[0] = '\0';
+    if (AppResources_Resolve(request, request->url, reference,
+            resolved_url, sizeof(resolved_url)) != 0) {
+        request->worker_failure_class = PBROWSER_NAVIGATION_FAILURE_RESOLVE;
+        (void) app_navigation_resource_fail(request, index,
+                PBROWSER_NAVIGATION_FAILURE_RESOLVE);
+        return 0;
+    }
+    fetch_url = resolved_url;
     if (app_navigation_is_cancelled(request)) {
         (void) PBrowser_NavigationResourceCancelAll(
                 request->resource_transaction);
@@ -2155,10 +2261,10 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                 headers[0] = "Content-Type: application/x-www-form-urlencoded";
             }
             headers[1] = NULL;
-            response = PHttp_PostUrlEx(reference, headers, request->body,
+            response = PHttp_PostUrlEx(fetch_url, headers, request->body,
                     request->body_bytes, NULL, NULL);
         } else {
-            response = PHttp_GetUrlEx(reference, NULL, NULL, NULL);
+            response = PHttp_GetUrlEx(fetch_url, NULL, NULL, NULL);
         }
         if (app_navigation_is_cancelled(request)) {
             PHttp_FreeResponse(response);
@@ -2431,6 +2537,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             }
             if (app_navigation_pending_count(request) > 0) {
                 request->worker_stage = APP_NAV_WORK_RESOURCES;
+                request->worker_resume_stage = APP_NAV_COMMIT_SCRIPTS;
                 if (app_navigation_start_worker(request) != 0) {
                     return -1;
                 }
@@ -2533,6 +2640,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             }
             if (app_navigation_pending_count(request) > 0) {
                 request->worker_stage = APP_NAV_WORK_RESOURCES;
+                request->worker_resume_stage = APP_NAV_COMMIT_STYLE;
                 if (app_navigation_start_worker(request) != 0) {
                     return -1;
                 }
@@ -2542,19 +2650,24 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             continue;
         }
         if (request->commit_stage == APP_NAV_COMMIT_IMAGES) {
+            request->image_scan_found = 0;
+            request->image_scan_fetched = 0;
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
             request->resource_role_mask =
                     PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE;
-            (void) PCore_FetchImageResources(request->document_candidate,
-                    AppResources_Fetch, AppResources_Free, request,
-                    NULL, NULL);
+            (void) PCore_FetchImageResourcesEx(request->document_candidate,
+                    AppResources_FetchImage, AppResources_Free, request,
+                    &request->image_scan_found,
+                    &request->image_scan_fetched);
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
             request->resource_role_mask =
                     PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
             if (app_navigation_pending_count(request) > 0) {
                 request->worker_stage = APP_NAV_WORK_RESOURCES;
+                request->worker_resume_stage = APP_NAV_COMMIT_STYLE;
+                request->commit_stage = APP_NAV_COMMIT_STYLE;
                 if (app_navigation_start_worker(request) != 0) {
                     return -1;
                 }
@@ -2578,6 +2691,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         (void) PBrowser_NavigationResourceObserveFallbacks(
                 request->resource_transaction);
+        app_navigation_trace_image_state(request);
         if (g_script != NULL) {
             int prevented;
 
@@ -2690,6 +2804,14 @@ static void app_navigation_handle_done(HWND hwnd,
             return;
         }
         request->worker_stage = APP_NAV_WORK_RESOURCES;
+        request->worker_resume_stage = APP_NAV_COMMIT_NONE;
+    } else if (request->worker_stage == APP_NAV_WORK_RESOURCES) {
+        if (request->worker_resume_stage != APP_NAV_COMMIT_NONE) {
+            request->commit_stage = request->worker_resume_stage;
+        } else {
+            request->commit_stage = APP_NAV_COMMIT_STYLE;
+        }
+        request->worker_resume_stage = APP_NAV_COMMIT_NONE;
     }
     advance_result = app_navigation_advance(hwnd, request);
     if (advance_result < 0) {

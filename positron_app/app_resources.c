@@ -8,6 +8,7 @@
 
 #include "app_resources.h"
 #include "app_url_router.h"
+#include "positron_core.h"
 
 static void app_resources_copy_text(char *target, int capacity,
         const char *source)
@@ -249,6 +250,28 @@ int AppResources_Fetch(void *pw, const char *url,
     *out_data = data;
     *out_len = copied;
     return 0;
+}
+
+int AppResources_FetchImage(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    AppNavigationRequest *request;
+    AppNavigationResource *resource;
+    PBrowserNavigationResourceInfo info;
+
+    if (AppResources_Fetch(pw, url, out_data, out_len) == 0) {
+        return PCORE_IMAGE_FETCH_READY;
+    }
+    request = (AppNavigationRequest *) pw;
+    if (request == NULL || url == NULL || url[0] == '\0') {
+        return PCORE_IMAGE_FETCH_TERMINAL_FAIL;
+    }
+    resource = app_resources_find(request, url);
+    if (resource != NULL && AppResources_GetInfo(request, resource, &info) == 0 &&
+            info.state == PBROWSER_NAVIGATION_RESOURCE_PENDING) {
+        return PCORE_IMAGE_FETCH_PENDING;
+    }
+    return PCORE_IMAGE_FETCH_TERMINAL_FAIL;
 }
 
 void AppResources_Free(void *pw, char *data)

@@ -42,7 +42,10 @@ struct AppNavigationRequest {
     HANDLE stylesheet_candidate;
     AppScriptContext *script_candidate;
     int worker_stage;
+    int worker_resume_stage;
     int commit_stage;
+    int image_scan_found;
+    int image_scan_fetched;
     int resource_registration_failed;
     int worker_succeeded;
     int worker_failure_class;

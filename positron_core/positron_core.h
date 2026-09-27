@@ -111,6 +111,19 @@ typedef int  (*PCoreFetchFn)(void *pw, const char *url,
                              char **out_data, int *out_len);
 typedef void (*PCoreFreeFn)(void *pw, char *data);
 
+/* Image discovery has a versioned callback contract in
+ * PCore_FetchImageResourcesEx.  READY keeps the synchronous callback shape
+ * and means that a non-empty body was returned.  PENDING means that the
+ * embedder registered/queued the URL but does not have bytes yet; Core must
+ * not retain a terminal failure for that URL and will call the callback again
+ * on a later scan.  TERMINAL_FAIL means that the URL is unavailable or was
+ * cancelled and may be retained as a terminal fallback.  A PENDING callback
+ * must return NULL/0 output; Core does not cache its result. */
+#define PCORE_IMAGE_FETCH_READY        0
+#define PCORE_IMAGE_FETCH_PENDING      1
+#define PCORE_IMAGE_FETCH_TERMINAL_FAIL 2
+typedef PCoreFetchFn PCoreImageFetchFn;
+
 /* Resolve `reference` against `base_url` into the caller-provided buffer.
  * Return 0 on success. This keeps URL policy in the embedder while allowing
  * libcss to resolve @import and url() relative to their owning stylesheet. */
@@ -143,12 +156,27 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
  * is freed with the document. A subsequent PCore_LayoutDocument turns cached
  * WM-Imaging or libsvgtiny-decodable resources into NetSurf image carriers;
  * PaintDocument draws them through the matching public image service.
- * Cache misses and decoder failures retain the element's alt/src text fallback.
+ * A non-zero legacy callback result is treated as a terminal failure, so
+ * synchronous callers retain the element's alt/src text fallback.
  * `out_found` receives the number of non-empty image references; `out_fetched`
  * receives the number available from cache or a successful non-empty fetch.
  * Either output pointer may be NULL. Returns 0 when the DOM was scanned. */
 PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw, int *out_found, int *out_fetched);
+
+/* Versioned image-resource discovery for asynchronous embedders.  The
+ * document walk and cache ownership are identical to the legacy entry point,
+ * but `fetch` must return one of PCORE_IMAGE_FETCH_READY,
+ * PCORE_IMAGE_FETCH_PENDING or PCORE_IMAGE_FETCH_TERMINAL_FAIL.  READY
+ * requires a non-empty body and stores it before `freefn` is called.  PENDING
+ * does not create or update a cache entry, so the next scan retries that URL;
+ * TERMINAL_FAIL creates the same terminal fallback used by the legacy
+ * non-zero result.  Unknown statuses and malformed READY output fail closed
+ * as terminal failures.  Existing PCore_FetchImageResources callers and
+ * PCoreFetchFn callbacks keep their original ABI and non-zero semantics. */
+PCORE_API int PCore_FetchImageResourcesEx(HANDLE hDoc,
+        PCoreImageFetchFn fetch, PCoreFreeFn freefn, void *pw,
+        int *out_found, int *out_fetched);
 
 /* External script resource discovery is deliberately separate from JavaScript
  * execution. Scan non-empty <script src> attributes, resolve references when

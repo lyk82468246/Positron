@@ -149,6 +149,7 @@ FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载�
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | HTML/CSS parse、style、layout、page extent 和 GDI paint | `PCore_ParseHTML`、`PCore_ParseCSS`、`PCore_StyleDocument[Ex]`、`PCore_LayoutDocument`、`PCore_PaintDocument*` | 已实现但有界 | 资源、节点、字符串、layout 和 paint 使用项目固定上限；parse/style/layout 失败不泄漏 handle | Core 离线 corpus、正式构建和设备视觉/自动门组合 |
+| 图片发现、异步 fetch/cache、解码与 image box | `PCore_FetchImageResources`、`PCore_FetchImageResourcesEx`、image relation/layout APIs | 已实现但有界 | 旧入口保持同步非零终态失败；Ex 用 READY/PENDING/TERMINAL_FAIL，PENDING 不写 failed cache；cache、SVG/PNG/JPEG/GIF 解码和布局受固定预算，未知状态、坏 body、超限和终态失败 fail closed | TEST18/20/27、TEST1313 离线与 `1313,999` 设备门；真实应用网络图片可见性仍需应用页面门 |
 | DOM/attribute/CharacterData/HTML mutation | `PCore_Node*ById`、relation、serialization 和 Ex mutation callbacks | 已实现但有界 | 失败前预检 id、节点形状、深度、child 数、UTF-8 和容量；成功后 layout retained 失效 | TEST1284–1298 及设备门；通用 Node/Fragment mutation 仍不承诺 |
 | form owner、validation、selection、reset、modal 和 successful-control snapshot | `PCore_Form*`、`PCore_NodeFormControl*`、interaction/focus APIs | 已实现但有界 | owner、listed controls、fieldset/option state 和提交快照有界；非法/stale target fail closed | TEST1170–1188、1301–1302 和设备门 |
 | multipart/default submission 和 FormData encoding | `PCore_MultipartSubmissionEncode`、`PCore_FormDataEncode` | 已实现 | body 上限 1 MiB；file read/free callback 同步借用；缺 callback、读取失败或容量不足不部分写出 | TEST1301/1302；宿主只提供文件 I/O 和 HTTP 调度 |

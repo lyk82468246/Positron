@@ -25,6 +25,11 @@ int AppResources_FindPending(AppNavigationRequest *request,
 int AppResources_PendingCount(AppNavigationRequest *request);
 int AppResources_Fetch(void *pw, const char *url,
         char **out_data, int *out_len);
+/* Image discovery uses Core's versioned READY/PENDING/TERMINAL_FAIL
+ * callback contract.  Other resource passes keep AppResources_Fetch's
+ * legacy non-zero semantics. */
+int AppResources_FetchImage(void *pw, const char *url,
+        char **out_data, int *out_len);
 void AppResources_Free(void *pw, char *data);
 int AppResources_Resolve(void *pw, const char *base_url,
         const char *reference, char *out_url, int out_capacity);

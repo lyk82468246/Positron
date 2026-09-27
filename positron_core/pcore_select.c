@@ -3319,6 +3319,7 @@ typedef struct pcore_image_fetch_ctx {
     PCoreFreeFn  freefn;
     void        *pw;
     pcore_image_cache *cache;
+    int          explicit_status;
     int          found;
     int          fetched;
     dom_string  *img_name;
@@ -3330,6 +3331,8 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
     char *url;
     char *data = NULL;
     int len = 0;
+    int fetch_status;
+    int terminal_failure;
     pcore_image_resource *cached;
 
     if (ic == NULL || url_data == NULL || url_len == 0) {
@@ -3347,14 +3350,33 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
         if (cached->state == PCORE_IMAGE_RESOURCE_STATE_SUCCESS) {
             ic->fetched++;
         }
-    } else if (ic->fetch != NULL &&
-            ic->fetch(ic->pw, url, &data, &len) == 0 &&
-            data != NULL && len > 0) {
-        if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
-            ic->fetched++;
-        }
     } else if (ic->fetch != NULL) {
-        (void) pcore_image_cache_store_failure(ic->cache, url);
+        terminal_failure = 0;
+        fetch_status = ic->fetch(ic->pw, url, &data, &len);
+        if (ic->explicit_status &&
+                fetch_status == PCORE_IMAGE_FETCH_PENDING) {
+            /* The embedder owns the pending decision.  Do not create a
+             * failed cache entry; a later scan must call it again.  A
+             * conforming callback returns no buffer in this state, but
+             * release an accidental buffer when a free callback exists. */
+            if (data != NULL && ic->freefn != NULL) {
+                ic->freefn(ic->pw, data);
+            }
+            data = NULL;
+            len = 0;
+        } else if (fetch_status == PCORE_IMAGE_FETCH_READY &&
+                data != NULL && len > 0) {
+            if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
+                ic->fetched++;
+            }
+        } else {
+            /* Legacy non-zero results and all invalid/explicit terminal
+             * statuses retain the historical terminal fallback. */
+            terminal_failure = 1;
+        }
+        if (terminal_failure) {
+            (void) pcore_image_cache_store_failure(ic->cache, url);
+        }
     }
     if (data != NULL && ic->freefn != NULL) {
         ic->freefn(ic->pw, data);
@@ -3430,8 +3452,9 @@ static void pcore_fetch_images_walk(pcore_image_fetch_ctx *ic, dom_node *node)
     }
 }
 
-PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
-        PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched)
+static int pcore_fetch_image_resources(HANDLE hDoc, PCoreFetchFn fetch,
+        PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched,
+        int explicit_status)
 {
     dom_document *doc = (dom_document *) hDoc;
     dom_node *root = NULL;
@@ -3452,6 +3475,7 @@ PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
     ic.freefn = freefn;
     ic.pw = pw_fetch;
     ic.cache = pcore_image_cache_get(doc, 1);
+    ic.explicit_status = explicit_status;
     ic.found = 0;
     ic.fetched = 0;
     ic.img_name = NULL;
@@ -3485,6 +3509,21 @@ cleanup:
         dom_string_unref(ic.img_name);
     }
     return rc;
+}
+
+PCORE_API int PCore_FetchImageResources(HANDLE hDoc, PCoreFetchFn fetch,
+        PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched)
+{
+    return pcore_fetch_image_resources(hDoc, fetch, freefn, pw_fetch,
+            out_found, out_fetched, 0);
+}
+
+PCORE_API int PCore_FetchImageResourcesEx(HANDLE hDoc,
+        PCoreImageFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
+        int *out_found, int *out_fetched)
+{
+    return pcore_fetch_image_resources(hDoc, fetch, freefn, pw_fetch,
+            out_found, out_fetched, 1);
 }
 
 typedef struct pcore_script_fetch_ctx {

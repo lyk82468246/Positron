@@ -80,6 +80,12 @@ Core 是文档和渲染的产品边界，内部使用移植后的 NetSurf 组件
 - successful-control snapshot 的有界 multipart/form-data wire encoding；Core 为默认 form submission 与独立 `FormData` snapshot 生成 boundary、字段/文件顺序、quoted metadata、binary file bytes 和完整 Content-Type，宿主只提供同步文件读取/释放 callback；
 - 以 ID 或受控 child index 执行有界 DOM mutation，并在成功变化后使 retained layout 失效。
 
+图片资源的同步消费者继续使用 `PCore_FetchImageResources()`；异步消费者使用 additive 的
+`PCore_FetchImageResourcesEx()`，以 READY/PENDING/TERMINAL_FAIL 区分已取得、已排队和终态
+失败。Core 只把 READY bytes 写入有界 image cache；PENDING 不产生终态失败项，宿主 worker
+完成后必须重新扫描并触发后续 layout/paint。相对 URL、网络/文件 I/O、取消和重试时机仍由
+宿主或 Browser 事务拥有，旧入口 ABI 不变。
+
 HTML parser mutation 只接受头文件声明的节点类型、深度、节点数、direct-child 和 UTF-8 预算。Core 不派发 DOM 事件、不创建 native 控件、不执行页面 script、不暴露 fragment handle，也不提供完整 live collection。
 
 #### DOM 与 CharacterData 边界

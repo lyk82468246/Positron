@@ -21,9 +21,11 @@ handle、缺失 callback 和 unsupported 输入都会在状态改变前失败；
 body、部分 DOM mutation 或意外 callback。新增入口应优先使用 size/version 或 `Ex` 形式，旧
 ABI 的字段和成功语义不得被改写。
 
-本轮建立能力矩阵并完成公开头文件/消费者审计，没有新增产品入口或测试编号。下一条实现纵切
-仍须先取得真实消费者/页面/可复现失败证据，再按矩阵中的 owner、预算、fixture、设备门和
-人工门完成提升。
+图像资源的异步消费者现在使用 `PCore_FetchImageResourcesEx()` 的显式
+READY/PENDING/TERMINAL_FAIL 合同；旧的 `PCore_FetchImageResources()` 保持同步
+成功/终态失败语义。PENDING 不写入终态 failed cache，worker 完成后必须再次扫描并重新
+layout/paint。Core 的离线回归见 TEST1313；它只证明 cache/retry/decode 边界，不替代
+应用设备门上的真实图片可见性。
 
 HTTP 消费者接线使用 URL-aware `PHttp_GetUrl[Ex]`/`PHttp_PostUrl[Ex]`，并在资源成功后
 查询 `PHttp_ResponseGetFinalUrl()`，以便重定向后的 CSS、图片和 `@import` 继续以最终 URL
@@ -141,6 +143,11 @@ tests=1-5 7b 13 20,999
   fragment 检查实际 glyph 行。它验证测量与绘制共用 `PCore_SetDeviceViewport` 的 DPI、字号
   定点精度不会因 paint HDC 的 `LOGPIXELS` 分叉，以及高 DPI 不会退化为少数裁剪像素；它不
   取代真实设备的字体、边距、旋转和触摸视觉验收。
+- TEST1313 是自动的 Core 异步图片资源回归：第一次扫描让一个 SVG 返回
+  `PCORE_IMAGE_FETCH_PENDING`、另一个返回终态失败；第二次扫描必须只重试 pending URL，
+  把成功 bytes 写入 Core cache，完成 SVG 解码并生成 image box，同时终态失败不得重复
+  callback；第三次扫描还必须保持缓存命中。该夹具不证明 HTTP 下载、相对 URL 解析或真实
+  设备上的图片绘制。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考
