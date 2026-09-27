@@ -100,6 +100,11 @@ IANA class-style 的 Image DLL 纵切与 TEST1314 自动/设备证据已完成�
   `tmp/device-runs/20260927-190652-image-iana-final` 以 `1314,999` 通过，selected/observed
   `2/2`、零 ERROR/FAIL、唯一 `TESTBENCH PASS`、双空间预检通过、`core_module_check=PASS`、
   `crash_check=PASS` 且无新增 dump。
+- 随后的匹配 DLL 定向回归 `tmp/device-runs/20260927-191419-image-iana-regression` 以
+  `13,1314,999` 通过，selected/observed `3/3`、`test13_route_ok=True`、零 ERROR/FAIL、
+  `TESTBENCH PASS`、双空间预检通过、`core_module_check=PASS`、`crash_check=PASS` 且无新增
+  dump；这证明 IANA 子页导航和 Image 直接绘制门没有回归，但仍不等于首页 CSS background
+  在真实 `positron.exe` 页面上的视觉验收。
 
 ## 设备证据与限制
 
