@@ -81,9 +81,12 @@ native 视频生命周期仍是后续边界；此前 HTTP(S) 导航与资源事�
 `ERROR`/`FAIL` 为 0，`crash_check=PASS` 且新增 dump 为 0。该门验证了 WM6 Emulator 上的 WAV
 PCM soft callback、暂停/恢复、seek/EOF、AUTO backend 选择和 session 生命周期；不等同于
 WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收。
-本批最近一次门记录为 `tmp/device-runs/20260926-155007-http-url-aware-final`：构建、staging、
-外置卡优先和空间预检均完成，但复制 `positron_script.dll` 时 WMDC/RAPI 返回 `0x80072746`，
-尚未启动测试程序，因此没有新的 HTTP 产品断言。这是环境阻塞，不是回归结果。
+更换仿真器后的 HTTP/TLS 重试记录在 `tmp/device-runs/20260927-145748-tls-network-retry`：
+`TEST1,3-5,999` 全部通过，`TEST3` HTTPS GET、`TEST4` HTTPS POST 和 `TEST5` 的有效证书接受、
+过期/自签名证书拒绝均有完整日志；`selected/observed=5/5`、`ERROR`/`FAIL` 为 0、唯一
+`TESTBENCH PASS`、`core_module_check=PASS`、`crash_check=PASS` 且无新增 dump。该目标为
+320x320、DPI 128 的新 WM6 Emulator，外置卡部署和双空间预检均通过；先前仿真器的
+`WSA=10061` 是设备网络环境问题，不再作为当前 HTTP/TLS 基线。
 
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
