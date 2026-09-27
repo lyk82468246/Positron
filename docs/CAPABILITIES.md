@@ -118,6 +118,9 @@ SIP/IME 不因该接线而宣称完成。
 
 ## Media：`positron_media.dll`
 
+第三方应用的头文件、集成步骤、回调示例和状态合同见
+[positron_media/README.md](../positron_media/README.md)；本节只保留能力矩阵和验收边界。
+
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 已实现但有界 | 输入一次性受 16 MiB 上限；软解不要求 source 可 seek；回调 buffer 只在同步回调期间有效；关闭后不再回调；无长期线程/网络 | 正式 Debug/Release ARMV4I 链接、离线 ABI/WAV 回归；仍需完整 I/O 错误、设备生命周期和媒体 fixture |
