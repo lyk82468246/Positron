@@ -47,9 +47,11 @@ SVG 的样式边界需要特别注意：`PImage_CreateSvgFromMemory` 会在解�
 `<style>` class 规则（例如 `.st0 { fill: #11A14E; }`）转换为元素的行内 style，从而覆盖
 libsvgtiny 不读取 class 样式导致的黑色路径。此适配支持最多 8 个 style 块、64 字节 class
 名、2 KiB 单元素声明和 256 KiB 规范化输入；只承诺 libsvgtiny 已支持的 paint 属性、渐变引用、
-viewBox 和 viewport 尺寸。它不是 CSS cascade：复杂选择器、`@media`、伪类、继承显示规则和
-完整 SVG 样式语义仍不支持；超预算或无法安全规范化的输入 fail closed。CSS background-image
-的尺寸、定位和页面资源生命周期仍由 Core/宿主负责，不能由此接口推断。
+viewBox 和 viewport 尺寸；简单 class 规则得到的 `display:none` 子树会在解析前被跳过，
+`display:inline` 保持默认可见。它不是 CSS cascade：复杂选择器、`@media`、伪类、完整继承
+和其他 SVG 样式语义仍不支持；超预算或无法安全规范化的输入 fail closed。完整 IANA 首页与
+header fixture 的路径数量、颜色边界、隐藏 Text_Paths 和重复释放/重解析由 TEST1315 覆盖。
+CSS background-image 的尺寸、定位和页面资源生命周期仍由 Core/宿主负责，不能由此接口推断。
 
 ## 示例与验证
 

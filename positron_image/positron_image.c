@@ -283,6 +283,127 @@ static int pimage_svg_append(char *out, size_t capacity, size_t *used,
     return 1;
 }
 
+static int pimage_svg_declaration_has_display_none(const char *data,
+        size_t len)
+{
+    size_t i;
+    size_t name_start;
+    size_t name_len;
+    size_t value_start;
+    size_t value_end;
+
+    if (data == NULL) {
+        return 0;
+    }
+    i = 0;
+    while (i < len) {
+        while (i < len && (pimage_svg_is_space(data[i]) ||
+                data[i] == ';')) {
+            i++;
+        }
+        if (i >= len) {
+            break;
+        }
+        name_start = i;
+        while (i < len && pimage_svg_is_name_char(data[i]) &&
+                data[i] != ':') {
+            i++;
+        }
+        name_len = i - name_start;
+        while (i < len && pimage_svg_is_space(data[i])) {
+            i++;
+        }
+        if (i >= len || data[i] != ':') {
+            while (i < len && data[i] != ';') {
+                i++;
+            }
+            continue;
+        }
+        i++;
+        while (i < len && pimage_svg_is_space(data[i])) {
+            i++;
+        }
+        value_start = i;
+        while (i < len && !pimage_svg_is_space(data[i]) &&
+                data[i] != ';') {
+            i++;
+        }
+        value_end = i;
+        if (pimage_svg_word_equal(data + name_start, name_len, "display") &&
+                pimage_svg_word_equal(data + value_start,
+                value_end - value_start, "none")) {
+            return 1;
+        }
+        while (i < len && data[i] != ';') {
+            i++;
+        }
+    }
+    return 0;
+}
+
+/* Return the end of the XML element beginning at start. This is deliberately
+ * only a bounded structural scan used to remove a simple display:none
+ * subtree; libdom remains the authoritative XML parser. */
+static size_t pimage_svg_element_end(const char *data, size_t len,
+        size_t start, size_t open_end)
+{
+    size_t cursor;
+    size_t end;
+    size_t insert;
+    const char *name;
+    size_t name_len;
+    int closing;
+    int depth;
+    int self_closing;
+
+    (void) name;
+    (void) name_len;
+    if (data == NULL || start >= len || open_end <= start ||
+            open_end > len) {
+        return len;
+    }
+    insert = open_end - 1;
+    while (insert > start && pimage_svg_is_space(data[insert - 1])) {
+        insert--;
+    }
+    if (insert > start && data[insert - 1] == '/') {
+        return open_end;
+    }
+    depth = 1;
+    cursor = open_end;
+    while (cursor < len) {
+        if (data[cursor] != '<') {
+            cursor++;
+            continue;
+        }
+        end = pimage_svg_tag_end(data, len, cursor);
+        if (end == len && data[len - 1] != '>') {
+            return len;
+        }
+        if (pimage_svg_tag_name(data, cursor, end, &name, &name_len,
+                &closing)) {
+            self_closing = 0;
+            insert = end - 1;
+            while (insert > cursor && pimage_svg_is_space(data[insert - 1])) {
+                insert--;
+            }
+            if (insert > cursor && data[insert - 1] == '/') {
+                self_closing = 1;
+            }
+            if (closing) {
+                depth--;
+            } else if (!self_closing) {
+                depth++;
+            }
+            if (depth == 0) {
+                return end;
+            }
+        }
+        cursor = end;
+    }
+    return len;
+}
+
 static int pimage_svg_collect_class_declaration(
         const pimage_svg_style_block *blocks, int block_count,
         const char *class_data, size_t class_len, char *out,
@@ -619,6 +740,17 @@ static int pimage_svg_normalize_class_styles(const char *data, int len,
                 free(out);
                 return -1;
             }
+            i = end;
+            continue;
+        }
+        if (!tag.has_style && pimage_svg_declaration_has_display_none(
+                declaration, declaration_len)) {
+            end = pimage_svg_element_end(data, (size_t) len, i, end);
+            if (end <= i || end > (size_t) len) {
+                free(out);
+                return -1;
+            }
+            changed = 1;
             i = end;
             continue;
         }

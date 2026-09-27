@@ -153,6 +153,12 @@ tests=1-5 7b 13 20,999
   width/height 的 viewBox viewport、`preserveAspectRatio`、重复 retained draw，以及坏 SVG
   不留下句柄。它验证 class 样式缺口属于 Image DLL，并不把 Core 的 CSS background-image
   尺寸/定位或 `positron.exe` 真实页面视觉写成已完成。
+- TEST1315 是自动的 exact-IANA Image 回归：它从可执行文件旁的 tracked fixture 读取完整
+  `iana-logo-homepage.svg` 与 `iana-logo-header-notext.svg`，保留 XML prolog/DOCTYPE、
+  `450x175` 与负 viewBox、多个 class、六个渐变、`display:none` 的 `Text_Paths` group，
+  并检查可见 path 数量、非白像素边界、绿/蓝像素、重复绘制和释放后的重新解析。TEST1314
+  只使用三条人工构造的简化 path，无法触发真实文件的长路径、隐藏 group 和多渐变边界，因而
+  即使它通过也不能证明 IANA 首页 Logo 完整。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

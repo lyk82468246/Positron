@@ -353,3 +353,356 @@ BOOL test1314_iana_svg_direct_render(void)
     strcpy(g_test1314_failure, "ok");
     return TRUE;
 }
+
+#define TEST1315_FIXTURE_MAX_BYTES 65536
+
+typedef struct test1315_pixels {
+    unsigned long nonwhite;
+    unsigned long green;
+    unsigned long blue;
+    int min_x;
+    int min_y;
+    int max_x;
+    int max_y;
+} test1315_pixels;
+
+static char g_test1315_failure[320];
+
+const char *test1315_iana_svg_last_error(void)
+{
+    return g_test1315_failure;
+}
+
+static int test1315_sibling_path(const WCHAR *name, WCHAR path[MAX_PATH])
+{
+    DWORD path_len;
+
+    path_len = GetModuleFileNameW(NULL, path, MAX_PATH);
+    if (path_len == 0 || path_len >= MAX_PATH) {
+        return 0;
+    }
+    while (path_len > 0 && path[path_len - 1] != L'\\' &&
+            path[path_len - 1] != L'/') {
+        path_len--;
+    }
+    if (path_len == 0 || path_len + (DWORD) lstrlenW(name) >= MAX_PATH) {
+        return 0;
+    }
+    lstrcpyW(path + path_len, name);
+    return 1;
+}
+
+static int test1315_read_fixture(const WCHAR *name, char **out_data,
+        int *out_len)
+{
+    WCHAR path[MAX_PATH];
+    HANDLE file;
+    DWORD size;
+    DWORD read_count;
+    char *data;
+
+    if (out_data == NULL || out_len == NULL) {
+        return 0;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    if (!test1315_sibling_path(name, path)) {
+        return 0;
+    }
+    file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    size = GetFileSize(file, NULL);
+    if (size == INVALID_FILE_SIZE || size == 0 ||
+            size > TEST1315_FIXTURE_MAX_BYTES) {
+        CloseHandle(file);
+        return 0;
+    }
+    data = (char *) malloc((size_t) size + 1);
+    if (data == NULL) {
+        CloseHandle(file);
+        return 0;
+    }
+    read_count = 0;
+    if (!ReadFile(file, data, size, &read_count, NULL) ||
+            read_count != size) {
+        free(data);
+        CloseHandle(file);
+        return 0;
+    }
+    CloseHandle(file);
+    data[size] = '\0';
+    *out_data = data;
+    *out_len = (int) size;
+    return 1;
+}
+
+static void test1315_pixels_reset(test1315_pixels *pixels)
+{
+    pixels->nonwhite = 0;
+    pixels->green = 0;
+    pixels->blue = 0;
+    pixels->min_x = 0x7fffffff;
+    pixels->min_y = 0x7fffffff;
+    pixels->max_x = -1;
+    pixels->max_y = -1;
+}
+
+static int test1315_draw_metrics(PIMAGE_SVG svg, int width, int height,
+        test1315_pixels *pixels)
+{
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF color;
+    int x;
+    int y;
+    int red;
+    int green;
+    int blue;
+    int rc;
+
+    if (svg == NULL || pixels == NULL || width <= 0 || height <= 0) {
+        return 0;
+    }
+    test1315_pixels_reset(pixels);
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, width, height) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) {
+            DeleteObject(bitmap);
+        }
+        if (memory_dc != NULL) {
+            DeleteDC(memory_dc);
+        }
+        if (screen_dc != NULL) {
+            ReleaseDC(NULL, screen_dc);
+        }
+        return 0;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, width, height);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    rc = PImage_DrawSvg(svg, memory_dc, 0, 0, width, height);
+    if (rc == PIMAGE_OK) {
+        for (y = 0; y < height; y++) {
+            for (x = 0; x < width; x++) {
+                color = GetPixel(memory_dc, x, y);
+                if (color == CLR_INVALID) {
+                    continue;
+                }
+                red = (int) GetRValue(color);
+                green = (int) GetGValue(color);
+                blue = (int) GetBValue(color);
+                if (red < 248 || green < 248 || blue < 248) {
+                    pixels->nonwhite++;
+                    if (x < pixels->min_x) { pixels->min_x = x; }
+                    if (y < pixels->min_y) { pixels->min_y = y; }
+                    if (x > pixels->max_x) { pixels->max_x = x; }
+                    if (y > pixels->max_y) { pixels->max_y = y; }
+                }
+                if (green > red + 25 && green > blue + 15) {
+                    pixels->green++;
+                }
+                if (blue > red + 25 && blue > green + 20) {
+                    pixels->blue++;
+                }
+            }
+        }
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    return rc == PIMAGE_OK;
+}
+
+static int test1315_pixels_same(const test1315_pixels *left,
+        const test1315_pixels *right)
+{
+    return left->nonwhite == right->nonwhite &&
+            left->green == right->green && left->blue == right->blue &&
+            left->min_x == right->min_x && left->min_y == right->min_y &&
+            left->max_x == right->max_x && left->max_y == right->max_y;
+}
+
+/* TEST 1315 - exact IANA SVG regression. The files are the complete offline
+ * snapshots, not reduced fixtures: XML prolog/DOCTYPE, the 450x175 homepage
+ * viewBox, the header's negative viewBox, all class rules and six gradients,
+ * the hidden Text_Paths group, repeated parse/draw and release/reparse are
+ * intentionally retained. */
+BOOL test1315_iana_svg_exact_render(void)
+{
+    char *homepage_data;
+    char *header_data;
+    int homepage_len;
+    int header_len;
+    int homepage_rc;
+    int header_rc;
+    int homepage_again_rc;
+    int header_again_rc;
+    PIMAGE_SVG homepage;
+    PIMAGE_SVG header;
+    PIMAGE_SVG homepage_again;
+    PIMAGE_SVG header_again;
+    test1315_pixels homepage_pixels;
+    test1315_pixels homepage_repeat;
+    test1315_pixels homepage_reparse;
+    test1315_pixels header_pixels;
+    test1315_pixels header_repeat;
+    test1315_pixels header_reparse;
+    unsigned int homepage_shapes;
+    unsigned int header_shapes;
+    int homepage_width;
+    int homepage_height;
+    int header_width;
+    int header_height;
+    int ok;
+
+    strcpy(g_test1315_failure, "not run");
+    homepage_data = NULL;
+    header_data = NULL;
+    homepage = NULL;
+    header = NULL;
+    homepage_again = NULL;
+    header_again = NULL;
+    homepage_len = 0;
+    header_len = 0;
+    homepage_shapes = 0;
+    header_shapes = 0;
+    homepage_width = 0;
+    homepage_height = 0;
+    header_width = 0;
+    header_height = 0;
+    ok = test1315_read_fixture(
+            L"fixtures\\iana-logo-homepage.svg", &homepage_data,
+            &homepage_len) && test1315_read_fixture(
+            L"fixtures\\iana-logo-header-notext.svg", &header_data,
+            &header_len);
+    if (!ok) {
+        strcpy(g_test1315_failure, "exact IANA fixture read failed");
+    }
+    if (ok && (homepage_len < 7000 || header_len < 22000 ||
+            memcmp(homepage_data, "<?xml version=\"1.0\"", 19) != 0 ||
+            memcmp(header_data, "<?xml version=\"1.0\"", 19) != 0)) {
+        ok = 0;
+        _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                "fixture sizes=%d/%d or XML prolog missing", homepage_len,
+                header_len);
+        g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+    }
+    if (ok) {
+        homepage_rc = PImage_CreateSvgFromMemory(homepage_data,
+                homepage_len, 450, 175, &homepage);
+        header_rc = PImage_CreateSvgFromMemory(header_data, header_len,
+                256, 100, &header);
+        ok = homepage_rc == PIMAGE_OK && homepage != NULL &&
+                header_rc == PIMAGE_OK && header != NULL;
+        if (!ok) {
+            _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                    "create rc=%d/%d handles=%d/%d", homepage_rc,
+                    header_rc, homepage != NULL, header != NULL);
+            g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+        }
+    }
+    if (ok) {
+        ok = PImage_SvgGetInfo(homepage, &homepage_width,
+                &homepage_height, &homepage_shapes) == PIMAGE_OK &&
+                PImage_SvgGetInfo(header, &header_width, &header_height,
+                &header_shapes) == PIMAGE_OK && homepage_width == 450 &&
+                homepage_height == 175 && header_width == 256 &&
+                header_height == 100 && homepage_shapes == 8 &&
+                header_shapes == 8;
+        if (!ok) {
+            _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                    "info home=%dx%d/%u header=%dx%d/%u",
+                    homepage_width, homepage_height, homepage_shapes,
+                    header_width, header_height, header_shapes);
+            g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+        }
+    }
+    if (ok) {
+        ok = test1315_draw_metrics(homepage, 450, 175,
+                &homepage_pixels) && test1315_draw_metrics(homepage, 450,
+                175, &homepage_repeat) && test1315_pixels_same(
+                &homepage_pixels, &homepage_repeat) &&
+                homepage_pixels.nonwhite > 1000 &&
+                homepage_pixels.green > 50 && homepage_pixels.blue > 50 &&
+                homepage_pixels.max_x - homepage_pixels.min_x > 250 &&
+                homepage_pixels.max_y - homepage_pixels.min_y > 90;
+        if (!ok) {
+            _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                    "home pixels=%lu g=%lu b=%lu box=%d,%d-%d,%d",
+                    homepage_pixels.nonwhite, homepage_pixels.green,
+                    homepage_pixels.blue, homepage_pixels.min_x,
+                    homepage_pixels.min_y, homepage_pixels.max_x,
+                    homepage_pixels.max_y);
+            g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+        }
+    }
+    if (homepage != NULL) {
+        PImage_FreeSvg(homepage);
+        homepage = NULL;
+    }
+    if (header != NULL && ok) {
+        ok = test1315_draw_metrics(header, 256, 100, &header_pixels) &&
+                test1315_draw_metrics(header, 256, 100, &header_repeat) &&
+                test1315_pixels_same(&header_pixels, &header_repeat) &&
+                header_pixels.nonwhite > 400 && header_pixels.green > 20 &&
+                header_pixels.blue > 20 &&
+                header_pixels.max_x - header_pixels.min_x > 180 &&
+                header_pixels.max_y - header_pixels.min_y > 55;
+        if (!ok) {
+            _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                    "header pixels=%lu g=%lu b=%lu box=%d,%d-%d,%d",
+                    header_pixels.nonwhite, header_pixels.green,
+                    header_pixels.blue, header_pixels.min_x,
+                    header_pixels.min_y, header_pixels.max_x,
+                    header_pixels.max_y);
+            g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+        }
+    }
+    if (header != NULL) {
+        PImage_FreeSvg(header);
+        header = NULL;
+    }
+    if (ok) {
+        homepage_again_rc = PImage_CreateSvgFromMemory(homepage_data,
+                homepage_len, 450, 175, &homepage_again);
+        header_again_rc = PImage_CreateSvgFromMemory(header_data, header_len,
+                256, 100, &header_again);
+        ok = homepage_again_rc == PIMAGE_OK && homepage_again != NULL &&
+                header_again_rc == PIMAGE_OK && header_again != NULL &&
+                test1315_draw_metrics(homepage_again, 450, 175,
+                &homepage_reparse) && test1315_draw_metrics(header_again,
+                256, 100, &header_reparse) && test1315_pixels_same(
+                &homepage_pixels, &homepage_reparse) &&
+                test1315_pixels_same(&header_pixels, &header_reparse);
+        if (!ok) {
+            _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                    "reparse rc=%d/%d handles=%d/%d", homepage_again_rc,
+                    header_again_rc, homepage_again != NULL,
+                    header_again != NULL);
+            g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+        }
+    }
+    if (homepage_again != NULL) {
+        PImage_FreeSvg(homepage_again);
+    }
+    if (header_again != NULL) {
+        PImage_FreeSvg(header_again);
+    }
+    free(homepage_data);
+    free(header_data);
+    if (!ok) {
+        return FALSE;
+    }
+    strcpy(g_test1315_failure, "ok");
+    return TRUE;
+}

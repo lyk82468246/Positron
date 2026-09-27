@@ -5,7 +5,7 @@ REM
 REM VS2008 Smart Device deploy is broken for this project
 REM (see docs\history\PHASE1.md).
 REM Workaround: use the emulator's shared folder. This script collects
-REM the ten runtime binaries and optional test selection file we need. Optional arg 2
+REM the runtime binaries, test fixtures and optional test selection file we need. Optional arg 2
 REM selects an alternate folder.
 
 setlocal
@@ -40,6 +40,9 @@ copy /Y "%ROOT%\assets\fonts\PositronEmoji.ttf"   "%STAGE%\fonts\" || goto :fail
 copy /Y "%ROOT%\third_party\noto-symbols\OFL.txt" "%STAGE%\fonts\OFL-NotoSymbols.txt" || goto :fail
 copy /Y "%ROOT%\third_party\noto-symbols2\OFL.txt" "%STAGE%\fonts\OFL-NotoSymbols2.txt" || goto :fail
 copy /Y "%ROOT%\third_party\noto-emoji\OFL.txt"    "%STAGE%\fonts\OFL-NotoEmoji.txt" || goto :fail
+if not exist "%STAGE%\fixtures" mkdir "%STAGE%\fixtures"
+copy /Y "%ROOT%\test_host\fixtures\iana-logo-homepage.svg" "%STAGE%\fixtures\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\iana-logo-header-notext.svg" "%STAGE%\fixtures\" || goto :fail
 
 echo.
 echo Done. In the emulator, open File Explorer -^> Storage Card
