@@ -56735,11 +56735,15 @@ static BOOL test_browse(void)
         "<body><h1>Positron</h1>"
         "<p>Tap a link to fetch and render a real page over HTTPS:</p>"
         "<p><a href=\"https://example.com/\">Open example.com</a></p>"
+        "<p><a href=\"https://www.iana.org/help/example-domains\">"
+        "Open IANA Example Domains (canonical HTTPS)</a></p>"
         "<p><a href=\"https://raw.githubusercontent.com/lyk82468246/"
         "Positron/main/test_host/fixtures/network-svg.html\">"
         "Open network SVG fixture</a></p>"
         "<p>On the fetched page you can tap its own links too. Some hosts "
-        "may be reset by the network (GFW); that error is expected.</p>"
+        "may be reset by the network (GFW); that error is expected. "
+        "The HTTP client rejects an HTTPS page that redirects to plaintext; "
+        "use the canonical IANA HTTPS link above for this test.</p>"
         "<p>Tap empty space (or press Esc) to close.</p>"
         "</body></html>";
 
@@ -56789,7 +56793,9 @@ static BOOL test_browse(void)
 
     show_info(L"TEST 13",
               "A start page opens. Open example.com for general Browse,\n"
-              "or open the network SVG fixture for HTML + relative SVG.\n\n"
+              "the canonical IANA HTTPS page, or the network SVG fixture.\n\n"
+              "The HTTP client rejects HTTPS -> HTTP redirects; do not use\n"
+              "iana.org/domains/example as the IANA starting URL.\n\n"
               "Press Left to reload the previous successful GET page.\n"
               "Tap empty space or press Esc to close.");
 
