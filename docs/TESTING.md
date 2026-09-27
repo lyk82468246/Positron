@@ -159,6 +159,12 @@ tests=1-5 7b 13 20,999
   并检查可见 path 数量、非白像素边界、绿/蓝像素、重复绘制和释放后的重新解析。TEST1314
   只使用三条人工构造的简化 path，无法触发真实文件的长路径、隐藏 group 和多渐变边界，因而
   即使它通过也不能证明 IANA 首页 Logo 完整。
+- TEST1316 是自动的 Core/GDI 背景图回归：一个 intrinsic `160x80`、只在下半部绘制绿色路径
+  的 SVG 被放入 `160x40` 的非重复 CSS background。测试同时断言资源 fetch/free、盒尺寸和离屏
+  像素，要求 Core 在绘制前按 preserve-ratio contain 缩小并保留 `background-position`，使原本
+  会被 intrinsic 高度裁掉的下半部可见。它覆盖的是 Core 的有界响应式 SVG 背景适配，不宣称
+  完整 `background-size`/`cover`、多层背景、重复背景或浏览器级 CSS 兼容；真实 `positron.exe`
+  页面仍需设备视觉门确认。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

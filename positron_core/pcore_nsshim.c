@@ -109,6 +109,14 @@ content_type content_get_type(struct hlcache_handle *h)
     return (h != NULL) ? CONTENT_IMAGE : CONTENT_NONE;
 }
 
+bool content_is_svg(struct hlcache_handle *h)
+{
+    struct bitmap *bitmap;
+
+    bitmap = pcore_image_bitmap(h);
+    return bitmap != NULL && bitmap->kind == PCORE_BITMAP_SVG;
+}
+
 int content_get_width(struct hlcache_handle *h)
 {
     struct bitmap *bitmap = pcore_image_bitmap(h);

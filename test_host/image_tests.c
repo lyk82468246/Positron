@@ -706,3 +706,182 @@ BOOL test1315_iana_svg_exact_render(void)
     strcpy(g_test1315_failure, "ok");
     return TRUE;
 }
+
+typedef struct test1316_background_fixture {
+    int calls;
+    int frees;
+} test1316_background_fixture;
+
+static const char g_test1316_background_svg[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"160\" "
+        "height=\"80\" viewBox=\"0 0 160 80\">"
+        "<rect width=\"160\" height=\"80\" fill=\"#ffffff\"/>"
+        "<rect y=\"60\" width=\"160\" height=\"20\" "
+        "fill=\"#00ff00\"/></svg>";
+
+static char g_test1316_failure[320];
+
+const char *test1316_core_svg_background_fit_last_error(void)
+{
+    return g_test1316_failure;
+}
+
+static int test1316_background_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    test1316_background_fixture *fixture;
+    char *copy;
+    int length;
+
+    fixture = (test1316_background_fixture *) pw;
+    if (fixture == NULL || url == NULL || out_data == NULL ||
+            out_len == NULL || strcmp(url, "/img/fit.svg") != 0) {
+        return 1;
+    }
+    fixture->calls++;
+    *out_data = NULL;
+    *out_len = 0;
+    length = (int) sizeof(g_test1316_background_svg) - 1;
+    copy = (char *) malloc((size_t) length);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, g_test1316_background_svg, (size_t) length);
+    *out_data = copy;
+    *out_len = length;
+    return 0;
+}
+
+static void test1316_background_free(void *pw, char *data)
+{
+    test1316_background_fixture *fixture;
+
+    fixture = (test1316_background_fixture *) pw;
+    if (fixture != NULL) {
+        fixture->frees++;
+    }
+    free(data);
+}
+
+/* TEST 1316 - a non-repeating SVG background must fit a responsive box.
+ * The green path is intentionally only in the lower quarter of an intrinsic
+ * 160x80 image.  A 160x40 CSS background area clips that path when the image
+ * is drawn intrinsically; the bounded Core fit makes it visible at y=30..40
+ * without changing the public Core or Image ABI. */
+BOOL test1316_core_svg_background_fit(void)
+{
+    static const char HTML[] =
+            "<!doctype html><html><body><div id='fit'></div>"
+            "</body></html>";
+    static const char CSS[] =
+            "html,body{margin:0;padding:0;}"
+            "#fit{display:block;width:160px;height:40px;"
+            "background:#ffffff;background-image:url('/img/fit.svg');"
+            "background-repeat:no-repeat;background-position:0 0;}";
+    HANDLE document;
+    HANDLE sheet;
+    test1316_background_fixture fixture;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF upper_pixel;
+    COLORREF lower_pixel;
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int width;
+    int height;
+    BOOL ok;
+
+    strcpy(g_test1316_failure, "not run");
+    document = NULL;
+    sheet = NULL;
+    memset(&fixture, 0, sizeof(fixture));
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    found = 0;
+    fetched = 0;
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    upper_pixel = RGB(0, 0, 0);
+    lower_pixel = RGB(0, 0, 0);
+    ok = FALSE;
+
+    document = PCore_ParseHTML(HTML, (int) sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, (int) sizeof(CSS) - 1,
+            "https://positron.local/background-fit.css");
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_FetchImageResources(document, test1316_background_fetch,
+            test1316_background_free, &fixture, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || fixture.calls != 1 ||
+            fixture.frees != 1) {
+        _snprintf(g_test1316_failure, sizeof(g_test1316_failure) - 1,
+                "resource/style found=%d fetched=%d calls=%d frees=%d",
+                found, fetched, fixture.calls, fixture.frees);
+        g_test1316_failure[sizeof(g_test1316_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    PCore_SetViewport(200, 100, 96);
+    if (PCore_LayoutDocument(document, 200, 100) != 0 ||
+            PCore_NodeBox(document, "div", &x, &y, &width, &height) != 0 ||
+            x != 0 || y != 0 || width != 160 || height != 40) {
+        _snprintf(g_test1316_failure, sizeof(g_test1316_failure) - 1,
+                "geometry=%d,%d %dx%d", x, y, width, height);
+        g_test1316_failure[sizeof(g_test1316_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 200, 100) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        strcpy(g_test1316_failure, "offscreen GDI allocation failed");
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 200, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+    upper_pixel = GetPixel(memory_dc, 10, 10);
+    lower_pixel = GetPixel(memory_dc, 10, 35);
+    if (!test1314_color_close(upper_pixel, RGB(255, 255, 255)) ||
+            !test1314_color_close(lower_pixel, RGB(0, 255, 0))) {
+        _snprintf(g_test1316_failure, sizeof(g_test1316_failure) - 1,
+                "pixels upper=%06lX lower=%06lX",
+                (unsigned long) upper_pixel & 0xffffffUL,
+                (unsigned long) lower_pixel & 0xffffffUL);
+        g_test1316_failure[sizeof(g_test1316_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    ok = TRUE;
+    strcpy(g_test1316_failure, "ok");
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    return ok;
+}

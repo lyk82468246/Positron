@@ -116,6 +116,16 @@ content_type content_get_type(struct hlcache_handle *h);
 
 
 /**
+ * Determine whether an image content object is an SVG retained image.
+ *
+ * This is a Positron-internal content shim used by HTML redraw to apply a
+ * bounded responsive-background fallback.  It is not part of the public
+ * Positron DLL ABI.
+ */
+bool content_is_svg(struct hlcache_handle *h);
+
+
+/**
  * Retrieve width of content
  *
  * \param h handle to the content to get width of.

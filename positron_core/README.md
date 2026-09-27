@@ -44,6 +44,12 @@ PENDING callback 不应返回 body。Core 不解析相对 URL，也不访问文�
 仍负责把资源引用变成可请求 URL。资源进入 cache 后，调用方必须重新 layout/paint，才能得到
 image box 与 SVG/PNG/JPEG/GIF 的解码结果。
 
+对于已解码的 SVG CSS `background-image`，Core 还有一个有界的响应式适配：当背景不重复且
+intrinsic 尺寸超出背景定位区域时，redraw 会按 preserve-aspect-ratio 的 contain 规则缩小，
+并保留 computed `background-position` 的相对位置。PNG/JPEG/GIF、重复背景以及没有超出区域的
+图像继续走 NetSurf 的 intrinsic 尺寸路径；这不是完整的 `background-size`/`cover`、多层背景
+或其他现代 CSS 实现，未支持的声明仍按有界规则处理。
+
 布局 relation 提供 page width/height、元素 border/client/scroll 尺寸、有限 inline fragments、overflow retained scroll 和几何快照。relation 是最近一次 layout 的只读 snapshot；查询不会触发 reflow，mutation 成功后会使 retained layout 失效，调用方必须重新 style/layout/paint。
 
 ## DOM 与关系 bridge

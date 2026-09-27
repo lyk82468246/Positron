@@ -64,6 +64,8 @@ extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
 extern BOOL test1315_iana_svg_exact_render(void);
 extern const char *test1315_iana_svg_last_error(void);
+extern BOOL test1316_core_svg_background_fit(void);
+extern const char *test1316_core_svg_background_fit_last_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -558,7 +560,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1315
+#define TEST_MAX_NUMBER 1316
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -115594,6 +115596,16 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1315 FAIL",
                         test1315_iana_svg_last_error());
+            }
+            break;
+        case 1316:
+            ok = test1316_core_svg_background_fit();
+            if (ok) {
+                show_info(L"TEST 1316 OK",
+                        "Core responsive SVG background fit and unclipped lower path passed.");
+            } else {
+                show_error(L"TEST 1316 FAIL",
+                        test1316_core_svg_background_fit_last_error());
             }
             break;
         default: ok = FALSE; break;

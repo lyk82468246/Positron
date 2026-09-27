@@ -138,6 +138,104 @@ static struct box *html_redraw_find_bg_box(struct box *box)
 	return NULL;
 }
 
+/* The port only implements a bounded subset of CSS background sizing.  When
+ * a non-repeating retained SVG is larger than its background positioning area,
+ * drawing at its intrinsic size makes a responsive logo look truncated.  Fit
+ * that SVG inside the area while preserving the computed position.  This is
+ * deliberately not a general background-size/cover or multi-layer engine:
+ * repeated backgrounds and raster images retain the normal NetSurf path. */
+static int html_redraw_scaled_dimension(int value, float scale)
+{
+	double scaled;
+
+	if (value <= 0 || scale <= 0.0f)
+		return 0;
+	scaled = ceil((double) value * (double) scale);
+	if (scaled > 2147483647.0)
+		return 2147483647;
+	return (int) scaled;
+}
+
+static int html_redraw_round_dimension(double value)
+{
+	if (value <= 0.0)
+		return 0;
+	if (value >= 2147483647.0)
+		return 2147483647;
+	return (int) floor(value + 0.5);
+}
+
+static void html_redraw_fit_svg_background(
+		struct hlcache_handle *content, bool repeat_x, bool repeat_y,
+		int origin_x, int origin_y, int area_width, int area_height,
+		float scale, int *x, int *y, int *draw_width, int *draw_height)
+{
+	int source_width;
+	int source_height;
+	int fitted_width;
+	int fitted_height;
+	double fit_scale;
+	double position;
+	double source_span;
+	double fitted_span;
+
+	if (content == NULL || x == NULL || y == NULL || draw_width == NULL ||
+			draw_height == NULL || repeat_x || repeat_y || area_width <= 0 ||
+			area_height <= 0 || !content_is_svg(content))
+		return;
+
+	source_width = html_redraw_scaled_dimension(content_get_width(content),
+			scale);
+	source_height = html_redraw_scaled_dimension(content_get_height(content),
+			scale);
+	if (source_width <= 0 || source_height <= 0 ||
+			(source_width <= area_width && source_height <= area_height))
+		return;
+
+	fit_scale = 1.0;
+	if (source_width > area_width)
+		fit_scale = (double) area_width / (double) source_width;
+	if (source_height > area_height &&
+			(double) area_height / (double) source_height < fit_scale)
+		fit_scale = (double) area_height / (double) source_height;
+	fitted_width = html_redraw_round_dimension(
+			(double) source_width * fit_scale);
+	fitted_height = html_redraw_round_dimension(
+			(double) source_height * fit_scale);
+	if (fitted_width <= 0 || fitted_height <= 0)
+		return;
+
+	/* Preserve the original CSS position as a normalized point between the
+	 * two edges.  This keeps left/center/right and top/center/bottom useful
+	 * even though the intrinsic image span changed. */
+	source_span = (double) area_width - (double) source_width;
+	if (source_span == 0.0)
+		position = 0.0;
+	else
+		position = ((double) *x - (double) origin_x) / source_span;
+	if (position < 0.0)
+		position = 0.0;
+	if (position > 1.0)
+		position = 1.0;
+	fitted_span = (double) area_width - (double) fitted_width;
+	*x = origin_x + html_redraw_round_dimension(fitted_span * position);
+
+	source_span = (double) area_height - (double) source_height;
+	if (source_span == 0.0)
+		position = 0.0;
+	else
+		position = ((double) *y - (double) origin_y) / source_span;
+	if (position < 0.0)
+		position = 0.0;
+	if (position > 1.0)
+		position = 1.0;
+	fitted_span = (double) area_height - (double) fitted_height;
+	*y = origin_y + html_redraw_round_dimension(fitted_span * position);
+
+	*draw_width = fitted_width;
+	*draw_height = fitted_height;
+}
+
 /**
  * Redraw a short text string, complete with highlighting
  * (for selection/search)
@@ -617,7 +715,9 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 	bool clip_to_children = false;
 	struct box *clip_box = box;
 	int ox = x, oy = y;
+	int background_origin_x = x, background_origin_y = y;
 	int width, height;
+	int draw_width = 0, draw_height = 0;
 	css_fixed hpos = 0, vpos = 0;
 	css_unit hunit = CSS_UNIT_PX, vunit = CSS_UNIT_PX;
 	plot_style_t pstyle_fill_bg = { 0, 0, 0, PLOT_OP_TYPE_SOLID,
@@ -647,6 +747,8 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 			height = box->padding[TOP] + box->height +
 					box->padding[BOTTOM];
 		}
+		background_origin_x = x;
+		background_origin_y = y;
 		/* handle background-repeat */
 		switch (css_computed_background_repeat(background->style)) {
 		case CSS_BACKGROUND_REPEAT_REPEAT:
@@ -693,6 +795,16 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 					background->style, unit_len_ctx,
 					vpos, vunit)) * scale);
 		}
+
+		draw_width = html_redraw_scaled_dimension(
+				content_get_width(background->background), scale);
+		draw_height = html_redraw_scaled_dimension(
+				content_get_height(background->background), scale);
+		html_redraw_fit_svg_background(background->background, repeat_x,
+				repeat_y, background_origin_x, background_origin_y,
+				html_redraw_scaled_dimension(width, scale),
+				html_redraw_scaled_dimension(height, scale), scale, &x, &y,
+				&draw_width, &draw_height);
 	}
 
 	/* special case for table rows as their background needs
@@ -763,21 +875,18 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 		}
 		/* and plot the image */
 		if (plot_content) {
-			width = content_get_width(background->background);
-			height = content_get_height(background->background);
-
 			/* ensure clip area only as large as required */
 			if (!repeat_x) {
 				if (r.x0 < x)
 					r.x0 = x;
-				if (r.x1 > x + width * scale)
-					r.x1 = x + width * scale;
+				if (r.x1 > x + draw_width)
+					r.x1 = x + draw_width;
 			}
 			if (!repeat_y) {
 				if (r.y0 < y)
 					r.y0 = y;
-				if (r.y1 > y + height * scale)
-					r.y1 = y + height * scale;
+				if (r.y1 > y + draw_height)
+					r.y1 = y + draw_height;
 			}
 			/* valid clipping rectangles only */
 			if ((r.x0 < r.x1) && (r.y0 < r.y1)) {
@@ -790,8 +899,8 @@ static bool html_redraw_background(int x, int y, struct box *box, float scale,
 
 				bg_data.x = x;
 				bg_data.y = y;
-				bg_data.width = ceilf(width * scale);
-				bg_data.height = ceilf(height * scale);
+				bg_data.width = draw_width;
+				bg_data.height = draw_height;
 				bg_data.background_colour = *background_colour;
 				bg_data.scale = scale;
 				bg_data.repeat_x = repeat_x;
