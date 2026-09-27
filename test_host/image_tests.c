@@ -551,9 +551,13 @@ BOOL test1315_iana_svg_exact_render(void)
     PIMAGE_SVG header;
     PIMAGE_SVG homepage_again;
     PIMAGE_SVG header_again;
+    PIMAGE_SVG homepage_default;
+    PIMAGE_SVG header_default;
     test1315_pixels homepage_pixels;
     test1315_pixels homepage_repeat;
     test1315_pixels homepage_reparse;
+    test1315_pixels homepage_default_pixels;
+    test1315_pixels header_default_pixels;
     test1315_pixels header_pixels;
     test1315_pixels header_repeat;
     test1315_pixels header_reparse;
@@ -563,6 +567,12 @@ BOOL test1315_iana_svg_exact_render(void)
     int homepage_height;
     int header_width;
     int header_height;
+    int homepage_default_rc;
+    int header_default_rc;
+    int homepage_default_width;
+    int homepage_default_height;
+    int header_default_width;
+    int header_default_height;
     int ok;
 
     strcpy(g_test1315_failure, "not run");
@@ -572,6 +582,8 @@ BOOL test1315_iana_svg_exact_render(void)
     header = NULL;
     homepage_again = NULL;
     header_again = NULL;
+    homepage_default = NULL;
+    header_default = NULL;
     homepage_len = 0;
     header_len = 0;
     homepage_shapes = 0;
@@ -580,6 +592,12 @@ BOOL test1315_iana_svg_exact_render(void)
     homepage_height = 0;
     header_width = 0;
     header_height = 0;
+    homepage_default_rc = PIMAGE_ERROR_ARGUMENT;
+    header_default_rc = PIMAGE_ERROR_ARGUMENT;
+    homepage_default_width = 0;
+    homepage_default_height = 0;
+    header_default_width = 0;
+    header_default_height = 0;
     ok = test1315_read_fixture(
             L"fixtures\\iana-logo-homepage.svg", &homepage_data,
             &homepage_len) && test1315_read_fixture(
@@ -624,6 +642,52 @@ BOOL test1315_iana_svg_exact_render(void)
                     "info home=%dx%d/%u header=%dx%d/%u",
                     homepage_width, homepage_height, homepage_shapes,
                     header_width, header_height, header_shapes);
+            g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
+        }
+    }
+    if (ok) {
+        /* Core intentionally passes zero viewport dimensions for retained
+         * SVG resources.  The exact assets have no width/height attributes,
+         * so the image DLL must preserve each root viewBox ratio rather than
+         * silently forcing the historical 300x150 canvas. */
+        homepage_default_rc = PImage_CreateSvgFromMemory(homepage_data,
+                homepage_len, 0, 0, &homepage_default);
+        header_default_rc = PImage_CreateSvgFromMemory(header_data,
+                header_len, 0, 0, &header_default);
+        ok = homepage_default_rc == PIMAGE_OK && homepage_default != NULL &&
+                header_default_rc == PIMAGE_OK && header_default != NULL &&
+                PImage_SvgGetInfo(homepage_default, &homepage_default_width,
+                &homepage_default_height, NULL) == PIMAGE_OK &&
+                PImage_SvgGetInfo(header_default, &header_default_width,
+                &header_default_height, NULL) == PIMAGE_OK &&
+                homepage_default_width == 300 &&
+                homepage_default_height == 117 &&
+                header_default_width == 300 && header_default_height == 117;
+        if (ok) {
+            ok = test1315_draw_metrics(homepage_default, 300, 117,
+                    &homepage_default_pixels) &&
+                    test1315_draw_metrics(header_default, 300, 117,
+                    &header_default_pixels) &&
+                    homepage_default_pixels.nonwhite > 400 &&
+                    homepage_default_pixels.green > 20 &&
+                    homepage_default_pixels.blue > 20 &&
+                    homepage_default_pixels.max_x -
+                    homepage_default_pixels.min_x > 160 &&
+                    homepage_default_pixels.max_y -
+                    homepage_default_pixels.min_y > 55 &&
+                    header_default_pixels.nonwhite > 300 &&
+                    header_default_pixels.green > 20 &&
+                    header_default_pixels.blue > 20 &&
+                    header_default_pixels.max_x - header_default_pixels.min_x >
+                    200 && header_default_pixels.max_y -
+                    header_default_pixels.min_y > 65;
+        }
+        if (!ok) {
+            _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
+                    "default info/draw home rc=%d %dx%d header rc=%d %dx%d",
+                    homepage_default_rc, homepage_default_width,
+                    homepage_default_height, header_default_rc,
+                    header_default_width, header_default_height);
             g_test1315_failure[sizeof(g_test1315_failure) - 1] = '\0';
         }
     }
@@ -697,6 +761,12 @@ BOOL test1315_iana_svg_exact_render(void)
     }
     if (header_again != NULL) {
         PImage_FreeSvg(header_again);
+    }
+    if (homepage_default != NULL) {
+        PImage_FreeSvg(homepage_default);
+    }
+    if (header_default != NULL) {
+        PImage_FreeSvg(header_default);
     }
     free(homepage_data);
     free(header_data);
@@ -883,5 +953,253 @@ cleanup:
     if (document != NULL) {
         PCore_FreeDocument(document);
     }
+    return ok;
+}
+
+typedef struct test1317_iana_background_fixture {
+    char *homepage_data;
+    int homepage_len;
+    char *header_data;
+    int header_len;
+    int homepage_calls;
+    int header_calls;
+    int frees;
+} test1317_iana_background_fixture;
+
+static char g_test1317_failure[384];
+
+const char *test1317_iana_core_background_last_error(void)
+{
+    return g_test1317_failure;
+}
+
+static int test1317_background_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    test1317_iana_background_fixture *fixture;
+    const char *source;
+    int source_len;
+    char *copy;
+
+    fixture = (test1317_iana_background_fixture *) pw;
+    if (fixture == NULL || url == NULL || out_data == NULL ||
+            out_len == NULL) {
+        return 1;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    source = NULL;
+    source_len = 0;
+    if (strcmp(url, "/static/img/iana-logo-homepage.3914c6f1ab9d.svg") ==
+            0) {
+        fixture->homepage_calls++;
+        source = fixture->homepage_data;
+        source_len = fixture->homepage_len;
+    } else if (strcmp(url,
+            "/static/img/iana-logo-header-notext.9385bc9b108d.svg") == 0) {
+        fixture->header_calls++;
+        source = fixture->header_data;
+        source_len = fixture->header_len;
+    } else {
+        return 1;
+    }
+    if (source == NULL || source_len <= 0) {
+        return 1;
+    }
+    copy = (char *) malloc((size_t) source_len);
+    if (copy == NULL) {
+        return 1;
+    }
+    memcpy(copy, source, (size_t) source_len);
+    *out_data = copy;
+    *out_len = source_len;
+    return 0;
+}
+
+static void test1317_background_free(void *pw, char *data)
+{
+    test1317_iana_background_fixture *fixture;
+
+    fixture = (test1317_iana_background_fixture *) pw;
+    if (fixture != NULL) {
+        fixture->frees++;
+    }
+    free(data);
+}
+
+/* TEST 1317 - the real IANA homepage CSS background path through Core.
+ * TEST1315 proves that the two SVG files can draw directly, while TEST1316
+ * proves a simplified SVG can fit a block background.  This regression keeps
+ * the live page's responsive h1 rules and complete tracked SVG fixtures: a
+ * device-backed 320px/128-DPI viewport must select the 128x50 header asset,
+ * create the small h1 box, and paint both logo colours. */
+BOOL test1317_iana_core_background(void)
+{
+    static const char HTML[] =
+            "<!doctype html><html><body><div class='homepage'>"
+            "<header><h1 id='logo'><span>Internet Assigned Numbers "
+            "Authority</span></h1></header></div></body></html>";
+    static const char CSS[] =
+            "html,body{margin:0;padding:0;background:#ffffff;}"
+            ".homepage header{background:#ffffff;margin:0;padding:20px;"
+            "box-sizing:border-box;}"
+            ".homepage header h1{display:block;text-align:center;"
+            "margin:0 auto;background-image:url(\"/static/img/"
+            "iana-logo-homepage.3914c6f1ab9d.svg\");height:175px;"
+            "width:450px;}"
+            ".homepage header h1 span{display:none;}"
+            "@media (width <= 1000px){.homepage header h1{margin:0;"
+            "width:128px;height:50px;background-image:url(\"/static/img/"
+            "iana-logo-header-notext.9385bc9b108d.svg\");}}";
+    HANDLE document;
+    HANDLE sheet;
+    test1317_iana_background_fixture fixture;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF color;
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int width;
+    int height;
+    int green;
+    int blue;
+    int nonwhite;
+    int min_x;
+    int min_y;
+    int max_x;
+    int max_y;
+    BOOL ok;
+
+    strcpy(g_test1317_failure, "not run");
+    memset(&fixture, 0, sizeof(fixture));
+    document = NULL;
+    sheet = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    found = 0;
+    fetched = 0;
+    x = 0;
+    y = 0;
+    width = 0;
+    height = 0;
+    green = 0;
+    blue = 0;
+    nonwhite = 0;
+    min_x = 320;
+    min_y = 320;
+    max_x = -1;
+    max_y = -1;
+    ok = FALSE;
+
+    if (!test1315_read_fixture(L"fixtures\\iana-logo-homepage.svg",
+            &fixture.homepage_data, &fixture.homepage_len) ||
+            !test1315_read_fixture(L"fixtures\\iana-logo-header-notext.svg",
+            &fixture.header_data, &fixture.header_len)) {
+        strcpy(g_test1317_failure, "exact IANA fixture read failed");
+        goto cleanup;
+    }
+    document = PCore_ParseHTML(HTML, (int) sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, (int) sizeof(CSS) - 1,
+            "https://www.iana.org/static/css/iana_website.css");
+    /* This call must precede StyleDocument: media queries are selected while
+     * computed styles are produced, not during the later layout pass. */
+    PCore_SetDeviceViewport(320, 320, 128);
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_FetchImageResources(document, test1317_background_fetch,
+            test1317_background_free, &fixture, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || fixture.header_calls != 1 ||
+            fixture.homepage_calls != 0 || fixture.frees != 1) {
+        _snprintf(g_test1317_failure, sizeof(g_test1317_failure) - 1,
+                "style/fetch found=%d fetched=%d home/header=%d/%d frees=%d",
+                found, fetched, fixture.homepage_calls,
+                fixture.header_calls, fixture.frees);
+        g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    if (PCore_LayoutDocument(document, 320, 320) != 0 ||
+            PCore_NodeBox(document, "h1", &x, &y, &width, &height) != 0 ||
+            width <= 0 || width >= 300 || height <= 0 || height >= 100) {
+        _snprintf(g_test1317_failure, sizeof(g_test1317_failure) - 1,
+                "responsive box=%d,%d %dx%d", x, y, width, height);
+        g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 320, 320) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        strcpy(g_test1317_failure, "offscreen GDI allocation failed");
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 320, 320);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+    for (y = 0; y < 320; y++) {
+        for (x = 0; x < 320; x++) {
+            color = GetPixel(memory_dc, x, y);
+            if (color == CLR_INVALID) {
+                continue;
+            }
+            if (GetRValue(color) < 248 || GetGValue(color) < 248 ||
+                    GetBValue(color) < 248) {
+                nonwhite++;
+                if (x < min_x) { min_x = x; }
+                if (x > max_x) { max_x = x; }
+                if (y < min_y) { min_y = y; }
+                if (y > max_y) { max_y = y; }
+            }
+            if (GetGValue(color) > GetRValue(color) + 25 &&
+                    GetGValue(color) > GetBValue(color) + 15) {
+                green++;
+            }
+            if (GetBValue(color) > GetRValue(color) + 25 &&
+                    GetBValue(color) > GetGValue(color) + 20) {
+                blue++;
+            }
+        }
+    }
+    if (nonwhite < 80 || green < 10 || blue < 10 || max_x - min_x < 90 ||
+            max_y - min_y < 25) {
+        _snprintf(g_test1317_failure, sizeof(g_test1317_failure) - 1,
+                "paint pixels nonwhite/green/blue=%d/%d/%d box=%d,%d-%d,%d",
+                nonwhite, green, blue, min_x, min_y, max_x, max_y);
+        g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    ok = TRUE;
+    strcpy(g_test1317_failure, "ok");
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    free(fixture.homepage_data);
+    free(fixture.header_data);
+    PCore_SetViewport(240, 320, 96);
     return ok;
 }

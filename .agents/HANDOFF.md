@@ -15,8 +15,8 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 
 当前中期里程碑仍是把 Core、Browser、HTTP/TLS、媒体与 WM6 应用接线收束为有界运行时。本批
 继续收束图片纵切：`positron_core.dll` 的异步 pending/retry 已完成，`positron_image.dll` 现在
-能在不破坏旧 ABI 的前提下消费 IANA 风格的简单 SVG class paint/gradient；真实
-`positron.exe` 图片页面仍待观察。Media 的 DirectShow callback source filter/native 视频生命
+能在不破坏旧 ABI 的前提下消费 IANA 风格的简单 SVG class paint/gradient，并按 viewBox 保留
+没有显式宽高的 SVG 固有比例；真实 `positron.exe` 图片页面仍待观察。Media 的 DirectShow callback source filter/native 视频生命
 周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实保持不变。
 
 ## 当前源码事实
@@ -48,9 +48,11 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   兼容预处理：简单 `.name { paint-property: value; }` 规则会合并为行内 style，再交给
   libsvgtiny；不实现通用 CSS cascade，也不改变任何公开 ABI。它覆盖 IANA 首页/页眉 SVG
   使用的 class fill、渐变引用、viewBox/viewport 和重复 retained draw；超预算、复杂选择器或
-  无法安全规范化的输入 fail closed。`test_host` TEST1314 的诊断先复现了两个 SVG 全黑，修复后
-  采样到绿色/蓝色/非黑渐变且坏 SVG 句柄为空，证明根因在 Image DLL 而非 Core background
-  image 尺寸或 HTTP/应用接线。
+  无法安全规范化的输入 fail closed。对于调用者传入 `viewport_w/viewport_h <= 0` 的 viewBox-only
+  SVG，Image DLL 只扫描根 viewBox 并按比例计算 300px fallback 高度；非法或超预算 viewBox
+  仍回退 300x150，旧 ABI 和显式 viewport 行为不变。`test_host` TEST1314 的诊断先复现了两个
+  SVG 全黑，修复后采样到绿色/蓝色/非黑渐变且坏 SVG 句柄为空；TEST1315 又证明真实 IANA
+  文件的默认 300x117 尺寸和完整边界，证明该比例缺口属于 Image/Core 绘制链而非 HTTP/应用接线。
 - `positron.exe` 的顶层物理页面滚动已沿 `test_host` 的 retained-pixel 路径接线：纯滚动只更新
   系统滚动条位置、用 `ScrollWindowEx` 移动已有像素并重绘暴露条带，再重定位同一窗口体系下的
   native 子控件；不会在每个滚动步重新执行 Core layout，也不会重复同步 SELECT/toggle 状态。
@@ -80,9 +82,9 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 ## 文档与路线图
 
 本批更新了 `positron_image` README、能力矩阵、测试合同和当前状态，并复核 `.agents/ROADMAP.md`：
-IANA class-style 的 Image DLL 纵切与 TEST1314 自动/设备证据已完成，阶段 B 候选只保留应用图片
-可见性设备门和原有 Media 未完成边界；EXE 顶层滚动的 retained-pixel 修正已落地，但仍需设备
-人工确认连续拖动时无整页重排/闪烁；不得把离线 decode 或桌面构建证据写成设备视觉通过。
+IANA class-style 与 viewBox 固有比例的 Image DLL 纵切，以及 TEST1315/1316/1317 自动证据已完成，
+阶段 B 候选只保留 `positron.exe` 应用图片可见性设备门和原有 Media 未完成边界；不得把离线
+decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
 
 ## 已验证的自动证据
 
@@ -116,6 +118,14 @@ IANA class-style 的 Image DLL 纵切与 TEST1314 自动/设备证据已完成�
   `TESTBENCH PASS`、双空间预检通过、`core_module_check=PASS`、`crash_check=PASS` 且无新增
   dump；这证明 IANA 子页导航和 Image 直接绘制门没有回归，但仍不等于首页 CSS background
   在真实 `positron.exe` 页面上的视觉验收。
+- 本轮 `tmp/device-runs/20260927-224216-iana-svg-intrinsic-20260927b` 以同一批 Debug
+  ARMV4I DLL 运行 `1315-1317,999`：四项均为 OK，selected/observed `4/4`，零 ERROR/FAIL，
+  唯一 `TESTBENCH PASS`、双空间预检、`core_module_check=PASS`、`crash_check=PASS` 且无新增
+  dump；它确认 viewBox-only IANA SVG 的 300x117 fallback、真实完整 SVG 背景适配和响应式
+  header 选择，但仍不替代 `positron.exe` 的网络页面人工视觉门。
+- 同一批 Debug staging 已复制到外置 `Storage Card\Temp\Positron-device-gate\iana-app-20260927`，
+  并通过 RAPI 成功启动 `positron.exe`；启动成功只证明匹配的 EXE/DLL 能运行，IANA 首页的
+  实际网络图片仍需用户在该应用窗口中导航后进行视觉确认。
 
 ## 设备证据与限制
 
@@ -163,14 +173,14 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
   直播协议明确排除。
 - 脚本自行构造的 File/Blob 尚未形成 Browser FormData 到 Core multipart 的公共转换；native
   picker 的源码接线不能写成已完成的设备上传基线。
-- EXE 图片资源事务的恢复阶段、相对 URL 解析、Core pending/retry 和 Image class-style 契约已按
-  TEST13 的宿主顺序
-  修正；TEST1313 已在离线 Core 中证明 pending SVG 第二次扫描可缓存、解码并布局，terminal
-  failure 不重试，TEST1314 已在 Image DLL 直接绘制门证明 IANA 风格 SVG 不再因 class paint 变黑。
-  最新完整包已部署并启动 `positron.exe`，但图片是否在真实应用页面上可见
-  仍未形成证据；现有 TEST13 成功日志可能仍显示 `optional image fallback=1`、
-  `box tree/image=0`、`svg creates=0`，不能把导航完成写成图片成功。当前应在已启动的 EXE
-  中打开 IANA/图片页面并检查截图与 image-state 摘要。
+- EXE 图片资源事务的恢复阶段、相对 URL 解析、Core pending/retry、Image class-style 和
+  viewBox-only intrinsic-ratio 契约已按 TEST13 的宿主顺序修正；TEST1313 已在离线 Core 中
+  证明 pending SVG 第二次扫描可缓存、解码并布局，terminal failure 不重试，TEST1314/1315
+  已在 Image DLL 直接绘制门证明 IANA 风格 SVG 不再因 class paint 或 300x150 fallback 变形。
+  最新完整包仍需要在 `positron.exe` 真实网络页面上确认；自动 Core 背景门和 `test_host` 日志
+  不能替代应用截图或 image-state 摘要。当前若消费者仍报告视觉无明显变化，应先确认启动的
+  是本轮同一批 `positron_image.dll`、`positron_core.dll` 和 `positron.exe`，再在应用中打开
+  IANA 首页；不要把旧包的截图归因给新 Image 代码。
 - OEM SIP/IME、真实触摸、旋转/DPI、复杂 CSS/布局、完整现代 Web API 和浏览器安全沙箱仍受
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 约束，合成按键不能替代人工设备验收。
 - 失败网络、重定向、资源相对 URL 和应用输入仍需设备门确认；稳定合同和测试矩阵见
@@ -178,10 +188,11 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
 
 ## 唯一下一步
 
-在最新远端目录中启动 `positron.exe`，打开 `https://www.iana.org/` 并连续拖动页面滚动条；
-确认视窗大小不变时只移动 retained pixels 和暴露条带，不出现整页闪屏、重新排版或 native 控件
-乱飞，再单独观察 SVG/图片是否显示。若仍有闪屏，下一步只追踪同步的 ScriptSession scroll
-通知及其合法 DOM mutation 路径，不关闭脚本事件来掩盖语义；若 RAPI 仍返回现有 `0x80072746`，
-保留源码与自动证据并报告环境阻塞，不把未运行写成通过。滚动人工门通过后再回到 Media fixture
+用本轮同一批 Debug/Release staging 启动 `positron.exe`，打开 `https://www.iana.org/` 并
+确认页面的 `image-state` 摘要和 SVG 是否来自新 DLL；随后连续拖动页面滚动条，确认视窗大小不变
+时只移动 retained pixels 和暴露条带，不出现整页闪屏、重新排版或 native 控件乱飞。若 SVG 仍
+不完整，保留一张新截图和对应 image-state/日志，下一步只追踪应用实际拿到的 URL、资源终态和
+绘制矩形；若 RAPI 仍返回现有 `0x80072746`，保留源码与自动证据并报告环境阻塞，不把未运行
+写成通过。滚动和图片人工门通过后再回到 Media fixture
 （损坏/截断、非 seek、`WOULD_BLOCK`、read/seek error、FFmpeg H.264/AAC/MP3/AMR 与 AUTO
 fallback）。

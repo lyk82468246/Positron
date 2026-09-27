@@ -800,6 +800,173 @@ static int pimage_svg_normalize_class_styles(const char *data, int len,
     return 1;
 }
 
+/* libsvgtiny uses the caller's viewport height when an SVG omits an explicit
+ * height.  That changes the intrinsic aspect ratio of the common viewBox-only
+ * form: the old 300x150 default turns IANA's 450x175 and negative-viewBox
+ * assets into a 2:1 canvas before Core can size a CSS background.  Read only
+ * the bounded root viewBox attribute and derive the fallback height from its
+ * ratio.  This is not a second XML parser: malformed, unquoted, over-budget
+ * or non-positive values simply retain the historical fallback and libsvgtiny
+ * remains authoritative for the actual SVG parse. */
+#define PIMAGE_SVG_VIEWBOX_SCAN_MAX 8192
+#define PIMAGE_SVG_VIEWBOX_VALUE_MAX 1000000.0
+
+static int pimage_svg_parse_viewbox_number(const char *data, size_t len,
+        size_t *cursor, float *out_value)
+{
+    char token[64];
+    size_t start;
+    size_t count;
+    char *end;
+    double value;
+
+    if (data == NULL || cursor == NULL || out_value == NULL) {
+        return 0;
+    }
+    while (*cursor < len && (pimage_svg_is_space(data[*cursor]) ||
+            data[*cursor] == ',')) {
+        (*cursor)++;
+    }
+    start = *cursor;
+    while (*cursor < len && (data[*cursor] == '+' ||
+            data[*cursor] == '-' || data[*cursor] == '.' ||
+            (data[*cursor] >= '0' && data[*cursor] <= '9') ||
+            data[*cursor] == 'e' || data[*cursor] == 'E')) {
+        (*cursor)++;
+    }
+    count = *cursor - start;
+    if (count == 0 || count >= sizeof(token)) {
+        return 0;
+    }
+    memcpy(token, data + start, count);
+    token[count] = '\0';
+    value = strtod(token, &end);
+    if (end != token + count || value != value ||
+            value < -PIMAGE_SVG_VIEWBOX_VALUE_MAX ||
+            value > PIMAGE_SVG_VIEWBOX_VALUE_MAX) {
+        return 0;
+    }
+    *out_value = (float) value;
+    return 1;
+}
+
+static int pimage_svg_viewbox_ratio(const char *data, size_t len,
+        float *out_width, float *out_height)
+{
+    size_t scan_len;
+    size_t i;
+    size_t end;
+    size_t cursor;
+    size_t name_start;
+    size_t name_len;
+    size_t value_start;
+    size_t value_end;
+    char quote;
+    const char *name;
+    int closing;
+    float min_x;
+    float min_y;
+    float view_width;
+    float view_height;
+
+    if (out_width != NULL) {
+        *out_width = 0.0f;
+    }
+    if (out_height != NULL) {
+        *out_height = 0.0f;
+    }
+    if (data == NULL || len == 0 || out_width == NULL ||
+            out_height == NULL) {
+        return 0;
+    }
+    scan_len = len;
+    if (scan_len > PIMAGE_SVG_VIEWBOX_SCAN_MAX) {
+        scan_len = PIMAGE_SVG_VIEWBOX_SCAN_MAX;
+    }
+    i = 0;
+    while (i < scan_len) {
+        if (data[i] != '<') {
+            i++;
+            continue;
+        }
+        end = pimage_svg_tag_end(data, scan_len, i);
+        if (end <= i || end > scan_len) {
+            return 0;
+        }
+        if (!pimage_svg_tag_name(data, i, end, &name, &name_len,
+                &closing) || closing || !pimage_svg_word_equal(name,
+                name_len, "svg")) {
+            i = end;
+            continue;
+        }
+        cursor = (size_t) (name - data) + name_len;
+        while (cursor < end - 1) {
+            while (cursor < end - 1 && (pimage_svg_is_space(data[cursor]) ||
+                    data[cursor] == '/')) {
+                cursor++;
+            }
+            if (cursor >= end - 1) {
+                break;
+            }
+            name_start = cursor;
+            while (cursor < end - 1 && pimage_svg_is_name_char(
+                    data[cursor])) {
+                cursor++;
+            }
+            name_len = cursor - name_start;
+            while (cursor < end - 1 && pimage_svg_is_space(data[cursor])) {
+                cursor++;
+            }
+            if (name_len == 0 || cursor >= end - 1 || data[cursor] != '=') {
+                while (cursor < end - 1 && !pimage_svg_is_space(data[cursor])) {
+                    cursor++;
+                }
+                continue;
+            }
+            cursor++;
+            while (cursor < end - 1 && pimage_svg_is_space(data[cursor])) {
+                cursor++;
+            }
+            if (cursor >= end - 1 || (data[cursor] != '\'' &&
+                    data[cursor] != '"')) {
+                return 0;
+            }
+            quote = data[cursor++];
+            value_start = cursor;
+            while (cursor < end - 1 && data[cursor] != quote) {
+                cursor++;
+            }
+            if (cursor >= end - 1) {
+                return 0;
+            }
+            value_end = cursor;
+            cursor++;
+            if (name_len != 7 || memcmp(data + name_start, "viewBox", 7) !=
+                    0) {
+                continue;
+            }
+            cursor = value_start;
+            if (!pimage_svg_parse_viewbox_number(data, value_end, &cursor,
+                    &min_x) || !pimage_svg_parse_viewbox_number(data,
+                    value_end, &cursor, &min_y) ||
+                    !pimage_svg_parse_viewbox_number(data, value_end,
+                    &cursor, &view_width) ||
+                    !pimage_svg_parse_viewbox_number(data, value_end,
+                    &cursor, &view_height) || view_width <= 0.0f ||
+                    view_height <= 0.0f) {
+                return 0;
+            }
+            (void) min_x;
+            (void) min_y;
+            *out_width = view_width;
+            *out_height = view_height;
+            return 1;
+        }
+        return 0;
+    }
+    return 0;
+}
+
 BOOL WINAPI DllMain(HANDLE instance, DWORD reason, LPVOID reserved)
 {
     (void) instance;
@@ -824,6 +991,8 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
     DWORD started;
     DWORD phase_started;
     int normalize_result;
+    float viewbox_width;
+    float viewbox_height;
 
     if (out_svg == NULL) {
         return PIMAGE_ERROR_ARGUMENT;
@@ -837,6 +1006,14 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
     }
     if (viewport_h <= 0) {
         viewport_h = 150;
+        if (pimage_svg_viewbox_ratio(data, (size_t) len, &viewbox_width,
+                &viewbox_height)) {
+            viewbox_height = (float) viewport_w * viewbox_height /
+                    viewbox_width;
+            if (viewbox_height >= 1.0f && viewbox_height <= 1000000.0f) {
+                viewport_h = (int) (viewbox_height + 0.5f);
+            }
+        }
     }
     normalized_data = NULL;
     normalize_result = pimage_svg_normalize_class_styles(data, (size_t) len,

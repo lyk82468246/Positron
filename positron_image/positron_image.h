@@ -162,7 +162,9 @@ PIMAGE_API void PImage_FreeSvg(PIMAGE_SVG svg);
 
 /* Parse an in-memory UTF-8 SVG through libsvgtiny and return its intrinsic
  * dimensions and shape count. viewport_w/viewport_h provide fallback sizing
- * for percentage or omitted dimensions; non-positive values use 300x150.
+ * for percentage or omitted dimensions. A non-positive width uses 300px; a
+ * non-positive height uses the root viewBox aspect ratio when that bounded
+ * attribute is valid, otherwise 150px. Explicit SVG width/height still win.
  * Returns PIMAGE_OK or PIMAGE_ERROR_SVG_BASE + svgtiny_code. */
 PIMAGE_API int PImage_SvgInfoFromMemory(const char *data, int len,
         int viewport_w, int viewport_h, int *out_w, int *out_h,

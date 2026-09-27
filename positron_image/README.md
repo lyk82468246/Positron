@@ -51,7 +51,10 @@ viewBox 和 viewport 尺寸；简单 class 规则得到的 `display:none` 子树
 `display:inline` 保持默认可见。它不是 CSS cascade：复杂选择器、`@media`、伪类、完整继承
 和其他 SVG 样式语义仍不支持；超预算或无法安全规范化的输入 fail closed。完整 IANA 首页与
 header fixture 的路径数量、颜色边界、隐藏 Text_Paths 和重复释放/重解析由 TEST1315 覆盖。
-CSS background-image 的尺寸、定位和页面资源生命周期仍由 Core/宿主负责，不能由此接口推断。
+当调用者把 viewport 宽或高留空时，根 `viewBox` 会在有界扫描中提供固有宽高比；无效或超预算
+的 viewBox 仍回退到 300x150。这样没有显式 width/height 的 IANA SVG 不会先被错误地压成
+2:1 画布。CSS background-image 的尺寸、定位和页面资源生命周期仍由 Core/宿主负责，不能由
+此接口推断。
 
 ## 示例与验证
 

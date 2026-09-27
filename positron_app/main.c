@@ -2658,6 +2658,13 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             continue;
         }
         if (request->commit_stage == APP_NAV_COMMIT_STYLE) {
+            /* Media queries are evaluated while Core selects computed styles,
+             * not when the later layout pass starts.  Install the physical
+             * device viewport before collecting/selecting the candidate page;
+             * otherwise a freshly navigated WM6 page is styled with the
+             * previous/default viewport and responsive assets (for example
+             * IANA's 128px header SVG) remain on the desktop branch. */
+            PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_REQUIRED;
             request->resource_role_mask =

@@ -156,7 +156,9 @@ tests=1-5 7b 13 20,999
 - TEST1315 是自动的 exact-IANA Image 回归：它从可执行文件旁的 tracked fixture 读取完整
   `iana-logo-homepage.svg` 与 `iana-logo-header-notext.svg`，保留 XML prolog/DOCTYPE、
   `450x175` 与负 viewBox、多个 class、六个渐变、`display:none` 的 `Text_Paths` group，
-  并检查可见 path 数量、非白像素边界、绿/蓝像素、重复绘制和释放后的重新解析。TEST1314
+  并检查可见 path 数量、非白像素边界、绿/蓝像素、重复绘制和释放后的重新解析；额外以
+  `viewport_w=0, viewport_h=0` 验证两个 viewBox-only 文件回退为保持比例的 300x117，而不是
+  历史 300x150。TEST1314
   只使用三条人工构造的简化 path，无法触发真实文件的长路径、隐藏 group 和多渐变边界，因而
   即使它通过也不能证明 IANA 首页 Logo 完整。
 - TEST1316 是自动的 Core/GDI 背景图回归：一个 intrinsic `160x80`、只在下半部绘制绿色路径
@@ -165,6 +167,10 @@ tests=1-5 7b 13 20,999
   会被 intrinsic 高度裁掉的下半部可见。它覆盖的是 Core 的有界响应式 SVG 背景适配，不宣称
   完整 `background-size`/`cover`、多层背景、重复背景或浏览器级 CSS 兼容；真实 `positron.exe`
   页面仍需设备视觉门确认。
+- TEST1317 是自动的 exact-IANA Core 背景回归：它使用完整 homepage/header fixture 和首页
+  响应式 `h1` 规则，在 320px 设备视口下必须选中 128x50 的 header SVG，并断言完整宽高边界及
+  绿/蓝像素。它证明 Image 固有比例与 Core background fit 已接线，不替代 `positron.exe` 的
+  网络页面视觉验收。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考
