@@ -56733,17 +56733,20 @@ static BOOL test_browse(void)
         "p{margin-top:1em;margin-bottom:1em;}"
         "</style></head>"
         "<body><h1>Positron</h1>"
-        "<p>Tap a link to fetch and render a real page over HTTPS:</p>"
-        "<p><a href=\"https://example.com/\">Open example.com</a></p>"
+        "<p>TEST13 IANA route: use these canonical HTTPS links.</p>"
         "<p><a href=\"https://www.iana.org/help/example-domains\">"
-        "Open IANA Example Domains (canonical HTTPS)</a></p>"
+        "1. Open IANA Example Domains (canonical HTTPS)</a></p>"
+        "<p><a href=\"https://www.iana.org/domains/reserved\">"
+        "2. Open IANA Reserved Domains (canonical HTTPS)</a></p>"
+        "<p><a href=\"https://example.com/\">"
+        "Optional: open example.com separately</a></p>"
         "<p><a href=\"https://raw.githubusercontent.com/lyk82468246/"
         "Positron/main/test_host/fixtures/network-svg.html\">"
         "Open network SVG fixture</a></p>"
-        "<p>On the fetched page you can tap its own links too. Some hosts "
-        "may be reset by the network (GFW); that error is expected. "
-        "The HTTP client rejects an HTTPS page that redirects to plaintext; "
-        "use the canonical IANA HTTPS link above for this test.</p>"
+        "<p>Some hosts may be reset by the network (GFW); that error is "
+        "expected. Do not use the example.com IANA link for the TEST13 "
+        "route: if it redirects HTTPS to plaintext, the HTTP client rejects "
+        "it by design.</p>"
         "<p>Tap empty space (or press Esc) to close.</p>"
         "</body></html>";
 
@@ -56792,10 +56795,10 @@ static BOOL test_browse(void)
     cstr_copy(g_cur_path, sizeof(g_cur_path), "/");
 
     show_info(L"TEST 13",
-              "A start page opens. Open example.com for general Browse,\n"
-              "the canonical IANA HTTPS page, or the network SVG fixture.\n\n"
-              "The HTTP client rejects HTTPS -> HTTP redirects; do not use\n"
-              "iana.org/domains/example as the IANA starting URL.\n\n"
+              "Use the first two links for the controlled IANA route:\n"
+              "Example Domains, then Reserved Domains. Both are canonical\n"
+              "HTTPS URLs. The example.com link is optional and separate.\n\n"
+              "The HTTP client rejects HTTPS -> HTTP redirects by design.\n\n"
               "Press Left to reload the previous successful GET page.\n"
               "Tap empty space or press Esc to close.");
 
