@@ -137,7 +137,9 @@ PIMAGE_API void PImage_BitmapLastError(int *out_stage,
         unsigned long *out_hr);
 
 /* Parse and retain an in-memory UTF-8 SVG. The caller keeps ownership of the
- * input bytes; the returned opaque object owns all parsed data. */
+ * input bytes; the returned opaque object owns all parsed data. A bounded
+ * class-only <style> compatibility pass may normalize supported paint rules
+ * to inline style; this is not a general CSS cascade. */
 PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
         int viewport_w, int viewport_h, PIMAGE_SVG *out_svg);
 

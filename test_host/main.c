@@ -60,6 +60,8 @@
 
 extern BOOL test1312_media_wav_callback_contract(void);
 extern BOOL test1313_core_image_pending_retry_contract(void);
+extern BOOL test1314_iana_svg_direct_render(void);
+extern const char *test1314_iana_svg_last_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -554,7 +556,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1313
+#define TEST_MAX_NUMBER 1314
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -115570,6 +115572,16 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1313 FAIL",
                         "Core image pending/retry and terminal failure contract failed.");
+            }
+            break;
+        case 1314:
+            ok = test1314_iana_svg_direct_render();
+            if (ok) {
+                show_info(L"TEST 1314 OK",
+                        "IANA-style SVG class, gradient and retained draw probe passed.");
+            } else {
+                show_error(L"TEST 1314 FAIL",
+                        test1314_iana_svg_last_error());
             }
             break;
         default: ok = FALSE; break;

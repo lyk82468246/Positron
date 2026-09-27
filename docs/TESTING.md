@@ -148,6 +148,11 @@ tests=1-5 7b 13 20,999
   把成功 bytes 写入 Core cache，完成 SVG 解码并生成 image box，同时终态失败不得重复
   callback；第三次扫描还必须保持缓存命中。该夹具不证明 HTTP 下载、相对 URL 解析或真实
   设备上的图片绘制。
+- TEST1314 是自动的 `positron_image` 直接绘制回归：它使用从当前 IANA 首页与 header SVG
+  提取的离线最小夹具，覆盖 `<style>` class 的绿色/蓝色 paint、渐变引用、无显式
+  width/height 的 viewBox viewport、`preserveAspectRatio`、重复 retained draw，以及坏 SVG
+  不留下句柄。它验证 class 样式缺口属于 Image DLL，并不把 Core 的 CSS background-image
+  尺寸/定位或 `positron.exe` 真实页面视觉写成已完成。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

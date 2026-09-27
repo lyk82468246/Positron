@@ -14,11 +14,10 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 ## 当前里程碑
 
 当前中期里程碑仍是把 Core、Browser、HTTP/TLS、媒体与 WM6 应用接线收束为有界运行时。本批
-插入的短期纵切是 `positron_core.dll` 异步图片资源 pending/retry：在不破坏旧 ABI 的前提下
-让应用能把 worker 完成后的 SVG/PNG/JPEG/GIF bytes 重新提交到 Core cache 并布局；离线和
-TEST1313 设备门已通过，真实 `positron.exe` 图片页面仍待观察。Media 的 DirectShow callback
-source filter/native 视频生命周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实
-保持不变。
+继续收束图片纵切：`positron_core.dll` 的异步 pending/retry 已完成，`positron_image.dll` 现在
+能在不破坏旧 ABI 的前提下消费 IANA 风格的简单 SVG class paint/gradient；真实
+`positron.exe` 图片页面仍待观察。Media 的 DirectShow callback source filter/native 视频生命
+周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实保持不变。
 
 ## 当前源码事实
 
@@ -45,6 +44,13 @@ source filter/native 视频生命周期仍是独立后续边界；此前 HTTP(S)
   `PCoreFetchFn` ABI 不变。PENDING 不再写入终态失败 cache，后续扫描会重新调用 callback。
   `test_host` 新增 TEST1313 离线回归，证明 pending SVG 第二次扫描成功解码、生成 image box，
   而终态失败不重试。图片在设备上可见性仍未形成设备证据。
+- `positron_image.dll` 的 `PImage_CreateSvgFromMemory()` 增加了有界、class-only 的 `<style>`
+  兼容预处理：简单 `.name { paint-property: value; }` 规则会合并为行内 style，再交给
+  libsvgtiny；不实现通用 CSS cascade，也不改变任何公开 ABI。它覆盖 IANA 首页/页眉 SVG
+  使用的 class fill、渐变引用、viewBox/viewport 和重复 retained draw；超预算、复杂选择器或
+  无法安全规范化的输入 fail closed。`test_host` TEST1314 的诊断先复现了两个 SVG 全黑，修复后
+  采样到绿色/蓝色/非黑渐变且坏 SVG 句柄为空，证明根因在 Image DLL 而非 Core background
+  image 尺寸或 HTTP/应用接线。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -64,9 +70,9 @@ source filter/native 视频生命周期仍是独立后续边界；此前 HTTP(S)
 
 ## 文档与路线图
 
-本批更新了 Core 图片资源 README、架构/能力矩阵、测试合同和当前状态，并复核 `.agents/ROADMAP.md`：图片
-pending/retry 的 DLL 纵切与 TEST1313 离线证据已完成，阶段 B 候选只保留应用图片可见性设备门
-和原有 Media 未完成边界；不得把离线 decode 证据写成设备视觉通过。
+本批更新了 `positron_image` README、能力矩阵、测试合同和当前状态，并复核 `.agents/ROADMAP.md`：
+IANA class-style 的 Image DLL 纵切与 TEST1314 自动/设备证据已完成，阶段 B 候选只保留应用图片
+可见性设备门和原有 Media 未完成边界；不得把离线 decode 证据写成设备视觉通过。
 
 ## 已验证的自动证据
 
@@ -88,6 +94,12 @@ pending/retry 的 DLL 纵切与 TEST1313 离线证据已完成，阶段 B 候选
   `tmp/device-runs/20260927-165241-image-pending-retry` 在 Microsoft DeviceEmulator 上以
   `1313,999` 定向门通过，selected/observed `2/2`、零 ERROR/FAIL、唯一 `TESTBENCH PASS`、
   `core_module_check=PASS`、双空间预检通过且无新增 dump。
+- `test_host` TEST1314：直接调用 `PImage_CreateSvgFromMemory()`/`PImage_DrawSvg()`，覆盖 IANA
+  风格 class paint、渐变、viewBox/viewport、无显式尺寸、重复绘制和坏 SVG 句柄；诊断门先在
+  `tmp/device-runs/20260927-185713-image-iana-diagnostic` 复现 class 样式导致的全黑，再由
+  `tmp/device-runs/20260927-190652-image-iana-final` 以 `1314,999` 通过，selected/observed
+  `2/2`、零 ERROR/FAIL、唯一 `TESTBENCH PASS`、双空间预检通过、`core_module_check=PASS`、
+  `crash_check=PASS` 且无新增 dump。
 
 ## 设备证据与限制
 
@@ -124,9 +136,11 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
   直播协议明确排除。
 - 脚本自行构造的 File/Blob 尚未形成 Browser FormData 到 Core multipart 的公共转换；native
   picker 的源码接线不能写成已完成的设备上传基线。
-- EXE 图片资源事务的恢复阶段、相对 URL 解析和 Core pending/retry 契约已按 TEST13 的宿主顺序
+- EXE 图片资源事务的恢复阶段、相对 URL 解析、Core pending/retry 和 Image class-style 契约已按
+  TEST13 的宿主顺序
   修正；TEST1313 已在离线 Core 中证明 pending SVG 第二次扫描可缓存、解码并布局，terminal
-  failure 不重试。最新完整包已部署并启动 `positron.exe`，但图片是否在真实应用页面上可见
+  failure 不重试，TEST1314 已在 Image DLL 直接绘制门证明 IANA 风格 SVG 不再因 class paint 变黑。
+  最新完整包已部署并启动 `positron.exe`，但图片是否在真实应用页面上可见
   仍未形成证据；现有 TEST13 成功日志可能仍显示 `optional image fallback=1`、
   `box tree/image=0`、`svg creates=0`，不能把导航完成写成图片成功。当前应在已启动的 EXE
   中打开 IANA/图片页面并检查截图与 image-state 摘要。

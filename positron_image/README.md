@@ -43,6 +43,14 @@ if (PImage_CreateBitmapFromMemory(bytes, byte_count, &bitmap) == PIMAGE_OK) {
 
 输入缓冲由调用者拥有，DLL 在需要时复制；返回对象和输出缓冲必须使用匹配的 `PImage_Free*`。保留对象具有创建线程亲和性，创建、查询、绘制和释放应在同一线程。编码器能力受设备 WM Imaging 安装情况影响，SVG 不是完整浏览器 SVG 实现。
 
+SVG 的样式边界需要特别注意：`PImage_CreateSvgFromMemory` 会在解析前把有界的、简单的
+`<style>` class 规则（例如 `.st0 { fill: #11A14E; }`）转换为元素的行内 style，从而覆盖
+libsvgtiny 不读取 class 样式导致的黑色路径。此适配支持最多 8 个 style 块、64 字节 class
+名、2 KiB 单元素声明和 256 KiB 规范化输入；只承诺 libsvgtiny 已支持的 paint 属性、渐变引用、
+viewBox 和 viewport 尺寸。它不是 CSS cascade：复杂选择器、`@media`、伪类、继承显示规则和
+完整 SVG 样式语义仍不支持；超预算或无法安全规范化的输入 fail closed。CSS background-image
+的尺寸、定位和页面资源生命周期仍由 Core/宿主负责，不能由此接口推断。
+
 ## 示例与验证
 
 `samples\positron_image_demo` 是只依赖此 DLL 的完整示例，覆盖 raw pixels、PNG、JPEG、BMP、GIF、SVG、stride、alpha 和生命周期。根解决方案构建后可运行 `scripts\stage_image_demo.bat Debug <共享目录>` 部署到模拟器。
