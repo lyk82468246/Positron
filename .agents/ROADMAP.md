@@ -241,8 +241,8 @@ TEST1314/1315 与 Core TEST1316/1317 已覆盖 IANA 风格 `<style>` class paint
 同一批 Debug 完整包已部署并通过最小 `TEST999` 门；用户已确认地址栏外框和文字下行完整性，
 但窄视口页面、脚本 mutation/事件/导航、失败、取消或过时响应的应用人工门仍待完成。本轮
 此前改变导航控制流的 candidate UI 实验因设备上地址栏回车导航无反应而撤回；当前源码在已
-验证的启动路径上改用候选级已提交 UI 快照回滚，C89、审计和 Debug 编译已通过，但尚未设备
-验收。新的独立应用网络页面门仍待部署后完成。
+验证的启动路径上改用候选级已提交 UI 快照回滚，C89、审计和 Debug 编译已通过；替代包的
+`TEST999` 启动门已通过，但网络页面人工门仍未完成。新的独立应用网络页面门仍待执行。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。

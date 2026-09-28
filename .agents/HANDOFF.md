@@ -231,7 +231,11 @@ selected/observed 为 `1/1`、`core_module_check=PASS`、`crash_check=PASS`、�
 只增加候选级已提交 UI 快照，并在当前候选失败时恢复地址和窗口标题。该实现已通过
 `python scripts/test_c89ize.py`、`python scripts/audit_repo.py` 和 Debug ARMV4I 编译；
 Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但完整动作仍在 CabWiz
-`Data files could not be created` 处失败。替代实现尚未部署或写入设备基线。
+`Data files could not be created` 处失败。随后 Debug 完整包已部署到
+`\\Storage Card\\Temp\\Positron-device-gate\\app-ui-snapshot-20260928-20260928-213123`；
+19/19 文件复制完成，`TEST999` selected/observed 为 `1/1`，`test13_route_ok=True`、
+`core_module_check=PASS`、`crash_check=PASS`、新增 dump 为 0。该目录等待
+`positron.exe` 的网络页面人工验收，不能与已撤回的旧 candidate UI 包混用。
 
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
@@ -264,10 +268,10 @@ Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但�
 
 ## 唯一下一步
 
-下一条纵切应先把当前 UI 快照替代实现做成完整 Debug stage 并部署，启动其中的 `positron.exe`，
-完成阶段 B 的真实应用网络页面门，打开 `https://www.iana.org/`，确认外部 CSS/`@import`、
-classic script、PNG/SVG 图片、`image-state`、最终 URL 和资源 required/optional gate；随后用
-无效地址、取消/过时导航和资源失败确认旧页、地址和标题均保留。若设备门失败，回到已部署的
+下一条纵切应从 `app-ui-snapshot-20260928-20260928-213123` 启动 `positron.exe`，完成阶段 B
+的真实应用网络页面门，打开 `https://www.iana.org/`，确认外部 CSS/`@import`、classic script、
+PNG/SVG 图片、`image-state`、最终 URL 和资源 required/optional gate；随后用无效地址、取消/过时
+导航和资源失败确认旧页、地址和标题均保留。若页面人工验收失败，回到已部署的
 `app-baseline-redeploy-20260928`，不要混用两个候选目录。同一批再检查窄视口 flex、旋转和
 retained-pixel 滚动。
 同一批再检查窄视口 flex、旋转和 retained-pixel 滚动。只有这条链在应用中稳定后，才进入阶段 3
