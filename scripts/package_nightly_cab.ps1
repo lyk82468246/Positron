@@ -270,7 +270,7 @@ if (-not $SkipUpload) {
     }
     & git -C $root tag -f $tag $commit
     if ($LASTEXITCODE -ne 0) { Fail "更新本地 $tag tag 失败" }
-    & git -C $root push origin "+refs/tags/$tag:refs/tags/$tag"
+    & git -C $root push origin "+refs/tags/${tag}:refs/tags/${tag}"
     if ($LASTEXITCODE -ne 0) { Fail "推送 $tag 失败" }
     & $gh release view $tag @repoArgs *> $null
     if ($LASTEXITCODE -ne 0) {
