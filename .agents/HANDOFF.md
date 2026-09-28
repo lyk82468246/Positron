@@ -76,8 +76,11 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   C89、审计及 Debug/Release ARMV4I 构建，但尚未取得设备上的流畅性人工证据。与 TEST13
   对比发现，参考宿主的实际渲染 HWND 带 `WS_CLIPCHILDREN` 并按 `PAINTSTRUCT.rcPaint` 清理；
   EXE 的页面子窗口此前缺少该样式且按完整 client 矩形清理。本轮已补齐页面子窗口裁剪和
-  `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
-  时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。
+   `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
+   时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。当前工作树又把页面脏区的
+   白底清理、Core 绘制和焦点框改为 EXE 私有兼容位图中的一次性 `BitBlt`；这只解决可见
+   窗口 DC 暴露中间帧，不改变 Core/Browser 滚动或脚本事件语义。Debug ARMV4I 正式构建
+   已通过，设备上的闪屏/撕裂人工结果仍待部署后确认。
 - `positron.exe` 现在补齐了 `test_host` TEST42 的 nested retained-overflow 输入接线：页面窗口
   先把 WM6 的按下坐标换算为 Core document 坐标并调用 `PCore_OverflowPointer(DOWN)`，随后用
   `SetCapture` 将 MOVE/UP 保持在同一窗口；每次 Core pointer 更新后读取
@@ -209,9 +212,9 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
 `test_host` `999` 门的 selected/observed 为 `1/1`，`core_module_check=PASS`、`crash_check=PASS`、
 新增 dump 为 0，部署目录已保留。设备 gate 对缺少完整日志或非 gate 命名的历史诊断目录仍按安全
 策略保留；它们不参与新包运行。该包包含页面子窗口 `WS_CLIPCHILDREN` 和 `PAINTSTRUCT.rcPaint`
-绘制边界；`positron.exe` 的 SVG 可见性和 retained-pixel 滚动仍待用户手测：长页面连续拖动时
-  应无整页闪烁/重排、暴露区域应正常补绘、native 控件应保持相对位置；旋转或真实 viewport 改变
-  仍应触发 layout。
+绘制边界；其后的工作树版本还包含页面脏区双缓冲，但尚未部署。部署后 `positron.exe` 的
+SVG 可见性和 retained-pixel 滚动仍待用户手测：长页面连续拖动时应无整页闪烁/重排、暴露
+区域应正常补绘、native 控件应保持相对位置；旋转或真实 viewport 改变仍应触发 layout。
 
 本轮地址栏字体度量修正版 Debug 包随后部署为
 `\Storage Card\Temp\Positron-device-gate\address-font-20260928-20260928-141835`，

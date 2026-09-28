@@ -120,10 +120,15 @@ static int g_file_picker_x;
 static int g_file_picker_y;
 static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
 static int g_overflow_pointer;
+static HDC g_page_paint_buffer_dc;
+static HBITMAP g_page_paint_buffer_bitmap;
+static int g_page_paint_buffer_width;
+static int g_page_paint_buffer_height;
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
         int history_target);
+static void app_page_paint_buffer_release(void);
 static int app_load_form_request(HWND hwnd, const AppFormRequest *request);
 static void app_update_history_buttons(void);
 static void app_controls_changed(void *pw);
@@ -3730,26 +3735,73 @@ static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
     return DefWindowProc(hwnd, message, wparam, lparam);
 }
 
-static void app_paint_page(HWND hwnd, HDC dc, const RECT *paint_rect)
+/* Keep the page's default paint target out of the visible window while a
+ * retained dirty region is composed.  WM6's GDI can expose the intermediate
+ * white clear when a page is painted directly into the window DC; a bounded
+ * compatible bitmap lets the user see one completed frame instead. */
+static void app_page_paint_buffer_release(void)
 {
-    RECT client;
-    RECT clear;
+    if (g_page_paint_buffer_dc != NULL) {
+        DeleteDC(g_page_paint_buffer_dc);
+        g_page_paint_buffer_dc = NULL;
+    }
+    if (g_page_paint_buffer_bitmap != NULL) {
+        DeleteObject(g_page_paint_buffer_bitmap);
+        g_page_paint_buffer_bitmap = NULL;
+    }
+    g_page_paint_buffer_width = 0;
+    g_page_paint_buffer_height = 0;
+}
+
+static int app_page_paint_buffer_prepare(HDC target, int width, int height)
+{
+    HDC buffer_dc;
+    HBITMAP buffer_bitmap;
+
+    if (target == NULL || width <= 0 || height <= 0) {
+        return 1;
+    }
+    if (g_page_paint_buffer_dc != NULL &&
+            g_page_paint_buffer_bitmap != NULL &&
+            g_page_paint_buffer_width >= width &&
+            g_page_paint_buffer_height >= height) {
+        return 0;
+    }
+    app_page_paint_buffer_release();
+    buffer_dc = CreateCompatibleDC(target);
+    if (buffer_dc == NULL) {
+        return 1;
+    }
+    buffer_bitmap = CreateCompatibleBitmap(target, width, height);
+    if (buffer_bitmap == NULL) {
+        DeleteDC(buffer_dc);
+        return 1;
+    }
+    if (SelectObject(buffer_dc, buffer_bitmap) == NULL) {
+        DeleteObject(buffer_bitmap);
+        DeleteDC(buffer_dc);
+        return 1;
+    }
+    g_page_paint_buffer_dc = buffer_dc;
+    g_page_paint_buffer_bitmap = buffer_bitmap;
+    g_page_paint_buffer_width = width;
+    g_page_paint_buffer_height = height;
+    return 0;
+}
+
+static void app_paint_page_contents(HDC dc, const RECT *client,
+        const RECT *clear)
+{
     RECT focus_rect;
     PCoreFocusTargetInfo focus_info;
     int saved;
 
-    GetClientRect(hwnd, &client);
-    if (paint_rect != NULL) {
-        clear = *paint_rect;
-    } else {
-        clear = client;
-    }
     saved = SaveDC(dc);
-    IntersectClipRect(dc, client.left, client.top,
-            client.right, client.bottom);
-    IntersectClipRect(dc, clear.left, clear.top,
-            clear.right, clear.bottom);
-    FillRect(dc, &clear, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    IntersectClipRect(dc, client->left, client->top,
+            client->right, client->bottom);
+    IntersectClipRect(dc, clear->left, clear->top,
+            clear->right, clear->bottom);
+    FillRect(dc, clear, (HBRUSH) GetStockObject(WHITE_BRUSH));
     if (g_document != NULL) {
         PCore_PaintDocument(g_document, dc, g_scroll_x, g_scroll_y);
         if (g_focus_index >= 0 && g_focus_id[0] != '\0' &&
@@ -3781,6 +3833,48 @@ static void app_paint_page(HWND hwnd, HDC dc, const RECT *paint_rect)
         }
     }
     RestoreDC(dc, saved);
+}
+
+static void app_paint_page(HWND hwnd, HDC dc, const RECT *paint_rect)
+{
+    RECT client;
+    RECT clear;
+    int width;
+    int height;
+
+    GetClientRect(hwnd, &client);
+    if (paint_rect != NULL) {
+        clear = *paint_rect;
+    } else {
+        clear = client;
+    }
+    if (clear.left < client.left) {
+        clear.left = client.left;
+    }
+    if (clear.top < client.top) {
+        clear.top = client.top;
+    }
+    if (clear.right > client.right) {
+        clear.right = client.right;
+    }
+    if (clear.bottom > client.bottom) {
+        clear.bottom = client.bottom;
+    }
+    width = clear.right - clear.left;
+    height = clear.bottom - clear.top;
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+    if (app_page_paint_buffer_prepare(dc, width, height) != 0) {
+        app_paint_page_contents(dc, &client, &clear);
+        return;
+    }
+    SetViewportOrgEx(g_page_paint_buffer_dc, -clear.left, -clear.top,
+            NULL);
+    app_paint_page_contents(g_page_paint_buffer_dc, &client, &clear);
+    SetViewportOrgEx(g_page_paint_buffer_dc, 0, 0, NULL);
+    BitBlt(dc, clear.left, clear.top, width, height,
+            g_page_paint_buffer_dc, 0, 0, SRCCOPY);
 }
 
 static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
@@ -4203,6 +4297,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             AppControls_Destroy(g_controls);
             g_controls = NULL;
         }
+        app_page_paint_buffer_release();
         AppHostContext_Shutdown(&g_app);
         PostQuitMessage(0);
         return 0;

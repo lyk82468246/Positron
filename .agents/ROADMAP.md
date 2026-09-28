@@ -133,12 +133,13 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
    和真实 viewport 变化才进入完整 layout。该宿主修正已通过 C89、审计及 Debug/Release ARMV4I
    构建；Debug 完整包已部署并通过最小 `test_host` `999` 门，设备上的 `positron.exe` 连续拖动、
    SVG 可见性及旋转/DPI 人工门仍待完成。与 TEST13 对比后，页面子窗口已补上
-   `WS_CLIPCHILDREN`，页面绘制也显式限制到 `PAINTSTRUCT.rcPaint`；ScriptSession 的 scroll
-   事件仍保持语义，脚本造成的 DOM mutation 不会被错误地当作纯滚动而屏蔽。针对 TEST42 暴露的
+    `WS_CLIPCHILDREN`，页面绘制也显式限制到 `PAINTSTRUCT.rcPaint`，并在 EXE 私有兼容位图中
+    完成脏区后一次 `BitBlt`；ScriptSession 的 scroll 事件仍保持语义，脚本造成的 DOM mutation
+    不会被错误地当作纯滚动而屏蔽。针对 TEST42 暴露的
    nested retained-overflow 输入缺口，EXE 也已接入 `PCore_OverflowPointer` 的 DOWN/MOVE/UP、
    `SetCapture`、`PCore_OverflowDirtyRect` 和 Browser element-scroll notification；Core 仍拥有
    命中与滚动条几何，EXE 不自绘滚动条。该路径已通过 C89、审计和 Debug 编译，设备上的实际
-   横向拖动仍须在旧进程退出后人工确认。
+    横向拖动和双缓冲对 WM6 闪屏/撕裂的改善仍须在旧进程退出后用新包人工确认。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，
