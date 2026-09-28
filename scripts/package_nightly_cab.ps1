@@ -277,13 +277,33 @@ if (-not $SkipUpload) {
     & $gh release view $tag @repoArgs *> $null
     $releaseViewExitCode = $LASTEXITCODE
     $ErrorActionPreference = $releaseViewErrorAction
+    $releaseAssetNames = @(
+        [IO.Path]::GetFileName($generatedCab),
+        [IO.Path]::GetFileName($finalReadme),
+        [IO.Path]::GetFileName($finalSums)
+    )
+    $releaseWorkDirectory = Split-Path -Parent $generatedCab
     if ($releaseViewExitCode -ne 0) {
-        & $gh release create $tag $generatedCab $finalReadme $finalSums @repoArgs --title "Positron nightly CAB" --notes "Rolling nightly CAB for WM6 ARMV4I." --prerelease
+        Push-Location -LiteralPath $releaseWorkDirectory
+        try {
+            & $gh release create $tag @releaseAssetNames @repoArgs --title "Positron nightly CAB" --notes "Rolling nightly CAB for WM6 ARMV4I." --prerelease
+            $releaseExitCode = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
     }
     else {
-        & $gh release upload $tag $generatedCab $finalReadme $finalSums @repoArgs --clobber
+        Push-Location -LiteralPath $releaseWorkDirectory
+        try {
+            & $gh release upload $tag @releaseAssetNames @repoArgs --clobber
+            $releaseExitCode = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
     }
-    if ($LASTEXITCODE -ne 0) { Fail "nightly-cab release 上传失败" }
+    if ($releaseExitCode -ne 0) { Fail "nightly-cab release 上传失败" }
 }
 
 Write-Host "CAB 完成：$generatedCab"
