@@ -75,7 +75,10 @@ fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另
 执行 Core layout 或 SELECT/toggle 状态同步；WM_SIZE、Core/DOM mutation 和真实 viewport 变化仍
 进入完整 layout。源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
 native/script submit/reset、POST/multipart/dialog、file picker、网络导航/失败回滚及原生控件；
-SIP/IME 不因该接线而宣称完成。
+SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗口体系的子控件，外框按客户区
+从 x=0 铺满宽度，高度经实际字体、客户区留白和边框换算并按 DPI 更新；EXE 不再额外加入 inset，
+以免旋转或重绘后留下 stale 像素。地址栏外框和文字下行完整性已通过当前 WM6 设备人工验收；
+旋转/DPI 的累计人工矩阵仍需继续覆盖。
 后续
 接线顺序与阶段门见
 [`positron_app/INTEGRATION_PLAN.md`](../positron_app/INTEGRATION_PLAN.md)。
@@ -151,7 +154,7 @@ FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载�
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
-| HTML/CSS parse、style、layout、page extent 和 GDI paint | `PCore_ParseHTML`、`PCore_ParseCSS`、`PCore_StyleDocument[Ex]`、`PCore_LayoutDocument`、`PCore_PaintDocument*` | 已实现但有界 | 资源、节点、字符串、layout 和 paint 使用项目固定上限；parse/style/layout 失败不泄漏 handle | Core 离线 corpus、正式构建和设备视觉/自动门组合 |
+| HTML/CSS parse、style、layout、page extent 和 GDI paint | `PCore_ParseHTML`、`PCore_ParseCSS`、`PCore_StyleDocument[Ex]`、`PCore_LayoutDocument`、`PCore_PaintDocument*` | 已实现但有界 | 资源、节点、字符串、layout 和 paint 使用项目固定上限；parse/style/layout 失败不泄漏 handle；纵向、自动主轴且子项 `flex-basis:0` 时，已布局实际高度计入父容器 | Core 离线 corpus、正式构建和设备视觉/自动门组合；TEST39 增加 footer 不得覆盖 column-flex 子项的几何断言 |
 | 图片发现、异步 fetch/cache、解码与 image box | `PCore_FetchImageResources`、`PCore_FetchImageResourcesEx`、image relation/layout APIs | 已实现但有界 | 旧入口保持同步非零终态失败；Ex 用 READY/PENDING/TERMINAL_FAIL，PENDING 不写 failed cache；cache、SVG/PNG/JPEG/GIF 解码和布局受固定预算，未知状态、坏 body、超限和终态失败 fail closed | TEST18/20/27、TEST1313 离线与 `1313,999` 设备门；真实应用网络图片可见性仍需应用页面门 |
 | DOM/attribute/CharacterData/HTML mutation | `PCore_Node*ById`、relation、serialization 和 Ex mutation callbacks | 已实现但有界 | 失败前预检 id、节点形状、深度、child 数、UTF-8 和容量；成功后 layout retained 失效 | TEST1284–1298 及设备门；通用 Node/Fragment mutation 仍不承诺 |
 | form owner、validation、selection、reset、modal 和 successful-control snapshot | `PCore_Form*`、`PCore_NodeFormControl*`、interaction/focus APIs | 已实现但有界 | owner、listed controls、fieldset/option state 和提交快照有界；非法/stale target fail closed | TEST1170–1188、1301–1302 和设备门 |

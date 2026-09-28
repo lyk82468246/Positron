@@ -233,8 +233,13 @@ TEST1314/1315 与 Core TEST1316/1317 已覆盖 IANA 风格 `<style>` class paint
 `1315-1317,999` 的匹配 DLL 设备门已通过，TEST1317 用 128 DPI 的物理像素对照证明 Core
 重复路径会缩放 CSS 像素 tile。最新纵切把 viewBox-only SVG 的自然画布收束为合法根 viewBox
 的圆整宽高，并用 Core 与 Image 直接绘制逐像素比较防止旧 300x117 背景 tile；仍必须通过
-新的应用包视觉门，才能把真实 `positron.exe` 页面边界写成完成。随后再确认脚本 mutation/事件/导航、失败、取消或过时响应时
-保留旧页。
+新的应用包视觉门，才能把真实 `positron.exe` 页面边界写成完成。本轮另外修正了 EXE 地址栏
+的客户区铺满几何，并让同一 native EDIT 使用实际 `SYSTEM_FONT` 的 `TEXTMETRIC.tmHeight`
+加少量 DPI padding 定义客户区行高，再按实际边框通过 `AdjustWindowRectEx` 换算外框高度；文本
+格式矩形仍由系统控件管理。同时修正窄视口 column flex 在 `flex-basis:0` 下的 auto-height
+父容器塌陷。TEST39 已加入 footer/section 不重叠的离线断言，Debug/Release 正式重编通过，
+同一批 Debug 完整包已部署并通过最小 `TEST999` 门；用户已确认地址栏外框和文字下行完整性，
+但窄视口页面、脚本 mutation/事件/导航、失败、取消或过时响应的应用人工门仍待完成。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。

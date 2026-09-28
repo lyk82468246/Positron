@@ -43,8 +43,7 @@
 #define APP_FOCUS_MAX           APP_HOST_FOCUS_MAX
 #define APP_PAGE_CLASS_NAME     L"PositronBrowserPage"
 
-#define APP_ADDRESS_HEIGHT       28
-#define APP_ADDRESS_INSET         2
+#define APP_ADDRESS_PADDING      2
 #define APP_COMMAND_FALLBACK_HEIGHT 26
 
 #define APP_ID_ADDRESS            100
@@ -333,9 +332,91 @@ static int app_scale_dpi(int logical_pixels)
     return scaled;
 }
 
+static int app_address_font_height(HWND address)
+{
+    HDC dc;
+    HFONT font;
+    HFONT old_font;
+    TEXTMETRIC metrics;
+    int height;
+
+    if (address == NULL) {
+        return 0;
+    }
+    font = (HFONT) SendMessage(address, WM_GETFONT, 0, 0);
+    if (font == NULL) {
+        font = (HFONT) GetStockObject(SYSTEM_FONT);
+    }
+    dc = GetDC(address);
+    if (dc == NULL) {
+        return 0;
+    }
+    old_font = (HFONT) SelectObject(dc, font);
+    memset(&metrics, 0, sizeof(metrics));
+    if (!GetTextMetrics(dc, &metrics)) {
+        SelectObject(dc, old_font);
+        ReleaseDC(address, dc);
+        return 0;
+    }
+    height = metrics.tmHeight;
+    SelectObject(dc, old_font);
+    ReleaseDC(address, dc);
+    return height;
+}
+
+static int app_address_outer_height(HWND address, int client_height)
+{
+    RECT rect;
+    LONG style;
+    LONG ex_style;
+    int outer_height;
+
+    if (client_height < 1) {
+        client_height = 1;
+    }
+    memset(&rect, 0, sizeof(rect));
+    rect.right = 1;
+    rect.bottom = client_height;
+    style = WS_CHILD | WS_BORDER;
+    ex_style = 0;
+    if (address != NULL) {
+        style = GetWindowLong(address, GWL_STYLE);
+        ex_style = GetWindowLong(address, GWL_EXSTYLE);
+        if (style == 0) {
+            style = WS_CHILD | WS_BORDER;
+        }
+    }
+    if (!AdjustWindowRectEx(&rect, (DWORD) style, FALSE,
+            (DWORD) ex_style)) {
+        return client_height;
+    }
+    outer_height = rect.bottom - rect.top;
+    if (outer_height < client_height) {
+        outer_height = client_height;
+    }
+    return outer_height;
+}
+
 static int app_address_height(void)
 {
-    return app_scale_dpi(APP_ADDRESS_HEIGHT);
+    int font_height;
+    int padding;
+    int client_height;
+
+    font_height = app_address_font_height(g_address);
+    if (font_height < 1) {
+        /* This is only a pre-control/failure fallback.  The normal path uses
+         * the physical height reported for the EDIT's actual font. */
+        font_height = app_scale_dpi(16);
+    }
+    padding = app_scale_dpi(APP_ADDRESS_PADDING);
+    /* TEXTMETRIC describes the line inside the EDIT client area.  Convert
+     * that client size to the actual outer child-window size so WS_BORDER
+     * does not consume the bottom of the native line box.  The EDIT keeps
+     * its own formatting rectangle and therefore performs its normal
+     * vertical centering; the host never shifts the text. */
+    client_height = font_height + (padding * 2);
+    return app_address_outer_height(g_address, client_height);
 }
 
 static int app_command_bar_top(HWND hwnd, const RECT *client)
@@ -385,26 +466,23 @@ static void app_reposition_controls(HWND hwnd)
     RECT client;
     int address_height;
     int width;
-    int address_width;
-    int inset;
 
     GetClientRect(hwnd, &client);
     address_height = app_address_height();
-    inset = app_scale_dpi(APP_ADDRESS_INSET);
     width = client.right - client.left;
     if (width < 1) {
         width = 1;
     }
-    address_width = width - (inset * 2);
-    if (address_width < 1) {
-        address_width = 1;
-    }
     if (g_address != NULL) {
-        if (address_height - (inset * 2) < 1) {
-            address_height = (inset * 2) + 1;
+        if (address_height < 1) {
+            address_height = 1;
         }
-        MoveWindow(g_address, inset, inset, address_width,
-                address_height - (inset * 2), TRUE);
+        /* The address EDIT is a child of the same top-level window as the
+         * command bar and page.  Keep its outer rectangle flush with the
+         * client edge; WS_BORDER already supplies the control's own border.
+         * An EXE-side inset leaves stale pixels behind after rotation and
+         * makes the page origin disagree with the address control's bottom. */
+        MoveWindow(g_address, 0, 0, width, address_height, TRUE);
     }
 }
 
@@ -3986,6 +4064,8 @@ static int app_create_controls(HWND hwnd)
     if (address == NULL) {
         return 1;
     }
+    SendMessage(address, WM_SETFONT, (WPARAM) GetStockObject(SYSTEM_FONT),
+            TRUE);
     original_proc = (WNDPROC) SetWindowLong(address,
             GWL_WNDPROC, (LONG) app_address_proc);
     AppHostContext_SetAddress(&g_app, address, original_proc);

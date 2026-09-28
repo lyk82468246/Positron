@@ -33,7 +33,7 @@
 ## HTML、CSS 与布局
 
  - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
- - CSS Grid、完整 float、完整 positioned layout、复杂 table/caption/column/baseline、完整 generated content 与自定义 counter style 未覆盖。
+ - CSS Grid、float/positioned、table/caption/column/baseline、generated/counter 未覆盖；TEST39 断言 flex auto-height 不重叠。
  - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser 脚本 selector 目前只覆盖简单 compound selector、顶层逗号列表、后代/子代/相邻兄弟/一般兄弟组合器，六类有界属性匹配，`:checked` 的 input/option 状态、`:valid`/`:invalid` 的 form 与可验证控件状态、有界 `:in-range`/`:out-of-range` 的范围验证状态，以及只接受单一简单 compound 参数的 `:not()`、`:is()`/`:where()` 的最多 16 个简单 compound 分支、`:has()` 的最多 16 个相对简单 compound 分支、有界 `:target` 和单一语言标签的 `:lang()`；`:placeholder-shown` 只覆盖省略 `type` 或 text-like `input`（text/search/url/tel/email/password）与 textarea 的空 live value、非空 placeholder 状态；空 placeholder、其他 input 类型、普通元素和带参数形式均不匹配；范围伪类只支持非空且受约束的 input number/range/date/month/week/time/datetime-local，空值、bad/type mismatch、disabled/readonly、无范围限制、非 input 和单独 stepMismatch 均不匹配；注册 interaction callback 后还可读取 Core 精确 active/hover 节点的 `:active`/`:hover`，不等于 CSS selector 引擎的完整语法。
 - `:scope` 是同一 selector 子集中的有界 context 扩展：element query 的 receiver 作为 scope，带直接、无参数 `:scope` 的 selector 可以把 owner 放在结果首位，并支持 `:scope > ...`/`:scope ...` 的子代与后代关系；无 scope 的 element query 仍排除 owner，document query 以 `document.documentElement` 为 scope，`matches()`/`closest()` 以 receiver 为 scope。嵌套参数、伪元素和完整 Selectors 语法仍 fail closed。
 - `:default` 是同一 selector 子集中的有界 form-state 扩展：checkbox/radio 只读取

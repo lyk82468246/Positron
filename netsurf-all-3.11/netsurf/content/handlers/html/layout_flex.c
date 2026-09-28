@@ -512,7 +512,17 @@ static struct flex_line_data *layout_flex__build_line(struct flex_ctx *ctx,
 		    line->count == 0 ||
 		    pos_main == 0) {
 			if (lh__box_is_absolute(item->box) == false) {
-				line->main_size += item->main_size;
+				/* With an indefinite main size, a column flex container
+				 * must contribute the laid-out content height to its own
+				 * auto height.  flex-basis:0 is still the item's flex base
+				 * size, but it must not collapse the container while the
+				 * item is being positioned from its intrinsic height. */
+				if (ctx->horizontal == false &&
+				    ctx->available_main == AUTO) {
+					line->main_size += pos_main;
+				} else {
+					line->main_size += item->main_size;
+				}
 				used_main += pos_main;
 
 				if (b->margin[start_side] == AUTO) {

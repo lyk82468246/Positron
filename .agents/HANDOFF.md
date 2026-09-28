@@ -19,6 +19,14 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 没有显式宽高的 SVG 固有比例；Core 的高 DPI 重复 SVG 背景 tile 也已按设备 DPI 缩放。真实
 `positron.exe` 图片页面仍待人工观察。Media 的 DirectShow callback source filter/native 视频
 生命周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实保持不变。
+本轮又处理了同一 IANA 页面截图暴露的两处几何问题：EXE 地址栏不再使用私有 inset，并改为
+使用 native EDIT 实际 `SYSTEM_FONT` 的 `TEXTMETRIC.tmHeight` 加少量 DPI 留白计算外框高度；Core
+纵向 auto-height flex 在子项 `flex-basis:0` 时改用已布局实际高度贡献父容器。字体度量后的地址栏
+外框已进入上一批 Debug/Release 构建；最新截图又发现 native EDIT 内部文本格式矩形偏低；本轮已
+撤销按 DPI 上移内部格式矩形的临时修正，改为以实际 EDIT 字体的客户区行高加对称 DPI 留白，再用
+`AdjustWindowRectEx` 按控件实际边框换算外框高度。文本继续由 native EDIT 自己垂直居中，不再调用
+`EM_SETRECTNP`。该修正版已通过 C89、审计和 Debug/Release 增量构建，并已部署到新的设备隔离目录；
+`TEST999` 已通过，用户已确认新修正版 `positron.exe` 的地址栏文字上下边界和外框高度符合预期。
 
 ## 当前源码事实
 
@@ -66,6 +74,17 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   EXE 的页面子窗口此前缺少该样式且按完整 client 矩形清理。本轮已补齐页面子窗口裁剪和
   `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
   时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。
+- 最新截图中的地址栏 stale 空隙已在 `positron_app/main.c` 移除 EXE inset：原生 EDIT 现在从
+  客户区 x=0 铺满宽度，显式使用 `SYSTEM_FONT`，并从 `WM_GETFONT`/`GetTextMetrics().tmHeight`
+  读取实际字体高度，并把客户区行高和少量 DPI 缩放 padding 通过 `AdjustWindowRectEx` 换算为
+  native EDIT 外框高度，不再把固定的 28 个逻辑像素直接放大；文本格式矩形仍由系统控件管理。
+  截图中绿色箭头对应的 footer 覆盖则定位为 Core NetSurf 纵向 auto-height flex 的父高度塌陷；
+  `layout_flex.c` 已按实际 `pos_main` 修正，TEST39 增加离线 section/footer 几何断言。两项及
+  本轮字体度量修正均已通过 C89、审计和 Debug/Release 构建；最新 Debug 完整包已随设备门部署，
+  用户已确认地址栏字体和外框视觉符合预期，但完整网络页面仍缺少应用视觉证据。针对最新截图的修正版已经移除 `EM_GETRECT`/
+  `EM_SETRECTNP` 内部上移操作，改为用 `AdjustWindowRectEx` 把客户区行高转换为 native EDIT 外框；
+  该版本已进入最新远端包；设备门只证明包完整、Core 模块匹配和启动回归通过，网络页面的资源、脚本
+  和滚动视觉仍需单独验收。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -136,6 +155,14 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 - 同一批 Debug staging 已复制到外置 `Storage Card\Temp\Positron-device-gate\iana-app-20260927`，
   并通过 RAPI 成功启动 `positron.exe`；启动成功只证明匹配的 EXE/DLL 能运行，IANA 首页的
   实际网络图片仍需用户在该应用窗口中导航后进行视觉确认。
+- 本轮 Debug 完整包已部署到当前 WMDC 设备：本地 stage 为
+  `tmp/device-runs/20260928-141835-address-font-20260928/stage`，EXE SHA-256 为
+  `69FA22C72ABBBAC3405F466C8D7FC801175570CBCFDA11F15583E5F24E100CD4`，与
+  `positron_app/bin/Debug/positron.exe` 一致；远端目录为
+  `\Storage Card\Temp\Positron-device-gate\address-font-20260928-20260928-141835`。
+  设备门 `TEST999` selected/observed 为 `1/1`、`core_module_check=PASS`、
+  `crash_check=PASS`、新增 dump 为 0；目录按诊断保留，但这仍不等于 `positron.exe` 页面视觉
+  验收。
 
 ## 设备证据与限制
 
@@ -168,8 +195,24 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
 新增 dump 为 0，部署目录已保留。设备 gate 对缺少完整日志或非 gate 命名的历史诊断目录仍按安全
 策略保留；它们不参与新包运行。该包包含页面子窗口 `WS_CLIPCHILDREN` 和 `PAINTSTRUCT.rcPaint`
 绘制边界；`positron.exe` 的 SVG 可见性和 retained-pixel 滚动仍待用户手测：长页面连续拖动时
-应无整页闪烁/重排、暴露区域应正常补绘、native 控件应保持相对位置；旋转或真实 viewport 改变
-仍应触发 layout。
+  应无整页闪烁/重排、暴露区域应正常补绘、native 控件应保持相对位置；旋转或真实 viewport 改变
+  仍应触发 layout。
+
+本轮地址栏字体度量修正版 Debug 包随后部署为
+`\Storage Card\Temp\Positron-device-gate\address-font-20260928-20260928-141835`，
+完整复制 19/19 文件并保留远端目录；设备门只启动了同包的 `test_host` `TEST999`，没有替代
+用户对 `positron.exe` 的手动视觉验收。
+
+本轮最新地址栏外框换算修正 Debug 包已部署为
+`\Storage Card\Temp\Positron-device-gate\address-outer-20260928-20260928-201447`，
+完整复制 19/19 文件；本地证据为
+`tmp/device-runs/20260928-201447-address-outer-20260928/device-gate-result.txt`，EXE 与本地
+`positron_app/bin/Debug/positron.exe` SHA-256 均为
+`EDC5694CC55413D23318FEF77DE3DABF9D2DA1C539E467977B6B78D60961165B`。设备门 `TEST999`
+selected/observed 为 `1/1`、`core_module_check=PASS`、`crash_check=PASS`、新增 dump 为 0；
+用户已在设备上手动启动该目录中的 `positron.exe` 并确认文本上下边界符合预期。工作区另一条未提交的
+`positron_cab` `.vddproj`/`Positron.sln` 变更仍属于并行改动及其未跟踪文件，已保留且没有回退或覆盖；
+本轮 Debug/Release 正式增量构建均已成功编译并链接 `positron_app`。
 
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
@@ -196,14 +239,14 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
   [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md) 约束，合成按键不能替代人工设备验收。
 - 失败网络、重定向、资源相对 URL 和应用输入仍需设备门确认；稳定合同和测试矩阵见
   [`docs/TESTING.md`](../docs/TESTING.md)。
+- 地址栏字体度量、外框高度和文本下行完整性已由用户在当前设备确认；窄视口 IANA 首页的
+  panels/footer 不互相覆盖、旋转后的完整几何以及纯滚动不因窗口尺寸未变而重新 layout/paint
+  仍属于待完成的应用人工门。
 
 ## 唯一下一步
 
-用本轮同一批 Debug/Release staging 启动 `positron.exe`，打开 `https://www.iana.org/` 并
-确认页面的 `image-state` 摘要和 SVG 是否来自新 DLL；随后连续拖动页面滚动条，确认视窗大小不变
-时只移动 retained pixels 和暴露条带，不出现整页闪屏、重新排版或 native 控件乱飞。若 SVG 仍
-不完整，保留一张新截图和对应 image-state/日志，下一步只追踪应用实际拿到的 URL、资源终态和
-绘制矩形；若 RAPI 仍返回现有 `0x80072746`，保留源码与自动证据并报告环境阻塞，不把未运行
-写成通过。滚动和图片人工门通过后再回到 Media fixture
-（损坏/截断、非 seek、`WOULD_BLOCK`、read/seek error、FFmpeg H.264/AAC/MP3/AMR 与 AUTO
-fallback）。
+下一条纵切应先完成阶段 B 的真实应用网络页面门：从最新隔离目录启动 `positron.exe`，打开
+`https://www.iana.org/`，确认外部 CSS/`@import`、classic script、PNG/SVG 图片、`image-state`、
+最终 URL 和资源 required/optional gate；随后用无效地址、取消/过时导航和资源失败确认旧页保留。
+同一批再检查窄视口 flex、旋转和 retained-pixel 滚动。只有这条链在应用中稳定后，才进入阶段 3
+原生控件的真实键盘、SELECT popup、SIP/IME、焦点和销毁门；Media 保持更后置。

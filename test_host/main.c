@@ -59824,6 +59824,23 @@ static BOOL test39_css_variable_layout(void)
         "var(--page-margin-sm);color:#003366;}"
         "@media(width <= 1000px){article{padding:var(--space-md) "
         "var(--space-md);}aside{display:none;}}";
+    static const char *VERTICAL_HTML =
+        "<!DOCTYPE html><html><body>"
+        "<article><section><h2>Domain Names</h2>"
+        "<p>Management of the DNS Root Zone and the registry services "
+        "provided by this panel.</p><ul><li>Root Zone Registry</li>"
+        "<li>INT Registry</li><li>ARPA Registry</li></ul></section>"
+        "<section><h2>Number Resources</h2>"
+        "<p>Coordination of the global IP and AS number spaces.</p>"
+        "</section></article><footer><footnav>Footer content</footnav>"
+        "</footer></body></html>";
+    static const char *VERTICAL_CSS =
+        "html,body{margin:0;padding:0;}"
+        "article{display:flex;flex-direction:column;margin:0 10px 20px 10px;}"
+        "section{flex-grow:1;flex-basis:0;padding:10px;margin:10px;"
+        "background:#ffffff;}h2{margin:10px 0;}"
+        "p{margin:10px 0;}footer{padding:10px;background:#dddddd;}"
+        "footnav{display:block;}";
     static const int widths[2] = { 240, 320 };
     HANDLE hDoc = NULL;
     HANDLE hSheet = NULL;
@@ -59840,6 +59857,11 @@ static BOOL test39_css_variable_layout(void)
     int fy = 0;
     int fw = 0;
     int fh = 0;
+    int sx = 0;
+    int sy = 0;
+    int sw = 0;
+    int sh = 0;
+    int vy = 0;
     char msg[256];
 
     screen_dc = GetDC(NULL);
@@ -59892,6 +59914,37 @@ static BOOL test39_css_variable_layout(void)
         return FALSE;
     }
 
+    /* A narrow IANA home page changes #home-panels to a column flex
+     * container while its .home-panel children keep flex-basis:0.  The
+     * auto-height parent must still include the laid-out child heights;
+     * otherwise the following footer paints over the panels. */
+    hDoc = PCore_ParseHTML(VERTICAL_HTML, 0);
+    hSheet = PCore_ParseCSS(VERTICAL_CSS, 0,
+            "http://positron.local/iana-column-flex.css");
+    PCore_SetViewport(320, 640, 96);
+    if (hDoc == NULL || hSheet == NULL ||
+            PCore_StyleDocument(hDoc, hSheet) != 0 ||
+            PCore_LayoutDocument(hDoc, 320, 640) != 0 ||
+            PCore_NodeBox(hDoc, "section", &sx, &sy, &sw, &sh) != 0 ||
+            PCore_NodeBox(hDoc, "footer", NULL, &vy, NULL, NULL) != 0) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "column flex parse/style/layout lookup failed");
+    } else if (vy < sy + sh) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "column flex footer y=%d overlaps section bottom=%d",
+                vy, sy + sh);
+    }
+    msg[sizeof(msg) - 1] = '\0';
+    if (hSheet != NULL) { PCore_FreeStylesheet(hSheet); }
+    if (hDoc != NULL) { PCore_FreeDocument(hDoc); }
+    hSheet = NULL;
+    hDoc = NULL;
+    if (msg[0] != '\0') {
+        show_error(L"TEST 39 FAIL", msg);
+        return FALSE;
+    }
+
+    PCore_SetViewport(screen_w, screen_h, dpi);
     hDoc = PCore_ParseHTML(HTML, 0);
     hSheet = PCore_ParseCSS(CSS, 0,
             "http://positron.local/iana-spacing.css");
