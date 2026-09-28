@@ -118,6 +118,8 @@ int AppScript_SetVisibility(AppScriptContext *context, int hidden);
 int AppScript_SetFocus(AppScriptContext *context, int focused);
 int AppScript_NotifyScroll(AppScriptContext *context, int scroll_x,
         int scroll_y);
+int AppScript_NotifyElementScroll(AppScriptContext *context,
+        const char *element_id, int scroll_x, int scroll_y);
 int AppScript_NotifyResize(AppScriptContext *context, int viewport_width,
         int viewport_height, int dpi);
 int AppScript_DispatchHashNavigation(AppScriptContext *context,

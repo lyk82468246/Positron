@@ -119,6 +119,7 @@ static unsigned int g_file_picker_index;
 static int g_file_picker_x;
 static int g_file_picker_y;
 static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
+static int g_overflow_pointer;
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
@@ -657,6 +658,71 @@ static void app_scroll_by(HWND hwnd, int dx, int dy)
                     MulDiv(g_scroll_y, 96, g_dpi > 0 ? g_dpi : 96));
         }
     }
+}
+
+/* Core owns nested overflow geometry and scrollbar state.  The EXE only
+ * translates the retained dirty rectangle into the page child window so a
+ * table drag does not force a full page repaint. */
+static void app_invalidate_overflow(HWND hwnd)
+{
+    RECT client;
+    RECT dirty;
+    int x;
+    int y;
+    int w;
+    int h;
+
+    if (g_document == NULL || !PCore_OverflowDirtyRect(g_document,
+            &x, &y, &w, &h)) {
+        InvalidateRect(hwnd, NULL, FALSE);
+        return;
+    }
+    GetClientRect(hwnd, &client);
+    dirty.left = x - g_scroll_x - 1;
+    dirty.top = y - g_scroll_y - 1;
+    dirty.right = x + w - g_scroll_x + 1;
+    dirty.bottom = y + h - g_scroll_y + 1;
+    if (dirty.left < client.left) {
+        dirty.left = client.left;
+    }
+    if (dirty.top < client.top) {
+        dirty.top = client.top;
+    }
+    if (dirty.right > client.right) {
+        dirty.right = client.right;
+    }
+    if (dirty.bottom > client.bottom) {
+        dirty.bottom = client.bottom;
+    }
+    if (dirty.left < dirty.right && dirty.top < dirty.bottom) {
+        InvalidateRect(hwnd, &dirty, FALSE);
+    }
+}
+
+/* Keep Browser's element scroll state in step with Core when a retained
+ * overflow scrollbar is moved by native pointer input. */
+static void app_sync_overflow_scroll(void)
+{
+    char element_id[256];
+    int element_bytes;
+    int scroll_x;
+    int scroll_y;
+
+    if (g_document == NULL || g_script == NULL) {
+        return;
+    }
+    memset(element_id, 0, sizeof(element_id));
+    element_bytes = 0;
+    scroll_x = 0;
+    scroll_y = 0;
+    if (PCore_OverflowScrollSnapshot(g_document, element_id,
+            sizeof(element_id), &element_bytes, &scroll_x, &scroll_y) != 0 ||
+            element_bytes <= 0 || element_bytes >= (int) sizeof(element_id) ||
+            element_id[0] == '\0') {
+        return;
+    }
+    (void) AppScript_NotifyElementScroll(g_script, element_id,
+            scroll_x, scroll_y);
 }
 
 static void app_set_focus_ids(int page_kind)
@@ -3788,6 +3854,14 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             SetFocus(hwnd);
             document_x = x + g_scroll_x;
             document_y = y + g_scroll_y;
+            if (g_document != NULL && PCore_OverflowPointer(g_document,
+                    PCORE_POINTER_DOWN, document_x, document_y)) {
+                g_overflow_pointer = 1;
+                SetCapture(hwnd);
+                app_sync_overflow_scroll();
+                app_invalidate_overflow(hwnd);
+                return 0;
+            }
             if (AppControls_HandleButtonPointer(g_controls, document_x,
                     document_y)) {
                 return 0;
@@ -3861,6 +3935,39 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             }
         }
         return 0;
+    case WM_MOUSEMOVE:
+        if (g_overflow_pointer && g_document != NULL &&
+                (wparam & MK_LBUTTON) != 0) {
+            int x;
+            int y;
+
+            x = (int) (short) LOWORD(lparam);
+            y = (int) (short) HIWORD(lparam);
+            (void) PCore_OverflowPointer(g_document, PCORE_POINTER_MOVE,
+                    x + g_scroll_x, y + g_scroll_y);
+            app_sync_overflow_scroll();
+            app_invalidate_overflow(hwnd);
+            return 0;
+        }
+        break;
+    case WM_LBUTTONUP:
+        if (g_overflow_pointer) {
+            int x;
+            int y;
+
+            x = (int) (short) LOWORD(lparam);
+            y = (int) (short) HIWORD(lparam);
+            if (g_document != NULL) {
+                (void) PCore_OverflowPointer(g_document, PCORE_POINTER_UP,
+                        x + g_scroll_x, y + g_scroll_y);
+                app_sync_overflow_scroll();
+            }
+            g_overflow_pointer = 0;
+            ReleaseCapture();
+            app_invalidate_overflow(hwnd);
+            return 0;
+        }
+        break;
     case WM_VSCROLL:
         {
             int amount;

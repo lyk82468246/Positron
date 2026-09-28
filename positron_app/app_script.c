@@ -1888,6 +1888,17 @@ int AppScript_NotifyScroll(AppScriptContext *context, int scroll_x,
             scroll_y) == PSCRIPT_OK ? 0 : 1;
 }
 
+int AppScript_NotifyElementScroll(AppScriptContext *context,
+        const char *element_id, int scroll_x, int scroll_y)
+{
+    if (context == NULL || context->session == NULL || element_id == NULL ||
+            element_id[0] == '\0' || scroll_x < 0 || scroll_y < 0) {
+        return 0;
+    }
+    return PBrowser_ScriptSessionNotifyElementScroll(context->session,
+            element_id, scroll_x, scroll_y) == PSCRIPT_OK ? 0 : 1;
+}
+
 int AppScript_NotifyResize(AppScriptContext *context, int viewport_width,
         int viewport_height, int dpi)
 {
