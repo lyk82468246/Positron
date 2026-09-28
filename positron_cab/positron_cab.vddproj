@@ -1,0 +1,711 @@
+"DeployProject"
+{
+"VSVersion" = "3:701"
+"ProjectType" = "8:{AB322303-2255-48EF-A496-5904EB18DA55}"
+"IsWebType" = "8:FALSE"
+"ProjectName" = "8:positron_cab"
+"LanguageId" = "3:2052"
+"CodePage" = "3:936"
+"SccProjectName" = "8:"
+"SccLocalPath" = "8:"
+"SccAuxPath" = "8:"
+"SccProvider" = "8:"
+    "Hierarchy"
+    {
+        "Entry"
+        {
+        "MsmKey" = "8:_B699A17CEB3C49F4954EB8EB97D4BE77"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_PROGRAMFILES_POSITRON"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_WINDOWSFOLDER_POSITRON"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_LICENSESFOLDER_POSITRON"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_FONTSFOLDER_POSITRON"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_PROGRAMSFOLDER_POSITRON"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_EXE"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_TLS_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_JSON_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_HTTP_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_CORE_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_IMAGE_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_SCRIPT_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_BROWSER_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_LICENSE_ROOT"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_THIRD_PARTY_LICENSE"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_NOTO_SYMBOLS_LICENSE"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_NOTO_SYMBOLS2_LICENSE"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_NOTO_EMOJI_LICENSE"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_SYMBOLS_BASIC_FONT"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_SYMBOLS_FONT"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_EMOJI_FONT"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_START_MENU_SHORTCUT"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_REGISTRY_KEY"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_REGISTRY_SOFTWARE"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+    }
+    "Configurations"
+    {
+        "Debug"
+        {
+        "DisplayName" = "8:Debug"
+        "IsDebugOnly" = "11:TRUE"
+        "IsReleaseOnly" = "11:FALSE"
+        "OutputFilename" = "8:Debug\\positron-nightly-cab-wm6-armv4i.cab"
+        "PackageFileSize" = "3:-2147483648"
+        "CabType" = "3:1"
+        "SignOutput" = "11:FALSE"
+        "CertificateHash" = "8:"
+        "TimeStampServer" = "8:"
+        }
+        "Release"
+        {
+        "DisplayName" = "8:Release"
+        "IsDebugOnly" = "11:FALSE"
+        "IsReleaseOnly" = "11:TRUE"
+        "OutputFilename" = "8:Release\\positron-nightly-cab-wm6-armv4i.cab"
+        "PackageFileSize" = "3:-2147483648"
+        "CabType" = "3:1"
+        "SignOutput" = "11:FALSE"
+        "CertificateHash" = "8:"
+        "TimeStampServer" = "8:"
+        }
+    }
+    "Deployable"
+    {
+        "File"
+        {
+            "{BA458234-9B71-4F46-8107-E91156377184}:_LICENSE_ROOT"
+            {
+            "SourcePath" = "8:..\\LICENSE"
+            "TargetName" = "8:LICENSE"
+            "Tag" = "8:"
+            "Folder" = "8:_LICENSESFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_THIRD_PARTY_LICENSE"
+            {
+            "SourcePath" = "8:..\\THIRD_PARTY.md"
+            "TargetName" = "8:THIRD_PARTY.md"
+            "Tag" = "8:"
+            "Folder" = "8:_LICENSESFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_NOTO_SYMBOLS_LICENSE"
+            {
+            "SourcePath" = "8:cab-source\\OFL-NotoSymbols.txt"
+            "TargetName" = "8:OFL-NotoSymbols.txt"
+            "Tag" = "8:"
+            "Folder" = "8:_LICENSESFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_NOTO_SYMBOLS2_LICENSE"
+            {
+            "SourcePath" = "8:cab-source\\OFL-NotoSymbols2.txt"
+            "TargetName" = "8:OFL-NotoSymbols2.txt"
+            "Tag" = "8:"
+            "Folder" = "8:_LICENSESFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_NOTO_EMOJI_LICENSE"
+            {
+            "SourcePath" = "8:cab-source\\OFL-NotoEmoji.txt"
+            "TargetName" = "8:OFL-NotoEmoji.txt"
+            "Tag" = "8:"
+            "Folder" = "8:_LICENSESFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_POSITRON_SYMBOLS_BASIC_FONT"
+            {
+            "SourcePath" = "8:..\\assets\\fonts\\PositronSymbolsBasic.ttf"
+            "TargetName" = "8:PositronSymbolsBasic.ttf"
+            "Tag" = "8:"
+            "Folder" = "8:_FONTSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_POSITRON_SYMBOLS_FONT"
+            {
+            "SourcePath" = "8:..\\assets\\fonts\\PositronSymbols.ttf"
+            "TargetName" = "8:PositronSymbols.ttf"
+            "Tag" = "8:"
+            "Folder" = "8:_FONTSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+            "{BA458234-9B71-4F46-8107-E91156377184}:_POSITRON_EMOJI_FONT"
+            {
+            "SourcePath" = "8:..\\assets\\fonts\\PositronEmoji.ttf"
+            "TargetName" = "8:PositronEmoji.ttf"
+            "Tag" = "8:"
+            "Folder" = "8:_FONTSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "IsDependency" = "11:FALSE"
+            }
+        }
+        "Folder"
+        {
+            "{D5B00AC1-E6C3-4CC5-90FF-8E0F53D9E5E0}:_B699A17CEB3C49F4954EB8EB97D4BE77"
+            {
+            "DefaultLocation" = "8:%InstallDir%"
+            "Name" = "8:#1920"
+            "Condition" = "8:"
+            "Property" = "8:%InstallDir%"
+                "Folders"
+                {
+                    "{5943FCFD-5B64-4EE4-96C9-4618EC95352A}:_LICENSESFOLDER_POSITRON"
+                    {
+                    "Name" = "8:licenses"
+                    "Condition" = "8:"
+                    "Property" = "8:_A1B2C3D4E5F6478899AABBCCDDEEFF01"
+                        "Folders"
+                        {
+                        }
+                    }
+                }
+            }
+            "{F6DFDB62-1DD1-498B-89B7-27BAC542EE5A}:_PROGRAMFILES_POSITRON"
+            {
+            "Name" = "8:#1911"
+            "Condition" = "8:"
+            "Property" = "8:%CE1%"
+                "Folders"
+                {
+                }
+            }
+            "{F6DFDB62-1DD1-498B-89B7-27BAC542EE5A}:_WINDOWSFOLDER_POSITRON"
+            {
+            "Name" = "8:Windows Folder"
+            "Condition" = "8:"
+            "Property" = "8:%CE2%"
+                "Folders"
+                {
+                    "{5943FCFD-5B64-4EE4-96C9-4618EC95352A}:_FONTSFOLDER_POSITRON"
+                    {
+                    "Name" = "8:fonts"
+                    "Condition" = "8:"
+                    "Property" = "8:_A1B2C3D4E5F6478899AABBCCDDEEFF02"
+                        "Folders"
+                        {
+                        }
+                    }
+                }
+            }
+            "{F6DFDB62-1DD1-498B-89B7-27BAC542EE5A}:_PROGRAMSFOLDER_POSITRON"
+            {
+            "Name" = "8:Programs Folder"
+            "Condition" = "8:"
+            "Property" = "8:%CE11%"
+                "Folders"
+                {
+                }
+            }
+        }
+        "Product"
+        {
+        "Name" = "8:Microsoft Visual Studio"
+        "ProductName" = "8:Positron"
+        "Manufacturer" = "8:Positron"
+        "OSVersionMin" = "8:5.02"
+        "OSVersionMax" = "8:6.99"
+        "NoUninstall" = "11:FALSE"
+        "Compress" = "11:TRUE"
+        "CESetupDLL" = "8:"
+        }
+        "ProjectOutput"
+        {
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_EXE"
+            {
+            "SourcePath" = "8:..\\positron_app\\bin\\Release\\positron.exe"
+            "TargetName" = "8:positron.exe"
+            "Tag" = "8:"
+            "Folder" = "8:_B699A17CEB3C49F4954EB8EB97D4BE77"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{6D6E1A60-3E69-4A79-B2A1-9CE4A0E1F7C2}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_TLS_DLL"
+            {
+            "SourcePath" = "8:..\\positron_tls\\bin\\Release\\positron_tls.dll"
+            "TargetName" = "8:positron_tls.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{453A39BE-9C95-40E8-99BF-9A3B04908FE4}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_JSON_DLL"
+            {
+            "SourcePath" = "8:..\\positron_json\\bin\\Release\\positron_json.dll"
+            "TargetName" = "8:positron_json.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{7AAAC227-9102-4214-A088-1D4A3D261D53}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_HTTP_DLL"
+            {
+            "SourcePath" = "8:..\\positron_http\\bin\\Release\\positron_http.dll"
+            "TargetName" = "8:positron_http.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{77004AAA-DEF0-47A1-8C84-BAA7CEABFAE5}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_CORE_DLL"
+            {
+            "SourcePath" = "8:..\\positron_core\\bin\\Release\\positron_core.dll"
+            "TargetName" = "8:positron_core.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{586A59ED-5203-4AAD-BACF-B6EA12B738A9}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_IMAGE_DLL"
+            {
+            "SourcePath" = "8:..\\positron_image\\bin\\Release\\positron_image.dll"
+            "TargetName" = "8:positron_image.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{C76D8E53-9FA4-40B1-D327-8E9F01234567}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_SCRIPT_DLL"
+            {
+            "SourcePath" = "8:..\\positron_script\\bin\\Release\\positron_script.dll"
+            "TargetName" = "8:positron_script.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{D4B7E3A1-8D10-4C1E-9A6B-0F2E3D4C5B6A}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_BROWSER_DLL"
+            {
+            "SourcePath" = "8:..\\positron_browser\\bin\\Release\\positron_browser.dll"
+            "TargetName" = "8:positron_browser.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+        }
+        "Registry"
+        {
+            "HKLM"
+            {
+                "Keys"
+                {
+                    "{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_REGISTRY_SOFTWARE"
+                    {
+                    "Name" = "8:Software"
+                    "Condition" = "8:"
+                        "Keys"
+                        {
+                            "{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_REGISTRY_KEY"
+                            {
+                            "Name" = "8:Positron"
+                            "Condition" = "8:"
+                                "Keys"
+                                {
+                                }
+                                "Values"
+                                {
+                            "{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_REGISTRY_VERSION"
+                            {
+                            "Name" = "8:Version"
+                            "Value" = "8:__POSITRON_CAB_VERSION__"
+                            "ValueType" = "3:1"
+                            }
+                            "{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_REGISTRY_BUILD_DATE"
+                            {
+                            "Name" = "8:BuildDate"
+                            "Value" = "8:__POSITRON_CAB_BUILD_DATE__"
+                            "ValueType" = "3:1"
+                            }
+                            "{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_REGISTRY_CHANNEL"
+                            {
+                            "Name" = "8:Channel"
+                            "Value" = "8:nightly-cab"
+                            "ValueType" = "3:1"
+                            }
+                            "{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_REGISTRY_INSTALL_DIR"
+                            {
+                            "Name" = "8:InstallDir"
+                            "Value" = "8:\\Program Files\\Positron"
+                            "ValueType" = "3:1"
+                            }
+                                }
+                            }
+                        }
+                        "Values"
+                        {
+                        }
+                    }
+                }
+            }
+            "HKCU"
+            {
+                "Keys"
+                {
+                }
+            }
+            "HKCR"
+            {
+                "Keys"
+                {
+                }
+            }
+            "HKU"
+            {
+                "Keys"
+                {
+                }
+            }
+            "HKPU"
+            {
+                "Keys"
+                {
+                }
+            }
+        }
+        "Shortcut"
+        {
+            "{971D45E9-E38C-49AC-B36E-4C5BEA533350}:_POSITRON_START_MENU_SHORTCUT"
+            {
+            "Name" = "8:Positron"
+            "Folder" = "8:_PROGRAMSFOLDER_POSITRON"
+            "WorkingFolder" = "8:_B699A17CEB3C49F4954EB8EB97D4BE77"
+            "Target" = "8:_POSITRON_EXE"
+            }
+        }
+    }
+}

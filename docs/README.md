@@ -13,6 +13,7 @@
 | 配置 INI、运行自动设备门或做人工验收 | [TESTING.md](TESTING.md) |
 | 修复构建、stage、WMDC/RAPI、网络或输入问题 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
 | 生成和发布固定 nightly 包 | [NIGHTLY_RELEASE.md](NIGHTLY_RELEASE.md) |
+| 生成和发布 WM6 ARMV4I nightly CAB | [NIGHTLY_CAB_RELEASE.md](NIGHTLY_CAB_RELEASE.md) |
 | 核对依赖来源和许可证 | [THIRD_PARTY.md](../THIRD_PARTY.md) |
 | 接管当前开发任务 | [`.agents/README.md`](../.agents/README.md) |
 | 查阅旧阶段或已发生的调试事故 | [`history/README.md`](history/README.md) |

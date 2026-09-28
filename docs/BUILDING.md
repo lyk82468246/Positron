@@ -161,3 +161,19 @@ scripts\package_nightly.bat -Repository owner/repo
 ```
 
 不带 `-SkipUpload` 时，脚本要求 GitHub CLI 已登录；它会把滚动 `nightly` tag 对齐到当前源 commit，重建固定的 pre-release 以刷新发布日期，并用 `--clobber` 替换同名 `positron-nightly.zip`。它不会创建版本号，也不会移动版本化产品 tag。首次使用先运行 `gh auth login -h github.com`。发布说明正文来自 [`NIGHTLY_RELEASE.md`](NIGHTLY_RELEASE.md)，包含如何编辑/移走 INI 来选择全量或部分的自动/手动模式。这里的 `gh` 登录与 `git push` 使用的 Git Credential Manager 是两套独立凭据；能 push 不代表 `gh release` 已登录。若固定 release 已 immutable，脚本会在删除或移动前停止；其他失败不会上传不完整的 ZIP。`tmp\nightly\` 只保存本机生成物，不进入 Git。
+
+## Nightly CAB 安装包
+
+标准安装包由 VS2008 Smart Device CAB 项目产生，项目文件是 `positron_cab\positron_cab.vddproj`。只构建 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`；不要构建 Debug CAB，也不要把 CAB 内容混入现有 ZIP 流程。
+
+在 VS2008 图形界面中打开 `Positron.sln`，选择上述 Release 配置，右键 `positron_cab` 项目执行 Build。成功后，部署项目会在 `positron_cab\Release\` 生成中间 INF/CAB。然后从仓库根目录执行：
+
+```bat
+scripts\package_nightly_cab.bat -SkipSourceBuild -SkipUpload
+```
+
+脚本会选择最新 INF，注入 `YYYY.MM.DD.NN` 版本、`YYYY-MM-DD` 构建日期，使用 VS2008 SDK 的 `cabwiz.exe` 重新生成并校验 `positron-nightly-cab-wm6-armv4i.cab`，同时写出 `NIGHTLY-CAB-README.md` 和 `SHA256SUMS.txt` 到 `tmp\nightly-cab\`。确认本地结果后，去掉 `-SkipUpload` 可更新滚动 `nightly-cab` tag/release；它不会修改 `nightly` tag，也不会上传 ZIP。需要指定 GitHub 仓库时追加 `-Repository owner/repo`。
+
+`package_nightly_cab.ps1` 默认还会先调用 `scripts\build.bat Release rebuild`。当前 VS2008 的 `devenv.com` 对含 Smart Device VDD 项目的解决方案加载可能在无日志状态下卡住，因此推荐由 VS2008 GUI 完成源码/CAB 构建后使用 `-SkipSourceBuild` 做确定性的 INF/CabWiz 后处理；脚本不会把这个已知的 GUI/命令行加载问题伪装成构建成功。
+
+CAB 的设备布局、注册表、快捷方式、升级/卸载和验收要求见 [Nightly CAB 发布说明](NIGHTLY_CAB_RELEASE.md)。

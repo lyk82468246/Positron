@@ -79,11 +79,16 @@ scripts\device_gate.bat -Candidate local-check
 
 `scripts\package_nightly.bat` 从当前各项目最新构建产物生成仅存储 ZIP，并覆盖 GitHub 上固定的 nightly pre-release。它不会触发构建，因此运行前应先完成所需配置的 build/stage。详情见 [Nightly 发布说明](docs/NIGHTLY_RELEASE.md)。
 
+### Nightly CAB 安装包
+
+`positron_cab\positron_cab.vddproj` 是 VS2008 Smart Device CAB 项目，只构建 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`。先在 VS2008 图形界面中 Build 该项目，再运行 `scripts\package_nightly_cab.bat -SkipSourceBuild -SkipUpload` 生成并校验标准 CAB；完整流程见 [Nightly CAB 发布说明](docs/NIGHTLY_CAB_RELEASE.md)。
+
 ## 仓库结构
 
 | 路径 | 内容 |
 |---|---|
 | `positron_*` | 公共 DLL、内部移植静态库及其公开头文件 |
+| `positron_cab/` | VS2008 Smart Device CAB 部署项目 |
 | `test_host/` | 回归宿主、设备 fixture 和示例消费者 |
 | `samples/` | 独立 DLL 消费示例 |
 | `compat/` | WinCE/VS2008 缺失 CRT 与 C99 兼容层 |

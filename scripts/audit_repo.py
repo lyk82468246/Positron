@@ -59,6 +59,7 @@ DOC_INCLUDE_EXCEPTIONS = (
 DOC_ROLE_TEXT_LIMITS = {
     "README.md": 24000,
     "docs/ARCHITECTURE.md": 60000,
+    "docs/NIGHTLY_CAB_RELEASE.md": 24000,
     "docs/TESTING.md": 60000,
     ".agents/HANDOFF.md": 24000,
     ".agents/KNOWN_LIMITATIONS.md": 40000,
@@ -80,6 +81,7 @@ DOC_STRUCTURE_PATHS.update((
     "docs/BUILDING.md",
     "docs/TROUBLESHOOTING.md",
     "docs/NIGHTLY_RELEASE.md",
+    "docs/NIGHTLY_CAB_RELEASE.md",
     ".agents/README.md",
     ".agents/DEBUGGING.md",
 ))
@@ -301,7 +303,8 @@ def is_stable_reader_document(name):
     if name in (
             "README.md", "docs/README.md", "docs/ARCHITECTURE.md",
             "docs/BUILDING.md", "docs/TESTING.md",
-            "docs/TROUBLESHOOTING.md", "docs/NIGHTLY_RELEASE.md"):
+            "docs/TROUBLESHOOTING.md", "docs/NIGHTLY_RELEASE.md",
+            "docs/NIGHTLY_CAB_RELEASE.md"):
         return True
     return re.match(
         r"^(?:positron_[^/]+|test_host|assets/fonts|samples(?:/[^/]+)?)"

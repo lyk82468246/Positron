@@ -20,6 +20,11 @@ ipch/
 # VS2008 platform output dir (if anyone reverts to it)
 Windows Mobile 6 Professional SDK (ARMV4I)/
 
+# Smart Device CAB project outputs
+positron_cab/Debug/
+positron_cab/Release/
+positron_cab/cab-source/
+
 # BuildLog
 BuildLog.htm
 *.rsp
