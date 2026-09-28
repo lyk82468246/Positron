@@ -648,8 +648,8 @@ BOOL test1315_iana_svg_exact_render(void)
     if (ok) {
         /* Core intentionally passes zero viewport dimensions for retained
          * SVG resources.  The exact assets have no width/height attributes,
-         * so the image DLL must preserve each root viewBox ratio rather than
-         * silently forcing the historical 300x150 canvas. */
+         * so the image DLL must use each root viewBox as the natural canvas;
+         * otherwise a CSS background repeats an oversized tile. */
         homepage_default_rc = PImage_CreateSvgFromMemory(homepage_data,
                 homepage_len, 0, 0, &homepage_default);
         header_default_rc = PImage_CreateSvgFromMemory(header_data,
@@ -660,27 +660,27 @@ BOOL test1315_iana_svg_exact_render(void)
                 &homepage_default_height, NULL) == PIMAGE_OK &&
                 PImage_SvgGetInfo(header_default, &header_default_width,
                 &header_default_height, NULL) == PIMAGE_OK &&
-                homepage_default_width == 300 &&
-                homepage_default_height == 117 &&
-                header_default_width == 300 && header_default_height == 117;
+                homepage_default_width == 450 &&
+                homepage_default_height == 175 &&
+                header_default_width == 128 && header_default_height == 50;
         if (ok) {
-            ok = test1315_draw_metrics(homepage_default, 300, 117,
+            ok = test1315_draw_metrics(homepage_default, 450, 175,
                     &homepage_default_pixels) &&
-                    test1315_draw_metrics(header_default, 300, 117,
+                    test1315_draw_metrics(header_default, 128, 50,
                     &header_default_pixels) &&
                     homepage_default_pixels.nonwhite > 400 &&
                     homepage_default_pixels.green > 20 &&
                     homepage_default_pixels.blue > 20 &&
                     homepage_default_pixels.max_x -
-                    homepage_default_pixels.min_x > 160 &&
+                    homepage_default_pixels.min_x > 250 &&
                     homepage_default_pixels.max_y -
-                    homepage_default_pixels.min_y > 55 &&
+                    homepage_default_pixels.min_y > 90 &&
                     header_default_pixels.nonwhite > 300 &&
                     header_default_pixels.green > 20 &&
                     header_default_pixels.blue > 20 &&
                     header_default_pixels.max_x - header_default_pixels.min_x >
-                    200 && header_default_pixels.max_y -
-                    header_default_pixels.min_y > 65;
+                    90 && header_default_pixels.max_y -
+                    header_default_pixels.min_y > 25;
         }
         if (!ok) {
             _snprintf(g_test1315_failure, sizeof(g_test1315_failure) - 1,
@@ -1031,8 +1031,9 @@ static void test1317_background_free(void *pw, char *data)
  * TEST1315 proves that the two SVG files can draw directly, while TEST1316
  * proves a simplified SVG can fit a block background.  This regression keeps
  * the live page's responsive h1 rules and complete tracked SVG fixtures: a
- * device-backed 320px/128-DPI viewport must select the 128x50 header asset,
- * create the small h1 box, and paint both logo colours. */
+ * device-backed 320px/128-DPI viewport must select the 128x50 CSS-pixel
+ * header asset, scale its one background tile to the device h1 box, and paint
+ * both logo colours. */
 BOOL test1317_iana_core_background(void)
 {
     static const char HTML[] =
@@ -1056,14 +1057,20 @@ BOOL test1317_iana_core_background(void)
     test1317_iana_background_fixture fixture;
     HDC screen_dc;
     HDC memory_dc;
+    HDC expected_dc;
     HBITMAP bitmap;
     HBITMAP old_bitmap;
+    HBITMAP expected_bitmap;
+    HBITMAP expected_old_bitmap;
+    PIMAGE_SVG expected_svg;
     RECT rect;
     COLORREF color;
     int found;
     int fetched;
     int x;
     int y;
+    int box_x;
+    int box_y;
     int width;
     int height;
     int green;
@@ -1073,6 +1080,15 @@ BOOL test1317_iana_core_background(void)
     int min_y;
     int max_x;
     int max_y;
+    int expected_width;
+    int expected_height;
+    int expected_device_width;
+    int expected_device_height;
+    int expected_create_rc;
+    int expected_info_rc;
+    int mismatch_count;
+    int compare_x;
+    int compare_y;
     BOOL ok;
 
     strcpy(g_test1317_failure, "not run");
@@ -1081,12 +1097,18 @@ BOOL test1317_iana_core_background(void)
     sheet = NULL;
     screen_dc = NULL;
     memory_dc = NULL;
+    expected_dc = NULL;
     bitmap = NULL;
     old_bitmap = NULL;
+    expected_bitmap = NULL;
+    expected_old_bitmap = NULL;
+    expected_svg = NULL;
     found = 0;
     fetched = 0;
     x = 0;
     y = 0;
+    box_x = 0;
+    box_y = 0;
     width = 0;
     height = 0;
     green = 0;
@@ -1096,6 +1118,15 @@ BOOL test1317_iana_core_background(void)
     min_y = 320;
     max_x = -1;
     max_y = -1;
+    expected_width = 0;
+    expected_height = 0;
+    expected_device_width = 0;
+    expected_device_height = 0;
+    expected_create_rc = PIMAGE_ERROR_ARGUMENT;
+    expected_info_rc = PIMAGE_ERROR_ARGUMENT;
+    mismatch_count = 0;
+    compare_x = 0;
+    compare_y = 0;
     ok = FALSE;
 
     if (!test1315_read_fixture(L"fixtures\\iana-logo-homepage.svg",
@@ -1132,6 +1163,8 @@ BOOL test1317_iana_core_background(void)
         g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
         goto cleanup;
     }
+    box_x = x;
+    box_y = y;
     screen_dc = GetDC(NULL);
     memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
     bitmap = (screen_dc != NULL) ?
@@ -1176,12 +1209,84 @@ BOOL test1317_iana_core_background(void)
         g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
         goto cleanup;
     }
+    /* The live CSS leaves background-repeat at its default value.  With the
+     * viewBox as the natural header size, one 128x50 tile must be identical
+     * to drawing the retained SVG directly into the selected h1 box.  This
+     * catches the old 300x117 intrinsic tile that produced the screenshot's
+     * globe plus clipped wordmark fragments even though colour thresholds
+     * still passed. */
+    expected_create_rc = PImage_CreateSvgFromMemory(fixture.header_data,
+            fixture.header_len, 0, 0, &expected_svg);
+    if (expected_create_rc == PIMAGE_OK && expected_svg != NULL) {
+        expected_info_rc = PImage_SvgGetInfo(expected_svg, &expected_width,
+                &expected_height, NULL);
+    }
+    if (expected_info_rc == PIMAGE_OK) {
+        expected_device_width = MulDiv(expected_width, 128, 96);
+        expected_device_height = MulDiv(expected_height, 128, 96);
+    }
+    if (box_x < 0 || box_y < 0 || width != expected_device_width ||
+            height != expected_device_height ||
+            box_x + width > 320 || box_y + height > 320 ||
+            expected_create_rc != PIMAGE_OK || expected_svg == NULL ||
+            expected_info_rc != PIMAGE_OK || expected_width != 128 ||
+            expected_height != 50) {
+        _snprintf(g_test1317_failure, sizeof(g_test1317_failure) - 1,
+                "header box=%d,%d %dx%d expected-device=%dx%d image rc=%d "
+                "info=%d natural=%dx%d",
+                box_x, box_y, width, height, expected_device_width,
+                expected_device_height, expected_create_rc,
+                expected_info_rc, expected_width, expected_height);
+        g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    expected_dc = CreateCompatibleDC(screen_dc);
+    expected_bitmap = CreateCompatibleBitmap(screen_dc, 320, 320);
+    if (expected_dc == NULL || expected_bitmap == NULL) {
+        strcpy(g_test1317_failure, "expected SVG GDI allocation failed");
+        goto cleanup;
+    }
+    expected_old_bitmap = (HBITMAP) SelectObject(expected_dc,
+            expected_bitmap);
+    FillRect(expected_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    if (PImage_DrawSvg(expected_svg, expected_dc, box_x, box_y, width,
+            height) !=
+            PIMAGE_OK) {
+        strcpy(g_test1317_failure, "expected SVG draw failed");
+        goto cleanup;
+    }
+    for (compare_y = box_y; compare_y < box_y + height; compare_y++) {
+        for (compare_x = box_x; compare_x < box_x + width; compare_x++) {
+            if (GetPixel(memory_dc, compare_x, compare_y) !=
+                    GetPixel(expected_dc, compare_x, compare_y)) {
+                mismatch_count++;
+            }
+        }
+    }
+    if (mismatch_count != 0) {
+        _snprintf(g_test1317_failure, sizeof(g_test1317_failure) - 1,
+                "Core/header direct pixel mismatches=%d", mismatch_count);
+        g_test1317_failure[sizeof(g_test1317_failure) - 1] = '\0';
+        goto cleanup;
+    }
     ok = TRUE;
     strcpy(g_test1317_failure, "ok");
 
 cleanup:
     if (old_bitmap != NULL && memory_dc != NULL) {
         SelectObject(memory_dc, old_bitmap);
+    }
+    if (expected_old_bitmap != NULL && expected_dc != NULL) {
+        SelectObject(expected_dc, expected_old_bitmap);
+    }
+    if (expected_bitmap != NULL) {
+        DeleteObject(expected_bitmap);
+    }
+    if (expected_dc != NULL) {
+        DeleteDC(expected_dc);
+    }
+    if (expected_svg != NULL) {
+        PImage_FreeSvg(expected_svg);
     }
     if (bitmap != NULL) {
         DeleteObject(bitmap);

@@ -46,9 +46,12 @@ image box 与 SVG/PNG/JPEG/GIF 的解码结果。
 
 对于已解码的 SVG CSS `background-image`，Core 还有一个有界的响应式适配：当背景不重复且
 intrinsic 尺寸超出背景定位区域时，redraw 会按 preserve-aspect-ratio 的 contain 规则缩小，
-并保留 computed `background-position` 的相对位置。PNG/JPEG/GIF、重复背景以及没有超出区域的
-图像继续走 NetSurf 的 intrinsic 尺寸路径；这不是完整的 `background-size`/`cover`、多层背景
-或其他现代 CSS 实现，未支持的声明仍按有界规则处理。
+并保留 computed `background-position` 的相对位置。设备 viewport 由
+`PCore_SetDeviceViewport()` 提供时，重复 SVG background tile 还会按同一 DPI 从 CSS 像素缩放
+到物理绘制尺寸，避免高 DPI 页面把一个自然尺寸 tile 重复成错位或裁剪的 Logo；该缩放只在
+Core 的重复背景绘制路径生效，不改变 Image DLL 返回的自然尺寸或 `<img>` relation。PNG/JPEG/GIF、
+非重复背景以及没有超出区域的图像继续走 NetSurf 的 intrinsic 尺寸路径；这不是完整的
+`background-size`/`cover`、多层背景或其他现代 CSS 实现，未支持的声明仍按有界规则处理。
 
 布局 relation 提供 page width/height、元素 border/client/scroll 尺寸、有限 inline fragments、overflow retained scroll 和几何快照。relation 是最近一次 layout 的只读 snapshot；查询不会触发 reflow，mutation 成功后会使 retained layout 失效，调用方必须重新 style/layout/paint。
 

@@ -800,14 +800,15 @@ static int pimage_svg_normalize_class_styles(const char *data, int len,
     return 1;
 }
 
-/* libsvgtiny uses the caller's viewport height when an SVG omits an explicit
- * height.  That changes the intrinsic aspect ratio of the common viewBox-only
- * form: the old 300x150 default turns IANA's 450x175 and negative-viewBox
- * assets into a 2:1 canvas before Core can size a CSS background.  Read only
- * the bounded root viewBox attribute and derive the fallback height from its
- * ratio.  This is not a second XML parser: malformed, unquoted, over-budget
- * or non-positive values simply retain the historical fallback and libsvgtiny
- * remains authoritative for the actual SVG parse. */
+/* libsvgtiny uses the caller's viewport when an SVG omits explicit width and
+ * height.  The historical 300x150 fallback is wrong for viewBox-only assets
+ * used as CSS backgrounds: IANA's 127.9x49.8 header would be rasterized as a
+ * much larger repeated tile and clipped by its 128x50 h1.  Read only the
+ * bounded root viewBox attribute and use its rounded dimensions as the
+ * natural fallback; if one caller dimension is supplied, derive the other
+ * from the same ratio.  This is not a second XML parser: malformed, unquoted,
+ * over-budget or non-positive values simply retain the historical fallback
+ * and libsvgtiny remains authoritative for the actual SVG parse. */
 #define PIMAGE_SVG_VIEWBOX_SCAN_MAX 8192
 #define PIMAGE_SVG_VIEWBOX_VALUE_MAX 1000000.0
 
@@ -967,6 +968,14 @@ static int pimage_svg_viewbox_ratio(const char *data, size_t len,
     return 0;
 }
 
+static int pimage_svg_viewbox_dimension(double value)
+{
+    if (value < 1.0 || value > PIMAGE_SVG_VIEWBOX_VALUE_MAX) {
+        return 0;
+    }
+    return (int) (value + 0.5);
+}
+
 BOOL WINAPI DllMain(HANDLE instance, DWORD reason, LPVOID reserved)
 {
     (void) instance;
@@ -993,6 +1002,8 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
     int normalize_result;
     float viewbox_width;
     float viewbox_height;
+    int viewbox_valid;
+    int dimension;
 
     if (out_svg == NULL) {
         return PIMAGE_ERROR_ARGUMENT;
@@ -1001,17 +1012,34 @@ PIMAGE_API int PImage_CreateSvgFromMemory(const char *data, int len,
     if (data == NULL || len <= 0) {
         return PIMAGE_ERROR_ARGUMENT;
     }
-    if (viewport_w <= 0) {
-        viewport_w = 300;
-    }
-    if (viewport_h <= 0) {
-        viewport_h = 150;
-        if (pimage_svg_viewbox_ratio(data, (size_t) len, &viewbox_width,
-                &viewbox_height)) {
-            viewbox_height = (float) viewport_w * viewbox_height /
-                    viewbox_width;
-            if (viewbox_height >= 1.0f && viewbox_height <= 1000000.0f) {
-                viewport_h = (int) (viewbox_height + 0.5f);
+    viewbox_valid = pimage_svg_viewbox_ratio(data, (size_t) len,
+            &viewbox_width, &viewbox_height);
+    if (viewport_w <= 0 && viewport_h <= 0 && viewbox_valid) {
+        viewport_w = pimage_svg_viewbox_dimension((double) viewbox_width);
+        viewport_h = pimage_svg_viewbox_dimension((double) viewbox_height);
+        if (viewport_w <= 0 || viewport_h <= 0) {
+            viewport_w = 300;
+            viewport_h = 150;
+        }
+    } else {
+        if (viewport_w <= 0) {
+            viewport_w = 300;
+            if (viewbox_valid && viewport_h > 0) {
+                dimension = pimage_svg_viewbox_dimension((double) viewport_h *
+                        (double) viewbox_width / (double) viewbox_height);
+                if (dimension > 0) {
+                    viewport_w = dimension;
+                }
+            }
+        }
+        if (viewport_h <= 0) {
+            viewport_h = 150;
+            if (viewbox_valid) {
+                dimension = pimage_svg_viewbox_dimension((double) viewport_w *
+                        (double) viewbox_height / (double) viewbox_width);
+                if (dimension > 0) {
+                    viewport_h = dimension;
+                }
             }
         }
     }

@@ -114,7 +114,7 @@ SIP/IME 不因该接线而宣称完成。
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | bitmap 解码、像素创建、信息读取和 GDI 绘制 | `PImage_CreateBitmapFromMemory/FromPixels`、`PImage_BitmapGetInfo`、`PImage_DrawBitmap` | 已实现 | 输入长度、像素尺寸和平台绘制失败返回 `PIMAGE_ERROR_*`；句柄由调用方释放 | Image 组件回归、Core paint 集成；native 像素观感仍需人工门 |
-| SVG 解码、信息读取和绘制 | `PImage_CreateSvgFromMemory`、`PImage_SvgGetInfo/DrawSvg` | 已实现但有界 | libsvgtiny 错误映射到 `PIMAGE_ERROR_SVG_BASE`；解析前只把有界的简单 class 规则转换为行内 paint style；根 `viewBox` 在缺少显式高度时只用于有界固有比例回退，复杂 CSS、超预算或不支持语法 fail closed | TEST1315 的真实 IANA class/gradient/viewBox/重复绘制与默认比例断言、TEST1316/1317 的 Core 背景回归和 `1315-1317,999` 设备门；真实 `positron.exe` 页面视觉仍需应用门 |
+| SVG 解码、信息读取和绘制 | `PImage_CreateSvgFromMemory`、`PImage_SvgGetInfo/DrawSvg` | 已实现但有界 | libsvgtiny 错误映射到 `PIMAGE_ERROR_SVG_BASE`；解析前只把有界的简单 class 规则转换为行内 paint style；调用者没有提供 viewport 时，合法根 `viewBox` 的圆整宽高作为自然画布，只提供一边时按比例补齐，复杂 CSS、超预算或不支持语法 fail closed | TEST1315 的真实 IANA class/gradient/viewBox/自然尺寸/重复绘制、TEST1316/1317 的 Core 背景回归及高 DPI 重复 tile 适配均已通过；真实 `positron.exe` 页面视觉仍需应用门 |
 | bitmap 编码 | `PImage_EncodeBitmap[Ex]` | 已实现但按格式裁剪 | 缺少 encoder 返回 `PIMAGE_ERROR_UNSUPPORTED`；输出 buffer 由对应 free 入口释放 | 格式能力以头文件和组件 README 为准，不扩大为无界格式集 |
 | picture/source 选择、generation 和事件 | Core/Browser 公开 relation/notification 组合 | 有界待扩展 | Core 选择、Browser generation，宿主 I/O/decode；过时事件不得改变 current source | TEST1299/1300 已验证 generation/终态；完整 loading 仍需消费者证据 |
 | 视频、canvas、动画图像和完整色彩管理 | 当前没有公共承诺 | 暂缓 | 需要额外线程、内存和绘制合同 | 不作为当前 WM6 主干目标 |

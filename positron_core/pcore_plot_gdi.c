@@ -745,6 +745,28 @@ static nserror pcore_plot_bitmap_once(pcore_plot_ctx *p,
     return NSERROR_INVALID;
 }
 
+/* NetSurf supplies a CSS-pixel intrinsic background tile to the plotter. The
+ * layout tree already converts the containing box to device pixels when Core
+ * uses PCore_SetDeviceViewport, but repeated background dimensions are not
+ * passed through that conversion. Scale the tile only on the repeated path;
+ * replaced images and non-repeating fit logic keep their existing dimensions
+ * and therefore cannot be double-scaled. */
+static int pcore_repeated_tile_dimension(struct bitmap *bitmap, int value)
+{
+    int dpi;
+    int scaled;
+
+    if (bitmap == NULL || bitmap->kind != PCORE_BITMAP_SVG || value <= 0) {
+        return value;
+    }
+    dpi = pcore_get_device_dpi();
+    if (dpi <= 96) {
+        return value;
+    }
+    scaled = MulDiv(value, dpi, 96);
+    return scaled > 0 ? scaled : value;
+}
+
 static nserror plot_bitmap(const struct redraw_context *ctx,
         struct bitmap *bitmap, int x, int y, int width, int height,
         colour bg, bitmap_flags_t flags)
@@ -759,6 +781,8 @@ static nserror plot_bitmap(const struct redraw_context *ctx,
     int end_y;
     int px;
     int py;
+    int tile_width;
+    int tile_height;
     nserror err;
 
     (void) bg;
@@ -774,6 +798,11 @@ static nserror plot_bitmap(const struct redraw_context *ctx,
     if (!repeat_x && !repeat_y) {
         return pcore_plot_bitmap_once(p, bitmap, x, y, width, height);
     }
+    tile_width = pcore_repeated_tile_dimension(bitmap, width);
+    tile_height = pcore_repeated_tile_dimension(bitmap, height);
+    if (tile_width <= 0 || tile_height <= 0) {
+        return NSERROR_INVALID;
+    }
     if (GetClipBox(p->hdc, &clip) == ERROR) {
         clip.left = x;
         clip.top = y;
@@ -785,31 +814,32 @@ static nserror plot_bitmap(const struct redraw_context *ctx,
     start_y = y;
     if (repeat_x) {
         while (start_x > clip.left) {
-            start_x -= width;
+            start_x -= tile_width;
         }
-        if (start_x + width <= clip.left) {
-            start_x += ((clip.left - start_x) / width) * width;
-            while (start_x + width <= clip.left) {
-                start_x += width;
+        if (start_x + tile_width <= clip.left) {
+            start_x += ((clip.left - start_x) / tile_width) * tile_width;
+            while (start_x + tile_width <= clip.left) {
+                start_x += tile_width;
             }
         }
     }
     if (repeat_y) {
         while (start_y > clip.top) {
-            start_y -= height;
+            start_y -= tile_height;
         }
-        if (start_y + height <= clip.top) {
-            start_y += ((clip.top - start_y) / height) * height;
-            while (start_y + height <= clip.top) {
-                start_y += height;
+        if (start_y + tile_height <= clip.top) {
+            start_y += ((clip.top - start_y) / tile_height) * tile_height;
+            while (start_y + tile_height <= clip.top) {
+                start_y += tile_height;
             }
         }
     }
     end_x = repeat_x ? clip.right : start_x + 1;
     end_y = repeat_y ? clip.bottom : start_y + 1;
-    for (px = start_x; px < end_x; px += width) {
-        for (py = start_y; py < end_y; py += height) {
-            err = pcore_plot_bitmap_once(p, bitmap, px, py, width, height);
+    for (px = start_x; px < end_x; px += tile_width) {
+        for (py = start_y; py < end_y; py += tile_height) {
+            err = pcore_plot_bitmap_once(p, bitmap, px, py, tile_width,
+                    tile_height);
             if (err != NSERROR_OK) {
                 return err;
             }

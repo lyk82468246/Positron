@@ -220,7 +220,7 @@ filter 探测。
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 
-**状态：Core 图片 pending/retry、Image class-style 与 viewBox 固有比例纵切已完成，阶段 B/脚本资源设备门仍待完成。** `positron.exe` 已证明真实应用消费者会组合
+**状态：Core 图片 pending/retry、Image class-style/viewBox 自然尺寸和 Core 高 DPI 重复 SVG 背景 tile 已完成；阶段 B/脚本资源设备门仍待完成。** `positron.exe` 已证明真实应用消费者会组合
 Core 的 document/style/layout/paint、链接/焦点几何、Browser history/candidate gate 和 HTTP
 transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@import`、脚本发现和图片发现
 纳入同一事务，并在候选提交前按 DOM 顺序执行有界 classic script。EXE 接线现在包括：
@@ -228,10 +228,12 @@ transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@impo
 会先回到 STYLE 再重新扫描，图片 worker 也会先解析原始引用到文档最终 URL；同时提供不改变
 ABI 的 `positron image-state` 调试摘要；Core 新增 additive 的
 `PCore_FetchImageResourcesEx()` READY/PENDING/TERMINAL_FAIL 合同，TEST1313 离线及 `1313,999`
-设备门均证明 pending SVG 会在后续扫描成功缓存、解码和布局，而终态失败不重试。下一步用
-匹配 DLL 运行真实图片页面设备门；`positron_image` 的 TEST1314/1315 与 Core TEST1316/1317
-已直接证明 IANA 风格 `<style>` class paint/gradient、真实 viewBox-only fallback 和响应式背景
-适配在公共 DLL 绘制层不再走黑色/错误 300x150 画布，但这不替代 EXE 页面视觉证据。随后再确认脚本 mutation/事件/导航、失败、取消或过时响应时
+设备门均证明 pending SVG 会在后续扫描成功缓存、解码和布局，而终态失败不重试。`positron_image` 的
+TEST1314/1315 与 Core TEST1316/1317 已覆盖 IANA 风格 `<style>` class paint/gradient；
+`1315-1317,999` 的匹配 DLL 设备门已通过，TEST1317 用 128 DPI 的物理像素对照证明 Core
+重复路径会缩放 CSS 像素 tile。最新纵切把 viewBox-only SVG 的自然画布收束为合法根 viewBox
+的圆整宽高，并用 Core 与 Image 直接绘制逐像素比较防止旧 300x117 背景 tile；仍必须通过
+新的应用包视觉门，才能把真实 `positron.exe` 页面边界写成完成。随后再确认脚本 mutation/事件/导航、失败、取消或过时响应时
 保留旧页。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
