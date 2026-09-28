@@ -251,6 +251,14 @@ Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但�
 `core_module_check=PASS`、`crash_check=PASS`、新增 dump 为 0。该目录等待
 `positron.exe` 的网络页面人工验收，不能与已撤回的旧 candidate UI 包混用。
 
+本轮页面脏区兼容位图/单次 `BitBlt` 修正版已用正式 `scripts\stage.bat Debug` 生成完整本地包，
+stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增量 Debug 构建报告
+18 个工程为最新，随后通过 32 位 WMDC RAPI 复制 19/19 个运行时、字体、fixture 和配置文件到
+`\Storage Card\Temp\Positron-device-gate\app-scroll-buffer-20260928`，并从该目录启动
+`positron.exe`（设备返回 PID `586819102`）。这次是 standalone EXE 部署，不是 `test_host` 设备门，
+因此尚没有 Core module log 或页面视觉通过证据；设备任务管理器不会被脚本强杀，若仍显示旧窗口，
+必须先真正退出旧 `positron.exe`，再从上述新目录启动后验收滚动闪屏/撕裂。
+
 本轮 `d4f17d28` 的 Debug 完整包已复制到
 `\Storage Card\Temp\Positron-device-gate\app-overflow-pointer-20260928-20260928-214547`，
 本地证据为 `tmp/device-runs/20260928-214547-app-overflow-pointer-20260928/`；19/19 文件复制完成，
@@ -294,7 +302,7 @@ Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但�
 ## 唯一下一步
 
 下一步先在设备任务管理器中真正退出旧的 `positron.exe`（关闭窗口可能只是 Smart Minimize），
-再从 `\Storage Card\Temp\Positron-device-gate\app-overflow-pointer-20260928-20260928-214547`
+再从 `\Storage Card\Temp\Positron-device-gate\app-scroll-buffer-20260928`
 启动本轮 `positron.exe`。打开 `https://www.iana.org/numbers`，拖动表格内部横向滚动条的 thumb，
 并点击左右箭头；预期是表格内容移动、thumb 位置更新、页面不整页重新排版或闪烁，内层纵向滚动
 仍可用。然后再检查顶层页面滚动、窄视口 flex、旋转和 retained-pixel 绘制。只有确认新 Core
