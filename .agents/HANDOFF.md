@@ -78,6 +78,13 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   EXE 的页面子窗口此前缺少该样式且按完整 client 矩形清理。本轮已补齐页面子窗口裁剪和
   `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
   时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。
+- `positron.exe` 现在补齐了 `test_host` TEST42 的 nested retained-overflow 输入接线：页面窗口
+  先把 WM6 的按下坐标换算为 Core document 坐标并调用 `PCore_OverflowPointer(DOWN)`，随后用
+  `SetCapture` 将 MOVE/UP 保持在同一窗口；每次 Core pointer 更新后读取
+  `PCore_OverflowDirtyRect` 做局部失效，并通过 EXE 私有 `AppScript_NotifyElementScroll`
+  转发 `PCore_OverflowScrollSnapshot` 到 Browser 的 `scrollLeft`/`scrollTop` 状态。Core 继续
+  拥有命中、拖动和滚动条几何，EXE 不自绘滚动条、不重做布局，也没有修改公共 ABI。该路径已
+  通过 C89、仓库审计和 Debug 编译；设备上的表格横向拖动仍待关闭旧进程后的人工验收。
 - 最新截图中的地址栏 stale 空隙已在 `positron_app/main.c` 移除 EXE inset：原生 EDIT 现在从
   客户区 x=0 铺满宽度，显式使用 `SYSTEM_FONT`，并从 `WM_GETFONT`/`GetTextMetrics().tmHeight`
   读取实际字体高度，并把客户区行高和少量 DPI 缩放 padding 通过 `AdjustWindowRectEx` 换算为
@@ -129,6 +136,10 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   供设备门验证选中的断言确实执行。
 - `python scripts/audit_repo.py`：通过；项目路径的 staged/working-tree `git diff --check` 通过。
   FFmpeg 原始测试资产保留其上游空白，不为 diff 门改写；临时 `tmp/` 产物未加入仓库。
+- 提交 `d4f17d28` 的 `app_script.c/.h` 与 `main.c` 通过 `python scripts/test_c89ize.py`、
+  `python scripts/audit_repo.py` 和 `scripts\build.bat Debug build`；`positron_app` 为 0 错误、
+  0 警告。随后独立尝试的完整 Release rebuild 触发了 VS2008 并行 PDB/CABWiz 工具链竞争，
+  `positron_core`/依赖库未能完成，不能把这次 Release 命令记为通过，也没有用它生成设备包。
 - `test_host` TEST1313：源码已加入 Debug/Release 正式工程，离线 fixture 覆盖首次 PENDING、
   第二次 READY+SVG decode/layout 和 terminal failure 不重试；本批
   `tmp/device-runs/20260927-165241-image-pending-retry` 在 Microsoft DeviceEmulator 上以
@@ -237,6 +248,16 @@ Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但�
 `core_module_check=PASS`、`crash_check=PASS`、新增 dump 为 0。该目录等待
 `positron.exe` 的网络页面人工验收，不能与已撤回的旧 candidate UI 包混用。
 
+本轮 `d4f17d28` 的 Debug 完整包已复制到
+`\Storage Card\Temp\Positron-device-gate\app-overflow-pointer-20260928-20260928-214547`，
+本地证据为 `tmp/device-runs/20260928-214547-app-overflow-pointer-20260928/`；19/19 文件复制完成，
+`TEST999` 本身为 `1/1`、日志完整、`crash_check=PASS` 且无新增 dump。但设备门将整体结果标为
+`STALE_MODULE`：日志显示远端 test_host 仍解析到正在运行的旧实例所持有的
+`\Storage Card\Temp\Positron-device-gate\app-ui-snapshot-20260928-20260928-213123\positron_core.dll`，
+而不是本候选目录的 Core。设备纪律不允许 gate 强杀设备进程，因此这次只算“文件已部署、包内
+启动回归通过”，不算新 EXE/Core 的设备验收；必须先在设备任务管理器中真正退出旧
+`positron.exe`，再从本候选目录启动。
+
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
 日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
@@ -264,15 +285,15 @@ Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但�
   [`docs/TESTING.md`](../docs/TESTING.md)。
 - 地址栏字体度量、外框高度和文本下行完整性已由用户在当前设备确认；窄视口 IANA 首页的
   panels/footer 不互相覆盖、旋转后的完整几何以及纯滚动不因窗口尺寸未变而重新 layout/paint
-  仍属于待完成的应用人工门。
+  仍属于待完成的应用人工门。nested overflow 的横向/纵向滚动输入也必须在新 Core 模块实际
+  加载后确认；旧进程复用的截图不能作为本轮接线证据。
 
 ## 唯一下一步
 
-下一条纵切应从 `app-ui-snapshot-20260928-20260928-213123` 启动 `positron.exe`，完成阶段 B
-的真实应用网络页面门，打开 `https://www.iana.org/`，确认外部 CSS/`@import`、classic script、
-PNG/SVG 图片、`image-state`、最终 URL 和资源 required/optional gate；随后用无效地址、取消/过时
-导航和资源失败确认旧页、地址和标题均保留。若页面人工验收失败，回到已部署的
-`app-baseline-redeploy-20260928`，不要混用两个候选目录。同一批再检查窄视口 flex、旋转和
-retained-pixel 滚动。
-同一批再检查窄视口 flex、旋转和 retained-pixel 滚动。只有这条链在应用中稳定后，才进入阶段 3
-原生控件的真实键盘、SELECT popup、SIP/IME、焦点和销毁门；Media 保持更后置。
+下一步先在设备任务管理器中真正退出旧的 `positron.exe`（关闭窗口可能只是 Smart Minimize），
+再从 `\Storage Card\Temp\Positron-device-gate\app-overflow-pointer-20260928-20260928-214547`
+启动本轮 `positron.exe`。打开 `https://www.iana.org/numbers`，拖动表格内部横向滚动条的 thumb，
+并点击左右箭头；预期是表格内容移动、thumb 位置更新、页面不整页重新排版或闪烁，内层纵向滚动
+仍可用。然后再检查顶层页面滚动、窄视口 flex、旋转和 retained-pixel 绘制。只有确认新 Core
+实际加载且该人工门通过后，才继续阶段 B 的 CSS/script/image/失败回滚门；若要验收旧页标题与
+地址回滚，再单独使用 `app-baseline-redeploy-20260928`，不要混用候选目录。
