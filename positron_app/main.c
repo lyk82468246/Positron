@@ -302,6 +302,54 @@ static void app_set_address(const char *url)
     SetWindowTextW(g_address, wide);
 }
 
+/* Capture the UI belonging to the last committed page.  A second navigation
+ * can begin while the first candidate is still loading, so reading the
+ * visible controls directly would capture "Loading" and the first pending
+ * URL.  In that case inherit the first request's snapshot instead. */
+static void app_navigation_capture_ui(AppNavigationRequest *request)
+{
+    AppNavigationRequest *active;
+    int length;
+
+    if (request == NULL) {
+        return;
+    }
+    request->ui_snapshot_valid = 0;
+    active = g_navigation_request;
+    if (active != NULL && active->ui_snapshot_valid) {
+        app_copy_text(request->committed_url,
+                sizeof(request->committed_url), active->committed_url);
+        memcpy(request->committed_caption, active->committed_caption,
+                sizeof(request->committed_caption));
+        request->ui_snapshot_valid = 1;
+        return;
+    }
+    app_copy_text(request->committed_url,
+            sizeof(request->committed_url), g_current_url);
+    memset(request->committed_caption, 0,
+            sizeof(request->committed_caption));
+    if (g_window != NULL) {
+        length = GetWindowTextW(g_window, request->committed_caption,
+                APP_HOST_TITLE_MAX);
+        if (length < 0) {
+            request->committed_caption[0] = L'\0';
+        }
+    }
+    request->committed_caption[APP_HOST_TITLE_MAX - 1] = L'\0';
+    request->ui_snapshot_valid = 1;
+}
+
+static void app_navigation_restore_ui(AppNavigationRequest *request)
+{
+    if (request == NULL || !request->ui_snapshot_valid) {
+        return;
+    }
+    app_set_address(request->committed_url);
+    if (g_window != NULL) {
+        SetWindowTextW(g_window, request->committed_caption);
+    }
+}
+
 static int app_device_dpi(void)
 {
     HDC dc;
@@ -2574,12 +2622,16 @@ static int app_navigation_start_worker(AppNavigationRequest *request)
 static void app_navigation_finish(AppNavigationRequest *request,
         int committed)
 {
-    if (request == g_navigation_request) {
+    int current;
+
+    current = request == g_navigation_request;
+    if (current) {
         g_navigation_request = NULL;
     }
     if (!committed) {
-        app_restore_page_status();
-        app_set_address(g_current_url);
+        if (current) {
+            app_navigation_restore_ui(request);
+        }
         if (request->candidate != NULL) {
             (void) PBrowser_NavigationCandidateMarkFailed(
                     request->candidate);
@@ -3018,6 +3070,7 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
         app_restore_page_status();
         return 0;
     }
+    app_navigation_capture_ui(request);
     if (g_navigation_request != NULL && app_navigation_cancel_active() != 0) {
         app_navigation_request_destroy(request);
         app_restore_page_status();
@@ -3027,7 +3080,6 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     app_set_status(APP_TEXT_STATUS_LOADING);
     app_set_address(request->url);
     if (app_navigation_start_worker(request) != 0) {
-        g_navigation_request = NULL;
         app_navigation_finish(request, 0);
         return 0;
     }

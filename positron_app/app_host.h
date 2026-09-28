@@ -19,6 +19,7 @@
 #define APP_HOST_FOCUS_ID_MAX  128
 #define APP_HOST_FOCUS_MAX     8
 #define APP_HOST_CONTENT_TYPE_MAX 256
+#define APP_HOST_TITLE_MAX     256
 
 typedef struct AppNavigationRequest AppNavigationRequest;
 typedef struct AppNavigationResource AppNavigationResource;
@@ -55,6 +56,9 @@ struct AppNavigationRequest {
     int body_bytes;
     char content_type[APP_HOST_CONTENT_TYPE_MAX];
     char url[APP_HOST_URL_MAX];
+    int ui_snapshot_valid;
+    char committed_url[APP_HOST_URL_MAX];
+    WCHAR committed_caption[APP_HOST_TITLE_MAX];
 };
 
 typedef struct AppHostContext {

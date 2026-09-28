@@ -44,6 +44,10 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   和 ABI 回归。
 - 旧页、旧资源和旧 history 在失败、取消或 stale 导航时保留；final URL 查询失败不会继续
   使用原始 URL 伪装成功。产品实现未移入 `test_host`。
+- 当前工作树在已验证的导航启动路径上重新实现了 EXE 私有 UI 快照回滚：每个候选在显示
+  Loading/候选地址前保存已提交地址和窗口标题；当前候选失败时恢复快照，stale 候选不触碰
+  当前 UI，连续导航从仍在运行候选的快照继承而不会把 Loading 状态当成旧页。该替代实现
+  尚未设备验收，不能覆盖此前已撤回的候选 UI 控制流。
 - 本轮完成了 `positron_core` 的异步图片 pending/retry 契约，并保留此前 `positron_app` 的导航接线：异步脚本、样式和图片资源等待现在分别保存并恢复
   对应的 commit stage；图片 pending 会按 `test_host` TEST13 的顺序回到 STYLE，再重新扫描可选
   图片，避免 worker 完成后继续停在错误的阶段。EXE 另加入 image-state 调试摘要，记录 Core
@@ -223,6 +227,12 @@ selected/observed 为 `1/1`、`core_module_check=PASS`、`crash_check=PASS`、�
 19/19 文件复制完成，`TEST999` selected/observed 为 `1/1`，`core_module_check=PASS`、
 `crash_check=PASS`、新增 dump 为 0。该目录才是当前应启动的 `positron.exe` 包。
 
+随后重试的替代实现没有复用上述失效控制流：它保留 Loading、候选地址和 worker 启动顺序，
+只增加候选级已提交 UI 快照，并在当前候选失败时恢复地址和窗口标题。该实现已通过
+`python scripts/test_c89ize.py`、`python scripts/audit_repo.py` 和 Debug ARMV4I 编译；
+Release 之前已确认 `positron_app` 编译链接为 0 错误/0 警告，但完整动作仍在 CabWiz
+`Data files could not be created` 处失败。替代实现尚未部署或写入设备基线。
+
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
 日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
@@ -254,8 +264,11 @@ selected/observed 为 `1/1`、`core_module_check=PASS`、`crash_check=PASS`、�
 
 ## 唯一下一步
 
-下一条纵切应从恢复版最新隔离目录启动 `positron.exe`，完成阶段 B 的真实应用网络页面门，打开
-`https://www.iana.org/`，确认外部 CSS/`@import`、classic script、PNG/SVG 图片、`image-state`、
-最终 URL 和资源 required/optional gate；随后用无效地址、取消/过时导航和资源失败确认旧页保留。
+下一条纵切应先把当前 UI 快照替代实现做成完整 Debug stage 并部署，启动其中的 `positron.exe`，
+完成阶段 B 的真实应用网络页面门，打开 `https://www.iana.org/`，确认外部 CSS/`@import`、
+classic script、PNG/SVG 图片、`image-state`、最终 URL 和资源 required/optional gate；随后用
+无效地址、取消/过时导航和资源失败确认旧页、地址和标题均保留。若设备门失败，回到已部署的
+`app-baseline-redeploy-20260928`，不要混用两个候选目录。同一批再检查窄视口 flex、旋转和
+retained-pixel 滚动。
 同一批再检查窄视口 flex、旋转和 retained-pixel 滚动。只有这条链在应用中稳定后，才进入阶段 3
 原生控件的真实键盘、SELECT popup、SIP/IME、焦点和销毁门；Media 保持更后置。
