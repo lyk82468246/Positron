@@ -272,8 +272,12 @@ if (-not $SkipUpload) {
     if ($LASTEXITCODE -ne 0) { Fail "更新本地 $tag tag 失败" }
     & git -C $root push origin "+refs/tags/${tag}:refs/tags/${tag}"
     if ($LASTEXITCODE -ne 0) { Fail "推送 $tag 失败" }
+    $releaseViewErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $gh release view $tag @repoArgs *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $releaseViewExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $releaseViewErrorAction
+    if ($releaseViewExitCode -ne 0) {
         & $gh release create $tag $generatedCab $finalReadme $finalSums @repoArgs --title "Positron nightly CAB" --notes "Rolling nightly CAB for WM6 ARMV4I." --prerelease
     }
     else {
