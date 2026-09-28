@@ -239,7 +239,9 @@ TEST1314/1315 与 Core TEST1316/1317 已覆盖 IANA 风格 `<style>` class paint
 格式矩形仍由系统控件管理。同时修正窄视口 column flex 在 `flex-basis:0` 下的 auto-height
 父容器塌陷。TEST39 已加入 footer/section 不重叠的离线断言，Debug/Release 正式重编通过，
 同一批 Debug 完整包已部署并通过最小 `TEST999` 门；用户已确认地址栏外框和文字下行完整性，
-但窄视口页面、脚本 mutation/事件/导航、失败、取消或过时响应的应用人工门仍待完成。
+但窄视口页面、脚本 mutation/事件/导航、失败、取消或过时响应的应用人工门仍待完成。本轮
+candidate UI 实验因设备上地址栏回车导航无反应而撤回，当前源码恢复到已验证的提交行为；
+新的独立应用网络页面门仍待重新部署后完成。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。

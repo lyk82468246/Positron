@@ -210,9 +210,18 @@ WaveOut underrun、FFmpeg 视频/压缩音频实时播放或真实设备验收�
 `positron_app/bin/Debug/positron.exe` SHA-256 均为
 `EDC5694CC55413D23318FEF77DE3DABF9D2DA1C539E467977B6B78D60961165B`。设备门 `TEST999`
 selected/observed 为 `1/1`、`core_module_check=PASS`、`crash_check=PASS`、新增 dump 为 0；
-用户已在设备上手动启动该目录中的 `positron.exe` 并确认文本上下边界符合预期。工作区另一条未提交的
-`positron_cab` `.vddproj`/`Positron.sln` 变更仍属于并行改动及其未跟踪文件，已保留且没有回退或覆盖；
-本轮 Debug/Release 正式增量构建均已成功编译并链接 `positron_app`。
+用户已在设备上手动启动该目录中的 `positron.exe` 并确认文本上下边界符合预期；本轮开始前工作区已
+推送干净，没有需要代为保留的并行改动。本轮 Debug/Release 正式增量构建均已成功编译并链接
+`positron_app`。
+
+本轮诊断曾临时构建并部署 candidate UI 版本；用户确认它会使地址栏回车导航失去反应，
+因此该未提交源码已恢复为 `9ec7d36a` 的已验证行为。设备上的 `TEST1`、真实 HTTPS
+`TEST3` 以及 URL 合同 `TEST1064/1065` 均通过，说明 HTTP/TLS 和公共 URL resolver 本身
+仍可工作。恢复版 Debug 完整包随后重新部署到
+`\Storage Card\Temp\Positron-device-gate\app-baseline-redeploy-20260928-20260928-210918`，
+本地证据为 `tmp/device-runs/20260928-210918-app-baseline-redeploy-20260928/device-gate-result.txt`；
+19/19 文件复制完成，`TEST999` selected/observed 为 `1/1`，`core_module_check=PASS`、
+`crash_check=PASS`、新增 dump 为 0。该目录才是当前应启动的 `positron.exe` 包。
 
 设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
@@ -245,7 +254,7 @@ selected/observed 为 `1/1`、`core_module_check=PASS`、`crash_check=PASS`、�
 
 ## 唯一下一步
 
-下一条纵切应先完成阶段 B 的真实应用网络页面门：从最新隔离目录启动 `positron.exe`，打开
+下一条纵切应从恢复版最新隔离目录启动 `positron.exe`，完成阶段 B 的真实应用网络页面门，打开
 `https://www.iana.org/`，确认外部 CSS/`@import`、classic script、PNG/SVG 图片、`image-state`、
 最终 URL 和资源 required/optional gate；随后用无效地址、取消/过时导航和资源失败确认旧页保留。
 同一批再检查窄视口 flex、旋转和 retained-pixel 滚动。只有这条链在应用中稳定后，才进入阶段 3
