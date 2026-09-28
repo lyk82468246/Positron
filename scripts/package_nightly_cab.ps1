@@ -22,7 +22,7 @@ if ([string]::IsNullOrEmpty($OutputDirectory)) {
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $finalName = "positron-nightly-cab-wm6-armv4i.cab"
 $finalCab = Join-Path $output $finalName
-$finalReadme = Join-Path $output "NIGHTLY-CAB-README.md"
+$legacyReadme = Join-Path $output "NIGHTLY-CAB-README.md"
 $finalSums = Join-Path $output "SHA256SUMS.txt"
 $tag = "nightly-cab"
 
@@ -237,8 +237,13 @@ if ([string]::IsNullOrEmpty($dirty)) {
 else {
     $state = "dirty (pre-existing changes may be present)"
 }
-$readme = @(
-    "# Positron nightly CAB",
+$hash = Get-Sha256Hex $generatedCab
+[IO.File]::WriteAllText($finalSums, ($hash + "  " + $finalName + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
+if (Test-Path -LiteralPath $legacyReadme) {
+    Remove-Item -LiteralPath $legacyReadme -Force
+}
+$releaseNotes = @(
+    "Windows Mobile 6 Professional / ARMV4I 的标准 Smart Device CAB。",
     "",
     "- Asset: $finalName",
     "- Channel/tag: $tag",
@@ -246,21 +251,12 @@ $readme = @(
     "- Version: $version",
     "- BuildDate: $buildDate",
     "- Worktree at packaging time: $state",
-    "- Target: Windows Mobile 6 Professional / ARMV4I",
+    "- SHA256: $hash",
     "",
-    "The CAB is built from the VS2008 Smart Device deployment project. The application",
-    "is installed under \Program Files\Positron, public DLLs under \Windows,",
-    "fonts under \Windows\Fonts, and the Start Menu shortcut under",
-    "\Windows\Start Menu\Programs.",
+    "安装位置：\Program Files\Positron；公共 DLL 位于 \Windows；字体位于 \Windows\fonts；快捷方式位于 \Windows\Start Menu\Programs。",
     "",
-    "The CAB deliberately excludes positron_media.dll, test_host.exe, fixtures,",
-    "debug symbols, import libraries, and source files. Install, upgrade, and",
-    "uninstall still require validation on a clean WM6 Professional ARMV4I device."
+    "CAB 不包含 positron_media.dll、test_host.exe、fixtures、PDB、LIB 或源码。安装、升级和卸载仍需在干净的 WM6 Professional ARMV4I 设备上完成验收。"
 ) -join [Environment]::NewLine
-[IO.File]::WriteAllText($finalReadme, $readme, (New-Object Text.UTF8Encoding($false)))
-
-$hash = Get-Sha256Hex $generatedCab
-[IO.File]::WriteAllText($finalSums, ($hash + "  " + $finalName + [Environment]::NewLine), (New-Object Text.UTF8Encoding($false)))
 
 if (-not $SkipUpload) {
     $gh = Require-Command "gh"
@@ -279,14 +275,13 @@ if (-not $SkipUpload) {
     $ErrorActionPreference = $releaseViewErrorAction
     $releaseAssetNames = @(
         [IO.Path]::GetFileName($generatedCab),
-        [IO.Path]::GetFileName($finalReadme),
         [IO.Path]::GetFileName($finalSums)
     )
     $releaseWorkDirectory = Split-Path -Parent $generatedCab
     if ($releaseViewExitCode -ne 0) {
         Push-Location -LiteralPath $releaseWorkDirectory
         try {
-            & $gh release create $tag @releaseAssetNames @repoArgs --title "Positron nightly CAB" --notes "Rolling nightly CAB for WM6 ARMV4I." --prerelease
+            & $gh release create $tag @releaseAssetNames @repoArgs --title "Positron nightly CAB" --notes $releaseNotes --prerelease
             $releaseExitCode = $LASTEXITCODE
         }
         finally {
@@ -302,10 +297,14 @@ if (-not $SkipUpload) {
         finally {
             Pop-Location
         }
+        if ($releaseExitCode -eq 0) {
+            & $gh release edit $tag @repoArgs --title "Positron nightly CAB" --notes $releaseNotes --prerelease
+            $releaseExitCode = $LASTEXITCODE
+        }
     }
     if ($releaseExitCode -ne 0) { Fail "nightly-cab release 上传失败" }
+    & $gh release delete-asset $tag "NIGHTLY-CAB-README.md" @repoArgs --yes *> $null
 }
 
 Write-Host "CAB 完成：$generatedCab"
-Write-Host "README：$finalReadme"
 Write-Host "SHA256：$finalSums"

@@ -39,10 +39,11 @@ scripts\package_nightly_cab.bat -SkipSourceBuild -SkipUpload
 
 ```text
 positron-nightly-cab-wm6-armv4i.cab
-NIGHTLY-CAB-README.md
 SHA256SUMS.txt
 positron-nightly-cab-wm6-armv4i.inf
 ```
+
+发布时，构建信息、commit、版本、SHA-256、安装布局和验收提示直接写入 GitHub Release body；不再生成或上传独立的 `NIGHTLY-CAB-README.md` 资产。
 
 确认设备验收通过后，去掉 `-SkipUpload` 更新滚动发布：
 
