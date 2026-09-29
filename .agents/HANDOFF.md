@@ -76,11 +76,18 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   C89、审计及 Debug/Release ARMV4I 构建，但尚未取得设备上的流畅性人工证据。与 TEST13
   对比发现，参考宿主的实际渲染 HWND 带 `WS_CLIPCHILDREN` 并按 `PAINTSTRUCT.rcPaint` 清理；
   EXE 的页面子窗口此前缺少该样式且按完整 client 矩形清理。本轮已补齐页面子窗口裁剪和
-   `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
-   时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。当前工作树又把页面脏区的
-   白底清理、Core 绘制和焦点框改为 EXE 私有兼容位图中的一次性 `BitBlt`；这只解决可见
-   窗口 DC 暴露中间帧，不改变 Core/Browser 滚动或脚本事件语义。Debug ARMV4I 正式构建
-   已通过，设备上的闪屏/撕裂人工结果仍待部署后确认。
+  `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
+  时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。当前工作树又把页面脏区的
+  白底清理、Core 绘制和焦点框改为 EXE 私有兼容位图中的一次性 `BitBlt`；这只解决可见
+  窗口 DC 暴露中间帧，不改变 Core/Browser 滚动或脚本事件语义。Debug ARMV4I 正式构建
+  已通过，设备上的闪屏/撕裂人工结果仍待部署后确认。
+- `positron.exe` 的页面窗口现在按 Core 的最终 document extent 动态增删 `WS_HSCROLL`/
+  `WS_VSCROLL`，并在 `SWP_FRAMECHANGED` 引发的嵌套 `WM_SIZE` 期间暂缓重复 layout；样式
+  稳定后再用最终 client rect 重新排版和设置 native scrollbar range。页面创建时的默认
+  双滚动条不会再自动变成长期的顶层水平滚动条，真实的内层 overflow 仍由 Core 与原生
+  输入路径负责。该 EXE 改动已通过 C89、审计和 Debug 编译；Release 中 `positron_app`、
+  `positron_core` 与 `test_host` 均已编译/链接，但完整解决方案的 CABWiz 项目在生成 CAB
+  数据文件时失败，因此还没有把 Release 全量写成通过，且本批尚未重新部署设备。
 - `positron.exe` 现在补齐了 `test_host` TEST42 的 nested retained-overflow 输入接线：页面窗口
   先把 WM6 的按下坐标换算为 Core document 坐标并调用 `PCore_OverflowPointer(DOWN)`，随后用
   `SetCapture` 将 MOVE/UP 保持在同一窗口；每次 Core pointer 更新后读取
@@ -118,9 +125,9 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 
 ## 文档与路线图
 
-本批更新了 `positron_image` 与 `positron_core` README、能力矩阵、测试合同和当前状态，并复核
-`.agents/ROADMAP.md`：IANA class-style、viewBox 固有比例和 Core 高 DPI 重复背景 tile 的 Image/Core
-纵切已完成，阶段 B 候选只保留 `positron.exe` 应用图片可见性设备门和原有 Media 未完成边界；
+本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例和 Core 高 DPI 重复背景
+tile 的 Image/Core 纵切仍已完成；阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、
+滚动/旋转/DPI 人工门和原有 Media 未完成边界。新增的 EXE 动态顶层滚动条接线尚未设备验收，
 不得把离线 decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
 
 ## 已验证的自动证据
@@ -139,6 +146,11 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   供设备门验证选中的断言确实执行。
 - `python scripts/audit_repo.py`：通过；项目路径的 staged/working-tree `git diff --check` 通过。
   FFmpeg 原始测试资产保留其上游空白，不为 diff 门改写；临时 `tmp/` 产物未加入仓库。
+- 本轮 EXE 滚动条修订的 `python scripts/test_c89ize.py` 与 `python scripts/audit_repo.py`
+  均通过；`scripts\build.bat Debug build` 的 Core、应用和 test_host 均为 0 错误（Core 保留
+  3 个既有 libcss 转换警告）。`scripts\build.bat Release build` 中三个 ARMV4I 工程也均为
+  0 错误，但 `positron_cab` 的 CabWiz 在生成数据文件时失败；该失败不影响已生成的 Release
+  `positron.exe`，但本批不把完整 Release 解决方案记为通过。
 - 提交 `d4f17d28` 的 `app_script.c/.h` 与 `main.c` 通过 `python scripts/test_c89ize.py`、
   `python scripts/audit_repo.py` 和 `scripts\build.bat Debug build`；`positron_app` 为 0 错误、
   0 警告。随后独立尝试的完整 Release rebuild 触发了 VS2008 并行 PDB/CABWiz 工具链竞争，
@@ -301,10 +313,10 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步先在设备任务管理器中真正退出旧的 `positron.exe`（关闭窗口可能只是 Smart Minimize），
-再从 `\Storage Card\Temp\Positron-device-gate\app-scroll-buffer-20260928`
-启动本轮 `positron.exe`。打开 `https://www.iana.org/numbers`，拖动表格内部横向滚动条的 thumb，
-并点击左右箭头；预期是表格内容移动、thumb 位置更新、页面不整页重新排版或闪烁，内层纵向滚动
-仍可用。然后再检查顶层页面滚动、窄视口 flex、旋转和 retained-pixel 绘制。只有确认新 Core
-实际加载且该人工门通过后，才继续阶段 B 的 CSS/script/image/失败回滚门；若要验收旧页标题与
-地址回滚，再单独使用 `app-baseline-redeploy-20260928`，不要混用候选目录。
+下一步先只提交 `positron_app/main.c` 及本交接文档的 EXE 侧改动，保留 DLL 对话尚未提交的
+`positron_core/pcore_select.c` 工作树修改；在用户要求设备验收后，使用同一批 EXE/Core/DLL
+重新部署并真正退出旧的 `positron.exe`。验收 `https://www.winworldpc.com/home` 时，页面本身
+不应仅因窗口创建默认样式出现顶层水平滚动条；验收 `https://www.iana.org/numbers` 时，
+表格真实内层横向滚动仍应可拖动，顶层页面滚动不应因尺寸未变而重新排版。随后再检查旋转、
+DPI、retained-pixel 绘制和 SVG；若 WinWorld 仍出现顶层横条，再记录最终 document/client 宽度
+区分 EXE scrollbar policy 与 Core/CSS 实际 overflow。

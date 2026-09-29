@@ -98,7 +98,9 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
    非目标语言回退；阶段 B 的主文档 HTTP(S) GET 与阶段 1 外部资源纵切已接入：Browser 负责
    generation/resource gate 和页面生命周期，HTTP/TLS 负责公共 transport 边界，应用只负责
    worker、消息泵、窗口、策略和页面 swap。required CSS/`@import` 阻止提交，optional 脚本/图片
-   允许 Core fallback。阶段 2 已在 `app_script.c/.h` 建立 EXE 私有 ScriptSession 适配层：
+   允许 Core fallback。
+
+   阶段 2 已在 `app_script.c/.h` 建立 EXE 私有 ScriptSession 适配层：
    网络候选按 DOM 顺序执行有界 classic inline/external script，并接入 DOM 读写、属性、有限
    form value、事件、history/fragment、focus、scroll、resize、visibility、任务 checkpoint
    和 teardown；脚本异常不回滚页面，session 初始化失败则关闭脚本能力。阶段 1/2 仍需设备
@@ -111,7 +113,9 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
    拥有 value/选项/checked/radio-group 状态与几何，Browser 拥有 native edit/select/toggle/button 事件事务，宿主拥有窗口、消息和 teardown；
    mutation 后的 option 集合/标签变化会在 UI 消息返回后按 fingerprint 重建 SELECT，并保留
    EDIT/SELECT 焦点。该部分仍需设备输入、DPI、旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser
-    当前有界 mutation callback 限制。阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
+   当前有界 mutation callback 限制。
+
+   阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
     click→Core validation→Browser 可取消 submit→Core successful-control GET/POST/multipart/dialog 路径；
     EXE 只组合 Core 结果并调用既有 navigation candidate 或 dialog close。另已把 ScriptSession `form.reset()` 接到 Browser 按 id
    派发的 cancelable reset 与 Core state-only reset；活动页 relayout 后，reset 专用 reconcile 同步
@@ -128,18 +132,23 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     File/Blob→Core multipart 转换仍无公共入口。native、implicit Enter 与脚本提交路径均待设备验收。
    内置离线页不创建 ScriptSession，inline script 不执行；脚本取消和 selection 示例须使用网络
    ScriptSession 页面验收。阶段 4 的脚本提交设备门仍按用户决定等待 RAPI 恢复，不据此写入设备基线。
+
    `positron.exe` 的顶层物理页面滚动现沿 `test_host` 的 retained-pixel 路径：纯滚动只更新系统
    滚动条位置、移动已有像素、补绘暴露条带并重定位 native 子控件；WM_SIZE、Core/DOM mutation
    和真实 viewport 变化才进入完整 layout。该宿主修正已通过 C89、审计及 Debug/Release ARMV4I
    构建；Debug 完整包已部署并通过最小 `test_host` `999` 门，设备上的 `positron.exe` 连续拖动、
    SVG 可见性及旋转/DPI 人工门仍待完成。与 TEST13 对比后，页面子窗口已补上
     `WS_CLIPCHILDREN`，页面绘制也显式限制到 `PAINTSTRUCT.rcPaint`，并在 EXE 私有兼容位图中
-    完成脏区后一次 `BitBlt`；ScriptSession 的 scroll 事件仍保持语义，脚本造成的 DOM mutation
-    不会被错误地当作纯滚动而屏蔽。针对 TEST42 暴露的
+   完成脏区后一次 `BitBlt`；ScriptSession 的 scroll 事件仍保持语义，脚本造成的 DOM mutation
+   不会被错误地当作纯滚动而屏蔽。针对 TEST42 暴露的
    nested retained-overflow 输入缺口，EXE 也已接入 `PCore_OverflowPointer` 的 DOWN/MOVE/UP、
    `SetCapture`、`PCore_OverflowDirtyRect` 和 Browser element-scroll notification；Core 仍拥有
    命中与滚动条几何，EXE 不自绘滚动条。该路径已通过 C89、审计和 Debug 编译，设备上的实际
-    横向拖动和双缓冲对 WM6 闪屏/撕裂的改善仍须在旧进程退出后用新包人工确认。
+    横向拖动和双缓冲对 WM6 闪屏/撕裂的改善仍须在旧进程退出后用新包人工确认。页面窗口
+    现在还按最终 document extent 动态增删 `WS_HSCROLL`/`WS_VSCROLL`，在 frame-change 的
+    嵌套 `WM_SIZE` 中只更新临时尺寸，样式稳定后才重新 layout；该改动已通过 C89、审计和
+    Debug 编译，但尚无设备视觉证据。Release 应用工程已链接，完整解决方案的 CABWiz
+    数据文件生成失败，不能把 Release 全量门写成通过。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，

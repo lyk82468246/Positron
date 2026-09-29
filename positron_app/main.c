@@ -124,6 +124,7 @@ static HDC g_page_paint_buffer_dc;
 static HBITMAP g_page_paint_buffer_bitmap;
 static int g_page_paint_buffer_width;
 static int g_page_paint_buffer_height;
+static int g_scrollbar_settle_depth;
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
@@ -579,26 +580,89 @@ static void app_clamp_scroll(void)
     }
 }
 
-static void app_update_scrollbars(HWND hwnd)
+/* Configure native page scrollbars from the current document extent.  A
+ * scrollbar consumes client space, so adding one can make the other one
+ * necessary; settle both styles before publishing the final page size.  This
+ * follows the reference host's WM6 path and keeps an incidental small width
+ * overrun from becoming a permanent horizontal scrollbar. */
+static int app_update_scrollbars(HWND hwnd)
 {
     SCROLLINFO info;
+    RECT client;
+    int client_width;
+    int client_height;
+    int needed_horz;
+    int needed_vert;
+    int pass;
+    int size_changed;
+    LONG style;
+    LONG next_style;
 
     if (hwnd == NULL) {
-        return;
+        return 0;
     }
+    size_changed = 0;
+    g_scrollbar_settle_depth++;
+    for (pass = 0; pass < 3; pass++) {
+        if (!GetClientRect(hwnd, &client)) {
+            break;
+        }
+        client_width = client.right - client.left;
+        client_height = client.bottom - client.top;
+        needed_horz = g_document_width > client_width;
+        needed_vert = g_document_height > client_height;
+        style = GetWindowLong(hwnd, GWL_STYLE);
+        next_style = style;
+        if (needed_horz) {
+            next_style |= WS_HSCROLL;
+        } else {
+            next_style &= ~WS_HSCROLL;
+        }
+        if (needed_vert) {
+            next_style |= WS_VSCROLL;
+        } else {
+            next_style &= ~WS_VSCROLL;
+        }
+        if (next_style == style) {
+            break;
+        }
+        SetWindowLong(hwnd, GWL_STYLE, next_style);
+        SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
+    if (!GetClientRect(hwnd, &client)) {
+        g_scrollbar_settle_depth--;
+        return 0;
+    }
+    client_width = client.right - client.left;
+    client_height = client.bottom - client.top;
+    if (client_width < 1) {
+        client_width = 1;
+    }
+    if (client_height < 1) {
+        client_height = 1;
+    }
+    if (g_page_width != client_width || g_page_height != client_height) {
+        size_changed = 1;
+    }
+    g_page_width = client_width;
+    g_page_height = client_height;
     app_clamp_scroll();
     memset(&info, 0, sizeof(info));
     info.cbSize = sizeof(info);
     info.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
     info.nMin = 0;
     info.nMax = (g_document_width > 0) ? g_document_width - 1 : 0;
-    info.nPage = (UINT) ((g_page_width > 0) ? g_page_width : 1);
+    info.nPage = (UINT) client_width;
     info.nPos = g_scroll_x;
     SetScrollInfo(hwnd, SB_HORZ, &info, TRUE);
     info.nMax = (g_document_height > 0) ? g_document_height - 1 : 0;
-    info.nPage = (UINT) ((g_page_height > 0) ? g_page_height : 1);
+    info.nPage = (UINT) client_height;
     info.nPos = g_scroll_y;
     SetScrollInfo(hwnd, SB_VERT, &info, TRUE);
+    g_scrollbar_settle_depth--;
+    return size_changed;
 }
 
 /* Keep the scrollbar range/page stable during a drag or keyboard scroll.
@@ -1872,34 +1936,46 @@ static int app_build_page(const char *url, HANDLE *out_document,
 
 static int app_relayout(void)
 {
+    int pass;
+    int old_page_width;
+    int old_page_height;
+
     if (g_document == NULL) {
         return 0;
     }
-    PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
-    if (g_page_kind == 0) {
-        if (g_current_url[0] == '\0' ||
-                PCore_StyleDocumentEx2(g_document, NULL, g_current_url,
-                AppResources_Resolve, NULL, NULL, NULL) != 0) {
+    for (pass = 0; pass < 3; pass++) {
+        old_page_width = g_page_width;
+        old_page_height = g_page_height;
+        PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
+        if (g_page_kind == 0) {
+            if (g_current_url[0] == '\0' ||
+                    PCore_StyleDocumentEx2(g_document, NULL, g_current_url,
+                    AppResources_Resolve, NULL, NULL, NULL) != 0) {
+                return 1;
+            }
+            if (PCore_LayoutDocument(g_document, g_page_width,
+                    g_page_height) != 0) {
+                return 1;
+            }
+        } else if (g_stylesheet == NULL ||
+                app_style_and_layout(g_document, g_stylesheet) != 0) {
             return 1;
         }
-        if (PCore_LayoutDocument(g_document, g_page_width,
-                g_page_height) != 0) {
-            return 1;
+        g_document_width = PCore_DocumentWidth(g_document);
+        g_document_height = PCore_DocumentHeight(g_document);
+        if (g_document_width < g_page_width) {
+            g_document_width = g_page_width;
         }
-    } else if (g_stylesheet == NULL ||
-            app_style_and_layout(g_document, g_stylesheet) != 0) {
-        return 1;
+        if (g_document_height < g_page_height) {
+            g_document_height = g_page_height;
+        }
+        app_clamp_scroll();
+        (void) app_update_scrollbars(g_page_window);
+        if (old_page_width == g_page_width &&
+                old_page_height == g_page_height) {
+            break;
+        }
     }
-    g_document_width = PCore_DocumentWidth(g_document);
-    g_document_height = PCore_DocumentHeight(g_document);
-    if (g_document_width < g_page_width) {
-        g_document_width = g_page_width;
-    }
-    if (g_document_height < g_page_height) {
-        g_document_height = g_page_height;
-    }
-    app_clamp_scroll();
-    app_update_scrollbars(g_page_window);
     if (g_controls != NULL) {
         AppControls_Reposition(g_controls, g_document, g_scroll_x,
                 g_scroll_y);
@@ -2156,15 +2232,9 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     }
     app_set_focus_ids(g_page_kind);
     app_set_address(g_current_url);
-    g_document_width = PCore_DocumentWidth(g_document);
-    g_document_height = PCore_DocumentHeight(g_document);
-    if (g_document_width < g_page_width) {
-        g_document_width = g_page_width;
+    if (app_relayout() != 0) {
+        app_set_status(APP_TEXT_STATUS_LAYOUT);
     }
-    if (g_document_height < g_page_height) {
-        g_document_height = g_page_height;
-    }
-    app_update_scrollbars(g_page_window);
     if (g_controls != NULL) {
         (void) AppControls_Rebuild(g_controls, g_document, g_script,
                 g_scroll_x, g_scroll_y);
@@ -2984,15 +3054,9 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         request->script_candidate = NULL;
         app_set_focus_ids(g_page_kind);
         app_set_address(g_current_url);
-        g_document_width = PCore_DocumentWidth(g_document);
-        g_document_height = PCore_DocumentHeight(g_document);
-        if (g_document_width < g_page_width) {
-            g_document_width = g_page_width;
+        if (app_relayout() != 0) {
+            app_set_status(APP_TEXT_STATUS_LAYOUT);
         }
-        if (g_document_height < g_page_height) {
-            g_document_height = g_page_height;
-        }
-        app_update_scrollbars(g_page_window);
         if (g_controls != NULL) {
             (void) AppControls_Rebuild(g_controls, g_document, g_script,
                     g_scroll_x, g_scroll_y);
@@ -3898,8 +3962,12 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             if (g_page_height < 1) {
                 g_page_height = 1;
             }
-            if (g_document != NULL && app_relayout() != 0) {
+            if (g_document != NULL && g_scrollbar_settle_depth == 0 &&
+                    app_relayout() != 0) {
                 app_set_status(APP_TEXT_STATUS_LAYOUT);
+            }
+            if (g_scrollbar_settle_depth > 0) {
+                return 0;
             }
             if (g_controls != NULL && g_document != NULL) {
                 AppControls_Reposition(g_controls, g_document, g_scroll_x,
