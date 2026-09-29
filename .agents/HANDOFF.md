@@ -131,6 +131,11 @@ background 接线已完成，`positron_image.dll` 现在
   `EM_SETRECTNP` 内部上移操作，改为用 `AdjustWindowRectEx` 把客户区行高转换为 native EDIT 外框；
   该版本已进入最新远端包；设备门只证明包完整、Core 模块匹配和启动回归通过，网络页面的资源、脚本
   和滚动视觉仍需单独验收。
+- 最新 WinWorld 截图确认页眉中的 30x30 CSS/SVG 图标属于 Core 绘制的普通 `button`，而不是独立
+  的 SVG 控件。EXE 的指针路径现与 `test_host` 对齐：按下先设置 Core 的 `FOCUS|ACTIVE`，按钮
+  的 focus/focusin 仅负责焦点状态和视觉反馈，即使焦点事件投影失败也不会吞掉可信的
+  Browser native-button click transaction；抬起时清除 `ACTIVE`。没有加入 WinWorld 特判或新的
+  公共 ABI。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -152,7 +157,7 @@ background 接线已完成，`positron_image.dll` 现在
 
 本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
 tile 以及 WinWorld rgba/round-cap Image 纵切仍已完成；阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、
-滚动/旋转/DPI 人工门和原有 Media 未完成边界。新增的 EXE 动态顶层滚动条接线尚未设备验收，
+滚动/旋转/DPI、普通按钮脚本反馈人工门和原有 Media 未完成边界。新增的 EXE 动态顶层滚动条接线尚未设备验收，
 不得把离线 decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
 
 ## 已验证的自动证据
@@ -231,6 +236,13 @@ tile 以及 WinWorld rgba/round-cap Image 纵切仍已完成；阶段 B 候选�
   `5921EE4576B47971D953A00B7F212555BAD8D0B7EB1FE7D2B75A6AC6627D7494`、Image
   `3D6459CC5FB1A76FD9B0FDF3D38CC832ACE7506EDC56A366C6713AFA5DB0BE08`。该证据确认设备运行
   的是 `0e9688a2` 对应的新 Image DLL，但仍不等于页面视觉已经通过。
+- 本轮普通按钮点击接线修正版通过 `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`
+  和正式 `scripts\build.bat Debug build`；完整 Debug stage 为
+  `tmp/device-runs/20260929-button-click/stage`，19 个文件已复制到
+  `\Storage Card\Temp\Positron-device-gate\button-click-20260929` 并启动
+  `positron.exe`，设备 PID 为 `2733577874`。本轮尚未取得用户在该实例中点击菜单按钮后的人工
+  视觉/脚本状态证据；若仍无菜单变化，下一步应检查页面脚本资源和 Browser session，而不是在
+  EXE 中硬编码 WinWorld 菜单行为。
 
 ## 设备证据与限制
 
@@ -356,8 +368,9 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步是把包含该 CSS `data:image/svg+xml` 图标的 WinWorld 页面加载到与本批匹配的
-`positron.exe`/`positron_image.dll` 包中做一次人工视觉确认：先退出旧进程，再从同一 staging
-目录启动新实例，确认汉堡图标不再是空黑框、半透明度和圆端帽可见，普通网络 SVG/PNG/JPEG/GIF
-不回归。若仍异常，记录页面 URL、viewport/DPI、资源最终 URL 和应用 image-state 摘要，区分
-Image 直接绘制与 Core background 的剩余问题；不要把 TEST1319 的自动门当作应用截图证据。
+下一步先在设备上确认退出旧 `positron.exe`，再从
+`\\Storage Card\\Temp\\Positron-device-gate\\button-click-20260929` 启动同一实例，打开
+`https://winworldpc.com/home` 并点击页眉菜单按钮。验收两点：按钮 click 是否触发页面原有的
+菜单展开/折叠，以及普通网络 SVG/PNG/JPEG/GIF 是否仍可见。若按钮仍无变化，记录 URL、
+viewport/DPI、按钮 DOM 属性变化和脚本资源终态；此时优先转 Browser/ScriptSession 侧，不在
+EXE 中添加页面特判。

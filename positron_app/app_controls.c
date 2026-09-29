@@ -2413,9 +2413,10 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
             if (disabled) {
                 return 1;
             }
-            if (app_controls_button_focus(context, form_index) != 0) {
-                return 1;
-            }
+            /* Focus styling is best effort.  A trusted pointer hit must
+             * still reach the Browser native-button transaction when focus
+             * event delivery fails (for example, on an SVG child hit). */
+            (void) app_controls_button_focus(context, form_index);
             (void) app_controls_button_activate(context, form_index,
                     document_x, document_y);
             return 1;

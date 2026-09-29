@@ -147,7 +147,9 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     横向拖动和双缓冲对 WM6 闪屏/撕裂的改善仍须在旧进程退出后用新包人工确认。页面窗口
     现在还按最终 document extent 动态增删 `WS_HSCROLL`/`WS_VSCROLL`，在 frame-change 的
     嵌套 `WM_SIZE` 中只更新临时尺寸，样式稳定后才重新 layout；该改动已通过 C89、审计和
-    Debug 编译，但尚无设备视觉证据。Release 应用工程已链接，完整解决方案的 CABWiz
+    Debug 编译，但尚无设备视觉证据。普通 Core 绘制 button 的 pointer-down 现也先设置
+    `FOCUS|ACTIVE`，并把焦点反馈与 Browser click transaction 解耦；该修正已完成 Debug 部署，
+    WinWorld 响应式菜单展开仍属于人工设备门。Release 应用工程已链接，完整解决方案的 CABWiz
     数据文件生成失败，不能把 Release 全量门写成通过。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。

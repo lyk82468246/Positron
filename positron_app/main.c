@@ -4024,6 +4024,11 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
                 app_invalidate_overflow(hwnd);
                 return 0;
             }
+            if (g_document != NULL && PCore_InteractionSetAt(g_document,
+                    document_x, document_y, PCORE_INTERACTION_FOCUS |
+                    PCORE_INTERACTION_ACTIVE) > 0) {
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
             if (AppControls_HandleButtonPointer(g_controls, document_x,
                     document_y)) {
                 return 0;
@@ -4128,6 +4133,10 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             ReleaseCapture();
             app_invalidate_overflow(hwnd);
             return 0;
+        }
+        if (g_document != NULL && PCore_InteractionClear(g_document,
+                PCORE_INTERACTION_ACTIVE) > 0) {
+            InvalidateRect(hwnd, NULL, FALSE);
         }
         break;
     case WM_VSCROLL:
