@@ -54,7 +54,11 @@ command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继�
 
 ### `positron_image.dll`
 
-提供有界图像解码和元数据读取。Core 负责来源选择、资源状态、cache key 和 layout 投影；图像 DLL 不决定 URL、CORS、页面事件或 native 绘制窗口。
+提供有界图像解码和元数据读取。SVG 路径在不改变公共 ABI 的前提下支持简单 class paint、根
+viewBox 固有尺寸以及 `rgba()` stroke 的 opacity 与 butt/round/square linecap，并由 Image
+自己的 raster adapter 完成 alpha 合成。Core 负责来源选择、资源状态、cache key 和 layout
+投影；图像 DLL 不决定 URL、CORS、页面事件或 native 绘制窗口，也不把 CSS data URI 或完整
+CSS cascade 复制进 Image。
 
 ### `positron_media.dll`
 

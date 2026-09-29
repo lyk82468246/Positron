@@ -52,6 +52,8 @@ struct svgtiny_parse_state {
 	svgtiny_fill_rule fill_rule;
 	svgtiny_colour stroke;
 	int stroke_width;
+	float stroke_opacity;
+	svgtiny_linecap stroke_linecap;
 
 	/* inherited text attributes retained for the platform font backend */
 	float font_size;

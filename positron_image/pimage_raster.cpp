@@ -60,10 +60,28 @@ typedef struct pimage_path_builder {
 
 static unsigned int pimage_nsvg_color(svgtiny_colour color)
 {
-    return ((unsigned int) svgtiny_RED(color)) |
-            ((unsigned int) svgtiny_GREEN(color) << 8) |
-            ((unsigned int) svgtiny_BLUE(color) << 16) |
-            0xff000000UL;
+	return ((unsigned int) svgtiny_RED(color)) |
+			((unsigned int) svgtiny_GREEN(color) << 8) |
+			((unsigned int) svgtiny_BLUE(color) << 16) |
+			0xff000000UL;
+}
+
+static unsigned int pimage_nsvg_stroke_color(svgtiny_colour color,
+		float opacity)
+{
+	unsigned int alpha;
+
+	if (opacity <= 0.0f) {
+		alpha = 0;
+	} else if (opacity >= 1.0f) {
+		alpha = 255;
+	} else {
+		alpha = (unsigned int) (opacity * 255.0f + 0.5f);
+	}
+	return ((unsigned int) svgtiny_RED(color)) |
+			((unsigned int) svgtiny_GREEN(color) << 8) |
+			((unsigned int) svgtiny_BLUE(color) << 16) |
+			(alpha << 24);
 }
 
 static unsigned int pimage_nsvg_gradient_color(
@@ -347,11 +365,14 @@ static NSVGshape *pimage_convert_shape(const struct svgtiny_shape *source)
     }
     shape->stroke.type = (source->stroke == svgtiny_TRANSPARENT) ?
             NSVG_PAINT_NONE : NSVG_PAINT_COLOR;
-    shape->stroke.color = pimage_nsvg_color(source->stroke);
-    shape->opacity = 1.0f;
-    shape->strokeWidth = (float) source->stroke_width;
-    shape->strokeLineJoin = NSVG_JOIN_MITER;
-    shape->strokeLineCap = NSVG_CAP_BUTT;
+	shape->stroke.color = pimage_nsvg_stroke_color(source->stroke,
+			source->stroke_opacity);
+	shape->opacity = 1.0f;
+	shape->strokeWidth = (float) source->stroke_width;
+	shape->strokeLineJoin = NSVG_JOIN_MITER;
+	shape->strokeLineCap = (source->stroke_linecap == svgtiny_LINECAP_ROUND) ?
+			NSVG_CAP_ROUND : (source->stroke_linecap == svgtiny_LINECAP_SQUARE) ?
+			NSVG_CAP_SQUARE : NSVG_CAP_BUTT;
     shape->miterLimit = 4.0f;
     shape->fillRule = (source->fill_rule == svgtiny_FILL_EVENODD) ?
             NSVG_FILLRULE_EVENODD : NSVG_FILLRULE_NONZERO;

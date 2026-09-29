@@ -70,6 +70,8 @@ extern BOOL test1317_iana_core_background(void);
 extern const char *test1317_iana_core_background_last_error(void);
 extern BOOL test1318_core_css_data_uri(void);
 extern const char *test1318_core_css_data_uri_last_error(void);
+extern BOOL test1319_image_rgba_round_stroke(void);
+extern const char *test1319_image_rgba_round_stroke_last_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -564,7 +566,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1318
+#define TEST_MAX_NUMBER 1319
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -115684,6 +115686,16 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1318 FAIL",
                         test1318_core_css_data_uri_last_error());
+            }
+            break;
+        case 1319:
+            ok = test1319_image_rgba_round_stroke();
+            if (ok) {
+                show_info(L"TEST 1319 OK",
+                        "Image rgba stroke alpha and round caps passed.");
+            } else {
+                show_error(L"TEST 1319 FAIL",
+                        test1319_image_rgba_round_stroke_last_error());
             }
             break;
         default: ok = FALSE; break;

@@ -80,6 +80,13 @@ static void svgtiny_parse_font_style_value(const char *value, size_t len,
 		struct svgtiny_parse_state *state);
 static void svgtiny_parse_text_anchor_value(const char *value, size_t len,
 		struct svgtiny_parse_state *state);
+static void svgtiny_parse_opacity_value(const char *value, size_t len,
+		float *opacity);
+static void svgtiny_parse_linecap_value(const char *value, size_t len,
+		svgtiny_linecap *linecap);
+static int svgtiny_parse_rgba(const char *value, unsigned int *out_r,
+		unsigned int *out_g, unsigned int *out_b, float *out_alpha);
+static int svgtiny_ascii_space(char c);
 static const char *svgtiny_find_style_value(const char *style,
 		size_t style_len, const char *property, size_t *value_len);
 
@@ -759,6 +766,8 @@ svgtiny_code svgtiny_parse(struct svgtiny_diagram *diagram,
 	state.fill_rule = svgtiny_FILL_NONZERO;
 	state.stroke = svgtiny_TRANSPARENT;
 	state.stroke_width = 1;
+	state.stroke_opacity = 1.0f;
+	state.stroke_linecap = svgtiny_LINECAP_BUTT;
 	state.font_size = 16.0f;
 	state.font_family = svgtiny_FONT_SANS_SERIF;
 	state.text_anchor = svgtiny_TEXT_ANCHOR_START;
@@ -1935,45 +1944,83 @@ void svgtiny_parse_paint_attributes(dom_element *node,
 		dom_string_unref(attr);
 	}
 
+	exc = dom_element_get_attribute(node, state->interned_stroke_opacity, &attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_opacity_value(dom_string_data(attr),
+				dom_string_byte_length(attr), &state->stroke_opacity);
+		dom_string_unref(attr);
+	}
+
+	exc = dom_element_get_attribute(node, state->interned_stroke_linecap,
+			&attr);
+	if (exc == DOM_NO_ERR && attr != NULL) {
+		svgtiny_parse_linecap_value(dom_string_data(attr),
+				dom_string_byte_length(attr), &state->stroke_linecap);
+		dom_string_unref(attr);
+	}
+
 	exc = dom_element_get_attribute(node, state->interned_style, &attr);
 	if (exc == DOM_NO_ERR && attr != NULL) {
 		char *style = strndup(dom_string_data(attr),
 				      dom_string_byte_length(attr));
-		const char *s;
+		const char *value_start;
+		size_t value_len;
 		char *value;
-		if ((s = strstr(style, "fill:"))) {
-			s += 5;
-			while (*s == ' ')
-				s++;
-			value = strndup(s, strcspn(s, "; "));
-			_svgtiny_parse_color(value, &state->fill, &state->fill_grad, state);
-			free(value);
+		if (style == NULL) {
+			dom_string_unref(attr);
+			return;
 		}
-		if ((s = strstr(style, "fill-rule:"))) {
-			s += 10;
-			while (*s == ' ')
-				s++;
-			value = strndup(s, strcspn(s, "; "));
-			svgtiny_parse_fill_rule_value(value, strlen(value),
-					&state->fill_rule);
-			free(value);
+		value_start = svgtiny_find_style_value(style, strlen(style),
+				"fill", &value_len);
+		if (value_start != NULL) {
+			value = strndup(value_start, value_len);
+			if (value != NULL) {
+				_svgtiny_parse_color(value, &state->fill,
+						&state->fill_grad, state);
+				free(value);
+			}
 		}
-		if ((s = strstr(style, "stroke:"))) {
-			s += 7;
-			while (*s == ' ')
-				s++;
-			value = strndup(s, strcspn(s, "; "));
-			_svgtiny_parse_color(value, &state->stroke, &state->stroke_grad, state);
-			free(value);
+		value_start = svgtiny_find_style_value(style, strlen(style),
+				"fill-rule", &value_len);
+		if (value_start != NULL) {
+			value = strndup(value_start, value_len);
+			if (value != NULL) {
+				svgtiny_parse_fill_rule_value(value, strlen(value),
+						&state->fill_rule);
+				free(value);
+			}
 		}
-		if ((s = strstr(style, "stroke-width:"))) {
-			s += 13;
-			while (*s == ' ')
-				s++;
-			value = strndup(s, strcspn(s, "; "));
-			state->stroke_width = _svgtiny_parse_length(value,
+		value_start = svgtiny_find_style_value(style, strlen(style),
+				"stroke", &value_len);
+		if (value_start != NULL) {
+			value = strndup(value_start, value_len);
+			if (value != NULL) {
+				_svgtiny_parse_color(value, &state->stroke,
+						&state->stroke_grad, state);
+				free(value);
+			}
+		}
+		value_start = svgtiny_find_style_value(style, strlen(style),
+				"stroke-width", &value_len);
+		if (value_start != NULL) {
+			value = strndup(value_start, value_len);
+			if (value != NULL) {
+				state->stroke_width = _svgtiny_parse_length(value,
 						state->viewport_width, *state);
-			free(value);
+				free(value);
+			}
+		}
+		value_start = svgtiny_find_style_value(style, strlen(style),
+				"stroke-opacity", &value_len);
+		if (value_start != NULL) {
+			svgtiny_parse_opacity_value(value_start, value_len,
+					&state->stroke_opacity);
+		}
+		value_start = svgtiny_find_style_value(style, strlen(style),
+				"stroke-linecap", &value_len);
+		if (value_start != NULL) {
+			svgtiny_parse_linecap_value(value_start, value_len,
+					&state->stroke_linecap);
 		}
 		free(style);
 		dom_string_unref(attr);
@@ -1993,6 +2040,161 @@ static void svgtiny_parse_fill_rule_value(const char *value, size_t len,
 	}
 }
 
+static const char *svgtiny_skip_space(const char *value)
+{
+	while (value != NULL && svgtiny_ascii_space(*value)) {
+		value++;
+	}
+	return value;
+}
+
+static int svgtiny_parse_rgba_component(const char **cursor,
+		double *out_value)
+{
+	const char *start;
+	char *end;
+	double value;
+
+	if (cursor == NULL || *cursor == NULL || out_value == NULL) {
+		return 0;
+	}
+	start = svgtiny_skip_space(*cursor);
+	value = strtod(start, &end);
+	if (end == start || value != value) {
+		return 0;
+	}
+	if (*end == '%') {
+		value = value * 255.0 / 100.0;
+		end++;
+	}
+	if (value < 0.0 || value > 255.0) {
+		return 0;
+	}
+	*out_value = value;
+	*cursor = svgtiny_skip_space(end);
+	return 1;
+}
+
+static int svgtiny_parse_rgba(const char *value, unsigned int *out_r,
+		unsigned int *out_g, unsigned int *out_b, float *out_alpha)
+{
+	const char *cursor;
+	char *end;
+	double red;
+	double green;
+	double blue;
+	double alpha;
+
+	if (value == NULL || out_r == NULL || out_g == NULL || out_b == NULL ||
+			out_alpha == NULL || strncmp(value, "rgba(", 5) != 0) {
+		return 0;
+	}
+	cursor = value + 5;
+	if (!svgtiny_parse_rgba_component(&cursor, &red) || *cursor != ',') {
+		return 0;
+	}
+	cursor = svgtiny_skip_space(cursor + 1);
+	if (!svgtiny_parse_rgba_component(&cursor, &green) || *cursor != ',') {
+		return 0;
+	}
+	cursor = svgtiny_skip_space(cursor + 1);
+	if (!svgtiny_parse_rgba_component(&cursor, &blue) || *cursor != ',') {
+		return 0;
+	}
+	cursor = svgtiny_skip_space(cursor + 1);
+	alpha = strtod(cursor, &end);
+	if (end == cursor || alpha != alpha) {
+		return 0;
+	}
+	if (*end == '%') {
+		alpha /= 100.0;
+		end++;
+	}
+	if (alpha < 0.0 || alpha > 1.0) {
+		return 0;
+	}
+	cursor = svgtiny_skip_space(end);
+	if (*cursor != ')') {
+		return 0;
+	}
+	cursor = svgtiny_skip_space(cursor + 1);
+	if (*cursor != '\0') {
+		return 0;
+	}
+	*out_r = (unsigned int) (red + 0.5);
+	*out_g = (unsigned int) (green + 0.5);
+	*out_b = (unsigned int) (blue + 0.5);
+	*out_alpha = (float) alpha;
+	return 1;
+}
+
+static void svgtiny_parse_opacity_value(const char *value, size_t len,
+		float *opacity)
+{
+	char buffer[64];
+	char *end;
+	double number;
+	size_t start;
+	size_t end_len;
+
+	if (value == NULL || opacity == NULL || len == 0) {
+		return;
+	}
+	start = 0;
+	while (start < len && svgtiny_ascii_space(value[start])) {
+		start++;
+	}
+	end_len = len;
+	while (end_len > start && svgtiny_ascii_space(value[end_len - 1])) {
+		end_len--;
+	}
+	if (end_len <= start || end_len - start >= sizeof(buffer)) {
+		return;
+	}
+	memcpy(buffer, value + start, end_len - start);
+	buffer[end_len - start] = '\0';
+	number = strtod(buffer, &end);
+	if (end == buffer || *end == '\0') {
+		if (number < 0.0 || number > 1.0 || number != number) {
+			return;
+		}
+		*opacity = (float) number;
+		return;
+	}
+	if (*end == '%' && end[1] == '\0' && number >= 0.0 &&
+			number <= 100.0) {
+		*opacity = (float) (number / 100.0);
+	}
+}
+
+static void svgtiny_parse_linecap_value(const char *value, size_t len,
+		svgtiny_linecap *linecap)
+{
+	size_t start;
+	size_t end;
+
+	if (value == NULL || linecap == NULL) {
+		return;
+	}
+	start = 0;
+	while (start < len && svgtiny_ascii_space(value[start])) {
+		start++;
+	}
+	end = len;
+	while (end > start && svgtiny_ascii_space(value[end - 1])) {
+		end--;
+	}
+	if (end - start == 4 && memcmp(value + start, "butt", 4) == 0) {
+		*linecap = svgtiny_LINECAP_BUTT;
+	} else if (end - start == 5 &&
+			memcmp(value + start, "round", 5) == 0) {
+		*linecap = svgtiny_LINECAP_ROUND;
+	} else if (end - start == 6 &&
+			memcmp(value + start, "square", 6) == 0) {
+		*linecap = svgtiny_LINECAP_SQUARE;
+	}
+}
+
 
 /**
  * Parse a colour.
@@ -2004,10 +2206,22 @@ static void _svgtiny_parse_color(const char *s, svgtiny_colour *c,
 {
 	unsigned int r, g, b;
 	float rf, gf, bf;
+	float alpha;
 	size_t len = strlen(s);
 	char *id = 0, *rparen;
 
-	if (len == 4 && s[0] == '#') {
+	/* CSS rgba() is intentionally parsed here, before libsvgtiny's legacy
+	 * rgb() branch.  The alpha is retained only for strokes because that is
+	 * the paint attribute carried through the bounded image adapter. */
+	if (len >= 6 && s[0] == 'r' && s[1] == 'g' && s[2] == 'b' &&
+			s[3] == 'a' && s[4] == '(' &&
+		svgtiny_parse_rgba(s, &r, &g, &b, &alpha)) {
+		*c = svgtiny_RGB(r, g, b);
+		if (state != NULL && c == &state->stroke) {
+			state->stroke_opacity = alpha;
+		}
+
+	} else if (len == 4 && s[0] == '#') {
 		if (sscanf(s + 1, "%1x%1x%1x", &r, &g, &b) == 3)
 			*c = svgtiny_RGB(r | r << 4, g | g << 4, b | b << 4);
 
@@ -2527,6 +2741,8 @@ struct svgtiny_shape *svgtiny_add_shape(struct svgtiny_parse_state *state)
 			(state->ctm.a + state->ctm.d) / 2.0);
 	if (0 < state->stroke_width && shape->stroke_width == 0)
 		shape->stroke_width = 1;
+	shape->stroke_opacity = state->stroke_opacity;
+	shape->stroke_linecap = state->stroke_linecap;
 
 	return shape;
 }

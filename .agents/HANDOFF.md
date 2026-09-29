@@ -20,6 +20,10 @@ background 接线已完成，`positron_image.dll` 现在
 没有显式宽高的 SVG 固有比例；Core 的高 DPI 重复 SVG 背景 tile 也已按设备 DPI 缩放。真实
 `positron.exe` 图片页面仍待人工观察。Media 的 DirectShow callback source filter/native 视频
 生命周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实保持不变。
+本批把消费者提供的 WinWorld navbar SVG 收束到 Image DLL：`rgba(0, 0, 0, 0.5)` stroke、
+`stroke-linecap="round"` 和 2px 路径现在由 libsvgtiny 解析并由 NanoSVG/GDI 保持 alpha、
+圆端帽；应用、Core 和 data-URI 接线没有修改。TEST1319 的精确离屏像素回归及匹配 ARMV4I
+设备门已通过，后续截图应先确认加载的是本批匹配的 `positron_image.dll`。
 本轮又处理了同一 IANA 页面截图暴露的两处几何问题：EXE 地址栏不再使用私有 inset，并改为
 使用 native EDIT 实际 `SYSTEM_FONT` 的 `TEXTMETRIC.tmHeight` 加少量 DPI 留白计算外框高度；Core
 纵向 auto-height flex 在子项 `flex-basis:0` 时改用已布局实际高度贡献父容器。字体度量后的地址栏
@@ -77,6 +81,12 @@ background 接线已完成，`positron_image.dll` 现在
   Core/Image 直接绘制像素一致，定位默认重复背景的尺寸缺口属于 Core 重复绘制链而非
   HTTP/应用接线；Core 现在会把 SVG 的 CSS 像素 tile 按活动设备 DPI 转为物理重复尺寸，
   不改变非重复图片或 Image DLL 的自然尺寸。
+- `positron_image.dll` 现还在 libsvgtiny 的 bounded paint state 中保留 `stroke_opacity` 与
+  `stroke_linecap`：直接属性和 inline/class style 都可解析受限 `rgba(r,g,b,a)`、
+  `stroke-opacity` 以及 `butt/round/square`，超出颜色/alpha 范围保持原状态并 fail closed。
+  `pimage_raster.cpp` 把 stroke alpha 写入 NanoSVG paint，利用既有 premultiplied GDI
+  `AlphaBlend` 合成；不改变 `PImage_*` 公共 ABI。TEST1319 使用精确 WinWorld 30x30 fixture，
+  检查三条半透明灰线、round cap 延伸和端点外白像素，已在匹配 Debug ARMV4I 包上通过。
 - `positron.exe` 的顶层物理页面滚动已沿 `test_host` 的 retained-pixel 路径接线：纯滚动只更新
   系统滚动条位置、用 `ScrollWindowEx` 移动已有像素并重绘暴露条带，再重定位同一窗口体系下的
   native 子控件；不会在每个滚动步重新执行 Core layout，也不会重复同步 SELECT/toggle 状态。
@@ -140,8 +150,8 @@ background 接线已完成，`positron_image.dll` 现在
 
 ## 文档与路线图
 
-本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例和 Core 高 DPI 重复背景
-tile 的 Image/Core 纵切仍已完成；阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、
+本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
+tile 以及 WinWorld rgba/round-cap Image 纵切仍已完成；阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、
 滚动/旋转/DPI 人工门和原有 Media 未完成边界。新增的 EXE 动态顶层滚动条接线尚未设备验收，
 不得把离线 decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
 
@@ -197,6 +207,11 @@ tile 的 Image/Core 纵切仍已完成；阶段 B 候选继续只保留 `positro
   dump。TEST1317 将 128x50 CSS 像素的 header tile 与 128 DPI 下的 171x67 物理布局逐像素
   对照，证明 Core 重复 SVG 背景已经使用设备 DPI；这仍是 test_host 的自动纵切，不替代
   `positron.exe` 的真实页面截图。
+- 本轮 `tmp/device-runs/20260929-103635-next1319gate` 以当前 Debug ARMV4I Image/Core/宿主
+  匹配包运行 `1319,999`：TEST1319 精确 rgba stroke/round-cap 像素回归和完成提示均为 OK，
+  selected/observed 为 `2/2`，唯一 `TESTBENCH PASS`，零 ERROR/FAIL、双空间预检通过、
+  `core_module_check=PASS`、`crash_check=PASS` 且无新增 dump。部署日志完整回收后按策略删除当前
+  远端目录；这证明 DLL/Image raster 路径，不替代最终 `positron.exe` WinWorld 页面视觉观察。
 - 同一批 Debug staging 已复制到外置 `Storage Card\Temp\Positron-device-gate\iana-app-20260927`，
   并通过 RAPI 成功启动 `positron.exe`；启动成功只证明匹配的 EXE/DLL 能运行，IANA 首页的
   实际网络图片仍需用户在该应用窗口中导航后进行视觉确认。
@@ -329,10 +344,8 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步是在设备当前目录
-`\Storage Card\Temp\Positron-device-gate\exe-svg-uri-20260929-101500` 中做人工视觉确认：
-先确认旧 `positron.exe` 已真正退出，再从该目录启动新实例；打开含 CSS
-`data:image/svg+xml` 响应式图标的窄视口页面，确认黑色方块消失、background-position/size/repeat
-与页面其余布局一致，且普通网络 SVG/PNG/JPEG/GIF 不回归。同时检查 WinWorld 顶层水平滚动条
-和 IANA 表格内层横向滚动。若视觉仍异常，记录页面 URL、viewport/DPI、资源最终 URL 和应用
-image-state 摘要，不把 `test_host` 的自动门当作应用截图证据。
+下一步是把包含该 CSS `data:image/svg+xml` 图标的 WinWorld 页面加载到与本批匹配的
+`positron.exe`/`positron_image.dll` 包中做一次人工视觉确认：先退出旧进程，再从同一 staging
+目录启动新实例，确认汉堡图标不再是空黑框、半透明度和圆端帽可见，普通网络 SVG/PNG/JPEG/GIF
+不回归。若仍异常，记录页面 URL、viewport/DPI、资源最终 URL 和应用 image-state 摘要，区分
+Image 直接绘制与 Core background 的剩余问题；不要把 TEST1319 的自动门当作应用截图证据。

@@ -57,6 +57,14 @@ width/height 的 IANA header SVG 会以约 `128x50` 而不是过大的 `300x117`
 不会被默认的 `background-repeat` 裁成残片。CSS background-image 的定位和页面资源生命周期
 仍由 Core/宿主负责，不能由此接口推断。
 
+SVG stroke 还支持有界的 `rgba(r, g, b, a)` 颜色、`stroke-opacity` 和
+`stroke-linecap="butt|round|square"`。alpha 会随 stroke paint 进入 NanoSVG 的 GDI 合成，
+不会把半透明颜色误当作不透明黑色；round/square cap 由同一 raster path 处理。非法或超出
+`0..255`/`0..1` 范围的 rgba 值保持 fail closed，不会创建伪 stroke。精确的 WinWorld
+navbar-toggler SVG（3 条 `rgba(0,0,0,0.5)`、2px、round-cap 路径）由 TEST1319 在
+`PImage_CreateSvgFromMemory`→`PImage_DrawSvg` 的离屏像素回归中覆盖；这仍不意味着 Image DLL
+实现完整 SVG/CSS cascade，也不替代 Core data-URI 或最终应用页面的视觉验收。
+
 ## 示例与验证
 
 `samples\positron_image_demo` 是只依赖此 DLL 的完整示例，覆盖 raw pixels、PNG、JPEG、BMP、GIF、SVG、stride、alpha 和生命周期。根解决方案构建后可运行 `scripts\stage_image_demo.bat Debug <共享目录>` 部署到模拟器。

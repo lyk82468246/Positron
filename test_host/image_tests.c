@@ -1513,3 +1513,158 @@ cleanup:
     PCore_SetViewport(240, 320, 96);
     return ok;
 }
+
+static char g_test1319_failure[384];
+
+const char *test1319_image_rgba_round_stroke_last_error(void)
+{
+    return g_test1319_failure;
+}
+
+static int test1319_gray_alpha_pixel(COLORREF color)
+{
+    int red;
+    int green;
+    int blue;
+
+    if (color == CLR_INVALID) {
+        return 0;
+    }
+    red = (int) GetRValue(color);
+    green = (int) GetGValue(color);
+    blue = (int) GetBValue(color);
+    return abs(red - green) <= 8 && abs(red - blue) <= 8 &&
+            red >= 80 && red <= 200;
+}
+
+/* TEST 1319 - exact WinWorld navbar-toggler SVG paint regression.  This
+ * fixture intentionally exercises the path that the CSS data URI reaches:
+ * rgba() stroke alpha must survive the libsvgtiny-to-NanoSVG conversion and
+ * round caps must extend each open line beyond its endpoint. */
+BOOL test1319_image_rgba_round_stroke(void)
+{
+    static const char SVG[] =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"30\" "
+            "height=\"30\" viewBox=\"0 0 30 30\">"
+            "<path stroke=\"rgba(0, 0, 0, 0.5)\" "
+            "stroke-linecap=\"round\" stroke-miterlimit=\"10\" "
+            "stroke-width=\"2\" d=\"M4 7h22M4 15h22M4 23h22\"/>"
+            "</svg>";
+    PIMAGE_SVG svg;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF center_top;
+    COLORREF center_middle;
+    COLORREF center_bottom;
+    COLORREF round_start;
+    COLORREF round_end;
+    COLORREF outside_start;
+    int width;
+    int height;
+    unsigned int shapes;
+    int create_rc;
+    int draw_rc;
+    BOOL ok;
+
+    strcpy(g_test1319_failure, "not run");
+    svg = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    center_top = CLR_INVALID;
+    center_middle = CLR_INVALID;
+    center_bottom = CLR_INVALID;
+    round_start = CLR_INVALID;
+    round_end = CLR_INVALID;
+    outside_start = CLR_INVALID;
+    width = 0;
+    height = 0;
+    shapes = 0;
+    create_rc = PImage_CreateSvgFromMemory(SVG, (int) sizeof(SVG) - 1,
+            30, 30, &svg);
+    ok = create_rc == PIMAGE_OK && svg != NULL;
+    if (ok && (PImage_SvgGetInfo(svg, &width, &height, &shapes) !=
+            PIMAGE_OK || width != 30 || height != 30 || shapes != 1)) {
+        ok = FALSE;
+        _snprintf(g_test1319_failure, sizeof(g_test1319_failure) - 1,
+                "create/info rc=%d handle=%d size=%dx%d shapes=%u",
+                create_rc, svg != NULL, width, height, shapes);
+        g_test1319_failure[sizeof(g_test1319_failure) - 1] = '\0';
+    }
+    if (!ok && strcmp(g_test1319_failure, "not run") == 0) {
+        _snprintf(g_test1319_failure, sizeof(g_test1319_failure) - 1,
+                "create rc=%d handle=%d", create_rc, svg != NULL);
+        g_test1319_failure[sizeof(g_test1319_failure) - 1] = '\0';
+    }
+    if (!ok) {
+        goto cleanup;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 30, 30) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        strcpy(g_test1319_failure, "offscreen GDI allocation failed");
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 30, 30);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    draw_rc = PImage_DrawSvg(svg, memory_dc, 0, 0, 30, 30);
+    if (draw_rc != PIMAGE_OK) {
+        _snprintf(g_test1319_failure, sizeof(g_test1319_failure) - 1,
+                "draw rc=%d", draw_rc);
+        g_test1319_failure[sizeof(g_test1319_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    center_top = GetPixel(memory_dc, 15, 7);
+    center_middle = GetPixel(memory_dc, 15, 15);
+    center_bottom = GetPixel(memory_dc, 15, 23);
+    round_start = GetPixel(memory_dc, 3, 7);
+    round_end = GetPixel(memory_dc, 27, 7);
+    outside_start = GetPixel(memory_dc, 2, 7);
+    if (!test1319_gray_alpha_pixel(center_top) ||
+            !test1319_gray_alpha_pixel(center_middle) ||
+            !test1319_gray_alpha_pixel(center_bottom) ||
+            !test1319_gray_alpha_pixel(round_start) ||
+            !test1319_gray_alpha_pixel(round_end) ||
+            GetRValue(outside_start) < 248 ||
+            GetGValue(outside_start) < 248 ||
+            GetBValue(outside_start) < 248) {
+        _snprintf(g_test1319_failure, sizeof(g_test1319_failure) - 1,
+                "pixels centers=%06lX/%06lX/%06lX caps=%06lX/%06lX "
+                "outside=%06lX",
+                (unsigned long) center_top & 0xffffffUL,
+                (unsigned long) center_middle & 0xffffffUL,
+                (unsigned long) center_bottom & 0xffffffUL,
+                (unsigned long) round_start & 0xffffffUL,
+                (unsigned long) round_end & 0xffffffUL,
+                (unsigned long) outside_start & 0xffffffUL);
+        g_test1319_failure[sizeof(g_test1319_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    ok = TRUE;
+    strcpy(g_test1319_failure, "ok");
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (svg != NULL) {
+        PImage_FreeSvg(svg);
+    }
+    return ok;
+}

@@ -53,6 +53,15 @@ typedef enum {
 	svgtiny_GRADIENT_RADIAL = 2
 } svgtiny_gradient_type;
 
+/* The image adapter consumes these bounded stroke attributes when it
+ * converts libsvgtiny shapes to NanoSVG.  They are kept as simple values so
+ * the parser remains C89/VS2008 friendly. */
+typedef enum {
+	svgtiny_LINECAP_BUTT = 0,
+	svgtiny_LINECAP_ROUND = 1,
+	svgtiny_LINECAP_SQUARE = 2
+} svgtiny_linecap;
+
 struct svgtiny_shape {
 	float *path;
 	unsigned int path_length;
@@ -74,6 +83,8 @@ struct svgtiny_shape {
 	float fill_gradient_xform[6];
 	svgtiny_colour stroke;
 	int stroke_width;
+	float stroke_opacity;
+	svgtiny_linecap stroke_linecap;
 };
 
 struct svgtiny_diagram {

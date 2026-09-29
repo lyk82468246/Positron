@@ -181,6 +181,12 @@ tests=1-5 7b 13 20,999
   URL/decoded/复杂度预算分别由 Core 强制；该 fixture 不修改应用接线，也不把 `data:` 送进
   HTTP。TEST19/20 继续覆盖网络 callback/cache 的 BMP、PNG、JPEG、GIF，TEST1316/1317
   继续覆盖普通网络 SVG 与 CSS background 适配。
+- TEST1319 是自动的精确 Image paint 回归：它把 WinWorld navbar 的 30x30 SVG 直接交给
+  `PImage_CreateSvgFromMemory()`/`PImage_DrawSvg()`，断言三条 `rgba(0, 0, 0, 0.5)`、2px
+  路径在白底上产生半透明灰色像素，并检查首尾端点在 `stroke-linecap="round"` 下延伸、
+  端点外仍保持白色。这个断言覆盖 libsvgtiny 的 rgba/stroke-opacity 解析、linecap 传递、
+  NanoSVG alpha 合成和 GDI paint；仅创建句柄或 data URI 解码成功不能使它通过。普通不透明
+  stroke、PNG/JPEG/GIF 和已有 IANA SVG 回归仍须保持通过。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

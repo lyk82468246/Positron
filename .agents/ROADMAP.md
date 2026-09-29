@@ -235,7 +235,7 @@ filter 探测。
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 
 **状态：Core 图片 pending/retry、CSS `data:image/svg+xml` 背景接线、Image class-style/viewBox
-自然尺寸和 Core 高 DPI 重复 SVG 背景 tile 已完成；阶段 B/脚本资源及 nested overflow 输入的
+自然尺寸、Core 高 DPI 重复 SVG 背景 tile 以及 Image `rgba()` stroke/round-cap paint 已完成；阶段 B/脚本资源及 nested overflow 输入的
 应用设备门仍待完成。** `positron.exe` 已证明真实应用消费者会组合
 Core 的 document/style/layout/paint、链接/焦点几何、Browser history/candidate gate 和 HTTP
 transport；当前实现已支持主文档 HTTP(S) 导航，把外部 CSS/`@import`、脚本发现和图片发现
@@ -258,7 +258,10 @@ TEST1314/1315 与 Core TEST1316/1317 已覆盖 IANA 风格 `<style>` class paint
 本批另把消费者报告的响应式 CSS data URI 图标收束到 Core：percent-encoded/Base64
 `data:image/svg+xml` 在 Core 资源发现阶段解码，独立 URL/decoded/复杂度预算 fail closed，
 不调用宿主 HTTP callback；TEST1318 的 CSS→Core→Image→GDI fixture 及 `1318,999` Debug
-ARMV4I 设备门已通过。普通网络 SVG/PNG/JPEG/GIF 仍走原 callback/cache 路径。窄视口页面、
+ARMV4I 设备门已通过。普通网络 SVG/PNG/JPEG/GIF 仍走原 callback/cache 路径。本轮又完成了
+Image DLL 对 WinWorld 精确 navbar SVG 的 `rgba()` stroke alpha、`stroke-opacity` 和
+round/square linecap 解析；TEST1319 的 Create→Draw 像素回归及 `1319,999` Debug ARMV4I
+设备门通过，未修改 Core 或应用接线。窄视口页面、
 脚本 mutation/事件/导航、失败、取消或过时响应的应用人工门仍待完成。本轮
 此前改变导航控制流的 candidate UI 实验因设备上地址栏回车导航无反应而撤回；当前源码在已
 验证的启动路径上改用候选级已提交 UI 快照回滚，C89、审计和 Debug 编译已通过；替代包的
