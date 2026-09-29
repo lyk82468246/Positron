@@ -12,9 +12,9 @@
 - 不使用 `Setup.dll`、`CESetupDLL`、自注册、COM 注册或数字签名；
 - Debug 配置不参与发布，发布只使用 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`。
 
-解决方案只为 CAB 的 Release 配置设置 `Build.0`，Debug 不设置；普通 Debug 构建不会生成 CAB。现有 nightly ZIP 脚本不调用该 Release CAB 构建，ZIP 行为保持不变。VS2008 的并行解决方案构建有时会在上游 DLL/EXE 完成前尝试 CabWiz，因此一次 `Release build` 可能只完成源码项目，下一次才完成 CAB；发布脚本会把源码构建失败后的普通 Build 作为最多 4 次的受限重试，仍失败就停止。
+解决方案的 Release 配置包含 CAB 的 `Build.0`，Debug 不生成 CAB。项目依赖按实际链接输入维护，基础静态库先于公共 DLL，公共 DLL 先于应用/测试宿主，应用/测试宿主完成后才构建 CAB；因此普通 `scripts\build.bat Release build` 会包含 CAB，且不会在输入 DLL/EXE 完成前抢跑。现有 nightly ZIP 脚本不调用该 Release CAB 构建，ZIP 行为保持不变。
 
-使用脚本时，默认模式先运行 `scripts\build.bat Release rebuild`；如果 VS2008 因并行依赖调度返回失败，会自动最多运行 4 次 `scripts\build.bat Release build`，直到解决方案报告成功。也可以在 VS2008 中打开解决方案，选择 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`，右键 `positron_cab` 执行 Build。部署项目会在 `positron_cab\Release\` 生成 CabWiz 使用的 INF 和中间 CAB。
+使用脚本时，默认模式临时注入版本和日期，然后调用 VS2008 的 `devenv.com /Build ...` 做包含 `positron_cab` 的 Release 全解决方案增量构建；源码构建失败时只重试普通 `Release build`，不会执行 `rebuild`。若使用 `-SkipSourceBuild`，脚本才调用 `devenv.com /Build ... /Project positron_cab\positron_cab.vddproj` 单独构建 CAB。VS2008 负责生成 INF 和 CAB，脚本不直接调用底层 `cabwiz.exe`。也可以在 VS2008 中打开解决方案，选择 `Release|Windows Mobile 6 Professional SDK (ARMV4I)` 执行 Build Solution。
 
 `.vddproj` 是 VS2008 的旧式部署项目，必须保持 ASCII + CRLF；脚本和项目文件已经按此格式维护。命令行构建如果长时间没有退出，应先检查 `vs2008-build.log` 和 VS 进程状态，不要把一个卡住的 `devenv.com` 当作已完成的 Release 构建。
 
@@ -28,12 +28,10 @@ scripts\package_nightly_cab.bat -SkipSourceBuild -SkipUpload
 
 脚本会：
 
-1. 读取 `positron_cab\Release\` 中最近生成的 INF；
-2. 准备三个具有唯一源文件名的 Noto 许可证副本，避免 VS2008/CabWiz 将三个同名 `OFL.txt` 合并成冲突的 INF 键；
-3. 把 `__POSITRON_CAB_VERSION__` 替换为 `YYYY.MM.DD.NN`，把 `__POSITRON_CAB_BUILD_DATE__` 替换为 `YYYY-MM-DD`，并注入 `ProcessorType=2577`；
-4. 核对 ARMV4I (`ProcessorType=2577`)、`VersionMin=5.02`、安装目录、7 个 DLL、3 个字体、许可证、快捷方式、HKLM 注册表和值类型；
-5. 使用 VS2008 Smart Devices SDK 的 `cabwiz.exe /compress` 生成固定文件名；
-6. 检查 CAB 的 `MSCF` 标识和禁止文件，并生成说明与 SHA-256 清单。
+1. 核对版本库中的唯一命名许可证、字体和 Release 源码输出是否完整，防止把缺失输入交给部署项目后才得到模糊的 CabWiz 错误；
+2. 临时把 `__POSITRON_CAB_VERSION__` 替换为 `YYYY.MM.DD.NN`，把 `__POSITRON_CAB_BUILD_DATE__` 替换为 `YYYY-MM-DD`，再通过 VS2008 `devenv.com` 增量构建全解决方案或单独的 `positron_cab` 项目；
+3. 恢复未写入版本值的 `.vddproj`，读取 VS2008 生成的 INF/CAB，并核对 `VersionMin=5.02`、安装目录、7 个 DLL、3 个字体、许可证、快捷方式、HKLM 注册表和值类型；
+4. 检查 CAB 的 `MSCF` 标识和禁止文件，并生成 SHA-256 清单。
 
 输出默认位于 `tmp\nightly-cab\`：
 
@@ -65,7 +63,7 @@ scripts\package_nightly_cab.bat -Repository owner/repo -BuildNumber 1
 scripts\package_nightly_cab.bat
 ```
 
-如果源码已经由 VS2008 GUI 或 `scripts\build.bat Release build` 完成，也可以使用 `-SkipSourceBuild` 只执行 INF 后处理、CabWiz 和内容验收。`-SkipSourceBuild` 不会绕过 CAB 内容检查；它只复用现有的 Release 产物。
+如果源码已经由 VS2008 GUI 或 `scripts\build.bat Release build` 完成，可以使用 `-SkipSourceBuild` 跳过全解决方案构建，但仍由 VS2008 增量构建 CAB。若源码和 CAB 都已经由 VS2008 GUI 构建完成，可同时使用 `-SkipSourceBuild -SkipCabBuild` 只校验现有 VS 输出。两个开关都不会绕过 CAB 内容检查；它们只控制是否复用已有产物。
 
 ## CAB 设备布局
 

@@ -5,16 +5,21 @@ param(
     [int]$BuildNumber = 1,
     [string]$OutputDirectory,
     [switch]$SkipUpload,
-    [switch]$SkipSourceBuild
+    [switch]$SkipSourceBuild,
+    [switch]$SkipCabBuild
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2.0
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$solution = Join-Path $root "Positron.sln"
+$buildScript = Join-Path $root "scripts\build.bat"
 $cabProject = Join-Path $root "positron_cab"
+$cabProjectFile = Join-Path $cabProject "positron_cab.vddproj"
 $cabRelease = Join-Path $cabProject "Release"
 $cabSource = Join-Path $cabProject "cab-source"
+$cabBuildLog = Join-Path $root "vs2008-cab-build.log"
 $defaultOutput = Join-Path $root "tmp\nightly-cab"
 if ([string]::IsNullOrEmpty($OutputDirectory)) {
     $OutputDirectory = $defaultOutput
@@ -46,7 +51,10 @@ function Assert-InfContains([string]$text, [string]$pattern, [string]$descriptio
 
 function Assert-InfFile([string]$infPath, [string]$version, [string]$buildDate) {
     $text = [IO.File]::ReadAllText($infPath)
-    Assert-InfContains $text "(?m)^\s*ProcessorType\s*=\s*(?:2577|ARMV4I)\s*$" "ARMV4I / ProcessorType=2577"
+    $processorMatches = [regex]::Matches($text, "(?im)^\s*ProcessorType\s*=\s*(\S+)\s*$")
+    if ($processorMatches.Count -gt 0 -and $processorMatches[0].Groups[1].Value -notmatch "^(?:2577|ARMV4I)$") {
+        Fail "CAB INF 的 ProcessorType 不是 ARMV4I / 2577"
+    }
     Assert-InfContains $text "(?m)^\s*VersionMin\s*=\s*5\.02\s*$" "VersionMin=5.02"
     Assert-InfContains $text "(?m)^\s*VersionMax\s*=\s*6\.99\s*$" "VersionMax=6.99（VS2008 合法上限）"
     Assert-InfContains $text "%InstallDir%" "应用安装目录"
@@ -96,21 +104,116 @@ function Get-Sha256Hex([string]$path) {
     }
 }
 
-function Prepare-CabSources {
-    if (-not (Test-Path -LiteralPath $cabSource)) {
-        New-Item -ItemType Directory -Path $cabSource -Force | Out-Null
+function Find-Devenv {
+    $candidates = @()
+    if (-not [string]::IsNullOrEmpty($env:VS90COMNTOOLS)) {
+        $candidates += (Join-Path $env:VS90COMNTOOLS "..\IDE\devenv.com")
     }
-    $licenseSources = @(
-        @{ Source = "third_party\noto-symbols\OFL.txt"; Name = "OFL-NotoSymbols.txt" },
-        @{ Source = "third_party\noto-symbols2\OFL.txt"; Name = "OFL-NotoSymbols2.txt" },
-        @{ Source = "third_party\noto-emoji\OFL.txt"; Name = "OFL-NotoEmoji.txt" }
+    $candidates += (Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio 9.0\Common7\IDE\devenv.com")
+    $candidates += (Join-Path $env:ProgramFiles "Microsoft Visual Studio 9.0\Common7\IDE\devenv.com")
+    $devenv = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ([string]::IsNullOrEmpty($devenv)) {
+        Fail "未找到 VS2008 devenv.com"
+    }
+    return $devenv
+}
+
+function Assert-CabInputs {
+    $required = @(
+        (Join-Path $root "LICENSE"),
+        (Join-Path $root "THIRD_PARTY.md"),
+        (Join-Path $cabSource "OFL-NotoSymbols.txt"),
+        (Join-Path $cabSource "OFL-NotoSymbols2.txt"),
+        (Join-Path $cabSource "OFL-NotoEmoji.txt"),
+        (Join-Path $root "assets\fonts\PositronSymbolsBasic.ttf"),
+        (Join-Path $root "assets\fonts\PositronSymbols.ttf"),
+        (Join-Path $root "assets\fonts\PositronEmoji.ttf"),
+        (Join-Path $root "positron_app\bin\Release\positron.exe"),
+        (Join-Path $root "positron_tls\bin\Release\positron_tls.dll"),
+        (Join-Path $root "positron_json\bin\Release\positron_json.dll"),
+        (Join-Path $root "positron_http\bin\Release\positron_http.dll"),
+        (Join-Path $root "positron_core\bin\Release\positron_core.dll"),
+        (Join-Path $root "positron_image\bin\Release\positron_image.dll"),
+        (Join-Path $root "positron_script\bin\Release\positron_script.dll"),
+        (Join-Path $root "positron_browser\bin\Release\positron_browser.dll")
     )
-    foreach ($mapping in $licenseSources) {
-        $source = Join-Path $root $mapping.Source
-        if (-not (Test-Path -LiteralPath $source)) {
-            Fail "缺少字体许可证源文件：$source"
+    foreach ($path in $required) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Fail "CAB 输入文件不存在；请先完成 Release 增量构建：$path"
         }
-        Copy-Item -LiteralPath $source -Destination (Join-Path $cabSource $mapping.Name) -Force
+    }
+}
+
+function Invalidate-CabReleaseOutputs {
+    $names = @(
+        $finalName,
+        [IO.Path]::ChangeExtension($finalName, ".inf"),
+        "CabWiz.log"
+    )
+    foreach ($name in $names) {
+        $path = Join-Path $cabRelease $name
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Force
+        }
+    }
+}
+
+function Invoke-WithCabVersion([string]$version, [string]$buildDate, [scriptblock]$action) {
+    $originalBytes = [IO.File]::ReadAllBytes($cabProjectFile)
+    $projectText = [Text.Encoding]::ASCII.GetString($originalBytes)
+    if ([regex]::Matches($projectText, [regex]::Escape("__POSITRON_CAB_VERSION__")).Count -ne 1) {
+        Fail "VDD 项目中的 Version 占位符数量不是 1：$cabProjectFile"
+    }
+    if ([regex]::Matches($projectText, [regex]::Escape("__POSITRON_CAB_BUILD_DATE__")).Count -ne 1) {
+        Fail "VDD 项目中的 BuildDate 占位符数量不是 1：$cabProjectFile"
+    }
+    $projectText = $projectText.Replace("__POSITRON_CAB_VERSION__", $version)
+    $projectText = $projectText.Replace("__POSITRON_CAB_BUILD_DATE__", $buildDate)
+    [IO.File]::WriteAllBytes($cabProjectFile, [Text.Encoding]::ASCII.GetBytes($projectText))
+    try {
+        & $action
+    }
+    finally {
+        [IO.File]::WriteAllBytes($cabProjectFile, $originalBytes)
+    }
+}
+
+function Invoke-VsSolutionBuild([string]$version, [string]$buildDate) {
+    $recoveryBuildLimit = 4
+    $sourceBuildExitCode = 0
+    for ($attempt = 0; $attempt -le $recoveryBuildLimit; $attempt++) {
+        if ($attempt -eq 0) {
+            Write-Host "运行 Release|Windows Mobile 6 Professional SDK (ARMV4I) 全解决方案增量构建（包含 positron_cab）..."
+        }
+        else {
+            Write-Host "全解决方案增量构建未成功；执行第 $attempt/$recoveryBuildLimit 次普通 Build..."
+        }
+        $script:CabBuildExitCode = 0
+        Invalidate-CabReleaseOutputs
+        Invoke-WithCabVersion $version $buildDate {
+            & $buildScript Release build
+            $script:CabBuildExitCode = $LASTEXITCODE
+        }
+        $sourceBuildExitCode = $script:CabBuildExitCode
+        if ($sourceBuildExitCode -eq 0) {
+            break
+        }
+    }
+    if ($sourceBuildExitCode -ne 0) {
+        Fail "全解决方案 Release 增量构建重试失败（已执行 $recoveryBuildLimit 次普通 Build），退出码：$sourceBuildExitCode"
+    }
+}
+
+function Invoke-VsCabProject([string]$version, [string]$buildDate) {
+    $script:CabBuildExitCode = 0
+    Invoke-WithCabVersion $version $buildDate {
+        $devenv = Find-Devenv
+        Write-Host "使用 VS2008 增量构建 positron_cab 项目（由 VS 内部调用 CabWiz）..."
+        & $devenv $solution /Build "Release|Windows Mobile 6 Professional SDK (ARMV4I)" /Project "positron_cab\positron_cab.vddproj" /Out $cabBuildLog
+        $script:CabBuildExitCode = $LASTEXITCODE
+    }
+    if ($script:CabBuildExitCode -ne 0) {
+        Fail "VS2008 positron_cab 项目构建失败，退出码：$script:CabBuildExitCode；详见 $cabBuildLog"
     }
 }
 
@@ -118,98 +221,39 @@ if (-not (Test-Path -LiteralPath $output)) {
     New-Item -ItemType Directory -Path $output -Force | Out-Null
 }
 
-Prepare-CabSources
-
+$today = Get-Date
+$buildDate = $today.ToString("yyyy-MM-dd", [Globalization.CultureInfo]::InvariantCulture)
+$version = "{0}.{1}.{2}.{3:D2}" -f $today.ToString("yyyy"), $today.ToString("MM"), $today.ToString("dd"), $BuildNumber
 if (-not $SkipSourceBuild) {
-    $buildScript = Join-Path $root "scripts\build.bat"
-    Write-Host "运行 Release|Windows Mobile 6 Professional SDK (ARMV4I) 源码构建..."
-    & $buildScript Release rebuild
-    $sourceBuildExitCode = $LASTEXITCODE
-    if ($sourceBuildExitCode -ne 0) {
-        $recoveryBuildLimit = 4
-        for ($recoveryBuild = 1; $recoveryBuild -le $recoveryBuildLimit; $recoveryBuild++) {
-            Write-Host "Rebuild 未成功；执行第 $recoveryBuild/$recoveryBuildLimit 次普通 Release Build 以收敛 VS2008 并行依赖..."
-            & $buildScript Release build
-            $sourceBuildExitCode = $LASTEXITCODE
-            if ($sourceBuildExitCode -eq 0) {
-                break
-            }
-        }
-        if ($sourceBuildExitCode -ne 0) {
-            Fail "源码构建重试失败（已执行 $recoveryBuildLimit 次普通 Build），退出码：$sourceBuildExitCode"
-        }
-    }
+    Invoke-VsSolutionBuild $version $buildDate
+}
+Assert-CabInputs
+if ($SkipCabBuild -and -not $SkipSourceBuild) {
+    Fail "当前 Release 全解决方案包含 positron_cab；-SkipCabBuild 只能与 -SkipSourceBuild 一起使用。"
+}
+if ($SkipSourceBuild -and -not $SkipCabBuild) {
+    Invoke-VsCabProject $version $buildDate
 }
 
 $infCandidates = @(Get-ChildItem -LiteralPath $cabRelease -Filter "*.inf" -File -ErrorAction SilentlyContinue)
 if ($infCandidates.Count -eq 0) {
-    Fail "未找到 $cabRelease 中的 INF。请在 VS2008 GUI 中选择 Release，右键 positron_cab 项目执行 Build，然后重新运行；若已完成源码构建，可使用 -SkipSourceBuild。"
+    Fail "未找到 $cabRelease 中的 INF。请使用 VS2008 的 positron_cab 项目执行 Release Build，或不要使用 -SkipCabBuild。"
 }
 $inf = $infCandidates | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 
-$today = Get-Date
-$buildDate = $today.ToString("yyyy-MM-dd", [Globalization.CultureInfo]::InvariantCulture)
-$version = "{0}.{1}.{2}.{3:D2}" -f $today.ToString("yyyy"), $today.ToString("MM"), $today.ToString("dd"), $BuildNumber
-
-$infText = [IO.File]::ReadAllText($inf.FullName)
-if ([regex]::Matches($infText, [regex]::Escape("__POSITRON_CAB_VERSION__")).Count -ne 1) {
-    Fail "INF 中 Version 占位符数量不是 1：$($inf.FullName)"
-}
-if ([regex]::Matches($infText, [regex]::Escape("__POSITRON_CAB_BUILD_DATE__")).Count -ne 1) {
-    Fail "INF 中 BuildDate 占位符数量不是 1：$($inf.FullName)"
-}
-$infText = $infText.Replace("__POSITRON_CAB_VERSION__", $version)
-$infText = $infText.Replace("__POSITRON_CAB_BUILD_DATE__", $buildDate)
-if ([regex]::Matches($infText, "(?im)^\s*ProcessorType\s*=").Count -ne 0) {
-    Fail "INF 已经包含 ProcessorType，无法安全注入 ARMV4I 目标"
-}
-if ([regex]::Matches($infText, "(?im)^\s*VersionMax\s*=\s*6\.99\s*$").Count -ne 1) {
-    Fail "INF 中 VersionMax=6.99 位置不是 1 个，无法注入 ARMV4I 目标"
-}
-$infText = $infText.Replace("VersionMax=6.99", "VersionMax=6.99" + [Environment]::NewLine + "ProcessorType=2577")
-
 $stagedInf = Join-Path $output "positron-nightly-cab-wm6-armv4i.inf"
-$cabwizError = Join-Path $output "cabwiz.err"
-[IO.File]::WriteAllText($stagedInf, $infText, [Text.Encoding]::Unicode)
+Copy-Item -LiteralPath $inf.FullName -Destination $stagedInf -Force
 Assert-InfFile $stagedInf $version $buildDate | Out-Null
 
-$programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
-$cabwizCandidates = @(
-    (Join-Path $programFilesX86 "Microsoft Visual Studio 9.0\SmartDevices\SDK\SDKTools\cabwiz.exe"),
-    (Join-Path $env:ProgramFiles "Microsoft Visual Studio 9.0\SmartDevices\SDK\SDKTools\cabwiz.exe"),
-    (Join-Path $programFilesX86 "Windows Mobile 6 SDK\Tools\CabWiz\cabwiz.exe"),
-    (Join-Path $env:ProgramFiles "Windows Mobile 6 SDK\Tools\CabWiz\cabwiz.exe")
-)
-$cabwiz = $cabwizCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if ([string]::IsNullOrEmpty($cabwiz)) {
-    Fail "未找到 VS2008/WM6 SDK cabwiz.exe"
-}
-
-Write-Host "运行 CabWiz..."
-$cabwizOutput = Join-Path $output ".cabwiz"
-if (Test-Path -LiteralPath $cabwizOutput) {
-    Remove-Item -LiteralPath $cabwizOutput -Recurse -Force
-}
-New-Item -ItemType Directory -Path $cabwizOutput -Force | Out-Null
-& $cabwiz $stagedInf /dest $cabwizOutput /err $cabwizError /compress
-if ($LASTEXITCODE -ne 0) {
-    $detail = if (Test-Path -LiteralPath $cabwizError) { [IO.File]::ReadAllText($cabwizError) } else { "" }
-    Fail "CabWiz 失败。$detail"
-}
-$cabwizCabName = [IO.Path]::GetFileNameWithoutExtension($stagedInf) + ".CAB"
-$cabwizCab = Join-Path $cabwizOutput $cabwizCabName
-if (-not (Test-Path -LiteralPath $cabwizCab)) {
-    Fail "CabWiz 未生成预期 CAB：$cabwizCab"
-}
 $generatedCab = $finalCab
-if (Test-Path -LiteralPath $generatedCab) {
-    Remove-Item -LiteralPath $generatedCab -Force
+$cabCandidates = @(Get-ChildItem -LiteralPath $cabRelease -Filter "*.cab" -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq $finalName })
+if ($cabCandidates.Count -ne 1) {
+    Fail "VS2008 positron_cab 项目未生成唯一的 $finalName；详见 $cabBuildLog"
 }
-Move-Item -LiteralPath $cabwizCab -Destination $generatedCab -Force
-Remove-Item -LiteralPath $cabwizOutput -Recurse -Force
-$cabwizCab = $null
-if (Test-Path -LiteralPath $cabwizError) {
-    Remove-Item -LiteralPath $cabwizError -Force
+$sourceCab = $cabCandidates[0]
+Copy-Item -LiteralPath $sourceCab.FullName -Destination $generatedCab -Force
+if (-not (Test-Path -LiteralPath $generatedCab -PathType Leaf)) {
+    Fail "无法复制 VS2008 生成的 CAB：$($sourceCab.FullName)"
 }
 $magic = [IO.File]::ReadAllBytes($generatedCab)[0..3] -join ","
 if ($magic -ne "77,83,67,70") {

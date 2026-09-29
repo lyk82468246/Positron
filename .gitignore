@@ -23,12 +23,12 @@ Windows Mobile 6 Professional SDK (ARMV4I)/
 # Smart Device CAB project outputs
 positron_cab/Debug/
 positron_cab/Release/
-positron_cab/cab-source/
 
 # BuildLog
 BuildLog.htm
 *.rsp
 vs2008-build.log
+vs2008-cab-build.log
 
 # Local staging dir for shared-folder deploy
 WMShare/

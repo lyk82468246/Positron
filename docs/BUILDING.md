@@ -166,14 +166,24 @@ scripts\package_nightly.bat -Repository owner/repo
 
 标准安装包由 VS2008 Smart Device CAB 项目产生，项目文件是 `positron_cab\positron_cab.vddproj`。只构建 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`；不要构建 Debug CAB，也不要把 CAB 内容混入现有 ZIP 流程。
 
-在 VS2008 图形界面中打开 `Positron.sln`，选择上述 Release 配置，右键 `positron_cab` 项目执行 Build。成功后，部署项目会在 `positron_cab\Release\` 生成中间 INF/CAB。然后从仓库根目录执行：
+Release 配置的全解决方案构建包含 `positron_cab`；Debug 配置不生成 CAB。解决方案中的项目依赖按实际链接输入维护，顺序是基础静态库、公共 DLL、应用/测试宿主，最后是 CAB。这样 CAB 只能在它需要的 Release EXE/DLL 完成后启动。
+
+CAB 必须由 VS2008 的部署项目接口生成。可以在 VS2008 图形界面中选择上述 Release 配置执行 Build Solution，或右键 `positron_cab` 项目执行 Build；发布脚本也只调用等价的 VS2008 `devenv.com` 接口，不直接运行 `cabwiz.exe`。三个 Noto 许可证以唯一文件名保存在版本库的 `positron_cab\cab-source` 中，GUI 全解决方案构建不依赖脚本预处理。
+
+从仓库根目录运行：
+
+```bat
+scripts\package_nightly_cab.bat -SkipUpload
+```
+
+脚本会临时注入本次版本和日期，运行包含 `positron_cab` 的 Release 全解决方案增量构建，构建完成后恢复 `.vddproj`；CAB 和 INF 始终由 VS2008 项目生成。输出为 `positron-nightly-cab-wm6-armv4i.cab`、对应 INF 和 `SHA256SUMS.txt` 到 `tmp\nightly-cab\`。确认本地结果后，去掉 `-SkipUpload` 可更新滚动 `nightly-cab` tag/release；它不会修改 `nightly` tag，也不会上传 ZIP。需要指定 GitHub 仓库时追加 `-Repository owner/repo`。
+
+如果源码已经由 VS2008 GUI 或 `scripts\build.bat Release build` 完成，可以跳过源码阶段：
 
 ```bat
 scripts\package_nightly_cab.bat -SkipSourceBuild -SkipUpload
 ```
 
-脚本会选择最新 INF，注入 `YYYY.MM.DD.NN` 版本、`YYYY-MM-DD` 构建日期，使用 VS2008 SDK 的 `cabwiz.exe` 重新生成并校验 `positron-nightly-cab-wm6-armv4i.cab`，同时写出 `NIGHTLY-CAB-README.md` 和 `SHA256SUMS.txt` 到 `tmp\nightly-cab\`。确认本地结果后，去掉 `-SkipUpload` 可更新滚动 `nightly-cab` tag/release；它不会修改 `nightly` tag，也不会上传 ZIP。需要指定 GitHub 仓库时追加 `-Repository owner/repo`。
-
-`package_nightly_cab.ps1` 默认还会先调用 `scripts\build.bat Release rebuild`。当前 VS2008 的 `devenv.com` 对含 Smart Device VDD 项目的解决方案加载可能在无日志状态下卡住，因此推荐由 VS2008 GUI 完成源码/CAB 构建后使用 `-SkipSourceBuild` 做确定性的 INF/CabWiz 后处理；脚本不会把这个已知的 GUI/命令行加载问题伪装成构建成功。
+如果源码和 CAB 都已经由 VS2008 GUI 构建完成，可以同时使用 `-SkipSourceBuild -SkipCabBuild`，脚本只校验现有 VS 输出并生成校验清单。`rebuild` 仅用于明确要求的源码全量重建，nightly CAB 发布流程不会调用它。不要同时启动多个 `devenv.com` 构建同一工作区；所有 VS2008 构建共享 `Release` 输出目录和日志。
 
 CAB 的设备布局、注册表、快捷方式、升级/卸载和验收要求见 [Nightly CAB 发布说明](NIGHTLY_CAB_RELEASE.md)。
