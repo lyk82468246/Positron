@@ -20,10 +20,6 @@ background 接线已完成，`positron_image.dll` 现在
 没有显式宽高的 SVG 固有比例；Core 的高 DPI 重复 SVG 背景 tile 也已按设备 DPI 缩放。真实
 `positron.exe` 图片页面仍待人工观察。Media 的 DirectShow callback source filter/native 视频
 生命周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实保持不变。
-本批把消费者提供的 WinWorld navbar SVG 收束到 Image DLL：`rgba(0, 0, 0, 0.5)` stroke、
-`stroke-linecap="round"` 和 2px 路径现在由 libsvgtiny 解析并由 NanoSVG/GDI 保持 alpha、
-圆端帽；应用、Core 和 data-URI 接线没有修改。TEST1319 的精确离屏像素回归及匹配 ARMV4I
-设备门已通过，后续截图应先确认加载的是本批匹配的 `positron_image.dll`。
 本轮又处理了同一 IANA 页面截图暴露的两处几何问题：EXE 地址栏不再使用私有 inset，并改为
 使用 native EDIT 实际 `SYSTEM_FONT` 的 `TEXTMETRIC.tmHeight` 加少量 DPI 留白计算外框高度；Core
 纵向 auto-height flex 在子项 `flex-basis:0` 时改用已布局实际高度贡献父容器。字体度量后的地址栏
@@ -447,6 +443,9 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
   EXE client rect/样式事务或页面 CSS。该问题按当前决策暂缓，不作为本轮 SVG 部署验收条件，
   也不通过隐藏原生滚动条规避；后续重启时需先采集同一页面同一 DPI 的 document/page 尺寸、
   client rect、scroll range 与样式变更时序。
+- WinWorld `/home` 位图缺失：`tmp/device-runs/debug-capture-20260929-214139/positron-debug.log`
+  记录 module `ignored-type`、`resources=0`；Shadow DOM 图片未创建，需 Script/Browser/Core，
+  非 Image/HTTP 单独故障，当前暂缓。
 - DB 的 REST fixture 已有，但宿主 HTTP worker、真实 401/5xx/分页/重试以及设备 journal/强制重启
   恢复尚未验收；当前 TEST1321 只是本地 contract，不能宣布双向联网同步已在设备上完成。
 

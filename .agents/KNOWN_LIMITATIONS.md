@@ -326,7 +326,7 @@
 
 - 浏览器 JavaScript 默认关闭，启用后仍是实验性的有界 classic-script 组合。
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
-- 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment。
+- 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment；WinWorld `/home` 的 module 位图暂缺。
 - Storage maps are session-local and independent; quota is 64 entries with 256/4096 UTF-16 key/value characters. Over-limit writes atomically throw `QuotaExceededError`; `setItem()`/`getItem()`/`toJSON()` safely preserve object-property names such as `hasOwnProperty` and `__proto__`; persistence is not provided.
 - Browser `Headers`/`Request`/`Response` metadata remains bounded and synchronous; `Headers` accepts at most 128 canonicalized pairs, and its object initialization/JSON snapshot safely preserve object-property header names. It does not provide network fetch, streaming bodies, or full browser header/security policy.
 - Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
