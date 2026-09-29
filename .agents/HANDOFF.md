@@ -136,6 +136,17 @@ background 接线已完成，`positron_image.dll` 现在
   的 focus/focusin 仅负责焦点状态和视觉反馈，即使焦点事件投影失败也不会吞掉可信的
   Browser native-button click transaction；抬起时清除 `ACTIVE`。没有加入 WinWorld 特判或新的
   公共 ABI。
+- 该 EXE 修正版复测后菜单仍无变化。`tmp/device-runs/20260929-112947-button-native-contract-20260929`
+  的 ARMV4I gate 中 TEST1073/999 均为 OK、无 ERROR/FAIL，但整体结果被
+  `core_module_check=STALE_MODULE` 拒绝：设备 PID `2733577874` 的旧 `positron.exe` 仍持有
+  `\\Storage Card\\Temp\\Positron-device-gate\\button-click-20260929\\positron_core.dll`，
+  因此不能把这次 gate 当作当前 EXE+DLL 的匹配设备证据。源码审计同时确认 Browser bootstrap
+  的 `pdocumentAddEventListener()` 目前只保存 `readystatechange`、`DOMContentLoaded`、`load`
+  和 `visibilitychange`；普通 `click` 在 document 上会被忽略。WinWorld 窄视口页眉按钮是
+  Bootstrap collapse toggler，若其脚本使用 document 级 click delegation，EXE 已发出的可信
+  native-button click 仍不会触发菜单。该缺口属于 Browser/ScriptSession 事件语义，不应由
+  EXE 添加站点特判；下一步应由 DLL agent 补一个有界 document 事件 listener/dispatch fixture，
+  并在关闭旧进程后用匹配 DLL 重跑设备门。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -368,9 +379,9 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步先在设备上确认退出旧 `positron.exe`，再从
-`\\Storage Card\\Temp\\Positron-device-gate\\button-click-20260929` 启动同一实例，打开
-`https://winworldpc.com/home` 并点击页眉菜单按钮。验收两点：按钮 click 是否触发页面原有的
-菜单展开/折叠，以及普通网络 SVG/PNG/JPEG/GIF 是否仍可见。若按钮仍无变化，记录 URL、
-viewport/DPI、按钮 DOM 属性变化和脚本资源终态；此时优先转 Browser/ScriptSession 侧，不在
-EXE 中添加页面特判。
+下一步先在设备上确认退出旧 `positron.exe`，再从最新匹配包启动同一实例，打开
+`https://winworldpc.com/home` 并点击页眉菜单按钮。DLL agent 应先用离线 fixture 验证普通
+`document.addEventListener('click', ...)`、冒泡 target/currentTarget 和 listener removal，
+再确认 Bootstrap 风格的 delegated click 能改变 `class`/`aria-expanded`；随后用匹配 DLL
+重跑 1073、999 和真实页面门。若 Browser 事件门通过而 WinWorld 仍无变化，再记录脚本资源
+终态、脚本异常/忽略数和按钮 DOM 属性变化；EXE 侧不加入页面特判。
