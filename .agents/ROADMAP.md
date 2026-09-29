@@ -392,6 +392,7 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 
 ### 暂缓
 
+- WinWorld 窄视口中“页面级横向滚动条几乎铺满轨道”的现象已经复现，但尚未归属到 Core document extent、EXE client rect/样式事务或页面 CSS。按当前决策暂不继续追踪；保留原生滚动条与现有动态 `WS_HSCROLL`/`WS_VSCROLL` 策略，不以隐藏滚动条或改写 Core 尺寸作为临时修复。重新开启时先补齐同一页面、同一 DPI 下的尺寸与样式时序证据。
 以下方向不作为当前开发目标：完整现代 Web API、通用 detached DOM/Node tree mutation、完整
 live collection、MutationObserver、Range/Selection、shadow DOM、worker/module、bfcache、
 多窗口持久 history、完整滚动树、pinch zoom、transforms、复杂媒体查询、完整图像 loading、

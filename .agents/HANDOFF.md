@@ -223,6 +223,14 @@ tile 以及 WinWorld rgba/round-cap Image 纵切仍已完成；阶段 B 候选�
   设备门 `TEST999` selected/observed 为 `1/1`、`core_module_check=PASS`、
   `crash_check=PASS`、新增 dump 为 0；目录按诊断保留，但这仍不等于 `positron.exe` 页面视觉
   验收。
+- 本轮 SVG 修复的 Debug 完整包已重新构建并部署：本地 stage 为
+  `tmp/device-runs/20260929-1055-svg-fix-deploy/stage`，远端目录为
+  `\Storage Card\Temp\Positron-device-gate\svg-fix-20260929-1055`，复制 19 个文件并启动
+  `positron.exe`（设备 PID `3060419658`）。远端回读与本地 stage 的 SHA-256 一致：EXE
+  `9E21D13F21EB7D00FE40DAFE75281F5F54DF1D8D0278D05C362654C088B77723`、Core
+  `5921EE4576B47971D953A00B7F212555BAD8D0B7EB1FE7D2B75A6AC6627D7494`、Image
+  `3D6459CC5FB1A76FD9B0FDF3D38CC832ACE7506EDC56A366C6713AFA5DB0BE08`。该证据确认设备运行
+  的是 `0e9688a2` 对应的新 Image DLL，但仍不等于页面视觉已经通过。
 
 ## 设备证据与限制
 
@@ -341,6 +349,10 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
   panels/footer 不互相覆盖、旋转后的完整几何以及纯滚动不因窗口尺寸未变而重新 layout/paint
   仍属于待完成的应用人工门。nested overflow 的横向/纵向滚动输入也必须在新 Core 模块实际
   加载后确认；旧进程复用的截图不能作为本轮接线证据。
+- WinWorld 窄视口曾复现页面级横向滚动条几乎铺满轨道的现象；当前仍未归属到 Core extent、
+  EXE client rect/样式事务或页面 CSS。该问题按当前决策暂缓，不作为本轮 SVG 部署验收条件，
+  也不通过隐藏原生滚动条规避；后续重启时需先采集同一页面同一 DPI 的 document/page 尺寸、
+  client rect、scroll range 与样式变更时序。
 
 ## 唯一下一步
 
