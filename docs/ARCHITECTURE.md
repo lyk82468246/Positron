@@ -1,6 +1,6 @@
 # Positron 架构与公共边界
 
-Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、HTTP、图像、媒体、脚本、文档模型、渲染和浏览器会话 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。八个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
+Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、数据库、HTTP、图像、媒体、脚本、文档模型、渲染和浏览器会话 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。九个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
 
 ## 设计目标
 
@@ -21,6 +21,7 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
 公共 DLL
     ├─ positron_tls.dll       TLS 会话与证书/握手状态
     ├─ positron_json.dll      有界 JSON 解析与生成
+    ├─ positron_db.dll        SQLite 本地数据库、迁移与行级同步状态
     ├─ positron_http.dll      HTTP 消息、header、body 与 transport 边界
     ├─ positron_image.dll     有界图像解码/元数据接口
     ├─ positron_media.dll     WM6 原生媒体探测与有界软解/播放接口
@@ -47,6 +48,20 @@ command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继�
 ### `positron_json.dll`
 
 提供有界 JSON token/value 解析和生成。输入长度、嵌套深度、字符串和数字预算在入口处检查；库不负责网络、文件、线程或业务 schema。输出 buffer 的所有权和 size-probe 规则以 `positron_json.h` 为准。
+
+### `positron_db.dll`
+
+提供固定版本 SQLite 的本地数据库边界。`PDB_OPEN_LOCAL_FULL_SQL` 用于不参与同步的本地
+数据库；`PDB_OPEN_SYNC` 只允许通过版本化 migration 改变 schema，并由注册表、触发器、
+row state、outbox、tombstone 和 conflict 表拥有离线双向同步状态。同步 v1 只支持单列
+INTEGER 或 UTF-8 TEXT 主键，行值使用显式 NULL/整数/实数/文本/BLOB 类型标签，绝不向服务器
+发送 SQL。
+
+DB DLL 不保存 URL、Bearer Token，也不创建网络线程。宿主的 DB worker 在拥有 DB handle
+的线程中调用 `PDb_SyncBuildRequest()`，复用 `positron_http.dll` 发送 HTTPS + Bearer
+请求，再把成功响应交给 `PDb_SyncApplyResponse()`；非 2xx、超限、schema 不匹配或解析失败
+不得推进 outbox、cursor 或本地行。DB handle 不跨线程共享，DLL 内部不创建线程；数据库
+文件不启用 WAL、扩展加载或 SQLCipher，默认存储和同步 body 使用固定预算。
 
 ### `positron_http.dll`
 
@@ -171,6 +186,8 @@ Script session 的 native function 数量、listener、collection、Fragment、s
 - 顶层窗口、消息循环、DPI/旋转、page viewport clamp、native child reposition 和 GDI invalidation；
 - EDIT、COMBOBOX、button、file picker、SIP/IME、contenteditable 的 WM 代理以及受限剪贴板；
 - DNS/TCP/TLS/HTTP worker、响应和取消时机、资源调度、页面 swap、外部协议、下载与文件权限；
+- DB worker、DB handle 的线程归属、同步请求重试/退避和 HTTP Bearer Token 的内存生命周期；
+  宿主不能把 token 写入数据库，也不能让 DB DLL 直接创建网络线程；
 - multipart file callback 的实际文件读取、网络 request 创建/发送和失败重试策略；
 - Core/Browser callback 注册、style/layout/paint 调度、平台焦点和 native 控件默认动作；
 - 测试 fixture、断言、日志和设备部署。宿主不得编译公共 DLL 的实现源文件，不得把可复用 URL/DOM/Event/表单/资源语义放进 `test_host`。
@@ -181,6 +198,9 @@ Script session 的 native function 数量、listener、collection、Fragment、s
 
 - 字符串在公共边界使用 UTF-8；size-probe 必须先返回所需字节数，容量不足不得部分改写输出。
 - handle 是 opaque，创建者负责销毁，借用 buffer 只在同步调用期间有效；回调不得保存指针、跨线程调用或重入同一个 script session。
+- `positron_db.dll` 的 DB/statement handle 由调用者按同一线程使用并释放；列指针只在当前
+  statement 行有效，size-probe 输出在容量不足时不部分写出。DB DLL 只通过公共 typed bind/
+  column 和 row-level sync API 暴露 SQLite，不暴露 `sqlite3*`。
 - 错误码区分成功、参数/容量、目标不可用和 DOM/分配失败；缺失 callback 与 stale handle 不能被解释为成功。
 - multipart 编码 callback 只在同步调用内有效；Core 不执行文件 I/O，宿主必须提供成对的
   read/free 实现，并在收到完整 body 后自行释放/发送。
@@ -190,8 +210,18 @@ Script session 的 native function 数量、listener、collection、Fragment、s
 
 ## 线程与移植约束
 
-Core、Browser 和 Script session 的 DOM/脚本状态由宿主在受控线程驱动；worker 只能通过消息传递结果，不能直接碰 DOM、窗口或脚本 runtime。实现必须保持 C89、VS2008、WM6 ARMV4I 兼容，避免隐式 64 位假设、无界分配、C99 初始化和不可解释的编译器扩展。正式构建只能使用 `scripts\build.bat` 或 `scripts\stage.bat`。
+Core、Browser 和 Script session 的 DOM/脚本状态由宿主在受控线程驱动；DB handle 也由宿主在
+单一 owner 线程顺序使用，worker 只能通过消息传递结果，不能直接碰 DOM、窗口、脚本 runtime
+或另一个线程的 DB handle。实现必须保持 C89、VS2008、WM6 ARMV4I 兼容，避免隐式 64 位假设、
+无界分配、C99 初始化和不可解释的编译器扩展。正式构建只能使用 `scripts\build.bat` 或
+`scripts\stage.bat`。
 
 ## 明确非目标
 
 Positron 不承诺现代浏览器完整标准、任意网站兼容性、完整 CSS/Selectors、通用 DocumentFragment/Node tree mutation、MutationObserver、Range/Selection、完整 live collection、bfcache、复杂滚动树、pinch zoom、transforms、CORS/绝对 URL 策略或 OEM 视觉。真实触摸、SIP/IME、picker、旋转、DPI、字体和失败网络仍须按测试文档进行人工验收。
+
+数据库同步也不承诺远程任意 SQL、MySQL/PostgreSQL/ODBC 客户端、复合主键、字段级自动
+merge、多主服务器、WAL、SQLCipher、超过约 16 MiB 的数据库或 DB DLL 内部网络线程；
+服务器 REST fixture、真实 HTTPS Bearer Token、断电恢复和设备离线/重连门仍是宿主集成验收范围。
+同步数据库的 `__pdb_meta`、`__pdb_sync_tables`、`__pdb_row_state`、`__pdb_dirty`、
+`__pdb_outbox` 与 `__pdb_conflict` 由 DB DLL 私有维护，应用 migration 不得改写这些表。

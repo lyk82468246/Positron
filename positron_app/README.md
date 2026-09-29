@@ -120,7 +120,7 @@ scripts\build.bat Debug rebuild
 scripts\stage.bat Debug C:\WMShare\Positron-app
 ```
 
-stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应的七个公共 DLL 和
+stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应的九个公共 DLL 和
 `fonts\`；不要把 `test_host.ini` 当作应用配置，也不要从不同 stage 目录混用 DLL。
 
 ## 阶段 A/B 验收

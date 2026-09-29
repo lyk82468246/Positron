@@ -30,6 +30,7 @@ copy /Y "%ROOT%\positron_core\bin\%CFG%\positron_core.dll" "%STAGE%\" || goto :f
 copy /Y "%ROOT%\positron_image\bin\%CFG%\positron_image.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_script\bin\%CFG%\positron_script.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_browser\bin\%CFG%\positron_browser.dll" "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\positron_db\bin\%CFG%\positron_db.dll"       "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_app\bin\%CFG%\positron.exe"         "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\bin\%CFG%\test_host.exe"         "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\test_host.ini"                   "%STAGE%\" || goto :fail

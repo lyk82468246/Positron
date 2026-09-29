@@ -93,6 +93,7 @@ function Get-ArtifactSpecs([string] $Config)
     return @(
         @{ Relative = ("positron_tls\bin\{0}\positron_tls.dll" -f $Config); Archive = "positron_tls.dll" },
         @{ Relative = ("positron_json\bin\{0}\positron_json.dll" -f $Config); Archive = "positron_json.dll" },
+        @{ Relative = ("positron_db\bin\{0}\positron_db.dll" -f $Config); Archive = "positron_db.dll" },
         @{ Relative = ("positron_media\bin\{0}\positron_media.dll" -f $Config); Archive = "positron_media.dll" },
         @{ Relative = ("positron_http\bin\{0}\positron_http.dll" -f $Config); Archive = "positron_http.dll" },
         @{ Relative = ("positron_core\bin\{0}\positron_core.dll" -f $Config); Archive = "positron_core.dll" },

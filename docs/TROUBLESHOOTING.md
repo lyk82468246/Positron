@@ -7,7 +7,7 @@
 1. 查看当前 Git 分支、未提交 diff 和候选目录。
 2. 确认使用 `scripts\build.bat` 或 `scripts\stage.bat` 的正式配置。
 3. 确认旧 `test_host.exe` 已真正退出，而不是 Smart Minimize。
-4. 确认七个 DLL 与 EXE 来自同一次构建。
+4. 确认九个 DLL 与 EXE 来自同一次构建。
 5. 读取完整 `test_host.log`，不要只依赖弹窗、提示音或截图。
 6. 记录设备 screen、DPI、方向、系统时间和操作步骤。
 
@@ -132,6 +132,33 @@ scripts\repair_wmdc_rapi.bat -AuditOnly
 - 有 `FAIL`：候选不能成为基线，不通过放宽断言掩盖。
 - 没有最终 `TESTBENCH PASS`：即使听到系统提示或窗口关闭，也不算完整通过。
 - TEST999 没响：确认显式选择了 999、前序未失败，并检查设备系统声音设置。
+
+### `positron.exe` Debug 诊断抓取
+
+独立应用的脚本逐项/汇总状态、图片资源摘要和导航终态只在 Debug 构建中记录。每次进程启动
+先写入 `debug-session pid/tick`，后续每条记录带 PID；导航还会记录 generation、requested/visible
+URL、commit stage、HTTP status/failure class 和 `start/finish-commit/finish-rollback/finish-stale`。
+即使页面没有脚本，也会写 `script-scan count=0`。记录同时送到 `OutputDebugStringW` 和设备上的
+`\Temp\positron-debug.log`；文件达到 128 KiB 后停止增长。每次重启会开始一个新的 bounded session，
+不会保留上次运行的旧内容，但 session 标记可以确认当前日志对应哪个进程。Release 不包含这条
+日志实现。WM6 设备已经由 WMDC 连接后，可以用下面的入口完成正式 staging、部署、启动和首个日志快照：
+
+```bat
+scripts\debug_capture.bat -Configuration Debug
+```
+
+脚本输出 `REMOTE_ROOT`、`REMOTE_PID` 和本地 `LOCAL_LOG`。用户在该实例中操作后，用输出的
+远端目录只拉取日志，不重新编译或部署：
+
+```bat
+scripts\debug_capture.bat -PullOnly -RemoteRoot "\Storage Card\Temp\Positron-device-gate\debug-capture-<stamp>" -FollowSeconds 300
+```
+
+它只消费 WMDC 当前 RAPI 会话，不选择设备、cradle、重置或强杀进程；日志和运行根目录留在
+`tmp/device-runs/`，不加入 Git。若日志只有 `debug-session`，说明进程已启动但还没有发生导航；
+若出现 `finish-rollback`，应优先按 `stage/failure/status` 判断失败边界，而不是根据旧页面截图
+猜测。若出现 `finish-commit` 但页面仍旧，先核对 `requested/visible` URL 和 PID，避免把旧进程
+窗口当作当前实例。
 
 ### INI 被拒绝或意外出现分组选择
 

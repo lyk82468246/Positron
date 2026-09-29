@@ -4,7 +4,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#ifdef _DEBUG
+#include <stdio.h>
+#endif
 
+#include "app_debug.h"
 #include "app_script.h"
 #include "positron_script.h"
 
@@ -40,6 +44,48 @@ struct AppScriptContext {
     unsigned int native_select_key_index;
     char native_edit_target_id[APP_SCRIPT_URL_MAX];
 };
+
+#ifdef _DEBUG
+static void app_script_debug_log_script(AppScriptContext *context, int index,
+        const PCoreScriptInfo *info, const char *url, const char *type,
+        const char *outcome, int result)
+{
+    char message[1024];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-state page=%s index=%d kind=%d url=%s "
+            "available=%d source_bytes=%d url_bytes=%d type_bytes=%d "
+            "data_bytes=%d type=%s outcome=%s result=%d\r\n",
+            context != NULL ? context->document_url : "",
+            index,
+            info != NULL ? info->kind : 0,
+            url != NULL ? url : "",
+            info != NULL ? info->available : 0,
+            info != NULL ? info->source_bytes : 0,
+            info != NULL ? info->url_bytes : 0,
+            info != NULL ? info->type_bytes : 0,
+            info != NULL ? info->data_bytes : 0,
+            type != NULL ? type : "",
+            outcome != NULL ? outcome : "",
+            result);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_script_debug_log_summary(AppScriptContext *context, int count,
+        int executed, int ignored, int errors)
+{
+    char message[512];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-summary page=%s count=%d executed=%d "
+            "ignored=%d errors=%d\r\n",
+            context != NULL ? context->document_url : "",
+            count, executed, ignored, errors);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+#endif
 
 static void app_script_copy_text(char *target, int capacity,
         const char *source)
@@ -235,19 +281,6 @@ static int app_script_set_text(void *pw, const char *id, const char *text)
         return -1;
     }
     result = PCore_NodeSetTextContentById(context->document, id, text);
-    return app_script_mutation_result(context, result);
-}
-
-static int app_script_set_document_title(void *pw, const char *text)
-{
-    AppScriptContext *context;
-    int result;
-
-    context = (AppScriptContext *) pw;
-    if (context == NULL || context->document == NULL || text == NULL) {
-        return -1;
-    }
-    result = PCore_DocumentSetTitle(context->document, text);
     return app_script_mutation_result(context, result);
 }
 
@@ -1293,7 +1326,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
 {
     PBrowserScriptDomReadCallbacksEx dom_read;
     PBrowserScriptDomRelationCallbacks relation;
-    PBrowserScriptDomWriteCallbacksEx13 write;
+    PBrowserScriptDomWriteCallbacks write;
     PBrowserScriptContentEditableCallbacks content_editable;
     PBrowserScriptContentEditableSelectionCallbacks content_selection;
     PBrowserScriptDocumentWriteCallbacks document_write;
@@ -1340,7 +1373,6 @@ static int app_script_register_callbacks(AppScriptContext *context)
     write.size = sizeof(write);
     write.pw = context;
     write.set_text = app_script_set_text;
-    write.set_document_title = app_script_set_document_title;
     memset(&content_editable, 0, sizeof(content_editable));
     content_editable.size = sizeof(content_editable);
     content_editable.pw = context;
@@ -1495,8 +1527,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
             context->session, &relation) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx13(
-            context->session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacks(context->session,
             &write) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(
             context->session, &content_editable) != PSCRIPT_OK ||
@@ -1701,6 +1732,9 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
     int errors;
     int i;
     int result;
+#ifdef _DEBUG
+    char debug_url[APP_SCRIPT_URL_MAX];
+#endif
 
     if (out_executed != NULL) {
         *out_executed = 0;
@@ -1725,54 +1759,116 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
     for (i = 0; i < count; i++) {
         memset(&info, 0, sizeof(info));
         data = NULL;
-        if (PCore_GetScript(context->document, (unsigned int) i,
+#ifdef _DEBUG
+        debug_url[0] = '\0';
+#endif
+        result = PCore_GetScript(context->document, (unsigned int) i,
                 context->document_url, resolve, resolve_pw, &info, NULL, 0,
-                NULL, 0, NULL, 0, &data) != 0 || info.source_bytes < 0 ||
+#ifdef _DEBUG
+                debug_url, APP_SCRIPT_URL_MAX,
+#else
+                NULL, 0,
+#endif
+                NULL, 0, &data);
+        if (result != 0 || info.source_bytes < 0 ||
                 info.type_bytes < 0 || info.data_bytes < 0) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, NULL,
+                    "inspect-error", result);
+#endif
             errors++;
             continue;
         }
         if (info.kind == 2 && (!allow_external || !info.available)) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, NULL,
+                    "ignored-unavailable", 0);
+#endif
             ignored++;
             continue;
         }
         if (info.kind == 1 && info.source_bytes > APP_SCRIPT_MAX_SOURCE_BYTES) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, NULL,
+                    "ignored-size", 0);
+#endif
             ignored++;
             continue;
         }
         if (info.kind == 2 && info.data_bytes > APP_SCRIPT_MAX_SOURCE_BYTES) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, NULL,
+                    "ignored-size", 0);
+#endif
             ignored++;
             continue;
         }
         source = info.kind == 1 ? (char *) malloc(
                 (size_t) info.source_bytes + 1U) : NULL;
         type = (char *) malloc((size_t) info.type_bytes + 1U);
-        if ((info.kind == 1 && source == NULL) || type == NULL ||
-                PCore_GetScript(context->document, (unsigned int) i,
-                context->document_url, resolve, resolve_pw, &info, source,
-                info.source_bytes + 1, NULL, 0, type, info.type_bytes + 1,
-                &data) != 0) {
+        if ((info.kind == 1 && source == NULL) || type == NULL) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, NULL,
+                    "allocation-error", -1);
+#endif
             free(source);
             free(type);
             errors++;
             continue;
         }
-        if (!app_script_type_supported(type) ||
-                (info.kind == 1 && source == NULL) ||
+        result = PCore_GetScript(context->document, (unsigned int) i,
+                context->document_url, resolve, resolve_pw, &info, source,
+                info.source_bytes + 1, NULL, 0, type, info.type_bytes + 1,
+                &data);
+        if (result != 0) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, type,
+                    "metadata-error", result);
+#endif
+            free(source);
+            free(type);
+            errors++;
+            continue;
+        }
+        if (!app_script_type_supported(type)) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, type,
+                    "ignored-type", 0);
+#endif
+            ignored++;
+        } else if ((info.kind == 1 && source == NULL) ||
                 (info.kind == 2 && data == NULL)) {
+#ifdef _DEBUG
+            app_script_debug_log_script(context, i, &info, debug_url, type,
+                    "ignored-empty", 0);
+#endif
             ignored++;
         } else {
             result = PBrowser_ScriptSessionSetCurrentScriptIndex(
                     context->session, i);
-            if (result == PSCRIPT_OK) {
+            if (result != PSCRIPT_OK) {
+#ifdef _DEBUG
+                app_script_debug_log_script(context, i, &info, debug_url,
+                        type, "session-error", result);
+#endif
+                errors++;
+            } else {
                 result = PBrowser_ScriptSessionEvaluate(context->session,
                         info.kind == 1 ? source : data,
                         info.kind == 1 ? info.source_bytes : info.data_bytes);
-            }
-            if (result != PSCRIPT_OK) {
-                errors++;
-            } else {
-                executed++;
+                if (result != PSCRIPT_OK) {
+#ifdef _DEBUG
+                    app_script_debug_log_script(context, i, &info, debug_url,
+                            type, "runtime-error", result);
+#endif
+                    errors++;
+                } else {
+#ifdef _DEBUG
+                    app_script_debug_log_script(context, i, &info, debug_url,
+                            type, "executed", result);
+#endif
+                    executed++;
+                }
             }
         }
         free(source);
@@ -1788,6 +1884,9 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
     if (out_errors != NULL) {
         *out_errors = errors;
     }
+#ifdef _DEBUG
+    app_script_debug_log_summary(context, count, executed, ignored, errors);
+#endif
     return 0;
 }
 

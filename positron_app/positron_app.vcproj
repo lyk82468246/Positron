@@ -94,6 +94,8 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_debug.c" />
+		<File RelativePath=".\app_debug.h" />
 		<File RelativePath=".\app_host.c" />
 		<File RelativePath=".\app_host.h" />
 		<File RelativePath=".\app_forms.c" />

@@ -1,6 +1,6 @@
 # Positron
 
-Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础设施与轻量网页运行时。它把 TLS、JSON、HTTP、图像、脚本、HTML/CSS/DOM/layout 和浏览器会话能力封装为可由旧式 Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约束。
+Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础设施与轻量网页运行时。它把 TLS、JSON、SQLite 数据库、HTTP、图像、脚本、HTML/CSS/DOM/layout 和浏览器会话能力封装为可由旧式 Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约束。
 
 项目的目标不是复刻现代桌面浏览器，而是在 WM6 上提供一组可组合、可测试、边界清楚的公共能力。`test_host.exe` 是这些 DLL 的回归宿主和示例消费者，不是产品 API 的所有者。
 
@@ -20,6 +20,7 @@ Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础�
 |---|---|---|
 | `positron_tls.dll` | TLS 客户端、双向认证 peer 与 listener | `PTls_Init`、`PTls_ConnectVerified`、`PTls_ServerListen` |
 | `positron_json.dll` | cJSON 的 opaque-handle 包装 | `PJson_Parse`、读取函数、`PJson_Free` |
+| `positron_db.dll` | SQLite 本地数据库、migration、outbox 和 REST 行级同步状态 | `PDb_OpenUtf8`、`PDb_ApplyMigration`、`PDb_SyncBuildRequest`、`PDb_SyncApplyResponse` |
 | `positron_http.dll` | 基于 TLS 的 HTTP/1.1 GET/POST 与 URL reference 解析 | `PHttp_Init`、`PHttp_GetEx`、`PHttp_PostEx` |
 | `positron_image.dll` | 位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
 | `positron_script.dll` | 有预算的独立 JavaScript context、JSON bridge 与模块加载 | `PScript_CreateEx`、`PScript_Evaluate`、`PScript_Destroy` |

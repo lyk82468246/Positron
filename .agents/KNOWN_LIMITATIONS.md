@@ -30,6 +30,15 @@
 - URL reference resolver 是保守的 HTTP(S) 子集，不是完整 WHATWG URL 实现；userinfo、IPv6、非 HTTP(S) scheme 和异常 authority 会 fail closed。
 - 真实网络测试仍受设备时钟、DNS、TLS、代理和外部站点变化影响，离线契约不能替代网络哨兵。
 
+## DB
+
+- 固定 SQLite 3.53.4、rollback journal；数据库约 16 MiB、同步 body 约 1 MiB；设备文件锁、
+  峰值内存、断电和强制重启恢复门尚未完成。
+- 本地 SQL/migration、同步 outbox/cursor/tombstone、typed row JSON 和权威冲突已有主机
+  contract；独立 REST fixture 已有，宿主 DB worker、HTTPS 错误/分页和设备基线尚未完成。
+- v1 只接受单列 INTEGER/TEXT 主键；不支持复合主键、自动 merge、多主、远程 SQL、WAL、
+  SQLCipher、扩展或 DLL 内网络线程。Token 不入库，DB handle 不跨线程。
+
 ## HTML、CSS 与布局
 
  - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
@@ -357,7 +366,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script heap、native function、module/source、timer、queue 和执行时间都有固定预算；复杂页面可能因资源上限失败。独立 `positron_script.dll` context 默认 512 KiB，Browser bootstrap 使用 1.5 MiB 的独立有界堆上限；`PSCRIPT_MAX_NATIVE_FUNCTIONS` 当前为 29。Browser 同时启用 DOM、validation、contenteditable、导航、`document.activeElement`、`HTMLElement.focus()`/`blur()`、pointer-interaction selector、FormData 和有界 DOM removal 桥时会占满槽位，额外宿主 native function 必须先检查计数并在达到上限时保守失败；参考宿主为大型完整页面 bootstrap 使用默认脚本页预算的 4 倍，较小离线夹具仍可使用更低预算，但所有 page budget 都有上限且不改变 Browser 的固定 heap/native-function/source 预算；不能通过跳过必要桥或扩大为无界表来规避预算。
+ - script/DOM heap、native function、module/source、timer、queue 和执行时间都有固定预算；`positron_script.dll` context 512 KiB、Browser bootstrap 1.5 MiB、native function 上限 29。宿主必须在达到上限时保守失败；不能跳过必要桥或改成无界表。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；参考宿主已把顶层 `WM_SHOWWINDOW` 映射到这个 API，但其他宿主仍必须自行接线；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`

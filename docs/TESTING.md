@@ -12,7 +12,7 @@ Positron 的验证分为主机静态检查、VS2008 ARMV4I 构建、自动设备
 
 ## 能力矩阵与未实现入口
 
-八个顶层 DLL 的主干能力状态、预算、错误边界和提升条件统一见
+九个顶层 DLL 的主干能力状态、预算、错误边界和提升条件统一见
 [`CAPABILITIES.md`](CAPABILITIES.md)。矩阵中的“有界待扩展”不是已支持行为；它只表示已有
 相邻公共边界，或已确认值得调查但仍缺少消费者证据。
 
@@ -32,6 +32,25 @@ HTTP 消费者接线使用 URL-aware `PHttp_GetUrl[Ex]`/`PHttp_PostUrl[Ex]`，�
 解析相对引用。旧 `PHttp_Get[Ex]`/`PHttp_Post[Ex]` 只保留给 ABI 回归；新增 HTTP 响应字段
 不得直接扩展 `PHttpResponse`。HTTP body 读取、Content-Length 截断、chunked 解码、TLS→HTTP
 降级和容量失败都必须在宿主看到 body 前变成可判定的失败。
+
+数据库同步消费者使用 `positron_db.dll` 的离线 contract，不在 `test_host` 中复制 SQLite
+或 REST 业务实现。TEST1321 当前覆盖本地完整 SQL 打开、同步 migration、同步表注册、
+typed bind、BLOB 行写入、outbox/request size-probe、accepted/pull/conflict 响应以及
+服务器权威行、retry-local 冲突处理、冲突列表和文件重开持久化。继续扩展该纵切时必须保持以下边界：
+
+- 直接 DDL（包括 virtual table）、`ATTACH`/`DETACH`、事务/savepoint、非法 `PRAGMA`、扩展加载和多语句用户 SQL 在同步模式
+  fail closed；migration 中途失败不得推进 schema version；
+- 非 2xx、malformed/超限 JSON、schema hash/version 不匹配和错误 typed value 不得部分推进
+  本地行、outbox 或 cursor；
+- HTTP worker、HTTPS、Bearer Token、重试和 UI 消息属于宿主；DB DLL 不保存 token、不创建
+  线程，也不把 SQL 文本发到服务器；
+- 设备验收还需覆盖真实 SQLite 文件重开、journal 恢复、断网重连、401/5xx、分页、tombstone
+  和断电后的 outbox/cursor 持久化；没有这些证据时只能写成主机 contract 已通过。
+
+独立 REST contract 可用 `python scripts\db_sync_fixture.py --token fixture-token --port 0` 启动；
+它只在内存中保存 typed row、版本和 tombstone，支持 `op_id` 幂等、版本冲突、分页和 Bearer
+Token 检查，不执行远程 SQL。端口由启动输出给出，测试完成后由启动它的宿主停止；它不是生产
+服务器，也不替代 WM6 上的 `positron_http.dll`、DB worker、HTTPS 和断电门。
 
 ## `test_host.ini`
 

@@ -2,7 +2,7 @@
 
 本文件只描述尚未完成的目标、候选能力和选择规则。当前产品事实见
 [HANDOFF.md](HANDOFF.md)，仍存在的边界见 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)，
-稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，八个公共 DLL
+稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，九个公共 DLL
 的能力状态见 [docs/CAPABILITIES.md](../docs/CAPABILITIES.md)。已经
 完成的批次不在这里建立时间线；具体实现由 Git 保存，只有会影响未来取舍的失败实验才进入
 [FAILED_EXPERIMENTS.md](FAILED_EXPERIMENTS.md) 或 docs/history/。
@@ -41,8 +41,8 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 
 让 Windows Mobile 6 / Windows CE 应用能够按需组合一组稳定、资源有界、可部署的公共 DLL：
 
-- positron_tls.dll、positron_json.dll、positron_http.dll、positron_image.dll、positron_media.dll 和
-  positron_script.dll 提供可独立消费的基础设施；
+- positron_tls.dll、positron_json.dll、positron_db.dll、positron_http.dll、positron_image.dll、
+  positron_media.dll 和 positron_script.dll 提供可独立消费的基础设施；
 - positron_core.dll 提供无窗口依赖的 HTML/CSS/DOM/layout/paint 与表单基础；
 - positron_browser.dll 提供 Browser session、history、资源事务和脚本到 Core 的协调；
 - 应用宿主只负责 WM 窗口、消息循环、native 控件、网络/线程调度、设备输入和产品策略；
@@ -88,7 +88,7 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
 
 当前短期目标是完成“主干能力覆盖”，而不是按测试编号继续堆叠孤立功能：
 
-1. 维护 `docs/CAPABILITIES.md`，为八个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
+1. 维护 `docs/CAPABILITIES.md`，为九个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
    并为每项能力写明入口、预算、失败边界、fixture、设备/人工门和提升条件。
 2. 审计公开头文件和导出入口，发现缺失的主干类别时只提出有 owner、有预算、有错误分类的
    `Ex`/size-version 边界；本阶段不声明完整现代 Web API，也不改变旧 ABI。
@@ -164,7 +164,7 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
 6. 每个被提升的能力必须先有离线成功/失败不变性/容量/stale/cancel fixture，再运行 C89、正式
    ARMV4I 构建、仓库审计和相称的设备门；`test_host` 只增加接线、fixture 和断言。
 
-短期完成标准是：七个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
+短期完成标准是：九个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
 独立应用阶段 A（包括英语/简体中文/回退英语语言矩阵）有设备证据，阶段 B 网络候选有明确
 owner/预算/回滚和最小 fixture；路线图能指出下一条实现纵切，而不是只写“继续寻找”。
 
@@ -239,6 +239,25 @@ filter 探测。
 - **门：** `test_c89ize.py`、`audit_repo.py`、Debug/Release ARMV4I、离线 host I/O/ABI 回归和
   WM6 emulator/真实设备的无崩溃、时间戳、underrun、峰值内存与关闭耗时证据；发布前单独
   审查 FFmpeg GPL 组合、AVC 专利和设备 codec/许可证义务。
+
+#### DB. REST fixture 与宿主同步 worker 集成
+
+**状态：`positron_db.dll` 的本地 SQLite、migration、同步表/outbox、typed row JSON、游标、
+tombstone、服务器权威冲突和原子响应应用已经完成主机 contract；独立 REST fixture 已加入，
+宿主 DB worker 和真实设备网络/断电门仍待完成。**
+
+- **Owner：** `positron_db.dll` 拥有事务、schema、行状态、outbox、冲突和协议编码/解码；宿主
+  拥有 DB handle 所在线程、`positron_http.dll` 调度、HTTPS Bearer Token、重试退避和 UI 消息；
+  `test_host` 只提供 fixture 与断言。
+- **边界：** SQLite 3.53.4、rollback journal、同步数据库只允许版本化 migration；v1 只支持
+  单列 INTEGER/TEXT 主键，单次 SQL 约 32 KiB、同步 body 约 1 MiB、数据库约 16 MiB，不发送
+  SQL，不在 DLL 内创建网络线程。
+- **最小 fixture：** `scripts/db_sync_fixture.py` 已覆盖 Bearer Token、`op_id` 幂等、分页/游标、
+  accepted/conflict/tombstone；TEST1321 覆盖本地创建、typed bind、outbox、pull、冲突和
+  retry-local。宿主仍需把 malformed/超大响应、401/5xx/超时、重启恢复接入同一 worker 门。
+- **门：** C89、仓库审计、Debug/Release ARMV4I、host fixture 后，再接入 `positron_app` DB
+  worker，完成离线启动/写入、重连同步、Bearer Token 错误处理、真实设备 journal 恢复和强制
+  重启验证；服务器实现不进入产品 DLL 或 `test_host`。
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 

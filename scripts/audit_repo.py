@@ -27,6 +27,7 @@ REQUIRED = (
     "positron_expat/COPYING",
     "netsurf-all-3.11/netsurf/COPYING",
     "third_party/libjpeg-turbo/LICENSE.md",
+    "third_party/sqlite/UPSTREAM.md",
     "third_party/noto-symbols/OFL.txt",
     "third_party/noto-symbols2/OFL.txt",
     "third_party/noto-emoji/OFL.txt",
@@ -41,6 +42,13 @@ EXPECTED_VERSIONS = (
      ("CJSON_VERSION_MAJOR", "1"),
      ("CJSON_VERSION_MINOR", "7"),
      ("CJSON_VERSION_PATCH", "18")),
+)
+
+EXPECTED_TEXT_MARKERS = (
+    ("third_party/sqlite/UPSTREAM.md",
+     ("# SQLite 3.53.4",
+      "sqlite-amalgamation-3530400.zip",
+      "1E71DDF93849C6A6ECF58B827C0692073D2DD7EE40196158068F7B29F422E87D")),
 )
 
 DOC_EXCLUDES = (
@@ -264,6 +272,21 @@ def audit_versions(errors):
                               (spec[0], macro, expected, actual))
 
 
+def audit_text_markers(errors):
+    for name, markers in EXPECTED_TEXT_MARKERS:
+        path = os.path.join(ROOT, name.replace("/", os.sep))
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                text = handle.read()
+        except (IOError, UnicodeError) as exc:
+            errors.append("cannot read metadata file %s: %s" % (name, exc))
+            continue
+        for marker in markers:
+            if marker not in text:
+                errors.append("%s is missing expected marker: %s" %
+                              (name, marker))
+
+
 def audit_markdown_links(documents, errors):
     if documents is None:
         return 0, 0
@@ -477,6 +500,7 @@ def main():
 
     host_source_count = audit_test_host_boundary(errors)
     audit_versions(errors)
+    audit_text_markers(errors)
     structured_document_count = audit_document_structure(worktree_files,
                                                           errors)
     document_count, link_count = audit_markdown_links(worktree_files, errors)
@@ -496,7 +520,7 @@ def main():
           structured_document_count)
     print("test_host boundary OK: %d source files checked." %
           host_source_count)
-    print("Pinned sources: Mbed TLS 2.16.12, cJSON 1.7.18.")
+    print("Pinned sources: Mbed TLS 2.16.12, cJSON 1.7.18, SQLite 3.53.4.")
     return 0
 
 

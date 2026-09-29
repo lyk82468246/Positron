@@ -321,6 +321,7 @@ if ($LASTEXITCODE -ne 0) {
 $required = @(
     "positron_tls.dll",
     "positron_json.dll",
+    "positron_db.dll",
     "positron_http.dll",
     "positron_core.dll",
     "positron_image.dll",
@@ -795,7 +796,7 @@ public static class PositronDeviceRapi
     }
 
     public static bool TryCopyFileFromDevice(
-        string remotePath, string localPath)
+            string remotePath, string localPath)
     {
         IntPtr remote = CeCreateFile(remotePath, GENERIC_READ,
             FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING,
@@ -830,6 +831,17 @@ public static class PositronDeviceRapi
         }
         finally {
             CeCloseHandle(remote);
+        }
+    }
+
+    public static void DeleteFileIfExists(string remotePath)
+    {
+        if (CeGetFileAttributes(remotePath) == INVALID_FILE_ATTRIBUTES) {
+            return;
+        }
+        if (!CeDeleteFile(remotePath) &&
+                CeGetFileAttributes(remotePath) != INVALID_FILE_ATTRIBUTES) {
+            throw CreateRemoteException("CeDeleteFile(" + remotePath + ")");
         }
     }
 

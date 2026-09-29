@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app_debug.h"
 #include "app_host.h"
 #include "app_controls.h"
 #include "app_script.h"
@@ -125,6 +126,9 @@ static HBITMAP g_page_paint_buffer_bitmap;
 static int g_page_paint_buffer_width;
 static int g_page_paint_buffer_height;
 static int g_scrollbar_settle_depth;
+static int g_script_refresh_pending;
+static int g_script_refresh_form_reset;
+static AppScriptContext *g_script_refresh_context;
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
@@ -820,19 +824,22 @@ static void app_script_schedule_refresh(void *pw, AppScriptContext *context,
             host->document == NULL) {
         return;
     }
-    if (app_relayout() != 0) {
-        app_set_status(APP_TEXT_STATUS_LAYOUT);
+    if (g_script_refresh_pending && g_script_refresh_context == context) {
+        if (form_reset) {
+            g_script_refresh_form_reset = 1;
+        }
         return;
     }
-    if (g_controls != NULL) {
-        AppControls_Reposition(g_controls, host->document, g_scroll_x,
-                g_scroll_y);
-    }
-    InvalidateRect(host->page_window, NULL, TRUE);
-    if (host->window != NULL) {
-        (void) PostMessage(host->window, APP_WM_CONTROLS_REFRESH,
-                form_reset ? APP_CONTROLS_REFRESH_FORM_RESET : 0,
-                (LPARAM) context);
+    g_script_refresh_pending = 1;
+    g_script_refresh_form_reset = form_reset ? 1 : 0;
+    g_script_refresh_context = context;
+    if (host->window == NULL || !PostMessage(host->window,
+            APP_WM_CONTROLS_REFRESH,
+            g_script_refresh_form_reset ? APP_CONTROLS_REFRESH_FORM_RESET : 0,
+            (LPARAM) context)) {
+        g_script_refresh_pending = 0;
+        g_script_refresh_form_reset = 0;
+        g_script_refresh_context = NULL;
     }
 }
 
@@ -2310,6 +2317,75 @@ static int app_navigation_commit_ready(AppNavigationRequest *request)
             info.can_commit;
 }
 
+#ifdef _DEBUG
+static const char *app_navigation_debug_stage(int stage)
+{
+    switch (stage) {
+    case APP_NAV_COMMIT_SCRIPTS:
+        return "scripts";
+    case APP_NAV_COMMIT_STYLE:
+        return "style";
+    case APP_NAV_COMMIT_IMAGES:
+        return "images";
+    case APP_NAV_COMMIT_LAYOUT:
+        return "layout";
+    default:
+        return "none";
+    }
+}
+
+static void app_navigation_debug_log_url(const char *event,
+        const char *url, const char *detail)
+{
+    char message[768];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron nav event=%s requested=%.*s visible=%.*s detail=%s\r\n",
+            event != NULL ? event : "unknown",
+            240, url != NULL ? url : "",
+            240, g_current_url,
+            detail != NULL ? detail : "");
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_navigation_debug_log_request(AppNavigationRequest *request,
+        const char *event, const char *detail)
+{
+    char message[1024];
+
+    if (request == NULL) {
+        return;
+    }
+    _snprintf(message, sizeof(message) - 1,
+            "positron nav event=%s gen=%lu requested=%.*s visible=%.*s "
+            "stage=%s worker=%d status=%d failure=%d current=%d detail=%s\r\n",
+            event != NULL ? event : "unknown", request->generation,
+            240, request->url, 240, g_current_url,
+            app_navigation_debug_stage(request->commit_stage),
+            request->worker_succeeded, request->worker_status_code,
+            request->worker_failure_class,
+            request == g_navigation_request ? 1 : 0,
+            detail != NULL ? detail : "");
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_navigation_debug_log_script_count(
+        AppNavigationRequest *request, int count)
+{
+    char message[768];
+
+    if (request == NULL) {
+        return;
+    }
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-scan gen=%lu page=%.*s count=%d\r\n",
+            request->generation, 600, request->url, count);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
 static void app_navigation_image_resource_counts(
         AppNavigationRequest *request, int *out_queued, int *out_ready,
         int *out_failed, int *out_pending)
@@ -2351,7 +2427,7 @@ static void app_navigation_trace_image_state(AppNavigationRequest *request)
     PBrowserNavigationResourceStats resource_stats;
     PCoreBoxStats box_stats;
     PCoreImageDecodeStats image_stats;
-    WCHAR message[640];
+    char message[640];
     int queued;
     int ready;
     int failed;
@@ -2381,11 +2457,12 @@ static void app_navigation_trace_image_state(AppNavigationRequest *request)
     image_ok = request->document_candidate != NULL &&
             PCore_GetImageDecodeStats(request->document_candidate,
             &image_stats) == 0;
-    _snwprintf(message, sizeof(message) / sizeof(message[0]) - 1,
-            L"positron image-state gen=%lu "
-            L"scan=%d/%d resources=%d/%d/%d/%d "
-            L"browser=%d/%d/%d box=%d/%u/%u/%u svg=%d/%u\r\n",
-            request->generation, request->image_scan_found,
+    _snprintf(message, sizeof(message) - 1,
+            "positron image-state gen=%lu url=%.*s "
+            "scan=%d/%d resources=%d/%d/%d/%d "
+            "browser=%d/%d/%d box=%d/%u/%u/%u svg=%d/%u\r\n",
+            request->generation, 240, request->url,
+            request->image_scan_found,
             request->image_scan_fetched, queued, ready, failed, pending,
             resource_ok ? resource_stats.resources_ready : -1,
             resource_ok ? resource_stats.resources_fetched : -1,
@@ -2395,9 +2472,10 @@ static void app_navigation_trace_image_state(AppNavigationRequest *request)
             box_ok ? box_stats.image_reuses : 0,
             box_ok ? box_stats.image_markup_first : 0,
             image_ok ? 1 : 0, image_ok ? image_stats.svg_creates : 0);
-    message[(sizeof(message) / sizeof(message[0])) - 1] = L'\0';
-    OutputDebugStringW(message);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
 }
+#endif
 
 static void app_navigation_request_destroy(AppNavigationRequest *request)
 {
@@ -2766,6 +2844,11 @@ static void app_navigation_finish(AppNavigationRequest *request,
     int current;
 
     current = request == g_navigation_request;
+#ifdef _DEBUG
+    app_navigation_debug_log_request(request,
+            committed ? "finish-commit" : "finish-rollback",
+            committed ? "candidate-committed" : "candidate-failed");
+#endif
     if (current) {
         g_navigation_request = NULL;
     }
@@ -2825,6 +2908,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             int history_length;
             int history_index;
             int script_errors;
+            int script_count;
 
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
@@ -2849,7 +2933,11 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 }
                 return 0;
             }
-            if (PCore_GetScriptCount(request->document_candidate) > 0) {
+            script_count = PCore_GetScriptCount(request->document_candidate);
+#ifdef _DEBUG
+            app_navigation_debug_log_script_count(request, script_count);
+#endif
+            if (script_count > 0) {
                 if (request->history_mode == APP_HISTORY_NEW) {
                     history_length = PBrowser_HistoryNavigationLength(
                             g_history, request->url,
@@ -2920,9 +3008,18 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                     if (AppScript_Execute(request->script_candidate, 1,
                             AppResources_Resolve, request, NULL, NULL,
                             &script_errors) != 0) {
+#ifdef _DEBUG
+                        app_navigation_debug_log_request(request,
+                                "script-fail", "session-execute");
+#endif
                         AppScript_Destroy(request->script_candidate);
                         request->script_candidate = NULL;
                     }
+#ifdef _DEBUG
+                } else {
+                    app_navigation_debug_log_request(request, "script-fail",
+                            "script-create");
+#endif
                 }
             }
             request->commit_stage = APP_NAV_COMMIT_STYLE;
@@ -3004,7 +3101,9 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         (void) PBrowser_NavigationResourceObserveFallbacks(
                 request->resource_transaction);
+#ifdef _DEBUG
         app_navigation_trace_image_state(request);
+#endif
         if (g_script != NULL) {
             int prevented;
 
@@ -3094,6 +3193,10 @@ static void app_navigation_handle_done(HWND hwnd,
     }
     if (request != g_navigation_request) {
         app_navigation_remove_retired(request);
+#ifdef _DEBUG
+        app_navigation_debug_log_request(request, "finish-stale",
+                "retired-request");
+#endif
         app_navigation_request_destroy(request);
         if (g_navigation_closing && g_retired_navigation == NULL &&
                 g_navigation_request == NULL) {
@@ -3143,17 +3246,26 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
             body_bytes < 0 || body_bytes > APP_FORMS_BODY_MAX_BYTES ||
             (body_bytes > 0 && body == NULL) || (content_type != NULL &&
             (int) strlen(content_type) >= APP_HOST_CONTENT_TYPE_MAX)) {
+#ifdef _DEBUG
+        app_navigation_debug_log_url("reject", url, "invalid-arguments");
+#endif
         app_restore_page_status();
         return 0;
     }
     app_file_picker_cancel_pending();
     if (g_navigation_request != NULL &&
             app_navigation_retired_count() >= APP_NAV_MAX_RETIRED) {
+#ifdef _DEBUG
+        app_navigation_debug_log_url("reject", url, "retired-limit");
+#endif
         app_restore_page_status();
         return 0;
     }
     request = (AppNavigationRequest *) malloc(sizeof(*request));
     if (request == NULL) {
+#ifdef _DEBUG
+        app_navigation_debug_log_url("reject", url, "request-allocation");
+#endif
         app_restore_page_status();
         return 0;
     }
@@ -3165,6 +3277,9 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     if (body_bytes > 0) {
         request->body = (char *) malloc((size_t) body_bytes);
         if (request->body == NULL) {
+#ifdef _DEBUG
+            app_navigation_debug_log_url("reject", url, "body-allocation");
+#endif
             free(request);
             app_restore_page_status();
             return 0;
@@ -3176,6 +3291,9 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
             sizeof(request->content_type), content_type);
     if (AppUrlRouter_ResolveNetworkReference(NULL, url, canonical,
             sizeof(canonical)) != 0) {
+#ifdef _DEBUG
+        app_navigation_debug_log_url("reject", url, "network-url-router");
+#endif
         free(request);
         app_restore_page_status();
         return 0;
@@ -3186,6 +3304,10 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
             AppResources_Register(request, request->url,
             PBROWSER_NAVIGATION_RESOURCE_REQUIRED,
             PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE, &index) != 0) {
+#ifdef _DEBUG
+        app_navigation_debug_log_url("reject", request->url,
+                "resource-registration");
+#endif
         app_navigation_request_destroy(request);
         app_restore_page_status();
         return 0;
@@ -3201,6 +3323,10 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     request->candidate = PBrowser_NavigationCandidateCreate(
             request->generation);
     if (request->candidate == NULL) {
+#ifdef _DEBUG
+        app_navigation_debug_log_request(request, "reject",
+                "candidate-allocation");
+#endif
         app_navigation_request_destroy(request);
         app_restore_page_status();
         return 0;
@@ -3212,6 +3338,9 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
         return 0;
     }
     g_navigation_request = request;
+#ifdef _DEBUG
+    app_navigation_debug_log_request(request, "start", "worker-queued");
+#endif
     app_set_status(APP_TEXT_STATUS_LOADING);
     app_set_address(request->url);
     if (app_navigation_start_worker(request) != 0) {
@@ -3239,6 +3368,9 @@ static int app_load_page(HWND hwnd, const char *url, int history_mode,
     }
     if (app_canonicalize_url(g_current_url, url, canonical,
             sizeof(canonical)) != 0) {
+#ifdef _DEBUG
+        app_navigation_debug_log_url("reject", url, "canonicalize");
+#endif
         app_restore_page_status();
         return 0;
     }
@@ -4333,18 +4465,31 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         (void) app_file_picker_process(hwnd);
         return 0;
     case APP_WM_CONTROLS_REFRESH:
-        if (lparam == (LPARAM) g_script && g_document != NULL &&
-                g_controls != NULL) {
-            AppControls_PrepareReconcile(g_controls);
-            if (app_relayout() != 0 ||
-                    ((wparam == APP_CONTROLS_REFRESH_FORM_RESET) ?
-                    AppControls_ReconcileAfterFormReset(g_controls,
-                    g_document, g_script, g_scroll_x, g_scroll_y) :
-                    AppControls_Reconcile(g_controls, g_document,
-                    g_script, g_scroll_x, g_scroll_y)) != 0) {
-                app_set_status(APP_TEXT_STATUS_LAYOUT);
-            } else {
-                InvalidateRect(g_page_window, NULL, TRUE);
+        {
+            int form_reset;
+
+            if (!g_script_refresh_pending ||
+                    lparam != (LPARAM) g_script_refresh_context) {
+                return 0;
+            }
+            form_reset = g_script_refresh_form_reset ||
+                    (wparam == APP_CONTROLS_REFRESH_FORM_RESET);
+            g_script_refresh_pending = 0;
+            g_script_refresh_form_reset = 0;
+            g_script_refresh_context = NULL;
+            if (lparam == (LPARAM) g_script && g_document != NULL &&
+                    g_controls != NULL) {
+                AppControls_PrepareReconcile(g_controls);
+                if (app_relayout() != 0 ||
+                        (form_reset ?
+                        AppControls_ReconcileAfterFormReset(g_controls,
+                        g_document, g_script, g_scroll_x, g_scroll_y) :
+                        AppControls_Reconcile(g_controls, g_document,
+                        g_script, g_scroll_x, g_scroll_y)) != 0) {
+                    app_set_status(APP_TEXT_STATUS_LAYOUT);
+                } else {
+                    InvalidateRect(g_page_window, NULL, FALSE);
+                }
             }
         }
         return 0;
@@ -4369,6 +4514,9 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
          * host context is the single owner of the remaining page, history,
          * command bar and DLL shutdown sequence. */
         KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
+        g_script_refresh_pending = 0;
+        g_script_refresh_form_reset = 0;
+        g_script_refresh_context = NULL;
         app_file_picker_cancel_pending();
         if (g_controls != NULL) {
             AppControls_Destroy(g_controls);
@@ -4452,6 +4600,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
     (void) command_line;
     AppHostContext_Init(&g_app);
+    AppDebug_BeginSession();
     AppHostContext_SetInstance(&g_app, instance);
     if (AppI18n_Init(g_instance) != 0) {
         MessageBoxW(NULL, L"Positron", L"Positron",

@@ -29,6 +29,19 @@ extern "C" {
 #  define PJSON_API __declspec(dllimport)
 #endif
 
+/* Stable node types for callers that need to distinguish JSON null,
+ * booleans and numbers without depending on cJSON internals. */
+enum {
+    PJSON_TYPE_INVALID = 0,
+    PJSON_TYPE_NULL = 1,
+    PJSON_TYPE_FALSE = 2,
+    PJSON_TYPE_TRUE = 3,
+    PJSON_TYPE_NUMBER = 4,
+    PJSON_TYPE_STRING = 5,
+    PJSON_TYPE_ARRAY = 6,
+    PJSON_TYPE_OBJECT = 7
+};
+
 /* Parse a UTF-8 JSON string. Returns NULL on parse error. */
 PJSON_API HANDLE PJson_Parse(const char* json_string);
 
@@ -44,9 +57,29 @@ PJSON_API const char* PJson_GetString(HANDLE hObj, const char* key);
 /* Get the integer value at `key`. Returns 0 if missing or not numeric. */
 PJSON_API int PJson_GetInt(HANDLE hObj, const char* key);
 
-/* Get a nested object or array node by key. Returns NULL if missing.
+/* Return the type of a node handle. Returns PJSON_TYPE_INVALID for NULL or
+ * an invalid handle. The handle may be the top-level parse result or a
+ * borrowed child returned by one of the traversal functions. */
+PJSON_API int PJson_GetType(HANDLE hObj);
+
+/* Get a boolean value at `key`. Returns 1 for true, 0 for false and -1 when
+ * the key is missing or is not a JSON boolean. */
+PJSON_API int PJson_GetBool(HANDLE hObj, const char* key);
+
+/* Get a JSON number as double. Returns non-zero on success and leaves the
+ * output untouched on failure. */
+PJSON_API int PJson_GetDouble(HANDLE hObj, const char* key,
+        double* outValue);
+
+/* Get a nested JSON value by key. Returns NULL if missing.
  * The returned handle is owned by hObj's top-level handle. DO NOT free. */
 PJSON_API HANDLE PJson_GetObject(HANDLE hObj, const char* key);
+
+/* Enumerate direct children of a JSON object. Returned key strings and value
+ * handles are borrowed from the top-level parse tree. */
+PJSON_API int PJson_GetObjectSize(HANDLE hObj);
+PJSON_API const char* PJson_GetObjectKey(HANDLE hObj, int index);
+PJSON_API HANDLE PJson_GetObjectValue(HANDLE hObj, int index);
 
 /* Get an array element by zero-based index. NULL if out of range or
  * hObj isn't an array. Same lifetime rule as PJson_GetObject. */

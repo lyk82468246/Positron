@@ -1,0 +1,353 @@
+/* test_host DB contract tests.  The product implementation remains in
+ * positron_db.dll; this file only supplies fixtures and assertions. */
+
+#include <windows.h>
+#include <string.h>
+
+#include "positron_db.h"
+
+static BOOL db_test_query_name(PDbHandle db, char* output, int capacity)
+{
+    PDbStmtHandle stmt;
+    int rc;
+    const char* value;
+
+    rc = PDb_Prepare(db, "SELECT name FROM records WHERE id=1", &stmt);
+    if (rc != PDB_OK) {
+        return FALSE;
+    }
+    rc = PDb_Step(stmt);
+    if (rc != PDB_STEP_ROW) {
+        PDb_Finalize(stmt);
+        return FALSE;
+    }
+    value = PDb_ColumnText(stmt, 0);
+    if (value == NULL || (int)strlen(value) >= capacity) {
+        PDb_Finalize(stmt);
+        return FALSE;
+    }
+    strcpy(output, value);
+    PDb_Finalize(stmt);
+    return TRUE;
+}
+
+static BOOL db_test_persistence(void)
+{
+    static const char path[] = "\\Temp\\positron-db-1321.sqlite";
+    static const WCHAR delete_path[] = L"\\Temp\\positron-db-1321.sqlite";
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    PDbHandle db;
+    char request[2048];
+    int request_length;
+    int rc;
+
+    DeleteFileW(delete_path);
+    db = NULL;
+    rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
+    if (rc != PDB_OK || db == NULL) {
+        return FALSE;
+    }
+    rc = PDb_ApplyMigration(db, 1,
+            "CREATE TABLE persisted(id INTEGER PRIMARY KEY,name TEXT)");
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "persist-client", 1, "persist-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "persisted", "id", columns, 2);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "INSERT INTO persisted(id,name) VALUES(7,'saved')");
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 1) {
+        PDb_Close(db);
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
+    PDb_Close(db);
+    db = NULL;
+    rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK && db == NULL) {
+        rc = PDB_ERROR;
+    }
+    if (rc == PDB_OK && PDb_SyncPendingCount(db) != 1) {
+        rc = PDB_ERROR;
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncBuildRequest(db, request, sizeof(request),
+                &request_length);
+    }
+    if (rc != PDB_OK || request_length <= 0 ||
+            strstr(request, "persist-client:1") == NULL) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
+    PDb_Close(db);
+    DeleteFileW(delete_path);
+    return TRUE;
+}
+
+BOOL test1321_db_contract(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT },
+        { "payload", PDB_VALUE_BLOB }
+    };
+    static const char accepted[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
+        "\"accepted\":[{\"op_id\":\"device-1:1\",\"version\":\"1\"}],"
+        "\"conflicts\":[],\"changes\":[],\"next_cursor\":\"1\"}";
+    static const char pulled[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\",\"accepted\":[],"
+        "\"conflicts\":[],\"changes\":[{\"entity\":\"records\","
+        "\"key\":\"1\",\"version\":\"2\",\"deleted\":false,"
+        "\"values\":{\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"remote\"},"
+        "\"payload\":{\"t\":\"b\",\"v\":\"AQI=\"}}}],"
+        "\"next_cursor\":\"2\"}";
+    static const char conflict[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\",\"accepted\":[],"
+        "\"conflicts\":[{\"op_id\":\"device-1:2\","
+        "\"entity\":\"records\",\"key\":\"1\","
+        "\"server_version\":\"3\",\"deleted\":false,"
+        "\"values\":{\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"server\"},"
+        "\"payload\":{\"t\":\"b\",\"v\":\"AwQ=\"}}}],"
+        "\"changes\":[],\"next_cursor\":\"3\"}";
+    static const char retry_accepted[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
+        "\"accepted\":[{\"op_id\":\"device-1:2\",\"version\":\"4\"}],"
+        "\"conflicts\":[],\"changes\":[],\"next_cursor\":\"4\"}";
+    static const char deleted[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":["
+        "{\"entity\":\"records\",\"key\":\"1\",\"version\":\"5\","
+        "\"deleted\":true,\"values\":null}],\"next_cursor\":\"5\"}";
+    PDbHandle local;
+    PDbHandle sync;
+    PDbStmtHandle stmt;
+    char request[8192];
+    char name[64];
+    int request_length;
+    int conflict_length;
+    int rc;
+    __int64 minimum_integer;
+    char conflict_json[1024];
+    unsigned char blob[2];
+
+    if (!db_test_persistence()) {
+        return FALSE;
+    }
+    local = NULL;
+    if (PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &local) != PDB_OK) {
+        return FALSE;
+    }
+    if (PDb_Exec(local,
+            "CREATE TABLE values_table(id INTEGER PRIMARY KEY,value TEXT)") !=
+            PDB_OK || PDb_Exec(local,
+            "INSERT INTO values_table(id,value) VALUES(1,'local')") != PDB_OK) {
+        PDb_Close(local);
+        return FALSE;
+    }
+    if (PDb_Exec(local,
+            "CREATE TABLE script_values(id INTEGER PRIMARY KEY);"
+            "INSERT INTO script_values(id) VALUES(1)") != PDB_OK) {
+        PDb_Close(local);
+        return FALSE;
+    }
+    if (PDb_Exec(local,
+            "CREATE TABLE typed_values(id INTEGER PRIMARY KEY,big INTEGER,"
+            "real_value REAL,text_value TEXT,blob_value BLOB,null_value TEXT)") !=
+            PDB_OK) {
+        PDb_Close(local);
+        return FALSE;
+    }
+    minimum_integer = -(__int64)0x7FFFFFFFFFFFFFFF - 1;
+    stmt = NULL;
+    rc = PDb_Prepare(local,
+            "INSERT INTO typed_values(id,big,real_value,text_value,"
+            "blob_value,null_value) VALUES(?1,?2,?3,?4,?5,?6)", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 1, 1);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 2, minimum_integer);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindDouble(stmt, 3, 3.25);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindText(stmt, 4, "utf8", 4);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindBlob(stmt, 5, NULL, 0);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindNull(stmt, 6);
+    }
+    if (rc == PDB_OK && PDb_Step(stmt) == PDB_STEP_DONE) {
+        rc = PDB_OK;
+    } else if (rc == PDB_OK) {
+        rc = PDB_ERROR;
+    }
+    PDb_Finalize(stmt);
+    if (rc != PDB_OK) {
+        PDb_Close(local);
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(local,
+            "SELECT big,real_value,text_value,blob_value,null_value "
+            "FROM typed_values WHERE id=1", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW || PDb_ColumnType(stmt, 0) != PDB_VALUE_INTEGER ||
+            PDb_ColumnInt64(stmt, 0) != minimum_integer ||
+            PDb_ColumnType(stmt, 1) != PDB_VALUE_REAL ||
+            PDb_ColumnDouble(stmt, 1) != 3.25 ||
+            PDb_ColumnType(stmt, 2) != PDB_VALUE_TEXT ||
+            PDb_ColumnText(stmt, 2) == NULL ||
+            strcmp(PDb_ColumnText(stmt, 2), "utf8") != 0 ||
+            PDb_ColumnType(stmt, 3) != PDB_VALUE_BLOB ||
+            PDb_ColumnBytes(stmt, 3) != 0 ||
+            PDb_ColumnType(stmt, 4) != PDB_VALUE_NULL) {
+        PDb_Finalize(stmt);
+        PDb_Close(local);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    PDb_Close(local);
+
+    sync = NULL;
+    if (PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &sync) != PDB_OK ||
+            PDb_ApplyMigration(sync, 1,
+            "CREATE TABLE records(id INTEGER PRIMARY KEY,name TEXT,payload BLOB)") !=
+            PDB_OK) {
+        if (sync != NULL) {
+            PDb_Close(sync);
+        }
+        return FALSE;
+    }
+    if (PDb_Exec(sync, "CREATE TABLE rejected(id INTEGER PRIMARY KEY)") ==
+            PDB_OK || PDb_Exec(sync,
+            "ATTACH ':memory:' AS other") == PDB_OK ||
+            PDb_Exec(sync, "PRAGMA user_version=1") == PDB_OK ||
+            PDb_Exec(sync, "SAVEPOINT rejected") == PDB_OK ||
+            PDb_Exec(sync,
+            "CREATE VIRTUAL TABLE rejected_vtab USING fts5(value)") == PDB_OK ||
+            PDb_ApplyMigration(sync, 2,
+            "CREATE TABLE migration_bad(id INTEGER PRIMARY KEY); THIS IS NOT VALID") ==
+            PDB_OK || PDb_ApplyMigration(sync, 2,
+            "CREATE TABLE migration_ok(id INTEGER PRIMARY KEY)") != PDB_OK ||
+            PDb_SyncConfigure(sync, "device-1", 2, "schema-v2") != PDB_OK ||
+            PDb_SyncRegisterTable(sync, "records", "id", columns, 3) != PDB_OK) {
+        if (sync != NULL) {
+            PDb_Close(sync);
+        }
+        return FALSE;
+    }
+    rc = PDb_Prepare(sync,
+            "INSERT INTO records(id,name,payload) VALUES(?1,?2,?3)", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 1, 1);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindText(stmt, 2, "local", 5);
+    }
+    if (rc == PDB_OK) {
+        blob[0] = 0x01;
+        blob[1] = 0x02;
+        rc = PDb_BindBlob(stmt, 3, blob, 2);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+        if (rc == PDB_STEP_DONE) {
+            rc = PDB_OK;
+        }
+    }
+    PDb_Finalize(stmt);
+    if (rc != PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
+            PDb_SyncBuildRequest(sync, NULL, 0, &request_length) != PDB_OK ||
+            request_length <= 0 || request_length >= (int)sizeof(request) ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "device-1:1") == NULL ||
+            strstr(request, "local") == NULL ||
+            strstr(request, "CREATE TABLE") != NULL ||
+            strstr(request, "SELECT ") != NULL) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(sync, 401, NULL, 0) != PDB_NETWORK ||
+            PDb_SyncApplyResponse(sync, 500, accepted,
+            (int)strlen(accepted)) != PDB_NETWORK ||
+            PDb_SyncPendingCount(sync) != 1 ||
+            PDb_SyncApplyResponse(sync, 200, "{", 1) == PDB_OK ||
+            PDb_SyncPendingCount(sync) != 1) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(sync, 200, accepted,
+            (int)strlen(accepted)) != PDB_OK ||
+            PDb_SyncPendingCount(sync) != 0 ||
+            PDb_SyncApplyResponse(sync, 200, accepted,
+            (int)strlen(accepted)) != PDB_OK ||
+            PDb_SyncApplyResponse(sync, 200, pulled,
+            (int)strlen(pulled)) != PDB_OK ||
+            !db_test_query_name(sync, name, sizeof(name)) ||
+            strcmp(name, "remote") != 0) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_Exec(sync, "UPDATE records SET name='local-edit' WHERE id=1") !=
+            PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
+            PDb_SyncApplyResponse(sync, 200, conflict,
+            (int)strlen(conflict)) != PDB_OK ||
+            PDb_SyncConflictCount(sync) != 1 ||
+            !db_test_query_name(sync, name, sizeof(name)) ||
+            strcmp(name, "server") != 0) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_SyncCopyConflict(sync, 0, NULL, 0, &conflict_length) != PDB_OK ||
+            conflict_length <= 0 || conflict_length >= (int)sizeof(conflict_json) ||
+            PDb_SyncGetConflicts(sync, NULL, 0, &conflict_length) != PDB_OK ||
+            conflict_length <= 0 || conflict_length >= (int)sizeof(conflict_json) ||
+            PDb_SyncGetConflicts(sync, conflict_json, sizeof(conflict_json),
+            &conflict_length) != PDB_OK ||
+            strstr(conflict_json, "server_values") == NULL ||
+            PDb_SyncCopyConflict(sync, 0, conflict_json,
+            sizeof(conflict_json), &conflict_length) != PDB_OK ||
+            strstr(conflict_json, "local-edit") == NULL ||
+            strstr(conflict_json, "server") == NULL) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_SyncResolveConflict(sync, 1, PDB_CONFLICT_RETRY_LOCAL) != PDB_OK ||
+            PDb_SyncPendingCount(sync) != 1 ||
+            !db_test_query_name(sync, name, sizeof(name)) ||
+            strcmp(name, "local-edit") != 0 ||
+            PDb_SyncConflictCount(sync) != 0) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(sync, 200, retry_accepted,
+            (int)strlen(retry_accepted)) != PDB_OK ||
+            PDb_SyncPendingCount(sync) != 0 ||
+            PDb_SyncApplyResponse(sync, 200, deleted,
+            (int)strlen(deleted)) != PDB_OK ||
+            db_test_query_name(sync, name, sizeof(name))) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    PDb_Close(sync);
+    return TRUE;
+}

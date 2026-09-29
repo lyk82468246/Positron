@@ -1,6 +1,6 @@
 # 公共能力覆盖矩阵
 
-本文件描述 Positron 八个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
+本文件描述 Positron 九个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
 应用开发者和维护者的稳定说明，不记录 next 编号、提交时间、设备运行目录或逐测试流水。
 精确函数签名、结构体大小和错误码仍以对应的公开头文件为准。
 
@@ -98,9 +98,23 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | 解析和释放 JSON 树 | `PJson_Parse`、`PJson_Free` | 已实现 | 非法/空输入返回空 handle；调用方必须释放成功树 | JSON 组件回归和正式构建；复杂输入仍受移植库资源约束 |
-| 基础 object/array/string/int 读取 | `PJson_Get*` | 已实现 | 失效 handle、缺失键和越界索引按头文件约定返回安全值；不返回借用指针之外的所有权 | 现有 JSON 调用方和脚本桥；如需布尔/浮点/类型查询，先补 ABI 合同和容量规则 |
+| 基础 object/array/string/int 读取 | `PJson_Get*` | 已实现 | 失效 handle、缺失键和越界索引按头文件约定返回安全值；不返回借用指针之外的所有权 | 现有 JSON 调用方和脚本桥；布尔/浮点/类型与 object 遍历保持 additive ABI |
 | 有界序列化和字符串释放 | `PJson_Serialize`、`PJson_FreeString` | 已实现 | 分配失败返回空；字符串由 JSON DLL 分配并由对应入口释放 | 现有 JSON 合同；新增 size-probe 需保持旧序列化 ABI 不变 |
 | schema、流式 parser、异步 DOM 映射 | 当前没有公共入口 | 暂缓 | 不引入无界 parser 状态或跨线程借用树 | 需要明确消费者、固定 token/深度预算和可回滚 fixture |
+
+## DB：`positron_db.dll`
+
+数据库 DLL 只拥有本地 SQLite、migration、事务、同步 shadow state、outbox 和 conflict
+语义；宿主拥有 DB worker、HTTP 调度、Bearer Token、重试和 UI 消息。详细调用流程见
+[`positron_db/README.md`](../positron_db/README.md) 与公开头文件。
+
+| 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
+| --- | --- | --- | --- | --- |
+| 本地 SQLite 打开、typed bind/column、事务、取消和错误 | `PDb_OpenUtf8`、`PDb_Prepare`、`PDb_Bind*`、`PDb_Column*`、`PDb_Begin/Commit/Rollback/Cancel` | 已实现但有界 | 固定 SQLite 3.53.4；VS2008/WM6 ARMV4I；SQL ≤32 KiB、body ≤1 MiB；DB/statement handle 不跨线程，DLL 不创建线程 | TEST1321 离线 contract、正式工程已接入；ARMV4I 构建、断电、真实设备文件锁和峰值内存仍需设备门 |
+| 本地完整 SQL 与原子 migration | `PDb_Exec`、`PDb_ApplyMigration` | 已实现但有界 | 完整 SQL 模式允许 SQLite 本地语法；同步模式禁止直接 DDL、ATTACH/DETACH、PRAGMA、扩展和事务 SQL，schema 只能由 migration 原子推进版本 | TEST1321 覆盖创建、migration/事务路径；应继续补中途失败、重开和 journal 恢复 fixture |
+| 离线 outbox、游标、tombstone 与 typed row JSON | `PDb_SyncConfigure`、`PDb_SyncRegisterTable`、`PDb_SyncBuildRequest` | 已实现但有界 | 仅单列 INTEGER/TEXT 主键；NULL/整数/实数/文本/BLOB 显式标签；不发送 SQL；请求/响应 ≤1 MiB | TEST1321 覆盖本地写入、请求 size-probe 和 BLOB；复合主键/字段级 merge 不在 v1 |
+| REST 响应原子应用与服务器权威冲突 | `PDb_SyncApplyResponse`、`PDb_SyncGetConflicts`、`PDb_SyncCopyConflict`、`PDb_SyncResolveConflict` | 已实现但有界 | 仅成功 2xx、schema hash/version 匹配且 JSON 完整时推进状态；op_id 幂等；冲突保存本地/服务器行并恢复服务器行 | TEST1321 覆盖 accepted、pull、版本冲突、retry-local；`scripts/db_sync_fixture.py` 提供独立 op_id/冲突/tombstone/分页/auth fixture；真实 HTTPS、宿主 worker、重启恢复和设备断电仍待集成门 |
+| 加密数据库、WAL、远程 SQL、多主/复合主键和自动字段 merge | 当前没有公共承诺 | 暂缓 | 不通过 ODBC/远程数据库客户端或放宽 SQL 边界补齐 | 只有新的消费者、固定协议和可验证的 WM6 资源预算出现后再评估 |
 
 ## HTTP：`positron_http.dll`
 

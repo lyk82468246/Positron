@@ -6,7 +6,7 @@
 
 ## 项目使命
 
-Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化的 TLS、JSON、HTTP、图像、
+Positron 为 Windows Mobile 6 / Windows CE 5.2 ARMV4I 提供模块化的 TLS、JSON、SQLite DB、HTTP、图像、
 媒体、脚本、Core 与 Browser DLL，并提供正式的 `positron.exe` 消费者。公共接口保持稳定 C ABI、
 UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` 只负责平台接线、fixture 和
 断言，不拥有产品语义。
@@ -32,6 +32,10 @@ background 接线已完成，`positron_image.dll` 现在
 `AdjustWindowRectEx` 按控件实际边框换算外框高度。文本继续由 native EDIT 自己垂直居中，不再调用
 `EM_SETRECTNP`。该修正版已通过 C89、审计和 Debug/Release 增量构建，并已部署到新的设备隔离目录；
 `TEST999` 已通过，用户已确认新修正版 `positron.exe` 的地址栏文字上下边界和外框高度符合预期。
+本批还已加入 `positron_db.dll`：固定 SQLite 3.53.4 的本地完整 SQL/同步模式、版本化
+migration、typed bind/column、outbox/cursor/tombstone/conflict 以及不发送 SQL 的 REST 行级
+协议均已完成主机 contract；独立 REST fixture 已加入，网络 worker 和真实设备 DB 门仍是下一条
+DB 集成边界。
 
 ## 当前源码事实
 
@@ -43,6 +47,14 @@ background 接线已完成，`positron_image.dll` 现在
 - TLS/WinInet body 读取对已知长度、chunked、截断、读取错误、分配失败和超过 1 MiB 的结果
   统一 fail closed；部分 body 不会交给消费者，失败响应的状态码为 0。chunk framing 缓冲也
   有独立上限。
+- `positron_db.dll` 使用固定 SQLite 3.53.4，公开稳定 C ABI 不暴露 `sqlite3*`；本地完整 SQL
+  与同步数据库模式均为单 owner thread、无 DLL 内线程。同步模式通过版本化 migration、注册
+  表触发器、`__pdb_row_state`/`__pdb_dirty`/`__pdb_outbox`/`__pdb_conflict` 保存离线状态，
+  v1 只接受单列 INTEGER/TEXT 主键并以 typed row JSON 编码，不向服务器发送 SQL。
+- DB worker 仍属于宿主：宿主从 `PDb_SyncBuildRequest()` 取得有界 body，经 `positron_http.dll`
+  发送 HTTPS + Bearer Token，再把 2xx 响应交给 `PDb_SyncApplyResponse()`；非 2xx、超限、
+  malformed 或 schema mismatch 不推进本地状态。TEST1321 覆盖本地/同步 contract；独立 REST
+  fixture 已加入 `scripts/db_sync_fixture.py`，宿主 worker、真实 401/5xx/分页和设备 journal/断电恢复尚未完成。
 - `positron_app` 和真实网络路径的 `test_host` 已改用 `PHttp_GetUrlEx`/`PHttp_PostUrlEx`；
   主文档与资源在成功后查询 final URL，并用它解析 CSS、图片、脚本和 `@import` 的相对引用。
   应用已移除旧的 host/path/port 二次 scheme 推断；`test_host` 保留这些字段仅用于旧 fixture
@@ -152,6 +164,17 @@ background 接线已完成，`positron_image.dll` 现在
   ERROR/FAIL、`crash_check=PASS`、无新增 dump，外置卡和内部对象存储预检均通过；完整日志已
   回收，远端当前部署目录已在回收后清理。第一次最终尝试只有 fixture PROBE 多写了一个分隔符，
   已在本次通过前修正；此前旧进程/旧 DLL 的日志不作为证据。
+- 为诊断 WinWorld 外部 Bootstrap 脚本状态，`positron_app/app_script.c` 现在增加了 EXE 私有的
+  Debug-only 脚本逐项日志和汇总日志：记录文档、脚本 URL、类型、可用性、各类字节数以及
+  inspect/fetch metadata/ignored/session/runtime/executed 终态；`main.c` 现有 image-state
+  摘要也由同一 `_DEBUG` 边界保护。Release 预处理路径不包含这些日志函数、调用和缓冲区，
+  不改变公共 ABI、Browser/Core 或 `test_host`。WM6 目标使用已验证可链接的
+  `OutputDebugStringW` 输出，避免依赖不存在的 `OutputDebugStringA` coredll 导出。
+- 最新 Debug 完整包已由 `scripts\stage.bat Debug` 生成并部署到
+  `\Storage Card\Temp\Positron-device-gate\debug-script-diagnostics-20260929`，19/19 文件复制
+  成功，设备返回 `positron.exe` PID `2522227582`。远端回读的 `positron.exe`、`positron_core.dll`
+  和 `positron_browser.dll` SHA-256 均与本地 stage 一致；该目录保留供用户在同一实例中打开
+  WinWorld 并采集 Debug 脚本诊断，目前尚无页面脚本状态的人工结果。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -199,6 +222,12 @@ tile、WinWorld rgba/round-cap Image 纵切以及 document delegated-click 合�
   3 个既有 libcss 转换警告）。`scripts\build.bat Release build` 中三个 ARMV4I 工程也均为
   0 错误，但 `positron_cab` 的 CabWiz 在生成数据文件时失败；该失败不影响已生成的 Release
   `positron.exe`，但本批不把完整 Release 解决方案记为通过。
+- 本轮 EXE Debug-only 诊断改动的 `python scripts/test_c89ize.py` 已通过；修订后的
+  `scripts\build.bat Debug build` 中 `positron_app` 为 0 错误、0 警告，`Release build` 中
+  `positron_app` 同样为 0 错误、0 警告。完整 Release 命令仍只在既有 `positron_cab` CabWiz
+  阶段失败；该失败与诊断条件编译无关，未把完整 Release 解决方案写成通过。Debug/Release
+  二进制字符串检查分别确认 `script-state` 与 UTF-16 `image-state` 诊断字符串只存在于
+  Debug `positron.exe`，Release 均不存在。
 - 提交 `d4f17d28` 的 `app_script.c/.h` 与 `main.c` 通过 `python scripts/test_c89ize.py`、
   `python scripts/audit_repo.py` 和 `scripts\build.bat Debug build`；`positron_app` 为 0 错误、
   0 警告。随后独立尝试的完整 Release rebuild 触发了 VS2008 并行 PDB/CABWiz 工具链竞争，
@@ -363,6 +392,31 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
 日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
 
+- 本轮把 EXE Debug 诊断从仅依赖 `OutputDebugStringW` 扩展为有界设备文件镜像：
+  `positron_app/app_debug.c/.h` 在 `_DEBUG` 下把脚本逐项/汇总状态和图片摘要同时写入
+  `\Temp\positron-debug.log` 与 debugger sink，文件达到 128 KiB 后停止增长；Release
+  通过同一头文件宏裁掉日志实现和调用。`scripts\debug_capture.bat`/`.ps1` 现在可用
+  32 位 WMDC RAPI 正式 stage、复制 19/19 文件、启动 `positron.exe`、清理这个固定日志文件，
+  并用 `-PullOnly -RemoteRoot ... -FollowSeconds N` 在用户操作期间回收日志；脚本不选择设备、
+  不 cradle、不重置、不强杀进程。
+- 本轮修订了诊断可靠性：`AppDebug_BeginSession()` 在每次 Debug 进程启动时先写
+  `debug-session pid/tick`，后续每条记录带 PID；EXE 现在记录 network navigation 的
+  `reject/start/finish-commit/finish-rollback/finish-stale`、generation、requested/visible URL、
+  commit stage、HTTP status/failure class，并在脚本数量为 0 时也写 `script-scan`。因此固定日志
+  每次重启只代表最新 session，但能区分进程，也能区分“未开始、失败回滚、成功提交”和旧页面保留。
+- 修订后的 Debug EXE 已用上一份正式 19 文件 stage 保留的 DLL/字体/fixture 包重新部署；本地运行根为
+  `tmp/device-runs/debug-capture-20260929-154540-diagnostics-v2`，远端目录为
+  `\Storage Card\Temp\Positron-device-gate\debug-capture-20260929-154540-diagnostics-v2`，
+  19/19 文件复制成功，启动 PID 为 `4133935414`。首次回收日志为
+  `tmp/device-runs/debug-capture-20260929-154608/positron-debug.log`，已确认包含当前 PID 的
+  `debug-session` 标记；页面操作后应再次用 `-PullOnly` 回收同一远端根目录。
+- `positron_db`/SQLite/JSON/TEST1321 纵切已通过 C89 和仓库审计；Debug 已进入 DB ARMV4I
+  编译，但本机既有无标题 VS2008 `devenv.exe` 占用使全量返回 1，不能写成全量通过。Release
+  仍须单独记录公共 DLL 编译结果和既有 CabWiz 数据文件失败。
+- 本轮复核 `.agents/ROADMAP.md`：DB 的独立 REST fixture 已落地，宿主 worker、真实设备网络/
+  断电门仍进入准备取舍；既有 WinWorld 页面脚本状态和应用视觉人工门仍不能被桌面构建或 DB
+  contract 证据替代。
+
 ## 当前未决边界
 
 - `positron_media.dll` 仅完成 WM6 Emulator 上 WAV PCM 定向 callback/AUTO smoke；WaveOut 格式接受、
@@ -393,13 +447,13 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
   EXE client rect/样式事务或页面 CSS。该问题按当前决策暂缓，不作为本轮 SVG 部署验收条件，
   也不通过隐藏原生滚动条规避；后续重启时需先采集同一页面同一 DPI 的 document/page 尺寸、
   client rect、scroll range 与样式变更时序。
+- DB 的 REST fixture 已有，但宿主 HTTP worker、真实 401/5xx/分页/重试以及设备 journal/强制重启
+  恢复尚未验收；当前 TEST1321 只是本地 contract，不能宣布双向联网同步已在设备上完成。
 
 ## 唯一下一步
 
-匹配的 Browser/Core/test_host 已通过 `1320,999` 设备门。下一步是用同一 Debug staging 启动
-匹配的 `positron.exe` 应用门，打开 `https://winworldpc.com/home`，在窄视口点击页眉 hamburger，
-并记录外部 Bootstrap 的 fetch/execute/ignored/error 状态、按钮 `class`/`aria-expanded` 以及
-导航容器是否显示。预期菜单展开且进程不崩溃；如果脚本状态为 ignored/error 或 DOM 没有变化，
-继续追查 Browser 资源状态和事件证据，不能在 EXE 中加入站点特判。部署仍使用
-`scripts\stage.bat Debug` 或等价 RAPI staging，用户手动保持唯一 WMDC 连接；不得由脚本连接、
-选择、重置或强杀设备。
+下一步是在已加入 `scripts/db_sync_fixture.py` 的 REST fixture 上为 `positron_db.dll` 接入
+`positron_app` 单 owner DB worker：先验证分页/游标、`op_id` 幂等、服务器冲突/tombstone、schema mismatch、
+401/5xx/超时和 malformed/超大响应的失败不变性，再以正式 Debug/Release stage 在 WM6 上验收
+离线写入、重启恢复、HTTPS Bearer Token 和重连同步。现有 `positron.exe` WinWorld 应用门仍保留
+为独立人工 backlog；设备脚本继续不得连接、选择、重置或强杀设备。

@@ -68,6 +68,12 @@
         }
         "Entry"
         {
+        "MsmKey" = "8:_POSITRON_DB_DLL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
         "MsmKey" = "8:_POSITRON_HTTP_DLL"
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
@@ -483,6 +489,32 @@
             "OutputConfiguration" = "8:"
             "OutputGroupCanonicalName" = "8:Built"
             "OutputProjectGuid" = "8:{7AAAC227-9102-4214-A088-1D4A3D261D53}"
+            "ShowKeyOutput" = "11:TRUE"
+                "ExcludeFilters"
+                {
+                }
+            }
+            "{605BE39E-5046-48BD-AEC0-63C3A46626D5}:_POSITRON_DB_DLL"
+            {
+            "SourcePath" = "8:..\\positron_db\\bin\\Release\\positron_db.dll"
+            "TargetName" = "8:positron_db.dll"
+            "Tag" = "8:"
+            "Folder" = "8:_WINDOWSFOLDER_POSITRON"
+            "Condition" = "8:"
+            "Vital" = "11:TRUE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "Register" = "3:0"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            "ProjectOutputGroupRegister" = "3:0"
+            "OutputConfiguration" = "8:"
+            "OutputGroupCanonicalName" = "8:Built"
+            "OutputProjectGuid" = "8:{B4C6D8E0-1234-4A56-9B78-0CDEF1234567}"
             "ShowKeyOutput" = "11:TRUE"
                 "ExcludeFilters"
                 {

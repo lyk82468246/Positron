@@ -1,6 +1,6 @@
 # `test_host.exe`
 
-`test_host.exe` 是 Positron 的回归宿主和示例消费者，不是公共 API，也不是业务语义的所有者。它把 `positron_tls.dll`、`positron_json.dll`、`positron_http.dll`、`positron_image.dll`、`positron_script.dll`、`positron_core.dll` 和 `positron_browser.dll` 接到 Windows Mobile 6 / Windows CE 的窗口、消息和测试 fixture 上。
+`test_host.exe` 是 Positron 的回归宿主和示例消费者，不是公共 API，也不是业务语义的所有者。它把 `positron_tls.dll`、`positron_json.dll`、`positron_db.dll`、`positron_http.dll`、`positron_image.dll`、`positron_script.dll`、`positron_core.dll` 和 `positron_browser.dll` 接到 Windows Mobile 6 / Windows CE 的窗口、消息和测试 fixture 上。
 
 ## 硬性所有权边界
 
@@ -42,7 +42,7 @@ TEST999 是专用完成提示音，只有显式选中且批次没有失败时退
 
 ## 测试层次
 
-- 低层公共 DLL：Core relation/mutation、TLS/HTTP/JSON/Image/Script 的参数、所有权、容量和错误码。
+- 低层公共 DLL：Core relation/mutation、TLS/HTTP/JSON/DB/Image/Script 的参数、所有权、容量和错误码；TEST1321 另验证 SQLite local/sync contract、typed row、outbox 和 conflict。
 - Browser 组合：history、resource/candidate、viewport、事件、form/selector、DOM wrapper、Fragment staging 和 task checkpoint。
 - 真实页面/平台：导航、布局、GDI 绘制、native 控件、SIP/IME、picker、旋转和 DPI。
 - 交付门：C89 回归、仓库审计、正式 ARMV4I 构建、设备日志、空间预检、清理和 crash check。
