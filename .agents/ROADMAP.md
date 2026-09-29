@@ -149,9 +149,13 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     嵌套 `WM_SIZE` 中只更新临时尺寸，样式稳定后才重新 layout；该改动已通过 C89、审计和
     Debug 编译，但尚无设备视觉证据。普通 Core 绘制 button 的 pointer-down 现也先设置
     `FOCUS|ACTIVE`，并把焦点反馈与 Browser click transaction 解耦；该修正已完成 Debug 部署，
-    但 WinWorld 响应式菜单仍无变化：当前证据指向 Browser bootstrap 忽略 document 级普通事件
-    listener，而不是 EXE 的 SVG 命中；需由 Browser/ScriptSession 补有界 document delegated
-    click fixture 后再做人工设备门。Release 应用工程已链接，完整解决方案的 CABWiz
+    但 WinWorld 响应式菜单仍无变化。Browser/ScriptSession 现已补上通过 Core document target
+    的有界 document delegated `click` listener，TEST1320 覆盖 target/currentTarget、冒泡、
+    class/aria mutation、重复注册、移除、once/capture 和 64 项预算；
+    `tmp/device-runs/20260929-132600-next1320-document-click-final2` 已用匹配 DLL 取得
+    `1320,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一 `TESTBENCH PASS` 和零
+    ERROR/FAIL 的证据。下一步只是在 `positron.exe` 的 WinWorld 页面记录 Bootstrap 脚本的
+    fetch/execute/ignored/error 状态和菜单 DOM 变化。Release 应用工程已链接，完整解决方案的 CABWiz
     数据文件生成失败，不能把 Release 全量门写成通过。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。

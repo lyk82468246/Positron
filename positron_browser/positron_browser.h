@@ -2651,7 +2651,9 @@ PBROWSER_API int PBrowser_ScriptSessionSetCurrentScriptIndex(
 /* Evaluate the product-owned browser bootstrap after the host has installed
  * the __pcore* globals and JSON callbacks it needs. The bootstrap only
  * creates the browser-facing window/document/history/location/event objects;
- * it does not own the core document, native controls or host callback pw. */
+ * document delegated click listeners use the Core document token and remain
+ * bounded by the Browser session contract. It does not own the core document,
+ * native controls or host callback pw. */
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession);
 /* Apply a host-committed same-document traversal to the product bootstrap.
  * The caller owns history commit/rollback and supplies borrowed UTF-8 JSON

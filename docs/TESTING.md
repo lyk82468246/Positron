@@ -187,6 +187,14 @@ tests=1-5 7b 13 20,999
   端点外仍保持白色。这个断言覆盖 libsvgtiny 的 rgba/stroke-opacity 解析、linecap 传递、
   NanoSVG alpha 合成和 GDI paint；仅创建句柄或 data URI 解码成功不能使它通过。普通不透明
   stroke、PNG/JPEG/GIF 和已有 IANA SVG 回归仍须保持通过。
+- TEST1320 是自动的 Browser/Core document delegated-click 回归：离线页面在普通
+  `button` 上注册 document capture/bubble listener，点击由 Core 事件目标派发后必须保留
+  `event.target`、document `event.currentTarget` 和 1/3 capture/bubble phase；Bootstrap
+  风格 handler 还要修改 `classList` 与 `aria-expanded`。夹具断言相同 callback/capture 的
+  重复注册被忽略、`removeEventListener` 生效、`once` 只执行一次，并以 64 项固定 document
+  listener 预算验证第 65 项 fail closed。该门只证明 DLL 的离线事件合同，不证明外部
+  Bootstrap 脚本已经下载、执行或在 `positron.exe` 的真实 WinWorld 页面中改变菜单；这些仍
+  需要匹配 DLL 的应用设备门和脚本 executed/ignored/error 证据。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

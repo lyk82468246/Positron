@@ -140,13 +140,18 @@ background 接线已完成，`positron_image.dll` 现在
   的 ARMV4I gate 中 TEST1073/999 均为 OK、无 ERROR/FAIL，但整体结果被
   `core_module_check=STALE_MODULE` 拒绝：设备 PID `2733577874` 的旧 `positron.exe` 仍持有
   `\\Storage Card\\Temp\\Positron-device-gate\\button-click-20260929\\positron_core.dll`，
-  因此不能把这次 gate 当作当前 EXE+DLL 的匹配设备证据。源码审计同时确认 Browser bootstrap
-  的 `pdocumentAddEventListener()` 目前只保存 `readystatechange`、`DOMContentLoaded`、`load`
-  和 `visibilitychange`；普通 `click` 在 document 上会被忽略。WinWorld 窄视口页眉按钮是
-  Bootstrap collapse toggler，若其脚本使用 document 级 click delegation，EXE 已发出的可信
-  native-button click 仍不会触发菜单。该缺口属于 Browser/ScriptSession 事件语义，不应由
-  EXE 添加站点特判；下一步应由 DLL agent 补一个有界 document 事件 listener/dispatch fixture，
-  并在关闭旧进程后用匹配 DLL 重跑设备门。
+  因此不能把这次 gate 当作当前 EXE+DLL 的匹配设备证据。
+- 源码审计确认普通 `document` click listener 的缺口属于 Browser/ScriptSession，而不是 EXE
+  的 SVG 命中。当前批次已在 `positron_browser` 增加独立的 bounded document delegated-click
+  bootstrap，在 Core 复用 `PCORE_DOCUMENT_ELEMENT_TOKEN`；TEST1320 覆盖普通 button 的
+  target/currentTarget、capture/bubble、class/aria mutation、重复注册、移除、once 和 64 项
+  listener 预算。没有加入 WinWorld 特判、没有提高脚本预算，也没有修改公共 Browser ABI。
+- `tmp/device-runs/20260929-132600-next1320-document-click-final2` 已用同一 Debug staging 在
+  当前唯一 ARMV4I 目标上完成 `1320,999` 设备门。日志显示 `core_module_check=PASS`、
+  `TEST1320 OK`、`TEST999 OK`、selected/observed `2/2`、唯一 `TESTBENCH PASS`、零
+  ERROR/FAIL、`crash_check=PASS`、无新增 dump，外置卡和内部对象存储预检均通过；完整日志已
+  回收，远端当前部署目录已在回收后清理。第一次最终尝试只有 fixture PROBE 多写了一个分隔符，
+  已在本次通过前修正；此前旧进程/旧 DLL 的日志不作为证据。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -167,9 +172,11 @@ background 接线已完成，`positron_image.dll` 现在
 ## 文档与路线图
 
 本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
-tile 以及 WinWorld rgba/round-cap Image 纵切仍已完成；阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、
-滚动/旋转/DPI、普通按钮脚本反馈人工门和原有 Media 未完成边界。新增的 EXE 动态顶层滚动条接线尚未设备验收，
-不得把离线 decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
+tile、WinWorld rgba/round-cap Image 纵切以及 document delegated-click 合同均已完成；
+`20260929-132600-next1320-document-click-final2` 已取得匹配 DLL 的 ARMV4I
+`1320,999` 设备门通过证据。阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、滚动/旋转/DPI、
+普通按钮脚本反馈人工门、外部 Bootstrap 脚本状态和原有 Media 未完成边界。新增的 EXE 动态顶层
+滚动条接线尚未设备验收，不得把离线 decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
 
 ## 已验证的自动证据
 
@@ -228,6 +235,16 @@ tile 以及 WinWorld rgba/round-cap Image 纵切仍已完成；阶段 B 候选�
   selected/observed 为 `2/2`，唯一 `TESTBENCH PASS`，零 ERROR/FAIL、双空间预检通过、
   `core_module_check=PASS`、`crash_check=PASS` 且无新增 dump。部署日志完整回收后按策略删除当前
   远端目录；这证明 DLL/Image raster 路径，不替代最终 `positron.exe` WinWorld 页面视觉观察。
+- 本批 TEST1320 离线 fixture 已加入正式工程，并随 `python scripts/test_c89ize.py`、
+  `python scripts/audit_repo.py` 和正式 `scripts\build.bat Debug build` 通过静态/编译门；
+  Browser/Core/test_host 均为 0 错误。匹配 Debug ARMV4I 门已在
+  `tmp/device-runs/20260929-132600-next1320-document-click-final2` 通过，覆盖
+  `document` capture/bubble、target/currentTarget、collapse mutation、重复/移除/once 和
+  64 listener 预算，并完成日志回收、双空间预检和 crash 检查。
+- `scripts\build.bat Release build` 本批的 Browser/Core/app/test_host 均完成（Core/test_host
+  保留 3 个既有 libcss 转换警告），但解决方案的既有 `positron_cab` CabWiz 报
+  `Data files could not be created`，因此不能把完整 Release 解决方案写成通过；该工具链失败
+  与本批 Browser/Core 改动无关。
 - 同一批 Debug staging 已复制到外置 `Storage Card\Temp\Positron-device-gate\iana-app-20260927`，
   并通过 RAPI 成功启动 `positron.exe`；启动成功只证明匹配的 EXE/DLL 能运行，IANA 首页的
   实际网络图片仍需用户在该应用窗口中导航后进行视觉确认。
@@ -379,9 +396,10 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步先在设备上确认退出旧 `positron.exe`，再从最新匹配包启动同一实例，打开
-`https://winworldpc.com/home` 并点击页眉菜单按钮。DLL agent 应先用离线 fixture 验证普通
-`document.addEventListener('click', ...)`、冒泡 target/currentTarget 和 listener removal，
-再确认 Bootstrap 风格的 delegated click 能改变 `class`/`aria-expanded`；随后用匹配 DLL
-重跑 1073、999 和真实页面门。若 Browser 事件门通过而 WinWorld 仍无变化，再记录脚本资源
-终态、脚本异常/忽略数和按钮 DOM 属性变化；EXE 侧不加入页面特判。
+匹配的 Browser/Core/test_host 已通过 `1320,999` 设备门。下一步是用同一 Debug staging 启动
+匹配的 `positron.exe` 应用门，打开 `https://winworldpc.com/home`，在窄视口点击页眉 hamburger，
+并记录外部 Bootstrap 的 fetch/execute/ignored/error 状态、按钮 `class`/`aria-expanded` 以及
+导航容器是否显示。预期菜单展开且进程不崩溃；如果脚本状态为 ignored/error 或 DOM 没有变化，
+继续追查 Browser 资源状态和事件证据，不能在 EXE 中加入站点特判。部署仍使用
+`scripts\stage.bat Debug` 或等价 RAPI staging，用户手动保持唯一 WMDC 连接；不得由脚本连接、
+选择、重置或强杀设备。

@@ -3823,6 +3823,7 @@ PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
 {
     dom_document *doc;
     dom_element *element;
+    dom_node *target;
     dom_string *id;
     dom_string *type;
     dom_event_listener *listener;
@@ -3840,29 +3841,34 @@ PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
     }
     id = NULL;
     element = NULL;
+    target = NULL;
     if (dom_string_create((const uint8_t *) element_id, strlen(element_id),
             &id) != DOM_NO_ERR || id == NULL) {
         return NULL;
     }
-    if (dom_document_get_element_by_id(doc, id, &element) != DOM_NO_ERR ||
-            element == NULL) {
+    if (strcmp(element_id, PCORE_DOCUMENT_ELEMENT_TOKEN) == 0) {
+        target = dom_node_ref((dom_node *) doc);
+    } else if (dom_document_get_element_by_id(doc, id, &element) !=
+            DOM_NO_ERR || element == NULL) {
         dom_string_unref(id);
         return NULL;
+    } else {
+        target = (dom_node *) element;
     }
     dom_string_unref(id);
     type = NULL;
     if (dom_string_create((const uint8_t *) event_type, strlen(event_type),
             &type) != DOM_NO_ERR || type == NULL) {
-        dom_node_unref((dom_node *) element);
+        dom_node_unref(target);
         return NULL;
     }
     binding = (pcore_event_binding *) calloc(1, sizeof(*binding));
     if (binding == NULL) {
         dom_string_unref(type);
-        dom_node_unref((dom_node *) element);
+        dom_node_unref(target);
         return NULL;
     }
-    binding->target = (dom_node *) element;
+    binding->target = target;
     binding->type = type;
     binding->capture = capture ? 1 : 0;
     binding->callback = callback;

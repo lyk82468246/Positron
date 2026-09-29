@@ -566,7 +566,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1319
+#define TEST_MAX_NUMBER 1320
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -112551,6 +112551,150 @@ static BOOL test541_browser_promise_metadata(void)
             "[object Promise]|true|function|function", error, sizeof(error));
 }
 
+/* TEST 1320 - document-level delegated click listeners use the Core
+ * document target, preserve capture/bubble metadata, and remain bounded. */
+static BOOL test1320_browser_document_click_delegation(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "var events='';var i;"
+        "var button=document.getElementById('toggle');"
+        "var nav=document.getElementById('nav');"
+        "function capture(e){events+='C'+e.eventPhase+':'+e.target.id+':'"
+        "+e.currentTarget.nodeName+'|';}"
+        "function bubble(e){events+='B'+e.eventPhase+':'+e.target.id+':'"
+        "+e.currentTarget.nodeName+'|';nav.classList.add('show');"
+        "button.setAttribute('aria-expanded','true');}"
+        "function once(e){events+='O'+e.eventPhase+'|';}"
+        "function removed(e){events+='R|';}"
+        "function atLimit(e){events+='L|';}"
+        "function overLimit(e){events+='X|';}"
+        "document.addEventListener('click',capture,true);"
+        "document.addEventListener('click',bubble,false);"
+        "document.addEventListener('click',bubble,false);"
+        "document.addEventListener('click',once,{once:true});"
+        "document.addEventListener('click',removed,false);"
+        "document.addEventListener('click',removed,false);"
+        "document.removeEventListener('click',removed,false);"
+        "for(i=0;i<60;i++){document.addEventListener('click',function(){});}"
+        "document.addEventListener('click',atLimit,false);"
+        "document.addEventListener('click',overLimit,false);"
+        "</script></head><body>"
+        "<button id='toggle' data-bs-toggle='collapse' data-bs-target='#nav' "
+        "aria-expanded='false'>Menu</button>"
+        "<div id='nav' class='collapse'>Links</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char REMOVE[] =
+        "document.removeEventListener('click',capture,true);"
+        "document.removeEventListener('click',bubble,false);";
+    static const char PROBE[] =
+        "document.getElementById('result').textContent=events"
+        "+String(nav.classList.contains('show'))+'|'"
+        "+button.getAttribute('aria-expanded');";
+    static const char EXPECTED[] =
+        "C1:toggle:#document|B3:toggle:#document|O3|L|L|true|true";
+    HANDLE document;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    char result[256];
+    char error[512];
+    int bytes;
+    int executed;
+    int ignored;
+    int default_allowed;
+    int dispatch_result;
+    int evaluate_result;
+    BOOL ok;
+
+    document = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(result, 0, sizeof(result));
+    memset(error, 0, sizeof(error));
+    bytes = 0;
+    executed = -1;
+    ignored = -1;
+    default_allowed = 1;
+    dispatch_result = -1;
+    evaluate_result = PSCRIPT_ERROR_CALL;
+    ok = TRUE;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/document-click", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        dispatch_result = PCore_EventDispatchToId(document, "toggle",
+                "click", 1, 1, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        evaluate_result = pcore_browser_script_session_evaluate(REMOVE, -1,
+                error, sizeof(error));
+        if (evaluate_result != PSCRIPT_OK) {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        default_allowed = 1;
+        dispatch_result = PCore_EventDispatchToId(document, "toggle",
+                "click", 1, 1, &default_allowed);
+        if (dispatch_result != 1 || default_allowed != 1 ||
+                pcore_browser_script_session_evaluate(PROBE, -1, error,
+                sizeof(error)) != PSCRIPT_OK ||
+                PCore_NodeTextContentById(document, "result", result,
+                sizeof(result), &bytes) != 0 || strcmp(result, EXPECTED) != 0) {
+            ok = FALSE;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "result=%s bytes=%d dispatch=%d allowed=%d "
+                    "eval=%d exec/ignore=%d/%d expected=%s",
+                    result, bytes, dispatch_result, default_allowed,
+                    evaluate_result, executed, ignored, EXPECTED);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1320 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1320 OK",
+            "Document delegated click capture/bubble, target/currentTarget, "
+            "collapse mutation, removal, duplicate suppression, once and "
+            "the fixed 64-listener budget passed.");
+    return TRUE;
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -115697,6 +115841,9 @@ static int run_configured_tests(const unsigned char *selected,
                 show_error(L"TEST 1319 FAIL",
                         test1319_image_rgba_round_stroke_last_error());
             }
+            break;
+        case 1320:
+            ok = test1320_browser_document_click_delegation();
             break;
         default: ok = FALSE; break;
         }

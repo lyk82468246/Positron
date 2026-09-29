@@ -1650,6 +1650,10 @@ typedef struct PCoreEventInfo {
 typedef unsigned int (*PCoreEventListenerFn)(void *pw,
                                              const PCoreEventInfo *event_info);
 
+/* element_id may be a normal ID or PCORE_DOCUMENT_ELEMENT_TOKEN.  The latter
+ * attaches the listener to the document node for bounded delegated events;
+ * event_info target/current_target IDs remain borrowed and NULL for a
+ * document node without an element ID. */
 PCORE_API HANDLE PCore_EventListenerAdd(HANDLE hDoc,
                                         const char *element_id,
                                         const char *event_type,

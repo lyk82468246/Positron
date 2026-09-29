@@ -76,6 +76,8 @@ Element relative mutation 只对已经以唯一 id 物化到 live Element parent
 
 Browser 创建有限 Event、listener、属性 handler、validation 和 focus 对象，维护 target/currentTarget、冒泡/取消、可信标志及规定的顺序。它不自动接管 native default action；宿主决定按钮、SELECT、EDIT、file picker、SIP/IME、触摸和键盘行为，再用 typed callback 或通知入口回传实际结果。
 
+`document.addEventListener("click", ...)` 走一个独立的、Core-backed delegated 事件路径，供页面级菜单等有限消费者使用。它只接受 `click`，最多保留 64 个 document listener；相同 callback、相同 capture 选项的重复注册被忽略，移除后的槽位可再次使用，`once` 在当前 dispatch 完成后变为惰性失效，避免在 libdom 遍历 listener 时释放当前节点。Core 的 document target 使用现有 `PCORE_DOCUMENT_ELEMENT_TOKEN`，不新增 ABI；事件仍由宿主 dispatch，Browser 只投影 target/currentTarget、capture/bubble、`once`、`passive`、AbortSignal 和 class/attribute mutation。完整 DOM EventTarget、任意 document 事件类型和未受预算约束的 Bootstrap 兼容性不在承诺范围内。
+
 contenteditable 只支持单元素、纯文本、UTF-16 selection offset 和有界 WM EDIT 代理。`beforeinput` 取消不会修改 Core；允许的 native mutation 由宿主提交后再通知 Browser。完整 IME composition、Range/Selection、async clipboard 和富文本不在边界内。
 
 ## 导航与资源组合

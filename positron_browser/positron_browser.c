@@ -2882,17 +2882,19 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(a[i]===entry||a[i].id===entry.id){a.splice(i,1);}}"
         "s=owner.__id!==undefined?(g.__pcoreSyntheticListeners[owner.__id]||[]):"
         "(owner.__listeners||[]);for(i=s.length-1;i>=0;i--){"
-        "if(s[i]===entry||s[i].id===entry.id){s.splice(i,1);}}}}"
+        "if(s[i]===entry||s[i].id===entry.id){s.splice(i,1);}}}"
+        "if(entry.__documentRelease){entry.__documentRelease();}}"
         "function pEventElement(id){var e;var s=String(id||'');"
         "if(s===''){return null;}if(g.document&&typeof g.document.getElementById==='function'){"
         "e=g.document.getElementById(s);if(e!==null){return e;}}return new PElement(s);}"
         "function pInvokeListener(entry,event,owner){var oldPassive;var fn;"
-        "if(!entry||entry.__removed){return;}fn=entry.fn;"
+        "if(!entry||entry.__removed||entry.__onceDone){return;}fn=entry.fn;"
         "if(typeof fn!=='function'&&!(fn&&typeof fn.handleEvent==='function')){return;}"
         "if(entry.once){pRemoveListenerEntry(entry);}oldPassive=event.__passive;"
         "event.__passive=!!entry.passive;try{if(typeof fn==='function'){"
         "fn.call(owner,event);}else{fn.handleEvent.call(fn,event);}}"
-        "catch(listenerError){}event.__passive=oldPassive;}"
+        "catch(listenerError){}event.__passive=oldPassive;"
+        "if(entry.__onceAfter){entry.__onceDone=true;}}"
         "function pDispatchSynthetic(owner,event){var a=(owner.__id!==undefined?"
         "(g.__pcoreSyntheticListeners[owner.__id]||[]):(owner.__listeners||[])).slice(0);"
         "var i;event.target=owner;event.currentTarget=owner;"
@@ -2913,7 +2915,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "ctrlKey:!!info.ctrlKey,altKey:!!info.altKey,"
         "target:info.targetId?pEventElement(info.targetId):null,"
         "currentTarget:info.currentTargetId?"
-        "pEventElement(info.currentTargetId):null};"
+        "pEventElement(info.currentTargetId):"
+        "(entry&&entry.owner===g.document?g.document:null)};"
         "e.eventPhase=Number(info.phase)||0;"
         "e.timeStamp=Number(info.timeStamp)||0;"
         "e.srcElement=e.target;"
@@ -3089,6 +3092,47 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.__pcoreEventOptions=pEventOptions;g.__pcoreRemoveListenerEntry=pRemoveListenerEntry;"
         "g.__pcoreInvokeListener=pInvokeListener;g.__pcoreDispatchSynthetic=pDispatchSynthetic;"
         "g.__pcoreTrim=PTrim;"
+        "})(this);";
+
+    /* Document click delegation is kept in its own bootstrap unit so the
+     * VS2008 single-literal limit does not grow with the main DOM bootstrap.
+     * Lifecycle listeners remain on the bounded legacy path above; this unit
+     * adds only the Core-backed document click target used by delegated UI. */
+    static const char P_BROWSER_SCRIPT_DOCUMENT_CLICK[] =
+        "(function(g){var d=g.document;var o=g.__pcoreEventOptions;"
+        "var remove=g.__pcoreRemoveListenerEntry;var entries=[];"
+        "var count=0;var max=64;var oldAdd;var oldRemove;"
+        "if(!d||typeof o!=='function'||typeof remove!=='function'||"
+        "typeof g.__pcoreAddEvent!=='function'){return;}"
+        "oldAdd=d.addEventListener;oldRemove=d.removeEventListener;"
+        "function release(entry){if(entry.__documentCounted){"
+        "entry.__documentCounted=false;if(count>0){count--;}}"
+        "entry.__documentRelease=null;}"
+        "function drop(entry){if(!entry||entry.__removed){return;}"
+        "entry.__documentRelease=function(){release(entry);};remove(entry);}"
+        "d.addEventListener=function(type,fn,options){var t=String(type);"
+        "var a;var i;var p;var n;var entry;"
+        "if(t!=='click'){return oldAdd.call(d,type,fn,options);}"
+        "p=o(options);if((typeof fn!=='function'&&!(fn&&"
+        "typeof fn.handleEvent==='function'))||(p.signal&&p.signal.aborted)){return;}"
+        "for(i=0;i<entries.length;i++){if(!entries[i].__removed&&!entries[i].__onceDone&&"
+        "entries[i].fn===fn&&"
+        "entries[i].capture===p.capture){return;}}"
+        "if(count>=max){return;}"
+        "n=g.__pcoreAddEvent({id:'__positron_document_element__',type:t,"
+        "capture:p.capture?1:0});if(typeof n!=='number'||n<=0){return;}"
+        "entry={id:n,type:t,fn:fn,capture:p.capture,once:false,"
+        "__onceAfter:p.once,__onceDone:false,passive:p.passive,owner:d,"
+        "__removed:false,list:entries,__documentCounted:true};entries.push(entry);"
+        "if(!d.__listeners){d.__listeners=[];}d.__listeners.push(entry);"
+        "count++;entry.__documentRelease=function(){release(entry);};"
+        "g.__pcoreHandlers[n]=fn;g.__pcoreListenerEntries[n]=entry;"
+        "if(p.signal&&typeof p.signal.addEventListener==='function'){"
+        "p.signal.addEventListener('abort',function(){drop(entry);},{once:true});}};"
+        "d.removeEventListener=function(type,fn,options){var t=String(type);"
+        "var p;var i;if(t!=='click'){return oldRemove.call(d,type,fn,options);}"
+        "p=o(options);for(i=0;i<entries.length;i++){if(entries[i].fn===fn&&"
+        "entries[i].capture===p.capture){drop(entries[i]);return;}}};"
         "})(this);";
 
     /* The WM6 script heap is deliberately small.  Keep the live createElement
@@ -8359,6 +8403,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART2, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_DOCUMENT_CLICK, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }
