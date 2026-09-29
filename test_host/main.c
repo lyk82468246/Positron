@@ -68,6 +68,8 @@ extern BOOL test1316_core_svg_background_fit(void);
 extern const char *test1316_core_svg_background_fit_last_error(void);
 extern BOOL test1317_iana_core_background(void);
 extern const char *test1317_iana_core_background_last_error(void);
+extern BOOL test1318_core_css_data_uri(void);
+extern const char *test1318_core_css_data_uri_last_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -562,7 +564,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1317
+#define TEST_MAX_NUMBER 1318
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -115672,6 +115674,16 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1317 FAIL",
                         test1317_iana_core_background_last_error());
+            }
+            break;
+        case 1318:
+            ok = test1318_core_css_data_uri();
+            if (ok) {
+                show_info(L"TEST 1318 OK",
+                        "Core CSS data URI SVG discovery and paint passed.");
+            } else {
+                show_error(L"TEST 1318 FAIL",
+                        test1318_core_css_data_uri_last_error());
             }
             break;
         default: ok = FALSE; break;

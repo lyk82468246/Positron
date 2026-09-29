@@ -76,6 +76,8 @@ Core 是文档和渲染的产品边界，内部使用移植后的 NetSurf 组件
 
 - UTF-8 HTML 解析、CSS cascade、媒体条件、computed style、资源发现和有界 cache；
 - `<img>`、`srcset`、`picture/source` 的有限候选选择，以及 image-map 几何、布局、命中和 GDI paint；
+- CSS `data:image/svg+xml` background resource 的有界 percent/Base64 解码和 document-cache 接线；
+  Core 复用 Image DLL 与既有 background-position/size/repeat 绘制，宿主不接收 `data:` 网络请求；
 - page extent、元素几何、overflow retained scroll、form owner、validation、successful controls、submission/reset 和 modal paint；
 - successful-control snapshot 的有界 multipart/form-data wire encoding；Core 为默认 form submission 与独立 `FormData` snapshot 生成 boundary、字段/文件顺序、quoted metadata、binary file bytes 和完整 Content-Type，宿主只提供同步文件读取/释放 callback；
 - 以 ID 或受控 child index 执行有界 DOM mutation，并在成功变化后使 retained layout 失效。
@@ -85,6 +87,11 @@ Core 是文档和渲染的产品边界，内部使用移植后的 NetSurf 组件
 失败。Core 只把 READY bytes 写入有界 image cache；PENDING 不产生终态失败项，宿主 worker
 完成后必须重新扫描并触发后续 layout/paint。相对 URL、网络/文件 I/O、取消和重试时机仍由
 宿主或 Browser 事务拥有，旧入口 ABI 不变。
+
+CSS data URI 是 Core 的本地资源例外：它只接受 `data:image/svg+xml` 的 percent-encoded 或
+Base64 形式，并在 256 KiB URL、64 KiB 解码结果、128 元素/64 path 的独立预算内完成解码。
+损坏、超限和不支持的 MIME 在写入 cache 前 fail closed；普通网络 SVG、PNG、JPEG 和 GIF 不
+改变原有宿主 callback 路径。
 
 HTML parser mutation 只接受头文件声明的节点类型、深度、节点数、direct-child 和 UTF-8 预算。Core 不派发 DOM 事件、不创建 native 控件、不执行页面 script、不暴露 fragment handle，也不提供完整 live collection。
 

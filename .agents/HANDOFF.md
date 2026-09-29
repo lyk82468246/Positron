@@ -14,7 +14,8 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 ## 当前里程碑
 
 当前中期里程碑仍是把 Core、Browser、HTTP/TLS、媒体与 WM6 应用接线收束为有界运行时。本批
-继续收束图片纵切：`positron_core.dll` 的异步 pending/retry 已完成，`positron_image.dll` 现在
+继续收束图片纵切：`positron_core.dll` 的异步 pending/retry 和 CSS `data:image/svg+xml`
+background 接线已完成，`positron_image.dll` 现在
 能在不破坏旧 ABI 的前提下消费 IANA 风格的简单 SVG class paint/gradient，并按 viewBox 保留
 没有显式宽高的 SVG 固有比例；Core 的高 DPI 重复 SVG 背景 tile 也已按设备 DPI 缩放。真实
 `positron.exe` 图片页面仍待人工观察。Media 的 DirectShow callback source filter/native 视频
@@ -57,6 +58,13 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
   `PCoreFetchFn` ABI 不变。PENDING 不再写入终态失败 cache，后续扫描会重新调用 callback。
   `test_host` 新增 TEST1313 离线回归，证明 pending SVG 第二次扫描成功解码、生成 image box，
   而终态失败不重试。图片在设备上可见性仍未形成设备证据。
+- 本批新增了 Core-owned CSS data URI image path：`data:image/svg+xml,` 的 percent-encoded
+  和 Base64 body 在资源发现阶段分别解码，写入同一份 document image cache，再复用
+  `positron_image.dll` 和既有 background paint；`positron_app`、HTTP 接线和公共 ABI 均未改动。
+  URL、decoded bytes、SVG 元素/path 采用独立预算，坏 MIME/编码、控制字符和超限内容 fail
+  closed，不调用宿主 HTTP callback。TEST1318 的离线 CSS→Core→Image→GDI fixture 同时覆盖
+  两种编码、损坏 URI 和 65-path 复杂度超限；`tmp/device-runs/20260929-094957-css-data-uri-complexity-20260929`
+  的 `1318,999` Debug ARMV4I 设备门已通过，日志完整、Core module 匹配、双空间预检通过且无新增 dump。
 - `positron_image.dll` 的 `PImage_CreateSvgFromMemory()` 增加了有界、class-only 的 `<style>`
   兼容预处理：简单 `.name { paint-property: value; }` 规则会合并为行内 style，再交给
   libsvgtiny；不实现通用 CSS cascade，也不改变任何公开 ABI。它覆盖 IANA 首页/页眉 SVG
@@ -293,8 +301,9 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
   直播协议明确排除。
 - 脚本自行构造的 File/Blob 尚未形成 Browser FormData 到 Core multipart 的公共转换；native
   picker 的源码接线不能写成已完成的设备上传基线。
-- EXE 图片资源事务的恢复阶段、相对 URL 解析、Core pending/retry、Image class-style 和
-  viewBox-only intrinsic-ratio 契约已按 TEST13 的宿主顺序修正；TEST1313 已在离线 Core 中
+- EXE 图片资源事务的恢复阶段、相对 URL 解析、Core pending/retry、Core CSS data URI、
+  Image class-style 和 viewBox-only intrinsic-ratio 契约已按 TEST13 的宿主顺序修正；TEST1313
+  和 TEST1318 已在离线 Core 中
   证明 pending SVG 第二次扫描可缓存、解码并布局，terminal failure 不重试，TEST1314/1315
   已在 Image DLL 直接绘制门证明 IANA 风格 SVG 不再因 class paint 变黑，TEST1317 又证明
   Core 的高 DPI 重复 SVG tile 与 Image 直接绘制一致。最新完整包仍需要在 `positron.exe`
@@ -313,10 +322,8 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步先只提交 `positron_app/main.c` 及本交接文档的 EXE 侧改动，保留 DLL 对话尚未提交的
-`positron_core/pcore_select.c` 工作树修改；在用户要求设备验收后，使用同一批 EXE/Core/DLL
-重新部署并真正退出旧的 `positron.exe`。验收 `https://www.winworldpc.com/home` 时，页面本身
-不应仅因窗口创建默认样式出现顶层水平滚动条；验收 `https://www.iana.org/numbers` 时，
-表格真实内层横向滚动仍应可拖动，顶层页面滚动不应因尺寸未变而重新排版。随后再检查旋转、
-DPI、retained-pixel 绘制和 SVG；若 WinWorld 仍出现顶层横条，再记录最终 document/client 宽度
-区分 EXE scrollbar policy 与 Core/CSS 实际 overflow。
+下一步是在同一批匹配 DLL 的 `positron.exe` 包上做一次人工视觉确认：打开含 CSS
+`data:image/svg+xml` 响应式图标的窄视口页面，确认 Core 绘制的 background-position/size/repeat
+与页面其余布局一致，且普通网络 SVG/PNG/JPEG/GIF 不回归。人工确认前先真正退出设备上的旧
+`positron.exe`，再从新 staging 目录启动；若视觉仍异常，记录页面 URL、viewport/DPI、资源
+最终 URL 和应用 image-state 摘要，不把 `test_host` 的自动门当作应用截图证据。

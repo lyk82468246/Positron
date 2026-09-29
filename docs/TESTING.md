@@ -173,6 +173,14 @@ tests=1-5 7b 13 20,999
   比较物理 h1 背景与 Image DLL 按同一尺寸直接绘制的结果，防止默认 `background-repeat` 把
   300x117 的旧 tile 或未缩放的 128x50 tile 裁成残片。它证明 Image 自然尺寸、Core 高 DPI
   重复 tile 和背景绘制已接线，不替代 `positron.exe` 的网络页面视觉验收。
+- TEST1318 是自动的完整 CSS data-URI 图片回归：同一离线页面的两个背景分别使用
+  percent-encoded 与 Base64 `data:image/svg+xml`，必须从 libcss computed style 经过 Core
+  资源发现、document image cache、`positron_image.dll` SVG 解码到离屏 GDI paint；Core 的
+  host fetch callback 调用次数必须为零，两个黑色汉堡条像素必须可见。第三个损坏 URI 和
+  第四个含 65 个 `path` 的复杂度超限 URI 必须被发现但不写入成功 cache、不影响前两个背景。
+  URL/decoded/复杂度预算分别由 Core 强制；该 fixture 不修改应用接线，也不把 `data:` 送进
+  HTTP。TEST19/20 继续覆盖网络 callback/cache 的 BMP、PNG、JPEG、GIF，TEST1316/1317
+  继续覆盖普通网络 SVG 与 CSS background 适配。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

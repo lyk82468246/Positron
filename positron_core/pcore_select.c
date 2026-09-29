@@ -2653,6 +2653,16 @@ typedef struct pcore_image_resource {
 #define PCORE_IMAGE_RESOURCE_STATE_SUCCESS 1
 #define PCORE_IMAGE_RESOURCE_STATE_FAILED  2
 
+/* CSS data-image URLs are decoded inside Core so that a host transport never
+ * attempts to send `data:` through HTTP.  These limits are intentionally
+ * independent: the URL protects CSS/token memory, the decoded limit protects
+ * the document image cache, and the SVG limits keep a small inline icon from
+ * becoming an unbounded parser workload. */
+#define PCORE_DATA_IMAGE_URL_MAX_BYTES       (256 * 1024)
+#define PCORE_DATA_IMAGE_DECODED_MAX_BYTES  (64 * 1024)
+#define PCORE_DATA_IMAGE_SVG_ELEMENT_MAX    128
+#define PCORE_DATA_IMAGE_SVG_PATH_MAX       64
+
 typedef struct pcore_image_cache {
     pcore_image_resource *head;
 } pcore_image_cache;
@@ -3314,6 +3324,423 @@ PCORE_API int PCore_GetImageDecodeStats(HANDLE hDoc,
     return 0;
 }
 
+static int pcore_data_ascii_equal(const char *left, const char *right,
+        size_t length)
+{
+    size_t i;
+    int a;
+    int b;
+
+    if (left == NULL || right == NULL) {
+        return 0;
+    }
+    for (i = 0; i < length; i++) {
+        a = (unsigned char) left[i];
+        b = (unsigned char) right[i];
+        if (a >= 'A' && a <= 'Z') {
+            a += 'a' - 'A';
+        }
+        if (b >= 'A' && b <= 'Z') {
+            b += 'a' - 'A';
+        }
+        if (a != b) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int pcore_data_hex_value(int value)
+{
+    if (value >= '0' && value <= '9') {
+        return value - '0';
+    }
+    if (value >= 'a' && value <= 'f') {
+        return value - 'a' + 10;
+    }
+    if (value >= 'A' && value <= 'F') {
+        return value - 'A' + 10;
+    }
+    return -1;
+}
+
+/* Return 1 for a bounded image/svg+xml data URI, 0 for a network/non-data
+ * reference, and -1 for a data URI that Core must reject. */
+static int pcore_data_uri_parse(const char *url, size_t url_len,
+        size_t *out_payload_offset, int *out_base64)
+{
+    size_t comma;
+    size_t type_end;
+    size_t token_start;
+    size_t token_end;
+    size_t i;
+    size_t type_length;
+    int base64;
+
+    if (out_payload_offset != NULL) {
+        *out_payload_offset = 0;
+    }
+    if (out_base64 != NULL) {
+        *out_base64 = 0;
+    }
+    if (url == NULL || url_len < 5 ||
+            !pcore_data_ascii_equal(url, "data:", 5)) {
+        return 0;
+    }
+    if (url_len > PCORE_DATA_IMAGE_URL_MAX_BYTES) {
+        return -1;
+    }
+    comma = 5;
+    while (comma < url_len && url[comma] != ',') {
+        comma++;
+    }
+    if (comma == url_len || comma == 5) {
+        return -1;
+    }
+    type_end = 5;
+    while (type_end < comma && url[type_end] != ';') {
+        type_end++;
+    }
+    type_length = type_end - 5;
+    if (type_length != strlen("image/svg+xml") ||
+            !pcore_data_ascii_equal(url + 5, "image/svg+xml", type_length)) {
+        return -1;
+    }
+    base64 = 0;
+    i = type_end;
+    while (i < comma) {
+        if (url[i] != ';') {
+            return -1;
+        }
+        token_start = ++i;
+        while (i < comma && url[i] != ';') {
+            if ((unsigned char) url[i] < 0x21 ||
+                    (unsigned char) url[i] > 0x7e) {
+                return -1;
+            }
+            i++;
+        }
+        token_end = i;
+        if (token_end == token_start) {
+            return -1;
+        }
+        if (token_end - token_start == 6 &&
+                pcore_data_ascii_equal(url + token_start, "base64", 6)) {
+            if (base64) {
+                return -1;
+            }
+            base64 = 1;
+        }
+    }
+    if (out_payload_offset != NULL) {
+        *out_payload_offset = comma + 1;
+    }
+    if (out_base64 != NULL) {
+        *out_base64 = base64;
+    }
+    return 1;
+}
+
+static int pcore_data_uri_percent_decode(const char *payload,
+        size_t payload_len, char **out_data, int *out_len)
+{
+    char *decoded;
+    size_t i;
+    size_t output;
+    int high;
+    int low;
+    unsigned char value;
+
+    if (out_data == NULL || out_len == NULL) {
+        return -1;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    if (payload == NULL || payload_len == 0 ||
+            payload_len > PCORE_DATA_IMAGE_URL_MAX_BYTES) {
+        return -1;
+    }
+    decoded = (char *) malloc(payload_len + 1);
+    if (decoded == NULL) {
+        return -1;
+    }
+    output = 0;
+    for (i = 0; i < payload_len; i++) {
+        value = (unsigned char) payload[i];
+        if (value == '%') {
+            if (i + 2 >= payload_len) {
+                free(decoded);
+                return -1;
+            }
+            high = pcore_data_hex_value((unsigned char) payload[i + 1]);
+            low = pcore_data_hex_value((unsigned char) payload[i + 2]);
+            if (high < 0 || low < 0) {
+                free(decoded);
+                return -1;
+            }
+            value = (unsigned char) ((high << 4) | low);
+            i += 2;
+        }
+        if (value == 0 || (value < 0x20 && value != '\t' &&
+                value != '\r' && value != '\n') || value == 0x7f) {
+            free(decoded);
+            return -1;
+        }
+        if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+            free(decoded);
+            return -1;
+        }
+        decoded[output++] = (char) value;
+    }
+    if (output == 0 || output > PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+        free(decoded);
+        return -1;
+    }
+    decoded[output] = '\0';
+    *out_data = decoded;
+    *out_len = (int) output;
+    return 0;
+}
+
+static int pcore_data_base64_value(int value)
+{
+    if (value >= 'A' && value <= 'Z') {
+        return value - 'A';
+    }
+    if (value >= 'a' && value <= 'z') {
+        return value - 'a' + 26;
+    }
+    if (value >= '0' && value <= '9') {
+        return value - '0' + 52;
+    }
+    if (value == '+') {
+        return 62;
+    }
+    if (value == '/') {
+        return 63;
+    }
+    return -1;
+}
+
+static int pcore_data_uri_base64_decode(const char *payload,
+        size_t payload_len, char **out_data, int *out_len)
+{
+    char *decoded;
+    size_t i;
+    size_t allocation;
+    int quartet[4];
+    int quartet_count;
+    int value;
+    int output;
+    int finished;
+
+    if (out_data == NULL || out_len == NULL) {
+        return -1;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    if (payload == NULL || payload_len == 0 ||
+            payload_len > (size_t) (PCORE_DATA_IMAGE_DECODED_MAX_BYTES * 4 /
+                    3 + 8)) {
+        return -1;
+    }
+    allocation = payload_len / 4 * 3 + 3;
+    if (allocation > PCORE_DATA_IMAGE_DECODED_MAX_BYTES + 1) {
+        allocation = PCORE_DATA_IMAGE_DECODED_MAX_BYTES + 1;
+    }
+    decoded = (char *) malloc(allocation);
+    if (decoded == NULL) {
+        return -1;
+    }
+    quartet_count = 0;
+    output = 0;
+    finished = 0;
+    for (i = 0; i < payload_len; i++) {
+        value = (unsigned char) payload[i];
+        if (value == ' ' || value == '\t' || value == '\r' ||
+                value == '\n') {
+            continue;
+        }
+        if (finished) {
+            free(decoded);
+            return -1;
+        }
+        if (value == '=') {
+            if (quartet_count < 2) {
+                free(decoded);
+                return -1;
+            }
+            quartet[quartet_count++] = -2;
+        } else {
+            value = pcore_data_base64_value(value);
+            if (value < 0 || quartet_count >= 4) {
+                free(decoded);
+                return -1;
+            }
+            quartet[quartet_count++] = value;
+        }
+        if (quartet_count == 4) {
+            if (quartet[0] < 0 || quartet[1] < 0 ||
+                    (quartet[2] == -2 && quartet[3] != -2)) {
+                free(decoded);
+                return -1;
+            }
+            if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+                free(decoded);
+                return -1;
+            }
+            decoded[output++] = (char) ((quartet[0] << 2) |
+                    (quartet[1] >> 4));
+            if (quartet[2] == -2) {
+                finished = 1;
+            } else {
+                if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+                    free(decoded);
+                    return -1;
+                }
+                decoded[output++] = (char) ((quartet[1] << 4) |
+                        (quartet[2] >> 2));
+                if (quartet[3] == -2) {
+                    finished = 1;
+                } else {
+                    if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+                        free(decoded);
+                        return -1;
+                    }
+                    decoded[output++] = (char) ((quartet[2] << 6) |
+                            quartet[3]);
+                }
+            }
+            quartet_count = 0;
+        }
+    }
+    if (quartet_count == 1 || (finished && quartet_count != 0)) {
+        free(decoded);
+        return -1;
+    }
+    if (!finished && quartet_count == 2) {
+        if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+            free(decoded);
+            return -1;
+        }
+        decoded[output++] = (char) ((quartet[0] << 2) |
+                (quartet[1] >> 4));
+    } else if (!finished && quartet_count == 3) {
+        if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+            free(decoded);
+            return -1;
+        }
+        decoded[output++] = (char) ((quartet[0] << 2) |
+                (quartet[1] >> 4));
+        if (output >= PCORE_DATA_IMAGE_DECODED_MAX_BYTES) {
+            free(decoded);
+            return -1;
+        }
+        decoded[output++] = (char) ((quartet[1] << 4) |
+                (quartet[2] >> 2));
+    } else if (quartet_count != 0) {
+        free(decoded);
+        return -1;
+    }
+    if (output <= 0) {
+        free(decoded);
+        return -1;
+    }
+    decoded[output] = '\0';
+    *out_data = decoded;
+    *out_len = output;
+    return 0;
+}
+
+static int pcore_data_svg_complexity_ok(const char *data, int len)
+{
+    int i;
+    int elements;
+    int paths;
+    int is_name;
+
+    if (data == NULL || len <= 0) {
+        return 0;
+    }
+    elements = 0;
+    paths = 0;
+    is_name = 0;
+    for (i = 0; i < len; i++) {
+        if (data[i] != '<' || i + 1 >= len) {
+            continue;
+        }
+        if ((data[i + 1] >= 'A' && data[i + 1] <= 'Z') ||
+                (data[i + 1] >= 'a' && data[i + 1] <= 'z')) {
+            elements++;
+            if (elements > PCORE_DATA_IMAGE_SVG_ELEMENT_MAX) {
+                return 0;
+            }
+        }
+        if (i + 5 < len && data[i + 1] != '/' &&
+                pcore_data_ascii_equal(data + i + 1, "path", 4) &&
+                (data[i + 5] == ' ' || data[i + 5] == '\t' ||
+                 data[i + 5] == '\r' || data[i + 5] == '\n' ||
+                 data[i + 5] == '/' || data[i + 5] == '>')) {
+            paths++;
+            if (paths > PCORE_DATA_IMAGE_SVG_PATH_MAX) {
+                return 0;
+            }
+        }
+        if (i + 4 < len && data[i + 1] != '/' &&
+                pcore_data_ascii_equal(data + i + 1, "svg", 3) &&
+                (data[i + 4] == ' ' || data[i + 4] == '\t' ||
+                 data[i + 4] == '\r' || data[i + 4] == '\n' ||
+                 data[i + 4] == '/' || data[i + 4] == '>')) {
+            is_name = 1;
+        }
+    }
+    return is_name && elements > 0;
+}
+
+/* Decode only image/svg+xml data URLs.  The returned bytes are owned by the
+ * caller and are passed to the same per-document image cache used for network
+ * resources; the normal pcore_make_cached_bitmap() path then invokes
+ * positron_image for SVG parsing and painting. */
+static int pcore_decode_data_image_uri(const char *url, size_t url_len,
+        char **out_data, int *out_len)
+{
+    size_t payload_offset;
+    size_t payload_len;
+    int base64;
+    int parse_status;
+    int decode_status;
+
+    if (out_data == NULL || out_len == NULL) {
+        return -1;
+    }
+    *out_data = NULL;
+    *out_len = 0;
+    parse_status = pcore_data_uri_parse(url, url_len, &payload_offset,
+            &base64);
+    if (parse_status <= 0) {
+        return parse_status;
+    }
+    if (payload_offset > url_len) {
+        return -1;
+    }
+    payload_len = url_len - payload_offset;
+    if (base64) {
+        decode_status = pcore_data_uri_base64_decode(url + payload_offset,
+                payload_len, out_data, out_len);
+    } else {
+        decode_status = pcore_data_uri_percent_decode(url + payload_offset,
+                payload_len, out_data, out_len);
+    }
+    if (decode_status != 0 || !pcore_data_svg_complexity_ok(*out_data,
+            *out_len)) {
+        free(*out_data);
+        *out_data = NULL;
+        *out_len = 0;
+        return -1;
+    }
+    return 1;
+}
+
 typedef struct pcore_image_fetch_ctx {
     PCoreFetchFn fetch;
     PCoreFreeFn  freefn;
@@ -3333,12 +3760,20 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
     int len = 0;
     int fetch_status;
     int terminal_failure;
+    int data_uri_status;
     pcore_image_resource *cached;
 
     if (ic == NULL || url_data == NULL || url_len == 0) {
         return;
     }
     ic->found++;
+    if (url_len > PCORE_DATA_IMAGE_URL_MAX_BYTES && url_len >= 5 &&
+            pcore_data_ascii_equal(url_data, "data:", 5)) {
+        /* Do not allocate or retain an attacker-sized CSS URL.  The cache key
+         * is deliberately not created for this case; a later scan will fail
+         * closed again without growing the document cache. */
+        return;
+    }
     url = (char *) malloc(url_len + 1);
     if (url == NULL) {
         return;
@@ -3350,32 +3785,45 @@ static void pcore_fetch_image_url(pcore_image_fetch_ctx *ic,
         if (cached->state == PCORE_IMAGE_RESOURCE_STATE_SUCCESS) {
             ic->fetched++;
         }
-    } else if (ic->fetch != NULL) {
-        terminal_failure = 0;
-        fetch_status = ic->fetch(ic->pw, url, &data, &len);
-        if (ic->explicit_status &&
-                fetch_status == PCORE_IMAGE_FETCH_PENDING) {
-            /* The embedder owns the pending decision.  Do not create a
-             * failed cache entry; a later scan must call it again.  A
-             * conforming callback returns no buffer in this state, but
-             * release an accidental buffer when a free callback exists. */
-            if (data != NULL && ic->freefn != NULL) {
-                ic->freefn(ic->pw, data);
-            }
-            data = NULL;
-            len = 0;
-        } else if (fetch_status == PCORE_IMAGE_FETCH_READY &&
-                data != NULL && len > 0) {
+    } else {
+        data_uri_status = pcore_decode_data_image_uri(url, url_len, &data,
+                &len);
+        if (data_uri_status > 0) {
             if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
                 ic->fetched++;
             }
-        } else {
-            /* Legacy non-zero results and all invalid/explicit terminal
-             * statuses retain the historical terminal fallback. */
-            terminal_failure = 1;
-        }
-        if (terminal_failure) {
+            free(data);
+            data = NULL;
+            len = 0;
+        } else if (data_uri_status < 0) {
             (void) pcore_image_cache_store_failure(ic->cache, url);
+        } else if (ic->fetch != NULL) {
+            terminal_failure = 0;
+            fetch_status = ic->fetch(ic->pw, url, &data, &len);
+            if (ic->explicit_status &&
+                    fetch_status == PCORE_IMAGE_FETCH_PENDING) {
+                /* The embedder owns the pending decision.  Do not create a
+                 * failed cache entry; a later scan must call it again.  A
+                 * conforming callback returns no buffer in this state, but
+                 * release an accidental buffer when a free callback exists. */
+                if (data != NULL && ic->freefn != NULL) {
+                    ic->freefn(ic->pw, data);
+                }
+                data = NULL;
+                len = 0;
+            } else if (fetch_status == PCORE_IMAGE_FETCH_READY &&
+                    data != NULL && len > 0) {
+                if (pcore_image_cache_store(ic->cache, url, data, len) == 0) {
+                    ic->fetched++;
+                }
+            } else {
+                /* Legacy non-zero results and all invalid/explicit terminal
+                 * statuses retain the historical terminal fallback. */
+                terminal_failure = 1;
+            }
+            if (terminal_failure) {
+                (void) pcore_image_cache_store_failure(ic->cache, url);
+            }
         }
     }
     if (data != NULL && ic->freefn != NULL) {

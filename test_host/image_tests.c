@@ -1308,3 +1308,208 @@ cleanup:
     PCore_SetViewport(240, 320, 96);
     return ok;
 }
+
+typedef struct test1318_data_uri_fixture {
+    int callback_calls;
+} test1318_data_uri_fixture;
+
+static char g_test1318_failure[384];
+
+const char *test1318_core_css_data_uri_last_error(void)
+{
+    return g_test1318_failure;
+}
+
+static int test1318_data_uri_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    test1318_data_uri_fixture *fixture;
+
+    fixture = (test1318_data_uri_fixture *) pw;
+    if (fixture != NULL) {
+        fixture->callback_calls++;
+    }
+    if (out_data != NULL) {
+        *out_data = NULL;
+    }
+    if (out_len != NULL) {
+        *out_len = 0;
+    }
+    (void) url;
+    return 1;
+}
+
+static void test1318_data_uri_free(void *pw, char *data)
+{
+    (void) pw;
+    free(data);
+}
+
+/* TEST 1318 - CSS data:image/svg+xml must travel through Core's computed
+ * background-image discovery, bounded data-URI decoder, document image cache,
+ * positron_image SVG decoder and the normal Core paint path.  The callback is
+ * intentionally a hard failure: data URLs are local bytes and must never be
+ * routed to the host's HTTP transport. */
+BOOL test1318_core_css_data_uri(void)
+{
+    static const char HTML[] =
+            "<!doctype html><html><body>"
+            "<div id='percent'></div><div id='base64'></div>"
+            "<div id='invalid'></div><div id='oversize'></div>"
+            "</body></html>";
+    static const char CSS[] =
+            "html,body{margin:0;padding:0;background:#ffffff;}"
+            "#percent,#base64,#invalid,#oversize{display:block;width:24px;"
+            "height:24px;"
+            "background-color:#ffffff;background-repeat:no-repeat;"
+            "background-position:0 0;}"
+            "#percent{background-image:url('data:image/svg+xml,%3Csvg%20"
+            "xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20"
+            "width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%20"
+            "24%2024%22%3E%3Cpath%20fill%3D%22%23000%22%20d%3D%22"
+            "M3%205h18v3H3zM3%2010h18v3H3zM3%2015h18v3H3z%22%2F%3E"
+            "%3C%2Fsvg%3E');}"
+            "#base64{margin-top:4px;background-image:url('data:image/"
+            "svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAw"
+            "MC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0"
+            "IDI0Ij48cGF0aCBmaWxsPSIjMDAwIiBkPSJNMyA1aDE4djNIM3pNMyAxMGgx"
+            "OHYzSDN6TTMgMTVoMTh2M0gzeiIvPjwvc3ZnPg==');}"
+            "#invalid{background-image:url('data:image/svg+xml,%ZZ');}";
+    static const char OVERSIZE_PREFIX[] =
+            "#oversize{background-image:url('data:image/svg+xml,<svg "
+            "xmlns=\"http://www.w3.org/2000/svg\">";
+    static const char OVERSIZE_PATH[] = "<path d=\"M0 0h1v1z\"/>";
+    static const char OVERSIZE_SUFFIX[] = "</svg>');}";
+    HANDLE document;
+    HANDLE sheet;
+    test1318_data_uri_fixture fixture;
+    PCoreImageDecodeStats image_stats;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    COLORREF percent_pixel;
+    COLORREF base64_pixel;
+    int found;
+    int fetched;
+    int css_len;
+    int i;
+    size_t prefix_len;
+    size_t path_len;
+    size_t suffix_len;
+    size_t oversize_len;
+    int path_count;
+    char *css_data;
+    BOOL ok;
+
+    strcpy(g_test1318_failure, "not run");
+    document = NULL;
+    sheet = NULL;
+    memset(&fixture, 0, sizeof(fixture));
+    memset(&image_stats, 0, sizeof(image_stats));
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    found = 0;
+    fetched = 0;
+    css_len = 0;
+    i = 0;
+    prefix_len = strlen(OVERSIZE_PREFIX);
+    path_len = strlen(OVERSIZE_PATH);
+    suffix_len = strlen(OVERSIZE_SUFFIX);
+    path_count = 65;
+    oversize_len = prefix_len + path_len * (size_t) path_count + suffix_len;
+    css_data = NULL;
+    percent_pixel = RGB(255, 255, 255);
+    base64_pixel = RGB(255, 255, 255);
+    ok = FALSE;
+
+    document = PCore_ParseHTML(HTML, (int) sizeof(HTML) - 1);
+    css_len = (int) (sizeof(CSS) - 1 + oversize_len);
+    css_data = (char *) malloc((size_t) css_len + 1);
+    if (css_data == NULL) {
+        strcpy(g_test1318_failure, "oversize fixture allocation failed");
+        goto cleanup;
+    }
+    memcpy(css_data, CSS, sizeof(CSS) - 1);
+    memcpy(css_data + sizeof(CSS) - 1, OVERSIZE_PREFIX, prefix_len);
+    for (i = 0; i < path_count; i++) {
+        memcpy(css_data + sizeof(CSS) - 1 + prefix_len +
+                (size_t) i * path_len, OVERSIZE_PATH, path_len);
+    }
+    memcpy(css_data + sizeof(CSS) - 1 + oversize_len - suffix_len,
+            OVERSIZE_SUFFIX, suffix_len);
+    css_data[css_len] = '\0';
+    sheet = PCore_ParseCSS(css_data, css_len,
+            "https://positron.local/data-uri.css");
+    PCore_SetViewport(80, 100, 96);
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_FetchImageResources(document, test1318_data_uri_fetch,
+            test1318_data_uri_free, &fixture, &found, &fetched) != 0 ||
+            found != 4 || fetched != 2 || fixture.callback_calls != 0) {
+        _snprintf(g_test1318_failure, sizeof(g_test1318_failure) - 1,
+                "data discovery found/fetched/callback=%d/%d/%d",
+                found, fetched, fixture.callback_calls);
+        g_test1318_failure[sizeof(g_test1318_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    if (PCore_LayoutDocument(document, 80, 100) != 0 ||
+            PCore_GetImageDecodeStats(document, &image_stats) != 0 ||
+            image_stats.svg_creates < 2) {
+        _snprintf(g_test1318_failure, sizeof(g_test1318_failure) - 1,
+                "layout/svg creates=%u", image_stats.svg_creates);
+        g_test1318_failure[sizeof(g_test1318_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 80, 100) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        strcpy(g_test1318_failure, "offscreen GDI allocation failed");
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 80, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+    percent_pixel = GetPixel(memory_dc, 10, 6);
+    base64_pixel = GetPixel(memory_dc, 10, 34);
+    if (!test1314_color_close(percent_pixel, RGB(0, 0, 0)) ||
+            !test1314_color_close(base64_pixel, RGB(0, 0, 0))) {
+        _snprintf(g_test1318_failure, sizeof(g_test1318_failure) - 1,
+                "paint percent/base64=%06lX/%06lX",
+                (unsigned long) percent_pixel & 0xffffffUL,
+                (unsigned long) base64_pixel & 0xffffffUL);
+        g_test1318_failure[sizeof(g_test1318_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    ok = TRUE;
+    strcpy(g_test1318_failure, "ok");
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    free(css_data);
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    PCore_SetViewport(240, 320, 96);
+    return ok;
+}

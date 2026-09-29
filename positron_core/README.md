@@ -44,6 +44,15 @@ PENDING callback 不应返回 body。Core 不解析相对 URL，也不访问文�
 仍负责把资源引用变成可请求 URL。资源进入 cache 后，调用方必须重新 layout/paint，才能得到
 image box 与 SVG/PNG/JPEG/GIF 的解码结果。
 
+CSS `background-image` 还支持一条明确有界的本地路径：`data:image/svg+xml,` 后跟
+percent-encoded bytes，或 `data:image/svg+xml;base64,` 后跟标准 Base64。Core 在资源发现阶段
+解码这两种形式，把结果写入同一份 document image cache，再沿现有 `positron_image.dll` SVG
+创建、intrinsic-size、background-position/size/repeat 和 GDI paint 路径处理；不会把 `data:`
+交给宿主 HTTP callback，也不在应用中自绘图标。单个 data URL 最大 256 KiB，解码结果最大
+64 KiB，SVG 最多 128 个元素和 64 个 `path`；非法 MIME、percent/Base64、控制字符、超限或
+复杂度超限都拒绝并保持旧页面状态（能够建立 cache key 的 URI 会记录终态失败）。普通网络 SVG 以及网络 PNG/JPEG/GIF 仍沿原
+callback/cache/decode 路径，不会因为该本地适配获得隐式协议或 MIME 推断。
+
 对于已解码的 SVG CSS `background-image`，Core 还有一个有界的响应式适配：当背景不重复且
 intrinsic 尺寸超出背景定位区域时，redraw 会按 preserve-aspect-ratio 的 contain 规则缩小，
 并保留 computed `background-position` 的相对位置。设备 viewport 由
