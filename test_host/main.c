@@ -567,7 +567,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1321
+#define TEST_MAX_NUMBER 1322
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -112696,6 +112696,149 @@ static BOOL test1320_browser_document_click_delegation(void)
     return TRUE;
 }
 
+/* TEST 1322 - the application script profile keeps the legacy Browser
+ * session ceiling intact while admitting a bounded retained-script workload.
+ * This is an API/heap contract test; it does not embed a third-party page. */
+static BOOL test1322_browser_application_script_profile(void)
+{
+    HANDLE legacy;
+    HANDLE session;
+    HANDLE invalid;
+    char *source;
+    int capacity;
+    int length;
+    int i;
+    int written;
+    int rc;
+    unsigned long used;
+    unsigned long peak;
+    unsigned long limit;
+    const char *result;
+    const char *error;
+    char detail[512];
+    BOOL ok;
+
+    legacy = NULL;
+    session = NULL;
+    invalid = NULL;
+    source = NULL;
+    capacity = (int) PSCRIPT_MAX_SOURCE_BYTES + 1;
+    length = 0;
+    rc = PSCRIPT_ERROR_ARGUMENT;
+    used = 0;
+    peak = 0;
+    limit = 0;
+    result = NULL;
+    error = NULL;
+    memset(detail, 0, sizeof(detail));
+    ok = TRUE;
+
+    legacy = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS);
+    if (legacy == NULL || PScript_GetMemoryLimit(
+            PBrowser_ScriptSessionRuntime(legacy)) !=
+            PBROWSER_SCRIPT_DEFAULT_MEMORY_LIMIT_BYTES) {
+        ok = FALSE;
+    }
+    if (ok) {
+        invalid = PBrowser_ScriptSessionCreateEx(PSCRIPT_DEFAULT_BUDGET_MS,
+                PBROWSER_SCRIPT_DEFAULT_MEMORY_LIMIT_BYTES - 1UL);
+        if (invalid != NULL) {
+            ok = FALSE;
+            PBrowser_ScriptSessionDestroy(invalid);
+            invalid = NULL;
+        }
+    }
+    if (ok) {
+        invalid = PBrowser_ScriptSessionCreateEx(PSCRIPT_DEFAULT_BUDGET_MS,
+                PBROWSER_SCRIPT_MAX_MEMORY_LIMIT_BYTES + 1UL);
+        if (invalid != NULL) {
+            ok = FALSE;
+            PBrowser_ScriptSessionDestroy(invalid);
+            invalid = NULL;
+        }
+    }
+    session = PBrowser_ScriptSessionCreateEx(PSCRIPT_DEFAULT_BUDGET_MS * 4UL,
+            PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
+    if (ok && session == NULL) {
+        ok = FALSE;
+    }
+    source = (char *) malloc((size_t) capacity);
+    if (ok && source == NULL) {
+        ok = FALSE;
+    }
+    if (ok) {
+        for (i = 0; i < 1500; i++) {
+            written = _snprintf(source + length, capacity - length,
+                    "var profile_value_%04d='positron-%04d-"
+                    "0123456789012345678901234567890123456789';",
+                    i, i);
+            if (written <= 0 || written >= capacity - length) {
+                ok = FALSE;
+                break;
+            }
+            length += written;
+        }
+    }
+    if (ok) {
+        written = _snprintf(source + length, capacity - length,
+                "profile_value_%04d;", 1499);
+        if (written <= 0 || written >= capacity - length) {
+            ok = FALSE;
+        } else {
+            length += written;
+        }
+    }
+    if (ok && (PBrowser_ScriptSessionSetGlobalString(session,
+            "__pcoreDocumentUrl", "https://positron.local/profile") !=
+            PSCRIPT_OK || PBrowser_ScriptSessionSetGlobalNumber(session,
+            "__pcoreHistoryLength", 1.0) != PSCRIPT_OK ||
+            PBrowser_ScriptSessionSetGlobalJson(session,
+            "__pcoreHistoryState", "null") != PSCRIPT_OK ||
+            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK)) {
+        ok = FALSE;
+    }
+    if (ok) {
+        rc = PBrowser_ScriptSessionEvaluate(session, source, length);
+        result = PBrowser_ScriptSessionGetResult(session);
+        error = PBrowser_ScriptSessionGetError(session);
+        used = PScript_GetMemoryUsed(PBrowser_ScriptSessionRuntime(session));
+        peak = PScript_GetPeakMemoryUsed(
+                PBrowser_ScriptSessionRuntime(session));
+        limit = PScript_GetMemoryLimit(PBrowser_ScriptSessionRuntime(session));
+        if (rc != PSCRIPT_OK || result == NULL ||
+                strcmp(result, "positron-1499-0123456789012345678901234567890123456789") != 0 ||
+                limit != PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES ||
+                peak == 0 || peak > limit || used > limit) {
+            ok = FALSE;
+        }
+    }
+    if (ok && PScript_CollectGarbage(PBrowser_ScriptSessionRuntime(session)) !=
+            PSCRIPT_OK) {
+        ok = FALSE;
+    }
+    if (!ok) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "rc=%d result=%s error=%s used=%lu peak=%lu limit=%lu "
+                "source=%d/%d",
+                rc, result != NULL ? result : "", error != NULL ? error : "",
+                used, peak, limit, length, capacity);
+        detail[sizeof(detail) - 1] = '\0';
+    }
+    free(source);
+    PBrowser_ScriptSessionDestroy(session);
+    PBrowser_ScriptSessionDestroy(legacy);
+    if (!ok) {
+        show_error(L"TEST 1322 FAIL", detail[0] != '\0' ? detail :
+                "bounded application script profile failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1322 OK",
+            "Legacy 1.5 MiB Browser sessions remain bounded; the explicit "
+            "3 MiB application profile evaluated a retained 128 KiB-class "
+            "script and reclaimed it successfully.");
+    return TRUE;
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -115856,6 +115999,9 @@ static int run_configured_tests(const unsigned char *selected,
                 show_error(L"TEST 1321 FAIL",
                         "positron_db local/sync contract failed.");
             }
+            break;
+        case 1322:
+            ok = test1322_browser_application_script_profile();
             break;
         default: ok = FALSE; break;
         }

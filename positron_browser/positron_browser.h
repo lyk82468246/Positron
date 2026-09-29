@@ -2630,11 +2630,23 @@ typedef struct PBrowserScriptImageSourceCallbacks {
 } PBrowserScriptImageSourceCallbacks;
 
 /* Browser script session. The session owns one browser-sized PScript context
- * (the browser bootstrap uses a bounded 1.5 MiB heap ceiling) and all
- * registered native functions. It does not own a core document or any host
- * callback pw value. Return codes from Evaluate/Call/Set/Register are the
- * stable positron_script result codes; zero is success. */
+ * and all registered native functions. It does not own a core document or
+ * any host callback pw value. Return codes from Evaluate/Call/Set/Register
+ * are the stable positron_script result codes; zero is success.
+ *
+ * The legacy Create entry keeps the default 1.5 MiB browser heap. CreateEx
+ * adds an explicitly bounded profile for consumers that execute several
+ * retained third-party scripts. Zero selects the legacy default; values
+ * below the default or above the application ceiling fail closed. There is
+ * no unbounded profile. */
+#define PBROWSER_SCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (1536UL * 1024UL)
+#define PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES (3UL * 1024UL * 1024UL)
+#define PBROWSER_SCRIPT_MAX_MEMORY_LIMIT_BYTES \
+        PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES
+
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms);
+PBROWSER_API HANDLE PBrowser_ScriptSessionCreateEx(unsigned long budget_ms,
+        unsigned long memory_limit_bytes);
 PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession);
 PBROWSER_API int PBrowser_ScriptSessionRegisterJsonFunction(HANDLE hSession,
         const char *name, PBrowserScriptJsonFunctionFn fn, void *pw);
@@ -3310,6 +3322,14 @@ PBROWSER_API const char *PBrowser_ScriptSessionGetResult(HANDLE hSession);
 PBROWSER_API const char *PBrowser_ScriptSessionGetError(HANDLE hSession);
 PBROWSER_API unsigned long PBrowser_ScriptSessionNativeFunctionCount(
         HANDLE hSession);
+/* Bounded maintenance and diagnostics for long-lived hosts. Collection does
+ * not change globals or Browser state; the counters are snapshots owned by
+ * the session and return zero for an invalid handle. */
+PBROWSER_API int PBrowser_ScriptSessionCollectGarbage(HANDLE hSession);
+PBROWSER_API unsigned long PBrowser_ScriptSessionMemoryUsed(HANDLE hSession);
+PBROWSER_API unsigned long PBrowser_ScriptSessionPeakMemoryUsed(
+        HANDLE hSession);
+PBROWSER_API unsigned long PBrowser_ScriptSessionMemoryLimit(HANDLE hSession);
 
 /* Borrowed compatibility handle for consumers that still use read-only
  * positron_script diagnostics during this migration. The returned HANDLE is

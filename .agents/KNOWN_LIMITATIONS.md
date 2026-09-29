@@ -49,8 +49,9 @@
   content `checked` 属性，option 读取 Core relation 45 的 default-selected 快照，
   submit-capable button/input/image 只匹配所属 form 中按文档顺序的第一个 submit control。
   live `.checked`/`selectedIndex` mutation 不会改写默认状态；relation 缺失、非支持元素、
-  带参数、伪元素或尾随逗号仍 fail closed。TEST1181 通过多个短脚本 session 适配固定的
-  1.5 MiB Browser heap；这不代表完整 `:default` 选择器、native 默认按钮行为或视觉保证。
+  带参数、伪元素或尾随逗号仍 fail closed。TEST1181 通过多个短脚本 session 适配 legacy
+  1.5 MiB Browser heap；应用的 3 MiB Ex profile 仍不代表完整 `:default` 选择器、native
+  默认按钮行为或视觉保证。
 - `<option>` 的脚本 `selected`/`defaultSelected` 属性只在宿主注册
   `PBrowserScriptOptionCallbacks` 后可用。`selected` 通过 Core 按 id API 修改 live
   选择并遵守单选互斥/多选规则；`defaultSelected` 只修改 Core 默认基线，不改写 content
@@ -110,10 +111,10 @@
 ## 图像与 SVG
 
 - 位图能力受 WM Imaging 与固定 libjpeg-turbo 版本限制，不宣称支持所有损坏或渐进编码边界。
-- SVG 是 libsvgtiny 与 NanoSVG 的有限组合，不支持完整 SVG DOM、filter、mask、animation、script、external resource、完整 paint server 和任意文本排版。
-- 径向渐变焦点、spread method、复杂继承和部分 alpha/compositing 边界仍不完整。
-- 当前 WinWorld navbar fixture 所需的 `rgba()` stroke、`stroke-opacity` 以及 `butt|round|square` linecap 已由 `positron_image.dll` 支持，并由 TEST1319 覆盖；这只证明该有界绘制路径，不代表完整 SVG/CSS cascade，也不替代 `positron.exe` 页面截图验收。
-- Core 的页面 image cache 有固定数量和字节预算，超限或解码失败时降级为 alt/src 文本。
+- SVG 是 libsvgtiny 与 NanoSVG 的有限组合，不支持完整 SVG DOM、filter、mask、animation、script、external resource、paint server 和任意文本排版。
+- 径向渐变焦点、spread method、复杂继承和部分 alpha 边界仍不完整。
+- WinWorld navbar 所需的 `rgba()` stroke、`stroke-opacity` 和三种 linecap 已由 Image/TEST1319 覆盖；这不代表完整 SVG/CSS cascade 或应用截图通过。
+- Core image cache 超限或解码失败时降级为 alt/src 文本。
 - `HTMLImageElement` 目前只有有界的属性/资源状态 bridge：`alt`、raw `src`/`srcset`/
   `sizes`/`useMap`、`crossOrigin`、`isMap`、`controls`、`width`/`height`、
   `referrerPolicy`、`decoding`、`loading`、`fetchPriority`、`currentSrc` 以及
@@ -327,9 +328,10 @@
 - 浏览器 JavaScript 默认关闭，启用后仍是实验性的有界 classic-script 组合。
 - 独立 script 和浏览器 script 共用 Duktape 2.7.0，不存在第二套引擎；两者提供的 host objects 与生命周期不同。
 - 不支持 ES module、dynamic import、WebAssembly、worker、service worker 或完整现代 ECMAScript host environment；WinWorld `/home` 的 module 位图暂缺。
-- Storage maps are session-local and independent; quota is 64 entries with 256/4096 UTF-16 key/value characters. Over-limit writes atomically throw `QuotaExceededError`; `setItem()`/`getItem()`/`toJSON()` safely preserve object-property names such as `hasOwnProperty` and `__proto__`; persistence is not provided.
-- Browser `Headers`/`Request`/`Response` metadata remains bounded and synchronous; `Headers` accepts at most 128 canonicalized pairs, and its object initialization/JSON snapshot safely preserve object-property header names. It does not provide network fetch, streaming bodies, or full browser header/security policy.
-- Browser bootstrap 只暴露当前已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。
+- 真实 WinWorld 日志曾显示 jQuery/Bootstrap/bootstrap-multiselect 已通过 128 KiB source gate，却在 legacy 1.5 MiB Browser heap 以 `PSCRIPT_ERROR_MEMORY_LIMIT (-6)` 失败；应用现用固定 3 MiB Ex profile，并在脚本之间回收短命对象。该修正仍需新的 `positron.exe` 日志证明这些脚本实际执行，不能写成 Bootstrap 已兼容。
+- Storage maps are session-local: at most 64 entries, 256-character keys and 4096-character values; overflow throws `QuotaExceededError`, and persistence is not provided.
+- Browser `Headers`/`Request`/`Response` metadata is synchronous and bounded to 128 header pairs; network fetch, streaming bodies and full header/security policy are not provided.
+- Browser bootstrap 只暴露已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。source 上限为 128 KiB。
 - `document.write()`/`writeln()` 仅在 callback 存在时安装；受 16,384 字节和 parser 预算约束，
   不提供动态脚本、资源、`open()`/`close()` 或流式重写。源文本的 `<script...` 保护扫描只
   属于 document-write 边界，不改变其他 HTML mutation parser 的合同。
@@ -366,7 +368,7 @@
   没有 id、layout 或 retained scrollbar 时安全 no-op。`scrollIntoView()` 的祖先链仍是
   有界的，不提供完整滚动树或标准 scroll chaining。
 - 脚本任务队列不会自行创建线程或从 Browser session 后台推进。宿主必须在自己的 UI 消息循环中调用独立 pump，或用 `PBrowser_ScriptSessionRunTaskCheckpoint` 选择阶段；统一入口按 timer → animation frame → message → idle 的顺序运行，并在每个阶段后执行一次有界 microtask。宿主仍负责单调时钟、frame timestamp、idle deadline、message limit 和调度/功耗策略；未调用 pump 的页面不会推进这些异步队列。
- - script/DOM heap、native function、module/source、timer、queue 和执行时间都有固定预算；`positron_script.dll` context 512 KiB、Browser bootstrap 1.5 MiB、native function 上限 29。宿主必须在达到上限时保守失败；不能跳过必要桥或改成无界表。
+- script/DOM heap、native function、module/source、timer、queue 和执行时间都有固定预算；`positron_script.dll` context 512 KiB、Browser legacy session 1.5 MiB、`positron.exe` 的 Ex profile 3 MiB、native function 上限 29。`PSCRIPT_ERROR_MEMORY_LIMIT (-6)` 必须保留为可解释的运行期失败；宿主只能选用这个固定 profile 或回收短命对象，不能改成无界表。
 - 页面首次完成加载时，宿主需显式推进 `PBrowser_ScriptSessionDispatchPageLifecycle("complete")`；Browser 在既有的 `readystatechange`、`DOMContentLoaded`、`load` 序列后派发一次 `pageshow`，重复 complete 不会复制。宿主驱动可见性时，进入 hidden 派发 `visibilitychange`→`pagehide`，恢复 visible 派发 `visibilitychange`→`pageshow`，相同状态保持静默；参考宿主已把顶层 `WM_SHOWWINDOW` 映射到这个 API，但其他宿主仍必须自行接线；`persisted` 固定为 `false`，不提供 bfcache。页面替换仍要求先显式调用 `PBrowser_ScriptSessionDispatchBeforeUnload`：在旧 session 仍有效时同步派发有界、可取消的 `beforeunload`，由宿主决定是否提供自己的确认 UI；参考宿主没有 prompt，取消或脚本调用失败就保留当前页面。允许继续后再调用 `PBrowser_ScriptSessionDispatchPageTeardown`，派发 `visibilitychange`、`pagehide`、`unload` 并清理页面队列；不提供异步卸载保证。
 - 窗口 focus/blur 也必须由宿主在每次 `WM_ACTIVATE` 时调用 `PBrowser_ScriptSessionDispatchWindowFocus`；新 session 默认 focused，非激活窗口创建后要补发零值。该 API 只同步脚本状态和事件，不侦测 OEM 激活，也不保证 native HWND 焦点或视觉结果。
 - `document.activeElement` 只有在宿主注册 `PBrowserScriptActiveElementCallbacks`
@@ -467,7 +469,7 @@
 - TEST1154 覆盖 Browser selector 的有限结构伪类：`:root`、`:empty`、child/of-type
   变体和四种 `nth-*` 变体；支持整数、`odd`/`even` 和受限 `an+b` 公式，并确认空公式、
   `of` 过滤、伪元素和超大数值 fail closed。判断使用只读 childNodes/关系快照，
-  仍受 64 步、公式系数和 1.5 MiB Browser heap 上限约束；完整动态状态、伪元素、namespace、
+  仍受 64 步、公式系数和 legacy 1.5 MiB Browser heap 上限约束（应用可用 3 MiB Ex profile）；完整动态状态、伪元素、namespace、
   shadow DOM 和 CSS Selectors 语法不在保证范围内。
 - TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option

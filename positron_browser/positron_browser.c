@@ -14,12 +14,9 @@
 #include "positron_script.h"
 
 /* The browser bootstrap owns additional bounded DOM, geometry and scrolling
- * layers beyond the standalone script surface. Keep its heap ceiling explicit
- * and local to browser sessions; independent PScript contexts remain at their
- * 512 KiB default. The extra 1 MiB leaves bounded room for the browser
- * bridge state, DOM adapters and transient conversion workspaces. */
-#define P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES \
-        (PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES + 1024UL * 1024UL)
+ * layers beyond the standalone script surface. The public header exposes the
+ * legacy default and the explicitly bounded application profile so a host can
+ * choose a documented ceiling without reaching into this implementation. */
 
 typedef struct p_browser_history {
     char entries[PBROWSER_HISTORY_MAX][PBROWSER_HISTORY_URL_MAX];
@@ -12007,7 +12004,22 @@ static int p_browser_script_scroll(void *pw,
 
 PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
 {
+    return PBrowser_ScriptSessionCreateEx(budget_ms, 0);
+}
+
+PBROWSER_API HANDLE PBrowser_ScriptSessionCreateEx(unsigned long budget_ms,
+        unsigned long memory_limit_bytes)
+{
     p_browser_script_session *session;
+    unsigned long memory_limit;
+
+    memory_limit = memory_limit_bytes == 0 ?
+            PBROWSER_SCRIPT_DEFAULT_MEMORY_LIMIT_BYTES :
+            memory_limit_bytes;
+    if (memory_limit < PBROWSER_SCRIPT_DEFAULT_MEMORY_LIMIT_BYTES ||
+            memory_limit > PBROWSER_SCRIPT_MAX_MEMORY_LIMIT_BYTES) {
+        return NULL;
+    }
 
     session = (p_browser_script_session *) malloc(sizeof(*session));
     if (session == NULL) {
@@ -12063,8 +12075,7 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreate(unsigned long budget_ms)
     session->dom_attribute = NULL;
     session->event = NULL;
     session->current_script_index = -1;
-    session->runtime = PScript_CreateEx(budget_ms,
-            P_BROWSER_SCRIPT_MEMORY_LIMIT_BYTES);
+    session->runtime = PScript_CreateEx(budget_ms, memory_limit);
     if (session->runtime == NULL) {
         free(session);
         return NULL;
@@ -19031,6 +19042,45 @@ PBROWSER_API unsigned long PBrowser_ScriptSessionNativeFunctionCount(
         return 0;
     }
     return PScript_GetNativeFunctionCount(session->runtime);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionCollectGarbage(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PScript_CollectGarbage(session->runtime);
+}
+
+PBROWSER_API unsigned long PBrowser_ScriptSessionMemoryUsed(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    return p_script_session_valid(session) ?
+            PScript_GetMemoryUsed(session->runtime) : 0;
+}
+
+PBROWSER_API unsigned long PBrowser_ScriptSessionPeakMemoryUsed(
+        HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    return p_script_session_valid(session) ?
+            PScript_GetPeakMemoryUsed(session->runtime) : 0;
+}
+
+PBROWSER_API unsigned long PBrowser_ScriptSessionMemoryLimit(HANDLE hSession)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    return p_script_session_valid(session) ?
+            PScript_GetMemoryLimit(session->runtime) : 0;
 }
 
 PBROWSER_API HANDLE PBrowser_ScriptSessionRuntime(HANDLE hSession)

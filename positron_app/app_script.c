@@ -13,7 +13,6 @@
 #include "positron_script.h"
 
 #define APP_SCRIPT_EVENT_MAX          64
-#define APP_SCRIPT_MAX_SOURCE_BYTES   (64 * 1024)
 #define APP_SCRIPT_NO_SELECT_KEY      0xffffffffUL
 
 typedef struct AppScriptEventBinding AppScriptEventBinding;
@@ -51,11 +50,21 @@ static void app_script_debug_log_script(AppScriptContext *context, int index,
         const char *outcome, int result)
 {
     char message[1024];
+    HANDLE session;
+    unsigned long memory_used;
+    unsigned long memory_peak;
+    unsigned long memory_limit;
+
+    session = context != NULL ? context->session : NULL;
+    memory_used = PBrowser_ScriptSessionMemoryUsed(session);
+    memory_peak = PBrowser_ScriptSessionPeakMemoryUsed(session);
+    memory_limit = PBrowser_ScriptSessionMemoryLimit(session);
 
     _snprintf(message, sizeof(message) - 1,
             "positron script-state page=%s index=%d kind=%d url=%s "
             "available=%d source_bytes=%d url_bytes=%d type_bytes=%d "
-            "data_bytes=%d type=%s outcome=%s result=%d\r\n",
+            "data_bytes=%d type=%s outcome=%s result=%d "
+            "heap_used=%lu heap_peak=%lu heap_limit=%lu\r\n",
             context != NULL ? context->document_url : "",
             index,
             info != NULL ? info->kind : 0,
@@ -67,7 +76,7 @@ static void app_script_debug_log_script(AppScriptContext *context, int index,
             info != NULL ? info->data_bytes : 0,
             type != NULL ? type : "",
             outcome != NULL ? outcome : "",
-            result);
+            result, memory_used, memory_peak, memory_limit);
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 }
@@ -76,12 +85,24 @@ static void app_script_debug_log_summary(AppScriptContext *context, int count,
         int executed, int ignored, int errors)
 {
     char message[512];
+    HANDLE session;
+    unsigned long memory_used;
+    unsigned long memory_peak;
+    unsigned long memory_limit;
+
+    session = context != NULL ? context->session : NULL;
+    memory_used = PBrowser_ScriptSessionMemoryUsed(session);
+    memory_peak = PBrowser_ScriptSessionPeakMemoryUsed(session);
+    memory_limit = PBrowser_ScriptSessionMemoryLimit(session);
 
     _snprintf(message, sizeof(message) - 1,
             "positron script-summary page=%s count=%d executed=%d "
-            "ignored=%d errors=%d\r\n",
+            "ignored=%d errors=%d max_source_bytes=%lu "
+            "heap_used=%lu heap_peak=%lu heap_limit=%lu\r\n",
             context != NULL ? context->document_url : "",
-            count, executed, ignored, errors);
+            count, executed, ignored, errors,
+            (unsigned long) PSCRIPT_MAX_SOURCE_BYTES, memory_used,
+            memory_peak, memory_limit);
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 }
@@ -1631,8 +1652,9 @@ AppScriptContext *AppScript_Create(HANDLE document,
     context->viewport_width = viewport_width > 0 ? viewport_width : 1;
     context->viewport_height = viewport_height > 0 ? viewport_height : 1;
     context->dpi = dpi > 0 ? dpi : 96;
-    context->session = PBrowser_ScriptSessionCreate(
-            PSCRIPT_DEFAULT_BUDGET_MS * 4UL);
+    context->session = PBrowser_ScriptSessionCreateEx(
+            PSCRIPT_DEFAULT_BUDGET_MS * 4UL,
+            PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
     if (context->session == NULL) {
         free(context);
         return NULL;
@@ -1787,7 +1809,8 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
             ignored++;
             continue;
         }
-        if (info.kind == 1 && info.source_bytes > APP_SCRIPT_MAX_SOURCE_BYTES) {
+        if (info.kind == 1 && info.source_bytes >
+                (int) PSCRIPT_MAX_SOURCE_BYTES) {
 #ifdef _DEBUG
             app_script_debug_log_script(context, i, &info, debug_url, NULL,
                     "ignored-size", 0);
@@ -1795,7 +1818,8 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
             ignored++;
             continue;
         }
-        if (info.kind == 2 && info.data_bytes > APP_SCRIPT_MAX_SOURCE_BYTES) {
+        if (info.kind == 2 && info.data_bytes >
+                (int) PSCRIPT_MAX_SOURCE_BYTES) {
 #ifdef _DEBUG
             app_script_debug_log_script(context, i, &info, debug_url, NULL,
                     "ignored-size", 0);
@@ -1844,6 +1868,17 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
 #endif
             ignored++;
         } else {
+            result = PBrowser_ScriptSessionCollectGarbage(context->session);
+            if (result != PSCRIPT_OK) {
+#ifdef _DEBUG
+                app_script_debug_log_script(context, i, &info, debug_url,
+                        type, "gc-error", result);
+#endif
+                errors++;
+                free(source);
+                free(type);
+                continue;
+            }
             result = PBrowser_ScriptSessionSetCurrentScriptIndex(
                     context->session, i);
             if (result != PSCRIPT_OK) {

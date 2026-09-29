@@ -154,9 +154,11 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     class/aria mutation、重复注册、移除、once/capture 和 64 项预算；
     `tmp/device-runs/20260929-132600-next1320-document-click-final2` 已用匹配 DLL 取得
     `1320,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一 `TESTBENCH PASS` 和零
-    ERROR/FAIL 的证据。下一步只是在 `positron.exe` 的 WinWorld 页面记录 Bootstrap 脚本的
-    fetch/execute/ignored/error 状态和菜单 DOM 变化。Release 应用工程已链接，完整解决方案的 CABWiz
-    数据文件生成失败，不能把 Release 全量门写成通过。
+    ERROR/FAIL 的证据。最新 WinWorld 日志证明 jQuery/Bootstrap/bootstrap-multiselect 已越过
+    128 KiB source gate 但在 legacy 1.5 MiB Browser heap 以 `PSCRIPT_ERROR_MEMORY_LIMIT (-6)`
+    失败；当前准备取舍是先验证 Browser 的 1.5–3 MiB bounded Ex profile、脚本间 GC 和 telemetry，
+    再用 `positron.exe` 重新记录 fetch/execute/ignored/error 与菜单 DOM 变化。Release 应用工程已
+    链接，完整解决方案的 CABWiz 数据文件生成失败，不能把 Release 全量门写成通过。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，
@@ -206,6 +208,11 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
     File/Blob→Core multipart 转换、formdata 对象上传、富文本与 Range/Selection 对象仍未接入。
     RAPI 设备传输按用户决定暂停，不据此宣布设备基线；恢复设备传输后先验收本纵切的 method/enctype、
     picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
+
+本轮把“外部脚本内存不足”收束为一个可验证的公共 DLL 边界：旧 Browser session ABI/1.5 MiB
+默认保持不变，应用使用 3 MiB 上限的 `CreateEx`，不得继续无条件放大。TEST1322 通过后，唯一
+下一步是匹配包上的 WinWorld debug capture；只有 jQuery/Bootstrap 实际执行且菜单仍失败，才
+为具体缺失的 DOM/API 另立消费者驱动的纵切。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、

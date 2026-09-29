@@ -13,25 +13,11 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 
 ## 当前里程碑
 
-当前中期里程碑仍是把 Core、Browser、HTTP/TLS、媒体与 WM6 应用接线收束为有界运行时。本批
-继续收束图片纵切：`positron_core.dll` 的异步 pending/retry 和 CSS `data:image/svg+xml`
-background 接线已完成，`positron_image.dll` 现在
-能在不破坏旧 ABI 的前提下消费 IANA 风格的简单 SVG class paint/gradient，并按 viewBox 保留
-没有显式宽高的 SVG 固有比例；Core 的高 DPI 重复 SVG 背景 tile 也已按设备 DPI 缩放。真实
-`positron.exe` 图片页面仍待人工观察。Media 的 DirectShow callback source filter/native 视频
-生命周期仍是独立后续边界；此前 HTTP(S) 导航与资源事务的源码事实保持不变。
-本轮又处理了同一 IANA 页面截图暴露的两处几何问题：EXE 地址栏不再使用私有 inset，并改为
-使用 native EDIT 实际 `SYSTEM_FONT` 的 `TEXTMETRIC.tmHeight` 加少量 DPI 留白计算外框高度；Core
-纵向 auto-height flex 在子项 `flex-basis:0` 时改用已布局实际高度贡献父容器。字体度量后的地址栏
-外框已进入上一批 Debug/Release 构建；最新截图又发现 native EDIT 内部文本格式矩形偏低；本轮已
-撤销按 DPI 上移内部格式矩形的临时修正，改为以实际 EDIT 字体的客户区行高加对称 DPI 留白，再用
-`AdjustWindowRectEx` 按控件实际边框换算外框高度。文本继续由 native EDIT 自己垂直居中，不再调用
-`EM_SETRECTNP`。该修正版已通过 C89、审计和 Debug/Release 增量构建，并已部署到新的设备隔离目录；
-`TEST999` 已通过，用户已确认新修正版 `positron.exe` 的地址栏文字上下边界和外框高度符合预期。
-本批还已加入 `positron_db.dll`：固定 SQLite 3.53.4 的本地完整 SQL/同步模式、版本化
-migration、typed bind/column、outbox/cursor/tombstone/conflict 以及不发送 SQL 的 REST 行级
-协议均已完成主机 contract；独立 REST fixture 已加入，网络 worker 和真实设备 DB 门仍是下一条
-DB 集成边界。
+当前中期里程碑仍是把 Core、Browser、HTTP/TLS、媒体与 WM6 应用接线收束为有界运行时。Core
+图片 pending/retry、CSS data URI、Image 的有限 SVG 样式/渐变/alpha、HTTP URL-aware 和
+Browser history/lifecycle/document click 纵切已有源码与离线/设备证据；DB 目前只有主机
+contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体播放和 DB worker 仍须独立门。
+本批新增的焦点是 WinWorld 外部 classic script 的固定内存 profile，不扩大其他产品边界。
 
 ## 当前源码事实
 
@@ -95,32 +81,9 @@ DB 集成边界。
   `pimage_raster.cpp` 把 stroke alpha 写入 NanoSVG paint，利用既有 premultiplied GDI
   `AlphaBlend` 合成；不改变 `PImage_*` 公共 ABI。TEST1319 使用精确 WinWorld 30x30 fixture，
   检查三条半透明灰线、round cap 延伸和端点外白像素，已在匹配 Debug ARMV4I 包上通过。
-- `positron.exe` 的顶层物理页面滚动已沿 `test_host` 的 retained-pixel 路径接线：纯滚动只更新
-  系统滚动条位置、用 `ScrollWindowEx` 移动已有像素并重绘暴露条带，再重定位同一窗口体系下的
-  native 子控件；不会在每个滚动步重新执行 Core layout，也不会重复同步 SELECT/toggle 状态。
-  `WM_SIZE`、Core/DOM mutation 和真正的 viewport 变化仍可触发完整 layout；该 EXE 路径已通过
-  C89、审计及 Debug/Release ARMV4I 构建，但尚未取得设备上的流畅性人工证据。与 TEST13
-  对比发现，参考宿主的实际渲染 HWND 带 `WS_CLIPCHILDREN` 并按 `PAINTSTRUCT.rcPaint` 清理；
-  EXE 的页面子窗口此前缺少该样式且按完整 client 矩形清理。本轮已补齐页面子窗口裁剪和
-  `rcPaint` 绘制边界；EXE 的 ScriptSession 仍保留 scroll 事件语义，scroll listener 修改 DOM
-  时触发 layout 属于合法内容变化，不以关闭脚本事件来掩盖。当前工作树又把页面脏区的
-  白底清理、Core 绘制和焦点框改为 EXE 私有兼容位图中的一次性 `BitBlt`；这只解决可见
-  窗口 DC 暴露中间帧，不改变 Core/Browser 滚动或脚本事件语义。Debug ARMV4I 正式构建
-  已通过，设备上的闪屏/撕裂人工结果仍待部署后确认。
-- `positron.exe` 的页面窗口现在按 Core 的最终 document extent 动态增删 `WS_HSCROLL`/
-  `WS_VSCROLL`，并在 `SWP_FRAMECHANGED` 引发的嵌套 `WM_SIZE` 期间暂缓重复 layout；样式
-  稳定后再用最终 client rect 重新排版和设置 native scrollbar range。页面创建时的默认
-  双滚动条不会再自动变成长期的顶层水平滚动条，真实的内层 overflow 仍由 Core 与原生
-  输入路径负责。该 EXE 改动已通过 C89、审计和 Debug 编译；Release 中 `positron_app`、
-  `positron_core` 与 `test_host` 均已编译/链接，但完整解决方案的 CABWiz 项目在生成 CAB
-  数据文件时失败，因此还没有把 Release 全量写成通过。最新 Debug 完整包已由正式
-  `scripts\stage.bat Debug` 生成，并复制 19/19 文件到
-  `\Storage Card\Temp\Positron-device-gate\exe-svg-uri-20260929-101500`；其中
-  `positron.exe` SHA-256 为 `34F7400C6B34AEFAC1499F6ECAE55DD278CF30BFDD07DDF934CC2C87091E4E53`，
-  `positron_core.dll` 为 `AF78491DB27D390A9A056FD85522F9EB5ECE91AD711D1DD69FC5DD7EED7C30EA`，
-  `positron_image.dll` 为 `A319C969F8344FC89E8855C4A591A9EA5C3063D5915A233AF66826E8E874FD3D`；
-  已启动该目录的 `positron.exe`，RAPI 返回 PID `1452160342`。部署未强杀设备上的旧进程，
-  因此视觉验收前必须确认窗口确实来自该新目录。
+- `positron.exe` 的 retained-pixel 滚动、页面裁剪、动态 scrollbar 和 nested overflow pointer
+  接线已经通过 C89/Debug 代码门；它们仍需要用户在匹配新进程上观察闪屏、横向拖动、旋转和
+  DPI。历史部署目录、PID 和 SHA-256 只保存在 `tmp/device-runs/`，不在此重复。
 - `positron.exe` 现在补齐了 `test_host` TEST42 的 nested retained-overflow 输入接线：页面窗口
   先把 WM6 的按下坐标换算为 Core document 坐标并调用 `PCore_OverflowPointer(DOWN)`，随后用
   `SetCapture` 将 MOVE/UP 保持在同一窗口；每次 Core pointer 更新后读取
@@ -171,6 +134,10 @@ DB 集成边界。
   成功，设备返回 `positron.exe` PID `2522227582`。远端回读的 `positron.exe`、`positron_core.dll`
   和 `positron_browser.dll` SHA-256 均与本地 stage 一致；该目录保留供用户在同一实例中打开
   WinWorld 并采集 Debug 脚本诊断，目前尚无页面脚本状态的人工结果。
+- `positron_script.dll` 的 source 上限为 128 KiB，独立 context 默认 heap 为 512 KiB。Browser
+  旧 `PBrowser_ScriptSessionCreate()` 仍为 1.5 MiB；新增 `PBrowser_ScriptSessionCreateEx()`
+  与 Browser-owned GC/heap telemetry 入口，固定允许范围为 1.5–3 MiB。`positron_app` 选择
+  3 MiB profile，并在每个 classic script 前回收短命对象；未提供无界 profile。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -270,32 +237,10 @@ tile、WinWorld rgba/round-cap Image 纵切以及 document delegated-click 合�
   保留 3 个既有 libcss 转换警告），但解决方案的既有 `positron_cab` CabWiz 报
   `Data files could not be created`，因此不能把完整 Release 解决方案写成通过；该工具链失败
   与本批 Browser/Core 改动无关。
-- 同一批 Debug staging 已复制到外置 `Storage Card\Temp\Positron-device-gate\iana-app-20260927`，
-  并通过 RAPI 成功启动 `positron.exe`；启动成功只证明匹配的 EXE/DLL 能运行，IANA 首页的
-  实际网络图片仍需用户在该应用窗口中导航后进行视觉确认。
-- 本轮 Debug 完整包已部署到当前 WMDC 设备：本地 stage 为
-  `tmp/device-runs/20260928-141835-address-font-20260928/stage`，EXE SHA-256 为
-  `69FA22C72ABBBAC3405F466C8D7FC801175570CBCFDA11F15583E5F24E100CD4`，与
-  `positron_app/bin/Debug/positron.exe` 一致；远端目录为
-  `\Storage Card\Temp\Positron-device-gate\address-font-20260928-20260928-141835`。
-  设备门 `TEST999` selected/observed 为 `1/1`、`core_module_check=PASS`、
-  `crash_check=PASS`、新增 dump 为 0；目录按诊断保留，但这仍不等于 `positron.exe` 页面视觉
-  验收。
-- 本轮 SVG 修复的 Debug 完整包已重新构建并部署：本地 stage 为
-  `tmp/device-runs/20260929-1055-svg-fix-deploy/stage`，远端目录为
-  `\Storage Card\Temp\Positron-device-gate\svg-fix-20260929-1055`，复制 19 个文件并启动
-  `positron.exe`（设备 PID `3060419658`）。远端回读与本地 stage 的 SHA-256 一致：EXE
-  `9E21D13F21EB7D00FE40DAFE75281F5F54DF1D8D0278D05C362654C088B77723`、Core
-  `5921EE4576B47971D953A00B7F212555BAD8D0B7EB1FE7D2B75A6AC6627D7494`、Image
-  `3D6459CC5FB1A76FD9B0FDF3D38CC832ACE7506EDC56A366C6713AFA5DB0BE08`。该证据确认设备运行
-  的是 `0e9688a2` 对应的新 Image DLL，但仍不等于页面视觉已经通过。
-- 本轮普通按钮点击接线修正版通过 `python scripts/test_c89ize.py`、`python scripts/audit_repo.py`
-  和正式 `scripts\build.bat Debug build`；完整 Debug stage 为
-  `tmp/device-runs/20260929-button-click/stage`，19 个文件已复制到
-  `\Storage Card\Temp\Positron-device-gate\button-click-20260929` 并启动
-  `positron.exe`，设备 PID 为 `2733577874`。本轮尚未取得用户在该实例中点击菜单按钮后的人工
-  视觉/脚本状态证据；若仍无菜单变化，下一步应检查页面脚本资源和 Browser session，而不是在
-  EXE 中硬编码 WinWorld 菜单行为。
+- TEST1322 已通过匹配 Debug ARMV4I 包的定向门：`tmp/device-runs/20260929-221805-next1322-script-heap`
+  中 `1322,999` 为 selected/observed `2/2`，唯一 `TESTBENCH PASS`，零 ERROR/FAIL，
+  `core_module_check=PASS`、`crash_check=PASS`、无新增 dump。门同时验证旧 1.5 MiB wrapper、
+  3 MiB Ex profile、非法范围 fail closed、bootstrap 后约 120 KiB retained script 和 GC。
 
 ## 设备证据与限制
 
@@ -384,9 +329,15 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 启动回归通过”，不算新 EXE/Core 的设备验收；必须先在设备任务管理器中真正退出旧
 `positron.exe`，再从本候选目录启动。
 
-设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
+最新消费者日志 `tmp/device-runs/debug-capture-20260929-214139/positron-debug.log` 已确认
+jQuery、Bootstrap 和 bootstrap-multiselect 的 `-6` 是旧 1.5 MiB heap 失败，而不是 128 KiB
+source gate；新的应用 profile 尚未取得真实页面日志。设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
 会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
 日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
+- 新 profile 的 `positron.exe` 已部署并启动，远端根为
+  `\Storage Card\Temp\Positron-device-gate\debug-capture-20260929-222012`，本地日志根为
+  `tmp/device-runs/debug-capture-20260929-222012`；启动快照只有 session 头，真实 WinWorld
+  导航与 hamburger 点击仍等待用户 GUI 操作，不能把启动成功写成脚本已执行。
 
 - 本轮把 EXE Debug 诊断从仅依赖 `OutputDebugStringW` 扩展为有界设备文件镜像：
   `positron_app/app_debug.c/.h` 在 `_DEBUG` 下把脚本逐项/汇总状态和图片摘要同时写入
@@ -451,8 +402,8 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步是在已加入 `scripts/db_sync_fixture.py` 的 REST fixture 上为 `positron_db.dll` 接入
-`positron_app` 单 owner DB worker：先验证分页/游标、`op_id` 幂等、服务器冲突/tombstone、schema mismatch、
-401/5xx/超时和 malformed/超大响应的失败不变性，再以正式 Debug/Release stage 在 WM6 上验收
-离线写入、重启恢复、HTTPS Bearer Token 和重连同步。现有 `positron.exe` WinWorld 应用门仍保留
-为独立人工 backlog；设备脚本继续不得连接、选择、重置或强杀设备。
+使用与 TEST1322 相同的正式 Debug 产物重新部署 `positron.exe`，在当前唯一 GUI 连接设备上
+回拉新的 `positron-debug.log`。确认 jQuery/Bootstrap 从 `runtime-error result=-6` 变为
+`executed result=0` 后，再判断菜单是否仍被 `-3` 脚本错误或缺失 DOM API 阻断；在此之前不扩大
+heap、不修改 Core/HTTP，也不加入 WinWorld 特判。DB worker、Standard SDK 和其他候选保持在
+路线图队列，不抢占这条已被真实消费者证明的纵切。

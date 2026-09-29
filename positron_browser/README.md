@@ -88,6 +88,15 @@ contenteditable 只支持单元素、纯文本、UTF-16 selection offset 和有�
 
 native function、listener、collection、Fragment 根、selector 深度、字符串、FormData pairs、资源项和任务队列均有固定 WM6 预算。所有 public entry 都检查 NULL、UTF-8、容量、索引、句柄和 owner；size-probe 不部分写出，超限不部分 mutation。错误码和 callback table 版本以 `positron_browser.h` 为准，新增能力应追加 Ex 版本而不是改变旧字段含义。
 
+脚本 session 的旧入口 `PBrowser_ScriptSessionCreate()` 保持 1.5 MiB heap ceiling，供既有消费者和回归夹具继续使用。需要连续执行多个保留状态的第三方 classic script 时，应用可以选择有界的 Ex profile：
+
+```c
+HANDLE session = PBrowser_ScriptSessionCreateEx(
+        4000UL, PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
+```
+
+`PBrowser_ScriptSessionCreateEx()` 只接受默认 1.5 MiB 到应用上限 3 MiB 的范围；传入零选择旧默认，低于默认或超过上限返回 `NULL`，不存在无限制模式。`positron.exe` 使用 3 MiB profile，但 source 仍受 `positron_script.dll` 的 128 KiB 上限约束。长生命周期宿主可在两个不重入的脚本之间调用 `PBrowser_ScriptSessionCollectGarbage()`；该操作不改变全局值、DOM bridge 或事件注册。`PBrowser_ScriptSessionMemoryUsed()`、`PBrowser_ScriptSessionPeakMemoryUsed()` 和 `PBrowser_ScriptSessionMemoryLimit()` 只返回当前 session 的诊断快照。
+
 ## 宿主应负责的事情
 
 宿主必须：

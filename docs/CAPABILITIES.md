@@ -158,7 +158,7 @@ FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载�
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
-| context 创建、销毁和 classic evaluation | `PScript_Create[Ex]`、`PScript_Evaluate`、`PScript_Destroy` | 已实现 | 默认 heap 512 KiB，source 64 KiB；超时、内存和 fatal 错误有稳定错误码 | Script 自动回归；任何新 host object 先检查 heap/native-function budget |
+| context 创建、销毁和 classic evaluation | `PScript_Create[Ex]`、`PScript_Evaluate`、`PScript_Destroy` | 已实现 | 默认 heap 512 KiB，source 128 KiB；超时、内存和 fatal 错误有稳定错误码 | Script 自动回归；任何新 host object 先检查 heap/native-function budget |
 | global JSON bridge | `PScript_Set/Get/CallGlobalJson`、register/unregister | 已实现 | global name 128 字节；native function 上限 29；callback 同步不可重入 | JSON/script 组合门；失败不修改旧 global |
 | module/source provider | `PScript_EvaluateModule`、`PScript_SetModuleSourceProvider`、`PScript_LoadModule` | 有界待扩展 | module 名 128 字节、最多 16 个；缺 source/callback/超限安全失败 | 需要明确模块生命周期和资源取消；当前 Browser 默认不启用完整 module |
 | Browser classic session | 由 Browser 使用同一 runtime | 已实现但 opt-in | Browser page heap、native function、listener、字符串、任务和 DOM 对象均固定上限 | Browser/TEST1303–1309 及相邻设备门；`javascript=0` 仍是默认 |
@@ -183,7 +183,7 @@ FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载�
 | --- | --- | --- | --- | --- |
 | history、fragment、push/replace state、scroll snapshot | `PBrowser_History*` | 已实现但有界 | entry、URL、state 和 scroll snapshot 有界；失败保留旧 entry/旧页面 | next871、history/viewport fixtures 和设备门 |
 | navigation candidate/resource transaction | `PBrowser_NavigationCandidate*`、`PBrowser_NavigationResource*`、commit/cleanup snapshot | 已实现但有界 | generation、required/optional gate、retry、fallback、cancel 和 cleanup 都固定；过时 worker 不能提交 | TEST1119–1127、设备门；宿主只调度网络/worker |
-| script session、DOM/Event/form/input/lifecycle/viewport bridge | `PBrowser_ScriptSession*` callback tables and dispatch APIs；document delegated `click` 通过 Core `PCORE_DOCUMENT_ELEMENT_TOKEN` | 已实现但有界 | heap、native functions、listeners、collections、strings、FormData/URLSearchParams、Storage、任务队列和 document click listener（64 项）固定；重复注册、移除、once、capture/bubble 和 unsupported event 类型 fail closed | TEST1138/1139、1152–1309、TEST1320 及相邻门；脚本默认关闭；外部 Bootstrap 的网络 fetch/execute 仍需应用门 |
+| script session、DOM/Event/form/input/lifecycle/viewport bridge | `PBrowser_ScriptSession*` callback tables and dispatch APIs；document delegated `click` 通过 Core `PCORE_DOCUMENT_ELEMENT_TOKEN` | 已实现但有界 | legacy `PBrowser_ScriptSessionCreate` 使用 1.5 MiB heap；`PBrowser_ScriptSessionCreateEx` 允许 0 或 1.5–3 MiB 的固定 profile，官方应用使用 3 MiB；垃圾回收和 used/peak/limit 查询均为同步有界入口；source 128 KiB、native functions、listeners、collections、strings、FormData/URLSearchParams、Storage、任务队列和 document click listener（64 项）仍固定；超过上限返回 memory error，不创建无界状态 | TEST1138/1139、1152–1309、TEST1320/1322 及相邻门；脚本默认关闭；真实外部 Bootstrap 的网络 fetch/execute 仍需应用门，3 MiB 不是任意网站兼容承诺 |
 | File/Blob metadata and multipart consumer bridge | Browser `new FormData(form[, submitter])` 只通过 callback 取得 Core successful-control metadata；`PCore_FormDataEncode()` 只接受 Core-owned snapshot，二者没有 JS pairs 的公共转换入口；native picker→form multipart 已由 EXE 接线 | 有界待扩展 | Browser 不直接读文件、不暴露路径或 byte buffer；Core/宿主的同步 read/free、1 MiB body 和 stale/权限失败边界保持不变 | native picker 由应用人工门验收；脚本 pairs→Core snapshot 只有在真实消费者出现后才提议公共 ABI |
 | CORS/referrer、absolute URL policy、完整 image loading | 当前没有完整公共承诺 | 有界待扩展 | 必须为安全边界、旧页保留、generation 和取消建立独立合同；不能由宿主临时决定 | 需要真实页面/消费者和 loopback fixture |
 | 多个窗口、bfcache 和跨窗口 history | 当前没有公共承诺 | 暂缓 | 需要额外 browsing context、持久状态和资源预算 | 只有新的明确产品范围才重新评估 |
