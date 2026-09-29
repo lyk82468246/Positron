@@ -95,7 +95,14 @@ background 接线已完成，`positron_image.dll` 现在
   双滚动条不会再自动变成长期的顶层水平滚动条，真实的内层 overflow 仍由 Core 与原生
   输入路径负责。该 EXE 改动已通过 C89、审计和 Debug 编译；Release 中 `positron_app`、
   `positron_core` 与 `test_host` 均已编译/链接，但完整解决方案的 CABWiz 项目在生成 CAB
-  数据文件时失败，因此还没有把 Release 全量写成通过，且本批尚未重新部署设备。
+  数据文件时失败，因此还没有把 Release 全量写成通过。最新 Debug 完整包已由正式
+  `scripts\stage.bat Debug` 生成，并复制 19/19 文件到
+  `\Storage Card\Temp\Positron-device-gate\exe-svg-uri-20260929-101500`；其中
+  `positron.exe` SHA-256 为 `34F7400C6B34AEFAC1499F6ECAE55DD278CF30BFDD07DDF934CC2C87091E4E53`，
+  `positron_core.dll` 为 `AF78491DB27D390A9A056FD85522F9EB5ECE91AD711D1DD69FC5DD7EED7C30EA`，
+  `positron_image.dll` 为 `A319C969F8344FC89E8855C4A591A9EA5C3063D5915A233AF66826E8E874FD3D`；
+  已启动该目录的 `positron.exe`，RAPI 返回 PID `1452160342`。部署未强杀设备上的旧进程，
+  因此视觉验收前必须确认窗口确实来自该新目录。
 - `positron.exe` 现在补齐了 `test_host` TEST42 的 nested retained-overflow 输入接线：页面窗口
   先把 WM6 的按下坐标换算为 Core document 坐标并调用 `PCore_OverflowPointer(DOWN)`，随后用
   `SetCapture` 将 MOVE/UP 保持在同一窗口；每次 Core pointer 更新后读取
@@ -322,8 +329,10 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 
 ## 唯一下一步
 
-下一步是在同一批匹配 DLL 的 `positron.exe` 包上做一次人工视觉确认：打开含 CSS
-`data:image/svg+xml` 响应式图标的窄视口页面，确认 Core 绘制的 background-position/size/repeat
-与页面其余布局一致，且普通网络 SVG/PNG/JPEG/GIF 不回归。人工确认前先真正退出设备上的旧
-`positron.exe`，再从新 staging 目录启动；若视觉仍异常，记录页面 URL、viewport/DPI、资源
-最终 URL 和应用 image-state 摘要，不把 `test_host` 的自动门当作应用截图证据。
+下一步是在设备当前目录
+`\Storage Card\Temp\Positron-device-gate\exe-svg-uri-20260929-101500` 中做人工视觉确认：
+先确认旧 `positron.exe` 已真正退出，再从该目录启动新实例；打开含 CSS
+`data:image/svg+xml` 响应式图标的窄视口页面，确认黑色方块消失、background-position/size/repeat
+与页面其余布局一致，且普通网络 SVG/PNG/JPEG/GIF 不回归。同时检查 WinWorld 顶层水平滚动条
+和 IANA 表格内层横向滚动。若视觉仍异常，记录页面 URL、viewport/DPI、资源最终 URL 和应用
+image-state 摘要，不把 `test_host` 的自动门当作应用截图证据。
