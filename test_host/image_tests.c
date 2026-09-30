@@ -1701,19 +1701,20 @@ BOOL test1329_core_bootstrap_hamburger(void)
 {
     static const char HTML[] =
             "<!doctype html><html><body>"
-            "<nav class='navbar navbar-light'><button id='toggle' "
+            "<nav id='nav' class='navbar navbar-light'><button "
             "class='navbar-toggler'><span class='navbar-toggler-icon'>"
             "</span></button></nav></body></html>";
     static const char CSS[] =
             "html,body{margin:0;padding:0;background:#ffffff;}"
-            ".navbar{display:block;width:72px;height:52px;padding:4px;"
-            "background:#ffffff;}"
-            ".navbar-toggler{display:inline-block;width:40px;height:40px;"
-            "padding:4px;border:1px solid #dddddd;background:#ffffff;}"
-            ".navbar-toggler-icon{display:inline-block;width:30px;"
-            "height:30px;vertical-align:middle;content:\"\";"
-            "background-position:50% 50%;background-size:100% 100%;"
-            "background-repeat:no-repeat;}"
+            ".navbar{display:flex;flex-wrap:wrap;align-items:center;"
+            "justify-content:space-between;width:72px;height:52px;"
+            "padding:0.5rem 1rem;background:#ffffff;}"
+            ".navbar-toggler{padding:0.25rem 0.75rem;font-size:1.25rem;"
+            "line-height:1;background-color:transparent;"
+            "border:1px solid transparent;border-radius:0.25rem;}"
+            ".navbar-toggler-icon{display:inline-block;width:1.5em;"
+            "height:1.5em;vertical-align:middle;content:\"\";"
+            "background:50% / 100% 100% no-repeat;}"
             ".navbar-light .navbar-toggler-icon{background-image:url("
             "\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/"
             "svg' width='30' height='30' viewBox='0 0 30 30'%3e%3cpath "
@@ -1796,7 +1797,7 @@ BOOL test1329_core_bootstrap_hamburger(void)
         goto cleanup;
     }
     if (PCore_LayoutDocument(document, 100, 100) != 0 ||
-            PCore_FormControlInfoById(document, "toggle", &button_x,
+            PCore_FormControlInfo(document, 0, &button_x,
             &button_y, &button_w, &button_h, &button_kind, &button_selected,
             &button_disabled) != 0 || button_kind != 7 || button_w <= 0 ||
             button_h <= 0 || PCore_NodeBox(document, "span", &span_x,
@@ -1839,6 +1840,54 @@ BOOL test1329_core_bootstrap_hamburger(void)
         _snprintf(g_test1329_failure, sizeof(g_test1329_failure) - 1,
                 "hamburger rows=%d span=%d,%d %dx%d", row_groups, span_x,
                 span_y, span_w, span_h);
+        g_test1329_failure[sizeof(g_test1329_failure) - 1] = '\0';
+        goto cleanup;
+    }
+
+    /* The real Bootstrap click mutates both the navbar and the id-less
+     * button, then the application re-runs style/layout before the next paint.
+     * Rebuild through that same Core contract without fetching the data URI a
+     * second time.  The cached author child/background must survive; otherwise
+     * the visual button silently falls back to its synthetic "Button" label. */
+    if (PCore_NodeSetAttributeById(document, "nav", "class",
+            "navbar navbar-light show") != 0 ||
+            PCore_FormControlSetAttributeByIndex(document, 0,
+            "class", "navbar-toggler collapsed") != 0 ||
+            PCore_FormControlSetAttributeByIndex(document, 0,
+            "aria-expanded", "true") != 0 ||
+            PCore_StyleDocumentEx2(document, sheet,
+            "https://winworldpc.com/home", NULL, NULL, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(document, 100, 100) != 0 ||
+            PCore_FormControlInfo(document, 0, &button_x, &button_y,
+            &button_w, &button_h, &button_kind, &button_selected,
+            &button_disabled) != 0 || button_kind != 7 || button_w <= 0 ||
+            button_h <= 0 || PCore_NodeBox(document, "span", &span_x,
+            &span_y, &span_w, &span_h) != 0 || span_w < 20 || span_h < 20) {
+        strcpy(g_test1329_failure, "post-click relayout lost button child");
+        goto cleanup;
+    }
+    SetRect(&rect, 0, 0, 100, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+    row_groups = 0;
+    previous_hit = 0;
+    for (y = span_y; y < span_y + span_h && y < 100; y++) {
+        gray_count = 0;
+        for (x = span_x; x < span_x + span_w && x < 100; x++) {
+            if (test1329_gray_pixel(GetPixel(memory_dc, x, y))) {
+                gray_count++;
+            }
+        }
+        row_hit = gray_count >= 10;
+        if (row_hit && !previous_hit) {
+            row_groups++;
+        }
+        previous_hit = row_hit;
+    }
+    if (row_groups < 3) {
+        _snprintf(g_test1329_failure, sizeof(g_test1329_failure) - 1,
+                "post-click hamburger rows=%d span=%d,%d %dx%d", row_groups,
+                span_x, span_y, span_w, span_h);
         g_test1329_failure[sizeof(g_test1329_failure) - 1] = '\0';
         goto cleanup;
     }
