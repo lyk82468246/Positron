@@ -9,6 +9,10 @@
         -RemoteRoot "\Storage Card\Temp\Positron-device-gate\debug-capture-..." `
         -FollowSeconds 300
 
+  A full run prefers the external Storage Card Temp root and falls back to
+  the internal Temp root only when the automatically selected external root
+  rejects file creation. PullOnly always uses the explicitly supplied root.
+
   The WMDC device must already be connected.  This helper never selects,
   cradles or resets a device.  Pass -ForceTerminatePositron when a stale
   positron.exe must be removed before the captured process is launched.
@@ -48,6 +52,15 @@ function Get-RelativePath([string] $root, [string] $path)
     $pathUri = New-Object Uri($path)
     return [Uri]::UnescapeDataString(
             $rootUri.MakeRelativeUri($pathUri).ToString()).Replace("/", "\")
+}
+
+function Get-RemoteOwnerRoot([string] $path)
+{
+    if ($path -match
+            "^\\Storage Card\\Temp\\Positron-device-gate\\") {
+        return "\Storage Card\Temp\Positron-device-gate"
+    }
+    return "\Temp\Positron-device-gate"
 }
 
 function Ensure-RemoteDirectoryTree([string] $path)
@@ -152,16 +165,20 @@ $runStamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $runRoot = Get-RunRoot $LocalRunRoot $runStamp
 $localLog = Join-Path $runRoot "positron-debug.log"
 $remoteLog = "\Temp\positron-debug.log"
+$automaticRemoteRoot = [string]::IsNullOrEmpty($RemoteRoot)
+$fallbackRemoteRoot = ""
 
-if ([string]::IsNullOrEmpty($RemoteRoot)) {
+if ($automaticRemoteRoot) {
     if ($PullOnly) {
         throw "-RemoteRoot is required with -PullOnly."
     }
     $RemoteRoot = "\Storage Card\Temp\Positron-device-gate\debug-capture-" +
             $runStamp
+    $fallbackRemoteRoot = "\Temp\Positron-device-gate\debug-capture-" +
+            $runStamp
 }
 if ($RemoteRoot -notmatch
-        "^\\Storage Card\\Temp\\Positron-device-gate\\[A-Za-z0-9._-]+$") {
+        "^(?:\\Storage Card\\Temp\\Positron-device-gate|\\Temp\\Positron-device-gate)\\[A-Za-z0-9._-]+$") {
     throw "Refusing unexpected remote root: $RemoteRoot"
 }
 
@@ -206,8 +223,41 @@ try {
     $connected = $true
 
     if (!$PullOnly) {
-        Ensure-RemoteDirectoryTree "\Storage Card\Temp\Positron-device-gate"
-        $fileCount = Copy-StageToDevice $stagePath $RemoteRoot
+        try {
+            Ensure-RemoteDirectoryTree (Get-RemoteOwnerRoot $RemoteRoot)
+            $fileCount = Copy-StageToDevice $stagePath $RemoteRoot
+        } catch {
+            $copyMessage = $_.Exception.ToString()
+            $canFallback = $automaticRemoteRoot -and
+                    $RemoteRoot -match
+                    "^\\Storage Card\\Temp\\Positron-device-gate\\" -and
+                    $copyMessage -match
+                    "RAPI=0x80072746|RAPI=0x80072775|device=5"
+            if (!$canFallback) {
+                throw
+            }
+            Write-Capture ("external deployment root rejected file creation; " +
+                    "falling back to {0}: {1}" -f $fallbackRemoteRoot,
+                    $_.Exception.Message)
+            if ($connected) {
+                [PositronDeviceRapi]::Disconnect()
+                $connected = $false
+                Start-Sleep -Milliseconds 300
+                [PositronDeviceRapi]::Connect()
+                $connected = $true
+            }
+            try {
+                [void] [PositronDeviceRapi]::DeleteDirectoryTreeBestEffort(
+                        $RemoteRoot)
+            } catch {
+                Write-Capture ("could not remove partial external root; " +
+                        "preserving it for diagnosis: {0}" -f
+                        $_.Exception.Message)
+            }
+            $RemoteRoot = $fallbackRemoteRoot
+            Ensure-RemoteDirectoryTree (Get-RemoteOwnerRoot $RemoteRoot)
+            $fileCount = Copy-StageToDevice $stagePath $RemoteRoot
+        }
         Write-Capture ("deployed {0} files to {1}" -f $fileCount, $RemoteRoot)
 
         if ($ForceTerminatePositron) {

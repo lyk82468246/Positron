@@ -161,6 +161,11 @@ scripts\debug_capture.bat -PullOnly -RemoteRoot "\Storage Card\Temp\Positron-dev
 一部分，也不会扩大清理范围。若设备门在等待宿主时超时，带有该选项的运行会在回收最后一份
 日志后再次调用同一个清理 helper，记录 `failed=0` 摘要并保留部署目录，避免超时后的旧进程
 继续占用下一次部署；未带该选项时不会远程猜测或强杀进程，而是明确要求用户决定是否重跑清理。
+完整 Debug 捕获默认也遵循外置卡优先策略：如果自动选定的
+`\Storage Card\Temp\Positron-device-gate` 在文件创建阶段返回可重试的 RAPI/`device=5`
+错误，脚本会清理本次生成的部分目录并回退到内置 `\Temp\Positron-device-gate`。这只对
+脚本自动选择的根目录生效；`-RemoteRoot` 明确指定的路径不会被静默改写。回退后的输出会
+打印实际 `REMOTE_ROOT`，后续 `-PullOnly` 必须使用该实际路径。
 日志和运行根目录留在 `tmp/device-runs/`，不加入 Git。若日志只有
 `debug-session`，说明进程已启动但还没有发生导航；
 若出现 `finish-rollback`，应优先按 `stage/failure/status` 判断失败边界，而不是根据旧页面截图
