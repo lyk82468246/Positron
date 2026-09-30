@@ -28,7 +28,7 @@
 /* WM6 touch reports can land just outside a centered SVG button. Keep Core
  * layout and checkbox/radio hit-testing exact; only the app's ordinary button
  * adapter gets this bounded touch affordance. */
-#define APP_CONTROLS_BUTTON_HIT_SLOP 8
+#define APP_CONTROLS_BUTTON_HIT_SLOP 12
 #define APP_CONTROLS_FORM_CHECKBOX   1
 #define APP_CONTROLS_FORM_RADIO      2
 #define APP_CONTROLS_FORM_TEXT       3
