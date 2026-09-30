@@ -10,7 +10,8 @@
         -FollowSeconds 300
 
   The WMDC device must already be connected.  This helper never selects,
-  cradles, resets, or terminates a device process.
+  cradles or resets a device.  Pass -ForceTerminatePositron when a stale
+  positron.exe must be removed before the captured process is launched.
 ################################################################################>
 
 param(
@@ -19,7 +20,8 @@ param(
     [string] $RemoteRoot = "",
     [string] $LocalRunRoot = "",
     [switch] $PullOnly,
-    [int] $FollowSeconds = 0
+    [int] $FollowSeconds = 0,
+    [switch] $ForceTerminatePositron
 )
 
 $ErrorActionPreference = "Stop"
@@ -75,6 +77,16 @@ function Receive-DebugLog([string] $remotePath, [string] $localPath)
         Start-Sleep -Milliseconds 250
     }
     return $false
+}
+
+function Invoke-ProcessCleanup([string] $root)
+{
+    $cleanupExe = $root + "\positron_process_cleanup.exe"
+    Write-Capture "starting isolated process cleanup helper"
+    $cleanupPid = [PositronDeviceRapi]::LaunchProcess(
+            $cleanupExe, $root, $null)
+    Write-Capture ("cleanup helper pid={0}" -f $cleanupPid)
+    Start-Sleep -Milliseconds 500
 }
 
 function Copy-StageToDevice([string] $stagePath, [string] $root)
@@ -198,10 +210,15 @@ try {
         $fileCount = Copy-StageToDevice $stagePath $RemoteRoot
         Write-Capture ("deployed {0} files to {1}" -f $fileCount, $RemoteRoot)
 
+        if ($ForceTerminatePositron) {
+            Invoke-ProcessCleanup $RemoteRoot
+        }
+
         [PositronDeviceRapi]::DeleteFileIfExists($remoteLog)
         $remoteExe = $RemoteRoot + "\positron.exe"
         Write-Capture ("launching {0}" -f $remoteExe)
-        $remotePid = [PositronDeviceRapi]::LaunchProcess($remoteExe, $RemoteRoot)
+        $remotePid = [PositronDeviceRapi]::LaunchProcess(
+                $remoteExe, $RemoteRoot, $null)
         Write-Capture ("remote pid={0}" -f $remotePid)
     }
 
