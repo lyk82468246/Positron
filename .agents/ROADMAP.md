@@ -116,13 +116,14 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
    当前有界 mutation callback 限制。
 
    应用还提供一次性的命令行消费者入口：位置 URL 或 `--url` 与单个 `--eval` 脚本在首个
-   候选完成资源提交、布局和 load 生命周期后执行；`--click` 是把一个有界 CSS selector
-   编译成同一条 `querySelector().click()` 脚本的便捷别名。该入口复用现有 ScriptSession，
-   selector 最多 512 字节、脚本最多 8 KiB，应用使用固定 8 秒执行预算；非法参数、非网络脚本
-   目标、超限 source 和脚本异常都 fail closed，不写入 history。它只承诺当前 Browser 的
-   有界 DOM/Event facade，不能把 class-only、无 Core identity 节点或任意 CSS selector 自动化
-   写成成功保证；需要额外等待时由 `--eval` 显式使用有界 `setTimeout`。Debug ARMV4I 日志已经
-   证明启动脚本会记录 `startup-script ... detail=executed` 或稳定错误结果。
+   候选完成资源提交、布局和 load 生命周期后执行；`--click` 是一个有界 CSS selector 入口：
+   已布局的简单 `button`/表单按钮 selector 先走与真实点按相同的 native-button transaction，
+   其余 selector 回退到 `querySelector().click()`。该入口复用现有 ScriptSession，selector
+   最多 512 字节、脚本最多 8 KiB，应用使用固定 8 秒执行预算；非法参数、非网络脚本目标、
+   超限 source 和脚本异常都 fail closed，不写入 history。复杂 selector、非表单节点和没有
+   Browser/Core identity 的目标仍不能写成成功保证；需要额外等待时由 `--eval` 显式使用有界
+   `setTimeout`。Debug ARMV4I 日志已经证明 native 快路径会记录
+   `startup-script ... detail=native-button`，脚本路径记录 `executed` 或稳定错误结果。
 
    阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
     click→Core validation→Browser 可取消 submit→Core successful-control GET/POST/multipart/dialog 路径；

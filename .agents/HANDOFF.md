@@ -150,7 +150,12 @@ contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体�
   旧 `PBrowser_ScriptSessionCreate()` 仍为 1.5 MiB；新增 `PBrowser_ScriptSessionCreateEx()`
   与 Browser-owned GC/heap telemetry 入口，固定允许范围为 1.5–3 MiB。`positron_app` 选择
   3 MiB，并在每个 script 前回收短命对象。URL+`--eval`/`--click` 共用 8 秒路径，
-  记录结果；无 `id` 仍受 DOM bridge 限制。
+  记录结果；`--click` 对已布局的简单无 id 表单按钮增加应用私有 native-button 快路径，
+  复杂 selector 和非表单节点仍受 DOM bridge 限制。
+- 新部署 `tmp/device-runs/debug-capture-20261001-012336/positron-debug.log` 使用当前 Debug
+  包启动 WinWorld，并以 `--click .navbar-toggler` 完成页面布局后的 native-button transaction；
+  日志出现 `startup-script ... detail=native-button`、`script-click`、`commit` 和
+  `finish-commit`，此前的 `result=-3` 已不再出现。
 - `test_host` TEST1327 把未修改的 jQuery/Bootstrap、直接 flex button 和原生坐标事务组合在同一
   fixture 中，并在有界 timer 推进后断言 `nav.show` 与 `aria-expanded=true`；
   `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 的 `1325,1326,1327,999`
@@ -373,14 +378,6 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 而不是本候选目录的 Core。当时默认设备门没有强制清理，因此这次只算“文件已部署、包内启动
 回归通过”，不算新 EXE/Core 的设备验收；现在如确需清理可显式使用
 `-ForceTerminatePositron`，它不会结束任意其他进程。
-
-最新真实 WinWorld 日志 `tmp/device-runs/debug-capture-20260930-135414/positron-debug.log`
-已确认 jQuery、Popper 和 Bootstrap 均为 `outcome=executed`，heap peak 为 2642875/3145728；
-bootstrap-multiselect 的语法错误仍是独立限制。设备纪律保持不变：用户先在 WMDC/Device Emulator
-GUI 手动连接恰好一个设备；gate 只复用当前会话，不连接、选择、cradle 或重置设备，默认不结束进程；
-显式 `-ForceTerminatePositron` 时只运行独立 helper 精确清理 `positron.exe`。外置卡 Temp 优先，
-内置 Temp 回退；完整回收日志后才清理旧部署。修复后的同一日志还记录了 `pointer-hit`、
-`script-click` 和 `commit`，不能再把旧的 `debug-capture-20260929-222012` 启动头当作当前结论。
 
 - 本轮把 EXE Debug 诊断从仅依赖 `OutputDebugStringW` 扩展为有界设备文件镜像：
   `positron_app/app_debug.c/.h` 在 `_DEBUG` 下把脚本逐项/汇总状态和图片摘要同时写入

@@ -138,8 +138,9 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 `positron://` 只允许应用自己的离线页面，其他 scheme 在启动时拒绝，不会静默降级或执行。
 
 `--eval`/`-e`/`/eval` 只接受一个不超过 8 KiB 的 UTF-8 脚本，并且必须与网络 URL 一起使用。
-`--click`/`-c`/`/click` 是同一能力的便捷写法：它接受一个不超过 512 字节的 CSS selector，
-等价于在页面脚本中执行
+`--click`/`-c`/`/click` 是同一能力的便捷写法：它接受一个不超过 512 字节的 CSS selector。
+应用先对简单的 `button`/表单按钮 selector（标签、一个 `#id`、类名和有界属性条件）走与真实
+点按相同的 native-button transaction；其他 selector 等价于在页面脚本中执行
 `var e=document.querySelector('selector');if(!e){throw new Error(...);}e.click();`。
 `--click` 与 `--eval` 不能同时出现；需要点击后再做其他动作时，使用一条有界的 `--eval`。
 
@@ -148,8 +149,8 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 `setTimeout`，例如
 `setTimeout(function(){var e=document.querySelector('#menu');if(e){e.click();}},1000)`。
 脚本复用页面已有的 Browser ScriptSession、固定预算和 DOM/Event 合同；它不是通用站点
-自动化层。当前 document facade 对带稳定 `id` 的目标最可靠，class-only 或无 `id` 的节点
-是否可寻址取决于现有有界 DOM bridge，不能把失败当成成功。目标不存在、selector 非法、
+自动化层。native 快路径只覆盖已布局且可交互的表单按钮；复杂 selector、非表单节点仍受
+现有有界 DOM bridge 限制，不能把失败当成成功。目标不存在、selector 非法、
 点击桥拒绝或脚本超预算都会记录为启动自动化失败，不伪造页面成功。应用不会把命令行脚本
 持久化到 history 或页面状态。命令行中的 URL/脚本应使用 WM6 shell 的双引号，内部双引号
 写成反斜杠转义形式。

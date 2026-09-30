@@ -135,7 +135,9 @@ static int g_script_refresh_form_reset;
 static AppScriptContext *g_script_refresh_context;
 static char g_startup_reference[APP_URL_MAX];
 static char g_startup_script[APP_STARTUP_SCRIPT_MAX_BYTES + 1];
+static char g_startup_click_selector[APP_STARTUP_SELECTOR_MAX_BYTES + 1];
 static int g_startup_script_armed;
+static int g_startup_click_armed;
 static unsigned long g_startup_script_generation;
 
 static int app_relayout(void);
@@ -145,6 +147,7 @@ static void app_page_paint_buffer_release(void);
 static int app_load_form_request(HWND hwnd, const AppFormRequest *request);
 static void app_update_history_buttons(void);
 static void app_controls_changed(void *pw);
+static int app_startup_click_form_selector(const char *selector);
 static void app_handle_form_submit(void *pw, int document_x,
         int document_y, int validation_valid);
 static void app_handle_form_enter(void *pw, unsigned int text_index);
@@ -1327,7 +1330,9 @@ static int app_build_startup_click_script(const char *selector,
 
 static int app_parse_startup_arguments(LPWSTR command_line,
         char *out_reference, int reference_capacity, int *out_has_reference,
-        char *out_script, int script_capacity, int *out_has_script)
+        char *out_script, int script_capacity, int *out_has_script,
+        char *out_click_selector, int click_selector_capacity,
+        int *out_has_click)
 {
     static WCHAR argument[APP_COMMAND_ARG_MAX];
     static WCHAR value[APP_COMMAND_ARG_MAX];
@@ -1340,13 +1345,17 @@ static int app_parse_startup_arguments(LPWSTR command_line,
 
     if (out_reference == NULL || reference_capacity <= 1 ||
             out_has_reference == NULL || out_script == NULL ||
-            script_capacity <= 1 || out_has_script == NULL) {
+            script_capacity <= 1 || out_has_script == NULL ||
+            out_click_selector == NULL || click_selector_capacity <= 1 ||
+            out_has_click == NULL) {
         return 1;
     }
     out_reference[0] = '\0';
     out_script[0] = '\0';
+    out_click_selector[0] = '\0';
     *out_has_reference = 0;
     *out_has_script = 0;
+    *out_has_click = 0;
     has_reference = 0;
     has_script = 0;
     cursor = command_line != NULL ? command_line : L"";
@@ -1449,6 +1458,11 @@ static int app_parse_startup_arguments(LPWSTR command_line,
                     script_capacity) != 0) {
                 return 1;
             }
+            if (strlen(selector) >= (size_t) click_selector_capacity) {
+                return 1;
+            }
+            memcpy(out_click_selector, selector, strlen(selector) + 1U);
+            *out_has_click = 1;
             has_script = 1;
             continue;
         }
@@ -1465,6 +1479,289 @@ static int app_parse_startup_arguments(LPWSTR command_line,
     *out_has_reference = has_reference;
     *out_has_script = has_script;
     return 0;
+}
+
+/* The Browser DOM facade intentionally exposes persistent wrappers by id.
+ * Startup automation also needs to exercise the same native button path as a
+ * user tap for common id-less controls (for example Bootstrap's
+ * .navbar-toggler).  Keep this adapter application-private and bounded: it
+ * matches one simple selector against the Core form-control snapshot, then
+ * lets AppControls dispatch the normal trusted click transaction.  Complex
+ * selectors and non-form elements still use the --eval fallback. */
+static int app_startup_selector_name_char(unsigned char value)
+{
+    return (value >= (unsigned char) 'a' && value <= (unsigned char) 'z') ||
+            (value >= (unsigned char) 'A' && value <= (unsigned char) 'Z') ||
+            (value >= (unsigned char) '0' && value <= (unsigned char) '9') ||
+            value == (unsigned char) '_' || value == (unsigned char) '-';
+}
+
+static int app_startup_form_attribute(HANDLE document, unsigned int index,
+        const char *name, char *value, int capacity)
+{
+    int bytes;
+    int result;
+
+    if (value == NULL || capacity <= 1 || document == NULL || name == NULL) {
+        return 0;
+    }
+    value[0] = '\0';
+    bytes = 0;
+    result = PCore_FormControlAttributeByIndex(document, index, name, value,
+            capacity, &bytes);
+    if (result != 0 || bytes < 0 || bytes >= capacity) {
+        value[0] = '\0';
+        return 0;
+    }
+    value[bytes] = '\0';
+    return 1;
+}
+
+static int app_startup_class_contains(const char *classes, const char *wanted)
+{
+    const char *cursor;
+    const char *start;
+    size_t wanted_len;
+    size_t length;
+
+    if (classes == NULL || wanted == NULL || wanted[0] == '\0') {
+        return 0;
+    }
+    wanted_len = strlen(wanted);
+    cursor = classes;
+    while (*cursor != '\0') {
+        while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' ||
+                *cursor == '\n' || *cursor == '\f') {
+            cursor++;
+        }
+        start = cursor;
+        while (*cursor != '\0' && *cursor != ' ' && *cursor != '\t' &&
+                *cursor != '\r' && *cursor != '\n' && *cursor != '\f') {
+            cursor++;
+        }
+        length = (size_t) (cursor - start);
+        if (length == wanted_len && memcmp(start, wanted, wanted_len) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int app_startup_click_form_selector(const char *selector)
+{
+    HANDLE document;
+    const char *cursor;
+    char tag[16];
+    char id[128];
+    char classes[4][64];
+    char attribute_names[4][64];
+    char attribute_values[4][160];
+    int attribute_has_value[4];
+    int tag_len;
+    int id_len;
+    int class_count;
+    int attribute_count;
+    int selector_len;
+    int i;
+    int start;
+    int quote;
+    int found;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int disabled;
+    char actual[256];
+    int class_match;
+    int attribute_match;
+    int value_start;
+    int value_length;
+
+    document = g_document;
+    if (document == NULL || selector == NULL || selector[0] == '\0' ||
+            g_controls == NULL) {
+        return 0;
+    }
+    selector_len = (int) strlen(selector);
+    if (selector_len <= 0 || selector_len > APP_STARTUP_SELECTOR_MAX_BYTES) {
+        return 0;
+    }
+    memset(tag, 0, sizeof(tag));
+    memset(id, 0, sizeof(id));
+    memset(classes, 0, sizeof(classes));
+    memset(attribute_names, 0, sizeof(attribute_names));
+    memset(attribute_values, 0, sizeof(attribute_values));
+    memset(attribute_has_value, 0, sizeof(attribute_has_value));
+    tag_len = 0;
+    id_len = 0;
+    class_count = 0;
+    attribute_count = 0;
+    cursor = selector;
+    while (*cursor != '\0' && *cursor != '#' && *cursor != '.' &&
+            *cursor != '[') {
+        if (!app_startup_selector_name_char((unsigned char) *cursor) ||
+                tag_len >= (int) sizeof(tag) - 1) {
+            return 0;
+        }
+        tag[tag_len++] = *cursor++;
+    }
+    tag[tag_len] = '\0';
+    while (*cursor != '\0') {
+        if (*cursor == '#') {
+            cursor++;
+            start = 0;
+            while (app_startup_selector_name_char((unsigned char) cursor[start])) {
+                start++;
+            }
+            if (start <= 0 || id_len != 0 || start >= (int) sizeof(id)) {
+                return 0;
+            }
+            memcpy(id, cursor, (size_t) start);
+            id[start] = '\0';
+            id_len = start;
+            cursor += start;
+        } else if (*cursor == '.') {
+            cursor++;
+            start = 0;
+            while (app_startup_selector_name_char((unsigned char) cursor[start])) {
+                start++;
+            }
+            if (start <= 0 || class_count >= 4 ||
+                    start >= (int) sizeof(classes[0])) {
+                return 0;
+            }
+            memcpy(classes[class_count], cursor, (size_t) start);
+            classes[class_count][start] = '\0';
+            class_count++;
+            cursor += start;
+        } else if (*cursor == '[') {
+            cursor++;
+            if (attribute_count >= 4) {
+                return 0;
+            }
+            start = 0;
+            while (app_startup_selector_name_char((unsigned char) cursor[start])) {
+                start++;
+            }
+            if (start <= 0 || start >= (int) sizeof(attribute_names[0])) {
+                return 0;
+            }
+            memcpy(attribute_names[attribute_count], cursor, (size_t) start);
+            attribute_names[attribute_count][start] = '\0';
+            cursor += start;
+            if (*cursor == ']') {
+                cursor++;
+                attribute_count++;
+                continue;
+            }
+            if (*cursor != '=') {
+                return 0;
+            }
+            cursor++;
+            quote = 0;
+            if (*cursor == '\'' || *cursor == '"') {
+                quote = (int) (unsigned char) *cursor++;
+            }
+            value_start = 0;
+            while (cursor[value_start] != '\0' &&
+                    ((quote != 0 && (int) (unsigned char) cursor[value_start] !=
+                    quote) || (quote == 0 && cursor[value_start] != ']'))) {
+                value_start++;
+            }
+            value_length = value_start;
+            if (value_length <= 0 || value_length >=
+                    (int) sizeof(attribute_values[0])) {
+                return 0;
+            }
+            memcpy(attribute_values[attribute_count], cursor,
+                    (size_t) value_length);
+            attribute_values[attribute_count][value_length] = '\0';
+            cursor += value_length;
+            if (quote != 0) {
+                if (*cursor != (char) quote) {
+                    return 0;
+                }
+                cursor++;
+            }
+            if (*cursor != ']') {
+                return 0;
+            }
+            cursor++;
+            attribute_has_value[attribute_count] = 1;
+            attribute_count++;
+        } else {
+            return 0;
+        }
+    }
+    if (tag_len == 0 && id_len == 0 && class_count == 0 &&
+            attribute_count == 0) {
+        return 0;
+    }
+    found = 0;
+    for (i = 0; i < 64; i++) {
+        x = 0;
+        y = 0;
+        width = 0;
+        height = 0;
+        kind = 0;
+        disabled = 0;
+        if (PCore_FormControlInfo(document, (unsigned int) i, &x, &y,
+                &width, &height, &kind, NULL, &disabled) != 0) {
+            break;
+        }
+        if (disabled || width <= 0 || height <= 0 ||
+                (kind != 7 && kind != 8 && kind != 9)) {
+            continue;
+        }
+        if (tag_len != 0 && _stricmp(tag, "button") != 0) {
+            continue;
+        }
+        if (id_len != 0 && (!app_startup_form_attribute(document,
+                (unsigned int) i, "id", actual, sizeof(actual)) ||
+                strcmp(actual, id) != 0)) {
+            continue;
+        }
+        class_match = 1;
+        if (class_count > 0) {
+            if (!app_startup_form_attribute(document, (unsigned int) i,
+                    "class", actual, sizeof(actual))) {
+                class_match = 0;
+            } else {
+                for (start = 0; start < class_count; start++) {
+                    if (!app_startup_class_contains(actual, classes[start])) {
+                        class_match = 0;
+                        break;
+                    }
+                }
+            }
+        }
+        if (!class_match) {
+            continue;
+        }
+        attribute_match = 1;
+        for (start = 0; start < attribute_count; start++) {
+            if (!app_startup_form_attribute(document, (unsigned int) i,
+                    attribute_names[start], actual, sizeof(actual))) {
+                attribute_match = 0;
+                break;
+            }
+            if (attribute_has_value[start] && strcmp(actual,
+                    attribute_values[start]) != 0) {
+                attribute_match = 0;
+                break;
+            }
+        }
+        if (!attribute_match) {
+            continue;
+        }
+        if (AppControls_HandleButtonPointer(g_controls,
+                x + width / 2, y + height / 2)) {
+            found = 1;
+            break;
+        }
+    }
+    return found;
 }
 
 static int app_script_programmatic_click_target(void *pw,
@@ -3648,20 +3945,38 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             if (g_startup_script_armed && request->generation ==
                     g_startup_script_generation) {
                 int startup_result;
+                int native_click;
 #ifdef _DEBUG
                 char startup_detail[64];
 #endif
 
-                startup_result = AppScript_Evaluate(g_script,
-                        g_startup_script, (int) strlen(g_startup_script));
+                native_click = 0;
+                if (g_startup_click_armed) {
+                    native_click = app_startup_click_form_selector(
+                            g_startup_click_selector);
+                }
+                if (native_click) {
+                    startup_result = PSCRIPT_OK;
+                    g_startup_click_armed = 0;
+#ifdef _DEBUG
+                    app_navigation_debug_log_request(request, "startup-script",
+                            "native-button");
+#endif
+                } else {
+                    startup_result = AppScript_Evaluate(g_script,
+                            g_startup_script, (int) strlen(g_startup_script));
+                    g_startup_click_armed = 0;
+                }
                 g_startup_script_armed = 0;
 #ifdef _DEBUG
-                _snprintf(startup_detail, sizeof(startup_detail) - 1,
-                        "result=%d", startup_result);
-                startup_detail[sizeof(startup_detail) - 1] = '\0';
-                app_navigation_debug_log_request(request, "startup-script",
-                        startup_result == PSCRIPT_OK ? "executed" :
-                        startup_detail);
+                if (!native_click) {
+                    _snprintf(startup_detail, sizeof(startup_detail) - 1,
+                            "result=%d", startup_result);
+                    startup_detail[sizeof(startup_detail) - 1] = '\0';
+                    app_navigation_debug_log_request(request, "startup-script",
+                            startup_result == PSCRIPT_OK ? "executed" :
+                            startup_detail);
+                }
 #endif
             }
             if (AppScript_HasPendingNavigation(g_script)) {
@@ -5117,21 +5432,26 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     char initial_url[APP_URL_MAX];
     int startup_has_reference;
     int startup_has_script;
+    int startup_has_click;
     int startup_invalid;
     int result;
 
     (void) previous;
     startup_has_reference = 0;
     startup_has_script = 0;
+    startup_has_click = 0;
     if (app_parse_startup_arguments(command_line, g_startup_reference,
             sizeof(g_startup_reference), &startup_has_reference,
             g_startup_script, sizeof(g_startup_script),
-            &startup_has_script) != 0 || (startup_has_script &&
+            &startup_has_script, g_startup_click_selector,
+            sizeof(g_startup_click_selector), &startup_has_click) != 0 ||
+            (startup_has_script &&
             !startup_has_reference)) {
         app_show_startup_usage();
         return 2;
     }
     g_startup_script_armed = 0;
+    g_startup_click_armed = 0;
     g_startup_script_generation = 0;
     AppHostContext_Init(&g_app);
     AppDebug_BeginSession();
@@ -5219,6 +5539,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     if (!startup_invalid && startup_has_script) {
         g_startup_script_armed = 1;
+        g_startup_click_armed = startup_has_click ? 1 : 0;
         g_startup_script_generation = (unsigned long) g_navigation_generation;
     }
     ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
