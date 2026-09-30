@@ -70,6 +70,7 @@
 #define APP_SCRIPT_TIMER_ID     7
 #define APP_COMMAND_ARG_MAX     16384
 #define APP_STARTUP_SCRIPT_MAX_BYTES 8192
+#define APP_STARTUP_SELECTOR_MAX_BYTES 512
 
 #define APP_NAV_MAX_RETIRED     4
 #define APP_NAV_WORK_DOCUMENT   1
@@ -1270,12 +1271,67 @@ static int app_command_copy_value(const WCHAR *argument, const char *prefix,
     return 1;
 }
 
+/* Build the private --click convenience source without allowing the selector
+ * to escape the bounded JavaScript string literal.  The selector remains
+ * page-provided input; this helper only quotes it and does not broaden the
+ * document facade or create a second automation language. */
+static int app_build_startup_click_script(const char *selector,
+        char *output, int output_capacity)
+{
+    static const char prefix[] =
+            "var e=document.querySelector('";
+    static const char suffix[] =
+            "');if(!e){throw new Error('startup click target not found');}"
+            "e.click();";
+    size_t selector_length;
+    size_t prefix_length;
+    size_t suffix_length;
+    size_t i;
+    int position;
+    unsigned char byte;
+
+    if (selector == NULL || output == NULL || output_capacity <= 1) {
+        return 1;
+    }
+    output[0] = '\0';
+    selector_length = strlen(selector);
+    if (selector_length == 0 ||
+            selector_length > APP_STARTUP_SELECTOR_MAX_BYTES) {
+        return 1;
+    }
+    prefix_length = strlen(prefix);
+    suffix_length = strlen(suffix);
+    if (prefix_length + suffix_length + selector_length * 2U + 1U >=
+            (size_t) output_capacity) {
+        return 1;
+    }
+    position = 0;
+    memcpy(output + position, prefix, prefix_length);
+    position += (int) prefix_length;
+    for (i = 0; i < selector_length; i++) {
+        byte = (unsigned char) selector[i];
+        if (byte < 0x20U || byte == 0x7fU) {
+            output[0] = '\0';
+            return 1;
+        }
+        if (byte == '\\' || byte == '\'') {
+            output[position++] = '\\';
+        }
+        output[position++] = (char) byte;
+    }
+    memcpy(output + position, suffix, suffix_length);
+    position += (int) suffix_length;
+    output[position] = '\0';
+    return 0;
+}
+
 static int app_parse_startup_arguments(LPWSTR command_line,
         char *out_reference, int reference_capacity, int *out_has_reference,
         char *out_script, int script_capacity, int *out_has_script)
 {
     static WCHAR argument[APP_COMMAND_ARG_MAX];
     static WCHAR value[APP_COMMAND_ARG_MAX];
+    static char selector[APP_STARTUP_SELECTOR_MAX_BYTES + 1];
     const WCHAR *cursor;
     int result;
     int value_result;
@@ -1359,6 +1415,38 @@ static int app_parse_startup_arguments(LPWSTR command_line,
             }
             if (app_wide_buffer_to_utf8(value, lstrlenW(value), out_script,
                     script_capacity) != 0 || out_script[0] == '\0') {
+                return 1;
+            }
+            has_script = 1;
+            continue;
+        }
+        value_result = app_command_copy_value(argument, "--click", value,
+                sizeof(value) / sizeof(value[0]));
+        if (value_result == 0) {
+            value_result = app_command_copy_value(argument, "-c", value,
+                    sizeof(value) / sizeof(value[0]));
+        }
+        if (value_result == 0) {
+            value_result = app_command_copy_value(argument, "/click", value,
+                    sizeof(value) / sizeof(value[0]));
+        }
+        if (value_result != 0 || app_command_ascii_equal(argument, "--click") ||
+                app_command_ascii_equal(argument, "-c") ||
+                app_command_ascii_equal(argument, "/click")) {
+            if (value_result < 0 || has_script) {
+                return 1;
+            }
+            if (value_result == 0) {
+                result = app_command_line_next_arg(&cursor, value,
+                        sizeof(value) / sizeof(value[0]));
+                if (result != 1) {
+                    return 1;
+                }
+            }
+            if (app_wide_buffer_to_utf8(value, lstrlenW(value), selector,
+                    sizeof(selector)) != 0 ||
+                    app_build_startup_click_script(selector, out_script,
+                    script_capacity) != 0) {
                 return 1;
             }
             has_script = 1;
@@ -5015,6 +5103,7 @@ static void app_show_startup_usage(void)
 {
     MessageBoxW(NULL,
             L"Usage: positron.exe [URL]\n"
+            L"       positron.exe --url URL --click \"CSS selector\"\n"
             L"       positron.exe --url URL --eval \"JavaScript\"",
             L"Positron", MB_OK | MB_ICONERROR);
 }

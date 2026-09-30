@@ -6,6 +6,8 @@
 
   Launch with application arguments for unattended Positron checks:
     scripts\debug_capture.bat -Configuration Debug `
+        -AppArguments '--url https://example.com/ --click "#menu"'
+    scripts\debug_capture.bat -Configuration Debug `
         -AppArguments '--url https://example.com/ --eval "..."'
 
   Keep pulling the log while the user exercises the running application:

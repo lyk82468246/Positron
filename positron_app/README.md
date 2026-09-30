@@ -129,6 +129,7 @@ stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应�
 
 ```text
 positron.exe https://example.com/
+positron.exe --url https://example.com/ --click "#menu"
 positron.exe --url https://example.com/ --eval "document.querySelector('#menu').click()"
 ```
 
@@ -137,13 +138,21 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 `positron://` 只允许应用自己的离线页面，其他 scheme 在启动时拒绝，不会静默降级或执行。
 
 `--eval`/`-e`/`/eval` 只接受一个不超过 8 KiB 的 UTF-8 脚本，并且必须与网络 URL 一起使用。
-脚本在首个候选页面完成资源提交、布局和 `load` 生命周期后执行一次；它复用页面已有的
-Browser ScriptSession、固定预算和 DOM/Event 合同，因此可以用有界的
-`document.querySelector('#menu').click()` 触发带稳定 `id` 的真实按钮默认行为，也可以使用有界
-`setTimeout` 等页面脚本能力。这里不是通用 CSS 选择器或站点自动化层：当前 document facade
-对 class-only、无 `id` 的页面节点不保证可寻址；脚本若选不到目标或点击桥失败，会记录为启动
-自动化失败，不伪造页面成功。应用不会把命令行脚本持久化到 history 或页面状态。命令行中的
-URL/脚本应使用 WM6 shell 的双引号，内部双引号写成反斜杠转义形式。
+`--click`/`-c`/`/click` 是同一能力的便捷写法：它接受一个不超过 512 字节的 CSS selector，
+等价于在页面脚本中执行
+`var e=document.querySelector('selector');if(!e){throw new Error(...);}e.click();`。
+`--click` 与 `--eval` 不能同时出现；需要点击后再做其他动作时，使用一条有界的 `--eval`。
+
+无论是 `--click` 生成的脚本还是 `--eval`，都在首个候选页面完成资源提交、布局和 `load`
+生命周期后执行一次。若还要等页面自己的异步初始化，可以在 `--eval` 中显式使用有界
+`setTimeout`，例如
+`setTimeout(function(){var e=document.querySelector('#menu');if(e){e.click();}},1000)`。
+脚本复用页面已有的 Browser ScriptSession、固定预算和 DOM/Event 合同；它不是通用站点
+自动化层。当前 document facade 对带稳定 `id` 的目标最可靠，class-only 或无 `id` 的节点
+是否可寻址取决于现有有界 DOM bridge，不能把失败当成成功。目标不存在、selector 非法、
+点击桥拒绝或脚本超预算都会记录为启动自动化失败，不伪造页面成功。应用不会把命令行脚本
+持久化到 history 或页面状态。命令行中的 URL/脚本应使用 WM6 shell 的双引号，内部双引号
+写成反斜杠转义形式。
 
 这组参数属于 EXE 私有自动化入口，不修改公共 DLL ABI，也不读取或修改 `test_host.ini`。设备门
 调试脚本可用 `-AppArguments` 把同一字符串传给 `positron.exe`；普通用户启动不会自动执行

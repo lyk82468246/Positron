@@ -149,8 +149,8 @@ contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体�
 - `positron_script.dll` 的 source 上限为 128 KiB，独立 context 默认 heap 为 512 KiB。Browser
   旧 `PBrowser_ScriptSessionCreate()` 仍为 1.5 MiB；新增 `PBrowser_ScriptSessionCreateEx()`
   与 Browser-owned GC/heap telemetry 入口，固定允许范围为 1.5–3 MiB。`positron_app` 选择
-  3 MiB profile，并在每个 script 前回收短命对象。支持 URL+eval，8 秒上限；日志
-  `startup-script ... executed`，失败关闭。
+  3 MiB，并在每个 script 前回收短命对象。URL+`--eval`/`--click` 共用 8 秒路径，
+  记录结果；无 `id` 仍受 DOM bridge 限制。
 - `test_host` TEST1327 把未修改的 jQuery/Bootstrap、直接 flex button 和原生坐标事务组合在同一
   fixture 中，并在有界 timer 推进后断言 `nav.show` 与 `aria-expanded=true`；
   `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 的 `1325,1326,1327,999`
