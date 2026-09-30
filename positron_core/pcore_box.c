@@ -2231,11 +2231,12 @@ static struct box *pcore_construct_block(dom_node *node,
 }
 
 /* Build a BOX_FLEX (or BOX_INLINE_FLEX) flex container. Each element child is a
- * flex item: a nested flex stays flex, everything else is blockified to a
- * BOX_BLOCK (per CSS flex-item rules), and items are added directly - no
- * anonymous inline container, unlike block layout. layout.c routes BOX_FLEX
- * boxes through the ported layout_flex (M7). Bare text between items is dropped
- * (flex items are elements in the pages we target). */
+ * flex item: a nested flex stays flex, form controls become gadget-backed
+ * BOX_BLOCK items, and everything else is blockified to a BOX_BLOCK (per CSS
+ * flex-item rules). Items are added directly - no anonymous inline container,
+ * unlike block layout. layout.c routes BOX_FLEX boxes through the ported
+ * layout_flex (M7). Bare text between items is dropped (flex items are
+ * elements in the pages we target). */
 static struct box *pcore_construct_flex(dom_node *node,
         css_computed_style *style, int is_inline, void *ctx,
         PCoreBoxStats *stats)
@@ -2262,7 +2263,19 @@ static struct box *pcore_construct_flex(dom_node *node,
             if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                 uint8_t d = css_computed_display(cs, false);
                 struct box *item;
-                if (d == CSS_DISPLAY_FLEX || d == CSS_DISPLAY_INLINE_FLEX) {
+                int gadget_type = pcore_form_control_type(child);
+                if (gadget_type != 0) {
+                    /* A flex item is laid out by layout_flex_item(), which
+                     * accepts BOX_BLOCK/TABLE/FLEX only.  Keep the gadget and
+                     * its DOM association, but blockify the retained box so
+                     * native coordinate hit-testing can enumerate it. */
+                    item = pcore_make_form_control_box(child, cs, ctx,
+                            gadget_type);
+                    if (item != NULL) {
+                        item->type = BOX_BLOCK;
+                    }
+                } else if (d == CSS_DISPLAY_FLEX ||
+                        d == CSS_DISPLAY_INLINE_FLEX) {
                     item = pcore_construct_flex(child, cs, 0, ctx, stats);
                 } else {
                     item = pcore_construct_block(child, cs, 0, ctx, stats);

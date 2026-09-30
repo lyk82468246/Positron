@@ -59,6 +59,50 @@ static int log_path(WCHAR path[MAX_PATH])
     return 0;
 }
 
+static int terminate_window_target(DWORD current_pid, int *targets,
+        int *failures)
+{
+    HWND window;
+    DWORD process_id;
+    HANDLE process;
+    DWORD error;
+    char line[256];
+
+    window = FindWindowW(L"PositronBrowserWindow", NULL);
+    if (window == NULL) {
+        return 0;
+    }
+    process_id = 0;
+    GetWindowThreadProcessId(window, &process_id);
+    if (process_id == 0 || process_id == current_pid) {
+        return 0;
+    }
+    (*targets)++;
+    process = OpenProcess(PROCESS_TERMINATE, FALSE, process_id);
+    if (process == NULL) {
+        (*failures)++;
+        error = GetLastError();
+        _snprintf(line, sizeof(line) - 1,
+                "window pid=%lu result=OPEN_FAILED error=%lu\r\n",
+                (unsigned long) process_id, (unsigned long) error);
+    } else if (!TerminateProcess(process, 0x50534F54UL)) {
+        (*failures)++;
+        error = GetLastError();
+        CloseHandle(process);
+        _snprintf(line, sizeof(line) - 1,
+                "window pid=%lu result=TERMINATE_FAILED error=%lu\r\n",
+                (unsigned long) process_id, (unsigned long) error);
+    } else {
+        CloseHandle(process);
+        _snprintf(line, sizeof(line),
+                "window pid=%lu result=TERMINATED\r\n",
+                (unsigned long) process_id);
+    }
+    line[sizeof(line) - 1] = '\0';
+    write_text(line);
+    return 1;
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         LPWSTR lpCmdLine, int nCmdShow)
 {
@@ -85,15 +129,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     write_text("Positron process cleanup v1\r\n");
     snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {
-        _snprintf(line, sizeof(line) - 1,
-                "summary target_count=0 failed=1 snapshot_error=%lu\r\n",
-                (unsigned long) GetLastError());
+        error = GetLastError();
+        current_pid = GetCurrentProcessId();
+        targets = 0;
+        failures = 0;
+        if (terminate_window_target(current_pid, &targets, &failures)) {
+            _snprintf(line, sizeof(line) - 1,
+                    "summary target_count=%d failed=%d "
+                    "snapshot_error=%lu fallback=window\r\n",
+                    targets, failures, (unsigned long) error);
+        } else {
+            _snprintf(line, sizeof(line) - 1,
+                    "summary target_count=0 failed=1 snapshot_error=%lu\r\n",
+                    (unsigned long) error);
+        }
         line[sizeof(line) - 1] = '\0';
         write_text(line);
         if (g_log != INVALID_HANDLE_VALUE) {
             CloseHandle(g_log);
         }
-        return 1;
+        return failures == 0 && targets > 0 ? 0 : 1;
     }
     current_pid = GetCurrentProcessId();
     targets = 0;

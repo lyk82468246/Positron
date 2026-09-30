@@ -113319,9 +113319,10 @@ static BOOL test1325_browser_bootstrap_collapse(void)
 
 /* TEST 1326 - a trusted native button activation must use the same Core
  * coordinate hit-test as positron_app, not only the Browser's id-based
- * HTMLElement.click() path.  This is intentionally a small document: the
- * fixture proves that a real laid-out button reaches a document listener and
- * that the listener's DOM mutation is visible to Core afterwards. */
+ * HTMLElement.click() path.  The button is a direct flex item, matching the
+ * Bootstrap navbar path; it must remain a gadget-backed control after flex
+ * blockification.  The fixture also proves that the listener's DOM mutation
+ * is visible to Core afterwards. */
 static BOOL test1326_browser_native_coordinate_click(void)
 {
     static const char HTML[] =
@@ -113329,12 +113330,13 @@ static BOOL test1326_browser_native_coordinate_click(void)
         "document.addEventListener('click',function(e){"
         "if(e.target&&e.target.id==='toggle'){"
         "document.getElementById('nav').classList.add('show');}});"
-        "</script></head><body>"
-        "<button id='toggle' type='button'>Menu</button>"
+        "</script></head><body><div id='bar'>"
+        "<button id='toggle' type='button'>Menu</button></div>"
         "<div id='nav' class='collapse'>Links</div>"
         "<p id='result'>idle</p></body></html>";
     static const char CSS[] =
         "html,body{margin:0;padding:0}"
+        "#bar{display:flex;width:240px;height:40px;padding:2px}"
         "button{display:block;width:96px;height:32px;margin:4px}"
         "#nav{display:block;width:96px;height:24px}"
         ".collapse{visibility:hidden}.collapse.show{visibility:visible}";
