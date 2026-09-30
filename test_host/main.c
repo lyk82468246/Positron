@@ -113496,7 +113496,7 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     static const char BETWEEN[] = "</script><script>";
     static const char AFTER[] =
         "</script></head><body><div id='bar' class='navbar'>"
-        "<button id='toggle' type='button' data-toggle='collapse' "
+        "<button id='toggle' data-toggle='collapse' "
         "data-target='#nav' aria-expanded='false'>Menu</button></div>"
         "<div id='nav' class='collapse'>Links</div>"
         "<p id='result'>idle</p></body></html>";
@@ -113626,7 +113626,7 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
                 PCore_LayoutDocument(document, 320, 240) != 0 ||
                 PCore_FormControlInfoById(document, "toggle", &button_x,
                 &button_y, &button_w, &button_h, &button_kind, NULL,
-                &disabled) != 0 || button_kind != 9 || disabled ||
+                &disabled) != 0 || button_kind != 7 || disabled ||
                 button_w <= 0 || button_h <= 0) {
             ok = 0;
         }
@@ -113645,7 +113645,7 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
         info.x = button_x + button_w / 2;
         info.y = button_y + button_h / 2;
         info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
-        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
         info.disabled = 0;
         info.validation_valid = 0;
         rc = PBrowser_ScriptSessionDispatchNativeButton(

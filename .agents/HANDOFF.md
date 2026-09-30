@@ -172,7 +172,7 @@ jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩�
 本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
 tile、WinWorld rgba/round-cap Image、document delegated-click，以及保留 flex/普通 block
 button 作者子树（含省略 `type` 时的默认 submit）的原生 Bootstrap collapse 纵切均已完成；
-`20260930-161506-button-default-submit-r8c` 已取得匹配 DLL
+`20260930-172709-bootstrap-default-submit-r9` 已取得匹配 DLL
 的 `1325,1326,1327,999` ARMV4I 设备门通过证据。路线图已移除“等待原版 jQuery/Bootstrap
 初始化”的过时候选，下一步只保留 `positron.exe` 的人工触摸/键盘/视觉门、滚动/旋转/DPI、
 表单设备门和 Media/DB 未完成边界。bootstrap-multiselect 的语法错误仍是独立限制，不以提高
@@ -248,11 +248,11 @@ button 作者子树（含省略 `type` 时的默认 submit）的原生 Bootstrap
   `document` capture/bubble、target/currentTarget、collapse mutation、重复/移除/once 和
   64 listener 预算，并完成日志回收、双空间预检和 crash 检查。
 - TEST1325–1328 组成同一条 WinWorld 菜单回归：1325 验证 `Element.click()`，1326 验证直接
-  flex button 的 Core gadget 与原生坐标事务，1327 再把未修改的 jQuery/Bootstrap delegated
-  collapse 接到该原生事务，1328 验证 flex 和普通 block button 的作者子树及 CSS data-URI
+  flex button 的 Core gadget 与原生坐标事务，1327 再把省略 `type` 的默认 submit button 接入
+  未修改的 jQuery/Bootstrap delegated collapse，1328 验证 flex 和普通 block button 的作者子树及 CSS data-URI
   图标没有被合成的 `Button` 标签替换；1327 使用 `PBrowser_ScriptSessionRunTimers()` 等待
   过渡完成。
-  `tmp/device-runs/20260930-161506-button-default-submit-r8c` 的匹配 Debug ARMV4I 门
+  `tmp/device-runs/20260930-172709-bootstrap-default-submit-r9` 的匹配 Debug ARMV4I 门
   `1325-1328,999` selected/observed 为 `5/5`，无 ERROR/FAIL、唯一 `TESTBENCH PASS`、
   `core_module_check=PASS`、`crash_check=PASS` 且无新增 dump；这证明 Core 的 gadget、作者
   内容和 Browser 点击链已收束，并验证省略 `type` 的默认 submit 仍保留作者子树。该修复覆盖

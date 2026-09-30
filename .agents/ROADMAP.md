@@ -153,7 +153,7 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     inline 与普通 block 构造路径。Browser/ScriptSession 的有界
     document delegated `click` listener、原版 jQuery/Bootstrap 事务以及 flex/普通 block button
     的 CSS data-URI 作者图标（含省略 `type` 的默认 submit button）现在由 TEST1325–1328
-    覆盖；`tmp/device-runs/20260930-161506-button-default-submit-r8c` 已用匹配 DLL 取得
+    覆盖；`tmp/device-runs/20260930-172709-bootstrap-default-submit-r9` 已用匹配 DLL 取得
     `1325-1328,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一
     `TESTBENCH PASS` 和零 ERROR/FAIL 的证据。最新 WinWorld 日志确认 jQuery、Popper、Bootstrap
     已执行，`pointer-hit`/`script-click`/`commit` 已出现；bootstrap-multiselect 的语法错误另行
@@ -211,7 +211,8 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
     picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
 
 Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。原版 jQuery 3.5.1、Bootstrap 4.6.2
-的初始化与 delegated collapse 已通过 TEST1324/1325；TEST1326/1327 又证明直接 flex button
+的初始化与 delegated collapse 已通过 TEST1324/1325；TEST1326/1327 又证明直接 flex button（含省略
+`type` 的默认 submit）
 经 Core gadget、原生坐标事务和有界 timer 后能修改 `class`/`aria-expanded`，TEST1328 证明
 作者 CSS data-URI 图标仍被绘制。真实 WinWorld Debug 日志确认 jQuery、Popper、Bootstrap 已执行，
 剩余 bootstrap-multiselect 语法错误独立于 navbar 核心路径。该纵切不再是路线图候选；下一步
