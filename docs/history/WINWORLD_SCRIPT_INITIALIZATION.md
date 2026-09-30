@@ -8,6 +8,19 @@
 
 该次 heap peak 为 2420783 字节，固定上限为 3145728 字节。当前首个已知阻塞不是此前的 `-6` 内存上限错误；这不保证补齐 DOM 后执行完整库仍能满足同一预算。不得继续放大 heap 来掩盖 DOM 异常。
 
+## 后续验证：脚本执行后仍需检查原生命中
+
+随后应用切换到固定 3 MiB Ex profile，并在每个 classic script 前回收短命对象。新的 Debug
+日志 `tmp/device-runs/debug-capture-20260930-135414/positron-debug.log` 显示 jQuery 3.5.1、
+Popper 和 Bootstrap 4.6.2 均为 `outcome=executed`，heap peak 为 `2642875/3145728`。
+bootstrap-multiselect 仍报告独立的 legacy 语法错误，未证明它是 navbar 的必要依赖。
+
+真实 hamburger 仍无反应的原因不是脚本：`positron_core/pcore_box.c` 的 flex 构造在把 flex item
+blockify 时跳过了 form-control gadget，所以应用的 pointer scan 找不到直接 flex button。修复
+后，真实日志出现 `pointer-hit`、`script-click` 和 `commit`；没有添加 WinWorld 特判，也没有
+改变公共 ABI。TEST1325/1326/1327 分别覆盖 `Element.click()`、flex 原生命中和未修改
+jQuery/Bootstrap 的原生 collapse，匹配 ARMV4I 设备门四项全过。
+
 ## Browser 与 detached DOM 的不一致
 
 jQuery 初始化会创建未插入页面的 input、textarea、select 和 option，检测属性、克隆及 HTML fragment 行为。Browser `document.createElement()` 创建的 wrapper 没有 Core 页面 id，但 `selected` getter 仍调用 `__pcoreFormProperty`。
@@ -45,11 +58,13 @@ TEST1320 验证有限 document delegated click；TEST1322 验证生成脚本、h
 
 debug capture 的文件回读只能证明远端文件内容；PID 只能区分日志进程。它们不能证明进程实际加载的每个 DLL 路径。重复启动目录还可能留下旧进程，下一次正式验证必须检查实际模块匹配，不能假定“旧实例无需退出”。本次没有证据把混包认定为当前根因。
 
-## 下一条完整纵切
+## 当前边界
 
-先建立固定版本原始 jQuery 3.5.1 + Bootstrap 4.6.2 的离线公共 DLL 集成回归，分开记录每个库初始化、异常和 heap；再修复其真实需要的 bounded detached DOM 合同。HTML fragment 解析归 Core，Browser 负责 wrapper 身份、生命周期和桥接；不得在 EXE 中加站点特判。
-
-先覆盖 live/default/dirty 表单状态、clone 和失败不变性，再覆盖 fragment、独立 document 所有权及释放。只有原始库初始化成功、实际 Bootstrap collapse 通过 delegated click 改变 class/aria、相邻回归与匹配 ARMV4I 设备门通过，才安排一次真实触摸验收。自动失败期间不再让用户重复点击。
+原始 jQuery/Bootstrap 的离线初始化、delegated collapse 和原生 flex-button 设备回归已经完成，
+不再需要以 detached DOM 探针为理由要求重复人工点击。下一步是同一匹配应用候选的人工触摸、
+键盘和窄视口视觉验收；bootstrap-multiselect 的语法错误另列为脚本兼容性限制，不能通过提高
+heap 或站点特判掩盖。HTML fragment、独立 document 和更完整的 detached DOM 仍由 Core/Browser
+各自的有界合同决定，未因本次 WinWorld 菜单修复而全面扩张。
 
 调查使用的原始文件校验值：
 

@@ -17,8 +17,9 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 图片 pending/retry、CSS data URI、Image 的有限 SVG 样式/渐变/alpha、HTTP URL-aware 和
 Browser history/lifecycle/document click 纵切已有源码与离线/设备证据；DB 目前只有主机
 contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体播放和 DB worker 仍须独立门。
-本批新增的焦点是 WinWorld 外部 classic script 的固定内存 profile，以及设备门在必要时清理
-同名 `positron.exe` 的独立、有界前置步骤；不扩大其他产品边界。
+本批把 WinWorld hamburger 的真实阻塞收束为 Core flex form-control gadget 丢失：产品修复、
+原版 jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩余工作是同一候选上的
+应用人工视觉/触摸确认，以及不属于 navbar 核心依赖的 bootstrap-multiselect 语法限制取舍。
 
 ## 当前源码事实
 
@@ -112,11 +113,9 @@ contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体�
   的 focus/focusin 仅负责焦点状态和视觉反馈，即使焦点事件投影失败也不会吞掉可信的
   Browser native-button click transaction；抬起时清除 `ACTIVE`。没有加入 WinWorld 特判或新的
   公共 ABI。
-- 该 EXE 修正版复测后菜单仍无变化。`tmp/device-runs/20260929-112947-button-native-contract-20260929`
-  的 ARMV4I gate 中 TEST1073/999 均为 OK、无 ERROR/FAIL，但整体结果被
-  `core_module_check=STALE_MODULE` 拒绝：设备 PID `2733577874` 的旧 `positron.exe` 仍持有
-  `\\Storage Card\\Temp\\Positron-device-gate\\button-click-20260929\\positron_core.dll`，
-  因此不能把这次 gate 当作当前 EXE+DLL 的匹配设备证据。
+- 早期 `button-native-contract` 结果因旧进程持有旧 Core DLL 被 `STALE_MODULE` 拒绝；这不是
+  当前证据。设备门现在可显式使用 `-ForceTerminatePositron`，并在本批 `1325,1326,1327,999`
+  运行前完成精确进程清理与模块匹配检查。
 - 源码审计确认普通 `document` click listener 的缺口属于 Browser/ScriptSession，而不是 EXE
   的 SVG 命中。当前批次已在 `positron_browser` 增加独立的 bounded document delegated-click
   bootstrap，在 Core 复用 `PCORE_DOCUMENT_ELEMENT_TOKEN`；TEST1320 覆盖普通 button 的
@@ -134,15 +133,21 @@ contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体�
   摘要也由同一 `_DEBUG` 边界保护。Release 预处理路径不包含这些日志函数、调用和缓冲区，
   不改变公共 ABI、Browser/Core 或 `test_host`。WM6 目标使用已验证可链接的
   `OutputDebugStringW` 输出，避免依赖不存在的 `OutputDebugStringA` coredll 导出。
-- 最新 Debug 完整包已由 `scripts\stage.bat Debug` 生成并部署到
-  `\Storage Card\Temp\Positron-device-gate\debug-script-diagnostics-20260929`，19/19 文件复制
-  成功，设备返回 `positron.exe` PID `2522227582`。远端回读的 `positron.exe`、`positron_core.dll`
-  和 `positron_browser.dll` SHA-256 均与本地 stage 一致；该目录保留供用户在同一实例中打开
-  WinWorld 并采集 Debug 脚本诊断，目前尚无页面脚本状态的人工结果。
+- 新 profile 的真实 WinWorld Debug 日志位于
+  `tmp/device-runs/debug-capture-20260930-135414/positron-debug.log`：jQuery 3.5.1、Popper
+  和 Bootstrap 4.6.2 均为 `outcome=executed`，脚本 heap peak 为 `2642875/3145728`；
+  bootstrap-multiselect 仍单独报告语法错误，不能把它误写成 navbar 核心依赖失败。修复前的
+  `pointer-scan scanned=0 hit=0` 已消失，当前日志连续记录 `pointer-hit`、`script-click` 和
+  `commit`，证明真实按钮已进入 Browser native-button transaction。
 - `positron_script.dll` 的 source 上限为 128 KiB，独立 context 默认 heap 为 512 KiB。Browser
   旧 `PBrowser_ScriptSessionCreate()` 仍为 1.5 MiB；新增 `PBrowser_ScriptSessionCreateEx()`
   与 Browser-owned GC/heap telemetry 入口，固定允许范围为 1.5–3 MiB。`positron_app` 选择
   3 MiB profile，并在每个 classic script 前回收短命对象；未提供无界 profile。
+- `test_host` TEST1327 把未修改的 jQuery/Bootstrap、直接 flex button 和原生坐标事务组合在同一
+  fixture 中，并在有界 timer 推进后断言 `nav.show` 与 `aria-expanded=true`；
+  `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 的 `1325,1326,1327,999`
+  ARMV4I 门 selected/observed 为 `4/4`，唯一 `TESTBENCH PASS`、零 ERROR/FAIL、
+  `core_module_check=PASS`、`crash_check=PASS`，日志已完整回收并清理当前远端目录。
 - `positron_media.dll` 新增稳定 C ABI：`pm_probe`、`pm_open/close`、`pm_pump`、暂停/恢复/停止/
   seek、stream/capability/backend/error 查询；输入由同步 `read/seek/tell/size` callback 提供，
   session 保留最多 16 MiB，回调缓冲只在同步回调期间有效，关闭后清空所有回调入口。
@@ -163,11 +168,12 @@ contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体�
 ## 文档与路线图
 
 本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
-tile、WinWorld rgba/round-cap Image 纵切以及 document delegated-click 合同均已完成；
-`20260929-132600-next1320-document-click-final2` 已取得匹配 DLL 的 ARMV4I
-`1320,999` 设备门通过证据。阶段 B 候选继续只保留 `positron.exe` 应用图片可见性、滚动/旋转/DPI、
-普通按钮脚本反馈人工门、外部 Bootstrap 脚本状态和原有 Media 未完成边界。新增的 EXE 动态顶层
-滚动条接线尚未设备验收，不得把离线 decode、Core 背景门或桌面构建证据写成真实应用视觉通过。
+tile、WinWorld rgba/round-cap Image、document delegated-click，以及 flex button 的原生
+Bootstrap collapse 纵切均已完成；`20260930-140850-native-bootstrap-flex-r2` 已取得匹配 DLL
+的 `1325,1326,1327,999` ARMV4I 设备门通过证据。路线图已移除“等待原版 jQuery/Bootstrap
+初始化”的过时候选，下一步只保留 `positron.exe` 的人工触摸/键盘/视觉门、滚动/旋转/DPI、
+表单设备门和 Media/DB 未完成边界。bootstrap-multiselect 的语法错误仍是独立限制，不以提高
+脚本预算或站点特判掩盖；自动回归也不把离线通过写成应用视觉通过。
 
 ## 已验证的自动证据
 
@@ -238,10 +244,16 @@ tile、WinWorld rgba/round-cap Image 纵切以及 document delegated-click 合�
   `tmp/device-runs/20260929-132600-next1320-document-click-final2` 通过，覆盖
   `document` capture/bubble、target/currentTarget、collapse mutation、重复/移除/once 和
   64 listener 预算，并完成日志回收、双空间预检和 crash 检查。
-- `scripts\build.bat Release build` 本批的 Browser/Core/app/test_host 均完成（Core/test_host
-  保留 3 个既有 libcss 转换警告），但解决方案的既有 `positron_cab` CabWiz 报
-  `Data files could not be created`，因此不能把完整 Release 解决方案写成通过；该工具链失败
-  与本批 Browser/Core 改动无关。
+- TEST1325、1326、1327 组成同一条 WinWorld 菜单回归：1325 验证 `Element.click()`，1326
+  验证直接 flex button 的 Core gadget 与原生坐标事务，1327 再把未修改的 jQuery/Bootstrap
+  delegated collapse 接到该原生事务，并用 `PBrowser_ScriptSessionRunTimers()` 等待过渡完成。
+  `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 的匹配 Debug ARMV4I 门四项全过，
+  无 ERROR/FAIL、无新增 dump；这证明产品侧 flex gadget 缺口已修复，不替代真实 EXE 的触摸
+  和窄视口视觉验收。
+- `scripts\build.bat Release build` 与一次 `Release rebuild` 均未形成完整 Release 门：VS2008
+  并行工程在本机出现 `vc80.pdb`/依赖 `.lib` 尚未就绪，随后 CabWiz 也因缺少 Release EXE/DLL
+  报错；这与 TEST1327 源码失败无关。当前可作为本批编译证据的是 Debug 正式构建和匹配
+  ARMV4I 设备门，不能把 Release 全量构建写成通过。
 - TEST1322 已通过匹配 Debug ARMV4I 包的定向门：`tmp/device-runs/20260929-221805-next1322-script-heap`
   中 `1322,999` 为 selected/observed `2/2`，唯一 `TESTBENCH PASS`，零 ERROR/FAIL，
   `core_module_check=PASS`、`crash_check=PASS`、无新增 dump。门同时验证旧 1.5 MiB wrapper、
@@ -343,16 +355,13 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 回归通过”，不算新 EXE/Core 的设备验收；现在如确需清理可显式使用
 `-ForceTerminatePositron`，它不会结束任意其他进程。
 
-最新消费者日志 `tmp/device-runs/debug-capture-20260929-214139/positron-debug.log` 已确认
-jQuery、Bootstrap 和 bootstrap-multiselect 的 `-6` 是旧 1.5 MiB heap 失败，而不是 128 KiB
-source gate；新的应用 profile 尚未取得真实页面日志。设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
-会话，不连接、选择、cradle 或重置设备，默认不结束进程；显式 `-ForceTerminatePositron`
-时只运行独立 helper 精确清理 `positron.exe`。外置卡 Temp 优先，内置 Temp 回退；完整回收
-日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
-- 新 profile 的 `positron.exe` 已部署并启动，远端根为
-  `\Storage Card\Temp\Positron-device-gate\debug-capture-20260929-222012`，本地日志根为
-  `tmp/device-runs/debug-capture-20260929-222012`；启动快照只有 session 头，真实 WinWorld
-  导航与 hamburger 点击仍等待用户 GUI 操作，不能把启动成功写成脚本已执行。
+最新真实 WinWorld 日志 `tmp/device-runs/debug-capture-20260930-135414/positron-debug.log`
+已确认 jQuery、Popper 和 Bootstrap 均为 `outcome=executed`，heap peak 为 2642875/3145728；
+bootstrap-multiselect 的语法错误仍是独立限制。设备纪律保持不变：用户先在 WMDC/Device Emulator
+GUI 手动连接恰好一个设备；gate 只复用当前会话，不连接、选择、cradle 或重置设备，默认不结束进程；
+显式 `-ForceTerminatePositron` 时只运行独立 helper 精确清理 `positron.exe`。外置卡 Temp 优先，
+内置 Temp 回退；完整回收日志后才清理旧部署。修复后的同一日志还记录了 `pointer-hit`、
+`script-click` 和 `commit`，不能再把旧的 `debug-capture-20260929-222012` 启动头当作当前结论。
 
 - 本轮把 EXE Debug 诊断从仅依赖 `OutputDebugStringW` 扩展为有界设备文件镜像：
   `positron_app/app_debug.c/.h` 在 `_DEBUG` 下把脚本逐项/汇总状态和图片摘要同时写入
@@ -417,13 +426,9 @@ source gate；新的应用 profile 尚未取得真实页面日志。设备纪律
 
 ## 唯一下一步
 
-建立原版 jQuery 3.5.1 / Bootstrap 4.6.2 的离线初始化与 collapse 集成回归，再按完整合同修复
-detached DOM。最新设备日志 `tmp/device-runs/debug-capture-20260929-230751/positron-debug.log`
-已经否定“只需再次手测”的判断：jQuery 在 `__pcoreFormProperty` 抛出 -3，Bootstrap 因缺少
-jQuery 停止初始化；本次峰值约 2.31 MiB，低于 3 MiB profile。空 id 的 detached option
-selected 查询可由本地 bootstrap 探针复现，createHTMLDocument 等后续缺口也已确认。
-
-前几轮未提交 Browser checked/value/innerHTML 实验存在状态和所有权问题，不能提交为正式
-修复；三份源码改动暂保留供审查，本次调查未部署新候选。详细证据和探针局限见
-[调查记录](../docs/history/WINWORLD_SCRIPT_INITIALIZATION.md)。本轮复核 ROADMAP 后确定
-优先项应改为真实库初始化纵切；自动断言成功以前不再要求用户重复点击，不扩大 heap 或加入站点特判。
+在当前匹配 Debug 候选上完成一次 `positron.exe` 的人工 WinWorld 验收：确认窄视口点按
+navbar hamburger 后导航菜单展开、`aria-expanded` 与视觉状态一致，并确认点击空白、返回和
+退出没有回归。自动证据已齐全：原版 jQuery/Bootstrap 的 1325/1326/1327 纵切和 ARMV4I
+设备门均通过；自动门不能替代真实触摸、键盘和视觉观察。若人工门通过，下一轮从路线图中
+选择滚动/旋转/DPI 或 Media/DB 的一个完整纵切；若失败，只记录同一候选的截图、Debug 日志
+和输入步骤，禁止回到站点特判或无界增大脚本 heap。

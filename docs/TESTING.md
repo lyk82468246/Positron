@@ -105,7 +105,7 @@ tests=1-5 7b 13 20,999
 - 资源、导航、history、viewport、页面生命周期、脚本任务队列、焦点和窗口通知由早期资源/会话夹具覆盖；这些夹具共同验证候选 generation、required/optional gate、取消、旧页保留、滚动快照和事件顺序。
 - 几何、overflow、滚动、selector、form owner、validation、submission、FormData、option/select 和图像 source 夹具覆盖 Core/Browser callback 的边界、预算、snapshot 隔离和 fail-closed 行为；参考宿主 TEST39 另以离线 column-flex fixture 断言 `flex-basis:0` 子项的实际高度计入自动高度父容器，footer 不得覆盖前置 section；真实控件、DPI、触摸和视觉仍属于人工验收。
 - DOM/CharacterData 夹具覆盖 Text、Comment、CDATA、属性、`textContent`、`innerHTML`/`outerHTML`、`document.write`、title、detached Element 与 bounded DocumentFragment。Fragment 只允许文档规定的有限根数和节点形状。
-- TEST1322 覆盖 Browser 脚本 session 的有界内存 profile：旧 `Create` 仍为 1.5 MiB，应用使用 additive 的 `CreateEx` 3 MiB profile；低于默认或超过上限的请求 fail closed，约 120 KiB 的保留 classic script 可在 bootstrap 后执行，GC 后状态仍可用。该门证明预算和 ABI 合同，不证明任意第三方脚本兼容；真实 jQuery/Bootstrap 仍须以 `positron.exe` Debug 日志确认 `runtime-error=-6` 是否消失。
+- TEST1322 覆盖 Browser 脚本 session 的有界内存 profile：旧 `Create` 仍为 1.5 MiB，应用使用 additive 的 `CreateEx` 3 MiB profile；低于默认或超过上限的请求 fail closed，约 120 KiB 的保留 classic script 可在 bootstrap 后执行，GC 后状态仍可用。该门证明预算和 ABI 合同，不证明任意第三方脚本兼容；固定版本 jQuery/Popper/Bootstrap 的真实执行状态另由应用 Debug 日志和 TEST1325–1327 记录，bootstrap-multiselect 仍保留为独立语法限制。
 - TEST1284–1296 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging、Core/live Element/detached Fragment 的 `Node.normalize()`、detached Element 的直接 CharacterData staging，以及 detached Element 物化后的有界 primitive `before()`/`after()`/`replaceWith()`、attached HTML mutation coherence、element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、四位置 `insertAdjacentElement()`、直接 Element-child 的 `appendChild()`/`insertBefore()`/`removeChild()` 与 primitive-only `replaceChildren()`：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界；Text、Comment、CDATA wrapper 和物化 Element wrapper 可在 clone、replace、直接物化、移除、再次插入、同级文本/Element 突变、parser-backed `innerHTML`/`outerHTML` 替换、`children`/first-last element accessor 读取和相邻 mutation 之间保持有界 identity，Element 脱离后 direct 普通 Text/CDATA 快照仍保留数据。未物化 Element 的 relative/adjacent/child mutation 保持 inert，任意对象参数和完整 detached HTML parser 仍在 mutation 前拒绝或不承诺。
 - TEST1297 在同一离线夹具中覆盖唯一的 bounded live `Element.getElementsByTagName()` collection：每次调用返回新对象，已连接 owner 的同一 collection 在子节点、id/name mutation 后刷新，created wrapper 保持 identity，索引、`item()`、`namedItem()`、`entries()` 和结束标记保持一致；最多访问 256 个节点并返回 64 项，刷新超限保留最近成功结果。其他 collection 仍按各自合同使用 bounded snapshot；这不是完整浏览器 live collection。
 - TEST1298 覆盖 detached Browser-created Element 的 nested graph：最多 4 层、64 个 Element、每个 Element 64 个 child，所有 Element 需要唯一非空 id；递归 `parentNode`/`children`/`textContent`、`cloneNode(true)`、Core 物化、wrapper registry、remove/reinsert 和失败后的 detached owner 保持一致。循环、重复/缺失 id、超出预算和 nested Fragment 仍在 Core 触碰前拒绝。
@@ -213,8 +213,17 @@ tests=1-5 7b 13 20,999
   风格 handler 还要修改 `classList` 与 `aria-expanded`。夹具断言相同 callback/capture 的
   重复注册被忽略、`removeEventListener` 生效、`once` 只执行一次，并以 64 项固定 document
   listener 预算验证第 65 项 fail closed。该门只证明 DLL 的离线事件合同，不证明外部
-  Bootstrap 脚本已经下载、执行或在 `positron.exe` 的真实 WinWorld 页面中改变菜单；这些仍
-  需要匹配 DLL 的应用设备门和脚本 executed/ignored/error 证据。
+  Bootstrap 脚本已经下载、执行或在 `positron.exe` 的真实 WinWorld 页面中改变菜单；这部分
+  由后续 TEST1325–1327、应用 Debug `executed` 日志和匹配 DLL 设备门补足，TEST1320 单独不
+  代替这些证据。
+- TEST1325、1326、1327 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和
+  Bootstrap 4.6.2 通过 `Element.click()` 验证 delegated collapse；1326 把普通 button 放入
+  直接 flex 容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，
+  在原生 click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言
+  `nav` 含 `show`、按钮 `aria-expanded=true`。`1325,1326,1327,999` 已在同一 Debug
+  ARMV4I staging 通过，模块路径匹配、零 ERROR/FAIL、无新增 dump。该门证明 flex 控件和
+  Browser/Core 事件链，不承诺 bootstrap-multiselect 等其他站点脚本、完整触摸视觉或现代
+  JavaScript 兼容。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

@@ -799,7 +799,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1326
+#define TEST_MAX_NUMBER 1327
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -113484,6 +113484,242 @@ static BOOL test1326_browser_native_coordinate_click(void)
     return TRUE;
 }
 
+/* TEST 1327 - the production-shaped Bootstrap collapse path must also work
+ * when the button is reached through Core's trusted native coordinate
+ * transaction.  TEST 1325 covers the same scripts through HTMLElement.click;
+ * this fixture keeps the unmodified jQuery/Bootstrap sources but adds the
+ * flex layout that originally dropped the button's gadget during layout. */
+static BOOL test1327_browser_native_bootstrap_flex_click(void)
+{
+    static const char PREFIX[] =
+        "<!doctype html><html><head><script>";
+    static const char BETWEEN[] = "</script><script>";
+    static const char AFTER[] =
+        "</script></head><body><div id='bar' class='navbar'>"
+        "<button id='toggle' type='button' data-toggle='collapse' "
+        "data-target='#nav' aria-expanded='false'>Menu</button></div>"
+        "<div id='nav' class='collapse'>Links</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0}"
+        "#bar{display:flex;width:240px;height:40px;padding:2px}"
+        "#toggle{display:block;width:96px;height:32px;margin:4px}"
+        "#nav{display:block;width:96px;height:24px}";
+    char *jquery;
+    char *bootstrap;
+    char *html;
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeButtonInfo info;
+    char class_value[128];
+    char aria_value[32];
+    char error[768];
+    char stage[64];
+    int jquery_bytes;
+    int bootstrap_bytes;
+    int html_bytes;
+    int capacity;
+    int executed;
+    int ignored;
+    int button_x;
+    int button_y;
+    int button_w;
+    int button_h;
+    int button_kind;
+    int disabled;
+    int default_allowed;
+    int rc;
+    int bytes;
+    int ok;
+
+    jquery = NULL;
+    bootstrap = NULL;
+    html = NULL;
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(class_value, 0, sizeof(class_value));
+    memset(aria_value, 0, sizeof(aria_value));
+    memset(error, 0, sizeof(error));
+    memset(stage, 0, sizeof(stage));
+    jquery_bytes = 0;
+    bootstrap_bytes = 0;
+    html_bytes = 0;
+    capacity = 0;
+    executed = -1;
+    ignored = -1;
+    button_x = 0;
+    button_y = 0;
+    button_w = 0;
+    button_h = 0;
+    button_kind = 0;
+    disabled = 0;
+    default_allowed = 1;
+    rc = -1;
+    bytes = 0;
+    ok = 1;
+
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    strcpy(stage, "fixtures");
+    if (test_host_load_fixture(L"fixtures\\jquery-3.5.1.min.js",
+            &jquery, &jquery_bytes) != 0 ||
+            test_host_load_fixture(L"fixtures\\bootstrap-4.6.2.min.js",
+            &bootstrap, &bootstrap_bytes) != 0) {
+        strcpy(error, "jQuery or Bootstrap fixture is unavailable");
+        ok = 0;
+    }
+    if (ok) {
+        capacity = (int) strlen(PREFIX) + jquery_bytes +
+                (int) strlen(BETWEEN) + bootstrap_bytes +
+                (int) strlen(AFTER) + 1;
+        if (capacity <= 0 || capacity > 262144) {
+            strcpy(error, "jQuery/Bootstrap fixture exceeds the bounded "
+                    "document budget");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        html = (char *) malloc((size_t) capacity);
+        if (html == NULL) {
+            strcpy(error, "could not allocate jQuery/Bootstrap fixture "
+                    "document");
+            ok = 0;
+        }
+    }
+    if (ok) {
+        memcpy(html + html_bytes, PREFIX, strlen(PREFIX));
+        html_bytes += (int) strlen(PREFIX);
+        memcpy(html + html_bytes, jquery, (size_t) jquery_bytes);
+        html_bytes += jquery_bytes;
+        memcpy(html + html_bytes, BETWEEN, strlen(BETWEEN));
+        html_bytes += (int) strlen(BETWEEN);
+        memcpy(html + html_bytes, bootstrap, (size_t) bootstrap_bytes);
+        html_bytes += bootstrap_bytes;
+        memcpy(html + html_bytes, AFTER, strlen(AFTER) + 1U);
+        html_bytes += (int) strlen(AFTER);
+        strcpy(stage, "create");
+        document = PCore_ParseHTML(html, (size_t) html_bytes);
+        g_browser_script_memory_limit_override =
+                PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES;
+        if (document == NULL ||
+                pcore_browser_execute_scripts(document, 1, 0,
+                "https://winworldpc.com/home", NULL, NULL,
+                &executed, &ignored, error, sizeof(error), &runtime,
+                &bridge) != 0 || executed != 2 || ignored != 0 ||
+                runtime == NULL || bridge == NULL) {
+            ok = 0;
+        }
+        g_browser_script_memory_limit_override = 0;
+    }
+    if (ok) {
+        strcpy(stage, "style-layout");
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "https://winworldpc.com/home");
+        PCore_SetViewport(320, 240, 96);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0 ||
+                PCore_FormControlInfoById(document, "toggle", &button_x,
+                &button_y, &button_w, &button_h, &button_kind, NULL,
+                &disabled) != 0 || button_kind != 9 || disabled ||
+                button_w <= 0 || button_h <= 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        strcpy(stage, "native-bootstrap-click");
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        info.size = sizeof(info);
+        info.target_token = 1;
+        info.x = button_x + button_w / 2;
+        info.y = button_y + button_h / 2;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
+        info.disabled = 0;
+        info.validation_valid = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(
+                g_browser_script_session.session, &info, &default_allowed);
+        if (rc != PSCRIPT_OK || !default_allowed) {
+            ok = 0;
+        }
+        if (ok) {
+            info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+            rc = PBrowser_ScriptSessionDispatchNativeButton(
+                    g_browser_script_session.session, &info,
+                    &default_allowed);
+            if (rc != PSCRIPT_OK || !default_allowed) {
+                ok = 0;
+            }
+        }
+        if (ok) {
+            rc = PBrowser_ScriptSessionRunTimers(
+                    g_browser_script_session.session, 1000UL);
+            if (rc != PSCRIPT_OK) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        strcpy(stage, "bootstrap-result");
+        if (PCore_NodeAttributeById(document, "nav", "class", class_value,
+                sizeof(class_value), &bytes) != 0 ||
+                strstr(class_value, "show") == NULL ||
+                PCore_NodeAttributeById(document, "toggle", "aria-expanded",
+                aria_value, sizeof(aria_value), &bytes) != 0 ||
+                strcmp(aria_value, "true") != 0) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    free(html);
+    free(jquery);
+    free(bootstrap);
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d allowed=%d kind=%d box=%d,%d,%d,%d "
+                    "class=%s aria=%s exec/ignore=%d/%d",
+                    stage, rc, default_allowed, button_kind, button_x,
+                    button_y, button_w, button_h, class_value, aria_value,
+                    executed, ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1327 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1327 OK",
+            "Unmodified jQuery/Bootstrap collapse responded to a trusted "
+            "native click on a direct flex button; class and aria state "
+            "were retained by Core.");
+    return TRUE;
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -116664,6 +116900,9 @@ static int run_configured_tests(const unsigned char *selected,
             break;
         case 1326:
             ok = test1326_browser_native_coordinate_click();
+            break;
+        case 1327:
+            ok = test1327_browser_native_bootstrap_flex_click();
             break;
         default: ok = FALSE; break;
         }

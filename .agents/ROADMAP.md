@@ -148,17 +148,15 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     现在还按最终 document extent 动态增删 `WS_HSCROLL`/`WS_VSCROLL`，在 frame-change 的
     嵌套 `WM_SIZE` 中只更新临时尺寸，样式稳定后才重新 layout；该改动已通过 C89、审计和
     Debug 编译，但尚无设备视觉证据。普通 Core 绘制 button 的 pointer-down 现也先设置
-    `FOCUS|ACTIVE`，并把焦点反馈与 Browser click transaction 解耦；该修正已完成 Debug 部署，
-    但 WinWorld 响应式菜单仍无变化。Browser/ScriptSession 现已补上通过 Core document target
-    的有界 document delegated `click` listener，TEST1320 覆盖 target/currentTarget、冒泡、
-    class/aria mutation、重复注册、移除、once/capture 和 64 项预算；
-    `tmp/device-runs/20260929-132600-next1320-document-click-final2` 已用匹配 DLL 取得
-    `1320,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一 `TESTBENCH PASS` 和零
-    ERROR/FAIL 的证据。最新 WinWorld 日志证明 jQuery/Bootstrap/bootstrap-multiselect 已越过
-    128 KiB source gate 但在 legacy 1.5 MiB Browser heap 以 `PSCRIPT_ERROR_MEMORY_LIMIT (-6)`
-    失败；当前准备取舍是先验证 Browser 的 1.5–3 MiB bounded Ex profile、脚本间 GC 和 telemetry，
-    再用 `positron.exe` 重新记录 fetch/execute/ignored/error 与菜单 DOM 变化。Release 应用工程已
-    链接，完整解决方案的 CABWiz 数据文件生成失败，不能把 Release 全量门写成通过。
+    `FOCUS|ACTIVE`，并把焦点反馈与 Browser click transaction 解耦；随后修复了 flex 构造器
+    blockify 直接 button 时丢失 gadget 的问题。Browser/ScriptSession 的有界 document delegated
+    `click` listener 与原版 jQuery/Bootstrap 现在由 TEST1325/1326/1327 覆盖；
+    `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 已用匹配 DLL 取得
+    `1325,1326,1327,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一 `TESTBENCH PASS`
+    和零 ERROR/FAIL 的证据。最新 WinWorld 日志确认 jQuery、Popper、Bootstrap 已执行，
+    `pointer-hit`/`script-click`/`commit` 已出现；bootstrap-multiselect 的语法错误另行保留为限制。
+    Release 应用工程已链接，但完整解决方案的 CABWiz 数据文件生成仍可能失败，不能把 Release
+    全量门写成通过。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，
@@ -209,10 +207,11 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
     RAPI 设备传输按用户决定暂停，不据此宣布设备基线；恢复设备传输后先验收本纵切的 method/enctype、
     picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
 
-Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。真实页面日志已证明当前阻塞转为
-jQuery 初始化的 detached DOM 异常，Bootstrap 因此未初始化；不能再将重复人工点击作为下一步。
-优先建立原版库离线集成回归，再修复完整的有界 DOM 合同，见下方 JS 候选和
-[调查记录](../docs/history/WINWORLD_SCRIPT_INITIALIZATION.md)。
+Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。原版 jQuery 3.5.1、Bootstrap 4.6.2
+的初始化与 delegated collapse 已通过 TEST1324/1325；TEST1326/1327 又证明直接 flex button
+经 Core gadget、原生坐标事务和有界 timer 后能修改 `class`/`aria-expanded`。真实 WinWorld
+Debug 日志确认 jQuery、Popper、Bootstrap 已执行，剩余 bootstrap-multiselect 语法错误独立于
+navbar 核心路径。该纵切不再是路线图候选；下一步是同一候选的人工触摸/键盘/视觉门。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
@@ -221,17 +220,6 @@ jQuery 初始化的 detached DOM 异常，Bootstrap 因此未初始化；不能�
 ## 候选队列
 
 ### 准备取舍
-
-#### JS. 原版 jQuery/Bootstrap 初始化与菜单交互
-
-**状态：真实消费者阻塞已复现，优先于普通功能扩展。** Browser 的 detached option selected
-错误调用空 id 的 Core form callback；原版 jQuery 还需要 fragment、克隆和独立 document。
-前几轮未提交的 checked/value/innerHTML 绕过补丁不能作为基线。
-
-- **Owner：** Core 拥有 HTML fragment 解析和表单语义；Browser 拥有脚本 wrapper、身份、生命周期和桥接；宿主只接线。
-- **边界：** 保持旧 ABI、3 MiB profile 和固定节点/深度预算；不增加站点特判，不伪造 document 或把 HTML parser 复制到 Browser。
-- **最小 fixture：** 固定原版 jQuery 3.5.1 / Bootstrap 4.6.2；覆盖初始化、live/default/dirty 状态、clone、fragment、失败不变性、释放及实际 collapse 的 class/aria 变化。
-- **门：** 先自动完成原版库执行与 delegated click，再运行 C89、audit、正式构建和模块匹配的 ARMV4I 设备门；成功后才要求真实触摸验收。Node sentinel 探针不替代公共 DLL 集成门。
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
@@ -306,14 +294,14 @@ TEST1314/1315 与 Core TEST1316/1317 已覆盖 IANA 风格 `<style>` class paint
 ARMV4I 设备门已通过。普通网络 SVG/PNG/JPEG/GIF 仍走原 callback/cache 路径。本轮又完成了
 Image DLL 对 WinWorld 精确 navbar SVG 的 `rgba()` stroke alpha、`stroke-opacity` 和
 round/square linecap 解析；TEST1319 的 Create→Draw 像素回归及 `1319,999` Debug ARMV4I
-设备门通过，未修改 Core 或应用接线。窄视口页面、
-脚本 mutation/事件/导航、失败、取消或过时响应的应用人工门仍待完成。本轮
-此前改变导航控制流的 candidate UI 实验因设备上地址栏回车导航无反应而撤回；当前源码在已
-验证的启动路径上改用候选级已提交 UI 快照回滚，C89、审计和 Debug 编译已通过；替代包的
-`TEST999` 启动门已通过，但网络页面人工门仍未完成。新的独立应用网络页面门仍待执行。最新
-Debug 候选已包含 TEST42 兼容的 nested overflow pointer 路径，但首次部署被设备上运行的旧
-`positron.exe` 复用旧 Core DLL，设备门以 `STALE_MODULE` 拒绝作为新版本证据；关闭旧进程后
-必须从同一候选目录重新启动并验收表格横向拖动。
+设备门通过，未修改 Core 或应用接线。随后定位到 flex 构造器把直接 flex button blockify 时
+丢弃 gadget，修复留在 `positron_core`；TEST1325/1326/1327 的原版脚本、Core 命中和原生
+Bootstrap collapse 已在匹配 ARMV4I 门通过。窄视口页面、脚本 mutation/事件/导航、失败、
+取消或过时响应的应用人工门仍待完成；bootstrap-multiselect 的语法错误另行保留为限制，
+不提高 heap 或加入站点特判。本轮此前改变导航控制流的 candidate UI 实验因设备上地址栏回车
+导航无反应而撤回；当前源码在已验证的启动路径上改用候选级已提交 UI 快照回滚，C89、审计和
+Debug 编译已通过。最新 Debug 候选已包含 TEST42 兼容的 nested overflow pointer 路径，
+但表格横向拖动、旋转/DPI 和 WinWorld 视觉仍需同一候选的人工验收。
 
 - **Owner：** Browser navigation/resource transaction 与 HTTP/TLS transport；应用只拥有
   worker、WM 消息泵、窗口重绘、配置策略和页面 swap。
