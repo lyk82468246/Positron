@@ -17,8 +17,9 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 图片 pending/retry、CSS data URI、Image 的有限 SVG 样式/渐变/alpha、HTTP URL-aware 和
 Browser history/lifecycle/document click 纵切已有源码与离线/设备证据；DB 目前只有主机
 contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体播放和 DB worker 仍须独立门。
-本批把 WinWorld hamburger 的真实阻塞收束为 Core flex button 同时丢失 gadget 和作者子树：
-产品现在在保留 `<button>` 后代（包括 CSS data-URI 图标）的普通样式盒上附加 gadget，原版
+本批把 WinWorld hamburger 的真实阻塞收束为 Core 在部分布局上下文把 `<button>` 替换为合成
+标签、同时丢失 gadget 和作者子树：产品现在在保留 `<button>` 后代（包括 CSS data-URI 图标）
+的普通样式盒上附加 gadget，原版
 jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩余工作是同一候选上的应用
 人工视觉/触摸确认，以及不属于 navbar 核心依赖的 bootstrap-multiselect 语法限制取舍。
 
@@ -169,8 +170,9 @@ jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩�
 ## 文档与路线图
 
 本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
-tile、WinWorld rgba/round-cap Image、document delegated-click，以及 flex button 的原生
-Bootstrap collapse 纵切均已完成；`20260930-140850-native-bootstrap-flex-r2` 已取得匹配 DLL
+tile、WinWorld rgba/round-cap Image、document delegated-click，以及保留 flex/普通 block
+button 作者子树的原生 Bootstrap collapse 纵切均已完成；`20260930-155925-all-button-author-child-r7`
+已取得匹配 DLL
 的 `1325,1326,1327,999` ARMV4I 设备门通过证据。路线图已移除“等待原版 jQuery/Bootstrap
 初始化”的过时候选，下一步只保留 `positron.exe` 的人工触摸/键盘/视觉门、滚动/旋转/DPI、
 表单设备门和 Media/DB 未完成边界。bootstrap-multiselect 的语法错误仍是独立限制，不以提高
@@ -247,12 +249,18 @@ Bootstrap collapse 纵切均已完成；`20260930-140850-native-bootstrap-flex-r
   64 listener 预算，并完成日志回收、双空间预检和 crash 检查。
 - TEST1325–1328 组成同一条 WinWorld 菜单回归：1325 验证 `Element.click()`，1326 验证直接
   flex button 的 Core gadget 与原生坐标事务，1327 再把未修改的 jQuery/Bootstrap delegated
-  collapse 接到该原生事务，1328 验证 flex button 的作者子树和 CSS data-URI 图标没有被合成的
-  `Button` 标签替换；1327 使用 `PBrowser_ScriptSessionRunTimers()` 等待过渡完成。
-  `tmp/device-runs/20260930-153322-flex-button-visual-child-r6` 的匹配 Debug ARMV4I 门
+  collapse 接到该原生事务，1328 验证 flex 和普通 block button 的作者子树及 CSS data-URI
+  图标没有被合成的 `Button` 标签替换；1327 使用 `PBrowser_ScriptSessionRunTimers()` 等待
+  过渡完成。
+  `tmp/device-runs/20260930-155925-all-button-author-child-r7` 的匹配 Debug ARMV4I 门
   `1325-1328,999` selected/observed 为 `5/5`，无 ERROR/FAIL、唯一 `TESTBENCH PASS`、
   `core_module_check=PASS`、`crash_check=PASS` 且无新增 dump；这证明 Core 的 gadget、作者
-  内容和 Browser 点击链已收束，不替代真实 EXE 的触摸和窄视口视觉验收。
+  内容和 Browser 点击链已收束。该修复覆盖 inline、普通 block 和 flex 构造路径，不替代真实
+  EXE 的触摸和窄视口视觉验收。
+- 本轮为确认普通 block `<button>` 的扩展没有掩盖旧表单问题，另跑了
+  `tmp/device-runs/20260930-160035-ordinary-button-regression-r7` 的 `293,999`；TEST293
+  仍以 `changed=0/0 restored=0/0 reset=0` 失败，未到达 TEST999。该失败与本批作者子树绘制
+  回归独立，保留为既有表单提交/重置限制，不能写成全量表单通过。
 - `scripts\build.bat Release build` 与一次 `Release rebuild` 均未形成完整 Release 门：VS2008
   并行工程在本机出现 `vc80.pdb`/依赖 `.lib` 尚未就绪，随后 CabWiz 也因缺少 Release EXE/DLL
   报错；这与 TEST1327 源码失败无关。当前可作为本批编译证据的是 Debug 正式构建和匹配

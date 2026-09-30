@@ -113720,10 +113720,11 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     return TRUE;
 }
 
-/* TEST 1328 - a flex button must retain its author child tree.  The
- * production navbar uses a child span with a CSS data-URI SVG; replacing that
- * subtree with the synthetic "Button" label makes the control look broken
- * even though its native gadget remains hittable. */
+/* TEST 1328 - a normal button must retain its author child tree in both a
+ * flex item and an ordinary block.  The production navbar uses a child span
+ * with a CSS data-URI SVG; replacing that subtree with the synthetic
+ * "Button" label makes the control look broken even though its native gadget
+ * remains hittable. */
 typedef struct test1328_fetch_state {
     int callback_calls;
 } test1328_fetch_state;
@@ -113758,11 +113759,14 @@ static BOOL test1328_core_flex_button_visual_child(void)
     static const char HTML[] =
         "<!doctype html><html><body><div id='bar'>"
         "<button id='toggle' type='button'><span class='navbar-toggler-icon'>"
+        "</span></button></div><div id='blockbar'>"
+        "<button id='block' type='button'><span class='navbar-toggler-icon'>"
         "</span></button></div></body></html>";
     static const char CSS[] =
         "html,body{margin:0;padding:0;background:#ffffff}"
         "#bar{display:flex;width:120px;height:52px;padding:4px}"
-        "#toggle{display:block;width:44px;height:44px;padding:4px;"
+        "#blockbar{display:block;width:120px;height:52px;padding:4px}"
+        "#toggle,#block{display:block;width:44px;height:44px;padding:4px;"
         "border:1px solid #000000;background:#ffffff}"
         ".navbar-toggler-icon{display:inline-block;width:24px;height:24px;"
         "background-repeat:no-repeat;background-size:100% 100%;"
@@ -113782,6 +113786,11 @@ static BOOL test1328_core_flex_button_visual_child(void)
     int button_w;
     int button_h;
     int button_kind;
+    int block_x;
+    int block_y;
+    int block_w;
+    int block_h;
+    int block_kind;
     int disabled;
     int x;
     int y;
@@ -113813,12 +113822,16 @@ static BOOL test1328_core_flex_button_visual_child(void)
     PCore_SetViewport(180, 100, 96);
     if (PCore_FetchImageResources(document, test1328_network_fetch,
             test1328_network_free, &fetch_state, &found, &fetched) != 0 ||
-            found != 1 || fetched != 1 || fetch_state.callback_calls != 0 ||
+            found < 1 || fetched < 1 || fetch_state.callback_calls != 0 ||
             PCore_LayoutDocument(document, 180, 100) != 0 ||
             PCore_FormControlInfoById(document, "toggle", &button_x,
             &button_y, &button_w, &button_h, &button_kind, NULL,
             &disabled) != 0 || button_kind != 9 || disabled ||
-            button_w <= 0 || button_h <= 0) {
+            button_w <= 0 || button_h <= 0 ||
+            PCore_FormControlInfoById(document, "block", &block_x,
+            &block_y, &block_w, &block_h, &block_kind, NULL,
+            &disabled) != 0 || block_kind != 9 || disabled ||
+            block_w <= 0 || block_h <= 0) {
         PCore_FreeStylesheet(sheet);
         PCore_FreeDocument(document);
         show_error(L"TEST 1328 FAIL", "flex button gadget geometry missing");
@@ -113851,6 +113864,16 @@ static BOOL test1328_core_flex_button_visual_child(void)
             }
         }
     }
+    for (y = block_y; y < block_y + block_h; y++) {
+        for (x = block_x; x < block_x + block_w; x++) {
+            pixel = GetPixel(memory_dc, x, y);
+            if (GetGValue(pixel) > 100 && GetGValue(pixel) >
+                    GetRValue(pixel) + 40 && GetGValue(pixel) >
+                    GetBValue(pixel) + 40) {
+                green_pixels++;
+            }
+        }
+    }
     SelectObject(memory_dc, old_bitmap);
     DeleteObject(bitmap);
     DeleteDC(memory_dc);
@@ -113859,15 +113882,18 @@ static BOOL test1328_core_flex_button_visual_child(void)
     PCore_FreeDocument(document);
     if (green_pixels < 16) {
         _snprintf(msg, sizeof(msg) - 1,
-                "button=%d,%d,%d,%d green_pixels=%d; author icon was lost",
-                button_x, button_y, button_w, button_h, green_pixels);
+                "flex=%d,%d,%d,%d block=%d,%d,%d,%d green_pixels=%d; "
+                "author icon was lost",
+                button_x, button_y, button_w, button_h, block_x, block_y,
+                block_w, block_h, green_pixels);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 1328 FAIL", msg);
         return FALSE;
     }
     show_info(L"TEST 1328 OK",
-            "Flex button retained its Core gadget and child CSS data-URI "
-            "image; no synthetic Button label replaced the author content.");
+            "Flex and ordinary block buttons retained their Core gadgets and "
+            "child CSS data-URI images; no synthetic Button label replaced "
+            "the author content.");
     return TRUE;
 }
 

@@ -149,9 +149,10 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     嵌套 `WM_SIZE` 中只更新临时尺寸，样式稳定后才重新 layout；该改动已通过 C89、审计和
     Debug 编译，但尚无设备视觉证据。普通 Core 绘制 button 的 pointer-down 现也先设置
     `FOCUS|ACTIVE`，并把焦点反馈与 Browser click transaction 解耦；随后修复了 flex 构造器
-    blockify 直接 button 时同时丢失 gadget 和作者子树的问题。Browser/ScriptSession 的有界
-    document delegated `click` listener、原版 jQuery/Bootstrap 事务以及 CSS data-URI 作者图标
-    现在由 TEST1325–1328 覆盖；`tmp/device-runs/20260930-153322-flex-button-visual-child-r6`
+    blockify 直接 button 时同时丢失 gadget 和作者子树的问题；现已把相同保留规则扩展到
+    inline 与普通 block 构造路径。Browser/ScriptSession 的有界
+    document delegated `click` listener、原版 jQuery/Bootstrap 事务以及 flex/普通 block button
+    的 CSS data-URI 作者图标现在由 TEST1325–1328 覆盖；`tmp/device-runs/20260930-155925-all-button-author-child-r7`
     已用匹配 DLL 取得 `1325-1328,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一
     `TESTBENCH PASS` 和零 ERROR/FAIL 的证据。最新 WinWorld 日志确认 jQuery、Popper、Bootstrap
     已执行，`pointer-hit`/`script-click`/`commit` 已出现；bootstrap-multiselect 的语法错误另行
@@ -297,7 +298,8 @@ ARMV4I 设备门已通过。普通网络 SVG/PNG/JPEG/GIF 仍走原 callback/cac
 Image DLL 对 WinWorld 精确 navbar SVG 的 `rgba()` stroke alpha、`stroke-opacity` 和
 round/square linecap 解析；TEST1319 的 Create→Draw 像素回归及 `1319,999` Debug ARMV4I
 设备门通过，未修改 Core 或应用接线。随后定位到 flex 构造器把直接 flex button blockify 时
-丢弃 gadget，修复留在 `positron_core`；TEST1325/1326/1327 的原版脚本、Core 命中和原生
+丢弃 gadget，修复留在 `positron_core`；随后扩展到 inline/普通 block button 的作者子树。
+TEST1325/1326/1327 的原版脚本、Core 命中和原生
 Bootstrap collapse 已在匹配 ARMV4I 门通过。窄视口页面、脚本 mutation/事件/导航、失败、
 取消或过时响应的应用人工门仍待完成；bootstrap-multiselect 的语法错误另行保留为限制，
 不提高 heap 或加入站点特判。本轮此前改变导航控制流的 candidate UI 实验因设备上地址栏回车

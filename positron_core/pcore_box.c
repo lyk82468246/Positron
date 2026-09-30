@@ -1992,8 +1992,18 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                             pcore_box_add_child(cont, ib);
                         }
                     } else if (gadget_type != 0) {
-                        struct box *gadget = pcore_make_form_control_box(child,
-                                cs, ctx, gadget_type);
+                        struct box *gadget;
+                        if (pcore_node_name_is(child, "button") &&
+                                (gadget_type == GADGET_SUBMIT ||
+                                gadget_type == GADGET_RESET ||
+                                gadget_type == GADGET_BUTTON)) {
+                            gadget = pcore_make_visual_button_box(child, cs,
+                                    ctx, stats, BOX_INLINE_BLOCK,
+                                    gadget_type);
+                        } else {
+                            gadget = pcore_make_form_control_box(child, cs,
+                                    ctx, gadget_type);
+                        }
                         if (gadget != NULL) {
                             pcore_box_add_child(cont, gadget);
                         }
@@ -2196,8 +2206,17 @@ static struct box *pcore_construct_block(dom_node *node,
                                     NULL, ctx);
                             pcore_box_add_child(box, inline_cont);
                         }
-                        gadget = pcore_make_form_control_box(child, cs, ctx,
-                                gadget_type);
+                        if (pcore_node_name_is(child, "button") &&
+                                (gadget_type == GADGET_SUBMIT ||
+                                gadget_type == GADGET_RESET ||
+                                gadget_type == GADGET_BUTTON)) {
+                            gadget = pcore_make_visual_button_box(child, cs,
+                                    ctx, stats, BOX_INLINE_BLOCK,
+                                    gadget_type);
+                        } else {
+                            gadget = pcore_make_form_control_box(child, cs,
+                                    ctx, gadget_type);
+                        }
                         if (gadget != NULL) {
                             pcore_box_add_child(inline_cont, gadget);
                         }
