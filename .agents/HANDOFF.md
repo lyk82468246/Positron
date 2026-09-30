@@ -17,9 +17,10 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 图片 pending/retry、CSS data URI、Image 的有限 SVG 样式/渐变/alpha、HTTP URL-aware 和
 Browser history/lifecycle/document click 纵切已有源码与离线/设备证据；DB 目前只有主机
 contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体播放和 DB worker 仍须独立门。
-本批把 WinWorld hamburger 的真实阻塞收束为 Core flex form-control gadget 丢失：产品修复、
-原版 jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩余工作是同一候选上的
-应用人工视觉/触摸确认，以及不属于 navbar 核心依赖的 bootstrap-multiselect 语法限制取舍。
+本批把 WinWorld hamburger 的真实阻塞收束为 Core flex button 同时丢失 gadget 和作者子树：
+产品现在在保留 `<button>` 后代（包括 CSS data-URI 图标）的普通样式盒上附加 gadget，原版
+jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩余工作是同一候选上的应用
+人工视觉/触摸确认，以及不属于 navbar 核心依赖的 bootstrap-multiselect 语法限制取舍。
 
 ## 当前源码事实
 
@@ -244,12 +245,14 @@ Bootstrap collapse 纵切均已完成；`20260930-140850-native-bootstrap-flex-r
   `tmp/device-runs/20260929-132600-next1320-document-click-final2` 通过，覆盖
   `document` capture/bubble、target/currentTarget、collapse mutation、重复/移除/once 和
   64 listener 预算，并完成日志回收、双空间预检和 crash 检查。
-- TEST1325、1326、1327 组成同一条 WinWorld 菜单回归：1325 验证 `Element.click()`，1326
-  验证直接 flex button 的 Core gadget 与原生坐标事务，1327 再把未修改的 jQuery/Bootstrap
-  delegated collapse 接到该原生事务，并用 `PBrowser_ScriptSessionRunTimers()` 等待过渡完成。
-  `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 的匹配 Debug ARMV4I 门四项全过，
-  无 ERROR/FAIL、无新增 dump；这证明产品侧 flex gadget 缺口已修复，不替代真实 EXE 的触摸
-  和窄视口视觉验收。
+- TEST1325–1328 组成同一条 WinWorld 菜单回归：1325 验证 `Element.click()`，1326 验证直接
+  flex button 的 Core gadget 与原生坐标事务，1327 再把未修改的 jQuery/Bootstrap delegated
+  collapse 接到该原生事务，1328 验证 flex button 的作者子树和 CSS data-URI 图标没有被合成的
+  `Button` 标签替换；1327 使用 `PBrowser_ScriptSessionRunTimers()` 等待过渡完成。
+  `tmp/device-runs/20260930-153322-flex-button-visual-child-r6` 的匹配 Debug ARMV4I 门
+  `1325-1328,999` selected/observed 为 `5/5`，无 ERROR/FAIL、唯一 `TESTBENCH PASS`、
+  `core_module_check=PASS`、`crash_check=PASS` 且无新增 dump；这证明 Core 的 gadget、作者
+  内容和 Browser 点击链已收束，不替代真实 EXE 的触摸和窄视口视觉验收。
 - `scripts\build.bat Release build` 与一次 `Release rebuild` 均未形成完整 Release 门：VS2008
   并行工程在本机出现 `vc80.pdb`/依赖 `.lib` 尚未就绪，随后 CabWiz 也因缺少 Release EXE/DLL
   报错；这与 TEST1327 源码失败无关。当前可作为本批编译证据的是 Debug 正式构建和匹配
@@ -426,9 +429,9 @@ GUI 手动连接恰好一个设备；gate 只复用当前会话，不连接、�
 
 ## 唯一下一步
 
-在当前匹配 Debug 候选上完成一次 `positron.exe` 的人工 WinWorld 验收：确认窄视口点按
-navbar hamburger 后导航菜单展开、`aria-expanded` 与视觉状态一致，并确认点击空白、返回和
-退出没有回归。自动证据已齐全：原版 jQuery/Bootstrap 的 1325/1326/1327 纵切和 ARMV4I
-设备门均通过；自动门不能替代真实触摸、键盘和视觉观察。若人工门通过，下一轮从路线图中
-选择滚动/旋转/DPI 或 Media/DB 的一个完整纵切；若失败，只记录同一候选的截图、Debug 日志
-和输入步骤，禁止回到站点特判或无界增大脚本 heap。
+在当前匹配 Debug 候选上完成一次 `positron.exe` 的人工 WinWorld 验收：确认窄视口的三条
+汉堡线可见，点按后导航菜单展开、`aria-expanded` 与视觉状态一致，并确认点击空白、返回和
+退出没有回归。自动证据已齐全：原版 jQuery/Bootstrap 的 1325–1328 纵切和 ARMV4I 设备门
+均通过；自动门不能替代真实触摸、键盘和视觉观察。若人工门通过，下一轮从路线图中选择
+滚动/旋转/DPI 或 Media/DB 的一个完整纵切；若失败，只记录同一候选的截图、Debug 日志和
+输入步骤，禁止回到站点特判或无界增大脚本 heap。

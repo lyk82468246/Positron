@@ -216,14 +216,15 @@ tests=1-5 7b 13 20,999
   Bootstrap 脚本已经下载、执行或在 `positron.exe` 的真实 WinWorld 页面中改变菜单；这部分
   由后续 TEST1325–1327、应用 Debug `executed` 日志和匹配 DLL 设备门补足，TEST1320 单独不
   代替这些证据。
-- TEST1325、1326、1327 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和
-  Bootstrap 4.6.2 通过 `Element.click()` 验证 delegated collapse；1326 把普通 button 放入
-  直接 flex 容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，
-  在原生 click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言
-  `nav` 含 `show`、按钮 `aria-expanded=true`。`1325,1326,1327,999` 已在同一 Debug
-  ARMV4I staging 通过，模块路径匹配、零 ERROR/FAIL、无新增 dump。该门证明 flex 控件和
-  Browser/Core 事件链，不承诺 bootstrap-multiselect 等其他站点脚本、完整触摸视觉或现代
-  JavaScript 兼容。
+- TEST1325–1328 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和 Bootstrap
+  4.6.2 通过 `Element.click()` 验证 delegated collapse；1326 把普通 button 放入直接 flex
+  容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在原生
+  click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言 `nav` 含 `show`、
+  按钮 `aria-expanded=true`；1328 在同一 flex 路径中让 button 的 span 使用 CSS data-URI
+  图标，离屏检查作者子树绘制而不是合成的 `Button` 标签。`1325-1328,999` 已在匹配 Debug
+  ARMV4I staging 通过，模块路径匹配、零 ERROR/FAIL、无新增 dump。该门证明 Core 作者内容、
+  flex 控件和 Browser/Core 事件链，不承诺 bootstrap-multiselect 等其他站点脚本、完整触摸
+  视觉或现代 JavaScript 兼容。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

@@ -30,7 +30,7 @@ WM6 宿主有设备缩放时，应在首次 style/layout 前用实际物理客�
 
 ## 解析、样式与资源
 
-Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页面 extent、常见 block/inline/flex/table/replaced layout、命中和 GDI paint。资源发现与 cache 由 Core 维护有界状态；宿主负责 DNS/TCP/TLS/HTTP、worker、取消、重试和把成功/失败结果提交回 Core。
+Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页面 extent、常见 block/inline/flex/table/replaced layout、命中和 GDI paint。普通 `<button>` 是保留作者后代的样式盒，Core 在同一盒上附加有界 form gadget，因此按钮内的 span、文字和 CSS background image 仍由正常布局/绘制路径负责；`input` 的 submit/reset/button 类型继续使用原有 replaced-control fallback。资源发现与 cache 由 Core 维护有界状态；宿主负责 DNS/TCP/TLS/HTTP、worker、取消、重试和把成功/失败结果提交回 Core。
 
 `img`、`srcset` 和 `picture/source` 只支持头文件规定的候选、URL、祖先、source、节点和 `sizes` 预算。Core 可投影 `naturalWidth`、`naturalHeight`、`complete`、`currentSrc`、image-map 几何和 area link metadata，但 relation 查询不会自行 fetch、decode 或 layout。CORS、完整媒体查询、绝对 URL、loading 策略和图像事件由上层决定。
 

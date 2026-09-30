@@ -799,7 +799,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1327
+#define TEST_MAX_NUMBER 1328
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -113720,6 +113720,157 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     return TRUE;
 }
 
+/* TEST 1328 - a flex button must retain its author child tree.  The
+ * production navbar uses a child span with a CSS data-URI SVG; replacing that
+ * subtree with the synthetic "Button" label makes the control look broken
+ * even though its native gadget remains hittable. */
+typedef struct test1328_fetch_state {
+    int callback_calls;
+} test1328_fetch_state;
+
+static int test1328_network_fetch(void *pw, const char *url,
+        char **out_data, int *out_len)
+{
+    test1328_fetch_state *state;
+
+    state = (test1328_fetch_state *) pw;
+    if (state != NULL) {
+        state->callback_calls++;
+    }
+    if (out_data != NULL) {
+        *out_data = NULL;
+    }
+    if (out_len != NULL) {
+        *out_len = 0;
+    }
+    (void) url;
+    return 1;
+}
+
+static void test1328_network_free(void *pw, char *data)
+{
+    (void) pw;
+    free(data);
+}
+
+static BOOL test1328_core_flex_button_visual_child(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><body><div id='bar'>"
+        "<button id='toggle' type='button'><span class='navbar-toggler-icon'>"
+        "</span></button></div></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0;background:#ffffff}"
+        "#bar{display:flex;width:120px;height:52px;padding:4px}"
+        "#toggle{display:block;width:44px;height:44px;padding:4px;"
+        "border:1px solid #000000;background:#ffffff}"
+        ".navbar-toggler-icon{display:inline-block;width:24px;height:24px;"
+        "background-repeat:no-repeat;background-size:100% 100%;"
+        "background-image:url('data:image/svg+xml,%3Csvg xmlns=%22"
+        "http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width=%228%22 height=%228%22"
+        " viewBox=%220 0 8 8%22%3E%3Cpath fill=%22%2300aa00%22"
+        " d=%22M0 0h8v8H0z%22%2F%3E%3C%2Fsvg%3E')}";
+    HANDLE document;
+    HANDLE sheet;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    int button_x;
+    int button_y;
+    int button_w;
+    int button_h;
+    int button_kind;
+    int disabled;
+    int x;
+    int y;
+    int green_pixels;
+    int found;
+    int fetched;
+    test1328_fetch_state fetch_state;
+    COLORREF pixel;
+    char msg[512];
+
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+            "https://winworldpc.com/home");
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    green_pixels = 0;
+    found = 0;
+    fetched = 0;
+    memset(&fetch_state, 0, sizeof(fetch_state));
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0) {
+        if (sheet != NULL) { PCore_FreeStylesheet(sheet); }
+        if (document != NULL) { PCore_FreeDocument(document); }
+        show_error(L"TEST 1328 FAIL", "parse/style failed");
+        return FALSE;
+    }
+    PCore_SetViewport(180, 100, 96);
+    if (PCore_FetchImageResources(document, test1328_network_fetch,
+            test1328_network_free, &fetch_state, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || fetch_state.callback_calls != 0 ||
+            PCore_LayoutDocument(document, 180, 100) != 0 ||
+            PCore_FormControlInfoById(document, "toggle", &button_x,
+            &button_y, &button_w, &button_h, &button_kind, NULL,
+            &disabled) != 0 || button_kind != 9 || disabled ||
+            button_w <= 0 || button_h <= 0) {
+        PCore_FreeStylesheet(sheet);
+        PCore_FreeDocument(document);
+        show_error(L"TEST 1328 FAIL", "flex button gadget geometry missing");
+        return FALSE;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = screen_dc != NULL ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = screen_dc != NULL ? CreateCompatibleBitmap(screen_dc, 180, 100) :
+            NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        if (bitmap != NULL) { DeleteObject(bitmap); }
+        if (memory_dc != NULL) { DeleteDC(memory_dc); }
+        if (screen_dc != NULL) { ReleaseDC(NULL, screen_dc); }
+        PCore_FreeStylesheet(sheet);
+        PCore_FreeDocument(document);
+        show_error(L"TEST 1328 FAIL", "could not create off-screen surface");
+        return FALSE;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 180, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+    for (y = button_y; y < button_y + button_h; y++) {
+        for (x = button_x; x < button_x + button_w; x++) {
+            pixel = GetPixel(memory_dc, x, y);
+            if (GetGValue(pixel) > 100 && GetGValue(pixel) >
+                    GetRValue(pixel) + 40 && GetGValue(pixel) >
+                    GetBValue(pixel) + 40) {
+                green_pixels++;
+            }
+        }
+    }
+    SelectObject(memory_dc, old_bitmap);
+    DeleteObject(bitmap);
+    DeleteDC(memory_dc);
+    ReleaseDC(NULL, screen_dc);
+    PCore_FreeStylesheet(sheet);
+    PCore_FreeDocument(document);
+    if (green_pixels < 16) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "button=%d,%d,%d,%d green_pixels=%d; author icon was lost",
+                button_x, button_y, button_w, button_h, green_pixels);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 1328 FAIL", msg);
+        return FALSE;
+    }
+    show_info(L"TEST 1328 OK",
+            "Flex button retained its Core gadget and child CSS data-URI "
+            "image; no synthetic Button label replaced the author content.");
+    return TRUE;
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -116903,6 +117054,9 @@ static int run_configured_tests(const unsigned char *selected,
             break;
         case 1327:
             ok = test1327_browser_native_bootstrap_flex_click();
+            break;
+        case 1328:
+            ok = test1328_core_flex_button_visual_child();
             break;
         default: ok = FALSE; break;
         }

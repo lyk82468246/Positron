@@ -104,6 +104,13 @@ static int pcore_range_default_value(dom_node *node, char *buffer,
         size_t capacity);
 static int pcore_range_fill_default(dom_node *node, dom_string **value_out);
 
+/* Button controls in a flex item need both a form gadget (for trusted
+ * coordinate activation) and the normal child box tree (for author content
+ * such as Bootstrap's navbar-toggler-icon). */
+static struct box *pcore_construct_block(dom_node *node,
+        css_computed_style *style, int is_root, void *ctx,
+        PCoreBoxStats *stats);
+
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
  * point. Kept in sync by PCore_SetViewport / PCore_SetDeviceViewport. */
 css_fixed nscss_screen_dpi = 96 * (1 << CSS_RADIX_POINT);
@@ -998,22 +1005,18 @@ static char *pcore_squash_text(void *ctx, dom_string *text)
     return copy;
 }
 
-static int pcore_make_button_control(struct box *box,
-        struct form_control *gadget, dom_node *node, css_computed_style *style)
+static int pcore_init_button_gadget(struct form_control *gadget,
+        dom_node *node)
 {
     dom_string *name;
     dom_string *value;
-    dom_string *content;
-    struct box *inline_container;
-    struct box *inline_box;
-    const char *default_label;
-    char *label;
     bool disabled;
 
+    if (gadget == NULL || node == NULL) {
+        return 0;
+    }
     name = NULL;
     value = NULL;
-    content = NULL;
-    label = NULL;
     disabled = false;
     if (pcore_node_name_is(node, "button")) {
         dom_html_button_element *button;
@@ -1027,11 +1030,6 @@ static int pcore_make_button_control(struct box *box,
         }
         if (pcore_node_effectively_disabled(node, NULL, &disabled) != 0) {
             disabled = pcore_node_has_attr(node, "disabled") ? true : false;
-        }
-        if (dom_node_get_text_content(node, &content) == DOM_NO_ERR &&
-                content != NULL) {
-            label = pcore_squash_text(gadget, content);
-            dom_string_unref(content);
         }
     } else {
         dom_html_input_element *input;
@@ -1066,6 +1064,29 @@ static int pcore_make_button_control(struct box *box,
     }
     gadget->disabled = disabled;
     gadget->length = (unsigned int) strlen(gadget->value);
+    return 1;
+}
+
+static int pcore_make_button_control(struct box *box,
+        struct form_control *gadget, dom_node *node, css_computed_style *style)
+{
+    dom_string *content;
+    struct box *inline_container;
+    struct box *inline_box;
+    const char *default_label;
+    char *label;
+
+    if (!pcore_init_button_gadget(gadget, node)) {
+        return 0;
+    }
+    content = NULL;
+    label = NULL;
+    if (pcore_node_name_is(node, "button") &&
+            dom_node_get_text_content(node, &content) == DOM_NO_ERR &&
+            content != NULL) {
+        label = pcore_squash_text(gadget, content);
+        dom_string_unref(content);
+    }
     default_label = (gadget->type == GADGET_SUBMIT) ? "Submit" :
             ((gadget->type == GADGET_RESET) ? "Reset" : "Button");
     if (label == NULL || label[0] == '\0') {
@@ -1102,6 +1123,42 @@ static int pcore_make_button_control(struct box *box,
     pcore_box_add_child(inline_container, inline_box);
     pcore_box_add_child(box, inline_container);
     return 1;
+}
+
+/* Build a button as a normal styled block and attach the form gadget to that
+ * same box.  A button is not a replaced element: its descendants own the
+ * visual content, including CSS background images on nested spans.  Keeping
+ * the gadget on the block preserves the public form-control enumeration and
+ * hit-testing without replacing the author subtree with a synthetic label. */
+static struct box *pcore_make_visual_button_box(dom_node *node,
+        css_computed_style *style, void *ctx, PCoreBoxStats *stats,
+        int box_type, int gadget_type)
+{
+    struct box *box;
+    struct form_control *gadget;
+
+    if (node == NULL || style == NULL || !pcore_node_name_is(node, "button") ||
+            (gadget_type != GADGET_SUBMIT &&
+            gadget_type != GADGET_RESET &&
+            gadget_type != GADGET_BUTTON)) {
+        return NULL;
+    }
+    box = pcore_construct_block(node, style, 0, ctx, stats);
+    if (box == NULL) {
+        return NULL;
+    }
+    box->type = (box_type == BOX_INLINE_BLOCK) ? BOX_INLINE_BLOCK :
+            BOX_BLOCK;
+    gadget = talloc_zero(box, struct form_control);
+    if (gadget == NULL || !pcore_init_button_gadget(gadget, node)) {
+        talloc_free(box);
+        return NULL;
+    }
+    gadget->node = node;
+    gadget->type = (form_control_type) gadget_type;
+    gadget->box = box;
+    box->gadget = gadget;
+    return box;
 }
 
 static int pcore_select_add_option(struct form_control *gadget,
@@ -2267,12 +2324,20 @@ static struct box *pcore_construct_flex(dom_node *node,
                 if (gadget_type != 0) {
                     /* A flex item is laid out by layout_flex_item(), which
                      * accepts BOX_BLOCK/TABLE/FLEX only.  Keep the gadget and
-                     * its DOM association, but blockify the retained box so
-                     * native coordinate hit-testing can enumerate it. */
-                    item = pcore_make_form_control_box(child, cs, ctx,
-                            gadget_type);
-                    if (item != NULL) {
-                        item->type = BOX_BLOCK;
+                     * its DOM association, but keep a button's author
+                     * subtree so CSS icons are not replaced by "Button". */
+                    if (pcore_node_name_is(child, "button") &&
+                            (gadget_type == GADGET_SUBMIT ||
+                            gadget_type == GADGET_RESET ||
+                            gadget_type == GADGET_BUTTON)) {
+                        item = pcore_make_visual_button_box(child, cs, ctx,
+                                stats, BOX_BLOCK, gadget_type);
+                    } else {
+                        item = pcore_make_form_control_box(child, cs, ctx,
+                                gadget_type);
+                        if (item != NULL) {
+                            item->type = BOX_BLOCK;
+                        }
                     }
                 } else if (d == CSS_DISPLAY_FLEX ||
                         d == CSS_DISPLAY_INLINE_FLEX) {

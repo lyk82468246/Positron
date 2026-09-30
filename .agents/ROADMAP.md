@@ -149,12 +149,13 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     嵌套 `WM_SIZE` 中只更新临时尺寸，样式稳定后才重新 layout；该改动已通过 C89、审计和
     Debug 编译，但尚无设备视觉证据。普通 Core 绘制 button 的 pointer-down 现也先设置
     `FOCUS|ACTIVE`，并把焦点反馈与 Browser click transaction 解耦；随后修复了 flex 构造器
-    blockify 直接 button 时丢失 gadget 的问题。Browser/ScriptSession 的有界 document delegated
-    `click` listener 与原版 jQuery/Bootstrap 现在由 TEST1325/1326/1327 覆盖；
-    `tmp/device-runs/20260930-140850-native-bootstrap-flex-r2` 已用匹配 DLL 取得
-    `1325,1326,1327,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一 `TESTBENCH PASS`
-    和零 ERROR/FAIL 的证据。最新 WinWorld 日志确认 jQuery、Popper、Bootstrap 已执行，
-    `pointer-hit`/`script-click`/`commit` 已出现；bootstrap-multiselect 的语法错误另行保留为限制。
+    blockify 直接 button 时同时丢失 gadget 和作者子树的问题。Browser/ScriptSession 的有界
+    document delegated `click` listener、原版 jQuery/Bootstrap 事务以及 CSS data-URI 作者图标
+    现在由 TEST1325–1328 覆盖；`tmp/device-runs/20260930-153322-flex-button-visual-child-r6`
+    已用匹配 DLL 取得 `1325-1328,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一
+    `TESTBENCH PASS` 和零 ERROR/FAIL 的证据。最新 WinWorld 日志确认 jQuery、Popper、Bootstrap
+    已执行，`pointer-hit`/`script-click`/`commit` 已出现；bootstrap-multiselect 的语法错误另行
+    保留为限制。
     Release 应用工程已链接，但完整解决方案的 CABWiz 数据文件生成仍可能失败，不能把 Release
     全量门写成通过。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
@@ -209,9 +210,10 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 
 Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。原版 jQuery 3.5.1、Bootstrap 4.6.2
 的初始化与 delegated collapse 已通过 TEST1324/1325；TEST1326/1327 又证明直接 flex button
-经 Core gadget、原生坐标事务和有界 timer 后能修改 `class`/`aria-expanded`。真实 WinWorld
-Debug 日志确认 jQuery、Popper、Bootstrap 已执行，剩余 bootstrap-multiselect 语法错误独立于
-navbar 核心路径。该纵切不再是路线图候选；下一步是同一候选的人工触摸/键盘/视觉门。
+经 Core gadget、原生坐标事务和有界 timer 后能修改 `class`/`aria-expanded`，TEST1328 证明
+作者 CSS data-URI 图标仍被绘制。真实 WinWorld Debug 日志确认 jQuery、Popper、Bootstrap 已执行，
+剩余 bootstrap-multiselect 语法错误独立于 navbar 核心路径。该纵切不再是路线图候选；下一步
+是同一候选的人工触摸/键盘/视觉门。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
