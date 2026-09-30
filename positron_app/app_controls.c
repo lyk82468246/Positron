@@ -25,6 +25,10 @@
 #define APP_CONTROLS_FORM_SUBMIT     7
 #define APP_CONTROLS_FORM_RESET      8
 #define APP_CONTROLS_FORM_BUTTON     9
+/* WM6 touch reports can land just outside a centered SVG button. Keep Core
+ * layout and checkbox/radio hit-testing exact; only the app's ordinary button
+ * adapter gets this bounded touch affordance. */
+#define APP_CONTROLS_BUTTON_HIT_SLOP 8
 #define APP_CONTROLS_FORM_CHECKBOX   1
 #define APP_CONTROLS_FORM_RADIO      2
 #define APP_CONTROLS_FORM_TEXT       3
@@ -2444,6 +2448,12 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
     int height;
     int kind;
     int disabled;
+    int hit_left;
+    int hit_top;
+    int hit_right;
+    int hit_bottom;
+    int activate_x;
+    int activate_y;
 
     if (context == NULL || context->document == NULL) {
         return 0;
@@ -2451,13 +2461,36 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
     form_index = 0;
     while (PCore_FormControlInfo(context->document, form_index, &x, &y,
             &width, &height, &kind, NULL, &disabled) == 0) {
+        hit_left = x;
+        hit_top = y;
+        hit_right = x + width;
+        hit_bottom = y + height;
         if (app_controls_is_focusable_button(kind) && width > 0 &&
-                height > 0 &&
-                document_x >= x && document_x < x + width &&
-                document_y >= y && document_y < y + height) {
+                height > 0) {
+            hit_left -= APP_CONTROLS_BUTTON_HIT_SLOP;
+            hit_top -= APP_CONTROLS_BUTTON_HIT_SLOP;
+            hit_right += APP_CONTROLS_BUTTON_HIT_SLOP;
+            hit_bottom += APP_CONTROLS_BUTTON_HIT_SLOP;
+        }
+        if (app_controls_is_focusable_button(kind) && width > 0 &&
+                height > 0 && document_x >= hit_left &&
+                document_x < hit_right && document_y >= hit_top &&
+                document_y < hit_bottom) {
+            activate_x = document_x;
+            activate_y = document_y;
+            if (activate_x < x) {
+                activate_x = x;
+            } else if (activate_x >= x + width) {
+                activate_x = x + width - 1;
+            }
+            if (activate_y < y) {
+                activate_y = y;
+            } else if (activate_y >= y + height) {
+                activate_y = y + height - 1;
+            }
 #ifdef _DEBUG
             app_controls_debug_button("pointer-hit", form_index, kind,
-                    document_x, document_y, 0, disabled ? 0 : 1);
+                    activate_x, activate_y, 0, disabled ? 0 : 1);
 #endif
             if (disabled) {
                 return 1;
@@ -2467,7 +2500,7 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
              * event delivery fails (for example, on an SVG child hit). */
             (void) app_controls_button_focus(context, form_index);
             (void) app_controls_button_activate(context, form_index,
-                    document_x, document_y);
+                    activate_x, activate_y);
             return 1;
         }
         form_index++;

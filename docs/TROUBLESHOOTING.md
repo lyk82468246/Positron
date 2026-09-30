@@ -158,7 +158,10 @@ scripts\debug_capture.bat -PullOnly -RemoteRoot "\Storage Card\Temp\Positron-dev
 旧的 `positron.exe` 仍然占用已加载的 DLL，可在完整部署命令上显式追加
 `-ForceTerminatePositron`。该选项只启动独立的 `positron_process_cleanup.exe`，精确清理旧的
 `positron.exe`/本设备门生成的 `test_host-run-*`，然后再启动当前 stage 的应用；它不是应用的
-一部分，也不会扩大清理范围。日志和运行根目录留在 `tmp/device-runs/`，不加入 Git。若日志只有
+一部分，也不会扩大清理范围。若设备门在等待宿主时超时，带有该选项的运行会在回收最后一份
+日志后再次调用同一个清理 helper，记录 `failed=0` 摘要并保留部署目录，避免超时后的旧进程
+继续占用下一次部署；未带该选项时不会远程猜测或强杀进程，而是明确要求用户决定是否重跑清理。
+日志和运行根目录留在 `tmp/device-runs/`，不加入 Git。若日志只有
 `debug-session`，说明进程已启动但还没有发生导航；
 若出现 `finish-rollback`，应优先按 `stage/failure/status` 判断失败边界，而不是根据旧页面截图
 猜测。若出现 `finish-commit` 但页面仍旧，先核对 `requested/visible` URL 和 PID，避免把旧进程

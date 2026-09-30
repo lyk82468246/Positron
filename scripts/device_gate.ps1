@@ -1006,6 +1006,52 @@ public static class PositronDeviceRapi
 '@
 Add-Type -TypeDefinition $rapiSource -Language CSharp
 
+function Invoke-RemoteProcessCleanup([string] $executable,
+        [string] $remoteLogPath, [string] $localLogPath,
+        [int] $timeoutSeconds)
+{
+    $cleanupPid = 0
+    $cleanupDeadline = (Get-Date).AddSeconds($timeoutSeconds)
+    $summary = $null
+
+    if ([string]::IsNullOrEmpty($executable) -or
+            [string]::IsNullOrEmpty($remoteLogPath) -or
+            [string]::IsNullOrEmpty($localLogPath) -or $timeoutSeconds -le 0) {
+        throw "Invalid process-cleanup arguments."
+    }
+    Write-Stage "starting isolated process cleanup helper"
+    $cleanupPid = [PositronDeviceRapi]::LaunchProcess(
+            $executable, (Split-Path -Parent $executable), $null)
+    Write-Stage ("started process cleanup helper id {0}" -f $cleanupPid)
+    while ($null -eq $summary -and (Get-Date) -lt $cleanupDeadline) {
+        if ([PositronDeviceRapi]::TryCopyFileFromDevice(
+                $remoteLogPath, $localLogPath)) {
+            $cleanupText = Get-Content -LiteralPath $localLogPath -Raw `
+                    -Encoding UTF8
+            $cleanupMatch = [regex]::Match($cleanupText,
+                    "(?m)^summary target_count=\d+ failed=\d+.*$")
+            if ($cleanupMatch.Success) {
+                $summary = $cleanupMatch.Value.Trim()
+            }
+        }
+        if ($null -eq $summary) {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    if ($null -eq $summary) {
+        throw "The process cleanup helper did not produce a complete summary."
+    }
+    if ($summary -notmatch "\bfailed=0\b") {
+        throw ("The process cleanup helper failed: {0}" -f $summary)
+    }
+    Write-Stage ("process cleanup completed: {0}" -f $summary)
+    return @{
+        ProcessId = $cleanupPid
+        Summary = $summary
+        LogRetrieved = $true
+    }
+}
+
 $targetDescription = "WMDC current RAPI connection"
 try {
     $wmdc = Get-ItemProperty -LiteralPath `
@@ -1527,34 +1573,11 @@ try {
 
     if ($ForceTerminatePositron) {
         Write-Stage "starting isolated process cleanup helper before test_host"
-        $remoteCleanupProcessId = [PositronDeviceRapi]::LaunchProcess(
-                $remoteCleanupExe, $remoteRoot, $null)
-        Write-Stage "started process cleanup helper id $remoteCleanupProcessId"
-        $cleanupDeadline = (Get-Date).AddSeconds(30)
-        while (!$forceCleanupLogRetrieved -and (Get-Date) -lt $cleanupDeadline) {
-            if ([PositronDeviceRapi]::TryCopyFileFromDevice(
-                    $remoteCleanupLog, $localCleanupLog)) {
-                $cleanupText = Get-Content -LiteralPath $localCleanupLog -Raw `
-                        -Encoding UTF8
-                $cleanupMatch = [regex]::Match($cleanupText,
-                        "(?m)^summary target_count=\d+ failed=\d+.*$")
-                if ($cleanupMatch.Success) {
-                    $forceCleanupSummary = $cleanupMatch.Value.Trim()
-                    $forceCleanupLogRetrieved = $true
-                }
-            }
-            if (!$forceCleanupLogRetrieved) {
-                Start-Sleep -Milliseconds 250
-            }
-        }
-        if (!$forceCleanupLogRetrieved) {
-            throw "The process cleanup helper did not produce a complete summary."
-        }
-        if ($forceCleanupSummary -notmatch "\bfailed=0\b") {
-            throw ("The process cleanup helper failed: {0}" -f
-                    $forceCleanupSummary)
-        }
-        Write-Stage "process cleanup completed: $forceCleanupSummary"
+        $cleanupResult = Invoke-RemoteProcessCleanup $remoteCleanupExe `
+                $remoteCleanupLog $localCleanupLog 30
+        $remoteCleanupProcessId = $cleanupResult.ProcessId
+        $forceCleanupSummary = $cleanupResult.Summary
+        $forceCleanupLogRetrieved = $cleanupResult.LogRetrieved
     }
 
     $crashBefore = [PositronDeviceRapi]::SnapshotCrashDumps()
@@ -1605,7 +1628,40 @@ try {
         if ($timedOut) {
             [void] [PositronDeviceRapi]::TryCopyFileFromDevice(
                     $remoteLog, $localLog)
-            throw "The device gate timed out after $TimeoutSeconds seconds. RAPI 1 does not expose a safe remote wait/terminate API, so the gate did not kill any device process."
+            $timeoutCleanupError = $null
+            if ($ForceTerminatePositron) {
+                try {
+                    if (!$rapiConnected) {
+                        [PositronDeviceRapi]::Connect()
+                        $rapiConnected = $true
+                    }
+                    $cleanupResult = Invoke-RemoteProcessCleanup `
+                            $remoteCleanupExe $remoteCleanupLog `
+                            $localCleanupLog 30
+                    $remoteCleanupProcessId = $cleanupResult.ProcessId
+                    $forceCleanupSummary = $cleanupResult.Summary
+                    $forceCleanupLogRetrieved = $cleanupResult.LogRetrieved
+                } catch {
+                    $timeoutCleanupError = $_.Exception.Message
+                    Write-Stage ("timeout force cleanup failed: {0}" -f
+                            $timeoutCleanupError)
+                }
+            }
+            if ($null -ne $timeoutCleanupError) {
+                throw ("The device gate timed out after {0} seconds and the " +
+                        "requested force cleanup failed: {1}") -f
+                        $TimeoutSeconds, $timeoutCleanupError
+            }
+            if ($ForceTerminatePositron) {
+                throw ("The device gate timed out after {0} seconds; force " +
+                        "cleanup completed: {1}. The deployment is preserved " +
+                        "for diagnosis.") -f $TimeoutSeconds,
+                        $forceCleanupSummary
+            }
+            throw ("The device gate timed out after {0} seconds. RAPI 1 does " +
+                    "not expose a safe remote wait/terminate API; rerun with " +
+                    "-ForceTerminatePositron to clean exact stale targets.") -f
+                    $TimeoutSeconds
         }
     }
 
