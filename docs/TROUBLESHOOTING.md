@@ -154,8 +154,12 @@ scripts\debug_capture.bat -Configuration Debug
 scripts\debug_capture.bat -PullOnly -RemoteRoot "\Storage Card\Temp\Positron-device-gate\debug-capture-<stamp>" -FollowSeconds 300
 ```
 
-它只消费 WMDC 当前 RAPI 会话，不选择设备、cradle、重置或强杀进程；日志和运行根目录留在
-`tmp/device-runs/`，不加入 Git。若日志只有 `debug-session`，说明进程已启动但还没有发生导航；
+它只消费 WMDC 当前 RAPI 会话，不选择设备、cradle 或重置设备。默认也不结束设备进程；如果怀疑
+旧的 `positron.exe` 仍然占用已加载的 DLL，可在完整部署命令上显式追加
+`-ForceTerminatePositron`。该选项只启动独立的 `positron_process_cleanup.exe`，精确清理旧的
+`positron.exe`/本设备门生成的 `test_host-run-*`，然后再启动当前 stage 的应用；它不是应用的
+一部分，也不会扩大清理范围。日志和运行根目录留在 `tmp/device-runs/`，不加入 Git。若日志只有
+`debug-session`，说明进程已启动但还没有发生导航；
 若出现 `finish-rollback`，应优先按 `stage/failure/status` 判断失败边界，而不是根据旧页面截图
 猜测。若出现 `finish-commit` 但页面仍旧，先核对 `requested/visible` URL 和 PID，避免把旧进程
 窗口当作当前实例。
