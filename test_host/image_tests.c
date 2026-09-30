@@ -1708,7 +1708,7 @@ BOOL test1329_core_bootstrap_hamburger(void)
             "html,body{margin:0;padding:0;background:#ffffff;}"
             ".navbar{display:block;width:72px;height:52px;padding:4px;"
             "background:#ffffff;}"
-            ".navbar-toggler{display:block;width:40px;height:40px;"
+            ".navbar-toggler{display:inline-block;width:40px;height:40px;"
             "padding:4px;border:1px solid #dddddd;background:#ffffff;}"
             ".navbar-toggler-icon{display:inline-block;width:30px;"
             "height:30px;vertical-align:middle;content:\"\";"

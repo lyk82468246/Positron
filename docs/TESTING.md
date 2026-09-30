@@ -209,7 +209,8 @@ tests=1-5 7b 13 20,999
   stroke、PNG/JPEG/GIF 和已有 IANA SVG 回归仍须保持通过。
 - TEST1329 是自动的精确 Bootstrap CSS→Core→Image→GDI 回归：它保留
   `.navbar-light .navbar-toggler-icon` 后代选择器、无 `type` 的默认 submit button、
-  Bootstrap 的 30x30 percent-encoded `rgba()`/round-cap SVG，以及 button 作者子树。测试
+  Bootstrap 的 `inline-block` button、30x30 percent-encoded `rgba()`/round-cap SVG，以及
+  button 作者子树。测试
   要求 data URI 不调用宿主网络 callback，Core 产生普通 button gadget 和 span 盒，Image
   解码计数增加，并在最终离屏背景中检测三条灰色汉堡线。TEST1319 只验证 Image DLL，
   TEST1329 才覆盖 CSS computed style、Core image cache、作者内容保留和背景 paint 的完整

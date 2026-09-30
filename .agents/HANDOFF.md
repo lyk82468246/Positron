@@ -90,8 +90,8 @@ jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩�
   `AlphaBlend` 合成；不改变 `PImage_*` 公共 ABI。TEST1319 使用精确 WinWorld 30x30 fixture，
   检查三条半透明灰线、round cap 延伸和端点外白像素，已在匹配 Debug ARMV4I 包上通过。
 - TEST1329 新增精确 Bootstrap navbar hamburger 的完整 CSS→Core→Image→GDI 离线回归：
-  `.navbar-light .navbar-toggler-icon` 的后代选择器、无 `type` button、percent-encoded
-  `rgba()`/round-cap SVG、作者 span 和三条灰线像素均被断言；`1329,999` 已在匹配 Debug
+  `.navbar-light .navbar-toggler-icon` 的后代选择器、`inline-block` 无 `type` button、
+  percent-encoded `rgba()`/round-cap SVG、作者 span 和三条灰线像素均被断言；`1329,999` 已在匹配 Debug
   ARMV4I 包通过，`core_module_check=PASS`、零 ERROR/FAIL、双空间预检通过、无新增 dump，
   远端部署目录已在完整日志回收后清理。该证据把 Core/Image 资源链与应用层页面视觉明确分开。
 - `positron.exe` 的 retained-pixel 滚动、页面裁剪、动态 scrollbar 和 nested overflow pointer
