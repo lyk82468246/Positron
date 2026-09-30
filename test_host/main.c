@@ -73,6 +73,8 @@ extern BOOL test1318_core_css_data_uri(void);
 extern const char *test1318_core_css_data_uri_last_error(void);
 extern BOOL test1319_image_rgba_round_stroke(void);
 extern const char *test1319_image_rgba_round_stroke_last_error(void);
+extern BOOL test1329_core_bootstrap_hamburger(void);
+extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
@@ -799,7 +801,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1328
+#define TEST_MAX_NUMBER 1329
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -117083,6 +117085,17 @@ static int run_configured_tests(const unsigned char *selected,
             break;
         case 1328:
             ok = test1328_core_flex_button_visual_child();
+            break;
+        case 1329:
+            ok = test1329_core_bootstrap_hamburger();
+            if (ok) {
+                show_info(L"TEST 1329 OK",
+                        "Exact Bootstrap navbar hamburger CSS data URI "
+                        "painted through Core.");
+            } else {
+                show_error(L"TEST 1329 FAIL",
+                        test1329_core_bootstrap_hamburger_last_error());
+            }
             break;
         default: ok = FALSE; break;
         }

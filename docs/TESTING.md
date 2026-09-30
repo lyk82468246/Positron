@@ -207,6 +207,13 @@ tests=1-5 7b 13 20,999
   端点外仍保持白色。这个断言覆盖 libsvgtiny 的 rgba/stroke-opacity 解析、linecap 传递、
   NanoSVG alpha 合成和 GDI paint；仅创建句柄或 data URI 解码成功不能使它通过。普通不透明
   stroke、PNG/JPEG/GIF 和已有 IANA SVG 回归仍须保持通过。
+- TEST1329 是自动的精确 Bootstrap CSS→Core→Image→GDI 回归：它保留
+  `.navbar-light .navbar-toggler-icon` 后代选择器、无 `type` 的默认 submit button、
+  Bootstrap 的 30x30 percent-encoded `rgba()`/round-cap SVG，以及 button 作者子树。测试
+  要求 data URI 不调用宿主网络 callback，Core 产生普通 button gadget 和 span 盒，Image
+  解码计数增加，并在最终离屏背景中检测三条灰色汉堡线。TEST1319 只验证 Image DLL，
+  TEST1329 才覆盖 CSS computed style、Core image cache、作者内容保留和背景 paint 的完整
+  链路；它仍不等于 `positron.exe` 真实网络页面的视觉/触摸验收。
 - TEST1320 是自动的 Browser/Core document delegated-click 回归：离线页面在普通
   `button` 上注册 document capture/bubble listener，点击由 Core 事件目标派发后必须保留
   `event.target`、document `event.currentTarget` 和 1/3 capture/bubble phase；Bootstrap
@@ -216,14 +223,15 @@ tests=1-5 7b 13 20,999
   Bootstrap 脚本已经下载、执行或在 `positron.exe` 的真实 WinWorld 页面中改变菜单；这部分
   由后续 TEST1325–1327、应用 Debug `executed` 日志和匹配 DLL 设备门补足，TEST1320 单独不
   代替这些证据。
-- TEST1325–1328 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和 Bootstrap
+- TEST1325–1329 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和 Bootstrap
   4.6.2 通过 `Element.click()` 验证 delegated collapse；1326 把普通 button 放入直接 flex
   容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在省略 `type` 的
   默认 submit button 上通过原生
   click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言 `nav` 含 `show`、
   按钮 `aria-expanded=true`；1328 在 flex 和普通 block 路径中让 button 的 span 使用 CSS
   data-URI 图标，且 block fixture 省略 `type` 以覆盖默认 submit，离屏检查作者子树绘制而不是
-  合成的 `Button` 标签。`1325-1328,999` 已在
+  合成的 `Button` 标签；1329 进一步使用 Bootstrap 的精确 hamburger URI，并贯穿 Core 到
+  最终 GDI 像素。`1325-1329,999` 已在
   匹配 Debug ARMV4I staging 通过，模块路径匹配、零 ERROR/FAIL、无新增 dump。该门证明
   Core 作者内容、flex/普通 block 控件和 Browser/Core 事件链，不承诺 bootstrap-multiselect
   等其他站点脚本、完整触摸视觉或现代 JavaScript 兼容。

@@ -1668,3 +1668,202 @@ cleanup:
     }
     return ok;
 }
+
+static char g_test1329_failure[384];
+
+const char *test1329_core_bootstrap_hamburger_last_error(void)
+{
+    return g_test1329_failure;
+}
+
+static int test1329_gray_pixel(COLORREF color)
+{
+    int red;
+    int green;
+    int blue;
+
+    if (color == CLR_INVALID) {
+        return 0;
+    }
+    red = (int) GetRValue(color);
+    green = (int) GetGValue(color);
+    blue = (int) GetBValue(color);
+    return abs(red - green) <= 10 && abs(red - blue) <= 10 &&
+            red >= 60 && red <= 205;
+}
+
+/* TEST 1329 - the exact Bootstrap 4 navbar-toggler data URI through the
+ * complete Core CSS -> data decoder -> Image SVG -> background paint path.
+ * TEST 1319 proves the Image DLL in isolation; this regression deliberately
+ * retains the descendant selector, button without an explicit type, encoded
+ * rgba() stroke and round caps used by the consumer page. */
+BOOL test1329_core_bootstrap_hamburger(void)
+{
+    static const char HTML[] =
+            "<!doctype html><html><body>"
+            "<nav class='navbar navbar-light'><button id='toggle' "
+            "class='navbar-toggler'><span class='navbar-toggler-icon'>"
+            "</span></button></nav></body></html>";
+    static const char CSS[] =
+            "html,body{margin:0;padding:0;background:#ffffff;}"
+            ".navbar{display:block;width:72px;height:52px;padding:4px;"
+            "background:#ffffff;}"
+            ".navbar-toggler{display:block;width:40px;height:40px;"
+            "padding:4px;border:1px solid #dddddd;background:#ffffff;}"
+            ".navbar-toggler-icon{display:inline-block;width:30px;"
+            "height:30px;vertical-align:middle;content:\"\";"
+            "background-position:50% 50%;background-size:100% 100%;"
+            "background-repeat:no-repeat;}"
+            ".navbar-light .navbar-toggler-icon{background-image:url("
+            "\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/"
+            "svg' width='30' height='30' viewBox='0 0 30 30'%3e%3cpath "
+            "stroke='rgba%280, 0, 0, 0.5%29' stroke-linecap='round' "
+            "stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 "
+            "15h22M4 23h22'/%3e%3c/svg%3e\");}";
+    HANDLE document;
+    HANDLE sheet;
+    HDC screen_dc;
+    HDC memory_dc;
+    HBITMAP bitmap;
+    HBITMAP old_bitmap;
+    RECT rect;
+    test1318_data_uri_fixture fixture;
+    PCoreImageDecodeStats image_stats;
+    int found;
+    int fetched;
+    int button_x;
+    int button_y;
+    int button_w;
+    int button_h;
+    int button_kind;
+    int button_selected;
+    int button_disabled;
+    int span_x;
+    int span_y;
+    int span_w;
+    int span_h;
+    int y;
+    int x;
+    int gray_count;
+    int row_hit;
+    int row_groups;
+    int previous_hit;
+    BOOL ok;
+
+    strcpy(g_test1329_failure, "not run");
+    document = NULL;
+    sheet = NULL;
+    screen_dc = NULL;
+    memory_dc = NULL;
+    bitmap = NULL;
+    old_bitmap = NULL;
+    memset(&fixture, 0, sizeof(fixture));
+    memset(&image_stats, 0, sizeof(image_stats));
+    found = 0;
+    fetched = 0;
+    button_x = 0;
+    button_y = 0;
+    button_w = 0;
+    button_h = 0;
+    button_kind = 0;
+    button_selected = 0;
+    button_disabled = 0;
+    span_x = 0;
+    span_y = 0;
+    span_w = 0;
+    span_h = 0;
+    y = 0;
+    x = 0;
+    gray_count = 0;
+    row_hit = 0;
+    row_groups = 0;
+    previous_hit = 0;
+    ok = FALSE;
+
+    document = PCore_ParseHTML(HTML, (int) sizeof(HTML) - 1);
+    sheet = PCore_ParseCSS(CSS, (int) sizeof(CSS) - 1,
+            "https://positron.local/bootstrap.css");
+    PCore_SetViewport(100, 100, 96);
+    if (document == NULL || sheet == NULL ||
+            PCore_StyleDocument(document, sheet) != 0 ||
+            PCore_FetchImageResourcesEx(document, test1318_data_uri_fetch,
+            test1318_data_uri_free, &fixture, &found, &fetched) != 0 ||
+            found != 1 || fetched != 1 || fixture.callback_calls != 0) {
+        _snprintf(g_test1329_failure, sizeof(g_test1329_failure) - 1,
+                "data uri found/fetched/callback=%d/%d/%d", found, fetched,
+                fixture.callback_calls);
+        g_test1329_failure[sizeof(g_test1329_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    if (PCore_LayoutDocument(document, 100, 100) != 0 ||
+            PCore_FormControlInfoById(document, "toggle", &button_x,
+            &button_y, &button_w, &button_h, &button_kind, &button_selected,
+            &button_disabled) != 0 || button_kind != 7 || button_w <= 0 ||
+            button_h <= 0 || PCore_NodeBox(document, "span", &span_x,
+            &span_y, &span_w, &span_h) != 0 || span_w < 20 || span_h < 20 ||
+            PCore_GetImageDecodeStats(document, &image_stats) != 0 ||
+            image_stats.svg_creates == 0) {
+        _snprintf(g_test1329_failure, sizeof(g_test1329_failure) - 1,
+                "layout button=%d,%d %dx%d kind=%d span=%d,%d %dx%d svg=%u",
+                button_x, button_y, button_w, button_h, button_kind, span_x,
+                span_y, span_w, span_h, image_stats.svg_creates);
+        g_test1329_failure[sizeof(g_test1329_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    screen_dc = GetDC(NULL);
+    memory_dc = (screen_dc != NULL) ? CreateCompatibleDC(screen_dc) : NULL;
+    bitmap = (screen_dc != NULL) ?
+            CreateCompatibleBitmap(screen_dc, 100, 100) : NULL;
+    if (screen_dc == NULL || memory_dc == NULL || bitmap == NULL) {
+        strcpy(g_test1329_failure, "offscreen GDI allocation failed");
+        goto cleanup;
+    }
+    old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
+    SetRect(&rect, 0, 0, 100, 100);
+    FillRect(memory_dc, &rect, (HBRUSH) GetStockObject(WHITE_BRUSH));
+    PCore_PaintDocument(document, memory_dc, 0, 0);
+    for (y = span_y; y < span_y + span_h && y < 100; y++) {
+        gray_count = 0;
+        for (x = span_x; x < span_x + span_w && x < 100; x++) {
+            if (test1329_gray_pixel(GetPixel(memory_dc, x, y))) {
+                gray_count++;
+            }
+        }
+        row_hit = gray_count >= 10;
+        if (row_hit && !previous_hit) {
+            row_groups++;
+        }
+        previous_hit = row_hit;
+    }
+    if (row_groups < 3) {
+        _snprintf(g_test1329_failure, sizeof(g_test1329_failure) - 1,
+                "hamburger rows=%d span=%d,%d %dx%d", row_groups, span_x,
+                span_y, span_w, span_h);
+        g_test1329_failure[sizeof(g_test1329_failure) - 1] = '\0';
+        goto cleanup;
+    }
+    ok = TRUE;
+    strcpy(g_test1329_failure, "ok");
+
+cleanup:
+    if (old_bitmap != NULL && memory_dc != NULL) {
+        SelectObject(memory_dc, old_bitmap);
+    }
+    if (bitmap != NULL) {
+        DeleteObject(bitmap);
+    }
+    if (memory_dc != NULL) {
+        DeleteDC(memory_dc);
+    }
+    if (screen_dc != NULL) {
+        ReleaseDC(NULL, screen_dc);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    PCore_SetViewport(240, 320, 96);
+    return ok;
+}

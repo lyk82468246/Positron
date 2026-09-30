@@ -89,6 +89,11 @@ jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩�
   `pimage_raster.cpp` 把 stroke alpha 写入 NanoSVG paint，利用既有 premultiplied GDI
   `AlphaBlend` 合成；不改变 `PImage_*` 公共 ABI。TEST1319 使用精确 WinWorld 30x30 fixture，
   检查三条半透明灰线、round cap 延伸和端点外白像素，已在匹配 Debug ARMV4I 包上通过。
+- TEST1329 新增精确 Bootstrap navbar hamburger 的完整 CSS→Core→Image→GDI 离线回归：
+  `.navbar-light .navbar-toggler-icon` 的后代选择器、无 `type` button、percent-encoded
+  `rgba()`/round-cap SVG、作者 span 和三条灰线像素均被断言；`1329,999` 已在匹配 Debug
+  ARMV4I 包通过，`core_module_check=PASS`、零 ERROR/FAIL、双空间预检通过、无新增 dump，
+  远端部署目录已在完整日志回收后清理。该证据把 Core/Image 资源链与应用层页面视觉明确分开。
 - `positron.exe` 的 retained-pixel 滚动、页面裁剪、动态 scrollbar 和 nested overflow pointer
   接线已经通过 C89/Debug 代码门；它们仍需要用户在匹配新进程上观察闪屏、横向拖动、旋转和
   DPI。历史部署目录、PID 和 SHA-256 只保存在 `tmp/device-runs/`，不在此重复。
@@ -172,7 +177,8 @@ jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩�
 本轮复核了 `.agents/ROADMAP.md`。IANA class-style、viewBox 固有比例、Core 高 DPI 重复背景
 tile、WinWorld rgba/round-cap Image、document delegated-click，以及保留 flex/普通 block
 button 作者子树（含省略 `type` 时的默认 submit）的原生 Bootstrap collapse 纵切均已完成；
-`20260930-172709-bootstrap-default-submit-r9` 已取得匹配 DLL
+精确 Bootstrap CSS hamburger 的 Core→Image→GDI 链也由 `20260930-180116-exact-bootstrap-hamburger`
+取得证据。`20260930-172709-bootstrap-default-submit-r9` 已取得匹配 DLL
 的 `1325,1326,1327,999` ARMV4I 设备门通过证据。路线图已移除“等待原版 jQuery/Bootstrap
 初始化”的过时候选，下一步只保留 `positron.exe` 的人工触摸/键盘/视觉门、滚动/旋转/DPI、
 表单设备门和 Media/DB 未完成边界。bootstrap-multiselect 的语法错误仍是独立限制，不以提高
@@ -247,17 +253,17 @@ button 作者子树（含省略 `type` 时的默认 submit）的原生 Bootstrap
   `tmp/device-runs/20260929-132600-next1320-document-click-final2` 通过，覆盖
   `document` capture/bubble、target/currentTarget、collapse mutation、重复/移除/once 和
   64 listener 预算，并完成日志回收、双空间预检和 crash 检查。
-- TEST1325–1328 组成同一条 WinWorld 菜单回归：1325 验证 `Element.click()`，1326 验证直接
-  flex button 的 Core gadget 与原生坐标事务，1327 再把省略 `type` 的默认 submit button 接入
-  未修改的 jQuery/Bootstrap delegated collapse，1328 验证 flex 和普通 block button 的作者子树及 CSS data-URI
-  图标没有被合成的 `Button` 标签替换；1327 使用 `PBrowser_ScriptSessionRunTimers()` 等待
-  过渡完成。
-  `tmp/device-runs/20260930-172709-bootstrap-default-submit-r9` 的匹配 Debug ARMV4I 门
-  `1325-1328,999` selected/observed 为 `5/5`，无 ERROR/FAIL、唯一 `TESTBENCH PASS`、
-  `core_module_check=PASS`、`crash_check=PASS` 且无新增 dump；这证明 Core 的 gadget、作者
-  内容和 Browser 点击链已收束，并验证省略 `type` 的默认 submit 仍保留作者子树。该修复覆盖
-  inline、普通 block 和 flex 构造路径，不替代真实
-  EXE 的触摸和窄视口视觉验收。
+- TEST1325–1329 组成同一条 WinWorld 菜单回归：原版 jQuery/Bootstrap delegated collapse、
+  省略 `type` 的 button gadget、作者 CSS data-URI 子树和精确 hamburger 的最终 Core/Image
+  像素均已由对应 fixture 覆盖；`1325-1328,999` 的匹配 ARMV4I 门在
+  `tmp/device-runs/20260930-172709-bootstrap-default-submit-r9` 通过，`1329,999` 的
+  精确链路门见上文。自动证据不替代真实 EXE 的触摸和窄视口视觉验收。
+- TEST1329 在 `tmp/device-runs/20260930-180116-exact-bootstrap-hamburger` 以匹配 Debug
+  ARMV4I 包通过：精确 Bootstrap `.navbar-light .navbar-toggler-icon` data URI、无 `type`
+  button、Core background cache 和 Image rgba/round-cap 绘制均在最终离屏像素中验证，
+  selected/observed 为 `2/2`，唯一 `TESTBENCH PASS`、零 ERROR/FAIL、
+  `core_module_check=PASS`、`force_cleanup_check=PASS`、双空间预检通过且无新增 dump。
+  该门只证明 DLL 纵切，不替代用户在新 `positron.exe` 进程上打开 WinWorld 后的视觉与触摸证据。
 - 本轮为确认普通 block `<button>` 的扩展没有掩盖旧表单问题，另跑了
   `tmp/device-runs/20260930-160035-ordinary-button-regression-r7` 的 `293,999`；TEST293
   仍以 `changed=0/0 restored=0/0 reset=0` 失败，未到达 TEST999。该失败与本批作者子树绘制
