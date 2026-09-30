@@ -2513,6 +2513,66 @@ static void app_navigation_trace_image_state(AppNavigationRequest *request)
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 }
+
+/* Keep the final application's Core form snapshot diagnosable without
+ * changing the public ABI or treating a test-host fixture as product state.
+ * Ordinary HTML buttons are Core-painted, so their presence and geometry are
+ * the boundary needed to distinguish a missing visual box from an input that
+ * never reached the page window. */
+static void app_navigation_trace_controls(AppNavigationRequest *request)
+{
+    unsigned int index;
+    unsigned int form_count;
+    unsigned int button_count;
+    int x;
+    int y;
+    int width;
+    int height;
+    int kind;
+    int first_x;
+    int first_y;
+    int first_width;
+    int first_height;
+    int first_kind;
+    int first_found;
+    char message[384];
+
+    if (request == NULL || request->document_candidate == NULL) {
+        return;
+    }
+    form_count = 0;
+    button_count = 0;
+    first_x = 0;
+    first_y = 0;
+    first_width = 0;
+    first_height = 0;
+    first_kind = 0;
+    first_found = 0;
+    for (index = 0; index < 64; index++) {
+        if (PCore_FormControlInfo(request->document_candidate, index, &x, &y,
+                &width, &height, &kind, NULL, NULL) != 0) {
+            break;
+        }
+        form_count++;
+        if (kind >= 7 && kind <= 9) {
+            button_count++;
+            if (!first_found) {
+                first_x = x;
+                first_y = y;
+                first_width = width;
+                first_height = height;
+                first_kind = kind;
+                first_found = 1;
+            }
+        }
+    }
+    _snprintf(message, sizeof(message) - 1,
+            "positron controls gen=%lu forms=%u buttons=%u first=%d,%d,%dx%d/k%d\r\n",
+            request->generation, form_count, button_count, first_x, first_y,
+            first_width, first_height, first_kind);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
 #endif
 
 static void app_navigation_request_destroy(AppNavigationRequest *request)
@@ -3140,6 +3200,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         (void) PBrowser_NavigationResourceObserveFallbacks(
                 request->resource_transaction);
 #ifdef _DEBUG
+        app_navigation_trace_controls(request);
         app_navigation_trace_image_state(request);
 #endif
         if (g_script != NULL) {
