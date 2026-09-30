@@ -17,7 +17,8 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 图片 pending/retry、CSS data URI、Image 的有限 SVG 样式/渐变/alpha、HTTP URL-aware 和
 Browser history/lifecycle/document click 纵切已有源码与离线/设备证据；DB 目前只有主机
 contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体播放和 DB worker 仍须独立门。
-本批新增的焦点是 WinWorld 外部 classic script 的固定内存 profile，不扩大其他产品边界。
+本批新增的焦点是 WinWorld 外部 classic script 的固定内存 profile，以及设备门在必要时清理
+同名 `positron.exe` 的独立、有界前置步骤；不扩大其他产品边界。
 
 ## 当前源码事实
 
@@ -41,6 +42,10 @@ contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体�
   主文档与资源在成功后查询 final URL，并用它解析 CSS、图片、脚本和 `@import` 的相对引用。
   应用已移除旧的 host/path/port 二次 scheme 推断；`test_host` 保留这些字段仅用于旧 fixture
   和 ABI 回归。
+- 设备门默认不结束设备进程；显式传入 `-ForceTerminatePositron` 时，先运行
+  `device_tools/positron_process_cleanup.exe`。该 helper 不链接任何 Positron DLL，只精确匹配
+  `positron.exe` 和本设备门生成的 `test_host-run-*`，记录 PID/结果摘要；摘要缺失或失败会
+  阻断宿主启动。宿主随后再次记录同一精确检查，避免把模块持有者诊断误写成仍有应用进程。
 - 旧页、旧资源和旧 history 在失败、取消或 stale 导航时保留；final URL 查询失败不会继续
   使用原始 URL 伪装成功。产品实现未移入 `test_host`。
 - 当前工作树在已验证的导航启动路径上重新实现了 EXE 私有 UI 快照回滚：每个候选在显示
@@ -241,6 +246,15 @@ tile、WinWorld rgba/round-cap Image 纵切以及 document delegated-click 合�
   中 `1322,999` 为 selected/observed `2/2`，唯一 `TESTBENCH PASS`，零 ERROR/FAIL，
   `core_module_check=PASS`、`crash_check=PASS`、无新增 dump。门同时验证旧 1.5 MiB wrapper、
   3 MiB Ex profile、非法范围 fail closed、bootstrap 后约 120 KiB retained script 和 GC。
+- 本轮设备门功能回归 `tmp/device-runs/20260930-103934-force-cleanup` 使用
+  `-ForceTerminatePositron -TestSelection "1319,999"` 通过：独立 helper 的
+  `process-cleanup.log` 为 `target_count=0 failed=0`，说明重启后的目标上没有精确匹配的
+  `positron.exe`；宿主再次记录 `force_termination_check=PASS`，TEST1319/999 为 `2/2`，
+  `core_module_check=PASS`、`crash_check=PASS`、零 ERROR/FAIL，日志完整回收并清理当前目录。
+- 同一清理路径的复跑 `tmp/device-runs/20260930-110654-force-cleanup-prefix2` 也通过：
+  前置 helper 与宿主内置检查均为 `target_count=0 failed=0`/`PASS`，覆盖
+  `positron.exe` 以及本设备门生成的 `test_host-run-*` 精确匹配；TEST1319/999 为 `2/2`，
+  `core_module_check=PASS`、`crash_check=PASS`、零 ERROR/FAIL，日志完整回收并清理当前目录。
 
 ## 设备证据与限制
 
@@ -325,14 +339,15 @@ stage 为 `tmp/device-runs/20260928-222355-app-scroll-buffer-deploy/stage`；增
 `TEST999` 本身为 `1/1`、日志完整、`crash_check=PASS` 且无新增 dump。但设备门将整体结果标为
 `STALE_MODULE`：日志显示远端 test_host 仍解析到正在运行的旧实例所持有的
 `\Storage Card\Temp\Positron-device-gate\app-ui-snapshot-20260928-20260928-213123\positron_core.dll`，
-而不是本候选目录的 Core。设备纪律不允许 gate 强杀设备进程，因此这次只算“文件已部署、包内
-启动回归通过”，不算新 EXE/Core 的设备验收；必须先在设备任务管理器中真正退出旧
-`positron.exe`，再从本候选目录启动。
+而不是本候选目录的 Core。当时默认设备门没有强制清理，因此这次只算“文件已部署、包内启动
+回归通过”，不算新 EXE/Core 的设备验收；现在如确需清理可显式使用
+`-ForceTerminatePositron`，它不会结束任意其他进程。
 
 最新消费者日志 `tmp/device-runs/debug-capture-20260929-214139/positron-debug.log` 已确认
 jQuery、Bootstrap 和 bootstrap-multiselect 的 `-6` 是旧 1.5 MiB heap 失败，而不是 128 KiB
 source gate；新的应用 profile 尚未取得真实页面日志。设备纪律保持不变：用户先在 WMDC/Device Emulator GUI 手动连接恰好一个设备；gate 只复用当前
-会话，不连接、选择、cradle、重置或强杀设备。外置卡 Temp 优先，内置 Temp 回退；完整回收
+会话，不连接、选择、cradle 或重置设备，默认不结束进程；显式 `-ForceTerminatePositron`
+时只运行独立 helper 精确清理 `positron.exe`。外置卡 Temp 优先，内置 Temp 回退；完整回收
 日志后才清理旧部署。`tmp/` 只保存本地截图、日志和设备证据。
 - 新 profile 的 `positron.exe` 已部署并启动，远端根为
   `\Storage Card\Temp\Positron-device-gate\debug-capture-20260929-222012`，本地日志根为
@@ -402,8 +417,13 @@ source gate；新的应用 profile 尚未取得真实页面日志。设备纪律
 
 ## 唯一下一步
 
-使用与 TEST1322 相同的正式 Debug 产物重新部署 `positron.exe`，在当前唯一 GUI 连接设备上
-回拉新的 `positron-debug.log`。确认 jQuery/Bootstrap 从 `runtime-error result=-6` 变为
-`executed result=0` 后，再判断菜单是否仍被 `-3` 脚本错误或缺失 DOM API 阻断；在此之前不扩大
-heap、不修改 Core/HTTP，也不加入 WinWorld 特判。DB worker、Standard SDK 和其他候选保持在
-路线图队列，不抢占这条已被真实消费者证明的纵切。
+建立原版 jQuery 3.5.1 / Bootstrap 4.6.2 的离线初始化与 collapse 集成回归，再按完整合同修复
+detached DOM。最新设备日志 `tmp/device-runs/debug-capture-20260929-230751/positron-debug.log`
+已经否定“只需再次手测”的判断：jQuery 在 `__pcoreFormProperty` 抛出 -3，Bootstrap 因缺少
+jQuery 停止初始化；本次峰值约 2.31 MiB，低于 3 MiB profile。空 id 的 detached option
+selected 查询可由本地 bootstrap 探针复现，createHTMLDocument 等后续缺口也已确认。
+
+前几轮未提交 Browser checked/value/innerHTML 实验存在状态和所有权问题，不能提交为正式
+修复；三份源码改动暂保留供审查，本次调查未部署新候选。详细证据和探针局限见
+[调查记录](../docs/history/WINWORLD_SCRIPT_INITIALIZATION.md)。本轮复核 ROADMAP 后确定
+优先项应改为真实库初始化纵切；自动断言成功以前不再要求用户重复点击，不扩大 heap 或加入站点特判。

@@ -49,6 +49,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_host", "test_host\test
 		{F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708} = {F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_process_cleanup", "device_tools\positron_process_cleanup.vcproj", "{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_app", "positron_app\positron_app.vcproj", "{6D6E1A60-3E69-4A79-B2A1-9CE4A0E1F7C2}"
 	ProjectSection(ProjectDependencies) = postProject
 		{586A59ED-5203-4AAD-BACF-B6EA12B738A9} = {586A59ED-5203-4AAD-BACF-B6EA12B738A9}
@@ -159,6 +161,12 @@ Global
 		{9DF1016C-F4CF-44D1-B972-B98FF30D4DEB}.Release|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 		{9DF1016C-F4CF-44D1-B972-B98FF30D4DEB}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 		{9DF1016C-F4CF-44D1-B972-B98FF30D4DEB}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}.Release|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 		{6D6E1A60-3E69-4A79-B2A1-9CE4A0E1F7C2}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 		{6D6E1A60-3E69-4A79-B2A1-9CE4A0E1F7C2}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 		{6D6E1A60-3E69-4A79-B2A1-9CE4A0E1F7C2}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)

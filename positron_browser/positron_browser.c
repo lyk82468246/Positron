@@ -2248,6 +2248,22 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "pDialogRequired(this);if(!this.open){return;}e=new PEvent('cancel',{"
         "bubbles:false,cancelable:true});e.isTrusted=false;"
         "if(!this.dispatchEvent(e)){return;}this.close(arguments.length>0?value:'');};"
+        "var pDialogShowMethod=PElement.prototype.show;"
+        "var pDialogShowModalMethod=PElement.prototype.showModal;"
+        "var pDialogCloseMethod=PElement.prototype.close;"
+        "var pDialogRequestCloseMethod=PElement.prototype.requestClose;"
+        "Object.defineProperty(PElement.prototype,'show',{get:function(){"
+        "return this&&this.localName==='dialog'?pDialogShowMethod:undefined;},"
+        "configurable:true});"
+        "Object.defineProperty(PElement.prototype,'showModal',{get:function(){"
+        "return this&&this.localName==='dialog'?pDialogShowModalMethod:undefined;},"
+        "configurable:true});"
+        "Object.defineProperty(PElement.prototype,'close',{get:function(){"
+        "return this&&this.localName==='dialog'?pDialogCloseMethod:undefined;},"
+        "configurable:true});"
+        "Object.defineProperty(PElement.prototype,'requestClose',{get:function(){"
+        "return this&&this.localName==='dialog'?pDialogRequestCloseMethod:undefined;},"
+        "configurable:true});"
         "g.__pcoreDialogRequestClose=function(value){var owner;"
         "owner=pDialogActiveModal();if(owner===null){return 0;}"
         "owner.requestClose(value===undefined?'':value);"
@@ -2289,10 +2305,17 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "get:function(){var t=this.localName;var v;"
         "if(t==='option'){v=this.getAttribute('value');"
         "return v===null?String(this.textContent||''):v;}"
+        "if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "if(this.__valueDirty804){return this.__value804;}if(t==='textarea'){"
+        "return String(this.textContent||'');}v=this.getAttribute('value');"
+        "if(v!==null){return v;}return (t==='input'&&(this.type==='radio'||"
+        "this.type==='checkbox'))?'on':'';}"
         "return __pcoreGetValue({id:this.__id});},"
         "set:function(v){if(this.localName==='option'){"
         "if(!__pcoreSetAttribute({id:this.__id,name:'value',value:String(v)}))"
         "{throw new Error('value update failed');}return;}"
+        "if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "this.__value804=String(v);this.__valueDirty804=1;return;}"
         "if(!__pcoreSetValue({id:this.__id,value:String(v)}))"
         "{throw new Error('value update failed');}}});"
         "Object.defineProperty(PElement.prototype,'label',{"
@@ -2416,14 +2439,25 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "s.start=s.end=a+r.length;}else{s.start=a;s.end=a+r.length;}"
         "s.direction='none';};"
         "Object.defineProperty(PElement.prototype,'defaultValue',{"
-        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "get:function(){var v;if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "if(this.localName==='textarea'){return String(this.textContent||'');}"
+        "v=this.getAttribute('value');return v===null?'':v;}"
+        "return __pcoreFormProperty({id:this.__id,"
         "op:'getDefaultValue'});},"
-        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "set:function(v){if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "if(this.localName==='textarea'){this.textContent=String(v);}else{"
+        "this.setAttribute('value',String(v));}if(!this.__valueDirty804){"
+        "this.__value804=this.value;this.__valueDirty804=0;}return;}"
+        "if(!__pcoreFormProperty({id:this.__id,"
         "op:'setDefaultValue',value:String(v)})){throw new Error("
         "'defaultValue update failed');}}});"
         "Object.defineProperty(PElement.prototype,'checked',{"
-        "get:function(){return __pcoreGetChecked({id:this.__id});},"
-        "set:function(v){if(!__pcoreSetChecked({id:this.__id,"
+        "get:function(){if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "return this.__checked804?true:false;}"
+        "return __pcoreGetChecked({id:this.__id});},"
+        "set:function(v){if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "this.__checked804=v?1:0;this.__checkedDirty804=1;return;}"
+        "if(!__pcoreSetChecked({id:this.__id,"
         "checked:v?1:0})){throw new Error('checked update failed');}}});"
         "function PBooleanAttribute(o,name,v){"
         "if(o&&o.__pcoreCreatedElement804&&!o.__attached804){"
@@ -2603,29 +2637,48 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "get:function(){return __pcoreCustomValidity({id:this.__id,"
         "op:'get'});}});"
         "Object.defineProperty(PElement.prototype,'defaultChecked',{"
-        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "get:function(){if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "return this.hasAttribute('checked');}"
+        "return __pcoreFormProperty({id:this.__id,"
         "op:'getDefaultChecked'});},"
-        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "set:function(v){if(this.__pcoreCreatedElement804&&!this.__attached804){"
+        "if(v){this.setAttribute('checked','');}else{this.removeAttribute('checked');}return;}"
+        "if(!__pcoreFormProperty({id:this.__id,"
         "op:'setDefaultChecked',checked:v?1:0})){throw new Error("
         "'defaultChecked update failed');}}});"
         "Object.defineProperty(PElement.prototype,'selectedIndex',{"
-        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "get:function(){var i,a;if(this.__pcoreCreatedElement804&&!this.__attached804&&"
+        "this.localName==='select'){a=this.__children804||[];for(i=0;i<a.length;i++){"
+        "if(a[i]&&a[i].localName==='option'&&a[i].selected){return i;}}return -1;}"
+        "return __pcoreFormProperty({id:this.__id,"
         "op:'getSelectedIndex'});},"
         "set:function(v){var n=Number(v);"
         "if(n!==n||n!==Math.floor(n)){throw new Error('selectedIndex value');}"
+        "if(this.__pcoreCreatedElement804&&!this.__attached804&&this.localName==='select'){"
+        "var a=this.__children804||[],i;for(i=0;i<a.length;i++){if(a[i]&&a[i].localName==='option'){"
+        "a[i].__selected804=(i===n)?1:0;a[i].__selectedDirty804=1;}}return;}"
         "if(!__pcoreFormProperty({id:this.__id,op:'setSelectedIndex',"
         "index:n}))"
         "{throw new Error('selectedIndex update failed');}}});"
         "Object.defineProperty(PElement.prototype,'selected',{"
-        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "get:function(){if(this.__pcoreCreatedElement804&&!this.__attached804&&"
+        "this.localName==='option'){return this.__selected804?true:false;}"
+        "return __pcoreFormProperty({id:this.__id,"
         "op:'getSelected'});},"
-        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "set:function(v){if(this.__pcoreCreatedElement804&&!this.__attached804&&"
+        "this.localName==='option'){this.__selected804=v?1:0;this.__selectedDirty804=1;return;}"
+        "if(!__pcoreFormProperty({id:this.__id,"
         "op:'setSelected',selected:v?1:0}))"
         "{throw new Error('selected update failed');}}});"
         "Object.defineProperty(PElement.prototype,'defaultSelected',{"
-        "get:function(){return __pcoreFormProperty({id:this.__id,"
+        "get:function(){if(this.__pcoreCreatedElement804&&!this.__attached804&&"
+        "this.localName==='option'){return this.hasAttribute('selected');}"
+        "return __pcoreFormProperty({id:this.__id,"
         "op:'getDefaultSelected'});},"
-        "set:function(v){if(!__pcoreFormProperty({id:this.__id,"
+        "set:function(v){if(this.__pcoreCreatedElement804&&!this.__attached804&&"
+        "this.localName==='option'){if(v){this.setAttribute('selected','');}else{"
+        "this.removeAttribute('selected');}return;}"
+        "if(!__pcoreFormProperty({id:this.__id,"
         "op:'setDefaultSelected',selected:v?1:0}))"
         "{throw new Error('defaultSelected update failed');}}});"
         "Object.defineProperty(PElement.prototype,'id',{"
@@ -3091,6 +3144,21 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "g.__pcoreTrim=PTrim;"
         "})(this);";
 
+    /* jQuery's CSS path asks the window for a computed-style object even
+     * when the only transition contract the page needs is a bounded zero
+     * duration.  Keep this adapter separate from the large DOM bootstrap so
+     * VS2008 can compile each literal without crossing its old source limits. */
+    static const char P_BROWSER_SCRIPT_COMPUTED_STYLE[] =
+        "(function(g){function pComputedStyle(owner){var out={};var style=owner&&owner.style;"
+        "out.getPropertyValue=function(name){var n=String(name).toLowerCase();var v='';"
+        "if(style&&typeof style.getPropertyValue==='function'){v=style.getPropertyValue(n)||'';}"
+        "if(v!==''){return v;}if(n==='transition-duration'||n==='transition-delay'){return '0s';}"
+        "if(n==='display'&&owner&&typeof owner.hasAttribute==='function'&&owner.hasAttribute('hidden')){return 'none';}"
+        "return '';};out.getPropertyPriority=function(){return '';};out.item=function(){return '';};"
+        "out.transitionDuration='0s';out.transitionDelay='0s';out.display=out.getPropertyValue('display');"
+        "return out;}if(typeof g.getComputedStyle!=='function'){g.getComputedStyle=function(owner){"
+        "return pComputedStyle(owner);};}})(this);";
+
     /* Document click delegation is kept in its own bootstrap unit so the
      * VS2008 single-literal limit does not grow with the main DOM bootstrap.
      * Lifecycle listeners remain on the bounded legacy path above; this unit
@@ -3267,12 +3335,12 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "throw new Error('removeChild unavailable');}old=e.__children804;result=rem.call(e,n.__actual804);gone(n);"
         "syncFresh(e,old);return n;}old=e.__children804;result=rem.call(e,n);syncFresh(e,old);return result;}"
         "function live(p){return !!(p&&p.nodeType===1&&typeof p.__id==='string'&&p.__id!==''&&!p.__pcoreDetached11&&find.call(d,p.__id)===p);}"
-        "function make(tag){var e=new P('');e.__pcoreCreatedElement804=true;e.__attached804=false;e.__actual804=null;e.__pcoreDetached11=true;"
-        "e.__tag804=tag;e.__attrs804=[];e.__children804=list([],false);Object.defineProperty(e,'nodeName',{value:tag.toUpperCase(),configurable:true});"
+        "function make(tag){var e=new P('');e.__pcoreCreatedElement804=true;e.__attached804=false;e.__actual804=null;e.__pcoreDetached11=true;e.__checked804=0;e.__checkedDirty804=0;e.__selected804=tag==='option'?1:0;e.__selectedDirty804=0;e.__defaultSelected804=0;e.__value804='';e.__valueDirty804=0;"
+        "e.__tag804=tag;e.__attrs804=[];e.__children804=list([],false);e.__virtualParent804=null;Object.defineProperty(e,'nodeName',{value:tag.toUpperCase(),configurable:true});"
         "Object.defineProperty(e,'tagName',{value:tag.toUpperCase(),configurable:true});Object.defineProperty(e,'localName',{value:tag,configurable:true});"
         "Object.defineProperty(e,'isConnected',{get:function(){return !!(e.__attached804&&e.__actual804&&e.__actual804.isConnected);},configurable:true});"
-        "Object.defineProperty(e,'parentNode',{get:function(){return e.__attached804&&e.__actual804?e.__actual804.parentNode:null;},configurable:true});"
-        "Object.defineProperty(e,'parentElement',{get:function(){return e.__attached804&&e.__actual804?e.__actual804.parentElement:null;},configurable:true});"
+        "Object.defineProperty(e,'parentNode',{get:function(){return e.__attached804&&e.__actual804?e.__actual804.parentNode:(e.__virtualParent804||null);},configurable:true});"
+        "Object.defineProperty(e,'parentElement',{get:function(){return e.__attached804&&e.__actual804?e.__actual804.parentElement:(e.__virtualParent804||null);},configurable:true});"
         "Object.defineProperty(e,'childNodes',{get:function(){return e.__children804;},configurable:true});Object.defineProperty(e,'children',{get:function(){return elementChildren(e);},configurable:true});"
         "Object.defineProperty(e,'firstChild',{get:function(){return e.__children804.length?e.__children804[0]:null;},configurable:true});"
         "Object.defineProperty(e,'lastChild',{get:function(){var a=e.__children804;return a.length?a[a.length-1]:null;},configurable:true});"
@@ -3290,18 +3358,38 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return normalizeDetached(e);};"
         "Object.defineProperty(e,'attributes',{get:function(){return attrs(e);},configurable:true});e.getAttribute=function(n){return e.__attached804?ga.call(e.__actual804,N(n)):V(e,n);};"
         "e.hasAttribute=function(n){return e.getAttribute(n)!==null;};e.getAttributeNames=function(){var a=[],i;for(i=0;i<e.__attrs804.length;i++){a.push(e.__attrs804[i].name);}return a;};"
-        "e.setAttribute=function(n,v){var k=N(n),s=String(v),x;if(s.length>65535){throw new Error('attribute value limit');}if(e.__attached804){if(k==='id'){x=find.call(d,s);if(s===''||s.length>255||(x!==null&&x!==e.__actual804)){throw new Error('element id exists');}sa.call(e.__actual804,k,s);e.__actual804.__id=s;if(by[e.__id]===e){delete by[e.__id];}e.__id=s;put(e,k,s);by[s]=e;}else{sa.call(e.__actual804,k,s);put(e,k,s);}return;}put(e,k,s);if((k==='id'||k==='name')&&e.__fragmentOwner16&&typeof g.__pcoreRefreshFragment16==='function'){g.__pcoreRefreshFragment16(e.__fragmentOwner16);}};"
-        "e.removeAttribute=function(n){var k=N(n);if(e.__attached804){if(k==='id'){throw new Error('element id required');}ra.call(e.__actual804,k);drop(e,k);return;}drop(e,k);if(k==='name'&&e.__fragmentOwner16&&typeof g.__pcoreRefreshFragment16==='function'){g.__pcoreRefreshFragment16(e.__fragmentOwner16);}};"
+        "e.setAttribute=function(n,v){var k=N(n),s=String(v),x;if(s.length>65535){throw new Error('attribute value limit');}if(e.__attached804){if(k==='id'){x=find.call(d,s);if(s===''||s.length>255||(x!==null&&x!==e.__actual804)){throw new Error('element id exists');}sa.call(e.__actual804,k,s);e.__actual804.__id=s;if(by[e.__id]===e){delete by[e.__id];}e.__id=s;put(e,k,s);by[s]=e;}else{sa.call(e.__actual804,k,s);put(e,k,s);}return;}put(e,k,s);if(k==='checked'&&!e.__checkedDirty804){e.__checked804=1;}if(k==='value'&&!e.__valueDirty804){e.__value804=s;}if(k==='selected'&&e.localName==='option'){e.__defaultSelected804=1;if(!e.__selectedDirty804){e.__selected804=1;}}if((k==='id'||k==='name')&&e.__fragmentOwner16&&typeof g.__pcoreRefreshFragment16==='function'){g.__pcoreRefreshFragment16(e.__fragmentOwner16);}};"
+        "e.removeAttribute=function(n){var k=N(n);if(e.__attached804){if(k==='id'){throw new Error('element id required');}ra.call(e.__actual804,k);drop(e,k);return;}drop(e,k);if(k==='checked'&&!e.__checkedDirty804){e.__checked804=0;}if(k==='value'&&!e.__valueDirty804){e.__value804='';}if(k==='selected'&&e.localName==='option'){e.__defaultSelected804=0;if(!e.__selectedDirty804){e.__selected804=0;}}if(k==='name'&&e.__fragmentOwner16&&typeof g.__pcoreRefreshFragment16==='function'){g.__pcoreRefreshFragment16(e.__fragmentOwner16);}};"
         "Object.defineProperty(e,'id',{get:function(){if(e.__attached804&&di&&di.get){return di.get.call(e.__actual804);}var v=V(e,'id');return v===null?'':v;},set:function(v){e.setAttribute('id',v);},configurable:true});"
         "Object.defineProperty(e,'className',{get:function(){var v=V(e,'class');return e.__attached804?ga.call(e.__actual804,'class'):(v===null?'':v);},set:function(v){e.setAttribute('class',v);},configurable:true});"
-        "e.cloneNode=function(deep){var c=make(e.__tag804),i,v;for(i=0;i<e.__attrs804.length;i++){put(c,e.__attrs804[i].name,e.__attrs804[i].value);}if(!!deep){if(e.__children804.length>64){throw new Error('clone element child limit');}for(i=0;i<e.__children804.length;i++){v=e.__children804[i];if(!X(v)){throw new Error('clone element child unavailable');}c.appendChild(v.cloneNode(false));}}return c;};"
+        "e.cloneNode=function(deep){var c=make(e.__tag804),i,v;for(i=0;i<e.__attrs804.length;i++){put(c,e.__attrs804[i].name,e.__attrs804[i].value);}c.__checked804=e.__checked804?1:0;c.__checkedDirty804=e.__checkedDirty804?1:0;c.__selected804=e.__selected804?1:0;c.__selectedDirty804=e.__selectedDirty804?1:0;c.__defaultSelected804=e.__defaultSelected804?1:0;c.__value804=e.__value804;c.__valueDirty804=e.__valueDirty804?1:0;if(!!deep){if(e.__children804.length>64){throw new Error('clone element child limit');}for(i=0;i<e.__children804.length;i++){v=e.__children804[i];if(!X(v)&&!E(v)){throw new Error('clone element child unavailable');}c.appendChild(v.cloneNode(true));}}return c;};"
         "e.appendChild=function(n){if(n&&n.nodeType===1){return elementChildMutation804(e,n,null,true);}return textAt(e,n,e.__children804.length);};"
         "e.insertBefore=function(n,r){var i=e.__children804.length;if(n&&n.nodeType===1){return elementChildMutation804(e,n,r,false);}"
         "if(r!==null&&r!==undefined){if(ownerX(r)!==e){throw new Error('insert reference unavailable');}i=r.__index11;}return textAt(e,n,i);};"
         "e.removeChild=function(n){if(n&&n.nodeType===1){return removeElementChild804(e,n);}if(!X(n)||ownerX(n)!==e||!detachChild(n)){throw new Error('removeChild failed');}return n;};"
         "e.append=function(){return values(e,arguments,false);};e.prepend=function(){return values(e,arguments,true);};e.replaceChild=function(n,o){var result,oldChildren;if(arguments.length!==2){throw new Error('replaceChild arguments');}if(e.__attached804){if(typeof P.prototype.replaceChild!=='function'){throw new Error('replaceChild unavailable');}oldChildren=e.__children804;result=P.prototype.replaceChild.apply(e,arguments);syncAttached(e,oldChildren);return result;}return replaceChildDetached(e,n,o);};e.replaceChildren=function(){var result,oldChildren;if(e.__attached804){oldChildren=e.__children804;if(primitiveReplaceChildren(e,oldChildren,arguments)){return undefined;}if(typeof P.prototype.replaceChildren!=='function'){throw new Error('replaceChildren unavailable');}result=P.prototype.replaceChildren.apply(e,arguments);syncAttached(e,oldChildren);return result;}return replaceChildrenDetached(e,arguments);};e.remove=function(){var p=e.parentNode;if(p!==null){p.removeChild(e);}};"
-        "e.getRootNode=function(){return e.__attached804?d:e;};return e;}"
-        "function attach(p,e,r){var id=V(e,'id'),before,index,a,actual,i,n,op;if(!live(p)&&!(E(p)&&p.__attached804)){throw new Error('element parent unavailable');}"
+        "e.getRootNode=function(){return e.__attached804?d:(e.__virtualParent804||e);};return e;}"
+        /* jQuery's bounded selector probes temporarily append anonymous
+         * elements to documentElement/body.  Those nodes are Browser-owned
+         * staging objects: Core cannot address an element without an id and
+         * must not receive a synthetic public id merely for a feature probe. */
+        "function virtualParent804(p){return !!(p&&p.nodeType===1&&"
+        "(p.__id==='__positron_document_element__'||p.__id==='__positron_document_body__'||"
+        "p.__id==='__positron_document_head__'));}"
+        "function virtualChildren804(p){var a=p.__pcoreVirtualChildren804;"
+        "if(!a){a=[];p.__pcoreVirtualChildren804=a;}return a;}"
+        "function virtualAttach804(p,e,r){var a,i,j;if(!virtualParent804(p)||!E(e)||"
+        "e.__attached804||e.__virtualParent804){throw new Error('element parent unavailable');}"
+        "a=virtualChildren804(p);if(a.length>=64||e.__children804.length>64){throw new Error('insert child limit');}"
+        "i=a.length;if(r!==null&&r!==undefined){i=-1;for(j=0;j<a.length;j++){if(a[j]===r){i=j;break;}}"
+        "if(i<0){throw new Error('insert reference unavailable');}}"
+        "for(j=a.length;j>i;j--){a[j]=a[j-1];}a[i]=e;e.__virtualParent804=p;"
+        "e.__pcoreDetached11=true;return e;}"
+        "function virtualRemove804(p,e){var a,i,j;if(!virtualParent804(p)||!E(e)||"
+        "e.__virtualParent804!==p){throw new Error('removeChild failed');}a=virtualChildren804(p);"
+        "i=-1;for(j=0;j<a.length;j++){if(a[j]===e){i=j;break;}}if(i<0){throw new Error('removeChild failed');}"
+        "for(j=i+1;j<a.length;j++){a[j-1]=a[j];}a.length--;e.__virtualParent804=null;return e;}"
+        "function attach(p,e,r){var id=V(e,'id'),before,index,a,actual,i,n,op;if(virtualParent804(p)){return virtualAttach804(p,e,r);}if(!live(p)&&!(E(p)&&p.__attached804)){throw new Error('element parent unavailable');}"
         "if(id===null||id===''||id.length>255||find.call(d,id)!==null){throw new Error('element id required');}if(e.__children804.length>64){throw new Error('element child limit');}"
         "before=p.childNodes;"
         "if(!before||before.length>=64){throw new Error('insert child limit');}index=before.length;if(r!==null&&r!==undefined){if(r.nodeType!==1||r.parentNode!==p){throw new Error('insert reference unavailable');}}"
@@ -3353,14 +3441,14 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "result=iae.apply(this,arguments);if(pos==='afterbegin'||pos==='beforeend'){syncFresh(this,oldTarget);}"
         "else if(pos==='beforebegin'||pos==='afterend'){syncFresh(host,oldHost);}"
         "if(source&&source!==this&&source!==host){syncFresh(source,oldSource);}return result;};"
-        "P.prototype.appendChild=function(n){return E(n)?attach(this,n,null):app.apply(this,arguments);};P.prototype.insertBefore=function(n,r){return E(n)?attach(this,n,r):ins.apply(this,arguments);};"
-        "P.prototype.removeChild=function(n){var r;if(E(n)){if(!n.__attached804||n.parentNode!==this){throw new Error('removeChild failed');}r=rem.call(this,n.__actual804);gone(n);return r;}return rem.apply(this,arguments);};"
+        "P.prototype.appendChild=function(n){return E(n)?(virtualParent804(this)?virtualAttach804(this,n,null):attach(this,n,null)):app.apply(this,arguments);};P.prototype.insertBefore=function(n,r){return E(n)?(virtualParent804(this)?virtualAttach804(this,n,r):attach(this,n,r)):ins.apply(this,arguments);};"
+        "P.prototype.removeChild=function(n){var r;if(E(n)){if(n.__virtualParent804===this){return virtualRemove804(this,n);}if(!n.__attached804||n.parentNode!==this){throw new Error('removeChild failed');}r=rem.call(this,n.__actual804);gone(n);return r;}return rem.apply(this,arguments);};"
         "P.prototype.append=function(){var i,has=0;for(i=0;i<arguments.length;i++){if(E(arguments[i])){has=1;break;}}if(!has){return pre.apply(this,arguments);}"
-        "for(i=0;i<arguments.length;i++){if(!E(arguments[i])){throw new Error('append mixed element unavailable');}attach(this,arguments[i],null);}return undefined;};"
+        "for(i=0;i<arguments.length;i++){if(!E(arguments[i])){throw new Error('append mixed element unavailable');}if(virtualParent804(this)){virtualAttach804(this,arguments[i],null);}else{attach(this,arguments[i],null);}}return undefined;};"
         "P.prototype.prepend=function(){var i,has=0,r;for(i=0;i<arguments.length;i++){if(E(arguments[i])){has=1;break;}}if(!has){return pr.apply(this,arguments);}r=this.childNodes.length?this.childNodes[0]:null;"
-        "for(i=arguments.length-1;i>=0;i--){if(!E(arguments[i])){throw new Error('prepend mixed element unavailable');}attach(this,arguments[i],r);r=arguments[i];}return undefined;};"
+        "for(i=arguments.length-1;i>=0;i--){if(!E(arguments[i])){throw new Error('prepend mixed element unavailable');}if(virtualParent804(this)){virtualAttach804(this,arguments[i],r);}else{attach(this,arguments[i],r);}r=arguments[i];}return undefined;};"
         "d.createElement=function(tag){var s;if(arguments.length!==1){throw new TypeError('createElement arguments');}s=String(tag).toLowerCase();"
-        "if(s===''||s.length>32||!/^[a-z][a-z0-9-]*$/.test(s)||s==='html'||s==='head'||s==='body'){throw new Error('createElement name unavailable');}return make(s);};})(this);";
+        "if(s===''||s.length>32||!/^[a-z][a-z0-9-]*$/.test(s)){throw new Error('createElement name unavailable');}return make(s);};})(this);";
 
     /* Keep Comment creation detached until a live Element supplies the Core
      * parent id.  The wrapper owns only CharacterData state and delegates
@@ -3951,12 +4039,34 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "e.cloneNode=function(deep){return decorate(clone0.call(e,deep));};return e;}"
         "d.createElement=function(){return decorate(create.apply(d,arguments));};})(this);";
 
-    /* Detached Element HTML uses the same bounded Browser-owned staging as
-     * P14: attributes and direct Text children can be serialized without a
-     * Core handle, while markup input is rejected instead of pretending that
-     * a second parser exists.  Connected wrappers delegate to the Core-backed
-     * descriptors and refresh their staged child snapshot after innerHTML;
-     * outerHTML uses the public alias so the wrapper can be detached cleanly. */
+    /* jQuery's support probe creates a separate HTML document.  It must be a
+     * detached Browser-owned tree; it must not call Core with an empty page
+     * id or pretend that it is the active document. */
+    static const char P_BROWSER_SCRIPT_DETACHED_DOCUMENT[] =
+        "(function(g){var d=g.document,impl;if(!d||d.implementation||"
+        "typeof d.createElement!=='function'){return;}impl={createHTMLDocument:function(title){"
+        "var q={},html=d.createElement('html'),body=d.createElement('body');"
+        "html.appendChild(body);Object.defineProperty(q,'nodeType',{value:9});"
+        "Object.defineProperty(q,'nodeName',{value:'#document'});q.body=body;"
+        "q.documentElement=html;q.title=title===undefined?'':String(title);"
+        "q.createElement=function(tag){return d.createElement(tag);};"
+        "q.createTextNode=function(v){return d.createTextNode(v);};"
+        "q.createComment=function(v){return d.createComment(v);};"
+        "q.createDocumentFragment=function(){return d.createDocumentFragment();};"
+        "q.getElementById=function(id){var wanted=String(id),stack=[html],n,a,i;"
+        "while(stack.length){n=stack.pop();if(n&&n.id===wanted){return n;}"
+        "a=n&&n.childNodes?n.childNodes:[];for(i=a.length-1;i>=0;i--){stack.push(a[i]);}}return null;};"
+        "q.querySelector=function(sel){var s=String(sel);return s.charAt(0)==='#'?"
+        "q.getElementById(s.substring(1)):null;};q.querySelectorAll=function(sel){"
+        "var n=q.querySelector(sel);return n===null?[]:[n];};return q;}};"
+        "Object.defineProperty(d,'implementation',{value:impl,writable:false,"
+        "configurable:false,enumerable:true});})(this);";
+
+    /* Detached Element HTML uses a deliberately small Browser-owned parser.
+     * It is enough for bounded feature detection and library bootstrap markup
+     * (ordinary elements, attributes, comments and text), while rejecting
+     * malformed/oversized trees before touching the live detached element.
+     * Connected wrappers still delegate to the Core-backed descriptors. */
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE[] =
         "(function(g){var d=g.document,P=g.__pcorePElement,create,oldInner,oldOuter,sync,detach;"
         "if(!d||!P||typeof d.createElement!=='function'){return;}create=d.createElement;"
@@ -3981,6 +4091,39 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "o=add(o,t);for(i=0;i<a.length;i++){x=a[i];if(!x||typeof x.name!=='string'||typeof x.value!=='string'){"
         "throw new Error('HTML serialization unavailable');}o=add(o,' '+esc(x.name,true)+'=\"'+esc(x.value,true)+'\"');}"
         "o=add(o,'>');if(voidTag(t)){return o;}o=add(o,inner(e));o=add(o,'</'+t+'>');return o;}"
+        "function ws(s,i){var c;while(i<s.length){c=s.charAt(i);if(c!==' '&&c!=='\\t'&&c!=='\\r'&&c!=='\\n'){break;}i++;}return i;}"
+        "function nc(c){var n=c.charCodeAt(0);return (n>=48&&n<=57)||(n>=65&&n<=90)||"
+        "(n>=97&&n<=122)||c==='-'||c==='_'||c===':';}"
+        "function markup(root,s){var stack=[root],sp=1,i=0,j,k,c,tag,attr,value,quote,child,self,done,node,count=0;"
+        "if(s.length>65535){throw new Error('detached HTML limit');}while(i<s.length){"
+        "if(s.charAt(i)!=='<'){j=s.indexOf('<',i);if(j<0){j=s.length;}if(j>i){"
+        "node=d.createTextNode(s.substring(i,j));stack[sp-1].appendChild(node);count++;}i=j;continue;}"
+        "if(s.substr(i,4)==='<!--'){j=s.indexOf('-->',i+4);if(j<0){throw new Error('detached HTML comment');}"
+        "node=d.createComment(s.substring(i+4,j));stack[sp-1].appendChild(node);count++;i=j+3;"
+        "if(count>64){throw new Error('detached HTML node limit');}continue;}"
+        "if(s.substr(i,2)==='<!'){throw new Error('detached HTML declaration');}"
+        "if(s.substr(i,2)==='</'){j=ws(s,i+2);k=j;while(k<s.length&&nc(s.charAt(k))){k++;}"
+        "if(k===j){throw new Error('detached HTML close tag');}tag=s.substring(j,k).toLowerCase();j=ws(s,k);"
+        "if(s.charAt(j)!=='>'){throw new Error('detached HTML close syntax');}"
+        "if(sp<=1||stack[sp-1].localName!==tag){throw new Error('detached HTML close mismatch');}"
+        "sp--;i=j+1;continue;}j=ws(s,i+1);k=j;while(k<s.length&&nc(s.charAt(k))){k++;}"
+        "if(k===j){throw new Error('detached HTML tag');}tag=s.substring(j,k).toLowerCase();"
+        "child=d.createElement(tag);count++;if(count>64){throw new Error('detached HTML node limit');}"
+        "self=false;done=false;while(k<s.length){k=ws(s,k);c=s.charAt(k);"
+        "if(c==='>'){done=true;k++;break;}if(c==='/'&&s.charAt(k+1)==='>'){self=true;done=true;k+=2;break;}"
+        "j=k;while(k<s.length&&nc(s.charAt(k))){k++;}if(k===j){throw new Error('detached HTML attribute');}"
+        "attr=s.substring(j,k).toLowerCase();k=ws(s,k);value='';if(s.charAt(k)==='='){k=ws(s,k+1);"
+        "quote=s.charAt(k);if(quote==='\"'||quote===\"'\"){k++;j=k;while(k<s.length&&s.charAt(k)!==quote){k++;}"
+        "if(k>=s.length){throw new Error('detached HTML quote');}value=s.substring(j,k);k++;}else{j=k;"
+        "while(k<s.length&&s.charAt(k)!==' '&&s.charAt(k)!=='\\t'&&s.charAt(k)!=='\\r'&&"
+        "s.charAt(k)!=='\\n'&&s.charAt(k)!=='>'&&!(s.charAt(k)==='/'&&s.charAt(k+1)==='>')){k++;}"
+        "value=s.substring(j,k);}}child.setAttribute(attr,value);}"
+        "if(!done){throw new Error('detached HTML syntax');}stack[sp-1].appendChild(child);"
+        "if(!self&&!voidTag(tag)){if(sp>=16){throw new Error('detached HTML depth');}stack[sp++]=child;}i=k;}"
+        "if(sp!==1){throw new Error('detached HTML unclosed');}}"
+        "function setMarkup(e,s){var tmp=d.createElement(e.__tag804),a;markup(tmp,s);a=tmp.__children804;"
+        "if(a.length>64){throw new Error('detached HTML child limit');}if(a.length===0){e.replaceChildren();}"
+        "else{e.replaceChildren.apply(e,a);}}"
         "function decorate(e){if(!E(e)||e.__htmlFacade836){return e;}e.__htmlFacade836=true;"
         "Object.defineProperty(e,'innerHTML',{get:function(){if(e.__attached804){"
         "if(!oldInner||typeof oldInner.get!=='function'){throw new Error('innerHTML unavailable');}"
@@ -3988,8 +4131,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(e.__attached804){if(!oldInner||typeof oldInner.set!=='function'){throw new Error('innerHTML unavailable');}"
         "oldChildren=e.__children804;result=oldInner.set.call(e.__actual804||e,v);e.__nodes11=null;"
         "if(typeof sync==='function'){sync(e,oldChildren);}return result;}if(s.length>65535){throw new Error('innerHTML limit');}"
-        "if(s.indexOf('<')>=0||s.indexOf('>')>=0){throw new Error('detached HTML markup unavailable');}"
-        "e.textContent=s;},enumerable:true,configurable:true});"
+        "if(s.indexOf('<')>=0||s.indexOf('>')>=0){setMarkup(e,s);}else{e.textContent=s;}},"
+        "enumerable:true,configurable:true});"
         "Object.defineProperty(e,'outerHTML',{get:function(){if(e.__attached804){"
         "if(!oldOuter||typeof oldOuter.get!=='function'){throw new Error('outerHTML unavailable');}"
         "return oldOuter.get.call(e.__actual804||e);}return outer(e);},set:function(v){"
@@ -8399,6 +8542,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
         return result;
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_COMPUTED_STYLE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART2, -1);
     if (result != PSCRIPT_OK) {
         return result;
@@ -8512,6 +8660,11 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
     }
     result = PBrowser_ScriptSessionEvaluate(hSession,
             P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, -1);
+    if (result != PSCRIPT_OK) {
+        return result;
+    }
+    result = PBrowser_ScriptSessionEvaluate(hSession,
+            P_BROWSER_SCRIPT_DETACHED_DOCUMENT, -1);
     if (result != PSCRIPT_OK) {
         return result;
     }

@@ -33,6 +33,7 @@ copy /Y "%ROOT%\positron_browser\bin\%CFG%\positron_browser.dll" "%STAGE%\" || g
 copy /Y "%ROOT%\positron_db\bin\%CFG%\positron_db.dll"       "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_app\bin\%CFG%\positron.exe"         "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\bin\%CFG%\test_host.exe"         "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\device_tools\bin\%CFG%\positron_process_cleanup.exe" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\test_host.ini"                   "%STAGE%\" || goto :fail
 if not exist "%STAGE%\fonts" mkdir "%STAGE%\fonts"
 copy /Y "%ROOT%\assets\fonts\PositronSymbolsBasic.ttf" "%STAGE%\fonts\" || goto :fail
@@ -44,6 +45,8 @@ copy /Y "%ROOT%\third_party\noto-emoji\OFL.txt"    "%STAGE%\fonts\OFL-NotoEmoji.
 if not exist "%STAGE%\fixtures" mkdir "%STAGE%\fixtures"
 copy /Y "%ROOT%\test_host\fixtures\iana-logo-homepage.svg" "%STAGE%\fixtures\" || goto :fail
 copy /Y "%ROOT%\test_host\fixtures\iana-logo-header-notext.svg" "%STAGE%\fixtures\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\jquery-3.5.1.min.js" "%STAGE%\fixtures\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\bootstrap-4.6.2.min.js" "%STAGE%\fixtures\" || goto :fail
 
 echo.
 echo Done. In the emulator, open File Explorer -^> Storage Card

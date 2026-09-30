@@ -45,6 +45,20 @@ struct AppScriptContext {
 };
 
 #ifdef _DEBUG
+static void app_script_debug_click(const PBrowserScriptClickEventInfo *info,
+        int result, int allowed)
+{
+    char message[256];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-click type=%s x=%d y=%d result=%d allowed=%d\r\n",
+            info != NULL && info->event_type != NULL ? info->event_type :
+            "", info != NULL ? info->x : 0, info != NULL ? info->y : 0,
+            result, allowed);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
 static void app_script_debug_log_script(AppScriptContext *context, int index,
         const PCoreScriptInfo *info, const char *url, const char *type,
         const char *outcome, int result)
@@ -54,17 +68,19 @@ static void app_script_debug_log_script(AppScriptContext *context, int index,
     unsigned long memory_used;
     unsigned long memory_peak;
     unsigned long memory_limit;
+    const char *error_text;
 
     session = context != NULL ? context->session : NULL;
     memory_used = PBrowser_ScriptSessionMemoryUsed(session);
     memory_peak = PBrowser_ScriptSessionPeakMemoryUsed(session);
     memory_limit = PBrowser_ScriptSessionMemoryLimit(session);
+    error_text = PBrowser_ScriptSessionGetError(session);
 
     _snprintf(message, sizeof(message) - 1,
             "positron script-state page=%s index=%d kind=%d url=%s "
             "available=%d source_bytes=%d url_bytes=%d type_bytes=%d "
             "data_bytes=%d type=%s outcome=%s result=%d "
-            "heap_used=%lu heap_peak=%lu heap_limit=%lu\r\n",
+            "heap_used=%lu heap_peak=%lu heap_limit=%lu error=%s\r\n",
             context != NULL ? context->document_url : "",
             index,
             info != NULL ? info->kind : 0,
@@ -76,7 +92,8 @@ static void app_script_debug_log_script(AppScriptContext *context, int index,
             info != NULL ? info->data_bytes : 0,
             type != NULL ? type : "",
             outcome != NULL ? outcome : "",
-            result, memory_used, memory_peak, memory_limit);
+            result, memory_used, memory_peak, memory_limit,
+            error_text != NULL ? error_text : "");
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 }
@@ -1182,6 +1199,9 @@ static int app_script_click_dispatch(void *pw,
     result = PCore_EventDispatchAt(context->document, info->x, info->y,
             info->event_type, info->bubbles ? 1 : 0,
             info->cancelable ? 1 : 0, out_default_allowed);
+#ifdef _DEBUG
+    app_script_debug_click(info, result, *out_default_allowed);
+#endif
     return result < 0 ? -1 : 0;
 }
 

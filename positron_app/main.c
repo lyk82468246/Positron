@@ -798,6 +798,34 @@ static void app_sync_overflow_scroll(void)
             scroll_x, scroll_y);
 }
 
+#ifdef _DEBUG
+static void app_script_debug_refresh(const char *event, int result,
+        int form_reset)
+{
+    char message[256];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-refresh event=%s result=%d form_reset=%d\r\n",
+            event != NULL ? event : "unknown", result,
+            form_reset ? 1 : 0);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_debug_pointer_down(int x, int y, int document_x,
+        int document_y, int scroll_x, int scroll_y)
+{
+    char message[224];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron pointer-down x=%d y=%d document_x=%d document_y=%d "
+            "scroll_x=%d scroll_y=%d\r\n", x, y, document_x, document_y,
+            scroll_x, scroll_y);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+#endif
+
 static void app_set_focus_ids(int page_kind)
 {
     g_focus_count = 0;
@@ -828,6 +856,9 @@ static void app_script_schedule_refresh(void *pw, AppScriptContext *context,
         if (form_reset) {
             g_script_refresh_form_reset = 1;
         }
+#ifdef _DEBUG
+        app_script_debug_refresh("coalesced", 0, g_script_refresh_form_reset);
+#endif
         return;
     }
     g_script_refresh_pending = 1;
@@ -837,9 +868,16 @@ static void app_script_schedule_refresh(void *pw, AppScriptContext *context,
             APP_WM_CONTROLS_REFRESH,
             g_script_refresh_form_reset ? APP_CONTROLS_REFRESH_FORM_RESET : 0,
             (LPARAM) context)) {
+#ifdef _DEBUG
+        app_script_debug_refresh("post-failed", 0, form_reset);
+#endif
         g_script_refresh_pending = 0;
         g_script_refresh_form_reset = 0;
         g_script_refresh_context = NULL;
+    } else {
+#ifdef _DEBUG
+        app_script_debug_refresh("posted", 0, form_reset);
+#endif
     }
 }
 
@@ -4148,6 +4186,10 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             SetFocus(hwnd);
             document_x = x + g_scroll_x;
             document_y = y + g_scroll_y;
+#ifdef _DEBUG
+            app_debug_pointer_down(x, y, document_x, document_y, g_scroll_x,
+                    g_scroll_y);
+#endif
             if (g_document != NULL && PCore_OverflowPointer(g_document,
                     PCORE_POINTER_DOWN, document_x, document_y)) {
                 g_overflow_pointer = 1;
@@ -4479,15 +4521,25 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             g_script_refresh_context = NULL;
             if (lparam == (LPARAM) g_script && g_document != NULL &&
                     g_controls != NULL) {
+                int refresh_result;
+
                 AppControls_PrepareReconcile(g_controls);
-                if (app_relayout() != 0 ||
+                refresh_result = app_relayout();
+                if (refresh_result != 0 ||
                         (form_reset ?
                         AppControls_ReconcileAfterFormReset(g_controls,
                         g_document, g_script, g_scroll_x, g_scroll_y) :
                         AppControls_Reconcile(g_controls, g_document,
                         g_script, g_scroll_x, g_scroll_y)) != 0) {
+#ifdef _DEBUG
+                    app_script_debug_refresh("failed", refresh_result,
+                            form_reset);
+#endif
                     app_set_status(APP_TEXT_STATUS_LAYOUT);
                 } else {
+#ifdef _DEBUG
+                    app_script_debug_refresh("complete", 0, form_reset);
+#endif
                     InvalidateRect(g_page_window, NULL, FALSE);
                 }
             }

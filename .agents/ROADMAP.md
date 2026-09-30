@@ -209,10 +209,10 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
     RAPI 设备传输按用户决定暂停，不据此宣布设备基线；恢复设备传输后先验收本纵切的 method/enctype、
     picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
 
-本轮把“外部脚本内存不足”收束为一个可验证的公共 DLL 边界：旧 Browser session ABI/1.5 MiB
-默认保持不变，应用使用 3 MiB 上限的 `CreateEx`，不得继续无条件放大。TEST1322 通过后，唯一
-下一步是匹配包上的 WinWorld debug capture；只有 jQuery/Bootstrap 实际执行且菜单仍失败，才
-为具体缺失的 DOM/API 另立消费者驱动的纵切。
+Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。真实页面日志已证明当前阻塞转为
+jQuery 初始化的 detached DOM 异常，Bootstrap 因此未初始化；不能再将重复人工点击作为下一步。
+优先建立原版库离线集成回归，再修复完整的有界 DOM 合同，见下方 JS 候选和
+[调查记录](../docs/history/WINWORLD_SCRIPT_INITIALIZATION.md)。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
@@ -221,6 +221,17 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
 ## 候选队列
 
 ### 准备取舍
+
+#### JS. 原版 jQuery/Bootstrap 初始化与菜单交互
+
+**状态：真实消费者阻塞已复现，优先于普通功能扩展。** Browser 的 detached option selected
+错误调用空 id 的 Core form callback；原版 jQuery 还需要 fragment、克隆和独立 document。
+前几轮未提交的 checked/value/innerHTML 绕过补丁不能作为基线。
+
+- **Owner：** Core 拥有 HTML fragment 解析和表单语义；Browser 拥有脚本 wrapper、身份、生命周期和桥接；宿主只接线。
+- **边界：** 保持旧 ABI、3 MiB profile 和固定节点/深度预算；不增加站点特判，不伪造 document 或把 HTML parser 复制到 Browser。
+- **最小 fixture：** 固定原版 jQuery 3.5.1 / Bootstrap 4.6.2；覆盖初始化、live/default/dirty 状态、clone、fragment、失败不变性、释放及实际 collapse 的 class/aria 变化。
+- **门：** 先自动完成原版库执行与 delegated click，再运行 C89、audit、正式构建和模块匹配的 ARMV4I 设备门；成功后才要求真实触摸验收。Node sentinel 探针不替代公共 DLL 集成门。
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
@@ -495,7 +506,9 @@ live collection、MutationObserver、Range/Selection、shadow DOM、worker/modul
 - 由同一批构建产物运行定向自动门，并保留唯一 TESTBENCH PASS、完整日志、双空间预检、
   完成后清理和 crash_check 证据；
 - 设备门继续假定用户已经在 WMDC/Device Emulator GUI 手动连接唯一目标，脚本不连接、选择、
-  cradle、重置或强杀设备；
+  cradle、重置或默认强杀设备；只有明确传入 `-ForceTerminatePositron` 时，才部署独立的
+  无产品 DLL 依赖清理器，精确结束 `positron.exe` 或本设备门生成的 `test_host-run-*`，并以
+  摘要和失败状态作为门前置条件；
 - 视觉、触摸、SIP/IME、picker 和旋转可以累计后人工检查，但崩溃、数据损坏、严重布局破坏
   或核心交互阻塞必须立即人工复核。
 

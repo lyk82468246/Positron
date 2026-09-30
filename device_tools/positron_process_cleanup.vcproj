@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject ProjectType="Visual C++" Version="9.00"
+	Name="positron_process_cleanup"
+	ProjectGUID="{E2A4B7C9-9D31-4E55-8A2C-6F7B8D9E0123}"
+	RootNamespace="positron_process_cleanup" Keyword="Win32Proj"
+	TargetFrameworkVersion="196613">
+	<Platforms>
+		<Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" />
+	</Platforms>
+	<ToolFiles />
+	<Configurations>
+		<Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="1" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
+				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool"
+				AdditionalDependencies="toolhelp.lib"
+				AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron_process_cleanup.exe"
+				LinkIncremental="2" DelayLoadDLLs="$(NOINHERIT)"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)/positron_process_cleanup.pdb"
+				SubSystem="0" StackReserveSize="65536" StackCommitSize="4096"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1"
+				RemoteDirectory="\Program Files\positron_process_cleanup"
+				RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+			OutputDirectory="bin\$(ConfigurationName)"
+			IntermediateDirectory="bin\$(ConfigurationName)"
+			ConfigurationType="1" CharacterSet="1">
+			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCCustomBuildTool" />
+			<Tool Name="VCXMLDataGeneratorTool" />
+			<Tool Name="VCWebServiceProxyGeneratorTool" />
+			<Tool Name="VCMIDLTool" />
+			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2"
+				FavorSizeOrSpeed="2"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+				RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3"
+				DebugInformationFormat="3" CompileAs="1" />
+			<Tool Name="VCManagedResourceCompilerTool" />
+			<Tool Name="VCResourceCompilerTool"
+				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES)"
+				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
+			<Tool Name="VCPreLinkEventTool" />
+			<Tool Name="VCLinkerTool"
+				AdditionalDependencies="toolhelp.lib"
+				AdditionalOptions=" /subsystem:windowsce,5.02"
+				OutputFile="$(OutDir)\positron_process_cleanup.exe"
+				LinkIncremental="1" DelayLoadDLLs="$(NOINHERIT)"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile="$(OutDir)/positron_process_cleanup.pdb"
+				SubSystem="0" StackReserveSize="65536" StackCommitSize="4096"
+				OptimizeReferences="2" EnableCOMDATFolding="2"
+				RandomizedBaseAddress="1" DataExecutionPrevention="0" />
+			<Tool Name="VCALinkTool" />
+			<Tool Name="VCXDCMakeTool" />
+			<Tool Name="VCBscMakeTool" />
+			<Tool Name="VCFxCopTool" />
+			<Tool Name="VCCodeSignTool" />
+			<Tool Name="VCPostBuildEventTool" />
+			<DeploymentTool ForceDirty="-1"
+				RemoteDirectory="\Program Files\positron_process_cleanup"
+				RegisterOutput="0" />
+			<DebuggerTool />
+		</Configuration>
+	</Configurations>
+	<References />
+	<Files>
+		<File RelativePath=".\positron_process_cleanup.c" />
+		<File RelativePath=".\README.md" />
+	</Files>
+	<Globals />
+</VisualStudioProject>

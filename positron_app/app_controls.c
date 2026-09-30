@@ -6,7 +6,11 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _DEBUG
+#include <stdio.h>
+#endif
 
+#include "app_debug.h"
 #include "app_controls.h"
 
 #define APP_CONTROLS_MAX             PBROWSER_SCRIPT_NATIVE_EDIT_MAX_TARGETS
@@ -28,6 +32,35 @@
 #define APP_CONTROLS_FORM_TEXTAREA   5
 #define APP_CONTROLS_FORM_SELECT     6
 #define APP_CONTROLS_NO_SELECT_INDEX  0xffffffffUL
+
+#ifdef _DEBUG
+static void app_controls_debug_button(const char *event,
+        unsigned int form_index, int kind, int x, int y, int result,
+        int allowed)
+{
+    char message[256];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron button event=%s index=%u kind=%d x=%d y=%d "
+            "result=%d allowed=%d\r\n",
+            event != NULL ? event : "unknown", form_index, kind, x, y,
+            result, allowed);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_controls_debug_pointer_scan(int x, int y,
+        unsigned int scanned, int hit)
+{
+    char message[192];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron button pointer-scan x=%d y=%d scanned=%u hit=%d\r\n",
+            x, y, scanned, hit ? 1 : 0);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+#endif
 
 typedef struct AppControlsItem AppControlsItem;
 
@@ -2348,10 +2381,18 @@ static int app_controls_button_activate(AppControlsContext *context,
         return 1;
     }
     default_allowed = 1;
+#ifdef _DEBUG
+    app_controls_debug_button("hit", form_index, kind, x, y, 0,
+            default_allowed);
+#endif
     if (AppScript_DispatchNativeButton(context->script, target_token, x, y,
             PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK,
             button_kind, 0, 0,
             &default_allowed) != 0 || !default_allowed) {
+#ifdef _DEBUG
+        app_controls_debug_button("click-rejected", form_index, kind, x, y,
+                1, default_allowed);
+#endif
         (void) AppScript_DispatchNativeButton(context->script, target_token,
                 x, y, PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
                 button_kind, 0, 0,
@@ -2371,6 +2412,10 @@ static int app_controls_button_activate(AppControlsContext *context,
             x, y,
             PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT,
             button_kind, 0, validation_valid, &default_allowed);
+#ifdef _DEBUG
+    app_controls_debug_button("commit", form_index, kind, x, y, result,
+            default_allowed);
+#endif
     if (result != 0) {
         (void) AppScript_DispatchNativeButton(context->script, target_token,
                 x, y, PBROWSER_SCRIPT_NATIVE_BUTTON_CANCEL,
@@ -2410,6 +2455,10 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
                 height > 0 &&
                 document_x >= x && document_x < x + width &&
                 document_y >= y && document_y < y + height) {
+#ifdef _DEBUG
+            app_controls_debug_button("pointer-hit", form_index, kind,
+                    document_x, document_y, 0, disabled ? 0 : 1);
+#endif
             if (disabled) {
                 return 1;
             }
@@ -2423,6 +2472,9 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
         }
         form_index++;
     }
+#ifdef _DEBUG
+    app_controls_debug_pointer_scan(document_x, document_y, form_index, 0);
+#endif
     return 0;
 }
 

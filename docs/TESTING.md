@@ -268,7 +268,7 @@ scripts\build.bat Debug rebuild
 
 ### 前提与运行
 
-先由用户在 WMDC 或 Device Emulator GUI 中手动建立恰好一个目标连接。设备门只复用当前 RAPI 会话：不枚举或选择设备，不绑定 VMID，不启动、cradle、断开、重置或强杀设备。
+先由用户在 WMDC 或 Device Emulator GUI 中手动建立恰好一个目标连接。设备门只复用当前 RAPI 会话：不枚举或选择设备，不绑定 VMID，不启动、cradle、断开、重置或默认强杀设备。
 
 ```bat
 scripts\device_gate.bat -Candidate feature-name
@@ -281,7 +281,19 @@ scripts\device_gate.bat -Candidate feature-name ^
   -TestSelection "1284-1294,999" -EnableJavaScript
 ```
 
-脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和判门。本地证据在 `tmp/device-runs/`，不进入 Git。超时后设备进程仍需由用户在设备 UI 正常结束；设备门不提供安全的通用远端终止。
+脚本执行正式构建、隔离 staging、整包部署、启动、有限等待、日志回收和判门。本地证据在 `tmp/device-runs/`，不进入 Git。未显式启用下方清理开关时，超时后的设备进程仍需由用户在设备 UI 正常结束；设备门不提供安全的通用远端终止。
+
+当确认需要清除旧的 `positron.exe` 进程或同名 DLL 持有者时，可显式启用有界的强制清理：
+
+```bat
+scripts\device_gate.bat -Candidate feature-name -ForceTerminatePositron
+```
+
+该选项先部署并启动独立的 `device_tools/positron_process_cleanup.exe`，只匹配精确基名
+`positron.exe` 或本设备门生成的 `test_host-run-*` 进程，记录每个 PID 的终止结果，并在摘要缺失或任一终止失败时阻断后续
+`test_host.exe`。随后 test host 会再次执行同样的精确检查并把摘要写入 `test_host.log`。
+未指定该开关时不会枚举或结束进程；它不能结束 `test_host.exe`、任意 DLL 名称或其他应用。
+强制清理不是“设备门通过”的替代证据，仍需完整日志、模块路径和 crash 检查。
 
 ### 空间、部署和日志
 

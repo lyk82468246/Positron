@@ -31,6 +31,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>     /* malloc / free for fetched-CSS buffers */
+#include <wchar.h>
 #include <aygshell.h>   /* SHFullScreen / SHSipPreference - control the SIP */
 #include <commctrl.h>   /* WM6 common-controls progress bar */
 #include <imm.h>        /* WM6 input-method composition strings */
@@ -125,6 +126,11 @@ static const char g_test_jpeg_16x16_b64[] =
 
 static int    g_testbench_auto = 0;
 static int    g_browser_javascript_enabled = 0;
+static int    g_force_terminate_positron = 0;
+/* A single explicit application-profile override is used by the exact
+ * third-party script fixture.  Ordinary regression fixtures retain the
+ * legacy bounded Browser session profile. */
+static unsigned long g_browser_script_memory_limit_override = 0;
 static HANDLE g_testbench_log = INVALID_HANDLE_VALUE;
 /* Core paints and hit-tests in physical device pixels; Browser script
  * viewport coordinates are CSS pixels.  The active page DPI is maintained by
@@ -188,6 +194,56 @@ static int test_host_sibling_path(const WCHAR *name,
         return 1;
     }
     lstrcpyW(path + path_len, name);
+    return 0;
+}
+
+/* Load a tracked offline fixture beside test_host.exe.  Device gates stage
+ * these files under fixtures\ so the same bounded input reaches desktop and
+ * ARMV4I runs; no network fetch or current working directory is involved. */
+static int test_host_load_fixture(const WCHAR *name, char **out_data,
+        int *out_bytes)
+{
+    WCHAR path[MAX_PATH];
+    HANDLE file;
+    DWORD size;
+    DWORD read_count;
+    char *data;
+
+    if (out_data == NULL || out_bytes == NULL || name == NULL) {
+        return 1;
+    }
+    *out_data = NULL;
+    *out_bytes = 0;
+    if (test_host_sibling_path(name, path) != 0) {
+        return 1;
+    }
+    file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+    size = GetFileSize(file, NULL);
+    if (size == INVALID_FILE_SIZE || size == 0 ||
+            size > (DWORD) (PSCRIPT_MAX_SOURCE_BYTES - 1UL)) {
+        CloseHandle(file);
+        return 1;
+    }
+    data = (char *) malloc((size_t) size + 1U);
+    if (data == NULL) {
+        CloseHandle(file);
+        return 1;
+    }
+    read_count = 0;
+    if (!ReadFile(file, data, size, &read_count, NULL) ||
+            read_count != size) {
+        CloseHandle(file);
+        free(data);
+        return 1;
+    }
+    CloseHandle(file);
+    data[size] = '\0';
+    *out_data = data;
+    *out_bytes = (int) size;
     return 0;
 }
 
@@ -344,6 +400,179 @@ static void testbench_log_core_module_holders(void)
     testbench_log_bytes("\r\n");
 }
 
+/* The device gate can request one narrowly-scoped cleanup before this host
+ * touches any product API.  Windows CE keeps DLL mappings global by basename,
+ * so an old positron.exe or stale gate-host process can otherwise make a fresh
+ * gate appear to load the wrong positron_core.dll.  This is deliberately
+ * opt-in and only matches the exact application basename or the gate's own
+ * generated test_host-run- prefix; the current host and every other process
+ * are left alone. */
+static int testbench_is_gate_target(const WCHAR *name)
+{
+    static const WCHAR prefix[] = L"test_host-run-";
+    int index;
+
+    if (name == NULL) {
+        return 0;
+    }
+    if (lstrcmpiW(name, L"positron.exe") == 0) {
+        return 1;
+    }
+    for (index = 0; prefix[index] != L'\0'; index++) {
+        if (name[index] != prefix[index]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int testbench_force_terminate_positron(void)
+{
+    typedef HANDLE (WINAPI *CreateSnapshotFn)(DWORD, DWORD);
+    typedef BOOL (WINAPI *ProcessFirstFn)(HANDLE, LPPROCESSENTRY32);
+    typedef BOOL (WINAPI *ProcessNextFn)(HANDLE, LPPROCESSENTRY32);
+    typedef BOOL (WINAPI *CloseSnapshotFn)(HANDLE);
+    HMODULE toolhelp;
+    CreateSnapshotFn create_snapshot;
+    ProcessFirstFn process_first;
+    ProcessNextFn process_next;
+    CloseSnapshotFn close_snapshot;
+    HANDLE snapshot;
+    PROCESSENTRY32 entry;
+    BOOL ok;
+    DWORD current_pid;
+    int targets;
+    int failures;
+    char line[384];
+    char process_name[128];
+
+    if (!g_force_terminate_positron) {
+        return 1;
+    }
+    testbench_log_bytes("Force termination requested: positron.exe or "
+            "test_host-run-*\r\n");
+    toolhelp = LoadLibraryW(L"toolhelp.dll");
+    if (toolhelp == NULL) {
+        testbench_log_bytes("Force termination summary: toolhelp=unavailable "
+                "target_count=0 failed=1\r\n");
+        return 0;
+    }
+    create_snapshot = (CreateSnapshotFn) GetProcAddress(toolhelp,
+            L"CreateToolhelp32Snapshot");
+    process_first = (ProcessFirstFn) GetProcAddress(toolhelp,
+            L"Process32First");
+    process_next = (ProcessNextFn) GetProcAddress(toolhelp,
+            L"Process32Next");
+    close_snapshot = (CloseSnapshotFn) GetProcAddress(toolhelp,
+            L"CloseToolhelp32Snapshot");
+    if (create_snapshot == NULL || process_first == NULL ||
+            process_next == NULL || close_snapshot == NULL) {
+        testbench_log_bytes("Force termination summary: toolhelp=incomplete "
+                "target_count=0 failed=1\r\n");
+        FreeLibrary(toolhelp);
+        return 0;
+    }
+    snapshot = create_snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        _snprintf(line, sizeof(line) - 1,
+                "Force termination summary: snapshot=failed error=%lu "
+                "target_count=0 failed=1\r\n",
+                (unsigned long) GetLastError());
+        line[sizeof(line) - 1] = '\0';
+        testbench_log_bytes(line);
+        FreeLibrary(toolhelp);
+        return 0;
+    }
+    current_pid = GetCurrentProcessId();
+    targets = 0;
+    failures = 0;
+    entry.dwSize = sizeof(entry);
+    ok = process_first(snapshot, &entry);
+    while (ok) {
+        if (entry.th32ProcessID != current_pid &&
+                testbench_is_gate_target(entry.szExeFile)) {
+            HANDLE process;
+            DWORD pid;
+            DWORD error;
+
+            pid = entry.th32ProcessID;
+            targets++;
+            process_name[0] = '\0';
+            if (WideCharToMultiByte(CP_UTF8, 0, entry.szExeFile, -1,
+                    process_name, sizeof(process_name), NULL, NULL) <= 0) {
+                strcpy(process_name, "positron.exe");
+            }
+            process = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+            if (process == NULL) {
+                error = GetLastError();
+                failures++;
+                _snprintf(line, sizeof(line) - 1,
+                        "Force termination: pid=%lu process=%s "
+                        "result=OPEN_FAILED error=%lu\r\n",
+                        (unsigned long) pid, process_name,
+                        (unsigned long) error);
+            } else if (!TerminateProcess(process, 0x50534F54UL)) {
+                error = GetLastError();
+                failures++;
+                CloseHandle(process);
+                _snprintf(line, sizeof(line) - 1,
+                        "Force termination: pid=%lu process=%s "
+                        "result=TERMINATE_FAILED error=%lu\r\n",
+                        (unsigned long) pid, process_name,
+                        (unsigned long) error);
+            } else {
+                CloseHandle(process);
+                _snprintf(line, sizeof(line) - 1,
+                        "Force termination: pid=%lu process=%s "
+                        "result=TERMINATED\r\n",
+                        (unsigned long) pid, process_name);
+            }
+            line[sizeof(line) - 1] = '\0';
+            testbench_log_bytes(line);
+        }
+        ok = process_next(snapshot, &entry);
+    }
+    close_snapshot(snapshot);
+    FreeLibrary(toolhelp);
+    _snprintf(line, sizeof(line) - 1,
+            "Force termination summary: toolhelp=ok target_count=%d "
+            "failed=%d\r\n", targets, failures);
+    line[sizeof(line) - 1] = '\0';
+    testbench_log_bytes(line);
+    return failures == 0;
+}
+
+static int testbench_command_line_has_force_flag(const WCHAR *command_line)
+{
+    WCHAR token[64];
+    int count;
+
+    if (command_line == NULL) {
+        return 0;
+    }
+    while (*command_line != L'\0') {
+        while (*command_line == L' ' || *command_line == L'\t') {
+            command_line++;
+        }
+        if (*command_line == L'\0') {
+            break;
+        }
+        count = 0;
+        while (*command_line != L'\0' && *command_line != L' ' &&
+                *command_line != L'\t') {
+            if (count < (int) (sizeof(token) / sizeof(token[0])) - 1) {
+                token[count++] = *command_line;
+            }
+            command_line++;
+        }
+        token[count] = L'\0';
+        if (lstrcmpiW(token, L"--force-terminate-positron") == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* Keep the regression host loadable when a WM6 image still has an older
  * same-basename positron_http.dll mapped.  A missing additive export should
  * become a TEST1065 failure with evidence, not a process-create ERROR_BAD_EXE_FORMAT
@@ -399,6 +628,9 @@ static int testbench_log_open(void)
 {
     WCHAR path[MAX_PATH];
 
+    if (g_testbench_log != INVALID_HANDLE_VALUE) {
+        return 0;
+    }
     if (test_host_sibling_path(L"test_host.log", path) != 0) {
         return 1;
     }
@@ -567,7 +799,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1322
+#define TEST_MAX_NUMBER 1326
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -17825,7 +18057,14 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     /* Browser bootstrap is a large, product-owned selector/DOM program on
      * the slow WM6 CPU. Keep the page budget bounded while allowing the
      * reference host enough headroom for its one-time parse. */
-    session = PBrowser_ScriptSessionCreate(PSCRIPT_DEFAULT_BUDGET_MS * 4UL);
+    if (g_browser_script_memory_limit_override != 0) {
+        session = PBrowser_ScriptSessionCreateEx(
+                PSCRIPT_DEFAULT_BUDGET_MS * 4UL,
+                g_browser_script_memory_limit_override);
+    } else {
+        session = PBrowser_ScriptSessionCreate(
+                PSCRIPT_DEFAULT_BUDGET_MS * 4UL);
+    }
     runtime = PBrowser_ScriptSessionRuntime(session);
     if (session == NULL || runtime == NULL) {
         PBrowser_ScriptSessionDestroy(session);
@@ -97492,6 +97731,9 @@ static BOOL test_browser_raw_string_fixture_at_url_expected(
         ok = 0;
     }
     if (ok) {
+        /* The fixture is the active page for the host bridge while its
+         * post-load probe runs, including Core event callbacks. */
+        g_render_doc = document;
         g_browser_script_session.document = document;
         g_browser_script_session.session = bridge->session;
         g_browser_script_session.runtime = runtime;
@@ -97503,7 +97745,7 @@ static BOOL test_browser_raw_string_fixture_at_url_expected(
         result_read_rc = PCore_NodeTextContentById(document, "result", result,
                 sizeof(result), &result_bytes);
         if (evaluate_rc != 0 || result_read_rc != 0 ||
-                strcmp(result, expected) != 0) {
+                (expected != NULL && strcmp(result, expected) != 0)) {
             ok = 0;
             if (evaluate_rc != 0 && g_browser_script_session.runtime != NULL &&
                     error != NULL && error_capacity > 0) {
@@ -97542,7 +97784,7 @@ static BOOL test_browser_raw_string_fixture_at_url_expected(
         _snprintf(error, error_capacity - 1,
                 "result[%d] read=%d eval=%d=%s exec/ignore=%d/%d expected=%s",
                 result_bytes, result_read_rc, evaluate_rc, result, executed,
-                ignored, expected);
+                ignored, expected != NULL ? expected : "(not asserted)");
         error[error_capacity - 1] = '\0';
     }
     return ok;
@@ -112839,6 +113081,407 @@ static BOOL test1322_browser_application_script_profile(void)
     return TRUE;
 }
 
+/* TEST 1323 - the detached DOM contracts used by jQuery's initialization
+ * probes remain Browser-owned and never call Core with an empty element id. */
+static BOOL test1323_browser_detached_jquery_contract(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>window.boot=1;</script>"
+        "</head><body><p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var i=document.createElement('input');i.type='radio';"
+        "i.checked=false;i.setAttribute('checked','checked');"
+        "var checkedDirty=String(i.checked)+'|'+String(i.defaultChecked);"
+        "i.removeAttribute('checked');var checkedClean=String(i.checked)+'|'+String(i.defaultChecked);"
+        "var v=document.createElement('input');v.value='live';v.defaultValue='default';"
+        "var values=v.value+'|'+v.defaultValue;"
+        "var ta=document.createElement('div');ta.innerHTML='<textarea>x</textarea>';"
+        "var clone=ta.cloneNode(true).lastChild.defaultValue;"
+        "var select=document.createElement('select');var option=document.createElement('option');"
+        "select.appendChild(option);var selected=String(option.selected);"
+        "var separate=document.implementation.createHTMLDocument('probe');"
+        "separate.body.innerHTML='<form></form><form></form>';"
+        "document.getElementById('result').textContent=checkedDirty+'|'+checkedClean+'|'"
+        "+values+'|'+clone+'|'+selected+'|'+separate.body.childNodes.length;";
+    static const char EXPECTED[] =
+        "false|true|false|false|live|default|x|true|2";
+    char error[512];
+
+    if (!test_browser_raw_string_fixture(HTML, PROBE, EXPECTED,
+            error, sizeof(error))) {
+        show_error(L"TEST 1323 FAIL", error[0] != '\0' ? error :
+                "detached jQuery initialization contract failed");
+        return FALSE;
+    }
+    show_info(L"TEST 1323 OK",
+            "Detached input/option/textarea feature probes, dirty/default "
+            "state, cloning, HTML fragments and createHTMLDocument passed.");
+    return TRUE;
+}
+
+/* TEST 1324 - execute the unmodified jQuery 3.5.1 fixture through the same
+ * Browser bootstrap used by the application.  The earlier feature probe only
+ * covered individual detached properties; this catches an initialization
+ * failure before Bootstrap can register its delegated collapse handler. */
+static BOOL test1324_browser_jquery_initialization(void)
+{
+    static const char PREFIX[] =
+        "<!doctype html><html><head><script>";
+    static const char SUFFIX[] =
+        "</script></head><body><button id='toggle' "
+        "data-toggle='collapse' data-target='#nav'>Menu</button>"
+        "<div id='nav' class='collapse'>Links</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var q=window.jQuery;document.getElementById('result').textContent="
+        "typeof q+'|'+(q&&q.fn?q.fn.jquery:'')+'|'+String(!!(q&&q.support));";
+    static const char EXPECTED[] = "function|3.5.1|true";
+    char *jquery;
+    char *html;
+    char error[768];
+    int jquery_bytes;
+    int html_bytes;
+    int capacity;
+    BOOL ok;
+
+    jquery = NULL;
+    html = NULL;
+    jquery_bytes = 0;
+    html_bytes = 0;
+    capacity = 0;
+    memset(error, 0, sizeof(error));
+    if (test_host_load_fixture(L"fixtures\\jquery-3.5.1.min.js",
+            &jquery, &jquery_bytes) != 0) {
+        strcpy(error, "jquery-3.5.1.min.js fixture is unavailable");
+        show_error(L"TEST 1324 FAIL", error);
+        return FALSE;
+    }
+    capacity = (int) strlen(PREFIX) + jquery_bytes +
+            (int) strlen(SUFFIX) + 1;
+    if (capacity <= 0 || capacity > (int) PSCRIPT_MAX_SOURCE_BYTES) {
+        strcpy(error, "jQuery fixture exceeds the inline source budget");
+        free(jquery);
+        show_error(L"TEST 1324 FAIL", error);
+        return FALSE;
+    }
+    html = (char *) malloc((size_t) capacity);
+    if (html == NULL) {
+        strcpy(error, "could not allocate jQuery fixture document");
+        free(jquery);
+        show_error(L"TEST 1324 FAIL", error);
+        return FALSE;
+    }
+    html_bytes = 0;
+    memcpy(html + html_bytes, PREFIX, strlen(PREFIX));
+    html_bytes += (int) strlen(PREFIX);
+    memcpy(html + html_bytes, jquery, (size_t) jquery_bytes);
+    html_bytes += jquery_bytes;
+    memcpy(html + html_bytes, SUFFIX, strlen(SUFFIX) + 1U);
+    html_bytes += (int) strlen(SUFFIX);
+    g_browser_script_memory_limit_override =
+            PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES;
+    ok = test_browser_raw_string_fixture_at_url_expected(
+            "https://winworldpc.com/home", html, PROBE, EXPECTED,
+            1, 0, error, sizeof(error));
+    g_browser_script_memory_limit_override = 0;
+    free(html);
+    free(jquery);
+    if (!ok) {
+        if (error[0] == '\0') {
+            strcpy(error, "unmodified jQuery did not initialize");
+        }
+        show_error(L"TEST 1324 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1324 OK",
+            "The unmodified jQuery 3.5.1 fixture initialized through the "
+            "Browser detached-DOM contract.");
+    return TRUE;
+}
+
+/* TEST 1325 - execute the unmodified jQuery and Bootstrap fixtures together,
+ * then use the public Element.click path that the application uses.  This
+ * proves the delegated Bootstrap collapse handler, not merely script parsing. */
+static BOOL test1325_browser_bootstrap_collapse(void)
+{
+    static const char PREFIX[] =
+        "<!doctype html><html><head><script>";
+    static const char BETWEEN[] = "</script><script>";
+    static const char AFTER[] =
+        "</script><script>window.__native1325=0;window.__nativeTarget1325='';"
+        "window.__nativeCurrent1325=false;document.addEventListener('click',"
+        "function(e){window.__native1325++;window.__nativeTarget1325="
+        "e.target?e.target.id:'null';window.__nativeCurrent1325="
+        "e.currentTarget===document;});";
+    static const char SUFFIX[] =
+        "</script></head><body><button id='toggle' "
+        "data-toggle='collapse' data-target='#nav' aria-expanded='false'>"
+        "Menu</button><div id='nav' class='collapse'>Links</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char PROBE[] =
+        "var q=window.jQuery,b=document.getElementById('toggle'),"
+        "nav1325=document.getElementById('nav'),direct=0,seen=0;"
+        "q(document).on('click.test1325',function(){direct++;});"
+        "q(document).on('click.test1325','[data-toggle=collapse]',"
+        "function(){seen++;});b.click();"
+        "var timers1325=__pcoreRunTimers(0),data1325=q(nav1325).data('bs.collapse');"
+        "document.getElementById('result').textContent="
+        "String(direct)+'|'+String(seen)+'|'"
+        "+String(nav1325.classList.contains('show'))+'|'"
+        "+String(b.getAttribute('aria-expanded'))+'|'"
+        "+String(!!data1325&&data1325._element===nav1325)+'|'"
+        "+String(window.__native1325)+'|'+window.__nativeTarget1325+'|'"
+        "+String(window.__nativeCurrent1325)+'|'"
+        "+String(timers1325>0)+'|'+String(nav1325.className)+'|'"
+        "+String(!!data1325&&data1325._isTransitioning)+'|'"
+        "+String(nav1325.style.height||'');";
+    static const char EXPECTED[] = "1|1|true|true|true|1|toggle|true|true|collapse show|false|";
+    char *jquery;
+    char *bootstrap;
+    char *html;
+    char error[768];
+    int jquery_bytes;
+    int bootstrap_bytes;
+    int html_bytes;
+    int capacity;
+    BOOL ok;
+
+    jquery = NULL;
+    bootstrap = NULL;
+    html = NULL;
+    jquery_bytes = 0;
+    bootstrap_bytes = 0;
+    html_bytes = 0;
+    capacity = 0;
+    memset(error, 0, sizeof(error));
+    if (test_host_load_fixture(L"fixtures\\jquery-3.5.1.min.js",
+            &jquery, &jquery_bytes) != 0 ||
+            test_host_load_fixture(L"fixtures\\bootstrap-4.6.2.min.js",
+            &bootstrap, &bootstrap_bytes) != 0) {
+        free(jquery);
+        free(bootstrap);
+        strcpy(error, "jQuery or Bootstrap fixture is unavailable");
+        show_error(L"TEST 1325 FAIL", error);
+        return FALSE;
+    }
+    capacity = (int) strlen(PREFIX) + jquery_bytes +
+            (int) strlen(BETWEEN) + bootstrap_bytes +
+            (int) strlen(AFTER) +
+            (int) strlen(SUFFIX) + 1;
+    if (capacity <= 0 || capacity > 262144) {
+        free(jquery);
+        free(bootstrap);
+        strcpy(error, "jQuery/Bootstrap fixture exceeds the bounded document budget");
+        show_error(L"TEST 1325 FAIL", error);
+        return FALSE;
+    }
+    html = (char *) malloc((size_t) capacity);
+    if (html == NULL) {
+        free(jquery);
+        free(bootstrap);
+        strcpy(error, "could not allocate jQuery/Bootstrap fixture document");
+        show_error(L"TEST 1325 FAIL", error);
+        return FALSE;
+    }
+    memcpy(html + html_bytes, PREFIX, strlen(PREFIX));
+    html_bytes += (int) strlen(PREFIX);
+    memcpy(html + html_bytes, jquery, (size_t) jquery_bytes);
+    html_bytes += jquery_bytes;
+    memcpy(html + html_bytes, BETWEEN, strlen(BETWEEN));
+    html_bytes += (int) strlen(BETWEEN);
+    memcpy(html + html_bytes, bootstrap, (size_t) bootstrap_bytes);
+    html_bytes += bootstrap_bytes;
+    memcpy(html + html_bytes, AFTER, strlen(AFTER));
+    html_bytes += (int) strlen(AFTER);
+    memcpy(html + html_bytes, SUFFIX, strlen(SUFFIX) + 1U);
+    html_bytes += (int) strlen(SUFFIX);
+    g_browser_script_memory_limit_override =
+            PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES;
+    ok = test_browser_raw_string_fixture_at_url_expected(
+            "https://winworldpc.com/home", html, PROBE, EXPECTED,
+            3, 0, error, sizeof(error));
+    g_browser_script_memory_limit_override = 0;
+    free(html);
+    free(jquery);
+    free(bootstrap);
+    if (!ok) {
+        if (error[0] == '\0') {
+            strcpy(error, "Bootstrap collapse did not respond to Element.click");
+        }
+        show_error(L"TEST 1325 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1325 OK", error[0] != '\0' ? error :
+            "The unmodified jQuery/Bootstrap fixtures initialized and the "
+            "delegated collapse handler opened the navigation element.");
+    return TRUE;
+}
+
+/* TEST 1326 - a trusted native button activation must use the same Core
+ * coordinate hit-test as positron_app, not only the Browser's id-based
+ * HTMLElement.click() path.  This is intentionally a small document: the
+ * fixture proves that a real laid-out button reaches a document listener and
+ * that the listener's DOM mutation is visible to Core afterwards. */
+static BOOL test1326_browser_native_coordinate_click(void)
+{
+    static const char HTML[] =
+        "<!doctype html><html><head><script>"
+        "document.addEventListener('click',function(e){"
+        "if(e.target&&e.target.id==='toggle'){"
+        "document.getElementById('nav').classList.add('show');}});"
+        "</script></head><body>"
+        "<button id='toggle' type='button'>Menu</button>"
+        "<div id='nav' class='collapse'>Links</div>"
+        "<p id='result'>idle</p></body></html>";
+    static const char CSS[] =
+        "html,body{margin:0;padding:0}"
+        "button{display:block;width:96px;height:32px;margin:4px}"
+        "#nav{display:block;width:96px;height:24px}"
+        ".collapse{visibility:hidden}.collapse.show{visibility:visible}";
+    HANDLE document;
+    HANDLE sheet;
+    HANDLE runtime;
+    pcore_browser_script_bridge *bridge;
+    PBrowserScriptNativeButtonInfo info;
+    char class_value[128];
+    char error[512];
+    char stage[64];
+    int executed;
+    int ignored;
+    int button_x;
+    int button_y;
+    int button_w;
+    int button_h;
+    int button_kind;
+    int disabled;
+    int default_allowed;
+    int rc;
+    int bytes;
+    int ok;
+
+    document = NULL;
+    sheet = NULL;
+    runtime = NULL;
+    bridge = NULL;
+    memset(&info, 0, sizeof(info));
+    memset(class_value, 0, sizeof(class_value));
+    memset(error, 0, sizeof(error));
+    memset(stage, 0, sizeof(stage));
+    executed = -1;
+    ignored = -1;
+    button_x = 0;
+    button_y = 0;
+    button_w = 0;
+    button_h = 0;
+    button_kind = 0;
+    disabled = 0;
+    default_allowed = 1;
+    rc = -1;
+    bytes = 0;
+    ok = 1;
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    strcpy(stage, "create");
+    document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
+    if (document == NULL ||
+            pcore_browser_execute_scripts(document, 1, 0,
+            "http://positron.local/native-coordinate", NULL, NULL,
+            &executed, &ignored, error, sizeof(error), &runtime,
+            &bridge) != 0 || executed != 1 || ignored != 0 ||
+            runtime == NULL || bridge == NULL) {
+        ok = 0;
+    }
+    if (ok) {
+        strcpy(stage, "style-layout");
+        sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
+                "http://positron.local/native-coordinate.css");
+        PCore_SetViewport(320, 240, 96);
+        if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0 ||
+                PCore_FormControlInfoById(document, "toggle", &button_x,
+                &button_y, &button_w, &button_h, &button_kind, NULL,
+                &disabled) != 0 || button_kind != 9 || disabled ||
+                button_w <= 0 || button_h <= 0) {
+            ok = 0;
+        }
+    }
+    if (ok) {
+        strcpy(stage, "native-click");
+        g_render_doc = document;
+        g_browser_script_session.document = document;
+        g_browser_script_session.session = bridge->session;
+        g_browser_script_session.runtime = runtime;
+        g_browser_script_session.bridge = bridge;
+        runtime = NULL;
+        bridge = NULL;
+        info.size = sizeof(info);
+        info.target_token = 1;
+        info.x = button_x + button_w / 2;
+        info.y = button_y + button_h / 2;
+        info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
+        info.disabled = 0;
+        info.validation_valid = 0;
+        rc = PBrowser_ScriptSessionDispatchNativeButton(
+                g_browser_script_session.session, &info, &default_allowed);
+        if (rc != PSCRIPT_OK || !default_allowed) {
+            ok = 0;
+        }
+        if (ok) {
+            info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+            rc = PBrowser_ScriptSessionDispatchNativeButton(
+                    g_browser_script_session.session, &info,
+                    &default_allowed);
+            if (rc != PSCRIPT_OK || !default_allowed) {
+                ok = 0;
+            }
+        }
+    }
+    if (ok) {
+        strcpy(stage, "core-result");
+        if (PCore_NodeAttributeById(document, "nav", "class", class_value,
+                sizeof(class_value), &bytes) != 0 ||
+                strstr(class_value, "show") == NULL) {
+            ok = 0;
+        }
+    }
+    pcore_browser_script_session_destroy();
+    g_render_doc = NULL;
+    g_render_sheet = NULL;
+    if (runtime != NULL) {
+        PScript_Destroy(runtime);
+    }
+    if (bridge != NULL) {
+        pcore_browser_script_bridge_destroy(bridge);
+        free(bridge);
+    }
+    if (sheet != NULL) {
+        PCore_FreeStylesheet(sheet);
+    }
+    if (document != NULL) {
+        PCore_FreeDocument(document);
+    }
+    if (!ok) {
+        if (error[0] == '\0') {
+            _snprintf(error, sizeof(error) - 1,
+                    "stage=%s rc=%d allowed=%d kind=%d box=%d,%d,%d,%d "
+                    "class=%s exec/ignore=%d/%d",
+                    stage, rc, default_allowed, button_kind, button_x,
+                    button_y, button_w, button_h, class_value, executed,
+                    ignored);
+            error[sizeof(error) - 1] = '\0';
+        }
+        show_error(L"TEST 1326 FAIL", error);
+        return FALSE;
+    }
+    show_info(L"TEST 1326 OK",
+            "A laid-out Core button reached the document click listener "
+            "through the trusted native coordinate transaction and the "
+            "resulting class mutation was retained.");
+    return TRUE;
+}
+
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -112871,6 +113514,11 @@ static int run_configured_tests(const unsigned char *selected,
     if (needs_core && PCore_Init() != 0) {
         show_error(L"Configured tests FAIL", "PCore_Init returned an error");
         return 8;
+    }
+    if (needs_core) {
+        /* With delayed product imports this is the first point at which the
+         * actual Core module path is authoritative. */
+        testbench_log_core_module_path();
     }
 
     for (number = 1; number <= TEST_MAX_NUMBER; number++) {
@@ -116003,6 +116651,18 @@ static int run_configured_tests(const unsigned char *selected,
         case 1322:
             ok = test1322_browser_application_script_profile();
             break;
+        case 1323:
+            ok = test1323_browser_detached_jquery_contract();
+            break;
+        case 1324:
+            ok = test1324_browser_jquery_initialization();
+            break;
+        case 1325:
+            ok = test1325_browser_bootstrap_collapse();
+            break;
+        case 1326:
+            ok = test1326_browser_native_coordinate_click();
+            break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -116040,13 +116700,34 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     int  rc;
     char config_prompt[512];
     char summary[1024];
+    int force_cleanup_ok;
 
     (void)hInstance;
     (void)hPrev;
-    (void)lpCmdLine;
     (void)nCmdShow;
 
     OutputDebugStringW(L"test_host (Phase 4): starting\r\n");
+
+    /* This switch is supplied only by the device gate.  Parse it before the
+     * first Core call: on CE a same-basename DLL can otherwise be selected
+     * before WinMain, even when the old application is about to be killed. */
+    g_force_terminate_positron = 0;
+    if (testbench_command_line_has_force_flag(lpCmdLine)) {
+        g_force_terminate_positron = 1;
+        g_testbench_auto = 1;
+        if (testbench_log_open() != 0) {
+            return 3;
+        }
+        force_cleanup_ok = testbench_force_terminate_positron();
+        testbench_log_core_module_holders();
+        if (!force_cleanup_ok) {
+            testbench_log_bytes("[ERROR] TESTBENCH FAIL\r\n"
+                    "Force termination was requested but could not be "
+                    "completed.\r\n");
+            testbench_log_close();
+            return 3;
+        }
+    }
 
     /* Tell positron_core the real device viewport. The core derives the CSS
      * viewport from physical pixels and DPI before styling/layout. */

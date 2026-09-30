@@ -6,6 +6,7 @@ param(
     [string] $RemoteBase = "",
     [string] $TestSelection = "",
     [switch] $EnableJavaScript,
+    [switch] $ForceTerminatePositron,
     [switch] $PreserveDeployment,
     [string] $PlatformName = "",
     [string] $DeviceName = ""
@@ -307,6 +308,7 @@ $runStamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $runRoot = Join-Path $repoRoot ("tmp\device-runs\" + $runStamp + "-" + $Candidate)
 $localStage = Join-Path $runRoot "stage"
 $localLog = Join-Path $runRoot "test_host.log"
+$localCleanupLog = Join-Path $runRoot "process-cleanup.log"
 $resultPath = Join-Path $runRoot "device-gate-result.txt"
 $manifestPath = Join-Path $runRoot "payload-sha256.txt"
 $preflightPath = Join-Path $runRoot "device-gate-preflight.txt"
@@ -328,6 +330,7 @@ $required = @(
     "positron_script.dll",
     "positron_browser.dll",
     "test_host.exe",
+    "positron_process_cleanup.exe",
     "test_host.ini",
     "fonts\PositronSymbolsBasic.ttf",
     "fonts\PositronSymbols.ttf",
@@ -364,6 +367,9 @@ if ($EnableJavaScript) {
     [IO.File]::WriteAllText($stagedIni, $iniText,
             (New-Object Text.UTF8Encoding($false)))
     Write-Stage "staged browser JavaScript override: javascript=1"
+}
+if ($ForceTerminatePositron) {
+    Write-Stage "force cleanup enabled: remote helper will terminate exact positron.exe/test_host-run-* matches before loading product DLLs"
 }
 
 $expectedTests = Get-ConfiguredTests $stagedIni
@@ -846,7 +852,7 @@ public static class PositronDeviceRapi
     }
 
     public static uint LaunchProcess(
-        string imageName, string currentDirectory)
+        string imageName, string currentDirectory, string commandLine)
     {
         StartupInfo startupInfo = new StartupInfo();
         startupInfo.cb = (uint) Marshal.SizeOf(typeof(StartupInfo));
@@ -856,7 +862,7 @@ public static class PositronDeviceRapi
          * the same directory succeeds; the executable path is absolute, so
          * no working directory is needed by the gate. */
         currentDirectory = null;
-        if (!CeCreateProcess(imageName, null, IntPtr.Zero, IntPtr.Zero,
+        if (!CeCreateProcess(imageName, commandLine, IntPtr.Zero, IntPtr.Zero,
                 false, 0, IntPtr.Zero, currentDirectory,
                 ref startupInfo, out processInformation)) {
             throw CreateRemoteException("CeCreateProcess(" + imageName + ")");
@@ -1033,7 +1039,17 @@ $preferredStorageCheck = "not_run"
 $remoteExecutableName = "test_host-run-" + $runStamp + ".exe"
 $remoteExe = $remoteRoot + "\" + $remoteExecutableName
 $remoteLog = $remoteRoot + "\test_host.log"
+$remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
+$remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
+$remoteCommandLine = if ($ForceTerminatePositron) {
+    "--force-terminate-positron"
+} else {
+    $null
+}
 $remoteProcessId = 0
+$remoteCleanupProcessId = 0
+$forceCleanupSummary = "not_requested"
+$forceCleanupLogRetrieved = $false
 $timedOut = $false
 $recoveredAfterTimeout = $false
 $remoteExitCode = "not_exposed_by_rapi"
@@ -1107,6 +1123,8 @@ try {
     $remoteRoot = $paths.Root
     $remoteExe = $paths.Exe
     $remoteLog = $paths.Log
+    $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
+    $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
     try {
         Ensure-RemoteOwnerRoot $remoteOwnerRoot
     } catch {
@@ -1126,6 +1144,8 @@ try {
         $remoteRoot = $paths.Root
         $remoteExe = $paths.Exe
         $remoteLog = $paths.Log
+        $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
+        $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
         Ensure-RemoteOwnerRoot $remoteOwnerRoot
     }
     $remoteDirectories = Get-RemoteDirectorySet $remoteRoot $orderedPayload `
@@ -1186,6 +1206,8 @@ try {
         $remoteRoot = $paths.Root
         $remoteExe = $paths.Exe
         $remoteLog = $paths.Log
+        $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
+        $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
         Ensure-RemoteOwnerRoot $remoteOwnerRoot
         $remoteDirectories = Get-RemoteDirectorySet $remoteRoot `
                 $orderedPayload $localStage
@@ -1341,6 +1363,8 @@ try {
             $remoteRoot = $paths.Root
             $remoteExe = $paths.Exe
             $remoteLog = $paths.Log
+            $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
+            $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
             Ensure-RemoteOwnerRoot $remoteOwnerRoot
             $remoteDirectories = Get-RemoteDirectorySet $remoteRoot `
                     $orderedPayload $localStage
@@ -1501,11 +1525,43 @@ try {
         }
     }
 
+    if ($ForceTerminatePositron) {
+        Write-Stage "starting isolated process cleanup helper before test_host"
+        $remoteCleanupProcessId = [PositronDeviceRapi]::LaunchProcess(
+                $remoteCleanupExe, $remoteRoot, $null)
+        Write-Stage "started process cleanup helper id $remoteCleanupProcessId"
+        $cleanupDeadline = (Get-Date).AddSeconds(30)
+        while (!$forceCleanupLogRetrieved -and (Get-Date) -lt $cleanupDeadline) {
+            if ([PositronDeviceRapi]::TryCopyFileFromDevice(
+                    $remoteCleanupLog, $localCleanupLog)) {
+                $cleanupText = Get-Content -LiteralPath $localCleanupLog -Raw `
+                        -Encoding UTF8
+                $cleanupMatch = [regex]::Match($cleanupText,
+                        "(?m)^summary target_count=\d+ failed=\d+.*$")
+                if ($cleanupMatch.Success) {
+                    $forceCleanupSummary = $cleanupMatch.Value.Trim()
+                    $forceCleanupLogRetrieved = $true
+                }
+            }
+            if (!$forceCleanupLogRetrieved) {
+                Start-Sleep -Milliseconds 250
+            }
+        }
+        if (!$forceCleanupLogRetrieved) {
+            throw "The process cleanup helper did not produce a complete summary."
+        }
+        if ($forceCleanupSummary -notmatch "\bfailed=0\b") {
+            throw ("The process cleanup helper failed: {0}" -f
+                    $forceCleanupSummary)
+        }
+        Write-Stage "process cleanup completed: $forceCleanupSummary"
+    }
+
     $crashBefore = [PositronDeviceRapi]::SnapshotCrashDumps()
     Write-Stage "recorded pre-run crash dump inventory: $($crashBefore.Count) files"
     Write-Stage "starting $remoteExe"
     $remoteProcessId = [PositronDeviceRapi]::LaunchProcess(
-            $remoteExe, $remoteRoot)
+            $remoteExe, $remoteRoot, $remoteCommandLine)
     Write-Stage "started remote process id $remoteProcessId"
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
@@ -1608,8 +1664,13 @@ try {
 
 $logText = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
 $metricOk = $logText -match "(?m)^Device metrics: screen=\d+x\d+ dpi=\d+\s*$"
-$coreModuleMatch = [regex]::Match($logText,
-        "(?m)^Core module path: (.+)\s*$")
+$coreModuleMatches = @([regex]::Matches($logText,
+        "(?m)^Core module path: (.+)\s*$"))
+$coreModuleMatch = if ($coreModuleMatches.Count -gt 0) {
+    $coreModuleMatches[$coreModuleMatches.Count - 1]
+} else {
+    $null
+}
 $coreModulePath = if ($coreModuleMatch.Success) {
     $coreModuleMatch.Groups[1].Value.Trim()
 } else {
@@ -1627,6 +1688,31 @@ $coreModuleHolders = @([regex]::Matches($logText,
         "(?m)^Core module holder: (.+)\s*$") | ForEach-Object {
     $_.Groups[1].Value.Trim()
 })
+$forceTerminationMatch = [regex]::Match($logText,
+        "(?m)^Force termination summary: (.+)\s*$")
+$forceTerminationSummary = if ($forceTerminationMatch.Success) {
+    $forceTerminationMatch.Groups[1].Value.Trim()
+} else {
+    "not_requested"
+}
+$forceTerminationCheck = if (!$ForceTerminatePositron) {
+    "NOT_REQUESTED"
+} elseif (!$forceTerminationMatch.Success) {
+    "UNAVAILABLE"
+} elseif ($forceTerminationSummary -match "\bfailed=0\b") {
+    "PASS"
+} else {
+    "FAIL"
+}
+$forceCleanupCheck = if (!$ForceTerminatePositron) {
+    "NOT_REQUESTED"
+} elseif (!$forceCleanupLogRetrieved) {
+    "UNAVAILABLE"
+} elseif ($forceCleanupSummary -match "\bfailed=0\b") {
+    "PASS"
+} else {
+    "FAIL"
+}
 $errorCount = ([regex]::Matches($logText, "(?m)^\[ERROR\]")).Count
 $failCount = ([regex]::Matches($logText, "(?m)^\[[A-Z]+\].*\bFAIL\b")).Count
 $passCount = ([regex]::Matches($logText, "(?m)^\[INFO\] TESTBENCH PASS\s*$")).Count
@@ -1661,6 +1747,12 @@ $checkLines += "core_module_check=$coreModuleCheck"
 $checkLines += "core_module_path=$coreModulePath"
 $checkLines += "core_module_expected=$expectedCoreModulePath"
 $checkLines += "core_module_holders=$($coreModuleHolders -join '|')"
+$checkLines += "force_terminate_positron=$ForceTerminatePositron"
+$checkLines += "force_termination_summary=$forceTerminationSummary"
+$checkLines += "force_termination_check=$forceTerminationCheck"
+$checkLines += "force_cleanup_summary=$forceCleanupSummary"
+$checkLines += "force_cleanup_log_retrieved=$forceCleanupLogRetrieved"
+$checkLines += "force_cleanup_check=$forceCleanupCheck"
 $checkLines += "selected_test_count=$($expectedTests.Count)"
 $checkLines += "observed_ok_test_count=$($actualTests.Count)"
 $checkLines += "missing_tests=$($missing -join ',')"
@@ -1728,6 +1820,9 @@ $checkLines += "new_crash_dumps=$($newCrashDumps -join '|')"
 
 $storageGateOk = $storageCheck -match "^PASS"
 $passed = $storageGateOk -and $coreModuleCheck -eq 'PASS' -and
+        (($forceTerminationCheck -eq 'PASS' -and
+          $forceCleanupCheck -eq 'PASS') -or
+         $forceTerminationCheck -eq 'NOT_REQUESTED') -and
         $crashCheck -eq 'PASS' -and
         $completionMarker -eq "PASS" -and $metricOk -and
         $missing.Count -eq 0 -and $unexpected.Count -eq 0 -and

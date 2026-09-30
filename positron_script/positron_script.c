@@ -254,7 +254,7 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
             (int) sizeof(output), &out_len);
     if (callback_rc != 0) {
         return duk_error(duk, DUK_ERR_ERROR,
-                "native callback failed");
+                "native callback '%s' failed", native_name);
     }
     if (out_len < 0 || out_len >= (int) sizeof(output)) {
         return duk_error(duk, DUK_ERR_ERROR,
