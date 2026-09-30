@@ -113760,7 +113760,7 @@ static BOOL test1328_core_flex_button_visual_child(void)
         "<!doctype html><html><body><div id='bar'>"
         "<button id='toggle' type='button'><span class='navbar-toggler-icon'>"
         "</span></button></div><div id='blockbar'>"
-        "<button id='block' type='button'><span class='navbar-toggler-icon'>"
+        "<button id='block'><span class='navbar-toggler-icon'>"
         "</span></button></div></body></html>";
     static const char CSS[] =
         "html,body{margin:0;padding:0;background:#ffffff}"
@@ -113830,11 +113830,11 @@ static BOOL test1328_core_flex_button_visual_child(void)
             button_w <= 0 || button_h <= 0 ||
             PCore_FormControlInfoById(document, "block", &block_x,
             &block_y, &block_w, &block_h, &block_kind, NULL,
-            &disabled) != 0 || block_kind != 9 || disabled ||
+            &disabled) != 0 || block_kind != 7 || disabled ||
             block_w <= 0 || block_h <= 0) {
         PCore_FreeStylesheet(sheet);
         PCore_FreeDocument(document);
-        show_error(L"TEST 1328 FAIL", "flex button gadget geometry missing");
+        show_error(L"TEST 1328 FAIL", "button gadget geometry missing");
         return FALSE;
     }
     screen_dc = GetDC(NULL);

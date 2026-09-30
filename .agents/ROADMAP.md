@@ -152,8 +152,9 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     blockify 直接 button 时同时丢失 gadget 和作者子树的问题；现已把相同保留规则扩展到
     inline 与普通 block 构造路径。Browser/ScriptSession 的有界
     document delegated `click` listener、原版 jQuery/Bootstrap 事务以及 flex/普通 block button
-    的 CSS data-URI 作者图标现在由 TEST1325–1328 覆盖；`tmp/device-runs/20260930-155925-all-button-author-child-r7`
-    已用匹配 DLL 取得 `1325-1328,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一
+    的 CSS data-URI 作者图标（含省略 `type` 的默认 submit button）现在由 TEST1325–1328
+    覆盖；`tmp/device-runs/20260930-161506-button-default-submit-r8c` 已用匹配 DLL 取得
+    `1325-1328,999` ARMV4I 设备门通过、`core_module_check=PASS`、唯一
     `TESTBENCH PASS` 和零 ERROR/FAIL 的证据。最新 WinWorld 日志确认 jQuery、Popper、Bootstrap
     已执行，`pointer-hit`/`script-click`/`commit` 已出现；bootstrap-multiselect 的语法错误另行
     保留为限制。
