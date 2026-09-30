@@ -819,6 +819,18 @@ PCORE_API int PCore_NodeSetAttributeById(HANDLE hDoc,
 PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
         const char *element_id, const char *name);
 
+/* A native form-control event may target a control whose author markup has
+ * no id.  The host receives a short-lived opaque token for that synchronous
+ * event and may use these bounded attribute operations while the callback is
+ * active.  The token is never a persistent DOM id and must not be retained. */
+PCORE_API int PCore_FormControlAttributeByIndex(HANDLE hDoc,
+        unsigned int index, const char *name, char *value, int value_capacity,
+        int *out_bytes);
+PCORE_API int PCore_FormControlSetAttributeByIndex(HANDLE hDoc,
+        unsigned int index, const char *name, const char *value);
+PCORE_API int PCore_FormControlRemoveAttributeByIndex(HANDLE hDoc,
+        unsigned int index, const char *name);
+
 /* Bounded DOM relationship boundary for script/runtime hosts. The document
  * is intentionally exposed through ID-addressable element wrappers plus the
  * three reserved structural tokens below; elements without a non-empty id
@@ -899,6 +911,11 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
 #define PCORE_DOCUMENT_ELEMENT_TOKEN "__positron_document_element__"
 #define PCORE_DOCUMENT_HEAD_TOKEN    "__positron_document_head__"
 #define PCORE_DOCUMENT_BODY_TOKEN    "__positron_document_body__"
+/* Prefix for an ephemeral, host-side event target wrapper.  A token with
+ * this prefix is valid only during the synchronous native-button callback;
+ * it is not an element id and must never be stored in page state. */
+#define PCORE_NATIVE_BUTTON_TARGET_PREFIX "__positron_native_button_"
+#define PCORE_NATIVE_BUTTON_TARGET_MAX    64u
 
 #define PCORE_NODE_RELATION_PARENT_ELEMENT       1u
 #define PCORE_NODE_RELATION_FIRST_CHILD          2u
@@ -1675,6 +1692,17 @@ PCORE_API int PCore_EventDispatchToId(HANDLE hDoc, const char *element_id,
 PCORE_API int PCore_EventDispatchAt(HANDLE hDoc, int x, int y,
                                    const char *event_type, int bubbles,
                                    int cancelable, int *default_allowed);
+/* Dispatch a trusted click from a laid-out form-control box rather than from
+ * the deepest painted descendant.  This is the additive bridge used by a
+ * native WM button when its decorative child has no DOM id.  If target_id is
+ * non-empty and the control has no author id, the event adapter exposes that
+ * bounded, ephemeral token as event.target.id to the synchronous Browser
+ * callback.  It is not inserted into the DOM and is invalid after return.
+ * Return values match PCore_EventDispatchAt(). */
+PCORE_API int PCore_EventDispatchFormControlEx(HANDLE hDoc,
+        unsigned int form_index, const char *target_id,
+        const char *event_type, int bubbles, int cancelable,
+        int *default_allowed);
 /* Dispatch one event to the document's current Core focus node. This is the
  * target-preserving companion to PCore_EventDispatchAt() for host focus
  * transactions whose element has no DOM id. The event is dispatched

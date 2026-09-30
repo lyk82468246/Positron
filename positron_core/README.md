@@ -70,6 +70,13 @@ Core 的重复背景绘制路径生效，不改变 Image DLL 返回的自然尺�
 
 Core 维护 form owner、validation、successful-control、reset、submission 和 modal paint 的产品语义。`form="id"` 的跨树 owner、fieldset first-legend exemption、optgroup→option disabled 继承和 option live/default-selected 状态由同一 Core 状态提供给 Browser，不在宿主复制。
 
+Native button 的同步事件桥使用 `PCore_EventDispatchFormControlEx()`。宿主按最近一次 layout
+得到的 form-control index 派发 trusted `click`，并可传入一个有界、短生命周期的 target token；
+Core 只在本次同步回调中把它作为 `event.target` 的桥接标识，不向页面写入 `id`。Browser/宿主
+可在该回调期间用 `PCore_FormControlAttributeByIndex()` 读取或用对应的 Set/Remove 入口更新
+按钮属性，随后由原有 mutation callback 决定重排和重绘。token 不得保存、跨事件复用或当作普通
+DOM id；没有 listener 时该入口仍保留原生按钮的默认动作。
+
 ## Multipart 提交
 
 对于 `enctype="multipart/form-data"` 的 form，Core 先把成功控件捕获为 opaque

@@ -42,6 +42,7 @@ struct AppScriptContext {
     int dpi;
     unsigned int native_select_key_index;
     char native_edit_target_id[APP_SCRIPT_URL_MAX];
+    unsigned long native_button_target_token;
 };
 
 #ifdef _DEBUG
@@ -170,14 +171,103 @@ static int app_script_mutation_result(AppScriptContext *context, int result)
     return -1;
 }
 
+/* Resolve the ephemeral event wrapper used while a native button callback is
+ * synchronously dispatching through Browser.  It deliberately compares the
+ * complete bounded token against the current transaction instead of treating
+ * arbitrary page strings as form-control indexes. */
+static int app_script_native_button_target_index(AppScriptContext *context,
+        const char *id, unsigned int *out_index)
+{
+    size_t prefix_length;
+    size_t pos;
+    unsigned long value;
+    unsigned long token;
+    char c;
+
+    if (out_index != NULL) {
+        *out_index = 0;
+    }
+    if (context == NULL || id == NULL || out_index == NULL ||
+            context->native_button_target_token == 0) {
+        return 0;
+    }
+    prefix_length = strlen(PCORE_NATIVE_BUTTON_TARGET_PREFIX);
+    if (strncmp(id, PCORE_NATIVE_BUTTON_TARGET_PREFIX, prefix_length) != 0) {
+        return 0;
+    }
+    if (id[prefix_length] == '\0') {
+        return 0;
+    }
+    value = 0;
+    pos = prefix_length;
+    while (id[pos] != '\0') {
+        c = id[pos++];
+        if (c < '0' || c > '9') {
+            return 0;
+        }
+        if (value > 429496729UL) {
+            return 0;
+        }
+        value = value * 10UL + (unsigned long) (c - '0');
+    }
+    token = context->native_button_target_token;
+    if (value == 0 || value != token || token > 0xffffffffUL) {
+        return 0;
+    }
+    *out_index = (unsigned int) (token - 1UL);
+    return 1;
+}
+
+static int app_script_native_button_target_id(AppScriptContext *context,
+        char *out_id, int out_capacity)
+{
+    char digits[16];
+    unsigned long value;
+    int digit_count;
+    int prefix_length;
+    int i;
+
+    if (out_id == NULL || out_capacity <= 0) {
+        return 0;
+    }
+    out_id[0] = '\0';
+    if (context == NULL || context->native_button_target_token == 0) {
+        return 0;
+    }
+    value = context->native_button_target_token;
+    digit_count = 0;
+    do {
+        if (digit_count >= (int) sizeof(digits)) {
+            return 0;
+        }
+        digits[digit_count++] = (char) ('0' + (value % 10UL));
+        value /= 10UL;
+    } while (value != 0);
+    prefix_length = (int) strlen(PCORE_NATIVE_BUTTON_TARGET_PREFIX);
+    if (prefix_length + digit_count + 1 >= out_capacity) {
+        return 0;
+    }
+    memcpy(out_id, PCORE_NATIVE_BUTTON_TARGET_PREFIX,
+            (size_t) prefix_length);
+    for (i = 0; i < digit_count; i++) {
+        out_id[prefix_length + i] = digits[digit_count - i - 1];
+    }
+    out_id[prefix_length + digit_count] = '\0';
+    return 1;
+}
+
 static int app_script_has_element(void *pw, const char *id)
 {
     AppScriptContext *context;
+    unsigned int form_index;
 
     context = (AppScriptContext *) pw;
     if (context == NULL || context->document == NULL || id == NULL ||
             id[0] == '\0') {
         return -1;
+    }
+    if (app_script_native_button_target_index(context, id, &form_index)) {
+        return 1;
     }
     return PCore_NodeExistsById(context->document, id);
 }
@@ -296,6 +386,9 @@ static int app_script_get_relation(void *pw, const char *id,
         int out_capacity, int *out_bytes, int *out_number)
 {
     AppScriptContext *context;
+    unsigned int form_index;
+    const char tag_name[] = "button";
+    int tag_bytes;
 
     context = (AppScriptContext *) pw;
     if (context == NULL || context->document == NULL || id == NULL ||
@@ -303,6 +396,29 @@ static int app_script_get_relation(void *pw, const char *id,
             (out_value == NULL && out_capacity != 0) ||
             (out_value != NULL && out_capacity <= 0)) {
         return -1;
+    }
+    if (app_script_native_button_target_index(context, id, &form_index)) {
+        if (out_bytes != NULL) {
+            *out_bytes = 0;
+        }
+        if (out_number != NULL) {
+            *out_number = 0;
+        }
+        if (relation == PCORE_NODE_RELATION_TAG_NAME) {
+            tag_bytes = (int) strlen(tag_name);
+            if (out_bytes != NULL) {
+                *out_bytes = tag_bytes;
+            }
+            if (out_value != NULL && out_capacity > 0) {
+                if (tag_bytes >= out_capacity) {
+                    tag_bytes = out_capacity - 1;
+                }
+                memcpy(out_value, tag_name, (size_t) tag_bytes);
+                out_value[tag_bytes] = '\0';
+            }
+            return 0;
+        }
+        return 2;
     }
     return PCore_NodeRelationById(context->document, id, relation, index,
             out_value, out_capacity, out_bytes, out_number);
@@ -545,12 +661,18 @@ static int app_script_set_attribute(void *pw, const char *id,
         const char *name, const char *value)
 {
     AppScriptContext *context;
+    unsigned int form_index;
     int result;
 
     context = (AppScriptContext *) pw;
     if (context == NULL || context->document == NULL || id == NULL ||
             name == NULL || value == NULL) {
         return -1;
+    }
+    if (app_script_native_button_target_index(context, id, &form_index)) {
+        result = PCore_FormControlSetAttributeByIndex(context->document,
+                form_index, name, value);
+        return app_script_mutation_result(context, result);
     }
     result = PCore_NodeSetAttributeById(context->document, id, name, value);
     return app_script_mutation_result(context, result);
@@ -560,12 +682,18 @@ static int app_script_remove_attribute(void *pw, const char *id,
         const char *name)
 {
     AppScriptContext *context;
+    unsigned int form_index;
     int result;
 
     context = (AppScriptContext *) pw;
     if (context == NULL || context->document == NULL || id == NULL ||
             name == NULL) {
         return -1;
+    }
+    if (app_script_native_button_target_index(context, id, &form_index)) {
+        result = PCore_FormControlRemoveAttributeByIndex(context->document,
+                form_index, name);
+        return app_script_mutation_result(context, result);
     }
     result = PCore_NodeRemoveAttributeById(context->document, id, name);
     return app_script_mutation_result(context, result);
@@ -575,6 +703,7 @@ static int app_script_get_attribute(void *pw, const char *id,
         const char *name, char *out_value, int out_capacity, int *out_len)
 {
     AppScriptContext *context;
+    unsigned int form_index;
     int result;
 
     context = (AppScriptContext *) pw;
@@ -583,6 +712,11 @@ static int app_script_get_attribute(void *pw, const char *id,
             (out_value == NULL && out_capacity != 0) ||
             (out_value != NULL && out_capacity <= 0)) {
         return -1;
+    }
+    if (app_script_native_button_target_index(context, id, &form_index)) {
+        result = PCore_FormControlAttributeByIndex(context->document,
+                form_index, name, out_value, out_capacity, out_len);
+        return result == 0 ? 0 : (result == 2 ? 1 : -1);
     }
     result = PCore_NodeAttributeById(context->document, id, name,
             out_value, out_capacity, out_len);
@@ -1186,6 +1320,7 @@ static int app_script_click_dispatch(void *pw,
         const PBrowserScriptClickEventInfo *info, int *out_default_allowed)
 {
     AppScriptContext *context;
+    char target_id[PCORE_NATIVE_BUTTON_TARGET_MAX];
     int result;
 
     context = (AppScriptContext *) pw;
@@ -1196,9 +1331,17 @@ static int app_script_click_dispatch(void *pw,
         return -1;
     }
     *out_default_allowed = 1;
-    result = PCore_EventDispatchAt(context->document, info->x, info->y,
-            info->event_type, info->bubbles ? 1 : 0,
-            info->cancelable ? 1 : 0, out_default_allowed);
+    if (app_script_native_button_target_id(context, target_id,
+            sizeof(target_id))) {
+        result = PCore_EventDispatchFormControlEx(context->document,
+                (unsigned int) (context->native_button_target_token - 1UL),
+                target_id, info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, out_default_allowed);
+    } else {
+        result = PCore_EventDispatchAt(context->document, info->x, info->y,
+                info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, out_default_allowed);
+    }
 #ifdef _DEBUG
     app_script_debug_click(info, result, *out_default_allowed);
 #endif
@@ -2469,6 +2612,8 @@ int AppScript_DispatchNativeButton(AppScriptContext *context,
         int disabled, int validation_valid, int *out_default_allowed)
 {
     PBrowserScriptNativeButtonInfo info;
+    unsigned long previous_target_token;
+    int result;
 
     if (out_default_allowed != NULL) {
         *out_default_allowed = 1;
@@ -2486,8 +2631,12 @@ int AppScript_DispatchNativeButton(AppScriptContext *context,
     info.kind = kind;
     info.disabled = disabled ? 1 : 0;
     info.validation_valid = validation_valid ? 1 : 0;
-    return PBrowser_ScriptSessionDispatchNativeButton(context->session,
+    previous_target_token = context->native_button_target_token;
+    context->native_button_target_token = target_token;
+    result = PBrowser_ScriptSessionDispatchNativeButton(context->session,
             &info, out_default_allowed) == PSCRIPT_OK ? 0 : 1;
+    context->native_button_target_token = previous_target_token;
+    return result;
 }
 
 int AppScript_DispatchFormEvent(AppScriptContext *context, int x, int y,

@@ -6734,6 +6734,10 @@ struct pcore_browser_script_bridge {
      * callback so native form controls are dispatched by identity rather than
      * by a layout hit-test that can miss their overlaid child window. */
     char *programmatic_click_element_id;
+    /* Ephemeral token used while a native button click is synchronously
+     * dispatched.  It lets the Browser wrapper expose an id-less button's
+     * attributes without manufacturing a DOM id. */
+    unsigned long native_button_target_token;
     /* A contenteditable mutation invalidates Core's retained box tree before
      * Browser dispatches the matching native-edit event. Keep one synchronous
      * target id so the host callback can dispatch that event by DOM identity
@@ -6766,6 +6770,11 @@ static char g_browser_script_context_window_name[
 
 static void pcore_browser_script_bridge_destroy(
         pcore_browser_script_bridge *bridge);
+static int pcore_browser_script_native_button_target_index(
+        pcore_browser_script_bridge *bridge, const char *id,
+        unsigned int *out_index);
+static int pcore_browser_script_native_button_target_id(
+        pcore_browser_script_bridge *bridge, char *out_id, int out_capacity);
 
 static void pcore_file_picker_clear_pending(void)
 {
@@ -11137,6 +11146,7 @@ static int pcore_browser_script_click_dispatch(void *pw,
         int *out_default_allowed)
 {
     pcore_browser_script_bridge *bridge;
+    char target_id[PCORE_NATIVE_BUTTON_TARGET_MAX];
     char *programmatic_id;
     int result;
 
@@ -11156,6 +11166,12 @@ static int pcore_browser_script_click_dispatch(void *pw,
                 info->event_type, info->bubbles ? 1 : 0,
                 info->cancelable ? 1 : 0, out_default_allowed);
         free(programmatic_id);
+    } else if (pcore_browser_script_native_button_target_id(bridge,
+            target_id, sizeof(target_id))) {
+        result = PCore_EventDispatchFormControlEx(bridge->document,
+                (unsigned int) (bridge->native_button_target_token - 1UL),
+                target_id, info->event_type, info->bubbles ? 1 : 0,
+                info->cancelable ? 1 : 0, out_default_allowed);
     } else {
         result = PCore_EventDispatchAt(bridge->document, info->x, info->y,
                 info->event_type, info->bubbles ? 1 : 0,
@@ -15506,13 +15522,93 @@ static int pcore_browser_script_write_bool(int value, char *out_json,
     return 0;
 }
 
+static int pcore_browser_script_native_button_target_index(
+        pcore_browser_script_bridge *bridge, const char *id,
+        unsigned int *out_index)
+{
+    size_t prefix_length;
+    size_t pos;
+    unsigned long value;
+    char c;
+
+    if (out_index != NULL) {
+        *out_index = 0;
+    }
+    if (bridge == NULL || id == NULL || out_index == NULL ||
+            bridge->native_button_target_token == 0) {
+        return 0;
+    }
+    prefix_length = strlen(PCORE_NATIVE_BUTTON_TARGET_PREFIX);
+    if (strncmp(id, PCORE_NATIVE_BUTTON_TARGET_PREFIX, prefix_length) != 0 ||
+            id[prefix_length] == '\0') {
+        return 0;
+    }
+    value = 0;
+    pos = prefix_length;
+    while (id[pos] != '\0') {
+        c = id[pos++];
+        if (c < '0' || c > '9' || value > 429496729UL) {
+            return 0;
+        }
+        value = value * 10UL + (unsigned long) (c - '0');
+    }
+    if (value == 0 || value != bridge->native_button_target_token) {
+        return 0;
+    }
+    *out_index = (unsigned int) (value - 1UL);
+    return 1;
+}
+
+static int pcore_browser_script_native_button_target_id(
+        pcore_browser_script_bridge *bridge, char *out_id, int out_capacity)
+{
+    char digits[16];
+    unsigned long value;
+    int digit_count;
+    int prefix_length;
+    int i;
+
+    if (out_id == NULL || out_capacity <= 0) {
+        return 0;
+    }
+    out_id[0] = '\0';
+    if (bridge == NULL || bridge->native_button_target_token == 0) {
+        return 0;
+    }
+    value = bridge->native_button_target_token;
+    digit_count = 0;
+    do {
+        if (digit_count >= (int) sizeof(digits)) {
+            return 0;
+        }
+        digits[digit_count++] = (char) ('0' + (value % 10UL));
+        value /= 10UL;
+    } while (value != 0);
+    prefix_length = (int) strlen(PCORE_NATIVE_BUTTON_TARGET_PREFIX);
+    if (prefix_length + digit_count + 1 >= out_capacity) {
+        return 0;
+    }
+    memcpy(out_id, PCORE_NATIVE_BUTTON_TARGET_PREFIX,
+            (size_t) prefix_length);
+    for (i = 0; i < digit_count; i++) {
+        out_id[prefix_length + i] = digits[digit_count - i - 1];
+    }
+    out_id[prefix_length + digit_count] = '\0';
+    return 1;
+}
+
 static int pcore_browser_script_dom_has_element(void *pw, const char *id)
 {
     pcore_browser_script_bridge *bridge;
+    unsigned int form_index;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || id == NULL) {
         return -1;
+    }
+    if (pcore_browser_script_native_button_target_index(bridge, id,
+            &form_index)) {
+        return 1;
     }
     return PCore_NodeExistsById(bridge->document, id);
 }
@@ -16678,12 +16774,39 @@ static int pcore_browser_script_dom_get_relation(void *pw, const char *id,
         int out_capacity, int *out_bytes, int *out_number)
 {
     pcore_browser_script_bridge *bridge;
+    unsigned int form_index;
+    const char tag_name[] = "button";
+    int tag_bytes;
 
     bridge = (pcore_browser_script_bridge *) pw;
     if (bridge == NULL || bridge->document == NULL || id == NULL ||
             out_capacity < 0 || (out_value == NULL && out_capacity != 0) ||
             (out_value != NULL && out_capacity <= 0)) {
         return -1;
+    }
+    if (pcore_browser_script_native_button_target_index(bridge, id,
+            &form_index)) {
+        if (out_bytes != NULL) {
+            *out_bytes = 0;
+        }
+        if (out_number != NULL) {
+            *out_number = 0;
+        }
+        if (relation == PCORE_NODE_RELATION_TAG_NAME) {
+            tag_bytes = (int) strlen(tag_name);
+            if (out_bytes != NULL) {
+                *out_bytes = tag_bytes;
+            }
+            if (out_value != NULL && out_capacity > 0) {
+                if (tag_bytes >= out_capacity) {
+                    tag_bytes = out_capacity - 1;
+                }
+                memcpy(out_value, tag_name, (size_t) tag_bytes);
+                out_value[tag_bytes] = '\0';
+            }
+            return 0;
+        }
+        return 2;
     }
     return PCore_NodeRelationById(bridge->document, id, relation, index,
             out_value, out_capacity, out_bytes, out_number);
@@ -16693,6 +16816,7 @@ static int pcore_browser_script_dom_get_attribute(void *pw, const char *id,
         const char *name, char *out_value, int out_capacity, int *out_len)
 {
     pcore_browser_script_bridge *bridge;
+    unsigned int form_index;
     int status;
 
     bridge = (pcore_browser_script_bridge *) pw;
@@ -16701,6 +16825,12 @@ static int pcore_browser_script_dom_get_attribute(void *pw, const char *id,
             (out_value == NULL && out_capacity != 0) ||
             (out_value != NULL && out_capacity <= 0)) {
         return -1;
+    }
+    if (pcore_browser_script_native_button_target_index(bridge, id,
+            &form_index)) {
+        status = PCore_FormControlAttributeByIndex(bridge->document,
+                form_index, name, out_value, out_capacity, out_len);
+        return status == 0 ? 0 : (status == 2 ? 1 : -1);
     }
     status = PCore_NodeAttributeById(bridge->document, id, name,
             out_value, out_capacity, out_len);
@@ -16717,6 +16847,7 @@ static int pcore_browser_script_dom_set_attribute(void *pw, const char *id,
         const char *name, const char *value)
 {
     pcore_browser_script_bridge *bridge;
+    unsigned int form_index;
     int changed;
     int i;
     int is_open;
@@ -16727,8 +16858,14 @@ static int pcore_browser_script_dom_set_attribute(void *pw, const char *id,
             name == NULL || value == NULL) {
         return -1;
     }
-    changed = PCore_NodeSetAttributeById(bridge->document, id, name, value) ==
-            0 ? 1 : 0;
+    if (pcore_browser_script_native_button_target_index(bridge, id,
+            &form_index)) {
+        changed = PCore_FormControlSetAttributeByIndex(bridge->document,
+                form_index, name, value) == 0 ? 1 : 0;
+    } else {
+        changed = PCore_NodeSetAttributeById(bridge->document, id, name, value)
+                == 0 ? 1 : 0;
+    }
     is_open = (strlen(name) == 4);
     for (i = 0; is_open && i < 4; i++) {
         c = name[i];
@@ -16750,6 +16887,7 @@ static int pcore_browser_script_dom_remove_attribute(void *pw,
         const char *id, const char *name)
 {
     pcore_browser_script_bridge *bridge;
+    unsigned int form_index;
     int changed;
     int i;
     int is_open;
@@ -16760,8 +16898,14 @@ static int pcore_browser_script_dom_remove_attribute(void *pw,
             name == NULL) {
         return -1;
     }
-    changed = PCore_NodeRemoveAttributeById(bridge->document, id, name) ==
-            0 ? 1 : 0;
+    if (pcore_browser_script_native_button_target_index(bridge, id,
+            &form_index)) {
+        changed = PCore_FormControlRemoveAttributeByIndex(bridge->document,
+                form_index, name) == 0 ? 1 : 0;
+    } else {
+        changed = PCore_NodeRemoveAttributeById(bridge->document, id, name) ==
+                0 ? 1 : 0;
+    }
     is_open = (strlen(name) == 4);
     for (i = 0; is_open && i < 4; i++) {
         c = name[i];
@@ -17639,6 +17783,7 @@ static void pcore_browser_script_bridge_destroy(
     bridge->history_state_json = NULL;
     free(bridge->programmatic_click_element_id);
     bridge->programmatic_click_element_id = NULL;
+    bridge->native_button_target_token = 0;
     bridge->native_edit_input_target_id[0] = '\0';
     bridge->history_state_changed = 0;
     for (i = 0; i < bridge->history_push_count; i++) {
@@ -18112,6 +18257,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     bridge->next_event_id = 1;
     bridge->events = NULL;
     bridge->programmatic_click_element_id = NULL;
+    bridge->native_button_target_token = 0;
     bridge->native_edit_input_target_id[0] = '\0';
     bridge->active_element_id[0] = '\0';
     bridge->interaction_element_id[0] = '\0';
@@ -113498,14 +113644,16 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     static const char BETWEEN[] = "</script><script>";
     static const char AFTER[] =
         "</script></head><body><div id='bar' class='navbar'>"
-        "<button id='toggle' data-toggle='collapse' "
-        "data-target='#nav' aria-expanded='false'>Menu</button></div>"
+        "<button class='navbar-toggler' data-toggle='collapse' "
+        "data-target='#nav' aria-expanded='false'><span "
+        "class='navbar-toggler-icon'>Menu</span></button></div>"
         "<div id='nav' class='collapse'>Links</div>"
         "<p id='result'>idle</p></body></html>";
     static const char CSS[] =
         "html,body{margin:0;padding:0}"
         "#bar{display:flex;width:240px;height:40px;padding:2px}"
-        "#toggle{display:block;width:96px;height:32px;margin:4px}"
+        ".navbar-toggler{display:block;width:96px;height:32px;margin:4px}"
+        ".navbar-toggler-icon{display:block;width:80px;height:24px}"
         "#nav{display:block;width:96px;height:24px}";
     char *jquery;
     char *bootstrap;
@@ -113626,9 +113774,9 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
         PCore_SetViewport(320, 240, 96);
         if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
                 PCore_LayoutDocument(document, 320, 240) != 0 ||
-                PCore_FormControlInfoById(document, "toggle", &button_x,
-                &button_y, &button_w, &button_h, &button_kind, NULL,
-                &disabled) != 0 || button_kind != 7 || disabled ||
+                PCore_FormControlInfo(document, 0, &button_x, &button_y,
+                &button_w, &button_h, &button_kind, NULL, &disabled) != 0 ||
+                button_kind != 7 || disabled ||
                 button_w <= 0 || button_h <= 0) {
             ok = 0;
         }
@@ -113650,6 +113798,8 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
         info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
         info.disabled = 0;
         info.validation_valid = 0;
+        g_browser_script_session.bridge->native_button_target_token =
+                info.target_token;
         rc = PBrowser_ScriptSessionDispatchNativeButton(
                 g_browser_script_session.session, &info, &default_allowed);
         if (rc != PSCRIPT_OK || !default_allowed) {
@@ -113664,6 +113814,7 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
                 ok = 0;
             }
         }
+        g_browser_script_session.bridge->native_button_target_token = 0;
         if (ok) {
             rc = PBrowser_ScriptSessionRunTimers(
                     g_browser_script_session.session, 1000UL);
@@ -113677,8 +113828,9 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
         if (PCore_NodeAttributeById(document, "nav", "class", class_value,
                 sizeof(class_value), &bytes) != 0 ||
                 strstr(class_value, "show") == NULL ||
-                PCore_NodeAttributeById(document, "toggle", "aria-expanded",
-                aria_value, sizeof(aria_value), &bytes) != 0 ||
+                PCore_FormControlAttributeByIndex(document, 0,
+                "aria-expanded", aria_value, sizeof(aria_value), &bytes) !=
+                0 ||
                 strcmp(aria_value, "true") != 0) {
             ok = 0;
         }

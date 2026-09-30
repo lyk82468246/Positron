@@ -3659,6 +3659,8 @@ typedef struct pcore_event_state {
     const PCoreKeyEventData *key_data;
     const PCoreInputEventData *input_data;
     int is_composing;
+    unsigned int target_override_depth;
+    char target_overrides[4][PCORE_NATIVE_BUTTON_TARGET_MAX];
 } pcore_event_state;
 
 struct pcore_event_binding {
@@ -3773,6 +3775,40 @@ static pcore_event_state *pcore_event_state_get(dom_document *doc, int create)
     return state;
 }
 
+/* Native controls can be visually composed from an id-less descendant.  The
+ * Browser event object still needs a useful target wrapper, but the wrapper
+ * must not mutate the DOM or outlive the synchronous dispatch.  Keep a small
+ * fixed stack so a listener that dispatches another event cannot overwrite
+ * its caller's token. */
+static int pcore_event_target_override_push(pcore_event_state *state,
+        const char *target_id)
+{
+    size_t length;
+
+    if (state == NULL || target_id == NULL || target_id[0] == '\0') {
+        return 0;
+    }
+    if (state->target_override_depth >= 4U) {
+        return 1;
+    }
+    length = strlen(target_id);
+    if (length >= PCORE_NATIVE_BUTTON_TARGET_MAX) {
+        return 1;
+    }
+    memcpy(state->target_overrides[state->target_override_depth], target_id,
+            length + 1U);
+    state->target_override_depth += 1U;
+    return 0;
+}
+
+static void pcore_event_target_override_pop(pcore_event_state *state)
+{
+    if (state != NULL && state->target_override_depth > 0U) {
+        state->target_override_depth -= 1U;
+        state->target_overrides[state->target_override_depth][0] = '\0';
+    }
+}
+
 static dom_string *pcore_event_element_id(dom_event_target *target)
 {
     dom_node_type node_type;
@@ -3852,6 +3888,10 @@ static void pcore_event_listener_adapter(dom_event *event, void *pw)
     current_target_id = pcore_event_element_id(current_target);
     if (target_id != NULL) {
         info.target_id = dom_string_data(target_id);
+    } else if (binding->state != NULL &&
+            binding->state->target_override_depth > 0U) {
+        info.target_id = binding->state->target_overrides[
+                binding->state->target_override_depth - 1U];
     }
     if (current_target_id != NULL) {
         info.current_target_id = dom_string_data(current_target_id);
@@ -4080,6 +4120,36 @@ static int pcore_event_dispatch_node(dom_node *target,
     dom_event_unref(event);
     dom_string_unref(type);
     return (err == DOM_NO_ERR) ? 1 : -1;
+}
+
+static int pcore_event_dispatch_node_with_target_id(dom_node *target,
+        const char *target_id, const char *event_type, int bubbles,
+        int cancelable, pcore_event_state *state,
+        const PCoreKeyEventData *key_data,
+        const PCoreInputEventData *input_data, int is_composing,
+        int *default_allowed)
+{
+    int pushed;
+    int result;
+
+    pushed = 0;
+    if (target_id != NULL && target_id[0] != '\0') {
+        if (state == NULL || pcore_event_target_override_push(state,
+                target_id) != 0) {
+            if (default_allowed != NULL) {
+                *default_allowed = 1;
+            }
+            return -1;
+        }
+        pushed = 1;
+    }
+    result = pcore_event_dispatch_node(target, event_type, bubbles,
+            cancelable, state, key_data, input_data, is_composing,
+            default_allowed);
+    if (pushed) {
+        pcore_event_target_override_pop(state);
+    }
+    return result;
 }
 
 static int pcore_event_dispatch_to_id(dom_document *doc,
@@ -4789,6 +4859,163 @@ static struct box *pcore_form_control_at(struct box *box,
     return NULL;
 }
 
+static struct box *pcore_form_control_box_at_document(dom_document *doc,
+        unsigned int index)
+{
+    pcore_render *st;
+    unsigned int current;
+
+    if (doc == NULL) {
+        return NULL;
+    }
+    st = pcore_get_render(doc);
+    current = 0;
+    return st != NULL ? pcore_form_control_at(st->root_box, index,
+            &current) : NULL;
+}
+
+static dom_element *pcore_form_control_element_at(dom_document *doc,
+        unsigned int index)
+{
+    struct box *box;
+
+    box = pcore_form_control_box_at_document(doc, index);
+    if (box == NULL || box->gadget == NULL || box->gadget->node == NULL) {
+        return NULL;
+    }
+    return (dom_element *) box->gadget->node;
+}
+
+static void pcore_form_control_copy_dom_string(dom_string *value,
+        char *buffer, int capacity, int *out_bytes)
+{
+    const char *data;
+    size_t length;
+    size_t copy_length;
+
+    data = value != NULL ? dom_string_data(value) : NULL;
+    length = value != NULL ? dom_string_byte_length(value) : 0U;
+    if (out_bytes != NULL) {
+        *out_bytes = (int) length;
+    }
+    if (buffer == NULL || capacity <= 0) {
+        return;
+    }
+    copy_length = length;
+    if (copy_length > (size_t) (capacity - 1)) {
+        copy_length = (size_t) (capacity - 1);
+    }
+    if (copy_length > 0U && data != NULL) {
+        memcpy(buffer, data, copy_length);
+    }
+    buffer[copy_length] = '\0';
+}
+
+PCORE_API int PCore_FormControlAttributeByIndex(HANDLE hDoc,
+        unsigned int index, const char *name, char *value, int value_capacity,
+        int *out_bytes)
+{
+    dom_document *doc;
+    dom_element *element;
+    dom_string *dom_name;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (out_bytes != NULL) {
+        *out_bytes = 0;
+    }
+    if (value != NULL && value_capacity > 0) {
+        value[0] = '\0';
+    }
+    if (hDoc == NULL || name == NULL || name[0] == '\0' ||
+            value_capacity < 0 || (value == NULL && value_capacity != 0) ||
+            (value != NULL && value_capacity <= 0)) {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    element = pcore_form_control_element_at(doc, index);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name), &dom_name) !=
+            DOM_NO_ERR || dom_name == NULL) {
+        return 1;
+    }
+    err = dom_element_get_attribute(element, dom_name, &dom_value);
+    dom_string_unref(dom_name);
+    if (err != DOM_NO_ERR) {
+        return 1;
+    }
+    if (dom_value == NULL) {
+        return 2;
+    }
+    pcore_form_control_copy_dom_string(dom_value, value, value_capacity,
+            out_bytes);
+    dom_string_unref(dom_value);
+    return 0;
+}
+
+PCORE_API int PCore_FormControlSetAttributeByIndex(HANDLE hDoc,
+        unsigned int index, const char *name, const char *value)
+{
+    dom_document *doc;
+    dom_element *element;
+    dom_string *dom_name;
+    dom_string *dom_value;
+    dom_exception err;
+
+    if (hDoc == NULL || name == NULL || name[0] == '\0' || value == NULL) {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    element = pcore_form_control_element_at(doc, index);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    dom_value = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name), &dom_name) !=
+            DOM_NO_ERR || dom_name == NULL ||
+            dom_string_create((const uint8_t *) value, strlen(value),
+            &dom_value) != DOM_NO_ERR || dom_value == NULL) {
+        if (dom_name != NULL) { dom_string_unref(dom_name); }
+        if (dom_value != NULL) { dom_string_unref(dom_value); }
+        return 1;
+    }
+    err = dom_element_set_attribute(element, dom_name, dom_value);
+    dom_string_unref(dom_value);
+    dom_string_unref(dom_name);
+    return err == DOM_NO_ERR ? 0 : 1;
+}
+
+PCORE_API int PCore_FormControlRemoveAttributeByIndex(HANDLE hDoc,
+        unsigned int index, const char *name)
+{
+    dom_document *doc;
+    dom_element *element;
+    dom_string *dom_name;
+    dom_exception err;
+
+    if (hDoc == NULL || name == NULL || name[0] == '\0') {
+        return 1;
+    }
+    doc = (dom_document *) hDoc;
+    element = pcore_form_control_element_at(doc, index);
+    if (element == NULL) {
+        return 1;
+    }
+    dom_name = NULL;
+    if (dom_string_create((const uint8_t *) name, strlen(name), &dom_name) !=
+            DOM_NO_ERR || dom_name == NULL) {
+        return 1;
+    }
+    err = dom_element_remove_attribute(element, dom_name);
+    dom_string_unref(dom_name);
+    return err == DOM_NO_ERR ? 0 : 1;
+}
+
 PCORE_API int PCore_FormControlInfo(HANDLE hDoc, unsigned int index,
         int *x, int *y, int *w, int *h, int *kind, int *selected,
         int *disabled)
@@ -4942,6 +5169,53 @@ PCORE_API int PCore_FormControlInfoById(HANDLE hDoc, const char *element_id,
     }
     dom_node_unref((dom_node *) element);
     return 0;
+}
+
+PCORE_API int PCore_EventDispatchFormControlEx(HANDLE hDoc,
+        unsigned int form_index, const char *target_id,
+        const char *event_type, int bubbles, int cancelable,
+        int *default_allowed)
+{
+    dom_document *doc;
+    struct box *box;
+    dom_node *target;
+    pcore_event_state *event_state;
+    int result;
+
+    if (default_allowed != NULL) {
+        *default_allowed = 1;
+    }
+    if (hDoc == NULL || event_type == NULL || event_type[0] == '\0' ||
+            (bubbles != 0 && bubbles != 1) ||
+            (cancelable != 0 && cancelable != 1) ||
+            (target_id != NULL && strlen(target_id) >=
+            PCORE_NATIVE_BUTTON_TARGET_MAX)) {
+        return -1;
+    }
+    doc = (dom_document *) hDoc;
+    box = pcore_form_control_box_at_document(doc, form_index);
+    if (box == NULL || box->gadget == NULL || box->gadget->node == NULL) {
+        return 0;
+    }
+    target = dom_node_ref((dom_node *) box->gadget->node);
+    if (target == NULL) {
+        return -1;
+    }
+    /* A synthetic target token is carried through the event adapter even
+     * when the page has no listener of its own.  Allocate the small per-doc
+     * event state in that case so an opted-in script session still preserves
+     * the native button's default action instead of failing the click. */
+    event_state = pcore_event_state_get(doc,
+            (target_id != NULL && target_id[0] != '\0') ? 1 : 0);
+    if (target_id != NULL && target_id[0] != '\0' && event_state == NULL) {
+        dom_node_unref(target);
+        return -1;
+    }
+    result = pcore_event_dispatch_node_with_target_id(target, target_id,
+            event_type, bubbles, cancelable, event_state, NULL, NULL, 0,
+            default_allowed);
+    dom_node_unref(target);
+    return result;
 }
 
 /* Return the effective contenteditable mode only for an editing host. A

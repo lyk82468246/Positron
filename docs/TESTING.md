@@ -226,10 +226,12 @@ tests=1-5 7b 13 20,999
   代替这些证据。
 - TEST1325–1329 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和 Bootstrap
   4.6.2 通过 `Element.click()` 验证 delegated collapse；1326 把普通 button 放入直接 flex
-  容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在省略 `type` 的
-  默认 submit button 上通过原生
+  容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在省略 `type`、
+  没有 `id` 且包含 `.navbar-toggler-icon` 子 span 的默认 submit button 上通过原生
   click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言 `nav` 含 `show`、
-  按钮 `aria-expanded=true`；1328 在 flex 和普通 block 路径中让 button 的 span 使用 CSS
+  按钮 `aria-expanded=true`。Core 不把装饰性 span 变成事件目标的持久 DOM id；同步事件桥
+  只提供短生命周期 token，使 Bootstrap 的 delegated selector 能读到真实按钮属性。1328 在
+  flex 和普通 block 路径中让 button 的 span 使用 CSS
   data-URI 图标，且 block fixture 省略 `type` 以覆盖默认 submit，离屏检查作者子树绘制而不是
   合成的 `Button` 标签；1329 进一步使用 Bootstrap 的精确 hamburger URI，并贯穿 Core 到
   最终 GDI 像素。`1325-1329,999` 已在

@@ -17,11 +17,11 @@ UTF-8、opaque handle、固定资源预算和明确所有权。`test_host.exe` �
 图片 pending/retry、CSS data URI、Image 的有限 SVG 样式/渐变/alpha、HTTP URL-aware 和
 Browser history/lifecycle/document click 纵切已有源码与离线/设备证据；DB 目前只有主机
 contract。`positron.exe` 的网络页面、真实输入、旋转/DPI、媒体播放和 DB worker 仍须独立门。
-本批把 WinWorld hamburger 的真实阻塞收束为 Core 在部分布局上下文把 `<button>` 替换为合成
-标签、同时丢失 gadget 和作者子树：产品现在在保留 `<button>` 后代（包括 CSS data-URI 图标）
-的普通样式盒上附加 gadget，原版
-jQuery/Bootstrap 原生点击回归和匹配 ARMV4I 设备门均已通过。剩余工作是同一候选上的应用
-人工视觉/触摸确认，以及不属于 navbar 核心依赖的 bootstrap-multiselect 语法限制取舍。
+本批把 WinWorld hamburger 的最后一个自动化阻塞收束为事件目标桥：真实按钮没有 `id`，点击
+落在无 `id` 的 `.navbar-toggler-icon` 子树时，Browser 原先无法让 delegated Bootstrap handler
+取得按钮属性。产品保留 `<button>` 作者后代并在同步 native-button 事务中用短生命周期 token
+暴露按钮属性和 selector 匹配；不写入 DOM id，也不加入站点特判。原版 jQuery/Bootstrap 回归
+和匹配 ARMV4I 设备门均已通过；剩余是应用人工视觉/触摸及 bootstrap-multiselect 限制取舍。
 
 ## 当前源码事实
 
@@ -258,12 +258,12 @@ button 作者子树（含省略 `type` 时的默认 submit）的原生 Bootstrap
   像素均已由对应 fixture 覆盖；`1325-1328,999` 的匹配 ARMV4I 门在
   `tmp/device-runs/20260930-172709-bootstrap-default-submit-r9` 通过，`1329,999` 的
   精确链路门见上文。自动证据不替代真实 EXE 的触摸和窄视口视觉验收。
-- TEST1329 在 `tmp/device-runs/20260930-180116-exact-bootstrap-hamburger` 以匹配 Debug
-  ARMV4I 包通过：精确 Bootstrap `.navbar-light .navbar-toggler-icon` data URI、无 `type`
-  button、Core background cache 和 Image rgba/round-cap 绘制均在最终离屏像素中验证，
-  selected/observed 为 `2/2`，唯一 `TESTBENCH PASS`、零 ERROR/FAIL、
-  `core_module_check=PASS`、`force_cleanup_check=PASS`、双空间预检通过且无新增 dump。
-  该门只证明 DLL 纵切，不替代用户在新 `positron.exe` 进程上打开 WinWorld 后的视觉与触摸证据。
+- TEST1329 的精确 Bootstrap `.navbar-light .navbar-toggler-icon` data URI、Core background
+  cache 和 Image rgba/round-cap 像素回归已在 `20260930-180116-exact-bootstrap-hamburger`
+  通过。最新 `20260930-205726-button-event-regression-r6-internal` 又以同一 Debug 包在内部
+  `\\Temp` 回退目录通过 `1325-1329,999`：无 `id` 按钮内嵌 span 的 delegated handler 将
+  `nav` 加入 `show`、按钮 `aria-expanded` 设为 `true`，selected/observed `6/6`、唯一
+  `TESTBENCH PASS`、零 ERROR/FAIL、模块/清理检查通过、日志回收且无新增 dump。
 - 本轮为确认普通 block `<button>` 的扩展没有掩盖旧表单问题，另跑了
   `tmp/device-runs/20260930-160035-ordinary-button-regression-r7` 的 `293,999`；TEST293
   仍以 `changed=0/0 restored=0/0 reset=0` 失败，未到达 TEST999。该失败与本批作者子树绘制
