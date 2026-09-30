@@ -31,6 +31,7 @@
 #include "app_i18n.h"
 #include "positron_core.h"
 #include "positron_browser.h"
+#include "positron_script.h"
 #include "positron_http.h"
 #include "resource.h"
 
@@ -67,6 +68,8 @@
 #define APP_WM_FILE_PICKER      (WM_APP + 6)
 #define APP_CONTROLS_REFRESH_FORM_RESET 1
 #define APP_SCRIPT_TIMER_ID     7
+#define APP_COMMAND_ARG_MAX     16384
+#define APP_STARTUP_SCRIPT_MAX_BYTES 8192
 
 #define APP_NAV_MAX_RETIRED     4
 #define APP_NAV_WORK_DOCUMENT   1
@@ -129,6 +132,10 @@ static int g_scrollbar_settle_depth;
 static int g_script_refresh_pending;
 static int g_script_refresh_form_reset;
 static AppScriptContext *g_script_refresh_context;
+static char g_startup_reference[APP_URL_MAX];
+static char g_startup_script[APP_STARTUP_SCRIPT_MAX_BYTES + 1];
+static int g_startup_script_armed;
+static unsigned long g_startup_script_generation;
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
@@ -1087,6 +1094,288 @@ static int app_wide_text_to_utf8(const WCHAR *source, char *target,
         return 1;
     }
     target[bytes] = '\0';
+    return 0;
+}
+
+static int app_wide_buffer_to_utf8(const WCHAR *source, int source_chars,
+        char *target, int target_capacity)
+{
+    int bytes;
+
+    if (source == NULL || source_chars < 0 || target == NULL ||
+            target_capacity <= 1) {
+        return 1;
+    }
+    target[0] = '\0';
+    if (source_chars == 0) {
+        return 0;
+    }
+    bytes = WideCharToMultiByte(CP_UTF8, 0, source, source_chars,
+            target, target_capacity - 1, NULL, NULL);
+    if (bytes <= 0) {
+        bytes = WideCharToMultiByte(CP_ACP, 0, source, source_chars,
+                target, target_capacity - 1, NULL, NULL);
+    }
+    if (bytes <= 0 || bytes >= target_capacity) {
+        target[0] = '\0';
+        return 1;
+    }
+    target[bytes] = '\0';
+    return 0;
+}
+
+static int app_command_space(WCHAR value)
+{
+    return value == L' ' || value == L'\t' || value == L'\r' ||
+            value == L'\n' || value == L'\f' || value == L'\v';
+}
+
+/* Read one bounded Windows command-line argument without depending on
+ * CommandLineToArgvW, which is not present on every WM6 image.  Backslash-
+ * quote is accepted so a JavaScript string can be passed inside a quoted
+ * --eval value. */
+static int app_command_line_next_arg(const WCHAR **cursor, WCHAR *output,
+        int output_capacity)
+{
+    const WCHAR *current;
+    int length;
+    int quoted;
+
+    if (cursor == NULL || *cursor == NULL || output == NULL ||
+            output_capacity <= 1) {
+        return -1;
+    }
+    current = *cursor;
+    while (app_command_space(*current)) {
+        current++;
+    }
+    if (*current == L'\0') {
+        *cursor = current;
+        output[0] = L'\0';
+        return 0;
+    }
+    length = 0;
+    quoted = 0;
+    while (*current != L'\0') {
+        if (*current == L'\\' && current[1] == L'"') {
+            if (length + 1 >= output_capacity) {
+                return -1;
+            }
+            output[length++] = L'"';
+            current += 2;
+            continue;
+        }
+        if (*current == L'"') {
+            quoted = !quoted;
+            current++;
+            continue;
+        }
+        if (!quoted && app_command_space(*current)) {
+            break;
+        }
+        if (length + 1 >= output_capacity) {
+            return -1;
+        }
+        output[length++] = *current++;
+    }
+    if (quoted) {
+        return -1;
+    }
+    output[length] = L'\0';
+    while (app_command_space(*current)) {
+        current++;
+    }
+    *cursor = current;
+    return 1;
+}
+
+static int app_command_ascii_equal(const WCHAR *value, const char *ascii)
+{
+    int index;
+    WCHAR wide;
+    char character;
+
+    if (value == NULL || ascii == NULL) {
+        return 0;
+    }
+    index = 0;
+    while (ascii[index] != '\0') {
+        wide = value[index];
+        character = ascii[index];
+        if (wide >= L'A' && wide <= L'Z') {
+            wide = (WCHAR) (wide + (L'a' - L'A'));
+        }
+        if (character >= 'A' && character <= 'Z') {
+            character = (char) (character + ('a' - 'A'));
+        }
+        if (wide != (WCHAR) (unsigned char) character) {
+            return 0;
+        }
+        index++;
+    }
+    return value[index] == L'\0';
+}
+
+static int app_command_ascii_prefix(const WCHAR *value, const char *ascii)
+{
+    int index;
+    WCHAR wide;
+    char character;
+
+    if (value == NULL || ascii == NULL) {
+        return 0;
+    }
+    index = 0;
+    while (ascii[index] != '\0') {
+        wide = value[index];
+        character = ascii[index];
+        if (wide == L'\0') {
+            return 0;
+        }
+        if (wide >= L'A' && wide <= L'Z') {
+            wide = (WCHAR) (wide + (L'a' - L'A'));
+        }
+        if (character >= 'A' && character <= 'Z') {
+            character = (char) (character + ('a' - 'A'));
+        }
+        if (wide != (WCHAR) (unsigned char) character) {
+            return 0;
+        }
+        index++;
+    }
+    return 1;
+}
+
+static int app_command_copy_value(const WCHAR *argument, const char *prefix,
+        WCHAR *output, int output_capacity)
+{
+    int prefix_length;
+    int length;
+
+    if (argument == NULL || prefix == NULL || output == NULL ||
+            output_capacity <= 1 || !app_command_ascii_prefix(argument,
+            prefix)) {
+        return 0;
+    }
+    prefix_length = (int) strlen(prefix);
+    if (argument[prefix_length] != L'=') {
+        return 0;
+    }
+    length = lstrlenW(argument + prefix_length + 1);
+    if (length <= 0 || length >= output_capacity) {
+        return -1;
+    }
+    memcpy(output, argument + prefix_length + 1,
+            (size_t) (length + 1) * sizeof(WCHAR));
+    return 1;
+}
+
+static int app_parse_startup_arguments(LPWSTR command_line,
+        char *out_reference, int reference_capacity, int *out_has_reference,
+        char *out_script, int script_capacity, int *out_has_script)
+{
+    static WCHAR argument[APP_COMMAND_ARG_MAX];
+    static WCHAR value[APP_COMMAND_ARG_MAX];
+    const WCHAR *cursor;
+    int result;
+    int value_result;
+    int has_reference;
+    int has_script;
+
+    if (out_reference == NULL || reference_capacity <= 1 ||
+            out_has_reference == NULL || out_script == NULL ||
+            script_capacity <= 1 || out_has_script == NULL) {
+        return 1;
+    }
+    out_reference[0] = '\0';
+    out_script[0] = '\0';
+    *out_has_reference = 0;
+    *out_has_script = 0;
+    has_reference = 0;
+    has_script = 0;
+    cursor = command_line != NULL ? command_line : L"";
+    for (;;) {
+        result = app_command_line_next_arg(&cursor, argument,
+                sizeof(argument) / sizeof(argument[0]));
+        if (result < 0) {
+            return 1;
+        }
+        if (result == 0) {
+            break;
+        }
+        value_result = app_command_copy_value(argument, "--url", value,
+                sizeof(value) / sizeof(value[0]));
+        if (value_result == 0) {
+            value_result = app_command_copy_value(argument, "-u", value,
+                    sizeof(value) / sizeof(value[0]));
+        }
+        if (value_result == 0) {
+            value_result = app_command_copy_value(argument, "/url", value,
+                    sizeof(value) / sizeof(value[0]));
+        }
+        if (value_result != 0 || app_command_ascii_equal(argument, "--url") ||
+                app_command_ascii_equal(argument, "-u") ||
+                app_command_ascii_equal(argument, "/url")) {
+            if (value_result < 0 || has_reference) {
+                return 1;
+            }
+            if (value_result == 0) {
+                result = app_command_line_next_arg(&cursor, value,
+                        sizeof(value) / sizeof(value[0]));
+                if (result != 1) {
+                    return 1;
+                }
+            }
+            if (app_wide_buffer_to_utf8(value, lstrlenW(value),
+                    out_reference, reference_capacity) != 0 ||
+                    out_reference[0] == '\0') {
+                return 1;
+            }
+            has_reference = 1;
+            continue;
+        }
+        value_result = app_command_copy_value(argument, "--eval", value,
+                sizeof(value) / sizeof(value[0]));
+        if (value_result == 0) {
+            value_result = app_command_copy_value(argument, "-e", value,
+                    sizeof(value) / sizeof(value[0]));
+        }
+        if (value_result == 0) {
+            value_result = app_command_copy_value(argument, "/eval", value,
+                    sizeof(value) / sizeof(value[0]));
+        }
+        if (value_result != 0 || app_command_ascii_equal(argument, "--eval") ||
+                app_command_ascii_equal(argument, "-e") ||
+                app_command_ascii_equal(argument, "/eval")) {
+            if (value_result < 0 || has_script) {
+                return 1;
+            }
+            if (value_result == 0) {
+                result = app_command_line_next_arg(&cursor, value,
+                        sizeof(value) / sizeof(value[0]));
+                if (result != 1) {
+                    return 1;
+                }
+            }
+            if (app_wide_buffer_to_utf8(value, lstrlenW(value), out_script,
+                    script_capacity) != 0 || out_script[0] == '\0') {
+                return 1;
+            }
+            has_script = 1;
+            continue;
+        }
+        if (argument[0] == L'-' || argument[0] == L'/') {
+            return 1;
+        }
+        if (has_reference || app_wide_buffer_to_utf8(argument,
+                lstrlenW(argument), out_reference, reference_capacity) != 0 ||
+                out_reference[0] == '\0') {
+            return 1;
+        }
+        has_reference = 1;
+    }
+    *out_has_reference = has_reference;
+    *out_has_script = has_script;
     return 0;
 }
 
@@ -3035,7 +3324,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
 #ifdef _DEBUG
             app_navigation_debug_log_script_count(request, script_count);
 #endif
-            if (script_count > 0) {
+            if (script_count > 0 || (g_startup_script_armed &&
+                    request->generation == g_startup_script_generation)) {
                 if (request->history_mode == APP_HISTORY_NEW) {
                     history_length = PBrowser_HistoryNavigationLength(
                             g_history, request->url,
@@ -3267,6 +3557,25 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             (void) AppScript_SetFocus(g_script,
                     GetForegroundWindow() == g_window ? 1 : 0);
             (void) AppScript_PageLifecycleComplete(g_script);
+            if (g_startup_script_armed && request->generation ==
+                    g_startup_script_generation) {
+                int startup_result;
+#ifdef _DEBUG
+                char startup_detail[64];
+#endif
+
+                startup_result = AppScript_Evaluate(g_script,
+                        g_startup_script, (int) strlen(g_startup_script));
+                g_startup_script_armed = 0;
+#ifdef _DEBUG
+                _snprintf(startup_detail, sizeof(startup_detail) - 1,
+                        "result=%d", startup_result);
+                startup_detail[sizeof(startup_detail) - 1] = '\0';
+                app_navigation_debug_log_request(request, "startup-script",
+                        startup_result == PSCRIPT_OK ? "executed" :
+                        startup_detail);
+#endif
+            }
             if (AppScript_HasPendingNavigation(g_script)) {
                 PostMessage(g_window, APP_WM_SCRIPT_NAVIGATE, 0,
                         (LPARAM) g_script);
@@ -4702,16 +5011,39 @@ static void app_show_error(AppTextId text_id)
     MessageBoxW(NULL, text, L"Positron", MB_OK | MB_ICONERROR);
 }
 
+static void app_show_startup_usage(void)
+{
+    MessageBoxW(NULL,
+            L"Usage: positron.exe [URL]\n"
+            L"       positron.exe --url URL --eval \"JavaScript\"",
+            L"Positron", MB_OK | MB_ICONERROR);
+}
+
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         LPWSTR command_line, int show_command)
 {
     WNDCLASSW window_class;
     HWND hwnd;
     MSG message;
+    char initial_url[APP_URL_MAX];
+    int startup_has_reference;
+    int startup_has_script;
+    int startup_invalid;
     int result;
 
     (void) previous;
-    (void) command_line;
+    startup_has_reference = 0;
+    startup_has_script = 0;
+    if (app_parse_startup_arguments(command_line, g_startup_reference,
+            sizeof(g_startup_reference), &startup_has_reference,
+            g_startup_script, sizeof(g_startup_script),
+            &startup_has_script) != 0 || (startup_has_script &&
+            !startup_has_reference)) {
+        app_show_startup_usage();
+        return 2;
+    }
+    g_startup_script_armed = 0;
+    g_startup_script_generation = 0;
     AppHostContext_Init(&g_app);
     AppDebug_BeginSession();
     AppHostContext_SetInstance(&g_app, instance);
@@ -4779,16 +5111,34 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     app_reposition_controls(hwnd);
     app_reposition_page(hwnd);
-    result = app_load_page(hwnd, APP_URL_WELCOME,
+    app_copy_text(initial_url, sizeof(initial_url), APP_URL_WELCOME);
+    startup_invalid = 0;
+    if (startup_has_reference &&
+            app_normalize_address(g_startup_reference, initial_url,
+            sizeof(initial_url)) != 0) {
+        startup_invalid = 1;
+    }
+    if (!startup_invalid && startup_has_script &&
+            app_page_kind(initial_url) != 0) {
+        startup_invalid = 1;
+    }
+    result = app_load_page(hwnd, initial_url,
             APP_HISTORY_NEW, -1) ? 0 : 1;
     if (result != 0) {
         DestroyWindow(hwnd);
         return result;
     }
+    if (!startup_invalid && startup_has_script) {
+        g_startup_script_armed = 1;
+        g_startup_script_generation = (unsigned long) g_navigation_generation;
+    }
     ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
     UpdateWindow(hwnd);
     SetFocus(g_address);
     SendMessage(g_address, EM_SETSEL, 0, -1);
+    if (startup_invalid) {
+        app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
+    }
     while (GetMessage(&message, NULL, 0, 0) > 0) {
         if ((g_menu_bar == NULL ||
                 !IsCommandBarMessage(g_menu_bar, &message)) &&

@@ -4,6 +4,10 @@
   Full run (stage, deploy, launch, and take an initial log snapshot):
     scripts\debug_capture.bat -Configuration Debug
 
+  Launch with application arguments for unattended Positron checks:
+    scripts\debug_capture.bat -Configuration Debug `
+        -AppArguments '--url https://example.com/ --eval "..."'
+
   Keep pulling the log while the user exercises the running application:
     scripts\debug_capture.bat -PullOnly `
         -RemoteRoot "\Storage Card\Temp\Positron-device-gate\debug-capture-..." `
@@ -25,7 +29,8 @@ param(
     [string] $LocalRunRoot = "",
     [switch] $PullOnly,
     [int] $FollowSeconds = 0,
-    [switch] $ForceTerminatePositron
+    [switch] $ForceTerminatePositron,
+    [string] $AppArguments = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -266,9 +271,16 @@ try {
 
         [PositronDeviceRapi]::DeleteFileIfExists($remoteLog)
         $remoteExe = $RemoteRoot + "\positron.exe"
-        Write-Capture ("launching {0}" -f $remoteExe)
+        if ([string]::IsNullOrEmpty($AppArguments)) {
+            $remoteCommandLine = $null
+            Write-Capture ("launching {0}" -f $remoteExe)
+        } else {
+            $remoteCommandLine = $AppArguments
+            Write-Capture ("launching {0} with application arguments" -f
+                    $remoteExe)
+        }
         $remotePid = [PositronDeviceRapi]::LaunchProcess(
-                $remoteExe, $RemoteRoot, $null)
+                $remoteExe, $RemoteRoot, $remoteCommandLine)
         Write-Capture ("remote pid={0}" -f $remotePid)
     }
 

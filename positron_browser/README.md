@@ -92,10 +92,18 @@ native function、listener、collection、Fragment 根、selector 深度、字�
 
 ```c
 HANDLE session = PBrowser_ScriptSessionCreateEx(
-        4000UL, PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
+        8000UL, PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
 ```
 
 `PBrowser_ScriptSessionCreateEx()` 只接受默认 1.5 MiB 到应用上限 3 MiB 的范围；传入零选择旧默认，低于默认或超过上限返回 `NULL`，不存在无限制模式。`positron.exe` 使用 3 MiB profile，但 source 仍受 `positron_script.dll` 的 128 KiB 上限约束。长生命周期宿主可在两个不重入的脚本之间调用 `PBrowser_ScriptSessionCollectGarbage()`；该操作不改变全局值、DOM bridge 或事件注册。`PBrowser_ScriptSessionMemoryUsed()`、`PBrowser_ScriptSessionPeakMemoryUsed()` 和 `PBrowser_ScriptSessionMemoryLimit()` 只返回当前 session 的诊断快照。
+
+应用外壳的 `--eval` 只是在页面提交后的已有 session 上执行一次 bounded source；它不能扩大
+Browser 的 selector/DOM facade。当前 document-level `querySelector(All)` 对稳定 `id` 和少量结构
+选择器有界支持，class-only 或没有 Core identity 的装饰节点不保证可寻址；调用者应优先给待
+自动化目标提供稳定 `id`，失败时必须接受 fail-closed 结果。
+
+应用外壳为慢速 WM6 设备选择 8 秒的固定单次 evaluation budget，以容纳有界的经典第三方
+库初始化；这是 `positron_app` 的策略，不是 Browser 的默认值，也不构成无限执行或任意网站兼容承诺。
 
 ## 宿主应负责的事情
 

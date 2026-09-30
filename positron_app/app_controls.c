@@ -28,7 +28,8 @@
 /* WM6 touch reports can land just outside a centered SVG button. Keep Core
  * layout and checkbox/radio hit-testing exact; only the app's ordinary button
  * adapter gets this bounded touch affordance. */
-#define APP_CONTROLS_BUTTON_HIT_SLOP 12
+#define APP_CONTROLS_BUTTON_HIT_SLOP_CSS 12
+#define APP_CONTROLS_BUTTON_HIT_SLOP_MAX 32
 #define APP_CONTROLS_FORM_CHECKBOX   1
 #define APP_CONTROLS_FORM_RADIO      2
 #define APP_CONTROLS_FORM_TEXT       3
@@ -61,6 +62,23 @@ static void app_controls_debug_pointer_scan(int x, int y,
     _snprintf(message, sizeof(message) - 1,
             "positron button pointer-scan x=%d y=%d scanned=%u hit=%d\r\n",
             x, y, scanned, hit ? 1 : 0);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_controls_debug_pointer_candidate(unsigned int form_index,
+        int kind, int x, int y, int width, int height, int left, int top,
+        int right, int bottom, int pointer_x, int pointer_y, int dpi,
+        int hit_slop, int hit)
+{
+    char message[256];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron button pointer-candidate index=%u kind=%d "
+            "box=%d,%d,%dx%d hit=%d,%d-%d,%d point=%d,%d "
+            "dpi=%d slop=%d hit=%d\r\n",
+            form_index, kind, x, y, width, height, left, top, right, bottom,
+            pointer_x, pointer_y, dpi, hit_slop, hit ? 1 : 0);
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 }
@@ -128,9 +146,28 @@ struct AppControlsContext {
     int button_focus_active;
     int button_space_pending;
     int syncing;
+    int dpi;
 };
 
 static AppControlsContext *g_app_controls;
+
+static void app_controls_refresh_dpi(AppControlsContext *context)
+{
+    HDC dc;
+    int device_dpi;
+
+    if (context == NULL || context->parent == NULL) {
+        return;
+    }
+    dc = GetDC(context->parent);
+    device_dpi = dc != NULL ? GetDeviceCaps(dc, LOGPIXELSX) : 0;
+    if (dc != NULL) {
+        ReleaseDC(context->parent, dc);
+    }
+    if (device_dpi > 0) {
+        context->dpi = device_dpi;
+    }
+}
 
 static int app_controls_toggle_activate(AppControlsContext *context,
         AppControlsItem *item);
@@ -977,6 +1014,7 @@ int AppControls_FocusFormControlAt(AppControlsContext *context,
     if (context == NULL || context->document == NULL) {
         return 0;
     }
+    app_controls_refresh_dpi(context);
     if (control_kind == APP_CONTROLS_FORM_CHECKBOX ||
             control_kind == APP_CONTROLS_FORM_RADIO) {
         expected_kind = APP_CONTROLS_KIND_TOGGLE;
@@ -2454,9 +2492,20 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
     int hit_bottom;
     int activate_x;
     int activate_y;
+    int hit_slop;
+    int hit;
 
     if (context == NULL || context->document == NULL) {
         return 0;
+    }
+    hit_slop = context->dpi > 0 ? MulDiv(
+            APP_CONTROLS_BUTTON_HIT_SLOP_CSS, context->dpi, 96) :
+            APP_CONTROLS_BUTTON_HIT_SLOP_CSS;
+    if (hit_slop < APP_CONTROLS_BUTTON_HIT_SLOP_CSS) {
+        hit_slop = APP_CONTROLS_BUTTON_HIT_SLOP_CSS;
+    }
+    if (hit_slop > APP_CONTROLS_BUTTON_HIT_SLOP_MAX) {
+        hit_slop = APP_CONTROLS_BUTTON_HIT_SLOP_MAX;
     }
     form_index = 0;
     while (PCore_FormControlInfo(context->document, form_index, &x, &y,
@@ -2467,15 +2516,23 @@ int AppControls_HandleButtonPointer(AppControlsContext *context,
         hit_bottom = y + height;
         if (app_controls_is_focusable_button(kind) && width > 0 &&
                 height > 0) {
-            hit_left -= APP_CONTROLS_BUTTON_HIT_SLOP;
-            hit_top -= APP_CONTROLS_BUTTON_HIT_SLOP;
-            hit_right += APP_CONTROLS_BUTTON_HIT_SLOP;
-            hit_bottom += APP_CONTROLS_BUTTON_HIT_SLOP;
+            hit_left -= hit_slop;
+            hit_top -= hit_slop;
+            hit_right += hit_slop;
+            hit_bottom += hit_slop;
         }
-        if (app_controls_is_focusable_button(kind) && width > 0 &&
+        hit = app_controls_is_focusable_button(kind) && width > 0 &&
                 height > 0 && document_x >= hit_left &&
                 document_x < hit_right && document_y >= hit_top &&
-                document_y < hit_bottom) {
+                document_y < hit_bottom;
+#ifdef _DEBUG
+        if (app_controls_is_focusable_button(kind)) {
+            app_controls_debug_pointer_candidate(form_index, kind, x, y,
+                    width, height, hit_left, hit_top, hit_right, hit_bottom,
+                    document_x, document_y, context->dpi, hit_slop, hit);
+        }
+#endif
+        if (hit) {
             activate_x = document_x;
             activate_y = document_y;
             if (activate_x < x) {
@@ -2980,6 +3037,8 @@ AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
     context->changed = changed;
     context->submit = submit;
     context->implicit_submit = implicit_submit;
+    context->dpi = 96;
+    app_controls_refresh_dpi(context);
     g_app_controls = context;
     return context;
 }

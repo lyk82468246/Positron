@@ -59,7 +59,7 @@ native 子控件保持同一顶层窗口体系，滚动使用 WM6 标准窗口�
 callback；按文档顺序执行 inline/external classic script；接入 bootstrap、timer、microtask、
 message、visibility、focus、beforeunload 和 teardown。
 
-JavaScript 默认启用，使用 `PSCRIPT_DEFAULT_BUDGET_MS * 4` 与现有 Browser 脚本堆上限。脚本
+JavaScript 默认启用，使用 `PSCRIPT_DEFAULT_BUDGET_MS * 8` 的固定应用预算与现有 Browser 脚本堆上限。脚本
 异常不使已解析页面回滚；会话初始化、桥接、超时或超限失败时，该文档脚本能力关闭并 fail
 closed。
 

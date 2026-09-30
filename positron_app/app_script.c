@@ -14,6 +14,12 @@
 
 #define APP_SCRIPT_EVENT_MAX          64
 #define APP_SCRIPT_NO_SELECT_KEY      0xffffffffUL
+/* Classic third-party libraries are evaluated synchronously on the WM6 UI
+ * thread.  Keep their budget finite, but allow the slowest supported device
+ * enough time to initialize the bounded DOM/event facade.  This is an
+ * application policy; the Browser/Script ABI remains caller-selected. */
+#define APP_SCRIPT_EVALUATION_BUDGET_MS \
+        (PSCRIPT_DEFAULT_BUDGET_MS * 8UL)
 
 typedef struct AppScriptEventBinding AppScriptEventBinding;
 
@@ -1816,7 +1822,7 @@ AppScriptContext *AppScript_Create(HANDLE document,
     context->viewport_height = viewport_height > 0 ? viewport_height : 1;
     context->dpi = dpi > 0 ? dpi : 96;
     context->session = PBrowser_ScriptSessionCreateEx(
-            PSCRIPT_DEFAULT_BUDGET_MS * 4UL,
+            APP_SCRIPT_EVALUATION_BUDGET_MS,
             PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
     if (context->session == NULL) {
         free(context);
@@ -2086,6 +2092,17 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
     app_script_debug_log_summary(context, count, executed, ignored, errors);
 #endif
     return 0;
+}
+
+int AppScript_Evaluate(AppScriptContext *context, const char *source,
+        int source_bytes)
+{
+    if (context == NULL || context->session == NULL || source == NULL ||
+            source_bytes <= 0 || source_bytes > (int) PSCRIPT_MAX_SOURCE_BYTES) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return PBrowser_ScriptSessionEvaluate(context->session, source,
+            source_bytes);
 }
 
 void AppScript_Destroy(AppScriptContext *context)

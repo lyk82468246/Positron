@@ -123,6 +123,32 @@ scripts\stage.bat Debug C:\WMShare\Positron-app
 stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应的九个公共 DLL 和
 `fonts\`；不要把 `test_host.ini` 当作应用配置，也不要从不同 stage 目录混用 DLL。
 
+### 启动参数与无人值守验收
+
+应用可以从 WM6 快捷方式、`CeCreateProcess` 或设备门接收一次性启动参数：
+
+```text
+positron.exe https://example.com/
+positron.exe --url https://example.com/ --eval "document.querySelector('#menu').click()"
+```
+
+不带参数仍打开 `positron://welcome`。URL 也可以写成 `-u` 或 `/url`；`--url=`、`-u=`
+和 `/url=` 形式同样受支持。没有显式 scheme 的网络 reference 继续交给现有 HTTP resolver；
+`positron://` 只允许应用自己的离线页面，其他 scheme 在启动时拒绝，不会静默降级或执行。
+
+`--eval`/`-e`/`/eval` 只接受一个不超过 8 KiB 的 UTF-8 脚本，并且必须与网络 URL 一起使用。
+脚本在首个候选页面完成资源提交、布局和 `load` 生命周期后执行一次；它复用页面已有的
+Browser ScriptSession、固定预算和 DOM/Event 合同，因此可以用有界的
+`document.querySelector('#menu').click()` 触发带稳定 `id` 的真实按钮默认行为，也可以使用有界
+`setTimeout` 等页面脚本能力。这里不是通用 CSS 选择器或站点自动化层：当前 document facade
+对 class-only、无 `id` 的页面节点不保证可寻址；脚本若选不到目标或点击桥失败，会记录为启动
+自动化失败，不伪造页面成功。应用不会把命令行脚本持久化到 history 或页面状态。命令行中的
+URL/脚本应使用 WM6 shell 的双引号，内部双引号写成反斜杠转义形式。
+
+这组参数属于 EXE 私有自动化入口，不修改公共 DLL ABI，也不读取或修改 `test_host.ini`。设备门
+调试脚本可用 `-AppArguments` 把同一字符串传给 `positron.exe`；普通用户启动不会自动执行
+测试选择或 fixture。
+
 ## 阶段 A/B 验收
 
 在 WM6 Professional 设备或模拟器上确认：

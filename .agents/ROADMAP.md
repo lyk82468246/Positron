@@ -115,6 +115,13 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
    EDIT/SELECT 焦点。该部分仍需设备输入、DPI、旋转和软键盘人工门；动态 DOM 插入能力仍受 Browser
    当前有界 mutation callback 限制。
 
+   应用还提供一次性的命令行消费者入口：位置 URL 或 `--url` 与单个 `--eval` 脚本在首个
+   候选完成资源提交、布局和 load 生命周期后执行。该入口复用现有 ScriptSession，脚本最多
+   8 KiB，应用使用固定 8 秒执行预算；非法参数、非网络脚本目标、超限 source 和脚本异常
+   都 fail closed，不写入 history。它只承诺当前 Browser 的有界 DOM/Event facade，不能把
+   class-only、无 Core identity 节点或任意 CSS selector 自动化写成应用能力。Debug ARMV4I
+   日志已经证明成功脚本会记录 `startup-script ... detail=executed`；失败脚本只记录错误结果。
+
    阶段 4 已接入 native `type=reset`，并新增 native `type=submit` 的
     click→Core validation→Browser 可取消 submit→Core successful-control GET/POST/multipart/dialog 路径；
     EXE 只组合 Core 结果并调用既有 navigation candidate 或 dialog close。另已把 ScriptSession `form.reset()` 接到 Browser 按 id

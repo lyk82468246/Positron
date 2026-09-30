@@ -107,6 +107,11 @@ AppScriptContext *AppScript_Create(HANDLE document,
 int AppScript_Execute(AppScriptContext *context, int allow_external,
         PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
         int *out_ignored, int *out_errors);
+/* Evaluate one bounded application-supplied command after the page has
+ * committed. This is a private EXE automation hook; it does not change the
+ * public Browser or Script ABI and accepts only the existing source budget. */
+int AppScript_Evaluate(AppScriptContext *context, const char *source,
+        int source_bytes);
 void AppScript_Destroy(AppScriptContext *context);
 
 int AppScript_BeforeUnload(AppScriptContext *context, int *out_prevented);
