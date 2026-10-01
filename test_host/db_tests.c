@@ -471,6 +471,70 @@ static BOOL db_test_transaction_and_limits(void)
     return TRUE;
 }
 
+static BOOL db_test_request_paging(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    PDbHandle db;
+    PDbStmtHandle stmt;
+    char request[32768];
+    int index;
+    int request_length;
+    int rc;
+
+    db = NULL;
+    stmt = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE page_records(id INTEGER PRIMARY KEY,name TEXT)");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "page-client", 1, "page-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "page_records", "id", columns, 2);
+    }
+    for (index = 1; rc == PDB_OK && index <= 65; ++index) {
+        stmt = NULL;
+        rc = PDb_Prepare(db,
+                "INSERT INTO page_records(id,name) VALUES(?1,?2)",
+                &stmt);
+        if (rc == PDB_OK) {
+            rc = PDb_BindInt64(stmt, 1, index);
+        }
+        if (rc == PDB_OK) {
+            rc = PDb_BindText(stmt, 2, "page", 4);
+        }
+        if (rc == PDB_OK && PDb_Step(stmt) != PDB_STEP_DONE) {
+            rc = PDB_ERROR;
+        }
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+            stmt = NULL;
+        }
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 65 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK || request_length <= 0 ||
+            strstr(request, "\"push_more\":true") == NULL ||
+            strstr(request, "\"pull_limit\":64") == NULL ||
+            strstr(request, "page-client:64") == NULL ||
+            strstr(request, "page-client:65") != NULL) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_persistence(void)
 {
     static const char path[] = "\\Temp\\positron-db-1321.sqlite";
@@ -586,7 +650,8 @@ BOOL test1321_db_contract(void)
             !db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER) ||
             !db_test_conflict_resolution(PDB_CONFLICT_DISCARD) ||
             !db_test_response_failures() ||
-            !db_test_transaction_and_limits()) {
+            !db_test_transaction_and_limits() ||
+            !db_test_request_paging()) {
         return FALSE;
     }
     local = NULL;
