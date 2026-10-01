@@ -653,12 +653,14 @@ static BOOL db_test_outbox_coalescing(void)
 
 static BOOL db_test_transaction_and_limits(void)
 {
+    static char long_sql[PDB_SQL_MAX_BYTES + 2];
     PDbHandle db;
     PDbHandle sync;
     PDbStmtHandle stmt;
     char error[128];
     char copied_error[128];
     char tiny[1];
+    int index;
     int rc;
 
     db = NULL;
@@ -705,6 +707,25 @@ static BOOL db_test_transaction_and_limits(void)
     }
     if (PDb_Prepare(db, "SELECT 1", &stmt) != PDB_OK ||
             PDb_Cancel(db) != PDB_OK || PDb_Step(stmt) == PDB_STEP_ROW) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    stmt = NULL;
+    for (index = 0; index < PDB_SQL_MAX_BYTES + 1; ++index) {
+        long_sql[index] = 'x';
+    }
+    long_sql[PDB_SQL_MAX_BYTES + 1] = '\0';
+    if (PDb_Exec(db, long_sql) != PDB_LIMIT ||
+            PDb_Prepare(db, long_sql, &stmt) != PDB_LIMIT ||
+            PDb_Prepare(db, "SELECT ?1", &stmt) != PDB_OK ||
+            PDb_BindText(stmt, 1, "x", PDB_SYNC_MAX_BODY_BYTES + 1) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_BindBlob(stmt, 1, "x", PDB_SYNC_MAX_BODY_BYTES + 1) !=
+            PDB_INVALID_ARGUMENT) {
         if (stmt != NULL) {
             PDb_Finalize(stmt);
         }
