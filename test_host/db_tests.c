@@ -1207,6 +1207,11 @@ BOOL test1321_db_contract(void)
             request_length <= 0 || request_length >= (int)sizeof(request) ||
             PDb_SyncBuildRequest(sync, request, sizeof(request),
             &request_length) != PDB_OK ||
+            strstr(request, "\"protocol\":1") == NULL ||
+            strstr(request, "\"client_id\":\"device-1\"") == NULL ||
+            strstr(request, "\"schema_version\":2") == NULL ||
+            strstr(request, "\"schema_hash\":\"schema-v2\"") == NULL ||
+            strstr(request, "\"cursor\":\"0\"") == NULL ||
             strstr(request, "device-1:1") == NULL ||
             strstr(request, "local") == NULL ||
             strstr(request, "\"payload\":{\"t\":\"b\",\"v\":\"AQI=\"}") == NULL ||
