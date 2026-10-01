@@ -2,6 +2,8 @@
 
 这条发布通道生成 Windows Mobile 6 Professional / ARMV4I 的标准 Smart Device CAB。它与现有的 nightly ZIP 独立：使用滚动 `nightly-cab` tag/release，不修改 `nightly`，也不上传 ZIP。
 
+这是主线安装发布，故不包含尚未进入主线的 `positron_db.dll`。`positron_db.dll` 只保留在绿色版 nightly ZIP/stage 发布链路中。
+
 ## 构建入口
 
 项目入口是 `positron_cab\positron_cab.vddproj`，已经加入 `Positron.sln`。CAB 项目只消费 Release 产物，项目配置为：
@@ -30,7 +32,7 @@ scripts\package_nightly_cab.bat -SkipSourceBuild -SkipUpload
 
 1. 核对版本库中的唯一命名许可证、字体和 Release 源码输出是否完整，防止把缺失输入交给部署项目后才得到模糊的 CabWiz 错误；
 2. 临时把 `__POSITRON_CAB_VERSION__` 替换为 `YYYY.MM.DD.NN`，把 `__POSITRON_CAB_BUILD_DATE__` 替换为 `YYYY-MM-DD`，再通过 VS2008 `devenv.com` 增量构建全解决方案或单独的 `positron_cab` 项目；
-3. 恢复未写入版本值的 `.vddproj`，读取 VS2008 生成的 INF/CAB，并核对 `VersionMin=5.02`、安装目录、8 个 DLL、3 个字体、许可证、快捷方式、HKLM 注册表和值类型；
+3. 恢复未写入版本值的 `.vddproj`，读取 VS2008 生成的 INF/CAB，并核对 `VersionMin=5.02`、安装目录、7 个 DLL、3 个字体、许可证、快捷方式、HKLM 注册表和值类型；
 4. 检查 CAB 的 `MSCF` 标识和禁止文件，并生成 SHA-256 清单。
 
 输出默认位于 `tmp\nightly-cab\`：
@@ -71,7 +73,7 @@ scripts\package_nightly_cab.bat
 |---|---|
 | `\Program Files\Positron` | `positron.exe` |
 | `\Program Files\Positron\licenses` | `LICENSE`、`THIRD_PARTY.md`、三个 Noto 字体许可证 |
-| `\Windows` | `positron_tls.dll`、`positron_json.dll`、`positron_db.dll`、`positron_http.dll`、`positron_core.dll`、`positron_image.dll`、`positron_script.dll`、`positron_browser.dll` |
+| `\Windows` | `positron_tls.dll`、`positron_json.dll`、`positron_http.dll`、`positron_core.dll`、`positron_image.dll`、`positron_script.dll`、`positron_browser.dll` |
 | `\Windows\fonts` | `PositronSymbolsBasic.ttf`、`PositronSymbols.ttf`、`PositronEmoji.ttf` |
 | `\Windows\Start Menu\Programs` | `Positron.lnk`，目标为 `positron.exe` |
 
@@ -96,12 +98,12 @@ CAB 只写 `HKLM\Software\Positron`，值均为 `REG_SZ`：
 
 发布前至少在干净的 WM6 Professional ARMV4I 设备或等价模拟器上完成：
 
-- 安装后确认目录、8 个 DLL、3 个字体、注册表值和 Programs 快捷方式；
+- 安装后确认目录、7 个 DLL、3 个字体、注册表值和 Programs 快捷方式；
 - 从 Programs 菜单启动应用，确认字体加载和核心运行；
 - 关闭应用后再次安装较新的 CAB，确认升级成功且没有旧 DLL/字体混用；
 - 应用运行时尝试升级，必须得到可解释的失败或要求先退出，不得产生半更新状态；
 - 卸载后确认 EXE、DLL、字体、快捷方式和 `HKLM\Software\Positron` 值都被移除；
-- 解包或审查 CAB 清单，确认没有 `positron_media.dll`、`test_host`、fixtures、PDB、LIB 或源码。
+- 解包或审查 CAB 清单，确认没有 `positron_db.dll`、`positron_media.dll`、`test_host`、fixtures、PDB、LIB 或源码。
 
 设备通过前，`nightly-cab` 只应作为本地候选，不应被当作已验收产品发布。
 

@@ -167,6 +167,8 @@ scripts\package_nightly.bat -Repository owner/repo
 
 标准安装包由 VS2008 Smart Device CAB 项目产生，项目文件是 `positron_cab\positron_cab.vddproj`。只构建 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`；不要构建 Debug CAB，也不要把 CAB 内容混入现有 ZIP 流程。
 
+主线 CAB 不包含尚未进入主线的 `positron_db.dll`；数据库 DLL 只随绿色版 nightly ZIP/stage 发布。CAB 的输入校验也会把 `positron_db.dll` 视为禁止内容。
+
 Release 配置的全解决方案构建包含 `positron_cab`；Debug 配置不生成 CAB。解决方案中的项目依赖按实际链接输入维护，顺序是基础静态库、公共 DLL、应用/测试宿主，最后是 CAB。这样 CAB 只能在它需要的 Release EXE/DLL 完成后启动。
 
 CAB 必须由 VS2008 的部署项目接口生成。可以在 VS2008 图形界面中选择上述 Release 配置执行 Build Solution，或右键 `positron_cab` 项目执行 Build；发布脚本也只调用等价的 VS2008 `devenv.com` 接口，不直接运行 `cabwiz.exe`。三个 Noto 许可证以唯一文件名保存在版本库的 `positron_cab\cab-source` 中，GUI 全解决方案构建不依赖脚本预处理。
