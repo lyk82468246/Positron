@@ -10,7 +10,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 当前代码与所有权
 
-分支 main。并行性能变更已由 df205495 提交，后续 DB 测试提交以 Git 为准；内部页面提交只包括 positron_app、专用检查脚本及本批文档。共享 main.c 中原有性能计时与退出日志已保留，不纳入重复修正。并行 device_tools 模块审计改动不属于本批，不覆盖或混入提交。
+分支 main。并行性能变更已由 df205495 提交，后续 DB 测试提交以 Git 为准；内部页面提交只包括 positron_app、专用检查脚本及其文档。共享 main.c 中原有性能计时与退出日志已保留，不纳入重复修正。本批新增的 device_tools 模块审计属于设备门前置能力，已与内部页面改动分开。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。默认入口为 newtab；内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，无 ScriptSession 或外部请求。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 的导航来源检查仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -32,7 +32,22 @@ C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全�
 
 清洁 Debug/Release rebuild 均暴露 VS2008 解决方案依赖顺序问题：消费者在依赖库尚未生成时链接，出现 LNK1181；补跑正式 build 恢复。较早 Release 尝试还遇到 devenv/msenv.dll 自身异常，最后串行补建已恢复；不使用 SafeMode 或绕过正式工程，不把失败 rebuild 写成成功。本批不发布 nightly。
 
-正式 stage Debug 已恢复成功并完成上述完整包部署。其间遇到并行 device_tools 的临时声明错误，未修改或提交他人源码；等待其修正后串行补跑 stage，未绕过正式工程或继续使用不匹配的组件。
+正式 stage Debug 已恢复成功并完成上述完整包部署。模块审计 helper 通过正式 ARMV4I Debug build；本批未绕过正式工程，也未启用强制清理。
+
+### 设备门 DLL 引用审计
+
+设备门现在使用无 Positron DLL 依赖的 `positron_process_cleanup.exe --audit-modules`，在启动
+`test_host` 前通过设备端 Toolhelp 枚举所有进程及模块，覆盖 stage 中的 9 个 Positron DLL；
+`holders=0 unavailable=0` 才能继续，快照不可用也 fail closed。`-ModuleAuditOnly` 可只做部署和
+审计，不启动 `test_host`，也不能和 `-ForceTerminatePositron` 同时使用。该门只读，不会替用户
+终止进程。
+
+本批证据必须分开解释：`tmp/device-runs/20261002-003229-dll-audit/module-audit.log` 在
+启动宿主前记录 `module_audit holders=0 unavailable=0`，随后宿主没有产生日志，TEST1321 不能
+记为通过；中断该等待后，`tmp/device-runs/20261002-004031-module-audit/module-audit.log`
+记录 `module_audit_unavailable scope=process_snapshot error=8` 和
+`holders=0 unavailable=1`，因此不能证明当前设备仍无 DLL holder。没有调用
+`-ForceTerminatePositron`，不把 `DeviceEmulator.exe` 的桌面进程存在当作 guest 结论。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
@@ -52,4 +67,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；新增应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提。性能人工通过事实保留，Release 性能对照仍是可选后续门。
 
-唯一下一步：取得当前内部页面候选的地址栏/菜单/history/quit 与语言、旋转人工结果；不要无故重新部署或结束该验收进程。失败的 clean rebuild 与零日志相邻门仍需分别排障，不把内部页自动通过当作全仓发布验收。提交仅包含本批文件，推送状态以 Git 为准。
+唯一下一步：由用户在设备端确认异常启动的 guest 进程已结束或重启设备，然后运行
+`scripts\device_gate.bat -Candidate module-audit -ModuleAuditOnly -PreserveDeployment`，必须取得
+`module_audit holders=0 unavailable=0` 才能继续任何 DLL/DB 设备门；不使用强制清理替代证据。内部
+页面的地址栏/菜单/history/quit 与语言、旋转人工验收仍是独立 backlog。ROADMAP 已复核，本批只补
+设备门前置审计，没有改变未来产品候选。

@@ -7,6 +7,7 @@ param(
     [string] $TestSelection = "",
     [switch] $EnableJavaScript,
     [switch] $ForceTerminatePositron,
+    [switch] $ModuleAuditOnly,
     [switch] $PreserveDeployment,
     [string] $PlatformName = "",
     [string] $DeviceName = ""
@@ -283,6 +284,9 @@ if ($Candidate -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]*$") {
 if ($TimeoutSeconds -lt 30) {
     throw "TimeoutSeconds must be at least 30."
 }
+if ($ModuleAuditOnly -and $ForceTerminatePositron) {
+    throw "-ModuleAuditOnly cannot be combined with -ForceTerminatePositron."
+}
 if (![string]::IsNullOrEmpty($RemoteBase) -and
         ($RemoteBase -notmatch "^\\[^\\]+\\[^\\]+" -or
          $RemoteBase -match "(^|\\)\.\.?($|\\)")) {
@@ -309,6 +313,7 @@ $runRoot = Join-Path $repoRoot ("tmp\device-runs\" + $runStamp + "-" + $Candidat
 $localStage = Join-Path $runRoot "stage"
 $localLog = Join-Path $runRoot "test_host.log"
 $localCleanupLog = Join-Path $runRoot "process-cleanup.log"
+$localModuleAuditLog = Join-Path $runRoot "module-audit.log"
 $resultPath = Join-Path $runRoot "device-gate-result.txt"
 $manifestPath = Join-Path $runRoot "payload-sha256.txt"
 $preflightPath = Join-Path $runRoot "device-gate-preflight.txt"
@@ -323,6 +328,7 @@ if ($LASTEXITCODE -ne 0) {
 $required = @(
     "positron_tls.dll",
     "positron_json.dll",
+    "positron_media.dll",
     "positron_db.dll",
     "positron_http.dll",
     "positron_core.dll",
@@ -1052,6 +1058,54 @@ function Invoke-RemoteProcessCleanup([string] $executable,
     }
 }
 
+function Invoke-RemoteModuleAudit([string] $executable,
+        [string] $remoteLogPath, [string] $localLogPath,
+        [int] $timeoutSeconds)
+{
+    $auditPid = 0
+    $auditDeadline = (Get-Date).AddSeconds($timeoutSeconds)
+    $summary = $null
+
+    if ([string]::IsNullOrEmpty($executable) -or
+            [string]::IsNullOrEmpty($remoteLogPath) -or
+            [string]::IsNullOrEmpty($localLogPath) -or $timeoutSeconds -le 0) {
+        throw "Invalid module-audit arguments."
+    }
+    Write-Stage "starting read-only device module audit"
+    $auditPid = [PositronDeviceRapi]::LaunchProcess(
+            $executable, (Split-Path -Parent $executable), "--audit-modules")
+    Write-Stage ("started module-audit helper id {0}" -f $auditPid)
+    while ($null -eq $summary -and (Get-Date) -lt $auditDeadline) {
+        if ([PositronDeviceRapi]::TryCopyFileFromDevice(
+                $remoteLogPath, $localLogPath)) {
+            $auditText = Get-Content -LiteralPath $localLogPath -Raw `
+                    -Encoding UTF8
+            $auditMatch = [regex]::Match($auditText,
+                    "(?m)^module_audit holders=\d+ unavailable=\d+\s*$")
+            if ($auditMatch.Success) {
+                $summary = $auditMatch.Value.Trim()
+            }
+        }
+        if ($null -eq $summary) {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    if ($null -eq $summary) {
+        throw "The device module-audit helper did not produce a complete summary."
+    }
+    if ($summary -notmatch "\bholders=0\b" -or
+            $summary -notmatch "\bunavailable=0\b") {
+        throw ("The device module audit did not confirm an empty holder set: " +
+                $summary)
+    }
+    Write-Stage ("device module audit completed: {0}" -f $summary)
+    return @{
+        ProcessId = $auditPid
+        Summary = $summary
+        LogRetrieved = $true
+    }
+}
+
 $targetDescription = "WMDC current RAPI connection"
 try {
     $wmdc = Get-ItemProperty -LiteralPath `
@@ -1087,6 +1141,7 @@ $remoteExe = $remoteRoot + "\" + $remoteExecutableName
 $remoteLog = $remoteRoot + "\test_host.log"
 $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
 $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
+$remoteModuleAuditLog = $remoteRoot + "\module-audit.log"
 $remoteCommandLine = if ($ForceTerminatePositron) {
     "--force-terminate-positron"
 } else {
@@ -1094,8 +1149,12 @@ $remoteCommandLine = if ($ForceTerminatePositron) {
 }
 $remoteProcessId = 0
 $remoteCleanupProcessId = 0
+$moduleAuditProcessId = 0
 $forceCleanupSummary = "not_requested"
 $forceCleanupLogRetrieved = $false
+$moduleAuditSummary = "not_run"
+$moduleAuditLogRetrieved = $false
+$moduleAuditCheck = "not_run"
 $timedOut = $false
 $recoveredAfterTimeout = $false
 $remoteExitCode = "not_exposed_by_rapi"
@@ -1171,6 +1230,7 @@ try {
     $remoteLog = $paths.Log
     $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
     $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
+    $remoteModuleAuditLog = $remoteRoot + "\module-audit.log"
     try {
         Ensure-RemoteOwnerRoot $remoteOwnerRoot
     } catch {
@@ -1192,6 +1252,7 @@ try {
         $remoteLog = $paths.Log
         $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
         $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
+        $remoteModuleAuditLog = $remoteRoot + "\module-audit.log"
         Ensure-RemoteOwnerRoot $remoteOwnerRoot
     }
     $remoteDirectories = Get-RemoteDirectorySet $remoteRoot $orderedPayload `
@@ -1254,6 +1315,7 @@ try {
         $remoteLog = $paths.Log
         $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
         $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
+        $remoteModuleAuditLog = $remoteRoot + "\module-audit.log"
         Ensure-RemoteOwnerRoot $remoteOwnerRoot
         $remoteDirectories = Get-RemoteDirectorySet $remoteRoot `
                 $orderedPayload $localStage
@@ -1411,6 +1473,7 @@ try {
             $remoteLog = $paths.Log
             $remoteCleanupExe = $remoteRoot + "\positron_process_cleanup.exe"
             $remoteCleanupLog = $remoteRoot + "\process-cleanup.log"
+            $remoteModuleAuditLog = $remoteRoot + "\module-audit.log"
             Ensure-RemoteOwnerRoot $remoteOwnerRoot
             $remoteDirectories = Get-RemoteDirectorySet $remoteRoot `
                     $orderedPayload $localStage
@@ -1578,6 +1641,40 @@ try {
         $remoteCleanupProcessId = $cleanupResult.ProcessId
         $forceCleanupSummary = $cleanupResult.Summary
         $forceCleanupLogRetrieved = $cleanupResult.LogRetrieved
+    }
+
+    $moduleAuditResult = Invoke-RemoteModuleAudit $remoteCleanupExe `
+            $remoteModuleAuditLog $localModuleAuditLog 30
+    $moduleAuditProcessId = $moduleAuditResult.ProcessId
+    $moduleAuditSummary = $moduleAuditResult.Summary
+    $moduleAuditLogRetrieved = $moduleAuditResult.LogRetrieved
+    $moduleAuditCheck = "PASS"
+
+    if ($ModuleAuditOnly) {
+        if ($PreserveDeployment) {
+            $currentCleanup = "preserved_for_diagnosis"
+            Write-Stage "preserving module-audit deployment: $remoteRoot"
+        } elseif (Remove-RemoteDirectorySafely $remoteRoot) {
+            $currentCleanup = "removed_after_module_audit"
+            Write-Stage "removed module-audit deployment: $remoteRoot"
+        } else {
+            $currentCleanup = "preserved_cleanup_failed"
+            Write-Stage "preserving module-audit deployment because cleanup failed: $remoteRoot"
+        }
+        $auditOnlyResultPath = Join-Path $runRoot "module-audit-result.txt"
+        Set-Content -LiteralPath $auditOnlyResultPath -Value @(
+                "status=PASS",
+                "module_audit_check=$moduleAuditCheck",
+                "module_audit_summary=$moduleAuditSummary",
+                "module_audit_process_id=$moduleAuditProcessId",
+                "module_audit_log=$localModuleAuditLog",
+                "remote_root=$remoteRoot",
+                "current_cleanup=$currentCleanup"
+        ) -Encoding UTF8
+        Write-Stage "module audit only PASS evidence=$runRoot"
+        [PositronDeviceRapi]::Disconnect()
+        $rapiConnected = $false
+        exit 0
     }
 
     $crashBefore = [PositronDeviceRapi]::SnapshotCrashDumps()
@@ -1809,6 +1906,10 @@ $checkLines += "force_termination_check=$forceTerminationCheck"
 $checkLines += "force_cleanup_summary=$forceCleanupSummary"
 $checkLines += "force_cleanup_log_retrieved=$forceCleanupLogRetrieved"
 $checkLines += "force_cleanup_check=$forceCleanupCheck"
+$checkLines += "module_audit_summary=$moduleAuditSummary"
+$checkLines += "module_audit_process_id=$moduleAuditProcessId"
+$checkLines += "module_audit_log_retrieved=$moduleAuditLogRetrieved"
+$checkLines += "module_audit_check=$moduleAuditCheck"
 $checkLines += "selected_test_count=$($expectedTests.Count)"
 $checkLines += "observed_ok_test_count=$($actualTests.Count)"
 $checkLines += "missing_tests=$($missing -join ',')"
@@ -1876,6 +1977,7 @@ $checkLines += "new_crash_dumps=$($newCrashDumps -join '|')"
 
 $storageGateOk = $storageCheck -match "^PASS"
 $passed = $storageGateOk -and $coreModuleCheck -eq 'PASS' -and
+        $moduleAuditCheck -eq 'PASS' -and
         (($forceTerminationCheck -eq 'PASS' -and
           $forceCleanupCheck -eq 'PASS') -or
          $forceTerminationCheck -eq 'NOT_REQUESTED') -and

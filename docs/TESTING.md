@@ -327,8 +327,25 @@ scripts\device_gate.bat -Candidate feature-name -ForceTerminatePositron
 该选项先部署并启动独立的 `device_tools/positron_process_cleanup.exe`，只匹配精确基名
 `positron.exe` 或本设备门生成的 `test_host-run-*` 进程，记录每个 PID 的终止结果，并在摘要缺失或任一终止失败时阻断后续
 `test_host.exe`。随后 test host 会再次执行同样的精确检查并把摘要写入 `test_host.log`。
-未指定该开关时不会枚举或结束进程；它不能结束 `test_host.exe`、任意 DLL 名称或其他应用。
+未指定该开关时不会结束进程；它不能结束 `test_host.exe`、任意 DLL 名称或其他应用。
 强制清理不是“设备门通过”的替代证据，仍需完整日志、模块路径和 crash 检查。
+
+无论是否指定强制清理，设备门都会在启动 `test_host.exe` 前运行同一 helper 的只读
+`--audit-modules` 模式。该模式不加载任何 Positron DLL，而是通过设备端 Toolhelp
+枚举所有进程及其模块，检查本次 stage 中的 `positron_tls.dll`、`positron_json.dll`、
+`positron_media.dll`、`positron_http.dll`、`positron_core.dll`、`positron_image.dll`、
+`positron_script.dll`、`positron_browser.dll` 和 `positron_db.dll`。只有日志完整且
+`module_audit holders=0 unavailable=0` 时才继续启动宿主；任一模块被持有、任一进程
+模块快照不可用或摘要缺失都会 fail closed。审计证据保存在本地 run 目录的
+`module-audit.log`，结果文件记录 `module_audit_check=PASS/FAIL`。因此模拟器进程是否存在
+不能代替 guest 内模块审计；发现持有者时应由用户在设备端结束对应应用或重启设备后重跑。
+
+只需要确认设备当前是否为空闲模块状态时，可使用审计专用模式；它完成部署和 guest 审计后
+立即结束，不启动 `test_host.exe`，也不能和 `-ForceTerminatePositron` 同时使用：
+
+```bat
+scripts\device_gate.bat -Candidate module-audit -ModuleAuditOnly -PreserveDeployment
+```
 
 ### 空间、部署和日志
 
@@ -341,7 +358,8 @@ scripts\device_gate.bat -Candidate feature-name -ForceTerminatePositron
 Windows CE 会按 DLL 基名复用已加载模块。自动宿主在日志头记录实际的 `Core module path`，
 设备门必须确认它等于本次 staging 目录中的 `positron_core.dll`；缺失或不一致会以
 `core_module_check=UNAVAILABLE/STALE_MODULE` 拒绝本批，不能把旧模块的断言或像素结果当作源码证据。
-此时先在设备上结束持有旧 DLL 的进程，必要时重启设备，再重跑设备门。
+启动前的全 DLL 模块审计也必须通过；此时先在设备上结束持有旧 DLL 的进程，必要时重启设备，
+再重跑设备门。
 
 ### 自动通过标准
 
@@ -353,7 +371,8 @@ Windows CE 会按 DLL 基名复用已加载模块。自动宿主在日志头记�
 4. `ERROR`、`FAIL` 均为零；
 5. 恰有一个 `TESTBENCH PASS`；
 6. 涉及真实 Browse 时，路由和最终页面序列符合 fixture；
-7. 没有旧 EXE/DLL 混包、遗留进程或 crash dump 证据。
+7. 启动前模块审计确认所有目标 Positron DLL 的 holder 数为零；
+8. 没有旧 EXE/DLL 混包、遗留进程或 crash dump 证据。
 
 ## 风险相称的回归范围
 

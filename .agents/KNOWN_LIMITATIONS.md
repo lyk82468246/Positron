@@ -10,6 +10,8 @@
 - 产品 C 代码受 C89 约束；部分第三方源码依赖仓库转换器和 WinCE CRT shim。
 - VS/WMDC/Device Emulator 属于外部专有工具链，仓库不能提供或重现完整安装环境。
 - WM6 的 Smart Minimize 可能保留进程和系统级 DLL 映射；跨 stage 运行存在混用旧 DLL 的风险。
+- 模块审计需 `holders=0 unavailable=0`；Toolhelp unavailable 必须 fail closed，需重启重跑。
+  默认不杀进程，清理须显式开关。
 
 ## Media
 
