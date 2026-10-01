@@ -17,7 +17,7 @@
 
 #define APP_HOST_URL_MAX       1024
 #define APP_HOST_FOCUS_ID_MAX  128
-#define APP_HOST_FOCUS_MAX     8
+#define APP_HOST_FOCUS_MAX     24
 #define APP_HOST_CONTENT_TYPE_MAX 256
 #define APP_HOST_TITLE_MAX     256
 
@@ -93,6 +93,7 @@ typedef struct AppHostContext {
     int focus_index;
     int focus_count;
     const char *focus_ids[APP_HOST_FOCUS_MAX];
+    char internal_focus_ids[APP_HOST_FOCUS_MAX][APP_HOST_FOCUS_ID_MAX];
     char focus_id[APP_HOST_FOCUS_ID_MAX];
     char current_url[APP_HOST_URL_MAX];
 } AppHostContext;

@@ -27,6 +27,11 @@ BEGIN
         MENUITEM "Open Address", APP_CMD_ADDRESS
         MENUITEM "Refresh", APP_CMD_REFRESH
         MENUITEM SEPARATOR
+        MENUITEM "History", APP_CMD_HISTORY
+        MENUITEM "Downloads", APP_CMD_DOWNLOADS
+        MENUITEM "Settings", APP_CMD_SETTINGS
+        MENUITEM "About", APP_CMD_ABOUT
+        MENUITEM SEPARATOR
         MENUITEM "Exit", APP_CMD_EXIT
     END
 END
@@ -44,7 +49,7 @@ BEGIN
     IDS_STATUS_HISTORY_EN "The browser history rejected this navigation."
     IDS_STATUS_READY_WELCOME_EN "Ready - offline welcome page"
     IDS_STATUS_READY_CONTROLS_EN "Ready - keyboard and focus page"
-    IDS_STATUS_ADDRESS_INVALID_EN "Enter an http:// or https:// URL, or welcome/controls."
+    IDS_STATUS_ADDRESS_INVALID_EN "Enter an http://, https:// or positron:// address."
     IDS_STATUS_NO_BACK_EN "There is no previous page."
     IDS_STATUS_NO_FORWARD_EN "There is no next page."
     IDS_STATUS_LAYOUT_EN "The page could not be laid out after resize."
@@ -61,10 +66,17 @@ BEGIN
     IDS_ERROR_HISTORY_INIT_EN "The browser history service could not start."
     IDS_ERROR_CLASS_REGISTER_EN "The Positron window class could not register."
     IDS_ERROR_WINDOW_CREATE_EN "The Positron window could not be created."
+    IDS_STATUS_READY_INTERNAL_EN "Ready - internal page"
 END
 
+/* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
 IDR_APP_WELCOME_EN RCDATA "resources/en-US/welcome.html"
 IDR_APP_CONTROLS_EN RCDATA "resources/en-US/controls.html"
+IDR_APP_ABOUT_EN RCDATA "resources/en-US/about.html"
+IDR_APP_NEWTAB_EN RCDATA "resources/en-US/newtab.html"
+IDR_APP_HISTORY_EN RCDATA "resources/en-US/history.html"
+IDR_APP_DOWNLOADS_EN RCDATA "resources/en-US/downloads.html"
+IDR_APP_SETTINGS_EN RCDATA "resources/en-US/settings.html"
 
 LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 
@@ -88,6 +100,11 @@ BEGIN
         MENUITEM "打开地址", APP_CMD_ADDRESS
         MENUITEM "刷新", APP_CMD_REFRESH
         MENUITEM SEPARATOR
+        MENUITEM "历史记录", APP_CMD_HISTORY
+        MENUITEM "下载", APP_CMD_DOWNLOADS
+        MENUITEM "设置", APP_CMD_SETTINGS
+        MENUITEM "关于", APP_CMD_ABOUT
+        MENUITEM SEPARATOR
         MENUITEM "退出", APP_CMD_EXIT
     END
 END
@@ -105,7 +122,7 @@ BEGIN
     IDS_STATUS_HISTORY_ZH "浏览器历史记录拒绝了此次导航。"
     IDS_STATUS_READY_WELCOME_ZH "就绪 - 离线欢迎页面"
     IDS_STATUS_READY_CONTROLS_ZH "就绪 - 键盘和焦点页面"
-    IDS_STATUS_ADDRESS_INVALID_ZH "请输入 http:// 或 https:// 地址，或输入 welcome/controls。"
+    IDS_STATUS_ADDRESS_INVALID_ZH "请输入 http://、https:// 或 positron:// 地址。"
     IDS_STATUS_NO_BACK_ZH "没有上一页。"
     IDS_STATUS_NO_FORWARD_ZH "没有下一页。"
     IDS_STATUS_LAYOUT_ZH "调整大小后无法重新布局页面。"
@@ -122,7 +139,13 @@ BEGIN
     IDS_ERROR_HISTORY_INIT_ZH "浏览器历史记录服务无法启动。"
     IDS_ERROR_CLASS_REGISTER_ZH "Positron 窗口类注册失败。"
     IDS_ERROR_WINDOW_CREATE_ZH "Positron 窗口创建失败。"
+    IDS_STATUS_READY_INTERNAL_ZH "就绪 - 内部页面"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"
 IDR_APP_CONTROLS_ZH RCDATA "resources/zh-CN/controls.html"
+IDR_APP_ABOUT_ZH RCDATA "resources/zh-CN/about.html"
+IDR_APP_NEWTAB_ZH RCDATA "resources/zh-CN/newtab.html"
+IDR_APP_HISTORY_ZH RCDATA "resources/zh-CN/history.html"
+IDR_APP_DOWNLOADS_ZH RCDATA "resources/zh-CN/downloads.html"
+IDR_APP_SETTINGS_ZH RCDATA "resources/zh-CN/settings.html"

@@ -89,6 +89,57 @@ Back/Forward、脚本导航和滚动恢复。提交取消、网络错误和候�
 表单、multipart、控件销毁和重复 teardown；设备门覆盖 HTTP/HTTPS、脚本、控件、SIP/IME、旋转、
 DPI、软键和失败回滚。
 
+## 内部页面与命令地址
+
+EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和命令；scheme 分流仍由
+`app_url_router` 完成，HTTP(S) 保留现有网络路径，不修改 DLL ABI。
+
+| 地址 | 应用策略 |
+| --- | --- |
+| `positron://newtab` | 默认起始页；无参数、空地址和主页菜单均使用此页 |
+| `positron://about` | 说明、可取得的版本/系统信息、内部页面目录 |
+| `positron://version`、`positron://system` | 提交前规范化为 about 的 version/system 片段，仅提交一次 history |
+| `positron://history` | Browser 当前导航栈的只读快照，包括仍存在的前进项，最新在前，最多 16 项 |
+| `positron://downloads` | 明确说明下载管理未实现，不伪造任务或下载记录 |
+| `positron://settings` | 只读显示当前语言、起始页与 JavaScript 策略 |
+| `positron://quit` | 仅地址栏直接提交可以正常退出，不创建页面或 history 项 |
+
+页面名大小写无关，接受一个可选末尾斜杠，显示规范小写地址；新页面只接受注册的片段。
+`welcome`/`controls` 的原地址与关键词保留，controls 查询参数不改写。未知地址保留旧文档、
+标题和已提交地址。别名章节由 Core fragment 几何定位，不把别名作为第二个页面提交。
+
+英语/简体中文 UTF-8 模板无 BOM、以 RCDATA 嵌入 EXE；所有内部页复用 Core parse/style/layout/
+paint 和统一 CSS，不创建 ScriptSession，不请求外部资源。模板沿用 i18n 预算，动态 HTML
+不超过 128 KiB；调用方拥有生成缓冲区，按明确长度解析后释放。history 自身不展示；刷新/
+重新进入时重新读取快照，文本和链接属性均转义，只为受支持地址生成链接。点击按 URL 发起
+新导航，不依赖旧索引；不提供持久访问日志、清除、删除或搜索。新页链接使用 Core 焦点查询，
+固定最多 24 个焦点槽位，并在最终布局后设置焦点目录。
+
+导航来源由 EXE 私有枚举携带，分派处拒绝链接、脚本、启动参数、重定向、表单和历史重放
+执行 quit；Debug 与 Release 一致。获准时投递现有 WM_CLOSE，沿原关闭流程取消并等待网络任务、
+销毁 native 控件、释放页面与 DLL。页面切换仍先完成候选构建和 beforeunload，再提交 history、
+teardown 旧页、交换页面和恢复滚动。restart/kill/hang 不属于当前实现。
+
+### 后端进入条件
+
+本批不创建 SQLite/JSON 文件，不调整 DB 主线发布依赖。后续应用设置、访问日志和下载记录
+优先使用 `positron_db.dll` 本地 SQL；表结构、migration 和存储策略归应用，Browser 会话栈保持
+独立。接入前必须通过 ARMV4I 文件数据库创建、中文读写、事务回滚、关闭重开、migration 失败、
+空间不足和 journal 恢复设备门，随后才加入 EXE 链接、解决方案依赖和 CAB 输入校验。未通过时
+后续才考虑版本化、原子替换的本地 JSON，不在当前批次引入回退存储。
+
+真实下载另立纵切：HTTP 先提供有界流式响应与取消接口，应用负责文件保存和任务调度；不使用
+现有 1 MiB 完整响应体模拟通用下载。
+
+### 内部页面验收
+
+Debug 私有自检使用独立 Browser history 验证路由来源、别名、16 项与前进栈、转义、自过滤、
+容量失败、Core 解析和布局焦点；测试夹具与日志不编译进 Release。完整 Debug 包部署后，
+`scripts/internal_pages_gate.bat` 复用已有 RAPI helper 自动检查实际启动导航、规范化、章节定位、
+单次 history 提交、无脚本、焦点和新增 crash dump；需要显式同意精确进程清理，门后留下 newtab。
+自动门不替代真实地址栏输入、菜单、history 点击/刷新、加载中 quit、中英文、触摸、键盘、
+软键、滚动、旋转和 DPI 人工验收。所有构建串行，使用正式 Debug/Release 配置与匹配完整包。
+
 ## 公共接口与文档规则
 
 阶段 0–4 不修改现有公共 ABI。新增内容全部为 `positron_app` 私有源文件和私有接口；若需要

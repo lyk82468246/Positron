@@ -30,6 +30,12 @@
 
 ## 独立应用消费者的宿主边界
 
+EXE 私有内部地址注册表提供 newtab、about、只读 settings、下载未实现说明和 Browser 会话
+history 视图；version/system 规范化为 about 章节。模板双语内嵌，动态 HTML 上限 128 KiB，
+history 最多 16 条，焦点最多 24 项。quit 只接受地址栏直接提交并走正常关闭，不修改公共
+DLL ABI；存储和真实下载仍未接入，边界见
+[内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
+
 `positron.exe` 的私有 `AppHostContext` 只收拢 WM6 窗口、页面句柄、导航候选、history、资源
 和 DLL 初始化/清理的生命周期；Core/Browser/HTTP 仍拥有文档、URL、history、资源事务和
 页面语义。阶段 0 保持离线页面、英语/简体中文 i18n 和主文档 HTTP(S) GET 不变；阶段 1

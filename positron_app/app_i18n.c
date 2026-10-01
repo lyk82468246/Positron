@@ -45,7 +45,8 @@ static const AppTextResourcePair g_text_resources[APP_TEXT_COUNT] = {
     { IDS_ERROR_CORE_INIT_EN, IDS_ERROR_CORE_INIT_ZH },
     { IDS_ERROR_HISTORY_INIT_EN, IDS_ERROR_HISTORY_INIT_ZH },
     { IDS_ERROR_CLASS_REGISTER_EN, IDS_ERROR_CLASS_REGISTER_ZH },
-    { IDS_ERROR_WINDOW_CREATE_EN, IDS_ERROR_WINDOW_CREATE_ZH }
+    { IDS_ERROR_WINDOW_CREATE_EN, IDS_ERROR_WINDOW_CREATE_ZH },
+    { IDS_STATUS_READY_INTERNAL_EN, IDS_STATUS_READY_INTERNAL_ZH }
 };
 
 static LANGID app_call_language_proc(HMODULE module, LPCTSTR name)
@@ -194,6 +195,21 @@ static UINT app_page_resource(int page_kind, AppLanguage language)
     } else if (page_kind == APP_I18N_PAGE_CONTROLS) {
         english_id = IDR_APP_CONTROLS_EN;
         chinese_id = IDR_APP_CONTROLS_ZH;
+    } else if (page_kind == APP_I18N_PAGE_ABOUT) {
+        english_id = IDR_APP_ABOUT_EN;
+        chinese_id = IDR_APP_ABOUT_ZH;
+    } else if (page_kind == APP_I18N_PAGE_NEWTAB) {
+        english_id = IDR_APP_NEWTAB_EN;
+        chinese_id = IDR_APP_NEWTAB_ZH;
+    } else if (page_kind == APP_I18N_PAGE_HISTORY) {
+        english_id = IDR_APP_HISTORY_EN;
+        chinese_id = IDR_APP_HISTORY_ZH;
+    } else if (page_kind == APP_I18N_PAGE_DOWNLOADS) {
+        english_id = IDR_APP_DOWNLOADS_EN;
+        chinese_id = IDR_APP_DOWNLOADS_ZH;
+    } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
+        english_id = IDR_APP_SETTINGS_EN;
+        chinese_id = IDR_APP_SETTINGS_ZH;
     }
     if (english_id == 0 || chinese_id == 0) {
         return 0;

@@ -400,7 +400,10 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
-- same-document 与跨文档 scroll restore 覆盖 Browser entry 保存的有界 page-level `(scroll_x, scroll_y)` viewport snapshot；参考宿主读取 Core 的 page-level width/height，对两个轴按当前 client extent clamp，并把物理坐标用于 scrollbar、paint、命中测试和 native child。浏览器脚本的 page-level `scrollTo`/`scrollBy` 也可经 typed callback 应用到该视口，宿主在 CSS page 坐标与物理坐标之间换算，并在物理滚动后用 notification 同步脚本偏移；有效变化会先派发 `visualViewport.scroll`，再派发 window `scroll`。脚本把 `history.scrollRestoration` 设为 `manual` 时，宿主会跳过自动 entry restore，但 fragment reveal 和显式滚动仍可执行。元素 overflow 的 retained offset 不属于 history snapshot；完整滚动容器树、scroll chaining、视觉 viewport 偏移、滚动锚定、平滑/惯性滚动和跨窗口恢复仍未实现。
+- 内部 history 仅显示会话栈，不是访问日志；settings 只读，downloads/持久设置未实现。
+  下载须先有 HTTP 流式取消接口，存储须先过 DB 文件设备门。quit 仅限地址栏；
+  内部页面触摸、双语、旋转和退出人工门仍未完成，详见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
+- Browser history 只保存有界 page-level `(scroll_x, scroll_y)`，宿主按 Core extent/client size clamp 并换算 CSS/物理坐标；`scrollRestoration=manual` 跳过自动恢复，但不阻止 fragment reveal 或显式滚动。元素 retained-overflow offset 不入栈；完整滚动树、chaining、锚定、惯性滚动、视觉 viewport 偏移和跨窗口恢复未实现。公开合同与通知顺序见 [能力矩阵](../docs/CAPABILITIES.md#browserpositron_browserdll)。
 - `positron.exe` 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - 下载、外部协议和权限仍由宿主决定。

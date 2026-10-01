@@ -1,113 +1,55 @@
 # 当前交接
 
-本文件只保存当前事实、候选、风险和唯一下一步。稳定边界见 [架构](../docs/ARCHITECTURE.md)、
-[能力矩阵](../docs/CAPABILITIES.md) 和 [测试合同](../docs/TESTING.md)；旧批次由 Git 与本地证据保存。
+本文件只保存当前事实、候选、风险和唯一下一步。稳定边界见 [架构](../docs/ARCHITECTURE.md)、[能力矩阵](../docs/CAPABILITIES.md) 和 [测试合同](../docs/TESTING.md)。
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者
-positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。本轮目标是 EXE 私有内部页面与命令地址；不修改公共 DLL ABI，不引入持久化或真实下载。
 
-用户已确认 WinWorld 菜单能正常展开/收起，SVG 与按钮作者外观正常。不要恢复旧的“只有 Button
-文本”或“SVG 仍损坏”假设。当前授权目标是性能：用户报告展开约 10 秒、收起约 6 秒，期间 UI
-无响应。新性能候选已有真实页面自动几何与分段计时；用户现在确认展开/收起均不超过约 2 秒，
-期间地址栏和菜单可响应。实际点按性能门已通过；Release 应用的额外
-性能对照尚未运行，不把 Debug 体验扩大为所有真机或配置的保证。
+用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
 ## 当前代码与所有权
 
-当前分支 main，接管时的产品基线为 cb051cd8，现 HEAD 已由并发 CAB 工作前进至 c6b4819b。
-关系 callback 可选 NULL 输出修复与按钮作者内容保留
-继续有效。本会话的未提交变化尚未推送：
+分支 main。并行性能变更已由 df205495 提交，后续 DB 测试提交以 Git 为准；内部页面提交只包括 positron_app、专用检查脚本及本批文档。共享 main.c 中原有性能计时与退出日志已保留，不纳入重复修正。并行 device_tools 模块审计改动不属于本批，不覆盖或混入提交。
 
-- libdom element.c：替换 class attribute 时同步更新 CSS class-token cache，分配失败保持旧值。
-  这是菜单 class 已变而 CSS 仍将其隐藏的根因；不能仅凭 ARIA/class 判断菜单可见。
-- Core pcore_select.c：外部 CSS bytes 继续受 32 项、每项 256 KiB、总计 512 KiB 预算约束。
-  顶层、无 import 的完整解析结果可按 URL/bytes/resolver 身份复用，libcss 报告的累计大小最多
-  1 MiB，随文档释放；callback 身份变化重新解析一次后可替换旧缓存，超预算与 import 路径
-  保持逐次解析。必须覆盖候选 request→提交页 NULL pw 的真实切换，不能只验证固定上下文。
-- 应用 Debug：DOM getter 明细默认关闭，可显式编译 APP_DEBUG_DOM_TRACE=1 恢复；有界日志句柄
-  按 session 复用，退出关闭，仍限制 128 KiB。保留 mutation、脚本结果与低频 timing，不改变 Release。
-- TEST24：检查缓存命中不重复解析 URL、媒体重选、class mutation 与 resolver 身份变化。
-  TEST1327：增加 expand/hide/re-expand 的最终布局高度断言，避免旧 class-only 假阳性。
-- TEST45：fixture 的 css_import_test_ctx 不再传给要求 navigation request 的 wm_combine_url；
-  使用只调用公共 HTTP resolver 的 fixture 适配，产品导航接线没有改动。
-- Debug 捕获：先保存旧日志，精确进程清理必须等 helper 的成功摘要，不再仅等 500 ms；
-  session 长持有日志句柄使原固定等待暴露 device=32 共享冲突，失败未启动新包。
+内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。默认入口为 newtab；内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，无 ScriptSession 或外部请求。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 的导航来源检查仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
-工作区同时出现不属于本轮的应用页面/菜单扩展，包括 app_internal_pages.c/.h、双语 about/
-newtab/history/downloads/settings 页面及工程、资源、i18n、host 和 main.c 改动。不得覆盖或
-整文件混入性能提交；main.c 已有重叠。本轮只选取自己的计时/退出日志 hunks，其他应用改动和
-暂存内容原样保留；提交状态以 Git 为准。
+## 候选与验证证据
 
-## 证据与当前候选状态
+### 内部页面自动门
 
-### 功能与性能线索
+Debug 私有启动自检使用独立 Browser history，不污染实时页面：检查所有来源的 quit 策略、别名只提交一次、16 项及前进栈、反向顺序、HTML 转义、自身过滤、容量拒绝、Core 解析/布局和 history 的 23 个焦点；另读取并解析十份中英文 RCDATA，确认 UTF-8 无 BOM、中文标题非 ASCII。夹具与诊断全部由 _DEBUG 编译隔离。
 
-人工应用包：tmp/device-runs/manual-button-20261001-224624/，PID 4144740058，包含 class cache 修复。
-用户确认正常展开/收起，但 6–10 秒阻塞不可接受。该包已被后续设备门清理，不应让用户继续找旧窗口。
+最终源码的导航门证据在 tmp/device-runs/internal-pages-delivery/navigation/：15/15，通过默认入口、各页面、大小写、末尾斜杠、about 片段与别名章节滚动、旧关键词/controls 查询参数、未知启动地址及启动 quit 拒绝；每次仅一个 history 提交、无脚本，焦点数量符合预期，crash_check=PASS。设备为 480x640、DPI192。包包含最终 Media/TLS ABI 显示；Debug 私有自检在每次启动通过，最终 PID 3811239850 留在 newtab。
 
-该包日志中 style 约 1232–1383 guest ms，layout 约 36–61 guest ms；高频 Debug DOM 日志会同步
-打开/写入/关闭文件，日志已达到 128 KiB 上限，后续人工操作记录不完整。不能把这些数字直接换算为
-用户墙钟或全部归咎于 CSS；Release 对照仍未完成。
+外置卡候选 tmp/device-runs/internal-pages-verified/ 曾完整复制 23 文件并启动，但随后同目录文件可枚举却 RAPI 回读返回 device=5，清理工具启动返回 device=2；未归因于页面代码或声称文件已被删除。当前使用备用内置目录 \Temp\Positron-device-gate\internal-pages-1002；首次部署前对象存储可用约 23 MiB，最终更新前仍约 8 MiB。最终完整 stage 在 tmp/device-runs/internal-pages-delivery/stage/，23 个文件全部经设备回读 SHA256 核对；旧候选二进制仅在精确清理成功后替换，未变字体因 OS 持有而不删除，直接回读确认匹配。旧性能验收 PID 已被后续清理，不再让用户寻找旧进程。
 
-最终 Debug 隔离包 tmp/device-runs/debug-capture-20261001-234236/ 的 automation-positron-debug.log
-已完整回收。自动使用生产 jQuery/Bootstrap 展开→收起→再展开，三次终态 height=404/0/404、
-ok=true；相应 style=8/7/9、layout=3/3/5、controls-refresh=13/15/16、paint=1/1/2 guest ms。
-没有提高预算、关闭动画或站点特判；与旧包计时相比收益明确，但仍不是用户墙钟/输入响应证据。
-早期低计时尚未覆盖 resolver 切换，另一个自动探针未完整结束；不得引用它们当三阶段通过。
+相邻 test_host 门 tmp/device-runs/20261002-000923-internal-pages-adjacent/ 选择 136,1081,1082,1064,999：预检通过，但 test_host 日志一直为零字节，180 秒超时，清理摘要 failed=0；不是测试 PASS，也没有足够证据归因于特定 DLL。保留诊断目录，不放宽断言。
 
-同一已验证包已保存自动日志、确认精确清理成功后重新以仅 --url 启动普通模式，当前 PID
-4134931822，远端为 \Storage Card\Temp\Positron-device-gate\debug-capture-20261001-234236。
-不再自动点按或改写页面；用户已确认真实展开/收起不超过约 2 秒，地址栏/菜单可以响应。
-同 PID 日志证明确有多次 pointer→native-button→class/ARIA→timer→重排，页面 extent 3270/4078
-交替，style 约 79–103 guest ms；机器负载不同，不能把自动探针的 7–9 ms 当作普通点按固定耗时。
-新日志在该本地目录
-positron-debug.log，旧自动日志另存，后续应只 PullOnly，不无故重新部署或结束用户验收进程。
+### 构建、审计与待验收门
 
-### 崩溃取证与修正后的自动门
+C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全的正式 Debug build 通过，EXE 零错误/警告；正式 Release build 也已通过并生成 CAB。二进制检查确认 Release EXE 不包含内部自检诊断文本。
 
-用户新截图 tmp/QQ20261001-230409.png 显示 test_host 错误报告，模块偏移 0x1e244。
-失败候选 tmp/device-runs/20261001-230333-css-parse-cache-perf/ 日志止于 TEST39 通过后，随后
-TEST45 路径中断。源码确认 fixture context 与导航 callback 类型不匹配；未把截图偏移伪称为已解析
-的 PDB 地址。失败门已保留，不是性能或设备通过证据。缓存还明确限制为顶层无 import 路径。
+清洁 Debug/Release rebuild 均暴露 VS2008 解决方案依赖顺序问题：消费者在依赖库尚未生成时链接，出现 LNK1181；补跑正式 build 恢复。较早 Release 尝试还遇到 devenv/msenv.dll 自身异常，最后串行补建已恢复；不使用 SafeMode 或绕过正式工程，不把失败 rebuild 写成成功。本批不发布 nightly。
 
-修正后的 tmp/device-runs/20261001-230944-css-cache-import-callback-fixed/ 为 24,45,999 全部通过。
-相邻门 tmp/device-runs/20261001-231300-css-cache-adjacent-final/ 为
-24,39,45,1315,1318,1325-1329,999 的 11/11：唯一 TESTBENCH PASS、零 ERROR/FAIL、匹配 Core
-路径、完整日志回收、crash_check=PASS、无新增 dump；远端已在回收后清理。设备为 480x640、DPI192，
-目标卷约 44 GB、内部约 23 MB，双空间预检通过。残留错误报告窗口需要用户点击 Done，不操作系统 GUI。
+正式 stage Debug 已恢复成功并完成上述完整包部署。其间遇到并行 device_tools 的临时声明错误，未修改或提交他人源码；等待其修正后串行补跑 stage，未绕过正式工程或继续使用不匹配的组件。
 
-最后的 resolver 切换修正由 tmp/device-runs/20261001-234106-css-cache-resolver-handoff-final/
-覆盖 24,45,1327,999 的 4/4：匹配 Core、唯一 PASS、零 ERROR/FAIL、crash_check=PASS、完整日志
-回收后清理。不能用此前 11 项门声称后续源码全量已经重跑。
+自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
-### 构建与审计
+### 保留的性能基线证据
 
-C89 与最新仓库审计通过。并发应用工程曾引用 12 个未跟踪文件使审计失败，随后另一批工作已将
-这些文件暂存，审计恢复；本轮没有放宽门，也不把它们纳入性能提交。
-最终缓存修正的正式 Debug/Release build 均通过，Core/test_host 保留已有 libcss 转换警告。
-此前 VS2008 自身异常和 CabWiz 失败不是当前阻塞。失败 SafeMode 构建实验已撤回，不增加默认路径。
-本轮未发布 nightly。隔离应用证据不用于声称并发页面改动通过；性能提交需按路径和 hunks 隔离。
+性能包 tmp/device-runs/debug-capture-20261001-234236/ 的自动 jQuery/Bootstrap 展开→收起→再展开终态 height=404/0/404、ok=true；style=8/7/9、layout=3/3/5、controls-refresh=13/15/16、paint=1/1/2 guest ms。普通点按的 style 约 79–103 guest ms，不能用自动探针耗时替代用户墙钟。
+
+最终 resolver 切换门 tmp/device-runs/20261001-234106-css-cache-resolver-handoff-final/ 为 24,45,1327,999 的 4/4、唯一 PASS、零 ERROR/FAIL、无新增 dump；此前相邻 11 项门不代表后续源码全量重跑。TEST45 fixture context 错配的失败候选仍在 tmp/device-runs/20261001-230333-css-parse-cache-perf/，失败已经修正，不恢复旧 callback 接法。
 
 ## 有效边界与设备纪律
 
-HTTP URL-aware/final URL、Core READY/PENDING/TERMINAL_FAIL、CSS data URI 与 Image rgba/linecap
-继续有效。bootstrap-multiselect SyntaxError(line 912)、module/Shadow DOM、横向滚动条暂缓项，以及
-SIP/IME、旋转、OEM 输入等门见 [限制](KNOWN_LIMITATIONS.md)，不因按钮通过而一并写成完成。
-TEST232/263/1310 已有用户验收，不无故重跑；TEST262/264/293 保留独立边界。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。DB 文件数据库设备门、HTTP 流式下载与持久化依赖仍未进入本批。
 
-WMDC 连接由用户在 GUI 手动完成，只使用当前唯一目标。外置卡 Temp 优先、内置 Temp 回退，
-部署前检查目标卷与内部对象存储，日志完整回收后才清理旧目录。显式 ForceTerminatePositron 只结束
-精确 Positron/test_host-run-* 目标，不杀 WMDC 或 VS GUI。新部署使用新目录，不覆盖诊断包。
-仅在用户告知有新截图时查询 tmp。当前截图已按该规则读取，旧截图不自动代表新运行。
+WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核：已确认的触摸展开/收起和作者图标退出当前修复目标，交互性能成为授权纵切。
-稳定 Core 缓存预算写入组件 README；不能把自动正确性门替代耗时与 UI 响应证据。
+ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；新增应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提。性能人工通过事实保留，Release 性能对照仍是可选后续门。
 
-唯一下一步：完成本轮独立提交并核对推送，保留并发应用改动；后续若真实低资源设备仍有卡顿，
-按同一页面/配置的新计时选择下一项瓶颈，可补 Release 应用对照。当前普通点按证据已取得，
-不要求用户无故重做。
-若仍有长阻塞，继续按测量优化正确 owner；不关闭动画、提高脚本预算或加入站点特判来掩盖。
+唯一下一步：取得当前内部页面候选的地址栏/菜单/history/quit 与语言、旋转人工结果；不要无故重新部署或结束该验收进程。失败的 clean rebuild 与零日志相邻门仍需分别排障，不把内部页自动通过当作全仓发布验收。提交仅包含本批文件，推送状态以 Git 为准。

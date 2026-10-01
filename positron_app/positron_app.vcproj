@@ -96,6 +96,8 @@
 	<Files>
 		<File RelativePath=".\app_debug.c" />
 		<File RelativePath=".\app_debug.h" />
+		<File RelativePath=".\app_internal_pages.c" />
+		<File RelativePath=".\app_internal_pages.h" />
 		<File RelativePath=".\app_host.c" />
 		<File RelativePath=".\app_host.h" />
 		<File RelativePath=".\app_forms.c" />
@@ -117,6 +119,16 @@
 		<File RelativePath=".\resources\en-US\welcome.html" />
 		<File RelativePath=".\resources\zh-CN\controls.html" />
 		<File RelativePath=".\resources\zh-CN\welcome.html" />
+		<File RelativePath=".\resources\en-US\about.html" />
+		<File RelativePath=".\resources\en-US\newtab.html" />
+		<File RelativePath=".\resources\en-US\history.html" />
+		<File RelativePath=".\resources\en-US\downloads.html" />
+		<File RelativePath=".\resources\en-US\settings.html" />
+		<File RelativePath=".\resources\zh-CN\about.html" />
+		<File RelativePath=".\resources\zh-CN\newtab.html" />
+		<File RelativePath=".\resources\zh-CN\history.html" />
+		<File RelativePath=".\resources\zh-CN\downloads.html" />
+		<File RelativePath=".\resources\zh-CN\settings.html" />
 		<File RelativePath=".\README.md" />
 	</Files>
 	<Globals />

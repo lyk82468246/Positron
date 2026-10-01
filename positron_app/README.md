@@ -5,15 +5,17 @@
 `positron_http.dll` 的公开 import library 访问产品能力；WM6 窗口、地址栏、Shell command
 bar、菜单、输入优先级和页面导航策略属于应用。
 
-## 当前阶段 A/B 范围
+## 应用范围
 
-当前版本提供一个内置离线欢迎页和一个键盘/焦点验收页：
+当前版本提供单窗口网络浏览、内部起始页和离线验收页：
 
 - 使用标准 WM6 caption 和 `SHCreateMenuBar` softkey command bar；左 softkey 为 `Back`，
-  右 softkey 打开原生菜单，菜单包含前进、主页、地址栏、刷新和明确退出；
+  右 softkey 打开原生菜单，包含前进、主页、地址栏、刷新、历史记录、下载、设置、关于和退出；
 - caption 下只有一行紧凑 native EDIT 地址栏；Enter 提交，Escape 恢复最近一次已提交地址；
-- 内置离线页使用应用私有地址 `positron://welcome` 与 `positron://controls`，只解析这两个
-  嵌入页面路由；地址栏仍接受 `welcome`/`controls` 快捷输入，外部网页继续使用 HTTP(S)。
+- 内部页面包含 `positron://newtab`、`about`、`history`、`downloads`、`settings`，
+  英语/简体中文模板嵌入 EXE。无参数、空地址和主页菜单打开 newtab；
+  `version`/`system` 规范化为 `positron://about#version`/`#system`。
+  `positron://welcome`、`positron://controls` 与同名快捷输入保留，外部网页继续使用 HTTP(S)；
 - Core 负责 HTML/CSS 解析、style、layout 和 GDI paint；页面支持垂直/水平滚动；
 - Browser DLL 负责应用使用的有界 history handle；失败的导航不会替换当前页面；
 - 地址栏和页面链接支持绝对 HTTP(S) URL。主文档请求在 worker 中通过
@@ -103,11 +105,23 @@ Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `conten
 `positron.ini` 不影响启动，当前没有需要用户编辑的
 配置项。
 
+## 内部地址
+
+页面名大小写无关，允许一个末尾斜杠；未知内部地址恢复已提交地址并保留文档、标题。
+history 是 Browser 会话导航栈，不是持久访问日志：最多 16 条、最新在前，包括前进项，
+过滤自身，刷新重读；点击按 URL 新导航。settings 当前只读，downloads 不提供真实下载任务。
+about 查询 CE、目标架构、DPI、视口、内存与公开 DLL ABI 版本；缺失版本标注“未提供”，
+查询失败标注“不可用”，不把 CAB 版本当成 EXE 版本。
+
+地址栏直接输入 `positron://quit` 会正常退出；网页链接、脚本、启动参数、重定向、表单和
+历史重放不能执行该命令。它不创建页面或 history 项。restart/kill/hang 尚未实现。
+存储与真实下载的后端进入条件见 [接线设计](INTEGRATION_PLAN.md#后端进入条件)。
+
 ## 界面语言
 
 启动时从 WM6 的 UI 语言选择 EXE 私有资源：简体中文（中国大陆、新加坡）使用 `zh-CN`，
-其他语言统一使用 `en-US`。菜单、softkey、状态栏标题、启动错误框以及 welcome/controls
-两个离线页面都随该选择切换；资源直接嵌入 `positron.exe`，stage 目录不需要语言文件。
+其他语言统一使用 `en-US`。菜单、softkey、状态栏标题、启动错误框及全部内部页面都随该选择切换；
+资源直接嵌入 `positron.exe`，stage 目录不需要语言文件。
 语言在进程启动时确定，设备语言改变后需要重启应用。Browser DLL 的
 `navigator.language` 等语义不在本应用批次内修改。
 
@@ -133,7 +147,7 @@ positron.exe --url https://example.com/ --click "#menu"
 positron.exe --url https://example.com/ --eval "document.querySelector('#menu').click()"
 ```
 
-不带参数仍打开 `positron://welcome`。URL 也可以写成 `-u` 或 `/url`；`--url=`、`-u=`
+不带参数打开 `positron://newtab`。URL 也可以写成 `-u` 或 `/url`；`--url=`、`-u=`
 和 `/url=` 形式同样受支持。没有显式 scheme 的网络 reference 继续交给现有 HTTP resolver；
 `positron://` 只允许应用自己的离线页面，其他 scheme 在启动时拒绝，不会静默降级或执行。
 
@@ -169,7 +183,17 @@ mutation、重排分段和控件同步/绘制耗时，设备文件仍限制为 1
 
 在 WM6 Professional 设备或模拟器上确认：
 
-1. 在英语设备和简体中文设备上分别直接启动 `positron.exe`，不出现测试选择界面，确认欢迎页、
+内部页面自动导航门复用新鲜 Debug 部署，不再构建或重复复制 DLL：
+
+```bat
+scripts\internal_pages_gate.bat -RemoteRoot "\Storage Card\Temp\Positron-device-gate\your-run" -LocalRunRoot tmp\device-runs\your-check -ForceTerminatePositron
+```
+
+该门会精确关闭 Positron 并逐页重启，验证实际提交、章节定位、无 ScriptSession 和崩溃记录，
+最终保留 newtab。手工还须检查地址栏未知地址保留标题、菜单、history 点击/刷新/前进记录、
+键盘焦点、中文显示、旋转/DPI，以及直接 quit 和加载中 quit 的正常退出。
+
+1. 在英语设备和简体中文设备上分别直接启动 `positron.exe`，不出现测试选择界面，确认起始页、
    地址栏、softkey、菜单和状态栏标题使用对应语言；在其他语言设备上确认回退英语；
 2. 点按对应语言的键盘与焦点页面链接，再用 Back/Home/Menu 返回或退出；
 3. 在页面区域点空白，窗口仍保持打开；拖动滚动条或使用方向键/PageUp/PageDown，页面
