@@ -495,6 +495,85 @@ static BOOL db_test_sync_state_guards(void)
     return TRUE;
 }
 
+static BOOL db_test_sync_registration_guards(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const PDbSyncColumn single_column[] = {
+        { "id", PDB_VALUE_INTEGER }
+    };
+    static const PDbSyncColumn missing_key[] = {
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const PDbSyncColumn duplicate_columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "id", PDB_VALUE_INTEGER }
+    };
+    static const PDbSyncColumn invalid_type[] = {
+        { "id", 99 },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const PDbSyncColumn text_key_registration[] = {
+        { "id", PDB_VALUE_TEXT },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const PDbSyncColumn reserved_column[] = {
+        { "__pdb_private", PDB_VALUE_TEXT }
+    };
+    PDbHandle db;
+    int rc;
+
+    db = NULL;
+    if (PDb_OpenUtf8(NULL, PDB_OPEN_SYNC, &db) != PDB_INVALID_ARGUMENT ||
+            db != NULL || PDb_OpenUtf8(":memory:", 0, &db) !=
+            PDB_INVALID_ARGUMENT || db != NULL ||
+            PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db) != PDB_OK) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    rc = PDb_ApplyMigration(db, 1,
+            "CREATE TABLE guard_records(id INTEGER PRIMARY KEY,name TEXT);"
+            "CREATE TABLE real_key_records(id REAL PRIMARY KEY,name TEXT)");
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "guard-client", 1, "guard-v1");
+    }
+    if (rc != PDB_OK || PDb_SyncRegisterTable(db, "missing_records", "id",
+            columns, 2) != PDB_NOT_FOUND ||
+            PDb_SyncRegisterTable(db, "bad-name", "id", columns, 2) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "__pdb_guard", "id", columns, 2) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", missing_key,
+            1) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id",
+            duplicate_columns, 2) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", invalid_type,
+            2) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id",
+            reserved_column, 1) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "real_key_records", "id", columns,
+            2) != PDB_SCHEMA_MISMATCH ||
+            PDb_SyncRegisterTable(db, "guard_records", "id",
+            text_key_registration, 2) != PDB_SCHEMA_MISMATCH ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", columns, 2) !=
+            PDB_OK ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", columns, 2) !=
+            PDB_OK ||
+            PDb_SyncRegisterTable(db, "guard_records", "name", columns, 2) !=
+            PDB_STATE ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", single_column,
+            1) != PDB_STATE) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_outbox_coalescing(void)
 {
     static const PDbSyncColumn columns[] = {
@@ -880,6 +959,7 @@ BOOL test1321_db_contract(void)
     __int64 minimum_integer;
     __int64 maximum_integer;
     char conflict_json[1024];
+    char tiny_conflict[1];
     unsigned char blob[2];
 
     if (!db_test_persistence() || !db_test_text_key_and_delete() ||
@@ -889,6 +969,7 @@ BOOL test1321_db_contract(void)
             !db_test_transaction_and_limits() ||
             !db_test_request_paging() ||
             !db_test_sync_state_guards() ||
+            !db_test_sync_registration_guards() ||
             !db_test_outbox_coalescing()) {
         return FALSE;
     }
@@ -1132,6 +1213,22 @@ BOOL test1321_db_contract(void)
             sizeof(conflict_json), &conflict_length) != PDB_OK ||
             strstr(conflict_json, "local-edit") == NULL ||
             strstr(conflict_json, "server") == NULL) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    tiny_conflict[0] = 'x';
+    if (PDb_SyncCopyConflict(sync, -1, tiny_conflict,
+            sizeof(tiny_conflict), &conflict_length) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncCopyConflict(sync, 1, NULL, 0, &conflict_length) !=
+            PDB_NOT_FOUND ||
+            PDb_SyncGetConflicts(sync, tiny_conflict, sizeof(tiny_conflict),
+            &conflict_length) != PDB_BUFFER_TOO_SMALL ||
+            tiny_conflict[0] != 'x' ||
+            PDb_SyncCopyConflict(sync, 0, tiny_conflict,
+            sizeof(tiny_conflict), &conflict_length) != PDB_BUFFER_TOO_SMALL ||
+            tiny_conflict[0] != 'x' ||
+            PDb_SyncResolveConflict(sync, 1, 99) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncConflictCount(sync) != 1) {
         PDb_Close(sync);
         return FALSE;
     }
