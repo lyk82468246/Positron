@@ -48,14 +48,19 @@ C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全�
 记录 `module_audit_unavailable scope=process_snapshot error=8` 和
 `holders=0 unavailable=1`，因此不能证明当前设备仍无 DLL holder。没有调用
 `-ForceTerminatePositron`，不把 `DeviceEmulator.exe` 的桌面进程存在当作 guest 结论。
+本次只读重试 `tmp/device-runs/20261002-005621-module-audit/module-audit.log` 仍记录
+`module_audit_unavailable scope=process_snapshot error=8` 和 `holders=0 unavailable=1`；
+门在启动 `test_host` 前停止，未生成有效的 `module-audit-result.txt`，也没有使用强制清理。
 
 ### DB 主机契约测试当前切片
 
 TEST1321 本批补齐了 schema 迁移失败后的残留表检查，并修正/断言同步注册拒绝复合主键；
 `positron_db` 的 schema 校验现在统计实际主键列总数，v1 只接受单列 INTEGER/TEXT 主键。
 同时补充 `INT64_MIN/MAX`、非空与空 BLOB 的 bind/column 读取、`ColumnCount`，以及同步请求
-BLOB Base64 编码和服务端响应解码断言。正式 `scripts\build.bat Debug build`、C89 和仓库审计
-均通过；由于当前设备模块审计不可用，本切片尚未由设备上的 TEST1321 执行确认。
+BLOB Base64 编码和服务端响应解码断言；新增未知顶层响应字段兼容性、重复/倒退/事务中迁移
+拒绝、schema 配置版本拒绝和事务中禁止构造同步请求的断言。正式 `scripts\build.bat Debug
+build`、C89 和仓库审计均通过；由于当前设备模块审计不可用，本切片尚未由设备上的
+TEST1321 执行确认。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 

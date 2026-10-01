@@ -273,7 +273,7 @@ static BOOL db_test_response_failures(void)
         "\"version\":\"2\",\"deleted\":false,\"values\":{"
         "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
         "\"name\":{\"t\":\"s\",\"v\":\"stable\"}}}],"
-        "\"next_cursor\":\"2\"}";
+        "\"next_cursor\":\"2\",\"unknown_top_level\":true}";
     static const char schema_hash_mismatch[] =
         "{\"schema_version\":1,\"schema_hash\":\"other-v1\","
         "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
@@ -405,6 +405,60 @@ static BOOL db_test_response_failures(void)
             strstr(request, "\"cursor\":\"2\"") == NULL ||
             strstr(request, "\"base_version\":\"2\"") == NULL ||
             strstr(request, "failure-client:2") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
+static BOOL db_test_sync_state_guards(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    PDbHandle db;
+    char request[2048];
+    int request_length;
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE state_records(id INTEGER PRIMARY KEY,name TEXT)");
+    }
+    if (rc != PDB_OK ||
+            PDb_ApplyMigration(db, 1, "") != PDB_OK ||
+            PDb_ApplyMigration(db, 0, "") != PDB_STATE ||
+            PDb_ApplyMigration(db, 1,
+            "CREATE TABLE rejected_migration(id INTEGER PRIMARY KEY)") !=
+            PDB_STATE ||
+            PDb_Begin(db) != PDB_OK ||
+            PDb_ApplyMigration(db, 2,
+            "CREATE TABLE rejected_transaction(id INTEGER PRIMARY KEY)") !=
+            PDB_STATE || PDb_Rollback(db) != PDB_OK ||
+            PDb_SyncConfigure(db, "state-client", 2, "state-v2") !=
+            PDB_SCHEMA_MISMATCH ||
+            PDb_SyncConfigure(db, "state-client", 1, "state-v1") != PDB_OK ||
+            PDb_SyncRegisterTable(db, "state_records", "id", columns, 2) !=
+            PDB_OK ||
+            PDb_Exec(db,
+            "INSERT INTO state_records(id,name) VALUES(1,'pending')") !=
+            PDB_OK || PDb_SyncPendingCount(db) != 1) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    request[0] = 'x';
+    if (PDb_Begin(db) != PDB_OK ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_STATE || request[0] != 'x' ||
+            PDb_Rollback(db) != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK || request_length <= 0) {
         PDb_Close(db);
         return FALSE;
     }
@@ -705,7 +759,8 @@ BOOL test1321_db_contract(void)
             !db_test_conflict_resolution(PDB_CONFLICT_DISCARD) ||
             !db_test_response_failures() ||
             !db_test_transaction_and_limits() ||
-            !db_test_request_paging()) {
+            !db_test_request_paging() ||
+            !db_test_sync_state_guards()) {
         return FALSE;
     }
     local = NULL;
