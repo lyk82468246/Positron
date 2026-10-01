@@ -466,6 +466,83 @@ static BOOL db_test_sync_state_guards(void)
     return TRUE;
 }
 
+static BOOL db_test_outbox_coalescing(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const char accepted[] =
+        "{\"schema_version\":1,\"schema_hash\":\"coalesce-v1\","
+        "\"accepted\":[{\"op_id\":\"coalesce-client:1\","
+        "\"version\":\"1\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"1\"}";
+    PDbHandle db;
+    char request[4096];
+    int request_length;
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE coalesce_records(id INTEGER PRIMARY KEY,"
+                "name TEXT)");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "coalesce-client", 1, "coalesce-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "coalesce_records", "id",
+                columns, 2);
+    }
+    if (rc != PDB_OK || PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db,
+            "INSERT INTO coalesce_records(id,name) VALUES(1,'first')") !=
+            PDB_OK || PDb_Exec(db,
+            "UPDATE coalesce_records SET name='final' WHERE id=1") !=
+            PDB_OK || PDb_Commit(db) != PDB_OK ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            strstr(request, "\"action\":\"upsert\"") == NULL ||
+            strstr(request, "\"name\":{\"t\":\"s\",\"v\":\"final\"}") == NULL ||
+            strstr(request, "first") != NULL) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    if (PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db,
+            "UPDATE coalesce_records SET name='deleted' WHERE id=1") !=
+            PDB_OK || PDb_Exec(db,
+            "DELETE FROM coalesce_records WHERE id=1") != PDB_OK ||
+            PDb_Commit(db) != PDB_OK ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            strstr(request, "\"entity\":\"coalesce_records\"") == NULL ||
+            strstr(request, "\"action\":\"delete\"") == NULL ||
+            strstr(request, "\"values\":null") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db,
+            "INSERT INTO coalesce_records(id,name) VALUES(2,'rolled-back')") !=
+            PDB_OK || PDb_Rollback(db) != PDB_OK ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "rolled-back") != NULL ||
+            PDb_SyncApplyResponse(db, 200, accepted,
+            (int)strlen(accepted)) != PDB_OK ||
+            PDb_SyncPendingCount(db) != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_transaction_and_limits(void)
 {
     PDbHandle db;
@@ -782,7 +859,8 @@ BOOL test1321_db_contract(void)
             !db_test_response_failures() ||
             !db_test_transaction_and_limits() ||
             !db_test_request_paging() ||
-            !db_test_sync_state_guards()) {
+            !db_test_sync_state_guards() ||
+            !db_test_outbox_coalescing()) {
         return FALSE;
     }
     local = NULL;
