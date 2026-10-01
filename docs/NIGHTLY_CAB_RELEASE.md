@@ -43,7 +43,7 @@ SHA256SUMS.txt
 positron-nightly-cab-wm6-armv4i.inf
 ```
 
-发布时，构建信息、commit、版本、SHA-256、安装布局和验收提示直接写入 GitHub Release body；不再生成或上传独立的 `NIGHTLY-CAB-README.md` 资产。
+发布时，构建信息、commit、版本、SHA-256、安装布局和验收提示直接写入 GitHub Release body；不再生成或上传独立的 `NIGHTLY-CAB-README.md` 资产。已有 `nightly-cab` release 会先删除再重新创建，因为仅编辑标题或正文不会刷新 GitHub 网页显示的发布时间。
 
 确认设备验收通过后，去掉 `-SkipUpload` 更新滚动发布：
 
@@ -57,7 +57,7 @@ scripts\package_nightly_cab.bat
 scripts\package_nightly_cab.bat -Repository owner/repo -BuildNumber 1
 ```
 
-上传需要已登录的 GitHub CLI，以及允许更新 `nightly-cab` tag/release 的 Git 凭据。脚本只强制更新 `nightly-cab`；不会移动或重建 `nightly`。
+上传需要已登录的 GitHub CLI，以及允许更新 `nightly-cab` tag/release 的 Git 凭据。脚本只强制更新并重建 `nightly-cab`；不会移动或重建 `nightly`。
 
 如果需要脚本先调用正式源码构建，使用默认模式：
 

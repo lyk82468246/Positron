@@ -333,17 +333,19 @@ if (-not $SkipUpload) {
         }
     }
     else {
-        Push-Location -LiteralPath $releaseWorkDirectory
-        try {
-            & $gh release upload $tag @releaseAssetNames @repoArgs --clobber
-            $releaseExitCode = $LASTEXITCODE
-        }
-        finally {
-            Pop-Location
-        }
+        # GitHub does not refresh published_at when an existing release is edited.
+        # Recreate the rolling release so the web page shows the current publish time.
+        & $gh release delete $tag @repoArgs --yes
+        $releaseExitCode = $LASTEXITCODE
         if ($releaseExitCode -eq 0) {
-            & $gh release edit $tag @repoArgs --title "Positron nightly CAB" --notes $releaseNotes --prerelease
-            $releaseExitCode = $LASTEXITCODE
+            Push-Location -LiteralPath $releaseWorkDirectory
+            try {
+                & $gh release create $tag @releaseAssetNames @repoArgs --title "Positron nightly CAB" --notes $releaseNotes --prerelease
+                $releaseExitCode = $LASTEXITCODE
+            }
+            finally {
+                Pop-Location
+            }
         }
     }
     if ($releaseExitCode -ne 0) { Fail "nightly-cab release 上传失败" }

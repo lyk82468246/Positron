@@ -179,7 +179,7 @@ CAB 必须由 VS2008 的部署项目接口生成。可以在 VS2008 图形界面
 scripts\package_nightly_cab.bat -SkipUpload
 ```
 
-脚本会临时注入本次版本和日期，运行包含 `positron_cab` 的 Release 全解决方案增量构建，构建完成后恢复 `.vddproj`；CAB 和 INF 始终由 VS2008 项目生成。输出为 `positron-nightly-cab-wm6-armv4i.cab`、对应 INF 和 `SHA256SUMS.txt` 到 `tmp\nightly-cab\`。确认本地结果后，去掉 `-SkipUpload` 可更新滚动 `nightly-cab` tag/release；它不会修改 `nightly` tag，也不会上传 ZIP。需要指定 GitHub 仓库时追加 `-Repository owner/repo`。
+脚本会临时注入本次版本和日期，运行包含 `positron_cab` 的 Release 全解决方案增量构建，构建完成后恢复 `.vddproj`；CAB 和 INF 始终由 VS2008 项目生成。输出为 `positron-nightly-cab-wm6-armv4i.cab`、对应 INF 和 `SHA256SUMS.txt` 到 `tmp\nightly-cab\`。确认本地结果后，去掉 `-SkipUpload` 可更新滚动 `nightly-cab` tag/release；已有 release 会被重新创建，以刷新网页显示的发布时间；它不会修改 `nightly` tag，也不会上传 ZIP。需要指定 GitHub 仓库时追加 `-Repository owner/repo`。
 
 如果源码已经由 VS2008 GUI 或 `scripts\build.bat Release build` 完成，可以跳过源码阶段：
 
