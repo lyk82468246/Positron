@@ -651,6 +651,43 @@ static BOOL db_test_outbox_coalescing(void)
     return TRUE;
 }
 
+static BOOL db_test_local_migration(void)
+{
+    PDbHandle db;
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE local_migration(id INTEGER PRIMARY KEY)");
+    }
+    if (rc != PDB_OK || PDb_ApplyMigration(db, 1, "") != PDB_OK ||
+            PDb_ApplyMigration(db, 0, "") != PDB_STATE ||
+            PDb_ApplyMigration(db, 2,
+            "CREATE TABLE local_bad(id INTEGER PRIMARY KEY);"
+            "THIS IS NOT VALID") == PDB_OK ||
+            PDb_Exec(db, "SELECT count(*) FROM local_bad") == PDB_OK) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    if (PDb_Begin(db) != PDB_OK ||
+            PDb_ApplyMigration(db, 2,
+            "CREATE TABLE rejected_local_transaction(id INTEGER PRIMARY KEY)") !=
+            PDB_STATE || PDb_Rollback(db) != PDB_OK ||
+            PDb_ApplyMigration(db, 2,
+            "CREATE TABLE local_migration_two(id INTEGER PRIMARY KEY)") !=
+            PDB_OK || PDb_Exec(db,
+            "SELECT count(*) FROM local_migration_two") != PDB_OK) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_transaction_and_limits(void)
 {
     static char long_sql[PDB_SQL_MAX_BYTES + 2];
@@ -1032,7 +1069,8 @@ BOOL test1321_db_contract(void)
             !db_test_request_paging() ||
             !db_test_sync_state_guards() ||
             !db_test_sync_registration_guards() ||
-            !db_test_outbox_coalescing()) {
+            !db_test_outbox_coalescing() ||
+            !db_test_local_migration()) {
         return FALSE;
     }
     local = NULL;
