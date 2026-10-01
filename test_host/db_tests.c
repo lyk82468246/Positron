@@ -298,6 +298,20 @@ static BOOL db_test_response_failures(void)
         "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
         "\"accepted\":[],\"conflicts\":[],"
         "\"next_cursor\":\"3\"}";
+    static const char accepted_then_invalid[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[{\"op_id\":\"failure-client:2\","
+        "\"version\":\"3\"}],\"conflicts\":[],"
+        "\"changes\":[{\"entity\":\"records\",\"key\":\"1\","
+        "\"version\":\"4\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"x\",\"v\":\"invalid\"}}}],"
+        "\"next_cursor\":\"3\"}";
+    static const char accepted_after_failure[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[{\"op_id\":\"failure-client:2\","
+        "\"version\":\"3\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"3\"}";
     PDbHandle db;
     char name[64];
     char request[4096];
@@ -405,6 +419,21 @@ static BOOL db_test_response_failures(void)
             strstr(request, "\"cursor\":\"2\"") == NULL ||
             strstr(request, "\"base_version\":\"2\"") == NULL ||
             strstr(request, "failure-client:2") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, accepted_then_invalid,
+            (int)strlen(accepted_then_invalid)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 1 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "after-failure") != 0 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"2\"") == NULL ||
+            strstr(request, "failure-client:2") == NULL ||
+            PDb_SyncApplyResponse(db, 200, accepted_after_failure,
+            (int)strlen(accepted_after_failure)) != PDB_OK ||
+            PDb_SyncPendingCount(db) != 0) {
         PDb_Close(db);
         return FALSE;
     }
