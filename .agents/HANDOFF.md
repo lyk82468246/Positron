@@ -68,7 +68,11 @@ pull 解码、同步文件拒绝本地完整 SQL 模式重开和 `load_extension
 本切片尚未由设备上的 TEST1321 执行确认。另补 dirty queue/outbox 事务合并、最终
 upsert/delete 选择和回滚不留 outbox 的主机断言。
 失败响应还覆盖了 accepted 后续 change 类型错误时的整批回滚，确认 outbox、cursor 和本地行
-不会被部分提交。
+不会被部分提交。随后继续补充了同步表注册边界（非法标识符、保留名、缺少主键、重复列、
+非法类型、非 INTEGER/TEXT 主键、重复注册和注册状态冲突）、冲突列表/单项复制的
+size-probe、过小缓冲、越界索引和非法 resolve action，以及同步模式 `DETACH` 和多语句
+SQL 拒绝断言。最新正式 Debug 构建、C89、仓库审计均通过；这些仍是 host contract
+证据，设备模块快照不可用期间不计入设备 TEST1321 通过。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
