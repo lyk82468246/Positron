@@ -111,6 +111,12 @@ static struct box *pcore_construct_block(dom_node *node,
         css_computed_style *style, int is_root, void *ctx,
         PCoreBoxStats *stats);
 
+/* A real HTML button is both an interactive form control and a normal
+ * author-content container.  Keep this classification in one place so an
+ * out-of-flow inline button cannot take the generic inline path and lose its
+ * gadget (or fall back to the synthetic "Button" label). */
+static int pcore_is_visual_button(dom_node *node, int gadget_type);
+
 /* Referenced (extern) by content/handlers/css/utils.h; the device DPI in fixed
  * point. Kept in sync by PCore_SetViewport / PCore_SetDeviceViewport. */
 css_fixed nscss_screen_dpi = 96 * (1 << CSS_RADIX_POINT);
@@ -321,6 +327,14 @@ static int pcore_node_name_is(dom_node *node, const char *want)
     }
     dom_string_unref(name);
     return match;
+}
+
+static int pcore_is_visual_button(dom_node *node, int gadget_type)
+{
+    return node != NULL && pcore_node_name_is(node, "button") &&
+            (gadget_type == GADGET_SUBMIT ||
+            gadget_type == GADGET_RESET ||
+            gadget_type == GADGET_BUTTON);
 }
 
 /* Copy an attribute's raw UTF-8 bytes into the box-tree talloc context.
@@ -1339,6 +1353,16 @@ static struct box *pcore_make_form_control_box(dom_node *node,
     bool selected = false;
     bool disabled = false;
 
+    /* Keep the safety net here as well as at each normalisation site.  A
+     * table/anonymous-layout path must not be able to turn an author-content
+     * BUTTON into a replaced control carrying the synthetic "Button" label.
+     * The visual builder attaches the same gadget after retaining descendants
+     * (and does not change the public form-control ABI). */
+    if (pcore_is_visual_button(node, gadget_type)) {
+        return pcore_make_visual_button_box(node, style, ctx, NULL,
+                BOX_INLINE_BLOCK, gadget_type);
+    }
+
     if (gadget_type != GADGET_CHECKBOX && gadget_type != GADGET_RADIO &&
             gadget_type != GADGET_TEXTBOX &&
             gadget_type != GADGET_PASSWORD &&
@@ -1984,7 +2008,13 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_control_type(child);
-                    if (pcore_is_positioned_inline(cs, d)) {
+                    /* A positioned BUTTON still needs its form gadget.  The
+                     * generic positioned-inline branch only builds an
+                     * anonymous block, which makes the control unclickable
+                     * and can expose a synthetic fallback label on a later
+                     * rebuild. */
+                    if (pcore_is_positioned_inline(cs, d) &&
+                            !pcore_is_visual_button(child, gadget_type)) {
                         struct box *ib = pcore_construct_block(child, cs, 0,
                                 ctx, stats);
                         if (ib != NULL) {
@@ -1993,10 +2023,7 @@ static void pcore_construct_inline(dom_node *node, css_computed_style *style,
                         }
                     } else if (gadget_type != 0) {
                         struct box *gadget;
-                        if (pcore_node_name_is(child, "button") &&
-                                (gadget_type == GADGET_SUBMIT ||
-                                gadget_type == GADGET_RESET ||
-                                gadget_type == GADGET_BUTTON)) {
+                        if (pcore_is_visual_button(child, gadget_type)) {
                             gadget = pcore_make_visual_button_box(child, cs,
                                     ctx, stats, BOX_INLINE_BLOCK,
                                     gadget_type);
@@ -2187,7 +2214,12 @@ static struct box *pcore_construct_block(dom_node *node,
                 if (cs != NULL && !pcore_is_display_none(cs, 0)) {
                     uint8_t d = css_computed_display(cs, false);
                     int gadget_type = pcore_form_control_type(child);
-                    if (pcore_is_positioned_inline(cs, d)) {
+                    /* Keep positioned inline BUTTON elements on the visual
+                     * button path for the same reason as the inline builder:
+                     * preserving the author subtree must not discard the
+                     * trusted hit-test gadget. */
+                    if (pcore_is_positioned_inline(cs, d) &&
+                            !pcore_is_visual_button(child, gadget_type)) {
                         struct box *ib;
                         if (inline_cont == NULL) {
                             inline_cont = pcore_box_new(BOX_INLINE_CONTAINER,
@@ -2206,10 +2238,7 @@ static struct box *pcore_construct_block(dom_node *node,
                                     NULL, ctx);
                             pcore_box_add_child(box, inline_cont);
                         }
-                        if (pcore_node_name_is(child, "button") &&
-                                (gadget_type == GADGET_SUBMIT ||
-                                gadget_type == GADGET_RESET ||
-                                gadget_type == GADGET_BUTTON)) {
+                        if (pcore_is_visual_button(child, gadget_type)) {
                             gadget = pcore_make_visual_button_box(child, cs,
                                     ctx, stats, BOX_INLINE_BLOCK,
                                     gadget_type);
@@ -2345,10 +2374,7 @@ static struct box *pcore_construct_flex(dom_node *node,
                      * accepts BOX_BLOCK/TABLE/FLEX only.  Keep the gadget and
                      * its DOM association, but keep a button's author
                      * subtree so CSS icons are not replaced by "Button". */
-                    if (pcore_node_name_is(child, "button") &&
-                            (gadget_type == GADGET_SUBMIT ||
-                            gadget_type == GADGET_RESET ||
-                            gadget_type == GADGET_BUTTON)) {
+                    if (pcore_is_visual_button(child, gadget_type)) {
                         item = pcore_make_visual_button_box(child, cs, ctx,
                                 stats, BOX_BLOCK, gadget_type);
                     } else {

@@ -113644,17 +113644,19 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     static const char BETWEEN[] = "</script><script>";
     static const char AFTER[] =
         "</script></head><body><div id='bar' class='navbar'>"
-        "<button class='navbar-toggler' data-toggle='collapse' "
+        "<button type='button' class='navbar-toggler' data-toggle='collapse' "
         "data-target='#nav' aria-expanded='false'><span "
-        "class='navbar-toggler-icon'>Menu</span></button></div>"
-        "<div id='nav' class='collapse'>Links</div>"
+        "class='navbar-toggler-icon'>Menu</span></button>"
+        "<div id='nav' class='collapse navbar-collapse'>Links</div></div>"
         "<p id='result'>idle</p></body></html>";
     static const char CSS[] =
         "html,body{margin:0;padding:0}"
         "#bar{display:flex;width:240px;height:40px;padding:2px}"
         ".navbar-toggler{display:block;width:96px;height:32px;margin:4px}"
         ".navbar-toggler-icon{display:block;width:80px;height:24px}"
-        "#nav{display:block;width:96px;height:24px}";
+        "#nav{width:96px;height:24px}"
+        ".collapse:not(.show){display:none}"
+        ".collapsing{height:0;overflow:hidden}";
     char *jquery;
     char *bootstrap;
     char *html;
@@ -113776,7 +113778,7 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
                 PCore_LayoutDocument(document, 320, 240) != 0 ||
                 PCore_FormControlInfo(document, 0, &button_x, &button_y,
                 &button_w, &button_h, &button_kind, NULL, &disabled) != 0 ||
-                button_kind != 7 || disabled ||
+                button_kind != 9 || disabled ||
                 button_w <= 0 || button_h <= 0) {
             ok = 0;
         }
@@ -113795,7 +113797,10 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
         info.x = button_x + button_w / 2;
         info.y = button_y + button_h / 2;
         info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
-        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_SUBMIT;
+        /* Match positron.exe: this is an ordinary Bootstrap button, not a
+         * form submit control.  Keeping the fixture on the BUTTON path makes
+         * the delegated native-event regression cover the real app contract. */
+        info.kind = PBROWSER_SCRIPT_NATIVE_BUTTON_BUTTON;
         info.disabled = 0;
         info.validation_valid = 0;
         g_browser_script_session.bridge->native_button_target_token =
@@ -113874,11 +113879,11 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     return TRUE;
 }
 
-/* TEST 1328 - a normal button must retain its author child tree in both a
- * flex item and an ordinary block.  The production navbar uses a child span
- * with a CSS data-URI SVG; replacing that subtree with the synthetic
- * "Button" label makes the control look broken even though its native gadget
- * remains hittable. */
+/* TEST 1328 - a normal button must retain its author child tree in a flex
+ * item, an ordinary block, and an out-of-flow inline button.  The production
+ * navbar uses a child span with a CSS data-URI SVG; replacing that subtree
+ * with the synthetic "Button" label makes the control look broken even
+ * though its native gadget remains hittable. */
 typedef struct test1328_fetch_state {
     int callback_calls;
 } test1328_fetch_state;
@@ -113915,13 +113920,17 @@ static BOOL test1328_core_flex_button_visual_child(void)
         "<button id='toggle' type='button'><span class='navbar-toggler-icon'>"
         "</span></button></div><div id='blockbar'>"
         "<button id='block'><span class='navbar-toggler-icon'>"
-        "</span></button></div></body></html>";
+        "</span></button></div><button id='positioned' type='button'>"
+        "<span class='navbar-toggler-icon'></span></button></body></html>";
     static const char CSS[] =
         "html,body{margin:0;padding:0;background:#ffffff}"
         "#bar{display:flex;width:120px;height:52px;padding:4px}"
         "#blockbar{display:block;width:120px;height:52px;padding:4px}"
         "#toggle,#block{display:block;width:44px;height:44px;padding:4px;"
         "border:1px solid #000000;background:#ffffff}"
+        "#positioned{display:inline;position:absolute;left:124px;top:4px;"
+        "width:44px;height:44px;padding:4px;border:1px solid #000000;"
+        "background:#ffffff}"
         ".navbar-toggler-icon{display:inline-block;width:24px;height:24px;"
         "background-repeat:no-repeat;background-size:100% 100%;"
         "background-image:url('data:image/svg+xml,%3Csvg xmlns=%22"
@@ -113945,10 +113954,17 @@ static BOOL test1328_core_flex_button_visual_child(void)
     int block_w;
     int block_h;
     int block_kind;
+    int positioned_x;
+    int positioned_y;
+    int positioned_w;
+    int positioned_h;
+    int positioned_kind;
     int disabled;
     int x;
     int y;
     int green_pixels;
+    int block_green_pixels;
+    int positioned_green_pixels;
     int found;
     int fetched;
     test1328_fetch_state fetch_state;
@@ -113963,6 +113979,13 @@ static BOOL test1328_core_flex_button_visual_child(void)
     bitmap = NULL;
     old_bitmap = NULL;
     green_pixels = 0;
+    block_green_pixels = 0;
+    positioned_green_pixels = 0;
+    positioned_x = 0;
+    positioned_y = 0;
+    positioned_w = 0;
+    positioned_h = 0;
+    positioned_kind = 0;
     found = 0;
     fetched = 0;
     memset(&fetch_state, 0, sizeof(fetch_state));
@@ -113985,7 +114008,11 @@ static BOOL test1328_core_flex_button_visual_child(void)
             PCore_FormControlInfoById(document, "block", &block_x,
             &block_y, &block_w, &block_h, &block_kind, NULL,
             &disabled) != 0 || block_kind != 7 || disabled ||
-            block_w <= 0 || block_h <= 0) {
+            block_w <= 0 || block_h <= 0 ||
+            PCore_FormControlInfoById(document, "positioned", &positioned_x,
+            &positioned_y, &positioned_w, &positioned_h, &positioned_kind,
+            NULL, &disabled) != 0 || positioned_kind != 9 || disabled ||
+            positioned_w <= 0 || positioned_h <= 0) {
         PCore_FreeStylesheet(sheet);
         PCore_FreeDocument(document);
         show_error(L"TEST 1328 FAIL", "button gadget geometry missing");
@@ -114024,7 +114051,17 @@ static BOOL test1328_core_flex_button_visual_child(void)
             if (GetGValue(pixel) > 100 && GetGValue(pixel) >
                     GetRValue(pixel) + 40 && GetGValue(pixel) >
                     GetBValue(pixel) + 40) {
-                green_pixels++;
+                block_green_pixels++;
+            }
+        }
+    }
+    for (y = positioned_y; y < positioned_y + positioned_h; y++) {
+        for (x = positioned_x; x < positioned_x + positioned_w; x++) {
+            pixel = GetPixel(memory_dc, x, y);
+            if (GetGValue(pixel) > 100 && GetGValue(pixel) >
+                    GetRValue(pixel) + 40 && GetGValue(pixel) >
+                    GetBValue(pixel) + 40) {
+                positioned_green_pixels++;
             }
         }
     }
@@ -114034,18 +114071,22 @@ static BOOL test1328_core_flex_button_visual_child(void)
     ReleaseDC(NULL, screen_dc);
     PCore_FreeStylesheet(sheet);
     PCore_FreeDocument(document);
-    if (green_pixels < 16) {
+    if (green_pixels < 16 || block_green_pixels < 16 ||
+            positioned_green_pixels < 16) {
         _snprintf(msg, sizeof(msg) - 1,
-                "flex=%d,%d,%d,%d block=%d,%d,%d,%d green_pixels=%d; "
+                "flex=%d,%d,%d,%d block=%d,%d,%d,%d "
+                "positioned=%d,%d,%d,%d kind=%d green_pixels=%d/%d/%d; "
                 "author icon was lost",
                 button_x, button_y, button_w, button_h, block_x, block_y,
-                block_w, block_h, green_pixels);
+                block_w, block_h, positioned_x, positioned_y, positioned_w,
+                positioned_h, positioned_kind, green_pixels,
+                block_green_pixels, positioned_green_pixels);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 1328 FAIL", msg);
         return FALSE;
     }
     show_info(L"TEST 1328 OK",
-            "Flex and ordinary block buttons retained their Core gadgets and "
+            "Flex, block and positioned buttons retained their Core gadgets and "
             "child CSS data-URI images; no synthetic Button label replaced "
             "the author content.");
     return TRUE;

@@ -208,7 +208,7 @@ tests=1-5 7b 13 20,999
   NanoSVG alpha 合成和 GDI paint；仅创建句柄或 data URI 解码成功不能使它通过。普通不透明
   stroke、PNG/JPEG/GIF 和已有 IANA SVG 回归仍须保持通过。
 - TEST1329 是自动的精确 Bootstrap CSS→Core→Image→GDI 回归：它保留
-  `.navbar-light .navbar-toggler-icon` 后代选择器、无 `type` 的默认 submit button、
+  `.navbar-light .navbar-toggler-icon` 后代选择器、显式 `type=button`、
   Bootstrap 的 `inline-block` button、30x30 percent-encoded `rgba()`/round-cap SVG，以及
   button 作者子树。测试
   要求 data URI 不调用宿主网络 callback，Core 产生普通 button gadget 和 span 盒，Image
@@ -226,18 +226,24 @@ tests=1-5 7b 13 20,999
   代替这些证据。
 - TEST1325–1329 是同一条 WinWorld navbar 纵切：1325 用未修改的 jQuery 3.5.1 和 Bootstrap
   4.6.2 通过 `Element.click()` 验证 delegated collapse；1326 把普通 button 放入直接 flex
-  容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在省略 `type`、
-  没有 `id` 且包含 `.navbar-toggler-icon` 子 span 的默认 submit button 上通过原生
+  容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在显式
+  `type=button`、没有 `id` 且包含 `.navbar-toggler-icon` 子 span 的生产形状 button 上通过原生
   click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言 `nav` 含 `show`、
-  按钮 `aria-expanded=true`。Core 不把装饰性 span 变成事件目标的持久 DOM id；同步事件桥
+  按钮 `aria-expanded=true`；目标菜单嵌套在 navbar 内，初始使用 `.collapse:not(.show){display:none}`，
+  避免仅验证本来就可见的目标。Core 不把装饰性 span 变成事件目标的持久 DOM id；同步事件桥
   只提供短生命周期 token，使 Bootstrap 的 delegated selector 能读到真实按钮属性。1328 在
-  flex 和普通 block 路径中让 button 的 span 使用 CSS
-  data-URI 图标，且 block fixture 省略 `type` 以覆盖默认 submit，离屏检查作者子树绘制而不是
-  合成的 `Button` 标签；1329 进一步使用 Bootstrap 的精确 hamburger URI，并贯穿 Core 到
-  最终 GDI 像素。`1325-1329,999` 已在
-  匹配 Debug ARMV4I staging 通过，模块路径匹配、零 ERROR/FAIL、无新增 dump。该门证明
-  Core 作者内容、flex/普通 block 控件和 Browser/Core 事件链，不承诺 bootstrap-multiselect
-  等其他站点脚本、完整触摸视觉或现代 JavaScript 兼容。
+  flex、普通 block（仍保留一个默认 submit 兼容项）和定位 inline 路径中让 button 的 span 使用
+  CSS data-URI 图标，分别对三个区域断言像素数量，避免其他区域的成功掩盖图标丢失；1329 进一步
+  使用 Bootstrap 的精确 hamburger URI，并贯穿 Core 到最终 GDI 像素。夹具改变后须用匹配 DLL
+  重跑；当前证据与包路径见 agent handoff，不在此维护运行时间线。该门证明 Core
+  作者内容、flex/block/定位控件和 Browser/Core 事件链，不承诺 bootstrap-multiselect 等其他
+  站点脚本、完整触摸视觉或现代 JavaScript 兼容。
+- 应用 ScriptSession 另须验证实际 callback 适配：关系 callback 的数值请求允许
+  `out_bytes=NULL`，UTF-8 长度探测/复制允许 `out_number=NULL`。接线错误可能让
+  `getElementById()` 成功但 `querySelector()` 失败，`children` 也错误地为空；仅运行 test_host
+  无法发现另一消费者的这类错误。使用应用 `--eval` 对同一稳定 id 比较直接查找、selector 和
+  children，再以 `--click` 走真实 native-button transaction，检查目标 class/ARIA mutation 与
+  timer 后重排日志。真实视觉和点按仍保留人工门。
 - TEST232 是 manual-only 的真实 file-input 交互验收：选择成功后应保留 filename/path，并且
   页面事件 trace 必须恰好为 `input|file;change|file;`；再次打开 picker 后取消不得改变
   filename 或 trace。若 `input` 监听器先更新页面文字导致 Core retained layout 失效，参考

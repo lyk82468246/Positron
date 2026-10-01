@@ -130,6 +130,74 @@ static void app_script_debug_log_summary(AppScriptContext *context, int count,
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 }
+
+static void app_script_debug_event_binding(const char *action,
+        const char *element_id, const char *event_type, int capture,
+        unsigned int script_listener, int core_listener)
+{
+    char message[448];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-event-bind action=%s id=%.*s type=%.*s "
+            "capture=%d script=%u core=%d\r\n",
+            action != NULL ? action : "unknown",
+            160, element_id != NULL ? element_id : "",
+            64, event_type != NULL ? event_type : "", capture ? 1 : 0,
+            script_listener, core_listener ? 1 : 0);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_script_debug_event_callback(const AppScriptEventBinding *binding,
+        const PCoreEventInfo *event_info, unsigned int action)
+{
+    char message[512];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-event-callback id=%.*s type=%.*s phase=%u "
+            "target=%.*s current=%.*s action=%u\r\n",
+            binding != NULL ? 160 : 0,
+            binding != NULL ? binding->element_id : "",
+            binding != NULL ? 64 : 0,
+            binding != NULL ? binding->event_type : "",
+            event_info != NULL ? event_info->phase : 0,
+            event_info != NULL && event_info->target_id != NULL ? 160 : 0,
+            event_info != NULL && event_info->target_id != NULL ?
+                    event_info->target_id : "",
+            event_info != NULL && event_info->current_target_id != NULL ?
+                    160 : 0,
+            event_info != NULL && event_info->current_target_id != NULL ?
+                    event_info->current_target_id : "", action);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_script_debug_event_relation(const char *id,
+        unsigned int relation, int result, const char *value)
+{
+    char message[384];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-event-relation id=%.*s relation=%u "
+            "result=%d value=%.*s\r\n", 160, id != NULL ? id : "",
+            relation, result, 96, value != NULL ? value : "");
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+
+static void app_script_debug_event_attribute(const char *id,
+        const char *name, int result, const char *value)
+{
+    char message[448];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-event-attribute id=%.*s name=%.*s "
+            "result=%d value=%.*s\r\n", 160, id != NULL ? id : "",
+            96, name != NULL ? name : "", result,
+            160, value != NULL ? value : "");
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
 #endif
 
 static void app_script_copy_text(char *target, int capacity,
@@ -398,11 +466,15 @@ static int app_script_get_relation(void *pw, const char *id,
 
     context = (AppScriptContext *) pw;
     if (context == NULL || context->document == NULL || id == NULL ||
-            out_bytes == NULL || out_number == NULL || out_capacity < 0 ||
+            out_capacity < 0 ||
             (out_value == NULL && out_capacity != 0) ||
             (out_value != NULL && out_capacity <= 0)) {
         return -1;
     }
+    /* Browser requests numeric relations with out_bytes == NULL and string
+     * relations with out_number == NULL (including the size-probe call).
+     * These optional outputs must retain the Core callback contract.  Requiring
+     * both silently empties children/querySelector and loses delegated targets. */
     if (app_script_native_button_target_index(context, id, &form_index)) {
         if (out_bytes != NULL) {
             *out_bytes = 0;
@@ -422,8 +494,14 @@ static int app_script_get_relation(void *pw, const char *id,
                 memcpy(out_value, tag_name, (size_t) tag_bytes);
                 out_value[tag_bytes] = '\0';
             }
+#ifdef _DEBUG
+            app_script_debug_event_relation(id, relation, 0, tag_name);
+#endif
             return 0;
         }
+#ifdef _DEBUG
+        app_script_debug_event_relation(id, relation, 2, "");
+#endif
         return 2;
     }
     return PCore_NodeRelationById(context->document, id, relation, index,
@@ -675,6 +753,17 @@ static int app_script_set_attribute(void *pw, const char *id,
             name == NULL || value == NULL) {
         return -1;
     }
+#ifdef _DEBUG
+    {
+        char message[512];
+
+        _snprintf(message, sizeof(message) - 1,
+                "positron script-attribute-set id=%.*s name=%.*s "
+                "value=%.*s\r\n", 160, id, 96, name, 192, value);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+#endif
     if (app_script_native_button_target_index(context, id, &form_index)) {
         result = PCore_FormControlSetAttributeByIndex(context->document,
                 form_index, name, value);
@@ -722,6 +811,10 @@ static int app_script_get_attribute(void *pw, const char *id,
     if (app_script_native_button_target_index(context, id, &form_index)) {
         result = PCore_FormControlAttributeByIndex(context->document,
                 form_index, name, out_value, out_capacity, out_len);
+#ifdef _DEBUG
+        app_script_debug_event_attribute(id, name, result,
+                result == 0 && out_value != NULL ? out_value : "");
+#endif
         return result == 0 ? 0 : (result == 2 ? 1 : -1);
     }
     result = PCore_NodeAttributeById(context->document, id, name,
@@ -870,6 +963,9 @@ static unsigned int app_script_event_callback(void *pw,
     action = PBrowser_ScriptSessionDispatchEvent(
             binding->context->session, binding->script_listener,
             binding->event_type, &browser_event);
+#ifdef _DEBUG
+    app_script_debug_event_callback(binding, event_info, action);
+#endif
     return (action & PBROWSER_SCRIPT_EVENT_ACTION_PREVENT_DEFAULT) != 0 ?
             PCORE_EVENT_ACTION_PREVENT_DEFAULT : PCORE_EVENT_ACTION_NONE;
 }
@@ -907,12 +1003,20 @@ static unsigned int app_script_add_event_listener(void *pw,
     listener = PCore_EventListenerAdd(context->document, binding->element_id,
             binding->event_type, capture, app_script_event_callback, binding);
     if (listener == NULL) {
+#ifdef _DEBUG
+        app_script_debug_event_binding("failed", element_id, event_type,
+                capture, script_listener, 0);
+#endif
         free(binding);
         return 0;
     }
     binding->core_listener = listener;
     binding->next = context->events;
     context->events = binding;
+#ifdef _DEBUG
+    app_script_debug_event_binding("add", binding->element_id,
+            binding->event_type, capture, script_listener, 1);
+#endif
     return script_listener;
 }
 

@@ -545,7 +545,10 @@ typedef struct PBrowserScriptFocusRequestCallbacksEx {
  * boundary. Value relationships (parent/sibling/child-at/tag/form-owner)
  * use the same UTF-8 size-probe contract as PBrowserScriptGetTextFn. Count
  * and child-node-type relationships leave out_value/out_bytes unused and
- * write out_number; attribute name/value and child-node fields use the
+ * write out_number. Unused outputs are passed as NULL: numeric requests may
+ * have out_bytes == NULL, and UTF-8 requests have out_number == NULL. Adapters
+ * must accept both forms, including the NULL/0 UTF-8 size probe. Attribute
+ * name/value and child-node fields use the
  * bounded UTF-8 probe/truncation contract. The CHILD_NODE_* relations expose
  * a direct childNodes snapshot, including text/comment nodes; an element id
  * is returned only when that child has a non-empty id. FORM_OWNER and

@@ -1695,13 +1695,13 @@ static int test1329_gray_pixel(COLORREF color)
 /* TEST 1329 - the exact Bootstrap 4 navbar-toggler data URI through the
  * complete Core CSS -> data decoder -> Image SVG -> background paint path.
  * TEST 1319 proves the Image DLL in isolation; this regression deliberately
- * retains the descendant selector, button without an explicit type, encoded
+ * retains the descendant selector, ordinary type=button semantics, encoded
  * rgba() stroke and round caps used by the consumer page. */
 BOOL test1329_core_bootstrap_hamburger(void)
 {
     static const char HTML[] =
             "<!doctype html><html><body>"
-            "<nav id='nav' class='navbar navbar-light'><button "
+            "<nav id='nav' class='navbar navbar-light'><button type='button' "
             "class='navbar-toggler'><span class='navbar-toggler-icon'>"
             "</span></button></nav></body></html>";
     static const char CSS[] =
@@ -1799,7 +1799,7 @@ BOOL test1329_core_bootstrap_hamburger(void)
     if (PCore_LayoutDocument(document, 100, 100) != 0 ||
             PCore_FormControlInfo(document, 0, &button_x,
             &button_y, &button_w, &button_h, &button_kind, &button_selected,
-            &button_disabled) != 0 || button_kind != 7 || button_w <= 0 ||
+            &button_disabled) != 0 || button_kind != 9 || button_w <= 0 ||
             button_h <= 0 || PCore_NodeBox(document, "span", &span_x,
             &span_y, &span_w, &span_h) != 0 || span_w < 20 || span_h < 20 ||
             PCore_GetImageDecodeStats(document, &image_stats) != 0 ||
@@ -1860,7 +1860,7 @@ BOOL test1329_core_bootstrap_hamburger(void)
             PCore_LayoutDocument(document, 100, 100) != 0 ||
             PCore_FormControlInfo(document, 0, &button_x, &button_y,
             &button_w, &button_h, &button_kind, &button_selected,
-            &button_disabled) != 0 || button_kind != 7 || button_w <= 0 ||
+            &button_disabled) != 0 || button_kind != 9 || button_w <= 0 ||
             button_h <= 0 || PCore_NodeBox(document, "span", &span_x,
             &span_y, &span_w, &span_h) != 0 || span_w < 20 || span_h < 20) {
         strcpy(g_test1329_failure, "post-click relayout lost button child");
