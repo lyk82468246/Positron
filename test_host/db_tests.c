@@ -301,8 +301,21 @@ static BOOL db_test_response_failures(void)
     PDbHandle db;
     char name[64];
     char request[4096];
+    char many_changes[4096];
+    int index;
     int request_length;
     int rc;
+
+    strcpy(many_changes,
+            "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+            "\"accepted\":[],\"conflicts\":[],\"changes\":[");
+    for (index = 0; index < 257; ++index) {
+        if (index != 0) {
+            strcat(many_changes, ",");
+        }
+        strcat(many_changes, "{}");
+    }
+    strcat(many_changes, "],\"next_cursor\":\"3\"}");
 
     db = NULL;
     rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
@@ -370,6 +383,14 @@ static BOOL db_test_response_failures(void)
     }
     if (PDb_SyncApplyResponse(db, 200, missing_array,
             (int)strlen(missing_array)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, many_changes,
+            (int)strlen(many_changes)) != PDB_LIMIT ||
             PDb_SyncPendingCount(db) != 0 ||
             !db_test_query_name(db, name, sizeof(name)) ||
             strcmp(name, "stable") != 0) {
