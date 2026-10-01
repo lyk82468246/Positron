@@ -347,7 +347,12 @@ if (-not $SkipUpload) {
         }
     }
     if ($releaseExitCode -ne 0) { Fail "nightly-cab release 上传失败" }
-    & $gh release delete-asset $tag "NIGHTLY-CAB-README.md" @repoArgs --yes *> $null
+    $releaseAssetNames = @(& $gh release view $tag @repoArgs --json assets --jq ".assets[].name")
+    if ($LASTEXITCODE -ne 0) { Fail "无法读取 nightly-cab release 资产" }
+    if ($releaseAssetNames -contains "NIGHTLY-CAB-README.md") {
+        & $gh release delete-asset $tag "NIGHTLY-CAB-README.md" @repoArgs --yes *> $null
+        if ($LASTEXITCODE -ne 0) { Fail "删除旧版 NIGHTLY-CAB-README.md 资产失败" }
+    }
 }
 
 Write-Host "CAB 完成：$generatedCab"
