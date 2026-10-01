@@ -63,8 +63,9 @@ TEST1321 本批补齐了 schema 迁移失败后的残留表检查，并修正/�
 同时补充 `INT64_MIN/MAX`、非空与空 BLOB 的 bind/column 读取、`ColumnCount`，以及同步请求
 BLOB Base64 编码和服务端响应解码断言；新增未知顶层响应字段兼容性、重复/倒退/事务中迁移
 拒绝、schema 配置版本拒绝、事务中禁止构造同步请求，以及同步 REAL/NULL outbox 编码和
-pull 解码的断言。正式 `scripts\build.bat Debug build`、C89 和仓库审计均通过；由于当前
-设备模块审计不可用，本切片尚未由设备上的 TEST1321 执行确认。
+pull 解码、同步文件拒绝本地完整 SQL 模式重开和 `load_extension` 拒绝的断言。正式
+`scripts\build.bat Debug build`、C89 和仓库审计均通过；由于当前设备模块审计不可用，
+本切片尚未由设备上的 TEST1321 执行确认。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 

@@ -653,6 +653,14 @@ static BOOL db_test_persistence(void)
     }
     PDb_Close(db);
     db = NULL;
+    if (PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) != PDB_STATE ||
+            db != NULL) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
     rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
     if (rc == PDB_OK && db == NULL) {
         rc = PDB_ERROR;
@@ -892,6 +900,7 @@ BOOL test1321_db_contract(void)
             "ATTACH ':memory:' AS other") == PDB_OK ||
             PDb_Exec(sync, "PRAGMA user_version=1") == PDB_OK ||
             PDb_Exec(sync, "SAVEPOINT rejected") == PDB_OK ||
+            PDb_Exec(sync, "SELECT load_extension('rejected')") == PDB_OK ||
             PDb_Exec(sync,
             "CREATE VIRTUAL TABLE rejected_vtab USING fts5(value)") == PDB_OK ||
             PDb_ApplyMigration(sync, 2,
