@@ -73,6 +73,9 @@ upsert/delete 选择和回滚不留 outbox 的主机断言。
 size-probe、过小缓冲、越界索引和非法 resolve action，以及同步模式 `DETACH` 和多语句
 SQL 拒绝断言。最新正式 Debug 构建、C89、仓库审计均通过；这些仍是 host contract
 证据，设备模块快照不可用期间不计入设备 TEST1321 通过。
+随后又加入 SQL 32 KiB 和 typed bind 1 MiB 预算、固定 sync request envelope，以及服务器
+tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；仍未把 host 构建或静态证据
+当作设备运行通过。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
