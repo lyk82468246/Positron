@@ -31,6 +31,209 @@ static BOOL db_test_query_name(PDbHandle db, char* output, int capacity)
     return TRUE;
 }
 
+static BOOL db_test_query_text_name(PDbHandle db, const char* key,
+        char* output, int capacity)
+{
+    PDbStmtHandle stmt;
+    int rc;
+    const char* value;
+
+    if (db == NULL || key == NULL || output == NULL || capacity <= 0) {
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(db,
+            "SELECT name FROM text_records WHERE key=?1", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindText(stmt, 1, key, (int)strlen(key));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        return FALSE;
+    }
+    value = PDb_ColumnText(stmt, 0);
+    if (value == NULL || (int)strlen(value) >= capacity) {
+        PDb_Finalize(stmt);
+        return FALSE;
+    }
+    strcpy(output, value);
+    PDb_Finalize(stmt);
+    return TRUE;
+}
+
+static BOOL db_test_text_key_and_delete(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "key", PDB_VALUE_TEXT },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const char accepted_insert[] =
+        "{\"schema_version\":1,\"schema_hash\":\"text-v1\","
+        "\"accepted\":[{\"op_id\":\"text-client:1\","
+        "\"version\":\"1\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"1\"}";
+    static const char pulled[] =
+        "{\"schema_version\":1,\"schema_hash\":\"text-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"text_records\",\"key\":\"alpha\","
+        "\"version\":\"2\",\"deleted\":false,\"values\":{"
+        "\"key\":{\"t\":\"s\",\"v\":\"alpha\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"remote-text\"}}}],"
+        "\"next_cursor\":\"2\"}";
+    static const char accepted_delete[] =
+        "{\"schema_version\":1,\"schema_hash\":\"text-v1\","
+        "\"accepted\":[{\"op_id\":\"text-client:2\","
+        "\"version\":\"3\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"3\"}";
+    PDbHandle db;
+    char request[4096];
+    char name[64];
+    int request_length;
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE text_records(key TEXT PRIMARY KEY NOT NULL,"
+                "name TEXT)");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "text-client", 1, "text-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "text_records", "key", columns, 2);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "INSERT INTO text_records(key,name) "
+                "VALUES('alpha','local-text')");
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"entity\":\"text_records\"") == NULL ||
+            strstr(request, "\"key\":\"alpha\"") == NULL ||
+            strstr(request, "\"action\":\"upsert\"") == NULL ||
+            strstr(request, "\"values\":null") != NULL ||
+            PDb_SyncApplyResponse(db, 200, accepted_insert,
+            (int)strlen(accepted_insert)) != PDB_OK ||
+            PDb_SyncApplyResponse(db, 200, pulled,
+            (int)strlen(pulled)) != PDB_OK ||
+            !db_test_query_text_name(db, "alpha", name, sizeof(name)) ||
+            strcmp(name, "remote-text") != 0) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    rc = PDb_Exec(db, "DELETE FROM text_records WHERE key='alpha'");
+    if (rc == PDB_OK) {
+        rc = PDb_SyncBuildRequest(db, request, sizeof(request),
+                &request_length);
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            strstr(request, "\"action\":\"delete\"") == NULL ||
+            strstr(request, "\"base_version\":\"2\"") == NULL ||
+            strstr(request, "\"values\":null") == NULL ||
+            PDb_SyncApplyResponse(db, 200, accepted_delete,
+            (int)strlen(accepted_delete)) != PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            db_test_query_text_name(db, "alpha", name, sizeof(name))) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
+static BOOL db_test_conflict_resolution(int action)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const char accepted_insert[] =
+        "{\"schema_version\":1,\"schema_hash\":\"conflict-v1\","
+        "\"accepted\":[{\"op_id\":\"conflict-client:1\","
+        "\"version\":\"1\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"1\"}";
+    static const char pulled[] =
+        "{\"schema_version\":1,\"schema_hash\":\"conflict-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"1\","
+        "\"version\":\"2\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"base\"}}}],"
+        "\"next_cursor\":\"2\"}";
+    static const char conflict[] =
+        "{\"schema_version\":1,\"schema_hash\":\"conflict-v1\","
+        "\"accepted\":[],\"conflicts\":[{"
+        "\"op_id\":\"conflict-client:2\",\"entity\":\"records\","
+        "\"key\":\"1\",\"server_version\":\"3\","
+        "\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"server\"}}}],"
+        "\"changes\":[],\"next_cursor\":\"3\"}";
+    PDbHandle db;
+    char name[64];
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE records(id INTEGER PRIMARY KEY,name TEXT)");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "conflict-client", 1, "conflict-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "records", "id", columns, 2);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "INSERT INTO records(id,name) VALUES(1,'initial')");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, accepted_insert,
+                (int)strlen(accepted_insert));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, pulled,
+                (int)strlen(pulled));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "UPDATE records SET name='local-conflict' WHERE id=1");
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            PDb_SyncApplyResponse(db, 200, conflict,
+            (int)strlen(conflict)) != PDB_OK ||
+            PDb_SyncConflictCount(db) != 1 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "server") != 0 ||
+            PDb_SyncResolveConflict(db, 1, action) != PDB_OK ||
+            PDb_SyncConflictCount(db) != 0 ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "server") != 0) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_persistence(void)
 {
     static const char path[] = "\\Temp\\positron-db-1321.sqlite";
@@ -142,7 +345,9 @@ BOOL test1321_db_contract(void)
     char conflict_json[1024];
     unsigned char blob[2];
 
-    if (!db_test_persistence()) {
+    if (!db_test_persistence() || !db_test_text_key_and_delete() ||
+            !db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER) ||
+            !db_test_conflict_resolution(PDB_CONFLICT_DISCARD)) {
         return FALSE;
     }
     local = NULL;
