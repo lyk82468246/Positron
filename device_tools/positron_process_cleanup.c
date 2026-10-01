@@ -90,6 +90,35 @@ static int log_path(WCHAR path[MAX_PATH], const WCHAR *file_name)
     return 0;
 }
 
+static HANDLE audit_snapshot(DWORD flags, DWORD process_id,
+        DWORD *out_error)
+{
+    HANDLE snapshot;
+    DWORD error;
+    int attempt;
+
+    snapshot = INVALID_HANDLE_VALUE;
+    error = ERROR_SUCCESS;
+    for (attempt = 0; attempt < 3; ++attempt) {
+        snapshot = CreateToolhelp32Snapshot(flags, process_id);
+        if (snapshot != INVALID_HANDLE_VALUE) {
+            if (out_error != NULL) {
+                *out_error = ERROR_SUCCESS;
+            }
+            return snapshot;
+        }
+        error = GetLastError();
+        if (error != ERROR_NOT_ENOUGH_MEMORY || attempt == 2) {
+            break;
+        }
+        Sleep(200);
+    }
+    if (out_error != NULL) {
+        *out_error = error;
+    }
+    return INVALID_HANDLE_VALUE;
+}
+
 static int audit_positron_modules(void)
 {
     HANDLE process_snapshot;
@@ -108,9 +137,8 @@ static int audit_positron_modules(void)
 
     holders = 0;
     unavailable = 0;
-    process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    process_snapshot = audit_snapshot(TH32CS_SNAPPROCESS, 0, &error);
     if (process_snapshot == INVALID_HANDLE_VALUE) {
-        error = GetLastError();
         unavailable++;
         _snprintf(line, sizeof(line) - 1,
                 "module_audit_unavailable scope=process_snapshot error=%lu\r\n",
@@ -137,11 +165,10 @@ static int audit_positron_modules(void)
         write_text(line);
     }
     while (process_ok) {
-        module_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE,
-                process_entry.th32ProcessID);
+        module_snapshot = audit_snapshot(TH32CS_SNAPMODULE,
+                process_entry.th32ProcessID, &error);
         if (module_snapshot == INVALID_HANDLE_VALUE) {
             unavailable++;
-            error = GetLastError();
             _snprintf(line, sizeof(line) - 1,
                     "module_audit_unavailable pid=%lu error=%lu\r\n",
                     (unsigned long) process_entry.th32ProcessID,

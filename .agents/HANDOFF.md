@@ -40,7 +40,8 @@ C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全�
 `test_host` 前通过设备端 Toolhelp 枚举所有进程及模块，覆盖 stage 中的 9 个 Positron DLL；
 `holders=0 unavailable=0` 才能继续，快照不可用也 fail closed。`-ModuleAuditOnly` 可只做部署和
 审计，不启动 `test_host`，也不能和 `-ForceTerminatePositron` 同时使用。该门只读，不会替用户
-终止进程。
+终止进程；针对 guest 的 `ERROR_NOT_ENOUGH_MEMORY` 仅做三次短重试，重试后仍不可用仍 fail
+closed。
 
 本批证据必须分开解释：`tmp/device-runs/20261002-003229-dll-audit/module-audit.log` 在
 启动宿主前记录 `module_audit holders=0 unavailable=0`，随后宿主没有产生日志，TEST1321 不能
@@ -51,6 +52,9 @@ C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全�
 本次只读重试 `tmp/device-runs/20261002-005621-module-audit/module-audit.log` 仍记录
 `module_audit_unavailable scope=process_snapshot error=8` 和 `holders=0 unavailable=1`；
 门在启动 `test_host` 前停止，未生成有效的 `module-audit-result.txt`，也没有使用强制清理。
+随后 helper 对 `ERROR_NOT_ENOUGH_MEMORY` 增加三次短重试并完成正式 ARMV4I Debug 构建；
+`tmp/device-runs/20261002-010145-module-audit/module-audit.log` 仍返回相同的
+`process_snapshot error=8` / `holders=0 unavailable=1`，所以本次也未启动宿主。
 
 ### DB 主机契约测试当前切片
 
