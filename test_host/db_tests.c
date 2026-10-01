@@ -234,6 +234,142 @@ static BOOL db_test_conflict_resolution(int action)
     return TRUE;
 }
 
+static BOOL db_test_response_failures(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const char accepted[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[{\"op_id\":\"failure-client:1\","
+        "\"version\":\"1\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"1\"}";
+    static const char pulled[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"1\","
+        "\"version\":\"2\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"stable\"}}}],"
+        "\"next_cursor\":\"2\"}";
+    static const char schema_hash_mismatch[] =
+        "{\"schema_version\":1,\"schema_hash\":\"other-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
+        "\"next_cursor\":\"3\"}";
+    static const char schema_version_mismatch[] =
+        "{\"schema_version\":2,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
+        "\"next_cursor\":\"3\"}";
+    static const char cursor_backwards[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
+        "\"next_cursor\":\"1\"}";
+    static const char typed_value_failure[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"1\","
+        "\"version\":\"3\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"x\",\"v\":\"invalid\"}}}],"
+        "\"next_cursor\":\"3\"}";
+    static const char missing_array[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],"
+        "\"next_cursor\":\"3\"}";
+    PDbHandle db;
+    char name[64];
+    char request[4096];
+    int request_length;
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE records(id INTEGER PRIMARY KEY,name TEXT)");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "failure-client", 1, "failure-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "records", "id", columns, 2);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "INSERT INTO records(id,name) VALUES(1,'initial')");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, accepted,
+                (int)strlen(accepted));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, pulled,
+                (int)strlen(pulled));
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, schema_hash_mismatch,
+            (int)strlen(schema_hash_mismatch)) != PDB_SCHEMA_MISMATCH ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, schema_version_mismatch,
+            (int)strlen(schema_version_mismatch)) != PDB_SCHEMA_MISMATCH ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, cursor_backwards,
+            (int)strlen(cursor_backwards)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, typed_value_failure,
+            (int)strlen(typed_value_failure)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, missing_array,
+            (int)strlen(missing_array)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "stable") != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_Exec(db,
+            "UPDATE records SET name='after-failure' WHERE id=1") !=
+            PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"2\"") == NULL ||
+            strstr(request, "\"base_version\":\"2\"") == NULL ||
+            strstr(request, "failure-client:2") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_persistence(void)
 {
     static const char path[] = "\\Temp\\positron-db-1321.sqlite";
@@ -347,7 +483,8 @@ BOOL test1321_db_contract(void)
 
     if (!db_test_persistence() || !db_test_text_key_and_delete() ||
             !db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER) ||
-            !db_test_conflict_resolution(PDB_CONFLICT_DISCARD)) {
+            !db_test_conflict_resolution(PDB_CONFLICT_DISCARD) ||
+            !db_test_response_failures()) {
         return FALSE;
     }
     local = NULL;
