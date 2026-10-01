@@ -1003,6 +1003,7 @@ static int pdb_validate_table_schema(PDbHandle db,
     int seen[PDB_SYNC_MAX_COLUMNS];
     int actual_count;
     int key_count;
+    int total_key_count;
     int key_notnull;
     int key_type;
     int index;
@@ -1020,6 +1021,7 @@ static int pdb_validate_table_schema(PDbHandle db,
     memset(seen, 0, sizeof(seen));
     actual_count = 0;
     key_count = 0;
+    total_key_count = 0;
     key_notnull = 0;
     key_type = PDB_VALUE_NULL;
     _snprintf(sql, sizeof(sql) - 1, "PRAGMA table_info(%s)",
@@ -1039,6 +1041,9 @@ static int pdb_validate_table_schema(PDbHandle db,
             return PDB_SCHEMA_MISMATCH;
         }
         actual_count += 1;
+        if (pk > 0) {
+            total_key_count += 1;
+        }
         column_index = -1;
         for (index = 0; index < table->column_count; ++index) {
             if (strcmp((const char*)name, table->columns[index]) == 0) {
@@ -1075,7 +1080,8 @@ static int pdb_validate_table_schema(PDbHandle db,
     if (rc != SQLITE_DONE) {
         return pdb_set_sqlite_error(db, rc);
     }
-    if (actual_count != table->column_count || key_count != 1 ||
+    if (actual_count != table->column_count || total_key_count != 1 ||
+            key_count != 1 ||
             key_type == PDB_VALUE_NULL ||
             (!key_notnull && key_type != PDB_VALUE_INTEGER)) {
         pdb_set_error(db, "sync table schema does not match its registration");

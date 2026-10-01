@@ -652,6 +652,11 @@ BOOL test1321_db_contract(void)
         { "name", PDB_VALUE_TEXT },
         { "payload", PDB_VALUE_BLOB }
     };
+    static const PDbSyncColumn composite_columns[] = {
+        { "a", PDB_VALUE_INTEGER },
+        { "b", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
     static const char accepted[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
         "\"accepted\":[{\"op_id\":\"device-1:1\",\"version\":\"1\"}],"
@@ -691,6 +696,7 @@ BOOL test1321_db_contract(void)
     int conflict_length;
     int rc;
     __int64 minimum_integer;
+    __int64 maximum_integer;
     char conflict_json[1024];
     unsigned char blob[2];
 
@@ -721,16 +727,21 @@ BOOL test1321_db_contract(void)
     }
     if (PDb_Exec(local,
             "CREATE TABLE typed_values(id INTEGER PRIMARY KEY,big INTEGER,"
-            "real_value REAL,text_value TEXT,blob_value BLOB,null_value TEXT)") !=
+            "max_big INTEGER,real_value REAL,text_value TEXT,"
+            "blob_value BLOB,null_value TEXT,empty_blob_value BLOB)") !=
             PDB_OK) {
         PDb_Close(local);
         return FALSE;
     }
     minimum_integer = -(__int64)0x7FFFFFFFFFFFFFFF - 1;
+    maximum_integer = (__int64)0x7FFFFFFFFFFFFFFF;
+    blob[0] = 0xA5;
+    blob[1] = 0x5A;
     stmt = NULL;
     rc = PDb_Prepare(local,
-            "INSERT INTO typed_values(id,big,real_value,text_value,"
-            "blob_value,null_value) VALUES(?1,?2,?3,?4,?5,?6)", &stmt);
+            "INSERT INTO typed_values(id,big,max_big,real_value,text_value,"
+            "blob_value,null_value,empty_blob_value) "
+            "VALUES(?1,?2,?3,?4,?5,?6,?7,?8)", &stmt);
     if (rc == PDB_OK) {
         rc = PDb_BindInt64(stmt, 1, 1);
     }
@@ -738,16 +749,22 @@ BOOL test1321_db_contract(void)
         rc = PDb_BindInt64(stmt, 2, minimum_integer);
     }
     if (rc == PDB_OK) {
-        rc = PDb_BindDouble(stmt, 3, 3.25);
+        rc = PDb_BindInt64(stmt, 3, maximum_integer);
     }
     if (rc == PDB_OK) {
-        rc = PDb_BindText(stmt, 4, "utf8", 4);
+        rc = PDb_BindDouble(stmt, 4, 3.25);
     }
     if (rc == PDB_OK) {
-        rc = PDb_BindBlob(stmt, 5, NULL, 0);
+        rc = PDb_BindText(stmt, 5, "utf8", 4);
     }
     if (rc == PDB_OK) {
-        rc = PDb_BindNull(stmt, 6);
+        rc = PDb_BindBlob(stmt, 6, blob, sizeof(blob));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindNull(stmt, 7);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindBlob(stmt, 8, NULL, 0);
     }
     if (rc == PDB_OK && PDb_Step(stmt) == PDB_STEP_DONE) {
         rc = PDB_OK;
@@ -761,21 +778,29 @@ BOOL test1321_db_contract(void)
     }
     stmt = NULL;
     rc = PDb_Prepare(local,
-            "SELECT big,real_value,text_value,blob_value,null_value "
+            "SELECT big,max_big,real_value,text_value,blob_value,"
+            "null_value,empty_blob_value "
             "FROM typed_values WHERE id=1", &stmt);
     if (rc == PDB_OK) {
         rc = PDb_Step(stmt);
     }
-    if (rc != PDB_STEP_ROW || PDb_ColumnType(stmt, 0) != PDB_VALUE_INTEGER ||
+    if (rc != PDB_STEP_ROW || PDb_ColumnCount(stmt) != 7 ||
+            PDb_ColumnType(stmt, 0) != PDB_VALUE_INTEGER ||
             PDb_ColumnInt64(stmt, 0) != minimum_integer ||
-            PDb_ColumnType(stmt, 1) != PDB_VALUE_REAL ||
-            PDb_ColumnDouble(stmt, 1) != 3.25 ||
-            PDb_ColumnType(stmt, 2) != PDB_VALUE_TEXT ||
-            PDb_ColumnText(stmt, 2) == NULL ||
-            strcmp(PDb_ColumnText(stmt, 2), "utf8") != 0 ||
-            PDb_ColumnType(stmt, 3) != PDB_VALUE_BLOB ||
-            PDb_ColumnBytes(stmt, 3) != 0 ||
-            PDb_ColumnType(stmt, 4) != PDB_VALUE_NULL) {
+            PDb_ColumnType(stmt, 1) != PDB_VALUE_INTEGER ||
+            PDb_ColumnInt64(stmt, 1) != maximum_integer ||
+            PDb_ColumnType(stmt, 2) != PDB_VALUE_REAL ||
+            PDb_ColumnDouble(stmt, 2) != 3.25 ||
+            PDb_ColumnType(stmt, 3) != PDB_VALUE_TEXT ||
+            PDb_ColumnText(stmt, 3) == NULL ||
+            strcmp(PDb_ColumnText(stmt, 3), "utf8") != 0 ||
+            PDb_ColumnType(stmt, 4) != PDB_VALUE_BLOB ||
+            PDb_ColumnBytes(stmt, 4) != (int)sizeof(blob) ||
+            PDb_ColumnBlob(stmt, 4) == NULL ||
+            memcmp(PDb_ColumnBlob(stmt, 4), blob, sizeof(blob)) != 0 ||
+            PDb_ColumnType(stmt, 5) != PDB_VALUE_NULL ||
+            PDb_ColumnType(stmt, 6) != PDB_VALUE_BLOB ||
+            PDb_ColumnBytes(stmt, 6) != 0) {
         PDb_Finalize(stmt);
         PDb_Close(local);
         return FALSE;
@@ -802,9 +827,15 @@ BOOL test1321_db_contract(void)
             "CREATE VIRTUAL TABLE rejected_vtab USING fts5(value)") == PDB_OK ||
             PDb_ApplyMigration(sync, 2,
             "CREATE TABLE migration_bad(id INTEGER PRIMARY KEY); THIS IS NOT VALID") ==
-            PDB_OK || PDb_ApplyMigration(sync, 2,
-            "CREATE TABLE migration_ok(id INTEGER PRIMARY KEY)") != PDB_OK ||
+            PDB_OK || PDb_Exec(sync,
+            "SELECT count(*) FROM migration_bad") == PDB_OK ||
+            PDb_ApplyMigration(sync, 2,
+            "CREATE TABLE migration_ok(id INTEGER PRIMARY KEY);"
+            "CREATE TABLE composite_records(a INTEGER,b INTEGER,name TEXT,"
+            "PRIMARY KEY(a,b))") != PDB_OK ||
             PDb_SyncConfigure(sync, "device-1", 2, "schema-v2") != PDB_OK ||
+            PDb_SyncRegisterTable(sync, "composite_records", "a",
+            composite_columns, 3) != PDB_SCHEMA_MISMATCH ||
             PDb_SyncRegisterTable(sync, "records", "id", columns, 3) != PDB_OK) {
         if (sync != NULL) {
             PDb_Close(sync);
@@ -844,6 +875,7 @@ BOOL test1321_db_contract(void)
             &request_length) != PDB_OK ||
             strstr(request, "device-1:1") == NULL ||
             strstr(request, "local") == NULL ||
+            strstr(request, "\"payload\":{\"t\":\"b\",\"v\":\"AQI=\"}") == NULL ||
             strstr(request, "CREATE TABLE") != NULL ||
             strstr(request, "SELECT ") != NULL) {
         PDb_Close(sync);
@@ -870,6 +902,26 @@ BOOL test1321_db_contract(void)
         PDb_Close(sync);
         return FALSE;
     }
+    stmt = NULL;
+    rc = PDb_Prepare(sync,
+            "SELECT payload FROM records WHERE id=1", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    blob[0] = 0x03;
+    blob[1] = 0x04;
+    if (rc != PDB_STEP_ROW || PDb_ColumnCount(stmt) != 1 ||
+            PDb_ColumnType(stmt, 0) != PDB_VALUE_BLOB ||
+            PDb_ColumnBytes(stmt, 0) != (int)sizeof(blob) ||
+            PDb_ColumnBlob(stmt, 0) == NULL ||
+            memcmp(PDb_ColumnBlob(stmt, 0), blob, sizeof(blob)) != 0) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(sync);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
     if (PDb_Exec(sync, "UPDATE records SET name='local-edit' WHERE id=1") !=
             PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
             PDb_SyncApplyResponse(sync, 200, conflict,
