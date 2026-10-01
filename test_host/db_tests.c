@@ -66,6 +66,27 @@ static BOOL db_test_query_text_name(PDbHandle db, const char* key,
     return TRUE;
 }
 
+static BOOL db_test_query_transaction_count(PDbHandle db,
+        __int64 expected)
+{
+    PDbStmtHandle stmt;
+    int rc;
+
+    stmt = NULL;
+    rc = PDb_Prepare(db, "SELECT COUNT(*) FROM tx_values", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW || PDb_ColumnInt64(stmt, 0) != expected) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    return TRUE;
+}
+
 static BOOL db_test_text_key_and_delete(void)
 {
     static const PDbSyncColumn columns[] = {
@@ -370,6 +391,86 @@ static BOOL db_test_response_failures(void)
     return TRUE;
 }
 
+static BOOL db_test_transaction_and_limits(void)
+{
+    PDbHandle db;
+    PDbHandle sync;
+    PDbStmtHandle stmt;
+    char error[128];
+    char copied_error[128];
+    char tiny[1];
+    int rc;
+
+    db = NULL;
+    sync = NULL;
+    stmt = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "CREATE TABLE tx_values(id INTEGER PRIMARY KEY,value TEXT)");
+    }
+    if (rc != PDB_OK || PDb_Begin(db) != PDB_OK ||
+            PDb_Begin(db) != PDB_STATE ||
+            PDb_Exec(db,
+            "INSERT INTO tx_values(id,value) VALUES(1,'rolled-back')") !=
+            PDB_OK || PDb_Rollback(db) != PDB_OK ||
+            PDb_Commit(db) != PDB_STATE ||
+            !db_test_query_transaction_count(db, 0)) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    if (PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db,
+            "INSERT INTO tx_values(id,value) VALUES(1,'committed')") !=
+            PDB_OK || PDb_Commit(db) != PDB_OK ||
+            !db_test_query_transaction_count(db, 1)) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_Exec(db, "THIS IS NOT SQL") == PDB_OK ||
+            PDb_GetLastError(db, error, sizeof(error)) != PDB_OK ||
+            error[0] == '\0' ||
+            PDb_CopyLastError(db, copied_error, sizeof(copied_error)) !=
+            PDB_OK || strcmp(error, copied_error) != 0) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    tiny[0] = 'x';
+    if (PDb_GetLastError(db, tiny, sizeof(tiny)) != PDB_BUFFER_TOO_SMALL ||
+            tiny[0] != 'x' || PDb_Cancel(NULL) != PDB_INVALID_ARGUMENT) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_Prepare(db, "SELECT 1", &stmt) != PDB_OK ||
+            PDb_Cancel(db) != PDB_OK || PDb_Step(stmt) == PDB_STEP_ROW) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    stmt = NULL;
+    PDb_Close(db);
+    db = NULL;
+
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &sync);
+    if (rc != PDB_OK ||
+            PDb_SyncApplyResponse(sync, 200, "{}",
+            PDB_SYNC_MAX_BODY_BYTES + 1) != PDB_LIMIT ||
+            PDb_SyncApplyResponse(sync, 200, NULL, 0) !=
+            PDB_INVALID_ARGUMENT) {
+        if (sync != NULL) {
+            PDb_Close(sync);
+        }
+        return FALSE;
+    }
+    PDb_Close(sync);
+    return TRUE;
+}
+
 static BOOL db_test_persistence(void)
 {
     static const char path[] = "\\Temp\\positron-db-1321.sqlite";
@@ -484,7 +585,8 @@ BOOL test1321_db_contract(void)
     if (!db_test_persistence() || !db_test_text_key_and_delete() ||
             !db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER) ||
             !db_test_conflict_resolution(PDB_CONFLICT_DISCARD) ||
-            !db_test_response_failures()) {
+            !db_test_response_failures() ||
+            !db_test_transaction_and_limits()) {
         return FALSE;
     }
     local = NULL;
@@ -616,6 +718,12 @@ BOOL test1321_db_contract(void)
         }
     }
     PDb_Finalize(stmt);
+    request[0] = 'x';
+    if (PDb_SyncBuildRequest(sync, request, 1, &request_length) !=
+            PDB_BUFFER_TOO_SMALL || request[0] != 'x') {
+        PDb_Close(sync);
+        return FALSE;
+    }
     if (rc != PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
             PDb_SyncBuildRequest(sync, NULL, 0, &request_length) != PDB_OK ||
             request_length <= 0 || request_length >= (int)sizeof(request) ||
