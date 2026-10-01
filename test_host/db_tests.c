@@ -31,6 +31,41 @@ static BOOL db_test_query_name(PDbHandle db, char* output, int capacity)
     return TRUE;
 }
 
+static BOOL db_test_query_id_name(PDbHandle db, __int64 id,
+        char* output, int capacity)
+{
+    PDbStmtHandle stmt;
+    int rc;
+    const char* value;
+
+    if (db == NULL || output == NULL || capacity <= 0) {
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(db,
+            "SELECT name FROM records WHERE id=?1", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 1, id);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        return FALSE;
+    }
+    value = PDb_ColumnText(stmt, 0);
+    if (value == NULL || (int)strlen(value) >= capacity) {
+        PDb_Finalize(stmt);
+        return FALSE;
+    }
+    strcpy(output, value);
+    PDb_Finalize(stmt);
+    return TRUE;
+}
+
 static BOOL db_test_query_text_name(PDbHandle db, const char* key,
         char* output, int capacity)
 {
@@ -274,6 +309,14 @@ static BOOL db_test_response_failures(void)
         "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
         "\"name\":{\"t\":\"s\",\"v\":\"stable\"}}}],"
         "\"next_cursor\":\"2\",\"unknown_top_level\":true}";
+    static const char pulled_page_two[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"2\","
+        "\"version\":\"3\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"2\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"page-two\"}}}],"
+        "\"next_cursor\":\"3\",\"has_more\":false}";
     static const char schema_hash_mismatch[] =
         "{\"schema_version\":1,\"schema_hash\":\"other-v1\","
         "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
@@ -363,6 +406,18 @@ static BOOL db_test_response_failures(void)
         }
         return FALSE;
     }
+    if (PDb_SyncApplyResponse(db, 200, pulled_page_two,
+            (int)strlen(pulled_page_two)) != PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_id_name(db, 2, name, sizeof(name)) ||
+            strcmp(name, "page-two") != 0 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
+            strstr(request, "\"push\":[]") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
     if (PDb_SyncApplyResponse(db, 200, schema_hash_mismatch,
             (int)strlen(schema_hash_mismatch)) != PDB_SCHEMA_MISMATCH ||
             PDb_SyncPendingCount(db) != 0 ||
@@ -416,7 +471,7 @@ static BOOL db_test_response_failures(void)
             PDB_OK || PDb_SyncPendingCount(db) != 1 ||
             PDb_SyncBuildRequest(db, request, sizeof(request),
             &request_length) != PDB_OK ||
-            strstr(request, "\"cursor\":\"2\"") == NULL ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
             strstr(request, "\"base_version\":\"2\"") == NULL ||
             strstr(request, "failure-client:2") == NULL) {
         PDb_Close(db);
@@ -429,7 +484,7 @@ static BOOL db_test_response_failures(void)
             strcmp(name, "after-failure") != 0 ||
             PDb_SyncBuildRequest(db, request, sizeof(request),
             &request_length) != PDB_OK ||
-            strstr(request, "\"cursor\":\"2\"") == NULL ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
             strstr(request, "failure-client:2") == NULL ||
             PDb_SyncApplyResponse(db, 200, accepted_after_failure,
             (int)strlen(accepted_after_failure)) != PDB_OK ||
