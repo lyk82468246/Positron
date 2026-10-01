@@ -1086,8 +1086,10 @@ BOOL test1321_db_contract(void)
     if (PDb_Exec(sync, "CREATE TABLE rejected(id INTEGER PRIMARY KEY)") ==
             PDB_OK || PDb_Exec(sync,
             "ATTACH ':memory:' AS other") == PDB_OK ||
+            PDb_Exec(sync, "DETACH other") == PDB_OK ||
             PDb_Exec(sync, "PRAGMA user_version=1") == PDB_OK ||
             PDb_Exec(sync, "SAVEPOINT rejected") == PDB_OK ||
+            PDb_Exec(sync, "SELECT 1; SELECT 2") == PDB_OK ||
             PDb_Exec(sync, "SELECT load_extension('rejected')") == PDB_OK ||
             PDb_Exec(sync,
             "CREATE VIRTUAL TABLE rejected_vtab USING fts5(value)") == PDB_OK ||
