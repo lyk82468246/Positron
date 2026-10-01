@@ -825,6 +825,12 @@ static BOOL db_test_persistence(void)
         "\"accepted\":[{\"op_id\":\"persist-client:1\","
         "\"version\":\"1\"}],\"conflicts\":[],"
         "\"changes\":[],\"next_cursor\":\"1\"}";
+    static const char deleted[] =
+        "{\"schema_version\":1,\"schema_hash\":\"persist-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"persisted\",\"key\":\"7\","
+        "\"version\":\"2\",\"deleted\":true,\"values\":null}],"
+        "\"next_cursor\":\"2\"}";
     static const PDbSyncColumn columns[] = {
         { "id", PDB_VALUE_INTEGER },
         { "name", PDB_VALUE_TEXT }
@@ -902,6 +908,41 @@ static BOOL db_test_persistence(void)
     }
     if (rc != PDB_OK || strstr(request, "\"cursor\":\"1\"") == NULL ||
             strstr(request, "\"push\":[]") == NULL) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
+    PDb_Close(db);
+    db = NULL;
+    rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, deleted,
+                (int)strlen(deleted));
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 0) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
+    PDb_Close(db);
+    db = NULL;
+    rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "INSERT INTO persisted(id,name) VALUES(7,'recreated')");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncBuildRequest(db, request, sizeof(request),
+                &request_length);
+    }
+    if (rc != PDB_OK || strstr(request, "\"cursor\":\"2\"") == NULL ||
+            strstr(request, "\"action\":\"upsert\"") == NULL ||
+            strstr(request, "\"base_version\":\"2\"") == NULL ||
+            strstr(request, "recreated") == NULL) {
         if (db != NULL) {
             PDb_Close(db);
         }
