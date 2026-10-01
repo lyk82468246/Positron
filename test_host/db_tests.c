@@ -711,6 +711,11 @@ BOOL test1321_db_contract(void)
         { "b", PDB_VALUE_INTEGER },
         { "name", PDB_VALUE_TEXT }
     };
+    static const PDbSyncColumn typed_columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "ratio", PDB_VALUE_REAL },
+        { "note", PDB_VALUE_TEXT }
+    };
     static const char accepted[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
         "\"accepted\":[{\"op_id\":\"device-1:1\",\"version\":\"1\"}],"
@@ -741,6 +746,15 @@ BOOL test1321_db_contract(void)
         "\"accepted\":[],\"conflicts\":[],\"changes\":["
         "{\"entity\":\"records\",\"key\":\"1\",\"version\":\"5\","
         "\"deleted\":true,\"values\":null}],\"next_cursor\":\"5\"}";
+    static const char typed_response[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
+        "\"accepted\":[{\"op_id\":\"device-1:3\",\"version\":\"6\"}],"
+        "\"conflicts\":[],\"changes\":[{\"entity\":\"typed_records\","
+        "\"key\":\"1\",\"version\":\"7\",\"deleted\":false,"
+        "\"values\":{\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"ratio\":{\"t\":\"r\",\"v\":\"2.5\"},"
+        "\"note\":{\"t\":\"n\",\"v\":null}}}],"
+        "\"next_cursor\":\"7\"}";
     PDbHandle local;
     PDbHandle sync;
     PDbStmtHandle stmt;
@@ -887,11 +901,15 @@ BOOL test1321_db_contract(void)
             PDb_ApplyMigration(sync, 2,
             "CREATE TABLE migration_ok(id INTEGER PRIMARY KEY);"
             "CREATE TABLE composite_records(a INTEGER,b INTEGER,name TEXT,"
-            "PRIMARY KEY(a,b))") != PDB_OK ||
+            "PRIMARY KEY(a,b));"
+            "CREATE TABLE typed_records(id INTEGER PRIMARY KEY,ratio REAL,"
+            "note TEXT)") != PDB_OK ||
             PDb_SyncConfigure(sync, "device-1", 2, "schema-v2") != PDB_OK ||
             PDb_SyncRegisterTable(sync, "composite_records", "a",
             composite_columns, 3) != PDB_SCHEMA_MISMATCH ||
-            PDb_SyncRegisterTable(sync, "records", "id", columns, 3) != PDB_OK) {
+            PDb_SyncRegisterTable(sync, "records", "id", columns, 3) != PDB_OK ||
+            PDb_SyncRegisterTable(sync, "typed_records", "id", typed_columns,
+            3) != PDB_OK) {
         if (sync != NULL) {
             PDb_Close(sync);
         }
@@ -1018,6 +1036,37 @@ BOOL test1321_db_contract(void)
         PDb_Close(sync);
         return FALSE;
     }
+    if (PDb_Exec(sync,
+            "INSERT INTO typed_records(id,ratio,note) VALUES(1,1.5,NULL)") !=
+            PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"entity\":\"typed_records\"") == NULL ||
+            strstr(request, "\"ratio\":{\"t\":\"r\",\"v\":\"1.5\"}") == NULL ||
+            strstr(request, "\"note\":{\"t\":\"n\",\"v\":null}") == NULL ||
+            PDb_SyncApplyResponse(sync, 200, typed_response,
+            (int)strlen(typed_response)) != PDB_OK ||
+            PDb_SyncPendingCount(sync) != 0) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(sync,
+            "SELECT ratio,note FROM typed_records WHERE id=1", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW || PDb_ColumnCount(stmt) != 2 ||
+            PDb_ColumnType(stmt, 0) != PDB_VALUE_REAL ||
+            PDb_ColumnDouble(stmt, 0) != 2.5 ||
+            PDb_ColumnType(stmt, 1) != PDB_VALUE_NULL) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(sync);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
     PDb_Close(sync);
     return TRUE;
 }
