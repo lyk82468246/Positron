@@ -175,6 +175,7 @@ static void app_script_debug_event_callback(const AppScriptEventBinding *binding
 static void app_script_debug_event_relation(const char *id,
         unsigned int relation, int result, const char *value)
 {
+#if APP_DEBUG_DOM_TRACE
     char message[384];
 
     _snprintf(message, sizeof(message) - 1,
@@ -183,11 +184,18 @@ static void app_script_debug_event_relation(const char *id,
             relation, result, 96, value != NULL ? value : "");
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
+#else
+    (void) id;
+    (void) relation;
+    (void) result;
+    (void) value;
+#endif
 }
 
 static void app_script_debug_event_attribute(const char *id,
         const char *name, int result, const char *value)
 {
+#if APP_DEBUG_DOM_TRACE
     char message[448];
 
     _snprintf(message, sizeof(message) - 1,
@@ -197,6 +205,12 @@ static void app_script_debug_event_attribute(const char *id,
             160, value != NULL ? value : "");
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
+#else
+    (void) id;
+    (void) name;
+    (void) result;
+    (void) value;
+#endif
 }
 #endif
 

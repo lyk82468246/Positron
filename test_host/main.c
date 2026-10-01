@@ -6186,14 +6186,36 @@ static int pcore_scale_scroll_position(int old_pos, int old_extent,
 typedef struct stylesheet_cache_test_ctx {
     int calls;
     int frees;
+    int asset_resolves;
 } stylesheet_cache_test_ctx;
+
+static int stylesheet_cache_resolve(void *pw, const char *base,
+        const char *reference, char *out, int capacity)
+{
+    stylesheet_cache_test_ctx *ctx;
+    int length;
+
+    (void) base;
+    ctx = (stylesheet_cache_test_ctx *) pw;
+    if (strcmp(reference, "icon.svg") == 0) {
+        ctx->asset_resolves++;
+    }
+    length = (int) strlen(reference);
+    if (length >= capacity) {
+        return 1;
+    }
+    memcpy(out, reference, (size_t) length + 1U);
+    return 0;
+}
 
 static int stylesheet_cache_fetch(void *pw, const char *url,
         char **out_data, int *out_len)
 {
     static const char CSS[] =
         "@media (min-width:300px){p{color:#00aa00;}}"
-        "@media (max-width:299px){p{color:#0000aa;}}";
+        "@media (max-width:299px){p{color:#0000aa;}}"
+        "p{background-image:url(icon.svg)}"
+        "p.override{color:#aa0000}";
     stylesheet_cache_test_ctx *ctx = (stylesheet_cache_test_ctx *) pw;
     char *data;
 
@@ -6236,9 +6258,10 @@ static BOOL test24_cached_stylesheet_restyle(void)
     static const char *HTML =
         "<!DOCTYPE html><html><head>"
         "<link rel=\"stylesheet\" href=\"/responsive.css\">"
-        "</head><body><p>responsive</p></body></html>";
+        "</head><body><p id='responsive'>responsive</p></body></html>";
     HANDLE hDoc;
     stylesheet_cache_test_ctx ctx;
+    stylesheet_cache_test_ctx changed_resolver;
     unsigned long argb = 0;
     int screen_w;
     int screen_h;
@@ -6248,6 +6271,8 @@ static BOOL test24_cached_stylesheet_restyle(void)
 
     ctx.calls = 0;
     ctx.frees = 0;
+    ctx.asset_resolves = 0;
+    memset(&changed_resolver, 0, sizeof(changed_resolver));
     hDoc = PCore_ParseHTML(HTML, 0);
     if (hDoc == NULL) {
         show_error(L"TEST 24 FAIL", "PCore_ParseHTML returned NULL");
@@ -6263,10 +6288,12 @@ static BOOL test24_cached_stylesheet_restyle(void)
     }
 
     PCore_SetViewport(320, 320, screen_dpi);
-    if (PCore_StyleDocumentEx(hDoc, NULL, stylesheet_cache_fetch,
+    if (PCore_StyleDocumentEx2(hDoc, NULL, "https://fixture.local/page",
+            stylesheet_cache_resolve, stylesheet_cache_fetch,
             stylesheet_cache_free, &ctx) != 0 ||
             PCore_NodeComputedColor(hDoc, "p", &argb) != 0 ||
-            (argb & 0x00ffffffUL) != 0x0000aa00UL) {
+            (argb & 0x00ffffffUL) != 0x0000aa00UL ||
+            ctx.asset_resolves != 1) {
         PCore_FreeDocument(hDoc);
         screen_w = GetSystemMetrics(SM_CXSCREEN);
         screen_h = GetSystemMetrics(SM_CYSCREEN);
@@ -6278,14 +6305,16 @@ static BOOL test24_cached_stylesheet_restyle(void)
     }
 
     PCore_SetViewport(299, 320, screen_dpi);
-    if (PCore_StyleDocumentEx(hDoc, NULL, stylesheet_cache_only_fetch,
-            NULL, NULL) != 0 ||
+    if (PCore_StyleDocumentEx2(hDoc, NULL, "https://fixture.local/page",
+            stylesheet_cache_resolve, stylesheet_cache_only_fetch,
+            NULL, &ctx) != 0 ||
             PCore_NodeComputedColor(hDoc, "p", &argb) != 0 ||
             (argb & 0x00ffffffUL) != 0x000000aaUL ||
-            ctx.calls != 1 || ctx.frees != 1) {
+            ctx.calls != 1 || ctx.frees != 1 || ctx.asset_resolves != 1) {
         _snprintf(msg, sizeof(msg) - 1,
-                  "reselect color=0x%06lX calls=%d frees=%d",
-                  argb & 0x00ffffffUL, ctx.calls, ctx.frees);
+                  "reselect color=0x%06lX calls=%d frees=%d parses=%d",
+                  argb & 0x00ffffffUL, ctx.calls, ctx.frees,
+                  ctx.asset_resolves);
         msg[sizeof(msg) - 1] = '\0';
         PCore_FreeDocument(hDoc);
         screen_w = GetSystemMetrics(SM_CXSCREEN);
@@ -6294,6 +6323,31 @@ static BOOL test24_cached_stylesheet_restyle(void)
         if (screen_h <= 0) { screen_h = 320; }
         PCore_SetViewport(screen_w, screen_h, screen_dpi);
         show_error(L"TEST 24 FAIL", msg);
+        return FALSE;
+    }
+    if (PCore_NodeSetAttributeById(hDoc, "responsive", "class",
+            "override") != 0 ||
+            PCore_StyleDocumentEx2(hDoc, NULL, "https://fixture.local/page",
+            stylesheet_cache_resolve, NULL, NULL, &ctx) != 0 ||
+            PCore_NodeComputedColor(hDoc, "p", &argb) != 0 ||
+            (argb & 0x00ffffffUL) != 0x00aa0000UL ||
+            ctx.asset_resolves != 1 ||
+            PCore_NodeSetAttributeById(hDoc, "responsive", "class", "") != 0 ||
+            PCore_StyleDocumentEx2(hDoc, NULL, "https://fixture.local/page",
+            stylesheet_cache_resolve, NULL, NULL, &changed_resolver) != 0 ||
+            PCore_NodeComputedColor(hDoc, "p", &argb) != 0 ||
+            (argb & 0x00ffffffUL) != 0x000000aaUL ||
+            changed_resolver.asset_resolves != 1 ||
+            PCore_StyleDocumentEx2(hDoc, NULL, "https://fixture.local/page",
+            stylesheet_cache_resolve, NULL, NULL, &changed_resolver) != 0 ||
+            changed_resolver.asset_resolves != 1) {
+        PCore_FreeDocument(hDoc);
+        screen_w = GetSystemMetrics(SM_CXSCREEN);
+        screen_h = GetSystemMetrics(SM_CYSCREEN);
+        if (screen_w <= 0) { screen_w = 240; }
+        if (screen_h <= 0) { screen_h = 320; }
+        PCore_SetViewport(screen_w, screen_h, screen_dpi);
+        show_error(L"TEST 24 FAIL", "parsed cache mutation/resolver identity failed");
         return FALSE;
     }
     PCore_FreeDocument(hDoc);
@@ -61087,6 +61141,14 @@ static int test45_cache_only_fetch(void *pw, const char *url,
     return 1;
 }
 
+/* Fixture pw is css_import_test_ctx, not a production navigation request. */
+static int test45_import_resolve(void *pw, const char *base,
+        const char *reference, char *out, int capacity)
+{
+    (void) pw;
+    return test_host_resolve_reference_url(base, reference, out, capacity);
+}
+
 static BOOL test45_css_import_tree(void)
 {
     static const char HTML[] =
@@ -61117,7 +61179,7 @@ static BOOL test45_css_import_tree(void)
     p_color = 0;
     span_color = 0;
     first_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
-            wm_combine_url, test45_import_fetch, test45_import_free,
+            test45_import_resolve, test45_import_fetch, test45_import_free,
             &first) == 0 &&
             PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
             PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
@@ -61131,7 +61193,7 @@ static BOOL test45_css_import_tree(void)
     p_color = 0;
     span_color = 0;
     second_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
-            wm_combine_url, test45_cache_only_fetch, NULL, &second) == 0 &&
+            test45_import_resolve, test45_cache_only_fetch, NULL, &second) == 0 &&
             PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
             PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
             PCore_NodeComputedColor(document, "span", &span_color) == 0 &&
@@ -113840,6 +113902,69 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
             ok = 0;
         }
     }
+    if (ok) {
+        int menu_height;
+        int toggle;
+        int geometry_result;
+
+        menu_height = 0;
+        strcpy(stage, "bootstrap-expanded-layout");
+        PCore_SetViewport(320, 240, 96);
+        if (PCore_StyleDocument(document, sheet) != 0 ||
+                PCore_LayoutDocument(document, 320, 240) != 0 ||
+                PCore_NodeRelationById(document, "nav",
+                PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT, 0, NULL, 0,
+                NULL, &menu_height) != 0 || menu_height <= 0) {
+            ok = 0;
+        }
+        /* Class/aria changes alone are not an observable menu.  Exercise
+         * native click -> timer -> restyle -> geometry in both directions. */
+        for (toggle = 0; ok && toggle < 2; toggle++) {
+            strcpy(stage, toggle == 0 ? "bootstrap-hidden-layout" :
+                    "bootstrap-reexpanded-layout");
+            g_browser_script_session.bridge->native_button_target_token =
+                    info.target_token;
+            info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_CLICK;
+            rc = PBrowser_ScriptSessionDispatchNativeButton(
+                    g_browser_script_session.session, &info,
+                    &default_allowed);
+            if (rc == PSCRIPT_OK && default_allowed) {
+                info.phase = PBROWSER_SCRIPT_NATIVE_BUTTON_COMMIT;
+                rc = PBrowser_ScriptSessionDispatchNativeButton(
+                        g_browser_script_session.session, &info,
+                        &default_allowed);
+            }
+            g_browser_script_session.bridge->native_button_target_token = 0;
+            if (rc != PSCRIPT_OK || !default_allowed ||
+                    PBrowser_ScriptSessionRunTimers(
+                    g_browser_script_session.session,
+                    2000UL + (unsigned long) toggle * 1000UL) != PSCRIPT_OK ||
+                    PCore_NodeAttributeById(document, "nav", "class",
+                    class_value, sizeof(class_value), &bytes) != 0 ||
+                    PCore_FormControlAttributeByIndex(document, 0,
+                    "aria-expanded", aria_value, sizeof(aria_value),
+                    &bytes) != 0 ||
+                    (strstr(class_value, "show") != NULL) != (toggle != 0) ||
+                    strcmp(aria_value, toggle == 0 ? "false" : "true") != 0) {
+                ok = 0;
+                break;
+            }
+            PCore_SetViewport(320, 240, 96);
+            if (PCore_StyleDocument(document, sheet) != 0 ||
+                    PCore_LayoutDocument(document, 320, 240) != 0) {
+                ok = 0;
+                break;
+            }
+            menu_height = 0;
+            geometry_result = PCore_NodeRelationById(document, "nav",
+                    PCORE_NODE_RELATION_LAYOUT_OFFSET_HEIGHT, 0, NULL, 0,
+                    NULL, &menu_height);
+            if ((toggle == 0 && (geometry_result != 2 || menu_height != 0)) ||
+                    (toggle != 0 && (geometry_result != 0 || menu_height <= 0))) {
+                ok = 0;
+            }
+        }
+    }
     pcore_browser_script_session_destroy();
     g_render_doc = NULL;
     g_render_sheet = NULL;
@@ -113874,8 +113999,8 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     }
     show_info(L"TEST 1327 OK",
             "Unmodified jQuery/Bootstrap collapse responded to a trusted "
-            "native click on a direct flex button; class and aria state "
-            "were retained by Core.");
+            "native flex-button click; expand/hide/re-expand retained "
+            "class/aria state and visible/hidden Core layout geometry.");
     return TRUE;
 }
 

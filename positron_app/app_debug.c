@@ -14,7 +14,10 @@
 #define APP_DEBUG_LOG_PATH       L"\\Temp\\positron-debug.log"
 #define APP_DEBUG_MAX_BYTES      (128 * 1024)
 
-static int g_app_debug_file_started;
+static HANDLE g_app_debug_file = INVALID_HANDLE_VALUE;
+static DWORD g_app_debug_bytes;
+static CRITICAL_SECTION g_app_debug_lock;
+static int g_app_debug_lock_ready;
 
 static void app_debug_output_debugger(const char *message)
 {
@@ -36,12 +39,8 @@ static void app_debug_output_debugger(const char *message)
 
 static void app_debug_write_file(const char *message)
 {
-    HANDLE file;
-    DWORD high;
-    DWORD low;
     DWORD written;
     int length;
-    DWORD disposition;
 
     if (message == NULL) {
         return;
@@ -50,45 +49,60 @@ static void app_debug_write_file(const char *message)
     if (length <= 0 || length > APP_DEBUG_MAX_BYTES) {
         return;
     }
-    disposition = g_app_debug_file_started ? OPEN_ALWAYS : CREATE_ALWAYS;
-    file = CreateFileW(APP_DEBUG_LOG_PATH, GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, disposition,
-            FILE_ATTRIBUTE_NORMAL, NULL);
-    if (file == INVALID_HANDLE_VALUE) {
+    if (!g_app_debug_lock_ready) {
         return;
     }
-    if (g_app_debug_file_started) {
-        high = 0;
-        low = GetFileSize(file, &high);
-        if ((low == INVALID_FILE_SIZE && GetLastError() != NO_ERROR) ||
-                high != 0 || low >= APP_DEBUG_MAX_BYTES ||
-                low > (DWORD) (APP_DEBUG_MAX_BYTES - length) ||
-                SetFilePointer(file, 0, NULL, FILE_END) ==
-                INVALID_SET_FILE_POINTER) {
-            CloseHandle(file);
-            return;
+    EnterCriticalSection(&g_app_debug_lock);
+    if (g_app_debug_file != INVALID_HANDLE_VALUE &&
+            g_app_debug_bytes <= (DWORD) (APP_DEBUG_MAX_BYTES - length)) {
+        if (!WriteFile(g_app_debug_file, message, (DWORD) length,
+                &written, NULL) || written != (DWORD) length) {
+            CloseHandle(g_app_debug_file);
+            g_app_debug_file = INVALID_HANDLE_VALUE;
+        } else {
+            g_app_debug_bytes += written;
         }
     }
-    g_app_debug_file_started = 1;
-    if (!WriteFile(file, message, (DWORD) length, &written, NULL) ||
-            written != (DWORD) length) {
-        CloseHandle(file);
-        return;
-    }
-    CloseHandle(file);
+    LeaveCriticalSection(&g_app_debug_lock);
 }
 
 void AppDebug_BeginSession(void)
 {
     char message[160];
 
-    g_app_debug_file_started = 0;
+    if (!g_app_debug_lock_ready) {
+        InitializeCriticalSection(&g_app_debug_lock);
+        g_app_debug_lock_ready = 1;
+    }
+    EnterCriticalSection(&g_app_debug_lock);
+    if (g_app_debug_file != INVALID_HANDLE_VALUE) {
+        CloseHandle(g_app_debug_file);
+    }
+    g_app_debug_bytes = 0;
+    g_app_debug_file = CreateFileW(APP_DEBUG_LOG_PATH, GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL, NULL);
+    LeaveCriticalSection(&g_app_debug_lock);
     _snprintf(message, sizeof(message) - 1,
             "positron debug-session pid=%lu tick=%lu\r\n",
             (unsigned long) GetCurrentProcessId(),
             (unsigned long) GetTickCount());
     message[sizeof(message) - 1] = '\0';
     app_debug_write_file(message);
+}
+
+void AppDebug_EndSession(void)
+{
+    if (!g_app_debug_lock_ready) {
+        return;
+    }
+    EnterCriticalSection(&g_app_debug_lock);
+    if (g_app_debug_file != INVALID_HANDLE_VALUE) {
+        CloseHandle(g_app_debug_file);
+        g_app_debug_file = INVALID_HANDLE_VALUE;
+    }
+    LeaveCriticalSection(&g_app_debug_lock);
+    /* Keep the lock valid for late diagnostics; no further file writes occur. */
 }
 
 void AppDebug_Log(const char *message)
@@ -98,11 +112,23 @@ void AppDebug_Log(const char *message)
     if (message == NULL) {
         return;
     }
-    _snprintf(line, sizeof(line) - 1, "positron pid=%lu %s",
-            (unsigned long) GetCurrentProcessId(), message);
+    _snprintf(line, sizeof(line) - 1, "positron pid=%lu tick=%lu %s",
+            (unsigned long) GetCurrentProcessId(),
+            (unsigned long) GetTickCount(), message);
     line[sizeof(line) - 1] = '\0';
     app_debug_output_debugger(line);
     app_debug_write_file(line);
+}
+
+void AppDebug_LogElapsed(const char *phase, unsigned long started)
+{
+    char message[160];
+
+    _snprintf(message, sizeof(message) - 1,
+            "positron ui-phase phase=%s elapsed_ms=%lu\r\n", phase,
+            (unsigned long) GetTickCount() - started);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
 }
 
 #endif /* _DEBUG */

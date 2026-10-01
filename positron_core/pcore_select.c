@@ -1913,25 +1913,30 @@ static int pcore_style_subtree(css_select_ctx *ctx, pcore_select_pw *pw,
     return 0;
 }
 
-/* External CSS is fetched once while navigating, then retained as raw bytes
- * on its document. That lets a WM_SIZE restyle re-evaluate @media without
- * running the transport again. The parsed stylesheet remains per-style-pass:
- * css_select_ctx owns it only until all computed styles have been produced. */
+/* External CSS bytes belong to their document. Completed, import-free parsed
+ * sheets can also survive a style pass: media, class and interaction selection
+ * still run every time. Import trees retain per-pass ownership. */
 #define PCORE_STYLESHEET_CACHE_MAX 32
 #define PCORE_STYLESHEET_CACHE_ENTRY_MAX (256 * 1024)
 #define PCORE_STYLESHEET_CACHE_BYTES_MAX (512 * 1024)
+#define PCORE_STYLESHEET_PARSED_BYTES_MAX (1024 * 1024)
 
 typedef struct pcore_stylesheet_resource {
     struct pcore_stylesheet_resource *next;
     char *url;
     char *data;
     int len;
+    css_stylesheet *parsed;
+    size_t parsed_size;
+    PCoreResolveUrlFn parsed_resolve;
+    void *parsed_pw;
 } pcore_stylesheet_resource;
 
 typedef struct pcore_stylesheet_cache {
     pcore_stylesheet_resource *head;
     int count;
     int bytes;
+    size_t parsed_bytes;
 } pcore_stylesheet_cache;
 
 #define PCORE_STYLESHEET_REFERENCE_MAX 1024
@@ -1971,6 +1976,9 @@ static void pcore_stylesheet_cache_free(pcore_stylesheet_cache *cache)
 
         free(entry->url);
         free(entry->data);
+        if (entry->parsed != NULL) {
+            css_stylesheet_destroy(entry->parsed);
+        }
         free(entry);
         entry = next;
     }
@@ -2016,6 +2024,7 @@ static pcore_stylesheet_cache *pcore_stylesheet_cache_get(
     cache->head = NULL;
     cache->count = 0;
     cache->bytes = 0;
+    cache->parsed_bytes = 0;
     if (dom_node_set_user_data((struct dom_node *) doc,
             pcore_stylesheet_cache_key, cache,
             pcore_stylesheet_cache_ud_handler, &old) != DOM_NO_ERR) {
@@ -2064,6 +2073,10 @@ static int pcore_stylesheet_cache_store(pcore_stylesheet_cache *cache,
     entry->url = NULL;
     entry->data = NULL;
     entry->len = 0;
+    entry->parsed = NULL;
+    entry->parsed_size = 0;
+    entry->parsed_resolve = NULL;
+    entry->parsed_pw = NULL;
     url_len = strlen(url);
     entry->url = (char *) malloc(url_len + 1);
     entry->data = (char *) malloc((size_t) len);
@@ -2087,6 +2100,7 @@ static int pcore_stylesheet_cache_store(pcore_stylesheet_cache *cache,
 typedef struct pcore_collect_ctx {
     css_select_ctx *ctx;
     HANDLE         *sheets;     /* parsed sheet handles, freed by caller */
+    unsigned char  *borrowed;   /* document-owned sheets are not freed */
     int            *n;
     int             max;
     PCoreFetchFn    fetch;      /* embedder fetch for external <link> CSS */
@@ -2175,17 +2189,58 @@ static int pcore_get_stylesheet_bytes(pcore_collect_ctx *cc, const char *url,
 }
 
 static css_stylesheet *pcore_record_css_sheet(pcore_collect_ctx *cc,
-        const char *data, int len, const char *url, css_error *done)
+        const char *data, int len, const char *url, css_error *done,
+        int cache_allowed)
 {
     css_stylesheet *sheet;
+    pcore_stylesheet_resource *entry;
+    size_t parsed_size;
+    int slot;
 
     if (*cc->n >= cc->max || data == NULL || len <= 0) {
         return NULL;
     }
+    entry = cache_allowed ?
+            pcore_stylesheet_cache_find(cc->cache, url) : NULL;
+    if (entry != NULL && (entry->len != len ||
+            memcmp(entry->data, data, (size_t) len) != 0)) {
+        entry = NULL;
+    }
+    if (entry != NULL && entry->parsed != NULL &&
+            entry->parsed_resolve == cc->resolve &&
+            (cc->resolve == NULL || entry->parsed_pw == cc->pw)) {
+        slot = (*cc->n)++;
+        cc->sheets[slot] = (HANDLE) entry->parsed;
+        cc->borrowed[slot] = 1;
+        *done = CSS_OK;
+        return entry->parsed;
+    }
     sheet = pcore_parse_css_internal(data, (unsigned int) len, url,
             cc->resolve, cc->pw, done);
     if (sheet != NULL) {
-        cc->sheets[(*cc->n)++] = (HANDLE) sheet;
+        slot = (*cc->n)++;
+        cc->sheets[slot] = (HANDLE) sheet;
+        cc->borrowed[slot] = 0;
+        /* A new resolver parses once before replacing the old cache. The
+         * collect context has one resolver identity, so the old sheet cannot
+         * have been borrowed earlier in this pass when identities differ. */
+        parsed_size = 0;
+        if (*done == CSS_OK && entry != NULL &&
+                css_stylesheet_size(sheet, &parsed_size) == CSS_OK &&
+                parsed_size <= PCORE_STYLESHEET_PARSED_BYTES_MAX &&
+                cc->cache->parsed_bytes - entry->parsed_size <=
+                PCORE_STYLESHEET_PARSED_BYTES_MAX - parsed_size) {
+            if (entry->parsed != NULL) {
+                css_stylesheet_destroy(entry->parsed);
+                cc->cache->parsed_bytes -= entry->parsed_size;
+            }
+            entry->parsed = sheet;
+            entry->parsed_size = parsed_size;
+            entry->parsed_resolve = cc->resolve;
+            entry->parsed_pw = cc->pw;
+            cc->cache->parsed_bytes += parsed_size;
+            cc->borrowed[slot] = 1;
+        }
     }
     return sheet;
 }
@@ -2197,7 +2252,7 @@ static css_stylesheet *pcore_empty_import(pcore_collect_ctx *cc,
     css_error done = CSS_INVALID;
     css_stylesheet *sheet;
 
-    sheet = pcore_record_css_sheet(cc, empty_css, 1, url, &done);
+    sheet = pcore_record_css_sheet(cc, empty_css, 1, url, &done, 0);
     return (done == CSS_OK) ? sheet : NULL;
 }
 
@@ -2215,7 +2270,7 @@ static css_stylesheet *pcore_parse_css_tree(pcore_collect_ctx *cc,
     int cycle;
     int i;
 
-    sheet = pcore_record_css_sheet(cc, data, len, url, &done);
+    sheet = pcore_record_css_sheet(cc, data, len, url, &done, depth == 0);
     if (sheet == NULL || done == CSS_OK) {
         return sheet;
     }
@@ -2489,6 +2544,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     css_select_ctx   *ctx = NULL;
     dom_node         *root = NULL;
     HANDLE            page_sheets[64];
+    unsigned char     page_sheets_borrowed[64];
     int               n_page = 0;
     int               i;
     css_media         media;
@@ -2542,6 +2598,7 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     /* Apply the page's own inline <style> and external <link> sheets. */
     cc.ctx = ctx;
     cc.sheets = page_sheets;
+    cc.borrowed = page_sheets_borrowed;
     cc.n = &n_page;
     cc.max = 64;
     cc.fetch = fetch;
@@ -2604,7 +2661,9 @@ cleanup:
         css_select_ctx_destroy(ctx);   /* destroy before freeing its sheets */
     }
     for (i = 0; i < n_page; i++) {
-        PCore_FreeStylesheet(page_sheets[i]);
+        if (!page_sheets_borrowed[i]) {
+            PCore_FreeStylesheet(page_sheets[i]);
+        }
     }
     if (hUA != NULL) {
         PCore_FreeStylesheet(hUA);

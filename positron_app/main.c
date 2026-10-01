@@ -2658,11 +2658,20 @@ static int app_relayout(void)
     int pass;
     int old_page_width;
     int old_page_height;
+#ifdef _DEBUG
+    DWORD pass_started;
+    DWORD style_finished;
+    DWORD layout_finished;
+    char timing_message[256];
+#endif
 
     if (g_document == NULL) {
         return 0;
     }
     for (pass = 0; pass < 3; pass++) {
+#ifdef _DEBUG
+        pass_started = GetTickCount();
+#endif
         old_page_width = g_page_width;
         old_page_height = g_page_height;
         PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
@@ -2672,6 +2681,9 @@ static int app_relayout(void)
                     AppResources_Resolve, NULL, NULL, NULL) != 0) {
                 return 1;
             }
+#ifdef _DEBUG
+            style_finished = GetTickCount();
+#endif
             if (PCore_LayoutDocument(g_document, g_page_width,
                     g_page_height) != 0) {
                 return 1;
@@ -2680,6 +2692,12 @@ static int app_relayout(void)
                 app_style_and_layout(g_document, g_stylesheet) != 0) {
             return 1;
         }
+#ifdef _DEBUG
+        layout_finished = GetTickCount();
+        if (g_page_kind != 0) {
+            style_finished = layout_finished;
+        }
+#endif
         g_document_width = PCore_DocumentWidth(g_document);
         g_document_height = PCore_DocumentHeight(g_document);
         if (g_document_width < g_page_width) {
@@ -2690,6 +2708,19 @@ static int app_relayout(void)
         }
         app_clamp_scroll();
         (void) app_update_scrollbars(g_page_window);
+#ifdef _DEBUG
+        _snprintf(timing_message, sizeof(timing_message) - 1,
+                "positron relayout pass=%d network=%d style_ms=%lu "
+                "layout_ms=%lu viewport_ms=%lu size=%dx%d extent=%dx%d\r\n",
+                pass, g_page_kind == 0,
+                (unsigned long) (style_finished - pass_started),
+                (unsigned long) (layout_finished - style_finished),
+                (unsigned long) (GetTickCount() - layout_finished),
+                g_page_width, g_page_height, g_document_width,
+                g_document_height);
+        timing_message[sizeof(timing_message) - 1] = '\0';
+        AppDebug_Log(timing_message);
+#endif
         if (old_page_width == g_page_width &&
                 old_page_height == g_page_height) {
             break;
@@ -4928,9 +4959,17 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             PAINTSTRUCT paint;
             HDC dc;
 
+#ifdef _DEBUG
+            DWORD paint_started;
+
+            paint_started = GetTickCount();
+#endif
             dc = BeginPaint(hwnd, &paint);
             app_paint_page(hwnd, dc, &paint.rcPaint);
             EndPaint(hwnd, &paint);
+#ifdef _DEBUG
+            AppDebug_LogElapsed("page-paint", paint_started);
+#endif
         }
         return 0;
     case WM_ERASEBKGND:
@@ -5295,6 +5334,11 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             if (lparam == (LPARAM) g_script && g_document != NULL &&
                     g_controls != NULL) {
                 int refresh_result;
+#ifdef _DEBUG
+                DWORD refresh_started;
+
+                refresh_started = GetTickCount();
+#endif
 
                 AppControls_PrepareReconcile(g_controls);
                 refresh_result = app_relayout();
@@ -5315,12 +5359,36 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
 #endif
                     InvalidateRect(g_page_window, NULL, FALSE);
                 }
+#ifdef _DEBUG
+                AppDebug_LogElapsed("controls-refresh", refresh_started);
+#endif
             }
         }
         return 0;
     case WM_TIMER:
         if (wparam == APP_SCRIPT_TIMER_ID && g_script != NULL) {
+#ifdef _DEBUG
+            DWORD checkpoint_started;
+            DWORD checkpoint_elapsed;
+            int checkpoint_result;
+            char checkpoint_message[160];
+
+            checkpoint_started = GetTickCount();
+            checkpoint_result = AppScript_RunTaskCheckpoint(g_script,
+                    checkpoint_started);
+            checkpoint_elapsed = GetTickCount() - checkpoint_started;
+            if (checkpoint_result != 0 || checkpoint_elapsed >= 250UL) {
+                _snprintf(checkpoint_message,
+                        sizeof(checkpoint_message) - 1,
+                        "positron script-checkpoint result=%d elapsed_ms=%lu\r\n",
+                        checkpoint_result,
+                        (unsigned long) checkpoint_elapsed);
+                checkpoint_message[sizeof(checkpoint_message) - 1] = '\0';
+                AppDebug_Log(checkpoint_message);
+            }
+#else
             (void) AppScript_RunTaskCheckpoint(g_script, GetTickCount());
+#endif
         }
         return 0;
     case WM_CLOSE:
@@ -5349,6 +5417,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         app_page_paint_buffer_release();
         AppHostContext_Shutdown(&g_app);
+        AppDebug_EndSession();
         PostQuitMessage(0);
         return 0;
     }

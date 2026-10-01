@@ -30,6 +30,15 @@ WM6 宿主有设备缩放时，应在首次 style/layout 前用实际物理客�
 
 ## 解析、样式与资源
 
+外部 CSS 原始字节按文档缓存：最多 32 项，每项 256 KiB、总计 512 KiB。完整解析且不含
+`@import` 的顶层样式表还可复用其 libcss 解析结果，累计保留量以 `css_stylesheet_size()` 报告
+值计，最多 1 MiB；它随 document 一起释放。缓存要求 URL、原始 bytes 和 resolver 身份一致，
+不缓存 callback buffer 或借用其所有权。resolver 身份改变时先重新解析，完整结果符合预算后
+替换旧缓存，避免导航候选提交后的上下文切换永久失去复用；超出保留预算或含 import 时仍使用
+原有逐次解析路径，不丢弃样式。每次重排仍重算媒体条件、selector、继承和交互状态；缓存不是冻结
+computed style，也不免除 mutation 后的 style/layout。宿主必须保持 resolver 与 pw 的身份和
+行为一致；需要新的资源策略时应创建新文档，而不是复用同一缓存并悄悄改变 resolver 行为。
+
 Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页面 extent、常见 block/inline/flex/table/replaced layout、命中和 GDI paint。普通 `<button>` 是保留作者后代的样式盒，Core 在同一盒上附加有界 form gadget，因此按钮内的 span、文字和 CSS background image 仍由正常布局/绘制路径负责；`input` 的 submit/reset/button 类型继续使用原有 replaced-control fallback。资源发现与 cache 由 Core 维护有界状态；宿主负责 DNS/TCP/TLS/HTTP、worker、取消、重试和把成功/失败结果提交回 Core。
 
 `img`、`srcset` 和 `picture/source` 只支持头文件规定的候选、URL、祖先、source、节点和 `sizes` 预算。Core 可投影 `naturalWidth`、`naturalHeight`、`complete`、`currentSrc`、image-map 几何和 area link metadata，但 relation 查询不会自行 fetch、decode 或 layout。CORS、完整媒体查询、绝对 URL、loading 策略和图像事件由上层决定。

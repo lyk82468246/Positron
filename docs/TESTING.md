@@ -104,6 +104,10 @@ tests=1-5 7b 13 20,999
 
 - 资源、导航、history、viewport、页面生命周期、脚本任务队列、焦点和窗口通知由早期资源/会话夹具覆盖；这些夹具共同验证候选 generation、required/optional gate、取消、旧页保留、滚动快照和事件顺序。
 - 几何、overflow、滚动、selector、form owner、validation、submission、FormData、option/select 和图像 source 夹具覆盖 Core/Browser callback 的边界、预算、snapshot 隔离和 fail-closed 行为；参考宿主 TEST39 另以离线 column-flex fixture 断言 `flex-basis:0` 子项的实际高度计入自动高度父容器，footer 不得覆盖前置 section；真实控件、DPI、触摸和视觉仍属于人工验收。
+- TEST24 验证文档内外部 CSS 解析缓存：相同 URL/bytes/resolver 的再次 style 不重复解析资源 URL，
+  但 viewport 媒体条件与 class mutation 仍重新选择，resolver 身份变化先重新解析，下一次可复用新缓存。
+  TEST45 保留 `@import` 树的逐次解析与原始 bytes 缓存回归；fixture callback 的 `pw` 必须匹配
+  其上下文类型，不能把测试计数器传给要求导航 request 的生产适配器。
 - DOM/CharacterData 夹具覆盖 Text、Comment、CDATA、属性、`textContent`、`innerHTML`/`outerHTML`、`document.write`、title、detached Element 与 bounded DocumentFragment。Fragment 只允许文档规定的有限根数和节点形状。
 - TEST1322 覆盖 Browser 脚本 session 的有界内存 profile：旧 `Create` 仍为 1.5 MiB，应用使用 additive 的 `CreateEx` 3 MiB profile；低于默认或超过上限的请求 fail closed，约 120 KiB 的保留 classic script 可在 bootstrap 后执行，GC 后状态仍可用。该门证明预算和 ABI 合同，不证明任意第三方脚本兼容；固定版本 jQuery/Popper/Bootstrap 的真实执行状态另由应用 Debug 日志和 TEST1325–1327 记录，bootstrap-multiselect 仍保留为独立语法限制。
 - TEST1284–1296 覆盖 CDATA 创建/物化、Text 合同、Fragment CharacterData staging、Core/live Element/detached Fragment 的 `Node.normalize()`、detached Element 的直接 CharacterData staging，以及 detached Element 物化后的有界 primitive `before()`/`after()`/`replaceWith()`、attached HTML mutation coherence、element-child projection、四位置 `insertAdjacentText()`/`insertAdjacentHTML()`、四位置 `insertAdjacentElement()`、直接 Element-child 的 `appendChild()`/`insertBefore()`/`removeChild()` 与 primitive-only `replaceChildren()`：空 Text/CDATA 被删除，相邻 Text/CDATA 合并到首个非空节点，Comment 保持边界；Text、Comment、CDATA wrapper 和物化 Element wrapper 可在 clone、replace、直接物化、移除、再次插入、同级文本/Element 突变、parser-backed `innerHTML`/`outerHTML` 替换、`children`/first-last element accessor 读取和相邻 mutation 之间保持有界 identity，Element 脱离后 direct 普通 Text/CDATA 快照仍保留数据。未物化 Element 的 relative/adjacent/child mutation 保持 inert，任意对象参数和完整 detached HTML parser 仍在 mutation 前拒绝或不承诺。
@@ -229,7 +233,9 @@ tests=1-5 7b 13 20,999
   容器，通过 Core 布局和可信原生坐标事务验证 gadget 命中；1327 将两者合并，在显式
   `type=button`、没有 `id` 且包含 `.navbar-toggler-icon` 子 span 的生产形状 button 上通过原生
   click/commit 后用有界 `PBrowser_ScriptSessionRunTimers()` 推进过渡，再断言 `nav` 含 `show`、
-  按钮 `aria-expanded=true`；目标菜单嵌套在 navbar 内，初始使用 `.collapse:not(.show){display:none}`，
+  按钮 `aria-expanded=true`，再重新 style/layout 并要求菜单实际高度大于零；随后收起和再次展开，
+  同时断言 class/ARIA 与隐藏/可见几何。class 已变但 CSS class-token cache 未同步仍会失败，
+  不能把属性变化当作可见结果。目标菜单嵌套在 navbar 内，初始使用 `.collapse:not(.show){display:none}`，
   避免仅验证本来就可见的目标。Core 不把装饰性 span 变成事件目标的持久 DOM id；同步事件桥
   只提供短生命周期 token，使 Bootstrap 的 delegated selector 能读到真实按钮属性。1328 在
   flex、普通 block（仍保留一个默认 submit 兼容项）和定位 inline 路径中让 button 的 span 使用
@@ -354,6 +360,20 @@ Windows CE 会按 DLL 基名复用已加载模块。自动宿主在日志头记�
 每批通常运行新能力、直接共享的 ABI/所有权/默认动作、一个页面或导航哨兵（若相关）以及 TEST999。多个低风险批次累计、修改公共 ABI 或生命周期、触及 layout/paint、输入、网络/TLS、资源缓存、准备里程碑或出现崩溃/超时/数据错误时，再扩大到更宽范围或全量。全量清单从当前源码生成，不复制到本文。
 
 ## 人工验收
+
+### 交互性能
+
+测量菜单、表单或滚动卡顿时，以同一页面、设备、DPI 和构建配置比较前后结果。Debug 默认关闭
+逐 DOM getter 取证，日志按 session 复用有界文件句柄；需要排查桥接时才编译启用
+`APP_DEBUG_DOM_TRACE=1`，并注明它会干扰性能。保留点击/脚本、style、layout、控件同步和 paint
+的低频计时，并用 Release 复核普通产品路径；不能只测脚本返回或 class mutation。
+
+模拟器 guest `GetTickCount` 与用户的 PC 墙钟不能直接等同。自动门须同时证明展开/收起后的
+布局几何和事件语义；人工仍须观察点击至画面稳定的时间、期间地址栏/菜单是否可响应。
+已知核心交互阻塞不能因局部计时下降而标成完成。Debug 捕获脚本的显式进程清理必须等待
+helper 的成功摘要，不用固定短延迟推断进程已经退出，并在覆盖旧日志前先回收证据。
+
+### 输入与视觉
 
 真实设备必须观察字体 fallback、字形、颜色、渐变、左右边距、居中容器、换行、表格、列表、滚动条、触摸命中、键盘焦点、SIP/IME、旋转/DPI、系统 picker、窗口返回、剪贴板互操作、loading、失败网络、旧页保留和深层导航。低风险视觉或输入变化可以累计后集中验收；崩溃、数据损坏、严重布局破坏和核心交互阻塞必须立即复核。
 

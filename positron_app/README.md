@@ -161,6 +161,12 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 
 ## 阶段 A/B 验收
 
+Debug 诊断默认不记录每次 DOM getter，避免同步 I/O 淹没真实交互。需要详细 bridge 取证时
+可显式编译 `APP_DEBUG_DOM_TRACE=1`；普通性能测量保持关闭。低频日志包含导航/脚本结果、
+mutation、重排分段和控件同步/绘制耗时，设备文件仍限制为 128 KiB，并在应用退出时关闭。
+`scripts/debug_capture.bat -ForceTerminatePositron` 会保存旧日志并等待精确清理 helper 的
+成功摘要后再启动新包；共享冲突或摘要缺失不能当作新包已运行。
+
 在 WM6 Professional 设备或模拟器上确认：
 
 1. 在英语设备和简体中文设备上分别直接启动 `positron.exe`，不出现测试选择界面，确认欢迎页、

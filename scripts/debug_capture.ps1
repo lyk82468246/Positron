@@ -102,11 +102,29 @@ function Receive-DebugLog([string] $remotePath, [string] $localPath)
 function Invoke-ProcessCleanup([string] $root)
 {
     $cleanupExe = $root + "\positron_process_cleanup.exe"
+    $remoteCleanupLog = $root + "\process-cleanup.log"
+    $localCleanupLog = Join-Path $runRoot "process-cleanup.log"
+    $summary = $null
+    [PositronDeviceRapi]::DeleteFileIfExists($remoteCleanupLog)
     Write-Capture "starting isolated process cleanup helper"
     $cleanupPid = [PositronDeviceRapi]::LaunchProcess(
             $cleanupExe, $root, $null)
     Write-Capture ("cleanup helper pid={0}" -f $cleanupPid)
-    Start-Sleep -Milliseconds 500
+    $deadline = (Get-Date).AddSeconds(30)
+    while ($null -eq $summary -and (Get-Date) -lt $deadline) {
+        if ([PositronDeviceRapi]::TryCopyFileFromDevice(
+                $remoteCleanupLog, $localCleanupLog)) {
+            $text = Get-Content -LiteralPath $localCleanupLog -Raw -Encoding UTF8
+            $match = [regex]::Match($text,
+                    "(?m)^summary target_count=\d+ failed=\d+.*$")
+            if ($match.Success) { $summary = $match.Value.Trim() }
+        }
+        if ($null -eq $summary) { Start-Sleep -Milliseconds 250 }
+    }
+    if ($null -eq $summary -or $summary -notmatch "\bfailed=0\b") {
+        throw "Process cleanup did not confirm success; preserving the old application log."
+    }
+    Write-Capture ("process cleanup completed: " + $summary)
 }
 
 function Copy-StageToDevice([string] $stagePath, [string] $root)
@@ -268,6 +286,8 @@ try {
         Write-Capture ("deployed {0} files to {1}" -f $fileCount, $RemoteRoot)
 
         if ($ForceTerminatePositron) {
+            $previousLog = Join-Path $runRoot "previous-positron-debug.log"
+            [void] (Receive-DebugLog $remoteLog $previousLog)
             Invoke-ProcessCleanup $RemoteRoot
         }
 

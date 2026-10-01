@@ -123,10 +123,11 @@ static dom_exception _dom_element_create_classes(struct dom_element *ele,
 				const char *s = pos;
 				while (*pos != ' ' && *pos != '\0')
 					pos++;
-				if (lwc_intern_string(s, pos - s, 
-						&classes[n_classes++]) !=
+				if (lwc_intern_string(s, pos - s,
+						&classes[n_classes]) !=
 						lwc_error_ok)
 					goto error;
+				n_classes++;
 			} else {
 				while (*pos == ' ')
 					pos++;
@@ -1659,6 +1660,8 @@ dom_exception _dom_element_set_attr(struct dom_element *element,
 		dom_string *old = NULL;
 		struct dom_document *doc = dom_node_get_owner(element);
 		bool success = true;
+		bool replace_classes;
+		struct dom_element staged_classes;
 		err = dom_attr_get_value(match->attr, &old);
 		/* TODO: We did not support some node type such as entity
 		 * reference, in that case, we should ignore the error to
@@ -1672,9 +1675,29 @@ dom_exception _dom_element_set_attr(struct dom_element *element,
 		if (err != DOM_NO_ERR)
 			return err;
 
+		/* Replacing an existing class attribute must also replace the token
+		 * cache used by CSS selection.  Stage it before changing the Attr:
+		 * allocation failure must leave the old value and cache consistent. */
+		replace_classes = namespace == NULL &&
+				dom_string_isequal(name, doc->class_string);
+		staged_classes.classes = NULL;
+		staged_classes.n_classes = 0;
+		if (replace_classes) {
+			err = _dom_element_create_classes(&staged_classes,
+					dom_string_data(value));
+			if (err != DOM_NO_ERR)
+				return err;
+		}
 		err = dom_attr_set_value(match->attr, value);
-		if (err != DOM_NO_ERR)
+		if (err != DOM_NO_ERR) {
+			_dom_element_destroy_classes(&staged_classes);
 			return err;
+		}
+		if (replace_classes) {
+			_dom_element_destroy_classes(element);
+			element->classes = staged_classes.classes;
+			element->n_classes = staged_classes.n_classes;
+		}
 
 		success = true;
 		err = _dom_dispatch_subtree_modified_event(doc,
@@ -2407,4 +2430,3 @@ bool attributes_equal(void *p1, void *p2)
 	return p1 == p2;
 }
 /*------------------ End of namednodemap functions -----------------------*/
-

@@ -165,13 +165,12 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
     原版 jQuery/Bootstrap 事务以及 flex/普通 block button 的 CSS data-URI 作者图标现在由
     TEST1325–1329 覆盖；1327/1329 使用生产页面的显式 `type=button` 形状，1328 另保留一个
     默认 submit 的 block 兼容项，并额外覆盖 `display:inline;position:absolute` 的定位按钮。
-    当前匹配 DLL 门已证明隐藏 collapse、定位按钮和各区域作者图标的合同。真实应用的点击
-    失效另定位为关系 callback 错误拒绝可选 NULL 输出；修正后生产页面的自动 native click 已
-    更新 `aria-expanded=true` 和菜单 `collapse show`，应用重排成功。下一步只保留当前窗口的
-    真实点击与视觉门，确认展开/收起及汉堡图标保留；bootstrap-multiselect 的语法错误另行
-    保留为限制。自动门与属性日志仍不能替代该人工结果。
-    Release 应用工程已链接，但完整解决方案的 CABWiz 数据文件生成仍可能失败，不能把 Release
-    全量门写成通过。
+    用户已确认汉堡图标及菜单展开/收起正常，当前短期阻塞转为交互性能：展开约 10 秒、收起约
+    6 秒的 UI 阻塞已由有界 CSS 解析缓存和低干扰日志候选显著缓解，当前性能门与后续边界见
+    HANDOFF。后续按真实低资源设备或 Release 的新失败证据选择优化，不默认追加脱离测量的
+    性能批次；不为降低局部计时取消动画或冻结 computed style。缓存归 Core，调度
+    和日志归应用，不改变事件、媒体条件、资源与生命周期语义；guest 时钟不直接等同用户墙钟。
+    bootstrap-multiselect 的语法错误仍是独立限制，不扩大 heap 或加入站点特判。
 5. 脚本 File/Blob→FormData→multipart 仍需真实上传消费者证据：Browser 负责 bounded metadata 和
    对象生命周期，Core 继续负责 wire encoding，宿主只负责同步 file read/free、权限和网络调度。
    当前只支持 native `input type=file` 的系统选择器路径；没有脚本 pairs→Core snapshot 的公共入口，
@@ -222,10 +221,11 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
     RAPI 设备传输按用户决定暂停，不据此宣布设备基线；恢复设备传输后先验收本纵切的 method/enctype、
     picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
 
-Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。匹配设备已通过生产形状的
-TEST1327–1329；应用 callback 对可选 NULL 输出的修正也由真实 WinWorld 自动点击证明确实恢复了
-目标查询、ARIA/class mutation、timer 和重排。当前剩余的是同一新窗口的人工触摸/键盘/视觉门，
-确认菜单可反复展开/收起且图标保留；通过后退出当前回归，不预先新增站点特判或预算扩张。
+Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单的真实触摸和作者图标已由用户
+确认，不能继续把它们当成未修复的问题。当前授权目标是减少展开/收起的 UI 阻塞：先用低干扰
+测量和 Debug/Release 对照证明收益，再判断是否需要进一步优化 Core style/layout 或宿主刷新
+调度。只检查 ARIA/class 的旧断言不足以证明可见性，回归须包含最终布局；性能门也不能只检查
+脚本执行成功。具体候选、失败门和最新设备证据统一见 HANDOFF。
 
 候选发现仍只允许读取源码、公开头文件、测试 dispatch、组件 README、限制和真实设备日志；
 不要把人工输入 backlog 或测试宿主扩展当作产品语义。阶段 A 的语言矩阵、触摸、旋转、DPI、
