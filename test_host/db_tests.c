@@ -771,6 +771,16 @@ static BOOL db_test_sync_registration_guards(void)
     }
     if (rc != PDB_OK || PDb_SyncRegisterTable(db, "missing_records", "id",
             columns, 2) != PDB_NOT_FOUND ||
+            PDb_SyncRegisterTable(db, long_hash, "id", columns, 2) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", long_hash,
+            columns, 2) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", NULL, 2) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", columns, 0) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, "guard_records", "id", columns,
+            PDB_SYNC_MAX_COLUMNS + 1) != PDB_INVALID_ARGUMENT ||
             PDb_SyncRegisterTable(db, "bad-name", "id", columns, 2) !=
             PDB_INVALID_ARGUMENT ||
             PDb_SyncRegisterTable(db, "__pdb_guard", "id", columns, 2) !=
