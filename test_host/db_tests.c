@@ -1544,6 +1544,8 @@ BOOL test1321_db_contract(void)
     };
     static const char utf8_text[] =
         "\xE4\xB8\xAD\xE6\x96\x87\xE2\x9C\x93";
+    static const char escaped_text[] =
+        "\xE4\xB8\xAD\xE6\x96\x87\xE2\x9C\x93\"\\\n";
     static const char accepted[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
         "\"accepted\":[{\"op_id\":\"device-1:1\",\"version\":\"1\"}],"
@@ -2067,6 +2069,39 @@ BOOL test1321_db_contract(void)
         return FALSE;
     }
     PDb_Finalize(stmt);
+    stmt = NULL;
+    rc = PDb_Prepare(sync,
+            "INSERT INTO boundary_records(id,name,payload) VALUES(?1,?2,?3)",
+            &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 1, 42);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindText(stmt, 2, escaped_text,
+                (int)sizeof(escaped_text) - 1);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindNull(stmt, 3);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+        if (rc == PDB_STEP_DONE) {
+            rc = PDB_OK;
+        }
+    }
+    PDb_Finalize(stmt);
+    if (rc != PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"key\":\"42\"") == NULL ||
+            strstr(request, utf8_text) == NULL ||
+            strstr(request, "\\\"") == NULL ||
+            strstr(request, "\\\\") == NULL ||
+            strstr(request, "\\n") == NULL ||
+            strstr(request, "\n") != NULL) {
+        PDb_Close(sync);
+        return FALSE;
+    }
     PDb_Close(sync);
     return TRUE;
 }
