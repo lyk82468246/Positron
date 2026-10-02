@@ -1107,6 +1107,8 @@ static BOOL db_test_transaction_and_limits(void)
     long_sql[PDB_SQL_MAX_BYTES + 1] = '\0';
     if (PDb_Exec(db, long_sql) != PDB_LIMIT ||
             PDb_Prepare(db, long_sql, &stmt) != PDB_LIMIT ||
+            PDb_Prepare(db, "SELECT ?129", &stmt) == PDB_OK ||
+            stmt != NULL ||
             PDb_Prepare(db, "SELECT ?1", &stmt) != PDB_OK ||
             PDb_BindText(stmt, 1, "x", PDB_SYNC_MAX_BODY_BYTES + 1) !=
             PDB_INVALID_ARGUMENT ||
