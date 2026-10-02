@@ -202,6 +202,11 @@ static void app_file_picker_cancel_pending(void);
 static void app_forms_adapter_init(AppFormsAdapter *adapter);
 static int app_handle_disclosure(HWND hwnd, int x, int y);
 static int app_handle_label(HWND hwnd, int x, int y);
+static int app_navigation_cancel_active(void);
+static int app_history_bound(void);
+static void app_history_save_scroll(void);
+static int app_history_traverse(HWND hwnd, int target_index);
+static int app_navigate_fragment(HWND hwnd, const char *url, int replace);
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -759,6 +764,83 @@ static void app_scroll_by(HWND hwnd, int dx, int dy)
                     MulDiv(g_scroll_y, 96, g_dpi > 0 ? g_dpi : 96));
         }
     }
+}
+
+/* These are platform viewport adapters. Browser owns entry identity/state;
+ * Core owns fragment lookup. Never infer same-document identity from a URL. */
+static int app_history_bound(void)
+{
+    return g_document != NULL && g_app.history_document_id != 0 &&
+            g_app.history_document_id == PBrowser_HistoryEntryDocumentId(
+            g_history, PBrowser_HistoryIndex(g_history));
+}
+
+static void app_history_save_scroll(void)
+{
+    if (app_history_bound()) {
+        (void) PBrowser_HistorySetEntryScroll(g_history,
+                PBrowser_HistoryIndex(g_history), g_scroll_x, g_scroll_y);
+    }
+}
+
+static void app_history_bind_page(void)
+{
+    g_app.history_document_id = PBrowser_HistoryEntryDocumentId(g_history,
+            PBrowser_HistoryIndex(g_history));
+}
+
+static void app_history_notify_scroll(void)
+{
+    if (g_script != NULL) {
+        (void) AppScript_NotifyScroll(g_script,
+                MulDiv(g_scroll_x, 96, g_dpi > 0 ? g_dpi : 96),
+                MulDiv(g_scroll_y, 96, g_dpi > 0 ? g_dpi : 96));
+    }
+}
+
+static int app_scroll_to_fragment(const char *url)
+{
+    const char *fragment;
+    int x;
+    int y;
+
+    fragment = url != NULL ? strchr(url, '#') : NULL;
+    if (g_document == NULL || fragment == NULL) {
+        return 0;
+    }
+    if (strchr(fragment + 1, '%') != NULL) {
+        return 0;
+    }
+    x = 0;
+    y = 0;
+    /* The Core API accepts decoded UTF-8 tokens, not URL percent decoding.
+     * Do not add a second URL decoder to the application. */
+    if (fragment[1] != '\0' &&
+            PCore_FragmentInfoByToken(g_document, fragment + 1, &x, &y,
+            NULL, NULL) != 0) {
+        return 0;
+    }
+    (void) app_scroll_to_position(g_page_window, app_scale_dpi(x),
+            app_scale_dpi(y));
+    app_history_notify_scroll();
+    return 1;
+}
+
+static void app_history_restore_scroll(int index)
+{
+    int mode;
+    int x;
+    int y;
+
+    if (AppScript_GetScrollRestoration(g_script, &mode) != 0 ||
+            mode == PBROWSER_SCROLL_RESTORATION_MANUAL) {
+        return;
+    }
+    x = 0;
+    y = 0;
+    (void) PBrowser_HistoryEntryScroll(g_history, index, &x, &y);
+    (void) app_scroll_to_position(g_page_window, x, y);
+    app_history_notify_scroll();
 }
 
 /* Core owns nested overflow geometry and scrollbar state.  The EXE only
@@ -2352,6 +2434,7 @@ static int app_script_navigate(void *pw, AppScriptContext *context,
     if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE ||
             info->kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE_STATE) {
         if (host->script != context || host->history == NULL ||
+                !app_history_bound() ||
                 info->url == NULL || info->state_json == NULL ||
                 info->url[0] == '\0' || info->state_json[0] == '\0' ||
                 PBrowser_HistorySameOriginUrl(host->current_url,
@@ -2359,6 +2442,7 @@ static int app_script_navigate(void *pw, AppScriptContext *context,
             return 0;
         }
         if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
+            app_history_save_scroll();
             history_result = PBrowser_HistoryPushState(host->history,
                     info->url, info->state_json);
         } else {
@@ -2370,6 +2454,8 @@ static int app_script_navigate(void *pw, AppScriptContext *context,
         }
         app_copy_text(host->current_url, sizeof(host->current_url),
                 info->url);
+        (void) AppScript_SetDocumentUrl(context, host->current_url);
+        app_history_save_scroll();
         app_set_address(host->current_url);
         app_update_history_buttons();
         if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
@@ -2958,7 +3044,6 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     int history_rc;
     int restore_x;
     int restore_y;
-    const char *fragment;
 
     restore_x = 0;
     restore_y = 0;
@@ -2968,10 +3053,6 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     } else if (history_mode == APP_HISTORY_TARGET) {
         (void) PBrowser_HistoryEntryScroll(g_history, history_target,
                 &restore_x, &restore_y);
-    }
-    if (g_document != NULL) {
-        (void) PBrowser_HistorySetEntryScroll(g_history,
-                PBrowser_HistoryIndex(g_history), g_scroll_x, g_scroll_y);
     }
     if (app_build_page(url, &new_document, &new_stylesheet,
             &new_page_kind) != 0) {
@@ -2990,6 +3071,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
             return 0;
         }
     }
+    app_history_save_scroll();
     history_rc = PBROWSER_OK;
     if (history_mode == APP_HISTORY_NEW) {
         history_rc = PBrowser_HistoryCommitNavigation(g_history, url,
@@ -3001,6 +3083,9 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         history_rc = PBrowser_HistoryCommitNavigation(g_history, url,
                 PBROWSER_HISTORY_METHOD_GET,
                 PBROWSER_HISTORY_TARGET_REPLACE_CURRENT);
+    } else if (history_mode == APP_HISTORY_REFRESH) {
+        history_rc = PBrowser_HistoryCommitTargetDocument(g_history,
+                PBrowser_HistoryIndex(g_history));
     }
     if (history_rc != PBROWSER_OK) {
         PCore_FreeStylesheet(new_stylesheet);
@@ -3022,6 +3107,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         return 0;
     }
     app_set_address(g_current_url);
+    app_history_bind_page();
     if (app_relayout() != 0) {
         app_set_status(APP_TEXT_STATUS_LAYOUT);
     }
@@ -3032,18 +3118,11 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     }
     app_update_history_buttons();
     app_restore_page_status();
-    fragment = strchr(url, '#');
-    if (fragment != NULL && new_page_kind == APP_I18N_PAGE_ABOUT) {
-        int x;
-        int y;
-
-        if (PCore_FragmentInfoById(g_document, fragment + 1, &x, &y,
-                NULL, NULL) == 0) {
-            restore_x = app_scale_dpi(x);
-            restore_y = app_scale_dpi(y);
-        }
-    }
     (void) app_scroll_to_position(g_page_window, restore_x, restore_y);
+    if (history_mode != APP_HISTORY_TARGET &&
+            history_mode != APP_HISTORY_REFRESH) {
+        (void) app_scroll_to_fragment(url);
+    }
 #ifdef _DEBUG
     {
         char message[1280];
@@ -3984,6 +4063,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 return -1;
             }
         }
+        app_history_save_scroll();
         if (request->method != PCORE_FORM_METHOD_GET) {
             /* The current Browser history ABI records GET document entries;
              * POST/multipart still replace the visible document but do not
@@ -4000,6 +4080,9 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             history_rc = PBrowser_HistoryCommitNavigation(g_history,
                     request->url, PBROWSER_HISTORY_METHOD_GET,
                     PBROWSER_HISTORY_TARGET_REPLACE_CURRENT);
+        } else if (request->history_mode == APP_HISTORY_REFRESH) {
+            history_rc = PBrowser_HistoryCommitTargetDocument(g_history,
+                    PBrowser_HistoryIndex(g_history));
         } else {
             history_rc = PBROWSER_OK;
         }
@@ -4022,6 +4105,9 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         request->document_candidate = NULL;
         request->stylesheet_candidate = NULL;
         request->script_candidate = NULL;
+        if (request->method == PCORE_FORM_METHOD_GET) {
+            app_history_bind_page();
+        }
         app_set_focus_ids(g_page_kind);
         app_set_address(g_current_url);
         if (app_relayout() != 0) {
@@ -4033,6 +4119,11 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         app_update_history_buttons();
         app_set_status(app_ready_status());
+        if (request->method == PCORE_FORM_METHOD_GET &&
+                (request->history_mode == APP_HISTORY_TARGET ||
+                request->history_mode == APP_HISTORY_REFRESH)) {
+            app_history_restore_scroll(PBrowser_HistoryIndex(g_history));
+        }
         if (g_script != NULL) {
             (void) AppScript_SetVisibility(g_script,
                     IsWindowVisible(g_window) ? 0 : 1);
@@ -4258,13 +4349,123 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     return 1;
 }
 
+/* Return zero only when a full document navigation is needed. A negative
+ * result rejects this operation without falling through to a network reload. */
+static int app_history_traverse(HWND hwnd, int target_index)
+{
+    const char *entry;
+    char url[APP_URL_MAX];
+    char state[PBROWSER_HISTORY_STATE_MAX];
+    char old_url[APP_URL_MAX];
+    int old_index;
+
+    if (!app_history_bound() || !PBrowser_HistoryIsSameDocumentTarget(
+            g_history, target_index)) {
+        return 0;
+    }
+    entry = PBrowser_HistoryEntryUrl(g_history, target_index);
+    if (entry == NULL || strlen(entry) >= sizeof(url)) return -1;
+    app_copy_text(url, sizeof(url), entry);
+    entry = PBrowser_HistoryEntryState(g_history, target_index);
+    if (entry == NULL || strlen(entry) >= sizeof(state)) return -1;
+    app_copy_text(state, sizeof(state), entry);
+    app_copy_text(old_url, sizeof(old_url), g_current_url);
+    old_index = PBrowser_HistoryIndex(g_history);
+    if (app_navigation_cancel_active() != 0) return -1;
+    app_history_save_scroll();
+    if (PBrowser_HistoryCommitTarget(g_history, target_index) != PBROWSER_OK)
+        return -1;
+    app_copy_text(g_current_url, sizeof(g_current_url), url);
+    if (g_script != NULL) {
+        (void) AppScript_SetDocumentUrl(g_script, url);
+        if (AppScript_DispatchHistoryTraversal(g_script, state, url) != 0) {
+            /* Do not overwrite a pushState performed by an event handler. */
+            if (PBrowser_HistoryIndex(g_history) == target_index &&
+                    strcmp(g_current_url, url) == 0) {
+                (void) PBrowser_HistoryCommitTarget(g_history, old_index);
+                app_copy_text(g_current_url, sizeof(g_current_url), old_url);
+                (void) AppScript_SetDocumentUrl(g_script, old_url);
+            }
+            app_set_address(g_current_url);
+            app_update_history_buttons();
+            app_restore_page_status();
+            return -1;
+        }
+    }
+    app_set_address(g_current_url);
+    app_update_history_buttons();
+    app_restore_page_status();
+    /* Follow the reference host: fragments reveal their live target; other
+     * entries use the saved viewport unless Browser requests manual mode. */
+    if (strchr(g_current_url, '#') != NULL) {
+        (void) app_scroll_to_fragment(g_current_url);
+    } else {
+        app_history_restore_scroll(PBrowser_HistoryIndex(g_history));
+    }
+#ifdef _DEBUG
+    AppDebug_Log("positron history same-document traversal OK\r\n");
+#endif
+    (void) hwnd;
+    return 1;
+}
+
+static int app_navigate_fragment(HWND hwnd, const char *url, int replace)
+{
+    char target[APP_URL_MAX];
+    const char *hash;
+    size_t base_length;
+    int result;
+
+    if (!app_history_bound() || url == NULL) return 0;
+    if (url[0] == '#') {
+        /* The anchor callback borrows a fragment-only href. Retain it as
+         * document-location metadata, never send it through transport. */
+        hash = strchr(g_current_url, '#');
+        base_length = hash != NULL ? (size_t) (hash - g_current_url) :
+                strlen(g_current_url);
+        if (base_length + strlen(url) >= sizeof(target)) return -1;
+        memcpy(target, g_current_url, base_length);
+        strcpy(target + base_length, url);
+    } else {
+        if (strchr(url, '#') == NULL ||
+                !PBrowser_HistorySameBaseUrl(g_current_url, url)) return 0;
+        if (strlen(url) >= sizeof(target)) return -1;
+        app_copy_text(target, sizeof(target), url);
+    }
+    if (app_navigation_cancel_active() != 0) return -1;
+    if (strcmp(g_current_url, target) != 0) {
+        app_history_save_scroll();
+        result = replace ? PBrowser_HistoryReplaceState(g_history,
+                target, "null") : PBrowser_HistoryPushState(g_history,
+                target, "null");
+        if (result != PBROWSER_OK) return -1;
+        app_copy_text(g_current_url, sizeof(g_current_url), target);
+        if (g_script != NULL) {
+            (void) AppScript_SetDocumentUrl(g_script, target);
+            (void) AppScript_DispatchHashNavigation(g_script, target,
+                    PBrowser_HistoryCount(g_history));
+        }
+    }
+    app_set_address(g_current_url);
+    app_update_history_buttons();
+    app_restore_page_status();
+    (void) app_scroll_to_fragment(g_current_url);
+    (void) hwnd;
+    return 1;
+}
+
 static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         int history_target, AppNavigationSource source)
 {
     char canonical[APP_URL_MAX];
     AppInternalRoute route;
+    int same_document;
 
     if (url == NULL || url[0] == '\0') return 0;
+    if (history_mode == APP_HISTORY_TARGET) {
+        same_document = app_history_traverse(hwnd, history_target);
+        if (same_document != 0) return same_document > 0;
+    }
     if (AppUrlRouter_ClassifyScheme(url) == APP_URL_SCHEME_POSITRON) {
         if (AppInternalPages_Resolve(url, source, &route) != 0) {
             app_set_address(g_current_url);
@@ -4273,6 +4474,12 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         if (route.kind == APP_INTERNAL_COMMAND) {
             return PostMessage(hwnd, WM_CLOSE, 0, 0) ? 1 : 0;
         }
+        if (history_mode == APP_HISTORY_NEW ||
+                history_mode == APP_HISTORY_REPLACE) {
+            same_document = app_navigate_fragment(hwnd, route.url,
+                    history_mode == APP_HISTORY_REPLACE);
+            if (same_document != 0) return same_document > 0;
+        }
         if (g_navigation_request != NULL &&
                 app_navigation_cancel_active() != 0) {
             app_set_address(g_current_url);
@@ -4280,6 +4487,12 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         }
         return app_load_local_page(hwnd, route.url, history_mode,
                 history_target);
+    }
+    if (history_mode == APP_HISTORY_NEW ||
+            history_mode == APP_HISTORY_REPLACE) {
+        same_document = app_navigate_fragment(hwnd, url,
+                history_mode == APP_HISTORY_REPLACE);
+        if (same_document != 0) return same_document > 0;
     }
     if (app_canonicalize_url(g_current_url, url, canonical,
             sizeof(canonical)) != 0) {
@@ -4292,6 +4505,171 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     return app_navigation_start(hwnd, canonical, PCORE_FORM_METHOD_GET,
             NULL, 0, NULL, history_mode, history_target);
 }
+
+#ifdef _DEBUG
+static int app_history_debug_eval(const char *source)
+{
+    return AppScript_Evaluate(g_script, source, (int) strlen(source));
+}
+
+/* Exercise the real EXE adapters with an independent page/history and a
+ * hidden native viewport. No network, live history or Release fixture. */
+static int app_history_debug_check(void)
+{
+    static const char html[] =
+            "<html><body style='margin:0'><div style='height:700px'>top</div>"
+            "<h2 id='chapter'>chapter</h2>"
+            "<a name='legacy' style='display:block;height:24px'>legacy</a>"
+            "<div style='height:700px;width:600px'>tail</div></body></html>";
+    AppHostContext *saved;
+    AppScriptHostCallbacks callbacks;
+    HANDLE document;
+    AppScriptContext *script;
+    HWND viewport;
+    int result;
+    int x;
+    int y;
+    int chapter_x;
+    int chapter_y;
+    int phase;
+    char message[192];
+
+    saved = (AppHostContext *) malloc(sizeof(*saved));
+    if (saved == NULL) return 1;
+    memcpy(saved, &g_app, sizeof(*saved));
+    AppHostContext_Init(&g_app);
+    g_instance = saved->instance;
+    g_dpi = 96;
+    result = 1;
+    phase = 0;
+    viewport = CreateWindowW(L"STATIC", L"", WS_POPUP, 0, 0, 120, 80,
+            NULL, NULL, g_instance, NULL);
+    g_page_window = viewport;
+    g_page_width = 120;
+    g_page_height = 80;
+    g_history = PBrowser_HistoryCreate();
+    g_document = PCore_ParseHTML(html, (unsigned int) strlen(html));
+    if (viewport == NULL || g_history == NULL || g_document == NULL)
+        goto done;
+    PCore_SetDeviceViewport(120, 80, 96);
+    if (PCore_StyleDocumentEx2(g_document, NULL, "https://example.com/",
+            AppResources_Resolve, NULL, NULL, NULL) != 0 ||
+            PCore_LayoutDocument(g_document, 120, 80) != 0) goto done;
+    g_document_width = PCore_DocumentWidth(g_document);
+    g_document_height = PCore_DocumentHeight(g_document);
+    if (PCore_FragmentInfoByToken(g_document, "chapter", &chapter_x,
+            &chapter_y, NULL, NULL) != 0 || chapter_y < 100 ||
+            PCore_FragmentInfoByToken(g_document, "legacy", &x, &y,
+            NULL, NULL) != 0 ||
+            PBrowser_HistoryCommitNavigation(g_history,
+            "https://example.com/", PBROWSER_HISTORY_METHOD_GET,
+            PBROWSER_HISTORY_TARGET_NEW) != PBROWSER_OK) goto done;
+    app_copy_text(g_current_url, sizeof(g_current_url),
+            "https://example.com/");
+    app_history_bind_page();
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &g_app;
+    callbacks.navigate = app_script_navigate;
+    callbacks.scroll = app_script_scroll;
+    g_script = AppScript_Create(g_document, g_current_url, 1, 0, 1,
+            "null", 120, 80, 96, &callbacks);
+    if (g_script == NULL) goto done;
+    phase = 1;
+    document = g_document;
+    script = g_script;
+    if (app_history_debug_eval(
+            "var kept=17,pops=0,hashes=0,unloads=0;"
+            "addEventListener('popstate',function(e){pops++;});"
+            "addEventListener('beforeunload',function(e){unloads++;});"
+            "addEventListener('hashchange',function(e){hashes++;});")
+            != PSCRIPT_OK) goto done;
+    (void) app_scroll_to_position(viewport, 32, 41);
+    phase = 2;
+    if (app_history_debug_eval(
+            "history.pushState({n:1},'', '/other');") != PSCRIPT_OK ||
+            PBrowser_HistoryIndex(g_history) != 1) goto done;
+    (void) app_scroll_to_position(viewport, 5, 250);
+    phase = 3;
+    if (app_history_traverse(NULL, 0) != 1 || g_document != document ||
+            g_script != script || g_scroll_x != 32 || g_scroll_y != 41 ||
+            app_history_debug_eval(
+            "if(kept!==17||pops!==1||history.state!==null||"
+            "location.href!=='https://example.com/'||pageYOffset!==41)"
+            "throw Error('back');") != PSCRIPT_OK) goto done;
+    phase = 4;
+    if (app_history_traverse(NULL, 1) != 1 || g_scroll_x != 5 ||
+            g_scroll_y != 250 || app_history_debug_eval(
+            "if(pops!==2||history.state.n!==1)throw Error('forward');"
+            "history.scrollRestoration='manual';") != PSCRIPT_OK ||
+            app_history_traverse(NULL, 0) != 1 || g_scroll_y != 250)
+        goto done;
+    phase = 5;
+    if (app_history_debug_eval(
+            "history.scrollRestoration='auto';") != PSCRIPT_OK ||
+            app_history_traverse(NULL, 1) != 1 ||
+            app_navigate_fragment(NULL, "#chapter", 0) != 1 ||
+            g_document != document || g_script != script ||
+            g_scroll_x != chapter_x || g_scroll_y != chapter_y ||
+            PBrowser_HistoryCount(g_history) != 3 ||
+            app_history_debug_eval(
+            "if(hashes!==1||location.hash!=='#chapter'||pops!==4||unloads!==0)"
+            "throw Error('fragment');") != PSCRIPT_OK) goto done;
+    phase = 6;
+    if (app_navigate_fragment(NULL, "#chapter", 0) != 1 ||
+            PBrowser_HistoryCount(g_history) != 3 ||
+            app_navigate_fragment(NULL, "#missing", 1) != 1 ||
+            g_scroll_y != chapter_y ||
+            app_navigate_fragment(NULL, "#", 1) != 1 ||
+            g_scroll_x != 0 || g_scroll_y != 0) goto done;
+    phase = 7;
+    if (PCore_FragmentInfoByToken(g_document, "legacy", &x, &y,
+            NULL, NULL) != 0 ||
+            app_navigate_fragment(NULL, "#legacy", 1) != 1 ||
+            g_scroll_y != y ||
+            app_navigate_fragment(NULL, "https://other.example/#chapter", 0)
+            != 0) goto done;
+    phase = 8;
+    /* A displayed non-history page must neither reuse old same-document
+     * entries nor overwrite their viewport. */
+    g_app.history_document_id = 0;
+    if (app_history_traverse(NULL, 1) != 0 ||
+            app_navigate_fragment(NULL, "#chapter", 0) != 0) goto done;
+    /* A reloaded document receives a fresh Browser identity but preserves
+     * the entry's saved viewport. Old pushState siblings must reload. */
+    app_history_bind_page();
+    (void) app_scroll_to_position(viewport, 19, 123);
+    app_history_save_scroll();
+    if (PBrowser_HistoryCommitTargetDocument(g_history,
+            PBrowser_HistoryIndex(g_history)) != PBROWSER_OK) goto done;
+    app_history_bind_page();
+    (void) app_scroll_to_position(viewport, 0, 0);
+    app_history_restore_scroll(PBrowser_HistoryIndex(g_history));
+    if (g_scroll_x != 19 || g_scroll_y != 123 ||
+            app_history_traverse(NULL, 1) != 0) goto done;
+    result = 0;
+done:
+    if (result != 0) {
+        _snprintf(message, sizeof(message) - 1,
+                "positron history check phase=%d scroll=%d,%d extent=%d,%d "
+                "index=%d count=%d\r\n", phase, g_scroll_x, g_scroll_y,
+                g_document_width, g_document_height,
+                PBrowser_HistoryIndex(g_history), PBrowser_HistoryCount(g_history));
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+    AppHostContext_ReleasePage(&g_app);
+    PBrowser_HistoryDestroy(g_history);
+    if (viewport != NULL) DestroyWindow(viewport);
+    memcpy(&g_app, saved, sizeof(g_app));
+    free(saved);
+    PCore_SetDeviceViewport(g_page_width > 0 ? g_page_width : 1,
+            g_page_height > 0 ? g_page_height : 1, g_dpi);
+    AppDebug_Log(result == 0 ? "positron history selftest OK\r\n" :
+            "positron history selftest FAILED\r\n");
+    return result;
+}
+#endif
 
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
         int history_target)
@@ -4774,7 +5152,6 @@ static void app_handle_script_navigation(HWND hwnd,
     AppScriptPendingNavigation navigation;
     const char *target;
     int target_index;
-    int history_result;
 
     if (context == NULL || context != g_script ||
             AppScript_TakeNavigation(context, &navigation) != 0) {
@@ -4807,26 +5184,8 @@ static void app_handle_script_navigation(HWND hwnd,
     }
     if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT ||
             navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE) {
-        if (navigation.url[0] == '\0' ||
-                !PBrowser_HistorySameBaseUrl(g_current_url,
-                navigation.url)) {
-            return;
-        }
-        if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT) {
-            history_result = PBrowser_HistoryPushState(g_history,
-                    navigation.url, "null");
-        } else {
-            history_result = PBrowser_HistoryReplaceState(g_history,
-                    navigation.url, "null");
-        }
-        if (history_result == PBROWSER_OK) {
-            app_copy_text(g_current_url, sizeof(g_current_url),
-                    navigation.url);
-            app_set_address(g_current_url);
-            app_update_history_buttons();
-            (void) AppScript_DispatchHashNavigation(g_script,
-                    g_current_url, PBrowser_HistoryCount(g_history));
-        }
+        (void) app_navigate_fragment(hwnd, navigation.url,
+                navigation.kind == PBROWSER_SCRIPT_NAVIGATION_FRAGMENT_REPLACE);
         return;
     }
     if (navigation.kind == PBROWSER_SCRIPT_NAVIGATION_REPLACE) {
@@ -5655,6 +6014,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         app_show_error(APP_TEXT_ERROR_HISTORY_INIT);
         return 1;
     }
+#ifdef _DEBUG
+    if (app_history_debug_check() != 0) {
+        AppHostContext_Shutdown(&g_app);
+        return 1;
+    }
+#endif
     AppHostContext_SetHttpInitialized(&g_app, PHttp_Init() ? 1 : 0);
     memset(&window_class, 0, sizeof(window_class));
     window_class.style = CS_HREDRAW | CS_VREDRAW;

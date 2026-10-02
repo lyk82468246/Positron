@@ -375,6 +375,14 @@ default action 已另列为阶段 4 纵切。不得把剩余原生交互一次�
 
 #### C. 独立应用阶段 4：native / ScriptSession form method 与 default action
 
+**剩余导航边界：** HTTP 初始片段保留、百分号解码和 redirect 片段规则必须先由公共
+URL owner 提供完整接口，不在 EXE 复制 decoder。真实网络 Back/Forward/刷新、native
+焦点、旋转/DPI 继续进入人工 backlog；已通过自动门的同文档适配器不再作为待实现候选。
+
+**EXE 构建身份依赖：** Debug 增量编译发现生成时间头变化但版本对象未重编，需在正式
+工程中补齐生成顺序/依赖，以两次连续增量编译和设备回读显示验证；Release 仍只读 CAB
+安装注册表，不借此改变打包版本或公共 DLL ABI。
+
 **状态：源码纵切已接入，设备门按用户决定暂缓。** Core/Browser 已提供有界校验、successful-control
 snapshot、可取消 submit 顺序、method/enctype 结果和 multipart encoder；`positron.exe` 的 native
 submit、单行文本/密码 EDIT 的 Enter、ScriptSession `form.requestSubmit([submitter])` 与 direct
@@ -446,6 +454,8 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 - native SELECT popup 的真实 OEM 键盘/触摸行为、动态 option 重建、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表、
   应用英语/简体中文/回退语言矩阵和失败网络的整体视觉；
 - `example.com`/IANA 深层导航、旧页保留等真实网页观察。
+- 同文档 Back/Forward 保留输入/脚本状态，网络跨页与刷新恢复双轴位置，以及 native
+  焦点、manual 与旋转/DPI 的实际应用组合。
 - 匹配 DLL 的应用 About 版本/系统章节链接位置：Core 的 CSS Fragment 合同与 96/144/192 DPI 顶部 paint 已有自动设备证据，仍需确认真实页面标题对齐与页面底部 clamp；不通过 EXE 固定除以二绕过接口，不重复已完成的表单验收。
 
 它们可以按风险累计后集中验收，但出现崩溃、数据损坏、严重布局破坏或核心交互阻塞时必须立即

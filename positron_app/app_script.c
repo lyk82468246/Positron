@@ -2363,6 +2363,41 @@ int AppScript_DispatchHashNavigation(AppScriptContext *context,
             url, history_length) == PSCRIPT_OK ? 0 : 1;
 }
 
+int AppScript_DispatchHistoryTraversal(AppScriptContext *context,
+        const char *state_json, const char *url)
+{
+    if (context == NULL || context->session == NULL || state_json == NULL ||
+            url == NULL || url[0] == '\0') {
+        return 1;
+    }
+    return PBrowser_ScriptSessionDispatchHistoryTraversal(context->session,
+            state_json, url) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_GetScrollRestoration(AppScriptContext *context, int *out_mode)
+{
+    if (out_mode == NULL) {
+        return 1;
+    }
+    *out_mode = PBROWSER_SCROLL_RESTORATION_AUTO;
+    if (context == NULL) {
+        return 0;
+    }
+    return PBrowser_ScriptSessionGetScrollRestoration(context->session,
+            out_mode) == PSCRIPT_OK ? 0 : 1;
+}
+
+int AppScript_SetDocumentUrl(AppScriptContext *context, const char *url)
+{
+    if (context == NULL || url == NULL || url[0] == '\0' ||
+            strlen(url) >= sizeof(context->document_url)) {
+        return 1;
+    }
+    app_script_copy_text(context->document_url,
+            sizeof(context->document_url), url);
+    return 0;
+}
+
 int AppScript_DispatchKeyEvent(AppScriptContext *context, int x, int y,
         const char *event_type, const char *key, unsigned int key_code,
         unsigned int char_code, int repeat, int shift, int ctrl, int alt,

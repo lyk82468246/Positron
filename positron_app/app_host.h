@@ -74,6 +74,8 @@ typedef struct AppHostContext {
     HANDLE stylesheet;
     AppScriptContext *script;
     HANDLE history;
+    /* Browser identity bound to the visible GET document; zero for POST. */
+    unsigned long history_document_id;
     int core_initialized;
     int http_initialized;
 

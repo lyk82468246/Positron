@@ -16,6 +16,40 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
+### EXE 同文档导航与滚动恢复自动门通过
+
+用户批准开始补齐 EXE 接线缺口，本批只改 positron_app 和专用 gate/文档；并行 Media 源码与
+staging 改动保留。新增当前 GET 文档的 Browser identity 绑定，同文档 target 保留 DOM/session/
+native 控件，调用 Browser traversal/hash 通知；pushState/离页提交前保存实际双轴位置，网络
+history/刷新在 layout 后恢复并尊重 manual。刷新取得新 identity，POST 不绑定旧导航栈。
+字面 UTF-8/空/缺失/legacy fragment 由 Core ByToken 提供 CSS 几何并只换算一次 DPI；百分号
+编码片段和 HTTP 跨文档初始片段仍未接入，不能复制 URL 引擎来补齐。
+
+最终 Debug build、Release build/CAB、C89 与仓库审计通过，EXE 零错误/警告；二进制检查确认
+Release 不含本批 selftest/phase/traversal 诊断。用户确认暂停并行编译后，所有构建串行；
+Release 曾发生 devenv/msenv.dll 主机异常，重试正式 build 恢复，失败不是源码编译错误，也
+不计为成功；日志保留在 `tmp/app-history-build-failures/release-msenv.log`。
+
+相邻 Debug 正式设备门 `tmp/device-runs/20261003-002348-app-history-adjacent/` 选择
+`136,407,1080-1083,1134,1330,999`，selected/observed 9/9、唯一 TESTBENCH PASS、零 ERROR/FAIL、
+Core 路径匹配、双空间预检和 crash_check=PASS，完整回收日志后清理本轮目录。
+最终完整 Debug 包 `tmp/device-runs/20261003-002631-app-history-delivery/` 含当前九个 DLL、
+EXE 与 Media 夹具，共 31 文件；正式 module-audit 与 EXE 门前复审均为
+holders=0 unavailable=0。`app-history/positron-debug.log` 记录 EXE history selftest OK、内部页
+自检 OK、newtab history=1；EXE/九个 DLL SHA256 回读匹配 10/10，crash_check=PASS。设备为
+320×320、128 DPI Microsoft DeviceEmulator；无强杀、重置或内置路径回退。当前 PID 2662329806
+留在 `\Storage Card\Temp\Positron-device-gate\app-history-delivery-20261003-002631\positron.exe`。
+
+早期 scroll/diagnostic 两包的 phase=7 legacy 锚点失败仍保留；夹具 inline anchor 没有可用
+box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸载不派发与刷新 identity
+隔离断言全部通过。`tmp/device-runs/20261002-231242-app-history-final/` 的提前构建失败未部署，
+不能追认为通过。本轮 ROADMAP 已移除完成的导航候选并保留 URL/人工边界；Media/DB 状态不覆盖。
+真实地址栏 Enter、HTTP 跨页/刷新恢复、native 输入状态、焦点与旋转仍待人工复核。
+
+另发现 Debug 增量构建的时间头已更新到 00:26:35，但 app_version.obj 未重编，运行仍显示
+`2026-10-02 23:25:27`；完整包哈希已匹配，故不是旧 EXE 混包。后续须单独修正生成头的正式
+工程依赖，再验证增量构建时间与 Release 排除；本导航纵切不把该版本显示写成已修复。
+
 ### Media 输入、PCM 与 H.264/AAC 解码合同已验收
 
 产品 DLL 保留 I/O/WOULD_BLOCK 错误、seek/probe 恢复与失败不改输出合同；PCM8 callback
@@ -205,13 +239,16 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核：Media 移除已完成的 H.264/AAC 初始夹具、解码守卫和 EOF 重播候选，保留其他
+ROADMAP 已复核：EXE 移除已通过自动门的同文档导航候选，保留片段 URL 公共接口与人工矩阵；
+Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC 初始夹具、解码守卫和 EOF 重播候选，保留其他
 格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
 重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-唯一下一步：按同一 pin/许可规则补 Media AVI/MJPEG + MP3 夹具，验证实际帧/PCM 和生命周期，
+EXE 下一步：先人工复核当前完整包的地址栏回车、About 章节与同文档/跨页滚动恢复；随后独立
+修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
+并行 Media 下一步：按同一 pin/许可规则补 AVI/MJPEG + MP3 夹具，验证实际帧/PCM 和生命周期，
 再取舍 TS/MPEG、AMR 与 IMA；所有产品修正留在 positron_media，宿主只做断言。
 DB 的空间不足、跨进程锁及进程重启 journal/outbox/cursor 恢复仍为独立候选；
 不把正常关闭重开写成断电恢复，不在媒体纵切中新增应用 worker。

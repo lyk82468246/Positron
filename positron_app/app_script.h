@@ -129,6 +129,11 @@ int AppScript_NotifyResize(AppScriptContext *context, int viewport_width,
         int viewport_height, int dpi);
 int AppScript_DispatchHashNavigation(AppScriptContext *context,
         const char *url, int history_length);
+int AppScript_DispatchHistoryTraversal(AppScriptContext *context,
+        const char *state_json, const char *url);
+int AppScript_GetScrollRestoration(AppScriptContext *context, int *out_mode);
+/* Update host callback metadata only; safe inside a navigation callback. */
+int AppScript_SetDocumentUrl(AppScriptContext *context, const char *url);
 
 /* Native controls use the Browser-owned keyboard/focus event adapters while
  * Core remains the owner of hit-testing and interaction state. */

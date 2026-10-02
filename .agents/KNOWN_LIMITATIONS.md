@@ -402,6 +402,11 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
+- EXE 同文档遍历、page-level 滚动恢复与 identity 隔离已通过 Debug 私有适配器自检及相邻
+  DLL 设备门；真实 HTTP Back/Forward/刷新、native 焦点与旋转仍待人工验收。
+  百分号编码片段尚无 EXE 可直接消费的公共解码入口；当前保持
+  位置，不把编码字符串当 literal ID 命中。HTTP 请求 URL resolver/final URL 会去掉片段，
+  跨文档 HTTP 导航的初始片段保留仍未接入；不在 EXE 复制 URL decoder 或 redirect 规则。
 - 内部 history 仅显示会话栈，不是访问日志；settings 只读，downloads/持久设置未实现。
   下载须先有 HTTP 流式取消接口，存储须先过 DB 文件设备门。quit 仅限地址栏；
   内部页面触摸、双语、旋转和退出人工门仍未完成，详见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
@@ -437,6 +442,8 @@
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
+- Debug 增量构建可能更新生成时间头却复用旧 app_version.obj，使 About 显示前一次构建时间；
+  需补齐正式工程依赖并以连续增量构建验收。Release 的 CAB 注册表读取策略不变。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
 - SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建的 OEM popup、触摸、
   复杂嵌套 label 和其他层级组合仍需人工观察。
@@ -468,19 +475,10 @@
   focus、geometry、overflow、scroll、selector 和 autofocus 的有界 callback 合同；这些夹具
   证明 snapshot、事件顺序、预算、clamp 和非法输入 fail closed，但不证明复杂 CSS、无限
   scroll tree、真实旋转、触摸、OEM 控件或视觉像素。
-- TEST1152 覆盖 Browser selector 的有界列表和关系组合器：`matches()`、`closest()`、
-  `querySelector()` 与 `querySelectorAll()` 对顶层逗号、后代/子代/相邻兄弟/一般兄弟
-  保持一致，属性值中的逗号不会误拆分，非法或过深输入 fail closed。
-- TEST1153 覆盖 Browser selector 的属性匹配操作符：`=`, `^=`, `$=`, `*=`, `~=`, `|=`
-  在简单 compound、通配标签、组合器和顶层列表中按有界规则匹配；引号内空格、逗号和
-  `]` 会被保留，空操作数、未闭合引号、未支持的大小写修饰符和其他非法输入安全拒绝。
-  真实页面的完整 CSS selector、动态伪类/伪元素、属性大小写修饰符、namespace、shadow
-  DOM、布局视觉和不同 DPI 仍属于宿主集成观察。
-- TEST1154 覆盖 Browser selector 的有限结构伪类：`:root`、`:empty`、child/of-type
-  变体和四种 `nth-*` 变体；支持整数、`odd`/`even` 和受限 `an+b` 公式，并确认空公式、
-  `of` 过滤、伪元素和超大数值 fail closed。判断使用只读 childNodes/关系快照，
-  仍受 64 步、公式系数和 legacy 1.5 MiB Browser heap 上限约束（应用可用 3 MiB Ex profile）；完整动态状态、伪元素、namespace、
-  shadow DOM 和 CSS Selectors 语法不在保证范围内。
+- TEST1152–1154 覆盖 selector 的有界列表/关系组合器、属性匹配和结构伪类；非法语法、
+  过深遍历、未支持参数与超限公式 fail closed。判断使用只读关系快照并保留 64 步与固定
+  heap 预算。精确操作符和公式合同见 [`docs/TESTING.md`](../docs/TESTING.md)，不在限制文档
+  重复维护。完整 CSS Selectors、伪元素、namespace、Shadow DOM、视觉和不同 DPI 未保证。
 - TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
   callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
   的直接 `disabled` 属性匹配，`:required`/`:optional` 按 input、select、textarea 的

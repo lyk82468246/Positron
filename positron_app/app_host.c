@@ -128,6 +128,7 @@ int AppHostContext_ReplacePageWithScript(AppHostContext *context,
     context->document = document;
     context->stylesheet = stylesheet;
     context->script = script;
+    context->history_document_id = 0;
     context->page_kind = page_kind;
     context->document_width = 1;
     context->document_height = 1;
@@ -155,6 +156,7 @@ void AppHostContext_ReleasePage(AppHostContext *context)
     if (context == NULL) {
         return;
     }
+    context->history_document_id = 0;
     if (context->script != NULL) {
         AppScript_Destroy(context->script);
         context->script = NULL;

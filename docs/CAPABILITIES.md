@@ -36,6 +36,16 @@ history 最多 16 条，焦点最多 24 项。quit 只接受地址栏直接提�
 DLL ABI；存储和真实下载仍未接入，边界见
 [内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
 
+应用把当前 GET 文档绑定到 Browser history 的公开 document identity；同文档
+Back/Forward/go 保留 DOM、ScriptSession、native 控件与 retained layout，仅同步 URL、
+traversal/hash 事件及 viewport，不重新请求网络或派发卸载。pushState 和离页提交前保存
+page-level 双轴物理位置，网络 history/刷新在 layout 后按 extent clamp 并恢复；普通恢复
+尊重 `scrollRestoration=manual`。刷新取得新 identity，未入栈的 POST 文档不借用旧栈。
+字面 UTF-8、空片段与 legacy name 锚点通过 Core CSS fragment 几何换算一次 DPI；缺失目标
+保持位置，百分号编码与跨文档 HTTP 初始片段仍待公共 URL 接口接入。Debug 私有 EXE
+自检直接验证适配器的会话保留、事件、双轴与 identity 隔离，Release 不包含这些夹具；
+真实网络 Back/Forward/刷新、native 焦点和旋转仍需人工验收。
+
 `positron.exe` 的私有 `AppHostContext` 只收拢 WM6 窗口、页面句柄、导航候选、history、资源
 和 DLL 初始化/清理的生命周期；Core/Browser/HTTP 仍拥有文档、URL、history、资源事务和
 页面语义。阶段 0 保持离线页面、英语/简体中文 i18n 和主文档 HTTP(S) GET 不变；阶段 1

@@ -75,6 +75,19 @@ closed。
 Back/Forward、脚本导航和滚动恢复。提交取消、网络错误和候选失败必须保留旧页；native 文件
 选择路径优先。JavaScript File/Blob 到 multipart 只有在真实消费者出现且公共 ABI 补齐后实现。
 
+同文档遍历以 `PBrowser_HistoryIsSameDocumentTarget` 和公开 document identity 为准，不按 URL
+相似度推断。当前显示的 GET 文档绑定 Browser identity；不写 history 的 POST 文档不绑定旧栈。
+同文档 Back/Forward/go 只提交 Browser target、同步 host URL，再调用 Browser 的 traversal
+事件入口；DOM、ScriptSession、native 控件和 retained layout 保留，不发起网络请求或卸载。
+重新加载/跨文档遍历必须取得新 document identity，不能继续复用旧 pushState 组。
+
+滚动快照复用 Browser entry scroll 接口，在离页提交前及 pushState 前保存当前物理 viewport。
+已布局页面恢复时只 clamp、移动 retained 像素、重定位 native 子控件并通知 Browser CSS 坐标；
+普通 history 恢复尊重 `history.scrollRestoration=manual`，fragment reveal 独立执行。Core
+fragment 几何为 CSS 像素，按当前 DPI 换算一次；空片段到原点，缺失/不可布局目标保持位置。
+Core ByToken 的输入是已解码 UTF-8；请求 URL 的片段保留和百分号解码不能复制为 EXE URL 引擎，
+需要对应公共 URL owner 的完整接口后再解除这部分限制。
+
 ### 阶段 5：发布验收
 
 每阶段运行：
@@ -144,6 +157,13 @@ Debug 私有自检使用独立 Browser history 验证路由来源、别名、16 
 单次 history 提交、无脚本、焦点和新增 crash dump；需要显式同意精确进程清理，门后留下 newtab。
 自动门不替代真实地址栏输入、菜单、history 点击/刷新、加载中 quit、中英文、触摸、键盘、
 软键、滚动、旋转和 DPI 人工验收。所有构建串行，使用正式 Debug/Release 配置与匹配完整包。
+
+同文档导航的 Debug 私有启动自检使用独立文档/history 和隐藏 native viewport，直接调用 EXE
+适配器验证会话保留、popstate/hashchange、双轴恢复、manual、空/缺失/legacy 锚点及 document
+identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门保留的完整 Debug 包，
+重新检查 guest DLL holder、回读 EXE/九个 DLL 的 SHA256、启动自检并检查新增 crash dump；
+不构建、选择设备或强杀进程。它不替代真实 HTTP 跨页恢复、地址栏回车、native 焦点、旋转/DPI
+和人工滚动验收，测试夹具及诊断不编入 Release。
 
 ## 公共接口与文档规则
 
