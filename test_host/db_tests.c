@@ -649,6 +649,14 @@ static BOOL db_test_sync_state_guards(void)
         rc = PDb_ApplyMigration(db, 1,
                 "CREATE TABLE state_records(id INTEGER PRIMARY KEY,name TEXT)");
     }
+    if (rc == PDB_OK &&
+            PDb_ApplyMigration(db, 2, "DROP TABLE state_records") == PDB_OK) {
+        rc = PDB_ERROR;
+    }
+    if (rc == PDB_OK &&
+            PDb_Exec(db, "SELECT count(*) FROM state_records") != PDB_OK) {
+        rc = PDB_ERROR;
+    }
     if (rc != PDB_OK ||
             PDb_ApplyMigration(db, 1, "") != PDB_OK ||
             PDb_ApplyMigration(db, 0, "") != PDB_STATE ||
