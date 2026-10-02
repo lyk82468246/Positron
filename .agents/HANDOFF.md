@@ -107,6 +107,7 @@ pull response fixture 还覆盖了 `changes` 中 key 与 typed 主键值不一�
 并覆盖 `deleted=true` 搭配非空 values 的 malformed pull，确认 tombstone 形状错误不会部分推进。
 另补非数字 `next_cursor` 的拒绝，确认游标解析失败不会改变远端行或持久化 cursor。
 accepted fixture 还覆盖了错误 client 的 `op_id`，确认服务端不能确认并清除其他客户端的 outbox。
+pull malformed fixture 还拒绝非 bool 的 `deleted` 字段，确认协议类型错误不会部分提交。
 随后又加入 SQL 32 KiB 和 typed bind 1 MiB 预算、固定 sync request envelope，以及服务器
 tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；仍未把 host 构建或静态证据
 当作设备运行通过。另补本地完整 SQL 模式的 migration 版本幂等、失败脚本回滚和事务中
