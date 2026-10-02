@@ -433,6 +433,8 @@
 
 ## Native 控件、SIP 与设备 UI
 
+- EXE 页面拖动不含惯性、回弹、WM6.5 WAG 或 nested 内容区滚动链；真实跟手性、拖动不误点、
+  EDIT 拖选、popup 与旋转/DPI 待人工验收。平台接线边界见 [计划](../positron_app/INTEGRATION_PLAN.md#阶段-3原生交互)。
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
 - EXE 的 contenteditable selection、native/script reset、native/script submit、单行 EDIT 隐式 Enter、
   GET/POST/multipart/dialog、native file picker、anchor/label/disclosure 默认动作尚未设备验收；需检查

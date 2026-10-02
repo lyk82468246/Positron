@@ -95,6 +95,8 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_input.c" />
+		<File RelativePath=".\app_input.h" />
 		<File RelativePath=".\app_version.c" />
 		<File RelativePath=".\app_version.h" />
 		<File RelativePath=".\write_build_time.ps1" />

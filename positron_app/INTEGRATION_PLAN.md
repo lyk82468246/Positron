@@ -69,6 +69,15 @@ closed。
 焦点和标准 WM6 滚动条。native 控件只是 Core DOM 的平台代理；DOM、事件默认行为和表单状态仍
 由 Core/Browser 所有。支持 DPI、旋转、viewport 和 native 子控件重排。
 
+页面内容拖动使用 WM6.0/6.1 的 `WM_LBUTTONDOWN/MOUSEMOVE/LBUTTONUP` 与窗口 capture，
+不增加 WM6.5 WAG 依赖。`AppInput` 只分类平台输入：超过按 DPI 换算的 4 个逻辑像素后成为
+拖动；未越阈值的抬起才沿既有 Core/Browser click/default-action 路径激活。拖动一旦成立，
+返回原按下位置也不产生 click；丢失 capture、取消、失焦、隐藏、resize、页面替换与关闭均
+取消待定输入。原生 EDIT/SELECT/toggle 保留自己的消息过程，Core 内部滚动条命中优先。
+顶层双轴拖动复用 extent clamp、`ScrollWindowEx`、native 重定位与 Browser CSS scroll 通知；
+纯拖动不重新 layout，脚本 mutation 则仍按原刷新路径处理。暂不提供惯性、回弹、多点触摸或
+nested overflow 内容区的滚动链，不自绘滚动条。
+
 ### 阶段 4：表单与导航
 
 接入校验、`submit/reset/formdata`、GET/POST、URL encoded、multipart、fragment、push/replaceState、
@@ -164,6 +173,10 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 重新检查 guest DLL holder、回读 EXE/九个 DLL 的 SHA256、启动自检并检查新增 crash dump；
 不构建、选择设备或强杀进程。它不替代真实 HTTP 跨页恢复、地址栏回车、native 焦点、旋转/DPI
 和人工滚动验收，测试夹具及诊断不编入 Release。
+
+同一 Debug 独立夹具使用真实页面窗口消息验证 DPI 阈值、抬起 click、拖动不误点、合并 MOVE
+后的抬起、捕获/取消收尾与布局计数不变；`app_history_gate` 同时要求 pointer 自检通过。
+自动消息不代替真实触笔/手指、native EDIT 拖选、SELECT popup、旋转和 DPI 的人工检查。
 
 ## 公共接口与文档规则
 

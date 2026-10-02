@@ -16,6 +16,37 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
+### EXE 页面内容拖动自动门通过
+
+用户要求无需抓滚动条即可拖动页面。EXE 私有 AppInput 以 WM6 pointer/capture 和 DPI 阈值
+分类 tap/pan；页面 click 延迟到未拖动的抬起，纯双轴拖动复用 retained pixels、native 重定位、
+extent clamp 与 Browser scroll 通知。取消、capture 丢失、失焦、隐藏、resize、旧页 teardown
+和关闭清除待定输入；Core 内部滚动条优先，native EDIT/SELECT/toggle 原消息路径保留。
+不修改 DLL 或 ABI，不引入 WAG、惯性、回弹或 nested 内容区滚动链。
+
+C89、仓库审计与最终 Debug/Release 正式 build/CAB 通过，EXE 零错误/警告；Release ASCII/
+UTF-16 检查不含 pointer 夹具。全量 rebuild 的既有 LNK1181/CAB 依赖顺序失败与 VS2008
+msenv.dll 主机异常仍保存在 `tmp/app-pan-build-failures/`，串行正式补建恢复，不计作 rebuild
+成功。用户已正常退出旧应用并暂停其他构建，未竞争编译。
+
+相邻正式 Debug SD 门 `tmp/device-runs/20261003-041056-app-pan-adjacent/` 选择
+`42,1080,1109,1327,999`，selected/observed 5/5、唯一 TESTBENCH PASS、零 ERROR/FAIL、
+Core 路径及 crash_check=PASS；完整日志回收后本轮设备目录已清理。
+最终完整包 `tmp/device-runs/20261003-041442-app-pan-final/` 含 31 文件，正式 module-audit
+及 EXE 门前复审均 holders=0 unavailable=0；`app-history/positron-debug.log` 记录 pointer/
+history/internal-pages 自检 OK、newtab history=1。实际页面消息覆盖链接 down 不激活、tap
+一次、双轴拖动及返回起点不误点、合并 MOVE、capture/cancel/失焦/stale、clamp、Browser
+坐标同步和 layout 计数不变。EXE/九 DLL SHA256 回读 10/10、crash_check=PASS。设备为
+320×320、128 DPI DeviceEmulator，PID 534774266 留在
+`\Storage Card\Temp\Positron-device-gate\app-pan-final-20261003-041442\positron.exe`。
+未强杀、重置或回退内置存储。设备门的静默启动失败未产生设备证据；WMDC AuditOnly 健康、
+changed=0，显式 PS32 入口诊断运行原正式 gate 后恢复，不修改注册表或安全设置。
+
+早期 `20261003-041159-app-pan-delivery` 的 pointer phase=2 失败属于夹具误用旧 LinkAt
+命中返回值（1，而 Ex 成功为 0）；按公开合同修正探针，原点击/拖动断言保留并加强 clamp。
+失败包/日志保留，不转为通过。真实触笔/手指跟手性、从按钮开始拖动、EDIT 拖选、SELECT
+popup、旋转/DPI 仍待人工门；本轮 ROADMAP 已复核并明确这些 backlog，Media/DB 状态不覆盖。
+
 ### EXE 同文档导航与滚动恢复自动门通过
 
 用户批准开始补齐 EXE 接线缺口，本批只改 positron_app 和专用 gate/文档；并行 Media 源码与
@@ -38,7 +69,8 @@ EXE 与 Media 夹具，共 31 文件；正式 module-audit 与 EXE 门前复审�
 holders=0 unavailable=0。`app-history/positron-debug.log` 记录 EXE history selftest OK、内部页
 自检 OK、newtab history=1；EXE/九个 DLL SHA256 回读匹配 10/10，crash_check=PASS。设备为
 320×320、128 DPI Microsoft DeviceEmulator；无强杀、重置或内置路径回退。当前 PID 2662329806
-留在 `\Storage Card\Temp\Positron-device-gate\app-history-delivery-20261003-002631\positron.exe`。
+当时留在 `\Storage Card\Temp\Positron-device-gate\app-history-delivery-20261003-002631\positron.exe`，
+该应用已由用户正常退出；当前人工包与 PID 见上文页面拖动证据。
 
 早期 scroll/diagnostic 两包的 phase=7 legacy 锚点失败仍保留；夹具 inline anchor 没有可用
 box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸载不派发与刷新 identity
@@ -246,7 +278,8 @@ Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/A
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步：先人工复核当前完整包的地址栏回车、About 章节与同文档/跨页滚动恢复；随后独立
+EXE 下一步：先人工复核当前完整包的内容拖动/点按、native 拖选、旋转及地址栏回车，
+并继续同文档/跨页滚动恢复矩阵；随后独立
 修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
 并行 Media 下一步：按同一 pin/许可规则补 AVI/MJPEG + MP3 夹具，验证实际帧/PCM 和生命周期，
 再取舍 TS/MPEG、AMR 与 IMA；所有产品修正留在 positron_media，宿主只做断言。

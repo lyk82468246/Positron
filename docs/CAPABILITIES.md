@@ -89,7 +89,12 @@ fingerprint 延迟重建 SELECT，同时保留 EDIT/SELECT 焦点。阶段 3 另
 指针/按键接线、重排和 teardown。顶层物理页面滚动沿 `test_host` 的 retained-pixel 路径使用系统
 滚动条和 `ScrollWindowEx`：纯滚动只移动已有像素、补绘暴露区域并重定位 native 子控件，不重复
 执行 Core layout 或 SELECT/toggle 状态同步；WM_SIZE、Core/DOM mutation 和真实 viewport 变化仍
-进入完整 layout。源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
+进入完整 layout。
+页面内容可由 EXE 私有 `AppInput` 路由双轴跟手拖动：DPI 阈值区分 tap/pan，点击延迟至
+未拖动的抬起，捕获丢失、取消、失焦、resize 与页面替换取消输入。Core 内部滚动条优先，
+native EDIT/SELECT/toggle 不被页面捕获代理；纯拖动复用上述 retained-pixel 路径与 Browser
+滚动通知，不增加公共 ABI。惯性、回弹与 nested 内容区滚动链未实现，真实触摸仍需人工门。
+源码级 C89、Debug/Release 与仓库审计通过，但 WM6 仍须验收
 native/script submit/reset、POST/multipart/dialog、file picker、网络导航/失败回滚及原生控件；
 SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗口体系的子控件，外框按客户区
 从 x=0 铺满宽度，高度经实际字体、客户区留白和边框换算并按 DPI 更新；EXE 不再额外加入 inset，

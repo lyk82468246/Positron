@@ -24,6 +24,7 @@
 #include "app_debug.h"
 #include "app_host.h"
 #include "app_controls.h"
+#include "app_input.h"
 #include "app_script.h"
 #include "app_forms.h"
 #include "app_resources.h"
@@ -126,6 +127,14 @@ static int g_file_picker_x;
 static int g_file_picker_y;
 static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
 static int g_overflow_pointer;
+static POINT g_overflow_pointer_point;
+static AppInputPointer g_page_pointer;
+static HANDLE g_page_pointer_document;
+static int g_page_pointer_scroll_x;
+static int g_page_pointer_scroll_y;
+#ifdef _DEBUG
+static unsigned long g_page_layout_count;
+#endif
 static HDC g_page_paint_buffer_dc;
 static HBITMAP g_page_paint_buffer_bitmap;
 static int g_page_paint_buffer_width;
@@ -207,6 +216,12 @@ static int app_history_bound(void);
 static void app_history_save_scroll(void);
 static int app_history_traverse(HWND hwnd, int target_index);
 static int app_navigate_fragment(HWND hwnd, const char *url, int replace);
+static void app_page_pointer_cancel(HWND hwnd);
+#ifdef _DEBUG
+static int app_pointer_debug_check(void);
+static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
+        WPARAM wparam, LPARAM lparam);
+#endif
 
 static const char g_app_css[] =
         "body{margin:12px;font-family:sans-serif;font-size:14px;"
@@ -2783,6 +2798,10 @@ static int app_relayout(void)
     if (g_document == NULL) {
         return 0;
     }
+    app_page_pointer_cancel(g_page_window);
+#ifdef _DEBUG
+    g_page_layout_count++;
+#endif
     for (pass = 0; pass < 3; pass++) {
 #ifdef _DEBUG
         pass_started = GetTickCount();
@@ -3093,6 +3112,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         app_set_address(g_current_url);
         return 0;
     }
+    app_page_pointer_cancel(g_page_window);
     if (g_script != NULL) {
         (void) AppScript_PageTeardown(g_script);
     }
@@ -4091,6 +4111,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 (unsigned long) g_navigation_generation) != PBROWSER_OK) {
             return -1;
         }
+        app_page_pointer_cancel(g_page_window);
         if (g_script != NULL) {
             (void) AppScript_PageTeardown(g_script);
         }
@@ -4517,7 +4538,9 @@ static int app_history_debug_eval(const char *source)
 static int app_history_debug_check(void)
 {
     static const char html[] =
-            "<html><body style='margin:0'><div style='height:700px'>top</div>"
+            "<html><body style='margin:0'><a id='panlink' href='#chapter' "
+            "style='display:block;width:100px;height:24px'>link</a>"
+            "<div style='height:700px'>top</div>"
             "<h2 id='chapter'>chapter</h2>"
             "<a name='legacy' style='display:block;height:24px'>legacy</a>"
             "<div style='height:700px;width:600px'>tail</div></body></html>";
@@ -4526,6 +4549,7 @@ static int app_history_debug_check(void)
     HANDLE document;
     AppScriptContext *script;
     HWND viewport;
+    WNDCLASSW pointer_class;
     int result;
     int x;
     int y;
@@ -4542,7 +4566,12 @@ static int app_history_debug_check(void)
     g_dpi = 96;
     result = 1;
     phase = 0;
-    viewport = CreateWindowW(L"STATIC", L"", WS_POPUP, 0, 0, 120, 80,
+    memset(&pointer_class, 0, sizeof(pointer_class));
+    pointer_class.lpfnWndProc = app_page_window_proc;
+    pointer_class.hInstance = g_instance;
+    pointer_class.lpszClassName = L"PositronPointerSelftest";
+    (void) RegisterClassW(&pointer_class);
+    viewport = CreateWindowW(L"PositronPointerSelftest", L"", WS_POPUP, 0, 0, 120, 80,
             NULL, NULL, g_instance, NULL);
     g_page_window = viewport;
     g_page_width = 120;
@@ -4575,6 +4604,7 @@ static int app_history_debug_check(void)
     g_script = AppScript_Create(g_document, g_current_url, 1, 0, 1,
             "null", 120, 80, 96, &callbacks);
     if (g_script == NULL) goto done;
+    if (app_pointer_debug_check() != 0) goto done;
     phase = 1;
     document = g_document;
     script = g_script;
@@ -4649,6 +4679,7 @@ static int app_history_debug_check(void)
             app_history_traverse(NULL, 1) != 0) goto done;
     result = 0;
 done:
+    app_page_pointer_cancel(viewport);
     if (result != 0) {
         _snprintf(message, sizeof(message) - 1,
                 "positron history check phase=%d scroll=%d,%d extent=%d,%d "
@@ -5365,6 +5396,268 @@ static void app_paint_page(HWND hwnd, HDC dc, const RECT *paint_rect)
             g_page_paint_buffer_dc, 0, 0, SRCCOPY);
 }
 
+/* Release capture before callbacks or page teardown. A cancelled press must
+ * never be reinterpreted as a click by a late WM_LBUTTONUP. */
+static void app_page_pointer_cancel(HWND hwnd)
+{
+    int had_pointer;
+
+    had_pointer = g_page_pointer.active || g_overflow_pointer;
+    AppInput_PointerCancel(&g_page_pointer);
+    g_page_pointer_document = NULL;
+    if (g_overflow_pointer) {
+        g_overflow_pointer = 0;
+        if (g_document != NULL) {
+            (void) PCore_OverflowPointer(g_document, PCORE_POINTER_UP,
+                    g_overflow_pointer_point.x, g_overflow_pointer_point.y);
+        }
+    }
+    if (had_pointer && hwnd != NULL && g_document != NULL &&
+            PCore_InteractionClear(g_document, PCORE_INTERACTION_ACTIVE) > 0) {
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+    if (had_pointer && hwnd != NULL && GetCapture() == hwnd) ReleaseCapture();
+}
+
+static void app_page_pointer_move(HWND hwnd, int x, int y)
+{
+    int dx;
+    int dy;
+    int was_dragging;
+
+    if (!g_page_pointer.active) return;
+    if (g_document != g_page_pointer_document || GetCapture() != hwnd ||
+            (!g_page_pointer.dragging &&
+            (g_scroll_x != g_page_pointer_scroll_x ||
+            g_scroll_y != g_page_pointer_scroll_y))) {
+        app_page_pointer_cancel(hwnd);
+        return;
+    }
+    was_dragging = g_page_pointer.dragging;
+    if (AppInput_PointerMove(&g_page_pointer, x, y, &dx, &dy)) {
+        if (!was_dragging && PCore_InteractionClear(g_document,
+                PCORE_INTERACTION_ACTIVE) > 0) {
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
+        app_scroll_by(hwnd, dx, dy);
+    }
+}
+
+/* Existing Core/Browser activation path, called only after a confirmed tap.
+ * Native EDIT/SELECT/toggle children retain their own window procedures. */
+static void app_page_click(HWND hwnd, int x, int y)
+{
+    int document_x;
+    int document_y;
+    int focus_index;
+    int default_allowed;
+    unsigned int file_index;
+    int file_disabled;
+    char href[APP_URL_MAX];
+    char link_target[APP_SCRIPT_TARGET_MAX];
+    char link_rel[APP_SCRIPT_REL_MAX];
+    int link_found;
+    int navigated;
+
+    document_x = x + g_scroll_x;
+    document_y = y + g_scroll_y;
+    if (g_document != NULL && PCore_InteractionSetAt(g_document,
+            document_x, document_y, PCORE_INTERACTION_FOCUS) > 0) {
+        InvalidateRect(hwnd, NULL, FALSE);
+    }
+    if (AppControls_HandleButtonPointer(g_controls, document_x,
+            document_y)) return;
+    file_index = 0;
+    file_disabled = 0;
+    if (g_document != NULL && app_file_input_at(g_document,
+            document_x, document_y, &file_index, &file_disabled)) {
+        if (file_disabled) return;
+        default_allowed = 1;
+        if (g_script != NULL) {
+            if (AppScript_DispatchClickEvent(g_script, document_x,
+                    document_y, &default_allowed) != 0) return;
+        } else {
+            (void) PCore_EventDispatchAt(g_document, document_x,
+                    document_y, "click", 1, 1, &default_allowed);
+        }
+        if (default_allowed && !g_file_picker_pending) {
+            (void) app_file_input_open(hwnd, g_document, g_script,
+                    file_index, document_x, document_y, 0);
+        }
+        return;
+    }
+    if (g_document != NULL && PCore_DisclosureInfoAt(g_document,
+            document_x, document_y, NULL, NULL, NULL, NULL, NULL) == 1) {
+        (void) app_handle_disclosure(hwnd, document_x, document_y);
+        return;
+    }
+    if (g_document != NULL && app_handle_label(hwnd, document_x,
+            document_y)) return;
+    href[0] = '\0';
+    link_target[0] = '\0';
+    link_rel[0] = '\0';
+    link_found = g_document != NULL && PCore_LinkAtEx(g_document,
+            document_x, document_y, href, sizeof(href),
+            link_target, sizeof(link_target), link_rel,
+            sizeof(link_rel)) == 0;
+    if (link_found && g_script != NULL) {
+        navigated = 0;
+        (void) AppScript_DispatchAnchorClick(g_script, document_x,
+                document_y, href, link_target, link_rel, &navigated);
+        return;
+    }
+    AppControls_ClearButtonFocus(g_controls);
+    focus_index = app_focus_at(document_x, document_y);
+    if (focus_index >= 0) (void) app_focus_set(hwnd, focus_index);
+    default_allowed = 1;
+    if (g_document != NULL) {
+        if (g_script != NULL) {
+            if (AppScript_DispatchClickEvent(g_script, document_x,
+                    document_y, &default_allowed) != 0) return;
+        } else {
+            (void) PCore_EventDispatchAt(g_document, document_x,
+                    document_y, "click", 1, 1, &default_allowed);
+        }
+    }
+    if (default_allowed && link_found) {
+        (void) app_load_page(g_window, href, APP_HISTORY_NEW, -1);
+    }
+}
+
+#ifdef _DEBUG
+/* Runs inside the independent history fixture, through the production page
+ * window procedure. Physical input messages, not a second gesture path. */
+static int app_pointer_debug_check(void)
+{
+    AppInputPointer pointer;
+    unsigned long layouts;
+    HANDLE document;
+    AppScriptContext *script;
+    HWND hwnd;
+    int phase;
+    int x;
+    int y;
+    int dx;
+    int dy;
+    int found;
+    char href[128];
+    char message[128];
+
+    phase = 1;
+    AppInput_PointerBegin(&pointer, 96, 0, 0);
+    if (pointer.threshold != 4 ||
+            AppInput_PointerMove(&pointer, 4, -4, &dx, &dy) ||
+            !AppInput_PointerMove(&pointer, 5, -5, &dx, &dy) ||
+            dx != -5 || dy != 5 ||
+            !AppInput_PointerMove(&pointer, 0, 0, &dx, &dy)) goto failed;
+    AppInput_PointerBegin(&pointer, 192, 0, 0);
+    if (pointer.threshold != 8 ||
+            AppInput_PointerMove(&pointer, 8, -8, &dx, &dy) ||
+            !AppInput_PointerMove(&pointer, 9, -9, &dx, &dy)) goto failed;
+    AppInput_PointerCancel(&pointer);
+    if (AppInput_PointerMove(&pointer, 40, 40, &dx, &dy) ||
+            pointer.active || dx || dy) goto failed;
+    hwnd = g_page_window;
+    document = g_document;
+    script = g_script;
+    layouts = g_page_layout_count;
+    phase = 2;
+    if (app_history_debug_eval(
+            "var panClicks=0;document.getElementById('panlink')."
+            "addEventListener('click',function(e){panClicks++;e.preventDefault();});")
+            != PSCRIPT_OK) goto failed;
+    found = 0;
+    for (y = 1; y < 24 && !found; y++) {
+        for (x = 1; x < 100; x++) {
+            if (PCore_LinkAt(document, x, y, href, sizeof(href)) == 1) {
+                found = 1;
+                break;
+            }
+        }
+    }
+    if (!found) goto failed;
+    y--;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    if (!g_page_pointer.active || GetCapture() != hwnd ||
+            app_history_debug_eval("if(panClicks!==0)throw Error('down');")
+            != PSCRIPT_OK) goto failed;
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x + 1, y + 1));
+    if (g_page_pointer.active || GetCapture() == hwnd ||
+            app_history_debug_eval("if(panClicks!==1)throw Error('tap');")
+            != PSCRIPT_OK) goto failed;
+    phase = 3;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x - 20, y - 30));
+    if (g_scroll_x != 20 || g_scroll_y != 30) goto failed;
+    SendMessageW(hwnd, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    if (g_scroll_x || g_scroll_y || g_page_pointer.active ||
+            app_history_debug_eval("if(panClicks!==1)throw Error('drag-click');")
+            != PSCRIPT_OK) goto failed;
+    phase = 4;
+    /* A release beyond slop is still a drag if the driver omitted MOVE. */
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y - 35));
+    if (g_scroll_y != 35 || app_history_debug_eval(
+            "if(panClicks!==1||pageYOffset!==35)throw Error('coalesced');")
+            != PSCRIPT_OK) goto failed;
+    (void) app_scroll_to_position(hwnd, 0, 0);
+    phase = 5;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_CANCELMODE, 0, 0);
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    if (g_page_pointer.active || GetCapture() == hwnd) goto failed;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    ReleaseCapture();
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    if (g_page_pointer.active) goto failed;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    if (g_page_pointer.active) goto failed;
+    phase = 6;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    (void) app_scroll_to_position(hwnd, 0, 10);
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    if (g_page_pointer.active || app_history_debug_eval(
+            "if(panClicks!==1)throw Error('cancel-click');") != PSCRIPT_OK ||
+            g_document != document || g_script != script ||
+            layouts != g_page_layout_count) goto failed;
+    (void) app_scroll_to_position(hwnd, 0, 0);
+    phase = 7;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    g_page_pointer_document = NULL;
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_KILLFOCUS, 0, 0);
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    if (g_page_pointer.active || app_history_debug_eval(
+            "if(panClicks!==1)throw Error('stale-focus-click');") != PSCRIPT_OK)
+        goto failed;
+    phase = 8;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(-32000, -32000));
+    if (g_scroll_x != g_document_width - g_page_width ||
+            g_scroll_y != g_document_height - g_page_height) goto failed;
+    SendMessageW(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    SendMessageW(hwnd, WM_LBUTTONUP, 0, MAKELPARAM(32000, 32000));
+    if (g_scroll_x || g_scroll_y || g_page_pointer.active ||
+            layouts != g_page_layout_count ||
+            app_history_debug_eval("if(panClicks!==1)throw Error('clamp-click');")
+            != PSCRIPT_OK) goto failed;
+    AppDebug_Log("positron pointer selftest OK\r\n");
+    return 0;
+failed:
+    _snprintf(message, sizeof(message) - 1,
+            "positron pointer selftest FAILED phase=%d scroll=%d,%d\r\n",
+            phase, g_scroll_x, g_scroll_y);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+    app_page_pointer_cancel(g_page_window);
+    return 1;
+}
+#endif
+
 static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
@@ -5377,6 +5670,7 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         {
             RECT client;
 
+            app_page_pointer_cancel(hwnd);
             GetClientRect(hwnd, &client);
             g_page_width = client.right - client.left;
             g_page_height = client.bottom - client.top;
@@ -5424,25 +5718,14 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         return 0;
     case WM_ERASEBKGND:
         return 1;
-    case WM_KILLFOCUS:
-        AppControls_ClearButtonFocus(g_controls);
-        break;
     case WM_LBUTTONDOWN:
         {
             int x;
             int y;
             int document_x;
             int document_y;
-            int focus_index;
-            int default_allowed;
-            unsigned int file_index;
-            int file_disabled;
-            char href[APP_URL_MAX];
-            char link_target[APP_SCRIPT_TARGET_MAX];
-            char link_rel[APP_SCRIPT_REL_MAX];
-            int link_found;
-            int navigated;
 
+            app_page_pointer_cancel(hwnd);
             x = (int) (short) LOWORD(lparam);
             y = (int) (short) HIWORD(lparam);
             SetFocus(hwnd);
@@ -5452,128 +5735,103 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             app_debug_pointer_down(x, y, document_x, document_y, g_scroll_x,
                     g_scroll_y);
 #endif
-            if (g_document != NULL && PCore_OverflowPointer(g_document,
-                    PCORE_POINTER_DOWN, document_x, document_y)) {
+            if (g_document == NULL) return 0;
+            /* Core's internal scrollbar drag wins over page panning. */
+            if (PCore_OverflowPointer(g_document, PCORE_POINTER_DOWN,
+                    document_x, document_y)) {
                 g_overflow_pointer = 1;
+                g_overflow_pointer_point.x = document_x;
+                g_overflow_pointer_point.y = document_y;
                 SetCapture(hwnd);
+                if (GetCapture() != hwnd) app_page_pointer_cancel(hwnd);
                 app_sync_overflow_scroll();
                 app_invalidate_overflow(hwnd);
                 return 0;
             }
-            if (g_document != NULL && PCore_InteractionSetAt(g_document,
-                    document_x, document_y, PCORE_INTERACTION_FOCUS |
+            AppInput_PointerBegin(&g_page_pointer, g_dpi, x, y);
+            g_page_pointer_document = g_document;
+            g_page_pointer_scroll_x = g_scroll_x;
+            g_page_pointer_scroll_y = g_scroll_y;
+            SetCapture(hwnd);
+            if (GetCapture() != hwnd) {
+                app_page_pointer_cancel(hwnd);
+                return 0;
+            }
+            if (PCore_InteractionSetAt(g_document, document_x, document_y,
                     PCORE_INTERACTION_ACTIVE) > 0) {
                 InvalidateRect(hwnd, NULL, FALSE);
-            }
-            if (AppControls_HandleButtonPointer(g_controls, document_x,
-                    document_y)) {
-                return 0;
-            }
-            file_index = 0;
-            file_disabled = 0;
-            if (g_document != NULL && app_file_input_at(g_document,
-                    document_x, document_y, &file_index, &file_disabled)) {
-                if (file_disabled) {
-                    return 0;
-                }
-                default_allowed = 1;
-                if (g_script != NULL) {
-                    if (AppScript_DispatchClickEvent(g_script, document_x,
-                            document_y, &default_allowed) != 0) {
-                        return 0;
-                    }
-                } else {
-                    (void) PCore_EventDispatchAt(g_document, document_x,
-                            document_y, "click", 1, 1, &default_allowed);
-                }
-                if (default_allowed && !g_file_picker_pending) {
-                    (void) app_file_input_open(hwnd, g_document, g_script,
-                            file_index, document_x, document_y, 0);
-                }
-                return 0;
-            }
-            if (g_document != NULL && PCore_DisclosureInfoAt(g_document,
-                    document_x, document_y, NULL, NULL, NULL, NULL,
-                    NULL) == 1) {
-                (void) app_handle_disclosure(hwnd, document_x, document_y);
-                return 0;
-            }
-            if (g_document != NULL && app_handle_label(hwnd, document_x,
-                    document_y)) {
-                return 0;
-            }
-            href[0] = '\0';
-            link_target[0] = '\0';
-            link_rel[0] = '\0';
-            link_found = g_document != NULL && PCore_LinkAtEx(g_document,
-                    document_x, document_y, href, sizeof(href),
-                    link_target, sizeof(link_target), link_rel,
-                    sizeof(link_rel)) == 0;
-            if (link_found && g_script != NULL) {
-                navigated = 0;
-                (void) AppScript_DispatchAnchorClick(g_script, document_x,
-                        document_y, href, link_target, link_rel,
-                        &navigated);
-                return 0;
-            }
-            AppControls_ClearButtonFocus(g_controls);
-            focus_index = app_focus_at(document_x, document_y);
-            if (focus_index >= 0) {
-                (void) app_focus_set(hwnd, focus_index);
-            }
-            default_allowed = 1;
-            if (g_document != NULL) {
-                if (g_script != NULL) {
-                    if (AppScript_DispatchClickEvent(g_script, document_x,
-                            document_y, &default_allowed) != 0) {
-                        return 0;
-                    }
-                } else {
-                    (void) PCore_EventDispatchAt(g_document, document_x,
-                            document_y, "click", 1, 1, &default_allowed);
-                }
-            }
-            if (default_allowed && link_found) {
-                (void) app_load_page(g_window, href, APP_HISTORY_NEW, -1);
             }
         }
         return 0;
     case WM_MOUSEMOVE:
-        if (g_overflow_pointer && g_document != NULL &&
-                (wparam & MK_LBUTTON) != 0) {
-            int x;
-            int y;
-
-            x = (int) (short) LOWORD(lparam);
-            y = (int) (short) HIWORD(lparam);
+        if ((g_page_pointer.active || g_overflow_pointer) &&
+                (wparam & MK_LBUTTON) == 0) {
+            app_page_pointer_cancel(hwnd);
+            return 0;
+        }
+        if (g_overflow_pointer && g_document != NULL) {
+            g_overflow_pointer_point.x =
+                    (int) (short) LOWORD(lparam) + g_scroll_x;
+            g_overflow_pointer_point.y =
+                    (int) (short) HIWORD(lparam) + g_scroll_y;
             (void) PCore_OverflowPointer(g_document, PCORE_POINTER_MOVE,
-                    x + g_scroll_x, y + g_scroll_y);
+                    g_overflow_pointer_point.x, g_overflow_pointer_point.y);
             app_sync_overflow_scroll();
             app_invalidate_overflow(hwnd);
+            return 0;
+        }
+        if (g_page_pointer.active) {
+            app_page_pointer_move(hwnd, (int) (short) LOWORD(lparam),
+                    (int) (short) HIWORD(lparam));
             return 0;
         }
         break;
     case WM_LBUTTONUP:
         if (g_overflow_pointer) {
-            int x;
-            int y;
-
-            x = (int) (short) LOWORD(lparam);
-            y = (int) (short) HIWORD(lparam);
-            if (g_document != NULL) {
-                (void) PCore_OverflowPointer(g_document, PCORE_POINTER_UP,
-                        x + g_scroll_x, y + g_scroll_y);
-                app_sync_overflow_scroll();
-            }
-            g_overflow_pointer = 0;
-            ReleaseCapture();
+            g_overflow_pointer_point.x =
+                    (int) (short) LOWORD(lparam) + g_scroll_x;
+            g_overflow_pointer_point.y =
+                    (int) (short) HIWORD(lparam) + g_scroll_y;
+            app_page_pointer_cancel(hwnd);
+            app_sync_overflow_scroll();
             app_invalidate_overflow(hwnd);
             return 0;
         }
-        if (g_document != NULL && PCore_InteractionClear(g_document,
-                PCORE_INTERACTION_ACTIVE) > 0) {
-            InvalidateRect(hwnd, NULL, FALSE);
+        if (g_page_pointer.active) {
+            RECT client;
+            int x;
+            int y;
+            int tap_x;
+            int tap_y;
+            int tap;
+
+            x = (int) (short) LOWORD(lparam);
+            y = (int) (short) HIWORD(lparam);
+            /* Some drivers coalesce moves; the release coordinate must also
+             * pass the drag threshold before it can be treated as a tap. */
+            app_page_pointer_move(hwnd, x, y);
+            GetClientRect(hwnd, &client);
+            tap = g_page_pointer.active && !g_page_pointer.dragging &&
+                    x >= client.left && x < client.right &&
+                    y >= client.top && y < client.bottom;
+            tap_x = g_page_pointer.down.x;
+            tap_y = g_page_pointer.down.y;
+            app_page_pointer_cancel(hwnd);
+            if (tap) app_page_click(hwnd, tap_x, tap_y);
+            return 0;
         }
+        break;
+    case WM_CAPTURECHANGED:
+    case WM_CANCELMODE:
+    case WM_KILLFOCUS:
+        app_page_pointer_cancel(hwnd);
+        if (message == WM_KILLFOCUS) AppControls_ClearButtonFocus(g_controls);
+        break;
+    case WM_DESTROY:
+        app_page_pointer_cancel(hwnd);
+        break;
+    case WM_SHOWWINDOW:
+        if (!wparam) app_page_pointer_cancel(hwnd);
         break;
     case WM_VSCROLL:
         {
@@ -5699,6 +5957,8 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         app_reposition_page(hwnd);
         return 0;
     case WM_ACTIVATE:
+        if (LOWORD(wparam) == WA_INACTIVE)
+            app_page_pointer_cancel(g_page_window);
         SHHandleWMActivate(hwnd, wparam, lparam, &g_shell_activate, FALSE);
         if (g_script != NULL) {
             (void) AppScript_SetFocus(g_script,
@@ -5858,6 +6118,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_CLOSE:
+        app_page_pointer_cancel(g_page_window);
         if (g_navigation_request != NULL || g_retired_navigation != NULL) {
             g_navigation_closing = 1;
             app_navigation_cancel_all();
