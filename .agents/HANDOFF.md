@@ -98,6 +98,8 @@ tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；�
 模块审计未恢复前仍不启动该宿主门。
 最新 host 批次还把本地 typed text fixture 改为 UTF-8 字节串，并通过 bind/column round-trip
 验证；不代表设备上的字体、编码显示或数据库文件恢复已通过。
+随后补充服务器删除与本地编辑冲突：host 断言 `server_values:null`、本地 tombstone、接受
+服务器结果不生成 outbox，以及同主键重建使用服务器删除版本。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
