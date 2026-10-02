@@ -721,7 +721,10 @@ static BOOL db_test_sync_registration_guards(void)
     static const PDbSyncColumn reserved_column[] = {
         { "__pdb_private", PDB_VALUE_TEXT }
     };
+    static char long_client[PDB_SYNC_CLIENT_MAX + 1];
+    static char long_hash[PDB_SYNC_NAME_MAX + 1];
     PDbHandle db;
+    int index;
     int rc;
 
     db = NULL;
@@ -737,6 +740,32 @@ static BOOL db_test_sync_registration_guards(void)
     rc = PDb_ApplyMigration(db, 1,
             "CREATE TABLE guard_records(id INTEGER PRIMARY KEY,name TEXT);"
             "CREATE TABLE real_key_records(id REAL PRIMARY KEY,name TEXT)");
+    for (index = 0; index < PDB_SYNC_CLIENT_MAX; ++index) {
+        long_client[index] = 'c';
+    }
+    long_client[PDB_SYNC_CLIENT_MAX] = '\0';
+    for (index = 0; index < PDB_SYNC_NAME_MAX; ++index) {
+        long_hash[index] = 'h';
+    }
+    long_hash[PDB_SYNC_NAME_MAX] = '\0';
+    if (rc == PDB_OK &&
+            (PDb_SyncConfigure(db, NULL, 1, "guard-v1") !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, "", 1, "guard-v1") !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, "guard-client", -1, "guard-v1") !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, "guard-client", 1, NULL) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, "guard-client", 1, "") !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, long_client, 1, "guard-v1") !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, "guard-client", 1, long_hash) !=
+            PDB_INVALID_ARGUMENT)) {
+        PDb_Close(db);
+        return FALSE;
+    }
     if (rc == PDB_OK) {
         rc = PDb_SyncConfigure(db, "guard-client", 1, "guard-v1");
     }
