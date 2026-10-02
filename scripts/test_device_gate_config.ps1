@@ -80,10 +80,37 @@ try {
     }
     $gateText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'device_gate.ps1') `
             -Raw -Encoding UTF8
+    $chunkFunction = $ast.Find({ param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-RapiWriteChunkBytes'
+    }, $false)
+    if ($null -eq $chunkFunction) { throw 'Missing bounded write-retry policy.' }
+    . ([scriptblock]::Create($chunkFunction.Extent.Text))
+    if ((Get-RapiWriteChunkBytes 1) -ne 16384 -or
+            (Get-RapiWriteChunkBytes 2) -ne 1024) {
+        throw 'RAPI write retry sizes changed unexpectedly.'
+    }
+    foreach ($attempt in @(-1, 0, 3, 2147483647)) {
+        $rejected = $false
+        try { [void](Get-RapiWriteChunkBytes $attempt) } catch { $rejected = $true }
+        if (!$rejected) { throw "Unbounded RAPI retry accepted: $attempt" }
+    }
+    $rapiMatch = [regex]::Match($gateText, "(?s)\`$rapiSource = @'\r?\n(.*?)\r?\n'@")
+    if (!$rapiMatch.Success) { throw 'Missing RAPI source.' }
+    Add-Type -TypeDefinition $rapiMatch.Groups[1].Value -Language CSharp
+    foreach ($chunk in @(0, 512, 2048, 32768)) {
+        $rejected = $false
+        try {
+            [PositronDeviceRapi]::CopyFileToDevice('unused', 'unused', $chunk)
+        } catch {
+            $rejected = $_.Exception.InnerException -is [ArgumentOutOfRangeException]
+        }
+        if (!$rejected) { throw "Invalid chunk did not reject before RAPI: $chunk" }
+    }
     if ($gateText -notmatch '\[string\]\s+\$RemoteBase\s*=\s*""') {
         throw 'Automatic remote-base mode is no longer the device-gate default.'
     }
-    Write-Output ("Device gate configuration: {0} cases; storage policy: {1} cases; path layout: PASS." -f
+    Write-Output ("Device gate configuration: {0} cases; storage policy: {1} cases; path layout and bounded write retry: PASS." -f
             $cases.Count, $storageCases.Count)
 } finally {
     if (Test-Path -LiteralPath $ini) { Remove-Item -LiteralPath $ini }

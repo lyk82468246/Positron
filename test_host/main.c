@@ -76,6 +76,8 @@ extern const char *test1319_image_rgba_round_stroke_last_error(void);
 extern BOOL test1329_core_bootstrap_hamburger(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void);
+extern BOOL test1330_core_fragment_dpi_contract(void);
+extern const char *test1330_core_fragment_dpi_last_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -164,6 +166,35 @@ static int test_host_css_px_to_device_px(int css_px, int dpi)
         dpi = 96;
     }
     return MulDiv(css_px, dpi, 96);
+}
+
+/* Fragment queries expose CSS px. Native probes/backdrop hit testing use
+ * physical page coordinates, with the active document's host layout DPI. */
+static int test_host_fragment_device_info(HANDLE document, const char *id,
+        int *x, int *y, int *width, int *height)
+{
+    int css_x;
+    int css_y;
+    int css_width;
+    int css_height;
+
+    if (PCore_FragmentInfoById(document, id, &css_x, &css_y,
+            &css_width, &css_height) != 0) {
+        return 1;
+    }
+    if (x != NULL) {
+        *x = test_host_css_px_to_device_px(css_x, g_page_scroll_dpi);
+    }
+    if (y != NULL) {
+        *y = test_host_css_px_to_device_px(css_y, g_page_scroll_dpi);
+    }
+    if (width != NULL) {
+        *width = test_host_css_px_to_device_px(css_width, g_page_scroll_dpi);
+    }
+    if (height != NULL) {
+        *height = test_host_css_px_to_device_px(css_height, g_page_scroll_dpi);
+    }
+    return 0;
 }
 
 static void test_host_set_device_viewport(int device_width, int device_height)
@@ -801,7 +832,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1329
+#define TEST_MAX_NUMBER 1330
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -8810,7 +8841,7 @@ static int pcore_browser_script_modal_pointer(HWND hwnd, int x, int y)
     dialog_y = 0;
     dialog_w = 0;
     dialog_h = 0;
-    if (PCore_FragmentInfoById(g_render_doc, modal_id, &dialog_x,
+    if (test_host_fragment_device_info(g_render_doc, modal_id, &dialog_x,
             &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
             dialog_h <= 0) {
         return 1;
@@ -14154,6 +14185,8 @@ static int pcore_browser_script_scroll_to_fragment(HWND hwnd,
             return 0;
         }
     }
+    target_x = test_host_css_px_to_device_px(target_x, g_page_scroll_dpi);
+    target_y = test_host_css_px_to_device_px(target_y, g_page_scroll_dpi);
     if (hwnd == NULL || !IsWindow(hwnd)) {
         g_scroll_x = target_x;
         g_scroll_y = target_y;
@@ -23666,7 +23699,7 @@ static void pcore_native_sequential_focus_probe_run(HWND parent)
             stage = "target-size";
             goto failed;
         }
-        if (PCore_FragmentInfoById(g_render_doc, target_ids[i], &x, &y,
+        if (test_host_fragment_device_info(g_render_doc, target_ids[i], &x, &y,
                 &width, &height) != 0 || expected[i].x != x ||
                 expected[i].y != y || expected[i].width != width ||
                 expected[i].height != height) {
@@ -23866,7 +23899,7 @@ static void pcore_native_modal_focus_probe_run(HWND parent)
         if (PCore_FocusTargetInfoWithin(g_render_doc, "dialog", i,
                 &expected) != 0 || expected.kind != target_kinds[i] ||
                 expected.width <= 0 || expected.height <= 0 ||
-                PCore_FragmentInfoById(g_render_doc, target_ids[i],
+                test_host_fragment_device_info(g_render_doc, target_ids[i],
                 &expected_x, &expected_y, &expected_w, &expected_h) != 0 ||
                 expected.x != expected_x || expected.y != expected_y ||
                 expected.width != expected_w ||
@@ -23968,6 +24001,8 @@ static void pcore_native_modal_backdrop_probe_run(HWND parent)
     int outside_y;
     int inside_x;
     int inside_y;
+    MSG pending_restyle;
+    int restyle_count;
     int result_bytes;
     int rc;
     int ok;
@@ -23998,7 +24033,7 @@ static void pcore_native_modal_backdrop_probe_run(HWND parent)
             g_browser_script_session.bridge->session, modal_id,
             sizeof(modal_id), &active_bytes) != PSCRIPT_OK ||
             strcmp(modal_id, "dialog") != 0 || active_bytes != 6 ||
-            PCore_FragmentInfoById(g_render_doc, modal_id, &dialog_x,
+            test_host_fragment_device_info(g_render_doc, modal_id, &dialog_x,
             &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
             dialog_h <= 0 || !GetClientRect(parent, &client)) {
         goto failed;
@@ -24051,6 +24086,48 @@ static void pcore_native_modal_backdrop_probe_run(HWND parent)
         goto failed;
     }
     stage = "inside-point";
+    /* Reading the event log above mutates #result and invalidates retained
+     * layout. A real user cannot send the next pointer message until the UI
+     * has processed the posted restyle; this synchronous probe must do that
+     * too. Drain only this window's bounded layout queue outside JS callbacks.
+     * Keep all cancel/close assertions unchanged. */
+    restyle_count = 0;
+    while (restyle_count < 16 && PeekMessage(&pending_restyle, parent,
+            WM_PCORE_INTERACTION_RESTYLE, WM_PCORE_INTERACTION_RESTYLE,
+            PM_REMOVE)) {
+        DispatchMessage(&pending_restyle);
+        restyle_count++;
+    }
+    if (PeekMessage(&pending_restyle, parent, WM_PCORE_INTERACTION_RESTYLE,
+            WM_PCORE_INTERACTION_RESTYLE, PM_NOREMOVE) ||
+            test_host_fragment_device_info(g_render_doc, "dialog", &dialog_x,
+            &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
+            dialog_h <= 0 || !GetClientRect(parent, &client)) {
+        stage = "reopen-layout";
+        goto failed;
+    }
+    if (dialog_x > 3) {
+        outside_x = dialog_x - 2;
+        outside_y = dialog_y + dialog_h / 2;
+    } else if (dialog_x + dialog_w + 3 < client.right) {
+        outside_x = dialog_x + dialog_w + 2;
+        outside_y = dialog_y + dialog_h / 2;
+    } else if (dialog_y > 3) {
+        outside_x = dialog_x + dialog_w / 2;
+        outside_y = dialog_y - 2;
+    } else {
+        outside_x = dialog_x + dialog_w / 2;
+        outside_y = dialog_y + dialog_h + 2;
+    }
+    inside_x = dialog_x + dialog_w / 2;
+    inside_y = dialog_y + dialog_h / 2;
+    if (outside_x < client.left || outside_x >= client.right ||
+            outside_y < client.top || outside_y >= client.bottom ||
+            (outside_x >= dialog_x && outside_x < dialog_x + dialog_w &&
+             outside_y >= dialog_y && outside_y < dialog_y + dialog_h)) {
+        stage = "reopen-outside-point";
+        goto failed;
+    }
     (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
             MAKELPARAM((short) inside_x, (short) inside_y));
     if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
@@ -24079,6 +24156,21 @@ static void pcore_native_modal_backdrop_probe_run(HWND parent)
             "window.block=false;", -1, error, sizeof(error)) != 0) {
         goto failed;
     }
+    /* The blocked-backdrop result text above invalidates layout as well. */
+    restyle_count = 0;
+    while (restyle_count < 16 && PeekMessage(&pending_restyle, parent,
+            WM_PCORE_INTERACTION_RESTYLE, WM_PCORE_INTERACTION_RESTYLE,
+            PM_REMOVE)) {
+        DispatchMessage(&pending_restyle);
+        restyle_count++;
+    }
+    if (PeekMessage(&pending_restyle, parent, WM_PCORE_INTERACTION_RESTYLE,
+            WM_PCORE_INTERACTION_RESTYLE, PM_NOREMOVE) ||
+            test_host_fragment_device_info(g_render_doc, "dialog", &dialog_x,
+            &dialog_y, &dialog_w, &dialog_h) != 0) {
+        stage = "allowed-layout";
+        goto failed;
+    }
     (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
             MAKELPARAM((short) outside_x, (short) outside_y));
     if (!IsWindow(parent) || PBrowser_ScriptSessionGetActiveDialogId(
@@ -24097,11 +24189,16 @@ static void pcore_native_modal_backdrop_probe_run(HWND parent)
     goto done;
 
 failed:
+    (void) test_host_fragment_device_info(g_render_doc, "dialog", &dialog_x,
+            &dialog_y, &dialog_w, &dialog_h);
     _snprintf(g_native_modal_backdrop_probe_detail,
             sizeof(g_native_modal_backdrop_probe_detail) - 1,
-            "stage=%s active=%s bytes=%d result=%s error=%s rc=%d",
+            "stage=%s active=%s bytes=%d result=%s error=%s rc=%d "
+            "outside=%d,%d dialog=%d,%d,%d,%d scroll=%d,%d dpi=%d",
             stage, modal_id, active_bytes, result,
-            error[0] != '\0' ? error : "(none)", rc);
+            error[0] != '\0' ? error : "(none)", rc,
+            outside_x, outside_y, dialog_x, dialog_y, dialog_w, dialog_h,
+            g_scroll_x, g_scroll_y, g_page_scroll_dpi);
     g_native_modal_backdrop_probe_detail[
             sizeof(g_native_modal_backdrop_probe_detail) - 1] = '\0';
     ok = 0;
@@ -24292,7 +24389,7 @@ static void pcore_native_modal_paint_probe_check(HWND parent, HDC hdc)
     if (ok) {
         GetClientRect(parent, &client);
         ok = client.right > 4 && client.bottom > 4 &&
-                PCore_FragmentInfoById(g_render_doc, "dialog", &dialog_x,
+                test_host_fragment_device_info(g_render_doc, "dialog", &dialog_x,
                 &dialog_y, &dialog_w, &dialog_h) == 0 && dialog_w > 0 &&
                 dialog_h > 0 && dialog_x + dialog_w / 2 < client.right &&
                 dialog_y + dialog_h / 2 < client.bottom;
@@ -27300,6 +27397,8 @@ static BOOL test1080_browser_fragment_anchor_contract(void)
     pcore_browser_script_session_destroy();
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    g_page_scroll_dpi = 96;
+    PCore_SetViewport(320, 240, 96);
     document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "https://example.com/fragment.css");
@@ -27475,6 +27574,8 @@ static BOOL test1081_browser_fragment_history_scroll(void)
     g_view_w = 0;
     g_scroll_y = 0;
     (void) pcore_browse_history_commit_navigation(URL_FIRST, 1, -1);
+    g_page_scroll_dpi = 96;
+    PCore_SetViewport(320, 240, 96);
     document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "https://example.com/fragment-history.css");
@@ -27771,6 +27872,8 @@ static BOOL test1083_browser_fragment_token_resolution(void)
     pcore_browse_history_reset();
     g_render_doc = NULL;
     g_render_sheet = NULL;
+    g_page_scroll_dpi = 96;
+    PCore_SetViewport(320, 240, 96);
     document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     sheet = PCore_ParseCSS(CSS, sizeof(CSS) - 1,
             "https://example.com/fragment-token.css");
@@ -31247,7 +31350,7 @@ static BOOL test1108_browser_modal_paint_contract(void)
                 "http://positron.local/modal-paint.css");
         if (sheet == NULL || PCore_StyleDocument(document, sheet) != 0 ||
                 PCore_LayoutDocument(document, vw, vh) != 0 ||
-                PCore_FragmentInfoById(document, "dialog", &dialog_x,
+                test_host_fragment_device_info(document, "dialog", &dialog_x,
                 &dialog_y, &dialog_w, &dialog_h) != 0 || dialog_w <= 0 ||
                 dialog_h <= 0 || dialog_x + dialog_w / 2 >= vw ||
                 dialog_y + dialog_h / 2 >= vh ||
@@ -114217,6 +114320,13 @@ static BOOL test1328_core_flex_button_visual_child(void)
     return TRUE;
 }
 
+/* VS2008 /O2 folds many independent fixtures into this dispatcher and can
+ * reserve more than the WM6 host's 64 KiB stack before any test is selected.
+ * Keep this control-only function unoptimized; fixture and DLL code retain
+ * their formal Release settings. Do not raise the stack to hide the issue. */
+#if defined(_MSC_VER) && !defined(_DEBUG)
+#pragma optimize("", off)
+#endif
 static int run_configured_tests(const unsigned char *selected,
         int selected_7b, int selected_999, int *http_active)
 {
@@ -117415,6 +117525,18 @@ static int run_configured_tests(const unsigned char *selected,
                         test1329_core_bootstrap_hamburger_last_error());
             }
             break;
+        case 1330:
+            ok = test1330_core_fragment_dpi_contract();
+            if (ok) {
+                show_info(L"TEST 1330 OK",
+                        "Fragment id/token CSS geometry and section paint "
+                        "align at 96/144/192 DPI; layout snapshots and "
+                        "failure outputs are preserved.");
+            } else {
+                show_error(L"TEST 1330 FAIL",
+                        test1330_core_fragment_dpi_last_error());
+            }
+            break;
         default: ok = FALSE; break;
         }
         if (!ok) {
@@ -117433,6 +117555,10 @@ static int run_configured_tests(const unsigned char *selected,
 /* -------------------------------------------------------------------- */
 /* WinMain                                                               */
 /* -------------------------------------------------------------------- */
+
+#if defined(_MSC_VER) && !defined(_DEBUG)
+#pragma optimize("", on)
+#endif
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
                    LPWSTR lpCmdLine, int nCmdShow)

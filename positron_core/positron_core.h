@@ -1488,7 +1488,11 @@ PCORE_API int PCore_LinkInfoByIdEx(HANDLE hDoc, const char *element_id,
                                    char *out_rel, int rel_cap);
 
 /* Resolve a same-document fragment target by its literal UTF-8 DOM id.
- * Geometry is returned in document CSS px after layout.  The leading '#'
+ * Geometry is returned in document CSS px after layout, including when the
+ * layout uses PCore_SetDeviceViewport. Conversion uses that document's last
+ * successful layout DPI, not a later global viewport setting. The host must
+ * convert once to device px for physical scrolling/painting/hit testing.
+ * Output pointers are optional and remain unchanged on failure. The leading '#'
  * is not part of fragment_id.  Returns 0 for a matching, laid-out element
  * and non-zero when the id is empty/missing, the document is not laid out,
  * or the target has no usable box.  This narrow bridge intentionally leaves

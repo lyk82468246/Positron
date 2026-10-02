@@ -208,6 +208,7 @@
 			<File RelativePath=".\main.c"></File>
 			<File RelativePath=".\media_tests.c"></File>
 			<File RelativePath=".\image_tests.c"></File>
+			<File RelativePath=".\fragment_tests.c"></File>
 			<File RelativePath=".\db_tests.c"></File>
 		</Filter>
 		<Filter

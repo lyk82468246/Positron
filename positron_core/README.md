@@ -28,6 +28,12 @@ WM6 宿主有设备缩放时，应在首次 style/layout 前用实际物理客�
 绘制；paint HDC 的 `LOGPIXELS` 不再作为另一份字号来源。窗口尺寸或 DPI 改变后，宿主必须
 重新设置 viewport、style/layout 并重绘，不能只替换 HDC。
 
+### 同页锚点坐标
+
+`PCore_FragmentInfoById()` 与 `PCore_FragmentInfoByToken()` 返回文档 CSS 像素，即使最近一次布局使用了设备 viewport。转换依据该文档的布局 DPI 快照，不受另一个文档随后改变全局 viewport 的影响。ByToken 优先查找字面 ID，再回退到旧式 `<a name>`；已有但不可布局的 ID 不会被同名 anchor 替代。各输出指针可省略，目标缺失、隐藏或尚未布局时失败且不改写输出。
+
+宿主负责 URL fragment 解码、滚动钳制和平台坐标转换。物理滚动偏移应由返回的 CSS 坐标按当前页面 DPI 转换一次，例如 `MulDiv(css_y, dpi, 96)`；不要直接把 CSS 坐标用于 GDI/native 命中，也不要对已经转换的设备坐标重复缩放。这两个查询不执行滚动、布局或导航，不改变其他几何接口。
+
 ## 解析、样式与资源
 
 外部 CSS 原始字节按文档缓存：最多 32 项，每项 256 KiB、总计 512 KiB。完整解析且不含

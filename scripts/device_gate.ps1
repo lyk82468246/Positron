@@ -20,6 +20,13 @@ function Write-Stage([string] $message)
     Write-Host ("[device-gate] " + $message)
 }
 
+function Get-RapiWriteChunkBytes([int] $attempt)
+{
+    if ($attempt -eq 1) { return 16384 }
+    if ($attempt -eq 2) { return 1024 }
+    throw 'RAPI copy permits only the initial attempt and one bounded retry.'
+}
+
 function Get-ConfiguredTests([string] $iniPath)
 {
     $selection = $null
@@ -771,6 +778,16 @@ public static class PositronDeviceRapi
 
     public static void CopyFileToDevice(string localPath, string remotePath)
     {
+        CopyFileToDevice(localPath, remotePath, RAPI_TRANSFER_CHUNK_BYTES);
+    }
+
+    public static void CopyFileToDevice(string localPath, string remotePath,
+            int writeChunkBytes)
+    {
+        if (writeChunkBytes != RAPI_TRANSFER_CHUNK_BYTES &&
+                writeChunkBytes != 1024) {
+            throw new ArgumentOutOfRangeException("writeChunkBytes");
+        }
         string temporaryPath = remotePath + ".part-" +
                 Guid.NewGuid().ToString("N");
         IntPtr remote = CeCreateFile(temporaryPath, GENERIC_WRITE, 0,
@@ -786,7 +803,7 @@ public static class PositronDeviceRapi
                  * reset at the 512 KiB boundary on some DMA images.  The
                  * unique temporary path still prevents a partial write from
                  * becoming visible as the final payload. */
-                byte[] buffer = new byte[RAPI_TRANSFER_CHUNK_BYTES];
+                byte[] buffer = new byte[writeChunkBytes];
                 int count;
                 while ((count = local.Read(buffer, 0, buffer.Length)) > 0) {
                     uint written;
@@ -1608,7 +1625,8 @@ try {
         for ($copyAttempt = 1; $copyAttempt -le 2; $copyAttempt++) {
             try {
                 [PositronDeviceRapi]::CopyFileToDevice(
-                        $file.FullName, $remotePath)
+                        $file.FullName, $remotePath,
+                        (Get-RapiWriteChunkBytes $copyAttempt))
                 $copySucceeded = $true
                 break
             } catch {
@@ -1619,7 +1637,7 @@ try {
                     throw
                 }
                 Write-Stage (("transient RAPI copy failure for {0}; " +
-                        "reopening current session and retrying once") -f $relative)
+                        "reopening current session and retrying once with 1 KiB writes") -f $relative)
                 if ($rapiConnected) {
                     [PositronDeviceRapi]::Disconnect()
                     $rapiConnected = $false

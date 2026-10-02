@@ -15655,6 +15655,8 @@ PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
     struct box *box;
     int ax;
     int ay;
+    int width;
+    int height;
 
     doc = (dom_document *) hDoc;
     st = pcore_get_render(doc);
@@ -15684,6 +15686,9 @@ PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
     ax = 0;
     ay = 0;
     box_coords(box, &ax, &ay);
+    width = box->width;
+    height = box->height;
+    pcore_layout_fragment_to_css(st, &ax, &ay, &width, &height);
     if (x != NULL) {
         *x = ax;
     }
@@ -15691,10 +15696,10 @@ PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
         *y = ay;
     }
     if (w != NULL) {
-        *w = box->width;
+        *w = width;
     }
     if (h != NULL) {
-        *h = box->height;
+        *h = height;
     }
     dom_node_unref((dom_node *) element);
     return 0;
@@ -15703,23 +15708,28 @@ PCORE_API int PCore_FragmentInfoById(HANDLE hDoc, const char *fragment_id,
 /* Copy only the geometry needed by the fragment bridge.  The node reference
  * remains owned by the caller; the box tree borrows it for the document's
  * layout lifetime. */
-static int pcore_fragment_info_for_node(struct box *root_box,
+static int pcore_fragment_info_for_node(pcore_render *st,
         dom_node *node, int *x, int *y, int *w, int *h)
 {
     struct box *box;
     int ax;
     int ay;
+    int width;
+    int height;
 
-    if (root_box == NULL || node == NULL) {
+    if (st == NULL || st->root_box == NULL || node == NULL) {
         return 1;
     }
-    box = pcore_box_for_any_node(root_box, node);
+    box = pcore_box_for_any_node(st->root_box, node);
     if (box == NULL || box->width <= 0 || box->height <= 0) {
         return 1;
     }
     ax = 0;
     ay = 0;
     box_coords(box, &ax, &ay);
+    width = box->width;
+    height = box->height;
+    pcore_layout_fragment_to_css(st, &ax, &ay, &width, &height);
     if (x != NULL) {
         *x = ax;
     }
@@ -15727,10 +15737,10 @@ static int pcore_fragment_info_for_node(struct box *root_box,
         *y = ay;
     }
     if (w != NULL) {
-        *w = box->width;
+        *w = width;
     }
     if (h != NULL) {
-        *h = box->height;
+        *h = height;
     }
     return 0;
 }
@@ -15824,7 +15834,7 @@ PCORE_API int PCore_FragmentInfoByToken(HANDLE hDoc,
     if (element != NULL) {
         /* A real id wins even when its box is not usable; do not silently
          * select a legacy name anchor behind it. */
-        result = pcore_fragment_info_for_node(st->root_box,
+        result = pcore_fragment_info_for_node(st,
                 (dom_node *) element, x, y, w, h);
         dom_node_unref((dom_node *) element);
         return result;
@@ -15833,7 +15843,7 @@ PCORE_API int PCore_FragmentInfoByToken(HANDLE hDoc,
     if (element == NULL) {
         return 1;
     }
-    result = pcore_fragment_info_for_node(st->root_box,
+    result = pcore_fragment_info_for_node(st,
             (dom_node *) element, x, y, w, h);
     dom_node_unref((dom_node *) element);
     return result;
