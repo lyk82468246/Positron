@@ -92,6 +92,8 @@ size-probe、过小缓冲、越界索引和非法 resolve action，以及同步�
 证据，设备模块快照不可用期间不计入设备 TEST1321 通过。
 冲突失败 fixture 另覆盖实体名和主键分别不匹配时拒绝响应且保留本地 outbox；服务器权威冲突
 和 retry-local 的既有断言不受影响。
+另外补充公共 C ABI 的参数守卫：空 handle/SQL、无效 bind/列索引，以及本地 SQL 模式调用
+同步入口的拒绝结果均由 host fixture 断言。
 随后又加入 SQL 32 KiB 和 typed bind 1 MiB 预算、固定 sync request envelope，以及服务器
 tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；仍未把 host 构建或静态证据
 当作设备运行通过。另补本地完整 SQL 模式的 migration 版本幂等、失败脚本回滚和事务中

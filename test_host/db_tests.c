@@ -980,6 +980,88 @@ static BOOL db_test_transaction_and_limits(void)
     return TRUE;
 }
 
+static BOOL db_test_argument_guards(void)
+{
+    static const char text[] = "x";
+    PDbHandle db;
+    PDbStmtHandle stmt;
+    char request[1];
+    int request_length;
+
+    db = NULL;
+    stmt = NULL;
+    if (PDb_Exec(NULL, "SELECT 1") != PDB_INVALID_ARGUMENT ||
+            PDb_Prepare(NULL, "SELECT 1", &stmt) != PDB_INVALID_ARGUMENT ||
+            PDb_Prepare(NULL, NULL, &stmt) != PDB_INVALID_ARGUMENT ||
+            PDb_Prepare(NULL, "SELECT 1", NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_Finalize(NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_Begin(NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_Commit(NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_Rollback(NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_Cancel(NULL) != PDB_INVALID_ARGUMENT) {
+        return FALSE;
+    }
+    if (PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) != PDB_OK) {
+        return FALSE;
+    }
+    request[0] = 'x';
+    if (PDb_Exec(db, NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_GetLastError(db, NULL, 0) != PDB_INVALID_ARGUMENT ||
+            PDb_CopyLastError(db, NULL, 0) != PDB_INVALID_ARGUMENT ||
+            PDb_ApplyMigration(db, -1, "") != PDB_INVALID_ARGUMENT ||
+            PDb_ApplyMigration(db, 0, NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncConfigure(db, NULL, 0, "schema") != PDB_INVALID_ARGUMENT ||
+            PDb_SyncRegisterTable(db, NULL, NULL, NULL, 0) !=
+            PDB_INVALID_ARGUMENT ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_STATE || request[0] != 'x' ||
+            PDb_SyncApplyResponse(db, 200, "{}", 2) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncPendingCount(db) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncConflictCount(db) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncGetConflicts(db, request, sizeof(request),
+            &request_length) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncCopyConflict(db, 0, request, sizeof(request),
+            &request_length) != PDB_INVALID_ARGUMENT ||
+            PDb_SyncResolveConflict(db, 1, PDB_CONFLICT_ACCEPT_SERVER) !=
+            PDB_INVALID_ARGUMENT) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_Prepare(db, "SELECT ?1", &stmt) != PDB_OK ||
+            PDb_BindNull(stmt, 0) != PDB_INVALID_ARGUMENT ||
+            PDb_BindInt64(stmt, 0, 1) != PDB_INVALID_ARGUMENT ||
+            PDb_BindDouble(stmt, 0, 1.0) != PDB_INVALID_ARGUMENT ||
+            PDb_BindText(stmt, 0, text, 1) != PDB_INVALID_ARGUMENT ||
+            PDb_BindText(stmt, 1, NULL, 0) != PDB_INVALID_ARGUMENT ||
+            PDb_BindText(stmt, 1, text, -1) != PDB_INVALID_ARGUMENT ||
+            PDb_BindBlob(stmt, 0, text, 1) != PDB_INVALID_ARGUMENT ||
+            PDb_BindBlob(stmt, 1, NULL, 1) != PDB_INVALID_ARGUMENT ||
+            PDb_Step(NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_ColumnCount(NULL) != 0 ||
+            PDb_ColumnType(NULL, 0) != PDB_VALUE_NULL ||
+            PDb_ColumnInt64(NULL, 0) != 0 ||
+            PDb_ColumnDouble(NULL, 0) != 0.0 ||
+            PDb_ColumnText(NULL, 0) != NULL ||
+            PDb_ColumnBlob(NULL, 0) != NULL ||
+            PDb_ColumnBytes(NULL, 0) != 0 ||
+            PDb_ColumnType(stmt, -1) != PDB_VALUE_NULL ||
+            PDb_ColumnType(stmt, 1) != PDB_VALUE_NULL ||
+            PDb_ColumnInt64(stmt, -1) != 0 ||
+            PDb_ColumnDouble(stmt, 1) != 0.0 ||
+            PDb_ColumnText(stmt, 1) != NULL ||
+            PDb_ColumnBlob(stmt, 1) != NULL ||
+            PDb_ColumnBytes(stmt, 1) != 0) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_request_paging(void)
 {
     static const PDbSyncColumn columns[] = {
@@ -1260,6 +1342,7 @@ BOOL test1321_db_contract(void)
             !db_test_delete_conflict() ||
             !db_test_response_failures() ||
             !db_test_transaction_and_limits() ||
+            !db_test_argument_guards() ||
             !db_test_request_paging() ||
             !db_test_sync_state_guards() ||
             !db_test_sync_registration_guards() ||
