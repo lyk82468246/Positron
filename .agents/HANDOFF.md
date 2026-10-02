@@ -69,7 +69,7 @@ About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debu
 安装后的读取显示仍待人工检查，独立复制缺少有效安装版本时“未提供”是预期。
 较早 error=8 和宿主零日志失败不转为 TEST1321 通过；应用运行时会持有 DLL，下一次
 DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
-本轮修正 guest helper 的进程快照使用 Windows Mobile SDK 的
+guest helper 的进程快照使用 Windows Mobile SDK 的
 `TH32CS_SNAPNOHEAPS`，避免包含进程 heap 时耗尽快照内存；模块枚举仍保持
 fail closed。Debug 完整包部署后的
 `tmp/device-runs/20261002-125344-module-audit/module-audit-result.txt`，以及最终
@@ -82,56 +82,45 @@ Release 完整包部署后的
 通过或测试失败。所有结果均来自 guest helper 的 Toolhelp 模块枚举，不以桌面模拟器进程
 存在与否推断 DLL 引用。
 
+审计等待函数现在忽略 RAPI 成功回读的空日志，沿原有有界等待继续读取，只有完整摘要才参与
+holder 校验。`scripts/test_device_gate_audit.ps1` 直接抽取正式函数并以合成 RAPI 覆盖完整摘要、
+空/部分日志后完成、读取失败后完成、非零 holder、不可用快照和无摘要超时，共 7 项通过。
+内置 Temp 的实际验证见 `tmp/device-runs/20261002-175542-db-internal-audit/`：正式 Release
+helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 guest 引用审计通过，
+不代表 TEST1321 已运行。外置卡曾再次出现空日志、文件回读不可用和 device=5 写入失败；
+历史成功宿主在该外置卡候选中也返回 device=126，尚不足以把失败归因到某个 DLL。
+
 ### DB 主机契约测试当前切片
 
-TEST1321 本批补齐了 schema 迁移失败后的残留表检查，并修正/断言同步注册拒绝复合主键；
-`positron_db` 的 schema 校验现在统计实际主键列总数，v1 只接受单列 INTEGER/TEXT 主键。
-同时补充 `INT64_MIN/MAX`、非空与空 BLOB 的 bind/column 读取、`ColumnCount`，以及同步请求
-BLOB Base64 编码、合法/非法 Base64 响应解码和 INT64 边界 push/pull 断言；同步请求还覆盖
-UTF-8、引号、反斜杠和换行转义。新增未知顶层响应字段兼容性、重复/倒退/事务中迁移
-拒绝、schema 配置版本拒绝、事务中禁止构造同步请求，以及同步 REAL/NULL outbox 编码和
-pull 解码、同步文件拒绝本地完整 SQL 模式重开和 `load_extension` 拒绝的断言。正式
-`scripts\build.bat Debug build`、C89 和仓库审计均通过；设备 guest 模块审计现在已
-取得 `holders=0 unavailable=0`，但由于随后 `CeCreateProcess` 返回 device=126，
-本切片尚未由设备上的 TEST1321 执行确认。另补 dirty queue/outbox 事务合并、最终
-upsert/delete 选择和回滚不留 outbox 的主机断言。
-失败响应还覆盖了 accepted 后续 change 类型错误时的整批回滚，确认 outbox、cursor 和本地行
-不会被部分提交。随后继续补充了同步表注册边界（非法标识符、保留名、缺少主键、重复列、
-非法类型、非 INTEGER/TEXT 主键、重复注册和注册状态冲突）、冲突列表/单项复制的
-size-probe、过小缓冲、越界索引和非法 resolve action，以及同步模式 `DETACH`、多语句和
-直接 `BEGIN`/`COMMIT`/`ROLLBACK` 的 SQL 拒绝断言。最新正式 Debug 构建、C89、仓库审计均通过；这些仍是 host contract
-证据，设备模块快照不可用期间不计入设备 TEST1321 通过。
-冲突失败 fixture 另覆盖实体名和主键分别不匹配时拒绝响应且保留本地 outbox；服务器权威冲突
-和 retry-local 的既有断言不受影响。
-另外补充公共 C ABI 的参数守卫：空 handle/SQL、无效 bind/列索引，以及本地 SQL 模式调用
-同步入口的拒绝结果均由 host fixture 断言。
-同步迁移还补充了已注册表被迁移脚本删除时的 schema 校验失败与原表保留断言，覆盖了
-注册同步表之后的迁移原子回滚边界。
-同步配置守卫也覆盖空/负参数以及 client ID、schema hash 的固定长度上限，非法配置不会
-写入同步元数据。
-同步表注册守卫继续覆盖表名/主键长度、空列列表、零列和超过最大列数的拒绝。
-本地完整 SQL fixture 还补了独立的 UPDATE/DELETE/SELECT COUNT round-trip，覆盖完整 SQL
-模式的删除路径。
-pull response fixture 还覆盖了 `changes` 中 key 与 typed 主键值不一致时的整批拒绝，确认
-远端行、outbox 和 cursor 不会部分推进。
-同一 fixture 还拒绝未注册同步实体，确认服务器不能借 pull 响应写入白名单之外的表。
-并覆盖 `deleted=true` 搭配非空 values 的 malformed pull，确认 tombstone 形状错误不会部分推进。
-另补非数字 `next_cursor` 的拒绝，确认游标解析失败不会改变远端行或持久化 cursor。
-accepted fixture 还覆盖了错误 client 的 `op_id`，确认服务端不能确认并清除其他客户端的 outbox。
-pull malformed fixture 还拒绝非 bool 的 `deleted` 字段，确认协议类型错误不会部分提交。
-随后又加入 SQL 32 KiB 和 typed bind 1 MiB 预算、固定 sync request envelope，以及服务器
-tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；仍未把 host 构建或静态证据
-当作设备运行通过。另补本地完整 SQL 模式的 migration 版本幂等、失败脚本回滚和事务中
-拒绝断言；路线图中的宿主 worker、HTTPS 与设备 journal/断电门没有因此提前标记完成。
-同步响应随后增加连续多页 pull、游标推进和远端行落库且不产生 outbox 的 host 断言；设备
-模块审计未恢复前仍不启动该宿主门。
-最新 host 批次还把本地 typed text fixture 改为 UTF-8 字节串，并通过 bind/column round-trip
-验证；不代表设备上的字体、编码显示或数据库文件恢复已通过。
-随后补充服务器删除与本地编辑冲突：host 断言 `server_values:null`、本地 tombstone、接受
-服务器结果不生成 outbox，以及同主键重建使用服务器删除版本。
-响应失败矩阵又加入 conflict entity/key 与本地 outbox 不匹配时的拒绝，确认 outbox、cursor
-和本地行均保持不变；文件重开 fixture 还确认 `__pdb_conflict` 可持久读取，接受服务器结果
-后不重新生成 outbox。
+`test_host/db_tests.c` 的 TEST1321 fixture 覆盖本地完整 SQL 的 DDL/DML/SELECT、事务提交与
+回滚、嵌套事务拒绝、取消、错误复制、NULL/INTEGER/REAL/UTF-8 TEXT/BLOB bind/column、
+INT64_MIN/MAX、空 BLOB、ColumnCount，以及 handle/SQL/bind/列索引参数守卫。SQL 长度、
+表达式深度、变量数和 typed bind 大小均有预算断言。它们已编入正式工程，当前新增断言尚未
+实际执行，不能把构建通过当作数据库行为验证。
+
+local/sync migration fixture 覆盖版本幂等、倒退和事务中拒绝、失败脚本不留残表，以及已注册表
+被删除时的整批回滚。同步注册覆盖单列 INTEGER/TEXT 主键、复合主键拒绝、非法/保留/过长
+标识符、缺少主键、重复列、非法类型、列数和状态冲突；产品 schema 校验已统计实际主键列总数。
+同步模式 fixture 拒绝 ATTACH/DETACH、直接 DDL/事务/savepoint、多语句、非法 PRAGMA 和扩展，
+并检查同步文件不能以本地完整 SQL 模式重开。
+
+同步协议 fixture 覆盖配置参数、schema version/hash、固定 envelope、无 SQL 请求、typed
+INT64/REAL/NULL/TEXT/BLOB、Base64 和 JSON 转义、outbox 事务合并与回滚、请求分页、连续
+多页 pull、cursor 推进，以及远端 upsert/delete 不产生本地 outbox。失败矩阵检查 accepted
+后续 change 错误时整批回滚、错误 client/op/version、key 与 typed 主键不一致、未注册实体、
+malformed tombstone、非 bool deleted、非法/倒退 cursor、缺少数组、响应项超限与非法 Base64；
+未知顶层字段保留兼容性断言。
+
+冲突 fixture 覆盖服务器权威行、retry-local、接受/丢弃、服务器删除与本地编辑冲突，以及冲突
+列表/单项复制的 size-probe、容量、索引和 action 守卫。实体/key 与 outbox 不匹配的响应须拒绝。
+文件重开 fixture 检查 outbox/cursor/tombstone/conflict 持久化、重建行采用服务器删除版本和
+接受服务器结果不生成 outbox；这些仍需实际文件数据库设备门与 journal/断电门验证。
+
+正式 Debug/Release build、C89 和仓库审计通过，设备执行仍待完成。当前 Release 定向外置包
+`tmp/device-runs/20261002-132506-db-test-1321-current/` 的启动前审计通过，随后宿主加载返回
+device=126，没有测试日志。内置门 `tmp/device-runs/20261002-175617-db-test-1321-internal/`
+在部署前空间预检停止：可用 2,527,232 字节，需要 10,748,685 字节；旧目录无可回收的完整
+稳定日志，未删除旧包，未启动宿主。两次均不能计为 TEST1321 通过或断言失败。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
@@ -149,12 +138,12 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；新增应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提。性能人工通过事实保留，Release 性能对照仍是可选后续门。
+ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提仍有效。本轮审计等待修复没有完成这些 DB 候选，无需改变其状态。性能人工通过事实保留，Release 性能对照仍是可选后续门。
 
 唯一下一步：在匹配 Core 修复包的 About 页面分别点击版本/系统章节链接，确认标题位于视口顶部附近而不跳过目标；页面底部不足一屏时允许正常滚动钳制。Debug 时间和 Release CAB 安装版本显示仍是独立应用验收，不把 Fragment 自动门视为它们通过。
 
-若继续 DLL/DB 门，保留当前 guest 审计证据，先排查 device=126 的宿主加载前置条件
-（Debug `test_host.exe` 约 4.0 MiB，Release 约 2.75 MiB；最终 Release 无 holder 审计已通过），
-再用匹配产物定向运行 TEST1321；不得把无 holder 审计替代宿主启动和完整日志，也不使用强制
-清理替代证据。
+若继续 DLL/DB 门，先在内置 Temp 恢复至少约 10.25 MiB 可用空间，或取得外置卡文件回读与
+加载链正常的证据，再重新做 guest 无 holder 审计并用正式匹配产物定向运行 TEST1321。
+当前内置路径还差 8,221,453 字节；缺少完整日志的诊断目录不能自动删除。不得把引用审计
+替代宿主启动和完整日志，也不使用强制清理替代证据。
 内部页面的地址栏/菜单/history/quit 与语言、旋转人工验收仍是独立 backlog。

@@ -1097,10 +1097,15 @@ function Invoke-RemoteModuleAudit([string] $executable,
                 $remoteLogPath, $localLogPath)) {
             $auditText = Get-Content -LiteralPath $localLogPath -Raw `
                     -Encoding UTF8
-            $auditMatch = [regex]::Match($auditText,
-                    "(?m)^module_audit holders=\d+ unavailable=\d+\s*$")
-            if ($auditMatch.Success) {
-                $summary = $auditMatch.Value.Trim()
+            # A successful RAPI read can observe the newly created, empty
+            # log before the guest writes its summary. Keep the same bounded
+            # wait; empty or partial snapshots never confirm an empty holder set.
+            if (![string]::IsNullOrEmpty($auditText)) {
+                $auditMatch = [regex]::Match($auditText,
+                        "(?m)^module_audit holders=\d+ unavailable=\d+\s*$")
+                if ($auditMatch.Success) {
+                    $summary = $auditMatch.Value.Trim()
+                }
             }
         }
         if ($null -eq $summary) {
