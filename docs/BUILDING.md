@@ -133,6 +133,13 @@ Windows Mobile 的关闭按钮通常只是 Smart Minimize。重新 stage 前：
 - 使用正式 solution 配置构建；
 - 更新对应 `UPSTREAM.md` 或 `POSITRON_PORT.md` 中的本地差异。
 
+Media 默认链接仓库固定的 FFmpeg ARMV4I 归档，不要求桌面 FFmpeg 或转换工具。只有修改
+FFmpeg 移植输入时，设置 `C99CONV` 为固定 c99-to-c89 工具路径及
+`PMEDIA_REBUILD_FFMPEG=1`，使用 `scripts\build.bat Debug rebuild` 触发 Media 的正式
+prebuild；完成后清除此标志，再做普通 Debug/Release 构建。不要独立拼装解码库。
+重建保持隐式函数声明为编译错误，并保留隔离诊断目录；版本、工具哈希与归档哈希见
+[FFmpeg 移植说明](../third_party/ffmpeg-3.4.14/POSITRON_PORT.md)。
+
 ## Release 构建
 
 Release 使用相同 solution platform：

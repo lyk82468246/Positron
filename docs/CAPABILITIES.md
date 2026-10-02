@@ -149,10 +149,10 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
-| source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 已实现但有界 | 输入一次性受 16 MiB 上限；无 seek 回调可顺序打开，提供但失败的 seek 拒绝；I/O/无进展错误不由 codec 尝试覆盖；probe 失败不改输出；回调 buffer 只在同步回调期间有效；无长期线程/网络 | TEST1312/1331 的 Debug/Release 设备门覆盖 ABI、输入错误、恢复失败、EOF/seek 重播、软解回调暂停/错误、停止态守卫和独立 session 释放；输入容量及压缩媒体生命周期仍待门 |
+| source callback、探测、opaque session 和 host-driven pump | `pm_probe`、`pm_open/close`、`pm_pump`、`pm_pause/resume/stop/seek` | 已实现但有界 | 输入一次性受 16 MiB 上限；无 seek 回调可顺序打开，提供但失败的 seek 拒绝；I/O/无进展错误不由 codec 尝试覆盖；probe 失败不改输出；回调 buffer 只在同步回调期间有效；无长期线程/网络 | TEST1312/1331/1332 的 Debug/Release 设备门覆盖 ABI、输入错误、恢复失败、WAV 与压缩媒体 EOF/seek 重播、软解回调暂停/错误、停止态守卫和独立 session 释放；输入容量、非零压缩 seek 及其他 codec 生命周期仍待门 |
 | WAV PCM 软件音频与 IMA ADPCM 接线 | `pm_audio_block` S16LE callback | PCM 已实现但有界；IMA 待验证 | PCM 8/16-bit、mono/stereo、每次最多 2048 frame；损坏 chunk、截断或错误 PCM 对齐 fail closed；`AUTO` 对 PCM 先尝试设备 WaveOut | Debug/Release 设备断言验证 PCM8 mono 与 PCM16 stereo 的实际样本、PTS/持续时间及部分 seek；IMA、其他采样率和大块边界仍需 fixture |
 | WM6 DirectShow/ACM/WaveOut 原生能力 | 内部 `CLSID_FilterGraphNoThread` 探测、PCM `WaveOut`；公共头不暴露 COM | 有界待扩展 | WaveOut 仅覆盖设备接受的 WAV PCM，8-bit 设备格式也统一发出 S16LE 借用回调；callback-backed DirectShow source filter、native 视频 renderer 和完整 ACM/filter 枚举尚未完成，不把 graph 存在误报为 codec 可用 | Debug/Release AUTO PCM8 已实际选择 NATIVE 并完成 WaveOut/PCM 回调断言；原生完整生命周期、underrun、其他设备格式与未来 source filter 需要独立门 |
-| FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14`、ARMV4I archive 和 `POSITRON_PORT.md` | 有界待扩展：已接线，压缩解码待验收 | custom memory AVIO；编译集合为 AVI/MP4/MOV/MPEG-PS/MPEG-TS/FLV/WAV/选定裸流及 H.264、MPEG-4 Part 2、MPEG-1/2、MJPEG、H.263、AAC、MP2/MP3、AMR-NB/WB、PCM/IMA ADPCM；目标视频为 Baseline/Main、8-bit 渐进 I420、最多 640×480，音频 AAC-LC/S16LE 最多双声道；profile/尺寸/隔行守卫还需 fixture 核验 | Debug/Release ARMV4I 正式链接及静态 smoke；编译成功不是解码保证，仍需 test_host/设备真实解码、帧率、underrun、峰值内存和关闭门；AVC 专利与 GPL 组合需发布前审查 |
+| FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14`、ARMV4I archive 和 `POSITRON_PORT.md` | H.264/AAC 短媒体解码合同已实现；其他格式有界待验证 | custom memory AVIO；编译集合为 AVI/MP4/MOV/MPEG-PS/MPEG-TS/FLV/WAV/选定裸流及 H.264、MPEG-4 Part 2、MPEG-1/2、MJPEG、H.263、AAC、MP2/MP3、AMR-NB/WB、PCM/IMA ADPCM；H.264 仅 Baseline（含 constrained）/Main、8-bit 渐进 I420，最多 640×480，即使 options 请求更大也不放开；音频 AAC-LC/S16LE 最多双声道；SPS 与实际帧均有拒绝守卫 | TEST1332 在 Debug/Release 设备上验证 MP4/AVCC 320×240 H.264/AAC stereo、VGA Main/B 帧和 ADTS AAC mono 的像素、PCM、时间戳、EOF/seek、暂停/恢复、profile/隔行/超限拒绝、截断头及独立 session 关闭；其他编译格式、截断 payload、帧率、underrun、峰值内存和真实设备仍需门；AVC 专利与 GPL 组合需发布前审查 |
 
 Media 首版的目标边界是 decoder/playback only；不包含编码、DRM、字幕、直播协议、长期工作线程、
 AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件视频。DirectShow
@@ -160,8 +160,9 @@ AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件�
 `PMEDIA_BACKEND_NATIVE` 输入仍 fail closed。桌面格式表不能替代设备运行时 filter/codec 探测。
 FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载。
 `pm_pump` 目前忽略 `clock_us`，`budget_us` 只是处理量提示，不是严格墙钟预算；按时输出、
-迟到丢帧、音视频同步和暂停时间基准尚未实现。WAV 合同通过不代表 FFmpeg 压缩解码或
-FFmpeg seek 重播已经有设备证据。
+迟到丢帧、音视频同步和暂停时间基准尚未实现。短小 H.264/AAC 夹具的解码与 EOF 后 seek
+合同不代表其他已编译格式、复杂画面或实时播放已经验收；夹具来源与固定哈希见
+[媒体夹具](../test_host/fixtures/media/README.md)。
 
 ## Script：`positron_script.dll`
 

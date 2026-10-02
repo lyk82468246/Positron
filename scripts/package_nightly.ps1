@@ -243,6 +243,28 @@ $assetSpecs = @(
     @{ Relative = "THIRD_PARTY.md"; Archive = "THIRD_PARTY.md" }
 )
 
+# The automatic dispatch includes the compressed-media contract. Ship its
+# pinned inputs, provenance and hashes instead of requiring a desktop codec.
+$mediaFixtureRoot = Join-Path $repoRoot 'test_host\fixtures\media'
+$mediaPin = Get-Content -LiteralPath (Join-Path $mediaFixtureRoot 'manifest.json') `
+        -Raw -Encoding UTF8 | ConvertFrom-Json
+foreach ($fixture in $mediaPin.files) {
+    if ($fixture.file -notmatch '^[a-z0-9-]+\.(mp4|aac)$') {
+        throw 'Invalid media fixture filename in manifest.'
+    }
+    $fixturePath = Join-Path $mediaFixtureRoot $fixture.file
+    if ((Get-Sha256 $fixturePath) -ne $fixture.sha256 -or
+            (Get-Item -LiteralPath $fixturePath).Length -ne $fixture.bytes) {
+        throw ("Media fixture pin mismatch: " + $fixture.file)
+    }
+    $assetSpecs += @{ Relative = ("test_host\fixtures\media\" + $fixture.file);
+                     Archive = ("fixtures\media\" + $fixture.file) }
+}
+foreach ($mediaNotice in @('README.md', 'manifest.json')) {
+    $assetSpecs += @{ Relative = ("test_host\fixtures\media\" + $mediaNotice);
+                     Archive = ("fixtures\media\" + $mediaNotice) }
+}
+
 foreach ($spec in ($artifactSpecs + $assetSpecs)) {
     $sourcePath = Join-Path $repoRoot $spec.Relative
     if (!(Test-Path -LiteralPath $sourcePath -PathType Leaf)) {

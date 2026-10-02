@@ -340,11 +340,14 @@ WAV IMA ADPCM 和 FFmpeg 音频走软解回调。
 pm_video_frame.format 当前为 PMEDIA_PIXEL_I420。三个 plane 分别是 Y、U、V，具体
 行距必须使用 stride[0..2]，不能假设每行紧密排列。视频帧为 8-bit、4:2:0、渐进式；
 pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 video callback
-返回前有效。
+返回前有效。duration_us 优先采用 packet duration；缺失时可由容器平均帧率换算，
+两者均未知时为零，应用不能把未知时长解释为固定帧率。
 
 软件视频的公开保证上限是 640×480。max_video_width/height 可以用来选择更小的应用
-上限；请求更大尺寸不构成产品能力承诺，设备内存、decoder 或固定边界可能返回
-PMEDIA_ERROR_LIMIT/PMEDIA_ERROR_UNSUPPORTED。
+上限；请求更大尺寸仍被 clamp 到 640×480，不会放开产品边界。超限视频返回
+PMEDIA_ERROR_LIMIT；H.264 只接受 Baseline（含 Constrained Baseline）/Main，所有 High
+profile、非 8-bit/4:2:0 和隔行视频均不支持。可读取的 SPS 在打开前检查，实际帧输出前
+再次检查，避免只相信容器 metadata。
 
 ### callback 返回值
 
@@ -409,7 +412,7 @@ native 播放合同；其他原生格式必须等待未来 callback source filte
 | 容器/输入 | AVI、MP4/MOV、MPEG-PS、MPEG-TS、WAV、FLV、AMR/ADTS/MP3/H.264 Annex-B 等选定裸流 |
 | 视频 | H.264/AVC、MPEG-4 Part 2、MPEG-1/2 Video、MJPEG、H.263；8-bit、4:2:0、渐进式，公开保证最多 640×480 |
 | 音频 | AAC-LC、MP2/MP3、AMR-NB/WB、PCM、IMA ADPCM；输出最多双声道交错 S16LE |
-| 明确排除 | AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4、高复杂度 High Profile、编码、DRM、字幕、RTSP/HLS/直播协议 |
+| 明确排除 | AV1、HEVC/H.265、VP9、H.264 High profile、10-bit/4:2:2/4:4:4、隔行视频、编码、DRM、字幕、RTSP/HLS/直播协议 |
 
 实际打开结果以 pm_probe()/pm_get_capabilities() 和 pm_get_backend() 为准。FFmpeg
 源码快照、配置、ARMV4I 构建方式和原始许可证保留在仓库；AVC/H.264 的源码许可证不等于
@@ -436,5 +439,10 @@ pm_error_callback 的 message 同样只在当前回调期间有效。错误回�
 当前 Debug/Release 设备证据覆盖 WM6 Emulator 上的输入错误传播、probe 失败不改输出、
 非 seek WAV PCM8 与双声道 PCM16 的样本/时间戳、EOF/seek 重播、软解回调暂停与失败、
 停止态守卫及独立 session 重复释放。AUTO PCM8 已实际选中 NATIVE，并验证 WaveOut 完成
-和统一 S16LE callback。它不替代 WaveOut underrun、FFmpeg 压缩媒体、软视频帧率或真实
-ARMV4I 设备验收；IMA ADPCM、FFmpeg seek 重播和原生完整生命周期仍待专用 fixture。
+和统一 S16LE callback。压缩路径另以固定离线夹具验证 MP4/AVCC Constrained Baseline +
+AAC-LC stereo、VGA Main/B 帧和 ADTS AAC-LC mono 的实际 I420/S16LE、时间戳、EOF 后
+seek 重播与 callback 暂停/恢复；High/4:2:2/隔行/超 VGA/非 LC AAC 和截断 MP4 头拒绝。
+夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
+解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
+设备验收；其他已编译容器/codec、截断压缩 payload、非零压缩 seek 与原生完整生命周期
+仍待专用 fixture。

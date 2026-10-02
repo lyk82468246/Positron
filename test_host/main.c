@@ -62,6 +62,8 @@
 extern BOOL test1312_media_wav_callback_contract(void);
 extern BOOL test1331_media_io_pcm_contract(void (*progress)(const char *));
 extern const char *test1331_media_last_error(void);
+extern BOOL test1332_media_compressed_contract(void (*progress)(const char *));
+extern const char *test1332_media_last_error(void);
 extern BOOL test1313_core_image_pending_retry_contract(void);
 extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
@@ -669,6 +671,42 @@ static void test1331_log_progress(const char *phase)
     testbench_log_message("INFO", L"Media1331 phase", phase);
 }
 
+static void test1332_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Media1332 phase", phase);
+}
+
+static int test1332_log_exception(EXCEPTION_POINTERS *information)
+{
+    char body[256];
+    if (information != NULL && information->ExceptionRecord != NULL &&
+        information->ContextRecord != NULL) {
+        _snprintf(body, sizeof(body), "code=%08lx address=%p probe=%p pc=%08lx lr=%08lx",
+                  information->ExceptionRecord->ExceptionCode,
+                  information->ExceptionRecord->ExceptionAddress,
+                  (void *)GetProcAddress(GetModuleHandleW(L"positron_media.dll"), L"pm_probe"),
+                  information->ContextRecord->Pc,
+                  information->ContextRecord->Lr);
+        body[sizeof(body) - 1] = '\0';
+        testbench_log_message("ERROR", L"Media1332 exception", body);
+    }
+    /* Preserve the original fault; never convert a crash into a test result. */
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static BOOL test1332_media_contract_guarded(void)
+{
+    BOOL ok;
+
+    ok = FALSE;
+    __try {
+        ok = test1332_media_compressed_contract(test1332_log_progress);
+    } __except(test1332_log_exception(GetExceptionInformation())) {
+        ok = FALSE;
+    }
+    return ok;
+}
+
 static int test1321_log_exception(EXCEPTION_POINTERS *information)
 {
     char body[192];
@@ -878,7 +916,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1331
+#define TEST_MAX_NUMBER 1332
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -117589,6 +117627,14 @@ static int run_configured_tests(const unsigned char *selected,
                 show_info(L"TEST 1331 OK", "Media IO/PCM/EOF contract passed.");
             } else {
                 show_error(L"TEST 1331 FAIL", test1331_media_last_error());
+            }
+            break;
+        case 1332:
+            ok = test1332_media_contract_guarded();
+            if (ok) {
+                show_info(L"TEST 1332 OK", "Media H264/AAC decode/seek/guard contract passed.");
+            } else {
+                show_error(L"TEST 1332 FAIL", test1332_media_last_error());
             }
             break;
         default: ok = FALSE; break;

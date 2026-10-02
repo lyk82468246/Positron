@@ -25,6 +25,8 @@
 #include "libavutil/frame.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/mem.h"
+#include "libavutil/log.h"
+#include "libavcodec/h264_parse.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/samplefmt.h"
 
@@ -107,7 +109,7 @@ static int64_t pm_ff_seek(void *opaque, int64_t offset, int whence)
 
     context = (pmedia_ffmpeg *)opaque;
     if (context == NULL) return AVERROR(EINVAL);
-    if ((whence & 0xFFFF) == AVSEEK_SIZE) return context->input_bytes;
+    if (whence & AVSEEK_SIZE) return context->input_bytes;
     if ((whence & 0xFFFF) == SEEK_SET) position = offset;
     else if ((whence & 0xFFFF) == SEEK_CUR) {
         position = (int64_t)context->input_position + offset;
@@ -296,6 +298,75 @@ static void pm_ff_fill_base_info(pmedia_ffmpeg *context,
          pm_ff_mask_value(info->audio_codec));
 }
 
+static int pm_ff_validate_h264(pmedia_ffmpeg *context,
+                                const AVCodecParameters *parameters)
+{
+    H264ParamSets *sets;
+    AVCodecContext *header_codec;
+    const SPS *sps;
+    pm_position width;
+    pm_position height;
+    int i;
+    int result;
+    int is_avc;
+    int nal_length;
+    int profile;
+
+    if (parameters->extradata == NULL || parameters->extradata_size <= 0) {
+        return PMEDIA_OK; /* Raw streams remain guarded before frame output. */
+    }
+    sets = (H264ParamSets *)av_mallocz(sizeof(*sets));
+    if (sets == NULL) return PMEDIA_ERROR_MEMORY;
+    /* In FFmpeg 3.4 logctx is also dereferenced as AVCodecContext by SPS/PPS
+     * parsing; NULL is not a valid logging-only context for this entry. */
+    header_codec = avcodec_alloc_context3(NULL);
+    if (header_codec == NULL) {
+        av_free(sets);
+        return PMEDIA_ERROR_MEMORY;
+    }
+    result = avcodec_parameters_to_context(header_codec, parameters);
+    if (result < 0) {
+        avcodec_free_context(&header_codec);
+        av_free(sets);
+        return PMEDIA_ERROR_MEMORY;
+    }
+    is_avc = 0;
+    nal_length = 0;
+    result = ff_h264_decode_extradata(parameters->extradata,
+                                       parameters->extradata_size, sets,
+                                       &is_avc, &nal_length, AV_EF_EXPLODE,
+                                       header_codec);
+    if (result < 0) {
+        result = PMEDIA_ERROR_FORMAT;
+    } else {
+        result = PMEDIA_OK;
+        for (i = 0; i < MAX_SPS_COUNT; i++) {
+            if (sets->sps_list[i] == NULL) continue;
+            sps = (const SPS *)sets->sps_list[i]->data;
+            profile = ff_h264_get_profile(sps);
+            if (!sps->frame_mbs_only_flag || sps->chroma_format_idc != 1 ||
+                sps->bit_depth_luma != 8 || sps->bit_depth_chroma != 8 ||
+                (profile != FF_PROFILE_H264_BASELINE &&
+                 profile != FF_PROFILE_H264_CONSTRAINED_BASELINE &&
+                 profile != FF_PROFILE_H264_MAIN)) {
+                result = PMEDIA_ERROR_UNSUPPORTED;
+                break;
+            }
+            width = (pm_position)sps->mb_width * 16 - sps->crop_left - sps->crop_right;
+            height = (pm_position)sps->mb_height * 16 - sps->crop_top - sps->crop_bottom;
+            if (width <= 0 || height <= 0 || width > context->max_video_width ||
+                height > context->max_video_height) {
+                result = PMEDIA_ERROR_LIMIT;
+                break;
+            }
+        }
+    }
+    ff_h264_ps_uninit(sets);
+    avcodec_free_context(&header_codec);
+    av_free(sets);
+    return result;
+}
+
 static int pm_ff_validate_streams(pmedia_ffmpeg *context,
                                   char *error_text,
                                   int error_text_bytes)
@@ -326,9 +397,28 @@ static int pm_ff_validate_streams(pmedia_ffmpeg *context,
             if (parameters->codec_id == AV_CODEC_ID_H264 &&
                 parameters->profile != FF_PROFILE_UNKNOWN &&
                 parameters->profile != FF_PROFILE_H264_BASELINE &&
+                parameters->profile != FF_PROFILE_H264_CONSTRAINED_BASELINE &&
                 parameters->profile != FF_PROFILE_H264_MAIN) {
                 pm_ff_error(error_text, error_text_bytes,
                             "H.264 profile is outside the ARMV4I subset");
+                return PMEDIA_ERROR_UNSUPPORTED;
+            }
+            if (parameters->codec_id == AV_CODEC_ID_H264) {
+                int header_result;
+                header_result = pm_ff_validate_h264(context, parameters);
+                if (header_result != PMEDIA_OK) {
+                    pm_ff_error(error_text, error_text_bytes,
+                                "H.264 sequence parameters exceed the software subset");
+                    return header_result;
+                }
+            }
+            if ((parameters->format != AV_PIX_FMT_NONE &&
+                 parameters->format != AV_PIX_FMT_YUV420P &&
+                 parameters->format != AV_PIX_FMT_YUVJ420P) ||
+                (parameters->field_order != AV_FIELD_UNKNOWN &&
+                 parameters->field_order != AV_FIELD_PROGRESSIVE)) {
+                pm_ff_error(error_text, error_text_bytes,
+                            "software video requires progressive 8-bit 4:2:0");
                 return PMEDIA_ERROR_UNSUPPORTED;
             }
             context->video_stream = i;
@@ -417,9 +507,9 @@ static void pm_ff_cleanup(pmedia_ffmpeg *context)
         else avformat_free_context(context->format);
     }
     if (context->io != NULL) {
-        /* avio_context_free owns the current AVIO buffer.  libavformat may
-         * replace it while probing, so context->io_buffer is not safe to
-         * free separately after the AVIO context exists. */
+        /* FFmpeg 3.4 avio_context_free frees only the context.  Probing can
+         * replace the original allocation; release the current buffer. */
+        av_freep(&context->io->buffer);
         avio_context_free(&context->io);
         context->io_buffer = NULL;
     }
@@ -448,6 +538,8 @@ static int pm_ff_open_internal(const unsigned char *input,
     }
     if (max_video_width <= 0) max_video_width = 640;
     if (max_video_height <= 0) max_video_height = 480;
+    if (max_video_width > 640) max_video_width = 640;
+    if (max_video_height > 480) max_video_height = 480;
     context = (pmedia_ffmpeg *)calloc(1, sizeof(*context));
     if (context == NULL) return PMEDIA_ERROR_MEMORY;
     context->input = input;
@@ -459,6 +551,9 @@ static int pm_ff_open_internal(const unsigned char *input,
     if (output != NULL) {
         memcpy(&context->output, output, sizeof(*output));
     }
+    /* WM6 applications have no stderr console.  Public errors are reported
+     * by the DLL; the default stdio logger must not perform host I/O. */
+    av_log_set_level(AV_LOG_QUIET);
     av_register_all();
     context->io_buffer = (unsigned char *)av_malloc(PMEDIA_FFMPEG_IO_BYTES);
     if (context->io_buffer == NULL) {
@@ -637,10 +732,10 @@ static int pm_ff_convert_audio(pmedia_ffmpeg *context, int *out_bytes)
                 sample = pm_ff_float_sample(float_plane[i]);
             } else if (format == AV_SAMPLE_FMT_U8) {
                 packed = context->frame->data[0];
-                sample = ((int)packed[i * channels + channel] - 128) << 8;
+                sample = ((int)packed[i * channels + channel] - 128) * 256;
             } else if (format == AV_SAMPLE_FMT_U8P) {
                 plane = context->frame->extended_data[channel];
-                sample = ((int)plane[i] - 128) << 8;
+                sample = ((int)plane[i] - 128) * 256;
             } else if (format == AV_SAMPLE_FMT_S32) {
                 long_plane = (int32_t *)context->frame->data[0];
                 sample = (int)(long_plane[i * channels + channel] >> 16);
@@ -662,12 +757,22 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     AVStream *stream;
     pm_video_frame frame;
     int callback_result;
+    AVRational frame_time;
 
     if (context->frame->format != AV_PIX_FMT_YUV420P &&
         context->frame->format != AV_PIX_FMT_YUVJ420P) {
         return PMEDIA_ERROR_UNSUPPORTED;
     }
-    if (context->frame->width > context->max_video_width ||
+    if (context->frame->interlaced_frame ||
+        (context->video_codec->codec_id == AV_CODEC_ID_H264 &&
+         context->video_codec->profile != FF_PROFILE_UNKNOWN &&
+         context->video_codec->profile != FF_PROFILE_H264_BASELINE &&
+         context->video_codec->profile != FF_PROFILE_H264_CONSTRAINED_BASELINE &&
+         context->video_codec->profile != FF_PROFILE_H264_MAIN)) {
+        return PMEDIA_ERROR_UNSUPPORTED;
+    }
+    if (context->frame->width <= 0 || context->frame->height <= 0 ||
+        context->frame->width > context->max_video_width ||
         context->frame->height > context->max_video_height) {
         return PMEDIA_ERROR_LIMIT;
     }
@@ -686,6 +791,14 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     frame.pts_us = pm_ff_timestamp(av_frame_get_best_effort_timestamp(context->frame),
                                    stream->time_base);
     frame.duration_us = 0;
+    if (context->frame->pkt_duration > 0) {
+        frame.duration_us = pm_ff_timestamp(context->frame->pkt_duration,
+                                            stream->time_base);
+    } else if (stream->avg_frame_rate.num > 0 && stream->avg_frame_rate.den > 0) {
+        frame_time.num = stream->avg_frame_rate.den;
+        frame_time.den = stream->avg_frame_rate.num;
+        frame.duration_us = pm_ff_timestamp(1, frame_time);
+    }
     if (context->frame->key_frame) frame.flags |= PMEDIA_FRAME_KEY;
     if (context->output.video == NULL) return PMEDIA_OK;
     callback_result = context->output.video(context->output.context, &frame);
@@ -702,6 +815,11 @@ static int pm_ff_emit_audio(pmedia_ffmpeg *context)
     int callback_result;
     int result;
 
+    if (context->audio_codec->codec_id == AV_CODEC_ID_AAC &&
+        context->audio_codec->profile != FF_PROFILE_UNKNOWN &&
+        context->audio_codec->profile != FF_PROFILE_AAC_LOW) {
+        return PMEDIA_ERROR_UNSUPPORTED;
+    }
     result = pm_ff_convert_audio(context, &bytes);
     if (result != PMEDIA_OK) return result;
     memset(&block, 0, sizeof(block));
@@ -814,8 +932,9 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
         packet.size = 0;
         result = av_read_frame(context->format, &packet);
         if (result < 0) {
-            context->input_eof = 1;
             av_packet_unref(&packet);
+            if (result != AVERROR_EOF) return PMEDIA_ERROR_FORMAT;
+            context->input_eof = 1;
             continue;
         }
         codec = NULL;

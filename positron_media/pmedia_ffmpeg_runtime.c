@@ -227,6 +227,16 @@ float exp2f(float value)
     return (float)pow(2.0, (double)value);
 }
 
+float expf(float value)
+{
+    return (float)exp((double)value);
+}
+
+float logf(float value)
+{
+    return (float)log((double)value);
+}
+
 float log2f(float value)
 {
     return (float)(log((double)value) / log(2.0));

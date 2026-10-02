@@ -47,6 +47,9 @@ copy /Y "%ROOT%\test_host\fixtures\iana-logo-homepage.svg" "%STAGE%\fixtures\" |
 copy /Y "%ROOT%\test_host\fixtures\iana-logo-header-notext.svg" "%STAGE%\fixtures\" || goto :fail
 copy /Y "%ROOT%\test_host\fixtures\jquery-3.5.1.min.js" "%STAGE%\fixtures\" || goto :fail
 copy /Y "%ROOT%\test_host\fixtures\bootstrap-4.6.2.min.js" "%STAGE%\fixtures\" || goto :fail
+if not exist "%STAGE%\fixtures\media" mkdir "%STAGE%\fixtures\media"
+copy /Y "%ROOT%\test_host\fixtures\media\*.mp4" "%STAGE%\fixtures\media\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\media\*.aac" "%STAGE%\fixtures\media\" || goto :fail
 
 echo.
 echo Done. In the emulator, open File Explorer -^> Storage Card

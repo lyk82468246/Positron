@@ -475,6 +475,7 @@ static int pm_probe_source(const pm_source_callbacks *source,
         ff_result = pmedia_ffmpeg_probe(probe.input, probe.input_bytes,
                                         &ff_info, &ff_capabilities,
                                         ff_error, sizeof(ff_error));
+        result = ff_result;
         if (ff_result == PMEDIA_OK) {
             memcpy(&probe.info, &ff_info, sizeof(ff_info));
             memcpy(&probe.capabilities, &ff_capabilities,
@@ -735,6 +736,8 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
     max_video_height = options == NULL ? 480 : options->max_video_height;
     if (max_video_width <= 0) max_video_width = 640;
     if (max_video_height <= 0) max_video_height = 480;
+    if (max_video_width > 640) max_video_width = 640;
+    if (max_video_height > 480) max_video_height = 480;
     result = pm_load_input(session);
     if (result != PMEDIA_OK) {
         free(session);

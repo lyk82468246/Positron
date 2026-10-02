@@ -5,9 +5,11 @@ rem Rebuild the checked-in FFmpeg ARMV4I archive without changing the source tre
 rem Required external inputs: VS2008, the WM6 SDK and c99-to-c89 1.0.3 c99conv.exe.
 
 set "ROOT=%~dp0.."
+for %%I in ("%ROOT%") do set "ROOT=%%~fI"
 set "SOURCE=%ROOT%\third_party\ffmpeg-3.4.14"
 set "MANIFEST=%SOURCE%\positron_sources.txt"
-set "BUILDROOT=%ROOT%\tmp\ffmpeg-armv4i-build"
+set "BUILDREL=tmp/ffmpeg-armv4i-build-%RANDOM%-%RANDOM%"
+set "BUILDROOT=%ROOT%\%BUILDREL:/=\%"
 set "OUTPUT=%SOURCE%\positron_ffmpeg_armv4i.lib"
 
 if defined VS90ROOT goto :vs90root_ready
@@ -57,7 +59,10 @@ echo Missing ARM librarian: %AR%
 exit /b 2
 :librarian_ready
 
-if exist "%BUILDROOT%" rmdir /s /q "%BUILDROOT%"
+if exist "%BUILDROOT%" (
+    echo Refusing to overwrite existing FFmpeg diagnostic directory: %BUILDROOT%
+    exit /b 2
+)
 mkdir "%BUILDROOT%" || exit /b 1
 mkdir "%BUILDROOT%\source" || exit /b 1
 mkdir "%BUILDROOT%\pre" || exit /b 1
@@ -70,9 +75,9 @@ robocopy "%SOURCE%" "%BUILDROOT%\source" /E /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 goto :copy_failed
 
 pushd "%ROOT%"
-git apply --no-index --whitespace=nowarn --directory=tmp/ffmpeg-armv4i-build/source third_party/ffmpeg-3.4.14/positron_patches/0001-avoid-vs2008-conditional-struct-initializer.patch
+git apply --no-index --whitespace=nowarn --directory="%BUILDREL%/source" third_party/ffmpeg-3.4.14/positron_patches/0001-avoid-vs2008-conditional-struct-initializer.patch
 if errorlevel 1 goto :patch_failed
-git apply --no-index --whitespace=nowarn --directory=tmp/ffmpeg-armv4i-build/source third_party/ffmpeg-3.4.14/positron_patches/0002-rename-flv-leave-label-for-c89-converter.patch
+git apply --no-index --whitespace=nowarn --directory="%BUILDREL%/source" third_party/ffmpeg-3.4.14/positron_patches/0002-rename-flv-leave-label-for-c89-converter.patch
 if errorlevel 1 goto :patch_failed
 popd
 
@@ -129,7 +134,7 @@ if errorlevel 1 (
     set "FAILED=1"
     exit /b 0
 )
-"%ARMCC%" -nologo -O1 -GS- -c -Fo"%OBJ%" -I"%ROOT%\compat" "%CONV%" >>"%LOG%" 2>&1
+"%ARMCC%" -nologo -O1 -GS- -W1 -w14013 -we4013 -c -Fo"%OBJ%" -I"%ROOT%\compat" "%CONV%" >>"%LOG%" 2>&1
 if errorlevel 1 set "FAILED=1"
 exit /b 0
 
