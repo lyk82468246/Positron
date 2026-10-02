@@ -263,8 +263,8 @@ filter 探测。
 #### DB. REST fixture 与宿主同步 worker 集成
 
 **状态：`positron_db.dll` 的本地 SQLite、migration、同步表/outbox、typed row JSON、游标、
-tombstone、服务器权威冲突和原子响应应用已有完整 Release ARMV4I 离线契约门；独立 REST
-fixture 已加入，Debug 设备复测、宿主 DB worker 和真实设备网络/断电门仍待完成。**
+tombstone、服务器权威冲突和原子响应应用已有完整 Debug/Release ARMV4I 离线契约门；独立 REST
+fixture 已加入，宿主 DB worker 和真实设备网络/断电门仍待完成。**
 
 - **Owner：** `positron_db.dll` 拥有事务、schema、行状态、outbox、冲突和协议编码/解码；宿主
   拥有 DB handle 所在线程、`positron_http.dll` 调度、HTTPS Bearer Token、重试退避和 UI 消息；
@@ -282,9 +282,9 @@ fixture 已加入，Debug 设备复测、宿主 DB worker 和真实设备网络/
 #### 应用存储与真实下载
 
 内部只读入口已存在；后续设置、访问日志和下载记录优先消费 DB 本地 SQL 模式，应用拥有
-表结构和策略，Browser 会话栈继续独立。Release 的文件创建、正常关闭重开及离线 SQL/同步
+表结构和策略，Browser 会话栈继续独立。Debug/Release 的文件创建、正常关闭重开及离线 SQL/同步
 契约已有设备证据；DB 重新纳入 EXE/主线 CAB 前仍须证明文件中文读写、空间不足、跨进程锁、
-进程重启与 journal 恢复，并补齐 Debug 设备门；
+进程重启与 journal 恢复；
 未通过才考虑有版本、原子替换 JSON。不在本批创建数据文件或恢复 DB 发布依赖。
 
 真实下载是独立纵切：HTTP 先提供流式读取与取消，应用再提供文件保存、任务状态和调度，

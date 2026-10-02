@@ -35,7 +35,7 @@
 ## DB
 
 - SQLite 3.53.4、rollback journal；数据库约 16 MiB、body 约 1 MiB。跨进程锁竞争、空间
-  不足、峰值内存、断电/强制重启恢复未验收；Debug 设备复测受残留文件占用空间限制。
+  不足、峰值内存、断电/强制重启恢复未验收。
 - 宿主 DB worker、实际 HTTPS 错误/分页及生产设备基线未完成；独立 REST fixture 不是生产
   服务。已通过的离线合同与正常文件重开证据见 [HANDOFF](HANDOFF.md)。
 - v1 只接受单列 INTEGER/TEXT 主键；不支持复合主键、自动 merge、多主、远程 SQL、WAL、

@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Fragment CSS 坐标合同已验收；当前低优先级 DB 契约门已取得完整 Release PASS，Debug 包已按用户要求放到 SD 卡映射目录，但设备端读取/启动仍失败。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Fragment CSS 坐标合同已验收；当前低优先级 DB 契约门已有完整 Debug/Release PASS，用户更换设备后 SD 卡部署、回读与 Debug 正式验收均完成。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -99,7 +99,7 @@ helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 gu
 `test_host/db_tests.c` 的 TEST1321 fixture 覆盖本地完整 SQL 的 DDL/DML/SELECT、事务提交与
 回滚、嵌套事务拒绝、取消、错误复制、NULL/INTEGER/REAL/UTF-8 TEXT/BLOB bind/column、
 INT64_MIN/MAX、空 BLOB、ColumnCount，以及 handle/SQL/bind/列索引参数守卫。SQL 长度、
-表达式深度、变量数和 typed bind 大小均有预算断言。完整 fixture 已取得 Release ARMV4I
+表达式深度、变量数和 typed bind 大小均有预算断言。完整 fixture 已取得 Debug/Release ARMV4I
 设备 PASS；取消另断言短 SELECT、prepared INSERT 和直接 Exec 的一次性取消、无写入及后续可用。
 
 local/sync migration fixture 覆盖版本幂等、倒退和事务中拒绝、失败脚本不留残表，以及已注册表
@@ -140,18 +140,24 @@ malformed tombstone、非 bool deleted、非法/倒退 cursor、缺少数组、�
 日志完整回收后已按用户授权精确删除可删除部分，仅余删除失败文件；当前有效产物/日志在本地
 stage 和证据目录，不让用户沿用已清理的设备 EXE 路径。
 
-Debug 正式 build/stage 成功，DB 零错误/警告；宿主仅有原 libcss fpmath 的三条 C4244。
-内置门 `tmp/device-runs/20261002-205254-db-test-1321-final-debug/` 因空间不足未部署。
-用户改为 SD 卡后，正式门的外部卷容量检查通过，但首个 fixture 的 RAPI 写入及一次重试均
-返回 device=5。随后通过正式 `stage.bat Debug` 写入已确认的共享映射
-`C:\WMShare\Temp\Positron-device-gate\db-test-1321-sd-debug-20261002-205953`，对应设备
-`\Storage Card\Temp\Positron-device-gate\db-test-1321-sd-debug-20261002-205953`；23 个文件
-在桌面映射侧 SHA256 匹配原 stage，INI 仍选择 `1321,999`。设备枚举也可见 EXE/九个 DLL
-及匹配尺寸，但 RAPI 无法回读宿主，`CeCreateProcess` 返回 device=2；无 PID 或测试日志，
-不能把文件存在或桌面 hash 当作设备运行验证。包保留，证据在
-`tmp/device-runs/20261002-205953-db-test-1321-sd-debug/` 的 `sd-shared-check.txt` 和
-`sd-guest-inventory.txt`。启动前内部 helper 审计仍为 `holders=0 unavailable=0`。
-未强杀、重置、改共享设置或回退内置存储；旧字体及 `.part-*` 删除失败事实仍有效。
+Debug 正式 build/stage 成功。用户更换设备后，新会话先由独立 helper 获取 guest 审计
+`holders=0 unavailable=0`，未沿用旧设备结论。诊断包
+`tmp/device-runs/20261002-223440-db-test-1321-new-device-sd-debug/` 完整部署到 SD 并运行
+`1321,999`，日志 PASS；因显式保留部署，门状态为 DIAGNOSTIC_ONLY。该包的 23 文件随后
+逐一从设备回读 SHA256，与正式 stage 全部一致，证据为 `device-roundtrip-sha256.txt`；
+宿主按设备门规则部署为 `test_host-run-20261002-223440.exe`，不是原始 basename。
+
+正式 Debug 验收 `tmp/device-runs/20261002-223747-db-test-1321-new-device-sd-acceptance/`
+明确使用 `\Storage Card\Temp\Positron-device-gate`，门状态 PASS、selected/observed 2/2、
+唯一 TESTBENCH PASS、零 ERROR/FAIL、Core 路径匹配、完整稳定日志、crash_check=PASS 且
+无新增 dump。设备为 320×320、128 DPI；目标卷与内部缓存余量预检通过，部署后 guest 审计
+再次为 holders=0 unavailable=0。正式门回收日志后完整删除本轮目录及上一诊断包，产物、
+回读和日志保存在本地。未强杀、重启、修改共享设置或回退内置存储；本轮没有产品代码变化。
+
+旧设备的空间不足、SD 文件可枚举但打不开与手动启动失败仍是失败证据，不转为通过：
+`tmp/device-runs/20261002-205953-db-test-1321-sd-debug/`、`tmp/sd-read-probe.txt` 和
+`tmp/QQ20261002-220552.png` 保留。具体共享驱动原因尚未确认，不要求新设备重复重挂卡；
+旧字体及 `.part-*` 残留也不能写成已全部清空。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
@@ -163,19 +169,20 @@ Debug 正式 build/stage 成功，DB 零错误/警告；宿主仅有原 libcss f
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。DB 已通过 Release 文件关闭重开与完整离线契约；真实 HTTPS worker、应用持久化、HTTP 流式下载及断电恢复仍未进入本批。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。DB 已通过 Debug/Release 文件关闭重开与完整离线契约；真实 HTTPS worker、应用持久化、HTTP 流式下载及断电恢复仍未进入本批。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核并收窄 DB 设备缺口：Release 完整离线合同和正常文件关闭重开已通过；Debug
-设备复测、空间不足/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/下载记录仍待
-完成。本轮 SD 部署未产生 Debug 运行结果，这些候选不退出 ROADMAP；性能人工通过事实保留，
+ROADMAP 已复核并移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
+重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
+下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-唯一下一步：由用户在设备 File Explorer 检查上述 SD 目录中的 `test_host.exe` 是否可打开，
-或确认共享卡映射已恢复可读/可执行，再重新检查编译竞态和 guest DLL 引用补 Debug 门。
+唯一下一步：规划 DB 剩余文件失败/恢复门，以空间不足、跨进程锁及进程重启后的 journal/
+outbox/cursor 恢复为候选；不把正常关闭重开写成断电恢复，也不在本次重试中新增应用 worker。
+执行新设备门前仍须重新检查编译竞态和 guest DLL 引用；破坏性恢复测试须另行明确授权。
 遵守用户的 SD 目标，不自行回退内置、重置、强杀或改共享设置；不把可枚举文件或已通过的
 Release 合同改写为完整 Debug/生产设备基线。
 About 章节位置、Debug 时间、Release CAB 安装版本，以及内部页面的地址栏/菜单/history/quit
