@@ -1539,6 +1539,24 @@ BOOL test1321_db_contract(void)
         "\"ratio\":{\"t\":\"r\",\"v\":\"2.5\"},"
         "\"note\":{\"t\":\"n\",\"v\":null}}}],"
         "\"next_cursor\":\"7\"}";
+    static const char boundary_response[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
+        "\"accepted\":[{\"op_id\":\"device-1:4\",\"version\":\"8\"},"
+        "{\"op_id\":\"device-1:5\",\"version\":\"9\"}],"
+        "\"conflicts\":[],\"changes\":["
+        "{\"entity\":\"boundary_records\","
+        "\"key\":\"-9223372036854775808\",\"version\":\"10\","
+        "\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"-9223372036854775808\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"remote-min\"},"
+        "\"payload\":{\"t\":\"n\",\"v\":null}}},"
+        "{\"entity\":\"boundary_records\","
+        "\"key\":\"9223372036854775807\",\"version\":\"11\","
+        "\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"9223372036854775807\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"remote-max\"},"
+        "\"payload\":{\"t\":\"n\",\"v\":null}}}],"
+        "\"next_cursor\":\"11\"}";
     PDbHandle local;
     PDbHandle sync;
     PDbStmtHandle stmt;
@@ -1966,6 +1984,45 @@ BOOL test1321_db_contract(void)
         PDb_Close(sync);
         return FALSE;
     }
+    if (PDb_SyncApplyResponse(sync, 200, boundary_response,
+            (int)strlen(boundary_response)) != PDB_OK ||
+            PDb_SyncPendingCount(sync) != 0 ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"11\"") == NULL ||
+            strstr(request, "\"push\":[]") == NULL) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(sync,
+            "SELECT id,name FROM boundary_records ORDER BY id", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW || PDb_ColumnCount(stmt) != 2 ||
+            PDb_ColumnType(stmt, 0) != PDB_VALUE_INTEGER ||
+            PDb_ColumnInt64(stmt, 0) != minimum_integer ||
+            PDb_ColumnType(stmt, 1) != PDB_VALUE_TEXT ||
+            PDb_ColumnText(stmt, 1) == NULL ||
+            strcmp(PDb_ColumnText(stmt, 1), "remote-min") != 0) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(sync);
+        return FALSE;
+    }
+    rc = PDb_Step(stmt);
+    if (rc != PDB_STEP_ROW || PDb_ColumnInt64(stmt, 0) != maximum_integer ||
+            PDb_ColumnType(stmt, 1) != PDB_VALUE_TEXT ||
+            PDb_ColumnText(stmt, 1) == NULL ||
+            strcmp(PDb_ColumnText(stmt, 1), "remote-max") != 0 ||
+            PDb_Step(stmt) != PDB_STEP_DONE) {
+        PDb_Finalize(stmt);
+        PDb_Close(sync);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
     PDb_Close(sync);
     return TRUE;
 }
