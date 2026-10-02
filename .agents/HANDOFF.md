@@ -69,6 +69,9 @@ About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debu
 安装后的读取显示仍待人工检查，独立复制缺少有效安装版本时“未提供”是预期。
 较早 error=8 和宿主零日志失败不转为 TEST1321 通过；应用运行时会持有 DLL，下一次
 DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
+最新只读模块门 `tmp/device-runs/20261002-121128-module-audit/module-audit.log` 仍记录
+`module_audit_unavailable scope=process_snapshot error=8` 和
+`holders=0 unavailable=1`；部署完成后在启动 `test_host` 前停止，未使用强制清理。
 
 ### DB 主机契约测试当前切片
 
