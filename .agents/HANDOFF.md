@@ -99,6 +99,8 @@ size-probe、过小缓冲、越界索引和非法 resolve action，以及同步�
 同步配置守卫也覆盖空/负参数以及 client ID、schema hash 的固定长度上限，非法配置不会
 写入同步元数据。
 同步表注册守卫继续覆盖表名/主键长度、空列列表、零列和超过最大列数的拒绝。
+本地完整 SQL fixture 还补了独立的 UPDATE/DELETE/SELECT COUNT round-trip，覆盖完整 SQL
+模式的删除路径。
 随后又加入 SQL 32 KiB 和 typed bind 1 MiB 预算、固定 sync request envelope，以及服务器
 tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；仍未把 host 构建或静态证据
 当作设备运行通过。另补本地完整 SQL 模式的 migration 版本幂等、失败脚本回滚和事务中

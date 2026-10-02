@@ -1409,6 +1409,26 @@ BOOL test1321_db_contract(void)
         return FALSE;
     }
     if (PDb_Exec(local,
+            "UPDATE values_table SET value='updated' WHERE id=1") !=
+            PDB_OK || PDb_Exec(local,
+            "DELETE FROM values_table WHERE id=1") != PDB_OK) {
+        PDb_Close(local);
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(local, "SELECT COUNT(*) FROM values_table", &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+    }
+    if (rc != PDB_STEP_ROW || PDb_ColumnInt64(stmt, 0) != 0) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(local);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    if (PDb_Exec(local,
             "CREATE TABLE script_values(id INTEGER PRIMARY KEY);"
             "INSERT INTO script_values(id) VALUES(1)") != PDB_OK) {
         PDb_Close(local);
