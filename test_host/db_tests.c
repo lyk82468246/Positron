@@ -1063,6 +1063,8 @@ BOOL test1321_db_contract(void)
         { "ratio", PDB_VALUE_REAL },
         { "note", PDB_VALUE_TEXT }
     };
+    static const char utf8_text[] =
+        "\xE4\xB8\xAD\xE6\x96\x87\xE2\x9C\x93";
     static const char accepted[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
         "\"accepted\":[{\"op_id\":\"device-1:1\",\"version\":\"1\"}],"
@@ -1175,7 +1177,8 @@ BOOL test1321_db_contract(void)
         rc = PDb_BindDouble(stmt, 4, 3.25);
     }
     if (rc == PDB_OK) {
-        rc = PDb_BindText(stmt, 5, "utf8", 4);
+        rc = PDb_BindText(stmt, 5, utf8_text,
+                (int)sizeof(utf8_text) - 1);
     }
     if (rc == PDB_OK) {
         rc = PDb_BindBlob(stmt, 6, blob, sizeof(blob));
@@ -1213,7 +1216,7 @@ BOOL test1321_db_contract(void)
             PDb_ColumnDouble(stmt, 2) != 3.25 ||
             PDb_ColumnType(stmt, 3) != PDB_VALUE_TEXT ||
             PDb_ColumnText(stmt, 3) == NULL ||
-            strcmp(PDb_ColumnText(stmt, 3), "utf8") != 0 ||
+            strcmp(PDb_ColumnText(stmt, 3), utf8_text) != 0 ||
             PDb_ColumnType(stmt, 4) != PDB_VALUE_BLOB ||
             PDb_ColumnBytes(stmt, 4) != (int)sizeof(blob) ||
             PDb_ColumnBlob(stmt, 4) == NULL ||
