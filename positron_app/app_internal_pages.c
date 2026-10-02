@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 #include "app_internal_pages.h"
 #include "positron_browser.h"
 #include "positron_core.h"
@@ -200,10 +201,117 @@ static void app_internal_dll_version(AppHtmlWriter *writer,
     app_html_row(writer, label, value);
 }
 
+/* SPI strings are OEM input, not HTML or an inferred marketing version.
+ * uiParam is a WCHAR count, as in the WM6 SDK FullScreen sample. Reject
+ * empty, unterminated, malformed UTF-16 and control characters before UTF-8. */
+static int app_internal_system_text(const WCHAR *text, unsigned int count,
+        char *output, unsigned int capacity)
+{
+    unsigned int i;
+    int required;
+
+    if (output == NULL || capacity == 0) return 1;
+    output[0] = '\0';
+    if (text == NULL || count == 0) return 1;
+    for (i = 0; i < count && text[i] != L'\0'; i++) {
+        if (text[i] < 32 || text[i] == 127) return 1;
+        if (text[i] >= 0xd800 && text[i] <= 0xdbff) {
+            i++;
+            if (i >= count || text[i] < 0xdc00 || text[i] > 0xdfff) return 1;
+        } else if (text[i] >= 0xdc00 && text[i] <= 0xdfff) {
+            return 1;
+        }
+    }
+    if (i == 0 || i >= count) return 1;
+    required = WideCharToMultiByte(CP_UTF8, 0, text, (int) i, NULL, 0,
+            NULL, NULL);
+    if (required <= 0 || (unsigned int) required >= capacity) return 1;
+    if (WideCharToMultiByte(CP_UTF8, 0, text, (int) i, output, required,
+            NULL, NULL) != required) {
+        output[0] = '\0';
+        return 1;
+    }
+    output[required] = '\0';
+    return 0;
+}
+
+static int app_internal_os_text(const WCHAR *platform, unsigned int count,
+        char *output, unsigned int capacity)
+{
+    char type[384];
+    int written;
+
+    if (output == NULL || capacity == 0) return 1;
+    output[0] = '\0';
+    if (app_internal_system_text(platform, count, type, sizeof(type))) return 1;
+    /* Report the WM family on the recognised mobile platforms. PocketPC
+     * alone does not distinguish Classic/Professional, or WM 6.0/6.1/6.5.
+     * Unknown CE platforms retain their actual name, never a WM6 SDK label. */
+    if (_wcsicmp(platform, L"PocketPC") == 0 ||
+            _wcsicmp(platform, L"Smartphone") == 0) {
+        written = _snprintf(output, capacity, "Windows Mobile (%s)", type);
+    } else {
+        written = _snprintf(output, capacity, "%s", type);
+    }
+    if (written < 0 || (unsigned int) written >= capacity) {
+        output[0] = '\0';
+        return 1;
+    }
+    return 0;
+}
+
+static void app_internal_system(AppHtmlWriter *writer, int chinese)
+{
+    OSVERSIONINFO version;
+    WCHAR platform[128];
+    WCHAR oem[128];
+    char kernel[96];
+    char os[416];
+    char device[384];
+    const char *unavailable;
+#ifdef _DEBUG
+    char message[1024];
+#endif
+
+    unavailable = chinese ? "\344\270\215\345\217\257\347\224\250" : "Unavailable";
+    strcpy(kernel, unavailable);
+    memset(&version, 0, sizeof(version));
+    version.dwOSVersionInfoSize = sizeof(version);
+    if (GetVersionEx(&version)) {
+        _snprintf(kernel, sizeof(kernel) - 1, "Windows CE %lu.%lu (%lu)",
+                version.dwMajorVersion, version.dwMinorVersion,
+                version.dwBuildNumber);
+        kernel[sizeof(kernel) - 1] = '\0';
+    }
+    memset(platform, 0xff, sizeof(platform));
+    if (!SystemParametersInfo(SPI_GETPLATFORMTYPE,
+            sizeof(platform) / sizeof(platform[0]), platform, 0) ||
+            app_internal_os_text(platform,
+            sizeof(platform) / sizeof(platform[0]), os, sizeof(os))) {
+        strcpy(os, unavailable);
+    }
+    memset(oem, 0xff, sizeof(oem));
+    if (!SystemParametersInfo(SPI_GETOEMINFO,
+            sizeof(oem) / sizeof(oem[0]), oem, 0) ||
+            app_internal_system_text(oem, sizeof(oem) / sizeof(oem[0]),
+            device, sizeof(device))) {
+        strcpy(device, unavailable);
+    }
+    app_html_row(writer, chinese ? "\345\206\205\346\240\270 (CE)" : "Kernel (CE)", kernel);
+    app_html_row(writer, chinese ? "\346\223\215\344\275\234\347\263\273\347\273\237 (WM)" :
+            "Operating system (WM)", os);
+    app_html_row(writer, chinese ? "\350\256\276\345\244\207 / OEM" : "Device / OEM", device);
+#ifdef _DEBUG
+    _snprintf(message, sizeof(message) - 1,
+            "positron system-info kernel=%s os=%s oem=%s\r\n", kernel, os, device);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+#endif
+}
+
 static void app_internal_about(AppHtmlWriter *writer,
         const AppInternalPageData *data, int chinese)
 {
-    OSVERSIONINFO version;
     MEMORYSTATUS memory;
     char value[128];
 
@@ -233,17 +341,7 @@ static void app_internal_about(AppHtmlWriter *writer,
             chinese ? "\346\234\252\346\217\220\344\276\233" : "Not provided");
     app_html_append(writer, chinese ? "<h2 id=\"system\">\347\263\273\347\273\237</h2>" :
             "<h2 id=\"system\">System</h2>");
-    memset(&version, 0, sizeof(version));
-    version.dwOSVersionInfoSize = sizeof(version);
-    if (GetVersionEx(&version)) {
-        _snprintf(value, sizeof(value) - 1, "%lu.%lu (%lu)",
-                version.dwMajorVersion, version.dwMinorVersion,
-                version.dwBuildNumber);
-        value[sizeof(value) - 1] = '\0';
-    } else {
-        strcpy(value, chinese ? "\344\270\215\345\217\257\347\224\250" : "Unavailable");
-    }
-    app_html_row(writer, "Windows CE", value);
+    app_internal_system(writer, chinese);
     app_html_row(writer, chinese ? "\347\233\256\346\240\207\346\236\266\346\236\204" : "Target architecture",
             "ARMV4I");
     _snprintf(value, sizeof(value) - 1, "%d", data->dpi);
@@ -449,6 +547,58 @@ static int app_internal_check_translations(void)
     return 0;
 }
 
+static int app_internal_system_debug_check(void)
+{
+    static const WCHAR unterminated[] = { L'x', L'y' };
+    static const WCHAR bad_high[] = { 0xd800, L'x', 0 };
+    static const WCHAR bad_low[] = { 0xdc00, 0 };
+    char text[416];
+    AppHtmlWriter writer;
+    int result;
+
+    if (app_internal_os_text(L"PocketPC", 9, text, sizeof(text)) ||
+            strcmp(text, "Windows Mobile (PocketPC)") ||
+            app_internal_os_text(L"smartphone", 11, text, sizeof(text)) ||
+            strcmp(text, "Windows Mobile (smartphone)") ||
+            app_internal_os_text(L"Custom CE", 10, text, sizeof(text)) ||
+            strcmp(text, "Custom CE") ||
+            app_internal_system_text(L"\x4e2d\x6587", 3, text, sizeof(text)) ||
+            strcmp(text, "\344\270\255\346\226\207") ||
+            app_internal_system_text(L"x", 2, text, 2) || strcmp(text, "x")) return 1;
+    if (!app_internal_system_text(L"", 1, text, sizeof(text)) ||
+            !app_internal_system_text(unterminated, 2, text, sizeof(text)) ||
+            !app_internal_system_text(bad_high, 3, text, sizeof(text)) ||
+            !app_internal_system_text(bad_low, 2, text, sizeof(text)) ||
+            !app_internal_system_text(L"x\ny", 4, text, sizeof(text)) ||
+            !app_internal_system_text(L"x", 2, text, 1) ||
+            !app_internal_os_text(L"PocketPC", 9, text, 24) || text[0] != '\0' ||
+            !app_internal_system_text(NULL, 2, text, sizeof(text)) ||
+            !app_internal_system_text(L"x", 0, text, sizeof(text)) ||
+            !app_internal_system_text(L"x", 2, NULL, 2) ||
+            !app_internal_system_text(L"x", 2, text, 0)) return 1;
+    writer.bytes = (char *) malloc(APP_INTERNAL_HTML_MAX);
+    if (writer.bytes == NULL) return 1;
+    writer.used = 0;
+    writer.failed = 0;
+    writer.bytes[0] = '\0';
+    app_internal_system(&writer, 0);
+    result = writer.failed || strstr(writer.bytes, "Kernel (CE): ") == NULL ||
+            strstr(writer.bytes, "Operating system (WM): ") == NULL;
+    writer.used = 0;
+    writer.bytes[0] = '\0';
+    app_internal_system(&writer, 1);
+    if (writer.failed || strstr(writer.bytes, "\345\206\205\346\240\270 (CE): ") == NULL ||
+            strstr(writer.bytes, "\346\223\215\344\275\234\347\263\273\347\273\237 (WM): ") == NULL) result = 1;
+    writer.used = 0;
+    writer.bytes[0] = '\0';
+    app_html_row(&writer, "Device / OEM", "OEM <&\"'>");
+    if (writer.failed || strstr(writer.bytes,
+            "OEM &lt;&amp;&quot;&#39;&gt;") == NULL) result = 1;
+    free(writer.bytes);
+    if (!result) AppDebug_Log("positron system-info selftest OK\r\n");
+    return result;
+}
+
 int AppInternalPages_DebugCheck(const char *css)
 {
     static const char *valid[] = {
@@ -504,6 +654,7 @@ int AppInternalPages_DebugCheck(const char *css)
     }
     phase = 2;
     if (AppVersion_DebugCheck() != 0) goto done;
+    if (app_internal_system_debug_check() != 0) goto done;
     if (app_internal_check_translations() != 0) goto done;
     memset(&data, 0, sizeof(data));
     data.dpi = 96;

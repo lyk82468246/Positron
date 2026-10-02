@@ -2,7 +2,9 @@
 # This script never builds, changes the WMDC target, or terminates processes.
 param(
     [Parameter(Mandatory=$true)][string] $RemoteRoot,
-    [Parameter(Mandatory=$true)][string] $LocalRunRoot
+    [Parameter(Mandatory=$true)][string] $LocalRunRoot,
+    [ValidateSet('positron://newtab', 'positron://system')]
+    [string] $StartupUrl = 'positron://newtab'
 )
 $ErrorActionPreference = 'Stop'
 function Get-Sha256([string] $path)
@@ -82,7 +84,10 @@ try {
     $localLog = Join-Path $evidenceRoot 'positron-debug.log'
     [PositronDeviceRapi]::DeleteFileIfExists($remoteLog)
     $appPid = [PositronDeviceRapi]::LaunchProcess(
-        ($RemoteRoot + '\positron.exe'), $null, '--url positron://newtab')
+        ($RemoteRoot + '\positron.exe'), $null, ('--url ' + $StartupUrl))
+    $committedUrl = if ($StartupUrl -eq 'positron://system') {
+        'positron://about#system'
+    } else { 'positron://newtab' }
     $deadline = (Get-Date).AddSeconds(45)
     $complete = $false
     do {
@@ -92,8 +97,10 @@ try {
             if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
                     $text -match 'history selftest OK' -and
                     $text -match 'pointer selftest OK' -and
+                    $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK' -and
-                    $text -match 'internal-page commit url=positron://newtab kind=\d+ history=1 ') {
+                    $text -match ('internal-page commit url=' +
+                        [regex]::Escape($committedUrl) + ' kind=\d+ history=1 ')) {
                 $complete = $true
                 break
             }
@@ -108,7 +115,7 @@ try {
         }
     }
     Write-Host ('APP HISTORY PASS binary_roundtrip=10/10 crash_check=PASS pid={0}' -f $appPid)
-    Write-Host ('Deployment remains in newtab: ' + $RemoteRoot)
+    Write-Host ('Deployment remains at ' + $committedUrl + ': ' + $RemoteRoot)
 } finally {
     if ($connected) { [PositronDeviceRapi]::Disconnect() }
 }

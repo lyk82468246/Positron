@@ -6,6 +6,7 @@
 ## 平台与工具链
 
 - 目标是 Windows Mobile 6 / Windows CE 5.2 ARMV4I，不支持现代桌面 Windows API 假设。
+- EXE 系统页不识别 WM 小版本或 edition；仅显示内核、平台与 OEM，不从 SDK/build 猜测。
 - 正式构建依赖 Visual Studio 2008 SP1 与 Windows Mobile 6 Professional SDK。
 - 产品 C 代码受 C89 约束；部分第三方源码依赖仓库转换器和 WinCE CRT shim。
 - VS/WMDC/Device Emulator 属于外部专有工具链，仓库不能提供或重现完整安装环境。
@@ -407,9 +408,9 @@
   百分号编码片段尚无 EXE 可直接消费的公共解码入口；当前保持
   位置，不把编码字符串当 literal ID 命中。HTTP 请求 URL resolver/final URL 会去掉片段，
   跨文档 HTTP 导航的初始片段保留仍未接入；不在 EXE 复制 URL decoder 或 redirect 规则。
-- 内部 history 仅显示会话栈，不是访问日志；settings 只读，downloads/持久设置未实现。
-  下载须先有 HTTP 流式取消接口，存储须先过 DB 文件设备门。quit 仅限地址栏；
-  内部页面触摸、双语、旋转和退出人工门仍未完成，详见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
+- 内部 history 不是持久访问日志，settings 只读，下载/持久设置未实现；后端进入条件及
+  quit 来源策略见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
+  触摸、双语、旋转与退出仍待人工门。
 - Browser history 只保存有界 page-level `(scroll_x, scroll_y)`，宿主按 Core extent/client size clamp 并换算 CSS/物理坐标；`scrollRestoration=manual` 跳过自动恢复，但不阻止 fragment reveal 或显式滚动。元素 retained-overflow offset 不入栈；完整滚动树、chaining、锚定、惯性滚动、视觉 viewport 偏移和跨窗口恢复未实现。公开合同与通知顺序见 [能力矩阵](../docs/CAPABILITIES.md#browserpositron_browserdll)。
 - `positron.exe` 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
@@ -444,8 +445,8 @@
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
-- Debug 增量构建可能更新生成时间头却复用旧 app_version.obj，使 About 显示前一次构建时间；
-  需补齐正式工程依赖并以连续增量构建验收。Release 的 CAB 注册表读取策略不变。
+- Debug 时间头可能更新而 app_version.obj 未重编，需修正工程依赖并验收连续增量构建；
+  Release 仍读 CAB 安装注册表。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
 - SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建的 OEM popup、触摸、
   复杂嵌套 label 和其他层级组合仍需人工观察。

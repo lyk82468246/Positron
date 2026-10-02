@@ -16,6 +16,25 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
+### EXE 系统信息当前包
+
+About 系统章节现分别显示 CE 内核与 WM 操作系统家族/平台名，另列设备/OEM；仅 EXE
+私有平台查询与展示改动，不修改 DLL、ABI 或导航语义。未知平台保留实际名，查询/编码/
+容量失败显示双语不可用，不从 CE build 推断 WM 小版本或 edition。稳定规则见接线计划。
+
+C89、仓库审计、串行 Debug/Release 正式 build 与 Release CAB 通过，EXE 零错误/警告；
+Release ASCII/UTF-16 检查不含系统信息诊断或启动夹具。用户正常退出旧应用并暂停其他构建。
+完整 Debug 包 `tmp/device-runs/20261003-075325-app-system-info/` 共 31 文件；正式
+module-audit 与 EXE 门前复审均 holders=0 unavailable=0，EXE/九 DLL SHA256 回读 10/10。
+`app-history/positron-debug.log` 记录 system-info/pointer/history/internal-pages 自检 OK、
+单次提交 about#system（history=1、script=0、scroll=0,729），crash_check=PASS。
+实际查询为 Windows CE 5.2 (318)、Windows Mobile (PocketPC)、Microsoft DeviceEmulator；
+设备 320×320、128 DPI，PID 1580873098 留在
+`\Storage Card\Temp\Positron-device-gate\app-system-info-20261003-075325\positron.exe`。
+门使用受限 StartupUrl 进入系统章节；未强杀、重置、回退内置存储或改变 WMDC 设置。
+系统章节视觉与真实中文设备显示仍待人工复核；自动夹具覆盖双语标签、平台识别、中文 UTF-8、
+未终止/非法 UTF-16、容量拒绝和 HTML 转义，不替代实际设备视觉。
+
 ### EXE 页面内容拖动自动门通过
 
 用户要求无需抓滚动条即可拖动页面。EXE 私有 AppInput 以 WM6 pointer/capture 和 DPI 阈值
@@ -37,8 +56,7 @@ Core 路径及 crash_check=PASS；完整日志回收后本轮设备目录已清�
 history/internal-pages 自检 OK、newtab history=1。实际页面消息覆盖链接 down 不激活、tap
 一次、双轴拖动及返回起点不误点、合并 MOVE、capture/cancel/失焦/stale、clamp、Browser
 坐标同步和 layout 计数不变。EXE/九 DLL SHA256 回读 10/10、crash_check=PASS。设备为
-320×320、128 DPI DeviceEmulator，PID 534774266 留在
-`\Storage Card\Temp\Positron-device-gate\app-pan-final-20261003-041442\positron.exe`。
+320×320、128 DPI DeviceEmulator；该包 PID 534774266 已由用户正常退出，当前人工包见系统信息证据。
 未强杀、重置或回退内置存储。设备门的静默启动失败未产生设备证据；WMDC AuditOnly 健康、
 changed=0，显式 PS32 入口诊断运行原正式 gate 后恢复，不修改注册表或安全设置。
 
@@ -272,13 +290,14 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 ROADMAP 已复核：EXE 移除已通过自动门的同文档导航候选，保留片段 URL 公共接口与人工矩阵；
+本轮系统信息只改平台展示，未产生新的 DLL 候选，路线图无需新增已完成事项。
 Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC 初始夹具、解码守卫和 EOF 重播候选，保留其他
 格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
 重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步：先人工复核当前完整包的内容拖动/点按、native 拖选、旋转及地址栏回车，
+EXE 下一步：先人工复核当前完整包的 CE/WM 系统信息、内容拖动/点按、native 拖选、旋转及地址栏回车，
 并继续同文档/跨页滚动恢复矩阵；随后独立
 修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
 并行 Media 下一步：按同一 pin/许可规则补 AVI/MJPEG + MP3 夹具，验证实际帧/PCM 和生命周期，
