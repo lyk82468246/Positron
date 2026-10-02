@@ -445,6 +445,14 @@ static BOOL db_test_response_failures(void)
         "\"entity\":\"records\",\"key\":\"2\","
         "\"version\":\"4\",\"deleted\":\"true\","
         "\"values\":null}],\"next_cursor\":\"4\"}";
+    static const char invalid_change_version[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"2\","
+        "\"version\":\"-1\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"2\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"bad-version\"}}}],"
+        "\"next_cursor\":\"4\"}";
     static const char schema_hash_mismatch[] =
         "{\"schema_version\":1,\"schema_hash\":\"other-v1\","
         "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
@@ -624,6 +632,18 @@ static BOOL db_test_response_failures(void)
     }
     if (PDb_SyncApplyResponse(db, 200, invalid_deleted_type,
             (int)strlen(invalid_deleted_type)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_id_name(db, 2, name, sizeof(name)) ||
+            strcmp(name, "page-two") != 0 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
+            strstr(request, "\"push\":[]") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, invalid_change_version,
+            (int)strlen(invalid_change_version)) == PDB_OK ||
             PDb_SyncPendingCount(db) != 0 ||
             !db_test_query_id_name(db, 2, name, sizeof(name)) ||
             strcmp(name, "page-two") != 0 ||
