@@ -120,6 +120,11 @@ paint 和统一 CSS，不创建 ScriptSession，不请求外部资源。模板�
 销毁 native 控件、释放页面与 DLL。页面切换仍先完成候选构建和 beforeunload，再提交 history、
 teardown 旧页、交换页面和恢复滚动。restart/kill/hang 不属于当前实现。
 
+About 的应用版本由 EXE 私有适配器提供：Debug 预构建时内嵌主机本地日期时间，精确到秒，
+不在启动时生成；Release 只读 CAB 安装写入的 `HKLM\Software\Positron\Version`，缺失、
+非字符串、超长、未终止或非四段数值时使用本地化“未提供”。注册表不作为 Debug 版本来源，
+安装版本不冒充独立复制 EXE 的文件版本，公开 DLL ABI 的显示和 CAB 版本生成流程保持独立。
+
 ### 后端进入条件
 
 本批不创建 SQLite/JSON 文件，不调整 DB 主线发布依赖。后续应用设置、访问日志和下载记录

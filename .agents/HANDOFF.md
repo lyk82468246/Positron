@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。本轮目标是 EXE 私有内部页面与命令地址；不修改公共 DLL ABI，不引入持久化或真实下载。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。本轮 EXE 目标是 About 应用版本：Debug 冻结构建主机时间，Release 读取 CAB 安装注册表；不修改公共 DLL ABI、DPI 接口或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -22,7 +22,7 @@ Debug 私有启动自检使用独立 Browser history，不污染实时页面：�
 
 最终源码的导航门证据在 tmp/device-runs/internal-pages-delivery/navigation/：15/15，通过默认入口、各页面、大小写、末尾斜杠、about 片段与别名章节滚动、旧关键词/controls 查询参数、未知启动地址及启动 quit 拒绝；每次仅一个 history 提交、无脚本，焦点数量符合预期，crash_check=PASS。设备为 480x640、DPI192。包包含最终 Media/TLS ABI 显示；Debug 私有自检在每次启动通过，最终 PID 3811239850 留在 newtab。
 
-外置卡候选 tmp/device-runs/internal-pages-verified/ 曾完整复制 23 文件并启动，但随后同目录文件可枚举却 RAPI 回读返回 device=5，清理工具启动返回 device=2；未归因于页面代码或声称文件已被删除。当前使用备用内置目录 \Temp\Positron-device-gate\internal-pages-1002；首次部署前对象存储可用约 23 MiB，最终更新前仍约 8 MiB。最终完整 stage 在 tmp/device-runs/internal-pages-delivery/stage/，23 个文件全部经设备回读 SHA256 核对；旧候选二进制仅在精确清理成功后替换，未变字体因 OS 持有而不删除，直接回读确认匹配。旧性能验收 PID 已被后续清理，不再让用户寻找旧进程。
+外置卡候选 tmp/device-runs/internal-pages-verified/ 曾完整复制 23 文件并启动，但随后同目录文件可枚举却 RAPI 回读返回 device=5，清理工具启动返回 device=2；未归因于页面代码或声称文件已被删除。内部页面原验收使用备用内置目录 \Temp\Positron-device-gate\internal-pages-1002；首次部署前对象存储可用约 23 MiB，最终更新前仍约 8 MiB。最终完整 stage 在 tmp/device-runs/internal-pages-delivery/stage/，23 个文件全部经设备回读 SHA256 核对；旧候选二进制仅在精确清理成功后替换，未变字体因 OS 持有而不删除，直接回读确认匹配。旧性能验收 PID 已被后续清理，不再让用户寻找旧进程。
 
 相邻 test_host 门 tmp/device-runs/20261002-000923-internal-pages-adjacent/ 选择 136,1081,1082,1064,999：预检通过，但 test_host 日志一直为零字节，180 秒超时，清理摘要 failed=0；不是测试 PASS，也没有足够证据归因于特定 DLL。保留诊断目录，不放宽断言。
 
@@ -43,18 +43,18 @@ C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全�
 终止进程；针对 guest 的 `ERROR_NOT_ENOUGH_MEMORY` 仅做三次短重试，重试后仍不可用仍 fail
 closed。
 
-本批证据必须分开解释：`tmp/device-runs/20261002-003229-dll-audit/module-audit.log` 在
-启动宿主前记录 `module_audit holders=0 unavailable=0`，随后宿主没有产生日志，TEST1321 不能
-记为通过；中断该等待后，`tmp/device-runs/20261002-004031-module-audit/module-audit.log`
-记录 `module_audit_unavailable scope=process_snapshot error=8` 和
-`holders=0 unavailable=1`，因此不能证明当前设备仍无 DLL holder。没有调用
-`-ForceTerminatePositron`，不把 `DeviceEmulator.exe` 的桌面进程存在当作 guest 结论。
-本次只读重试 `tmp/device-runs/20261002-005621-module-audit/module-audit.log` 仍记录
-`module_audit_unavailable scope=process_snapshot error=8` 和 `holders=0 unavailable=1`；
-门在启动 `test_host` 前停止，未生成有效的 `module-audit-result.txt`，也没有使用强制清理。
-随后 helper 对 `ERROR_NOT_ENOUGH_MEMORY` 增加三次短重试并完成正式 ARMV4I Debug 构建；
-`tmp/device-runs/20261002-010145-module-audit/module-audit.log` 仍返回相同的
-`process_snapshot error=8` / `holders=0 unavailable=1`，所以本次也未启动宿主。
+当前只读审计证据在 `tmp/device-runs/20261002-084845-app-version-audit/`，
+`module-audit-result.txt` 为 PASS，`holders=0 unavailable=0`；未使用强制清理。该门完整
+部署 23 文件后才审计，之后直接启动同包 Debug EXE，PID 3056936870 留在 About。当前设备
+目录是 `\Storage Card\Temp\Positron-device-gate\app-version-audit-20261002-084845`。
+重复复制第一份 fixture 时 CeMoveFile 仍返回 device=5，未替换 EXE，改为复用已成功部署包。
+About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debug.log`：版本
+自检、内部页面自检、About 单次提交及 crash_check 均通过。嵌入时间为
+`2026-10-02 08:48:11`；Debug/Release 正式增量构建均零错误/警告，Release 不含版本自检
+文本或 Debug 时间。注册表格式/容量/终止符验证由 Debug 私有夹具覆盖；Release 在真实 CAB
+安装后的读取显示仍待人工检查，独立复制缺少有效安装版本时“未提供”是预期。
+较早 error=8 和宿主零日志失败不转为 TEST1321 通过；当前运行中的应用持有 DLL，下一次
+DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
 
 ### DB 主机契约测试当前切片
 
@@ -96,8 +96,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；新增应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提。性能人工通过事实保留，Release 性能对照仍是可选后续门。
 
-唯一下一步：由用户在设备端确认异常启动的 guest 进程已结束或重启设备，然后运行
-`scripts\device_gate.bat -Candidate module-audit -ModuleAuditOnly -PreserveDeployment`，必须取得
-`module_audit holders=0 unavailable=0` 才能继续任何 DLL/DB 设备门；随后用同一批产物定向运行
-TEST1321。不使用强制清理替代证据。内部页面的地址栏/菜单/history/quit 与语言、旋转人工验收仍是
-独立 backlog。ROADMAP 已复核，本批只补 DB 主机断言和设备门前置审计，没有改变未来产品候选。
+唯一下一步：人工确认当前 About 的 Debug 时间显示；Release 安装版本显示留在 CAB 验收。
+若继续 DLL/DB 门，先正常退出当前应用并重新运行只读模块审计，再用匹配产物定向运行
+TEST1321；一次无 holder 结果不跨应用启动复用。不使用强制清理替代证据。内部页面的
+地址栏/菜单/history/quit 与语言、旋转人工验收仍是独立 backlog。ROADMAP 已复核：
+本批只改变 EXE 版本展示，不新增未来产品候选，也不提前完成 DB、存储或下载门。

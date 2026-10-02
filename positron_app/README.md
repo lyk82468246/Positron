@@ -110,8 +110,11 @@ Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `conten
 页面名大小写无关，允许一个末尾斜杠；未知内部地址恢复已提交地址并保留文档、标题。
 history 是 Browser 会话导航栈，不是持久访问日志：最多 16 条、最新在前，包括前进项，
 过滤自身，刷新重读；点击按 URL 新导航。settings 当前只读，downloads 不提供真实下载任务。
-about 查询 CE、目标架构、DPI、视口、内存与公开 DLL ABI 版本；缺失版本标注“未提供”，
-查询失败标注“不可用”，不把 CAB 版本当成 EXE 版本。
+about 查询 CE、目标架构、DPI、视口、内存与公开 DLL ABI 版本。应用版本在 Debug 中显示
+构建主机本地时间 `yyyy-MM-dd HH:mm:ss`，由工程预构建步骤冻结进 EXE，重启不变；Release
+直接读取 CAB 安装写入的 `HKLM\Software\Positron\Version`。这是安装版本，不推断独立复制
+EXE 的版本；未安装 CAB、值缺失或格式异常时显示“未提供”。DLL ABI 独立显示，不使用 CAB
+版本替代；其他系统信息查询失败显示“不可用”。不修改 CAB 的版本规则或 EXE 文件版本资源。
 
 地址栏直接输入 `positron://quit` 会正常退出；网页链接、脚本、启动参数、重定向、表单和
 历史重放不能执行该命令。它不创建页面或 history 项。restart/kill/hang 尚未实现。

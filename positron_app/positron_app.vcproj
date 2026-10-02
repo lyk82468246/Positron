@@ -13,13 +13,14 @@
 			OutputDirectory="bin\$(ConfigurationName)"
 			IntermediateDirectory="bin\$(ConfigurationName)"
 			ConfigurationType="1" CharacterSet="1">
-			<Tool Name="VCPreBuildEventTool" />
+			<Tool Name="VCPreBuildEventTool"
+				CommandLine="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)write_build_time.ps1&quot; -OutputDirectory &quot;$(ProjectDir)bin\$(ConfigurationName)&quot;" />
 			<Tool Name="VCCustomBuildTool" />
 			<Tool Name="VCXMLDataGeneratorTool" />
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
 			<Tool Name="VCMIDLTool" />
 			<Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
-				AdditionalIncludeDirectories="..\positron_core;..\positron_browser;..\positron_http;..\positron_script;..\compat"
+				AdditionalIncludeDirectories="$(IntDir);..\positron_core;..\positron_browser;..\positron_http;..\positron_script;..\compat"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;inline=__inline;restrict="
 				MinimalRebuild="true" RuntimeLibrary="1" UsePrecompiledHeader="0"
 				WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
@@ -94,6 +95,9 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_version.c" />
+		<File RelativePath=".\app_version.h" />
+		<File RelativePath=".\write_build_time.ps1" />
 		<File RelativePath=".\app_debug.c" />
 		<File RelativePath=".\app_debug.h" />
 		<File RelativePath=".\app_internal_pages.c" />

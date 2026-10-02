@@ -8,6 +8,7 @@
 #include "positron_browser.h"
 #include "positron_core.h"
 #include "app_debug.h"
+#include "app_version.h"
 #ifdef _DEBUG
 #include "resource.h"
 #endif
@@ -209,7 +210,8 @@ static void app_internal_about(AppHtmlWriter *writer,
     app_html_append(writer, chinese ? "<h2 id=\"version\">\347\211\210\346\234\254</h2>" :
             "<h2 id=\"version\">Version</h2>");
     app_html_row(writer, chinese ? "\345\272\224\347\224\250\347\211\210\346\234\254" : "Application version",
-            chinese ? "\346\234\252\346\217\220\344\276\233" : "Not provided");
+            AppVersion_Get(value, sizeof(value)) == 0 ? value :
+            (chinese ? "\346\234\252\346\217\220\344\276\233" : "Not provided"));
 #ifdef _DEBUG
     app_html_row(writer, chinese ? "\346\236\204\345\273\272\347\261\273\345\236\213" : "Build", "Debug");
 #else
@@ -501,6 +503,7 @@ int AppInternalPages_DebugCheck(const char *css)
                 (source == APP_NAV_SOURCE_ADDRESS)) goto done;
     }
     phase = 2;
+    if (AppVersion_DebugCheck() != 0) goto done;
     if (app_internal_check_translations() != 0) goto done;
     memset(&data, 0, sizeof(data));
     data.dpi = 96;
