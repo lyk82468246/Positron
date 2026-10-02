@@ -97,6 +97,8 @@ PDB_API int PDb_BindInt64(PDbStmtHandle stmt, int index, __int64 value);
 PDB_API int PDb_BindDouble(PDbStmtHandle stmt, int index, double value);
 PDB_API int PDb_BindText(PDbStmtHandle stmt, int index,
         const char* text, int length);
+/* length == 0 binds an empty BLOB, including when data is NULL.
+ * Use BindNull to bind SQL NULL. Nonempty data is copied during binding. */
 PDB_API int PDb_BindBlob(PDbStmtHandle stmt, int index,
         const void* data, int length);
 PDB_API int PDb_Step(PDbStmtHandle stmt);
@@ -113,6 +115,9 @@ PDB_API int PDb_ColumnBytes(PDbStmtHandle stmt, int index);
 PDB_API int PDb_Begin(PDbHandle db);
 PDB_API int PDb_Commit(PDbHandle db);
 PDB_API int PDb_Rollback(PDbHandle db);
+/* Request cancellation on the owning thread.  A pending request is consumed
+ * by the next Exec or unfinished Step before SQL runs, returning PDB_STATE.
+ * Later executions remain usable; this does not permit cross-thread handles. */
 PDB_API int PDb_Cancel(PDbHandle db);
 PDB_API int PDb_GetLastError(PDbHandle db, char* buffer, int capacity);
 /* Compatibility spelling retained for callers that used the initial draft. */

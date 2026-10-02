@@ -6,6 +6,24 @@
 
 #include "positron_db.h"
 
+typedef void (*DbTestProgress)(const char*);
+
+static void db_test_progress(DbTestProgress progress, const char* phase)
+{
+    if (progress != NULL) {
+        progress(phase);
+    }
+}
+
+#define DB_RUN_FIXTURE(name) do { \
+    db_test_progress(progress, #name ".begin"); \
+    if (!name()) { \
+        db_test_progress(progress, #name ".failed"); \
+        return FALSE; \
+    } \
+    db_test_progress(progress, #name ".passed"); \
+} while (0)
+
 static BOOL db_test_query_name(PDbHandle db, char* output, int capacity)
 {
     PDbStmtHandle stmt;
@@ -797,6 +815,12 @@ static BOOL db_test_sync_state_guards(void)
         rc = PDb_ApplyMigration(db, 1,
                 "CREATE TABLE state_records(id INTEGER PRIMARY KEY,name TEXT)");
     }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "state-client", 1, "state-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "state_records", "id", columns, 2);
+    }
     if (rc == PDB_OK &&
             PDb_ApplyMigration(db, 2, "DROP TABLE state_records") == PDB_OK) {
         rc = PDB_ERROR;
@@ -1140,6 +1164,31 @@ static BOOL db_test_transaction_and_limits(void)
     }
     PDb_Finalize(stmt);
     stmt = NULL;
+    /* Short statements never reach the 1000-op SQLite progress callback.
+     * A pending cancel must still prevent both prepared and direct writes. */
+    if (PDb_Prepare(db,
+            "INSERT INTO tx_values(id,value) VALUES(2,'cancelled-step')",
+            &stmt) != PDB_OK || PDb_Cancel(db) != PDB_OK ||
+            PDb_Step(stmt) != PDB_STATE) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Finalize(stmt);
+    stmt = NULL;
+    if (!db_test_query_transaction_count(db, 1) ||
+            PDb_Cancel(db) != PDB_OK ||
+            PDb_Exec(db,
+            "INSERT INTO tx_values(id,value) VALUES(2,'cancelled-exec')") !=
+            PDB_STATE || !db_test_query_transaction_count(db, 1) ||
+            PDb_Exec(db,
+            "UPDATE tx_values SET value='usable-after-cancel' WHERE id=1") !=
+            PDB_OK || !db_test_query_transaction_count(db, 1)) {
+        PDb_Close(db);
+        return FALSE;
+    }
     for (index = 0; index < PDB_SQL_MAX_BYTES + 1; ++index) {
         long_sql[index] = 'x';
     }
@@ -1287,7 +1336,9 @@ static BOOL db_test_request_paging(void)
     };
     PDbHandle db;
     PDbStmtHandle stmt;
-    char request[32768];
+    /* The host executes this fixture serially.  Keep the full request budget
+     * outside the 64 KiB WM6 thread stack, including nested DLL/SQLite calls. */
+    static char request[32768];
     int index;
     int request_length;
     int rc;
@@ -1343,7 +1394,7 @@ static BOOL db_test_request_paging(void)
     return TRUE;
 }
 
-static BOOL db_test_persistence(void)
+static BOOL db_test_persistence(DbTestProgress progress)
 {
     static const char path[] = "\\Temp\\positron-db-1321.sqlite";
     static const WCHAR delete_path[] = L"\\Temp\\positron-db-1321.sqlite";
@@ -1378,14 +1429,20 @@ static BOOL db_test_persistence(void)
     int conflict_length;
     int rc;
 
+    db_test_progress(progress, "persistence.delete.begin");
     DeleteFileW(delete_path);
+    db_test_progress(progress, "persistence.delete.returned");
     db = NULL;
+    db_test_progress(progress, "persistence.open.begin");
     rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
+    db_test_progress(progress, "persistence.open.returned");
     if (rc != PDB_OK || db == NULL) {
         return FALSE;
     }
+    db_test_progress(progress, "persistence.migration.begin");
     rc = PDb_ApplyMigration(db, 1,
             "CREATE TABLE persisted(id INTEGER PRIMARY KEY,name TEXT)");
+    db_test_progress(progress, "persistence.migration.returned");
     if (rc == PDB_OK) {
         rc = PDb_SyncConfigure(db, "persist-client", 1, "persist-v1");
     }
@@ -1525,7 +1582,7 @@ static BOOL db_test_persistence(void)
     return TRUE;
 }
 
-BOOL test1321_db_contract(void)
+BOOL test1321_db_contract(DbTestProgress progress)
 {
     static const PDbSyncColumn columns[] = {
         { "id", PDB_VALUE_INTEGER },
@@ -1556,7 +1613,7 @@ BOOL test1321_db_contract(void)
         "\"key\":\"1\",\"version\":\"2\",\"deleted\":false,"
         "\"values\":{\"id\":{\"t\":\"i\",\"v\":\"1\"},"
         "\"name\":{\"t\":\"s\",\"v\":\"remote\"},"
-        "\"payload\":{\"t\":\"b\",\"v\":\"AQI=\"}}}],"
+        "\"payload\":{\"t\":\"b\",\"v\":\"AwQ=\"}}}],"
         "\"next_cursor\":\"2\"}";
     static const char invalid_blob_response[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
@@ -1578,7 +1635,7 @@ BOOL test1321_db_contract(void)
         "\"changes\":[],\"next_cursor\":\"3\"}";
     static const char retry_accepted[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
-        "\"accepted\":[{\"op_id\":\"device-1:2\",\"version\":\"4\"}],"
+        "\"accepted\":[{\"op_id\":\"device-1:3\",\"version\":\"4\"}],"
         "\"conflicts\":[],\"changes\":[],\"next_cursor\":\"4\"}";
     static const char deleted[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
@@ -1587,7 +1644,7 @@ BOOL test1321_db_contract(void)
         "\"deleted\":true,\"values\":null}],\"next_cursor\":\"5\"}";
     static const char typed_response[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
-        "\"accepted\":[{\"op_id\":\"device-1:3\",\"version\":\"6\"}],"
+        "\"accepted\":[{\"op_id\":\"device-1:4\",\"version\":\"6\"}],"
         "\"conflicts\":[],\"changes\":[{\"entity\":\"typed_records\","
         "\"key\":\"1\",\"version\":\"7\",\"deleted\":false,"
         "\"values\":{\"id\":{\"t\":\"i\",\"v\":\"1\"},"
@@ -1596,8 +1653,8 @@ BOOL test1321_db_contract(void)
         "\"next_cursor\":\"7\"}";
     static const char boundary_response[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
-        "\"accepted\":[{\"op_id\":\"device-1:4\",\"version\":\"8\"},"
-        "{\"op_id\":\"device-1:5\",\"version\":\"9\"}],"
+        "\"accepted\":[{\"op_id\":\"device-1:5\",\"version\":\"8\"},"
+        "{\"op_id\":\"device-1:6\",\"version\":\"9\"}],"
         "\"conflicts\":[],\"changes\":["
         "{\"entity\":\"boundary_records\","
         "\"key\":\"-9223372036854775808\",\"version\":\"10\","
@@ -1626,20 +1683,35 @@ BOOL test1321_db_contract(void)
     char tiny_conflict[1];
     unsigned char blob[2];
 
-    if (!db_test_persistence() || !db_test_text_key_and_delete() ||
-            !db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER) ||
-            !db_test_conflict_resolution(PDB_CONFLICT_DISCARD) ||
-            !db_test_delete_conflict() ||
-            !db_test_response_failures() ||
-            !db_test_transaction_and_limits() ||
-            !db_test_argument_guards() ||
-            !db_test_request_paging() ||
-            !db_test_sync_state_guards() ||
-            !db_test_sync_registration_guards() ||
-            !db_test_outbox_coalescing() ||
-            !db_test_local_migration()) {
+    db_test_progress(progress, "db_test_persistence.begin");
+    if (!db_test_persistence(progress)) {
+        db_test_progress(progress, "db_test_persistence.failed");
         return FALSE;
     }
+    db_test_progress(progress, "db_test_persistence.passed");
+    DB_RUN_FIXTURE(db_test_text_key_and_delete);
+    db_test_progress(progress, "conflict_accept_server.begin");
+    if (!db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER)) {
+        db_test_progress(progress, "conflict_accept_server.failed");
+        return FALSE;
+    }
+    db_test_progress(progress, "conflict_accept_server.passed");
+    db_test_progress(progress, "conflict_discard.begin");
+    if (!db_test_conflict_resolution(PDB_CONFLICT_DISCARD)) {
+        db_test_progress(progress, "conflict_discard.failed");
+        return FALSE;
+    }
+    db_test_progress(progress, "conflict_discard.passed");
+    DB_RUN_FIXTURE(db_test_delete_conflict);
+    DB_RUN_FIXTURE(db_test_response_failures);
+    DB_RUN_FIXTURE(db_test_transaction_and_limits);
+    DB_RUN_FIXTURE(db_test_argument_guards);
+    DB_RUN_FIXTURE(db_test_request_paging);
+    DB_RUN_FIXTURE(db_test_sync_state_guards);
+    DB_RUN_FIXTURE(db_test_sync_registration_guards);
+    DB_RUN_FIXTURE(db_test_outbox_coalescing);
+    DB_RUN_FIXTURE(db_test_local_migration);
+    db_test_progress(progress, "local_full_sql.begin");
     local = NULL;
     if (PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &local) != PDB_OK) {
         return FALSE;
@@ -1761,6 +1833,8 @@ BOOL test1321_db_contract(void)
     PDb_Finalize(stmt);
     PDb_Close(local);
 
+    db_test_progress(progress, "local_full_sql.passed");
+    db_test_progress(progress, "sync_sql_guards.begin");
     sync = NULL;
     if (PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &sync) != PDB_OK ||
             PDb_ApplyMigration(sync, 1,
@@ -1809,6 +1883,8 @@ BOOL test1321_db_contract(void)
         }
         return FALSE;
     }
+    db_test_progress(progress, "sync_sql_guards.passed");
+    db_test_progress(progress, "sync_typed_protocol.begin");
     rc = PDb_Prepare(sync,
             "INSERT INTO records(id,name,payload) VALUES(?1,?2,?3)", &stmt);
     if (rc == PDB_OK) {
@@ -1906,6 +1982,7 @@ BOOL test1321_db_contract(void)
         return FALSE;
     }
     PDb_Finalize(stmt);
+    db_test_progress(progress, "sync_typed_protocol.remote_blob.passed");
     if (PDb_Exec(sync, "UPDATE records SET name='local-edit' WHERE id=1") !=
             PDB_OK || PDb_SyncPendingCount(sync) != 1 ||
             PDb_SyncApplyResponse(sync, 200, conflict,
@@ -1950,10 +2027,16 @@ BOOL test1321_db_contract(void)
             PDb_SyncPendingCount(sync) != 1 ||
             !db_test_query_name(sync, name, sizeof(name)) ||
             strcmp(name, "local-edit") != 0 ||
-            PDb_SyncConflictCount(sync) != 0) {
+            PDb_SyncConflictCount(sync) != 0 ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"op_id\":\"device-1:3\"") == NULL ||
+            strstr(request, "\"op_id\":\"device-1:2\"") != NULL ||
+            strstr(request, "\"base_version\":\"3\"") == NULL) {
         PDb_Close(sync);
         return FALSE;
     }
+    db_test_progress(progress, "sync_typed_protocol.retry_local.passed");
     if (PDb_SyncApplyResponse(sync, 200, retry_accepted,
             (int)strlen(retry_accepted)) != PDB_OK ||
             PDb_SyncPendingCount(sync) != 0 ||
@@ -2124,5 +2207,6 @@ BOOL test1321_db_contract(void)
         return FALSE;
     }
     PDb_Close(sync);
+    db_test_progress(progress, "sync_typed_protocol.passed");
     return TRUE;
 }

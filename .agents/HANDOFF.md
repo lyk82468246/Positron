@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。当前 DLL 修正目标是 Fragment CSS 坐标契约；既有 EXE 验收目标仍为 About 的 Debug 构建时间和 Release CAB 安装版本。两者分别验收，不改变公共 ABI 或打包版本规则。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Fragment CSS 坐标合同已验收；当前低优先级 DB 契约门已取得完整 Release PASS，Debug 设备门仍受剩余空间限制。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -99,8 +99,8 @@ helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 gu
 `test_host/db_tests.c` 的 TEST1321 fixture 覆盖本地完整 SQL 的 DDL/DML/SELECT、事务提交与
 回滚、嵌套事务拒绝、取消、错误复制、NULL/INTEGER/REAL/UTF-8 TEXT/BLOB bind/column、
 INT64_MIN/MAX、空 BLOB、ColumnCount，以及 handle/SQL/bind/列索引参数守卫。SQL 长度、
-表达式深度、变量数和 typed bind 大小均有预算断言。它们已编入正式工程，但完整 fixture 尚未
-取得运行结果，不能把构建通过或宿主启动当作数据库行为验证。
+表达式深度、变量数和 typed bind 大小均有预算断言。完整 fixture 已取得 Release ARMV4I
+设备 PASS；取消另断言短 SELECT、prepared INSERT 和直接 Exec 的一次性取消、无写入及后续可用。
 
 local/sync migration fixture 覆盖版本幂等、倒退和事务中拒绝、失败脚本不留残表，以及已注册表
 被删除时的整批回滚。同步注册覆盖单列 INTEGER/TEXT 主键、复合主键拒绝、非法/保留/过长
@@ -118,22 +118,33 @@ malformed tombstone、非 bool deleted、非法/倒退 cursor、缺少数组、�
 冲突 fixture 覆盖服务器权威行、retry-local、接受/丢弃、服务器删除与本地编辑冲突，以及冲突
 列表/单项复制的 size-probe、容量、索引和 action 守卫。实体/key 与 outbox 不匹配的响应须拒绝。
 文件重开 fixture 检查 outbox/cursor/tombstone/conflict 持久化、重建行采用服务器删除版本和
-接受服务器结果不生成 outbox；这些仍需实际文件数据库设备门与 journal/断电门验证。
+接受服务器结果不生成 outbox；正常关闭重开已在当前设备通过，不代表进程重启、journal/断电门通过。
 
-正式 Debug/Release build、C89 和仓库审计通过，完整设备测试结果仍待取得。用户明确授权
+正式 Debug/Release build、C89 和仓库审计通过。用户明确授权
 强行清空旧部署后，精确处理两个 Positron-device-gate 根下 98 个旧目录：73 个完整删除，
 25 个仅余字体和 `.part-*` 文件，清属性后删除及再次复查仍失败。本地既有证据保留；本轮
 清理证据在 `tmp/device-runs/20261002-200329-db-force-clear/`，不把残留目录写成已清空。
 内置可用空间恢复到 23,083,008 字节，原空间阻塞已解除，没有强杀进程或重置设备。
 
-当前匹配 Release 包在 `\Temp\Positron-device-gate\db-test-1321-clean-20261002-200455`，
-本地证据在 `tmp/device-runs/20261002-200455-db-test-1321-clean/`。正式 build/stage 和 23 文件
-部署完成，启动前 guest 审计为 `holders=0 unavailable=0`；宿主 PID 3284308750 成功启动，
-日志记录正确 Core 路径及选择 `1321,999`，但 180 秒内只有启动信息，没有任何选择项结果或
-TESTBENCH 终态。最终回读日志仍未完成，不能计为 TEST1321 通过或断言失败。9 个 DLL 和
-宿主全部回读 SHA256 匹配 stage；后续 guest 审计仍为零 holder、零不可审计进程，crash dump
-库存为零，`\Temp\positron-db-1321.sqlite` 为 0 字节。原因尚未定位，不把该现象重新归因于
-空间不足、外置卡加载错误或某个 DLL。包和日志保留用于定位首次 DB 调用。
+首次文件打开的零字节/无终态问题已定位：SQLite 的 no-WAL/no-mmap Win32 syscall 表没有
+初始化 `CreateFileMappingW`，WinCE 文件锁却仍调用它，产生地址零的访问异常。DB 端通过 VFS
+系统调用接口恢复匿名锁状态映射，不修改上游快照、不启用 WAL 或数据库 mmap。另修正短 SQL
+取消、空 BLOB 绑定和 authorizer 拒绝的公共错误码。宿主只新增阶段及继续传播异常的日志；分页
+夹具的 32 KiB 缓冲移出 64 KiB 栈，容量和 65 行断言不变。夹具先注册表再验证 DROP 回滚；模拟
+响应修正 BLOB bytes 和 retry-local 的新 op_id，并加强新 ID/服务器 base_version 断言。
+
+正式 Release 门 `tmp/device-runs/20261002-205124-db-test-1321-final-release/` 使用匹配的
+23 文件 stage，选择 `1321,999`，完整日志为 selected/observed 2/2、唯一 TESTBENCH PASS、
+零 ERROR/FAIL，Core 路径与当前包一致、crash_check=PASS、无新增 dump；部署前 guest 审计
+`holders=0 unavailable=0`。较早诊断超时/异常/断言失败日志仍在本地，不转为通过。该设备包在
+日志完整回收后已按用户授权精确删除可删除部分，仅余删除失败文件；当前有效产物/日志在本地
+stage 和证据目录，不让用户沿用已清理的设备 EXE 路径。
+
+Debug 正式 build/stage 成功，DB 零错误/警告；宿主仅有原 libcss fpmath 的三条 C4244。
+`tmp/device-runs/20261002-205254-db-test-1321-final-debug/` 的空间预检为
+free=12,050,432、required=15,858,961 字节，未部署或启动，不计 Debug 测试结果。
+后续只读审计 `tmp/device-runs/20261002-205404-db-internal-audit/` 仍为零 holder、零 unavailable。
+旧字体及 `.part-*` 删除重试仍失败，不重置设备、不强杀；正常门的完整日志删除规则未放宽。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
@@ -145,20 +156,18 @@ TESTBENCH 终态。最终回读日志仍未完成，不能计为 TEST1321 通过
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。DB 文件数据库设备门、HTTP 流式下载与持久化依赖仍未进入本批。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。DB 已通过 Release 文件关闭重开与完整离线契约；真实 HTTPS worker、应用持久化、HTTP 流式下载及断电恢复仍未进入本批。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提仍有效。本轮清理和重新部署解除空间与加载前置阻塞，但没有完成 DB 测试候选，无需改变其状态。性能人工通过事实保留，Release 性能对照仍是可选后续门。
+ROADMAP 已复核并收窄 DB 设备缺口：Release 完整离线合同和正常文件关闭重开已通过；Debug
+设备复测、空间不足/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/下载记录仍待
+完成。性能人工通过事实保留，Release 性能对照仍是可选后续门。
 
-唯一下一步：在匹配 Core 修复包的 About 页面分别点击版本/系统章节链接，确认标题位于视口顶部附近而不跳过目标；页面底部不足一屏时允许正常滚动钳制。Debug 时间和 Release CAB 安装版本显示仍是独立应用验收，不把 Fragment 自动门视为它们通过。
-
-若继续 DLL/DB 门，先重新检查编译竞态与 guest DLL 引用；当前内置包已能启动，下一步应在
-TEST1321 首次文件数据库调用周围补充有界诊断，定位零字节数据库和无终态日志，再通过正式
-匹配产物取得完整结果。不要重复以空间不足或桌面模拟器占用作为当前阻塞。旧目录清理是
-用户显式授权的例外，不改变正式门默认要求完整稳定日志才删除的规则；未能删除的字体和
-传输临时文件不允许通过重置设备或强杀无关进程处理。引用审计、启动和 hash 匹配不能替代
-完整测试日志。
-内部页面的地址栏/菜单/history/quit 与语言、旋转人工验收仍是独立 backlog。
+唯一下一步：先由用户决定是否允许设备正常重启以释放不能删除的旧字体/传输文件，或提供足够
+可用的已连接目标，再重新检查编译竞态和 guest DLL 引用，运行正式 Debug `1321,999` 门。
+不得自行重置、强杀或放宽空间预检，也不把已通过的 Release 合同改写为完整生产设备基线。
+About 章节位置、Debug 时间、Release CAB 安装版本，以及内部页面的地址栏/菜单/history/quit
+与语言、旋转人工验收仍为独立 backlog；旧 About 包已清理，复核须部署匹配的新包。

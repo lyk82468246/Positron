@@ -75,7 +75,7 @@ extern BOOL test1319_image_rgba_round_stroke(void);
 extern const char *test1319_image_rgba_round_stroke_last_error(void);
 extern BOOL test1329_core_bootstrap_hamburger(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
-extern BOOL test1321_db_contract(void);
+extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
 
@@ -655,6 +655,45 @@ static void testbench_log_message(const char *kind, const WCHAR *title,
     testbench_log_bytes(body);
     testbench_log_bytes("\r\n\r\n");
     FlushFileBuffers(g_testbench_log);
+}
+
+static void test1321_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"DB1321 phase", phase);
+}
+
+static int test1321_log_exception(EXCEPTION_POINTERS *information)
+{
+    char body[192];
+    EXCEPTION_RECORD *record;
+    HMODULE db_module;
+
+    record = information != NULL ? information->ExceptionRecord : NULL;
+    if (record != NULL) {
+        db_module = GetModuleHandleW(L"positron_db.dll");
+        _snprintf(body, sizeof(body) - 1,
+                "code=0x%08lx address=%p db_module=%p",
+                (unsigned long)record->ExceptionCode,
+                record->ExceptionAddress, (void *)db_module);
+        body[sizeof(body) - 1] = '\0';
+        testbench_log_message("ERROR", L"DB1321 exception", body);
+    }
+    /* Record the original fault, then let the OS handle it.  Never turn a
+     * product exception into a passing assertion or a recovered DB handle. */
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
+static BOOL test1321_db_contract_guarded(void)
+{
+    BOOL ok;
+
+    ok = FALSE;
+    __try {
+        ok = test1321_db_contract(test1321_log_progress);
+    } __except(test1321_log_exception(GetExceptionInformation())) {
+        ok = FALSE;
+    }
+    return ok;
 }
 
 static int testbench_log_open(void)
@@ -117483,7 +117522,7 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1320_browser_document_click_delegation();
             break;
         case 1321:
-            ok = test1321_db_contract();
+            ok = test1321_db_contract_guarded();
             if (ok) {
                 show_info(L"TEST 1321 OK",
                         "SQLite local SQL, outbox, REST apply and conflict "

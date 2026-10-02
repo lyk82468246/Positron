@@ -67,6 +67,43 @@ static int pdb_drain_dirty(PDbHandle db);
 static int pdb_delete_dirty(PDbHandle db, const char* table_name,
         const char* row_key);
 
+static int pdb_initialize_wince_vfs(void)
+{
+#if defined(_WIN32_WCE)
+    sqlite3_vfs* vfs;
+    sqlite3_mutex* mutex;
+    int rc;
+
+    rc = sqlite3_initialize();
+    if (rc != SQLITE_OK) {
+        return rc == SQLITE_NOMEM ? PDB_NOMEM : PDB_ERROR;
+    }
+    vfs = sqlite3_vfs_find("win32");
+    if (vfs == NULL || vfs->iVersion < 3 ||
+            vfs->xGetSystemCall == NULL || vfs->xSetSystemCall == NULL) {
+        return PDB_ERROR;
+    }
+    mutex = sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_MASTER);
+    if (mutex == NULL) {
+        return PDB_NOMEM;
+    }
+    sqlite3_mutex_enter(mutex);
+    rc = SQLITE_OK;
+    /* The pinned Win32 syscall table omits this entry when both WAL and
+     * database mmap are disabled.  WinCE still needs an anonymous mapping
+     * for its shared file-lock state; it is not a database mmap or WAL. */
+    if (vfs->xGetSystemCall(vfs, "CreateFileMappingW") == NULL) {
+        rc = vfs->xSetSystemCall(vfs, "CreateFileMappingW",
+                (sqlite3_syscall_ptr)CreateFileMappingW);
+    }
+    sqlite3_mutex_leave(mutex);
+    if (rc != SQLITE_OK) {
+        return PDB_ERROR;
+    }
+#endif
+    return PDB_OK;
+}
+
 static void pdb_copy_text(char* destination, int capacity,
         const char* source)
 {
@@ -97,6 +134,16 @@ static void pdb_set_error(PDbHandle db, const char* message)
     pdb_copy_text(db->last_error, sizeof(db->last_error), message);
 }
 
+static int pdb_consume_cancel(PDbHandle db)
+{
+    if (!db->cancelled) {
+        return PDB_OK;
+    }
+    db->cancelled = 0;
+    pdb_set_error(db, "SQL execution cancelled");
+    return PDB_STATE;
+}
+
 static int pdb_set_sqlite_error(PDbHandle db, int sqlite_rc)
 {
     const char* message;
@@ -111,7 +158,13 @@ static int pdb_set_sqlite_error(PDbHandle db, int sqlite_rc)
     if (sqlite_rc == SQLITE_NOMEM) {
         return PDB_NOMEM;
     }
+    if (sqlite_rc == SQLITE_AUTH) {
+        return PDB_SQL_REJECTED;
+    }
     if (sqlite_rc == SQLITE_INTERRUPT) {
+        if (db != NULL) {
+            db->cancelled = 0;
+        }
         return PDB_STATE;
     }
     return PDB_ERROR;
@@ -1738,6 +1791,10 @@ PDB_API int PDb_OpenUtf8(const char* path, int mode, PDbHandle* outDb)
         return PDB_INVALID_ARGUMENT;
     }
     *outDb = NULL;
+    rc = pdb_initialize_wince_vfs();
+    if (rc != PDB_OK) {
+        return rc;
+    }
     db = (PDbHandle)malloc(sizeof(*db));
     if (db == NULL) {
         return PDB_NOMEM;
@@ -1844,6 +1901,10 @@ PDB_API int PDb_Exec(PDbHandle db, const char* sql)
         pdb_set_error(db, "SQL length exceeds the Positron DB limit");
         return PDB_LIMIT;
     }
+    rc = pdb_consume_cancel(db);
+    if (rc != PDB_OK) {
+        return rc;
+    }
     if (db->mode == PDB_OPEN_LOCAL_FULL_SQL) {
         return pdb_exec_internal(db, sql);
     }
@@ -1919,8 +1980,12 @@ PDB_API int PDb_BindBlob(PDbStmtHandle stmt, int index,
             (data == NULL && length > 0)) {
         return PDB_INVALID_ARGUMENT;
     }
-    rc = sqlite3_bind_blob(stmt->sqlite_stmt, index, data, length,
-            SQLITE_TRANSIENT);
+    if (length == 0) {
+        rc = sqlite3_bind_zeroblob(stmt->sqlite_stmt, index, 0);
+    } else {
+        rc = sqlite3_bind_blob(stmt->sqlite_stmt, index, data, length,
+                SQLITE_TRANSIENT);
+    }
     return rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(stmt->owner, rc);
 }
 
@@ -1934,6 +1999,10 @@ PDB_API int PDb_Step(PDbStmtHandle stmt)
     }
     if (stmt->complete) {
         return PDB_STEP_DONE;
+    }
+    rc = pdb_consume_cancel(stmt->owner);
+    if (rc != PDB_OK) {
+        return rc;
     }
     rc = sqlite3_step(stmt->sqlite_stmt);
     if (rc == SQLITE_ROW) {
