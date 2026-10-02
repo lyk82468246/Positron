@@ -1040,6 +1040,7 @@ static BOOL db_test_local_migration(void)
 static BOOL db_test_transaction_and_limits(void)
 {
     static char long_sql[PDB_SQL_MAX_BYTES + 2];
+    static char deep_sql[1024];
     PDbHandle db;
     PDbHandle sync;
     PDbStmtHandle stmt;
@@ -1047,6 +1048,7 @@ static BOOL db_test_transaction_and_limits(void)
     char copied_error[128];
     char tiny[1];
     int index;
+    int used;
     int rc;
 
     db = NULL;
@@ -1122,6 +1124,24 @@ static BOOL db_test_transaction_and_limits(void)
     }
     PDb_Finalize(stmt);
     stmt = NULL;
+    strcpy(deep_sql, "SELECT ");
+    used = (int)strlen(deep_sql);
+    for (index = 0; index < 101; ++index) {
+        memcpy(deep_sql + used, "abs(", 4);
+        used += 4;
+    }
+    deep_sql[used++] = '1';
+    for (index = 0; index < 101; ++index) {
+        deep_sql[used++] = ')';
+    }
+    deep_sql[used] = '\0';
+    if (PDb_Prepare(db, deep_sql, &stmt) == PDB_OK || stmt != NULL) {
+        if (stmt != NULL) {
+            PDb_Finalize(stmt);
+        }
+        PDb_Close(db);
+        return FALSE;
+    }
     PDb_Close(db);
     db = NULL;
 
