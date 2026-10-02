@@ -449,6 +449,15 @@ static BOOL db_test_response_failures(void)
         "\"accepted\":[{\"op_id\":\"failure-client:2\","
         "\"version\":\"3\"}],\"conflicts\":[],"
         "\"changes\":[],\"next_cursor\":\"3\"}";
+    static const char conflict_entity_mismatch[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[{"
+        "\"op_id\":\"failure-client:2\","
+        "\"entity\":\"other_records\",\"key\":\"1\","
+        "\"server_version\":\"4\",\"deleted\":false,"
+        "\"values\":{\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"server\"}}}],"
+        "\"changes\":[],\"next_cursor\":\"4\"}";
     PDbHandle db;
     char name[64];
     char request[4096];
@@ -567,6 +576,18 @@ static BOOL db_test_response_failures(void)
             &request_length) != PDB_OK ||
             strstr(request, "\"cursor\":\"3\"") == NULL ||
             strstr(request, "\"base_version\":\"2\"") == NULL ||
+            strstr(request, "failure-client:2") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, conflict_entity_mismatch,
+            (int)strlen(conflict_entity_mismatch)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 1 ||
+            !db_test_query_name(db, name, sizeof(name)) ||
+            strcmp(name, "after-failure") != 0 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
             strstr(request, "failure-client:2") == NULL) {
         PDb_Close(db);
         return FALSE;
