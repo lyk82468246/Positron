@@ -435,6 +435,10 @@ static BOOL db_test_response_failures(void)
         "\"id\":{\"t\":\"i\",\"v\":\"2\"},"
         "\"name\":{\"t\":\"s\",\"v\":\"not-deleted\"}}}],"
         "\"next_cursor\":\"4\"}";
+    static const char invalid_next_cursor[] =
+        "{\"schema_version\":1,\"schema_hash\":\"failure-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
+        "\"next_cursor\":\"not-a-number\"}";
     static const char schema_hash_mismatch[] =
         "{\"schema_version\":1,\"schema_hash\":\"other-v1\","
         "\"accepted\":[],\"conflicts\":[],\"changes\":[],"
@@ -580,6 +584,18 @@ static BOOL db_test_response_failures(void)
     }
     if (PDb_SyncApplyResponse(db, 200, pulled_delete_shape_failure,
             (int)strlen(pulled_delete_shape_failure)) == PDB_OK ||
+            PDb_SyncPendingCount(db) != 0 ||
+            !db_test_query_id_name(db, 2, name, sizeof(name)) ||
+            strcmp(name, "page-two") != 0 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
+            strstr(request, "\"push\":[]") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, invalid_next_cursor,
+            (int)strlen(invalid_next_cursor)) == PDB_OK ||
             PDb_SyncPendingCount(db) != 0 ||
             !db_test_query_id_name(db, 2, name, sizeof(name)) ||
             strcmp(name, "page-two") != 0 ||
