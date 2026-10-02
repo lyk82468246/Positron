@@ -71,13 +71,16 @@ About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debu
 DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
 本轮修正 guest helper 的进程快照使用 Windows Mobile SDK 的
 `TH32CS_SNAPNOHEAPS`，避免包含进程 heap 时耗尽快照内存；模块枚举仍保持
-fail closed。`tmp/device-runs/20261002-125344-module-audit/module-audit-result.txt`
-记录了完整包部署后的 `module_audit holders=0 unavailable=0`，部署目录保留用于诊断，未使用
-强制清理。随后定向 TEST1321 运行 `tmp/device-runs/20261002-125404-db-test-1321/`
-在相同启动前审计再次得到 `holders=0 unavailable=0`，但 `CeCreateProcess` 启动
-`test_host-run-20261002-125404.exe` 返回 device=126，进程没有启动，也没有
-`test_host.log` 或 TEST1321 结果；因此该次是宿主加载前置失败，不计为 TEST1321 通过或测试失败。
-两次结果均来自 guest helper 的 Toolhelp 枚举，不以桌面模拟器进程存在与否推断 DLL 引用。
+fail closed。Debug 完整包部署后的
+`tmp/device-runs/20261002-125344-module-audit/module-audit-result.txt`，以及最终
+Release 完整包部署后的
+`tmp/device-runs/20261002-131031-module-audit-final/module-audit-result.txt`，均记录
+`module_audit holders=0 unavailable=0`；后者覆盖最终 `/O2` 产物和全部 9 个 Positron DLL，
+部署目录保留用于诊断，未使用强制清理。定向 Debug/Release TEST1321 启动前审计也均得到
+`holders=0 unavailable=0`，但 `CeCreateProcess` 分别返回 device=126，进程没有启动，
+没有 `test_host.log` 或 TEST1321 结果；因此它们都是宿主加载前置失败，不计为 TEST1321
+通过或测试失败。所有结果均来自 guest helper 的 Toolhelp 模块枚举，不以桌面模拟器进程
+存在与否推断 DLL 引用。
 
 ### DB 主机契约测试当前切片
 
@@ -151,6 +154,7 @@ ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍
 唯一下一步：在匹配 Core 修复包的 About 页面分别点击版本/系统章节链接，确认标题位于视口顶部附近而不跳过目标；页面底部不足一屏时允许正常滚动钳制。Debug 时间和 Release CAB 安装版本显示仍是独立应用验收，不把 Fragment 自动门视为它们通过。
 
 若继续 DLL/DB 门，保留当前 guest 审计证据，先排查 device=126 的宿主加载前置条件
-（当前 `test_host.exe` 约 3.8 MiB，明显大于此前约 2.7 MiB 的成功候选），再用匹配产物
-定向运行 TEST1321；不得把无 holder 审计替代宿主启动和完整日志，也不使用强制清理替代证据。
+（Debug `test_host.exe` 约 4.0 MiB，Release 约 2.75 MiB；最终 Release 无 holder 审计已通过），
+再用匹配产物定向运行 TEST1321；不得把无 holder 审计替代宿主启动和完整日志，也不使用强制
+清理替代证据。
 内部页面的地址栏/菜单/history/quit 与语言、旋转人工验收仍是独立 backlog。
