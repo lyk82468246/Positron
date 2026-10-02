@@ -137,7 +137,11 @@ static int audit_positron_modules(void)
 
     holders = 0;
     unavailable = 0;
-    process_snapshot = audit_snapshot(TH32CS_SNAPPROCESS, 0, &error);
+    /* Windows Mobile can exhaust snapshot memory while including process
+     * heaps.  The SDK exposes this flag specifically to omit those heaps;
+     * module enumeration remains unchanged and still fails closed. */
+    process_snapshot = audit_snapshot(TH32CS_SNAPPROCESS |
+            TH32CS_SNAPNOHEAPS, 0, &error);
     if (process_snapshot == INVALID_HANDLE_VALUE) {
         unavailable++;
         _snprintf(line, sizeof(line) - 1,
@@ -313,7 +317,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         return audit_result;
     }
     write_text("Positron process cleanup v1\r\n");
-    snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS |
+            TH32CS_SNAPNOHEAPS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) {
         error = GetLastError();
         current_pid = GetCurrentProcessId();
