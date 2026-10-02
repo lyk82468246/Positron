@@ -71,14 +71,17 @@ About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debu
 DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
 最新只读模块门 `tmp/device-runs/20261002-122228-module-audit/module-audit.log` 仍记录
 `module_audit_unavailable scope=process_snapshot error=8` 和
-`holders=0 unavailable=1`；部署完成后在启动 `test_host` 前停止，未使用强制清理。
+`holders=0 unavailable=1`；该错误发生在 guest helper 的
+`CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS)`，不是桌面模拟器进程判断。部署完成后在
+启动 `test_host` 前停止，未使用强制清理。
 
 ### DB 主机契约测试当前切片
 
 TEST1321 本批补齐了 schema 迁移失败后的残留表检查，并修正/断言同步注册拒绝复合主键；
 `positron_db` 的 schema 校验现在统计实际主键列总数，v1 只接受单列 INTEGER/TEXT 主键。
 同时补充 `INT64_MIN/MAX`、非空与空 BLOB 的 bind/column 读取、`ColumnCount`，以及同步请求
-BLOB Base64 编码和服务端响应解码断言；新增未知顶层响应字段兼容性、重复/倒退/事务中迁移
+BLOB Base64 编码、合法/非法 Base64 响应解码和 INT64 边界 push/pull 断言；同步请求还覆盖
+UTF-8、引号、反斜杠和换行转义。新增未知顶层响应字段兼容性、重复/倒退/事务中迁移
 拒绝、schema 配置版本拒绝、事务中禁止构造同步请求，以及同步 REAL/NULL outbox 编码和
 pull 解码、同步文件拒绝本地完整 SQL 模式重开和 `load_extension` 拒绝的断言。正式
 `scripts\build.bat Debug build`、C89 和仓库审计均通过；由于当前设备模块审计不可用，
@@ -119,7 +122,8 @@ tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；�
 随后补充服务器删除与本地编辑冲突：host 断言 `server_values:null`、本地 tombstone、接受
 服务器结果不生成 outbox，以及同主键重建使用服务器删除版本。
 响应失败矩阵又加入 conflict entity/key 与本地 outbox 不匹配时的拒绝，确认 outbox、cursor
-和本地行均保持不变。
+和本地行均保持不变；文件重开 fixture 还确认 `__pdb_conflict` 可持久读取，接受服务器结果
+后不重新生成 outbox。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
