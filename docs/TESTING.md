@@ -35,7 +35,7 @@ HTTP 消费者接线使用 URL-aware `PHttp_GetUrl[Ex]`/`PHttp_PostUrl[Ex]`，�
 
 数据库同步消费者使用 `positron_db.dll` 的离线 contract，不在 `test_host` 中复制 SQLite
 或 REST 业务实现。TEST1321 当前覆盖本地完整 SQL 打开、本地/同步 migration、单列主键约束、
-同步表注册、typed bind/column、整数边界、REAL/NULL/TEXT/BLOB 行写入、dirty queue/outbox
+同步表注册、typed bind/column（含 UTF-8 文本）、整数边界、REAL/NULL/TEXT/BLOB 行写入、dirty queue/outbox
 事务合并、SQL/bind 预算、request envelope/size-probe、accepted/多页 pull/conflict 响应、失败响应
 原子回滚、服务器权威行、retry-local 冲突处理、冲突列表、模式隔离、tombstone 重开和文件
 持久化。继续扩展该纵切时必须保持以下边界：
