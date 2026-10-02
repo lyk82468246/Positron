@@ -1558,6 +1558,15 @@ BOOL test1321_db_contract(void)
         "\"name\":{\"t\":\"s\",\"v\":\"remote\"},"
         "\"payload\":{\"t\":\"b\",\"v\":\"AQI=\"}}}],"
         "\"next_cursor\":\"2\"}";
+    static const char invalid_blob_response[] =
+        "{\"schema_version\":2,\"schema_hash\":\"schema-v2\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"1\","
+        "\"version\":\"3\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"invalid-blob\"},"
+        "\"payload\":{\"t\":\"b\",\"v\":\"%%%=\"}}}],"
+        "\"next_cursor\":\"3\"}";
     static const char conflict[] =
         "{\"schema_version\":2,\"schema_hash\":\"schema-v2\",\"accepted\":[],"
         "\"conflicts\":[{\"op_id\":\"device-1:2\","
@@ -1862,6 +1871,18 @@ BOOL test1321_db_contract(void)
             (int)strlen(pulled)) != PDB_OK ||
             !db_test_query_name(sync, name, sizeof(name)) ||
             strcmp(name, "remote") != 0) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(sync, 200, invalid_blob_response,
+            (int)strlen(invalid_blob_response)) == PDB_OK ||
+            PDb_SyncPendingCount(sync) != 0 ||
+            !db_test_query_name(sync, name, sizeof(name)) ||
+            strcmp(name, "remote") != 0 ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"2\"") == NULL ||
+            strstr(request, "\"push\":[]") == NULL) {
         PDb_Close(sync);
         return FALSE;
     }
