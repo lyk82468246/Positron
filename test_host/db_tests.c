@@ -290,6 +290,100 @@ static BOOL db_test_conflict_resolution(int action)
     return TRUE;
 }
 
+static BOOL db_test_delete_conflict(void)
+{
+    static const PDbSyncColumn columns[] = {
+        { "id", PDB_VALUE_INTEGER },
+        { "name", PDB_VALUE_TEXT }
+    };
+    static const char accepted[] =
+        "{\"schema_version\":1,\"schema_hash\":\"delete-v1\","
+        "\"accepted\":[{\"op_id\":\"delete-client:1\","
+        "\"version\":\"1\"}],\"conflicts\":[],"
+        "\"changes\":[],\"next_cursor\":\"1\"}";
+    static const char pulled[] =
+        "{\"schema_version\":1,\"schema_hash\":\"delete-v1\","
+        "\"accepted\":[],\"conflicts\":[],\"changes\":[{"
+        "\"entity\":\"records\",\"key\":\"1\","
+        "\"version\":\"2\",\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"1\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"base\"}}}],"
+        "\"next_cursor\":\"2\"}";
+    static const char conflict_deleted[] =
+        "{\"schema_version\":1,\"schema_hash\":\"delete-v1\","
+        "\"accepted\":[],\"conflicts\":[{"
+        "\"op_id\":\"delete-client:2\",\"entity\":\"records\","
+        "\"key\":\"1\",\"server_version\":\"3\","
+        "\"deleted\":true,\"values\":null}],"
+        "\"changes\":[],\"next_cursor\":\"3\"}";
+    PDbHandle db;
+    char request[2048];
+    char conflicts[1024];
+    char name[64];
+    int length;
+    int rc;
+
+    db = NULL;
+    rc = PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &db);
+    if (rc == PDB_OK) {
+        rc = PDb_ApplyMigration(db, 1,
+                "CREATE TABLE records(id INTEGER PRIMARY KEY,name TEXT)");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncConfigure(db, "delete-client", 1, "delete-v1");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncRegisterTable(db, "records", "id", columns, 2);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "INSERT INTO records(id,name) VALUES(1,'initial')");
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, accepted,
+                (int)strlen(accepted));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_SyncApplyResponse(db, 200, pulled,
+                (int)strlen(pulled));
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Exec(db,
+                "UPDATE records SET name='local-delete-conflict' WHERE id=1");
+    }
+    if (rc != PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            PDb_SyncApplyResponse(db, 200, conflict_deleted,
+            (int)strlen(conflict_deleted)) != PDB_OK ||
+            PDb_SyncConflictCount(db) != 1 ||
+            PDb_SyncPendingCount(db) != 0 ||
+            db_test_query_name(db, name, sizeof(name)) ||
+            PDb_SyncGetConflicts(db, conflicts, sizeof(conflicts),
+            &length) != PDB_OK ||
+            strstr(conflicts, "\"server_values\":null") == NULL) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        return FALSE;
+    }
+    if (PDb_SyncResolveConflict(db, 1, PDB_CONFLICT_ACCEPT_SERVER) !=
+            PDB_OK || PDb_SyncConflictCount(db) != 0 ||
+            PDb_SyncPendingCount(db) != 0 ||
+            db_test_query_name(db, name, sizeof(name)) ||
+            PDb_Exec(db,
+            "INSERT INTO records(id,name) VALUES(1,'recreated')") !=
+            PDB_OK || PDb_SyncPendingCount(db) != 1 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &length) != PDB_OK ||
+            strstr(request, "\"base_version\":\"3\"") == NULL ||
+            strstr(request, "\"action\":\"upsert\"") == NULL ||
+            strstr(request, "recreated") == NULL) {
+        PDb_Close(db);
+        return FALSE;
+    }
+    PDb_Close(db);
+    return TRUE;
+}
+
 static BOOL db_test_response_failures(void)
 {
     static const PDbSyncColumn columns[] = {
@@ -1121,6 +1215,7 @@ BOOL test1321_db_contract(void)
     if (!db_test_persistence() || !db_test_text_key_and_delete() ||
             !db_test_conflict_resolution(PDB_CONFLICT_ACCEPT_SERVER) ||
             !db_test_conflict_resolution(PDB_CONFLICT_DISCARD) ||
+            !db_test_delete_conflict() ||
             !db_test_response_failures() ||
             !db_test_transaction_and_limits() ||
             !db_test_request_paging() ||
