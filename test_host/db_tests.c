@@ -1358,13 +1358,24 @@ static BOOL db_test_persistence(void)
         "\"entity\":\"persisted\",\"key\":\"7\","
         "\"version\":\"2\",\"deleted\":true,\"values\":null}],"
         "\"next_cursor\":\"2\"}";
+    static const char conflict[] =
+        "{\"schema_version\":1,\"schema_hash\":\"persist-v1\","
+        "\"accepted\":[],\"conflicts\":[{"
+        "\"op_id\":\"persist-client:2\",\"entity\":\"persisted\","
+        "\"key\":\"7\",\"server_version\":\"3\","
+        "\"deleted\":false,\"values\":{"
+        "\"id\":{\"t\":\"i\",\"v\":\"7\"},"
+        "\"name\":{\"t\":\"s\",\"v\":\"server\"}}}],"
+        "\"changes\":[],\"next_cursor\":\"3\"}";
     static const PDbSyncColumn columns[] = {
         { "id", PDB_VALUE_INTEGER },
         { "name", PDB_VALUE_TEXT }
     };
     PDbHandle db;
     char request[2048];
+    char conflicts[1024];
     int request_length;
+    int conflict_length;
     int rc;
 
     DeleteFileW(delete_path);
@@ -1470,6 +1481,39 @@ static BOOL db_test_persistence(void)
             strstr(request, "\"action\":\"upsert\"") == NULL ||
             strstr(request, "\"base_version\":\"2\"") == NULL ||
             strstr(request, "recreated") == NULL) {
+        if (db != NULL) {
+            PDb_Close(db);
+        }
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
+    if (PDb_SyncApplyResponse(db, 200, conflict,
+            (int)strlen(conflict)) != PDB_OK ||
+            PDb_SyncConflictCount(db) != 1 ||
+            PDb_SyncPendingCount(db) != 0 ||
+            PDb_SyncGetConflicts(db, conflicts, sizeof(conflicts),
+            &conflict_length) != PDB_OK ||
+            strstr(conflicts, "recreated") == NULL ||
+            strstr(conflicts, "server") == NULL) {
+        PDb_Close(db);
+        DeleteFileW(delete_path);
+        return FALSE;
+    }
+    PDb_Close(db);
+    db = NULL;
+    rc = PDb_OpenUtf8(path, PDB_OPEN_SYNC, &db);
+    if (rc != PDB_OK || PDb_SyncConflictCount(db) != 1 ||
+            PDb_SyncGetConflicts(db, conflicts, sizeof(conflicts),
+            &conflict_length) != PDB_OK ||
+            strstr(conflicts, "recreated") == NULL ||
+            strstr(conflicts, "server") == NULL ||
+            PDb_SyncResolveConflict(db, 1, PDB_CONFLICT_ACCEPT_SERVER) !=
+            PDB_OK || PDb_SyncConflictCount(db) != 0 ||
+            PDb_SyncPendingCount(db) != 0 ||
+            PDb_SyncBuildRequest(db, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"cursor\":\"3\"") == NULL ||
+            strstr(request, "\"push\":[]") == NULL) {
         if (db != NULL) {
             PDb_Close(db);
         }
