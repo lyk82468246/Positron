@@ -1092,7 +1092,7 @@ static BOOL db_test_transaction_and_limits(void)
         return FALSE;
     }
     if (PDb_Prepare(db, "SELECT 1", &stmt) != PDB_OK ||
-            PDb_Cancel(db) != PDB_OK || PDb_Step(stmt) == PDB_STEP_ROW) {
+            PDb_Cancel(db) != PDB_OK || PDb_Step(stmt) != PDB_STATE) {
         if (stmt != NULL) {
             PDb_Finalize(stmt);
         }
