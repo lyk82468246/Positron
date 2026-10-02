@@ -1362,6 +1362,9 @@ BOOL test1321_db_contract(void)
             "ATTACH ':memory:' AS other") == PDB_OK ||
             PDb_Exec(sync, "DETACH other") == PDB_OK ||
             PDb_Exec(sync, "PRAGMA user_version=1") == PDB_OK ||
+            PDb_Exec(sync, "BEGIN") != PDB_SQL_REJECTED ||
+            PDb_Exec(sync, "COMMIT") != PDB_SQL_REJECTED ||
+            PDb_Exec(sync, "ROLLBACK") != PDB_SQL_REJECTED ||
             PDb_Exec(sync, "SAVEPOINT rejected") == PDB_OK ||
             PDb_Exec(sync, "SELECT 1; SELECT 2") == PDB_OK ||
             PDb_Exec(sync, "SELECT load_extension('rejected')") == PDB_OK ||

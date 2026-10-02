@@ -69,7 +69,7 @@ About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debu
 安装后的读取显示仍待人工检查，独立复制缺少有效安装版本时“未提供”是预期。
 较早 error=8 和宿主零日志失败不转为 TEST1321 通过；应用运行时会持有 DLL，下一次
 DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
-最新只读模块门 `tmp/device-runs/20261002-121128-module-audit/module-audit.log` 仍记录
+最新只读模块门 `tmp/device-runs/20261002-122228-module-audit/module-audit.log` 仍记录
 `module_audit_unavailable scope=process_snapshot error=8` 和
 `holders=0 unavailable=1`；部署完成后在启动 `test_host` 前停止，未使用强制清理。
 
@@ -87,8 +87,8 @@ upsert/delete 选择和回滚不留 outbox 的主机断言。
 失败响应还覆盖了 accepted 后续 change 类型错误时的整批回滚，确认 outbox、cursor 和本地行
 不会被部分提交。随后继续补充了同步表注册边界（非法标识符、保留名、缺少主键、重复列、
 非法类型、非 INTEGER/TEXT 主键、重复注册和注册状态冲突）、冲突列表/单项复制的
-size-probe、过小缓冲、越界索引和非法 resolve action，以及同步模式 `DETACH` 和多语句
-SQL 拒绝断言。最新正式 Debug 构建、C89、仓库审计均通过；这些仍是 host contract
+size-probe、过小缓冲、越界索引和非法 resolve action，以及同步模式 `DETACH`、多语句和
+直接 `BEGIN`/`COMMIT`/`ROLLBACK` 的 SQL 拒绝断言。最新正式 Debug 构建、C89、仓库审计均通过；这些仍是 host contract
 证据，设备模块快照不可用期间不计入设备 TEST1321 通过。
 随后又加入 SQL 32 KiB 和 typed bind 1 MiB 预算、固定 sync request envelope，以及服务器
 tombstone 在关闭/重开后作为重新创建行 `base_version` 的断言；仍未把 host 构建或静态证据
