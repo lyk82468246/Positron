@@ -60,6 +60,8 @@
 #include "positron_core.h"
 
 extern BOOL test1312_media_wav_callback_contract(void);
+extern BOOL test1331_media_io_pcm_contract(void (*progress)(const char *));
+extern const char *test1331_media_last_error(void);
 extern BOOL test1313_core_image_pending_retry_contract(void);
 extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
@@ -662,6 +664,11 @@ static void test1321_log_progress(const char *phase)
     testbench_log_message("INFO", L"DB1321 phase", phase);
 }
 
+static void test1331_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Media1331 phase", phase);
+}
+
 static int test1321_log_exception(EXCEPTION_POINTERS *information)
 {
     char body[192];
@@ -871,7 +878,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1330
+#define TEST_MAX_NUMBER 1331
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -117574,6 +117581,14 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1330 FAIL",
                         test1330_core_fragment_dpi_last_error());
+            }
+            break;
+        case 1331:
+            ok = test1331_media_io_pcm_contract(test1331_log_progress);
+            if (ok) {
+                show_info(L"TEST 1331 OK", "Media IO/PCM/EOF contract passed.");
+            } else {
+                show_error(L"TEST 1331 FAIL", test1331_media_last_error());
             }
             break;
         default: ok = FALSE; break;

@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Fragment CSS 坐标合同已验收；当前低优先级 DB 契约门已有完整 Debug/Release PASS，用户更换设备后 SD 卡部署、回读与 Debug 正式验收均完成。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。用户要求补齐 Media 本阶段缺口；当前输入错误与 WAV PCM8/16 合同已通过 Debug/Release SD 设备门，下一条纵切为压缩媒体 fixture 与解码守卫。Fragment CSS 坐标和 DB 离线契约验收继续有效，用户更换设备后 SD 卡部署、回读与 DB Debug 正式验收均完成。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -15,6 +15,33 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。默认入口为 newtab；内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，无 ScriptSession 或外部请求。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 的导航来源检查仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
+
+### Media 输入与 PCM 合同已验收
+
+产品 DLL 保留输入 I/O/WOULD_BLOCK 错误，不再由 FFmpeg fallback 覆盖；read OK 零字节视为
+无进展而非 EOF，提供但失败或位置错误的 seek 拒绝，probe 恢复失败不改输出。WAV PCM
+检查帧对齐与截断，PCM8 转换避免负数移位；WaveOut 设备缓冲仍可用 U8，但宿主 callback
+统一为 S16LE。负 pump 预算拒绝，原生帧预算用 64-bit 防溢出。FFmpeg 成功 seek 清除外层
+EOF 标记已修正，但这条压缩路径尚无 fixture 验证，不写成设备合同完成。
+
+TEST1331 只提供 fixture/断言，覆盖 ABI/null、AUTO/NATIVE/SOFT 输入失败传播、probe 输出
+不变与恢复失败、非 seek PCM8 样本/时间戳/EOF 一次性/seek 重播、PCM16 双声道顺序与部分
+seek、损坏 WAV、软解 callback STOP/resume/错误、停止态守卫及 24 次独立 session 关闭。
+不是对已释放 handle 重复 close；公共所有权仍为每个成功 session 仅 close 一次。
+
+正式 Release 门 `tmp/device-runs/20261002-224641-media-io-pcm/` 与 Debug 门
+`tmp/device-runs/20261002-225658-media-io-pcm-debug/` 均选择 `1312,1331,999`，PASS、
+selected/observed 3/3、唯一 TESTBENCH PASS、零 ERROR/FAIL、crash_check=PASS、无新增 dump。
+两份完整日志均明确 AUTO selected NATIVE，验证了 PCM8 WaveOut 完成和 S16LE callback，
+不是只测试 backend 选择。设备为更换后的 320×320、128 DPI Microsoft DeviceEmulator；
+两门明确部署到 SD，空间预检、guest 无 holder 审计和 Core 匹配路径均通过。Release 当前
+目录清理部分失败并保留；Debug 当前目录完整清理，Release 旧目录重试仍失败，不写成已删除。
+
+C89、仓库审计、正式 Debug/Release build 与 CAB 通过；Release CAB 写系统临时数据文件
+在沙箱内失败，获准使用正式 build 后恢复，未绕过工程。媒体 DLL 编译零警告，宿主仍有既有
+libcss fpmath 三处 C4244。压缩格式、IMA、原生 pause/seek/STOP、underrun、性能与真实设备
+仍待门。clock_us 当前被忽略；同步/按时输出/迟到丢帧未实现。本批只改媒体 DLL、媒体 fixture
+与调用/能力/交接文档；共享工作区中另有应用源码改动，属于并行工作，不纳入本批提交。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -175,13 +202,16 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核并移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
+ROADMAP 已复核：Media 移除已完成的 WAV/I/O 待验收项，保留压缩格式、时钟同步和 DirectShow
+source 等缺口，明确下一条压缩 fixture 纵切。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
 重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-唯一下一步：规划 DB 剩余文件失败/恢复门，以空间不足、跨进程锁及进程重启后的 journal/
-outbox/cursor 恢复为候选；不把正常关闭重开写成断电恢复，也不在本次重试中新增应用 worker。
+唯一下一步：为 Media 引入有来源、固定哈希与许可的短小压缩 fixture，从 H.264/AAC 的解码、
+profile/尺寸守卫及 FFmpeg EOF 后 seek 开始，所有产品修正留在 positron_media，宿主只做断言。
+DB 的空间不足、跨进程锁及进程重启 journal/outbox/cursor 恢复仍为独立候选；
+不把正常关闭重开写成断电恢复，不在媒体纵切中新增应用 worker。
 执行新设备门前仍须重新检查编译竞态和 guest DLL 引用；破坏性恢复测试须另行明确授权。
 遵守用户的 SD 目标，不自行回退内置、重置、强杀或改共享设置；不把可枚举文件或已通过的
 Release 合同改写为完整 Debug/生产设备基线。

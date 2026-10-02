@@ -24,6 +24,7 @@ struct pmedia_waveout {
     HWAVEOUT device;
     WAVEHDR header;
     unsigned char *buffer;
+    unsigned char *callback_buffer;
     int buffer_bytes;
     pm_output_callbacks output;
 };
@@ -134,6 +135,15 @@ int pmedia_waveout_open(const unsigned char *input,
         return PMEDIA_ERROR_MEMORY;
     }
     if (output != NULL) memcpy(&context->output, output, sizeof(*output));
+    if (bits_per_sample == 8 && context->output.audio != NULL) {
+        context->callback_buffer = (unsigned char *)malloc(
+            (size_t)(PMEDIA_WAVEOUT_FRAMES * channels * 2));
+        if (context->callback_buffer == NULL) {
+            free(context->buffer);
+            free(context);
+            return PMEDIA_ERROR_MEMORY;
+        }
+    }
     memset(&format, 0, sizeof(format));
     format.wFormatTag = WAVE_FORMAT_PCM;
     format.nChannels = (WORD)channels;
@@ -150,6 +160,7 @@ int pmedia_waveout_open(const unsigned char *input,
     if (result != MMSYSERR_NOERROR) {
         pm_waveout_error(error_text, error_text_bytes,
                          "WaveOut device rejected the PCM format");
+        if (context->callback_buffer != NULL) free(context->callback_buffer);
         free(context->buffer);
         free(context);
         return PMEDIA_ERROR_NATIVE;
@@ -173,6 +184,7 @@ void pmedia_waveout_close(pmedia_waveout *context)
         context->device = NULL;
     }
     if (context->buffer != NULL) free(context->buffer);
+    if (context->callback_buffer != NULL) free(context->callback_buffer);
     free(context);
 }
 
@@ -217,6 +229,16 @@ int pmedia_waveout_pump(pmedia_waveout *context, int max_frames)
     block.duration_us = ((pm_position)frames * 1000000) /
                         context->sample_rate;
     if (context->output.audio != NULL) {
+        if (context->bits_per_sample == 8) {
+            int i;
+            short *samples;
+            samples = (short *)context->callback_buffer;
+            for (i = 0; i < frames * context->channels; i++) {
+                samples[i] = (short)(((int)context->buffer[i] - 128) * 256);
+            }
+            block.data = context->callback_buffer;
+            block.bytes = frames * context->channels * 2;
+        }
         callback_result = context->output.audio(context->output.context, &block);
         if (callback_result < 0) return PMEDIA_ERROR_CALLBACK;
         if (callback_result == PMEDIA_CALLBACK_STOP) {

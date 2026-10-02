@@ -139,7 +139,7 @@ static int pm_source_seek_start(pm_session_impl *session)
                                   0,
                                   PMEDIA_SEEK_SET,
                                   &position);
-    if (result != PMEDIA_OK) {
+    if (result != PMEDIA_OK || position != 0) {
         session->source_seekable = 0;
         return PMEDIA_ERROR_NOT_SEEKABLE;
     }
@@ -156,15 +156,9 @@ static int pm_load_input(pm_session_impl *session)
     int got;
 
     result = pm_source_seek_start(session);
-    if (result != PMEDIA_OK && session->source.tell != NULL) {
-        pm_position current;
-        current = 0;
-        if (session->source.tell(session->source.context, &current) != PMEDIA_OK ||
-            current != 0) {
-            pm_set_error(session, PMEDIA_ERROR_NOT_SEEKABLE,
-                         "source cannot be rewound for media open");
-            return PMEDIA_ERROR_NOT_SEEKABLE;
-        }
+    if (result != PMEDIA_OK) {
+        pm_set_error(session, result, "source cannot be rewound for media open");
+        return result;
     }
 
     capacity = PMEDIA_READ_CHUNK;
@@ -219,7 +213,12 @@ static int pm_load_input(pm_session_impl *session)
             pm_set_error(session, PMEDIA_ERROR_IO, "source read failed during open");
             return PMEDIA_ERROR_IO;
         }
-        if (result == PMEDIA_EOF || got == 0) {
+        if (result == PMEDIA_OK && got == 0) {
+            free(buffer);
+            pm_set_error(session, PMEDIA_WOULD_BLOCK, "source made no progress during open");
+            return PMEDIA_WOULD_BLOCK;
+        }
+        if (result == PMEDIA_EOF) {
             break;
         }
     }
@@ -303,6 +302,10 @@ static int pm_parse_wav(pm_session_impl *session)
     }
     if (tag == 1U && (bits != 8U && bits != 16U)) {
         return PMEDIA_ERROR_UNSUPPORTED;
+    }
+    if (tag == 1U && (block_align != channels * (bits / 8U) ||
+        data_bytes % (int)block_align != 0 || rate > 2147483647UL)) {
+        return PMEDIA_ERROR_FORMAT;
     }
     if (tag == 0x0011U && (samples_per_block == 0 || block_align < channels * 4U)) {
         return PMEDIA_ERROR_FORMAT;
@@ -457,6 +460,9 @@ static int pm_probe_source(const pm_source_callbacks *source,
     }
 #ifdef PMEDIA_HAS_FFMPEG
     if (probe.input != NULL &&
+        !(result == PMEDIA_ERROR_FORMAT && probe.input_bytes >= 12 &&
+          pm_fourcc(probe.input, 'R', 'I', 'F', 'F') &&
+          pm_fourcc(probe.input + 8, 'W', 'A', 'V', 'E')) &&
         (result != PMEDIA_OK || probe.info.container != PMEDIA_CONTAINER_WAV)) {
         pm_stream_info ff_info;
         pm_capabilities ff_capabilities;
@@ -477,19 +483,22 @@ static int pm_probe_source(const pm_source_callbacks *source,
         }
     }
 #endif
-    if (result == PMEDIA_OK && out_info != NULL) {
-        pm_zero(out_info, (int)sizeof(*out_info));
-        out_info->size = sizeof(*out_info);
-        memcpy(&out_info->stream, &probe.info, sizeof(probe.info));
-        memcpy(&out_info->capabilities, &probe.capabilities, sizeof(probe.capabilities));
-    }
     if (probe.input != NULL) {
         free(probe.input);
     }
     if (restore_position && source->seek != NULL) {
         restored_position = original_position;
-        source->seek(source->context, original_position, PMEDIA_SEEK_SET,
-                     &restored_position);
+        if (source->seek(source->context, original_position, PMEDIA_SEEK_SET,
+                         &restored_position) != PMEDIA_OK ||
+            restored_position != original_position) {
+            result = PMEDIA_ERROR_NOT_SEEKABLE;
+        }
+    }
+    if (result == PMEDIA_OK && out_info != NULL) {
+        pm_zero(out_info, (int)sizeof(*out_info));
+        out_info->size = sizeof(*out_info);
+        memcpy(&out_info->stream, &probe.info, sizeof(probe.info));
+        memcpy(&out_info->capabilities, &probe.capabilities, sizeof(probe.capabilities));
     }
     return result;
 }
@@ -623,7 +632,7 @@ static int pm_output_pcm(pm_session_impl *session, int frames)
             for (i = 0; i < frames; i++) {
                 for (channel = 0; channel < channels; channel++) {
                     samples[i * channels + channel] =
-                        (short)(((int)input[i * frame_bytes + channel] - 128) << 8);
+                        (short)(((int)input[i * frame_bytes + channel] - 128) * 256);
                 }
             }
         }
@@ -727,8 +736,18 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
     if (max_video_width <= 0) max_video_width = 640;
     if (max_video_height <= 0) max_video_height = 480;
     result = pm_load_input(session);
-    if (result == PMEDIA_OK) {
-        result = pm_parse_input(session);
+    if (result != PMEDIA_OK) {
+        free(session);
+        return result;
+    }
+    result = pm_parse_input(session);
+    if (result == PMEDIA_ERROR_FORMAT && session->input_bytes >= 12 &&
+        pm_fourcc(session->input, 'R', 'I', 'F', 'F') &&
+        pm_fourcc(session->input + 8, 'W', 'A', 'V', 'E')) {
+        pm_set_error(session, result, "malformed WAV input");
+        free(session->input);
+        free(session);
+        return result;
     }
     if (requested_backend != PMEDIA_BACKEND_SOFT &&
         result == PMEDIA_OK &&
@@ -909,7 +928,7 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
 
     (void)clock_us;
     session = (pm_session_impl *)opaque_session;
-    if (session == NULL) {
+    if (session == NULL || budget_us < 0) {
         return PMEDIA_ERROR_ARGUMENT;
     }
     if (session->stopped) {
@@ -921,7 +940,10 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
     if (session->waveout_active && session->waveout != NULL) {
         native_frames = 0;
         if (budget_us > 0 && session->info.sample_rate > 0) {
-            native_frames = (budget_us * session->info.sample_rate) / 1000000;
+            pm_position frame_budget;
+            frame_budget = ((pm_position)budget_us * session->info.sample_rate) / 1000000;
+            native_frames = frame_budget > PMEDIA_AUDIO_FRAMES ?
+                            PMEDIA_AUDIO_FRAMES : (int)frame_budget;
             if (native_frames < 1) native_frames = 1;
         }
         result = pmedia_waveout_pump(session->waveout, native_frames);
@@ -1038,8 +1060,9 @@ PMEDIA_API int pm_seek(pm_session opaque_session, pm_position position_us)
     if (session->stopped) return PMEDIA_ERROR_STATE;
 #ifdef PMEDIA_HAS_FFMPEG
     if (session->ffmpeg_active && session->ffmpeg != NULL) {
-        return pmedia_ffmpeg_seek((pmedia_ffmpeg *)session->ffmpeg,
-                                  position_us);
+        result = pmedia_ffmpeg_seek((pmedia_ffmpeg *)session->ffmpeg, position_us);
+        if (result == PMEDIA_OK) session->eof_sent = 0;
+        return result;
     }
 #endif
     if (session->waveout_active && session->waveout != NULL) {

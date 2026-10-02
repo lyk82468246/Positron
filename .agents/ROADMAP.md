@@ -237,25 +237,27 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
-**状态：软解纵切与 WAV PCM WaveOut 已接入，WAV PCM 定向 test_host 设备门已通过；DirectShow
-source filter、压缩媒体门和完整设备性能门仍待完成。**
+**状态：输入错误与 WAV PCM8/16 合同已有 Debug/Release 设备证据；DirectShow source filter、
+压缩媒体门、时钟调度与完整设备性能门仍待完成。**
 `positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
 运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
 Debug/Release 链接，并由 custom memory AVIO 驱动有界的 H.264/AAC/MP3/AMR、常见
-MPEG/AVI/MP4/TS/FLV/WAV/裸流软解。`TEST1312,999` 已在 Microsoft DeviceEmulator 上完成
-完整日志回收、selected/observed `2/2`、零 ERROR/FAIL 和零新增 dump；该 fixture 证明 WAV
-PCM soft callback、生命周期和 AUTO 选择，不证明 WaveOut underrun 或压缩媒体实时性能。下一步
-在不改变公共 ABI 的前提下，实现不会破坏不可 seek 输入的 DirectShow callback source filter/
-native 视频播放生命周期，再用 test_host fixture 和 WM6 emulator/真实设备验证实际 filter、
-WaveOut 格式、FFmpeg 帧率、音频 underrun 与资源峰值。桌面 DirectShow 格式表不能替代设备
-filter 探测。
+MPEG/AVI/MP4/TS/FLV/WAV/裸流解码接线，但编译集合不等于设备解码验收。WAV 的输入失败、
+实际样本/时间戳、EOF/seek 重播、软解暂停/错误、停止态和独立 session 释放已有定向设备门；
+AUTO PCM8 实际走 WaveOut 并保持 S16LE 输出。下一条纵切先补压缩媒体的离线 fixture，
+核验 H.264 profile/像素格式/尺寸守卫和 FFmpeg seek 后输出，再按证据修正 DLL；不把 WAV
+成功扩大为压缩格式保证。之后实现时钟调度/音视频同步和不会破坏不可 seek 输入的 DirectShow
+callback source filter/native 视频生命周期。当前 pump 忽略 clock_us，预算不是严格墙钟上限；
+桌面 DirectShow 格式表不能替代设备 filter 探测。
 
 - **Owner：** `positron_media.dll` 拥有 codec/container/session/timestamp/borrowed-buffer 语义；
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **最小 fixture：** seek/non-seek、WOULD_BLOCK/EOF/read/seek error、损坏/截断、H.264 Baseline
-  320×240/640×480、AAC-LC/MP3/PCM/AMR-NB、native codec 存在/缺失和 AUTO fallback。
+- **最小 fixture：** H.264 Baseline（含 constrained baseline）/Main 的 320×240/640×480、
+  AAC-LC/MP3/AMR-NB、AVI/MJPEG、TS/MPEG、IMA ADPCM；非支持 profile/像素布局/隔行与尺寸
+  超限拒绝、截断压缩包、FFmpeg EOF 后 seek、输入容量边界；native codec 存在/缺失与 AUTO
+  fallback。既有 WAV/I/O fixture 作为相邻回归保留。
 - **门：** `test_c89ize.py`、`audit_repo.py`、Debug/Release ARMV4I、离线 host I/O/ABI 回归和
   WM6 emulator/真实设备的无崩溃、时间戳、underrun、峰值内存与关闭耗时证据；发布前单独
   审查 FFmpeg GPL 组合、AVC 专利和设备 codec/许可证义务。

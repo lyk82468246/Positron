@@ -71,7 +71,8 @@ PMEDIA_BACKEND_NATIVE 路径现在只落实 WAV PCM WaveOut，不能把桌面 Di
 5. 成功打开后用 pm_get_stream_info()、pm_get_capabilities() 和 pm_get_backend()
    记录实际选择的路径。
 6. 在应用自己的消息循环或定时器中反复调用 pm_pump()。clock_us 应是单调时钟的
-   微秒值，budget_us 是本次允许媒体工作的大致预算；它们不是线程或实时播放承诺。
+   微秒值；当前实现尚未使用该值做播放调度。budget_us 只控制每次处理量，不是严格墙钟
+   时间上限，不能据此认为 DLL 已实现音视频同步或实时播放。
 7. 用户暂停/恢复/停止/跳转时调用相应的 pm_pause()、pm_resume()、pm_stop()、
    pm_seek()。
 8. 播放结束或应用退出时调用 pm_close()；发生错误时也必须释放已经成功打开的 session。
@@ -80,8 +81,9 @@ PMEDIA_BACKEND_NATIVE 路径现在只落实 WAV PCM WaveOut，不能把桌面 Di
 
 下面的例子使用内存中的文件作为 source，展示一个第三方应用需要实现的最小接线。
 app_monotonic_us() 和 app_sleep_ms() 是应用自己的 WM6 时钟/消息泵函数，不属于媒体 DLL。
-真实应用通常把 media_audio() 的数据复制到 WaveOut 或自己的音频队列，把
-media_video() 的 I420 plane 转换或绘制到自己的窗口。
+真实应用在 SOFT backend 下把 media_audio() 的数据复制到 WaveOut 或自己的音频队列；
+NATIVE 已由 DLL 播放，不应再次输出音频。media_video() 的 I420 plane 由应用转换或绘制
+到自己的窗口。下面的 callback 只观察数据，不包含音视频同步或窗口/音频队列实现。
 
 ~~~c
 #include <string.h>
@@ -291,6 +293,8 @@ PMEDIA_EOF 表示本次数据已经是最后一块；最后一块可以同时返
 PMEDIA_EOF。返回 PMEDIA_WOULD_BLOCK 只适合表达当前不可立即读取，但当前实现是在
 pm_probe()/pm_open() 的同步装载阶段直接返回该错误，不会保存请求等待下次 pm_pump()。
 其他失败应返回负错误码或让 DLL 将其归类为 PMEDIA_ERROR_IO。
+返回 PMEDIA_OK 且 out_read 为零不等于 EOF：DLL 将其视为 PMEDIA_WOULD_BLOCK，避免把
+临时无进展误判为完整媒体。打开失败后不会留下 session；应用重试前须自己恢复或重建 source。
 
 ### seek、tell、size
 
@@ -298,6 +302,9 @@ pm_probe()/pm_open() 的同步装载阶段直接返回该错误，不会保存�
 seek/tell 仍然很重要：pm_probe() 可以恢复原位置，应用也可以复用同一个 source
 进行 pm_open()。不可 seek source 应直接从起点调用 pm_open()，不要先用同一 context
 调用 pm_probe()。
+如果提供 seek，DLL 要求回调确实回到请求的位置；提供了失效的 seek 不能当成未提供 seek
+处理。pm_probe() 恢复原位置失败时返回 PMEDIA_ERROR_NOT_SEEKABLE，不改写 out_info；
+应用不能假定这时 source 已恢复。
 
 size_callback 在当前实现中不是必需的预读入口；如果应用已经知道长度，仍建议提供，
 以便未来 ABI 扩展和诊断使用。所有 source 回调都在应用驱动的同步调用中执行，DLL 不会
@@ -307,8 +314,9 @@ size_callback 在当前实现中不是必需的预读入口；如果应用已经
 
 - DLL 会在打开期间连续读取整个输入，超过 16 MiB 返回 PMEDIA_ERROR_LIMIT。
 - 空输入、截断头、损坏 chunk、无法识别的容器或没有可用 decoder 会安全失败。
-- source 回调返回非法读取长度、读错误或 seek 失败时，应用应停止继续调用并记录
-  pm_last_error()。
+- source 回调返回非法读取长度或读错误时返回 PMEDIA_ERROR_IO；回到起点失败返回
+  PMEDIA_ERROR_NOT_SEEKABLE。这些输入错误不会被后续 codec 尝试覆盖。pm_open() 失败时
+  没有可供 pm_last_error() 查询的 session，应在 error callback 中复制错误信息。
 - DLL 不保证 pm_probe() 成功就一定能按应用指定的 backend 打开；打开时仍会再次验证
   decoder、WaveOut 格式和视频尺寸。
 
@@ -322,6 +330,9 @@ pm_audio_block.data 是交错 S16LE。bytes 是字节数，samples 是每个声�
 
 WAV PCM 的 AUTO/NATIVE 可能使用 WaveOut。即使设备实际通过 WaveOut 播放，DLL 仍会
 同步调用应用的 audio callback；WaveOut 接受或拒绝的实际格式由设备音频驱动决定。
+即使设备播放的是 8-bit unsigned PCM，audio callback 仍收到转换后的 S16LE，而不是设备
+原始缓冲格式。NATIVE 播放时该回调用于观察或复制；应用不要再把同一块送往自己的音频设备，
+否则会重复播放。需要完全接管音频输出时选择 SOFT。
 WAV IMA ADPCM 和 FFmpeg 音频走软解回调。
 
 ### 视频
@@ -349,6 +360,7 @@ pm_pump() 的常见结果如下：
 | 返回值 | 应用处理 |
 | --- | --- |
 | PMEDIA_OK | 已完成一小段工作，或 session 当前暂停；稍后继续调用 |
+| PMEDIA_WOULD_BLOCK | 当前 WaveOut 块尚未播放完；交还消息循环，稍后继续调用 |
 | PMEDIA_EOF | 所有可输出流已经耗尽；通常关闭 session |
 | PMEDIA_ERROR_* | 停止泵循环，读取 pm_last_error()，然后释放 session |
 | PMEDIA_CALLBACK_STOP | 兼容路径可能直接返回；按暂停处理并在需要时 resume |
@@ -358,6 +370,10 @@ session 进入停止态，之后的 pm_pump()、pm_pause()、pm_resume()、pm_se
 返回 PMEDIA_ERROR_STATE（重复 pm_stop() 是安全的）。pm_seek() 的参数是微秒，
 负值非法；FFmpeg 使用可解码的后向关键点，WAV 使用对应 sample 位置，seek 成功后应用
 应重新按时间戳显示/播放后续回调。
+budget_us 必须非负；零使用内部默认处理量。clock_us 目前不驱动按时输出、迟到丢帧、
+音视频同步或暂停时间基准，这些仍是本阶段待实现的播放器能力。EOF 事件对当前播放区间只发
+一次；成功 seek 后开始新的区间。原生 callback STOP 的块重放语义尚未有设备断言，不应据此
+承诺与软解完全相同的消费位置。
 
 ## Probe、能力和 backend
 
@@ -417,5 +433,8 @@ pm_error_callback 的 message 同样只在当前回调期间有效。错误回�
 - 回归宿主边界：[test_host/README.md](../test_host/README.md)
 - FFmpeg 版本、移植和许可证：[third_party/ffmpeg-3.4.14/POSITRON_PORT.md](../third_party/ffmpeg-3.4.14/POSITRON_PORT.md)、[THIRD_PARTY.md](../THIRD_PARTY.md)
 
-当前设备证据只覆盖 WM6 Emulator 上的 WAV PCM callback/AUTO smoke；它不替代真实 WaveOut
-underrun、FFmpeg 压缩媒体、软视频帧率或真实 ARMV4I 设备验收。
+当前 Debug/Release 设备证据覆盖 WM6 Emulator 上的输入错误传播、probe 失败不改输出、
+非 seek WAV PCM8 与双声道 PCM16 的样本/时间戳、EOF/seek 重播、软解回调暂停与失败、
+停止态守卫及独立 session 重复释放。AUTO PCM8 已实际选中 NATIVE，并验证 WaveOut 完成
+和统一 S16LE callback。它不替代 WaveOut underrun、FFmpeg 压缩媒体、软视频帧率或真实
+ARMV4I 设备验收；IMA ADPCM、FFmpeg seek 重播和原生完整生命周期仍待专用 fixture。
