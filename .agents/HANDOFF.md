@@ -28,7 +28,11 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 剩余门只是真实应用 About 章节视觉复核，不重新要求 TEST232/263。ROADMAP 已复核并移除完成的 Core 候选，把 About 位置确认保留为人工 backlog。应用代码未修改；部署时必须使用同一正式 stage 的 EXE/DLL，不能沿用仍返回设备坐标的旧 Core。
 
-人工复核包在 `\Temp\Positron-device-gate\fragment-about-review-20261002-103209`，对应本地 `tmp/device-runs/20261002-103209-fragment-about-review/`。完整包部署后只读模块审计 PASS，EXE 与九个 DLL 回读 SHA256 匹配 stage；随后请求 `positron.exe --url positron://about`，返回 PID 2519828882。启动后的 Toolhelp process snapshot 两次返回 error=8，故没有取得应用已加载 Core 的路径证据，也不凭 PID 宣称界面可见；由用户确认 About 是否显示及章节位置。该启动后快照限制不否定此前独立宿主的匹配路径和 12 项 PASS。
+About 人工复核包的本地证据在 `tmp/device-runs/20261002-103209-fragment-about-review/`。
+当时完整部署后的只读模块审计和 EXE/九个 DLL 回读 SHA256 均通过；应用启动请求返回 PID，
+但随后的 Toolhelp 快照不可用，不能凭 PID 宣称界面可见。设备上的该旧包已按用户清空旧部署的
+授权删除，仅余无法删除的传输临时文件；继续人工复核必须重新部署，不能沿用旧路径或 PID。
+这不否定此前独立宿主的匹配路径和 12 项 PASS。
 
 ### 内部页面自动门
 
@@ -95,8 +99,8 @@ helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 gu
 `test_host/db_tests.c` 的 TEST1321 fixture 覆盖本地完整 SQL 的 DDL/DML/SELECT、事务提交与
 回滚、嵌套事务拒绝、取消、错误复制、NULL/INTEGER/REAL/UTF-8 TEXT/BLOB bind/column、
 INT64_MIN/MAX、空 BLOB、ColumnCount，以及 handle/SQL/bind/列索引参数守卫。SQL 长度、
-表达式深度、变量数和 typed bind 大小均有预算断言。它们已编入正式工程，当前新增断言尚未
-实际执行，不能把构建通过当作数据库行为验证。
+表达式深度、变量数和 typed bind 大小均有预算断言。它们已编入正式工程，但完整 fixture 尚未
+取得运行结果，不能把构建通过或宿主启动当作数据库行为验证。
 
 local/sync migration fixture 覆盖版本幂等、倒退和事务中拒绝、失败脚本不留残表，以及已注册表
 被删除时的整批回滚。同步注册覆盖单列 INTEGER/TEXT 主键、复合主键拒绝、非法/保留/过长
@@ -116,11 +120,20 @@ malformed tombstone、非 bool deleted、非法/倒退 cursor、缺少数组、�
 文件重开 fixture 检查 outbox/cursor/tombstone/conflict 持久化、重建行采用服务器删除版本和
 接受服务器结果不生成 outbox；这些仍需实际文件数据库设备门与 journal/断电门验证。
 
-正式 Debug/Release build、C89 和仓库审计通过，设备执行仍待完成。当前 Release 定向外置包
-`tmp/device-runs/20261002-132506-db-test-1321-current/` 的启动前审计通过，随后宿主加载返回
-device=126，没有测试日志。内置门 `tmp/device-runs/20261002-175617-db-test-1321-internal/`
-在部署前空间预检停止：可用 2,527,232 字节，需要 10,748,685 字节；旧目录无可回收的完整
-稳定日志，未删除旧包，未启动宿主。两次均不能计为 TEST1321 通过或断言失败。
+正式 Debug/Release build、C89 和仓库审计通过，完整设备测试结果仍待取得。用户明确授权
+强行清空旧部署后，精确处理两个 Positron-device-gate 根下 98 个旧目录：73 个完整删除，
+25 个仅余字体和 `.part-*` 文件，清属性后删除及再次复查仍失败。本地既有证据保留；本轮
+清理证据在 `tmp/device-runs/20261002-200329-db-force-clear/`，不把残留目录写成已清空。
+内置可用空间恢复到 23,083,008 字节，原空间阻塞已解除，没有强杀进程或重置设备。
+
+当前匹配 Release 包在 `\Temp\Positron-device-gate\db-test-1321-clean-20261002-200455`，
+本地证据在 `tmp/device-runs/20261002-200455-db-test-1321-clean/`。正式 build/stage 和 23 文件
+部署完成，启动前 guest 审计为 `holders=0 unavailable=0`；宿主 PID 3284308750 成功启动，
+日志记录正确 Core 路径及选择 `1321,999`，但 180 秒内只有启动信息，没有任何选择项结果或
+TESTBENCH 终态。最终回读日志仍未完成，不能计为 TEST1321 通过或断言失败。9 个 DLL 和
+宿主全部回读 SHA256 匹配 stage；后续 guest 审计仍为零 holder、零不可审计进程，crash dump
+库存为零，`\Temp\positron-db-1321.sqlite` 为 0 字节。原因尚未定位，不把该现象重新归因于
+空间不足、外置卡加载错误或某个 DLL。包和日志保留用于定位首次 DB 调用。
 
 自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
 
@@ -138,12 +151,14 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提仍有效。本轮审计等待修复没有完成这些 DB 候选，无需改变其状态。性能人工通过事实保留，Release 性能对照仍是可选后续门。
+ROADMAP 已复核：内部页面已实现的入口退出未来实现清单，仍保留人工验收；应用本地 SQL 的 ARMV4I 文件生命周期设备门、持久设置/访问日志/下载记录以及 HTTP 流式取消前提仍有效。本轮清理和重新部署解除空间与加载前置阻塞，但没有完成 DB 测试候选，无需改变其状态。性能人工通过事实保留，Release 性能对照仍是可选后续门。
 
 唯一下一步：在匹配 Core 修复包的 About 页面分别点击版本/系统章节链接，确认标题位于视口顶部附近而不跳过目标；页面底部不足一屏时允许正常滚动钳制。Debug 时间和 Release CAB 安装版本显示仍是独立应用验收，不把 Fragment 自动门视为它们通过。
 
-若继续 DLL/DB 门，先在内置 Temp 恢复至少约 10.25 MiB 可用空间，或取得外置卡文件回读与
-加载链正常的证据，再重新做 guest 无 holder 审计并用正式匹配产物定向运行 TEST1321。
-当前内置路径还差 8,221,453 字节；缺少完整日志的诊断目录不能自动删除。不得把引用审计
-替代宿主启动和完整日志，也不使用强制清理替代证据。
+若继续 DLL/DB 门，先重新检查编译竞态与 guest DLL 引用；当前内置包已能启动，下一步应在
+TEST1321 首次文件数据库调用周围补充有界诊断，定位零字节数据库和无终态日志，再通过正式
+匹配产物取得完整结果。不要重复以空间不足或桌面模拟器占用作为当前阻塞。旧目录清理是
+用户显式授权的例外，不改变正式门默认要求完整稳定日志才删除的规则；未能删除的字体和
+传输临时文件不允许通过重置设备或强杀无关进程处理。引用审计、启动和 hash 匹配不能替代
+完整测试日志。
 内部页面的地址栏/菜单/history/quit 与语言、旋转人工验收仍是独立 backlog。
