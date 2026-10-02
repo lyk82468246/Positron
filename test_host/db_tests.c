@@ -1720,12 +1720,16 @@ BOOL test1321_db_contract(void)
             "CREATE TABLE composite_records(a INTEGER,b INTEGER,name TEXT,"
             "PRIMARY KEY(a,b));"
             "CREATE TABLE typed_records(id INTEGER PRIMARY KEY,ratio REAL,"
-            "note TEXT)") != PDB_OK ||
+            "note TEXT);"
+            "CREATE TABLE boundary_records(id INTEGER PRIMARY KEY,name TEXT,"
+            "payload BLOB)") != PDB_OK ||
             PDb_SyncConfigure(sync, "device-1", 2, "schema-v2") != PDB_OK ||
             PDb_SyncRegisterTable(sync, "composite_records", "a",
             composite_columns, 3) != PDB_SCHEMA_MISMATCH ||
             PDb_SyncRegisterTable(sync, "records", "id", columns, 3) != PDB_OK ||
             PDb_SyncRegisterTable(sync, "typed_records", "id", typed_columns,
+            3) != PDB_OK ||
+            PDb_SyncRegisterTable(sync, "boundary_records", "id", columns,
             3) != PDB_OK) {
         if (sync != NULL) {
             PDb_Close(sync);
@@ -1905,6 +1909,63 @@ BOOL test1321_db_contract(void)
         return FALSE;
     }
     PDb_Finalize(stmt);
+    stmt = NULL;
+    rc = PDb_Prepare(sync,
+            "INSERT INTO boundary_records(id,name,payload) VALUES(?1,?2,?3)",
+            &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 1, minimum_integer);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindText(stmt, 2, "minimum", 7);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindNull(stmt, 3);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+        if (rc == PDB_STEP_DONE) {
+            rc = PDB_OK;
+        }
+    }
+    PDb_Finalize(stmt);
+    if (rc != PDB_OK) {
+        PDb_Close(sync);
+        return FALSE;
+    }
+    stmt = NULL;
+    rc = PDb_Prepare(sync,
+            "INSERT INTO boundary_records(id,name,payload) VALUES(?1,?2,?3)",
+            &stmt);
+    if (rc == PDB_OK) {
+        rc = PDb_BindInt64(stmt, 1, maximum_integer);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindText(stmt, 2, "maximum", 7);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_BindNull(stmt, 3);
+    }
+    if (rc == PDB_OK) {
+        rc = PDb_Step(stmt);
+        if (rc == PDB_STEP_DONE) {
+            rc = PDB_OK;
+        }
+    }
+    PDb_Finalize(stmt);
+    if (rc != PDB_OK || PDb_SyncPendingCount(sync) != 2 ||
+            PDb_SyncBuildRequest(sync, request, sizeof(request),
+            &request_length) != PDB_OK ||
+            strstr(request, "\"entity\":\"boundary_records\"") == NULL ||
+            strstr(request, "\"key\":\"-9223372036854775808\"") == NULL ||
+            strstr(request, "\"key\":\"9223372036854775807\"") == NULL ||
+            strstr(request,
+            "\"id\":{\"t\":\"i\",\"v\":\"-9223372036854775808\"}") == NULL ||
+            strstr(request,
+            "\"id\":{\"t\":\"i\",\"v\":\"9223372036854775807\"}") == NULL) {
+        PDb_Close(sync);
+        return FALSE;
+    }
     PDb_Close(sync);
     return TRUE;
 }
