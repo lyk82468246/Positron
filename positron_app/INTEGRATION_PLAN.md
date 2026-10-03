@@ -148,18 +148,20 @@ About 的应用版本由 EXE 私有适配器提供：Debug 预构建时内嵌主
 安装版本不冒充独立复制 EXE 的文件版本，公开 DLL ABI 的显示和 CAB 版本生成流程保持独立。
 
 系统章节使用中性标签：`GetVersionEx` 的 platform ID 决定内核名称，完整显示 major/minor/build
-与独立的 `szCSDVersion` 扩展信息；未知 ID 原样显示数值，不写死 CE。`SPI_GETPLATFORMTYPE`
-保留实际平台类型，PocketPC/Smartphone 不自动改名为 WM；可选 `SPI_GETPLATFORMVERSION`
-独立查询 OEM OS design 的 major/minor，不用内核版本代替。该 action 位于 CE 私有 pwinuser.h，
-EXE 用私有常量与 WM6 SDK 两 DWORD 结构兼容，不增加 DLL ABI 或 Platform Builder 依赖。
-`SPI_GETOEMINFO` 独立显示设备/OEM。平台类型与 design 版本并不能唯一识别 WM/WEH 的产品名称、
-发行小版本或 edition；不从 SDK、CE build、CAB 或 OEM 字符串推断这些字段。
+与非空的 `szCSDVersion` 扩展信息；未知 ID 原样显示数值，不写死 CE。`SPI_GETPLATFORMTYPE`
+保留实际平台类型，PocketPC/Smartphone 不自动改名为 WM；`SPI_GETOEMINFO` 独立显示设备/OEM。
+WM6.5.3 SDK 明确 `SPI_GETPLATFORMVERSION` 返回 CE 主/次版本，不用于查询产品发行版本。
+EXE 只读 `HKLM\System\Versions\Aku`，原样显示更新包字符串；可选的 OEM `ProductName`、
+`OSVersion` 字段存在时独立展示，不把它们当作跨 ROM 保证。不从 AKU、SDK、CE build、CAB 或
+PocketPC 字符串推断 WM/WEH 名称、发行版本或 edition，不维护版本映射表。
 
 补充信息通过可选 coredll `GetFileVersionInfoSizeW/GetFileVersionInfoW/VerQueryValueW` 读取
 固定 ROM 路径 coredll.dll 与 aygshell.dll 的产品名、四段文件/产品版本；明确标为内核/系统外壳
 组件，不冒充整套 OS 的发行版本。单次版本资源不超过 64 KiB，heap 缓冲解析后释放，返回切片
-与语言表有界检查。查询失败、空值、未终止、非法 UTF-16 或容量不足显示本地化“不可用”；
-有效文本转换为 UTF-8 并转义后交给 Core。未提供 API/资源的 ROM 不保证能识别其营销版本。
+与语言表有界检查。注册表字符串最多 128 WCHAR，检查类型、字节长度、终止、嵌入 NUL、
+UTF-16 与输出容量，原始文本统一转义后交给 Core。缺失、API 不可用、查询失败和非法数据
+分别显示本地化状态；Debug 记录注册表错误码及组件查询失败阶段，Release 不含这些诊断。
+未提供元数据的 ROM 不保证能识别其营销版本，组件产品名也不填入 OS 产品字段。
 
 ### 后端进入条件
 
@@ -189,7 +191,8 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 和人工滚动验收，测试夹具及诊断不编入 Release。
 门可用受限 `-StartupUrl positron://system` 留在规范化后的系统章节，默认仍为 newtab；
 另要求 Debug 系统信息自检通过，覆盖双语中性标签、非 CE/未知平台 ID、原始平台类型、
-UTF-16/容量失败、版本资源切片边界与 HTML 转义；运行日志另记录实际查询结果。
+UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保留、版本资源切片边界与 HTML
+转义；运行日志另记录实际查询结果及失败阶段。
 
 同一 Debug 独立夹具使用真实页面窗口消息验证 DPI 阈值、抬起 click、拖动不误点、合并 MOVE
 后的抬起、捕获/取消收尾与布局计数不变；`app_history_gate` 同时要求 pointer 自检通过。

@@ -18,28 +18,30 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ### EXE 系统信息当前包
 
-About 系统章节已移除写死的 CE/WM 标签及 PocketPC→WM 家族猜测。内核按 GetVersionEx
-platform ID 命名，完整展示 major/minor/build 与独立扩展字符串；平台类型保留 API 原名，
-另查询 OEM platform version 与 coredll/aygshell 的版本资源，组件版本不冒充 OS 发行版本。
-仅 EXE 私有查询与展示改动，不修改 DLL、ABI 或导航语义；稳定规则见接线计划。
+About 系统章节使用中性标签、GetVersionEx 完整内核版本与实际平台/OEM 名称；只读
+`HKLM\System\Versions\Aku` 原样展示更新包，可选 ProductName/OSVersion 独立显示。
+不做 build/AKU→WM/WEH 查表。已纠正旧 platform version 方向：WM6.5.3 SDK 明确该 SPI
+返回 CE 主/次版本，不能当成营销版本，因此删除私有 action 查询和重复版本行。
+缺失、API 不可用、查询失败、非法数据分开显示，空内核扩展不占行；Debug 记录失败阶段与
+错误码，Release 不含诊断。仅 EXE 私有查询与展示改动，不修改 DLL、ABI 或导航语义。
 
 C89、仓库审计、串行 Debug/Release 正式 build 与 Release CAB 通过，EXE 零错误/警告；
-Release ASCII/UTF-16 检查不含系统信息诊断或启动夹具。用户正常退出旧应用并暂停其他构建。
-最终完整 Debug 包 `tmp/device-runs/20261003-084716-app-system-details/` 共 31 文件；正式
+Release ASCII/UTF-16 检查不含本批诊断或系统启动夹具。用户正常退出旧应用并暂停其他构建。
+当前完整 Debug 包 `tmp/device-runs/20261003-091819-app-system-registry-final/` 共 31 文件；正式
 module-audit 与 EXE 门前复审均 holders=0 unavailable=0，EXE/九 DLL SHA256 回读 10/10。
-`app-history/positron-debug.log` 记录 system-info/pointer/history/internal-pages 自检 OK、
+`app-history/positron-debug.log` 为 system-info/pointer/history/internal-pages 自检 OK、
 单次提交 about#system（history=1、script=0、scroll=0,545），crash_check=PASS。
-实际查询为 Windows CE 5.2.23090（platform ID=3）、PocketPC、Microsoft DeviceEmulator；
-扩展字符串、platform version 与两项组件版本均未返回可展示值，诚实显示不可用，不能宣称已
-识别 WM/WEH 营销版本或把组件资源查询写成成功。设备 320×320、128 DPI，PID 2642599310 留在
-`\Storage Card\Temp\Positron-device-gate\app-system-details-20261003-084716\positron.exe`。
-门使用受限 StartupUrl 进入系统章节；未强杀、重置、回退内置存储或改变 WMDC 设置。
-系统章节视觉与真实中文设备显示仍待人工复核；自动夹具覆盖双语中性标签、非 CE/未知 ID、
-平台不改名、中文 UTF-8、未终止/非法 UTF-16、容量拒绝、资源切片边界和 HTML 转义。
-本地 SDK 的 GetVersionEx/OSVERSIONINFO、SystemParametersInfo 与 VerQueryValue 文档、
-winbase/winver/rapitypes2 合同均已核对；缺失 OEM 元数据不通过 build→WM 版本表兜底。
-前一中性标签候选 `tmp/device-runs/20261003-084210-app-system-api/` 也通过自动门，用户已正常退出，
-但不是最终组件查询包；更早硬编码 WM 包不再作为当前人工入口。
+实际读取为 Windows CE 5.2.23090（platform ID=3）、PocketPC、AKU `.5.3.0` 与
+Microsoft DeviceEmulator；ProductName/OSVersion 查询为 error=2（未提供）。coredll/aygshell
+版本函数导出均存在，但 size 阶段返回 error=1814（资源名称不存在），不再笼统归因 API 不可用。
+本轮 RAPI 只读枚举的四个系统版本专用键也没有提供营销版本元数据；未写设备注册表。
+设备 320×320、128 DPI，PID 2643158474 留在
+`\Storage Card\Temp\Positron-device-gate\app-system-registry-final-20261003-091819\positron.exe`。
+首轮 registry 包也通过门；复核删除误拒绝 OEM 实际 WM 产品名的夹具断言后，用户正常退出，
+重新部署并验证最终源码。未强杀、重置、回退内置存储或改变 WMDC；旧包不是当前人工入口。
+自动夹具覆盖双语标签、非 CE/未知 ID、中文 UTF-8、原样 AKU、registry 类型/长度/终止/
+嵌入 NUL、非法 UTF-16/容量拒绝、版本资源切片边界和 HTML 转义。系统章节视觉及真实中文
+设备仍待人工复核；缺失产品元数据时不宣称已识别 WM/WEH 发行版本。稳定规则见接线计划。
 
 ### EXE 页面内容拖动自动门通过
 
@@ -296,14 +298,15 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 ROADMAP 已复核：EXE 移除已通过自动门的同文档导航候选，保留片段 URL 公共接口与人工矩阵；
-本轮系统信息只补充运行时查询并纠正平台展示，未产生新的 DLL 候选，路线图无需新增已完成事项。
+本轮系统信息补入实际 AKU 与可选 OEM 字段，并纠正 SPI/失败分类；ROADMAP 与当前限制已
+复核，无新增 DLL 候选，营销版本不保证识别的限制仍有效，无需追加已完成事项。
 Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC 初始夹具、解码守卫和 EOF 重播候选，保留其他
 格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
 重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步：先人工复核当前完整包的中性系统信息与不可用回退、内容拖动/点按、native 拖选、旋转及地址栏回车，
+EXE 下一步：先人工复核当前完整包的 AKU、产品元数据缺失状态、内容拖动/点按、native 拖选、旋转及地址栏回车，
 并继续同文档/跨页滚动恢复矩阵；随后独立
 修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
 并行 Media 下一步：按同一 pin/许可规则补 AVI/MJPEG + MP3 夹具，验证实际帧/PCM 和生命周期，
