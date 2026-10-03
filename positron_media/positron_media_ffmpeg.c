@@ -800,6 +800,10 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
         frame.duration_us = pm_ff_timestamp(1, frame_time);
     }
     if (context->frame->key_frame) frame.flags |= PMEDIA_FRAME_KEY;
+    if (context->frame->format == AV_PIX_FMT_YUVJ420P ||
+        context->frame->color_range == AVCOL_RANGE_JPEG) {
+        frame.flags |= PMEDIA_FRAME_FULL_RANGE;
+    }
     if (context->output.video == NULL) return PMEDIA_OK;
     callback_result = context->output.video(context->output.context, &frame);
     if (callback_result < 0) return PMEDIA_ERROR_CALLBACK;

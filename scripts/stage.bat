@@ -50,6 +50,8 @@ copy /Y "%ROOT%\test_host\fixtures\bootstrap-4.6.2.min.js" "%STAGE%\fixtures\" |
 if not exist "%STAGE%\fixtures\media" mkdir "%STAGE%\fixtures\media"
 copy /Y "%ROOT%\test_host\fixtures\media\*.mp4" "%STAGE%\fixtures\media\" || goto :fail
 copy /Y "%ROOT%\test_host\fixtures\media\*.aac" "%STAGE%\fixtures\media\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\media\*.avi" "%STAGE%\fixtures\media\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\media\*.mp3" "%STAGE%\fixtures\media\" || goto :fail
 
 echo.
 echo Done. In the emulator, open File Explorer -^> Storage Card

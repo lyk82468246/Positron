@@ -10,11 +10,21 @@
 - `main-vga.mp4`：640×480、5 fps、三帧 Main，包含 B 帧和 decoder drain。
 - `aac-lc.aac`：ADTS AAC-LC 单声道 48 kHz；`aac-main.aac` 用于拒绝非 LC profile。
 - `high.mp4`、`high422.mp4`、`interlaced.mp4`、`oversize.mp4`：拒绝 profile、像素布局、隔行和 656×480 超限。
+- `mjpeg-mp3.avi`：320×240、5 fps、三帧全范围 MJPEG 4:2:0，MP3 双声道 48 kHz。
+  固定 AVI 含一个空视频槽，实际帧 PTS 为 0/400000/600000 µs，每帧 duration 为 200000 µs；
+  不能按输出帧号重新生成等间隔时间戳。MP3 解码为每声道 29952 个 sample，包含容器中的编码 padding。
+- `mjpeg422.avi`：全范围 MJPEG 4:2:2 拒绝夹具，不应产生输出回调或 session。
+- `mp3-mono.mp3`：44.1 kHz 单声道 MP3，保留 Xing gapless 信息；去除编码 delay/padding 后为
+  26460 个 sample，不以 AVI 的 padding 规则解释这个裸流。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
-生成依赖 libx264 和原生 AAC 编码器，但它们不进入 WM6 产品。其他工具版本可能生成不同字节，
+生成依赖 libx264、libmp3lame 和原生 AAC/MJPEG 编码器，但它们不进入 WM6 产品。`--extend`
+只用于首次用同一 pinned 生成器补齐 MJPEG/MP3 文件，先验证已有 pin，不重生成旧文件；已经
+补齐后再次调用会拒绝。其他工具版本可能生成不同字节，
 必须重新审查 manifest、profile 和设备断言，不能只替换哈希让失败通过。
 
 断言检查实际 I420 plane/stride/像素、视频时间戳与持续时间、S16LE 内容、音频时间戳、EOF
-和 seek 重播；不是实时播放、复杂画面质量、underrun 或 CPU 性能门。
+和 seek 重播。红色 MJPEG 的全范围 Y/U/V 期望为 76/85/255，H.264 夹具的有限范围为
+81/90/240；同时核对公开 FULL_RANGE 标记，不通过改像素或忽略 flags 掩盖范围错误。
+这些是短媒体解码合同，不是实时播放、复杂画面质量、underrun 或 CPU 性能门。

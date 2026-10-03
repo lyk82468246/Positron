@@ -64,6 +64,7 @@ extern BOOL test1331_media_io_pcm_contract(void (*progress)(const char *));
 extern const char *test1331_media_last_error(void);
 extern BOOL test1332_media_compressed_contract(void (*progress)(const char *));
 extern const char *test1332_media_last_error(void);
+extern BOOL test1333_media_mjpeg_mp3_contract(void (*progress)(const char *));
 extern BOOL test1313_core_image_pending_retry_contract(void);
 extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
@@ -676,7 +677,7 @@ static void test1332_log_progress(const char *phase)
     testbench_log_message("INFO", L"Media1332 phase", phase);
 }
 
-static int test1332_log_exception(EXCEPTION_POINTERS *information)
+static int media_log_exception(EXCEPTION_POINTERS *information)
 {
     char body[256];
     if (information != NULL && information->ExceptionRecord != NULL &&
@@ -688,7 +689,7 @@ static int test1332_log_exception(EXCEPTION_POINTERS *information)
                   information->ContextRecord->Pc,
                   information->ContextRecord->Lr);
         body[sizeof(body) - 1] = '\0';
-        testbench_log_message("ERROR", L"Media1332 exception", body);
+        testbench_log_message("ERROR", L"Media decode exception", body);
     }
     /* Preserve the original fault; never convert a crash into a test result. */
     return EXCEPTION_CONTINUE_SEARCH;
@@ -701,7 +702,24 @@ static BOOL test1332_media_contract_guarded(void)
     ok = FALSE;
     __try {
         ok = test1332_media_compressed_contract(test1332_log_progress);
-    } __except(test1332_log_exception(GetExceptionInformation())) {
+    } __except(media_log_exception(GetExceptionInformation())) {
+        ok = FALSE;
+    }
+    return ok;
+}
+
+static void test1333_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Media1333 phase", phase);
+}
+
+static BOOL test1333_media_contract_guarded(void)
+{
+    BOOL ok;
+    ok = FALSE;
+    __try {
+        ok = test1333_media_mjpeg_mp3_contract(test1333_log_progress);
+    } __except(media_log_exception(GetExceptionInformation())) {
         ok = FALSE;
     }
     return ok;
@@ -916,7 +934,7 @@ static BOOL ask_yesno(const WCHAR* title, const char* body)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1332
+#define TEST_MAX_NUMBER 1333
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -117793,6 +117811,14 @@ static int run_configured_tests(const unsigned char *selected,
                 show_info(L"TEST 1332 OK", "Media H264/AAC decode/seek/guard contract passed.");
             } else {
                 show_error(L"TEST 1332 FAIL", test1332_media_last_error());
+            }
+            break;
+        case 1333:
+            ok = test1333_media_contract_guarded();
+            if (ok) {
+                show_info(L"TEST 1333 OK", "Media AVI/MJPEG and MP3 decode/seek contract passed.");
+            } else {
+                show_error(L"TEST 1333 FAIL", test1332_media_last_error());
             }
             break;
         default: ok = FALSE; break;

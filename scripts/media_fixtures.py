@@ -19,6 +19,56 @@ def run(exe, args):
                           check=True, stdout=subprocess.PIPE).stdout
 
 
+def extra_records(exe):
+    records = []
+    for name, pixels, audio in [("mjpeg-mp3.avi", "yuvj420p", True),
+                                ("mjpeg422.avi", "yuvj422p", False)]:
+        args = ["-f", "lavfi", "-i", "color=c=red:s=320x240:r=5:d=0.6"]
+        if audio:
+            args += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=0.6"]
+        args += ["-map", "0:v", "-c:v", "mjpeg", "-pix_fmt", pixels,
+                 "-q:v", "2", "-threads:v", "1"]
+        if audio:
+            args += ["-map", "1:a", "-c:a", "libmp3lame", "-ac", "2",
+                     "-b:a", "64k", "-threads:a", "1"]
+        else:
+            args += ["-an"]
+        args += ["-t", "0.6", "-fflags", "+bitexact", "-flags:v", "+bitexact",
+                 "-map_metadata", "-1", "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": args[:-1] + [name]})
+    name = "mp3-mono.mp3"
+    args = ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=0.6",
+            "-c:a", "libmp3lame", "-ac", "1", "-b:a", "64k", "-threads", "1",
+            "-fflags", "+bitexact", "-map_metadata", "-1", "-id3v2_version", "0",
+            "-y", str(DEST / name)]
+    run(exe, args)
+    records.append({"file": name, "arguments": args[:-1] + [name]})
+    return records
+
+
+def write_pin(exe, records):
+    for record in records:
+        data = (DEST / record["file"]).read_bytes()
+        record.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+    version = subprocess.check_output([exe, "-version"], text=True).splitlines()[0]
+    PIN.write_text(json.dumps({"origin": "procedural red/sine; no downloaded media",
+                              "content_license": "CC0-1.0; no patent grant",
+                              "generator_version": version,
+                              "generator_sha256": hashlib.sha256(Path(exe).read_bytes()).hexdigest(),
+                              "files": records}, indent=2) + "\n", encoding="utf-8")
+
+
+def extend(exe):
+    check()
+    pin = json.loads(PIN.read_text(encoding="utf-8"))
+    if hashlib.sha256(Path(exe).read_bytes()).hexdigest() != pin["generator_sha256"]:
+        raise SystemExit("Extension requires the existing pinned generator")
+    if any(r["file"] == "mjpeg-mp3.avi" for r in pin["files"]):
+        raise SystemExit("Already extended; use --generate for intentional full regeneration")
+    write_pin(exe, pin["files"] + extra_records(exe))
+
+
 def generate(exe):
     DEST.mkdir(parents=True, exist_ok=True)
     records = []
@@ -53,15 +103,7 @@ def generate(exe):
                 "-f", "adts", "-y", str(DEST / name)]
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
-    for record in records:
-        data = (DEST / record["file"]).read_bytes()
-        record.update(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
-    version = subprocess.check_output([exe, "-version"], text=True).splitlines()[0]
-    PIN.write_text(json.dumps({"origin": "procedural red/sine; no downloaded media",
-                              "content_license": "CC0-1.0; no patent grant",
-                              "generator_version": version,
-                              "generator_sha256": hashlib.sha256(Path(exe).read_bytes()).hexdigest(),
-                              "files": records}, indent=2) + "\n", encoding="utf-8")
+    write_pin(exe, records + extra_records(exe))
 
 
 def check():
@@ -75,11 +117,16 @@ def check():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--generate", action="store_true")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--generate", action="store_true")
+    action.add_argument("--extend", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate:
+    if opts.generate or opts.extend:
         if not opts.ffmpeg:
-            parser.error("--generate requires an explicit --ffmpeg path")
-        generate(opts.ffmpeg)
+            parser.error("--generate/--extend requires an explicit --ffmpeg path")
+        if opts.extend:
+            extend(opts.ffmpeg)
+        else:
+            generate(opts.ffmpeg)
     check()

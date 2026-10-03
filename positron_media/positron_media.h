@@ -107,7 +107,9 @@ enum {
 
 enum {
     PMEDIA_FRAME_KEY = 0x00000001UL,
-    PMEDIA_FRAME_INTERLACED = 0x00000002UL
+    PMEDIA_FRAME_INTERLACED = 0x00000002UL,
+    /* I420 plane layout is unchanged; JPEG/full-range samples are 0..255. */
+    PMEDIA_FRAME_FULL_RANGE = 0x00000004UL
 };
 
 /* read returns an I/O status and writes the number of bytes produced. */

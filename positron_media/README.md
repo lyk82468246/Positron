@@ -343,6 +343,13 @@ pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 v
 返回前有效。duration_us 优先采用 packet duration；缺失时可由容器平均帧率换算，
 两者均未知时为零，应用不能把未知时长解释为固定帧率。
 
+绘制前检查 `frame->flags & PMEDIA_FRAME_FULL_RANGE`：置位表示 JPEG/全范围 YUV，
+sample 范围为 0..255；例如 MJPEG 的 YUVJ420P 仍使用相同 I420 plane 布局，但不能套用
+有限范围的黑白电平转换。未置位表示未报告全范围；有限范围视频的名义 Y 范围为 16..235、
+U/V 为 16..240。DLL 不把全范围像素重写成有限范围，也尚未公开色彩矩阵、primaries 或
+transfer metadata，不能把该标记当成完整色彩管理。应用应按位读取 flags 并忽略未知位，
+不要用 flags 的整体数值判断关键帧。该位是现有字段的追加，不改变结构布局和借用所有权。
+
 软件视频的公开保证上限是 640×480。max_video_width/height 可以用来选择更小的应用
 上限；请求更大尺寸仍被 clamp 到 640×480，不会放开产品边界。超限视频返回
 PMEDIA_ERROR_LIMIT；H.264 只接受 Baseline（含 Constrained Baseline）/Main，所有 High
@@ -442,6 +449,9 @@ pm_error_callback 的 message 同样只在当前回调期间有效。错误回�
 和统一 S16LE callback。压缩路径另以固定离线夹具验证 MP4/AVCC Constrained Baseline +
 AAC-LC stereo、VGA Main/B 帧和 ADTS AAC-LC mono 的实际 I420/S16LE、时间戳、EOF 后
 seek 重播与 callback 暂停/恢复；High/4:2:2/隔行/超 VGA/非 LC AAC 和截断 MP4 头拒绝。
+AVI/MJPEG 4:2:0 + MP3 stereo 与 44.1 kHz mono MP3 裸流也已验证：全范围视频像素与 flags、
+逐帧 PTS/时长、PCM 样本数（含裸流 gapless trimming）、不可 seek 打开、音频 callback
+暂停/恢复、EOF/seek 重播、独立关闭，以及 MJPEG 4:2:2、截断头和应用尺寸上限拒绝。
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
 设备验收；其他已编译容器/codec、截断压缩 payload、非零压缩 seek 与原生完整生命周期
