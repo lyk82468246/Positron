@@ -1469,6 +1469,49 @@ typedef struct http_progress_probe {
     int last_total;
 } http_progress_probe;
 
+typedef struct http_observer_probe {
+    int seen[ PHTTP_PHASE_FAILED + 1 ];
+    int invalid;
+    int terminal_count;
+    int terminal_phase;
+    int final_status;
+    int last_hop;
+    int body_events;
+} http_observer_probe;
+
+static void test3_observer_cb(const PHttpObserverEvent* event,
+                              void* user_data)
+{
+    http_observer_probe* probe;
+
+    probe = (http_observer_probe*) user_data;
+    if (probe == NULL || event == NULL ||
+            event->size < sizeof(PHttpObserverEvent) ||
+            event->version != PHTTP_OBSERVER_VERSION ||
+            event->phase < PHTTP_PHASE_NONE ||
+            event->phase > PHTTP_PHASE_FAILED) {
+        if (probe != NULL) {
+            probe->invalid = 1;
+        }
+        return;
+    }
+    probe->seen[event->phase] = 1;
+    probe->last_hop = event->redirect_hop;
+    if (event->phase == PHTTP_PHASE_RECEIVING_BODY) {
+        probe->body_events++;
+        if (event->received < 0 || event->total < -1 ||
+                (event->total >= 0 && event->received > event->total)) {
+            probe->invalid = 1;
+        }
+    }
+    if (event->phase == PHTTP_PHASE_COMPLETE ||
+            event->phase == PHTTP_PHASE_FAILED) {
+        probe->terminal_count++;
+        probe->terminal_phase = event->phase;
+        probe->final_status = event->status_code;
+    }
+}
+
 static void test3_progress_cb(void *pw, int received, int total)
 {
     http_progress_probe *probe;
@@ -1483,20 +1526,74 @@ static void test3_progress_cb(void *pw, int received, int total)
     probe->last_total = total;
 }
 
+/* This is deliberately offline: it proves that a valid observer receives a
+ * single structured terminal failure for a rejected scheme, while the legacy
+ * NULL-observer entry remains usable and does not attempt network I/O. */
+static BOOL test3_observer_fail_closed(void)
+{
+    PHttpResponse* response;
+    http_observer_probe probe;
+    PHttpObserver observer;
+
+    memset(&probe, 0, sizeof(probe));
+    memset(&observer, 0, sizeof(observer));
+    observer.size = sizeof(observer);
+    observer.version = PHTTP_OBSERVER_VERSION;
+    observer.callback = test3_observer_cb;
+    observer.user_data = &probe;
+    response = PHttp_GetUrlEx2("ftp://example.com/file", NULL, NULL, NULL,
+                               &observer);
+    if (response == NULL || response->status_code != 0 ||
+            response->error_msg[0] == '\0' || probe.invalid ||
+            probe.terminal_count != 1 ||
+            probe.terminal_phase != PHTTP_PHASE_FAILED ||
+            !probe.seen[PHTTP_PHASE_FAILED]) {
+        if (response != NULL) {
+            PHttp_FreeResponse(response);
+        }
+        return FALSE;
+    }
+    PHttp_FreeResponse(response);
+
+    response = PHttp_GetUrlEx("ftp://example.com/file", NULL, NULL, NULL);
+    if (response == NULL || response->status_code != 0 ||
+            response->error_msg[0] == '\0') {
+        if (response != NULL) {
+            PHttp_FreeResponse(response);
+        }
+        return FALSE;
+    }
+    PHttp_FreeResponse(response);
+    return TRUE;
+}
+
 static BOOL test3_get(void)
 {
     PHttpResponse* resp;
     HANDLE         root;
     const char*    url;
     http_progress_probe progress;
+    http_observer_probe observer_probe;
+    PHttpObserver observer;
     char           msg[512];
     char           final_url[PHTTP_URL_MAX];
 
+    if (!test3_observer_fail_closed()) {
+        show_error(L"TEST 3 FAIL",
+                   "observer/legacy invalid-scheme fail-closed contract failed");
+        return FALSE;
+    }
     memset(&progress, 0, sizeof(progress));
     progress.monotonic = 1;
     progress.last_total = -2;
-    resp = PHttp_GetEx("postman-echo.com", 443, "/get", NULL,
-            test3_progress_cb, &progress);
+    memset(&observer_probe, 0, sizeof(observer_probe));
+    memset(&observer, 0, sizeof(observer));
+    observer.size = sizeof(observer);
+    observer.version = PHTTP_OBSERVER_VERSION;
+    observer.callback = test3_observer_cb;
+    observer.user_data = &observer_probe;
+    resp = PHttp_GetEx2("postman-echo.com", 443, "/get", NULL,
+            test3_progress_cb, &progress, &observer);
     if (resp == NULL) {
         show_error(L"TEST 3 FAIL", "PHttp_Get returned NULL (OOM?)");
         return FALSE;
@@ -1535,6 +1632,35 @@ static BOOL test3_get(void)
         PHttp_FreeResponse(resp);
         return FALSE;
     }
+    if (observer_probe.invalid || observer_probe.terminal_count != 1 ||
+            observer_probe.terminal_phase != PHTTP_PHASE_COMPLETE ||
+            observer_probe.final_status != 200 ||
+            observer_probe.body_events == 0 ||
+            !observer_probe.seen[PHTTP_PHASE_RESOLVING_NAME] ||
+            !observer_probe.seen[PHTTP_PHASE_CONNECTING] ||
+            !observer_probe.seen[PHTTP_PHASE_TLS_HANDSHAKE] ||
+            !observer_probe.seen[PHTTP_PHASE_SENDING_REQUEST] ||
+            !observer_probe.seen[PHTTP_PHASE_WAITING_RESPONSE] ||
+            !observer_probe.seen[PHTTP_PHASE_RECEIVING_HEADERS] ||
+            !observer_probe.seen[PHTTP_PHASE_RECEIVING_BODY]) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "observer invalid=%d terminals=%d terminal_phase=%d "
+                "status=%d body_events=%d seen=%d%d%d%d%d%d%d",
+                observer_probe.invalid, observer_probe.terminal_count,
+                observer_probe.terminal_phase, observer_probe.final_status,
+                observer_probe.body_events,
+                observer_probe.seen[PHTTP_PHASE_RESOLVING_NAME],
+                observer_probe.seen[PHTTP_PHASE_CONNECTING],
+                observer_probe.seen[PHTTP_PHASE_TLS_HANDSHAKE],
+                observer_probe.seen[PHTTP_PHASE_SENDING_REQUEST],
+                observer_probe.seen[PHTTP_PHASE_WAITING_RESPONSE],
+                observer_probe.seen[PHTTP_PHASE_RECEIVING_HEADERS],
+                observer_probe.seen[PHTTP_PHASE_RECEIVING_BODY]);
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 3 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
 
     root = PJson_Parse(resp->body ? resp->body : "");
     if (root == NULL) {
@@ -1557,7 +1683,9 @@ static BOOL test3_get(void)
     _snprintf(msg, sizeof(msg) - 1,
               "HTTPS GET postman-echo OK\n\nEcho URL:\n%s\n\n"
               "Final URL:\n%s\n\n"
-              "(TLS 1.2 GET + monotonic body progress + JSON response.)",
+              "(TLS 1.2 GET + monotonic body progress + JSON response.)\n"
+              "Observer: resolving/connect/TLS/send/wait/headers/body "
+              "and one COMPLETE.",
               url, final_url);
     msg[sizeof(msg) - 1] = '\0';
     show_info(L"TEST 3 OK", msg);
@@ -1585,10 +1713,19 @@ static BOOL test4_post(void)
     HANDLE         root;
     HANDLE         json_obj;
     const char*    echoed;
+    http_observer_probe observer_probe;
+    PHttpObserver observer;
     char           msg[512];
 
-    resp = PHttp_Post("postman-echo.com", 443, "/post",
-                      HEADERS, BODY, (int)strlen(BODY));
+    memset(&observer_probe, 0, sizeof(observer_probe));
+    memset(&observer, 0, sizeof(observer));
+    observer.size = sizeof(observer);
+    observer.version = PHTTP_OBSERVER_VERSION;
+    observer.callback = test3_observer_cb;
+    observer.user_data = &observer_probe;
+    resp = PHttp_PostEx2("postman-echo.com", 443, "/post",
+                      HEADERS, BODY, (int)strlen(BODY), NULL, NULL,
+                      &observer);
     if (resp == NULL) {
         show_error(L"TEST 4 FAIL", "PHttp_Post returned NULL (OOM?)");
         return FALSE;
@@ -1598,6 +1735,27 @@ static BOOL test4_post(void)
                   "HTTPS POST postman-echo -> status=%d err=%s\nbody (first 256):\n%.256s",
                   resp->status_code, resp->error_msg,
                   resp->body ? resp->body : "(none)");
+        msg[sizeof(msg) - 1] = '\0';
+        show_error(L"TEST 4 FAIL", msg);
+        PHttp_FreeResponse(resp);
+        return FALSE;
+    }
+    if (observer_probe.invalid || observer_probe.terminal_count != 1 ||
+            observer_probe.terminal_phase != PHTTP_PHASE_COMPLETE ||
+            observer_probe.final_status != 200 ||
+            !observer_probe.seen[PHTTP_PHASE_SENDING_REQUEST] ||
+            !observer_probe.seen[PHTTP_PHASE_WAITING_RESPONSE] ||
+            !observer_probe.seen[PHTTP_PHASE_RECEIVING_HEADERS] ||
+            !observer_probe.seen[PHTTP_PHASE_RECEIVING_BODY]) {
+        _snprintf(msg, sizeof(msg) - 1,
+                "POST observer invalid=%d terminals=%d phase=%d status=%d "
+                "send=%d wait=%d headers=%d body=%d",
+                observer_probe.invalid, observer_probe.terminal_count,
+                observer_probe.terminal_phase, observer_probe.final_status,
+                observer_probe.seen[PHTTP_PHASE_SENDING_REQUEST],
+                observer_probe.seen[PHTTP_PHASE_WAITING_RESPONSE],
+                observer_probe.seen[PHTTP_PHASE_RECEIVING_HEADERS],
+                observer_probe.seen[PHTTP_PHASE_RECEIVING_BODY]);
         msg[sizeof(msg) - 1] = '\0';
         show_error(L"TEST 4 FAIL", msg);
         PHttp_FreeResponse(resp);

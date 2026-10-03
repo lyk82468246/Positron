@@ -43,7 +43,7 @@ command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继�
 
 ### `positron_tls.dll`
 
-提供 TLS context、证书链、握手、读写和错误分类。调用方拥有输入 buffer 和连接策略，库只在文档规定的 handle 生命周期内借用它们；证书校验、时间、hostname 和 transport 失败必须由调用方记录明确分类。Mbed TLS 版本固定在仓库 pin，升级需单独审查内存、算法和 WM6 兼容性。
+提供 TLS context、证书链、握手、读写和错误分类。调用方拥有输入 buffer 和连接策略，库只在文档规定的 handle 生命周期内借用它们；证书校验、时间、hostname 和 transport 失败必须由调用方记录明确分类。`PTls_ConnectEx`/`PTls_ConnectVerifiedEx` 只为上层适配器提供有界的 DNS、TCP connect 和 TLS handshake 开始通知，不改变旧 connect ABI，也不创建进程级 observer。Mbed TLS 版本固定在仓库 pin，升级需单独审查内存、算法和 WM6 兼容性。
 
 ### `positron_json.dll`
 
@@ -65,7 +65,7 @@ DB DLL 不保存 URL、Bearer Token，也不创建网络线程。宿主的 DB wo
 
 ### `positron_http.dll`
 
-提供 request/response、header、body、状态码和 transport 结果的窄接口。DNS、TCP、TLS、重试时机、worker 和缓存策略由宿主或上层 Browser 事务拥有；HTTP 层不执行页面脚本、布局或导航提交。
+提供 request/response、header、body、状态码和 transport 结果的窄接口。HTTP 是消费者可观察的统一 transport owner：`PHttp_*Ex2` 按请求提供同步、有界、UTF-8 的阶段 observer，并把 TLS 的实际 DNS/TCP/handshake 通知转发给调用方；WinInet 无法区分的 DNS、代理和 socket 边界必须以合并阶段标明，不能伪造细分事件。重试时机、worker、缓存策略和页面提交仍由上层 Browser/宿主拥有；HTTP 层不执行页面脚本、布局或导航提交。旧 `PHttp_*`/`PHttp_*Ex` 与 `PHttpResponse` 布局保持不变。
 
 ### `positron_image.dll`
 

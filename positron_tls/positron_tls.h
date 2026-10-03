@@ -24,6 +24,40 @@ extern "C" {
 #define PTLS_ABI_VERSION 2
 #define PTLS_FINGERPRINT_HEX_CAPACITY 65
 
+/* Additive, request-scoped transport observation used by higher-level
+ * protocols such as positron_http.  The existing connect entry points and
+ * PTLS_ABI_VERSION remain unchanged.  RESOLVING_NAME is emitted only for a
+ * DNS name (not an IPv4 literal); CONNECTING is emitted before the socket
+ * operation and TLS_HANDSHAKE before the mbedTLS handshake. */
+#define PTLS_CONNECT_OBSERVER_VERSION 1
+#define PTLS_CONNECT_OBSERVER_HOST_CAPACITY 256
+
+typedef enum PTlsConnectPhase {
+    PTLS_CONNECT_PHASE_RESOLVING_NAME = 1,
+    PTLS_CONNECT_PHASE_CONNECTING = 2,
+    PTLS_CONNECT_PHASE_TLS_HANDSHAKE = 3
+} PTlsConnectPhase;
+
+typedef struct PTlsConnectObserverEvent {
+    unsigned int size;
+    unsigned int version;
+    int          phase;
+    int          port;
+    char         host[PTLS_CONNECT_OBSERVER_HOST_CAPACITY];
+} PTlsConnectObserverEvent;
+
+typedef void (*PTlsConnectObserverCallback)(
+    const PTlsConnectObserverEvent* event,
+    void*                            user_data
+);
+
+typedef struct PTlsConnectObserver {
+    unsigned int                 size;
+    unsigned int                 version;
+    PTlsConnectObserverCallback callback;
+    void*                        user_data;
+} PTlsConnectObserver;
+
 #define PTLS_SERVER_REQUIRE_CLIENT_CERT 0x0001u
 
 /* Available before PTls_Init. Older DLLs do not export this symbol. */
@@ -55,6 +89,17 @@ PTLS_API HANDLE PTls_Connect(const char* host, int port);
  * `host`. On failure returns NULL; PTls_LastError contains a verify
  * info string. */
 PTLS_API HANDLE PTls_ConnectVerified(const char* host, int port);
+
+/* Additive observer variants.  The observer is copied for the duration of
+ * this synchronous call; event storage is borrowed until the callback
+ * returns.  It is an observation hook only: callbacks must not re-enter or
+ * clean up the TLS module.  NULL preserves the old unobserved behavior.
+ * TLS does not emit a terminal event; the caller observes connect failure
+ * from the return value and its existing PTls_LastError path. */
+PTLS_API HANDLE PTls_ConnectEx(const char* host, int port,
+                               const PTlsConnectObserver* observer);
+PTLS_API HANDLE PTls_ConnectVerifiedEx(const char* host, int port,
+                                       const PTlsConnectObserver* observer);
 
 /* Load a PEM certificate/private-key pair, or create an ECDSA P-256
  * self-signed identity when neither file exists. A one-file, malformed, or

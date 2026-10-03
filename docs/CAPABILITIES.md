@@ -110,6 +110,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | --- | --- | --- | --- | --- |
 | TLS 初始化、CA 和全局清理 | `PTls_Init`、`PTls_AddRootCA`、`PTls_Cleanup` | 已实现 | mbed TLS 配置固定；CA/初始化失败返回 false，不暴露内部对象 | TLS 组件 README、正式构建；新增证书策略须补离线证书 fixture |
 | 客户端连接、读写、关闭 | `PTls_Connect`、`PTls_ConnectVerified`、`PTls_Read/Write/Close` | 已实现 | 连接由 opaque handle 管理；读写长度使用公开 `int`，错误经 `PTls_LastError`/copy 读取 | TLS 设备/集成门；真实端点只作集成哨兵，不能替代离线错误分类 |
+| 客户端连接前阶段观察 | `PTls_ConnectEx`、`PTls_ConnectVerifiedEx` | 已实现但有界 | 仅同步报告真实的 DNS name、TCP connect、TLS handshake 开始阶段；IPv4 literal 不报告 DNS；不产生终态，不改变证书/hostname 校验；回调禁止重入/cleanup | 由 HTTP observer 转发并在 TEST3/4/999 Debug WM6 门验证；直接 TLS observer 仍只作为上层适配器接口 |
 | 对端身份和指纹 | `PTls_ConnectPeer`、`PTls_PeerFingerprint`、`PTls_IdentityFingerprint` | 已实现 | 指纹输出固定为 `PTLS_FINGERPRINT_HEX_CAPACITY`；缓冲不足不部分写出 | 证书/hostname/指纹合同；新增校验必须保持 fail-closed |
 | 服务端 identity/listener/accept | `PTls_IdentityLoadOrCreate`、`PTls_ServerListen/Accept` | 已实现 | identity/listener 由创建者关闭；listener flags 和参数非法时拒绝 | listener 资源上限和错误分类已有组件合同；新增并发策略需独立证据 |
 | DTLS、完整证书链策略和异步握手 | 当前没有稳定公共承诺 | 暂缓 | 不通过增加无界状态或绕过证书检查来“补齐” | 只有真实 WM6 消费者和可固定预算的协议合同出现后再立项 |
@@ -143,6 +144,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | --- | --- | --- | --- | --- |
 | reference 解析 | `PHttp_ResolveReference`、`PHttp_ResolveReferenceUrl` | 已实现 | host/port 入口保持兼容；URL 入口保留显式 scheme 和非标准端口，非法 scheme、端口、控制字符和截断安全失败 | TEST1064/1065/999 及 Core/应用 callback 复用证据 |
 | HTTP/HTTPS GET/POST、进度、最终 URL 和 response 释放 | `PHttp_Get[Ex]`、`PHttp_GetUrl[Ex]`、`PHttp_Post[Ex]`、`PHttp_PostUrl[Ex]`、`PHttp_ResponseGetFinalUrl`、`PHttp_FreeResponse` | 已实现 | response body 受 1 MiB 上限；Content-Length 截断、分块/读取/分配失败均丢弃 body 并返回 `status_code=0`；redirect 有界；URL 省略协议只默认 HTTPS，HTTPS→HTTP 降级被拒绝；旧 `PHttpResponse` 布局不变 | TEST3 的 final-URL 断言、TEST1064/1065/999、应用资源接线；继续用受控重定向和超限 fixture 检查一致错误 |
+| 请求网络阶段观察 | `PHttp_GetEx2`、`PHttp_GetUrlEx2`、`PHttp_PostEx2`、`PHttp_PostUrlEx2`；TLS 转发 `PTls_ConnectEx`/`PTls_ConnectVerifiedEx` | 已实现但有界 | request-scoped `size/version` observer；同步、固定 UTF-8 快照、一次终态；`received/total` 保持解码 body 语义，未知总量为 `-1`；WinInet DNS/代理/socket 不可分辨时以 `PHASE_MERGED` 报告，不伪造细分；回调禁止重入/cleanup，不暴露 header/body | TEST3/4/999 的 HTTPS GET/POST 阶段、非法 scheme fail-closed 与 WMDC Debug 设备门；重定向、受控 HTTP provider 失败和并发隔离继续按测试文档扩展 |
 | TLS 初始化和安全开关 | `PHttp_Init/Cleanup`、`PHttp_SetInsecure` | 已实现但默认安全 | insecure 只可由应用显式打开；证书/hostname 风险不能由 HTTP 静默吞掉 | TLS/HTTP 组合门；发布前继续审查旧 mbed TLS 风险 |
 | CORS、referrer、loading/fetch-priority、缓存策略 | 当前没有稳定公共策略入口 | 有界待扩展 | 必须先确定 Browser/HTTP/Core owner、请求代际、旧页保留和取消语义；不能只按标准名称添加字段 | 需要真实页面或消费者证明阻塞，并提供 loopback/offline fixture |
 | HTTP/2、WebSocket、完整代理和无限缓存 | 当前没有公共承诺 | 暂缓 | 超出 WM6 资源和当前请求模型 | 只有新的明确产品范围才重新评估 |

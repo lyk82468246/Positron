@@ -77,6 +77,11 @@ static BOOL              g_cacert_inited    = FALSE;
 
 static const char* PTLS_PERS = "positron_tls_v2";
 
+typedef struct ptls_connect_observer_state {
+    PTlsConnectObserverCallback callback;
+    void*                       user_data;
+} ptls_connect_observer_state;
+
 /* ---------------------------------------------------------------------- */
 /* Per-connection state                                                    */
 /* ---------------------------------------------------------------------- */
@@ -186,6 +191,62 @@ static void ptls_set_error_wsa(const char* fmt)
 PTLS_API const char* PTls_LastError(void)
 {
     return g_last_error;
+}
+
+static int ptls_is_ipv4_literal(const char* host)
+{
+    int parts;
+    int digits;
+    unsigned int value;
+    const unsigned char* p;
+
+    if (host == NULL || *host == '\0') {
+        return 0;
+    }
+    parts = 0;
+    digits = 0;
+    value = 0;
+    p = (const unsigned char*)host;
+    while (*p != '\0') {
+        if (*p >= '0' && *p <= '9') {
+            if (digits >= 3) {
+                return 0;
+            }
+            value = value * 10u + (unsigned int)(*p - '0');
+            if (value > 255u) {
+                return 0;
+            }
+            digits++;
+        } else if (*p == '.') {
+            if (digits == 0 || parts >= 3) {
+                return 0;
+            }
+            parts++;
+            digits = 0;
+            value = 0;
+        } else {
+            return 0;
+        }
+        p++;
+    }
+    return parts == 3 && digits > 0;
+}
+
+static void ptls_observer_emit(const ptls_connect_observer_state* observer,
+                               int phase, const char* host, int port)
+{
+    PTlsConnectObserverEvent event;
+
+    if (observer == NULL || observer->callback == NULL) {
+        return;
+    }
+    memset(&event, 0, sizeof(event));
+    event.size = sizeof(event);
+    event.version = PTLS_CONNECT_OBSERVER_VERSION;
+    event.phase = phase;
+    event.port = port;
+    ptls_safe_copy(event.host, sizeof(event.host), host);
+    observer->callback(&event, observer->user_data);
 }
 
 PTLS_API int PTls_CopyLastError(char* out_utf8, int out_capacity)
@@ -402,18 +463,25 @@ static int ptls_bio_recv(void* ctx, unsigned char* buf, size_t len)
 /* DNS + TCP connect (WinCE has no getaddrinfo on 5.2).                   */
 /* ---------------------------------------------------------------------- */
 
-static SOCKET ptls_tcp_connect(const char* host, int port)
+static SOCKET ptls_tcp_connect(const char* host, int port,
+                               const ptls_connect_observer_state* observer)
 {
     struct hostent*    he;
     struct sockaddr_in sa;
     SOCKET             s;
 
+    if (!ptls_is_ipv4_literal(host)) {
+        ptls_observer_emit(observer, PTLS_CONNECT_PHASE_RESOLVING_NAME,
+                           host, port);
+    }
     he = gethostbyname(host);
     if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
         ptls_set_error_wsa("gethostbyname failed");
         return INVALID_SOCKET;
     }
 
+    ptls_observer_emit(observer, PTLS_CONNECT_PHASE_CONNECTING,
+                       host, port);
     s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) {
         ptls_set_error_wsa("socket() failed");
@@ -1269,10 +1337,12 @@ PTLS_API BOOL PTls_IdentityFingerprint(HANDLE hIdentity,
 /* ---------------------------------------------------------------------- */
 
 static PTlsConn* tls_connect_internal(const char* host, int port,
-                                      int verify_mode)
+                                      int verify_mode,
+                                      const PTlsConnectObserver* observer)
 {
     PTlsConn* c;
     int       rc;
+    ptls_connect_observer_state observer_state;
 
     if (!g_initialized) {
         ptls_set_error("PTls_Init not called", 0);
@@ -1281,6 +1351,18 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
     if (host == NULL || *host == '\0') {
         ptls_set_error("host is null/empty", 0);
         return NULL;
+    }
+    observer_state.callback = NULL;
+    observer_state.user_data = NULL;
+    if (observer != NULL) {
+        if (observer->size < sizeof(PTlsConnectObserver) ||
+                observer->version != PTLS_CONNECT_OBSERVER_VERSION ||
+                observer->callback == NULL) {
+            ptls_set_error("invalid connect observer", 0);
+            return NULL;
+        }
+        observer_state.callback = observer->callback;
+        observer_state.user_data = observer->user_data;
     }
 
     c = (PTlsConn*)LocalAlloc(LPTR, sizeof(PTlsConn));
@@ -1333,7 +1415,7 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
         goto fail;
     }
 
-    c->sock = ptls_tcp_connect(host, port);
+    c->sock = ptls_tcp_connect(host, port, &observer_state);
     if (c->sock == INVALID_SOCKET) {
         goto fail;
     }
@@ -1341,6 +1423,8 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
     mbedtls_ssl_set_bio(&c->ssl, c, ptls_bio_send, ptls_bio_recv, NULL);
 
     /* Drive the handshake to completion (blocking socket). */
+    ptls_observer_emit(&observer_state, PTLS_CONNECT_PHASE_TLS_HANDSHAKE,
+                       host, port);
     while ((rc = mbedtls_ssl_handshake(&c->ssl)) != 0) {
         if (rc != MBEDTLS_ERR_SSL_WANT_READ &&
             rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
@@ -1960,14 +2044,28 @@ PTLS_API void PTls_ServerClose(HANDLE hListener)
 
 PTLS_API HANDLE PTls_Connect(const char* host, int port)
 {
-    return (HANDLE)tls_connect_internal(host, port,
-                                        MBEDTLS_SSL_VERIFY_NONE);
+    return PTls_ConnectEx(host, port, NULL);
 }
 
 PTLS_API HANDLE PTls_ConnectVerified(const char* host, int port)
 {
+    return PTls_ConnectVerifiedEx(host, port, NULL);
+}
+
+PTLS_API HANDLE PTls_ConnectEx(const char* host, int port,
+                               const PTlsConnectObserver* observer)
+{
     return (HANDLE)tls_connect_internal(host, port,
-                                        MBEDTLS_SSL_VERIFY_REQUIRED);
+                                        MBEDTLS_SSL_VERIFY_NONE,
+                                        observer);
+}
+
+PTLS_API HANDLE PTls_ConnectVerifiedEx(const char* host, int port,
+                                       const PTlsConnectObserver* observer)
+{
+    return (HANDLE)tls_connect_internal(host, port,
+                                        MBEDTLS_SSL_VERIFY_REQUIRED,
+                                        observer);
 }
 
 /* ---------------------------------------------------------------------- */

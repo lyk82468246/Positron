@@ -69,8 +69,63 @@ if (PHttp_ResolveReference("api.example.com", 443, "/v1/page.html",
 
 需要响应进度时使用 URL-aware 的 `PHttp_GetUrlEx` / `PHttp_PostUrlEx`；旧的 `PHttp_GetEx` / `PHttp_PostEx` 只为 ABI 兼容保留。回调同步发生在请求线程，应保持短小，不能在回调中调用 `PHttp_Cleanup`。POST 的 `body` 是原始字节，`body_len` 为负数时按 NUL 结尾字符串处理，`Content-Type` 由调用者通过 headers 设置。响应对象无论 HTTP 状态还是传输失败都应由 `PHttp_FreeResponse` 释放；响应体读取、Content-Length 截断、分块解码、分配或 1 MiB 容量失败时，body 会被丢弃，`status_code == 0` 且 `error_msg` 非空。应用不应把部分 body 当作成功。
 
+### 请求阶段观察（`Ex2`）
+
+需要给标题栏或诊断面板显示真实网络阶段时，使用 `PHttp_GetEx2`、
+`PHttp_GetUrlEx2`、`PHttp_PostEx2` 或 `PHttp_PostUrlEx2`，并传入一个
+`PHttpObserver`。旧入口和 `NULL` observer 路径保持原有行为；observer 是每次请求的
+配置，不是进程级全局对象，也不改变取消、重试、超时或导航策略。
+
+```c
+static void observe_http(const PHttpObserverEvent* event, void* user_data)
+{
+    (void)user_data;
+    /* event->phase / event->status_code / event->received 可立即复制；
+       event 及其中的字符串只借用到本次回调返回。 */
+}
+
+PHttpObserver observer;
+PHttpResponse* response;
+
+memset(&observer, 0, sizeof(observer));
+observer.size = sizeof(observer);
+observer.version = PHTTP_OBSERVER_VERSION;
+observer.callback = observe_http;
+observer.user_data = NULL;
+response = PHttp_GetUrlEx2("https://example.com/", NULL, NULL, NULL,
+                           &observer);
+```
+
+事件的 `scheme`、`host`、`port` 和 `redirect_hop` 表示当前实际 hop；所有文本都是
+UTF-8 的固定容量快照。`status_code` 在响应头解析前为 `-1`，`received`/`total` 只在
+`RECEIVING_BODY` 中有进度意义，`total == -1` 表示 chunked 或 close-delimited 的未知总量。
+响应体进度是解码后的字节数，与旧 `PHttpProgressCallback` 相同。
+
+| 阶段 | 语义 |
+| --- | --- |
+| `RESOLVING_NAME` | TLS 适配器开始解析 DNS 名称；IPv4 数值地址不会伪报此阶段。 |
+| `CONNECTING` | 开始服务器连接。WM6 WinInet 将 DNS、代理选择和 socket 边界隐藏时只报告一次，并设置 `PHTTP_OBSERVER_FLAG_PHASE_MERGED`。 |
+| `TLS_HANDSHAKE` | HTTPS socket 已连接，开始现有 mbedTLS 握手；证书链和 hostname 校验规则不变。HTTP 不产生此阶段。 |
+| `SENDING_REQUEST` | 请求头以及可选 POST body 进入发送操作。 |
+| `WAITING_RESPONSE` | 发送操作完成后等待响应；底层 provider 可能已合并部分等待。 |
+| `RECEIVING_HEADERS` | 开始或完成响应头处理；可能先有未知状态的一次事件，再有带状态码的一次事件。 |
+| `RECEIVING_BODY` | 读取并解码响应体；事件可以重复。 |
+| `REDIRECTING` | 已接受当前 GET 的 Location，下一事件会属于新的 hop；HTTPS 降级仍拒绝。 |
+| `COMPLETE` | HTTP 传输和 body 处理完成；404/500 等非 2xx 仍是 COMPLETE，由消费者解释状态码。 |
+| `FAILED` | 传输、解析、容量、TLS 或重定向策略失败；`failure_phase` 是最近实际阶段，错误码和短消息为有界快照。 |
+
+事件同步发生在调用线程，回调不得重入 HTTP/TLS、调用 `PHttp_Cleanup`、释放事件或把观察当作取消。
+有效调用在函数返回前只产生一次终态（`COMPLETE` 或 `FAILED`），返回后不再回调；并发请求各自携带
+自己的 `user_data`，不会串线。未能从 WinInet 分辨 DNS/TCP 的地方会明确合并，不通过延迟或错误字符串
+推测阶段，也不暴露请求头、body 或敏感数据。
+
 默认校验证书链和主机名。`PHttp_SetInsecure(TRUE)` 会对后续 HTTPS 请求关闭验证，只适合自签名诊断，不能作为生产默认值。当前连接采用短连接，响应体有设备侧上限；具体限制以 `positron_http.h` 为准。显式 `http://` 请求不经过 TLS，也不会因为端口不是 80 而被错误送入 TLS。
 
 ## 构建与验证
 
 从仓库根目录运行 `scripts\build.bat Debug build`。修改 TLS/HTTP 边界后同时检查 `positron_tls` 的部署、错误路径和设备网络门；不要直接把 WinInet 或 Mbed TLS 对象暴露给业务项目。
+
+带 observer 的新版 `positron_http.dll` 依赖同时导出 `PTls_ConnectEx`/
+`PTls_ConnectVerifiedEx` 的匹配 `positron_tls.dll`；部署时必须从同一 Debug 或 Release 构建目录成对复制
+这两个 DLL。只替换 HTTP DLL 而保留旧 TLS DLL 可能在加载阶段缺少导入符号。只使用旧 HTTP 入口的旧应用
+仍可继续调用旧 `PHttp_*` ABI，但发布包不应混用不同构建批次的 DLL。

@@ -404,4 +404,23 @@ helper 的成功摘要，不用固定短延迟推断进程已经退出，并在�
 
 WM6 镜像时间经常过旧。证书测试前校准时间，并把失败区分为 DNS、TCP、TLS handshake、证书/hostname、HTTP status、redirect、资源获取、页面解析和最终提交。离线 fixture 用于稳定合同，真实端点只作集成哨兵；暂时不可达不能通过放宽离线断言解决。
 
+### HTTP 阶段 observer 回归
+
+需要向消费者展示网络加载状态时，测试 `PHttp_GetEx2`、`PHttp_GetUrlEx2`、
+`PHttp_PostEx2` 或 `PHttp_PostUrlEx2` 的 request-scoped `PHttpObserver`，而不是从
+错误字符串或计时器猜测阶段。TEST3 的 HTTPS GET 覆盖域名解析、TCP connect、TLS handshake、
+发送、等待、响应头、响应体和唯一 `COMPLETE`；TEST4 的 HTTPS POST 另外覆盖请求 body 的发送。
+回调断言 `size/version`、当前 hop、status 和 decoded body progress，并确认函数返回后不再收到事件。
+
+阶段观察的边界必须在结果中保留：数值 IPv4 不得产生 `RESOLVING_NAME`；WinInet 明文路径可以只
+产生带 `PHTTP_OBSERVER_FLAG_PHASE_MERGED` 的连接/等待事件，因为其 DNS、代理和 socket 边界不公开；
+TLS 证书或 hostname 失败必须是 `FAILED`，而 HTTP 404/500 等已完成传输的非 2xx 必须是 `COMPLETE`。
+重定向应检查 `REDIRECTING` 后 hop 递增、目标 scheme/host/port 更新和新一轮实际阶段；已知长度、未知
+长度、读写失败、非法 URL、容量失败和 NULL observer 的兼容路径需要离线或受控端点覆盖。并发请求必须
+各自验证 `user_data`、阶段序列和唯一终态，禁止跨请求共享 observer 全局状态。
+
+TLS 的 `PTls_ConnectEx`/`PTls_ConnectVerifiedEx` 只验证连接前的三个真实开始通知，不产生终态；HTTP
+测试必须继续检查现有 `PTls_LastError`、证书链/hostname 校验、响应 body 释放和旧入口 ABI。设备门部署
+observer 版本时，`positron_http.dll` 和 `positron_tls.dll` 必须来自同一 Debug/Release 构建目录。
+
 候选写入当前 handoff 前必须满足：范围、ABI 和所有权清楚；C89 回归、仓库审计和 ARMV4I 正式构建通过；staging 来自同一批构建；风险相称的设备日志完整通过；必要人工验收已完成或明确进入允许累计清单；handoff、限制、路线图和稳定文档各自只更新自身职责。

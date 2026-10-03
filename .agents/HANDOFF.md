@@ -16,6 +16,26 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
+### EXE 加载标题候选：等待正式构建与设备门
+
+新增 EXE 私有 AppLoading：原生标题最前面按 180 ms 循环 ASCII `| / - \`，后接双语请求/
+正文接收/HTML/脚本获取及执行/样式/图片/排版/绘制阶段。用户明确接受比例字体位移，不用
+全角缺字、不改系统字体。worker 只写自身原子展示字段，UI timer 只显示当前 generation，
+不触发 layout 或脚本 checkpoint；成功首次绘制后恢复文档标题，失败沿原快照回滚。
+Debug 自检与独立 fragment-pending 夹具已加入前缀、容量、正文进度、stale 隔离、无布局
+更新和成功标题恢复断言；尚未在设备运行。HTTP/TLS request-scoped observer 已在公共 DLL
+中完成，但本轮不改 `positron_app`，加载标题候选仍未消费该接口。
+
+C89 与仓库审计通过。当前 HTTP/TLS/test_host Debug 增量构建成功，定向
+`3,4,999` 设备门在用户当前 WMDC RAPI 会话中通过；证据位于
+`tmp/device-runs/20261003-102633-http-observer/`，外置 Temp 空间预检、模块审计、日志
+完整回收和 crash_check 均 PASS，匹配的 `positron_http.dll`/`positron_tls.dll` 已在目标上运行。
+加载标题候选本身仍未在设备运行。Release 的产品 DLL/EXE 均编译成功，但包含
+`positron_cab` 的整套解决方案在 CabWiz 创建数据文件时失败；这是现有打包环境边界，未把它
+误归因于 observer 源码，也未修改 CAB 工程。
+本批文件仅公共 HTTP/TLS、test_host 和对应稳定/交接文档；`positron_app` 及其既有未提交改动
+保留不动。设备门生成的 staging、截图和日志仍只在 `tmp/`。
+
 ### EXE 系统信息证据与暂缓边界
 
 About 系统章节使用中性标签、GetVersionEx 完整内核版本与实际平台/OEM 名称；只读
@@ -107,10 +127,10 @@ Core 路径匹配、双空间预检和 crash_check=PASS，完整回收日志后�
 module-audit 与 EXE 门前复审均 holders=0 unavailable=0。`app-history/positron-debug.log`
 记录 fragment-pending/history/pointer/system-info/internal-pages 自检 OK、newtab history=1；
 EXE/九个 DLL SHA256 回读匹配 10/10、crash_check=PASS。设备为 320×320、128 DPI
-Microsoft DeviceEmulator；PID 3190149122 留在
+Microsoft DeviceEmulator；该包原 PID 3190149122 已由用户正常退出，包保留在
 `\Storage Card\Temp\Positron-device-gate\app-fragment-pending-20261003-093754\positron.exe`。
 未强杀、重置、回退内置存储或修改 WMDC。真实 A/B 加载中片段点击、C 替换与网络失败回滚
-仍待人工复核，后续编译/设备门须先正常退出此应用。
+仍待人工复核；新部署前重新检查 guest holder，不沿用先前运行状态。
 
 早期 scroll/diagnostic 两包的 phase=7 legacy 锚点失败仍保留；夹具 inline anchor 没有可用
 box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸载不派发与刷新 identity
@@ -311,8 +331,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 与当前限制已复核：本轮只修正同文档 fragment 的 EXE 候选调度和回滚 UI，现有
-片段 URL 公共接口与人工矩阵仍有效，无需修改路线图或新增 DLL 候选。系统信息保留 AKU
+ROADMAP 与当前限制已复核：EXE 加载标题加入未验收候选，HTTP/TLS transport 细分的公开
+request-scoped observer 已完成，应用接线仍留在后续候选；同文档 fragment、片段 URL 公共接口
+与人工矩阵仍有效。系统信息保留 AKU
 与可选 OEM 字段，进一步 OS 产品/发行版本识别继续暂缓，营销版本不保证识别的限制不变。
 Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC 初始夹具、解码守卫和 EOF 重播候选，保留其他
 格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
@@ -320,8 +341,10 @@ Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/A
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步先人工复核当前包：A 显示时地址栏加载 B，点击 A 的页内链接仍滚动且 B 随后提交；
-点击外链 C 则替换 B；B 失败保持 A 新片段地址和原标题。不继续 OS 产品/发行版本取证。
+EXE 下一步待 DLL 源码收敛后串行正式 Debug/Release 构建，完整包部署并运行 app_history_gate，
+确认 loading-title 与相邻自检；未通过前不提交候选。应用如接入 observer，必须按公开合同消费
+阶段而不猜测 DNS/TLS 状态。随后人工复核前缀动画、窄标题截断和真实网络：A 显示时加载 B，A 页内跳转
+仍滚动且 B 随后提交；外链 C 替换 B；B 失败保持 A 新片段地址和原标题。不继续 OS 版本取证。
 随后复核内容拖动/点按、native 拖选、旋转及地址栏回车，
 并继续同文档/跨页滚动恢复矩阵；随后独立
 修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。

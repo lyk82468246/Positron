@@ -36,6 +36,59 @@ extern "C" {
  * by PHttp_ResponseGetFinalUrl. */
 #define PHTTP_URL_MAX 2048
 
+/* Request-scoped network phase observation.  This is additive to the legacy
+ * progress callback and does not change PHttpResponse.  All text fields are
+ * UTF-8, NUL-terminated, fixed-capacity snapshots; no request headers or
+ * body bytes are exposed. */
+#define PHTTP_OBSERVER_VERSION 1
+#define PHTTP_OBSERVER_SCHEME_CAPACITY 8
+#define PHTTP_OBSERVER_HOST_CAPACITY 256
+#define PHTTP_OBSERVER_ERROR_CODE_CAPACITY 32
+#define PHTTP_OBSERVER_ERROR_MESSAGE_CAPACITY 256
+
+#define PHTTP_OBSERVER_FLAG_PHASE_MERGED 0x00000001u
+
+typedef enum PHttpObserverPhase {
+    PHTTP_PHASE_NONE = 0,
+    PHTTP_PHASE_RESOLVING_NAME = 1,
+    PHTTP_PHASE_CONNECTING = 2,
+    PHTTP_PHASE_TLS_HANDSHAKE = 3,
+    PHTTP_PHASE_SENDING_REQUEST = 4,
+    PHTTP_PHASE_WAITING_RESPONSE = 5,
+    PHTTP_PHASE_RECEIVING_HEADERS = 6,
+    PHTTP_PHASE_RECEIVING_BODY = 7,
+    PHTTP_PHASE_REDIRECTING = 8,
+    PHTTP_PHASE_COMPLETE = 9,
+    PHTTP_PHASE_FAILED = 10
+} PHttpObserverPhase;
+
+typedef struct PHttpObserverEvent {
+    unsigned int size;
+    unsigned int version;
+    int          phase;         /* PHttpObserverPhase. */
+    int          failure_phase; /* terminal FAILED phase, else NONE. */
+    int          redirect_hop;  /* initial request is hop 0. */
+    int          status_code;   /* known HTTP status, else -1. */
+    int          received;     /* decoded body bytes, else -1. */
+    int          total;         /* decoded total, or -1 if unknown. */
+    int          port;          /* current target port, else -1. */
+    unsigned int flags;
+    char         scheme[PHTTP_OBSERVER_SCHEME_CAPACITY];
+    char         host[PHTTP_OBSERVER_HOST_CAPACITY];
+    char         error_code[PHTTP_OBSERVER_ERROR_CODE_CAPACITY];
+    char         error_message[PHTTP_OBSERVER_ERROR_MESSAGE_CAPACITY];
+} PHttpObserverEvent;
+
+typedef void (*PHttpObserverCallback)(const PHttpObserverEvent* event,
+                                      void* user_data);
+
+typedef struct PHttpObserver {
+    unsigned int         size;
+    unsigned int         version;
+    PHttpObserverCallback callback;
+    void*                user_data;
+} PHttpObserver;
+
 /* Response object returned by PHttp_Get / PHttp_Post.
  * Always free with PHttp_FreeResponse. */
 typedef struct PHttpResponse {
@@ -146,6 +199,30 @@ PHTTP_API PHttpResponse* PHttp_GetEx(
     void*                 user_data
 );
 
+/* Additive observer variants.  The old progress callback remains unchanged.
+ * Pass NULL to keep the request unobserved.  A non-NULL observer must have
+ * size >= sizeof(PHttpObserver), the current version, and a callback.
+ *
+ * Events are synchronous on the request thread.  The event and its fixed
+ * strings are borrowed until the callback returns; user_data is the exact
+ * pointer supplied in the observer.  Callbacks must not re-enter HTTP/TLS,
+ * call PHttp_Cleanup, free the event, or treat observation as cancellation.
+ * A valid request produces exactly one COMPLETE or FAILED event before the
+ * function returns.  COMPLETE means transport/body processing finished; it
+ * does not imply a 2xx status.  FAILED reports the last actual phase and a
+ * bounded error snapshot.  RECEIVING_BODY may repeat and retains the legacy
+ * decoded received/total meaning.  Redirects emit REDIRECTING and restart
+ * the target/phase sequence at the next hop. */
+PHTTP_API PHttpResponse* PHttp_GetEx2(
+    const char*           host,
+    int                   port,
+    const char*           path,
+    const char**          headers,
+    PHttpProgressCallback progress,
+    void*                 user_data,
+    const PHttpObserver*  observer
+);
+
 /* URL-aware GET.  The URL may be absolute http(s), or a scheme-less host
  * reference which defaults to HTTPS.  Omitted ports use 80 for http and 443
  * for https; explicit ports are preserved.  HTTPS failures are not retried
@@ -160,6 +237,14 @@ PHTTP_API PHttpResponse* PHttp_GetUrlEx(
     const char**          headers,
     PHttpProgressCallback progress,
     void*                 user_data
+);
+
+PHTTP_API PHttpResponse* PHttp_GetUrlEx2(
+    const char*           url,
+    const char**          headers,
+    PHttpProgressCallback progress,
+    void*                 user_data,
+    const PHttpObserver*  observer
 );
 
 /*
@@ -194,6 +279,18 @@ PHTTP_API PHttpResponse* PHttp_PostEx(
     void*                 user_data
 );
 
+PHTTP_API PHttpResponse* PHttp_PostEx2(
+    const char*           host,
+    int                   port,
+    const char*           path,
+    const char**          headers,
+    const char*           body,
+    int                   body_len,
+    PHttpProgressCallback progress,
+    void*                 user_data,
+    const PHttpObserver*  observer
+);
+
 /* URL-aware POST.  Scheme, default port, explicit port and redirect policy
  * follow the URL-aware GET contract. */
 PHTTP_API PHttpResponse* PHttp_PostUrl(
@@ -210,6 +307,16 @@ PHTTP_API PHttpResponse* PHttp_PostUrlEx(
     int                   body_len,
     PHttpProgressCallback progress,
     void*                 user_data
+);
+
+PHTTP_API PHttpResponse* PHttp_PostUrlEx2(
+    const char*           url,
+    const char**          headers,
+    const char*           body,
+    int                   body_len,
+    PHttpProgressCallback progress,
+    void*                 user_data,
+    const PHttpObserver*  observer
 );
 
 /* Copy the final absolute URL reached by a response, including the last

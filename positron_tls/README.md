@@ -50,6 +50,27 @@ PTls_Cleanup();
 
 `PTls_AddRootCA` 接受 NUL 结尾 PEM，并修改进程级 CA 链；必须在并发连接开始前调用。该 DLL 提供 TLS 字节流，不负责 HTTP 解析、重定向、cookie、页面导航或业务授权。
 
+### 连接阶段观察
+
+HTTP 等上层协议可以选择新增的 `PTls_ConnectEx` 或
+`PTls_ConnectVerifiedEx`，传入有 `size`/`version` 的
+`PTlsConnectObserver`。旧的 `PTls_Connect` 和
+`PTls_ConnectVerified` ABI 不变，传入 `NULL` observer 也保持未观察的旧路径。
+观察回调同步运行在连接线程；事件及其中的 UTF-8 host 快照只借用到回调返回，
+回调不得重入 TLS 或调用 `PTls_Cleanup`。
+
+TLS 只报告它能由实际 socket/handshake 调用证明的三个开始阶段：
+
+- `PTLS_CONNECT_PHASE_RESOLVING_NAME`：开始解析 DNS 名称；严格的 IPv4 数值地址不报告此阶段；
+- `PTLS_CONNECT_PHASE_CONNECTING`：开始 TCP socket/connect；
+- `PTLS_CONNECT_PHASE_TLS_HANDSHAKE`：socket 成功后开始 mbedTLS 握手。
+
+TLS observer 没有终态事件；连接返回值和既有 `PTls_LastError`/`PTls_CopyLastError`
+仍是成功/失败依据。`positron_http.dll` 将这些事件转换为其 HTTP observer 阶段，并继续负责
+HTTP 的发送、响应头、body、重定向和终态。证书链与 hostname 校验、超时和错误处理完全不因观察
+接口改变。由于新增 HTTP 入口静态导入上述 Ex 符号，发布带 observer 的 HTTP 包时必须从同一
+Debug/Release 构建目录成对部署匹配的 `positron_http.dll` 与 `positron_tls.dll`。
+
 ## 持久 peer 身份
 
 `PTls_IdentityLoadOrCreate(cert_path, key_path)` 的规则是确定的：

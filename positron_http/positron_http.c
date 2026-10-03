@@ -30,6 +30,179 @@
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
 
+typedef struct phttp_observer_state {
+    PHttpObserverCallback callback;
+    void*                 user_data;
+    int                   terminal;
+    int                   last_phase;
+    int                   status_code;
+    int                   last_received;
+    int                   last_total;
+    int                   redirect_hop;
+    int                   port;
+    unsigned int          flags;
+    char                  scheme[PHTTP_OBSERVER_SCHEME_CAPACITY];
+    char                  host[PHTTP_OBSERVER_HOST_CAPACITY];
+    char                  failure_code[PHTTP_OBSERVER_ERROR_CODE_CAPACITY];
+} phttp_observer_state;
+
+static void phttp_observer_copy(char* destination, int capacity,
+                                const char* source)
+{
+    int i;
+
+    if (destination == NULL || capacity <= 0) {
+        return;
+    }
+    if (source == NULL) {
+        destination[0] = '\0';
+        return;
+    }
+    for (i = 0; i + 1 < capacity && source[i] != '\0'; i++) {
+        destination[i] = source[i];
+    }
+    destination[i] = '\0';
+}
+
+static int phttp_observer_init(phttp_observer_state* state,
+                               const PHttpObserver* observer)
+{
+    memset(state, 0, sizeof(*state));
+    state->status_code = -1;
+    state->last_received = -1;
+    state->last_total = -1;
+    state->port = -1;
+    if (observer == NULL) {
+        return 1;
+    }
+    if (observer->size < sizeof(PHttpObserver) ||
+            observer->version != PHTTP_OBSERVER_VERSION ||
+            observer->callback == NULL) {
+        return 0;
+    }
+    state->callback = observer->callback;
+    state->user_data = observer->user_data;
+    return 1;
+}
+
+static void phttp_observer_set_target(phttp_observer_state* state,
+                                      int scheme, const char* host, int port,
+                                      int redirect_hop)
+{
+    if (state == NULL) {
+        return;
+    }
+    state->scheme[0] = '\0';
+    if (scheme == PHTTP_SCHEME_HTTP) {
+        phttp_observer_copy(state->scheme, sizeof(state->scheme), "http");
+    } else if (scheme == PHTTP_SCHEME_HTTPS) {
+        phttp_observer_copy(state->scheme, sizeof(state->scheme), "https");
+    }
+    phttp_observer_copy(state->host, sizeof(state->host), host);
+    state->port = port;
+    state->redirect_hop = redirect_hop;
+    state->status_code = -1;
+    state->last_phase = PHTTP_PHASE_NONE;
+    state->last_received = -1;
+    state->last_total = -1;
+    state->flags = 0;
+}
+
+static void phttp_observer_emit(phttp_observer_state* state, int phase,
+                                int received, int total,
+                                unsigned int flags)
+{
+    PHttpObserverEvent event;
+
+    if (state == NULL || state->callback == NULL || state->terminal) {
+        return;
+    }
+    state->last_phase = phase;
+    state->last_received = received;
+    state->last_total = total;
+    state->flags = flags;
+    memset(&event, 0, sizeof(event));
+    event.size = sizeof(event);
+    event.version = PHTTP_OBSERVER_VERSION;
+    event.phase = phase;
+    event.failure_phase = PHTTP_PHASE_NONE;
+    event.redirect_hop = state->redirect_hop;
+    event.status_code = state->status_code;
+    event.received = received;
+    event.total = total;
+    event.port = state->port;
+    event.flags = flags;
+    phttp_observer_copy(event.scheme, sizeof(event.scheme), state->scheme);
+    phttp_observer_copy(event.host, sizeof(event.host), state->host);
+    state->callback(&event, state->user_data);
+}
+
+static void phttp_observer_note_failure(phttp_observer_state* state,
+                                         const char* code)
+{
+    if (state == NULL || state->failure_code[0] != '\0') {
+        return;
+    }
+    phttp_observer_copy(state->failure_code, sizeof(state->failure_code),
+                        code != NULL ? code : "HTTP_ERROR");
+}
+
+static void phttp_observer_terminal(phttp_observer_state* state, int failed,
+                                    const char* message)
+{
+    PHttpObserverEvent event;
+
+    if (state == NULL || state->callback == NULL || state->terminal) {
+        return;
+    }
+    state->terminal = 1;
+    memset(&event, 0, sizeof(event));
+    event.size = sizeof(event);
+    event.version = PHTTP_OBSERVER_VERSION;
+    event.phase = failed ? PHTTP_PHASE_FAILED : PHTTP_PHASE_COMPLETE;
+    event.failure_phase = failed ? state->last_phase : PHTTP_PHASE_NONE;
+    event.redirect_hop = state->redirect_hop;
+    event.status_code = state->status_code;
+    event.received = state->last_received;
+    event.total = state->last_total;
+    event.port = state->port;
+    event.flags = state->flags;
+    phttp_observer_copy(event.scheme, sizeof(event.scheme), state->scheme);
+    phttp_observer_copy(event.host, sizeof(event.host), state->host);
+    if (failed) {
+        phttp_observer_copy(event.error_code,
+                            sizeof(event.error_code),
+                            state->failure_code[0] != '\0' ?
+                            state->failure_code : "HTTP_ERROR");
+        phttp_observer_copy(event.error_message,
+                            sizeof(event.error_message), message);
+    }
+    state->callback(&event, state->user_data);
+}
+
+static void phttp_tls_observer_callback(const PTlsConnectObserverEvent* event,
+                                        void* user_data)
+{
+    phttp_observer_state* state;
+    int phase;
+
+    state = (phttp_observer_state*)user_data;
+    if (event == NULL || state == NULL) {
+        return;
+    }
+    phase = PHTTP_PHASE_NONE;
+    if (event->phase == PTLS_CONNECT_PHASE_RESOLVING_NAME) {
+        phase = PHTTP_PHASE_RESOLVING_NAME;
+    } else if (event->phase == PTLS_CONNECT_PHASE_CONNECTING) {
+        phase = PHTTP_PHASE_CONNECTING;
+    } else if (event->phase == PTLS_CONNECT_PHASE_TLS_HANDSHAKE) {
+        phase = PHTTP_PHASE_TLS_HANDSHAKE;
+    }
+    if (phase != PHTTP_PHASE_NONE) {
+        phttp_observer_emit(state, phase, -1, -1, 0);
+    }
+}
+
 static void report_progress(PHttpProgressCallback progress, void* user_data,
                             int received, int total)
 {
@@ -503,7 +676,8 @@ static int decode_chunked(HANDLE conn,
                           const char* prefix, int prefix_len,
                           bytebuf* out_body,
                           PHttpProgressCallback progress,
-                          void* user_data)
+                          void* user_data,
+                          phttp_observer_state* observer)
 {
     bytebuf raw;
     size_t  pos;
@@ -627,6 +801,8 @@ static int decode_chunked(HANDLE conn,
             bb_free(&raw);
             return n;
         }
+        phttp_observer_emit(observer, PHTTP_PHASE_RECEIVING_BODY,
+                            (int)out_body->len, -1, 0);
         report_progress(progress, user_data, (int)out_body->len, -1);
         pos += chunk_size + 2;   /* skip data + trailing \r\n */
     }
@@ -1268,7 +1444,8 @@ static int wininet_fetch(const char* method, const char* host, int port,
                          const char* body, int body_len,
                          int* out_status, char* out_loc, int loc_cap,
                          bytebuf* outbody, PHttpResponse* resp,
-                         PHttpProgressCallback progress, void* user_data)
+                         PHttpProgressCallback progress, void* user_data,
+                         phttp_observer_state* observer)
 {
     HINTERNET hInet = NULL;
     HINTERNET hConn = NULL;
@@ -1294,9 +1471,15 @@ static int wininet_fetch(const char* method, const char* host, int port,
                           NULL, NULL, 0);
     if (hInet == NULL) {
         resp_set_error(resp, "InternetOpen failed");
+        phttp_observer_note_failure(observer, "WININET");
         goto wdone;
     }
 
+    /* WinInet hides DNS, proxy selection and the socket connect boundary.
+     * Report the single observable transport operation and mark it merged;
+     * never claim that a DNS or TCP sub-stage completed separately. */
+    phttp_observer_emit(observer, PHTTP_PHASE_CONNECTING, -1, -1,
+                        PHTTP_OBSERVER_FLAG_PHASE_MERGED);
     hConn = InternetConnectW(hInet, whost, (INTERNET_PORT)port, NULL, NULL,
                              INTERNET_SERVICE_HTTP, 0, 0);
     if (hConn == NULL) {
@@ -1305,6 +1488,7 @@ static int wininet_fetch(const char* method, const char* host, int port,
                   host, port, (unsigned long)GetLastError());
         eb[sizeof(eb) - 1] = '\0';
         resp_set_error(resp, eb);
+        phttp_observer_note_failure(observer, "WININET");
         goto wdone;
     }
 
@@ -1313,6 +1497,7 @@ static int wininet_fetch(const char* method, const char* host, int port,
     hReq = HttpOpenRequestW(hConn, wmethod, wpath, NULL, NULL, NULL, flags, 0);
     if (hReq == NULL) {
         resp_set_error(resp, "HttpOpenRequest failed");
+        phttp_observer_note_failure(observer, "WININET");
         goto wdone;
     }
 
@@ -1326,6 +1511,7 @@ static int wininet_fetch(const char* method, const char* host, int port,
         }
     }
 
+    phttp_observer_emit(observer, PHTTP_PHASE_SENDING_REQUEST, -1, -1, 0);
     if (!HttpSendRequestW(hReq, NULL, 0, (LPVOID)body,
                           (DWORD)(body != NULL ? body_len : 0))) {
         char eb[160];
@@ -1333,18 +1519,29 @@ static int wininet_fetch(const char* method, const char* host, int port,
                   host, port, (unsigned long)GetLastError());
         eb[sizeof(eb) - 1] = '\0';
         resp_set_error(resp, eb);
+        phttp_observer_note_failure(observer, "WININET");
         goto wdone;
     }
 
+    /* The WinInet send call may have waited for the first response bytes;
+     * expose that provider boundary explicitly rather than inventing a
+     * finer-grained socket event. */
+    phttp_observer_emit(observer, PHTTP_PHASE_WAITING_RESPONSE, -1, -1,
+                        PHTTP_OBSERVER_FLAG_PHASE_MERGED);
+    phttp_observer_emit(observer, PHTTP_PHASE_RECEIVING_HEADERS, -1, -1, 0);
     code = 0;
     sz = sizeof(code);
     if (!HttpQueryInfoW(hReq,
             HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
             &code, &sz, NULL)) {
         resp_set_error(resp, "HttpQueryInfo status failed");
+        phttp_observer_note_failure(observer, "HTTP_HEADERS");
         goto wdone;
     }
     *out_status = (int)code;
+    if (observer != NULL) {
+        observer->status_code = (int)code;
+    }
 
     {
         WCHAR wloc[1024];
@@ -1368,8 +1565,10 @@ static int wininet_fetch(const char* method, const char* host, int port,
     if (total > MAX_RESP_BODY) {
         *out_status = 0;
         resp_set_error(resp, "response body too large");
+        phttp_observer_note_failure(observer, "BODY_LIMIT");
         goto wdone;
     }
+    phttp_observer_emit(observer, PHTTP_PHASE_RECEIVING_BODY, 0, total, 0);
     report_progress(progress, user_data, 0, total);
 
     {
@@ -1379,6 +1578,7 @@ static int wininet_fetch(const char* method, const char* host, int port,
             if (!InternetReadFile(hReq, tmp, sizeof(tmp), &got)) {
                 *out_status = 0;
                 resp_set_error(resp, "response body read failed");
+                phttp_observer_note_failure(observer, "HTTP_BODY");
                 goto wdone;
             }
             if (got == 0) {
@@ -1393,9 +1593,14 @@ static int wininet_fetch(const char* method, const char* host, int port,
                             PHTTP_BODY_TOO_LARGE ?
                             "response body too large" :
                             "response body allocation failed");
+                    phttp_observer_note_failure(observer,
+                            append_result == PHTTP_BODY_TOO_LARGE ?
+                            "BODY_LIMIT" : "MEMORY");
                     goto wdone;
                 }
             }
+            phttp_observer_emit(observer, PHTTP_PHASE_RECEIVING_BODY,
+                                (int)outbody->len, total, 0);
             report_progress(progress, user_data, (int)outbody->len, total);
         }
     }
@@ -1403,6 +1608,7 @@ static int wininet_fetch(const char* method, const char* host, int port,
     if (total >= 0 && outbody->len != (size_t)total) {
         *out_status = 0;
         resp_set_error(resp, "response body truncated");
+        phttp_observer_note_failure(observer, "HTTP_BODY");
         goto wdone;
     }
 
@@ -1427,9 +1633,11 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                                        const char** headers,
                                        const char* body, int body_len,
                                        PHttpProgressCallback progress,
-                                       void* user_data)
+                                       void* user_data,
+                                       const PHttpObserver* observer_config)
 {
     PHttpResponse* resp;
+    phttp_observer_state observer;
     HANDLE         conn;
     char*          request;
     bytebuf        recvbuf;
@@ -1442,23 +1650,37 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
     int            redirects;
     int            follow;
 
-    resp = resp_new();
-    if (resp == NULL) {
-        return NULL;
-    }
     conn = NULL;
     request = NULL;
     recvbuf.data = NULL;
     bodybuf.data = NULL;
     redirects = 0;
     follow = (method != NULL && strcmp(method, "GET") == 0) ? 1 : 0;
+    if (!phttp_observer_init(&observer, observer_config)) {
+        resp = resp_new();
+        if (resp == NULL) {
+            return NULL;
+        }
+        resp_set_error(resp, "invalid HTTP observer");
+        return resp;
+    }
+    resp = resp_new();
+    if (resp == NULL) {
+        phttp_observer_note_failure(&observer, "MEMORY");
+        phttp_observer_terminal(&observer, 1, "response allocation failed");
+        return NULL;
+    }
 
     if (!g_initialized) {
         resp_set_error(resp, "PHttp_Init not called");
+        phttp_observer_note_failure(&observer, "NOT_INITIALIZED");
+        phttp_observer_terminal(&observer, 1, resp->error_msg);
         return resp;
     }
     if (method == NULL || url == NULL) {
         resp_set_error(resp, "invalid arguments");
+        phttp_observer_note_failure(&observer, "INVALID_ARGUMENT");
+        phttp_observer_terminal(&observer, 1, resp->error_msg);
         return resp;
     }
     if (body != NULL && body_len < 0) {
@@ -1466,11 +1688,15 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
     }
     if (phttp_resolve_url_text(NULL, url, cur_url, sizeof(cur_url)) != 0) {
         resp_set_error(resp, "invalid HTTP(S) URL");
+        phttp_observer_note_failure(&observer, "INVALID_URL");
+        phttp_observer_terminal(&observer, 1, resp->error_msg);
         return resp;
     }
     resp_set_final_url(resp, cur_url);
     if (bb_init(&bodybuf) != 0) {
         resp_set_error(resp, "OOM body buffer");
+        phttp_observer_note_failure(&observer, "MEMORY");
+        phttp_observer_terminal(&observer, 1, resp->error_msg);
         return resp;
     }
 
@@ -1484,6 +1710,8 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
         int         cur_port;
         int         cur_scheme;
         int         status;
+        PTlsConnectObserver tls_observer;
+        const PTlsConnectObserver* tls_observer_ptr;
 
         cur_host[0] = '\0';
         cur_path[0] = '\0';
@@ -1494,24 +1722,40 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
         if (phttp_parse_resolved_url(cur_url, cur_host, sizeof(cur_host),
                 cur_path, sizeof(cur_path), &cur_port, &cur_scheme) != 0) {
             resp_set_error(resp, "invalid resolved URL");
+            phttp_observer_note_failure(&observer, "INVALID_URL");
             goto done;
         }
         resp_set_final_url(resp, cur_url);
+        phttp_observer_set_target(&observer, cur_scheme, cur_host, cur_port,
+                                  redirects);
+        tls_observer_ptr = NULL;
+        if (observer.callback != NULL) {
+            memset(&tls_observer, 0, sizeof(tls_observer));
+            tls_observer.size = sizeof(tls_observer);
+            tls_observer.version = PTLS_CONNECT_OBSERVER_VERSION;
+            tls_observer.callback = phttp_tls_observer_callback;
+            tls_observer.user_data = &observer;
+            tls_observer_ptr = &tls_observer;
+        }
 
         if (cur_scheme == PHTTP_SCHEME_HTTP) {
             if (wininet_fetch(method, cur_host, cur_port, cur_path,
                     headers, body, body_len, &status, location,
                     sizeof(location), &bodybuf, resp, progress,
-                    user_data) != 0) {
+                    user_data, &observer) != 0) {
                 goto done;
             }
             resp->status_code = status;
+            observer.status_code = status;
             if (follow && is_redirect_code(status) &&
                     redirects < MAX_REDIRECTS && location[0] != '\0' &&
                     resolve_redirect_url(location, strlen(location), cur_url,
                     next_url, sizeof(next_url))) {
+                phttp_observer_emit(&observer, PHTTP_PHASE_REDIRECTING,
+                                    -1, -1, 0);
                 if (!phttp_redirect_allowed(cur_scheme, next_url)) {
                     resp_set_error(resp, "HTTPS redirect to HTTP rejected");
+                    phttp_observer_note_failure(&observer, "REDIRECT_POLICY");
                     break;
                 }
                 redirects++;
@@ -1519,6 +1763,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                 bb_free(&bodybuf);
                 if (bb_init(&bodybuf) != 0) {
                     resp_set_error(resp, "OOM body buffer");
+                    phttp_observer_note_failure(&observer, "MEMORY");
                     goto done;
                 }
                 continue;
@@ -1531,35 +1776,51 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                                 body, body_len);
         if (request == NULL) {
             resp_set_error(resp, "OOM building request");
+            phttp_observer_note_failure(&observer, "MEMORY");
             goto done;
         }
-        conn = g_insecure ? PTls_Connect(cur_host, cur_port)
-                          : PTls_ConnectVerified(cur_host, cur_port);
+        conn = g_insecure ? PTls_ConnectEx(cur_host, cur_port,
+                                            tls_observer_ptr)
+                          : PTls_ConnectVerifiedEx(cur_host, cur_port,
+                                                    tls_observer_ptr);
         if (conn == NULL) {
             char eb[320];
             _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
                       cur_host, cur_port, redirects, PTls_LastError());
             eb[sizeof(eb) - 1] = '\0';
             resp_set_error(resp, eb);
+            phttp_observer_note_failure(&observer, "TLS_CONNECT");
             goto done;
         }
+        phttp_observer_emit(&observer, PHTTP_PHASE_SENDING_REQUEST,
+                            -1, -1, 0);
         req_len = (int)strlen(request);
         wrote = PTls_Write(conn, request, req_len);
         if (wrote != req_len) {
             resp_set_error(resp, "PTls_Write incomplete");
+            phttp_observer_note_failure(&observer, "HTTP_WRITE");
             goto done;
         }
+        phttp_observer_emit(&observer, PHTTP_PHASE_WAITING_RESPONSE,
+                            -1, -1, 0);
         if (bb_init(&recvbuf) != 0) {
             resp_set_error(resp, "OOM recv buffer");
+            phttp_observer_note_failure(&observer, "MEMORY");
             goto done;
         }
+        phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
+                            -1, -1, 0);
         body_start = read_until_headers(conn, &recvbuf);
         if (body_start <= 0) {
             resp_set_error(resp, "header block read failed");
+            phttp_observer_note_failure(&observer, "HTTP_HEADERS");
             goto done;
         }
         status = parse_status(recvbuf.data, (size_t)body_start);
         resp->status_code = status;
+        observer.status_code = status;
+        phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
+                            -1, -1, 0);
 
         /* Follow a 3xx Location (GET only) before reading the body. */
         if (follow && is_redirect_code(status) &&
@@ -1569,8 +1830,11 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             if (loc != NULL && loclen > 0 &&
                     resolve_redirect_url(loc, loclen, cur_url, next_url,
                     sizeof(next_url))) {
+                phttp_observer_emit(&observer, PHTTP_PHASE_REDIRECTING,
+                                    -1, -1, 0);
                 if (!phttp_redirect_allowed(cur_scheme, next_url)) {
                     resp_set_error(resp, "HTTPS redirect to HTTP rejected");
+                    phttp_observer_note_failure(&observer, "REDIRECT_POLICY");
                     break;
                 }
                 redirects++;
@@ -1594,11 +1858,18 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
 
             prefix = recvbuf.data + body_start;
             prefix_len = (int)recvbuf.len - body_start;
+            phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
+                                0, -1, 0);
             report_progress(progress, user_data, 0, -1);
             chunk_result = decode_chunked(conn, prefix, prefix_len,
-                    &bodybuf, progress, user_data);
+                    &bodybuf, progress, user_data, &observer);
             if (chunk_result != PHTTP_BODY_OK) {
                 resp_set_body_result(resp, chunk_result);
+                phttp_observer_note_failure(&observer,
+                        chunk_result == PHTTP_BODY_TOO_LARGE ?
+                        "BODY_LIMIT" :
+                        chunk_result == PHTTP_BODY_NO_MEMORY ?
+                        "MEMORY" : "HTTP_BODY");
                 goto done;
             }
         } else {
@@ -1608,8 +1879,11 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             cl = parse_content_length(recvbuf.data, (size_t)body_start);
             if (cl > MAX_RESP_BODY) {
                 resp_set_body_result(resp, PHTTP_BODY_TOO_LARGE);
+                phttp_observer_note_failure(&observer, "BODY_LIMIT");
                 goto done;
             }
+            phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
+                                0, cl, 0);
             report_progress(progress, user_data, 0, cl);
             prefix_len = 0;
             if (recvbuf.len > (size_t)body_start) {
@@ -1621,8 +1895,13 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                         recvbuf.data + body_start, prefix_len);
                 if (append_result != PHTTP_BODY_OK) {
                     resp_set_body_result(resp, append_result);
+                    phttp_observer_note_failure(&observer,
+                            append_result == PHTTP_BODY_TOO_LARGE ?
+                            "BODY_LIMIT" : "MEMORY");
                     goto done;
                 }
+                phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
+                                    (int)bodybuf.len, cl, 0);
                 report_progress(progress, user_data,
                         (int)bodybuf.len, cl);
             }
@@ -1639,20 +1918,28 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                     got = PTls_Read(conn, tmp, want);
                     if (got < 0) {
                         resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
+                        phttp_observer_note_failure(&observer, "HTTP_BODY");
                         goto done;
                     }
                     if (got == 0) {
                         resp_set_error(resp, "response body truncated");
                         resp->status_code = 0;
+                        phttp_observer_note_failure(&observer, "HTTP_BODY");
                         goto done;
                     }
                     append_result = phttp_body_append(&bodybuf, tmp,
                             (size_t)got);
                     if (append_result != PHTTP_BODY_OK) {
                         resp_set_body_result(resp, append_result);
+                        phttp_observer_note_failure(&observer,
+                                append_result == PHTTP_BODY_TOO_LARGE ?
+                                "BODY_LIMIT" : "MEMORY");
                         goto done;
                     }
                     remaining -= got;
+                    phttp_observer_emit(&observer,
+                                        PHTTP_PHASE_RECEIVING_BODY,
+                                        (int)bodybuf.len, cl, 0);
                     report_progress(progress, user_data,
                             (int)bodybuf.len, cl);
                 }
@@ -1664,6 +1951,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                     got = PTls_Read(conn, tmp, (int)sizeof(tmp));
                     if (got < 0) {
                         resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
+                        phttp_observer_note_failure(&observer, "HTTP_BODY");
                         goto done;
                     }
                     if (got == 0) {
@@ -1673,8 +1961,14 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                             (size_t)got);
                     if (append_result != PHTTP_BODY_OK) {
                         resp_set_body_result(resp, append_result);
+                        phttp_observer_note_failure(&observer,
+                                append_result == PHTTP_BODY_TOO_LARGE ?
+                                "BODY_LIMIT" : "MEMORY");
                         goto done;
                     }
+                    phttp_observer_emit(&observer,
+                                        PHTTP_PHASE_RECEIVING_BODY,
+                                        (int)bodybuf.len, -1, 0);
                     report_progress(progress, user_data,
                             (int)bodybuf.len, -1);
                 }
@@ -1689,6 +1983,9 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
     bodybuf.data = NULL;
 
 done:
+    phttp_observer_terminal(&observer,
+            resp->error_msg[0] != '\0' || resp->status_code == 0,
+            resp->error_msg);
     if (request != NULL) {
         HeapFree(GetProcessHeap(), 0, request);
     }
@@ -1712,7 +2009,8 @@ static PHttpResponse* http_request(const char* method, const char* host,
                                    const char** headers,
                                    const char* body, int body_len,
                                    PHttpProgressCallback progress,
-                                   void* user_data)
+                                   void* user_data,
+                                   const PHttpObserver* observer)
 {
     char url[2048];
     int scheme;
@@ -1724,14 +2022,21 @@ static PHttpResponse* http_request(const char* method, const char* host,
     scheme = port == 80 ? PHTTP_SCHEME_HTTP : PHTTP_SCHEME_HTTPS;
     if (phttp_document_url(scheme, host, port, path, url,
             sizeof(url)) != 0) {
+        phttp_observer_state observer_state;
         resp = resp_new();
         if (resp != NULL) {
             resp_set_error(resp, "invalid host/port/path");
+            if (phttp_observer_init(&observer_state, observer)) {
+                phttp_observer_note_failure(&observer_state,
+                        "INVALID_ARGUMENT");
+                phttp_observer_terminal(&observer_state, 1,
+                        resp->error_msg);
+            }
         }
         return resp;
     }
     return http_request_url(method, url, headers, body, body_len,
-            progress, user_data);
+            progress, user_data, observer);
 }
 
 /* ------------------------------------------------------------------- */
@@ -1752,7 +2057,18 @@ PHTTP_API PHttpResponse* PHttp_GetEx(const char* host, int port,
                                      void* user_data)
 {
     return http_request("GET", host, port, path, headers, NULL, 0,
-                        progress, user_data);
+                        progress, user_data, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_GetEx2(const char* host, int port,
+                                      const char* path,
+                                      const char** headers,
+                                      PHttpProgressCallback progress,
+                                      void* user_data,
+                                      const PHttpObserver* observer)
+{
+    return http_request("GET", host, port, path, headers, NULL, 0,
+                        progress, user_data, observer);
 }
 
 PHTTP_API PHttpResponse* PHttp_GetUrl(const char* url,
@@ -1767,7 +2083,17 @@ PHTTP_API PHttpResponse* PHttp_GetUrlEx(const char* url,
                                         void* user_data)
 {
     return http_request_url("GET", url, headers, NULL, 0,
-            progress, user_data);
+            progress, user_data, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_GetUrlEx2(const char* url,
+                                         const char** headers,
+                                         PHttpProgressCallback progress,
+                                         void* user_data,
+                                         const PHttpObserver* observer)
+{
+    return http_request_url("GET", url, headers, NULL, 0,
+            progress, user_data, observer);
 }
 
 PHTTP_API PHttpResponse* PHttp_Post(const char* host, int port,
@@ -1787,7 +2113,19 @@ PHTTP_API PHttpResponse* PHttp_PostEx(const char* host, int port,
                                       void* user_data)
 {
     return http_request("POST", host, port, path, headers, body, body_len,
-                        progress, user_data);
+                        progress, user_data, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_PostEx2(const char* host, int port,
+                                       const char* path,
+                                       const char** headers,
+                                       const char* body, int body_len,
+                                       PHttpProgressCallback progress,
+                                       void* user_data,
+                                       const PHttpObserver* observer)
+{
+    return http_request("POST", host, port, path, headers, body, body_len,
+                        progress, user_data, observer);
 }
 
 PHTTP_API PHttpResponse* PHttp_PostUrl(const char* url,
@@ -1804,7 +2142,18 @@ PHTTP_API PHttpResponse* PHttp_PostUrlEx(const char* url,
                                          void* user_data)
 {
     return http_request_url("POST", url, headers, body, body_len,
-            progress, user_data);
+            progress, user_data, NULL);
+}
+
+PHTTP_API PHttpResponse* PHttp_PostUrlEx2(const char* url,
+                                          const char** headers,
+                                          const char* body, int body_len,
+                                          PHttpProgressCallback progress,
+                                          void* user_data,
+                                          const PHttpObserver* observer)
+{
+    return http_request_url("POST", url, headers, body, body_len,
+            progress, user_data, observer);
 }
 
 PHTTP_API int PHttp_ResponseGetFinalUrl(const PHttpResponse* response,
