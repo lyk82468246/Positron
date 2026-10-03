@@ -54,6 +54,8 @@ struct pmedia_ffmpeg {
     int audio_flush_sent;
     int video_drained;
     int audio_drained;
+    pm_position video_next_pts_us;
+    int video_next_pts_valid;
     unsigned char *audio_buffer;
     int audio_buffer_bytes;
     int opened_format;
@@ -758,6 +760,7 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     pm_video_frame frame;
     int callback_result;
     AVRational frame_time;
+    int64_t timestamp;
 
     if (context->frame->format != AV_PIX_FMT_YUV420P &&
         context->frame->format != AV_PIX_FMT_YUVJ420P) {
@@ -788,8 +791,8 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     frame.plane[1] = context->frame->data[1];
     frame.plane[2] = context->frame->data[2];
     stream = context->format->streams[context->video_stream];
-    frame.pts_us = pm_ff_timestamp(av_frame_get_best_effort_timestamp(context->frame),
-                                   stream->time_base);
+    timestamp = av_frame_get_best_effort_timestamp(context->frame);
+    frame.pts_us = pm_ff_timestamp(timestamp, stream->time_base);
     frame.duration_us = 0;
     if (context->frame->pkt_duration > 0) {
         frame.duration_us = pm_ff_timestamp(context->frame->pkt_duration,
@@ -798,6 +801,19 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
         frame_time.num = stream->avg_frame_rate.den;
         frame_time.den = stream->avg_frame_rate.num;
         frame.duration_us = pm_ff_timestamp(1, frame_time);
+    }
+    /* MPEG-PS can drain a final reordered frame without an explicit PTS.
+     * Continue only a known presentation timeline; never invent an origin,
+     * replace an explicit discontinuity or carry this state across seek. */
+    if (timestamp == AV_NOPTS_VALUE && context->video_next_pts_valid) {
+        frame.pts_us = context->video_next_pts_us;
+        frame.flags |= PMEDIA_FRAME_PTS_INFERRED;
+    }
+    context->video_next_pts_valid = 0;
+    if (frame.pts_us >= 0 && frame.duration_us > 0 &&
+        frame.pts_us <= INT64_MAX - frame.duration_us) {
+        context->video_next_pts_us = frame.pts_us + frame.duration_us;
+        context->video_next_pts_valid = 1;
     }
     if (context->frame->key_frame) frame.flags |= PMEDIA_FRAME_KEY;
     if (context->frame->format == AV_PIX_FMT_YUVJ420P ||
@@ -974,5 +990,6 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     context->audio_flush_sent = 0;
     context->video_drained = 0;
     context->audio_drained = 0;
+    context->video_next_pts_valid = 0;
     return PMEDIA_OK;
 }

@@ -52,6 +52,8 @@ copy /Y "%ROOT%\test_host\fixtures\media\*.mp4" "%STAGE%\fixtures\media\" || got
 copy /Y "%ROOT%\test_host\fixtures\media\*.aac" "%STAGE%\fixtures\media\" || goto :fail
 copy /Y "%ROOT%\test_host\fixtures\media\*.avi" "%STAGE%\fixtures\media\" || goto :fail
 copy /Y "%ROOT%\test_host\fixtures\media\*.mp3" "%STAGE%\fixtures\media\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\media\*.ts" "%STAGE%\fixtures\media\" || goto :fail
+copy /Y "%ROOT%\test_host\fixtures\media\*.mpg" "%STAGE%\fixtures\media\" || goto :fail
 
 echo.
 echo Done. In the emulator, open File Explorer -^> Storage Card

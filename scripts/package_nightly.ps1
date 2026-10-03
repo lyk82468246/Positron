@@ -249,7 +249,7 @@ $mediaFixtureRoot = Join-Path $repoRoot 'test_host\fixtures\media'
 $mediaPin = Get-Content -LiteralPath (Join-Path $mediaFixtureRoot 'manifest.json') `
         -Raw -Encoding UTF8 | ConvertFrom-Json
 foreach ($fixture in $mediaPin.files) {
-    if ($fixture.file -notmatch '^[a-z0-9-]+\.(mp4|aac|avi|mp3)$') {
+    if ($fixture.file -notmatch '^[a-z0-9-]+\.(mp4|aac|avi|mp3|ts|mpg)$') {
         throw 'Invalid media fixture filename in manifest.'
     }
     $fixturePath = Join-Path $mediaFixtureRoot $fixture.file

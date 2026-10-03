@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。用户要求补齐 Media 本阶段缺口；输入错误、WAV PCM8/16 与短小 H.264/AAC/MJPEG/MP3 解码/守卫合同已通过 Debug/Release SD 设备门，下一条纵切为 TS/MPEG fixture。Fragment CSS 坐标和 DB 离线契约验收继续有效，用户更换设备后 SD 卡部署、回读与 DB Debug 正式验收均完成。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。用户要求补齐 Media 本阶段缺口；输入错误、WAV PCM8/16、短小 H.264/AAC/MJPEG/MP3 与 TS/PS MPEG/MP2 解码/守卫合同已通过 Debug/Release SD 设备门，下一条纵切为 AMR fixture。Fragment CSS 坐标和 DB 离线契约验收继续有效，用户更换设备后 SD 卡部署、回读与 DB Debug 正式验收均完成。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -164,16 +164,18 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 `2026-10-02 23:25:27`；完整包哈希已匹配，故不是旧 EXE 混包。后续须单独修正生成头的正式
 工程依赖，再验证增量构建时间与 Release 排除；本导航纵切不把该版本显示写成已修复。
 
-### Media 输入、PCM 与 H.264/AAC/MJPEG/MP3 解码合同已验收
+### Media 有界压缩解码合同已验收
 
 产品 DLL 保留 I/O/WOULD_BLOCK 错误、seek/probe 恢复与失败不改输出合同；PCM8 callback
 统一为 S16LE，负预算与停止态拒绝。压缩路径修正 AVSEEK_SIZE 标志和 AVIO buffer 释放，
 补齐 ARM CRT 的 float/double/64-bit 返回原型及 expf/logf bridge，正式归档重建把 C4013
 设为错误。SPS 检查必须提供有效 AVCodecContext，不能把 FFmpeg 3.4 的 logctx 当作可空
 日志指针；所有 extradata SPS 与实际帧均检查 profile、8-bit/4:2:0、隔行和硬 VGA 边界。
-原隐式声明导致的整数除零与新增 SPS 空指针异常已修复，失败日志/截图保留在 tmp，不能转为通过。
+视频缺失 PTS 仅从已知非负前帧 PTS 与正时长之和推导（含溢出检查），追加 PTS_INFERRED
+标记，不覆盖显式 PTS、不归零源时间轴、seek 清除状态；没有可靠起点仍未知。FULL_RANGE
+与 PTS_INFERRED 仅追加既有 flags 位，不改变 ABI 布局。未知起点/时长和溢出仍缺独立夹具。
 
-固定的十一个 procedural red/sine 夹具、CC0 内容来源、生成器版本/参数/哈希进入
+固定的十五个 procedural red/sine 夹具、CC0 内容来源、生成器版本/参数/哈希进入
 test_host/fixtures/media；scripts/media_fixtures.py 默认只离线核对 pin。TEST1332 消费公共
 DLL，验证 MP4 Constrained Baseline/AVCC + AAC-LC stereo、VGA Main/B 帧、ADTS AAC-LC
 mono 的 I420 像素/stride、S16LE、时间戳/时长、不可 seek 打开、暂停/resume、EOF 一次性与
@@ -181,23 +183,28 @@ seek 重播；High/4:2:2/隔行/超限/非 LC 拒绝不改 probe、不留 sessio
 打开/解码/关闭。TEST1333 验证 AVI/MJPEG 4:2:0 + MP3 stereo、44.1 kHz mono MP3 裸流，
 包括全范围像素/flags、PCM 样本数、PTS/时长、7-byte source 分块、不可 seek 打开、音频
 callback STOP/resume、EOF/seek 重播、停止态、独立关闭与 4:2:2/截断头/应用尺寸拒绝。
-FULL_RANGE 是既有 flags 的追加，不改 ABI 布局；不把 YUVJ420P 误当有限范围。原八个
-夹具字节/pin 未改；新 AVI 的独立桌面解码证明 PTS 为 0/400000/600000 µs，修正了首轮
-等间隔测试预期，未放宽帧数、样本数或像素断言。失败日志留在 tmp，不转为通过。
+TEST1334 验证 TS/MPEG-2 + MP2 与 PS/MPEG-1 + MP2，13-byte 短读、不可 seek AUTO、
+三次独立 session 各两次完整解码、视频 callback STOP/resume、EOF/seek 重播与停止态；
+隔行/超 VGA MPEG-2 与截断头拒绝不留输出或 session。每次为三帧 I/B/P、有限范围像素
+81/90/240、视频 PTS 2000000/2040000/2080000 µs、duration 40000 µs；MP2 五块各 1152
+sample，PTS 从 1989978 µs 起每块增加 24000 µs。独立桌面解码先核对源呈现时间轴；
+PS 尾帧 drain 原来返回未知 PTS，产品推导后并验证标记。原十一个文件与 pin 记录未改。
 TEST1312/1331 保留原 WAV/I/O 与 WaveOut 回归，不测试已释放 handle 的重复 close。
 
-最终正式 Release 门 `tmp/device-runs/20261003-151653-media-mjpeg-mp3-release-retry/` 与
-Debug 门 `tmp/device-runs/20261003-151422-media-mjpeg-mp3-debug-final/` 均选择
-`1312,1331,1332,1333,999`，PASS、selected/observed 5/5、唯一 TESTBENCH PASS、零 ERROR/FAIL、
+最终正式 Release 门 `tmp/device-runs/20261003-154337-media-mpeg-final-release/` 与
+Debug 门 `tmp/device-runs/20261003-153948-media-mpeg-final-debug-retry/` 均选择
+`1312,1331,1332,1333,1334,999`，PASS、selected/observed 6/6、唯一 TESTBENCH PASS、零 ERROR/FAIL、
 crash_check=PASS、无新增 dump。设备为 240×320、96 DPI Microsoft DeviceEmulator；两门
 明确使用 `\Storage Card\Positron`，空间预检、guest holders=0 unavailable=0 和 Core 匹配
 路径通过。Release 当前目录清理部分失败并保留，Debug 当前目录完整清理；Release 传输中的
 一次 RAPI 写失败由正式门重开当前会话并用 1 KiB 重试成功。没有强杀、重置、
 回退内置存储或更改共享设置，旧失败目录仍保留。
 
-正式 Debug/Release、C89 与仓库审计通过；本轮不重建 FFmpeg archive，媒体编译保留既有 bswap/
-get_bits 警告，宿主保留 libcss fpmath 警告。首轮 Release 的 CAB 依赖顺序失败没有部署，
-串行正式重试成功，不把初次构建计为通过。夜间 ZIP 的本地 SkipUpload 检查包含全部夹具/
+正式 Debug/Release、C89 与仓库审计通过；本轮不重建 FFmpeg archive。两次 Debug 构建提前
+退出且没有编译错误诊断，失败日志保留在 `tmp/device-runs/20261003-153420-media-mpeg-debug/` 与
+`tmp/device-runs/20261003-153903-media-mpeg-final-debug/` 的 build-failure.log，正式重试成功；首次 PS 尾帧
+断言失败保留在 `tmp/device-runs/20261003-153510-media-mpeg-debug-retry/`，不转为通过。
+最终测试没有放宽帧数、样本数、时间戳、标记或像素断言。夜间 ZIP 的本地 SkipUpload 检查包含全部夹具/
 来源/pin，不发布 nightly。其他已编译 codec/container、截断 payload、非零压缩 seek、输入容量、
 原生完整生命周期、underrun、性能/峰值内存及真实设备仍待门。clock_us 被忽略，同步/按时输出/
 迟到丢帧未实现；解码合同不等于播放器验收。并行应用源码与交接改动保留，不纳入媒体提交。
@@ -366,7 +373,7 @@ ROADMAP 与当前限制已复核：地址栏复用自动门通过，动画、输
 字体效果进入人工矩阵；同文档 fragment、片段 URL 公共接口
 与人工矩阵仍有效。系统信息保留 AKU
 与可选 OEM 字段，进一步 OS 产品/发行版本识别继续暂缓，营销版本不保证识别的限制不变。
-Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC/MJPEG/MP3 初始夹具、解码守卫和 EOF 重播候选，保留其他
+Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC/MJPEG/MP3 与 TS/PS MPEG/MP2 初始夹具、解码守卫和 EOF 重播候选，保留其他
 格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
 重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
@@ -380,8 +387,8 @@ EXE 下一步人工复核当前 newtab 包的标题滚动、点按编辑/回车�
 随后复核内容拖动/点按、native 拖选、旋转及地址栏回车，
 并继续同文档/跨页滚动恢复矩阵；随后独立
 修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
-并行 Media 下一步：按同一 pin/许可规则补 TS/MPEG 的实际帧/PCM、时间戳及生命周期夹具，
-再取舍 AMR 与 IMA；AVI/MJPEG + MP3 初始合同退出待实现候选，所有产品修正留在
+并行 Media 下一步：按可审计 pin/许可规则补 AMR-NB/WB 的实际 PCM、时间戳及生命周期夹具，
+再取舍 IMA；TS/PS MPEG/MP2 初始合同退出待实现候选，所有产品修正留在
 positron_media，宿主只做断言。媒体路线图与现有限制已复核，时钟/同步/DirectShow 缺口仍有效。
 DB 的空间不足、跨进程锁及进程重启 journal/outbox/cursor 恢复仍为独立候选；
 不把正常关闭重开写成断电恢复，不在媒体纵切中新增应用 worker。

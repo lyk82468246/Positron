@@ -496,6 +496,11 @@ typedef struct media_compressed_sink {
     unsigned long audio_magnitude;
     pm_position audio_pts;
     pm_position video_gap_us;
+    pm_position video_start_us;
+    pm_position video_duration_us;
+    int check_audio_timeline;
+    pm_position audio_start_us;
+    int inferred_last_frame;
     char assertion[256];
 } media_compressed_sink;
 
@@ -559,15 +564,19 @@ static int media_compressed_video(void *context, const pm_video_frame *frame)
     int y;
     int value;
     int target;
+    pm_position duration;
 
     sink = (media_compressed_sink *)context;
+    duration = sink->video_duration_us > 0 ? sink->video_duration_us : 200000;
     if (frame == NULL || frame->size != sizeof(*frame) ||
         frame->format != PMEDIA_PIXEL_I420 || frame->width != sink->width ||
         frame->height != sink->height || frame->flags & PMEDIA_FRAME_INTERLACED ||
         !!(frame->flags & PMEDIA_FRAME_FULL_RANGE) != sink->full_range ||
-        frame->pts_us != (pm_position)sink->frames * 200000 +
+        !!(frame->flags & PMEDIA_FRAME_PTS_INFERRED) !=
+            (sink->inferred_last_frame && sink->frames == 2) ||
+        frame->pts_us != sink->video_start_us + (pm_position)sink->frames * duration +
                          (sink->frames > 0 ? sink->video_gap_us : 0) ||
-        frame->duration_us != 200000 ||
+        frame->duration_us != duration ||
         (sink->frames == 0 && !(frame->flags & PMEDIA_FRAME_KEY))) goto invalid;
     for (plane = 0; plane < 3; plane++) {
         width = plane == 0 ? frame->width : (frame->width + 1) / 2;
@@ -613,6 +622,8 @@ static int media_compressed_audio(void *context, const pm_audio_block *block)
         block->samples <= 0 || block->samples > 8192 ||
         block->bytes != block->samples * block->channels * 2 ||
         block->pts_us < sink->audio_pts ||
+        (sink->check_audio_timeline && (block->samples != 1152 ||
+         block->pts_us != sink->audio_start_us + (pm_position)sink->events.blocks * 24000)) ||
         block->duration_us != (pm_position)block->samples * 1000000 / rate) {
         if (block != NULL) {
             _snprintf(sink->assertion, sizeof(sink->assertion),
@@ -835,6 +846,165 @@ BOOL test1332_media_compressed_contract(void (*progress)(const char *))
     }
     free(data);
     g_media_compressed_error = "compressed media contract passed";
+    return TRUE;
+
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
+BOOL test1334_media_mpeg_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"mpeg2-mp2.ts", L"mpeg1-mp2.mpg" };
+    static const WCHAR *rejected[] = { L"mpeg2-interlaced.ts", L"mpeg2-oversize.ts" };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_probe_info unchanged;
+    pm_stream_info info;
+    pm_session session;
+    unsigned char *data;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int result;
+    int expected;
+    DWORD start;
+
+    session = NULL;
+    data = NULL;
+    for (test = 0; test < 2; test++) {
+        g_media_compressed_error = test == 0 ? "TS MPEG2 B-frame + MP2 nonzero timestamps" :
+                                              "PS MPEG1 B-frame + MP2 nonzero timestamps";
+        if (progress != NULL) progress(g_media_compressed_error);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 13;
+        input.position = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.size = sizeof(probe);
+        result = pm_probe(&source, &probe);
+        _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                  "MPEG probe: result=%d container=%d video=%d %dx%d audio=%d rate=%d channels=%d",
+                  result, probe.stream.container, probe.stream.video_codec,
+                  probe.stream.width, probe.stream.height, probe.stream.audio_codec,
+                  probe.stream.sample_rate, probe.stream.channels);
+        g_media_compressed_error = g_media_compressed_detail;
+        if (progress != NULL) progress(g_media_compressed_error);
+        if (result != PMEDIA_OK || input.position != 1 ||
+            probe.stream.container != (test == 0 ? PMEDIA_CONTAINER_MPEG_TS : PMEDIA_CONTAINER_MPEG_PS) ||
+            !probe.stream.has_video || !probe.stream.has_audio ||
+            probe.stream.video_codec != (test == 0 ? PMEDIA_CODEC_MPEG2_VIDEO : PMEDIA_CODEC_MPEG1_VIDEO) ||
+            probe.stream.audio_codec != PMEDIA_CODEC_MP2 || probe.stream.width != 320 ||
+            probe.stream.height != 240 || probe.stream.sample_rate != 48000 || probe.stream.channels != 1) goto fail;
+        for (iteration = 0; iteration < 3; iteration++) {
+            input.position = 0;
+            source.seek = iteration == 0 ? NULL : media_fixture_seek;
+            source.tell = iteration == 0 ? NULL : media_fixture_tell;
+            options.backend = iteration == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+            memset(&sink, 0, sizeof(sink));
+            sink.width = 320;
+            sink.height = 240;
+            sink.channels = 1;
+            sink.video_start_us = 2000000;
+            sink.video_duration_us = 40000;
+            sink.check_audio_timeline = 1;
+            sink.audio_start_us = 1989978;
+            sink.inferred_last_frame = test == 1;
+            result = pm_open(&source, &options, &output, &session);
+            if (result != PMEDIA_OK || pm_get_backend(session) != PMEDIA_BACKEND_SOFT ||
+                input.position != bytes) goto fail;
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pm_get_stream_info(session, &info) != PMEDIA_OK ||
+                info.container != probe.stream.container || info.video_codec != probe.stream.video_codec ||
+                info.audio_codec != PMEDIA_CODEC_MP2 || info.sample_rate != 48000 || info.channels != 1 ||
+                pm_pause(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                sink.frames || sink.events.blocks || pm_resume(session) != PMEDIA_OK) goto fail;
+            for (pass = 0; pass < 2; pass++) {
+                if (pass == 0) {
+                    sink.callback_result = PMEDIA_CALLBACK_STOP;
+                    start = GetTickCount();
+                    while (sink.frames == 0 && GetTickCount() - start < 5000) {
+                        if (pm_pump(session, 0, 2000) != PMEDIA_OK) goto fail;
+                    }
+                    expected = sink.events.blocks;
+                    if (sink.frames != 1 || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                        sink.frames != 1 || sink.events.blocks != expected) goto fail;
+                    sink.callback_result = PMEDIA_OK;
+                    if (pm_resume(session) != PMEDIA_OK) goto fail;
+                }
+                result = media_contract_drain(session);
+                if (sink.assertion[0] != '\0' && progress != NULL) progress(sink.assertion);
+                _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                          "MPEG drain: case=%d iteration=%d pass=%d ok=%d frames=%d blocks=%d samples=%d energy=%lu errors=%d eof=%d",
+                          test, iteration, pass, result, sink.frames, sink.events.blocks,
+                          sink.events.samples, sink.audio_magnitude, sink.events.errors, sink.events.eof_events);
+                g_media_compressed_error = g_media_compressed_detail;
+                if (progress != NULL) progress(g_media_compressed_error);
+                if (!result || sink.frames != 3 || sink.events.samples != 5760 || sink.events.blocks != 5 ||
+                    sink.audio_magnitude < 1000000 || sink.events.errors || sink.events.error_callbacks ||
+                    sink.events.eof_events != 1 || pm_pump(session, 0, 2000) != PMEDIA_EOF ||
+                    sink.events.eof_events != 1) goto fail;
+                if (pass == 0) {
+                    g_media_compressed_error = "MPEG seek zero after EOF";
+                    if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    memset(&sink, 0, sizeof(sink));
+                    sink.width = 320;
+                    sink.height = 240;
+                    sink.channels = 1;
+                    sink.video_start_us = 2000000;
+                    sink.video_duration_us = 40000;
+                    sink.check_audio_timeline = 1;
+                    sink.audio_start_us = 1989978;
+                    sink.inferred_last_frame = test == 1;
+                }
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_ERROR_STATE ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        g_media_compressed_error = "truncated MPEG header without output";
+        if (progress != NULL) progress(g_media_compressed_error);
+        input.position = 0;
+        input.bytes = 8;
+        memset(&sink, 0, sizeof(sink));
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_FORMAT ||
+            session != NULL || sink.events.last_error != PMEDIA_ERROR_FORMAT ||
+            sink.events.error_callbacks != 1 || sink.frames || sink.events.blocks) goto fail;
+        free(data);
+        data = NULL;
+    }
+    for (test = 0; test < 2; test++) {
+        g_media_compressed_error = test == 0 ? "reject interlaced MPEG2" : "reject over-VGA MPEG2";
+        if (progress != NULL) progress(g_media_compressed_error);
+        data = media_compressed_load(rejected[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        input.data = data;
+        input.bytes = bytes;
+        options.max_video_width = 4096;
+        options.max_video_height = 4096;
+        memset(&probe, 0xa5, sizeof(probe));
+        probe.size = sizeof(probe);
+        unchanged = probe;
+        expected = test == 0 ? PMEDIA_ERROR_UNSUPPORTED : PMEDIA_ERROR_LIMIT;
+        if (pm_probe(&source, &probe) != expected || memcmp(&probe, &unchanged, sizeof(probe)) != 0 ||
+            input.position != 0 || pm_open(&source, &options, &output, &session) != expected ||
+            session != NULL || sink.events.last_error != expected || sink.events.error_callbacks != 1 ||
+            sink.frames || sink.events.blocks) goto fail;
+        free(data);
+        data = NULL;
+    }
+    g_media_compressed_error = "MPEG contract passed";
     return TRUE;
 
 fail:

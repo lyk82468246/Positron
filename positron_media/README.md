@@ -343,6 +343,12 @@ pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 v
 返回前有效。duration_us 优先采用 packet duration；缺失时可由容器平均帧率换算，
 两者均未知时为零，应用不能把未知时长解释为固定帧率。
 
+FFmpeg 路径保留输入的呈现时间轴，不把 TS/PS 的非零 PTS 起点归零。decoder 没有提供
+PTS 时，只有前一输出帧具有已知非负 PTS、正的 duration 且相加不溢出，DLL 才用两者之和
+估计当前 PTS，并设置 `PMEDIA_FRAME_PTS_INFERRED`；没有可靠起点时仍返回未知值 `-1`。
+显式 PTS 不会被该估计覆盖；成功 seek 会清除推导状态，避免沿用跳转前的时间轴。应用可按位
+区分估计时间戳与 decoder 时间戳，这不等于 DLL 已按宿主时钟调度或同步音视频。
+
 绘制前检查 `frame->flags & PMEDIA_FRAME_FULL_RANGE`：置位表示 JPEG/全范围 YUV，
 sample 范围为 0..255；例如 MJPEG 的 YUVJ420P 仍使用相同 I420 plane 布局，但不能套用
 有限范围的黑白电平转换。未置位表示未报告全范围；有限范围视频的名义 Y 范围为 16..235、
@@ -452,6 +458,9 @@ seek 重播与 callback 暂停/恢复；High/4:2:2/隔行/超 VGA/非 LC AAC 和
 AVI/MJPEG 4:2:0 + MP3 stereo 与 44.1 kHz mono MP3 裸流也已验证：全范围视频像素与 flags、
 逐帧 PTS/时长、PCM 样本数（含裸流 gapless trimming）、不可 seek 打开、音频 callback
 暂停/恢复、EOF/seek 重播、独立关闭，以及 MJPEG 4:2:2、截断头和应用尺寸上限拒绝。
+MPEG-TS/MPEG-2 + MP2 与 MPEG-PS/MPEG-1 + MP2 的三帧 I/B/P、有限范围像素、非零
+源 PTS、五块 PCM 和尾帧推导标记也已验证，包括 13-byte 短读、不可 seek AUTO 打开、
+视频 callback 暂停/恢复、EOF/seek 重播、独立关闭及隔行/超限 MPEG-2 与截断头拒绝。
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
 设备验收；其他已编译容器/codec、截断压缩 payload、非零压缩 seek 与原生完整生命周期

@@ -47,6 +47,34 @@ def extra_records(exe):
     return records
 
 
+def mpeg_records(exe):
+    records = []
+    cases = [("mpeg2-mp2.ts", "mpeg2video", "320x240", True, False, "mpegts"),
+             ("mpeg1-mp2.mpg", "mpeg1video", "320x240", True, False, "mpeg"),
+             ("mpeg2-interlaced.ts", "mpeg2video", "320x240", False, True, "mpegts"),
+             ("mpeg2-oversize.ts", "mpeg2video", "656x480", False, False, "mpegts")]
+    for name, codec, size, audio, interlaced, container in cases:
+        args = ["-f", "lavfi", "-i", f"color=c=red:s={size}:r=25:d=0.12"]
+        if audio:
+            args += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=0.12"]
+        args += ["-map", "0:v", "-c:v", codec, "-pix_fmt", "yuv420p",
+                 "-q:v", "2", "-g", "12", "-bf", "2", "-threads:v", "1"]
+        if interlaced:
+            args += ["-top", "1"]
+        if audio:
+            args += ["-map", "1:a", "-c:a", "mp2", "-ac", "1", "-b:a", "64k", "-threads:a", "1"]
+        else:
+            args += ["-an"]
+        args += ["-t", "0.12", "-fflags", "+bitexact", "-flags:v",
+                 "+bitexact+ilme+ildct" if interlaced else "+bitexact",
+                 "-map_metadata", "-1", "-output_ts_offset", "2",
+                 "-muxdelay", "0", "-muxpreload", "0", "-f", container,
+                 "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": args[:-1] + [name]})
+    return records
+
+
 def write_pin(exe, records):
     for record in records:
         data = (DEST / record["file"]).read_bytes()
@@ -59,14 +87,16 @@ def write_pin(exe, records):
                               "files": records}, indent=2) + "\n", encoding="utf-8")
 
 
-def extend(exe):
+def extend(exe, mpeg=False):
     check()
     pin = json.loads(PIN.read_text(encoding="utf-8"))
     if hashlib.sha256(Path(exe).read_bytes()).hexdigest() != pin["generator_sha256"]:
         raise SystemExit("Extension requires the existing pinned generator")
-    if any(r["file"] == "mjpeg-mp3.avi" for r in pin["files"]):
+    names = {"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"} if mpeg else {
+        "mjpeg-mp3.avi", "mjpeg422.avi", "mp3-mono.mp3"}
+    if any(r["file"] in names for r in pin["files"]):
         raise SystemExit("Already extended; use --generate for intentional full regeneration")
-    write_pin(exe, pin["files"] + extra_records(exe))
+    write_pin(exe, pin["files"] + (mpeg_records(exe) if mpeg else extra_records(exe)))
 
 
 def generate(exe):
@@ -103,7 +133,7 @@ def generate(exe):
                 "-f", "adts", "-y", str(DEST / name)]
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
-    write_pin(exe, records + extra_records(exe))
+    write_pin(exe, records + extra_records(exe) + mpeg_records(exe))
 
 
 def check():
@@ -120,13 +150,14 @@ if __name__ == "__main__":
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--generate", action="store_true")
     action.add_argument("--extend", action="store_true")
+    action.add_argument("--extend-mpeg", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend:
+    if opts.generate or opts.extend or opts.extend_mpeg:
         if not opts.ffmpeg:
-            parser.error("--generate/--extend requires an explicit --ffmpeg path")
-        if opts.extend:
-            extend(opts.ffmpeg)
+            parser.error("Generation/extension requires an explicit --ffmpeg path")
+        if opts.extend or opts.extend_mpeg:
+            extend(opts.ffmpeg, opts.extend_mpeg)
         else:
             generate(opts.ffmpeg)
     check()
