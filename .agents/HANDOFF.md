@@ -16,7 +16,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
-### EXE 系统信息当前包
+### EXE 系统信息证据与暂缓边界
 
 About 系统章节使用中性标签、GetVersionEx 完整内核版本与实际平台/OEM 名称；只读
 `HKLM\System\Versions\Aku` 原样展示更新包，可选 ProductName/OSVersion 独立显示。
@@ -27,7 +27,7 @@ About 系统章节使用中性标签、GetVersionEx 完整内核版本与实际�
 
 C89、仓库审计、串行 Debug/Release 正式 build 与 Release CAB 通过，EXE 零错误/警告；
 Release ASCII/UTF-16 检查不含本批诊断或系统启动夹具。用户正常退出旧应用并暂停其他构建。
-当前完整 Debug 包 `tmp/device-runs/20261003-091819-app-system-registry-final/` 共 31 文件；正式
+系统信息完整 Debug 包 `tmp/device-runs/20261003-091819-app-system-registry-final/` 共 31 文件；正式
 module-audit 与 EXE 门前复审均 holders=0 unavailable=0，EXE/九 DLL SHA256 回读 10/10。
 `app-history/positron-debug.log` 为 system-info/pointer/history/internal-pages 自检 OK、
 单次提交 about#system（history=1、script=0、scroll=0,545），crash_check=PASS。
@@ -35,8 +35,7 @@ module-audit 与 EXE 门前复审均 holders=0 unavailable=0，EXE/九 DLL SHA25
 Microsoft DeviceEmulator；ProductName/OSVersion 查询为 error=2（未提供）。coredll/aygshell
 版本函数导出均存在，但 size 阶段返回 error=1814（资源名称不存在），不再笼统归因 API 不可用。
 本轮 RAPI 只读枚举的四个系统版本专用键也没有提供营销版本元数据；未写设备注册表。
-设备 320×320、128 DPI，PID 2643158474 留在
-`\Storage Card\Temp\Positron-device-gate\app-system-registry-final-20261003-091819\positron.exe`。
+设备 320×320、128 DPI；该包 PID 2643158474 已由用户正常退出，当前人工入口见同文档导航证据。
 首轮 registry 包也通过门；复核删除误拒绝 OEM 实际 WM 产品名的夹具断言后，用户正常退出，
 重新部署并验证最终源码。未强杀、重置、回退内置存储或改变 WMDC；旧包不是当前人工入口。
 自动夹具覆盖双语标签、非 CE/未知 ID、中文 UTF-8、原样 AKU、registry 类型/长度/终止/
@@ -44,8 +43,8 @@ Microsoft DeviceEmulator；ProductName/OSVersion 查询为 error=2（未提供�
 设备仍待人工复核；缺失产品元数据时不宣称已识别 WM/WEH 发行版本。稳定规则见接线计划。
 
 OS 产品名称、发行版本和 edition 的进一步动态识别已按用户决定暂时挂起；现有查询与缺失
-状态保留，不撤回 AKU 或加入版本查找表。重新开启条件见 ROADMAP 的暂缓队列。本轮仅更新
-文档，不构建、重新部署或操作设备，以上自动门仍是原代码包的证据。
+状态保留，不撤回 AKU 或加入版本查找表。重新开启条件见 ROADMAP 的暂缓队列；本轮导航修正
+不重新开启系统信息取证，以上细项仍来自对应系统信息包。
 
 ### EXE 页面内容拖动自动门通过
 
@@ -68,7 +67,7 @@ Core 路径及 crash_check=PASS；完整日志回收后本轮设备目录已清�
 history/internal-pages 自检 OK、newtab history=1。实际页面消息覆盖链接 down 不激活、tap
 一次、双轴拖动及返回起点不误点、合并 MOVE、capture/cancel/失焦/stale、clamp、Browser
 坐标同步和 layout 计数不变。EXE/九 DLL SHA256 回读 10/10、crash_check=PASS。设备为
-320×320、128 DPI DeviceEmulator；该包 PID 534774266 已由用户正常退出，当前人工包见系统信息证据。
+320×320、128 DPI DeviceEmulator；该包 PID 534774266 已由用户正常退出，当前人工包见同文档导航证据。
 未强杀、重置或回退内置存储。设备门的静默启动失败未产生设备证据；WMDC AuditOnly 健康、
 changed=0，显式 PS32 入口诊断运行原正式 gate 后恢复，不修改注册表或安全设置。
 
@@ -79,28 +78,39 @@ popup、旋转/DPI 仍待人工门；本轮 ROADMAP 已复核并明确这些 bac
 
 ### EXE 同文档导航与滚动恢复自动门通过
 
-用户批准开始补齐 EXE 接线缺口，本批只改 positron_app 和专用 gate/文档；并行 Media 源码与
-staging 改动保留。新增当前 GET 文档的 Browser identity 绑定，同文档 target 保留 DOM/session/
+EXE 已建立当前 GET 文档的 Browser identity 绑定，同文档 target 保留 DOM/session/
 native 控件，调用 Browser traversal/hash 通知；pushState/离页提交前保存实际双轴位置，网络
 history/刷新在 layout 后恢复并尊重 manual。刷新取得新 identity，POST 不绑定旧导航栈。
 字面 UTF-8/空/缺失/legacy fragment 由 Core ByToken 提供 CSS 几何并只换算一次 DPI；百分号
 编码片段和 HTTP 跨文档初始片段仍未接入，不能复制 URL 引擎来补齐。
 
-最终 Debug build、Release build/CAB、C89 与仓库审计通过，EXE 零错误/警告；二进制检查确认
-Release 不含本批 selftest/phase/traversal 诊断。用户确认暂停并行编译后，所有构建串行；
-Release 曾发生 devenv/msenv.dll 主机异常，重试正式 build 恢复，失败不是源码编译错误，也
-不计为成功；日志保留在 `tmp/app-history-build-failures/release-msenv.log`。
+用户复现 A 的片段跳转会打断正在加载的 B；原因是 EXE 同文档入口无条件取消当前候选。
+现仅修正 EXE 调度/UI：fragment 不取消 B、不增加 generation，保留 A 的 DOM/session，
+地址栏与加载标题继续表示 B；同步 B 的已提交地址快照，失败恢复 A 最新片段与原标题。
+push/replaceState 也同步该快照；外链 C 仍取消/退休 B，B 迟到完成不覆盖 C；B 成功替换 A。
+URL 同文档分类、history、资源终态和提交资格仍由原公共 DLL 提供，无 ABI 或 DLL 改动；
+明确的 Back/Forward/go 取消策略未扩大修改。
+
+Debug 独立启动夹具用 event 暂停真实 worker，不联网，随后通过 Browser resource 数据和原
+parse/commit 路径控制交错。设备断言覆盖 fragment/full URL/repeated/missing、generation/
+取消状态/旧页保留、replaceState 后回滚、C 替换及 stale B 的 UI 隔离、B 最终提交。
+`fragment-pending selftest OK phase=4` 已纳入 app_history_gate 必需条件，不以夹具冒充真实
+HTTP transport 或人工点击验收。最终 C89、审计、正式 Debug/Release build/CAB 通过，EXE
+零错误/警告；Release ASCII/UTF-16 不含 fragment-pending/pending-b/replacement-c 夹具。
+用户正常退出并暂停其他构建后串行执行；Debug 曾在 prebuild 提前退出，无编译错误线索，
+日志留在 `tmp/app-fragment-pending-build-failures/debug-prebuild.log`，正式重试通过，失败不转为通过。
 
 相邻 Debug 正式设备门 `tmp/device-runs/20261003-002348-app-history-adjacent/` 选择
 `136,407,1080-1083,1134,1330,999`，selected/observed 9/9、唯一 TESTBENCH PASS、零 ERROR/FAIL、
-Core 路径匹配、双空间预检和 crash_check=PASS，完整回收日志后清理本轮目录。
-最终完整 Debug 包 `tmp/device-runs/20261003-002631-app-history-delivery/` 含当前九个 DLL、
-EXE 与 Media 夹具，共 31 文件；正式 module-audit 与 EXE 门前复审均为
-holders=0 unavailable=0。`app-history/positron-debug.log` 记录 EXE history selftest OK、内部页
-自检 OK、newtab history=1；EXE/九个 DLL SHA256 回读匹配 10/10，crash_check=PASS。设备为
-320×320、128 DPI Microsoft DeviceEmulator；无强杀、重置或内置路径回退。当前 PID 2662329806
-当时留在 `\Storage Card\Temp\Positron-device-gate\app-history-delivery-20261003-002631\positron.exe`，
-该应用已由用户正常退出；当前人工包与 PID 见上文页面拖动证据。
+Core 路径匹配、双空间预检和 crash_check=PASS，完整回收日志后清理目录；该门不代表本轮重跑。
+当前完整 Debug 包 `tmp/device-runs/20261003-093754-app-fragment-pending/` 共 31 文件；正式
+module-audit 与 EXE 门前复审均 holders=0 unavailable=0。`app-history/positron-debug.log`
+记录 fragment-pending/history/pointer/system-info/internal-pages 自检 OK、newtab history=1；
+EXE/九个 DLL SHA256 回读匹配 10/10、crash_check=PASS。设备为 320×320、128 DPI
+Microsoft DeviceEmulator；PID 3190149122 留在
+`\Storage Card\Temp\Positron-device-gate\app-fragment-pending-20261003-093754\positron.exe`。
+未强杀、重置、回退内置存储或修改 WMDC。真实 A/B 加载中片段点击、C 替换与网络失败回滚
+仍待人工复核，后续编译/设备门须先正常退出此应用。
 
 早期 scroll/diagnostic 两包的 phase=7 legacy 锚点失败仍保留；夹具 inline anchor 没有可用
 box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸载不派发与刷新 identity
@@ -301,16 +311,18 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 已复核：EXE 移除已通过自动门的同文档导航候选，保留片段 URL 公共接口与人工矩阵；
-系统信息保留实际 AKU 与可选 OEM 字段；本轮已复核 ROADMAP 与当前限制，将进一步 OS
-产品/发行版本识别列为暂缓，营销版本不保证识别的限制仍有效，无新增 DLL 候选。
+ROADMAP 与当前限制已复核：本轮只修正同文档 fragment 的 EXE 候选调度和回滚 UI，现有
+片段 URL 公共接口与人工矩阵仍有效，无需修改路线图或新增 DLL 候选。系统信息保留 AKU
+与可选 OEM 字段，进一步 OS 产品/发行版本识别继续暂缓，营销版本不保证识别的限制不变。
 Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC 初始夹具、解码守卫和 EOF 重播候选，保留其他
 格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
 重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步不继续 OS 产品/发行版本取证；先人工复核当前完整包的内容拖动/点按、native 拖选、旋转及地址栏回车，
+EXE 下一步先人工复核当前包：A 显示时地址栏加载 B，点击 A 的页内链接仍滚动且 B 随后提交；
+点击外链 C 则替换 B；B 失败保持 A 新片段地址和原标题。不继续 OS 产品/发行版本取证。
+随后复核内容拖动/点按、native 拖选、旋转及地址栏回车，
 并继续同文档/跨页滚动恢复矩阵；随后独立
 修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
 并行 Media 下一步：按同一 pin/许可规则补 AVI/MJPEG + MP3 夹具，验证实际帧/PCM 和生命周期，

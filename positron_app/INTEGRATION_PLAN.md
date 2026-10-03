@@ -90,6 +90,12 @@ Back/Forward、脚本导航和滚动恢复。提交取消、网络错误和候�
 事件入口；DOM、ScriptSession、native 控件和 retained layout 保留，不发起网络请求或卸载。
 重新加载/跨文档遍历必须取得新 document identity，不能继续复用旧 pushState 组。
 
+显示 A、等待跨文档候选 B 时，Browser 已判定的 A 页 fragment 跳转不取消或退休 B，也不增加
+网络 generation；只更新 A 的 history、位置和候选的已提交 URL 回滚快照。地址栏和加载标题
+继续表示 B；B 失败恢复 A 最新的片段地址及原标题，B 成功仍按既有提交路径替换 A。
+push/replaceState 同样同步回滚地址，不覆盖加载 UI；跨文档链接 C 则走原候选替换路径，
+取消/退休 B，B 的迟到结果不能覆盖 C 的 UI。明确的 Back/Forward/go 调度保持原策略。
+
 滚动快照复用 Browser entry scroll 接口，在离页提交前及 pushState 前保存当前物理 viewport。
 已布局页面恢复时只 clamp、移动 retained 像素、重定位 native 子控件并通知 Browser CSS 坐标；
 普通 history 恢复尊重 `history.scrollRestoration=manual`，fragment reveal 独立执行。Core
@@ -189,6 +195,10 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 重新检查 guest DLL holder、回读 EXE/九个 DLL 的 SHA256、启动自检并检查新增 crash dump；
 不构建、选择设备或强杀进程。它不替代真实 HTTP 跨页恢复、地址栏回车、native 焦点、旋转/DPI
 和人工滚动验收，测试夹具及诊断不编入 Release。
+同一独立 Debug 夹具用有界 event 暂停真实宿主 worker，以离线响应驱动原 parse/commit 路径，
+验证 B 加载中 A 的 fragment/repeated/missing 跳转不取消、generation/文档/session 保留、
+replaceState 后失败回滚，以及 C 替换与 stale B 隔离、B 成功提交；门要求 fragment-pending
+自检通过。它不替代真实网络耗时、取消 transport 或真实页面点按的人工检查。
 门可用受限 `-StartupUrl positron://system` 留在规范化后的系统章节，默认仍为 newtab；
 另要求 Debug 系统信息自检通过，覆盖双语中性标签、非 CE/未知平台 ID、原始平台类型、
 UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保留、版本资源切片边界与 HTML

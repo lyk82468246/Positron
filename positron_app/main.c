@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "app_debug.h"
 #include "app_host.h"
@@ -134,6 +135,9 @@ static int g_page_pointer_scroll_x;
 static int g_page_pointer_scroll_y;
 #ifdef _DEBUG
 static unsigned long g_page_layout_count;
+/* Non-NULL only inside the independent startup fixture. It parks a real
+ * worker without HTTP so interleavings are deterministic and offline. */
+static HANDLE g_navigation_debug_worker_gate;
 #endif
 static HDC g_page_paint_buffer_dc;
 static HBITMAP g_page_paint_buffer_bitmap;
@@ -406,6 +410,27 @@ static void app_navigation_restore_ui(AppNavigationRequest *request)
     app_set_address(request->committed_url);
     if (g_window != NULL) {
         SetWindowTextW(g_window, request->committed_caption);
+    }
+}
+
+/* A fragment/pushState changes the displayed document, not the pending
+ * network candidate. Keep its loading UI, but refresh the committed URL
+ * used if that candidate fails (or a later candidate inherits rollback UI).
+ * Never capture the visible "Loading" caption as the old page's title. */
+static void app_same_document_update_ui(void)
+{
+    AppNavigationRequest *request;
+
+    request = g_navigation_request;
+    if (request != NULL) {
+        if (request->ui_snapshot_valid) {
+            app_copy_text(request->committed_url,
+                    sizeof(request->committed_url), g_current_url);
+        }
+        app_set_address(request->url);
+    } else {
+        app_set_address(g_current_url);
+        app_restore_page_status();
     }
 }
 
@@ -2471,7 +2496,7 @@ static int app_script_navigate(void *pw, AppScriptContext *context,
                 info->url);
         (void) AppScript_SetDocumentUrl(context, host->current_url);
         app_history_save_scroll();
-        app_set_address(host->current_url);
+        app_same_document_update_ui();
         app_update_history_buttons();
         if (info->kind == PBROWSER_SCRIPT_NAVIGATION_PUSH_STATE) {
             *out_value = PBrowser_HistoryCount(host->history);
@@ -3796,13 +3821,30 @@ static int app_navigation_pending_count(AppNavigationRequest *request)
     return AppResources_PendingCount(request);
 }
 
+#ifdef _DEBUG
+static DWORD WINAPI app_navigation_debug_wait_worker(void *parameter)
+{
+    (void) WaitForSingleObject((HANDLE) parameter, 10000);
+    return 0;
+}
+#endif
+
 static int app_navigation_start_worker(AppNavigationRequest *request)
 {
     if (request == NULL || request->worker_thread != NULL) {
         return 1;
     }
-    request->worker_thread = CreateThread(NULL, 0, app_navigation_worker,
-            request, 0, NULL);
+#ifdef _DEBUG
+    if (g_navigation_debug_worker_gate != NULL) {
+        request->worker_thread = CreateThread(NULL, 0,
+                app_navigation_debug_wait_worker,
+                g_navigation_debug_worker_gate, 0, NULL);
+    } else
+#endif
+    {
+        request->worker_thread = CreateThread(NULL, 0, app_navigation_worker,
+                request, 0, NULL);
+    }
     return request->worker_thread == NULL ? 1 : 0;
 }
 
@@ -4453,7 +4495,8 @@ static int app_navigate_fragment(HWND hwnd, const char *url, int replace)
         if (strlen(url) >= sizeof(target)) return -1;
         app_copy_text(target, sizeof(target), url);
     }
-    if (app_navigation_cancel_active() != 0) return -1;
+    /* Browser identified a same-document fragment. No worker or candidate
+     * is replaced here: a pending cross-document load must keep running. */
     if (strcmp(g_current_url, target) != 0) {
         app_history_save_scroll();
         result = replace ? PBrowser_HistoryReplaceState(g_history,
@@ -4467,9 +4510,8 @@ static int app_navigate_fragment(HWND hwnd, const char *url, int replace)
                     PBrowser_HistoryCount(g_history));
         }
     }
-    app_set_address(g_current_url);
+    app_same_document_update_ui();
     app_update_history_buttons();
-    app_restore_page_status();
     (void) app_scroll_to_fragment(g_current_url);
     (void) hwnd;
     return 1;
@@ -4531,6 +4573,146 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
 static int app_history_debug_eval(const char *source)
 {
     return AppScript_Evaluate(g_script, source, (int) strlen(source));
+}
+
+/* Run the real route/start/cancel/rollback/commit adapters against a parked
+ * worker and Browser-owned resources. The HTTP response below is a fixture,
+ * not a second navigation implementation; no live network is contacted. */
+static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
+{
+    static const char response[] =
+            "<html><head><title>Page B</title></head><body>completed B</body></html>";
+    AppNavigationRequest *pending;
+    AppNavigationRequest *replacement;
+    HANDLE document;
+    AppScriptContext *script;
+    LONG generation;
+    int phase;
+    int count;
+    int result;
+    WCHAR caption[APP_HOST_TITLE_MAX];
+    WCHAR actual[APP_HOST_TITLE_MAX];
+    char message[128];
+
+    result = 1;
+    phase = 0;
+    document = g_document;
+    script = g_script;
+    g_window = viewport;
+    g_address = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 1, 1,
+            viewport, NULL, g_instance, NULL);
+    g_navigation_debug_worker_gate = CreateEvent(NULL, TRUE, FALSE, NULL);
+    if (g_address == NULL || g_navigation_debug_worker_gate == NULL) goto done;
+    /* The transport is deliberately replaced only within this Debug fixture. */
+    g_http_initialized = 1;
+    SetWindowTextW(viewport, L"Page A");
+    phase = 1;
+    if (!app_load_page_from(viewport, "https://example.com/pending-b",
+            APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto done;
+    pending = g_navigation_request;
+    generation = g_navigation_generation;
+    GetWindowTextW(viewport, caption, APP_HOST_TITLE_MAX);
+    if (pending == NULL || pending->worker_thread == NULL ||
+            app_navigation_pending_count(pending) != 1 ||
+            !app_load_page_from(viewport, "#chapter", APP_HISTORY_NEW,
+            -1, APP_NAV_SOURCE_DOCUMENT) || g_navigation_request != pending ||
+            g_retired_navigation != NULL || g_navigation_generation != generation ||
+            app_navigation_is_cancelled(pending) || !app_navigation_can_apply(pending) ||
+            g_document != document || g_script != script || g_scroll_y != chapter_y ||
+            strcmp(pending->committed_url, g_current_url)) goto done;
+    GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(caption, actual) || wcscmp(pending->committed_caption, L"Page A")) goto done;
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/pending-b")) goto done;
+    count = PBrowser_HistoryCount(g_history);
+    if (!app_load_page_from(viewport, g_current_url, APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_DOCUMENT) || PBrowser_HistoryCount(g_history) != count ||
+            !app_load_page_from(viewport, "#missing", APP_HISTORY_REPLACE,
+            -1, APP_NAV_SOURCE_DOCUMENT) || g_scroll_y != chapter_y ||
+            !app_load_page_from(viewport, "#chapter", APP_HISTORY_REPLACE,
+            -1, APP_NAV_SOURCE_DOCUMENT) || g_navigation_request != pending ||
+            app_navigation_is_cancelled(pending)) goto done;
+    phase = 2;
+    if (app_history_debug_eval("history.replaceState(null,'','#legacy');") !=
+            PSCRIPT_OK || strcmp(pending->committed_url, g_current_url) ||
+            g_navigation_request != pending || app_navigation_is_cancelled(pending)) goto done;
+    /* Failure restores A's most recent location, not the pre-load URL. */
+    SetEvent(g_navigation_debug_worker_gate);
+    app_navigation_finish(pending, 0);
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/other#legacy") ||
+            g_document != document || g_script != script || g_navigation_request != NULL) goto done;
+    GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"Page A")) goto done;
+    phase = 3;
+    ResetEvent(g_navigation_debug_worker_gate);
+    if (!app_load_page_from(viewport, "https://example.com/pending-b",
+            APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto done;
+    pending = g_navigation_request;
+    if (!app_load_page_from(viewport, "#chapter", APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_DOCUMENT) || g_navigation_request != pending) goto done;
+    /* An actual HTTP(S) route C supersedes B. B's late continuation is stale
+     * and must not restore the address/title over C's loading UI. */
+    if (!app_load_page_from(viewport, "https://example.com/replacement-c",
+            APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT)) goto done;
+    replacement = g_navigation_request;
+    if (replacement == NULL || replacement == pending ||
+            g_retired_navigation != pending || !app_navigation_is_cancelled(pending) ||
+            app_navigation_can_apply(pending) || app_navigation_advance(viewport, pending) != -1 ||
+            g_document != document || strcmp(replacement->committed_url, g_current_url)) goto done;
+    SetEvent(g_navigation_debug_worker_gate);
+    app_navigation_remove_retired(pending);
+    app_navigation_finish(pending, 0);
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/replacement-c") ||
+            g_navigation_request != replacement) goto done;
+    app_navigation_finish(replacement, 0);
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/other#chapter") || g_document != document) goto done;
+    phase = 4;
+    ResetEvent(g_navigation_debug_worker_gate);
+    if (!app_load_page_from(viewport, "https://example.com/pending-b",
+            APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto done;
+    pending = g_navigation_request;
+    if (!app_load_page_from(viewport, "#legacy", APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_DOCUMENT) || g_navigation_request != pending) goto done;
+    count = PBrowser_HistoryCount(g_history);
+    SetEvent(g_navigation_debug_worker_gate);
+    if (WaitForSingleObject(pending->worker_thread, 10000) != WAIT_OBJECT_0) goto done;
+    CloseHandle(pending->worker_thread);
+    pending->worker_thread = NULL;
+    if (PBrowser_NavigationResourceSetData(pending->resource_transaction,
+            pending->resource_index, response, sizeof(response) - 1) != PBROWSER_OK ||
+            app_navigation_parse_document(pending) != 0 ||
+            app_navigation_advance(viewport, pending) != 1 ||
+            g_document == document || g_script != NULL ||
+            strcmp(g_current_url, "https://example.com/pending-b") ||
+            PBrowser_HistoryCount(g_history) != count + 1) goto done;
+    app_navigation_finish(pending, 1);
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/pending-b") ||
+            g_navigation_request != NULL || g_retired_navigation != NULL) goto done;
+    result = 0;
+done:
+    if (g_navigation_debug_worker_gate != NULL) SetEvent(g_navigation_debug_worker_gate);
+    if (g_navigation_request != NULL) app_navigation_finish(g_navigation_request, 0);
+    while (g_retired_navigation != NULL) {
+        pending = g_retired_navigation;
+        app_navigation_remove_retired(pending);
+        app_navigation_finish(pending, 0);
+    }
+    if (g_navigation_debug_worker_gate != NULL) CloseHandle(g_navigation_debug_worker_gate);
+    g_navigation_debug_worker_gate = NULL;
+    if (g_address != NULL) DestroyWindow(g_address);
+    g_address = NULL;
+    g_window = NULL;
+    g_http_initialized = 0;
+    _snprintf(message, sizeof(message) - 1,
+            "positron fragment-pending selftest %s phase=%d\r\n",
+            result == 0 ? "OK" : "FAILED", phase);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+    return result;
 }
 
 /* Exercise the real EXE adapters with an independent page/history and a
@@ -4677,6 +4859,8 @@ static int app_history_debug_check(void)
     app_history_restore_scroll(PBrowser_HistoryIndex(g_history));
     if (g_scroll_x != 19 || g_scroll_y != 123 ||
             app_history_traverse(NULL, 1) != 0) goto done;
+    phase = 9;
+    if (app_fragment_pending_debug_check(viewport, chapter_y) != 0) goto done;
     result = 0;
 done:
     app_page_pointer_cancel(viewport);

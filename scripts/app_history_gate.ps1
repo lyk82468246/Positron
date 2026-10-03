@@ -96,6 +96,7 @@ try {
             if ($text -match 'selftest FAILED') { throw 'EXE startup selftest failed.' }
             if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
                     $text -match 'history selftest OK' -and
+                    $text -match 'fragment-pending selftest OK' -and
                     $text -match 'pointer selftest OK' -and
                     $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK' -and
@@ -107,7 +108,7 @@ try {
         }
         Start-Sleep -Milliseconds 150
     } while ((Get-Date) -lt $deadline)
-    if (!$complete) { throw 'Application pointer/history selftest or default navigation timed out.' }
+    if (!$complete) { throw 'Application pointer/history/fragment-pending selftest or default navigation timed out.' }
     $after = [PositronDeviceRapi]::SnapshotCrashDumps()
     foreach ($entry in $after.GetEnumerator()) {
         if (!$before.ContainsKey($entry.Key) -or $before[$entry.Key] -ne $entry.Value) {
