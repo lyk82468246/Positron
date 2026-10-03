@@ -8,7 +8,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
-当前中断任务是消费者 WinWorld operating-systems 图片声明尺寸失效。Core 修正与双配置自动门已完成，匹配应用实页复核进入下一步。脚本 DLL 有界初始化与 EXE 分批调度仍有效；单次长调用、Debug 默认预算超时及脚本失败策略不因图片门通过而关闭。Media 未提交改动保留，不纳入 Core 提交。
+WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用户实页视觉验收；本项关闭。脚本长调用、Debug 默认预算及失败策略仍待处理，Media 并行改动不纳入本批交付。
 
 ## 当前代码与所有权
 
@@ -18,7 +18,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
-### Core HTML 图片尺寸自动门通过
+### Core HTML 图片尺寸自动与实页视觉验收通过
 
 Core 以有界 presentational hints 处理 img width/height，作者 CSS 仍可覆盖；修正直接 flex
 图片丢失 replaced object、自然宽度覆盖声明尺寸、192 DPI auto 半尺寸，以及尺寸属性 mutation
@@ -40,9 +40,10 @@ EXE/九 DLL 回读 SHA256 10/10。实际启动 PID 4255741914，入口为
 `\Storage Card\Temp\Positron-device-gate\core-image-winworld-app-review-20261004-004714\positron.exe`，
 命令行打开 operating-systems；`app-smoke/positron-debug.log` 已确认该 PID 的 candidate-committed，
 image scan=7/7、resources=6/6/0/0；两次只读回拉日志稳定，crash dumps=0。辅助 smoke 最初
-误匹配日志字段而报超时，修正为 requested 后只读复核通过，没有重复启动应用。实页视觉结果
-不能由加载日志或离线 SVG 尺寸 fixture 冒充；由 app 会话接手确认四张真实 PNG、文字和旋转，
-不重复表单门。当前应用仍可能持有 DLL，下一次部署先正常退出并重做引用审计。
+误匹配日志字段而报超时，修正为 requested 后只读复核通过，没有重复启动应用。用户已明确
+确认本批实页视觉验收通过；此结论来自用户观察，不由加载日志或离线 SVG 尺寸 fixture
+代替。关闭四张真实 PNG 的本批视觉待验收项，不外推为所有页面、OEM 或真实高 DPI 系统
+均已通过。当前应用仍可能持有 DLL，下一次部署先正常退出并重做引用审计。
 
 ### EXE 地址栏复用与加载标题自动门通过
 
@@ -424,9 +425,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核 ROADMAP、能力矩阵和现有限制：Core 图片声明尺寸退出待实现范围，真实
-WinWorld PNG 与旋转列为 app 复核，不新增 EXE workaround 或完整 aspect-ratio API。
-本中断任务的唯一下一步是把已验证 Core 交给 app 会话，以匹配包确认真实页面效果。
+已复核 ROADMAP 和图片限制，移除已完成的 WinWorld PNG 视觉 backlog。完整 aspect-ratio、
+其他 replaced-flex sizing 与跨设备边界不变；下一条应用纵切按用户新缺口或明确指令选择。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
 所有权；单次长调用、Debug 默认预算失败和错误后 session 策略仍待处理，不承诺冷启动抢占。
