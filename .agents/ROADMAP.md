@@ -469,6 +469,10 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 - native SELECT popup 的真实 OEM 键盘/触摸行为、动态 option 重建、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表、
   应用英语/简体中文/回退语言矩阵和失败网络的整体视觉；
 - `example.com`/IANA 深层导航、旧页保留等真实网页观察。
+- WinWorld operating-systems 四张缩略图的匹配包视觉复核：Core 的 HTML width/height hint、
+  cascade、比例、直接 flex image 与 96/192 DPI 投影已有自动设备门；不再作为待实现候选。
+  app 会话核对真实 PNG 是否按 80 CSS px 等比显示、文字是否仍可达，以及实际旋转后布局；
+  不能用 EXE 缩小 bitmap、修改网页属性或网站特判代替 Core 修正。
 - 地址栏标题往返滚动、点按切回原生 EDIT、回车/取消、加载填充与失败回滚，尤其输入时
   后台提交不覆盖选区/IME；用户已确认填充观感正常，但报告点按后候选回滚。消息分派隔离与
   真实控件自动门已通过，需立即人工复测“不按回车，B 仍提交”；新的 160 ms/4 秒周期、

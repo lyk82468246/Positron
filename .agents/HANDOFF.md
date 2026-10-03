@@ -8,7 +8,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
-当前交互任务是加载时脚本初始化/执行同步阻塞。DLL 诊断与有界 Begin/Step/Cancel 合同已通过双配置设备门；EXE 现接入候选系统 timer，在完整初始化 Step 或作者脚本之间返回消息循环，移除逐脚本前 full GC，预算不扩大。单次长调用仍同步，不宣称整页卡顿已修复。Debug TEST203 默认 1 秒预算超时在旧同步序列对照也复现，Release 通过；原断言不变，失败不计通过。用户正常退出并让出构建/设备门后串行验证，Media 未提交改动保留，不纳入应用提交。
+当前中断任务是消费者 WinWorld operating-systems 图片声明尺寸失效。Core 修正与双配置自动门已完成，匹配应用实页复核进入下一步。脚本 DLL 有界初始化与 EXE 分批调度仍有效；单次长调用、Debug 默认预算超时及脚本失败策略不因图片门通过而关闭。Media 未提交改动保留，不纳入 Core 提交。
 
 ## 当前代码与所有权
 
@@ -17,6 +17,32 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。默认入口为 newtab；内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，无 ScriptSession 或外部请求。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 的导航来源检查仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
+
+### Core HTML 图片尺寸自动门通过
+
+Core 以有界 presentational hints 处理 img width/height，作者 CSS 仍可覆盖；修正直接 flex
+图片丢失 replaced object、自然宽度覆盖声明尺寸、192 DPI auto 半尺寸，以及尺寸属性 mutation
+后旧布局未失效。公共 ABI、EXE、Browser、Image/HTTP 接线不变，cache 自然尺寸不变。
+稳定合同见 [Core README](../positron_core/README.md)，根因和夹具边界见
+[尺寸取证](../docs/history/CORE_IMAGE_DIMENSION_REVIEW.md)。
+
+Debug `tmp/device-runs/20261004-004226-core-image-dimensions-debug-final/` 为
+`19,20,39,42,1313,1315-1319,1330,1340,999` 的 13/13 PASS；Release
+`tmp/device-runs/20261004-004331-core-image-dimensions-release-final/` 加 TEST13 为 14/14 PASS。
+唯一 TESTBENCH PASS、零 ERROR/FAIL、完整日志、Core 路径及 crash_check PASS；240×320、96 DPI
+DeviceEmulator 上 TEST1340 独立覆盖 96/192 DPI。两个配置均在 SD 部署，双空间预检与
+guest holders=0 unavailable=0 通过；Debug 本轮目录删除，Release 删除失败保留。
+C89、审计和串行正式 Debug/Release build 通过，既有上游警告保留。
+
+真实 WinWorld 复核的完整 Debug 包在
+`tmp/device-runs/20261004-004714-core-image-winworld-app-review/`；正式 module audit PASS，
+EXE/九 DLL 回读 SHA256 10/10。实际启动 PID 4255741914，入口为
+`\Storage Card\Temp\Positron-device-gate\core-image-winworld-app-review-20261004-004714\positron.exe`，
+命令行打开 operating-systems；`app-smoke/positron-debug.log` 已确认该 PID 的 candidate-committed，
+image scan=7/7、resources=6/6/0/0；两次只读回拉日志稳定，crash dumps=0。辅助 smoke 最初
+误匹配日志字段而报超时，修正为 requested 后只读复核通过，没有重复启动应用。实页视觉结果
+不能由加载日志或离线 SVG 尺寸 fixture 冒充；由 app 会话接手确认四张真实 PNG、文字和旋转，
+不重复表单门。当前应用仍可能持有 DLL，下一次部署先正常退出并重做引用审计。
 
 ### EXE 地址栏复用与加载标题自动门通过
 
@@ -398,38 +424,17 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核 ROADMAP、能力矩阵与现有限制：EXE 分步接线退出待实现范围，WinWorld 点按改善保留，作者单次阻塞及 Debug 默认预算失败未关闭。DLL 下一步仍先测可信编译产物体积、峰值内存和冷/重复初始化成本，再取舍固定预算编译复用；不新增未审查缓存 ABI 或承诺冷启动可抢占。EXE 下一步立即人工复测新完整包的 WinWorld Running script 阶段菜单、旧页滚动/链接、地址栏编辑、替换导航及正常退出；记录最大连续停顿与总加载时间，分步不能冒充任意 JS 抢占。
+本轮已复核 ROADMAP、能力矩阵和现有限制：Core 图片声明尺寸退出待实现范围，真实
+WinWorld PNG 与旋转列为 app 复核，不新增 EXE workaround 或完整 aspect-ratio API。
+本中断任务的唯一下一步是把已验证 Core 交给 app 会话，以匹配包确认真实页面效果。
 
-ROADMAP、能力矩阵与当前限制已复核：地址栏消息隔离自动门通过，真实点按导致回滚需立即人工复测；
-慢速动画、输入/IME 和页面响应进入人工矩阵。本次英文拼写修正无需改变路线候选，
-不扩大 DLL 能力或现有限制。
-加载标题与 HTTP observer 接线退出待实现候选，前缀动画已删除，真实阶段/截断/
-字体效果进入人工矩阵；同文档 fragment、片段 URL 公共接口
-与人工矩阵仍有效。系统信息保留 AKU
-与可选 OEM 字段，进一步 OS 产品/发行版本识别继续暂缓，营销版本不保证识别的限制不变。
-Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2、AMR-NB/WB 与 WAV IMA 初始夹具、解码守卫和 EOF 重播候选，保留其他
-格式、时钟同步和 DirectShow source 等缺口。DB 已移除已完成的 Debug 复测缺口：Debug/Release 完整离线合同和正常文件关闭
-重开已通过；空间不足/跨进程锁/进程重启/journal 恢复、HTTPS worker 和应用持久设置/访问日志/
-下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
-Release 性能对照仍是可选后续门。
+原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
+所有权；单次长调用、Debug 默认预算失败和错误后 session 策略仍待处理，不承诺冷启动抢占。
+EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C 替换 B、失败恢复 A，以及
+标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
+或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-EXE 下一步立即复测：A 显示时加载 B，点按编辑但不回车，B 仍提交；显式 Enter 提交 C 才替换 B。
-若仍回滚，用 PullOnly 获取新日志，区分 address-edit、address-submit 与 finish-rollback，不先归因 DLL。
-再复核标题滚动、慢速填充、就绪品牌标题及输入/IME 期间后台提交保留选区。
-同时复核窄标题截断及真实 HTTP/HTTPS；短阶段可以
-转瞬即逝，同步脚本/排版期间动画可暂停，不重入消息泵。A 显示时加载 B，A 页内跳转
-仍滚动且 B 随后提交；外链 C 替换 B；B 失败保持 A 新片段地址和原标题。不继续 OS 版本取证。
-随后复核内容拖动/点按、native 拖选、旋转及地址栏回车，
-并继续同文档/跨页滚动恢复矩阵；随后独立
-修正 Debug 增量构建时间依赖，不同时扩大键盘/IME 或关闭生命周期接线。
-并行 Media 下一步：按可审计 pin/许可规则补 MPEG-4 Part 2 的实际 I420、时间戳及
-生命周期夹具；WAV IMA 初始合同与精确 sample seek、AMR-NB/WB 初始合同与 seek 重置退出待实现候选，IMA 其他采样率/布局及 AMR 其他码率/DTX/丢失帧/3GP
-仍待门。所有产品修正留在 positron_media，宿主只做断言。ROADMAP 与现有限制已复核，
-时钟/同步/DirectShow 缺口仍有效；KNOWN_LIMITATIONS 已链接能力矩阵，无需重复扩写。
-DB 的空间不足、跨进程锁及进程重启 journal/outbox/cursor 恢复仍为独立候选；
-不把正常关闭重开写成断电恢复，不在媒体纵切中新增应用 worker。
-执行新设备门前仍须重新检查编译竞态和 guest DLL 引用；破坏性恢复测试须另行明确授权。
-遵守用户的 SD 目标，不自行回退内置、重置、强杀或改共享设置；不把可枚举文件或已通过的
-Release 合同改写为完整 Debug/生产设备基线。
-About 章节位置、Debug 时间、Release CAB 安装版本，以及内部页面的地址栏/菜单/history/quit
-与语言、旋转人工验收仍为独立 backlog；旧 About 包已清理，复核须部署匹配的新包。
+并行 Media 保留 MPEG-4 Part 2 fixture、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
+DB 保留空间不足、跨进程锁、进程重启/journal、HTTPS worker 和应用持久化，不把正常
+关闭重开写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
+恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

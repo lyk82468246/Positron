@@ -1098,8 +1098,13 @@ static void layout_minmax_block(
 		assert(0);
 	}
 
-	/* fixed width takes priority */
-	if (block->type != BOX_TABLE_CELL && !lh__box_is_flex_item(block)) {
+	/* Replaced flex items also have a definite size suggestion. Keeping the
+	 * raw bitmap width as their minimum would override an author's img width
+	 * before flexing even starts (e.g. a 390px image declared as 80px). */
+	if (block->type != BOX_TABLE_CELL &&
+			(!lh__box_is_flex_item(block) ||
+			 (block->object != NULL &&
+			  content_get_type(block->object) != CONTENT_HTML))) {
 		bool border_box = bs == CSS_BOX_SIZING_BORDER_BOX;
 		enum css_max_width_e max_type;
 		enum css_min_width_e min_type;

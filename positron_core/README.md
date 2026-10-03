@@ -49,6 +49,18 @@ Core 负责 UTF-8 HTML/CSS parse、cascade、媒体条件、computed style、页
 
 `img`、`srcset` 和 `picture/source` 只支持头文件规定的候选、URL、祖先、source、节点和 `sizes` 预算。Core 可投影 `naturalWidth`、`naturalHeight`、`complete`、`currentSrc`、image-map 几何和 area link metadata，但 relation 查询不会自行 fetch、decode 或 layout。CORS、完整媒体查询、绝对 URL、loading 策略和图像事件由上层决定。
 
+`<img width/height>` 通过 libcss 的 presentational hints 进入正常 cascade，不直接覆盖 computed
+style。例如 `width="80"` 和兼容的 `width="80px"` 都表示 80 CSS px；前导 ASCII 空白、
+非负十进制小数及紧随数字的 `%` 可解析，其他尾缀不作为 CSS 单位（`80em` 仍表示 80 px）。
+单个属性最多 128 字节，必须有初始数字且能用 libcss 22:10 定点数表示；空值、符号前缀、
+非法或超限值不产生 hint，零值保留。外部 CSS、style block 和行内 style 可以覆盖这些 hint，
+包括用 `width:auto` 恢复自然尺寸；缺少一边时由已解码图像比例及现有 min/max 规则补齐。
+直接 flex 图片保留 replaced image，而不是空普通块。设备布局仅将每个 `<img>` 的自然尺寸
+carrier 按 DPI 转换一次，不修改 Image handle、cache 的自然尺寸或 CSS background tile。
+通过属性 API 修改/移除 img 的 width/height 后旧布局失效，宿主须重新 style/layout/paint；
+尺寸变更不重新解码已缓存的图像。本能力不包含解码前的现代 `aspect-ratio` 占位、完整
+dimension-source 算法或全部 replaced-flex sizing 情形，整数像素比例/坐标仍按既有布局规则量化。
+
 异步图片资源使用 `PCore_FetchImageResourcesEx()`。同步消费者可以继续使用旧的
 `PCore_FetchImageResources()`：其中 `0` 加非空 body 表示成功，非零表示终态失败；旧 ABI
 不变。Ex callback 返回 `PCORE_IMAGE_FETCH_READY`、`PCORE_IMAGE_FETCH_PENDING` 或

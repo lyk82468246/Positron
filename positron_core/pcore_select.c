@@ -50,6 +50,8 @@ typedef struct pcore_select_pw {
     dom_node *focus_node;     /* borrowed from document interaction state */
     dom_node *active_node;
     dom_node *hover_node;
+    /* Borrowed synchronously by libcss; no pointer-valued hint payloads. */
+    css_hint image_hints[2];
 } pcore_select_pw;
 
 /* libcss owns the value stored under this key. It must remain attached while
@@ -1363,12 +1365,98 @@ static css_error node_is_lang(void *pw, void *node,
 /* presentational hints + UA defaults + node data                      */
 /* ------------------------------------------------------------------ */
 
+/* HTML dimension rules, not CSS units: an initial non-negative decimal
+ * prefix, optional fraction and immediate '%' marker. Thus "80px" and
+ * "80em" both mean 80 CSS px, whereas signs and leading '.' are invalid.
+ * Bound the source and reject unrepresentable 22:10 values, never wrap/clamp
+ * malformed huge attributes into another dimension. This deliberately does
+ * not implement the separate modern aspect-ratio property/source algorithm. */
+static int pcore_image_dimension(dom_string *attr, css_hint_length *length)
+{
+    const unsigned char *text;
+    size_t size;
+    size_t pos;
+    unsigned long integer;
+    unsigned long fraction;
+    unsigned long divisor;
+    unsigned long fixed_fraction;
+    unsigned long digit;
+
+    size = dom_string_byte_length(attr);
+    if (size == 0 || size > 128) { return 0; }
+    text = (const unsigned char *) dom_string_data(attr);
+    pos = 0;
+    while (pos < size && (text[pos] == ' ' || text[pos] == '\t' ||
+            text[pos] == '\n' || text[pos] == '\r' || text[pos] == '\f')) { pos++; }
+    if (pos == size || text[pos] < '0' || text[pos] > '9') { return 0; }
+    integer = 0;
+    while (pos < size && text[pos] >= '0' && text[pos] <= '9') {
+        digit = text[pos++] - '0';
+        if (integer > ((unsigned long) (INT_MAX >> CSS_RADIX_POINT) - digit) / 10) {
+            return 0;
+        }
+        integer = integer * 10 + digit;
+    }
+    fraction = 0;
+    divisor = 1;
+    if (pos < size && text[pos] == '.') {
+        pos++;
+        while (pos < size && text[pos] >= '0' && text[pos] <= '9') {
+            if (divisor < 1000000UL) {
+                fraction = fraction * 10 + text[pos] - '0';
+                divisor *= 10;
+            }
+            pos++;
+        }
+    }
+    fixed_fraction = (fraction * (1UL << CSS_RADIX_POINT) + divisor / 2) / divisor;
+    if (integer * (1UL << CSS_RADIX_POINT) > (unsigned long) INT_MAX - fixed_fraction) {
+        return 0;
+    }
+    length->value = (css_fixed) (integer * (1UL << CSS_RADIX_POINT) + fixed_fraction);
+    length->unit = pos < size && text[pos] == '%' ? CSS_UNIT_PCT : CSS_UNIT_PX;
+    return 1;
+}
+
 static css_error node_presentational_hint(void *pw, void *node,
         uint32_t *nhints, css_hint **hints)
 {
-    (void) pw; (void) node;
+    static const char *ATTRIBUTES[2] = { "width", "height" };
+    pcore_select_pw *state;
+    dom_string *name;
+    dom_string *attr;
+    dom_exception err;
+    css_hint *hint;
+    int index;
+
     *nhints = 0;
     *hints = NULL;
+    state = (pcore_select_pw *) pw;
+    if (state == NULL || !pcore_node_name_is((dom_node *) node, "img")) {
+        return CSS_OK;
+    }
+    memset(state->image_hints, 0, sizeof(state->image_hints));
+    for (index = 0; index < 2; index++) {
+        name = attr = NULL;
+        if (dom_string_create_interned((const uint8_t *) ATTRIBUTES[index],
+                strlen(ATTRIBUTES[index]), &name) != DOM_NO_ERR) {
+            return CSS_NOMEM;
+        }
+        err = dom_element_get_attribute((dom_element *) node, name, &attr);
+        dom_string_unref(name);
+        if (err != DOM_NO_ERR) {
+            if (attr != NULL) { dom_string_unref(attr); }
+            return err == DOM_NO_MEM_ERR ? CSS_NOMEM : CSS_INVALID;
+        }
+        hint = &state->image_hints[*nhints];
+        if (attr != NULL && pcore_image_dimension(attr, &hint->data.length)) {
+            hint->prop = index == 0 ? CSS_PROP_WIDTH : CSS_PROP_HEIGHT;
+            hint->status = index == 0 ? CSS_WIDTH_SET : CSS_HEIGHT_SET;
+            (*nhints)++;
+        }
+        if (attr != NULL) { dom_string_unref(attr); }
+    }
+    if (*nhints != 0) { *hints = state->image_hints; }
     return CSS_OK;
 }
 
@@ -13497,6 +13585,10 @@ PCORE_API int PCore_NodeSetAttributeById(HANDLE hDoc,
     err = dom_element_set_attribute(element, dom_name, dom_value);
     dom_string_unref(dom_value);
     dom_string_unref(dom_name);
+    if (err == DOM_NO_ERR && pcore_node_name_is((dom_node *) element, "img") &&
+            (_stricmp(name, "width") == 0 || _stricmp(name, "height") == 0)) {
+        pcore_render_invalidate((dom_document *) hDoc);
+    }
     dom_node_unref((dom_node *) element);
     return (err == DOM_NO_ERR) ? 0 : 1;
 }
@@ -13523,6 +13615,10 @@ PCORE_API int PCore_NodeRemoveAttributeById(HANDLE hDoc,
     }
     err = dom_element_remove_attribute(element, dom_name);
     dom_string_unref(dom_name);
+    if (err == DOM_NO_ERR && pcore_node_name_is((dom_node *) element, "img") &&
+            (_stricmp(name, "width") == 0 || _stricmp(name, "height") == 0)) {
+        pcore_render_invalidate((dom_document *) hDoc);
+    }
     dom_node_unref((dom_node *) element);
     return (err == DOM_NO_ERR) ? 0 : 1;
 }

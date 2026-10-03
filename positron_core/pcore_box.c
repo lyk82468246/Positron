@@ -1767,6 +1767,9 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     dom_document *doc = NULL;
     struct bitmap *bitmap;
     struct box *box;
+    int dpi;
+    int width;
+    int height;
 
     selected_bytes = 0;
     if (!pcore_node_name_is(node, "img") ||
@@ -1795,6 +1798,21 @@ static struct box *pcore_make_cached_image_box(dom_node *node,
     if (bitmap == NULL) {
         return NULL;
     }
+
+    /* Cache metadata and Image handles remain in natural CSS pixels. Only
+     * this img-specific layout carrier uses device pixels, like CSS lengths;
+     * otherwise width:auto becomes half-sized on a 192-DPI viewport. Never
+     * change the shared decoder/cache or CSS background tile dimensions. */
+    dpi = pcore_get_device_dpi();
+    width = MulDiv(bitmap->width, dpi, 96);
+    height = MulDiv(bitmap->height, dpi, 96);
+    if (width <= 0 || height <= 0 || width > (INT_MAX >> CSS_RADIX_POINT) ||
+            height > (INT_MAX >> CSS_RADIX_POINT)) {
+        talloc_free(bitmap);
+        return NULL;
+    }
+    bitmap->width = width;
+    bitmap->height = height;
 
     box = pcore_box_new(BOX_INLINE, style, ctx);
     if (box == NULL) {
@@ -2382,6 +2400,29 @@ static struct box *pcore_construct_flex(dom_node *node,
                                 gadget_type);
                         if (item != NULL) {
                             item->type = BOX_BLOCK;
+                        }
+                    }
+                } else if (pcore_node_name_is(child, "img")) {
+                    /* Blockification must retain the replaced object. An img
+                     * has no DOM children, so constructing a generic block
+                     * silently discards both pixels and intrinsic ratio. */
+                    item = pcore_make_cached_image_box(child, cs, ctx, stats);
+                    if (item != NULL) {
+                        item->type = BOX_BLOCK;
+                    } else {
+                        struct box *container;
+                        struct box *fallback;
+                        item = pcore_box_new(BOX_BLOCK, cs, ctx);
+                        if (item != NULL) {
+                            item->node = child;
+                            container = pcore_box_new(BOX_INLINE_CONTAINER,
+                                    NULL, ctx);
+                            fallback = pcore_make_image_fallback_box(child,
+                                    cs, ctx);
+                            if (container != NULL && fallback != NULL) {
+                                pcore_box_add_child(container, fallback);
+                                pcore_box_add_child(item, container);
+                            }
                         }
                     }
                 } else if (d == CSS_DISPLAY_FLEX ||

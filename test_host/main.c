@@ -84,6 +84,8 @@ extern const char *test1319_image_rgba_round_stroke_last_error(void);
 extern BOOL test1329_core_bootstrap_hamburger(void);
 extern BOOL test1336_script_performance_contract(void);
 extern BOOL test1338_browser_bootstrap_contract(char *error, int error_capacity);
+extern BOOL test1340_core_image_dimension_contract(void);
+extern const char *test1340_core_image_dimension_last_error(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
@@ -991,7 +993,7 @@ static BOOL test1337_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1338
+#define TEST_MAX_NUMBER 1340
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118013,6 +118015,14 @@ static int run_configured_tests(const unsigned char *selected,
             break;
         case 1338:
             ok = test1338_browser_bootstrap_guarded();
+            break;
+        case 1340:
+            ok = test1340_core_image_dimension_contract();
+            if (ok) {
+                show_info(L"TEST 1340 OK", "HTML image dimensions, cascade, ratio, flex and DPI passed.");
+            } else {
+                show_error(L"TEST 1340 FAIL", test1340_core_image_dimension_last_error());
+            }
             break;
         case 1328:
             ok = test1328_core_flex_button_visual_child();

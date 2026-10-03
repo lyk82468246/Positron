@@ -212,6 +212,7 @@
 			<File RelativePath=".\db_tests.c"></File>
 			<File RelativePath=".\script_performance_tests.c"></File>
 			<File RelativePath=".\browser_bootstrap_tests.c"></File>
+			<File RelativePath=".\image_dimension_tests.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"
