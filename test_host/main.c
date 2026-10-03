@@ -83,6 +83,7 @@ extern BOOL test1319_image_rgba_round_stroke(void);
 extern const char *test1319_image_rgba_round_stroke_last_error(void);
 extern BOOL test1329_core_bootstrap_hamburger(void);
 extern BOOL test1336_script_performance_contract(void);
+extern BOOL test1338_browser_bootstrap_contract(char *error, int error_capacity);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
@@ -990,7 +991,7 @@ static BOOL test1337_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1337
+#define TEST_MAX_NUMBER 1338
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -18527,6 +18528,8 @@ static int script_timing_bootstrap(HANDLE session, DWORD setup_start)
 {
     PBrowserScriptBootstrapPerformanceInfo *info;
     PBrowserScriptBootstrapStageTiming *stage;
+    PBrowserScriptBootstrapOptions options;
+    PBrowserScriptBootstrapInfo state;
     char detail[384];
     unsigned long i;
     DWORD start;
@@ -18539,7 +18542,40 @@ static int script_timing_bootstrap(HANDLE session, DWORD setup_start)
         testbench_log_message("INFO", L"Script timing", detail);
     }
     start = GetTickCount();
-    result = PBrowser_ScriptSessionEvaluateBootstrap(session);
+    if (g_browser_script_performance_fixture == 2) {
+        memset(&options, 0, sizeof(options));
+        options.size = sizeof(options);
+        options.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+        options.generation = 1;
+        memset(&state, 0, sizeof(state));
+        state.size = sizeof(state);
+        state.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+        result = PBrowser_ScriptSessionBootstrapBegin(session, &options);
+        for (i = 0; result == PSCRIPT_OK &&
+                i < PBROWSER_SCRIPT_BOOTSTRAP_MAX_STEPS; i++) {
+            if (PBrowser_ScriptSessionRuntime(session) != NULL ||
+                    PBrowser_ScriptSessionEvaluate(session, "1", -1) !=
+                    PSCRIPT_ERROR_ARGUMENT) {
+                result = PSCRIPT_ERROR_CALL;
+                break;
+            }
+            result = PBrowser_ScriptSessionBootstrapStep(session, 1, &state);
+            if (state.state == PBROWSER_BOOTSTRAP_COMPLETE) {
+                break;
+            }
+        }
+        if (result == PSCRIPT_OK && state.state != PBROWSER_BOOTSTRAP_COMPLETE) {
+            result = PSCRIPT_ERROR_CALL;
+        }
+        _snprintf(detail, sizeof(detail) - 1,
+                "stepped state=%d stages=%lu active=%lu max_step=%lu rc=%d",
+                state.state, state.completed_stages, state.active_ms,
+                state.max_step_ms, result);
+        detail[sizeof(detail) - 1] = '\0';
+        testbench_log_message("INFO", L"Script timing", detail);
+    } else {
+        result = PBrowser_ScriptSessionEvaluateBootstrap(session);
+    }
     _snprintf(detail, sizeof(detail) - 1, "bootstrap profile=%d total=%lu rc=%d",
             g_browser_script_performance_fixture,
             (unsigned long) (GetTickCount() - start), result);
@@ -84570,6 +84606,7 @@ static BOOL test202_browser_script_session_api(void)
 static BOOL test203_browser_script_bootstrap_api(void)
 {
     HANDLE session;
+    PBrowserScriptBootstrapInfo bootstrap_state;
     const char *result;
     const char *error_result;
     char error[256];
@@ -84601,7 +84638,15 @@ static BOOL test203_browser_script_bootstrap_api(void)
     if (!ok && session != NULL) {
         error_result = PBrowser_ScriptSessionGetError(session);
         if (error_result != NULL) {
-            _snprintf(error, sizeof(error) - 1, "%s", error_result);
+            memset(&bootstrap_state, 0, sizeof(bootstrap_state));
+            bootstrap_state.size = sizeof(bootstrap_state);
+            bootstrap_state.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+            PBrowser_ScriptSessionBootstrapGetState(session, &bootstrap_state);
+            _snprintf(error, sizeof(error) - 1,
+                    "%s; bootstrap state=%d next=%lu steps=%lu last_ms=%lu rc=%d",
+                    error_result, bootstrap_state.state, bootstrap_state.next_stage,
+                    bootstrap_state.completed_stages, bootstrap_state.last_step_ms,
+                    bootstrap_state.result);
             error[sizeof(error) - 1] = '\0';
         }
     }
@@ -114530,10 +114575,12 @@ static BOOL test1327_browser_native_bootstrap_flex_click(int timing)
                     executed, ignored);
             error[sizeof(error) - 1] = '\0';
         }
-        show_error(timing ? L"TEST 1336 FAIL" : L"TEST 1327 FAIL", error);
+        show_error(timing == 2 ? L"TEST 1338 FAIL" :
+                (timing ? L"TEST 1336 FAIL" : L"TEST 1327 FAIL"), error);
         return FALSE;
     }
-    show_info(timing ? L"TEST 1336 OK" : L"TEST 1327 OK",
+    show_info(timing == 2 ? L"TEST 1338 OK" :
+            (timing ? L"TEST 1336 OK" : L"TEST 1327 OK"),
             "Unmodified jQuery/Bootstrap collapse responded to a trusted "
             "native flex-button click; expand/hide/re-expand retained "
             "class/aria state and visible/hidden Core layout geometry.");
@@ -114751,6 +114798,18 @@ static BOOL test1328_core_flex_button_visual_child(void)
             "child CSS data-URI images; no synthetic Button label replaced "
             "the author content.");
     return TRUE;
+}
+
+static BOOL test1338_browser_bootstrap_guarded(void)
+{
+    char error[256];
+
+    error[0] = '\0';
+    if (!test1338_browser_bootstrap_contract(error, sizeof(error))) {
+        show_error(L"TEST 1338 FAIL", error);
+        return FALSE;
+    }
+    return test1327_browser_native_bootstrap_flex_click(2);
 }
 
 /* VS2008 /O2 folds many independent fixtures into this dispatcher and can
@@ -117951,6 +118010,9 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1336 FAIL", "Script timing contract failed.");
             }
+            break;
+        case 1338:
+            ok = test1338_browser_bootstrap_guarded();
             break;
         case 1328:
             ok = test1328_core_flex_button_visual_child();

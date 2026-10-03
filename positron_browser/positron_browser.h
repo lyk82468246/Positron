@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010006UL
+#define PBROWSER_ABI_VERSION 0x00010007UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -2670,10 +2670,67 @@ PBROWSER_API int PBrowser_ScriptSessionSetCurrentScriptIndex(
  * bounded by the Browser session contract. It does not own the core document,
  * native controls or host callback pw. */
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession);
+/* Versioned opt-in bootstrap stepping. Configure a fresh session completely
+ * before Begin: no prior Evaluate/Call, no active callback, no retained runtime
+ * alias in use. Begin freezes all callback/global wiring and makes the context
+ * private until COMPLETE. All ordinary session entries reject pending/failed/
+ * cancelled sessions (pointer entries NULL, counters zero, Destroy allowed
+ * only when idle). Borrowed Core/callback pw must live until Destroy. The host
+ * owns navigation generations and must cancel/discard stale candidates; DLL
+ * neither checks a Core generation nor rolls back side effects of host callbacks.
+ * Step executes at most ONE complete product program or explicit GC, skipping
+ * unavailable installers. No wall-clock yield guarantee inside that operation;
+ * existing timeout terminates, never resumes. No message pump/worker is created.
+ * Cancel is terminal/idempotent at idle, retains storage until Destroy and never
+ * executes author code. Failed/cancelled sessions cannot restart. Destroy during
+ * Step/callback is a no-op; caller must wait for return and destroy at idle.
+ * Same creation thread only. No function may be called on a destroyed handle.
+ * generation must be nonzero and match Begin for Step/Cancel. Invalid inputs
+ * leave state/output unchanged. GetState and performance copies are the only
+ * diagnostics allowed while private, and only at idle. Before Begin, discard
+ * any borrowed runtime reference: a raw alias cannot be revoked by C ABI.
+ * Old synchronous bootstrap preserves its preconfigured-context behavior. */
+#define PBROWSER_SCRIPT_BOOTSTRAP_VERSION 1UL
+#define PBROWSER_SCRIPT_BOOTSTRAP_MAX_STEPS 40UL
+enum PBrowserScriptBootstrapState {
+    PBROWSER_BOOTSTRAP_UNSTARTED = 0,
+    PBROWSER_BOOTSTRAP_PENDING = 1,
+    PBROWSER_BOOTSTRAP_COMPLETE = 2,
+    PBROWSER_BOOTSTRAP_FAILED = 3,
+    PBROWSER_BOOTSTRAP_CANCELLED = 4
+};
+typedef struct PBrowserScriptBootstrapOptions {
+    unsigned long size;
+    unsigned long version;
+    unsigned long generation;
+} PBrowserScriptBootstrapOptions;
+typedef struct PBrowserScriptBootstrapInfo {
+    unsigned long size;
+    unsigned long version;
+    unsigned long generation;
+    int state;
+    unsigned long stage_slots;
+    unsigned long next_stage;
+    unsigned long completed_stages;
+    unsigned long active_ms;
+    unsigned long last_step_ms;
+    unsigned long max_step_ms;
+    int result;
+} PBrowserScriptBootstrapInfo;
+PBROWSER_API int PBrowser_ScriptSessionBootstrapBegin(HANDLE hSession,
+        const PBrowserScriptBootstrapOptions *options);
+PBROWSER_API int PBrowser_ScriptSessionBootstrapStep(HANDLE hSession,
+        unsigned long generation, PBrowserScriptBootstrapInfo *out_info);
+PBROWSER_API int PBrowser_ScriptSessionBootstrapCancel(HANDLE hSession,
+        unsigned long generation);
+PBROWSER_API int PBrowser_ScriptSessionBootstrapGetState(HANDLE hSession,
+        PBrowserScriptBootstrapInfo *out_info);
 /* Per-session bootstrap breakdown. Enable PScript performance on Runtime()
  * before bootstrap. At most 40 product stages, copied (no borrowed pointers),
  * no source or host data. Zero stages when disabled; recorded timings cover
- * completed stages only, including the failing stage. Query at idle boundary.
+ * completed stages only, including the failing stage. Query at idle boundary,
+ * including pending state. total_ms includes host waits between stepped calls;
+ * BootstrapInfo.active_ms excludes those waits.
  * These are measurements, NOT resumable initialization/task APIs. Compile and
  * execute include automatic GC, native/callback are nested subsets. Names are
  * diagnostic UTF-8 labels, not a stable execution/scheduling contract. */

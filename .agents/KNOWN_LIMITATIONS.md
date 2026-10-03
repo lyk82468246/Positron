@@ -339,12 +339,10 @@
   真实页面视觉/触摸仍不保证。
 - Storage maps are session-local: at most 64 entries, 256-character keys and 4096-character values; overflow throws `QuotaExceededError`, and persistence is not provided.
 - Browser `Headers`/`Request`/`Response` metadata is synchronous and bounded to 128 header pairs; network fetch, streaming bodies and full header/security policy are not provided.
-- Browser bootstrap 只暴露已接线的 DOM/Event/form/navigation/timer 子集；缺失 API 通常 fail closed 或为 `undefined`。source 上限为 128 KiB。
+- Browser bootstrap 为有界子集（source 128 KiB）；分步接口不拆分作者脚本、GC/task，不提供 continuation。EXE 尚未接入，Debug 默认预算超时未关闭；合同与证据见 [阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
 - `document.write()`/`writeln()` 仅在 callback 存在时安装；受 16,384 字节和 parser 预算约束，
   不提供动态脚本、资源、`open()`/`close()` 或流式重写。源文本的 `<script...` 保护扫描只
   属于 document-write 边界，不改变其他 HTML mutation parser 的合同。
-  `PScript_CollectGarbage()` 只回收
-  引导临时对象，不改变 heap/globals。
 - Selector remains a bounded subset with finite relation/list/branch budgets; unsupported pseudo-elements, namespaces, shadow DOM, full grammar, chained `:has()` and `:target` reveal fail closed. Exact supported states and limits are maintained in [`docs/TESTING.md`](../docs/TESTING.md).
 - `:lang()` 是同一 selector 子集中的有界扩展：只接受单一 ASCII 语言标签，沿最多 64 层 `parentElement` 读取继承语言，`lang` 优先于 `xml:lang`，按大小写不敏感的精确值或 `-` 子标签前缀匹配；空值、非法参数、语言标签列表和引号形式 fail closed。该实现不代表完整 BCP 47 解析或 namespace 语言规则。
 - `window.scrollTo`/`scrollBy` 的 page-level 请求，以及 `Element.scrollIntoView()` 的

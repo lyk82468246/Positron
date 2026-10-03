@@ -8,7 +8,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
-当前 DLL 中断任务是加载时脚本初始化/执行同步阻塞取证。可选函数级诊断及原版脚本离线回归已完成，Debug/Release 设备门通过；这不表示加载卡顿已修复。实测主要热点为 bootstrap 和作者脚本的编译/解析，下一条 DLL 纵切是有界 bootstrap 初始化合同，不先改 Core 或扩大执行预算。Media 与 EXE 的独立任务不因此改写。
+当前 DLL 中断任务是加载时脚本初始化/执行同步阻塞。函数级诊断基线与新增的有界 Begin/Step/Cancel 初始化合同均已通过双配置设备门；热点仍是 bootstrap 和作者脚本编译/解析。宿主现在可在完整产品程序之间返回消息循环，尚未接入 EXE，不宣称整页卡顿已修复。Debug 的 TEST203 默认 1 秒预算超时在旧同步程序序列对照中也复现，Release 通过；不提高预算或改变原断言，不将该失败计为通过。用户确认 Media 暂停构建和部署后，本批串行完成验证；Media 未提交夹具及脚本改动保留，不纳入本批提交。
 
 ## 当前代码与所有权
 
@@ -387,11 +387,13 @@ Debug 正式 build/stage 成功。用户更换设备后，新会话先由独立 
 
 ### 脚本同步阻塞与保留的交互基线
 
-Script 新增按 context 开关和复制的 size/version 计时快照，Browser 新增最多 40 段的 bootstrap 快照；默认关闭，无 observer、日志 I/O 或消息泵。旧 ABI、heap/source/native 预算、脚本顺序及 timeout 终止语义不变。TEST1336 验证计时守卫、全局 this、语法/timeout/heap 错误恢复、GC 与重复销毁，并复用原版 jQuery/Bootstrap 的 Core/native-button collapse 终态断言。它不是分步/yield 接口，也没有宣称半初始化取消门已实现。
+已验收的初始化合同包含 size/version、非零 generation、最多 40 个固定阶段槽与共享同步/分步顺序。Begin 冻结新 session；pending/failed/cancelled 的普通入口、runtime、事件和任务拒绝，控制/诊断限创建线程空闲边界；Step 中销毁无操作。Cancel 保留存储到 Destroy。TEST1338 覆盖基础路径每个空闲边界取消、非法参数/stale generation、跨线程、callback 中访问和销毁拒绝、timeout/heap 终态、旧 session 保留；完整可选 installer 路径复用原版 jQuery/Bootstrap 与 Core/native-button 最终布局断言。没有为作者脚本、GC 或 task callback 实现 continuation。
 
-240×320、96 DPI DeviceEmulator 上，Debug 完整 bootstrap 为 6820 ms，其中各段编译合计 6497 ms；jQuery 求值 2468 ms（编译 1714、执行 754）。Release 对应 2392 ms、2216 ms 和 904 ms（编译 601、执行 303）；单次 callback 最大约 1 ms。最大不可返回宿主的调用仍是完整 bootstrap，内部阶段不是现有 yield 边界；配置差异不是本批优化收益，完整应用和真实硬件仍待接入诊断。详细测量方法、证据及架构方案见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
+当前 240×320、96 DPI DeviceEmulator 的 Debug 新合同门 `tmp/device-runs/20261003-223043-browser-bootstrap-contract-probe/` 为 `1174,1175,1327,1336,1338,999` 的 6/6 PASS；Release 门 `tmp/device-runs/20261003-224128-browser-bootstrap-step-release/` 为 `80-82,86,203,1174,1175,1327,1336,1338,999` 的 11/11 PASS。临时对照撤回并重新正式构建后的 Debug 复验 `tmp/device-runs/20261003-225011-browser-bootstrap-restored-debug-final/` 为 `80-82,86,1327,999` 的 6/6 PASS。均为完整日志、唯一 TESTBENCH PASS、零 ERROR/FAIL、无新增 dump，SD 与内部空间及 guest holders=0 unavailable=0 通过；Release 目录清理失败保留残留，不写成已删除。C89、入口边界审计和串行正式 Debug/Release/CAB 通过。新接口调用合同见 Browser README。
 
-正式 Debug `tmp/device-runs/20261003-180313-script-performance-baseline/` 与 Release `tmp/device-runs/20261003-180527-script-performance-release-final/` 均为 `80-82,86,1327,1336,999` 的 selected/observed 7/7、唯一 PASS、零 ERROR/FAIL、crash_check=PASS、无新增 dump。40 文件匹配正式 stage，SD 与内部空间预检及 guest holders=0 unavailable=0 通过；Debug 目录完整清理，Release 清理失败保留残留，完整日志已取回。C89、审计、串行 Debug/Release 正式构建与最终 CAB 通过；先行启动/选择器/构建失败仍保留，不转为通过。未强杀、重连、重置或修改 WMDC。
+同门对照中，Debug 同步 bootstrap 为 6622 ms，分步累计 active=8652 ms、最大 Step=1262 ms；Release 对应 2627 ms、2536 ms、339 ms。测试在循环中连续 Step，证明调用边界而非真实 UI 响应，也不证明总耗时优化。作者 jQuery 单次求值仍为 Debug 3130 ms、Release 1003 ms。TEST203 的 Debug 默认预算失败在重新构建及临时旧同步程序序列对照中复现；对照证据 `tmp/device-runs/20261003-224553-browser-bootstrap-sync-control/` 不等同于完整旧 DLL 二进制基线，临时代码已撤回。原成功断言保持，失败仅增补阶段诊断，后续需处理编译热点而非扩大预算。
+
+先行 Script/Browser 计时诊断基线和失败记录已归入 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。诊断默认关闭，按 context/session 隔离；无 observer、日志 I/O 或消息泵。新初始化合同不改变旧 ABI、heap/source/native 预算、程序顺序和 timeout 终止语义。完整应用接线、真实硬件及单个作者程序阻塞仍待后续验证。
 
 性能包 tmp/device-runs/debug-capture-20261001-234236/ 的自动 jQuery/Bootstrap 展开→收起→再展开终态 height=404/0/404、ok=true；style=8/7/9、layout=3/3/5、controls-refresh=13/15/16、paint=1/1/2 guest ms。普通点按的 style 约 79–103 guest ms，不能用自动探针耗时替代用户墙钟。
 
@@ -405,7 +407,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮 DLL 已复核 ROADMAP 与现有限制：WinWorld 点按改善仍有效，但加载时同步初始化是独立、已测量的新候选，不能用旧人工通过关闭它。下一条 DLL 纵切仅实现版本化、有界的 bootstrap Begin/Step/Cancel 合同：私有 pending session、半初始化入口拒绝、旧同步顺序兼容、每段取消/失败/stale/关闭和重复 teardown 回归。单个作者脚本仍需编译热点方案审查，分步不得冒充任意 JS 抢占；详细预算与实现门槛见审查材料。EXE owner 负责接入计时及 WM 分批/GC 策略，本批没有修改应用调度。
+本轮 DLL 已复核并更新 ROADMAP、能力矩阵与现有限制：有界初始化合同退出待实现队列，WinWorld 点按改善保留，作者脚本单次阻塞及 Debug 默认预算失败未关闭。DLL 唯一下一步是测量可信编译产物体积、峰值内存和冷启动/重复初始化成本，再取舍固定预算的编译复用方案；测量前不新增缓存 ABI 或承诺冷启动可抢占。EXE owner 可独立接入新 Begin/Step/Cancel 和 WM 分批/GC 策略，本批没有修改应用调度，分步不能冒充任意 JS 抢占。
 
 ROADMAP、能力矩阵与当前限制已复核：地址栏消息隔离自动门通过，真实点按导致回滚需立即人工复测；
 慢速动画、输入/IME 和页面响应进入人工矩阵。本次英文拼写修正无需改变路线候选，

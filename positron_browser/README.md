@@ -105,13 +105,39 @@ Browser 的 selector/DOM facade。当前 document-level `querySelector(All)` 对
 应用外壳为慢速 WM6 设备选择 8 秒的固定单次 evaluation budget，以容纳有界的经典第三方
 库初始化；这是 `positron_app` 的策略，不是 Browser 的默认值，也不构成无限执行或任意网站兼容承诺。
 
+## 有界分步初始化
+
+既有消费者可继续调用同步的 `PBrowser_ScriptSessionEvaluateBootstrap()`。希望在初始化期间返回消息循环的宿主，可以选择同一产品阶段顺序的 Begin/Step/Cancel 协议；它不执行窗口消息，也不替宿主创建 worker。
+
+先创建新 session、设置文档/历史 globals、注册所有 callback，并按需开启 Script 计时。不得预先执行作者脚本或继续使用已借用的 runtime。随后开始初始化：
+
+```c
+PBrowserScriptBootstrapOptions options;
+PBrowserScriptBootstrapInfo state;
+int rc;
+
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+options.generation = candidate_generation; /* 非零，宿主维护。 */
+rc = PBrowser_ScriptSessionBootstrapBegin(session, &options);
+```
+
+Begin 成功后，宿主在每次调度时初始化 `state.size`/`state.version`，调用一次 `PBrowser_ScriptSessionBootstrapStep(session, candidate_generation, &state)`。返回 `PSCRIPT_OK` 不表示初始化完成，必须检查 `state.state`：PENDING 时安排下一次宿主消息；COMPLETE 才允许执行作者脚本、事件、task checkpoint 和页面操作。每个 Step 最多执行一个完整产品程序或显式 GC，跳过未配置的 installer；阶段槽位最多 40，不承诺其中一个程序在任意硬件上只耗固定毫秒。
+
+PENDING/FAILED/CANCELLED 的 runtime、结果与对象不对外开放，普通注册/卸载、global 写入、事件及任务调用均 fail closed；只有空闲边界的状态与性能快照可查询。原 callback table 已复制到 DLL，但其 `pw` 和 Core 文档仍由宿主借用到 Destroy；宿主必须保持它们有效，不在初始化期间变更接线。旧 runtime alias 无法由 C ABI 撤销，调用方须停止使用，并在 COMPLETE 后重新借用。
+
+generation 不匹配、错误 size/version 或错误线程拒绝且不推进状态；DLL 不检查 Core generation，宿主必须将过时候选 Cancel 后丢弃。Cancel 在 PENDING 的空闲边界终止初始化、重复调用幂等；它不执行作者代码，不释放 session 存储，随后必须 Destroy。FAILED 也不能恢复或重跑；错误由状态快照 `result` 及已完成的阶段诊断提供。完成后的 Step 可幂等读取状态，不能 Cancel 一个已完成页面。
+
+所有操作在创建线程执行。正在 Step/callback 中的 Cancel、Step 和查询拒绝，Destroy 无操作；宿主必须等调用返回，再于空闲边界真正销毁。旧页由独立 session 保留，不对失败候选派发页面 teardown；宿主 callback 自己造成的副作用不属于 DLL 可回滚状态。单个作者脚本、微任务和引擎 timeout 没有获得 continuation 或任意抢占能力。
+
 ## Bootstrap 耗时诊断
 
 宿主可在初始化开始前，对 `PBrowser_ScriptSessionRuntime(session)` 返回的借用 Script handle 调用 `PScript_SetPerformanceEnabled(..., 1)`；不要单独销毁该 runtime。`PBrowser_ScriptSessionEvaluateBootstrap()` 返回后，在空闲边界调用 `PBrowser_ScriptSessionGetBootstrapPerformanceInfo()`，调用方必须初始化结构的 `size` 和 `PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION`。
 
 该固定快照最多保存 40 个产品阶段，包含 bootstrap 各段、适用的表单 installer 与显式 GC 的经过时间，以及求值的编译/执行/native/callback 细分。结构复制到调用方，没有借用字符串或源码；标签只供诊断，不是稳定的执行序号或调度协议。失败时保留已经完成及失败阶段的记录，未开启时没有阶段记录。诊断元数据不计入 Duktape heap，现有 heap ceiling 和所有对象预算不变。
 
-内部阶段耗时不能当作宿主已经可以返回消息循环的边界：旧 `EvaluateBootstrap` 仍是一次同步调用。任务 checkpoint 和单个作者脚本也没有因此获得 yield 或续执行能力。宿主应同时测量完整公共调用，而不是只看最快的内部段；编译/执行可能包含自动 GC，native/callback 是嵌套耗时，不能相加计算总时间。
+旧 `EvaluateBootstrap` 仍是一次同步调用；选择分步协议时，只有 Step 返回才是安全调度边界。分步快照的 `active_ms` 是各 Step 耗时之和，性能快照的 `total_ms` 则包含宿主在两个 Step 之间的等待，不能混为 CPU 时间。任务 checkpoint 和单个作者脚本没有因此获得 yield 或续执行能力。宿主应同时测量完整公共调用，而不是只看最快的内部段；编译/执行可能包含自动 GC，native/callback 是嵌套耗时，不能相加计算总时间。
 
 ## 宿主应负责的事情
 

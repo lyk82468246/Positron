@@ -1,6 +1,6 @@
 # 脚本同步阻塞：测量与改进方案
 
-本材料记录一次 DLL 侧取证及尚待实施的方案，不代替当前路线图或能力合同。此次交付是可选的函数级计时与回归证据，**不是已完成的卡顿修复**。没有修改应用调度、Core、执行预算或站点逻辑。
+本材料记录 DLL 侧函数级取证、有界初始化协议验证及后续方案，不代替当前路线图或能力合同。已交付可选计时和产品程序之间的返回边界，**不是已完成的整页卡顿修复**。没有修改应用调度、Core、执行预算或站点逻辑。
 
 ## 原始现象与证据边界
 
@@ -38,7 +38,7 @@ Script 新增 `PScript_SetPerformanceEnabled` / `PScript_GetPerformanceInfo`，B
 
 计时关闭的相邻夹具：Debug bootstrap/jQuery/Bootstrap JS 为 6601/2472/1013 ms；Release 为 2440/954/376 ms。单次相邻运行不是严格 overhead benchmark，也不能以 Debug→Release 配置差异宣称本批优化收益。Release 内部阶段之和与完整调用相差 1 ms，符合计时粒度与边界差异。
 
-结论：初始化主要耗时在产品源码编译/解析，context 创建和当前 DOM callback 不是首要热点。最大不可返回宿主的公共调用仍是整个 bootstrap，Debug 6.82 秒、Release 2.39 秒，而不是其最慢内部段。jQuery 单次调用仍有 Debug 2.47 秒、Release 0.90 秒阻塞；仅在多个脚本之间让步不足以解决它。全站其他脚本、完整页面 DOM 规模、真实低资源硬件与当前 EXE 的 GC 频率还需消费者接入诊断后测量。
+先行测量结论：初始化主要耗时在产品源码编译/解析，context 创建和当前 DOM callback 不是首要热点。当时最大不可返回宿主的公共调用是整个 bootstrap，Debug 6.82 秒、Release 2.39 秒，而不是其最慢内部段。jQuery 单次调用有 Debug 2.47 秒、Release 0.90 秒阻塞；仅在多个脚本之间让步不足以解决它。全站其他脚本、完整页面 DOM 规模、真实低资源硬件与当前 EXE 的 GC 频率还需消费者接入诊断后测量。
 
 ## 验证与失败记录
 
@@ -53,15 +53,38 @@ Debug 当前部署目录已完整清理；Release 清理失败，残留保留，
 
 C89、仓库审计及串行正式 Debug/Release 构建通过。Release 曾提前退出及遭遇 CabWiz 数据文件错误；失败保留于 `tmp/script-performance-builds/`，提权重跑正式入口及最终 stage/CAB 成功，不把先行失败改写成成功。
 
-## 下一纵切：有界初始化，而非任意 JS 抢占
+## 已交付：有界初始化，而非任意 JS 抢占
 
-建议先实施 Browser-owned bootstrap 的版本化分步协议，再取舍编译热点优化。以下是方案，不是本批新增的可调用接口：
+Browser 新增 `PBrowser_ScriptSessionBootstrapBegin/Step/Cancel/GetState`，保留旧同步入口及 ABI。精确调用和借用生命周期以 [Browser README](../../positron_browser/README.md) 与公共头文件为准。
 
-1. Begin 冻结完整 callback table 和文档绑定，创建私有候选初始化状态；Step 每次执行一个有明确依赖的完整产品程序；查询返回 initializing/pending/complete/failed，取消在空闲边界生效。固定阶段数、借用文档寿命、owner 线程和内存计费必须写入头文件。
-2. pending 时拒绝作者求值、事件、任务、runtime 外借和半初始化对象访问；只有内部初始化代码可使用候选 context。必须审计全部外部入口，不能只给新函数加检查。完整成功后才开放 session；失败或取消销毁候选，不污染旧页。
-3. Cancel/Destroy 只允许没有同步调用或 callback 正在使用 context 的边界；不宣称能中断正在解析或执行的段。宿主通过 generation 退休过时候选，关闭须等正在使用者返回再释放。
-4. 旧完整 bootstrap 入口同步驱动相同顺序，保持对象 identity、document.write、installer 依赖及 GC 行为。测试对比旧/分步路径、每段取消/失败、过时文档、半初始化入口拒绝、重复 teardown、heap 压力及最终事件/DOM 状态。
-5. 最慢内部段当前仍可阻塞 Debug 927 ms；若继续拆分，只能在 Browser-owned 源码的真实依赖边界拆，不能切作者源码或破坏闭包、作用域和顺序。分步协议本身不等于解决作者脚本单次停顿。
+1. 宿主先完成全新 session 的 callback/document 接线，Begin 冻结接线并进入私有 PENDING；size/version 和非零 generation 必须匹配。generation 是宿主提供的候选标识，不自动校验 Core 文档代次。
+2. 固定目录为 37 个槽，公开上限 40；不适用的 installer 有界跳过，每次 Step 至多执行一个完整产品程序或一次显式 GC。31 段基础程序与修改前同步路径的调用顺序逐项核对一致，document.write 和可选 installer 保持原顺序。旧同步入口驱动同一目录。
+3. PENDING/FAILED/CANCELLED 拒绝普通求值、事件、任务、接线更改和 runtime 外借；只有内部初始化代码可访问候选 context。全部 ScriptSession 入口由静态边界审计检查，COMPLETE 才开放新 session。Begin 前已取得的裸 runtime 别名无法撤销，消费者必须遵守禁止继续使用的合同。
+4. Step、查询、Cancel 和 Destroy 限创建线程；控制和诊断只在空闲边界可用。正在 Step 或 callback 中调用 Destroy 无操作，宿主必须在返回后重新销毁。Cancel 是幂等终态、保留存储直到 Destroy，不运行作者取消代码。失败或取消不可在同一 session 重新初始化，旧已提交 session 保持独立。
+5. 新协议不把 timeout 当成 yield，不保存执行栈，也不分割作者程序。单个 Step 没有固定毫秒承诺，宿主仍需每步返回消息循环并退休 stale 候选；持续循环调用不会自动获得响应性。
+
+## 分步协议的设备证据与剩余失败
+
+TEST1338 验证基础路径每个空闲边界取消、非法 size/version、输出不变、stale generation、错误线程、callback 内访问与销毁拒绝、timeout 和 heap 失败终态、旧 session 状态不变及重复 teardown。完整可选接线路径复用原版 jQuery/Bootstrap 与 Core/native-button 展开/收起最终几何断言；没有声称每个可选 installer 的取消位置或真实硬件输入已经验收。
+
+同一门中的计时对照如下。新接口在测试循环中连续推进，没有插入消息泵；累计时间随 guest 负载变化，不能把它解释为总耗时优化。
+
+| 调用边界，guest ms | Debug | Release |
+| --- | ---: | ---: |
+| 同步完整 bootstrap（诊断开启） | 6622 | 2627 |
+| 分步 bootstrap 累计 active | 8652 | 2536 |
+| 分步 bootstrap 总经过时间 | 8654 | 2537 |
+| 最大单次 Step | 1262 | 339 |
+| 分步路径后 jQuery 单次求值 | 3130 | 1003 |
+| 分步路径后 Bootstrap JS 单次求值 | 1370 | 408 |
+
+Release 从一次约 2.6 秒的同步初始化开放为最大约 339 ms 的 Step 边界；Debug 的最大 Step 仍约 1.26 秒。作者 jQuery 求值仍同步阻塞，旧完整入口仍整段阻塞，不能把这批结果报告为最终 EXE 已不卡顿。
+
+新合同 Debug 门 `tmp/device-runs/20261003-223043-browser-bootstrap-contract-probe/` 的 `1174,1175,1327,1336,1338,999` 为 6/6 PASS；Release 门 `tmp/device-runs/20261003-224128-browser-bootstrap-step-release/` 的 `80-82,86,203,1174,1175,1327,1336,1338,999` 为 11/11 PASS。临时对照撤回后的 Debug 正式复验 `tmp/device-runs/20261003-225011-browser-bootstrap-restored-debug-final/` 的 `80-82,86,1327,999` 为 6/6 PASS。均完整回收日志、唯一 TESTBENCH PASS、零 ERROR/FAIL、crash_check=PASS；匹配正式 stage，SD/内部余量和 guest holders=0 unavailable=0 通过。Release 当前目录清理失败，残留保留；未重置设备或改 WMDC。
+
+相邻 Debug 门在 TEST203 默认 1 秒预算下初始化超时，重新正式构建仍复现，没有放宽原成功断言。临时恢复修改前的同步程序序列、去掉 Step 推进状态与计时元数据后，同样超时；证据在 `tmp/device-runs/20261003-224553-browser-bootstrap-sync-control/`。这是旧同步序列对照，不是完整旧 DLL 二进制基线，不能据此声称已排除所有回归。临时代码已撤回并重新正式构建，Release TEST203 通过；Debug 默认预算失败保留为编译热点边界，不归为新 Step 已通过项。
+
+C89、全 ScriptSession 入口审计、仓库审计及串行正式 Debug/Release/CAB 通过。重试前的 CabWiz 数据文件失败及 VS2008 msenv.dll 主机崩溃仍保存于 tmp；只终止了身份核对后的本批隐藏崩溃构建进程，没有终止 GUI、WMDC 或其他会话。未绕过正式工具链，也没有修改 Core/Script 预算来适配此门。
 
 Task checkpoint 的 timer/frame/message/idle phase 已有掩码边界，但微任务 drain 与事件顺序不能简单拆开。进一步 step 需要冻结参数、阶段游标和原子 drain 合同；某个作者 callback 或微任务本身长执行仍无法被它抢占，暂不与初始化纵切合并。
 
@@ -73,4 +96,4 @@ Duktape dump/load 不是跨版本稳定的公共 ABI，也不校验恶意 byteco
 
 若冷启动作者源码解析仍是关键阻塞，可另行评估“独立 compiler context → DLL 生成的 opaque 编译产物 → UI context 加载执行”。它不是把现有 session/Core document 放进 worker：compiler 不执行作者代码、不访问 DOM/callback，宿主拥有 worker 和消息交接。需要新的编译/加载所有权、预算、引擎一致性和取消合同；VM/allocator 的线程隔离也须证明。此项是较大架构调整，当前只提出可行性，不在未经审查时实现或引入额外无界内存。
 
-单个 classic script 的执行 continuation 需要 VM 和 C/native 栈层面的设计，远大于消息分批。现有 timeout 只终止，不保存 continuation；不能超时后重跑源码、在 DLL 内 DispatchMessage、并发访问同一 session，或提高 budget 来冒充修复。EXE 可先使用诊断精确定位整页各调用，并负责已有安全边界处的 WM 调度及 GC 策略；DLL 侧下一步仅实现上述有界初始化合同。
+单个 classic script 的执行 continuation 需要 VM 和 C/native 栈层面的设计，远大于消息分批。现有 timeout 只终止，不保存 continuation；不能超时后重跑源码、在 DLL 内 DispatchMessage、并发访问同一 session，或提高 budget 来冒充修复。EXE 可接入已验证的 Begin/Step/Cancel，在安全边界处负责 WM 调度及 GC 策略。DLL 下一步只测量可信编译产物体积、峰值内存和冷启动/重复成本；证据齐备后才取舍固定预算的复用方案，不直接宣布缓存或作者程序 continuation 已实现。

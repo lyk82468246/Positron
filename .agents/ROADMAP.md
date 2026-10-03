@@ -236,14 +236,14 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 ### 准备取舍
 
-#### Script. 有界初始化与编译停顿
+#### Script. 编译热点与单次长调用
 
-**状态：函数级取证完成，有界 bootstrap 初始化准备实现；编译缓存或独立 compiler context 尚待方案审查。** WinWorld 加载日志与原版 jQuery/Bootstrap 离线设备计时证明完整 bootstrap 及单个作者脚本仍有不可返回宿主的同步停顿，主要来自编译/解析。当前 DOM callback 不支持先改 Core 的结论；测量边界与方案见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
+**状态：有界初始化合同已通过双配置设备门；编译热点仍待预算测量与方案审查。** Begin/Step/Cancel 的产品实现退出待开发范围，宿主接入和真实加载响应单独验收。Debug 默认预算同步初始化超时在旧执行序列对照也复现，不因 Release 通过而关闭该边界。WinWorld 与原版脚本计时仍证明单个作者脚本不可返回宿主的停顿主要来自编译/解析；当前 DOM callback 不支持先改 Core 的结论，测量与对照见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
 
 - **Owner：** Browser 拥有初始化阶段、session 可用性和任务顺序；Script 拥有求值、编译、GC、timeout 和固定 heap；EXE 只拥有 WM 调度与调用策略，不在 DLL 内运行消息泵。
-- **下一纵切：** additive size/version Begin/Step/Cancel 合同。pending context 私有，不允许作者求值、事件、任务或 runtime 外借；完成后才开放 session。取消/销毁只在空闲边界，失败或 stale 丢弃候选而不污染旧页；旧同步 bootstrap 使用同一程序顺序。固定阶段/内存预算与全入口守卫必须先落实。
-- **最小 fixture：** 旧/分步 bootstrap 等价、每段取消/失败、半初始化入口拒绝、stale/关闭、重复 teardown、heap 压力，以及原版 jQuery/Bootstrap 最终 DOM/事件状态。保留单次完整调用和总耗时计量，不能只统计内部段。
-- **后续取舍：** 编译结果复用先测产物和峰值内存，再审查固定预算、精确源码/引擎配置匹配及跨 context 隔离；冷启动独立编译需要单独 ABI/线程/所有权设计。不公开任意 bytecode 输入，不移动 live session/Core 到 worker，不把 timeout 后重跑当 continuation。
+- **唯一下一步：** 先测 Browser-owned 产品编译产物大小、峰值内存、冷/重复初始化成本，再取舍是否建立固定预算的内部编译结果复用；本轮不直接新增缓存 ABI 或承诺冷启动作者脚本已可让步。
+- **最小 fixture：** 精确源码/引擎配置匹配、独立 session globals/callback、预算与分配失败回退、取消/stale/重复释放，并保留已验收的初始化守卫及原版 jQuery/Bootstrap 最终 DOM/布局。比较总耗时和最大完整调用，不能只统计内部段。
+- **后续取舍：** 冷启动独立 compiler context 需要单独 ABI/线程/所有权设计，task checkpoint 分步也须先证明 drain 原子顺序。不公开任意 bytecode 输入，不移动 live session/Core 到 worker，不把 timeout 后重跑当 continuation。
 - **门：** C89、审计、串行正式 Debug/Release、ARMV4I 定向设备门与消费者真实加载响应对照；仅脚本之间让步不算解决单个调用阻塞，不能提高预算、删兼容行为或放宽断言。
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter

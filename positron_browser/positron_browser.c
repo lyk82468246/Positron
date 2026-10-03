@@ -8537,188 +8537,61 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "b=a.slice(0);for(i=0;i<b.length;i++){invoke(b[i],e,g);}"
         "return !!e.defaultPrevented;};})(this);";
 
-static int p_browser_script_finish_bootstrap(HANDLE hSession);
-static int p_browser_script_document_write_registered(HANDLE hSession);
-
 static int p_browser_script_bootstrap_evaluate(HANDLE session,
         const char *source, const char *name);
 static void p_browser_script_bootstrap_timing_begin(HANDLE session);
 static int p_browser_script_bootstrap_timing_end(HANDLE session, int result);
 static int p_browser_script_bootstrap_gc(HANDLE session);
 
-PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
-{
-    int result;
+typedef struct p_browser_bootstrap_stage {
+    const char *source;
+    const char *name;
+    int condition;
+} p_browser_bootstrap_stage;
 
-    p_browser_script_bootstrap_timing_begin(hSession);
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART1, "P_BROWSER_SCRIPT_BOOTSTRAP_PART1");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_COMPUTED_STYLE, "P_BROWSER_SCRIPT_COMPUTED_STYLE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART2, "P_BROWSER_SCRIPT_BOOTSTRAP_PART2");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_DOCUMENT_CLICK, "P_BROWSER_SCRIPT_DOCUMENT_CLICK");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    if (p_browser_script_document_write_registered(hSession)) {
-        result = p_browser_script_bootstrap_evaluate(hSession,
-                P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE, "P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE");
-        if (result != PSCRIPT_OK) {
-            return p_browser_script_bootstrap_timing_end(hSession, result);
-        }
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE, "P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART3, "P_BROWSER_SCRIPT_BOOTSTRAP_PART3");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART4, "P_BROWSER_SCRIPT_BOOTSTRAP_PART4");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART5, "P_BROWSER_SCRIPT_BOOTSTRAP_PART5");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART6, "P_BROWSER_SCRIPT_BOOTSTRAP_PART6");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART7, "P_BROWSER_SCRIPT_BOOTSTRAP_PART7");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART8, "P_BROWSER_SCRIPT_BOOTSTRAP_PART8");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART9, "P_BROWSER_SCRIPT_BOOTSTRAP_PART9");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART10, "P_BROWSER_SCRIPT_BOOTSTRAP_PART10");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART11, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART11B, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11B");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART11C, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11C");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART12, "P_BROWSER_SCRIPT_BOOTSTRAP_PART12");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART13, "P_BROWSER_SCRIPT_BOOTSTRAP_PART13");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_DETACHED_DOCUMENT, "P_BROWSER_SCRIPT_DETACHED_DOCUMENT");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_bootstrap_evaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE");
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    result = p_browser_script_finish_bootstrap(hSession);
-    if (result != PSCRIPT_OK) {
-        return p_browser_script_bootstrap_timing_end(hSession, result);
-    }
-    /* Bootstrap consists of many independent programs, including the
-     * optional finish-stage installers above. Force a collection only after
-     * all of them have run so dead parser temporaries do not consume the
-     * bounded WM6 heap merely because no later allocation triggered GC. */
-    result = p_browser_script_bootstrap_gc(hSession);
-    return p_browser_script_bootstrap_timing_end(hSession, result);
-}
+/* Private ordering shared by synchronous and stepped initialization. */
+static const p_browser_bootstrap_stage P_BROWSER_BOOTSTRAP_STAGES[] = {
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART1, "P_BROWSER_SCRIPT_BOOTSTRAP_PART1", 0 },
+    { P_BROWSER_SCRIPT_COMPUTED_STYLE, "P_BROWSER_SCRIPT_COMPUTED_STYLE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART2, "P_BROWSER_SCRIPT_BOOTSTRAP_PART2", 0 },
+    { P_BROWSER_SCRIPT_DOCUMENT_CLICK, "P_BROWSER_SCRIPT_DOCUMENT_CLICK", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE, "P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE", 1 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE, "P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART3, "P_BROWSER_SCRIPT_BOOTSTRAP_PART3", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART4, "P_BROWSER_SCRIPT_BOOTSTRAP_PART4", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART5, "P_BROWSER_SCRIPT_BOOTSTRAP_PART5", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART6, "P_BROWSER_SCRIPT_BOOTSTRAP_PART6", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART7, "P_BROWSER_SCRIPT_BOOTSTRAP_PART7", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART8, "P_BROWSER_SCRIPT_BOOTSTRAP_PART8", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART9, "P_BROWSER_SCRIPT_BOOTSTRAP_PART9", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART10, "P_BROWSER_SCRIPT_BOOTSTRAP_PART10", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART11, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART11B, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11B", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART11C, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11C", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART12, "P_BROWSER_SCRIPT_BOOTSTRAP_PART12", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART13, "P_BROWSER_SCRIPT_BOOTSTRAP_PART13", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE", 0 },
+    { P_BROWSER_SCRIPT_DETACHED_DOCUMENT, "P_BROWSER_SCRIPT_DETACHED_DOCUMENT", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE", 0 },
+    { P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE", 0 },
+    { P_BROWSER_SCRIPT_ACTIVE_ELEMENT, "ACTIVE_ELEMENT", 2 },
+    { P_BROWSER_SCRIPT_FOCUS_REQUEST, "FOCUS_REQUEST", 3 },
+    { P_BROWSER_SCRIPT_FORM_RESET, "FORM_RESET", 4 },
+    { P_BROWSER_SCRIPT_FORM_SUBMIT_DIRECT, "FORM_SUBMIT_DIRECT", 5 },
+    { P_BROWSER_SCRIPT_FORM_REQUEST_SUBMIT, "FORM_REQUEST_SUBMIT", 6 },
+    { NULL, "GC", 7 }
+};
+typedef char p_browser_bootstrap_stage_budget_check[
+        sizeof(P_BROWSER_BOOTSTRAP_STAGES) / sizeof(P_BROWSER_BOOTSTRAP_STAGES[0])
+        <= PBROWSER_SCRIPT_BOOTSTRAP_MAX_STEPS ? 1 : -1];
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;
     PBrowserScriptGetDocumentTitleFn get_document_title;
@@ -9033,6 +8906,11 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
     int current_script_index;
+    DWORD owner_thread;
+    int bootstrap_busy;
+    int bootstrap_guarded;
+    int bootstrap_touched;
+    PBrowserScriptBootstrapInfo bootstrap_info;
     int bootstrap_measuring;
     DWORD bootstrap_start;
     PBrowserScriptBootstrapPerformanceInfo bootstrap_performance;
@@ -9046,7 +8924,10 @@ static p_browser_script_session *p_script_session(HANDLE hSession)
 static int p_script_session_valid(
         const p_browser_script_session *session)
 {
-    return session != NULL && session->runtime != NULL;
+    return session != NULL && session->runtime != NULL &&
+            session->owner_thread == GetCurrentThreadId() &&
+            !session->bootstrap_busy && (!session->bootstrap_guarded ||
+            session->bootstrap_info.state == PBROWSER_BOOTSTRAP_COMPLETE);
 }
 
 static void p_browser_script_bootstrap_timing_begin(HANDLE hSession)
@@ -9115,7 +8996,9 @@ static int p_browser_script_bootstrap_evaluate(HANDLE hSession,
 
     session = p_script_session(hSession);
     start = session != NULL && session->bootstrap_measuring ? GetTickCount() : 0;
-    result = PBrowser_ScriptSessionEvaluate(hSession, source, -1);
+    result = session != NULL && session->runtime != NULL ?
+            PScript_Evaluate(session->runtime, source, -1) :
+            PSCRIPT_ERROR_ARGUMENT;
     p_browser_script_bootstrap_record(session, name, start, result, 0);
     return result;
 }
@@ -9127,7 +9010,7 @@ static int p_browser_script_bootstrap_gc(HANDLE hSession)
     int result;
 
     session = p_script_session(hSession);
-    if (!p_script_session_valid(session)) {
+    if (session == NULL || session->runtime == NULL) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
     start = session->bootstrap_measuring ? GetTickCount() : 0;
@@ -9156,25 +9039,17 @@ PBROWSER_API int PBrowser_ScriptSessionGetBootstrapPerformanceInfo(
     p_browser_script_session *session;
 
     session = p_script_session(hSession);
-    if (!p_script_session_valid(session) || out_info == NULL ||
+    if (session == NULL || session->runtime == NULL ||
+            session->owner_thread != GetCurrentThreadId() ||
+            session->bootstrap_busy || out_info == NULL ||
             out_info->size < sizeof(*out_info) ||
-            out_info->version != PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION ||
-            session->bootstrap_measuring) {
+            out_info->version != PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
     memcpy(out_info, &session->bootstrap_performance, sizeof(*out_info));
     out_info->size = sizeof(*out_info);
     out_info->version = PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION;
     return PSCRIPT_OK;
-}
-
-static int p_browser_script_document_write_registered(HANDLE hSession)
-{
-    p_browser_script_session *session;
-
-    session = p_script_session(hSession);
-    return p_script_session_valid(session) && session->dom_write != NULL &&
-            session->dom_write->document_write != NULL;
 }
 
 static int p_browser_script_install_active_element(
@@ -9237,31 +9112,210 @@ static int p_browser_script_install_form_submit(
             P_BROWSER_SCRIPT_FORM_REQUEST_SUBMIT, "FORM_REQUEST_SUBMIT");
 }
 
-static int p_browser_script_finish_bootstrap(HANDLE hSession)
+static int p_browser_bootstrap_idle(p_browser_script_session *session)
+{
+    return session != NULL && session->runtime != NULL &&
+            session->owner_thread == GetCurrentThreadId() &&
+            !session->bootstrap_busy;
+}
+
+static int p_browser_bootstrap_output_valid(
+        const PBrowserScriptBootstrapInfo *info)
+{
+    return info != NULL && info->size >= sizeof(*info) &&
+            info->version == PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+}
+
+static void p_browser_bootstrap_start(p_browser_script_session *session,
+        unsigned long generation, int guarded)
+{
+    p_browser_script_bootstrap_timing_begin((HANDLE) session);
+    memset(&session->bootstrap_info, 0, sizeof(session->bootstrap_info));
+    session->bootstrap_info.size = sizeof(session->bootstrap_info);
+    session->bootstrap_info.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+    session->bootstrap_info.generation = generation;
+    session->bootstrap_info.state = PBROWSER_BOOTSTRAP_PENDING;
+    session->bootstrap_info.stage_slots = sizeof(P_BROWSER_BOOTSTRAP_STAGES) /
+            sizeof(P_BROWSER_BOOTSTRAP_STAGES[0]);
+    session->bootstrap_guarded = guarded;
+    session->bootstrap_touched = 1;
+}
+
+static int p_browser_bootstrap_stage_enabled(p_browser_script_session *s,
+        int condition)
+{
+    switch (condition) {
+    case 1:
+        return s->dom_write != NULL && s->dom_write->document_write != NULL;
+    case 2:
+        return s->active_element != NULL;
+    case 3:
+        return s->focus_request != NULL;
+    case 4:
+        return s->form != NULL && s->form_reset != NULL &&
+                s->form_event_ex != NULL;
+    case 5:
+        return s->form != NULL && s->form_submit_direct != NULL;
+    case 6:
+        return s->form != NULL && s->form_submit != NULL &&
+                s->form_event_ex != NULL;
+    default:
+        return 1;
+    }
+}
+
+static int p_browser_bootstrap_advance(p_browser_script_session *session)
+{
+    PBrowserScriptBootstrapInfo *info;
+    const p_browser_bootstrap_stage *stage;
+    DWORD start;
+    int result;
+
+    info = &session->bootstrap_info;
+    if (info->state != PBROWSER_BOOTSTRAP_PENDING) {
+        return info->result;
+    }
+    /* No author code or callbacks in this bounded skip loop. */
+    while (info->next_stage < info->stage_slots &&
+            !p_browser_bootstrap_stage_enabled(session,
+            P_BROWSER_BOOTSTRAP_STAGES[info->next_stage].condition)) {
+        info->next_stage++;
+    }
+    if (info->next_stage >= info->stage_slots) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    stage = &P_BROWSER_BOOTSTRAP_STAGES[info->next_stage++];
+    if (!session->bootstrap_guarded && stage->condition >= 2) {
+        /* Preserve the old install-ready flag, including failure behavior. */
+        session->bootstrap_ready = 1;
+    }
+    start = GetTickCount();
+    session->bootstrap_busy = 1;
+    result = stage->condition == 7 ?
+            p_browser_script_bootstrap_gc((HANDLE) session) :
+            p_browser_script_bootstrap_evaluate((HANDLE) session,
+                    stage->source, stage->name);
+    info->last_step_ms = GetTickCount() - start;
+    info->active_ms += info->last_step_ms;
+    if (info->last_step_ms > info->max_step_ms) {
+        info->max_step_ms = info->last_step_ms;
+    }
+    info->completed_stages++;
+    info->result = result;
+    if (result != PSCRIPT_OK) {
+        info->state = PBROWSER_BOOTSTRAP_FAILED;
+        p_browser_script_bootstrap_timing_end((HANDLE) session, result);
+    } else if (info->next_stage == info->stage_slots) {
+        session->bootstrap_ready = 1;
+        info->state = PBROWSER_BOOTSTRAP_COMPLETE;
+        p_browser_script_bootstrap_timing_end((HANDLE) session, result);
+    }
+    session->bootstrap_busy = 0;
+    return result;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionBootstrapBegin(HANDLE hSession,
+        const PBrowserScriptBootstrapOptions *options)
 {
     p_browser_script_session *session;
-    int rc;
+    PScriptPerformanceInfo script_info;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || options == NULL ||
+            options->size < sizeof(*options) ||
+            options->version != PBROWSER_SCRIPT_BOOTSTRAP_VERSION ||
+            options->generation == 0 || session->bootstrap_ready ||
+            session->bootstrap_touched || session->bootstrap_info.state !=
+            PBROWSER_BOOTSTRAP_UNSTARTED ||
+            PScript_GetEvaluationCount(session->runtime) != 0) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memset(&script_info, 0, sizeof(script_info));
+    script_info.size = sizeof(script_info);
+    script_info.version = PSCRIPT_PERFORMANCE_VERSION;
+    if (PScript_GetPerformanceInfo(session->runtime, &script_info) !=
+            PSCRIPT_OK) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    p_browser_bootstrap_start(session, options->generation, 1);
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionBootstrapStep(HANDLE hSession,
+        unsigned long generation, PBrowserScriptBootstrapInfo *out_info)
+{
+    p_browser_script_session *session;
+    int result;
+
+    session = p_script_session(hSession);
+    if (!p_browser_bootstrap_idle(session) || !session->bootstrap_guarded ||
+            generation == 0 || generation !=
+            session->bootstrap_info.generation ||
+            !p_browser_bootstrap_output_valid(out_info) ||
+            session->bootstrap_info.state == PBROWSER_BOOTSTRAP_CANCELLED) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    result = p_browser_bootstrap_advance(session);
+    memcpy(out_info, &session->bootstrap_info, sizeof(*out_info));
+    return result;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionBootstrapCancel(HANDLE hSession,
+        unsigned long generation)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_browser_bootstrap_idle(session) || !session->bootstrap_guarded ||
+            generation == 0 || generation !=
+            session->bootstrap_info.generation ||
+            (session->bootstrap_info.state != PBROWSER_BOOTSTRAP_PENDING &&
+            session->bootstrap_info.state != PBROWSER_BOOTSTRAP_CANCELLED)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    session->bootstrap_info.state = PBROWSER_BOOTSTRAP_CANCELLED;
+    p_browser_script_bootstrap_timing_end(hSession, PSCRIPT_ERROR_ARGUMENT);
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionBootstrapGetState(HANDLE hSession,
+        PBrowserScriptBootstrapInfo *out_info)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_browser_bootstrap_idle(session) ||
+            !p_browser_bootstrap_output_valid(out_info)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memcpy(out_info, &session->bootstrap_info, sizeof(*out_info));
+    return PSCRIPT_OK;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
+{
+    p_browser_script_session *session;
+    PScriptPerformanceInfo script_info;
+    int result;
 
     session = p_script_session(hSession);
     if (!p_script_session_valid(session)) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
-    session->bootstrap_ready = 1;
-    if (session->active_element != NULL) {
-        rc = p_browser_script_install_active_element(session);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
+    memset(&script_info, 0, sizeof(script_info));
+    script_info.size = sizeof(script_info);
+    script_info.version = PSCRIPT_PERFORMANCE_VERSION;
+    if (PScript_GetPerformanceInfo(session->runtime, &script_info) !=
+            PSCRIPT_OK) {
+        return PSCRIPT_ERROR_ARGUMENT;
     }
-    rc = p_browser_script_install_focus_request(session);
-    if (rc != PSCRIPT_OK) {
-        return rc;
+    p_browser_bootstrap_start(session, 0, 0);
+    result = PSCRIPT_OK;
+    while (session->bootstrap_info.state == PBROWSER_BOOTSTRAP_PENDING &&
+            result == PSCRIPT_OK) {
+        result = p_browser_bootstrap_advance(session);
     }
-    rc = p_browser_script_install_form_reset(session);
-    if (rc != PSCRIPT_OK) {
-        return rc;
-    }
-    return p_browser_script_install_form_submit(session);
+    return result;
 }
 
 static void p_browser_script_clear_dispatch_globals(
@@ -12317,6 +12371,15 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreateEx(unsigned long budget_ms,
         return NULL;
     }
     session->bootstrap_ready = 0;
+    session->owner_thread = GetCurrentThreadId();
+    session->bootstrap_busy = 0;
+    session->bootstrap_guarded = 0;
+    session->bootstrap_touched = 0;
+    memset(&session->bootstrap_info, 0, sizeof(session->bootstrap_info));
+    session->bootstrap_info.size = sizeof(session->bootstrap_info);
+    session->bootstrap_info.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+    session->bootstrap_info.stage_slots = sizeof(P_BROWSER_BOOTSTRAP_STAGES) /
+            sizeof(P_BROWSER_BOOTSTRAP_STAGES[0]);
     session->bootstrap_measuring = 0;
     session->bootstrap_start = 0;
     memset(&session->bootstrap_performance, 0,
@@ -12383,9 +12446,11 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     p_browser_script_session *session;
 
     session = p_script_session(hSession);
-    if (session == NULL) {
+    if (session == NULL || session->owner_thread != GetCurrentThreadId() ||
+            session->bootstrap_busy) {
         return;
     }
+    session->bootstrap_busy = 1;
     if (session->dom_read != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
                 "__pcoreHasElement", -1);
@@ -12634,6 +12699,7 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
     if (!p_script_session_valid(session) || source == NULL) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
+    session->bootstrap_touched = 1;
     return PScript_Evaluate(session->runtime, source, source_len);
 }
 
@@ -19301,6 +19367,7 @@ PBROWSER_API int PBrowser_ScriptSessionCallGlobalJson(HANDLE hSession,
             args_json == NULL) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
+    session->bootstrap_touched = 1;
     return PScript_CallGlobalJson(session->runtime, name, -1,
             args_json, -1);
 }
