@@ -25,6 +25,7 @@
 #include "app_debug.h"
 #include "app_host.h"
 #include "app_loading.h"
+#include "app_address_bar.h"
 #include "app_controls.h"
 #include "app_input.h"
 #include "app_script.h"
@@ -90,6 +91,7 @@
  * all host state moves into one private lifecycle object. */
 static AppHostContext g_app;
 static AppControlsContext *g_controls;
+static AppAddressBar *g_address_bar;
 #define g_window                 (g_app.window)
 #define g_address                (g_app.address)
 #define g_page_window            (g_app.page_window)
@@ -376,8 +378,30 @@ static void app_navigation_loading_phase(AppNavigationRequest *request,
     app_navigation_loading_render(request);
 }
 
+static void app_address_refresh(void)
+{
+    /* UI-thread-only scratch, avoiding a 12 KiB addition to the CE stack. */
+    static char title[PCORE_DOCUMENT_TITLE_MAX_BYTES + 1U];
+    static WCHAR wide[PCORE_DOCUMENT_TITLE_MAX_BYTES + 1U];
+    int bytes;
+
+    if (g_address_bar == NULL) return;
+    AppAddressBar_SetLoading(g_address_bar,
+            g_navigation_request != NULL && !g_navigation_closing);
+    title[0] = '\0';
+    bytes = 0;
+    if (g_document != NULL && PCore_DocumentTitle(g_document, title,
+            sizeof(title), &bytes) == 0 && bytes >= 0 && bytes < (int) sizeof(title)) {
+        app_utf8_to_wide(title, wide, sizeof(wide) / sizeof(wide[0]));
+        AppAddressBar_SetTitle(g_address_bar, wide);
+    } else {
+        AppAddressBar_SetTitle(g_address_bar, L"");
+    }
+}
+
 static void app_restore_page_status(void)
 {
+    app_address_refresh();
     if (g_navigation_request != NULL && !g_navigation_closing) {
         app_navigation_loading_render(g_navigation_request);
         return;
@@ -405,7 +429,12 @@ static void app_set_address(const char *url)
         return;
     }
     app_utf8_to_wide(url, wide, sizeof(wide) / sizeof(wide[0]));
-    SetWindowTextW(g_address, wide);
+    if (g_address_bar != NULL) {
+        AppAddressBar_SetUrl(g_address_bar, wide);
+        app_address_refresh();
+    } else {
+        SetWindowTextW(g_address, wide);
+    }
 }
 
 /* Capture the UI belonging to the last committed page.  A second navigation
@@ -657,7 +686,11 @@ static void app_reposition_controls(HWND hwnd)
          * client edge; WS_BORDER already supplies the control's own border.
          * An EXE-side inset leaves stale pixels behind after rotation and
          * makes the page origin disagree with the address control's bottom. */
-        MoveWindow(g_address, 0, 0, width, address_height, TRUE);
+        if (g_address_bar != NULL) {
+            AppAddressBar_Move(g_address_bar, width, address_height, g_dpi);
+        } else {
+            MoveWindow(g_address, 0, 0, width, address_height, TRUE);
+        }
     }
 }
 
@@ -3932,6 +3965,7 @@ static void app_navigation_finish(AppNavigationRequest *request,
     if (current) {
         g_navigation_request = NULL;
         KillTimer(g_window, APP_LOADING_TIMER_ID);
+        app_address_refresh();
         if (committed) app_restore_page_status();
     }
     if (!committed) {
@@ -5418,11 +5452,14 @@ static void app_go_from_address(HWND hwnd)
 
     if (app_wide_to_utf8(g_address, input, sizeof(input)) != 0 ||
             app_normalize_address(input, url, sizeof(url)) != 0) {
-        app_set_address(g_current_url);
+        app_set_address(g_navigation_request != NULL ?
+                g_navigation_request->url : g_current_url);
+        SetFocus(g_page_window != NULL ? g_page_window : hwnd);
         return;
     }
     app_load_page_from(hwnd, url, APP_HISTORY_NEW, -1,
             APP_NAV_SOURCE_ADDRESS);
+    SetFocus(g_page_window != NULL ? g_page_window : hwnd);
 }
 
 static void app_go_home(HWND hwnd)
@@ -5540,6 +5577,14 @@ static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
     if (message == WM_KEYDOWN && wparam == VK_ESCAPE) {
         PostMessage(parent, APP_WM_ADDRESS_CANCEL, 0, 0);
         return 0;
+    }
+    if (message == WM_KILLFOCUS && g_address_bar != NULL) {
+        LRESULT result;
+
+        result = CallWindowProc(g_address_original_proc, hwnd, message,
+                wparam, lparam);
+        AppAddressBar_EndEdit(g_address_bar);
+        return result;
     }
     if (g_address_original_proc != NULL) {
         return CallWindowProc(g_address_original_proc, hwnd, message,
@@ -6220,7 +6265,7 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             return 0;
         }
         if (wparam == VK_TAB) {
-            SetFocus(g_address);
+            AppAddressBar_BeginEdit(g_address_bar);
             return 0;
         }
         return 0;
@@ -6288,8 +6333,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             app_go_home(hwnd);
             return 0;
         case APP_CMD_ADDRESS:
-            SetFocus(g_address);
-            SendMessage(g_address, EM_SETSEL, 0, -1);
+            AppAddressBar_BeginEdit(g_address_bar);
             return 0;
         case APP_CMD_REFRESH:
             app_refresh(hwnd);
@@ -6324,8 +6368,9 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case APP_WM_ADDRESS_CANCEL:
-        app_set_address(g_current_url);
-        app_set_status(APP_TEXT_STATUS_ADDRESS_CANCELLED);
+        app_set_address(g_navigation_request != NULL ?
+                g_navigation_request->url : g_current_url);
+        app_restore_page_status();
         SetFocus((g_page_window != NULL) ? g_page_window : hwnd);
         return 0;
     case APP_WM_NAV_DONE:
@@ -6443,6 +6488,8 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             g_controls = NULL;
         }
         app_page_paint_buffer_release();
+        AppAddressBar_Destroy(g_address_bar);
+        g_address_bar = NULL;
         AppHostContext_Shutdown(&g_app);
         AppDebug_EndSession();
         PostQuitMessage(0);
@@ -6456,11 +6503,8 @@ static int app_create_controls(HWND hwnd)
     HWND address;
     WNDPROC original_proc;
 
-    address = CreateWindowW(L"EDIT", L"",
-            WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP |
-            ES_LEFT | ES_AUTOHSCROLL,
-            0, 0, 1, 1, hwnd, (HMENU) APP_ID_ADDRESS,
-            g_instance, NULL);
+    g_address_bar = AppAddressBar_Create(g_instance, hwnd, APP_ID_ADDRESS);
+    address = AppAddressBar_Edit(g_address_bar);
     if (address == NULL) {
         return 1;
     }
@@ -6564,7 +6608,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     AppHostContext_SetCoreInitialized(&g_app, 1);
 #ifdef _DEBUG
-    if (AppLoading_DebugCheck() != 0 ||
+    if (AppAddressBar_DebugCheck(g_instance) != 0 || AppLoading_DebugCheck() != 0 ||
             AppInternalPages_DebugCheck(g_app_css) != 0) {
         AppHostContext_Shutdown(&g_app);
         return 1;
@@ -6663,8 +6707,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
     UpdateWindow(hwnd);
-    SetFocus(g_address);
-    SendMessage(g_address, EM_SETSEL, 0, -1);
+    SetFocus(g_page_window != NULL ? g_page_window : hwnd);
     if (startup_invalid) {
         app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
     }

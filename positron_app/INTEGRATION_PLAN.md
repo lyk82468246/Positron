@@ -84,6 +84,17 @@ closed。
 焦点和标准 WM6 滚动条。native 控件只是 Core DOM 的平台代理；DOM、事件默认行为和表单状态仍
 由 Core/Browser 所有。支持 DPI、旋转、viewport 和 native 子控件重排。
 
+地址栏由 EXE 私有 `AppAddressBar` 复用同一矩形：原生 EDIT 始终只存网址，负责选区、
+键盘和 SIP/IME；非编辑状态使用同父窗口的 GDI 展示层。加载中显示候选网址并循环填满、
+清空，填充部分使用系统 highlight/text 色，不表示完成百分比；加载结束显示已提交文档标题，
+无标题回退网址，长文本按实际字体宽度往返滚动。点按、页面 Tab 或“打开地址”菜单切回
+EDIT 并全选网址；回车沿原路由提交，Esc/失焦返回展示。后台提交或回滚只更新保存的网址，
+不覆盖正在输入的 EDIT、选区或 IME；结束编辑后使用最新有效地址。
+展示层沿用实际系统字体和地址栏外框，不改变页面 viewport。80 ms UI timer 只刷新地址栏，
+短标题、编辑状态停止计时，不触发页面 layout、paint、网络或脚本 checkpoint，不重入消息泵。
+仅缓存一个最多 2048×256 像素的兼容位图，尺寸变化替换，失败回退直接绘制，关闭释放。
+低资源设备的跟手性仍需实测，必要时降低刷新率或撤去动画，不让动画影响输入和导航。
+
 页面内容拖动使用 WM6.0/6.1 的 `WM_LBUTTONDOWN/MOUSEMOVE/LBUTTONUP` 与窗口 capture，
 不增加 WM6.5 WAG 依赖。`AppInput` 只分类平台输入：超过按 DPI 换算的 4 个逻辑像素后成为
 拖动；未越阈值的抬起才沿既有 Core/Browser click/default-action 路径激活。拖动一旦成立，
@@ -227,6 +238,11 @@ UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保�
 同一 Debug 独立夹具使用真实页面窗口消息验证 DPI 阈值、抬起 click、拖动不误点、合并 MOVE
 后的抬起、捕获/取消收尾与布局计数不变；`app_history_gate` 同时要求 pointer 自检通过。
 自动消息不代替真实触笔/手指、native EDIT 拖选、SELECT popup、旋转和 DPI 的人工检查。
+
+地址栏 Debug 自检使用独立隐藏窗口，验证标题/网址分离、实际字体宽度、滚动/填充周期、
+点按切换、加载期间不覆盖输入和选区、失焦后的最新网址、无标题回退、绘制/resize/释放。
+`app_history_gate` 必须同时取得 address-bar 自检日志；夹具及诊断不编入 Release。
+它不替代真实地址栏回车、中文 IME、动画观感、页面滚动响应与旋转/DPI 人工验收。
 
 ## 公共接口与文档规则
 

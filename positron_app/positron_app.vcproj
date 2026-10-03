@@ -95,6 +95,8 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_address_bar.c" />
+		<File RelativePath=".\app_address_bar.h" />
 		<File RelativePath=".\app_loading.c" />
 		<File RelativePath=".\app_loading.h" />
 		<File RelativePath=".\app_input.c" />

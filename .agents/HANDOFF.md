@@ -16,7 +16,13 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 ## 候选与验证证据
 
-### EXE 加载标题与 HTTP observer 接线自动门通过
+### EXE 地址栏复用与加载标题自动门通过
+
+EXE 私有 AppAddressBar 在同一矩形交替显示 GDI 展示层和原生 EDIT；非编辑时加载显示网址与
+循环填满/清空、结束显示标题，长标题按实际字体往返滚动，无标题回退网址。点按/Tab/菜单
+切回 EDIT；原生 EDIT 始终存网址，提交仍走原地址路由。编辑期间后台提交不覆盖输入或选区，
+Esc/失焦后显示最新有效地址。80 ms timer 只重画地址栏，短标题和编辑状态停止；复用有界
+双缓冲，不触发页面 layout/paint 或脚本 checkpoint。DLL、ABI 和导航资源语义未改。
 
 新增 EXE 私有 AppLoading：原生标题最前面按 180 ms 循环 ASCII `| / - \`，后接双语请求/
 DNS/连接/TLS/发送/等待/响应头/正文/重定向，以及 HTML/脚本/样式/图片/排版/绘制阶段。
@@ -32,13 +38,16 @@ C89、仓库审计与串行正式 Debug/Release build 通过，EXE 零错误/警
 Release ASCII/UTF-16 检查不含 loading-title/loading-phase/fragment-pending 诊断。
 首轮 Debug 预构建与 Release 编译提前退出无错误诊断，保留失败日志后正式重试通过；
 `tmp/app-loading-build-failures/` 的旧 TLS observer 草稿错误不代表最终 DLL，未改 DLL 源码。
-完整 Debug 包 `tmp/device-runs/20261003-103720-app-loading-title/` 共 31 文件，SD 目标空间
+当前完整 Debug 包 `tmp/device-runs/20261003-152005-app-address-bar/` 共 34 文件，SD 目标空间
 与内部缓存预检通过，正式 module-audit 及 EXE 门前复审均 holders=0 unavailable=0。
-EXE/九 DLL SHA256 回读 10/10；loading-title/fragment-pending/history/pointer/system-info/
-internal-pages 自检 OK，crash_check=PASS。门后 PID 2136635626 留在 newtab，人工入口为
-`\Storage Card\Temp\Positron-device-gate\app-loading-title-20261003-103720\positron.exe`。
+EXE/九 DLL SHA256 回读 10/10；address-bar/loading-title/fragment-pending/history/pointer/
+system-info/internal-pages 自检 OK，crash_check=PASS。门后 PID 2110370946 留在 newtab，入口为
+`\Storage Card\Temp\Positron-device-gate\app-address-bar-20261003-152005\positron.exe`。
+本轮地址栏 Debug/Release 正式 build 均零错误/警告，CAB 成功，Release 不含 address-bar
+夹具。地址栏自检覆盖显示/编辑分离、填充/滚动周期、点按、输入/选区保留与 resize/释放；
+真实回车、中文 IME、动画耗时及滚动响应仍待人工。上一加载标题包已由用户正常退出。
 未强杀、重置或修改 WMDC；真实网络阶段显示、窄标题截断、双语及比例字体效果仍待人工。
-本批只提交 EXE、专用检查脚本和文档；公共 HTTP/TLS/test_host 改动沿已独立提交的版本。
+本批只提交 EXE、专用检查脚本和对应文档；Media 变更已独立提交，不重复纳入应用批次。
 
 HTTP/TLS owner 的先行定向
 `3,4,999` 设备门在用户当前 WMDC RAPI 会话中通过；证据位于
@@ -352,7 +361,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 与当前限制已复核：加载标题与 HTTP observer 接线退出待实现候选，真实阶段/截断/
+ROADMAP 与当前限制已复核：地址栏复用自动门通过，动画、输入/IME 和页面响应进入人工矩阵；
+仅 EXE 展示变化，不扩大 DLL 能力或现有限制。加载标题与 HTTP observer 接线退出待实现候选，真实阶段/截断/
 字体效果进入人工矩阵；同文档 fragment、片段 URL 公共接口
 与人工矩阵仍有效。系统信息保留 AKU
 与可选 OEM 字段，进一步 OS 产品/发行版本识别继续暂缓，营销版本不保证识别的限制不变。
@@ -362,7 +372,9 @@ Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/A
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步人工复核当前 newtab 包的前缀动画、窄标题截断及真实 HTTP/HTTPS；短阶段可以
+EXE 下一步人工复核当前 newtab 包的标题滚动、点按编辑/回车、加载填充、输入期间后台提交
+与取消/失败回滚，并观察动画是否影响页面拖动或输入；必要时降刷新率或撤去动画。
+同时复核前缀动画、窄标题截断及真实 HTTP/HTTPS；短阶段可以
 转瞬即逝，同步脚本/排版期间动画可暂停，不重入消息泵。A 显示时加载 B，A 页内跳转
 仍滚动且 B 随后提交；外链 C 替换 B；B 失败保持 A 新片段地址和原标题。不继续 OS 版本取证。
 随后复核内容拖动/点按、native 拖选、旋转及地址栏回车，

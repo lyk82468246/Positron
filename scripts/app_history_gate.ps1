@@ -98,6 +98,7 @@ try {
                     $text -match 'history selftest OK' -and
                     $text -match 'fragment-pending selftest OK' -and
                     $text -match 'loading-title selftest OK' -and
+                    $text -match 'address-bar selftest OK' -and
                     $text -match 'pointer selftest OK' -and
                     $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK' -and
