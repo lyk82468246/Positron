@@ -339,7 +339,7 @@
   真实页面视觉/触摸仍不保证。
 - Storage maps are session-local: at most 64 entries, 256-character keys and 4096-character values; overflow throws `QuotaExceededError`, and persistence is not provided.
 - Browser `Headers`/`Request`/`Response` metadata is synchronous and bounded to 128 header pairs; network fetch, streaming bodies and full header/security policy are not provided.
-- Browser bootstrap 为有界子集（source 128 KiB）；分步接口不拆分作者脚本、GC/task，不提供 continuation。EXE 尚未接入，Debug 默认预算超时未关闭；合同与证据见 [阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
+- EXE 已分批调度 Browser bootstrap；单个 Step、作者脚本及 GC/task 仍同步，无 continuation 或固定响应上限。Debug 预算超时仍在；证据见 [阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)，应用门见 [HANDOFF](HANDOFF.md)。
 - `document.write()`/`writeln()` 仅在 callback 存在时安装；受 16,384 字节和 parser 预算约束，
   不提供动态脚本、资源、`open()`/`close()` 或流式重写。源文本的 `<script...` 保护扫描只
   属于 document-write 边界，不改变其他 HTML mutation parser 的合同。

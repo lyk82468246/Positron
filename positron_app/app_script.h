@@ -104,9 +104,19 @@ AppScriptContext *AppScript_Create(HANDLE document,
         int history_can_commit, const char *history_state_json,
         int viewport_width, int viewport_height, int dpi,
         const AppScriptHostCallbacks *callbacks);
-int AppScript_Execute(AppScriptContext *context, int allow_external,
-        PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
-        int *out_ignored, int *out_errors);
+/* Production candidates are fully wired before Begin. No author code,
+ * events or tasks may access the context until InitializeStep returns 1.
+ * Step results: -1 failed, 0 pending, 1 complete. Caller returns to its
+ * message loop between calls; one author script is still synchronous. */
+AppScriptContext *AppScript_CreatePending(HANDLE document,
+        const char *document_url, int history_length, int history_index,
+        int history_can_commit, const char *history_state_json,
+        int viewport_width, int viewport_height, int dpi,
+        const AppScriptHostCallbacks *callbacks, unsigned long generation);
+int AppScript_InitializeStep(AppScriptContext *context,
+        unsigned long generation);
+int AppScript_ExecuteStep(AppScriptContext *context, int allow_external,
+        PCoreResolveUrlFn resolve, void *resolve_pw);
 /* Evaluate one bounded application-supplied command after the page has
  * committed. This is a private EXE automation hook; it does not change the
  * public Browser or Script ABI and accepts only the existing source budget. */

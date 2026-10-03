@@ -45,6 +45,8 @@ struct AppNavigationRequest {
     int worker_stage;
     int worker_resume_stage;
     int commit_stage;
+    /* Candidate-specific one-shot UI timer. No queued request pointer. */
+    UINT script_timer_id;
     /* Atomic worker-to-UI presentation only; no candidate decisions. */
     LONG loading_phase;
     int image_scan_found;

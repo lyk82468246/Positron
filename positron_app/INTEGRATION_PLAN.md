@@ -78,6 +78,20 @@ JavaScript 默认启用，使用 `PSCRIPT_DEFAULT_BUDGET_MS * 8` 的固定应用
 异常不使已解析页面回滚；会话初始化、桥接、超时或超限失败时，该文档脚本能力关闭并 fail
 closed。
 
+网络候选先完成全部 callback/全局配置，再调用 Browser 的 BootstrapBegin；使用候选 generation
+绑定的低优先级 `SetTimer/WM_TIMER`，每次窗口调度只执行一个完整 bootstrap Step 或一段完整
+作者脚本，返回后才安排下一次。初始化完成前不借出 runtime，不派发事件或任务；旧页与其
+session 在候选真正提交前保留。取消、替换和关闭在空闲边界停止 timer、Cancel/Destroy 候选
+session，再释放候选 document；过期 timer 仅按 ID/generation 校验，不携带 request 指针。
+初始化间发生旋转/SIP 时不调用 pending session；作者调度前按实际 viewport 同步变化，
+尺寸不变不额外调用脚本桥。
+作者脚本按 DOM 顺序推进，普通异常继续，timeout/heap/fatal 关闭该候选脚本能力。移除每段
+脚本前的显式 full GC，改为自动有界 GC 和批次末独立调度的一次收集；预算不扩大。
+不把 live session/Core 移到 worker，不在 DLL 调用或 callback 内重入消息泵。Step、单段作者
+脚本、GC 与既有 task checkpoint 仍同步，不承诺固定毫秒的响应上限或任意 JS continuation。
+Debug 可在 Begin 前启用 session 计时，记录慢 Step 与作者 compile/execute；Release 不含此
+诊断、直接计时入口依赖或测试夹具。
+
 ### 阶段 3：原生交互
 
 接入 EDIT、SELECT、toggle、button、dialog、contenteditable、file picker、SIP/IME、clipboard、
@@ -228,6 +242,11 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 验证 B 加载中 A 的 fragment/repeated/missing 跳转不取消、generation/文档/session 保留、
 replaceState 后失败回滚，以及 C 替换与 stale B 隔离、B 成功提交；门要求 fragment-pending
 自检通过。它不替代真实网络耗时、取消 transport 或真实页面点按的人工检查。
+该夹具还用真实系统 timer 与批次间的窗口消息探针验证脚本分步初始化、pending 普通入口
+拒绝、取消/关闭清理、旧 timer 不推进新候选、旧文档/history 保留、作者顺序与普通异常后
+DOM 终态、初始化期间视口变化同步，以及编辑输入/选区在后台提交后保留；门要求
+script-scheduling 自检通过。
+它不证明单段长脚本可抢占，真实加载期间菜单/滚动/地址栏响应须立即人工复核。
 加载标题的 Debug 私有自检覆盖 observer 映射、合并阶段、终态/未知阶段与 size/version
 拒绝，以及所有阶段的纯文字、精确容量与失败清空；同一
 独立候选夹具另覆盖 worker 正文进度、stale 请求标题隔离、标题更新不增加 layout 和成功后

@@ -49,6 +49,13 @@ struct AppScriptContext {
     unsigned int native_select_key_index;
     char native_edit_target_id[APP_SCRIPT_URL_MAX];
     unsigned long native_button_target_token;
+    unsigned long bootstrap_generation;
+    int bootstrap_pending;
+    int script_next;
+    int script_executed;
+    int script_ignored;
+    int script_errors;
+    int script_complete;
 };
 
 #ifdef _DEBUG
@@ -1904,7 +1911,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
     return 0;
 }
 
-AppScriptContext *AppScript_Create(HANDLE document,
+static AppScriptContext *app_script_create_configured(HANDLE document,
         const char *document_url, int history_length, int history_index,
         int history_can_commit, const char *history_state_json,
         int viewport_width, int viewport_height, int dpi,
@@ -1967,13 +1974,102 @@ AppScriptContext *AppScript_Create(HANDLE document,
             "__pcoreViewportHeight", viewport_css_height) != PSCRIPT_OK ||
             PBrowser_ScriptSessionSetGlobalNumber(context->session,
             "__pcoreDevicePixelRatio", device_pixel_ratio) != PSCRIPT_OK ||
-            app_script_register_callbacks(context) != 0 ||
-            PBrowser_ScriptSessionEvaluateBootstrap(context->session) !=
-            PSCRIPT_OK) {
+            app_script_register_callbacks(context) != 0) {
         AppScript_Destroy(context);
         return NULL;
     }
     return context;
+}
+
+AppScriptContext *AppScript_Create(HANDLE document,
+        const char *document_url, int history_length, int history_index,
+        int history_can_commit, const char *history_state_json,
+        int viewport_width, int viewport_height, int dpi,
+        const AppScriptHostCallbacks *callbacks)
+{
+    AppScriptContext *context;
+
+    context = app_script_create_configured(document, document_url,
+            history_length, history_index, history_can_commit, history_state_json,
+            viewport_width, viewport_height, dpi, callbacks);
+    if (context != NULL && PBrowser_ScriptSessionEvaluateBootstrap(
+            context->session) != PSCRIPT_OK) {
+        AppScript_Destroy(context);
+        return NULL;
+    }
+    return context;
+}
+
+AppScriptContext *AppScript_CreatePending(HANDLE document,
+        const char *document_url, int history_length, int history_index,
+        int history_can_commit, const char *history_state_json,
+        int viewport_width, int viewport_height, int dpi,
+        const AppScriptHostCallbacks *callbacks, unsigned long generation)
+{
+    AppScriptContext *context;
+    PBrowserScriptBootstrapOptions options;
+
+    if (generation == 0) return NULL;
+    context = app_script_create_configured(document, document_url,
+            history_length, history_index, history_can_commit, history_state_json,
+            viewport_width, viewport_height, dpi, callbacks);
+    if (context == NULL) return NULL;
+#ifdef _DEBUG
+    /* Borrow only before Begin; do not retain the raw runtime alias. */
+    if (PScript_SetPerformanceEnabled(PBrowser_ScriptSessionRuntime(
+            context->session), 1) != PSCRIPT_OK) {
+        AppScript_Destroy(context);
+        return NULL;
+    }
+#endif
+    memset(&options, 0, sizeof(options));
+    options.size = sizeof(options);
+    options.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+    options.generation = generation;
+    if (PBrowser_ScriptSessionBootstrapBegin(context->session, &options) !=
+            PSCRIPT_OK) {
+        AppScript_Destroy(context);
+        return NULL;
+    }
+    context->bootstrap_generation = generation;
+    context->bootstrap_pending = 1;
+    return context;
+}
+
+int AppScript_InitializeStep(AppScriptContext *context,
+        unsigned long generation)
+{
+    PBrowserScriptBootstrapInfo info;
+    int result;
+#ifdef _DEBUG
+    char message[256];
+#endif
+
+    if (context == NULL || context->session == NULL ||
+            generation != context->bootstrap_generation) return -1;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
+    result = PBrowser_ScriptSessionBootstrapStep(context->session,
+            generation, &info);
+#ifdef _DEBUG
+    if (result != PSCRIPT_OK || info.state != PBROWSER_BOOTSTRAP_PENDING ||
+            info.last_step_ms >= 250UL) {
+        _snprintf(message, sizeof(message) - 1,
+                "positron script-bootstrap gen=%lu state=%d stages=%lu "
+                "active_ms=%lu last_ms=%lu max_ms=%lu result=%d\r\n",
+                generation, info.state, info.completed_stages, info.active_ms,
+                info.last_step_ms, info.max_step_ms, result);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+#endif
+    if (result != PSCRIPT_OK) return -1;
+    if (info.state == PBROWSER_BOOTSTRAP_COMPLETE) {
+        context->bootstrap_pending = 0;
+        return 1;
+    }
+    return info.state == PBROWSER_BOOTSTRAP_PENDING ? 0 : -1;
 }
 
 static int app_script_type_equal(const char *type, int length,
@@ -2027,9 +2123,8 @@ static int app_script_type_supported(const char *type)
             length, "application/ecmascript");
 }
 
-int AppScript_Execute(AppScriptContext *context, int allow_external,
-        PCoreResolveUrlFn resolve, void *resolve_pw, int *out_executed,
-        int *out_ignored, int *out_errors)
+int AppScript_ExecuteStep(AppScriptContext *context, int allow_external,
+        PCoreResolveUrlFn resolve, void *resolve_pw)
 {
     PCoreScriptInfo info;
     const char *data;
@@ -2043,29 +2138,24 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
     int result;
 #ifdef _DEBUG
     char debug_url[APP_SCRIPT_URL_MAX];
+    PScriptPerformanceInfo performance;
+    char cost_message[256];
 #endif
 
-    if (out_executed != NULL) {
-        *out_executed = 0;
-    }
-    if (out_ignored != NULL) {
-        *out_ignored = 0;
-    }
-    if (out_errors != NULL) {
-        *out_errors = 0;
-    }
     if (context == NULL || context->document == NULL ||
-            context->session == NULL) {
-        return 1;
+            context->session == NULL || context->bootstrap_pending) {
+        return -1;
     }
+    if (context->script_complete) return 1;
     count = PCore_GetScriptCount(context->document);
     if (count < 0) {
-        return 1;
+        return -1;
     }
-    executed = 0;
-    ignored = 0;
-    errors = 0;
-    for (i = 0; i < count; i++) {
+    executed = context->script_executed;
+    ignored = context->script_ignored;
+    errors = context->script_errors;
+    for (i = context->script_next; i < count; i++) {
+        context->script_next = i + 1;
         memset(&info, 0, sizeof(info));
         data = NULL;
 #ifdef _DEBUG
@@ -2155,17 +2245,6 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
 #endif
             ignored++;
         } else {
-            result = PBrowser_ScriptSessionCollectGarbage(context->session);
-            if (result != PSCRIPT_OK) {
-#ifdef _DEBUG
-                app_script_debug_log_script(context, i, &info, debug_url,
-                        type, "gc-error", result);
-#endif
-                errors++;
-                free(source);
-                free(type);
-                continue;
-            }
             result = PBrowser_ScriptSessionSetCurrentScriptIndex(
                     context->session, i);
             if (result != PSCRIPT_OK) {
@@ -2178,12 +2257,39 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
                 result = PBrowser_ScriptSessionEvaluate(context->session,
                         info.kind == 1 ? source : data,
                         info.kind == 1 ? info.source_bytes : info.data_bytes);
+#ifdef _DEBUG
+                memset(&performance, 0, sizeof(performance));
+                performance.size = sizeof(performance);
+                performance.version = PSCRIPT_PERFORMANCE_VERSION;
+                if (PScript_GetPerformanceInfo(PBrowser_ScriptSessionRuntime(
+                        context->session), &performance) == PSCRIPT_OK &&
+                        performance.enabled) {
+                    _snprintf(cost_message, sizeof(cost_message) - 1,
+                            "positron script-cost gen=%lu index=%d total_ms=%lu "
+                            "compile_ms=%lu execute_ms=%lu callback_ms=%lu result=%d\r\n",
+                            context->bootstrap_generation, i,
+                            performance.last_total_ms, performance.last_compile_ms,
+                            performance.last_execute_ms, performance.last_callback_ms,
+                            result);
+                    cost_message[sizeof(cost_message) - 1] = '\0';
+                    AppDebug_Log(cost_message);
+                }
+#endif
                 if (result != PSCRIPT_OK) {
 #ifdef _DEBUG
                     app_script_debug_log_script(context, i, &info, debug_url,
                             type, "runtime-error", result);
 #endif
                     errors++;
+                    if (result == PSCRIPT_ERROR_TIMEOUT ||
+                            result == PSCRIPT_ERROR_MEMORY_LIMIT ||
+                            result == PSCRIPT_ERROR_FATAL) {
+                        free(source);
+                        free(type);
+                        (void) PBrowser_ScriptSessionSetCurrentScriptIndex(
+                                context->session, -1);
+                        return -1;
+                    }
                 } else {
 #ifdef _DEBUG
                     app_script_debug_log_script(context, i, &info, debug_url,
@@ -2195,21 +2301,26 @@ int AppScript_Execute(AppScriptContext *context, int allow_external,
         }
         free(source);
         free(type);
+        (void) PBrowser_ScriptSessionSetCurrentScriptIndex(context->session, -1);
+        context->script_executed = executed;
+        context->script_ignored = ignored;
+        context->script_errors = errors;
+        /* One complete author program at most. Its temporaries are left to
+         * the bounded heap's automatic GC, as in the reference consumer. */
+        return 0;
     }
     (void) PBrowser_ScriptSessionSetCurrentScriptIndex(context->session, -1);
-    if (out_executed != NULL) {
-        *out_executed = executed;
-    }
-    if (out_ignored != NULL) {
-        *out_ignored = ignored;
-    }
-    if (out_errors != NULL) {
-        *out_errors = errors;
-    }
+    context->script_executed = executed;
+    context->script_ignored = ignored;
+    context->script_errors = errors;
 #ifdef _DEBUG
     app_script_debug_log_summary(context, count, executed, ignored, errors);
 #endif
-    return 0;
+    /* One batch-end collection, on its own host dispatch. */
+    if (PBrowser_ScriptSessionCollectGarbage(context->session) != PSCRIPT_OK)
+        return -1;
+    context->script_complete = 1;
+    return 1;
 }
 
 int AppScript_Evaluate(AppScriptContext *context, const char *source,
@@ -2230,6 +2341,10 @@ void AppScript_Destroy(AppScriptContext *context)
 
     if (context == NULL) {
         return;
+    }
+    if (context->bootstrap_pending && context->session != NULL) {
+        (void) PBrowser_ScriptSessionBootstrapCancel(context->session,
+                context->bootstrap_generation);
     }
     AppScript_ClearPendingNavigation(context);
     binding = context->events;
@@ -2342,6 +2457,9 @@ int AppScript_NotifyResize(AppScriptContext *context, int viewport_width,
             viewport_height <= 0 || dpi <= 0) {
         return 0;
     }
+    if (context->viewport_width == viewport_width &&
+            context->viewport_height == viewport_height && context->dpi == dpi)
+        return 0;
     css_width = (double) viewport_width * 96.0 / (double) dpi;
     css_height = (double) viewport_height * 96.0 / (double) dpi;
     ratio = (double) dpi / 96.0;

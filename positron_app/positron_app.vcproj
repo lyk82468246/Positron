@@ -30,8 +30,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_core.lib positron_browser.lib positron_http.lib aygshell.lib commctrl.lib"
-				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_core.lib positron_browser.lib positron_http.lib positron_script.lib aygshell.lib commctrl.lib"
+				AdditionalLibraryDirectories="..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_script\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron.exe" LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"

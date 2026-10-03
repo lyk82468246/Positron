@@ -74,6 +74,8 @@
 #define APP_CONTROLS_REFRESH_FORM_RESET 1
 #define APP_SCRIPT_TIMER_ID     7
 #define APP_LOADING_TIMER_ID    8
+#define APP_NAV_SCRIPT_TIMER_BASE 0x10000UL
+#define APP_NAV_SCRIPT_INTERVAL_MS 16U
 #define APP_COMMAND_ARG_MAX     16384
 #define APP_STARTUP_SCRIPT_MAX_BYTES 8192
 #define APP_STARTUP_SELECTOR_MAX_BYTES 512
@@ -86,6 +88,8 @@
 #define APP_NAV_COMMIT_STYLE    2
 #define APP_NAV_COMMIT_IMAGES   3
 #define APP_NAV_COMMIT_LAYOUT   4
+#define APP_NAV_COMMIT_SCRIPT_INIT 5
+#define APP_NAV_COMMIT_SCRIPT_EXECUTE 6
 
 /* Keep the existing UI/navigation helper names stable while the ownership of
  * all host state moves into one private lifecycle object. */
@@ -142,6 +146,8 @@ static unsigned long g_page_layout_count;
 /* Non-NULL only inside the independent startup fixture. It parks a real
  * worker without HTTP so interleavings are deterministic and offline. */
 static HANDLE g_navigation_debug_worker_gate;
+static unsigned int g_script_debug_probes;
+static unsigned int g_script_debug_ticks;
 #endif
 static HDC g_page_paint_buffer_dc;
 static HBITMAP g_page_paint_buffer_bitmap;
@@ -3310,6 +3316,10 @@ static const char *app_navigation_debug_stage(int stage)
     switch (stage) {
     case APP_NAV_COMMIT_SCRIPTS:
         return "scripts";
+    case APP_NAV_COMMIT_SCRIPT_INIT:
+        return "script-init";
+    case APP_NAV_COMMIT_SCRIPT_EXECUTE:
+        return "script-execute";
     case APP_NAV_COMMIT_STYLE:
         return "style";
     case APP_NAV_COMMIT_IMAGES:
@@ -3529,6 +3539,10 @@ static void app_navigation_request_destroy(AppNavigationRequest *request)
     if (request == NULL) {
         return;
     }
+    if (request->script_timer_id != 0) {
+        KillTimer(request->hwnd, request->script_timer_id);
+        request->script_timer_id = 0;
+    }
     if (request->worker_thread != NULL) {
         WaitForSingleObject(request->worker_thread, INFINITE);
         CloseHandle(request->worker_thread);
@@ -3569,11 +3583,20 @@ static int app_navigation_cancel_active(void)
     if (request == NULL) {
         return 0;
     }
-    if (app_navigation_retired_count() >= APP_NAV_MAX_RETIRED) {
+    if (request->worker_thread != NULL &&
+            app_navigation_retired_count() >= APP_NAV_MAX_RETIRED) {
         return 1;
     }
     (void) PBrowser_NavigationCandidateRequestCancel(request->candidate);
     (void) PBrowser_NavigationCandidateRetire(request->candidate);
+    if (request->worker_thread == NULL) {
+        /* A UI-stepped candidate has no outstanding worker completion.
+         * Cancel its private bootstrap at idle and destroy immediately. */
+        g_navigation_request = NULL;
+        KillTimer(g_window, APP_LOADING_TIMER_ID);
+        app_navigation_request_destroy(request);
+        return 0;
+    }
     request->retired_next = g_retired_navigation;
     g_retired_navigation = request;
     g_navigation_request = NULL;
@@ -3584,6 +3607,8 @@ static int app_navigation_cancel_active(void)
 static void app_navigation_cancel_all(void)
 {
     AppNavigationRequest *request;
+    AppNavigationRequest *next;
+    AppNavigationRequest *previous;
 
     if (g_navigation_request != NULL) {
         (void) PBrowser_NavigationCandidateRequestCancel(
@@ -3594,11 +3619,19 @@ static void app_navigation_cancel_all(void)
         g_retired_navigation = g_navigation_request;
         g_navigation_request = NULL;
     }
-    for (request = g_retired_navigation; request != NULL;
-            request = request->retired_next) {
+    previous = NULL;
+    for (request = g_retired_navigation; request != NULL; request = next) {
+        next = request->retired_next;
         (void) PBrowser_NavigationCandidateRequestCancel(
                 request->candidate);
         (void) PBrowser_NavigationCandidateRetire(request->candidate);
+        if (request->worker_thread == NULL) {
+            if (previous == NULL) g_retired_navigation = next;
+            else previous->retired_next = next;
+            app_navigation_request_destroy(request);
+        } else {
+            previous = request;
+        }
     }
 }
 
@@ -3984,6 +4017,21 @@ static void app_navigation_remove_retired(AppNavigationRequest *request)
     current->retired_next = NULL;
 }
 
+static int app_navigation_schedule_script(AppNavigationRequest *request)
+{
+    UINT timer_id;
+
+    if (!app_navigation_can_apply(request) || request->worker_thread != NULL ||
+            request->generation > 0xffffffffUL - APP_NAV_SCRIPT_TIMER_BASE)
+        return 1;
+    if (request->script_timer_id != 0) return 0;
+    timer_id = (UINT) (APP_NAV_SCRIPT_TIMER_BASE + request->generation);
+    if (SetTimer(request->hwnd, timer_id, APP_NAV_SCRIPT_INTERVAL_MS,
+            NULL) == 0) return 1;
+    request->script_timer_id = timer_id;
+    return 0;
+}
+
 static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
 {
     int result;
@@ -4001,7 +4049,6 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             const char *history_state;
             int history_length;
             int history_index;
-            int script_errors;
             int script_count;
 
             app_navigation_loading_phase(request, APP_LOADING_SCRIPT_FETCH);
@@ -4095,23 +4142,14 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                         app_script_programmatic_click_generic;
                 script_callbacks.get_programmatic_anchor_target =
                         app_script_programmatic_anchor_target;
-                request->script_candidate = AppScript_Create(
+                request->script_candidate = AppScript_CreatePending(
                         request->document_candidate, request->url,
                         history_length, history_index, 1, history_state,
                         g_page_width, g_page_height, g_dpi,
-                        &script_callbacks);
+                        &script_callbacks, request->generation);
                 if (request->script_candidate != NULL) {
-                    script_errors = 0;
-                    if (AppScript_Execute(request->script_candidate, 1,
-                            AppResources_Resolve, request, NULL, NULL,
-                            &script_errors) != 0) {
-#ifdef _DEBUG
-                        app_navigation_debug_log_request(request,
-                                "script-fail", "session-execute");
-#endif
-                        AppScript_Destroy(request->script_candidate);
-                        request->script_candidate = NULL;
-                    }
+                    request->commit_stage = APP_NAV_COMMIT_SCRIPT_INIT;
+                    return app_navigation_schedule_script(request) == 0 ? 0 : -1;
 #ifdef _DEBUG
                 } else {
                     app_navigation_debug_log_request(request, "script-fail",
@@ -4121,6 +4159,42 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             }
             request->commit_stage = APP_NAV_COMMIT_STYLE;
             continue;
+        }
+        if (request->commit_stage == APP_NAV_COMMIT_SCRIPT_INIT ||
+                request->commit_stage == APP_NAV_COMMIT_SCRIPT_EXECUTE) {
+            /* Rotation/SIP can now occur between dispatches. Do not touch
+             * a frozen bootstrap; refresh its viewport once it is usable. */
+            if (request->commit_stage == APP_NAV_COMMIT_SCRIPT_EXECUTE &&
+                    AppScript_NotifyResize(request->script_candidate,
+                    g_page_width, g_page_height, g_dpi) != 0) {
+                result = -1;
+            } else {
+                result = request->commit_stage == APP_NAV_COMMIT_SCRIPT_INIT ?
+                        AppScript_InitializeStep(request->script_candidate,
+                        request->generation) :
+                        AppScript_ExecuteStep(request->script_candidate, 1,
+                        AppResources_Resolve, request);
+            }
+            if (result < 0) {
+#ifdef _DEBUG
+                app_navigation_debug_log_request(request, "script-fail",
+                        "stepped-session-failed");
+#endif
+                /* Optional script capability fails closed; parsed page and
+                 * Browser resource commit still follow the original gate. */
+                AppScript_Destroy(request->script_candidate);
+                request->script_candidate = NULL;
+                request->commit_stage = APP_NAV_COMMIT_STYLE;
+                continue;
+            }
+            if (result > 0) {
+                request->commit_stage = request->commit_stage ==
+                        APP_NAV_COMMIT_SCRIPT_INIT ?
+                        APP_NAV_COMMIT_SCRIPT_EXECUTE : APP_NAV_COMMIT_STYLE;
+            }
+            /* Also separate final GC from style/layout. A queued WM_TIMER is
+             * lower priority than input/paint; no nested message pumping. */
+            return app_navigation_schedule_script(request) == 0 ? 0 : -1;
         }
         if (request->commit_stage == APP_NAV_COMMIT_STYLE) {
             app_navigation_loading_phase(request, APP_LOADING_STYLE);
@@ -4407,7 +4481,7 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
         return 0;
     }
     app_file_picker_cancel_pending();
-    if (g_navigation_request != NULL &&
+    if (g_navigation_request != NULL && g_navigation_request->worker_thread != NULL &&
             app_navigation_retired_count() >= APP_NAV_MAX_RETIRED) {
 #ifdef _DEBUG
         app_navigation_debug_log_url("reject", url, "retired-limit");
@@ -4673,10 +4747,181 @@ static LRESULT CALLBACK app_history_debug_window_proc(HWND hwnd, UINT message,
 {
     /* Use production command/submission dispatch, but not WM_CREATE's Shell
      * fullscreen setup in this independent hidden viewport. */
+    if (message == WM_NULL) {
+        g_script_debug_probes++;
+        return 0;
+    }
+    if (message == WM_TIMER && wparam >= APP_NAV_SCRIPT_TIMER_BASE) {
+        if (g_navigation_request != NULL &&
+                g_navigation_request->script_timer_id == (UINT) wparam)
+            g_script_debug_ticks++;
+        return app_window_proc(hwnd, message, wparam, lparam);
+    }
     if (message == APP_WM_ADDRESS_GO || message == APP_WM_ADDRESS_CANCEL ||
             (message == WM_COMMAND && (HWND) lparam == g_address))
         return app_window_proc(hwnd, message, wparam, lparam);
     return app_page_window_proc(hwnd, message, wparam, lparam);
+}
+
+static int app_script_scheduling_debug_prepare(HWND viewport, const char *url)
+{
+    static const char response[] =
+            "<html><head><title>initial</title>"
+            "<script>window.__appScriptOrder='a';"
+            "document.getElementById('result').textContent='first';</script>"
+            "<script>var broken=;</script>"
+            "<script>__appScriptOrder+='b';"
+            "document.getElementById('result').textContent=__appScriptOrder;</script>"
+            "</head><body><div id='result'>initial</div></body></html>";
+    AppNavigationRequest *request;
+
+    if (!app_load_page_from(viewport, url, APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_ADDRESS)) return 1;
+    request = g_navigation_request;
+    if (request == NULL || request->worker_thread == NULL ||
+            WaitForSingleObject(request->worker_thread, 10000) != WAIT_OBJECT_0)
+        return 1;
+    CloseHandle(request->worker_thread);
+    request->worker_thread = NULL;
+    if (PBrowser_NavigationResourceSetData(request->resource_transaction,
+            request->resource_index, response, sizeof(response) - 1) != PBROWSER_OK ||
+            app_navigation_parse_document(request) != 0 ||
+            app_navigation_advance(viewport, request) != 0 ||
+            request->commit_stage != APP_NAV_COMMIT_SCRIPT_INIT ||
+            request->script_timer_id == 0 || request->script_candidate == NULL)
+        return 1;
+    return 0;
+}
+
+/* Pump only at the fixture's outer dispatch boundary, never inside a DLL
+ * evaluation or callback. A posted input probe precedes each real timer. */
+static int app_script_scheduling_debug_tick(HWND viewport)
+{
+    unsigned int probes;
+    unsigned int ticks;
+    DWORD started;
+    MSG message;
+
+    probes = g_script_debug_probes;
+    ticks = g_script_debug_ticks;
+    started = GetTickCount();
+    if (!PostMessage(viewport, WM_NULL, 0, 0)) return 1;
+    while (g_script_debug_ticks == ticks) {
+        if ((DWORD) (GetTickCount() - started) > 10000UL) return 1;
+        if (PeekMessage(&message, viewport, 0, 0, PM_REMOVE))
+            app_dispatch_ui_message(&message);
+        else Sleep(1);
+    }
+    return g_script_debug_probes == probes ? 1 : 0;
+}
+
+static int app_script_scheduling_debug_check(HWND viewport)
+{
+    AppNavigationRequest *request;
+    HANDLE document;
+    UINT stale_timer;
+    int count;
+    int steps;
+    int phase;
+    int result;
+    int saved_width;
+    int saved_height;
+    char title[64];
+    char message[128];
+    WCHAR actual[APP_HOST_TITLE_MAX];
+
+    document = g_document;
+    saved_width = g_page_width;
+    saved_height = g_page_height;
+    count = PBrowser_HistoryCount(g_history);
+    result = 1;
+    phase = 1;
+    if (app_script_scheduling_debug_prepare(viewport,
+            "https://example.com/stepped-cancel") != 0) goto done;
+    request = g_navigation_request;
+    if (AppScript_Evaluate(request->script_candidate, "throw 1;", 8) ==
+            PSCRIPT_OK || app_script_scheduling_debug_tick(viewport) != 0 ||
+            g_navigation_request != request || g_document != document) goto done;
+    stale_timer = request->script_timer_id;
+    if (app_navigation_cancel_active() != 0 || g_navigation_request != NULL ||
+            g_retired_navigation != NULL || g_document != document) goto done;
+    phase = 2;
+    if (app_script_scheduling_debug_prepare(viewport,
+            "https://example.com/stepped-close") != 0) goto done;
+    request = g_navigation_request;
+    SendMessage(viewport, WM_TIMER, stale_timer, 0);
+    if (g_navigation_request != request ||
+            request->commit_stage != APP_NAV_COMMIT_SCRIPT_INIT) goto done;
+    g_navigation_closing = 1;
+    app_navigation_cancel_all();
+    g_navigation_closing = 0;
+    if (g_navigation_request != NULL || g_retired_navigation != NULL ||
+            g_document != document || PBrowser_HistoryCount(g_history) != count)
+        goto done;
+    phase = 3;
+    if (app_script_scheduling_debug_prepare(viewport,
+            "https://example.com/stepped-complete") != 0) goto done;
+    request = g_navigation_request;
+    AppAddressBar_BeginEdit(g_address_bar);
+    SetWindowTextW(g_address, L"https://example.com/unsubmitted-script-edit");
+    SendMessage(g_address, EM_SETSEL, 3, 7);
+    /* Simulate rotation/SIP while bootstrap is frozen. */
+    g_page_width = saved_width + 24;
+    g_page_height = saved_height + 16;
+    steps = 0;
+    while (request->commit_stage == APP_NAV_COMMIT_SCRIPT_INIT) {
+        if (++steps > (int) PBROWSER_SCRIPT_BOOTSTRAP_MAX_STEPS ||
+                app_script_scheduling_debug_tick(viewport) != 0 ||
+                g_navigation_request != request || g_document != document ||
+                PBrowser_HistoryCount(g_history) != count ||
+                PCore_DocumentTitle(request->document_candidate, title,
+                sizeof(title), NULL) != 0 || strcmp(title, "initial")) goto done;
+    }
+    phase = 4;
+    /* A viewport change while the private session was frozen must be applied
+     * before the first author program, not by calling pending session APIs. */
+    if (request->commit_stage != APP_NAV_COMMIT_SCRIPT_EXECUTE ||
+            app_script_scheduling_debug_tick(viewport) != 0 ||
+            g_navigation_request != request || g_document != document ||
+            PCore_NodeTextContentById(request->document_candidate, "result", title,
+            sizeof(title), NULL) != 0 || strcmp(title, "first")) goto done;
+    _snprintf(message, sizeof(message) - 1,
+            "if(innerWidth!==%d||innerHeight!==%d)throw 1;",
+            g_page_width, g_page_height);
+    message[sizeof(message) - 1] = '\0';
+    if (AppScript_Evaluate(request->script_candidate, message,
+            (int) strlen(message)) != PSCRIPT_OK) goto done;
+    g_page_width = saved_width;
+    g_page_height = saved_height;
+    steps = 0;
+    while (g_navigation_request != NULL) {
+        if (++steps > 6 || app_script_scheduling_debug_tick(viewport) != 0)
+            goto done;
+    }
+    phase = 5;
+    if (g_document == document || g_script == NULL ||
+            PBrowser_HistoryCount(g_history) != count + 1 ||
+            PCore_NodeTextContentById(g_document, "result", title,
+            sizeof(title), NULL) != 0 ||
+            strcmp(title, "ab") ||
+            app_history_debug_eval("if(__appScriptOrder!=='ab')throw 1;") !=
+            PSCRIPT_OK) goto done;
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/unsubmitted-script-edit") ||
+            (DWORD) SendMessage(g_address, EM_GETSEL, 0, 0) != MAKELONG(3, 7))
+        goto done;
+    AppAddressBar_EndEdit(g_address_bar);
+    result = 0;
+done:
+    g_page_width = saved_width;
+    g_page_height = saved_height;
+    g_navigation_closing = 0;
+    _snprintf(message, sizeof(message) - 1,
+            "positron script-scheduling selftest %s phase=%d\r\n",
+            result == 0 ? "OK" : "FAILED", phase);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+    return result;
 }
 
 /* Run the real route/start/cancel/rollback/commit adapters against a parked
@@ -4857,6 +5102,8 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
     if (AppI18n_LoadString(APP_TEXT_APP_TITLE, expected,
             APP_HOST_TITLE_MAX) <= 0 || wcscmp(actual, expected)) goto done;
+    phase = 5;
+    if (app_script_scheduling_debug_check(viewport) != 0) goto done;
     result = 0;
 done:
     if (g_navigation_debug_worker_gate != NULL) SetEvent(g_navigation_debug_worker_gate);
@@ -6474,6 +6721,22 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_TIMER:
+        if (wparam >= APP_NAV_SCRIPT_TIMER_BASE) {
+            AppNavigationRequest *request;
+            int advance_result;
+
+            request = g_navigation_request;
+            /* ID includes the candidate generation, not a borrowed pointer.
+             * Late timers from cancelled/closed pages cannot advance C. */
+            if (request == NULL || request->script_timer_id != (UINT) wparam ||
+                    !app_navigation_can_apply(request)) return 0;
+            KillTimer(hwnd, request->script_timer_id);
+            request->script_timer_id = 0;
+            advance_result = app_navigation_advance(hwnd, request);
+            if (advance_result < 0) app_navigation_finish(request, 0);
+            else if (advance_result > 0) app_navigation_finish(request, 1);
+            return 0;
+        }
         if (wparam == APP_LOADING_TIMER_ID) {
             app_navigation_loading_render(g_navigation_request);
             return 0;

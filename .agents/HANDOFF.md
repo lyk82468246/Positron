@@ -8,7 +8,7 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
-当前 DLL 中断任务是加载时脚本初始化/执行同步阻塞。函数级诊断基线与新增的有界 Begin/Step/Cancel 初始化合同均已通过双配置设备门；热点仍是 bootstrap 和作者脚本编译/解析。宿主现在可在完整产品程序之间返回消息循环，尚未接入 EXE，不宣称整页卡顿已修复。Debug 的 TEST203 默认 1 秒预算超时在旧同步程序序列对照中也复现，Release 通过；不提高预算或改变原断言，不将该失败计为通过。用户确认 Media 暂停构建和部署后，本批串行完成验证；Media 未提交夹具及脚本改动保留，不纳入本批提交。
+当前交互任务是加载时脚本初始化/执行同步阻塞。DLL 诊断与有界 Begin/Step/Cancel 合同已通过双配置设备门；EXE 现接入候选系统 timer，在完整初始化 Step 或作者脚本之间返回消息循环，移除逐脚本前 full GC，预算不扩大。单次长调用仍同步，不宣称整页卡顿已修复。Debug TEST203 默认 1 秒预算超时在旧同步序列对照也复现，Release 通过；原断言不变，失败不计通过。用户正常退出并让出构建/设备门后串行验证，Media 未提交改动保留，不纳入应用提交。
 
 ## 当前代码与所有权
 
@@ -42,31 +42,16 @@ Debug 自检覆盖 observer 映射/合并/终态与 size/version 拒绝、纯阶
 B 加载中点按编辑但不提交，generation/history/旧文档/session 保留，B 完成且输入和选区不变；
 只有显式 Enter 提交 C 才替换 B。真实触摸回滚原因仍待新日志确认，不以自动消息证明已根治。
 
-C89、仓库审计与正式 Debug/Release build 通过，EXE 零错误/警告、Release CAB 成功；
-Release ASCII/UTF-16 检查不含 address-edit/address-submit/not-submitted 及地址栏/加载/候选自检。
-英文品牌拼写已按用户更正为单数 Browser，仅修改英文资源及文档，中文和导航代码不变。
-本次串行 Debug 构建通过；Release 首次链接阶段提前退出，无错误诊断，日志保留于
-`tmp/app-brand-build-failures/release-first.log`，正式重试及 CAB 通过。两种 EXE 均核对嵌入拼写。
-当前完整 Debug 包 `tmp/device-runs/20261003-173204-app-brand-spelling/` 共 40 文件，SD 目标空间
-与内部缓存预检通过，正式 module-audit 及 EXE 门前复审均 holders=0 unavailable=0。
-EXE/九 DLL SHA256 回读 10/10；address-bar/loading-title/fragment-pending/history/pointer/
-system-info/internal-pages 自检 OK，crash_check=PASS。门后 PID 3714729834 留在 newtab，入口为
-`\Storage Card\Temp\Positron-device-gate\app-brand-spelling-20261003-173204\positron.exe`。
-上一地址栏包已由用户正常退出；本次未强杀或重新选择设备。
-真实点按后 B 继续提交须立即人工复测；中文 IME、动画开销、滚动响应及旋转仍待人工。
-日志脚本误传不存在的 Action 参数曾走默认路径重启旧包并删除旧运行日志，已告知用户；
-旧 PID 2105729534 已由用户正常退出。只读抓取应使用 debug_capture.ps1 的 PullOnly 参数，
-不能从旧启动日志推断原回滚原因。未强杀、重置或修改 WMDC。
-本批只提交 EXE 和对应文档；并行 Media 源码、脚本、夹具与文档不纳入应用提交。
+英文品牌已修正为单数 Browser。较早 `tmp/device-runs/20261003-173204-app-brand-spelling/`
+通过完整包审计、EXE/九 DLL 回读、自检及 crash_check，Debug/Release/CAB 与诊断排除通过；
+它已由用户退出，不是当前人工入口，最新完整包见脚本调度证据。
+VS2008 首次链接提前退出日志在 `tmp/app-brand-build-failures/release-first.log`，重试恢复。
+真实点按后 B 继续提交、中文 IME、动画开销和旋转仍待人工。日志脚本误传 Action 曾重启旧包
+并删除日志，已告知用户并正常退出；只读抓取必须使用 PullOnly，不从旧启动日志推断回滚。
 
-HTTP/TLS owner 的先行定向
-`3,4,999` 设备门在用户当前 WMDC RAPI 会话中通过；证据位于
-`tmp/device-runs/20261003-102633-http-observer/`，外置 Temp 空间预检、模块审计、日志
-完整回收和 crash_check 均 PASS，匹配的 `positron_http.dll`/`positron_tls.dll` 已在目标上运行。
-该门不代表 EXE 自检。其先行 Release 的产品 DLL/EXE 均编译成功，但包含
-`positron_cab` 的整套解决方案在 CabWiz 创建数据文件时失败；这是现有打包环境边界，未把它
-误归因于 observer 源码，也未修改 CAB 工程。
-打包边界已由本轮正式 Release 重试恢复，不重写先行失败日志。staging、截图和日志仍只在 tmp。
+HTTP/TLS `3,4,999` 的先行门证据为 `tmp/device-runs/20261003-102633-http-observer/`，
+空间、引用审计、完整日志和 crash_check PASS，不代表 EXE 自检；其 CabWiz 失败已由正式
+Release 重试恢复，失败记录不改写。并行 Media 改动不纳入应用提交，tmp 不入 Git。
 
 ### EXE 系统信息证据与暂缓边界
 
@@ -393,7 +378,13 @@ Debug 正式 build/stage 成功。用户更换设备后，新会话先由独立 
 
 同门对照中，Debug 同步 bootstrap 为 6622 ms，分步累计 active=8652 ms、最大 Step=1262 ms；Release 对应 2627 ms、2536 ms、339 ms。测试在循环中连续 Step，证明调用边界而非真实 UI 响应，也不证明总耗时优化。作者 jQuery 单次求值仍为 Debug 3130 ms、Release 1003 ms。TEST203 的 Debug 默认预算失败在重新构建及临时旧同步程序序列对照中复现；对照证据 `tmp/device-runs/20261003-224553-browser-bootstrap-sync-control/` 不等同于完整旧 DLL 二进制基线，临时代码已撤回。原成功断言保持，失败仅增补阶段诊断，后续需处理编译热点而非扩大预算。
 
-先行 Script/Browser 计时诊断基线和失败记录已归入 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。诊断默认关闭，按 context/session 隔离；无 observer、日志 I/O 或消息泵。新初始化合同不改变旧 ABI、heap/source/native 预算、程序顺序和 timeout 终止语义。完整应用接线、真实硬件及单个作者程序阻塞仍待后续验证。
+先行 Script/Browser 计时诊断和失败记录见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。DLL 诊断默认关闭，无日志 I/O 或消息泵；EXE 仅 Debug 在 Begin 前开启计时并记录慢 Step/作者 compile/execute。Release 不含诊断、fixture 或直接计时接口依赖。旧 ABI、heap/source/native 预算、程序顺序和 timeout 语义保持；真实硬件及单个作者程序阻塞仍待验证。
+
+EXE 使用 generation 绑定的 16 ms 系统 timer；pending 禁止普通入口，取消/关闭在空闲边界停止调度并释放无 worker 的候选，旧页保留到提交。作者按顺序分批执行，普通异常继续，预算/fatal 关闭脚本能力；视口变化在初始化完成后同步。稳定调用及 GC 策略见 [接线计划](../positron_app/INTEGRATION_PLAN.md#阶段-2browser-scriptsession)。
+
+当前完整 Debug 包 `tmp/device-runs/20261003-233918-app-script-steps-viewport/` 共 49 文件；双空间预检及两次模块审计 holders=0 unavailable=0。`app-history/positron-debug.log` 全部 required 自检 OK；script-scheduling 覆盖真实 timer/窗口消息、pending 拒绝、cancel/close、stale、旧页/history、作者顺序/异常后 DOM、视口变化与输入选区保留。EXE/九 DLL SHA256 10/10、crash_check=PASS。PID 3700948682 留在 newtab，入口为 `\Storage Card\Temp\Positron-device-gate\app-script-steps-viewport-20261003-233918\positron.exe`。未强杀或改 WMDC，正式 Debug/Release/CAB、C89 与 Release 诊断排除通过；真实 WinWorld 响应须立即人工复核，不以窗口探针证明长调用可抢占。
+
+先行 `app-script-steps-final` 同一调度门已通过，Debug bootstrap active=7612 ms、最长 Step=1070 ms，仅为该夹具，不证明整站总耗时改善。首轮 `app-script-steps` phase=4 失败因夹具使用未接线的 document.title setter，改为已支持的 textContent/Core 终态断言后通过，失败日志保留。VS2008 无诊断提前退出日志在 `tmp/app-script-build-failures/`，正式重试恢复；编译/链接夹具错误修正后零错误/警告。
 
 性能包 tmp/device-runs/debug-capture-20261001-234236/ 的自动 jQuery/Bootstrap 展开→收起→再展开终态 height=404/0/404、ok=true；style=8/7/9、layout=3/3/5、controls-refresh=13/15/16、paint=1/1/2 guest ms。普通点按的 style 约 79–103 guest ms，不能用自动探针耗时替代用户墙钟。
 
@@ -407,7 +398,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮 DLL 已复核并更新 ROADMAP、能力矩阵与现有限制：有界初始化合同退出待实现队列，WinWorld 点按改善保留，作者脚本单次阻塞及 Debug 默认预算失败未关闭。DLL 唯一下一步是测量可信编译产物体积、峰值内存和冷启动/重复初始化成本，再取舍固定预算的编译复用方案；测量前不新增缓存 ABI 或承诺冷启动可抢占。EXE owner 可独立接入新 Begin/Step/Cancel 和 WM 分批/GC 策略，本批没有修改应用调度，分步不能冒充任意 JS 抢占。
+本轮已复核 ROADMAP、能力矩阵与现有限制：EXE 分步接线退出待实现范围，WinWorld 点按改善保留，作者单次阻塞及 Debug 默认预算失败未关闭。DLL 下一步仍先测可信编译产物体积、峰值内存和冷/重复初始化成本，再取舍固定预算编译复用；不新增未审查缓存 ABI 或承诺冷启动可抢占。EXE 下一步立即人工复测新完整包的 WinWorld Running script 阶段菜单、旧页滚动/链接、地址栏编辑、替换导航及正常退出；记录最大连续停顿与总加载时间，分步不能冒充任意 JS 抢占。
 
 ROADMAP、能力矩阵与当前限制已复核：地址栏消息隔离自动门通过，真实点按导致回滚需立即人工复测；
 慢速动画、输入/IME 和页面响应进入人工矩阵。本次英文拼写修正无需改变路线候选，

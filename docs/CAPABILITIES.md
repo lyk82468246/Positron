@@ -52,7 +52,12 @@ page-level 双轴物理位置，网络 history/刷新在 layout 后按 extent cl
 通过 EXE 私有适配层接入外部 CSS/`@import`、脚本发现和图片发现，沿用 Browser 的 required/
 optional gate；阶段 2 再由 `app_script.c` 创建有界 ScriptSession，按 DOM 顺序执行网络
 候选的 classic inline/external script，并把 DOM、事件、导航、滚动、焦点和生命周期回接到
-当前窗口。脚本异常不回滚页面，bridge 初始化失败则 fail closed 为无脚本页面。阶段 3 的
+当前窗口。脚本异常不回滚页面，bridge 初始化失败则 fail closed 为无脚本页面。
+网络候选在完全配置新 session 后由候选 generation 的系统 timer 分步调用 Browser bootstrap，
+初始化完成后每次调度最多执行一段完整作者脚本；显式 GC 仅在批次末独立调度一次。取消、
+替换与关闭先停止调度，空闲销毁 session 后再释放 document；旧页保持到真正提交。
+单个 Step、作者脚本与既有任务 checkpoint 仍同步，不承诺固定毫秒响应或 continuation；
+Debug 计时与窗口调度夹具不编入 Release。阶段 3 的
 第一条宿主纵切已由 EXE 私有 `app_controls.c/.h` 接入：`text`、`password` 和 `textarea`
 映射为同一窗口体系下的 WM6 native `EDIT` 子控件；单选/多选 `SELECT` 映射为原生
 `COMBOBOX`/`LISTBOX`；checkbox/radio 映射为同一窗口体系下的 WM6 native `BUTTON`。Core
