@@ -467,6 +467,7 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 
 ### 暂缓
 
+- EXE 的 OS 产品名称、发行版本和 edition 动态识别按用户决定暂时挂起；当前 API/注册表证据未能取得 WM 6.5.3 等营销版本元数据，不等于所有 ROM 都无此能力。保留内核、平台、AKU、OEM 与组件查询，不加入 build/AKU 映射表或硬编码品牌。只有用户重新开启，并取得可复现的运行时 API 或 OEM 注册表字段及其语义证据后，才恢复此方向；具体设备查询结果见 [HANDOFF](HANDOFF.md)，能力限制见 [KNOWN_LIMITATIONS](KNOWN_LIMITATIONS.md)。
 - WinWorld 窄视口中“页面级横向滚动条几乎铺满轨道”的现象已经复现，但尚未归属到 Core document extent、EXE client rect/样式事务或页面 CSS。按当前决策暂不继续追踪；保留原生滚动条与现有动态 `WS_HSCROLL`/`WS_VSCROLL` 策略，不以隐藏滚动条或改写 Core 尺寸作为临时修复。重新开启时先补齐同一页面、同一 DPI 下的尺寸与样式时序证据。
 - WinWorld `/home` 的 `bsky-embed` 位图缺失已确认属于当前 `type="module"`、custom element 与 Shadow DOM 能力边界，不属于 Image/HTTP 解码或传输缺陷；完整解除条件和 DLL 责任见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。在形成有界消费者方案、离线 fixture 和跨 `positron_script.dll`/`positron_browser.dll`/`positron_core.dll` 的设备门以前，不把它提升为 EXE 临时修复。
 以下方向不作为当前开发目标：完整现代 Web API、通用 detached DOM/Node tree mutation、完整
