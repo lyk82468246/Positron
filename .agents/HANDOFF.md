@@ -21,33 +21,38 @@ Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公�
 EXE 私有 AppAddressBar 在同一矩形交替显示 GDI 展示层和原生 EDIT；非编辑时加载显示网址与
 循环填满/清空、结束显示标题，长标题按实际字体往返滚动，无标题回退网址。点按/Tab/菜单
 切回 EDIT；原生 EDIT 始终存网址，提交仍走原地址路由。编辑期间后台提交不覆盖输入或选区，
-Esc/失焦后显示最新有效地址。80 ms timer 只重画地址栏，短标题和编辑状态停止；复用有界
+Esc/失焦后显示最新有效地址。160 ms 系统 timer 只重画地址栏，填充周期为 4 秒，短标题和编辑状态停止；复用有界
 双缓冲，不触发页面 layout/paint 或脚本 checkpoint。DLL、ABI 和导航资源语义未改。
 
-新增 EXE 私有 AppLoading：原生标题最前面按 180 ms 循环 ASCII `| / - \`，后接双语请求/
+EXE 私有 AppLoading 的原生标题现仅显示双语请求/
 DNS/连接/TLS/发送/等待/响应头/正文/重定向，以及 HTML/脚本/样式/图片/排版/绘制阶段。
 主文档 GET/POST 订阅公开 PHttp_*UrlEx2 observer；子资源保留宿主资源阶段，WinInet 合并
 通知只显示通用请求文字。COMPLETE/FAILED 不冒充页面完成、不改变 Browser gate 或重试。
-用户明确接受比例字体位移，不用
-全角缺字、不改系统字体。worker 只写自身原子展示字段，UI timer 只显示当前 generation，
-不触发 layout 或脚本 checkpoint；成功首次绘制后恢复文档标题，失败沿原快照回滚。
-Debug 自检覆盖 observer 映射/合并/终态与 size/version 拒绝、前缀帧和容量；独立候选夹具
+标题栏前缀动画已移除；worker 只写自身原子展示字段，250 ms UI timer 只显示当前 generation，
+仅阶段文字变化时更新。成功首次绘制后显示本地化应用品牌 `Positron Browsers` / `Positron 浏览器`，
+文档标题仍显示于地址栏，失败沿原快照回滚。不触发 layout 或脚本 checkpoint。
+Debug 自检覆盖 observer 映射/合并/终态与 size/version 拒绝、纯阶段文字和容量；独立候选夹具
 验证正文进度、stale 隔离、标题更新不增加布局和成功标题恢复。诊断与夹具不编入 Release。
 
-C89、仓库审计与串行正式 Debug/Release build 通过，EXE 零错误/警告、Release CAB 成功；
-Release ASCII/UTF-16 检查不含 loading-title/loading-phase/fragment-pending 诊断。
-首轮 Debug 预构建与 Release 编译提前退出无错误诊断，保留失败日志后正式重试通过；
-`tmp/app-loading-build-failures/` 的旧 TLS observer 草稿错误不代表最终 DLL，未改 DLL 源码。
-当前完整 Debug 包 `tmp/device-runs/20261003-152005-app-address-bar/` 共 34 文件，SD 目标空间
+用户确认填充动画观感正常，但点按编辑会回到未刷新的旧页，并非仅动画暂停。EXE 消息分派
+现将地址栏 EDIT/展示层和私有 worker 消息与 CommandBar/IsDialogMessage 过滤隔离，原生 EDIT
+通知不作菜单命令。Debug 新增 focus-only 与 explicit-submit 诊断；候选夹具经生产消息分派验证
+B 加载中点按编辑但不提交，generation/history/旧文档/session 保留，B 完成且输入和选区不变；
+只有显式 Enter 提交 C 才替换 B。真实触摸回滚原因仍待新日志确认，不以自动消息证明已根治。
+
+C89、仓库审计与正式 Debug/Release build 通过，EXE 零错误/警告、Release CAB 成功；
+Release ASCII/UTF-16 检查不含 address-edit/address-submit/not-submitted 及地址栏/加载/候选自检。
+源码编辑期间曾有并行构建更新共享产物，已告知用户；最终正式构建与完整 stage 重新核对。
+当前完整 Debug 包 `tmp/device-runs/20261003-154206-app-address-input/` 共 38 文件，SD 目标空间
 与内部缓存预检通过，正式 module-audit 及 EXE 门前复审均 holders=0 unavailable=0。
 EXE/九 DLL SHA256 回读 10/10；address-bar/loading-title/fragment-pending/history/pointer/
-system-info/internal-pages 自检 OK，crash_check=PASS。门后 PID 2110370946 留在 newtab，入口为
-`\Storage Card\Temp\Positron-device-gate\app-address-bar-20261003-152005\positron.exe`。
-本轮地址栏 Debug/Release 正式 build 均零错误/警告，CAB 成功，Release 不含 address-bar
-夹具。地址栏自检覆盖显示/编辑分离、填充/滚动周期、点按、输入/选区保留与 resize/释放；
-真实回车、中文 IME、动画耗时及滚动响应仍待人工。上一加载标题包已由用户正常退出。
-未强杀、重置或修改 WMDC；真实网络阶段显示、窄标题截断、双语及比例字体效果仍待人工。
-本批只提交 EXE、专用检查脚本和对应文档；Media 变更已独立提交，不重复纳入应用批次。
+system-info/internal-pages 自检 OK，crash_check=PASS。门后 PID 514848842 留在 newtab，入口为
+`\Storage Card\Temp\Positron-device-gate\app-address-input-20261003-154206\positron.exe`。
+真实点按后 B 继续提交须立即人工复测；中文 IME、动画开销、滚动响应及旋转仍待人工。
+日志脚本误传不存在的 Action 参数曾走默认路径重启旧包并删除旧运行日志，已告知用户；
+旧 PID 2105729534 已由用户正常退出。只读抓取应使用 debug_capture.ps1 的 PullOnly 参数，
+不能从旧启动日志推断原回滚原因。未强杀、重置或修改 WMDC。
+本批只提交 EXE 和对应文档；并行 Media 源码、脚本、夹具与文档不纳入应用提交。
 
 HTTP/TLS owner 的先行定向
 `3,4,999` 设备门在用户当前 WMDC RAPI 会话中通过；证据位于
@@ -368,8 +373,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP 与当前限制已复核：地址栏复用自动门通过，动画、输入/IME 和页面响应进入人工矩阵；
-仅 EXE 展示变化，不扩大 DLL 能力或现有限制。加载标题与 HTTP observer 接线退出待实现候选，真实阶段/截断/
+ROADMAP、能力矩阵与当前限制已复核：地址栏消息隔离自动门通过，真实点按导致回滚需立即人工复测；
+慢速动画、输入/IME 和页面响应进入人工矩阵。不扩大 DLL 能力或现有限制。
+加载标题与 HTTP observer 接线退出待实现候选，前缀动画已删除，真实阶段/截断/
 字体效果进入人工矩阵；同文档 fragment、片段 URL 公共接口
 与人工矩阵仍有效。系统信息保留 AKU
 与可选 OEM 字段，进一步 OS 产品/发行版本识别继续暂缓，营销版本不保证识别的限制不变。
@@ -379,9 +385,10 @@ Debug 增量版本时间依赖需独立修正。Media 移除已完成的 H.264/A
 下载记录仍待完成。C89、仓库审计通过；性能人工通过事实保留，
 Release 性能对照仍是可选后续门。
 
-EXE 下一步人工复核当前 newtab 包的标题滚动、点按编辑/回车、加载填充、输入期间后台提交
-与取消/失败回滚，并观察动画是否影响页面拖动或输入；必要时降刷新率或撤去动画。
-同时复核前缀动画、窄标题截断及真实 HTTP/HTTPS；短阶段可以
+EXE 下一步立即复测：A 显示时加载 B，点按编辑但不回车，B 仍提交；显式 Enter 提交 C 才替换 B。
+若仍回滚，用 PullOnly 获取新日志，区分 address-edit、address-submit 与 finish-rollback，不先归因 DLL。
+再复核标题滚动、慢速填充、就绪品牌标题及输入/IME 期间后台提交保留选区。
+同时复核窄标题截断及真实 HTTP/HTTPS；短阶段可以
 转瞬即逝，同步脚本/排版期间动画可暂停，不重入消息泵。A 显示时加载 B，A 页内跳转
 仍滚动且 B 随后提交；外链 C 替换 B；B 失败保持 A 新片段地址和原标题。不继续 OS 版本取证。
 随后复核内容拖动/点按、native 拖选、旋转及地址栏回车，

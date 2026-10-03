@@ -8,7 +8,6 @@
 
 #define APP_LOADING_TITLE_MAX 256
 
-static const WCHAR g_loading_frames[] = { L'|', L'/', L'-', L'\\' };
 static const AppTextId g_loading_text[APP_LOADING_COUNT] = {
     APP_TEXT_LOADING_REQUEST,
     APP_TEXT_LOADING_RECEIVE,
@@ -54,8 +53,7 @@ int AppLoading_FromHttp(const PHttpObserverEvent *event,
     return 1;
 }
 
-int AppLoading_Format(AppLoadingPhase phase, unsigned int frame,
-        WCHAR *buffer, int capacity)
+int AppLoading_Format(AppLoadingPhase phase, WCHAR *buffer, int capacity)
 {
     WCHAR text[APP_LOADING_TITLE_MAX];
     int length;
@@ -65,22 +63,17 @@ int AppLoading_Format(AppLoadingPhase phase, unsigned int frame,
     if (phase < 0 || phase >= APP_LOADING_COUNT) return 0;
     length = AppI18n_LoadString(g_loading_text[(int) phase], text,
             APP_LOADING_TITLE_MAX);
-    if (length <= 0 || length + 4 > capacity) return 0;
-    buffer[0] = g_loading_frames[frame % 4U];
-    buffer[1] = L' ';
-    buffer[2] = L' ';
-    memcpy(buffer + 3, text, (size_t) length * sizeof(WCHAR));
-    buffer[length + 3] = L'\0';
-    return length + 3;
+    if (length <= 0 || length + 1 > capacity) return 0;
+    memcpy(buffer, text, ((size_t) length + 1U) * sizeof(WCHAR));
+    return length;
 }
 
-void AppLoading_Render(HWND window, AppLoadingPhase phase, DWORD tick)
+void AppLoading_Render(HWND window, AppLoadingPhase phase)
 {
     WCHAR title[APP_LOADING_TITLE_MAX];
     WCHAR previous[APP_LOADING_TITLE_MAX];
 
-    if (window == NULL || AppLoading_Format(phase,
-            (unsigned int) (tick / APP_LOADING_INTERVAL_MS), title,
+    if (window == NULL || AppLoading_Format(phase, title,
             APP_LOADING_TITLE_MAX) == 0) return;
     previous[0] = L'\0';
     GetWindowTextW(window, previous, APP_LOADING_TITLE_MAX);
@@ -92,7 +85,6 @@ int AppLoading_DebugCheck(void)
 {
     WCHAR first[APP_LOADING_TITLE_MAX];
     WCHAR actual[APP_LOADING_TITLE_MAX];
-    unsigned int frame;
     int phase;
     int length;
     int result;
@@ -136,29 +128,22 @@ int AppLoading_DebugCheck(void)
             AppLoading_FromHttp(NULL, &mapped) ||
             AppLoading_FromHttp(&event, NULL)) goto done;
     for (phase = 0; phase < APP_LOADING_COUNT; ++phase) {
-        length = AppLoading_Format((AppLoadingPhase) phase, 0, first,
+        length = AppLoading_Format((AppLoadingPhase) phase, first,
                 APP_LOADING_TITLE_MAX);
-        if (length < 4 || first[1] != L' ' || first[2] != L' ' ||
-                first[0] != L'|') goto done;
-        for (frame = 0; frame < 8U; ++frame) {
-            if (AppLoading_Format((AppLoadingPhase) phase, frame, actual,
-                    APP_LOADING_TITLE_MAX) != length ||
-                    memcmp(first + 1, actual + 1,
-                    (size_t) (length - 1) * sizeof(WCHAR)) ||
-                    actual[0] != g_loading_frames[frame % 4U] ||
-                    actual[length] != L'\0') goto done;
-        }
+        if (length < 1 || wcschr(L"|/-\\", first[0]) != NULL ||
+                AppI18n_LoadString(g_loading_text[phase], actual,
+                APP_LOADING_TITLE_MAX) != length || wcscmp(first, actual)) goto done;
         /* Exact capacity succeeds; one WCHAR less returns an empty result. */
-        if (AppLoading_Format((AppLoadingPhase) phase, 0, actual,
+        if (AppLoading_Format((AppLoadingPhase) phase, actual,
                 length + 1) != length ||
-                AppLoading_Format((AppLoadingPhase) phase, 0, actual,
+                AppLoading_Format((AppLoadingPhase) phase, actual,
                 length) != 0 || actual[0] != L'\0') goto done;
     }
-    if (AppLoading_Format(APP_LOADING_COUNT, 0, actual,
+    if (AppLoading_Format(APP_LOADING_COUNT, actual,
             APP_LOADING_TITLE_MAX) != 0 || actual[0] != L'\0' ||
-            AppLoading_Format((AppLoadingPhase) -1, 0, actual,
+            AppLoading_Format((AppLoadingPhase) -1, actual,
             APP_LOADING_TITLE_MAX) != 0 ||
-            AppLoading_Format(APP_LOADING_REQUEST, 0, NULL, 0) != 0) goto done;
+            AppLoading_Format(APP_LOADING_REQUEST, NULL, 0) != 0) goto done;
     result = 0;
 done:
     AppDebug_Log(result == 0 ? "positron loading-title selftest OK\r\n" :

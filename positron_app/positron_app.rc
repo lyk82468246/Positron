@@ -83,6 +83,7 @@ BEGIN
     IDS_LOADING_WAIT_EN "Waiting for response"
     IDS_LOADING_HEADERS_EN "Receiving response headers"
     IDS_LOADING_REDIRECT_EN "Following redirect"
+    IDS_APP_TITLE_EN "Positron Browsers"
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
@@ -172,6 +173,7 @@ BEGIN
     IDS_LOADING_WAIT_ZH "正在等待响应"
     IDS_LOADING_HEADERS_ZH "正在接收响应头"
     IDS_LOADING_REDIRECT_ZH "正在重定向"
+    IDS_APP_TITLE_ZH "Positron 浏览器"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"

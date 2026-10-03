@@ -26,15 +26,12 @@ typedef enum AppLoadingPhase {
     APP_LOADING_COUNT
 } AppLoadingPhase;
 
-#define APP_LOADING_INTERVAL_MS 180U
+#define APP_LOADING_INTERVAL_MS 250U
 
-/* One ASCII frame precedes the text so it remains visible when truncated.
- * Native captions cannot assign a fixed-width glyph cell; proportional-font
- * advance differences are accepted rather than using missing fullwidth glyphs. */
-int AppLoading_Format(AppLoadingPhase phase, unsigned int frame,
-        WCHAR *buffer, int capacity);
+/* Phase text only; the address bar owns the loading animation. */
+int AppLoading_Format(AppLoadingPhase phase, WCHAR *buffer, int capacity);
 /* UI thread only. Does not invalidate the page or pump other messages. */
-void AppLoading_Render(HWND window, AppLoadingPhase phase, DWORD tick);
+void AppLoading_Render(HWND window, AppLoadingPhase phase);
 /* Synchronous observer mapping only. Does not retain the borrowed event.
  * Terminal/unknown/invalid events leave out_phase unchanged; transport
  * COMPLETE is not page commit or render completion. */

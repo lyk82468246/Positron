@@ -225,6 +225,10 @@ static void app_history_save_scroll(void);
 static int app_history_traverse(HWND hwnd, int target_index);
 static int app_navigate_fragment(HWND hwnd, const char *url, int replace);
 static void app_page_pointer_cancel(HWND hwnd);
+static int app_create_controls(HWND hwnd);
+static void app_dispatch_ui_message(MSG *message);
+static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
+        WPARAM wparam, LPARAM lparam);
 #ifdef _DEBUG
 static int app_pointer_debug_check(void);
 static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
@@ -327,20 +331,6 @@ static void app_set_status(AppTextId text_id)
     SetWindowTextW(g_window, wide);
 }
 
-static AppTextId app_ready_status(void)
-{
-    if (g_page_kind == APP_PAGE_WELCOME) {
-        return APP_TEXT_STATUS_READY_WELCOME;
-    }
-    if (g_page_kind == APP_PAGE_CONTROLS) {
-        return APP_TEXT_STATUS_READY_CONTROLS;
-    }
-    if (g_page_kind != 0) {
-        return APP_TEXT_STATUS_READY_INTERNAL;
-    }
-    return APP_TEXT_STATUS_READY_REMOTE;
-}
-
 /* UI thread owns caption/timer. Workers publish only the atomic phase on
  * their own request; retired requests can never repaint the current UI. */
 static void app_navigation_loading_render(AppNavigationRequest *request)
@@ -351,7 +341,7 @@ static void app_navigation_loading_render(AppNavigationRequest *request)
             request->generation != (unsigned long) g_navigation_generation ||
             g_navigation_closing) return;
     phase = InterlockedCompareExchange(&request->loading_phase, 0, 0);
-    AppLoading_Render(g_window, (AppLoadingPhase) phase, GetTickCount());
+    AppLoading_Render(g_window, (AppLoadingPhase) phase);
 }
 
 static void app_navigation_loading_phase(AppNavigationRequest *request,
@@ -406,19 +396,7 @@ static void app_restore_page_status(void)
         app_navigation_loading_render(g_navigation_request);
         return;
     }
-    if (g_document != NULL) {
-        char title[APP_HOST_TITLE_MAX];
-        WCHAR wide[APP_HOST_TITLE_MAX];
-
-        if ((g_page_kind == 0 || g_page_kind > APP_PAGE_CONTROLS) &&
-                PCore_DocumentTitle(g_document, title, sizeof(title), NULL) == 0 &&
-                title[0] != '\0') {
-            app_utf8_to_wide(title, wide, APP_HOST_TITLE_MAX);
-            SetWindowTextW(g_window, wide);
-        } else {
-            app_set_status(app_ready_status());
-        }
-    }
+    app_set_status(APP_TEXT_APP_TITLE);
 }
 
 static void app_set_address(const char *url)
@@ -4690,6 +4668,17 @@ static int app_history_debug_eval(const char *source)
     return AppScript_Evaluate(g_script, source, (int) strlen(source));
 }
 
+static LRESULT CALLBACK app_history_debug_window_proc(HWND hwnd, UINT message,
+        WPARAM wparam, LPARAM lparam)
+{
+    /* Use production command/submission dispatch, but not WM_CREATE's Shell
+     * fullscreen setup in this independent hidden viewport. */
+    if (message == APP_WM_ADDRESS_GO || message == APP_WM_ADDRESS_CANCEL ||
+            (message == WM_COMMAND && (HWND) lparam == g_address))
+        return app_window_proc(hwnd, message, wparam, lparam);
+    return app_page_window_proc(hwnd, message, wparam, lparam);
+}
+
 /* Run the real route/start/cancel/rollback/commit adapters against a parked
  * worker and Browser-owned resources. The HTTP response below is a fixture,
  * not a second navigation implementation; no live network is contacted. */
@@ -4710,6 +4699,7 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     WCHAR expected[APP_HOST_TITLE_MAX];
     unsigned long layouts;
     PHttpObserverEvent event;
+    MSG input_message;
     char message[128];
 
     result = 1;
@@ -4717,8 +4707,8 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     document = g_document;
     script = g_script;
     g_window = viewport;
-    g_address = CreateWindowW(L"EDIT", L"", WS_CHILD, 0, 0, 1, 1,
-            viewport, NULL, g_instance, NULL);
+    if (app_create_controls(viewport) != 0) goto done;
+    AppAddressBar_Move(g_address_bar, 240, 32, 96);
     g_navigation_debug_worker_gate = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (g_address == NULL || g_navigation_debug_worker_gate == NULL) goto done;
     /* The transport is deliberately replaced only within this Debug fixture. */
@@ -4741,9 +4731,8 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     app_navigation_loading_render(pending);
     GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
     if (pending->loading_phase != APP_LOADING_RECEIVE ||
-            AppLoading_Format(APP_LOADING_RECEIVE, 0, expected,
-            APP_HOST_TITLE_MAX) == 0 || wcscmp(actual + 1, expected + 1) ||
-            wcschr(L"|/-\\", actual[0]) == NULL ||
+            AppLoading_Format(APP_LOADING_RECEIVE, expected,
+            APP_HOST_TITLE_MAX) == 0 || wcscmp(actual, expected) ||
             g_page_layout_count != layouts) goto done;
     GetWindowTextW(viewport, caption, APP_HOST_TITLE_MAX);
     if (pending == NULL || pending->worker_thread == NULL ||
@@ -4787,8 +4776,17 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
             APP_NAV_SOURCE_DOCUMENT) || g_navigation_request != pending) goto done;
     /* An actual HTTP(S) route C supersedes B. B's late continuation is stale
      * and must not restore the address/title over C's loading UI. */
-    if (!app_load_page_from(viewport, "https://example.com/replacement-c",
-            APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT)) goto done;
+    AppAddressBar_BeginEdit(g_address_bar);
+    SetWindowTextW(g_address, L"https://example.com/replacement-c");
+    memset(&input_message, 0, sizeof(input_message));
+    input_message.hwnd = g_address;
+    input_message.message = WM_KEYDOWN;
+    input_message.wParam = VK_RETURN;
+    app_dispatch_ui_message(&input_message);
+    if (!PeekMessage(&input_message, viewport, APP_WM_ADDRESS_GO,
+            APP_WM_ADDRESS_GO, PM_REMOVE)) goto done;
+    app_dispatch_ui_message(&input_message);
+    AppAddressBar_EndEdit(g_address_bar);
     replacement = g_navigation_request;
     if (replacement == NULL || replacement == pending ||
             g_retired_navigation != pending || !app_navigation_is_cancelled(pending) ||
@@ -4816,6 +4814,24 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     if (!app_load_page_from(viewport, "https://example.com/pending-b",
             APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto done;
     pending = g_navigation_request;
+    generation = g_navigation_generation;
+    count = PBrowser_HistoryCount(g_history);
+    memset(&input_message, 0, sizeof(input_message));
+    input_message.hwnd = AppAddressBar_View(g_address_bar);
+    input_message.message = WM_LBUTTONDOWN;
+    input_message.wParam = MK_LBUTTON;
+    input_message.lParam = MAKELPARAM(8, 8);
+    app_dispatch_ui_message(&input_message);
+    input_message.message = WM_LBUTTONUP;
+    input_message.wParam = 0;
+    app_dispatch_ui_message(&input_message);
+    SetWindowTextW(g_address, L"https://example.com/not-submitted");
+    SendMessage(g_address, EM_SETSEL, 3, 7);
+    if (g_navigation_request != pending || g_navigation_generation != generation ||
+            app_navigation_is_cancelled(pending) || !app_navigation_can_apply(pending) ||
+            PBrowser_HistoryCount(g_history) != count || g_document != document ||
+            g_script != script || PeekMessage(&input_message, viewport,
+            APP_WM_ADDRESS_GO, APP_WM_ADDRESS_GO, PM_NOREMOVE)) goto done;
     if (!app_load_page_from(viewport, "#legacy", APP_HISTORY_NEW, -1,
             APP_NAV_SOURCE_DOCUMENT) || g_navigation_request != pending) goto done;
     count = PBrowser_HistoryCount(g_history);
@@ -4832,10 +4848,15 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
             PBrowser_HistoryCount(g_history) != count + 1) goto done;
     app_navigation_finish(pending, 1);
     GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
-    if (wcscmp(actual, L"https://example.com/pending-b") ||
+    if (wcscmp(actual, L"https://example.com/not-submitted") ||
+            (DWORD) SendMessage(g_address, EM_GETSEL, 0, 0) != MAKELONG(3, 7) ||
             g_navigation_request != NULL || g_retired_navigation != NULL) goto done;
+    AppAddressBar_EndEdit(g_address_bar);
+    GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"https://example.com/pending-b")) goto done;
     GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
-    if (wcscmp(actual, L"Page B")) goto done;
+    if (AppI18n_LoadString(APP_TEXT_APP_TITLE, expected,
+            APP_HOST_TITLE_MAX) <= 0 || wcscmp(actual, expected)) goto done;
     result = 0;
 done:
     if (g_navigation_debug_worker_gate != NULL) SetEvent(g_navigation_debug_worker_gate);
@@ -4847,7 +4868,8 @@ done:
     }
     if (g_navigation_debug_worker_gate != NULL) CloseHandle(g_navigation_debug_worker_gate);
     g_navigation_debug_worker_gate = NULL;
-    if (g_address != NULL) DestroyWindow(g_address);
+    AppAddressBar_Destroy(g_address_bar);
+    g_address_bar = NULL;
     g_address = NULL;
     g_window = NULL;
     g_http_initialized = 0;
@@ -4893,7 +4915,7 @@ static int app_history_debug_check(void)
     result = 1;
     phase = 0;
     memset(&pointer_class, 0, sizeof(pointer_class));
-    pointer_class.lpfnWndProc = app_page_window_proc;
+    pointer_class.lpfnWndProc = app_history_debug_window_proc;
     pointer_class.hInstance = g_instance;
     pointer_class.lpszClassName = L"PositronPointerSelftest";
     (void) RegisterClassW(&pointer_class);
@@ -5578,6 +5600,12 @@ static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
         PostMessage(parent, APP_WM_ADDRESS_CANCEL, 0, 0);
         return 0;
     }
+    if (message == WM_KEYDOWN && wparam == VK_TAB) {
+        SetFocus(g_page_window != NULL ? g_page_window : parent);
+        return 0;
+    }
+    if (message == WM_CHAR && (wparam == VK_RETURN || wparam == VK_ESCAPE ||
+            wparam == VK_TAB)) return 0;
     if (message == WM_KILLFOCUS && g_address_bar != NULL) {
         LRESULT result;
 
@@ -6322,6 +6350,16 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
     case WM_ERASEBKGND:
         return 1;
     case WM_COMMAND:
+        /* EDIT notifications must never be interpreted as menu/navigation
+         * commands. Enter submission is a separate, explicit WM_APP message. */
+        if (lparam != 0 && (HWND) lparam == g_address) {
+#ifdef _DEBUG
+            if (HIWORD(wparam) == EN_SETFOCUS && g_navigation_request != NULL)
+                app_navigation_debug_log_request(g_navigation_request,
+                        "address-edit", "focus-only-no-submit");
+#endif
+            return 0;
+        }
         switch (LOWORD(wparam)) {
         case APP_CMD_BACK:
             app_go_back(hwnd);
@@ -6360,6 +6398,11 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         break;
     case APP_WM_ADDRESS_GO:
+#ifdef _DEBUG
+        if (g_navigation_request != NULL)
+            app_navigation_debug_log_request(g_navigation_request,
+                    "address-submit", "explicit-go-message");
+#endif
         if (lparam != 0) {
             (void) app_load_page(hwnd, (const char *) lparam,
                     APP_HISTORY_NEW, -1);
@@ -6514,6 +6557,26 @@ static int app_create_controls(HWND hwnd)
             GWL_WNDPROC, (LONG) app_address_proc);
     AppHostContext_SetAddress(&g_app, address, original_proc);
     return (original_proc == NULL) ? 1 : 0;
+}
+
+static void app_dispatch_ui_message(MSG *message)
+{
+    int address_message;
+
+    address_message = g_address_bar != NULL && message->hwnd != NULL &&
+            (message->hwnd == g_address ||
+            message->hwnd == AppAddressBar_View(g_address_bar));
+    /* These are native EDIT/custom presentation messages, not a dialog or
+     * command-bar interaction. Keep pointer/focus/typing and private worker
+     * completion out of the modeless-dialog navigation filter. */
+    if (address_message || (message->message >= APP_WM_ADDRESS_GO &&
+            message->message <= APP_WM_FILE_PICKER) ||
+            ((g_menu_bar == NULL ||
+            !IsCommandBarMessage(g_menu_bar, message)) &&
+            !IsDialogMessage(g_window, message))) {
+        TranslateMessage(message);
+        DispatchMessage(message);
+    }
 }
 
 static int app_create_page_window(HWND hwnd)
@@ -6712,12 +6775,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
     }
     while (GetMessage(&message, NULL, 0, 0) > 0) {
-        if ((g_menu_bar == NULL ||
-                !IsCommandBarMessage(g_menu_bar, &message)) &&
-                !IsDialogMessage(hwnd, &message)) {
-            TranslateMessage(&message);
-            DispatchMessage(&message);
-        }
+        app_dispatch_ui_message(&message);
     }
     return (int) message.wParam;
 }

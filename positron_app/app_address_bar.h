@@ -9,6 +9,8 @@ typedef struct AppAddressBar AppAddressBar;
  * a page title. All calls and the animation timer belong to the UI thread. */
 AppAddressBar *AppAddressBar_Create(HINSTANCE instance, HWND parent, int id);
 HWND AppAddressBar_Edit(AppAddressBar *bar);
+/* Borrowed presentation HWND; owned and destroyed only by the bar. */
+HWND AppAddressBar_View(AppAddressBar *bar);
 void AppAddressBar_Move(AppAddressBar *bar, int width, int height, int dpi);
 void AppAddressBar_SetUrl(AppAddressBar *bar, const WCHAR *url);
 void AppAddressBar_SetTitle(AppAddressBar *bar, const WCHAR *title);

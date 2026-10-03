@@ -53,10 +53,10 @@ native 子控件保持同一顶层窗口体系，滚动使用 WM6 标准窗口�
 必需 CSS 失败阻止提交；图片和脚本失败不阻止页面显示但必须记录终态；HTTP/TLS 失败、取消、
 过时和预算拒绝必须保留旧页面。HTTPS 默认保持证书链和 hostname 校验。
 
-加载标题属于 EXE 私有展示层，不另造导航状态机或改变 Browser 提交资格。标题最前面循环
-显示 ASCII `| / - \`，后接本地化阶段文字；保留原生标题栏，接受比例字体的轻微宽度变化，
-不使用可能缺字的全角字符或修改系统字体。UI 线程用 180 ms timer 更新标题，不触发页面
-layout、paint 或脚本 checkpoint；同步解析/脚本/排版期间 timer 可以暂停，不为动画重入消息泵。
+加载标题属于 EXE 私有展示层，不另造导航状态机或改变 Browser 提交资格。原生标题栏只显示
+本地化阶段文字，动画只在地址栏展示；就绪时固定显示 `Positron Browsers` / `Positron 浏览器`，
+文档标题由地址栏显示。UI 线程用 250 ms timer 读取 worker 阶段，仅文字变化时更新标题；
+宿主同步阶段在实际调用点更新，不触发额外 layout、paint 或脚本 checkpoint，不重入消息泵。
 请求、接收正文、HTML 解析、脚本获取/执行、样式、图片、排版和首次绘制按实际宿主调用点
 显示，不伪造百分比。DNS、连接、TLS 等 transport 细分只能消费 HTTP 的公开观测接口，
 通过 `PHttp_GetUrlEx2/PostUrlEx2` 的 request-scoped observer 映射域名解析、连接、TLS 握手、
@@ -66,7 +66,7 @@ layout、paint 或脚本 checkpoint；同步解析/脚本/排版期间 timer 可
 或提交页面，原 Browser gate 和返回响应路径仍决定提交、重试与回滚。
 worker 只原子更新自身 request 的展示字段；只有当前 generation 的 UI timer 可以读它并
 更新标题，取消、完成和关闭停止 timer。迟到的旧请求不能覆盖新候选标题，旧页页内跳转
-继续保留加载标题；成功提交并完成首次同步绘制后恢复新文档标题，失败恢复旧页标题。
+继续保留加载标题；成功提交并完成首次同步绘制后恢复本地化应用标题，失败恢复已提交页的标题快照。
 
 ### 阶段 2：Browser ScriptSession
 
@@ -90,7 +90,10 @@ closed。
 无标题回退网址，长文本按实际字体宽度往返滚动。点按、页面 Tab 或“打开地址”菜单切回
 EDIT 并全选网址；回车沿原路由提交，Esc/失焦返回展示。后台提交或回滚只更新保存的网址，
 不覆盖正在输入的 EDIT、选区或 IME；结束编辑后使用最新有效地址。
-展示层沿用实际系统字体和地址栏外框，不改变页面 viewport。80 ms UI timer 只刷新地址栏，
+地址栏 EDIT/展示层及私有导航完成消息不经通用 CommandBar/IsDialogMessage 过滤；原生 EDIT
+通知不作为菜单命令处理。仅显式回车提交地址才替换候选，点按、编辑、Esc 或失焦不取消网络。
+展示层沿用实际系统字体和地址栏外框，不改变页面 viewport。160 ms 系统 SetTimer/WM_TIMER
+只刷新地址栏，填充/满格/清空周期为 4 秒，不使用高精度或后台动画定时器；
 短标题、编辑状态停止计时，不触发页面 layout、paint、网络或脚本 checkpoint，不重入消息泵。
 仅缓存一个最多 2048×256 像素的兼容位图，尺寸变化替换，失败回退直接绘制，关闭释放。
 低资源设备的跟手性仍需实测，必要时降低刷新率或撤去动画，不让动画影响输入和导航。
@@ -226,9 +229,9 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 replaceState 后失败回滚，以及 C 替换与 stale B 隔离、B 成功提交；门要求 fragment-pending
 自检通过。它不替代真实网络耗时、取消 transport 或真实页面点按的人工检查。
 加载标题的 Debug 私有自检覆盖 observer 映射、合并阶段、终态/未知阶段与 size/version
-拒绝，以及所有阶段的前缀帧、文字不变性、精确容量与失败清空；同一
+拒绝，以及所有阶段的纯文字、精确容量与失败清空；同一
 独立候选夹具另覆盖 worker 正文进度、stale 请求标题隔离、标题更新不增加 layout 和成功后
-文档标题恢复。app_history_gate 要求 loading-title 自检日志，不代替窄标题栏截断、比例字体、
+本地化应用标题恢复。app_history_gate 要求 loading-title 自检日志，不代替窄标题栏截断、字体、
 中英文实际显示和真实网络阶段的人工观察；夹具与诊断不编入 Release。
 门可用受限 `-StartupUrl positron://system` 留在规范化后的系统章节，默认仍为 newtab；
 另要求 Debug 系统信息自检通过，覆盖双语中性标签、非 CE/未知平台 ID、原始平台类型、
@@ -241,6 +244,8 @@ UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保�
 
 地址栏 Debug 自检使用独立隐藏窗口，验证标题/网址分离、实际字体宽度、滚动/填充周期、
 点按切换、加载期间不覆盖输入和选区、失焦后的最新网址、无标题回退、绘制/resize/释放。
+候选夹具还经生产消息分派与真实地址栏控件验证：B 加载期间点按编辑但不提交，generation、
+history、文档/session 不变，B 完成且保留输入/选区；原生 EDIT 的显式 Enter 提交 C 才替换 B。
 `app_history_gate` 必须同时取得 address-bar 自检日志；夹具及诊断不编入 Release。
 它不替代真实地址栏回车、中文 IME、动画观感、页面滚动响应与旋转/DPI 人工验收。
 

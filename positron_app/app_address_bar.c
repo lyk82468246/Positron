@@ -9,7 +9,7 @@
 #define APP_ADDRESS_VIEW_CLASS L"PositronAddressView"
 #define APP_ADDRESS_TEXT_MAX 4097
 #define APP_ADDRESS_ANIMATION_TIMER 1
-#define APP_ADDRESS_ANIMATION_MS 80
+#define APP_ADDRESS_ANIMATION_MS 160
 
 struct AppAddressBar {
     HWND edit;
@@ -35,10 +35,10 @@ static int app_address_fill(int width, DWORD elapsed)
     DWORD position;
 
     if (width <= 0) return 0;
-    position = elapsed % 2600U;
-    if (position >= 2300U) return 0;
-    if (position >= 2000U) return width;
-    return MulDiv(width, (int) position, 2000);
+    position = elapsed % 4000U;
+    if (position >= 3600U) return 0;
+    if (position >= 3200U) return width;
+    return MulDiv(width, (int) position, 3200);
 }
 
 static int app_address_offset(int overflow, int dpi, DWORD elapsed)
@@ -296,6 +296,11 @@ HWND AppAddressBar_Edit(AppAddressBar *bar)
     return bar == NULL ? NULL : bar->edit;
 }
 
+HWND AppAddressBar_View(AppAddressBar *bar)
+{
+    return bar == NULL ? NULL : bar->view;
+}
+
 void AppAddressBar_Move(AppAddressBar *bar, int width, int height, int dpi)
 {
     if (bar == NULL) return;
@@ -403,8 +408,8 @@ int AppAddressBar_DebugCheck(HINSTANCE instance)
             app_address_offset(100, 96, 1000) != 0 ||
             app_address_offset(100, 96, 2500) <= 0 ||
             app_address_offset(0, 192, 2500) != 0 ||
-            app_address_fill(240, 0) != 0 || app_address_fill(240, 1000) != 120 ||
-            app_address_fill(240, 2000) != 240 || app_address_fill(240, 2300) != 0) goto release;
+            app_address_fill(240, 0) != 0 || app_address_fill(240, 1600) != 120 ||
+            app_address_fill(240, 3200) != 240 || app_address_fill(240, 3600) != 0) goto release;
     SendMessage(bar->view, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(8, 8));
     SendMessage(bar->view, WM_LBUTTONUP, 0, MAKELPARAM(8, 8));
     if (!bar->editing) goto release;
