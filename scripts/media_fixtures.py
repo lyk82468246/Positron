@@ -75,6 +75,21 @@ def mpeg_records(exe):
     return records
 
 
+def amr_records(exe):
+    records = []
+    for name, codec, rate, bitrate in [
+        ("amr-nb.amr", "libopencore_amrnb", 8000, 12200),
+        ("amr-wb.amr", "libvo_amrwbenc", 16000, 23850),
+    ]:
+        args = ["-f", "lavfi", "-i", f"sine=frequency=440:sample_rate={rate}:duration=0.12",
+                "-c:a", codec, "-ar", str(rate), "-ac", "1", "-b:a", str(bitrate),
+                "-dtx", "0", "-threads:a", "1", "-fflags", "+bitexact", "-flags:a", "+bitexact",
+                "-map_metadata", "-1", "-f", "amr", "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": args[:-1] + [name]})
+    return records
+
+
 def write_pin(exe, records):
     for record in records:
         data = (DEST / record["file"]).read_bytes()
@@ -87,16 +102,19 @@ def write_pin(exe, records):
                               "files": records}, indent=2) + "\n", encoding="utf-8")
 
 
-def extend(exe, mpeg=False):
+def extend(exe, group):
     check()
     pin = json.loads(PIN.read_text(encoding="utf-8"))
     if hashlib.sha256(Path(exe).read_bytes()).hexdigest() != pin["generator_sha256"]:
         raise SystemExit("Extension requires the existing pinned generator")
-    names = {"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"} if mpeg else {
-        "mjpeg-mp3.avi", "mjpeg422.avi", "mp3-mono.mp3"}
+    names, generator = {
+        "mpeg": ({"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"}, mpeg_records),
+        "amr": ({"amr-nb.amr", "amr-wb.amr"}, amr_records),
+        "mjpeg": ({"mjpeg-mp3.avi", "mjpeg422.avi", "mp3-mono.mp3"}, extra_records),
+    }[group]
     if any(r["file"] in names for r in pin["files"]):
         raise SystemExit("Already extended; use --generate for intentional full regeneration")
-    write_pin(exe, pin["files"] + (mpeg_records(exe) if mpeg else extra_records(exe)))
+    write_pin(exe, pin["files"] + generator(exe))
 
 
 def generate(exe):
@@ -133,7 +151,7 @@ def generate(exe):
                 "-f", "adts", "-y", str(DEST / name)]
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
-    write_pin(exe, records + extra_records(exe) + mpeg_records(exe))
+    write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe))
 
 
 def check():
@@ -151,13 +169,14 @@ if __name__ == "__main__":
     action.add_argument("--generate", action="store_true")
     action.add_argument("--extend", action="store_true")
     action.add_argument("--extend-mpeg", action="store_true")
+    action.add_argument("--extend-amr", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg:
-            extend(opts.ffmpeg, opts.extend_mpeg)
+        if opts.extend or opts.extend_mpeg or opts.extend_amr:
+            extend(opts.ffmpeg, "amr" if opts.extend_amr else "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)
     check()

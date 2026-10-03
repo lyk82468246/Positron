@@ -335,6 +335,10 @@ WAV PCM 的 AUTO/NATIVE 可能使用 WaveOut。即使设备实际通过 WaveOut 
 否则会重复播放。需要完全接管音频输出时选择 SOFT。
 WAV IMA ADPCM 和 FFmpeg 音频走软解回调。
 
+AMR-NB/WB 的已验收裸流子集为单声道 8 kHz/16 kHz，分别每块 160/320 个 sample、
+duration 为 20000 µs，输出仍为 S16LE，不在 DLL 内重采样。所有实际编码帧都会输出，
+包括编码 padding；没有容器裁剪信息时，不按应用估计的原始录音长度截断尾块。
+
 ### 视频
 
 pm_video_frame.format 当前为 PMEDIA_PIXEL_I420。三个 plane 分别是 Y、U、V，具体
@@ -386,6 +390,8 @@ session 进入停止态，之后的 pm_pump()、pm_pause()、pm_resume()、pm_se
 返回 PMEDIA_ERROR_STATE（重复 pm_stop() 是安全的）。pm_seek() 的参数是微秒，
 负值非法；FFmpeg 使用可解码的后向关键点，WAV 使用对应 sample 位置，seek 成功后应用
 应重新按时间戳显示/播放后续回调。
+AMR seek 会重建解码器，清除预测/合成历史，避免重播沿用跳转前的音频状态；pause/resume
+则保留历史并继续同一位置。当前设备合同验证 EOF 后 seek 到零，不承诺非零压缩 seek 的精确定位。
 budget_us 必须非负；零使用内部默认处理量。clock_us 目前不驱动按时输出、迟到丢帧、
 音视频同步或暂停时间基准，这些仍是本阶段待实现的播放器能力。EOF 事件对当前播放区间只发
 一次；成功 seek 后开始新的区间。原生 callback STOP 的块重放语义尚未有设备断言，不应据此
@@ -461,6 +467,10 @@ AVI/MJPEG 4:2:0 + MP3 stereo 与 44.1 kHz mono MP3 裸流也已验证：全范�
 MPEG-TS/MPEG-2 + MP2 与 MPEG-PS/MPEG-1 + MP2 的三帧 I/B/P、有限范围像素、非零
 源 PTS、五块 PCM 和尾帧推导标记也已验证，包括 13-byte 短读、不可 seek AUTO 打开、
 视频 callback 暂停/恢复、EOF/seek 重播、独立关闭及隔行/超限 MPEG-2 与截断头拒绝。
+AMR-NB 12.2 kbit/s 与 AMR-WB 23.85 kbit/s 单声道裸流也已验证：逐块 PCM/PTS/时长、
+幅度与过零检查、重播 PCM 校验值一致、1-byte 短读、不可 seek AUTO 打开、暂停/恢复、
+负音频 callback、EOF/seek、独立关闭及截断头失败不改 probe。DTX、丢失帧、其他码率和
+3GP 内 AMR 仍未验收，不能把这两个夹具解释为完整 AMR 一致性测试。
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
 设备验收；其他已编译容器/codec、截断压缩 payload、非零压缩 seek 与原生完整生命周期

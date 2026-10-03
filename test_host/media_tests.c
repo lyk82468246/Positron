@@ -501,6 +501,11 @@ typedef struct media_compressed_sink {
     int check_audio_timeline;
     pm_position audio_start_us;
     int inferred_last_frame;
+    int amr_frame_samples;
+    int amr_last_sample;
+    int amr_have_sample;
+    int amr_zero_crossings;
+    unsigned long amr_pcm_hash;
     char assertion[256];
 } media_compressed_sink;
 
@@ -624,6 +629,8 @@ static int media_compressed_audio(void *context, const pm_audio_block *block)
         block->pts_us < sink->audio_pts ||
         (sink->check_audio_timeline && (block->samples != 1152 ||
          block->pts_us != sink->audio_start_us + (pm_position)sink->events.blocks * 24000)) ||
+        (sink->amr_frame_samples && (block->samples != sink->amr_frame_samples ||
+         block->pts_us != (pm_position)sink->events.blocks * 20000)) ||
         block->duration_us != (pm_position)block->samples * 1000000 / rate) {
         if (block != NULL) {
             _snprintf(sink->assertion, sizeof(sink->assertion),
@@ -636,10 +643,20 @@ static int media_compressed_audio(void *context, const pm_audio_block *block)
         return -1;
     }
     sink->audio_pts = block->pts_us;
+    if (sink->amr_frame_samples) {
+        for (i = 0; i < block->bytes; i++)
+            sink->amr_pcm_hash = sink->amr_pcm_hash * 33UL + block->data[i];
+    }
     for (i = 0; i < block->samples * block->channels; i++) {
         sample = (short)((unsigned int)block->data[i * 2] |
                          ((unsigned int)block->data[i * 2 + 1] << 8));
         sink->audio_magnitude += (unsigned long)(sample < 0 ? -sample : sample);
+        if (sink->amr_frame_samples && sink->events.blocks >= 2) {
+            if (sink->amr_have_sample && (sample < 0) != (sink->amr_last_sample < 0))
+                sink->amr_zero_crossings++;
+            sink->amr_last_sample = sample;
+            sink->amr_have_sample = 1;
+        }
     }
     sink->events.samples += block->samples;
     sink->events.blocks++;
@@ -1005,6 +1022,162 @@ BOOL test1334_media_mpeg_contract(void (*progress)(const char *))
         data = NULL;
     }
     g_media_compressed_error = "MPEG contract passed";
+    return TRUE;
+
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
+BOOL test1335_media_amr_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"amr-nb.amr", L"amr-wb.amr" };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_probe_info unchanged;
+    pm_stream_info info;
+    pm_session session;
+    unsigned char *data;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int result;
+    int expected_blocks;
+    int frame_samples;
+    int rate;
+    int codec;
+    unsigned long first_pcm_hash;
+    DWORD start;
+
+    session = NULL;
+    data = NULL;
+    for (test = 0; test < 2; test++) {
+        g_media_compressed_error = test == 0 ? "AMR-NB mono 8k" : "AMR-WB mono 16k";
+        if (progress != NULL) progress(g_media_compressed_error);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        frame_samples = test == 0 ? 160 : 320;
+        expected_blocks = test == 0 ? 7 : 6;
+        rate = test == 0 ? 8000 : 16000;
+        codec = test == 0 ? PMEDIA_CODEC_AMR_NB : PMEDIA_CODEC_AMR_WB;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 1;
+        input.position = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.size = sizeof(probe);
+        result = pm_probe(&source, &probe);
+        if (result != PMEDIA_OK || input.position != 1 || probe.stream.container != PMEDIA_CONTAINER_AMR ||
+            probe.stream.has_video || !probe.stream.has_audio || probe.stream.audio_codec != codec ||
+            probe.stream.channels != 1 || probe.stream.sample_rate != rate) goto fail;
+        for (iteration = 0; iteration < 3; iteration++) {
+            first_pcm_hash = 0;
+            input.position = 0;
+            source.seek = iteration == 0 ? NULL : media_fixture_seek;
+            source.tell = iteration == 0 ? NULL : media_fixture_tell;
+            options.backend = iteration == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+            memset(&sink, 0, sizeof(sink));
+            sink.channels = 1;
+            sink.sample_rate = rate;
+            sink.amr_frame_samples = frame_samples;
+            result = pm_open(&source, &options, &output, &session);
+            if (result != PMEDIA_OK || pm_get_backend(session) != PMEDIA_BACKEND_SOFT ||
+                input.position != bytes) goto fail;
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pm_get_stream_info(session, &info) != PMEDIA_OK || info.has_video || !info.has_audio ||
+                info.container != PMEDIA_CONTAINER_AMR || info.audio_codec != codec ||
+                info.channels != 1 || info.sample_rate != rate || pm_pause(session) != PMEDIA_OK ||
+                pm_pump(session, 0, 2000) != PMEDIA_OK || sink.events.blocks || sink.frames ||
+                pm_resume(session) != PMEDIA_OK) goto fail;
+            for (pass = 0; pass < 2; pass++) {
+                if (pass == 0) {
+                    sink.audio_callback_result = PMEDIA_CALLBACK_STOP;
+                    start = GetTickCount();
+                    while (sink.events.blocks == 0 && GetTickCount() - start < 5000) {
+                        if (pm_pump(session, 0, 2000) != PMEDIA_OK) goto fail;
+                    }
+                    if (sink.events.blocks != 1 || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                        sink.events.blocks != 1) goto fail;
+                    sink.audio_callback_result = PMEDIA_OK;
+                    if (pm_resume(session) != PMEDIA_OK) goto fail;
+                }
+                result = media_contract_drain(session);
+                if (sink.assertion[0] && progress != NULL) progress(sink.assertion);
+                _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                          "AMR drain: case=%d iteration=%d pass=%d ok=%d blocks=%d samples=%d energy=%lu crossings=%d errors=%d eof=%d",
+                          test, iteration, pass, result, sink.events.blocks, sink.events.samples,
+                          sink.audio_magnitude, sink.amr_zero_crossings, sink.events.errors, sink.events.eof_events);
+                g_media_compressed_error = g_media_compressed_detail;
+                if (progress != NULL) progress(g_media_compressed_error);
+                /* Independent desktop decode: energy ~1.97M/3.23M, tail crossings 87/70.
+                 * Allow fixed float-to-S16/decoder rounding, not silent or wrong-rate PCM. */
+                if (!result || sink.frames || sink.events.blocks != expected_blocks ||
+                    sink.events.samples != expected_blocks * frame_samples ||
+                    sink.audio_magnitude < (test == 0 ? 1750000UL : 2900000UL) ||
+                    sink.audio_magnitude > (test == 0 ? 2160000UL : 3550000UL) ||
+                    sink.amr_zero_crossings < (test == 0 ? 70 : 60) ||
+                    sink.amr_zero_crossings > (test == 0 ? 100 : 80) ||
+                    sink.events.errors || sink.events.error_callbacks || sink.events.eof_events != 1 ||
+                    pm_pump(session, 0, 2000) != PMEDIA_EOF || sink.events.eof_events != 1) goto fail;
+                if (pass == 0) {
+                    first_pcm_hash = sink.amr_pcm_hash;
+                    g_media_compressed_error = "AMR seek zero after EOF";
+                    if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    memset(&sink, 0, sizeof(sink));
+                    sink.channels = 1;
+                    sink.sample_rate = rate;
+                    sink.amr_frame_samples = frame_samples;
+                } else if (sink.amr_pcm_hash != first_pcm_hash) {
+                    g_media_compressed_error = "AMR seek replay PCM differs from fresh decoder";
+                    goto fail;
+                }
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_ERROR_STATE ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        g_media_compressed_error = "AMR negative audio callback propagates";
+        if (progress != NULL) progress(g_media_compressed_error);
+        input.position = 0;
+        memset(&sink, 0, sizeof(sink));
+        sink.channels = 1;
+        sink.sample_rate = rate;
+        sink.amr_frame_samples = frame_samples;
+        sink.audio_callback_result = -1;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+        start = GetTickCount();
+        result = PMEDIA_OK;
+        while (result == PMEDIA_OK && GetTickCount() - start < 5000)
+            result = pm_pump(session, 0, 2000);
+        if (result != PMEDIA_ERROR_CALLBACK || sink.events.blocks != 1 || sink.frames ||
+            sink.events.last_error != PMEDIA_ERROR_CALLBACK || sink.events.error_callbacks != 1 ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        g_media_compressed_error = "truncated AMR header: unchanged probe and no output";
+        if (progress != NULL) progress(g_media_compressed_error);
+        input.position = 0;
+        input.bytes = 4;
+        memset(&sink, 0, sizeof(sink));
+        memset(&probe, 0xa5, sizeof(probe));
+        probe.size = sizeof(probe);
+        unchanged = probe;
+        if (pm_probe(&source, &probe) != PMEDIA_ERROR_FORMAT || input.position != 0 ||
+            memcmp(&probe, &unchanged, sizeof(probe)) ||
+            pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_FORMAT || session != NULL ||
+            sink.events.last_error != PMEDIA_ERROR_FORMAT || sink.events.error_callbacks != 1 ||
+            sink.frames || sink.events.blocks) goto fail;
+        free(data);
+        data = NULL;
+    }
+    g_media_compressed_error = "AMR contract passed";
     return TRUE;
 
 fail:

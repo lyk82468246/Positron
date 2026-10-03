@@ -977,14 +977,36 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
 
 int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
 {
+    AVCodecContext *replacement_audio;
     int result;
     if (context == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
+    replacement_audio = NULL;
+    /* The pinned native AMR decoders have no flush callback.  Flushing their
+     * packet queues leaves prediction/synthesis history from the old position.
+     * Prepare a fresh decoder before seeking so an allocation/open failure does
+     * not disturb the current decoder or demuxer position. */
+    if (context->audio_codec != NULL &&
+        (context->audio_codec->codec_id == AV_CODEC_ID_AMR_NB ||
+         context->audio_codec->codec_id == AV_CODEC_ID_AMR_WB)) {
+        result = pm_ff_open_decoder(context->format, context->audio_stream,
+                                    &replacement_audio, NULL, 0);
+        if (result != PMEDIA_OK) return result;
+    }
     result = av_seek_frame(context->format, -1, (int64_t)position_us,
                            AVSEEK_FLAG_BACKWARD);
-    if (result < 0) return PMEDIA_ERROR_NOT_SEEKABLE;
+    if (result < 0) {
+        if (replacement_audio != NULL) avcodec_free_context(&replacement_audio);
+        return PMEDIA_ERROR_NOT_SEEKABLE;
+    }
     avformat_flush(context->format);
+    av_frame_unref(context->frame);
     if (context->video_codec != NULL) avcodec_flush_buffers(context->video_codec);
-    if (context->audio_codec != NULL) avcodec_flush_buffers(context->audio_codec);
+    if (replacement_audio != NULL) {
+        avcodec_free_context(&context->audio_codec);
+        context->audio_codec = replacement_audio;
+    } else if (context->audio_codec != NULL) {
+        avcodec_flush_buffers(context->audio_codec);
+    }
     context->input_eof = 0;
     context->video_flush_sent = 0;
     context->audio_flush_sent = 0;

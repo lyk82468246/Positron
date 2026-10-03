@@ -23,12 +23,20 @@
   MPEG-1 的末帧在 decoder drain 时缺少 PTS，DLL 从前帧已知 PTS/时长推导并设置
   `PMEDIA_FRAME_PTS_INFERRED`，seek 重播仍须得到同一结果。
 - `mpeg2-interlaced.ts`、`mpeg2-oversize.ts`：隔行与 656×480 MPEG-2 拒绝夹具。
+- `amr-nb.amr`：AMR-NB 12.2 kbit/s、单声道 8 kHz，七块各 160 个 sample。
+- `amr-wb.amr`：AMR-WB 23.85 kbit/s、单声道 16 kHz，六块各 320 个 sample。
+  两者关闭 DTX，PTS 从零起每块增加 20000 µs，duration 为 20000 µs；NB 保留编码器
+  的尾部 padding，不能按原始 0.12 秒纯音裁成六块。PCM 断言检查样本数、范围、幅度总和
+  及跳过前两块后的过零次数，不要求不同版本浮点 decoder 逐字节相同；同一 session
+  EOF 后 seek 到零的 PCM 校验值须与首次解码一致，不能保留旧预测/合成历史。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
-生成依赖 libx264、libmp3lame 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MP2 编码器，但它们不进入 WM6 产品。`--extend`
+生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MP2 编码器，但它们不进入 WM6 产品。`--extend`
 只用于首次用同一 pinned 生成器补齐 MJPEG/MP3 文件，先验证已有 pin，不重生成旧文件；已经
-补齐后再次调用会拒绝。`--extend-mpeg` 对 MPEG 文件组采用相同规则；两种扩展操作不能同时选择。
+补齐后再次调用会拒绝。`--extend-mpeg` 与 `--extend-amr` 分别对 MPEG、AMR 文件组采用相同规则；
+扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
+[FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 其他工具版本可能生成不同字节，
 必须重新审查 manifest、profile 和设备断言，不能只替换哈希让失败通过。
 
