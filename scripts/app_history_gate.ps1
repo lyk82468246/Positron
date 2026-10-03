@@ -97,6 +97,7 @@ try {
             if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
                     $text -match 'history selftest OK' -and
                     $text -match 'fragment-pending selftest OK' -and
+                    $text -match 'loading-title selftest OK' -and
                     $text -match 'pointer selftest OK' -and
                     $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK' -and

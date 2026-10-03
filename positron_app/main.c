@@ -24,6 +24,7 @@
 
 #include "app_debug.h"
 #include "app_host.h"
+#include "app_loading.h"
 #include "app_controls.h"
 #include "app_input.h"
 #include "app_script.h"
@@ -71,6 +72,7 @@
 #define APP_WM_FILE_PICKER      (WM_APP + 6)
 #define APP_CONTROLS_REFRESH_FORM_RESET 1
 #define APP_SCRIPT_TIMER_ID     7
+#define APP_LOADING_TIMER_ID    8
 #define APP_COMMAND_ARG_MAX     16384
 #define APP_STARTUP_SCRIPT_MAX_BYTES 8192
 #define APP_STARTUP_SELECTOR_MAX_BYTES 512
@@ -337,13 +339,54 @@ static AppTextId app_ready_status(void)
     return APP_TEXT_STATUS_READY_REMOTE;
 }
 
+/* UI thread owns caption/timer. Workers publish only the atomic phase on
+ * their own request; retired requests can never repaint the current UI. */
+static void app_navigation_loading_render(AppNavigationRequest *request)
+{
+    LONG phase;
+
+    if (request == NULL || request != g_navigation_request ||
+            request->generation != (unsigned long) g_navigation_generation ||
+            g_navigation_closing) return;
+    phase = InterlockedCompareExchange(&request->loading_phase, 0, 0);
+    AppLoading_Render(g_window, (AppLoadingPhase) phase, GetTickCount());
+}
+
+static void app_navigation_loading_phase(AppNavigationRequest *request,
+        AppLoadingPhase phase)
+{
+    LONG previous;
+
+    if (request == NULL || request != g_navigation_request ||
+            phase < 0 || phase >= APP_LOADING_COUNT) return;
+    previous = InterlockedExchange(&request->loading_phase, (LONG) phase);
+#ifdef _DEBUG
+    if (previous != (LONG) phase) {
+        char message[96];
+
+        _snprintf(message, sizeof(message) - 1,
+                "positron loading-phase gen=%lu phase=%d\r\n",
+                request->generation, (int) phase);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+#else
+    (void) previous;
+#endif
+    app_navigation_loading_render(request);
+}
+
 static void app_restore_page_status(void)
 {
+    if (g_navigation_request != NULL && !g_navigation_closing) {
+        app_navigation_loading_render(g_navigation_request);
+        return;
+    }
     if (g_document != NULL) {
         char title[APP_HOST_TITLE_MAX];
         WCHAR wide[APP_HOST_TITLE_MAX];
 
-        if (g_page_kind > APP_PAGE_CONTROLS &&
+        if ((g_page_kind == 0 || g_page_kind > APP_PAGE_CONTROLS) &&
                 PCore_DocumentTitle(g_document, title, sizeof(title), NULL) == 0 &&
                 title[0] != '\0') {
             app_utf8_to_wide(title, wide, APP_HOST_TITLE_MAX);
@@ -3523,6 +3566,7 @@ static int app_navigation_cancel_active(void)
     request->retired_next = g_retired_navigation;
     g_retired_navigation = request;
     g_navigation_request = NULL;
+    KillTimer(g_window, APP_LOADING_TIMER_ID);
     return 0;
 }
 
@@ -3558,11 +3602,27 @@ static int app_navigation_resource_fail(AppNavigationRequest *request,
             index, failure_class) == PBROWSER_OK ? 0 : 1;
 }
 
+/* HTTP invokes this synchronously on the worker. No HWND operation or
+ * posted request pointer: only its own atomic presentation field changes. */
+static void app_navigation_http_progress(const PHttpObserverEvent *event,
+        void *pw)
+{
+    AppNavigationRequest *request;
+    AppLoadingPhase phase;
+
+    request = (AppNavigationRequest *) pw;
+    if (request != NULL && request->worker_stage == APP_NAV_WORK_DOCUMENT &&
+            AppLoading_FromHttp(event, &phase)) {
+        InterlockedExchange(&request->loading_phase, (LONG) phase);
+    }
+}
+
 static int app_navigation_fetch_resource(AppNavigationRequest *request,
         int index, const char *reference)
 {
     PBrowserNavigationResourceInfo info;
     PHttpResponse *response;
+    PHttpObserver observer;
     int retry;
     int transport_failure;
     int is_main_request;
@@ -3609,6 +3669,11 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     response = NULL;
     retry = 0;
     is_main_request = index == request->resource_index;
+    memset(&observer, 0, sizeof(observer));
+    observer.size = sizeof(observer);
+    observer.version = PHTTP_OBSERVER_VERSION;
+    observer.callback = app_navigation_http_progress;
+    observer.user_data = request;
     retry_allowed = !is_main_request || request->method ==
             PCORE_FORM_METHOD_GET;
     for (;;) {
@@ -3623,6 +3688,9 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                     PBROWSER_NAVIGATION_FAILURE_MEMORY);
             return 0;
         }
+        if (is_main_request) {
+            InterlockedExchange(&request->loading_phase, APP_LOADING_REQUEST);
+        }
         if (is_main_request && request->method != PCORE_FORM_METHOD_GET) {
             if (request->content_type[0] != '\0') {
                 _snprintf(content_type_header,
@@ -3634,10 +3702,11 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
                 headers[0] = "Content-Type: application/x-www-form-urlencoded";
             }
             headers[1] = NULL;
-            response = PHttp_PostUrlEx(fetch_url, headers, request->body,
-                    request->body_bytes, NULL, NULL);
+            response = PHttp_PostUrlEx2(fetch_url, headers, request->body,
+                    request->body_bytes, NULL, NULL, &observer);
         } else {
-            response = PHttp_GetUrlEx(fetch_url, NULL, NULL, NULL);
+            response = PHttp_GetUrlEx2(fetch_url, NULL, NULL, NULL,
+                    is_main_request ? &observer : NULL);
         }
         if (app_navigation_is_cancelled(request)) {
             PHttp_FreeResponse(response);
@@ -3804,6 +3873,7 @@ static int app_navigation_parse_document(AppNavigationRequest *request)
         return 1;
     }
     bytes[copied] = '\0';
+    app_navigation_loading_phase(request, APP_LOADING_PARSE);
     document = PCore_ParseHTML(bytes, (unsigned int) copied);
     free(bytes);
     if (document == NULL) {
@@ -3861,6 +3931,8 @@ static void app_navigation_finish(AppNavigationRequest *request,
 #endif
     if (current) {
         g_navigation_request = NULL;
+        KillTimer(g_window, APP_LOADING_TIMER_ID);
+        if (committed) app_restore_page_status();
     }
     if (!committed) {
         if (current) {
@@ -3920,6 +3992,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             int script_errors;
             int script_count;
 
+            app_navigation_loading_phase(request, APP_LOADING_SCRIPT_FETCH);
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
             request->resource_role_mask =
@@ -3949,6 +4022,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
 #endif
             if (script_count > 0 || (g_startup_script_armed &&
                     request->generation == g_startup_script_generation)) {
+                app_navigation_loading_phase(request, APP_LOADING_SCRIPT_EXECUTE);
                 if (request->history_mode == APP_HISTORY_NEW) {
                     history_length = PBrowser_HistoryNavigationLength(
                             g_history, request->url,
@@ -4037,6 +4111,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             continue;
         }
         if (request->commit_stage == APP_NAV_COMMIT_STYLE) {
+            app_navigation_loading_phase(request, APP_LOADING_STYLE);
             /* Media queries are evaluated while Core selects computed styles,
              * not when the later layout pass starts.  Install the physical
              * device viewport before collecting/selecting the candidate page;
@@ -4071,6 +4146,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             continue;
         }
         if (request->commit_stage == APP_NAV_COMMIT_IMAGES) {
+            app_navigation_loading_phase(request, APP_LOADING_IMAGES);
             request->image_scan_found = 0;
             request->image_scan_fetched = 0;
             request->resource_policy =
@@ -4105,6 +4181,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 !app_navigation_commit_ready(request)) {
             return -1;
         }
+        app_navigation_loading_phase(request, APP_LOADING_LAYOUT);
         PCore_SetDeviceViewport(g_page_width, g_page_height, g_dpi);
         if (PCore_LayoutDocument(request->document_candidate, g_page_width,
                 g_page_height) != 0) {
@@ -4181,7 +4258,6 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                     g_scroll_x, g_scroll_y);
         }
         app_update_history_buttons();
-        app_set_status(app_ready_status());
         if (request->method == PCORE_FORM_METHOD_GET &&
                 (request->history_mode == APP_HISTORY_TARGET ||
                 request->history_mode == APP_HISTORY_REFRESH)) {
@@ -4235,7 +4311,11 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                         (LPARAM) g_script);
             }
         }
+        app_navigation_loading_phase(request, APP_LOADING_PAINT);
         InvalidateRect(g_page_window, NULL, TRUE);
+        /* First paint is synchronous, without pumping navigation messages.
+         * Caption completion follows this draw, not just HTTP completion. */
+        UpdateWindow(g_page_window);
         return 1;
     }
 }
@@ -4403,7 +4483,8 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
 #ifdef _DEBUG
     app_navigation_debug_log_request(request, "start", "worker-queued");
 #endif
-    app_set_status(APP_TEXT_STATUS_LOADING);
+    app_navigation_loading_phase(request, APP_LOADING_REQUEST);
+    SetTimer(g_window, APP_LOADING_TIMER_ID, APP_LOADING_INTERVAL_MS, NULL);
     app_set_address(request->url);
     if (app_navigation_start_worker(request) != 0) {
         app_navigation_finish(request, 0);
@@ -4592,6 +4673,9 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     int result;
     WCHAR caption[APP_HOST_TITLE_MAX];
     WCHAR actual[APP_HOST_TITLE_MAX];
+    WCHAR expected[APP_HOST_TITLE_MAX];
+    unsigned long layouts;
+    PHttpObserverEvent event;
     char message[128];
 
     result = 1;
@@ -4611,6 +4695,22 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
             APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto done;
     pending = g_navigation_request;
     generation = g_navigation_generation;
+    if (pending == NULL || pending->loading_phase != APP_LOADING_REQUEST) goto done;
+    layouts = g_page_layout_count;
+    memset(&event, 0, sizeof(event));
+    event.size = sizeof(event);
+    event.version = PHTTP_OBSERVER_VERSION;
+    event.phase = PHTTP_PHASE_RECEIVING_BODY;
+    event.received = 12;
+    event.total = -1;
+    app_navigation_http_progress(&event, pending);
+    app_navigation_loading_render(pending);
+    GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
+    if (pending->loading_phase != APP_LOADING_RECEIVE ||
+            AppLoading_Format(APP_LOADING_RECEIVE, 0, expected,
+            APP_HOST_TITLE_MAX) == 0 || wcscmp(actual + 1, expected + 1) ||
+            wcschr(L"|/-\\", actual[0]) == NULL ||
+            g_page_layout_count != layouts) goto done;
     GetWindowTextW(viewport, caption, APP_HOST_TITLE_MAX);
     if (pending == NULL || pending->worker_thread == NULL ||
             app_navigation_pending_count(pending) != 1 ||
@@ -4660,6 +4760,14 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
             g_retired_navigation != pending || !app_navigation_is_cancelled(pending) ||
             app_navigation_can_apply(pending) || app_navigation_advance(viewport, pending) != -1 ||
             g_document != document || strcmp(replacement->committed_url, g_current_url)) goto done;
+    GetWindowTextW(viewport, caption, APP_HOST_TITLE_MAX);
+    event.received = 99;
+    event.total = 100;
+    app_navigation_http_progress(&event, pending);
+    app_navigation_loading_render(pending);
+    GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, caption) ||
+            replacement->loading_phase != APP_LOADING_REQUEST) goto done;
     SetEvent(g_navigation_debug_worker_gate);
     app_navigation_remove_retired(pending);
     app_navigation_finish(pending, 0);
@@ -4692,6 +4800,8 @@ static int app_fragment_pending_debug_check(HWND viewport, int chapter_y)
     GetWindowTextW(g_address, actual, APP_HOST_TITLE_MAX);
     if (wcscmp(actual, L"https://example.com/pending-b") ||
             g_navigation_request != NULL || g_retired_navigation != NULL) goto done;
+    GetWindowTextW(viewport, actual, APP_HOST_TITLE_MAX);
+    if (wcscmp(actual, L"Page B")) goto done;
     result = 0;
 done:
     if (g_navigation_debug_worker_gate != NULL) SetEvent(g_navigation_debug_worker_gate);
@@ -6276,6 +6386,10 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_TIMER:
+        if (wparam == APP_LOADING_TIMER_ID) {
+            app_navigation_loading_render(g_navigation_request);
+            return 0;
+        }
         if (wparam == APP_SCRIPT_TIMER_ID && g_script != NULL) {
 #ifdef _DEBUG
             DWORD checkpoint_started;
@@ -6303,6 +6417,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         return 0;
     case WM_CLOSE:
         app_page_pointer_cancel(g_page_window);
+        KillTimer(hwnd, APP_LOADING_TIMER_ID);
         if (g_navigation_request != NULL || g_retired_navigation != NULL) {
             g_navigation_closing = 1;
             app_navigation_cancel_all();
@@ -6318,6 +6433,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
          * host context is the single owner of the remaining page, history,
          * command bar and DLL shutdown sequence. */
         KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
+        KillTimer(hwnd, APP_LOADING_TIMER_ID);
         g_script_refresh_pending = 0;
         g_script_refresh_form_reset = 0;
         g_script_refresh_context = NULL;
@@ -6448,7 +6564,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     AppHostContext_SetCoreInitialized(&g_app, 1);
 #ifdef _DEBUG
-    if (AppInternalPages_DebugCheck(g_app_css) != 0) {
+    if (AppLoading_DebugCheck() != 0 ||
+            AppInternalPages_DebugCheck(g_app_css) != 0) {
         AppHostContext_Shutdown(&g_app);
         return 1;
     }

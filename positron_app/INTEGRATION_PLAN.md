@@ -53,6 +53,21 @@ native 子控件保持同一顶层窗口体系，滚动使用 WM6 标准窗口�
 必需 CSS 失败阻止提交；图片和脚本失败不阻止页面显示但必须记录终态；HTTP/TLS 失败、取消、
 过时和预算拒绝必须保留旧页面。HTTPS 默认保持证书链和 hostname 校验。
 
+加载标题属于 EXE 私有展示层，不另造导航状态机或改变 Browser 提交资格。标题最前面循环
+显示 ASCII `| / - \`，后接本地化阶段文字；保留原生标题栏，接受比例字体的轻微宽度变化，
+不使用可能缺字的全角字符或修改系统字体。UI 线程用 180 ms timer 更新标题，不触发页面
+layout、paint 或脚本 checkpoint；同步解析/脚本/排版期间 timer 可以暂停，不为动画重入消息泵。
+请求、接收正文、HTML 解析、脚本获取/执行、样式、图片、排版和首次绘制按实际宿主调用点
+显示，不伪造百分比。DNS、连接、TLS 等 transport 细分只能消费 HTTP 的公开观测接口，
+通过 `PHttp_GetUrlEx2/PostUrlEx2` 的 request-scoped observer 映射域名解析、连接、TLS 握手、
+发送、等待响应、响应头、正文和重定向；不能从 URL 或经过时间猜测。WinInet 标为
+`PHASE_MERGED` 的通知只显示“正在请求页面”，不冒充独立 DNS/TCP 边界。只有主文档
+请求订阅 observer，子资源保持脚本/样式/图片阶段；COMPLETE/FAILED 不直接清除加载标题
+或提交页面，原 Browser gate 和返回响应路径仍决定提交、重试与回滚。
+worker 只原子更新自身 request 的展示字段；只有当前 generation 的 UI timer 可以读它并
+更新标题，取消、完成和关闭停止 timer。迟到的旧请求不能覆盖新候选标题，旧页页内跳转
+继续保留加载标题；成功提交并完成首次同步绘制后恢复新文档标题，失败恢复旧页标题。
+
 ### 阶段 2：Browser ScriptSession
 
 注册 DOM、属性、mutation、事件、焦点、表单、输入、导航、滚动、图片、native 控件和生命周期
@@ -199,6 +214,11 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 验证 B 加载中 A 的 fragment/repeated/missing 跳转不取消、generation/文档/session 保留、
 replaceState 后失败回滚，以及 C 替换与 stale B 隔离、B 成功提交；门要求 fragment-pending
 自检通过。它不替代真实网络耗时、取消 transport 或真实页面点按的人工检查。
+加载标题的 Debug 私有自检覆盖 observer 映射、合并阶段、终态/未知阶段与 size/version
+拒绝，以及所有阶段的前缀帧、文字不变性、精确容量与失败清空；同一
+独立候选夹具另覆盖 worker 正文进度、stale 请求标题隔离、标题更新不增加 layout 和成功后
+文档标题恢复。app_history_gate 要求 loading-title 自检日志，不代替窄标题栏截断、比例字体、
+中英文实际显示和真实网络阶段的人工观察；夹具与诊断不编入 Release。
 门可用受限 `-StartupUrl positron://system` 留在规范化后的系统章节，默认仍为 newtab；
 另要求 Debug 系统信息自检通过，覆盖双语中性标签、非 CE/未知平台 ID、原始平台类型、
 UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保留、版本资源切片边界与 HTML

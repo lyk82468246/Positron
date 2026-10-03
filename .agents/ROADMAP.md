@@ -341,17 +341,6 @@ Debug 编译已通过。最新 Debug 候选已包含 TEST42 兼容的 nested ove
 - **门：** Debug/Release ARMV4I 构建、仓库审计、自动旧页/取消断言，以及设备网络、旋转、
   DPI 和真实输入观察；外网不作为唯一证据。
 
-加载标题展示已形成 EXE 源码候选，正式构建和设备门未通过：前缀 ASCII 动画由 UI timer
-驱动，正文与 parse/script/style/image/layout/paint 阶段来自真实调用点，不改变候选语义。
-本轮已在 `positron_http.dll` 增加 request-scoped `PHttp_*Ex2` observer，并由匹配的
-`positron_tls.dll` 转发真实 DNS/TCP/TLS handshake 开始通知；WinInet 不可分辨的边界以
-`PHASE_MERGED` 明示，不能推测 DNS、证书验证或百分比。`positron_app` 尚未接入该新增观察
-入口，保持本轮边界不变。
-下一门覆盖 observer 的重定向、失败/非 2xx、NULL observer、并发隔离和匹配 DLL 部署，
-再评估加载标题是否消费这些阶段；前缀/容量、worker/stale 隔离、旧页标题回滚和标题更新
-不重排仍需串行构建后部署。窄标题栏截断、比例字体位移及双语实际效果进入人工观察，未验收
-不提升基线。
-
 #### B. 独立应用阶段 3：剩余原生控件与输入
 
 **状态：阶段 3 源码接线基本完成，设备门未完成。** `positron.exe` 已有
@@ -465,6 +454,9 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 - native SELECT popup 的真实 OEM 键盘/触摸行为、动态 option 重建、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表、
   应用英语/简体中文/回退语言矩阵和失败网络的整体视觉；
 - `example.com`/IANA 深层导航、旧页保留等真实网页观察。
+- 加载标题的真实 HTTP/HTTPS 阶段、前缀动画、窄标题截断、比例字体位移和中英文显示；
+  EXE 公开 observer 接线及自动隔离/回滚门已通过，不再作为待实现候选。同步解析/脚本/
+  排版期间 UI timer 可暂停，不能为动画重入消息泵或伪造不可观测的 transport 细分。
 - 同文档 Back/Forward 保留输入/脚本状态，网络跨页与刷新恢复双轴位置，以及 native
   焦点、manual 与旋转/DPI 的实际应用组合。
 - 页面内容双轴拖动的真实触笔/手指跟手性、从链接/按钮开始拖动不误点、EDIT 拖选、SELECT
