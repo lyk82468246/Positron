@@ -6,7 +6,7 @@
 ## 平台与工具链
 
 - 目标是 Windows Mobile 6 / Windows CE 5.2 ARMV4I，不支持现代桌面 Windows API 假设。
-- EXE 系统页不识别 WM 小版本或 edition；仅显示内核、平台与 OEM，不从 SDK/build 猜测。
+- EXE 平台/组件信息不保证识别 WM/WEH 发行版或 edition；不从 PocketPC、SDK/build 猜测。
 - 正式构建依赖 Visual Studio 2008 SP1 与 Windows Mobile 6 Professional SDK。
 - 产品 C 代码受 C89 约束；部分第三方源码依赖仓库转换器和 WinCE CRT shim。
 - VS/WMDC/Device Emulator 属于外部专有工具链，仓库不能提供或重现完整安装环境。

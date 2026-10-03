@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <winver.h>
 #include "app_internal_pages.h"
 #include "positron_browser.h"
 #include "positron_core.h"
@@ -235,23 +236,40 @@ static int app_internal_system_text(const WCHAR *text, unsigned int count,
     return 0;
 }
 
-static int app_internal_os_text(const WCHAR *platform, unsigned int count,
+/* CE's private pwinuser.h defines SPI_GETPLATFORMVERSION as SPI_PROJECT1
+ * (224). The public WM6 SDK exposes the two-DWORD PLATFORMVERSION contract
+ * in rapitypes2.h but not the action constant. This optional OEM query must
+ * never be replaced by a kernel/SDK/build-number marketing-version guess. */
+#define APP_SPI_GETPLATFORMVERSION 224U
+typedef struct AppPlatformVersion {
+    DWORD major;
+    DWORD minor;
+} AppPlatformVersion;
+
+static int app_internal_kernel_text(const OSVERSIONINFO *version,
         char *output, unsigned int capacity)
 {
-    char type[384];
+    const char *family;
     int written;
 
     if (output == NULL || capacity == 0) return 1;
     output[0] = '\0';
-    if (app_internal_system_text(platform, count, type, sizeof(type))) return 1;
-    /* Report the WM family on the recognised mobile platforms. PocketPC
-     * alone does not distinguish Classic/Professional, or WM 6.0/6.1/6.5.
-     * Unknown CE platforms retain their actual name, never a WM6 SDK label. */
-    if (_wcsicmp(platform, L"PocketPC") == 0 ||
-            _wcsicmp(platform, L"Smartphone") == 0) {
-        written = _snprintf(output, capacity, "Windows Mobile (%s)", type);
+    if (version == NULL) return 1;
+    switch (version->dwPlatformId) {
+    case VER_PLATFORM_WIN32_CE: family = "Windows CE"; break;
+    case VER_PLATFORM_WIN32_NT: family = "Windows NT"; break;
+    case VER_PLATFORM_WIN32_WINDOWS: family = "Windows"; break;
+    case VER_PLATFORM_WIN32s: family = "Win32s"; break;
+    default: family = NULL; break;
+    }
+    if (family != NULL) {
+        written = _snprintf(output, capacity, "%s %lu.%lu.%lu", family,
+                version->dwMajorVersion, version->dwMinorVersion,
+                version->dwBuildNumber);
     } else {
-        written = _snprintf(output, capacity, "%s", type);
+        written = _snprintf(output, capacity, "Platform ID %lu: %lu.%lu.%lu",
+                version->dwPlatformId, version->dwMajorVersion,
+                version->dwMinorVersion, version->dwBuildNumber);
     }
     if (written < 0 || (unsigned int) written >= capacity) {
         output[0] = '\0';
@@ -260,35 +278,160 @@ static int app_internal_os_text(const WCHAR *platform, unsigned int count,
     return 0;
 }
 
+/* Only fixed ROM component paths are queried. Version metadata is supplemental
+ * component evidence, never a substitute for an OS product-identification API.
+ * Optional coredll exports and a 64 KiB heap budget keep old/OEM ROMs safe. */
+static int app_internal_resource_slice(const void *block, DWORD size,
+        const void *value, unsigned int bytes)
+{
+    ULONG_PTR offset;
+
+    if (block == NULL || value == NULL ||
+            (ULONG_PTR) value < (ULONG_PTR) block) return 0;
+    offset = (ULONG_PTR) value - (ULONG_PTR) block;
+    return offset <= size && bytes <= size - offset;
+}
+
+static int app_internal_component_version(const WCHAR *path,
+        char *output, unsigned int capacity, int chinese)
+{
+    typedef DWORD (WINAPI *AppVersionSizeFn)(LPWSTR, LPDWORD);
+    typedef BOOL (WINAPI *AppVersionReadFn)(LPWSTR, DWORD, DWORD, LPVOID);
+    typedef BOOL (WINAPI *AppVersionQueryFn)(const LPVOID, LPWSTR, LPVOID *, PUINT);
+    AppVersionSizeFn size_fn;
+    AppVersionReadFn read_fn;
+    AppVersionQueryFn query_fn;
+    HMODULE module;
+    DWORD size;
+    DWORD ignored;
+    void *block;
+    void *value;
+    UINT length;
+    VS_FIXEDFILEINFO fixed;
+    WORD languages[32];
+    unsigned int language_count;
+    unsigned int i;
+    WCHAR key[80];
+    char product[384];
+    int written;
+    int result;
+
+    if (output == NULL || capacity == 0) return 1;
+    output[0] = '\0';
+    if (path == NULL) return 1;
+    module = GetModuleHandleW(L"coredll.dll");
+    if (module == NULL) return 1;
+    size_fn = (AppVersionSizeFn) GetProcAddress(module, L"GetFileVersionInfoSizeW");
+    read_fn = (AppVersionReadFn) GetProcAddress(module, L"GetFileVersionInfoW");
+    query_fn = (AppVersionQueryFn) GetProcAddress(module, L"VerQueryValueW");
+    if (size_fn == NULL || read_fn == NULL || query_fn == NULL) return 1;
+    ignored = 0;
+    size = size_fn((LPWSTR) path, &ignored);
+    if (size < sizeof(fixed) || size > 65536UL) return 1;
+    block = malloc(size);
+    if (block == NULL) return 1;
+    result = 1;
+    product[0] = '\0';
+    if (!read_fn((LPWSTR) path, 0, size, block)) goto done;
+    value = NULL;
+    length = 0;
+    if (!query_fn(block, L"\\", &value, &length) || length < sizeof(fixed) ||
+            !app_internal_resource_slice(block, size, value, sizeof(fixed))) goto done;
+    memcpy(&fixed, value, sizeof(fixed));
+    if (fixed.dwSignature != VS_FFI_SIGNATURE) goto done;
+    value = NULL;
+    length = 0;
+    if (query_fn(block, L"\\VarFileInfo\\Translation", &value, &length) &&
+            length >= 4 && (length & 3U) == 0 &&
+            app_internal_resource_slice(block, size, value, length)) {
+        language_count = length / 4;
+        if (language_count > 16) language_count = 16;
+        memcpy(languages, value, language_count * 4);
+        for (i = 0; i < language_count; i++) {
+            _snwprintf(key, sizeof(key) / sizeof(key[0]),
+                    L"\\StringFileInfo\\%04x%04x\\ProductName",
+                    (unsigned int) languages[i * 2],
+                    (unsigned int) languages[i * 2 + 1]);
+            key[sizeof(key) / sizeof(key[0]) - 1] = L'\0';
+            value = NULL;
+            length = 0;
+            if (query_fn(block, key, &value, &length) && length > 0 &&
+                    length <= 384 && app_internal_resource_slice(block,
+                    size, value, length * sizeof(WCHAR)) &&
+                    !app_internal_system_text((const WCHAR *) value,
+                    length, product, sizeof(product))) break;
+        }
+    }
+    written = _snprintf(output, capacity, chinese ?
+            "%s%s\346\226\207\344\273\266 %lu.%lu.%lu.%lu; \344\272\247\345\223\201 %lu.%lu.%lu.%lu" :
+            "%s%sfile %lu.%lu.%lu.%lu; product %lu.%lu.%lu.%lu",
+            product, product[0] == '\0' ? "" : "; ",
+            fixed.dwFileVersionMS >> 16, fixed.dwFileVersionMS & 65535UL,
+            fixed.dwFileVersionLS >> 16, fixed.dwFileVersionLS & 65535UL,
+            fixed.dwProductVersionMS >> 16, fixed.dwProductVersionMS & 65535UL,
+            fixed.dwProductVersionLS >> 16, fixed.dwProductVersionLS & 65535UL);
+    if (written >= 0 && (unsigned int) written < capacity) result = 0;
+done:
+    free(block);
+    if (result) output[0] = '\0';
+    return result;
+}
+
 static void app_internal_system(AppHtmlWriter *writer, int chinese)
 {
     OSVERSIONINFO version;
+    AppPlatformVersion platform_version;
     WCHAR platform[128];
     WCHAR oem[128];
     char kernel[96];
-    char os[416];
+    char details[384];
+    char os[384];
+    char os_version[64];
+    char component[512];
     char device[384];
     const char *unavailable;
+    int kernel_ok;
+    int platform_version_ok;
 #ifdef _DEBUG
-    char message[1024];
+    char message[1536];
 #endif
 
     unavailable = chinese ? "\344\270\215\345\217\257\347\224\250" : "Unavailable";
     strcpy(kernel, unavailable);
+    strcpy(details, unavailable);
     memset(&version, 0, sizeof(version));
     version.dwOSVersionInfoSize = sizeof(version);
-    if (GetVersionEx(&version)) {
-        _snprintf(kernel, sizeof(kernel) - 1, "Windows CE %lu.%lu (%lu)",
-                version.dwMajorVersion, version.dwMinorVersion,
-                version.dwBuildNumber);
-        kernel[sizeof(kernel) - 1] = '\0';
+    kernel_ok = GetVersionEx(&version) != 0;
+    if (kernel_ok) {
+        if (app_internal_kernel_text(&version, kernel, sizeof(kernel))) {
+            strcpy(kernel, unavailable);
+        }
+        if (app_internal_system_text(version.szCSDVersion,
+                sizeof(version.szCSDVersion) / sizeof(version.szCSDVersion[0]),
+                details, sizeof(details))) strcpy(details, unavailable);
     }
     memset(platform, 0xff, sizeof(platform));
     if (!SystemParametersInfo(SPI_GETPLATFORMTYPE,
             sizeof(platform) / sizeof(platform[0]), platform, 0) ||
-            app_internal_os_text(platform,
+            app_internal_system_text(platform,
             sizeof(platform) / sizeof(platform[0]), os, sizeof(os))) {
         strcpy(os, unavailable);
+    }
+    /* OEM OS design version, independent of GetVersionEx's kernel version.
+     * A successful but untouched/empty structure is not usable evidence. */
+    platform_version.major = 0xffffffffUL;
+    platform_version.minor = 0xffffffffUL;
+    platform_version_ok = SystemParametersInfo(APP_SPI_GETPLATFORMVERSION,
+            sizeof(platform_version), &platform_version, 0) != 0;
+    strcpy(os_version, unavailable);
+    if (platform_version_ok && platform_version.major != 0 &&
+            platform_version.major != 0xffffffffUL &&
+            platform_version.minor != 0xffffffffUL) {
+        _snprintf(os_version, sizeof(os_version) - 1, "%lu.%lu",
+                platform_version.major, platform_version.minor);
+        os_version[sizeof(os_version) - 1] = '\0';
+    } else {
+        platform_version_ok = 0;
     }
     memset(oem, 0xff, sizeof(oem));
     if (!SystemParametersInfo(SPI_GETOEMINFO,
@@ -297,13 +440,40 @@ static void app_internal_system(AppHtmlWriter *writer, int chinese)
             device, sizeof(device))) {
         strcpy(device, unavailable);
     }
-    app_html_row(writer, chinese ? "\345\206\205\346\240\270 (CE)" : "Kernel (CE)", kernel);
-    app_html_row(writer, chinese ? "\346\223\215\344\275\234\347\263\273\347\273\237 (WM)" :
-            "Operating system (WM)", os);
+    app_html_row(writer, chinese ? "\345\206\205\346\240\270" : "Kernel", kernel);
+    app_html_row(writer, chinese ? "\345\206\205\346\240\270\346\211\251\345\261\225\344\277\241\346\201\257" :
+            "Kernel additional information", details);
+    app_html_row(writer, chinese ? "\346\223\215\344\275\234\347\263\273\347\273\237 / \345\271\263\345\217\260" :
+            "Operating system / platform", os);
+    app_html_row(writer, chinese ? "\345\271\263\345\217\260\347\211\210\346\234\254" :
+            "Platform version", os_version);
+    app_html_append(writer, chinese ?
+            "<p>\345\271\263\345\217\260\347\261\273\345\236\213\345\222\214\347\211\210\346\234\254\347\224\261\347\263\273\347\273\237 API \346\212\245\345\221\212\357\274\233\344\270\215\346\215\256\346\255\244\346\216\250\346\226\255 Windows Mobile \346\210\226 Windows Embedded Handheld \347\232\204\344\272\247\345\223\201\345\220\215\347\247\260\345\222\214\345\217\221\350\241\214\347\211\210\346\234\254\343\200\202</p>" :
+            "<p>Platform type and version are reported by system APIs; they do not uniquely identify a Windows Mobile or Windows Embedded Handheld product/release.</p>");
     app_html_row(writer, chinese ? "\350\256\276\345\244\207 / OEM" : "Device / OEM", device);
+    if (app_internal_component_version(L"\\Windows\\coredll.dll",
+            component, sizeof(component), chinese)) strcpy(component, unavailable);
+    app_html_row(writer, chinese ? "\345\206\205\346\240\270\347\273\204\344\273\266 (coredll.dll)" :
+            "Kernel component (coredll.dll)", component);
 #ifdef _DEBUG
     _snprintf(message, sizeof(message) - 1,
-            "positron system-info kernel=%s os=%s oem=%s\r\n", kernel, os, device);
+            "positron system-component coredll=%s\r\n", component);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+    _snprintf(message, sizeof(message) - 1,
+            "positron system-info kernel=%s details=%s platform-id=%lu os=%s platform-version=%s version-api=%d oem=%s\r\n",
+            kernel, details, version.dwPlatformId, os, os_version,
+            platform_version_ok, device);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+#endif
+    if (app_internal_component_version(L"\\Windows\\aygshell.dll",
+            component, sizeof(component), chinese)) strcpy(component, unavailable);
+    app_html_row(writer, chinese ? "\347\263\273\347\273\237\345\244\226\345\243\263\347\273\204\344\273\266 (aygshell.dll)" :
+            "OS shell component (aygshell.dll)", component);
+#ifdef _DEBUG
+    _snprintf(message, sizeof(message) - 1,
+            "positron system-component aygshell=%s\r\n", component);
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
 #endif
@@ -553,14 +723,18 @@ static int app_internal_system_debug_check(void)
     static const WCHAR bad_high[] = { 0xd800, L'x', 0 };
     static const WCHAR bad_low[] = { 0xdc00, 0 };
     char text[416];
+    OSVERSIONINFO version;
+    unsigned char block[16];
     AppHtmlWriter writer;
     int result;
 
-    if (app_internal_os_text(L"PocketPC", 9, text, sizeof(text)) ||
-            strcmp(text, "Windows Mobile (PocketPC)") ||
-            app_internal_os_text(L"smartphone", 11, text, sizeof(text)) ||
-            strcmp(text, "Windows Mobile (smartphone)") ||
-            app_internal_os_text(L"Custom CE", 10, text, sizeof(text)) ||
+    if (app_internal_system_text(L"PocketPC", 9, text, sizeof(text)) ||
+            strcmp(text, "PocketPC") ||
+            app_internal_system_text(L"smartphone", 11, text, sizeof(text)) ||
+            strcmp(text, "smartphone") ||
+            app_internal_system_text(L"Windows Embedded Handheld", 26,
+            text, sizeof(text)) || strcmp(text, "Windows Embedded Handheld") ||
+            app_internal_system_text(L"Custom CE", 10, text, sizeof(text)) ||
             strcmp(text, "Custom CE") ||
             app_internal_system_text(L"\x4e2d\x6587", 3, text, sizeof(text)) ||
             strcmp(text, "\344\270\255\346\226\207") ||
@@ -571,24 +745,55 @@ static int app_internal_system_debug_check(void)
             !app_internal_system_text(bad_low, 2, text, sizeof(text)) ||
             !app_internal_system_text(L"x\ny", 4, text, sizeof(text)) ||
             !app_internal_system_text(L"x", 2, text, 1) ||
-            !app_internal_os_text(L"PocketPC", 9, text, 24) || text[0] != '\0' ||
+            !app_internal_system_text(L"PocketPC", 9, text, 8) || text[0] != '\0' ||
             !app_internal_system_text(NULL, 2, text, sizeof(text)) ||
             !app_internal_system_text(L"x", 0, text, sizeof(text)) ||
             !app_internal_system_text(L"x", 2, NULL, 2) ||
             !app_internal_system_text(L"x", 2, text, 0)) return 1;
+    memset(&version, 0, sizeof(version));
+    version.dwPlatformId = VER_PLATFORM_WIN32_CE;
+    version.dwMajorVersion = 5;
+    version.dwMinorVersion = 2;
+    version.dwBuildNumber = 318;
+    if (app_internal_kernel_text(&version, text, sizeof(text)) ||
+            strcmp(text, "Windows CE 5.2.318")) return 1;
+    version.dwPlatformId = VER_PLATFORM_WIN32_NT;
+    if (app_internal_kernel_text(&version, text, sizeof(text)) ||
+            strcmp(text, "Windows NT 5.2.318")) return 1;
+    version.dwPlatformId = 99;
+    if (app_internal_kernel_text(&version, text, sizeof(text)) ||
+            strcmp(text, "Platform ID 99: 5.2.318") ||
+            !app_internal_kernel_text(&version, text, 4) || text[0] != '\0' ||
+            !app_internal_kernel_text(NULL, text, sizeof(text)) ||
+            !app_internal_kernel_text(&version, NULL, 1) ||
+            !app_internal_kernel_text(&version, text, 0)) return 1;
+    if (!app_internal_resource_slice(block, sizeof(block), block, sizeof(block)) ||
+            !app_internal_resource_slice(block, sizeof(block), block + 8, 8) ||
+            app_internal_resource_slice(block, sizeof(block), block + 8, 9) ||
+            app_internal_resource_slice(block, sizeof(block), block + 16, 1) ||
+            app_internal_resource_slice(NULL, 0, block, 1) ||
+            app_internal_resource_slice(block, sizeof(block), NULL, 1) ||
+            !app_internal_component_version(NULL, text, sizeof(text), 0) ||
+            !app_internal_component_version(L"\\Windows\\coredll.dll", NULL, 1, 0) ||
+            !app_internal_component_version(L"\\Windows\\coredll.dll", text, 0, 0)) return 1;
     writer.bytes = (char *) malloc(APP_INTERNAL_HTML_MAX);
     if (writer.bytes == NULL) return 1;
     writer.used = 0;
     writer.failed = 0;
     writer.bytes[0] = '\0';
     app_internal_system(&writer, 0);
-    result = writer.failed || strstr(writer.bytes, "Kernel (CE): ") == NULL ||
-            strstr(writer.bytes, "Operating system (WM): ") == NULL;
+    result = writer.failed || strstr(writer.bytes, "Kernel: ") == NULL ||
+            strstr(writer.bytes, "Kernel additional information: ") == NULL ||
+            strstr(writer.bytes, "Operating system / platform: ") == NULL ||
+            strstr(writer.bytes, "Platform version: ") == NULL ||
+            strstr(writer.bytes, "(CE)") != NULL || strstr(writer.bytes, "(WM)") != NULL;
     writer.used = 0;
     writer.bytes[0] = '\0';
     app_internal_system(&writer, 1);
-    if (writer.failed || strstr(writer.bytes, "\345\206\205\346\240\270 (CE): ") == NULL ||
-            strstr(writer.bytes, "\346\223\215\344\275\234\347\263\273\347\273\237 (WM): ") == NULL) result = 1;
+    if (writer.failed || strstr(writer.bytes, "\345\206\205\346\240\270: ") == NULL ||
+            strstr(writer.bytes, "\346\223\215\344\275\234\347\263\273\347\273\237 / \345\271\263\345\217\260: ") == NULL ||
+            strstr(writer.bytes, "\345\271\263\345\217\260\347\211\210\346\234\254: ") == NULL ||
+            strstr(writer.bytes, "(CE)") != NULL || strstr(writer.bytes, "(WM)") != NULL) result = 1;
     writer.used = 0;
     writer.bytes[0] = '\0';
     app_html_row(&writer, "Device / OEM", "OEM <&\"'>");

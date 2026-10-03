@@ -147,12 +147,19 @@ About 的应用版本由 EXE 私有适配器提供：Debug 预构建时内嵌主
 非字符串、超长、未终止或非四段数值时使用本地化“未提供”。注册表不作为 Debug 版本来源，
 安装版本不冒充独立复制 EXE 的文件版本，公开 DLL ABI 的显示和 CAB 版本生成流程保持独立。
 
-系统章节分开显示内核（CE）与操作系统（WM）：`GetVersionEx` 仅提供 CE major/minor/build；
-`SystemParametersInfo(SPI_GETPLATFORMTYPE)` 提供运行设备的平台名，PocketPC/Smartphone
-显示为 Windows Mobile 家族及实际平台名，未知平台保留原名。`SPI_GETOEMINFO` 独立显示设备/
-OEM 信息，不冒充 ROM 或 OS 版本。不从 CE build、编译用 SDK、CAB 或 OEM 字符串推断
-WM 6.0/6.1/6.5 与 Classic/Professional/Standard。查询失败、空值、未终止、非法 UTF-16
-或容量不足显示本地化“不可用”；有效文本转换为 UTF-8 并转义后交给 Core。
+系统章节使用中性标签：`GetVersionEx` 的 platform ID 决定内核名称，完整显示 major/minor/build
+与独立的 `szCSDVersion` 扩展信息；未知 ID 原样显示数值，不写死 CE。`SPI_GETPLATFORMTYPE`
+保留实际平台类型，PocketPC/Smartphone 不自动改名为 WM；可选 `SPI_GETPLATFORMVERSION`
+独立查询 OEM OS design 的 major/minor，不用内核版本代替。该 action 位于 CE 私有 pwinuser.h，
+EXE 用私有常量与 WM6 SDK 两 DWORD 结构兼容，不增加 DLL ABI 或 Platform Builder 依赖。
+`SPI_GETOEMINFO` 独立显示设备/OEM。平台类型与 design 版本并不能唯一识别 WM/WEH 的产品名称、
+发行小版本或 edition；不从 SDK、CE build、CAB 或 OEM 字符串推断这些字段。
+
+补充信息通过可选 coredll `GetFileVersionInfoSizeW/GetFileVersionInfoW/VerQueryValueW` 读取
+固定 ROM 路径 coredll.dll 与 aygshell.dll 的产品名、四段文件/产品版本；明确标为内核/系统外壳
+组件，不冒充整套 OS 的发行版本。单次版本资源不超过 64 KiB，heap 缓冲解析后释放，返回切片
+与语言表有界检查。查询失败、空值、未终止、非法 UTF-16 或容量不足显示本地化“不可用”；
+有效文本转换为 UTF-8 并转义后交给 Core。未提供 API/资源的 ROM 不保证能识别其营销版本。
 
 ### 后端进入条件
 
@@ -181,7 +188,8 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 不构建、选择设备或强杀进程。它不替代真实 HTTP 跨页恢复、地址栏回车、native 焦点、旋转/DPI
 和人工滚动验收，测试夹具及诊断不编入 Release。
 门可用受限 `-StartupUrl positron://system` 留在规范化后的系统章节，默认仍为 newtab；
-另要求 Debug 系统信息自检通过，覆盖双语标签、平台识别、UTF-16/容量失败和 HTML 转义。
+另要求 Debug 系统信息自检通过，覆盖双语中性标签、非 CE/未知平台 ID、原始平台类型、
+UTF-16/容量失败、版本资源切片边界与 HTML 转义；运行日志另记录实际查询结果。
 
 同一 Debug 独立夹具使用真实页面窗口消息验证 DPI 阈值、抬起 click、拖动不误点、合并 MOVE
 后的抬起、捕获/取消收尾与布局计数不变；`app_history_gate` 同时要求 pointer 自检通过。
