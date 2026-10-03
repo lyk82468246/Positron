@@ -335,6 +335,15 @@ WAV PCM 的 AUTO/NATIVE 可能使用 WaveOut。即使设备实际通过 WaveOut 
 否则会重复播放。需要完全接管音频输出时选择 SOFT。
 WAV IMA ADPCM 和 FFmpeg 音频走软解回调。
 
+WAV IMA ADPCM 使用 DLL 内的便携 decoder：只接受 4-bit、mono/stereo、完整编码块和
+按每声道四字节组交替排列的 payload；`samples_per_block` 必须与块长度一致，每声道最多
+2048 sample（该布局可达到的最大合法值为 2041）。超过容量返回 PMEDIA_ERROR_LIMIT，
+部分块、非法步进索引/保留字节、损坏 RIFF/fmt/fact 返回 PMEDIA_ERROR_FORMAT，不通过
+FFmpeg 回退绕过守卫。有效 `fact` sample 数裁剪尾部 padding，必须为正且不超过编码容量；
+没有 `fact` 时输出所有编码 sample。输出采样率保持源值，不重采样；8 kHz 单/双声道已有
+设备断言，其他采样率仍需独立夹具。seek 到块内时先完整解码再丢弃前缀；最后一块或 seek
+后的第一块可短于 `samples_per_block`，应用必须使用 callback 的 `samples`/`bytes`/时间戳。
+
 AMR-NB/WB 的已验收裸流子集为单声道 8 kHz/16 kHz，分别每块 160/320 个 sample、
 duration 为 20000 µs，输出仍为 S16LE，不在 DLL 内重采样。所有实际编码帧都会输出，
 包括编码 padding；没有容器裁剪信息时，不按应用估计的原始录音长度截断尾块。
@@ -392,6 +401,8 @@ session 进入停止态，之后的 pm_pump()、pm_pause()、pm_resume()、pm_se
 应重新按时间戳显示/播放后续回调。
 AMR seek 会重建解码器，清除预测/合成历史，避免重播沿用跳转前的音频状态；pause/resume
 则保留历史并继续同一位置。当前设备合同验证 EOF 后 seek 到零，不承诺非零压缩 seek 的精确定位。
+便携 WAV IMA 路径例外：已验证按 sample 定位的块内/块边界非零 seek，首个输出 PTS 对应
+定位后的 sample；到达或超过 duration（包括极大正值）直接定位 EOF，不从块头重播。
 budget_us 必须非负；零使用内部默认处理量。clock_us 目前不驱动按时输出、迟到丢帧、
 音视频同步或暂停时间基准，这些仍是本阶段待实现的播放器能力。EOF 事件对当前播放区间只发
 一次；成功 seek 后开始新的区间。原生 callback STOP 的块重放语义尚未有设备断言，不应据此
@@ -471,7 +482,10 @@ AMR-NB 12.2 kbit/s 与 AMR-WB 23.85 kbit/s 单声道裸流也已验证：逐块 
 幅度与过零检查、重播 PCM 校验值一致、1-byte 短读、不可 seek AUTO 打开、暂停/恢复、
 负音频 callback、EOF/seek、独立关闭及截断头失败不改 probe。DTX、丢失帧、其他码率和
 3GP 内 AMR 仍未验收，不能把这两个夹具解释为完整 AMR 一致性测试。
+WAV IMA 的 8 kHz 单/不同内容双声道已有逐 sample S16LE 参考比对、块大小与 fact 裁剪、
+块内/边界/EOF seek、5-byte 短读、不可 seek AUTO、暂停/STOP/负 callback、重播和独立关闭
+断言；有效后置 fact、无 fact padding、损坏头和 2041-sample 容量/超限拒绝也已覆盖。
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
-设备验收；其他已编译容器/codec、截断压缩 payload、非零压缩 seek 与原生完整生命周期
+设备验收；其他已编译容器/codec、截断压缩 payload、非零 FFmpeg 压缩 seek 与原生完整生命周期
 仍待专用 fixture。

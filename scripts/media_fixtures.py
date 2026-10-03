@@ -90,6 +90,35 @@ def amr_records(exe):
     return records
 
 
+def ima_records(exe):
+    records = []
+    for name, channels in [("ima-mono.wav", 1), ("ima-stereo.wav", 2)]:
+        signal = "0.125*sin(2*PI*440*t)"
+        if channels == 2:
+            signal += "|0.0625*sin(2*PI*880*t)"
+        args = ["-f", "lavfi", "-i", f"aevalsrc={signal}:s=8000:d=0.3",
+                "-c:a", "adpcm_ima_wav", "-ar", "8000", "-ac", str(channels),
+                "-block_size", "512", "-threads:a", "1", "-fflags", "+bitexact",
+                "-flags:a", "+bitexact", "-map_metadata", "-1", "-f", "wav",
+                "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": args[:-1] + [name]})
+    return records + ima_pcm_records(exe)
+
+
+def ima_pcm_records(exe):
+    records = []
+    for name in ["ima-mono.wav", "ima-stereo.wav"]:
+        pcm_name = name.replace(".wav", ".pcm")
+        args = ["-i", str(DEST / name), "-c:a", "pcm_s16le", "-threads:a", "1",
+                "-fflags", "+bitexact", "-flags:a", "+bitexact", "-f", "s16le",
+                "-y", str(DEST / pcm_name)]
+        run(exe, args)
+        records.append({"file": pcm_name, "arguments": [name if a == str(DEST / name) else
+                        pcm_name if a == str(DEST / pcm_name) else a for a in args]})
+    return records
+
+
 def write_pin(exe, records):
     for record in records:
         data = (DEST / record["file"]).read_bytes()
@@ -110,6 +139,7 @@ def extend(exe, group):
     names, generator = {
         "mpeg": ({"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"}, mpeg_records),
         "amr": ({"amr-nb.amr", "amr-wb.amr"}, amr_records),
+        "ima": ({"ima-mono.wav", "ima-stereo.wav", "ima-mono.pcm", "ima-stereo.pcm"}, ima_records),
         "mjpeg": ({"mjpeg-mp3.avi", "mjpeg422.avi", "mp3-mono.mp3"}, extra_records),
     }[group]
     if any(r["file"] in names for r in pin["files"]):
@@ -151,7 +181,7 @@ def generate(exe):
                 "-f", "adts", "-y", str(DEST / name)]
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
-    write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe))
+    write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) + ima_records(exe))
 
 
 def check():
@@ -170,13 +200,15 @@ if __name__ == "__main__":
     action.add_argument("--extend", action="store_true")
     action.add_argument("--extend-mpeg", action="store_true")
     action.add_argument("--extend-amr", action="store_true")
+    action.add_argument("--extend-ima", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr:
-            extend(opts.ffmpeg, "amr" if opts.extend_amr else "mpeg" if opts.extend_mpeg else "mjpeg")
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima:
+            extend(opts.ffmpeg, "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+                   "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)
     check()

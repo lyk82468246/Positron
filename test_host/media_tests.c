@@ -1030,6 +1030,307 @@ fail:
     return FALSE;
 }
 
+typedef struct media_ima_sink {
+    media_fixture_output events;
+    const unsigned char *reference;
+    int channels;
+    int samples_per_block;
+    int total_frames;
+    int cursor;
+    int callback_result;
+} media_ima_sink;
+
+static int media_ima_audio(void *context, const pm_audio_block *block)
+{
+    media_ima_sink *sink;
+    int frames;
+    int i;
+    sink = (media_ima_sink *)context;
+    frames = sink->samples_per_block - sink->cursor % sink->samples_per_block;
+    if (frames > sink->total_frames - sink->cursor) frames = sink->total_frames - sink->cursor;
+    if (block == NULL || block->size != sizeof(*block) || block->data == NULL ||
+        block->sample_rate != 8000 || block->channels != sink->channels ||
+        block->samples != frames || frames <= 0 || block->bytes != frames * sink->channels * 2 ||
+        block->pts_us != (pm_position)sink->cursor * 125 ||
+        block->duration_us != (pm_position)frames * 125) goto invalid;
+    if (sink->reference != NULL) {
+        if (memcmp(block->data, sink->reference + sink->cursor * sink->channels * 2,
+                   (size_t)block->bytes) != 0) goto invalid;
+    } else {
+        for (i = 0; i < block->bytes; i++) if (block->data[i] != 0) goto invalid;
+    }
+    sink->cursor += frames;
+    sink->events.blocks++;
+    sink->events.samples += frames;
+    return sink->callback_result;
+invalid:
+    sink->events.errors++;
+    g_media_contract_error = "IMA PCM bytes/block/PTS assertion";
+    return -1;
+}
+
+static void media_ima_reset(media_ima_sink *sink, const unsigned char *reference,
+                            int channels, int samples_per_block, int total, int cursor)
+{
+    memset(sink, 0, sizeof(*sink));
+    sink->reference = reference;
+    sink->channels = channels;
+    sink->samples_per_block = samples_per_block;
+    sink->total_frames = total;
+    sink->cursor = cursor;
+}
+
+static void media_ima_put16(unsigned char *data, unsigned int value)
+{
+    data[0] = (unsigned char)value;
+    data[1] = (unsigned char)(value >> 8);
+}
+
+static void media_ima_put32(unsigned char *data, unsigned long value)
+{
+    data[0] = (unsigned char)value;
+    data[1] = (unsigned char)(value >> 8);
+    data[2] = (unsigned char)(value >> 16);
+    data[3] = (unsigned char)(value >> 24);
+}
+
+static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)
+{
+    media_fixture_source input;
+    media_ima_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_probe_info unchanged;
+    pm_session session;
+    int backend;
+    media_contract_init(&input, &sink.events, &source, &output, &options);
+    input.data = data;
+    input.bytes = bytes;
+    input.position = 1;
+    memset(&probe, 0xa5, sizeof(probe));
+    probe.size = sizeof(probe);
+    unchanged = probe;
+    if (pm_probe(&source, &probe) != expected || input.position != 1 ||
+        memcmp(&probe, &unchanged, sizeof(probe)) != 0) return FALSE;
+    output.audio = media_ima_audio;
+    for (backend = 0; backend < 2; backend++) {
+        input.position = 0;
+        memset(&sink, 0, sizeof(sink));
+        options.backend = backend == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+        session = NULL;
+        if (pm_open(&source, &options, &output, &session) != expected || session != NULL ||
+            sink.events.blocks || sink.events.samples || sink.events.errors ||
+            sink.events.error_callbacks != 1 || sink.events.last_error != expected) {
+            if (session != NULL) pm_close(session);
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+BOOL test1337_media_ima_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"ima-mono.wav", L"ima-stereo.wav" };
+    static const WCHAR *pcm_names[] = { L"ima-mono.pcm", L"ima-stereo.pcm" };
+    media_fixture_source input;
+    media_ima_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_stream_info info;
+    pm_session session;
+    unsigned char *data;
+    unsigned char *pcm;
+    unsigned char *damaged;
+    unsigned char *large;
+    int bytes;
+    int pcm_bytes;
+    int test;
+    int iteration;
+    int pass;
+    int channels;
+    int samples_per_block;
+    int target;
+    int mode;
+
+    session = NULL;
+    data = NULL;
+    pcm = NULL;
+    damaged = NULL;
+    large = NULL;
+    for (test = 0; test < 2; test++) {
+        g_media_contract_error = test == 0 ? "IMA mono exact PCM and fact trim" :
+                                           "IMA distinct stereo channel groups";
+        if (progress != NULL) progress(g_media_contract_error);
+        data = media_compressed_load(names[test], &bytes);
+        pcm = media_compressed_load(pcm_names[test], &pcm_bytes);
+        if (data == NULL || pcm == NULL || bytes != (test == 0 ? 1596 : 2620) ||
+            pcm_bytes != (test == 0 ? 6102 : 10100)) goto fail;
+        channels = test + 1;
+        samples_per_block = test == 0 ? 1017 : 505;
+        media_contract_init(&input, &sink.events, &source, &output, &options);
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 5;
+        input.position = 1;
+        output.audio = media_ima_audio;
+        memset(&probe, 0, sizeof(probe));
+        probe.size = sizeof(probe);
+        if (pm_probe(&source, &probe) != PMEDIA_OK || input.position != 1 ||
+            probe.stream.container != PMEDIA_CONTAINER_WAV || probe.stream.has_video ||
+            !probe.stream.has_audio || probe.stream.audio_codec != PMEDIA_CODEC_IMA_ADPCM ||
+            probe.stream.channels != channels || probe.stream.sample_rate != 8000 ||
+            probe.stream.bits_per_sample != 4 || probe.stream.duration_us != 300000 ||
+            !probe.capabilities.soft_audio_available) goto fail;
+        for (iteration = 0; iteration < 3; iteration++) {
+            input.position = 0;
+            source.seek = iteration == 0 ? NULL : media_fixture_seek;
+            source.tell = iteration == 0 ? NULL : media_fixture_tell;
+            options.backend = iteration == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+            media_ima_reset(&sink, pcm, channels, samples_per_block, 2400, 0);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+                pm_get_backend(session) != PMEDIA_BACKEND_SOFT || input.position != bytes) goto fail;
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pm_get_stream_info(session, &info) != PMEDIA_OK || info.duration_us != 300000 ||
+                info.audio_codec != PMEDIA_CODEC_IMA_ADPCM || info.channels != channels ||
+                pm_pause(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                sink.events.blocks || pm_resume(session) != PMEDIA_OK) goto fail;
+            for (pass = 0; pass < 2; pass++) {
+                sink.callback_result = PMEDIA_CALLBACK_STOP;
+                if (pm_pump(session, 0, 2000) != PMEDIA_OK || sink.events.blocks != 1 ||
+                    pm_pump(session, 0, 2000) != PMEDIA_OK || sink.events.blocks != 1) goto fail;
+                sink.callback_result = PMEDIA_OK;
+                if (pm_resume(session) != PMEDIA_OK || !media_contract_drain(session) ||
+                    sink.cursor != 2400 || sink.events.samples != 2400 ||
+                    sink.events.blocks != (test == 0 ? 3 : 5) || sink.events.errors ||
+                    sink.events.error_callbacks || sink.events.eof_events != 1 ||
+                    pm_pump(session, 0, 2000) != PMEDIA_EOF || sink.events.eof_events != 1) goto fail;
+                if (pass == 0) {
+                    if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    media_ima_reset(&sink, pcm, channels, samples_per_block, 2400, 0);
+                }
+            }
+            g_media_contract_error = "IMA intra-block/boundary/end seek exact PCM";
+            for (mode = 0; mode < 6; mode++) {
+                target = mode == 0 ? 1 : mode == 1 ? samples_per_block - 1 :
+                         mode == 2 ? samples_per_block : mode == 3 ? samples_per_block + 1 : 2400;
+                if (pm_seek(session, mode == 5 ? (pm_position)9223372036854775807 :
+                            (pm_position)target * 125) != PMEDIA_OK) goto fail;
+                media_ima_reset(&sink, pcm, channels, samples_per_block, 2400, target);
+                if (!media_contract_drain(session) || sink.cursor != 2400 ||
+                    sink.events.samples != 2400 - target || sink.events.errors ||
+                    sink.events.error_callbacks || sink.events.eof_events != 1) goto fail;
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_ERROR_STATE ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        source.seek = media_fixture_seek;
+        source.tell = media_fixture_tell;
+        input.position = 0;
+        media_ima_reset(&sink, pcm, channels, samples_per_block, 2400, 0);
+        sink.callback_result = -1;
+        g_media_contract_error = "IMA negative callback";
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+            pm_pump(session, 0, 2000) != PMEDIA_ERROR_CALLBACK || sink.events.blocks != 1 ||
+            sink.events.last_error != PMEDIA_ERROR_CALLBACK || sink.events.error_callbacks != 1 ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        damaged = (unsigned char *)malloc((size_t)bytes + 12);
+        if (damaged == NULL) goto fail;
+        g_media_contract_error = "IMA malformed block/index/fmt/fact rejects before output";
+        if (progress != NULL) progress(g_media_contract_error);
+        for (mode = 0; mode < 10; mode++) {
+            memcpy(damaged, data, (size_t)bytes);
+            if (mode == 0) damaged[62] = 89;
+            if (mode == 1) damaged[60 + 512 + channels * 4 - 1] = 1;
+            if (mode == 2) media_ima_put16(damaged + 38, samples_per_block - 1);
+            if (mode == 3) media_ima_put16(damaged + 32, 511);
+            if (mode == 4) media_ima_put16(damaged + 34, 3);
+            if (mode == 5) media_ima_put16(damaged + 36, 1);
+            if (mode == 6) media_ima_put32(damaged + 48, 0);
+            if (mode == 7) media_ima_put32(damaged + 48, 0xffffffffUL);
+            if (mode == 8) media_ima_put32(damaged + 56, bytes - 61);
+            if (mode == 9) media_ima_put32(damaged + 44, 2);
+            if (!media_ima_reject(damaged, bytes, PMEDIA_ERROR_FORMAT)) goto fail;
+        }
+        if (!media_ima_reject(data, bytes - 1, PMEDIA_ERROR_FORMAT)) goto fail;
+        memcpy(damaged, data, (size_t)bytes);
+        memcpy(damaged + 40, "JUNK", 4);
+        memcpy(damaged + bytes, "fact", 4);
+        media_ima_put32(damaged + 4, bytes + 4);
+        media_ima_put32(damaged + bytes + 4, 0xffffffffUL);
+        media_ima_put32(damaged + bytes + 8, 2400);
+        if (!media_ima_reject(damaged, bytes + 12, PMEDIA_ERROR_FORMAT)) goto fail;
+        media_ima_put32(damaged + bytes + 4, 4);
+        input.data = damaged;
+        input.bytes = bytes + 12;
+        input.position = 0;
+        media_ima_reset(&sink, pcm, channels, samples_per_block, 2400, 0);
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+            !media_contract_drain(session) || sink.cursor != 2400 || sink.events.errors ||
+            sink.events.eof_events != 1 || pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        input.bytes = bytes;
+        g_media_contract_error = "IMA without fact emits all coded samples";
+        memcpy(damaged, data, (size_t)bytes);
+        memcpy(damaged + 40, "JUNK", 4);
+        input.data = damaged;
+        input.position = 0;
+        media_ima_reset(&sink, pcm, channels, samples_per_block, pcm_bytes / (channels * 2), 0);
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+            !media_contract_drain(session) || sink.cursor != pcm_bytes / (channels * 2) ||
+            sink.events.errors || sink.events.eof_events != 1 || pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        if (test == 0) {
+            g_media_contract_error = "IMA bounded full-block capacity and oversized reject";
+            if (progress != NULL) progress(g_media_contract_error);
+            large = (unsigned char *)calloc(1, 2108);
+            if (large == NULL) goto fail;
+            memcpy(large, data, 60);
+            media_ima_put32(large + 4, 2100);
+            media_ima_put16(large + 32, 2048);
+            media_ima_put16(large + 38, 4089);
+            media_ima_put32(large + 56, 2048);
+            if (!media_ima_reject(large, 2108, PMEDIA_ERROR_LIMIT)) goto fail;
+            media_ima_put32(large + 4, 1076);
+            media_ima_put16(large + 32, 1024);
+            media_ima_put16(large + 38, 2041);
+            media_ima_put32(large + 48, 2041);
+            media_ima_put32(large + 56, 1024);
+            input.data = large;
+            input.bytes = 1084;
+            input.position = 0;
+            media_ima_reset(&sink, NULL, 1, 2041, 2041, 0);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+                !media_contract_drain(session) || sink.events.samples != 2041 ||
+                sink.events.blocks != 1 || sink.events.errors || pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            free(large);
+            large = NULL;
+        }
+        free(damaged);
+        damaged = NULL;
+        free(pcm);
+        pcm = NULL;
+        free(data);
+        data = NULL;
+    }
+    g_media_contract_error = "IMA PCM/block/seek contract passed";
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (large != NULL) free(large);
+    if (damaged != NULL) free(damaged);
+    if (pcm != NULL) free(pcm);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
 BOOL test1335_media_amr_contract(void (*progress)(const char *))
 {
     static const WCHAR *names[] = { L"amr-nb.amr", L"amr-wb.amr" };

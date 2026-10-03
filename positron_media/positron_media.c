@@ -274,16 +274,28 @@ static int pm_parse_wav(pm_session_impl *session)
     unsigned int block_align;
     unsigned int samples_per_block;
     unsigned int tag;
+    unsigned long riff_size;
+    unsigned long fact_frames;
+    unsigned long chunk_bytes;
+    int riff_bytes;
+    int fact_offset;
+    int fact_bytes;
+    int offset;
+    int channel;
 
     if (session->input_bytes < 12 ||
         !pm_fourcc(session->input, 'R', 'I', 'F', 'F') ||
         !pm_fourcc(session->input + 8, 'W', 'A', 'V', 'E')) {
         return PMEDIA_ERROR_FORMAT;
     }
-    if (pm_find_riff_chunk(session->input, session->input_bytes, "fmt ",
+    riff_size = pm_le32(session->input + 4);
+    if (riff_size < 4 || riff_size > (unsigned long)(session->input_bytes - 8))
+        return PMEDIA_ERROR_FORMAT;
+    riff_bytes = (int)riff_size + 8;
+    if (pm_find_riff_chunk(session->input, riff_bytes, "fmt ",
                            &fmt_offset, &fmt_bytes) != PMEDIA_OK ||
         fmt_bytes < 16 ||
-        pm_find_riff_chunk(session->input, session->input_bytes, "data",
+        pm_find_riff_chunk(session->input, riff_bytes, "data",
                            &data_offset, &data_bytes) != PMEDIA_OK) {
         return PMEDIA_ERROR_FORMAT;
     }
@@ -307,8 +319,38 @@ static int pm_parse_wav(pm_session_impl *session)
         data_bytes % (int)block_align != 0 || rate > 2147483647UL)) {
         return PMEDIA_ERROR_FORMAT;
     }
-    if (tag == 0x0011U && (samples_per_block == 0 || block_align < channels * 4U)) {
-        return PMEDIA_ERROR_FORMAT;
+    if (tag == 0x0011U) {
+        /* This bounded decoder accepts complete 4-bit WAV IMA blocks.  Stereo
+         * payload consists of alternating four-byte groups per channel. */
+        if (bits != 4U || fmt_bytes < 20 || rate > 2147483647UL ||
+            pm_le16(session->input + fmt_offset + 16) < 2U ||
+            pm_le16(session->input + fmt_offset + 16) > (unsigned int)(fmt_bytes - 18) ||
+            block_align < channels * 4U ||
+            (block_align - channels * 4U) % (channels * 4U) != 0 ||
+            samples_per_block != 1U + (block_align - channels * 4U) * 2U / channels ||
+            data_bytes % (int)block_align != 0) return PMEDIA_ERROR_FORMAT;
+        if (samples_per_block > PMEDIA_AUDIO_FRAMES) return PMEDIA_ERROR_LIMIT;
+        /* Distinguish an absent optional fact from a damaged RIFF walk, even
+         * when the bad chunk follows data (which the required searches stop at). */
+        offset = 12;
+        while (offset < riff_bytes) {
+            if (riff_bytes - offset < 8) return PMEDIA_ERROR_FORMAT;
+            chunk_bytes = pm_le32(session->input + offset + 4);
+            if (chunk_bytes > (unsigned long)(riff_bytes - offset - 8))
+                return PMEDIA_ERROR_FORMAT;
+            offset += 8 + (int)chunk_bytes;
+            if (chunk_bytes & 1UL) {
+                if (offset >= riff_bytes) return PMEDIA_ERROR_FORMAT;
+                offset++;
+            }
+        }
+        for (offset = data_offset; offset < data_offset + data_bytes; offset += block_align) {
+            for (channel = 0; channel < (int)channels; channel++) {
+                if (session->input[offset + channel * 4 + 2] > 88 ||
+                    session->input[offset + channel * 4 + 3] != 0)
+                    return PMEDIA_ERROR_FORMAT;
+            }
+        }
     }
 
     session->format_tag = (int)tag;
@@ -327,7 +369,15 @@ static int pm_parse_wav(pm_session_impl *session)
         session->audio_total_frames = data_bytes / (int)(channels * (bits / 8U));
     } else {
         session->audio_total_frames =
-            ((data_bytes + (int)block_align - 1) / (int)block_align) * (int)samples_per_block;
+            (data_bytes / (int)block_align) * (int)samples_per_block;
+        if (pm_find_riff_chunk(session->input, riff_bytes, "fact",
+                              &fact_offset, &fact_bytes) == PMEDIA_OK) {
+            if (fact_bytes < 4) return PMEDIA_ERROR_FORMAT;
+            fact_frames = pm_le32(session->input + fact_offset);
+            if (fact_frames == 0 || fact_frames > (unsigned long)session->audio_total_frames)
+                return PMEDIA_ERROR_FORMAT;
+            session->audio_total_frames = (int)fact_frames;
+        }
     }
     session->info.duration_us =
         ((__int64)session->audio_total_frames * (__int64)1000000) / (__int64)rate;
@@ -460,7 +510,7 @@ static int pm_probe_source(const pm_source_callbacks *source,
     }
 #ifdef PMEDIA_HAS_FFMPEG
     if (probe.input != NULL &&
-        !(result == PMEDIA_ERROR_FORMAT && probe.input_bytes >= 12 &&
+        !((result == PMEDIA_ERROR_FORMAT || result == PMEDIA_ERROR_LIMIT) && probe.input_bytes >= 12 &&
           pm_fourcc(probe.input, 'R', 'I', 'F', 'F') &&
           pm_fourcc(probe.input + 8, 'W', 'A', 'V', 'E')) &&
         (result != PMEDIA_OK || probe.info.container != PMEDIA_CONTAINER_WAV)) {
@@ -556,18 +606,13 @@ static int pm_decode_ima_block(pm_session_impl *session,
     }
     bytes_per_channel = (block_bytes - header_bytes) / channels;
     frames = 1 + bytes_per_channel * 2;
-    if (frames > session->samples_per_block) {
-        frames = session->samples_per_block;
-    }
-    if (frames > output_capacity_frames) {
-        frames = output_capacity_frames;
-    }
+    if (frames != session->samples_per_block) return PMEDIA_ERROR_FORMAT;
+    if (frames > output_capacity_frames) return PMEDIA_ERROR_LIMIT;
     for (channel = 0; channel < channels; channel++) {
         predictor[channel] = (short)pm_le16(block + channel * 4);
         index[channel] = block[channel * 4 + 2];
-        if (index[channel] > 88) {
-            index[channel] = 88;
-        }
+        if (index[channel] > 88 || block[channel * 4 + 3] != 0)
+            return PMEDIA_ERROR_FORMAT;
         output[channel] = (short)predictor[channel];
     }
     for (i = 1; i < frames; i++) {
@@ -577,7 +622,8 @@ static int pm_decode_ima_block(pm_session_impl *session,
 
             byte_index = (i - 1) / 2;
             channel_nibble = (i - 1) & 1;
-            nibble = block[header_bytes + channel * bytes_per_channel + byte_index];
+            nibble = block[header_bytes + (byte_index / 4) * channels * 4 +
+                           channel * 4 + byte_index % 4];
             if (channel_nibble == 0) {
                 nibble &= 0x0f;
             } else {
@@ -585,10 +631,7 @@ static int pm_decode_ima_block(pm_session_impl *session,
             }
             sample = predictor[channel];
             step = step_table[index[channel]];
-            difference = step >> 3;
-            if (nibble & 1) difference += step >> 2;
-            if (nibble & 2) difference += step >> 1;
-            if (nibble & 4) difference += step;
+            difference = ((2 * (nibble & 7) + 1) * step) >> 3;
             if (nibble & 8) sample -= difference;
             else sample += difference;
             sample = pm_ima_clip(sample);
@@ -640,17 +683,22 @@ static int pm_output_pcm(pm_session_impl *session, int frames)
     } else {
         int block_offset;
         int block_bytes;
+        int skip_frames;
+        int decoded_frames;
         block_offset = session->audio_data_offset +
                        (session->audio_cursor / session->samples_per_block) * session->block_align;
         block_bytes = session->block_align;
         if (block_offset + block_bytes > session->audio_data_offset + session->audio_data_bytes) {
             block_bytes = session->audio_data_offset + session->audio_data_bytes - block_offset;
         }
-        frames = pm_decode_ima_block(session, session->input + block_offset,
-                                     block_bytes, samples, PMEDIA_AUDIO_FRAMES);
-        if (frames < 1) {
-            return PMEDIA_ERROR_FORMAT;
-        }
+        decoded_frames = pm_decode_ima_block(session, session->input + block_offset,
+                                             block_bytes, samples, PMEDIA_AUDIO_FRAMES);
+        if (decoded_frames < 1) return decoded_frames;
+        skip_frames = session->audio_cursor % session->samples_per_block;
+        if (frames > decoded_frames - skip_frames) frames = decoded_frames - skip_frames;
+        if (skip_frames > 0)
+            memmove(samples, samples + skip_frames * channels,
+                    (size_t)(frames * channels * sizeof(short)));
     }
     pm_zero(&block, (int)sizeof(block));
     block.size = sizeof(block);
@@ -744,10 +792,10 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
         return result;
     }
     result = pm_parse_input(session);
-    if (result == PMEDIA_ERROR_FORMAT && session->input_bytes >= 12 &&
+    if ((result == PMEDIA_ERROR_FORMAT || result == PMEDIA_ERROR_LIMIT) && session->input_bytes >= 12 &&
         pm_fourcc(session->input, 'R', 'I', 'F', 'F') &&
         pm_fourcc(session->input + 8, 'W', 'A', 'V', 'E')) {
-        pm_set_error(session, result, "malformed WAV input");
+        pm_set_error(session, result, "invalid or oversized WAV input");
         free(session->input);
         free(session);
         return result;
@@ -1076,7 +1124,8 @@ PMEDIA_API int pm_seek(pm_session opaque_session, pm_position position_us)
     if (session->backend != PMEDIA_BACKEND_SOFT || !session->info.has_audio) {
         return PMEDIA_ERROR_NOT_SEEKABLE;
     }
-    frame = (position_us * (__int64)session->info.sample_rate) / (__int64)1000000;
+    if (position_us >= session->info.duration_us) frame = session->audio_total_frames;
+    else frame = (position_us * (__int64)session->info.sample_rate) / (__int64)1000000;
     if (frame > session->audio_total_frames) frame = session->audio_total_frames;
     session->audio_cursor = (int)frame;
     session->eof_sent = 0;

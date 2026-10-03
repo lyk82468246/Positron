@@ -1,6 +1,6 @@
 # 压缩媒体断言夹具
 
-本目录只用于 `test_host`。纯红画面与 440 Hz 纯音由
+本目录只用于 `test_host`。纯红画面与 440/880 Hz 纯音由
 [`scripts/media_fixtures.py`](../../../scripts/media_fixtures.py) 离线生成，无下载的第三方媒体内容。
 生成内容按 CC0-1.0 提供，不授予 AVC/AAC 专利许可；FFmpeg/x264 工具许可证不被重新标记。
 工具版本、可执行文件哈希、每条生成参数、文件长度与 SHA-256 固定在 `manifest.json`。
@@ -29,14 +29,25 @@
   的尾部 padding，不能按原始 0.12 秒纯音裁成六块。PCM 断言检查样本数、范围、幅度总和
   及跳过前两块后的过零次数，不要求不同版本浮点 decoder 逐字节相同；同一 session
   EOF 后 seek 到零的 PCM 校验值须与首次解码一致，不能保留旧预测/合成历史。
+- `ima-mono.wav`、`ima-stereo.wav`：4-bit WAV IMA ADPCM、8 kHz、512-byte 块。
+  mono 每块 1017 sample、三块；stereo 每块每声道 505 sample、五块，左声道为 440 Hz/0.125
+  幅度，右声道为 880 Hz/0.0625 幅度，避免相同声道掩盖四字节组交错错误。
+  两者 `fact` 均声明每声道 2400 sample，因此 DLL 裁剪尾部 padding，duration 为 300000 µs。
+  `ima-mono.pcm`、`ima-stereo.pcm` 由同一 pinned 桌面 FFmpeg 独立解码为 S16LE，保留完整
+  编码块的 3051/2525 sample；设备断言逐字节比较前 2400 sample。移除 `fact` 时比较整个参考，
+  块内/块边界 seek 则比较对应 sample 开始的后缀，不在宿主实现参考 decoder。
+  另以 metadata mutation 验证非法步进索引、保留字节、fmt/fact/RIFF 边界、后置 fact、部分块
+  和超大块拒绝；合法 2041-sample 静音块验证固定输出容量不截断。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
-生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MP2 编码器，但它们不进入 WM6 产品。`--extend`
+生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MP2/IMA ADPCM 编码器，但它们不进入 WM6 产品。`--extend`
 只用于首次用同一 pinned 生成器补齐 MJPEG/MP3 文件，先验证已有 pin，不重生成旧文件；已经
-补齐后再次调用会拒绝。`--extend-mpeg` 与 `--extend-amr` 分别对 MPEG、AMR 文件组采用相同规则；
+补齐后再次调用会拒绝。`--extend-mpeg`、`--extend-amr` 与 `--extend-ima` 分别对 MPEG、AMR、IMA WAV/PCM 文件组采用相同规则；
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
+WAV IMA 块/声道布局与 `fact` 定义见微软原始
+[Multimedia Data Standards Update（RIFF/WAVE）](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/RIFFNEW.pdf)。
 其他工具版本可能生成不同字节，
 必须重新审查 manifest、profile 和设备断言，不能只替换哈希让失败通过。
 
