@@ -29,7 +29,7 @@ DNS/连接/TLS/发送/等待/响应头/正文/重定向，以及 HTML/脚本/样
 主文档 GET/POST 订阅公开 PHttp_*UrlEx2 observer；子资源保留宿主资源阶段，WinInet 合并
 通知只显示通用请求文字。COMPLETE/FAILED 不冒充页面完成、不改变 Browser gate 或重试。
 标题栏前缀动画已移除；worker 只写自身原子展示字段，250 ms UI timer 只显示当前 generation，
-仅阶段文字变化时更新。成功首次绘制后显示本地化应用品牌 `Positron Browsers` / `Positron 浏览器`，
+仅阶段文字变化时更新。成功首次绘制后显示本地化应用品牌 `Positron Browser` / `Positron 浏览器`，
 文档标题仍显示于地址栏，失败沿原快照回滚。不触发 layout 或脚本 checkpoint。
 Debug 自检覆盖 observer 映射/合并/终态与 size/version 拒绝、纯阶段文字和容量；独立候选夹具
 验证正文进度、stale 隔离、标题更新不增加布局和成功标题恢复。诊断与夹具不编入 Release。
@@ -42,12 +42,15 @@ B 加载中点按编辑但不提交，generation/history/旧文档/session 保�
 
 C89、仓库审计与正式 Debug/Release build 通过，EXE 零错误/警告、Release CAB 成功；
 Release ASCII/UTF-16 检查不含 address-edit/address-submit/not-submitted 及地址栏/加载/候选自检。
-源码编辑期间曾有并行构建更新共享产物，已告知用户；最终正式构建与完整 stage 重新核对。
-当前完整 Debug 包 `tmp/device-runs/20261003-154206-app-address-input/` 共 38 文件，SD 目标空间
+英文品牌拼写已按用户更正为单数 Browser，仅修改英文资源及文档，中文和导航代码不变。
+本次串行 Debug 构建通过；Release 首次链接阶段提前退出，无错误诊断，日志保留于
+`tmp/app-brand-build-failures/release-first.log`，正式重试及 CAB 通过。两种 EXE 均核对嵌入拼写。
+当前完整 Debug 包 `tmp/device-runs/20261003-173204-app-brand-spelling/` 共 40 文件，SD 目标空间
 与内部缓存预检通过，正式 module-audit 及 EXE 门前复审均 holders=0 unavailable=0。
 EXE/九 DLL SHA256 回读 10/10；address-bar/loading-title/fragment-pending/history/pointer/
-system-info/internal-pages 自检 OK，crash_check=PASS。门后 PID 514848842 留在 newtab，入口为
-`\Storage Card\Temp\Positron-device-gate\app-address-input-20261003-154206\positron.exe`。
+system-info/internal-pages 自检 OK，crash_check=PASS。门后 PID 3714729834 留在 newtab，入口为
+`\Storage Card\Temp\Positron-device-gate\app-brand-spelling-20261003-173204\positron.exe`。
+上一地址栏包已由用户正常退出；本次未强杀或重新选择设备。
 真实点按后 B 继续提交须立即人工复测；中文 IME、动画开销、滚动响应及旋转仍待人工。
 日志脚本误传不存在的 Action 参数曾走默认路径重启旧包并删除旧运行日志，已告知用户；
 旧 PID 2105729534 已由用户正常退出。只读抓取应使用 debug_capture.ps1 的 PullOnly 参数，
@@ -374,7 +377,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 ROADMAP、能力矩阵与当前限制已复核：地址栏消息隔离自动门通过，真实点按导致回滚需立即人工复测；
-慢速动画、输入/IME 和页面响应进入人工矩阵。不扩大 DLL 能力或现有限制。
+慢速动画、输入/IME 和页面响应进入人工矩阵。本次英文拼写修正无需改变路线候选，
+不扩大 DLL 能力或现有限制。
 加载标题与 HTTP observer 接线退出待实现候选，前缀动画已删除，真实阶段/截断/
 字体效果进入人工矩阵；同文档 fragment、片段 URL 公共接口
 与人工矩阵仍有效。系统信息保留 AKU

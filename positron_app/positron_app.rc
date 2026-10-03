@@ -83,7 +83,7 @@ BEGIN
     IDS_LOADING_WAIT_EN "Waiting for response"
     IDS_LOADING_HEADERS_EN "Receiving response headers"
     IDS_LOADING_REDIRECT_EN "Following redirect"
-    IDS_APP_TITLE_EN "Positron Browsers"
+    IDS_APP_TITLE_EN "Positron Browser"
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
