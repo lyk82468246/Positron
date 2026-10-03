@@ -56,7 +56,37 @@ struct pscript_context {
     jmp_buf fatal_jmp;
     char result[256];
     char error[256];
+    PScriptPerformanceInfo performance;
 };
+
+static unsigned long pscript_elapsed(DWORD start)
+{
+    return (unsigned long) (GetTickCount() - start);
+}
+
+static void pscript_performance_evaluated(pscript_context *ctx,
+        DWORD start, unsigned long native_calls,
+        unsigned long native_ms, unsigned long callback_ms,
+        unsigned long compile_ms, unsigned long execute_ms, int result)
+{
+    PScriptPerformanceInfo *info;
+
+    info = &ctx->performance;
+    if (!info->enabled) {
+        return;
+    }
+    info->last_result = result;
+    info->last_compile_ms = compile_ms;
+    info->last_execute_ms = execute_ms;
+    info->last_total_ms = pscript_elapsed(start);
+    info->last_native_calls = info->native_calls - native_calls;
+    info->last_native_ms = info->native_ms - native_ms;
+    info->last_callback_ms = info->callback_ms - callback_ms;
+    info->evaluations++;
+    if (info->last_total_ms > info->max_sync_ms) {
+        info->max_sync_ms = info->last_total_ms;
+    }
+}
 
 static duk_ret_t pscript_require(duk_context *duk);
 static duk_ret_t pscript_native_dispatch(duk_context *duk);
@@ -182,6 +212,9 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
     int out_len;
     int callback_rc;
     int i;
+    DWORD dispatch_start;
+    DWORD callback_start;
+    unsigned long callback_ms;
 
     if (duk == NULL) {
         return 0;
@@ -227,6 +260,8 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
                 "native callback is unavailable");
     }
 
+    dispatch_start = ctx->performance.enabled ? GetTickCount() : 0;
+
     duk_push_array(duk);
     for (i = 0; i < (int) base; i++) {
         duk_dup(duk, i);
@@ -250,8 +285,23 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
 
     output[0] = '\0';
     out_len = -1;
+    callback_start = ctx->performance.enabled ? GetTickCount() : 0;
     callback_rc = native->fn(native->pw, args_json, args_len, output,
             (int) sizeof(output), &out_len);
+    if (ctx->performance.enabled) {
+        callback_ms = pscript_elapsed(callback_start);
+        ctx->performance.callback_ms += callback_ms;
+        ctx->performance.native_calls++;
+        if (ctx->performance.max_callback_name[0] == '\0' ||
+                callback_ms > ctx->performance.max_callback_ms) {
+            ctx->performance.max_callback_ms = callback_ms;
+            pscript_copy(ctx->performance.max_callback_name,
+                    sizeof(ctx->performance.max_callback_name), native_name);
+        }
+        /* Include failed callbacks, before Duktape throws out of dispatch. */
+        ctx->performance.native_ms += pscript_elapsed(dispatch_start);
+        dispatch_start = GetTickCount();
+    }
     if (callback_rc != 0) {
         return duk_error(duk, DUK_ERR_ERROR,
                 "native callback '%s' failed", native_name);
@@ -263,6 +313,9 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
     output[out_len] = '\0';
     duk_push_lstring(duk, output, (duk_size_t) out_len);
     duk_json_decode(duk, -1);
+    if (ctx->performance.enabled) {
+        ctx->performance.native_ms += pscript_elapsed(dispatch_start);
+    }
     return 1;
 }
 
@@ -631,7 +684,9 @@ PSCRIPT_API HANDLE PScript_CreateEx(unsigned long budget_ms,
         unsigned long memory_limit_bytes)
 {
     pscript_context *ctx;
+    DWORD start;
 
+    start = GetTickCount();
     ctx = (pscript_context *) malloc(sizeof(*ctx));
     if (ctx == NULL) {
         return NULL;
@@ -653,7 +708,43 @@ PSCRIPT_API HANDLE PScript_CreateEx(unsigned long budget_ms,
         free(ctx);
         return NULL;
     }
+    ctx->performance.create_ms = pscript_elapsed(start);
     return (HANDLE) ctx;
+}
+
+PSCRIPT_API int PScript_SetPerformanceEnabled(HANDLE hScript, int enabled)
+{
+    pscript_context *ctx;
+    unsigned long create_ms;
+
+    ctx = (pscript_context *) hScript;
+    if (ctx == NULL || ctx->duk == NULL || ctx->poisoned ||
+            ctx->fatal_jmp_active || (enabled != 0 && enabled != 1)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    create_ms = ctx->performance.create_ms;
+    memset(&ctx->performance, 0, sizeof(ctx->performance));
+    ctx->performance.create_ms = create_ms;
+    ctx->performance.enabled = enabled;
+    return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_GetPerformanceInfo(HANDLE hScript,
+        PScriptPerformanceInfo *out_info)
+{
+    pscript_context *ctx;
+
+    ctx = (pscript_context *) hScript;
+    if (ctx == NULL || out_info == NULL ||
+            out_info->size < sizeof(*out_info) ||
+            out_info->version != PSCRIPT_PERFORMANCE_VERSION ||
+            ctx->fatal_jmp_active) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memcpy(out_info, &ctx->performance, sizeof(*out_info));
+    out_info->size = sizeof(*out_info);
+    out_info->version = PSCRIPT_PERFORMANCE_VERSION;
+    return PSCRIPT_OK;
 }
 
 PSCRIPT_API void PScript_Destroy(HANDLE hScript)
@@ -677,6 +768,13 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     size_t length;
     int rc;
     const char *text;
+    DWORD start;
+    DWORD phase_start;
+    unsigned long native_calls;
+    unsigned long native_ms;
+    unsigned long callback_ms;
+    unsigned long compile_ms;
+    unsigned long execute_ms;
 
     ctx = (pscript_context *) hScript;
     if (ctx == NULL || ctx->duk == NULL || ctx->poisoned || source == NULL) {
@@ -699,6 +797,12 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
     ctx->timed_out = 0;
     ctx->memory_limited = 0;
     ctx->evaluations++;
+    start = ctx->performance.enabled ? GetTickCount() : 0;
+    native_calls = ctx->performance.native_calls;
+    native_ms = ctx->performance.native_ms;
+    callback_ms = ctx->performance.callback_ms;
+    compile_ms = 0;
+    execute_ms = 0;
     ctx->deadline = (ctx->budget_ms == 0) ? 0 :
             GetTickCount() + ctx->budget_ms;
     duk_set_top(ctx->duk, 0);
@@ -707,9 +811,27 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
         ctx->fatal_jmp_active = 0;
         ctx->poisoned = 1;
         ctx->duk = NULL;
+        ctx->deadline = 0;
+        pscript_performance_evaluated(ctx, start, native_calls,
+                native_ms, callback_ms, 0, 0, PSCRIPT_ERROR_FATAL);
         return PSCRIPT_ERROR_FATAL;
     }
-    rc = duk_peval_lstring(ctx->duk, source, (duk_size_t) length);
+    if (ctx->performance.enabled) {
+        /* Exactly mirror duk_eval_raw, including its explicit global this.
+         * Default callers retain the original peval path unchanged. */
+        phase_start = GetTickCount();
+        rc = duk_pcompile_lstring(ctx->duk, DUK_COMPILE_EVAL,
+                source, (duk_size_t) length);
+        compile_ms = pscript_elapsed(phase_start);
+        if (rc == 0) {
+            phase_start = GetTickCount();
+            duk_push_global_object(ctx->duk);
+            rc = duk_pcall_method(ctx->duk, 0);
+            execute_ms = pscript_elapsed(phase_start);
+        }
+    } else {
+        rc = duk_peval_lstring(ctx->duk, source, (duk_size_t) length);
+    }
     ctx->fatal_jmp_active = 0;
     ctx->deadline = 0;
     if (rc != 0) {
@@ -729,23 +851,29 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
             }
         }
         duk_set_top(ctx->duk, 0);
+        pscript_performance_evaluated(ctx, start, native_calls,
+                native_ms, callback_ms, compile_ms, execute_ms, rc);
         return rc;
     }
     text = duk_safe_to_string(ctx->duk, -1);
     pscript_copy(ctx->result, sizeof(ctx->result), text);
     duk_set_top(ctx->duk, 0);
+    pscript_performance_evaluated(ctx, start, native_calls,
+            native_ms, callback_ms, compile_ms, execute_ms, PSCRIPT_OK);
     return PSCRIPT_OK;
 }
 
 PSCRIPT_API int PScript_CollectGarbage(HANDLE hScript)
 {
     pscript_context *ctx;
+    DWORD start;
 
     ctx = (pscript_context *) hScript;
     if (ctx == NULL || ctx->duk == NULL || ctx->poisoned) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
     ctx->memory_limited = 0;
+    start = ctx->performance.enabled ? GetTickCount() : 0;
     ctx->fatal_jmp_active = 1;
     if (setjmp(ctx->fatal_jmp) != 0) {
         ctx->fatal_jmp_active = 0;
@@ -757,6 +885,14 @@ PSCRIPT_API int PScript_CollectGarbage(HANDLE hScript)
     duk_gc(ctx->duk, 0);
     duk_gc(ctx->duk, DUK_GC_COMPACT);
     ctx->fatal_jmp_active = 0;
+    if (ctx->performance.enabled) {
+        ctx->performance.gc_calls++;
+        ctx->performance.last_gc_ms = pscript_elapsed(start);
+        ctx->performance.total_gc_ms += ctx->performance.last_gc_ms;
+        if (ctx->performance.last_gc_ms > ctx->performance.max_sync_ms) {
+            ctx->performance.max_sync_ms = ctx->performance.last_gc_ms;
+        }
+    }
     return PSCRIPT_OK;
 }
 
@@ -1068,7 +1204,7 @@ PSCRIPT_API int PScript_GetGlobalJson(HANDLE hScript, const char *name,
     return rc;
 }
 
-PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
+static int pscript_call_global_json(HANDLE hScript, const char *name,
         int name_len, const char *args_json, int args_len)
 {
     pscript_context *ctx;
@@ -1179,6 +1315,30 @@ PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
     ctx->deadline = 0;
     ctx->fatal_jmp_active = 0;
     return rc;
+}
+
+PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
+        int name_len, const char *args_json, int args_len)
+{
+    pscript_context *ctx;
+    DWORD start;
+    int result;
+
+    ctx = (pscript_context *) hScript;
+    if (ctx == NULL) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    start = ctx->performance.enabled ? GetTickCount() : 0;
+    result = pscript_call_global_json(hScript, name, name_len, args_json, args_len);
+    if (ctx->performance.enabled) {
+        ctx->performance.calls++;
+        ctx->performance.last_call_ms = pscript_elapsed(start);
+        ctx->performance.last_call_result = result;
+        if (ctx->performance.last_call_ms > ctx->performance.max_sync_ms) {
+            ctx->performance.max_sync_ms = ctx->performance.last_call_ms;
+        }
+    }
+    return result;
 }
 
 PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,

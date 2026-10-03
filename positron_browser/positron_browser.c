@@ -8540,176 +8540,184 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
 static int p_browser_script_finish_bootstrap(HANDLE hSession);
 static int p_browser_script_document_write_registered(HANDLE hSession);
 
+static int p_browser_script_bootstrap_evaluate(HANDLE session,
+        const char *source, const char *name);
+static void p_browser_script_bootstrap_timing_begin(HANDLE session);
+static int p_browser_script_bootstrap_timing_end(HANDLE session, int result);
+static int p_browser_script_bootstrap_gc(HANDLE session);
+
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession)
 {
     int result;
 
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART1, -1);
+    p_browser_script_bootstrap_timing_begin(hSession);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART1, "P_BROWSER_SCRIPT_BOOTSTRAP_PART1");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_COMPUTED_STYLE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_COMPUTED_STYLE, "P_BROWSER_SCRIPT_COMPUTED_STYLE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART2, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART2, "P_BROWSER_SCRIPT_BOOTSTRAP_PART2");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_DOCUMENT_CLICK, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_DOCUMENT_CLICK, "P_BROWSER_SCRIPT_DOCUMENT_CLICK");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
     if (p_browser_script_document_write_registered(hSession)) {
-        result = PBrowser_ScriptSessionEvaluate(hSession,
-                P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE, -1);
+        result = p_browser_script_bootstrap_evaluate(hSession,
+                P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE, "P_BROWSER_SCRIPT_BOOTSTRAP_DOCUMENT_WRITE");
         if (result != PSCRIPT_OK) {
-            return result;
+            return p_browser_script_bootstrap_timing_end(hSession, result);
         }
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE, "P_BROWSER_SCRIPT_BOOTSTRAP_COOKIE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART3, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART3, "P_BROWSER_SCRIPT_BOOTSTRAP_PART3");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART4, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART4, "P_BROWSER_SCRIPT_BOOTSTRAP_PART4");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART5, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART5, "P_BROWSER_SCRIPT_BOOTSTRAP_PART5");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART6, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART6, "P_BROWSER_SCRIPT_BOOTSTRAP_PART6");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART7, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART7, "P_BROWSER_SCRIPT_BOOTSTRAP_PART7");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART8, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART8, "P_BROWSER_SCRIPT_BOOTSTRAP_PART8");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART9, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART9, "P_BROWSER_SCRIPT_BOOTSTRAP_PART9");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART10, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART10, "P_BROWSER_SCRIPT_BOOTSTRAP_PART10");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART11, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART11, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART11B, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART11B, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11B");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART11C, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART11C, "P_BROWSER_SCRIPT_BOOTSTRAP_PART11C");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART12, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART12, "P_BROWSER_SCRIPT_BOOTSTRAP_PART12");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART13, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART13, "P_BROWSER_SCRIPT_BOOTSTRAP_PART13");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART14_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART15_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART23_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART16_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART17_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART18_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_DETACHED_DOCUMENT, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_DETACHED_DOCUMENT, "P_BROWSER_SCRIPT_DETACHED_DOCUMENT");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART19_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART20_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART21_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART22_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
-    result = PBrowser_ScriptSessionEvaluate(hSession,
-            P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE, -1);
+    result = p_browser_script_bootstrap_evaluate(hSession,
+            P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE, "P_BROWSER_SCRIPT_BOOTSTRAP_PART24_LITE");
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
     result = p_browser_script_finish_bootstrap(hSession);
     if (result != PSCRIPT_OK) {
-        return result;
+        return p_browser_script_bootstrap_timing_end(hSession, result);
     }
     /* Bootstrap consists of many independent programs, including the
      * optional finish-stage installers above. Force a collection only after
      * all of them have run so dead parser temporaries do not consume the
      * bounded WM6 heap merely because no later allocation triggered GC. */
-    return PScript_CollectGarbage(PBrowser_ScriptSessionRuntime(hSession));
+    result = p_browser_script_bootstrap_gc(hSession);
+    return p_browser_script_bootstrap_timing_end(hSession, result);
 }
 typedef struct p_browser_script_dom_read_binding {
     PBrowserScriptDomReadCallbacks callbacks;
@@ -9025,6 +9033,9 @@ typedef struct p_browser_script_session {
     p_browser_script_dom_attribute_binding *dom_attribute;
     p_browser_script_event_binding *event;
     int current_script_index;
+    int bootstrap_measuring;
+    DWORD bootstrap_start;
+    PBrowserScriptBootstrapPerformanceInfo bootstrap_performance;
 } p_browser_script_session;
 
 static p_browser_script_session *p_script_session(HANDLE hSession)
@@ -9036,6 +9047,125 @@ static int p_script_session_valid(
         const p_browser_script_session *session)
 {
     return session != NULL && session->runtime != NULL;
+}
+
+static void p_browser_script_bootstrap_timing_begin(HANDLE hSession)
+{
+    p_browser_script_session *session;
+    PScriptPerformanceInfo info;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return;
+    }
+    memset(&session->bootstrap_performance, 0,
+            sizeof(session->bootstrap_performance));
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.version = PSCRIPT_PERFORMANCE_VERSION;
+    session->bootstrap_measuring = PScript_GetPerformanceInfo(
+            session->runtime, &info) == PSCRIPT_OK && info.enabled;
+    session->bootstrap_start = session->bootstrap_measuring ? GetTickCount() : 0;
+}
+
+static void p_browser_script_bootstrap_record(
+        p_browser_script_session *session, const char *name,
+        DWORD start, int result, int gc)
+{
+    PScriptPerformanceInfo info;
+    PBrowserScriptBootstrapStageTiming *stage;
+    size_t length;
+
+    if (session == NULL || !session->bootstrap_measuring ||
+            session->bootstrap_performance.count >=
+            PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_MAX_STAGES) {
+        return;
+    }
+    stage = &session->bootstrap_performance.stages[
+            session->bootstrap_performance.count++];
+    memset(stage, 0, sizeof(*stage));
+    length = strlen(name);
+    if (length >= sizeof(stage->name)) {
+        length = sizeof(stage->name) - 1;
+    }
+    memcpy(stage->name, name, length);
+    stage->total_ms = GetTickCount() - start;
+    stage->result = result;
+    if (stage->total_ms > session->bootstrap_performance.max_stage_ms) {
+        session->bootstrap_performance.max_stage_ms = stage->total_ms;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.version = PSCRIPT_PERFORMANCE_VERSION;
+    if (!gc && PScript_GetPerformanceInfo(session->runtime, &info) == PSCRIPT_OK) {
+        stage->compile_ms = info.last_compile_ms;
+        stage->execute_ms = info.last_execute_ms;
+        stage->native_calls = info.last_native_calls;
+        stage->native_ms = info.last_native_ms;
+        stage->callback_ms = info.last_callback_ms;
+    }
+}
+
+static int p_browser_script_bootstrap_evaluate(HANDLE hSession,
+        const char *source, const char *name)
+{
+    p_browser_script_session *session;
+    DWORD start;
+    int result;
+
+    session = p_script_session(hSession);
+    start = session != NULL && session->bootstrap_measuring ? GetTickCount() : 0;
+    result = PBrowser_ScriptSessionEvaluate(hSession, source, -1);
+    p_browser_script_bootstrap_record(session, name, start, result, 0);
+    return result;
+}
+
+static int p_browser_script_bootstrap_gc(HANDLE hSession)
+{
+    p_browser_script_session *session;
+    DWORD start;
+    int result;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    start = session->bootstrap_measuring ? GetTickCount() : 0;
+    result = PScript_CollectGarbage(session->runtime);
+    p_browser_script_bootstrap_record(session, "GC", start, result, 1);
+    return result;
+}
+
+static int p_browser_script_bootstrap_timing_end(HANDLE hSession, int result)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (session != NULL && session->bootstrap_measuring) {
+        session->bootstrap_performance.total_ms =
+                GetTickCount() - session->bootstrap_start;
+        session->bootstrap_performance.result = result;
+        session->bootstrap_measuring = 0;
+    }
+    return result;
+}
+
+PBROWSER_API int PBrowser_ScriptSessionGetBootstrapPerformanceInfo(
+        HANDLE hSession, PBrowserScriptBootstrapPerformanceInfo *out_info)
+{
+    p_browser_script_session *session;
+
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session) || out_info == NULL ||
+            out_info->size < sizeof(*out_info) ||
+            out_info->version != PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION ||
+            session->bootstrap_measuring) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    memcpy(out_info, &session->bootstrap_performance, sizeof(*out_info));
+    out_info->size = sizeof(*out_info);
+    out_info->version = PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION;
+    return PSCRIPT_OK;
 }
 
 static int p_browser_script_document_write_registered(HANDLE hSession)
@@ -9054,8 +9184,8 @@ static int p_browser_script_install_active_element(
             session->active_element == NULL) {
         return PSCRIPT_OK;
     }
-    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
-            P_BROWSER_SCRIPT_ACTIVE_ELEMENT, -1);
+    return p_browser_script_bootstrap_evaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_ACTIVE_ELEMENT, "ACTIVE_ELEMENT");
 }
 
 static int p_browser_script_install_focus_request(
@@ -9065,8 +9195,8 @@ static int p_browser_script_install_focus_request(
             session->focus_request == NULL) {
         return PSCRIPT_OK;
     }
-    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
-            P_BROWSER_SCRIPT_FOCUS_REQUEST, -1);
+    return p_browser_script_bootstrap_evaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_FOCUS_REQUEST, "FOCUS_REQUEST");
 }
 
 static int p_browser_script_install_form_reset(
@@ -9077,8 +9207,8 @@ static int p_browser_script_install_form_reset(
             session->form_event_ex == NULL) {
         return PSCRIPT_OK;
     }
-    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
-            P_BROWSER_SCRIPT_FORM_RESET, -1);
+    return p_browser_script_bootstrap_evaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_FORM_RESET, "FORM_RESET");
 }
 
 static int p_browser_script_install_form_submit(
@@ -9094,8 +9224,8 @@ static int p_browser_script_install_form_submit(
         return PSCRIPT_OK;
     }
     if (session->form_submit_direct != NULL) {
-        rc = PBrowser_ScriptSessionEvaluate((HANDLE) session,
-                P_BROWSER_SCRIPT_FORM_SUBMIT_DIRECT, -1);
+        rc = p_browser_script_bootstrap_evaluate((HANDLE) session,
+                P_BROWSER_SCRIPT_FORM_SUBMIT_DIRECT, "FORM_SUBMIT_DIRECT");
         if (rc != PSCRIPT_OK) {
             return rc;
         }
@@ -9103,8 +9233,8 @@ static int p_browser_script_install_form_submit(
     if (session->form_submit == NULL || session->form_event_ex == NULL) {
         return PSCRIPT_OK;
     }
-    return PBrowser_ScriptSessionEvaluate((HANDLE) session,
-            P_BROWSER_SCRIPT_FORM_REQUEST_SUBMIT, -1);
+    return p_browser_script_bootstrap_evaluate((HANDLE) session,
+            P_BROWSER_SCRIPT_FORM_REQUEST_SUBMIT, "FORM_REQUEST_SUBMIT");
 }
 
 static int p_browser_script_finish_bootstrap(HANDLE hSession)
@@ -12187,6 +12317,10 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreateEx(unsigned long budget_ms,
         return NULL;
     }
     session->bootstrap_ready = 0;
+    session->bootstrap_measuring = 0;
+    session->bootstrap_start = 0;
+    memset(&session->bootstrap_performance, 0,
+            sizeof(session->bootstrap_performance));
     session->dom_read = NULL;
     session->active_element = NULL;
     session->interaction_element = NULL;

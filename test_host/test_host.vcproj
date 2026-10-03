@@ -210,6 +210,7 @@
 			<File RelativePath=".\image_tests.c"></File>
 			<File RelativePath=".\fragment_tests.c"></File>
 			<File RelativePath=".\db_tests.c"></File>
+			<File RelativePath=".\script_performance_tests.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"

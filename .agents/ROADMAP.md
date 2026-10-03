@@ -222,8 +222,9 @@ history、阶段 B 主文档网络 GET、阶段 1 外部资源事务和阶段 2 
     picker、默认动作、旧页保留、stale/cancel、SIP/IME、旋转和 DPI，再取舍下一个阶段能力。
 
 Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作者图标、真实展开/收起与
-响应改善已有用户证据，不再默认追加性能修复；后续只按低资源设备或 Release 的新失败证据
-取舍。内部页面注册表和会话 history 视图已接入，剩余设备/人工验收见 HANDOFF；
+响应改善已有用户证据，不恢复旧点按/图标故障假设。消费者随后复现了加载时同步脚本阻塞，
+函数级设备计时已归属到 Browser bootstrap 与 Script 编译/解析；该新问题进入下方独立候选，
+不能用点按通过关闭，也不能靠扩大预算修复。内部页面注册表和会话 history 视图已接入，剩余设备/人工验收见 HANDOFF；
 不把 settings/downloads 页面入口当成持久设置或真实下载能力。回归仍须包含最终布局与
 交互结果，不能只看 ARIA/class、脚本执行成功或 guest 时钟。
 
@@ -234,6 +235,16 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 ## 候选队列
 
 ### 准备取舍
+
+#### Script. 有界初始化与编译停顿
+
+**状态：函数级取证完成，有界 bootstrap 初始化准备实现；编译缓存或独立 compiler context 尚待方案审查。** WinWorld 加载日志与原版 jQuery/Bootstrap 离线设备计时证明完整 bootstrap 及单个作者脚本仍有不可返回宿主的同步停顿，主要来自编译/解析。当前 DOM callback 不支持先改 Core 的结论；测量边界与方案见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
+
+- **Owner：** Browser 拥有初始化阶段、session 可用性和任务顺序；Script 拥有求值、编译、GC、timeout 和固定 heap；EXE 只拥有 WM 调度与调用策略，不在 DLL 内运行消息泵。
+- **下一纵切：** additive size/version Begin/Step/Cancel 合同。pending context 私有，不允许作者求值、事件、任务或 runtime 外借；完成后才开放 session。取消/销毁只在空闲边界，失败或 stale 丢弃候选而不污染旧页；旧同步 bootstrap 使用同一程序顺序。固定阶段/内存预算与全入口守卫必须先落实。
+- **最小 fixture：** 旧/分步 bootstrap 等价、每段取消/失败、半初始化入口拒绝、stale/关闭、重复 teardown、heap 压力，以及原版 jQuery/Bootstrap 最终 DOM/事件状态。保留单次完整调用和总耗时计量，不能只统计内部段。
+- **后续取舍：** 编译结果复用先测产物和峰值内存，再审查固定预算、精确源码/引擎配置匹配及跨 context 隔离；冷启动独立编译需要单独 ABI/线程/所有权设计。不公开任意 bytecode 输入，不移动 live session/Core 到 worker，不把 timeout 后重跑当 continuation。
+- **门：** C89、审计、串行正式 Debug/Release、ARMV4I 定向设备门与消费者真实加载响应对照；仅脚本之间让步不算解决单个调用阻塞，不能提高预算、删兼容行为或放宽断言。
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 

@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010005UL
+#define PBROWSER_ABI_VERSION 0x00010006UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -2670,6 +2670,37 @@ PBROWSER_API int PBrowser_ScriptSessionSetCurrentScriptIndex(
  * bounded by the Browser session contract. It does not own the core document,
  * native controls or host callback pw. */
 PBROWSER_API int PBrowser_ScriptSessionEvaluateBootstrap(HANDLE hSession);
+/* Per-session bootstrap breakdown. Enable PScript performance on Runtime()
+ * before bootstrap. At most 40 product stages, copied (no borrowed pointers),
+ * no source or host data. Zero stages when disabled; recorded timings cover
+ * completed stages only, including the failing stage. Query at idle boundary.
+ * These are measurements, NOT resumable initialization/task APIs. Compile and
+ * execute include automatic GC, native/callback are nested subsets. Names are
+ * diagnostic UTF-8 labels, not a stable execution/scheduling contract. */
+#define PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION 1UL
+#define PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_MAX_STAGES 40UL
+typedef struct PBrowserScriptBootstrapStageTiming {
+    char name[48];
+    unsigned long total_ms;
+    unsigned long compile_ms;
+    unsigned long execute_ms;
+    unsigned long native_calls;
+    unsigned long native_ms;
+    unsigned long callback_ms;
+    int result;
+} PBrowserScriptBootstrapStageTiming;
+typedef struct PBrowserScriptBootstrapPerformanceInfo {
+    unsigned long size;
+    unsigned long version;
+    unsigned long count;
+    unsigned long total_ms;
+    unsigned long max_stage_ms;
+    int result;
+    PBrowserScriptBootstrapStageTiming stages[
+            PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_MAX_STAGES];
+} PBrowserScriptBootstrapPerformanceInfo;
+PBROWSER_API int PBrowser_ScriptSessionGetBootstrapPerformanceInfo(
+        HANDLE hSession, PBrowserScriptBootstrapPerformanceInfo *out_info);
 /* Apply a host-committed same-document traversal to the product bootstrap.
  * The caller owns history commit/rollback and supplies borrowed UTF-8 JSON
  * state plus the resulting URL; this API only updates location/history state

@@ -22,7 +22,7 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010007UL
+#define PSCRIPT_ABI_VERSION 0x00010008UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (128UL * 1024UL)
@@ -164,6 +164,48 @@ PSCRIPT_API unsigned long PScript_GetPeakMemoryUsed(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetMemoryLimit(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetEvaluationCount(HANDLE hScript);
 PSCRIPT_API unsigned long PScript_GetModuleCount(HANDLE hScript);
+
+/* Optional per-context timing. No observer, I/O, allocation or message pump.
+ * Set enabled to 0/1 at an idle boundary; each call resets counters except
+ * create_ms. Get copies a snapshot, without changing results/errors. Caller
+ * initializes size/version; invalid inputs leave the output untouched.
+ * Durations use wrapping GetTickCount milliseconds (may be zero). Compile
+ * and execute INCLUDE engine automatic GC; native_ms is a SUBSET of execute,
+ * including JSON dispatch/Browser bridging, callback_ms a subset of native.
+ * Explicit GC is separate. Not CPU time and not an arbitrary JS yield API.
+ * Last fields describe Evaluate only; totals include CallGlobalJson native
+ * callbacks too. No source/arguments/results are retained by telemetry.
+ * Same-thread, non-reentrant discipline applies to these entries as well. */
+#define PSCRIPT_PERFORMANCE_VERSION 1UL
+typedef struct PScriptPerformanceInfo {
+    unsigned long size;
+    unsigned long version;
+    int enabled;
+    unsigned long create_ms;
+    unsigned long evaluations;
+    unsigned long last_total_ms;
+    unsigned long last_compile_ms;
+    unsigned long last_execute_ms;
+    unsigned long last_native_calls;
+    unsigned long last_native_ms;
+    unsigned long last_callback_ms;
+    int last_result;
+    unsigned long gc_calls;
+    unsigned long last_gc_ms;
+    unsigned long total_gc_ms;
+    unsigned long calls;
+    unsigned long last_call_ms;
+    int last_call_result;
+    unsigned long max_sync_ms;
+    unsigned long native_calls;
+    unsigned long native_ms;
+    unsigned long callback_ms;
+    unsigned long max_callback_ms;
+    char max_callback_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
+} PScriptPerformanceInfo;
+PSCRIPT_API int PScript_SetPerformanceEnabled(HANDLE hScript, int enabled);
+PSCRIPT_API int PScript_GetPerformanceInfo(HANDLE hScript,
+        PScriptPerformanceInfo *out_info);
 
 #ifdef __cplusplus
 }

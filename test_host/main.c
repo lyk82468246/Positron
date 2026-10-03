@@ -81,6 +81,7 @@ extern const char *test1318_core_css_data_uri_last_error(void);
 extern BOOL test1319_image_rgba_round_stroke(void);
 extern const char *test1319_image_rgba_round_stroke_last_error(void);
 extern BOOL test1329_core_bootstrap_hamburger(void);
+extern BOOL test1336_script_performance_contract(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
@@ -142,6 +143,7 @@ static int    g_force_terminate_positron = 0;
  * third-party script fixture.  Ordinary regression fixtures retain the
  * legacy bounded Browser session profile. */
 static unsigned long g_browser_script_memory_limit_override = 0;
+static int g_browser_script_performance_fixture = 0;
 static HANDLE g_testbench_log = INVALID_HANDLE_VALUE;
 /* Core paints and hit-tests in physical device pixels; Browser script
  * viewport coordinates are CSS pixels.  The active page DPI is maintained by
@@ -970,7 +972,7 @@ static BOOL test1335_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1335
+#define TEST_MAX_NUMBER 1336
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -18477,6 +18479,111 @@ static int pcore_browser_script_session_navigate_fragment(const char *url,
     return 0;
 }
 
+static void script_timing_log(HANDLE runtime, const char *phase)
+{
+    PScriptPerformanceInfo info;
+    char detail[512];
+
+    if (!g_browser_script_performance_fixture) {
+        return;
+    }
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.version = PSCRIPT_PERFORMANCE_VERSION;
+    if (PScript_GetPerformanceInfo(runtime, &info) != PSCRIPT_OK) {
+        return;
+    }
+    _snprintf(detail, sizeof(detail) - 1,
+            "%s create=%lu eval=%lu compile=%lu execute=%lu "
+            "native=%lu/%lu callback=%lu max_callback=%lu/%s "
+            "gc=%lu/%lu max_sync=%lu result=%d",
+            phase, info.create_ms, info.last_total_ms, info.last_compile_ms,
+            info.last_execute_ms, info.last_native_calls, info.last_native_ms,
+            info.last_callback_ms, info.max_callback_ms, info.max_callback_name,
+            info.gc_calls, info.last_gc_ms, info.max_sync_ms, info.last_result);
+    detail[sizeof(detail) - 1] = '\0';
+    testbench_log_message("INFO", L"Script timing", detail);
+}
+
+static int script_timing_bootstrap(HANDLE session, DWORD setup_start)
+{
+    PBrowserScriptBootstrapPerformanceInfo *info;
+    PBrowserScriptBootstrapStageTiming *stage;
+    char detail[384];
+    unsigned long i;
+    DWORD start;
+    int result;
+
+    if (g_browser_script_performance_fixture) {
+        _snprintf(detail, sizeof(detail) - 1, "bridge-setup=%lu",
+                (unsigned long) (GetTickCount() - setup_start));
+        detail[sizeof(detail) - 1] = '\0';
+        testbench_log_message("INFO", L"Script timing", detail);
+    }
+    start = GetTickCount();
+    result = PBrowser_ScriptSessionEvaluateBootstrap(session);
+    _snprintf(detail, sizeof(detail) - 1, "bootstrap profile=%d total=%lu rc=%d",
+            g_browser_script_performance_fixture,
+            (unsigned long) (GetTickCount() - start), result);
+    detail[sizeof(detail) - 1] = '\0';
+    if (g_browser_script_performance_fixture ||
+            g_browser_script_memory_limit_override != 0) {
+        testbench_log_message("INFO", L"Script timing", detail);
+    }
+    if (!g_browser_script_performance_fixture) {
+        return result;
+    }
+    info = (PBrowserScriptBootstrapPerformanceInfo *) malloc(sizeof(*info));
+    if (info == NULL) {
+        return PSCRIPT_ERROR_MEMORY_LIMIT;
+    }
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    info->version = PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION;
+    if (PBrowser_ScriptSessionGetBootstrapPerformanceInfo(session, info) !=
+            PSCRIPT_OK || info->count < 30 ||
+            info->count > PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_MAX_STAGES ||
+            info->result != result || info->max_stage_ms > info->total_ms) {
+        free(info);
+        return PSCRIPT_ERROR_CALL;
+    }
+    for (i = 0; i < info->count; i++) {
+        stage = &info->stages[i];
+        _snprintf(detail, sizeof(detail) - 1,
+                "bootstrap %lu/%lu %s total=%lu compile=%lu execute=%lu "
+                "native=%lu/%lu callback=%lu rc=%d",
+                i, info->count, stage->name, stage->total_ms,
+                stage->compile_ms, stage->execute_ms, stage->native_calls,
+                stage->native_ms, stage->callback_ms, stage->result);
+        detail[sizeof(detail) - 1] = '\0';
+        testbench_log_message("INFO", L"Script timing", detail);
+    }
+    free(info);
+    return result;
+}
+
+static int script_timing_evaluate(HANDLE session, const char *source,
+        int bytes, int index)
+{
+    DWORD start;
+    char detail[128];
+    int result;
+
+    start = GetTickCount();
+    result = PBrowser_ScriptSessionEvaluate(session, source, bytes);
+    if (g_browser_script_memory_limit_override != 0 ||
+            g_browser_script_performance_fixture) {
+        _snprintf(detail, sizeof(detail) - 1,
+                "script=%d bytes=%d profile=%d total=%lu rc=%d", index, bytes,
+                g_browser_script_performance_fixture,
+                (unsigned long) (GetTickCount() - start), result);
+        detail[sizeof(detail) - 1] = '\0';
+        testbench_log_message("INFO", L"Script timing", detail);
+    }
+    script_timing_log(PBrowser_ScriptSessionRuntime(session), "evaluate");
+    return result;
+}
+
 static int pcore_browser_execute_scripts_with_history(HANDLE document,
         int enabled, int allow_external, const char *document_url,
         int history_length, int history_index, int history_can_commit,
@@ -18554,6 +18661,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     unsigned long focus_native_count;
     const char *focus_error;
     char focus_detail[256];
+    DWORD setup_start;
 
     if (out_executed != NULL) {
         *out_executed = 0;
@@ -18602,6 +18710,13 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
                 "runtime creation", NULL);
         return 1;
     }
+    setup_start = GetTickCount();
+    if (g_browser_script_performance_fixture &&
+            PScript_SetPerformanceEnabled(runtime, 1) != PSCRIPT_OK) {
+        PBrowser_ScriptSessionDestroy(session);
+        return 1;
+    }
+    script_timing_log(runtime, "create");
     if (out_runtime != NULL) {
         bridge = (pcore_browser_script_bridge *) malloc(sizeof(*bridge));
         if (bridge == NULL) {
@@ -18996,7 +19111,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
             &navigation_callbacks) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterScrollCallbacks(session,
             &scroll_callbacks) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionEvaluateBootstrap(session) != PSCRIPT_OK) {
+            script_timing_bootstrap(session, setup_start) != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity, "DOM bootstrap",
                 PBrowser_ScriptSessionGetError(session));
         pcore_browser_script_bridge_destroy(bridge);
@@ -19098,9 +19213,9 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
                 ((info.kind == 1 && source != NULL) ||
                 (info.kind == 2 && data != NULL))) {
             if (PBrowser_ScriptSessionSetCurrentScriptIndex(session, i) !=
-                    PSCRIPT_OK || PBrowser_ScriptSessionEvaluate(session,
+                    PSCRIPT_OK || script_timing_evaluate(session,
                     (info.kind == 1) ? source : data,
-                    (info.kind == 1) ? info.source_bytes : info.data_bytes) !=
+                    (info.kind == 1) ? info.source_bytes : info.data_bytes, i) !=
                     PSCRIPT_OK) {
                 runtime_error = PBrowser_ScriptSessionGetError(session);
                 pcore_browser_script_error(error, error_capacity,
@@ -19127,6 +19242,7 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
                 session));
         rc = 1;
     }
+    script_timing_log(runtime, "batch-gc");
     if (rc == 0 && PBrowser_ScriptSessionDispatchPageLifecycle(
             session, "complete") != PSCRIPT_OK) {
         pcore_browser_script_error(error, error_capacity,
@@ -114098,7 +114214,7 @@ static BOOL test1326_browser_native_coordinate_click(void)
  * transaction.  TEST 1325 covers the same scripts through HTMLElement.click;
  * this fixture keeps the unmodified jQuery/Bootstrap sources but adds the
  * flex layout that originally dropped the button's gadget during layout. */
-static BOOL test1327_browser_native_bootstrap_flex_click(void)
+static BOOL test1327_browser_native_bootstrap_flex_click(int timing)
 {
     static const char PREFIX[] =
         "<!doctype html><html><head><script>";
@@ -114175,6 +114291,8 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     rc = -1;
     bytes = 0;
     ok = 1;
+
+    g_browser_script_performance_fixture = timing;
 
     pcore_browser_script_session_destroy();
     g_render_doc = NULL;
@@ -114383,6 +114501,7 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
     free(html);
     free(jquery);
     free(bootstrap);
+    g_browser_script_performance_fixture = 0;
     if (!ok) {
         if (error[0] == '\0') {
             _snprintf(error, sizeof(error) - 1,
@@ -114393,10 +114512,10 @@ static BOOL test1327_browser_native_bootstrap_flex_click(void)
                     executed, ignored);
             error[sizeof(error) - 1] = '\0';
         }
-        show_error(L"TEST 1327 FAIL", error);
+        show_error(timing ? L"TEST 1336 FAIL" : L"TEST 1327 FAIL", error);
         return FALSE;
     }
-    show_info(L"TEST 1327 OK",
+    show_info(timing ? L"TEST 1336 OK" : L"TEST 1327 OK",
             "Unmodified jQuery/Bootstrap collapse responded to a trusted "
             "native flex-button click; expand/hide/re-expand retained "
             "class/aria state and visible/hidden Core layout geometry.");
@@ -117805,7 +117924,15 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1326_browser_native_coordinate_click();
             break;
         case 1327:
-            ok = test1327_browser_native_bootstrap_flex_click();
+            ok = test1327_browser_native_bootstrap_flex_click(0);
+            break;
+        case 1336:
+            ok = test1336_script_performance_contract();
+            if (ok) {
+                ok = test1327_browser_native_bootstrap_flex_click(1);
+            } else {
+                show_error(L"TEST 1336 FAIL", "Script timing contract failed.");
+            }
             break;
         case 1328:
             ok = test1328_core_flex_button_visual_child();

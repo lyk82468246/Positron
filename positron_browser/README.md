@@ -105,6 +105,14 @@ Browser 的 selector/DOM facade。当前 document-level `querySelector(All)` 对
 应用外壳为慢速 WM6 设备选择 8 秒的固定单次 evaluation budget，以容纳有界的经典第三方
 库初始化；这是 `positron_app` 的策略，不是 Browser 的默认值，也不构成无限执行或任意网站兼容承诺。
 
+## Bootstrap 耗时诊断
+
+宿主可在初始化开始前，对 `PBrowser_ScriptSessionRuntime(session)` 返回的借用 Script handle 调用 `PScript_SetPerformanceEnabled(..., 1)`；不要单独销毁该 runtime。`PBrowser_ScriptSessionEvaluateBootstrap()` 返回后，在空闲边界调用 `PBrowser_ScriptSessionGetBootstrapPerformanceInfo()`，调用方必须初始化结构的 `size` 和 `PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION`。
+
+该固定快照最多保存 40 个产品阶段，包含 bootstrap 各段、适用的表单 installer 与显式 GC 的经过时间，以及求值的编译/执行/native/callback 细分。结构复制到调用方，没有借用字符串或源码；标签只供诊断，不是稳定的执行序号或调度协议。失败时保留已经完成及失败阶段的记录，未开启时没有阶段记录。诊断元数据不计入 Duktape heap，现有 heap ceiling 和所有对象预算不变。
+
+内部阶段耗时不能当作宿主已经可以返回消息循环的边界：旧 `EvaluateBootstrap` 仍是一次同步调用。任务 checkpoint 和单个作者脚本也没有因此获得 yield 或续执行能力。宿主应同时测量完整公共调用，而不是只看最快的内部段；编译/执行可能包含自动 GC，native/callback 是嵌套耗时，不能相加计算总时间。
+
 ## 宿主应负责的事情
 
 宿主必须：
