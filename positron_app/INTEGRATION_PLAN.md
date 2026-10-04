@@ -40,9 +40,11 @@ stylesheet、Browser history/ScriptSession、候选/退休请求和 native 页�
 创建的上下文；初始化中的已绑定控件也必须转发到保存的原生窗口过程。销毁时先恢复原
 窗口过程并释放子控件，再注销上下文，避免新建/关闭其他页使旧页的绘制与输入失效。
 
-左软键为 `Tabs` / `标签页`，使用 WM6 原生下拉菜单：后退、分隔符、标签列表、可选的新建
-标签、分隔符、关闭标签。当前项打勾；尾部已是 newtab 时不重复提供新建入口，否则在容量
-内可新建。history/后退/前进/刷新只作用于当前标签。关闭先询问现有 Browser beforeunload；
+左软键为 `Tabs` / `标签页`，使用 WM6 原生下拉菜单：后退、有前进目标时才显示的前进、
+分隔符、标签列表、可选的新建标签、分隔符、刷新、关闭标签。右菜单不重复后退/前进/刷新。
+当前项打勾；尾部已是 newtab 时不重复提供新建入口，否则在容量内可新建。
+history/后退/前进/刷新只作用于当前标签，菜单状态读取该页的 Browser history。
+关闭先询问现有 Browser beforeunload；
 取消或调用失败保留该页。关闭最后一页先准备新 newtab，失败不丢原页。退出应用则取消全部
 标签候选并等所有 worker 结束，再 teardown 页面、销毁 native 控件、释放共享资源与 DLL。
 
@@ -275,6 +277,7 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 暂停/恢复及 stale 拒绝、失败保留旧页、关闭中的 worker 退休和最后一页替换；结束后重建
 干净的启动 history。两个带控件页面还须检查切回与关闭新页后的 EDIT 编辑、SELECT 选项、
 toggle 状态及可见控件 WM_PAINT 转发；只保留 HWND/窗口文本不算通过。
+菜单另验证左右归属和顺序、重复重建、前进条件随 history/标签更新，以及实际后退/前进/刷新命令。
 `app_history_gate` 必须取得 tabs 自检日志；不代替多页真实网络并发、
 软键触摸、SIP/IME、旋转/DPI、内存压力和加载中退出的人工门。
 同一独立 Debug 夹具用有界 event 暂停真实宿主 worker，以离线响应驱动原 parse/commit 路径，

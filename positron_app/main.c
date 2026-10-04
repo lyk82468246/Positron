@@ -3131,30 +3131,7 @@ static int app_create_menu_bar(HWND hwnd)
 
 static void app_update_history_buttons(void)
 {
-    HMENU menu;
-    int index;
-    int can_go_back;
-    int can_go_forward;
-    const char *target;
-
-    if (g_menu_bar == NULL) {
-        return;
-    }
-    menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0,
-            (LPARAM) APP_CMD_MENU);
-    if (menu == NULL) {
-        return;
-    }
-    target = (g_history == NULL) ? NULL :
-            PBrowser_HistoryBackTarget(g_history, &index);
-    can_go_back = (target != NULL);
-    EnableMenuItem(menu, APP_CMD_BACK, MF_BYCOMMAND |
-            (can_go_back ? MF_ENABLED : MF_GRAYED));
-    target = (g_history == NULL) ? NULL :
-            PBrowser_HistoryForwardTarget(g_history, &index);
-    can_go_forward = (target != NULL);
-    EnableMenuItem(menu, APP_CMD_FORWARD, MF_BYCOMMAND |
-            (can_go_forward ? MF_ENABLED : MF_GRAYED));
+    /* Navigation commands belong to the current tab's left softkey menu. */
     app_tabs_update_menu();
 }
 
@@ -6941,13 +6918,17 @@ static void app_tabs_update_menu(void)
     if (menu == NULL) return;
     /* GetMenuItemCount is not exported by the WM6 SDK. Bounded positional
      * deletion works with the native two-softkey menu implementation. */
-    for (i = 0; i < APP_TAB_MAX + 6; i++) {
+    for (i = 0; i < APP_TAB_MAX + 7; i++) {
         if (!DeleteMenu(menu, 0, MF_BYPOSITION)) break;
     }
     AppI18n_LoadString(APP_TEXT_MENU_BACK, text, 160);
     flags = PBrowser_HistoryBackTarget(g_history, &i) != NULL ?
             MF_ENABLED : MF_GRAYED;
     AppendMenuW(menu, MF_STRING | flags, APP_CMD_BACK, text);
+    if (PBrowser_HistoryForwardTarget(g_history, &i) != NULL) {
+        AppI18n_LoadString(APP_TEXT_MENU_FORWARD, text, 160);
+        AppendMenuW(menu, MF_STRING, APP_CMD_FORWARD, text);
+    }
     AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
     for (i = 0; i < g_tab_count; i++) {
         tab = &g_tabs[g_tab_order[i]];
@@ -7000,6 +6981,8 @@ static void app_tabs_update_menu(void)
         }
     }
     AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+    AppI18n_LoadString(APP_TEXT_MENU_REFRESH, text, 160);
+    AppendMenuW(menu, MF_STRING, APP_CMD_REFRESH, text);
     AppI18n_LoadString(APP_TEXT_MENU_CLOSE_TAB, text, 160);
     AppendMenuW(menu, MF_STRING, APP_CMD_CLOSE_TAB, text);
 }
@@ -7304,6 +7287,61 @@ static void app_tabs_shutdown(void)
 }
 
 #ifdef _DEBUG
+static int app_tabs_debug_menu(int expect_forward)
+{
+    HMENU left;
+    HMENU right;
+    MENUITEMINFOW info;
+    int i;
+    int count;
+    int back_count;
+    int forward_count;
+    int refresh_position;
+    int close_position;
+
+    left = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0, APP_CMD_TABS);
+    right = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0, APP_CMD_MENU);
+    if (left == NULL || right == NULL) return 1;
+    /* Rebuild repeatedly to catch incomplete bounded deletion/duplicates. */
+    for (i = 0; i < 3; i++) app_tabs_update_menu();
+    back_count = 0;
+    forward_count = 0;
+    refresh_position = -1;
+    close_position = -1;
+    count = 0;
+    for (i = 0; i < APP_TAB_MAX + 7; i++) {
+        memset(&info, 0, sizeof(info));
+        info.cbSize = sizeof(info);
+        info.fMask = MIIM_ID | MIIM_STATE | MIIM_TYPE;
+        if (!GetMenuItemInfoW(left, i, TRUE, &info)) break;
+        count++;
+        if (info.wID == APP_CMD_BACK) {
+            back_count++;
+            if (i != 0) return 1;
+        } else if (info.wID == APP_CMD_FORWARD) {
+            forward_count++;
+            if (i != 1 || (info.fState & MF_GRAYED)) return 1;
+        } else if (info.wID == APP_CMD_REFRESH) {
+            refresh_position = i;
+        } else if (info.wID == APP_CMD_CLOSE_TAB) {
+            close_position = i;
+        }
+        if (i == (expect_forward ? 2 : 1) &&
+                !(info.fType & MFT_SEPARATOR)) return 1;
+    }
+    if (back_count != 1 || forward_count != expect_forward ||
+            refresh_position != count - 2 || close_position != count - 1)
+        return 1;
+    memset(&info, 0, sizeof(info));
+    info.cbSize = sizeof(info);
+    info.fMask = MIIM_ID;
+    if (GetMenuItemInfoW(left, count, TRUE, &info) ||
+            GetMenuItemInfoW(right, APP_CMD_BACK, FALSE, &info) ||
+            GetMenuItemInfoW(right, APP_CMD_FORWARD, FALSE, &info) ||
+            GetMenuItemInfoW(right, APP_CMD_REFRESH, FALSE, &info)) return 1;
+    return 0;
+}
+
 static int app_tabs_debug_native_controls(void)
 {
     PCoreTextInputInfo info;
@@ -7473,6 +7511,7 @@ static int app_tabs_debug_check(void)
             &menu_info) || !GetMenuItemInfoW(menu,
             APP_CMD_TAB_FIRST + (int) (g_tab - g_tabs), FALSE, &menu_info) ||
             !(menu_info.fState & MFS_CHECKED)) goto done;
+    if (app_tabs_debug_menu(0) != 0) goto done;
     app_tabs_close();
     app_tabs_close();
     if (g_tab_count != 2 || !app_tabs_select(slot) || g_document != document)
@@ -7556,6 +7595,29 @@ static int app_tabs_debug_check(void)
     if (g_tab_count != 1 || g_tab == original ||
             strcmp(g_current_url, APP_URL_NEWTAB) ||
             PBrowser_HistoryCount(g_history) != 1 || !IsWindow(g_window)) goto done;
+    phase = 8;
+    if (app_tabs_debug_menu(0) != 0) goto done;
+    SendMessage(g_window, WM_COMMAND, APP_CMD_ABOUT, 0);
+    if (strcmp(g_current_url, "positron://about") ||
+            app_tabs_debug_menu(0) != 0) goto done;
+    SendMessage(g_window, WM_COMMAND, APP_CMD_BACK, 0);
+    if (strcmp(g_current_url, APP_URL_NEWTAB) ||
+            app_tabs_debug_menu(1) != 0) goto done;
+    slot = (int) (g_tab - g_tabs);
+    if (!app_tabs_new() || app_tabs_debug_menu(0) != 0 ||
+            !app_tabs_select(slot) || app_tabs_debug_menu(1) != 0) goto done;
+    SendMessage(g_window, WM_COMMAND, APP_CMD_FORWARD, 0);
+    if (strcmp(g_current_url, "positron://about") ||
+            app_tabs_debug_menu(0) != 0) goto done;
+    SendMessage(g_window, WM_COMMAND, APP_CMD_BACK, 0);
+    SendMessage(g_window, WM_COMMAND, APP_CMD_REFRESH, 0);
+    if (strcmp(g_current_url, APP_URL_NEWTAB) ||
+            PBrowser_HistoryCount(g_history) != 2 ||
+            app_tabs_debug_menu(1) != 0) goto done;
+    SendMessage(g_window, WM_COMMAND, APP_CMD_SETTINGS, 0);
+    if (strcmp(g_current_url, "positron://settings") ||
+            app_tabs_debug_menu(0) != 0) goto done;
+    AppDebug_Log("positron tab-menu selftest OK\r\n");
     result = 0;
 done:
     if (g_navigation_debug_worker_gate != NULL)

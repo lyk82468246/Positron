@@ -20,31 +20,29 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ### EXE 多标签自动门通过，人工入口已更新
 
-EXE 单窗口最多四个独立 AppTab，左软键 Tabs/标签页包含后退、页面目录、条件 New tab
-和关闭；每页独立 DOM/styles/session/history/native 控件、输入选区和滚动位置。后台仅继续
+EXE 单窗口最多四个独立 AppTab，左软键 Tabs/标签页包含后退、条件前进、页面目录、条件
+New tab、刷新和关闭；右菜单不重复后退/前进/刷新。前进只在当前页 Browser history 有目标
+时显示，刷新紧邻关闭上方。每页独立 DOM/styles/session/history/native 控件、输入选区和滚动位置。后台仅继续
 网络，隐藏页解析/脚本/提交待激活；共享窗口消息携带不复用 tab ID，候选 timer ID 进程唯一。
 关闭先协作取消并等待 worker，slot 排空后释放；最后一页关闭先创建 newtab，应用退出关闭全部。
 页面 teardown 先于 native/session 释放，关闭期间拒绝 queued timer。未改 DLL/ABI 或增加 IPC。
 
-用户截图 `tmp/QQ20261004-094635.png` 复现切回旧页 EDIT 透出其他页像素。原因是 EXE native
-adapter 用最后创建的全局 context 查找子控件，旧页消息落入 DefWindowProc 而非原生过程。
-现按父 HWND 查找独立 owner；固定槽位查找也覆盖尚未计入 count 的初始化消息，保证字体、
-EDIT limit、SELECT 选项和 toggle 状态送达原生过程。销毁先恢复过程并释放子控件，再移除 owner。
-不靠重建页面或额外生产 repaint 绕过问题；新增诊断/夹具仅编译进 Debug。
+截图 `tmp/QQ20261004-094635.png` 的旧页 EDIT 透出像素源于全局 context 覆盖。
+现按父 HWND 查找 owner；固定槽位覆盖 count 提交前的初始化消息，销毁子控件后注销 owner。
+不靠重建页面或额外 repaint 绕过；诊断/夹具仅进 Debug。
 
-当前完整 Debug 包为 `tmp/device-runs/20261004-100635-app-tabs-native-edit/`，49 文件、两次
-guest holders=0 unavailable=0。原 app_history_gate 抓日志超时仍为失败；同一 PID 1575515326
-的 `readonly-verification/` 后续自动复核 PASS：EXE/九 DLL 重新回读 SHA256 10/10、全部十项
-自检 OK、tabs phase=7、三组九次 native paint 计数增加、crash dump inventory=0。
-复核不启动/终止进程；设备程序已进入人工操作，不强制返回 newtab。
-入口 `\Storage Card\Temp\Positron-device-gate\app-tabs-native-edit-20261004-100635\positron.exe`。
-tabs 断言新增双 controls 页切回及关闭另一页后的实际 EDIT 编辑、SELECT 数量和 toggle 状态，
-并保留状态隔离、未提交地址/选区、四页上限、beforeunload、隐藏完成/失败回滚、timer
-暂停/stale、加载中关闭及最后一页替换。真实触摸切回绘制须立即人工复测；网络、旋转/SIP、
-内存压力和多页退出仍待人工，不以夹具替代。
+当前完整 Debug 包为 `tmp/device-runs/20261004-175348-app-tab-menu/`，49 文件、两次 guest
+holders=0 unavailable=0、EXE/九 DLL SHA256 10/10、全部 required 自检及 crash_check PASS。
+PID 3172118362 留在 newtab，入口
+`\Storage Card\Temp\Positron-device-gate\app-tab-menu-20261004-175348\positron.exe`。
+tab-menu 自检 OK、tabs phase=8：验证左右菜单归属与顺序、重复重建无残项、后退出现/前进
+隐藏、跨标签条件隔离、刷新不增加 history、分支导航清除前进项。保留双 controls 页切回及
+关闭另一页后的实际 EDIT 编辑、SELECT 数量、toggle 和九次 native paint，以及原状态隔离、
+容量、beforeunload、worker/timer/stale/失败/关闭断言。菜单触摸和切回绘制须人工复测；
+网络、旋转/SIP、内存压力及多页退出仍待人工，不以夹具替代。
+先行 native-edit 包的启动门超时不转为 PASS；其 readonly-verification 通过，旧 PID 已由用户退出。
 
-失败 phase=16 暴露初始化及屏外 paint 探针问题；消息循环前按 Core 几何滚动并显式发送
-WM_PAINT，仍要求原生计数增加。phase=163 改用实际文本长度设置末尾光标；精确断言保留。
+失败探针现按 Core 几何滚动并显式发送 WM_PAINT、按文本长度设置末尾光标；精确断言保留。
 
 相邻 Debug 门 `tmp/device-runs/20261004-093134-app-tabs-adjacent/` 为
 `136,407,1080-1083,1134,1327,1336,1338,999` 的 11/11 PASS，完整日志、唯一 TESTBENCH PASS、
@@ -435,8 +433,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 已复核 ROADMAP，完成多标签接线退出开发候选，保留真实切换/网络/内存/退出人工门和
-未来 IPC 进入条件。本轮复核无需新增路线候选；native owner 自动复核已通过，唯一下一步
-是立即人工复测切回及关闭另一页后的绘制与输入。WinWorld 图片视觉项已关闭，公共
+未来 IPC 进入条件。本轮菜单仅调整 EXE 策略，复核无需新增路线候选；唯一下一步是人工
+确认左右菜单及前进条件，并复测切回/关闭另一页后的绘制与输入。WinWorld 图片视觉项已关闭，公共
 DLL 能力矩阵本批无需改动。完整 aspect-ratio 与跨设备边界不变。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
