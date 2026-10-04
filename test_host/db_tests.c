@@ -3,10 +3,398 @@
 
 #include <windows.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "positron_db.h"
 
 typedef void (*DbTestProgress)(const char*);
+
+static BOOL db_test_error_is(PDbHandle db, int result, int category,
+        int native_code, int active, int cleanup)
+{
+    PDbErrorInfo info;
+
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.version = PDB_ERROR_INFO_VERSION;
+    return PDb_GetErrorInfo(db, &info) == PDB_OK &&
+            info.result == result && info.category == category &&
+            info.sqlite_code == native_code &&
+            (info.sqlite_extended_code & 255) == native_code &&
+            info.transaction_active == active &&
+            info.cleanup_attempted == cleanup &&
+            info.cleanup_result == PDB_OK &&
+            (result == PDB_OK ? info.message[0] == '\0' :
+             info.message[0] != '\0');
+}
+
+static BOOL db_test_state_is(PDbHandle db, int active)
+{
+    PDbConnectionState state;
+
+    memset(&state, 0, sizeof(state));
+    state.size = sizeof(state);
+    state.version = PDB_CONNECTION_STATE_VERSION;
+    return PDb_GetConnectionState(db, &state) == PDB_OK &&
+            state.transaction_active == active &&
+            state.transaction_state >= PDB_TRANSACTION_NONE &&
+            state.transaction_state <= PDB_TRANSACTION_WRITE;
+}
+
+static BOOL db_test_error_snapshots(void)
+{
+    struct ExtendedError {
+        PDbErrorInfo info;
+        unsigned int canary;
+    } extended;
+    PDbErrorInfo before;
+    PDbErrorInfo after;
+    PDbConnectionState state;
+    PDbConnectionState state_before;
+    PDbHandle db;
+    PDbStmtHandle stmt;
+    char message[PDB_ERROR_MESSAGE_BYTES];
+    char tiny[1];
+    char long_sql[384];
+    int offset;
+    int character;
+    BOOL ok;
+
+    db = NULL;
+    stmt = NULL;
+    ok = FALSE;
+    memset(&extended, 0, sizeof(extended));
+    extended.info.size = sizeof(extended);
+    extended.info.version = PDB_ERROR_INFO_VERSION;
+    extended.canary = 0x12345678U;
+    if (PDb_OpenUtf8Ex(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db,
+            &extended.info) != PDB_OK || db == NULL ||
+            extended.info.result != PDB_OK ||
+            extended.info.size != sizeof(PDbErrorInfo) ||
+            extended.canary != 0x12345678U ||
+            !db_test_error_is(db, PDB_OK, PDB_ERROR_CATEGORY_NONE, 0, 0, 0)) {
+        goto snapshots_cleanup;
+    }
+    strcpy(long_sql, "SELECT * FROM \"z");
+    offset = (int)strlen(long_sql);
+    for (character = 0; character < 100; ++character) {
+        memcpy(long_sql + offset, "\xe4\xb8\xad", 3);
+        offset += 3;
+    }
+    strcpy(long_sql + offset, "\"");
+    if (PDb_Exec(db, long_sql) != PDB_ERROR) {
+        goto snapshots_cleanup;
+    }
+    after.size = sizeof(after);
+    after.version = PDB_ERROR_INFO_VERSION;
+    if (PDb_GetErrorInfo(db, &after) != PDB_OK ||
+            strncmp(after.message, "no such table: z", 16) != 0 ||
+            strlen(after.message) != 253) {
+        goto snapshots_cleanup;
+    }
+    for (character = 16; character < 253; character += 3) {
+        if (memcmp(after.message + character, "\xe4\xb8\xad", 3) != 0) {
+            goto snapshots_cleanup;
+        }
+    }
+    if (PDb_Exec(db, "SELECT FROM broken") != PDB_ERROR ||
+            !db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_SQL, 1, 0, 0)) {
+        goto snapshots_cleanup;
+    }
+    before.size = sizeof(before);
+    before.version = PDB_ERROR_INFO_VERSION;
+    if (PDb_GetErrorInfo(db, &before) != PDB_OK ||
+            PDb_GetLastError(db, message, sizeof(message)) != PDB_OK ||
+            strcmp(message, before.message) != 0) {
+        goto snapshots_cleanup;
+    }
+    after = before;
+    after.size = sizeof(after) - 1;
+    extended.info = after;
+    if (PDb_GetErrorInfo(db, &after) != PDB_INVALID_ARGUMENT ||
+            memcmp(&after, &extended.info, sizeof(after)) != 0) {
+        goto snapshots_cleanup;
+    }
+    after = before;
+    after.version = 99;
+    extended.info = after;
+    if (PDb_GetErrorInfo(db, &after) != PDB_INVALID_ARGUMENT ||
+            memcmp(&after, &extended.info, sizeof(after)) != 0) {
+        goto snapshots_cleanup;
+    }
+    memset(&state, 0x5a, sizeof(state));
+    state.size = sizeof(state);
+    state.version = 99;
+    state_before = state;
+    tiny[0] = 'x';
+    if (PDb_GetConnectionState(db, &state) != PDB_INVALID_ARGUMENT ||
+            memcmp(&state, &state_before, sizeof(state)) != 0 ||
+            PDb_GetLastError(db, tiny, 1) != PDB_BUFFER_TOO_SMALL ||
+            tiny[0] != 'x' || PDb_GetErrorInfo(NULL, &after) !=
+            PDB_INVALID_ARGUMENT || PDb_ClearError(NULL) != PDB_INVALID_ARGUMENT ||
+            PDb_GetConnectionState(NULL, &state) != PDB_INVALID_ARGUMENT ||
+            PDb_Exec(db, "SELECT 1") != PDB_OK ||
+            PDb_Prepare(db, "SELECT ?1", &stmt) != PDB_OK ||
+            PDb_BindInt64(stmt, 1, -7) != PDB_OK ||
+            PDb_Step(stmt) != PDB_STEP_ROW || PDb_ColumnInt64(stmt, 0) != -7 ||
+            PDb_ColumnType(stmt, -1) != PDB_VALUE_NULL ||
+            !db_test_state_is(db, 0) || PDb_CopyLastError(db, message,
+            sizeof(message)) != PDB_OK || strcmp(message, before.message) != 0) {
+        goto snapshots_cleanup;
+    }
+    after = before;
+    if (PDb_GetErrorInfo(db, &after) != PDB_OK ||
+            memcmp(&after, &before, sizeof(after)) != 0 ||
+            PDb_BindNull(stmt, 0) != PDB_INVALID_ARGUMENT ||
+            !db_test_error_is(db, PDB_INVALID_ARGUMENT,
+            PDB_ERROR_CATEGORY_ARGUMENT, 0, 0, 0)) {
+        goto snapshots_cleanup;
+    }
+    {
+        int finalize_result;
+
+        finalize_result = PDb_Finalize(stmt);
+        stmt = NULL;
+        if (finalize_result != PDB_OK) {
+            goto snapshots_cleanup;
+        }
+    }
+    if (PDb_Exec(db, NULL) != PDB_INVALID_ARGUMENT ||
+            !db_test_error_is(db, PDB_INVALID_ARGUMENT,
+            PDB_ERROR_CATEGORY_ARGUMENT, 0, 0, 0) ||
+            PDb_ClearError(db) != PDB_OK ||
+            !db_test_error_is(db, PDB_OK, PDB_ERROR_CATEGORY_NONE, 0, 0, 0) ||
+            PDb_GetLastError(db, message, sizeof(message)) != PDB_OK ||
+            message[0] != '\0' || PDb_Cancel(db) != PDB_OK ||
+            PDb_Exec(db, "SELECT 1") != PDB_STATE ||
+            !db_test_error_is(db, PDB_STATE, PDB_ERROR_CATEGORY_CANCELLED,
+            0, 0, 0) || PDb_Exec(db, "SELECT 1") != PDB_OK ||
+            PDb_Begin(db) != PDB_OK || PDb_ClearError(db) != PDB_OK ||
+            !db_test_state_is(db, 1) || PDb_Rollback(db) != PDB_OK) {
+        goto snapshots_cleanup;
+    }
+    ok = TRUE;
+snapshots_cleanup:
+    if (stmt != NULL) {
+        PDb_Finalize(stmt);
+    }
+    PDb_Close(db);
+    return ok;
+}
+
+static BOOL db_test_error_transactions(DbTestProgress progress)
+{
+    PDbHandle db;
+    PDbStmtHandle stmt;
+    PDbErrorInfo info;
+    const char* phase;
+    char diagnostic[512];
+    BOOL ok;
+
+    db = NULL;
+    stmt = NULL;
+    ok = FALSE;
+    phase = "deferred_commit";
+    if (PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) != PDB_OK ||
+            PDb_Exec(db, "CREATE TABLE p(id INTEGER PRIMARY KEY);"
+            "CREATE TABLE c(id INTEGER REFERENCES p(id) "
+            "DEFERRABLE INITIALLY DEFERRED);") != PDB_OK ||
+            PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db, "INSERT INTO c VALUES(7)") != PDB_OK ||
+            PDb_Commit(db) != PDB_ERROR ||
+            !db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_CONSTRAINT,
+            19, 1, 0) || !db_test_state_is(db, 1)) {
+        goto transactions_cleanup;
+    }
+    info.size = sizeof(info);
+    info.version = PDB_ERROR_INFO_VERSION;
+    phase = "commit_retry_and_busy";
+    if (PDb_GetErrorInfo(db, &info) != PDB_OK ||
+            info.sqlite_extended_code == info.sqlite_code ||
+            PDb_Exec(db, "INSERT INTO p VALUES(7)") != PDB_OK ||
+            PDb_Commit(db) != PDB_OK || !db_test_state_is(db, 0) ||
+            !db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_CONSTRAINT,
+            19, 1, 0) || PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db, "INSERT INTO c VALUES(8)") != PDB_OK ||
+            PDb_Commit(db) != PDB_ERROR || PDb_Rollback(db) != PDB_OK ||
+            !db_test_state_is(db, 0) || PDb_Exec(db,
+            "BEGIN; INSERT INTO p VALUES(9); SELECT FROM broken") != PDB_ERROR ||
+            !db_test_state_is(db, 1) || PDb_Rollback(db) != PDB_OK ||
+            PDb_Exec(db, "BEGIN; INSERT INTO p VALUES(10)") != PDB_OK ||
+            PDb_Commit(db) != PDB_OK || PDb_Begin(db) != PDB_OK ||
+            PDb_Prepare(db, "INSERT INTO p VALUES(11) RETURNING id", &stmt) !=
+            PDB_OK || PDb_Step(stmt) != PDB_STEP_ROW ||
+            PDb_Commit(db) != PDB_BUSY || !db_test_error_is(db, PDB_BUSY,
+            PDB_ERROR_CATEGORY_BUSY, 5, 1, 0) || !db_test_state_is(db, 1)) {
+        goto transactions_cleanup;
+    }
+    PDb_Finalize(stmt);
+    stmt = NULL;
+    phase = "automatic_rollback";
+    if (PDb_Commit(db) != PDB_OK || !db_test_state_is(db, 0) ||
+            PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db, "INSERT OR ROLLBACK INTO p VALUES(7)") != PDB_ERROR ||
+            !db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_CONSTRAINT,
+            19, 0, 0) || !db_test_state_is(db, 0) || PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db, "INSERT INTO p VALUES(12)") != PDB_OK ||
+            PDb_Commit(db) != PDB_OK || PDb_Rollback(db) != PDB_STATE ||
+            !db_test_error_is(db, PDB_STATE, PDB_ERROR_CATEGORY_STATE, 0, 0, 0)) {
+        goto transactions_cleanup;
+    }
+    phase = "readonly_and_page_budget";
+    if (PDb_Exec(db, "PRAGMA query_only=ON") != PDB_OK ||
+            PDb_Exec(db, "INSERT INTO p VALUES(13)") != PDB_ERROR ||
+            !db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_READONLY,
+            8, 0, 0) || PDb_Exec(db, "PRAGMA query_only=OFF") != PDB_OK ||
+            PDb_Exec(db, "CREATE TABLE large_value(v BLOB)") != PDB_OK ||
+            PDb_Exec(db, "PRAGMA max_page_count=4") != PDB_OK ||
+            PDb_Begin(db) != PDB_OK || PDb_Exec(db,
+            "INSERT INTO large_value VALUES(zeroblob(65536))") != PDB_ERROR ||
+            !db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_FULL,
+            13, 0, 0) || !db_test_state_is(db, 0) || PDb_Begin(db) != PDB_OK ||
+            PDb_Exec(db, "INSERT INTO p VALUES(14)") != PDB_OK ||
+            PDb_Commit(db) != PDB_OK) {
+        goto transactions_cleanup;
+    }
+    ok = TRUE;
+transactions_cleanup:
+    if (!ok && progress != NULL) {
+        memset(&info, 0, sizeof(info));
+        info.size = sizeof(info);
+        info.version = PDB_ERROR_INFO_VERSION;
+        PDb_GetErrorInfo(db, &info);
+        _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                "db_error_transaction phase=%s result=%d category=%d "
+                "native=%d extended=%d active=%d cleanup=%d message=%s",
+                phase, info.result, info.category, info.sqlite_code,
+                info.sqlite_extended_code, info.transaction_active,
+                info.cleanup_attempted, info.message);
+        diagnostic[sizeof(diagnostic) - 1] = '\0';
+        progress(diagnostic);
+    }
+    if (stmt != NULL) {
+        PDb_Finalize(stmt);
+    }
+    PDb_Close(db);
+    return ok;
+}
+
+static BOOL db_test_error_migrations(void)
+{
+    PDbHandle db;
+    int mode;
+    BOOL ok;
+
+    for (mode = PDB_OPEN_LOCAL_FULL_SQL; mode <= PDB_OPEN_SYNC; ++mode) {
+        db = NULL;
+        ok = FALSE;
+        if (PDb_OpenUtf8(":memory:", mode, &db) == PDB_OK &&
+                PDb_ApplyMigration(db, 1,
+                "CREATE TABLE failed(id INTEGER); SELECT FROM broken") == PDB_ERROR &&
+                db_test_error_is(db, PDB_ERROR, PDB_ERROR_CATEGORY_SQL, 1, 0, 1) &&
+                db_test_state_is(db, 0) && PDb_Exec(db,
+                "SELECT * FROM failed") == PDB_ERROR &&
+                PDb_ApplyMigration(db, 1,
+                "CREATE TABLE escaped(id INTEGER); COMMIT; SELECT FROM broken") ==
+                PDB_SQL_REJECTED && db_test_error_is(db, PDB_SQL_REJECTED,
+                PDB_ERROR_CATEGORY_AUTHORIZATION, 23, 0, 1) &&
+                PDb_Exec(db, "SELECT * FROM escaped") == PDB_ERROR &&
+                PDb_ApplyMigration(db, 1,
+                "CREATE TABLE mp(id INTEGER PRIMARY KEY);"
+                "CREATE TABLE mc(id INTEGER REFERENCES mp(id) "
+                "DEFERRABLE INITIALLY DEFERRED); INSERT INTO mc VALUES(1)") ==
+                PDB_ERROR && db_test_error_is(db, PDB_ERROR,
+                PDB_ERROR_CATEGORY_CONSTRAINT, 19, 0, 1) &&
+                db_test_state_is(db, 0) && PDb_Exec(db,
+                "SELECT * FROM mp") == PDB_ERROR &&
+                PDb_ApplyMigration(db, 1, "CREATE TABLE recovered(id INTEGER)") ==
+                PDB_OK && PDb_ApplyMigration(db, 1, "") == PDB_OK &&
+                PDb_Exec(db, "SELECT * FROM recovered") == PDB_OK) {
+            ok = TRUE;
+        }
+        PDb_Close(db);
+        if (!ok) {
+            return FALSE;
+        }
+    }
+    db = NULL;
+    ok = PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) == PDB_OK &&
+            PDb_Exec(db, "DROP TABLE __pdb_meta") == PDB_OK &&
+            PDb_ApplyMigration(db, 1, "CREATE TABLE never_run(id INTEGER)") ==
+            PDB_ERROR && db_test_error_is(db, PDB_ERROR,
+            PDB_ERROR_CATEGORY_SQL, 1, 0, 0) && db_test_state_is(db, 0);
+    PDb_Close(db);
+    if (!ok) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL db_test_error_open_failures(void)
+{
+    PDbErrorInfo info;
+    PDbErrorInfo unchanged;
+    PDbHandle db;
+    HANDLE file;
+    char path[MAX_PATH];
+    WCHAR wide_path[MAX_PATH];
+    char bytes[512];
+    DWORD written;
+    BOOL ok;
+
+    db = NULL;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    info.version = 99;
+    unchanged = info;
+    if (PDb_OpenUtf8Ex(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db, &info) !=
+            PDB_INVALID_ARGUMENT || memcmp(&info, &unchanged, sizeof(info)) != 0) {
+        return FALSE;
+    }
+    info.version = PDB_ERROR_INFO_VERSION;
+    if (PDb_OpenUtf8Ex(NULL, PDB_OPEN_LOCAL_FULL_SQL, &db, &info) !=
+            PDB_INVALID_ARGUMENT || db != NULL ||
+            info.category != PDB_ERROR_CATEGORY_ARGUMENT || info.sqlite_code != 0) {
+        return FALSE;
+    }
+    _snprintf(path, sizeof(path) - 1,
+            "\\Temp\\pdb-missing-%lu-%lu\\file.db",
+            (unsigned long)GetCurrentProcessId(), (unsigned long)GetTickCount());
+    path[sizeof(path) - 1] = '\0';
+    if (PDb_OpenUtf8Ex(path, PDB_OPEN_LOCAL_FULL_SQL, &db, &info) != PDB_ERROR ||
+            db != NULL || info.category != PDB_ERROR_CATEGORY_CANNOT_OPEN ||
+            info.sqlite_code != 14 || info.message[0] == '\0') {
+        return FALSE;
+    }
+    _snprintf(path, sizeof(path) - 1, "\\Temp\\pdb-bad-%lu-%lu.db",
+            (unsigned long)GetCurrentProcessId(), (unsigned long)GetTickCount());
+    path[sizeof(path) - 1] = '\0';
+    if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wide_path, MAX_PATH)) {
+        return FALSE;
+    }
+    file = CreateFileW(wide_path, GENERIC_WRITE, 0, NULL, CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) {
+        return FALSE;
+    }
+    memset(bytes, 'x', sizeof(bytes));
+    written = 0;
+    ok = WriteFile(file, bytes, sizeof(bytes), &written, NULL) &&
+            written == sizeof(bytes);
+    CloseHandle(file);
+    if (ok) {
+        ok = PDb_OpenUtf8Ex(path, PDB_OPEN_LOCAL_FULL_SQL, &db, &info) ==
+                PDB_ERROR && db == NULL && info.category ==
+                PDB_ERROR_CATEGORY_CORRUPT && info.sqlite_code == 26 &&
+                info.message[0] != '\0' && PDb_OpenUtf8(path,
+                PDB_OPEN_LOCAL_FULL_SQL, &db) == PDB_ERROR && db == NULL;
+    }
+    PDb_Close(db);
+    if (!DeleteFileW(wide_path)) {
+        ok = FALSE;
+    }
+    return ok;
+}
 
 static void db_test_progress(DbTestProgress progress, const char* phase)
 {
@@ -1711,6 +2099,15 @@ BOOL test1321_db_contract(DbTestProgress progress)
     DB_RUN_FIXTURE(db_test_sync_registration_guards);
     DB_RUN_FIXTURE(db_test_outbox_coalescing);
     DB_RUN_FIXTURE(db_test_local_migration);
+    DB_RUN_FIXTURE(db_test_error_snapshots);
+    db_test_progress(progress, "db_test_error_transactions.begin");
+    if (!db_test_error_transactions(progress)) {
+        db_test_progress(progress, "db_test_error_transactions.failed");
+        return FALSE;
+    }
+    db_test_progress(progress, "db_test_error_transactions.passed");
+    DB_RUN_FIXTURE(db_test_error_migrations);
+    DB_RUN_FIXTURE(db_test_error_open_failures);
     db_test_progress(progress, "local_full_sql.begin");
     local = NULL;
     if (PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &local) != PDB_OK) {

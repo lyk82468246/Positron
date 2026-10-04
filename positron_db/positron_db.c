@@ -18,7 +18,6 @@
 #include "positron_json.h"
 #include "positron_db.h"
 
-#define PDB_MAX_ERROR       256
 #define PDB_MAX_META        128
 #define PDB_MAX_ROW_BYTES   PDB_SYNC_MAX_BODY_BYTES
 #define PDB_SYNC_PULL_LIMIT 64
@@ -42,8 +41,10 @@ struct PDb {
     int migration;
     int applying;
     int cancelled;
-    int in_transaction;
-    char last_error[PDB_MAX_ERROR];
+    PDbErrorInfo error_info;
+    unsigned int error_serial;
+    unsigned int operation_serial;
+    int operation_depth;
     PDbTableInfo tables[PDB_SYNC_MAX_TABLES];
     int table_count;
     PDbStmtHandle statements;
@@ -126,12 +127,93 @@ static void pdb_copy_text(char* destination, int capacity,
     destination[length] = '\0';
 }
 
+static int pdb_transaction_active(PDbHandle db)
+{
+    return db != NULL && db->sqlite != NULL &&
+            !sqlite3_get_autocommit(db->sqlite);
+}
+
+static int pdb_status_category(int result)
+{
+    switch (result) {
+    case PDB_OK: return PDB_ERROR_CATEGORY_NONE;
+    case PDB_INVALID_ARGUMENT: return PDB_ERROR_CATEGORY_ARGUMENT;
+    case PDB_NOMEM: return PDB_ERROR_CATEGORY_MEMORY;
+    case PDB_BUSY: return PDB_ERROR_CATEGORY_BUSY;
+    case PDB_NOT_SUPPORTED: return PDB_ERROR_CATEGORY_UNSUPPORTED;
+    case PDB_NOT_FOUND: return PDB_ERROR_CATEGORY_NOT_FOUND;
+    case PDB_LIMIT:
+    case PDB_BUFFER_TOO_SMALL: return PDB_ERROR_CATEGORY_LIMIT;
+    case PDB_CONFLICT: return PDB_ERROR_CATEGORY_CONFLICT;
+    case PDB_SCHEMA_MISMATCH: return PDB_ERROR_CATEGORY_SCHEMA;
+    case PDB_NETWORK: return PDB_ERROR_CATEGORY_NETWORK;
+    case PDB_STATE: return PDB_ERROR_CATEGORY_STATE;
+    case PDB_SQL_REJECTED: return PDB_ERROR_CATEGORY_AUTHORIZATION;
+    default: return PDB_ERROR_CATEGORY_OTHER;
+    }
+}
+
+static void pdb_init_error(PDbErrorInfo* info, int result,
+        const char* message)
+{
+    int length;
+
+    memset(info, 0, sizeof(*info));
+    info->size = sizeof(*info);
+    info->version = PDB_ERROR_INFO_VERSION;
+    info->result = result;
+    info->category = pdb_status_category(result);
+    pdb_copy_text(info->message, sizeof(info->message), message);
+    if (message != NULL && strlen(message) >= sizeof(info->message)) {
+        length = sizeof(info->message) - 1;
+        /* A bounded diagnostic must not end inside a UTF-8 code point. */
+        while (length > 0 &&
+                (((unsigned char)message[length] & 0xc0) == 0x80)) {
+            --length;
+        }
+        info->message[length] = '\0';
+    }
+}
+
 static void pdb_set_error(PDbHandle db, const char* message)
 {
     if (db == NULL) {
         return;
     }
-    pdb_copy_text(db->last_error, sizeof(db->last_error), message);
+    pdb_init_error(&db->error_info, PDB_ERROR, message);
+    db->error_info.transaction_active = pdb_transaction_active(db);
+    ++db->error_serial;
+}
+
+static void pdb_operation_begin(PDbHandle db)
+{
+    if (db != NULL && db->operation_depth++ == 0) {
+        db->operation_serial = db->error_serial;
+    }
+}
+
+static void pdb_finish_error(PDbHandle db, int result)
+{
+    if (db->error_serial == db->operation_serial) {
+        pdb_set_error(db, "DB operation failed (see result/category)");
+    }
+    db->error_info.result = result;
+    if (db->error_info.sqlite_code == 0 &&
+            db->error_info.category != PDB_ERROR_CATEGORY_CANCELLED) {
+        db->error_info.category = pdb_status_category(result);
+    }
+    db->error_info.transaction_active = pdb_transaction_active(db);
+}
+
+static int pdb_operation_end(PDbHandle db, int result)
+{
+    if (db != NULL) {
+        if (result < 0) {
+            pdb_finish_error(db, result);
+        }
+        --db->operation_depth;
+    }
+    return result;
 }
 
 static int pdb_consume_cancel(PDbHandle db)
@@ -141,34 +223,69 @@ static int pdb_consume_cancel(PDbHandle db)
     }
     db->cancelled = 0;
     pdb_set_error(db, "SQL execution cancelled");
+    db->error_info.category = PDB_ERROR_CATEGORY_CANCELLED;
     return PDB_STATE;
 }
 
 static int pdb_set_sqlite_error(PDbHandle db, int sqlite_rc)
 {
     const char* message;
+    int primary;
+    int extended;
+    int category;
+    int result;
 
+    primary = sqlite_rc & 255;
+    extended = sqlite_rc;
+    category = PDB_ERROR_CATEGORY_SQL;
+    result = PDB_ERROR;
     if (db != NULL && db->sqlite != NULL) {
-        message = sqlite3_errmsg(db->sqlite);
+        extended = sqlite3_extended_errcode(db->sqlite);
+        if ((extended & 255) != primary) {
+            extended = sqlite_rc;
+            message = sqlite3_errstr(sqlite_rc);
+        } else {
+            message = sqlite3_errmsg(db->sqlite);
+        }
         pdb_set_error(db, message);
     }
-    if (sqlite_rc == SQLITE_BUSY || sqlite_rc == SQLITE_LOCKED) {
-        return PDB_BUSY;
-    }
-    if (sqlite_rc == SQLITE_NOMEM) {
-        return PDB_NOMEM;
-    }
-    if (sqlite_rc == SQLITE_AUTH) {
-        return PDB_SQL_REJECTED;
-    }
-    if (sqlite_rc == SQLITE_INTERRUPT) {
+    switch (primary) {
+    case SQLITE_BUSY:
+    case SQLITE_LOCKED: category = PDB_ERROR_CATEGORY_BUSY; result = PDB_BUSY; break;
+    case SQLITE_NOMEM: category = PDB_ERROR_CATEGORY_MEMORY; result = PDB_NOMEM; break;
+    case SQLITE_AUTH: category = PDB_ERROR_CATEGORY_AUTHORIZATION; result = PDB_SQL_REJECTED; break;
+    case SQLITE_INTERRUPT:
+        category = PDB_ERROR_CATEGORY_CANCELLED;
+        result = PDB_STATE;
         if (db != NULL) {
             db->cancelled = 0;
         }
-        return PDB_STATE;
+        break;
+    case SQLITE_FULL: category = PDB_ERROR_CATEGORY_FULL; break;
+    case SQLITE_IOERR: category = PDB_ERROR_CATEGORY_IO; break;
+    case SQLITE_READONLY: category = PDB_ERROR_CATEGORY_READONLY; break;
+    case SQLITE_CORRUPT:
+    case SQLITE_NOTADB: category = PDB_ERROR_CATEGORY_CORRUPT; break;
+    case SQLITE_CANTOPEN: category = PDB_ERROR_CATEGORY_CANNOT_OPEN; break;
+    case SQLITE_CONSTRAINT:
+    case SQLITE_MISMATCH: category = PDB_ERROR_CATEGORY_CONSTRAINT; break;
+    case SQLITE_TOOBIG: category = PDB_ERROR_CATEGORY_LIMIT; break;
+    case SQLITE_RANGE: category = PDB_ERROR_CATEGORY_ARGUMENT; break;
+    case SQLITE_SCHEMA: category = PDB_ERROR_CATEGORY_SCHEMA; break;
+    case SQLITE_MISUSE:
+    case SQLITE_ABORT: category = PDB_ERROR_CATEGORY_STATE; break;
+    default: break;
     }
-    return PDB_ERROR;
+    if (db != NULL) {
+        db->error_info.result = result;
+        db->error_info.category = category;
+        db->error_info.sqlite_code = primary;
+        db->error_info.sqlite_extended_code = extended;
+    }
+    return result;
 }
+
+static void pdb_abort_transaction(PDbHandle db, int original_result);
 
 static int pdb_is_identifier(const char* value)
 {
@@ -608,6 +725,26 @@ static int pdb_exec_internal(PDbHandle db, const char* sql)
     return PDB_OK;
 }
 
+/* Owned transactions attempt rollback on failure, including COMMIT errors.
+ * Keep the original failure even if cleanup itself fails. The live state is
+ * always queried afterwards; no unconditional "rolled back" claim. */
+static void pdb_abort_transaction(PDbHandle db, int original_result)
+{
+    PDbErrorInfo original;
+    int cleanup_result;
+
+    pdb_finish_error(db, original_result);
+    if (!pdb_transaction_active(db)) {
+        return;
+    }
+    original = db->error_info;
+    cleanup_result = pdb_exec_internal(db, "ROLLBACK");
+    db->error_info = original;
+    db->error_info.cleanup_attempted = 1;
+    db->error_info.cleanup_result = cleanup_result;
+    db->error_info.transaction_active = pdb_transaction_active(db);
+}
+
 static int pdb_meta_get(PDbHandle db, const char* key,
         char* value, int capacity)
 {
@@ -695,7 +832,21 @@ static int pdb_authorizer(void* context, int action,
 
     (void)database;
     db = (PDbHandle)context;
-    if (db == NULL || db->mode != PDB_OPEN_SYNC) {
+    if (db == NULL) {
+        return SQLITE_OK;
+    }
+    /* A migration owns its transaction in both modes. Never let a script
+     * commit/attach/change connection policy before later script failure. */
+    if (db->migration &&
+            (action == SQLITE_ATTACH || action == SQLITE_DETACH ||
+             action == SQLITE_PRAGMA || action == SQLITE_TRANSACTION ||
+             action == SQLITE_SAVEPOINT ||
+             (action == SQLITE_FUNCTION &&
+              ((arg1 != NULL && _stricmp(arg1, "load_extension") == 0) ||
+               (arg2 != NULL && _stricmp(arg2, "load_extension") == 0))))) {
+        return SQLITE_DENY;
+    }
+    if (db->mode != PDB_OPEN_SYNC) {
         return SQLITE_OK;
     }
     reserved_action = action == SQLITE_READ || action == SQLITE_INSERT ||
@@ -715,20 +866,6 @@ static int pdb_authorizer(void* context, int action,
     if (reserved_action && arg1 != NULL &&
             strncmp(arg1, "__pdb_", 6) == 0 &&
             (db->migration || (!db->internal && trigger == NULL))) {
-        return SQLITE_DENY;
-    }
-    /* Migration scripts may contain schema DDL, but never connection
-     * attachment, PRAGMA changes, or extension loading.  Internal setup
-     * statements remain trusted after these dangerous classes are checked. */
-    if (db->migration &&
-            (action == SQLITE_ATTACH || action == SQLITE_DETACH ||
-             action == SQLITE_PRAGMA || action == SQLITE_TRANSACTION ||
-             action == SQLITE_SAVEPOINT)) {
-        return SQLITE_DENY;
-    }
-    if (db->migration && action == SQLITE_FUNCTION &&
-            ((arg1 != NULL && _stricmp(arg1, "load_extension") == 0) ||
-             (arg2 != NULL && _stricmp(arg2, "load_extension") == 0))) {
         return SQLITE_DENY;
     }
     if (db->internal) {
@@ -916,6 +1053,11 @@ static int pdb_validate_table_exists(PDbHandle db, const char* table_name)
     }
     sqlite3_bind_text(stmt, 1, table_name, -1, SQLITE_TRANSIENT);
     rc = pdb_step_internal(db, stmt);
+    if (rc != SQLITE_ROW && rc != SQLITE_DONE) {
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
+    }
     sqlite3_finalize(stmt);
     if (rc == SQLITE_ROW) {
         return PDB_OK;
@@ -924,7 +1066,7 @@ static int pdb_validate_table_exists(PDbHandle db, const char* table_name)
         pdb_set_error(db, "sync table does not exist");
         return PDB_NOT_FOUND;
     }
-    return pdb_set_sqlite_error(db, rc);
+    return PDB_OK;
 }
 
 static int pdb_install_triggers(PDbHandle db, const PDbTableInfo* table)
@@ -1129,10 +1271,12 @@ static int pdb_validate_table_schema(PDbHandle db,
         }
         (void)column_index;
     }
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     if (actual_count != table->column_count || total_key_count != 1 ||
             key_count != 1 ||
             key_type == PDB_VALUE_NULL ||
@@ -1202,10 +1346,12 @@ static int pdb_load_tables(PDbHandle db)
         table->used = 1;
         db->table_count += 1;
     }
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     for (table_index = 0; table_index < db->table_count; ++table_index) {
         rc = pdb_validate_table_exists(db,
                 db->tables[table_index].table_name);
@@ -1256,10 +1402,12 @@ static int pdb_store_table(PDbHandle db, const PDbTableInfo* table)
     sqlite3_bind_text(stmt, 2, table->primary_key, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, columns, -1, SQLITE_TRANSIENT);
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -1456,10 +1604,12 @@ static int pdb_set_row_state(PDbHandle db, const char* table_name,
             -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 4, deleted ? 1 : 0);
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -1561,10 +1711,12 @@ static int pdb_append_outbox(PDbHandle db, const char* table_name,
         }
     }
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -1583,10 +1735,12 @@ static int pdb_delete_dirty(PDbHandle db, const char* table_name,
     sqlite3_bind_text(stmt, 1, table_name, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, row_key, -1, SQLITE_TRANSIENT);
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -1620,8 +1774,8 @@ static int pdb_drain_dirty(PDbHandle db)
             break;
         }
         if (rc != SQLITE_ROW) {
-            sqlite3_finalize(stmt);
             rc = pdb_set_sqlite_error(db, rc);
+            sqlite3_finalize(stmt);
             break;
         }
         if (sqlite3_column_text(stmt, 0) == NULL ||
@@ -1638,12 +1792,11 @@ static int pdb_drain_dirty(PDbHandle db)
         action = sqlite3_column_int(stmt, 2);
         sqlite3_finalize(stmt);
 
-        if (!db->in_transaction && !started) {
+        if (!pdb_transaction_active(db) && !started) {
             rc = pdb_exec_internal(db, "BEGIN IMMEDIATE");
             if (rc != PDB_OK) {
                 break;
             }
-            db->in_transaction = 1;
             started = 1;
         }
         table_index = pdb_find_table(db, table_name);
@@ -1684,15 +1837,9 @@ static int pdb_drain_dirty(PDbHandle db)
     if (started) {
         if (rc == PDB_OK) {
             rc = pdb_exec_internal(db, "COMMIT");
-            if (rc == PDB_OK) {
-                db->in_transaction = 0;
-            } else {
-                pdb_exec_internal(db, "ROLLBACK");
-                db->in_transaction = 0;
-            }
-        } else {
-            pdb_exec_internal(db, "ROLLBACK");
-            db->in_transaction = 0;
+        }
+        if (rc != PDB_OK) {
+            pdb_abort_transaction(db, rc);
         }
     }
     return rc;
@@ -1780,37 +1927,64 @@ static int pdb_open_metadata(PDbHandle db)
     return PDB_OK;
 }
 
-PDB_API int PDb_OpenUtf8(const char* path, int mode, PDbHandle* outDb)
+PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
+        PDbErrorInfo* outError)
 {
     PDbHandle db;
     int flags;
     int rc;
 
+    if (outError != NULL && (outError->size < sizeof(*outError) ||
+            outError->version != PDB_ERROR_INFO_VERSION)) {
+        return PDB_INVALID_ARGUMENT;
+    }
+    if (outError != NULL) {
+        pdb_init_error(outError, PDB_OK, "");
+    }
+    if (outDb != NULL) {
+        *outDb = NULL;
+    }
     if (path == NULL || outDb == NULL ||
             (mode != PDB_OPEN_LOCAL_FULL_SQL && mode != PDB_OPEN_SYNC)) {
+        if (outError != NULL) {
+            pdb_init_error(outError, PDB_INVALID_ARGUMENT,
+                    "Invalid database open arguments");
+        }
         return PDB_INVALID_ARGUMENT;
     }
     *outDb = NULL;
     rc = pdb_initialize_wince_vfs();
     if (rc != PDB_OK) {
+        if (outError != NULL) {
+            pdb_init_error(outError, rc, "SQLite VFS initialization failed");
+        }
         return rc;
     }
     db = (PDbHandle)malloc(sizeof(*db));
     if (db == NULL) {
+        if (outError != NULL) {
+            pdb_init_error(outError, PDB_NOMEM, "Database allocation failed");
+        }
         return PDB_NOMEM;
     }
     memset(db, 0, sizeof(*db));
     db->mode = mode;
-    db->last_error[0] = '\0';
+    pdb_init_error(&db->error_info, PDB_OK, "");
     flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
     rc = sqlite3_open_v2(path, &db->sqlite, flags, NULL);
     if (rc != SQLITE_OK) {
         if (db->sqlite != NULL) {
             pdb_set_sqlite_error(db, rc);
-            sqlite3_close(db->sqlite);
+        } else {
+            pdb_set_error(db, "SQLite database open failed");
         }
-        free(db);
-        return rc == SQLITE_NOMEM ? PDB_NOMEM : PDB_ERROR;
+        rc = rc == SQLITE_NOMEM ? PDB_NOMEM : PDB_ERROR;
+        pdb_finish_error(db, rc);
+        if (outError != NULL) {
+            *outError = db->error_info;
+        }
+        PDb_Close(db);
+        return rc;
     }
     sqlite3_busy_timeout(db->sqlite, 1000);
     sqlite3_limit(db->sqlite, SQLITE_LIMIT_LENGTH,
@@ -1833,10 +2007,65 @@ PDB_API int PDb_OpenUtf8(const char* path, int mode, PDbHandle* outDb)
         rc = pdb_open_metadata(db);
     }
     if (rc != PDB_OK) {
+        pdb_finish_error(db, rc);
+        if (outError != NULL) {
+            *outError = db->error_info;
+        }
         PDb_Close(db);
         return rc;
     }
     *outDb = db;
+    /* Internal metadata probes must not leave a spurious open diagnostic. */
+    pdb_init_error(&db->error_info, PDB_OK, "");
+    return PDB_OK;
+}
+
+PDB_API int PDb_OpenUtf8(const char* path, int mode, PDbHandle* outDb)
+{
+    return PDb_OpenUtf8Ex(path, mode, outDb, NULL);
+}
+
+PDB_API int PDb_GetErrorInfo(PDbHandle db, PDbErrorInfo* outError)
+{
+    if (db == NULL || outError == NULL ||
+            outError->size < sizeof(*outError) ||
+            outError->version != PDB_ERROR_INFO_VERSION) {
+        return PDB_INVALID_ARGUMENT;
+    }
+    *outError = db->error_info;
+    return PDB_OK;
+}
+
+PDB_API int PDb_ClearError(PDbHandle db)
+{
+    if (db == NULL) {
+        return PDB_INVALID_ARGUMENT;
+    }
+    pdb_init_error(&db->error_info, PDB_OK, "");
+    ++db->error_serial;
+    return PDB_OK;
+}
+
+PDB_API int PDb_GetConnectionState(PDbHandle db,
+        PDbConnectionState* outState)
+{
+    PDbConnectionState state;
+    PDbStmtHandle stmt;
+
+    if (db == NULL || db->sqlite == NULL || outState == NULL ||
+            outState->size < sizeof(*outState) ||
+            outState->version != PDB_CONNECTION_STATE_VERSION) {
+        return PDB_INVALID_ARGUMENT;
+    }
+    memset(&state, 0, sizeof(state));
+    state.size = sizeof(state);
+    state.version = PDB_CONNECTION_STATE_VERSION;
+    state.transaction_active = pdb_transaction_active(db);
+    state.transaction_state = sqlite3_txn_state(db->sqlite, "main");
+    for (stmt = db->statements; stmt != NULL; stmt = stmt->next) {
+        ++state.statement_count;
+    }
+    *outState = state;
     return PDB_OK;
 }
 
@@ -1862,7 +2091,7 @@ PDB_API void PDb_Close(PDbHandle db)
     free(db);
 }
 
-PDB_API int PDb_Prepare(PDbHandle db, const char* sql,
+static int pdb_api_PDb_Prepare(PDbHandle db, const char* sql,
         PDbStmtHandle* outStmt)
 {
     PDbStmtHandle statement;
@@ -1889,7 +2118,7 @@ PDB_API int PDb_Prepare(PDbHandle db, const char* sql,
     return PDB_OK;
 }
 
-PDB_API int PDb_Exec(PDbHandle db, const char* sql)
+static int pdb_api_PDb_Exec(PDbHandle db, const char* sql)
 {
     PDbStmtHandle statement;
     int rc;
@@ -1923,7 +2152,7 @@ PDB_API int PDb_Exec(PDbHandle db, const char* sql)
     return rc == PDB_STEP_DONE ? PDB_OK : rc;
 }
 
-PDB_API int PDb_BindNull(PDbStmtHandle stmt, int index)
+static int pdb_api_PDb_BindNull(PDbStmtHandle stmt, int index)
 {
     int rc;
 
@@ -1934,7 +2163,7 @@ PDB_API int PDb_BindNull(PDbStmtHandle stmt, int index)
     return rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(stmt->owner, rc);
 }
 
-PDB_API int PDb_BindInt64(PDbStmtHandle stmt, int index, __int64 value)
+static int pdb_api_PDb_BindInt64(PDbStmtHandle stmt, int index, __int64 value)
 {
     int rc;
 
@@ -1945,7 +2174,7 @@ PDB_API int PDb_BindInt64(PDbStmtHandle stmt, int index, __int64 value)
     return rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(stmt->owner, rc);
 }
 
-PDB_API int PDb_BindDouble(PDbStmtHandle stmt, int index, double value)
+static int pdb_api_PDb_BindDouble(PDbStmtHandle stmt, int index, double value)
 {
     int rc;
 
@@ -1956,7 +2185,7 @@ PDB_API int PDb_BindDouble(PDbStmtHandle stmt, int index, double value)
     return rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(stmt->owner, rc);
 }
 
-PDB_API int PDb_BindText(PDbStmtHandle stmt, int index,
+static int pdb_api_PDb_BindText(PDbStmtHandle stmt, int index,
         const char* text, int length)
 {
     int rc;
@@ -1970,7 +2199,7 @@ PDB_API int PDb_BindText(PDbStmtHandle stmt, int index,
     return rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(stmt->owner, rc);
 }
 
-PDB_API int PDb_BindBlob(PDbStmtHandle stmt, int index,
+static int pdb_api_PDb_BindBlob(PDbStmtHandle stmt, int index,
         const void* data, int length)
 {
     int rc;
@@ -1989,7 +2218,7 @@ PDB_API int PDb_BindBlob(PDbStmtHandle stmt, int index,
     return rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(stmt->owner, rc);
 }
 
-PDB_API int PDb_Step(PDbStmtHandle stmt)
+static int pdb_api_PDb_Step(PDbStmtHandle stmt)
 {
     int rc;
     int drain_rc;
@@ -2020,7 +2249,7 @@ PDB_API int PDb_Step(PDbStmtHandle stmt)
     return pdb_set_sqlite_error(stmt->owner, rc);
 }
 
-PDB_API int PDb_Finalize(PDbStmtHandle stmt)
+static int pdb_api_PDb_Finalize(PDbStmtHandle stmt)
 {
     PDbStmtHandle cursor;
     PDbStmtHandle previous;
@@ -2052,6 +2281,8 @@ PDB_API int PDb_Finalize(PDbStmtHandle stmt)
     }
     free(stmt);
     if (rc != SQLITE_OK) {
+        pdb_set_sqlite_error(owner, rc);
+        /* Keep the historical Finalize return code, even for BUSY/NOMEM. */
         return PDB_ERROR;
     }
     return PDB_OK;
@@ -2134,62 +2365,54 @@ PDB_API int PDb_ColumnBytes(PDbStmtHandle stmt, int index)
     return sqlite3_column_bytes(stmt->sqlite_stmt, index);
 }
 
-PDB_API int PDb_Begin(PDbHandle db)
+static int pdb_api_PDb_Begin(PDbHandle db)
 {
     int rc;
 
     if (db == NULL) {
         return PDB_INVALID_ARGUMENT;
     }
-    if (db->in_transaction) {
+    if (pdb_transaction_active(db)) {
         return PDB_STATE;
     }
     rc = pdb_exec_internal(db, "BEGIN IMMEDIATE");
-    if (rc == PDB_OK) {
-        db->in_transaction = 1;
-    }
     return rc;
 }
 
-PDB_API int PDb_Commit(PDbHandle db)
+static int pdb_api_PDb_Commit(PDbHandle db)
 {
     int rc;
 
     if (db == NULL) {
         return PDB_INVALID_ARGUMENT;
     }
-    if (!db->in_transaction) {
+    if (!pdb_transaction_active(db)) {
         return PDB_STATE;
     }
     rc = pdb_drain_dirty(db);
     if (rc != PDB_OK) {
-        pdb_exec_internal(db, "ROLLBACK");
-        db->in_transaction = 0;
+        pdb_abort_transaction(db, rc);
         return rc;
     }
     rc = pdb_exec_internal(db, "COMMIT");
-    if (rc == PDB_OK) {
-        db->in_transaction = 0;
-    }
     return rc;
 }
 
-PDB_API int PDb_Rollback(PDbHandle db)
+static int pdb_api_PDb_Rollback(PDbHandle db)
 {
     int rc;
 
     if (db == NULL) {
         return PDB_INVALID_ARGUMENT;
     }
-    if (!db->in_transaction) {
+    if (!pdb_transaction_active(db)) {
         return PDB_STATE;
     }
     rc = pdb_exec_internal(db, "ROLLBACK");
-    db->in_transaction = 0;
     return rc;
 }
 
-PDB_API int PDb_Cancel(PDbHandle db)
+static int pdb_api_PDb_Cancel(PDbHandle db)
 {
     if (db == NULL || db->sqlite == NULL) {
         return PDB_INVALID_ARGUMENT;
@@ -2206,11 +2429,11 @@ PDB_API int PDb_GetLastError(PDbHandle db, char* buffer, int capacity)
     if (db == NULL || buffer == NULL || capacity <= 0) {
         return PDB_INVALID_ARGUMENT;
     }
-    length = (int)strlen(db->last_error);
+    length = (int)strlen(db->error_info.message);
     if (capacity <= length) {
         return PDB_BUFFER_TOO_SMALL;
     }
-    memcpy(buffer, db->last_error, (size_t)length);
+    memcpy(buffer, db->error_info.message, (size_t)length);
     buffer[length] = '\0';
     return PDB_OK;
 }
@@ -2220,7 +2443,7 @@ PDB_API int PDb_CopyLastError(PDbHandle db, char* buffer, int capacity)
     return PDb_GetLastError(db, buffer, capacity);
 }
 
-PDB_API int PDb_ApplyMigration(PDbHandle db, int version,
+static int pdb_api_PDb_ApplyMigration(PDbHandle db, int version,
         const char* sql_script)
 {
     int current;
@@ -2231,7 +2454,20 @@ PDB_API int PDb_ApplyMigration(PDbHandle db, int version,
             (int)strlen(sql_script) > PDB_SYNC_MAX_BODY_BYTES) {
         return PDB_INVALID_ARGUMENT;
     }
-    current = pdb_meta_get_int(db, "schema_version", 0);
+    {
+        char version_text[32];
+
+        rc = pdb_meta_get(db, "schema_version", version_text,
+                sizeof(version_text));
+        if (rc == PDB_NOT_FOUND) {
+            current = 0;
+        } else if (rc != PDB_OK) {
+            return rc;
+        } else if (!pdb_parse_int(version_text, &current)) {
+            pdb_set_error(db, "Invalid stored migration version");
+            return PDB_SCHEMA_MISMATCH;
+        }
+    }
     if (version < current) {
         pdb_set_error(db, "migration version is older than the database");
         return PDB_STATE;
@@ -2243,7 +2479,7 @@ PDB_API int PDb_ApplyMigration(PDbHandle db, int version,
         pdb_set_error(db, "migration version has already been applied");
         return PDB_STATE;
     }
-    if (db->in_transaction) {
+    if (pdb_transaction_active(db)) {
         return PDB_STATE;
     }
     rc = PDb_Begin(db);
@@ -2273,13 +2509,14 @@ PDB_API int PDb_ApplyMigration(PDbHandle db, int version,
     }
     if (rc == PDB_OK) {
         rc = PDb_Commit(db);
-    } else {
-        PDb_Rollback(db);
+    }
+    if (rc != PDB_OK) {
+        pdb_abort_transaction(db, rc);
     }
     return rc;
 }
 
-PDB_API int PDb_SyncConfigure(PDbHandle db, const char* client_id,
+static int pdb_api_PDb_SyncConfigure(PDbHandle db, const char* client_id,
         int schema_version, const char* schema_hash)
 {
     int stored_schema_version;
@@ -2304,7 +2541,7 @@ PDB_API int PDb_SyncConfigure(PDbHandle db, const char* client_id,
     return rc;
 }
 
-PDB_API int PDb_SyncRegisterTable(PDbHandle db, const char* table_name,
+static int pdb_api_PDb_SyncRegisterTable(PDbHandle db, const char* table_name,
         const char* primary_key, const PDbSyncColumn* columns,
         int column_count)
 {
@@ -2401,8 +2638,9 @@ PDB_API int PDb_SyncRegisterTable(PDbHandle db, const char* table_name,
         db->tables[db->table_count] = table;
         db->table_count += 1;
         rc = PDb_Commit(db);
-    } else {
-        PDb_Rollback(db);
+    }
+    if (rc != PDB_OK) {
+        pdb_abort_transaction(db, rc);
     }
     return rc;
 }
@@ -2437,7 +2675,7 @@ static int pdb_build_request_alloc(PDbHandle db, char** outBody,
     if (db->mode != PDB_OPEN_SYNC) {
         return PDB_STATE;
     }
-    if (db->in_transaction) {
+    if (pdb_transaction_active(db)) {
         pdb_set_error(db, "cannot build a sync request during a transaction");
         return PDB_STATE;
     }
@@ -2528,11 +2766,13 @@ static int pdb_build_request_alloc(PDbHandle db, char** outBody,
         pdb_writer_char(&writer, '}');
         push_count += 1;
     }
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
         free(body);
-        return pdb_set_sqlite_error(db, rc);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     pdb_writer_literal(&writer, "],\"push_more\":");
     pdb_writer_literal(&writer, push_more ? "true" : "false");
     pdb_writer_literal(&writer, ",\"pull_limit\":64}");
@@ -2546,7 +2786,7 @@ static int pdb_build_request_alloc(PDbHandle db, char** outBody,
     return PDB_OK;
 }
 
-PDB_API int PDb_SyncBuildRequest(PDbHandle db, char* buffer, int capacity,
+static int pdb_api_PDb_SyncBuildRequest(PDbHandle db, char* buffer, int capacity,
         int* outLength)
 {
     char* body;
@@ -2631,8 +2871,9 @@ static int pdb_copy_outbox_sequence(PDbHandle db, __int64 sequence,
         return PDB_NOT_FOUND;
     }
     if (rc != SQLITE_ROW) {
+        rc = pdb_set_sqlite_error(db, rc);
         sqlite3_finalize(stmt);
-        return pdb_set_sqlite_error(db, rc);
+        return rc;
     }
     text = sqlite3_column_text(stmt, 0);
     pdb_copy_text(table_name, table_capacity, (const char*)text);
@@ -2668,10 +2909,12 @@ static int pdb_delete_outbox_sequence(PDbHandle db, __int64 sequence)
     }
     sqlite3_bind_int64(stmt, 1, sequence);
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -2690,10 +2933,12 @@ static int pdb_delete_outbox_row(PDbHandle db, const char* table_name,
     sqlite3_bind_text(stmt, 1, table_name, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, row_key, -1, SQLITE_TRANSIENT);
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -2769,8 +3014,8 @@ static int pdb_bind_json_value(PDbHandle db, sqlite3_stmt* stmt, int index,
                 (encoded_length / 4) * 3 + 3, &blob_length);
         if (rc == PDB_OK) {
             rc = sqlite3_bind_blob(stmt, index, blob, blob_length,
-                    SQLITE_TRANSIENT) == SQLITE_OK ? PDB_OK :
-                    pdb_set_sqlite_error(db, SQLITE_ERROR);
+                    SQLITE_TRANSIENT);
+            rc = rc == SQLITE_OK ? PDB_OK : pdb_set_sqlite_error(db, rc);
         }
         free(blob);
         return rc;
@@ -2816,10 +3061,12 @@ static int pdb_apply_row_handle(PDbHandle db, PDbTableInfo* table,
         db->applying = 1;
         rc = pdb_step_internal(db, stmt);
         db->applying = 0;
-        sqlite3_finalize(stmt);
         if (rc != SQLITE_DONE) {
-            return pdb_set_sqlite_error(db, rc);
+            rc = pdb_set_sqlite_error(db, rc);
+            sqlite3_finalize(stmt);
+            return rc;
         }
+        sqlite3_finalize(stmt);
         return pdb_delete_dirty(db, table->table_name, row_key);
     }
     if (row == NULL || PJson_GetType(row) != PJSON_TYPE_OBJECT) {
@@ -2891,10 +3138,12 @@ static int pdb_apply_row_handle(PDbHandle db, PDbTableInfo* table,
     db->applying = 1;
     rc = pdb_step_internal(db, stmt);
     db->applying = 0;
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return pdb_delete_dirty(db, table->table_name, row_key);
 }
 
@@ -2978,10 +3227,12 @@ static int pdb_insert_conflict(PDbHandle db, const char* table_name,
     sqlite3_bind_text(stmt, 6, server_row_json == NULL ? "null" :
             server_row_json, -1, SQLITE_TRANSIENT);
     rc = pdb_step_internal(db, stmt);
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
-        return pdb_set_sqlite_error(db, rc);
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     return PDB_OK;
 }
 
@@ -3300,7 +3551,7 @@ static int pdb_process_response_array(PDbHandle db, HANDLE array,
     return PDB_OK;
 }
 
-PDB_API int PDb_SyncApplyResponse(PDbHandle db, int http_status,
+static int pdb_api_PDb_SyncApplyResponse(PDbHandle db, int http_status,
         const char* body, int body_length)
 {
     char* input;
@@ -3433,8 +3684,9 @@ PDB_API int PDb_SyncApplyResponse(PDbHandle db, int http_status,
     }
     if (rc == PDB_OK) {
         rc = PDb_Commit(db);
-    } else if (db->in_transaction) {
-        PDb_Rollback(db);
+    }
+    if (rc != PDB_OK) {
+        pdb_abort_transaction(db, rc);
     }
     PJson_Free(root);
     return rc;
@@ -3456,11 +3708,12 @@ static int pdb_count_query(PDbHandle db, const char* sql)
         sqlite3_finalize(stmt);
         return count;
     }
+    rc = pdb_set_sqlite_error(db, rc);
     sqlite3_finalize(stmt);
-    return pdb_set_sqlite_error(db, rc);
+    return rc;
 }
 
-PDB_API int PDb_SyncPendingCount(PDbHandle db)
+static int pdb_api_PDb_SyncPendingCount(PDbHandle db)
 {
     if (db == NULL || db->mode != PDB_OPEN_SYNC) {
         return PDB_INVALID_ARGUMENT;
@@ -3468,7 +3721,7 @@ PDB_API int PDb_SyncPendingCount(PDbHandle db)
     return pdb_count_query(db, "SELECT count(*) FROM __pdb_outbox");
 }
 
-PDB_API int PDb_SyncConflictCount(PDbHandle db)
+static int pdb_api_PDb_SyncConflictCount(PDbHandle db)
 {
     if (db == NULL || db->mode != PDB_OPEN_SYNC) {
         return PDB_INVALID_ARGUMENT;
@@ -3476,7 +3729,7 @@ PDB_API int PDb_SyncConflictCount(PDbHandle db)
     return pdb_count_query(db, "SELECT count(*) FROM __pdb_conflict");
 }
 
-PDB_API int PDb_SyncGetConflicts(PDbHandle db, char* buffer, int capacity,
+static int pdb_api_PDb_SyncGetConflicts(PDbHandle db, char* buffer, int capacity,
         int* outLength)
 {
     sqlite3_stmt* stmt;
@@ -3551,11 +3804,13 @@ PDB_API int PDb_SyncGetConflicts(PDbHandle db, char* buffer, int capacity,
         }
         index += 1;
     }
-    sqlite3_finalize(stmt);
     if (rc != SQLITE_DONE) {
+        rc = pdb_set_sqlite_error(db, rc);
+        sqlite3_finalize(stmt);
         free(output);
-        return pdb_set_sqlite_error(db, rc);
+        return rc;
     }
+    sqlite3_finalize(stmt);
     pdb_writer_char(&writer, ']');
     if (writer.overflow) {
         free(output);
@@ -3573,7 +3828,7 @@ PDB_API int PDb_SyncGetConflicts(PDbHandle db, char* buffer, int capacity,
     return PDB_OK;
 }
 
-PDB_API int PDb_SyncCopyConflict(PDbHandle db, int index,
+static int pdb_api_PDb_SyncCopyConflict(PDbHandle db, int index,
         char* buffer, int capacity, int* outLength)
 {
     sqlite3_stmt* stmt;
@@ -3609,9 +3864,10 @@ PDB_API int PDb_SyncCopyConflict(PDbHandle db, int index,
         return PDB_NOT_FOUND;
     }
     if (rc != SQLITE_ROW) {
+        rc = pdb_set_sqlite_error(db, rc);
         sqlite3_finalize(stmt);
         free(output);
-        return pdb_set_sqlite_error(db, rc);
+        return rc;
     }
     pdb_writer_init(&writer, output, PDB_MAX_ROW_BYTES);
     id = sqlite3_column_int(stmt, 0);
@@ -3690,8 +3946,9 @@ static int pdb_load_conflict(PDbHandle db, int conflict_id,
         return PDB_NOT_FOUND;
     }
     if (rc != SQLITE_ROW) {
+        rc = pdb_set_sqlite_error(db, rc);
         sqlite3_finalize(stmt);
-        return pdb_set_sqlite_error(db, rc);
+        return rc;
     }
     text = sqlite3_column_text(stmt, 0);
     pdb_copy_text(table_name, table_capacity, (const char*)text);
@@ -3747,11 +4004,12 @@ static int pdb_delete_conflict(PDbHandle db, int conflict_id)
     }
     sqlite3_bind_int(stmt, 1, conflict_id);
     rc = pdb_step_internal(db, stmt);
+    rc = rc == SQLITE_DONE ? PDB_OK : pdb_set_sqlite_error(db, rc);
     sqlite3_finalize(stmt);
-    return rc == SQLITE_DONE ? PDB_OK : pdb_set_sqlite_error(db, rc);
+    return rc;
 }
 
-PDB_API int PDb_SyncResolveConflict(PDbHandle db, int conflict_id,
+static int pdb_api_PDb_SyncResolveConflict(PDbHandle db, int conflict_id,
         int action)
 {
     char table_name[PDB_SYNC_NAME_MAX];
@@ -3815,8 +4073,9 @@ PDB_API int PDb_SyncResolveConflict(PDbHandle db, int conflict_id,
     }
     if (rc == PDB_OK) {
         rc = PDb_Commit(db);
-    } else if (db->in_transaction) {
-        PDb_Rollback(db);
+    }
+    if (rc != PDB_OK) {
+        pdb_abort_transaction(db, rc);
     }
 
 resolve_cleanup:
@@ -3828,6 +4087,123 @@ resolve_cleanup:
     }
     return rc;
 }
+
+/* One boundary for every status-returning operation; success preserves the
+ * sticky failure, including through nested calls and statement cleanup. */
+#define PDB_STATUS_WRAPPER(name, parameters, arguments, owner) \
+PDB_API int name parameters { \
+    PDbHandle owner_db = (owner); \
+    int result; \
+    pdb_operation_begin(owner_db); \
+    result = pdb_api_##name arguments; \
+    return pdb_operation_end(owner_db, result); \
+}
+
+PDB_STATUS_WRAPPER(PDb_Prepare,
+        (PDbHandle db, const char* sql,
+        PDbStmtHandle* outStmt),
+        (db, sql, outStmt), db)
+
+PDB_STATUS_WRAPPER(PDb_Exec,
+        (PDbHandle db, const char* sql),
+        (db, sql), db)
+
+PDB_STATUS_WRAPPER(PDb_BindNull,
+        (PDbStmtHandle stmt, int index),
+        (stmt, index), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_BindInt64,
+        (PDbStmtHandle stmt, int index, __int64 value),
+        (stmt, index, value), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_BindDouble,
+        (PDbStmtHandle stmt, int index, double value),
+        (stmt, index, value), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_BindText,
+        (PDbStmtHandle stmt, int index,
+        const char* text, int length),
+        (stmt, index, text, length), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_BindBlob,
+        (PDbStmtHandle stmt, int index,
+        const void* data, int length),
+        (stmt, index, data, length), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_Step,
+        (PDbStmtHandle stmt),
+        (stmt), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_Finalize,
+        (PDbStmtHandle stmt),
+        (stmt), (stmt == NULL ? NULL : stmt->owner))
+
+PDB_STATUS_WRAPPER(PDb_Begin,
+        (PDbHandle db),
+        (db), db)
+
+PDB_STATUS_WRAPPER(PDb_Commit,
+        (PDbHandle db),
+        (db), db)
+
+PDB_STATUS_WRAPPER(PDb_Rollback,
+        (PDbHandle db),
+        (db), db)
+
+PDB_STATUS_WRAPPER(PDb_Cancel,
+        (PDbHandle db),
+        (db), db)
+
+PDB_STATUS_WRAPPER(PDb_ApplyMigration,
+        (PDbHandle db, int version,
+        const char* sql_script),
+        (db, version, sql_script), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncConfigure,
+        (PDbHandle db, const char* client_id,
+        int schema_version, const char* schema_hash),
+        (db, client_id, schema_version, schema_hash), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncRegisterTable,
+        (PDbHandle db, const char* table_name,
+        const char* primary_key, const PDbSyncColumn* columns,
+        int column_count),
+        (db, table_name, primary_key, columns, column_count), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncBuildRequest,
+        (PDbHandle db, char* buffer, int capacity,
+        int* outLength),
+        (db, buffer, capacity, outLength), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncApplyResponse,
+        (PDbHandle db, int http_status,
+        const char* body, int body_length),
+        (db, http_status, body, body_length), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncPendingCount,
+        (PDbHandle db),
+        (db), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncConflictCount,
+        (PDbHandle db),
+        (db), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncGetConflicts,
+        (PDbHandle db, char* buffer, int capacity,
+        int* outLength),
+        (db, buffer, capacity, outLength), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncCopyConflict,
+        (PDbHandle db, int index,
+        char* buffer, int capacity, int* outLength),
+        (db, index, buffer, capacity, outLength), db)
+
+PDB_STATUS_WRAPPER(PDb_SyncResolveConflict,
+        (PDbHandle db, int conflict_id,
+        int action),
+        (db, conflict_id, action), db)
+
+#undef PDB_STATUS_WRAPPER
 
 BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID reserved)
 {

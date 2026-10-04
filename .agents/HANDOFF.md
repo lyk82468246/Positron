@@ -337,72 +337,52 @@ helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 gu
 不代表 TEST1321 已运行。外置卡曾再次出现空日志、文件回读不可用和 device=5 写入失败；
 历史成功宿主在该外置卡候选中也返回 device=126，尚不足以把失败归因到某个 DLL。
 
-### DB 主机契约测试当前切片
+### DB 本地/同步与结构化错误合同已验收
 
-`test_host/db_tests.c` 的 TEST1321 fixture 覆盖本地完整 SQL 的 DDL/DML/SELECT、事务提交与
-回滚、嵌套事务拒绝、取消、错误复制、NULL/INTEGER/REAL/UTF-8 TEXT/BLOB bind/column、
-INT64_MIN/MAX、空 BLOB、ColumnCount，以及 handle/SQL/bind/列索引参数守卫。SQL 长度、
-表达式深度、变量数和 typed bind 大小均有预算断言。完整 fixture 已取得 Debug/Release ARMV4I
-设备 PASS；取消另断言短 SELECT、prepared INSERT 和直接 Exec 的一次性取消、无写入及后续可用。
+`test_host/db_tests.c` 的 TEST1321 保留完整离线回归：本地 DDL/DML/SELECT、typed
+bind/column、INT64 边界、空 BLOB、取消、SQL/bind 预算、migration 版本与整批回滚；
+同步模式的 authorizer、多语句/DDL/PRAGMA/扩展拒绝、单列 INTEGER/TEXT 主键注册、typed
+JSON/Base64、outbox 合并/分页、accepted/pull/cursor、服务器权威 upsert/delete conflict、
+retry-local 和模式隔离。失败响应不部分修改行、outbox 或 cursor；正常文件关闭重开覆盖
+outbox/cursor/tombstone/conflict 持久化，不等于新进程或 journal/断电恢复。
 
-local/sync migration fixture 覆盖版本幂等、倒退和事务中拒绝、失败脚本不留残表，以及已注册表
-被删除时的整批回滚。同步注册覆盖单列 INTEGER/TEXT 主键、复合主键拒绝、非法/保留/过长
-标识符、缺少主键、重复列、非法类型、列数和状态冲突；产品 schema 校验已统计实际主键列总数。
-同步模式 fixture 拒绝 ATTACH/DETACH、直接 DDL/事务/savepoint、多语句、非法 PRAGMA 和扩展，
-并检查同步文件不能以本地完整 SQL 模式重开。
+公共 DLL 新增 size/version 的 `PDb_OpenUtf8Ex`、`PDb_GetErrorInfo`、
+`PDb_ClearError` 与 `PDb_GetConnectionState`，旧返回码保持。错误为调用者拥有的 sticky
+快照，包含机器分类、SQLite 主/扩展码、有界完整 UTF-8 消息、失败返回时事务状态和自动
+rollback 结果；成功与观察查询不清空，显式 Clear 不改变事务。实际事务状态改由 SQLite
+autocommit 查询，不再依赖缓存；失败 COMMIT 不声称回滚，owned migration 包括提交失败
+均尝试 rollback 且保留根错误。调用、所有权和重试边界见 [DB README](../positron_db/README.md)。
 
-同步协议 fixture 覆盖配置参数、schema version/hash、固定 envelope、无 SQL 请求、typed
-INT64/REAL/NULL/TEXT/BLOB、Base64 和 JSON 转义、outbox 事务合并与回滚、请求分页、连续
-多页 pull、cursor 推进，以及远端 upsert/delete 不产生本地 outbox。失败矩阵检查 accepted
-后续 change 错误时整批回滚、错误 client/op/version、key 与 typed 主键不一致、未注册实体、
-malformed tombstone、非 bool deleted、非法/倒退 cursor、缺少数组、响应项超限与非法 Base64；
-未知顶层字段保留兼容性断言。
+新增 fixture 验证输出版本/大小/canary、不改输出、参数错误替换、成功保留/Clear、UTF-8
+诊断截断、无 handle 的 CANTOPEN/NOTADB、deferred FK COMMIT 失败后修复重试或 rollback、
+unfinished RETURNING 的 COMMIT BUSY、原生 SQL BEGIN、OR ROLLBACK、READONLY 和有界
+内存页预算 FULL。两模式 migration 验证脚本/提交失败后的 schema 回滚、版本可重试、
+拒绝脚本 COMMIT，以及 metadata 读取错误不伪装成初始版本。FULL 只使用内存页限制，
+没有填满 SD/object store；真实 I/O、磁盘不足和 rollback 本身失败仍待专用故障门。
 
-冲突 fixture 覆盖服务器权威行、retry-local、接受/丢弃、服务器删除与本地编辑冲突，以及冲突
-列表/单项复制的 size-probe、容量、索引和 action 守卫。实体/key 与 outbox 不匹配的响应须拒绝。
-文件重开 fixture 检查 outbox/cursor/tombstone/conflict 持久化、重建行采用服务器删除版本和
-接受服务器结果不生成 outbox；正常关闭重开已在当前设备通过，不代表进程重启、journal/断电门通过。
+用户更换设备后先重新运行独立 guest helper，引用审计 `holders=0 unavailable=0`，
+不沿用旧设备状态。最终 Debug 门
+`tmp/device-runs/20261004-190523-db-error-contract-utf8-debug/` 与 Release 门
+`tmp/device-runs/20261004-190703-db-error-contract-utf8-release/` 均显式部署到
+`\Storage Card\Temp\Positron-device-gate`，匹配正式 stage 的 49 文件；
+`1321,999` 为 2/2、唯一 TESTBENCH PASS、零 ERROR/FAIL、完整日志、Core 路径匹配、
+crash_check PASS 且无新增 dump。设备为 240×320、96 DPI；目标卷/object store 空间与每包
+guest 无 DLL holder 审计通过。C89、审计、串行正式 Debug/Release build/CAB/stage 通过，
+未改 EXE、应用表、HTTP/worker 或 SQLite 上游。Debug 远端目录已清理；Release 清理失败
+保留残留，不写成全部删除。RAPI 传输重试仅复用当前会话的有界 1 KiB 写入，不重置设备。
 
-正式 Debug/Release build、C89 和仓库审计通过。用户明确授权
-强行清空旧部署后，精确处理两个 Positron-device-gate 根下 98 个旧目录：73 个完整删除，
-25 个仅余字体和 `.part-*` 文件，清属性后删除及再次复查仍失败。本地既有证据保留；本轮
-清理证据在 `tmp/device-runs/20261002-200329-db-force-clear/`，不把残留目录写成已清空。
-内置可用空间恢复到 23,083,008 字节，原空间阻塞已解除，没有强杀进程或重置设备。
+先行两个错误测试失败门保留在
+`tmp/device-runs/20261004-185732-db-error-contract-new-device-debug/` 与
+`tmp/device-runs/20261004-185844-db-error-transaction-diagnostic/`：FULL 在建表准备期触发，
+SQLite 事务仍 active，原错误快照正确；夹具改为先建表再在 INSERT 执行期触发 FULL，
+保留自动回滚断言后通过，不把旧失败改写成 PASS。此前首次文件打开的 NULL 地址异常由 DB
+恢复 WinCE VFS 的 CreateFileMappingW 匿名锁映射修复；上游快照、no-WAL/no-mmap 不变。
+旧设备 SD 不可读和旧部署字体/.part 删除失败仍是历史失败，现有本地证据保留。
 
-首次文件打开的零字节/无终态问题已定位：SQLite 的 no-WAL/no-mmap Win32 syscall 表没有
-初始化 `CreateFileMappingW`，WinCE 文件锁却仍调用它，产生地址零的访问异常。DB 端通过 VFS
-系统调用接口恢复匿名锁状态映射，不修改上游快照、不启用 WAL 或数据库 mmap。另修正短 SQL
-取消、空 BLOB 绑定和 authorizer 拒绝的公共错误码。宿主只新增阶段及继续传播异常的日志；分页
-夹具的 32 KiB 缓冲移出 64 KiB 栈，容量和 65 行断言不变。夹具先注册表再验证 DROP 回滚；模拟
-响应修正 BLOB bytes 和 retry-local 的新 op_id，并加强新 ID/服务器 base_version 断言。
-
-正式 Release 门 `tmp/device-runs/20261002-205124-db-test-1321-final-release/` 使用匹配的
-23 文件 stage，选择 `1321,999`，完整日志为 selected/observed 2/2、唯一 TESTBENCH PASS、
-零 ERROR/FAIL，Core 路径与当前包一致、crash_check=PASS、无新增 dump；部署前 guest 审计
-`holders=0 unavailable=0`。较早诊断超时/异常/断言失败日志仍在本地，不转为通过。该设备包在
-日志完整回收后已按用户授权精确删除可删除部分，仅余删除失败文件；当前有效产物/日志在本地
-stage 和证据目录，不让用户沿用已清理的设备 EXE 路径。
-
-Debug 正式 build/stage 成功。用户更换设备后，新会话先由独立 helper 获取 guest 审计
-`holders=0 unavailable=0`，未沿用旧设备结论。诊断包
-`tmp/device-runs/20261002-223440-db-test-1321-new-device-sd-debug/` 完整部署到 SD 并运行
-`1321,999`，日志 PASS；因显式保留部署，门状态为 DIAGNOSTIC_ONLY。该包的 23 文件随后
-逐一从设备回读 SHA256，与正式 stage 全部一致，证据为 `device-roundtrip-sha256.txt`；
-宿主按设备门规则部署为 `test_host-run-20261002-223440.exe`，不是原始 basename。
-
-正式 Debug 验收 `tmp/device-runs/20261002-223747-db-test-1321-new-device-sd-acceptance/`
-明确使用 `\Storage Card\Temp\Positron-device-gate`，门状态 PASS、selected/observed 2/2、
-唯一 TESTBENCH PASS、零 ERROR/FAIL、Core 路径匹配、完整稳定日志、crash_check=PASS 且
-无新增 dump。设备为 320×320、128 DPI；目标卷与内部缓存余量预检通过，部署后 guest 审计
-再次为 holders=0 unavailable=0。正式门回收日志后完整删除本轮目录及上一诊断包，产物、
-回读和日志保存在本地。未强杀、重启、修改共享设置或回退内置存储；本轮没有产品代码变化。
-
-旧设备的空间不足、SD 文件可枚举但打不开与手动启动失败仍是失败证据，不转为通过：
-`tmp/device-runs/20261002-205953-db-test-1321-sd-debug/`、`tmp/sd-read-probe.txt` 和
-`tmp/QQ20261002-220552.png` 保留。具体共享驱动原因尚未确认，不要求新设备重复重挂卡；
-旧字体及 `.part-*` 残留也不能写成已全部清空。
-
-自动门不替代人工验收：地址栏直接输入/未知地址恢复原标题和地址、菜单、history 点击与刷新、直接 quit 和加载中 quit、中英文实际显示、触摸、键盘焦点、软键、滚动、旋转及 DPI 尚待确认。页面能力不应写成全部人工门通过的正式设备基线。
+本轮复核 ROADMAP：应用存储与真实下载候选仍需中文文件、新进程、跨进程锁、
+受控测试子进程异常退出/journal、真实 FULL/I/O 和 HTTPS worker 门，不因结构化错误通过
+而恢复 DB 应用/CAB 发布依赖。KNOWN_LIMITATIONS 的这些未验收项保持有效。DB 下一纵切
+是专用 fixture 的中文 UTF-8 文件/文本与新进程重开；不提前做应用持久化或扩大到破坏性设备实验。
 
 ### 脚本同步阻塞与保留的交互基线
 

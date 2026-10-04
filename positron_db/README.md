@@ -11,6 +11,52 @@ or unfinished `PDb_Step()` consumes the pending request before execution and
 returns `PDB_STATE`; later calls remain usable. It does not allow sharing a
 handle with another thread.
 
+## Errors and transaction state
+
+Existing integer return codes remain unchanged. `PDb_OpenUtf8Ex()` optionally
+copies an open-failure snapshot even when no DB handle was created;
+`PDb_GetErrorInfo()` copies the last failure for an existing handle. Initialize
+the caller-owned output before either call:
+
+```c
+PDbErrorInfo error;
+error.size = sizeof(error);
+error.version = PDB_ERROR_INFO_VERSION;
+```
+
+The snapshot contains the public result, machine-readable category, SQLite
+primary/extended codes, bounded UTF-8 message, transaction state at failure
+return and any automatic rollback result. Wrapper-only failures have zero
+SQLite codes. Insufficient size or an unknown version leaves the output
+unchanged; a larger buffer is accepted without touching its extension bytes.
+The snapshot owns its message and requires no allocation or free operation.
+
+Errors are sticky: successful calls, column sentinel getters and diagnostic
+queries preserve the last failure. A failing status operation with a live owner
+replaces it, including parameter errors; `PDb_ClearError()` explicitly resets
+it without changing SQL or transaction state. There is no thread/process-global
+last-error slot. NULL handles cannot retain diagnostics; using closed/freed
+handles remains invalid, not a supported stale-handle query.
+
+`PDb_GetConnectionState()` uses its own size/version contract and reports live
+SQLite autocommit, main-database read/write transaction state and outstanding
+statement count. It differs from the frozen error snapshot: COMMIT BUSY or a
+deferred constraint failure can leave a transaction active, while some execution
+errors roll it back. Transactions begun through local SQL follow the same live
+state as `PDb_Begin()`. The caller must check state before retrying or rolling
+back, rather than infer it from a failed return.
+
+Migrations own their transaction in both modes; scripts cannot execute
+transaction/savepoint, attachment, PRAGMA or extension-loading operations.
+Script, metadata or commit failure does not advance the stored schema version.
+Automatic cleanup attempts rollback while preserving the original diagnostic;
+`cleanup_attempted`/`cleanup_result` and live state distinguish attempted cleanup
+from successful rollback. An I/O/corruption category does not authorize deleting
+the database or guarantee that it is safe to retry. Real storage faults and
+power-loss recovery need separate device validation.
+
+## Local and sync modes
+
 The DLL has two modes:
 
 - `PDB_OPEN_LOCAL_FULL_SQL` for local databases that do not participate in

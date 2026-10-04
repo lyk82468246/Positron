@@ -81,6 +81,85 @@ typedef struct PDbSyncColumn {
     int value_type;
 } PDbSyncColumn;
 
+#define PDB_ERROR_INFO_VERSION 1
+#define PDB_CONNECTION_STATE_VERSION 1
+#define PDB_ERROR_MESSAGE_BYTES 256
+
+enum {
+    PDB_ERROR_CATEGORY_NONE = 0,
+    PDB_ERROR_CATEGORY_ARGUMENT = 1,
+    PDB_ERROR_CATEGORY_STATE = 2,
+    PDB_ERROR_CATEGORY_LIMIT = 3,
+    PDB_ERROR_CATEGORY_MEMORY = 4,
+    PDB_ERROR_CATEGORY_BUSY = 5,
+    PDB_ERROR_CATEGORY_SQL = 6,
+    PDB_ERROR_CATEGORY_CONSTRAINT = 7,
+    PDB_ERROR_CATEGORY_READONLY = 8,
+    PDB_ERROR_CATEGORY_FULL = 9,
+    PDB_ERROR_CATEGORY_IO = 10,
+    PDB_ERROR_CATEGORY_CORRUPT = 11,
+    PDB_ERROR_CATEGORY_CANNOT_OPEN = 12,
+    PDB_ERROR_CATEGORY_CANCELLED = 13,
+    PDB_ERROR_CATEGORY_AUTHORIZATION = 14,
+    PDB_ERROR_CATEGORY_SCHEMA = 15,
+    PDB_ERROR_CATEGORY_NETWORK = 16,
+    PDB_ERROR_CATEGORY_NOT_FOUND = 17,
+    PDB_ERROR_CATEGORY_UNSUPPORTED = 18,
+    PDB_ERROR_CATEGORY_CONFLICT = 19,
+    PDB_ERROR_CATEGORY_OTHER = 20
+};
+
+enum {
+    PDB_TRANSACTION_NONE = 0,
+    PDB_TRANSACTION_READ = 1,
+    PDB_TRANSACTION_WRITE = 2
+};
+
+/* Caller-owned POD snapshots. Initialize size=sizeof(struct), version=1.
+ * Invalid size/version leaves the entire output unchanged. Larger buffers
+ * are accepted; only the v1 prefix is written (size is returned as v1 size).
+ * Native codes are diagnostic SQLite integers, not new public return codes;
+ * both are zero for wrapper-only failures. message is copied, never borrowed.
+ * transaction_active is captured at failed-call return, not a live query.
+ * cleanup_result reports a secondary automatic rollback failure without
+ * replacing the original result/category/native codes/message. */
+typedef struct PDbErrorInfo {
+    unsigned int size;
+    unsigned int version;
+    int result;
+    int category;
+    int sqlite_code;
+    int sqlite_extended_code;
+    int transaction_active;
+    int cleanup_attempted;
+    int cleanup_result;
+    char message[PDB_ERROR_MESSAGE_BYTES];
+} PDbErrorInfo;
+
+typedef struct PDbConnectionState {
+    unsigned int size;
+    unsigned int version;
+    int transaction_active;
+    int transaction_state;
+    int statement_count;
+} PDbConnectionState;
+
+/* Optional caller-owned open error output. With valid outputs, a failed
+ * open sets *outDb=NULL; an invalid error header leaves all outputs unchanged.
+ * On success the snapshot is NONE. No process/thread-global error slot. */
+PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
+        PDbErrorInfo* outError);
+/* Sticky last failure from status-returning operations (including invalid
+ * arguments with a live owner). Success, column sentinel getters, and all
+ * diagnostic queries preserve it. ClearError is the only explicit reset.
+ * NULL handles cannot store errors; closed/freed handles must never be used.
+ * Queries run on the owning thread and never claim the connection is safe
+ * to retry, or that an I/O/corruption error permits deleting the database. */
+PDB_API int PDb_GetErrorInfo(PDbHandle db, PDbErrorInfo* outError);
+PDB_API int PDb_ClearError(PDbHandle db);
+PDB_API int PDb_GetConnectionState(PDbHandle db,
+        PDbConnectionState* outState);
+
 /* Open or create a UTF-8 database file.  ":memory:" is supported for
  * host-side contract tests. */
 PDB_API int PDb_OpenUtf8(const char* path, int mode, PDbHandle* outDb);
@@ -112,6 +191,9 @@ PDB_API const char* PDb_ColumnText(PDbStmtHandle stmt, int index);
 PDB_API const void* PDb_ColumnBlob(PDbStmtHandle stmt, int index);
 PDB_API int PDb_ColumnBytes(PDbStmtHandle stmt, int index);
 
+/* State follows SQLite autocommit, including transactions started by local
+ * SQL. COMMIT failure may leave the transaction active; query live state.
+ * Migration owns its transaction and attempts rollback after failure. */
 PDB_API int PDb_Begin(PDbHandle db);
 PDB_API int PDb_Commit(PDbHandle db);
 PDB_API int PDb_Rollback(PDbHandle db);
