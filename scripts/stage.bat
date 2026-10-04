@@ -34,6 +34,7 @@ copy /Y "%ROOT%\positron_db\bin\%CFG%\positron_db.dll"       "%STAGE%\" || goto 
 copy /Y "%ROOT%\positron_app\bin\%CFG%\positron.exe"         "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\bin\%CFG%\test_host.exe"         "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\device_tools\bin\%CFG%\positron_process_cleanup.exe" "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\device_tools\db_file_probe\bin\%CFG%\positron_db_file_probe.exe" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\test_host.ini"                   "%STAGE%\" || goto :fail
 if not exist "%STAGE%\fonts" mkdir "%STAGE%\fonts"
 copy /Y "%ROOT%\assets\fonts\PositronSymbolsBasic.ttf" "%STAGE%\fonts\" || goto :fail

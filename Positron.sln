@@ -106,12 +106,21 @@ Project("{B900F1C2-3D47-4FEC-85B3-04AAF18C3634}") = "positron_cab", "positron_ca
 		{F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708} = {F2C4A1B3-6D7E-4F80-91A2-B3C4D5E6F708}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_db_file_probe", "device_tools\db_file_probe\db_file_probe.vcproj", "{D8C04756-1F83-4A30-9C18-F6E7A49F3120}"
+	ProjectSection(ProjectDependencies) = postProject
+		{B4C6D8E0-1234-4A56-9B78-0CDEF1234567} = {B4C6D8E0-1234-4A56-9B78-0CDEF1234567}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Windows Mobile 6 Professional SDK (ARMV4I) = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 		Release|Windows Mobile 6 Professional SDK (ARMV4I) = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D8C04756-1F83-4A30-9C18-F6E7A49F3120}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D8C04756-1F83-4A30-9C18-F6E7A49F3120}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D8C04756-1F83-4A30-9C18-F6E7A49F3120}.Release|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Release|Windows Mobile 6 Professional SDK (ARMV4I)
+		{D8C04756-1F83-4A30-9C18-F6E7A49F3120}.Release|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Release|Windows Mobile 6 Professional SDK (ARMV4I)
 		{453A39BE-9C95-40E8-99BF-9A3B04908FE4}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).ActiveCfg = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 		{453A39BE-9C95-40E8-99BF-9A3B04908FE4}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Build.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 		{453A39BE-9C95-40E8-99BF-9A3B04908FE4}.Debug|Windows Mobile 6 Professional SDK (ARMV4I).Deploy.0 = Debug|Windows Mobile 6 Professional SDK (ARMV4I)

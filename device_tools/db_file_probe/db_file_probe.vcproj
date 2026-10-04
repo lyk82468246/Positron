@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="gb2312"?>
+<VisualStudioProject ProjectType="Visual C++" Version="9.00"
+ Name="positron_db_file_probe" ProjectGUID="{D8C04756-1F83-4A30-9C18-F6E7A49F3120}"
+ RootNamespace="positron_db_file_probe" Keyword="Win32Proj" TargetFrameworkVersion="196613">
+ <Platforms><Platform Name="Windows Mobile 6 Professional SDK (ARMV4I)" /></Platforms>
+ <ToolFiles />
+ <Configurations>
+  <Configuration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)"
+   OutputDirectory="bin\$(ConfigurationName)" IntermediateDirectory="bin\$(ConfigurationName)"
+   ConfigurationType="1" CharacterSet="1">
+   <Tool Name="VCPreBuildEventTool" />
+   <Tool Name="VCCustomBuildTool" />
+   <Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="0"
+    AdditionalIncludeDirectories="..\..\positron_db"
+    PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+    RuntimeLibrary="1" UsePrecompiledHeader="0" WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+   <Tool Name="VCResourceCompilerTool" />
+   <Tool Name="VCPreLinkEventTool" />
+   <Tool Name="VCLinkerTool" AdditionalDependencies="..\..\positron_db\bin\Debug\positron_db.lib"
+    AdditionalOptions=" /subsystem:windowsce,5.02" OutputFile="$(OutDir)\positron_db_file_probe.exe"
+    LinkIncremental="2" DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+    SubSystem="0" StackReserveSize="65536" StackCommitSize="4096"
+    RandomizedBaseAddress="1" DataExecutionPrevention="0" />
+   <Tool Name="VCPostBuildEventTool" />
+   <DeploymentTool ForceDirty="-1" RemoteDirectory="\Temp\Positron-device-gate" RegisterOutput="0" />
+   <DebuggerTool />
+  </Configuration>
+  <Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
+   OutputDirectory="bin\$(ConfigurationName)" IntermediateDirectory="bin\$(ConfigurationName)"
+   ConfigurationType="1" CharacterSet="1">
+   <Tool Name="VCPreBuildEventTool" />
+   <Tool Name="VCCustomBuildTool" />
+   <Tool Name="VCCLCompilerTool" ExecutionBucket="7" Optimization="2" FavorSizeOrSpeed="2"
+    AdditionalIncludeDirectories="..\..\positron_db"
+    PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE"
+    RuntimeLibrary="0" UsePrecompiledHeader="0" WarningLevel="3" DebugInformationFormat="3" CompileAs="1" />
+   <Tool Name="VCResourceCompilerTool" />
+   <Tool Name="VCPreLinkEventTool" />
+   <Tool Name="VCLinkerTool" AdditionalDependencies="..\..\positron_db\bin\Release\positron_db.lib"
+    AdditionalOptions=" /subsystem:windowsce,5.02" OutputFile="$(OutDir)\positron_db_file_probe.exe"
+    LinkIncremental="1" DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
+    SubSystem="0" StackReserveSize="65536" StackCommitSize="4096"
+    OptimizeReferences="2" EnableCOMDATFolding="2" RandomizedBaseAddress="1" DataExecutionPrevention="0" />
+   <Tool Name="VCPostBuildEventTool" />
+   <DeploymentTool ForceDirty="-1" RemoteDirectory="\Temp\Positron-device-gate" RegisterOutput="0" />
+   <DebuggerTool />
+  </Configuration>
+ </Configurations>
+ <References />
+ <Files>
+  <File RelativePath=".\db_file_probe.c" />
+  <File RelativePath=".\README.md" />
+ </Files>
+ <Globals />
+</VisualStudioProject>

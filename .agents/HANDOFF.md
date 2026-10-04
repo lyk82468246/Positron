@@ -339,50 +339,41 @@ helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 gu
 
 ### DB 本地/同步与结构化错误合同已验收
 
-`test_host/db_tests.c` 的 TEST1321 保留完整离线回归：本地 DDL/DML/SELECT、typed
-bind/column、INT64 边界、空 BLOB、取消、SQL/bind 预算、migration 版本与整批回滚；
-同步模式的 authorizer、多语句/DDL/PRAGMA/扩展拒绝、单列 INTEGER/TEXT 主键注册、typed
-JSON/Base64、outbox 合并/分页、accepted/pull/cursor、服务器权威 upsert/delete conflict、
-retry-local 和模式隔离。失败响应不部分修改行、outbox 或 cursor；正常文件关闭重开覆盖
-outbox/cursor/tombstone/conflict 持久化，不等于新进程或 journal/断电恢复。
+`test_host/db_tests.c` 的 TEST1321 保留本地 SQL/typed 数据/取消/预算/migration 和同步
+authorizer、单列主键、typed JSON/Base64、outbox/分页、accepted/pull/cursor、服务器权威
+冲突/retry-local/模式隔离回归。失败响应不部分修改行、outbox 或 cursor；正常文件重开
+覆盖同步状态持久化，不等于 journal/断电恢复。
 
-公共 DLL 新增 size/version 的 `PDb_OpenUtf8Ex`、`PDb_GetErrorInfo`、
-`PDb_ClearError` 与 `PDb_GetConnectionState`，旧返回码保持。错误为调用者拥有的 sticky
-快照，包含机器分类、SQLite 主/扩展码、有界完整 UTF-8 消息、失败返回时事务状态和自动
-rollback 结果；成功与观察查询不清空，显式 Clear 不改变事务。实际事务状态改由 SQLite
-autocommit 查询，不再依赖缓存；失败 COMMIT 不声称回滚，owned migration 包括提交失败
-均尝试 rollback 且保留根错误。调用、所有权和重试边界见 [DB README](../positron_db/README.md)。
+公共 DLL 的 size/version `PDb_OpenUtf8Ex`、`PDb_GetErrorInfo`、`PDb_ClearError` 和
+`PDb_GetConnectionState` 已验收，旧返回码保持。调用者拥有 sticky 错误快照，实际事务
+状态来自 SQLite autocommit；失败 COMMIT 不声称回滚，owned migration 尝试 rollback
+并保留根错误。详细字段、所有权和重试边界见 [DB README](../positron_db/README.md)。
 
-新增 fixture 验证输出版本/大小/canary、不改输出、参数错误替换、成功保留/Clear、UTF-8
-诊断截断、无 handle 的 CANTOPEN/NOTADB、deferred FK COMMIT 失败后修复重试或 rollback、
-unfinished RETURNING 的 COMMIT BUSY、原生 SQL BEGIN、OR ROLLBACK、READONLY 和有界
-内存页预算 FULL。两模式 migration 验证脚本/提交失败后的 schema 回滚、版本可重试、
-拒绝脚本 COMMIT，以及 metadata 读取错误不伪装成初始版本。FULL 只使用内存页限制，
-没有填满 SD/object store；真实 I/O、磁盘不足和 rollback 本身失败仍待专用故障门。
+错误 fixture 覆盖 ABI/canary/UTF-8、sticky/Clear、CANTOPEN/NOTADB、FK COMMIT 重试、
+RETURNING COMMIT BUSY、原生事务、READONLY 与内存页 FULL；两模式 migration 覆盖
+脚本/提交失败回滚、重试及 metadata 错误拒绝。内存 FULL 不证明文件配额或卷不足，
+I/O 和 rollback 本身失败仍待专用故障门，未填满 SD/object store。
 
-用户更换设备后先重新运行独立 guest helper，引用审计 `holders=0 unavailable=0`，
-不沿用旧设备状态。最终 Debug 门
+结构化错误合同的 Debug 门
 `tmp/device-runs/20261004-190523-db-error-contract-utf8-debug/` 与 Release 门
-`tmp/device-runs/20261004-190703-db-error-contract-utf8-release/` 均显式部署到
-`\Storage Card\Temp\Positron-device-gate`，匹配正式 stage 的 49 文件；
-`1321,999` 为 2/2、唯一 TESTBENCH PASS、零 ERROR/FAIL、完整日志、Core 路径匹配、
-crash_check PASS 且无新增 dump。设备为 240×320、96 DPI；目标卷/object store 空间与每包
-guest 无 DLL holder 审计通过。C89、审计、串行正式 Debug/Release build/CAB/stage 通过，
-未改 EXE、应用表、HTTP/worker 或 SQLite 上游。Debug 远端目录已清理；Release 清理失败
-保留残留，不写成全部删除。RAPI 传输重试仅复用当前会话的有界 1 KiB 写入，不重置设备。
+`tmp/device-runs/20261004-190703-db-error-contract-utf8-release/` 已通过正式 SD 包哈希、
+`1321,999`、新 guest 无引用审计及无新增 crash 门。Debug 包已清理，Release 清理失败
+保留残留；没有重置设备。该合同不改 EXE、应用表、HTTP worker 或 SQLite 上游。
 
-先行两个错误测试失败门保留在
-`tmp/device-runs/20261004-185732-db-error-contract-new-device-debug/` 与
-`tmp/device-runs/20261004-185844-db-error-transaction-diagnostic/`：FULL 在建表准备期触发，
-SQLite 事务仍 active，原错误快照正确；夹具改为先建表再在 INSERT 执行期触发 FULL，
-保留自动回滚断言后通过，不把旧失败改写成 PASS。此前首次文件打开的 NULL 地址异常由 DB
-恢复 WinCE VFS 的 CreateFileMappingW 匿名锁映射修复；上游快照、no-WAL/no-mmap 不变。
-旧设备 SD 不可读和旧部署字体/.part 删除失败仍是历史失败，现有本地证据保留。
+错误测试的失败包 `tmp/device-runs/20261004-185732-db-error-contract-new-device-debug/`
+与 `tmp/device-runs/20261004-185844-db-error-transaction-diagnostic/` 保留：建表准备期 FULL
+仍 active，改为 INSERT 执行期 FULL 后保持自动回滚断言通过。首次文件打开的 NULL 异常
+已由恢复 WinCE VFS 的 CreateFileMappingW 匿名锁映射修复；no-WAL/no-mmap 不变。
+旧设备 SD 不可读、字体/.part 删除失败证据保留，不追认为 PASS。
 
-本轮复核 ROADMAP：应用存储与真实下载候选仍需中文文件、新进程、跨进程锁、
-受控测试子进程异常退出/journal、真实 FULL/I/O 和 HTTPS worker 门，不因结构化错误通过
-而恢复 DB 应用/CAB 发布依赖。KNOWN_LIMITATIONS 的这些未验收项保持有效。DB 下一纵切
-是专用 fixture 的中文 UTF-8 文件/文本与新进程重开；不提前做应用持久化或扩大到破坏性设备实验。
+独立文件 probe 已通过 Debug/Release 正式工程与 SD 部署门：二进制在 SD，文件分别在
+SD 映射卷和内置 object-store；中文 UTF-8 路径/TEXT、typed BLOB、commit/rollback、正常
+重开及 A→B→C 三个独立进程冷重开验证通过，并覆盖 migration 脚本失败的文件原子性。
+两配置 `1321,999` 相邻回归通过。完整包哈希、前后九 DLL 无引用审计、无新 crash 和证据
+回收均通过，验收夹具/包已清理；失败包仍保留。证据和六项门状态集中在
+[DB 文件验收清单](DB_FILE_ACCEPTANCE.md)，不等于物理断电或全部文件可靠性验收。
+本轮 ROADMAP 已复核，DB 下一纵切为跨进程读写/写写锁；journal、文件 FULL/I/O、迁移
+提交故障/版本拒绝与 HTTPS worker 仍待完成，不恢复应用正常启动或 CAB DB 发布依赖。
 
 ### HTTP 流式 GET 与跨线程取消已验收
 
@@ -474,6 +465,6 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
 并行 Media 保留 MPEG-4 Part 2 fixture、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
-DB 保留空间不足、跨进程锁、进程重启/journal、HTTPS worker 和应用持久化，不把正常
-关闭重开写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
+DB 保留空间不足、跨进程锁、异常退出/journal、HTTPS worker 和应用持久化，不把正常
+独立进程冷重开写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。
