@@ -157,6 +157,13 @@ Browser 把 Core 与有限的页面脚本组合成一个显式驱动的 session�
 
 Browser 不创建窗口、不直接读写网络、不替宿主 clamp 物理坐标，也不决定系统 picker、SIP/IME 或 native 控件默认动作。宿主必须显式调用 resize、scroll、focus、lifecycle 和 task checkpoint 通知；参考宿主把顶层 `WM_SHOWWINDOW` 映射到 visibility lifecycle，其他宿主仍需自行接线；没有 pump，页面异步队列不会自行推进。
 
+受控应用服务由宿主在可信 session 初始化完成后显式注册；Browser 拥有 allowlist、固定
+pending/result 队列、不可复用请求 token、owner-thread 交付和撤销，Script 只提供有界
+native JSON 容量原语。授权不得由 URL/scheme/重定向推断，默认关闭，不是安全沙箱。
+业务 schema、权限、DB/下载与 worker 属于应用；worker 只处理复制数据，结果回到 session
+owner 线程、核对 tab/generation 后才完成并 pump。离页/销毁前先撤销；迟到消息不得触碰已
+释放 handle。具体容量、错误和调用顺序见 [Browser README](../positron_browser/README.md#受控异步应用服务)。
+
 #### DOM wrapper 与 Fragment
 
 普通 live wrapper 以 Core id/关系为真值；detached wrapper 保存有界快照，连接、移除和失败 mutation 必须同步 owner、childNodes/children snapshot 与 identity。`document.createElement()` 的 Browser-owned Element graph 允许固定预算内的 nested Element/CharacterData staging：深度最多 4 层、总 Element 最多 64、每个 Element 最多 64 个 child，每个 Element 需要唯一非空 id；递归 attach、clone、textContent、remove/reinsert 和 alias identity 都由 Browser 维护，失败在 Core 触碰前回滚。`DocumentFragment` 仍是独立的 bounded staging：最多四个 direct 根，Element 根只接受既有 direct Text 形状；nested Fragment、任意混合节点图、重复 id、跨 owner 或超限输入 fail closed。

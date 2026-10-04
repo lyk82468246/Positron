@@ -36,6 +36,19 @@ PScript_Destroy(script);
 
 context 不支持并发调用；执行中的 host callback 不得重入或销毁当前 context。源码、结果、模块数、native function 数和堆内存都有上限，具体常量以 `positron_script.h` 为准。当前 `PSCRIPT_MAX_NATIVE_FUNCTIONS` 为 29：浏览器组合层的 DOM、validation、contenteditable、导航、焦点、pointer-interaction selector、FormData 和有界 direct-element DOM removal 桥接会占用这些槽位，宿主若注册额外的全局 native 函数仍必须检查 `PScript_GetNativeFunctionCount()`，并在达到上限时保守失败。模块 provider 的源代码和释放回调由宿主拥有，DLL 只在同步调用约定内使用。
 
+### native JSON 结果容量
+
+旧 `PScript_RegisterGlobalJsonFunction()` 保持 256-byte 临时缓冲（最多 255 JSON bytes）。
+需要更大结果的组合层可以使用 additive 的 `PScript_RegisterGlobalJsonFunctionEx()`，以
+`PScriptJsonFunctionOptions` 的 size/version 和 result_capacity 显式选择 256–8192 bytes。
+Ex 临时缓冲由 Duktape 管理并计入原 context heap，回调/异常退出后不留 CRT allocation；
+不增加 source、native function 数或执行预算。回调仍只同步写入一个完整 JSON 值，不能
+跨线程、重入或保存 buffer。参数错误不替换已有注册；较大的 JS 值仍受原 GetResult 的
+诊断字符串大小约束，可在 JS 中读取成员后返回小型断言结果。
+
+Browser 的应用服务使用这个容量原语传送有界 JSON，pending、身份、撤销与 JS callback
+生命周期仍归 Browser；本引擎扩展本身不拥有请求、应用权限、文件或 DB 方法。
+
 ## 同步耗时诊断
 
 `PScript_SetPerformanceEnabled(script, 1)` 在空闲边界开启当前 context 的计时；默认关闭，传入 `0` 关闭。每次设置都会清零计数，但保留 context 创建耗时，不改变 global、模块、错误或执行预算。查询使用调用方拥有的固定快照：

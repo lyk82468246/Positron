@@ -84,6 +84,73 @@ contenteditable 只支持单元素、纯文本、UTF-16 selection offset 和有�
 
 宿主为每个请求创建 candidate handle，并用 generation 隔离过时 worker 消息。Browser 持有 resource URL 去重、attempt/终态、required/optional gate 和清理前快照；宿主拥有 DNS/TCP/TLS/HTTP、worker、重试时机、response、页面 swap 和旧页保留策略。提交前调用 commit snapshot，释放前调用 cleanup snapshot，不能在宿主另建分类表。
 
+## 受控异步应用服务
+
+可信内置/打包页面可以由宿主显式注册 `PBrowser_ScriptSessionRegisterServices()`。这不是根据
+URL、scheme 或重定向授予的权限，也不是浏览器安全沙箱：宿主必须先确认页面身份，并提供
+方法 allowlist、非零 tab ID/page generation、submit/cancel callbacks。新 session 默认没有
+`PositronServices`；外部网络页面不应注册。应用表结构、SQL、权限、文件路径、worker、保存
+和下载策略仍在 EXE，本桥不内置任何业务方法。本能力需要匹配的 Browser/Script DLL；
+设备证据见 HANDOFF，不能据此声称 EXE 内部页已经接入 ScriptSession。
+
+注册在初始化完成、作者代码执行前的空闲 owner-thread 边界进行。使用 Begin/Step 的宿主
+必须先到 COMPLETE，再注册服务；不能先安装服务再 Begin，也不能在 PENDING 中注册。
+方法名目录复制进 DLL，
+回调和 `pw` 借用到撤销/销毁结束。最多 8 个 ASCII 方法名，每名 63 字节；参数/结果各
+4096 JSON bytes，最多 16 层嵌套及 16 个 pending（包含排队结果）。占用两个既有 native
+function 槽，不提高 29 槽上限；注册失败必须丢弃新候选 session，不能继续使用半安装能力。
+JS callback 引用与临时 dispatch buffer 计入原引擎 heap，C 结果副本额外最多
+`16*(4096+1)` bytes。错误输入不提交请求，不消费有效 pending；排队满只拒绝新请求。
+
+```c
+PBrowserServiceOptions options;
+const char *methods[] = { "app.read", "app.write" }; /* 示例目录，不是内置方法。 */
+
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PBROWSER_SERVICE_VERSION;
+options.tab_id = tab_id;
+options.page_generation = page_generation;
+options.methods = methods;
+options.method_count = 2;
+options.submit = enqueue_request; /* 复制 token/身份/方法/JSON，只入有界队列。 */
+options.cancel = cancel_request;  /* 标记 worker 取消，不等待 worker。 */
+options.pw = host_page;
+if (PBrowser_ScriptSessionRegisterServices(session, &options) != PBROWSER_OK) {
+    /* 安装失败：停止使用并销毁该新 session，保留旧页。 */
+}
+```
+
+JS 使用 `PositronServices.request("app.read", {key:"theme"}, function(ok, value) { ... })`。
+返回的字符串仅供页面诊断；宿主使用 submit 中的 `PBrowserServiceToken`，不得从字符串猜
+callback 名称、拼接 eval 源码或保存 JS 对象。submit 返回零表示宿主成功复制/排队；非零
+使本次 request 抛错并回收 callback。submit 不得同步完成、重入 session、等待 DB/网络
+或销毁当前 session。执行预算不会把阻塞的 native callback 变成可抢占代码。
+
+worker 只携带纯数据，不保留/调用 session handle。UI/owner 线程收到结果后，先核对 tab
+和 generation 仍有效，再调用 `PBrowser_ScriptSessionCompleteService(session, &token,
+ok, result_json, result_bytes)`。该入口验证并复制完整 JSON，不调用 JS；重复、跨 session、
+过期、非法或超限结果拒绝且保留原请求。随后在消息边界调用
+`PBrowser_ScriptSessionPumpServices(session, limit, &delivered)`，limit 为 1–16；按完成顺序
+调用 `callback(ok_boolean, value)`，无需完整 Promise。Pump 不自行驱动其他 timer/microtask，
+宿主仍遵守已有 task checkpoint 顺序。一次 callback 仍同步受原 session 执行预算约束。
+
+交付在调用前消费 token 并移除 callback；异常/timeout 后不得重跑这次交付。Pump 遇脚本
+错误返回 `PBROWSER_ERROR_STATE`，`delivered` 计已消费的交付尝试，包括错误的一次；引擎
+错误细节可从 session GetError 查询。未消费的排队结果保持有界，后续按宿主失败策略继续
+Pump 或撤销。内部 delivery gate 在宿主 Pump 之外拒绝页面提前交付或清空请求。
+
+`PBrowser_ScriptSessionRevokeServices()` 永久关闭该注册，丢弃已排队结果、清除 JS callback
+引用，对仍等待宿主的请求各调用一次 cancel；不向已离开的页面执行 JS。重复撤销幂等，
+不能在同一 session 再授权。PageTeardown 在 lifecycle JS 前撤销并禁止再授权；Destroy 也
+先撤销。所有新入口仅在创建线程空闲边界调用，submit/cancel/Pump 中重入拒绝，Destroy
+在这些边界内无操作。销毁后的 session 指针不可再调用；应用必须先撤销映射并丢弃迟到
+worker 消息，而不是把已释放指针交给 DLL 检测。新注册不回收旧 token，避免同地址新页面误收。
+
+撤销首先关闭 C 入口并取消/释放请求，再尝试清除引擎引用；若引擎已超时或损坏，可能返回
+STATE，但这不重新启用注册。宿主仍必须销毁候选，不为清理失败重发任务。本版本只支持
+整页撤销，不提供 JS 单请求取消、Promise、工作线程脚本或任意脚本抢占。
+
 ## 预算与错误
 
 native function、listener、collection、Fragment 根、selector 深度、字符串、FormData pairs、资源项和任务队列均有固定 WM6 预算。所有 public entry 都检查 NULL、UTF-8、容量、索引、句柄和 owner；size-probe 不部分写出，超限不部分 mutation。错误码和 callback table 版本以 `positron_browser.h` 为准，新增能力应追加 Ex 版本而不是改变旧字段含义。

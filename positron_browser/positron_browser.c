@@ -12,6 +12,7 @@
 #include "positron_browser.h"
 #include "positron_json.h"
 #include "positron_script.h"
+#include "p_browser_services.h"
 
 /* The browser bootstrap owns additional bounded DOM, geometry and scrolling
  * layers beyond the standalone script surface. The public header exposes the
@@ -8856,6 +8857,8 @@ typedef struct p_browser_script_event_binding {
 
 typedef struct p_browser_script_session {
     HANDLE runtime;
+    p_browser_services *services;
+    int services_teardown;
     int bootstrap_ready;
     p_browser_script_dom_read_binding *dom_read;
     p_browser_script_active_element_binding *active_element;
@@ -8926,7 +8929,8 @@ static int p_script_session_valid(
 {
     return session != NULL && session->runtime != NULL &&
             session->owner_thread == GetCurrentThreadId() &&
-            !session->bootstrap_busy && (!session->bootstrap_guarded ||
+            !session->bootstrap_busy && !p_services_busy(session->services) &&
+            (!session->bootstrap_guarded ||
             session->bootstrap_info.state == PBROWSER_BOOTSTRAP_COMPLETE);
 }
 
@@ -9041,7 +9045,7 @@ PBROWSER_API int PBrowser_ScriptSessionGetBootstrapPerformanceInfo(
     session = p_script_session(hSession);
     if (session == NULL || session->runtime == NULL ||
             session->owner_thread != GetCurrentThreadId() ||
-            session->bootstrap_busy || out_info == NULL ||
+            session->bootstrap_busy || p_services_busy(session->services) || out_info == NULL ||
             out_info->size < sizeof(*out_info) ||
             out_info->version != PBROWSER_SCRIPT_BOOTSTRAP_PERFORMANCE_VERSION) {
         return PSCRIPT_ERROR_ARGUMENT;
@@ -9116,7 +9120,7 @@ static int p_browser_bootstrap_idle(p_browser_script_session *session)
 {
     return session != NULL && session->runtime != NULL &&
             session->owner_thread == GetCurrentThreadId() &&
-            !session->bootstrap_busy;
+            !session->bootstrap_busy && !p_services_busy(session->services);
 }
 
 static int p_browser_bootstrap_output_valid(
@@ -12371,6 +12375,8 @@ PBROWSER_API HANDLE PBrowser_ScriptSessionCreateEx(unsigned long budget_ms,
         return NULL;
     }
     session->bootstrap_ready = 0;
+    session->services = NULL;
+    session->services_teardown = 0;
     session->owner_thread = GetCurrentThreadId();
     session->bootstrap_busy = 0;
     session->bootstrap_guarded = 0;
@@ -12447,10 +12453,11 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
 
     session = p_script_session(hSession);
     if (session == NULL || session->owner_thread != GetCurrentThreadId() ||
-            session->bootstrap_busy) {
+            session->bootstrap_busy || p_services_busy(session->services)) {
         return;
     }
     session->bootstrap_busy = 1;
+    if (session->services != NULL) { p_services_revoke(session->services); }
     if (session->dom_read != NULL) {
         PScript_UnregisterGlobalJsonFunction(session->runtime,
                 "__pcoreHasElement", -1);
@@ -12659,6 +12666,9 @@ PBROWSER_API void PBrowser_ScriptSessionDestroy(HANDLE hSession)
     }
     PScript_Destroy(session->runtime);
     session->runtime = NULL;
+    /* Disabled service bindings must outlive engine finalizer unwinding. */
+    p_services_destroy(session->services);
+    session->services = NULL;
     free(session);
 }
 
@@ -12701,6 +12711,44 @@ PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
     }
     session->bootstrap_touched = 1;
     return PScript_Evaluate(session->runtime, source, source_len);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRegisterServices(HANDLE hSession,
+        const PBrowserServiceOptions *options)
+{
+    p_browser_script_session *session;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) { return PBROWSER_ERROR_STATE; }
+    if (session->services != NULL || session->services_teardown) { return PBROWSER_ERROR_STATE; }
+    return p_services_register(session->runtime, options, &session->services);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionRevokeServices(HANDLE hSession)
+{
+    p_browser_script_session *session;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) { return PBROWSER_ERROR_STATE; }
+    return p_services_revoke(session->services);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionCompleteService(HANDLE hSession,
+        const PBrowserServiceToken *token, int succeeded,
+        const char *result_json, unsigned long result_bytes)
+{
+    p_browser_script_session *session;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) { return PBROWSER_ERROR_STATE; }
+    return p_services_complete(session->services, token, succeeded,
+            result_json, result_bytes);
+}
+
+PBROWSER_API int PBrowser_ScriptSessionPumpServices(HANDLE hSession,
+        unsigned long limit, unsigned long *out_delivered)
+{
+    p_browser_script_session *session;
+    session = p_script_session(hSession);
+    if (!p_script_session_valid(session)) { return PBROWSER_ERROR_STATE; }
+    return p_services_pump(session->services, limit, out_delivered);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionSetCurrentScriptIndex(
@@ -12802,6 +12850,8 @@ PBROWSER_API int PBrowser_ScriptSessionDispatchPageTeardown(HANDLE hSession)
     if (!p_script_session_valid(session)) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
+    session->services_teardown = 1;
+    if (session->services != NULL) { p_services_revoke(session->services); }
     return PBrowser_ScriptSessionCallGlobalJson(hSession,
             "__pcorePageTeardown", "[]");
 }

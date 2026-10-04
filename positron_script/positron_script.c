@@ -33,6 +33,7 @@ typedef struct pscript_native_function {
     char name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
     PScriptJsonFunctionFn fn;
     void *pw;
+    unsigned long result_capacity;
 } pscript_native_function;
 
 struct pscript_context {
@@ -206,7 +207,9 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
     const char *name;
     const char *args_json;
     char native_name[PSCRIPT_MAX_GLOBAL_NAME_BYTES + 1];
-    char output[256];
+    char old_output[256];
+    char *output;
+    int output_capacity;
     int native_index;
     int args_len;
     int out_len;
@@ -283,11 +286,19 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
                 "native callback arguments are too large");
     }
 
+    output_capacity = (int) native->result_capacity;
+    output = old_output;
+    if (output_capacity > (int) sizeof(old_output)) {
+        /* Engine-owned, rooted until native dispatch returns, including
+         * callback errors/timeout/fatal unwinding. No CRT leak on longjmp. */
+        output = (char *) duk_push_fixed_buffer(duk,
+                (duk_size_t) output_capacity);
+    }
     output[0] = '\0';
     out_len = -1;
     callback_start = ctx->performance.enabled ? GetTickCount() : 0;
     callback_rc = native->fn(native->pw, args_json, args_len, output,
-            (int) sizeof(output), &out_len);
+            output_capacity, &out_len);
     if (ctx->performance.enabled) {
         callback_ms = pscript_elapsed(callback_start);
         ctx->performance.callback_ms += callback_ms;
@@ -306,7 +317,7 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
         return duk_error(duk, DUK_ERR_ERROR,
                 "native callback '%s' failed", native_name);
     }
-    if (out_len < 0 || out_len >= (int) sizeof(output)) {
+    if (out_len < 0 || out_len >= output_capacity) {
         return duk_error(duk, DUK_ERR_ERROR,
                 "native callback JSON result is invalid");
     }
@@ -1341,8 +1352,9 @@ PSCRIPT_API int PScript_CallGlobalJson(HANDLE hScript, const char *name,
     return result;
 }
 
-PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,
-        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw)
+static int pscript_register_json_function(HANDLE hScript,
+        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw,
+        unsigned long result_capacity)
 {
     pscript_context *ctx;
     duk_context *duk;
@@ -1404,10 +1416,31 @@ PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,
             sizeof(ctx->native_functions[native_index].name), global_name);
     ctx->native_functions[native_index].fn = fn;
     ctx->native_functions[native_index].pw = pw;
+    ctx->native_functions[native_index].result_capacity = result_capacity;
     if (is_new) {
         ctx->native_count++;
     }
     return PSCRIPT_OK;
+}
+
+PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,
+        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw)
+{
+    return pscript_register_json_function(hScript, name, name_len, fn, pw, 256);
+}
+
+PSCRIPT_API int PScript_RegisterGlobalJsonFunctionEx(HANDLE hScript,
+        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw,
+        const PScriptJsonFunctionOptions *options)
+{
+    if (options == NULL || options->size != sizeof(*options) ||
+            options->version != PSCRIPT_JSON_FUNCTION_VERSION ||
+            options->result_capacity < 256 ||
+            options->result_capacity > PSCRIPT_JSON_FUNCTION_MAX_CAPACITY) {
+        return PSCRIPT_ERROR_ARGUMENT;
+    }
+    return pscript_register_json_function(hScript, name, name_len, fn, pw,
+            options->result_capacity);
 }
 
 PSCRIPT_API int PScript_UnregisterGlobalJsonFunction(HANDLE hScript,

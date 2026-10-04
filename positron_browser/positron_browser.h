@@ -28,7 +28,7 @@ extern "C" {
 #  define PBROWSER_API __declspec(dllimport)
 #endif
 
-#define PBROWSER_ABI_VERSION 0x00010007UL
+#define PBROWSER_ABI_VERSION 0x00010008UL
 
 #define PBROWSER_HISTORY_MAX 16
 #define PBROWSER_HISTORY_URL_MAX 1024
@@ -2655,6 +2655,97 @@ PBROWSER_API int PBrowser_ScriptSessionRegisterJsonFunction(HANDLE hSession,
         const char *name, PBrowserScriptJsonFunctionFn fn, void *pw);
 PBROWSER_API int PBrowser_ScriptSessionUnregisterJsonFunction(HANDLE hSession,
         const char *name);
+
+/* Opt-in application services, NOT an origin/scheme-based security sandbox.
+ * Register only on a trusted, host-identified session at an idle owner-thread
+ * boundary, before application author code. The allowlist is copied; pw and
+ * callback code must live until revoke/destroy finishes. No implicit grant.
+ * With stepped bootstrap, register AFTER COMPLETE and before author code;
+ * installing first makes a later BootstrapBegin invalid. Pending rejects it.
+ * Global PositronServices.request(method, params, callback) returns a private
+ * request string; callback(ok_boolean, JSON_value) runs only through Pump.
+ * Parameters must be JSON-compatible; JSON values have <=16 nesting levels.
+ * Method names are ASCII [A-Za-z0-9_.-], 1..63 bytes; JSON <=4096 bytes (NUL
+ * excluded). One registration, <=8 methods, <=16 pending including queued
+ * results, <=16 deliveries per Pump. No default SQL/files/native operations.
+ * Native metadata uses fixed tables; copied result payloads additionally
+ * use <=16*(4096+1) CRT bytes. JS references and temporary dispatch buffers
+ * remain subject to the existing runtime heap limit, not an expanded budget.
+ * Tokens are process-unique across registrations, never recycled after
+ * revoke/destroy. Exhaustion fails closed; tokens are NOT pointer handles.
+ * The application still binds its tab ID and page generation, copies pure
+ * data into its worker queue, then marshals results back to the owner thread.
+ * Workers MUST NOT call any of these entries or retain hSession.
+ * submit runs synchronously and must only copy/enqueue, never wait on I/O.
+ * Return 0 if accepted, nonzero for queue refusal (JS throws, no pending
+ * request/callback). Synchronous Complete/Pump/revoke/destroy and any session
+ * reentry in submit/cancel callbacks are rejected; Destroy is a no-op there.
+ * Complete validates/copies one JSON result, never invokes JS. Invalid JSON,
+ * capacity/stale/duplicate errors leave the request and old page unchanged.
+ * Pump delivers in completion order on the owner thread, removes each entry
+ * BEFORE attempting its callback, and stops on a JS exception/timeout: that
+ * delivery cannot be retried. At most one callback attempt, not arbitrary
+ * JS continuation. Its time budget is the unchanged session budget.
+ * Revoke permanently disables this registration, drops queued deliveries,
+ * discards JS callback references, and calls cancel once for each still-
+ * waiting accepted request; no JS callbacks on revoke/teardown/destroy.
+ * Already-queued results need no worker cancellation. Callback exceptions
+ * cannot unwind C cancel; the host must not throw through this C ABI.
+ * Engine reference cleanup may return STATE after C revocation; the grant
+ * stays disabled and all C requests are released. Discard damaged sessions.
+ * PageTeardown also revokes, before page lifecycle JS, and forbids regrant.
+ * The session handle is borrowed until teardown, not usable after Destroy;
+ * late results must be dropped by the host before touching a freed handle.
+ */
+#define PBROWSER_SERVICE_VERSION 1UL
+#define PBROWSER_SERVICE_MAX_METHODS 8UL
+#define PBROWSER_SERVICE_MAX_PENDING 16UL
+#define PBROWSER_SERVICE_METHOD_MAX_BYTES 63UL
+#define PBROWSER_SERVICE_JSON_MAX_BYTES 4096UL
+typedef struct PBrowserServiceToken {
+    unsigned long bridge_id;
+    unsigned long request_id;
+} PBrowserServiceToken;
+typedef struct PBrowserServiceRequest {
+    unsigned long size;
+    unsigned long version;
+    PBrowserServiceToken token;
+    unsigned long tab_id;
+    unsigned long page_generation;
+    const char *method;      /* borrowed for submit only */
+    const char *params_json; /* borrowed for submit only */
+    unsigned long params_bytes;
+} PBrowserServiceRequest;
+typedef int (*PBrowserServiceSubmitFn)(void *pw,
+        const PBrowserServiceRequest *request);
+typedef void (*PBrowserServiceCancelFn)(void *pw,
+        const PBrowserServiceToken *token);
+typedef struct PBrowserServiceOptions {
+    unsigned long size;
+    unsigned long version;
+    unsigned long tab_id;           /* nonzero, application identity */
+    unsigned long page_generation;  /* nonzero, application identity */
+    unsigned long method_count;
+    const char *const *methods;
+    PBrowserServiceSubmitFn submit;
+    PBrowserServiceCancelFn cancel;
+    void *pw;
+} PBrowserServiceOptions;
+/* These entries return PBROWSER_* codes, unlike the legacy Script wrappers.
+ * Script installation/delivery failure returns PBROWSER_ERROR_STATE;
+ * GetError gives runtime detail. Outputs untouched on invalid arguments.
+ * Register cannot be repeated, even after revoke; create a new session.
+ * Revoke is idempotent. Pump limit must be 1..16; delivered counts callback
+ * attempts including one that throws. Default-closed calls return STATE.
+ */
+PBROWSER_API int PBrowser_ScriptSessionRegisterServices(HANDLE hSession,
+        const PBrowserServiceOptions *options);
+PBROWSER_API int PBrowser_ScriptSessionRevokeServices(HANDLE hSession);
+PBROWSER_API int PBrowser_ScriptSessionCompleteService(HANDLE hSession,
+        const PBrowserServiceToken *token, int succeeded,
+        const char *result_json, unsigned long result_bytes);
+PBROWSER_API int PBrowser_ScriptSessionPumpServices(HANDLE hSession,
+        unsigned long limit, unsigned long *out_delivered);
 PBROWSER_API int PBrowser_ScriptSessionEvaluate(HANDLE hSession,
         const char *source, int source_len);
 /* Set the non-empty classic-script discovery index used by the synchronous

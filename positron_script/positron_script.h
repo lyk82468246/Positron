@@ -22,7 +22,7 @@ extern "C" {
 #  define PSCRIPT_API __declspec(dllimport)
 #endif
 
-#define PSCRIPT_ABI_VERSION 0x00010008UL
+#define PSCRIPT_ABI_VERSION 0x00010009UL
 #define PSCRIPT_DEFAULT_BUDGET_MS 1000UL
 #define PSCRIPT_DEFAULT_MEMORY_LIMIT_BYTES (512UL * 1024UL)
 #define PSCRIPT_MAX_SOURCE_BYTES (128UL * 1024UL)
@@ -122,6 +122,21 @@ typedef int (*PScriptJsonFunctionFn)(void *pw, const char *args_json,
         int args_len, char *out_json, int out_capacity, int *out_len);
 PSCRIPT_API int PScript_RegisterGlobalJsonFunction(HANDLE hScript,
         const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw);
+/* Additive native JSON result capacity. The old entry keeps its 256-byte
+ * buffer (255 JSON bytes). Ex selects 256..8192 buffer bytes, charged to the
+ * Duktape heap for this dispatch, not retained after return. Same callback,
+ * owner-thread and non-reentrant rules; size/version must match exactly.
+ * Capacity does not raise the context heap/source or execution budget. */
+#define PSCRIPT_JSON_FUNCTION_VERSION 1UL
+#define PSCRIPT_JSON_FUNCTION_MAX_CAPACITY 8192UL
+typedef struct PScriptJsonFunctionOptions {
+    unsigned long size;
+    unsigned long version;
+    unsigned long result_capacity;
+} PScriptJsonFunctionOptions;
+PSCRIPT_API int PScript_RegisterGlobalJsonFunctionEx(HANDLE hScript,
+        const char *name, int name_len, PScriptJsonFunctionFn fn, void *pw,
+        const PScriptJsonFunctionOptions *options);
 PSCRIPT_API int PScript_UnregisterGlobalJsonFunction(HANDLE hScript,
         const char *name, int name_len);
 PSCRIPT_API unsigned long PScript_GetNativeFunctionCount(HANDLE hScript);

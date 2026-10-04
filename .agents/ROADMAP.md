@@ -307,6 +307,14 @@ fixture 已加入，宿主 DB worker 和真实设备网络/断电门仍待完成
 不借完整响应体接口突破 1 MiB 上限。清除/搜索历史、可编辑设置、restart/kill/hang
 不自动进入下一批；先形成具体流程和有界失败门。
 
+消费者已明确要求公共 DLL 前置能力，分两个独立交付。Browser 受控异步应用服务桥接
+已通过双配置定向门；剩余 EXE 可信内置页授权、纯数据 worker 与
+owner-thread 消息接线，不在 Browser 增加设置/历史/SQL/文件业务方法。
+下一条 DLL 纵切为 HTTP opaque-request 流式 GET 与跨线程取消：旧完整 body 入口仍限
+1 MiB；新 sink 不累计文件，需定义 final URL/status/headers、chunked/encoding/count、
+取消竞态、超时和 join 后释放。先用本地确定性服务证明慢响应/大于 1 MiB/失败与关闭，
+再跑 HTTPS 相邻门；不能借并行 UI 工作跳过 transport 生命周期或默许不可靠取消。
+
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 
 **状态：Core 图片 pending/retry、CSS `data:image/svg+xml` 背景接线、Image class-style/viewBox
