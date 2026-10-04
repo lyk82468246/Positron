@@ -18,6 +18,29 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 候选与验证证据
 
+### EXE 多标签自动门通过，人工入口已更新
+
+EXE 单窗口最多四个独立 AppTab，左软键 Tabs/标签页包含后退、页面目录、条件 New tab
+和关闭；每页独立 DOM/styles/session/history/native 控件、输入选区和滚动位置。后台仅继续
+网络，隐藏页解析/脚本/提交待激活；共享窗口消息携带不复用 tab ID，候选 timer ID 进程唯一。
+关闭先协作取消并等待 worker，slot 排空后释放；最后一页关闭先创建 newtab，应用退出关闭全部。
+页面 teardown 先于 native/session 释放，关闭期间拒绝 queued timer。未改 DLL/ABI 或增加 IPC。
+
+最终完整 Debug 包为 `tmp/device-runs/20261004-093945-app-tabs-final/`，49 文件、两次
+guest holders=0 unavailable=0、EXE/九 DLL SHA256 10/10、全部 required 自检与 crash_check
+PASS。tabs phase=7 覆盖状态隔离、未提交地址/选区、四页上限、beforeunload、隐藏完成与失败
+回滚、timer 暂停/过时消息、加载中关闭和最后一页替换。当前 PID 3173043994 留在 newtab，
+入口 `\Storage Card\Temp\Positron-device-gate\app-tabs-final-20261004-093945\positron.exe`。
+真实网络、触摸、旋转/SIP、内存压力和多页退出仍待人工，不以夹具替代。
+
+相邻 Debug 门 `tmp/device-runs/20261004-093134-app-tabs-adjacent/` 为
+`136,407,1080-1083,1134,1327,1336,1338,999` 的 11/11 PASS，完整日志、唯一 TESTBENCH PASS、
+零 ERROR/FAIL、Core 路径及 crash_check PASS；回收后本轮远端目录已删除。
+串行正式 Debug/Release build/CAB、C89、审计及 Release 诊断排除通过。VS2008 msenv.dll
+自身崩溃的失败日志在 `tmp/app-tabs-build-failures/`，重试恢复，不计作 rebuild PASS。
+早期 tabs phase=1 初始化与 phase=15 EDIT 探针失败分别改用分步 API和大小写无关类名查询，
+原预算/断言保留；失败包保留，最终生产路径验收通过。并行 Media 文件不纳入本批提交。
+
 ### Core HTML 图片尺寸自动与实页视觉验收通过
 
 Core 以有界 presentational hints 处理 img width/height，作者 CSS 仍可覆盖；修正直接 flex
@@ -34,16 +57,11 @@ DeviceEmulator 上 TEST1340 独立覆盖 96/192 DPI。两个配置均在 SD 部�
 guest holders=0 unavailable=0 通过；Debug 本轮目录删除，Release 删除失败保留。
 C89、审计和串行正式 Debug/Release build 通过，既有上游警告保留。
 
-真实 WinWorld 复核的完整 Debug 包在
-`tmp/device-runs/20261004-004714-core-image-winworld-app-review/`；正式 module audit PASS，
-EXE/九 DLL 回读 SHA256 10/10。实际启动 PID 4255741914，入口为
-`\Storage Card\Temp\Positron-device-gate\core-image-winworld-app-review-20261004-004714\positron.exe`，
-命令行打开 operating-systems；`app-smoke/positron-debug.log` 已确认该 PID 的 candidate-committed，
-image scan=7/7、resources=6/6/0/0；两次只读回拉日志稳定，crash dumps=0。辅助 smoke 最初
-误匹配日志字段而报超时，修正为 requested 后只读复核通过，没有重复启动应用。用户已明确
-确认本批实页视觉验收通过；此结论来自用户观察，不由加载日志或离线 SVG 尺寸 fixture
-代替。关闭四张真实 PNG 的本批视觉待验收项，不外推为所有页面、OEM 或真实高 DPI 系统
-均已通过。当前应用仍可能持有 DLL，下一次部署先正常退出并重做引用审计。
+WinWorld 视觉证据在 `tmp/device-runs/20261004-004714-core-image-winworld-app-review/`：
+完整 Debug 包、module audit、EXE/九 DLL SHA256 10/10、实际 operating-systems 提交、
+image scan=7/7、resources=6/6/0/0 与 crash dumps=0。辅助 smoke 误匹配字段的超时经
+只读复核修正，未重复启动。用户已明确确认四张 PNG 实页视觉通过，不由离线尺寸断言替代，
+也不外推到所有页面/OEM/高 DPI；该应用已为标签开发正常退出，不再作为当前人工入口。
 
 ### EXE 地址栏复用与加载标题自动门通过
 
@@ -82,29 +100,17 @@ Release 重试恢复，失败记录不改写。并行 Media 改动不纳入应�
 
 ### EXE 系统信息证据与暂缓边界
 
-About 系统章节使用中性标签、GetVersionEx 完整内核版本与实际平台/OEM 名称；只读
-`HKLM\System\Versions\Aku` 原样展示更新包，可选 ProductName/OSVersion 独立显示。
-不做 build/AKU→WM/WEH 查表。已纠正旧 platform version 方向：WM6.5.3 SDK 明确该 SPI
-返回 CE 主/次版本，不能当成营销版本，因此删除私有 action 查询和重复版本行。
-缺失、API 不可用、查询失败、非法数据分开显示，空内核扩展不占行；Debug 记录失败阶段与
-错误码，Release 不含诊断。仅 EXE 私有查询与展示改动，不修改 DLL、ABI 或导航语义。
+系统信息稳定查询/缺失规则见接线计划；不从 CE build、AKU、PocketPC 或组件产品名猜测
+WM/WEH。证据 `tmp/device-runs/20261003-091819-app-system-registry-final/` 为完整 31 文件包、
+双次 holders=0 unavailable=0、EXE/九 DLL SHA256 10/10、全部所需自检、about#system 单次
+提交及 crash_check PASS。正式 Debug/Release/CAB、C89 与诊断排除通过；旧进程已正常退出。
 
-C89、仓库审计、串行 Debug/Release 正式 build 与 Release CAB 通过，EXE 零错误/警告；
-Release ASCII/UTF-16 检查不含本批诊断或系统启动夹具。用户正常退出旧应用并暂停其他构建。
-系统信息完整 Debug 包 `tmp/device-runs/20261003-091819-app-system-registry-final/` 共 31 文件；正式
-module-audit 与 EXE 门前复审均 holders=0 unavailable=0，EXE/九 DLL SHA256 回读 10/10。
-`app-history/positron-debug.log` 为 system-info/pointer/history/internal-pages 自检 OK、
-单次提交 about#system（history=1、script=0、scroll=0,545），crash_check=PASS。
-实际读取为 Windows CE 5.2.23090（platform ID=3）、PocketPC、AKU `.5.3.0` 与
-Microsoft DeviceEmulator；ProductName/OSVersion 查询为 error=2（未提供）。coredll/aygshell
-版本函数导出均存在，但 size 阶段返回 error=1814（资源名称不存在），不再笼统归因 API 不可用。
-本轮 RAPI 只读枚举的四个系统版本专用键也没有提供营销版本元数据；未写设备注册表。
-设备 320×320、128 DPI；该包 PID 2643158474 已由用户正常退出，当前人工入口见加载标题证据。
-首轮 registry 包也通过门；复核删除误拒绝 OEM 实际 WM 产品名的夹具断言后，用户正常退出，
-重新部署并验证最终源码。未强杀、重置、回退内置存储或改变 WMDC；旧包不是当前人工入口。
-自动夹具覆盖双语标签、非 CE/未知 ID、中文 UTF-8、原样 AKU、registry 类型/长度/终止/
-嵌入 NUL、非法 UTF-16/容量拒绝、版本资源切片边界和 HTML 转义。系统章节视觉及真实中文
-设备仍待人工复核；缺失产品元数据时不宣称已识别 WM/WEH 发行版本。稳定规则见接线计划。
+320×320、128 DPI DeviceEmulator 实读 Windows CE 5.2.23090（platform ID=3）、PocketPC、
+AKU `.5.3.0`；ProductName/OSVersion error=2，四个专用键也无营销版本。组件版本函数存在，
+coredll/aygshell 在 size 阶段 error=1814，不是 API 缺失。注册表未写；SDK platform-version
+SPI 只报告 CE 主/次，不用作发行版本。夹具保留双语/未知 ID、UTF-16、registry 类型/容量/
+终止、版本切片与 HTML 转义守卫；误拒绝 OEM 实际 WM 名称的断言已删除，最终包重新验收。
+系统章节视觉和中文设备仍待人工，不沿用旧路径/PID。
 
 OS 产品名称、发行版本和 edition 的进一步动态识别已按用户决定暂时挂起；现有查询与缺失
 状态保留，不撤回 AKU 或加入版本查找表。重新开启条件见 ROADMAP 的暂缓队列；本轮导航修正
@@ -118,22 +124,14 @@ extent clamp 与 Browser scroll 通知。取消、capture 丢失、失焦、隐�
 和关闭清除待定输入；Core 内部滚动条优先，native EDIT/SELECT/toggle 原消息路径保留。
 不修改 DLL 或 ABI，不引入 WAG、惯性、回弹或 nested 内容区滚动链。
 
-C89、仓库审计与最终 Debug/Release 正式 build/CAB 通过，EXE 零错误/警告；Release ASCII/
-UTF-16 检查不含 pointer 夹具。全量 rebuild 的既有 LNK1181/CAB 依赖顺序失败与 VS2008
-msenv.dll 主机异常仍保存在 `tmp/app-pan-build-failures/`，串行正式补建恢复，不计作 rebuild
-成功。用户已正常退出旧应用并暂停其他构建，未竞争编译。
-
-相邻正式 Debug SD 门 `tmp/device-runs/20261003-041056-app-pan-adjacent/` 选择
-`42,1080,1109,1327,999`，selected/observed 5/5、唯一 TESTBENCH PASS、零 ERROR/FAIL、
-Core 路径及 crash_check=PASS；完整日志回收后本轮设备目录已清理。
-最终完整包 `tmp/device-runs/20261003-041442-app-pan-final/` 含 31 文件，正式 module-audit
-及 EXE 门前复审均 holders=0 unavailable=0；`app-history/positron-debug.log` 记录 pointer/
-history/internal-pages 自检 OK、newtab history=1。实际页面消息覆盖链接 down 不激活、tap
-一次、双轴拖动及返回起点不误点、合并 MOVE、capture/cancel/失焦/stale、clamp、Browser
-坐标同步和 layout 计数不变。EXE/九 DLL SHA256 回读 10/10、crash_check=PASS。设备为
-320×320、128 DPI DeviceEmulator；该包 PID 534774266 已由用户正常退出，当前人工包见加载标题证据。
-未强杀、重置或回退内置存储。设备门的静默启动失败未产生设备证据；WMDC AuditOnly 健康、
-changed=0，显式 PS32 入口诊断运行原正式 gate 后恢复，不修改注册表或安全设置。
+先行正式 Debug SD 门 `tmp/device-runs/20261003-041056-app-pan-adjacent/` 为
+`42,1080,1109,1327,999` 的 5/5 PASS，完整日志和 crash_check PASS，已清理远端目录。
+先行完整包 `tmp/device-runs/20261003-041442-app-pan-final/` 的 31 文件、模块审计、
+EXE/九 DLL SHA256 10/10、pointer/history/internal-pages 与 crash_check 均通过；覆盖 tap
+一次、双轴拖动不误点、capture/cancel/stale、clamp、Browser 同步和 layout 计数不变。
+320×320、128 DPI 的旧进程已正常退出，不是当前人工入口。正式 Debug/Release/CAB、C89、
+审计及 Release 夹具排除通过；失败 rebuild/主机异常保留在 `tmp/app-pan-build-failures/`。
+静默门无设备证据；只读 WMDC 健康、changed=0，显式 PS32 原 gate 恢复，未改注册表。
 
 早期 `20261003-041159-app-pan-delivery` 的 pointer phase=2 失败属于夹具误用旧 LinkAt
 命中返回值（1，而 Ex 成功为 0）；按公开合同修正探针，原点击/拖动断言保留并加强 clamp。
@@ -409,7 +407,7 @@ Debug 正式 build/stage 成功。用户更换设备后，新会话先由独立 
 
 EXE 使用 generation 绑定的 16 ms 系统 timer；pending 禁止普通入口，取消/关闭在空闲边界停止调度并释放无 worker 的候选，旧页保留到提交。作者按顺序分批执行，普通异常继续，预算/fatal 关闭脚本能力；视口变化在初始化完成后同步。稳定调用及 GC 策略见 [接线计划](../positron_app/INTEGRATION_PLAN.md#阶段-2browser-scriptsession)。
 
-当前完整 Debug 包 `tmp/device-runs/20261003-233918-app-script-steps-viewport/` 共 49 文件；双空间预检及两次模块审计 holders=0 unavailable=0。`app-history/positron-debug.log` 全部 required 自检 OK；script-scheduling 覆盖真实 timer/窗口消息、pending 拒绝、cancel/close、stale、旧页/history、作者顺序/异常后 DOM、视口变化与输入选区保留。EXE/九 DLL SHA256 10/10、crash_check=PASS。PID 3700948682 留在 newtab，入口为 `\Storage Card\Temp\Positron-device-gate\app-script-steps-viewport-20261003-233918\positron.exe`。未强杀或改 WMDC，正式 Debug/Release/CAB、C89 与 Release 诊断排除通过；真实 WinWorld 响应须立即人工复核，不以窗口探针证明长调用可抢占。
+先行完整 Debug 包 `tmp/device-runs/20261003-233918-app-script-steps-viewport/` 共 49 文件；双空间预检及两次模块审计 holders=0 unavailable=0。全部 required 自检 OK；script-scheduling 覆盖真实 timer/窗口消息、pending 拒绝、cancel/close、stale、旧页/history、作者顺序/异常后 DOM、视口变化与输入选区保留。EXE/九 DLL SHA256 10/10、crash_check=PASS。该包不是当前人工入口；正式 Debug/Release/CAB、C89 与 Release 诊断排除通过。用户已反馈 running-script 阻塞基本解决，单次长调用不可抢占的 DLL 边界不变。
 
 先行 `app-script-steps-final` 同一调度门已通过，Debug bootstrap active=7612 ms、最长 Step=1070 ms，仅为该夹具，不证明整站总耗时改善。首轮 `app-script-steps` phase=4 失败因夹具使用未接线的 document.title setter，改为已支持的 textContent/Core 终态断言后通过，失败日志保留。VS2008 无诊断提前退出日志在 `tmp/app-script-build-failures/`，正式重试恢复；编译/链接夹具错误修正后零错误/警告。
 
@@ -425,8 +423,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-已复核 ROADMAP 和图片限制，移除已完成的 WinWorld PNG 视觉 backlog。完整 aspect-ratio、
-其他 replaced-flex sizing 与跨设备边界不变；下一条应用纵切按用户新缺口或明确指令选择。
+已复核 ROADMAP，完成多标签接线退出开发候选，保留真实切换/网络/内存/退出人工门和
+未来 IPC 进入条件。唯一下一步是用户验收最终标签包；WinWorld 图片视觉项已关闭，公共
+DLL 能力矩阵本批无需改动。完整 aspect-ratio 与跨设备边界不变。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
 所有权；单次长调用、Debug 默认预算失败和错误后 session 策略仍待处理，不承诺冷启动抢占。

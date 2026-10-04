@@ -24,6 +24,7 @@
 
 #include "app_debug.h"
 #include "app_host.h"
+#include "app_tabs.h"
 #include "app_loading.h"
 #include "app_address_bar.h"
 #include "app_controls.h"
@@ -93,8 +94,15 @@
 
 /* Keep the existing UI/navigation helper names stable while the ownership of
  * all host state moves into one private lifecycle object. */
-static AppHostContext g_app;
-static AppControlsContext *g_controls;
+static AppTab g_tabs[APP_TAB_MAX];
+static AppTab *g_tab = &g_tabs[0];
+static int g_tab_order[APP_TAB_MAX];
+static int g_tab_count;
+static int g_tabs_enabled;
+static int g_tabs_closing;
+static UINT g_script_timer_sequence = APP_NAV_SCRIPT_TIMER_BASE;
+#define g_app (g_tab->host)
+#define g_controls (g_tab->controls)
 static AppAddressBar *g_address_bar;
 #define g_window                 (g_app.window)
 #define g_address                (g_app.address)
@@ -135,12 +143,12 @@ static unsigned int g_file_picker_index;
 static int g_file_picker_x;
 static int g_file_picker_y;
 static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
-static int g_overflow_pointer;
-static POINT g_overflow_pointer_point;
-static AppInputPointer g_page_pointer;
-static HANDLE g_page_pointer_document;
-static int g_page_pointer_scroll_x;
-static int g_page_pointer_scroll_y;
+#define g_overflow_pointer (g_tab->overflow_pointer)
+#define g_overflow_pointer_point (g_tab->overflow_pointer_point)
+#define g_page_pointer (g_tab->page_pointer)
+#define g_page_pointer_document (g_tab->page_pointer_document)
+#define g_page_pointer_scroll_x (g_tab->page_pointer_scroll_x)
+#define g_page_pointer_scroll_y (g_tab->page_pointer_scroll_y)
 #ifdef _DEBUG
 static unsigned long g_page_layout_count;
 /* Non-NULL only inside the independent startup fixture. It parks a real
@@ -154,15 +162,17 @@ static HBITMAP g_page_paint_buffer_bitmap;
 static int g_page_paint_buffer_width;
 static int g_page_paint_buffer_height;
 static int g_scrollbar_settle_depth;
-static int g_script_refresh_pending;
-static int g_script_refresh_form_reset;
-static AppScriptContext *g_script_refresh_context;
+#define g_script_refresh_pending (g_tab->refresh_pending)
+#define g_script_refresh_form_reset (g_tab->refresh_form_reset)
+#define g_script_refresh_context (g_tab->refresh_context)
 static char g_startup_reference[APP_URL_MAX];
 static char g_startup_script[APP_STARTUP_SCRIPT_MAX_BYTES + 1];
 static char g_startup_click_selector[APP_STARTUP_SELECTOR_MAX_BYTES + 1];
 static int g_startup_script_armed;
 static int g_startup_click_armed;
 static unsigned long g_startup_script_generation;
+static unsigned long g_startup_script_tab_id;
+static unsigned long g_tab_sequence;
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
@@ -172,6 +182,15 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
 static void app_page_paint_buffer_release(void);
 static int app_load_form_request(HWND hwnd, const AppFormRequest *request);
 static void app_update_history_buttons(void);
+static void app_tabs_update_menu(void);
+static int app_tabs_select(int slot);
+static int app_tabs_new(void);
+static void app_tabs_close(void);
+static void app_tabs_handle_done(HWND hwnd, AppNavigationRequest *request,
+        unsigned long tab_id);
+static void app_tabs_close_all(HWND hwnd);
+static void app_tabs_shutdown(void);
+static void app_tabs_finish_close(void);
 static void app_controls_changed(void *pw);
 static int app_startup_click_form_selector(const char *selector);
 static void app_handle_form_submit(void *pw, int document_x,
@@ -1084,7 +1103,8 @@ static void app_script_schedule_refresh(void *pw, AppScriptContext *context,
     g_script_refresh_context = context;
     if (host->window == NULL || !PostMessage(host->window,
             APP_WM_CONTROLS_REFRESH,
-            g_script_refresh_form_reset ? APP_CONTROLS_REFRESH_FORM_RESET : 0,
+            (host->tab_id << 1) | (g_script_refresh_form_reset ?
+            APP_CONTROLS_REFRESH_FORM_RESET : 0),
             (LPARAM) context)) {
 #ifdef _DEBUG
         app_script_debug_refresh("post-failed", 0, form_reset);
@@ -2349,7 +2369,7 @@ static int app_file_picker_queue_by_id(HWND hwnd, HANDLE document,
     g_file_picker_y = y + height / 2;
     app_copy_text(g_file_picker_pending_id,
             sizeof(g_file_picker_pending_id), element_id);
-    if (!PostMessage(hwnd, APP_WM_FILE_PICKER, 0, 0)) {
+    if (!PostMessage(hwnd, APP_WM_FILE_PICKER, g_app.tab_id, 0)) {
         app_file_picker_cancel_pending();
         return -1;
     }
@@ -2581,7 +2601,7 @@ static int app_script_navigate(void *pw, AppScriptContext *context,
         return 0;
     }
     if (host->script == context && host->window != NULL) {
-        PostMessage(host->window, APP_WM_SCRIPT_NAVIGATE, 0,
+        PostMessage(host->window, APP_WM_SCRIPT_NAVIGATE, host->tab_id,
                 (LPARAM) context);
     }
     return 1;
@@ -2697,7 +2717,7 @@ static int app_activate_focus(HWND hwnd)
         return 0;
     }
     target = (g_window != NULL) ? g_window : GetParent(hwnd);
-    return (int) SendMessage(target, APP_WM_ADDRESS_GO, 1,
+    return (int) SendMessage(target, APP_WM_ADDRESS_GO, g_app.tab_id,
             (LPARAM) href);
 }
 
@@ -3135,8 +3155,7 @@ static void app_update_history_buttons(void)
     can_go_forward = (target != NULL);
     EnableMenuItem(menu, APP_CMD_FORWARD, MF_BYCOMMAND |
             (can_go_forward ? MF_ENABLED : MF_GRAYED));
-    SendMessage(g_menu_bar, TB_ENABLEBUTTON, (WPARAM) APP_CMD_BACK,
-            MAKELONG(can_go_back, 0));
+    app_tabs_update_menu();
 }
 
 static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
@@ -3253,8 +3272,16 @@ static int app_navigation_retired_count(void)
 {
     AppNavigationRequest *request;
     int count;
+    int slot;
 
     count = 0;
+    if (g_tabs_enabled) {
+        for (slot = 0; slot < APP_TAB_MAX; slot++) {
+            for (request = g_tabs[slot].host.retired_navigation; request != NULL;
+                    request = request->retired_next) count++;
+        }
+        return count;
+    }
     for (request = g_retired_navigation; request != NULL;
             request = request->retired_next) {
         count++;
@@ -3844,7 +3871,7 @@ static DWORD WINAPI app_navigation_worker(LPVOID parameter)
     request->worker_succeeded = 0;
     request->worker_failure_class = PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
     request->worker_status_code = 0;
-    if (!g_http_initialized || app_navigation_is_cancelled(request)) {
+    if (!request->transport_available || app_navigation_is_cancelled(request)) {
         goto done;
     }
     if (request->worker_stage == APP_NAV_WORK_DOCUMENT) {
@@ -3877,7 +3904,7 @@ static DWORD WINAPI app_navigation_worker(LPVOID parameter)
         request->worker_succeeded = 1;
     }
 done:
-    if (!PostMessage(request->hwnd, APP_WM_NAV_DONE, 0,
+    if (!PostMessage(request->hwnd, APP_WM_NAV_DONE, request->owner_tab_id,
             (LPARAM) request)) {
         /* The UI keeps the window alive until this message is processed. */
     }
@@ -3989,7 +4016,7 @@ static void app_navigation_finish(AppNavigationRequest *request,
         }
     }
     app_navigation_request_destroy(request);
-    if (g_navigation_closing && g_navigation_request == NULL &&
+    if (!g_tabs_enabled && g_navigation_closing && g_navigation_request == NULL &&
             g_retired_navigation == NULL) {
         DestroyWindow(g_window);
     }
@@ -4022,10 +4049,11 @@ static int app_navigation_schedule_script(AppNavigationRequest *request)
     UINT timer_id;
 
     if (!app_navigation_can_apply(request) || request->worker_thread != NULL ||
-            request->generation > 0xffffffffUL - APP_NAV_SCRIPT_TIMER_BASE)
+            g_script_timer_sequence == 0xffffffffUL)
         return 1;
     if (request->script_timer_id != 0) return 0;
-    timer_id = (UINT) (APP_NAV_SCRIPT_TIMER_BASE + request->generation);
+    /* Shared HWND requires unique IDs across tabs and retired candidates. */
+    timer_id = ++g_script_timer_sequence;
     if (SetTimer(request->hwnd, timer_id, APP_NAV_SCRIPT_INTERVAL_MS,
             NULL) == 0) return 1;
     request->script_timer_id = timer_id;
@@ -4080,7 +4108,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             app_navigation_debug_log_script_count(request, script_count);
 #endif
             if (script_count > 0 || (g_startup_script_armed &&
-                    request->generation == g_startup_script_generation)) {
+                    request->generation == g_startup_script_generation &&
+                    request->owner_tab_id == g_startup_script_tab_id)) {
                 app_navigation_loading_phase(request, APP_LOADING_SCRIPT_EXECUTE);
                 if (request->history_mode == APP_HISTORY_NEW) {
                     history_length = PBrowser_HistoryNavigationLength(
@@ -4356,7 +4385,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                     GetForegroundWindow() == g_window ? 1 : 0);
             (void) AppScript_PageLifecycleComplete(g_script);
             if (g_startup_script_armed && request->generation ==
-                    g_startup_script_generation) {
+                    g_startup_script_generation && request->owner_tab_id ==
+                    g_startup_script_tab_id) {
                 int startup_result;
                 int native_click;
 #ifdef _DEBUG
@@ -4393,7 +4423,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
 #endif
             }
             if (AppScript_HasPendingNavigation(g_script)) {
-                PostMessage(g_window, APP_WM_SCRIPT_NAVIGATE, 0,
+                PostMessage(g_window, APP_WM_SCRIPT_NAVIGATE, g_app.tab_id,
                         (LPARAM) g_script);
             }
         }
@@ -4426,7 +4456,7 @@ static void app_navigation_handle_done(HWND hwnd,
                 "retired-request");
 #endif
         app_navigation_request_destroy(request);
-        if (g_navigation_closing && g_retired_navigation == NULL &&
+        if (!g_tabs_enabled && g_navigation_closing && g_retired_navigation == NULL &&
                 g_navigation_request == NULL) {
             DestroyWindow(hwnd);
         }
@@ -4499,6 +4529,8 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     }
     memset(request, 0, sizeof(*request));
     request->hwnd = hwnd;
+    request->owner_tab_id = g_app.tab_id;
+    request->transport_available = g_http_initialized;
     request->method = method;
     request->history_mode = history_mode;
     request->history_target = history_target;
@@ -5655,7 +5687,7 @@ static int app_script_form_navigation(void *pw, AppScriptContext *context)
             host->script != context || host->window == NULL) {
         return 1;
     }
-    return PostMessage(host->window, APP_WM_SCRIPT_NAVIGATE, 0,
+    return PostMessage(host->window, APP_WM_SCRIPT_NAVIGATE, host->tab_id,
             (LPARAM) context) ? 1 : 0;
 }
 
@@ -5840,11 +5872,11 @@ static LRESULT CALLBACK app_address_proc(HWND hwnd, UINT message,
 
     parent = GetParent(hwnd);
     if (message == WM_KEYDOWN && wparam == VK_RETURN) {
-        PostMessage(parent, APP_WM_ADDRESS_GO, 0, 0);
+        PostMessage(parent, APP_WM_ADDRESS_GO, g_app.tab_id, 0);
         return 0;
     }
     if (message == WM_KEYDOWN && wparam == VK_ESCAPE) {
-        PostMessage(parent, APP_WM_ADDRESS_CANCEL, 0, 0);
+        PostMessage(parent, APP_WM_ADDRESS_CANCEL, g_app.tab_id, 0);
         return 0;
     }
     if (message == WM_KEYDOWN && wparam == VK_TAB) {
@@ -6275,6 +6307,10 @@ failed:
 static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
+    /* Hidden tabs retain native children, but cannot dispatch input, resize
+     * or paint through the selected tab's adapter. Resize on activation. */
+    if (g_tabs_enabled && hwnd != g_page_window)
+        return DefWindowProc(hwnd, message, wparam, lparam);
     if (message == WM_COMMAND && g_controls != NULL &&
             AppControls_HandleCommand(g_controls, wparam, lparam)) {
         return 0;
@@ -6566,6 +6602,9 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         SetTimer(hwnd, APP_SCRIPT_TIMER_ID, 250, NULL);
         return 0;
+    case WM_INITMENUPOPUP:
+        app_tabs_update_menu();
+        break;
     case WM_SIZE:
         app_reposition_controls(hwnd);
         app_reposition_page(hwnd);
@@ -6599,6 +6638,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
     case WM_COMMAND:
         /* EDIT notifications must never be interpreted as menu/navigation
          * commands. Enter submission is a separate, explicit WM_APP message. */
+        if (g_tabs_closing) return 0;
         if (lparam != 0 && (HWND) lparam == g_address) {
 #ifdef _DEBUG
             if (HIWORD(wparam) == EN_SETFOCUS && g_navigation_request != NULL)
@@ -6607,7 +6647,18 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
 #endif
             return 0;
         }
+        if (g_tabs_enabled && LOWORD(wparam) >= APP_CMD_TAB_FIRST &&
+                LOWORD(wparam) < APP_CMD_TAB_FIRST + APP_TAB_MAX) {
+            (void) app_tabs_select((int) LOWORD(wparam) - APP_CMD_TAB_FIRST);
+            return 0;
+        }
         switch (LOWORD(wparam)) {
+        case APP_CMD_NEW_TAB:
+            (void) app_tabs_new();
+            return 0;
+        case APP_CMD_CLOSE_TAB:
+            app_tabs_close();
+            return 0;
         case APP_CMD_BACK:
             app_go_back(hwnd);
             return 0;
@@ -6645,6 +6696,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         break;
     case APP_WM_ADDRESS_GO:
+        if (g_tabs_closing || wparam != g_app.tab_id) return 0;
 #ifdef _DEBUG
         if (g_navigation_request != NULL)
             app_navigation_debug_log_request(g_navigation_request,
@@ -6658,31 +6710,35 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case APP_WM_ADDRESS_CANCEL:
+        if (g_tabs_closing || wparam != g_app.tab_id) return 0;
         app_set_address(g_navigation_request != NULL ?
                 g_navigation_request->url : g_current_url);
         app_restore_page_status();
         SetFocus((g_page_window != NULL) ? g_page_window : hwnd);
         return 0;
     case APP_WM_NAV_DONE:
-        app_navigation_handle_done(hwnd,
-                (AppNavigationRequest *) lparam);
+        app_tabs_handle_done(hwnd, (AppNavigationRequest *) lparam,
+                (unsigned long) wparam);
         return 0;
     case APP_WM_SCRIPT_NAVIGATE:
+        if (g_tabs_closing || wparam != g_app.tab_id) return 0;
         app_handle_script_navigation(hwnd, (AppScriptContext *) lparam);
         return 0;
     case APP_WM_FILE_PICKER:
+        if (g_tabs_closing || wparam != g_app.tab_id) return 0;
         (void) app_file_picker_process(hwnd);
         return 0;
     case APP_WM_CONTROLS_REFRESH:
         {
             int form_reset;
 
-            if (!g_script_refresh_pending ||
+            if (g_tabs_closing || (wparam >> 1) != g_app.tab_id ||
+                    !g_script_refresh_pending ||
                     lparam != (LPARAM) g_script_refresh_context) {
                 return 0;
             }
             form_reset = g_script_refresh_form_reset ||
-                    (wparam == APP_CONTROLS_REFRESH_FORM_RESET);
+                    ((wparam & 1) == APP_CONTROLS_REFRESH_FORM_RESET);
             g_script_refresh_pending = 0;
             g_script_refresh_form_reset = 0;
             g_script_refresh_context = NULL;
@@ -6721,12 +6777,13 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_TIMER:
+        if (g_tabs_closing) return 0;
         if (wparam >= APP_NAV_SCRIPT_TIMER_BASE) {
             AppNavigationRequest *request;
             int advance_result;
 
             request = g_navigation_request;
-            /* ID includes the candidate generation, not a borrowed pointer.
+            /* ID is process-unique, not a borrowed pointer or per-tab counter.
              * Late timers from cancelled/closed pages cannot advance C. */
             if (request == NULL || request->script_timer_id != (UINT) wparam ||
                     !app_navigation_can_apply(request)) return 0;
@@ -6767,6 +6824,10 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_CLOSE:
+        if (g_tabs_enabled) {
+            app_tabs_close_all(hwnd);
+            return 0;
+        }
         app_page_pointer_cancel(g_page_window);
         KillTimer(hwnd, APP_LOADING_TIMER_ID);
         if (g_navigation_request != NULL || g_retired_navigation != NULL) {
@@ -6789,7 +6850,9 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         g_script_refresh_form_reset = 0;
         g_script_refresh_context = NULL;
         app_file_picker_cancel_pending();
-        if (g_controls != NULL) {
+        if (g_tabs_enabled) {
+            app_tabs_shutdown();
+        } else if (g_controls != NULL) {
             AppControls_Destroy(g_controls);
             g_controls = NULL;
         }
@@ -6855,6 +6918,644 @@ static int app_create_page_window(HWND hwnd)
     AppHostContext_SetPageWindow(&g_app, page_window);
     return (page_window == NULL) ? 1 : 0;
 }
+
+/* Tabs are a platform owner, not a second history or navigation engine.
+ * Stable slots keep callback pw valid until every worker has been joined. */
+static void app_tabs_update_menu(void)
+{
+    HMENU menu;
+    WCHAR text[160];
+    WCHAR title[120];
+    static char utf8_title[PCORE_DOCUMENT_TITLE_MAX_BYTES + 1U];
+    static WCHAR wide_title[PCORE_DOCUMENT_TITLE_MAX_BYTES + 2U];
+    AppTab *tab;
+    int i;
+    int j;
+    int n;
+    int bytes;
+    UINT flags;
+
+    if (!g_tabs_enabled || g_menu_bar == NULL) return;
+    menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0,
+            (LPARAM) APP_CMD_TABS);
+    if (menu == NULL) return;
+    /* GetMenuItemCount is not exported by the WM6 SDK. Bounded positional
+     * deletion works with the native two-softkey menu implementation. */
+    for (i = 0; i < APP_TAB_MAX + 6; i++) {
+        if (!DeleteMenu(menu, 0, MF_BYPOSITION)) break;
+    }
+    AppI18n_LoadString(APP_TEXT_MENU_BACK, text, 160);
+    flags = PBrowser_HistoryBackTarget(g_history, &i) != NULL ?
+            MF_ENABLED : MF_GRAYED;
+    AppendMenuW(menu, MF_STRING | flags, APP_CMD_BACK, text);
+    AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+    for (i = 0; i < g_tab_count; i++) {
+        tab = &g_tabs[g_tab_order[i]];
+        utf8_title[0] = '\0';
+        bytes = 0;
+        if (tab->host.navigation_request != NULL) {
+            app_copy_text(utf8_title, sizeof(utf8_title),
+                    tab->host.navigation_request->url);
+        } else if (tab->host.document != NULL) {
+            (void) PCore_DocumentTitle(tab->host.document, utf8_title,
+                    sizeof(utf8_title), &bytes);
+        }
+        if (utf8_title[0] == '\0') app_copy_text(utf8_title,
+                sizeof(utf8_title), tab->host.current_url);
+        if (strcmp(utf8_title, APP_URL_NEWTAB) == 0 ||
+                utf8_title[0] == '\0') {
+            AppI18n_LoadString(APP_TEXT_MENU_NEW_TAB, title, 120);
+        } else {
+            app_utf8_to_wide(utf8_title, wide_title,
+                    sizeof(wide_title) / sizeof(wide_title[0]));
+            j = lstrlenW(wide_title);
+            if (j > 119) j = 119;
+            memcpy(title, wide_title, (size_t) j * sizeof(WCHAR));
+            title[j] = L'\0';
+            j = lstrlenW(title);
+            if (j > 0 && title[j - 1] >= 0xd800 && title[j - 1] <= 0xdbff)
+                title[j - 1] = L'\0';
+        }
+        /* Menu ampersands are markup; page titles must remain literal. */
+        n = 0;
+        text[n++] = (WCHAR) (L'1' + i);
+        text[n++] = L'.';
+        text[n++] = L' ';
+        for (j = 0; title[j] != L'\0' && n < 156; j++) {
+            if (title[j] < L' ') continue;
+            if (title[j] == L'&') text[n++] = L'&';
+            text[n++] = title[j];
+        }
+        text[n] = L'\0';
+        AppendMenuW(menu, MF_STRING | (tab == g_tab ? MF_CHECKED : 0),
+                APP_CMD_TAB_FIRST + g_tab_order[i], text);
+    }
+    if (g_tab_count > 0) {
+        tab = &g_tabs[g_tab_order[g_tab_count - 1]];
+        if (tab->host.navigation_request != NULL ||
+                strcmp(tab->host.current_url, APP_URL_NEWTAB) != 0) {
+            AppI18n_LoadString(APP_TEXT_MENU_NEW_TAB, text, 160);
+            AppendMenuW(menu, MF_STRING | (g_tab_count >= APP_TAB_MAX ?
+                    MF_GRAYED : 0), APP_CMD_NEW_TAB, text);
+        }
+    }
+    AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+    AppI18n_LoadString(APP_TEXT_MENU_CLOSE_TAB, text, 160);
+    AppendMenuW(menu, MF_STRING, APP_CMD_CLOSE_TAB, text);
+}
+
+static void app_tab_release(AppTab *tab)
+{
+    AppTab *saved;
+
+    saved = g_tab;
+    g_tab = tab;
+    if (g_script != NULL) (void) AppScript_PageTeardown(g_script);
+    if (g_controls != NULL) AppControls_Destroy(g_controls);
+    g_controls = NULL;
+    AppHostContext_ReleasePage(&g_app);
+    if (g_history != NULL) PBrowser_HistoryDestroy(g_history);
+    g_history = NULL;
+    if (g_page_window != NULL) DestroyWindow(g_page_window);
+    g_page_window = NULL;
+    g_tab = saved;
+}
+
+static void app_tabs_finish_close(void)
+{
+    int i;
+
+    if (!g_tabs_enabled) return;
+    if (g_tabs_closing) {
+        for (i = 0; i < APP_TAB_MAX; i++) {
+            if (g_tabs[i].used && (g_tabs[i].host.navigation_request != NULL ||
+                    g_tabs[i].host.retired_navigation != NULL)) return;
+        }
+        DestroyWindow(g_window);
+        return;
+    }
+    for (i = 0; i < APP_TAB_MAX; i++) {
+        if (g_tabs[i].used && g_tabs[i].closing &&
+                g_tabs[i].host.navigation_request == NULL &&
+                g_tabs[i].host.retired_navigation == NULL) {
+            app_tab_release(&g_tabs[i]);
+            memset(&g_tabs[i], 0, sizeof(g_tabs[i]));
+        }
+    }
+}
+
+static void app_tabs_handle_done(HWND hwnd, AppNavigationRequest *request,
+        unsigned long tab_id)
+{
+    AppTab *saved;
+    AppTab *owner;
+    AppNavigationRequest *retired;
+    int i;
+
+    if (!g_tabs_enabled) {
+        app_navigation_handle_done(hwnd, request);
+        return;
+    }
+    if (request == NULL) return;
+    owner = NULL;
+    for (i = 0; i < APP_TAB_MAX && owner == NULL; i++) {
+        if (!g_tabs[i].used || g_tabs[i].host.tab_id != tab_id) continue;
+        if (g_tabs[i].host.navigation_request == request) owner = &g_tabs[i];
+        for (retired = g_tabs[i].host.retired_navigation; retired != NULL;
+                retired = retired->retired_next) {
+            if (retired == request) owner = &g_tabs[i];
+        }
+    }
+    /* A queued completion must prove ownership before dereferencing lparam. */
+    if (owner == NULL) return;
+    if (owner != g_tab && !owner->closing &&
+            owner->host.navigation_request == request) {
+        if (request->worker_thread != NULL) {
+            WaitForSingleObject(request->worker_thread, INFINITE);
+            CloseHandle(request->worker_thread);
+            request->worker_thread = NULL;
+        }
+        request->completion_pending = 1;
+        return;
+    }
+    saved = g_tab;
+    g_tab = owner;
+    request->completion_pending = 0;
+    app_navigation_handle_done(hwnd, request);
+    g_tab = saved;
+    app_tabs_finish_close();
+}
+
+static int app_tabs_select(int slot)
+{
+    AppTab *old;
+    AppNavigationRequest *request;
+    RECT page;
+    RECT outer;
+    int result;
+
+    if (!g_tabs_enabled || g_tabs_closing || slot < 0 || slot >= APP_TAB_MAX ||
+            !g_tabs[slot].used || g_tabs[slot].closing || g_file_picker_active)
+        return 0;
+    if (&g_tabs[slot] == g_tab) return 1;
+    old = g_tab;
+    old->saved_focus = GetFocus();
+    old->address_editing = AppAddressBar_IsEditing(g_address_bar);
+    if (old->address_editing) {
+        GetWindowTextW(g_address, old->address_text, APP_HOST_URL_MAX);
+        SendMessage(g_address, EM_GETSEL, (WPARAM) &old->address_start,
+                (LPARAM) &old->address_end);
+    }
+    SetFocus(g_page_window);
+    AppAddressBar_EndEdit(g_address_bar);
+    app_file_picker_cancel_pending();
+    app_page_pointer_cancel(g_page_window);
+    KillTimer(g_window, APP_LOADING_TIMER_ID);
+    request = g_navigation_request;
+    if (request != NULL && request->script_timer_id != 0) {
+        KillTimer(g_window, request->script_timer_id);
+        request->script_timer_id = 0;
+    }
+    if (g_script != NULL) {
+        (void) AppScript_SetFocus(g_script, 0);
+        (void) AppScript_SetVisibility(g_script, 1);
+    }
+    ShowWindow(g_page_window, SW_HIDE);
+    g_tab = &g_tabs[slot];
+    /* Keep the shared shell activation state, not a stale per-tab snapshot. */
+    g_shell_activate = old->host.shell_activate;
+    request = g_navigation_request;
+    app_set_address(request != NULL ? request->url : g_current_url);
+    app_restore_page_status();
+    app_page_rect(g_window, &page);
+    GetWindowRect(g_page_window, &outer);
+    if (outer.right - outer.left != page.right - page.left ||
+            outer.bottom - outer.top != page.bottom - page.top)
+        app_reposition_page(g_window);
+    ShowWindow(g_page_window, SW_SHOW);
+    if (g_script != NULL) {
+        (void) AppScript_SetVisibility(g_script, 0);
+        (void) AppScript_SetFocus(g_script, 1);
+        if (AppScript_HasPendingNavigation(g_script))
+            PostMessage(g_window, APP_WM_SCRIPT_NAVIGATE, g_app.tab_id,
+                    (LPARAM) g_script);
+    }
+    if (g_script_refresh_pending)
+        PostMessage(g_window, APP_WM_CONTROLS_REFRESH,
+                (g_app.tab_id << 1) | (g_script_refresh_form_reset ?
+                APP_CONTROLS_REFRESH_FORM_RESET : 0),
+                (LPARAM) g_script_refresh_context);
+    if (g_tab->address_editing) {
+        AppAddressBar_BeginEdit(g_address_bar);
+        SetWindowTextW(g_address, g_tab->address_text);
+        SendMessage(g_address, EM_SETSEL, g_tab->address_start,
+                g_tab->address_end);
+    } else if (g_tab->saved_focus != NULL &&
+            IsWindow(g_tab->saved_focus) &&
+            IsChild(g_page_window, g_tab->saved_focus)) {
+        SetFocus(g_tab->saved_focus);
+    } else {
+        SetFocus(g_page_window);
+    }
+    app_tabs_update_menu();
+    InvalidateRect(g_page_window, NULL, FALSE);
+    if (request != NULL) {
+        SetTimer(g_window, APP_LOADING_TIMER_ID, APP_LOADING_INTERVAL_MS, NULL);
+        if (request->completion_pending) {
+            app_tabs_handle_done(g_window, request, g_app.tab_id);
+        } else if (request->worker_thread == NULL) {
+            result = app_navigation_schedule_script(request);
+            if (result != 0) app_navigation_finish(request, 0);
+        }
+    }
+    return 1;
+}
+
+static int app_tabs_new(void)
+{
+    AppTab *old;
+    AppTab *tab;
+    int slot;
+
+    if (!g_tabs_enabled || g_tabs_closing || g_file_picker_active ||
+            g_tab_sequence >= 0x3fffffffUL) return 0;
+    for (slot = 0; slot < APP_TAB_MAX && g_tabs[slot].used; slot++) { }
+    if (slot == APP_TAB_MAX) {
+        app_set_status(APP_TEXT_STATUS_TAB_LIMIT);
+        return 0;
+    }
+    old = g_tab;
+    tab = &g_tabs[slot];
+    memset(tab, 0, sizeof(*tab));
+    AppHostContext_Init(&tab->host);
+    tab->host.tab_id = ++g_tab_sequence;
+    tab->host.instance = g_instance;
+    tab->host.window = g_window;
+    tab->host.menu_bar = g_menu_bar;
+    tab->host.address = g_address;
+    tab->host.address_original_proc = g_address_original_proc;
+    tab->host.shell_activate = g_shell_activate;
+    tab->host.core_initialized = g_core_initialized;
+    tab->host.http_initialized = g_http_initialized;
+    tab->host.dpi = g_dpi;
+    tab->host.history = PBrowser_HistoryCreate();
+    if (tab->host.history == NULL) goto failed;
+    /* Construct an empty native owner before touching the selected page. */
+    g_tab = tab;
+    if (app_create_page_window(g_window) != 0) goto failed;
+    ShowWindow(g_page_window, SW_HIDE);
+    g_controls = AppControls_Create(g_page_window, g_instance, &g_app,
+            app_controls_changed, app_handle_form_submit, app_handle_form_enter);
+    if (g_controls == NULL) goto failed;
+    g_tab = old;
+    tab->used = 1;
+    g_tab_order[g_tab_count++] = slot;
+    if (!app_tabs_select(slot)) goto failed;
+    if (!app_load_page_from(g_window, APP_URL_NEWTAB, APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_MENU)) {
+        app_tabs_close();
+        app_set_status(APP_TEXT_STATUS_TAB_FAILED);
+        return 0;
+    }
+    return 1;
+failed:
+    g_tab = old;
+    if (tab->used && g_tab_count > 0 &&
+            g_tab_order[g_tab_count - 1] == slot) g_tab_count--;
+    app_tab_release(tab);
+    memset(tab, 0, sizeof(*tab));
+    app_set_status(APP_TEXT_STATUS_TAB_FAILED);
+    return 0;
+}
+
+static void app_tabs_close(void)
+{
+    AppTab *tab;
+    AppTab *selected;
+    int prevented;
+    int i;
+    int j;
+    int target;
+
+    if (!g_tabs_enabled || g_tabs_closing || g_file_picker_active) return;
+    tab = g_tab;
+    prevented = 0;
+    if (g_script != NULL && (AppScript_BeforeUnload(g_script, &prevented) != 0 ||
+            prevented)) return;
+    if (g_tab_count == 1) {
+        if (!app_tabs_new()) return;
+        /* Allocate replacement first; failure must keep the last page. */
+    }
+    selected = g_tab;
+    g_tab = tab;
+    tab->closing = 1;
+    g_navigation_closing = 1;
+    app_navigation_cancel_all();
+    target = -1;
+    for (i = 0; i < g_tab_count; i++) {
+        if (&g_tabs[g_tab_order[i]] == tab) {
+            for (j = i; j + 1 < g_tab_count; j++)
+                g_tab_order[j] = g_tab_order[j + 1];
+            g_tab_count--;
+            if (g_tab_count > 0)
+                target = g_tab_order[i < g_tab_count ? i : g_tab_count - 1];
+            break;
+        }
+    }
+    if (selected != tab) target = (int) (selected - g_tabs);
+    if (target >= 0) (void) app_tabs_select(target);
+    app_tabs_finish_close();
+    app_tabs_update_menu();
+}
+
+static void app_tabs_close_all(HWND hwnd)
+{
+    AppTab *saved;
+    int i;
+
+    saved = g_tab;
+    g_tabs_closing = 1;
+    KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
+    app_file_picker_cancel_pending();
+    app_page_pointer_cancel(g_page_window);
+    KillTimer(hwnd, APP_LOADING_TIMER_ID);
+    for (i = 0; i < APP_TAB_MAX; i++) {
+        if (!g_tabs[i].used) continue;
+        g_tab = &g_tabs[i];
+        g_tab->closing = 1;
+        g_navigation_closing = 1;
+        app_navigation_cancel_all();
+    }
+    g_tab = saved;
+    EnableWindow(hwnd, FALSE);
+    app_tabs_finish_close();
+}
+
+static void app_tabs_shutdown(void)
+{
+    int i;
+
+    for (i = 0; i < APP_TAB_MAX; i++) {
+        if (g_tabs[i].used) app_tab_release(&g_tabs[i]);
+    }
+    /* Shared address/menu and DLL init are released once by the shell. */
+    g_tabs_enabled = 0;
+    g_tab_count = 0;
+}
+
+#ifdef _DEBUG
+/* Production adapters, independent new tabs, real native children and a
+ * parked transport worker. No HTTP or fixtures leak into Release. */
+static int app_tabs_debug_check(void)
+{
+    static const char response[] =
+            "<html><head><title>Tab B</title>"
+            "<script>var completedSentinel=43;</script>"
+            "</head><body>loaded B</body></html>";
+    AppTab *original;
+    AppHostContext *shell;
+    AppTab *a;
+    AppNavigationRequest *request;
+    AppScriptHostCallbacks callbacks;
+    HANDLE document;
+    HANDLE history;
+    AppScriptContext *script;
+    HWND edit;
+    HWND child;
+    WCHAR class_name[32];
+    WCHAR actual[80];
+    HMENU menu;
+    MENUITEMINFOW menu_info;
+    MSG message;
+    DWORD started;
+    UINT paused_timer;
+    int scroll;
+    int slot;
+    int phase;
+    int result;
+    int initialized;
+    char log[96];
+
+    shell = (AppHostContext *) malloc(sizeof(*shell));
+    if (shell == NULL) return 1;
+    memcpy(shell, &g_app, sizeof(*shell));
+    original = g_tab;
+    request = NULL;
+    result = 1;
+    phase = 1;
+    if (!app_tabs_new() || g_tab_count != 2 || g_tab == original) goto done;
+    a = g_tab;
+    slot = (int) (a - g_tabs);
+    if (!app_load_page_from(g_window, APP_URL_CONTROLS, APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_MENU) || PBrowser_HistoryCount(g_history) != 2)
+        goto done;
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.size = sizeof(callbacks);
+    callbacks.pw = &g_app;
+    callbacks.navigate = app_script_navigate;
+    callbacks.scroll = app_script_scroll;
+    phase = 11;
+    g_script = AppScript_CreatePending(g_document, g_current_url, 2, 1, 1,
+            "null", g_page_width, g_page_height, g_dpi, &callbacks, 1);
+    if (g_script == NULL) goto done;
+    phase = 12;
+    started = GetTickCount();
+    do {
+        initialized = AppScript_InitializeStep(g_script, 1);
+        if (initialized < 0 || (DWORD) (GetTickCount() - started) > 30000UL)
+            goto done;
+    } while (initialized == 0);
+    phase = 13;
+    if (app_history_debug_eval("var tabSentinel=42;") != PSCRIPT_OK) goto done;
+    phase = 14;
+    if (AppControls_Rebuild(g_controls, g_document, g_script, 0, 0) != 0)
+        goto done;
+    document = g_document;
+    history = g_history;
+    script = g_script;
+    edit = NULL;
+    for (child = GetWindow(g_page_window, GW_CHILD); child != NULL;
+            child = GetWindow(child, GW_HWNDNEXT)) {
+        if (GetClassNameW(child, class_name, 32) &&
+                lstrcmpiW(class_name, L"EDIT") == 0) { edit = child; break; }
+    }
+    phase = 15;
+    if (edit == NULL) goto done;
+    SetWindowTextW(edit, L"retained input");
+    (void) app_scroll_to_position(g_page_window, 0, 20);
+    scroll = g_scroll_y;
+    AppAddressBar_BeginEdit(g_address_bar);
+    SetWindowTextW(g_address, L"https://example.com/unsent");
+    SendMessage(g_address, EM_SETSEL, 4, 9);
+    phase = 2;
+    if (!app_tabs_select((int) (original - g_tabs)) || g_document != NULL ||
+            PBrowser_HistoryCount(g_history) != 0 || !app_tabs_select(slot) ||
+            g_document != document || g_history != history || g_script != script ||
+            g_scroll_y != scroll || !IsWindow(edit) ||
+            app_history_debug_eval("if(tabSentinel!==42)throw 1;") != PSCRIPT_OK)
+        goto done;
+    GetWindowTextW(edit, actual, 80);
+    if (wcscmp(actual, L"retained input")) goto done;
+    GetWindowTextW(g_address, actual, 80);
+    if (!AppAddressBar_IsEditing(g_address_bar) ||
+            wcscmp(actual, L"https://example.com/unsent") ||
+            SendMessage(g_address, EM_GETSEL, 0, 0) != MAKELONG(4, 9)) goto done;
+    AppAddressBar_EndEdit(g_address_bar);
+    /* Late messages from another tab are rejected before borrowed pointers
+     * are examined, even when stable slots/allocator addresses are reused. */
+    SendMessage(g_window, APP_WM_ADDRESS_GO, original->host.tab_id, 1);
+    SendMessage(g_window, APP_WM_SCRIPT_NAVIGATE, original->host.tab_id, 1);
+    SendMessage(g_window, APP_WM_CONTROLS_REFRESH,
+            original->host.tab_id << 1, 1);
+    SendMessage(g_window, APP_WM_FILE_PICKER, original->host.tab_id, 0);
+    if (g_document != document || g_script != script || g_tab_count != 2 ||
+            PBrowser_HistoryCount(g_history) != 2) goto done;
+    if (app_history_debug_eval("window.tabPreventClose=true;"
+            "window.addEventListener('beforeunload',function(e){"
+            "if(window.tabPreventClose)e.preventDefault();});") != PSCRIPT_OK)
+        goto done;
+    app_tabs_close();
+    if (g_tab != a || g_tab_count != 2 || g_document != document ||
+            app_history_debug_eval("window.tabPreventClose=false;") !=
+            PSCRIPT_OK) goto done;
+    phase = 3;
+    if (!app_tabs_new() || !app_tabs_new() || g_tab_count != APP_TAB_MAX ||
+            app_tabs_new() || g_tab_count != APP_TAB_MAX) goto done;
+    menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0, APP_CMD_TABS);
+    app_tabs_update_menu();
+    memset(&menu_info, 0, sizeof(menu_info));
+    menu_info.cbSize = sizeof(menu_info);
+    menu_info.fMask = MIIM_STATE;
+    if (menu == NULL || GetMenuItemInfoW(menu, APP_CMD_NEW_TAB, FALSE,
+            &menu_info) || !GetMenuItemInfoW(menu,
+            APP_CMD_TAB_FIRST + (int) (g_tab - g_tabs), FALSE, &menu_info) ||
+            !(menu_info.fState & MFS_CHECKED)) goto done;
+    app_tabs_close();
+    app_tabs_close();
+    if (g_tab_count != 2 || !app_tabs_select(slot) || g_document != document)
+        goto done;
+    phase = 4;
+    g_navigation_debug_worker_gate = CreateEvent(NULL, TRUE, TRUE, NULL);
+    if (g_navigation_debug_worker_gate == NULL ||
+            !app_navigation_start(g_window, "https://example.com/tab-b",
+            PCORE_FORM_METHOD_GET, NULL, 0, NULL, APP_HISTORY_NEW, -1)) goto done;
+    request = g_navigation_request;
+    if (PBrowser_NavigationResourceSetData(request->resource_transaction,
+            request->resource_index, response, sizeof(response) - 1) != PBROWSER_OK)
+        goto done;
+    request->worker_succeeded = 1;
+    if (!app_tabs_select((int) (original - g_tabs))) goto done;
+    app_tabs_handle_done(g_window, request, original->host.tab_id);
+    if (request->completion_pending || a->host.document != document) goto done;
+    app_tabs_handle_done(g_window, request, a->host.tab_id);
+    if (!request->completion_pending || a->host.document != document ||
+            g_document != NULL || PBrowser_HistoryCount(g_history) != 0)
+        goto done;
+    if (!app_tabs_select(slot)) goto done;
+    if (g_navigation_request != request || request->script_candidate == NULL ||
+            request->script_timer_id == 0) goto done;
+    paused_timer = request->script_timer_id;
+    if (!app_tabs_select((int) (original - g_tabs)) ||
+            request->script_timer_id != 0 || g_navigation_request != NULL)
+        goto done;
+    SendMessage(g_window, WM_TIMER, paused_timer, 0);
+    if (!app_tabs_select(slot) || request->script_timer_id == 0 ||
+            request->script_timer_id == paused_timer) goto done;
+    SendMessage(g_window, WM_TIMER, paused_timer, 0);
+    started = GetTickCount();
+    while (g_navigation_request != NULL) {
+        if ((DWORD) (GetTickCount() - started) > 30000UL) goto done;
+        if (PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
+            app_dispatch_ui_message(&message);
+        else Sleep(1);
+    }
+    request = NULL;
+    if (strcmp(g_current_url, "https://example.com/tab-b") ||
+            PBrowser_HistoryCount(g_history) != 3 || g_script == NULL ||
+            app_history_debug_eval("if(completedSentinel!==43)throw 1;") !=
+            PSCRIPT_OK) goto done;
+    phase = 5;
+    document = g_document;
+    if (!app_navigation_start(g_window, "https://example.com/failed-tab",
+            PCORE_FORM_METHOD_GET, NULL, 0, NULL, APP_HISTORY_NEW, -1)) goto done;
+    request = g_navigation_request;
+    if (!app_tabs_select((int) (original - g_tabs))) goto done;
+    app_tabs_handle_done(g_window, request, a->host.tab_id);
+    if (!request->completion_pending || a->host.document != document ||
+            !app_tabs_select(slot) || g_navigation_request != NULL ||
+            g_document != document ||
+            strcmp(g_current_url, "https://example.com/tab-b") ||
+            PBrowser_HistoryCount(g_history) != 3) goto done;
+    request = NULL;
+    phase = 6;
+    ResetEvent(g_navigation_debug_worker_gate);
+    if (!app_navigation_start(g_window, "https://example.com/tab-c",
+            PCORE_FORM_METHOD_GET, NULL, 0, NULL, APP_HISTORY_NEW, -1)) goto done;
+    request = g_navigation_request;
+    app_tabs_close();
+    if (!a->used || !a->closing || a->host.retired_navigation != request ||
+            g_tab != original || g_tab_count != 1) goto done;
+    SetEvent(g_navigation_debug_worker_gate);
+    app_tabs_handle_done(g_window, request, a->host.tab_id);
+    request = NULL;
+    if (a->used || g_tab != original || g_tab_count != 1 ||
+            PBrowser_HistoryCount(g_history) != 0) goto done;
+    phase = 7;
+    /* Closing the last tab creates a fresh newtab/history, not app quit. */
+    app_tabs_close();
+    if (g_tab_count != 1 || g_tab == original ||
+            strcmp(g_current_url, APP_URL_NEWTAB) ||
+            PBrowser_HistoryCount(g_history) != 1 || !IsWindow(g_window)) goto done;
+    result = 0;
+done:
+    if (g_navigation_debug_worker_gate != NULL)
+        SetEvent(g_navigation_debug_worker_gate);
+    /* Release only these isolated test tabs; leave the real startup history
+     * fresh so existing startup/navigation gates retain their contracts. */
+    for (slot = 0; slot < APP_TAB_MAX; slot++) {
+        if (!g_tabs[slot].used) continue;
+        g_tab = &g_tabs[slot];
+        app_navigation_cancel_all();
+        while (g_retired_navigation != NULL) {
+            request = g_retired_navigation;
+            app_navigation_remove_retired(request);
+            app_navigation_request_destroy(request);
+        }
+        app_tab_release(g_tab);
+        memset(g_tab, 0, sizeof(*g_tab));
+    }
+    if (g_navigation_debug_worker_gate != NULL)
+        CloseHandle(g_navigation_debug_worker_gate);
+    g_navigation_debug_worker_gate = NULL;
+    g_tab = &g_tabs[0];
+    memcpy(&g_app, shell, sizeof(g_app));
+    g_app.tab_id = ++g_tab_sequence;
+    free(shell);
+    g_app.document = NULL;
+    g_app.stylesheet = NULL;
+    g_app.script = NULL;
+    g_app.page_window = NULL;
+    g_app.history = PBrowser_HistoryCreate();
+    g_tab->used = 1;
+    g_tab_order[0] = 0;
+    g_tab_count = 1;
+    if (g_history == NULL || app_create_page_window(g_window) != 0) result = 1;
+    if (g_page_window != NULL) {
+        g_controls = AppControls_Create(g_page_window, g_instance, &g_app,
+                app_controls_changed, app_handle_form_submit, app_handle_form_enter);
+        if (g_controls == NULL) result = 1;
+        app_reposition_page(g_window);
+    }
+    AppAddressBar_EndEdit(g_address_bar);
+    app_set_address("");
+    app_restore_page_status();
+    _snprintf(log, sizeof(log) - 1, "positron tabs selftest %s phase=%d\r\n",
+            result == 0 ? "OK" : "FAILED", phase);
+    log[sizeof(log) - 1] = '\0';
+    AppDebug_Log(log);
+    return result;
+}
+#endif
 
 static int app_register_page_class(void)
 {
@@ -6999,6 +7700,17 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     app_reposition_controls(hwnd);
     app_reposition_page(hwnd);
+    g_app.tab_id = ++g_tab_sequence;
+    g_tab->used = 1;
+    g_tab_order[0] = 0;
+    g_tab_count = 1;
+    g_tabs_enabled = 1;
+#ifdef _DEBUG
+    if (app_tabs_debug_check() != 0) {
+        DestroyWindow(hwnd);
+        return 1;
+    }
+#endif
     app_copy_text(initial_url, sizeof(initial_url), APP_URL_NEWTAB);
     startup_invalid = 0;
     if (startup_has_reference &&
@@ -7030,6 +7742,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         g_startup_script_armed = 1;
         g_startup_click_armed = startup_has_click ? 1 : 0;
         g_startup_script_generation = (unsigned long) g_navigation_generation;
+        g_startup_script_tab_id = g_app.tab_id;
     }
     ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
     UpdateWindow(hwnd);

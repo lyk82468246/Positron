@@ -25,6 +25,16 @@
 #define IDS_STATUS_READY_INTERNAL_ZH 10129
 #define IDS_APP_TITLE_EN             10046
 #define IDS_APP_TITLE_ZH             10146
+#define IDS_APP_TABS_EN              10047
+#define IDS_APP_NEW_TAB_EN           10048
+#define IDS_APP_CLOSE_TAB_EN         10049
+#define IDS_STATUS_TAB_LIMIT_EN      10050
+#define IDS_STATUS_TAB_FAILED_EN     10051
+#define IDS_APP_TABS_ZH              10147
+#define IDS_APP_NEW_TAB_ZH           10148
+#define IDS_APP_CLOSE_TAB_ZH         10149
+#define IDS_STATUS_TAB_LIMIT_ZH      10150
+#define IDS_STATUS_TAB_FAILED_ZH     10151
 
 #define IDS_LOADING_REQUEST_EN      10030
 #define IDS_LOADING_RECEIVE_EN      10031
@@ -128,5 +138,9 @@
 #define APP_CMD_DOWNLOADS  40009
 #define APP_CMD_SETTINGS   40010
 #define APP_CMD_ABOUT      40011
+#define APP_CMD_TABS       40012
+#define APP_CMD_NEW_TAB    40013
+#define APP_CMD_CLOSE_TAB  40014
+#define APP_CMD_TAB_FIRST  41000
 
 #endif

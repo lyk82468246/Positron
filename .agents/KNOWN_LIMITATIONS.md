@@ -101,7 +101,10 @@
 - `details`/`summary`、`hidden` 等只有受限静态或交互子集；`dialog` 已有 Browser 脚本的 show/showModal/close/requestClose、returnValue、cancel/close 事件、活动 modal id、宿主驱动的 Escape 请求桥接和参考宿主的有界 backdrop 点击策略。Core/Browser 组合支持有 id 祖先 dialog 的显式、脚本和隐式 `method="dialog"` 提交，包括 validation、可取消 `submit`、submitter value 与直接 close；无 id、无祖先 dialog 或跨文档目标会 fail closed。宿主可以组合 Core 的 scoped focus snapshot 实现顺序 Tab/Shift+Tab 子树范围，并调用 `PCore_PaintDocumentWithModal` 得到实体色遮罩和指定 dialog 重绘；这不是 CSS `::backdrop`、透明合成或跨文档 top layer。Browser 不自动接管平台消息；宿主必须显式调用这些边界。
 - Core 已支持有界的自定义 `tabindex` 顺序：正值升序（同值保持 DOM 顺序），随后是零/缺省组；`PCore_FocusTargetInfoWithin` 可按已知 DOM id 限定到一个祖先子树；负值、disabled/hidden/stale 目标和 file picker 仍会被排除。`PCore_AutofocusTargetInfo`/`PCore_InteractionFocusAutofocus` 现在允许宿主在 style/layout 与 native 子控件创建完成后，按 DOM 顺序选择第一个符合相同资格的 `autofocus` 目标；这只是一次显式、有界的事务，不是 Browser 自主生命周期，也不提供完整焦点导航、动态焦点区域、focus ring 或跨窗口焦点。目标必须有可用 layout，深度超限、无 id 或 id 超出 Browser 桥接容量时宿主应安全回退；无 id 目标的事件可通过 `PCore_EventDispatchFocus` 派发，但 Browser 的 `document.activeElement` 仍按 id projection 合同回退到 `document.body`。
 - Core/Browser 对带 DOM `id` 的常见 block/replaced/flex overflow box 提供 retained scrollbar offset、`scrollLeft`/`scrollTop`、`scrollTo()`/`scrollBy()` 和宿主 pointer 同步；这只是有界的两个轴桥接，不能代表完整 CSS overflow 语义。client 尺寸是 retained scrollport 的 padding 区域，滚动条覆盖在边缘。
-- `positron.exe` 仍有一个待归属的页面级横向滚动条问题：在窄视口加载 WinWorld `/home` 时，可能出现几乎铺满轨道的水平滚动条，即使页面视觉内容没有明显越出 viewport。EXE 已按最终 document extent 动态增删 `WS_HSCROLL`/`WS_VSCROLL`，也没有自绘滚动条；现有截图不足以区分 Core document extent、viewport/client rect 与页面 CSS 各自的贡献。本问题按当前决策暂缓，不以隐藏原生滚动条作为修复；重新开启时必须同时记录最终 document/page 尺寸、client rect、scroll range、DPI 和样式变更时序。
+- WinWorld `/home` 窄视口可能出现接近满轨道的横向滚动条，视觉却无明显溢出。EXE 按最终
+  extent 动态设置原生 `WS_HSCROLL`/`WS_VSCROLL`；截图不足以归因于 Core、client rect 或
+  页面 CSS。本项暂缓，不以隐藏滚动条修复；重启取证须记录 document/page/client 尺寸、
+  scroll range、DPI 和样式时序。
 - focus/blur 与 document.hasFocus() 由宿主维护；native 焦点与 OEM/跨窗口策略属宿主。WinWorld 人工门待完成。
 - Document `click` 已接入 Core，最多 64 个 listener；TEST1320/1325/1327 覆盖 Bootstrap
   collapse 与 flex button。无 `id` button 只在同步事务提供短 token，不制造 DOM id；事件/
@@ -410,7 +413,10 @@
   quit 来源策略见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
   触摸、双语、旋转与退出仍待人工门。
 - Browser history 只保存有界 page-level `(scroll_x, scroll_y)`，宿主按 Core extent/client size clamp 并换算 CSS/物理坐标；`scrollRestoration=manual` 跳过自动恢复，但不阻止 fragment reveal 或显式滚动。元素 retained-overflow offset 不入栈；完整滚动树、chaining、锚定、惯性滚动、视觉 viewport 偏移和跨窗口恢复未实现。公开合同与通知顺序见 [能力矩阵](../docs/CAPABILITIES.md#browserpositron_browserdll)。
-- `positron.exe` 当前是单窗口/单 browsing context 组合；`_blank`、未知 named target、第二个 global、opener、跨窗口 history 和真实窗口复用未实现或保守拒绝。
+- `positron.exe` 最多四个独立标签；隐藏页只继续传输，解析/脚本/提交待激活。
+  无多进程隔离、后台脚本、持久恢复或 opener；`_blank`/named target 不新建标签。
+  网络并发、内存、触摸/SIP、旋转/DPI 与加载中退出待人工，见
+  [多标签调度](../positron_app/INTEGRATION_PLAN.md#多标签与平台调度)。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
 - 下载、外部协议和权限仍由宿主决定。
 - Browser candidate 以不可变 generation、取消请求、退休状态和 committed/failed 终态保护 UI 文档提交；`CanApply` 同时检查 generation 与 active 状态。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列和页面 swap；退休队列有界，达到上限时新导航 fail closed 并保留当前页。取消是协作式的：worker 若已进入阻塞的 PHttp 调用，不能保证 socket 立即中断；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。

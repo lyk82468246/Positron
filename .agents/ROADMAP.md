@@ -465,6 +465,11 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 
 这些方向不自动产生 next：
 
+- 单窗口四标签的真实软键切换、各页输入/滚动/history 保留、后台 HTTP(S) 完成不覆盖可见页、
+  关闭加载页、多页加载中退出，以及 SIP/旋转后激活隐藏页的 geometry；独立页/脚本上下文
+  和网络 worker 接线已有 EXE 自动门，不把它写成真实内存压力或多进程隔离通过。
+  `_blank`/named window、opener、持久恢复和进程隔离要在具体消费者证据、WM6 内存测量及
+  有界 IPC/所有权设计后另行取舍，不跨线程共享 live Core/JS handle。
 - OEM 键盘、SIP/IME 候选词整词提交、contenteditable 自动重复和跨应用剪贴板；
 - native SELECT popup 的真实 OEM 键盘/触摸行为、动态 option 重建、真实 file picker、触摸命中、旋转、DPI、字体、边距、容器居中、表格/列表、
   应用英语/简体中文/回退语言矩阵和失败网络的整体视觉；

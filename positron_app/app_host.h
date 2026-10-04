@@ -32,6 +32,7 @@ struct AppNavigationRequest {
     HANDLE resource_transaction;
     AppNavigationRequest *retired_next;
     unsigned long generation;
+    unsigned long owner_tab_id;
     int history_mode;
     int history_target;
     int resource_index;
@@ -47,6 +48,11 @@ struct AppNavigationRequest {
     int commit_stage;
     /* Candidate-specific one-shot UI timer. No queued request pointer. */
     UINT script_timer_id;
+    /* Worker completion received while this tab is hidden. UI consumes it
+     * on activation; the request stays owned by its original host. */
+    int completion_pending;
+    /* Captured before worker start; never reads the active tab on a worker. */
+    int transport_available;
     /* Atomic worker-to-UI presentation only; no candidate decisions. */
     LONG loading_phase;
     int image_scan_found;
@@ -66,6 +72,8 @@ struct AppNavigationRequest {
 };
 
 typedef struct AppHostContext {
+    /* UI routing identity, never reused when a stable slot is recycled. */
+    unsigned long tab_id;
     HWND window;
     HWND address;
     HWND page_window;

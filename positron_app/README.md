@@ -7,9 +7,9 @@ bar、菜单、输入优先级和页面导航策略属于应用。
 
 ## 应用范围
 
-当前版本提供单窗口网络浏览、内部起始页和离线验收页：
+当前版本提供单窗口、最多四个标签的网络浏览、内部起始页和离线验收页：
 
-- 使用标准 WM6 caption 和 `SHCreateMenuBar` softkey command bar；左 softkey 为 `Back`，
+- 使用标准 WM6 caption 和 `SHCreateMenuBar` softkey command bar；左 softkey 为 `Tabs` / `标签页`，
   右 softkey 打开原生菜单，包含前进、主页、地址栏、刷新、历史记录、下载、设置、关于和退出；
 - caption 下只有一行紧凑 native EDIT 地址栏；Enter 提交，Escape 恢复最近一次已提交地址；
 - 内部页面包含 `positron://newtab`、`about`、`history`、`downloads`、`settings`，
@@ -24,6 +24,17 @@ bar、菜单、输入优先级和页面导航策略属于应用。
   当前页面；请求失败时保留旧页面；
 - 页面空白点击不会关闭窗口；页面链接可用触摸或鼠标点击激活；页面焦点可用
   Up/Down/Enter 操作，Backspace 保留给 native 地址栏编辑。
+
+左菜单依次提供后退、标签列表、可选的新建标签和关闭标签，中间用原生分隔符分组；当前
+标签打勾。尾部已是 newtab 时直接选择它，不重复增加新建项。每页独立保存文档、脚本、
+history、滚动和 native 输入状态，切换不重新加载；尚未提交的地址输入/选区也按标签保存。
+history 页面、后退/前进及刷新只操作当前标签。关闭最后一页会创建新 newtab，退出菜单
+和获准的 quit 命令才关闭整个应用。
+
+网络线程可在后台继续传输；隐藏标签的解析、脚本初始化/执行、任务 checkpoint 和提交暂停，
+切回后恢复，不会覆盖当前页的地址或标题。首版不含多进程崩溃隔离、后台脚本保证、
+`_blank`/window.open 新建标签或持久标签恢复。容量/内存不足保留已有页面；详见
+[平台调度设计](INTEGRATION_PLAN.md#多标签与平台调度)。
 
 网络页面的外部 CSS/`@import` 属于 required 资源，图片和 classic script 属于 optional
 资源；它们都在同一个 Browser candidate/resource transaction 中发现、下载和释放。网络
@@ -108,7 +119,7 @@ Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `conten
 ## 内部地址
 
 页面名大小写无关，允许一个末尾斜杠；未知内部地址恢复已提交地址并保留文档、标题。
-history 是 Browser 会话导航栈，不是持久访问日志：最多 16 条、最新在前，包括前进项，
+history 是当前标签的 Browser 会话导航栈，不是持久访问日志：最多 16 条、最新在前，包括前进项，
 过滤自身，刷新重读；点击按 URL 新导航。settings 当前只读，downloads 不提供真实下载任务。
 about 查询 CE、目标架构、DPI、视口、内存与公开 DLL ABI 版本。应用版本在 Debug 中显示
 构建主机本地时间 `yyyy-MM-dd HH:mm:ss`，由工程预构建步骤冻结进 EXE，重启不变；Release
@@ -195,6 +206,12 @@ scripts\internal_pages_gate.bat -RemoteRoot "\Storage Card\Temp\Positron-device-
 该门会精确关闭 Positron 并逐页重启，验证实际提交、章节定位、无 ScriptSession 和崩溃记录，
 最终保留 newtab。手工还须检查地址栏未知地址保留标题、菜单、history 点击/刷新/前进记录、
 键盘焦点、中文显示、旋转/DPI，以及直接 quit 和加载中 quit 的正常退出。
+
+多标签先在 controls 填写输入并滚动，再从左软键新建另一页，往返切换确认内容、位置和
+地址栏未提交输入保留；分别在两页导航，确认各自后退/前进互不影响。加载时切走再返回，
+确认后台完成不覆盖可见页，关闭加载页不影响其他标签；检查四页上限、关闭最后一页回到
+newtab、多页加载中退出，以及旋转/SIP 后切回隐藏页的控件位置。真实触摸/输入不由 Debug
+自动消息自检代替。
 
 1. 在英语设备和简体中文设备上分别直接启动 `positron.exe`，不出现测试选择界面，确认起始页、
    地址栏、softkey、菜单和状态栏标题使用对应语言；在其他语言设备上确认回退英语；

@@ -364,6 +364,11 @@ void AppAddressBar_BeginEdit(AppAddressBar *bar)
     SendMessage(bar->edit, EM_SETSEL, 0, -1);
 }
 
+int AppAddressBar_IsEditing(AppAddressBar *bar)
+{
+    return bar != NULL && bar->editing;
+}
+
 void AppAddressBar_EndEdit(AppAddressBar *bar)
 {
     if (bar == NULL || !bar->editing) return;

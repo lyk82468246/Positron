@@ -110,6 +110,7 @@
 		<File RelativePath=".\app_internal_pages.h" />
 		<File RelativePath=".\app_host.c" />
 		<File RelativePath=".\app_host.h" />
+		<File RelativePath=".\app_tabs.h" />
 		<File RelativePath=".\app_forms.c" />
 		<File RelativePath=".\app_forms.h" />
 		<File RelativePath=".\app_controls.c" />

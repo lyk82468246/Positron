@@ -88,7 +88,7 @@ try {
     $committedUrl = if ($StartupUrl -eq 'positron://system') {
         'positron://about#system'
     } else { 'positron://newtab' }
-    $deadline = (Get-Date).AddSeconds(45)
+    $deadline = (Get-Date).AddSeconds(90)
     $complete = $false
     do {
         if ([PositronDeviceRapi]::TryCopyFileFromDevice($remoteLog, $localLog)) {
@@ -98,6 +98,7 @@ try {
                     $text -match 'history selftest OK' -and
                     $text -match 'fragment-pending selftest OK' -and
                     $text -match 'script-scheduling selftest OK' -and
+                    $text -match 'tabs selftest OK' -and
                     $text -match 'loading-title selftest OK' -and
                     $text -match 'address-bar selftest OK' -and
                     $text -match 'pointer selftest OK' -and

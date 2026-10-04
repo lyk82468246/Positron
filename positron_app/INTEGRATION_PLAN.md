@@ -3,8 +3,8 @@
 ## 范围与目标
 
 `positron.exe` 以 `test_host` 的接线顺序、callback 注册和生命周期处理为参考，成为当前公共
-Positron DLL 的真实 WM6 应用宿主。第一版范围固定为 HTTP/HTTPS、EXE 内置离线页面和单窗口单
-文档；不加入 `file://`、下载、外部协议、多窗口、worker、module、bfcache 或完整现代 Web API。
+Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内置离线页面和单窗口有界
+多标签；不加入 `file://`、下载、外部协议、多窗口、Web worker、module、bfcache 或完整现代 Web API。
 
 “全部功能”指当前公共 DLL 已实现且面向浏览器用户的有界能力，不要求应用为了覆盖导出符号而
 直接调用 TLS、JSON、Image 或 Script 的低层诊断 API。Core/Browser/HTTP 继续拥有可复用的页面、
@@ -27,6 +27,34 @@ Positron DLL 的真实 WM6 应用宿主。第一版范围固定为 HTTP/HTTPS、
 callback 的 `pw` 统一指向对应 `AppPageContext`。worker 只负责 transport 和消息投递；Core、
 Browser 状态修改、style/layout/paint 和页面 swap 只在 UI 线程执行。CommandBar、软键、页面和
 native 子控件保持同一顶层窗口体系，滚动使用 WM6 标准窗口滚动条，禁止自绘滚动条。
+
+## 多标签与平台调度
+
+EXE 私有 `AppTab` 最多拥有四个稳定槽位，每个槽位持有独立 `AppHostContext`、Core document/
+stylesheet、Browser history/ScriptSession、候选/退休请求和 native 页面子窗口。顶层窗口、
+地址栏、两侧软键、绘制缓冲与 DLL 初始化只创建一份。切换隐藏/显示页面子窗口，不重载文档
+或重新执行作者脚本；保存滚动、native 控件、焦点及尚未提交的地址输入/选区。视口尺寸改变
+时在激活该标签后按原 resize 路径重排，尺寸未变不因切换额外 layout。
+
+左软键为 `Tabs` / `标签页`，使用 WM6 原生下拉菜单：后退、分隔符、标签列表、可选的新建
+标签、分隔符、关闭标签。当前项打勾；尾部已是 newtab 时不重复提供新建入口，否则在容量
+内可新建。history/后退/前进/刷新只作用于当前标签。关闭先询问现有 Browser beforeunload；
+取消或调用失败保留该页。关闭最后一页先准备新 newtab，失败不丢原页。退出应用则取消全部
+标签候选并等所有 worker 结束，再 teardown 页面、销毁 native 控件、释放共享资源与 DLL。
+
+所有 live Core/Browser/Script 状态仍由 UI 线程拥有；各标签的网络 worker 可并行，只访问
+其 request/resource transaction，不读取当前标签全局值。非活动标签的传输继续，但完成
+消息只 join 并保存请求；解析、后续资源发现、脚本初始化/作者执行及页面提交等到激活后
+继续。非活动已提交 session 不推进任务 checkpoint，并接收 hidden/blur 生命周期；它不是
+多进程隔离或完整后台执行保证。退休请求额度跨标签统计，关闭中的槽位在 worker 全部 join
+前不能复用；达到容量或分配失败保留已有标签。
+
+平台消息绑定不复用的标签 ID，完成消息还须证明 request 属于该标签；地址提交、脚本导航、
+控件刷新和 picker 的迟到消息在借用指针解引用前拒绝。脚本 timer 使用进程唯一 ID，再核对
+Browser candidate generation。启动自动化同时绑定标签和候选，不能误执行到另一个同编号
+候选。公共导航/history/资源/生命周期语义仍归 DLL，本批不新增 ABI、opener、named window、
+`_blank` 自动开页、跨标签消息或持久恢复。后续进程隔离须另行设计 IPC、输入/渲染和内存
+合同，不把现有 opaque handle、HWND 或 JS runtime 直接跨进程传递。
 
 ## 实施阶段
 
@@ -238,6 +266,11 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 重新检查 guest DLL holder、回读 EXE/九个 DLL 的 SHA256、启动自检并检查新增 crash dump；
 不构建、选择设备或强杀进程。它不替代真实 HTTP 跨页恢复、地址栏回车、native 焦点、旋转/DPI
 和人工滚动验收，测试夹具及诊断不编入 Release。
+多标签 Debug 自检使用生产菜单、页面子窗口和独立 history，覆盖四页容量、输入/选区/
+滚动/session 保留、beforeunload 取消、错误标签消息隔离、后台完成停放、候选脚本 timer
+暂停/恢复及 stale 拒绝、失败保留旧页、关闭中的 worker 退休和最后一页替换；结束后重建
+干净的启动 history。`app_history_gate` 必须取得 tabs 自检日志；不代替多页真实网络并发、
+软键触摸、SIP/IME、旋转/DPI、内存压力和加载中退出的人工门。
 同一独立 Debug 夹具用有界 event 暂停真实宿主 worker，以离线响应驱动原 parse/commit 路径，
 验证 B 加载中 A 的 fragment/repeated/missing 跳转不取消、generation/文档/session 保留、
 replaceState 后失败回滚，以及 C 替换与 stale B 隔离、B 成功提交；门要求 fragment-pending

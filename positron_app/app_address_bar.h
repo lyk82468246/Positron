@@ -17,6 +17,7 @@ void AppAddressBar_SetTitle(AppAddressBar *bar, const WCHAR *title);
 void AppAddressBar_SetLoading(AppAddressBar *bar, int loading);
 void AppAddressBar_BeginEdit(AppAddressBar *bar);
 void AppAddressBar_EndEdit(AppAddressBar *bar);
+int AppAddressBar_IsEditing(AppAddressBar *bar);
 void AppAddressBar_Destroy(AppAddressBar *bar);
 
 #ifdef _DEBUG
