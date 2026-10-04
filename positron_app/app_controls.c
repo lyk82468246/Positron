@@ -96,6 +96,9 @@ struct AppControlsItem {
     unsigned int form_index;
     unsigned long target_token;
     WNDPROC original_proc;
+#ifdef _DEBUG
+    unsigned long native_paint_count;
+#endif
     int multiline;
     int password;
     int read_only;
@@ -128,6 +131,7 @@ struct AppControlsItem {
 };
 
 struct AppControlsContext {
+    struct AppControlsContext *next;
     HWND parent;
     HINSTANCE instance;
     void *pw;
@@ -149,7 +153,9 @@ struct AppControlsContext {
     int dpi;
 };
 
-static AppControlsContext *g_app_controls;
+/* Native child procedures resolve their immutable page owner by parent HWND,
+ * never by the most recently created or currently selected tab. UI-thread only. */
+static AppControlsContext *g_controls_contexts;
 
 static void app_controls_refresh_dpi(AppControlsContext *context)
 {
@@ -339,16 +345,34 @@ static int app_controls_toggle_count(HANDLE document,
     return 0;
 }
 
-static AppControlsItem *app_controls_find(HWND hwnd)
+static AppControlsContext *app_controls_owner(HWND hwnd)
+{
+    AppControlsContext *context;
+    HWND parent;
+
+    if (hwnd == NULL) return NULL;
+    parent = GetParent(hwnd);
+    for (context = g_controls_contexts; context != NULL;
+            context = context->next) {
+        if (context->parent == parent) return context;
+    }
+    return NULL;
+}
+
+static AppControlsItem *app_controls_find(AppControlsContext *context,
+        HWND hwnd)
 {
     unsigned int i;
 
-    if (g_app_controls == NULL || hwnd == NULL) {
+    if (context == NULL || hwnd == NULL) {
         return NULL;
     }
-    for (i = 0; i < g_app_controls->count; i++) {
-        if (g_app_controls->items[i].hwnd == hwnd) {
-            return &g_app_controls->items[i];
+    /* A newly subclassed item is initialized before count is committed. Its
+     * WM_SETFONT/EM_LIMITTEXT/CB_ADDSTRING/BM_SETCHECK must reach the native
+     * procedure too. Unused stable slots have a NULL HWND. */
+    for (i = 0; i < APP_CONTROLS_MAX; i++) {
+        if (context->items[i].hwnd == hwnd) {
+            return &context->items[i];
         }
     }
     return NULL;
@@ -358,6 +382,9 @@ static LRESULT app_controls_call_original(AppControlsItem *item,
         HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (item != NULL && item->original_proc != NULL) {
+#ifdef _DEBUG
+        if (message == WM_PAINT) item->native_paint_count++;
+#endif
         return CallWindowProc(item->original_proc, hwnd, message,
                 wparam, lparam);
     }
@@ -1541,21 +1568,23 @@ static void app_controls_selection_keyboard_update(
 static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
+    AppControlsContext *context;
     AppControlsItem *item;
     const char *input_type;
     const char *input_data;
     char data[16];
     LRESULT result;
 
-    item = app_controls_find(hwnd);
-    if (item == NULL || g_app_controls == NULL) {
+    context = app_controls_owner(hwnd);
+    item = app_controls_find(context, hwnd);
+    if (item == NULL || context == NULL) {
         return DefWindowProc(hwnd, message, wparam, lparam);
     }
     if (message == WM_KEYDOWN && wparam == VK_RETURN &&
             item->kind == APP_CONTROLS_KIND_TEXT && !item->multiline) {
         if ((lparam & 0x40000000L) == 0 &&
-                g_app_controls->implicit_submit != NULL) {
-            g_app_controls->implicit_submit(g_app_controls->pw,
+                context->implicit_submit != NULL) {
+            context->implicit_submit(context->pw,
                     item->text_index);
         }
         return 0;
@@ -1568,32 +1597,32 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
     if (message == WM_SETFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
-        app_controls_dispatch_focus(g_app_controls, item, 1);
+        app_controls_dispatch_focus(context, item, 1);
         if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
                 !item->native_selection_syncing) {
             if (item->native_selection_mouse_active) {
-                app_controls_selection_mouse_update(g_app_controls, item, 1);
+                app_controls_selection_mouse_update(context, item, 1);
             } else if (item->native_selection_keyboard_active) {
-                app_controls_selection_keyboard_update(g_app_controls,
+                app_controls_selection_keyboard_update(context,
                         item, 1);
             }
-            app_controls_selection_changed(g_app_controls, item, 1);
+            app_controls_selection_changed(context, item, 1);
         }
         return result;
     }
     if (message == WM_KILLFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
-        app_controls_dispatch_focus(g_app_controls, item, 0);
+        app_controls_dispatch_focus(context, item, 0);
         if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
                 !item->native_selection_syncing) {
             if (item->native_selection_mouse_active) {
-                app_controls_selection_mouse_update(g_app_controls, item, 1);
+                app_controls_selection_mouse_update(context, item, 1);
             } else if (item->native_selection_keyboard_active) {
-                app_controls_selection_keyboard_update(g_app_controls,
+                app_controls_selection_keyboard_update(context,
                         item, 1);
             }
-            app_controls_selection_changed(g_app_controls, item, 1);
+            app_controls_selection_changed(context, item, 1);
         }
         return result;
     }
@@ -1602,22 +1631,22 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         input_data = NULL;
         if (app_controls_before_input_char(item, (WCHAR) wparam,
                 &input_type, &input_data, data, sizeof(data)) &&
-                !app_controls_before_input(g_app_controls, item,
+                !app_controls_before_input(context, item,
                 input_type, input_data)) {
             return 0;
         }
     } else if (message == WM_KEYDOWN && wparam == VK_DELETE) {
-        if (!app_controls_before_input(g_app_controls, item,
+        if (!app_controls_before_input(context, item,
                 "deleteContentForward", "")) {
             return 0;
         }
     } else if (message == WM_PASTE) {
-        if (!app_controls_before_input(g_app_controls, item,
+        if (!app_controls_before_input(context, item,
                 "insertFromPaste", "")) {
             return 0;
         }
     } else if (message == WM_CUT || message == WM_CLEAR) {
-        if (!app_controls_before_input(g_app_controls, item,
+        if (!app_controls_before_input(context, item,
                 "deleteByCut", "")) {
             return 0;
         }
@@ -1632,7 +1661,7 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         result = app_controls_call_original(item, hwnd, message, wparam,
                 lparam);
         app_controls_selection_mouse_begin(item, wparam);
-        app_controls_selection_mouse_update(g_app_controls, item, 0);
+        app_controls_selection_mouse_update(context, item, 0);
         return result;
     }
     if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
@@ -1640,7 +1669,7 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
             !item->native_selection_syncing) {
         result = app_controls_call_original(item, hwnd, message, wparam,
                 lparam);
-        app_controls_selection_mouse_update(g_app_controls, item, 0);
+        app_controls_selection_mouse_update(context, item, 0);
         return result;
     }
     if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
@@ -1649,11 +1678,11 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         result = app_controls_call_original(item, hwnd, message, wparam,
                 lparam);
         if (item->native_selection_mouse_active) {
-            app_controls_selection_mouse_update(g_app_controls, item, 1);
+            app_controls_selection_mouse_update(context, item, 1);
         } else if (item->native_selection_keyboard_active) {
-            app_controls_selection_keyboard_update(g_app_controls, item, 1);
+            app_controls_selection_keyboard_update(context, item, 1);
         } else {
-            app_controls_selection_changed(g_app_controls, item, 1);
+            app_controls_selection_changed(context, item, 1);
         }
         return result;
     }
@@ -1662,9 +1691,9 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         result = app_controls_call_original(item, hwnd, message, wparam,
                 lparam);
         if (item->native_selection_mouse_active) {
-            app_controls_selection_mouse_update(g_app_controls, item, 1);
+            app_controls_selection_mouse_update(context, item, 1);
         } else {
-            app_controls_selection_changed(g_app_controls, item, 1);
+            app_controls_selection_changed(context, item, 1);
         }
         return result;
     }
@@ -1674,9 +1703,9 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
         result = app_controls_call_original(item, hwnd, message, wparam,
                 lparam);
         if (item->native_selection_keyboard_active) {
-            app_controls_selection_keyboard_update(g_app_controls, item, 1);
+            app_controls_selection_keyboard_update(context, item, 1);
         }
-        app_controls_selection_changed(g_app_controls, item, 1);
+        app_controls_selection_changed(context, item, 1);
         if (wparam == VK_SHIFT) {
             item->native_selection_shift_down = 0;
         }
@@ -1686,7 +1715,7 @@ static LRESULT CALLBACK app_controls_edit_proc(HWND hwnd, UINT message,
     if (item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE &&
             app_controls_selection_navigation_key(message, wparam) &&
             !item->native_selection_syncing) {
-        app_controls_selection_keyboard_update(g_app_controls, item, 0);
+        app_controls_selection_keyboard_update(context, item, 0);
     }
     return result;
 }
@@ -1768,21 +1797,23 @@ static int app_controls_toggle_focus(AppControlsContext *context,
 static LRESULT CALLBACK app_controls_toggle_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
+    AppControlsContext *context;
     AppControlsItem *item;
     LRESULT result;
     int allowed;
     int repeat;
 
-    item = app_controls_find(hwnd);
-    if (item == NULL || g_app_controls == NULL) {
+    context = app_controls_owner(hwnd);
+    item = app_controls_find(context, hwnd);
+    if (item == NULL || context == NULL) {
         return DefWindowProc(hwnd, message, wparam, lparam);
     }
     if (message == WM_SETFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
-        if (!g_app_controls->syncing) {
-            if (app_controls_toggle_focus(g_app_controls, item, 1) > 0) {
-                app_controls_notify(g_app_controls);
+        if (!context->syncing) {
+            if (app_controls_toggle_focus(context, item, 1) > 0) {
+                app_controls_notify(context);
             }
         }
         return result;
@@ -1790,9 +1821,9 @@ static LRESULT CALLBACK app_controls_toggle_proc(HWND hwnd, UINT message,
     if (message == WM_KILLFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
-        if (!g_app_controls->syncing) {
-            if (app_controls_toggle_focus(g_app_controls, item, 0) > 0) {
-                app_controls_notify(g_app_controls);
+        if (!context->syncing) {
+            if (app_controls_toggle_focus(context, item, 0) > 0) {
+                app_controls_notify(context);
             }
         }
         return result;
@@ -1800,7 +1831,7 @@ static LRESULT CALLBACK app_controls_toggle_proc(HWND hwnd, UINT message,
     if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
             (wparam == VK_SPACE || wparam == VK_RETURN)) {
         repeat = (lparam & 0x40000000L) != 0;
-        allowed = app_controls_toggle_key(g_app_controls, item, "keydown",
+        allowed = app_controls_toggle_key(context, item, "keydown",
                 wparam, lparam);
         if (!allowed) {
             item->toggle_space_pending = 0;
@@ -1817,7 +1848,7 @@ static LRESULT CALLBACK app_controls_toggle_proc(HWND hwnd, UINT message,
     }
     if ((message == WM_KEYUP || message == WM_SYSKEYUP) &&
             (wparam == VK_SPACE || wparam == VK_RETURN)) {
-        allowed = app_controls_toggle_key(g_app_controls, item, "keyup",
+        allowed = app_controls_toggle_key(context, item, "keyup",
                 wparam, lparam);
         if (wparam == VK_SPACE && item->toggle_space_pending) {
             item->toggle_space_pending = 0;
@@ -2187,13 +2218,15 @@ static void app_controls_select_sync_after_key(AppControlsContext *context,
 static LRESULT CALLBACK app_controls_select_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
+    AppControlsContext *context;
     AppControlsItem *item;
     LRESULT result;
     int key_message;
     int key_before;
 
-    item = app_controls_find(hwnd);
-    if (item == NULL || g_app_controls == NULL) {
+    context = app_controls_owner(hwnd);
+    item = app_controls_find(context, hwnd);
+    if (item == NULL || context == NULL) {
         return DefWindowProc(hwnd, message, wparam, lparam);
     }
     key_message = message == WM_KEYDOWN || message == WM_KEYUP ||
@@ -2205,43 +2238,43 @@ static LRESULT CALLBACK app_controls_select_proc(HWND hwnd, UINT message,
     if (message == WM_SETFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
-        if (g_app_controls->syncing) {
+        if (context->syncing) {
             return result;
         }
-        if (g_app_controls->script == NULL) {
-            app_controls_dispatch_focus(g_app_controls, item, 1);
-        } else if (app_controls_select_focus(g_app_controls, item, 1) > 0) {
-            app_controls_notify(g_app_controls);
+        if (context->script == NULL) {
+            app_controls_dispatch_focus(context, item, 1);
+        } else if (app_controls_select_focus(context, item, 1) > 0) {
+            app_controls_notify(context);
         }
         return result;
     }
     if (message == WM_KILLFOCUS) {
         result = app_controls_call_original(item, hwnd, message,
                 wparam, lparam);
-        if (g_app_controls->syncing) {
+        if (context->syncing) {
             return result;
         }
-        if (g_app_controls->script == NULL) {
-            app_controls_dispatch_focus(g_app_controls, item, 0);
-        } else if (app_controls_select_focus(g_app_controls, item, 0) > 0) {
-            app_controls_notify(g_app_controls);
+        if (context->script == NULL) {
+            app_controls_dispatch_focus(context, item, 0);
+        } else if (app_controls_select_focus(context, item, 0) > 0) {
+            app_controls_notify(context);
         }
         return result;
     }
     if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) {
-        if (!app_controls_select_key(g_app_controls, item, "keydown",
+        if (!app_controls_select_key(context, item, "keydown",
                 wparam, lparam)) {
             return 0;
         }
     } else if (message == WM_KEYUP || message == WM_SYSKEYUP) {
-        if (!app_controls_select_key(g_app_controls, item, "keyup",
+        if (!app_controls_select_key(context, item, "keyup",
                 wparam, lparam)) {
             return 0;
         }
     }
     result = app_controls_call_original(item, hwnd, message, wparam, lparam);
     if (key_message) {
-        app_controls_select_sync_after_key(g_app_controls, item, key_before);
+        app_controls_select_sync_after_key(context, item, key_before);
     }
     return result;
 }
@@ -3039,7 +3072,8 @@ AppControlsContext *AppControls_Create(HWND parent, HINSTANCE instance,
     context->implicit_submit = implicit_submit;
     context->dpi = 96;
     app_controls_refresh_dpi(context);
-    g_app_controls = context;
+    context->next = g_controls_contexts;
+    g_controls_contexts = context;
     return context;
 }
 
@@ -3079,15 +3113,74 @@ void AppControls_ClearPage(AppControlsContext *context)
 
 void AppControls_Destroy(AppControlsContext *context)
 {
+    AppControlsContext **link;
+
     if (context == NULL) {
         return;
     }
     AppControls_ClearPage(context);
-    if (g_app_controls == context) {
-        g_app_controls = NULL;
+    /* Keep ownership registered throughout child destruction/focus messages. */
+    for (link = &g_controls_contexts; *link != NULL; link = &(*link)->next) {
+        if (*link == context) {
+            *link = context->next;
+            break;
+        }
     }
     free(context);
 }
+
+#ifdef _DEBUG
+int AppControls_DebugCheckNativeDispatch(AppControlsContext *context)
+{
+    AppControlsItem *item;
+    unsigned int i;
+    unsigned long before;
+    int painted;
+    int count;
+    char message[160];
+
+    if (context == NULL || context->count == 0) return 1;
+    painted = 0;
+    for (i = 0; i < context->count; i++) {
+        item = &context->items[i];
+        _snprintf(message, sizeof(message) - 1,
+                "positron native-dispatch index=%u kind=%d visible=%d\r\n",
+                i, item->kind, IsWindowVisible(item->hwnd));
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+        if (!IsWindow(item->hwnd) || app_controls_owner(item->hwnd) != context ||
+                app_controls_find(context, item->hwnd) != item) return 1;
+        if (item->kind == APP_CONTROLS_KIND_TEXT ||
+                item->kind == APP_CONTROLS_KIND_CONTENTEDITABLE) {
+            if (SendMessage(item->hwnd, EM_GETLINECOUNT, 0, 0) < 1) return 1;
+        } else if (item->kind == APP_CONTROLS_KIND_SELECT) {
+            count = (int) SendMessage(item->hwnd,
+                    item->multiple ? LB_GETCOUNT : CB_GETCOUNT, 0, 0);
+            if (count != item->option_count) return 1;
+        } else if (item->kind == APP_CONTROLS_KIND_TOGGLE) {
+            if ((SendMessage(item->hwnd, BM_GETCHECK, 0, 0) != BST_UNCHECKED) !=
+                    (item->selected != 0)) return 1;
+        }
+        if (IsWindowVisible(item->hwnd)) {
+            before = item->native_paint_count;
+            InvalidateRect(item->hwnd, NULL, TRUE);
+            UpdateWindow(item->hwnd);
+            /* Startup selftests run before the shell message loop. Deliver
+             * the paint message explicitly as well, so this checks native
+             * subclass forwarding independently of CE paint scheduling. */
+            SendMessage(item->hwnd, WM_PAINT, 0, 0);
+            _snprintf(message, sizeof(message) - 1,
+                    "positron native-paint index=%u before=%lu after=%lu\r\n",
+                    i, before, item->native_paint_count);
+            message[sizeof(message) - 1] = '\0';
+            AppDebug_Log(message);
+            if (item->native_paint_count == before) return 1;
+            painted++;
+        }
+    }
+    return painted > 0 ? 0 : 1;
+}
+#endif
 
 int AppControls_Rebuild(AppControlsContext *context, HANDLE document,
         AppScriptContext *script, int scroll_x, int scroll_y)
@@ -3703,7 +3796,7 @@ int AppControls_HandleCommand(AppControlsContext *context, WPARAM wparam,
     if (context == NULL || lparam == 0) {
         return 0;
     }
-    item = app_controls_find((HWND) lparam);
+    item = app_controls_find(context, (HWND) lparam);
     if (item == NULL) {
         return 0;
     }

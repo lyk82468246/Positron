@@ -36,6 +36,10 @@ stylesheet、Browser history/ScriptSession、候选/退休请求和 native 页�
 或重新执行作者脚本；保存滚动、native 控件、焦点及尚未提交的地址输入/选区。视口尺寸改变
 时在激活该标签后按原 resize 路径重排，尺寸未变不因切换额外 layout。
 
+原生控件子类过程按父页面 HWND 查找稳定的 `AppControlsContext`，不依赖当前标签或最后
+创建的上下文；初始化中的已绑定控件也必须转发到保存的原生窗口过程。销毁时先恢复原
+窗口过程并释放子控件，再注销上下文，避免新建/关闭其他页使旧页的绘制与输入失效。
+
 左软键为 `Tabs` / `标签页`，使用 WM6 原生下拉菜单：后退、分隔符、标签列表、可选的新建
 标签、分隔符、关闭标签。当前项打勾；尾部已是 newtab 时不重复提供新建入口，否则在容量
 内可新建。history/后退/前进/刷新只作用于当前标签。关闭先询问现有 Browser beforeunload；
@@ -269,7 +273,9 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 多标签 Debug 自检使用生产菜单、页面子窗口和独立 history，覆盖四页容量、输入/选区/
 滚动/session 保留、beforeunload 取消、错误标签消息隔离、后台完成停放、候选脚本 timer
 暂停/恢复及 stale 拒绝、失败保留旧页、关闭中的 worker 退休和最后一页替换；结束后重建
-干净的启动 history。`app_history_gate` 必须取得 tabs 自检日志；不代替多页真实网络并发、
+干净的启动 history。两个带控件页面还须检查切回与关闭新页后的 EDIT 编辑、SELECT 选项、
+toggle 状态及可见控件 WM_PAINT 转发；只保留 HWND/窗口文本不算通过。
+`app_history_gate` 必须取得 tabs 自检日志；不代替多页真实网络并发、
 软键触摸、SIP/IME、旋转/DPI、内存压力和加载中退出的人工门。
 同一独立 Debug 夹具用有界 event 暂停真实宿主 worker，以离线响应驱动原 parse/commit 路径，
 验证 B 加载中 A 的 fragment/repeated/missing 跳转不取消、generation/文档/session 保留、

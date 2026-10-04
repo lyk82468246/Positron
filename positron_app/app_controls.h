@@ -64,4 +64,9 @@ void AppControls_ClearButtonFocus(AppControlsContext *context);
 int AppControls_FocusFormControlAt(AppControlsContext *context,
         int control_kind, int document_x, int document_y);
 
+#ifdef _DEBUG
+/* Actual native class dispatch/paint, not just HWND or window-caption checks. */
+int AppControls_DebugCheckNativeDispatch(AppControlsContext *context);
+#endif
+
 #endif /* POSITRON_APP_CONTROLS_H */

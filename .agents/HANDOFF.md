@@ -26,20 +26,33 @@ EXE 单窗口最多四个独立 AppTab，左软键 Tabs/标签页包含后退、
 关闭先协作取消并等待 worker，slot 排空后释放；最后一页关闭先创建 newtab，应用退出关闭全部。
 页面 teardown 先于 native/session 释放，关闭期间拒绝 queued timer。未改 DLL/ABI 或增加 IPC。
 
-最终完整 Debug 包为 `tmp/device-runs/20261004-093945-app-tabs-final/`，49 文件、两次
-guest holders=0 unavailable=0、EXE/九 DLL SHA256 10/10、全部 required 自检与 crash_check
-PASS。tabs phase=7 覆盖状态隔离、未提交地址/选区、四页上限、beforeunload、隐藏完成与失败
-回滚、timer 暂停/过时消息、加载中关闭和最后一页替换。当前 PID 3173043994 留在 newtab，
-入口 `\Storage Card\Temp\Positron-device-gate\app-tabs-final-20261004-093945\positron.exe`。
-真实网络、触摸、旋转/SIP、内存压力和多页退出仍待人工，不以夹具替代。
+用户截图 `tmp/QQ20261004-094635.png` 复现切回旧页 EDIT 透出其他页像素。原因是 EXE native
+adapter 用最后创建的全局 context 查找子控件，旧页消息落入 DefWindowProc 而非原生过程。
+现按父 HWND 查找独立 owner；固定槽位查找也覆盖尚未计入 count 的初始化消息，保证字体、
+EDIT limit、SELECT 选项和 toggle 状态送达原生过程。销毁先恢复过程并释放子控件，再移除 owner。
+不靠重建页面或额外生产 repaint 绕过问题；新增诊断/夹具仅编译进 Debug。
+
+当前完整 Debug 包为 `tmp/device-runs/20261004-100635-app-tabs-native-edit/`，49 文件、两次
+guest holders=0 unavailable=0。原 app_history_gate 抓日志超时仍为失败；同一 PID 1575515326
+的 `readonly-verification/` 后续自动复核 PASS：EXE/九 DLL 重新回读 SHA256 10/10、全部十项
+自检 OK、tabs phase=7、三组九次 native paint 计数增加、crash dump inventory=0。
+复核不启动/终止进程；设备程序已进入人工操作，不强制返回 newtab。
+入口 `\Storage Card\Temp\Positron-device-gate\app-tabs-native-edit-20261004-100635\positron.exe`。
+tabs 断言新增双 controls 页切回及关闭另一页后的实际 EDIT 编辑、SELECT 数量和 toggle 状态，
+并保留状态隔离、未提交地址/选区、四页上限、beforeunload、隐藏完成/失败回滚、timer
+暂停/stale、加载中关闭及最后一页替换。真实触摸切回绘制须立即人工复测；网络、旋转/SIP、
+内存压力和多页退出仍待人工，不以夹具替代。
+
+失败 phase=16 暴露初始化及屏外 paint 探针问题；消息循环前按 Core 几何滚动并显式发送
+WM_PAINT，仍要求原生计数增加。phase=163 改用实际文本长度设置末尾光标；精确断言保留。
 
 相邻 Debug 门 `tmp/device-runs/20261004-093134-app-tabs-adjacent/` 为
 `136,407,1080-1083,1134,1327,1336,1338,999` 的 11/11 PASS，完整日志、唯一 TESTBENCH PASS、
 零 ERROR/FAIL、Core 路径及 crash_check PASS；回收后本轮远端目录已删除。
 串行正式 Debug/Release build/CAB、C89、审计及 Release 诊断排除通过。VS2008 msenv.dll
-自身崩溃的失败日志在 `tmp/app-tabs-build-failures/`，重试恢复，不计作 rebuild PASS。
-早期 tabs phase=1 初始化与 phase=15 EDIT 探针失败分别改用分步 API和大小写无关类名查询，
-原预算/断言保留；失败包保留，最终生产路径验收通过。并行 Media 文件不纳入本批提交。
+自身崩溃的失败日志在 `tmp/app-tabs-build-failures/`，重试恢复，不计作 rebuild PASS；用户授权
+后只终止已核对身份的崩溃 devenv PID30144，未终止其他构建或设备进程。
+失败包保留，未扩大预算；并行 Media 文件不纳入本批提交。
 
 ### Core HTML 图片尺寸自动与实页视觉验收通过
 
@@ -87,12 +100,10 @@ Debug 自检覆盖 observer 映射/合并/终态与 size/version 拒绝、纯阶
 B 加载中点按编辑但不提交，generation/history/旧文档/session 保留，B 完成且输入和选区不变；
 只有显式 Enter 提交 C 才替换 B。真实触摸回滚原因仍待新日志确认，不以自动消息证明已根治。
 
-英文品牌已修正为单数 Browser。较早 `tmp/device-runs/20261003-173204-app-brand-spelling/`
-通过完整包审计、EXE/九 DLL 回读、自检及 crash_check，Debug/Release/CAB 与诊断排除通过；
-它已由用户退出，不是当前人工入口，最新完整包见脚本调度证据。
-VS2008 首次链接提前退出日志在 `tmp/app-brand-build-failures/release-first.log`，重试恢复。
-真实点按后 B 继续提交、中文 IME、动画开销和旋转仍待人工。日志脚本误传 Action 曾重启旧包
-并删除日志，已告知用户并正常退出；只读抓取必须使用 PullOnly，不从旧启动日志推断回滚。
+英文品牌已修正为单数 Browser，先行品牌包已由用户退出；构建失败日志保留在
+`tmp/app-brand-build-failures/`。真实点按后 B 继续提交、中文 IME、动画开销和旋转仍待人工。
+日志脚本误传 Action 曾重启旧包并删除日志，用户已退出；只读抓取必须用 PullOnly，
+不从旧启动日志推断回滚。
 
 HTTP/TLS `3,4,999` 的先行门证据为 `tmp/device-runs/20261003-102633-http-observer/`，
 空间、引用审计、完整日志和 crash_check PASS，不代表 EXE 自检；其 CabWiz 失败已由正式
@@ -424,7 +435,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 已复核 ROADMAP，完成多标签接线退出开发候选，保留真实切换/网络/内存/退出人工门和
-未来 IPC 进入条件。唯一下一步是用户验收最终标签包；WinWorld 图片视觉项已关闭，公共
+未来 IPC 进入条件。本轮复核无需新增路线候选；native owner 自动复核已通过，唯一下一步
+是立即人工复测切回及关闭另一页后的绘制与输入。WinWorld 图片视觉项已关闭，公共
 DLL 能力矩阵本批无需改动。完整 aspect-ratio 与跨设备边界不变。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与

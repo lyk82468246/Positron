@@ -7304,6 +7304,25 @@ static void app_tabs_shutdown(void)
 }
 
 #ifdef _DEBUG
+static int app_tabs_debug_native_controls(void)
+{
+    PCoreTextInputInfo info;
+    int x;
+    int y;
+    int result;
+
+    memset(&info, 0, sizeof(info));
+    if (PCore_TextInputInfo(g_document, 0, &info, NULL, 0) != 0) return 1;
+    x = g_scroll_x;
+    y = g_scroll_y;
+    /* At 240x320 the form is below the fold. Paint assertions require real
+     * visible children, not just a shown top-level window. */
+    (void) app_scroll_to_position(g_page_window, 0, info.y);
+    result = AppControls_DebugCheckNativeDispatch(g_controls);
+    (void) app_scroll_to_position(g_page_window, x, y);
+    return result;
+}
+
 /* Production adapters, independent new tabs, real native children and a
  * parked transport worker. No HTTP or fixtures leak into Release. */
 static int app_tabs_debug_check(void)
@@ -7334,12 +7353,15 @@ static int app_tabs_debug_check(void)
     int phase;
     int result;
     int initialized;
+    int was_visible;
+    int text_length;
     char log[96];
 
     shell = (AppHostContext *) malloc(sizeof(*shell));
     if (shell == NULL) return 1;
     memcpy(shell, &g_app, sizeof(*shell));
     original = g_tab;
+    was_visible = IsWindowVisible(g_window);
     request = NULL;
     result = 1;
     phase = 1;
@@ -7419,7 +7441,28 @@ static int app_tabs_debug_check(void)
             app_history_debug_eval("window.tabPreventClose=false;") !=
             PSCRIPT_OK) goto done;
     phase = 3;
-    if (!app_tabs_new() || !app_tabs_new() || g_tab_count != APP_TAB_MAX ||
+    if (!app_tabs_new() ||
+            !app_load_page_from(g_window, APP_URL_CONTROLS, APP_HISTORY_NEW, -1,
+            APP_NAV_SOURCE_MENU)) goto done;
+    /* A second control-bearing owner must not steal the first page's native
+     * procedures. Exercise actual paint and EDIT/SELECT/BUTTON messages. */
+    phase = 16;
+    ShowWindow(g_window, SW_SHOW);
+    if (app_tabs_debug_native_controls() != 0) goto done;
+    phase = 161;
+    if (!app_tabs_select(slot)) goto done;
+    phase = 162;
+    if (app_tabs_debug_native_controls() != 0) goto done;
+    phase = 163;
+    text_length = GetWindowTextLengthW(edit);
+    SendMessage(edit, EM_SETSEL, text_length, text_length);
+    SendMessage(edit, EM_REPLACESEL, FALSE, (LPARAM) L"!");
+    GetWindowTextW(edit, actual, 80);
+    if (wcscmp(actual, L"retained input!")) goto done;
+    SendMessage(edit, EM_SETSEL, 0, -1);
+    SendMessage(edit, EM_REPLACESEL, FALSE, (LPARAM) L"retained input");
+    if (!app_tabs_select(g_tab_order[g_tab_count - 1]) ||
+            !app_tabs_new() || g_tab_count != APP_TAB_MAX ||
             app_tabs_new() || g_tab_count != APP_TAB_MAX) goto done;
     menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0, APP_CMD_TABS);
     app_tabs_update_menu();
@@ -7434,6 +7477,13 @@ static int app_tabs_debug_check(void)
     app_tabs_close();
     if (g_tab_count != 2 || !app_tabs_select(slot) || g_document != document)
         goto done;
+    phase = 17;
+    if (app_tabs_debug_native_controls() != 0) goto done;
+    text_length = GetWindowTextLengthW(edit);
+    SendMessage(edit, EM_SETSEL, text_length, text_length);
+    SendMessage(edit, EM_REPLACESEL, FALSE, (LPARAM) L"!");
+    GetWindowTextW(edit, actual, 80);
+    if (wcscmp(actual, L"retained input!")) goto done;
     phase = 4;
     g_navigation_debug_worker_gate = CreateEvent(NULL, TRUE, TRUE, NULL);
     if (g_navigation_debug_worker_gate == NULL ||
@@ -7549,6 +7599,7 @@ done:
     AppAddressBar_EndEdit(g_address_bar);
     app_set_address("");
     app_restore_page_status();
+    if (!was_visible) ShowWindow(g_window, SW_HIDE);
     _snprintf(log, sizeof(log) - 1, "positron tabs selftest %s phase=%d\r\n",
             result == 0 ? "OK" : "FAILED", phase);
     log[sizeof(log) - 1] = '\0';
