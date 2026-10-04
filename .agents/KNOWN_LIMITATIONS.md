@@ -32,6 +32,13 @@
 - HTTP 只覆盖有界 HTTP/1.1，不提供 HTTP/2/3、连接池、完整缓存、cookie jar 或浏览器代理；Browser `document.cookie` 仅为 session 的有界内存状态。
 - URL reference resolver 是保守的 HTTP(S) 子集，不是完整 WHATWG URL 实现；userinfo、IPv6、非 HTTP(S) scheme 和异常 authority 会 fail closed。
 - 真实网络测试仍受设备时钟、DNS、TLS、代理和外部站点变化影响，离线契约不能替代网络哨兵。
+- 流式 GET 仅直连 IPv4 TCP/TLS、identity Content-Encoding 和有界 ASCII/UTF-8 headers；
+  无 WinInet 代理/cache、Range、stream POST、压缩或完整文件名编码解释。旧完整正文接口
+  仍限 1 MiB，新流式调用显式选择最多 1 GiB quota，不代表应用下载管理已经接入。
+- 新 transport 的取消/期限控制非阻塞 I/O 等待，不实时抢占 TLS crypto 或宿主 callback。
+  同步 OS DNS 被最多四个复制数据 job 隔离，取消可返回但 OS job 不保证已结束；饱和返回
+  LIMIT。四项长期挂起/saturation、真实慢 DNS 与低资源峰值仍需专门门，不能从一次取消
+  fixture 宣称这些环境已验收。旧完整正文/peer 调用仍沿原取消边界，不自动获得此能力。
 
 ## DB
 
@@ -623,20 +630,10 @@ fail closed 和注销后的静默均已自动断言。该门不执行自动资�
   generation 的 `error`。夹具使用带 id 的 `<picture>`/`<img>` 关系；匿名或不可寻址的
   source 关系仍按上述 fail-closed 限制处理。该门不增加自动 fetch/decode/layout/paint，
   也不覆盖绝对 URL、CORS/referrer、完整 loading 策略或 native 图像视觉。
-- TEST1301 覆盖 Core 的 `PCore_MultipartSubmissionEncode()`：成功控件顺序、boundary/
-  CRLF、quoted 字段与文件名、binary file bytes、size probe、容量不足时无部分输出以及
-  缺少 file callback 的 fail-closed。body 总量固定为 1 MiB 上限；宿主只提供同步文件
-  callback，网络发送、文件权限和请求取消/重试仍不在本测试覆盖范围。
-- TEST1302 覆盖 `PCore_FormDataEncode()`：默认 GET/urlencoded form 的独立 FormData
-  snapshot 仍可生成 multipart body，并断言成功控件顺序、文件 bytes、容量/size-probe
-  原子性和 callback 缺失失败。Browser `FormData` 对象本身仍是 metadata-only；事件修改、
-  File/Blob API、网络发送和 native 表单视觉不由该夹具承诺。
-- TEST1303 覆盖 Browser 脚本 `FormData` 的 64 项 mutation budget：满容量时 append、
-  新键 set 和数组构造的 `QuotaExceededError`、失败不变性、已有键替换以及删除后的追加。
-  这只约束 pairs 数量，不提供完整 File/Blob 内容、网络发送或 native 表单视觉。
-- TEST1304 覆盖 Browser 脚本 `URLSearchParams` 的 64 项 mutation budget：满容量时
-  append、新键 set 和 pair-sequence 构造的 `QuotaExceededError`、失败不变性、已有键替换
-  以及删除后的追加。该门不证明 URL 解析、导航、网络发送或 native 表单视觉。
+- Core multipart 与 Browser FormData/URLSearchParams 的预算/失败回归见
+  [测试合同](../docs/TESTING.md)；公共对象与 wire 边界见上文“DOM、表单与事件”。它们不证明
+  File/Blob→Core snapshot、权限、网络发送或 native 视觉；HTTP 流式 GET 不改变 multipart
+  的 1 MiB 上限，也不补齐脚本文件对象。
 - TEST1305 covers Storage quota, atomic errors, capacity reuse and session/local independence; persistence is out of scope.
 - TEST1306 covers Storage object-property keys, prototype-safe snapshots, API-method preservation and clear-after-special-key cleanup.
 - TEST1307 covers Headers special-key construction and JSON snapshots; Request/Response metadata reuse the same bounded facade.

@@ -88,6 +88,9 @@ extern BOOL test1340_core_image_dimension_contract(void);
 extern const char *test1340_core_image_dimension_last_error(void);
 extern BOOL test1341_browser_service_contract(void);
 extern const char *test1341_browser_service_last_error(void);
+extern BOOL test1342_http_stream_contract(void);
+extern const char *test1342_http_stream_last_error(void);
+extern BOOL test1343_http_stream_verified_https(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
@@ -995,7 +998,7 @@ static BOOL test1337_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1341
+#define TEST_MAX_NUMBER 1343
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118031,8 +118034,18 @@ static int run_configured_tests(const unsigned char *selected,
             if (ok) { show_info(L"TEST 1341 OK", "Bounded async Browser service contract passed."); }
             else { show_error(L"TEST 1341 FAIL", test1341_browser_service_last_error()); }
             break;
+        case 1342:
+            ok = test1342_http_stream_contract();
+            if (ok) { show_info(L"TEST 1342 OK", "Bounded streaming HTTP and cross-thread cancellation passed."); }
+            else { show_error(L"TEST 1342 FAIL", test1342_http_stream_last_error()); }
+            break;
         case 1328:
             ok = test1328_core_flex_button_visual_child();
+            break;
+        case 1343:
+            ok = test1343_http_stream_verified_https();
+            if (ok) { show_info(L"TEST 1343 OK", "Verified IANA HTTPS streaming passed."); }
+            else { show_error(L"TEST 1343 FAIL", test1342_http_stream_last_error()); }
             break;
         case 1329:
             ok = test1329_core_bootstrap_hamburger();

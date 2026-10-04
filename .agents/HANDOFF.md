@@ -384,40 +384,42 @@ SQLite 事务仍 active，原错误快照正确；夹具改为先建表再在 IN
 而恢复 DB 应用/CAB 发布依赖。KNOWN_LIMITATIONS 的这些未验收项保持有效。DB 下一纵切
 是专用 fixture 的中文 UTF-8 文件/文本与新进程重开；不提前做应用持久化或扩大到破坏性设备实验。
 
+### HTTP 流式 GET 与跨线程取消已验收
+
+HTTP 新请求族及 TLS controlled transport 保持旧 ABI/1 MiB 正文限制；产品实现只在
+HTTP/TLS，宿主只增 loopback/线程/sink/断言。固定预算、metadata、encoding、安全和
+join/取消/DNS 边界见 [HTTP README](../positron_http/README.md#流式-get-与跨线程取消)。
+这不是 EXE 下载 UI/文件保存接线，OS resolver 饱和与真实硬件峰值仍未验证。
+
+最终 Debug `tmp/device-runs/20261005-014248-http-stream-final-debug/` 和 Release
+`tmp/device-runs/20261005-014449-http-stream-final-release/` 均为 `3,4,1341,1342,1343,999`
+的 6/6、唯一 TESTBENCH PASS、零 ERROR/FAIL、完整日志、Core 路径与 crash_check PASS。
+240×320、96 DPI DeviceEmulator，SD 49 文件、双空间与新 guest holder 审计通过；日志完整
+回收后删除本轮目录，没有强杀/重连。TEST1342 的确定性覆盖见能力矩阵；TEST1343 为实际
+verified IANA HTTPS，TEST3/4 保护旧 GET/POST observer，TEST1341 保护 Browser 桥接。
+
+截断 chunk 的 fixture 误判已修正，PROTOCOL 断言保持；失败证据在
+`tmp/device-runs/20261004-230901-http-stream-contract-diagnostic/`。
+正式双配置通过；无诊断 Debug 退出与 CAB 提前读取正在链接 TLS 的失败保留在
+`tmp/http-stream-final-debug-vs-failed.log`、`tmp/http-stream-final-release-cab-failed.log`，
+同一正式入口串行重试恢复。C89、审计和空白门通过；不纳入并行 App/DB/Media/CAB 改动。
+
 ### Browser 受控异步应用服务合同
 
-新增公共服务桥接由 Browser 拥有，Script 只增加 native JSON 结果容量 Ex 原语；
-本批未改 EXE、Core、HTTP。默认关闭，可信身份由宿主显式授权，不按 URL/scheme 推断。
-固定方法/pending/JSON/native 预算、纯数据 worker、owner-thread 完成及交付、token 隔离、
-teardown 撤销合同见 [Browser README](../positron_browser/README.md#受控异步应用服务)。
-这是公共 DLL 前置能力，不表示应用内部 settings 页或 DB worker 已接上桥接。
+Browser 拥有默认关闭的受控服务桥接，Script 只提供 native JSON 结果容量 Ex 原语；
+可信身份由宿主授权，不按 URL/scheme 推断。容量、owner-thread 交付和撤销合同见
+[Browser README](../positron_browser/README.md#受控异步应用服务)，不表示 EXE 已接线。
 
-最终 Debug/Release 合同门分别为
-`tmp/device-runs/20261004-223249-browser-services-finalizers-debug/` 与
-`tmp/device-runs/20261004-223400-browser-services-finalizers-release/`；均选择 `1341,999`，
-2/2、唯一 PASS、零 ERROR/FAIL、完整日志、Core 路径及 crash_check PASS。
-240×320、96 DPI DeviceEmulator；SD 49 文件、双空间与 guest holders=0 unavailable=0
-通过，完整回收后删除本轮目录。TEST1341 覆盖隔离、结果复制、容量/失败不变性、线程/
-重入、撤销/关闭、私有初始化、native 槽不足、回调异常/timeout、重复 teardown 和真实
-Duktape finalizer 禁止销毁中重新提交；不证明
-真实 UI 响应或任意 continuation。Release
-`tmp/device-runs/20261004-222549-browser-services-final-release/` 为
-`80-82,86,1174,1175,1327,1338,1341,999` 的 10/10 PASS，同样完整日志、唯一 PASS、零
-ERROR/FAIL、双空间/holder/Core/crash 门通过并清理本轮目录。Debug 隔离门
-`tmp/device-runs/20261004-222826-browser-services-bootstrap-debug-isolated/` 的 `1338,999`
-为 2/2 PASS，profile2 jQuery 为 2500 ms、rc=0，未改预算/断言，不抹去宽门失败。
+最新双配置合同基线是上述包含 TEST1341 的 HTTP 相邻门。Release 较宽回归
+`tmp/device-runs/20261004-222549-browser-services-final-release/` 为 10/10 PASS。
+完整日志、唯一 PASS、零 ERROR/FAIL、Core/crash、SD 双空间/无 holder 均通过并清理本轮目录。
+隔离、失败不变性、线程/撤销及 finalizer 守卫保留，不以服务桥接代替业务接线。
 
-先行 `tmp/device-runs/20261004-215950-browser-services-contract-debug/` 的 teardown
-断言失败来自 fixture 返回 undefined 而旧 CallGlobalJson 要求 JSON；只补返回 0 后重跑，
-撤销断言不变。宽 Debug 门 `tmp/device-runs/20261004-221323-browser-services-final-debug/`
-七项通过后在 TEST1338 的 profile2 jQuery 求值超时（4649 ms、rc=-4），Bootstrap 随后
-缺失 jQuery；TEST1341 尚未执行。这是 FAIL，日志完整且无新 dump，不能以独立桥接门
-覆盖该失败。预算/成功断言未改变；单次编译成本仍是后续限制。
-
-正式 Debug/Release 产品编译已成功，VS2008/msenv 无诊断提前退出与 CabWiz 失败日志
-保存在 `tmp/browser-services-*-failed.log`，原入口串行重试恢复，失败不追认为通过。
-32 位 PowerShell 的 -File 启动几次无输出退出，显式 -Command 执行同一正式脚本恢复；
-未改 WMDC、注册表、设备或结束其他进程。本批不发布 nightly，不纳入并行 EXE/Media/CAB 改动。
+宽 Debug `tmp/device-runs/20261004-221323-browser-services-final-debug/` 的 TEST1338
+profile2 jQuery 超时仍为 FAIL（4649 ms、rc=-4）；隔离
+`tmp/device-runs/20261004-222826-browser-services-bootstrap-debug-isolated/` 虽为 2/2 PASS，
+不覆盖该失败。未改预算；单次编译成本仍待处理。其他已定位 fixture/正式构建失败由 Git
+保留；服务合同不承诺任意 UI 响应。
 
 ### 脚本同步阻塞与保留的交互基线
 
@@ -452,16 +454,18 @@ callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站�
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。DB 已通过 Debug/Release 文件关闭重开与完整离线契约；真实 HTTPS worker、应用持久化、HTTP 流式下载及断电恢复仍未进入本批。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。HTTP DLL 流式 GET/取消已验收；应用保存文件、DB HTTPS worker、持久化及断电恢复仍未进入本批。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
 ## 路线图复核与唯一下一步
 
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
-Browser 桥接已通过双配置门；下一条纵切是 HTTP 流式 GET 与跨线程取消合同。
-HTTP 尚未修改，流式请求/跨线程取消须先审查 transport 生命周期。EXE 设置候选、菜单/
-多标签人工门和 Media/CAB 改动由各会话继续维护，不纳入本批；WinWorld 图片视觉已关闭。
+Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
+范围。唯一下一步交回 EXE，按应用私有 worker/可信 session/文件策略接入这些公开入口，
+分别验收设置与下载，不把 test_host 门当成 EXE 完成。构建/设备窗口已释放，下一会话仍
+须重新审计 guest 引用。EXE 设置候选、菜单/多标签人工门和 Media/CAB 改动由各会话
+维护，不纳入本批；WinWorld 图片视觉已关闭。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
 所有权；单次长调用、Debug 默认预算失败和错误后 session 策略仍待处理，不承诺冷启动抢占。

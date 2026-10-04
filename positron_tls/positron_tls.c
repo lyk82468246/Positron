@@ -57,6 +57,7 @@
 /* ---------------------------------------------------------------------- */
 
 static BOOL              g_initialized      = FALSE;
+static HMODULE           g_tls_module;
 static CRITICAL_SECTION  g_err_lock;
 static BOOL              g_err_lock_inited  = FALSE;
 static CRITICAL_SECTION  g_state_lock;
@@ -88,6 +89,9 @@ typedef struct ptls_connect_observer_state {
 
 typedef struct PTlsConn {
     SOCKET                       sock;
+    int                          controlled;
+    DWORD                        control_started;
+    PTlsTransportOptions         control;
     mbedtls_ssl_context          ssl;
     mbedtls_ssl_config           conf;
     mbedtls_entropy_context      entropy;
@@ -2147,6 +2151,264 @@ PTLS_API void PTls_Close(HANDLE hConn)
 /* DllMain                                                                 */
 /* ---------------------------------------------------------------------- */
 
+/* A DNS job retains only copied data. OS gethostbyname cannot be interrupted
+ * on CE; bounded jobs pin both Winsock and this module until they unwind. */
+typedef struct ptls_dns_job {
+    LONG refs;
+    HANDLE done;
+    HMODULE module;
+    char host[256];
+    unsigned long address;
+    int error;
+} ptls_dns_job;
+static LONG ptls_dns_jobs;
+static void ptls_dns_release(ptls_dns_job* job)
+{
+    if (InterlockedDecrement(&job->refs) == 0) {
+        CloseHandle(job->done);
+        LocalFree(job);
+    }
+}
+static DWORD WINAPI ptls_dns_worker(LPVOID data)
+{
+    ptls_dns_job* job;
+    struct hostent* entry;
+    HMODULE module;
+    job = (ptls_dns_job*)data;
+    module = job->module;
+    entry = gethostbyname(job->host);
+    job->error = PTLS_TRANSPORT_DNS;
+    if (entry != NULL && entry->h_addrtype == AF_INET && entry->h_length == 4 &&
+            entry->h_addr_list != NULL && entry->h_addr_list[0] != NULL) {
+        memcpy(&job->address, entry->h_addr_list[0], 4);
+        job->error = PTLS_TRANSPORT_OK;
+    }
+    SetEvent(job->done);
+    ptls_dns_release(job);
+    WSACleanup(); /* paired with this job's own WSAStartup */
+    InterlockedDecrement(&ptls_dns_jobs);
+    FreeLibraryAndExitThread(module, 0);
+    return 0;
+}
+static int ptls_control_check(PTlsConn* conn)
+{
+    if (conn->control.cancel_event != NULL &&
+            WaitForSingleObject(conn->control.cancel_event, 0) == WAIT_OBJECT_0) {
+        return PTLS_TRANSPORT_CANCELLED;
+    }
+    if ((DWORD)(GetTickCount() - conn->control_started) >= conn->control.timeout_ms) {
+        return PTLS_TRANSPORT_TIMEOUT;
+    }
+    return PTLS_TRANSPORT_OK;
+}
+static int ptls_control_resolve(PTlsConn* conn, const char* host,
+        unsigned long* address)
+{
+    ptls_dns_job* job;
+    WSADATA wsa;
+    WCHAR module_path[MAX_PATH];
+    HANDLE thread;
+    HANDLE waits[2];
+    DWORD result;
+    DWORD remaining;
+    DWORD elapsed;
+    int count;
+    int error;
+    if (ptls_is_ipv4_literal(host)) {
+        *address = inet_addr(host);
+        return PTLS_TRANSPORT_OK;
+    }
+    if (InterlockedIncrement(&ptls_dns_jobs) > 4) {
+        InterlockedDecrement(&ptls_dns_jobs);
+        return PTLS_TRANSPORT_LIMIT;
+    }
+    job = (ptls_dns_job*)LocalAlloc(LPTR, sizeof(*job));
+    if (job == NULL) { InterlockedDecrement(&ptls_dns_jobs); return PTLS_TRANSPORT_MEMORY; }
+    job->done = CreateEvent(NULL, TRUE, FALSE, NULL);
+    job->refs = 2;
+    ptls_safe_copy(job->host, sizeof(job->host), host);
+    error = PTLS_TRANSPORT_MEMORY;
+    if (job->done == NULL) { goto failed; }
+    count = (int)GetModuleFileName(g_tls_module, module_path, MAX_PATH);
+    if (count <= 0 || count >= MAX_PATH) { goto failed; }
+    job->module = LoadLibrary(module_path);
+    if (job->module == NULL) { goto failed; }
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) { goto failed; }
+    thread = CreateThread(NULL, 0, ptls_dns_worker, job, 0, NULL);
+    if (thread == NULL) { WSACleanup(); goto failed; }
+    CloseHandle(thread);
+    waits[0] = job->done;
+    waits[1] = conn->control.cancel_event;
+    error = ptls_control_check(conn);
+    if (error == PTLS_TRANSPORT_OK) {
+        elapsed = (DWORD)(GetTickCount() - conn->control_started);
+        remaining = elapsed < conn->control.timeout_ms ? conn->control.timeout_ms - elapsed : 0;
+        result = WaitForMultipleObjects(waits[1] == NULL ? 1 : 2, waits, FALSE, remaining);
+        if (result == WAIT_OBJECT_0) {
+            error = job->error;
+            *address = job->address;
+        } else {
+            error = result == WAIT_TIMEOUT ? PTLS_TRANSPORT_TIMEOUT :
+                    result == WAIT_OBJECT_0 + 1 ? PTLS_TRANSPORT_CANCELLED : PTLS_TRANSPORT_IO;
+        }
+    }
+    ptls_dns_release(job);
+    return error;
+failed:
+    if (job->module != NULL) { FreeLibrary(job->module); }
+    if (job->done != NULL) { CloseHandle(job->done); }
+    LocalFree(job);
+    InterlockedDecrement(&ptls_dns_jobs);
+    return error;
+}
+static int ptls_control_wait(PTlsConn* conn, int write)
+{
+    fd_set read_set;
+    fd_set write_set;
+    fd_set error_set;
+    struct timeval slice;
+    int rc;
+    int error;
+    for (;;) {
+        error = ptls_control_check(conn);
+        if (error != PTLS_TRANSPORT_OK) { return error; }
+        FD_ZERO(&read_set); FD_ZERO(&write_set); FD_ZERO(&error_set);
+        if (write) { FD_SET(conn->sock, &write_set); }
+        else { FD_SET(conn->sock, &read_set); }
+        FD_SET(conn->sock, &error_set);
+        slice.tv_sec = 0; slice.tv_usec = 50000;
+        rc = select(0, &read_set, &write_set, &error_set, &slice);
+        if (rc == SOCKET_ERROR || FD_ISSET(conn->sock, &error_set)) { return PTLS_TRANSPORT_IO; }
+        if (rc > 0) { return ptls_control_check(conn); }
+    }
+}
+PTLS_API HANDLE PTls_TransportOpenEx(const char* host, int port,
+        const PTlsTransportOptions* options,
+        const PTlsConnectObserver* observer, int* out_error)
+{
+    PTlsConn* conn;
+    ptls_connect_observer_state notification;
+    struct sockaddr_in target;
+    unsigned long address;
+    int rc;
+    int error;
+    int socket_error;
+    int socket_error_size;
+    if (out_error == NULL) { return NULL; }
+    *out_error = PTLS_TRANSPORT_ARGUMENT;
+    if (!g_initialized || options == NULL || options->size != sizeof(*options) ||
+            options->version != PTLS_TRANSPORT_VERSION || host == NULL ||
+            strlen(host) == 0 || strlen(host) >= 256 || port <= 0 || port > 65535 ||
+            (options->use_tls != 0 && options->use_tls != 1) ||
+            (options->verify_peer != 0 && options->verify_peer != 1) ||
+            options->timeout_ms == 0 || options->timeout_ms > 120000 ||
+            (observer != NULL && (observer->size < sizeof(*observer) ||
+             observer->version != PTLS_CONNECT_OBSERVER_VERSION || observer->callback == NULL))) { return NULL; }
+    notification.callback = observer == NULL ? NULL : observer->callback;
+    notification.user_data = observer == NULL ? NULL : observer->user_data;
+    conn = ptls_conn_create();
+    if (conn == NULL) { *out_error = PTLS_TRANSPORT_MEMORY; return NULL; }
+    conn->controlled = 1; conn->control = *options; conn->control_started = GetTickCount();
+    error = ptls_control_check(conn);
+    if (error != PTLS_TRANSPORT_OK) { goto failed; }
+    if (!ptls_is_ipv4_literal(host)) {
+        ptls_observer_emit(&notification, PTLS_CONNECT_PHASE_RESOLVING_NAME, host, port);
+    }
+    error = ptls_control_resolve(conn, host, &address);
+    if (error != PTLS_TRANSPORT_OK) { goto failed; }
+    error = ptls_control_check(conn);
+    if (error != PTLS_TRANSPORT_OK) { goto failed; }
+    ptls_observer_emit(&notification, PTLS_CONNECT_PHASE_CONNECTING, host, port);
+    conn->sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    error = PTLS_TRANSPORT_IO;
+    if (conn->sock == INVALID_SOCKET || !ptls_set_socket_blocking(conn->sock, 0)) { goto failed; }
+    memset(&target, 0, sizeof(target));
+    target.sin_family = AF_INET; target.sin_port = htons((unsigned short)port);
+    target.sin_addr.s_addr = address;
+    rc = connect(conn->sock, (struct sockaddr*)&target, sizeof(target));
+    if (rc == SOCKET_ERROR) {
+        rc = WSAGetLastError();
+        if (rc != WSAEWOULDBLOCK && rc != WSAEINPROGRESS) { goto failed; }
+        error = ptls_control_wait(conn, 1);
+        if (error != PTLS_TRANSPORT_OK) { goto failed; }
+    }
+    socket_error = 0; socket_error_size = sizeof(socket_error);
+    if (getsockopt(conn->sock, SOL_SOCKET, SO_ERROR, (char*)&socket_error,
+            &socket_error_size) != 0 || socket_error != 0) { error = PTLS_TRANSPORT_IO; goto failed; }
+    if (options->use_tls) {
+        error = PTLS_TRANSPORT_TLS;
+        if (mbedtls_ctr_drbg_seed(&conn->drbg, mbedtls_entropy_func, &conn->entropy,
+                (const unsigned char*)PTLS_PERS, strlen(PTLS_PERS)) != 0 ||
+                mbedtls_ssl_config_defaults(&conn->conf, MBEDTLS_SSL_IS_CLIENT,
+                    MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT) != 0) { goto failed; }
+        mbedtls_ssl_conf_authmode(&conn->conf, options->verify_peer ?
+                MBEDTLS_SSL_VERIFY_REQUIRED : MBEDTLS_SSL_VERIFY_NONE);
+        mbedtls_ssl_conf_rng(&conn->conf, mbedtls_ctr_drbg_random, &conn->drbg);
+        if (options->verify_peer) { mbedtls_ssl_conf_ca_chain(&conn->conf, &g_cacert, NULL); }
+        if (mbedtls_ssl_setup(&conn->ssl, &conn->conf) != 0 ||
+                mbedtls_ssl_set_hostname(&conn->ssl, host) != 0) { goto failed; }
+        mbedtls_ssl_set_bio(&conn->ssl, conn, ptls_bio_send, ptls_bio_recv, NULL);
+        ptls_observer_emit(&notification, PTLS_CONNECT_PHASE_TLS_HANDSHAKE, host, port);
+        for (;;) {
+            error = ptls_control_check(conn);
+            if (error != PTLS_TRANSPORT_OK) { goto failed; }
+            rc = mbedtls_ssl_handshake(&conn->ssl);
+            if (rc == 0) { break; }
+            if (rc != MBEDTLS_ERR_SSL_WANT_READ && rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                error = PTLS_TRANSPORT_TLS; goto failed;
+            }
+            error = ptls_control_wait(conn, rc == MBEDTLS_ERR_SSL_WANT_WRITE);
+            if (error != PTLS_TRANSPORT_OK) { goto failed; }
+        }
+    }
+    error = ptls_control_check(conn);
+    if (error != PTLS_TRANSPORT_OK) { goto failed; }
+    *out_error = PTLS_TRANSPORT_OK;
+    return conn;
+failed:
+    *out_error = error;
+    ptls_conn_destroy(conn, 0);
+    return NULL;
+}
+static int ptls_transport_io(HANDLE handle, char* buffer, int bytes, int writing)
+{
+    PTlsConn* conn;
+    int rc;
+    int error;
+    conn = (PTlsConn*)handle;
+    if (conn == NULL || !conn->controlled || buffer == NULL || bytes <= 0) { return PTLS_TRANSPORT_ARGUMENT; }
+    for (;;) {
+        error = ptls_control_check(conn);
+        if (error != PTLS_TRANSPORT_OK) { return error; }
+        if (conn->control.use_tls) {
+            rc = writing ? mbedtls_ssl_write(&conn->ssl, (unsigned char*)buffer, bytes) :
+                    mbedtls_ssl_read(&conn->ssl, (unsigned char*)buffer, bytes);
+            if (rc == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) { return 0; }
+            if (rc != MBEDTLS_ERR_SSL_WANT_READ && rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                return rc < 0 ? PTLS_TRANSPORT_TLS : rc;
+            }
+            error = ptls_control_wait(conn, rc == MBEDTLS_ERR_SSL_WANT_WRITE);
+        } else {
+            rc = writing ? send(conn->sock, buffer, bytes, 0) : recv(conn->sock, buffer, bytes, 0);
+            if (rc != SOCKET_ERROR) { return rc; }
+            rc = WSAGetLastError();
+            if (rc != WSAEWOULDBLOCK && rc != WSAEINTR) { return PTLS_TRANSPORT_IO; }
+            error = ptls_control_wait(conn, writing);
+        }
+        if (error != PTLS_TRANSPORT_OK) { return error; }
+    }
+}
+PTLS_API int PTls_TransportRead(HANDLE transport, char* buffer, int bytes)
+{ return ptls_transport_io(transport, buffer, bytes, 0); }
+PTLS_API int PTls_TransportWrite(HANDLE transport, const char* buffer, int bytes)
+{ return ptls_transport_io(transport, (char*)buffer, bytes, 1); }
+PTLS_API void PTls_TransportClose(HANDLE transport)
+{
+    PTlsConn* conn;
+    conn = (PTlsConn*)transport;
+    if (conn != NULL && conn->controlled) { ptls_conn_destroy(conn, 0); }
+}
+
 BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 {
     (void)hModule;
@@ -2154,6 +2416,7 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 
     switch (reason) {
         case DLL_PROCESS_ATTACH:
+            g_tls_module = (HMODULE)hModule;
             InitializeCriticalSection(&g_err_lock);
             g_err_lock_inited = TRUE;
             InitializeCriticalSection(&g_state_lock);

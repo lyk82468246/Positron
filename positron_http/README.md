@@ -1,6 +1,6 @@
 # `positron_http`
 
-`positron_http.dll` 是 Positron 的同步 HTTP/HTTPS 客户端公共 DLL。它提供 HTTP/1.1 GET、POST、响应进度回调、统一响应对象，以及不执行网络 I/O 的有界 HTTP(S) reference/Location 解析；HTTPS 通过 `positron_tls.dll`，明文 HTTP 使用 WM6 WinInet 路径。
+`positron_http.dll` 是 Positron 的同步 HTTP/HTTPS 客户端公共 DLL。它提供 HTTP/1.1 GET、POST、响应进度回调、统一响应对象，以及不执行网络 I/O 的有界 HTTP(S) reference/Location 解析。完整正文接口的 HTTPS 通过 `positron_tls.dll`，明文 HTTP 使用 WM6 WinInet；独立的流式 GET 请求族使用可取消的直连 TCP/TLS，不改变旧接口。
 
 协议和端口属于同一个 URL origin，不能只靠端口猜测。推荐使用 URL 入口：显式写出 `http://` 或 `https://`，端口可以省略（分别默认为 80/443），也可以写成非标准端口。省略协议的 URL 只默认 HTTPS，不会在 TLS 失败后静默降级到 HTTP；需要明文时必须显式写 `http://`。HTTPS 请求也拒绝跟随降级到 `http://` 的重定向；应用必须把这个响应视为失败并向用户说明。
 
@@ -68,6 +68,68 @@ if (PHttp_ResolveReference("api.example.com", 443, "/v1/page.html",
 需要让解析结果继续携带协议时，使用 `PHttp_ResolveReferenceUrl`。它返回完整的绝对 URL，因此 `http://device.local:8080/dir/` 的相对链接不会被改写为 HTTPS。`base_url` 为空时，`reference` 可以是带协议的 URL，也可以是省略协议的 host/path（按 HTTPS 解释）。外围 ASCII 空格可以被忽略；C0 控制字符、DEL、userinfo、IPv6、非法 scheme/端口和超出容量的输入一律失败，不会留下部分输出。
 
 需要响应进度时使用 URL-aware 的 `PHttp_GetUrlEx` / `PHttp_PostUrlEx`；旧的 `PHttp_GetEx` / `PHttp_PostEx` 只为 ABI 兼容保留。回调同步发生在请求线程，应保持短小，不能在回调中调用 `PHttp_Cleanup`。POST 的 `body` 是原始字节，`body_len` 为负数时按 NUL 结尾字符串处理，`Content-Type` 由调用者通过 headers 设置。响应对象无论 HTTP 状态还是传输失败都应由 `PHttp_FreeResponse` 释放；响应体读取、Content-Length 截断、分块解码、分配或 1 MiB 容量失败时，body 会被丢弃，`status_code == 0` 且 `error_msg` 非空。应用不应把部分 body 当作成功。
+
+### 流式 GET 与跨线程取消
+
+下载消费者可使用独立的 `PHttp_StreamCreateGet` / `PHttp_StreamGet` 请求族；旧完整 body
+入口与 1 MiB 上限不变。流式入口复用原 URL resolver 和 TLS 验证，只把最多 4096 字节的
+借用块同步交给 sink，不访问文件、DB、UI，也不累计整份响应。它使用直连 IPv4 TCP/TLS，
+不消费 WinInet 系统代理、cookie jar 或缓存；需要这些平台能力的旧消费者继续使用旧入口。
+
+```c
+PHttpStreamOptions options;
+PHttpStreamResult result;
+HANDLE request;
+
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PHTTP_STREAM_VERSION;
+options.timeout_ms = 60000;
+options.body_limit = 64UL * 1024 * 1024;
+options.headers = accept_final_headers; /* 可选；最终响应一次，非重定向中间响应。 */
+options.sink = accept_block;            /* 零为接受，非零立即停止。 */
+options.user_data = download;
+if (PHttp_StreamCreateGet(url, headers, &options, &request) == PHTTP_STREAM_OK) {
+    /* 在 worker 中执行；UI 只持有取消所需的请求映射。 */
+    PHttp_StreamGet(request);
+    memset(&result, 0, sizeof(result));
+    result.size = sizeof(result);
+    result.version = PHTTP_STREAM_VERSION;
+    PHttp_StreamGetResult(request, &result);
+    /* worker 返回并 join 所有 Get/Cancel 调用后再 Close。 */
+    PHttp_StreamClose(request);
+}
+```
+
+`Cancel` 是唯一允许跨线程的请求操作；重复取消在终态前幂等，取消与完成由请求锁确定
+先后，终态后返回 STATE 且不覆盖结果。不能在执行中 Close 或 Cleanup，不得通过另一个
+线程释放 socket/context。取消打断非阻塞 socket 的等待；不能抢占宿主 callback 或 TLS
+计算。总期限为 1–120000 ms，包含 DNS、重定向和传输；同步 DNS 由 TLS 的最多四项
+纯数据任务隔离，超时/取消不等待 OS 解析完成，迟到解析只释放自己的资源，不接触请求。
+
+请求头最多 32 项/8192 字节；响应头及 trailer 分别最多 16 KiB/64 项、单行 1023 字节。
+头文本只接受 ASCII/合法 UTF-8，其他 obs-text 编码返回 UNSUPPORTED，不冒充 UTF-8；
+文件名不做字符集猜测或 RFC 5987 解码。
+最终 metadata 包含 URL、status、Content-Type/Disposition/Encoding、64-bit received/total；
+终态后 `GetHeader` 可按 occurrence 查询其他头，重复普通字段按原顺序保存。重复 framing
+或下载 singleton 字段、TE/CL 冲突、非法 chunk 及超预算明确失败。Content-Disposition
+只是元数据，不是已验证的文件名。Authorization/Cookie 可显式提供，但携带这些字段的
+跨 origin 重定向在连接新目标前拒绝；不把凭据转发给不同服务器。
+
+`received` 只计 sink 接受的 transfer-decoded bytes；已知 Content-Length 为 total，chunked
+和 close-delimited 为 -1。首版只支持 identity Content-Encoding，其他编码在交付正文前返回
+UNSUPPORTED，不把压缩字节误称解压数据。宿主显式选择 1 byte–1 GiB body quota；没有
+默认无限模式。204/304 不交付正文；304 的 Content-Length 是表示 metadata，不消费正文预算。
+HTTP 请求/头/块/wire 缓冲合计不到 48 KiB，不随 body 增长；另有
+allocator、线程栈、TLS 和系统 socket 开销，不把固定缓冲预算冒充整进程峰值。
+Sink、协议、预算、timeout、取消及 transport 错误有独立机器分类，保留底层 transport 分类。
+失败可能已有部分 sink bytes，宿主须丢弃或明确标为未完成；OK 只表示传输完成，不代表
+2xx、保存文件成功或页面提交。HTTPS 始终校验 chain/hostname，流式入口不受诊断用
+`PHttp_SetInsecure` 影响，不降级、不默默回退；首版没有 Range、POST stream 或下载管理。
+
+新 HTTP DLL 静态导入 `PTls_Transport*`，必须部署同一次正式 stage 的 HTTP/TLS DLL。
+消费者不直接链接 Winsock/TLS 或解析英文错误；应用 worker/消息、文件命名及原子保存策略
+仍由 EXE 拥有。实际门及未验证边界见 [当前交接](../.agents/HANDOFF.md)，不能把 DLL 门当成应用下载接线通过。
 
 ### 请求阶段观察（`Ex2`）
 

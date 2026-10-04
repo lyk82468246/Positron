@@ -71,6 +71,26 @@ HTTP 的发送、响应头、body、重定向和终态。证书链与 hostname �
 接口改变。由于新增 HTTP 入口静态导入上述 Ex 符号，发布带 observer 的 HTTP 包时必须从同一
 Debug/Release 构建目录成对部署匹配的 `positron_http.dll` 与 `positron_tls.dll`。
 
+### 有界可取消 transport
+
+协议适配器可用 `PTls_TransportOpenEx` / `Read` / `Write` / `Close`，旧 connect 和 peer
+ABI 不变。size/version options 显式选择直连 TCP 或 TLS、TLS 验证、1–120000 ms 整个
+连接期限及借用的 manual-reset cancel event；所有连接操作归一个 worker，其他线程仅
+SetEvent，不释放连接。读写返回本请求的固定 TRANSPORT 错误分类，不解析全局 LastError。
+Close 不等待 close_notify；本族 handle 不能交给旧 Read/Write/Close。
+
+Socket 保持非阻塞，select 以最多 50 ms 片段检查取消与期限。这不是任意 TLS 计算或宿主
+callback 的实时抢占保证，也不提供 HTTP、代理、cookie 或文件策略。use_tls=1 且
+verify_peer=1 保留内置 CA、chain/hostname 与 SNI；HTTP 流式适配器总是选择此验证模式。
+
+CE 的同步 DNS 不能可靠取消；本族用最多四个进程内纯数据 resolver job 隔离它。每项复制
+host，拥有独立 Winsock startup/cleanup 引用、完成 event 和 DLL pin；调用者取消/超时可
+先返回，迟到解析不引用 transport、observer 或调用方 buffer。未结束的 OS 解析继续占用
+固定槽，饱和返回 LIMIT，不增长线程或缓存；不能宣称 OS DNS 已被终止。实际 API 依据见
+[微软 CE WSAStartup](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms898774(v=msdn.10))
+和 [WSACleanup](https://learn.microsoft.com/en-us/previous-versions/windows/embedded/ms898730(v=msdn.10))。
+应用须先 join 活动 transport 操作再 Cleanup/卸载；迟到 job 的自有引用防止解析中卸载。
+
 ## 持久 peer 身份
 
 `PTls_IdentityLoadOrCreate(cert_path, key_path)` 的规则是确定的：

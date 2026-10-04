@@ -2,7 +2,7 @@
  * positron_http.h - HTTP/1.1 client for the Positron framework.
  * Modern HTTPS is built on positron_tls; plaintext HTTP uses WM WinInet.
  *
- * Current transport contract:
+ * Legacy complete-body transport contract (streaming GET is additive):
  *   - HTTPS uses positron_tls; plaintext HTTP uses WM6 WinInet
  *   - "Connection: close"; no keep-alive
  *   - Response body capped at 1 MB
@@ -35,6 +35,90 @@ extern "C" {
 /* Maximum UTF-8 URL length accepted by URL-aware entry points and returned
  * by PHttp_ResponseGetFinalUrl. */
 #define PHTTP_URL_MAX 2048
+
+/* One-shot streaming GET. Legacy response/body ABI and 1 MiB ceiling remain
+ * unchanged. New path is direct IPv4 TCP/TLS, not WinInet/proxy/cache aware. */
+#define PHTTP_STREAM_VERSION 1
+#define PHTTP_STREAM_OK 0
+#define PHTTP_STREAM_ARGUMENT -1
+#define PHTTP_STREAM_STATE -2
+#define PHTTP_STREAM_CANCELLED -3
+#define PHTTP_STREAM_TIMEOUT -4
+#define PHTTP_STREAM_TRANSPORT -5
+#define PHTTP_STREAM_PROTOCOL -6
+#define PHTTP_STREAM_LIMIT -7
+#define PHTTP_STREAM_SINK -8
+#define PHTTP_STREAM_UNSUPPORTED -9
+#define PHTTP_STREAM_MEMORY -10
+#define PHTTP_STREAM_HEADERS_MAX_BYTES 16384
+#define PHTTP_STREAM_MAX_HEADER_FIELDS 64
+#define PHTTP_STREAM_BLOCK_BYTES 4096
+#define PHTTP_STREAM_BODY_MAX_BYTES 1073741824UL
+
+typedef struct PHttpStreamResult {
+    unsigned long size;
+    unsigned long version;
+    int result;          /* STREAM_* terminal; not an HTTP status. */
+    int transport_error; /* PTLS_TRANSPORT_* detail, 0 otherwise. */
+    int status_code;     /* final response status, 0 before final headers. */
+    int redirect_hop;    /* <=5; intermediate bodies are never delivered. */
+    __int64 received;    /* transfer-decoded bytes accepted by sink. */
+    __int64 total;       /* final Content-Length, or -1. */
+    char final_url[PHTTP_URL_MAX];
+    char content_type[256];
+    char content_disposition[512]; /* metadata only, not a safe file name. */
+    char content_encoding[64]; /* identity/empty only supported initially. */
+} PHttpStreamResult;
+typedef int (*PHttpStreamHeadersFn)(void* user_data,
+        const PHttpStreamResult* metadata, const char* headers,
+        unsigned long header_bytes);
+typedef int (*PHttpStreamSinkFn)(void* user_data, const unsigned char* block,
+        unsigned long bytes, __int64 received, __int64 total);
+typedef struct PHttpStreamOptions {
+    unsigned long size;
+    unsigned long version;
+    unsigned long timeout_ms; /* total request incl. redirects, 1..120000. */
+    unsigned long body_limit; /* 1..BODY_MAX, explicitly selected by host. */
+    PHttpStreamHeadersFn headers; /* optional, final response once only. */
+    PHttpStreamSinkFn sink;       /* required, 0 accept, nonzero stop. */
+    void* user_data;
+} PHttpStreamOptions;
+
+/* Create copies canonical URL, options and <=32 request headers/8192 bytes.
+ * Reserved framing/proxy headers and CR/LF are rejected. Authorization/Cookie
+ * are allowed, but carrying them through a cross-origin redirect is rejected
+ * as UNSUPPORTED before the next connection, never leaked to the new origin.
+ * Outputs unchanged on error.
+ * Requires Init, but no network or callbacks. Get executes once on one worker;
+ * callbacks synchronous there, borrow arguments until return, no reentry except
+ * Cancel. Header callback can reject before any body bytes. Non-2xx is a normal
+ * final response; OK means complete transfer, not 2xx or saved-file success.
+ * Cancel is the sole cross-thread request API, idempotent before terminal;
+ * cancel/completion linearize under a request lock, late cancel returns STATE
+ * without changing terminal result. Cancellation is cooperative: no callbacks
+ * after Get returns, no worker termination or second socket closer. Deadlines
+ * bound I/O waits, not host callbacks/TLS crypto. DNS jobs are bounded/isolated
+ * by TLS. Join Get AND all concurrent Cancel callers before Close/Cleanup.
+ * Result/Header queries and Close refuse running requests; Close returns STATE
+ * without freeing during callbacks. Freed handles cannot be queried/cancelled.
+ * A failed transfer may have accepted partial sink bytes: host must discard or
+ * explicitly retain them, never publish them as a completed download.
+ * Header text is ASCII/valid UTF-8; other obs-text encodings are UNSUPPORTED.
+ * Headers total <=16KiB/64 fields, each line <=1023 bytes. Duplicate framing or
+ * singleton download fields, conflicting TE/CL, compression and malformed
+ * chunks fail closed. Other duplicate fields are retained in arrival order.
+ * HTTPS always verifies chain + hostname, rejects downgrade redirects; no
+ * insecure streaming option or implicit HTTP retry. HTTP->HTTPS allowed.
+ * Chunked strips chunk framing/extensions/trailers, total=-1; counts are 64-bit,
+ * chunk/trailer budgets fixed, no response-body accumulation or file I/O. */
+PHTTP_API int PHttp_StreamCreateGet(const char* url, const char** headers,
+        const PHttpStreamOptions* options, HANDLE* out_request);
+PHTTP_API int PHttp_StreamGet(HANDLE request);
+PHTTP_API int PHttp_StreamCancel(HANDLE request);
+PHTTP_API int PHttp_StreamGetResult(HANDLE request, PHttpStreamResult* result);
+PHTTP_API int PHttp_StreamGetHeader(HANDLE request, const char* name,
+        unsigned long occurrence, char* output, unsigned long capacity);
+PHTTP_API int PHttp_StreamClose(HANDLE request);
 
 /* Request-scoped network phase observation.  This is additive to the legacy
  * progress callback and does not change PHttpResponse.  All text fields are

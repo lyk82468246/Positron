@@ -303,17 +303,19 @@ fixture 已加入，宿主 DB worker 和真实设备网络/断电门仍待完成
 进程重启与 journal 恢复；
 未通过才考虑有版本、原子替换 JSON。不在本批创建数据文件或恢复 DB 发布依赖。
 
-真实下载是独立纵切：HTTP 先提供流式读取与取消，应用再提供文件保存、任务状态和调度，
+真实下载是独立纵切：应用消费已验收的 HTTP 流式读取与取消，再提供文件保存、任务状态和调度，
 不借完整响应体接口突破 1 MiB 上限。清除/搜索历史、可编辑设置、restart/kill/hang
 不自动进入下一批；先形成具体流程和有界失败门。
 
 消费者已明确要求公共 DLL 前置能力，分两个独立交付。Browser 受控异步应用服务桥接
 已通过双配置定向门；剩余 EXE 可信内置页授权、纯数据 worker 与
 owner-thread 消息接线，不在 Browser 增加设置/历史/SQL/文件业务方法。
-下一条 DLL 纵切为 HTTP opaque-request 流式 GET 与跨线程取消：旧完整 body 入口仍限
-1 MiB；新 sink 不累计文件，需定义 final URL/status/headers、chunked/encoding/count、
-取消竞态、超时和 join 后释放。先用本地确定性服务证明慢响应/大于 1 MiB/失败与关闭，
-再跑 HTTPS 相邻门；不能借并行 UI 工作跳过 transport 生命周期或默许不可靠取消。
+HTTP opaque-request 流式 GET 与跨线程取消已退出待实现队列；固定容量、transport 限制与
+双配置合同证据见能力矩阵/交接。下一条下载纵切由 EXE 消费该接口，建立固定任务数的
+纯数据 worker、tab/generation 消息隔离、最终 metadata/用户文件名确认、临时文件及原子
+完成策略；拒绝/sink/取消/超时不得把部分文件发布为成功，join 后才释放请求或退出。
+先用确定性慢响应、大文件、non-2xx、保存失败和关闭夹具验证，再验收真实 HTTPS 和
+UI。Range、压缩、代理与 stream POST 只有新的消费者证据和独立资源合同出现后再取舍。
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 

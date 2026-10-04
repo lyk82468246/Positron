@@ -2156,6 +2156,13 @@ PHTTP_API PHttpResponse* PHttp_PostUrlEx2(const char* url,
             progress, user_data, observer);
 }
 
+int phttp_stream_url_parts(const char* url, char* host, char* path,
+        int* port, int* scheme)
+{
+    return phttp_parse_resolved_url(url, host, 256, path, 1024, port, scheme);
+}
+int phttp_stream_initialized(void) { return g_initialized != FALSE; }
+
 PHTTP_API int PHttp_ResponseGetFinalUrl(const PHttpResponse* response,
                                         char* out_url,
                                         int out_url_capacity)

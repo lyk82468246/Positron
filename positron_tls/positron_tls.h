@@ -24,6 +24,28 @@ extern "C" {
 #define PTLS_ABI_VERSION 2
 #define PTLS_FINGERPRINT_HEX_CAPACITY 65
 
+/* Additive bounded transport used by streaming protocol adapters. Legacy
+ * PTls_Connect/Read/Write behavior and ABI are unchanged. */
+#define PTLS_TRANSPORT_VERSION 1
+#define PTLS_TRANSPORT_OK 0
+#define PTLS_TRANSPORT_ARGUMENT -1
+#define PTLS_TRANSPORT_CANCELLED -2
+#define PTLS_TRANSPORT_TIMEOUT -3
+#define PTLS_TRANSPORT_IO -4
+#define PTLS_TRANSPORT_TLS -5
+#define PTLS_TRANSPORT_DNS -6
+#define PTLS_TRANSPORT_LIMIT -7
+#define PTLS_TRANSPORT_MEMORY -8
+
+typedef struct PTlsTransportOptions {
+    unsigned long size;
+    unsigned long version;
+    int use_tls;       /* 0 raw TCP for protocol adapters; 1 TLS. */
+    int verify_peer;   /* TLS: 1 chain + hostname, 0 diagnostics only. */
+    unsigned long timeout_ms; /* whole connection lifetime, 1..120000. */
+    HANDLE cancel_event; /* borrowed manual-reset event; NULL allowed. */
+} PTlsTransportOptions;
+
 /* Additive, request-scoped transport observation used by higher-level
  * protocols such as positron_http.  The existing connect entry points and
  * PTLS_ABI_VERSION remain unchanged.  RESOLVING_NAME is emitted only for a
@@ -57,6 +79,27 @@ typedef struct PTlsConnectObserver {
     PTlsConnectObserverCallback callback;
     void*                        user_data;
 } PTlsConnectObserver;
+
+/* Open/read/write/close execute on one worker thread. Only SetEvent on the
+ * borrowed cancel_event may run concurrently. Never close that event or call
+ * Cleanup/Close/unload while an operation is active. Nonblocking socket waits
+ * poll cancellation/deadline in <=50ms slices (not a wall-clock guarantee for
+ * TLS crypto or user callbacks). DNS is isolated in <=4 copied-data resolver
+ * jobs per process; cancellation/deadline returns without waiting for the OS
+ * resolver. A late DNS job owns its Winsock reference, DLL pin and event until
+ * completion, and never references options, observer or transport. Saturation
+ * fails with LIMIT rather than adding unbounded threads. HTTP semantics and
+ * proxy policy do not belong here. raw TCP is direct, not WinInet/proxy aware.
+ * out_error is caller-owned, required for Open; no process-global error parse.
+ * Read/Write return byte count, 0 EOF for Read, or a TRANSPORT_* negative code.
+ * Close does not wait for a TLS close_notify exchange. Handles from this family
+ * must not be passed to legacy PTls_Read/Write/Close. */
+PTLS_API HANDLE PTls_TransportOpenEx(const char* host, int port,
+        const PTlsTransportOptions* options,
+        const PTlsConnectObserver* observer, int* out_error);
+PTLS_API int PTls_TransportRead(HANDLE transport, char* buffer, int bytes);
+PTLS_API int PTls_TransportWrite(HANDLE transport, const char* buffer, int bytes);
+PTLS_API void PTls_TransportClose(HANDLE transport);
 
 #define PTLS_SERVER_REQUIRE_CLIENT_CERT 0x0001u
 
