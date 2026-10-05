@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string] $RunRoot,
     [ValidateSet('Debug', 'Release')][string] $Configuration = 'Debug',
-    [ValidateSet('Unicode', 'Locks')][string] $Suite = 'Unicode',
+    [ValidateSet('Unicode', 'Locks', 'Journal')][string] $Suite = 'Unicode',
     [switch] $ConfirmedExclusiveWindow,
     [switch] $PreserveDeployment
 )
@@ -87,7 +87,7 @@ function Wait-ProbeLog([string] $RemotePath, [string] $LocalPath, [int] $Timeout
 
 function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
         [string] $Storage, [string] $RemoteRoot, [string] $Suite = 'Unicode') {
-    if ($Suite -notin @('Unicode', 'Locks')) { throw 'Unknown probe suite.' }
+    if ($Suite -notin @('Unicode', 'Locks', 'Journal')) { throw 'Unknown probe suite.' }
     if (([regex]::Matches($Body, '(?m)^DB_FILE_PROBE PASS\r?$')).Count -ne 1 -or
             $Body -match '(?m)^(?:FAIL|DB_FILE_PROBE FAIL|child_timeout=FAIL)') {
         throw 'Missing, duplicated or failed coordinator completion.'
@@ -98,6 +98,15 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
         $summary = [regex]::Matches($Body, '(?m)^lock_processes=6 rw_pair=concurrent ww_pair=concurrent cold_verifier_after_all_exits=1\r?$')
         if (([regex]::Matches($Body, '(?m)^lock_suite=rw-ww-v1\r?$')).Count -ne 1) {
             throw 'Missing exact lock suite identity.'
+        }
+    }
+    if ($Suite -eq 'Journal') {
+        $summary = [regex]::Matches($Body, '(?m)^journal_processes=5 writer_terminated_before_recovery=1 snapshots_before_recovery=1 cold_verifier_after_recovery_exit=1\r?$')
+        foreach ($marker in @('journal_suite=hot-rollback-v1',
+                'journal_snapshots=PASS before_and_hot_pair=1 recovery_not_started=1')) {
+            if (([regex]::Matches($Body, '(?m)^' + [regex]::Escape($marker) + '\r?$')).Count -ne 1) {
+                throw 'Missing exact journal suite/snapshot evidence.'
+            }
         }
     }
     $rootMatch = [regex]::Matches($Body, '(?m)^fixture_root=(.+)\r?$')
@@ -121,8 +130,10 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
         $pids = @([uint32]$summary[0].Groups[1].Value,
             [uint32]$summary[0].Groups[2].Value, [uint32]$summary[0].Groups[3].Value)
     }
-    if ($Suite -eq 'Locks') {
-        $roles = @('create','rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
+    if ($Suite -ne 'Unicode') {
+        $roles = if ($Suite -eq 'Locks') {
+            @('create','rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
+        } else { @('create','journal-seed','journal-writer','journal-recover','journal-verify') }
         $pids = @()
         foreach ($role in $roles) {
             $created = [regex]::Matches($Body, '(?m)^child role=' + $role + ' pid=(\d+) created=1\r?$')
@@ -144,9 +155,13 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
             ' pid=' + $pids[$index] + ' created=1\r?$')
         $pattern = '(?m)^child role=' + $roles[$index] + ' pid=' + $pids[$index] +
             ' wait=0 exit=0 completed=1\r?$'
+        if ($Suite -eq 'Journal' -and $roles[$index] -eq 'journal-writer') {
+            $pattern = '(?m)^child role=journal-writer pid=' + $pids[$index] +
+                ' wait=0 exit=1346650698 completed=1 terminated_owned=1\r?$'
+        }
         $completed = [regex]::Matches($Body, $pattern)
         if ($created.Count -ne 1 -or $completed.Count -ne 1 -or
-                ($Suite -eq 'Unicode' -and $created[0].Index -le $previousEnd) -or
+                ($Suite -ne 'Locks' -and $created[0].Index -le $previousEnd) -or
                 $completed[0].Index -le $created[0].Index) {
             throw 'A child has no exact signalled-process/zero-exit result.'
         }
@@ -163,23 +178,54 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
             throw 'Lock competitors did not overlap or verifier ran before both pairs exited.'
         }
     }
+    if ($Suite -eq 'Journal') {
+        $header = [regex]::Matches($Body, '(?m)^hot_journal magic=valid bytes=(\d+) records=(\d+) original_pages=(\d+) sector=(\d+) page_size=4096 writer_exited=1\r?$')
+        $snapshot = [regex]::Match($Body, '(?m)^journal_snapshots=PASS[^\r\n]*\r?$')
+        if ($header.Count -ne 1 -or $header[0].Index -le $ends[2] -or
+                $snapshot.Index -le $header[0].Index -or $starts[3] -le $snapshot.Index -or
+                [int]$header[0].Groups[1].Value -le 512 -or
+                [int]$header[0].Groups[1].Value -gt 1048576 -or
+                [int]$header[0].Groups[2].Value -lt 1 -or
+                [int]$header[0].Groups[2].Value -gt 128 -or
+                [int]$header[0].Groups[3].Value -lt 1 -or
+                [int]$header[0].Groups[3].Value -gt 128) {
+            throw 'Missing valid hot journal after writer exit and before recovery.'
+        }
+    }
     return @{Root=$fixture; Pids=$pids}
 }
 
 function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoot,
         [string] $DatabasePath, [string] $Role) {
     $lockRole = $Role -in @('rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
-    if ($Role -notin @('create', 'read', 'verify-b') -and !$lockRole -or $ChildPid -eq 0) {
+    $journalRole = $Role -in @('journal-seed','journal-writer','journal-recover','journal-verify')
+    $writer = $Role -eq 'journal-writer'
+    if ($Role -notin @('create', 'read', 'verify-b') -and !$lockRole -and !$journalRole -or $ChildPid -eq 0) {
         throw 'Unknown child role or invalid PID.'
     }
     $identity = [regex]::Matches($Body, '(?m)^process pid=(\d+) path=(.+)\r?$')
     if ($identity.Count -ne 1 -or [uint32]$identity[0].Groups[1].Value -ne $ChildPid -or
             $identity[0].Groups[2].Value.TrimEnd("`r") -ine ($RemoteRoot + '\positron_db_file_probe.exe') -or
             $Body -match '(?m)^(?:FAIL|DB_FILE_CHILD FAIL|open_failure)' -or
-            ([regex]::Matches($Body, '(?m)^DB_FILE_CHILD PASS closed_before_exit=1\r?$')).Count -ne 1 -or
-            (!$lockRole -and $Body -notmatch '(?m)^exact_utf8_text=PASS exact_blob=PASS schema=PASS integrity=ok transaction_idle=1 statements=0\r?$') -or
-            ($lockRole -and ([regex]::Matches($Body, '(?m)^lock_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1)) {
+            (!$writer -and ([regex]::Matches($Body, '(?m)^DB_FILE_CHILD PASS closed_before_exit=1\r?$')).Count -ne 1) -or
+            ($writer -and $Body -match '(?m)^DB_FILE_CHILD PASS') -or
+            (!$lockRole -and !$journalRole -and $Body -notmatch '(?m)^exact_utf8_text=PASS exact_blob=PASS schema=PASS integrity=ok transaction_idle=1 statements=0\r?$') -or
+            ($lockRole -and ([regex]::Matches($Body, '(?m)^lock_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1) -or
+            ($journalRole -and !$writer -and ([regex]::Matches($Body, '(?m)^journal_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1)) {
         throw 'Incomplete/failed child byte, schema, integrity or release evidence.'
+    }
+    if ($journalRole) {
+        $markers = switch ($Role) {
+            'journal-seed' { @('journal_seed=PASS rows=64 blob_bytes=2048 schema=2') }
+            'journal-writer' { @('journal_writer_ready active=1 txn=2 statements=0 commit=0 rollback=0 close=0') }
+            'journal-recover' { @('journal_recovered=PASS rows=64 sample_rows=1 schema=2','journal_post_recovery_commit=PASS') }
+            'journal-verify' { @('journal_cold_verify=PASS rows=64 sample_rows=2 schema=2') }
+        }
+        foreach ($marker in $markers) {
+            if (([regex]::Matches($Body, '(?m)^' + [regex]::Escape($marker) + '\r?$')).Count -ne 1) {
+                throw 'Missing exact journal transaction/recovery evidence.'
+            }
+        }
     }
     if ($lockRole) {
         $markers = switch ($Role) {
@@ -224,6 +270,37 @@ function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoo
     }
 }
 
+function Assert-JournalFiles([string] $Directory) {
+    $before = Join-Path $Directory 'before.sqlite'
+    $hot = Join-Path $Directory 'hot.sqlite'
+    $journal = Join-Path $Directory 'hot.sqlite-journal'
+    foreach ($file in @($before, $hot, $journal)) {
+        $limit = if ($file -eq $journal) { 1048576 } else { 524288 }
+        $length = (Get-Item -LiteralPath $file).Length
+        if ($length -le 512 -or $length -gt $limit) { throw 'Raw snapshot size is outside fixed bounds.' }
+    }
+    if ((Get-FileHash -LiteralPath $before).Hash -eq (Get-FileHash -LiteralPath $hot).Hash) {
+        throw 'No actual uncommitted database spill; journal existence alone is insufficient.'
+    }
+    $bytes = [IO.File]::ReadAllBytes($journal)
+    $magic = [byte[]](0xd9,0xd5,0x05,0xf9,0x20,0xa1,0x63,0xd7)
+    for ($index = 0; $index -lt 8; ++$index) {
+        if ($bytes[$index] -ne $magic[$index]) { throw 'Invalid raw journal magic.' }
+    }
+    $values = @()
+    foreach ($offset in @(8,16,20,24)) {
+        $values += ([long]$bytes[$offset] * 16777216 + [long]$bytes[$offset+1] * 65536 +
+            [long]$bytes[$offset+2] * 256 + $bytes[$offset+3])
+    }
+    $records, $pages, $sector, $pageSize = $values
+    if ($records -lt 1 -or $records -gt 128 -or $pages -lt 1 -or $pages -gt 128 -or
+            $sector -lt 512 -or $sector -gt 65536 -or ($sector -band ($sector-1)) -ne 0 -or
+            $pageSize -ne 4096 -or $bytes.Length -lt ($sector + $records * 4104) -or
+            (Get-Item -LiteralPath $before).Length -ne ($pages * 4096)) {
+        throw 'Raw journal header/record bounds disagree with baseline database.'
+    }
+}
+
 function Save-FailedProbeEvidence([string] $ParentLog, [uint32] $OwnerPid,
         [string] $Storage, [string] $RemoteRoot, [string] $Destination) {
     if ($OwnerPid -eq 0 -or $Storage -notin @('sd', 'internal') -or
@@ -240,7 +317,9 @@ function Save-FailedProbeEvidence([string] $ParentLog, [uint32] $OwnerPid,
     }
     [void][IO.Directory]::CreateDirectory($Destination)
     foreach ($name in @('create.log', 'read.log', 'verify-b.log', 'owner.marker',
-            'rw-reader.log','rw-writer.log','ww-owner.log','ww-contender.log','lock-verify.log')) {
+            'rw-reader.log','rw-writer.log','ww-owner.log','ww-contender.log','lock-verify.log',
+            'journal-seed.log','journal-writer.log','journal-recover.log','journal-verify.log',
+            'before.sqlite','hot.sqlite','hot.sqlite-journal')) {
         $copied = [PositronDeviceRapi]::TryCopyFileFromDevice(
             ($fixture + '\' + $name), (Join-Path $Destination $name))
         Write-Stage ('failure evidence ' + $name + ' retrieved=' + $copied)
@@ -352,6 +431,9 @@ try {
         if ($Suite -eq 'Locks') {
             $roles = @('create','rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
         }
+        if ($Suite -eq 'Journal') {
+            $roles = @('create','journal-seed','journal-writer','journal-recover','journal-verify')
+        }
         for ($index = 0; $index -lt $roles.Count; ++$index) {
             $role = $roles[$index]
             $local = Join-Path $destination ($role + '.log')
@@ -366,6 +448,14 @@ try {
             throw 'Fixture owner marker is not the exact expected format.'
         }
         $dbHash = Copy-StableRemoteFile $dbPath (Join-Path $destination $chineseDatabase)
+        if ($Suite -eq 'Journal') {
+            foreach ($name in @('before.sqlite','hot.sqlite','hot.sqlite-journal')) {
+                $hash = Copy-StableRemoteFile ($summary.Root + '\' + $name) (Join-Path $destination $name)
+                $checks.Add($storage + '_snapshot_sha256=' + $name + ':' + $hash)
+            }
+            Assert-JournalFiles $destination
+            $checks.Add($storage + '_hot_journal_spill_recovery=PASS')
+        }
         $checks.Add($storage + '_database_path=' + $dbPath)
         $checks.Add($storage + '_database_sha256=' + $dbHash)
         $checks.Add($storage + '_fresh_processes=' + $roles.Count)

@@ -13,8 +13,9 @@
   不同 PID、wait/exit=0，实际 EXE/DLL 路径、schema/data/integrity 和关闭状态检查通过。
 - [x] 读写/写写进程锁、实际 COMMIT BUSY、读可见性、锁释放后恢复；Debug/Release 的
   SD 映射卷与内置 object store 四组六进程门分别通过，证据如下。
-- [ ] 只对夹具自建子进程做有界异常终止，取得实际 hot rollback journal，再由新进程恢复、
-  integrity 检查并继续写入。未实现夹具、未验收；不能写成物理断电保证。
+- [x] 只对夹具自建子进程做有界异常终止，取得实际 hot rollback journal，再由新进程恢复、
+  integrity 检查并继续写入；Debug/Release 的 SD 映射与内置存储四组通过。
+  受控进程终止不能写成物理断电保证。
 - [ ] 真实文件页配额 FULL 与确定性的 I/O、COMMIT、rollback 故障注入；取得根错误、实际
   事务状态、重新打开后的 schema/data/integrity。未实现夹具、未验收；不得填满磁盘/SD。
 - [ ] 文件 migration 脚本/提交失败后，由新进程证明 schema/data/version 原子性与重试；
@@ -70,6 +71,37 @@ peer 等待上限 15 秒；读写 COMMIT 返回原生 BUSY，写事务仍 active
 十二项 probe 离线检查、五十四项日志验证器检查与 C89 工具检查通过；离线 oracle 不替代
 以上 WM6 六进程证据。锁夹具不是 hot journal、故障注入或物理断电测试。
 
+## 已验收受控异常退出 journal 纵切
+
+`db_journal_probe.h` 只消费公共 DB API，协调器只编排五个独立进程并只读复制夹具文件。
+创建与 seed 进程退出后，写者用四页 cache、cache spill 和未提交事务产生真实落盘变化。
+flush 后的 ready 标记证明 active/write、零 statement、未 commit/rollback/close；协调器
+只终止本轮 CreateProcess 返回且仍存活的写者 handle，确认专用退出码和 signalled 状态。
+在恢复进程启动前保留原已提交 DB、hot DB/journal 三份 CREATE_NEW 快照。
+
+四组实际 journal 均为 333,312 字节，magic 有效，首段 records=1、原 DB=69 页、sector=512、
+page=4096；已提交与 hot DB 哈希不同，排除了只有 journal 而未 spill 的假通过。
+新进程恢复原中文 TEXT、64 行逐字节 2048-byte BLOB 和 schema=2，要求较低版本先被公共
+migration API 拒绝，再检查当前版本，避免空 migration 补写丢失的版本。integrity、idle/零
+statement、恢复后提交及下一独立进程冷复核通过。DB 上限 128 页，journal 快照限 1 MiB，
+双空间预检仍保留 5 MiB，不填满卷或终止用户进程。
+
+本轮证据入口：
+
+- journal Debug：`tmp/device-runs/20261005-223421-db-file-journal-final-debug/`。
+- journal Release：`tmp/device-runs/20261005-223629-db-file-journal-final-release/`。
+- 锁回归 Debug：`tmp/device-runs/20261005-222846-db-file-journal-locks-debug/`。
+- 锁回归 Release：`tmp/device-runs/20261005-223159-db-file-journal-locks-release/`。
+- 相邻 `1321,999` Debug：`tmp/device-runs/20261005-222710-db-file-journal-adjacent-debug/`。
+- 相邻 `1321,999` Release：`tmp/device-runs/20261005-222805-db-file-journal-adjacent-release/`。
+
+两次锁回归四组通过；两次相邻门均 selected/observed=2/2、唯一 TESTBENCH PASS、零
+ERROR/FAIL、Core 路径正确、无新增 crash，完整日志取回后精确清理部署目录。
+正式 Debug/Release build/stage、九 DLL 同配置哈希回读、前后新 guest holders=0
+unavailable=0、完整日志、无新增 crash 和夹具/包精确清理通过。十四项离线 probe 检查、
+八十一项门验证器检查、C89 与仓库审计通过；离线 host SQLite oracle 不替代 WM6 证据。
+当前仍为 DeviceEmulator/SD 主机映射卷，进程终止不模拟物理断电或存储 flush 故障。
+
 ## 保留失败与恢复边界
 
 首次 Debug 门 `tmp/device-runs/20261005-015637-db-file-unicode-debug/` 在打开 DB 前失败：
@@ -98,7 +130,8 @@ WM6 对不存在文件的属性检查未返回预期 LastError，夹具误拒绝
 
 ## 下一条独立门
 
-本轮已复核 ROADMAP，锁退出待验收队列，下一条为受控异常退出的 hot rollback journal
-恢复；不覆盖并行 EXE 候选，不恢复应用正常启动或 CAB DB 依赖。
+本轮已复核 ROADMAP，锁与受控异常退出 journal 已退出待验收队列，下一条为真实文件页
+配额 FULL；确定性 I/O 与提交/rollback 故障另设独立门。不覆盖并行 EXE 候选，
+不恢复应用正常启动或 CAB DB 依赖。
 其余未勾选门保持待实现、待执行。真实卷耗尽和物理断电缺少安全实验条件，仍未验证；
 不填满磁盘、不强杀用户进程、不提前启用应用持久化。

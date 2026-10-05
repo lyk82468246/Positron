@@ -49,6 +49,25 @@ transaction, then retries after the first writer commits. The cold verifier
 checks all four rows, schema version and integrity after both pairs have exited.
 Failures are reaped before the coordinator reports completion.
 
+`--run-journal` / `--run-journal-internal` run five independent processes:
+creator, seed, interrupted writer, recoverer and cold verifier. The seed commits
+64 exact 2048-byte BLOB rows under schema version 2. A four-page cache and enabled
+cache spill force the writer's uncommitted changes out of memory. After its
+flushed ready marker (active write transaction, zero statements, no commit,
+rollback or close), only its still-owned CreateProcess handle is terminated,
+with a dedicated exit code. Failure to observe readiness/termination fails.
+The writer never returns normally as a successful child.
+
+Before launching recovery, the coordinator validates the real journal magic,
+record/page/sector bounds and preserves CREATE_NEW `before.sqlite`, `hot.sqlite`
+and `hot.sqlite-journal` copies. It never edits the original DB or journal.
+The journal fixture caps the DB at 128 pages (512 KiB), each journal copy at
+1 MiB and retains the 5 MiB storage preflight. A fresh public-API consumer must
+recover the exact committed TEXT/BLOB/schema, pass integrity and commit a new
+row; another new process verifies that commit. `-Suite Journal` additionally
+retrieves both raw snapshots and requires different baseline/hot DB hashes,
+so a nonempty journal without an actual database spill is insufficient.
+
 Logs and files remain for the host gate to retrieve and hash before scoped
 cleanup. A complete package, free-space preflight, guest no-foreign-DLL audit,
 round-trip binary identity and crash inventory are host-gate requirements;
@@ -69,9 +88,10 @@ Pass `-Suite Locks` to run the concurrent suite; the default `Unicode` preserves
 the original three-process sequence. The gate verifies overlapping process
 pairs, native BUSY/error/transaction state, snapshot visibility, retry and cold
 reopen rather than accepting a generic PASS line alone.
-Neither suite proves hot-journal recovery, I/O faults, actual volume exhaustion
-or physical power-loss durability. A fixture implementation is not acceptance
-without complete device evidence.
+Unicode/Locks do not prove hot-journal recovery. Journal tests controlled process
+termination, not physical power loss; no suite proves injected I/O faults or
+actual volume exhaustion. A fixture implementation is not acceptance without
+complete device evidence.
 
 `python scripts/test_db_file_probe.py` checks fixture SQL, UTF-8 bytes, ownership
 guards, process sequencing and project boundaries offline. Its host SQLite

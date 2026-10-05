@@ -43,11 +43,12 @@
 ## DB
 
 - SQLite 3.53.4、rollback journal；数据库约 16 MiB、body 约 1 MiB。文件
-  配额 FULL/I/O/COMMIT/rollback 故障、异常退出 hot journal、迁移提交故障/未来或损坏版本
+  配额 FULL/I/O/COMMIT/rollback 故障、迁移提交故障/未来或损坏版本
   拒绝、峰值内存、真机断电/强制重启恢复未验收。正常冷重开不证明这些边界。
 - 宿主 DB worker、实际 HTTPS 错误/分页及生产设备基线未完成；独立 REST fixture 不是生产
-  服务。离线合同见 [HANDOFF](HANDOFF.md)；中文文件、三个独立进程冷重开及六进程
-  读写/写写锁的 Debug/Release SD 映射/内置存储证据及剩余文件门见 [验收清单](DB_FILE_ACCEPTANCE.md)。
+  服务。离线合同见 [HANDOFF](HANDOFF.md)；中文文件、三个独立进程冷重开、六进程
+  读写/写写锁及五进程受控终止 hot-journal 恢复的 Debug/Release SD 映射/内置存储证据，
+  以及剩余文件门见 [验收清单](DB_FILE_ACCEPTANCE.md)。进程终止恢复不等于真实断电保证。
 - v1 只接受单列 INTEGER/TEXT 主键；不支持复合主键、自动 merge、多主、远程 SQL、WAL、
   SQLCipher、扩展或 DLL 内网络线程。Token 不入库，DB handle 不跨线程。
 

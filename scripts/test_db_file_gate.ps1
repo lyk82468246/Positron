@@ -5,7 +5,7 @@ $gateErrors = $null
 $gateAst = [Management.Automation.Language.Parser]::ParseFile(
     (Join-Path $PSScriptRoot 'db_file_gate.ps1'), [ref]$gateTokens, [ref]$gateErrors)
 if ($gateErrors.Count) { throw $gateErrors[0] }
-foreach ($name in @('Assert-ProbeLog', 'Assert-ChildLog')) {
+foreach ($name in @('Assert-ProbeLog', 'Assert-ChildLog', 'Assert-JournalFiles')) {
     $definition = $gateAst.Find({ param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
     }, $false)
@@ -133,6 +133,75 @@ Test-Validation 'duplicate commit retry' { Assert-ChildLog ($rwLog + "rw_commit_
 Test-Validation 'missing new snapshot' { Assert-ChildLog ($lockBase + "rw_old_snapshot=PASS`r`n") 20 $package $dbPath 'rw-reader' } $false
 Test-Validation 'cold verifier missing row' { Assert-ChildLog ($lockBase + "locks_cold_reopen=PASS rows=3 schema=1`r`n") 20 $package $dbPath 'lock-verify' } $false
 Test-Validation 'unknown suite' { Assert-ProbeLog $lockParent 10 'sd' $package 'Other' } $false
+
+$journalParent = (@(
+    "process pid=10 path=$exe", 'fixture_storage=sd', "fixture_root=$fixture",
+    'journal_suite=hot-rollback-v1',
+    'child role=create pid=20 created=1', 'child role=create pid=20 wait=0 exit=0 completed=1',
+    'child role=journal-seed pid=30 created=1', 'child role=journal-seed pid=30 wait=0 exit=0 completed=1',
+    'child role=journal-writer pid=40 created=1',
+    'child role=journal-writer pid=40 wait=0 exit=1346650698 completed=1 terminated_owned=1',
+    'hot_journal magic=valid bytes=4616 records=1 original_pages=1 sector=512 page_size=4096 writer_exited=1',
+    'journal_snapshots=PASS before_and_hot_pair=1 recovery_not_started=1',
+    'child role=journal-recover pid=50 created=1', 'child role=journal-recover pid=50 wait=0 exit=0 completed=1',
+    'child role=journal-verify pid=60 created=1', 'child role=journal-verify pid=60 wait=0 exit=0 completed=1',
+    'journal_processes=5 writer_terminated_before_recovery=1 snapshots_before_recovery=1 cold_verifier_after_recovery_exit=1',
+    'DB_FILE_PROBE PASS'
+) -join "`r`n") + "`r`n"
+Test-Validation 'journal exact process sequence' { Assert-ProbeLog $journalParent 10 'sd' $package 'Journal' } $true
+Test-Validation 'journal internal sequence' { Assert-ProbeLog ($journalParent.Replace('fixture_storage=sd','fixture_storage=internal').Replace("fixture_root=$fixture",'fixture_root=\Temp\Positron-device-gate\db-file-fixtures\fixture-10-1234')) 10 'internal' $package 'Journal' } $true
+Test-Validation 'journal normal writer exit rejected' { Assert-ProbeLog ($journalParent.Replace('exit=1346650698','exit=0')) 10 'sd' $package 'Journal' } $false
+Test-Validation 'journal wrong termination ownership' { Assert-ProbeLog ($journalParent.Replace('terminated_owned=1','terminated_owned=0')) 10 'sd' $package 'Journal' } $false
+Test-Validation 'journal wrong exit code' { Assert-ProbeLog ($journalParent.Replace('exit=1346650698','exit=1')) 10 'sd' $package 'Journal' } $false
+Test-Validation 'journal zero records' { Assert-ProbeLog ($journalParent.Replace('records=1','records=0')) 10 'sd' $package 'Journal' } $false
+Test-Validation 'journal oversized' { Assert-ProbeLog ($journalParent.Replace('bytes=4616','bytes=1048577')) 10 'sd' $package 'Journal' } $false
+Test-Validation 'journal repeated writer PID' { Assert-ProbeLog ($journalParent.Replace('pid=40','pid=30')) 10 'sd' $package 'Journal' } $false
+$earlyRecovery = $journalParent.Replace("child role=journal-recover pid=50 created=1`r`n",'').Replace(
+    'journal_snapshots=PASS before_and_hot_pair=1 recovery_not_started=1',
+    "child role=journal-recover pid=50 created=1`r`njournal_snapshots=PASS before_and_hot_pair=1 recovery_not_started=1")
+Test-Validation 'recovery before raw snapshots rejected' { Assert-ProbeLog $earlyRecovery 10 'sd' $package 'Journal' } $false
+$journalBase = $lockBase.Replace('lock_integrity=ok','journal_integrity=ok')
+$seedLog = $journalBase + "journal_seed=PASS rows=64 blob_bytes=2048 schema=2`r`n"
+$recoverLog = $journalBase + "journal_recovered=PASS rows=64 sample_rows=1 schema=2`r`njournal_post_recovery_commit=PASS`r`n"
+$verifyLog = $journalBase + "journal_cold_verify=PASS rows=64 sample_rows=2 schema=2`r`n"
+$writerLog = $journalBase.Replace("journal_integrity=ok transaction_idle=1 statements=0`r`n",'').Replace(
+    "DB_FILE_CHILD PASS closed_before_exit=1`r`n",'') +
+    "journal_writer_ready active=1 txn=2 statements=0 commit=0 rollback=0 close=0`r`n"
+Test-Validation 'journal seed' { Assert-ChildLog $seedLog 20 $package $dbPath 'journal-seed' } $true
+Test-Validation 'journal writer ready not closed' { Assert-ChildLog $writerLog 20 $package $dbPath 'journal-writer' } $true
+Test-Validation 'journal recovery and continued commit' { Assert-ChildLog $recoverLog 20 $package $dbPath 'journal-recover' } $true
+Test-Validation 'journal independent cold verifier' { Assert-ChildLog $verifyLog 20 $package $dbPath 'journal-verify' } $true
+Test-Validation 'journal writer closed rejected' { Assert-ChildLog ($writerLog + "DB_FILE_CHILD PASS closed_before_exit=1`r`n") 20 $package $dbPath 'journal-writer' } $false
+Test-Validation 'journal writer inactive' { Assert-ChildLog ($writerLog.Replace('active=1','active=0')) 20 $package $dbPath 'journal-writer' } $false
+Test-Validation 'journal writer committed' { Assert-ChildLog ($writerLog.Replace('commit=0','commit=1')) 20 $package $dbPath 'journal-writer' } $false
+Test-Validation 'journal recovery missing continued commit' { Assert-ChildLog ($recoverLog.Replace('journal_post_recovery_commit=PASS','')) 20 $package $dbPath 'journal-recover' } $false
+Test-Validation 'journal incomplete rollback rows' { Assert-ChildLog ($recoverLog.Replace('rows=64','rows=63')) 20 $package $dbPath 'journal-recover' } $false
+Test-Validation 'journal recovery bad integrity' { Assert-ChildLog ($recoverLog.Replace('integrity=ok','integrity=bad')) 20 $package $dbPath 'journal-recover' } $false
+
+# Synthetic raw files are validator input only, not SQLite/device evidence.
+$rawRoot = Join-Path (Split-Path -Parent $PSScriptRoot) ('tmp\journal-validator-' + [guid]::NewGuid())
+[void][IO.Directory]::CreateDirectory($rawRoot)
+$baseline = [byte[]]::new(4096)
+$dirty = [byte[]]::new(4096); $dirty[100] = 65
+$rawJournal = [byte[]]::new(4616)
+$rawMagic = [byte[]](0xd9,0xd5,0x05,0xf9,0x20,0xa1,0x63,0xd7)
+$rawMagic.CopyTo($rawJournal,0)
+$rawJournal[11]=1; $rawJournal[19]=1; $rawJournal[22]=2; $rawJournal[26]=16
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'before.sqlite'),$baseline)
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite'),$dirty)
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite-journal'),$rawJournal)
+Test-Validation 'raw bounds and actual spill hashes' { Assert-JournalFiles $rawRoot } $true
+foreach ($offset in @(0,11,19,22,26)) {
+    $bad = [byte[]]$rawJournal.Clone(); $bad[$offset]=0
+    [IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite-journal'),$bad)
+    Test-Validation ('raw invalid header offset ' + $offset) { Assert-JournalFiles $rawRoot } $false
+}
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite-journal'),$rawJournal)
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite'),$baseline)
+Test-Validation 'journal without real spilled database rejected' { Assert-JournalFiles $rawRoot } $false
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite'),$dirty)
+[IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite-journal'),[byte[]]::new(513))
+Test-Validation 'zeroed nonempty journal rejected' { Assert-JournalFiles $rawRoot } $false
 
 # No input may bind to PowerShell's read-only automatic $PID variable.
 $pidAssignments = $gateAst.FindAll({ param($node)

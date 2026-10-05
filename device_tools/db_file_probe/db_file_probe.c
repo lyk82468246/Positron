@@ -26,6 +26,7 @@ static DWORD g_child_pids[6];
 static const WCHAR* g_child_roles[6];
 static BOOL g_child_waited[6];
 static BOOL g_locks = FALSE;
+static BOOL g_journal = FALSE;
 static const WCHAR* g_storage = L"sd";
 
 static BOOL probe_write(const char* text)
@@ -577,6 +578,7 @@ static BOOL probe_spawn(const WCHAR* executable, const WCHAR* leaf,
 }
 
 #include "db_lock_probe.h"
+#include "db_journal_probe.h"
 
 static BOOL probe_coordinator(const WCHAR* executable, const WCHAR* package)
 {
@@ -607,6 +609,9 @@ static BOOL probe_coordinator(const WCHAR* executable, const WCHAR* package)
     }
     if (g_locks) {
         return probe_lock_sequence(executable, leaf);
+    }
+    if (g_journal) {
+        return probe_journal_sequence(executable, leaf, root);
     }
     /* Do not start B before A's process handle is signalled with exit=0. */
     if (!probe_spawn(executable, leaf, L"create", 0, &creator) ||
@@ -651,12 +656,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     g_locks = wcscmp(command, L"--run-locks") == 0 ||
             wcscmp(command, L"--run-locks-internal") == 0;
-    coordinator = g_locks || wcscmp(command, L"--run-unicode") == 0 ||
+    g_journal = wcscmp(command, L"--run-journal") == 0 ||
+            wcscmp(command, L"--run-journal-internal") == 0;
+    coordinator = g_locks || g_journal || wcscmp(command, L"--run-unicode") == 0 ||
             wcscmp(command, L"--run-unicode-internal") == 0;
     wcscpy(root, package);
     if (coordinator) {
         if (wcscmp(command, L"--run-unicode-internal") == 0 ||
-                wcscmp(command, L"--run-locks-internal") == 0) {
+                wcscmp(command, L"--run-locks-internal") == 0 ||
+                wcscmp(command, L"--run-journal-internal") == 0) {
             g_storage = L"internal";
         }
         wcscpy(log_path, package);
@@ -685,7 +693,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         *leaf++ = L'\0';
         g_storage = storage;
         if ((wcscmp(role, L"create") != 0 && wcscmp(role, L"read") != 0 &&
-                wcscmp(role, L"verify-b") != 0 && !probe_lock_role(role)) ||
+                wcscmp(role, L"verify-b") != 0 && !probe_lock_role(role) &&
+                !probe_journal_role(role)) ||
                 !probe_leaf_valid(leaf) ||
                 !probe_fixture_root(package, leaf, FALSE, root) ||
                 !probe_marker(root, FALSE)) {
@@ -710,8 +719,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         if (coordinator) {
             ok = probe_coordinator(executable, package);
         } else {
-            ok = probe_lock_role(role) ? probe_lock_child(root, role) :
-                    probe_child(root, role);
+            if (probe_journal_role(role)) {
+                ok = probe_journal_child(root, role);
+            } else {
+                ok = probe_lock_role(role) ? probe_lock_child(root, role) :
+                        probe_child(root, role);
+            }
         }
     }
     /* On failure, let bounded child handshakes finish and reap every owned
