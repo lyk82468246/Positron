@@ -23,6 +23,10 @@
 #include <wchar.h>
 
 #include "app_debug.h"
+#ifdef _DEBUG
+#include "app_settings_store.h"
+#include "app_settings_services.h"
+#endif
 #include "app_host.h"
 #include "app_tabs.h"
 #include "app_loading.h"
@@ -7717,6 +7721,22 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     int result;
 
     (void) previous;
+#ifdef _DEBUG
+    /* Explicit isolated fixture only. Normal startup never loads DB or
+     * touches settings files until the DB production gates have passed. */
+    if (command_line != NULL &&
+            (wcscmp(command_line, L"--selftest-settings-storage") == 0 ||
+            wcscmp(command_line, L"--selftest-settings-services") == 0)) {
+        AppDebug_BeginSession();
+        if (wcscmp(command_line, L"--selftest-settings-storage") == 0)
+            result = AppSettingsStore_DebugCheck();
+        else result = AppSettingsServices_DebugCheck();
+        AppDebug_Log(result == 0 ? "settings-fixture PASS exit=0\r\n" :
+                "settings-fixture FAIL exit=1\r\n");
+        AppDebug_EndSession();
+        return result;
+    }
+#endif
     startup_has_reference = 0;
     startup_has_script = 0;
     startup_has_click = 0;

@@ -1,8 +1,9 @@
 # Positron 浏览器应用
 
 `positron_app` 是 Positron 的独立 WM6 Professional 应用消费者，输出固定名称
-`positron.exe`。它只通过 `positron_core.dll`、`positron_browser.dll` 和
-`positron_http.dll` 的公开 import library 访问产品能力；WM6 窗口、地址栏、Shell command
+`positron.exe`。它通过 `positron_core.dll`、`positron_browser.dll`、
+`positron_http.dll` 的公开 import library 访问页面能力；设置服务适配器另消费公开 JSON API，
+Debug 夹具消费公开 Script API，DB 候选在 worker 中动态加载匹配 DLL。WM6 窗口、地址栏、Shell command
 bar、菜单、输入优先级和页面导航策略属于应用。
 
 ## 应用范围
@@ -188,6 +189,29 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 测试选择或 fixture。
 
 ## 阶段 A/B 验收
+
+### 设置存储候选
+
+存储候选不在普通启动或 Release 中启用，settings 页面仍只读。显式 Debug 参数
+`--selftest-settings-storage` 单独验证 EXE 私有 DB worker 与起始页 schema，不打开浏览器窗口；
+必须使用匹配完整包，同目录保留对应 `positron_db.dll`。它只写入本次新建的
+`\Temp\Positron-settings-<pid>-<tick>`，关闭后精确清理，不触碰用户设置。
+日志为 `\Temp\positron-debug.log` 的 `settings-storage selftest OK/FAILED`，失败清理会保留目录。
+运行前仍需协调设备门并确认其他 Positron 已正常退出，不能并行覆盖其诊断日志。
+`--selftest-settings-services` 是另一独立 Debug 入口：使用内存数据库与独立 Browser session，
+验证固定 read/write 方法、可信身份拒绝、八项容量、延迟交付、tab/generation 隔离、撤销后
+写入排空和回调异常不重试。它不创建实际设置页，也不证明文件 FULL/I/O 故障恢复。
+
+完整 Debug 包经正式 `device_gate.bat -ModuleAuditOnly -PreserveDeployment` 部署后，使用
+32 位 Windows PowerShell 运行 `scripts/app_settings_gate.ps1 -RunRoot <绝对验收目录>
+-ConfirmedExclusiveWindow`。目录须是本次 `tmp/device-runs/<时间>-app-settings-<名称>`；
+脚本先核对当前 EXE/九 DLL 与 stage、设备回读的 SHA256，串行启动两组夹具，验证精确 PID/
+终态、关闭后的无 DLL 引用与无新增 crash，并保留包与证据。不构建、选择设备或强杀进程。
+该候选正式启用仍须通过 DB 文件可靠性门与实际可信设置页/启动接线验收；
+同进程新 worker 重开不等于进程/掉电恢复。
+线程、预算和后续可信前端边界见 [后端设计](INTEGRATION_PLAN.md#后端进入条件)。
+
+### 页面与交互
 
 Debug 诊断默认不记录每次 DOM getter，避免同步 I/O 淹没真实交互。需要详细 bridge 取证时
 可显式编译 `APP_DEBUG_DOM_TRACE=1`；普通性能测量保持关闭。低频日志包含导航/脚本结果、

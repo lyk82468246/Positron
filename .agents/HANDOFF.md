@@ -18,6 +18,20 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 候选与验证证据
 
+### EXE 设置存储与可信服务适配器自动门通过，生产仍关闭
+
+store/services 与两个 Debug 入口已纳入工程，调用合同见应用接线计划；普通启动不创建
+用户数据库，settings 仍只读，本批未引入 CAB DB 依赖。
+最终包 `tmp/device-runs/20261005-233009-app-settings-final/` 的 `app-settings/result.txt`
+为 PASS：storage phase=6、services phase=4/line=0、cleanup=0、production_enabled=0。
+前后 guest holders=0 unavailable=0、EXE/九 DLL 回读 10/10、crash 门均通过。
+同包 app-history 通过，PID1447603658 留在 newtab；SD 门根下
+`app-settings-final-20261005-233009` 保留，测试文件已清理。
+Debug/Release 相邻 `136,1321,1341,999` 各 4/4，完整日志、唯一 PASS 与 crash 门通过。
+离线、C89、正式补建及 Release 夹具排除通过。失败日志在
+`tmp/app-settings-builds/`，静默 Release 门不计 PASS。ROADMAP 已复核；生产等 DB
+文件门及实际设置页/启动接线，FULL 暂缓不重开。
+
 ### EXE 多标签自动门通过，人工入口已更新
 
 EXE 单窗口最多四个独立 AppTab，左软键 Tabs/标签页包含后退、条件前进、页面目录、条件

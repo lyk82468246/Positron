@@ -23,8 +23,11 @@ Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内�
 - `AppScript`：Browser callback table、classic script、生命周期和任务 checkpoint。
 - `AppControls` / `AppInput`：WM6 native 子控件、焦点、滚动、SIP/IME、剪贴板和触摸。
 - `AppForms`：校验、submit/reset/formdata、GET/POST 和 multipart 提交。
+- `AppSettingsStore`：应用设置 schema、单所有者 DB worker、有界请求/完成队列与关闭排空；不拥有公共 DB、脚本或导航语义。
+- `AppSettingsServices`：可信设置页的最小业务方法、worker 请求与 Browser token 对应；桥接、脚本队列及撤销仍由公共 Browser 接口负责。
 
-callback 的 `pw` 统一指向对应 `AppPageContext`。worker 只负责 transport 和消息投递；Core、
+页面 callback 的 `pw` 指向对应页面上下文。网络 worker 只负责 transport 和消息投递，存储
+worker 只拥有自己的 DB/statement，不读取页面；Core、
 Browser 状态修改、style/layout/paint 和页面 swap 只在 UI 线程执行。CommandBar、软键、页面和
 native 子控件保持同一顶层窗口体系，滚动使用 WM6 标准窗口滚动条，禁止自绘滚动条。
 
@@ -248,11 +251,49 @@ UTF-16 与输出容量，原始文本统一转义后交给 Core。缺失、API �
 
 ### 后端进入条件
 
-本批不创建 SQLite/JSON 文件，不调整 DB 主线发布依赖。后续应用设置、访问日志和下载记录
+正式启用前不创建用户 SQLite/JSON 文件，不调整 DB 主线发布依赖。后续应用设置、访问日志和下载记录
 优先使用 `positron_db.dll` 本地 SQL；表结构、migration 和存储策略归应用，Browser 会话栈保持
 独立。接入前必须通过 ARMV4I 文件数据库创建、中文读写、事务回滚、关闭重开、migration 失败、
 空间不足和 journal 恢复设备门，随后才加入 EXE 链接、解决方案依赖和 CAB 输入校验。未通过时
 后续才考虑版本化、原子替换的本地 JSON，不在当前批次引入回退存储。
+
+设置的第一条纵切只覆盖起始页，候选值为 newtab、welcome、controls；不执行 quit、不储存任意
+SQL，也不提前承诺网络起始页或标签恢复。EXE 私有 `app_settings` 表为单例行，应用拥有版本、
+约束和绑定参数；迁移只消费 `PDb_ApplyMigration`，不读取 DLL 私有 metadata。不存在表时
+执行初始迁移，已有表先验证版本/值，再用空脚本检查迁移版本；异常、缺行和未来版本均拒绝，
+不以默认值覆盖坏数据或重建数据库。
+
+每个服务只有一个 DB 所有者 worker，加载匹配 DLL、Open/migration/SQL/Close 和卸载全部在
+该线程执行。UI 只提交固定类型请求和非阻塞读取 POD 结果；最多八项包含排队、执行中和未读
+完成，队列满不丢已提交写入的应答。每个实例的请求 ID 不回绕，结果复制请求的 tab/generation，
+调用者再核对当前可信页面及服务身份；这些字段本身不授予权限。保存仅在 COMMIT 后报告成功，
+失败保留原错误快照，另外查询实际事务并记录 rollback 结果；当前保守策略拒绝继续 SQL，要求
+显式关闭/重开，不盲目重试、删库或清除原值。关闭停止接收但排空已接受请求；UI 轮询退出状态，
+worker 关闭数据库后才释放服务，不阻塞窗口、不跨线程 Cancel、不强杀线程。
+
+进入生产前，只有显式 Debug 设置夹具可加载同部署目录的 DB DLL；`--selftest-settings-storage` 在
+新建专用 Temp 目录生成测试数据库；普通启动与 Release 没有此入口，不查询用户配置。自检
+覆盖默认值、FIFO/容量、owner-thread 拒绝、写入后同进程新 worker 重开、关闭排空及打开失败，
+只精确清理本次创建的数据库/journal/目录。桌面 SQL 检查不等于 DLL、WinCE 文件系统或进程
+异常恢复验收。通过 DB 可靠性门及本服务正式构建/设备门后，才接入启动与设置页。
+
+设置页服务消费公开 Browser Register/Complete/Pump/Revoke，不直接注册私有 JS native 桥。
+仅 EXE 从嵌入资源创建的可信 settings 页面可获授权，不按 URL、scheme、重定向或 DOM 字段
+推断身份；普通 HTTP(S) 页面不注册。配置好的 session 在 bootstrap COMPLETE 后、可信作者
+代码前注册，稳定的页面服务记录保留到 session Destroy 完成；生产内置页的脚本例外须单独
+验收，不因此让所有内部页面执行脚本或请求外部资源。
+
+白名单只有 `settings.read({})` 与 `settings.write({startupPage: URL})`，参数最多 128 UTF-8
+字节；写入仅接受三个固定规范地址，读取不接受额外字段。JSON 解析/生成消费公共 JSON DLL，
+不增加宿主解析器；结果为 `{startupPage: URL}` 或固定错误标识，不向页面暴露 SQL、文件路径
+及 DB 原始诊断。submit 只验证、复制有界数据并排队，不做 I/O 或同步完成。
+显式 Debug `--selftest-settings-services` 使用内存 DB 和独立裸 session 验证适配器，不冒充
+实际 Core 设置页或 bootstrap 验收。`scripts/app_settings_gate.ps1` 消费正式 Debug 完整部署，
+以 PID/精确终态、包哈希、前后 guest 无引用审计和 crash 门验证两组自检；不启用普通启动。
+
+UI 非阻塞轮询共享 store，核对活跃授权、tab/generation、请求 ID 和操作后 Complete；一次
+Pump 至多尝试一个回调，回调异常关闭该页服务，不重试交付。离页先停用再 Revoke，之后才
+Destroy；已接受的设置写入仍排空，但迟到结果不触碰旧 session，也不交付给复用槽位的新页。
 
 真实下载另立纵切：HTTP 先提供有界流式响应与取消接口，应用负责文件保存和任务调度；不使用
 现有 1 MiB 完整响应体模拟通用下载。
@@ -312,7 +353,8 @@ history、文档/session 不变，B 完成且保留输入/选区；原生 EDIT �
 
 ## 公共接口与文档规则
 
-阶段 0–4 不修改现有公共 ABI。新增内容全部为 `positron_app` 私有源文件和私有接口；若需要
+现有阶段 0–4 的宿主接线不修改公共 ABI。应用存储服务同样只消费公共 DB 接口；新的可信页面
+异步桥接及 HTTP 流式响应由对应 DLL 先提供可加性公开合同，再接入 EXE，不在宿主复制。若需要
 File/Blob bridge，必须先在正确的 Core/Browser owner 中设计版本化 `Ex` 接口、容量、所有权和
 失败语义，再由宿主接入。每阶段完成后更新 `docs/CAPABILITIES.md`、`.agents/HANDOFF.md`、
 `.agents/KNOWN_LIMITATIONS.md` 和 `.agents/ROADMAP.md`；动态进度不追加到本文件。
