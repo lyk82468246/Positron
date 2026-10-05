@@ -257,8 +257,11 @@ MPEG/AVI/MP4/TS/FLV/WAV/裸流解码接线，但编译集合不等于设备解�
 实际样本/时间戳、EOF/seek 重播、软解暂停/错误、停止态和独立 session 释放已有定向设备门；
 AUTO PCM8 实际走 WaveOut 并保持 S16LE 输出。AVI/MJPEG + MP3、mono MP3 与 TS/PS MPEG
 与 AMR-NB/WB、WAV IMA 的初始解码合同已完成，不再作为待实现候选。IMA 的逐字节 PCM、
-fact 裁剪、块内/边界 seek 与容量/损坏拒绝已有固定夹具。下一条纵切补 MPEG-4 Part 2
-固定离线 fixture，验证实际 I420、时间戳及生命周期；不把短小夹具扩大为全部格式或实时播放保证。
+fact 裁剪、块内/边界 seek 与容量/损坏拒绝已有固定夹具。MPEG-4 Part 2 的 MP4 Simple/
+ASP VGA 与 AVI Simple + MP3 已完成实际 I420/PCM、时间戳、生命周期与隔行/超限拒绝门，
+不再作为待接入候选。下一条纵切先核对 AAC seek 重播 PCM 保真性：相邻门观察到首次与
+重播的幅度总和不同，旧断言仅证明样本数/时间戳，根因和合同尚未确认；证据见 HANDOFF。
+不把短小夹具扩大为全部格式或实时播放保证。
 之后实现时钟调度/音视频同步和不会破坏不可 seek 输入的 DirectShow
 callback source filter/native 视频生命周期。当前 pump 忽略 clock_us，预算不是严格墙钟上限；
 桌面 DirectShow 格式表不能替代设备 filter 探测。
@@ -267,7 +270,7 @@ callback source filter/native 视频生命周期。当前 pump 忽略 clock_us�
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** MPEG-4 Part 2、H.263 与 FLV；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B、其他像素
+- **剩余 fixture：** AAC seek PCM 保真；H.263 与 FLV；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B、其他像素
   布局与码流中参数变化拒绝、截断压缩 payload、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。

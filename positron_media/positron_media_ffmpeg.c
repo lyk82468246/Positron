@@ -369,6 +369,110 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
     return result;
 }
 
+static int pm_ff_vol_read(GetBitContext *bits, int count)
+{
+    if (get_bits_left(bits) < count) return -1;
+    return (int)get_bits(bits, count);
+}
+
+static int pm_ff_validate_vol(pmedia_ffmpeg *context,
+                             const unsigned char *data, int bytes)
+{
+    GetBitContext bits;
+    int value;
+    int version;
+    int resolution;
+    int increment_bits;
+    int width;
+    int height;
+
+    /* Only the bounded VOL prefix through the interlace bit is inspected.
+     * Field order matches FFmpeg 3.4.14 decode_vol_header; entropy decoding,
+     * frame state and all subsequent coding tools remain in FFmpeg. */
+    if (init_get_bits(&bits, data, bytes * 8) < 0 ||
+        pm_ff_vol_read(&bits, 9) < 0 || (value = pm_ff_vol_read(&bits, 1)) < 0)
+        return PMEDIA_ERROR_FORMAT;
+    version = 1;
+    if (value) {
+        version = pm_ff_vol_read(&bits, 4);
+        if (version <= 0 || pm_ff_vol_read(&bits, 3) < 0) return PMEDIA_ERROR_FORMAT;
+    }
+    value = pm_ff_vol_read(&bits, 4);
+    if (value < 0) return PMEDIA_ERROR_FORMAT;
+    if (value == 15 && pm_ff_vol_read(&bits, 16) < 0) return PMEDIA_ERROR_FORMAT;
+    value = pm_ff_vol_read(&bits, 1);
+    if (value < 0) return PMEDIA_ERROR_FORMAT;
+    if (value) {
+        value = pm_ff_vol_read(&bits, 2);
+        if (value < 0) return PMEDIA_ERROR_FORMAT;
+        if (value != 1) return PMEDIA_ERROR_UNSUPPORTED;
+        if (pm_ff_vol_read(&bits, 1) < 0 || (value = pm_ff_vol_read(&bits, 1)) < 0)
+            return PMEDIA_ERROR_FORMAT;
+        if (value && (pm_ff_vol_read(&bits, 15) < 0 || pm_ff_vol_read(&bits, 1) != 1 ||
+            pm_ff_vol_read(&bits, 15) < 0 || pm_ff_vol_read(&bits, 1) != 1 ||
+            pm_ff_vol_read(&bits, 15) < 0 || pm_ff_vol_read(&bits, 1) != 1 ||
+            pm_ff_vol_read(&bits, 14) < 0 || pm_ff_vol_read(&bits, 1) != 1 ||
+            pm_ff_vol_read(&bits, 15) < 0 || pm_ff_vol_read(&bits, 1) != 1))
+            return PMEDIA_ERROR_FORMAT;
+    }
+    value = pm_ff_vol_read(&bits, 2);
+    if (value < 0) return PMEDIA_ERROR_FORMAT;
+    if (value != 0) return PMEDIA_ERROR_UNSUPPORTED;
+    if (pm_ff_vol_read(&bits, 1) != 1) return PMEDIA_ERROR_FORMAT;
+    resolution = pm_ff_vol_read(&bits, 16);
+    if (resolution <= 0 || pm_ff_vol_read(&bits, 1) != 1 ||
+        (value = pm_ff_vol_read(&bits, 1)) < 0) return PMEDIA_ERROR_FORMAT;
+    increment_bits = 1;
+    if (value) {
+        value = resolution - 1;
+        while (value > 1) { increment_bits++; value >>= 1; }
+        if (pm_ff_vol_read(&bits, increment_bits) < 0) return PMEDIA_ERROR_FORMAT;
+    }
+    if (pm_ff_vol_read(&bits, 1) != 1) return PMEDIA_ERROR_FORMAT;
+    width = pm_ff_vol_read(&bits, 13);
+    if (width <= 0 || pm_ff_vol_read(&bits, 1) != 1) return PMEDIA_ERROR_FORMAT;
+    height = pm_ff_vol_read(&bits, 13);
+    if (height <= 0 || pm_ff_vol_read(&bits, 1) != 1) return PMEDIA_ERROR_FORMAT;
+    value = pm_ff_vol_read(&bits, 1);
+    if (value < 0) return PMEDIA_ERROR_FORMAT;
+    if (width > context->max_video_width || height > context->max_video_height)
+        return PMEDIA_ERROR_LIMIT;
+    return value ? PMEDIA_ERROR_UNSUPPORTED : PMEDIA_OK;
+}
+
+static int pm_ff_validate_mpeg4(pmedia_ffmpeg *context,
+                               AVCodecParameters *parameters)
+{
+    const unsigned char *data;
+    int bytes;
+    int i;
+    int end;
+    int result;
+
+    /* AV_FIELD_UNKNOWN is not proof that MPEG4 VOL declares progressive video.
+     * Inspect every extradata VOL, without consuming packets or callbacks.
+     * In-band headers without extradata still have the actual-frame guard. */
+    bytes = parameters->extradata_size;
+    data = parameters->extradata;
+    if (bytes <= 0) return PMEDIA_OK;
+    if (data == NULL || bytes > context->input_bytes) return PMEDIA_ERROR_FORMAT;
+    result = PMEDIA_OK;
+    for (i = 0; i + 4 <= bytes; i++) {
+        if (data[i] != 0 || data[i + 1] != 0 || data[i + 2] != 1 ||
+            data[i + 3] < 0x20 || data[i + 3] > 0x2f) continue;
+        end = i + 4;
+        while (end + 3 <= bytes) {
+            if (data[end] == 0 && data[end + 1] == 0 && data[end + 2] == 1) break;
+            end++;
+        }
+        if (end + 3 > bytes) end = bytes;
+        result = pm_ff_validate_vol(context, data + i + 4, end - i - 4);
+        if (result != PMEDIA_OK) break;
+        i = end - 1;
+    }
+    return result;
+}
+
 static int pm_ff_validate_streams(pmedia_ffmpeg *context,
                                   char *error_text,
                                   int error_text_bytes)
@@ -411,6 +515,15 @@ static int pm_ff_validate_streams(pmedia_ffmpeg *context,
                 if (header_result != PMEDIA_OK) {
                     pm_ff_error(error_text, error_text_bytes,
                                 "H.264 sequence parameters exceed the software subset");
+                    return header_result;
+                }
+            }
+            if (parameters->codec_id == AV_CODEC_ID_MPEG4) {
+                int header_result;
+                header_result = pm_ff_validate_mpeg4(context, parameters);
+                if (header_result != PMEDIA_OK) {
+                    pm_ff_error(error_text, error_text_bytes,
+                                "MPEG-4 VOL exceeds the progressive VGA subset");
                     return header_result;
                 }
             }

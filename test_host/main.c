@@ -68,6 +68,7 @@ extern BOOL test1333_media_mjpeg_mp3_contract(void (*progress)(const char *));
 extern BOOL test1334_media_mpeg_contract(void (*progress)(const char *));
 extern BOOL test1335_media_amr_contract(void (*progress)(const char *));
 extern BOOL test1337_media_ima_contract(void (*progress)(const char *));
+extern BOOL test1344_media_mpeg4_contract(void (*progress)(const char *));
 extern BOOL test1313_core_image_pending_retry_contract(void);
 extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
@@ -997,8 +998,25 @@ static BOOL test1337_media_contract_guarded(void)
     return ok;
 }
 
+static void test1344_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Media1344 phase", phase);
+}
+
+static BOOL test1344_media_contract_guarded(void)
+{
+    BOOL ok;
+    ok = FALSE;
+    __try {
+        ok = test1344_media_mpeg4_contract(test1344_log_progress);
+    } __except(media_log_exception(GetExceptionInformation())) {
+        ok = FALSE;
+    }
+    return ok;
+}
+
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1343
+#define TEST_MAX_NUMBER 1344
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118116,6 +118134,14 @@ static int run_configured_tests(const unsigned char *selected,
                 show_info(L"TEST 1337 OK", "Media IMA ADPCM exact PCM/block/seek contract passed.");
             } else {
                 show_error(L"TEST 1337 FAIL", test1331_media_last_error());
+            }
+            break;
+        case 1344:
+            ok = test1344_media_contract_guarded();
+            if (ok) {
+                show_info(L"TEST 1344 OK", "Media MPEG4 Part 2 pixel/PCM/timestamp/seek contract passed.");
+            } else {
+                show_error(L"TEST 1344 FAIL", test1332_media_last_error());
             }
             break;
         default: ok = FALSE; break;

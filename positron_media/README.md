@@ -375,6 +375,11 @@ PMEDIA_ERROR_LIMIT；H.264 只接受 Baseline（含 Constrained Baseline）/Main
 profile、非 8-bit/4:2:0 和隔行视频均不支持。可读取的 SPS 在打开前检查，实际帧输出前
 再次检查，避免只相信容器 metadata。
 
+MPEG-4 Part 2 在可读取的 extradata 中检查每个 VOL 的有界头前缀，拒绝非矩形、非 4:2:0、
+隔行或超过应用/VGA 尺寸上限的声明；不把 FFmpeg 的未知 field_order 当作渐进式证明。
+没有 extradata 或码流内参数变化仍由实际帧输出前的守卫约束，不承诺全部输入都能在 probe
+时提前识别。此检查不是另一套 decoder；熵解码和后续编码工具仍由固定 FFmpeg 完成。
+
 ### callback 返回值
 
 - 返回 PMEDIA_OK：继续解码。
@@ -485,6 +490,11 @@ AMR-NB 12.2 kbit/s 与 AMR-WB 23.85 kbit/s 单声道裸流也已验证：逐块 
 WAV IMA 的 8 kHz 单/不同内容双声道已有逐 sample S16LE 参考比对、块大小与 fact 裁剪、
 块内/边界/EOF seek、5-byte 短读、不可 seek AUTO、暂停/STOP/负 callback、重播和独立关闭
 断言；有效后置 fact、无 fact padding、损坏头和 2041-sample 容量/超限拒绝也已覆盖。
+MPEG-4 Part 2 的 MP4 Simple 320×240、Advanced Simple VGA/B 帧及 AVI Simple + MP3
+已通过 TEST1344：有限范围 I420/flags、逐帧 PTS/时长、26 块 PCM、EOF 后 seek 零的
+视频取样/PCM 校验值一致、7-byte 短读、不可 seek AUTO、音视频 STOP/恢复和负 callback、
+停止态及独立关闭。隔行/超 VGA、较小应用尺寸上限与截断头均拒绝且不输出。
+这不等于 Qpel、GMC 或所有 Advanced Simple 编码工具已经验收。
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
 设备验收；其他已编译容器/codec、截断压缩 payload、非零 FFmpeg 压缩 seek 与原生完整生命周期

@@ -119,6 +119,37 @@ def ima_pcm_records(exe):
     return records
 
 
+def mpeg4_records(exe):
+    records = []
+    cases = [("mpeg4-simple.mp4", "320x240", 0, False, False, "mp4"),
+             ("mpeg4-asp-vga.mp4", "640x480", 2, False, False, "mp4"),
+             ("mpeg4-mp3.avi", "320x240", 0, True, False, "avi"),
+             ("mpeg4-interlaced.mp4", "320x240", 2, False, True, "mp4"),
+             ("mpeg4-oversize.mp4", "656x480", 0, False, False, "mp4")]
+    for name, size, bframes, audio, interlaced, container in cases:
+        args = ["-f", "lavfi", "-i", f"color=c=red:s={size}:r=5:d=0.6"]
+        if audio:
+            args += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=0.6"]
+        args += ["-map", "0:v", "-c:v", "mpeg4", "-pix_fmt", "yuv420p",
+                 "-q:v", "2", "-g", "12", "-bf", str(bframes), "-threads:v", "1"]
+        if interlaced:
+            args += ["-top", "1"]
+        if audio:
+            args += ["-map", "1:a", "-c:a", "libmp3lame", "-ac", "2",
+                     "-b:a", "64k", "-threads:a", "1"]
+        else:
+            args += ["-an"]
+        args += ["-t", "0.6", "-fflags", "+bitexact", "-flags:v",
+                 "+bitexact+ilme+ildct" if interlaced else "+bitexact",
+                 "-map_metadata", "-1"]
+        if container == "mp4":
+            args += ["-movflags", "+faststart"]
+        args += ["-f", container, "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": args[:-1] + [name]})
+    return records
+
+
 def write_pin(exe, records):
     for record in records:
         data = (DEST / record["file"]).read_bytes()
@@ -140,6 +171,8 @@ def extend(exe, group):
         "mpeg": ({"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"}, mpeg_records),
         "amr": ({"amr-nb.amr", "amr-wb.amr"}, amr_records),
         "ima": ({"ima-mono.wav", "ima-stereo.wav", "ima-mono.pcm", "ima-stereo.pcm"}, ima_records),
+        "mpeg4": ({"mpeg4-simple.mp4", "mpeg4-asp-vga.mp4", "mpeg4-mp3.avi",
+                   "mpeg4-interlaced.mp4", "mpeg4-oversize.mp4"}, mpeg4_records),
         "mjpeg": ({"mjpeg-mp3.avi", "mjpeg422.avi", "mp3-mono.mp3"}, extra_records),
     }[group]
     if any(r["file"] in names for r in pin["files"]):
@@ -181,7 +214,8 @@ def generate(exe):
                 "-f", "adts", "-y", str(DEST / name)]
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
-    write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) + ima_records(exe))
+    write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
+              ima_records(exe) + mpeg4_records(exe))
 
 
 def check():
@@ -201,13 +235,14 @@ if __name__ == "__main__":
     action.add_argument("--extend-mpeg", action="store_true")
     action.add_argument("--extend-amr", action="store_true")
     action.add_argument("--extend-ima", action="store_true")
+    action.add_argument("--extend-mpeg4", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima:
-            extend(opts.ffmpeg, "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4:
+            extend(opts.ffmpeg, "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

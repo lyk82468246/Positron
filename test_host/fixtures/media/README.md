@@ -23,6 +23,17 @@
   MPEG-1 的末帧在 decoder drain 时缺少 PTS，DLL 从前帧已知 PTS/时长推导并设置
   `PMEDIA_FRAME_PTS_INFERRED`，seek 重播仍须得到同一结果。
 - `mpeg2-interlaced.ts`、`mpeg2-oversize.ts`：隔行与 656×480 MPEG-2 拒绝夹具。
+- `mpeg4-simple.mp4`：320×240、5 fps、三帧 MPEG-4 Part 2 Simple Profile I/P/P；
+  `mpeg4-asp-vga.mp4`：640×480、5 fps、三帧 Advanced Simple Profile I/B/P。
+  两者为渐进式有限范围 I420，PTS 为 0/200000/400000 µs，每帧 duration 为 200000 µs。
+  `mpeg4-mp3.avi` 为 320×240 Simple Profile 与 MP3 双声道 48 kHz；AVI 的空视频槽使
+  PTS 为 0/400000/600000 µs，MP3 为 26 块各 1152 sample，每声道共 29952 sample，
+  音频 PTS 从零起每块增加 24000 µs。`mpeg4-interlaced.mp4` 与 `mpeg4-oversize.mp4`
+  分别用于隔行和 656×480 拒绝边界。TEST1344 已通过 WM6 Debug/Release 设备门：
+  实际 I420 像素/flags、PCM、PTS/时长、三 session 各两次完整解码与 seek 零重播校验值一致；
+  7-byte 短读、不可 seek AUTO、显式暂停、音视频 STOP/负 callback、EOF 一次性、停止态、
+  截断头失败不改 probe 和应用尺寸上限均有断言。隔行/超限输入在 probe/open 拒绝且无输出。
+  ASP 的短红色视频仍不覆盖 Qpel、GMC、全部复杂编码工具或实时播放性能。
 - `amr-nb.amr`：AMR-NB 12.2 kbit/s、单声道 8 kHz，七块各 160 个 sample。
 - `amr-wb.amr`：AMR-WB 23.85 kbit/s、单声道 16 kHz，六块各 320 个 sample。
   两者关闭 DTX，PTS 从零起每块增加 20000 µs，duration 为 20000 µs；NB 保留编码器
@@ -41,9 +52,9 @@
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
-生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MP2/IMA ADPCM 编码器，但它们不进入 WM6 产品。`--extend`
+生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MPEG-4 Part 2/MP2/IMA ADPCM 编码器，但它们不进入 WM6 产品。`--extend`
 只用于首次用同一 pinned 生成器补齐 MJPEG/MP3 文件，先验证已有 pin，不重生成旧文件；已经
-补齐后再次调用会拒绝。`--extend-mpeg`、`--extend-amr` 与 `--extend-ima` 分别对 MPEG、AMR、IMA WAV/PCM 文件组采用相同规则；
+补齐后再次调用会拒绝。`--extend-mpeg`、`--extend-amr`、`--extend-ima` 与 `--extend-mpeg4` 分别对 MPEG、AMR、IMA WAV/PCM、MPEG-4 Part 2 文件组采用相同规则；
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -51,8 +62,14 @@ WAV IMA 块/声道布局与 `fact` 定义见微软原始
 其他工具版本可能生成不同字节，
 必须重新审查 manifest、profile 和设备断言，不能只替换哈希让失败通过。
 
+MPEG-4 Part 2 的独立桌面校验：
+`python scripts/test_media_mpeg4_fixtures.py --ffmpeg PATH`。
+PATH 必须是 manifest 固定的生成器；脚本只读，单线程、Windows 下以低优先级运行工具，
+检查三帧全部有效像素、profile、B 帧顺序、PTS/duration、隔行属性及 AVI MP3 样本数。
+不传 PATH 时仅验证固定输入哈希，不运行解码；两种模式都不能替代 WM6 设备门。
+
 断言检查实际 I420 plane/stride/像素、视频时间戳与持续时间、S16LE 内容、音频时间戳、EOF
 和 seek 重播。红色 MJPEG 的全范围 Y/U/V 期望为 76/85/255，H.264 夹具的有限范围为
-81/90/240，MPEG-1/2 也为该有限范围值；同时核对公开 FULL_RANGE 与 PTS_INFERRED 标记，
+81/90/240，MPEG-1/2 与 MPEG-4 Part 2 也为该有限范围值；同时核对公开 FULL_RANGE 与 PTS_INFERRED 标记，
 不通过改像素或忽略 flags 掩盖范围或时间戳错误。
 这些是短媒体解码合同，不是实时播放、复杂画面质量、underrun 或 CPU 性能门。
