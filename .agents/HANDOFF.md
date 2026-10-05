@@ -372,8 +372,13 @@ SD 映射卷和内置 object-store；中文 UTF-8 路径/TEXT、typed BLOB、com
 两配置 `1321,999` 相邻回归通过。完整包哈希、前后九 DLL 无引用审计、无新 crash 和证据
 回收均通过，验收夹具/包已清理；失败包仍保留。证据和六项门状态集中在
 [DB 文件验收清单](DB_FILE_ACCEPTANCE.md)，不等于物理断电或全部文件可靠性验收。
-本轮 ROADMAP 已复核，DB 下一纵切为跨进程读写/写写锁；journal、文件 FULL/I/O、迁移
+跨进程读写/写写六进程门也已通过 Debug/Release 的 SD 映射与内置 object-store 四组：
+COMMIT BUSY 保留 active/write，BEGIN BUSY 不开启事务，旧/新可见性、释放后重试和冷重开
+通过；两配置 `1321,999` 相邻门、前后九 DLL 审计、哈希、空间/crash 与精确清理通过。
+完整证据统一见上述清单；用户授权归档清理一个旧内置包后空间已恢复，失败包不追认为成功。
+本轮 ROADMAP 已复核，DB 下一纵切为受控异常退出 hot journal 恢复；文件 FULL/I/O、迁移
 提交故障/版本拒绝与 HTTPS worker 仍待完成，不恢复应用正常启动或 CAB DB 发布依赖。
+锁门交付后串行构建/设备窗口已释放，下一使用者仍须获取新 guest 无引用审计。
 
 ### HTTP 流式 GET 与跨线程取消已验收
 
@@ -465,6 +470,6 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
 并行 Media 保留 MPEG-4 Part 2 fixture、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
-DB 保留空间不足、跨进程锁、异常退出/journal、HTTPS worker 和应用持久化，不把正常
+DB 跨进程锁门与空间恢复已通过；保留异常退出/journal、文件 FULL/I/O、迁移故障、HTTPS worker 和应用持久化，不把正常
 独立进程冷重开写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string] $RunRoot,
     [ValidateSet('Debug', 'Release')][string] $Configuration = 'Debug',
+    [ValidateSet('Unicode', 'Locks')][string] $Suite = 'Unicode',
     [switch] $ConfirmedExclusiveWindow,
     [switch] $PreserveDeployment
 )
@@ -85,13 +86,20 @@ function Wait-ProbeLog([string] $RemotePath, [string] $LocalPath, [int] $Timeout
 }
 
 function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
-        [string] $Storage, [string] $RemoteRoot) {
+        [string] $Storage, [string] $RemoteRoot, [string] $Suite = 'Unicode') {
+    if ($Suite -notin @('Unicode', 'Locks')) { throw 'Unknown probe suite.' }
     if (([regex]::Matches($Body, '(?m)^DB_FILE_PROBE PASS\r?$')).Count -ne 1 -or
             $Body -match '(?m)^(?:FAIL|DB_FILE_PROBE FAIL|child_timeout=FAIL)') {
         throw 'Missing, duplicated or failed coordinator completion.'
     }
     $identity = [regex]::Matches($Body, '(?m)^process pid=(\d+) path=(.+)\r?$')
     $summary = [regex]::Matches($Body, '(?m)^fresh_processes=3 creator_pid=(\d+) reader_pid=(\d+) verifier_pid=(\d+) creator_exited_before_reader=1 reader_exited_before_verifier=1\r?$')
+    if ($Suite -eq 'Locks') {
+        $summary = [regex]::Matches($Body, '(?m)^lock_processes=6 rw_pair=concurrent ww_pair=concurrent cold_verifier_after_all_exits=1\r?$')
+        if (([regex]::Matches($Body, '(?m)^lock_suite=rw-ww-v1\r?$')).Count -ne 1) {
+            throw 'Missing exact lock suite identity.'
+        }
+    }
     $rootMatch = [regex]::Matches($Body, '(?m)^fixture_root=(.+)\r?$')
     $storageMatches = [regex]::Matches($Body, '(?m)^fixture_storage=([^\r\n]+)\r?$')
     if ($identity.Count -ne 1 -or $summary.Count -ne 1 -or $rootMatch.Count -ne 1 -or
@@ -107,34 +115,61 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
     if ($fixture -notmatch ('^' + [regex]::Escape($base) + '\\fixture-' + $ParentPid + '-\d{1,10}$')) {
         throw 'Fixture root is not the directory owned by this exact coordinator.'
     }
-    $pids = @([uint32]$summary[0].Groups[1].Value,
-        [uint32]$summary[0].Groups[2].Value, [uint32]$summary[0].Groups[3].Value)
-    if (($pids | Select-Object -Unique).Count -ne 3 -or $pids -contains $ParentPid -or
+    $pids = @()
+    $roles = @('create', 'read', 'verify-b')
+    if ($Suite -eq 'Unicode') {
+        $pids = @([uint32]$summary[0].Groups[1].Value,
+            [uint32]$summary[0].Groups[2].Value, [uint32]$summary[0].Groups[3].Value)
+    }
+    if ($Suite -eq 'Locks') {
+        $roles = @('create','rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
+        $pids = @()
+        foreach ($role in $roles) {
+            $created = [regex]::Matches($Body, '(?m)^child role=' + $role + ' pid=(\d+) created=1\r?$')
+            if ($created.Count -ne 1) { throw 'Missing or duplicated lock process.' }
+            $pids += [uint32]$created[0].Groups[1].Value
+        }
+    }
+    if (($pids | Select-Object -Unique).Count -ne $roles.Count -or $pids -contains $ParentPid -or
             $pids -contains 0 -or $ParentPid -eq 0) {
         throw 'Fresh process identities are not independent.'
     }
-    $roles = @('create', 'read', 'verify-b')
     $childLines = [regex]::Matches($Body, '(?m)^child role=[^\r\n]+\r?$')
-    if ($childLines.Count -ne 6) { throw 'Unexpected extra or missing child results.' }
+    if ($childLines.Count -ne (2 * $roles.Count)) { throw 'Unexpected extra or missing child results.' }
     $previousEnd = -1
-    for ($index = 0; $index -lt 3; ++$index) {
+    $starts = @()
+    $ends = @()
+    for ($index = 0; $index -lt $roles.Count; ++$index) {
         $created = [regex]::Matches($Body, '(?m)^child role=' + $roles[$index] +
             ' pid=' + $pids[$index] + ' created=1\r?$')
         $pattern = '(?m)^child role=' + $roles[$index] + ' pid=' + $pids[$index] +
             ' wait=0 exit=0 completed=1\r?$'
         $completed = [regex]::Matches($Body, $pattern)
         if ($created.Count -ne 1 -or $completed.Count -ne 1 -or
-                $created[0].Index -le $previousEnd -or $completed[0].Index -le $created[0].Index) {
+                ($Suite -eq 'Unicode' -and $created[0].Index -le $previousEnd) -or
+                $completed[0].Index -le $created[0].Index) {
             throw 'A child has no exact signalled-process/zero-exit result.'
         }
         $previousEnd = $completed[0].Index
+        $starts += $created[0].Index
+        $ends += $completed[0].Index
+    }
+    if ($Suite -eq 'Locks') {
+        if (!($starts[0] -lt $ends[0] -and $ends[0] -lt $starts[1] -and
+                $starts[1] -lt $starts[2] -and $starts[2] -lt $ends[1] -and
+                $ends[1] -lt $ends[2] -and $ends[2] -lt $starts[3] -and
+                $starts[3] -lt $starts[4] -and $starts[4] -lt $ends[3] -and
+                $ends[3] -lt $ends[4] -and $ends[4] -lt $starts[5])) {
+            throw 'Lock competitors did not overlap or verifier ran before both pairs exited.'
+        }
     }
     return @{Root=$fixture; Pids=$pids}
 }
 
 function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoot,
         [string] $DatabasePath, [string] $Role) {
-    if ($Role -notin @('create', 'read', 'verify-b') -or $ChildPid -eq 0) {
+    $lockRole = $Role -in @('rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
+    if ($Role -notin @('create', 'read', 'verify-b') -and !$lockRole -or $ChildPid -eq 0) {
         throw 'Unknown child role or invalid PID.'
     }
     $identity = [regex]::Matches($Body, '(?m)^process pid=(\d+) path=(.+)\r?$')
@@ -142,8 +177,35 @@ function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoo
             $identity[0].Groups[2].Value.TrimEnd("`r") -ine ($RemoteRoot + '\positron_db_file_probe.exe') -or
             $Body -match '(?m)^(?:FAIL|DB_FILE_CHILD FAIL|open_failure)' -or
             ([regex]::Matches($Body, '(?m)^DB_FILE_CHILD PASS closed_before_exit=1\r?$')).Count -ne 1 -or
-            $Body -notmatch '(?m)^exact_utf8_text=PASS exact_blob=PASS schema=PASS integrity=ok transaction_idle=1 statements=0\r?$') {
+            (!$lockRole -and $Body -notmatch '(?m)^exact_utf8_text=PASS exact_blob=PASS schema=PASS integrity=ok transaction_idle=1 statements=0\r?$') -or
+            ($lockRole -and ([regex]::Matches($Body, '(?m)^lock_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1)) {
         throw 'Incomplete/failed child byte, schema, integrity or release evidence.'
+    }
+    if ($lockRole) {
+        $markers = switch ($Role) {
+            'rw-reader' { @('rw_old_snapshot=PASS','rw_new_snapshot=PASS') }
+            'rw-writer' { @('rw_commit_retry=PASS') }
+            'ww-owner' { @('ww_owner_commit=PASS') }
+            'ww-contender' { @('ww_begin_retry=PASS') }
+            'lock-verify' { @('locks_cold_reopen=PASS rows=4 schema=1') }
+        }
+        foreach ($marker in $markers) {
+            if (([regex]::Matches($Body, '(?m)^' + [regex]::Escape($marker) + '\r?$')).Count -ne 1) {
+                throw 'Missing or duplicated lock recovery/visibility evidence.'
+            }
+        }
+        $busyLines = [regex]::Matches($Body, '(?m)^lock_busy[^\r\n]*\r?$')
+        if ($Role -in @('rw-writer','ww-contender')) {
+            $phase = if ($Role -eq 'rw-writer') { 'rw-commit' } else { 'ww-begin' }
+            $state = if ($Role -eq 'rw-writer') { 'active=1 txn=2' } else { 'active=0 txn=0' }
+            $busy = [regex]::Matches($Body, '(?m)^lock_busy phase=' + $phase +
+                ' result=-4 category=5 native=5 extended=(\d+) ' + $state +
+                ' statements=0 cleanup=0\r?$')
+            if ($busyLines.Count -ne 1 -or $busy.Count -ne 1 -or
+                    ([int]$busy[0].Groups[1].Value -band 255) -ne 5) {
+                throw 'Missing exact native BUSY and live transaction state.'
+            }
+        } elseif ($busyLines.Count) { throw 'Unexpected BUSY evidence for lock role.' }
     }
     if ($Role -eq 'create' -and
             ([regex]::Matches($Body, '(?m)^migration_script_failure=atomic\r?$')).Count -ne 1) {
@@ -177,7 +239,8 @@ function Save-FailedProbeEvidence([string] $ParentLog, [uint32] $OwnerPid,
         throw 'Refuse diagnostic reads outside this coordinator-owned fixture.'
     }
     [void][IO.Directory]::CreateDirectory($Destination)
-    foreach ($name in @('create.log', 'read.log', 'verify-b.log', 'owner.marker')) {
+    foreach ($name in @('create.log', 'read.log', 'verify-b.log', 'owner.marker',
+            'rw-reader.log','rw-writer.log','ww-owner.log','ww-contender.log','lock-verify.log')) {
         $copied = [PositronDeviceRapi]::TryCopyFileFromDevice(
             ($fixture + '\' + $name), (Join-Path $Destination $name))
         Write-Stage ('failure evidence ' + $name + ' retrieved=' + $copied)
@@ -270,14 +333,15 @@ try {
     $crashBefore = [PositronDeviceRapi]::SnapshotCrashDumps()
     $fixtures = [Collections.Generic.List[string]]::new()
     foreach ($storage in @('sd', 'internal')) {
-        $command = if ($storage -eq 'sd') { '--run-unicode' } else { '--run-unicode-internal' }
+        $command = '--run-' + $Suite.ToLowerInvariant()
+        if ($storage -eq 'internal') { $command += '-internal' }
         $probePid = [PositronDeviceRapi]::LaunchProcess(
             ($remote + '\positron_db_file_probe.exe'), $remote, $command)
         $logName = 'db-file-probe-' + $storage + '.log'
         $localCoordinatorLog = Join-Path $evidence $logName
         $body = Wait-ProbeLog ($remote + '\' + $logName) `
             $localCoordinatorLog 210
-        $summary = Assert-ProbeLog $body $probePid $storage $remote
+        $summary = Assert-ProbeLog $body $probePid $storage $remote $Suite
         $fixtures.Add($summary.Root)
         $destination = Join-Path $evidence $storage
         [void][IO.Directory]::CreateDirectory($destination)
@@ -285,7 +349,10 @@ try {
         $chineseDatabase = ([string][char]0x6570) + [char]0x636e + [char]0x5e93 + '.sqlite'
         $dbPath = $summary.Root + '\' + $chineseDirectory + '\' + $chineseDatabase
         $roles = @('create', 'read', 'verify-b')
-        for ($index = 0; $index -lt 3; ++$index) {
+        if ($Suite -eq 'Locks') {
+            $roles = @('create','rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
+        }
+        for ($index = 0; $index -lt $roles.Count; ++$index) {
             $role = $roles[$index]
             $local = Join-Path $destination ($role + '.log')
             [void](Copy-StableRemoteFile ($summary.Root + '\' + $role + '.log') $local)
@@ -301,8 +368,10 @@ try {
         $dbHash = Copy-StableRemoteFile $dbPath (Join-Path $destination $chineseDatabase)
         $checks.Add($storage + '_database_path=' + $dbPath)
         $checks.Add($storage + '_database_sha256=' + $dbHash)
-        $checks.Add($storage + '_fresh_processes=3')
-        $checks.Add($storage + '_exact_text_blob_schema_integrity=PASS')
+        $checks.Add($storage + '_fresh_processes=' + $roles.Count)
+        $checks.Add($storage + '_suite=' + $Suite)
+        $checks.Add($storage + '_text_blob_schema_integrity=PASS')
+        if ($Suite -eq 'Locks') { $checks.Add($storage + '_rw_ww_busy_visibility_recovery=PASS') }
     }
     [PositronDeviceRapi]::DeleteFileIfExists($auditLog)
     [void](Invoke-RemoteModuleAudit $helper $auditLog `

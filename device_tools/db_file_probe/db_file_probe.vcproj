@@ -49,6 +49,7 @@
  <References />
  <Files>
   <File RelativePath=".\db_file_probe.c" />
+  <File RelativePath=".\db_lock_probe.h" />
   <File RelativePath=".\README.md" />
  </Files>
  <Globals />

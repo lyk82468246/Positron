@@ -18,6 +18,7 @@ from c89ize import transform
 ROOT = Path(__file__).resolve().parents[1]
 PROBE = ROOT / "device_tools/db_file_probe"
 SOURCE = (PROBE / "db_file_probe.c").read_text(encoding="utf-8")
+LOCK_SOURCE = (PROBE / "db_lock_probe.h").read_text(encoding="utf-8")
 
 
 def c_strings(text):
@@ -46,12 +47,16 @@ class ProbeBoundaryTests(unittest.TestCase):
         transformed, changes = transform(SOURCE)
         self.assertEqual(changes, 0)
         self.assertEqual(transformed, SOURCE)
+        transformed, changes = transform(LOCK_SOURCE)
+        self.assertEqual(changes, 0)
+        self.assertEqual(transformed, LOCK_SOURCE)
 
     def test_only_public_db_api(self):
         for forbidden in ("sqlite3_", "sqlite3.h", "__pdb_", "__sqlite",
                           "CreateThread(", "OpenProcess(", "DeleteFile",
                           "RemoveDirectory", "CreateFileMapping"):
             self.assertNotIn(forbidden, SOURCE)
+            self.assertNotIn(forbidden, LOCK_SOURCE)
         self.assertIn('#include "positron_db.h"', SOURCE)
         self.assertIn('PDb_ApplyMigration(db, 1, "")', SOURCE)
         self.assertIn('"PRAGMA integrity_check"', SOURCE)
@@ -63,8 +68,8 @@ class ProbeBoundaryTests(unittest.TestCase):
         roles = re.findall(r'probe_spawn\(executable, leaf, L"([\w-]+)"',
                            coordinator)
         self.assertEqual(roles, ["create", "read", "verify-b"])
-        self.assertIn("GetExitCodeProcess(process.hProcess", SOURCE)
-        self.assertIn("WaitForSingleObject(process.hProcess, PROBE_CHILD_TIMEOUT_MS)",
+        self.assertIn("GetExitCodeProcess(g_children[slot]", SOURCE)
+        self.assertIn("WaitForSingleObject(g_children[slot], PROBE_CHILD_TIMEOUT_MS)",
                       SOURCE)
         self.assertIn("exit_code != 0", SOURCE)
         self.assertIn("g_children[slot] = process.hProcess", SOURCE)
@@ -72,11 +77,11 @@ class ProbeBoundaryTests(unittest.TestCase):
         self.assertIn("reader_exited_before_verifier=1", SOURCE)
 
     def test_timeout_can_only_terminate_owned_createprocess_handle(self):
-        spawn = SOURCE[SOURCE.index("static BOOL probe_spawn("):
+        spawn = SOURCE[SOURCE.index("static BOOL probe_launch("):
                        SOURCE.index("static BOOL probe_coordinator(")]
         self.assertEqual(spawn.count("TerminateProcess("), 1)
         timeout = spawn[spawn.index("if (waited == WAIT_TIMEOUT)"):]
-        self.assertIn("TerminateProcess(process.hProcess,", timeout)
+        self.assertIn("TerminateProcess(g_children[slot],", timeout)
         self.assertIn("CreateProcessW(executable, command", spawn)
         self.assertIn("#define PROBE_CHILD_TIMEOUT_MS 60000UL", SOURCE)
 
@@ -103,7 +108,7 @@ class ProbeBoundaryTests(unittest.TestCase):
         xml = re.sub(r"^\s*<\?xml[^>]*\?>", "", xml, count=1)
         project = ET.fromstring(xml)
         files = [n.attrib["RelativePath"] for n in project.iter("File")]
-        self.assertEqual(files, [".\\db_file_probe.c", ".\\README.md"])
+        self.assertEqual(files, [".\\db_file_probe.c", ".\\db_lock_probe.h", ".\\README.md"])
         configurations = list(project.iter("Configuration"))
         self.assertEqual(len(configurations), 2)
         for configuration in configurations:
@@ -140,8 +145,63 @@ class ProbeBoundaryTests(unittest.TestCase):
         self.assertIn(r'L"\\\x4e2d\x6587\x76ee\x5f55"', SOURCE)
         self.assertIn(r'L"\\\x6570\x636e\x5e93.sqlite"', SOURCE)
 
+    def test_lock_pairs_open_before_lock_and_wait_on_peer_evidence(self):
+        self.assertIn('L"--run-locks-internal"', SOURCE)
+        self.assertIn("#define PROBE_HANDSHAKE_MS 15000UL", LOCK_SOURCE)
+        for marker in ("rw-writer-open", "rw-read-held", "rw-commit-busy",
+                       "rw-read-released", "rw-commit-done", "ww-contender-open",
+                       "ww-write-held", "ww-write-busy", "ww-write-released"):
+            self.assertIn('L"' + marker + '"', LOCK_SOURCE)
+        self.assertIn('PDb_Exec(db, "BEGIN")', LOCK_SOURCE)
+        self.assertIn('probe_busy(db, PDb_Commit(db), "rw-commit", 1,', LOCK_SOURCE)
+        self.assertIn('probe_busy(db, PDb_Begin(db), "ww-begin", 0,', LOCK_SOURCE)
+        self.assertIn("error.sqlite_code != 5", LOCK_SOURCE)
+        self.assertIn("state.statement_count == 0", LOCK_SOURCE)
+        self.assertIn("CREATE_NEW", LOCK_SOURCE)
+        self.assertNotIn("CREATE_ALWAYS", LOCK_SOURCE)
+
+    def test_lock_pair_coordinator_only_orchestrates_owned_children(self):
+        sequence = LOCK_SOURCE[LOCK_SOURCE.index("static BOOL probe_lock_sequence("):]
+        self.assertNotIn("PDb_", sequence)
+        for slot, role in enumerate(("create", "rw-reader", "rw-writer",
+                                     "ww-owner", "ww-contender", "lock-verify")):
+            self.assertIn(f'L"{role}", {slot}, &child_pid)', sequence)
+        self.assertIn("cold_verifier_after_all_exits=1", sequence)
+        self.assertIn("!g_child_waited[child]", SOURCE)
+
 
 class FixtureSqlOracleTests(unittest.TestCase):
+    def test_file_lock_sql_oracle_not_wm6(self):
+        # Independent connections verify the chosen SQLite transaction sequence,
+        # not WinCE cross-process locking or the product DLL.
+        with tempfile.TemporaryDirectory(prefix="db-lock-oracle-") as temporary:
+            path = Path(temporary) / "fixture.sqlite"
+            with closing(sqlite3.connect(path, timeout=0)) as a, \
+                    closing(sqlite3.connect(path, timeout=0)) as b:
+                a.executescript(SCHEMA)
+                a.execute("INSERT INTO samples VALUES(1,?,?)",
+                          (TEXT_A.decode("utf-8"), BLOB))
+                a.commit()
+                a.execute("BEGIN")
+                self.assertEqual(a.execute("SELECT count(*) FROM samples").fetchone(), (1,))
+                b.execute("BEGIN IMMEDIATE")
+                b.execute("INSERT INTO samples VALUES(4,'rw-committed',?)", (BLOB,))
+                with self.assertRaises(sqlite3.OperationalError):
+                    b.commit()
+                self.assertTrue(b.in_transaction)
+                self.assertEqual(a.execute("SELECT count(*) FROM samples").fetchone(), (1,))
+                a.commit()
+                b.commit()
+                self.assertEqual(a.execute("SELECT count(*) FROM samples").fetchone(), (2,))
+                a.execute("BEGIN IMMEDIATE")
+                with self.assertRaises(sqlite3.OperationalError):
+                    b.execute("BEGIN IMMEDIATE")
+                self.assertFalse(b.in_transaction)
+                a.commit()
+                b.execute("BEGIN IMMEDIATE")
+                b.commit()
+                self.assertEqual(a.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+
     def test_exact_binding_rollback_reopen_and_migration_failure(self):
         # Host-side oracle only; the ARM fixture must use PDb_* and new EXEs.
         with tempfile.TemporaryDirectory(prefix="db-file-oracle-") as temporary:

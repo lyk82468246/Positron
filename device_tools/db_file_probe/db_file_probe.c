@@ -21,7 +21,11 @@ static const char g_second_text[] =
 static const unsigned char g_blob[] = {0, 1, 127, 128, 255, 0};
 static HANDLE g_log = INVALID_HANDLE_VALUE;
 static const char* g_phase = "startup";
-static HANDLE g_children[3] = {NULL, NULL, NULL};
+static HANDLE g_children[6] = {NULL, NULL, NULL, NULL, NULL, NULL};
+static DWORD g_child_pids[6];
+static const WCHAR* g_child_roles[6];
+static BOOL g_child_waited[6];
+static BOOL g_locks = FALSE;
 static const WCHAR* g_storage = L"sd";
 
 static BOOL probe_write(const char* text)
@@ -479,17 +483,18 @@ child_done:
     return ok;
 }
 
-static BOOL probe_spawn(const WCHAR* executable, const WCHAR* leaf,
+static BOOL probe_launch(const WCHAR* executable, const WCHAR* leaf,
         const WCHAR* role, int slot, DWORD* outPid)
 {
     PROCESS_INFORMATION process;
     WCHAR command[128];
     char role_text[24];
     char line[192];
-    DWORD waited;
-    DWORD exit_code;
-    BOOL ok;
+    int index;
 
+    if (slot < 0 || slot >= 6 || g_children[slot] != NULL) {
+        return FALSE;
+    }
     wcscpy(command, L"--child ");
     if (!probe_append(command, 128, role) ||
             !probe_append(command, 128, L" ") ||
@@ -508,33 +513,70 @@ static BOOL probe_spawn(const WCHAR* executable, const WCHAR* leaf,
     /* Keep even exited process objects alive until all phases are complete,
      * avoiding PID reuse as an ambiguity in the fresh-process evidence. */
     g_children[slot] = process.hProcess;
+    g_child_pids[slot] = process.dwProcessId;
+    g_child_roles[slot] = role;
     CloseHandle(process.hThread);
     _snprintf(line, sizeof(line) - 1, "child role=%s pid=%lu created=1\r\n",
             role_text, (unsigned long)process.dwProcessId);
     line[sizeof(line) - 1] = '\0';
-    ok = probe_write(line);
-    waited = WaitForSingleObject(process.hProcess, PROBE_CHILD_TIMEOUT_MS);
+    if (!probe_write(line) || *outPid == 0 ||
+            *outPid == GetCurrentProcessId()) {
+        return FALSE;
+    }
+    for (index = 0; index < slot; ++index) {
+        if (g_children[index] != NULL && g_child_pids[index] == *outPid) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static BOOL probe_wait(int slot)
+{
+    char role_text[24];
+    char line[192];
+    DWORD waited;
+    DWORD exit_code;
+    BOOL ok;
+
+    if (slot < 0 || slot >= 6 || g_children[slot] == NULL ||
+            g_child_waited[slot] ||
+            !probe_utf8(g_child_roles[slot], role_text, sizeof(role_text))) {
+        return FALSE;
+    }
+    ok = TRUE;
+    waited = WaitForSingleObject(g_children[slot], PROBE_CHILD_TIMEOUT_MS);
     exit_code = STILL_ACTIVE;
     if (waited == WAIT_TIMEOUT) {
         /* This is the exact still-owned handle returned by our CreateProcess.
          * Never OpenProcess an enumerated PID or terminate another program. */
         ok = FALSE;
-        if (TerminateProcess(process.hProcess, 0x50444254UL)) {
-            waited = WaitForSingleObject(process.hProcess, 5000);
+        if (TerminateProcess(g_children[slot], 0x50444254UL)) {
+            waited = WaitForSingleObject(g_children[slot], 5000);
         }
         probe_write("child_timeout=FAIL owned_handle_termination_only=1\r\n");
     }
     if (waited != WAIT_OBJECT_0 ||
-            !GetExitCodeProcess(process.hProcess, &exit_code) || exit_code != 0) {
+            !GetExitCodeProcess(g_children[slot], &exit_code) || exit_code != 0) {
         ok = FALSE;
     }
     _snprintf(line, sizeof(line) - 1,
             "child role=%s pid=%lu wait=%lu exit=%lu completed=%d\r\n",
-            role_text, (unsigned long)*outPid, (unsigned long)waited,
+            role_text, (unsigned long)g_child_pids[slot], (unsigned long)waited,
             (unsigned long)exit_code, ok ? 1 : 0);
     line[sizeof(line) - 1] = '\0';
+    g_child_waited[slot] = waited == WAIT_OBJECT_0;
     return probe_write(line) && ok;
 }
+
+static BOOL probe_spawn(const WCHAR* executable, const WCHAR* leaf,
+        const WCHAR* role, int slot, DWORD* outPid)
+{
+    return probe_launch(executable, leaf, role, slot, outPid) &&
+            probe_wait(slot);
+}
+
+#include "db_lock_probe.h"
 
 static BOOL probe_coordinator(const WCHAR* executable, const WCHAR* package)
 {
@@ -562,6 +604,9 @@ static BOOL probe_coordinator(const WCHAR* executable, const WCHAR* package)
     line[sizeof(line) - 1] = '\0';
     if (!probe_write(line)) {
         return FALSE;
+    }
+    if (g_locks) {
+        return probe_lock_sequence(executable, leaf);
     }
     /* Do not start B before A's process handle is signalled with exit=0. */
     if (!probe_spawn(executable, leaf, L"create", 0, &creator) ||
@@ -604,11 +649,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     if (command == NULL || !probe_package_path(executable, package)) {
         return 2;
     }
-    coordinator = wcscmp(command, L"--run-unicode") == 0 ||
+    g_locks = wcscmp(command, L"--run-locks") == 0 ||
+            wcscmp(command, L"--run-locks-internal") == 0;
+    coordinator = g_locks || wcscmp(command, L"--run-unicode") == 0 ||
             wcscmp(command, L"--run-unicode-internal") == 0;
     wcscpy(root, package);
     if (coordinator) {
-        if (wcscmp(command, L"--run-unicode-internal") == 0) {
+        if (wcscmp(command, L"--run-unicode-internal") == 0 ||
+                wcscmp(command, L"--run-locks-internal") == 0) {
             g_storage = L"internal";
         }
         wcscpy(log_path, package);
@@ -637,7 +685,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         *leaf++ = L'\0';
         g_storage = storage;
         if ((wcscmp(role, L"create") != 0 && wcscmp(role, L"read") != 0 &&
-                wcscmp(role, L"verify-b") != 0) || !probe_leaf_valid(leaf) ||
+                wcscmp(role, L"verify-b") != 0 && !probe_lock_role(role)) ||
+                !probe_leaf_valid(leaf) ||
                 !probe_fixture_root(package, leaf, FALSE, root) ||
                 !probe_marker(root, FALSE)) {
             return 2;
@@ -658,8 +707,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     ok = probe_write("DB_FILE_PROBE_V1\r\n") &&
             probe_identity(executable, package);
     if (ok) {
-        ok = coordinator ? probe_coordinator(executable, package) :
-                probe_child(root, role);
+        if (coordinator) {
+            ok = probe_coordinator(executable, package);
+        } else {
+            ok = probe_lock_role(role) ? probe_lock_child(root, role) :
+                    probe_child(root, role);
+        }
+    }
+    /* On failure, let bounded child handshakes finish and reap every owned
+     * child before reporting completion. Never leave a competitor running. */
+    for (child = 0; child < 6; ++child) {
+        if (g_children[child] != NULL && !g_child_waited[child]) {
+            if (!probe_wait(child)) {
+                ok = FALSE;
+            }
+        }
     }
     if (ok) {
         ok = probe_write(coordinator ? "DB_FILE_PROBE PASS\r\n" :
@@ -669,7 +731,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         probe_write(coordinator ? "DB_FILE_PROBE FAIL\r\n" :
                 "DB_FILE_CHILD FAIL\r\n");
     }
-    for (child = 0; child < 3; ++child) {
+    for (child = 0; child < 6; ++child) {
         if (g_children[child] != NULL) {
             CloseHandle(g_children[child]);
             g_children[child] = NULL;

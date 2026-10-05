@@ -36,6 +36,19 @@ not a file-system FULL test. Each child has a 60-second deadline. Timeout fails
 the gate; termination can only use the still-owned process handle returned by
 this coordinator's `CreateProcess`, never an enumerated or caller-supplied PID.
 
+`--run-locks` and `--run-locks-internal` use the same owned paths and safety
+budgets. A creator exits before two concurrent pairs run, followed by an
+independent cold verifier (six processes total). Each pair opens both handles
+before acquiring locks. Flushed, exclusive marker files coordinate the phases,
+with a 15-second peer deadline; a sleep alone never establishes lock evidence.
+The read/write pair holds a real read transaction, requires native COMMIT BUSY
+with the writer still active, checks the old snapshot, then releases the reader
+and retries the commit before checking a new snapshot. The write/write pair
+requires a second `BEGIN IMMEDIATE` to return native BUSY without creating a
+transaction, then retries after the first writer commits. The cold verifier
+checks all four rows, schema version and integrity after both pairs have exited.
+Failures are reaped before the coordinator reports completion.
+
 Logs and files remain for the host gate to retrieve and hash before scoped
 cleanup. A complete package, free-space preflight, guest no-foreign-DLL audit,
 round-trip binary identity and crash inventory are host-gate requirements;
@@ -52,8 +65,13 @@ fixture directories and the exact package may be cleaned after evidence is
 retrieved; failure preserves them. `-PreserveDeployment` produces diagnostic
 evidence, not a final acceptance result.
 
-This first slice does not prove concurrent-process locks, hot-journal recovery,
-I/O faults, actual volume exhaustion or physical power-loss durability.
+Pass `-Suite Locks` to run the concurrent suite; the default `Unicode` preserves
+the original three-process sequence. The gate verifies overlapping process
+pairs, native BUSY/error/transaction state, snapshot visibility, retry and cold
+reopen rather than accepting a generic PASS line alone.
+Neither suite proves hot-journal recovery, I/O faults, actual volume exhaustion
+or physical power-loss durability. A fixture implementation is not acceptance
+without complete device evidence.
 
 `python scripts/test_db_file_probe.py` checks fixture SQL, UTF-8 bytes, ownership
 guards, process sequencing and project boundaries offline. Its host SQLite
