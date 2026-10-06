@@ -65,7 +65,7 @@ function Assert-InfFile([string]$infPath, [string]$version, [string]$buildDate) 
     Assert-InfContains $text "positron\.exe" "positron.exe"
 
     foreach ($name in @(
-        "positron_tls\.dll", "positron_json\.dll", "positron_http\.dll",
+        "positron_tls\.dll", "positron_json\.dll", "positron_db\.dll", "positron_http\.dll",
         "positron_core\.dll", "positron_image\.dll", "positron_script\.dll",
         "positron_browser\.dll", "PositronSymbolsBasic\.ttf",
         "PositronSymbols\.ttf", "PositronEmoji\.ttf", "LICENSE",
@@ -84,7 +84,7 @@ function Assert-InfFile([string]$infPath, [string]$version, [string]$buildDate) 
     Assert-InfContains $text "Channel.*nightly-cab" "Channel=nightly-cab"
     Assert-InfContains $text "InstallDir.*Program Files\\Positron" "InstallDir"
 
-    foreach ($forbidden in @("test_host", "positron_db\.dll", "positron_media\.dll", "fixtures", "\.pdb", "\.lib")) {
+    foreach ($forbidden in @("test_host", "positron_media\.dll", "fixtures", "\.pdb", "\.lib")) {
         if ([regex]::IsMatch($text, $forbidden, [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
             Fail "CAB INF 包含禁止内容：$forbidden"
         }
@@ -131,6 +131,7 @@ function Assert-CabInputs {
         (Join-Path $root "positron_app\bin\Release\positron.exe"),
         (Join-Path $root "positron_tls\bin\Release\positron_tls.dll"),
         (Join-Path $root "positron_json\bin\Release\positron_json.dll"),
+        (Join-Path $root "positron_db\bin\Release\positron_db.dll"),
         (Join-Path $root "positron_http\bin\Release\positron_http.dll"),
         (Join-Path $root "positron_core\bin\Release\positron_core.dll"),
         (Join-Path $root "positron_image\bin\Release\positron_image.dll"),
@@ -266,7 +267,7 @@ if (Test-Path -LiteralPath $expand) {
     if ($LASTEXITCODE -ne 0) {
         Fail "expand.exe 无法读取 CAB 内容"
     }
-    foreach ($forbidden in @("test_host", "positron_db\.dll", "positron_media\.dll", "fixtures", "\.pdb", "\.lib")) {
+    foreach ($forbidden in @("test_host", "positron_media\.dll", "fixtures", "\.pdb", "\.lib")) {
         if ([regex]::IsMatch(($listing -join [Environment]::NewLine), $forbidden, [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
             Fail "CAB 内容包含禁止文件：$forbidden"
         }
