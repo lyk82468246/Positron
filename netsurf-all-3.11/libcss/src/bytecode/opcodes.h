@@ -818,6 +818,11 @@ enum op_volume {
 	VOLUME_X_LOUD			= 0x0005
 };
 
+enum op_overflow_wrap {
+	OVERFLOW_WRAP_NORMAL = 0,
+	OVERFLOW_WRAP_BREAK_WORD = 1
+};
+
 enum op_white_space {
 	WHITE_SPACE_NORMAL		= 0x0000,
 	WHITE_SPACE_PRE			= 0x0001,

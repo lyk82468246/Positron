@@ -52,6 +52,7 @@ style = {
     ('list_style_type', 6),
     ('overflow_x', 3),
     ('overflow_y', 3),
+    ('overflow_wrap', 2),
     ('outline_style', 4),
     ('position', 3),
     ('table_layout', 2),

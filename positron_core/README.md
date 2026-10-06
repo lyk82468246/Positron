@@ -91,6 +91,37 @@ Core 的重复背景绘制路径生效，不改变 Image DLL 返回的自然尺�
 
 布局 relation 提供 page width/height、元素 border/client/scroll 尺寸、有限 inline fragments、overflow retained scroll 和几何快照。relation 是最近一次 layout 的只读 snapshot；查询不会触发 reflow，mutation 成功后会使 retained layout 失效，调用方必须重新 style/layout/paint。
 
+## 选择性长文本断行
+
+无空格 URL 或长标题可以由页面 CSS 显式启用紧急断行，不必修改文本或链接：
+
+```css
+.visit-url, .visit-title { overflow-wrap: break-word; }
+```
+
+`word-wrap` 是同一属性的别名；支持 `normal`、`break-word` 及通用的继承/初始值声明，
+两种拼写共享级联顺序与 `!important`。属性继承，默认仍为 `normal`。Core 先使用原有空格
+断点；只有空行上的完整单词仍超宽时，才按同一 GDI 字体度量选择紧急断点。普通英文段落
+不因此逐字拆开，`white-space:nowrap/pre` 仍禁止换行，`pre-wrap/pre-line` 允许该行为。
+样式或 viewport/DPI 变化后仍须重新 style/layout/paint；断行只改变布局 fragment，不改写
+DOM text、href 或浏览器导航状态。
+
+`break-word` 不降低 min-content 宽度；自动宽度 block 的长 URL 可换行，但 shrink-to-fit、
+表格或 flex 的内在最小宽度仍可能使容器超宽。这不是 `anywhere` 或 `word-break:break-all`，
+后二者尚不支持；无效声明由 CSS parser 忽略，不会隐式开启其他断行策略。
+此区别遵循 [CSS Text 的 overflow-wrap 定义](https://www.w3.org/TR/css-text-3/#overflow-wrap-property)。
+
+紧急断点保留 UTF-8 scalar/UTF-16 surrogate pair、常见组合附加符/variation selector、emoji
+modifier、ZWJ 链及 regional-indicator 对；复杂文字 run 保守地保持完整。过宽的首个完整 cluster
+仍整段输出以保证正向进展，因此可能超出窄行。它不是完整 Unicode grapheme、断行或复杂文字
+shaping 实现。实现复用现有字体测量 buffer 和文档布局预算，不引入无界断点表；新增 computed
+属性占两位，内部样式位数组总长度不变，不改变公共 Core ABI 或资源所有权。
+
+离线 TEST1345 覆盖长 URL/query/标题、普通段落、CJK/非 BMP、继承/别名级联、空白规则、
+min-content 保留与极窄视口的 cluster 正向进展；在 96/128/192 DPI 下重复窄→宽→窄布局，
+检查 DOM/href 不变、fragment 几何、物理链接命中和实际绘制像素。它不替代应用历史页的
+真实触摸、字体与横向滚动验收。
+
 ## DOM 与关系 bridge
 
 常用 relation 包括 Element/attribute、未过滤 `childNodes`、节点类型和值、HTML serialization、form owner/effective-disabled、option default-selected、焦点和交互状态。关系读取支持 size-probe 和容量检查，缺失目标、过小 buffer、非法 UTF-8、越界 child index 和 stale document 都安全失败。

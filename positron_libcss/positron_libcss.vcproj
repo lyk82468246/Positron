@@ -1377,6 +1377,22 @@
 				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_quotes.obj" />
 			</FileConfiguration>
 		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\overflow_wrap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_overflow_wrap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_overflow_wrap.obj" />
+			</FileConfiguration>
+		</File>
+		<File RelativePath="..\netsurf-all-3.11\libcss\src\select\properties\overflow_wrap.c">
+			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_overflow_wrap.obj" />
+			</FileConfiguration>
+			<FileConfiguration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)">
+				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\select_properties_overflow_wrap.obj" />
+			</FileConfiguration>
+		</File>
 		<File RelativePath="..\netsurf-all-3.11\libcss\src\parse\properties\stroke_opacity.c">
 			<FileConfiguration Name="Debug|Windows Mobile 6 Professional SDK (ARMV4I)">
 				<Tool Name="VCCLCompilerTool" ObjectFile="$(IntDir)\parse_properties_stroke_opacity.obj" />

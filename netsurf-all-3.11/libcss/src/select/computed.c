@@ -844,6 +844,11 @@ uint8_t css_computed_white_space(const css_computed_style *style)
 	return get_white_space(style);
 }
 
+uint8_t css_computed_overflow_wrap(const css_computed_style *style)
+{
+	return get_overflow_wrap(style);
+}
+
 uint8_t css_computed_background_position(const css_computed_style *style,
 		css_fixed *hlength, css_unit *hunit,
 		css_fixed *vlength, css_unit *vunit)

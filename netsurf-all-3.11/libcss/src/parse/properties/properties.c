@@ -158,7 +158,9 @@ const css_prop_handler property_handlers[LAST_PROP + 1 - FIRST_PROP] =
 	css__parse_width,
 	css__parse_word_spacing,
 	css__parse_writing_mode,
-	css__parse_z_index
+	css__parse_z_index,
+	css__parse_overflow_wrap,
+	css__parse_overflow_wrap /* word-wrap is the same cascade property */
 };
 
 /** Mapping from property bytecode index to bytecode unit class mask. */
@@ -289,4 +291,5 @@ const uint32_t property_unit_mask[CSS_N_PROPERTIES] = {
 	UNIT_MASK_ORDER, /* CSS_PROP_ORDER */
 	UNIT_MASK_FILL_OPACITY, /* CSS_PROP_FILL_OPACITY */
 	UNIT_MASK_STROKE_OPACITY, /* CSS_PROP_STROKE_OPACITY */
+	0, /* CSS_PROP_OVERFLOW_WRAP: keywords only */
 };

@@ -4,7 +4,9 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。用户要求补齐 Media 本阶段缺口；输入错误、WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2 解码/守卫合同已通过 Debug/Release SD 设备门，下一条纵切为 AAC seek PCM 保真性。Fragment CSS 坐标和 DB 离线契约验收继续有效，用户更换设备后 SD 卡部署、回读与 DB Debug 正式验收均完成。既有 EXE 人工验收仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。当前本会话完成消费者访问历史页需要的 Core 选择性长文本断行；公共 ABI、EXE 与 DB/history/scroll 不变，应用样式接入与实际页验收留给应用会话。
+
+Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2 解码/守卫合同已有双配置设备证据，独立后续为 AAC seek PCM 保真性。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -12,11 +14,37 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；仅修改 EXE、专用脚本和文档，保留其他组件及原有诊断。
+分支 main；本批修改内部 libcss 属性、Core layout/GDI、正式工程输入、离线 fixture 与对应文档。未修改 EXE、Browser、DB/history/scroll 或公共头文件/导出；保留其他组件及原有诊断。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
+
+### Core 选择性长文本断行已验收
+
+Core 支持继承的 `overflow-wrap:normal/break-word` 与同义 `word-wrap`，默认 normal、
+普通空格断行与 `nowrap/pre` 不变；先普通断点，空行完整单词超宽才按原字体度量紧急断行。
+不改 DOM/href，不降低 min-content，不扩展为 anywhere 或完整 Unicode 排版。调用、cluster
+保守边界和重新布局要求见 [Core README](../positron_core/README.md#选择性长文本断行)；
+属性生成/C89 步骤见 [libcss README](../positron_libcss/README.md#本地属性扩展与生成步骤)。
+
+最终 Debug `tmp/device-runs/20261007-002654-core-text-wrap-debug-final/` 与 Release
+`tmp/device-runs/20261007-003332-core-text-wrap-release-final/` 各选择
+`13,19,20,39,42,46,49,1330,1340,1345,999`：11/11、唯一 TESTBENCH PASS、零 ERROR/FAIL、
+匹配 Core 路径、完整日志与 crash_check PASS，无新增 dump。480×640、192 DPI DeviceEmulator，
+TEST1345 内部分别验证 96/128/192 DPI 的窄→宽→窄、真实 paint/hit、普通段落、URL/query/标题、
+CJK/非 BMP、别名/继承/级联、空白与 intrinsic 合同；极窄视口验证 combining、surrogate、
+ZWJ 与 RI 成对保持和正向进展。两门 SD 完整正式 stage、目标卷/内置空间及新 guest
+holders=0 unavailable=0 通过，完整回收后删除本轮两个目录，没有强杀/重连或 DB 删除。
+
+C89、审计与串行正式 Debug/Release build 通过；Release 先行 PDB 打开和旧 libcss 链接前置
+失败保存在 `tmp/core-text-wrap-build-failures/`，正式重试恢复，不追认为 rebuild PASS。
+早期 `core-text-wrap-debug-probe` 的旧 anchor 高度假设已修正为实际 fragment/overflow 合同；
+`debug-probe2` 抓到尾随空格误触紧急断行的真实回归，改为检查完整首词宽度后普通段落原
+比较断言通过。失败日志保留，不扩大预算或弱化普通断行断言。
+
+DLL 纵切完成不代表应用历史页已启用。唯一下一步由应用会话给访问 URL/标题声明该 CSS，
+用真实长 URL 复核窄/宽、高 DPI、链接与拖动；本会话不自行修改 EXE 或重开滚动修正。
 
 ### EXE 访问历史与滚动像素修正通过
 
@@ -32,8 +60,9 @@ parse/style/layout、标题/URL 转义、UTC 和 23 焦点通过。真实 IANA e
 日志 `visit-navigation.log` 证明 commit 后 op=3 保存、history op=4 读取及 focus=8；
 旧 PID 3816943554 已正常退出，不是当前人工入口。
 
-截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分开处理：Core 缺无空格长文本的 CSS
-紧急断行，EXE 未改写文字或隐藏横轴；合同见 [Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)。
+截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分开处理：当时缺少的 Core CSS
+紧急断行现已完成上述 DLL 门，应用尚需启用；原消费者合同见
+[Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)，EXE 不改写文字或隐藏横轴。
 实际窗口探针复现 CE 双轴 ScrollWindowEx 返回 ERROR，旧代码忽略失败仍更新位置，
 产生旧像素残留。拆分单轴、任一失败完整失效视口后只补绘，不增加 layout。更换位图
 原点的假设未被对照证明，已撤回；空历史页不花屏不能替代长 URL 页面验收。
@@ -41,7 +70,7 @@ parse/style/layout、标题/URL 转义、UTC 和 23 焦点通过。真实 IANA e
 当前包 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
 实际窗口与内存像素门 PASS（单轴/斜向/大幅共九次，各与完整重绘一致），并实际加载
 IANA、op=3 保存、op=4 读回、history focus=8；哈希 10/10、crash_check PASS。
-PID 3612441414 留在含长 URL 的历史页，人工入口为
+该包原 PID 3612441414 已由用户正常退出，不是当前运行入口；包路径为
 `\Storage Card\Temp\Positron-device-gate\app-scroll-axis-final-20261006-235934\positron.exe`。
 用户已确认含实际长 URL 的该页横向、纵向、斜向拖动均正常且无花屏；斜向无反应的
 初始反馈已由用户明确撤回。该页视觉门通过，不外推全部页面/OEM；后续部署先正常退出并审计引用。
@@ -52,11 +81,12 @@ PID 3612441414 留在含长 URL 的历史页，人工入口为
 `20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
 访问记录恢复不等于断电门。
 
-ROADMAP 已复核；滚动视觉门关闭，下一步协调 Core 断行，剩余交互/交错见限制，v1 升级和
+ROADMAP 已复核；滚动视觉门关闭，Core 断行已验收，下一步应用启用样式，剩余交互/交错见限制，v1 升级和
 500 条裁剪目前为离线 SQL 证据。随后纵切为
 用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
 脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
-DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，编译器空闲、设备运行上述候选。
+DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，串行构建和设备门窗口已释放；下一门
+仍需重新审计引用，不沿用本轮零 holder 快照。
 
 ### EXE 固定起始页持久化实际门通过
 
@@ -327,43 +357,13 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 
 ### 设备门 DLL 引用审计
 
-设备门现在使用无 Positron DLL 依赖的 `positron_process_cleanup.exe --audit-modules`，在启动
-`test_host` 前通过设备端 Toolhelp 枚举所有进程及模块，覆盖 stage 中的 9 个 Positron DLL；
-`holders=0 unavailable=0` 才能继续，快照不可用也 fail closed。`-ModuleAuditOnly` 可只做部署和
-审计，不启动 `test_host`，也不能和 `-ForceTerminatePositron` 同时使用。该门只读，不会替用户
-终止进程；针对 guest 的 `ERROR_NOT_ENOUGH_MEMORY` 仅做三次短重试，重试后仍不可用仍 fail
-closed。
-
-About 先行只读审计 `tmp/device-runs/20261002-084845-app-version-audit/` 的 23 文件
-及 holders=0 unavailable=0 通过，无强制清理；旧 PID 3056936870 不代表当前人工包。
-重复复制第一份 fixture 时 CeMoveFile 仍返回 device=5，未替换 EXE，改为复用已成功部署包。
-About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debug.log`：版本
-自检、内部页面自检、About 单次提交及 crash_check 均通过。嵌入时间为
-`2026-10-02 08:48:11`；Debug/Release 正式增量构建均零错误/警告，Release 不含版本自检
-文本或 Debug 时间。注册表格式/容量/终止符验证由 Debug 私有夹具覆盖；Release 在真实 CAB
-安装后的读取显示仍待人工检查，独立复制缺少有效安装版本时“未提供”是预期。
-较早 error=8 和宿主零日志失败不转为 TEST1321 通过；应用运行时会持有 DLL，下一次
-DLL/DB 门仍须在应用正常退出后重新获取无 holder 审计证据。
-guest helper 的进程快照使用 Windows Mobile SDK 的
-`TH32CS_SNAPNOHEAPS`，避免包含进程 heap 时耗尽快照内存；模块枚举仍保持
-fail closed。Debug 完整包部署后的
-`tmp/device-runs/20261002-125344-module-audit/module-audit-result.txt`，以及最终
-Release 完整包部署后的
-`tmp/device-runs/20261002-131031-module-audit-final/module-audit-result.txt`，均记录
-`module_audit holders=0 unavailable=0`；后者覆盖最终 `/O2` 产物和全部 9 个 Positron DLL，
-部署目录保留用于诊断，未使用强制清理。定向 Debug/Release TEST1321 启动前审计也均得到
-`holders=0 unavailable=0`，但 `CeCreateProcess` 分别返回 device=126，进程没有启动，
-没有 `test_host.log` 或 TEST1321 结果；因此它们都是宿主加载前置失败，不计为 TEST1321
-通过或测试失败。所有结果均来自 guest helper 的 Toolhelp 模块枚举，不以桌面模拟器进程
-存在与否推断 DLL 引用。
-
-审计等待函数现在忽略 RAPI 成功回读的空日志，沿原有有界等待继续读取，只有完整摘要才参与
-holder 校验。`scripts/test_device_gate_audit.ps1` 直接抽取正式函数并以合成 RAPI 覆盖完整摘要、
-空/部分日志后完成、读取失败后完成、非零 holder、不可用快照和无摘要超时，共 7 项通过。
-内置 Temp 的实际验证见 `tmp/device-runs/20261002-175542-db-internal-audit/`：正式 Release
-helper 回读 SHA256 匹配，`module_audit holders=0 unavailable=0`。这是 guest 引用审计通过，
-不代表 TEST1321 已运行。外置卡曾再次出现空日志、文件回读不可用和 device=5 写入失败；
-历史成功宿主在该外置卡候选中也返回 device=126，尚不足以把失败归因到某个 DLL。
+设备门以无产品 DLL 依赖的 guest helper/Toolhelp 枚举九个 DLL，仅
+`holders=0 unavailable=0` 允许继续；快照不可用仍 fail closed，空/部分日志有界等待。
+`TH32CS_SNAPNOHEAPS` 避免枚举 heap；只读审计不强杀，正常退出后须重新获取快照。
+本轮有效证据见上方 Core 双配置门，旧 device=126/零日志不能追认为测试通过。
+稳定排障见 [TROUBLESHOOTING](../docs/TROUBLESHOOTING.md)，审计等待函数的七项合成回归
+保留在 `scripts/test_device_gate_audit.ps1`。旧 PID、安装时间与失败实验只代表原包，详见 Git
+上一版交接；CAB 安装版本和 Debug 增量时间依赖仍是独立未决门。
 
 ### DB 本地/同步与结构化错误合同已验收
 
@@ -490,10 +490,11 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
-范围。含长 URL 的历史页滚动修正已通过人工门；唯一下一步将 CSS 断行缺口交 Core；
+范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，唯一下一步
+由应用会话对历史 URL/标题启用 `overflow-wrap:break-word` 并完成实际窄视口/高 DPI 验收；
 随后按应用私有 worker/可信 session/文件策略分别接入扩展设置与下载，
-不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与人工入口
-见上方，下一会话须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
+不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据见上方，原候选已正常退出；
+下次部署须重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与

@@ -104,6 +104,8 @@ typedef enum {
 	FONTF_ITALIC = 1,
 	FONTF_OBLIQUE = 2,
 	FONTF_SMALLCAPS = 4,
+	/* Internal split-only hint, not a global font/wrapping policy. */
+	FONTF_EMERGENCY_WRAP = 8,
 } plot_font_flags_t;
 
 /**

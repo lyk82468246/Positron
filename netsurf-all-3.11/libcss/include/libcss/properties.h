@@ -140,8 +140,16 @@ enum css_properties_e {
 	CSS_PROP_ORDER				= 0x07b,
 	CSS_PROP_FILL_OPACITY			= 0x07c,
 	CSS_PROP_STROKE_OPACITY			= 0x07d,
+	CSS_PROP_OVERFLOW_WRAP			= 0x07e,
 
 	CSS_N_PROPERTIES
+};
+
+/* Positron bounded CSS Text extension; anywhere is not implemented. */
+enum css_overflow_wrap_e {
+	CSS_OVERFLOW_WRAP_INHERIT = 0,
+	CSS_OVERFLOW_WRAP_NORMAL = 1,
+	CSS_OVERFLOW_WRAP_BREAK_WORD = 2
 };
 
 enum css_align_content_e {

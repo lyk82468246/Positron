@@ -23,6 +23,7 @@
   uint32_t destroy_##pname (void *bytecode)
 
 PROPERTY_FUNCS(align_content);
+PROPERTY_FUNCS(overflow_wrap);
 PROPERTY_FUNCS(align_items);
 PROPERTY_FUNCS(align_self);
 PROPERTY_FUNCS(azimuth);

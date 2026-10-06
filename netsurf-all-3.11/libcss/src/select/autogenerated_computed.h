@@ -85,6 +85,7 @@ struct css_computed_style_i {
  * outline_color                    2               4
  * outline_style                    4             
  * outline_width                    3 + 5           4
+ * overflow_wrap                    2
  * overflow_x                       3             
  * overflow_y                       3             
  * padding_bottom                   1 + 5           4
@@ -142,9 +143,9 @@ struct css_computed_style_i {
  * quotes                           1             sizeof(ptr)
  * 
  * ---                            ---             ---
- *                                464 bits        236 + 8sizeof(ptr) bytes
+ *                                466 bits        236 + 8sizeof(ptr) bytes
  *                                ===================
- *                                294 + 8sizeof(ptr) bytes
+ *                                295 + 8sizeof(ptr) bytes
  * 
  * Bit allocations:
  * 
@@ -180,16 +181,15 @@ struct css_computed_style_i {
  * cursor; break_inside; break_before; break_after; border_top_style;
  * border_right_style; border_left_style; text_transform
  * 
- * 10 bbbaaallliiizzwwvvuuttppoossffnn
+ * 10 bbbaaallliiizzwwvvuuttppoonnssff
  * background_repeat; align_self; align_items; align_content; z_index;
  * writing_mode; visibility; unicode_bidi; table_layout; page_break_inside;
- * outline_color; list_style_position; font_variant; font_style
+ * overflow_wrap; outline_color; list_style_position; font_variant
  * 
- * 11 fflleeddccoouummnnaabbrriittppBB
- * float; flex_wrap; empty_cells; direction; content; column_span;
+ * 11 fflleemmddccoouunnttaabbrriiBBpp
+ * font_style; float; flex_wrap; empty_cells; direction; content; column_span;
  * column_rule_color; column_fill; column_count; caption_side; box_sizing;
- * border_top_color; border_right_color; border_left_color; border_collapse;
- * border_bottom_color
+ * border_top_color; border_right_color; border_left_color; border_collapse
  * 
  * 12 bbbbbbbbbbbaaaaaaaaaaavvvvvvvvvw
  * border_spacing; background_position; vertical_align; widows
@@ -199,10 +199,10 @@ struct css_computed_style_i {
  * overflow_y; overflow_x; justify_content; font_family; flex_direction; clear;
  * stroke_opacity
  * 
- * 14 bbaaqorplfeicuCk................
- * background_color; background_attachment; quotes; orphans; order; opacity;
- * list_style_image; flex_shrink; flex_grow; fill_opacity; counter_reset;
- * counter_increment; color; background_image
+ * 14 bbaaccqorplfeiunCk..............
+ * border_bottom_color; background_color; background_attachment; quotes;
+ * orphans; order; opacity; list_style_image; flex_shrink; flex_grow;
+ * fill_opacity; counter_reset; counter_increment; color; background_image
  */
 	uint32_t bits[15];
 	

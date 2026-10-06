@@ -55,8 +55,14 @@
 ## HTML、CSS 与布局
 
  - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
-- 历史页无空格长 URL 会撑宽页面；Core 尚缺 CSS 紧急断行，不能由 EXE 手工拆文本或
-  隐藏横轴补齐。责任、最小合同和门见 [Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)。
+- Core 已支持选择性 `overflow-wrap:break-word`（`word-wrap` 同义），默认普通断行和
+  `nowrap/pre` 不变；调用方须在目标内容上显式声明。应用历史页样式接入及真实窄视口
+  验收仍待完成，不能由 EXE 手工拆文本或隐藏横轴代替。稳定合同见
+  [Core README](../positron_core/README.md#选择性长文本断行)。
+- `break-word` 不降低 min-content，shrink-to-fit/table/flex 的内在宽度仍可使容器超宽；
+  `anywhere`、`word-break:break-all` 和完整 Unicode 断行/grapheme/shaping 尚未实现。
+  常见 combining/VS、emoji modifier/ZWJ 和 RI 对保留，复杂文字 run 保守地保持完整；
+  极窄视口允许过宽的单个完整 cluster 溢出以保证进展，不承诺任意文本都无横向溢出。
  - CSS Grid、float/positioned、table/caption/column/baseline、generated/counter 未覆盖；TEST39 断言 flex auto-height 不重叠。
  - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser selector 是有界子集，覆盖有限的 compound/组合器、属性匹配、状态伪类和 interaction `:active`/`:hover`；不等于完整 CSS selector 引擎。精确支持矩阵见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - `:scope` 是同一 selector 子集中的有界 context 扩展：element query 的 receiver 作为 scope，带直接、无参数 `:scope` 的 selector 可以把 owner 放在结果首位，并支持 `:scope > ...`/`:scope ...` 的子代与后代关系；无 scope 的 element query 仍排除 owner，document query 以 `document.documentElement` 为 scope，`matches()`/`closest()` 以 receiver 为 scope。嵌套参数、伪元素和完整 Selectors 语法仍 fail closed。
@@ -497,16 +503,12 @@
   focus、geometry、overflow、scroll、selector 和 autofocus 的有界 callback 合同；这些夹具
   证明 snapshot、事件顺序、预算、clamp 和非法输入 fail closed，但不证明复杂 CSS、无限
   scroll tree、真实旋转、触摸、OEM 控件或视觉像素。
-- TEST1152–1154 覆盖 selector 的有界列表/关系组合器、属性匹配和结构伪类；非法语法、
-  过深遍历、未支持参数与超限公式 fail closed。判断使用只读关系快照并保留 64 步与固定
-  heap 预算。精确操作符和公式合同见 [`docs/TESTING.md`](../docs/TESTING.md)，不在限制文档
-  重复维护。完整 CSS Selectors、伪元素、namespace、Shadow DOM、视觉和不同 DPI 未保证。
-- TEST1155 覆盖 Browser selector 的有限表单状态：`input:checked` 读取现有 checked
-  callback 的当前值，`:disabled`/`:enabled` 按 input、button、select、textarea、option
-  的直接 `disabled` 属性匹配，`:required`/`:optional` 按 input、select、textarea 的
-  直接 `required` 属性匹配。夹具验证 `matches()`、`closest()`、两种 query、状态 mutation
-  后的实时结果、列表顺序和不支持输入的 fail-closed 行为；fieldset/optgroup 的 effective
-  继承由 TEST1166 覆盖，option 的动态 selected→`:checked` 映射由 TEST1157 覆盖。
+- Selector 离线门覆盖有界列表/关系组合器、属性/结构伪类和有限表单状态；只读关系
+  快照保留 64 步与固定 heap 预算，非法语法、过深遍历和超限公式 fail closed。
+  checked callback、直接 disabled/required 属性、fieldset/optgroup 的 effective
+  继承及 option live selected 分别有断言；操作符、公式与查询/mutation 顺序统一见
+  [测试合同](../docs/TESTING.md)。这些门不保证完整 Selectors、伪元素、namespace、
+  Shadow DOM、视觉或不同 DPI，不能把接口快照当作真实控件验收。
 - TEST1157 覆盖 Browser selector 对 option live selected 状态的 `:checked` 映射：单选初始
   选择、`selectedIndex` mutation、多选初始选择、matches/closest、列表顺序和非法输入
   fail closed；真实 native SELECT 的 popup、键盘、SIP/IME、触摸和视觉仍属于宿主观察。

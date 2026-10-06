@@ -233,6 +233,8 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("word-spacing"),
 	SMAP("writing-mode"),
 	SMAP("z-index"),
+	SMAP("overflow-wrap"),
+	SMAP("word-wrap"),
 
 	SMAP("inherit"),
 	SMAP("unset"),
@@ -491,6 +493,7 @@ const stringmap_entry stringmap[LAST_KNOWN] = {
 	SMAP("grid"),
 	SMAP("inline-grid"),
 	SMAP("sticky"),
+	SMAP("break-word"),
 
 	SMAP("aliceblue"),
 	SMAP("antiquewhite"),

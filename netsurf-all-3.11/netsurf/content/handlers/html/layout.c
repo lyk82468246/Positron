@@ -3619,6 +3619,14 @@ layout_line(struct box *first,
 
 			font_plot_style_from_css(&content->unit_len_ctx,
 					split_box->style, &fstyle);
+			/* break-word only changes actual line splitting, never the
+			 * min-content pass. Try ordinary breaks first. Do not split
+			 * a word merely to fill the remainder of a nonempty line. */
+			if (x + space_before == 0 &&
+					css_computed_overflow_wrap(split_box->style) ==
+					CSS_OVERFLOW_WRAP_BREAK_WORD) {
+				fstyle.flags |= FONTF_EMERGENCY_WRAP;
+			}
 			/** \todo handle errors */
 			font_func->split(&fstyle,
 					 split_box->text,

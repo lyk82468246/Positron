@@ -1261,6 +1261,104 @@ static nserror gdi_font_position(const struct plot_font_style *fstyle,
     return NSERROR_OK;
 }
 
+/* Emergency-break subset, not a Unicode line-break/shaping engine. Scalar
+ * boundaries and common combining/VS, emoji modifier/ZWJ and RI sequences
+ * stay together. Complex-script runs are conservatively kept whole. */
+static unsigned long pcore_wrap_scalar(const char *s, int start, int end)
+{
+    unsigned long cp;
+    int i;
+    unsigned char c;
+    c = (unsigned char) s[start];
+    cp = c < 0x80 ? c : (c < 0xe0 ? c & 0x1f :
+            (c < 0xf0 ? c & 0x0f : c & 0x07));
+    for (i = start + 1; i < end; i++) {
+        cp = (cp << 6) | ((unsigned char) s[i] & 0x3f);
+    }
+    return cp;
+}
+
+static int pcore_wrap_extend(unsigned long cp)
+{
+    return (cp >= 0x0300 && cp <= 0x036f) ||
+            (cp >= 0x1ab0 && cp <= 0x1aff) ||
+            (cp >= 0x1dc0 && cp <= 0x1dff) ||
+            (cp >= 0x20d0 && cp <= 0x20ff) ||
+            (cp >= 0xfe00 && cp <= 0xfe0f) ||
+            (cp >= 0xfe20 && cp <= 0xfe2f) ||
+            (cp >= 0x1f3fb && cp <= 0x1f3ff) ||
+            (cp >= 0xe0100 && cp <= 0xe01ef);
+}
+
+static int pcore_wrap_complex(unsigned long cp)
+{
+    /* Keep shaped runs, Jamo and emoji tag sequences unsplit. */
+    return (cp >= 0x0590 && cp <= 0x1cff) ||
+            (cp >= 0xa800 && cp <= 0xabff) ||
+            (cp >= 0x11000 && cp <= 0x11fff) ||
+            (cp >= 0xe0000 && cp <= 0xe007f) || cp == 0x200c;
+}
+
+static void pcore_emergency_split(const char *text, const int *byteofs,
+        const int *dx, int wl, int x, size_t *offset, int *width)
+{
+    int i;
+    int best;
+    int first;
+    int regional;
+    best = first = regional = 0;
+    for (i = 1; i <= wl; i++) {
+        int begin;
+        unsigned long cp;
+        unsigned long next;
+        int boundary;
+        if (i < wl && byteofs[i] == byteofs[i - 1]) {
+            continue; /* never separate a UTF-16 surrogate pair */
+        }
+        begin = i - 1;
+        while (begin > 0 && byteofs[begin - 1] == byteofs[begin]) {
+            begin--;
+        }
+        cp = pcore_wrap_scalar(text, byteofs[begin], byteofs[i]);
+        if (cp >= 0x1f1e6 && cp <= 0x1f1ff) {
+            regional++;
+        } else {
+            regional = 0;
+        }
+        next = 0;
+        if (i < wl) {
+            int end;
+            end = i + 1;
+            while (end < wl && byteofs[end] == byteofs[i]) {
+                end++;
+            }
+            next = pcore_wrap_scalar(text, byteofs[i], byteofs[end]);
+        }
+        boundary = i == wl || (!pcore_wrap_extend(next) &&
+                next != 0x200d && cp != 0x200d &&
+                !(regional % 2 == 1 && next >= 0x1f1e6 &&
+                  next <= 0x1f1ff) &&
+                !(pcore_wrap_complex(cp) || pcore_wrap_complex(next)));
+        if (!boundary) {
+            continue;
+        }
+        if (first == 0) {
+            first = i;
+        }
+        if (dx[i - 1] < x) {
+            best = i;
+        }
+    }
+    /* If a whole cluster is wider than the line, force it whole. */
+    if (best == 0) {
+        best = first;
+    }
+    if (best > 0) {
+        *offset = (size_t) byteofs[best];
+        *width = dx[best - 1];
+    }
+}
+
 static nserror gdi_font_split(const struct plot_font_style *fstyle,
         const char *string, size_t length, int x,
         size_t *char_offset, int *actual_x)
@@ -1315,6 +1413,22 @@ static nserror gdi_font_split(const struct plot_font_style *fstyle,
         } else {
             *char_offset = length;                    /* unsplittable */
             *actual_x = dx[wl - 1];
+        }
+    }
+    /* CSS-aware line layout alone sets this hint. Ordinary spaces which
+     * fit win; min-content/width/position never request emergency splits. */
+    if ((fstyle->flags & FONTF_EMERGENCY_WRAP) && *actual_x > x && x > 0) {
+        int word_end;
+        word_end = 0;
+        while (word_end < wl && wbuf[word_end] != L' ') {
+            word_end++;
+        }
+        /* A break including a trailing space can exceed x even though the
+         * word fits. That is not an unbreakable overlong word: preserve the
+         * existing ordinary-break path exactly, rather than cutting prose. */
+        if (word_end > 0 && dx[word_end - 1] > x) {
+            pcore_emergency_split(string, byteofs, dx, wl, x,
+                    char_offset, actual_x);
         }
     }
     if (*char_offset == 0) {

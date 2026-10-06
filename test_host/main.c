@@ -96,6 +96,8 @@ extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
+extern BOOL test1345_core_text_wrap_contract(void);
+extern const char *test1345_core_text_wrap_last_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1016,7 +1018,7 @@ static BOOL test1344_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1344
+#define TEST_MAX_NUMBER 1345
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118135,6 +118137,11 @@ static int run_configured_tests(const unsigned char *selected,
             } else {
                 show_error(L"TEST 1337 FAIL", test1331_media_last_error());
             }
+            break;
+        case 1345:
+            ok = test1345_core_text_wrap_contract();
+            if (ok) { show_info(L"TEST 1345 OK", "Core selective CSS emergency wrapping passed."); }
+            else { show_error(L"TEST 1345 FAIL", test1345_core_text_wrap_last_error()); }
             break;
         case 1344:
             ok = test1344_media_contract_guarded();
