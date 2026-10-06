@@ -76,7 +76,7 @@ SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS�
 均宽 454（旧页 extent 581），focus=8；guest 审计、哈希 10/10、crash_check PASS。
 PID 1132574842 留在 `\Storage Card\Temp\Positron-device-gate\app-history-wrap-20261007-004415\positron.exe`。
 正式 Debug/Release build、C89、审计与 Release 新诊断排除通过；libcss 既有警告保留。
-未修改 DLL/ABI 或删除数据库；真实折行、触摸链接、拖动和旋转视觉待用户确认。
+未修改 DLL/ABI 或删除数据库；用户复测反馈未发现异常，本轮页面修正收尾；未逐项确认的触摸/旋转/语言矩阵仍保留。
 失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
 诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
 
@@ -494,8 +494,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
-启用 `overflow-wrap:break-word`；唯一下一步复核实际历史页长链接、触摸及旋转视觉；
-随后按应用私有 worker/可信 session/文件策略分别接入扩展设置与下载，
+启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
+唯一下一步为已确认的主页/语言/JavaScript 设置纵切，下载随后独立接入，
 不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与运行入口见上方；
 下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。
