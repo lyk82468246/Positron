@@ -96,6 +96,10 @@ BEGIN
     IDS_STATUS_TAB_LIMIT_EN "Up to four tabs can be open. Close a tab first."
     IDS_STATUS_TAB_FAILED_EN "The tab could not be created; existing pages were kept."
     IDS_STATUS_STORAGE_UNAVAILABLE_EN "Settings storage unavailable; existing file retained."
+    IDS_APP_VISITS_LATEST_EN "Reload newest"
+    IDS_APP_VISITS_OLDER_EN "Older records"
+    IDS_APP_VISITS_CLEAR_EN "Clear visit history"
+    IDS_ERROR_VISITS_CLEAR_CONFIRM_EN "Clear all saved visit records? This only clears visit history; settings, the session navigation stack and downloaded files are kept."
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
@@ -198,6 +202,10 @@ BEGIN
     IDS_STATUS_TAB_LIMIT_ZH "最多可打开四个标签页，请先关闭一个。"
     IDS_STATUS_TAB_FAILED_ZH "无法创建标签页，原有页面已保留。"
     IDS_STATUS_STORAGE_UNAVAILABLE_ZH "设置存储不可用，现有文件已保留。"
+    IDS_APP_VISITS_LATEST_ZH "重新加载最新记录"
+    IDS_APP_VISITS_OLDER_ZH "更早的记录"
+    IDS_APP_VISITS_CLEAR_ZH "清除访问历史"
+    IDS_ERROR_VISITS_CLEAR_CONFIRM_ZH "清除全部已保存的访问记录？仅清除访问历史，设置、会话导航栈和已下载文件均保留。"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"

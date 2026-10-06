@@ -419,11 +419,10 @@
   百分号编码片段尚无 EXE 可直接消费的公共解码入口；当前保持
   位置，不把编码字符串当 literal ID 命中。HTTP 请求 URL resolver/final URL 会去掉片段，
   跨文档 HTTP 导航的初始片段保留仍未接入；不在 EXE 复制 URL decoder 或 redirect 规则。
-- 内部 history 不是持久访问日志，下载管理尚未实现；settings 仅能持久化固定起始页
-  newtab/welcome/controls，其他项目只读。EXE 同目录数据库的保存、新进程恢复及正常退出
-  排空已通过实际页自动门，不保证断电、文件故障、任意网络起始页或标签恢复。后端边界及
-  quit 来源策略见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
-  触摸、双语、旋转与退出仍待人工门。
+- history 已接入持久 GET 访问记录；Browser 导航栈不持久化。记录最多 500 条、
+  每页 16 条，不含 POST、片段/state-only 更新、搜索或逐条删除；队列满/保存失败不回滚页面。
+  双语菜单/确认、跨标签交错、低内存待验收。下载未实现；settings 只保存三种内部主页，
+  语言/JS 只读。文件故障、断电、网络主页、标签恢复未完成，见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 - Browser history 只保存有界 page-level `(scroll_x, scroll_y)`，宿主按 Core extent/client size clamp 并换算 CSS/物理坐标；`scrollRestoration=manual` 跳过自动恢复，但不阻止 fragment reveal 或显式滚动。元素 retained-overflow offset 不入栈；完整滚动树、chaining、锚定、惯性滚动、视觉 viewport 偏移和跨窗口恢复未实现。公开合同与通知顺序见 [能力矩阵](../docs/CAPABILITIES.md#browserpositron_browserdll)。
 - `positron.exe` 最多四个独立标签；隐藏页只继续传输，解析/脚本/提交待激活。
   无多进程隔离、后台脚本、持久恢复或 opener；`_blank`/named target 不新建标签。

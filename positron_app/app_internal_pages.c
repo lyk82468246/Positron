@@ -11,6 +11,7 @@
 #include "positron_core.h"
 #include "app_debug.h"
 #include "app_version.h"
+#include "app_url_router.h"
 #ifdef _DEBUG
 #include "resource.h"
 #endif
@@ -703,6 +704,190 @@ static void app_internal_history(AppHtmlWriter *writer, HANDLE history,
     }
 }
 
+/* These texts replace template tokens; status zero retains the old fixture. */
+static void app_internal_history_intro(AppHtmlWriter *writer, int status,
+        int chinese)
+{
+    if (status == 0) {
+        app_html_append(writer, chinese ?
+                "<p>\350\277\231\351\207\214\345\261\225\347\244\272\345\275\223\345\211\215\345\257\274\350\210\252\346\240\210\357\274\214\345\214\205\346\213\254\344\273\215\345\217\257\345\211\215\350\277\233\347\232\204\350\256\260\345\275\225\343\200\202\346\234\200\345\244\232\344\277\235\347\225\231 16 \346\235\241\357\274\214\351\200\200\345\207\272\345\272\224\347\224\250\345\220\216\344\270\215\344\277\235\347\225\231\343\200\202</p><p>\346\211\223\345\274\200\350\256\260\345\275\225\344\274\232\345\217\221\350\265\267\344\270\200\346\254\241\346\226\260\347\232\204\345\257\274\350\210\252\343\200\202</p>" :
+                "<p>This is the current navigation stack, including forward entries. At most 16 entries are kept; entries disappear when the application exits.</p><p>Opening an entry starts a new navigation.</p>");
+    } else {
+        app_html_append(writer, chinese ?
+                "<p>\346\234\254\345\234\260\350\267\250\351\207\215\345\220\257\346\234\200\345\244\232\344\277\235\347\225\231 500 \346\235\241\350\256\277\351\227\256\350\256\260\345\275\225\357\274\214\346\257\217\351\241\265 16 \346\235\241\357\274\214\346\214\211\350\256\260\345\275\225 ID \344\273\216\346\226\260\345\210\260\346\227\247\346\216\222\345\210\227\343\200\202\346\211\223\345\274\200\350\256\260\345\275\225\344\274\232\345\217\221\350\265\267\344\270\200\346\254\241\346\226\260\347\232\204\345\257\274\350\210\252\343\200\202</p><p>\344\277\235\345\255\230\347\232\204 URL \345\214\205\345\220\253\346\237\245\350\257\242\345\217\202\346\225\260\357\274\214\345\217\257\350\203\275\345\220\253\346\234\211\351\232\220\347\247\201\344\277\241\346\201\257\343\200\202\350\203\275\350\256\277\351\227\256\346\234\254\345\234\260\345\255\230\345\202\250\347\232\204\344\272\272\345\217\257\350\203\275\350\257\273\345\217\226\350\277\231\344\272\233\350\256\260\345\275\225\343\200\202</p><p>\346\234\254\351\241\265\346\277\200\346\264\273\346\227\266\357\274\214\350\257\267\344\275\277\347\224\250\345\217\263\344\276\247\350\217\234\345\215\225\357\274\232\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\343\200\201\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225\357\274\210\345\246\202\346\234\211\357\274\211\346\210\226\346\270\205\351\231\244\350\256\277\351\227\256\345\216\206\345\217\262\343\200\202\346\270\205\351\231\244\351\234\200\350\246\201\345\216\237\347\224\237\347\241\256\350\256\244\343\200\202</p>" :
+                "<p>Up to 500 visits are retained locally across restarts, with 16 records per page, newest IDs first. Opening a record starts a new navigation.</p><p>Saved URLs include query strings and may contain private information. Anyone with access to local storage may read them.</p><p>While this page is active, use the right Menu: Reload newest, Older records (when available), or Clear visit history. Clearing requires native confirmation.</p>");
+    }
+}
+
+static void app_internal_history_template(AppHtmlWriter *writer, char *text,
+        int status, int chinese)
+{
+    char *token;
+    char *end;
+    char *title_token;
+    const char *legacy_title;
+    int is_title;
+
+    legacy_title = chinese ? "\344\274\232\350\257\235\350\256\260\345\275\225" : "Session history";
+    for (;;) {
+        token = strstr(text, "<!--APP_HISTORY_INTRO-->");
+        title_token = strstr(text, legacy_title);
+        is_title = title_token != NULL &&
+                (token == NULL || title_token < token);
+        if (is_title) token = title_token;
+        if (token == NULL) break;
+        end = token + (is_title ? strlen(legacy_title) :
+                strlen("<!--APP_HISTORY_INTRO-->"));
+        *token = '\0';
+        app_html_append(writer, text);
+        if (is_title) {
+            app_html_escape(writer, status == 0 ?
+                    (chinese ? "\344\274\232\350\257\235\350\256\260\345\275\225" : "Session history") :
+                    (chinese ? "\350\256\277\351\227\256\345\216\206\345\217\262" : "Visit history"));
+        } else {
+            app_internal_history_intro(writer, status, chinese);
+        }
+        text = end;
+    }
+    app_html_append(writer, text);
+}
+
+/* Snapshot strings are fixed arrays. Reject missing terminators before any
+ * strlen, escaping or URL owner call; malformed data is not an empty store. */
+static int app_internal_visits_valid(const AppVisitSnapshot *visits)
+{
+    const AppVisitRecord *record;
+    int i;
+
+    if (visits == NULL || visits->count < 0 ||
+            visits->count > APP_VISITS_PAGE_MAX) return 0;
+    for (i = 0; i < visits->count; i++) {
+        record = &visits->entries[i];
+        if (record->id <= 0 || (i > 0 &&
+                record->id >= visits->entries[i - 1].id) ||
+                memchr(record->url, 0, sizeof(record->url)) == NULL ||
+                memchr(record->title, 0, sizeof(record->title)) == NULL)
+            return 0;
+    }
+    return 1;
+}
+
+static void app_internal_visit_time(AppHtmlWriter *writer, __int64 utc,
+        int chinese)
+{
+    FILETIME file_time;
+    SYSTEMTIME time;
+    char text[48];
+    __int64 ticks;
+
+    ticks = 0;
+    if (utc >= 0 && utc <= (__int64) 253402300799)
+        ticks = (utc + (__int64) 11644473600) * 10000000;
+    file_time.dwLowDateTime = (DWORD) ticks;
+    file_time.dwHighDateTime = (DWORD) (((unsigned __int64) ticks) >> 32);
+    if (!ticks || !FileTimeToSystemTime(&file_time, &time)) {
+        app_html_escape(writer, chinese ? "UTC \346\227\266\351\227\264\344\270\215\345\217\257\347\224\250" :
+                "UTC time unavailable");
+        return;
+    }
+    _snprintf(text, sizeof(text) - 1, "%04u-%02u-%02u %02u:%02u:%02u UTC",
+            (unsigned int) time.wYear, (unsigned int) time.wMonth,
+            (unsigned int) time.wDay, (unsigned int) time.wHour,
+            (unsigned int) time.wMinute, (unsigned int) time.wSecond);
+    text[sizeof(text) - 1] = '\0';
+    app_html_escape(writer, text);
+}
+
+static void app_internal_visits(AppHtmlWriter *writer,
+        const AppInternalPageData *data, int chinese)
+{
+    const AppVisitSnapshot *visits;
+    const AppVisitRecord *record;
+    const char *url;
+    AppUrlSchemeKind scheme;
+    char resolved[APP_VISITS_URL_MAX];
+    char link_id[32];
+    int clickable;
+    int count;
+    int shown;
+    int i;
+
+    visits = data->visits;
+    app_html_append(writer, chinese ?
+                "<h2>\345\267\262\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\350\256\260\345\275\225</h2>" :
+                "<h2>Saved visits</h2>");
+    if (data->visits_status == 1) {
+        app_html_append(writer, chinese ?
+                "<p>\346\255\243\345\234\250\345\212\240\350\275\275\345\267\262\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\345\216\206\345\217\262\342\200\246\342\200\246</p>" :
+                "<p>Loading saved visit history...</p>");
+    } else if (data->visits_status != 2 ||
+            !app_internal_visits_valid(visits)) {
+        app_html_append(writer, chinese ?
+                "<p>\350\256\277\351\227\256\350\256\260\345\275\225\345\255\230\345\202\250\344\270\215\345\217\257\347\224\250\346\210\226\350\257\273\345\217\226\345\244\261\350\264\245\343\200\202\350\277\231\344\270\215\350\241\250\347\244\272\345\267\262\344\277\235\345\255\230\347\232\204\345\216\206\345\217\262\344\270\272\347\251\272\343\200\202\350\257\267\347\224\250\342\200\234\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\342\200\235\351\207\215\350\257\225\343\200\202</p>" :
+                "<p>Visit storage is unavailable or could not be read. This does not mean the saved history is empty. Use Reload newest to retry.</p>");
+    } else {
+        for (i = 0; i < visits->count; i++) {
+            record = &visits->entries[i];
+            scheme = AppUrlRouter_ClassifyScheme(record->url);
+            clickable = (scheme == APP_URL_SCHEME_HTTP ||
+                    scheme == APP_URL_SCHEME_HTTPS) &&
+                    AppUrlRouter_ResolveNetworkReference(NULL, record->url,
+                    resolved, sizeof(resolved)) == 0;
+            app_html_append(writer, "<p>");
+            if (clickable) {
+                _snprintf(link_id, sizeof(link_id) - 1, "visit-%d", i);
+                link_id[sizeof(link_id) - 1] = '\0';
+                app_html_append(writer, "<a id=\"");
+                app_html_append(writer, link_id);
+                app_html_append(writer, "\" href=\"");
+                /* Keep the saved fragment/query; the public owner validates
+                 * the supported route, not the displayed destination. */
+                app_html_escape(writer, record->url);
+                app_html_append(writer, "\">");
+            }
+            app_html_escape(writer, record->title[0] != '\0' ?
+                    record->title : record->url);
+            if (clickable) app_html_append(writer, "</a>");
+            app_html_append(writer, "<br>");
+            app_html_escape(writer, record->url);
+            app_html_append(writer, "<br>");
+            app_internal_visit_time(writer, record->visited_utc, chinese);
+            app_html_append(writer, "</p>");
+        }
+        if (visits->count == 0) {
+            app_html_append(writer, chinese ?
+                "<p>\346\234\254\351\241\265\346\262\241\346\234\211\345\267\262\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\350\256\260\345\275\225\343\200\202</p>" :
+                "<p>No saved visits on this page.</p>");
+        }
+        app_html_append(writer, visits->has_more ?
+                (chinese ?
+                "<p>\345\217\263\344\276\247\350\217\234\345\215\225\345\217\257\346\237\245\347\234\213\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225\343\200\202\342\200\234\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\342\200\235\350\277\224\345\233\236\346\234\200\346\226\260\350\256\260\345\275\225\343\200\202</p>" :
+                "<p>Older records are available from the right Menu. Reload newest returns to the latest records.</p>") :
+                (chinese ?
+                "<p>\346\234\254\351\241\265\344\271\213\345\220\216\346\262\241\346\234\211\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225\343\200\202\342\200\234\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\342\200\235\350\277\224\345\233\236\346\234\200\346\226\260\350\256\260\345\275\225\343\200\202</p>" :
+                "<p>No older records remain after this page. Reload newest returns to the latest records.</p>"));
+    }
+    app_html_append(writer, chinese ?
+                "<h2>\344\274\232\350\257\235\345\257\274\350\210\252\346\240\210</h2><p>\345\275\223\345\211\215\346\240\207\347\255\276\351\241\265\347\232\204\345\257\274\350\210\252\346\240\210\345\214\205\345\220\253\345\211\215\350\277\233\350\256\260\345\275\225\357\274\214\344\270\215\344\274\232\346\214\201\344\271\205\344\277\235\345\255\230\343\200\202\345\205\263\351\227\255\346\240\207\347\255\276\351\241\265\346\210\226\351\200\200\345\207\272\345\272\224\347\224\250\345\220\216\346\266\210\345\244\261\357\274\233\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\350\256\260\345\275\225\344\270\215\344\274\232\346\201\242\345\244\215\345\257\274\350\210\252\346\240\210\343\200\202</p>" :
+                "<h2>Session navigation stack</h2><p>This current-tab stack includes forward entries and is not persistent. It disappears on tab close or application exit; saved visits do not restore it.</p>");
+    count = data->history == NULL ? 0 : PBrowser_HistoryCount(data->history);
+    if (count > PBROWSER_HISTORY_MAX) count = PBROWSER_HISTORY_MAX;
+    shown = 0;
+    for (i = count - 1; i >= 0; i--) {
+        url = PBrowser_HistoryEntryUrl(data->history, i);
+        if (url == NULL) continue;
+        app_html_append(writer, "<p>");
+        app_html_escape(writer, url);
+        app_html_append(writer, "</p>");
+        shown++;
+    }
+    if (shown == 0) {
+        app_html_append(writer, chinese ?
+                "<p>\345\275\223\345\211\215\346\262\241\346\234\211\345\217\257\346\230\276\347\244\272\347\232\204\345\257\274\350\210\252\350\256\260\345\275\225\343\200\202</p>" :
+                "<p>No navigation entries to display.</p>");
+    }
+}
+
 int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
         char **out_bytes, unsigned int *out_length)
 {
@@ -735,12 +920,17 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
     }
     writer.bytes[0] = '\0';
     *marker = '\0';
-    app_html_append(&writer, template_bytes);
     chinese = AppI18n_CurrentLanguage() == APP_LANGUAGE_ZH_CN;
+    if (page_kind == APP_I18N_PAGE_HISTORY)
+        app_internal_history_template(&writer, template_bytes,
+                data->visits_status, chinese);
+    else app_html_append(&writer, template_bytes);
     if (page_kind == APP_I18N_PAGE_ABOUT) {
         app_internal_about(&writer, data, chinese);
     } else if (page_kind == APP_I18N_PAGE_HISTORY) {
-        app_internal_history(&writer, data->history, chinese);
+        if (data->visits_status == 0)
+            app_internal_history(&writer, data->history, chinese);
+        else app_internal_visits(&writer, data, chinese);
     } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
         app_html_row(&writer, chinese ? "\347\225\214\351\235\242\350\257\255\350\250\200" : "UI language",
                 chinese ? "\347\256\200\344\275\223\344\270\255\346\226\207 (zh-CN)" : "English (en-US)");
@@ -748,7 +938,11 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
                 "\347\275\221\347\273\234\351\241\265\345\220\257\347\224\250\346\234\211\347\225\214 classic script\357\274\233\350\256\276\347\275\256\351\241\265\344\273\205\346\211\247\350\241\214\345\206\205\345\265\214\350\204\232\346\234\254\343\200\202" :
                 "Bounded classic scripts on network pages; embedded code only on Settings.");
     }
-    app_html_append(&writer, marker + strlen("<!--APP_CONTENT-->"));
+    if (page_kind == APP_I18N_PAGE_HISTORY)
+        app_internal_history_template(&writer,
+                marker + strlen("<!--APP_CONTENT-->"),
+                data->visits_status, chinese);
+    else app_html_append(&writer, marker + strlen("<!--APP_CONTENT-->"));
     AppI18n_FreePage(template_bytes);
     if (writer.failed) {
         free(writer.bytes);
@@ -773,6 +967,14 @@ int AppInternalPages_FocusIds(HANDLE document,
     int count;
 
     count = 0;
+    for (history_index = 0; history_index < APP_VISITS_PAGE_MAX &&
+            count < APP_INTERNAL_FOCUS_MAX; history_index++) {
+        _snprintf(candidate, sizeof(candidate) - 1, "visit-%d", history_index);
+        candidate[sizeof(candidate) - 1] = '\0';
+        if (PCore_FocusTargetInfoById(document, candidate, &info) == 0 &&
+                info.kind == PCORE_FOCUS_TARGET_LINK)
+            strcpy(ids[count++], candidate);
+    }
     for (history_index = PBROWSER_HISTORY_MAX - 1;
             history_index >= 0 && count < APP_INTERNAL_FOCUS_MAX;
             history_index--) {
@@ -979,6 +1181,7 @@ int AppInternalPages_DebugCheck(const char *css)
     AppHtmlWriter writer;
     char budget_text[8];
     char focus_ids[APP_INTERNAL_FOCUS_MAX][128];
+    AppVisitSnapshot *visits;
 
     result = 1;
     phase = 1;
@@ -986,6 +1189,7 @@ int AppInternalPages_DebugCheck(const char *css)
     document = NULL;
     stylesheet = NULL;
     html = NULL;
+    visits = NULL;
     for (i = 0; i < sizeof(valid) / sizeof(valid[0]); i++) {
         if (AppInternalPages_Resolve(valid[i], APP_NAV_SOURCE_DOCUMENT,
                 &route) != 0 || route.kind == APP_INTERNAL_COMMAND) goto done;
@@ -1067,6 +1271,34 @@ int AppInternalPages_DebugCheck(const char *css)
             PBROWSER_HISTORY_METHOD_GET, PBROWSER_HISTORY_TARGET_NEW) != 0 ||
             AppInternalPages_Build(APP_I18N_PAGE_HISTORY, &data, &html,
             &length) != 0 || strstr(html, "id=\"history-1\"") != NULL) goto done;
+    AppI18n_FreePage(html);
+    html = NULL;
+    visits = (AppVisitSnapshot *) calloc(1, sizeof(*visits));
+    if (visits == NULL) goto done;
+    visits->count = APP_VISITS_PAGE_MAX;
+    visits->has_more = 1;
+    for (i = 0; i < APP_VISITS_PAGE_MAX; ++i) {
+        visits->entries[i].id = 20 - i;
+        visits->entries[i].visited_utc = 1700000000;
+        strcpy(visits->entries[i].url, "https://example.com/?x=\"<&'");
+        strcpy(visits->entries[i].title, "Title <&>");
+    }
+    data.visits = visits;
+    data.visits_status = 2;
+    if (AppInternalPages_Build(APP_I18N_PAGE_HISTORY, &data, &html,
+            &length) != 0 || strstr(html, "Title &lt;&amp;&gt;") == NULL ||
+            strstr(html, "2023-11-14 22:13:20 UTC") == NULL ||
+            strstr(html, "id=\"history-") != NULL) goto done;
+    document = PCore_ParseHTML(html, length);
+    if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 268) != 0 ||
+            AppInternalPages_FocusIds(document, focus_ids) != 23 ||
+            strcmp(focus_ids[0], "visit-0") != 0) goto done;
+    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=23 utc=1\r\n");
+    PCore_FreeDocument(document);
+    document = NULL;
+    AppI18n_FreePage(html);
+    html = NULL;
     /* The current entry is index 1 after truncating the forward stack. */
     phase = 4;
     writer.bytes = (char *) malloc(APP_INTERNAL_HTML_MAX);
@@ -1080,6 +1312,7 @@ int AppInternalPages_DebugCheck(const char *css)
     result = 0;
 done:
     AppI18n_FreePage(html);
+    free(visits);
     if (document != NULL) PCore_FreeDocument(document);
     if (stylesheet != NULL) PCore_FreeStylesheet(stylesheet);
     if (history != NULL) PBrowser_HistoryDestroy(history);

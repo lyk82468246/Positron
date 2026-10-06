@@ -3,6 +3,7 @@
 #define POSITRON_APP_INTERNAL_PAGES_H
 #include <windows.h>
 #include "app_i18n.h"
+#include "app_settings_store.h"
 
 #define APP_INTERNAL_HTML_MAX 131072U
 #define APP_INTERNAL_FOCUS_MAX 24
@@ -37,6 +38,11 @@ typedef struct AppInternalPageData {
     int dpi;
     int viewport_width;
     int viewport_height;
+    /* Borrowed pure-data snapshot, valid only during Build. visited_utc is
+     * UTC Unix seconds, supplied by the UI owner. */
+    const AppVisitSnapshot *visits;
+    /* 0: legacy session fixture; 1: loading; 2: loaded; 3: unavailable. */
+    int visits_status;
 } AppInternalPageData;
 
 /* 0: recognized/allowed. 1: not a valid or permitted internal address.

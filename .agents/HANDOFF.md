@@ -12,11 +12,37 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main。并行性能变更已由 df205495 提交，后续 DB 测试提交以 Git 为准；内部页面提交只包括 positron_app、专用检查脚本及其文档。共享 main.c 中原有性能计时与退出日志已保留，不纳入重复修正。本批新增的 device_tools 模块审计属于设备门前置能力，已与内部页面改动分开。
+分支 main；仅修改 EXE、专用脚本和文档，保留其他组件及原有诊断。
 
-内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
+内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
+
+### EXE 持久访问历史与下一设置纵切
+
+EXE 接入 schema v2、持久 GET 记录与分页/确认清除；结果按 tab/请求/generation 隔离，
+clear 全局失效缓存。稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)，
+未修改 DLL/ABI 或删除用户数据。
+
+最终 Debug 包 `tmp/device-runs/20261006-231023-app-settings-visits-verified/` 的
+app-settings 五进程门 PASS：存储/服务、历史创建、独立进程恢复、清除及主页保留；
+SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS。
+先行完整 UI 门在 `20261006-225852-app-settings-visits/app-history/` PASS，新增历史 Core
+parse/style/layout、标题/URL 转义、UTC 和 23 焦点通过。真实 IANA example-domains 导航
+日志 `visit-navigation.log` 证明 commit 后 op=3 保存、history op=4 读取及 focus=8；
+PID 3816943554 留在历史页，人工入口为
+`\Storage Card\Temp\Positron-device-gate\app-settings-visits-verified-20261006-231023\positron.exe`。
+旧 newtab PID 已由用户退出；后续部署须正常退出该当前 PID 并重新审计引用。
+
+离线、C89、审计、正式双配置 build/CAB 通过；Debug rebuild 链接顺序失败后正式 build
+恢复，不称 rebuild PASS。首次五进程门退出审计 FAIL 保留在
+`20261006-230619-app-settings-visits-final`；改为复用已测的精确 PID 有界正常退出等待，
+不强杀，最终新包重跑零引用通过。访问记录恢复不等于断电门。
+
+ROADMAP 已复核；剩余交互/交错见限制，v1 升级和 500 条裁剪目前为离线 SQL 证据。下一纵切为
+用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
+脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
+DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，当前编译器空闲、设备仍运行人工入口。
 
 ### EXE 固定起始页持久化实际门通过
 
@@ -25,36 +51,19 @@ newtab/welcome/controls，UI 分批 bootstrap/作者代码和服务 Pump，单�
 异步读取/保存，COMMIT 后更新缓存，退出先撤销服务再排空。公共 DLL/ABI、CAB 配置和
 其他 agent 文件未改；存储不可用不删除文件或切换数据库。
 
-`tmp/device-runs/20261006-143251-app-settings-live-fixed/app-settings-live/result.txt`
-为 PASS：实际页面保存 welcome、新进程恢复、接受写入后退出排空、再次启动恢复 newtab
-四项通过；每项退出后 guest holders=0 unavailable=0，EXE/九 DLL 回读 10/10、crash 门通过。
-应用包和测试数据库保留在 SD 门根的 `app-settings-live-fixed-20261006-143251`，四个
-测试进程均已退出；同包 app-history 门通过，回读 10/10、crash_check PASS。
-原包及随后重部署包已由用户退出，不沿用旧 PID。当前人工入口见下方启动窗口修正。
 Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
 `20261006-144728-app-settings-adjacent-release` 的 `136,1321,1341,999` 各 4/4，
 唯一 PASS、完整日志、零 ERROR/FAIL、空间/引用/crash 门通过；日志回收后清理这两个测试目录。
 
-初始设置页刷新改用稳定 URL 副本，防止替换页面时同一地址缓冲区被清空；Debug 门新增
-实际地址断言。终态日志先于异步退出，门仅对该测试 PID 有界等待，其他 holder/不可用
-仍立即拒绝。store 14 项、services 11 项、守卫/等待 13 项、审计工程范围 3 项、C89 与
-正式双配置/Release 夹具排除通过。构建日志在 `tmp/app-settings-live-builds/`。
-早期 device=5、脚本函数缺失、立即审计误判与审批超时的证据保留，不追认为 PASS。
-ROADMAP 已复核；访问日志/下载独立纵切，触摸/双语/键盘/旋转进入人工门；用户授权先接线
-不等于 FULL/I/O/迁移提交/断电故障通过，暂缓项不重开。
-
-启动只有系统标题的回归归 EXE：现于启动导航前显示并调用一次 SetForegroundWindow，
-后续完成不抢前台，末尾仅在仍为前台时设置子控件焦点。Debug 记录实际窗口/页面可见和
-前台归属，设备门必须检查；Release 排除诊断。用户已确认完整窗体正常出现，严重交互门
-关闭，不外推所有 OEM。旧进程已退出，当前入口与复核证据如下；未改 DLL/ABI 或用户数据。
-
-提前显示暴露了 Debug example 夹具；普通启动现不运行 UI 自检，仅 Debug 前置
-`--selftest-ui` 启用。显式完整门 `tmp/device-runs/20261006-151832-app-settings-live-startup/`
-通过且进程已退出。`20261006-152226-app-settings-live-startup-retry` 的四进程主页门与无参数
-普通启动门均 PASS：保存/恢复 welcome、退出排空、默认恢复、零 fixture/example、前台/可见、
-哈希 10/10/crash。PID 3064698766 留在 newtab；原 DB 未删，新包默认 newtab，人工可重存
-welcome 复核。已存在 DB 拒绝和审计超时证据保留，不追认 PASS。双配置构建、四项接线检查、
-Release 排除、C89/审计通过；ROADMAP 已复核，存储/故障暂缓范围不变。
+设置页刷新使用稳定 URL 副本，防止地址缓冲区别名被清空；正常退出守卫见当前历史门。
+普通启动仅一次显示/激活窗口，后续完成不抢前台；用户已确认完整窗体与保存主页正常。
+Debug UI 夹具只在前置 --selftest-ui 时运行，不污染普通启动。
+`tmp/device-runs/20261006-152226-app-settings-live-startup-retry/` 的实际四进程主页门与
+无参数启动门 PASS：保存/恢复 welcome、退出排空、默认恢复、零 example/fixture、
+前台/可见、哈希 10/10/crash；旧 PID 已退出，不作为当前入口。先行完整 UI 门为
+`20261006-151832-app-settings-live-startup`，构建证据在 tmp/app-settings-live-builds。
+早期设备、夹具、立即引用审计和审批失败仍保留，不追认 PASS；触摸/双语/旋转与
+FULL/I/O/迁移提交/断电边界不因正常重启通过而关闭。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -69,10 +78,9 @@ New tab、刷新和关闭；右菜单不重复后退/前进/刷新。前进只�
 现按父 HWND 查找 owner；固定槽位覆盖 count 提交前的初始化消息，销毁子控件后注销 owner。
 不靠重建页面或额外 repaint 绕过；诊断/夹具仅进 Debug。
 
-当前完整 Debug 包为 `tmp/device-runs/20261004-175348-app-tab-menu/`，49 文件、两次 guest
+先行多标签 Debug 包为 `tmp/device-runs/20261004-175348-app-tab-menu/`，49 文件、两次 guest
 holders=0 unavailable=0、EXE/九 DLL SHA256 10/10、全部 required 自检及 crash_check PASS。
-PID 3172118362 留在 newtab，入口
-`\Storage Card\Temp\Positron-device-gate\app-tab-menu-20261004-175348\positron.exe`。
+其 PID 已退出，不作为当前人工入口。
 tab-menu 自检 OK、tabs phase=8：验证左右菜单归属与顺序、重复重建无残项、后退出现/前进
 隐藏、跨标签条件隔离、刷新不增加 history、分支导航清除前进项。保留双 controls 页切回及
 关闭另一页后的实际 EDIT 编辑、SELECT 数量、toggle 和九次 native paint，以及原状态隔离、
@@ -470,7 +478,7 @@ callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站�
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。settings 仅能持久化固定起始页，downloads 仍为未实现说明。HTTP DLL 流式 GET/取消已验收；应用下载文件保存、访问日志、DB HTTPS worker 和真实断电恢复不属于本批。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。settings 仅能持久化固定起始页，downloads 仍为未实现说明，持久 GET 访问记录已接入。HTTP DLL 流式 GET/取消已验收；应用下载文件保存、扩展设置、DB HTTPS worker 和真实断电恢复尚未完成。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
@@ -479,8 +487,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。唯一下一步交回 EXE，按应用私有 worker/可信 session/文件策略接入这些公开入口，
-分别验收设置与下载，不把 test_host 门当成 EXE 完成。构建/设备窗口已释放，下一会话仍
-须重新审计 guest 引用。EXE 设置候选、菜单/多标签人工门和 Media/CAB 改动由各会话
+分别验收扩展设置与下载，不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与人工入口
+见上方，下一会话须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与

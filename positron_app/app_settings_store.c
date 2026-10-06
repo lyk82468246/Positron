@@ -13,6 +13,7 @@ typedef struct AppSettingsDbApi {
     void (*close)(PDbHandle);
     int (*prepare)(PDbHandle, const char *, PDbStmtHandle *);
     int (*bind_text)(PDbStmtHandle, int, const char *, int);
+    int (*bind_int)(PDbStmtHandle, int, __int64);
     int (*step)(PDbStmtHandle);
     int (*finalize)(PDbStmtHandle);
     int (*column_type)(PDbStmtHandle, int);
@@ -33,6 +34,10 @@ typedef struct AppSettingsJob {
     unsigned long generation;
     int operation;
     AppSettingsStartPage start_page;
+    __int64 before_id;
+    __int64 visited_utc;
+    char url[APP_VISITS_URL_MAX];
+    char title[APP_VISITS_TITLE_MAX];
 } AppSettingsJob;
 
 struct AppSettingsStore {
@@ -48,6 +53,8 @@ struct AppSettingsStore {
     int result_head;
     int result_count;
     AppSettingsJob jobs[APP_SETTINGS_QUEUE_MAX];
+    /* Worker scratch stays on the heap alongside the bounded queue. */
+    AppSettingsJob active_job;
     AppSettingsResult results[APP_SETTINGS_QUEUE_MAX];
     WCHAR dll_path[APP_SETTINGS_PATH_MAX];
     char database_path[APP_SETTINGS_PATH_MAX];
@@ -68,6 +75,73 @@ static const char g_settings_write_sql[] =
 static const char g_settings_exists_sql[] =
     "SELECT count(*) FROM sqlite_master WHERE type='table' "
     "AND name='app_settings'";
+
+static const char g_visits_exists_sql[] =
+    "SELECT count(*) FROM sqlite_master WHERE type='table' "
+    "AND name='app_visits'";
+static const char g_visits_schema[] =
+    "CREATE TABLE app_visits (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "url TEXT,title TEXT,visited_utc INTEGER);";
+static const char g_visits_add_sql[] =
+    "INSERT INTO app_visits(url,title,visited_utc) VALUES(?1,?2,?3)";
+static const char g_visits_prune_sql[] =
+    "DELETE FROM app_visits WHERE id IN "
+    "(SELECT id FROM app_visits ORDER BY id DESC LIMIT -1 OFFSET 500)";
+static const char g_visits_read_sql[] =
+    "SELECT id,visited_utc,url,title FROM app_visits "
+    "WHERE (?1=0 OR id<?1) ORDER BY id DESC LIMIT 17";
+static const char g_visits_clear_sql[] = "DELETE FROM app_visits";
+
+void AppSettingsResult_Release(AppSettingsResult *result)
+{
+    if (result == NULL) return;
+    free(result->visits);
+    result->visits = NULL;
+}
+
+/* Reject embedded NULs, overlong encodings, surrogates and non-Unicode
+ * scalar values. bytes excludes the terminator and is already bounded. */
+static int app_visits_utf8(const char *text, int bytes)
+{
+    int index;
+    int more;
+    unsigned int code;
+    unsigned int minimum;
+    unsigned char ch;
+
+    index = 0;
+    while (index < bytes) {
+        ch = (unsigned char) text[index++];
+        if (ch == 0) return 0;
+        if (ch < 0x80) continue;
+        if (ch >= 0xc2 && ch <= 0xdf) {
+            more = 1; code = ch & 0x1f; minimum = 0x80;
+        } else if (ch >= 0xe0 && ch <= 0xef) {
+            more = 2; code = ch & 0x0f; minimum = 0x800;
+        } else if (ch >= 0xf0 && ch <= 0xf4) {
+            more = 3; code = ch & 7; minimum = 0x10000;
+        } else return 0;
+        if (more > bytes - index) return 0;
+        while (more-- != 0) {
+            ch = (unsigned char) text[index++];
+            if ((ch & 0xc0) != 0x80) return 0;
+            code = (code << 6) | (ch & 0x3f);
+        }
+        if (code < minimum || code > 0x10ffff ||
+                (code >= 0xd800 && code <= 0xdfff)) return 0;
+    }
+    return 1;
+}
+
+static int app_visits_input(const char *text, int capacity, int nonempty)
+{
+    int bytes;
+
+    if (text == NULL) return 0;
+    for (bytes = 0; bytes < capacity && text[bytes] != '\0'; ++bytes) { }
+    return bytes < capacity && (!nonempty || bytes != 0) &&
+            app_visits_utf8(text, bytes);
+}
 
 const char *AppSettingsStore_StartPageUrl(AppSettingsStartPage page)
 {
@@ -105,6 +179,8 @@ static int app_settings_db_load(HMODULE module, AppSettingsDbApi *api)
             GetProcAddress(module, TEXT("PDb_Prepare"));
     api->bind_text = (int (*)(PDbStmtHandle, int, const char *, int))
             GetProcAddress(module, TEXT("PDb_BindText"));
+    api->bind_int = (int (*)(PDbStmtHandle, int, __int64))
+            GetProcAddress(module, TEXT("PDb_BindInt64"));
     api->step = (int (*)(PDbStmtHandle))
             GetProcAddress(module, TEXT("PDb_Step"));
     api->finalize = (int (*)(PDbStmtHandle))
@@ -130,7 +206,7 @@ static int app_settings_db_load(HMODULE module, AppSettingsDbApi *api)
     api->state = (int (*)(PDbHandle, PDbConnectionState *))
             GetProcAddress(module, TEXT("PDb_GetConnectionState"));
     return api->open != NULL && api->close != NULL &&
-            api->prepare != NULL && api->bind_text != NULL &&
+            api->prepare != NULL && api->bind_text != NULL && api->bind_int != NULL &&
             api->step != NULL && api->finalize != NULL &&
             api->column_type != NULL && api->column_int != NULL &&
             api->column_text != NULL && api->column_bytes != NULL &&
@@ -207,8 +283,8 @@ static void app_settings_read(AppSettingsDbApi *api, PDbHandle db,
     app_settings_finish_statement(api, db, statement, result);
 }
 
-static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
-        AppSettingsResult *result)
+static int app_settings_table_exists(AppSettingsDbApi *api, PDbHandle db,
+        const char *sql, AppSettingsResult *result)
 {
     PDbStmtHandle statement;
     int exists;
@@ -216,7 +292,7 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
 
     statement = NULL;
     exists = 0;
-    rc = api->prepare(db, g_settings_exists_sql, &statement);
+    rc = api->prepare(db, sql, &statement);
     if (rc == PDB_OK) rc = api->step(statement);
     if (rc != PDB_STEP_ROW) {
         app_settings_db_failure(api, db, rc, result);
@@ -230,20 +306,155 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
     }
     app_settings_finish_statement(api, db, statement, result);
+    return exists;
+}
+
+static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
+        AppSettingsResult *result)
+{
+    char script[sizeof(g_settings_schema) + sizeof(g_visits_schema)];
+    int exists;
+    int visits_exist;
+    int rc;
+
+    exists = app_settings_table_exists(api, db, g_settings_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
-    /* ApplyMigration rejects a repeated nonempty script. Probe the app-owned
-     * table, never read/write DLL-private __pdb_meta. Existing rows must pass
-     * the v1 projection before the empty migration-version check. */
+    visits_exist = app_settings_table_exists(api, db, g_visits_exists_sql, result);
+    if (result->result != APP_SETTINGS_OK) return;
+    if (visits_exist && !exists) {
+        result->result = APP_SETTINGS_BAD_DATA;
+        return;
+    }
+    /* One app migration sequence: settings row/table constraints remain v1,
+     * while the database advances directly to v2. Never issue an empty v1
+     * guard on a v2 restart. Future versions are refused by the public API. */
     if (exists) {
         app_settings_read(api, db, result);
         if (result->result != APP_SETTINGS_OK) return;
     }
-    rc = api->migration(db, 1, exists ? "" : g_settings_schema);
+    script[0] = '\0';
+    if (!exists) strcpy(script, g_settings_schema);
+    if (!visits_exist) strcat(script, g_visits_schema);
+    rc = api->migration(db, 2, script);
     if (rc != PDB_OK) {
         app_settings_db_failure(api, db, rc, result);
         return;
     }
     app_settings_read(api, db, result);
+}
+
+static int app_visits_column_text(AppSettingsDbApi *api,
+        PDbStmtHandle statement, int column, char *out, int capacity,
+        int nonempty)
+{
+    const char *text;
+    int bytes;
+
+    if (api->column_type(statement, column) != PDB_VALUE_TEXT) return 0;
+    text = api->column_text(statement, column);
+    bytes = api->column_bytes(statement, column);
+    if (text == NULL || bytes < 0 || bytes >= capacity ||
+            (nonempty && bytes == 0) || !app_visits_utf8(text, bytes)) return 0;
+    if (out != NULL) {
+        memcpy(out, text, (size_t) bytes);
+        out[bytes] = '\0';
+    }
+    return 1;
+}
+
+static void app_visits_read(AppSettingsDbApi *api, PDbHandle db,
+        const AppSettingsJob *job, AppSettingsResult *result)
+{
+    PDbStmtHandle statement;
+    AppVisitSnapshot *snapshot;
+    AppVisitRecord *entry;
+    __int64 id;
+    __int64 previous;
+    int rc;
+
+    snapshot = (AppVisitSnapshot *) calloc(1, sizeof(*snapshot));
+    if (snapshot == NULL) {
+        result->result = APP_SETTINGS_PLATFORM_FAILED;
+        return;
+    }
+    statement = NULL;
+    previous = job->before_id;
+    rc = api->prepare(db, g_visits_read_sql, &statement);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 1, job->before_id);
+    if (rc == PDB_OK) rc = api->step(statement);
+    while (rc == PDB_STEP_ROW) {
+        id = api->column_int(statement, 0);
+        entry = snapshot->count < APP_VISITS_PAGE_MAX ?
+                &snapshot->entries[snapshot->count] : NULL;
+        if (api->column_type(statement, 0) != PDB_VALUE_INTEGER || id <= 0 ||
+                (previous != 0 && id >= previous) ||
+                api->column_type(statement, 1) != PDB_VALUE_INTEGER ||
+                api->column_int(statement, 1) < 0 ||
+                !app_visits_column_text(api, statement, 2,
+                    entry != NULL ? entry->url : NULL, APP_VISITS_URL_MAX, 1) ||
+                !app_visits_column_text(api, statement, 3,
+                    entry != NULL ? entry->title : NULL, APP_VISITS_TITLE_MAX, 0)) {
+            result->result = APP_SETTINGS_BAD_DATA;
+            break;
+        }
+        previous = id;
+        if (entry == NULL) snapshot->has_more = 1;
+        else {
+            entry->id = id;
+            entry->visited_utc = api->column_int(statement, 1);
+            snapshot->count++;
+        }
+        rc = api->step(statement);
+    }
+    if (result->result == APP_SETTINGS_OK && rc != PDB_STEP_DONE)
+        app_settings_db_failure(api, db, rc, result);
+    app_settings_finish_statement(api, db, statement, result);
+    if (result->result == APP_SETTINGS_OK) result->visits = snapshot;
+    else free(snapshot);
+}
+
+static void app_visits_execute(AppSettingsDbApi *api, PDbHandle db,
+        const char *sql, AppSettingsResult *result)
+{
+    PDbStmtHandle statement;
+    int rc;
+
+    statement = NULL;
+    rc = api->prepare(db, sql, &statement);
+    if (rc == PDB_OK) rc = api->step(statement);
+    if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+    app_settings_finish_statement(api, db, statement, result);
+}
+
+static void app_visits_write(AppSettingsDbApi *api, PDbHandle db,
+        const AppSettingsJob *job, AppSettingsResult *result)
+{
+    PDbStmtHandle statement;
+    int rc;
+
+    statement = NULL;
+    rc = api->begin(db);
+    if (rc != PDB_OK) {
+        app_settings_db_failure(api, db, rc, result);
+        return;
+    }
+    if (job->operation == APP_VISITS_ADD) {
+        rc = api->prepare(db, g_visits_add_sql, &statement);
+        if (rc == PDB_OK)
+            rc = api->bind_text(statement, 1, job->url, (int) strlen(job->url));
+        if (rc == PDB_OK)
+            rc = api->bind_text(statement, 2, job->title, (int) strlen(job->title));
+        if (rc == PDB_OK) rc = api->bind_int(statement, 3, job->visited_utc);
+        if (rc == PDB_OK) rc = api->step(statement);
+        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, statement, result);
+        if (result->result == APP_SETTINGS_OK)
+            app_visits_execute(api, db, g_visits_prune_sql, result);
+    } else app_visits_execute(api, db, g_visits_clear_sql, result);
+    if (result->result == APP_SETTINGS_OK) {
+        rc = api->commit(db);
+        if (rc != PDB_OK) app_settings_db_failure(api, db, rc, result);
+    }
 }
 
 static void app_settings_cleanup_transaction(AppSettingsDbApi *api,
@@ -310,7 +521,7 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
     AppSettingsDbApi api;
     HMODULE module;
     PDbHandle db;
-    AppSettingsJob job;
+    AppSettingsJob *job;
     AppSettingsResult result;
     AppSettingsResult failure;
     int healthy;
@@ -319,11 +530,12 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
     int rc;
 
     store = (AppSettingsStore *) argument;
+    job = &store->active_job;
     memset(&api, 0, sizeof(api));
-    memset(&job, 0, sizeof(job));
-    job.request_id = 1;
-    job.operation = APP_SETTINGS_LOAD;
-    app_settings_result_init(&result, &job);
+    memset(job, 0, sizeof(*job));
+    job->request_id = 1;
+    job->operation = APP_SETTINGS_LOAD;
+    app_settings_result_init(&result, job);
     db = NULL;
     module = LoadLibraryW(store->dll_path);
     if (module == NULL || !app_settings_db_load(module, &api)) {
@@ -346,7 +558,7 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
         EnterCriticalSection(&store->lock);
         found = store->job_count != 0;
         if (found) {
-            job = store->jobs[store->job_head];
+            *job = store->jobs[store->job_head];
             store->job_head = (store->job_head + 1) % APP_SETTINGS_QUEUE_MAX;
             store->job_count--;
         }
@@ -365,7 +577,7 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
             }
             continue;
         }
-        app_settings_result_init(&result, &job);
+        app_settings_result_init(&result, job);
         if (!healthy) {
             result.result = failure.result;
             result.db_result = failure.db_result;
@@ -374,11 +586,16 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
             result.state_valid = failure.state_valid;
             result.rollback_result = failure.rollback_result;
         } else {
-            if (job.operation == APP_SETTINGS_SAVE)
-                app_settings_save(&api, db, &job, &result);
+            if (job->operation == APP_SETTINGS_SAVE)
+                app_settings_save(&api, db, job, &result);
+            else if (job->operation == APP_VISITS_ADD || job->operation == APP_VISITS_CLEAR)
+                app_visits_write(&api, db, job, &result);
+            else if (job->operation == APP_VISITS_LOAD)
+                app_visits_read(&api, db, job, &result);
             else app_settings_read(&api, db, &result);
             app_settings_cleanup_transaction(&api, db, &result);
             if (result.result != APP_SETTINGS_OK) {
+                AppSettingsResult_Release(&result);
                 /* Conservative failure policy: close/reopen explicitly;
                  * never silently retry, reset a value or delete the file. */
                 healthy = 0;
@@ -439,17 +656,16 @@ int AppSettingsStore_Create(const WCHAR *dll_path, const char *database_path,
     return APP_SETTINGS_OK;
 }
 
-int AppSettingsStore_Submit(AppSettingsStore *store, int operation,
+static int app_settings_enqueue(AppSettingsStore *store, int operation,
         AppSettingsStartPage page, unsigned long tab_id,
-        unsigned long generation, unsigned long *out_request_id)
+        unsigned long generation, const char *url, const char *title,
+        __int64 visited_utc, __int64 before_id, unsigned long *out_request_id)
 {
     AppSettingsJob *job;
     int tail;
     int result;
 
-    if (!app_settings_owner(store) || out_request_id == NULL ||
-            (operation != APP_SETTINGS_LOAD && operation != APP_SETTINGS_SAVE) ||
-            AppSettingsStore_StartPageUrl(page) == NULL)
+    if (!app_settings_owner(store) || out_request_id == NULL)
         return APP_SETTINGS_INVALID;
     EnterCriticalSection(&store->lock);
     result = APP_SETTINGS_OK;
@@ -460,11 +676,16 @@ int AppSettingsStore_Submit(AppSettingsStore *store, int operation,
     if (result == APP_SETTINGS_OK) {
         tail = (store->job_head + store->job_count) % APP_SETTINGS_QUEUE_MAX;
         job = &store->jobs[tail];
+        memset(job, 0, sizeof(*job));
         job->request_id = ++store->sequence;
         job->tab_id = tab_id;
         job->generation = generation;
         job->operation = operation;
         job->start_page = page;
+        job->before_id = before_id;
+        job->visited_utc = visited_utc;
+        if (url != NULL) strcpy(job->url, url);
+        if (title != NULL) strcpy(job->title, title);
         store->job_count++;
         store->outstanding++;
         *out_request_id = job->request_id;
@@ -472,6 +693,44 @@ int AppSettingsStore_Submit(AppSettingsStore *store, int operation,
     }
     LeaveCriticalSection(&store->lock);
     return result;
+}
+
+int AppSettingsStore_Submit(AppSettingsStore *store, int operation,
+        AppSettingsStartPage page, unsigned long tab_id,
+        unsigned long generation, unsigned long *out_request_id)
+{
+    if ((operation != APP_SETTINGS_LOAD && operation != APP_SETTINGS_SAVE) ||
+            AppSettingsStore_StartPageUrl(page) == NULL)
+        return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, operation, page, tab_id, generation,
+            NULL, NULL, 0, 0, out_request_id);
+}
+
+int AppSettingsStore_AddVisit(AppSettingsStore *store, const char *url,
+        const char *title, __int64 visited_utc, unsigned long *out_request_id)
+{
+    if (!app_settings_owner(store) || visited_utc < 0 ||
+            !app_visits_input(url, APP_VISITS_URL_MAX, 1) ||
+            !app_visits_input(title, APP_VISITS_TITLE_MAX, 0))
+        return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_VISITS_ADD, APP_SETTINGS_START_NEWTAB,
+            0, 0, url, title, visited_utc, 0, out_request_id);
+}
+
+int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
+        unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id)
+{
+    if (before_id < 0) return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_VISITS_LOAD, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, NULL, 0, before_id, out_request_id);
+}
+
+int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
+        unsigned long generation, unsigned long *out_request_id)
+{
+    return app_settings_enqueue(store, APP_VISITS_CLEAR, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, NULL, 0, 0, out_request_id);
 }
 
 int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out)
@@ -483,6 +742,7 @@ int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out)
     result = APP_SETTINGS_PENDING;
     if (store->result_count != 0) {
         *out = store->results[store->result_head];
+        store->results[store->result_head].visits = NULL;
         store->result_head = (store->result_head + 1) % APP_SETTINGS_QUEUE_MAX;
         store->result_count--;
         store->outstanding--;
@@ -506,6 +766,7 @@ int AppSettingsStore_TryDestroy(AppSettingsStore **store_pointer)
 {
     AppSettingsStore *store;
     DWORD wait;
+    int index;
 
     if (store_pointer == NULL || !app_settings_owner(*store_pointer))
         return APP_SETTINGS_INVALID;
@@ -514,6 +775,8 @@ int AppSettingsStore_TryDestroy(AppSettingsStore **store_pointer)
     wait = WaitForSingleObject(store->worker, 0);
     if (wait == WAIT_TIMEOUT) return APP_SETTINGS_PENDING;
     if (wait != WAIT_OBJECT_0) return APP_SETTINGS_PLATFORM_FAILED;
+    for (index = 0; index < APP_SETTINGS_QUEUE_MAX; ++index)
+        AppSettingsResult_Release(&store->results[index]);
     CloseHandle(store->worker);
     CloseHandle(store->wake);
     DeleteCriticalSection(&store->lock);

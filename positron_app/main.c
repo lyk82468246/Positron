@@ -183,6 +183,8 @@ static unsigned long g_settings_nav_serial;
 static unsigned long g_settings_startup_serial;
 static unsigned long g_settings_startup_tab;
 static int g_settings_startup_pending;
+static int g_visits_enabled;
+static int g_visits_redrawing;
 #ifdef _DEBUG
 static int g_settings_live_mode;
 static int g_settings_live_phase;
@@ -198,6 +200,10 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
 static void app_page_paint_buffer_release(void);
 static int app_load_form_request(HWND hwnd, const AppFormRequest *request);
 static void app_update_history_buttons(void);
+static void app_visits_request(__int64 before_id, int clear);
+static void app_visits_redraw(HWND hwnd);
+static void app_visits_record(void);
+static void app_visits_result(HWND hwnd, AppSettingsResult *result);
 static void app_tabs_update_menu(void);
 static int app_tabs_select(int slot);
 static int app_tabs_new(void);
@@ -2883,6 +2889,11 @@ static int app_build_page(const char *url, HANDLE *out_document,
     data.dpi = g_dpi;
     data.viewport_width = g_page_width;
     data.viewport_height = g_page_height;
+    if (page_kind == APP_I18N_PAGE_HISTORY && g_visits_enabled) {
+        if (!g_visits_redrawing) app_visits_request(0, 0);
+        data.visits = g_tab->visits;
+        data.visits_status = g_tab->visits_status;
+    }
     if (AppInternalPages_Build(page_kind, &data, &html, &html_length) != 0) {
         return 1;
     }
@@ -3297,6 +3308,131 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     return 1;
 }
 
+/* App visit data never substitutes for Browser's navigation stack. These
+ * jobs carry copied data only; page results are leased to a stable tab and
+ * a non-reused local generation, not merely to positron://history. */
+static void app_visits_request(__int64 before_id, int clear)
+{
+    unsigned long request_id;
+    int rc;
+
+    if (g_tabs_closing || g_tab->closing) return;
+    if (g_tab->visits_generation == 0xffffffffUL) {
+        g_tab->visits_status = 3;
+        return;
+    }
+    ++g_tab->visits_generation;
+    g_tab->visits_request_id = 0;
+    g_tab->visits_redraw_pending = 0;
+    g_tab->visits_reload_pending = 0;
+    g_tab->visits_before_id = before_id;
+    request_id = 0;
+    rc = clear ? AppSettingsStore_ClearVisits(g_settings_store, g_app.tab_id,
+            g_tab->visits_generation, &request_id) :
+            AppSettingsStore_ReadVisits(g_settings_store, before_id,
+            g_app.tab_id, g_tab->visits_generation, &request_id);
+    g_tab->visits_status = rc == APP_SETTINGS_OK ? 1 : 3;
+    if (rc == APP_SETTINGS_OK) g_tab->visits_request_id = request_id;
+}
+
+static void app_visits_redraw(HWND hwnd)
+{
+    if (g_tabs_closing || g_tab->closing ||
+            g_page_kind != APP_I18N_PAGE_HISTORY || g_navigation_request != NULL)
+        return;
+    g_tab->visits_redraw_pending = 0;
+    g_visits_redrawing = 1;
+    (void) app_load_local_page(hwnd, "positron://history", APP_HISTORY_REFRESH, -1);
+    g_visits_redrawing = 0;
+}
+
+static void app_visits_result(HWND hwnd, AppSettingsResult *result)
+{
+    AppTab *owner;
+    int slot;
+
+    if (result->operation != APP_VISITS_LOAD &&
+            result->operation != APP_VISITS_CLEAR) return;
+    /* A committed clear survives the requesting page/tab. Invalidate every
+     * cached read, including completions already queued before the clear. */
+    if (result->operation == APP_VISITS_CLEAR &&
+            result->result == APP_SETTINGS_OK && !g_tabs_closing) {
+        for (slot = 0; slot < APP_TAB_MAX; ++slot) {
+            if (!g_tabs[slot].used || g_tabs[slot].closing) continue;
+            free(g_tabs[slot].visits);
+            g_tabs[slot].visits = NULL;
+            g_tabs[slot].visits_request_id = 0;
+            g_tabs[slot].visits_status = 1;
+            g_tabs[slot].visits_reload_pending = 1;
+        }
+        if (g_page_kind == APP_I18N_PAGE_HISTORY) {
+            app_visits_request(0, 0);
+            g_tab->visits_redraw_pending = 1;
+            app_visits_redraw(hwnd);
+        }
+        return;
+    }
+    owner = NULL;
+    for (slot = 0; slot < APP_TAB_MAX; ++slot) {
+        if (g_tabs[slot].used && !g_tabs[slot].closing &&
+                g_tabs[slot].host.tab_id == result->tab_id) {
+            owner = &g_tabs[slot];
+            break;
+        }
+    }
+    if (g_tabs_closing || owner == NULL ||
+            owner->host.page_kind != APP_I18N_PAGE_HISTORY ||
+            owner->visits_request_id != result->request_id ||
+            owner->visits_generation != result->generation) return;
+    owner->visits_request_id = 0;
+    if (result->result == APP_SETTINGS_OK && result->operation == APP_VISITS_CLEAR) {
+        free(owner->visits);
+        owner->visits = NULL;
+        owner->visits_status = 2;
+        /* Clearing is global app data, not any tab's Back/Forward stack. */
+        if (owner == g_tab) app_visits_request(0, 0);
+        else owner->visits_status = 3;
+    } else if (result->result == APP_SETTINGS_OK && result->visits != NULL) {
+        free(owner->visits);
+        owner->visits = result->visits;
+        result->visits = NULL;
+        owner->visits_status = 2;
+    } else owner->visits_status = 3;
+    owner->visits_redraw_pending = 1;
+    if (owner == g_tab) app_visits_redraw(hwnd);
+}
+
+static void app_visits_record(void)
+{
+    char title[APP_VISITS_TITLE_MAX];
+    FILETIME utc;
+    SYSTEMTIME system_time;
+    ULARGE_INTEGER stamp;
+    unsigned long request_id;
+    int rc;
+    AppUrlSchemeKind scheme;
+
+    scheme = AppUrlRouter_ClassifyScheme(g_current_url);
+    if (!g_visits_enabled || g_settings_store == NULL || g_tabs_closing ||
+            g_document == NULL || (scheme != APP_URL_SCHEME_HTTP &&
+            scheme != APP_URL_SCHEME_HTTPS)) return;
+    title[0] = '\0';
+    if (PCore_DocumentTitle(g_document, title, sizeof(title), NULL) != 0)
+        title[0] = '\0';
+    GetSystemTime(&system_time);
+    if (!SystemTimeToFileTime(&system_time, &utc)) {
+        app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
+        return;
+    }
+    stamp.LowPart = utc.dwLowDateTime;
+    stamp.HighPart = utc.dwHighDateTime;
+    request_id = 0;
+    rc = AppSettingsStore_AddVisit(g_settings_store, g_current_url, title,
+            ((__int64) stamp.QuadPart / 10000000 - (__int64) 11644473600),
+            &request_id);
+    if (rc != APP_SETTINGS_OK) app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
+}
+
 /* File policy belongs to this EXE. Resolve from the executable, never CWD,
  * registry or a DLL location. Do not mkdir, reset or silently switch DBs. */
 static int app_settings_start(HWND hwnd)
@@ -3346,6 +3482,7 @@ static int app_settings_start(HWND hwnd)
     if (!SetTimer(hwnd, APP_SETTINGS_TIMER_ID, 50, NULL))
         return APP_SETTINGS_PLATFORM_FAILED;
     rc = AppSettingsStore_Create(dll, database, &g_settings_store);
+    g_visits_enabled = rc == APP_SETTINGS_OK;
     if (rc != APP_SETTINGS_OK) KillTimer(hwnd, APP_SETTINGS_TIMER_ID);
 #ifdef _DEBUG
     {
@@ -3445,8 +3582,10 @@ static void app_settings_tick(HWND hwnd)
     for (count = 0; count < APP_SETTINGS_QUEUE_MAX; ++count) {
         if (AppSettingsStore_Poll(g_settings_store, &result) != APP_SETTINGS_OK)
             break;
-        if (result.result == APP_SETTINGS_OK)
+        if (result.result == APP_SETTINGS_OK &&
+                (result.operation == APP_SETTINGS_LOAD || result.operation == APP_SETTINGS_SAVE))
             g_settings_start_page = result.start_page;
+        app_visits_result(hwnd, &result);
 #ifdef _DEBUG
         if (g_settings_live_mode && result.operation == APP_SETTINGS_SAVE &&
                 result.result == APP_SETTINGS_OK)
@@ -3482,6 +3621,10 @@ static void app_settings_tick(HWND hwnd)
         if (result.request_id == 1 && result.result != APP_SETTINGS_OK &&
                 !g_tabs_closing && g_navigation_request == NULL)
             app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
+        if (result.operation == APP_VISITS_ADD && result.result != APP_SETTINGS_OK &&
+                !g_tabs_closing)
+            app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
+        AppSettingsResult_Release(&result);
     }
     if (g_tabs_closing) {
         if (AppSettingsStore_TryDestroy(&g_settings_store) == APP_SETTINGS_OK) {
@@ -3497,6 +3640,7 @@ static void app_settings_tick(HWND hwnd)
         return;
     }
     (void) AppScript_SettingsStep(g_script);
+    if (g_tab->visits_redraw_pending) app_visits_redraw(hwnd);
 #ifdef _DEBUG
     app_settings_live_step(hwnd);
 #endif
@@ -4666,6 +4810,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         /* First paint is synchronous, without pumping navigation messages.
          * Caption completion follows this draw, not just HTTP completion. */
         UpdateWindow(g_page_window);
+        if (request->method == PCORE_FORM_METHOD_GET) app_visits_record();
         return 1;
     }
 }
@@ -6911,6 +7056,38 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         case APP_CMD_REFRESH:
             app_refresh(hwnd);
             return 0;
+        case APP_CMD_VISITS_LATEST:
+        case APP_CMD_VISITS_OLDER:
+        case APP_CMD_VISITS_CLEAR:
+            if (g_tabs_closing || !g_visits_enabled ||
+                    g_page_kind != APP_I18N_PAGE_HISTORY ||
+                    g_tab->visits_request_id || g_navigation_request != NULL)
+                return 0;
+            if (LOWORD(wparam) == APP_CMD_VISITS_CLEAR) {
+                WCHAR prompt[512];
+                unsigned long tab_id;
+                unsigned long generation;
+
+                tab_id = g_app.tab_id;
+                generation = (unsigned long) g_app.navigation_generation;
+                AppI18n_LoadString(APP_TEXT_ERROR_VISITS_CLEAR_CONFIRM,
+                        prompt, 512);
+                if (MessageBoxW(hwnd, prompt, L"Positron",
+                        MB_YESNO | MB_ICONQUESTION) != IDYES) return 0;
+                if (g_tabs_closing || g_app.tab_id != tab_id ||
+                        (unsigned long) g_app.navigation_generation != generation ||
+                        g_page_kind != APP_I18N_PAGE_HISTORY ||
+                        g_navigation_request != NULL) return 0;
+                app_visits_request(0, 1);
+            } else if (LOWORD(wparam) == APP_CMD_VISITS_OLDER) {
+                if (g_tab->visits == NULL || !g_tab->visits->has_more ||
+                        g_tab->visits->count <= 0) return 0;
+                app_visits_request(g_tab->visits->entries[
+                        g_tab->visits->count - 1].id, 0);
+            } else app_visits_request(0, 0);
+            g_tab->visits_redraw_pending = 1;
+            app_visits_redraw(hwnd);
+            return 0;
         case APP_CMD_HISTORY:
             (void) app_load_page_from(hwnd, "positron://history",
                     APP_HISTORY_NEW, -1, APP_NAV_SOURCE_MENU);
@@ -7178,6 +7355,28 @@ static void app_tabs_update_menu(void)
 
     if (!g_tabs_enabled || g_menu_bar == NULL) return;
     menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0,
+            (LPARAM) APP_CMD_MENU);
+    if (menu != NULL) {
+        DeleteMenu(menu, APP_CMD_VISITS_LATEST, MF_BYCOMMAND);
+        DeleteMenu(menu, APP_CMD_VISITS_OLDER, MF_BYCOMMAND);
+        DeleteMenu(menu, APP_CMD_VISITS_CLEAR, MF_BYCOMMAND);
+        if (g_visits_enabled && g_page_kind == APP_I18N_PAGE_HISTORY) {
+            flags = g_tab->visits_request_id || g_navigation_request != NULL ?
+                    MF_GRAYED : MF_ENABLED;
+            AppI18n_LoadString(APP_TEXT_MENU_VISITS_LATEST, text, 160);
+            InsertMenuW(menu, APP_CMD_EXIT, MF_BYCOMMAND | MF_STRING | flags,
+                    APP_CMD_VISITS_LATEST, text);
+            AppI18n_LoadString(APP_TEXT_MENU_VISITS_OLDER, text, 160);
+            InsertMenuW(menu, APP_CMD_EXIT, MF_BYCOMMAND | MF_STRING |
+                    (g_tab->visits_status == 2 && g_tab->visits != NULL &&
+                    g_tab->visits->has_more ? flags : MF_GRAYED),
+                    APP_CMD_VISITS_OLDER, text);
+            AppI18n_LoadString(APP_TEXT_MENU_VISITS_CLEAR, text, 160);
+            InsertMenuW(menu, APP_CMD_EXIT, MF_BYCOMMAND | MF_STRING | flags,
+                    APP_CMD_VISITS_CLEAR, text);
+        }
+    }
+    menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0,
             (LPARAM) APP_CMD_TABS);
     if (menu == NULL) return;
     /* GetMenuItemCount is not exported by the WM6 SDK. Bounded positional
@@ -7261,6 +7460,8 @@ static void app_tab_release(AppTab *tab)
     if (g_controls != NULL) AppControls_Destroy(g_controls);
     g_controls = NULL;
     AppHostContext_ReleasePage(&g_app);
+    free(tab->visits);
+    tab->visits = NULL;
     if (g_history != NULL) PBrowser_HistoryDestroy(g_history);
     g_history = NULL;
     if (g_page_window != NULL) DestroyWindow(g_page_window);
@@ -7407,6 +7608,11 @@ static int app_tabs_select(int slot)
     }
     app_tabs_update_menu();
     InvalidateRect(g_page_window, NULL, FALSE);
+    if (g_page_kind == APP_I18N_PAGE_HISTORY && g_tab->visits_reload_pending) {
+        app_visits_request(0, 0);
+        g_tab->visits_redraw_pending = 1;
+    }
+    if (g_tab->visits_redraw_pending) app_visits_redraw(g_window);
     if (request != NULL) {
         SetTimer(g_window, APP_LOADING_TIMER_ID, APP_LOADING_INTERVAL_MS, NULL);
         if (request->completion_pending) {
@@ -8003,11 +8209,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     /* Explicit isolated adapter fixture; bypass production startup. */
     if (command_line != NULL &&
             (wcscmp(command_line, L"--selftest-settings-storage") == 0 ||
-            wcscmp(command_line, L"--selftest-settings-services") == 0)) {
+            wcscmp(command_line, L"--selftest-settings-services") == 0 ||
+            wcscmp(command_line, L"--selftest-settings-visits-create") == 0 ||
+            wcscmp(command_line, L"--selftest-settings-visits-reopen") == 0 ||
+            wcscmp(command_line, L"--selftest-settings-visits-clear") == 0)) {
         AppDebug_BeginSession();
         if (wcscmp(command_line, L"--selftest-settings-storage") == 0)
             result = AppSettingsStore_DebugCheck();
-        else result = AppSettingsServices_DebugCheck();
+        else if (wcscmp(command_line, L"--selftest-settings-services") == 0)
+            result = AppSettingsServices_DebugCheck();
+        else result = AppVisitStore_DebugLiveCheck(
+                wcscmp(command_line, L"--selftest-settings-visits-create") == 0 ? 1 :
+                wcscmp(command_line, L"--selftest-settings-visits-reopen") == 0 ? 2 : 3);
         AppDebug_Log(result == 0 ? "settings-fixture PASS exit=0\r\n" :
                 "settings-fixture FAIL exit=1\r\n");
         AppDebug_EndSession();
@@ -8178,6 +8391,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         /* An explicit startup settings URL was committed before the store
          * existed. Refresh it once without an extra history entry. */
         if (g_page_kind == APP_I18N_PAGE_SETTINGS)
+            (void) app_load_local_page(hwnd, initial_url,
+                    APP_HISTORY_REFRESH, -1);
+        else if (g_page_kind == APP_I18N_PAGE_HISTORY)
             (void) app_load_local_page(hwnd, initial_url,
                     APP_HISTORY_REFRESH, -1);
     } else {

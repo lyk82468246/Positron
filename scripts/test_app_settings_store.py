@@ -106,7 +106,9 @@ class CandidateBoundaryTests(unittest.TestCase):
         # Must be in WinMain before normal argument parsing, not inside a
         # nested _DEBUG branch under an unrelated function's Release #else.
         winmain = main[main.index("int WINAPI WinMain("):]
-        pattern = (r"#ifdef _DEBUG\s*/\* Explicit isolated adapter fixture.*?"
+        pattern = (r"#ifdef _DEBUG\s*int startup_ui_selftest;.*?"
+                   r"#ifdef _DEBUG\s*startup_ui_selftest = 0;.*?"
+                   r"/\* Explicit isolated adapter fixture.*?"
                    r"AppSettingsStore_DebugCheck\(\).*?#endif\s*"
                    r"startup_has_reference = 0;")
         self.assertRegex(winmain, re.compile(pattern, re.S))

@@ -65,6 +65,7 @@ static DWORD WINAPI app_settings_debug_foreign(LPVOID argument)
 
     probe = (AppSettingsDebugThread *) argument;
     memset(&result, 0x5a, sizeof(result));
+    result.visits = NULL;
     before = result;
     request = 777;
     probe->passed = AppSettingsStore_Poll(probe->store, &result) ==
@@ -74,6 +75,89 @@ static DWORD WINAPI app_settings_debug_foreign(LPVOID argument)
             request == 777 && AppSettingsStore_RequestClose(probe->store) ==
             APP_SETTINGS_INVALID;
     return 0;
+}
+
+/* Three separate EXE processes share only this dedicated fixture file.
+ * Never use or remove the production positron.db, even in a gate package. */
+int AppVisitStore_DebugLiveCheck(int mode)
+{
+    WCHAR dll[APP_SETTINGS_PATH_MAX];
+    WCHAR path[APP_SETTINGS_PATH_MAX];
+    WCHAR *slash;
+    char database[APP_SETTINGS_PATH_MAX];
+    char log[192];
+    AppSettingsStore *store;
+    AppSettingsResult result;
+    unsigned long request;
+    DWORD length;
+    int i;
+    int passed;
+    int cleanup;
+
+    store = NULL;
+    passed = 0;
+    memset(&result, 0, sizeof(result));
+    length = GetModuleFileNameW(NULL, dll, APP_SETTINGS_PATH_MAX);
+    if (!length || length >= APP_SETTINGS_PATH_MAX || mode < 1 || mode > 3)
+        goto done;
+    if (wcsncmp(dll, L"\\Storage Card\\Temp\\Positron-device-gate\\app-settings-",
+            wcslen(L"\\Storage Card\\Temp\\Positron-device-gate\\app-settings-")))
+        goto done;
+    slash = wcsrchr(dll, L'\\');
+    if (slash == NULL || slash - dll > APP_SETTINGS_PATH_MAX - 32) goto done;
+    wcscpy(slash + 1, L"visits-fixture.db");
+    wcscpy(path, dll);
+    wcscpy(slash + 1, L"positron_db.dll");
+    if ((GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) != (mode == 1))
+        goto done;
+    if (!WideCharToMultiByte(CP_UTF8, 0, path, -1, database,
+            sizeof(database), NULL, NULL) ||
+            AppSettingsStore_Create(dll, database, &store) != APP_SETTINGS_OK ||
+            !app_settings_debug_ready(store, mode == 1 ?
+            APP_SETTINGS_START_NEWTAB : APP_SETTINGS_START_WELCOME)) goto done;
+    if (mode == 1) {
+        if (AppSettingsStore_Submit(store, APP_SETTINGS_SAVE,
+                APP_SETTINGS_START_WELCOME, 1, 1, &request) != APP_SETTINGS_OK ||
+                app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                result.result != APP_SETTINGS_OK) goto done;
+        for (i = 0; i < 18; ++i) {
+            if (AppSettingsStore_AddVisit(store, "https://example.com/?saved=1",
+                    "Saved visit", 1700000000 + i, &request) != APP_SETTINGS_OK ||
+                    app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                    result.result != APP_SETTINGS_OK) goto done;
+        }
+    } else {
+        if (AppSettingsStore_ReadVisits(store, 0, 1, 1, &request) !=
+                APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+                APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+                result.visits == NULL || result.visits->count != 16 ||
+                !result.visits->has_more || result.visits->entries[0].visited_utc !=
+                1700000017) goto done;
+        AppSettingsResult_Release(&result);
+        if (mode == 3) {
+            if (AppSettingsStore_ClearVisits(store, 1, 2, &request) !=
+                    APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+                    APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+                    app_settings_debug_close(&store) != APP_SETTINGS_OK ||
+                    AppSettingsStore_Create(dll, database, &store) != APP_SETTINGS_OK ||
+                    !app_settings_debug_ready(store, APP_SETTINGS_START_WELCOME) ||
+                    AppSettingsStore_ReadVisits(store, 0, 1, 3, &request) !=
+                    APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+                    APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+                    result.visits == NULL || result.visits->count != 0) goto done;
+        }
+    }
+    passed = 1;
+done:
+    AppSettingsResult_Release(&result);
+    cleanup = app_settings_debug_close(&store);
+    if (cleanup != APP_SETTINGS_OK) passed = 0;
+    _snprintf(log, sizeof(log) - 1,
+            "positron visits-live selftest %s mode=%d cleanup=%d production_enabled=0\r\n",
+            passed ? "OK" : "FAILED", mode, cleanup);
+    log[sizeof(log) - 1] = '\0';
+    AppDebug_Log(log);
+    return passed ? 0 : 1;
 }
 
 int AppSettingsStore_DebugCheck(void)
@@ -101,6 +185,7 @@ int AppSettingsStore_DebugCheck(void)
     int cleanup;
 
     store = NULL;
+    memset(&result, 0, sizeof(result));
     foreign = NULL;
     probe = NULL;
     directory[0] = L'\0';
@@ -147,6 +232,7 @@ int AppSettingsStore_DebugCheck(void)
     CloseHandle(foreign);
     foreign = NULL;
     memset(&result, 0x5a, sizeof(result));
+    result.visits = NULL;
     before = result;
     if (AppSettingsStore_Poll(store, &result) != APP_SETTINGS_PENDING ||
             memcmp(&before, &result, sizeof(result)) != 0) goto done;
@@ -183,10 +269,48 @@ int AppSettingsStore_DebugCheck(void)
             result.result != APP_SETTINGS_OK ||
             result.start_page != APP_SETTINGS_START_WELCOME) goto done;
     phase = 4;
+    for (index = 0; index < 17; ++index) {
+        if (AppSettingsStore_AddVisit(store, "https://example.com/?x=<&",
+                "\344\270\255\346\226\207 <&>", 1700000000 + index, &request) !=
+                APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+                APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+                result.operation != APP_VISITS_ADD) goto done;
+    }
     if (app_settings_debug_close(&store) != APP_SETTINGS_OK ||
             AppSettingsStore_Create(module_path, database_path, &store) !=
             APP_SETTINGS_OK || !app_settings_debug_ready(store,
             APP_SETTINGS_START_WELCOME)) goto done;
+    if (AppSettingsStore_ReadVisits(store, 0, 71, 90, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK || result.visits == NULL ||
+            result.visits->count != 16 || !result.visits->has_more ||
+            result.visits->entries[0].visited_utc != 1700000016 ||
+            result.tab_id != 71 || result.generation != 90) goto done;
+    requests[0] = (unsigned long) result.visits->entries[15].id;
+    AppSettingsResult_Release(&result);
+    AppSettingsResult_Release(&result);
+    if (AppSettingsStore_ReadVisits(store, requests[0], 71, 91, &request) !=
+            APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+            APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+            result.visits == NULL || result.visits->count != 1 ||
+            result.visits->has_more || result.visits->entries[0].visited_utc !=
+            1700000000) goto done;
+    AppSettingsResult_Release(&result);
+    if (AppSettingsStore_ClearVisits(store, 71, 92, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK ||
+            AppSettingsStore_ReadVisits(store, 0, 71, 93, &request) !=
+            APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+            APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+            result.visits == NULL || result.visits->count != 0) goto done;
+    AppSettingsResult_Release(&result);
+    if (AppSettingsStore_Submit(store, APP_SETTINGS_LOAD,
+            APP_SETTINGS_START_NEWTAB, 71, 94, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK ||
+            result.start_page != APP_SETTINGS_START_WELCOME) goto done;
+    AppDebug_Log("positron visits-storage selftest OK records=17 cursor=1 "
+            "same_process_reopen=1 clear_preserves_settings=1\r\n");
     if (AppSettingsStore_Submit(store, APP_SETTINGS_SAVE,
             APP_SETTINGS_START_CONTROLS, 7, 10, &request) != APP_SETTINGS_OK ||
             AppSettingsStore_RequestClose(store) != APP_SETTINGS_OK) goto done;
@@ -228,6 +352,7 @@ int AppSettingsStore_DebugCheck(void)
             app_settings_debug_close(&store) != APP_SETTINGS_OK) goto done;
     passed = 1;
 done:
+    AppSettingsResult_Release(&result);
     cleanup = APP_SETTINGS_OK;
     if (foreign != NULL) {
         /* The probe is heap-owned. On timeout retain it AND the store rather

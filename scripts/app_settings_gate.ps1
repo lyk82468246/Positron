@@ -36,7 +36,8 @@ $before = $null
 function Write-Stage([string] $message) { Write-Host ('[app-settings-gate] ' + $message) }
 
 function Assert-SettingsFixtureLog([string] $Body, [uint32] $AppPid, [string] $Suite) {
-    if ($AppPid -eq 0 -or $Suite -notin @('storage','services')) {
+    if ($AppPid -eq 0 -or $Suite -notin @('storage','services',
+            'visits-create','visits-reopen','visits-clear')) {
         throw 'Invalid fixture identity.'
     }
     if ($Body -match 'selftest FAILED|settings-fixture FAIL' -or
@@ -49,12 +50,19 @@ function Assert-SettingsFixtureLog([string] $Body, [uint32] $AppPid, [string] $S
     $detail = if ($Suite -eq 'storage') {
         'phase=6 cleanup=0 same_process_reopen=1 production_enabled=0'
     } else { 'phase=4 line=0 cleanup=0 production_enabled=0' }
-    $pattern = '(?m)^positron pid=' + $AppPid + ' tick=\d+ positron settings-' +
-        $Suite + ' selftest OK ' + $detail + '\r?$'
+    if ($Suite.StartsWith('visits-')) {
+        $mode = @{'visits-create'=1;'visits-reopen'=2;'visits-clear'=3}[$Suite]
+        $pattern = '(?m)^positron pid=' + $AppPid +
+            ' tick=\d+ positron visits-live selftest OK mode=' + $mode +
+            ' cleanup=0 production_enabled=0\r?$'
+    } else {
+        $pattern = '(?m)^positron pid=' + $AppPid + ' tick=\d+ positron settings-' +
+            $Suite + ' selftest OK ' + $detail + '\r?$'
+    }
     if (([regex]::Matches($Body, $pattern)).Count -ne 1) {
         throw 'Missing exact suite, cleanup or production-disabled evidence.'
     }
-    if (([regex]::Matches($Body, 'settings-(?:storage|services) selftest')).Count -ne 1 -or
+    if (([regex]::Matches($Body, '(?:settings-(?:storage|services)|visits-live) selftest')).Count -ne 1 -or
             ([regex]::Matches($Body, 'settings-fixture PASS')).Count -ne 1 -or
             ([regex]::Matches($Body, 'debug-session pid=')).Count -ne 1) {
         throw 'Unexpected extra fixture/session completion.'
@@ -103,6 +111,20 @@ try {
     }, $false)
     if ($null -eq $fn) { throw 'Missing formal module-audit function.' }
     . ([scriptblock]::Create($fn.Extent.Text))
+    # Reuse the already-tested exact-PID normal-exit guard, not a sleep or
+    # relaxed module audit. Terminal logs precede WinMain/DLL unload.
+    $exitAst = [Management.Automation.Language.Parser]::ParseFile(
+        (Join-Path $PSScriptRoot 'app_settings_live_gate.ps1'),
+        [ref]$tokens, [ref]$errors)
+    if ($errors.Count) { throw 'Live gate parse failure.' }
+    foreach ($exitName in @('Test-LiveExitPending','Wait-LiveExit')) {
+        $exitFn = $exitAst.Find({param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+            $node.Name -eq $exitName
+        }, $false)
+        if ($null -eq $exitFn) { throw 'Missing normal-exit guard.' }
+        . ([scriptblock]::Create($exitFn.Extent.Text))
+    }
     [PositronDeviceRapi]::Connect()
     $connected = $true
     $internal = [PositronDeviceRapi]::QueryObjectStoreStorage()
@@ -137,7 +159,7 @@ try {
     # Save the fixed global diagnostic log before any fixture starts/truncates it.
     [void][PositronDeviceRapi]::TryCopyFileFromDevice('\Temp\positron-debug.log',
         (Join-Path $evidence 'prior.log'))
-    foreach ($suite in @('storage','services')) {
+    foreach ($suite in @('storage','services','visits-create','visits-reopen','visits-clear')) {
         [PositronDeviceRapi]::DeleteFileIfExists('\Temp\positron-debug.log')
         $appPid = [PositronDeviceRapi]::LaunchProcess(($remote + '\positron.exe'),
             $null, ('--selftest-settings-' + $suite))
@@ -145,8 +167,7 @@ try {
         Receive-SettingsFixture $suite $appPid
         # Require a fresh no-holder audit between the isolated processes;
         # never accept the first deployment snapshot as evidence of exit.
-        [PositronDeviceRapi]::DeleteFileIfExists($auditLog)
-        [void](Invoke-RemoteModuleAudit $helper $auditLog (Join-Path $evidence ('audit-after-' + $suite + '.log')) 30)
+        Wait-LiveExit $suite $appPid
         $checks.Add($suite + '=PASS pid=' + $appPid)
     }
     $after = [PositronDeviceRapi]::SnapshotCrashDumps()
