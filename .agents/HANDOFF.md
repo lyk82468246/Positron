@@ -18,7 +18,7 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 候选与验证证据
 
-### EXE 访问历史与滚动像素修正候选
+### EXE 访问历史与滚动像素修正通过
 
 EXE 接入 schema v2、持久 GET 记录与分页/确认清除；结果按 tab/请求/generation 隔离，
 clear 全局失效缓存。稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)，
@@ -38,12 +38,13 @@ parse/style/layout、标题/URL 转义、UTC 和 23 焦点通过。真实 IANA e
 产生旧像素残留。拆分单轴、任一失败完整失效视口后只补绘，不增加 layout。更换位图
 原点的假设未被对照证明，已撤回；空历史页不花屏不能替代长 URL 页面验收。
 
-当前候选 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
+当前包 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
 实际窗口与内存像素门 PASS（单轴/斜向/大幅共九次，各与完整重绘一致），并实际加载
 IANA、op=3 保存、op=4 读回、history focus=8；哈希 10/10、crash_check PASS。
 PID 3612441414 留在含长 URL 的历史页，人工入口为
 `\Storage Card\Temp\Positron-device-gate\app-scroll-axis-final-20261006-235934\positron.exe`。
-严重花屏须立即人工复测，尚不提升为视觉基线；后续部署先正常退出并审计引用。
+用户已确认含实际长 URL 的该页横向、纵向、斜向拖动均正常且无花屏；斜向无反应的
+初始反馈已由用户明确撤回。该页视觉门通过，不外推全部页面/OEM；后续部署先正常退出并审计引用。
 失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
 诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
 
@@ -51,7 +52,7 @@ PID 3612441414 留在含长 URL 的历史页，人工入口为
 `20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
 访问记录恢复不等于断电门。
 
-ROADMAP 已复核；先收尾滚动视觉门及协调 Core 断行，剩余交互/交错见限制，v1 升级和
+ROADMAP 已复核；滚动视觉门关闭，下一步协调 Core 断行，剩余交互/交错见限制，v1 升级和
 500 条裁剪目前为离线 SQL 证据。随后纵切为
 用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
 脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
@@ -489,7 +490,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
-范围。唯一下一步先人工验收含长 URL 的历史页滚动修正，并将 CSS 断行缺口交 Core；
+范围。含长 URL 的历史页滚动修正已通过人工门；唯一下一步将 CSS 断行缺口交 Core；
 随后按应用私有 worker/可信 session/文件策略分别接入扩展设置与下载，
 不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与人工入口
 见上方，下一会话须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话

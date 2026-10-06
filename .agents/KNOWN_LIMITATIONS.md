@@ -453,8 +453,8 @@
 
 - EXE 页面拖动不含惯性、回弹、WM6.5 WAG 或 nested 内容区滚动链；真实跟手性、拖动不误点、
   EDIT 拖选、popup 与旋转/DPI 待人工验收。平台接线边界见 [计划](../positron_app/INTEGRATION_PLAN.md#阶段-3原生交互)。
-  CE 双轴 ScrollWindowEx 返回 ERROR 的旧路径已复现花屏；拆分单轴及失败完整补绘候选
-  通过实际窗口像素门，含长 URL 的真实历史页视觉须立即复测，不能以空历史页通过代替。
+  拆分单轴及失败补绘已通过窗口像素门和含长 URL 历史页双轴/斜向无花屏人工门；
+  不外推全部页面/OEM，不以空历史页代替视觉验证。
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
 - EXE 的 contenteditable selection、native/script reset、native/script submit、单行 EDIT 隐式 Enter、
   GET/POST/multipart/dialog、native file picker、anchor/label/disclosure 默认动作尚未设备验收；需检查
