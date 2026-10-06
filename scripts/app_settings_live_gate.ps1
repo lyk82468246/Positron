@@ -122,6 +122,9 @@ try {
             if ([PositronDeviceRapi]::TryCopyFileFromDevice('\Temp\positron-debug.log', $log)) {
                 $body = Get-Content -LiteralPath $log -Raw -Encoding UTF8
                 if ($body -match 'selftest FAILED|settings-live FAIL') { throw 'Live EXE fixture failed.' }
+                if ($body -match 'tabs selftest|internal-pages selftest|https://example\.com/') {
+                    throw 'Settings startup was polluted by the UI fixture.'
+                }
                 $number = $index + 1
                 $page = if ($index -lt 2) { 1 } else { 0 }
                 $drained = if ($index -in @(0,2)) { 1 } else { 0 }
@@ -129,8 +132,8 @@ try {
                     $number + ' history=1 page=' + $page + ' drained=' + $drained + '\r?$'
                 if (([regex]::Matches($body, $pattern)).Count -eq 1 -and
                         $body -match ('debug-session pid=' + $appPid + '\b') -and
-                        $body -match 'internal-pages selftest OK' -and
-                        $body -match 'tabs selftest OK') {
+                        $body -match 'startup-window visible=1 foreground=1 page_visible=1' -and
+                        $body -notmatch 'tabs selftest|internal-pages selftest|https://example\.com/') {
                     $complete = $true
                     break
                 }
@@ -145,7 +148,7 @@ try {
         $body = Get-Content -LiteralPath $log -Raw -Encoding UTF8
         if (([regex]::Matches($body, $pattern)).Count -ne 1 -or
                 ([regex]::Matches($body, 'debug-session pid=')).Count -ne 1 -or
-                $body -match 'selftest FAILED|settings-live FAIL') {
+                $body -match 'selftest FAILED|settings-live FAIL|tabs selftest|internal-pages selftest|https://example\.com/') {
             throw 'Invalid final closed-process evidence.'
         }
         if (![PositronDeviceRapi]::TryCopyFileFromDevice(($remote + '\positron.db'),

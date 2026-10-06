@@ -4,7 +4,8 @@ param(
     [Parameter(Mandatory=$true)][string] $RemoteRoot,
     [Parameter(Mandatory=$true)][string] $LocalRunRoot,
     [ValidateSet('positron://newtab', 'positron://system')]
-    [string] $StartupUrl = 'positron://newtab'
+    [string] $StartupUrl = 'positron://newtab',
+    [switch] $NormalStartup
 )
 $ErrorActionPreference = 'Stop'
 function Get-Sha256([string] $path)
@@ -83,8 +84,12 @@ try {
     $remoteLog = '\Temp\positron-debug.log'
     $localLog = Join-Path $evidenceRoot 'positron-debug.log'
     [PositronDeviceRapi]::DeleteFileIfExists($remoteLog)
+    if ($NormalStartup -and $StartupUrl -ne 'positron://newtab') {
+        throw 'NormalStartup uses no command-line URL; require default newtab settings.'
+    }
+    $arguments = if ($NormalStartup) { $null } else { '--selftest-ui --url ' + $StartupUrl }
     $appPid = [PositronDeviceRapi]::LaunchProcess(
-        ($RemoteRoot + '\positron.exe'), $null, ('--url ' + $StartupUrl))
+        ($RemoteRoot + '\positron.exe'), $null, $arguments)
     $committedUrl = if ($StartupUrl -eq 'positron://system') {
         'positron://about#system'
     } else { 'positron://newtab' }
@@ -94,7 +99,10 @@ try {
         if ([PositronDeviceRapi]::TryCopyFileFromDevice($remoteLog, $localLog)) {
             $text = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
             if ($text -match 'selftest FAILED') { throw 'EXE startup selftest failed.' }
-            if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
+            if ($NormalStartup -and $text -match 'selftest|https://example\.com/') {
+                throw 'Normal startup ran a UI fixture.'
+            }
+            $suiteComplete = $NormalStartup -or (
                     $text -match 'history selftest OK' -and
                     $text -match 'fragment-pending selftest OK' -and
                     $text -match 'script-scheduling selftest OK' -and
@@ -103,7 +111,9 @@ try {
                     $text -match 'address-bar selftest OK' -and
                     $text -match 'pointer selftest OK' -and
                     $text -match 'system-info selftest OK' -and
-                    $text -match 'internal-pages selftest OK' -and
+                    $text -match 'internal-pages selftest OK')
+            if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
+                    $suiteComplete -and
                     $text -match 'startup-window visible=1 foreground=1 page_visible=1' -and
                     $text -match ('internal-page commit url=' +
                         [regex]::Escape($committedUrl) + ' kind=\d+ history=1 ')) {

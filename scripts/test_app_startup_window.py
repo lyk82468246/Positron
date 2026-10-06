@@ -30,6 +30,18 @@ class StartupWindowTests(unittest.TestCase):
         self.assertGreater(STARTUP.rfind('#ifdef _DEBUG', 0, diagnostic),
                            STARTUP.index('app_settings_start(hwnd)'))
 
+    def test_fixture_navigation_requires_explicit_debug_switch(self):
+        self.assertIn('startup_ui_selftest = 0;', STARTUP)
+        self.assertIn('L"--selftest-ui "', STARTUP)
+        self.assertIn('command_line += 13;', STARTUP)
+        self.assertIn('if (startup_ui_selftest && app_tabs_debug_check()', STARTUP)
+        self.assertIn('if (startup_ui_selftest && app_history_debug_check()', STARTUP)
+        self.assertIn('if (startup_ui_selftest && (AppAddressBar_DebugCheck', STARTUP)
+        gate = (ROOT / 'scripts/app_history_gate.ps1').read_text(encoding='utf-8')
+        self.assertIn("'--selftest-ui --url '", gate)
+        live = (ROOT / 'scripts/app_settings_live_gate.ps1').read_text(encoding='utf-8')
+        self.assertIn("$body -notmatch 'tabs selftest|internal-pages selftest|https://example", live)
+
 
 if __name__ == '__main__':
     unittest.main()

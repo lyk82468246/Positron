@@ -7985,9 +7985,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     int startup_has_click;
     int startup_invalid;
     int result;
+#ifdef _DEBUG
+    int startup_ui_selftest;
+#endif
 
     (void) previous;
 #ifdef _DEBUG
+    startup_ui_selftest = 0;
+    /* Product startup never navigates through fixture pages. The complete
+     * UI suite is opt-in and consumes only a leading, exact Debug switch. */
+    if (command_line != NULL &&
+            (wcscmp(command_line, L"--selftest-ui") == 0 ||
+            wcsncmp(command_line, L"--selftest-ui ", 14) == 0)) {
+        startup_ui_selftest = 1;
+        command_line += 13;
+    }
     /* Explicit isolated adapter fixture; bypass production startup. */
     if (command_line != NULL &&
             (wcscmp(command_line, L"--selftest-settings-storage") == 0 ||
@@ -8048,8 +8060,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     AppHostContext_SetCoreInitialized(&g_app, 1);
 #ifdef _DEBUG
-    if (AppAddressBar_DebugCheck(g_instance) != 0 || AppLoading_DebugCheck() != 0 ||
-            AppInternalPages_DebugCheck(g_app_css) != 0) {
+    if (startup_ui_selftest && (AppAddressBar_DebugCheck(g_instance) != 0 ||
+            AppLoading_DebugCheck() != 0 ||
+            AppInternalPages_DebugCheck(g_app_css) != 0)) {
         AppHostContext_Shutdown(&g_app);
         return 1;
     }
@@ -8061,7 +8074,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         return 1;
     }
 #ifdef _DEBUG
-    if (app_history_debug_check() != 0) {
+    if (startup_ui_selftest && app_history_debug_check() != 0) {
         AppHostContext_Shutdown(&g_app);
         return 1;
     }
@@ -8126,7 +8139,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) SetForegroundWindow(hwnd);
     UpdateWindow(hwnd);
 #ifdef _DEBUG
-    if (app_tabs_debug_check() != 0) {
+    if (startup_ui_selftest && app_tabs_debug_check() != 0) {
         DestroyWindow(hwnd);
         return 1;
     }

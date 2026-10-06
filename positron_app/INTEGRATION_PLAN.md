@@ -319,6 +319,11 @@ Destroy；已接受的设置写入仍排空，但迟到结果不触碰旧 sessio
 
 ### 内部页面验收
 
+普通 Debug/Release 启动不执行 UI 自检，也不导航到测试页面。Debug 专属的前置参数
+`--selftest-ui` 才启用完整 UI 夹具，可随后传入 `--url`；Release 不识别该参数。
+窗口在启动导航前显示并激活一次，后续数据库/网络完成不抢前台。设备门同时检查实际
+主窗口可见、页面可见和前台归属；普通启动门另拒绝自检日志或 example 测试地址。
+
 Debug 私有自检使用独立 Browser history 验证路由来源、别名、16 项与前进栈、转义、自过滤、
 容量失败、Core 解析和布局焦点；测试夹具与日志不编译进 Release。完整 Debug 包部署后，
 `scripts/internal_pages_gate.bat` 复用已有 RAPI helper 自动检查实际启动导航、规范化、章节定位、
@@ -338,7 +343,8 @@ identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门�
 干净的启动 history。两个带控件页面还须检查切回与关闭新页后的 EDIT 编辑、SELECT 选项、
 toggle 状态及可见控件 WM_PAINT 转发；只保留 HWND/窗口文本不算通过。
 菜单另验证左右归属和顺序、重复重建、前进条件随 history/标签更新，以及实际后退/前进/刷新命令。
-`app_history_gate` 必须取得 tabs 自检日志；不代替多页真实网络并发、
+`app_history_gate` 默认显式请求自检并必须取得 tabs 日志；`-NormalStartup` 则无参数启动，
+检查默认设置下的真实窗口与导航，不要求自检日志且拒绝夹具污染。两种门不代替多页真实网络并发、
 软键触摸、SIP/IME、旋转/DPI、内存压力和加载中退出的人工门。
 同一独立 Debug 夹具用有界 event 暂停真实宿主 worker，以离线响应驱动原 parse/commit 路径，
 验证 B 加载中 A 的 fragment/repeated/missing 跳转不取消、generation/文档/session 保留、

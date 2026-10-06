@@ -43,14 +43,18 @@ Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
 ROADMAP 已复核；访问日志/下载独立纵切，触摸/双语/键盘/旋转进入人工门；用户授权先接线
 不等于 FULL/I/O/迁移提交/断电故障通过，暂缓项不重开。
 
-用户报告启动只更新系统标题而未显示窗体，旧 EXE 门遗漏了前台/可见性断言。EXE 现于
-耗时标签自检/导航前显示并调用一次 SetForegroundWindow；后续完成不抢前台，末尾仅在
-仍为前台时设置子控件焦点。Debug 输出实际主窗口/页面可见和前台状态，Release 排除诊断。
-`tmp/device-runs/20261006-150627-app-startup-foreground/` 完整包与 app-history 门通过：
-回读 10/10、无旧 holder/crash、全部自检及 visible=1 foreground=1 page_visible=1。
-PID 3062404006 留在 newtab；用户已立即确认完整窗体正常出现，严重交互人工门关闭，
-不把该结果外推到所有 OEM/启动场景。正式双配置 build、三项启动接线检查、C89/审计通过；
-ROADMAP 已复核，未来存储范围不变。未改 DLL/ABI、数据库或并行 DB/CAB 文件。
+启动只有系统标题的回归归 EXE：现于启动导航前显示并调用一次 SetForegroundWindow，
+后续完成不抢前台，末尾仅在仍为前台时设置子控件焦点。Debug 记录实际窗口/页面可见和
+前台归属，设备门必须检查；Release 排除诊断。用户已确认完整窗体正常出现，严重交互门
+关闭，不外推所有 OEM。旧进程已退出，当前入口与复核证据如下；未改 DLL/ABI 或用户数据。
+
+提前显示暴露了 Debug example 夹具；普通启动现不运行 UI 自检，仅 Debug 前置
+`--selftest-ui` 启用。显式完整门 `tmp/device-runs/20261006-151832-app-settings-live-startup/`
+通过且进程已退出。`20261006-152226-app-settings-live-startup-retry` 的四进程主页门与无参数
+普通启动门均 PASS：保存/恢复 welcome、退出排空、默认恢复、零 fixture/example、前台/可见、
+哈希 10/10/crash。PID 3064698766 留在 newtab；原 DB 未删，新包默认 newtab，人工可重存
+welcome 复核。已存在 DB 拒绝和审计超时证据保留，不追认 PASS。双配置构建、四项接线检查、
+Release 排除、C89/审计通过；ROADMAP 已复核，存储/故障暂缓范围不变。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
