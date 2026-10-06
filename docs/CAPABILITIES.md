@@ -30,10 +30,12 @@
 
 ## 独立应用消费者的宿主边界
 
-EXE 私有内部地址注册表提供 newtab、about、只读 settings、下载未实现说明和 Browser 会话
+EXE 私有内部地址注册表提供 newtab、about、settings、下载未实现说明和 Browser 会话
 history 视图；version/system 规范化为 about 章节。模板双语内嵌，动态 HTML 上限 128 KiB，
 history 最多 16 条，焦点最多 24 项。quit 只接受地址栏直接提交并走正常关闭，不修改公共
-DLL ABI；存储和真实下载仍未接入，边界见
+DLL ABI。可信 settings 仅编辑固定起始页，使用 EXE 同目录 positron.db、公共 DB 接口和
+Browser 受控异步服务；保存、新进程恢复及正常退出排空已有应用设备门。其他设置只读，
+持久访问日志和真实下载尚未接入，故障注入与人工 UI 矩阵不因此算通过。边界见
 [内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
 
 应用把当前 GET 文档绑定到 Browser history 的公开 document identity；同文档
@@ -73,7 +75,7 @@ URL-encoded GET/POST、multipart POST 或 `method="dialog"` 默认动作并调�
 Core 负责 successful-control snapshot 与 multipart wire encoding；EXE 只提供同步文件 I/O、HTTP
 body/Content-Type 调度和 dialog close。非法值、取消、容量错误或候选失败不会替换旧页，非 GET
 提交不伪造可重放的 Browser history entry。内置 controls 页带 required
-GET 表单；内置离线页面不创建 ScriptSession，其 inline script 不执行，因此脚本取消示例仍须在
+GET 表单；除可信 settings 的最小服务代码外，内置离线页面不创建 ScriptSession，其 inline script 不执行，因此脚本取消示例仍须在
 网络 ScriptSession 页面验收。阶段 4 已由 EXE 接入脚本 `form.reset()`、native GET/POST submit、脚本
 `requestSubmit()` 与 direct `form.submit()` 的 GET/POST/multipart/dialog 路径；direct 方法按
 Core/Browser 合同跳过 validation、submit event 和 submitter。单行文本/密码 native EDIT 的 Enter

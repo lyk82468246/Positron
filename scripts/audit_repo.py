@@ -191,7 +191,7 @@ def load_worktree_files():
     return visible - deleted
 
 
-def iter_projects():
+def iter_projects(worktree_files=None):
     for base, dirs, files in os.walk(ROOT):
         parts = set(relpath(base).split("/"))
         if ".git" in parts or "bin" in parts or "obj" in parts:
@@ -199,7 +199,10 @@ def iter_projects():
             continue
         for name in files:
             if name.lower().endswith(".vcproj"):
-                yield os.path.join(base, name)
+                path = os.path.join(base, name)
+                if (worktree_files is None or
+                        relpath(path) in worktree_files):
+                    yield path
 
 
 def xml_local_name(tag):
@@ -494,7 +497,7 @@ def main():
 
     project_count = 0
     source_count = 0
-    for project in iter_projects():
+    for project in iter_projects(worktree_files):
         project_count += 1
         source_count += audit_project(project, tracked, errors)
 

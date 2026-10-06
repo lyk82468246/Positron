@@ -1,6 +1,10 @@
 <!doctype html><html lang="zh-CN"><head><title>设置</title></head>
 <body class="internal">
-<h1>设置</h1><p>以下为只读信息，暂不支持修改或持久保存偏好。</p><!--APP_CONTENT-->
+<h1>设置</h1><p>起始页保存在应用程序同目录的 positron.db 中，其他信息为只读。</p><!--APP_CONTENT-->
+<p><label for="settings-startup">启动页 / 主页</label></p>
+<p><select id="settings-startup" disabled><option id="settings-option-newtab" value="positron://newtab">起始页</option><option id="settings-option-welcome" value="positron://welcome">欢迎页</option><option id="settings-option-controls" value="positron://controls">控件</option></select></p>
+<p><button id="settings-save" type="button" disabled>保存</button></p>
+<p id="settings-status">存储不可用，不会保存偏好。</p>
 <h2>内部页面</h2>
 <p><a id="nav-newtab" href="positron://newtab">起始页</a></p>
 <p><a id="nav-about" href="positron://about">关于 Positron</a></p>
@@ -9,4 +13,37 @@
 <p><a id="nav-settings" href="positron://settings">设置</a></p>
 <p><a id="nav-welcome" href="positron://welcome">欢迎页</a></p>
 <p><a id="nav-controls" href="positron://controls">控件</a></p>
-</body></html>
+<script>
+(function () {
+    var choice = document.getElementById('settings-startup');
+    var button = document.getElementById('settings-save');
+    var status = document.getElementById('settings-status');
+    var busy = true;
+    function enable() {
+        busy = false;
+        choice.removeAttribute('disabled');
+        button.removeAttribute('disabled');
+    }
+    button.addEventListener('click', function () {
+        if (busy) return;
+        busy = true;
+        choice.setAttribute('disabled', '');
+        button.setAttribute('disabled', '');
+        status.textContent = '正在保存…';
+        try {
+            PositronServices.request('settings.write', {startupPage: choice.value}, function (ok, value) {
+                status.textContent = ok ? '已保存，将用于主页和下次启动。' : '保存失败，保留原有偏好。';
+                enable();
+            });
+        } catch (error) { status.textContent = '存储不可用，保留原有偏好。'; }
+    });
+    try {
+        PositronServices.request('settings.read', {}, function (ok, value) {
+            if (!ok) { status.textContent = '无法读取偏好，保留现有文件。'; return; }
+            choice.value = value.startupPage;
+            status.textContent = '选择启动页，然后保存。';
+            enable();
+        });
+    } catch (error) { status.textContent = '存储不可用，不会保存偏好。'; }
+}());
+</script></body></html>

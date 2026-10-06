@@ -23,10 +23,8 @@
 #include <wchar.h>
 
 #include "app_debug.h"
-#ifdef _DEBUG
 #include "app_settings_store.h"
 #include "app_settings_services.h"
-#endif
 #include "app_host.h"
 #include "app_tabs.h"
 #include "app_loading.h"
@@ -79,6 +77,7 @@
 #define APP_CONTROLS_REFRESH_FORM_RESET 1
 #define APP_SCRIPT_TIMER_ID     7
 #define APP_LOADING_TIMER_ID    8
+#define APP_SETTINGS_TIMER_ID   9
 #define APP_NAV_SCRIPT_TIMER_BASE 0x10000UL
 #define APP_NAV_SCRIPT_INTERVAL_MS 16U
 #define APP_COMMAND_ARG_MAX     16384
@@ -177,6 +176,19 @@ static int g_startup_click_armed;
 static unsigned long g_startup_script_generation;
 static unsigned long g_startup_script_tab_id;
 static unsigned long g_tab_sequence;
+static AppSettingsStore *g_settings_store;
+static AppSettingsStartPage g_settings_start_page = APP_SETTINGS_START_NEWTAB;
+static unsigned long g_settings_page_sequence;
+static unsigned long g_settings_nav_serial;
+static unsigned long g_settings_startup_serial;
+static unsigned long g_settings_startup_tab;
+static int g_settings_startup_pending;
+#ifdef _DEBUG
+static int g_settings_live_mode;
+static int g_settings_live_phase;
+static int g_settings_live_write_ok;
+static DWORD g_settings_live_started;
+#endif
 
 static int app_relayout(void);
 static int app_load_page(HWND hwnd, const char *url, int history_mode,
@@ -3213,6 +3225,42 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
     }
     app_set_address(g_current_url);
     app_history_bind_page();
+    /* Permission comes from this successful embedded-resource construction,
+     * not URL classification or a page-supplied attribute. Other local pages
+     * remain script-free; a missing store leaves the settings UI disabled. */
+    if (new_page_kind == APP_I18N_PAGE_SETTINGS && g_settings_store != NULL &&
+            g_settings_page_sequence != 0xffffffffUL) {
+        AppScriptHostCallbacks callbacks;
+
+        memset(&callbacks, 0, sizeof(callbacks));
+        callbacks.size = sizeof(callbacks);
+        callbacks.pw = &g_app;
+        callbacks.navigate = app_script_navigate;
+        callbacks.scroll = app_script_scroll;
+        callbacks.mutation = app_script_mutated;
+        callbacks.form_reset_applied = app_script_form_reset_applied;
+        callbacks.get_contenteditable_selection =
+                app_script_contenteditable_selection_get;
+        callbacks.set_contenteditable_selection =
+                app_script_contenteditable_selection_set;
+        callbacks.validate_form_submit = app_script_validate_form_submit;
+        callbacks.submit_form = app_script_submit_form;
+        callbacks.submit_form_direct = app_script_submit_form_direct;
+        callbacks.form_navigation = app_script_form_navigation;
+        callbacks.get_programmatic_click_target = app_script_programmatic_click_target;
+        callbacks.validate_programmatic_click = app_script_programmatic_click_validate;
+        callbacks.programmatic_click_default = app_script_programmatic_click_default;
+        callbacks.programmatic_click_generic = app_script_programmatic_click_generic;
+        callbacks.get_programmatic_anchor_target = app_script_programmatic_anchor_target;
+        ++g_settings_page_sequence;
+        g_script = AppScript_CreatePending(g_document, g_current_url,
+                PBrowser_HistoryCount(g_history), PBrowser_HistoryIndex(g_history),
+                1, PBrowser_HistoryCurrentState(g_history), g_page_width,
+                g_page_height, g_dpi, &callbacks, g_settings_page_sequence);
+        if (g_script != NULL)
+            AppScript_BindSettings(g_script, g_settings_store, g_app.tab_id,
+                    g_settings_page_sequence);
+    }
     if (app_relayout() != 0) {
         app_set_status(APP_TEXT_STATUS_LAYOUT);
     }
@@ -3247,6 +3295,211 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         InvalidateRect(hwnd, NULL, TRUE);
     }
     return 1;
+}
+
+/* File policy belongs to this EXE. Resolve from the executable, never CWD,
+ * registry or a DLL location. Do not mkdir, reset or silently switch DBs. */
+static int app_settings_start(HWND hwnd)
+{
+    WCHAR executable[APP_SETTINGS_PATH_MAX];
+    WCHAR dll[APP_SETTINGS_PATH_MAX];
+    WCHAR roundtrip[APP_SETTINGS_PATH_MAX];
+    WCHAR *slash;
+    char database[APP_SETTINGS_PATH_MAX];
+    DWORD count;
+    int directory_length;
+    int rc;
+
+    count = GetModuleFileNameW(NULL, executable, APP_SETTINGS_PATH_MAX);
+    if (!count || count >= APP_SETTINGS_PATH_MAX || executable[0] != L'\\')
+        return APP_SETTINGS_PLATFORM_FAILED;
+    slash = wcsrchr(executable, L'\\');
+    if (slash == NULL) return APP_SETTINGS_PLATFORM_FAILED;
+    directory_length = (int) (slash - executable) + 1;
+    if (directory_length + 16 >= APP_SETTINGS_PATH_MAX)
+        return APP_SETTINGS_PLATFORM_FAILED;
+    wcscpy(executable + directory_length, L"positron.db");
+#ifdef _DEBUG
+    if (g_settings_live_mode) {
+        const WCHAR *prefix;
+        DWORD attributes;
+
+        prefix = L"\\Storage Card\\Temp\\Positron-device-gate\\app-settings-live-";
+        attributes = GetFileAttributesW(executable);
+        if (wcsncmp(executable, prefix, wcslen(prefix)) != 0 ||
+                (g_settings_live_mode == 1 && attributes != 0xffffffffUL) ||
+                (g_settings_live_mode != 1 && attributes == 0xffffffffUL))
+            return APP_SETTINGS_BAD_DATA;
+    }
+#endif
+    if (!WideCharToMultiByte(CP_UTF8, 0, executable, -1, database,
+            sizeof(database), NULL, NULL)) return APP_SETTINGS_PLATFORM_FAILED;
+    if (!MultiByteToWideChar(CP_UTF8, 0, database, -1, roundtrip,
+            APP_SETTINGS_PATH_MAX) || wcscmp(roundtrip, executable))
+        return APP_SETTINGS_PLATFORM_FAILED;
+    wcsncpy(dll, executable, directory_length);
+    wcscpy(dll + directory_length, L"positron_db.dll");
+    /* Portable package first; CAB installs shared DLLs in \\Windows. This
+     * chooses an explicit DLL path, never changes the database location. */
+    if (GetFileAttributesW(dll) == 0xffffffffUL)
+        wcscpy(dll, L"\\Windows\\positron_db.dll");
+    if (!SetTimer(hwnd, APP_SETTINGS_TIMER_ID, 50, NULL))
+        return APP_SETTINGS_PLATFORM_FAILED;
+    rc = AppSettingsStore_Create(dll, database, &g_settings_store);
+    if (rc != APP_SETTINGS_OK) KillTimer(hwnd, APP_SETTINGS_TIMER_ID);
+#ifdef _DEBUG
+    {
+        char message[1280];
+        _snprintf(message, sizeof(message) - 1,
+                "positron settings-start result=%d path=%s\r\n", rc, database);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+#endif
+    return rc;
+}
+
+#ifdef _DEBUG
+/* Real embedded page, public DOM/native click path and production store.
+ * Exact modes are confined to a fresh app-settings-live-* deployment. */
+static void app_settings_live_finish(HWND hwnd, int success)
+{
+    char message[256];
+
+    if (g_settings_live_phase == 99) return;
+    _snprintf(message, sizeof(message) - 1,
+            "settings-live %s mode=%d history=%d page=%d drained=%d\r\n",
+            success ? "PASS" : "FAIL", g_settings_live_mode,
+            PBrowser_HistoryCount(g_history), g_settings_start_page,
+            g_settings_live_write_ok);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+    g_settings_live_phase = 99;
+    if (!g_tabs_closing) PostMessage(hwnd, WM_CLOSE, 0, 0);
+}
+
+static void app_settings_live_step(HWND hwnd)
+{
+    PCoreFocusTargetInfo focus;
+    char status[256];
+    const char *source;
+
+    if (!g_settings_live_mode || g_settings_live_phase == 99) return;
+    if (GetTickCount() - g_settings_live_started > 120000UL) {
+        app_settings_live_finish(hwnd, 0);
+        return;
+    }
+    if (g_settings_live_mode == 2) {
+        if (g_settings_startup_pending) return;
+        app_settings_live_finish(hwnd,
+                g_settings_start_page == APP_SETTINGS_START_WELCOME &&
+                !strcmp(g_current_url, APP_URL_WELCOME) &&
+                PBrowser_HistoryCount(g_history) == 1);
+        return;
+    }
+    if (g_settings_live_mode == 4) {
+        if (g_settings_startup_pending) return;
+        app_settings_live_finish(hwnd,
+                g_settings_start_page == APP_SETTINGS_START_NEWTAB &&
+                !strcmp(g_current_url, APP_URL_NEWTAB) &&
+                PBrowser_HistoryCount(g_history) == 1);
+        return;
+    }
+    if (g_settings_live_phase == 0) {
+        if (strcmp(g_current_url, "positron://settings") != 0) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
+        if (g_script == NULL || PCore_FocusTargetInfoById(g_document,
+                "settings-save", &focus) != 0) return;
+        source = g_settings_live_mode == 1 ?
+                "document.getElementById('settings-startup').value='positron://welcome';"
+                "document.getElementById('settings-save').click();" :
+                "document.getElementById('settings-startup').value='positron://newtab';"
+                "document.getElementById('settings-save').click();";
+        if (AppScript_Evaluate(g_script, source, (int) strlen(source)) != 0) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
+        g_settings_live_phase = 1;
+        if (g_settings_live_mode == 3) PostMessage(hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
+    if (g_settings_live_mode == 1 && g_settings_live_write_ok &&
+            PCore_NodeTextContentById(g_document, "settings-status", status,
+            sizeof(status), NULL) == 0 &&
+            (strstr(status, "Saved.") != NULL ||
+            strstr(status, "\345\267\262\344\277\235\345\255\230") != NULL))
+        app_settings_live_finish(hwnd, PBrowser_HistoryCount(g_history) == 1);
+}
+#endif
+
+static void app_settings_tick(HWND hwnd)
+{
+    AppSettingsResult result;
+    int i;
+    int count;
+    int startup;
+
+    if (g_settings_store == NULL) return;
+    for (count = 0; count < APP_SETTINGS_QUEUE_MAX; ++count) {
+        if (AppSettingsStore_Poll(g_settings_store, &result) != APP_SETTINGS_OK)
+            break;
+        if (result.result == APP_SETTINGS_OK)
+            g_settings_start_page = result.start_page;
+#ifdef _DEBUG
+        if (g_settings_live_mode && result.operation == APP_SETTINGS_SAVE &&
+                result.result == APP_SETTINGS_OK)
+            g_settings_live_write_ok = 1;
+        {
+            char message[256];
+            _snprintf(message, sizeof(message) - 1,
+                    "positron settings-result request=%lu op=%d result=%d "
+                    "page=%d tab=%lu gen=%lu\r\n", result.request_id,
+                    result.operation, result.result, result.start_page,
+                    result.tab_id, result.generation);
+            message[sizeof(message) - 1] = '\0';
+            AppDebug_Log(message);
+        }
+#endif
+        for (i = 0; i < APP_TAB_MAX; ++i) {
+            if (g_tabs[i].used && !g_tabs[i].closing)
+                AppScript_SettingsResult(g_tabs[i].host.script, &result);
+        }
+        if (result.request_id == 1 && g_settings_startup_pending) {
+            startup = !g_tabs_closing && g_app.tab_id == g_settings_startup_tab &&
+                    g_settings_nav_serial == g_settings_startup_serial &&
+                    g_tab_count == 1 && g_navigation_request == NULL &&
+                    !AppAddressBar_IsEditing(g_address_bar) &&
+                    !strcmp(g_current_url, APP_URL_NEWTAB);
+            g_settings_startup_pending = 0;
+            if (startup && result.result == APP_SETTINGS_OK &&
+                    g_settings_start_page != APP_SETTINGS_START_NEWTAB)
+                (void) app_load_page_from(hwnd,
+                        AppSettingsStore_StartPageUrl(g_settings_start_page),
+                        APP_HISTORY_REPLACE, -1, APP_NAV_SOURCE_STARTUP);
+        }
+        if (result.request_id == 1 && result.result != APP_SETTINGS_OK &&
+                !g_tabs_closing && g_navigation_request == NULL)
+            app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
+    }
+    if (g_tabs_closing) {
+        if (AppSettingsStore_TryDestroy(&g_settings_store) == APP_SETTINGS_OK) {
+#ifdef _DEBUG
+            if (g_settings_live_mode == 3)
+                app_settings_live_finish(hwnd, g_settings_live_write_ok &&
+                        g_settings_start_page == APP_SETTINGS_START_NEWTAB &&
+                        PBrowser_HistoryCount(g_history) == 1);
+#endif
+            KillTimer(hwnd, APP_SETTINGS_TIMER_ID);
+            app_tabs_finish_close();
+        }
+        return;
+    }
+    (void) AppScript_SettingsStep(g_script);
+#ifdef _DEBUG
+    app_settings_live_step(hwnd);
+#endif
 }
 
 static int app_navigation_retired_count(void)
@@ -4704,6 +4957,8 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     AppInternalRoute route;
     int same_document;
 
+    ++g_settings_nav_serial;
+    if (!g_settings_nav_serial) g_settings_startup_pending = 0;
     if (url == NULL || url[0] == '\0') return 0;
     if (history_mode == APP_HISTORY_TARGET) {
         same_document = app_history_traverse(hwnd, history_target);
@@ -5746,7 +6001,8 @@ static void app_go_from_address(HWND hwnd)
 
 static void app_go_home(HWND hwnd)
 {
-    (void) app_load_page_from(hwnd, APP_URL_NEWTAB,
+    (void) app_load_page_from(hwnd,
+            AppSettingsStore_StartPageUrl(g_settings_start_page),
             APP_HISTORY_NEW, -1, APP_NAV_SOURCE_MENU);
 }
 
@@ -6758,6 +7014,10 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_TIMER:
+        if (wparam == APP_SETTINGS_TIMER_ID) {
+            app_settings_tick(hwnd);
+            return 0;
+        }
         if (g_tabs_closing) return 0;
         if (wparam >= APP_NAV_SCRIPT_TIMER_BASE) {
             AppNavigationRequest *request;
@@ -7014,6 +7274,7 @@ static void app_tabs_finish_close(void)
 
     if (!g_tabs_enabled) return;
     if (g_tabs_closing) {
+        if (g_settings_store != NULL) return;
         for (i = 0; i < APP_TAB_MAX; i++) {
             if (g_tabs[i].used && (g_tabs[i].host.navigation_request != NULL ||
                     g_tabs[i].host.retired_navigation != NULL)) return;
@@ -7262,6 +7523,11 @@ static void app_tabs_close_all(HWND hwnd)
 
     saved = g_tab;
     g_tabs_closing = 1;
+    g_settings_startup_pending = 0;
+    for (i = 0; i < APP_TAB_MAX; ++i)
+        AppScript_RevokeSettings(g_tabs[i].host.script);
+    if (g_settings_store != NULL)
+        (void) AppSettingsStore_RequestClose(g_settings_store);
     KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
     app_file_picker_cancel_pending();
     app_page_pointer_cancel(g_page_window);
@@ -7722,8 +7988,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
 
     (void) previous;
 #ifdef _DEBUG
-    /* Explicit isolated fixture only. Normal startup never loads DB or
-     * touches settings files until the DB production gates have passed. */
+    /* Explicit isolated adapter fixture; bypass production startup. */
     if (command_line != NULL &&
             (wcscmp(command_line, L"--selftest-settings-storage") == 0 ||
             wcscmp(command_line, L"--selftest-settings-services") == 0)) {
@@ -7735,6 +8000,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
                 "settings-fixture FAIL exit=1\r\n");
         AppDebug_EndSession();
         return result;
+    }
+    if (command_line != NULL) {
+        if (!wcscmp(command_line, L"--selftest-settings-live-create"))
+            g_settings_live_mode = 1;
+        else if (!wcscmp(command_line, L"--selftest-settings-live-reopen"))
+            g_settings_live_mode = 2;
+        else if (!wcscmp(command_line, L"--selftest-settings-live-drain"))
+            g_settings_live_mode = 3;
+        else if (!wcscmp(command_line, L"--selftest-settings-live-default"))
+            g_settings_live_mode = 4;
+        if (g_settings_live_mode) {
+            command_line = (g_settings_live_mode == 1 || g_settings_live_mode == 3) ?
+                    L"--url positron://settings" : L"";
+            g_settings_live_started = GetTickCount();
+        }
     }
 #endif
     startup_has_reference = 0;
@@ -7870,6 +8150,21 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     if (result != 0) {
         DestroyWindow(hwnd);
         return result;
+    }
+    if (app_settings_start(hwnd) == APP_SETTINGS_OK) {
+        g_settings_startup_pending = !startup_has_reference && !startup_invalid;
+        g_settings_startup_serial = g_settings_nav_serial;
+        g_settings_startup_tab = g_app.tab_id;
+        /* An explicit startup settings URL was committed before the store
+         * existed. Refresh it once without an extra history entry. */
+        if (g_page_kind == APP_I18N_PAGE_SETTINGS)
+            (void) app_load_local_page(hwnd, initial_url,
+                    APP_HISTORY_REFRESH, -1);
+    } else {
+        app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
+#ifdef _DEBUG
+        if (g_settings_live_mode) app_settings_live_finish(hwnd, 0);
+#endif
     }
     if (!startup_invalid && startup_has_script) {
         g_startup_script_armed = 1;

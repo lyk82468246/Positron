@@ -105,7 +105,7 @@ class SettingsServicesBoundaryTests(unittest.TestCase):
         self.assertNotIn("PDb_Cancel", SOURCE)
         self.assertIn("until its borrowed session is Destroyed", HEADER)
 
-    def test_fixture_is_debug_only_and_not_runtime_activated(self):
+    def test_fixture_is_isolated_and_runtime_requires_embedded_identity(self):
         self.assertLess(FIXTURE.index("#ifdef _DEBUG"),
                         FIXTURE.index("int AppSettingsServices_DebugCheck"))
         self.assertIn('AppSettingsStore_Create(dll_path, ":memory:"', FIXTURE)
@@ -119,8 +119,29 @@ class SettingsServicesBoundaryTests(unittest.TestCase):
             r"AppSettingsServices_DebugCheck\(\).*?#endif\s*startup_has_reference = 0;", re.S))
         self.assertEqual(main.count("AppSettingsServices_DebugCheck()"), 1)
         self.assertNotIn("AppSettingsServices_Register", main)
+        self.assertIn("new_page_kind == APP_I18N_PAGE_SETTINGS", main)
+        script = (ROOT / "positron_app/app_script.c").read_text(encoding="utf-8")
+        step = script[script.index("int AppScript_SettingsStep("):]
+        self.assertLess(step.index("AppScript_InitializeStep"),
+                        step.index("AppSettingsServices_Register"))
+        self.assertLess(step.index("AppSettingsServices_Register"),
+                        step.index("AppScript_ExecuteStep"))
+        self.assertIn("APP_SETTINGS_PAGE_EMBEDDED_SETTINGS", step)
+        self.assertIn("AppScript_ExecuteStep(context, 0, NULL, NULL)", step)
         self.assertIn('RelativePath=".\\app_settings_services.c"', project)
         self.assertIn("positron_json.lib", project)
+
+    def test_frontends_use_only_whitelisted_services_and_native_dom(self):
+        for language in ("en-US", "zh-CN"):
+            raw = (ROOT / "positron_app/resources" / language / "settings.html").read_bytes()
+            self.assertFalse(raw.startswith(b"\xef\xbb\xbf"))
+            html = raw.decode("utf-8")
+            self.assertIn("PositronServices.request('settings.read', {}", html)
+            self.assertIn("PositronServices.request('settings.write'", html)
+            self.assertIn("button.addEventListener('click'", html)
+            self.assertIn('id="settings-save" type="button" disabled', html)
+            self.assertNotIn("sqlite", html.lower())
+            self.assertNotIn("<script src", html)
 
 
 if __name__ == "__main__":

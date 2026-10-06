@@ -14,23 +14,34 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 分支 main。并行性能变更已由 df205495 提交，后续 DB 测试提交以 Git 为准；内部页面提交只包括 positron_app、专用检查脚本及其文档。共享 main.c 中原有性能计时与退出日志已保留，不纳入重复修正。本批新增的 device_tools 模块审计属于设备门前置能力，已与内部页面改动分开。
 
-内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。默认入口为 newtab；内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，无 ScriptSession 或外部请求。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 的导航来源检查仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
+内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 只读 Browser 导航栈；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
 
-### EXE 设置存储与可信服务适配器自动门通过，生产仍关闭
+### EXE 固定起始页持久化实际门通过
 
-store/services 与两个 Debug 入口已纳入工程，调用合同见应用接线计划；普通启动不创建
-用户数据库，settings 仍只读，本批未引入 CAB DB 依赖。
-最终包 `tmp/device-runs/20261005-233009-app-settings-final/` 的 `app-settings/result.txt`
-为 PASS：storage phase=6、services phase=4/line=0、cleanup=0、production_enabled=0。
-前后 guest holders=0 unavailable=0、EXE/九 DLL 回读 10/10、crash 门均通过。
-同包 app-history 通过，PID1447603658 留在 newtab；SD 门根下
-`app-settings-final-20261005-233009` 保留，测试文件已清理。
-Debug/Release 相邻 `136,1321,1341,999` 各 4/4，完整日志、唯一 PASS 与 crash 门通过。
-离线、C89、正式补建及 Release 夹具排除通过。失败日志在
-`tmp/app-settings-builds/`，静默 Release 门不计 PASS。ROADMAP 已复核；生产等 DB
-文件门及实际设置页/启动接线，FULL 暂缓不重开。
+普通 Debug/Release 启动已消费 EXE 同目录 positron.db；可信 settings 只编辑
+newtab/welcome/controls，UI 分批 bootstrap/作者代码和服务 Pump，单所有者 DB worker
+异步读取/保存，COMMIT 后更新缓存，退出先撤销服务再排空。公共 DLL/ABI、CAB 配置和
+其他 agent 文件未改；存储不可用不删除文件或切换数据库。
+
+`tmp/device-runs/20261006-143251-app-settings-live-fixed/app-settings-live/result.txt`
+为 PASS：实际页面保存 welcome、新进程恢复、接受写入后退出排空、再次启动恢复 newtab
+四项通过；每项退出后 guest holders=0 unavailable=0，EXE/九 DLL 回读 10/10、crash 门通过。
+应用包和测试数据库保留在 SD 门根的 `app-settings-live-fixed-20261006-143251`，四个
+测试进程均已退出；同包 app-history 门通过，回读 10/10、crash_check PASS。
+PID 2006665102 留在 newtab，供人工设置页验收；不沿用旧包/PID。
+Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
+`20261006-144728-app-settings-adjacent-release` 的 `136,1321,1341,999` 各 4/4，
+唯一 PASS、完整日志、零 ERROR/FAIL、空间/引用/crash 门通过；日志回收后清理这两个测试目录。
+
+初始设置页刷新改用稳定 URL 副本，防止替换页面时同一地址缓冲区被清空；Debug 门新增
+实际地址断言。终态日志先于异步退出，门仅对该测试 PID 有界等待，其他 holder/不可用
+仍立即拒绝。store 14 项、services 11 项、守卫/等待 13 项、审计工程范围 3 项、C89 与
+正式双配置/Release 夹具排除通过。构建日志在 `tmp/app-settings-live-builds/`。
+早期 device=5、脚本函数缺失、立即审计误判与审批超时的证据保留，不追认为 PASS。
+ROADMAP 已复核；访问日志/下载独立纵切，触摸/双语/键盘/旋转进入人工门；用户授权先接线
+不等于 FULL/I/O/迁移提交/断电故障通过，暂缓项不重开。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -445,7 +456,7 @@ callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站�
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。内部 settings/downloads 只是诚实的只读说明，不代表配置或下载管理已经实现。HTTP DLL 流式 GET/取消已验收；应用保存文件、DB HTTPS worker、持久化及断电恢复仍未进入本批。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。settings 仅能持久化固定起始页，downloads 仍为未实现说明。HTTP DLL 流式 GET/取消已验收；应用下载文件保存、访问日志、DB HTTPS worker 和真实断电恢复不属于本批。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 

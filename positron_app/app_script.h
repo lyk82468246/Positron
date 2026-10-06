@@ -15,6 +15,7 @@
 #include "positron_core.h"
 #include "positron_browser.h"
 #include "app_forms.h"
+#include "app_settings_services.h"
 
 #define APP_SCRIPT_URL_MAX       PBROWSER_HISTORY_URL_MAX
 #define APP_SCRIPT_STATE_MAX     PBROWSER_HISTORY_STATE_MAX
@@ -122,6 +123,14 @@ int AppScript_ExecuteStep(AppScriptContext *context, int allow_external,
  * public Browser or Script ABI and accepts only the existing source budget. */
 int AppScript_Evaluate(AppScriptContext *context, const char *source,
         int source_bytes);
+/* Called only for an EXE-constructed embedded settings document. Bootstrap
+ * and author code advance separately on the UI thread, never on the worker. */
+void AppScript_BindSettings(AppScriptContext *context, AppSettingsStore *store,
+        unsigned long tab_id, unsigned long generation);
+int AppScript_SettingsStep(AppScriptContext *context);
+void AppScript_SettingsResult(AppScriptContext *context,
+        const AppSettingsResult *result);
+void AppScript_RevokeSettings(AppScriptContext *context);
 void AppScript_Destroy(AppScriptContext *context);
 
 int AppScript_BeforeUnload(AppScriptContext *context, int *out_prevented);

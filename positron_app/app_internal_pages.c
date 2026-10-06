@@ -744,10 +744,9 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
     } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
         app_html_row(&writer, chinese ? "\347\225\214\351\235\242\350\257\255\350\250\200" : "UI language",
                 chinese ? "\347\256\200\344\275\223\344\270\255\346\226\207 (zh-CN)" : "English (en-US)");
-        app_html_row(&writer, chinese ? "\344\270\273\351\241\265" : "Home", APP_URL_NEWTAB);
         app_html_row(&writer, "JavaScript", chinese ?
-                "\347\275\221\347\273\234\351\241\265\345\220\257\347\224\250\346\234\211\347\225\214 classic script\357\274\233\345\206\205\351\203\250\351\241\265\344\270\215\346\211\247\350\241\214\350\204\232\346\234\254\343\200\202" :
-                "Bounded classic scripts on network pages; none on internal pages.");
+                "\347\275\221\347\273\234\351\241\265\345\220\257\347\224\250\346\234\211\347\225\214 classic script\357\274\233\350\256\276\347\275\256\351\241\265\344\273\205\346\211\247\350\241\214\345\206\205\345\265\214\350\204\232\346\234\254\343\200\202" :
+                "Bounded classic scripts on network pages; embedded code only on Settings.");
     }
     app_html_append(&writer, marker + strlen("<!--APP_CONTENT-->"));
     AppI18n_FreePage(template_bytes);

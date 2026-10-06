@@ -1,4 +1,4 @@
-/* EXE-private asynchronous settings candidate; not enabled at startup. */
+/* EXE-private asynchronous settings storage. */
 #ifndef POSITRON_APP_SETTINGS_STORE_H
 #define POSITRON_APP_SETTINGS_STORE_H
 
@@ -59,8 +59,8 @@ const char *AppSettingsStore_StartPageUrl(AppSettingsStartPage page);
 /* All entry points belong to the creating/UI thread. The worker alone loads
  * the explicitly named absolute DLL, opens/migrates/queries/closes the DB and
  * unloads the DLL. Paths are copied; no directory creation or fallback.
- * Database path is absolute UTF-8, or :memory:. The current candidate is only
- * invoked by an explicit Debug fixture, never by ordinary startup/Release. */
+ * Database path is absolute UTF-8, or :memory: for isolated Debug fixtures.
+ * The production EXE resolves positron.db beside its own executable. */
 int AppSettingsStore_Create(const WCHAR *dll_path, const char *database_path,
         AppSettingsStore **out_store);
 /* Both job and completion storage count toward the eight-request budget.

@@ -419,7 +419,9 @@
   百分号编码片段尚无 EXE 可直接消费的公共解码入口；当前保持
   位置，不把编码字符串当 literal ID 命中。HTTP 请求 URL resolver/final URL 会去掉片段，
   跨文档 HTTP 导航的初始片段保留仍未接入；不在 EXE 复制 URL decoder 或 redirect 规则。
-- 内部 history 不是持久访问日志，settings 只读，下载/持久设置未实现；后端进入条件及
+- 内部 history 不是持久访问日志，下载管理尚未实现；settings 仅能持久化固定起始页
+  newtab/welcome/controls，其他项目只读。EXE 同目录数据库的保存、新进程恢复及正常退出
+  排空已通过实际页自动门，不保证断电、文件故障、任意网络起始页或标签恢复。后端边界及
   quit 来源策略见 [设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
   触摸、双语、旋转与退出仍待人工门。
 - Browser history 只保存有界 page-level `(scroll_x, scroll_y)`，宿主按 Core extent/client size clamp 并换算 CSS/物理坐标；`scrollRestoration=manual` 跳过自动恢复，但不阻止 fragment reveal 或显式滚动。元素 retained-overflow offset 不入栈；完整滚动树、chaining、锚定、惯性滚动、视觉 viewport 偏移和跨窗口恢复未实现。公开合同与通知顺序见 [能力矩阵](../docs/CAPABILITIES.md#browserpositron_browserdll)。

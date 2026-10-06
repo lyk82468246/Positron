@@ -101,18 +101,50 @@ class CandidateBoundaryTests(unittest.TestCase):
         self.assertNotIn("positron_db.dll|", project)
         self.assertIn('RelativePath=".\\app_settings_store.c"', project)
 
-    def test_explicit_debug_entry_only(self):
+    def test_isolated_debug_entry_precedes_runtime(self):
         main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
         # Must be in WinMain before normal argument parsing, not inside a
         # nested _DEBUG branch under an unrelated function's Release #else.
         winmain = main[main.index("int WINAPI WinMain("):]
-        pattern = (r"#ifdef _DEBUG\s*/\* Explicit isolated fixture.*?"
+        pattern = (r"#ifdef _DEBUG\s*/\* Explicit isolated adapter fixture.*?"
                    r"AppSettingsStore_DebugCheck\(\).*?#endif\s*"
                    r"startup_has_reference = 0;")
         self.assertRegex(winmain, re.compile(pattern, re.S))
         self.assertEqual(main.count("AppSettingsStore_DebugCheck()"), 1)
-        for function in ("AppSettingsStore_Create(", "AppSettingsStore_Submit("):
-            self.assertNotIn(function, main)
+        self.assertEqual(main.count("AppSettingsStore_Create("), 1)
+        self.assertNotIn("AppSettingsStore_Submit(", main)
+        self.assertIn('L"positron.db"', main)
+        self.assertIn("GetModuleFileNameW(NULL", main)
+        self.assertIn("APP_SETTINGS_TIMER_ID", main)
+        self.assertLess(winmain.index("app_tabs_debug_check()"),
+                        winmain.index("app_settings_start(hwnd)"))
+
+    def test_runtime_drains_before_window_destroy(self):
+        main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
+        close = main[main.index("static void app_tabs_close_all(HWND hwnd)\n{"):]
+        self.assertLess(close.index("AppScript_RevokeSettings"),
+                        close.index("AppSettingsStore_RequestClose"))
+        finish = main[main.index("static void app_tabs_finish_close(void)\n{"):]
+        self.assertLess(finish.index("if (g_settings_store != NULL) return;"),
+                        finish.index("DestroyWindow(g_window)"))
+        timer = main[main.index("    case WM_TIMER:"):]
+        self.assertLess(timer.index("app_settings_tick(hwnd)"),
+                        timer.index("if (g_tabs_closing) return 0;"))
+
+    def test_async_startup_does_not_replace_new_user_navigation(self):
+        main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
+        tick = main[main.index("static void app_settings_tick(HWND hwnd)"):]
+        for guard in ("g_settings_nav_serial == g_settings_startup_serial",
+                      "g_app.tab_id == g_settings_startup_tab",
+                      "!AppAddressBar_IsEditing(g_address_bar)",
+                      "g_navigation_request == NULL", "APP_HISTORY_REPLACE"):
+            self.assertIn(guard, tick)
+
+    def test_initial_settings_refresh_uses_stable_url(self):
+        main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
+        winmain = main[main.index("int WINAPI WinMain("):]
+        self.assertIn("app_load_local_page(hwnd, initial_url,", winmain)
+        self.assertNotIn("app_load_local_page(hwnd, g_current_url,", winmain)
 
     def test_worker_uses_public_db_contract_not_private_sqlite(self):
         self.assertNotIn("sqlite3_", SOURCE)

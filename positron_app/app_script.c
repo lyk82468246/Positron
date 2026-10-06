@@ -56,6 +56,11 @@ struct AppScriptContext {
     int script_ignored;
     int script_errors;
     int script_complete;
+    AppSettingsStore *settings_store;
+    AppSettingsServices settings_services;
+    unsigned long settings_tab_id;
+    unsigned long settings_generation;
+    int settings_phase;
 };
 
 #ifdef _DEBUG
@@ -2342,6 +2347,7 @@ void AppScript_Destroy(AppScriptContext *context)
     if (context == NULL) {
         return;
     }
+    AppScript_RevokeSettings(context);
     if (context->bootstrap_pending && context->session != NULL) {
         (void) PBrowser_ScriptSessionBootstrapCancel(context->session,
                 context->bootstrap_generation);
@@ -2374,6 +2380,10 @@ int AppScript_BeforeUnload(AppScriptContext *context, int *out_prevented)
             out_prevented == NULL) {
         return 1;
     }
+    if (context->settings_phase && context->bootstrap_pending) {
+        *out_prevented = 0;
+        return 0;
+    }
     return PBrowser_ScriptSessionDispatchBeforeUnload(context->session,
             out_prevented) == PSCRIPT_OK ? 0 : 1;
 }
@@ -2392,6 +2402,8 @@ int AppScript_PageTeardown(AppScriptContext *context)
     if (context == NULL || context->session == NULL) {
         return 0;
     }
+    AppScript_RevokeSettings(context);
+    if (context->bootstrap_pending) return 0;
     return PBrowser_ScriptSessionDispatchPageTeardown(context->session) ==
             PSCRIPT_OK ? 0 : 1;
 }
@@ -2399,12 +2411,80 @@ int AppScript_PageTeardown(AppScriptContext *context)
 int AppScript_RunTaskCheckpoint(AppScriptContext *context,
         unsigned long now_ms)
 {
-    if (context == NULL || context->session == NULL) {
+    if (context == NULL || context->session == NULL ||
+            context->bootstrap_pending || context->settings_phase < 0) {
         return 0;
     }
     return PBrowser_ScriptSessionRunTaskCheckpoint(context->session, now_ms,
             now_ms, now_ms + 1UL, 8UL, PBROWSER_SCRIPT_PUMP_ALL) ==
             PSCRIPT_OK ? 0 : 1;
+}
+
+void AppScript_BindSettings(AppScriptContext *context, AppSettingsStore *store,
+        unsigned long tab_id, unsigned long generation)
+{
+    if (context == NULL || store == NULL || !context->bootstrap_pending ||
+            tab_id == 0 || generation != context->bootstrap_generation) return;
+    AppSettingsServices_Init(&context->settings_services);
+    context->settings_store = store;
+    context->settings_tab_id = tab_id;
+    context->settings_generation = generation;
+    context->settings_phase = 1;
+}
+
+void AppScript_RevokeSettings(AppScriptContext *context)
+{
+    if (context == NULL || !context->settings_phase) return;
+    (void) AppSettingsServices_Revoke(&context->settings_services);
+    context->settings_phase = -1;
+    context->settings_store = NULL;
+}
+
+void AppScript_SettingsResult(AppScriptContext *context,
+        const AppSettingsResult *result)
+{
+    if (context != NULL && context->settings_phase > 0 &&
+            AppSettingsServices_AcceptResult(&context->settings_services,
+            result) == APP_SETTINGS_SERVICES_BRIDGE_FAILED)
+        AppScript_RevokeSettings(context);
+}
+
+int AppScript_SettingsStep(AppScriptContext *context)
+{
+    int rc;
+    unsigned long delivered;
+
+    if (context == NULL || context->settings_phase <= 0) return 0;
+    if (context->settings_phase == 1) {
+        rc = AppScript_InitializeStep(context, context->settings_generation);
+        if (rc == 0) return 0;
+        if (rc < 0 || AppSettingsServices_Register(&context->settings_services,
+                context->settings_store, context->session,
+                APP_SETTINGS_PAGE_EMBEDDED_SETTINGS, context->settings_tab_id,
+                context->settings_generation) != APP_SETTINGS_SERVICES_OK)
+            goto failed;
+        (void) PBrowser_ScriptSessionNotifyResize(context->session,
+                (double) context->viewport_width * 96.0 / context->dpi,
+                (double) context->viewport_height * 96.0 / context->dpi,
+                (double) context->dpi / 96.0);
+        context->settings_phase = 2;
+        return 0;
+    }
+    if (context->settings_phase == 2) {
+        rc = AppScript_ExecuteStep(context, 0, NULL, NULL);
+        if (rc == 0) return 0;
+        if (rc < 0 || context->script_errors != 0) goto failed;
+        if (AppScript_PageLifecycleComplete(context) != 0) goto failed;
+        context->settings_phase = 3;
+        return 0;
+    }
+    delivered = 0;
+    if (AppSettingsServices_Pump(&context->settings_services, &delivered) < 0)
+        goto failed;
+    return 1;
+failed:
+    AppScript_RevokeSettings(context);
+    return -1;
 }
 
 int AppScript_SetVisibility(AppScriptContext *context, int hidden)
@@ -2466,6 +2546,7 @@ int AppScript_NotifyResize(AppScriptContext *context, int viewport_width,
     context->viewport_width = viewport_width;
     context->viewport_height = viewport_height;
     context->dpi = dpi;
+    if (context->bootstrap_pending) return 0;
     return PBrowser_ScriptSessionNotifyResize(context->session, css_width,
             css_height, ratio) == PSCRIPT_OK ? 0 : 1;
 }

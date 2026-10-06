@@ -204,12 +204,12 @@ EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和�
 
 | 地址 | 应用策略 |
 | --- | --- |
-| `positron://newtab` | 默认起始页；无参数、空地址和主页菜单均使用此页 |
+| `positron://newtab` | 默认起始页及新标签入口；无参数启动和主页菜单可使用已保存的起始页，空地址仍为 newtab |
 | `positron://about` | 说明、可取得的版本/系统信息、内部页面目录 |
 | `positron://version`、`positron://system` | 提交前规范化为 about 的 version/system 片段，仅提交一次 history |
 | `positron://history` | Browser 当前导航栈的只读快照，包括仍存在的前进项，最新在前，最多 16 项 |
 | `positron://downloads` | 明确说明下载管理未实现，不伪造任务或下载记录 |
-| `positron://settings` | 只读显示当前语言、起始页与 JavaScript 策略 |
+| `positron://settings` | 读写固定起始页；语言与 JavaScript 策略仍只读 |
 | `positron://quit` | 仅地址栏直接提交可以正常退出，不创建页面或 history 项 |
 
 页面名大小写无关，接受一个可选末尾斜杠，显示规范小写地址；新页面只接受注册的片段。
@@ -217,7 +217,8 @@ EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和�
 标题和已提交地址。别名章节由 Core fragment 几何定位，不把别名作为第二个页面提交。
 
 英语/简体中文 UTF-8 模板无 BOM、以 RCDATA 嵌入 EXE；所有内部页复用 Core parse/style/layout/
-paint 和统一 CSS，不创建 ScriptSession，不请求外部资源。模板沿用 i18n 预算，动态 HTML
+paint 和统一 CSS，不请求外部资源。仅 EXE 构造的 settings 文档创建受控 ScriptSession，
+执行内嵌的设置代码；其他内部页不执行脚本。模板沿用 i18n 预算，动态 HTML
 不超过 128 KiB；调用方拥有生成缓冲区，按明确长度解析后释放。history 自身不展示；刷新/
 重新进入时重新读取快照，文本和链接属性均转义，只为受支持地址生成链接。点击按 URL 发起
 新导航，不依赖旧索引；不提供持久访问日志、清除、删除或搜索。新页链接使用 Core 焦点查询，
@@ -251,11 +252,22 @@ UTF-16 与输出容量，原始文本统一转义后交给 Core。缺失、API �
 
 ### 后端进入条件
 
-正式启用前不创建用户 SQLite/JSON 文件，不调整 DB 主线发布依赖。后续应用设置、访问日志和下载记录
-优先使用 `positron_db.dll` 本地 SQL；表结构、migration 和存储策略归应用，Browser 会话栈保持
-独立。接入前必须通过 ARMV4I 文件数据库创建、中文读写、事务回滚、关闭重开、migration 失败、
-空间不足和 journal 恢复设备门，随后才加入 EXE 链接、解决方案依赖和 CAB 输入校验。未通过时
-后续才考虑版本化、原子替换的本地 JSON，不在当前批次引入回退存储。
+应用设置、访问日志和下载记录优先使用 `positron_db.dll` 本地 SQL；表结构、migration 和
+存储策略归应用，Browser 会话栈保持独立。本纵切只接通起始页，不引入访问日志、下载任务或
+JSON 回退。文件创建、中文读写、正常新进程重开、跨进程锁和受控异常退出 journal 恢复门与
+尚未验收的 FULL/I/O/迁移提交/断电风险必须分开记录；按用户决定暂缓故障情景验收，
+不能把暂缓写成通过。EXE 仍须通过自己的正式构建和实际设置页设备门，才提升为应用基线。
+
+数据库固定为实际 `positron.exe` 所在目录的 `positron.db`，路径由 `GetModuleFileNameW`
+取得并有界转换为 UTF-8；不使用 CWD、注册表或 DLL 目录，不静默换库、不创建替代目录。
+DB DLL 优先从同部署目录加载；该文件不存在时选择 CAB 的固定 `\\Windows` 共享 DLL 路径，
+但数据库位置不变。数据库及 rollback journal 为运行期用户数据，不作为模板放入安装包；
+二进制部署不得删除它们。只读、缺卡、损坏、未知版本或打开失败保留文件，浏览器继续运行，
+明确提示存储不可用，不覆盖原值。备份和移动只在应用正常退出后进行。
+
+启动先显示 newtab，UI 消息循环异步读取起始页；无显式 URL、未发生新的导航/标签操作或
+地址编辑时才以 replace 提交已保存的页面，不增加占位 history 项。显式启动 URL 优先，
+新标签始终为 newtab；主页菜单使用已成功读取/提交的起始页。仅 COMMIT 成功后更新缓存。
 
 设置的第一条纵切只覆盖起始页，候选值为 newtab、welcome、controls；不执行 quit、不储存任意
 SQL，也不提前承诺网络起始页或标签恢复。EXE 私有 `app_settings` 表为单例行，应用拥有版本、
@@ -271,17 +283,19 @@ SQL，也不提前承诺网络起始页或标签恢复。EXE 私有 `app_setting
 显式关闭/重开，不盲目重试、删库或清除原值。关闭停止接收但排空已接受请求；UI 轮询退出状态，
 worker 关闭数据库后才释放服务，不阻塞窗口、不跨线程 Cancel、不强杀线程。
 
-进入生产前，只有显式 Debug 设置夹具可加载同部署目录的 DB DLL；`--selftest-settings-storage` 在
-新建专用 Temp 目录生成测试数据库；普通启动与 Release 没有此入口，不查询用户配置。自检
+`--selftest-settings-storage` 仅在 Debug 的新建专用 Temp 目录生成测试数据库，不经过生产
+启动。Release 不提供此夹具，但普通 Debug/Release 启动消费同一生产存储接口。隔离自检
 覆盖默认值、FIFO/容量、owner-thread 拒绝、写入后同进程新 worker 重开、关闭排空及打开失败，
 只精确清理本次创建的数据库/journal/目录。桌面 SQL 检查不等于 DLL、WinCE 文件系统或进程
-异常恢复验收。通过 DB 可靠性门及本服务正式构建/设备门后，才接入启动与设置页。
+异常恢复验收。正常退出先撤销全部页服务、停止接受请求，UI 持续处理关闭轮询；worker 排空、
+关闭 DB/DLL 后才销毁窗口。不可用存储不阻止浏览和退出，不以强杀模拟正常关闭。
 
 设置页服务消费公开 Browser Register/Complete/Pump/Revoke，不直接注册私有 JS native 桥。
 仅 EXE 从嵌入资源创建的可信 settings 页面可获授权，不按 URL、scheme、重定向或 DOM 字段
 推断身份；普通 HTTP(S) 页面不注册。配置好的 session 在 bootstrap COMPLETE 后、可信作者
-代码前注册，稳定的页面服务记录保留到 session Destroy 完成；生产内置页的脚本例外须单独
-验收，不因此让所有内部页面执行脚本或请求外部资源。
+代码前注册，稳定的页面服务记录保留到 session Destroy 完成；bootstrap/内嵌作者代码按
+消息边界分批，隐藏页不执行脚本，关闭初始化中的页也不等待同步初始化完成。该内置页例外
+须单独验收，不因此让所有内部页面执行脚本或请求外部资源。
 
 白名单只有 `settings.read({})` 与 `settings.write({startupPage: URL})`，参数最多 128 UTF-8
 字节；写入仅接受三个固定规范地址，读取不接受额外字段。JSON 解析/生成消费公共 JSON DLL，
@@ -289,7 +303,12 @@ worker 关闭数据库后才释放服务，不阻塞窗口、不跨线程 Cancel
 及 DB 原始诊断。submit 只验证、复制有界数据并排队，不做 I/O 或同步完成。
 显式 Debug `--selftest-settings-services` 使用内存 DB 和独立裸 session 验证适配器，不冒充
 实际 Core 设置页或 bootstrap 验收。`scripts/app_settings_gate.ps1` 消费正式 Debug 完整部署，
-以 PID/精确终态、包哈希、前后 guest 无引用审计和 crash 门验证两组自检；不启用普通启动。
+以 PID/精确终态、包哈希、前后 guest 无引用审计和 crash 门验证两组隔离自检。
+`scripts/app_settings_live_gate.ps1` 另消费全新的专用正式 Debug 部署，使用实际内嵌设置页、
+原生按钮事务、生产 worker 和四个独立进程验证保存、启动读回、接受后退出排空及默认值恢复。
+夹具只接受保留的 `app-settings-live-*` SD 门目录，首进程拒绝已有 DB，后续拒绝缺失 DB；
+精确测试模式仅编入 Debug，不在 Release 或普通 URL 路由开放。门不删除数据库/部署目录，
+不强杀设备进程，不代表故障注入或人工触摸/双语/旋转通过。
 
 UI 非阻塞轮询共享 store，核对活跃授权、tab/generation、请求 ID 和操作后 Complete；一次
 Pump 至多尝试一个回调，回调异常关闭该页服务，不重试交付。离页先停用再 Revoke，之后才
