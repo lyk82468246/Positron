@@ -30,7 +30,7 @@ newtab/welcome/controls，UI 分批 bootstrap/作者代码和服务 Pump，单�
 四项通过；每项退出后 guest holders=0 unavailable=0，EXE/九 DLL 回读 10/10、crash 门通过。
 应用包和测试数据库保留在 SD 门根的 `app-settings-live-fixed-20261006-143251`，四个
 测试进程均已退出；同包 app-history 门通过，回读 10/10、crash_check PASS。
-PID 2006665102 留在 newtab，供人工设置页验收；不沿用旧包/PID。
+原包及随后重部署包已由用户退出，不沿用旧 PID。当前人工入口见下方启动窗口修正。
 Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
 `20261006-144728-app-settings-adjacent-release` 的 `136,1321,1341,999` 各 4/4，
 唯一 PASS、完整日志、零 ERROR/FAIL、空间/引用/crash 门通过；日志回收后清理这两个测试目录。
@@ -42,6 +42,15 @@ Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
 早期 device=5、脚本函数缺失、立即审计误判与审批超时的证据保留，不追认为 PASS。
 ROADMAP 已复核；访问日志/下载独立纵切，触摸/双语/键盘/旋转进入人工门；用户授权先接线
 不等于 FULL/I/O/迁移提交/断电故障通过，暂缓项不重开。
+
+用户报告启动只更新系统标题而未显示窗体，旧 EXE 门遗漏了前台/可见性断言。EXE 现于
+耗时标签自检/导航前显示并调用一次 SetForegroundWindow；后续完成不抢前台，末尾仅在
+仍为前台时设置子控件焦点。Debug 输出实际主窗口/页面可见和前台状态，Release 排除诊断。
+`tmp/device-runs/20261006-150627-app-startup-foreground/` 完整包与 app-history 门通过：
+回读 10/10、无旧 holder/crash、全部自检及 visible=1 foreground=1 page_visible=1。
+PID 3062404006 留在 newtab；用户已立即确认完整窗体正常出现，严重交互人工门关闭，
+不把该结果外推到所有 OEM/启动场景。正式双配置 build、三项启动接线检查、C89/审计通过；
+ROADMAP 已复核，未来存储范围不变。未改 DLL/ABI、数据库或并行 DB/CAB 文件。
 
 ### EXE 多标签自动门通过，人工入口已更新
 

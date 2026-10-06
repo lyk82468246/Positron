@@ -8118,6 +8118,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     g_tab_order[0] = 0;
     g_tab_count = 1;
     g_tabs_enabled = 1;
+    /* Showing a CE window is not a foreground activation. In particular,
+     * RAPI launches and the Debug native-control fixtures can leave the
+     * previous application active. Activate once, before lengthy startup
+     * work; later page/DB completion must never steal the foreground. */
+    ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
+    (void) SetForegroundWindow(hwnd);
+    UpdateWindow(hwnd);
 #ifdef _DEBUG
     if (app_tabs_debug_check() != 0) {
         DestroyWindow(hwnd);
@@ -8172,9 +8179,22 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         g_startup_script_generation = (unsigned long) g_navigation_generation;
         g_startup_script_tab_id = g_app.tab_id;
     }
-    ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
     UpdateWindow(hwnd);
-    SetFocus(g_page_window != NULL ? g_page_window : hwnd);
+    if (GetForegroundWindow() == hwnd)
+        SetFocus(g_page_window != NULL ? g_page_window : hwnd);
+#ifdef _DEBUG
+    {
+        char startup_window_log[128];
+
+        _snprintf(startup_window_log, sizeof(startup_window_log) - 1,
+                "positron startup-window visible=%d foreground=%d page_visible=%d\r\n",
+                IsWindowVisible(hwnd) ? 1 : 0,
+                GetForegroundWindow() == hwnd ? 1 : 0,
+                g_page_window != NULL && IsWindowVisible(g_page_window) ? 1 : 0);
+        startup_window_log[sizeof(startup_window_log) - 1] = '\0';
+        AppDebug_Log(startup_window_log);
+    }
+#endif
     if (startup_invalid) {
         app_set_status(APP_TEXT_STATUS_ADDRESS_INVALID);
     }

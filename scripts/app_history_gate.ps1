@@ -104,6 +104,7 @@ try {
                     $text -match 'pointer selftest OK' -and
                     $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK' -and
+                    $text -match 'startup-window visible=1 foreground=1 page_visible=1' -and
                     $text -match ('internal-page commit url=' +
                         [regex]::Escape($committedUrl) + ' kind=\d+ history=1 ')) {
                 $complete = $true
@@ -112,7 +113,7 @@ try {
         }
         Start-Sleep -Milliseconds 150
     } while ((Get-Date) -lt $deadline)
-    if (!$complete) { throw 'Application pointer/history/fragment-pending selftest or default navigation timed out.' }
+    if (!$complete) { throw 'Application selftest, visible foreground window or default navigation timed out.' }
     $after = [PositronDeviceRapi]::SnapshotCrashDumps()
     foreach ($entry in $after.GetEnumerator()) {
         if (!$before.ContainsKey($entry.Key) -or $before[$entry.Key] -ne $entry.Value) {
