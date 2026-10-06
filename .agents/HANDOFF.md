@@ -18,31 +18,44 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 候选与验证证据
 
-### EXE 持久访问历史与下一设置纵切
+### EXE 访问历史与滚动像素修正候选
 
 EXE 接入 schema v2、持久 GET 记录与分页/确认清除；结果按 tab/请求/generation 隔离，
 clear 全局失效缓存。稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)，
 未修改 DLL/ABI 或删除用户数据。
 
-最终 Debug 包 `tmp/device-runs/20261006-231023-app-settings-visits-verified/` 的
+存储基线 Debug 包 `tmp/device-runs/20261006-231023-app-settings-visits-verified/` 的
 app-settings 五进程门 PASS：存储/服务、历史创建、独立进程恢复、清除及主页保留；
 SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS。
 先行完整 UI 门在 `20261006-225852-app-settings-visits/app-history/` PASS，新增历史 Core
 parse/style/layout、标题/URL 转义、UTC 和 23 焦点通过。真实 IANA example-domains 导航
 日志 `visit-navigation.log` 证明 commit 后 op=3 保存、history op=4 读取及 focus=8；
-PID 3816943554 留在历史页，人工入口为
-`\Storage Card\Temp\Positron-device-gate\app-settings-visits-verified-20261006-231023\positron.exe`。
-旧 newtab PID 已由用户退出；后续部署须正常退出该当前 PID 并重新审计引用。
+旧 PID 3816943554 已正常退出，不是当前人工入口。
 
-离线、C89、审计、正式双配置 build/CAB 通过；Debug rebuild 链接顺序失败后正式 build
-恢复，不称 rebuild PASS。首次五进程门退出审计 FAIL 保留在
-`20261006-230619-app-settings-visits-final`；改为复用已测的精确 PID 有界正常退出等待，
-不强杀，最终新包重跑零引用通过。访问记录恢复不等于断电门。
+截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分开处理：Core 缺无空格长文本的 CSS
+紧急断行，EXE 未改写文字或隐藏横轴；合同见 [Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)。
+实际窗口探针复现 CE 双轴 ScrollWindowEx 返回 ERROR，旧代码忽略失败仍更新位置，
+产生旧像素残留。拆分单轴、任一失败完整失效视口后只补绘，不增加 layout。更换位图
+原点的假设未被对照证明，已撤回；空历史页不花屏不能替代长 URL 页面验收。
 
-ROADMAP 已复核；剩余交互/交错见限制，v1 升级和 500 条裁剪目前为离线 SQL 证据。下一纵切为
+当前候选 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
+实际窗口与内存像素门 PASS（单轴/斜向/大幅共九次，各与完整重绘一致），并实际加载
+IANA、op=3 保存、op=4 读回、history focus=8；哈希 10/10、crash_check PASS。
+PID 3612441414 留在含长 URL 的历史页，人工入口为
+`\Storage Card\Temp\Positron-device-gate\app-scroll-axis-final-20261006-235934\positron.exe`。
+严重花屏须立即人工复测，尚不提升为视觉基线；后续部署先正常退出并审计引用。
+失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
+诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
+
+双配置 build/CAB、C89、审计与 Release 诊断排除通过；rebuild 链接顺序失败不追认通过。五进程退出审计失败证据在
+`20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
+访问记录恢复不等于断电门。
+
+ROADMAP 已复核；先收尾滚动视觉门及协调 Core 断行，剩余交互/交错见限制，v1 升级和
+500 条裁剪目前为离线 SQL 证据。随后纵切为
 用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
 脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
-DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，当前编译器空闲、设备仍运行人工入口。
+DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，编译器空闲、设备运行上述候选。
 
 ### EXE 固定起始页持久化实际门通过
 
@@ -57,13 +70,9 @@ Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
 
 设置页刷新使用稳定 URL 副本，防止地址缓冲区别名被清空；正常退出守卫见当前历史门。
 普通启动仅一次显示/激活窗口，后续完成不抢前台；用户已确认完整窗体与保存主页正常。
-Debug UI 夹具只在前置 --selftest-ui 时运行，不污染普通启动。
-`tmp/device-runs/20261006-152226-app-settings-live-startup-retry/` 的实际四进程主页门与
-无参数启动门 PASS：保存/恢复 welcome、退出排空、默认恢复、零 example/fixture、
-前台/可见、哈希 10/10/crash；旧 PID 已退出，不作为当前入口。先行完整 UI 门为
-`20261006-151832-app-settings-live-startup`，构建证据在 tmp/app-settings-live-builds。
-早期设备、夹具、立即引用审计和审批失败仍保留，不追认 PASS；触摸/双语/旋转与
-FULL/I/O/迁移提交/断电边界不因正常重启通过而关闭。
+普通启动不运行 UI 夹具。实际四进程主页与无参数启动证据在
+`tmp/device-runs/20261006-152226-app-settings-live-startup-retry/`，旧 PID 已退出；
+失败证据不追认通过，触摸/双语/旋转及故障/断电不因重启通过而关闭。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -86,9 +95,7 @@ tab-menu 自检 OK、tabs phase=8：验证左右菜单归属与顺序、重复�
 关闭另一页后的实际 EDIT 编辑、SELECT 数量、toggle 和九次 native paint，以及原状态隔离、
 容量、beforeunload、worker/timer/stale/失败/关闭断言。菜单触摸和切回绘制须人工复测；
 网络、旋转/SIP、内存压力及多页退出仍待人工，不以夹具替代。
-先行 native-edit 包的启动门超时不转为 PASS；其 readonly-verification 通过，旧 PID 已由用户退出。
-
-失败探针现按 Core 几何滚动并显式发送 WM_PAINT、按文本长度设置末尾光标；精确断言保留。
+先行 native-edit 启动超时不追认通过，旧 PID 已退出；探针沿 Core 几何检查真实 WM_PAINT。
 
 相邻 Debug 门 `tmp/device-runs/20261004-093134-app-tabs-adjacent/` 为
 `136,407,1080-1083,1134,1327,1336,1338,999` 的 11/11 PASS，完整日志、唯一 TESTBENCH PASS、
@@ -311,13 +318,11 @@ Debug 私有启动自检使用独立 Browser history，不污染实时页面：�
 
 相邻 test_host 门 tmp/device-runs/20261002-000923-internal-pages-adjacent/ 选择 136,1081,1082,1064,999：预检通过，但 test_host 日志一直为零字节，180 秒超时，清理摘要 failed=0；不是测试 PASS，也没有足够证据归因于特定 DLL。保留诊断目录，不放宽断言。
 
-### 构建、审计与待验收门
+### 构建与审计边界
 
-C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全的正式 Debug build 通过，EXE 零错误/警告；正式 Release build 也已通过并生成 CAB。二进制检查确认 Release EXE 不包含内部自检诊断文本。
-
-清洁 Debug/Release rebuild 均暴露 VS2008 解决方案依赖顺序问题：消费者在依赖库尚未生成时链接，出现 LNK1181；补跑正式 build 恢复。较早 Release 尝试还遇到 devenv/msenv.dll 自身异常，最后串行补建已恢复；不使用 SafeMode 或绕过正式工程，不把失败 rebuild 写成成功。本批不发布 nightly。
-
-正式 stage Debug 已恢复成功并完成上述完整包部署。模块审计 helper 通过正式 ARMV4I Debug build；本批未绕过正式工程，也未启用强制清理。
+正式 Debug/Release build 可用；清洁 rebuild 曾因依赖顺序 LNK1181 失败，补建恢复不追认
+rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程。Release 排除 EXE
+自检；正式 stage/helper 与匹配完整包仍须逐轮核验，不启用默认强制清理或发布 nightly。
 
 ### 设备门 DLL 引用审计
 
@@ -328,10 +333,8 @@ C89、最终仓库审计与 diff 空白检查通过。最终 About 版本补全�
 终止进程；针对 guest 的 `ERROR_NOT_ENOUGH_MEMORY` 仅做三次短重试，重试后仍不可用仍 fail
 closed。
 
-较早 About 版本只读审计证据在 `tmp/device-runs/20261002-084845-app-version-audit/`，
-`module-audit-result.txt` 为 PASS，`holders=0 unavailable=0`；未使用强制清理。该门完整
-部署 23 文件后才审计，之后直接启动同包 Debug EXE，PID 3056936870 留在 About。该次部署的设备
-目录是 `\Storage Card\Temp\Positron-device-gate\app-version-audit-20261002-084845`，不代表当前人工包。
+About 先行只读审计 `tmp/device-runs/20261002-084845-app-version-audit/` 的 23 文件
+及 holders=0 unavailable=0 通过，无强制清理；旧 PID 3056936870 不代表当前人工包。
 重复复制第一份 fixture 时 CeMoveFile 仍返回 device=5，未替换 EXE，改为复用已成功部署包。
 About 日志在 `tmp/device-runs/app-version-delivery/verification/positron-debug.log`：版本
 自检、内部页面自检、About 单次提交及 crash_check 均通过。嵌入时间为
@@ -486,8 +489,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
-范围。唯一下一步交回 EXE，按应用私有 worker/可信 session/文件策略接入这些公开入口，
-分别验收扩展设置与下载，不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与人工入口
+范围。唯一下一步先人工验收含长 URL 的历史页滚动修正，并将 CSS 断行缺口交 Core；
+随后按应用私有 worker/可信 session/文件策略分别接入扩展设置与下载，
+不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与人工入口
 见上方，下一会话须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。
 

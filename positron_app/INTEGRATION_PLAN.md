@@ -155,6 +155,8 @@ EDIT 并全选网址；回车沿原路由提交，Esc/失焦返回展示。后�
 返回原按下位置也不产生 click；丢失 capture、取消、失焦、隐藏、resize、页面替换与关闭均
 取消待定输入。原生 EDIT/SELECT/toggle 保留自己的消息过程，Core 内部滚动条命中优先。
 顶层双轴拖动复用 extent clamp、`ScrollWindowEx`、native 重定位与 Browser CSS scroll 通知；
+物理像素移动分别执行水平、垂直单轴调用，合并失效区后只补绘一次。任一调用返回 ERROR
+时完整失效当前视口，避免位置已更新却保留旧像素；该兜底不重新 layout，也不自绘滚动条。
 纯拖动不重新 layout，脚本 mutation 则仍按原刷新路径处理。暂不提供惯性、回弹、多点触摸或
 nested overflow 内容区的滚动链，不自绘滚动条。
 
@@ -378,6 +380,9 @@ UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保�
 
 同一 Debug 独立夹具使用真实页面窗口消息验证 DPI 阈值、抬起 click、拖动不误点、合并 MOVE
 后的抬起、捕获/取消收尾与布局计数不变；`app_history_gate` 同时要求 pointer 自检通过。
+滚动像素自检在 96/192 DPI 比较条带补绘与完整重绘，并捕获实际窗口验证单轴、斜向及
+大幅滚动；保留无空格长 URL。`-VisitNavigation` 另加载实际 IANA 页面、保存访问记录后
+进入 history，核对读写终态；像素断言不替代该页真实拖动的视觉验收。
 自动消息不代替真实触笔/手指、native EDIT 拖选、SELECT popup、旋转和 DPI 的人工检查。
 
 地址栏 Debug 自检使用独立隐藏窗口，验证标题/网址分离、实际字体宽度、滚动/填充周期、

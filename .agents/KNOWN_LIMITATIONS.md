@@ -55,6 +55,8 @@
 ## HTML、CSS 与布局
 
  - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
+- 历史页无空格长 URL 会撑宽页面；Core 尚缺 CSS 紧急断行，不能由 EXE 手工拆文本或
+  隐藏横轴补齐。责任、最小合同和门见 [Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)。
  - CSS Grid、float/positioned、table/caption/column/baseline、generated/counter 未覆盖；TEST39 断言 flex auto-height 不重叠。
  - 仅支持一部分媒体条件、selector、字体与单位；custom properties、`var()` 和大量现代函数缺失。Browser selector 是有界子集，覆盖有限的 compound/组合器、属性匹配、状态伪类和 interaction `:active`/`:hover`；不等于完整 CSS selector 引擎。精确支持矩阵见 [`docs/TESTING.md`](../docs/TESTING.md)。
 - `:scope` 是同一 selector 子集中的有界 context 扩展：element query 的 receiver 作为 scope，带直接、无参数 `:scope` 的 selector 可以把 owner 放在结果首位，并支持 `:scope > ...`/`:scope ...` 的子代与后代关系；无 scope 的 element query 仍排除 owner，document query 以 `document.documentElement` 为 scope，`matches()`/`closest()` 以 receiver 为 scope。嵌套参数、伪元素和完整 Selectors 语法仍 fail closed。
@@ -414,16 +416,16 @@
 ## History、导航与窗口
 
 - history 是进程内、有界条目集合，不持久化到磁盘，也不恢复跨进程页面状态。
-- EXE 同文档遍历、page-level 滚动恢复与 identity 隔离已通过 Debug 私有适配器自检及相邻
-  DLL 设备门；真实 HTTP Back/Forward/刷新、native 焦点与旋转仍待人工验收。
-  百分号编码片段尚无 EXE 可直接消费的公共解码入口；当前保持
-  位置，不把编码字符串当 literal ID 命中。HTTP 请求 URL resolver/final URL 会去掉片段，
-  跨文档 HTTP 导航的初始片段保留仍未接入；不在 EXE 复制 URL decoder 或 redirect 规则。
+- EXE 同文档/滚动恢复/identity 自动门已通过；真实 HTTP Back/Forward/刷新、焦点/旋转
+  待人工。百分号片段无公共 decoder，保持位置；HTTP 初始片段保留尚未接入。
+  不在 EXE 复制 decoder/redirect 规则。
 - history 已接入持久 GET 访问记录；Browser 导航栈不持久化。记录最多 500 条、
   每页 16 条，不含 POST、片段/state-only 更新、搜索或逐条删除；队列满/保存失败不回滚页面。
-  双语菜单/确认、跨标签交错、低内存待验收。下载未实现；settings 只保存三种内部主页，
-  语言/JS 只读。文件故障、断电、网络主页、标签恢复未完成，见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
-- Browser history 只保存有界 page-level `(scroll_x, scroll_y)`，宿主按 Core extent/client size clamp 并换算 CSS/物理坐标；`scrollRestoration=manual` 跳过自动恢复，但不阻止 fragment reveal 或显式滚动。元素 retained-overflow offset 不入栈；完整滚动树、chaining、锚定、惯性滚动、视觉 viewport 偏移和跨窗口恢复未实现。公开合同与通知顺序见 [能力矩阵](../docs/CAPABILITIES.md#browserpositron_browserdll)。
+  双语/交错/低内存待验收。下载未实现；settings 只存三种内部主页，语言/JS 只读。
+  故障/断电/网络主页/标签恢复未完成，见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
+- Browser history 只保存有界 page-level 双轴位置，宿主负责 clamp/DPI；manual 跳过自动恢复，
+  不阻止 fragment/显式滚动。元素 offset 不入栈，完整滚动树/锚定/惯性/跨窗口恢复未实现，
+  见 [合同](../docs/CAPABILITIES.md#browserpositron_browserdll)。
 - `positron.exe` 最多四个独立标签；隐藏页只继续传输，解析/脚本/提交待激活。
   无多进程隔离、后台脚本、持久恢复或 opener；`_blank`/named target 不新建标签。
   网络并发、内存、触摸/SIP、旋转/DPI 与加载中退出待人工，见
@@ -451,6 +453,8 @@
 
 - EXE 页面拖动不含惯性、回弹、WM6.5 WAG 或 nested 内容区滚动链；真实跟手性、拖动不误点、
   EDIT 拖选、popup 与旋转/DPI 待人工验收。平台接线边界见 [计划](../positron_app/INTEGRATION_PLAN.md#阶段-3原生交互)。
+  CE 双轴 ScrollWindowEx 返回 ERROR 的旧路径已复现花屏；拆分单轴及失败完整补绘候选
+  通过实际窗口像素门，含长 URL 的真实历史页视觉须立即复测，不能以空历史页通过代替。
 - Windows Mobile EDIT/COMBOBOX/LISTBOX/button/file picker 的真实行为因 ROM、OEM 和输入法而异。
 - EXE 的 contenteditable selection、native/script reset、native/script submit、单行 EDIT 隐式 Enter、
   GET/POST/multipart/dialog、native file picker、anchor/label/disclosure 默认动作尚未设备验收；需检查

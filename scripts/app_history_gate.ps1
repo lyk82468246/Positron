@@ -5,7 +5,8 @@ param(
     [Parameter(Mandatory=$true)][string] $LocalRunRoot,
     [ValidateSet('positron://newtab', 'positron://system')]
     [string] $StartupUrl = 'positron://newtab',
-    [switch] $NormalStartup
+    [switch] $NormalStartup,
+    [switch] $VisitNavigation
 )
 $ErrorActionPreference = 'Stop'
 function Get-Sha256([string] $path)
@@ -88,12 +89,21 @@ try {
         throw 'NormalStartup uses no command-line URL; require default newtab settings.'
     }
     $arguments = if ($NormalStartup) { $null } else { '--selftest-ui --url ' + $StartupUrl }
+    if ($VisitNavigation) {
+        if ($NormalStartup -or $StartupUrl -ne 'positron://newtab') {
+            throw 'VisitNavigation uses the full UI suite and its fixed HTTPS target.'
+        }
+        $arguments = '--selftest-ui --url https://www.iana.org/help/example-domains --eval "setTimeout(function(){location.href=\u0027positron://history\u0027;},1000)"'.Replace('\u0027', "'")
+    }
     $appPid = [PositronDeviceRapi]::LaunchProcess(
         ($RemoteRoot + '\positron.exe'), $null, $arguments)
-    $committedUrl = if ($StartupUrl -eq 'positron://system') {
+    $committedUrl = if ($VisitNavigation) {
+        'positron://history'
+    } elseif ($StartupUrl -eq 'positron://system') {
         'positron://about#system'
     } else { 'positron://newtab' }
-    $deadline = (Get-Date).AddSeconds(90)
+    $expectedHistory = if ($VisitNavigation) { 2 } else { 1 }
+    $deadline = (Get-Date).AddSeconds($(if ($VisitNavigation) { 180 } else { 90 }))
     $complete = $false
     do {
         if ([PositronDeviceRapi]::TryCopyFileFromDevice($remoteLog, $localLog)) {
@@ -110,13 +120,18 @@ try {
                     $text -match 'loading-title selftest OK' -and
                     $text -match 'address-bar selftest OK' -and
                     $text -match 'pointer selftest OK' -and
+                    $text -match 'scroll-paint selftest OK dpi=96,192 moves=9 pixels=exact' -and
                     $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK')
-            if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
+            $visitComplete = !$VisitNavigation -or (
+                    $text -match 'settings-result request=\d+ op=3 result=0' -and
+                    $text -match 'settings-result request=\d+ op=4 result=0' -and
+                    $text -match 'internal-page commit url=positron://history kind=5 history=2 focus=8')
+            if ($visitComplete -and $text -match ('debug-session pid={0}\b' -f $appPid) -and
                     $suiteComplete -and
                     $text -match 'startup-window visible=1 foreground=1 page_visible=1' -and
                     $text -match ('internal-page commit url=' +
-                        [regex]::Escape($committedUrl) + ' kind=\d+ history=1 ')) {
+                        [regex]::Escape($committedUrl) + ' kind=\d+ history=' + $expectedHistory + ' ')) {
                 $complete = $true
                 break
             }

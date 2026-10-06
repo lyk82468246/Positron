@@ -154,6 +154,7 @@ static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
 #define g_page_pointer_scroll_y (g_tab->page_pointer_scroll_y)
 #ifdef _DEBUG
 static unsigned long g_page_layout_count;
+static int g_scroll_paint_probe;
 /* Non-NULL only inside the independent startup fixture. It parks a real
  * worker without HTTP so interleavings are deterministic and offline. */
 static HANDLE g_navigation_debug_worker_gate;
@@ -278,6 +279,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam);
 #ifdef _DEBUG
 static int app_pointer_debug_check(void);
+static int app_scroll_paint_debug_check(void);
 static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam);
 #endif
@@ -868,6 +870,9 @@ static int app_scroll_to_position(HWND hwnd, int target_x, int target_y)
     int old_y;
     int applied_x;
     int applied_y;
+    int scroll_result;
+    int horizontal_result;
+    int vertical_result;
 
     if (hwnd == NULL || !IsWindow(hwnd) ||
             !GetClientRect(hwnd, &client)) {
@@ -889,8 +894,39 @@ static int app_scroll_to_position(HWND hwnd, int target_x, int target_y)
                 g_scroll_y);
     }
     scroll_rect = client;
-    ScrollWindowEx(hwnd, -applied_x, -applied_y, &scroll_rect, &scroll_rect,
-            NULL, NULL, SW_INVALIDATE);
+    /* CE can reject a diagonal ScrollWindowEx even though each single-axis
+     * move succeeds. Accumulate both invalid strips before one WM_PAINT.
+     * Never retain old pixels after a failed GDI scroll: the document offsets
+     * already changed, so repaint the viewport without doing layout again. */
+    horizontal_result = NULLREGION;
+    vertical_result = NULLREGION;
+    if (applied_x != 0) {
+        horizontal_result = ScrollWindowEx(hwnd, -applied_x, 0,
+                &scroll_rect, &scroll_rect, NULL, NULL, SW_INVALIDATE);
+    }
+    if (applied_y != 0) {
+        vertical_result = ScrollWindowEx(hwnd, 0, -applied_y,
+                &scroll_rect, &scroll_rect, NULL, NULL, SW_INVALIDATE);
+    }
+    scroll_result = horizontal_result == ERROR || vertical_result == ERROR ?
+            ERROR : horizontal_result;
+    if (scroll_result == ERROR) InvalidateRect(hwnd, NULL, FALSE);
+#ifdef _DEBUG
+    if (scroll_result == ERROR || g_scroll_paint_probe) {
+        char message[160];
+        RECT update;
+        int pending;
+
+        pending = GetUpdateRect(hwnd, &update, FALSE);
+        _snprintf(message, sizeof(message) - 1,
+                "positron scroll-pixels result=%d axes=%d,%d pending=%d delta=%d,%d client=%d,%d\r\n",
+                scroll_result, horizontal_result, vertical_result,
+                pending, applied_x, applied_y,
+                client.right, client.bottom);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+#endif
     UpdateWindow(hwnd);
     return 1;
 }
@@ -5550,6 +5586,13 @@ static int app_history_debug_check(void)
             "style='display:block;width:100px;height:24px'>link</a>"
             "<div style='height:700px'>top</div>"
             "<h2 id='chapter'>chapter</h2>"
+            "<p>Saved visits<br><a href='https://www.iana.org/help/example-domains'>"
+            "Example Domains</a><br>https://www.iana.org/help/example-domains"
+            "<br>2026-10-06 15:15:32 UTC</p>"
+            "<p>No older records remain after this page. Reload newest returns "
+            "to the latest records.</p>"
+            "<p>https://www.iana.org/help/example-domains?long-query=abcdefghijklmnopqrstuvwxyz"
+            "</p>"
             "<a name='legacy' style='display:block;height:24px'>legacy</a>"
             "<div style='height:700px;width:600px'>tail</div></body></html>";
     AppHostContext *saved;
@@ -5612,7 +5655,8 @@ static int app_history_debug_check(void)
     g_script = AppScript_Create(g_document, g_current_url, 1, 0, 1,
             "null", 120, 80, 96, &callbacks);
     if (g_script == NULL) goto done;
-    if (app_pointer_debug_check() != 0) goto done;
+    if (app_scroll_paint_debug_check() != 0 ||
+            app_pointer_debug_check() != 0) goto done;
     phase = 1;
     document = g_document;
     script = g_script;
@@ -6553,6 +6597,224 @@ static void app_page_click(HWND hwnd, int x, int y)
 }
 
 #ifdef _DEBUG
+/* Compare retained pixels plus the production dirty-region compositor with
+ * an independent full repaint. Includes the non-rectangular update region
+ * produced by a diagonal scroll; checking scroll offsets alone misses tears. */
+static int app_scroll_paint_debug_check(void)
+{
+    static const int moves[][2] = {
+        {13, 17}, {-9, -11}, {7, -5}, {-11, 9},
+        {0, 23}, {0, -19}, {25, 0}, {-17, 0}, {150, 100}
+    };
+    HDC screen;
+    HDC window_dc;
+    HDC retained;
+    HDC reference;
+    HBITMAP retained_bitmap;
+    HBITMAP reference_bitmap;
+    HGDIOBJ old_retained;
+    HGDIOBJ old_reference;
+    HRGN dirty;
+    HRGN strip;
+    RECT client;
+    RECT bounds;
+    COLORREF actual;
+    COLORREF expected;
+    int saved_x;
+    int saved_y;
+    int saved_dpi;
+    int dpi;
+    int move;
+    int dx;
+    int dy;
+    int x;
+    int y;
+    int chapter_y;
+    int ink;
+    int window_probe;
+    int was_visible;
+    int result;
+    char message[160];
+
+    screen = NULL;
+    window_dc = NULL;
+    retained = NULL;
+    reference = NULL;
+    retained_bitmap = NULL;
+    reference_bitmap = NULL;
+    old_retained = NULL;
+    old_reference = NULL;
+    dirty = NULL;
+    strip = NULL;
+    saved_x = g_scroll_x;
+    saved_y = g_scroll_y;
+    saved_dpi = g_dpi;
+    result = 1;
+    move = -1;
+    dpi = 96;
+    x = 0;
+    y = 0;
+    window_probe = 0;
+    actual = CLR_INVALID;
+    expected = CLR_INVALID;
+    was_visible = IsWindowVisible(g_page_window);
+    if (!GetClientRect(g_page_window, &client) ||
+            client.right != 120 || client.bottom != 80) goto done;
+    screen = GetDC(g_page_window);
+    if (screen == NULL) goto done;
+    retained = CreateCompatibleDC(screen);
+    reference = CreateCompatibleDC(screen);
+    retained_bitmap = CreateCompatibleBitmap(screen, 120, 80);
+    reference_bitmap = CreateCompatibleBitmap(screen, 120, 80);
+    dirty = CreateRectRgn(0, 0, 0, 0);
+    strip = CreateRectRgn(0, 0, 0, 0);
+    if (retained == NULL || reference == NULL || retained_bitmap == NULL ||
+            reference_bitmap == NULL || dirty == NULL || strip == NULL)
+        goto done;
+    old_retained = SelectObject(retained, retained_bitmap);
+    old_reference = SelectObject(reference, reference_bitmap);
+    if (old_retained == NULL || old_reference == NULL) goto done;
+    for (dpi = 96; dpi <= 192; dpi += 96) {
+        PCore_SetDeviceViewport(120, 80, dpi);
+        if (PCore_LayoutDocument(g_document, 120, 80) != 0 ||
+                PCore_FragmentInfoByToken(g_document, "chapter", NULL,
+                &chapter_y, NULL, NULL) != 0) goto done;
+        ink = 0;
+        for (move = 0; move < (int) (sizeof(moves) / sizeof(moves[0]));
+                ++move) {
+            dx = moves[move][0];
+            dy = moves[move][1];
+            g_scroll_x = 40;
+            g_scroll_y = MulDiv(chapter_y, dpi, 96) - 30;
+            SelectClipRgn(reference, NULL);
+            app_paint_page_contents(reference, &client, &client);
+            SelectClipRgn(retained, NULL);
+            FillRect(retained, &client, (HBRUSH) GetStockObject(BLACK_BRUSH));
+            if (!BitBlt(retained, -dx, -dy, 120, 80,
+                    reference, 0, 0, SRCCOPY)) goto done;
+            SetRectRgn(dirty, 0, 0, 0, 0);
+            if (dx >= 120 || dx <= -120 || dy >= 80 || dy <= -80) {
+                SetRectRgn(dirty, 0, 0, 120, 80);
+            } else {
+                if (dx != 0) {
+                    SetRectRgn(strip, dx > 0 ? 120 - dx : 0, 0,
+                            dx > 0 ? 120 : -dx, 80);
+                    CombineRgn(dirty, dirty, strip, RGN_OR);
+                }
+                if (dy != 0) {
+                    SetRectRgn(strip, 0, dy > 0 ? 80 - dy : 0,
+                            120, dy > 0 ? 80 : -dy);
+                    CombineRgn(dirty, dirty, strip, RGN_OR);
+                }
+            }
+            if (GetRgnBox(dirty, &bounds) == ERROR ||
+                    SelectClipRgn(retained, dirty) == ERROR) goto done;
+            g_scroll_x += dx;
+            g_scroll_y += dy;
+            app_paint_page(g_page_window, retained, &bounds);
+            app_paint_page_contents(reference, &client, &client);
+            SelectClipRgn(retained, NULL);
+            for (y = 0; y < 80; ++y) {
+                for (x = 0; x < 120; ++x) {
+                    actual = GetPixel(retained, x, y);
+                    expected = GetPixel(reference, x, y);
+                    if (actual == CLR_INVALID || expected == CLR_INVALID ||
+                            actual != expected) goto done;
+                    if (expected != RGB(255, 255, 255)) ++ink;
+                }
+            }
+        }
+        if (ink == 0) goto done;
+        /* Exercise CE's actual window invalid region as well as the bitmap
+         * model. Keep the small, independent fixture above other windows. */
+        window_probe = 1;
+        g_scroll_paint_probe = 1;
+        g_dpi = dpi;
+        g_document_width = PCore_DocumentWidth(g_document);
+        g_document_height = PCore_DocumentHeight(g_document);
+        SetWindowPos(g_page_window, HWND_TOPMOST, 40, 80, 0, 0,
+                SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        for (move = 0; move < (int) (sizeof(moves) / sizeof(moves[0]));
+                ++move) {
+            g_scroll_x = 40;
+            g_scroll_y = MulDiv(chapter_y, dpi, 96) - 30;
+            InvalidateRect(g_page_window, NULL, FALSE);
+            UpdateWindow(g_page_window);
+            window_probe = 2;
+            window_dc = GetDC(g_page_window);
+            if (window_dc == NULL || !BitBlt(retained, 0, 0, 120, 80,
+                    window_dc, 0, 0, SRCCOPY)) goto done;
+            ReleaseDC(g_page_window, window_dc);
+            window_dc = NULL;
+            SelectClipRgn(retained, NULL);
+            app_paint_page_contents(reference, &client, &client);
+            for (y = 0; y < 80; ++y) {
+                for (x = 0; x < 120; ++x) {
+                    actual = GetPixel(retained, x, y);
+                    expected = GetPixel(reference, x, y);
+                    if (actual == CLR_INVALID || expected == CLR_INVALID ||
+                            actual != expected) goto done;
+                }
+            }
+            window_probe = 1;
+            (void) app_scroll_to_position(g_page_window,
+                    g_scroll_x + moves[move][0],
+                    g_scroll_y + moves[move][1]);
+            SelectClipRgn(retained, NULL);
+            window_dc = GetDC(g_page_window);
+            if (window_dc == NULL || !BitBlt(retained, 0, 0, 120, 80,
+                    window_dc, 0, 0, SRCCOPY))
+                goto done;
+            ReleaseDC(g_page_window, window_dc);
+            window_dc = NULL;
+            app_paint_page_contents(reference, &client, &client);
+            for (y = 0; y < 80; ++y) {
+                for (x = 0; x < 120; ++x) {
+                    actual = GetPixel(retained, x, y);
+                    expected = GetPixel(reference, x, y);
+                    if (actual == CLR_INVALID || expected == CLR_INVALID ||
+                            actual != expected) goto done;
+                }
+            }
+        }
+        if (!was_visible) ShowWindow(g_page_window, SW_HIDE);
+        window_probe = 0;
+        g_scroll_paint_probe = 0;
+    }
+    result = 0;
+done:
+    g_scroll_x = saved_x;
+    g_scroll_paint_probe = 0;
+    g_scroll_y = saved_y;
+    g_dpi = saved_dpi;
+    PCore_SetDeviceViewport(120, 80, saved_dpi);
+    if (PCore_LayoutDocument(g_document, 120, 80) != 0) result = 1;
+    g_document_width = PCore_DocumentWidth(g_document);
+    g_document_height = PCore_DocumentHeight(g_document);
+    if (!was_visible) ShowWindow(g_page_window, SW_HIDE);
+    if (old_retained != NULL) SelectObject(retained, old_retained);
+    if (old_reference != NULL) SelectObject(reference, old_reference);
+    if (retained_bitmap != NULL) DeleteObject(retained_bitmap);
+    if (reference_bitmap != NULL) DeleteObject(reference_bitmap);
+    if (retained != NULL) DeleteDC(retained);
+    if (reference != NULL) DeleteDC(reference);
+    if (screen != NULL) ReleaseDC(g_page_window, screen);
+    if (window_dc != NULL) ReleaseDC(g_page_window, window_dc);
+    if (dirty != NULL) DeleteObject(dirty);
+    if (strip != NULL) DeleteObject(strip);
+    if (result == 0) {
+        AppDebug_Log("positron scroll-paint selftest OK dpi=96,192 moves=9 pixels=exact\r\n");
+    } else {
+        _snprintf(message, sizeof(message) - 1,
+                "positron scroll-paint selftest FAILED dpi=%d move=%d pixel=%d,%d window=%d actual=%lu expected=%lu\r\n",
+                dpi, move, x, y, window_probe,
+                (unsigned long) actual, (unsigned long) expected);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
+    return result;
+}
+
 /* Runs inside the independent history fixture, through the production page
  * window procedure. Physical input messages, not a second gesture path. */
 static int app_pointer_debug_check(void)
