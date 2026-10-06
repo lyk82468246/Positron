@@ -3,7 +3,8 @@
 这是 DB 文件纵切的验收清单，不替代 [HANDOFF](HANDOFF.md) 的当前基线、
 [KNOWN_LIMITATIONS](KNOWN_LIMITATIONS.md) 的能力边界或 [ROADMAP](ROADMAP.md) 的候选规划。
 结构化错误合同与下列各门分别验收；内存页预算 FULL、正常关闭和独立进程冷重开
-不能替代锁或 journal 证据。禁止据此恢复应用正常启动的持久化或 CAB DB 依赖。
+不能替代锁或 journal 证据。应用启用和 CAB 打包按其独立授权与交付维护，不能据此宣称
+FULL/I/O 等未验收边界已经通过。
 
 ## 必须分别验收
 
@@ -17,7 +18,10 @@
   integrity 检查并继续写入；Debug/Release 的 SD 映射与内置存储四组通过。
   受控进程终止不能写成物理断电保证。
 - [ ] 真实文件页配额 FULL 与确定性的 I/O、COMMIT、rollback 故障注入；取得根错误、实际
-  事务状态、重新打开后的 schema/data/integrity。未实现夹具、未验收；不得填满磁盘/SD。
+  事务状态、重新打开后的 schema/data/integrity。FULL 双配置正式构建通过、内置存储
+  四进程门通过，但当前映射 SD 卷截断失败，整体门仍 FAIL；用户明确挂起该 FULL 门，
+  不再安排重跑或要求更换设备，详见下方失败边界。
+  I/O/COMMIT/rollback 注入未实现，不得填满磁盘/SD。
 - [ ] 文件 migration 脚本/提交失败后，由新进程证明 schema/data/version 原子性与重试；
   未来/损坏版本拒绝。脚本中途失败的 schema/data/version 原子性已随上述四组文件门通过；
   提交故障、迁移重试和未来/损坏版本拒绝尚未验收。
@@ -128,10 +132,47 @@ WM6 对不存在文件的属性检查未返回预期 LastError，夹具误拒绝
 可由归档恢复。内置空间恢复到 8,374,272 字节，再取新包完成锁门；旧日志无完成标记，
 所以不由普通自动清理绕过保留规则。未删除其他目录或 crash dump，未降低 5 MiB 门。
 
-## 下一条独立门
+### 文件 FULL 的映射卷截断限制
 
-本轮已复核 ROADMAP，锁与受控异常退出 journal 已退出待验收队列，下一条为真实文件页
-配额 FULL；确定性 I/O 与提交/rollback 故障另设独立门。不覆盖并行 EXE 候选，
-不恢复应用正常启动或 CAB DB 依赖。
+当前 DeviceEmulator 的映射 SD 卷在 FULL 后的数据复核返回原生 10、extended=1546
+（SQLITE_IOERR_TRUNCATE），Win32=50（ERROR_NOT_SUPPORTED）。根 FULL 快照为 native=13、
+active=0、txn=0、statements=1，Finalize 后零 statement；这些状态不能代替数据恢复成功。
+独立 CREATE_NEW 小文件的 SetEndOfFile(2048) 同样失败，4096 字节未缩短，排除了只由 SQL
+或日志断言造成的失败。SQLite 上游 WinCE VFS 使用该原生调用，未修改上游或伪造成功。
+
+同配置、同 SD 二进制包中的内置存储截断成功；两个配置各自完成四个新进程的 FULL 回滚、
+原中文 TEXT/BLOB/schema/integrity、小写入重试及冷复核，最终 DB 为 20,480 字节且双配置
+回读哈希一致。这仅证明内置存储该夹具，SD 失败使整个门保持 FAIL。Quota 改为先内置后 SD
+只保留独立证据，两个存储仍都必须通过；保留 5 MiB 余量，没有真实卷耗尽或新增 crash。
+
+- 首次 FULL Debug：`tmp/device-runs/20261005-225044-db-file-quota-debug/`。
+- 截断诊断 Debug：`tmp/device-runs/20261005-225458-db-file-quota-truncate-debug/`。
+- 截断诊断 Release：`tmp/device-runs/20261005-225703-db-file-quota-truncate-release/`。
+
+相邻 Debug `tmp/device-runs/20261005-230155-db-file-quota-adjacent-debug/` 与 Release
+`tmp/device-runs/20261005-230301-db-file-quota-adjacent-release/` 的 `1321,999` 均为 2/2、
+唯一 TESTBENCH PASS、零 ERROR/FAIL、完整日志、Core 路径/crash 检查通过，部署已精确清理。
+Release 失败包的最终只读 guest 审计日志 `db-file-evidence/module-audit-final.log` 确认
+holders=0 unavailable=0；本轮串行构建/设备窗口现已释放，下轮必须重新审计，不复用结论。
+
+失败夹具与包均保留，不执行成功清理。用户明确挂起本测试；仅在用户重新开启，且具备
+支持原生截断的 SD 卷/设备或另行批准的存储/VFS 方案后，才重新规划验收。
+不把当前映射卷的结果外推为所有 SD/OEM 都不支持，也不以读写/锁/journal 的既有通过覆盖
+此次失败。不将未通过候选写成正式基线，确定性 I/O 和迁移提交故障仍待独立实现。
+
+## 挂起的文件 FULL 门与其余待验收项
+
+本轮已复核 ROADMAP，文件页配额 FULL 按用户决定移入暂缓队列，不再作为当前下一步。
+挂起不是通过，也不扩大内置存储的部分证据；确定性 I/O 与提交/rollback 故障仍另设独立门。
+不覆盖 EXE/CAB 的既有交付，也不改变其独立授权与策略。
+`db_quota_probe.h` 与 `-Suite Quota` 为未通过完整设备门的候选：创建→FULL 写者→冷重开/小写入重试→
+冷复核四进程，仅消费公共 API。32 页/128 KiB 文件配额下，事务内先修改 TEXT、插入小 BLOB，
+再由大 zeroblob INSERT 的 Step 触发原生 FULL；Finalize 前捕获根错误和 idle/一个 statement，
+Finalize 后验证零 statement、先前修改均回滚。另两个新进程验证精确 schema/data/integrity、
+重试提交及冷重开。此门不注入 I/O、COMMIT 或 rollback 失败，双空间余量仍为 5 MiB。
+源码/C89、十六项 probe 离线检查及一百一十二项门验证器检查通过；它们不替代 ARM/WM6。
+正式 Debug/Release build/stage 与 SD 部署已执行；夹具作为挂起诊断保存，不提升为完整验收。
+夹具源码、日志和原断言保留，不自动重跑或继续调查替代 VFS。恢复须用户明确重新开启并
+满足上述进入条件；不能默认跳过 SD、关闭 spill 或伪造 truncate 成功。
 其余未勾选门保持待实现、待执行。真实卷耗尽和物理断电缺少安全实验条件，仍未验证；
-不填满磁盘、不强杀用户进程、不提前启用应用持久化。
+不填满磁盘、不强杀用户进程，不把夹具提交等同于故障可靠性验收。

@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string] $RunRoot,
     [ValidateSet('Debug', 'Release')][string] $Configuration = 'Debug',
-    [ValidateSet('Unicode', 'Locks', 'Journal')][string] $Suite = 'Unicode',
+    [ValidateSet('Unicode', 'Locks', 'Journal', 'Quota')][string] $Suite = 'Unicode',
     [switch] $ConfirmedExclusiveWindow,
     [switch] $PreserveDeployment
 )
@@ -87,7 +87,7 @@ function Wait-ProbeLog([string] $RemotePath, [string] $LocalPath, [int] $Timeout
 
 function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
         [string] $Storage, [string] $RemoteRoot, [string] $Suite = 'Unicode') {
-    if ($Suite -notin @('Unicode', 'Locks', 'Journal')) { throw 'Unknown probe suite.' }
+    if ($Suite -notin @('Unicode', 'Locks', 'Journal', 'Quota')) { throw 'Unknown probe suite.' }
     if (([regex]::Matches($Body, '(?m)^DB_FILE_PROBE PASS\r?$')).Count -ne 1 -or
             $Body -match '(?m)^(?:FAIL|DB_FILE_PROBE FAIL|child_timeout=FAIL)') {
         throw 'Missing, duplicated or failed coordinator completion.'
@@ -107,6 +107,12 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
             if (([regex]::Matches($Body, '(?m)^' + [regex]::Escape($marker) + '\r?$')).Count -ne 1) {
                 throw 'Missing exact journal suite/snapshot evidence.'
             }
+        }
+    }
+    if ($Suite -eq 'Quota') {
+        $summary = [regex]::Matches($Body, '(?m)^quota_processes=4 writer_exited_before_reopen=1 reopener_exited_before_verifier=1\r?$')
+        if (([regex]::Matches($Body, '(?m)^quota_suite=file-page-full-v1\r?$')).Count -ne 1) {
+            throw 'Missing exact file quota suite identity.'
         }
     }
     $rootMatch = [regex]::Matches($Body, '(?m)^fixture_root=(.+)\r?$')
@@ -133,7 +139,9 @@ function Assert-ProbeLog([string] $Body, [uint32] $ParentPid,
     if ($Suite -ne 'Unicode') {
         $roles = if ($Suite -eq 'Locks') {
             @('create','rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
-        } else { @('create','journal-seed','journal-writer','journal-recover','journal-verify') }
+        } elseif ($Suite -eq 'Journal') {
+            @('create','journal-seed','journal-writer','journal-recover','journal-verify')
+        } else { @('create','quota-writer','quota-reopen','quota-verify') }
         $pids = @()
         foreach ($role in $roles) {
             $created = [regex]::Matches($Body, '(?m)^child role=' + $role + ' pid=(\d+) created=1\r?$')
@@ -199,8 +207,9 @@ function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoo
         [string] $DatabasePath, [string] $Role) {
     $lockRole = $Role -in @('rw-reader','rw-writer','ww-owner','ww-contender','lock-verify')
     $journalRole = $Role -in @('journal-seed','journal-writer','journal-recover','journal-verify')
+    $quotaRole = $Role -in @('quota-writer','quota-reopen','quota-verify')
     $writer = $Role -eq 'journal-writer'
-    if ($Role -notin @('create', 'read', 'verify-b') -and !$lockRole -and !$journalRole -or $ChildPid -eq 0) {
+    if ($Role -notin @('create', 'read', 'verify-b') -and !$lockRole -and !$journalRole -and !$quotaRole -or $ChildPid -eq 0) {
         throw 'Unknown child role or invalid PID.'
     }
     $identity = [regex]::Matches($Body, '(?m)^process pid=(\d+) path=(.+)\r?$')
@@ -209,10 +218,38 @@ function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoo
             $Body -match '(?m)^(?:FAIL|DB_FILE_CHILD FAIL|open_failure)' -or
             (!$writer -and ([regex]::Matches($Body, '(?m)^DB_FILE_CHILD PASS closed_before_exit=1\r?$')).Count -ne 1) -or
             ($writer -and $Body -match '(?m)^DB_FILE_CHILD PASS') -or
-            (!$lockRole -and !$journalRole -and $Body -notmatch '(?m)^exact_utf8_text=PASS exact_blob=PASS schema=PASS integrity=ok transaction_idle=1 statements=0\r?$') -or
+            (!$lockRole -and !$journalRole -and !$quotaRole -and $Body -notmatch '(?m)^exact_utf8_text=PASS exact_blob=PASS schema=PASS integrity=ok transaction_idle=1 statements=0\r?$') -or
             ($lockRole -and ([regex]::Matches($Body, '(?m)^lock_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1) -or
-            ($journalRole -and !$writer -and ([regex]::Matches($Body, '(?m)^journal_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1)) {
+            ($journalRole -and !$writer -and ([regex]::Matches($Body, '(?m)^journal_integrity=ok transaction_idle=1 statements=0\r?$')).Count -ne 1) -or
+            ($quotaRole -and ([regex]::Matches($Body, '(?m)^quota_integrity=ok active=0 txn=0 statements=0 page_cap=32 page_size=4096\r?$')).Count -ne 1)) {
         throw 'Incomplete/failed child byte, schema, integrity or release evidence.'
+    }
+    if ($quotaRole) {
+        $markers = switch ($Role) {
+            'quota-writer' { @('quota_finalize=PASS result=-1 active=0 txn=0 statements=0',
+                'quota_rollback=PASS prior_text_restored=1 prior_insert_absent=1 schema=2') }
+            'quota-reopen' { @('quota_reopen=PASS sample_rows=1 quota_rows=0 schema=2',
+                'quota_retry_commit=PASS exact_blob=PASS') }
+            'quota-verify' { @('quota_cold_verify=PASS sample_rows=2 quota_rows=1 schema=2') }
+        }
+        foreach ($marker in $markers) {
+            if (([regex]::Matches($Body, '(?m)^' + [regex]::Escape($marker) + '\r?$')).Count -ne 1) {
+                throw 'Missing exact file quota rollback/reopen/retry evidence.'
+            }
+        }
+        $fullLines = [regex]::Matches($Body, '(?m)^quota_full[^\r\n]*\r?$')
+        if ($Role -eq 'quota-writer') {
+            $full = [regex]::Matches($Body, '(?m)^quota_full stage=step result=-1 category=9 native=13 extended=(\d+) active=0 txn=0 statements=1 cleanup=0 cleanup_result=0\r?$')
+            if ($fullLines.Count -ne 1 -or $full.Count -ne 1 -or
+                    ([int]$full[0].Groups[1].Value -band 255) -ne 13) {
+                throw 'Missing native FULL root error and automatic rollback state.'
+            }
+            $finalize = [regex]::Match($Body, '(?m)^quota_finalize=PASS[^\r\n]*\r?$')
+            $rollback = [regex]::Match($Body, '(?m)^quota_rollback=PASS[^\r\n]*\r?$')
+            if ($finalize.Index -le $full[0].Index -or $rollback.Index -le $finalize.Index) {
+                throw 'File quota error must be captured before finalize and data verification.'
+            }
+        } elseif ($fullLines.Count) { throw 'Unexpected FULL evidence for quota role.' }
     }
     if ($journalRole) {
         $markers = switch ($Role) {
@@ -270,6 +307,13 @@ function Assert-ChildLog([string] $Body, [uint32] $ChildPid, [string] $RemoteRoo
     }
 }
 
+function Assert-QuotaFile([string] $Path) {
+    $length = (Get-Item -LiteralPath $Path).Length
+    if ($length -le 0 -or $length -gt 131072 -or ($length % 4096) -ne 0) {
+        throw 'File quota database exceeded the verified 32-page bound.'
+    }
+}
+
 function Assert-JournalFiles([string] $Directory) {
     $before = Join-Path $Directory 'before.sqlite'
     $hot = Join-Path $Directory 'hot.sqlite'
@@ -319,7 +363,9 @@ function Save-FailedProbeEvidence([string] $ParentLog, [uint32] $OwnerPid,
     foreach ($name in @('create.log', 'read.log', 'verify-b.log', 'owner.marker',
             'rw-reader.log','rw-writer.log','ww-owner.log','ww-contender.log','lock-verify.log',
             'journal-seed.log','journal-writer.log','journal-recover.log','journal-verify.log',
-            'before.sqlite','hot.sqlite','hot.sqlite-journal')) {
+            'before.sqlite','hot.sqlite','hot.sqlite-journal',
+            'quota-writer.log','quota-reopen.log','quota-verify.log',
+            'quota-native-truncate.bin')) {
         $copied = [PositronDeviceRapi]::TryCopyFileFromDevice(
             ($fixture + '\' + $name), (Join-Path $Destination $name))
         Write-Stage ('failure evidence ' + $name + ' retrieved=' + $copied)
@@ -411,7 +457,10 @@ try {
             (Join-Path $evidence 'module-audit-before.log') 30)
     $crashBefore = [PositronDeviceRapi]::SnapshotCrashDumps()
     $fixtures = [Collections.Generic.List[string]]::new()
-    foreach ($storage in @('sd', 'internal')) {
+    # Quota diagnoses object-store and mapped SD separately. Both remain
+    # mandatory for PASS; internal-first must never hide a later SD failure.
+    $storageOrder = if ($Suite -eq 'Quota') { @('internal', 'sd') } else { @('sd', 'internal') }
+    foreach ($storage in $storageOrder) {
         $command = '--run-' + $Suite.ToLowerInvariant()
         if ($storage -eq 'internal') { $command += '-internal' }
         $probePid = [PositronDeviceRapi]::LaunchProcess(
@@ -434,6 +483,7 @@ try {
         if ($Suite -eq 'Journal') {
             $roles = @('create','journal-seed','journal-writer','journal-recover','journal-verify')
         }
+        if ($Suite -eq 'Quota') { $roles = @('create','quota-writer','quota-reopen','quota-verify') }
         for ($index = 0; $index -lt $roles.Count; ++$index) {
             $role = $roles[$index]
             $local = Join-Path $destination ($role + '.log')
@@ -448,6 +498,12 @@ try {
             throw 'Fixture owner marker is not the exact expected format.'
         }
         $dbHash = Copy-StableRemoteFile $dbPath (Join-Path $destination $chineseDatabase)
+        if ($Suite -eq 'Quota') {
+            $quotaFile = Join-Path $destination $chineseDatabase
+            Assert-QuotaFile $quotaFile
+            $checks.Add($storage + '_file_quota_full_rollback_reopen_retry=PASS')
+            $checks.Add($storage + '_database_bytes=' + (Get-Item -LiteralPath $quotaFile).Length)
+        }
         if ($Suite -eq 'Journal') {
             foreach ($name in @('before.sqlite','hot.sqlite','hot.sqlite-journal')) {
                 $hash = Copy-StableRemoteFile ($summary.Root + '\' + $name) (Join-Path $destination $name)

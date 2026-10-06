@@ -388,16 +388,17 @@ SD 映射卷和内置 object-store；中文 UTF-8 路径/TEXT、typed BLOB、com
 两配置 `1321,999` 相邻回归通过。完整包哈希、前后九 DLL 无引用审计、无新 crash 和证据
 回收均通过，验收夹具/包已清理；失败包仍保留。证据和六项门状态集中在
 [DB 文件验收清单](DB_FILE_ACCEPTANCE.md)，不等于物理断电或全部文件可靠性验收。
-跨进程读写/写写六进程门也已通过 Debug/Release 的 SD 映射与内置 object-store 四组：
-COMMIT BUSY 保留 active/write，BEGIN BUSY 不开启事务，旧/新可见性、释放后重试和冷重开
-通过；两配置 `1321,999` 相邻门、前后九 DLL 审计、哈希、空间/crash 与精确清理通过。
-完整证据统一见上述清单；用户授权归档清理一个旧内置包后空间已恢复，失败包不追认为成功。
-受控终止自建写进程后的 hot rollback journal 门已通过双配置、两种存储：实际未提交
-spill 与有效 journal 快照在恢复前保留；新进程恢复精确 TEXT/64 行 BLOB、schema 和
-integrity，继续提交后由另一新进程冷复核。完整证据及边界仍集中在上述清单。
-本轮 ROADMAP 已复核，DB 下一纵切为文件页配额 FULL；I/O、迁移提交故障/版本拒绝与
-HTTPS worker 仍待完成，不恢复应用正常启动或 CAB DB 发布依赖，不宣称真机断电通过。
-journal 门交付后串行构建/设备窗口释放，下一使用者仍须获取新 guest 无引用审计。
+跨进程读写/写写六进程门已通过双配置、两种存储：COMMIT BUSY 保留 active/write，
+BEGIN BUSY 不开启事务，旧/新可见性、释放后重试和冷重开通过。相邻回归及身份/引用/
+空间/crash 门通过，证据与用户授权旧包归档清理边界统一见上述清单，失败不追认为成功。
+受控终止自建写进程后的 hot journal 门已通过双配置、两种存储：恢复前保留实际 spill/
+journal，新进程恢复精确数据/schema/integrity，继续提交后冷复核；细节见上述清单。
+文件页配额 FULL 候选已正式双配置构建并从 SD 运行：内置存储四进程通过，当前映射 SD
+卷原生截断返回不支持，FULL 后复核返回 SQLITE_IOERR_TRUNCATE，整体门仍 FAIL。
+用户明确挂起 FULL 门，不再安排设备更换或重跑；证据、原断言与恢复条件见上述清单。
+ROADMAP 已复核并移入暂缓队列，未提升候选；I/O、迁移提交故障/版本拒绝与 HTTPS
+worker 仍待完成；本批不改变 EXE/CAB 既有交付与授权，不宣称真机断电通过。
+本轮相邻回归及最终九 DLL 无引用审计通过，串行窗口释放；下一使用者须重新审计。
 
 ### HTTP 流式 GET 与跨线程取消已验收
 
@@ -489,6 +490,6 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
 Media 保留 AAC seek PCM 保真、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
-DB 跨进程锁与受控异常退出 journal 恢复已通过；保留文件 FULL/I/O、迁移故障、HTTPS worker
+DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 和应用持久化，不把进程终止恢复写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

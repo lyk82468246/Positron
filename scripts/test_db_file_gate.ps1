@@ -5,7 +5,7 @@ $gateErrors = $null
 $gateAst = [Management.Automation.Language.Parser]::ParseFile(
     (Join-Path $PSScriptRoot 'db_file_gate.ps1'), [ref]$gateTokens, [ref]$gateErrors)
 if ($gateErrors.Count) { throw $gateErrors[0] }
-foreach ($name in @('Assert-ProbeLog', 'Assert-ChildLog', 'Assert-JournalFiles')) {
+foreach ($name in @('Assert-ProbeLog', 'Assert-ChildLog', 'Assert-JournalFiles', 'Assert-QuotaFile')) {
     $definition = $gateAst.Find({ param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
     }, $false)
@@ -178,6 +178,49 @@ Test-Validation 'journal recovery missing continued commit' { Assert-ChildLog ($
 Test-Validation 'journal incomplete rollback rows' { Assert-ChildLog ($recoverLog.Replace('rows=64','rows=63')) 20 $package $dbPath 'journal-recover' } $false
 Test-Validation 'journal recovery bad integrity' { Assert-ChildLog ($recoverLog.Replace('integrity=ok','integrity=bad')) 20 $package $dbPath 'journal-recover' } $false
 
+$quotaParent = (@(
+    "process pid=10 path=$exe", 'fixture_storage=sd', "fixture_root=$fixture",
+    'quota_suite=file-page-full-v1',
+    'child role=create pid=20 created=1', 'child role=create pid=20 wait=0 exit=0 completed=1',
+    'child role=quota-writer pid=30 created=1', 'child role=quota-writer pid=30 wait=0 exit=0 completed=1',
+    'child role=quota-reopen pid=40 created=1', 'child role=quota-reopen pid=40 wait=0 exit=0 completed=1',
+    'child role=quota-verify pid=50 created=1', 'child role=quota-verify pid=50 wait=0 exit=0 completed=1',
+    'quota_processes=4 writer_exited_before_reopen=1 reopener_exited_before_verifier=1',
+    'DB_FILE_PROBE PASS'
+) -join "`r`n") + "`r`n"
+Test-Validation 'quota exact four processes' { Assert-ProbeLog $quotaParent 10 'sd' $package 'Quota' } $true
+Test-Validation 'quota internal processes' { Assert-ProbeLog ($quotaParent.Replace('fixture_storage=sd','fixture_storage=internal').Replace("fixture_root=$fixture",'fixture_root=\Temp\Positron-device-gate\db-file-fixtures\fixture-10-1234')) 10 'internal' $package 'Quota' } $true
+Test-Validation 'quota wrong suite' { Assert-ProbeLog ($quotaParent.Replace('file-page-full-v1','memory-full')) 10 'sd' $package 'Quota' } $false
+Test-Validation 'quota duplicate PID' { Assert-ProbeLog ($quotaParent.Replace('pid=40','pid=30')) 10 'sd' $package 'Quota' } $false
+Test-Validation 'quota nonzero writer exit' { Assert-ProbeLog ($quotaParent.Replace('quota-writer pid=30 wait=0 exit=0','quota-writer pid=30 wait=0 exit=1')) 10 'sd' $package 'Quota' } $false
+$earlyQuotaReopen = $quotaParent.Replace("child role=quota-reopen pid=40 created=1`r`n",'').Replace(
+    'child role=quota-writer pid=30 wait=0 exit=0 completed=1',
+    "child role=quota-reopen pid=40 created=1`r`nchild role=quota-writer pid=30 wait=0 exit=0 completed=1")
+Test-Validation 'quota reopen before writer exit' { Assert-ProbeLog $earlyQuotaReopen 10 'sd' $package 'Quota' } $false
+$quotaBase = $lockBase.Replace('lock_integrity=ok transaction_idle=1 statements=0',
+    'quota_integrity=ok active=0 txn=0 statements=0 page_cap=32 page_size=4096')
+$quotaError = "quota_full stage=step result=-1 category=9 native=13 extended=13 active=0 txn=0 statements=1 cleanup=0 cleanup_result=0`r`n"
+$quotaFinalize = "quota_finalize=PASS result=-1 active=0 txn=0 statements=0`r`n"
+$quotaWriter = $quotaBase + $quotaError + $quotaFinalize +
+    "quota_rollback=PASS prior_text_restored=1 prior_insert_absent=1 schema=2`r`n"
+$quotaReopen = $quotaBase + "quota_reopen=PASS sample_rows=1 quota_rows=0 schema=2`r`nquota_retry_commit=PASS exact_blob=PASS`r`n"
+$quotaVerify = $quotaBase + "quota_cold_verify=PASS sample_rows=2 quota_rows=1 schema=2`r`n"
+Test-Validation 'quota exact error and rollback' { Assert-ChildLog $quotaWriter 20 $package $dbPath 'quota-writer' } $true
+Test-Validation 'quota exact cold reopen retry' { Assert-ChildLog $quotaReopen 20 $package $dbPath 'quota-reopen' } $true
+Test-Validation 'quota exact final verifier' { Assert-ChildLog $quotaVerify 20 $package $dbPath 'quota-verify' } $true
+foreach ($pair in @(@('native=13','native=7'), @('extended=13','extended=5'),
+        @('category=9','category=10'), @('active=0','active=1'), @('txn=0','txn=2'),
+        @('cleanup=0','cleanup=1'), @('cleanup_result=0','cleanup_result=-1'),
+        @('statements=1','statements=0'), @('page_cap=32','page_cap=512'))) {
+    Test-Validation ('quota wrong ' + $pair[0]) { Assert-ChildLog ($quotaWriter.Replace($pair[0],$pair[1])) 20 $package $dbPath 'quota-writer' } $false
+}
+Test-Validation 'quota finalize before root snapshot' { Assert-ChildLog ($quotaWriter.Replace($quotaError+$quotaFinalize,$quotaFinalize+$quotaError)) 20 $package $dbPath 'quota-writer' } $false
+Test-Validation 'quota duplicate full snapshot' { Assert-ChildLog ($quotaWriter+$quotaError) 20 $package $dbPath 'quota-writer' } $false
+Test-Validation 'quota missing prior rollback' { Assert-ChildLog ($quotaWriter.Replace('prior_insert_absent=1','prior_insert_absent=0')) 20 $package $dbPath 'quota-writer' } $false
+Test-Validation 'quota missing retry commit' { Assert-ChildLog ($quotaReopen.Replace('quota_retry_commit=PASS','')) 20 $package $dbPath 'quota-reopen' } $false
+Test-Validation 'quota unexpected FULL in reopener' { Assert-ChildLog ($quotaReopen+$quotaError) 20 $package $dbPath 'quota-reopen' } $false
+Test-Validation 'quota verifier missing new data' { Assert-ChildLog ($quotaVerify.Replace('sample_rows=2','sample_rows=1')) 20 $package $dbPath 'quota-verify' } $false
+
 # Synthetic raw files are validator input only, not SQLite/device evidence.
 $rawRoot = Join-Path (Split-Path -Parent $PSScriptRoot) ('tmp\journal-validator-' + [guid]::NewGuid())
 [void][IO.Directory]::CreateDirectory($rawRoot)
@@ -202,6 +245,14 @@ Test-Validation 'journal without real spilled database rejected' { Assert-Journa
 [IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite'),$dirty)
 [IO.File]::WriteAllBytes((Join-Path $rawRoot 'hot.sqlite-journal'),[byte[]]::new(513))
 Test-Validation 'zeroed nonempty journal rejected' { Assert-JournalFiles $rawRoot } $false
+
+# Synthetic length inputs only. No user/guest database is opened or changed.
+$quotaRaw = Join-Path $rawRoot 'quota-size-input'
+foreach ($length in @(0,4095,4096,4097,131072,131073,135168)) {
+    [IO.File]::WriteAllBytes($quotaRaw,[byte[]]::new($length))
+    $allowed = $length -in @(4096,131072)
+    Test-Validation ('quota raw length ' + $length) { Assert-QuotaFile $quotaRaw } $allowed
+}
 
 # No input may bind to PowerShell's read-only automatic $PID variable.
 $pidAssignments = $gateAst.FindAll({ param($node)

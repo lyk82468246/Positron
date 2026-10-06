@@ -68,6 +68,26 @@ row; another new process verifies that commit. `-Suite Journal` additionally
 retrieves both raw snapshots and requires different baseline/hot DB hashes,
 so a nonempty journal without an actual database spill is insufficient.
 
+`--run-quota` / `--run-quota-internal` use four sequential processes: creator,
+quota writer, cold reopener and final verifier. Each quota consumer verifies a
+32-page (128 KiB) limit and FULL synchronous mode. The writer changes existing
+TEXT and inserts a small BLOB inside a transaction, then a prepared 256 KiB
+zeroblob insert must fail with native FULL. It captures the root error and live
+automatic rollback state before finalizing the failed statement; no explicit
+rollback hides the state. Both earlier changes must be absent. A new process
+verifies exact original bytes/schema/integrity and commits small rows; a final
+new process checks that commit. Lower migration version rejection precedes the
+empty current-version check, so version verification cannot repair lost state.
+`-Suite Quota` checks this sequence, error/finalize/rollback markers and the
+retrieved database size. This is a file page quota test, not volume exhaustion,
+injected I/O/COMMIT/rollback failure, or physical power-loss acceptance. The
+5 MiB free-space preflight remains unchanged. A separate CREATE_NEW 4096-byte
+scratch file diagnoses native `SetEndOfFile` truncation to 2048 bytes and logs
+the result and Win32 error. It never repairs or truncates the database/journal;
+diagnostic success cannot replace the SQLite rollback assertions. Quota runs
+internal storage before SD to retain independent evidence when SD fails, but
+both storage variants must pass for acceptance.
+
 Logs and files remain for the host gate to retrieve and hash before scoped
 cleanup. A complete package, free-space preflight, guest no-foreign-DLL audit,
 round-trip binary identity and crash inventory are host-gate requirements;

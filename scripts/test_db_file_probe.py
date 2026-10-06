@@ -23,6 +23,7 @@ PROBE = ROOT / "device_tools/db_file_probe"
 SOURCE = (PROBE / "db_file_probe.c").read_text(encoding="utf-8")
 LOCK_SOURCE = (PROBE / "db_lock_probe.h").read_text(encoding="utf-8")
 JOURNAL_SOURCE = (PROBE / "db_journal_probe.h").read_text(encoding="utf-8")
+QUOTA_SOURCE = (PROBE / "db_quota_probe.h").read_text(encoding="utf-8")
 
 
 def c_strings(text):
@@ -57,6 +58,9 @@ class ProbeBoundaryTests(unittest.TestCase):
         transformed, changes = transform(JOURNAL_SOURCE)
         self.assertEqual(changes, 0)
         self.assertEqual(transformed, JOURNAL_SOURCE)
+        transformed, changes = transform(QUOTA_SOURCE)
+        self.assertEqual(changes, 0)
+        self.assertEqual(transformed, QUOTA_SOURCE)
 
     def test_only_public_db_api(self):
         for forbidden in ("sqlite3_", "sqlite3.h", "__pdb_", "__sqlite",
@@ -65,6 +69,7 @@ class ProbeBoundaryTests(unittest.TestCase):
             self.assertNotIn(forbidden, SOURCE)
             self.assertNotIn(forbidden, LOCK_SOURCE)
             self.assertNotIn(forbidden, JOURNAL_SOURCE)
+            self.assertNotIn(forbidden, QUOTA_SOURCE)
         self.assertIn('#include "positron_db.h"', SOURCE)
         self.assertIn('PDb_ApplyMigration(db, 1, "")', SOURCE)
         self.assertIn('"PRAGMA integrity_check"', SOURCE)
@@ -117,7 +122,7 @@ class ProbeBoundaryTests(unittest.TestCase):
         project = ET.fromstring(xml)
         files = [n.attrib["RelativePath"] for n in project.iter("File")]
         self.assertEqual(files, [".\\db_file_probe.c", ".\\db_lock_probe.h",
-                                 ".\\db_journal_probe.h", ".\\README.md"])
+                                 ".\\db_journal_probe.h", ".\\db_quota_probe.h", ".\\README.md"])
         configurations = list(project.iter("Configuration"))
         self.assertEqual(len(configurations), 2)
         for configuration in configurations:
@@ -203,7 +208,67 @@ class ProbeBoundaryTests(unittest.TestCase):
         self.assertNotIn("CREATE_ALWAYS", JOURNAL_SOURCE)
 
 
+    def test_quota_file_error_before_cleanup_and_fresh_processes(self):
+        sequence = QUOTA_SOURCE[QUOTA_SOURCE.index("static BOOL probe_quota_sequence("):]
+        self.assertNotIn("PDb_", sequence)
+        for slot, role in enumerate(("create", "quota-writer", "quota-reopen", "quota-verify")):
+            self.assertIn(f'L"{role}", {slot}, &child_pid)', sequence)
+        self.assertIn('L"--run-quota-internal"', SOURCE)
+        self.assertIn('"PRAGMA max_page_count=32"', QUOTA_SOURCE)
+        self.assertIn('"PRAGMA synchronous", 2', QUOTA_SOURCE)
+        self.assertIn("error.sqlite_code == 13", QUOTA_SOURCE)
+        self.assertIn("error.transaction_active == 0", QUOTA_SOURCE)
+        self.assertIn("error.cleanup_attempted == 0", QUOTA_SOURCE)
+        self.assertNotIn("PDb_Rollback(", QUOTA_SOURCE)
+        self.assertNotIn("TerminateProcess(", QUOTA_SOURCE)
+        self.assertNotIn(":memory:", QUOTA_SOURCE)
+        self.assertIn('L"\\\\quota-native-truncate.bin"', QUOTA_SOURCE)
+        self.assertIn("NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL", QUOTA_SOURCE)
+        self.assertIn("success = SetEndOfFile(file)", QUOTA_SOURCE)
+        full = QUOTA_SOURCE[QUOTA_SOURCE.index("static BOOL probe_quota_full("):
+                            QUOTA_SOURCE.index("static BOOL probe_quota_child(")]
+        self.assertLess(full.index("PDb_GetErrorInfo"), full.index("PDb_Finalize"))
+        self.assertIn("state.statement_count == 1", full)
+        self.assertIn("finalized == PDB_ERROR", full)
+
+
 class FixtureSqlOracleTests(unittest.TestCase):
+    def test_file_quota_full_oracle_not_wm6_or_volume_exhaustion(self):
+        with tempfile.TemporaryDirectory(prefix="db-quota-oracle-") as temporary:
+            path = Path(temporary) / "fixture.sqlite"
+            with closing(sqlite3.connect(path)) as db:
+                db.execute("PRAGMA page_size=4096")
+                db.execute("PRAGMA journal_mode=DELETE")
+                db.execute("PRAGMA synchronous=FULL")
+                db.executescript(SCHEMA + ";CREATE TABLE quota_samples(id INTEGER PRIMARY KEY,payload BLOB NOT NULL)")
+                db.execute("INSERT INTO samples VALUES(1,?,?)", (TEXT_A.decode("utf-8"), BLOB))
+                db.commit()
+                self.assertEqual(db.execute("PRAGMA max_page_count=32").fetchone(), (32,))
+                db.execute("PRAGMA cache_size=4")
+                db.execute("PRAGMA cache_spill=ON")
+                db.execute("BEGIN IMMEDIATE")
+                db.execute("UPDATE samples SET label='quota-uncommitted'")
+                db.execute("INSERT INTO quota_samples VALUES(1,?)", (BLOB,))
+                with self.assertRaises(sqlite3.OperationalError) as raised:
+                    db.execute("INSERT INTO quota_samples VALUES(2,zeroblob(262144))")
+                self.assertEqual(raised.exception.sqlite_errorcode, sqlite3.SQLITE_FULL)
+                self.assertFalse(db.in_transaction)
+                self.assertEqual(db.execute("SELECT count(*) FROM quota_samples").fetchone(), (0,))
+            with closing(sqlite3.connect(path)) as db:
+                self.assertEqual(db.execute("SELECT id,label,payload FROM samples").fetchall(),
+                                 [(1, TEXT_A.decode("utf-8"), BLOB)])
+                self.assertEqual(db.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                self.assertEqual(db.execute("PRAGMA max_page_count=32").fetchone(), (32,))
+                db.execute("INSERT INTO samples VALUES(8,'after-full-reopen',?)", (BLOB,))
+                db.execute("INSERT INTO quota_samples VALUES(1,?)", (BLOB,))
+                db.commit()
+            with closing(sqlite3.connect(path)) as db:
+                self.assertEqual(db.execute("SELECT payload FROM quota_samples").fetchall(), [(BLOB,)])
+                self.assertEqual(db.execute("SELECT count(*) FROM samples").fetchone(), (2,))
+                self.assertEqual(db.execute("PRAGMA integrity_check").fetchone(), ("ok",))
+                self.assertLessEqual(db.execute("PRAGMA page_count").fetchone()[0], 32)
+            self.assertLessEqual(path.stat().st_size, 131072)
+
     def test_hot_journal_oracle_not_wm6_or_power_loss(self):
         with tempfile.TemporaryDirectory(prefix="db-journal-oracle-") as temporary:
             path = Path(temporary) / "fixture.sqlite"

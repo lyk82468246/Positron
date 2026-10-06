@@ -304,8 +304,11 @@ fixture 已加入，宿主 DB worker 和真实设备网络/断电门仍待完成
 表结构和策略，Browser 会话栈继续独立。中文 UTF-8 文件/文本、正常重开和独立新进程
 冷重开、读写/写写跨进程锁及受控异常退出 journal 恢复已有双配置 SD 映射/内置存储证据；
 DB 主线 CAB 发布前仍须证明文件配额 FULL/I/O 故障、迁移提交失败与未来/损坏版本
-拒绝，不把进程终止当作断电恢复。用户明确暂缓真实故障门并授权 EXE 先接线；
-未通过状态保留，不恢复 CAB 发布依赖、不新增 JSON fallback 或删除用户文件。
+拒绝，不把进程终止当作断电恢复。文件页配额 FULL 按用户决定挂起，退出当前待执行队列，
+未通过状态保留；恢复条件见下方暂缓队列与 [文件验收清单](DB_FILE_ACCEPTANCE.md)。
+I/O 故障仍另设门，挂起 FULL 不等于其余文件可靠性已验收。
+用户进一步明确暂缓难以复现的真实故障验收并授权 EXE 先接线；保留未通过状态，不
+推断文件可靠性或恢复 CAB 发布依赖，不新增 JSON fallback 或删除损坏用户文件。
 
 固定起始页的普通启动、可信设置页、单所有者 worker、结果分派与正常退出排空已退出
 待实现队列，实际四进程门通过；状态证据见 HANDOFF，稳定授权与所有权见应用接线计划。
@@ -520,6 +523,10 @@ multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞�
 
 ### 暂缓
 
+- DB 文件页配额 FULL 测试按用户决定挂起：当前映射 SD 卷不支持原生截断，内置存储的
+  部分通过不能替代完整门。保留夹具、失败证据与原断言，不继续要求更换设备、重跑或
+  自动探索替代 VFS。仅在用户明确重新开启，且取得支持截断的 SD 卷/设备或另行批准的
+  存储/VFS 方案后恢复规划；具体证据见 [文件验收清单](DB_FILE_ACCEPTANCE.md)。
 - EXE 的 OS 产品名称、发行版本和 edition 动态识别按用户决定暂时挂起；当前 API/注册表证据未能取得 WM 6.5.3 等营销版本元数据，不等于所有 ROM 都无此能力。保留内核、平台、AKU、OEM 与组件查询，不加入 build/AKU 映射表或硬编码品牌。只有用户重新开启，并取得可复现的运行时 API 或 OEM 注册表字段及其语义证据后，才恢复此方向；具体设备查询结果见 [HANDOFF](HANDOFF.md)，能力限制见 [KNOWN_LIMITATIONS](KNOWN_LIMITATIONS.md)。
 - WinWorld 窄视口中“页面级横向滚动条几乎铺满轨道”的现象已经复现，但尚未归属到 Core document extent、EXE client rect/样式事务或页面 CSS。按当前决策暂不继续追踪；保留原生滚动条与现有动态 `WS_HSCROLL`/`WS_VSCROLL` 策略，不以隐藏滚动条或改写 Core 尺寸作为临时修复。重新开启时先补齐同一页面、同一 DPI 下的尺寸与样式时序证据。
 - WinWorld `/home` 的 `bsky-embed` 位图缺失已确认属于当前 `type="module"`、custom element 与 Shadow DOM 能力边界，不属于 Image/HTTP 解码或传输缺陷；完整解除条件和 DLL 责任见 [`KNOWN_LIMITATIONS.md`](KNOWN_LIMITATIONS.md)。在形成有界消费者方案、离线 fixture 和跨 `positron_script.dll`/`positron_browser.dll`/`positron_core.dll` 的设备门以前，不把它提升为 EXE 临时修复。
