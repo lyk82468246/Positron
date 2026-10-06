@@ -682,7 +682,7 @@ static void app_internal_history(AppHtmlWriter *writer, HANDLE history,
                 strncmp(url, "http://", 7) == 0) {
             clickable = 1;
         }
-        app_html_append(writer, "<p>");
+        app_html_append(writer, "<p class=\"history-entry\">");
         if (clickable) {
             _snprintf(link_id, sizeof(link_id) - 1, "history-%d", i);
             link_id[sizeof(link_id) - 1] = '\0';
@@ -833,7 +833,7 @@ static void app_internal_visits(AppHtmlWriter *writer,
                     scheme == APP_URL_SCHEME_HTTPS) &&
                     AppUrlRouter_ResolveNetworkReference(NULL, record->url,
                     resolved, sizeof(resolved)) == 0;
-            app_html_append(writer, "<p>");
+            app_html_append(writer, "<p class=\"history-entry\">");
             if (clickable) {
                 _snprintf(link_id, sizeof(link_id) - 1, "visit-%d", i);
                 link_id[sizeof(link_id) - 1] = '\0';
@@ -876,7 +876,7 @@ static void app_internal_visits(AppHtmlWriter *writer,
     for (i = count - 1; i >= 0; i--) {
         url = PBrowser_HistoryEntryUrl(data->history, i);
         if (url == NULL) continue;
-        app_html_append(writer, "<p>");
+        app_html_append(writer, "<p class=\"history-entry\">");
         app_html_escape(writer, url);
         app_html_append(writer, "</p>");
         shown++;
@@ -1149,6 +1149,40 @@ static int app_internal_system_debug_check(void)
     return result;
 }
 
+/* Exercise the actual generated page, not a second HTML/CSS implementation.
+ * Reflow must preserve both the displayed DOM text and the navigation URL. */
+static int app_internal_wrap_debug_check(HANDLE document, HANDLE stylesheet,
+        const char *id, const char *url, const char *title)
+{
+    static const int widths[] = { 240, 480, 240 };
+    static const int dpis[] = { 96, 128, 192 };
+    PCoreFocusTargetInfo focus;
+    char text[APP_VISITS_URL_MAX];
+    unsigned int i;
+    unsigned int j;
+    int result;
+
+    result = 1;
+    for (i = 0; i < sizeof(dpis) / sizeof(dpis[0]); i++) {
+        for (j = 0; j < sizeof(widths) / sizeof(widths[0]); j++) {
+            PCore_SetDeviceViewport(widths[j], 268, dpis[i]);
+            if (PCore_StyleDocument(document, stylesheet) != 0 ||
+                    PCore_LayoutDocument(document, widths[j], 268) != 0 ||
+                    PCore_DocumentWidth(document) > widths[j] ||
+                    PCore_FocusTargetInfoById(document, id, &focus) != 0 ||
+                    focus.kind != PCORE_FOCUS_TARGET_LINK ||
+                    PCore_NodeAttributeById(document, id, "href", text,
+                    sizeof(text), NULL) != 0 || strcmp(text, url) ||
+                    PCore_NodeTextContentById(document, id, text,
+                    sizeof(text), NULL) != 0 || strcmp(text, title)) goto done;
+        }
+    }
+    result = 0;
+done:
+    PCore_SetDeviceViewport(240, 268, 96);
+    return result;
+}
+
 int AppInternalPages_DebugCheck(const char *css)
 {
     static const char *valid[] = {
@@ -1243,7 +1277,8 @@ int AppInternalPages_DebugCheck(const char *css)
             PBrowser_HistoryCount(history) != 1) goto done;
     PBrowser_HistoryReset(history);
     for (i = 0; i < PBROWSER_HISTORY_MAX; i++) {
-        _snprintf(url, sizeof(url) - 1, "https://example.com/%u?x=\"<&'", i);
+        _snprintf(url, sizeof(url) - 1,
+                "https://example.com/abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz%u?x=\"<&'", i);
         url[sizeof(url) - 1] = '\0';
         if (PBrowser_HistoryCommitNavigation(history, url,
                 PBROWSER_HISTORY_METHOD_GET,
@@ -1263,6 +1298,9 @@ int AppInternalPages_DebugCheck(const char *css)
             PCore_LayoutDocument(document, 240, 268) != 0 ||
             AppInternalPages_FocusIds(document, focus_ids) != 23 ||
             strcmp(focus_ids[0], "history-15") != 0) goto done;
+    if (app_internal_wrap_debug_check(document, stylesheet, "history-15",
+            PBrowser_HistoryEntryUrl(history, 15),
+            PBrowser_HistoryEntryUrl(history, 15)) != 0) goto done;
     PCore_FreeDocument(document);
     document = NULL;
     AppI18n_FreePage(html);
@@ -1283,6 +1321,10 @@ int AppInternalPages_DebugCheck(const char *css)
         strcpy(visits->entries[i].url, "https://example.com/?x=\"<&'");
         strcpy(visits->entries[i].title, "Title <&>");
     }
+    strcpy(visits->entries[0].url,
+            "https://www.iana.org/help/example-domains?query=abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz");
+    strcpy(visits->entries[0].title,
+            "LongTitleabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz");
     data.visits = visits;
     data.visits_status = 2;
     if (AppInternalPages_Build(APP_I18N_PAGE_HISTORY, &data, &html,
@@ -1294,6 +1336,9 @@ int AppInternalPages_DebugCheck(const char *css)
             PCore_LayoutDocument(document, 240, 268) != 0 ||
             AppInternalPages_FocusIds(document, focus_ids) != 23 ||
             strcmp(focus_ids[0], "visit-0") != 0) goto done;
+    if (app_internal_wrap_debug_check(document, stylesheet, "visit-0",
+            visits->entries[0].url, visits->entries[0].title) != 0) goto done;
+    AppDebug_Log("positron history-wrap selftest OK dpi=96,128,192 widths=240,480,240 text=exact href=exact\r\n");
     AppDebug_Log("positron visits-page selftest OK escaped=1 focus=23 utc=1\r\n");
     PCore_FreeDocument(document);
     document = NULL;

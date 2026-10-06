@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。当前本会话完成消费者访问历史页需要的 Core 选择性长文本断行；公共 ABI、EXE 与 DB/history/scroll 不变，应用样式接入与实际页验收留给应用会话。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Core 选择性长文本断行已交付，EXE 只对历史记录条目启用样式；不修改公共 ABI、DB/history 或滚动语义。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2 解码/守卫合同已有双配置设备证据，独立后续为 AAC seek PCM 保真性。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
@@ -14,7 +14,8 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；本批修改内部 libcss 属性、Core layout/GDI、正式工程输入、离线 fixture 与对应文档。未修改 EXE、Browser、DB/history/scroll 或公共头文件/导出；保留其他组件及原有诊断。
+分支 main；本批只修改 EXE 历史条目 class/私有 CSS、Debug 消费者自检、设备门和文档。
+Core 交付提交为 7596ddf1；不修改 DLL、公共 ABI、DB 或滚动，保留其他组件及诊断。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -43,8 +44,8 @@ C89、审计与串行正式 Debug/Release build 通过；Release 先行 PDB 打�
 `debug-probe2` 抓到尾随空格误触紧急断行的真实回归，改为检查完整首词宽度后普通段落原
 比较断言通过。失败日志保留，不扩大预算或弱化普通断行断言。
 
-DLL 纵切完成不代表应用历史页已启用。唯一下一步由应用会话给访问 URL/标题声明该 CSS，
-用真实长 URL 复核窄/宽、高 DPI、链接与拖动；本会话不自行修改 EXE 或重开滚动修正。
+DLL 门不替代 EXE 验收。应用现只给 auto-width 历史条目声明该 CSS，覆盖 URL/标题及
+会话栈文本；窄/宽、高 DPI、DOM/href、实际页与拖动证据见下方，不重开滚动修正。
 
 ### EXE 访问历史与滚动像素修正通过
 
@@ -55,25 +56,27 @@ clear 全局失效缓存。稳定策略见 [应用数据设计](../positron_app/
 存储基线 Debug 包 `tmp/device-runs/20261006-231023-app-settings-visits-verified/` 的
 app-settings 五进程门 PASS：存储/服务、历史创建、独立进程恢复、清除及主页保留；
 SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS。
-先行完整 UI 门在 `20261006-225852-app-settings-visits/app-history/` PASS，新增历史 Core
-parse/style/layout、标题/URL 转义、UTC 和 23 焦点通过。真实 IANA example-domains 导航
-日志 `visit-navigation.log` 证明 commit 后 op=3 保存、history op=4 读取及 focus=8；
-旧 PID 3816943554 已正常退出，不是当前人工入口。
+先行 UI 门 `20261006-225852-app-settings-visits/app-history/` 覆盖 Core/转义/UTC/23 焦点；
+实际导航与保存/读取也通过，旧 PID 3816943554 已退出，不是当前入口。
 
 截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分开处理：当时缺少的 Core CSS
-紧急断行现已完成上述 DLL 门，应用尚需启用；原消费者合同见
+紧急断行已完成 DLL 门，应用已选择性启用；原消费者合同见
 [Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)，EXE 不改写文字或隐藏横轴。
 实际窗口探针复现 CE 双轴 ScrollWindowEx 返回 ERROR，旧代码忽略失败仍更新位置，
 产生旧像素残留。拆分单轴、任一失败完整失效视口后只补绘，不增加 layout。更换位图
 原点的假设未被对照证明，已撤回；空历史页不花屏不能替代长 URL 页面验收。
 
-当前包 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
-实际窗口与内存像素门 PASS（单轴/斜向/大幅共九次，各与完整重绘一致），并实际加载
-IANA、op=3 保存、op=4 读回、history focus=8；哈希 10/10、crash_check PASS。
-该包原 PID 3612441414 已由用户正常退出，不是当前运行入口；包路径为
-`\Storage Card\Temp\Positron-device-gate\app-scroll-axis-final-20261006-235934\positron.exe`。
-用户已确认含实际长 URL 的该页横向、纵向、斜向拖动均正常且无花屏；斜向无反应的
-初始反馈已由用户明确撤回。该页视觉门通过，不外推全部页面/OEM；后续部署先正常退出并审计引用。
+先行滚动包 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
+实际窗口/内存像素、IANA→历史、哈希与 crash 门 PASS；旧 PID 3612441414 已退出。
+用户确认含长 URL 该页双轴/斜向拖动无花屏，撤回斜向无反应反馈，不外推全部页面/OEM。
+
+当前断行包 `tmp/device-runs/20261007-004415-app-history-wrap/` 完整 UI 门 PASS：生成的
+会话栈/持久记录在 96/128/192 DPI、240→480→240 视口中无横向溢出，DOM/href 精确不变；
+原滚动像素门继续通过。真实 IANA commit、op=3 保存、op=4 读取后，历史 client/extent
+均宽 454（旧页 extent 581），focus=8；guest 审计、哈希 10/10、crash_check PASS。
+PID 1132574842 留在 `\Storage Card\Temp\Positron-device-gate\app-history-wrap-20261007-004415\positron.exe`。
+正式 Debug/Release build、C89、审计与 Release 新诊断排除通过；libcss 既有警告保留。
+未修改 DLL/ABI 或删除数据库；真实折行、触摸链接、拖动和旋转视觉待用户确认。
 失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
 诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
 
@@ -81,7 +84,7 @@ IANA、op=3 保存、op=4 读回、history focus=8；哈希 10/10、crash_check 
 `20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
 访问记录恢复不等于断电门。
 
-ROADMAP 已复核；滚动视觉门关闭，Core 断行已验收，下一步应用启用样式，剩余交互/交错见限制，v1 升级和
+ROADMAP 已复核；滚动视觉门关闭，Core 断行已验收、应用已启用，剩余交互/交错见限制，v1 升级和
 500 条裁剪目前为离线 SQL 证据。随后纵切为
 用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
 脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
@@ -490,11 +493,11 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
-范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，唯一下一步
-由应用会话对历史 URL/标题启用 `overflow-wrap:break-word` 并完成实际窄视口/高 DPI 验收；
+范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
+启用 `overflow-wrap:break-word`；唯一下一步复核实际历史页长链接、触摸及旋转视觉；
 随后按应用私有 worker/可信 session/文件策略分别接入扩展设置与下载，
-不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据见上方，原候选已正常退出；
-下次部署须重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
+不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与运行入口见上方；
+下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与

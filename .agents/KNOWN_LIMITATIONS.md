@@ -56,8 +56,8 @@
 
  - HTML/CSS/DOM 由固定版本 NetSurf 支持库移植而来，不等于现代浏览器当前实现。
 - Core 已支持选择性 `overflow-wrap:break-word`（`word-wrap` 同义），默认普通断行和
-  `nowrap/pre` 不变；调用方须在目标内容上显式声明。应用历史页样式接入及真实窄视口
-  验收仍待完成，不能由 EXE 手工拆文本或隐藏横轴代替。稳定合同见
+  `nowrap/pre` 不变；应用仅对历史条目显式声明，窄/宽与高 DPI 消费者断言已通过，
+  真实触摸/旋转视觉待验收，不手工拆文本或隐藏横轴。稳定合同见
   [Core README](../positron_core/README.md#选择性长文本断行)。
 - `break-word` 不降低 min-content，shrink-to-fit/table/flex 的内在宽度仍可使容器超宽；
   `anywhere`、`word-break:break-all` 和完整 Unicode 断行/grapheme/shaping 尚未实现。

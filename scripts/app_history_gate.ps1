@@ -121,12 +121,22 @@ try {
                     $text -match 'address-bar selftest OK' -and
                     $text -match 'pointer selftest OK' -and
                     $text -match 'scroll-paint selftest OK dpi=96,192 moves=9 pixels=exact' -and
+                    $text -match 'history-wrap selftest OK dpi=96,128,192 widths=240,480,240 text=exact href=exact' -and
                     $text -match 'system-info selftest OK' -and
                     $text -match 'internal-pages selftest OK')
             $visitComplete = !$VisitNavigation -or (
                     $text -match 'settings-result request=\d+ op=3 result=0' -and
                     $text -match 'settings-result request=\d+ op=4 result=0' -and
                     $text -match 'internal-page commit url=positron://history kind=5 history=2 focus=8')
+            if ($VisitNavigation -and $visitComplete) {
+                $layouts = [regex]::Matches($text,
+                    'relayout pass=\d+ network=0 .*size=(\d+)x\d+ extent=(\d+)x\d+')
+                if (!$layouts.Count) { throw 'Actual history layout evidence is missing.' }
+                $lastLayout = $layouts[$layouts.Count - 1]
+                if ([int]$lastLayout.Groups[2].Value -gt [int]$lastLayout.Groups[1].Value) {
+                    throw 'Actual history page still exceeds its viewport width.'
+                }
+            }
             if ($visitComplete -and $text -match ('debug-session pid={0}\b' -f $appPid) -and
                     $suiteComplete -and
                     $text -match 'startup-window visible=1 foreground=1 page_visible=1' -and

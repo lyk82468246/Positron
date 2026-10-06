@@ -293,7 +293,8 @@ static const char g_app_css[] =
         "a{color:#0000ee;text-decoration:underline}"
         "a:focus{color:#000080;background-color:#cce8ff}"
         "a:hover{color:#800000}"
-        "body.internal a{display:block}";
+        "body.internal a{display:block}"
+        "body.internal .history-entry{overflow-wrap:break-word}";
 
 static void app_copy_text(char *target, int target_capacity,
         const char *source)

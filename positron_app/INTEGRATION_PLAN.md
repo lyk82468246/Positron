@@ -226,6 +226,11 @@ paint 和统一 CSS，不请求外部资源。仅 EXE 构造的 settings 文档�
 新导航，不依赖旧索引；持久记录的策略见下文，不提供逐条删除或搜索。新页链接使用 Core 焦点查询，
 固定最多 24 个焦点槽位，并在最终布局后设置焦点目录。
 
+历史记录的 auto-width 条目容器显式使用 `overflow-wrap:break-word`，由 Core 对标题、完整
+URL 和会话栈文本执行选择性紧急断行；不设置像素宽度、不插空格、不改 href 或隐藏横轴。
+该样式仅限内部历史条目，普通网页和其他内部页面仍使用原断行规则。Core 的 intrinsic、
+white-space 与 Unicode 支持边界见 [Core README](../positron_core/README.md#选择性长文本断行)。
+
 导航来源由 EXE 私有枚举携带，分派处拒绝链接、脚本、启动参数、重定向、表单和历史重放
 执行 quit；Debug 与 Release 一致。获准时投递现有 WM_CLOSE，沿原关闭流程取消并等待网络任务、
 销毁 native 控件、释放页面与 DLL。页面切换仍先完成候选构建和 beforeunload，再提交 history、
@@ -383,6 +388,8 @@ UTF-16/容量失败、注册表类型/长度/嵌入 NUL 拒绝、AKU 原样保�
 滚动像素自检在 96/192 DPI 比较条带补绘与完整重绘，并捕获实际窗口验证单轴、斜向及
 大幅滚动；保留无空格长 URL。`-VisitNavigation` 另加载实际 IANA 页面、保存访问记录后
 进入 history，核对读写终态；像素断言不替代该页真实拖动的视觉验收。
+history-wrap 自检另检查生成页面在 96/128/192 DPI、240→480→240 视口中不超宽，DOM
+文字与 href 保持精确值；实际导航门也核对最终历史页 extent 不超过 client 宽度。
 自动消息不代替真实触笔/手指、native EDIT 拖选、SELECT popup、旋转和 DPI 的人工检查。
 
 地址栏 Debug 自检使用独立隐藏窗口，验证标题/网址分离、实际字体宽度、滚动/填充周期、
