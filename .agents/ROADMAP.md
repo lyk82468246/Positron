@@ -324,6 +324,9 @@ EXE 不复制布局语义或隐藏横轴。设置的 HTTP(S) 主页、系统/英
 开关已接入完整快照、原生控件、首次导航前读取和候选策略；v1/v2 升级、重启语言、JS 关闭
 时可信页保存及候选策略固定进入自动设备门，当前证据见 HANDOFF，不再作为待开发项。
 真实 HTTP(S) 主页、触摸编辑/下拉、重启双语、旋转/SIP 与不可用存储提示保留人工 backlog。
+设置人工门须先部署含 Core 单行输入框自然高度修正的匹配包，重跑实际 EDIT 客户区/字体
+断言，再验证空值/填值、输入、保存与旋转；不在 EXE 添加固定高度。Core 的自动高度合同见
+[Core README](../positron_core/README.md#单行文本控件尺寸)，不再作为待开发 DLL 缺口。
 下载记录另行接入实际下载任务，
 不把 Browser 会话栈变成访问日志，不给普通网页 SQL/文件权限。
 
@@ -495,6 +498,16 @@ Browser file-selection transaction、同步 file read/free callback 与 multipar
 Browser 的脚本 `FormData`/File/Blob 仍是有界 metadata/内存对象，没有把脚本 pairs 转换为 Core-owned
 multipart snapshot 的公共入口。只有真实消费者证明该入口阻塞目标应用，并能给出固定容量、权限、
 取消、stale 和失败回滚 fixture，才为公共 ABI 提案；native picker 的 ROM/OEM 视觉仍属于人工 backlog。
+
+#### D. Core Unicode 文本的当前设备失败
+
+**状态：待取证。** 当前 128 DPI DeviceEmulator 的 TEST1345 中文/非 BMP 文本在合成
+96 DPI 布局返回零 fragment，撤回本轮输入框高度修正的旧 Core 也独立复现；证据以
+HANDOFF 为准，不能沿用另一 ROM 的通过结论，也不能未经测量归因为缺字体。
+先为同一文本区分 UTF-8/DOM、computed style、布局/font measurement 与 fragment snapshot，
+记录字体资源是否加载及实际度量；定位后才选择 Core 产品修正或 fixture/设备前置条件。
+保持 DOM/href、预算与 Unicode 断言，复测原断行 corpus、paint/hit、相邻输入及双方配置；
+不改 EXE 文本、不做站点特判、不以跳过此失败宣称全部文字兼容。
 
 ### 人工 backlog
 

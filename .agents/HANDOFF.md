@@ -21,31 +21,36 @@ EDIT 投影和嵌入 HTML 增量依赖。未修改 DLL/ABI 或滚动；并行 Me
 
 ## 候选与验证证据
 
-### Core 选择性长文本断行已验收
+### Core 单行文本输入框自动高度已验收
 
-Core 支持继承的 `overflow-wrap:normal/break-word` 与同义 `word-wrap`，默认 normal、
-普通空格断行与 `nowrap/pre` 不变；先普通断点，空行完整单词超宽才按原字体度量紧急断行。
-不改 DOM/href，不降低 min-content，不扩展为 anywhere 或完整 Unicode 排版。调用、cluster
-保守边界和重新布局要求见 [Core README](../positron_core/README.md#选择性长文本断行)；
-属性生成/C89 步骤见 [libcss README](../positron_libcss/README.md#本地属性扩展与生成步骤)。
+旧 Core 空 input 在设备上为 140×0：text/password replaced gadget 没有文本子树，
+auto height 未获自然高度。Core 的 inline-block/block 路径现使用 computed line-height，
+保留作者 height/min/max、box-sizing 与零值；ABI/所有权不变，无 EXE 固定高度。
+调用、TEST1346 与字体验收边界见
+[Core README](../positron_core/README.md#单行文本控件尺寸)。
 
-最终 Debug `tmp/device-runs/20261007-002654-core-text-wrap-debug-final/` 与 Release
-`tmp/device-runs/20261007-003332-core-text-wrap-release-final/` 各选择
-`13,19,20,39,42,46,49,1330,1340,1345,999`：11/11、唯一 TESTBENCH PASS、零 ERROR/FAIL、
-匹配 Core 路径、完整日志与 crash_check PASS，无新增 dump。480×640、192 DPI DeviceEmulator，
-TEST1345 内部分别验证 96/128/192 DPI 的窄→宽→窄、真实 paint/hit、普通段落、URL/query/标题、
-CJK/非 BMP、别名/继承/级联、空白与 intrinsic 合同；极窄视口验证 combining、surrogate、
-ZWJ 与 RI 成对保持和正向进展。两门 SD 完整正式 stage、目标卷/内置空间及新 guest
-holders=0 unavailable=0 通过，完整回收后删除本轮两个目录，没有强杀/重连或 DB 删除。
+正式 Debug `tmp/device-runs/20261007-211227-core-height-debug-pass/` 与 Release
+`tmp/device-runs/20261007-211519-core-height-release-accepted/` 各 23/23：
+65–69、100–104、1056、1101、1105–1108、1172–1175、1330、1346、999。
+唯一 PASS、零 ERROR/FAIL、Core 路径/完整日志/crash PASS，无 dump；320×320、128 DPI
+DeviceEmulator。SD 匹配 stage、双空间及新 guest 零引用通过，回收后清理当前包，无强杀、
+重连或删库。C89/审计与串行两配置 build 通过；App/Media 未提交代码未纳入提交。
 
-C89、审计与串行正式 Debug/Release build 通过；Release 先行 PDB 打开和旧 libcss 链接前置
-失败保存在 `tmp/core-text-wrap-build-failures/`，正式重试恢复，不追认为 rebuild PASS。
-早期 `core-text-wrap-debug-probe` 的旧 anchor 高度假设已修正为实际 fragment/overflow 合同；
-`debug-probe2` 抓到尾随空格误触紧急断行的真实回归，改为检查完整首词宽度后普通段落原
-比较断言通过。失败日志保留，不扩大预算或弱化普通断行断言。
+旧 Core 对照亦复现 TEST1101 的整数 CSS 往返误差和 TEST1107 的失效布局点击；
+夹具改为 CSS 单位精确比较，并在合成动作间处理本窗口有界重排，原事件断言不变。
+Release 初门 CAB 抢读链接产物，正式重试恢复；失败日志保留，未修改系统或构建工程。
 
-DLL 门不替代 EXE 验收。应用现只给 auto-width 历史条目声明该 CSS，覆盖 URL/标题及
-会话栈文本；窄/宽、高 DPI、DOM/href、实际页与拖动证据见下方，不重开滚动修正。
+### Core 选择性长文本断行的设备边界
+
+合同见 [Core README](../positron_core/README.md#选择性长文本断行)。原 480×640、
+192 DPI 双配置 11/11 证据保留于 7596ddf1 与本地日志，不扩大为全部 ROM/字体保证；
+EXE 历史页人工结果见下方。
+
+当前 128 DPI 设备 TEST1345 的中文/非 BMP 文本在合成 96 DPI 布局返回零 fragment。
+含修正的 `tmp/device-runs/20261007-210628-core-height-debug-accepted/` 与撤回修正的
+独立 `tmp/device-runs/20261007-211003-core-height-wrap-baseline/` 同样失败（text=60、
+count=0）；完整日志无 dump，根因未定，不直接归因为缺字体。本批未改断行产品/断言，
+此失败不在最终 23 项高度门中，独立待取证；按 ROADMAP 定位解析/样式/布局与字体。
 
 ### EXE 访问历史与滚动像素修正通过
 
@@ -499,7 +504,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
 启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
-唯一下一步为完整设置人工复核，随后独立接入真实下载，
+唯一下一步为使用已验收 Core 匹配包重跑设置客户区/字体门及真实输入视觉，随后再接入真实下载，
 不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与运行入口见上方；
 下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。

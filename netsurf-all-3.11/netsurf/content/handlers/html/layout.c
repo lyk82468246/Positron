@@ -1586,6 +1586,14 @@ layout_block_find_dimensions(const css_unit_ctx *unit_len_ctx,
 
 	box->width = layout_solve_width(box, available_width, width, lm, rm,
 			max_width, min_width);
+	/* Positron's native single-line gadgets have no text child to supply
+	 * intrinsic height. Resolve only auto height from the computed line
+	 * metrics; normal min/max-height processing still owns constraints. */
+	if (height == AUTO && box->gadget &&
+			(box->gadget->type == GADGET_TEXTBOX ||
+			 box->gadget->type == GADGET_PASSWORD)) {
+		height = line_height(unit_len_ctx, style);
+	}
 	box->height = height;
 
 	if (margin[TOP] == AUTO)
@@ -2895,6 +2903,11 @@ layout_float_find_dimensions(
 				height = FIXTOINT(css_unit_len2device_px(
 						box->style, unit_len_ctx,
 						size, unit));
+			}
+			if ((box->gadget->type == GADGET_TEXTBOX ||
+					box->gadget->type == GADGET_PASSWORD) &&
+					height == AUTO) {
+				height = line_height(unit_len_ctx, box->style);
 			}
 		}
 		if (box->gadget->type == GADGET_TEXTAREA) {

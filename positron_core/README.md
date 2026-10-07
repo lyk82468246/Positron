@@ -122,6 +122,25 @@ min-content 保留与极窄视口的 cluster 正向进展；在 96/128/192 DPI �
 检查 DOM/href 不变、fragment 几何、物理链接命中和实际绘制像素。它不替代应用历史页的
 真实触摸、字体与横向滚动验收。
 
+## 单行文本控件尺寸
+
+`input` 的 text/password gadget 在没有作者高度声明时，以 computed `line-height` 作为
+自然内容高度；`normal` 沿现有 NetSurf 字号比例，数值或长度沿文档的字体/DPI 换算。
+它不依赖 value 的长度或是否为空，也不靠创建伪文本子树撑开盒子。inline-block 与 block
+尺寸路径共享该规则，padding/border、后续段落和页面 extent 继续由正常布局计算。
+
+该默认值只补 `height:auto`；作者 height、min-height、max-height 和 box-sizing 仍走原有
+约束路径。作者主动指定零/过小高度或行高仍可能裁剪文字，不会被强制放大。textarea、
+file、SELECT、checkbox/radio 和按钮的自然尺寸规则不变。value/disabled mutation 后宿主仍须
+按原合同重新 style/layout，再用 `PCore_TextInputInfo()` 的矩形定位原生 EDIT，不在宿主另行
+维护一份固定高度。原生字体的选择及系统边框属于宿主，不能从 Core 自然高度推导所有 OEM
+字体或 SIP/IME 均已验收。
+
+离线 TEST1346 验证空值、初始 value、密码、中文/descender value mutation、disabled→enabled、
+大字号、显式零高度及 content-/border-box 作者约束；96/128/192 DPI 下重复窄→宽/横向→窄布局，检查高度稳定、后续段落
+与 extent、绘制区域及焦点命中。原生 EDIT 客户区须容纳其实际字体：真实设备 DPI 使用
+SYSTEM_FONT，合成布局 DPI 使用对应 CSS 字号，二者不混为真实多设备验收。
+
 ## DOM 与关系 bridge
 
 常用 relation 包括 Element/attribute、未过滤 `childNodes`、节点类型和值、HTML serialization、form owner/effective-disabled、option default-selected、焦点和交互状态。关系读取支持 size-probe 和容量检查，缺失目标、过小 buffer、非法 UTF-8、越界 child index 和 stale document 都安全失败。

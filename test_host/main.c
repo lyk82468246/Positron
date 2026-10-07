@@ -98,6 +98,8 @@ extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
 extern BOOL test1345_core_text_wrap_contract(void);
 extern const char *test1345_core_text_wrap_last_error(void);
+extern BOOL test1346_core_text_input_height(void);
+extern const char *test1346_core_text_input_height_error(void);
 
 static const unsigned char g_test_bmp_2x2[] = {
     0x42, 0x4d, 0x46, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1018,7 +1020,7 @@ static BOOL test1344_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1345
+#define TEST_MAX_NUMBER 1346
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -24170,6 +24172,7 @@ static void pcore_native_sequential_focus_probe_run(HWND parent)
     stage = "setup";
     count = 0;
     i = 0;
+    x = y = width = height = 0;
     native_window = NULL;
     ok = parent != NULL && g_render_doc != NULL &&
             g_browser_script_session.runtime != NULL &&
@@ -24192,10 +24195,15 @@ static void pcore_native_sequential_focus_probe_run(HWND parent)
             stage = "target-size";
             goto failed;
         }
-        if (test_host_fragment_device_info(g_render_doc, target_ids[i], &x, &y,
-                &width, &height) != 0 || expected[i].x != x ||
-                expected[i].y != y || expected[i].width != width ||
-                expected[i].height != height) {
+        /* Fragment queries are integer CSS px; focus snapshots are device
+         * px. Compare in CSS units, not a lossy CSS->device round trip.
+         * This fixture has only nonnegative coordinates/dimensions. */
+        if (PCore_FragmentInfoById(g_render_doc, target_ids[i], &x, &y,
+                &width, &height) != 0 ||
+                (long)expected[i].x * 96 / g_page_scroll_dpi != x ||
+                (long)expected[i].y * 96 / g_page_scroll_dpi != y ||
+                (long)expected[i].width * 96 / g_page_scroll_dpi != width ||
+                (long)expected[i].height * 96 / g_page_scroll_dpi != height) {
             stage = "target-geometry";
             goto failed;
         }
@@ -24319,9 +24327,13 @@ static void pcore_native_sequential_focus_probe_run(HWND parent)
 failed:
     _snprintf(g_native_sequential_focus_probe_detail,
             sizeof(g_native_sequential_focus_probe_detail) - 1,
-            "stage=%s target=%u count=%u index=%u kind=%d scroll=%d focus=%p events=%s",
+            "stage=%s target=%u count=%u index=%u kind=%d scroll=%d focus=%p device=%d,%d,%d,%d css=%d,%d,%d,%d dpi=%d events=%s",
             stage, i, count, g_sequential_focus_index,
-            g_sequential_focus_kind, g_scroll_y, GetFocus(), events);
+            g_sequential_focus_kind, g_scroll_y, GetFocus(),
+            expected[i < 5U ? i : 0].x, expected[i < 5U ? i : 0].y,
+            expected[i < 5U ? i : 0].width,
+            expected[i < 5U ? i : 0].height, x, y, width, height,
+            g_page_scroll_dpi, events);
     g_native_sequential_focus_probe_detail[
             sizeof(g_native_sequential_focus_probe_detail) - 1] = '\0';
     ok = 0;
@@ -24392,11 +24404,12 @@ static void pcore_native_modal_focus_probe_run(HWND parent)
         if (PCore_FocusTargetInfoWithin(g_render_doc, "dialog", i,
                 &expected) != 0 || expected.kind != target_kinds[i] ||
                 expected.width <= 0 || expected.height <= 0 ||
-                test_host_fragment_device_info(g_render_doc, target_ids[i],
+                PCore_FragmentInfoById(g_render_doc, target_ids[i],
                 &expected_x, &expected_y, &expected_w, &expected_h) != 0 ||
-                expected.x != expected_x || expected.y != expected_y ||
-                expected.width != expected_w ||
-                expected.height != expected_h) {
+                (long)expected.x * 96 / g_page_scroll_dpi != expected_x ||
+                (long)expected.y * 96 / g_page_scroll_dpi != expected_y ||
+                (long)expected.width * 96 / g_page_scroll_dpi != expected_w ||
+                (long)expected.height * 96 / g_page_scroll_dpi != expected_h) {
             stage = "scope-snapshot";
             ok = 0;
             break;
@@ -24723,6 +24736,23 @@ static int pcore_native_dialog_form_read_state(char *out, int capacity,
     return 1;
 }
 
+/* Synthetic actions must observe the same deferred layout boundary as real
+ * WM input. Never pump unrelated messages or enter this from JS callbacks. */
+static int pcore_native_dialog_form_probe_layout(HWND parent)
+{
+    MSG message;
+    int count;
+    count = 0;
+    while (count < 16 && PeekMessage(&message, parent,
+            WM_PCORE_INTERACTION_RESTYLE, WM_PCORE_INTERACTION_RESTYLE,
+            PM_REMOVE)) {
+        DispatchMessage(&message);
+        count++;
+    }
+    return !PeekMessage(&message, parent, WM_PCORE_INTERACTION_RESTYLE,
+            WM_PCORE_INTERACTION_RESTYLE, PM_NOREMOVE);
+}
+
 /* Exercise method=dialog through trusted pointer, canceled submit,
  * HTMLElement.click() and native EDIT implicit submission. Core supplies the
  * nearest dialog id and submitter value; Browser owns submit cancellation and
@@ -24788,6 +24818,17 @@ static void pcore_native_dialog_form_probe_run(HWND parent)
             error, sizeof(error)) != 0) {
         goto failed;
     }
+    /* The state read writes #result, and showModal invalidates layout.
+     * Process only this window's bounded deferred layout work between
+     * synthetic user actions, outside all script callbacks. */
+    if (!pcore_native_dialog_form_probe_layout(parent) ||
+            PCore_FormControlInfoById(g_render_doc, "accept", &accept_x,
+            &accept_y, &accept_w, &accept_h, &accept_kind, NULL,
+            &accept_disabled) != 0 || accept_kind != 7 || accept_disabled ||
+            accept_w <= 0 || accept_h <= 0) {
+        stage = "canceled-submit-layout";
+        goto failed;
+    }
     (void) SendMessage(parent, WM_LBUTTONDOWN, MK_LBUTTON,
             MAKELPARAM((short) (accept_x + accept_w / 2),
             (short) (accept_y + accept_h / 2)));
@@ -24800,6 +24841,8 @@ static void pcore_native_dialog_form_probe_run(HWND parent)
             strcmp(state, "submit;|true|accepted") != 0) {
         goto failed;
     }
+    stage = "programmatic-submit-layout";
+    if (!pcore_native_dialog_form_probe_layout(parent)) goto failed;
     stage = "programmatic-submit";
     if (pcore_browser_script_session_evaluate(
             "events='';window.block=false;accept.click();", -1,
@@ -24817,6 +24860,11 @@ static void pcore_native_dialog_form_probe_run(HWND parent)
     if (g_native_edit_count == 0 || g_native_edits[0].hwnd == NULL ||
             pcore_browser_script_session_evaluate(
             "events='';d.showModal();", -1, error, sizeof(error)) != 0) {
+        goto failed;
+    }
+    if (!pcore_native_dialog_form_probe_layout(parent) ||
+            g_native_edit_count == 0 || g_native_edits[0].hwnd == NULL) {
+        stage = "implicit-submit-layout";
         goto failed;
     }
     (void) SendMessage(g_native_edits[0].hwnd, WM_KEYDOWN,
@@ -118142,6 +118190,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1345_core_text_wrap_contract();
             if (ok) { show_info(L"TEST 1345 OK", "Core selective CSS emergency wrapping passed."); }
             else { show_error(L"TEST 1345 FAIL", test1345_core_text_wrap_last_error()); }
+            break;
+        case 1346:
+            ok = test1346_core_text_input_height();
+            if (ok) { show_info(L"TEST 1346 OK", "Core single-line input auto height passed."); }
+            else { show_error(L"TEST 1346 FAIL", test1346_core_text_input_height_error()); }
             break;
         case 1344:
             ok = test1344_media_contract_guarded();
