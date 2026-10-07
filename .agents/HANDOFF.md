@@ -14,8 +14,8 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；Core 高度修复已交付，应用本批补 Debug 实页空值/填值与客户区字体高度门。
-不修改产品布局、DLL/ABI 或滚动；并行 Media 候选保留且不提交。
+分支 main；Core 自然高度已交付，应用设置输入框补字体继承与自然行高/内边距，
+Debug 实页门检查原生文本格式矩形。不修改 DLL/ABI 或滚动；并行 Media 候选不提交。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -91,30 +91,31 @@ ROADMAP/限制已复核；500 条裁剪仍为离线 SQL 证据。完整设置消
 
 ### EXE 完整设置与启动策略
 
-可信 settings 使用原生主页 EDIT、语言 SELECT 和 JS toggle，原子保存 v3 完整快照；
-主页接受公开 HTTP(S) 子集或 newtab/welcome/controls，完整 URL 少于 1024 UTF-8 字节。
-稳定合同见应用数据设计及接线计划；单 worker/COMMIT、升级与失败保留文件不变。
-启动激活空窗体并泵正常消息，异步读配置至多两秒，再选语言/创建菜单与首个页面；
-无默认页闪现或迟到导航，显式 URL 优先。不可用/超时先关闭网页 JS，迟到结果只更新缓存。
-语言重启生效；网页候选接受时复制 JS 开关，关闭跳过脚本获取/session/作者执行，CSS/图片
-保持原事务。已接受候选和现存 session 不变，可信设置页仍可保存。原生 EDIT 值/disabled
-同步遗漏已补齐；只有成功 value 写入请求值投影，普通 mutation 保留输入/选区。
+可信 settings 通过原生 EDIT/SELECT/toggle 原子保存 v3 完整偏好；
+URL/语言/脚本策略、worker 与失败保留合同见应用数据设计及接线计划。
+启动激活空窗体，异步读取至多两秒后确定语言与首页，显式 URL 优先，无默认页闪现；
+不可用/超时关闭网页 JS，迟到结果只更新缓存。语言重启生效，JS 开关按候选固定，
+不影响现存 session 或 CSS/图片，可信设置页仍可保存。EDIT 值/disabled 投影已补；
+仅成功 value 写入同步原生内容，普通 mutation 保留输入/选区。
 
-设置策略/存储及完整 UI 先行基线在 `20261007-141454-app-settings-live-prefs-final`；
-升级/恢复、完整 URL 预算、JS 候选固定、输入/多标签/滚动通过。旧进程已退出。
-先行四进程 helper 无摘要与 visits-create 单次失败保留，不追认为通过或宣称已知根因。
-语言以既有 selectedIndex 初始化，value setter 的原生选项差异未在 EXE 重写语义。
+先行 `20261007-141454-app-settings-live-prefs-final` 的升级/恢复、URL 预算、JS 策略与
+完整 UI 门通过，旧进程已退出；helper 无摘要与 visits-create 失败保留，根因未定。
+语言用 selectedIndex 初始化，不重写 DLL value setter 语义。
 
 HTML 增量失败及 pre-build 跳过实验保留；正式入口先失效过期 .res 再编译资源，不删断言。
 截图 `tmp/QQ20261007-202522.png` 的主页 EDIT 横线已由 Core 自然高度修复；旧门仅验值/启用，
 不能视为视觉通过。[输入框请求](../positron_app/CORE_TEXT_INPUT_HEIGHT_REQUEST.md) 已落实。
-最终 `tmp/device-runs/20261007-222553-app-settings-live-height-final/` 四进程实页门 PASS：
-保存值→空值→填值的原生客户区均 185×22、字体高 19；双语重启、JS 关闭保存、单 history、
-退出排空/零引用、SHA256 10/10 与 crash PASS。Debug/Release/CAB、C89、审计及诊断排除通过。
-普通启动证据在该目录 `manual-settings-review-verified/`，PID 3729362482 留在 settings；
-窗口/首个提交/读取/重排及哈希/crash 通过，触摸、SIP、真实输入保存和旋转等待用户。
-先行 height-probe 的 helper 无摘要失败不追认；临时启动脚本缺日志函数的失败在启动前，
-修正后普通门通过，无强杀/删库。ROADMAP 已复核：高度自动门完成，人工门及 Unicode 取证保留。
+用户报告下伸字符裁剪；旧客户区 185×22/字体高 19 不证明格式区完整。
+设置模板现继承字号，单行 line-height:1 加上下 2 CSS px 内边距，由 Core 自然布局；
+无固定高度或文字偏移。Debug 用 EM_GETRECT 验证格式矩形完整容纳实际字体。
+最终 `tmp/device-runs/20261007-224358-app-settings-live-font-padding/` 四进程门 PASS：
+保存值→空值→填值均为客户区 197×23、格式矩形 (2,2)-(195,21)、字体高 19（ascent=16、descent=3），
+上下各留 2 像素；双语重启、关闭 JS 保存、单 history、退出/零引用、SHA256 10/10 与 crash PASS。
+当前入口/PID 见 `manual-settings-review-verified/`；字符/SIP/保存/旋转待人工。
+Debug/Release/CAB、C89/审计及诊断排除通过。先行 padding 包客户区高 30、文字偏上，已撤回；
+linebox 包客户区高 21/格式区高 17，被新断言拒绝，失败保留且已正常退出。
+CabWiz 失败见 `tmp/settings-linebox-release-cab-failed.log`，正式重试通过。
+ROADMAP 已复核，人工字体矩阵与 Unicode 取证继续保留，无强杀/删库。
 
 ### EXE 多标签自动门通过，人工入口已更新
 

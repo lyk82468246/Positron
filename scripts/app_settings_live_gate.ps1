@@ -156,7 +156,7 @@ try {
         }
         if ($mode -in @('create','drain')) {
             $heightPattern = '(?m)^positron pid=' + $appPid +
-                ' tick=\d+ positron settings-input-height selftest OK empty=1 filled=1 client=font\r?$'
+                ' tick=\d+ positron settings-input-height selftest OK empty=1 filled=1 client=font format=font\r?$'
             if (([regex]::Matches($body, $heightPattern)).Count -ne 1) {
                 throw 'Missing empty/filled native input height evidence.'
             }

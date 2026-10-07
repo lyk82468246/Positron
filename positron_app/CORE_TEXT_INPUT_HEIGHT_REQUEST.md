@@ -35,6 +35,8 @@
 
 ## EXE 自动门
 
-Debug 私有 `main.c/app_settings_live_native` 使用 GetClientRect 和当前 EDIT 字体 GetTextMetricsW，要求客户区至少容纳 tmHeight。实际设置页依次读取保存值、清空、重新填值，再保存和重启；日志门须验证当前进程的 `settings-input-height` 终态，Release 不编入。这只是断言，不改变产品高度。
+Debug 私有 `main.c/app_settings_live_native` 使用 GetClientRect、EM_GETRECT 和当前 EDIT 字体 GetTextMetricsW，要求客户区内的实际格式矩形完整容纳 tmHeight（包括 tmDescent），不能仅凭客户区高度通过。实际设置页依次读取保存值、清空、重新填值，再保存和重启；日志门须验证当前进程的 `settings-input-height` 终态，Release 不编入。这只是断言，不改变产品高度。
+
+设置页的作者样式继承页面字号，采用单行 line-height:1 和上下 2 CSS px 内边距，让 Core 按字体/DPI 自然计算尺寸，思路与主地址栏的字体加少量内边距一致；不在原生代理扩大 Core 矩形或移动文字，也不改变普通网页控件的 CSS。OEM 字体与原生格式区仍须实机复核；任意网页 CSS 字体到原生 EDIT 字体的完整映射不在此修正内。
 
 部署需使用完整匹配包，重新检查空间与 guest 引用；不混用已加载 DLL、不删除用户数据库。失败和最终设备证据只维护在 HANDOFF；旧诊断失败不能追认为通过。

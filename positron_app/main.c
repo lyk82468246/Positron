@@ -3546,6 +3546,7 @@ static int app_settings_live_native(const char *url, int language, int javascrip
     char text[APP_HOST_URL_MAX];
     char diagnostic[256];
     RECT client;
+    RECT format;
     TEXTMETRICW metrics;
     HDC dc;
     HFONT font;
@@ -3559,6 +3560,8 @@ static int app_settings_live_native(const char *url, int language, int javascrip
         if (!lstrcmpiW(class_name, L"EDIT")) {
             memset(&metrics, 0, sizeof(metrics));
             if (!GetClientRect(child, &client)) return 0;
+            memset(&format, 0, sizeof(format));
+            SendMessage(child, EM_GETRECT, 0, (LPARAM) &format);
             dc = GetDC(child);
             if (dc == NULL) return 0;
             font = (HFONT) SendMessage(child, WM_GETFONT, 0, 0);
@@ -3567,13 +3570,22 @@ static int app_settings_live_native(const char *url, int language, int javascrip
             if (previous_font != NULL) SelectObject(dc, previous_font);
             ReleaseDC(child, dc);
             _snprintf(diagnostic, sizeof(diagnostic) - 1,
-                    "settings-native geometry client=%ldx%ld font_height=%ld\r\n",
+                    "settings-native geometry client=%ldx%ld font_height=%ld "
+                    "format=%ld,%ld,%ld,%ld ascent=%ld descent=%ld\r\n",
                     (long) (client.right - client.left),
-                    (long) (client.bottom - client.top), (long) metrics.tmHeight);
+                    (long) (client.bottom - client.top), (long) metrics.tmHeight,
+                    (long) format.left, (long) format.top,
+                    (long) format.right, (long) format.bottom,
+                    (long) metrics.tmAscent, (long) metrics.tmDescent);
             diagnostic[sizeof(diagnostic) - 1] = 0;
             AppDebug_Log(diagnostic);
             if (metrics.tmHeight <= 0 || client.bottom - client.top < metrics.tmHeight ||
                     client.right <= client.left) return 0;
+            /* The native formatting rectangle, not merely the HWND client,
+             * must contain the complete line including its descenders. */
+            if (format.top < client.top || format.bottom > client.bottom ||
+                    format.bottom - format.top < metrics.tmHeight ||
+                    format.right <= format.left) return 0;
             wide[0] = 0;
             text[0] = 0;
             GetWindowTextW(child, wide, APP_HOST_URL_MAX);
@@ -3631,7 +3643,7 @@ static void app_settings_live_finish(HWND hwnd, int success)
             "snapshot=committed language=restart script=policy startup=single\r\n");
     if (success && (g_settings_live_mode == 1 || g_settings_live_mode == 3))
         AppDebug_Log("positron settings-input-height selftest OK "
-                "empty=1 filled=1 client=font\r\n");
+                "empty=1 filled=1 client=font format=font\r\n");
     if (!g_tabs_closing) PostMessage(hwnd, WM_CLOSE, 0, 0);
 }
 
