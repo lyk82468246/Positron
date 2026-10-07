@@ -173,17 +173,17 @@ int AppSettingsServices_DebugCheck(void)
             "function(){});}catch(e){urlDenied=true;}urlDenied") &&
             app_services_debug_pending(&a) == 0 &&
             AppSettingsStore_Poll(store, &result) == APP_SETTINGS_PENDING);
-    /* URL admission is delegated to HTTP's bounded resolver: its current
-     * path buffer is 1024 bytes, not the total app snapshot URL capacity. */
+    /* URL syntax is delegated to HTTP. The EXE navigation buffer additionally
+     * limits the complete startup URL to 1023 UTF-8 bytes. */
     APP_SERVICES_CHECK(app_services_debug_js(session_a,
             "var maxUrl='https://example.com/';"
-            "maxUrl+=new Array(1023).join('a');var maxSaved=false;"
+            "maxUrl+=new Array(1024-maxUrl.length).join('a');var maxSaved=false;"
             "PositronServices.request('settings.write',{startupPage:maxUrl,"
             "language:'system',javascriptEnabled:true},function(ok,v){"
-            "maxSaved=ok&&v.startupPage===maxUrl;});maxUrl.length===1042") &&
+            "maxSaved=ok&&v.startupPage===maxUrl;});maxUrl.length===1023") &&
             app_services_debug_next(store, &result) == APP_SETTINGS_OK &&
             result.result == APP_SETTINGS_OK &&
-            strlen(result.values.startup_url) == 1042 &&
+            strlen(result.values.startup_url) == 1023 &&
             AppSettingsServices_AcceptResult(&a, &result) == APP_SETTINGS_SERVICES_OK &&
             AppSettingsServices_Pump(&a, &delivered) == APP_SETTINGS_SERVICES_OK &&
             delivered == 1 && app_services_debug_js(session_a, "maxSaved"));

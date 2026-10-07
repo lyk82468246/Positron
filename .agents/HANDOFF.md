@@ -14,10 +14,10 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；本批仅修改 EXE 可信设置服务完整快照、隔离自检、设备门与文档。
-未修改 DLL/ABI、设置 UI、启动/脚本策略或滚动；并行 Media 候选保留且不提交。
+分支 main；本批接入 EXE 完整设置 UI、首次导航前读取、语言及候选 JS 策略，补齐原生
+EDIT 投影和嵌入 HTML 增量依赖。未修改 DLL/ABI 或滚动；并行 Media 候选保留且不提交。
 
-内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
+内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
 
@@ -80,36 +80,37 @@ PID 2532702806 已正常退出；当前入口见设置存储段。
 `20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
 访问记录恢复不等于断电门。
 
-ROADMAP/限制已复核；v1/v2 设置升级已有设备门，500 条裁剪仍为离线 SQL 证据。随后纵切为
-用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
-脚本策略只影响随后加载网页；UI 与策略消费尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
-DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，串行构建和设备门窗口已释放；下一门
-仍需重新审计引用，不沿用本轮零 holder 快照。
+ROADMAP/限制已复核；500 条裁剪仍为离线 SQL 证据。完整设置消费见下方，下载随后独立
+接入公开 stream GET/Cancel；遇到 DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开；
+下一门仍需重新审计引用，不沿用旧零 holder 快照。
 
-### EXE 设置存储与固定起始页基线
+### EXE 完整设置与启动策略
 
-普通 Debug/Release 启动已消费 EXE 同目录 positron.db；可信 settings 只编辑
-newtab/welcome/controls，UI 分批 bootstrap/作者代码和服务 Pump，单所有者 DB worker
-异步读取/保存，COMMIT 后更新缓存，退出先撤销服务再排空。公共 DLL/ABI、CAB 配置和
-其他 agent 文件未改；存储不可用不删除文件或切换数据库。
+可信 settings 使用原生主页 EDIT、语言 SELECT 和 JS toggle，原子保存 v3 完整快照；
+主页接受公开 HTTP(S) 子集或 newtab/welcome/controls，完整 URL 少于 1024 UTF-8 字节。
+稳定合同见应用数据设计及接线计划；单 worker/COMMIT、升级与失败保留文件不变。
+启动激活空窗体并泵正常消息，异步读配置至多两秒，再选语言/创建菜单与首个页面；
+无默认页闪现或迟到导航，显式 URL 优先。不可用/超时先关闭网页 JS，迟到结果只更新缓存。
+语言重启生效；网页候选接受时复制 JS 开关，关闭跳过脚本获取/session/作者执行，CSS/图片
+保持原事务。已接受候选和现存 session 不变，可信设置页仍可保存。原生 EDIT 值/disabled
+同步遗漏已补齐；只有成功 value 写入请求值投影，普通 mutation 保留输入/选区。
 
-v3 完整主页/语言/JS 快照、原子 SaveValues 与可信服务读写已接入；v1/v2 升级保留旧数据。
-旧主页接口只更新 URL、保留策略；失败回滚、未来版本拒绝。服务严格类型/字段、UTF-8/引号
-转义、入队前 4096 字节预算及 tab/generation/token 隔离已验证；URL 接受范围归公共 HTTP。
-UI/启动策略仍只用旧接口，不把后端完成写成完整设置功能。存储旧包 PID 4150111110 已退出。
-当前包 `tmp/device-runs/20261007-132827-app-settings-services-verified/` 五进程门 PASS：
-升级/恢复/清除保留偏好、完整服务与兼容写入、1023 字节路径往返和超限不入队通过；
-50 文件、哈希 10/10、正常退出零引用、crash_check PASS；完整 UI 门通过，PID 2206317294 留在 newtab。
-串行 Debug/Release build、C89、审计与 Release 诊断排除通过；无 DLL 改动或用户库删除。
-`20261007-132552-app-settings-services-final` 的服务夹具 FAIL 保留：把总 URL 容量误作
-路径容量；改为公共 HTTP 实际边界，并保留超长拒绝断言，不扩大预算。
-此前双配置 `136,1321,1341,999` 相邻门均 4/4 PASS，本轮未重跑。
+原生设置包 `tmp/device-runs/20261007-140710-app-settings-live-preferences-selection/`
+四进程门 PASS：实际 EDIT/SELECT/toggle 读回、中英文重启、首次单 history、JS 关闭时可信
+页保存及退出排空，哈希/crash/正常退出通过。页面用既有 selectedIndex 初始化语言选项；
+value setter 与原生选中项不一致的探针不计通过，未在 EXE 重写 SELECT 语义。
+最终包 `tmp/device-runs/20261007-141454-app-settings-live-prefs-final/` 只补 Debug 失败阶段
+取证；五进程存储/服务/访问门和完整 UI 门 PASS，覆盖升级/恢复、完整 URL 预算、JS 候选
+接受时固定策略、输入/多标签/滚动回归及匹配哈希/crash。设备留在 newtab，PID 2531551402。
+最终四进程重跑通过前三进程后，第四进程启动前 module-audit helper 缺少完整摘要而失败；
+保留证据，不追认为四进程 PASS。前包 visits-create 单次失败未复现，后包五进程通过；
+原日志没有失败阶段，不能宣称根因已知。正式 Debug/Release/CAB、C89、审计及 Release
+诊断排除通过，不把 build 写成 rebuild，也不把 helper 失败写成产品通过。
 
-设置页刷新使用稳定 URL 副本，防止地址缓冲区别名被清空；正常退出守卫见当前历史门。
-普通启动仅一次显示/激活窗口，后续完成不抢前台；用户已确认完整窗体与保存主页正常。
-普通启动不运行 UI 夹具。实际四进程主页与无参数启动证据在
-`tmp/device-runs/20261006-152226-app-settings-live-startup-retry/`，旧 PID 已退出；
-失败证据不追认通过，触摸/双语/旋转及故障/断电不因重启通过而关闭。
+早期失败证据保留：VS 增量未重编 HTML，旧页缺少语言控件；正式 build 在最新判断前
+失效过期 .res，两配置实际重编。仅 pre-build 的实验仍被跳过，已撤回。夹具缓存控件、
+等正常重排再 click，不删断言；先行应用已正常退出，无强杀/删库。
+触摸/SIP、真实 HTTP(S) 主页、旋转及故障/断电仍待人工；此前相邻 DLL 门不冒充本轮重跑。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -488,7 +489,7 @@ callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站�
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect 语法边界、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。settings 仅能持久化固定起始页，downloads 仍为未实现说明，持久 GET 访问记录已接入。HTTP DLL 流式 GET/取消已验收；应用下载文件保存、扩展设置、DB HTTPS worker 和真实断电恢复尚未完成。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。完整设置与持久 GET 访问记录已接入，downloads 仍未实现。HTTP 流式 GET/取消已验收；应用文件保存、DB HTTPS worker 和真实断电恢复未完成。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
@@ -498,7 +499,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
 启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
-唯一下一步为已确认的主页/语言/JavaScript 设置纵切，下载随后独立接入，
+唯一下一步为完整设置人工复核，随后独立接入真实下载，
 不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与运行入口见上方；
 下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。

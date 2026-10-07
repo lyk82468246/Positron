@@ -146,9 +146,11 @@ int AppVisitStore_DebugLiveCheck(int mode)
     int i;
     int passed;
     int cleanup;
+    int phase;
 
     store = NULL;
     passed = 0;
+    phase = 0;
     memset(&result, 0, sizeof(result));
     length = GetModuleFileNameW(NULL, dll, APP_SETTINGS_PATH_MAX);
     if (!length || length >= APP_SETTINGS_PATH_MAX || mode < 1 || mode > 3)
@@ -161,18 +163,23 @@ int AppVisitStore_DebugLiveCheck(int mode)
     wcscpy(slash + 1, L"visits-fixture.db");
     wcscpy(path, dll);
     wcscpy(slash + 1, L"positron_db.dll");
+    phase = 1;
     if ((GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) != (mode == 1))
         goto done;
     if (!WideCharToMultiByte(CP_UTF8, 0, path, -1, database,
             sizeof(database), NULL, NULL)) goto done;
+    phase = 2;
     if (mode == 1 && app_settings_debug_seed(dll, database, 2)) goto done;
+    phase = 3;
     if (AppSettingsStore_Create(dll, database, &store) != APP_SETTINGS_OK ||
             !app_settings_debug_ready(store, APP_SETTINGS_START_WELCOME)) goto done;
     if (mode == 1) {
+        phase = 4;
         if (AppSettingsStore_Submit(store, APP_SETTINGS_SAVE,
                 APP_SETTINGS_START_WELCOME, 1, 1, &request) != APP_SETTINGS_OK ||
                 app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
                 result.result != APP_SETTINGS_OK) goto done;
+        phase = 5;
         if (AppSettingsStore_ReadVisits(store, 0, 1, 1, &request) != APP_SETTINGS_OK ||
                 app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
                 result.result != APP_SETTINGS_OK || result.visits == NULL ||
@@ -184,12 +191,14 @@ int AppVisitStore_DebugLiveCheck(int mode)
         strcpy(values.startup_url, "https://example.com/?q=%E4%B8%AD%E6%96%87&x=1");
         values.language = APP_SETTINGS_LANGUAGE_CHINESE;
         values.javascript_enabled = 0;
+        phase = 6;
         if (AppSettingsStore_SaveValues(store, &values, 1, 1, &request) != APP_SETTINGS_OK ||
                 app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
                 result.result != APP_SETTINGS_OK ||
                 strcmp(result.values.startup_url, values.startup_url) ||
                 result.values.language != values.language ||
                 result.values.javascript_enabled != 0) goto done;
+        phase = 7;
         for (i = 0; i < 18; ++i) {
             if (AppSettingsStore_AddVisit(store, "https://example.com/?saved=1",
                     "Saved visit", 1700000000 + i, &request) != APP_SETTINGS_OK ||
@@ -197,6 +206,7 @@ int AppVisitStore_DebugLiveCheck(int mode)
                     result.result != APP_SETTINGS_OK) goto done;
         }
     } else {
+        phase = 8;
         if (AppSettingsStore_Submit(store, APP_SETTINGS_LOAD,
                 APP_SETTINGS_START_NEWTAB, 1, 1, &request) != APP_SETTINGS_OK ||
                 app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
@@ -205,6 +215,7 @@ int AppVisitStore_DebugLiveCheck(int mode)
                 "https://example.com/?q=%E4%B8%AD%E6%96%87&x=1") ||
                 result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
                 result.values.javascript_enabled != 0) goto done;
+        phase = 9;
         if (AppSettingsStore_ReadVisits(store, 0, 1, 1, &request) !=
                 APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
                 APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
@@ -213,6 +224,7 @@ int AppVisitStore_DebugLiveCheck(int mode)
                 1700000017) goto done;
         AppSettingsResult_Release(&result);
         if (mode == 3) {
+            phase = 10;
             if (AppSettingsStore_ClearVisits(store, 1, 2, &request) !=
                     APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
                     APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
@@ -241,6 +253,13 @@ done:
     AppSettingsResult_Release(&result);
     cleanup = app_settings_debug_close(&store);
     if (cleanup != APP_SETTINGS_OK) passed = 0;
+    if (!passed) {
+        _snprintf(log, sizeof(log) - 1,
+                "positron visits-live failure phase=%d mode=%d cleanup=%d\r\n",
+                phase, mode, cleanup);
+        log[sizeof(log) - 1] = '\0';
+        AppDebug_Log(log);
+    }
     _snprintf(log, sizeof(log) - 1,
             "positron visits-live selftest %s mode=%d cleanup=%d production_enabled=0\r\n",
             passed ? "OK" : "FAILED", mode, cleanup);

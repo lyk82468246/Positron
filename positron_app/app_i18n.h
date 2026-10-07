@@ -78,6 +78,8 @@ typedef enum AppTextId {
 
 /* Initialize the EXE-private locale/resource selector. Returns 0 on success. */
 int AppI18n_Init(HINSTANCE instance);
+/* Startup only, before creating menus or loading page resources. */
+int AppI18n_SelectLanguage(AppLanguage language);
 
 AppLanguage AppI18n_CurrentLanguage(void);
 

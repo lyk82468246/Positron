@@ -427,8 +427,9 @@
   不在 EXE 复制 decoder/redirect 规则。
 - history 已接入持久 GET 访问记录；Browser 导航栈不持久化。记录最多 500 条、
   每页 16 条，不含 POST、片段/state-only 更新、搜索或逐条删除；队列满/保存失败不回滚页面。
-  双语/交错/低内存待验收。下载未实现；settings 只存三种内部主页，语言/JS 只读。
-  故障/断电/网络主页/标签恢复未完成，见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
+  双语/交错/低内存待验收。下载未实现；设置 URL 少于 1024 UTF-8 字节，语言重启生效，
+  JS 只影响新候选。配置两秒不可用则系统语言/newtab/JS 关闭，迟到不重定向。
+  触摸/网络主页、故障/断电/标签恢复仍待门，见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 - Browser history 只保存有界 page-level 双轴位置，宿主负责 clamp/DPI；manual 跳过自动恢复，
   不阻止 fragment/显式滚动。元素 offset 不入栈，完整滚动树/锚定/惯性/跨窗口恢复未实现，
   见 [合同](../docs/CAPABILITIES.md#browserpositron_browserdll)。

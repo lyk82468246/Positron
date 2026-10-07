@@ -3566,6 +3566,8 @@ int AppControls_Reconcile(AppControlsContext *context, HANDLE document,
             return AppControls_Rebuild(context, document, script, scroll_x,
                     scroll_y);
         }
+        item->disabled = text_info.disabled ? 1 : 0;
+        EnableWindow(item->hwnd, item->disabled ? FALSE : TRUE);
     }
     rebuild_selects = 0;
     for (i = 0; i < select_count; i++) {

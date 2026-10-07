@@ -146,7 +146,10 @@ try {
             throw 'Cannot retrieve the final closed-process log.'
         }
         $body = Get-Content -LiteralPath $log -Raw -Encoding UTF8
+        $preferencesPattern = '(?m)^positron pid=' + $appPid +
+            ' tick=\d+ positron preferences-live selftest OK snapshot=committed language=restart script=policy startup=single\r?$'
         if (([regex]::Matches($body, $pattern)).Count -ne 1 -or
+                ([regex]::Matches($body, $preferencesPattern)).Count -ne 1 -or
                 ([regex]::Matches($body, 'debug-session pid=')).Count -ne 1 -or
                 $body -match 'selftest FAILED|settings-live FAIL|tabs selftest|internal-pages selftest|https://example\.com/') {
             throw 'Invalid final closed-process evidence.'

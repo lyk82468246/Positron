@@ -575,6 +575,8 @@ static int app_script_set_value(void *pw, const char *id, const char *value)
         return -1;
     }
     result = PCore_NodeSetValueById(context->document, id, value);
+    if (result == 0 && context->callbacks.control_value_applied != NULL)
+        context->callbacks.control_value_applied(context->callbacks.pw, context);
     return app_script_mutation_result(context, result);
 }
 
@@ -2331,12 +2333,20 @@ int AppScript_ExecuteStep(AppScriptContext *context, int allow_external,
 int AppScript_Evaluate(AppScriptContext *context, const char *source,
         int source_bytes)
 {
+    int result;
+
     if (context == NULL || context->session == NULL || source == NULL ||
             source_bytes <= 0 || source_bytes > (int) PSCRIPT_MAX_SOURCE_BYTES) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
-    return PBrowser_ScriptSessionEvaluate(context->session, source,
+    result = PBrowser_ScriptSessionEvaluate(context->session, source,
             source_bytes);
+#ifdef _DEBUG
+    if (result != PSCRIPT_OK)
+        app_script_debug_log_script(context, -1, NULL, NULL, NULL,
+                "evaluate-error", result);
+#endif
+    return result;
 }
 
 void AppScript_Destroy(AppScriptContext *context)

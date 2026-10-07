@@ -212,7 +212,7 @@ EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和�
 | `positron://version`、`positron://system` | 提交前规范化为 about 的 version/system 片段，仅提交一次 history |
 | `positron://history` | 持久访问记录（16 条分页）与独立的当前 Browser 导航栈文本快照 |
 | `positron://downloads` | 明确说明下载管理未实现，不伪造任务或下载记录 |
-| `positron://settings` | 读写固定起始页；语言与 JavaScript 策略仍只读 |
+| `positron://settings` | 原子读写 HTTP(S)/三个内部主页、语言与网页 JavaScript 偏好 |
 | `positron://quit` | 仅地址栏直接提交可以正常退出，不创建页面或 history 项 |
 
 页面名大小写无关，接受一个可选末尾斜杠，显示规范小写地址；新页面只接受注册的片段。
@@ -261,7 +261,7 @@ UTF-16 与输出容量，原始文本统一转义后交给 Core。缺失、API �
 ### 后端进入条件
 
 应用设置、访问日志和下载记录优先使用 `positron_db.dll` 本地 SQL；表结构、migration 和
-存储策略归应用，Browser 会话栈保持独立。当前接通固定起始页与持久 GET 访问记录，不引入
+存储策略归应用，Browser 会话栈保持独立。当前接通完整设置快照与持久 GET 访问记录，不引入
 下载任务或 JSON 回退。后续纵切见 [应用数据设计](APPLICATION_DATA_PLAN.md)。文件创建、
 中文读写、正常新进程重开、跨进程锁和受控异常退出 journal 恢复门与
 尚未验收的 FULL/I/O/迁移提交/断电风险必须分开记录；按用户决定暂缓故障情景验收，
@@ -274,12 +274,15 @@ DB DLL 优先从同部署目录加载；该文件不存在时选择 CAB 的固�
 二进制部署不得删除它们。只读、缺卡、损坏、未知版本或打开失败保留文件，浏览器继续运行，
 明确提示存储不可用，不覆盖原值。备份和移动只在应用正常退出后进行。
 
-启动先显示 newtab，UI 消息循环异步读取起始页；无显式 URL、未发生新的导航/标签操作或
-地址编辑时才以 replace 提交已保存的页面，不增加占位 history 项。显式启动 URL 优先，
-新标签始终为 newtab；主页菜单使用已成功读取/提交的起始页。仅 COMMIT 成功后更新缓存。
+启动先显示并激活空窗体，正常 UI 消息泵异步等待设置至多两秒；选定系统/英语/简体中文后
+才创建菜单、控件及首个页面，不导航占位页。失败/超时保留文件并以 newtab、系统语言和
+关闭网页 JS 继续；迟到结果只更新缓存，不改资源、抢前台或替换当前页。显式启动 URL 优先，
+新标签始终为 newtab；主页菜单使用已成功读取/提交的完整 URL。仅 COMMIT 成功后更新缓存。
+语言重启生效；每个网页候选在接受时复制 JS 策略，关闭时跳过外部脚本获取及 session/作者
+执行，仍消费原 CSS/图片事务。已接受候选及现存 session 不因保存而改变，可信设置代码不受此开关影响。
 
-设置的第一条纵切只覆盖起始页，候选值为 newtab、welcome、controls；不执行 quit、不储存任意
-SQL，也不提前承诺网络起始页或标签恢复。EXE 私有 `app_settings` 表为单例行，应用拥有版本、
+设置接受 HTTP(S) 或 newtab、welcome、controls，不执行 quit、不储存任意 SQL 或恢复标签。
+共享 schema v3 的 `app_preferences` 原子保存完整快照，保留旧 `app_settings` 主页行和访问表；应用拥有版本、
 约束和绑定参数；迁移只消费 `PDb_ApplyMigration`，不读取 DLL 私有 metadata。不存在表时
 执行共享迁移，已有设置先验证版本/值，再用公开迁移接口检查版本；异常、缺行和未来版本均拒绝，
 不以默认值覆盖坏数据或重建数据库。
@@ -306,9 +309,10 @@ worker 关闭数据库后才释放服务，不阻塞窗口、不跨线程 Cancel
 消息边界分批，隐藏页不执行脚本，关闭初始化中的页也不等待同步初始化完成。该内置页例外
 须单独验收，不因此让所有内部页面执行脚本或请求外部资源。
 
-白名单只有 `settings.read({})` 与 `settings.write({startupPage: URL})`，参数最多 128 UTF-8
-字节；写入仅接受三个固定规范地址，读取不接受额外字段。JSON 解析/生成消费公共 JSON DLL，
-不增加宿主解析器；结果为 `{startupPage: URL}` 或固定错误标识，不向页面暴露 SQL、文件路径
+白名单只有 `settings.read({})` 与完整三个字段的 `settings.write`，参数/结果遵守 Browser
+4096 字节预算；旧单字段内部主页写入保持兼容，读取不接受额外字段。完整 URL 少于 1024
+UTF-8 字节且服从公开 URL 解析器。JSON 解析/生成消费公共 JSON DLL，不增加宿主解析器；
+结果包括 `startupPage`、`language`、布尔 `javascriptEnabled` 或固定错误标识，不向页面暴露 SQL、文件路径
 及 DB 原始诊断。submit 只验证、复制有界数据并排队，不做 I/O 或同步完成。
 显式 Debug `--selftest-settings-services` 使用内存 DB 和独立裸 session 验证适配器，不冒充
 实际 Core 设置页或 bootstrap 验收。`scripts/app_settings_gate.ps1` 消费正式 Debug 完整部署，
@@ -316,7 +320,10 @@ worker 关闭数据库后才释放服务，不阻塞窗口、不跨线程 Cancel
 访问记录的创建、独立进程恢复、清除三进程门；终态后只允许该测试 PID 有界等待退出，
 其他引用和不可用快照仍拒绝，最终必须零引用。历史夹具使用独立 visits-fixture.db，保留证据。
 `scripts/app_settings_live_gate.ps1` 另消费全新的专用正式 Debug 部署，使用实际内嵌设置页、
-原生按钮事务、生产 worker 和四个独立进程验证保存、启动读回、接受后退出排空及默认值恢复。
+原生按钮事务、生产 worker 和四个独立进程验证三个字段保存、启动语言/主页读回、JS 关闭时
+可信页仍能保存、原生 EDIT/SELECT/toggle 读回及接受后退出排空。DOM 值变更延迟投影到原生
+EDIT，disabled 状态随 Core 同步；普通无关 mutation 不覆盖输入值。模板变动由正式 build 入口
+在 VS 判定最新前检查生成 .res 的输入时间，仍使用正式资源编译器，避免增量嵌入旧 HTML。
 夹具只接受保留的 `app-settings-live-*` SD 门目录，首进程拒绝已有 DB，后续拒绝缺失 DB；
 精确测试模式仅编入 Debug，不在 Release 或普通 URL 路由开放。门不删除数据库/部署目录，
 不强杀设备进程，不代表故障注入或人工触摸/双语/旋转通过。

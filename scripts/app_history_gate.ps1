@@ -117,6 +117,7 @@ try {
                     $text -match 'fragment-pending selftest OK' -and
                     $text -match 'script-scheduling selftest OK' -and
                     $text -match 'tabs selftest OK' -and
+                    $text -match 'preferences-policy selftest OK candidate=fixed enabled=executed disabled=no_session_or_fetch' -and
                     $text -match 'loading-title selftest OK' -and
                     $text -match 'address-bar selftest OK' -and
                     $text -match 'pointer selftest OK' -and

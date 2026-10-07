@@ -30,12 +30,14 @@
 
 ## 独立应用消费者的宿主边界
 
-EXE 私有内部地址注册表提供 newtab、about、settings、下载未实现说明和 Browser 会话
-history 视图；version/system 规范化为 about 章节。模板双语内嵌，动态 HTML 上限 128 KiB，
-history 最多 16 条，焦点最多 24 项。quit 只接受地址栏直接提交并走正常关闭，不修改公共
-DLL ABI。可信 settings 仅编辑固定起始页，使用 EXE 同目录 positron.db、公共 DB 接口和
-Browser 受控异步服务；保存、新进程恢复及正常退出排空已有应用设备门。其他设置只读，
-持久访问日志和真实下载尚未接入，故障注入与人工 UI 矩阵不因此算通过。边界见
+EXE 私有内部地址注册表提供 newtab、about、settings、下载未实现说明、持久 GET 访问记录
+与独立 Browser 会话 history；version/system 规范化为 about 章节。模板双语内嵌，动态 HTML
+上限 128 KiB，访问记录最多 500 条/每页 16 条，焦点最多 32 项。quit 只接受地址栏直接提交
+并正常关闭，不改公共 DLL ABI。可信 settings 原子编辑 HTTP(S)/三个内部主页、语言和网页
+JS 开关，使用 EXE 同目录 positron.db、公共 DB 与 Browser 受控异步服务；完整 URL 少于
+1024 UTF-8 字节，仍服从公开 URL 解析器。首次导航前异步读取设置，语言重启应用，网页
+候选接受时固定 JS 策略，已加载页面不变且可信设置代码独立获准。保存、新进程恢复及正常
+退出排空已有应用设备门；真实下载、故障注入与人工 UI 矩阵不因此算通过。边界见
 [内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
 
 应用把当前 GET 文档绑定到 Browser history 的公开 document identity；同文档

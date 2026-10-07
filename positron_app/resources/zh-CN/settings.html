@@ -1,8 +1,12 @@
 <!doctype html><html lang="zh-CN"><head><title>设置</title></head>
 <body class="internal">
-<h1>设置</h1><p>起始页保存在应用程序同目录的 positron.db 中，其他信息为只读。</p><!--APP_CONTENT-->
+<h1>设置</h1><p>偏好保存在应用程序同目录的 positron.db 中。语言重启生效，JavaScript 开关仅影响随后加载的网页。</p><!--APP_CONTENT-->
 <p><label for="settings-startup">启动页 / 主页</label></p>
-<p><select id="settings-startup" disabled><option id="settings-option-newtab" value="positron://newtab">起始页</option><option id="settings-option-welcome" value="positron://welcome">欢迎页</option><option id="settings-option-controls" value="positron://controls">控件</option></select></p>
+<p><input id="settings-startup" type="text" size="18" maxlength="1023" disabled></p>
+<p>输入 HTTP(S) 地址或 positron://newtab、positron://welcome、positron://controls。</p>
+<p><label for="settings-language">界面语言</label></p>
+<p><select id="settings-language" disabled><option id="settings-language-system" value="system">跟随系统</option><option id="settings-language-en" value="en-US">英语</option><option id="settings-language-zh" value="zh-CN">简体中文</option></select></p>
+<p><input id="settings-javascript" type="checkbox" disabled><label for="settings-javascript">网页启用 JavaScript</label></p>
 <p><button id="settings-save" type="button" disabled>保存</button></p>
 <p id="settings-status">存储不可用，不会保存偏好。</p>
 <h2>内部页面</h2>
@@ -17,31 +21,40 @@
 (function () {
     var choice = document.getElementById('settings-startup');
     var button = document.getElementById('settings-save');
+    var language = document.getElementById('settings-language');
+    var javascript = document.getElementById('settings-javascript');
     var status = document.getElementById('settings-status');
     var busy = true;
     function enable() {
         busy = false;
         choice.removeAttribute('disabled');
+        language.removeAttribute('disabled');
+        javascript.removeAttribute('disabled');
         button.removeAttribute('disabled');
     }
     button.addEventListener('click', function () {
         if (busy) return;
         busy = true;
         choice.setAttribute('disabled', '');
+        language.setAttribute('disabled', '');
+        javascript.setAttribute('disabled', '');
         button.setAttribute('disabled', '');
         status.textContent = '正在保存…';
         try {
-            PositronServices.request('settings.write', {startupPage: choice.value}, function (ok, value) {
-                status.textContent = ok ? '已保存，将用于主页和下次启动。' : '保存失败，保留原有偏好。';
+            PositronServices.request('settings.write', {startupPage: choice.value, language: language.value, javascriptEnabled: javascript.checked}, function (ok, value) {
+                if (ok) choice.value = value.startupPage;
+                status.textContent = ok ? '已保存：主页立即生效，语言重启生效，JavaScript 用于随后加载的网页。' : '保存失败，保留原有偏好。';
                 enable();
             });
-        } catch (error) { status.textContent = '存储不可用，保留原有偏好。'; }
+        } catch (error) { status.textContent = '设置无效或存储不可用，保留原有偏好。'; enable(); }
     });
     try {
         PositronServices.request('settings.read', {}, function (ok, value) {
             if (!ok) { status.textContent = '无法读取偏好，保留现有文件。'; return; }
             choice.value = value.startupPage;
-            status.textContent = '选择启动页，然后保存。';
+            language.selectedIndex = value.language === 'zh-CN' ? 2 : (value.language === 'en-US' ? 1 : 0);
+            javascript.checked = value.javascriptEnabled;
+            status.textContent = '修改偏好，然后保存。';
             enable();
         });
     } catch (error) { status.textContent = '存储不可用，不会保存偏好。'; }

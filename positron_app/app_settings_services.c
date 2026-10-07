@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "app_settings_services.h"
+#include "app_host.h"
 #include "../positron_json/positron_json.h"
 
 static const char *const g_settings_methods[] = {
@@ -102,7 +103,7 @@ static int app_settings_services_params(const PBrowserServiceRequest *request,
             value = PJson_GetString(root, "startupPage");
             url = PJson_GetString(root, "language");
             index = PJson_GetBool(root, "javascriptEnabled");
-            if (value != NULL && strlen(value) < sizeof(values->startup_url) &&
+            if (value != NULL && strlen(value) < APP_HOST_URL_MAX &&
                     url != NULL && index >= 0) {
                 strcpy(values->startup_url, value);
                 values->javascript_enabled = index;

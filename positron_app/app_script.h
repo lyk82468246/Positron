@@ -72,6 +72,8 @@ typedef struct AppScriptHostCallbacks {
     AppScriptScrollFn scroll;
     AppScriptMutationFn mutation;
     AppScriptFormResetAppliedFn form_reset_applied;
+    /* Project successful DOM value writes into existing native EDITs. */
+    AppScriptFormResetAppliedFn control_value_applied;
     AppScriptGetContentEditableSelectionFn get_contenteditable_selection;
     AppScriptSetContentEditableSelectionFn set_contenteditable_selection;
     AppScriptValidateFormSubmitFn validate_form_submit;

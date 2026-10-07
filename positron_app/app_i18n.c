@@ -164,6 +164,14 @@ AppLanguage AppI18n_CurrentLanguage(void)
     return g_i18n_language;
 }
 
+int AppI18n_SelectLanguage(AppLanguage language)
+{
+    if (g_i18n_instance == NULL || (language != APP_LANGUAGE_EN_US &&
+            language != APP_LANGUAGE_ZH_CN)) return 1;
+    g_i18n_language = language;
+    return 0;
+}
+
 UINT AppI18n_MenuBarResource(void)
 {
     return app_select_rcdata(IDR_APP_MENUBAR_EN, IDR_APP_MENUBAR_ZH);

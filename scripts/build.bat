@@ -23,6 +23,12 @@ if not defined DEVENV if exist "%ProgramFiles(x86)%\Microsoft Visual Studio 9.0\
 if not defined DEVENV if exist "%ProgramFiles%\Microsoft Visual Studio 9.0\Common7\IDE\devenv.com" set "DEVENV=%ProgramFiles%\Microsoft Visual Studio 9.0\Common7\IDE\devenv.com"
 if not defined DEVENV goto :missing
 
+rem Check before VS's up-to-date decision, not in a skipped pre-build event.
+if /I not "%ACTION%"=="Clean" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\positron_app\prepare_resources.ps1" -OutputDirectory "%ROOT%\positron_app\bin\%CFG%"
+    if errorlevel 1 exit /b 1
+)
+
 if exist "%LOG%" del /Q "%LOG%"
 echo VS2008: "%DEVENV%"
 echo Solution: "%SLN%"

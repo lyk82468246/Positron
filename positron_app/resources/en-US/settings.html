@@ -1,8 +1,12 @@
 <!doctype html><html lang="en-US"><head><title>Settings</title></head>
 <body class="internal">
-<h1>Settings</h1><p>The startup page is saved in positron.db beside this application. Other values are read-only.</p><!--APP_CONTENT-->
+<h1>Settings</h1><p>Preferences are saved in positron.db beside this application. Language changes take effect after restart. JavaScript changes affect later web navigations.</p><!--APP_CONTENT-->
 <p><label for="settings-startup">Startup page / Home</label></p>
-<p><select id="settings-startup" disabled><option id="settings-option-newtab" value="positron://newtab">New page</option><option id="settings-option-welcome" value="positron://welcome">Welcome</option><option id="settings-option-controls" value="positron://controls">Controls</option></select></p>
+<p><input id="settings-startup" type="text" size="18" maxlength="1023" disabled></p>
+<p>Enter an HTTP(S) URL or positron://newtab, positron://welcome, positron://controls.</p>
+<p><label for="settings-language">UI language</label></p>
+<p><select id="settings-language" disabled><option id="settings-language-system" value="system">Follow system</option><option id="settings-language-en" value="en-US">English</option><option id="settings-language-zh" value="zh-CN">Simplified Chinese</option></select></p>
+<p><input id="settings-javascript" type="checkbox" disabled><label for="settings-javascript">Enable JavaScript on web pages</label></p>
 <p><button id="settings-save" type="button" disabled>Save</button></p>
 <p id="settings-status">Storage unavailable. No preferences will be saved.</p>
 <h2>Internal pages</h2>
@@ -17,31 +21,40 @@
 (function () {
     var choice = document.getElementById('settings-startup');
     var button = document.getElementById('settings-save');
+    var language = document.getElementById('settings-language');
+    var javascript = document.getElementById('settings-javascript');
     var status = document.getElementById('settings-status');
     var busy = true;
     function enable() {
         busy = false;
         choice.removeAttribute('disabled');
+        language.removeAttribute('disabled');
+        javascript.removeAttribute('disabled');
         button.removeAttribute('disabled');
     }
     button.addEventListener('click', function () {
         if (busy) return;
         busy = true;
         choice.setAttribute('disabled', '');
+        language.setAttribute('disabled', '');
+        javascript.setAttribute('disabled', '');
         button.setAttribute('disabled', '');
         status.textContent = 'Saving...';
         try {
-            PositronServices.request('settings.write', {startupPage: choice.value}, function (ok, value) {
-                status.textContent = ok ? 'Saved. Applies to Home and the next launch.' : 'Save failed. Previous preference retained.';
+            PositronServices.request('settings.write', {startupPage: choice.value, language: language.value, javascriptEnabled: javascript.checked}, function (ok, value) {
+                if (ok) choice.value = value.startupPage;
+                status.textContent = ok ? 'Saved. Home applies now; language after restart; JavaScript on later web navigations.' : 'Save failed. Previous preferences retained.';
                 enable();
             });
-        } catch (error) { status.textContent = 'Storage unavailable. Previous preference retained.'; }
+        } catch (error) { status.textContent = 'Invalid settings or storage unavailable. Previous preferences retained.'; enable(); }
     });
     try {
         PositronServices.request('settings.read', {}, function (ok, value) {
             if (!ok) { status.textContent = 'Cannot read preferences. Existing file retained.'; return; }
             choice.value = value.startupPage;
-            status.textContent = 'Choose a startup page, then Save.';
+            language.selectedIndex = value.language === 'zh-CN' ? 2 : (value.language === 'en-US' ? 1 : 0);
+            javascript.checked = value.javascriptEnabled;
+            status.textContent = 'Edit preferences, then Save.';
             enable();
         });
     } catch (error) { status.textContent = 'Storage unavailable. No preferences will be saved.'; }

@@ -53,6 +53,8 @@ struct AppNavigationRequest {
     int completion_pending;
     /* Captured before worker start; never reads the active tab on a worker. */
     int transport_available;
+    /* Policy captured when this navigation is accepted, not at commit. */
+    int javascript_enabled;
     /* Atomic worker-to-UI presentation only; no candidate decisions. */
     LONG loading_phase;
     int image_scan_found;

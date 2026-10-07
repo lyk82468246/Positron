@@ -179,11 +179,11 @@ static unsigned long g_startup_script_tab_id;
 static unsigned long g_tab_sequence;
 static AppSettingsStore *g_settings_store;
 static AppSettingsStartPage g_settings_start_page = APP_SETTINGS_START_NEWTAB;
+static AppSettingsValues g_settings_values;
+static int g_settings_ready;
+static int g_settings_bootstrapping;
+static DWORD g_settings_bootstrap_started;
 static unsigned long g_settings_page_sequence;
-static unsigned long g_settings_nav_serial;
-static unsigned long g_settings_startup_serial;
-static unsigned long g_settings_startup_tab;
-static int g_settings_startup_pending;
 static int g_visits_enabled;
 static int g_visits_redrawing;
 #ifdef _DEBUG
@@ -191,6 +191,7 @@ static int g_settings_live_mode;
 static int g_settings_live_phase;
 static int g_settings_live_write_ok;
 static DWORD g_settings_live_started;
+static AppLanguage g_settings_live_initial_language;
 #endif
 
 static int app_relayout(void);
@@ -3287,6 +3288,7 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
         callbacks.scroll = app_script_scroll;
         callbacks.mutation = app_script_mutated;
         callbacks.form_reset_applied = app_script_form_reset_applied;
+        callbacks.control_value_applied = app_script_form_reset_applied;
         callbacks.get_contenteditable_selection =
                 app_script_contenteditable_selection_get;
         callbacks.set_contenteditable_selection =
@@ -3536,6 +3538,59 @@ static int app_settings_start(HWND hwnd)
 #ifdef _DEBUG
 /* Real embedded page, public DOM/native click path and production store.
  * Exact modes are confined to a fresh app-settings-live-* deployment. */
+static int app_settings_live_native(const char *url, int language, int javascript)
+{
+    HWND child;
+    WCHAR class_name[32];
+    WCHAR wide[APP_HOST_URL_MAX];
+    char text[APP_HOST_URL_MAX];
+    char diagnostic[256];
+    int seen;
+
+    seen = 0;
+    for (child = GetWindow(g_page_window, GW_CHILD); child != NULL;
+            child = GetWindow(child, GW_HWNDNEXT)) {
+        if (!GetClassNameW(child, class_name, 32)) return 0;
+        if (!lstrcmpiW(class_name, L"EDIT")) {
+            wide[0] = 0;
+            text[0] = 0;
+            GetWindowTextW(child, wide, APP_HOST_URL_MAX);
+            WideCharToMultiByte(CP_UTF8, 0, wide, -1, text, sizeof(text), NULL, NULL);
+            _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                    "settings-native edit enabled=%d bytes=%u expected=%u equal=%d phase=%d\r\n",
+                    IsWindowEnabled(child), (unsigned int) strlen(text), (unsigned int) strlen(url),
+                    !strcmp(text, url), g_settings_live_phase);
+            diagnostic[sizeof(diagnostic) - 1] = 0;
+            AppDebug_Log(diagnostic);
+            if (!IsWindowEnabled(child) || !GetWindowTextW(child, wide, APP_HOST_URL_MAX) ||
+                    !WideCharToMultiByte(CP_UTF8, 0, wide, -1, text, sizeof(text), NULL, NULL) ||
+                    strcmp(text, url)) return 0;
+            seen |= 1;
+        } else if (!lstrcmpiW(class_name, L"COMBOBOX")) {
+            _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                    "settings-native select enabled=%d selected=%ld expected=%d phase=%d\r\n",
+                    IsWindowEnabled(child), (long) SendMessage(child, CB_GETCURSEL, 0, 0), language,
+                    g_settings_live_phase);
+            diagnostic[sizeof(diagnostic) - 1] = 0;
+            AppDebug_Log(diagnostic);
+            if (!IsWindowEnabled(child) || SendMessage(child, CB_GETCURSEL, 0, 0) != language)
+                return 0;
+            seen |= 2;
+        } else if (!lstrcmpiW(class_name, L"BUTTON")) {
+            _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                    "settings-native toggle enabled=%d checked=%ld expected=%d phase=%d\r\n",
+                    IsWindowEnabled(child), (long) SendMessage(child, BM_GETCHECK, 0, 0), javascript,
+                    g_settings_live_phase);
+            diagnostic[sizeof(diagnostic) - 1] = 0;
+            AppDebug_Log(diagnostic);
+            if (!IsWindowEnabled(child) || SendMessage(child, BM_GETCHECK, 0, 0) !=
+                    (javascript ? BST_CHECKED : BST_UNCHECKED)) return 0;
+            seen |= 4;
+        }
+    }
+    return seen == 7;
+}
+
 static void app_settings_live_finish(HWND hwnd, int success)
 {
     char message[256];
@@ -3549,6 +3604,8 @@ static void app_settings_live_finish(HWND hwnd, int success)
     message[sizeof(message) - 1] = '\0';
     AppDebug_Log(message);
     g_settings_live_phase = 99;
+    if (success) AppDebug_Log("positron preferences-live selftest OK "
+            "snapshot=committed language=restart script=policy startup=single\r\n");
     if (!g_tabs_closing) PostMessage(hwnd, WM_CLOSE, 0, 0);
 }
 
@@ -3564,18 +3621,24 @@ static void app_settings_live_step(HWND hwnd)
         return;
     }
     if (g_settings_live_mode == 2) {
-        if (g_settings_startup_pending) return;
+        if (g_settings_bootstrapping) return;
         app_settings_live_finish(hwnd,
                 g_settings_start_page == APP_SETTINGS_START_WELCOME &&
                 !strcmp(g_current_url, APP_URL_WELCOME) &&
+                g_settings_values.language == APP_SETTINGS_LANGUAGE_CHINESE &&
+                !g_settings_values.javascript_enabled &&
+                AppI18n_CurrentLanguage() == APP_LANGUAGE_ZH_CN &&
                 PBrowser_HistoryCount(g_history) == 1);
         return;
     }
     if (g_settings_live_mode == 4) {
-        if (g_settings_startup_pending) return;
+        if (g_settings_bootstrapping) return;
         app_settings_live_finish(hwnd,
                 g_settings_start_page == APP_SETTINGS_START_NEWTAB &&
                 !strcmp(g_current_url, APP_URL_NEWTAB) &&
+                g_settings_values.language == APP_SETTINGS_LANGUAGE_ENGLISH &&
+                g_settings_values.javascript_enabled &&
+                AppI18n_CurrentLanguage() == APP_LANGUAGE_EN_US &&
                 PBrowser_HistoryCount(g_history) == 1);
         return;
     }
@@ -3586,16 +3649,46 @@ static void app_settings_live_step(HWND hwnd)
         }
         if (g_script == NULL || PCore_FocusTargetInfoById(g_document,
                 "settings-save", &focus) != 0) return;
+        if (!app_settings_live_native(g_settings_values.startup_url,
+                g_settings_values.language, g_settings_values.javascript_enabled)) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
         source = g_settings_live_mode == 1 ?
-                "document.getElementById('settings-startup').value='positron://welcome';"
-                "document.getElementById('settings-save').click();" :
-                "document.getElementById('settings-startup').value='positron://newtab';"
-                "document.getElementById('settings-save').click();";
+                "var liveHome=document.getElementById('settings-startup'),"
+                "liveLanguage=document.getElementById('settings-language'),"
+                "liveJavascript=document.getElementById('settings-javascript');"
+                "liveHome.value='positron://welcome';liveLanguage.selectedIndex=2;"
+                "liveJavascript.checked=false;" :
+                "var liveHome=document.getElementById('settings-startup'),"
+                "liveLanguage=document.getElementById('settings-language'),"
+                "liveJavascript=document.getElementById('settings-javascript');"
+                "liveHome.value='positron://newtab';liveLanguage.selectedIndex=1;"
+                "liveJavascript.checked=true;";
         if (AppScript_Evaluate(g_script, source, (int) strlen(source)) != 0) {
             app_settings_live_finish(hwnd, 0);
             return;
         }
         g_settings_live_phase = 1;
+        return;
+    }
+    if (g_settings_live_phase == 1) {
+        /* Value mutations post the normal layout/native reconciliation.
+         * Click only after that message has restored real button geometry. */
+        if (PCore_FocusTargetInfoById(g_document, "settings-save", &focus) != 0)
+            return;
+        if (!app_settings_live_native(g_settings_live_mode == 1 ? APP_URL_WELCOME : APP_URL_NEWTAB,
+                g_settings_live_mode == 1 ? APP_SETTINGS_LANGUAGE_CHINESE : APP_SETTINGS_LANGUAGE_ENGLISH,
+                g_settings_live_mode == 1 ? 0 : 1)) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
+        source = "document.getElementById('settings-save').click();";
+        if (AppScript_Evaluate(g_script, source, (int) strlen(source)) != 0) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
+        g_settings_live_phase = 2;
         if (g_settings_live_mode == 3) PostMessage(hwnd, WM_CLOSE, 0, 0);
         return;
     }
@@ -3604,7 +3697,10 @@ static void app_settings_live_step(HWND hwnd)
             sizeof(status), NULL) == 0 &&
             (strstr(status, "Saved.") != NULL ||
             strstr(status, "\345\267\262\344\277\235\345\255\230") != NULL))
-        app_settings_live_finish(hwnd, PBrowser_HistoryCount(g_history) == 1);
+        app_settings_live_finish(hwnd, PBrowser_HistoryCount(g_history) == 1 &&
+                g_settings_values.language == APP_SETTINGS_LANGUAGE_CHINESE &&
+                !g_settings_values.javascript_enabled &&
+                AppI18n_CurrentLanguage() == g_settings_live_initial_language);
 }
 #endif
 
@@ -3613,15 +3709,24 @@ static void app_settings_tick(HWND hwnd)
     AppSettingsResult result;
     int i;
     int count;
-    int startup;
+    int bootstrapping;
 
     if (g_settings_store == NULL) return;
+    bootstrapping = g_settings_bootstrapping;
     for (count = 0; count < APP_SETTINGS_QUEUE_MAX; ++count) {
         if (AppSettingsStore_Poll(g_settings_store, &result) != APP_SETTINGS_OK)
             break;
         if (result.result == APP_SETTINGS_OK &&
-                (result.operation == APP_SETTINGS_LOAD || result.operation == APP_SETTINGS_SAVE))
+                (result.operation == APP_SETTINGS_LOAD || result.operation == APP_SETTINGS_SAVE)) {
             g_settings_start_page = result.start_page;
+            g_settings_values = result.values;
+            g_settings_ready = 1;
+            for (i = APP_SETTINGS_START_NEWTAB; i <= APP_SETTINGS_START_CONTROLS; ++i)
+                if (!strcmp(result.values.startup_url,
+                        AppSettingsStore_StartPageUrl((AppSettingsStartPage) i)))
+                    g_settings_start_page = (AppSettingsStartPage) i;
+        }
+        if (result.request_id == 1) g_settings_bootstrapping = 0;
         app_visits_result(hwnd, &result);
 #ifdef _DEBUG
         if (g_settings_live_mode && result.operation == APP_SETTINGS_SAVE &&
@@ -3642,19 +3747,6 @@ static void app_settings_tick(HWND hwnd)
             if (g_tabs[i].used && !g_tabs[i].closing)
                 AppScript_SettingsResult(g_tabs[i].host.script, &result);
         }
-        if (result.request_id == 1 && g_settings_startup_pending) {
-            startup = !g_tabs_closing && g_app.tab_id == g_settings_startup_tab &&
-                    g_settings_nav_serial == g_settings_startup_serial &&
-                    g_tab_count == 1 && g_navigation_request == NULL &&
-                    !AppAddressBar_IsEditing(g_address_bar) &&
-                    !strcmp(g_current_url, APP_URL_NEWTAB);
-            g_settings_startup_pending = 0;
-            if (startup && result.result == APP_SETTINGS_OK &&
-                    g_settings_start_page != APP_SETTINGS_START_NEWTAB)
-                (void) app_load_page_from(hwnd,
-                        AppSettingsStore_StartPageUrl(g_settings_start_page),
-                        APP_HISTORY_REPLACE, -1, APP_NAV_SOURCE_STARTUP);
-        }
         if (result.request_id == 1 && result.result != APP_SETTINGS_OK &&
                 !g_tabs_closing && g_navigation_request == NULL)
             app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
@@ -3674,6 +3766,13 @@ static void app_settings_tick(HWND hwnd)
             KillTimer(hwnd, APP_SETTINGS_TIMER_ID);
             app_tabs_finish_close();
         }
+        return;
+    }
+    if (bootstrapping) {
+        /* Keep the shell's UI/close message loop alive while the DB owner
+         * reads. Never show a default page or mix locale resources first. */
+        if (GetTickCount() - g_settings_bootstrap_started >= 2000UL)
+            g_settings_bootstrapping = 0;
         return;
     }
     (void) AppScript_SettingsStep(g_script);
@@ -4494,6 +4593,11 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
             int history_index;
             int script_count;
 
+            if (!request->javascript_enabled) {
+                request->commit_stage = APP_NAV_COMMIT_STYLE;
+                continue;
+            }
+
             app_navigation_loading_phase(request, APP_LOADING_SCRIPT_FETCH);
             request->resource_policy =
                     PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
@@ -4564,6 +4668,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                 script_callbacks.scroll = app_script_scroll;
                 script_callbacks.mutation = app_script_mutated;
                 script_callbacks.form_reset_applied =
+                        app_script_form_reset_applied;
+                script_callbacks.control_value_applied =
                         app_script_form_reset_applied;
                 script_callbacks.get_contenteditable_selection =
                         app_script_contenteditable_selection_get;
@@ -4996,6 +5102,7 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
         generation = InterlockedIncrement(&g_navigation_generation);
     }
     request->generation = (unsigned long) generation;
+    request->javascript_enabled = g_settings_values.javascript_enabled;
     request->candidate = PBrowser_NavigationCandidateCreate(
             request->generation);
     if (request->candidate == NULL) {
@@ -5157,8 +5264,6 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
             return 1;
         }
     }
-    ++g_settings_nav_serial;
-    if (!g_settings_nav_serial) g_settings_startup_pending = 0;
     if (url == NULL || url[0] == '\0') return 0;
     if (history_mode == APP_HISTORY_TARGET) {
         same_document = app_history_traverse(hwnd, history_target);
@@ -6210,7 +6315,7 @@ static void app_go_from_address(HWND hwnd)
 static void app_go_home(HWND hwnd)
 {
     (void) app_load_page_from(hwnd,
-            AppSettingsStore_StartPageUrl(g_settings_start_page),
+            g_settings_values.startup_url,
             APP_HISTORY_NEW, -1, APP_NAV_SOURCE_MENU);
 }
 
@@ -7988,7 +8093,7 @@ static void app_tabs_close_all(HWND hwnd)
 
     saved = g_tab;
     g_tabs_closing = 1;
-    g_settings_startup_pending = 0;
+    g_settings_bootstrapping = 0;
     for (i = 0; i < APP_TAB_MAX; ++i)
         AppScript_RevokeSettings(g_tabs[i].host.script);
     if (g_settings_store != NULL)
@@ -8107,6 +8212,11 @@ static int app_tabs_debug_check(void)
             "<html><head><title>Tab B</title>"
             "<script>var completedSentinel=43;</script>"
             "</head><body>loaded B</body></html>";
+    static const char disabled_response[] =
+            "<html><head><title>No author scripts</title>"
+            "<script src='https://example.com/must-not-fetch.js'></script>"
+            "<script>document.getElementById('policy-text').textContent='executed';</script>"
+            "</head><body><p id='policy-text'>not executed</p></body></html>";
     AppTab *original;
     AppHostContext *shell;
     AppTab *a;
@@ -8132,6 +8242,7 @@ static int app_tabs_debug_check(void)
     int was_visible;
     int text_length;
     char log[96];
+    char policy_text[64];
 
     shell = (AppHostContext *) malloc(sizeof(*shell));
     if (shell == NULL) return 1;
@@ -8267,6 +8378,8 @@ static int app_tabs_debug_check(void)
             !app_navigation_start(g_window, "https://example.com/tab-b",
             PCORE_FORM_METHOD_GET, NULL, 0, NULL, APP_HISTORY_NEW, -1)) goto done;
     request = g_navigation_request;
+    if (!request->javascript_enabled) goto done;
+    g_settings_values.javascript_enabled = 0;
     if (PBrowser_NavigationResourceSetData(request->resource_transaction,
             request->resource_index, response, sizeof(response) - 1) != PBROWSER_OK)
         goto done;
@@ -8367,6 +8480,23 @@ static int app_tabs_debug_check(void)
             strcmp(g_current_url, "positron://history") ||
             app_tabs_debug_menu(0) != 0) goto done;
     AppDebug_Log("positron tab-menu selftest OK\r\n");
+    if (!app_navigation_start(g_window, "https://example.com/policy-disabled",
+            PCORE_FORM_METHOD_GET, NULL, 0, NULL, APP_HISTORY_NEW, -1)) goto done;
+    request = g_navigation_request;
+    if (request->javascript_enabled) goto done;
+    g_settings_values.javascript_enabled = 1;
+    if (PBrowser_NavigationResourceSetData(request->resource_transaction,
+            request->resource_index, disabled_response, sizeof(disabled_response) - 1) !=
+            PBROWSER_OK) goto done;
+    request->worker_succeeded = 1;
+    app_tabs_handle_done(g_window, request, g_app.tab_id);
+    request = NULL;
+    if (g_navigation_request != NULL || g_script != NULL ||
+            PCore_GetScriptCount(g_document) != 2 ||
+            PCore_NodeTextContentById(g_document, "policy-text", policy_text,
+            sizeof(policy_text), NULL) != 0 || strcmp(policy_text, "not executed")) goto done;
+    AppDebug_Log("positron preferences-policy selftest OK candidate=fixed "
+            "enabled=executed disabled=no_session_or_fetch\r\n");
     result = 0;
 done:
     if (g_navigation_debug_worker_gate != NULL)
@@ -8452,6 +8582,17 @@ static void app_show_startup_usage(void)
             L"Positron", MB_OK | MB_ICONERROR);
 }
 
+/* Even partial startup owns a DB worker now. Use ordinary close/drain, not
+ * direct DestroyWindow or process return while it still owns the database. */
+static void app_abort_startup(HWND hwnd)
+{
+    MSG message;
+
+    SendMessage(hwnd, WM_CLOSE, 0, 0);
+    while (GetMessage(&message, NULL, 0, 0) > 0)
+        app_dispatch_ui_message(&message);
+}
+
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         LPWSTR command_line, int show_command)
 {
@@ -8534,6 +8675,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     AppHostContext_Init(&g_app);
     AppDebug_BeginSession();
     AppHostContext_SetInstance(&g_app, instance);
+    AppSettingsValues_Default(&g_settings_values);
+    /* Defaults support the isolated startup checks. The bootstrap below
+     * disables author scripts until the stored policy is known. */
     if (AppI18n_Init(g_instance) != 0) {
         MessageBoxW(NULL, L"Positron", L"Positron",
                 MB_OK | MB_ICONERROR);
@@ -8595,43 +8739,82 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         return 1;
     }
     AppHostContext_SetWindow(&g_app, hwnd);
+    g_app.tab_id = ++g_tab_sequence;
+    g_tab->used = 1;
+    g_tab_order[0] = 0;
+    g_tab_count = 1;
+    g_tabs_enabled = 1;
+    /* Activate the empty shell once. DB bootstrap pumps normal UI messages,
+     * then creates every menu/control/page in the selected startup locale. */
+    ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
+    (void) SetForegroundWindow(hwnd);
+    UpdateWindow(hwnd);
+    g_settings_bootstrapping = 1;
+    g_settings_values.javascript_enabled = 0;
+    g_settings_bootstrap_started = GetTickCount();
+    if (app_settings_start(hwnd) != APP_SETTINGS_OK)
+        g_settings_bootstrapping = 0;
+    while (g_settings_bootstrapping) {
+        result = GetMessage(&message, NULL, 0, 0);
+        if (result <= 0) return result == 0 ? (int) message.wParam : 1;
+        app_dispatch_ui_message(&message);
+    }
+    if (g_tabs_closing) {
+        while (GetMessage(&message, NULL, 0, 0) > 0)
+            app_dispatch_ui_message(&message);
+        return (int) message.wParam;
+    }
+    if (g_settings_ready && g_settings_values.language != APP_SETTINGS_LANGUAGE_SYSTEM)
+        (void) AppI18n_SelectLanguage(g_settings_values.language == APP_SETTINGS_LANGUAGE_CHINESE ?
+                APP_LANGUAGE_ZH_CN : APP_LANGUAGE_EN_US);
+#ifdef _DEBUG
+    g_settings_live_initial_language = AppI18n_CurrentLanguage();
+#endif
     if (app_create_controls(hwnd) != 0) {
-        DestroyWindow(hwnd);
+        app_abort_startup(hwnd);
         return 1;
     }
     if (app_create_page_window(hwnd) != 0) {
-        DestroyWindow(hwnd);
+        app_abort_startup(hwnd);
         return 1;
     }
     g_controls = AppControls_Create(g_page_window, g_instance, &g_app,
             app_controls_changed, app_handle_form_submit,
             app_handle_form_enter);
     if (g_controls == NULL) {
-        DestroyWindow(hwnd);
+        app_abort_startup(hwnd);
         return 1;
     }
     app_reposition_controls(hwnd);
     app_reposition_page(hwnd);
-    g_app.tab_id = ++g_tab_sequence;
-    g_tab->used = 1;
-    g_tab_order[0] = 0;
-    g_tab_count = 1;
-    g_tabs_enabled = 1;
     /* Showing a CE window is not a foreground activation. In particular,
      * RAPI launches and the Debug native-control fixtures can leave the
      * previous application active. Activate once, before lengthy startup
      * work; later page/DB completion must never steal the foreground. */
-    ShowWindow(hwnd, show_command == 0 ? SW_SHOW : show_command);
-    (void) SetForegroundWindow(hwnd);
     UpdateWindow(hwnd);
 #ifdef _DEBUG
-    if (startup_ui_selftest && app_tabs_debug_check() != 0) {
-        DestroyWindow(hwnd);
-        return 1;
+    if (startup_ui_selftest) {
+        int saved_javascript;
+        int saved_visits;
+        int check;
+
+        saved_javascript = g_settings_values.javascript_enabled;
+        saved_visits = g_visits_enabled;
+        g_settings_values.javascript_enabled = 1;
+        g_visits_enabled = 0;
+        check = app_tabs_debug_check();
+        g_settings_values.javascript_enabled = saved_javascript;
+        g_visits_enabled = saved_visits;
+        if (check != 0) {
+            app_abort_startup(hwnd);
+            return 1;
+        }
     }
 #endif
-    app_copy_text(initial_url, sizeof(initial_url), APP_URL_NEWTAB);
-    startup_invalid = 0;
+    app_copy_text(initial_url, sizeof(initial_url),
+            startup_has_reference ? APP_URL_NEWTAB : g_settings_values.startup_url);
+    startup_invalid = !startup_has_reference &&
+            strlen(g_settings_values.startup_url) >= sizeof(initial_url);
     if (startup_has_reference &&
             app_normalize_address(g_startup_reference, initial_url,
             sizeof(initial_url)) != 0) {
@@ -8654,22 +8837,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     result = app_load_page_from(hwnd, initial_url,
             APP_HISTORY_NEW, -1, APP_NAV_SOURCE_STARTUP) ? 0 : 1;
     if (result != 0) {
-        DestroyWindow(hwnd);
+        app_abort_startup(hwnd);
         return result;
     }
-    if (app_settings_start(hwnd) == APP_SETTINGS_OK) {
-        g_settings_startup_pending = !startup_has_reference && !startup_invalid;
-        g_settings_startup_serial = g_settings_nav_serial;
-        g_settings_startup_tab = g_app.tab_id;
-        /* An explicit startup settings URL was committed before the store
-         * existed. Refresh it once without an extra history entry. */
-        if (g_page_kind == APP_I18N_PAGE_SETTINGS)
-            (void) app_load_local_page(hwnd, initial_url,
-                    APP_HISTORY_REFRESH, -1);
-        else if (g_page_kind == APP_I18N_PAGE_HISTORY)
-            (void) app_load_local_page(hwnd, initial_url,
-                    APP_HISTORY_REFRESH, -1);
-    } else {
+    if (!g_settings_ready) {
         app_set_status(APP_TEXT_STATUS_STORAGE_UNAVAILABLE);
 #ifdef _DEBUG
         if (g_settings_live_mode) app_settings_live_finish(hwnd, 0);
