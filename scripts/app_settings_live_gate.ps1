@@ -154,6 +154,13 @@ try {
                 $body -match 'selftest FAILED|settings-live FAIL|tabs selftest|internal-pages selftest|https://example\.com/') {
             throw 'Invalid final closed-process evidence.'
         }
+        if ($mode -in @('create','drain')) {
+            $heightPattern = '(?m)^positron pid=' + $appPid +
+                ' tick=\d+ positron settings-input-height selftest OK empty=1 filled=1 client=font\r?$'
+            if (([regex]::Matches($body, $heightPattern)).Count -ne 1) {
+                throw 'Missing empty/filled native input height evidence.'
+            }
+        }
         if (![PositronDeviceRapi]::TryCopyFileFromDevice(($remote + '\positron.db'),
                 (Join-Path $evidence ($mode + '.db')))) { throw 'Cannot read back closed database.' }
         $checks.Add($mode + '=PASS pid=' + $appPid)

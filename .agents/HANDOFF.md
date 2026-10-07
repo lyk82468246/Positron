@@ -14,8 +14,8 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；本批接入 EXE 完整设置 UI、首次导航前读取、语言及候选 JS 策略，补齐原生
-EDIT 投影和嵌入 HTML 增量依赖。未修改 DLL/ABI 或滚动；并行 Media 候选保留且不提交。
+分支 main；Core 高度修复已交付，应用本批补 Debug 实页空值/填值与客户区字体高度门。
+不修改产品布局、DLL/ABI 或滚动；并行 Media 候选保留且不提交。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -100,22 +100,21 @@ ROADMAP/限制已复核；500 条裁剪仍为离线 SQL 证据。完整设置消
 保持原事务。已接受候选和现存 session 不变，可信设置页仍可保存。原生 EDIT 值/disabled
 同步遗漏已补齐；只有成功 value 写入请求值投影，普通 mutation 保留输入/选区。
 
-原生设置包 `tmp/device-runs/20261007-140710-app-settings-live-preferences-selection/`
-四进程门 PASS：实际 EDIT/SELECT/toggle 读回、中英文重启、首次单 history、JS 关闭时可信
-页保存及退出排空，哈希/crash/正常退出通过。页面用既有 selectedIndex 初始化语言选项；
-value setter 与原生选中项不一致的探针不计通过，未在 EXE 重写 SELECT 语义。
-最终包 `tmp/device-runs/20261007-141454-app-settings-live-prefs-final/` 只补 Debug 失败阶段
-取证；五进程存储/服务/访问门和完整 UI 门 PASS，覆盖升级/恢复、完整 URL 预算、JS 候选
-接受时固定策略、输入/多标签/滚动回归及匹配哈希/crash。设备留在 newtab，PID 2531551402。
-最终四进程重跑通过前三进程后，第四进程启动前 module-audit helper 缺少完整摘要而失败；
-保留证据，不追认为四进程 PASS。前包 visits-create 单次失败未复现，后包五进程通过；
-原日志没有失败阶段，不能宣称根因已知。正式 Debug/Release/CAB、C89、审计及 Release
-诊断排除通过，不把 build 写成 rebuild，也不把 helper 失败写成产品通过。
+设置策略/存储及完整 UI 先行基线在 `20261007-141454-app-settings-live-prefs-final`；
+升级/恢复、完整 URL 预算、JS 候选固定、输入/多标签/滚动通过。旧进程已退出。
+先行四进程 helper 无摘要与 visits-create 单次失败保留，不追认为通过或宣称已知根因。
+语言以既有 selectedIndex 初始化，value setter 的原生选项差异未在 EXE 重写语义。
 
-早期失败证据保留：VS 增量未重编 HTML，旧页缺少语言控件；正式 build 在最新判断前
-失效过期 .res，两配置实际重编。仅 pre-build 的实验仍被跳过，已撤回。夹具缓存控件、
-等正常重排再 click，不删断言；先行应用已正常退出，无强杀/删库。
-触摸/SIP、真实 HTTP(S) 主页、旋转及故障/断电仍待人工；此前相邻 DLL 门不冒充本轮重跑。
+HTML 增量失败及 pre-build 跳过实验保留；正式入口先失效过期 .res 再编译资源，不删断言。
+截图 `tmp/QQ20261007-202522.png` 的主页 EDIT 横线已由 Core 自然高度修复；旧门仅验值/启用，
+不能视为视觉通过。[输入框请求](../positron_app/CORE_TEXT_INPUT_HEIGHT_REQUEST.md) 已落实。
+最终 `tmp/device-runs/20261007-222553-app-settings-live-height-final/` 四进程实页门 PASS：
+保存值→空值→填值的原生客户区均 185×22、字体高 19；双语重启、JS 关闭保存、单 history、
+退出排空/零引用、SHA256 10/10 与 crash PASS。Debug/Release/CAB、C89、审计及诊断排除通过。
+普通启动证据在该目录 `manual-settings-review-verified/`，PID 3729362482 留在 settings；
+窗口/首个提交/读取/重排及哈希/crash 通过，触摸、SIP、真实输入保存和旋转等待用户。
+先行 height-probe 的 helper 无摘要失败不追认；临时启动脚本缺日志函数的失败在启动前，
+修正后普通门通过，无强杀/删库。ROADMAP 已复核：高度自动门完成，人工门及 Unicode 取证保留。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -504,7 +503,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
 启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
-唯一下一步为使用已验收 Core 匹配包重跑设置客户区/字体门及真实输入视觉，随后再接入真实下载，
+唯一下一步为当前设置页真实输入/SIP/保存/旋转人工验收，不自动推进下载，
 不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与运行入口见上方；
 下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。

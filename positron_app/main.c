@@ -3545,6 +3545,11 @@ static int app_settings_live_native(const char *url, int language, int javascrip
     WCHAR wide[APP_HOST_URL_MAX];
     char text[APP_HOST_URL_MAX];
     char diagnostic[256];
+    RECT client;
+    TEXTMETRICW metrics;
+    HDC dc;
+    HFONT font;
+    HGDIOBJ previous_font;
     int seen;
 
     seen = 0;
@@ -3552,6 +3557,23 @@ static int app_settings_live_native(const char *url, int language, int javascrip
             child = GetWindow(child, GW_HWNDNEXT)) {
         if (!GetClassNameW(child, class_name, 32)) return 0;
         if (!lstrcmpiW(class_name, L"EDIT")) {
+            memset(&metrics, 0, sizeof(metrics));
+            if (!GetClientRect(child, &client)) return 0;
+            dc = GetDC(child);
+            if (dc == NULL) return 0;
+            font = (HFONT) SendMessage(child, WM_GETFONT, 0, 0);
+            previous_font = font != NULL ? SelectObject(dc, font) : NULL;
+            GetTextMetricsW(dc, &metrics);
+            if (previous_font != NULL) SelectObject(dc, previous_font);
+            ReleaseDC(child, dc);
+            _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                    "settings-native geometry client=%ldx%ld font_height=%ld\r\n",
+                    (long) (client.right - client.left),
+                    (long) (client.bottom - client.top), (long) metrics.tmHeight);
+            diagnostic[sizeof(diagnostic) - 1] = 0;
+            AppDebug_Log(diagnostic);
+            if (metrics.tmHeight <= 0 || client.bottom - client.top < metrics.tmHeight ||
+                    client.right <= client.left) return 0;
             wide[0] = 0;
             text[0] = 0;
             GetWindowTextW(child, wide, APP_HOST_URL_MAX);
@@ -3562,7 +3584,8 @@ static int app_settings_live_native(const char *url, int language, int javascrip
                     !strcmp(text, url), g_settings_live_phase);
             diagnostic[sizeof(diagnostic) - 1] = 0;
             AppDebug_Log(diagnostic);
-            if (!IsWindowEnabled(child) || !GetWindowTextW(child, wide, APP_HOST_URL_MAX) ||
+            if (!IsWindowEnabled(child) ||
+                    (GetWindowTextW(child, wide, APP_HOST_URL_MAX) == 0 && url[0] != '\0') ||
                     !WideCharToMultiByte(CP_UTF8, 0, wide, -1, text, sizeof(text), NULL, NULL) ||
                     strcmp(text, url)) return 0;
             seen |= 1;
@@ -3606,6 +3629,9 @@ static void app_settings_live_finish(HWND hwnd, int success)
     g_settings_live_phase = 99;
     if (success) AppDebug_Log("positron preferences-live selftest OK "
             "snapshot=committed language=restart script=policy startup=single\r\n");
+    if (success && (g_settings_live_mode == 1 || g_settings_live_mode == 3))
+        AppDebug_Log("positron settings-input-height selftest OK "
+                "empty=1 filled=1 client=font\r\n");
     if (!g_tabs_closing) PostMessage(hwnd, WM_CLOSE, 0, 0);
 }
 
@@ -3654,15 +3680,28 @@ static void app_settings_live_step(HWND hwnd)
             app_settings_live_finish(hwnd, 0);
             return;
         }
-        source = g_settings_live_mode == 1 ?
-                "var liveHome=document.getElementById('settings-startup'),"
+        source = "var liveHome=document.getElementById('settings-startup'),"
                 "liveLanguage=document.getElementById('settings-language'),"
                 "liveJavascript=document.getElementById('settings-javascript');"
+                "liveHome.value='';";
+        if (AppScript_Evaluate(g_script, source, (int) strlen(source)) != 0) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
+        g_settings_live_phase = 4;
+        return;
+    }
+    if (g_settings_live_phase == 4) {
+        if (PCore_FocusTargetInfoById(g_document, "settings-save", &focus) != 0)
+            return;
+        if (!app_settings_live_native("", g_settings_values.language,
+                g_settings_values.javascript_enabled)) {
+            app_settings_live_finish(hwnd, 0);
+            return;
+        }
+        source = g_settings_live_mode == 1 ?
                 "liveHome.value='positron://welcome';liveLanguage.selectedIndex=2;"
                 "liveJavascript.checked=false;" :
-                "var liveHome=document.getElementById('settings-startup'),"
-                "liveLanguage=document.getElementById('settings-language'),"
-                "liveJavascript=document.getElementById('settings-javascript');"
                 "liveHome.value='positron://newtab';liveLanguage.selectedIndex=1;"
                 "liveJavascript.checked=true;";
         if (AppScript_Evaluate(g_script, source, (int) strlen(source)) != 0) {
