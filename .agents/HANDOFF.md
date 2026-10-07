@@ -14,10 +14,10 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；本批只修改 EXE 历史条目 class/私有 CSS、Debug 消费者自检、设备门和文档。
-Core 交付提交为 7596ddf1；不修改 DLL、公共 ABI、DB 或滚动，保留其他组件及诊断。
+分支 main；本批只修改 EXE 固定右菜单、历史页操作链接、私有焦点容量、自检、设备门和文档。
+不修改 DLL、公共 ABI、DB 或滚动；Core 断行交付为 7596ddf1，保留其他组件及诊断。
 
-内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、24 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
+内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
 
@@ -70,13 +70,15 @@ SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS�
 实际窗口/内存像素、IANA→历史、哈希与 crash 门 PASS；旧 PID 3612441414 已退出。
 用户确认含长 URL 该页双轴/斜向拖动无花屏，撤回斜向无反应反馈，不外推全部页面/OEM。
 
-当前断行包 `tmp/device-runs/20261007-004415-app-history-wrap/` 完整 UI 门 PASS：生成的
-会话栈/持久记录在 96/128/192 DPI、240→480→240 视口中无横向溢出，DOM/href 精确不变；
-原滚动像素门继续通过。真实 IANA commit、op=3 保存、op=4 读取后，历史 client/extent
-均宽 454（旧页 extent 581），focus=8；guest 审计、哈希 10/10、crash_check PASS。
-PID 1132574842 留在 `\Storage Card\Temp\Positron-device-gate\app-history-wrap-20261007-004415\positron.exe`。
-正式 Debug/Release build、C89、审计与 Release 新诊断排除通过；libcss 既有警告保留。
-未修改 DLL/ABI 或删除数据库；用户复测反馈未发现异常，本轮页面修正收尾；未逐项确认的触摸/旋转/语言矩阵仍保留。
+先行断行包 `tmp/device-runs/20261007-004415-app-history-wrap/` 自动门及用户复测通过，
+旧 PID 1132574842 已正常退出；完整触摸/旋转/语言矩阵仍保留。
+
+当前包 `tmp/device-runs/20261007-100038-app-fixed-menu/` 完整 UI 门 PASS；右菜单固定，
+双语页内历史操作复用请求/确认/隔离，不产生导航项。焦点容量 32、满页 26 项，
+菜单/折行/滚动像素回归通过。IANA op=3/4 成功，历史
+client/extent 均宽 454，focus=10；50 文件、guest 无引用、哈希 10/10、crash_check PASS。
+PID 2532702806 留在 `\Storage Card\Temp\Positron-device-gate\app-fixed-menu-20261007-100038\positron.exe`。
+Debug/Release build、C89、审计及 Release 诊断排除通过；页内触摸/清除确认待人工，未改存储语义或删库。
 失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
 诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
 
@@ -84,7 +86,7 @@ PID 1132574842 留在 `\Storage Card\Temp\Positron-device-gate\app-history-wrap-
 `20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
 访问记录恢复不等于断电门。
 
-ROADMAP 已复核；滚动视觉门关闭，Core 断行已验收、应用已启用，剩余交互/交错见限制，v1 升级和
+ROADMAP 已复核，本轮菜单修正不改变设置/下载路线；剩余交互/交错见限制，v1 升级和
 500 条裁剪目前为离线 SQL 证据。随后纵切为
 用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
 脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到

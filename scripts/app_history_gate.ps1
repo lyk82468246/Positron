@@ -127,7 +127,7 @@ try {
             $visitComplete = !$VisitNavigation -or (
                     $text -match 'settings-result request=\d+ op=3 result=0' -and
                     $text -match 'settings-result request=\d+ op=4 result=0' -and
-                    $text -match 'internal-page commit url=positron://history kind=5 history=2 focus=8')
+                    $text -match 'internal-page commit url=positron://history kind=5 history=2 focus=10')
             if ($VisitNavigation -and $visitComplete) {
                 $layouts = [regex]::Matches($text,
                     'relayout pass=\d+ network=0 .*size=(\d+)x\d+ extent=(\d+)x\d+')

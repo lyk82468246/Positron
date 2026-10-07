@@ -714,8 +714,8 @@ static void app_internal_history_intro(AppHtmlWriter *writer, int status,
                 "<p>This is the current navigation stack, including forward entries. At most 16 entries are kept; entries disappear when the application exits.</p><p>Opening an entry starts a new navigation.</p>");
     } else {
         app_html_append(writer, chinese ?
-                "<p>\346\234\254\345\234\260\350\267\250\351\207\215\345\220\257\346\234\200\345\244\232\344\277\235\347\225\231 500 \346\235\241\350\256\277\351\227\256\350\256\260\345\275\225\357\274\214\346\257\217\351\241\265 16 \346\235\241\357\274\214\346\214\211\350\256\260\345\275\225 ID \344\273\216\346\226\260\345\210\260\346\227\247\346\216\222\345\210\227\343\200\202\346\211\223\345\274\200\350\256\260\345\275\225\344\274\232\345\217\221\350\265\267\344\270\200\346\254\241\346\226\260\347\232\204\345\257\274\350\210\252\343\200\202</p><p>\344\277\235\345\255\230\347\232\204 URL \345\214\205\345\220\253\346\237\245\350\257\242\345\217\202\346\225\260\357\274\214\345\217\257\350\203\275\345\220\253\346\234\211\351\232\220\347\247\201\344\277\241\346\201\257\343\200\202\350\203\275\350\256\277\351\227\256\346\234\254\345\234\260\345\255\230\345\202\250\347\232\204\344\272\272\345\217\257\350\203\275\350\257\273\345\217\226\350\277\231\344\272\233\350\256\260\345\275\225\343\200\202</p><p>\346\234\254\351\241\265\346\277\200\346\264\273\346\227\266\357\274\214\350\257\267\344\275\277\347\224\250\345\217\263\344\276\247\350\217\234\345\215\225\357\274\232\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\343\200\201\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225\357\274\210\345\246\202\346\234\211\357\274\211\346\210\226\346\270\205\351\231\244\350\256\277\351\227\256\345\216\206\345\217\262\343\200\202\346\270\205\351\231\244\351\234\200\350\246\201\345\216\237\347\224\237\347\241\256\350\256\244\343\200\202</p>" :
-                "<p>Up to 500 visits are retained locally across restarts, with 16 records per page, newest IDs first. Opening a record starts a new navigation.</p><p>Saved URLs include query strings and may contain private information. Anyone with access to local storage may read them.</p><p>While this page is active, use the right Menu: Reload newest, Older records (when available), or Clear visit history. Clearing requires native confirmation.</p>");
+                "<p>\346\234\254\345\234\260\350\267\250\351\207\215\345\220\257\346\234\200\345\244\232\344\277\235\347\225\231 500 \346\235\241\350\256\277\351\227\256\350\256\260\345\275\225\357\274\214\346\257\217\351\241\265 16 \346\235\241\357\274\214\346\214\211\350\256\260\345\275\225 ID \344\273\216\346\226\260\345\210\260\346\227\247\346\216\222\345\210\227\343\200\202\346\211\223\345\274\200\350\256\260\345\275\225\344\274\232\345\217\221\350\265\267\344\270\200\346\254\241\346\226\260\347\232\204\345\257\274\350\210\252\343\200\202</p><p>\344\277\235\345\255\230\347\232\204 URL \345\214\205\345\220\253\346\237\245\350\257\242\345\217\202\346\225\260\357\274\214\345\217\257\350\203\275\345\220\253\346\234\211\351\232\220\347\247\201\344\277\241\346\201\257\343\200\202\350\203\275\350\256\277\351\227\256\346\234\254\345\234\260\345\255\230\345\202\250\347\232\204\344\272\272\345\217\257\350\203\275\350\257\273\345\217\226\350\277\231\344\272\233\350\256\260\345\275\225\343\200\202</p><p>\344\275\277\347\224\250\344\270\213\346\226\271\346\216\247\344\273\266\351\207\215\346\226\260\345\212\240\350\275\275\343\200\201\346\237\245\347\234\213\346\233\264\346\227\251\350\256\260\345\275\225\346\210\226\346\270\205\351\231\244\350\256\277\351\227\256\345\216\206\345\217\262\343\200\202\346\270\205\351\231\244\351\234\200\350\246\201\347\241\256\350\256\244\343\200\202</p>" :
+                "<p>Up to 500 visits are retained locally across restarts, with 16 records per page, newest IDs first. Opening a record starts a new navigation.</p><p>Saved URLs include query strings and may contain private information. Anyone with access to local storage may read them.</p><p>Use the controls below to reload, view older records or clear saved visits. Clearing requires confirmation.</p>");
     }
 }
 
@@ -814,6 +814,15 @@ static void app_internal_visits(AppHtmlWriter *writer,
 
     visits = data->visits;
     app_html_append(writer, chinese ?
+            "<p><a id=\"visits-latest\" href=\"#app-visits-latest\">\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225</a></p><p><a id=\"visits-clear\" href=\"#app-visits-clear\">\346\270\205\351\231\244\350\256\277\351\227\256\345\216\206\345\217\262</a></p>" :
+            "<p><a id=\"visits-latest\" href=\"#app-visits-latest\">Reload newest</a></p><p><a id=\"visits-clear\" href=\"#app-visits-clear\">Clear visit history</a></p>");
+    if (data->visits_status == 2 && app_internal_visits_valid(visits) &&
+            visits->has_more) {
+        app_html_append(writer, chinese ?
+                "<p><a id=\"visits-older\" href=\"#app-visits-older\">\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225</a></p>" :
+                "<p><a id=\"visits-older\" href=\"#app-visits-older\">Older records</a></p>");
+    }
+    app_html_append(writer, chinese ?
                 "<h2>\345\267\262\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\350\256\260\345\275\225</h2>" :
                 "<h2>Saved visits</h2>");
     if (data->visits_status == 1) {
@@ -859,13 +868,6 @@ static void app_internal_visits(AppHtmlWriter *writer,
                 "<p>\346\234\254\351\241\265\346\262\241\346\234\211\345\267\262\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\350\256\260\345\275\225\343\200\202</p>" :
                 "<p>No saved visits on this page.</p>");
         }
-        app_html_append(writer, visits->has_more ?
-                (chinese ?
-                "<p>\345\217\263\344\276\247\350\217\234\345\215\225\345\217\257\346\237\245\347\234\213\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225\343\200\202\342\200\234\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\342\200\235\350\277\224\345\233\236\346\234\200\346\226\260\350\256\260\345\275\225\343\200\202</p>" :
-                "<p>Older records are available from the right Menu. Reload newest returns to the latest records.</p>") :
-                (chinese ?
-                "<p>\346\234\254\351\241\265\344\271\213\345\220\216\346\262\241\346\234\211\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225\343\200\202\342\200\234\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225\342\200\235\350\277\224\345\233\236\346\234\200\346\226\260\350\256\260\345\275\225\343\200\202</p>" :
-                "<p>No older records remain after this page. Reload newest returns to the latest records.</p>"));
     }
     app_html_append(writer, chinese ?
                 "<h2>\344\274\232\350\257\235\345\257\274\350\210\252\346\240\210</h2><p>\345\275\223\345\211\215\346\240\207\347\255\276\351\241\265\347\232\204\345\257\274\350\210\252\346\240\210\345\214\205\345\220\253\345\211\215\350\277\233\350\256\260\345\275\225\357\274\214\344\270\215\344\274\232\346\214\201\344\271\205\344\277\235\345\255\230\343\200\202\345\205\263\351\227\255\346\240\207\347\255\276\351\241\265\346\210\226\351\200\200\345\207\272\345\272\224\347\224\250\345\220\216\346\266\210\345\244\261\357\274\233\344\277\235\345\255\230\347\232\204\350\256\277\351\227\256\350\256\260\345\275\225\344\270\215\344\274\232\346\201\242\345\244\215\345\257\274\350\210\252\346\240\210\343\200\202</p>" :
@@ -958,7 +960,8 @@ int AppInternalPages_FocusIds(HANDLE document,
 {
     static const char *navigation_ids[] = {
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
-        "nav-downloads", "nav-settings", "nav-welcome", "nav-controls"
+        "nav-downloads", "nav-settings", "nav-welcome", "nav-controls",
+        "visits-latest", "visits-older", "visits-clear"
     };
     PCoreFocusTargetInfo info;
     char candidate[32];
@@ -1334,12 +1337,12 @@ int AppInternalPages_DebugCheck(const char *css)
     document = PCore_ParseHTML(html, length);
     if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
             PCore_LayoutDocument(document, 240, 268) != 0 ||
-            AppInternalPages_FocusIds(document, focus_ids) != 23 ||
+            AppInternalPages_FocusIds(document, focus_ids) != 26 ||
             strcmp(focus_ids[0], "visit-0") != 0) goto done;
     if (app_internal_wrap_debug_check(document, stylesheet, "visit-0",
             visits->entries[0].url, visits->entries[0].title) != 0) goto done;
     AppDebug_Log("positron history-wrap selftest OK dpi=96,128,192 widths=240,480,240 text=exact href=exact\r\n");
-    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=23 utc=1\r\n");
+    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=26 utc=1\r\n");
     PCore_FreeDocument(document);
     document = NULL;
     AppI18n_FreePage(html);

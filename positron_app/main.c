@@ -5139,6 +5139,24 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     AppInternalRoute route;
     int same_document;
 
+    /* Application-owned history controls, never a command from a network
+     * page, startup argument or replayed navigation. Do not change history. */
+    if (source == APP_NAV_SOURCE_DOCUMENT &&
+            g_page_kind == APP_I18N_PAGE_HISTORY && url != NULL) {
+        UINT command;
+
+        command = 0;
+        if (strcmp(url, "#app-visits-latest") == 0)
+            command = APP_CMD_VISITS_LATEST;
+        else if (strcmp(url, "#app-visits-older") == 0)
+            command = APP_CMD_VISITS_OLDER;
+        else if (strcmp(url, "#app-visits-clear") == 0)
+            command = APP_CMD_VISITS_CLEAR;
+        if (command != 0) {
+            SendMessage(g_window, WM_COMMAND, command, 0);
+            return 1;
+        }
+    }
     ++g_settings_nav_serial;
     if (!g_settings_nav_serial) g_settings_startup_pending = 0;
     if (url == NULL || url[0] == '\0') return 0;
@@ -7618,28 +7636,6 @@ static void app_tabs_update_menu(void)
 
     if (!g_tabs_enabled || g_menu_bar == NULL) return;
     menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0,
-            (LPARAM) APP_CMD_MENU);
-    if (menu != NULL) {
-        DeleteMenu(menu, APP_CMD_VISITS_LATEST, MF_BYCOMMAND);
-        DeleteMenu(menu, APP_CMD_VISITS_OLDER, MF_BYCOMMAND);
-        DeleteMenu(menu, APP_CMD_VISITS_CLEAR, MF_BYCOMMAND);
-        if (g_visits_enabled && g_page_kind == APP_I18N_PAGE_HISTORY) {
-            flags = g_tab->visits_request_id || g_navigation_request != NULL ?
-                    MF_GRAYED : MF_ENABLED;
-            AppI18n_LoadString(APP_TEXT_MENU_VISITS_LATEST, text, 160);
-            InsertMenuW(menu, APP_CMD_EXIT, MF_BYCOMMAND | MF_STRING | flags,
-                    APP_CMD_VISITS_LATEST, text);
-            AppI18n_LoadString(APP_TEXT_MENU_VISITS_OLDER, text, 160);
-            InsertMenuW(menu, APP_CMD_EXIT, MF_BYCOMMAND | MF_STRING |
-                    (g_tab->visits_status == 2 && g_tab->visits != NULL &&
-                    g_tab->visits->has_more ? flags : MF_GRAYED),
-                    APP_CMD_VISITS_OLDER, text);
-            AppI18n_LoadString(APP_TEXT_MENU_VISITS_CLEAR, text, 160);
-            InsertMenuW(menu, APP_CMD_EXIT, MF_BYCOMMAND | MF_STRING | flags,
-                    APP_CMD_VISITS_CLEAR, text);
-        }
-    }
-    menu = (HMENU) SendMessage(g_menu_bar, SHCMBM_GETSUBMENU, 0,
             (LPARAM) APP_CMD_TABS);
     if (menu == NULL) return;
     /* GetMenuItemCount is not exported by the WM6 SDK. Bounded positional
@@ -8077,7 +8073,10 @@ static int app_tabs_debug_menu(int expect_forward)
     if (GetMenuItemInfoW(left, count, TRUE, &info) ||
             GetMenuItemInfoW(right, APP_CMD_BACK, FALSE, &info) ||
             GetMenuItemInfoW(right, APP_CMD_FORWARD, FALSE, &info) ||
-            GetMenuItemInfoW(right, APP_CMD_REFRESH, FALSE, &info)) return 1;
+            GetMenuItemInfoW(right, APP_CMD_REFRESH, FALSE, &info) ||
+            GetMenuItemInfoW(right, APP_CMD_VISITS_LATEST, FALSE, &info) ||
+            GetMenuItemInfoW(right, APP_CMD_VISITS_OLDER, FALSE, &info) ||
+            GetMenuItemInfoW(right, APP_CMD_VISITS_CLEAR, FALSE, &info)) return 1;
     return 0;
 }
 
@@ -8355,6 +8354,17 @@ static int app_tabs_debug_check(void)
             app_tabs_debug_menu(1) != 0) goto done;
     SendMessage(g_window, WM_COMMAND, APP_CMD_SETTINGS, 0);
     if (strcmp(g_current_url, "positron://settings") ||
+            app_tabs_debug_menu(0) != 0) goto done;
+    SendMessage(g_window, WM_COMMAND, APP_CMD_HISTORY, 0);
+    if (strcmp(g_current_url, "positron://history") ||
+            app_tabs_debug_menu(0) != 0) goto done;
+    /* The isolated tabs have storage disabled: page actions are consumed,
+     * not fragment navigations, and never add a history entry. */
+    slot = PBrowser_HistoryCount(g_history);
+    if (!app_load_page_from(g_window, "#app-visits-latest",
+            APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT) ||
+            PBrowser_HistoryCount(g_history) != slot ||
+            strcmp(g_current_url, "positron://history") ||
             app_tabs_debug_menu(0) != 0) goto done;
     AppDebug_Log("positron tab-menu selftest OK\r\n");
     result = 0;
