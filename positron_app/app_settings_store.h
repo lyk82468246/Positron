@@ -11,6 +11,19 @@
 #define APP_VISITS_URL_MAX 2048
 #define APP_VISITS_TITLE_MAX 256
 
+typedef enum AppSettingsLanguage {
+    APP_SETTINGS_LANGUAGE_SYSTEM = 0,
+    APP_SETTINGS_LANGUAGE_ENGLISH,
+    APP_SETTINGS_LANGUAGE_CHINESE
+} AppSettingsLanguage;
+
+/* Application policy, copied as a single atomic preference snapshot. */
+typedef struct AppSettingsValues {
+    char startup_url[APP_VISITS_URL_MAX];
+    AppSettingsLanguage language;
+    int javascript_enabled;
+} AppSettingsValues;
+
 typedef struct AppVisitRecord {
     __int64 id;
     __int64 visited_utc;
@@ -70,11 +83,26 @@ typedef struct AppSettingsResult {
     int state_valid;
     PDbConnectionState state;
     PDbErrorInfo error;
+    /* Compatibility row for the existing fixed-page UI. New consumers must
+     * use values, not this enum, to read a network startup URL or policy. */
     AppSettingsStartPage start_page;
+    AppSettingsValues values;
     AppVisitSnapshot *visits;
 } AppSettingsResult;
 
 const char *AppSettingsStore_StartPageUrl(AppSettingsStartPage page);
+void AppSettingsValues_Default(AppSettingsValues *values);
+/* Normalize HTTP(S) through the existing public URL consumer; only the
+ * three established internal startup pages are permitted. Failure leaves
+ * output unchanged. No I/O, DB handle or private URL parsing. */
+int AppSettingsValues_Normalize(const AppSettingsValues *input,
+        AppSettingsValues *output);
+/* Same admission, routing, drain and COMMIT contract as Submit. All fields
+ * are copied before admission; queue-full/invalid leaves the ID unchanged.
+ * The fixed-page Submit SAVE updates only the URL and preserves policies. */
+int AppSettingsStore_SaveValues(AppSettingsStore *store,
+        const AppSettingsValues *values, unsigned long tab_id,
+        unsigned long generation, unsigned long *out_request_id);
 
 /* All entry points belong to the creating/UI thread. The worker alone loads
  * the explicitly named absolute DLL, opens/migrates/queries/closes the DB and

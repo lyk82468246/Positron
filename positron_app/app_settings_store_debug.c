@@ -8,6 +8,58 @@
 #include <string.h>
 #include <wchar.h>
 
+/* Fixture setup uses only the public DB exports and closes before the
+ * production worker opens its handle. Never edit DLL metadata directly. */
+static int app_settings_debug_sql(const WCHAR *dll, const char *path,
+        int version, const char *sql)
+{
+    HMODULE module;
+    PDbHandle db;
+    int (*open_db)(const char *, int, PDbHandle *);
+    void (*close_db)(PDbHandle);
+    int (*execute)(PDbHandle, const char *);
+    int (*migrate)(PDbHandle, int, const char *);
+    int rc;
+
+    module = LoadLibraryW(dll);
+    if (module == NULL) return 1;
+    open_db = (int (*)(const char *, int, PDbHandle *))
+            GetProcAddress(module, L"PDb_OpenUtf8");
+    close_db = (void (*)(PDbHandle)) GetProcAddress(module, L"PDb_Close");
+    execute = (int (*)(PDbHandle, const char *)) GetProcAddress(module, L"PDb_Exec");
+    migrate = (int (*)(PDbHandle, int, const char *))
+            GetProcAddress(module, L"PDb_ApplyMigration");
+    db = NULL;
+    rc = 1;
+    if (open_db != NULL && close_db != NULL && execute != NULL && migrate != NULL) {
+        rc = open_db(path, PDB_OPEN_LOCAL_FULL_SQL, &db);
+        if (rc == PDB_OK) rc = version ? migrate(db, version, sql) : execute(db, sql);
+        if (db != NULL) close_db(db);
+    }
+    FreeLibrary(module);
+    return rc == PDB_OK ? 0 : 1;
+}
+
+static int app_settings_debug_seed(const WCHAR *dll, const char *path, int version)
+{
+    static const char settings[] =
+            "CREATE TABLE app_settings (id INTEGER PRIMARY KEY CHECK(id=1),"
+            "schema_version INTEGER NOT NULL CHECK(schema_version=1),"
+            "startup_page TEXT NOT NULL CHECK(startup_page IN "
+            "('positron://newtab','positron://welcome','positron://controls')));"
+            "INSERT INTO app_settings VALUES(1,1,'positron://welcome');";
+    static const char visits[] =
+            "CREATE TABLE app_visits (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "url TEXT,title TEXT,visited_utc INTEGER);"
+            "INSERT INTO app_visits(url,title,visited_utc) "
+            "VALUES('https://example.com/legacy','Legacy visit',1700000000);";
+    char script[sizeof(settings) + sizeof(visits)];
+
+    strcpy(script, settings);
+    if (version == 2) strcat(script, visits);
+    return app_settings_debug_sql(dll, path, version, script);
+}
+
 static int app_settings_debug_next(AppSettingsStore *store,
         AppSettingsResult *result)
 {
@@ -88,6 +140,7 @@ int AppVisitStore_DebugLiveCheck(int mode)
     char log[192];
     AppSettingsStore *store;
     AppSettingsResult result;
+    AppSettingsValues values;
     unsigned long request;
     DWORD length;
     int i;
@@ -111,15 +164,32 @@ int AppVisitStore_DebugLiveCheck(int mode)
     if ((GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) != (mode == 1))
         goto done;
     if (!WideCharToMultiByte(CP_UTF8, 0, path, -1, database,
-            sizeof(database), NULL, NULL) ||
-            AppSettingsStore_Create(dll, database, &store) != APP_SETTINGS_OK ||
-            !app_settings_debug_ready(store, mode == 1 ?
-            APP_SETTINGS_START_NEWTAB : APP_SETTINGS_START_WELCOME)) goto done;
+            sizeof(database), NULL, NULL)) goto done;
+    if (mode == 1 && app_settings_debug_seed(dll, database, 2)) goto done;
+    if (AppSettingsStore_Create(dll, database, &store) != APP_SETTINGS_OK ||
+            !app_settings_debug_ready(store, APP_SETTINGS_START_WELCOME)) goto done;
     if (mode == 1) {
         if (AppSettingsStore_Submit(store, APP_SETTINGS_SAVE,
                 APP_SETTINGS_START_WELCOME, 1, 1, &request) != APP_SETTINGS_OK ||
                 app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
                 result.result != APP_SETTINGS_OK) goto done;
+        if (AppSettingsStore_ReadVisits(store, 0, 1, 1, &request) != APP_SETTINGS_OK ||
+                app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                result.result != APP_SETTINGS_OK || result.visits == NULL ||
+                result.visits->count != 1 ||
+                strcmp(result.visits->entries[0].url, "https://example.com/legacy"))
+            goto done;
+        AppSettingsResult_Release(&result);
+        AppSettingsValues_Default(&values);
+        strcpy(values.startup_url, "https://example.com/?q=%E4%B8%AD%E6%96%87&x=1");
+        values.language = APP_SETTINGS_LANGUAGE_CHINESE;
+        values.javascript_enabled = 0;
+        if (AppSettingsStore_SaveValues(store, &values, 1, 1, &request) != APP_SETTINGS_OK ||
+                app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                result.result != APP_SETTINGS_OK ||
+                strcmp(result.values.startup_url, values.startup_url) ||
+                result.values.language != values.language ||
+                result.values.javascript_enabled != 0) goto done;
         for (i = 0; i < 18; ++i) {
             if (AppSettingsStore_AddVisit(store, "https://example.com/?saved=1",
                     "Saved visit", 1700000000 + i, &request) != APP_SETTINGS_OK ||
@@ -127,6 +197,14 @@ int AppVisitStore_DebugLiveCheck(int mode)
                     result.result != APP_SETTINGS_OK) goto done;
         }
     } else {
+        if (AppSettingsStore_Submit(store, APP_SETTINGS_LOAD,
+                APP_SETTINGS_START_NEWTAB, 1, 1, &request) != APP_SETTINGS_OK ||
+                app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                result.result != APP_SETTINGS_OK ||
+                strcmp(result.values.startup_url,
+                "https://example.com/?q=%E4%B8%AD%E6%96%87&x=1") ||
+                result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
+                result.values.javascript_enabled != 0) goto done;
         if (AppSettingsStore_ReadVisits(store, 0, 1, 1, &request) !=
                 APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
                 APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
@@ -145,9 +223,20 @@ int AppVisitStore_DebugLiveCheck(int mode)
                     APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
                     APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
                     result.visits == NULL || result.visits->count != 0) goto done;
+            AppSettingsResult_Release(&result);
+            if (AppSettingsStore_Submit(store, APP_SETTINGS_LOAD,
+                    APP_SETTINGS_START_NEWTAB, 1, 4, &request) != APP_SETTINGS_OK ||
+                    app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                    result.result != APP_SETTINGS_OK ||
+                    strcmp(result.values.startup_url,
+                    "https://example.com/?q=%E4%B8%AD%E6%96%87&x=1") ||
+                    result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
+                    result.values.javascript_enabled != 0) goto done;
         }
     }
     passed = 1;
+    AppDebug_Log("positron preferences-process selftest OK migration=v2 "
+            "snapshot=exact legacy_visit=preserved clear_preserves_preferences=1\r\n");
 done:
     AppSettingsResult_Release(&result);
     cleanup = app_settings_debug_close(&store);
@@ -171,6 +260,8 @@ int AppSettingsStore_DebugCheck(void)
     AppSettingsStore *store;
     AppSettingsResult result;
     AppSettingsResult before;
+    AppSettingsValues values;
+    AppSettingsValues normalized;
     AppSettingsDebugThread *probe;
     HANDLE foreign;
     DWORD length;
@@ -219,9 +310,10 @@ int AppSettingsStore_DebugCheck(void)
     if (AppSettingsStore_StartPageUrl((AppSettingsStartPage) -1) != NULL ||
             AppSettingsStore_Create(L"positron_db.dll", database_path, &store) !=
             APP_SETTINGS_INVALID || store != NULL) goto done;
+    if (app_settings_debug_seed(module_path, database_path, 1)) goto done;
     if (AppSettingsStore_Create(module_path, database_path, &store) !=
             APP_SETTINGS_OK || !app_settings_debug_ready(store,
-            APP_SETTINGS_START_NEWTAB)) goto done;
+            APP_SETTINGS_START_WELCOME)) goto done;
     phase = 2;
     probe = (AppSettingsDebugThread *) calloc(1, sizeof(*probe));
     if (probe == NULL) goto done;
@@ -241,6 +333,24 @@ int AppSettingsStore_DebugCheck(void)
             (AppSettingsStartPage) 3, 1, 2, &request) != APP_SETTINGS_INVALID ||
             request != 777) goto done;
     phase = 3;
+    AppSettingsValues_Default(&values);
+    memset(&normalized, 0x5a, sizeof(normalized));
+    strcpy(values.startup_url, "positron://quit");
+    if (AppSettingsValues_Normalize(&values, &normalized) != APP_SETTINGS_INVALID ||
+            (unsigned char) normalized.startup_url[0] != 0x5a ||
+            AppSettingsStore_SaveValues(store, &values, 1, 2, &request) !=
+            APP_SETTINGS_INVALID || request != 777) goto done;
+    strcpy(values.startup_url, "https://");
+    if (AppSettingsStore_SaveValues(store, &values, 1, 2, &request) !=
+            APP_SETTINGS_INVALID || request != 777) goto done;
+    AppSettingsValues_Default(&values);
+    values.language = (AppSettingsLanguage) 3;
+    if (AppSettingsStore_SaveValues(store, &values, 1, 2, &request) !=
+            APP_SETTINGS_INVALID || request != 777) goto done;
+    values.language = APP_SETTINGS_LANGUAGE_SYSTEM;
+    values.javascript_enabled = 2;
+    if (AppSettingsStore_SaveValues(store, &values, 1, 2, &request) !=
+            APP_SETTINGS_INVALID || request != 777) goto done;
     /* Unread completions continue to consume slots even if the worker runs
      * before this thread submits the next job: no scheduling assumption. */
     for (index = 0; index < APP_SETTINGS_QUEUE_MAX; ++index) {
@@ -252,6 +362,9 @@ int AppSettingsStore_DebugCheck(void)
     if (AppSettingsStore_Submit(store, APP_SETTINGS_LOAD,
             APP_SETTINGS_START_NEWTAB, 7, 9, &request) != APP_SETTINGS_QUEUE_FULL ||
             request != 777) goto done;
+    AppSettingsValues_Default(&values);
+    if (AppSettingsStore_SaveValues(store, &values, 7, 9, &request) !=
+            APP_SETTINGS_QUEUE_FULL || request != 777) goto done;
     for (index = 0; index < APP_SETTINGS_QUEUE_MAX; ++index) {
         if (app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
                 result.request_id != requests[index] || result.tab_id != 7 ||
@@ -311,6 +424,18 @@ int AppSettingsStore_DebugCheck(void)
             result.start_page != APP_SETTINGS_START_WELCOME) goto done;
     AppDebug_Log("positron visits-storage selftest OK records=17 cursor=1 "
             "same_process_reopen=1 clear_preserves_settings=1\r\n");
+    AppSettingsValues_Default(&values);
+    strcpy(values.startup_url, "https://example.com/start?q=%E4%B8%AD&v=1");
+    values.language = APP_SETTINGS_LANGUAGE_CHINESE;
+    values.javascript_enabled = 0;
+    if (AppSettingsStore_SaveValues(store, &values, 72, 95, &request) !=
+            APP_SETTINGS_OK || app_settings_debug_next(store, &result) !=
+            APP_SETTINGS_OK || result.result != APP_SETTINGS_OK ||
+            result.request_id != request || result.tab_id != 72 ||
+            result.generation != 95 ||
+            strcmp(result.values.startup_url, values.startup_url) ||
+            result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
+            result.values.javascript_enabled != 0) goto done;
     if (AppSettingsStore_Submit(store, APP_SETTINGS_SAVE,
             APP_SETTINGS_START_CONTROLS, 7, 10, &request) != APP_SETTINGS_OK ||
             AppSettingsStore_RequestClose(store) != APP_SETTINGS_OK) goto done;
@@ -326,8 +451,47 @@ int AppSettingsStore_DebugCheck(void)
     /* New worker/handle, same process; do NOT label this a process restart. */
     if (AppSettingsStore_Create(module_path, database_path, &store) !=
             APP_SETTINGS_OK || !app_settings_debug_ready(store,
-            APP_SETTINGS_START_CONTROLS) ||
+            APP_SETTINGS_START_CONTROLS)) goto done;
+    if (AppSettingsStore_Submit(store, APP_SETTINGS_LOAD,
+            APP_SETTINGS_START_NEWTAB, 72, 96, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK ||
+            strcmp(result.values.startup_url, "positron://controls") ||
+            result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
+            result.values.javascript_enabled != 0 ||
             app_settings_debug_close(&store) != APP_SETTINGS_OK) goto done;
+    if (app_settings_debug_sql(module_path, database_path, 0,
+            "CREATE TRIGGER app_preferences_reject BEFORE UPDATE ON app_preferences "
+            "WHEN NEW.language=1 BEGIN SELECT RAISE(ABORT,'fixture rejection'); END;") ||
+            AppSettingsStore_Create(module_path, database_path, &store) != APP_SETTINGS_OK ||
+            !app_settings_debug_ready(store, APP_SETTINGS_START_CONTROLS)) goto done;
+    values.language = APP_SETTINGS_LANGUAGE_ENGLISH;
+    values.javascript_enabled = 1;
+    if (AppSettingsStore_SaveValues(store, &values, 73, 97, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_DB_FAILED || !result.state_valid ||
+            result.state.transaction_active || result.state.statement_count ||
+            app_settings_debug_close(&store) != APP_SETTINGS_OK) goto done;
+    if (app_settings_debug_sql(module_path, database_path, 0,
+            "DROP TRIGGER app_preferences_reject;") ||
+            AppSettingsStore_Create(module_path, database_path, &store) != APP_SETTINGS_OK ||
+            !app_settings_debug_ready(store, APP_SETTINGS_START_CONTROLS) ||
+            AppSettingsStore_Submit(store, APP_SETTINGS_LOAD, APP_SETTINGS_START_NEWTAB,
+            73, 98, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK ||
+            strcmp(result.values.startup_url, "positron://controls") ||
+            result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
+            result.values.javascript_enabled != 0 ||
+            app_settings_debug_close(&store) != APP_SETTINGS_OK) goto done;
+    if (app_settings_debug_sql(module_path, database_path, 4, "") ||
+            AppSettingsStore_Create(module_path, database_path, &store) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result == APP_SETTINGS_OK ||
+            app_settings_debug_close(&store) != APP_SETTINGS_OK) goto done;
+    AppDebug_Log("positron preferences-storage selftest OK migration=v1 "
+            "snapshot=atomic reject=unchanged reopen=exact legacy_preserves_policy=1 "
+            "failed_write=rollback future=refused\r\n");
     phase = 5;
     _snprintf(missing_path, sizeof(missing_path) - 1,
             "%s\\missing\\settings.db", database_path);

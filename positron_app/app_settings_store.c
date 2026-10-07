@@ -6,6 +6,7 @@
 
 #include "app_settings_store.h"
 #include "app_debug.h"
+#include "app_url_router.h"
 
 /* No import library dependency until the DB production device gates pass. */
 typedef struct AppSettingsDbApi {
@@ -34,6 +35,8 @@ typedef struct AppSettingsJob {
     unsigned long generation;
     int operation;
     AppSettingsStartPage start_page;
+    int full_values;
+    AppSettingsValues values;
     __int64 before_id;
     __int64 visited_utc;
     char url[APP_VISITS_URL_MAX];
@@ -75,6 +78,23 @@ static const char g_settings_write_sql[] =
 static const char g_settings_exists_sql[] =
     "SELECT count(*) FROM sqlite_master WHERE type='table' "
     "AND name='app_settings'";
+
+/* Keep the v1 row for the existing fixed-page UI adapter. Full preferences
+ * have one owner and one versioned table; migration copies the old choice. */
+static const char g_preferences_schema[] =
+    "CREATE TABLE app_preferences (id INTEGER PRIMARY KEY CHECK(id=1),"
+    "startup_url TEXT NOT NULL CHECK(length(startup_url)>0 AND length(startup_url)<2048),"
+    "language INTEGER NOT NULL CHECK(language BETWEEN 0 AND 2),"
+    "javascript_enabled INTEGER NOT NULL CHECK(javascript_enabled IN (0,1)));"
+    "INSERT INTO app_preferences SELECT id,startup_page,0,1 FROM app_settings;";
+static const char g_preferences_exists_sql[] =
+    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_preferences'";
+static const char g_preferences_read_sql[] =
+    "SELECT startup_url,language,javascript_enabled FROM app_preferences WHERE id=1";
+static const char g_preferences_write_sql[] =
+    "UPDATE app_preferences SET startup_url=?1,language=?2,javascript_enabled=?3 WHERE id=1";
+static const char g_preferences_legacy_write_sql[] =
+    "UPDATE app_preferences SET startup_url=?1 WHERE id=1";
 
 static const char g_visits_exists_sql[] =
     "SELECT count(*) FROM sqlite_master WHERE type='table' "
@@ -153,6 +173,46 @@ const char *AppSettingsStore_StartPageUrl(AppSettingsStartPage page)
     }
 }
 
+void AppSettingsValues_Default(AppSettingsValues *values)
+{
+    if (values == NULL) return;
+    memset(values, 0, sizeof(*values));
+    strcpy(values->startup_url, "positron://newtab");
+    values->language = APP_SETTINGS_LANGUAGE_SYSTEM;
+    values->javascript_enabled = 1;
+}
+
+int AppSettingsValues_Normalize(const AppSettingsValues *input,
+        AppSettingsValues *output)
+{
+    AppSettingsValues normalized;
+    AppUrlSchemeKind scheme;
+    const char *url;
+    int page;
+    int valid;
+
+    if (input == NULL || output == NULL ||
+            input->language < APP_SETTINGS_LANGUAGE_SYSTEM ||
+            input->language > APP_SETTINGS_LANGUAGE_CHINESE ||
+            (input->javascript_enabled != 0 && input->javascript_enabled != 1) ||
+            !app_visits_input(input->startup_url, APP_VISITS_URL_MAX, 1))
+        return APP_SETTINGS_INVALID;
+    normalized = *input;
+    valid = 0;
+    for (page = APP_SETTINGS_START_NEWTAB; page <= APP_SETTINGS_START_CONTROLS;
+            ++page) {
+        url = AppSettingsStore_StartPageUrl((AppSettingsStartPage) page);
+        if (!strcmp(input->startup_url, url)) valid = 1;
+    }
+    scheme = AppUrlRouter_ClassifyScheme(input->startup_url);
+    if (!valid && (scheme == APP_URL_SCHEME_HTTP || scheme == APP_URL_SCHEME_HTTPS))
+        valid = AppUrlRouter_ResolveNetworkReference(NULL, input->startup_url,
+                normalized.startup_url, sizeof(normalized.startup_url)) == 0;
+    if (!valid) return APP_SETTINGS_INVALID;
+    *output = normalized;
+    return APP_SETTINGS_OK;
+}
+
 static void app_settings_result_init(AppSettingsResult *result,
         const AppSettingsJob *job)
 {
@@ -162,6 +222,7 @@ static void app_settings_result_init(AppSettingsResult *result,
     result->generation = job->generation;
     result->operation = job->operation;
     result->start_page = APP_SETTINGS_START_NEWTAB;
+    AppSettingsValues_Default(&result->values);
     result->error.size = sizeof(result->error);
     result->error.version = PDB_ERROR_INFO_VERSION;
     result->state.size = sizeof(result->state);
@@ -234,7 +295,7 @@ static void app_settings_finish_statement(AppSettingsDbApi *api,
         app_settings_db_failure(api, db, rc, result);
 }
 
-static void app_settings_read(AppSettingsDbApi *api, PDbHandle db,
+static void app_settings_read_legacy(AppSettingsDbApi *api, PDbHandle db,
         AppSettingsResult *result)
 {
     PDbStmtHandle statement;
@@ -283,6 +344,60 @@ static void app_settings_read(AppSettingsDbApi *api, PDbHandle db,
     app_settings_finish_statement(api, db, statement, result);
 }
 
+static void app_settings_read(AppSettingsDbApi *api, PDbHandle db,
+        AppSettingsResult *result)
+{
+    PDbStmtHandle statement;
+    AppSettingsValues values;
+    AppSettingsValues normalized;
+    const char *text;
+    __int64 language;
+    __int64 javascript;
+    int bytes;
+    int rc;
+
+    app_settings_read_legacy(api, db, result);
+    if (result->result != APP_SETTINGS_OK) return;
+    statement = NULL;
+    rc = api->prepare(db, g_preferences_read_sql, &statement);
+    if (rc == PDB_OK) rc = api->step(statement);
+    if (rc != PDB_STEP_ROW) {
+        if (rc == PDB_STEP_DONE) result->result = APP_SETTINGS_BAD_DATA;
+        else app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, statement, result);
+        return;
+    }
+    AppSettingsValues_Default(&values);
+    text = api->column_text(statement, 0);
+    bytes = api->column_bytes(statement, 0);
+    language = api->column_int(statement, 1);
+    javascript = api->column_int(statement, 2);
+    if (api->column_type(statement, 0) != PDB_VALUE_TEXT || text == NULL ||
+            bytes <= 0 || bytes >= APP_VISITS_URL_MAX ||
+            memchr(text, '\0', (size_t) bytes) != NULL ||
+            api->column_type(statement, 1) != PDB_VALUE_INTEGER ||
+            language < 0 || language > 2 ||
+            api->column_type(statement, 2) != PDB_VALUE_INTEGER ||
+            (javascript != 0 && javascript != 1)) {
+        result->result = APP_SETTINGS_BAD_DATA;
+    } else {
+        memcpy(values.startup_url, text, (size_t) bytes);
+        values.startup_url[bytes] = '\0';
+        values.language = (AppSettingsLanguage) language;
+        values.javascript_enabled = (int) javascript;
+        if (AppSettingsValues_Normalize(&values, &normalized) != APP_SETTINGS_OK ||
+                strcmp(values.startup_url, normalized.startup_url))
+            result->result = APP_SETTINGS_BAD_DATA;
+        else result->values = values;
+    }
+    if (result->result == APP_SETTINGS_OK) {
+        rc = api->step(statement);
+        if (rc == PDB_STEP_ROW) result->result = APP_SETTINGS_BAD_DATA;
+        else if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+    }
+    app_settings_finish_statement(api, db, statement, result);
+}
+
 static int app_settings_table_exists(AppSettingsDbApi *api, PDbHandle db,
         const char *sql, AppSettingsResult *result)
 {
@@ -312,30 +427,35 @@ static int app_settings_table_exists(AppSettingsDbApi *api, PDbHandle db,
 static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         AppSettingsResult *result)
 {
-    char script[sizeof(g_settings_schema) + sizeof(g_visits_schema)];
+    char script[sizeof(g_settings_schema) + sizeof(g_visits_schema) +
+            sizeof(g_preferences_schema)];
     int exists;
     int visits_exist;
+    int preferences_exist;
     int rc;
 
     exists = app_settings_table_exists(api, db, g_settings_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
     visits_exist = app_settings_table_exists(api, db, g_visits_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
-    if (visits_exist && !exists) {
+    preferences_exist = app_settings_table_exists(api, db,
+            g_preferences_exists_sql, result);
+    if (result->result != APP_SETTINGS_OK) return;
+    if ((visits_exist && !exists) || (preferences_exist && (!exists || !visits_exist))) {
         result->result = APP_SETTINGS_BAD_DATA;
         return;
     }
-    /* One app migration sequence: settings row/table constraints remain v1,
-     * while the database advances directly to v2. Never issue an empty v1
-     * guard on a v2 restart. Future versions are refused by the public API. */
+    /* One migration sequence, no private DB metadata access. Legacy row and
+     * visits remain intact; v3 adds the atomic preference snapshot. */
     if (exists) {
-        app_settings_read(api, db, result);
+        app_settings_read_legacy(api, db, result);
         if (result->result != APP_SETTINGS_OK) return;
     }
     script[0] = '\0';
     if (!exists) strcpy(script, g_settings_schema);
     if (!visits_exist) strcat(script, g_visits_schema);
-    rc = api->migration(db, 2, script);
+    if (!preferences_exist) strcat(script, g_preferences_schema);
+    rc = api->migration(db, 3, script);
     if (rc != PDB_OK) {
         app_settings_db_failure(api, db, rc, result);
         return;
@@ -481,18 +601,38 @@ static void app_settings_save(AppSettingsDbApi *api, PDbHandle db,
     int rc;
 
     statement = NULL;
-    url = AppSettingsStore_StartPageUrl(job->start_page);
+    url = job->full_values ? job->values.startup_url :
+            AppSettingsStore_StartPageUrl(job->start_page);
     rc = api->begin(db);
-    if (rc == PDB_OK) rc = api->prepare(db, g_settings_write_sql, &statement);
-    if (rc == PDB_OK) rc = api->bind_text(statement, 1, url, (int) strlen(url));
-    if (rc == PDB_OK) rc = api->step(statement);
-    if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
-    app_settings_finish_statement(api, db, statement, result);
+    if (!job->full_values) {
+        if (rc == PDB_OK) rc = api->prepare(db, g_settings_write_sql, &statement);
+        if (rc == PDB_OK) rc = api->bind_text(statement, 1, url, (int) strlen(url));
+        if (rc == PDB_OK) rc = api->step(statement);
+        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, statement, result);
+        statement = NULL;
+    } else if (rc != PDB_OK) app_settings_db_failure(api, db, rc, result);
+    if (result->result == APP_SETTINGS_OK) {
+        rc = api->prepare(db, job->full_values ? g_preferences_write_sql :
+                g_preferences_legacy_write_sql, &statement);
+        if (rc == PDB_OK) rc = api->bind_text(statement, 1, url, (int) strlen(url));
+        if (job->full_values && rc == PDB_OK)
+            rc = api->bind_int(statement, 2, job->values.language);
+        if (job->full_values && rc == PDB_OK)
+            rc = api->bind_int(statement, 3, job->values.javascript_enabled);
+        if (rc == PDB_OK) rc = api->step(statement);
+        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, statement, result);
+    }
     if (result->result == APP_SETTINGS_OK) {
         /* Detect a missing/malformed row or a no-op UPDATE before COMMIT. */
         app_settings_read(api, db, result);
         if (result->result == APP_SETTINGS_OK &&
-                result->start_page != job->start_page)
+                (strcmp(result->values.startup_url, url) ||
+                (job->full_values &&
+                (result->values.language != job->values.language ||
+                 result->values.javascript_enabled != job->values.javascript_enabled)) ||
+                (!job->full_values && result->start_page != job->start_page)))
             result->result = APP_SETTINGS_BAD_DATA;
     }
     if (result->result == APP_SETTINGS_OK) {
@@ -659,7 +799,8 @@ int AppSettingsStore_Create(const WCHAR *dll_path, const char *database_path,
 static int app_settings_enqueue(AppSettingsStore *store, int operation,
         AppSettingsStartPage page, unsigned long tab_id,
         unsigned long generation, const char *url, const char *title,
-        __int64 visited_utc, __int64 before_id, unsigned long *out_request_id)
+        __int64 visited_utc, __int64 before_id, const AppSettingsValues *values,
+        unsigned long *out_request_id)
 {
     AppSettingsJob *job;
     int tail;
@@ -682,6 +823,10 @@ static int app_settings_enqueue(AppSettingsStore *store, int operation,
         job->generation = generation;
         job->operation = operation;
         job->start_page = page;
+        if (values != NULL) {
+            job->full_values = 1;
+            job->values = *values;
+        }
         job->before_id = before_id;
         job->visited_utc = visited_utc;
         if (url != NULL) strcpy(job->url, url);
@@ -703,7 +848,20 @@ int AppSettingsStore_Submit(AppSettingsStore *store, int operation,
             AppSettingsStore_StartPageUrl(page) == NULL)
         return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, operation, page, tab_id, generation,
-            NULL, NULL, 0, 0, out_request_id);
+            NULL, NULL, 0, 0, NULL, out_request_id);
+}
+
+int AppSettingsStore_SaveValues(AppSettingsStore *store,
+        const AppSettingsValues *values, unsigned long tab_id,
+        unsigned long generation, unsigned long *out_request_id)
+{
+    AppSettingsValues normalized;
+
+    if (AppSettingsValues_Normalize(values, &normalized) != APP_SETTINGS_OK)
+        return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_SETTINGS_SAVE,
+            APP_SETTINGS_START_NEWTAB, tab_id, generation, NULL, NULL, 0, 0,
+            &normalized, out_request_id);
 }
 
 int AppSettingsStore_AddVisit(AppSettingsStore *store, const char *url,
@@ -714,7 +872,7 @@ int AppSettingsStore_AddVisit(AppSettingsStore *store, const char *url,
             !app_visits_input(title, APP_VISITS_TITLE_MAX, 0))
         return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, APP_VISITS_ADD, APP_SETTINGS_START_NEWTAB,
-            0, 0, url, title, visited_utc, 0, out_request_id);
+            0, 0, url, title, visited_utc, 0, NULL, out_request_id);
 }
 
 int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
@@ -723,14 +881,14 @@ int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
 {
     if (before_id < 0) return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, APP_VISITS_LOAD, APP_SETTINGS_START_NEWTAB,
-            tab_id, generation, NULL, NULL, 0, before_id, out_request_id);
+            tab_id, generation, NULL, NULL, 0, before_id, NULL, out_request_id);
 }
 
 int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
         unsigned long generation, unsigned long *out_request_id)
 {
     return app_settings_enqueue(store, APP_VISITS_CLEAR, APP_SETTINGS_START_NEWTAB,
-            tab_id, generation, NULL, NULL, 0, 0, out_request_id);
+            tab_id, generation, NULL, NULL, 0, 0, NULL, out_request_id);
 }
 
 int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out)

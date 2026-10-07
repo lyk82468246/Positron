@@ -62,6 +62,16 @@ function Assert-SettingsFixtureLog([string] $Body, [uint32] $AppPid, [string] $S
     if (([regex]::Matches($Body, $pattern)).Count -ne 1) {
         throw 'Missing exact suite, cleanup or production-disabled evidence.'
     }
+    $preferences = if ($Suite -eq 'storage') {
+        'preferences-storage selftest OK migration=v1 snapshot=atomic reject=unchanged reopen=exact legacy_preserves_policy=1 failed_write=rollback future=refused'
+    } elseif ($Suite.StartsWith('visits-')) {
+        'preferences-process selftest OK migration=v2 snapshot=exact legacy_visit=preserved clear_preserves_preferences=1'
+    } else { $null }
+    if ($null -ne $preferences -and ([regex]::Matches($Body,
+            '(?m)^positron pid=' + $AppPid + ' tick=\d+ positron ' +
+            [regex]::Escape($preferences) + '\r?$')).Count -ne 1) {
+        throw 'Missing structured-preference migration or recovery evidence.'
+    }
     if (([regex]::Matches($Body, '(?:settings-(?:storage|services)|visits-live) selftest')).Count -ne 1 -or
             ([regex]::Matches($Body, 'settings-fixture PASS')).Count -ne 1 -or
             ([regex]::Matches($Body, 'debug-session pid=')).Count -ne 1) {

@@ -14,8 +14,8 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；本批只修改 EXE 固定右菜单、历史页操作链接、私有焦点容量、自检、设备门和文档。
-不修改 DLL、公共 ABI、DB 或滚动；Core 断行交付为 7596ddf1，保留其他组件及诊断。
+分支 main；本批仅修改 EXE 结构化设置存储、v3 迁移、隔离自检、设备门与文档。
+未修改 DLL/ABI、设置 UI、脚本策略或滚动；并行 Media 候选保留且不提交。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -53,11 +53,8 @@ EXE 接入 schema v2、持久 GET 记录与分页/确认清除；结果按 tab/�
 clear 全局失效缓存。稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)，
 未修改 DLL/ABI 或删除用户数据。
 
-存储基线 Debug 包 `tmp/device-runs/20261006-231023-app-settings-visits-verified/` 的
-app-settings 五进程门 PASS：存储/服务、历史创建、独立进程恢复、清除及主页保留；
-SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS。
-先行 UI 门 `20261006-225852-app-settings-visits/app-history/` 覆盖 Core/转义/UTC/23 焦点；
-实际导航与保存/读取也通过，旧 PID 3816943554 已退出，不是当前入口。
+访问历史存储基线 `tmp/device-runs/20261006-231023-app-settings-visits-verified/`
+五进程 PASS，恢复/清除保留主页、哈希/正常退出/crash 门通过；此前 UI 与实际导航也通过。
 
 截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分开处理：当时缺少的 Core CSS
 紧急断行已完成 DLL 门，应用已选择性启用；原消费者合同见
@@ -73,12 +70,9 @@ SHA256 10/10、每进程退出 guest holders=0 unavailable=0、crash_check PASS�
 先行断行包 `tmp/device-runs/20261007-004415-app-history-wrap/` 自动门及用户复测通过，
 旧 PID 1132574842 已正常退出；完整触摸/旋转/语言矩阵仍保留。
 
-当前包 `tmp/device-runs/20261007-100038-app-fixed-menu/` 完整 UI 门 PASS；右菜单固定，
-双语页内历史操作复用请求/确认/隔离，不产生导航项。焦点容量 32、满页 26 项，
-菜单/折行/滚动像素回归通过。IANA op=3/4 成功，历史
-client/extent 均宽 454，focus=10；50 文件、guest 无引用、哈希 10/10、crash_check PASS。
-PID 2532702806 留在 `\Storage Card\Temp\Positron-device-gate\app-fixed-menu-20261007-100038\positron.exe`。
-Debug/Release build、C89、审计及 Release 诊断排除通过；页内触摸/清除确认待人工，未改存储语义或删库。
+固定菜单包 `tmp/device-runs/20261007-100038-app-fixed-menu/` 自动门与用户验收通过；
+右菜单固定、历史操作在页内，32 槽/26 焦点、实际 IANA 读写及 454 宽度通过。
+PID 2532702806 已正常退出；当前入口见设置存储段。
 失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
 诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
 
@@ -86,19 +80,26 @@ Debug/Release build、C89、审计及 Release 诊断排除通过；页内触摸/
 `20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
 访问记录恢复不等于断电门。
 
-ROADMAP 已复核，本轮菜单修正不改变设置/下载路线；剩余交互/交错见限制，v1 升级和
-500 条裁剪目前为离线 SQL 证据。随后纵切为
+ROADMAP/限制已复核；v1/v2 设置升级已有设备门，500 条裁剪仍为离线 SQL 证据。随后纵切为
 用户确认的 HTTP(S) 主页、系统/英语/简体中文语言和网页 JavaScript 开关，语言重启生效、
-脚本策略只影响随后加载网页；尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
+脚本策略只影响随后加载网页；UI 与策略消费尚未实现。下载在其后接入公开 stream GET/Cancel；遇到
 DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开，串行构建和设备门窗口已释放；下一门
 仍需重新审计引用，不沿用本轮零 holder 快照。
 
-### EXE 固定起始页持久化实际门通过
+### EXE 设置存储与固定起始页基线
 
 普通 Debug/Release 启动已消费 EXE 同目录 positron.db；可信 settings 只编辑
 newtab/welcome/controls，UI 分批 bootstrap/作者代码和服务 Pump，单所有者 DB worker
 异步读取/保存，COMMIT 后更新缓存，退出先撤销服务再排空。公共 DLL/ABI、CAB 配置和
 其他 agent 文件未改；存储不可用不删除文件或切换数据库。
+
+v3 已增加完整主页 URL/语言/JS 快照与原子 SaveValues；v1/v2 升级保留旧主页和访问记录。
+旧主页接口只更新 URL、不重置语言/JS；失败写入回滚，未来版本拒绝。仍仅消费公开 DB/HTTP
+接口；当前 UI/服务 JSON 与启动策略尚未使用完整快照，不把存储完成写成设置功能全部完成。
+当前包 `tmp/device-runs/20261007-131044-app-settings-values/` 五进程及完整 UI 门 PASS：
+升级、队列/无效输入、COMMIT、失败回滚、独立进程恢复与清除保留偏好通过；50 文件、哈希
+10/10、正常退出零引用、crash_check PASS。PID 4150111110 留在该包 newtab。
+串行正式 Debug/Release build、C89、审计及 Release 诊断排除通过；未删除用户数据库。
 
 Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
 `20261006-144728-app-settings-adjacent-release` 的 `136,1321,1341,999` 各 4/4，
