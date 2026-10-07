@@ -148,11 +148,72 @@ int AppSettingsServices_DebugCheck(void)
             "['settings.write',{startupPage:'https://example.com/'}],"
             "['settings.write',{startupPage:'positron://newtab\\u0000suffix'}],"
             "['settings.write',{startupPage:'positron://welcome',extra:1}],"
+            "['settings.write',{startupPage:'https://example.com/',language:'xx',javascriptEnabled:true}],"
+            "['settings.write',{startupPage:'https://example.com/',language:'system',javascriptEnabled:1}],"
+            "['settings.write',{startupPage:'https://',language:'zh-CN',javascriptEnabled:false}],"
+            "['settings.write',{startupPage:'https://example.com/',language:'zh-CN\\u0000x',javascriptEnabled:false}],"
+            "['settings.write',{startupPage:'https://example.com/',language:'system',javascriptEnabled:true,sql:'SELECT 1'}],"
             "['settings.write',{startupPage:0}]],denied=0;"
             "for(var i=0;i<bad.length;i++){try{PositronServices.request("
             "bad[i][0],bad[i][1],function(){});}catch(e){denied++;}}denied===bad.length"));
     APP_SERVICES_CHECK(app_services_debug_pending(&a) == 0 &&
             AppSettingsStore_Poll(store, &result) == APP_SETTINGS_PENDING);
+    APP_SERVICES_CHECK(app_services_debug_js(session_a,
+            "var quotes='https://example.com/'+new Array(1001).join('\"');"
+            "var budgetDenied=false;try{PositronServices.request('settings.write',"
+            "{startupPage:quotes,language:'system',javascriptEnabled:true},"
+            "function(){});}catch(e){budgetDenied=true;}budgetDenied") &&
+            app_services_debug_pending(&a) == 0 &&
+            AppSettingsStore_Poll(store, &result) == APP_SETTINGS_PENDING);
+    APP_SERVICES_CHECK(app_services_debug_js(session_a,
+            "var tooLong='https://example.com/';"
+            "tooLong+=new Array(2048-tooLong.length).join('a');"
+            "var urlDenied=false;try{PositronServices.request('settings.write',"
+            "{startupPage:tooLong,language:'system',javascriptEnabled:true},"
+            "function(){});}catch(e){urlDenied=true;}urlDenied") &&
+            app_services_debug_pending(&a) == 0 &&
+            AppSettingsStore_Poll(store, &result) == APP_SETTINGS_PENDING);
+    /* URL admission is delegated to HTTP's bounded resolver: its current
+     * path buffer is 1024 bytes, not the total app snapshot URL capacity. */
+    APP_SERVICES_CHECK(app_services_debug_js(session_a,
+            "var maxUrl='https://example.com/';"
+            "maxUrl+=new Array(1023).join('a');var maxSaved=false;"
+            "PositronServices.request('settings.write',{startupPage:maxUrl,"
+            "language:'system',javascriptEnabled:true},function(ok,v){"
+            "maxSaved=ok&&v.startupPage===maxUrl;});maxUrl.length===1042") &&
+            app_services_debug_next(store, &result) == APP_SETTINGS_OK &&
+            result.result == APP_SETTINGS_OK &&
+            strlen(result.values.startup_url) == 1042 &&
+            AppSettingsServices_AcceptResult(&a, &result) == APP_SETTINGS_SERVICES_OK &&
+            AppSettingsServices_Pump(&a, &delivered) == APP_SETTINGS_SERVICES_OK &&
+            delivered == 1 && app_services_debug_js(session_a, "maxSaved"));
+    /* Full schema returns a canonical, escaped snapshot without changing the
+     * compatibility row. UTF-8 and author-looking text are only JSON data. */
+    APP_SERVICES_CHECK(app_services_debug_js(session_a,
+            "var snapshot=null;var expectedUrl='https://example.com/?q=\\\"hi\\\"&name=\\u4e2d\\u6587';"
+            "PositronServices.request('settings.write',{startupPage:expectedUrl,"
+            "language:'zh-CN',javascriptEnabled:false},function(ok,v){"
+            "if(ok)snapshot=v;});snapshot===null"));
+    APP_SERVICES_CHECK(app_services_debug_next(store, &result) == APP_SETTINGS_OK &&
+            result.result == APP_SETTINGS_OK &&
+            result.start_page == APP_SETTINGS_START_NEWTAB &&
+            result.values.language == APP_SETTINGS_LANGUAGE_CHINESE &&
+            !result.values.javascript_enabled &&
+            AppSettingsServices_AcceptResult(&b, &result) == APP_SETTINGS_SERVICES_IGNORED &&
+            AppSettingsServices_AcceptResult(&a, &result) == APP_SETTINGS_SERVICES_OK &&
+            AppSettingsServices_Pump(&a, &delivered) == APP_SETTINGS_SERVICES_OK &&
+            delivered == 1 && app_services_debug_js(session_a,
+            "snapshot.startupPage===expectedUrl&&snapshot.language==='zh-CN'&&"
+            "snapshot.javascriptEnabled===false"));
+    APP_SERVICES_CHECK(app_services_debug_js(session_b,
+            "var readSnapshot=null;PositronServices.request('settings.read',{},"
+            "function(ok,v){if(ok)readSnapshot=v;});true") &&
+            app_services_debug_next(store, &result) == APP_SETTINGS_OK &&
+            AppSettingsServices_AcceptResult(&b, &result) == APP_SETTINGS_SERVICES_OK &&
+            AppSettingsServices_Pump(&b, &delivered) == APP_SETTINGS_SERVICES_OK &&
+            delivered == 1 && app_services_debug_js(session_b,
+            "readSnapshot.language==='zh-CN'&&readSnapshot.javascriptEnabled===false&&"
+            "readSnapshot.startupPage.indexOf('https://example.com/')===0"));
     /* Unread worker completions count toward quota; independent of races. */
     APP_SERVICES_CHECK(app_services_debug_js(session_a,
             "for(var i=0;i<8;i++)PositronServices.request('settings.write',"
@@ -175,7 +236,8 @@ int AppSettingsServices_DebugCheck(void)
     }
     APP_SERVICES_CHECK(app_services_debug_js(session_a,
             "calls.length===9&&calls.slice(1).every(function(v){return v[0]&&"
-            "v[1].startupPage==='positron://welcome';})"));
+            "v[1].startupPage==='positron://welcome'&&v[1].language==='zh-CN'&&"
+            "v[1].javascriptEnabled===false;})"));
     phase = 3;
     APP_SERVICES_CHECK(app_services_debug_js(session_a,
             "PositronServices.request('settings.write',{startupPage:'positron://controls'},"
@@ -229,6 +291,9 @@ int AppSettingsServices_DebugCheck(void)
     APP_SERVICES_CHECK(AppSettingsServices_Pump(&a, &delivered) ==
             APP_SETTINGS_SERVICES_IGNORED && delivered == 777 &&
             app_services_debug_js(session_a, "thrown===1"));
+    AppDebug_Log("positron preferences-services selftest OK schema=typed "
+            "json=escaped utf8=exact budget=pre_admission url_budget=delegated "
+            "legacy_preserves_policy=1 routing=isolated\r\n");
     passed = 1;
 done:
     /* Records stay alive during revoke and engine/finalizer destruction.

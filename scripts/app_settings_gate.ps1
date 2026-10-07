@@ -66,6 +66,8 @@ function Assert-SettingsFixtureLog([string] $Body, [uint32] $AppPid, [string] $S
         'preferences-storage selftest OK migration=v1 snapshot=atomic reject=unchanged reopen=exact legacy_preserves_policy=1 failed_write=rollback future=refused'
     } elseif ($Suite.StartsWith('visits-')) {
         'preferences-process selftest OK migration=v2 snapshot=exact legacy_visit=preserved clear_preserves_preferences=1'
+    } elseif ($Suite -eq 'services') {
+        'preferences-services selftest OK schema=typed json=escaped utf8=exact budget=pre_admission url_budget=delegated legacy_preserves_policy=1 routing=isolated'
     } else { $null }
     if ($null -ne $preferences -and ([regex]::Matches($Body,
             '(?m)^positron pid=' + $AppPid + ' tick=\d+ positron ' +

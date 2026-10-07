@@ -14,8 +14,8 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；本批仅修改 EXE 结构化设置存储、v3 迁移、隔离自检、设备门与文档。
-未修改 DLL/ABI、设置 UI、脚本策略或滚动；并行 Media 候选保留且不提交。
+分支 main；本批仅修改 EXE 可信设置服务完整快照、隔离自检、设备门与文档。
+未修改 DLL/ABI、设置 UI、启动/脚本策略或滚动；并行 Media 候选保留且不提交。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。默认启动/主页读取固定起始页偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -93,17 +93,17 @@ newtab/welcome/controls，UI 分批 bootstrap/作者代码和服务 Pump，单�
 异步读取/保存，COMMIT 后更新缓存，退出先撤销服务再排空。公共 DLL/ABI、CAB 配置和
 其他 agent 文件未改；存储不可用不删除文件或切换数据库。
 
-v3 已增加完整主页 URL/语言/JS 快照与原子 SaveValues；v1/v2 升级保留旧主页和访问记录。
-旧主页接口只更新 URL、不重置语言/JS；失败写入回滚，未来版本拒绝。仍仅消费公开 DB/HTTP
-接口；当前 UI/服务 JSON 与启动策略尚未使用完整快照，不把存储完成写成设置功能全部完成。
-当前包 `tmp/device-runs/20261007-131044-app-settings-values/` 五进程及完整 UI 门 PASS：
-升级、队列/无效输入、COMMIT、失败回滚、独立进程恢复与清除保留偏好通过；50 文件、哈希
-10/10、正常退出零引用、crash_check PASS。PID 4150111110 留在该包 newtab。
-串行正式 Debug/Release build、C89、审计及 Release 诊断排除通过；未删除用户数据库。
-
-Debug `20261006-144626-app-settings-adjacent-debug` 与 Release
-`20261006-144728-app-settings-adjacent-release` 的 `136,1321,1341,999` 各 4/4，
-唯一 PASS、完整日志、零 ERROR/FAIL、空间/引用/crash 门通过；日志回收后清理这两个测试目录。
+v3 完整主页/语言/JS 快照、原子 SaveValues 与可信服务读写已接入；v1/v2 升级保留旧数据。
+旧主页接口只更新 URL、保留策略；失败回滚、未来版本拒绝。服务严格类型/字段、UTF-8/引号
+转义、入队前 4096 字节预算及 tab/generation/token 隔离已验证；URL 接受范围归公共 HTTP。
+UI/启动策略仍只用旧接口，不把后端完成写成完整设置功能。存储旧包 PID 4150111110 已退出。
+当前包 `tmp/device-runs/20261007-132827-app-settings-services-verified/` 五进程门 PASS：
+升级/恢复/清除保留偏好、完整服务与兼容写入、1023 字节路径往返和超限不入队通过；
+50 文件、哈希 10/10、正常退出零引用、crash_check PASS；完整 UI 门通过，PID 2206317294 留在 newtab。
+串行 Debug/Release build、C89、审计与 Release 诊断排除通过；无 DLL 改动或用户库删除。
+`20261007-132552-app-settings-services-final` 的服务夹具 FAIL 保留：把总 URL 容量误作
+路径容量；改为公共 HTTP 实际边界，并保留超长拒绝断言，不扩大预算。
+此前双配置 `136,1321,1341,999` 相邻门均 4/4 PASS，本轮未重跑。
 
 设置页刷新使用稳定 URL 副本，防止地址缓冲区别名被清空；正常退出守卫见当前历史门。
 普通启动仅一次显示/激活窗口，后续完成不抢前台；用户已确认完整窗体与保存主页正常。

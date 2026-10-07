@@ -13,8 +13,44 @@ static int app_settings_services_owner(AppSettingsServices *services)
     return services != NULL && services->owner_thread == GetCurrentThreadId();
 }
 
+/* Quote one bounded application string, not a JSON parser. The JSON DLL
+ * canonicalizes the completed object; no cJSON/internal handles are used. */
+static int app_settings_services_json(const AppSettingsValues *values,
+        char *output, unsigned long capacity)
+{
+    AppSettingsValues normalized;
+    const unsigned char *cursor;
+    const char *language;
+    unsigned int byte;
+    unsigned long length;
+
+    if (capacity < 128 || AppSettingsValues_Normalize(values, &normalized) !=
+            APP_SETTINGS_OK) return 0;
+    language = normalized.language == APP_SETTINGS_LANGUAGE_CHINESE ? "zh-CN" :
+            (normalized.language == APP_SETTINGS_LANGUAGE_ENGLISH ? "en-US" : "system");
+    strcpy(output, "{\"startupPage\":\"");
+    length = (unsigned long) strlen(output);
+    cursor = (const unsigned char *) normalized.startup_url;
+    while (*cursor) {
+        byte = *cursor++;
+        /* Reserve the entire fixed suffix before admitting any byte. A
+         * write that cannot return its snapshot must fail BEFORE enqueue. */
+        if (length + 6 + 128 >= capacity) return 0;
+        if (byte < 0x20 || byte == '\\' || byte == '"') {
+            _snprintf(output + length, capacity - length, "\\u%04x", byte);
+            length += 6;
+        } else output[length++] = (char) byte;
+    }
+    _snprintf(output + length, capacity - length,
+            "\",\"language\":\"%s\",\"javascriptEnabled\":%s}", language,
+            normalized.javascript_enabled ? "true" : "false");
+    output[capacity - 1] = '\0';
+    return 1;
+}
+
 static int app_settings_services_params(const PBrowserServiceRequest *request,
-        int *operation, AppSettingsStartPage *page)
+        int *operation, AppSettingsStartPage *page, AppSettingsValues *values,
+        int *full_values)
 {
     HANDLE root;
     const char *value;
@@ -37,6 +73,8 @@ static int app_settings_services_params(const PBrowserServiceRequest *request,
     if (root == NULL) return 0;
     valid = 0;
     *page = APP_SETTINGS_START_NEWTAB;
+    *full_values = 0;
+    AppSettingsValues_Default(values);
     key = PJson_GetObjectKey(root, 0);
     if (PJson_GetType(root) == PJSON_TYPE_OBJECT) {
         if (strcmp(request->method, "settings.read") == 0 &&
@@ -59,10 +97,29 @@ static int app_settings_services_params(const PBrowserServiceRequest *request,
                     }
                 }
             }
+        } else if (strcmp(request->method, "settings.write") == 0 &&
+                PJson_GetObjectSize(root) == 3) {
+            value = PJson_GetString(root, "startupPage");
+            url = PJson_GetString(root, "language");
+            index = PJson_GetBool(root, "javascriptEnabled");
+            if (value != NULL && strlen(value) < sizeof(values->startup_url) &&
+                    url != NULL && index >= 0) {
+                strcpy(values->startup_url, value);
+                values->javascript_enabled = index;
+                if (!strcmp(url, "system")) values->language = APP_SETTINGS_LANGUAGE_SYSTEM;
+                else if (!strcmp(url, "en-US")) values->language = APP_SETTINGS_LANGUAGE_ENGLISH;
+                else if (!strcmp(url, "zh-CN")) values->language = APP_SETTINGS_LANGUAGE_CHINESE;
+                else values->language = (AppSettingsLanguage) -1;
+                if (AppSettingsValues_Normalize(values, values) == APP_SETTINGS_OK) {
+                    *operation = APP_SETTINGS_SAVE;
+                    *full_values = 1;
+                    valid = 1;
+                }
+            }
         }
     }
-    /* Browser serializes the JS params value. With this one-key ASCII schema
-     * its serialization must round-trip exactly. This additionally rejects
+    /* Browser serializes the JS params value; its JSON must round-trip
+     * exactly before using projected fields. This additionally rejects
      * strings cJSON projects through an embedded NUL, duplicate properties or
      * trailing bytes; do not implement a second JSON parser in the host. */
     if (valid) {
@@ -72,6 +129,8 @@ static int app_settings_services_params(const PBrowserServiceRequest *request,
                 (size_t) request->params_bytes) == 0;
         PJson_FreeString(canonical);
     }
+    if (valid && *full_values)
+        valid = app_settings_services_json(values, input, sizeof(input));
     PJson_Free(root);
     return valid;
 }
@@ -81,9 +140,12 @@ static int app_settings_services_submit(void *pw,
 {
     AppSettingsServices *services;
     AppSettingsStartPage page;
+    AppSettingsValues values;
     unsigned long request_id;
     int operation;
     int index;
+    int full_values;
+    int rc;
 
     services = (AppSettingsServices *) pw;
     if (!app_settings_services_owner(services) || !services->active ||
@@ -97,10 +159,13 @@ static int app_settings_services_submit(void *pw,
         if (!services->pending[index].used) break;
     }
     if (index == APP_SETTINGS_QUEUE_MAX ||
-            !app_settings_services_params(request, &operation, &page)) return 1;
-    if (AppSettingsStore_Submit(services->store, operation, page,
-            services->tab_id, services->generation, &request_id) != APP_SETTINGS_OK)
-        return 1;
+            !app_settings_services_params(request, &operation, &page,
+                    &values, &full_values)) return 1;
+    rc = full_values ? AppSettingsStore_SaveValues(services->store, &values,
+            services->tab_id, services->generation, &request_id) :
+            AppSettingsStore_Submit(services->store, operation, page,
+            services->tab_id, services->generation, &request_id);
+    if (rc != APP_SETTINGS_OK) return 1;
     services->pending[index].used = 1;
     services->pending[index].store_request_id = request_id;
     services->pending[index].operation = operation;
@@ -185,8 +250,9 @@ int AppSettingsServices_AcceptResult(AppSettingsServices *services,
         const AppSettingsResult *result)
 {
     AppSettingsServicePending *pending;
-    const char *url;
-    char json[128];
+    HANDLE root;
+    char *json;
+    char input[APP_SETTINGS_SERVICES_PARAMS_MAX + 1];
     int index;
     int rc;
 
@@ -207,17 +273,22 @@ int AppSettingsServices_AcceptResult(AppSettingsServices *services,
     if (pending->operation != result->operation)
         return APP_SETTINGS_SERVICES_INVALID;
     if (result->result == APP_SETTINGS_OK) {
-        url = AppSettingsStore_StartPageUrl(result->start_page);
-        if (url == NULL) return APP_SETTINGS_SERVICES_INVALID;
-        _snprintf(json, sizeof(json) - 1, "{\"startupPage\":\"%s\"}", url);
+        if (!app_settings_services_json(&result->values, input, sizeof(input)))
+            return APP_SETTINGS_SERVICES_INVALID;
     } else {
-        _snprintf(json, sizeof(json) - 1, "{\"error\":\"%s\"}",
+        _snprintf(input, sizeof(input) - 1, "{\"error\":\"%s\"}",
                 app_settings_services_error(result));
     }
-    json[sizeof(json) - 1] = '\0';
+    input[sizeof(input) - 1] = '\0';
+    root = PJson_Parse(input);
+    if (root == NULL) return APP_SETTINGS_SERVICES_BRIDGE_FAILED;
+    json = PJson_Serialize(root);
+    PJson_Free(root);
+    if (json == NULL) return APP_SETTINGS_SERVICES_BRIDGE_FAILED;
     services->in_call = 1;
     rc = PBrowser_ScriptSessionCompleteService(services->session, &pending->token,
             result->result == APP_SETTINGS_OK, json, (unsigned long) strlen(json));
+    PJson_FreeString(json);
     services->in_call = 0;
     services->last_bridge_result = rc;
     if (rc != PBROWSER_OK) {

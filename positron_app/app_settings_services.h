@@ -19,7 +19,8 @@ enum {
     APP_SETTINGS_SERVICES_BRIDGE_FAILED = -2
 };
 
-#define APP_SETTINGS_SERVICES_PARAMS_MAX 128UL
+/* Never exceed the public bridge budget, including escaped URL/policy. */
+#define APP_SETTINGS_SERVICES_PARAMS_MAX PBROWSER_SERVICE_JSON_MAX_BYTES
 
 typedef struct AppSettingsServicePending {
     int used;
