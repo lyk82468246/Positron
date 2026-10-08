@@ -1352,6 +1352,54 @@
       ],
       "bytes": 1639,
       "sha256": "d0369869720f60179a0d952c8704dcae78ed3bd70167e9c1faa113f649cd5858"
+    },
+    {
+      "file": "annexb-no-timing.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 924,
+      "sha256": "2c2cd746dec4917c9f3e143e860d538f3b2e867e595d5ea6b96ac2defa944ee8"
+    },
+    {
+      "file": "annexb-repeat-sps.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 1870,
+      "sha256": "f0c2fcd24720ad99fc556e69df79675a1a36ded27c0083fca84310f9f3f0fbea"
+    },
+    {
+      "file": "annexb-change-no-timing.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 1859,
+      "sha256": "8e997d4aaf6ee57bf92d4b499fd1cbc460ac5f505f835d1edb9f1107db962b0c"
+    },
+    {
+      "file": "annexb-change-main-vga.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 1816,
+      "sha256": "0a37c8936cea7d6ea4402041e8617d6189b78367999505f746e653af7b9f3c3a"
+    },
+    {
+      "file": "annexb-change-high.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 1762,
+      "sha256": "7a823dcf4b378881891043fde2e75b1403c3e14442585bdfca4d330e7c2f78d5"
+    },
+    {
+      "file": "annexb-change-high422.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 1762,
+      "sha256": "8888114faabdf13718729bbad5939fb54d95b1d61ae8da420aba230abd85fa5a"
+    },
+    {
+      "file": "annexb-change-interlaced.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 1790,
+      "sha256": "b9410ea9fb5816f93e0192891d2910426e80c8233ebf608785c297b3e6462f11"
+    },
+    {
+      "file": "annexb-change-oversize.h264",
+      "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
+      "bytes": 2574,
+      "sha256": "9ef25c78ef5ab6a02c6e3c01ba5b1a4804dae0049af10d42a63467c83290dc6b"
     }
   ]
 }

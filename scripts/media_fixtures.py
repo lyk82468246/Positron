@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -200,6 +201,54 @@ def annexb_records(exe):
     return records
 
 
+def annexb_sequence_records(exe):
+    # Fixture-only mutation at pinned trace_headers bit offsets (NAL header included).
+    source = (DEST / "annexb-baseline-aac.h264").read_bytes()
+    units = re.split(b"(\x00\x00\x00?\x01)", source)
+    changed = 0
+    for index in range(2, len(units), 2):
+        if not units[index] or units[index][0] & 31 != 7:
+            continue
+        rbsp = bytearray()
+        zeros = 0
+        for value in units[index]:
+            if zeros == 2 and value == 3:
+                zeros = 0
+                continue
+            rbsp.append(value)
+            zeros = zeros + 1 if value == 0 else 0
+        bits = "".join(format(value, "08b") for value in rbsp)
+        if bits[75:141] != "1" + format(1, "032b") + format(10, "032b") + "0":
+            raise SystemExit("Pinned baseline SPS timing offsets changed")
+        bits = bits[:75] + "0" + bits[141:]
+        bits = bits.rstrip("0")  # keep rbsp_stop_one_bit; replace byte alignment
+        bits += "0" * (-len(bits) % 8)
+        escaped = bytearray()
+        zeros = 0
+        for offset in range(0, len(bits), 8):
+            value = int(bits[offset:offset + 8], 2)
+            if zeros == 2 and value <= 3:
+                escaped.append(3)
+                zeros = 0
+            escaped.append(value)
+            zeros = zeros + 1 if value == 0 else 0
+        units[index] = bytes(escaped)
+        changed += 1
+    if changed != 1:
+        raise SystemExit("Expected one pinned baseline SPS")
+    no_timing = b"".join(units)
+    outputs = {"annexb-no-timing.h264": no_timing,
+               "annexb-repeat-sps.h264": source + source,
+               "annexb-change-no-timing.h264": source + no_timing}
+    for stem in ["main-vga", "high", "high422", "interlaced", "oversize"]:
+        outputs["annexb-change-" + stem + ".h264"] = source + (DEST / ("annexb-" + stem + ".h264")).read_bytes()
+    records = []
+    for name, data in outputs.items():
+        (DEST / name).write_bytes(data)
+        records.append({"file": name, "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1"})
+    return records
+
+
 def write_pin(exe, records):
     for record in records:
         data = (DEST / record["file"]).read_bytes()
@@ -229,6 +278,9 @@ def extend(exe, group):
                  "flv1-unsupported.flv"}, flv_records),
         "annexb": ({"annexb-" + stem + ".h264" for stem in
                     ["baseline-aac", "main-vga", "high", "high422", "interlaced", "oversize"]}, annexb_records),
+        "annexb-sequence": ({"annexb-no-timing.h264", "annexb-repeat-sps.h264", "annexb-change-no-timing.h264"} |
+                            {"annexb-change-" + stem + ".h264" for stem in
+                             ["main-vga", "high", "high422", "interlaced", "oversize"]}, annexb_sequence_records),
     }[group]
     if any(r["file"] in names for r in pin["files"]):
         raise SystemExit("Already extended; use --generate for intentional full regeneration")
@@ -270,7 +322,8 @@ def generate(exe):
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
-              ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) + annexb_records(exe))
+              ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) +
+              annexb_records(exe) + annexb_sequence_records(exe))
 
 
 def check():
@@ -294,13 +347,14 @@ if __name__ == "__main__":
     action.add_argument("--extend-h263", action="store_true")
     action.add_argument("--extend-flv", action="store_true")
     action.add_argument("--extend-annexb", action="store_true")
+    action.add_argument("--extend-annexb-sequence", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb:
-            extend(opts.ffmpeg, "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence:
+            extend(opts.ffmpeg, "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

@@ -6,7 +6,7 @@
 
 Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Core 选择性长文本断行已交付，EXE 只对历史记录条目启用样式；不修改公共 ABI、DB/history 或滚动语义。
 
-Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；下一纵切为 Annex-B 缺失 SPS timing 与码流内参数变化边界。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；Annex-B 无 timing/不变 SPS 合同已补齐，下一纵切为损坏 SPS/PPS 与截断 payload。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -295,38 +295,38 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 当前短媒体合同均有双配置设备证据。ABI、I/O/probe 失败不变性和借用 buffer 所有权保持；
 产品语义在 DLL，宿主只提供 I/O/fixture/断言。调用/格式及守卫见
 [Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)；
-39 个固定输入、CC0/生成器/内容 pin 见 [媒体夹具](../test_host/fixtures/media/README.md)。
+47 个固定输入、CC0/生成器/内容 pin 见 [媒体夹具](../test_host/fixtures/media/README.md)。
 FFmpeg archive 未重建，SHA256 仍为
 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
 clock_us/同步/迟到丢帧、DirectShow callback source/native 视频、完整 ACM 枚举和
 性能/underrun/峰值内存/真机仍待门，不把短媒体合同升级为实时播放器完成。
 
-最终 Debug tmp/device-runs/20261008-120041-media-annexb-debug-accepted/ 与 Release
-tmp/device-runs/20261008-120140-media-annexb-release/ 均选择
+最终 Debug tmp/device-runs/20261008-124130-media-annexb-sequence-debug/ 与 Release
+tmp/device-runs/20261008-124240-media-annexb-sequence-release/ 均选择
 1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,999：12/12、唯一 TESTBENCH PASS、零 ERROR/FAIL、
 完整日志、Core 路径及 crash_check PASS，无新增 dump。320×320、128 DPI DeviceEmulator，
-SD 63 文件匹配正式 stage，双空间、新 guest holders=0 unavailable=0 通过；
+SD 71 文件匹配正式 stage，双空间、新 guest holders=0 unavailable=0 通过；
 两配置当前包 removed_after_complete_log，旧残留未清理，两次最终门没有强杀、重置或改连接。
 相邻 MPEG-4/H.263/FLV 合同继续通过；未验收 VOL/Qpel/GMC、H.263 其他容器/复杂工具/
 音视频组合、FLV MP3/坏 tag/payload。稳定断言细节以组件 README 为准。
-TEST1349 接受 Annex-B Baseline 320×240/Main VGA B 帧：三帧 I420/stride/取样/KEY，
-PTS=-1、无推导标记、SPS 名义时长 200000 µs；三 session 三遍取样校验值一致，
-零点重播禁止重读源。短读/不可 seek AUTO/SOFT、暂停/STOP/负 callback、EOF/停止态/关闭，
-正值 seek 拒绝后继续解码、High/4:2:2/隔行/超 VGA/截断头拒绝及 probe 不变通过。
-DLL wrapper 修正裸流误用默认 25 fps 时长与零点 seek 无索引失败；从缓存事务式重建，
-正值 NOT_SEEKABLE 不改状态。ABI/archive/FFmpeg 上游未改。
+TEST1349 的 Baseline/Main VGA、无 timing 三帧与重复相同 SPS 六帧合同通过：
+I420/stride/取样/KEY、PTS=-1、无推导标记、时长 200000 或零，三 session 三遍重播
+且禁止重读源；短读/不可 seek AUTO/SOFT、暂停/STOP/负 callback、EOF/停止态/关闭及
+正值 seek 拒绝保持。High/4:2:2/隔行/超 VGA/截断头和后续 SPS 移除 timing/改变尺寸、
+profile/layout 均在 probe/open 拒绝、输出不变、无回调帧。裸流不支持动态重配置。
+DLL 在 stream-info 解码前扫描缓存，以固定 SPS 的两 tick 间隔输出名义时长；
+单 SPS NAL ≤4096 bytes，字节相同重复可接受，不同 SPS fail closed。ABI/archive/上游未改。
 
 AAC 缓存零点重建保留 priming、清除历史，成功才交换状态/重绑 AVIO；TEST1332 三遍
 PCM memcmp 继续通过且不读源。非零 seek 保真、两套 decoder 的瞬时内存/耗时与
 重建分配失败回滚未验证；Annex-B 重建也有相同限制。
 
-原 AAC 漂移日志在 tmp/device-runs/20261008-103737-media-aac-diagnostic/；桌面对照
-不替代 WM6 同 session。前批授权清理 PID1594425138 成功，本批未强杀或重置。
-本批失败证据保留于 tmp/device-runs/20261008-115709-media-annexb-debug-diagnostic/、
-20261008-115749-media-annexb-debug-timestamp/（40000 µs 误时长）与
-20261008-115842-media-annexb-debug-duration/（零点 seek 失败），不追认为通过。
-C89、39 输入 pin、Annex-B 桌面全像素/NAL/未知包 PTS 对照、正式双配置与审计通过；tmp 不入 Git。
-ROADMAP 已复核并移除 Annex-B 初始合同候选，下一纵切缺失 SPS timing/参数变化；非零 AAC、故障注入、
+旧 AAC 漂移/授权清理证据见 Git 上一交接；桌面对照不替代 WM6 同 session。
+本批诊断 tmp/device-runs/20261008-123940-media-annexb-sequence-diagnostic/ 复现
+移除 timing 的后续 SPS 被接受（expected=-7 actual=0），不追认为通过；旧时长/seek
+失败见 Git 上一交接及本地日志。桌面对照确认六条变化输入均能解出六帧，非无效夹具。
+C89、47 输入 pin（原 39 记录不变）、桌面像素/NAL/timing/变化对照、双配置与审计通过；tmp 不入 Git。
+ROADMAP 已复核并移除无 timing/SPS 变化初始候选，下一纵切损坏 SPS/PPS 与截断 payload；非零 AAC、故障注入、
 native/时钟与性能限制保持。未改 EXE、DB、默认测试配置或 FFmpeg 上游源码。
 
 ### Core Fragment DPI 已验收与应用人工门
@@ -511,7 +511,7 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-Media 下一步 Annex-B 缺失 SPS timing 与码流内参数变化的时长/拒绝边界；保留非零 AAC seek 保真、重建故障注入、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
+Media 下一步损坏 SPS/PPS 与截断 payload 的错误分类/无输出边界；保留 VFR/SEI/PPS 变化、非零 AAC seek 保真、重建故障注入、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 和应用持久化，不把进程终止恢复写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

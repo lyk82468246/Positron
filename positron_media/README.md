@@ -356,9 +356,16 @@ pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 v
 返回前有效。duration_us 优先采用 packet duration；缺失时可由容器平均帧率换算，
 两者均未知时为零，应用不能把未知时长解释为固定帧率。
 
-裸 H.264 Annex-B 例外：duration_us 取 decoder 从 SPS 得到的正帧率所对应的名义
-帧间隔；无有效帧率时为零，不采用裸流 demux 的默认 25 fps。这不是 VFR 的真实时间轴。
+裸 H.264 Annex-B 例外：duration_us 取已验证 SPS 的名义两 tick 帧间隔
+（2×num_units_in_tick/time_scale，换算为微秒）；缺失有效 timing 时为零，不采用裸流
+demux 的默认 25 fps，也不沿用 decoder 的旧帧率。这不是 VFR 或 SEI picture timing 的真实时间轴。
 没有 PTS 起点的裸流保持 pts_us=-1，不设置 PTS_INFERRED，不能仅凭时长虚构起点。
+当前裸流只接受一个不变的 SPS NAL；忽略起始码长度和尾随零后，字节相同的重复 SPS
+可以接受。DLL 在 stream-info 解码前扫描已缓存输入，单 SPS NAL 最多 4096 字节；
+缺少可解析 SPS 返回 FORMAT，超过尺寸/预算返回 LIMIT，profile/布局不支持或不同 SPS
+返回 UNSUPPORTED。即使新 SPS 单独可解码，改变 timing、尺寸或 SPS ID 也不支持。
+失败 probe 不改输出，open 不留下 session 或视频回调；此策略只针对 Annex-B，不宣称
+MP4/TS/FLV 的参数变化也已提前检查。PPS/SEI 变化、损坏 payload 仍未充分验收。
 
 FFmpeg 路径保留输入的呈现时间轴，不把 TS/PS 的非零 PTS 起点归零。decoder 没有提供
 PTS 时，只有前一输出帧具有已知非负 PTS、正的 duration 且相加不溢出，DLL 才用两者之和
@@ -542,7 +549,10 @@ TEST1349：三帧有限范围 I420、plane/stride/像素取样/关键帧标记�
 零点重播禁止重读 source；1-byte 短读、不可 seek AUTO/SOFT、暂停/视频 STOP/负 callback、
 EOF/停止态/关闭和正值 seek 拒绝后继续解码均有断言。High、4:2:2、隔行返回
 UNSUPPORTED，超 VGA 返回 LIMIT；截断头返回 FORMAT，失败 probe 不改输出且不产生帧。
-缺失 SPS timing、VFR、码流内参数变化、损坏 payload 和重建分配失败尚未经过此设备门。
+同一 TEST1349 还验证无 timing 的三帧输出 duration=0，以及相同 SPS 重复的六帧输出与
+零点重播；生命周期断言保持。先播放有效 Baseline 再拼接移除 timing、Main VGA、High、
+4:2:2、隔行或超 VGA 的新 SPS，均在 probe/open 阶段拒绝且无输出。这不是动态重配置
+支持：只允许不变 SPS。VFR/SEI timing、PPS 变化、损坏 payload 和重建分配失败仍待门。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

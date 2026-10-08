@@ -265,8 +265,9 @@ ADTS mono 的三遍 PCM 逐字节断言通过；不再作为待修复候选。H.
 待接入候选。FLV 的 H.264 Baseline/AAC-LC 与 Main VGA/B 帧短媒体、seek 零 PCM
 逐字节比较及 FLV1/超限拒绝门已完成，不再作为初始待接入候选。H.264 Annex-B 的
 Baseline/Main 输出、未知 PTS、SPS 名义时长、缓存零点重播与 profile/布局/尺寸拒绝已验收。
-下一条纵切取证缺失 SPS timing 与码流内参数变化的时长/拒绝边界；非零 AAC seek
-保真和重建分配失败仍待专门门。
+缺失 SPS timing 的零时长、相同 SPS 重复与不同 SPS 的输出前拒绝也已验收；裸流不承诺
+动态重配置。下一条纵切取证损坏 SPS/PPS 与截断 payload 的错误分类/无输出边界；
+非零 AAC seek 保真和重建分配失败仍待专门门。
 不把短小夹具扩大为全部格式或实时播放保证。
 之后实现时钟调度/音视频同步和不会破坏不可 seek 输入的 DirectShow
 callback source filter/native 视频生命周期。当前 pump 忽略 clock_us，预算不是严格墙钟上限；
@@ -276,8 +277,8 @@ callback source filter/native 视频生命周期。当前 pump 忽略 clock_us�
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** 非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B 缺失 SPS timing/VFR、其他像素
-  布局与码流中参数变化拒绝、截断压缩 payload、非零 FFmpeg seek、输入容量边界；native
+- **剩余 fixture：** 非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI/PPS 变化、损坏 SPS/PPS 与
+  截断压缩 payload、其他容器参数变化拒绝、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；其他输入缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。
   既有 WAV/I/O、H.264/AAC、AVI/MJPEG/MP3、TS/PS MPEG 与 AMR 夹具作为相邻回归保留。

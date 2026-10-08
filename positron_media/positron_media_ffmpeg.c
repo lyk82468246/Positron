@@ -56,6 +56,7 @@ struct pmedia_ffmpeg {
     int audio_drained;
     pm_position video_next_pts_us;
     int video_next_pts_valid;
+    pm_position raw_h264_duration_us;
     unsigned char *audio_buffer;
     int audio_buffer_bytes;
     int opened_format;
@@ -301,7 +302,8 @@ static void pm_ff_fill_base_info(pmedia_ffmpeg *context,
 }
 
 static int pm_ff_validate_h264(pmedia_ffmpeg *context,
-                                const AVCodecParameters *parameters)
+                                const AVCodecParameters *parameters,
+                                pm_position *out_duration)
 {
     H264ParamSets *sets;
     AVCodecContext *header_codec;
@@ -313,6 +315,7 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
     int is_avc;
     int nal_length;
     int profile;
+    int found;
 
     if (parameters->extradata == NULL || parameters->extradata_size <= 0) {
         return PMEDIA_OK; /* Raw streams remain guarded before frame output. */
@@ -334,6 +337,7 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
     }
     is_avc = 0;
     nal_length = 0;
+    found = 0;
     result = ff_h264_decode_extradata(parameters->extradata,
                                        parameters->extradata_size, sets,
                                        &is_avc, &nal_length, AV_EF_EXPLODE,
@@ -345,6 +349,7 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
         for (i = 0; i < MAX_SPS_COUNT; i++) {
             if (sets->sps_list[i] == NULL) continue;
             sps = (const SPS *)sets->sps_list[i]->data;
+            found = 1;
             profile = ff_h264_get_profile(sps);
             if (!sps->frame_mbs_only_flag || sps->chroma_format_idc != 1 ||
                 sps->bit_depth_luma != 8 || sps->bit_depth_chroma != 8 ||
@@ -361,12 +366,76 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
                 result = PMEDIA_ERROR_LIMIT;
                 break;
             }
+            if (out_duration != NULL) {
+                *out_duration = 0;
+                if (sps->timing_info_present_flag && sps->num_units_in_tick > 0 &&
+                    sps->time_scale > 0)
+                    *out_duration = av_rescale((int64_t)sps->num_units_in_tick * 2,
+                                               1000000, sps->time_scale);
+            }
         }
+        if (out_duration != NULL && !found) result = PMEDIA_ERROR_FORMAT;
     }
     ff_h264_ps_uninit(sets);
     avcodec_free_context(&header_codec);
     av_free(sets);
     return result;
+}
+
+static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
+{
+    AVCodecParameters parameters;
+    const unsigned char *first;
+    unsigned char *padded;
+    int first_bytes;
+    int start;
+    int end;
+    int bytes;
+    int result;
+    pm_position duration;
+
+    /* Inspect the owned bounded input before stream-info decoding. A raw stream
+     * has no container timeline and no per-output-frame SPS snapshot. Reject
+     * different SPS NALs even if individually supported; identical repeats are
+     * safe. This prevents stale framerate and delayed-frame metadata on changes. */
+    first = NULL;
+    first_bytes = 0;
+    for (start = 0; start + 3 < context->input_bytes; start++) {
+        if (context->input[start] != 0 || context->input[start + 1] != 0 ||
+            context->input[start + 2] != 1) continue;
+        start += 3;
+        end = start;
+        while (end + 3 <= context->input_bytes) {
+            if (context->input[end] == 0 && context->input[end + 1] == 0 &&
+                context->input[end + 2] == 1) break;
+            end++;
+        }
+        if (end + 3 > context->input_bytes) end = context->input_bytes;
+        while (end > start && context->input[end - 1] == 0) end--;
+        bytes = end - start;
+        if (bytes > 0 && (context->input[start] & 31) == 7) {
+            if (first != NULL && bytes == first_bytes &&
+                memcmp(first, context->input + start, bytes) == 0) continue;
+            if (bytes > 4096) return PMEDIA_ERROR_LIMIT;
+            padded = (unsigned char *)av_mallocz(bytes + 3 + AV_INPUT_BUFFER_PADDING_SIZE);
+            if (padded == NULL) return PMEDIA_ERROR_MEMORY;
+            padded[2] = 1;
+            memcpy(padded + 3, context->input + start, bytes);
+            memset(&parameters, 0, sizeof(parameters));
+            parameters.codec_id = AV_CODEC_ID_H264;
+            parameters.extradata = padded;
+            parameters.extradata_size = bytes + 3;
+            duration = 0;
+            result = pm_ff_validate_h264(context, &parameters, &duration);
+            av_free(padded);
+            if (result != PMEDIA_OK) return result;
+            if (first != NULL) return PMEDIA_ERROR_UNSUPPORTED;
+            first = context->input + start;
+            first_bytes = bytes;
+            context->raw_h264_duration_us = duration;
+        }
+    }
+    return first != NULL ? PMEDIA_OK : PMEDIA_ERROR_FORMAT;
 }
 
 static int pm_ff_vol_read(GetBitContext *bits, int count)
@@ -511,7 +580,7 @@ static int pm_ff_validate_streams(pmedia_ffmpeg *context,
             }
             if (parameters->codec_id == AV_CODEC_ID_H264) {
                 int header_result;
-                header_result = pm_ff_validate_h264(context, parameters);
+                header_result = pm_ff_validate_h264(context, parameters, NULL);
                 if (header_result != PMEDIA_OK) {
                     pm_ff_error(error_text, error_text_bytes,
                                 "H.264 sequence parameters exceed the software subset");
@@ -704,6 +773,15 @@ static int pm_ff_open_internal(const unsigned char *input,
         return PMEDIA_ERROR_FORMAT;
     }
     context->opened_format = 1;
+    if (strcmp(context->format->iformat->name, "h264") == 0) {
+        result = pm_ff_validate_raw_h264(context);
+        if (result != PMEDIA_OK) {
+            pm_ff_error(error_text, error_text_bytes,
+                        "raw H.264 requires a supported unchanged SPS");
+            pm_ff_cleanup(context);
+            return result;
+        }
+    }
     result = avformat_find_stream_info(context->format, NULL);
     if (result < 0) {
         pm_ff_error_code(error_text, error_text_bytes,
@@ -907,17 +985,10 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     timestamp = av_frame_get_best_effort_timestamp(context->frame);
     frame.pts_us = pm_ff_timestamp(timestamp, stream->time_base);
     frame.duration_us = 0;
-    /* Raw H.264 has no container timeline. The pinned raw demuxer defaults
-     * to 25 fps and can attach that duration even when SPS timing says 5 fps.
-     * The H.264 decoder exposes SPS timing through framerate; do not invent
-     * a PTS origin, or treat the demuxer's default as source timing. */
+    /* Raw H.264 uses the validated immutable SPS nominal two-tick interval;
+     * absent timing stays zero, never the raw demuxer's default 25 fps. */
     if (strcmp(context->format->iformat->name, "h264") == 0) {
-        if (context->video_codec->framerate.num > 0 &&
-            context->video_codec->framerate.den > 0) {
-            frame_time.num = context->video_codec->framerate.den;
-            frame_time.den = context->video_codec->framerate.num;
-            frame.duration_us = pm_ff_timestamp(1, frame_time);
-        }
+        frame.duration_us = context->raw_h264_duration_us;
     } else if (context->frame->pkt_duration > 0) {
         frame.duration_us = pm_ff_timestamp(context->frame->pkt_duration,
                                             stream->time_base);

@@ -82,8 +82,16 @@ Annex-B 文件组 `annexb-{baseline-aac,main-vga,high,high422,interlaced,oversiz
 未知 PTS=-1 且不设推导标记、SPS 名义帧间隔 200000 µs；三 session 各三遍取样校验值一致。
 缓存零点重播不得重读 source，正值 seek 拒绝且不改变输出；短读、不可 seek AUTO/SOFT、
 暂停/STOP/负 callback、EOF/停止态/关闭均保护。其余四条验证 High/4:2:2/隔行拒绝及
-超 VGA LIMIT，截断头验证 FORMAT 与 probe 输出不变。缺失 SPS timing、VFR、参数变化
-和损坏 payload 不在这组断言内。
+超 VGA LIMIT，截断头验证 FORMAT 与 probe 输出不变。
+`annexb-no-timing.h264` 对 pinned Baseline SPS 移除 timing 字段（trace_headers 的
+NAL/RBSP bit 75，删除其后 65 bit 并重建尾部对齐/防竞争字节），不改 slice 数据；
+不是通用 SPS 编辑器。设备三帧 duration 必须为零，PTS 仍为 -1。
+`annexb-repeat-sps.h264` 复制拼接同一裸流，六帧、两个关键帧、不变 SPS 可解码；
+`annexb-change-{no-timing,main-vga,high,high422,interlaced,oversize}.h264` 则先放有效
+Baseline，再拼接另一 SPS 的三帧片段。桌面六帧可解码，但产品必须在 probe/open 拒绝，
+不能先输出好片段再失败；oversize 返回 LIMIT，其余 UNSUPPORTED，probe 输出保持不变。
+无 timing/重复 SPS 的三 session 各三遍输出与缓存重播、暂停/STOP/负 callback 也有断言。
+VFR、SEI/PPS 变化和损坏 payload 不在这组合同内。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
@@ -92,7 +100,9 @@ Annex-B 文件组 `annexb-{baseline-aac,main-vga,high,high422,interlaced,oversiz
 补齐后再次调用会拒绝。`--extend-mpeg`、`--extend-amr`、`--extend-ima`、`--extend-mpeg4` 与 `--extend-h263` 分别对 MPEG、AMR、IMA WAV/PCM、MPEG-4 Part 2、H.263 文件组采用相同规则；
 `--extend-flv` 对 FLV 文件组采用相同 pin 规则：三条 remux、一条 FLV1 负夹具编码；
 FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六条裸流采用相同 pin
-规则，只转换已有固定 MP4，不改旧记录。扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
+规则，只转换已有固定 MP4，不改旧记录。`--extend-annexb-sequence` 对八条 timing/拼接
+夹具采用相同 pin 规则，离线按固定字节变换生成，不调用编码器、不改原文件。
+扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
 [Multimedia Data Standards Update（RIFF/WAVE）](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/RIFFNEW.pdf)。
@@ -116,8 +126,10 @@ FLV 的独立桌面校验：`python scripts/test_media_flv_fixtures.py --ffmpeg 
 只证明负夹具有效，不提供 WM6 输出承诺；桌面 PCM 不作为 ARMV4I 逐字节参考。
 
 Annex-B 的独立桌面校验：`python scripts/test_media_annexb_fixtures.py --ffmpeg PATH`。
-必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查六条输入的全部有效像素、
-尺寸/帧序/隔行属性、NAL 类型及 demux packet PTS/DTS 均未知。CLI 自动生成的呈现时间戳
+必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查原六条和无 timing/重复
+SPS 输入的全部有效像素、尺寸/帧序/隔行属性、NAL 类型及 demux packet PTS/DTS 均未知；
+trace_headers 独立确认 timing 字段已移除，六条 SPS 变化输入各可解出前后三帧并含不同 SPS。
+变化输入只检查帧属性，不把桌面动态重配置当作产品支持。CLI 自动生成的呈现时间戳
 不能替代 DLL 的未知 PTS 合同，桌面全像素检查也不能替代 WM6 取样/重播/拒绝设备门。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
