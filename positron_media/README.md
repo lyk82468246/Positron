@@ -455,8 +455,12 @@ native 播放合同；其他原生格式必须等待未来 callback source filte
 | 音频 | AAC-LC、MP2/MP3、AMR-NB/WB、PCM、IMA ADPCM；输出最多双声道交错 S16LE |
 | 明确排除 | AV1、HEVC/H.265、VP9、H.264 High profile、10-bit/4:2:2/4:4:4、隔行视频、编码、DRM、字幕、RTSP/HLS/直播协议 |
 
-实际打开结果以 pm_probe()/pm_get_capabilities() 和 pm_get_backend() 为准。FFmpeg
-源码快照、配置、ARMV4I 构建方式和原始许可证保留在仓库；AVC/H.264 的源码许可证不等于
+实际打开结果以 pm_probe()/pm_get_capabilities() 和 pm_get_backend() 为准。容器支持不代表
+其中所有 codec 都支持：FLV 的 H.264/AAC-LC 短媒体已有设备合同，Sorenson H.263
+（FLV1）不在当前 decoder 集合，返回 PMEDIA_ERROR_UNSUPPORTED；它不等于 AVI 中的
+普通 H.263。FLV 内 MP3、其他 codec 组合及损坏 tag/payload 仍待独立验收。
+
+FFmpeg 源码快照、配置、ARMV4I 构建方式和原始许可证保留在仓库；AVC/H.264 的源码许可证不等于
 专利许可，发布产品前仍需独立评估地区和发行方式的 AVC 义务。
 
 ## 错误处理和关闭
@@ -512,8 +516,17 @@ H.263 的 AVI CIF 352×288 与 H.263+ 自定义 VGA 640×480 已通过 TEST1347 
 7-byte 短读、不可 seek AUTO、SOFT、暂停/视频 STOP/恢复、负 callback、EOF 一次性和
 停止态守卫均有断言；打开后禁止继续读取 source，重播使用 DLL 缓存。
 704×576 超限、较小应用尺寸上限和截断 AVI 头在输出前拒绝，失败 probe 不改输出。
-这只覆盖无音频的短 AVI，不代表 H.263 裸流、3GP、FLV/Sorenson H.263、复杂编码工具、
+这只覆盖无音频的短 AVI，不代表 H.263 裸流、3GP、复杂编码工具、
 音视频组合或非零 seek 已验收。
+
+FLV 的 Constrained Baseline 320×240 + AAC-LC stereo 和 Main VGA/B 帧无音频输入
+已通过 TEST1348 双配置设备门。保留视频源 PTS：前者从 21000 µs 起，后者从 400000 µs 起，
+各三帧、时长 200000 µs；有限范围 I420/stride/flags 与重复播放取样校验值一致。
+FLV AAC 保留 priming 包，共 30 块各 1024 sample，输出 PTS 保留容器毫秒量化；
+不能套用 MP4 的 29 块裁剪规则。各三 session、每 session 三遍播放，后两遍 seek 零的
+全部 S16LE 字节与首次相同，source 禁止再读取。短读、不可 seek AUTO、SOFT、暂停、
+音频或视频 STOP/负 callback、EOF/停止态/关闭均有断言；超 VGA、FLV1 和截断头
+在输出前拒绝，失败 probe 不改输出。此合同不涉及 RTMP/直播、非零 seek 或实时同步。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

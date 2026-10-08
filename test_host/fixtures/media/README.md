@@ -46,7 +46,20 @@
   SOFT、暂停/视频 STOP/恢复、负 callback、EOF 一次性、停止态和关闭。
   打开后 source 设为 I/O 错误，重播不得再读取宿主。`h263-oversize.avi` 为标准 4CIF
   704×576，扩大 options 也须拒绝；较小应用尺寸和截断 AVI 头亦在输出前拒绝。
-  不覆盖 H.263 裸流、3GP、FLV/Sorenson H.263、复杂编码工具、音视频组合或非零 seek。
+  不覆盖 H.263 裸流、3GP、复杂编码工具、音视频组合或非零 seek。
+- `flv-h264-aac.flv`、`flv-main-vga.flv`：分别从固定 `baseline-aac.mp4`、`main-vga.mp4`
+  直接 remux，不重编码。三帧有限范围 I420 的 PTS 分别为 21000/221000/421000 µs
+  和 400000/600000/800000 µs，每帧时长 200000 µs。前者 AAC-LC stereo/48 kHz
+  保留 priming，共 30×1024 sample；PTS 保留 FLV 毫秒量化（0/21/42/64…618 ms），
+  不按 MP4 的负 PTS 裁剪规则去掉首包。TEST1348 双配置 WM6 门覆盖像素取样/flags/stride、
+  PCM/时间戳、各三 session 三遍解码与 seek 零重播，后两遍全部 PCM 字节与首次相同。
+  7-byte 短读、不可 seek AUTO/SOFT、暂停、音频或视频 STOP/负 callback、EOF/停止态/关闭
+  均有断言；打开后 source 设为 I/O 错误，重播不得再次读取宿主。
+- `flv-oversize.flv`：从固定 `oversize.mp4` remux，656×480 必须返回 LIMIT。
+  `flv1-unsupported.flv`：独立生成的 Sorenson H.263（FLV1），桌面可解码但不在产品
+  decoder 集合，必须返回 UNSUPPORTED。两者及截断 FLV 头在输出前拒绝，失败 probe
+  不改输出，open 不留下 session。FLV 内 MP3、损坏 tag/payload、非零 seek 和 RTMP/同步
+  不在本合同中。
 - `amr-nb.amr`：AMR-NB 12.2 kbit/s、单声道 8 kHz，七块各 160 个 sample。
 - `amr-wb.amr`：AMR-WB 23.85 kbit/s、单声道 16 kHz，六块各 320 个 sample。
   两者关闭 DTX，PTS 从零起每块增加 20000 µs，duration 为 20000 µs；NB 保留编码器
@@ -68,7 +81,8 @@
 生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MPEG-4 Part 2/H.263/H.263+/MP2/IMA ADPCM 编码器，但它们不进入 WM6 产品。`--extend`
 只用于首次用同一 pinned 生成器补齐 MJPEG/MP3 文件，先验证已有 pin，不重生成旧文件；已经
 补齐后再次调用会拒绝。`--extend-mpeg`、`--extend-amr`、`--extend-ima`、`--extend-mpeg4` 与 `--extend-h263` 分别对 MPEG、AMR、IMA WAV/PCM、MPEG-4 Part 2、H.263 文件组采用相同规则；
-扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
+`--extend-flv` 对 FLV 文件组采用相同 pin 规则：三条 remux、一条 FLV1 负夹具编码；
+FLV1 编码器只用于桌面生成，不进入产品。扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
 [Multimedia Data Standards Update（RIFF/WAVE）](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/RIFFNEW.pdf)。
@@ -85,6 +99,11 @@ H.263 的独立桌面校验：`python scripts/test_media_h263_fixtures.py --ffmp
 必须显式指定 manifest 固定生成器；只读、单线程、Windows 低优先级，检查三个文件的
 全部有效像素、I/P/P、尺寸、PTS/时长和渐进属性。桌面可解码超限文件只证明夹具有效，
 WM6 必须拒绝它；设备断言采用像素取样，桌面全像素检查不能替代设备门。
+
+FLV 的独立桌面校验：`python scripts/test_media_flv_fixtures.py --ffmpeg PATH`。
+必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查四条输入的全部有效像素、
+帧序/尺寸/源时间轴、AAC 样本数及 tag 边界/毫秒 PTS。FLV1 桌面帧时长 metadata 为零，
+只证明负夹具有效，不提供 WM6 输出承诺；桌面 PCM 不作为 ARMV4I 逐字节参考。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，

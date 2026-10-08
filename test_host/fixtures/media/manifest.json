@@ -1115,6 +1115,99 @@
       ],
       "bytes": 16714,
       "sha256": "9eb5814afbb68ce76d4dfb96fc24be05cc3b9b7bc781c706937e603e99e29c95"
+    },
+    {
+      "file": "flv-h264-aac.flv",
+      "arguments": [
+        "-i",
+        "baseline-aac.mp4",
+        "-map",
+        "0",
+        "-c",
+        "copy",
+        "-fflags",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-f",
+        "flv",
+        "-y",
+        "flv-h264-aac.flv"
+      ],
+      "bytes": 6503,
+      "sha256": "4359859c09c00778999e48f4d01867831f6e89acf4538fe038cdc83c9571f907"
+    },
+    {
+      "file": "flv-main-vga.flv",
+      "arguments": [
+        "-i",
+        "main-vga.mp4",
+        "-map",
+        "0",
+        "-c",
+        "copy",
+        "-fflags",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-f",
+        "flv",
+        "-y",
+        "flv-main-vga.flv"
+      ],
+      "bytes": 1172,
+      "sha256": "a04f69f38e87dda6bcd32b654a491d8d8e78742dd956554bec45b5a9f04b1924"
+    },
+    {
+      "file": "flv-oversize.flv",
+      "arguments": [
+        "-i",
+        "oversize.mp4",
+        "-map",
+        "0",
+        "-c",
+        "copy",
+        "-fflags",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-f",
+        "flv",
+        "-y",
+        "flv-oversize.flv"
+      ],
+      "bytes": 1930,
+      "sha256": "f8c31d4bbdb392718107d3b78f3f299910b3da7b9a3e4030ae83cd6d787fe53b"
+    },
+    {
+      "file": "flv1-unsupported.flv",
+      "arguments": [
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=red:s=320x240:r=5:d=0.6",
+        "-c:v",
+        "flv",
+        "-pix_fmt",
+        "yuv420p",
+        "-q:v",
+        "2",
+        "-threads:v",
+        "1",
+        "-an",
+        "-fflags",
+        "+bitexact",
+        "-flags:v",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-f",
+        "flv",
+        "-y",
+        "flv1-unsupported.flv"
+      ],
+      "bytes": 2314,
+      "sha256": "9c3d424df8ec42a34a263a9efae4ac9ae5e11f014bf039617d9cfea401a6af1b"
     }
   ]
 }

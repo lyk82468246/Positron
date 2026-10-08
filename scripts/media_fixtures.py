@@ -165,6 +165,27 @@ def h263_records(exe):
     return records
 
 
+def flv_records(exe):
+    records = []
+    for name, source in [("flv-h264-aac.flv", "baseline-aac.mp4"),
+                         ("flv-main-vga.flv", "main-vga.mp4"),
+                         ("flv-oversize.flv", "oversize.mp4")]:
+        args = ["-i", str(DEST / source), "-map", "0", "-c", "copy",
+                "-fflags", "+bitexact", "-map_metadata", "-1", "-f", "flv",
+                "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": [source if a == str(DEST / source)
+                        else name if a == str(DEST / name) else a for a in args]})
+    name = "flv1-unsupported.flv"
+    args = ["-f", "lavfi", "-i", "color=c=red:s=320x240:r=5:d=0.6",
+            "-c:v", "flv", "-pix_fmt", "yuv420p", "-q:v", "2", "-threads:v", "1",
+            "-an", "-fflags", "+bitexact", "-flags:v", "+bitexact",
+            "-map_metadata", "-1", "-f", "flv", "-y", str(DEST / name)]
+    run(exe, args)
+    records.append({"file": name, "arguments": args[:-1] + [name]})
+    return records
+
+
 def write_pin(exe, records):
     for record in records:
         data = (DEST / record["file"]).read_bytes()
@@ -190,6 +211,8 @@ def extend(exe, group):
                    "mpeg4-interlaced.mp4", "mpeg4-oversize.mp4"}, mpeg4_records),
         "mjpeg": ({"mjpeg-mp3.avi", "mjpeg422.avi", "mp3-mono.mp3"}, extra_records),
         "h263": ({"h263-cif.avi", "h263p-vga.avi", "h263-oversize.avi"}, h263_records),
+        "flv": ({"flv-h264-aac.flv", "flv-main-vga.flv", "flv-oversize.flv",
+                 "flv1-unsupported.flv"}, flv_records),
     }[group]
     if any(r["file"] in names for r in pin["files"]):
         raise SystemExit("Already extended; use --generate for intentional full regeneration")
@@ -231,7 +254,7 @@ def generate(exe):
         run(exe, args)
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
-              ima_records(exe) + mpeg4_records(exe) + h263_records(exe))
+              ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe))
 
 
 def check():
@@ -253,13 +276,14 @@ if __name__ == "__main__":
     action.add_argument("--extend-ima", action="store_true")
     action.add_argument("--extend-mpeg4", action="store_true")
     action.add_argument("--extend-h263", action="store_true")
+    action.add_argument("--extend-flv", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263:
-            extend(opts.ffmpeg, "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv:
+            extend(opts.ffmpeg, "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

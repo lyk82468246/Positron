@@ -1439,6 +1439,207 @@ fail:
     return FALSE;
 }
 
+static void media_flv_reset_sink(media_compressed_sink *sink, int test)
+{
+    memset(sink, 0, sizeof(*sink));
+    sink->width = test == 0 ? 320 : 640;
+    sink->height = test == 0 ? 240 : 480;
+    sink->channels = test == 0 ? 2 : 0;
+    sink->video_start_us = test == 0 ? 21000 : 400000;
+}
+
+static int media_flv_audio(void *context, const pm_audio_block *block)
+{
+    media_compressed_sink *sink;
+    pm_position expected;
+
+    sink = (media_compressed_sink *)context;
+    expected = sink->events.blocks == 0 ? 0 :
+        (pm_position)(21 + ((sink->events.blocks - 1) * 1024 + 24) / 48) * 1000;
+    if (block == NULL || block->samples != 1024 || block->pts_us != expected) {
+        strcpy(sink->assertion, "FLV AAC millisecond timestamp/sample mismatch");
+        sink->events.errors++;
+        return -1;
+    }
+    return media_aac_replay_audio(context, block);
+}
+
+BOOL test1348_media_flv_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"flv-h264-aac.flv", L"flv-main-vga.flv" };
+    static const WCHAR *rejects[] = { L"flv-oversize.flv", L"flv1-unsupported.flv" };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_probe_info unchanged;
+    pm_stream_info info;
+    pm_session session;
+    unsigned char *data;
+    unsigned char *reference;
+    unsigned long video_hash;
+    DWORD start;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int result;
+    int count;
+    int expected;
+
+    session = NULL;
+    data = NULL;
+    reference = (unsigned char *)malloc(122880);
+    if (reference == NULL) return FALSE;
+    for (test = 0; test < 2; test++) {
+        g_media_compressed_error = test == 0 ? "FLV Baseline/AAC" : "FLV Main VGA B-frame";
+        if (progress != NULL) progress(g_media_compressed_error);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        output.video = media_mpeg4_video;
+        output.audio = media_flv_audio;
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 7;
+        input.position = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.size = sizeof(probe);
+        if (pm_probe(&source, &probe) != PMEDIA_OK || input.position != 1 ||
+            probe.stream.container != PMEDIA_CONTAINER_FLV || !probe.stream.has_video ||
+            probe.stream.video_codec != PMEDIA_CODEC_H264 ||
+            probe.stream.width != (test == 0 ? 320 : 640) ||
+            probe.stream.height != (test == 0 ? 240 : 480) ||
+            probe.stream.has_audio != (test == 0) || (test == 0 &&
+            (probe.stream.audio_codec != PMEDIA_CODEC_AAC_LC ||
+             probe.stream.sample_rate != 48000 || probe.stream.channels != 2))) goto fail;
+        for (iteration = 0; iteration < 3; iteration++) {
+            input.position = 0;
+            input.read_mode = 0;
+            source.seek = iteration == 0 ? NULL : media_fixture_seek;
+            source.tell = iteration == 0 ? NULL : media_fixture_tell;
+            options.backend = iteration == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+            media_flv_reset_sink(&sink, test);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+                input.position != bytes || pm_get_backend(session) != PMEDIA_BACKEND_SOFT) goto fail;
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pm_get_stream_info(session, &info) != PMEDIA_OK ||
+                info.container != PMEDIA_CONTAINER_FLV || info.width != sink.width ||
+                info.height != sink.height || info.has_audio != (test == 0) ||
+                pm_pause(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                sink.frames || sink.events.blocks || pm_resume(session) != PMEDIA_OK) goto fail;
+            video_hash = 0;
+            for (pass = 0; pass < 3; pass++) {
+                sink.aac_reference = test == 0 ? reference : NULL;
+                sink.aac_reference_bytes = test == 0 ? 122880 : 0;
+                sink.aac_compare = pass != 0;
+                if (pass == 0) {
+                    if (test == 0) sink.audio_callback_result = PMEDIA_CALLBACK_STOP;
+                    else sink.callback_result = PMEDIA_CALLBACK_STOP;
+                    start = GetTickCount();
+                    while ((test == 0 ? sink.events.blocks : sink.frames) == 0 &&
+                           GetTickCount() - start < 5000) {
+                        if (pm_pump(session, 0, 2000) != PMEDIA_OK) goto fail;
+                    }
+                    count = test == 0 ? sink.frames : sink.events.blocks;
+                    if ((test == 0 ? sink.events.blocks : sink.frames) != 1 ||
+                        pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                        (test == 0 ? sink.events.blocks : sink.frames) != 1 ||
+                        (test == 0 ? sink.frames : sink.events.blocks) != count) goto fail;
+                    sink.audio_callback_result = PMEDIA_OK;
+                    sink.callback_result = PMEDIA_OK;
+                    if (pm_resume(session) != PMEDIA_OK) goto fail;
+                }
+                result = media_contract_drain(session);
+                if (sink.assertion[0] && progress != NULL) progress(sink.assertion);
+                _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                          "FLV drain case=%d session=%d pass=%d ok=%d frames=%d blocks=%d samples=%d errors=%d eof=%d vh=%lu pcm_bytes=%d compare=%d",
+                          test, iteration, pass, result, sink.frames, sink.events.blocks,
+                          sink.events.samples, sink.events.errors, sink.events.eof_events,
+                          sink.replay_video_hash, sink.aac_reference_position, sink.aac_compare);
+                g_media_compressed_detail[sizeof(g_media_compressed_detail) - 1] = '\0';
+                g_media_compressed_error = g_media_compressed_detail;
+                if (progress != NULL) progress(g_media_compressed_error);
+                if (!result || sink.frames != 3 || sink.events.blocks != (test == 0 ? 30 : 0) ||
+                    sink.events.samples != (test == 0 ? 30720 : 0) || sink.events.errors ||
+                    sink.events.error_callbacks || sink.events.eof_events != 1 ||
+                    (test == 0 && (sink.audio_magnitude < 1000000 ||
+                     sink.aac_reference_position != 122880)) ||
+                    pm_pump(session, 0, 2000) != PMEDIA_EOF || sink.events.eof_events != 1) goto fail;
+                if (pass == 0) video_hash = sink.replay_video_hash;
+                else if (sink.replay_video_hash != video_hash) goto fail;
+                if (pass < 2) {
+                    input.read_mode = 2;
+                    if (pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    media_flv_reset_sink(&sink, test);
+                    if (pm_pump(session, 0, 2000) != PMEDIA_OK || sink.frames ||
+                        sink.events.blocks || sink.events.eof_events || pm_resume(session) != PMEDIA_OK) goto fail;
+                }
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+                sink.events.stopped_events != 1 || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                pm_pump(session, 0, 2000) != PMEDIA_ERROR_STATE ||
+                pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        input.position = 0;
+        input.read_mode = 0;
+        media_flv_reset_sink(&sink, test);
+        if (test == 0) sink.audio_callback_result = -1;
+        else sink.callback_result = -1;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+            media_contract_drain(session) || sink.events.last_error != PMEDIA_ERROR_CALLBACK ||
+            sink.events.error_callbacks != 1 || sink.events.error_events != 1 || sink.events.eof_events ||
+            (test == 0 ? sink.events.blocks : sink.frames) != 1 || pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        input.position = 0;
+        input.bytes = 8;
+        media_flv_reset_sink(&sink, test);
+        memset(&probe, 0xa5, sizeof(probe));
+        probe.size = sizeof(probe);
+        unchanged = probe;
+        if (pm_probe(&source, &probe) != PMEDIA_ERROR_FORMAT || input.position != 0 ||
+            memcmp(&probe, &unchanged, sizeof(probe)) != 0 ||
+            pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_FORMAT || session != NULL ||
+            sink.events.error_callbacks != 1 || sink.frames || sink.events.blocks) goto fail;
+        free(data);
+        data = NULL;
+    }
+    for (test = 0; test < 2; test++) {
+        g_media_compressed_error = test == 0 ? "FLV over-VGA reject" : "FLV1 unsupported reject";
+        if (progress != NULL) progress(g_media_compressed_error);
+        data = media_compressed_load(rejects[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        input.data = data;
+        input.bytes = bytes;
+        options.max_video_width = 4096;
+        options.max_video_height = 4096;
+        expected = test == 0 ? PMEDIA_ERROR_LIMIT : PMEDIA_ERROR_UNSUPPORTED;
+        memset(&probe, 0xa5, sizeof(probe));
+        probe.size = sizeof(probe);
+        unchanged = probe;
+        if (pm_probe(&source, &probe) != expected || input.position != 0 ||
+            memcmp(&probe, &unchanged, sizeof(probe)) != 0 ||
+            pm_open(&source, &options, &output, &session) != expected || session != NULL ||
+            sink.events.last_error != expected || sink.events.error_callbacks != 1 ||
+            sink.frames || sink.events.blocks) goto fail;
+        free(data);
+        data = NULL;
+    }
+    free(reference);
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    free(reference);
+    return FALSE;
+}
+
 BOOL test1334_media_mpeg_contract(void (*progress)(const char *))
 {
     static const WCHAR *names[] = { L"mpeg2-mp2.ts", L"mpeg1-mp2.mpg" };
