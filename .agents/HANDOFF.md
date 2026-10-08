@@ -6,7 +6,7 @@
 
 Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Core 选择性长文本断行已交付，EXE 只对历史记录条目启用样式；不修改公共 ABI、DB/history 或滚动语义。
 
-Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2 解码/守卫合同已有双配置设备证据，独立后续为 AAC seek PCM 保真性。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2 解码/守卫合同已有双配置设备证据；AAC 零点重播 PCM 保真已补齐，后续先补 H.263 合同。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -15,7 +15,7 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 ## 当前代码与所有权
 
 分支 main；Core 自然高度已交付，应用设置输入框补字体继承与自然行高/内边距，
-Debug 实页门检查原生文本格式矩形。不修改 DLL/ABI 或滚动；并行 Media 候选不提交。
+Debug 实页门检查原生文本格式矩形。该应用批次不修改 DLL/ABI 或滚动；Media 独立修正见下方。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -111,7 +111,8 @@ HTML 增量失败及 pre-build 跳过实验保留；正式入口先失效过期 
 最终 `tmp/device-runs/20261007-224358-app-settings-live-font-padding/` 四进程门 PASS：
 保存值→空值→填值均为客户区 197×23、格式矩形 (2,2)-(195,21)、字体高 19（ascent=16、descent=3），
 上下各留 2 像素；双语重启、关闭 JS 保存、单 history、退出/零引用、SHA256 10/10 与 crash PASS。
-当前入口/PID 见 `manual-settings-review-verified/`；字符/SIP/保存/旋转待人工。
+入口包见 `manual-settings-review-verified/`；其 PID1594425138 已按用户授权由 Media 门清理器终止，
+不再作为运行入口。字符/SIP/保存/旋转待重新启动人工复核。
 Debug/Release/CAB、C89/审计及诊断排除通过。先行 padding 包客户区高 30、文字偏上，已撤回；
 linebox 包客户区高 21/格式区高 17，被新断言拒绝，失败保留且已正常退出。
 CabWiz 失败见 `tmp/settings-linebox-release-cab-failed.log`，正式重试通过。
@@ -291,47 +292,44 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 
 ### Media 有界压缩解码合同已验收
 
-公共 ABI、borrowed-buffer 所有权、host-driven pump 与 I/O/probe 失败不变性保持；
-产品语义只在 positron_media，宿主只接 I/O、fixture 与断言。WAV PCM/IMA、短小
-H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2、AMR-NB/WB 与 MPEG-4 Part 2 已有双配置
-设备合同；具体调用和 codec 限制见 [Media README](../positron_media/README.md)、
-[能力矩阵](../docs/CAPABILITIES.md)。clock_us 仍忽略，同步/迟到丢帧未实现；
-callback DirectShow source/native 视频与完整 ACM 枚举、性能/underrun/峰值内存及真机仍待门。
+WAV PCM/IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2、AMR-NB/WB 与 MPEG-4 Part 2
+已有双配置设备合同。公共 ABI、I/O/probe 失败不变性和借用 buffer 所有权保持；产品语义
+在 DLL，宿主只提供 I/O/fixture/断言。调用/格式及守卫见
+[Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)；
+26 个固定输入、CC0/生成器/内容 pin 见 [媒体夹具](../test_host/fixtures/media/README.md)。
+FFmpeg archive 未重建，SHA256 仍为
+df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
+clock_us/同步/迟到丢帧、DirectShow callback source/native 视频、完整 ACM 枚举和
+性能/underrun/峰值内存/真机仍待门，不把短媒体合同升级为实时播放器完成。
 
-固定输入现为二十六个 procedural red/sine 文件与独立 PCM 参考，来源、CC0 和工具 pin
-在 test_host/fixtures/media。本批仅增加五个 MPEG-4 Part 2 文件，原二十一个记录及生成器
-不变；离线 checker 以 pinned 桌面 FFmpeg 校验内容，不代替 WM6 门。不重建固定 archive，
-SHA256 仍为 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
+最终 Debug tmp/device-runs/20261008-104117-media-aac-final-debug/ 与 Release
+tmp/device-runs/20261008-104420-media-aac-final-release/ 均选择
+1312,1331,1332,1333,1334,1335,1337,1344,999：9/9、唯一 TESTBENCH PASS、零 ERROR/FAIL、
+完整日志、Core 路径及 crash_check PASS，无新增 dump。320×320、128 DPI DeviceEmulator，
+SD 50 文件匹配正式 stage，双空间、新 guest holders=0 unavailable=0 通过；
+两配置当前包 removed_after_complete_log，旧残留未清理，两次最终门没有强杀、重置或改连接。
+TEST1344 保护 MP4 Simple/ASP VGA、AVI Simple+MP3 的输出、seek 与拒绝合同；
+VOL extradata 前缀和实际帧均有守卫，缺失/码流内 VOL、Qpel/GMC 仍未充分验收。
+旧 MPEG4 隔行拒绝失败、撤回私有 C99 header 路径和 CabWiz 重试证据保留于 Git/本地日志；
+失败不追认为通过，未改 DB/CAB。
 
-TEST1344 覆盖 MP4 Simple 320×240、ASP VGA/B 帧与 AVI Simple + MP3 stereo：
-三 session 各两次解码，实际有限范围 I420/flags、PTS/duration、26 块/每声道 29952 sample
-PCM 和 EOF 后 seek 零的视频取样/PCM 校验值一致。7-byte 短读、不可 seek AUTO、probe
-恢复、显式暂停、音视频 STOP/恢复及负 callback、EOF 一次性、停止态和独立关闭通过。
-隔行、656×480、较小应用上限与截断头拒绝且不输出。FFmpeg 3.4 未把 VOL 隔行声明
-发布到 codecpar.field_order；DLL 新增每个 extradata VOL 的有界头前缀守卫，实际帧
-守卫保留。无 extradata、码流内参数变化、Qpel/GMC 及坏 VOL 可选分支仍未充分验收。
+AAC 零点重播已补齐：DLL 从同一缓存创建新 demux/音视频 decoder，成功才交换状态并
+重绑 AVIO opaque；失败保留旧 decoder，不改变公共 ABI 或 archive。保留初始 priming，
+清除 AAC 历史；非零 seek 仍沿旧 flush 路径，未验证同等保真。TEST1332 对 MP4 stereo
+与 ADTS mono 各三遍完整播放、两次暂停中 seek 零，逐字节 PCM、PTS/时长/样本数、EOF
+全部通过；禁止源继续读取。MP4 为 29 块/29696 sample，三遍 hash 3223820707；ADTS
+为 30 块/30720 sample，三遍 hash 1698380498，不能以 hash 代替 memcmp 断言。
+候选创建短暂持有两套 decoder，分配失败回滚尚无设备注入，瞬时内存/耗时未测量。
 
-最终 Debug 门 tmp/device-runs/20261006-073432-media-mpeg4-debug-final/ 与 Release 门
-tmp/device-runs/20261006-073654-media-mpeg4-release-verified/ 均选择
-1312,1331,1332,1333,1334,1335,1337,1344,999：selected/observed 9/9、唯一 TESTBENCH
-PASS、零 ERROR/FAIL、crash_check=PASS、无新增 dump。240×320、96 DPI DeviceEmulator，
-50 文件匹配正式 stage；SD、双空间、新 guest holders=0 unavailable=0 与 Core 路径匹配
-通过。日志完整回收后两配置当前设备包均 removed_after_complete_log，旧残留未清理；
-没有强杀、重置或改连接。构建/设备串行窗口已释放，下一门须重新审计。
-
-初门 tmp/device-runs/20261006-001709-media-mpeg4-debug/ 在隔行打开拒绝处失败，
-有效三组已解码但不是整门 PASS；原断言保留，VOL 守卫修复后重跑。尝试调用 FFmpeg
-私有 MPEG4 decoder header 暴露 C99/原型不兼容，已撤回该默认路径，未改上游或 archive。
-Release 两次受限构建因 CabWiz 无法创建数据文件停止；未部署，不算设备测试。
-经批准在沙箱外重跑正式 build/stage 成功，未修改现有 DB/CAB 配置。
-C89、仓库结构/宿主边界、固定 pin 与独立桌面内容校验均通过，tmp 不入 Git。
-
-相邻 TEST1332 仍 PASS，但 AAC seek PCM 保真未覆盖：两配置 MP4 首次/重播幅度总和
-105979027/104081756（29696 sample），ADTS 为 75047942/75047495（30720 sample）。
-样本数/时间戳正确不足以证明 PCM 相同，根因尚未确定。下一条 Media 纵切先增加保真
-诊断并确认 decoder 重置/priming 合同，再补 H.263/FLV、非零压缩 seek 与其他拒绝分支。
-本轮 ROADMAP 已复核，移除 MPEG-4 初始 fixture 候选；KNOWN_LIMITATIONS 的 native/
-时钟边界仍有效，不把此次短媒体通过升级为实时播放器完成。
+原漂移证据在 tmp/device-runs/20261008-103737-media-aac-diagnostic/：旧合同 2/2 PASS，
+MP4 全 29 块、ADTS 全 30 块 PCM 不同，不能当保真 PASS。源码 AAC flush 仅清 saved，
+不重置 PNS/window 历史；只读 pinned 桌面对照脚本 test_media_aac_seek_evidence.py 另证明
+MP4 新开/CLI seek 首包 -1024/0、7882 sample 不同，ADTS 新 decoder 相同；不把桌面
+证据替代 WM6 同 session。第一次 20261008-103547-next222 门因旧应用占 8 DLL 停止；
+用户授权后正式清理器结束 PID1594425138，target_count=1 failed=0，新 guest 零引用才诊断。
+未杀 WMDC/重置。C89、固定输入、桌面对照、正式双配置与审计通过；tmp 不入 Git。
+ROADMAP 已复核并移除 AAC 零点候选，下一纵切 H.263，再独立 FLV；非零 AAC、故障注入、
+native/时钟与性能限制保持。不修改 EXE、DB、配置测试编号或 FFmpeg 上游源码。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -515,7 +513,7 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-Media 保留 AAC seek PCM 保真、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
+Media 下一步 H.263 固定夹具与设备合同；保留非零 AAC seek 保真、重建故障注入、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 和应用持久化，不把进程终止恢复写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

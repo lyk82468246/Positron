@@ -9,6 +9,11 @@
 - `baseline-aac.mp4`：320×240、5 fps、三帧 Constrained Baseline/AVCC，AAC-LC 双声道 48 kHz。
 - `main-vga.mp4`：640×480、5 fps、三帧 Main，包含 B 帧和 decoder drain。
 - `aac-lc.aac`：ADTS AAC-LC 单声道 48 kHz；`aac-main.aac` 用于拒绝非 LC profile。
+  MP4 的 AAC priming 包 PTS 为 -1024 sample；设备输出从 PTS 零起为 29 块、每声道
+  29696 sample。ADTS 为 30 块、每声道 30720 sample。TEST1332 各完整解码三次，
+  在 EOF 后暂停并 seek 到零两次，后两次全部 S16LE 字节与首次输出一致；同时保护
+  PTS/时长、样本数和 EOF，不以相同幅度或校验值代替逐字节断言。打开后 source 被设为
+  I/O 错误，重播不得再次读取宿主。非零 AAC seek 不在此合同内。
 - `high.mp4`、`high422.mp4`、`interlaced.mp4`、`oversize.mp4`：拒绝 profile、像素布局、隔行和 656×480 超限。
 - `mjpeg-mp3.avi`：320×240、5 fps、三帧全范围 MJPEG 4:2:0，MP3 双声道 48 kHz。
   固定 AVI 含一个空视频槽，实际帧 PTS 为 0/400000/600000 µs，每帧 duration 为 200000 µs；
@@ -67,6 +72,11 @@ MPEG-4 Part 2 的独立桌面校验：
 PATH 必须是 manifest 固定的生成器；脚本只读，单线程、Windows 下以低优先级运行工具，
 检查三帧全部有效像素、profile、B 帧顺序、PTS/duration、隔行属性及 AVI MP3 样本数。
 不传 PATH 时仅验证固定输入哈希，不运行解码；两种模式都不能替代 WM6 设备门。
+
+AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
+PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，
+比较新开解码与 CLI seek 零的包 PTS、PCM 和逐块差异。CLI 创建新 decoder，不能替代
+WM6 同一 session 的 seek 断言；桌面浮点 PCM 不作为 ARMV4I 的逐字节参考。
 
 断言检查实际 I420 plane/stride/像素、视频时间戳与持续时间、S16LE 内容、音频时间戳、EOF
 和 seek 重播。红色 MJPEG 的全范围 Y/U/V 期望为 76/85/255，H.264 夹具的有限范围为

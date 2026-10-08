@@ -406,6 +406,12 @@ session 进入停止态，之后的 pm_pump()、pm_pause()、pm_resume()、pm_se
 应重新按时间戳显示/播放后续回调。
 AMR seek 会重建解码器，清除预测/合成历史，避免重播沿用跳转前的音频状态；pause/resume
 则保留历史并继续同一位置。当前设备合同验证 EOF 后 seek 到零，不承诺非零压缩 seek 的精确定位。
+含 AAC 的 FFmpeg session 在 `pm_seek(session, 0)` 时，从 DLL 已缓存输入创建新的
+demux 和音视频 decoder，保留初始 priming 并清除音频历史，不再次读取宿主 source。
+候选创建成功后才替换旧状态，暂停状态保持；失败时旧解码状态保留。
+此同步操作短暂同时持有两套 demux/decoder，可能返回内存错误，不能按 pump 预算估算耗时。
+非零 AAC seek 仍使用后向关键点与 flush，尚未验证相同的 PCM 保真性或精确定位；
+候选分配失败的回滚尚未经过设备故障注入，峰值内存也未测量。
 便携 WAV IMA 路径例外：已验证按 sample 定位的块内/块边界非零 seek，首个输出 PTS 对应
 定位后的 sample；到达或超过 duration（包括极大正值）直接定位 EOF，不从块头重播。
 budget_us 必须非负；零使用内部默认处理量。clock_us 目前不驱动按时输出、迟到丢帧、
@@ -477,6 +483,10 @@ pm_error_callback 的 message 同样只在当前回调期间有效。错误回�
 和统一 S16LE callback。压缩路径另以固定离线夹具验证 MP4/AVCC Constrained Baseline +
 AAC-LC stereo、VGA Main/B 帧和 ADTS AAC-LC mono 的实际 I420/S16LE、时间戳、EOF 后
 seek 重播与 callback 暂停/恢复；High/4:2:2/隔行/超 VGA/非 LC AAC 和截断 MP4 头拒绝。
+TEST1332 对上述 MP4 stereo 与 ADTS mono 各执行三次完整播放、两次暂停中 seek 到零，
+后两次 S16LE 全部字节与首次输出比较一致，样本数、PTS/时长和每区间单次 EOF 保持。
+打开后让不可 seek source 的 read 返回 I/O 错误，重播仍成功，验证使用 DLL 缓存。
+此比较针对同一 WM6 decoder，不要求桌面不同版本的浮点 AAC 输出逐字节相同。
 AVI/MJPEG 4:2:0 + MP3 stereo 与 44.1 kHz mono MP3 裸流也已验证：全范围视频像素与 flags、
 逐帧 PTS/时长、PCM 样本数（含裸流 gapless trimming）、不可 seek 打开、音频 callback
 暂停/恢复、EOF/seek 重播、独立关闭，以及 MJPEG 4:2:2、截断头和应用尺寸上限拒绝。

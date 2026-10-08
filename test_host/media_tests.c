@@ -508,6 +508,12 @@ typedef struct media_compressed_sink {
     unsigned long amr_pcm_hash;
     unsigned long replay_video_hash;
     unsigned long replay_audio_hash;
+    unsigned long aac_block_hash[32];
+    void (*aac_progress)(const char *);
+    unsigned char *aac_reference;
+    int aac_reference_bytes;
+    int aac_reference_position;
+    int aac_compare;
     char assertion[256];
 } media_compressed_sink;
 
@@ -680,6 +686,59 @@ static void media_compressed_init(media_fixture_source *input,
     output->error = media_compressed_error;
 }
 
+static int media_aac_replay_audio(void *context, const pm_audio_block *block)
+{
+    media_compressed_sink *sink;
+    unsigned long hash;
+    char detail[192];
+    int result;
+    int index;
+    int i;
+
+    sink = (media_compressed_sink *)context;
+    index = sink->events.blocks;
+    result = media_compressed_audio(context, block);
+    if (result < 0) return result;
+    if (sink->aac_reference != NULL) {
+        if (block->bytes > 122880 - sink->aac_reference_position ||
+            (sink->aac_compare && block->bytes >
+             sink->aac_reference_bytes - sink->aac_reference_position)) {
+            strcpy(sink->assertion, "AAC replay reference capacity/count mismatch");
+            sink->events.errors++;
+            return -1;
+        }
+        if (sink->aac_compare) {
+            if (memcmp(sink->aac_reference + sink->aac_reference_position,
+                       block->data, (size_t)block->bytes) != 0) {
+                _snprintf(sink->assertion, sizeof(sink->assertion),
+                          "AAC seek PCM differs at block %d byte offset %d",
+                          index, sink->aac_reference_position);
+                sink->assertion[sizeof(sink->assertion) - 1] = '\0';
+                sink->events.errors++;
+                return -1;
+            }
+        } else {
+            memcpy(sink->aac_reference + sink->aac_reference_position,
+                   block->data, (size_t)block->bytes);
+        }
+        sink->aac_reference_position += block->bytes;
+    }
+    hash = 0;
+    for (i = 0; i < block->bytes; i++) {
+        hash = hash * 33UL + block->data[i];
+        sink->replay_audio_hash = sink->replay_audio_hash * 33UL + block->data[i];
+    }
+    if (index < 32) sink->aac_block_hash[index] = hash;
+    if (sink->aac_progress != NULL) {
+        _snprintf(detail, sizeof(detail),
+                  "AAC PCM block=%d pts=%I64d samples=%d channels=%d hash=%lu",
+                  index, block->pts_us, block->samples, block->channels, hash);
+        detail[sizeof(detail) - 1] = '\0';
+        sink->aac_progress(detail);
+    }
+    return result;
+}
+
 BOOL test1332_media_compressed_contract(void (*progress)(const char *))
 {
     static const WCHAR *accepted[] = {
@@ -715,9 +774,18 @@ BOOL test1332_media_compressed_contract(void (*progress)(const char *))
     int expected;
     int result;
     DWORD started;
+    unsigned long aac_first_hash;
+    unsigned long aac_first_blocks[32];
+    int aac_first_count;
+    int aac_changed_blocks;
+    int aac_first_changed;
+    int aac_index;
+    unsigned char *aac_reference;
+    int aac_reference_bytes;
 
     session = NULL;
     data = NULL;
+    aac_reference = NULL;
     for (test = 0; test < 3; test++) {
         g_media_compressed_error = phases[test];
         if (progress != NULL) progress(g_media_compressed_error);
@@ -729,6 +797,16 @@ BOOL test1332_media_compressed_contract(void (*progress)(const char *))
         sink.width = test == 1 ? 640 : 320;
         sink.height = test == 1 ? 480 : 240;
         sink.channels = test == 0 ? 2 : 1;
+        output.audio = media_aac_replay_audio;
+        sink.aac_progress = progress;
+        aac_first_hash = 0;
+        aac_first_count = 0;
+        memset(aac_first_blocks, 0, sizeof(aac_first_blocks));
+        if (test != 1) {
+            aac_reference = (unsigned char *)malloc(122880);
+            if (aac_reference == NULL) goto fail;
+            sink.aac_reference = aac_reference;
+        }
         memset(&probe, 0, sizeof(probe));
         probe.size = sizeof(probe);
         input.position = 1;
@@ -773,7 +851,7 @@ BOOL test1332_media_compressed_contract(void (*progress)(const char *))
             pm_pause(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_OK ||
             sink.frames != 0 || sink.events.blocks != 0 ||
             pm_resume(session) != PMEDIA_OK) goto fail;
-        for (pass = 0; pass < 2; pass++) {
+        for (pass = 0; pass < 3; pass++) {
             g_media_compressed_error = "compressed drain or output assertion";
             if (test == 1 && pass == 0) {
                 sink.callback_result = PMEDIA_CALLBACK_STOP;
@@ -803,15 +881,54 @@ BOOL test1332_media_compressed_contract(void (*progress)(const char *))
                 (test != 1 && (sink.events.samples < 28000 || sink.events.samples > 32000 ||
                  sink.events.blocks < 20 || sink.audio_magnitude < 1000000))) goto fail;
             if (pass == 0) {
-                if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                aac_first_hash = sink.replay_audio_hash;
+                aac_first_count = sink.events.blocks;
+                memcpy(aac_first_blocks, sink.aac_block_hash, sizeof(aac_first_blocks));
+                aac_reference_bytes = sink.aac_reference_position;
+            } else if (test != 1) {
+                if (sink.aac_reference_position != aac_reference_bytes ||
+                    sink.replay_audio_hash != aac_first_hash ||
+                    sink.events.blocks != aac_first_count) goto fail;
+                aac_changed_blocks = 0;
+                aac_first_changed = -1;
+                for (aac_index = 0; aac_index < sink.events.blocks &&
+                     aac_index < aac_first_count && aac_index < 32; aac_index++) {
+                    if (aac_first_blocks[aac_index] != sink.aac_block_hash[aac_index]) {
+                        if (aac_first_changed < 0) aac_first_changed = aac_index;
+                        aac_changed_blocks++;
+                    }
+                }
+                _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                          "AAC replay BYTE-EXACT case=%d first_hash=%lu replay_hash=%lu first_blocks=%d replay_blocks=%d compared_max=32 changed=%d first_changed=%d",
+                          test, aac_first_hash, sink.replay_audio_hash, aac_first_count,
+                          sink.events.blocks, aac_changed_blocks, aac_first_changed);
+                g_media_compressed_detail[sizeof(g_media_compressed_detail) - 1] = '\0';
+                if (progress != NULL) progress(g_media_compressed_detail);
+            }
+            if (pass < 2) {
+                if (pm_seek(session, -1) != PMEDIA_ERROR_ARGUMENT ||
+                    pm_pause(session) != PMEDIA_OK) goto fail;
+                /* Source storage is no longer usable; replay must use the DLL's
+                 * copy and must preserve pause without invoking callbacks. */
+                input.read_mode = 2;
+                if (pm_seek(session, 0) != PMEDIA_OK || input.position != bytes) goto fail;
                 memset(&sink, 0, sizeof(sink));
                 sink.width = test == 1 ? 640 : 320;
                 sink.height = test == 1 ? 480 : 240;
                 sink.channels = test == 0 ? 2 : 1;
+                sink.aac_progress = progress;
+                sink.aac_reference = aac_reference;
+                sink.aac_reference_bytes = aac_reference_bytes;
+                sink.aac_compare = 1;
+                if (pm_pump(session, 0, 2000) != PMEDIA_OK || sink.frames ||
+                    sink.events.blocks || sink.events.eof_events ||
+                    pm_resume(session) != PMEDIA_OK) goto fail;
             }
         }
         if (pm_close(session) != PMEDIA_OK) goto fail;
         session = NULL;
+        if (aac_reference != NULL) free(aac_reference);
+        aac_reference = NULL;
         free(data);
         data = NULL;
     }
@@ -870,6 +987,7 @@ BOOL test1332_media_compressed_contract(void (*progress)(const char *))
 fail:
     if (session != NULL) pm_close(session);
     if (data != NULL) free(data);
+    if (aac_reference != NULL) free(aac_reference);
     return FALSE;
 }
 

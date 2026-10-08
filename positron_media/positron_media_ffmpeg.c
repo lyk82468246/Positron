@@ -1088,11 +1088,46 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
     return PMEDIA_OK;
 }
 
+static int pm_ff_restart_aac(pmedia_ffmpeg *context)
+{
+    pmedia_ffmpeg *replacement;
+    pmedia_ffmpeg previous;
+    pm_stream_info info;
+    pm_capabilities capabilities;
+    int result;
+
+    /* AAC flush does not reset all synthesis/PNS history in the pinned codec.
+     * MOV seek(0) can also skip the negative-PTS priming packet. Reopen the
+     * already-owned memory input, retaining the initial demux packet queue.
+     * Prepare everything before committing; no output/source callbacks run. */
+    replacement = NULL;
+    memset(&info, 0, sizeof(info));
+    info.size = sizeof(info);
+    memset(&capabilities, 0, sizeof(capabilities));
+    capabilities.size = sizeof(capabilities);
+    result = pm_ff_open_internal(context->input, context->input_bytes,
+                                 &context->output, context->max_video_width,
+                                 context->max_video_height, &replacement,
+                                 &info, &capabilities, NULL, 0);
+    if (result != PMEDIA_OK) return result;
+    previous = *context;
+    *context = *replacement;
+    *replacement = previous;
+    /* Custom AVIO callbacks must follow the stable live context address. */
+    context->io->opaque = context;
+    replacement->io->opaque = replacement;
+    pm_ff_cleanup(replacement);
+    return PMEDIA_OK;
+}
+
 int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
 {
     AVCodecContext *replacement_audio;
     int result;
     if (context == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
+    if (position_us == 0 && context->audio_codec != NULL &&
+        context->audio_codec->codec_id == AV_CODEC_ID_AAC)
+        return pm_ff_restart_aac(context);
     replacement_audio = NULL;
     /* The pinned native AMR decoders have no flush callback.  Flushing their
      * packet queues leaves prediction/synthesis history from the old position.
