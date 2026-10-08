@@ -505,6 +505,16 @@ MPEG-4 Part 2 的 MP4 Simple 320×240、Advanced Simple VGA/B 帧及 AVI Simple 
 视频取样/PCM 校验值一致、7-byte 短读、不可 seek AUTO、音视频 STOP/恢复和负 callback、
 停止态及独立关闭。隔行/超 VGA、较小应用尺寸上限与截断头均拒绝且不输出。
 这不等于 Qpel、GMC 或所有 Advanced Simple 编码工具已经验收。
+
+H.263 的 AVI CIF 352×288 与 H.263+ 自定义 VGA 640×480 已通过 TEST1347 双配置设备门：
+三帧 I/P/P、有限范围 I420/stride/flags、PTS 0/200000/400000 µs、每帧时长 200000 µs；
+各三 session、每 session 初次解码和 EOF 后 seek 零重播的视频取样校验值一致。
+7-byte 短读、不可 seek AUTO、SOFT、暂停/视频 STOP/恢复、负 callback、EOF 一次性和
+停止态守卫均有断言；打开后禁止继续读取 source，重播使用 DLL 缓存。
+704×576 超限、较小应用尺寸上限和截断 AVI 头在输出前拒绝，失败 probe 不改输出。
+这只覆盖无音频的短 AVI，不代表 H.263 裸流、3GP、FLV/Sorenson H.263、复杂编码工具、
+音视频组合或非零 seek 已验收。
+
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
 设备验收；其他已编译容器/codec、截断压缩 payload、非零 FFmpeg 压缩 seek 与原生完整生命周期

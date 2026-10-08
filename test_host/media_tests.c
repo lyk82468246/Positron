@@ -1270,6 +1270,175 @@ fail:
     return FALSE;
 }
 
+static void media_h263_reset_sink(media_compressed_sink *sink, int test)
+{
+    memset(sink, 0, sizeof(*sink));
+    sink->width = test == 0 ? 352 : 640;
+    sink->height = test == 0 ? 288 : 480;
+}
+
+BOOL test1347_media_h263_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"h263-cif.avi", L"h263p-vga.avi" };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_probe_info unchanged;
+    pm_stream_info info;
+    pm_session session;
+    unsigned char *data;
+    unsigned long video_hash;
+    DWORD start;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int result;
+
+    session = NULL;
+    data = NULL;
+    for (test = 0; test < 2; test++) {
+        g_media_compressed_error = test == 0 ? "H263 CIF AVI" : "H263+ VGA AVI";
+        if (progress != NULL) progress(g_media_compressed_error);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        output.video = media_mpeg4_video;
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 7;
+        input.position = 1;
+        memset(&probe, 0, sizeof(probe));
+        probe.size = sizeof(probe);
+        if (pm_probe(&source, &probe) != PMEDIA_OK || input.position != 1 ||
+            probe.stream.container != PMEDIA_CONTAINER_AVI || !probe.stream.has_video ||
+            probe.stream.has_audio || probe.stream.video_codec != PMEDIA_CODEC_H263 ||
+            probe.stream.width != (test == 0 ? 352 : 640) ||
+            probe.stream.height != (test == 0 ? 288 : 480)) goto fail;
+        for (iteration = 0; iteration < 3; iteration++) {
+            input.position = 0;
+            input.read_mode = 0;
+            source.seek = iteration == 0 ? NULL : media_fixture_seek;
+            source.tell = iteration == 0 ? NULL : media_fixture_tell;
+            options.backend = iteration == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+            media_h263_reset_sink(&sink, test);
+            g_media_compressed_error = "H263 open/info/pause";
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+                input.position != bytes || pm_get_backend(session) != PMEDIA_BACKEND_SOFT) goto fail;
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pm_get_stream_info(session, &info) != PMEDIA_OK ||
+                info.container != PMEDIA_CONTAINER_AVI || info.video_codec != PMEDIA_CODEC_H263 ||
+                info.width != sink.width || info.height != sink.height || info.has_audio ||
+                pm_pause(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                sink.frames || sink.events.blocks || pm_resume(session) != PMEDIA_OK) goto fail;
+            video_hash = 0;
+            for (pass = 0; pass < 2; pass++) {
+                g_media_compressed_error = "H263 STOP/resume/pixel/timeline/drain";
+                if (pass == 0) {
+                    sink.callback_result = PMEDIA_CALLBACK_STOP;
+                    start = GetTickCount();
+                    while (sink.frames == 0 && GetTickCount() - start < 5000) {
+                        if (pm_pump(session, 0, 2000) != PMEDIA_OK) goto fail;
+                    }
+                    if (sink.frames != 1 || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                        sink.frames != 1 || sink.events.blocks) goto fail;
+                    sink.callback_result = PMEDIA_OK;
+                    if (pm_resume(session) != PMEDIA_OK) goto fail;
+                }
+                result = media_contract_drain(session);
+                if (sink.assertion[0] && progress != NULL) progress(sink.assertion);
+                _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                          "H263 drain: case=%d session=%d pass=%d ok=%d frames=%d errors=%d eof=%d vh=%lu",
+                          test, iteration, pass, result, sink.frames, sink.events.errors,
+                          sink.events.eof_events, sink.replay_video_hash);
+                g_media_compressed_detail[sizeof(g_media_compressed_detail) - 1] = '\0';
+                g_media_compressed_error = g_media_compressed_detail;
+                if (progress != NULL) progress(g_media_compressed_error);
+                if (!result || sink.frames != 3 || sink.events.blocks || sink.events.errors ||
+                    sink.events.error_callbacks || sink.events.eof_events != 1 ||
+                    pm_pump(session, 0, 2000) != PMEDIA_EOF || sink.events.eof_events != 1) goto fail;
+                if (pass == 0) {
+                    video_hash = sink.replay_video_hash;
+                    input.read_mode = 2;
+                    if (pm_seek(session, -1) != PMEDIA_ERROR_ARGUMENT ||
+                        pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    media_h263_reset_sink(&sink, test);
+                    if (pm_pump(session, 0, 2000) != PMEDIA_OK || sink.frames ||
+                        sink.events.eof_events || pm_resume(session) != PMEDIA_OK) goto fail;
+                } else if (sink.replay_video_hash != video_hash) goto fail;
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+                sink.events.stopped_events != 1 || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                pm_pump(session, 0, 2000) != PMEDIA_ERROR_STATE ||
+                pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        g_media_compressed_error = "H263 smaller application limit";
+        input.position = 0;
+        input.read_mode = 0;
+        media_h263_reset_sink(&sink, test);
+        options.max_video_width = 160;
+        options.max_video_height = 120;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_LIMIT || session != NULL ||
+            sink.events.last_error != PMEDIA_ERROR_LIMIT || sink.events.error_callbacks != 1 ||
+            sink.frames || sink.events.blocks) goto fail;
+        options.max_video_width = 0;
+        options.max_video_height = 0;
+        input.position = 0;
+        media_h263_reset_sink(&sink, test);
+        sink.callback_result = -1;
+        g_media_compressed_error = "H263 negative video callback";
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+            media_contract_drain(session) || sink.frames != 1 ||
+            sink.events.last_error != PMEDIA_ERROR_CALLBACK || sink.events.error_callbacks != 1 ||
+            sink.events.error_events != 1 || sink.events.eof_events ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        input.position = 0;
+        input.bytes = 8;
+        media_h263_reset_sink(&sink, test);
+        memset(&probe, 0xa5, sizeof(probe));
+        probe.size = sizeof(probe);
+        unchanged = probe;
+        g_media_compressed_error = "H263 truncated header preserves probe";
+        if (pm_probe(&source, &probe) != PMEDIA_ERROR_FORMAT || input.position != 0 ||
+            memcmp(&probe, &unchanged, sizeof(probe)) != 0 ||
+            pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_FORMAT || session != NULL ||
+            sink.events.last_error != PMEDIA_ERROR_FORMAT || sink.events.error_callbacks != 1 ||
+            sink.frames || sink.events.blocks) goto fail;
+        free(data);
+        data = NULL;
+    }
+    g_media_compressed_error = "H263 over-VGA probe/open rejects despite enlarged options";
+    data = media_compressed_load(L"h263-oversize.avi", &bytes);
+    if (data == NULL) goto fail;
+    media_compressed_init(&input, &sink, &source, &output, &options);
+    input.data = data;
+    input.bytes = bytes;
+    options.max_video_width = 4096;
+    options.max_video_height = 4096;
+    memset(&probe, 0xa5, sizeof(probe));
+    probe.size = sizeof(probe);
+    unchanged = probe;
+    if (pm_probe(&source, &probe) != PMEDIA_ERROR_LIMIT || input.position != 0 ||
+        memcmp(&probe, &unchanged, sizeof(probe)) != 0 ||
+        pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_LIMIT || session != NULL ||
+        sink.events.last_error != PMEDIA_ERROR_LIMIT || sink.events.error_callbacks != 1 ||
+        sink.frames || sink.events.blocks) goto fail;
+    free(data);
+    g_media_compressed_error = "H263 contract passed";
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
 BOOL test1334_media_mpeg_contract(void (*progress)(const char *))
 {
     static const WCHAR *names[] = { L"mpeg2-mp2.ts", L"mpeg1-mp2.mpg" };

@@ -248,7 +248,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
-**状态：WAV PCM/IMA/I/O 与短小 H.264/AAC/MJPEG/MP3、TS/MPEG-2/MP2、PS/MPEG-1/MP2、AMR-NB/WB 和 MPEG-4 Part 2 解码、拒绝守卫及 EOF 重播已有 Debug/Release 设备证据；
+**状态：WAV PCM/IMA/I/O 与短小 H.264/AAC/MJPEG/MP3、TS/MPEG-2/MP2、PS/MPEG-1/MP2、AMR-NB/WB、MPEG-4 Part 2 和 AVI H.263 解码、拒绝守卫及 EOF 重播已有 Debug/Release 设备证据；
 其他压缩格式、DirectShow source filter、时钟调度与完整设备性能门仍待完成。**
 `positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
 运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
@@ -260,8 +260,9 @@ AUTO PCM8 实际走 WaveOut 并保持 S16LE 输出。AVI/MJPEG + MP3、mono MP3 
 fact 裁剪、块内/边界 seek 与容量/损坏拒绝已有固定夹具。MPEG-4 Part 2 的 MP4 Simple/
 ASP VGA 与 AVI Simple + MP3 已完成实际 I420/PCM、时间戳、生命周期与隔行/超限拒绝门，
 不再作为待接入候选。AAC 零点重播已从 DLL 缓存重建 demux/decoder，MP4 stereo 与
-ADTS mono 的三遍 PCM 逐字节断言通过；不再作为待修复候选。下一条纵切补 H.263
-固定输入与输出/拒绝合同，再独立验收 FLV；非零 AAC seek 保真和重建分配失败仍待专门门。
+ADTS mono 的三遍 PCM 逐字节断言通过；不再作为待修复候选。H.263 CIF 与 H.263+ VGA
+无音频 AVI 已完成像素/时间戳、生命周期、seek 零与超限/截断头拒绝门，不再作为初始
+待接入候选。下一条纵切独立验收 FLV；非零 AAC seek 保真和重建分配失败仍待专门门。
 不把短小夹具扩大为全部格式或实时播放保证。
 之后实现时钟调度/音视频同步和不会破坏不可 seek 输入的 DirectShow
 callback source filter/native 视频生命周期。当前 pump 忽略 clock_us，预算不是严格墙钟上限；
@@ -271,7 +272,7 @@ callback source filter/native 视频生命周期。当前 pump 忽略 clock_us�
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** 非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；H.263 与 FLV；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B、其他像素
+- **剩余 fixture：** 非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV，以及 H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B、其他像素
   布局与码流中参数变化拒绝、截断压缩 payload、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。

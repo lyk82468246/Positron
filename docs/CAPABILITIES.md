@@ -182,6 +182,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | WM6 DirectShow/ACM/WaveOut 原生能力 | 内部 `CLSID_FilterGraphNoThread` 探测、PCM `WaveOut`；公共头不暴露 COM | 有界待扩展 | WaveOut 仅覆盖设备接受的 WAV PCM，8-bit 设备格式也统一发出 S16LE 借用回调；callback-backed DirectShow source filter、native 视频 renderer 和完整 ACM/filter 枚举尚未完成，不把 graph 存在误报为 codec 可用 | Debug/Release AUTO PCM8 已实际选择 NATIVE 并完成 WaveOut/PCM 回调断言；原生完整生命周期、underrun、其他设备格式与未来 source filter 需要独立门 |
 | FFmpeg 软解 | 固定 `third_party/ffmpeg-3.4.14`、ARMV4I archive 和 `POSITRON_PORT.md` | H.264/AAC/MJPEG/MP3 与 TS/PS MPEG/MP2、AMR-NB/WB 短媒体解码合同已实现；其他格式有界待验证 | custom memory AVIO；编译集合为 AVI/MP4/MOV/MPEG-PS/MPEG-TS/FLV/WAV/选定裸流及 H.264、MPEG-4 Part 2、MPEG-1/2、MJPEG、H.263、AAC、MP2/MP3、AMR-NB/WB、PCM/IMA ADPCM；H.264 仅 Baseline（含 constrained）/Main、8-bit 渐进 I420，最多 640×480，即使 options 请求更大也不放开；全范围 I420 以现有 flags 的 FULL_RANGE 位标明，未公开完整色彩管理；源 PTS 不归零，缺失视频 PTS 可从已知前帧 PTS/时长有条件推导并以 PTS_INFERRED 标明，seek 清除推导状态；音频 AAC-LC/S16LE 最多双声道；SPS 与实际帧均有拒绝守卫 | TEST1332–1335 在 Debug/Release 设备上验证 MP4/AVCC H.264/AAC、VGA Main/B 帧、ADTS AAC mono、AVI/MJPEG+MP3 stereo、44.1 kHz mono MP3、TS/MPEG-2+MP2 和 PS/MPEG-1+MP2、单声道 AMR-NB 8 kHz/WB 16 kHz 的像素/范围、PCM/样本数、PTS/时长与尾帧推导标记、EOF/seek、回调暂停/恢复、profile/布局/隔行/尺寸拒绝、截断头及独立 session 关闭；AMR 每块 20 ms、PCM 幅度/过零与 seek 后重播校验值一致；AMR 其他码率/DTX/丢失帧/3GP、其他编译格式、截断 payload、帧率、underrun、峰值内存和真实设备仍需门；AVC 专利与 GPL 组合需发布前审查 |
 | MPEG-4 Part 2 有界解码 | MP4 Simple/Advanced Simple、AVI Simple + MP3；`pm_probe/open/pump/seek` | 短媒体合同已验收 | extradata VOL 有界前缀检查矩形/4:2:0/渐进式及应用/VGA 上限；无 extradata 或码流内参数变化依赖实际帧守卫；不保证 Qpel/GMC 或全部 ASP 编码工具 | TEST1344 双配置 WM6 门覆盖实际 I420/flags、PCM、PTS/时长、三 session 各两次解码与 seek 零校验值一致、7-byte 短读、不可 seek AUTO、音视频 STOP/负 callback、EOF/停止态/关闭及隔行/超限/截断头拒绝；复杂工具、坏 VOL 分支和非零 seek 仍待门 |
+| H.263 有界解码 | AVI H.263 CIF、H.263+ 自定义 VGA；`pm_probe/open/pump/seek` | 无音频短 AVI 合同已验收 | 8-bit 渐进有限范围 I420、最多 640×480；不代表裸流、3GP、FLV/Sorenson H.263 或复杂编码工具已验收 | TEST1347 双配置 WM6 门覆盖三帧 I/P/P、plane/stride/像素取样/flags、PTS/时长、三 session 各两次解码与 seek 零校验值一致、短读/不可 seek AUTO/SOFT、暂停/视频 STOP/负 callback、EOF/停止态/关闭、704×576/应用尺寸/截断头拒绝；音视频组合及非零 seek 仍待门 |
 
 Media 首版的目标边界是 decoder/playback only；不包含编码、DRM、字幕、直播协议、长期工作线程、
 AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件视频。DirectShow
@@ -189,7 +190,7 @@ AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件�
 `PMEDIA_BACKEND_NATIVE` 输入仍 fail closed。桌面格式表不能替代设备运行时 filter/codec 探测。
 FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载。
 `pm_pump` 目前忽略 `clock_us`，`budget_us` 只是处理量提示，不是严格墙钟预算；按时输出、
-迟到丢帧、音视频同步和暂停时间基准尚未实现。短小 H.264/AAC/MJPEG/MP3/TS/PS MPEG/AMR/MPEG-4 Part 2 夹具的解码与 EOF 后 seek
+迟到丢帧、音视频同步和暂停时间基准尚未实现。短小 H.264/AAC/MJPEG/MP3/TS/PS MPEG/AMR/MPEG-4 Part 2/H.263 夹具的解码与 EOF 后 seek
 合同不代表其他已编译格式、复杂画面或实时播放已经验收；夹具来源与固定哈希见
 [媒体夹具](../test_host/fixtures/media/README.md)。
 
