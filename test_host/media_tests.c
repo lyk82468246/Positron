@@ -1439,6 +1439,183 @@ fail:
     return FALSE;
 }
 
+static int media_annexb_video(void *context, const pm_video_frame *frame)
+{
+    media_compressed_sink *sink;
+    int plane;
+    int width;
+    int height;
+    int x;
+    int y;
+    int target;
+    int value;
+
+    sink = (media_compressed_sink *)context;
+    if (frame == NULL || frame->size != sizeof(*frame) ||
+        frame->format != PMEDIA_PIXEL_I420 || frame->width != sink->width ||
+        frame->height != sink->height || frame->pts_us != -1 ||
+        frame->duration_us != 200000 ||
+        (frame->flags & (PMEDIA_FRAME_INTERLACED | PMEDIA_FRAME_FULL_RANGE | PMEDIA_FRAME_PTS_INFERRED)) ||
+        !!(frame->flags & PMEDIA_FRAME_KEY) != (sink->frames == 0)) goto invalid;
+    for (plane = 0; plane < 3; plane++) {
+        width = plane == 0 ? frame->width : frame->width / 2;
+        height = plane == 0 ? frame->height : frame->height / 2;
+        target = plane == 0 ? 81 : (plane == 1 ? 90 : 240);
+        if (frame->plane[plane] == NULL || frame->stride[plane] < width) goto invalid;
+        for (y = 0; y < height; y += 17) {
+            for (x = 0; x < width; x += 17) {
+                value = frame->plane[plane][y * frame->stride[plane] + x];
+                if (value < target - 1 || value > target + 1) goto invalid;
+                sink->replay_video_hash = sink->replay_video_hash * 33UL + value;
+            }
+        }
+    }
+    sink->frames++;
+    return sink->callback_result;
+invalid:
+    if (frame != NULL) {
+        _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                  "AnnexB frame=%d pts=%I64d duration=%I64d flags=%lu size=%dx%d",
+                  sink->frames, frame->pts_us, frame->duration_us, frame->flags,
+                  frame->width, frame->height);
+        g_media_compressed_detail[sizeof(g_media_compressed_detail) - 1] = '\0';
+        g_media_compressed_error = g_media_compressed_detail;
+        strcpy(sink->assertion, g_media_compressed_detail);
+    }
+    sink->events.errors++;
+    return -1;
+}
+
+BOOL test1349_media_annexb_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"annexb-baseline-aac.h264", L"annexb-main-vga.h264",
+        L"annexb-high.h264", L"annexb-high422.h264", L"annexb-interlaced.h264", L"annexb-oversize.h264" };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_probe_info unchanged;
+    pm_session session;
+    unsigned char *data;
+    unsigned long hash;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int expected;
+    DWORD start;
+
+    data = NULL;
+    session = NULL;
+    for (test = 0; test < 6; test++) {
+        memset(&sink, 0, sizeof(sink));
+        if (progress != NULL) progress(test < 2 ? "AnnexB accepted" : "AnnexB reject");
+        g_media_compressed_error = "AnnexB probe/open";
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        output.video = media_annexb_video;
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 1;
+        memset(&probe, 0xa5, sizeof(probe));
+        probe.size = sizeof(probe);
+        unchanged = probe;
+        if (test >= 2) {
+            expected = test == 5 ? PMEDIA_ERROR_LIMIT : PMEDIA_ERROR_UNSUPPORTED;
+            options.max_video_width = options.max_video_height = 4096;
+            if (pm_probe(&source, &probe) != expected || input.position != 0 ||
+                memcmp(&probe, &unchanged, sizeof(probe)) ||
+                pm_open(&source, &options, &output, &session) != expected || session != NULL ||
+                sink.events.error_callbacks != 1 || sink.events.last_error != expected ||
+                sink.frames || sink.events.blocks) goto fail;
+        } else {
+            input.position = 1;
+            if (pm_probe(&source, &probe) != PMEDIA_OK || input.position != 1 ||
+                probe.stream.container != PMEDIA_CONTAINER_RAW || !probe.stream.has_video ||
+                probe.stream.has_audio || probe.stream.video_codec != PMEDIA_CODEC_H264 ||
+                probe.stream.width != (test == 0 ? 320 : 640) ||
+                probe.stream.height != (test == 0 ? 240 : 480)) goto fail;
+            for (iteration = 0; iteration < 3; iteration++) {
+                input.position = input.read_mode = 0;
+                source.seek = iteration == 0 ? NULL : media_fixture_seek;
+                source.tell = iteration == 0 ? NULL : media_fixture_tell;
+                options.backend = iteration == 0 ? PMEDIA_BACKEND_AUTO : PMEDIA_BACKEND_SOFT;
+                memset(&sink, 0, sizeof(sink));
+                sink.width = test == 0 ? 320 : 640;
+                sink.height = test == 0 ? 240 : 480;
+                if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+                    pm_get_backend(session) != PMEDIA_BACKEND_SOFT || input.position != bytes) goto fail;
+                if (pm_seek(session, -1) != PMEDIA_ERROR_ARGUMENT ||
+                    pm_seek(session, 200000) != PMEDIA_ERROR_NOT_SEEKABLE ||
+                    sink.frames || sink.events.blocks || sink.events.error_callbacks) goto fail;
+                hash = 0;
+                for (pass = 0; pass < 3; pass++) {
+                    if (pm_pause(session) != PMEDIA_OK || pm_pump(session, 0, 2000) != PMEDIA_OK ||
+                        sink.frames || pm_resume(session) != PMEDIA_OK) goto fail;
+                    sink.callback_result = PMEDIA_CALLBACK_STOP;
+                    start = GetTickCount();
+                    while (sink.frames == 0 && GetTickCount() - start < 5000)
+                        if (pm_pump(session, 0, 2000) != PMEDIA_OK) goto fail;
+                    if (sink.frames != 1 || pm_pump(session, 0, 2000) != PMEDIA_OK || sink.frames != 1) goto fail;
+                    sink.callback_result = PMEDIA_OK;
+                    if (pm_resume(session) != PMEDIA_OK || !media_contract_drain(session) ||
+                        sink.frames != 3 || sink.events.blocks || sink.events.errors ||
+                        sink.events.error_callbacks || sink.events.eof_events != 1 ||
+                        pm_pump(session, 0, 2000) != PMEDIA_EOF || sink.events.eof_events != 1) goto fail;
+                    if (pass == 0) hash = sink.replay_video_hash;
+                    else if (hash != sink.replay_video_hash) goto fail;
+                    if (progress != NULL) progress("AnnexB three frames, unknown PTS, replay hash OK");
+                    if (pass < 2) {
+                        g_media_compressed_error = "AnnexB seek zero";
+                        input.read_mode = 2;
+                        if (pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                        memset(&sink, 0, sizeof(sink));
+                        sink.width = test == 0 ? 320 : 640;
+                        sink.height = test == 0 ? 240 : 480;
+                    }
+                }
+                if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+                    sink.events.stopped_events != 1 || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                    pm_pump(session, 0, 2000) != PMEDIA_ERROR_STATE ||
+                    pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                    pm_close(session) != PMEDIA_OK) goto fail;
+                session = NULL;
+            }
+            input.position = input.read_mode = 0;
+            memset(&sink, 0, sizeof(sink));
+            sink.width = test == 0 ? 320 : 640;
+            sink.height = test == 0 ? 240 : 480;
+            sink.callback_result = -1;
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || media_contract_drain(session) ||
+                sink.events.last_error != PMEDIA_ERROR_CALLBACK || sink.events.error_callbacks != 1 ||
+                sink.events.error_events != 1 || sink.frames != 1 || sink.events.eof_events ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            input.position = 0;
+            input.bytes = 3;
+            memset(&sink, 0, sizeof(sink));
+            memset(&probe, 0xa5, sizeof(probe));
+            probe.size = sizeof(probe);
+            unchanged = probe;
+            if (pm_probe(&source, &probe) != PMEDIA_ERROR_FORMAT || input.position != 0 ||
+                memcmp(&probe, &unchanged, sizeof(probe)) ||
+                pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_FORMAT || session != NULL ||
+                sink.events.error_callbacks != 1 || sink.frames || sink.events.blocks) goto fail;
+        }
+        free(data);
+        data = NULL;
+    }
+    return TRUE;
+fail:
+    if (sink.assertion[0] && progress != NULL) progress(sink.assertion);
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
 static void media_flv_reset_sink(media_compressed_sink *sink, int test)
 {
     memset(sink, 0, sizeof(*sink));

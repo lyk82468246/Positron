@@ -356,6 +356,10 @@ pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 v
 返回前有效。duration_us 优先采用 packet duration；缺失时可由容器平均帧率换算，
 两者均未知时为零，应用不能把未知时长解释为固定帧率。
 
+裸 H.264 Annex-B 例外：duration_us 取 decoder 从 SPS 得到的正帧率所对应的名义
+帧间隔；无有效帧率时为零，不采用裸流 demux 的默认 25 fps。这不是 VFR 的真实时间轴。
+没有 PTS 起点的裸流保持 pts_us=-1，不设置 PTS_INFERRED，不能仅凭时长虚构起点。
+
 FFmpeg 路径保留输入的呈现时间轴，不把 TS/PS 的非零 PTS 起点归零。decoder 没有提供
 PTS 时，只有前一输出帧具有已知非负 PTS、正的 duration 且相加不溢出，DLL 才用两者之和
 估计当前 PTS，并设置 `PMEDIA_FRAME_PTS_INFERRED`；没有可靠起点时仍返回未知值 `-1`。
@@ -412,6 +416,10 @@ demux 和音视频 decoder，保留初始 priming 并清除音频历史，不再
 此同步操作短暂同时持有两套 demux/decoder，可能返回内存错误，不能按 pump 预算估算耗时。
 非零 AAC seek 仍使用后向关键点与 flush，尚未验证相同的 PCM 保真性或精确定位；
 候选分配失败的回滚尚未经过设备故障注入，峰值内存也未测量。
+裸 H.264 Annex-B 的零点 seek 同样从缓存事务式重建 demux/decoder，不读宿主 source，
+保留暂停状态；正值 seek 返回 PMEDIA_ERROR_NOT_SEEKABLE，拒绝前不改变解码状态。
+裸流没有可用于时间定位的容器索引，不能套用 MP4 的后向关键点语义。重建的瞬时内存、
+耗时及分配失败注入仍待测量。
 便携 WAV IMA 路径例外：已验证按 sample 定位的块内/块边界非零 seek，首个输出 PTS 对应
 定位后的 sample；到达或超过 duration（包括极大正值）直接定位 EOF，不从块头重播。
 budget_us 必须非负；零使用内部默认处理量。clock_us 目前不驱动按时输出、迟到丢帧、
@@ -527,6 +535,14 @@ FLV AAC 保留 priming 包，共 30 块各 1024 sample，输出 PTS 保留容器
 全部 S16LE 字节与首次相同，source 禁止再读取。短读、不可 seek AUTO、SOFT、暂停、
 音频或视频 STOP/负 callback、EOF/停止态/关闭均有断言；超 VGA、FLV1 和截断头
 在输出前拒绝，失败 probe 不改输出。此合同不涉及 RTMP/直播、非零 seek 或实时同步。
+
+H.264 Annex-B 的 Constrained Baseline 320×240 与 Main VGA/B 帧无音频输入通过
+TEST1349：三帧有限范围 I420、plane/stride/像素取样/关键帧标记，PTS 全部为 -1，
+不设推导标记，SPS 5 fps 对应时长 200000 µs。各三 session 三遍播放的取样校验值一致，
+零点重播禁止重读 source；1-byte 短读、不可 seek AUTO/SOFT、暂停/视频 STOP/负 callback、
+EOF/停止态/关闭和正值 seek 拒绝后继续解码均有断言。High、4:2:2、隔行返回
+UNSUPPORTED，超 VGA 返回 LIMIT；截断头返回 FORMAT，失败 probe 不改输出且不产生帧。
+缺失 SPS timing、VFR、码流内参数变化、损坏 payload 和重建分配失败尚未经过此设备门。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

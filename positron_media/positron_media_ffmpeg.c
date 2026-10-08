@@ -907,7 +907,18 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     timestamp = av_frame_get_best_effort_timestamp(context->frame);
     frame.pts_us = pm_ff_timestamp(timestamp, stream->time_base);
     frame.duration_us = 0;
-    if (context->frame->pkt_duration > 0) {
+    /* Raw H.264 has no container timeline. The pinned raw demuxer defaults
+     * to 25 fps and can attach that duration even when SPS timing says 5 fps.
+     * The H.264 decoder exposes SPS timing through framerate; do not invent
+     * a PTS origin, or treat the demuxer's default as source timing. */
+    if (strcmp(context->format->iformat->name, "h264") == 0) {
+        if (context->video_codec->framerate.num > 0 &&
+            context->video_codec->framerate.den > 0) {
+            frame_time.num = context->video_codec->framerate.den;
+            frame_time.den = context->video_codec->framerate.num;
+            frame.duration_us = pm_ff_timestamp(1, frame_time);
+        }
+    } else if (context->frame->pkt_duration > 0) {
         frame.duration_us = pm_ff_timestamp(context->frame->pkt_duration,
                                             stream->time_base);
     } else if (stream->avg_frame_rate.num > 0 && stream->avg_frame_rate.den > 0) {
@@ -1088,7 +1099,7 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
     return PMEDIA_OK;
 }
 
-static int pm_ff_restart_aac(pmedia_ffmpeg *context)
+static int pm_ff_restart_cached(pmedia_ffmpeg *context)
 {
     pmedia_ffmpeg *replacement;
     pmedia_ffmpeg previous;
@@ -1099,6 +1110,7 @@ static int pm_ff_restart_aac(pmedia_ffmpeg *context)
     /* AAC flush does not reset all synthesis/PNS history in the pinned codec.
      * MOV seek(0) can also skip the negative-PTS priming packet. Reopen the
      * already-owned memory input, retaining the initial demux packet queue.
+     * Raw H.264 also needs this path: it has no timestamp seek index.
      * Prepare everything before committing; no output/source callbacks run. */
     replacement = NULL;
     memset(&info, 0, sizeof(info));
@@ -1125,9 +1137,13 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     AVCodecContext *replacement_audio;
     int result;
     if (context == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
+    if (strcmp(context->format->iformat->name, "h264") == 0) {
+        if (position_us != 0) return PMEDIA_ERROR_NOT_SEEKABLE;
+        return pm_ff_restart_cached(context);
+    }
     if (position_us == 0 && context->audio_codec != NULL &&
         context->audio_codec->codec_id == AV_CODEC_ID_AAC)
-        return pm_ff_restart_aac(context);
+        return pm_ff_restart_cached(context);
     replacement_audio = NULL;
     /* The pinned native AMR decoders have no flush callback.  Flushing their
      * packet queues leaves prediction/synthesis history from the old position.

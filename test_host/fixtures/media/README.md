@@ -76,13 +76,23 @@
   另以 metadata mutation 验证非法步进索引、保留字节、fmt/fact/RIFF 边界、后置 fact、部分块
   和超大块拒绝；合法 2041-sample 静音块验证固定输出容量不截断。
 
+Annex-B 文件组 `annexb-{baseline-aac,main-vga,high,high422,interlaced,oversize}.h264`
+由对应固定 MP4 仅复制视频并使用 h264_mp4toannexb 转换，不重新编码、不含音频；
+有起始码、SPS/PPS/IDR。TEST1349 接受前两条：三帧 I420、关键帧/范围/stride/像素取样、
+未知 PTS=-1 且不设推导标记、SPS 名义帧间隔 200000 µs；三 session 各三遍取样校验值一致。
+缓存零点重播不得重读 source，正值 seek 拒绝且不改变输出；短读、不可 seek AUTO/SOFT、
+暂停/STOP/负 callback、EOF/停止态/关闭均保护。其余四条验证 High/4:2:2/隔行拒绝及
+超 VGA LIMIT，截断头验证 FORMAT 与 probe 输出不变。缺失 SPS timing、VFR、参数变化
+和损坏 payload 不在这组断言内。
+
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
 生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MPEG-4 Part 2/H.263/H.263+/MP2/IMA ADPCM 编码器，但它们不进入 WM6 产品。`--extend`
 只用于首次用同一 pinned 生成器补齐 MJPEG/MP3 文件，先验证已有 pin，不重生成旧文件；已经
 补齐后再次调用会拒绝。`--extend-mpeg`、`--extend-amr`、`--extend-ima`、`--extend-mpeg4` 与 `--extend-h263` 分别对 MPEG、AMR、IMA WAV/PCM、MPEG-4 Part 2、H.263 文件组采用相同规则；
 `--extend-flv` 对 FLV 文件组采用相同 pin 规则：三条 remux、一条 FLV1 负夹具编码；
-FLV1 编码器只用于桌面生成，不进入产品。扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
+FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六条裸流采用相同 pin
+规则，只转换已有固定 MP4，不改旧记录。扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
 [Multimedia Data Standards Update（RIFF/WAVE）](https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/Docs/RIFFNEW.pdf)。
@@ -104,6 +114,11 @@ FLV 的独立桌面校验：`python scripts/test_media_flv_fixtures.py --ffmpeg 
 必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查四条输入的全部有效像素、
 帧序/尺寸/源时间轴、AAC 样本数及 tag 边界/毫秒 PTS。FLV1 桌面帧时长 metadata 为零，
 只证明负夹具有效，不提供 WM6 输出承诺；桌面 PCM 不作为 ARMV4I 逐字节参考。
+
+Annex-B 的独立桌面校验：`python scripts/test_media_annexb_fixtures.py --ffmpeg PATH`。
+必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查六条输入的全部有效像素、
+尺寸/帧序/隔行属性、NAL 类型及 demux packet PTS/DTS 均未知。CLI 自动生成的呈现时间戳
+不能替代 DLL 的未知 PTS 合同，桌面全像素检查也不能替代 WM6 取样/重播/拒绝设备门。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，
