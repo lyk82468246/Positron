@@ -78,25 +78,15 @@ URL/语言/脚本策略、worker 与失败保留合同见应用数据设计及�
 不影响现存 session 或 CSS/图片，可信设置页仍可保存。EDIT 值/disabled 投影已补；
 仅成功 value 写入同步原生内容，普通 mutation 保留输入/选区。
 
-先行 `20261007-141454-app-settings-live-prefs-final` 的升级/恢复、URL 预算、JS 策略与
-完整 UI 门通过，旧进程已退出；helper 无摘要与 visits-create 失败保留，根因未定。
-语言用 selectedIndex 初始化，不重写 DLL value setter 语义。
-
-HTML 增量失败及 pre-build 跳过实验保留；正式入口先失效过期 .res 再编译资源，不删断言。
-截图 `tmp/QQ20261007-202522.png` 的主页 EDIT 横线已由 Core 自然高度修复；旧门仅验值/启用，
-不能视为视觉通过。[输入框请求](../positron_app/CORE_TEXT_INPUT_HEIGHT_REQUEST.md) 已落实。
-用户报告下伸字符裁剪；旧客户区 185×22/字体高 19 不证明格式区完整。
-设置模板现继承字号，单行 line-height:1 加上下 2 CSS px 内边距，由 Core 自然布局；
-无固定高度或文字偏移。Debug 用 EM_GETRECT 验证格式矩形完整容纳实际字体。
-最终 `tmp/device-runs/20261007-224358-app-settings-live-font-padding/` 四进程门 PASS：
-保存值→空值→填值均为客户区 197×23、格式矩形 (2,2)-(195,21)、字体高 19（ascent=16、descent=3），
-上下各留 2 像素；双语重启、关闭 JS 保存、单 history、退出/零引用、SHA256 10/10 与 crash PASS。
-入口包见 `manual-settings-review-verified/`；其 PID1594425138 已按用户授权由 Media 门清理器终止，
-不再作为运行入口。用户已确认字符显示基本正常；SIP/保存/旋转完整矩阵仍待人工。
-Debug/Release/CAB、C89/审计及诊断排除通过。先行 padding 包客户区高 30、文字偏上，已撤回；
-linebox 包客户区高 21/格式区高 17，被新断言拒绝，失败保留且已正常退出。
-CabWiz 失败见 `tmp/settings-linebox-release-cab-failed.log`，正式重试通过。
-ROADMAP 已复核，未确认的人工矩阵与 Unicode 取证继续保留，无强杀/删库。
+升级/恢复、URL 预算和 JS 策略已有独立门；语言用 selectedIndex 初始化，不改 DLL setter。
+Core [输入框请求](../positron_app/CORE_TEXT_INPUT_HEIGHT_REQUEST.md) 已落实，EXE 继承字号、
+line-height:1/上下 2 CSS px 内边距，不设固定高度或偏移。旧客户区度量不能证明格式区完整。
+`tmp/device-runs/20261007-224358-app-settings-live-font-padding/` 四进程 PASS：保存/空值/填值
+均为客户区 197×23、EM_GETRECT (2,2)-(195,21)、字体 19（ascent16/descent3），双语重启、
+JS 关闭保存、单 history、退出/零引用、哈希/crash 通过。用户确认字符基本正常；SIP/保存/
+旋转矩阵仍待门。旧人工 PID1594425138 按用户授权由 Media 清理器终止，不再作为入口。
+padding 高 30、linebox 格式区 17 的失败保留并撤回，不删断言；增量资源/pre-build 失败与
+CabWiz 正式重试边界见 Git/本地日志。两配置/C89/审计/诊断排除通过，Unicode 取证保持。
 
 ### EXE 有界下载与共享记录接线通过自动门
 
@@ -104,17 +94,22 @@ downloads 页直接 GET/原生确认新路径，两任务、一传输、32 MiB/1
 续传或执行。共享 worker/迁移/Core 列表，使用独立 typed 表。v4 保留旧数据，租约拒绝第二
 owner；journal ACK、不覆盖发布、仅清自身临时文件、重启标中断与正常退出合同见应用数据设计。
 
-当前匹配包证据 `tmp/device-runs/20261012-113205-app-downloads-complete/`：五进程门
+当前自动证据 `tmp/device-runs/20261012-131709-app-downloads-records-final/`：五进程门
 create/reopen/storage/services/ui PASS，v3 升级、owner 拒绝、16 条分页、队列/传输取消、
 404、目标竞争、不覆盖、关闭排空和中断恢复通过；2 MiB 中文路径文件精确 SHA256，
 清记录后文件与原偏好/访问记录保留。实际 native EDIT 格式区、拒绝错误 scheme、刷新保值、
 无脚本/单 history 通过；各夹具正常退出至零引用，模块 SHA256 10/10 与 crash PASS。
-普通无自检启动 PID601397726 停在 downloads；原生 picker、真实 HTTP(S) 下载、触摸/SIP、
-旋转和文件故障仍待人工/专门门，不以 loopback 成功替代。
+共享记录组件改自然字段块，96/128/192 DPI、窄宽视口不重叠/文字与历史 href 保留通过；
+输入框用容器百分比宽度，WM6 picker 补类型/默认 bin。截图两 URL 的 404 由独立请求及
+关闭后原 DB 交叉确认，地址未被改写；拒收非 2xx 不伪装文件写入错误，不猜 index.html。
+人工包 `tmp/device-runs/20261012-131841-app-downloads-records-review/` 哈希 10/10、原 DB
+精确复制/前台/读取/crash PASS，PID1133817002 留在 downloads；旧 PID 已正常退出。
+视觉/picker、成功外网下载、SIP/旋转/文件故障仍待门，不以 loopback 替代。
 
-正式 Debug/Release build/CAB、C89 与 Release 诊断排除已验证。失败日志保留：不支持的
-时间 API 和 desktop 路径编码已修正；UI 终态后精确 PID 的退出用有界等待，必须零引用，
-未保留产品 dispatch 绕过或强杀/放宽审计，不追认失败为 PASS。
+正式双配置/CAB、C89/审计与 Release 诊断排除通过。失败包保留：先行几何门 extent=320
+拒绝固定 size/max-width；width:100% 后通过，不放宽断言。一轮 create stage1 失败根因未定，
+最终新包复跑通过；临时 UI helper 过早退出审计仍 FAIL，正式门有界等待零引用，不强杀。
+额外 host 存储检查的四项旧源码模式失败未撤断言；服务检查通过，不能声称全部 host 门通过。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -498,7 +493,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
 启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
-已复核本轮 ROADMAP：设置字符显示获用户确认，有界下载退出待实现队列。
+已复核本轮 ROADMAP：记录布局回归关闭自动门，视觉/picker 与真实网络仍留人工队列。
 EXE 下一步为下载页原生保存、真实网络/取消与文件结果人工验收，未确认的设置/SIP/旋转
 矩阵继续保留，不自动扩大网页下载策略；不把 test_host 门当成 EXE 完成。运行入口见上方；
 下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话

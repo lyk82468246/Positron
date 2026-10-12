@@ -311,7 +311,7 @@ static const char g_app_css[] =
         "a:focus{color:#000080;background-color:#cce8ff}"
         "a:hover{color:#800000}"
         "body.internal a{display:block}"
-        "body.internal .history-entry{overflow-wrap:break-word}";
+        "body.internal .history-entry{overflow-wrap:break-word;margin:0 0 8px 0}";
 
 static void app_copy_text(char *target, int target_capacity,
         const char *source)
@@ -3893,9 +3893,13 @@ static void app_downloads_command(HWND hwnd, const char *url)
         wcscpy(path, L"download.bin");
         picker.lStructSize = sizeof(picker);
         picker.hwndOwner = hwnd;
-        picker.lpstrFilter = L"All files (*.*)\0*.*\0\0";
+        picker.lpstrFilter = chinese ?
+                L"\x4e8c\x8fdb\x5236\x6587\x4ef6 (*.bin)\0*.bin\0\x6240\x6709\x6587\x4ef6 (*.*)\0*.*\0\0" :
+                L"Binary files (*.bin)\0*.bin\0All files (*.*)\0*.*\0\0";
+        picker.nFilterIndex = 1;
         picker.lpstrFile = path;
         picker.nMaxFile = APP_DOWNLOAD_PATH_MAX;
+        picker.lpstrDefExt = L"bin";
         picker.lpstrTitle = chinese ? L"\x4e0b\x8f7d\x4fdd\x5b58\x4f4d\x7f6e" : L"Save download";
         picker.Flags = OFN_PATHMUSTEXIST;
         g_download_picker_open = 1;
@@ -9083,6 +9087,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     AppHostContext_SetCoreInitialized(&g_app, 1);
 #ifdef _DEBUG
+    if (g_downloads_ui_mode && AppInternalPages_DebugCheck(g_app_css) != 0) {
+        AppHostContext_Shutdown(&g_app);
+        return 1;
+    }
     if (startup_ui_selftest && (AppAddressBar_DebugCheck(g_instance) != 0 ||
             AppLoading_DebugCheck() != 0 ||
             AppInternalPages_DebugCheck(g_app_css) != 0)) {

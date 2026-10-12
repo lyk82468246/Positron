@@ -801,10 +801,21 @@ static void app_internal_visit_time(AppHtmlWriter *writer, __int64 utc,
 
 /* One retained Core record-list component for both visit and download data.
  * Routing/actions remain typed; no server text is treated as markup. */
+static void app_internal_record_field(AppHtmlWriter *writer, const char *id,
+        const char *field)
+{
+    app_html_append(writer, "<div id=\"");
+    app_html_escape(writer, id);
+    app_html_append(writer, "-");
+    app_html_escape(writer, field);
+    app_html_append(writer, "\">");
+}
+
 static void app_internal_record_header(AppHtmlWriter *writer, const char *link_id,
         const char *href, const char *title, const char *url, __int64 utc, int chinese)
 {
-    app_html_append(writer, "<p class=\"history-entry\">");
+    app_html_append(writer, "<div class=\"history-entry\">");
+    app_internal_record_field(writer, link_id, "title");
     if (href != NULL) {
         app_html_append(writer, "<a id=\"");
         app_html_escape(writer, link_id);
@@ -814,10 +825,13 @@ static void app_internal_record_header(AppHtmlWriter *writer, const char *link_i
     }
     app_html_escape(writer, title[0] != 0 ? title : url);
     if (href != NULL) app_html_append(writer, "</a>");
-    app_html_append(writer, "<br>");
+    app_html_append(writer, "</div>");
+    app_internal_record_field(writer, link_id, "url");
     app_html_escape(writer, url);
-    app_html_append(writer, "<br>");
+    app_html_append(writer, "</div>");
+    app_internal_record_field(writer, link_id, "time");
     app_internal_visit_time(writer, utc, chinese);
+    app_html_append(writer, "</div>");
 }
 
 static void app_internal_downloads(AppHtmlWriter *writer,
@@ -831,7 +845,7 @@ static void app_internal_downloads(AppHtmlWriter *writer,
 
     app_html_append(writer, chinese ? "<p>\344\270\213\350\275\275\345\234\260\345\235\200</p>" : "<p>Download URL</p>");
     app_html_append(writer, "<p><input id=\"download-url\" size=\"18\" maxlength=\"1023\" "
-            "style=\"font-size:inherit;line-height:1;padding:2px 0.3em\" value=\"");
+            "style=\"font-size:inherit;line-height:1;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
     app_html_escape(writer, data->download_url);
     app_html_append(writer, "\"></p><p><a id=\"download-start\" href=\"#app-download-start\">");
     app_html_escape(writer, chinese ? "\344\270\213\350\275\275\345\271\266\351\200\211\346\213\251\344\277\235\345\255\230\344\275\215\347\275\256" : "Download and choose save location");
@@ -884,10 +898,18 @@ static void app_internal_downloads(AppHtmlWriter *writer,
                 chinese ? " | %I64d / %I64d \345\255\227\350\212\202" : " | %I64d / %I64d bytes",
                 record->received, record->total);
         detail[sizeof(detail) - 1] = 0;
-        app_html_append(writer, "<br>");
+        app_internal_record_field(writer, link_id, "status");
         app_html_escape(writer, AppDownloads_StateText(record->state, chinese));
         app_html_escape(writer, detail);
-        if (record->error != 0) {
+        if (record->state == APP_DOWNLOAD_FAILED && record->http_status != 0 &&
+                (record->http_status < 200 || record->http_status >= 300)) {
+            _snprintf(detail, sizeof(detail) - 1, " | HTTP %d", record->http_status);
+            detail[sizeof(detail) - 1] = 0;
+            app_html_escape(writer, detail);
+            app_html_escape(writer, record->http_status == 404 ?
+                    (chinese ? "\357\274\210\346\234\215\345\212\241\345\231\250\344\270\212\346\262\241\346\234\211\350\257\245\345\234\260\345\235\200\357\274\211" : " (URL not found on server)") :
+                    (chinese ? "\357\274\210\346\234\215\345\212\241\345\231\250\346\234\252\350\277\224\345\233\236\346\210\220\345\212\237\345\223\215\345\272\224\357\274\211" : " (server did not return a successful response)"));
+        } else if (record->error != 0) {
             _snprintf(detail, sizeof(detail) - 1,
                     chinese ? " | HTTP %d | \351\224\231\350\257\257 %d" : " | HTTP %d | error %d",
                     record->http_status, record->error);
@@ -907,7 +929,8 @@ static void app_internal_downloads(AppHtmlWriter *writer,
                         " | Final path exists, but completion is unconfirmed");
             else app_html_escape(writer, chinese ? " | \346\234\200\347\273\210\346\226\207\344\273\266\344\270\215\345\217\257\347\224\250" : " | Final file unavailable");
             if (record->temporary[0] != 0) {
-                app_html_append(writer, "<br>");
+                app_html_append(writer, "</div>");
+                app_internal_record_field(writer, link_id, "temporary");
                 app_html_escape(writer, chinese ? "\344\270\264\346\227\266\350\267\257\345\276\204\357\274\232" : "Temporary path: ");
                 app_html_escape(writer, record->temporary);
                 if (MultiByteToWideChar(CP_UTF8, 0, record->temporary, -1, path, APP_DOWNLOAD_PATH_MAX) &&
@@ -916,7 +939,7 @@ static void app_internal_downloads(AppHtmlWriter *writer,
                 else app_html_escape(writer, chinese ? " | \344\270\215\345\217\257\347\224\250" : " | Unavailable");
             }
         }
-        app_html_append(writer, "</p>");
+        app_html_append(writer, "</div></div>");
     }
 }
 
@@ -968,7 +991,7 @@ static void app_internal_visits(AppHtmlWriter *writer,
             link_id[sizeof(link_id) - 1] = '\0';
             app_internal_record_header(writer, link_id, clickable ? record->url : NULL,
                     record->title, record->url, record->visited_utc, chinese);
-            app_html_append(writer, "</p>");
+            app_html_append(writer, "</div>");
         }
         if (visits->count == 0) {
             app_html_append(writer, chinese ?
@@ -1297,6 +1320,121 @@ done:
     return result;
 }
 
+/* Real download records must have distinct natural block geometry, even
+ * when a source URL wraps or ends exactly at the viewport's line edge. */
+static int app_internal_records_debug_check(HANDLE stylesheet)
+{
+    static const char *ids[] = { "download-0-title", "download-0-url",
+        "download-0-time", "download-0-status", "download-1-title",
+        "download-1-url", "download-1-time", "download-1-status" };
+    static const int widths[] = { 240, 480, 240 };
+    static const int dpis[] = { 96, 128, 192 };
+    AppInternalPageData data;
+    AppDownloadSnapshot *downloads;
+    HANDLE document;
+    char *html;
+    unsigned int length;
+    unsigned int dpi;
+    unsigned int width;
+    unsigned int field;
+    int x;
+    int y;
+    int w;
+    int h;
+    int bottom;
+    int stage;
+    int result;
+    char text[APP_DOWNLOAD_URL_MAX];
+    char message[160];
+
+    result = 1;
+    document = NULL;
+    html = NULL;
+    dpi = width = field = 0;
+    stage = 0;
+    text[0] = 0;
+    downloads = (AppDownloadSnapshot *) calloc(1, sizeof(*downloads));
+    if (downloads == NULL) goto done;
+    downloads->count = 2;
+    downloads->entries[0].id = 2;
+    downloads->entries[1].id = 1;
+    for (field = 0; field < 2; ++field) {
+        strcpy(downloads->entries[field].path, "\\My Documents\\download.bin");
+        downloads->entries[field].created_utc = 1700000000;
+        downloads->entries[field].state = APP_DOWNLOAD_FAILED;
+        downloads->entries[field].http_status = 404;
+        downloads->entries[field].error = -8;
+        downloads->entries[field].total = field == 0 ? 6330 : -1;
+    }
+    strcpy(downloads->entries[0].url, "https://winworldpc.com/index.html");
+    strcpy(downloads->entries[1].url, "http://example.com/index.html");
+    memset(&data, 0, sizeof(data));
+    data.dpi = 96;
+    data.viewport_width = 240;
+    data.viewport_height = 268;
+    data.downloads = downloads;
+    data.downloads_status = 2;
+    if (AppInternalPages_Build(APP_I18N_PAGE_DOWNLOADS, &data, &html, &length) != 0 ||
+            strstr(html, " | HTTP 404") == NULL || strstr(html, "error -8") != NULL)
+        goto done;
+    document = PCore_ParseHTML(html, length);
+    if (document == NULL) goto done;
+    for (dpi = 0; dpi < sizeof(dpis) / sizeof(dpis[0]); ++dpi) {
+        for (width = 0; width < sizeof(widths) / sizeof(widths[0]); ++width) {
+            stage = 1;
+            PCore_SetDeviceViewport(widths[width], 268, dpis[dpi]);
+            if (PCore_StyleDocument(document, stylesheet) != 0 ||
+                    PCore_LayoutDocument(document, widths[width], 268) != 0) goto done;
+            stage = 2;
+            if (PCore_DocumentWidth(document) > widths[width]) {
+                if (PCore_FormControlInfoById(document, "download-url", &x, &y,
+                        &w, &h, NULL, NULL, NULL) == 0) {
+                    _snprintf(message, sizeof(message) - 1,
+                            "positron record-fields control x=%d y=%d w=%d h=%d\r\n",
+                            x, y, w, h);
+                    message[sizeof(message) - 1] = 0;
+                    AppDebug_Log(message);
+                }
+                goto done;
+            }
+            stage = 3;
+            bottom = 0;
+            for (field = 0; field < sizeof(ids) / sizeof(ids[0]); ++field) {
+                if (PCore_FragmentInfoById(document, ids[field], &x, &y, &w, &h) != 0 ||
+                        w <= 0 || h <= 0 || y < bottom) goto done;
+                bottom = y + h;
+            }
+            stage = 4;
+            if (PCore_NodeTextContentById(document, "download-0-url", text,
+                    sizeof(text), NULL) != 0 || strcmp(text, downloads->entries[0].url) ||
+                    PCore_NodeTextContentById(document, "download-1-url", text,
+                    sizeof(text), NULL) != 0 || strcmp(text, downloads->entries[1].url) ||
+                    PCore_NodeTextContentById(document, "download-0-time", text,
+                    sizeof(text), NULL) != 0 || strcmp(text, "2023-11-14 22:13:20 UTC"))
+                goto done;
+        }
+    }
+    result = 0;
+done:
+    if (result != 0 && document != NULL) {
+        _snprintf(message, sizeof(message) - 1,
+                "positron record-fields detail stage=%d extent=%d text=%s\r\n",
+                stage, PCore_DocumentWidth(document), text);
+        message[sizeof(message) - 1] = 0;
+        AppDebug_Log(message);
+    }
+    _snprintf(message, sizeof(message) - 1,
+            "positron record-fields selftest %s dpi-index=%u width-index=%u field=%u\r\n",
+            result == 0 ? "OK" : "FAILED", dpi, width, field);
+    message[sizeof(message) - 1] = 0;
+    AppDebug_Log(message);
+    if (document != NULL) PCore_FreeDocument(document);
+    AppI18n_FreePage(html);
+    free(downloads);
+    PCore_SetDeviceViewport(240, 268, 96);
+    return result;
+}
+
 int AppInternalPages_DebugCheck(const char *css)
 {
     static const char *valid[] = {
@@ -1366,6 +1504,7 @@ int AppInternalPages_DebugCheck(const char *css)
     PCore_SetDeviceViewport(240, 268, 96);
     stylesheet = PCore_ParseCSS(css, 0, "https://positron.invalid/app.css");
     if (stylesheet == NULL) goto done;
+    if (app_internal_records_debug_check(stylesheet) != 0) goto done;
     for (page = APP_I18N_PAGE_WELCOME; page <= APP_I18N_PAGE_SETTINGS;
             page++) {
         if (AppInternalPages_Build(page, &data, &html, &length) != 0 ||

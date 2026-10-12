@@ -85,7 +85,13 @@ try {
             if ([PositronDeviceRapi]::TryCopyFileFromDevice('\Temp\positron-debug.log',$log)) {
                 $body=Get-Content $log -Raw -Encoding UTF8
                 if ($body -match 'downloads-fixture FAIL|settings-fixture FAIL|selftest FAILED') { throw ('Fixture failed: '+$mode) }
-                if (([regex]::Matches($body,$pattern)).Count -eq 1 -and $body -match ('debug-session pid='+$appPid+'\b')) { $complete=$true; break }
+                if (([regex]::Matches($body,$pattern)).Count -eq 1 -and $body -match ('debug-session pid='+$appPid+'\b')) {
+                    if ($mode -eq 'ui' -and ([regex]::Matches($body,
+                            '(?m)^positron pid='+$appPid+' tick=\d+ positron record-fields selftest OK dpi-index=3 width-index=3 field=8\r?$')).Count -ne 1) {
+                        throw 'Missing download record geometry regression.'
+                    }
+                    $complete=$true; break
+                }
             }
             Start-Sleep -Milliseconds 200
         } while($timer.Elapsed.TotalSeconds -lt 150)
