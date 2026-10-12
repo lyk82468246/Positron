@@ -7,6 +7,7 @@
 #include <wchar.h>
 #include <winver.h>
 #include "app_internal_pages.h"
+#include "app_downloads.h"
 #include "positron_browser.h"
 #include "positron_core.h"
 #include "app_debug.h"
@@ -798,6 +799,127 @@ static void app_internal_visit_time(AppHtmlWriter *writer, __int64 utc,
     app_html_escape(writer, text);
 }
 
+/* One retained Core record-list component for both visit and download data.
+ * Routing/actions remain typed; no server text is treated as markup. */
+static void app_internal_record_header(AppHtmlWriter *writer, const char *link_id,
+        const char *href, const char *title, const char *url, __int64 utc, int chinese)
+{
+    app_html_append(writer, "<p class=\"history-entry\">");
+    if (href != NULL) {
+        app_html_append(writer, "<a id=\"");
+        app_html_escape(writer, link_id);
+        app_html_append(writer, "\" href=\"");
+        app_html_escape(writer, href);
+        app_html_append(writer, "\">");
+    }
+    app_html_escape(writer, title[0] != 0 ? title : url);
+    if (href != NULL) app_html_append(writer, "</a>");
+    app_html_append(writer, "<br>");
+    app_html_escape(writer, url);
+    app_html_append(writer, "<br>");
+    app_internal_visit_time(writer, utc, chinese);
+}
+
+static void app_internal_downloads(AppHtmlWriter *writer,
+        const AppInternalPageData *data, int chinese)
+{
+    const AppDownloadRecord *record;
+    WCHAR path[APP_DOWNLOAD_PATH_MAX];
+    char detail[192];
+    char link_id[32];
+    int i;
+
+    app_html_append(writer, chinese ? "<p>\344\270\213\350\275\275\345\234\260\345\235\200</p>" : "<p>Download URL</p>");
+    app_html_append(writer, "<p><input id=\"download-url\" size=\"18\" maxlength=\"1023\" "
+            "style=\"font-size:inherit;line-height:1;padding:2px 0.3em\" value=\"");
+    app_html_escape(writer, data->download_url);
+    app_html_append(writer, "\"></p><p><a id=\"download-start\" href=\"#app-download-start\">");
+    app_html_escape(writer, chinese ? "\344\270\213\350\275\275\345\271\266\351\200\211\346\213\251\344\277\235\345\255\230\344\275\215\347\275\256" : "Download and choose save location");
+    app_html_append(writer, "</a></p><p id=\"download-progress\">");
+    app_html_escape(writer, data->download_message);
+    app_html_append(writer, "</p><p><a id=\"download-cancel-0\" href=\"#app-download-cancel-0\">");
+    app_html_escape(writer, chinese ? "\345\217\226\346\266\210\344\273\273\345\212\241 1" : "Cancel task 1");
+    app_html_append(writer, "</a> | <a id=\"download-cancel-1\" href=\"#app-download-cancel-1\">");
+    app_html_escape(writer, chinese ? "\345\217\226\346\266\210\344\273\273\345\212\241 2" : "Cancel task 2");
+    app_html_append(writer, "</a></p><p><a id=\"downloads-latest\" href=\"#app-download-latest\">");
+    app_html_escape(writer, chinese ? "\351\207\215\346\226\260\350\257\273\345\217\226\346\234\200\346\226\260\350\256\260\345\275\225" : "Reload newest records");
+    app_html_append(writer, "</a> | <a id=\"downloads-clear\" href=\"#app-download-clear\">");
+    app_html_escape(writer, chinese ? "\346\270\205\351\231\244\345\267\262\347\273\223\346\235\237\350\256\260\345\275\225\357\274\210\344\270\215\345\210\240\351\231\244\346\226\207\344\273\266\357\274\211" : "Clear finished records (keep files)");
+    app_html_append(writer, "</a></p>");
+    if (data->downloads_status == 1) {
+        app_html_append(writer, chinese ? "<p>\346\255\243\345\234\250\350\257\273\345\217\226\344\270\213\350\275\275\350\256\260\345\275\225\342\200\246</p>" : "<p>Loading download records...</p>");
+        return;
+    }
+    if (data->downloads_status != 2 || data->downloads == NULL ||
+            data->downloads->count < 0 || data->downloads->count > APP_DOWNLOAD_PAGE_MAX) {
+        app_html_append(writer, chinese ? "<p>\345\255\230\345\202\250\344\270\215\345\217\257\347\224\250\346\210\226\350\257\273\345\217\226\345\244\261\350\264\245\357\274\214\344\270\215\344\273\243\350\241\250\350\256\260\345\275\225\344\270\272\347\251\272\343\200\202</p>" :
+                "<p>Storage unavailable or read failed; this does not mean the records are empty.</p>");
+        return;
+    }
+    if (data->downloads->has_more) {
+        app_html_append(writer, "<p><a id=\"downloads-older\" href=\"#app-download-older\">");
+        app_html_escape(writer, chinese ? "\346\233\264\346\227\251\347\232\204\350\256\260\345\275\225" : "Older records");
+        app_html_append(writer, "</a></p>");
+    }
+    if (data->downloads->count == 0)
+        app_html_append(writer, chinese ? "<p>\346\234\254\351\241\265\346\262\241\346\234\211\344\270\213\350\275\275\350\256\260\345\275\225\343\200\202</p>" : "<p>No download records on this page.</p>");
+    for (i = 0; i < data->downloads->count; ++i) {
+        record = &data->downloads->entries[i];
+        if (record->id <= 0 || record->state < 0 || record->state > 6 ||
+                memchr(record->url, 0, sizeof(record->url)) == NULL ||
+                memchr(record->path, 0, sizeof(record->path)) == NULL ||
+                memchr(record->temporary, 0, sizeof(record->temporary)) == NULL) {
+            writer->failed = 1;
+            return;
+        }
+        _snprintf(link_id, sizeof(link_id), "download-%d", i);
+        /* Source is display-only: do not reopen a download as a web page. */
+        app_internal_record_header(writer, link_id, NULL, record->path,
+                record->url, record->created_utc, chinese);
+        if (record->total < 0)
+            _snprintf(detail, sizeof(detail) - 1,
+                    chinese ? " | %I64d \345\255\227\350\212\202\357\274\210\346\200\273\351\207\217\346\234\252\347\237\245\357\274\211" : " | %I64d bytes (total unknown)",
+                    record->received);
+        else _snprintf(detail, sizeof(detail) - 1,
+                chinese ? " | %I64d / %I64d \345\255\227\350\212\202" : " | %I64d / %I64d bytes",
+                record->received, record->total);
+        detail[sizeof(detail) - 1] = 0;
+        app_html_append(writer, "<br>");
+        app_html_escape(writer, AppDownloads_StateText(record->state, chinese));
+        app_html_escape(writer, detail);
+        if (record->error != 0) {
+            _snprintf(detail, sizeof(detail) - 1,
+                    chinese ? " | HTTP %d | \351\224\231\350\257\257 %d" : " | HTTP %d | error %d",
+                    record->http_status, record->error);
+            detail[sizeof(detail) - 1] = 0;
+            app_html_escape(writer, detail);
+        }
+        if (record->state == APP_DOWNLOAD_COMPLETE) {
+            if (!MultiByteToWideChar(CP_UTF8, 0, record->path, -1, path, APP_DOWNLOAD_PATH_MAX) ||
+                    GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES)
+                app_html_escape(writer, chinese ? " | \344\277\235\345\255\230\346\226\207\344\273\266\344\270\215\345\217\257\347\224\250" : " | Saved file unavailable");
+        } else if (record->state == APP_DOWNLOAD_INTERRUPTED) {
+            app_html_escape(writer, chinese ? " | \350\257\267\346\240\270\345\257\271\344\277\235\345\255\230\350\267\257\345\276\204\357\274\233\344\270\215\344\274\232\350\207\252\345\212\250\346\201\242\345\244\215\346\210\226\345\210\240\351\231\244\346\226\207\344\273\266" :
+                    " | Check the saved path; no automatic resume or file deletion");
+            if (MultiByteToWideChar(CP_UTF8, 0, record->path, -1, path, APP_DOWNLOAD_PATH_MAX) &&
+                    GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES)
+                app_html_escape(writer, chinese ? " | \346\234\200\347\273\210\350\267\257\345\276\204\345\255\230\345\234\250\346\226\207\344\273\266\357\274\214\344\275\206\344\270\213\350\275\275\347\273\210\346\200\201\346\234\252\347\241\256\350\256\244" :
+                        " | Final path exists, but completion is unconfirmed");
+            else app_html_escape(writer, chinese ? " | \346\234\200\347\273\210\346\226\207\344\273\266\344\270\215\345\217\257\347\224\250" : " | Final file unavailable");
+            if (record->temporary[0] != 0) {
+                app_html_append(writer, "<br>");
+                app_html_escape(writer, chinese ? "\344\270\264\346\227\266\350\267\257\345\276\204\357\274\232" : "Temporary path: ");
+                app_html_escape(writer, record->temporary);
+                if (MultiByteToWideChar(CP_UTF8, 0, record->temporary, -1, path, APP_DOWNLOAD_PATH_MAX) &&
+                        GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES)
+                    app_html_escape(writer, chinese ? " | \345\255\230\345\234\250" : " | Exists");
+                else app_html_escape(writer, chinese ? " | \344\270\215\345\217\257\347\224\250" : " | Unavailable");
+            }
+        }
+        app_html_append(writer, "</p>");
+    }
+}
+
 static void app_internal_visits(AppHtmlWriter *writer,
         const AppInternalPageData *data, int chinese)
 {
@@ -842,25 +964,10 @@ static void app_internal_visits(AppHtmlWriter *writer,
                     scheme == APP_URL_SCHEME_HTTPS) &&
                     AppUrlRouter_ResolveNetworkReference(NULL, record->url,
                     resolved, sizeof(resolved)) == 0;
-            app_html_append(writer, "<p class=\"history-entry\">");
-            if (clickable) {
-                _snprintf(link_id, sizeof(link_id) - 1, "visit-%d", i);
-                link_id[sizeof(link_id) - 1] = '\0';
-                app_html_append(writer, "<a id=\"");
-                app_html_append(writer, link_id);
-                app_html_append(writer, "\" href=\"");
-                /* Keep the saved fragment/query; the public owner validates
-                 * the supported route, not the displayed destination. */
-                app_html_escape(writer, record->url);
-                app_html_append(writer, "\">");
-            }
-            app_html_escape(writer, record->title[0] != '\0' ?
-                    record->title : record->url);
-            if (clickable) app_html_append(writer, "</a>");
-            app_html_append(writer, "<br>");
-            app_html_escape(writer, record->url);
-            app_html_append(writer, "<br>");
-            app_internal_visit_time(writer, record->visited_utc, chinese);
+            _snprintf(link_id, sizeof(link_id) - 1, "visit-%d", i);
+            link_id[sizeof(link_id) - 1] = '\0';
+            app_internal_record_header(writer, link_id, clickable ? record->url : NULL,
+                    record->title, record->url, record->visited_utc, chinese);
             app_html_append(writer, "</p>");
         }
         if (visits->count == 0) {
@@ -933,6 +1040,8 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
         if (data->visits_status == 0)
             app_internal_history(&writer, data->history, chinese);
         else app_internal_visits(&writer, data, chinese);
+    } else if (page_kind == APP_I18N_PAGE_DOWNLOADS) {
+        app_internal_downloads(&writer, data, chinese);
     } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
         app_html_row(&writer, chinese ? "\347\225\214\351\235\242\350\257\255\350\250\200" : "UI language",
                 chinese ? "\347\256\200\344\275\223\344\270\255\346\226\207 (zh-CN)" : "English (en-US)");
@@ -961,7 +1070,9 @@ int AppInternalPages_FocusIds(HANDLE document,
     static const char *navigation_ids[] = {
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
         "nav-downloads", "nav-settings", "nav-welcome", "nav-controls",
-        "visits-latest", "visits-older", "visits-clear"
+        "visits-latest", "visits-older", "visits-clear",
+        "download-start", "download-cancel-0", "download-cancel-1",
+        "downloads-latest", "downloads-older", "downloads-clear"
     };
     PCoreFocusTargetInfo info;
     char candidate[32];

@@ -4,7 +4,7 @@
 
 `positron.exe` 以 `test_host` 的接线顺序、callback 注册和生命周期处理为参考，成为当前公共
 Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内置离线页面和单窗口有界
-多标签；不加入 `file://`、下载、外部协议、多窗口、Web worker、module、bfcache 或完整现代 Web API。
+多标签，并消费公共流式 GET 提供有界应用下载；不加入 `file://`、外部协议、多窗口、Web worker、module、bfcache 或完整现代 Web API。
 
 “全部功能”指当前公共 DLL 已实现且面向浏览器用户的有界能力，不要求应用为了覆盖导出符号而
 直接调用 TLS、JSON、Image 或 Script 的低层诊断 API。Core/Browser/HTTP 继续拥有可复用的页面、
@@ -25,6 +25,7 @@ Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内�
 - `AppForms`：校验、submit/reset/formdata、GET/POST 和 multipart 提交。
 - `AppSettingsStore`：应用设置 schema、单所有者 DB worker、有界请求/完成队列与关闭排空；不拥有公共 DB、脚本或导航语义。
 - `AppSettingsServices`：可信设置页的最小业务方法、worker 请求与 Browser token 对应；桥接、脚本队列及撤销仍由公共 Browser 接口负责。
+- `AppDownloads`：应用级有界队列、HTTP stream/取消、用户文件确认、临时文件/发布及持久终态；不拥有 HTTP framing 或网页自动下载语义。
 
 页面 callback 的 `pw` 指向对应页面上下文。网络 worker 只负责 transport 和消息投递，存储
 worker 只拥有自己的 DB/statement，不读取页面；Core、
@@ -211,7 +212,7 @@ EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和�
 | `positron://about` | 说明、可取得的版本/系统信息、内部页面目录 |
 | `positron://version`、`positron://system` | 提交前规范化为 about 的 version/system 片段，仅提交一次 history |
 | `positron://history` | 持久访问记录（16 条分页）与独立的当前 Browser 导航栈文本快照 |
-| `positron://downloads` | 明确说明下载管理未实现，不伪造任务或下载记录 |
+| `positron://downloads` | 页内输入 HTTP(S) 地址、原生保存确认、进度/取消及持久下载记录分页 |
 | `positron://settings` | 原子读写 HTTP(S)/三个内部主页、语言与网页 JavaScript 偏好 |
 | `positron://quit` | 仅地址栏直接提交可以正常退出，不创建页面或 history 项 |
 
@@ -227,9 +228,9 @@ paint 和统一 CSS，不请求外部资源。仅 EXE 构造的 settings 文档�
 新导航，不依赖旧索引；持久记录的策略见下文，不提供逐条删除或搜索。新页链接使用 Core 焦点查询，
 固定最多 32 个焦点槽位，并在最终布局后设置焦点目录，容纳 16 条记录、页内操作及内部入口。
 
-历史记录的 auto-width 条目容器显式使用 `overflow-wrap:break-word`，由 Core 对标题、完整
-URL 和会话栈文本执行选择性紧急断行；不设置像素宽度、不插空格、不改 href 或隐藏横轴。
-该样式仅限内部历史条目，普通网页和其他内部页面仍使用原断行规则。Core 的 intrinsic、
+历史与下载共用 Core 记录列表组件和 auto-width 条目容器，显式使用 `overflow-wrap:break-word`，
+对标题、URL、保存路径及会话栈文本执行紧急断行；不设置像素宽度、不插空格、不改 href 或隐藏横轴。
+普通网页仍使用原断行规则。Core 的 intrinsic、
 white-space 与 Unicode 支持边界见 [Core README](../positron_core/README.md#选择性长文本断行)。
 
 导航来源由 EXE 私有枚举携带，分派处拒绝链接、脚本、启动参数、重定向、表单和历史重放
@@ -261,8 +262,8 @@ UTF-16 与输出容量，原始文本统一转义后交给 Core。缺失、API �
 ### 后端进入条件
 
 应用设置、访问日志和下载记录优先使用 `positron_db.dll` 本地 SQL；表结构、migration 和
-存储策略归应用，Browser 会话栈保持独立。当前接通完整设置快照与持久 GET 访问记录，不引入
-下载任务或 JSON 回退。后续纵切见 [应用数据设计](APPLICATION_DATA_PLAN.md)。文件创建、
+存储策略归应用，Browser 会话栈保持独立。完整设置、持久 GET 访问与下载记录共用存储服务，
+各有明确表结构，不引入 JSON 回退。下载合同见 [应用数据设计](APPLICATION_DATA_PLAN.md#第三纵切真实下载与下载记录)。文件创建、
 中文读写、正常新进程重开、跨进程锁和受控异常退出 journal 恢复门与
 尚未验收的 FULL/I/O/迁移提交/断电风险必须分开记录；按用户决定暂缓故障情景验收，
 不能把暂缓写成通过。EXE 仍须通过自己的正式构建和实际设置页设备门，才提升为应用基线。
@@ -282,7 +283,7 @@ DB DLL 优先从同部署目录加载；该文件不存在时选择 CAB 的固�
 执行，仍消费原 CSS/图片事务。已接受候选及现存 session 不因保存而改变，可信设置代码不受此开关影响。
 
 设置接受 HTTP(S) 或 newtab、welcome、controls，不执行 quit、不储存任意 SQL 或恢复标签。
-共享 schema v3 的 `app_preferences` 原子保存完整快照，保留旧 `app_settings` 主页行和访问表；应用拥有版本、
+共享 schema v4 保留 `app_preferences`、旧 `app_settings` 主页行和访问表，并加入下载表；应用拥有版本、
 约束和绑定参数；迁移只消费 `PDb_ApplyMigration`，不读取 DLL 私有 metadata。不存在表时
 执行共享迁移，已有设置先验证版本/值，再用公开迁移接口检查版本；异常、缺行和未来版本均拒绝，
 不以默认值覆盖坏数据或重建数据库。
@@ -341,8 +342,11 @@ Destroy；已接受的设置写入仍排空，但迟到结果不触碰旧 sessio
 行，不影响设置/导航栈。纯数据快照 heap 所有权经 Poll 转交，迟到结果检查 tab/请求/页面
 generation，消费或丢弃均释放；清除使全部标签缓存失效。异步页面更新不得取消在加载的候选。
 
-真实下载另立纵切：HTTP 已提供有界流式响应与取消接口，应用负责文件保存和任务调度；不使用
-现有 1 MiB 完整响应体模拟通用下载。
+下载页不创建 ScriptSession。仅当前内嵌 downloads 文档的直接链接操作可选择文件、启动/取消、
+分页或确认清除；普通网页、地址栏、脚本或重放不能执行这些私有动作。最多两个任务、一个传输，
+32 MiB/120 秒；worker 使用公开 Stream GET、创建同目录临时文件，COMMIT 发布中后改名，
+COMMIT 终态后才报完成。正常退出先取消/等待下载并收敛持久终态，后排空共享 DB，最后释放 HTTP。
+不以完整正文 API 模拟下载，不从服务端 filename 拼路径，不自动执行、覆盖或续传。
 
 ### 内部页面验收
 

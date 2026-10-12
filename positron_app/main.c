@@ -24,6 +24,7 @@
 
 #include "app_debug.h"
 #include "app_settings_store.h"
+#include "app_downloads.h"
 #include "app_settings_services.h"
 #include "app_host.h"
 #include "app_tabs.h"
@@ -178,6 +179,13 @@ static unsigned long g_startup_script_generation;
 static unsigned long g_startup_script_tab_id;
 static unsigned long g_tab_sequence;
 static AppSettingsStore *g_settings_store;
+static AppDownloads *g_downloads;
+static int g_downloads_redrawing;
+static char g_download_message[512];
+static DWORD g_download_progress_tick;
+static unsigned long g_download_revision;
+static int g_download_picker_open;
+static AppDownloadRecord g_download_preview[APP_DOWNLOAD_TASK_MAX];
 static AppSettingsStartPage g_settings_start_page = APP_SETTINGS_START_NEWTAB;
 static AppSettingsValues g_settings_values;
 static int g_settings_ready;
@@ -192,6 +200,9 @@ static int g_settings_live_phase;
 static int g_settings_live_write_ok;
 static DWORD g_settings_live_started;
 static AppLanguage g_settings_live_initial_language;
+static int g_downloads_ui_mode;
+static int g_downloads_ui_phase;
+static DWORD g_downloads_ui_started;
 #endif
 
 static int app_relayout(void);
@@ -206,6 +217,11 @@ static void app_visits_request(__int64 before_id, int clear);
 static void app_visits_redraw(HWND hwnd);
 static void app_visits_record(void);
 static void app_visits_result(HWND hwnd, AppSettingsResult *result);
+static void app_downloads_request(__int64 before_id, int clear);
+static void app_downloads_redraw(HWND hwnd);
+static void app_downloads_result(const AppSettingsResult *result);
+static void app_downloads_command(HWND hwnd, const char *url);
+static void app_downloads_progress(HWND hwnd);
 static void app_tabs_update_menu(void);
 static int app_tabs_select(int slot);
 static int app_tabs_new(void);
@@ -2932,6 +2948,13 @@ static int app_build_page(const char *url, HANDLE *out_document,
         data.visits = g_tab->visits;
         data.visits_status = g_tab->visits_status;
     }
+    if (page_kind == APP_I18N_PAGE_DOWNLOADS) {
+        if (!g_downloads_redrawing) app_downloads_request(0, 0);
+        data.downloads = g_tab->downloads;
+        data.downloads_status = g_tab->downloads_status;
+        data.download_url = g_tab->download_url;
+        data.download_message = g_download_message;
+    }
     if (AppInternalPages_Build(page_kind, &data, &html, &html_length) != 0) {
         return 1;
     }
@@ -3521,6 +3544,7 @@ static int app_settings_start(HWND hwnd)
     if (!SetTimer(hwnd, APP_SETTINGS_TIMER_ID, 50, NULL))
         return APP_SETTINGS_PLATFORM_FAILED;
     rc = AppSettingsStore_Create(dll, database, &g_settings_store);
+    if (rc == APP_SETTINGS_OK) g_downloads = AppDownloads_Create(g_settings_store);
     g_visits_enabled = rc == APP_SETTINGS_OK;
     if (rc != APP_SETTINGS_OK) KillTimer(hwnd, APP_SETTINGS_TIMER_ID);
 #ifdef _DEBUG
@@ -3755,6 +3779,293 @@ static void app_settings_live_step(HWND hwnd)
 }
 #endif
 
+static void app_downloads_request(__int64 before_id, int clear)
+{
+    int rc;
+
+    if (g_tabs_closing || g_tab->closing || g_tab->downloads_generation == ~0UL) return;
+    ++g_tab->downloads_generation;
+    g_tab->downloads_request_id = 0;
+    g_tab->downloads_before_id = before_id;
+    rc = clear ? AppSettingsStore_ClearDownloads(g_settings_store, g_app.tab_id,
+            g_tab->downloads_generation, &g_tab->downloads_request_id) :
+            AppSettingsStore_ReadDownloads(g_settings_store, before_id, g_app.tab_id,
+            g_tab->downloads_generation, &g_tab->downloads_request_id);
+    g_tab->downloads_status = rc == APP_SETTINGS_OK ? 1 : 3;
+}
+
+static void app_downloads_redraw(HWND hwnd)
+{
+    int bytes;
+
+    if (g_tabs_closing || g_page_kind != APP_I18N_PAGE_DOWNLOADS ||
+            g_download_picker_open ||
+            g_navigation_request != NULL || GetParent(GetFocus()) == g_page_window ||
+            g_page_pointer.active) return;
+    /* Keep user input through a snapshot refresh, never replace it with an
+     * empty template or steal the native EDIT selection while focused. */
+    bytes = 0;
+    if (g_document != NULL)
+        (void) PCore_NodeValueById(g_document, "download-url", g_tab->download_url,
+                sizeof(g_tab->download_url), &bytes);
+    g_tab->downloads_redraw_pending = 0;
+    g_downloads_redrawing = 1;
+    (void) app_load_local_page(hwnd, "positron://downloads", APP_HISTORY_REFRESH, -1);
+    g_downloads_redrawing = 0;
+}
+
+static void app_downloads_result(const AppSettingsResult *result)
+{
+    AppTab *owner;
+    int slot;
+
+    AppDownloads_AcceptResult(g_downloads, result);
+    if (result->operation != APP_DOWNLOADS_LOAD && result->operation != APP_DOWNLOADS_CLEAR)
+        return;
+    owner = NULL;
+    for (slot = 0; slot < APP_TAB_MAX; ++slot)
+        if (g_tabs[slot].used && !g_tabs[slot].closing &&
+                g_tabs[slot].host.tab_id == result->tab_id) owner = &g_tabs[slot];
+    if (owner == NULL || owner->host.page_kind != APP_I18N_PAGE_DOWNLOADS ||
+            owner->downloads_request_id != result->request_id ||
+            owner->downloads_generation != result->generation) return;
+    owner->downloads_request_id = 0;
+    if (result->operation == APP_DOWNLOADS_CLEAR && result->result == APP_SETTINGS_OK) {
+        for (slot = 0; slot < APP_TAB_MAX; ++slot) {
+            free(g_tabs[slot].downloads);
+            g_tabs[slot].downloads = NULL;
+            g_tabs[slot].downloads_status = 0;
+            g_tabs[slot].downloads_request_id = 0;
+            if (g_tabs[slot].used && !g_tabs[slot].closing &&
+                    g_tabs[slot].host.page_kind == APP_I18N_PAGE_DOWNLOADS)
+                g_tabs[slot].downloads_redraw_pending = 1;
+        }
+        if (g_page_kind == APP_I18N_PAGE_DOWNLOADS && !g_tabs_closing)
+            app_downloads_request(0, 0);
+    } else {
+        free(owner->downloads);
+        owner->downloads = NULL;
+        if (result->result == APP_SETTINGS_OK && result->downloads != NULL) {
+            owner->downloads = (AppDownloadSnapshot *) malloc(sizeof(*owner->downloads));
+            if (owner->downloads != NULL) *owner->downloads = *result->downloads;
+        }
+        owner->downloads_status = owner->downloads != NULL ? 2 : 3;
+    }
+    owner->downloads_redraw_pending = 1;
+}
+
+static void app_downloads_command(HWND hwnd, const char *url)
+{
+    OPENFILENAMEW picker;
+    char canonical[APP_URL_MAX];
+    WCHAR path[APP_DOWNLOAD_PATH_MAX];
+    HANDLE document;
+    unsigned long tab_id;
+    int chinese;
+    int bytes;
+    int rc;
+    int chosen;
+
+    if (g_tabs_closing || g_page_kind != APP_I18N_PAGE_DOWNLOADS ||
+            g_navigation_request != NULL || url == NULL) return;
+    chinese = AppI18n_CurrentLanguage() == APP_LANGUAGE_ZH_CN;
+    if (!strcmp(url, "#app-download-cancel-0") || !strcmp(url, "#app-download-cancel-1")) {
+        AppDownloads_Cancel(g_downloads, url[strlen(url) - 1] == '0' ? 0 : 1);
+        return;
+    }
+    if (!strcmp(url, "#app-download-start")) {
+        document = g_document;
+        tab_id = g_app.tab_id;
+        bytes = 0;
+        if (PCore_NodeValueById(document, "download-url", g_tab->download_url,
+                sizeof(g_tab->download_url), &bytes) != 0 ||
+                bytes <= 0 || bytes >= sizeof(g_tab->download_url) ||
+                (AppUrlRouter_ClassifyScheme(g_tab->download_url) != APP_URL_SCHEME_HTTP &&
+                AppUrlRouter_ClassifyScheme(g_tab->download_url) != APP_URL_SCHEME_HTTPS) ||
+                AppUrlRouter_ResolveNetworkReference(NULL, g_tab->download_url,
+                canonical, sizeof(canonical)) != 0) {
+            strcpy(g_download_message, chinese ? "\350\257\267\350\276\223\345\205\245\346\234\211\346\225\210\347\232\204 HTTP(S) \344\270\213\350\275\275\345\234\260\345\235\200\343\200\202" :
+                    "Enter a valid HTTP(S) download URL.");
+            g_tab->downloads_redraw_pending = 1;
+            return;
+        }
+        memset(&picker, 0, sizeof(picker));
+        wcscpy(path, L"download.bin");
+        picker.lStructSize = sizeof(picker);
+        picker.hwndOwner = hwnd;
+        picker.lpstrFilter = L"All files (*.*)\0*.*\0\0";
+        picker.lpstrFile = path;
+        picker.nMaxFile = APP_DOWNLOAD_PATH_MAX;
+        picker.lpstrTitle = chinese ? L"\x4e0b\x8f7d\x4fdd\x5b58\x4f4d\x7f6e" : L"Save download";
+        picker.Flags = OFN_PATHMUSTEXIST;
+        g_download_picker_open = 1;
+        chosen = GetSaveFileNameW(&picker);
+        g_download_picker_open = 0;
+        if (!chosen) return;
+        if (g_tabs_closing || g_app.tab_id != tab_id || g_document != document ||
+                g_page_kind != APP_I18N_PAGE_DOWNLOADS) return;
+        rc = AppDownloads_Start(g_downloads, g_tab->download_url, path);
+        if (rc == APP_SETTINGS_OK)
+            strcpy(g_download_message, chinese ? "\344\270\213\350\275\275\345\267\262\346\216\222\351\230\237\357\274\214\350\257\267\346\237\245\347\234\213\344\270\213\351\235\242\347\232\204\350\277\233\345\272\246\343\200\202" : "Download queued. Watch progress below.");
+        else if (rc == APP_SETTINGS_QUEUE_FULL)
+            strcpy(g_download_message, chinese ? "\345\267\262\346\234\211\344\270\244\344\270\252\344\273\273\345\212\241\357\274\214\350\257\267\347\255\211\345\276\205\346\210\226\345\217\226\346\266\210\344\270\200\344\270\252\344\273\273\345\212\241\343\200\202" : "Two tasks are already queued or running. Wait or cancel one.");
+        else
+            strcpy(g_download_message, chinese ? "\346\227\240\346\263\225\345\274\200\345\247\213\344\270\213\350\275\275\343\200\202\350\257\267\347\241\256\350\256\244\345\234\260\345\235\200\346\234\211\346\225\210\343\200\201\344\277\235\345\255\230\350\267\257\345\276\204\346\230\257\346\226\260\346\226\207\344\273\266\357\274\214\344\270\224\345\255\230\345\202\250\345\217\257\347\224\250\343\200\202" :
+                    "Cannot start. Check the URL, choose a new file path, and ensure storage is available.");
+        if (rc == APP_SETTINGS_OK) app_downloads_request(0, 0);
+        g_tab->downloads_redraw_pending = 1;
+        return;
+    }
+    if (g_tab->downloads_request_id != 0) return;
+    if (!strcmp(url, "#app-download-clear")) {
+        document = g_document;
+        tab_id = g_app.tab_id;
+        g_download_picker_open = 1;
+        chosen = MessageBoxW(hwnd, chinese ?
+                L"\x6e05\x9664\x5df2\x7ed3\x675f\x4e0b\x8f7d\x8bb0\x5f55\xff1f\x4e0d\x5220\x9664\x6587\x4ef6\x3002" :
+                L"Clear finished download records? Files will not be deleted.",
+                L"Positron", MB_YESNO | MB_ICONQUESTION);
+        g_download_picker_open = 0;
+        if (chosen != IDYES ||
+                g_tabs_closing || g_app.tab_id != tab_id || g_document != document) return;
+        app_downloads_request(0, 1);
+    } else if (!strcmp(url, "#app-download-older")) {
+        if (g_tab->downloads == NULL || !g_tab->downloads->has_more ||
+                g_tab->downloads->count == 0) return;
+        app_downloads_request(g_tab->downloads->entries[g_tab->downloads->count - 1].id, 0);
+    } else if (!strcmp(url, "#app-download-latest")) app_downloads_request(0, 0);
+    else return;
+    g_tab->downloads_redraw_pending = 1;
+}
+
+static void app_downloads_progress(HWND hwnd)
+{
+    char previous[512];
+    char line[192];
+    const AppDownloadRecord *record;
+    unsigned long revision;
+    int slot;
+    int bytes;
+    int chinese;
+    int count;
+
+    if (g_tabs_closing || g_page_kind != APP_I18N_PAGE_DOWNLOADS ||
+            g_download_picker_open ||
+            g_navigation_request != NULL || g_page_pointer.active ||
+            GetTickCount() - g_download_progress_tick < 1000UL) return;
+    g_download_progress_tick = GetTickCount();
+    chinese = AppI18n_CurrentLanguage() == APP_LANGUAGE_ZH_CN;
+    count = AppDownloads_Snapshot(g_downloads, g_download_preview);
+    if (AppDownloads_LastError(g_downloads) != 0) {
+        _snprintf(g_download_message, sizeof(g_download_message) - 1,
+                chinese ? "\344\270\213\350\275\275\345\255\230\345\202\250\345\244\261\350\264\245\357\274\232%d\357\274\233\350\257\267\344\277\235\347\225\231\346\226\207\344\273\266\345\271\266\351\207\215\345\220\257\346\243\200\346\237\245\343\200\202" :
+                "Download journal failed: %d; retain files and restart to inspect.",
+                AppDownloads_LastError(g_downloads));
+        g_download_message[sizeof(g_download_message) - 1] = 0;
+    } else if (count != 0) {
+        g_download_message[0] = 0;
+        for (slot = 0; slot < APP_DOWNLOAD_TASK_MAX; ++slot) {
+            record = &g_download_preview[slot];
+            if (record->state < 0) continue;
+            if (record->total < 0)
+                _snprintf(line, sizeof(line) - 1,
+                        chinese ? "\344\273\273\345\212\241 %d\357\274\232%s\357\274\214%I64d \345\255\227\350\212\202\357\274\210\346\200\273\351\207\217\346\234\252\347\237\245\357\274\211 | " :
+                        "Task %d: %s, %I64d bytes (total unknown) | ",
+                        slot + 1, AppDownloads_StateText(record->state, chinese), record->received);
+            else _snprintf(line, sizeof(line) - 1,
+                    chinese ? "\344\273\273\345\212\241 %d\357\274\232%s\357\274\214%I64d / %I64d \345\255\227\350\212\202 | " :
+                    "Task %d: %s, %I64d / %I64d bytes | ",
+                    slot + 1, AppDownloads_StateText(record->state, chinese), record->received, record->total);
+            line[sizeof(line) - 1] = 0;
+            strcat(g_download_message, line);
+        }
+    } else if (g_download_revision != AppDownloads_Revision(g_downloads)) {
+        strcpy(g_download_message, chinese ? "\345\275\223\345\211\215\346\262\241\346\234\211\346\264\273\345\212\250\344\273\273\345\212\241\357\274\233\347\273\223\346\236\234\350\257\267\346\237\245\347\234\213\344\270\213\350\275\275\350\256\260\345\275\225\343\200\202" :
+                "No active tasks; see download records for results.");
+    }
+    bytes = 0;
+    if (PCore_NodeTextContentById(g_document, "download-progress", previous, sizeof(previous), &bytes) == 0 &&
+            strcmp(previous, g_download_message) != 0 &&
+            PCore_NodeSetTextContentById(g_document, "download-progress", g_download_message) == 0) {
+        (void) app_relayout();
+        InvalidateRect(g_page_window, NULL, TRUE);
+    }
+    revision = AppDownloads_Revision(g_downloads);
+    if (g_download_revision != revision) {
+        g_download_revision = revision;
+        if (g_tab->downloads_request_id == 0)
+            app_downloads_request(g_tab->downloads_before_id, 0);
+    }
+    if (g_tab->downloads_redraw_pending) app_downloads_redraw(hwnd);
+}
+
+#ifdef _DEBUG
+static void app_downloads_ui_check(HWND hwnd)
+{
+    HWND child;
+    HWND edit;
+    WCHAR name[32];
+    RECT client;
+    RECT format;
+    TEXTMETRICW font_metrics;
+    HDC dc;
+    HFONT font;
+    HGDIOBJ old_font;
+    char value[64];
+    int bytes;
+    int ok;
+
+    if (!g_downloads_ui_mode || g_downloads_ui_phase == 99) return;
+    if (GetTickCount() - g_downloads_ui_started > 20000UL) goto failed;
+    if (g_page_kind != APP_I18N_PAGE_DOWNLOADS || g_tab->downloads_status != 2 ||
+            g_tab->downloads_request_id || g_tab->downloads_redraw_pending) return;
+    if (g_script != NULL || PBrowser_HistoryCount(g_history) != 1) goto failed;
+    if (g_downloads_ui_phase == 0) {
+        edit = NULL;
+        for (child = GetWindow(g_page_window, GW_CHILD); child != NULL;
+                child = GetWindow(child, GW_HWNDNEXT))
+            if (GetClassNameW(child, name, 32) && !lstrcmpiW(name, L"EDIT")) edit = child;
+        if (edit == NULL || !GetClientRect(edit, &client)) goto failed;
+        memset(&format, 0, sizeof(format));
+        SendMessage(edit, EM_GETRECT, 0, (LPARAM) &format);
+        dc = GetDC(edit);
+        if (dc == NULL) goto failed;
+        font = (HFONT) SendMessage(edit, WM_GETFONT, 0, 0);
+        old_font = SelectObject(dc, font != NULL ? font : GetStockObject(SYSTEM_FONT));
+        memset(&font_metrics, 0, sizeof(font_metrics));
+        ok = GetTextMetricsW(dc, &font_metrics);
+        SelectObject(dc, old_font);
+        ReleaseDC(edit, dc);
+        if (!ok || font_metrics.tmHeight <= 0 || format.top < 0 ||
+                format.bottom > client.bottom || format.bottom - format.top < font_metrics.tmHeight)
+            goto failed;
+        SetFocus(edit);
+        SetWindowTextW(edit, L"positron://quit");
+        SetFocus(g_page_window);
+        bytes = 0;
+        if (PCore_NodeValueById(g_document, "download-url", value, sizeof(value), &bytes) != 0 ||
+                strcmp(value, "positron://quit")) goto failed;
+        (void) app_load_page_from(hwnd, "#app-download-start", APP_HISTORY_NEW, -1,
+                APP_NAV_SOURCE_DOCUMENT);
+        if (g_tabs_closing || g_navigation_request != NULL ||
+                PBrowser_HistoryCount(g_history) != 1) goto failed;
+        g_downloads_ui_phase = 1;
+        return;
+    }
+    bytes = 0;
+    if (PCore_NodeValueById(g_document, "download-url", value, sizeof(value), &bytes) != 0 ||
+            strcmp(value, "positron://quit")) goto failed;
+    AppDebug_Log("downloads-ui selftest OK input=font authority=document history=single\r\n");
+    g_downloads_ui_phase = 99;
+    PostMessage(hwnd, WM_CLOSE, 0, 0);
+    return;
+failed:
+    AppDebug_Log("downloads-ui selftest FAILED\r\n");
+    g_downloads_ui_phase = 99;
+    PostMessage(hwnd, WM_CLOSE, 0, 0);
+}
+#endif
+
 static void app_settings_tick(HWND hwnd)
 {
     AppSettingsResult result;
@@ -3763,6 +4074,7 @@ static void app_settings_tick(HWND hwnd)
     int bootstrapping;
 
     if (g_settings_store == NULL) return;
+    AppDownloads_Tick(g_downloads);
     bootstrapping = g_settings_bootstrapping;
     for (count = 0; count < APP_SETTINGS_QUEUE_MAX; ++count) {
         if (AppSettingsStore_Poll(g_settings_store, &result) != APP_SETTINGS_OK)
@@ -3779,6 +4091,7 @@ static void app_settings_tick(HWND hwnd)
         }
         if (result.request_id == 1) g_settings_bootstrapping = 0;
         app_visits_result(hwnd, &result);
+        app_downloads_result(&result);
 #ifdef _DEBUG
         if (g_settings_live_mode && result.operation == APP_SETTINGS_SAVE &&
                 result.result == APP_SETTINGS_OK)
@@ -3807,6 +4120,9 @@ static void app_settings_tick(HWND hwnd)
         AppSettingsResult_Release(&result);
     }
     if (g_tabs_closing) {
+        AppDownloads_Tick(g_downloads);
+        if (AppDownloads_TryDestroy(&g_downloads) != APP_SETTINGS_OK) return;
+        (void) AppSettingsStore_RequestClose(g_settings_store);
         if (AppSettingsStore_TryDestroy(&g_settings_store) == APP_SETTINGS_OK) {
 #ifdef _DEBUG
             if (g_settings_live_mode == 3)
@@ -3828,8 +4144,10 @@ static void app_settings_tick(HWND hwnd)
     }
     (void) AppScript_SettingsStep(g_script);
     if (g_tab->visits_redraw_pending) app_visits_redraw(hwnd);
+    app_downloads_progress(hwnd);
 #ifdef _DEBUG
     app_settings_live_step(hwnd);
+    app_downloads_ui_check(hwnd);
 #endif
 }
 
@@ -5314,6 +5632,11 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
             SendMessage(g_window, WM_COMMAND, command, 0);
             return 1;
         }
+    }
+    if (source == APP_NAV_SOURCE_DOCUMENT && g_page_kind == APP_I18N_PAGE_DOWNLOADS &&
+            url != NULL && !strncmp(url, "#app-download-", 14)) {
+        app_downloads_command(g_window, url);
+        return 1;
     }
     if (url == NULL || url[0] == '\0') return 0;
     if (history_mode == APP_HISTORY_TARGET) {
@@ -7877,6 +8200,8 @@ static void app_tab_release(AppTab *tab)
     AppHostContext_ReleasePage(&g_app);
     free(tab->visits);
     tab->visits = NULL;
+    free(tab->downloads);
+    tab->downloads = NULL;
     if (g_history != NULL) PBrowser_HistoryDestroy(g_history);
     g_history = NULL;
     if (g_page_window != NULL) DestroyWindow(g_page_window);
@@ -8027,6 +8352,10 @@ static int app_tabs_select(int slot)
         app_visits_request(0, 0);
         g_tab->visits_redraw_pending = 1;
     }
+    if (g_page_kind == APP_I18N_PAGE_DOWNLOADS && g_tab->downloads_request_id == 0) {
+        app_downloads_request(g_tab->downloads_before_id, 0);
+        g_tab->downloads_redraw_pending = 1;
+    }
     if (g_tab->visits_redraw_pending) app_visits_redraw(g_window);
     if (request != NULL) {
         SetTimer(g_window, APP_LOADING_TIMER_ID, APP_LOADING_INTERVAL_MS, NULL);
@@ -8147,7 +8476,8 @@ static void app_tabs_close_all(HWND hwnd)
     g_settings_bootstrapping = 0;
     for (i = 0; i < APP_TAB_MAX; ++i)
         AppScript_RevokeSettings(g_tabs[i].host.script);
-    if (g_settings_store != NULL)
+    AppDownloads_RequestClose(g_downloads);
+    if (g_downloads == NULL && g_settings_store != NULL)
         (void) AppSettingsStore_RequestClose(g_settings_store);
     KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
     app_file_picker_cancel_pending();
@@ -8663,6 +8993,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
 #ifdef _DEBUG
     startup_ui_selftest = 0;
+    if (command_line != NULL && !wcscmp(command_line, L"--selftest-downloads-ui")) {
+        g_downloads_ui_mode = 1;
+        g_downloads_ui_started = GetTickCount();
+        command_line = L"--url positron://downloads";
+    }
     /* Product startup never navigates through fixture pages. The complete
      * UI suite is opt-in and consumes only a leading, exact Debug switch. */
     if (command_line != NULL &&
@@ -8672,6 +9007,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         command_line += 13;
     }
     /* Explicit isolated adapter fixture; bypass production startup. */
+    if (command_line != NULL && (!wcscmp(command_line, L"--selftest-downloads-create") ||
+            !wcscmp(command_line, L"--selftest-downloads-reopen"))) {
+        AppDebug_BeginSession();
+        result = AppDownloads_DebugRun(!wcscmp(command_line, L"--selftest-downloads-reopen"));
+        AppDebug_EndSession();
+        return result;
+    }
     if (command_line != NULL &&
             (wcscmp(command_line, L"--selftest-settings-storage") == 0 ||
             wcscmp(command_line, L"--selftest-settings-services") == 0 ||

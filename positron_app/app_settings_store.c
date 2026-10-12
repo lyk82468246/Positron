@@ -41,6 +41,7 @@ typedef struct AppSettingsJob {
     __int64 visited_utc;
     char url[APP_VISITS_URL_MAX];
     char title[APP_VISITS_TITLE_MAX];
+    AppDownloadRecord download;
 } AppSettingsJob;
 
 struct AppSettingsStore {
@@ -112,11 +113,34 @@ static const char g_visits_read_sql[] =
     "WHERE (?1=0 OR id<?1) ORDER BY id DESC LIMIT 17";
 static const char g_visits_clear_sql[] = "DELETE FROM app_visits";
 
+static const char g_downloads_schema[] =
+    "CREATE TABLE app_downloads(id INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "created_utc INTEGER NOT NULL,url TEXT NOT NULL,final_url TEXT NOT NULL,"
+    "path TEXT NOT NULL,temporary TEXT NOT NULL,state INTEGER NOT NULL,"
+    "received INTEGER NOT NULL,total INTEGER NOT NULL,http_status INTEGER NOT NULL,"
+    "error INTEGER NOT NULL);";
+static const char g_downloads_exists_sql[] =
+    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_downloads'";
+static const char g_downloads_select[] =
+    "SELECT id,created_utc,received,total,state,http_status,error,url,final_url,path,temporary "
+    "FROM app_downloads WHERE (?1=0 OR id<?1) ORDER BY id DESC LIMIT 17";
+static const char g_downloads_insert[] =
+    "INSERT INTO app_downloads(created_utc,url,final_url,path,temporary,state,received,"
+    "total,http_status,error) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)";
+static const char g_downloads_update[] =
+    "UPDATE app_downloads SET final_url=?3,temporary=?5,state=?6,received=?7,"
+    "total=?8,http_status=?9,error=?10 WHERE id=?11 AND created_utc=?1 AND url=?2 "
+    "AND path=?4 AND state<3";
+
 void AppSettingsResult_Release(AppSettingsResult *result)
 {
     if (result == NULL) return;
     free(result->visits);
     result->visits = NULL;
+    free(result->download);
+    free(result->downloads);
+    result->download = NULL;
+    result->downloads = NULL;
 }
 
 /* Reject embedded NULs, overlong encodings, surrogates and non-Unicode
@@ -428,20 +452,25 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         AppSettingsResult *result)
 {
     char script[sizeof(g_settings_schema) + sizeof(g_visits_schema) +
-            sizeof(g_preferences_schema)];
+            sizeof(g_preferences_schema) + sizeof(g_downloads_schema)];
     int exists;
     int visits_exist;
     int preferences_exist;
+    int downloads_exist;
     int rc;
 
     exists = app_settings_table_exists(api, db, g_settings_exists_sql, result);
+    if (result->result != APP_SETTINGS_OK) return;
+    downloads_exist = app_settings_table_exists(api, db,
+            g_downloads_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
     visits_exist = app_settings_table_exists(api, db, g_visits_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
     preferences_exist = app_settings_table_exists(api, db,
             g_preferences_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
-    if ((visits_exist && !exists) || (preferences_exist && (!exists || !visits_exist))) {
+    if ((visits_exist && !exists) || (preferences_exist && (!exists || !visits_exist)) ||
+            (downloads_exist && (!exists || !visits_exist || !preferences_exist))) {
         result->result = APP_SETTINGS_BAD_DATA;
         return;
     }
@@ -455,12 +484,22 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
     if (!exists) strcpy(script, g_settings_schema);
     if (!visits_exist) strcat(script, g_visits_schema);
     if (!preferences_exist) strcat(script, g_preferences_schema);
-    rc = api->migration(db, 3, script);
+    if (!downloads_exist) strcat(script, g_downloads_schema);
+    rc = api->migration(db, 4, script);
     if (rc != PDB_OK) {
         app_settings_db_failure(api, db, rc, result);
         return;
     }
     app_settings_read(api, db, result);
+    if (result->result == APP_SETTINGS_OK) {
+        PDbStmtHandle recovery;
+
+        recovery = NULL;
+        rc = api->prepare(db, "UPDATE app_downloads SET state=6 WHERE state BETWEEN 0 AND 2", &recovery);
+        if (rc == PDB_OK) rc = api->step(recovery);
+        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, recovery, result);
+    }
 }
 
 static int app_visits_column_text(AppSettingsDbApi *api,
@@ -577,6 +616,133 @@ static void app_visits_write(AppSettingsDbApi *api, PDbHandle db,
     }
 }
 
+static void app_downloads_write(AppSettingsDbApi *api, PDbHandle db,
+        const AppSettingsJob *job, AppSettingsResult *result)
+{
+    const AppDownloadRecord *record;
+    AppDownloadRecord *saved;
+    PDbStmtHandle statement;
+    int rc;
+
+    record = &job->download;
+    saved = (AppDownloadRecord *) malloc(sizeof(*saved));
+    if (saved == NULL) { result->result = APP_SETTINGS_PLATFORM_FAILED; return; }
+    *saved = *record;
+    statement = NULL;
+    rc = api->begin(db);
+    if (rc == PDB_OK) rc = api->prepare(db, record->id == 0 ?
+            g_downloads_insert : g_downloads_update, &statement);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 1, record->created_utc);
+    if (rc == PDB_OK) rc = api->bind_text(statement, 2, record->url, (int) strlen(record->url));
+    if (rc == PDB_OK) rc = api->bind_text(statement, 3, record->final_url, (int) strlen(record->final_url));
+    if (rc == PDB_OK) rc = api->bind_text(statement, 4, record->path, (int) strlen(record->path));
+    if (rc == PDB_OK) rc = api->bind_text(statement, 5, record->temporary, (int) strlen(record->temporary));
+    if (rc == PDB_OK) rc = api->bind_int(statement, 6, record->state);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 7, record->received);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 8, record->total);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 9, record->http_status);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 10, record->error);
+    if (record->id != 0 && rc == PDB_OK) rc = api->bind_int(statement, 11, record->id);
+    if (rc == PDB_OK) rc = api->step(statement);
+    if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+    app_settings_finish_statement(api, db, statement, result);
+    statement = NULL;
+    if (result->result == APP_SETTINGS_OK) {
+        rc = api->prepare(db, record->id == 0 ? "SELECT last_insert_rowid()" :
+                "SELECT changes()", &statement);
+        if (rc == PDB_OK) rc = api->step(statement);
+        if (rc != PDB_STEP_ROW) app_settings_db_failure(api, db, rc, result);
+        else if (api->column_type(statement, 0) != PDB_VALUE_INTEGER ||
+                api->column_int(statement, 0) <= 0 ||
+                (record->id != 0 && api->column_int(statement, 0) != 1))
+            result->result = APP_SETTINGS_BAD_DATA;
+        else if (record->id == 0) saved->id = api->column_int(statement, 0);
+        app_settings_finish_statement(api, db, statement, result);
+    }
+    if (result->result == APP_SETTINGS_OK && record->state >= APP_DOWNLOAD_COMPLETE)
+        app_visits_execute(api, db, "DELETE FROM app_downloads WHERE state>=3 AND id IN "
+                "(SELECT id FROM app_downloads WHERE state>=3 ORDER BY id DESC LIMIT -1 OFFSET 500)", result);
+    if (result->result == APP_SETTINGS_OK) {
+        rc = api->commit(db);
+        if (rc != PDB_OK) app_settings_db_failure(api, db, rc, result);
+    }
+    if (result->result == APP_SETTINGS_OK) result->download = saved;
+    else free(saved);
+}
+
+static void app_downloads_read(AppSettingsDbApi *api, PDbHandle db,
+        const AppSettingsJob *job, AppSettingsResult *result)
+{
+    AppDownloadSnapshot *snapshot;
+    AppDownloadRecord *record;
+    PDbStmtHandle statement;
+    __int64 previous;
+    int rc;
+    int column;
+
+    snapshot = (AppDownloadSnapshot *) calloc(1, sizeof(*snapshot));
+    if (snapshot == NULL) { result->result = APP_SETTINGS_PLATFORM_FAILED; return; }
+    previous = job->before_id;
+    statement = NULL;
+    rc = api->prepare(db, g_downloads_select, &statement);
+    if (rc == PDB_OK) rc = api->bind_int(statement, 1, previous);
+    if (rc == PDB_OK) rc = api->step(statement);
+    while (rc == PDB_STEP_ROW) {
+        if (snapshot->count == APP_DOWNLOAD_PAGE_MAX) {
+            snapshot->has_more = 1;
+            rc = PDB_STEP_DONE;
+            break;
+        }
+        record = &snapshot->entries[snapshot->count];
+        for (column = 0; column < 7; ++column)
+            if (api->column_type(statement, column) != PDB_VALUE_INTEGER) break;
+        record->id = api->column_int(statement, 0);
+        record->created_utc = api->column_int(statement, 1);
+        record->received = api->column_int(statement, 2);
+        record->total = api->column_int(statement, 3);
+        record->state = (int) api->column_int(statement, 4);
+        record->http_status = (int) api->column_int(statement, 5);
+        record->error = (int) api->column_int(statement, 6);
+        if (column != 7 || record->id <= 0 ||
+                (previous != 0 && record->id >= previous) || record->created_utc < 0 ||
+                record->received < 0 || record->total < -1 ||
+                api->column_int(statement, 4) < 0 || api->column_int(statement, 4) > 6 ||
+                api->column_int(statement, 5) < 0 || api->column_int(statement, 5) > 999 ||
+                api->column_int(statement, 6) < (-(__int64) 2147483647 - 1) ||
+                api->column_int(statement, 6) > 2147483647 ||
+                !app_visits_column_text(api, statement, 7, record->url, sizeof(record->url), 1) ||
+                !app_visits_column_text(api, statement, 8, record->final_url, sizeof(record->final_url), 0) ||
+                !app_visits_column_text(api, statement, 9, record->path, sizeof(record->path), 1) ||
+                !app_visits_column_text(api, statement, 10, record->temporary, sizeof(record->temporary), 0)) {
+            result->result = APP_SETTINGS_BAD_DATA;
+            break;
+        }
+        previous = record->id;
+        snapshot->count++;
+        rc = api->step(statement);
+    }
+    if (result->result == APP_SETTINGS_OK && rc != PDB_STEP_DONE)
+        app_settings_db_failure(api, db, rc, result);
+    app_settings_finish_statement(api, db, statement, result);
+    if (result->result == APP_SETTINGS_OK) result->downloads = snapshot;
+    else free(snapshot);
+}
+
+static void app_downloads_clear(AppSettingsDbApi *api, PDbHandle db,
+        AppSettingsResult *result)
+{
+    int rc;
+
+    rc = api->begin(db);
+    if (rc != PDB_OK) app_settings_db_failure(api, db, rc, result);
+    if (result->result == APP_SETTINGS_OK)
+        app_visits_execute(api, db, "DELETE FROM app_downloads WHERE state>=3", result);
+    if (result->result == APP_SETTINGS_OK) {
+        rc = api->commit(db);
+        if (rc != PDB_OK) app_settings_db_failure(api, db, rc, result);
+    }
+}
+
 static void app_settings_cleanup_transaction(AppSettingsDbApi *api,
         PDbHandle db, AppSettingsResult *result)
 {
@@ -655,11 +821,40 @@ static void app_settings_publish(AppSettingsStore *store,
     LeaveCriticalSection(&store->lock);
 }
 
+/* App-level owner lease, distinct from SQLite's transaction locks. Recovery
+ * must never mark another live Positron process's transfers INTERRUPTED. */
+static HANDLE app_settings_owner_lease(const char *path)
+{
+    WCHAR name[64];
+    HANDLE lease;
+    DWORD hash;
+    DWORD second;
+    DWORD wait;
+    unsigned char byte;
+
+    hash = 2166136261UL;
+    second = 5381UL;
+    while (*path != 0) {
+        byte = (unsigned char) *path++;
+        if (byte >= 'A' && byte <= 'Z') byte += 'a' - 'A';
+        hash = (hash ^ byte) * 16777619UL;
+        second = second * 33UL + byte;
+    }
+    wsprintfW(name, L"PositronStore-%08lx-%08lx", hash, second);
+    lease = CreateMutexW(NULL, FALSE, name);
+    if (lease == NULL) return NULL;
+    wait = WaitForSingleObject(lease, 0);
+    if (wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED) return lease;
+    CloseHandle(lease);
+    return NULL;
+}
+
 static DWORD WINAPI app_settings_worker(LPVOID argument)
 {
     AppSettingsStore *store;
     AppSettingsDbApi api;
     HMODULE module;
+    HANDLE lease;
     PDbHandle db;
     AppSettingsJob *job;
     AppSettingsResult result;
@@ -677,8 +872,15 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
     job->operation = APP_SETTINGS_LOAD;
     app_settings_result_init(&result, job);
     db = NULL;
-    module = LoadLibraryW(store->dll_path);
-    if (module == NULL || !app_settings_db_load(module, &api)) {
+    lease = strcmp(store->database_path, ":memory:") != 0 ?
+            app_settings_owner_lease(store->database_path) : NULL;
+    module = NULL;
+    if (lease == NULL && strcmp(store->database_path, ":memory:") != 0) {
+        result.result = APP_SETTINGS_DB_FAILED;
+        result.db_result = PDB_BUSY;
+    } else module = LoadLibraryW(store->dll_path);
+    if (result.result != APP_SETTINGS_OK) { /* Owner BUSY; do not open/migrate/recover. */ }
+    else if (module == NULL || !app_settings_db_load(module, &api)) {
         result.result = APP_SETTINGS_DLL_UNAVAILABLE;
     } else {
         rc = api.open(store->database_path, PDB_OPEN_LOCAL_FULL_SQL,
@@ -732,6 +934,12 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
                 app_visits_write(&api, db, job, &result);
             else if (job->operation == APP_VISITS_LOAD)
                 app_visits_read(&api, db, job, &result);
+            else if (job->operation == APP_DOWNLOADS_WRITE)
+                app_downloads_write(&api, db, job, &result);
+            else if (job->operation == APP_DOWNLOADS_LOAD)
+                app_downloads_read(&api, db, job, &result);
+            else if (job->operation == APP_DOWNLOADS_CLEAR)
+                app_downloads_clear(&api, db, &result);
             else app_settings_read(&api, db, &result);
             app_settings_cleanup_transaction(&api, db, &result);
             if (result.result != APP_SETTINGS_OK) {
@@ -746,6 +954,7 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
     }
     if (db != NULL) api.close(db);
     if (module != NULL) FreeLibrary(module);
+    if (lease != NULL) { ReleaseMutex(lease); CloseHandle(lease); }
     return 0;
 }
 
@@ -800,6 +1009,7 @@ static int app_settings_enqueue(AppSettingsStore *store, int operation,
         AppSettingsStartPage page, unsigned long tab_id,
         unsigned long generation, const char *url, const char *title,
         __int64 visited_utc, __int64 before_id, const AppSettingsValues *values,
+        const AppDownloadRecord *download,
         unsigned long *out_request_id)
 {
     AppSettingsJob *job;
@@ -827,6 +1037,7 @@ static int app_settings_enqueue(AppSettingsStore *store, int operation,
             job->full_values = 1;
             job->values = *values;
         }
+        if (download != NULL) job->download = *download;
         job->before_id = before_id;
         job->visited_utc = visited_utc;
         if (url != NULL) strcpy(job->url, url);
@@ -848,7 +1059,7 @@ int AppSettingsStore_Submit(AppSettingsStore *store, int operation,
             AppSettingsStore_StartPageUrl(page) == NULL)
         return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, operation, page, tab_id, generation,
-            NULL, NULL, 0, 0, NULL, out_request_id);
+            NULL, NULL, 0, 0, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_SaveValues(AppSettingsStore *store,
@@ -861,7 +1072,7 @@ int AppSettingsStore_SaveValues(AppSettingsStore *store,
         return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, APP_SETTINGS_SAVE,
             APP_SETTINGS_START_NEWTAB, tab_id, generation, NULL, NULL, 0, 0,
-            &normalized, out_request_id);
+            &normalized, NULL, out_request_id);
 }
 
 int AppSettingsStore_AddVisit(AppSettingsStore *store, const char *url,
@@ -872,7 +1083,7 @@ int AppSettingsStore_AddVisit(AppSettingsStore *store, const char *url,
             !app_visits_input(title, APP_VISITS_TITLE_MAX, 0))
         return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, APP_VISITS_ADD, APP_SETTINGS_START_NEWTAB,
-            0, 0, url, title, visited_utc, 0, NULL, out_request_id);
+            0, 0, url, title, visited_utc, 0, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
@@ -881,14 +1092,45 @@ int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
 {
     if (before_id < 0) return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, APP_VISITS_LOAD, APP_SETTINGS_START_NEWTAB,
-            tab_id, generation, NULL, NULL, 0, before_id, NULL, out_request_id);
+            tab_id, generation, NULL, NULL, 0, before_id, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
         unsigned long generation, unsigned long *out_request_id)
 {
     return app_settings_enqueue(store, APP_VISITS_CLEAR, APP_SETTINGS_START_NEWTAB,
-            tab_id, generation, NULL, NULL, 0, 0, NULL, out_request_id);
+            tab_id, generation, NULL, NULL, 0, 0, NULL, NULL, out_request_id);
+}
+
+int AppSettingsStore_WriteDownload(AppSettingsStore *store,
+        const AppDownloadRecord *record, unsigned long *out_request_id)
+{
+    if (record == NULL || record->id < 0 || record->created_utc < 0 ||
+            record->received < 0 || record->total < -1 || record->state < 0 ||
+            record->state > 6 || record->http_status < 0 || record->http_status > 999 ||
+            (record->id == 0 && record->state != APP_DOWNLOAD_QUEUED) ||
+            !app_visits_input(record->url, sizeof(record->url), 1) ||
+            !app_visits_input(record->final_url, sizeof(record->final_url), 0) ||
+            !app_visits_input(record->path, sizeof(record->path), 1) ||
+            !app_visits_input(record->temporary, sizeof(record->temporary), 0))
+        return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_DOWNLOADS_WRITE, APP_SETTINGS_START_NEWTAB,
+            0, 0, NULL, NULL, 0, 0, NULL, record, out_request_id);
+}
+
+int AppSettingsStore_ReadDownloads(AppSettingsStore *store, __int64 before_id,
+        unsigned long tab_id, unsigned long generation, unsigned long *out_request_id)
+{
+    if (before_id < 0) return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_DOWNLOADS_LOAD, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, NULL, 0, before_id, NULL, NULL, out_request_id);
+}
+
+int AppSettingsStore_ClearDownloads(AppSettingsStore *store,
+        unsigned long tab_id, unsigned long generation, unsigned long *out_request_id)
+{
+    return app_settings_enqueue(store, APP_DOWNLOADS_CLEAR, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, NULL, 0, 0, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out)
@@ -901,6 +1143,8 @@ int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out)
     if (store->result_count != 0) {
         *out = store->results[store->result_head];
         store->results[store->result_head].visits = NULL;
+        store->results[store->result_head].download = NULL;
+        store->results[store->result_head].downloads = NULL;
         store->result_head = (store->result_head + 1) % APP_SETTINGS_QUEUE_MAX;
         store->result_count--;
         store->outstanding--;

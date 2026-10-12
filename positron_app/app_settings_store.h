@@ -4,6 +4,7 @@
 
 #include <windows.h>
 #include "../positron_db/positron_db.h"
+#include "app_download_record.h"
 
 #define APP_SETTINGS_QUEUE_MAX 8
 #define APP_SETTINGS_PATH_MAX 1024
@@ -62,7 +63,10 @@ enum {
     APP_SETTINGS_SAVE = 2,
     APP_VISITS_ADD = 3,
     APP_VISITS_LOAD = 4,
-    APP_VISITS_CLEAR = 5
+    APP_VISITS_CLEAR = 5,
+    APP_DOWNLOADS_WRITE = 6,
+    APP_DOWNLOADS_LOAD = 7,
+    APP_DOWNLOADS_CLEAR = 8
 };
 
 /* Pure-data result, copied to the UI owner. No DB/statement/page handles.
@@ -88,6 +92,8 @@ typedef struct AppSettingsResult {
     AppSettingsStartPage start_page;
     AppSettingsValues values;
     AppVisitSnapshot *visits;
+    AppDownloadRecord *download;
+    AppDownloadSnapshot *downloads;
 } AppSettingsResult;
 
 const char *AppSettingsStore_StartPageUrl(AppSettingsStartPage page);
@@ -128,6 +134,18 @@ int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
         unsigned long *out_request_id);
 int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
         unsigned long generation, unsigned long *out_request_id);
+/* id=0 inserts a queued record and returns its generated ID after COMMIT.
+ * Updates preserve immutable URL/path/time. All data is copied on admission.
+ * Recovery marks unfinished records INTERRUPTED, never touches their files. */
+int AppSettingsStore_WriteDownload(AppSettingsStore *store,
+        const AppDownloadRecord *record, unsigned long *out_request_id);
+int AppSettingsStore_ReadDownloads(AppSettingsStore *store, __int64 before_id,
+        unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id);
+/* Only terminal records. Never deletes downloaded or temporary files. */
+int AppSettingsStore_ClearDownloads(AppSettingsStore *store,
+        unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id);
 /* Poll transfers the heap snapshot (successful visits LOAD only). Release
  * every consumed/discarded result before reusing it. Idempotent on an
  * initialized result; do not shallow-copy an owned snapshot. No DLL calls. */

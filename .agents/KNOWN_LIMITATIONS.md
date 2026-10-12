@@ -34,7 +34,7 @@
 - 真实网络测试仍受设备时钟、DNS、TLS、代理和外部站点变化影响，离线契约不能替代网络哨兵。
 - 流式 GET 仅直连 IPv4 TCP/TLS、identity Content-Encoding 和有界 ASCII/UTF-8 headers；
   无 WinInet 代理/cache、Range、stream POST、压缩或完整文件名编码解释。旧完整正文接口
-  仍限 1 MiB，新流式调用显式选择最多 1 GiB quota，不代表应用下载管理已经接入。
+  仍限 1 MiB，stream 最多 1 GiB；EXE 预算见应用数据设计。
 - 新 transport 的取消/期限控制非阻塞 I/O 等待，不实时抢占 TLS crypto 或宿主 callback。
   同步 OS DNS 被最多四个复制数据 job 隔离，取消可返回但 OS job 不保证已结束；饱和返回
   LIMIT。四项长期挂起/saturation、真实慢 DNS 与低资源峰值仍需专门门，不能从一次取消
@@ -425,11 +425,9 @@
 - EXE 同文档/滚动恢复/identity 自动门已通过；真实 HTTP Back/Forward/刷新、焦点/旋转
   待人工。百分号片段无公共 decoder，保持位置；HTTP 初始片段保留尚未接入。
   不在 EXE 复制 decoder/redirect 规则。
-- history 已接入持久 GET 访问记录；Browser 导航栈不持久化。记录最多 500 条、
-  每页 16 条，不含 POST、片段/state-only 更新、搜索或逐条删除；队列满/保存失败不回滚页面。
-  双语/交错/低内存待验收。下载未实现；设置 URL 少于 1024 UTF-8 字节，语言重启生效，
-  JS 只影响新候选。配置两秒不可用则系统语言/newtab/JS 关闭，迟到不重定向。
-  触摸/网络主页、故障/断电/标签恢复仍待门，见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
+- 访问记录限 GET、500 条/页 16 条，无 POST/state-only/搜索/逐条删除/栈恢复，失败不回滚。
+  设置 URL <1024 bytes，语言重启、JS 只影响新候选；读取超时两秒用系统语言/newtab/JS
+  关闭，迟到不重定向。待验收项见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 - Browser history 只保存有界 page-level 双轴位置，宿主负责 clamp/DPI；manual 跳过自动恢复，
   不阻止 fragment/显式滚动。元素 offset 不入栈，完整滚动树/锚定/惯性/跨窗口恢复未实现，
   见 [合同](../docs/CAPABILITIES.md#browserpositron_browserdll)。
@@ -438,7 +436,9 @@
   网络并发、内存、触摸/SIP、旋转/DPI 与加载中退出待人工，见
   [多标签调度](../positron_app/INTEGRATION_PLAN.md#多标签与平台调度)。
 - `window.open()` 仅在允许复用当前 context 的受限 target 上工作，不创建新的 WM 顶层窗口。
-- 下载、外部协议和权限仍由宿主决定。
+- 下载仅可信页 GET/用户确认路径，无自动下载、续传、Cookie、POST、压缩或执行。
+  文件/DB 非联合事务，重启只标中断，不修复/删除；清记录不删文件。租约拒绝第二 owner，
+  不改 DB 锁合同。picker、真实 HTTPS、触摸/SIP/旋转与文件故障待门。
 - Browser candidate 以不可变 generation、取消请求、退休状态和 committed/failed 终态保护 UI 文档提交；`CanApply` 同时检查 generation 与 active 状态。宿主仍拥有 worker、response、资源事务、WM 消息、退休队列和页面 swap；退休队列有界，达到上限时新导航 fail closed 并保留当前页。取消是协作式的：worker 若已进入阻塞的 PHttp 调用，不能保证 socket 立即中断；DOM parse/style/layout/paint 仍在单一 UI 线程，复杂页面可能造成短时卡顿。
 - Browser 资源事务按 URL 拥有 `pending`、`ready`、`failed`、`cancelled` 终态、失败分类和成功字节；transport 失败每项最多重试 2 次（最多 3 次尝试），HTTP、resolve、budget、memory 和 cancelled 不重试，预算耗尽保持 transport failure。样式表/`@import` 是 required，脚本/图片是 optional；`PBrowser_NavigationCommitGetInfo` 在 layout/swap 前提供 candidate/resource 组合 gate，required 失败、未收敛 pending、资源取消、候选过时或 cancellation 保留旧 document/history，optional 失败交给 Core fallback。统计最多保留 4 项 `role/failure#hash`，fallback family 计数是粗粒度观测，不等于逐元素归因或可见 UI；重复 URL 和深层 `@import` 的去重与分类已由 TEST1123 覆盖，但不能保证任意真实站点的 fallback 视觉。
 - 阶段 1/2 的资源失败边界已接入：required CSS 阻止提交，optional 资源回退，脚本异常不回滚。

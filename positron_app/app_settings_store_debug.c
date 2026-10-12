@@ -503,7 +503,7 @@ int AppSettingsStore_DebugCheck(void)
             result.values.language != APP_SETTINGS_LANGUAGE_CHINESE ||
             result.values.javascript_enabled != 0 ||
             app_settings_debug_close(&store) != APP_SETTINGS_OK) goto done;
-    if (app_settings_debug_sql(module_path, database_path, 4, "") ||
+    if (app_settings_debug_sql(module_path, database_path, 5, "") ||
             AppSettingsStore_Create(module_path, database_path, &store) != APP_SETTINGS_OK ||
             app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
             result.result == APP_SETTINGS_OK ||

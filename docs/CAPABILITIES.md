@@ -30,15 +30,22 @@
 
 ## 独立应用消费者的宿主边界
 
-EXE 私有内部地址注册表提供 newtab、about、settings、下载未实现说明、持久 GET 访问记录
+EXE 私有内部地址注册表提供 newtab、about、settings、有界下载、持久 GET 访问记录
 与独立 Browser 会话 history；version/system 规范化为 about 章节。模板双语内嵌，动态 HTML
 上限 128 KiB，访问记录最多 500 条/每页 16 条，焦点最多 32 项。quit 只接受地址栏直接提交
 并正常关闭，不改公共 DLL ABI。可信 settings 原子编辑 HTTP(S)/三个内部主页、语言和网页
 JS 开关，使用 EXE 同目录 positron.db、公共 DB 与 Browser 受控异步服务；完整 URL 少于
 1024 UTF-8 字节，仍服从公开 URL 解析器。首次导航前异步读取设置，语言重启应用，网页
 候选接受时固定 JS 策略，已加载页面不变且可信设置代码独立获准。保存、新进程恢复及正常
-退出排空已有应用设备门；真实下载、故障注入与人工 UI 矩阵不因此算通过。边界见
+退出排空已有应用设备门；故障注入与人工 UI 矩阵不因此算通过。边界见
 [内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
+
+下载从可信 downloads 页直接输入 HTTP(S)，经原生保存对话框确认新路径；两任务/单传输、
+32 MiB/120 秒，消费公开流式 GET/Cancel，支持取消和持久记录。不覆盖目标，不自动执行，
+无网页自动下载或续传。访问/下载共用 Core 记录组件及 DB worker/迁移，但使用独立 typed 表；
+queued→receiving→publishing→终态由持久 ACK 驱动，正常退出排空，重启只标中断。
+升级/精确文件内容/取消/发布失败/恢复/真实输入框已有应用自动门；原生 picker、真实网络、
+触摸/SIP/旋转及文件故障仍待验收，见 [数据设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 
 应用把当前 GET 文档绑定到 Browser history 的公开 document identity；同文档
 Back/Forward/go 保留 DOM、ScriptSession、native 控件与 retained layout，仅同步 URL、
@@ -155,7 +162,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | reference 解析 | `PHttp_ResolveReference`、`PHttp_ResolveReferenceUrl` | 已实现 | host/port 入口保持兼容；URL 入口保留显式 scheme 和非标准端口，非法 scheme、端口、控制字符和截断安全失败 | TEST1064/1065/999 及 Core/应用 callback 复用证据 |
 | HTTP/HTTPS GET/POST、进度、最终 URL 和 response 释放 | `PHttp_Get[Ex]`、`PHttp_GetUrl[Ex]`、`PHttp_Post[Ex]`、`PHttp_PostUrl[Ex]`、`PHttp_ResponseGetFinalUrl`、`PHttp_FreeResponse` | 已实现 | response body 受 1 MiB 上限；Content-Length 截断、分块/读取/分配失败均丢弃 body 并返回 `status_code=0`；redirect 有界；URL 省略协议只默认 HTTPS，HTTPS→HTTP 降级被拒绝；旧 `PHttpResponse` 布局不变 | TEST3 的 final-URL 断言、TEST1064/1065/999、应用资源接线；继续用受控重定向和超限 fixture 检查一致错误 |
 | 请求网络阶段观察 | `PHttp_GetEx2`、`PHttp_GetUrlEx2`、`PHttp_PostEx2`、`PHttp_PostUrlEx2`；TLS 转发 `PTls_ConnectEx`/`PTls_ConnectVerifiedEx` | 已实现但有界 | request-scoped `size/version` observer；同步、固定 UTF-8 快照、一次终态；`received/total` 保持解码 body 语义，未知总量为 `-1`；WinInet DNS/代理/socket 不可分辨时以 `PHASE_MERGED` 报告，不伪造细分；回调禁止重入/cleanup，不暴露 header/body | TEST3/4/999 的 HTTPS GET/POST 阶段、非法 scheme fail-closed 与 WMDC Debug 设备门；重定向、受控 HTTP provider 失败和并发隔离继续按测试文档扩展 |
-| 流式 GET 与跨线程取消 | `PHttp_StreamCreateGet/Get/Cancel/GetResult/GetHeader/Close` | 已实现但有界 | 4096-byte 借用块、64-bit transfer-decoded counts、显式 1 byte–1 GiB quota；响应头/trailer 各 16 KiB/64 项、行 1023 bytes、最多 5 redirects；final URL/status/metadata/重复普通头；identity encoding，TE/CL 冲突与压缩拒绝；Cancel 唯一跨线程操作，终态锁线性化，join 后释放；直连 IPv4、HTTPS 固定验证且不降级；旧完整正文 1 MiB 不变 | TEST1342 的 >1 MiB 精确字节、chunked/未知长度/non-2xx、容量/framing、sink 拒绝、取消/超时/并发及旧入口回归，TEST1343 verified HTTPS；双配置设备门。EXE 文件保存/下载 UI、代理、Range、流式 POST 和压缩另行取舍 |
+| 流式 GET 与跨线程取消 | `PHttp_StreamCreateGet/Get/Cancel/GetResult/GetHeader/Close` | 已实现但有界 | 4096-byte 借用块、64-bit transfer-decoded counts、显式 1 byte–1 GiB quota；响应头/trailer 各 16 KiB/64 项、行 1023 bytes、最多 5 redirects；final URL/status/metadata/重复普通头；identity encoding，TE/CL 冲突与压缩拒绝；Cancel 唯一跨线程操作，终态锁线性化，join 后释放；直连 IPv4、HTTPS 固定验证且不降级；旧完整正文 1 MiB 不变 | TEST1342 的 >1 MiB 精确字节、chunked/未知长度/non-2xx、容量/framing、sink 拒绝、取消/超时/并发及旧入口回归，TEST1343 verified HTTPS；双配置设备门。EXE 接线见消费者边界；代理、Range、流式 POST 和压缩另行取舍 |
 | TLS 初始化和安全开关 | `PHttp_Init/Cleanup`、`PHttp_SetInsecure` | 已实现但默认安全 | insecure 只可由应用显式打开；证书/hostname 风险不能由 HTTP 静默吞掉 | TLS/HTTP 组合门；发布前继续审查旧 mbed TLS 风险 |
 | CORS、referrer、loading/fetch-priority、缓存策略 | 当前没有稳定公共策略入口 | 有界待扩展 | 必须先确定 Browser/HTTP/Core owner、请求代际、旧页保留和取消语义；不能只按标准名称添加字段 | 需要真实页面或消费者证明阻塞，并提供 loopback/offline fixture |
 | HTTP/2、WebSocket、完整代理和无限缓存 | 当前没有公共承诺 | 暂缓 | 超出 WM6 资源和当前请求模型 | 只有新的明确产品范围才重新评估 |

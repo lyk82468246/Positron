@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。Core 选择性长文本断行已交付，EXE 只对历史记录条目启用样式；不修改公共 ABI、DB/history 或滚动语义。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入有界下载、共享应用存储与记录列表；本批不修改公共 DLL/ABI、Browser history 或滚动语义。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；Annex-B 无 timing/不变 SPS 合同已补齐，下一纵切为损坏 SPS/PPS 与截断 payload。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
@@ -14,8 +14,8 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 
 ## 当前代码与所有权
 
-分支 main；Core 自然高度已交付，应用设置输入框补字体继承与自然行高/内边距，
-Debug 实页门检查原生文本格式矩形。该应用批次不修改 DLL/ABI 或滚动；Media 独立修正见下方。
+分支 main；Core 自然高度及应用输入框字体/内边距修正已获用户“基本正常”确认。
+下载任务、文件策略与 v4 应用表属于 EXE；Media 独立修正见下方。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -54,40 +54,20 @@ count=0）；完整日志无 dump，根因未定，不直接归因为缺字体�
 
 ### EXE 访问历史与滚动像素修正通过
 
-EXE 接入 schema v2、持久 GET 记录与分页/确认清除；结果按 tab/请求/generation 隔离，
-clear 全局失效缓存。稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)，
-未修改 DLL/ABI 或删除用户数据。
+持久 GET 记录最多 500 条/每页 16 条，读取按 tab/请求/generation 隔离，确认清除全局失效
+缓存。存储、真实导航与固定右菜单已获设备/用户验收；历史操作只在页内，不删用户文件。
+稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 
-访问历史存储基线 `tmp/device-runs/20261006-231023-app-settings-visits-verified/`
-五进程 PASS，恢复/清除保留主页、哈希/正常退出/crash 门通过；此前 UI 与实际导航也通过。
+截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分别取证。Core 提供选择性紧急断行，
+EXE 不改写文字或隐藏横轴；[请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md) 已落实。
+实际窗口复现 CE 双轴 ScrollWindowEx 返回 ERROR；改为单轴顺序移动，任一失败完整
+失效视口，仅补绘而不增加 layout。位图原点假设无对照支持，已撤回；空页不替代长 URL 门。
 
-截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分开处理：当时缺少的 Core CSS
-紧急断行已完成 DLL 门，应用已选择性启用；原消费者合同见
-[Core 请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)，EXE 不改写文字或隐藏横轴。
-实际窗口探针复现 CE 双轴 ScrollWindowEx 返回 ERROR，旧代码忽略失败仍更新位置，
-产生旧像素残留。拆分单轴、任一失败完整失效视口后只补绘，不增加 layout。更换位图
-原点的假设未被对照证明，已撤回；空历史页不花屏不能替代长 URL 页面验收。
-
-先行滚动包 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的完整 UI、96/192 DPI
-实际窗口/内存像素、IANA→历史、哈希与 crash 门 PASS；旧 PID 3612441414 已退出。
-用户确认含长 URL 该页双轴/斜向拖动无花屏，撤回斜向无反应反馈，不外推全部页面/OEM。
-
-先行断行包 `tmp/device-runs/20261007-004415-app-history-wrap/` 自动门及用户复测通过，
-旧 PID 1132574842 已正常退出；完整触摸/旋转/语言矩阵仍保留。
-
-固定菜单包 `tmp/device-runs/20261007-100038-app-fixed-menu/` 自动门与用户验收通过；
-右菜单固定、历史操作在页内，32 槽/26 焦点、实际 IANA 读写及 454 宽度通过。
-PID 2532702806 已正常退出；当前入口见设置存储段。
-失败实际窗口探针保留于 `20261006-234530-app-scroll-long-url-probe`；原双轴加失败补绘的
-诊断对照 `20261006-235012-app-scroll-window-diagnostic` 已通过，旧进程由用户退出。
-
-双配置 build/CAB、C89、审计与 Release 诊断排除通过；rebuild 链接顺序失败不追认通过。五进程退出审计失败证据在
-`20261006-230619-app-settings-visits-final`；精确 PID 正常退出等待后零引用通过，不强杀。
-访问记录恢复不等于断电门。
-
-ROADMAP/限制已复核；500 条裁剪仍为离线 SQL 证据。完整设置消费见下方，下载随后独立
-接入公开 stream GET/Cancel；遇到 DLL 缺口立即停止协调。FULL/I/O/断电暂缓不重开；
-下一门仍需重新审计引用，不沿用旧零 holder 快照。
+`tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的实际窗口/96、192 DPI 像素、
+IANA→历史与 crash 门 PASS，用户确认双轴/斜向拖动无花屏；断行与固定菜单后续复测通过，
+不外推全部页面/OEM。详细先行包与已退出 PID 见 Git；失败探针与 rebuild 链接失败保留。
+访问存储五进程正常退出等待后零引用，不强杀；500 条裁剪为离线 SQL 证据，不等于断电门。
+FULL/I/O/断电暂缓不重开，新设备门须重新审计引用。
 
 ### EXE 完整设置与启动策略
 
@@ -112,11 +92,29 @@ HTML 增量失败及 pre-build 跳过实验保留；正式入口先失效过期 
 保存值→空值→填值均为客户区 197×23、格式矩形 (2,2)-(195,21)、字体高 19（ascent=16、descent=3），
 上下各留 2 像素；双语重启、关闭 JS 保存、单 history、退出/零引用、SHA256 10/10 与 crash PASS。
 入口包见 `manual-settings-review-verified/`；其 PID1594425138 已按用户授权由 Media 门清理器终止，
-不再作为运行入口。字符/SIP/保存/旋转待重新启动人工复核。
+不再作为运行入口。用户已确认字符显示基本正常；SIP/保存/旋转完整矩阵仍待人工。
 Debug/Release/CAB、C89/审计及诊断排除通过。先行 padding 包客户区高 30、文字偏上，已撤回；
 linebox 包客户区高 21/格式区高 17，被新断言拒绝，失败保留且已正常退出。
 CabWiz 失败见 `tmp/settings-linebox-release-cab-failed.log`，正式重试通过。
-ROADMAP 已复核，人工字体矩阵与 Unicode 取证继续保留，无强杀/删库。
+ROADMAP 已复核，未确认的人工矩阵与 Unicode 取证继续保留，无强杀/删库。
+
+### EXE 有界下载与共享记录接线通过自动门
+
+downloads 页直接 GET/原生确认新路径，两任务、一传输、32 MiB/120 秒；无网页自动下载、
+续传或执行。共享 worker/迁移/Core 列表，使用独立 typed 表。v4 保留旧数据，租约拒绝第二
+owner；journal ACK、不覆盖发布、仅清自身临时文件、重启标中断与正常退出合同见应用数据设计。
+
+当前匹配包证据 `tmp/device-runs/20261012-113205-app-downloads-complete/`：五进程门
+create/reopen/storage/services/ui PASS，v3 升级、owner 拒绝、16 条分页、队列/传输取消、
+404、目标竞争、不覆盖、关闭排空和中断恢复通过；2 MiB 中文路径文件精确 SHA256，
+清记录后文件与原偏好/访问记录保留。实际 native EDIT 格式区、拒绝错误 scheme、刷新保值、
+无脚本/单 history 通过；各夹具正常退出至零引用，模块 SHA256 10/10 与 crash PASS。
+普通无自检启动 PID601397726 停在 downloads；原生 picker、真实 HTTP(S) 下载、触摸/SIP、
+旋转和文件故障仍待人工/专门门，不以 loopback 成功替代。
+
+正式 Debug/Release build/CAB、C89 与 Release 诊断排除已验证。失败日志保留：不支持的
+时间 API 和 desktop 路径编码已修正；UI 终态后精确 PID 的退出用有界等待，必须零引用，
+未保留产品 dispatch 绕过或强杀/放宽审计，不追认失败为 PASS。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -490,7 +488,7 @@ callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站�
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。完整设置与持久 GET 访问记录已接入，downloads 仍未实现。HTTP 流式 GET/取消已验收；应用文件保存、DB HTTPS worker 和真实断电恢复未完成。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。完整设置、持久 GET 访问记录与首版有界下载已接入；下载人工保存/网络门、DB HTTPS worker 和真实断电恢复未完成。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
@@ -500,8 +498,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
 范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
 启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
-唯一下一步为当前设置页真实输入/SIP/保存/旋转人工验收，不自动推进下载，
-不把 test_host 门当成 EXE 完成。当前 EXE 访问历史证据与运行入口见上方；
+已复核本轮 ROADMAP：设置字符显示获用户确认，有界下载退出待实现队列。
+EXE 下一步为下载页原生保存、真实网络/取消与文件结果人工验收，未确认的设置/SIP/旋转
+矩阵继续保留，不自动扩大网页下载策略；不把 test_host 门当成 EXE 完成。运行入口见上方；
 下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
 维护，不纳入本批；WinWorld 图片视觉已关闭。
 
@@ -513,5 +512,5 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 
 Media 下一步损坏 SPS/PPS 与截断 payload 的错误分类/无输出边界；保留 VFR/SEI/PPS 变化、非零 AAC seek 保真、重建故障注入、其他格式/IMA/AMR、时钟同步和 DirectShow 候选；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
-和应用持久化，不把进程终止恢复写成断电恢复。新增设备门仍须协调串行构建、重新审计 guest DLL 引用；破坏性
+仍待专门门，不把应用正常重开或进程终止恢复写成断电恢复。新增设备门须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

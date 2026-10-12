@@ -37,6 +37,13 @@ typedef struct AppTab {
     unsigned long visits_generation;
     unsigned long visits_request_id;
     __int64 visits_before_id;
+    AppDownloadSnapshot *downloads;
+    int downloads_status;
+    unsigned long downloads_request_id;
+    unsigned long downloads_generation;
+    __int64 downloads_before_id;
+    int downloads_redraw_pending;
+    char download_url[APP_HOST_URL_MAX];
 } AppTab;
 
 #endif

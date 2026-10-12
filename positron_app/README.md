@@ -11,7 +11,7 @@ bar、菜单、输入优先级和页面导航策略属于应用。
 当前版本提供单窗口、最多四个标签的网络浏览、内部起始页和离线验收页：
 
 - 使用标准 WM6 caption 和 `SHCreateMenuBar` softkey command bar；左 softkey 为 `Tabs` / `标签页`，
-  右 softkey 打开原生菜单，包含前进、主页、地址栏、刷新、历史记录、下载、设置、关于和退出；
+  右 softkey 打开固定原生菜单，包含主页、地址栏、历史记录、下载、设置、关于和退出；
 - caption 下只有一行紧凑 native EDIT 地址栏；Enter 提交，Escape 恢复最近一次已提交地址；
 - 内部页面包含 `positron://newtab`、`about`、`history`、`downloads`、`settings`，
   英语/简体中文模板嵌入 EXE。无参数、空地址和主页菜单打开 newtab；
@@ -26,7 +26,7 @@ bar、菜单、输入优先级和页面导航策略属于应用。
 - 页面空白点击不会关闭窗口；页面链接可用触摸或鼠标点击激活；页面焦点可用
   Up/Down/Enter 操作，Backspace 保留给 native 地址栏编辑。
 
-左菜单依次提供后退、标签列表、可选的新建标签和关闭标签，中间用原生分隔符分组；当前
+左菜单依次提供后退、条件前进、标签列表、可选的新建标签、刷新和关闭标签，中间用原生分隔符分组；当前
 标签打勾。尾部已是 newtab 时直接选择它，不重复增加新建项。每页独立保存文档、脚本、
 history、滚动和 native 输入状态，切换不重新加载；尚未提交的地址输入/选区也按标签保存。
 history 页面、后退/前进及刷新只操作当前标签。关闭最后一页会创建新 newtab，退出菜单
@@ -113,15 +113,16 @@ Browser 保留其有界脚本回退；本批没有新增 ABI。将普通 `conten
 脚本 `form.reset()` 的 native 控件同步、脚本 `requestSubmit()` 与 direct
 `form.submit()`、单行 EDIT 隐式 Enter、POST/multipart/dialog 以及 native file picker 仍未设备验收；
 脚本自行构造的 File/Blob→multipart 仍没有公共转换入口；SIP/IME、
-书签、持久偏好和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内；缺少
-`positron.ini` 不影响启动，当前没有需要用户编辑的
-配置项。
+书签和 WM6 Standard 仍未接入；完整 ClipboardEvent/async clipboard 也不在范围内。
+持久偏好通过 settings 页面编辑，不要求手工配置文件。
 
 ## 内部地址
 
 页面名大小写无关，允许一个末尾斜杠；未知内部地址恢复已提交地址并保留文档、标题。
-history 是当前标签的 Browser 会话导航栈，不是持久访问日志：最多 16 条、最新在前，包括前进项，
-过滤自身，刷新重读；点击按 URL 新导航。settings 当前只读，downloads 不提供真实下载任务。
+history 分别展示持久 GET 访问记录与当前标签的 Browser 导航栈，后者不跨进程恢复；
+访问记录最多 500 条、每页 16 条，页内提供重读、较早记录和确认清除。
+settings 原子保存主页、语言和网页 JavaScript 策略。downloads 提供页内 HTTP(S) 地址输入、
+原生保存确认、进度/取消和持久记录；详见下方应用数据合同。
 about 查询 CE、目标架构、DPI、视口、内存与公开 DLL ABI 版本。应用版本在 Debug 中显示
 构建主机本地时间 `yyyy-MM-dd HH:mm:ss`，由工程预构建步骤冻结进 EXE，重启不变；Release
 直接读取 CAB 安装写入的 `HKLM\Software\Positron\Version`。这是安装版本，不推断独立复制
@@ -162,7 +163,7 @@ positron.exe --url https://example.com/ --click "#menu"
 positron.exe --url https://example.com/ --eval "document.querySelector('#menu').click()"
 ```
 
-不带参数打开 `positron://newtab`。URL 也可以写成 `-u` 或 `/url`；`--url=`、`-u=`
+不带参数读取已保存主页，默认或不可用时为 `positron://newtab`。URL 也可以写成 `-u` 或 `/url`；`--url=`、`-u=`
 和 `/url=` 形式同样受支持。没有显式 scheme 的网络 reference 继续交给现有 HTTP resolver；
 `positron://` 只允许应用自己的离线页面，其他 scheme 在启动时拒绝，不会静默降级或执行。
 
@@ -190,10 +191,25 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 
 ## 阶段 A/B 验收
 
-### 设置存储候选
+### 应用数据与下载
 
-存储候选不在普通启动或 Release 中启用，settings 页面仍只读。显式 Debug 参数
-`--selftest-settings-storage` 单独验证 EXE 私有 DB worker 与起始页 schema，不打开浏览器窗口；
+普通 Debug/Release 使用 EXE 同目录的 `positron.db`，设置、访问记录与下载记录共用一个
+DB worker 和迁移序列，但各有类型明确的表。历史和下载复用 Core 记录列表组件，
+不增加页面专属软键菜单。语言在重启后生效，JS 开关仅影响后续网页候选。
+
+在 downloads 页输入显式 HTTP(S) 地址并点“下载”，通过 WM6 保存对话框选择新路径。
+最多两个任务、一个传输，按接受顺序排队；每次限 32 MiB/120 秒，使用公开流式 API，
+HTTPS 保持链/hostname 校验。未知总量显示字节数而非虚构百分比。切页不取消任务，
+退出协作取消并等待网络/文件线程与持久终态，再排空共享 DB。已有目标绝不覆盖，
+不会自动执行下载文件；网页自动下载、Range/续传、压缩、Cookie/认证、POST 不在首版。
+
+完整传输、Flush/关闭、COMMIT 发布中、同卷改名、COMMIT 完成依次执行；记录失败不报成功。
+重启将未结束记录标为中断，显示文件是否可访问，不自动恢复或删除遗留文件。
+记录最多保留 500 条结束任务、每页 16 条；确认清除只删除结束记录，保留所有文件、
+设置与访问记录。文件系统和 DB 不是联合原子事务，真实断电/FULL/I/O 故障仍未验收。
+完整策略见 [应用数据设计](APPLICATION_DATA_PLAN.md)。
+
+显式 Debug 参数 `--selftest-settings-storage` 单独验证私有 DB worker，不打开浏览器窗口；
 必须使用匹配完整包，同目录保留对应 `positron_db.dll`。它只写入本次新建的
 `\Temp\Positron-settings-<pid>-<tick>`，关闭后精确清理，不触碰用户设置。
 日志为 `\Temp\positron-debug.log` 的 `settings-storage selftest OK/FAILED`，失败清理会保留目录。
@@ -207,9 +223,14 @@ positron.exe --url https://example.com/ --eval "document.querySelector('#menu').
 -ConfirmedExclusiveWindow`。目录须是本次 `tmp/device-runs/<时间>-app-settings-<名称>`；
 脚本先核对当前 EXE/九 DLL 与 stage、设备回读的 SHA256，串行启动两组夹具，验证精确 PID/
 终态、关闭后的无 DLL 引用与无新增 crash，并保留包与证据。不构建、选择设备或强杀进程。
-该候选正式启用仍须通过 DB 文件可靠性门与实际可信设置页/启动接线验收；
-同进程新 worker 重开不等于进程/掉电恢复。
+文件故障门按用户决定暂缓，不将正常重启或内存 fixture 当作断电恢复。
 线程、预算和后续可信前端边界见 [后端设计](INTEGRATION_PLAN.md#后端进入条件)。
+
+`scripts/app_downloads_gate.ps1` 使用新鲜 `app-downloads-*` 正式 Debug 部署，串行验证
+2 MiB 流式内容、中文文件路径、排队/取消/non-2xx/不覆盖、v3 升级、重启中断/清除、
+16/4 分页、共享偏好/历史保留、所有者拒绝、设置相邻门与真实页输入/路由。
+必须通过当前 PID 正常退出后的零引用、完整包 SHA256 与 crash 门；`-LeaveOpen` 才在末尾
+普通启动 downloads 页供人工复核。原生保存对话框、触摸、SIP、旋转和真实 HTTPS 仍须人工。
 
 ### 页面与交互
 
