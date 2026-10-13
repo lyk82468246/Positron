@@ -209,6 +209,7 @@ static int g_downloads_ui_ticks;
 static int g_downloads_ui_pickers;
 static WCHAR g_downloads_ui_name[256];
 static WCHAR g_downloads_ui_extension[256];
+static WCHAR g_downloads_ui_type[256];
 #endif
 
 static int app_relayout(void);
@@ -3940,9 +3941,6 @@ static void app_downloads_command(HWND hwnd, const char *url)
     unsigned long tab_id;
     unsigned long prepare_generation;
     const PHttpProbeResult *checked;
-    WCHAR filter[540];
-    WCHAR extension_text[256];
-    const WCHAR *extension;
     WCHAR *leaf;
     char selected_name[256];
     int chinese;
@@ -4003,29 +4001,16 @@ static void app_downloads_command(HWND hwnd, const char *url)
         memset(&picker, 0, sizeof(picker));
         if (!MultiByteToWideChar(CP_UTF8, 0, AppDownloadPrepare_Name(g_tab->download_prepare), -1,
                 path, APP_DOWNLOAD_PATH_MAX)) return;
-        extension = wcsrchr(path, L'.');
-        if (extension != NULL) {
-            wcscpy(extension_text, extension + 1);
-            extension = extension_text;
-        }
-        /* A real suggested suffix, never a guessed bin/html extension. */
-        wcscpy(filter, chinese ? L"\x5efa\x8bae\x6587\x4ef6\x7c7b\x578b" : L"Suggested file");
-        bytes = (int) wcslen(filter) + 1;
-        wcscpy(filter + bytes, extension != NULL ? L"*." : L"*");
-        if (extension != NULL) wcscat(filter + bytes, extension);
-        bytes += (int) wcslen(filter + bytes) + 1;
-        wcscpy(filter + bytes, chinese ? L"\x6240\x6709\x6587\x4ef6 (*.*)" : L"All files (*.*)");
-        bytes += (int) wcslen(filter + bytes) + 1;
-        wcscpy(filter + bytes, L"*.*");
-        bytes += 4;
-        filter[bytes] = 0;
         picker.lStructSize = sizeof(picker);
         picker.hwndOwner = hwnd;
-        picker.lpstrFilter = filter;
+        /* The full basename is editable, not split into Name + fixed Type.
+         * No suffix filter/default extension or app-side suffix completion. */
+        picker.lpstrFilter = chinese ?
+                L"\x6240\x6709\x6587\x4ef6 (*.*)\0*.*\0\0" : L"All files (*.*)\0*.*\0\0";
         picker.nFilterIndex = 1;
         picker.lpstrFile = path;
         picker.nMaxFile = APP_DOWNLOAD_PATH_MAX;
-        picker.lpstrDefExt = extension;
+        picker.lpstrDefExt = NULL;
         picker.lpstrTitle = chinese ? L"\x4e0b\x8f7d\x4fdd\x5b58\x4f4d\x7f6e" : L"Save download";
         picker.Flags = OFN_PATHMUSTEXIST;
         g_download_picker_open = 1;
@@ -4033,7 +4018,8 @@ static void app_downloads_command(HWND hwnd, const char *url)
         if (g_downloads_ui_mode) {
             ++g_downloads_ui_pickers;
             wcscpy(g_downloads_ui_name, path);
-            wcscpy(g_downloads_ui_extension, extension != NULL ? extension : L"");
+            wcscpy(g_downloads_ui_extension, picker.lpstrDefExt != NULL ? picker.lpstrDefExt : L"");
+            wcscpy(g_downloads_ui_type, picker.lpstrFilter + wcslen(picker.lpstrFilter) + 1);
             chosen = 0; /* Only explicit Debug fixture: observe seed, cancel. */
         } else
 #endif
@@ -4187,9 +4173,10 @@ static void app_downloads_ui_check(HWND hwnd)
     if (g_script != NULL || PBrowser_HistoryCount(g_history) != 1) goto failed;
     if (g_downloads_ui_phase == 3) {
         if (AppDownloadPrepare_Error(g_tab->download_prepare) != PHTTP_PROBE_HTTP_STATUS ||
-                g_downloads_ui_pickers != 2 || g_tab->download_save_pending ||
+                g_downloads_ui_pickers != 3 || g_tab->download_save_pending ||
                 AppDownloads_Snapshot(g_downloads, g_download_preview) != 0) goto failed;
         AppDownloads_DebugUiServerStop();
+        AppDebug_Log("download-picker-name selftest OK full=png,zip,none default_extension=none filter=all_files\r\n");
         AppDebug_Log("download-implicit-ui selftest OK automatic=once suffix=png failure=no_picker cancel=no_task stale=rejected\r\n");
         AppDebug_Log("download-prepare-ui selftest OK async=responsive name=validated input=invalidated history=single\r\n");
         AppDebug_Log("downloads-ui selftest OK input=font authority=document history=single\r\n");
@@ -4246,10 +4233,20 @@ static void app_downloads_ui_check(HWND hwnd)
         return;
     }
     if (g_downloads_ui_pickers == 0 ||
-            (g_downloads_ui_phase == 2 && g_downloads_ui_pickers < 2)) return;
+            (g_downloads_ui_phase == 2 && g_downloads_ui_pickers < 2) ||
+            (g_downloads_ui_phase == 4 && g_downloads_ui_pickers < 3)) return;
     if (g_downloads_ui_phase == 2) {
         if (g_downloads_ui_pickers != 2 || lstrcmpW(g_downloads_ui_name, L"manual.zip") ||
-                lstrcmpW(g_downloads_ui_extension, L"zip")) goto failed;
+                g_downloads_ui_extension[0] != 0 ||
+                lstrcmpW(g_downloads_ui_type, L"*.*")) goto failed;
+        if (PCore_NodeSetValueById(g_document, "download-name", "README") != 0) goto failed;
+        (void) app_load_page_from(hwnd, "#app-download-start", APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT);
+        g_downloads_ui_phase = 4;
+        return;
+    }
+    if (g_downloads_ui_phase == 4) {
+        if (g_downloads_ui_pickers != 3 || lstrcmpW(g_downloads_ui_name, L"README") ||
+                g_downloads_ui_extension[0] != 0 || lstrcmpW(g_downloads_ui_type, L"*.*")) goto failed;
         if (!MultiByteToWideChar(CP_UTF8, 0, g_downloads_ui_url, -1, wide_url, 128)) goto failed;
         edit = NULL;
         for (child = GetWindow(g_page_window, GW_CHILD); child != NULL; child = GetWindow(child, GW_HWNDNEXT))
@@ -4261,7 +4258,7 @@ static void app_downloads_ui_check(HWND hwnd)
         if (AppDownloadPrepare_CanDownload(g_tab->download_prepare)) goto failed;
         SendMessage(hwnd, APP_WM_DOWNLOAD_SAVE, g_app.tab_id,
                 (LPARAM) g_tab->download_save_generation);
-        if (g_downloads_ui_pickers != 2) goto failed;
+        if (g_downloads_ui_pickers != 3) goto failed;
         AppDownloads_DebugUiServerStop();
         if (!AppDownloads_DebugUiServer(g_downloads_ui_url, sizeof(g_downloads_ui_url), 404) ||
                 !MultiByteToWideChar(CP_UTF8, 0, g_downloads_ui_url, -1, wide_url, 128)) goto failed;
@@ -4271,7 +4268,8 @@ static void app_downloads_ui_check(HWND hwnd)
         return;
     }
     if (g_downloads_ui_pickers != 1 || lstrcmpW(g_downloads_ui_name, L"file.png") ||
-            lstrcmpW(g_downloads_ui_extension, L"png") ||
+            g_downloads_ui_extension[0] != 0 ||
+            lstrcmpW(g_downloads_ui_type, L"*.*") ||
             !AppDownloadPrepare_CanDownload(g_tab->download_prepare) || g_downloads_ui_ticks == 0 ||
             PCore_NodeValueById(g_document, "download-name", value, sizeof(value), NULL) != 0 ||
             strcmp(value, "file.png") ||

@@ -90,26 +90,29 @@ CabWiz 正式重试边界见 Git/本地日志。两配置/C89/审计/诊断排�
 
 ### EXE 下载预检与共享记录通过自动门
 
-消费 HTTP `9f282b56`；点击下载后隐式 Probe，成功在独立 UI 消息中核对标签/代际/可信页/
-前台后弹原生保存框，预填建议名/实际后缀。失败仅页内提示，缺名需补齐；无 bin/index.html
-猜测。重复点击去重，切换标签、改回输入、取消或离页撤销保存意图，不在 timer/callback 内等 GUI。
-Probe join/关闭后借出副本；退出先等待预检，再排空下载/DB。新 GET 在 sink 前匹配最终头，
-变化/HTTP 拒绝不发布文件，metadata不证明正文身份。额度/v4/租约/journal/不覆盖合同保持。
+消费 HTTP `9f282b56`；隐式Probe/一次UI保存续接保持。Name预填完整建议名，仅所有文件筛选、
+NULL默认后缀，不限制/自动补全后缀，允许改名/去掉后缀，无bin猜测。
+其余代际、取消、失败、退出、额度/v4/journal/不覆盖合同见应用数据设计，不改DLL或存储。
 
-`tmp/device-runs/20261013-105011-app-downloads-implicit-final/` 五进程门 PASS：
-create/reopen/storage/services/ui、单次自动续接/`.png` 名称及后缀、404不弹框、取消无任务、
+`tmp/device-runs/20261013-112055-app-downloads-name-final/` 五进程门 PASS：
+create/reopen/storage/services/ui、PNG/ZIP完整名及无后缀README、NULL默认扩展名/所有文件、
+单次自动续接、404不弹框、取消无任务、
 stale拒绝与原有缺名/WM6名称/代际/join/最终头变化零正文守卫。2 MiB 中文文件 SHA256 精确，
 清记录保留文件/偏好/访问数据；96/128/192 DPI字段几何/href通过。全部夹具正常退出至零引用，
 EXE/九 DLL SHA25610/10、crash PASS。Debug 专属 picker 替代仅观测初始化并模拟取消，不当作GUI门。
 串行正式 Debug/Release build/CAB、C89/审计与 Release 诊断排除通过。
-同包 app_history_gate 全部 required UI 自检/哈希/crash通过，PID917571398已由用户正常退出。
+前一隐式包 app_history_gate required UI 自检/哈希/crash通过，本轮未重复；只改picker参数/诊断。
 
 用户已实测旧普通包 HTTPS 图片保存：闭库证据 `tmp/device-runs/20261013-download-user-confirmation/`
 的记录16为 `ai-radar-logo-20260815.png`、HTTP200、44370/44370、完成/错误0，日志 op6 ACK成功。
-已确认用户正常退出/零引用；原 DB 另存且旧部署/用户文件未删，新包须复制这个最新闭库副本。
-最终普通包 `tmp/device-runs/20261013-105736-app-downloads-implicit-review/` 哈希10/10、
-原DB精确复制/记录16保留、前台/真实读取/crash通过；PID915689410留在downloads，无自检启动。
-实际新自动保存框、取消及失败提示仍须复测；触摸/SIP/旋转/故障不因单端点成功关闭。
+截图 `tmp/QQ20261013-111412.png` 的Name未显示后缀，Type为Suggested file；源码确实给了完整PNG，
+系统显示与传入完整名分离；移除旧后缀筛选/默认后缀。用户拒绝“默认类型”方案，未部署的标签候选已撤回。
+不使用不受CE支持的hook或更改系统设置；按完整名/无默认后缀复测真实Name显示及用户改名。
+旧PID915689410已正常退出/零引用，最新闭库副本在
+`tmp/device-runs/20261013-download-extension-user-data/`，记录16保留；旧部署/用户文件未删。
+最终普通包 `tmp/device-runs/20261013-112634-app-downloads-name-review/` 与自动门二进制一致，
+哈希10/10、原DB精确复制/前台/读取/crash通过，PID920248358留在downloads；不用fixture库。
+完整Name显示/改名待人工，触摸/SIP/旋转/故障仍保留。
 旧字体格式区12<14、过早退出审计、CAB抢读及四项 host 源码模式失败仍由 Git/本地证据保留，
 不追认为通过；输入 natural line-height/EM_GETRECT 检查保持，不加固定高度或偏移。
 
@@ -491,8 +494,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
-唯一下一门为点击下载后的自动保存框、预填完整名称/后缀、缺名补齐、取消与失败不弹框。
-原显式流程 HTTPS 图片已获用户确认，隐式流程单独复测；不把 DLL 或 loopback 门扩大为人工通过。
+唯一下一门为保存框Name完整显示、自由修改/删除后缀、取消及失败不弹框；不恢复默认类型。
+已复核限制：文件安全/不覆盖/额度保持，ROM实际显示仍须人工，不以初始化参数自检代替。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 本轮未改 DLL/Media/DB/CAB 源码，串行窗口交还前必须标明最终普通包与 PID；下次构建部署
 仍须正常退出并重审引用，不覆盖用户数据库。

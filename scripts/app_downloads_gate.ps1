@@ -100,6 +100,9 @@ try {
                     if ($mode -eq 'ui' -and $body -notmatch 'download-implicit-ui selftest OK automatic=once suffix=png failure=no_picker cancel=no_task stale=rejected') {
                         throw 'Missing implicit download/save continuation regression.'
                     }
+                    if ($mode -eq 'ui' -and $body -notmatch 'download-picker-name selftest OK full=png,zip,none default_extension=none filter=all_files') {
+                        throw 'Missing unrestricted full download name regression.'
+                    }
                     $complete=$true; break
                 }
             }
