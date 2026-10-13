@@ -90,31 +90,28 @@ CabWiz 正式重试边界见 Git/本地日志。两配置/C89/审计/诊断排�
 
 ### EXE 下载预检与共享记录通过自动门
 
-消费 HTTP `9f282b56`；每标签 AppDownloadPrepare 保存输入代际/结果，进程单预检30秒，
-最终200/额度/名称有效才开放保存框，缺名须补齐，无 bin/index.html 猜测。
-改回输入、取消或离页仍失效；Probe join/关闭后借出副本，退出先等待预检再排空下载/DB。
-新 GET 在 sink 前匹配最终头，变化/HTTP 拒绝保留原错误，不发布文件；metadata不证明正文身份。
-两任务/单传输、32 MiB/120秒与v4/租约/journal/不覆盖保持，稳定合同见应用数据设计。
+消费 HTTP `9f282b56`；点击下载后隐式 Probe，成功在独立 UI 消息中核对标签/代际/可信页/
+前台后弹原生保存框，预填建议名/实际后缀。失败仅页内提示，缺名需补齐；无 bin/index.html
+猜测。重复点击去重，切换标签、改回输入、取消或离页撤销保存意图，不在 timer/callback 内等 GUI。
+Probe join/关闭后借出副本；退出先等待预检，再排空下载/DB。新 GET 在 sink 前匹配最终头，
+变化/HTTP 拒绝不发布文件，metadata不证明正文身份。额度/v4/租约/journal/不覆盖合同保持。
 
-`tmp/device-runs/20261013-101451-app-downloads-preflight-final/` 五进程
-create/reopen/storage/services/ui PASS：缺名/确认、WM6 名称、预检404、A→B→A失效、取消join、
-最终头变化零正文、native 异步输入/单history及原有迁移/租约/分页/传输/恢复守卫。
-2 MiB 中文文件 SHA256 精确，清记录保留文件/偏好/访问数据；字段96/128/192 DPI几何/href通过。
-各夹具正常退出至零引用，完整 EXE/九 DLL SHA256 10/10、crash PASS。匹配同包的相邻
-app_history_gate 全部 required 自检/哈希/crash PASS，包括多标签、地址栏、历史及滚动；
-PID2525269898 已由用户正常退出，不作为人工入口。
+`tmp/device-runs/20261013-105011-app-downloads-implicit-final/` 五进程门 PASS：
+create/reopen/storage/services/ui、单次自动续接/`.png` 名称及后缀、404不弹框、取消无任务、
+stale拒绝与原有缺名/WM6名称/代际/join/最终头变化零正文守卫。2 MiB 中文文件 SHA256 精确，
+清记录保留文件/偏好/访问数据；96/128/192 DPI字段几何/href通过。全部夹具正常退出至零引用，
+EXE/九 DLL SHA25610/10、crash PASS。Debug 专属 picker 替代仅观测初始化并模拟取消，不当作GUI门。
+串行正式 Debug/Release build/CAB、C89/审计与 Release 诊断排除通过。
+同包 app_history_gate 全部 required UI 自检/哈希/crash通过，PID917571398已由用户正常退出。
 
-正式串行 Debug/Release build/CAB、C89 与 Release 诊断排除通过；Release CAB 抢读链接
-EXE 的失败保留 `tmp/app-preflight-release-cab-failed.log`，正式 build 重试恢复，不追认 rebuild。
-先行包 `20261013-100234-app-downloads-preflight` UI 格式区12<字体14失败；输入由
-line-height:1 改为 normal，不设固定高/偏移，最终 URL/名称输入均检查实际 EM_GETRECT。
-临时 UI helper 过早退出审计仍 FAIL，正式门等待零引用，无强杀。旧四项 host 源码模式失败保持，
-不宣称全部 host 门通过。视觉/picker、真实 HTTPS、
-触摸/SIP/旋转及文件故障待门，不以 loopback 替代。最终普通包
-`tmp/device-runs/20261013-102918-app-downloads-preflight-review/` 哈希10/10、原 DB 精确复制、
-前台/真实读取/crash PASS，PID3601926162 留在 downloads，不含自检启动。
-原 DB 零引用后另存 `tmp/device-runs/20261013-103000-app-downloads-user-database/`，
-旧部署/原库/用户文件未删；后续验收须从这个普通包进入，不用隔离 fixture 的数据库。
+用户已实测旧普通包 HTTPS 图片保存：闭库证据 `tmp/device-runs/20261013-download-user-confirmation/`
+的记录16为 `ai-radar-logo-20260815.png`、HTTP200、44370/44370、完成/错误0，日志 op6 ACK成功。
+已确认用户正常退出/零引用；原 DB 另存且旧部署/用户文件未删，新包须复制这个最新闭库副本。
+最终普通包 `tmp/device-runs/20261013-105736-app-downloads-implicit-review/` 哈希10/10、
+原DB精确复制/记录16保留、前台/真实读取/crash通过；PID915689410留在downloads，无自检启动。
+实际新自动保存框、取消及失败提示仍须复测；触摸/SIP/旋转/故障不因单端点成功关闭。
+旧字体格式区12<14、过早退出审计、CAB抢读及四项 host 源码模式失败仍由 Git/本地证据保留，
+不追认为通过；输入 natural line-height/EM_GETRECT 检查保持，不加固定高度或偏移。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -487,15 +484,15 @@ callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站�
 
 ## 有效边界与设备纪律
 
-HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。完整设置、持久 GET 访问记录与首版有界下载已接入；下载人工保存/网络门、DB HTTPS worker 和真实断电恢复未完成。
+HTTP final URL、Core 资源终态和现有 SVG 能力继续有效；bootstrap-multiselect、module/Shadow DOM、横向滚动条暂缓、SIP/IME/OEM 等见 [限制](KNOWN_LIMITATIONS.md)。完整设置、持久 GET 访问记录与有界下载已接入，用户验证单端点 HTTPS 图片；新自动保存框、DB HTTPS worker 与真实断电恢复仍待门。
 
 WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆盖诊断包。精确清理必须取得 helper 成功摘要，不能杀 WMDC、VS GUI 或其他程序。外置卡失败时可检查空间后使用内置 Temp；日志回收前不删除目录。只在用户告知新截图时查询截图，不以旧截图推断新运行。
 
 ## 路线图复核与唯一下一步
 
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
-唯一下一门为 downloads 页真实解析、名称编辑/缺名确认、保存框取消/路径及 HTTPS 文件结果。
-失败应无保存框，修改地址须重解析，正常退出排空；不把 DLL 或 loopback 门扩大为人工通过。
+唯一下一门为点击下载后的自动保存框、预填完整名称/后缀、缺名补齐、取消与失败不弹框。
+原显式流程 HTTPS 图片已获用户确认，隐式流程单独复测；不把 DLL 或 loopback 门扩大为人工通过。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 本轮未改 DLL/Media/DB/CAB 源码，串行窗口交还前必须标明最终普通包与 PID；下次构建部署
 仍须正常退出并重审引用，不覆盖用户数据库。

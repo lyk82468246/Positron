@@ -24,7 +24,7 @@ void AppDownloads_RequestClose(AppDownloads *downloads);
 int AppDownloads_TryDestroy(AppDownloads **downloads);
 #ifdef _DEBUG
 int AppDownloads_DebugRun(int reopen);
-int AppDownloads_DebugUiServer(char *url, int capacity);
+int AppDownloads_DebugUiServer(char *url, int capacity, int status);
 void AppDownloads_DebugUiServerStop(void);
 #endif
 #endif

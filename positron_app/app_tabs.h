@@ -46,6 +46,8 @@ typedef struct AppTab {
     int downloads_redraw_pending;
     char download_url[APP_HOST_URL_MAX];
     AppDownloadPrepare *download_prepare;
+    int download_save_pending; /* 1: waiting for probe, 2: posted UI action. */
+    unsigned long download_save_generation;
 } AppTab;
 
 #endif

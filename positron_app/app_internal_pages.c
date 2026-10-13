@@ -849,8 +849,8 @@ static void app_internal_downloads(AppHtmlWriter *writer,
     app_html_append(writer, "<p><input id=\"download-url\" size=\"18\" maxlength=\"1023\" "
             "style=\"font-size:inherit;line-height:normal;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
     app_html_escape(writer, data->download_url);
-    app_html_append(writer, "\"></p><p><a id=\"download-resolve\" href=\"#app-download-resolve\">");
-    app_html_escape(writer, chinese ? "\350\247\243\346\236\220\351\223\276\346\216\245" : "Resolve link");
+    app_html_append(writer, "\"></p><p><a id=\"download-start\" href=\"#app-download-start\">");
+    app_html_escape(writer, chinese ? "\344\270\213\350\275\275" : "Download");
     app_html_append(writer, "</a></p><p><a id=\"download-probe-cancel\" href=\"#app-download-probe-cancel\">");
     app_html_escape(writer, chinese ? "\345\217\226\346\266\210\350\247\243\346\236\220" : "Cancel preparation");
     app_html_append(writer, "</a></p><p id=\"download-prepare-status\">");
@@ -883,19 +883,7 @@ static void app_internal_downloads(AppHtmlWriter *writer,
         app_html_append(writer, "</p><p><input id=\"download-name\" maxlength=\"255\" "
                 "style=\"font-size:inherit;line-height:normal;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
         app_html_escape(writer, AppDownloadPrepare_Name(data->download_prepare));
-        app_html_append(writer, "\"></p><p><a id=\"download-name-confirm\" href=\"#app-download-name\">");
-        app_html_escape(writer, chinese ? "\347\241\256\350\256\244\346\226\207\344\273\266\345\220\215" : "Confirm file name");
-        app_html_append(writer, "</a></p>");
-    }
-    if (AppDownloadPrepare_CanDownload(data->download_prepare)) {
-        app_html_append(writer, "<p><a id=\"download-start\" href=\"#app-download-start\">");
-        app_html_escape(writer, chinese ? "\344\270\213\350\275\275\345\271\266\351\200\211\346\213\251\344\277\235\345\255\230\344\275\215\347\275\256" : "Download and choose save location");
-        app_html_append(writer, "</a></p>");
-    } else {
-        app_html_append(writer, "<p id=\"download-disabled\">");
-        app_html_escape(writer, chinese ? "\344\270\213\350\275\275\344\270\215\345\217\257\347\224\250\357\274\232\350\257\267\345\205\210\350\247\243\346\236\220\345\271\266\347\241\256\350\256\244\346\234\211\346\225\210\346\226\207\344\273\266\345\220\215\343\200\202" :
-                "Download unavailable: resolve the link and confirm a valid file name first.");
-        app_html_append(writer, "</p>");
+        app_html_append(writer, "\"></p>");
     }
     app_html_append(writer, "<p id=\"download-progress\">");
     app_html_escape(writer, data->download_message);
@@ -1145,7 +1133,7 @@ int AppInternalPages_FocusIds(HANDLE document,
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
         "nav-downloads", "nav-settings", "nav-welcome", "nav-controls",
         "visits-latest", "visits-older", "visits-clear",
-        "download-start", "download-resolve", "download-probe-cancel", "download-name-confirm",
+        "download-start", "download-probe-cancel",
         "download-cancel-0", "download-cancel-1",
         "downloads-latest", "downloads-older", "downloads-clear"
     };

@@ -131,7 +131,7 @@ static int dtest_server_stop(DownloadServer *server)
 
 static DownloadServer dtest_ui_server;
 static int dtest_ui_sockets;
-int AppDownloads_DebugUiServer(char *url, int capacity)
+int AppDownloads_DebugUiServer(char *url, int capacity, int status)
 {
     WSADATA data;
     if (dtest_ui_server.thread != NULL || capacity < 96 ||
@@ -139,6 +139,8 @@ int AppDownloads_DebugUiServer(char *url, int capacity)
     dtest_ui_sockets = 1;
     if (!dtest_server_start(&dtest_ui_server, 200)) return 0;
     dtest_ui_server.delay_headers = 1;
+    dtest_ui_server.probe_status = status;
+    strcat(dtest_ui_server.url, ".png");
     strcpy(url, dtest_ui_server.url);
     return 1;
 }

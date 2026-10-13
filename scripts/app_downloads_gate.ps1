@@ -97,6 +97,9 @@ try {
                     if ($mode -eq 'ui' -and $body -notmatch 'download-prepare-ui selftest OK async=responsive name=validated input=invalidated history=single') {
                         throw 'Missing real preparation UI regression.'
                     }
+                    if ($mode -eq 'ui' -and $body -notmatch 'download-implicit-ui selftest OK automatic=once suffix=png failure=no_picker cancel=no_task stale=rejected') {
+                        throw 'Missing implicit download/save continuation regression.'
+                    }
                     $complete=$true; break
                 }
             }

@@ -40,8 +40,8 @@ JS 开关，使用 EXE 同目录 positron.db、公共 DB 与 Browser 受控异�
 退出排空已有应用设备门；故障注入与人工 UI 矩阵不因此算通过。边界见
 [内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
 
-下载从可信 downloads 页输入 HTTP(S)，先消费公开 Probe 异步检查最终响应/建议名，
-确认合法 basename 后才允许原生保存；修改输入或取消使旧资格失效，不猜 bin/index.html。
+下载从可信 downloads 页输入 HTTP(S)，点击下载后隐式消费 Probe，成功才在 UI 消息中
+打开预填名称/扩展名的原生保存框；失败不弹框。输入变更/取消/切换撤销意图，不猜 bin/index.html。
 单活动预检/30 秒、最终 HTTP 200 策略；新 Stream GET 在正文前匹配最终头，变化/HTTP 拒绝
 保留原错误，匹配元数据不保证正文身份。两任务/单传输、
 32 MiB/120 秒，消费公开流式 GET/Cancel，支持取消和持久记录。不覆盖目标，不自动执行，

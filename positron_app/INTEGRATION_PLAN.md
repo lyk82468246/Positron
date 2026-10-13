@@ -213,7 +213,7 @@ EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和�
 | `positron://about` | 说明、可取得的版本/系统信息、内部页面目录 |
 | `positron://version`、`positron://system` | 提交前规范化为 about 的 version/system 片段，仅提交一次 history |
 | `positron://history` | 持久访问记录（16 条分页）与独立的当前 Browser 导航栈文本快照 |
-| `positron://downloads` | HTTP(S) 预检、名称编辑确认、原生保存确认、进度/取消及持久下载记录分页 |
+| `positron://downloads` | 点击下载后隐式预检/原生保存确认、进度/取消及持久记录分页 |
 | `positron://settings` | 原子读写 HTTP(S)/三个内部主页、语言与网页 JavaScript 偏好 |
 | `positron://quit` | 仅地址栏直接提交可以正常退出，不创建页面或 history 项 |
 
@@ -348,6 +348,9 @@ generation，消费或丢弃均释放；清除使全部标签缓存失效。异�
 预检副本，进程最多一个活动 Probe worker，30 秒内获取最终响应并关闭；UI 按输入代际
 接受结果，修改地址、离页或关闭使其失效。只在 HTTP 200、额度和名称均有效后允许
 原生保存确认，缺名需手工填写，名称解析由 HTTP 拥有，WM6 保留名与路径策略归应用。
+“下载”登记一次意图；成功在私有 UI 消息中核对标签/代际/可信页/前台后自动弹保存框，
+以建议名/实际后缀初始化。重复点击去重；切换标签、修改输入、取消或离页撤销，失败不弹框。
+此续接不作为 URL 命令开放，不能在 HTTP callback 或 timer 调用栈内等待 GUI。
 最多两个下载任务、一个传输，32 MiB/120 秒；新 Stream GET 在最终头 callback 中消费
 公开 ProbeMatchFinalHeaders，不符则零正文拒收并保留网络/变化错误。worker 创建同目录
 临时文件，COMMIT 发布中后改名，COMMIT 终态后才报完成。退出先取消/join 全部预检，
