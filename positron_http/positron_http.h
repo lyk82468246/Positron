@@ -90,8 +90,9 @@ typedef struct PHttpStreamOptions {
  * as UNSUPPORTED before the next connection, never leaked to the new origin.
  * Outputs unchanged on error.
  * Requires Init, but no network or callbacks. Get executes once on one worker;
- * callbacks synchronous there, borrow arguments until return, no reentry except
- * Cancel. Header callback can reject before any body bytes. Non-2xx is a normal
+ * callbacks synchronous there, borrow arguments until return, no request
+ * reentry except Cancel. The additive pure naming/matching queries may run
+ * inside the headers callback. Header callback can reject before any body bytes. Non-2xx is a normal
  * final response; OK means complete transfer, not 2xx or saved-file success.
  * Cancel is the sole cross-thread request API, idempotent before terminal;
  * cancel/completion linearize under a request lock, late cancel returns STATE
@@ -119,6 +120,110 @@ PHTTP_API int PHttp_StreamGetResult(HANDLE request, PHttpStreamResult* result);
 PHTTP_API int PHttp_StreamGetHeader(HANDLE request, const char* name,
         unsigned long occurrence, char* output, unsigned long capacity);
 PHTTP_API int PHttp_StreamClose(HANDLE request);
+
+/* Additive GET-header preflight. No HEAD, continuation, file sink or thread.
+ * Old StreamGet/Options/Result ABI and behavior remain unchanged. */
+#define PHTTP_PROBE_VERSION 1
+#define PHTTP_PROBE_CHANGED -11
+#define PHTTP_PROBE_HTTP_STATUS -12
+#define PHTTP_PROBE_FLAG_STRONG_ETAG 1UL
+#define PHTTP_DOWNLOAD_NAME_VERSION 1
+#define PHTTP_DOWNLOAD_NAME_MAX_BYTES 255
+#define PHTTP_DOWNLOAD_DISPOSITION_MAX_BYTES 511
+#define PHTTP_NAME_OK 0
+#define PHTTP_NAME_MISSING 1
+#define PHTTP_NAME_INVALID 2
+#define PHTTP_NAME_UNSUPPORTED 3
+#define PHTTP_NAME_LIMIT 4
+#define PHTTP_NAME_SOURCE_NONE 0
+#define PHTTP_NAME_SOURCE_FILENAME_STAR 1
+#define PHTTP_NAME_SOURCE_FILENAME 2
+#define PHTTP_NAME_SOURCE_URL 3
+
+typedef struct PHttpDownloadNameInfo {
+    unsigned long size;
+    unsigned long version;
+    int status;             /* NAME_*; non-OK always has empty basename. */
+    int source;             /* NAME_SOURCE_*; NONE if no usable name. */
+    int disposition_status; /* extended-name fallback reason, otherwise OK. */
+    char basename[PHTTP_DOWNLOAD_NAME_MAX_BYTES + 1];
+} PHttpDownloadNameInfo;
+typedef struct PHttpProbeOptions {
+    unsigned long size;
+    unsigned long version;
+    unsigned long timeout_ms; /* total including redirects, 1..120000. */
+} PHttpProbeOptions;
+typedef struct PHttpProbeResult {
+    unsigned long size;
+    unsigned long version;
+    /* result: STREAM_* or PROBE_HTTP_STATUS for a final non-2xx response.
+     * received is always zero; total is Content-Length or -1. A 2xx header
+     * result does not authorize 204/206, a filename, or later body success. */
+    PHttpStreamResult metadata;
+    PHttpDownloadNameInfo name;
+    unsigned long flags;
+    char etag[256];
+    char last_modified[128]; /* opaque header text, not date interpretation. */
+} PHttpProbeResult;
+
+/* Pure bounded naming query; no Init/network. Optional NULL/empty inputs.
+ * info must have exact size/version. Bad API arguments leave it unchanged;
+ * return OK publishes a NAME_* decision, not necessarily a usable name.
+ * UTF-8 filename* (RFC8187) wins; invalid/unsupported extended value may
+ * fall back only to a valid ordinary filename, recording disposition_status.
+ * Duplicate parameters/malformed syntax reject the whole field. A present
+ * invalid naming parameter never silently falls back to URL. With no naming
+ * parameter, use the final HTTP(S) URL's last path segment, decoded once;
+ * ignore query/fragment, never infer index.html. Quoted ordinary filenames
+ * accept ASCII/valid UTF-8 and quoted-pair; token filenames are ASCII tokens.
+ * Ordinary '%' is literal, '+' never means space. Other charsets, RFC2047
+ * and filename continuations are unsupported, never guessed. Max 32 params,
+ * parameter name 63 bytes, field 511 bytes, decoded basename 255 bytes.
+ * Reject NUL/C0/DEL/C1, '/', '\\', ':', '.'/'..', leading/trailing ASCII
+ * space, invalid UTF-8 and encoded separators. This is advisory basename
+ * metadata, not a local path or WM6-safe filename: host validates reserved
+ * names, extensions, final paths, overwrite/permissions and user choices. */
+PHTTP_API int PHttp_SuggestDownloadName(const char* content_disposition,
+        const char* final_url, PHttpDownloadNameInfo* info);
+
+/* Create copies URL/headers using the existing stream budgets/security.
+ * Get runs once on one host worker; closes transport after final headers,
+ * follows <=5 redirects, verifies TLS chain/hostname, never downgrades.
+ * No body parser or application callback; the HTTP reader's <=4096-byte
+ * block can coalesce body bytes and is discarded, not delivered/countable.
+ * TLS/socket buffering may receive more; this is not zero wire traffic.
+ * Framing/encoding/header budgets still checked. No body quota is consumed;
+ * host judges known size and unknown-length policy before real download.
+ * Non-2xx is PROBE_HTTP_STATUS with metadata, not SINK or local file error.
+ * Name decisions are independent of transport result. Failed/cancelled/
+ * timed-out requests have no usable name; headers may remain diagnostic.
+ * Cancel is the sole cross-thread operation. Join Get and all Cancel callers
+ * before querying/Close/Cleanup; running query/Close refuse STATE. Close
+ * takes the owned handle slot, clears it on success, and accepts a NULL slot
+ * value repeatedly. Never reuse aliases to a freed handle. No GUI wait or
+ * callback/message pumping inside this DLL. */
+PHTTP_API int PHttp_ProbeCreateGet(const char* url, const char** headers,
+        const PHttpProbeOptions* options, HANDLE* out_request);
+PHTTP_API int PHttp_ProbeGet(HANDLE request);
+PHTTP_API int PHttp_ProbeCancel(HANDLE request);
+PHTTP_API int PHttp_ProbeGetResult(HANDLE request, PHttpProbeResult* result);
+PHTTP_API int PHttp_ProbeClose(HANDLE* request);
+
+/* Call in the real StreamGet final-headers callback, before permitting sink
+ * bytes. Pass its borrowed metadata/raw headers unchanged. OK means observed
+ * final URL/status/type/disposition/encoding/length/ETag/Last-Modified match;
+ * CHANGED means different metadata, HTTP_STATUS means actual non-2xx. Other
+ * STREAM_* codes describe invalid/unsupported/over-budget input. Map a
+ * non-OK result to header refusal and remember this code separately from
+ * StreamGet's SINK result. Never wait for GUI in that callback.
+ * ProbeGet must have completed OK. The copied probe result survives Close.
+ * This is NOT byte identity: absent/weak validators cannot identify a body;
+ * even strong ETag matching relies on server correctness. Host may send
+ * If-Match using a strong ETag, still check status/metadata and handle 412.
+ * No stale-result/UI generation policy, automatic retry, Range or resume. */
+PHTTP_API int PHttp_ProbeMatchFinalHeaders(const PHttpProbeResult* probe,
+        const PHttpStreamResult* metadata, const char* headers,
+        unsigned long header_bytes);
 
 /* Request-scoped network phase observation.  This is additive to the legacy
  * progress callback and does not change PHttpResponse.  All text fields are

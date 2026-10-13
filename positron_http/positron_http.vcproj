@@ -211,6 +211,7 @@
 			>
 			<File RelativePath=".\positron_http.c"></File>
 			<File RelativePath=".\p_http_stream.c"></File>
+			<File RelativePath=".\p_http_name.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"

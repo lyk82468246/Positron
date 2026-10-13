@@ -95,6 +95,9 @@ extern const char *test1341_browser_service_last_error(void);
 extern BOOL test1342_http_stream_contract(void);
 extern const char *test1342_http_stream_last_error(void);
 extern BOOL test1343_http_stream_verified_https(void);
+extern BOOL test1350_http_probe_contract(void);
+extern BOOL test1351_http_probe_verified_https(void);
+extern const char *test1350_http_probe_last_error(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
 extern BOOL test1330_core_fragment_dpi_contract(void);
@@ -1074,7 +1077,7 @@ static BOOL test1349_media_contract_guarded(void)
 }
 
 #define TEST_CONFIG_MAX_BYTES 4096
-#define TEST_MAX_NUMBER 1349
+#define TEST_MAX_NUMBER 1351
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118168,6 +118171,16 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1343_http_stream_verified_https();
             if (ok) { show_info(L"TEST 1343 OK", "Verified IANA HTTPS streaming passed."); }
             else { show_error(L"TEST 1343 FAIL", test1342_http_stream_last_error()); }
+            break;
+        case 1350:
+            ok = test1350_http_probe_contract();
+            if (ok) { show_info(L"TEST 1350 OK", "GET header preflight, bounded names and before-body matching passed."); }
+            else { show_error(L"TEST 1350 FAIL", test1350_http_probe_last_error()); }
+            break;
+        case 1351:
+            ok = test1351_http_probe_verified_https();
+            if (ok) { show_info(L"TEST 1351 OK", "Verified HTTPS preflight completed with zero body delivery."); }
+            else { show_error(L"TEST 1351 FAIL", test1350_http_probe_last_error()); }
             break;
         case 1329:
             ok = test1329_core_bootstrap_hamburger();

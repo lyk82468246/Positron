@@ -352,8 +352,16 @@ HTTP opaque-request 流式 GET 与跨线程取消已退出待实现队列；固�
 双配置合同证据见能力矩阵/交接。EXE 的两任务/单传输、流式文件保存、取消/关闭、发布中
 journal 与持久终态已接入；用户确认的路径不覆盖，任务独立于标签，读取结果仍核对
 tab/请求/generation。只将尚未确认的原生 picker、真实 HTTPS、SIP/旋转与故障风险留为人工门。
-后续网页 download/Content-Disposition 动作须先为 Browser/Core 提出消费者合同；
-Range、压缩、代理与 stream POST 只有新的消费者证据和独立资源合同出现后再取舍。
+HTTP 响应头预检、UTF-8 建议 basename 和真实 StreamGet 最终头匹配已完成，公共合同见
+[HTTP README](../positron_http/README.md#先预检响应再确认下载)，不再列为 DLL 待实现项。
+下一条应用纵切为：worker 预检并关闭请求 → 按输入/generation 接受结果 → 可编辑名称与
+原生保存确认 → 新 GET 最终头复核 → 流式保存。缺名要求用户补齐；非 2xx、超限、取消、
+失败或远端 metadata 改变分别解释，不提前创建目标或把网络错误伪装文件错误。保留原有
+两任务/单传输、额度、journal、退出/恢复和不覆盖策略；取消/旧结果/关闭必须有自动门，
+命名编辑、picker、真实 HTTPS 与保存结果另做应用人工门。预检不是 HEAD 或 socket 续用，
+相同 metadata 不证明正文身份，不以放宽 TLS 或扩大额度实现流程。
+网页自动 download 动作仍须先为 Browser/Core 提出消费者合同；Range、压缩、代理与
+stream POST 只有新的消费者证据和独立资源合同出现后再取舍。
 
 #### A. 独立应用阶段 B：连续网络导航与页面提交
 

@@ -109,7 +109,7 @@ if (PHttp_StreamCreateGet(url, headers, &options, &request) == PHTTP_STREAM_OK) 
 
 请求头最多 32 项/8192 字节；响应头及 trailer 分别最多 16 KiB/64 项、单行 1023 字节。
 头文本只接受 ASCII/合法 UTF-8，其他 obs-text 编码返回 UNSUPPORTED，不冒充 UTF-8；
-文件名不做字符集猜测或 RFC 5987 解码。
+旧 StreamResult 不解析文件名；需要建议 basename 时使用下方的独立命名查询。
 最终 metadata 包含 URL、status、Content-Type/Disposition/Encoding、64-bit received/total；
 终态后 `GetHeader` 可按 occurrence 查询其他头，重复普通字段按原顺序保存。重复 framing
 或下载 singleton 字段、TE/CL 冲突、非法 chunk 及超预算明确失败。Content-Disposition
@@ -130,6 +130,118 @@ Sink、协议、预算、timeout、取消及 transport 错误有独立机器分�
 新 HTTP DLL 静态导入 `PTls_Transport*`，必须部署同一次正式 stage 的 HTTP/TLS DLL。
 消费者不直接链接 Winsock/TLS 或解析英文错误；应用 worker/消息、文件命名及原子保存策略
 仍由 EXE 拥有。实际门及未验证边界见 [当前交接](../.agents/HANDOFF.md)，不能把 DLL 门当成应用下载接线通过。
+
+### 先预检响应，再确认下载
+
+`PHttp_ProbeCreateGet` / `PHttp_ProbeGet` 是独立、版本化的响应头预检请求族，复用流式
+GET 的直连 TCP/TLS、URL、重定向、头预算与取消。它发送真实 GET，在最终头完成后关闭
+连接，不使用 HEAD、不等待 GUI、不调用文件 sink，也不创建文件。HTTP reader 最后一个
+4096 字节块可能包含并丢弃随头到达的正文；TLS/socket 也可能缓冲更多网络字节，不能把
+“零正文交付”描述为零网络流量。`metadata.received` 始终为零；已知总量为 Content-Length，
+chunked/close-delimited 为 -1。预检不消耗 body quota，大文件可先查看元数据，再由应用
+决定是否符合自己的下载上限。
+
+```c
+PHttpProbeOptions options;
+PHttpProbeResult checked;
+HANDLE probe;
+int result;
+int query_result;
+
+probe = NULL;
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PHTTP_PROBE_VERSION;
+options.timeout_ms = 30000;
+result = PHttp_ProbeCreateGet(url, NULL, &options, &probe);
+if (result == PHTTP_STREAM_OK) {
+    result = PHttp_ProbeGet(probe); /* host worker, never UI message pumping */
+    memset(&checked, 0, sizeof(checked));
+    checked.size = sizeof(checked);
+    checked.version = PHTTP_PROBE_VERSION;
+    query_result = PHttp_ProbeGetResult(probe, &checked);
+    if (query_result != PHTTP_STREAM_OK) result = query_result;
+    /* Join the worker and every concurrent Cancel caller before Close. */
+    PHttp_ProbeClose(&probe); /* clears the owned slot; repeat NULL is safe */
+}
+```
+
+调用方初始化 HTTP，复制 URL/请求头后创建请求，worker 执行一次；UI 只通过
+`PHttp_ProbeCancel` 请求协作取消。Get 及 Cancel 调用者全部 join 后查询/关闭；执行中的
+查询和 Close 返回 STATE，错误不改写输出或 handle slot。成功 Close 将 slot 清为 NULL，
+不要保存并再次访问已释放 handle 的别名。完整复制的 `checked` 在关闭后仍有效。
+超时为含 DNS/重定向的 1–120000 ms；不能抢占 TLS 运算，也不能保证 OS DNS job 已结束。
+
+预检返回沿用的 STREAM 参数、状态、transport、protocol、encoding/UNSUPPORTED、LIMIT、
+memory、timeout 和 cancel 分类；最终非 2xx 单独返回 `PHTTP_PROBE_HTTP_STATUS`，保留 HTTP
+status，绝不称为文件错误。OK 表示取得可用的 2xx 响应头，不代表 204/206 可下载、正文完整、
+文件保存或网页成功。应用另行选择状态码、大小和命名策略；失败/取消结果没有可用名称。
+ETag/Last-Modified 是固定容量副本；重复或非法 ETag 拒绝，Last-Modified 不解释为本地日期。
+
+#### 建议文件名与边界
+
+`checked.name` 或无需初始化/网络的 `PHttp_SuggestDownloadName()` 返回固定 255 UTF-8 字节
+basename、来源与 NAME_OK/MISSING/INVALID/UNSUPPORTED/LIMIT。只接受 UTF-8 的
+`filename*`，优先于普通 quoted/token `filename`；无命名参数时才从最终 URL 的最后路径段
+取名，排除 query/fragment，不猜 `index.html`。规则参考
+[RFC 6266](https://www.rfc-editor.org/rfc/rfc6266) 与
+[RFC 8187](https://www.rfc-editor.org/rfc/rfc8187)，不承诺完整 MIME 或全部字符集。
+
+字段最多 511 字节、32 参数、参数名 63 字节；重复参数、损坏语法拒绝整个字段。
+扩展名称无效/超限/字符集未支持时，只允许回退到合法的普通 filename，并在
+`disposition_status` 保留原因；存在命名参数但不可用时，不偷偷回退到 URL。
+扩展值和 URL 段只做一次 percent 解码，`+` 不变空格；普通 filename 的 percent 是字面值，
+quoted-pair 正常解转义。非法 UTF-8、NUL/C0/DEL/C1、解码后的 `/`、`\`、`:`、`.`/`..`
+和首尾 ASCII 空格都拒绝，不截断、不拼目录、不猜编码。MIME continuation、RFC2047 或
+其他 charset 返回未支持状态。NAME_MISSING 时名称为空，应用要求用户填写后才可继续。
+
+这只是服务器建议，不是“WM6 安全文件名”。设备保留名、扩展名风险、最终路径、覆盖、
+权限和用户编辑属于 EXE；不得直接把 metadata 当文件路径或对 basename 再做 URL 解码。
+
+#### 应用调用顺序与远端变化
+
+1. 用户输入 URL 后，应用启动预检 worker，显示解析状态；输入变化使旧结果失效。
+2. join 并取得成功元数据后，应用检查 status/大小和名称，显示可编辑 basename。
+3. 名称缺失时必须由用户补齐；应用做 WM6 校验和保存对话框，仍不承诺正文已成功。
+4. 用户确认后创建新的 `PHttp_StreamCreateGet`，采用相同请求头/凭据/表示选择策略。
+5. 在真正的最终头 callback 中调用 `PHttp_ProbeMatchFinalHeaders()`，然后检查实际
+   status/大小策略。任何不匹配先记录机器错误，再返回非零拒绝；sink 尚未收到正文。
+6. 只有复核通过才交付正文；取消、协议错误或文件失败仍按原临时文件/终态策略处理。
+
+匹配查询比较最终 URL、status、类型、Disposition、Encoding、长度及 ETag/Last-Modified。
+`PHTTP_PROBE_CHANGED` 不等于 StreamGet 的 SINK：应用须保留复核错误，再把拒绝映射到
+header callback 的非零返回。它不会自动重试或重新弹 GUI。无效参数及超预算均安全失败。
+该查询临时复制最多 16 KiB 响应头，不保存借用指针，不访问窗口/文件/DB。
+
+例如，应用任务保存关闭预检后取得的完整副本，在新 GET 的 headers callback 中复核：
+
+```c
+typedef struct DownloadTask {
+    PHttpProbeResult checked;
+    int header_result;
+    /* host-owned generation, file state, cancellation and UI policy */
+} DownloadTask;
+
+static int verify_download_headers(void *user_data,
+        const PHttpStreamResult *metadata, const char *headers,
+        unsigned long header_bytes)
+{
+    DownloadTask *task;
+    task = (DownloadTask *)user_data;
+    task->header_result = PHttp_ProbeMatchFinalHeaders(&task->checked,
+            metadata, headers, header_bytes);
+    /* Also enforce the host's accepted status/size policy before accepting. */
+    return task->header_result == PHTTP_STREAM_OK ? 0 : 1;
+}
+/* stream_options.headers = verify_download_headers;
+   stream_options.user_data = task; sink uses the same task.
+   On STREAM_SINK, distinguish task->header_result from file/sink errors. */
+```
+
+匹配元数据不证明字节身份。`PHTTP_PROBE_FLAG_STRONG_ETAG` 只表示有语法合法的强 ETag；
+应用可携带它设置 `If-Match`，仍须处理 412 并复核实际响应。无/弱验证器不能消除远端变化，
+即使强 ETag 也依赖服务器正确实现；同长度/类型/名称的正文仍可能不同。关闭预检再新 GET
+避免长期保留 socket、跨线程续传或在回调内等 GUI；本批不提供 Range/续传/POST 管理。
 
 ### 请求阶段观察（`Ex2`）
 

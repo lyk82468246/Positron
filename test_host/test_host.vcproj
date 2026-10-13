@@ -217,6 +217,7 @@
 			<File RelativePath=".\image_dimension_tests.c"></File>
 			<File RelativePath=".\browser_service_tests.c"></File>
 			<File RelativePath=".\http_stream_tests.c"></File>
+			<File RelativePath=".\http_probe_tests.c"></File>
 		</Filter>
 		<Filter
 			Name="Header Files"

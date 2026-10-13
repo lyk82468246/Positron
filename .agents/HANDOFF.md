@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入有界下载、共享应用存储与记录列表；本批不修改公共 DLL/ABI、Browser history 或滚动语义。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入有界下载与共享记录；HTTP 新增响应头预检、建议 basename 和真实下载响应复核，旧 ABI 不变。本批不修改 EXE、Core、Browser 或应用下载接线。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；Annex-B 无 timing/不变 SPS 合同已补齐，下一纵切为损坏 SPS/PPS 与截断 payload。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
@@ -15,7 +15,7 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 ## 当前代码与所有权
 
 分支 main；Core 自然高度及应用输入框字体/内边距修正已获用户“基本正常”确认。
-下载任务、文件策略与 v4 应用表属于 EXE；Media 独立修正见下方。
+HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件策略与 v4 应用表属于 EXE。Media 独立修正见下方。
 
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
@@ -413,25 +413,24 @@ ROADMAP 已复核并移入暂缓队列，未提升候选；I/O、迁移提交故
 worker 仍待完成；本批不改变 EXE/CAB 既有交付与授权，不宣称真机断电通过。
 本轮相邻回归及最终九 DLL 无引用审计通过，串行窗口释放；下一使用者须重新审计。
 
-### HTTP 流式 GET 与跨线程取消已验收
+### HTTP 下载预检与旧流式合同已验收
 
-HTTP 新请求族及 TLS controlled transport 保持旧 ABI/1 MiB 正文限制；产品实现只在
-HTTP/TLS，宿主只增 loopback/线程/sink/断言。固定预算、metadata、encoding、安全和
-join/取消/DNS 边界见 [HTTP README](../positron_http/README.md#流式-get-与跨线程取消)。
-这不是 EXE 下载 UI/文件保存接线，OS resolver 饱和与真实硬件峰值仍未验证。
+独立 Probe 请求发送真实 GET，最终头完成后关闭，不等 GUI、不读完整正文、不调用 sink。
+UTF-8 建议 basename、验证器快照及真实 GET 的 header matching 由 HTTP 拥有；旧 Stream
+ABI/行为、完整正文 1 MiB 与 TLS 验证不变。合同、预算、示例及元数据匹配不等于字节身份的
+边界见 [HTTP README](../positron_http/README.md#先预检响应再确认下载)。应用尚未接入预检。
 
-最终 Debug `tmp/device-runs/20261005-014248-http-stream-final-debug/` 和 Release
-`tmp/device-runs/20261005-014449-http-stream-final-release/` 均为 `3,4,1341,1342,1343,999`
-的 6/6、唯一 TESTBENCH PASS、零 ERROR/FAIL、完整日志、Core 路径与 crash_check PASS。
-240×320、96 DPI DeviceEmulator，SD 49 文件、双空间与新 guest holder 审计通过；日志完整
-回收后删除本轮目录，没有强杀/重连。TEST1342 的确定性覆盖见能力矩阵；TEST1343 为实际
-verified IANA HTTPS，TEST3/4 保护旧 GET/POST observer，TEST1341 保护 Browser 桥接。
+最终 Debug `tmp/device-runs/20261013-093436-http-probe-debug-accepted/`、Release
+`tmp/device-runs/20261013-093737-http-probe-release-accepted/` 均为
+`3,4,1342,1343,1350,1351,999` 的 7/7、唯一 PASS、零 ERROR/FAIL、完整日志与 Core 路径 PASS。
+TEST1350 覆盖名称预算/错误不变性、最终重定向头、非 2xx、未知长度、大文件预检、取消/
+超时、handle 族和重复关闭，以及两次 GET 的精确正文或变化前拒收；TEST1351 为真实
+verified IANA HTTPS。TEST1342/1343 与 TEST3/4 保护旧流式/TLS 和 GET/POST observer。
 
-截断 chunk 的 fixture 误判已修正，PROTOCOL 断言保持；失败证据在
-`tmp/device-runs/20261004-230901-http-stream-contract-diagnostic/`。
-正式双配置通过；无诊断 Debug 退出与 CAB 提前读取正在链接 TLS 的失败保留在
-`tmp/http-stream-final-debug-vs-failed.log`、`tmp/http-stream-final-release-cab-failed.log`，
-同一正式入口串行重试恢复。C89、审计和空白门通过；不纳入并行 App/DB/Media/CAB 改动。
+正式串行 Debug/Release stage、C89/审计通过。SD 71 文件与部署/内部双空间、新 guest
+holders=0 unavailable=0 均通过；crash PASS，无新增 dump（运行前已有两个）。完整回收后
+清理本轮目录，无强杀/重连，旧日志不完整目录保留。OS resolver 饱和、真实低资源峰值、
+GUI 命名/保存、权限/取消与 EXE 预检接线仍需各自门；旧流式失败对照保留于 Git/本地日志。
 
 ### Browser 受控异步应用服务合同
 
@@ -439,7 +438,7 @@ Browser 拥有默认关闭的受控服务桥接，Script 只提供 native JSON �
 可信身份由宿主授权，不按 URL/scheme 推断。容量、owner-thread 交付和撤销合同见
 [Browser README](../positron_browser/README.md#受控异步应用服务)，不表示 EXE 已接线。
 
-最新双配置合同基线是上述包含 TEST1341 的 HTTP 相邻门。Release 较宽回归
+桥接双配置基线仍为 Git 保留的包含 TEST1341 的旧 HTTP 相邻门；本轮未重跑 TEST1341。Release 较宽回归
 `tmp/device-runs/20261004-222549-browser-services-final-release/` 为 10/10 PASS。
 完整日志、唯一 PASS、零 ERROR/FAIL、Core/crash、SD 双空间/无 holder 均通过并清理本轮目录。
 隔离、失败不变性、线程/撤销及 finalizer 守卫保留，不以服务桥接代替业务接线。
@@ -489,15 +488,13 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-已复核 ROADMAP，消费者授权的 DLL 前置能力分 Browser 桥接与 HTTP 流式 GET 两条纵切；
-Browser 桥接与 HTTP 流式 GET/取消均已通过双配置门，DLL 前置委托完成；不继续扩大 DLL
-范围。含长 URL 的历史页滚动修正已通过人工门；Core 断行已完成双配置定向门，EXE 已
-启用 `overflow-wrap:break-word`，用户复测未发现异常；未逐项确认的人工矩阵继续保留。
-已复核本轮 ROADMAP：记录布局回归关闭自动门，视觉/picker 与真实网络仍留人工队列。
-EXE 下一步为下载页原生保存、真实网络/取消与文件结果人工验收，未确认的设置/SIP/旋转
-矩阵继续保留，不自动扩大网页下载策略；不把 test_host 门当成 EXE 完成。运行入口见上方；
-下次部署须正常退出并重新审计 guest 引用。EXE 菜单/多标签人工门和 Media/CAB 改动由各会话
-维护，不纳入本批；WinWorld 图片视觉已关闭。
+已复核并更新 ROADMAP：HTTP 消费者新委托的预检/建议名/最终响应复核已通过双配置门，
+不再列为待开发 DLL 缺口。唯一下一步交回 EXE：预检 worker 完成后关闭请求，按 generation
+接受结果，要求用户确认/补齐 basename 和路径，再发起新 StreamGet；最终头复核失败不得
+写入正文，也不得把 HTTP 状态或远端变化伪装为文件错误。详细调用顺序见 HTTP README。
+GUI/网络/文件结果、设置/SIP/旋转和菜单/多标签人工矩阵仍保留，不把 test_host 门当作 EXE
+接线验收。Core 断行既有设备差异与脚本性能待办不变；WinWorld 图片视觉已关闭。
+本轮未改 App/Media/DB/CAB 源码；构建/设备窗口现可交还，下次部署仍须正常退出并重审引用。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
 所有权；单次长调用、Debug 默认预算失败和错误后 session 策略仍待处理，不承诺冷启动抢占。

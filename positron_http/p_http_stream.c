@@ -11,6 +11,7 @@ typedef struct stream_request {
     CRITICAL_SECTION lock;
     HANDLE cancel;
     int state; /* 0 created, 1 executing, 2 terminal; guarded by lock */
+    int probe_only; /* immutable request family; no pretend file sink */
     int sensitive_headers;
     PHttpStreamOptions options;
     PHttpStreamResult result;
@@ -40,7 +41,7 @@ static int stream_ci(const char* a, const char* b, size_t bytes)
 }
 static int stream_equal(const char* a, const char* b)
 { return strlen(a) == strlen(b) && stream_ci(a, b, strlen(a)); }
-static int stream_utf8(const char* text, size_t bytes)
+int phttp_text_utf8(const char* text, size_t bytes)
 {
     size_t i;
     unsigned long code;
@@ -100,7 +101,7 @@ static int stream_line(stream_reader* reader, char* output, unsigned long capaci
         if (cr) {
             if (c != '\n') { return PHTTP_STREAM_PROTOCOL; }
             output[used] = '\0';
-            return stream_utf8(output, used) ? 1 : PHTTP_STREAM_UNSUPPORTED;
+            return phttp_text_utf8(output, used) ? 1 : PHTTP_STREAM_UNSUPPORTED;
         }
         if (c == '\r') { cr = 1; continue; }
         if (c == '\n' || c == 0 || c == 127 || (c < 32 && c != '\t')) { return PHTTP_STREAM_PROTOCOL; }
@@ -299,8 +300,8 @@ static int stream_chunked(stream_reader* reader)
                 (colon == 16 && stream_ci(line, "Content-Encoding", colon))) { return PHTTP_STREAM_PROTOCOL; }
     }
 }
-PHTTP_API int PHttp_StreamCreateGet(const char* url, const char** headers,
-        const PHttpStreamOptions* options, HANDLE* out_request)
+static int stream_create_get(const char* url, const char** headers,
+        const PHttpStreamOptions* options, HANDLE* out_request, int probe_only)
 {
     stream_request* request;
     char canonical[PHTTP_URL_MAX];
@@ -312,7 +313,8 @@ PHTTP_API int PHttp_StreamCreateGet(const char* url, const char** headers,
     if (!phttp_stream_initialized()) { return PHTTP_STREAM_STATE; }
     if (options == NULL || options->size != sizeof(*options) || options->version != PHTTP_STREAM_VERSION ||
             options->timeout_ms == 0 || options->timeout_ms > 120000 || options->body_limit == 0 ||
-            options->body_limit > PHTTP_STREAM_BODY_MAX_BYTES || options->sink == NULL || out_request == NULL ||
+            options->body_limit > PHTTP_STREAM_BODY_MAX_BYTES ||
+            (!probe_only && options->sink == NULL) || out_request == NULL ||
             PHttp_ResolveReferenceUrl(NULL, url, canonical, sizeof(canonical)) != 0) { return PHTTP_STREAM_ARGUMENT; }
     request = (stream_request*)calloc(1, sizeof(*request));
     if (request == NULL) { return PHTTP_STREAM_MEMORY; }
@@ -322,7 +324,7 @@ PHTTP_API int PHttp_StreamCreateGet(const char* url, const char** headers,
             if (i == 32) { free(request); return PHTTP_STREAM_LIMIT; }
             bytes = strlen(headers[i]);
             if (bytes > 1023 || used + bytes + 2 >= sizeof(request->request_headers)) { free(request); return PHTTP_STREAM_LIMIT; }
-            if (!stream_utf8(headers[i], bytes) || !stream_header_name(headers[i], &colon) ||
+            if (!phttp_text_utf8(headers[i], bytes) || !stream_header_name(headers[i], &colon) ||
                     (colon == 4 && stream_ci(headers[i], "Host", colon)) ||
                     (colon == 14 && stream_ci(headers[i], "Content-Length", colon)) ||
                     (colon == 10 && stream_ci(headers[i], "Connection", colon)) ||
@@ -344,12 +346,42 @@ PHTTP_API int PHttp_StreamCreateGet(const char* url, const char** headers,
     if (request->cancel == NULL) { free(request); return PHTTP_STREAM_MEMORY; }
     InitializeCriticalSection(&request->lock);
     request->options = *options; request->result.size = sizeof(request->result);
+    request->probe_only = probe_only;
     request->result.version = PHTTP_STREAM_VERSION; request->result.total = -1;
     strcpy(request->result.final_url, canonical);
     *out_request = request;
     return PHTTP_STREAM_OK;
 }
-PHTTP_API int PHttp_StreamGet(HANDLE handle)
+static int stream_identity(const char* headers, char* etag,
+        char* modified, unsigned long* flags)
+{
+    char duplicate[256];
+    const char* p;
+    size_t bytes;
+    int rc;
+    etag[0] = modified[0] = '\0'; *flags = 0;
+    if (stream_field(headers, "ETag", 1, duplicate, sizeof(duplicate)) != PHTTP_STREAM_STATE ||
+            stream_field(headers, "Last-Modified", 1, duplicate, sizeof(duplicate)) != PHTTP_STREAM_STATE) {
+        return PHTTP_STREAM_PROTOCOL;
+    }
+    rc = stream_field(headers, "ETag", 0, etag, 256);
+    if (rc != PHTTP_STREAM_STATE && rc != PHTTP_STREAM_OK) return rc;
+    if (rc == PHTTP_STREAM_OK) {
+        p = etag;
+        if (p[0] == 'W' && p[1] == '/') p += 2;
+        bytes = strlen(p);
+        if (bytes < 2 || p[0] != '"' || p[bytes - 1] != '"') return PHTTP_STREAM_PROTOCOL;
+        if (p == etag) *flags |= PHTTP_PROBE_FLAG_STRONG_ETAG;
+        p++;
+        while (p[1] != '\0') {
+            if ((unsigned char)*p < 33 || *p == '"' || (unsigned char)*p == 127) return PHTTP_STREAM_PROTOCOL;
+            p++;
+        }
+    }
+    rc = stream_field(headers, "Last-Modified", 0, modified, 128);
+    return rc == PHTTP_STREAM_STATE ? PHTTP_STREAM_OK : rc;
+}
+static int stream_execute(HANDLE handle, int probe_only)
 {
     stream_request* request;
     stream_reader* reader;
@@ -362,6 +394,9 @@ PHTTP_API int PHttp_StreamGet(HANDLE handle)
     char next[PHTTP_URL_MAX];
     char next_host[256];
     char next_path[1024];
+    char etag[256];
+    char modified[128];
+    unsigned long identity_flags;
     char* wire;
     int port;
     int scheme;
@@ -375,7 +410,9 @@ PHTTP_API int PHttp_StreamGet(HANDLE handle)
     request = (stream_request*)handle;
     if (request == NULL) { return PHTTP_STREAM_ARGUMENT; }
     EnterCriticalSection(&request->lock);
-    if (request->state != 0) { LeaveCriticalSection(&request->lock); return PHTTP_STREAM_STATE; }
+    if (request->state != 0 || request->probe_only != probe_only) {
+        LeaveCriticalSection(&request->lock); return PHTTP_STREAM_STATE;
+    }
     request->state = 1; LeaveCriticalSection(&request->lock);
     started = GetTickCount(); wire = NULL;
     reader = (stream_reader*)calloc(1, sizeof(*reader));
@@ -433,14 +470,25 @@ PHTTP_API int PHttp_StreamGet(HANDLE handle)
             request->response_header_bytes = 0;
             continue;
         }
+        if (probe_only && (request->result.status_code < 200 || request->result.status_code >= 300)) {
+            rc = stream_identity(request->response_headers, etag, modified, &identity_flags);
+            if (rc == PHTTP_STREAM_OK) rc = PHTTP_PROBE_HTTP_STATUS;
+            break; /* error-page encoding is not a local file/sink failure */
+        }
         rc = PHTTP_STREAM_UNSUPPORTED;
         if (request->result.content_encoding[0] != '\0' &&
                 !stream_equal(request->result.content_encoding, "identity")) { break; }
         rc = PHTTP_STREAM_LIMIT;
-        if (request->result.status_code != 204 && request->result.status_code != 304 &&
+        if (!probe_only && request->result.status_code != 204 && request->result.status_code != 304 &&
                 request->result.total > request->options.body_limit) { break; }
         rc = PHTTP_STREAM_CANCELLED;
         if (stream_cancelled(request)) { break; }
+        if (probe_only) {
+            rc = stream_identity(request->response_headers, etag, modified, &identity_flags);
+            if (rc == PHTTP_STREAM_OK && (request->result.status_code < 200 ||
+                    request->result.status_code >= 300)) rc = PHTTP_PROBE_HTTP_STATUS;
+            break; /* discard bounded read-ahead, never parse/deliver body */
+        }
         if (request->options.headers != NULL && request->options.headers(request->options.user_data,
                 &request->result, request->response_headers, request->response_header_bytes) != 0) { rc = PHTTP_STREAM_SINK; break; }
         if (request->result.status_code == 204 || request->result.status_code == 304) { rc = PHTTP_STREAM_OK; }
@@ -453,23 +501,34 @@ done:
     if (reader != NULL) { PTls_TransportClose(reader->transport); free(reader); }
     EnterCriticalSection(&request->lock);
     if (stream_cancelled(request)) { rc = PHTTP_STREAM_CANCELLED; }
-    else if (rc == PHTTP_STREAM_OK && (DWORD)(GetTickCount() - started) >= request->options.timeout_ms) { rc = PHTTP_STREAM_TIMEOUT; }
+    else if ((rc == PHTTP_STREAM_OK || (probe_only && rc == PHTTP_PROBE_HTTP_STATUS)) &&
+            (DWORD)(GetTickCount() - started) >= request->options.timeout_ms) { rc = PHTTP_STREAM_TIMEOUT; }
     request->result.result = rc; request->state = 2;
     LeaveCriticalSection(&request->lock);
     return rc;
 }
-PHTTP_API int PHttp_StreamCancel(HANDLE handle)
+PHTTP_API int PHttp_StreamCreateGet(const char* url, const char** headers,
+        const PHttpStreamOptions* options, HANDLE* out_request)
+{ return stream_create_get(url, headers, options, out_request, 0); }
+PHTTP_API int PHttp_StreamGet(HANDLE handle)
+{ return stream_execute(handle, 0); }
+static int stream_cancel(HANDLE handle, int probe_only)
 {
     stream_request* request;
     int rc;
     request = (stream_request*)handle;
     if (request == NULL) { return PHTTP_STREAM_ARGUMENT; }
     EnterCriticalSection(&request->lock);
+    if (request->probe_only != probe_only) {
+        LeaveCriticalSection(&request->lock); return PHTTP_STREAM_STATE;
+    }
     rc = request->state == 2 ? PHTTP_STREAM_STATE : PHTTP_STREAM_OK;
     if (rc == 0) { SetEvent(request->cancel); }
     LeaveCriticalSection(&request->lock);
     return rc;
 }
+PHTTP_API int PHttp_StreamCancel(HANDLE handle)
+{ return stream_cancel(handle, 0); }
 PHTTP_API int PHttp_StreamGetResult(HANDLE handle, PHttpStreamResult* result)
 {
     stream_request* request;
@@ -477,7 +536,7 @@ PHTTP_API int PHttp_StreamGetResult(HANDLE handle, PHttpStreamResult* result)
     request = (stream_request*)handle;
     if (request == NULL || result == NULL || result->size != sizeof(*result) || result->version != PHTTP_STREAM_VERSION) { return PHTTP_STREAM_ARGUMENT; }
     EnterCriticalSection(&request->lock);
-    rc = request->state == 2 ? PHTTP_STREAM_OK : PHTTP_STREAM_STATE;
+    rc = request->state == 2 && !request->probe_only ? PHTTP_STREAM_OK : PHTTP_STREAM_STATE;
     if (rc == 0) { *result = request->result; }
     LeaveCriticalSection(&request->lock);
     return rc;
@@ -490,19 +549,158 @@ PHTTP_API int PHttp_StreamGetHeader(HANDLE handle, const char* name,
     request = (stream_request*)handle;
     if (request == NULL || name == NULL || name[0] == '\0' || output == NULL || capacity == 0) { return PHTTP_STREAM_ARGUMENT; }
     EnterCriticalSection(&request->lock);
-    rc = request->state == 2 && request->response_header_bytes != 0 ?
+    rc = request->state == 2 && !request->probe_only && request->response_header_bytes != 0 ?
             stream_field(request->response_headers, name, occurrence, output, capacity) : PHTTP_STREAM_STATE;
     LeaveCriticalSection(&request->lock);
     return rc;
 }
-PHTTP_API int PHttp_StreamClose(HANDLE handle)
+static int stream_close(HANDLE handle, int probe_only)
 {
     stream_request* request;
     request = (stream_request*)handle;
     if (request == NULL) { return PHTTP_STREAM_OK; }
     EnterCriticalSection(&request->lock);
-    if (request->state == 1) { LeaveCriticalSection(&request->lock); return PHTTP_STREAM_STATE; }
+    if (request->state == 1 || request->probe_only != probe_only) {
+        LeaveCriticalSection(&request->lock); return PHTTP_STREAM_STATE;
+    }
     LeaveCriticalSection(&request->lock);
     DeleteCriticalSection(&request->lock); CloseHandle(request->cancel); free(request);
+    return PHTTP_STREAM_OK;
+}
+PHTTP_API int PHttp_StreamClose(HANDLE handle)
+{ return stream_close(handle, 0); }
+PHTTP_API int PHttp_ProbeCreateGet(const char* url, const char** headers,
+        const PHttpProbeOptions* options, HANDLE* out_request)
+{
+    PHttpStreamOptions stream;
+    if (options == NULL || options->size != sizeof(*options) ||
+            options->version != PHTTP_PROBE_VERSION) return PHTTP_STREAM_ARGUMENT;
+    memset(&stream, 0, sizeof(stream)); stream.size = sizeof(stream);
+    stream.version = PHTTP_STREAM_VERSION; stream.timeout_ms = options->timeout_ms;
+    stream.body_limit = 1; /* unused by header-only execution */
+    return stream_create_get(url, headers, &stream, out_request, 1);
+}
+PHTTP_API int PHttp_ProbeGet(HANDLE handle)
+{ return stream_execute(handle, 1); }
+PHTTP_API int PHttp_ProbeCancel(HANDLE handle)
+{ return stream_cancel(handle, 1); }
+PHTTP_API int PHttp_ProbeClose(HANDLE* handle)
+{
+    int rc;
+    if (handle == NULL) return PHTTP_STREAM_ARGUMENT;
+    rc = stream_close(*handle, 1);
+    if (rc == PHTTP_STREAM_OK) *handle = NULL;
+    return rc;
+}
+PHTTP_API int PHttp_ProbeGetResult(HANDLE handle, PHttpProbeResult* result)
+{
+    stream_request* request;
+    PHttpProbeResult next;
+    int rc;
+    request = (stream_request*)handle;
+    if (request == NULL || result == NULL || result->size != sizeof(*result) ||
+            result->version != PHTTP_PROBE_VERSION) return PHTTP_STREAM_ARGUMENT;
+    memset(&next, 0, sizeof(next)); next.size = sizeof(next); next.version = PHTTP_PROBE_VERSION;
+    next.name.size = sizeof(next.name); next.name.version = PHTTP_DOWNLOAD_NAME_VERSION;
+    next.name.status = PHTTP_NAME_MISSING;
+    EnterCriticalSection(&request->lock);
+    rc = request->state == 2 && request->probe_only ? PHTTP_STREAM_OK : PHTTP_STREAM_STATE;
+    if (rc == PHTTP_STREAM_OK) {
+        next.metadata = request->result;
+        if (next.metadata.result == PHTTP_STREAM_OK) {
+            rc = stream_identity(request->response_headers, next.etag, next.last_modified, &next.flags);
+            if (rc == PHTTP_STREAM_OK) {
+                rc = PHttp_SuggestDownloadName(next.metadata.content_disposition,
+                        next.metadata.final_url, &next.name);
+            }
+        }
+        if (rc == PHTTP_STREAM_OK) *result = next;
+    }
+    LeaveCriticalSection(&request->lock);
+    return rc;
+}
+/* Validate the bounded borrowed block without relying on a caller-supplied
+ * NUL terminator. Used only by the additive matching query, not old GET. */
+static int probe_header_block(const char* block, unsigned long bytes, int status)
+{
+    const char* p;
+    const char* end;
+    unsigned long fields;
+    size_t colon;
+    size_t length;
+    size_t i;
+    char line[1024];
+    p = block; fields = 0;
+    end = strstr(p, "\r\n");
+    if (end == NULL || end - p < 12 || end - p > 1023 ||
+            (!stream_ci(p, "HTTP/1.1 ", 9) && !stream_ci(p, "HTTP/1.0 ", 9)) ||
+            p[9] != '0' + status / 100 || p[10] != '0' + (status / 10) % 10 ||
+            p[11] != '0' + status % 10 || (p[12] != '\r' && p[12] != ' ')) {
+        return PHTTP_STREAM_PROTOCOL;
+    }
+    while ((end = strstr(p, "\r\n")) != NULL) {
+        length = (size_t)(end - p);
+        if (length > 1023) return PHTTP_STREAM_LIMIT;
+        for (i = 0; i < length; i++) {
+            if ((unsigned char)p[i] == 127 || ((unsigned char)p[i] < 32 && p[i] != '\t')) {
+                return PHTTP_STREAM_PROTOCOL;
+            }
+        }
+        if (!phttp_text_utf8(p, length)) return PHTTP_STREAM_UNSUPPORTED;
+        if (length == 0) return end + 2 == block + bytes ? PHTTP_STREAM_OK : PHTTP_STREAM_PROTOCOL;
+        if (p != block) {
+            if (++fields > PHTTP_STREAM_MAX_HEADER_FIELDS) return PHTTP_STREAM_LIMIT;
+            memcpy(line, p, length); line[length] = '\0';
+            if (!stream_header_name(line, &colon)) return PHTTP_STREAM_PROTOCOL;
+        }
+        p = end + 2;
+    }
+    return PHTTP_STREAM_PROTOCOL;
+}
+static int probe_metadata_valid(const PHttpStreamResult* metadata)
+{
+    return metadata->size == sizeof(*metadata) && metadata->version == PHTTP_STREAM_VERSION &&
+            metadata->received == 0 && metadata->total >= -1 &&
+            metadata->status_code >= 100 && metadata->status_code <= 599 &&
+            metadata->final_url[0] != '\0' &&
+            memchr(metadata->final_url, '\0', sizeof(metadata->final_url)) != NULL &&
+            memchr(metadata->content_type, '\0', sizeof(metadata->content_type)) != NULL &&
+            memchr(metadata->content_disposition, '\0', sizeof(metadata->content_disposition)) != NULL &&
+            memchr(metadata->content_encoding, '\0', sizeof(metadata->content_encoding)) != NULL;
+}
+PHTTP_API int PHttp_ProbeMatchFinalHeaders(const PHttpProbeResult* probe,
+        const PHttpStreamResult* metadata, const char* headers, unsigned long header_bytes)
+{
+    char* copy;
+    char etag[256];
+    char modified[128];
+    unsigned long flags;
+    int rc;
+    if (probe == NULL || metadata == NULL || headers == NULL || header_bytes < 16 ||
+            probe->size != sizeof(*probe) || probe->version != PHTTP_PROBE_VERSION ||
+            !probe_metadata_valid(&probe->metadata) || probe->metadata.result != PHTTP_STREAM_OK ||
+            !probe_metadata_valid(metadata) || memchr(probe->etag, '\0', sizeof(probe->etag)) == NULL ||
+            memchr(probe->last_modified, '\0', sizeof(probe->last_modified)) == NULL) {
+        return PHTTP_STREAM_ARGUMENT;
+    }
+    if (header_bytes > PHTTP_STREAM_HEADERS_MAX_BYTES) return PHTTP_STREAM_LIMIT;
+    if (memchr(headers, '\0', header_bytes) != NULL) return PHTTP_STREAM_PROTOCOL;
+    copy = (char*)malloc(header_bytes + 1);
+    if (copy == NULL) return PHTTP_STREAM_MEMORY;
+    memcpy(copy, headers, header_bytes); copy[header_bytes] = '\0';
+    rc = probe_header_block(copy, header_bytes, metadata->status_code);
+    if (rc == PHTTP_STREAM_OK) rc = stream_identity(copy, etag, modified, &flags);
+    free(copy);
+    if (rc != PHTTP_STREAM_OK) return rc;
+    if (metadata->status_code < 200 || metadata->status_code >= 300) return PHTTP_PROBE_HTTP_STATUS;
+    if (strcmp(probe->metadata.final_url, metadata->final_url) ||
+            probe->metadata.status_code != metadata->status_code ||
+            probe->metadata.total != metadata->total ||
+            strcmp(probe->metadata.content_type, metadata->content_type) ||
+            strcmp(probe->metadata.content_disposition, metadata->content_disposition) ||
+            strcmp(probe->metadata.content_encoding, metadata->content_encoding) ||
+            strcmp(probe->etag, etag) || strcmp(probe->last_modified, modified) || probe->flags != flags) {
+        return PHTTP_PROBE_CHANGED;
+    }
     return PHTTP_STREAM_OK;
 }
