@@ -96,6 +96,8 @@
 	<References />
 	<Files>
 		<File RelativePath=".\app_downloads.c" />
+		<File RelativePath=".\app_download_prepare.c" />
+		<File RelativePath=".\app_download_prepare.h" />
 		<File RelativePath=".\app_downloads.h" />
 		<File RelativePath=".\app_downloads_debug.c" />
 		<File RelativePath=".\app_download_record.h" />

@@ -4,6 +4,7 @@
 #include <windows.h>
 #include "app_i18n.h"
 #include "app_settings_store.h"
+#include "app_download_prepare.h"
 
 #define APP_INTERNAL_HTML_MAX 131072U
 #define APP_INTERNAL_FOCUS_MAX 32
@@ -47,6 +48,7 @@ typedef struct AppInternalPageData {
     int downloads_status;
     const char *download_url;
     const char *download_message;
+    const AppDownloadPrepare *download_prepare;
 } AppInternalPageData;
 
 /* 0: recognized/allowed. 1: not a valid or permitted internal address.

@@ -841,15 +841,63 @@ static void app_internal_downloads(AppHtmlWriter *writer,
     WCHAR path[APP_DOWNLOAD_PATH_MAX];
     char detail[192];
     char link_id[32];
+    const PHttpProbeResult *checked;
+    int prepare_state;
     int i;
 
     app_html_append(writer, chinese ? "<p>\344\270\213\350\275\275\345\234\260\345\235\200</p>" : "<p>Download URL</p>");
     app_html_append(writer, "<p><input id=\"download-url\" size=\"18\" maxlength=\"1023\" "
-            "style=\"font-size:inherit;line-height:1;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
+            "style=\"font-size:inherit;line-height:normal;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
     app_html_escape(writer, data->download_url);
-    app_html_append(writer, "\"></p><p><a id=\"download-start\" href=\"#app-download-start\">");
-    app_html_escape(writer, chinese ? "\344\270\213\350\275\275\345\271\266\351\200\211\346\213\251\344\277\235\345\255\230\344\275\215\347\275\256" : "Download and choose save location");
-    app_html_append(writer, "</a></p><p id=\"download-progress\">");
+    app_html_append(writer, "\"></p><p><a id=\"download-resolve\" href=\"#app-download-resolve\">");
+    app_html_escape(writer, chinese ? "\350\247\243\346\236\220\351\223\276\346\216\245" : "Resolve link");
+    app_html_append(writer, "</a></p><p><a id=\"download-probe-cancel\" href=\"#app-download-probe-cancel\">");
+    app_html_escape(writer, chinese ? "\345\217\226\346\266\210\350\247\243\346\236\220" : "Cancel preparation");
+    app_html_append(writer, "</a></p><p id=\"download-prepare-status\">");
+    prepare_state = AppDownloadPrepare_State(data->download_prepare);
+    app_html_escape(writer, AppDownloadPrepare_StateText(prepare_state, chinese));
+    if (AppDownloadPrepare_Error(data->download_prepare) != 0) {
+        app_html_append(writer, " ");
+        app_html_escape(writer, AppDownloadPrepare_ErrorText(AppDownloadPrepare_Error(data->download_prepare), chinese));
+        _snprintf(detail, sizeof(detail) - 1, " (%d, HTTP %d)",
+                AppDownloadPrepare_Error(data->download_prepare), AppDownloadPrepare_HttpStatus(data->download_prepare));
+        detail[sizeof(detail) - 1] = 0;
+        app_html_escape(writer, detail);
+    }
+    app_html_append(writer, "</p>");
+    checked = AppDownloadPrepare_Result(data->download_prepare);
+    if (checked != NULL) {
+        app_html_append(writer, "<p class=\"history-entry\">");
+        app_html_escape(writer, checked->metadata.final_url);
+        app_html_append(writer, "</p><p>");
+        app_html_escape(writer, checked->metadata.content_type);
+        if (checked->metadata.total < 0)
+            app_html_escape(writer, chinese ? " | \345\244\247\345\260\217\346\234\252\347\237\245" : " | Size unknown");
+        else {
+            _snprintf(detail, sizeof(detail) - 1, chinese ? " | %I64d \345\255\227\350\212\202" : " | %I64d bytes", checked->metadata.total);
+            detail[sizeof(detail) - 1] = 0;
+            app_html_escape(writer, detail);
+        }
+        app_html_append(writer, "</p><p>");
+        app_html_escape(writer, chinese ? "\346\226\207\344\273\266\345\220\215" : "File name");
+        app_html_append(writer, "</p><p><input id=\"download-name\" maxlength=\"255\" "
+                "style=\"font-size:inherit;line-height:normal;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
+        app_html_escape(writer, AppDownloadPrepare_Name(data->download_prepare));
+        app_html_append(writer, "\"></p><p><a id=\"download-name-confirm\" href=\"#app-download-name\">");
+        app_html_escape(writer, chinese ? "\347\241\256\350\256\244\346\226\207\344\273\266\345\220\215" : "Confirm file name");
+        app_html_append(writer, "</a></p>");
+    }
+    if (AppDownloadPrepare_CanDownload(data->download_prepare)) {
+        app_html_append(writer, "<p><a id=\"download-start\" href=\"#app-download-start\">");
+        app_html_escape(writer, chinese ? "\344\270\213\350\275\275\345\271\266\351\200\211\346\213\251\344\277\235\345\255\230\344\275\215\347\275\256" : "Download and choose save location");
+        app_html_append(writer, "</a></p>");
+    } else {
+        app_html_append(writer, "<p id=\"download-disabled\">");
+        app_html_escape(writer, chinese ? "\344\270\213\350\275\275\344\270\215\345\217\257\347\224\250\357\274\232\350\257\267\345\205\210\350\247\243\346\236\220\345\271\266\347\241\256\350\256\244\346\234\211\346\225\210\346\226\207\344\273\266\345\220\215\343\200\202" :
+                "Download unavailable: resolve the link and confirm a valid file name first.");
+        app_html_append(writer, "</p>");
+    }
+    app_html_append(writer, "<p id=\"download-progress\">");
     app_html_escape(writer, data->download_message);
     app_html_append(writer, "</p><p><a id=\"download-cancel-0\" href=\"#app-download-cancel-0\">");
     app_html_escape(writer, chinese ? "\345\217\226\346\266\210\344\273\273\345\212\241 1" : "Cancel task 1");
@@ -909,6 +957,9 @@ static void app_internal_downloads(AppHtmlWriter *writer,
             app_html_escape(writer, record->http_status == 404 ?
                     (chinese ? "\357\274\210\346\234\215\345\212\241\345\231\250\344\270\212\346\262\241\346\234\211\350\257\245\345\234\260\345\235\200\357\274\211" : " (URL not found on server)") :
                     (chinese ? "\357\274\210\346\234\215\345\212\241\345\231\250\346\234\252\350\277\224\345\233\236\346\210\220\345\212\237\345\223\215\345\272\224\357\274\211" : " (server did not return a successful response)"));
+        } else if (record->error == PHTTP_PROBE_CHANGED) {
+            app_html_escape(writer, chinese ? " | \345\223\215\345\272\224\344\277\241\346\201\257\345\267\262\346\224\271\345\217\230\357\274\214\350\257\267\351\207\215\346\226\260\350\247\243\346\236\220\351\223\276\346\216\245\343\200\202" :
+                    " | Response metadata changed; resolve the link again.");
         } else if (record->error != 0) {
             _snprintf(detail, sizeof(detail) - 1,
                     chinese ? " | HTTP %d | \351\224\231\350\257\257 %d" : " | HTTP %d | error %d",
@@ -1094,7 +1145,8 @@ int AppInternalPages_FocusIds(HANDLE document,
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
         "nav-downloads", "nav-settings", "nav-welcome", "nav-controls",
         "visits-latest", "visits-older", "visits-clear",
-        "download-start", "download-cancel-0", "download-cancel-1",
+        "download-start", "download-resolve", "download-probe-cancel", "download-name-confirm",
+        "download-cancel-0", "download-cancel-1",
         "downloads-latest", "downloads-older", "downloads-clear"
     };
     PCoreFocusTargetInfo info;

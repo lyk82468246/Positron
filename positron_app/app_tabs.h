@@ -6,6 +6,7 @@
 #include "app_host.h"
 #include "app_input.h"
 #include "app_settings_store.h"
+#include "app_download_prepare.h"
 
 #define APP_TAB_MAX 4
 
@@ -44,6 +45,7 @@ typedef struct AppTab {
     __int64 downloads_before_id;
     int downloads_redraw_pending;
     char download_url[APP_HOST_URL_MAX];
+    AppDownloadPrepare *download_prepare;
 } AppTab;
 
 #endif

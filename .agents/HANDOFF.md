@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入有界下载与共享记录；HTTP 新增响应头预检、建议 basename 和真实下载响应复核，旧 ABI 不变。本批不修改 EXE、Core、Browser 或应用下载接线。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本批只改应用接线、夹具及文档，不改公共 DLL/ABI 或下载存储 schema。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；Annex-B 无 timing/不变 SPS 合同已补齐，下一纵切为损坏 SPS/PPS 与截断 payload。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
 
@@ -88,28 +88,33 @@ JS 关闭保存、单 history、退出/零引用、哈希/crash 通过。用户�
 padding 高 30、linebox 格式区 17 的失败保留并撤回，不删断言；增量资源/pre-build 失败与
 CabWiz 正式重试边界见 Git/本地日志。两配置/C89/审计/诊断排除通过，Unicode 取证保持。
 
-### EXE 有界下载与共享记录接线通过自动门
+### EXE 下载预检与共享记录通过自动门
 
-downloads 页直接 GET/原生确认新路径，两任务、一传输、32 MiB/120 秒；无网页自动下载、
-续传或执行。共享 worker/迁移/Core 列表，使用独立 typed 表。v4 保留旧数据，租约拒绝第二
-owner；journal ACK、不覆盖发布、仅清自身临时文件、重启标中断与正常退出合同见应用数据设计。
+消费 HTTP `9f282b56`；每标签 AppDownloadPrepare 保存输入代际/结果，进程单预检30秒，
+最终200/额度/名称有效才开放保存框，缺名须补齐，无 bin/index.html 猜测。
+改回输入、取消或离页仍失效；Probe join/关闭后借出副本，退出先等待预检再排空下载/DB。
+新 GET 在 sink 前匹配最终头，变化/HTTP 拒绝保留原错误，不发布文件；metadata不证明正文身份。
+两任务/单传输、32 MiB/120秒与v4/租约/journal/不覆盖保持，稳定合同见应用数据设计。
 
-当前自动证据 `tmp/device-runs/20261012-131709-app-downloads-records-final/`：五进程门
-create/reopen/storage/services/ui PASS，v3 升级、owner 拒绝、16 条分页、队列/传输取消、
-404、目标竞争、不覆盖、关闭排空和中断恢复通过；2 MiB 中文路径文件精确 SHA256，
-清记录后文件与原偏好/访问记录保留。实际 native EDIT 格式区、拒绝错误 scheme、刷新保值、
-无脚本/单 history 通过；各夹具正常退出至零引用，模块 SHA256 10/10 与 crash PASS。
-共享记录组件改自然字段块，96/128/192 DPI、窄宽视口不重叠/文字与历史 href 保留通过；
-输入框用容器百分比宽度，WM6 picker 补类型/默认 bin。截图两 URL 的 404 由独立请求及
-关闭后原 DB 交叉确认，地址未被改写；拒收非 2xx 不伪装文件写入错误，不猜 index.html。
-人工包 `tmp/device-runs/20261012-131841-app-downloads-records-review/` 哈希 10/10、原 DB
-精确复制/前台/读取/crash PASS，PID1133817002 留在 downloads；旧 PID 已正常退出。
-视觉/picker、成功外网下载、SIP/旋转/文件故障仍待门，不以 loopback 替代。
+`tmp/device-runs/20261013-101451-app-downloads-preflight-final/` 五进程
+create/reopen/storage/services/ui PASS：缺名/确认、WM6 名称、预检404、A→B→A失效、取消join、
+最终头变化零正文、native 异步输入/单history及原有迁移/租约/分页/传输/恢复守卫。
+2 MiB 中文文件 SHA256 精确，清记录保留文件/偏好/访问数据；字段96/128/192 DPI几何/href通过。
+各夹具正常退出至零引用，完整 EXE/九 DLL SHA256 10/10、crash PASS。匹配同包的相邻
+app_history_gate 全部 required 自检/哈希/crash PASS，包括多标签、地址栏、历史及滚动；
+PID2525269898 已由用户正常退出，不作为人工入口。
 
-正式双配置/CAB、C89/审计与 Release 诊断排除通过。失败包保留：先行几何门 extent=320
-拒绝固定 size/max-width；width:100% 后通过，不放宽断言。一轮 create stage1 失败根因未定，
-最终新包复跑通过；临时 UI helper 过早退出审计仍 FAIL，正式门有界等待零引用，不强杀。
-额外 host 存储检查的四项旧源码模式失败未撤断言；服务检查通过，不能声称全部 host 门通过。
+正式串行 Debug/Release build/CAB、C89 与 Release 诊断排除通过；Release CAB 抢读链接
+EXE 的失败保留 `tmp/app-preflight-release-cab-failed.log`，正式 build 重试恢复，不追认 rebuild。
+先行包 `20261013-100234-app-downloads-preflight` UI 格式区12<字体14失败；输入由
+line-height:1 改为 normal，不设固定高/偏移，最终 URL/名称输入均检查实际 EM_GETRECT。
+临时 UI helper 过早退出审计仍 FAIL，正式门等待零引用，无强杀。旧四项 host 源码模式失败保持，
+不宣称全部 host 门通过。视觉/picker、真实 HTTPS、
+触摸/SIP/旋转及文件故障待门，不以 loopback 替代。最终普通包
+`tmp/device-runs/20261013-102918-app-downloads-preflight-review/` 哈希10/10、原 DB 精确复制、
+前台/真实读取/crash PASS，PID3601926162 留在 downloads，不含自检启动。
+原 DB 零引用后另存 `tmp/device-runs/20261013-103000-app-downloads-user-database/`，
+旧部署/原库/用户文件未删；后续验收须从这个普通包进入，不用隔离 fixture 的数据库。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -418,7 +423,7 @@ worker 仍待完成；本批不改变 EXE/CAB 既有交付与授权，不宣称�
 独立 Probe 请求发送真实 GET，最终头完成后关闭，不等 GUI、不读完整正文、不调用 sink。
 UTF-8 建议 basename、验证器快照及真实 GET 的 header matching 由 HTTP 拥有；旧 Stream
 ABI/行为、完整正文 1 MiB 与 TLS 验证不变。合同、预算、示例及元数据匹配不等于字节身份的
-边界见 [HTTP README](../positron_http/README.md#先预检响应再确认下载)。应用尚未接入预检。
+边界见 [HTTP README](../positron_http/README.md#先预检响应再确认下载)。EXE 自动接线门见上方。
 
 最终 Debug `tmp/device-runs/20261013-093436-http-probe-debug-accepted/`、Release
 `tmp/device-runs/20261013-093737-http-probe-release-accepted/` 均为
@@ -430,7 +435,7 @@ verified IANA HTTPS。TEST1342/1343 与 TEST3/4 保护旧流式/TLS 和 GET/POST
 正式串行 Debug/Release stage、C89/审计通过。SD 71 文件与部署/内部双空间、新 guest
 holders=0 unavailable=0 均通过；crash PASS，无新增 dump（运行前已有两个）。完整回收后
 清理本轮目录，无强杀/重连，旧日志不完整目录保留。OS resolver 饱和、真实低资源峰值、
-GUI 命名/保存、权限/取消与 EXE 预检接线仍需各自门；旧流式失败对照保留于 Git/本地日志。
+GUI 命名/保存、权限/取消仍需应用人工门；旧流式失败对照保留于 Git/本地日志。
 
 ### Browser 受控异步应用服务合同
 
@@ -488,13 +493,12 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-已复核并更新 ROADMAP：HTTP 消费者新委托的预检/建议名/最终响应复核已通过双配置门，
-不再列为待开发 DLL 缺口。唯一下一步交回 EXE：预检 worker 完成后关闭请求，按 generation
-接受结果，要求用户确认/补齐 basename 和路径，再发起新 StreamGet；最终头复核失败不得
-写入正文，也不得把 HTTP 状态或远端变化伪装为文件错误。详细调用顺序见 HTTP README。
-GUI/网络/文件结果、设置/SIP/旋转和菜单/多标签人工矩阵仍保留，不把 test_host 门当作 EXE
-接线验收。Core 断行既有设备差异与脚本性能待办不变；WinWorld 图片视觉已关闭。
-本轮未改 App/Media/DB/CAB 源码；构建/设备窗口现可交还，下次部署仍须正常退出并重审引用。
+已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
+唯一下一门为 downloads 页真实解析、名称编辑/缺名确认、保存框取消/路径及 HTTPS 文件结果。
+失败应无保存框，修改地址须重解析，正常退出排空；不把 DLL 或 loopback 门扩大为人工通过。
+设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
+本轮未改 DLL/Media/DB/CAB 源码，串行窗口交还前必须标明最终普通包与 PID；下次构建部署
+仍须正常退出并重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
 所有权；单次长调用、Debug 默认预算失败和错误后 session 策略仍待处理，不承诺冷启动抢占。

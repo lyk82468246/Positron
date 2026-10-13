@@ -19,6 +19,7 @@ typedef struct AppDownloadTask {
     HANDLE http;
     HANDLE file;
     CRITICAL_SECTION lock;
+    PHttpProbeResult checked;
     AppDownloadRecord record;
     WCHAR path[APP_DOWNLOAD_PATH_MAX];
     WCHAR temporary[APP_DOWNLOAD_PATH_MAX];
@@ -39,17 +40,18 @@ static int app_download_headers(void *context, const PHttpStreamResult *metadata
 {
     AppDownloadTask *task;
     int reject;
+    int match;
 
     task = (AppDownloadTask *) context;
-    (void) headers;
-    (void) bytes;
+    match = PHttp_ProbeMatchFinalHeaders(&task->checked, metadata, headers, bytes);
     EnterCriticalSection(&task->lock);
     task->record.http_status = metadata->status_code;
     task->record.total = metadata->total;
     strcpy(task->record.final_url, metadata->final_url);
+    if (match != 0) task->record.error = match;
     /* Partial Content without our Range request must not be published as a
      * complete object; normal non-2xx is a transport success, not a download. */
-    reject = task->cancel || metadata->status_code < 200 ||
+    reject = match != 0 || task->cancel || metadata->status_code < 200 ||
             metadata->status_code >= 300 || metadata->status_code == 206 ||
             metadata->total > APP_DOWNLOAD_BODY_LIMIT;
     LeaveCriticalSection(&task->lock);
@@ -216,7 +218,8 @@ AppDownloads *AppDownloads_Create(AppSettingsStore *store)
     return downloads;
 }
 
-int AppDownloads_Start(AppDownloads *downloads, const char *url, const WCHAR *path)
+int AppDownloads_Start(AppDownloads *downloads, const char *url, const WCHAR *path,
+        const PHttpProbeResult *checked)
 {
     AppDownloadTask *task;
     char normalized[APP_DOWNLOAD_URL_MAX];
@@ -228,6 +231,9 @@ int AppDownloads_Start(AppDownloads *downloads, const char *url, const WCHAR *pa
 
     scheme = AppUrlRouter_ClassifyScheme(url);
     if (downloads == NULL || downloads->owner != GetCurrentThreadId() ||
+            checked == NULL || checked->size != sizeof(*checked) ||
+            checked->version != PHTTP_PROBE_VERSION || checked->metadata.result != 0 ||
+            checked->metadata.status_code != 200 || checked->metadata.total > APP_DOWNLOAD_BODY_LIMIT ||
             (scheme != APP_URL_SCHEME_HTTP && scheme != APP_URL_SCHEME_HTTPS) ||
             downloads->closing || downloads->sequence == ~0UL || path == NULL || path[0] != L'\\' ||
             wcslen(path) >= APP_DOWNLOAD_PATH_MAX - 40 ||
@@ -241,6 +247,7 @@ int AppDownloads_Start(AppDownloads *downloads, const char *url, const WCHAR *pa
         if (!downloads->tasks[slot].used) break;
     if (slot == APP_DOWNLOAD_TASK_MAX) return APP_SETTINGS_QUEUE_FULL;
     task = &downloads->tasks[slot];
+    task->checked = *checked;
     memset(&task->record, 0, sizeof(task->record));
     bytes = WideCharToMultiByte(CP_UTF8, 0, path, -1, task->record.path,
             sizeof(task->record.path), NULL, NULL);

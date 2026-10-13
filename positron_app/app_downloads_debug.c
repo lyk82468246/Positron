@@ -6,6 +6,7 @@
 #include <string.h>
 #include <wchar.h>
 #include "app_downloads.h"
+#include "app_download_prepare.h"
 #include "app_debug.h"
 #include "../positron_http/positron_http.h"
 #define DTEST_SIZE (2UL * 1024UL * 1024UL)
@@ -15,6 +16,9 @@ typedef struct DownloadServer {
     HANDLE stop;
     int status;
     int slow;
+    int probe_status;
+    int changed;
+    int delay_headers;
     char url[96];
 } DownloadServer;
 
@@ -38,11 +42,13 @@ static DWORD WINAPI dtest_server(LPVOID context)
     DWORD started;
     DWORD io_timeout;
     char buffer[4096];
-    char header[128];
+    char header[256];
     int n;
     int count;
     int i;
+    int round;
     server = (DownloadServer *) context;
+    for (round = 0; round < 2; ++round) {
     started = GetTickCount();
     client = INVALID_SOCKET;
     while (GetTickCount() - started < 15000UL &&
@@ -67,11 +73,14 @@ static DWORD WINAPI dtest_server(LPVOID context)
         count += n;
         buffer[count] = 0;
     } while (strstr(buffer, "\r\n\r\n") == NULL && count < sizeof(buffer) - 1);
+    if (round == 0 && server->delay_headers)
+        (void) WaitForSingleObject(server->stop, 500);
     _snprintf(header, sizeof(header) - 1,
-            "HTTP/1.1 %d Test\r\nContent-Length: %lu\r\nConnection: close\r\n\r\n",
-            server->status, DTEST_SIZE);
+            "HTTP/1.1 %d Test\r\nContent-Length: %lu\r\nContent-Type: %s\r\nConnection: close\r\n\r\n",
+            round == 0 ? server->probe_status : server->status, DTEST_SIZE,
+            round == 1 && server->changed ? "text/plain" : "application/octet-stream");
     header[sizeof(header) - 1] = 0;
-    if (count > 0 && dtest_send(client, header, (int) strlen(header))) {
+    if (count > 0 && dtest_send(client, header, (int) strlen(header)) && round == 1) {
         memset(buffer, 'D', sizeof(buffer));
         for (i = 0; i < DTEST_SIZE / sizeof(buffer); ++i) {
             if (WaitForSingleObject(server->stop, 0) != WAIT_TIMEOUT ||
@@ -80,6 +89,7 @@ static DWORD WINAPI dtest_server(LPVOID context)
         }
     }
     closesocket(client);
+    }
     return 0;
 }
 static int dtest_server_start(DownloadServer *server, int status)
@@ -100,6 +110,7 @@ static int dtest_server_start(DownloadServer *server, int status)
     }
     _snprintf(server->url, sizeof(server->url), "http://127.0.0.1:%u/file", ntohs(address.sin_port));
     server->status = status;
+    server->probe_status = 200;
     server->slow = 1;
     server->stop = CreateEvent(NULL, TRUE, FALSE, NULL);
     server->thread = server->stop == NULL ? NULL :
@@ -116,6 +127,148 @@ static int dtest_server_stop(DownloadServer *server)
     closesocket(server->listener);
     server->thread = NULL;
     return 1;
+}
+
+static DownloadServer dtest_ui_server;
+static int dtest_ui_sockets;
+int AppDownloads_DebugUiServer(char *url, int capacity)
+{
+    WSADATA data;
+    if (dtest_ui_server.thread != NULL || capacity < 96 ||
+            WSAStartup(MAKEWORD(2, 2), &data) != 0) return 0;
+    dtest_ui_sockets = 1;
+    if (!dtest_server_start(&dtest_ui_server, 200)) return 0;
+    dtest_ui_server.delay_headers = 1;
+    strcpy(url, dtest_ui_server.url);
+    return 1;
+}
+void AppDownloads_DebugUiServerStop(void)
+{
+    (void) dtest_server_stop(&dtest_ui_server);
+    if (dtest_ui_sockets) WSACleanup();
+    dtest_ui_sockets = 0;
+}
+
+static int dtest_preflight(const char *url, PHttpProbeResult *checked)
+{
+    AppDownloadPrepare *prepare;
+    DWORD started;
+    int ok;
+
+    prepare = AppDownloadPrepare_Create();
+    if (prepare == NULL) return 0;
+    AppDownloadPrepare_ChangeUrl(prepare, url);
+    ok = AppDownloadPrepare_Begin(prepare) == 0;
+    started = GetTickCount();
+    while (ok && AppDownloadPrepare_State(prepare) == APP_PREPARE_CHECKING &&
+            GetTickCount() - started < 35000UL) {
+        (void) AppDownloadPrepare_Tick(prepare);
+        Sleep(5);
+    }
+    ok = ok && AppDownloadPrepare_CanDownload(prepare) && AppDownloadPrepare_Result(prepare) != NULL;
+    if (ok) *checked = *AppDownloadPrepare_Result(prepare);
+    while (AppDownloadPrepare_TryDestroy(&prepare) != 0 && GetTickCount() - started < 40000UL) Sleep(5);
+    return ok && prepare == NULL;
+}
+
+static int dtest_prepare_wait(AppDownloadPrepare *prepare)
+{
+    DWORD started;
+    started = GetTickCount();
+    while (AppDownloadPrepare_State(prepare) == APP_PREPARE_CHECKING &&
+            GetTickCount() - started < 35000UL) {
+        (void) AppDownloadPrepare_Tick(prepare);
+        Sleep(5);
+    }
+    return AppDownloadPrepare_State(prepare) != APP_PREPARE_CHECKING;
+}
+
+static int dtest_prepare_dispose(AppDownloadPrepare **prepare)
+{
+    DWORD started;
+    started = GetTickCount();
+    while (AppDownloadPrepare_TryDestroy(prepare) != 0 && GetTickCount() - started < 35000UL)
+        Sleep(5);
+    return *prepare == NULL;
+}
+
+static int dtest_preparation_cases(void)
+{
+    DownloadServer server;
+    AppDownloadPrepare *prepare;
+    char original[96];
+    char *slash;
+    DWORD started;
+    int ok;
+    int stage;
+
+    memset(&server, 0, sizeof(server));
+    prepare = AppDownloadPrepare_Create();
+    ok = 0;
+    stage = 1;
+    if (prepare == NULL || AppDownloadPrepare_CanDownload(prepare) ||
+            AppDownloadPrepare_NameValid("CON.txt") || AppDownloadPrepare_NameValid("../bad") ||
+            AppDownloadPrepare_NameValid("bad.") || AppDownloadPrepare_NameValid("nul.zip") ||
+            !AppDownloadPrepare_NameValid("\344\270\255\346\226\207.bin") ||
+            !AppDownloadPrepare_NameValid("literal%2f.bin")) goto done;
+    AppDownloadPrepare_ChangeUrl(prepare, "positron://quit");
+    if (AppDownloadPrepare_Begin(prepare) != PHTTP_STREAM_ARGUMENT ||
+            AppDownloadPrepare_CanDownload(prepare)) goto done;
+    stage = 2;
+    if (!dtest_server_start(&server, 200)) goto done;
+    slash = strrchr(server.url, '/');
+    slash[1] = 0;
+    AppDownloadPrepare_ChangeUrl(prepare, server.url);
+    if (AppDownloadPrepare_Begin(prepare) != 0 || !dtest_prepare_wait(prepare) ||
+            AppDownloadPrepare_State(prepare) != APP_PREPARE_NAME_REQUIRED ||
+            AppDownloadPrepare_Result(prepare) == NULL ||
+            AppDownloadPrepare_Result(prepare)->metadata.received != 0 ||
+            AppDownloadPrepare_CanDownload(prepare)) goto done;
+    AppDownloadPrepare_SetName(prepare, "manual.zip");
+    if (!AppDownloadPrepare_CanDownload(prepare)) goto done;
+    AppDownloadPrepare_SetName(prepare, "CON.txt");
+    if (AppDownloadPrepare_CanDownload(prepare) || !dtest_server_stop(&server)) goto done;
+    stage = 3;
+    if (!dtest_server_start(&server, 200)) goto done;
+    server.probe_status = 404;
+    AppDownloadPrepare_ChangeUrl(prepare, server.url);
+    if (AppDownloadPrepare_Begin(prepare) != 0 || !dtest_prepare_wait(prepare) ||
+            AppDownloadPrepare_Error(prepare) != PHTTP_PROBE_HTTP_STATUS ||
+            AppDownloadPrepare_HttpStatus(prepare) != 404 || AppDownloadPrepare_CanDownload(prepare) ||
+            !dtest_server_stop(&server)) goto done;
+    stage = 4;
+    if (!dtest_server_start(&server, 200)) goto done;
+    server.delay_headers = 1;
+    strcpy(original, server.url);
+    AppDownloadPrepare_ChangeUrl(prepare, original);
+    if (AppDownloadPrepare_Begin(prepare) != 0) goto done;
+    AppDownloadPrepare_ChangeUrl(prepare, "https://example.invalid/other");
+    AppDownloadPrepare_ChangeUrl(prepare, original);
+    started = GetTickCount();
+    while (GetTickCount() - started < 700) { (void) AppDownloadPrepare_Tick(prepare); Sleep(5); }
+    if (AppDownloadPrepare_State(prepare) != APP_PREPARE_IDLE ||
+            AppDownloadPrepare_CanDownload(prepare) || !dtest_server_stop(&server)) goto done;
+    stage = 5;
+    if (!dtest_server_start(&server, 200)) goto done;
+    server.delay_headers = 1;
+    AppDownloadPrepare_ChangeUrl(prepare, server.url);
+    if (AppDownloadPrepare_Begin(prepare) != 0) goto done;
+    AppDownloadPrepare_Cancel(prepare);
+    if (AppDownloadPrepare_CanDownload(prepare) || !dtest_prepare_dispose(&prepare) ||
+            !dtest_server_stop(&server)) goto done;
+    ok = 1;
+done:
+    if (!dtest_prepare_dispose(&prepare)) ok = 0;
+    if (!dtest_server_stop(&server)) ok = 0;
+    {
+        char message[160];
+        _snprintf(message, sizeof(message) - 1,
+                "download-prepare selftest %s stage=%d missing=manual stale=dropped cancel=joined files=none\r\n",
+                ok ? "OK" : "FAILED", stage);
+        message[sizeof(message) - 1] = 0;
+        AppDebug_Log(message);
+    }
+    return ok;
 }
 static int dtest_result(AppSettingsStore *store, AppDownloads *downloads,
         unsigned long request, AppSettingsResult *out)
@@ -332,6 +485,7 @@ int AppDownloads_DebugRun(int reopen)
     AppSettingsStore *other;
     AppDownloads *downloads;
     AppSettingsResult result;
+    PHttpProbeResult checked;
     AppDownloadRecord *record;
     DownloadServer server;
     AppSettingsValues defaults;
@@ -386,7 +540,7 @@ int AppDownloads_DebugRun(int reopen)
                 result.result != APP_SETTINGS_OK || result.downloads == NULL) goto done;
         memset(counts, 0, sizeof(counts));
         for (i = 0; i < result.downloads->count; ++i) counts[result.downloads->entries[i].state]++;
-        if (counts[3] != 1 || counts[4] != 4 || counts[5] != 2 || counts[6] != 1) goto done;
+        if (counts[3] != 1 || counts[4] != 4 || counts[5] != 3 || counts[6] != 1) goto done;
         AppSettingsResult_Release(&result);
         wcscpy(path, executable); wcscat(path, L"race.bin");
         if (!dtest_file(path, 1)) goto done;
@@ -407,7 +561,7 @@ int AppDownloads_DebugRun(int reopen)
         rc = 0;
         goto done;
     }
-    if (!dtest_list(dll) || AppSettingsStore_Create(dll, database, &other) != APP_SETTINGS_OK ||
+    if (!dtest_preparation_cases() || !dtest_list(dll) || AppSettingsStore_Create(dll, database, &other) != APP_SETTINGS_OK ||
             !dtest_result(other, NULL, 1, &result) ||
             result.result != APP_SETTINGS_DB_FAILED || result.db_result != PDB_BUSY) goto done;
     AppSettingsResult_Release(&result);
@@ -416,41 +570,54 @@ int AppDownloads_DebugRun(int reopen)
     while (AppSettingsStore_TryDestroy(&other) == APP_SETTINGS_PENDING &&
             GetTickCount() - start < 15000UL) Sleep(5);
     if (other != NULL) goto done;
-    if (!dtest_server_start(&server, 200) ||
-            AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK) goto done;
+    if (!dtest_server_start(&server, 200) || !dtest_preflight(server.url, &checked) ||
+            AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK) goto done;
     wcscpy(path, executable); wcscat(path, L"queued.bin");
-    if (AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK ||
-            AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_INVALID) goto done;
+    if (AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK ||
+            AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_INVALID) goto done;
     AppDownloads_Cancel(downloads, 1);
     if (!dtest_finish(store, downloads, 0, 0, path) || !dtest_server_stop(&server) ||
             GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) goto done;
     wcscpy(path, executable); wcscat(path, L"large-\x4e2d\x6587.bin");
     if (!dtest_file(path, 0) ||
-            AppDownloads_Start(downloads, "http://127.0.0.1/", path) != APP_SETTINGS_INVALID) goto done;
+            AppDownloads_Start(downloads, "http://127.0.0.1/", path, &checked) != APP_SETTINGS_INVALID) goto done;
     stage = 2;
     wcscpy(path, executable); wcscat(path, L"404.bin");
-    if (!dtest_server_start(&server, 404) ||
-            AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK ||
+    if (!dtest_server_start(&server, 404) || !dtest_preflight(server.url, &checked) ||
+            AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK ||
             !dtest_finish(store, downloads, 0, 0, path) || !dtest_server_stop(&server) ||
             GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) goto done;
     stage = 3;
     wcscpy(path, executable); wcscat(path, L"cancel.bin");
-    if (!dtest_server_start(&server, 200) ||
-            AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK ||
+    if (!dtest_server_start(&server, 200) || !dtest_preflight(server.url, &checked) ||
+            AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK ||
             !dtest_finish(store, downloads, 1, 0, path) || !dtest_server_stop(&server) ||
             GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) goto done;
     stage = 4;
     wcscpy(path, executable); wcscat(path, L"race.bin");
-    if (!dtest_server_start(&server, 200) ||
-            AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK ||
+    if (!dtest_server_start(&server, 200) || !dtest_preflight(server.url, &checked) ||
+            AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK ||
             !dtest_finish(store, downloads, 0, 1, path) || !dtest_server_stop(&server) ||
             !dtest_file(path, 1)) goto done;
     stage = 5;
+    wcscpy(path, executable); wcscat(path, L"changed.bin");
+    if (!dtest_server_start(&server, 200) || !dtest_preflight(server.url, &checked)) goto done;
+    server.changed = 1;
+    if (AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK ||
+            !dtest_finish(store, downloads, 0, 0, path) || !dtest_server_stop(&server) ||
+            GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES ||
+            AppSettingsStore_ReadDownloads(store, 0, 1, 1, &request) != APP_SETTINGS_OK ||
+            !dtest_result(store, downloads, request, &result) || result.result != APP_SETTINGS_OK ||
+            result.downloads == NULL || result.downloads->count == 0 ||
+            result.downloads->entries[0].error != PHTTP_PROBE_CHANGED ||
+            result.downloads->entries[0].received != 0) goto done;
+    AppSettingsResult_Release(&result);
+    AppDebug_Log("download-match selftest OK changed=refused received=0 published=0\r\n");
     wcscpy(path, executable); wcscat(path, L"close-active.bin");
-    if (!dtest_server_start(&server, 200) ||
-            AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK) goto done;
+    if (!dtest_server_start(&server, 200) || !dtest_preflight(server.url, &checked) ||
+            AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK) goto done;
     wcscpy(path, executable); wcscat(path, L"close-queued.bin");
-    if (AppDownloads_Start(downloads, server.url, path) != APP_SETTINGS_OK ||
+    if (AppDownloads_Start(downloads, server.url, path, &checked) != APP_SETTINGS_OK ||
             !dtest_finish(store, downloads, 2, 0, path) || !dtest_server_stop(&server) ||
             GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) goto done;
     wcscpy(path, executable); wcscat(path, L"race.bin");

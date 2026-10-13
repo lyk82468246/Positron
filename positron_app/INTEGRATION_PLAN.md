@@ -26,6 +26,7 @@ Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内�
 - `AppSettingsStore`：应用设置 schema、单所有者 DB worker、有界请求/完成队列与关闭排空；不拥有公共 DB、脚本或导航语义。
 - `AppSettingsServices`：可信设置页的最小业务方法、worker 请求与 Browser token 对应；桥接、脚本队列及撤销仍由公共 Browser 接口负责。
 - `AppDownloads`：应用级有界队列、HTTP stream/取消、用户文件确认、临时文件/发布及持久终态；不拥有 HTTP framing 或网页自动下载语义。
+- `AppDownloadPrepare`：每标签的输入代际/预检副本与 WM6 名称策略；单活动 worker 消费 HTTP Probe，先解析再允许保存，不拥有 URL/header 命名语义。
 
 页面 callback 的 `pw` 指向对应页面上下文。网络 worker 只负责 transport 和消息投递，存储
 worker 只拥有自己的 DB/statement，不读取页面；Core、
@@ -212,7 +213,7 @@ EXE 私有 `app_internal_pages.c/.h` 用固定注册表区分页面、别名和�
 | `positron://about` | 说明、可取得的版本/系统信息、内部页面目录 |
 | `positron://version`、`positron://system` | 提交前规范化为 about 的 version/system 片段，仅提交一次 history |
 | `positron://history` | 持久访问记录（16 条分页）与独立的当前 Browser 导航栈文本快照 |
-| `positron://downloads` | 页内输入 HTTP(S) 地址、原生保存确认、进度/取消及持久下载记录分页 |
+| `positron://downloads` | HTTP(S) 预检、名称编辑确认、原生保存确认、进度/取消及持久下载记录分页 |
 | `positron://settings` | 原子读写 HTTP(S)/三个内部主页、语言与网页 JavaScript 偏好 |
 | `positron://quit` | 仅地址栏直接提交可以正常退出，不创建页面或 history 项 |
 
@@ -343,10 +344,16 @@ Destroy；已接受的设置写入仍排空，但迟到结果不触碰旧 sessio
 generation，消费或丢弃均释放；清除使全部标签缓存失效。异步页面更新不得取消在加载的候选。
 
 下载页不创建 ScriptSession。仅当前内嵌 downloads 文档的直接链接操作可选择文件、启动/取消、
-分页或确认清除；普通网页、地址栏、脚本或重放不能执行这些私有动作。最多两个任务、一个传输，
-32 MiB/120 秒；worker 使用公开 Stream GET、创建同目录临时文件，COMMIT 发布中后改名，
-COMMIT 终态后才报完成。正常退出先取消/等待下载并收敛持久终态，后排空共享 DB，最后释放 HTTP。
+分页或确认清除；普通网页、地址栏、脚本或重放不能执行这些私有动作。每标签保留独立
+预检副本，进程最多一个活动 Probe worker，30 秒内获取最终响应并关闭；UI 按输入代际
+接受结果，修改地址、离页或关闭使其失效。只在 HTTP 200、额度和名称均有效后允许
+原生保存确认，缺名需手工填写，名称解析由 HTTP 拥有，WM6 保留名与路径策略归应用。
+最多两个下载任务、一个传输，32 MiB/120 秒；新 Stream GET 在最终头 callback 中消费
+公开 ProbeMatchFinalHeaders，不符则零正文拒收并保留网络/变化错误。worker 创建同目录
+临时文件，COMMIT 发布中后改名，COMMIT 终态后才报完成。退出先取消/join 全部预检，
+再取消/等待下载并收敛持久终态，后排空共享 DB，最后释放 HTTP。
 不以完整正文 API 模拟下载，不从服务端 filename 拼路径，不自动执行、覆盖或续传。
+匹配元数据不保证正文身份；预检与保存窗口不维持连接，不改变 v4 存储 schema。
 
 ### 内部页面验收
 

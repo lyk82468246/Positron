@@ -40,11 +40,14 @@ JS 开关，使用 EXE 同目录 positron.db、公共 DB 与 Browser 受控异�
 退出排空已有应用设备门；故障注入与人工 UI 矩阵不因此算通过。边界见
 [内部页面设计](../positron_app/INTEGRATION_PLAN.md#内部页面与命令地址)。
 
-下载从可信 downloads 页直接输入 HTTP(S)，经原生保存对话框确认新路径；两任务/单传输、
+下载从可信 downloads 页输入 HTTP(S)，先消费公开 Probe 异步检查最终响应/建议名，
+确认合法 basename 后才允许原生保存；修改输入或取消使旧资格失效，不猜 bin/index.html。
+单活动预检/30 秒、最终 HTTP 200 策略；新 Stream GET 在正文前匹配最终头，变化/HTTP 拒绝
+保留原错误，匹配元数据不保证正文身份。两任务/单传输、
 32 MiB/120 秒，消费公开流式 GET/Cancel，支持取消和持久记录。不覆盖目标，不自动执行，
 无网页自动下载或续传。访问/下载共用 Core 记录组件及 DB worker/迁移，但使用独立 typed 表；
 queued→receiving→publishing→终态由持久 ACK 驱动，正常退出排空，重启只标中断。
-升级/精确文件内容/取消/发布失败/恢复/真实输入框已有应用自动门；原生 picker、真实网络、
+升级/精确文件内容/取消/发布失败/恢复、预检代际/名称/零正文拒收和真实输入框已有应用自动门；原生 picker、真实网络、
 触摸/SIP/旋转及文件故障仍待验收，见 [数据设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 
 应用把当前 GET 文档绑定到 Browser history 的公开 document identity；同文档
