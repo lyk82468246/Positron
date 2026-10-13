@@ -90,29 +90,32 @@ CabWiz 正式重试边界见 Git/本地日志。两配置/C89/审计/诊断排�
 
 ### EXE 下载预检与共享记录通过自动门
 
-消费 HTTP `9f282b56`；隐式Probe/一次UI保存续接保持。Name预填完整建议名，仅所有文件筛选、
-NULL默认后缀，不限制/自动补全后缀，允许改名/去掉后缀，无bin猜测。
+消费 HTTP `9f282b56`；隐式Probe/一次UI保存续接保持。传入完整建议名，仅所有文件筛选、
+NULL默认后缀，应用不限制/自动补全后缀，无bin猜测；系统Name实际隐藏后缀，修正暂缓。
 其余代际、取消、失败、退出、额度/v4/journal/不覆盖合同见应用数据设计，不改DLL或存储。
 
-`tmp/device-runs/20261013-112055-app-downloads-name-final/` 五进程门 PASS：
-create/reopen/storage/services/ui、PNG/ZIP完整名及无后缀README、NULL默认扩展名/所有文件、
-单次自动续接、404不弹框、取消无任务、
-stale拒绝与原有缺名/WM6名称/代际/join/最终头变化零正文守卫。2 MiB 中文文件 SHA256 精确，
-清记录保留文件/偏好/访问数据；96/128/192 DPI字段几何/href通过。全部夹具正常退出至零引用，
-EXE/九 DLL SHA25610/10、crash PASS。Debug 专属 picker 替代仅观测初始化并模拟取消，不当作GUI门。
-串行正式 Debug/Release build/CAB、C89/审计与 Release 诊断排除通过。
-前一隐式包 app_history_gate required UI 自检/哈希/crash通过，本轮未重复；只改picker参数/诊断。
+`tmp/device-runs/20261013-112055-app-downloads-name-final/` 五进程门PASS：预检/续接、代际/取消、
+404/最终头变化零正文、2MiB中文文件精确SHA256、共享数据保留与多DPI字段几何。
+正常退出/零引用、EXE/九DLL哈希10/10/crash、正式两配置/CAB/C89/审计/Release排除通过。
+picker替代只测PNG/ZIP/README初始化参数并模拟取消，不是GUI门；前一隐式包完整UI门未重跑。
 
-用户已实测旧普通包 HTTPS 图片保存：闭库证据 `tmp/device-runs/20261013-download-user-confirmation/`
-的记录16为 `ai-radar-logo-20260815.png`、HTTP200、44370/44370、完成/错误0，日志 op6 ACK成功。
-截图 `tmp/QQ20261013-111412.png` 的Name未显示后缀，Type为Suggested file；源码确实给了完整PNG，
-系统显示与传入完整名分离；移除旧后缀筛选/默认后缀。用户拒绝“默认类型”方案，未部署的标签候选已撤回。
-不使用不受CE支持的hook或更改系统设置；按完整名/无默认后缀复测真实Name显示及用户改名。
-旧PID915689410已正常退出/零引用，最新闭库副本在
-`tmp/device-runs/20261013-download-extension-user-data/`，记录16保留；旧部署/用户文件未删。
-最终普通包 `tmp/device-runs/20261013-112634-app-downloads-name-review/` 与自动门二进制一致，
-哈希10/10、原DB精确复制/前台/读取/crash通过，PID920248358留在downloads；不用fixture库。
-完整Name显示/改名待人工，触摸/SIP/旋转/故障仍保留。
+用户HTTPS图片记录16为ai-radar-logo-20260815.png，200/44370字节/完成/错误0/op6ACK。
+截图 `tmp/QQ20261013-111412.png` Name无后缀；普通包
+`tmp/device-runs/20261013-112634-app-downloads-name-review/` 移除默认类型后仍人工失败，
+初始化参数门不能追认为修复；其哈希/原DB复制/启动/crash仍有效，PID920248358已退出。
+
+真实控件证据 `tmp/device-runs/20261013-140646-app-downloads-native-probe/native-picker/native.log`：
+传入file.arbitrarysuffix，Name EDIT(id16212)实际为file；所有文件与NULL filter两种均隐藏后缀，
+NULL filter的Type为.arbitrarysuffix，README原样；Shell PID392442446承载，不是EXE线程。
+OFN_PROPERTY未取得框，整体探针FAIL；普通框实际文字仍为直接证据，不是参数/裁剪。
+先行timer/同进程探针无数据由用户取消，最终限定夹具唯一标题正常取消；失败包/日志保留。
+
+用户选择“先记录问题，暂不替换”，完整名显示/自由修改后缀与EXE原生控件替代方案挂起；
+不恢复默认类型、自动补后缀或CE不支持的hook。临时探针源码已全部撤回，正式Debug恢复
+正常构建，未部署新的普通版本。本轮无生产代码/DLL/ABI/schema改动。
+最终闭库/诊断在 `tmp/device-runs/20261013-download-native-final-closed/`，DB与门前SHA256一致；
+审计holders=0 unavailable=0，用户DB/文件未删。
+触摸/SIP/旋转/故障门保持。
 旧字体格式区12<14、过早退出审计、CAB抢读及四项 host 源码模式失败仍由 Git/本地证据保留，
 不追认为通过；输入 natural line-height/EM_GETRECT 检查保持，不加固定高度或偏移。
 
@@ -494,8 +497,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ## 路线图复核与唯一下一步
 
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
-唯一下一门为保存框Name完整显示、自由修改/删除后缀、取消及失败不弹框；不恢复默认类型。
-已复核限制：文件安全/不覆盖/额度保持，ROM实际显示仍须人工，不以初始化参数自检代替。
+保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
+已复核限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；下一能力需另行取舍。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 本轮未改 DLL/Media/DB/CAB 源码，串行窗口交还前必须标明最终普通包与 PID；下次构建部署
 仍须正常退出并重审引用，不覆盖用户数据库。
