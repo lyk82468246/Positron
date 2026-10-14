@@ -117,6 +117,16 @@ STATE 且不再回调、close 成功。打开后 source 禁止重读。`annexb-t
 均在输出前拒绝；这些是容量优先级负控制，不证明最大尺寸合法参数集可以解码。
 VFR、SEI、其他编码工具与损坏模式仍未验收。
 
+TEST1352 复用 `mpeg4-simple.mp4`、`main-vga.mp4`、`h263-cif.avi` 和
+`flv-main-vga.flv`，不增加或改写 pin。SOFT + SCHEDULE_VIDEO 的合成宿主时钟断言检查
+首帧对齐、截止前 1 µs 保留帧/到期输出、源 PTS/像素/stride、负/回退/同值时钟与非法预算，
+显式暂停及 STOP 后恢复、幂等 resume、暂停中 seek 零丢弃待输出帧、EOF 一次性、极大
+时钟不溢出/不丢帧和停止/负 callback 终态/关闭。四条各使用可 seek/不可 seek source；
+打开后禁止读源，缓存重播必须仍成功。非法 flags/backend/缺视频 callback、WAV、
+`baseline-aac.mp4` 混合流、Annex-B、ADTS 和 PS 均验证拒绝。
+这是公共 DLL 的到期回调合同，不是宿主自建调度器；无实际睡眠，不证明实时帧率、
+音视频同步、总内存、容器未知/回退 PTS 分支或重建分配失败。
+
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
 生成依赖 libx264、libmp3lame、libopencore_amrnb、libvo_amrwbenc 和原生 AAC/MJPEG/MPEG-1/MPEG-2/MPEG-4 Part 2/H.263/H.263+/MP2/IMA ADPCM 编码器，但它们不进入 WM6 产品。`--extend`

@@ -1270,6 +1270,215 @@ fail:
     return FALSE;
 }
 
+static void media_clock_reset_sink(media_compressed_sink *sink, int test)
+{
+    memset(sink, 0, sizeof(*sink));
+    sink->width = test == 0 ? 320 : (test == 2 ? 352 : 640);
+    sink->height = test == 0 ? 240 : (test == 2 ? 288 : 480);
+    sink->video_start_us = test == 3 ? 400000 : 0;
+}
+
+/* Synthetic host clocks: no real-time sleeps and no scheduling policy here. */
+static BOOL media_clock_expect(pm_session session, media_compressed_sink *sink,
+                              pm_position clock, int frames, int expected)
+{
+    int i;
+    int result;
+    for (i = 0; i < 128; i++) {
+        result = pm_pump(session, clock, 2000);
+        if (result < 0 || result == PMEDIA_EOF || result == PMEDIA_WOULD_BLOCK ||
+            (expected == PMEDIA_OK && sink->frames == frames)) break;
+    }
+    if (result == expected && sink->frames == frames && !sink->assertion[0]) return TRUE;
+    _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+              "clock assertion: clock=%I64d rc=%d expected=%d frames=%d expected=%d %s",
+              clock, result, expected, sink->frames, frames, sink->assertion);
+    g_media_compressed_detail[sizeof(g_media_compressed_detail) - 1] = '\0';
+    g_media_compressed_error = g_media_compressed_detail;
+    return FALSE;
+}
+
+BOOL test1352_media_clock_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = {
+        L"mpeg4-simple.mp4", L"main-vga.mp4", L"h263-cif.avi", L"flv-main-vga.flv"
+    };
+    static const WCHAR *rejected[] = {
+        L"baseline-aac.mp4", L"annexb-main-vga.h264", L"aac-lc.aac", L"mpeg1-mp2.mpg"
+    };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *data;
+    pm_position maximum;
+    int bytes;
+    int test;
+    int iteration;
+    int attempt;
+    int result;
+
+    session = NULL;
+    data = NULL;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    for (test = 0; test < 4; test++) {
+        data = media_compressed_load(names[test], &bytes);
+        g_media_compressed_error = "scheduled video fixture load";
+        if (data == NULL) goto fail;
+        for (iteration = 0; iteration < 2; iteration++) {
+            media_compressed_init(&input, &sink, &source, &output, &options);
+            media_clock_reset_sink(&sink, test);
+            input.data = data;
+            input.bytes = bytes;
+            source.seek = iteration ? media_fixture_seek : NULL;
+            source.tell = iteration ? media_fixture_tell : NULL;
+            options.flags = PMEDIA_OPEN_SCHEDULE_VIDEO;
+            _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                      "scheduled video case=%d seekable=%d open/deadline", test, iteration);
+            g_media_compressed_error = g_media_compressed_detail;
+            if (progress != NULL) progress(g_media_compressed_error);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK ||
+                pm_get_backend(session) != PMEDIA_BACKEND_SOFT) goto fail;
+            input.read_mode = 2;
+            if (!media_clock_expect(session, &sink, -1, 0, PMEDIA_ERROR_ARGUMENT) ||
+                !media_clock_expect(session, &sink, 1000000, 1, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 1000000, 1, PMEDIA_WOULD_BLOCK) ||
+                pm_pump(session, 1200000, -1) != PMEDIA_ERROR_ARGUMENT ||
+                !media_clock_expect(session, &sink, 1199999, 1, PMEDIA_WOULD_BLOCK) ||
+                !media_clock_expect(session, &sink, 999999, 1, PMEDIA_ERROR_ARGUMENT) ||
+                pm_seek(session, 100000) != PMEDIA_ERROR_NOT_SEEKABLE ||
+                pm_resume(session) != PMEDIA_OK ||
+                !media_clock_expect(session, &sink, 1200000, 2, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 1399999, 2, PMEDIA_WOULD_BLOCK) ||
+                !media_clock_expect(session, &sink, 1400000, 3, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 1400000, 3, PMEDIA_EOF) ||
+                pm_pump(session, 1400000, 0) != PMEDIA_EOF ||
+                sink.events.eof_events != 1 || sink.events.errors) goto fail;
+            if (sink.events.error_callbacks || sink.events.error_events) goto fail;
+
+            g_media_compressed_error = "scheduled video explicit/callback pause and pending rewind";
+            if (progress != NULL) progress(g_media_compressed_error);
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            media_clock_reset_sink(&sink, test);
+            if (!media_clock_expect(session, &sink, 0, 1, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 0, 1, PMEDIA_WOULD_BLOCK) ||
+                pm_pause(session) != PMEDIA_OK || pm_pause(session) != PMEDIA_OK ||
+                pm_pump(session, -1, 0) != PMEDIA_OK ||
+                pm_pump(session, 9999999, 0) != PMEDIA_OK || sink.frames != 1 ||
+                pm_resume(session) != PMEDIA_OK ||
+                !media_clock_expect(session, &sink, 9000000, 1, PMEDIA_WOULD_BLOCK) ||
+                !media_clock_expect(session, &sink, 9199999, 1, PMEDIA_WOULD_BLOCK)) goto fail;
+            sink.callback_result = PMEDIA_CALLBACK_STOP;
+            if (!media_clock_expect(session, &sink, 9200000, 2, PMEDIA_OK) ||
+                pm_pump(session, 99999999, 0) != PMEDIA_OK || sink.frames != 2 ||
+                pm_resume(session) != PMEDIA_OK) goto fail;
+            sink.callback_result = 0;
+            if (!media_clock_expect(session, &sink, 10000000, 2, PMEDIA_WOULD_BLOCK) ||
+                !media_clock_expect(session, &sink, 10200000, 3, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 10200000, 3, PMEDIA_EOF) ||
+                sink.events.eof_events != 1 || sink.events.errors) goto fail;
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            media_clock_reset_sink(&sink, test);
+            if (!media_clock_expect(session, &sink, 0, 1, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 0, 1, PMEDIA_WOULD_BLOCK) ||
+                pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            media_clock_reset_sink(&sink, test);
+            if (pm_pump(session, 100, 0) != PMEDIA_OK || sink.frames ||
+                pm_resume(session) != PMEDIA_OK ||
+                !media_clock_expect(session, &sink, 0, 1, PMEDIA_OK)) goto fail;
+
+            g_media_compressed_error = "scheduled video INT64 boundary and late frames without dropping";
+            if (progress != NULL) progress(g_media_compressed_error);
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            media_clock_reset_sink(&sink, test);
+            if (!media_clock_expect(session, &sink, maximum - 400000, 1, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, maximum - 200001, 1, PMEDIA_WOULD_BLOCK) ||
+                !media_clock_expect(session, &sink, maximum - 200000, 2, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, maximum, 3, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, maximum, 3, PMEDIA_EOF)) goto fail;
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            media_clock_reset_sink(&sink, test);
+            if (!media_clock_expect(session, &sink, 0, 1, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, maximum, 2, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, maximum, 3, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, maximum, 3, PMEDIA_EOF)) goto fail;
+
+            g_media_compressed_error = "scheduled video stop releases pending frame and close stays quiet";
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            media_clock_reset_sink(&sink, test);
+            if (!media_clock_expect(session, &sink, 0, 1, PMEDIA_OK) ||
+                !media_clock_expect(session, &sink, 0, 1, PMEDIA_WOULD_BLOCK) ||
+                pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+                pm_pump(session, maximum, 0) != PMEDIA_ERROR_STATE ||
+                pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                sink.frames != 1 || sink.events.stopped_events != 1 || sink.events.errors ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            if (sink.frames != 1 || sink.events.eof_events || sink.events.errors) goto fail;
+
+            input.read_mode = 0;
+            input.position = 0;
+            media_clock_reset_sink(&sink, test);
+            g_media_compressed_error = "scheduled video negative callback enters one-shot failed state";
+            if (progress != NULL) progress(g_media_compressed_error);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            sink.callback_result = -1;
+            result = PMEDIA_OK;
+            for (attempt = 0; attempt < 128 && result == PMEDIA_OK; attempt++)
+                result = pm_pump(session, 0, 2000);
+            if (result != PMEDIA_ERROR_CALLBACK || sink.frames != 1 ||
+                sink.events.errors || sink.events.error_callbacks != 1 ||
+                sink.events.error_events != 1 || sink.events.last_error != PMEDIA_ERROR_CALLBACK ||
+                pm_pump(session, 0, 0) != PMEDIA_ERROR_STATE ||
+                pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                pm_stop(session) != PMEDIA_OK || pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            if (sink.events.error_callbacks != 1 || sink.events.error_events != 1 ||
+                sink.frames != 1 || sink.events.eof_events) goto fail;
+        }
+        free(data);
+        data = NULL;
+    }
+    g_media_compressed_error = "scheduled video unsupported input and option guards";
+    if (progress != NULL) progress(g_media_compressed_error);
+    media_compressed_init(&input, &sink, &source, &output, &options);
+    options.flags = 2;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT ||
+        input.position || session != NULL) goto fail;
+    options.flags = PMEDIA_OPEN_SCHEDULE_VIDEO;
+    options.backend = PMEDIA_BACKEND_AUTO;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT || input.position) goto fail;
+    options.backend = PMEDIA_BACKEND_NATIVE;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT || input.position) goto fail;
+    options.backend = PMEDIA_BACKEND_SOFT;
+    output.video = NULL;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT || input.position) goto fail;
+    output.video = media_compressed_video;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_UNSUPPORTED || session != NULL) goto fail;
+    for (test = 0; test < 4; test++) {
+        data = media_compressed_load(rejected[test], &bytes);
+        if (data == NULL) goto fail;
+        media_compressed_init(&input, &sink, &source, &output, &options);
+        input.data = data;
+        input.bytes = bytes;
+        options.flags = PMEDIA_OPEN_SCHEDULE_VIDEO;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_UNSUPPORTED ||
+            session != NULL || sink.frames || sink.events.blocks || sink.events.eof_events) goto fail;
+        free(data);
+        data = NULL;
+    }
+    g_media_compressed_error = "scheduled video contract passed";
+    if (progress != NULL) progress(g_media_compressed_error);
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
 static void media_h263_reset_sink(media_compressed_sink *sink, int test)
 {
     memset(sink, 0, sizeof(*sink));

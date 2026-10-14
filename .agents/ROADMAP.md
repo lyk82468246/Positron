@@ -249,7 +249,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
 **状态：WAV PCM/IMA/I/O 与短小 H.264/AAC/MJPEG/MP3、TS/MPEG-2/MP2、PS/MPEG-1/MP2、AMR-NB/WB、MPEG-4 Part 2 和 AVI H.263 解码、拒绝守卫及 EOF 重播已有 Debug/Release 设备证据；
-其他压缩格式、DirectShow source filter、时钟调度与完整设备性能门仍待完成。**
+可选有序单视频时钟调度已有初始双配置合同，其他压缩格式、DirectShow source filter、音频/混合流调度与完整设备性能门仍待完成。**
 `positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
 运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
 Debug/Release 链接，并由 custom memory AVIO 驱动有界的 H.264/AAC/MP3/AMR、常见
@@ -269,13 +269,16 @@ Baseline/Main 输出、未知 PTS、SPS 名义时长、缓存零点重播与 pro
 动态重配置。固定损坏/缺失参数集的输出前拒绝、两条截断 slice 的 pump FORMAT/终态与
 完整 NAL 边界的正常 EOF 控制已验收，不再列为初始候选。单一 PPS/相同重复、非零 PPS ID、
 有效 PPS 变化拒绝、定义后引用与参数预算负控制也已验收；多个/变化的有效参数集明确不支持。
-下一条纵切先取舍 host-clock 调度合同：保留现有解码-only 行为，明确已知/未知 PTS、
-pause/seek 时间基准、迟到策略与固定帧/PCM 缓存预算，再实现一个最小设备门。
+初始单视频 host-clock 合同已退出待实现候选：ABI 1.1 可选位保留默认解码-only；
+MP4/MOV、AVI、FLV 单视频流保留一帧并按时回调，pause/STOP、缓存零点重播、
+负/回退宿主时钟、极大时钟与不丢迟到帧的双配置断言已通过。不扩展音频/混合流或非零 seek。
+下一纵切先为容器内未知/回退 PTS 的终态分支建立独立 fixture，再决定显式跳变/VFR 与
+推导时间戳的支持边界；未验证分支不得靠更改宿主时间戳或放宽断言绕过。
 不能把 pump budget 当作可抢占 decoder 的硬墙钟上限，其他损坏模式不由固定夹具代替。
 非零 AAC seek 保真和重建分配失败仍待专门门。
 不把短小夹具扩大为全部格式或实时播放保证。
-之后实现时钟调度/音视频同步和不会破坏不可 seek 输入的 DirectShow
-callback source filter/native 视频生命周期。当前 pump 忽略 clock_us，预算不是严格墙钟上限；
+之后再取舍音频/混合流调度的固定帧/PCM 预算、同步与迟到丢帧，以及不会破坏不可 seek
+输入的 DirectShow callback source filter/native 视频生命周期。默认 pump 仍忽略 clock_us，预算不是严格墙钟上限；
 桌面 DirectShow 格式表不能替代设备 filter 探测。
 
 - **Owner：** `positron_media.dll` 拥有 codec/container/session/timestamp/borrowed-buffer 语义；

@@ -66,6 +66,14 @@ struct pmedia_ffmpeg {
     unsigned char *audio_buffer;
     int audio_buffer_bytes;
     int opened_format;
+    int schedule_video;
+    int video_pending;
+    int clock_anchored;
+    pm_position clock_anchor_us;
+    pm_position pts_anchor_us;
+    pm_position last_pts_us;
+    pm_position pump_clock_us;
+    pm_video_frame pending_video;
 };
 
 static void pm_ff_error(char *error_text, int error_text_bytes,
@@ -988,6 +996,19 @@ void pmedia_ffmpeg_close(pmedia_ffmpeg *context)
     pm_ff_cleanup(context);
 }
 
+int pmedia_ffmpeg_schedule_video(pmedia_ffmpeg *context)
+{
+    int container;
+    if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
+    container = pm_ff_container(context->format->iformat->name);
+    if (context->format->nb_streams != 1 || context->video_codec == NULL ||
+        context->audio_codec != NULL || context->output.video == NULL ||
+        (container != PMEDIA_CONTAINER_MP4 && container != PMEDIA_CONTAINER_AVI &&
+         container != PMEDIA_CONTAINER_FLV)) return PMEDIA_ERROR_UNSUPPORTED;
+    context->schedule_video = 1;
+    return PMEDIA_OK;
+}
+
 static int pm_ff_clip_sample(int sample)
 {
     if (sample < -32768) return -32768;
@@ -1070,6 +1091,30 @@ static int pm_ff_convert_audio(pmedia_ffmpeg *context, int *out_bytes)
     return PMEDIA_OK;
 }
 
+static int pm_ff_deliver_video(pmedia_ffmpeg *context)
+{
+    int result;
+    pm_video_frame *frame;
+
+    frame = &context->pending_video;
+    if (frame->pts_us < 0 || (context->clock_anchored &&
+        frame->pts_us < context->last_pts_us)) return PMEDIA_ERROR_FORMAT;
+    if (!context->clock_anchored) {
+        context->clock_anchor_us = context->pump_clock_us;
+        context->pts_anchor_us = frame->pts_us;
+        context->clock_anchored = 1;
+    }
+    /* Nonnegative ordered differences avoid signed addition/overflow, even
+     * when the host clock is close to INT64_MAX.  Never drop a late frame. */
+    if (frame->pts_us - context->pts_anchor_us >
+        context->pump_clock_us - context->clock_anchor_us) return PMEDIA_WOULD_BLOCK;
+    context->last_pts_us = frame->pts_us;
+    context->video_pending = 0;
+    result = context->output.video(context->output.context, frame);
+    if (result < 0) return PMEDIA_ERROR_CALLBACK;
+    return result == PMEDIA_CALLBACK_STOP ? PMEDIA_CALLBACK_STOP : PMEDIA_OK;
+}
+
 static int pm_ff_emit_video(pmedia_ffmpeg *context)
 {
     AVStream *stream;
@@ -1139,6 +1184,11 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     if (context->frame->format == AV_PIX_FMT_YUVJ420P ||
         context->frame->color_range == AVCOL_RANGE_JPEG) {
         frame.flags |= PMEDIA_FRAME_FULL_RANGE;
+    }
+    if (context->schedule_video) {
+        context->pending_video = frame;
+        context->video_pending = 1;
+        return pm_ff_deliver_video(context);
     }
     if (context->output.video == NULL) return PMEDIA_OK;
     callback_result = context->output.video(context->output.context, &frame);
@@ -1237,8 +1287,11 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
     AVPacket packet;
     AVCodecContext *codec;
 
-    (void)clock_us;
     if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
+    context->pump_clock_us = clock_us;
+    /* Keep the decoded AVFrame alive while waiting: do not receive/unref,
+     * demux or decode another packet.  Metadata is prepared exactly once. */
+    if (context->video_pending) return pm_ff_deliver_video(context);
     work_limit = budget_us <= 0 ? 1 : budget_us / 1000;
     if (work_limit < 1) work_limit = 1;
     if (work_limit > 64) work_limit = 64;
@@ -1321,6 +1374,7 @@ static int pm_ff_restart_cached(pmedia_ffmpeg *context)
                                  context->max_video_height, &replacement,
                                  &info, &capabilities, NULL, 0);
     if (result != PMEDIA_OK) return result;
+    replacement->schedule_video = context->schedule_video;
     previous = *context;
     *context = *replacement;
     *replacement = previous;
@@ -1336,6 +1390,10 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     AVCodecContext *replacement_audio;
     int result;
     if (context == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
+    if (context->schedule_video) {
+        if (position_us != 0) return PMEDIA_ERROR_NOT_SEEKABLE;
+        return pm_ff_restart_cached(context);
+    }
     if (strcmp(context->format->iformat->name, "h264") == 0) {
         if (position_us != 0) return PMEDIA_ERROR_NOT_SEEKABLE;
         return pm_ff_restart_cached(context);

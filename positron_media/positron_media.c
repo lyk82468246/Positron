@@ -25,6 +25,11 @@ typedef struct pm_session_impl {
     int stopped;
     int decode_failed;
     int eof_sent;
+    int schedule_video;
+    int clock_valid;
+    int resume_clock;
+    pm_position last_clock_us;
+    pm_position elapsed_us;
     int source_seekable;
     unsigned char *input;
     int input_bytes;
@@ -759,6 +764,12 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
     if (options != NULL && options->size < sizeof(*options)) {
         return PMEDIA_ERROR_ARGUMENT;
     }
+    if (options != NULL && (options->flags & ~PMEDIA_OPEN_SCHEDULE_VIDEO))
+        return PMEDIA_ERROR_ARGUMENT;
+    if (options != NULL && (options->flags & PMEDIA_OPEN_SCHEDULE_VIDEO) &&
+        (options->backend != PMEDIA_BACKEND_SOFT || output == NULL ||
+         output->size < sizeof(*output) || output->video == NULL))
+        return PMEDIA_ERROR_ARGUMENT;
     if (output != NULL && output->size != 0 &&
         output->size < sizeof(*output)) {
         return PMEDIA_ERROR_ARGUMENT;
@@ -773,6 +784,8 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
         return result;
     }
     pm_copy_output(&session->output, output);
+    session->schedule_video = options != NULL &&
+                             (options->flags & PMEDIA_OPEN_SCHEDULE_VIDEO) != 0;
     requested_backend = options == NULL ? PMEDIA_BACKEND_AUTO : options->backend;
     if (requested_backend == PMEDIA_BACKEND_NONE) {
         requested_backend = PMEDIA_BACKEND_AUTO;
@@ -793,6 +806,14 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
         return result;
     }
     result = pm_parse_input(session);
+    if (session->schedule_video && result == PMEDIA_OK &&
+        session->info.container == PMEDIA_CONTAINER_WAV) {
+        pm_set_error(session, PMEDIA_ERROR_UNSUPPORTED,
+                     "scheduled output requires a single video stream in MP4/MOV, AVI or FLV");
+        free(session->input);
+        free(session);
+        return PMEDIA_ERROR_UNSUPPORTED;
+    }
     if ((result == PMEDIA_ERROR_FORMAT || result == PMEDIA_ERROR_LIMIT) && session->input_bytes >= 12 &&
         pm_fourcc(session->input, 'R', 'I', 'F', 'F') &&
         pm_fourcc(session->input + 8, 'W', 'A', 'V', 'E')) {
@@ -872,6 +893,14 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
                                        max_video_width, max_video_height,
                                        &ffmpeg, &ff_info, &ff_capabilities,
                                        ff_error, sizeof(ff_error));
+        if (ff_result == PMEDIA_OK && session->schedule_video) {
+            ff_result = pmedia_ffmpeg_schedule_video(ffmpeg);
+            if (ff_result != PMEDIA_OK) {
+                strcpy(ff_error, "scheduled output requires a single video stream in MP4/MOV, AVI or FLV");
+                pmedia_ffmpeg_close(ffmpeg);
+                ffmpeg = NULL;
+            }
+        }
         if (ff_result == PMEDIA_OK) {
             ff_capabilities.native_graph_available =
                 session->capabilities.native_graph_available;
@@ -901,6 +930,13 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
         }
     }
 #endif
+    if (session->schedule_video) {
+        pm_set_error(session, PMEDIA_ERROR_UNSUPPORTED,
+                     "scheduled video backend is not compiled");
+        if (session->input != NULL) free(session->input);
+        free(session);
+        return PMEDIA_ERROR_UNSUPPORTED;
+    }
     if (result != PMEDIA_OK) {
         if (session->input != NULL) free(session->input);
         free(session);
@@ -978,7 +1014,6 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
     int native_frames;
     int result;
 
-    (void)clock_us;
     session = (pm_session_impl *)opaque_session;
     if (session == NULL || budget_us < 0) {
         return PMEDIA_ERROR_ARGUMENT;
@@ -988,6 +1023,18 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
     }
     if (session->paused) {
         return PMEDIA_OK;
+    }
+    if (session->schedule_video) {
+        if (clock_us < 0 || (session->clock_valid && clock_us < session->last_clock_us))
+            return PMEDIA_ERROR_ARGUMENT;
+        if (session->clock_valid && !session->resume_clock)
+            /* Telescoping nonnegative deltas, excluding pauses: elapsed
+             * never exceeds last_clock - the first active clock. */
+            session->elapsed_us += clock_us - session->last_clock_us;
+        session->last_clock_us = clock_us;
+        session->clock_valid = 1;
+        session->resume_clock = 0;
+        clock_us = session->elapsed_us;
     }
     if (session->waveout_active && session->waveout != NULL) {
         native_frames = 0;
@@ -1028,6 +1075,7 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
                 pm_emit(session, PMEDIA_EVENT_EOF, 0);
             }
         } else if (ff_result < 0) {
+            if (session->schedule_video) session->decode_failed = 1;
             if (ff_result == PMEDIA_ERROR_FORMAT && session->info.container == PMEDIA_CONTAINER_RAW &&
                 session->info.video_codec == PMEDIA_CODEC_H264)
                 session->decode_failed = 1;
@@ -1084,6 +1132,8 @@ PMEDIA_API int pm_resume(pm_session opaque_session)
         result = pmedia_waveout_resume(session->waveout);
         if (result != PMEDIA_OK) return result;
     }
+    /* Only a real resume excludes the unobserved pause interval. */
+    if (session->paused && session->schedule_video) session->resume_clock = 1;
     session->paused = 0;
     return PMEDIA_OK;
 }
@@ -1099,6 +1149,13 @@ PMEDIA_API int pm_stop(pm_session opaque_session)
         result = pmedia_waveout_stop(session->waveout);
         if (result != PMEDIA_OK) return result;
     }
+#ifdef PMEDIA_HAS_FFMPEG
+    if (session->schedule_video && session->ffmpeg_active) {
+        pmedia_ffmpeg_close((pmedia_ffmpeg *)session->ffmpeg);
+        session->ffmpeg = NULL;
+        session->ffmpeg_active = 0;
+    }
+#endif
     session->stopped = 1;
     pm_emit(session, PMEDIA_EVENT_STOPPED, 0);
     return PMEDIA_OK;
@@ -1116,7 +1173,14 @@ PMEDIA_API int pm_seek(pm_session opaque_session, pm_position position_us)
 #ifdef PMEDIA_HAS_FFMPEG
     if (session->ffmpeg_active && session->ffmpeg != NULL) {
         result = pmedia_ffmpeg_seek((pmedia_ffmpeg *)session->ffmpeg, position_us);
-        if (result == PMEDIA_OK) session->eof_sent = 0;
+        if (result == PMEDIA_OK) {
+            session->eof_sent = 0;
+            if (session->schedule_video) {
+                session->clock_valid = 0;
+                session->resume_clock = 0;
+                session->elapsed_us = 0;
+            }
+        }
         return result;
     }
 #endif

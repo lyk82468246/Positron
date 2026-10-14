@@ -4,9 +4,9 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮只改 Media 错误边界、断言及文档，不改 ABI、EXE 或下载 schema。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮只改 Media 的可选单视频调度、断言及文档，ABI 加到兼容次版本 1.1，结构/导出不变，不改 EXE 或下载 schema。
 
-Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；Annex-B 单一 PPS/引用/参数预算拒绝已补齐，下一纵切先取舍 host-clock 调度合同。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变公共 ABI 或打包版本规则。
+Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；可选单视频按时回调已验收，下一纵切先补容器未知/回退 PTS 终态 fixture。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
 用户已确认 WinWorld 菜单展开/收起、SVG 与作者按钮外观正常；性能修正后的实际展开/收起不超过约 2 秒，期间地址栏与菜单可响应。不要恢复旧的“按钮无响应/图标仍损坏”假设；Release 点按耗时对照仍未完成，不把 Debug 体验扩大为全部设备的保证。
 
@@ -291,42 +291,42 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 `2026-10-02 23:25:27`；完整包哈希已匹配，故不是旧 EXE 混包。后续须单独修正生成头的正式
 工程依赖，再验证增量构建时间与 Release 排除；本导航纵切不把该版本显示写成已修复。
 
-### Media 有界压缩解码合同已验收
+### Media 有界解码与可选单视频时钟合同已验收
 
-当前短媒体合同均有双配置设备证据。ABI、I/O/probe 失败不变性和借用 buffer 所有权保持；
-产品语义在 DLL，宿主只提供 I/O/fixture/断言。调用/格式及守卫见
-[Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)；
-68 个固定输入、CC0/生成器/内容 pin 见 [媒体夹具](../test_host/fixtures/media/README.md)。
-FFmpeg archive 未重建，SHA256 仍为
+默认解码-only 保持；ABI 1.1（0x00010001）只增加 SCHEDULE_VIDEO 可选位，不改公开
+结构/导出。时钟、缓存帧、pause/seek 和失败终态由 DLL 拥有，宿主只提供 I/O/fixture/断言。
+完整调用与排除边界见 [Media README](../positron_media/README.md)、
+[能力矩阵](../docs/CAPABILITIES.md)；68 个固定输入/CC0/pin 未改，见
+[媒体夹具](../test_host/fixtures/media/README.md)。FFmpeg archive 未重建，SHA256 仍为
 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
-clock_us/同步/迟到丢帧、DirectShow callback source/native 视频、完整 ACM 枚举和
-性能/underrun/峰值内存/真机仍待门，不把短媒体合同升级为实时播放器完成。
 
-最终 Debug tmp/device-runs/20261014-194050-media-annexb-parameters-debug-verified/ 与 Release
-tmp/device-runs/20261014-194239-media-annexb-parameters-release-verified/ 均选择
-1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,999：12/12、唯一 TESTBENCH PASS、零 ERROR/FAIL、
-完整日志、Core 路径及 crash_check PASS，无新增 dump（运行前已有两个）。240×320、96 DPI DeviceEmulator，
-SD 92 文件匹配正式 stage，双空间、新 guest holders=0 unavailable=0 通过；
-两配置当前包 removed_after_complete_log，旧残留未清理，两次最终门没有强杀、重置或改连接。
-相邻 MPEG-4/H.263/FLV 合同继续通过；未验收组合见组件 README/ROADMAP。
-TEST1349 保留像素/未知 PTS/名义或零时长、缓存重播、生命周期与既有拒绝/截断 slice 终态。
-PPS 重复/ID1 的三 session 三遍重播通过；不同有效 PPS UNSUPPORTED，缺失/前向参数引用
-FORMAT，probe 不变、open NULL、无输出。64-byte slice 前缀仅用固定 RBSP/Golomb 原语读
-三个 ue 字段，不复制熵 decoder；只接受单一不变 SPS/PPS。已识别裸流中单参数 NAL 上限
-4096 bytes，越界 ID 的 4096/4097 负控制分别 FORMAT/LIMIT，含有效前缀后的超限 PPS；
-不证明合法最大参数集。ABI/archive/上游未改，细节以组件 README/夹具为准。
+最终 Debug tmp/device-runs/20261014-200056-media-clock-debug-final/ 与 Release
+tmp/device-runs/20261014-200213-media-clock-release-final/ 均选择
+1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352,999：13/13、唯一 TESTBENCH PASS、
+零 ERROR/FAIL、完整日志、Core 路径及 crash_check PASS，无新增 dump（原有两个）。
+240×320、96 DPI DeviceEmulator；SD 92 文件匹配正式 stage，双空间与新 guest
+holders=0 unavailable=0 通过。本批两个包完整回收后删除，28 个旧日志不完整目录保留；
+无强杀、重置、重连或普通 EXE 部署，不覆盖用户数据库。
 
-AAC 缓存零点重建保留 priming、清除历史，成功才交换状态/重绑 AVIO；TEST1332 三遍
-PCM memcmp 继续通过且不读源。非零 seek 保真、两套 decoder 的瞬时内存/耗时与
-重建分配失败回滚未验证；Annex-B 重建也有相同限制。
+TEST1352 复用 MP4 Simple/Main B 帧、AVI H.263 CIF、FLV Main VGA 单视频，各从可 seek/
+不可 seek 源打开：截止前 1 µs 保留帧，到期才回调，I420/stride/源 PTS 不改；一帧待交付，
+每 pump 最多一帧，不丢迟到帧。负/回退宿主时钟与非法预算不推进；pause/STOP 后首个
+resume pump 排除暂停间隔，幂等 resume 不重置；暂停中缓存 seek 零丢弃旧帧并重置时钟。
+INT64_MAX/大跳、EOF/错误一次性、停止/关闭、非法 flags/backend/callback 与 WAV/混合/
+裸流/PS 拒绝均有断言。source 在打开后返回 I/O 错误，重播仍成功。
+调度只支持显式 SOFT 的 MP4/MOV、AVI、FLV 单视频流和 seek 零；音频/混合流、TS/PS/
+裸流调度、非零 seek、丢帧与音视频同步明确未实现。容器未知/回退 PTS 的 FORMAT 终态
+代码分支仍未由专用 fixture 验收，下一纵切先补此证据。
 
-本批诊断 20261014-193133 的参数门复现有效 PPS 变化被接受；193329/193556 的容量 NAL
-forbidden bit 与 193826 的 PPS 后继 SPS ID 编码让 raw probe 先 FORMAT，失败证据在
-tmp/device-runs/，不追认为通过。最终容量输入使用正常头、SPS32/PPS256 且引用 SPS0，
-桌面独立检查精确字节/ID；LIMIT 断言未放宽。SUINT 内部头依赖构建失败未部署，已修正。
-C89、68 输入 pin（原 56 记录不变）、桌面像素/trace/引用/容量对照、双配置及审计通过。
-ROADMAP 已复核，参数/引用初始候选移除，下一步 host-clock 合同取舍；native/性能/故障注入
-保持未验收。未改 EXE、DB、默认配置或上游；tmp 不入 Git，旧失败见 Git/本地日志。
+原解码合同及 AAC 三遍 PCM memcmp、Annex-B 参数/引用/容量和损坏 slice 终态均继续通过；
+native graph/source/video、ACM 枚举、VFR/SEI/复杂工具、非零 AAC、重建分配失败/瞬时内存、
+实时性能/underrun/真机仍待门。时钟是合成值，不把短媒体断言升级为实时播放器完成。
+首轮 tmp/device-runs/20261014-195640-media-clock-debug-candidate/ 在负 callback 统计断言
+失败：fixture 的 errors 只计空消息/断言错误，不能代替 error_callbacks；修正为零断言错误、
+一次错误回调/事件并检查终态，未放宽产品合同。失败日志保留；195801 的 13/13 先行通过
+不代替最终 ABI 1.1 包。C89、68 输入 pin、正式双配置与审计通过。
+ROADMAP 已复核并移除初始时钟候选；KNOWN_LIMITATIONS 的 Media 边界仍由已更新矩阵
+链接覆盖，无需改写。EXE/DB/上游/默认配置未改，tmp 不入 Git。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -507,7 +507,7 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-Media 下一步取舍 host-clock 调度合同：兼容解码-only、已知/未知 PTS、pause/seek、迟到策略与固定缓存；保留 VFR/SEI/其他损坏模式、非零 AAC、故障注入、其他格式和 DirectShow；
+Media 下一步补容器未知/回退 PTS 的调度终态 fixture，再取舍跳变/VFR 与推导时间轴；音频/混合流调度、同步/丢帧、非零 AAC、故障注入、其他格式和 DirectShow 保留未验收；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 仍待专门门，不把应用正常重开或进程终止恢复写成断电恢复。新增设备门须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

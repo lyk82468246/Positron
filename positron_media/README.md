@@ -16,6 +16,8 @@ DirectShow、ACM、WaveOut、FFmpeg 的类型和生命周期都不暴露到公�
 - FFmpeg 3.4.14 的固定 ARMV4I 归档用于有界的容器和 codec 软解，输出统一为 I420 视频
   帧和交错 S16LE 音频块。
 - pm_pump(clock_us, budget_us) 由宿主反复调用，驱动解码、输出回调和 WaveOut 队列。
+- 默认仍是解码-only；显式启用 `PMEDIA_OPEN_SCHEDULE_VIDEO` 后，可对单视频流按宿主
+  时钟交付到期帧。它不包含音频调度、音视频同步或迟到丢帧。
 - 输入会在打开期间复制到 DLL 自己的内存，当前总上限为 16 MiB。软解因此不要求源可 seek，
   但打开期间遇到 PMEDIA_WOULD_BLOCK 会直接失败，不会在 DLL 内等待或稍后重试。
 
@@ -55,8 +57,8 @@ PMEDIA_BACKEND_NATIVE 路径现在只落实 WAV PCM WaveOut，不能把桌面 Di
   关闭前应先停止应用自己的泵循环，并确保没有并发回调。
 - 音频和视频回调都应尽快返回。需要排队时使用应用自己的有界 ring buffer；回调中不要
   执行网络、磁盘等待或无界分配。
-- pm_open_options.flags 和 native_window 在当前首版保留，必须置零或传 NULL；
-  当前没有可由第三方接线的 native 视频窗口生命周期。
+- pm_open_options.flags 默认置零；目前唯一可选位是 `PMEDIA_OPEN_SCHEDULE_VIDEO`，
+  未知位返回 ARGUMENT。native_window 仍须为 NULL，没有 native 视频窗口接线合同。
 
 ## 标准调用顺序
 
@@ -70,9 +72,9 @@ PMEDIA_BACKEND_NATIVE 路径现在只落实 WAV PCM WaveOut，不能把桌面 Di
 4. 初始化 pm_output_callbacks 和 pm_open_options，调用 pm_open()。
 5. 成功打开后用 pm_get_stream_info()、pm_get_capabilities() 和 pm_get_backend()
    记录实际选择的路径。
-6. 在应用自己的消息循环或定时器中反复调用 pm_pump()。clock_us 应是单调时钟的
-   微秒值；当前实现尚未使用该值做播放调度。budget_us 只控制每次处理量，不是严格墙钟
-   时间上限，不能据此认为 DLL 已实现音视频同步或实时播放。
+6. 在应用自己的消息循环或定时器中反复调用 pm_pump()。默认解码-only 忽略 clock_us；
+   显式视频调度使用非负单调微秒值，规则见下节。budget_us 只控制每次处理量，不是严格
+   墙钟时间上限，不能据此认为 DLL 已实现音视频同步或实时播放。
 7. 用户暂停/恢复/停止/跳转时调用相应的 pm_pause()、pm_resume()、pm_stop()、
    pm_seek()。
 8. 播放结束或应用退出时调用 pm_close()；发生错误时也必须释放已经成功打开的 session。
@@ -284,6 +286,54 @@ int play_memory_media(const unsigned char *data, int bytes)
 原位置。网络、文件或管道 source 应由应用自己实现读缓存、错误和取消策略；DLL 不会把
 PMEDIA_WOULD_BLOCK 转换成异步任务。
 
+## 可选的单视频时钟调度
+
+此模式要求 ABI 主版本 1、次版本至少 1（`pm_abi_version() >= 0x00010001UL`，同时
+检查高 16 位为 1）。公共结构布局、导出函数与默认行为不变；旧 DLL 忽略 flags，不能把
+它的打开成功当作支持此开关。将上面示例的 options 初始化改为：
+
+~~~c
+if ((pm_abi_version() >> 16) != 1UL || pm_abi_version() < 0x00010001UL)
+    return PMEDIA_ERROR_UNSUPPORTED;
+options.backend = PMEDIA_BACKEND_SOFT;
+options.flags = PMEDIA_OPEN_SCHEDULE_VIDEO;
+~~~
+
+保持 `output.size=sizeof(output)` 且提供 video callback。AUTO/NATIVE/NONE 或缺少
+video callback 是非法组合，返回 ARGUMENT，读取 source 前拒绝。输入必须是 MP4/MOV、
+AVI 或 FLV 中恰好一个视频流，不含音频或其他 stream；有效但不属于该范围的 WAV、
+音频/混合流、裸流、TS/PS 返回 UNSUPPORTED，不产生视频/音频回调。
+probe 只报告解码能力，不证明输入符合调度模式；open 和后续 pump 仍会验证。
+
+第一帧的非负 PTS 对齐到实际交付它的 pump 时钟，不要求宿主时钟与媒体起点相同，也
+不改写 callback 的源 PTS。后续帧只有在活动时钟经过相应 PTS 差值后才交付；未到期
+返回 WOULD_BLOCK，应用应交还消息循环后再 pump，不在 DLL 内睡眠。
+DLL 只保留一个解码后的待交付 AVFrame，不在等待期间继续 demux/解码或创建帧队列；
+这不包含 codec 本身的参考帧/重排缓存，也不是总内存上限。每次 pump 最多一个视频回调，
+时钟大幅前进时逐次交付所有到期帧，不丢帧；迟到、decode 或 callback 耗时不受严格预算限制。
+
+活动 pump 的 clock_us 必须非负且不小于此前接受的活动时钟，同值允许。负值或回退返回
+ARGUMENT，不推进时钟、不消费待输出帧，也不触发 error callback；修正参数后可以继续。
+宿主必须处理 WM6 短时钟回绕，不能直接把回绕后的 GetTickCount 当作单调值。
+budget_us 仍须非负，负预算同样在改变状态前拒绝；零仍使用默认处理量。
+
+显式 pause 或 video callback 返回 STOP 均冻结最后一次活动 pump 的进度；暂停中的 pump
+返回 OK，不检查或记录 clock_us。resume 后第一个合法 pump 只更新宿主时钟基点，不累计
+两次活动 pump 之间的暂停间隔，因此未到期帧仍等剩余时间；对未暂停 session 重复 resume
+不会改变基点。这里没有 pause/resume 调用瞬间的时钟参数，不能保证亚 pump 间隔的暂停精度。
+STOP 对应帧已经消费，恢复后不重放该帧。
+
+该模式只支持 `pm_seek(session, 0)`：从 DLL 缓存创建新的 demux/decoder，成功后替换旧
+状态、丢弃待输出帧并清除时钟/PTS 基点，暂停状态保持；新的活动 pump 可以使用新的时钟
+起点。正值 seek 返回 NOT_SEEKABLE，拒绝前不改变帧或时钟。重建会短暂持有两套 decoder，
+失败回滚的分配注入与峰值内存仍待门。stop 释放 decoder/待输出帧，之后仅可 close/查询。
+
+若帧仍无非负 PTS，或呈现 PTS 比已交付帧回退，pump 返回 FORMAT，不交付该帧；已有的
+条件 PTS 推导规则及 PTS_INFERRED 标记保持，不凭未知起点生成时钟。此模式的 decoder/
+帧守卫或负 callback 错误进入失败态，报告一次；后续 pump/pause/resume/seek 返回 STATE，
+stop/close 仍可清理。当前设备证据覆盖固定有序 PTS 和裸流/混合流拒绝，容器内未知/回退
+PTS 的终态分支仍需专用 fixture；不宣称 VFR、时轴跳变或任意损坏已验收。
+
 ## Source 回调合同
 
 ### read
@@ -384,7 +434,7 @@ FFmpeg 路径保留输入的呈现时间轴，不把 TS/PS 的非零 PTS 起点�
 PTS 时，只有前一输出帧具有已知非负 PTS、正的 duration 且相加不溢出，DLL 才用两者之和
 估计当前 PTS，并设置 `PMEDIA_FRAME_PTS_INFERRED`；没有可靠起点时仍返回未知值 `-1`。
 显式 PTS 不会被该估计覆盖；成功 seek 会清除推导状态，避免沿用跳转前的时间轴。应用可按位
-区分估计时间戳与 decoder 时间戳，这不等于 DLL 已按宿主时钟调度或同步音视频。
+区分估计时间戳与 decoder 时间戳；默认不按时交付，可选视频调度也不等于音视频同步。
 
 绘制前检查 `frame->flags & PMEDIA_FRAME_FULL_RANGE`：置位表示 JPEG/全范围 YUV，
 sample 范围为 0..255；例如 MJPEG 的 YUVJ420P 仍使用相同 I420 plane 布局，但不能套用
@@ -418,7 +468,7 @@ pm_pump() 的常见结果如下：
 | 返回值 | 应用处理 |
 | --- | --- |
 | PMEDIA_OK | 已完成一小段工作，或 session 当前暂停；稍后继续调用 |
-| PMEDIA_WOULD_BLOCK | 当前 WaveOut 块尚未播放完；交还消息循环，稍后继续调用 |
+| PMEDIA_WOULD_BLOCK | 当前 WaveOut 块尚未播放完，或可选视频调度的帧尚未到期；稍后继续调用 |
 | PMEDIA_EOF | 所有可输出流已经耗尽；通常关闭 session |
 | PMEDIA_ERROR_* | 停止泵循环，读取 pm_last_error()，然后释放 session |
 | PMEDIA_CALLBACK_STOP | 兼容路径可能直接返回；按暂停处理并在需要时 resume |
@@ -442,8 +492,8 @@ demux 和音视频 decoder，保留初始 priming 并清除音频历史，不再
 耗时及分配失败注入仍待测量。
 便携 WAV IMA 路径例外：已验证按 sample 定位的块内/块边界非零 seek，首个输出 PTS 对应
 定位后的 sample；到达或超过 duration（包括极大正值）直接定位 EOF，不从块头重播。
-budget_us 必须非负；零使用内部默认处理量。clock_us 目前不驱动按时输出、迟到丢帧、
-音视频同步或暂停时间基准，这些仍是本阶段待实现的播放器能力。EOF 事件对当前播放区间只发
+budget_us 必须非负；零使用内部默认处理量。默认解码-only 忽略 clock_us；可选单视频调度
+的时钟、暂停和零点 seek 例外见上节，迟到丢帧和音视频同步仍未实现。EOF 事件对当前播放区间只发
 一次；成功 seek 后开始新的区间。原生 callback STOP 的块重放语义尚未有设备断言，不应据此
 承诺与软解完全相同的消费位置。
 
@@ -508,6 +558,8 @@ pm_error_callback 的 message 同样只在当前回调期间有效。错误回�
 - 总体架构、线程和所有权：[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
 - 回归宿主边界：[test_host/README.md](../test_host/README.md)
 - FFmpeg 版本、移植和许可证：[third_party/ffmpeg-3.4.14/POSITRON_PORT.md](../third_party/ffmpeg-3.4.14/POSITRON_PORT.md)、[THIRD_PARTY.md](../THIRD_PARTY.md)
+
+## 验收边界
 
 当前 Debug/Release 设备证据覆盖 WM6 Emulator 上的输入错误传播、probe 失败不改输出、
 非 seek WAV PCM8 与双声道 PCM16 的样本/时间戳、EOF/seek 重播、软解回调暂停与失败、
@@ -576,6 +628,13 @@ pump/resume/seek 返回 STATE，不再输出，close 成功。按完整 NAL 边�
 有效前缀后的越界 ID 参数集，4096-byte 返回 FORMAT、4097-byte 返回 LIMIT，包含末尾
 追加超限 PPS；这只验证负控制和预算优先级，不证明合法最大尺寸参数可解码。
 VFR/SEI timing、其他 slice 工具/损坏模式、合法极限参数和重建分配失败仍待门。
+
+可选时钟模式通过 TEST1352 双配置设备门：复用 MP4 MPEG-4 Simple、MP4/FLV Main VGA
+B 帧和 AVI H.263 CIF，分别从可 seek/不可 seek source 打开，用合成时钟检查提前 1 µs
+不输出、到期输出、源 PTS/像素保持、同值/回退/负时钟、非法预算、暂停/STOP/幂等 resume、
+暂停中丢弃缓存帧并 seek 零、INT64_MAX 附近与大幅跳时钟不丢帧、EOF/错误一次性、停止/关闭。
+打开后禁止读取 source，重播仍成功；非法 flags/backend/缺 callback、WAV/音频/混合流/
+裸流/PS 的拒绝亦有断言。其他容器时间轴和总内存/重建故障注入仍未验收。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
