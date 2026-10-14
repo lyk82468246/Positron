@@ -118,14 +118,33 @@ STATE 且不再回调、close 成功。打开后 source 禁止重读。`annexb-t
 VFR、SEI、其他编码工具与损坏模式仍未验收。
 
 TEST1352 复用 `mpeg4-simple.mp4`、`main-vga.mp4`、`h263-cif.avi` 和
-`flv-main-vga.flv`，不增加或改写 pin。SOFT + SCHEDULE_VIDEO 的合成宿主时钟断言检查
+`flv-main-vga.flv`。SOFT + SCHEDULE_VIDEO 的合成宿主时钟断言检查
 首帧对齐、截止前 1 µs 保留帧/到期输出、源 PTS/像素/stride、负/回退/同值时钟与非法预算，
 显式暂停及 STOP 后恢复、幂等 resume、暂停中 seek 零丢弃待输出帧、EOF 一次性、极大
 时钟不溢出/不丢帧和停止/负 callback 终态/关闭。四条各使用可 seek/不可 seek source；
 打开后禁止读源，缓存重播必须仍成功。非法 flags/backend/缺视频 callback、WAV、
 `baseline-aac.mp4` 混合流、Annex-B、ADTS 和 PS 均验证拒绝。
 这是公共 DLL 的到期回调合同，不是宿主自建调度器；无实际睡眠，不证明实时帧率、
-音视频同步、总内存、容器未知/回退 PTS 分支或重建分配失败。
+音视频同步、总内存或重建分配失败。
+
+时间戳控制组 `flv-clock-{base,unknown,late-unknown,backward,negative,gap,duplicate}.flv`
+从固定 `flv-h264-aac.flv` 删除音频/script tag 并设置 video-only 标志，保留所有 AVC
+配置和三个 I/P/P payload，只变换视频包的 FLV DTS/有符号 CTS。每条 1052 字节，旧 pin 不变。
+base 的 DTS/PTS 为 21/221/421 ms、CTS 为零；unknown 对三个包设置 CTS=900001 ms，
+固定 demux 会把 PTS/DTS 标为未知；late-unknown 只改后两个包。此阈值来自
+[FFmpeg 3.4 FLV 解析器](https://ffmpeg.org/doxygen/3.4/libavformat_2flvdec_8c_source.html)，
+不改 AVCC/slice，不把它当作完整坏 FLV 验收。negative 首包 CTS=-22 ms，PTS=-1 ms，
+这是已知负值而非未知 sentinel；backward 将第二包 DTS/PTS 改为零；gap 为 21/621/821 ms，
+duplicate 为 21/21/421 ms。
+
+TEST1352 各使用可 seek/不可 seek source、7-byte 短读：先验证默认解码的三帧/像素/PTS，
+再各创建三个调度 session。unknown/negative 零帧 FORMAT，backward 保留首帧后 FORMAT；
+必须匹配具体时钟守卫错误文字、错误回调/事件一次、无正常 EOF、后续状态守卫及 stop/close。
+调度禁用 demux 隐式补零；默认 unknown 控制仍从零起，后两帧为 200/400 ms 并带推导标记。
+late-unknown 的后两帧保持 221/421 ms、各设 PTS_INFERRED；名义时长为 200 ms。
+base/gap/duplicate 的显式 PTS 不重写，截止前 1 µs 不交付、到期交付，重复 PTS 每次 pump
+一帧；EOF 和暂停中缓存 seek 零重置也有断言，打开后禁止再读 source。
+这不是完整 VFR/SEI、无 timing/零时长/推导溢出或其他容器异常的一致性门。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
@@ -138,6 +157,7 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 夹具采用相同 pin 规则，离线按固定字节变换生成，不调用编码器、不改原文件。
 `--extend-annexb-damage` 对九条损坏/完整边界控制输入采用同一规则；派生不重新编码。
 `--extend-annexb-parameters` 对 PPS/引用/容量组采用同一规则，不改已有 pin。
+`--extend-flv-clock` 对七条时间戳控制采用相同规则，只做固定字节变换，不重编码。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -155,6 +175,11 @@ H.263 的独立桌面校验：`python scripts/test_media_h263_fixtures.py --ffmp
 必须显式指定 manifest 固定生成器；只读、单线程、Windows 低优先级，检查三个文件的
 全部有效像素、I/P/P、尺寸、PTS/时长和渐进属性。桌面可解码超限文件只证明夹具有效，
 WM6 必须拒绝它；设备断言采用像素取样，桌面全像素检查不能替代设备门。
+
+时钟控制的独立校验：`python scripts/test_media_clock_fixtures.py --ffmpeg PATH`。
+只读、同一 pinned 工具、单线程低优先级：验证精确 DTS/CTS、tag 边界、除时间戳外的全部
+AVC tag/payload 与源相同，独立解码三帧全部有效 I420 像素。桌面 CLI 可以自动生成 PTS，
+因此其帧 PTS 不作为 WM6 未知/推导时间戳或调度参考；必须另过公共 DLL 设备门。
 
 FLV 的独立桌面校验：`python scripts/test_media_flv_fixtures.py --ffmpeg PATH`。
 必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查四条输入的全部有效像素、

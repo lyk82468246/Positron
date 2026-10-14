@@ -891,6 +891,7 @@ PMEDIA_API int pm_open(const pm_source_callbacks *source,
         ff_result = pmedia_ffmpeg_open(session->input, session->input_bytes,
                                        &session->output,
                                        max_video_width, max_video_height,
+                                       session->schedule_video,
                                        &ffmpeg, &ff_info, &ff_capabilities,
                                        ff_error, sizeof(ff_error));
         if (ff_result == PMEDIA_OK && session->schedule_video) {
@@ -1063,6 +1064,7 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
 #ifdef PMEDIA_HAS_FFMPEG
     if (session->ffmpeg_active && session->ffmpeg != NULL) {
         int ff_result;
+        const char *ff_message;
         ff_result = pmedia_ffmpeg_pump((pmedia_ffmpeg *)session->ffmpeg,
                                        clock_us, budget_us);
         if (ff_result == PMEDIA_CALLBACK_STOP) {
@@ -1079,7 +1081,8 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
             if (ff_result == PMEDIA_ERROR_FORMAT && session->info.container == PMEDIA_CONTAINER_RAW &&
                 session->info.video_codec == PMEDIA_CODEC_H264)
                 session->decode_failed = 1;
-            pm_set_error(session, ff_result, "FFmpeg software pump failed");
+            ff_message = pmedia_ffmpeg_clock_error((pmedia_ffmpeg *)session->ffmpeg);
+            pm_set_error(session, ff_result, ff_message == NULL ? "FFmpeg software pump failed" : ff_message);
         }
         return ff_result;
     }

@@ -14,6 +14,7 @@ int pmedia_ffmpeg_open(const unsigned char *input,
                        const pm_output_callbacks *output,
                        int max_video_width,
                        int max_video_height,
+                       int schedule_video,
                        pmedia_ffmpeg **out_context,
                        pm_stream_info *out_info,
                        pm_capabilities *out_capabilities,
@@ -30,6 +31,7 @@ int pmedia_ffmpeg_probe(const unsigned char *input,
 void pmedia_ffmpeg_close(pmedia_ffmpeg *context);
 
 int pmedia_ffmpeg_schedule_video(pmedia_ffmpeg *context);
+const char *pmedia_ffmpeg_clock_error(pmedia_ffmpeg *context);
 int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
                        pm_position clock_us,
                        int budget_us);

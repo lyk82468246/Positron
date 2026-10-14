@@ -74,6 +74,7 @@ struct pmedia_ffmpeg {
     pm_position last_pts_us;
     pm_position pump_clock_us;
     pm_video_frame pending_video;
+    const char *clock_error;
 };
 
 static void pm_ff_error(char *error_text, int error_text_bytes,
@@ -840,6 +841,7 @@ static int pm_ff_open_internal(const unsigned char *input,
                                const pm_output_callbacks *output,
                                int max_video_width,
                                int max_video_height,
+                               int schedule_video,
                                pmedia_ffmpeg **out_context,
                                pm_stream_info *out_info,
                                pm_capabilities *out_capabilities,
@@ -863,6 +865,7 @@ static int pm_ff_open_internal(const unsigned char *input,
     context->input_bytes = input_bytes;
     context->max_video_width = max_video_width;
     context->max_video_height = max_video_height;
+    context->schedule_video = schedule_video;
     context->video_stream = -1;
     context->audio_stream = -1;
     if (output != NULL) {
@@ -898,6 +901,10 @@ static int pm_ff_open_internal(const unsigned char *input,
     }
     context->format->pb = context->io;
     context->format->flags |= AVFMT_FLAG_CUSTOM_IO;
+    /* Clock mode must not let demux compute_pkt_fields manufacture a zero
+     * origin or repair explicit DTS/PTS.  Keep decode-only compatibility;
+     * output-level inference may continue only an already known timeline. */
+    if (schedule_video) context->format->flags |= AVFMT_FLAG_NOFILLIN;
     result = avformat_open_input(&context->format, NULL, NULL, NULL);
     if (result < 0 || context->format == NULL) {
         pm_ff_error_code(error_text, error_text_bytes,
@@ -960,6 +967,7 @@ int pmedia_ffmpeg_open(const unsigned char *input,
                        const pm_output_callbacks *output,
                        int max_video_width,
                        int max_video_height,
+                       int schedule_video,
                        pmedia_ffmpeg **out_context,
                        pm_stream_info *out_info,
                        pm_capabilities *out_capabilities,
@@ -969,6 +977,7 @@ int pmedia_ffmpeg_open(const unsigned char *input,
     if (out_context != NULL) *out_context = NULL;
     return pm_ff_open_internal(input, input_bytes, output,
                                max_video_width, max_video_height,
+                               schedule_video,
                                out_context, out_info, out_capabilities,
                                error_text, error_text_bytes);
 }
@@ -984,7 +993,7 @@ int pmedia_ffmpeg_probe(const unsigned char *input,
     int result;
 
     context = NULL;
-    result = pm_ff_open_internal(input, input_bytes, NULL, 640, 480,
+    result = pm_ff_open_internal(input, input_bytes, NULL, 640, 480, 0,
                                  &context, out_info, out_capabilities,
                                  error_text, error_text_bytes);
     if (context != NULL) pm_ff_cleanup(context);
@@ -1097,8 +1106,14 @@ static int pm_ff_deliver_video(pmedia_ffmpeg *context)
     pm_video_frame *frame;
 
     frame = &context->pending_video;
-    if (frame->pts_us < 0 || (context->clock_anchored &&
-        frame->pts_us < context->last_pts_us)) return PMEDIA_ERROR_FORMAT;
+    if (frame->pts_us < 0) {
+        context->clock_error = "scheduled video requires a nonnegative presentation timestamp";
+        return PMEDIA_ERROR_FORMAT;
+    }
+    if (context->clock_anchored && frame->pts_us < context->last_pts_us) {
+        context->clock_error = "scheduled video presentation timestamp moved backward";
+        return PMEDIA_ERROR_FORMAT;
+    }
     if (!context->clock_anchored) {
         context->clock_anchor_us = context->pump_clock_us;
         context->pts_anchor_us = frame->pts_us;
@@ -1165,6 +1180,14 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     } else if (stream->avg_frame_rate.num > 0 && stream->avg_frame_rate.den > 0) {
         frame_time.num = stream->avg_frame_rate.den;
         frame_time.den = stream->avg_frame_rate.num;
+        frame.duration_us = pm_ff_timestamp(1, frame_time);
+    } else if (context->schedule_video && context->video_codec->codec_id == AV_CODEC_ID_H264 &&
+               context->video_codec->framerate.num > 0 && context->video_codec->framerate.den > 0) {
+        /* NOFILLIN also removes computed packet duration.  For container AVC,
+         * the decoder's SPS timing gives a nominal interval, not a PTS origin
+         * or VFR/SEI timing.  Never use the raw demuxer's guessed rate here. */
+        frame_time.num = context->video_codec->framerate.den;
+        frame_time.den = context->video_codec->framerate.num;
         frame.duration_us = pm_ff_timestamp(1, frame_time);
     }
     /* MPEG-PS can drain a final reordered frame without an explicit PTS.
@@ -1275,6 +1298,11 @@ static int pm_ff_send_flush(pmedia_ffmpeg *context,
     return PMEDIA_OK;
 }
 
+const char *pmedia_ffmpeg_clock_error(pmedia_ffmpeg *context)
+{
+    return context == NULL ? NULL : context->clock_error;
+}
+
 int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
                        pm_position clock_us,
                        int budget_us)
@@ -1371,10 +1399,9 @@ static int pm_ff_restart_cached(pmedia_ffmpeg *context)
     capabilities.size = sizeof(capabilities);
     result = pm_ff_open_internal(context->input, context->input_bytes,
                                  &context->output, context->max_video_width,
-                                 context->max_video_height, &replacement,
+                                 context->max_video_height, context->schedule_video, &replacement,
                                  &info, &capabilities, NULL, 0);
     if (result != PMEDIA_OK) return result;
-    replacement->schedule_video = context->schedule_video;
     previous = *context;
     *context = *replacement;
     *replacement = previous;

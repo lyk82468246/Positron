@@ -201,6 +201,57 @@ def annexb_records(exe):
     return records
 
 
+FLV_CLOCK = ["base", "unknown", "late-unknown", "backward", "negative", "gap", "duplicate"]
+
+
+def flv_clock_records(exe):
+    # Fixture-only: preserve the pinned Baseline AVCC/video payloads, removing
+    # audio/script tags and changing only FLV timestamp/composition fields.
+    source = (DEST / "flv-h264-aac.flv").read_bytes()
+    header = bytearray(source[:13])
+    assert header[:5] == b"FLV\x01\x05" and header[5:9] == b"\x00\x00\x00\x09"
+    header[4] = 1
+    tags = []
+    position = 13
+    while position < len(source):
+        size = int.from_bytes(source[position + 1:position + 4], "big")
+        tag = source[position:position + size + 15]
+        assert len(tag) == size + 15 and int.from_bytes(tag[-4:], "big") == size + 11
+        if tag[0] == 9:
+            assert size >= 5 and tag[11] & 15 == 7
+            tags.append(tag)
+        position += size + 15
+    assert position == len(source)
+    packets = [i for i, tag in enumerate(tags) if tag[12] == 1]
+    assert len(packets) == 3
+    assert [int.from_bytes(tags[i][4:7], "big") | (tags[i][7] << 24) for i in packets] == [21, 221, 421]
+    assert all(tags[i][13:16] == b"\x00\x00\x00" for i in packets)
+    records = []
+    for stem in FLV_CLOCK:
+        changed = [bytearray(tag) for tag in tags]
+        for index, tag_index in enumerate(packets):
+            tag = changed[tag_index]
+            timestamp = [21, 221, 421][index]
+            composition = 0
+            if stem == "unknown" or (stem == "late-unknown" and index > 0):
+                composition = 900001  # pinned demux invalidates PTS and DTS (>15 minutes)
+            elif stem == "negative" and index == 0:
+                composition = -22  # known -1 ms, not AV_NOPTS_VALUE
+            elif stem == "backward" and index == 1:
+                timestamp = 0
+            elif stem == "gap":
+                timestamp = [21, 621, 821][index]
+            elif stem == "duplicate":
+                timestamp = [21, 21, 421][index]
+            tag[4:7] = (timestamp & 0xffffff).to_bytes(3, "big")
+            tag[7] = timestamp >> 24
+            tag[13:16] = (composition & 0xffffff).to_bytes(3, "big")
+        name = "flv-clock-" + stem + ".flv"
+        (DEST / name).write_bytes(bytes(header) + b"".join(changed))
+        records.append({"file": name, "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1"})
+    return records
+
+
 def annexb_sequence_records(exe):
     # Fixture-only mutation at pinned trace_headers bit offsets (NAL header included).
     source = (DEST / "annexb-baseline-aac.h264").read_bytes()
@@ -379,6 +430,7 @@ def extend(exe, group):
         "h263": ({"h263-cif.avi", "h263p-vga.avi", "h263-oversize.avi"}, h263_records),
         "flv": ({"flv-h264-aac.flv", "flv-main-vga.flv", "flv-oversize.flv",
                  "flv1-unsupported.flv"}, flv_records),
+        "flv-clock": ({"flv-clock-" + stem + ".flv" for stem in FLV_CLOCK}, flv_clock_records),
         "annexb": ({"annexb-" + stem + ".h264" for stem in
                     ["baseline-aac", "main-vga", "high", "high422", "interlaced", "oversize"]}, annexb_records),
         "annexb-sequence": ({"annexb-no-timing.h264", "annexb-repeat-sps.h264", "annexb-change-no-timing.h264"} |
@@ -428,7 +480,7 @@ def generate(exe):
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
               ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) +
-              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe))
+              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe))
 
 
 def check():
@@ -451,17 +503,18 @@ if __name__ == "__main__":
     action.add_argument("--extend-mpeg4", action="store_true")
     action.add_argument("--extend-h263", action="store_true")
     action.add_argument("--extend-flv", action="store_true")
+    action.add_argument("--extend-flv-clock", action="store_true")
     action.add_argument("--extend-annexb", action="store_true")
     action.add_argument("--extend-annexb-sequence", action="store_true")
     action.add_argument("--extend-annexb-damage", action="store_true")
     action.add_argument("--extend-annexb-parameters", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
-            extend(opts.ffmpeg, "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+            extend(opts.ffmpeg, "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

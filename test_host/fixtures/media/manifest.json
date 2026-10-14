@@ -1526,6 +1526,48 @@
       "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
       "bytes": 935,
       "sha256": "64d0a76a8320b4b80f930130e4333904231751d7e7b013846af3256375c4e21f"
+    },
+    {
+      "file": "flv-clock-base.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "5357636837ad32ea7cfc0cfd57a32f0f88657884997531dc5c8294f8c8e6ae1b"
+    },
+    {
+      "file": "flv-clock-unknown.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "968def2daca40633600450b492e1b37cadc4d9ed19e4f6e1e05fafa0aef48872"
+    },
+    {
+      "file": "flv-clock-late-unknown.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "dd10e4c97b7bd99259a379c2aafe218c1bdb7de74ff0996a82c3c1591b8cf25b"
+    },
+    {
+      "file": "flv-clock-backward.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "80b3526b67d11235853e51dd244511b316f02d4ca9070b9cc902b423cf1c7219"
+    },
+    {
+      "file": "flv-clock-negative.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "a14ead55ac2dc1937bd6445413ce7c166cc5361d2f5d1b76aaca92a9f5f7ad14"
+    },
+    {
+      "file": "flv-clock-gap.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "3b5ed10b1e1b01a14c2a9af9dffd83fe923aee88fed9e395ace2cb517d7e1437"
+    },
+    {
+      "file": "flv-clock-duplicate.flv",
+      "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
+      "bytes": 1052,
+      "sha256": "d2faaf1b1c6f429c2a3c0447d23cd379fc0c111020aed8441a555619543f8538"
     }
   ]
 }

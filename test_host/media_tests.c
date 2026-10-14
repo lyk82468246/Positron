@@ -501,6 +501,9 @@ typedef struct media_compressed_sink {
     int check_audio_timeline;
     pm_position audio_start_us;
     int inferred_last_frame;
+    int explicit_video_pts;
+    pm_position expected_video_pts[3];
+    unsigned int inferred_video_mask;
     int amr_frame_samples;
     int amr_last_sample;
     int amr_have_sample;
@@ -578,17 +581,25 @@ static int media_compressed_video(void *context, const pm_video_frame *frame)
     int value;
     int target;
     pm_position duration;
+    pm_position expected_pts;
+    int inferred;
 
     sink = (media_compressed_sink *)context;
     duration = sink->video_duration_us > 0 ? sink->video_duration_us : 200000;
+    if (sink->explicit_video_pts && sink->frames >= 3) goto invalid;
+    expected_pts = sink->explicit_video_pts ? sink->expected_video_pts[sink->frames] :
+        sink->video_start_us + (pm_position)sink->frames * duration +
+        (sink->frames > 0 ? sink->video_gap_us : 0);
+    inferred = sink->explicit_video_pts ?
+        !!(sink->inferred_video_mask & (1U << sink->frames)) :
+        (sink->inferred_last_frame && sink->frames == 2);
     if (frame == NULL || frame->size != sizeof(*frame) ||
         frame->format != PMEDIA_PIXEL_I420 || frame->width != sink->width ||
         frame->height != sink->height || frame->flags & PMEDIA_FRAME_INTERLACED ||
         !!(frame->flags & PMEDIA_FRAME_FULL_RANGE) != sink->full_range ||
         !!(frame->flags & PMEDIA_FRAME_PTS_INFERRED) !=
-            (sink->inferred_last_frame && sink->frames == 2) ||
-        frame->pts_us != sink->video_start_us + (pm_position)sink->frames * duration +
-                         (sink->frames > 0 ? sink->video_gap_us : 0) ||
+            inferred ||
+        frame->pts_us != expected_pts ||
         frame->duration_us != duration ||
         (sink->frames == 0 && !(frame->flags & PMEDIA_FRAME_KEY))) goto invalid;
     for (plane = 0; plane < 3; plane++) {
@@ -1298,6 +1309,163 @@ static BOOL media_clock_expect(pm_session session, media_compressed_sink *sink,
     return FALSE;
 }
 
+static int media_clock_pts_video(void *context, const pm_video_frame *frame)
+{
+    media_compressed_sink *sink;
+    char detail[160];
+    int result;
+    sink = (media_compressed_sink *)context;
+    if (frame != NULL && sink->aac_progress != NULL) {
+        _snprintf(detail, sizeof(detail), "clock PTS frame=%d pts=%I64d duration=%I64d flags=%lu",
+                  sink->frames, frame->pts_us, frame->duration_us, frame->flags);
+        detail[sizeof(detail) - 1] = '\0';
+        sink->aac_progress(detail);
+    }
+    result = media_compressed_video(context, frame);
+    return result;
+}
+
+static void media_clock_pts_reset(media_compressed_sink *sink, int test, int scheduled,
+                                  void (*progress)(const char *))
+{
+    memset(sink, 0, sizeof(*sink));
+    sink->width = 320;
+    sink->height = 240;
+    sink->explicit_video_pts = 1;
+    sink->expected_video_pts[0] = test == 1 ? -1 : (test == 4 ? -1000 : 21000);
+    sink->expected_video_pts[1] = test == 1 ? -1 :
+        (test == 3 ? 0 : (test == 5 ? 621000 : (test == 6 ? 21000 : 221000)));
+    sink->expected_video_pts[2] = test == 1 ? -1 : (test == 5 ? 821000 : 421000);
+    sink->inferred_video_mask = test == 2 ? 6U : 0;
+    /* Explicit compatibility control: legacy demux may fill unknown packets.
+     * Clock mode must not turn this manufactured zero origin into a clock. */
+    if (!scheduled && test == 1) {
+        sink->expected_video_pts[0] = 0;
+        sink->expected_video_pts[1] = 200000;
+        sink->expected_video_pts[2] = 400000;
+        sink->inferred_video_mask = 6U;
+    }
+    sink->aac_progress = progress;
+}
+
+static BOOL media_clock_pts_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = {
+        L"flv-clock-base.flv", L"flv-clock-unknown.flv", L"flv-clock-late-unknown.flv",
+        L"flv-clock-backward.flv", L"flv-clock-negative.flv", L"flv-clock-gap.flv",
+        L"flv-clock-duplicate.flv"
+    };
+    media_fixture_source input;
+    media_compressed_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_probe_info probe;
+    pm_session session;
+    unsigned char *data;
+    pm_position deadline;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int expected_frames;
+
+    session = NULL;
+    data = NULL;
+    for (test = 0; test < 7; test++) {
+        data = media_compressed_load(names[test], &bytes);
+        g_media_compressed_error = "clock PTS fixture load";
+        if (data == NULL) goto fail;
+        for (iteration = 0; iteration < 2; iteration++) {
+            media_compressed_init(&input, &sink, &source, &output, &options);
+            media_clock_pts_reset(&sink, test, 0, progress);
+            input.data = data;
+            input.bytes = bytes;
+            input.read_chunk = 7;
+            memset(&probe, 0, sizeof(probe));
+            probe.size = sizeof(probe);
+            input.position = 1;
+            if (pm_probe(&source, &probe) != PMEDIA_OK || input.position != 1 ||
+                probe.stream.container != PMEDIA_CONTAINER_FLV || !probe.stream.has_video ||
+                probe.stream.has_audio || probe.stream.video_codec != PMEDIA_CODEC_H264 ||
+                probe.stream.width != 320 || probe.stream.height != 240) goto fail;
+            source.seek = iteration ? media_fixture_seek : NULL;
+            source.tell = iteration ? media_fixture_tell : NULL;
+            input.position = 0;
+            output.video = media_clock_pts_video;
+            _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                      "clock PTS case=%d seekable=%d decode-only control", test, iteration);
+            g_media_compressed_error = g_media_compressed_detail;
+            if (progress != NULL) progress(g_media_compressed_error);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            input.read_mode = 2;
+            if (!media_clock_expect(session, &sink, 0, 3, PMEDIA_EOF) ||
+                sink.events.errors || sink.events.error_callbacks || sink.events.eof_events != 1 ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            for (pass = 0; pass < 3; pass++) {
+                input.read_mode = 0;
+                input.position = 0;
+                media_clock_pts_reset(&sink, test, 1, progress);
+                options.flags = PMEDIA_OPEN_SCHEDULE_VIDEO;
+                _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+                          "clock PTS case=%d seekable=%d scheduled pass=%d", test, iteration, pass);
+                g_media_compressed_error = g_media_compressed_detail;
+                if (progress != NULL) progress(g_media_compressed_error);
+                if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+                input.read_mode = 2;
+                if (test == 1 || test == 3 || test == 4) {
+                    expected_frames = test == 3 ? 1 : 0;
+                    if (expected_frames && !media_clock_expect(session, &sink, 1000000, 1, PMEDIA_OK)) goto fail;
+                    if (!media_clock_expect(session, &sink, 1000000, expected_frames, PMEDIA_ERROR_FORMAT) ||
+                        sink.events.error_callbacks != 1 || sink.events.error_events != 1 ||
+                        sink.events.last_error != PMEDIA_ERROR_FORMAT || sink.events.errors ||
+                        sink.events.eof_events || strcmp(pm_last_error(session), test == 3 ?
+                        "scheduled video presentation timestamp moved backward" :
+                        "scheduled video requires a nonnegative presentation timestamp") != 0 ||
+                        pm_pump(session, 2000000, 0) != PMEDIA_ERROR_STATE ||
+                        pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                        pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                        sink.events.error_callbacks != 1 || sink.events.error_events != 1 ||
+                        sink.frames != expected_frames || pm_stop(session) != PMEDIA_OK ||
+                        pm_stop(session) != PMEDIA_OK || sink.events.stopped_events != 1 ||
+                        pm_close(session) != PMEDIA_OK) goto fail;
+                    session = NULL;
+                    if (sink.events.eof_events || sink.events.error_callbacks != 1 ||
+                        sink.frames != expected_frames) goto fail;
+                } else {
+                    if (!media_clock_expect(session, &sink, 1000000, 1, PMEDIA_OK)) goto fail;
+                    deadline = 1000000 + sink.expected_video_pts[1] - sink.expected_video_pts[0];
+                    if (deadline > 1000000 &&
+                        !media_clock_expect(session, &sink, deadline - 1, 1, PMEDIA_WOULD_BLOCK)) goto fail;
+                    if (!media_clock_expect(session, &sink, deadline, 2, PMEDIA_OK)) goto fail;
+                    deadline = 1000000 + sink.expected_video_pts[2] - sink.expected_video_pts[0];
+                    if (!media_clock_expect(session, &sink, deadline - 1, 2, PMEDIA_WOULD_BLOCK) ||
+                        !media_clock_expect(session, &sink, deadline, 3, PMEDIA_OK) ||
+                        !media_clock_expect(session, &sink, deadline, 3, PMEDIA_EOF) ||
+                        sink.events.eof_events != 1 || sink.events.errors || sink.events.error_callbacks ||
+                        pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    media_clock_pts_reset(&sink, test, 1, progress);
+                    if (pm_pump(session, 0, 0) != PMEDIA_OK || sink.frames ||
+                        pm_resume(session) != PMEDIA_OK ||
+                        !media_clock_expect(session, &sink, 0, 1, PMEDIA_OK) ||
+                        pm_stop(session) != PMEDIA_OK || pm_close(session) != PMEDIA_OK) goto fail;
+                    session = NULL;
+                    if (sink.events.errors || sink.events.error_callbacks || sink.frames != 1 ||
+                        sink.events.eof_events) goto fail;
+                }
+            }
+        }
+        free(data);
+        data = NULL;
+    }
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    return FALSE;
+}
+
 BOOL test1352_media_clock_contract(void (*progress)(const char *))
 {
     static const WCHAR *names[] = {
@@ -1470,6 +1638,7 @@ BOOL test1352_media_clock_contract(void (*progress)(const char *))
         free(data);
         data = NULL;
     }
+    if (!media_clock_pts_contract(progress)) return FALSE;
     g_media_compressed_error = "scheduled video contract passed";
     if (progress != NULL) progress(g_media_compressed_error);
     return TRUE;

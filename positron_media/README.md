@@ -305,6 +305,11 @@ AVI 或 FLV 中恰好一个视频流，不含音频或其他 stream；有效但�
 音频/混合流、裸流、TS/PS 返回 UNSUPPORTED，不产生视频/音频回调。
 probe 只报告解码能力，不证明输入符合调度模式；open 和后续 pump 仍会验证。
 
+调度模式在解复用开始前禁用 FFmpeg 的隐式字段补全（NOFILLIN），不让缺失 PTS/DTS
+被补成零起点；缓存重建也保留此策略。默认解码-only 和 probe 保持旧的 best-effort 行为，
+可能得到解复用器补出的起点，不能据此推断原始容器有时间戳。PTS_INFERRED 只标明
+DLL 的输出层推导，不标明 FFmpeg 内部补时或选择 DTS；未置位不是源时间戳真实性证明。
+
 第一帧的非负 PTS 对齐到实际交付它的 pump 时钟，不要求宿主时钟与媒体起点相同，也
 不改写 callback 的源 PTS。后续帧只有在活动时钟经过相应 PTS 差值后才交付；未到期
 返回 WOULD_BLOCK，应用应交还消息循环后再 pump，不在 DLL 内睡眠。
@@ -331,8 +336,14 @@ STOP 对应帧已经消费，恢复后不重放该帧。
 若帧仍无非负 PTS，或呈现 PTS 比已交付帧回退，pump 返回 FORMAT，不交付该帧；已有的
 条件 PTS 推导规则及 PTS_INFERRED 标记保持，不凭未知起点生成时钟。此模式的 decoder/
 帧守卫或负 callback 错误进入失败态，报告一次；后续 pump/pause/resume/seek 返回 STATE，
-stop/close 仍可清理。当前设备证据覆盖固定有序 PTS 和裸流/混合流拒绝，容器内未知/回退
-PTS 的终态分支仍需专用 fixture；不宣称 VFR、时轴跳变或任意损坏已验收。
+stop/close 仍可清理。已验证 FLV 首帧未知或已知负起点在零帧时失败，回退 PTS 在保留
+首个有效帧后失败，错误回调/事件各一次；错误文字区分无非负 PTS 和呈现 PTS 回退。
+已有可靠起点后缺失 PTS 可以继续推导，并以 PTS_INFERRED 标明；这不是恢复源本来的时间轴。
+同值 PTS 允许，每 pump 仍最多一帧；显式向前间隔按差值等待，不重置起点、不按帧号补齐。
+容器 AVC 的 packet duration 和平均帧率都缺失时，可取 decoder 的 SPS timing 所得名义
+帧间隔；它不产生 PTS 起点，也不是 VFR/SEI 的真实时长。未知时长仍为零，不继续推导。
+上述合同只以固定 FLV 时间戳变换验收；其他容器异常、无 timing/未知时长与推导溢出、
+变化的参数集和完整 VFR/SEI 仍需专用门，不承诺任意损坏检测。
 
 ## Source 回调合同
 
@@ -433,6 +444,8 @@ probe 成功不表示整个压缩 payload 完整：裸流 decoder 启用严格�
 FFmpeg 路径保留输入的呈现时间轴，不把 TS/PS 的非零 PTS 起点归零。decoder 没有提供
 PTS 时，只有前一输出帧具有已知非负 PTS、正的 duration 且相加不溢出，DLL 才用两者之和
 估计当前 PTS，并设置 `PMEDIA_FRAME_PTS_INFERRED`；没有可靠起点时仍返回未知值 `-1`。
+这里的“未知”指 decoder 的 best-effort timestamp 仍未知；默认解复用器可能已补过字段，
+因此缺少 INFERRED 标记不证明容器的原始 PTS 存在。可选调度禁用该层补全，见上节。
 显式 PTS 不会被该估计覆盖；成功 seek 会清除推导状态，避免沿用跳转前的时间轴。应用可按位
 区分估计时间戳与 decoder 时间戳；默认不按时交付，可选视频调度也不等于音视频同步。
 
@@ -634,7 +647,11 @@ B 帧和 AVI H.263 CIF，分别从可 seek/不可 seek source 打开，用合成
 不输出、到期输出、源 PTS/像素保持、同值/回退/负时钟、非法预算、暂停/STOP/幂等 resume、
 暂停中丢弃缓存帧并 seek 零、INT64_MAX 附近与大幅跳时钟不丢帧、EOF/错误一次性、停止/关闭。
 打开后禁止读取 source，重播仍成功；非法 flags/backend/缺 callback、WAV/音频/混合流/
-裸流/PS 的拒绝亦有断言。其他容器时间轴和总内存/重建故障注入仍未验收。
+裸流/PS 的拒绝亦有断言。同一 TEST1352 以七条 video-only Baseline FLV 时间戳控制输入
+验证未知/负起点零帧 FORMAT、回退 PTS 保留一帧后 FORMAT、错误来源与终态一次性，
+已知起点后的两帧推导、重复 PTS 和向前间隔的截止前/到期回调。各使用可 seek/不可 seek
+源并重复创建三个 session；接受组的暂停中缓存 seek 零清除旧基点且不读宿主。
+默认解码控制保留三帧及旧补时行为。其他容器时间轴和总内存/重建故障注入仍未验收。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
