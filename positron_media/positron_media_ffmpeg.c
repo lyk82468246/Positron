@@ -27,6 +27,7 @@
 #include "libavutil/mem.h"
 #include "libavutil/log.h"
 #include "libavcodec/h264_parse.h"
+#include "libavcodec/h2645_parse.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/samplefmt.h"
 
@@ -382,6 +383,61 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
     return result;
 }
 
+static int pm_ff_validate_raw_pps(const unsigned char *sps, int sps_bytes,
+                                  const unsigned char *pps, int pps_bytes)
+{
+    H264ParamSets *sets;
+    H2645Packet packet;
+    H2645NAL *nal;
+    AVCodecContext *codec;
+    unsigned char *data;
+    int i;
+    int result;
+    int decoded;
+    int found;
+
+    /* Keep the fixed upstream RBSP/Golomb parser; check consumption as well as
+     * its return value because the 3.4 PPS parser can read padded bits. */
+    if (pps_bytes > 4096) return PMEDIA_ERROR_LIMIT;
+    if (sps == NULL || pps_bytes < 2) return PMEDIA_ERROR_FORMAT;
+    sets = (H264ParamSets *)av_mallocz(sizeof(*sets));
+    codec = avcodec_alloc_context3(NULL);
+    data = (unsigned char *)av_mallocz(sps_bytes + pps_bytes + 6 + AV_INPUT_BUFFER_PADDING_SIZE);
+    memset(&packet, 0, sizeof(packet));
+    result = PMEDIA_ERROR_MEMORY;
+    if (sets == NULL || codec == NULL || data == NULL) goto done;
+    data[2] = 1;
+    memcpy(data + 3, sps, sps_bytes);
+    data[sps_bytes + 5] = 1;
+    memcpy(data + sps_bytes + 6, pps, pps_bytes);
+    decoded = ff_h2645_packet_split(&packet, data, sps_bytes + pps_bytes + 6,
+                                    codec, 0, 0, AV_CODEC_ID_H264, 1);
+    result = decoded == AVERROR(ENOMEM) ? PMEDIA_ERROR_MEMORY : PMEDIA_ERROR_FORMAT;
+    if (decoded < 0) goto done;
+    found = 0;
+    for (i = 0; i < packet.nb_nals; i++) {
+        nal = &packet.nals[i];
+        if (nal->type == 7)
+            decoded = ff_h264_decode_seq_parameter_set(&nal->gb, codec, sets, 0);
+        else if (nal->type == 8) {
+            decoded = ff_h264_decode_picture_parameter_set(&nal->gb, codec, sets, nal->size_bits);
+            found = 1;
+        } else goto done;
+        if (decoded < 0 || get_bits_left(&nal->gb) < 0) {
+            result = decoded == AVERROR(ENOMEM) ? PMEDIA_ERROR_MEMORY : PMEDIA_ERROR_FORMAT;
+            goto done;
+        }
+    }
+    if (found) result = PMEDIA_OK;
+done:
+    ff_h2645_packet_uninit(&packet);
+    if (sets != NULL) ff_h264_ps_uninit(sets);
+    av_free(sets);
+    avcodec_free_context(&codec);
+    av_free(data);
+    return result;
+}
+
 static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
 {
     AVCodecParameters parameters;
@@ -392,6 +448,7 @@ static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
     int end;
     int bytes;
     int result;
+    int found_pps;
     pm_position duration;
 
     /* Inspect the owned bounded input before stream-info decoding. A raw stream
@@ -400,6 +457,7 @@ static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
      * safe. This prevents stale framerate and delayed-frame metadata on changes. */
     first = NULL;
     first_bytes = 0;
+    found_pps = 0;
     for (start = 0; start + 3 < context->input_bytes; start++) {
         if (context->input[start] != 0 || context->input[start + 1] != 0 ||
             context->input[start + 2] != 1) continue;
@@ -433,9 +491,13 @@ static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
             first = context->input + start;
             first_bytes = bytes;
             context->raw_h264_duration_us = duration;
+        } else if (bytes > 0 && (context->input[start] & 31) == 8) {
+            result = pm_ff_validate_raw_pps(first, first_bytes, context->input + start, bytes);
+            if (result != PMEDIA_OK) return result;
+            found_pps = 1;
         }
     }
-    return first != NULL ? PMEDIA_OK : PMEDIA_ERROR_FORMAT;
+    return first != NULL && found_pps ? PMEDIA_OK : PMEDIA_ERROR_FORMAT;
 }
 
 static int pm_ff_vol_read(GetBitContext *bits, int count)
@@ -669,6 +731,8 @@ static int pm_ff_open_decoder(AVFormatContext *format,
         return PMEDIA_ERROR_FORMAT;
     }
     codec->thread_count = 1;
+    if (codec->codec_id == AV_CODEC_ID_H264 && strcmp(format->iformat->name, "h264") == 0)
+        codec->err_recognition = AV_EF_BITSTREAM | AV_EF_BUFFER | AV_EF_EXPLODE;
     result = avcodec_open2(codec, decoder, NULL);
     if (result < 0) {
         avcodec_free_context(&codec);
@@ -777,7 +841,7 @@ static int pm_ff_open_internal(const unsigned char *input,
         result = pm_ff_validate_raw_h264(context);
         if (result != PMEDIA_OK) {
             pm_ff_error(error_text, error_text_bytes,
-                        "raw H.264 requires a supported unchanged SPS");
+                        "raw H.264 requires valid SPS/PPS and an unchanged supported SPS");
             pm_ff_cleanup(context);
             return result;
         }
@@ -1072,6 +1136,9 @@ static int pm_ff_receive(pmedia_ffmpeg *context,
     av_frame_unref(context->frame);
     result = avcodec_receive_frame(codec, context->frame);
     if (result == 0) {
+        if (is_video && strcmp(context->format->iformat->name, "h264") == 0 &&
+            (context->frame->decode_error_flags || (context->frame->flags & AV_FRAME_FLAG_CORRUPT)))
+            return PMEDIA_ERROR_FORMAT;
         *out_emitted = 1;
         return is_video ? pm_ff_emit_video(context) : pm_ff_emit_audio(context);
     }

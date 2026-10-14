@@ -361,11 +361,19 @@ pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 v
 demux 的默认 25 fps，也不沿用 decoder 的旧帧率。这不是 VFR 或 SEI picture timing 的真实时间轴。
 没有 PTS 起点的裸流保持 pts_us=-1，不设置 PTS_INFERRED，不能仅凭时长虚构起点。
 当前裸流只接受一个不变的 SPS NAL；忽略起始码长度和尾随零后，字节相同的重复 SPS
-可以接受。DLL 在 stream-info 解码前扫描已缓存输入，单 SPS NAL 最多 4096 字节；
-缺少可解析 SPS 返回 FORMAT，超过尺寸/预算返回 LIMIT，profile/布局不支持或不同 SPS
+可以接受。DLL 在 stream-info 解码前扫描已缓存输入，单 SPS/PPS NAL 最多 4096 字节；
+缺少可解析 SPS/PPS、PPS 引用未出现的 SPS 或参数解析越过有效位边界返回 FORMAT，超过尺寸/预算返回 LIMIT，profile/布局不支持或不同 SPS
 返回 UNSUPPORTED。即使新 SPS 单独可解码，改变 timing、尺寸或 SPS ID 也不支持。
 失败 probe 不改输出，open 不留下 session 或视频回调；此策略只针对 Annex-B，不宣称
-MP4/TS/FLV 的参数变化也已提前检查。PPS/SEI 变化、损坏 payload 仍未充分验收。
+MP4/TS/FLV 的参数变化也已提前检查。有效 PPS 变化、slice 的参数集引用和 SEI 仍未充分验收。
+
+probe 成功不表示整个压缩 payload 完整：裸流 decoder 启用严格错误检测，发现解码错误或
+带损坏/错误隐藏标记的帧时，pump 返回 FORMAT，不交付该帧、不发送正常 EOF。
+错误前已经交付的有效帧不撤回；不是全文件解码成功后才输出的事务。此 FORMAT 使 session
+进入不可恢复的解码失败态，后续 pump/pause/resume/seek 返回 STATE，不重复错误回调或
+继续输出；宿主应关闭 session，stop/close 仍可用于清理。若输入在完整帧/NAL 边界结束，
+没有外部预期长度就无法判定它是否少了一段，正常 EOF 不等于证明源文件完整。
+当前仅以两条固定截断 slice 验收该合同，不宣称能检测任意损坏或合法位模式替换。
 
 FFmpeg 路径保留输入的呈现时间轴，不把 TS/PS 的非零 PTS 起点归零。decoder 没有提供
 PTS 时，只有前一输出帧具有已知非负 PTS、正的 duration 且相加不溢出，DLL 才用两者之和
@@ -552,7 +560,12 @@ UNSUPPORTED，超 VGA 返回 LIMIT；截断头返回 FORMAT，失败 probe 不�
 同一 TEST1349 还验证无 timing 的三帧输出 duration=0，以及相同 SPS 重复的六帧输出与
 零点重播；生命周期断言保持。先播放有效 Baseline 再拼接移除 timing、Main VGA、High、
 4:2:2、隔行或超 VGA 的新 SPS，均在 probe/open 阶段拒绝且无输出。这不是动态重配置
-支持：只允许不变 SPS。VFR/SEI timing、PPS 变化、损坏 payload 和重建分配失败仍待门。
+支持：只允许不变 SPS。损坏/缺失 SPS/PPS 与有效三帧后追加的损坏参数集均在 probe/open
+返回 FORMAT、无帧/音频回调且 probe 不变。截断 IDR 和末尾 P slice 的固定输入各三 session
+验证 pump FORMAT：分别零帧和保留前两帧，无正常 EOF、错误回调/事件各一次，后续
+pump/resume/seek 返回 STATE，不再输出，close 成功。按完整 NAL 边界结束的两帧控制输入
+正常 EOF，且通过三 session 各三遍缓存重播及原生命周期断言。
+VFR/SEI timing、有效 PPS 变化/slice 引用、其他损坏模式和重建分配失败仍待门。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

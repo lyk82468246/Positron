@@ -261,6 +261,40 @@ def write_pin(exe, records):
                               "files": records}, indent=2) + "\n", encoding="utf-8")
 
 
+ANNEXB_DAMAGE = ["bad-sps", "bad-pps", "missing-pps", "orphan-pps",
+                 "late-bad-sps", "late-bad-pps", "cut-idr", "cut-p", "two-frames"]
+
+
+def annexb_damage_records(exe):
+    source = (DEST / "annexb-baseline-aac.h264").read_bytes()
+    units = re.split(b"(\x00\x00\x00?\x01)", source)
+    indices = {kind: [i for i in range(2, len(units), 2) if units[i][0] & 31 == kind]
+               for kind in [7, 8, 5, 1]}
+    assert [len(indices[k]) for k in [7, 8, 5, 1]] == [1, 1, 1, 2]
+
+    def replace(kind, value):
+        copy = units[:]
+        for i in indices[kind]:
+            copy[i - 1:i + 1] = [copy[i - 1], value]
+        return b"".join(copy)
+
+    def cut(index, payload_bytes):
+        return b"".join(units[:index]) + units[index][:payload_bytes]
+
+    outputs = [replace(7, units[indices[7][0]][:4]), replace(8, b"\x68\x80"),
+               replace(8, b""), replace(7, b""),
+               source + b"\x00\x00\x01\x67\x42\xc0\x0c",
+               source + b"\x00\x00\x01\x68\x80",
+               cut(indices[5][0], 12), cut(indices[1][-1], 4),
+               b"".join(units[:indices[1][-1] - 1])]
+    records = []
+    for stem, data in zip(ANNEXB_DAMAGE, outputs):
+        name = "annexb-" + stem + ".h264"
+        (DEST / name).write_bytes(data)
+        records.append({"file": name, "fixture_transform": "pinned Annex-B parameter/payload damage v1"})
+    return records
+
+
 def extend(exe, group):
     check()
     pin = json.loads(PIN.read_text(encoding="utf-8"))
@@ -281,6 +315,7 @@ def extend(exe, group):
         "annexb-sequence": ({"annexb-no-timing.h264", "annexb-repeat-sps.h264", "annexb-change-no-timing.h264"} |
                             {"annexb-change-" + stem + ".h264" for stem in
                              ["main-vga", "high", "high422", "interlaced", "oversize"]}, annexb_sequence_records),
+        "annexb-damage": ({"annexb-" + stem + ".h264" for stem in ANNEXB_DAMAGE}, annexb_damage_records),
     }[group]
     if any(r["file"] in names for r in pin["files"]):
         raise SystemExit("Already extended; use --generate for intentional full regeneration")
@@ -323,7 +358,7 @@ def generate(exe):
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
               ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) +
-              annexb_records(exe) + annexb_sequence_records(exe))
+              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe))
 
 
 def check():
@@ -348,13 +383,14 @@ if __name__ == "__main__":
     action.add_argument("--extend-flv", action="store_true")
     action.add_argument("--extend-annexb", action="store_true")
     action.add_argument("--extend-annexb-sequence", action="store_true")
+    action.add_argument("--extend-annexb-damage", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence:
-            extend(opts.ffmpeg, "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage:
+            extend(opts.ffmpeg, "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

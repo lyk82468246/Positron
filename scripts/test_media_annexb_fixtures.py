@@ -2,8 +2,10 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import subprocess
 
 import media_fixtures
 from test_media_mpeg4_fixtures import decode, require
@@ -79,6 +81,22 @@ def main():
         sps = [unit.rstrip(b"\x00") for unit in units if unit and unit[0] & 31 == 7]
         require(len(sps) == 2 and sps[0] != sps[1], name + ": distinct SPS")
         print("ORACLE", name, "six decoded frames; different SPS; WM6 must reject before output")
+    for stem in media_fixtures.ANNEXB_DAMAGE:
+        name = "annexb-" + stem + ".h264"
+        flags = (subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW) if os.name == "nt" else 0
+        result = subprocess.run([opts.ffmpeg, "-hide_banner", "-nostdin", "-xerror",
+                                 "-err_detect", "bitstream+buffer+explode", "-threads", "1",
+                                 "-f", "h264", "-i", str(media_fixtures.DEST / name),
+                                 "-vf", "showinfo", "-fps_mode", "passthrough", "-threads:v", "1",
+                                 "-f", "null", "pipe:1"], stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, timeout=30, creationflags=flags)
+        log = result.stderr.decode("utf-8", errors="replace")
+        if stem == "two-frames":
+            require(result.returncode == 0 and len(re.findall(r"n:\s*\d+\s+pts:", log)) == 2,
+                    name + ": clean EOF at a complete NAL boundary")
+        else:
+            require(result.returncode != 0, name + ": strict desktop decoder must detect damage")
+        print("ORACLE", name, "clean two-frame EOF" if stem == "two-frames" else "strict decode rejected")
     print("Annex-B oracle PASS; CLI synthesized frame PTS do not define the DLL contract.")
 
 

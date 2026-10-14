@@ -91,7 +91,17 @@ NAL/RBSP bit 75，删除其后 65 bit 并重建尾部对齐/防竞争字节）�
 Baseline，再拼接另一 SPS 的三帧片段。桌面六帧可解码，但产品必须在 probe/open 拒绝，
 不能先输出好片段再失败；oversize 返回 LIMIT，其余 UNSUPPORTED，probe 输出保持不变。
 无 timing/重复 SPS 的三 session 各三遍输出与缓存重播、暂停/STOP/负 callback 也有断言。
-VFR、SEI/PPS 变化和损坏 payload 不在这组合同内。
+损坏组从固定 Baseline 离线变换：`annexb-bad-sps.h264` 只留 SPS NAL 前四字节；
+`annexb-bad-pps.h264` 将 PPS 替为 `68 80`；`missing-pps`/`orphan-pps` 分别清空
+PPS/SPS NAL 内容（保留起始码）。`late-bad-sps`/`late-bad-pps` 在有效三帧后追加
+上述损坏参数集。六条均须在 probe/open 返回 FORMAT、probe 不变、session 为 NULL、无输出。
+`annexb-cut-idr.h264` 在首个 IDR NAL 的第 12 字节结束；`annexb-cut-p.h264` 在末尾
+P NAL 的第 4 字节结束。两者参数集仍有效，probe/open 成功；各三 session 验证 pump
+FORMAT，分别零帧/前两帧、无正常 EOF、错误回调/事件各一次，错误后的 pump/resume/seek
+STATE 且不再回调、close 成功。打开后 source 禁止重读。`annexb-two-frames.h264`
+则在最后一个 P NAL 起始码之前结束，是合法两帧控制：正常 EOF，三 session 各三遍
+缓存重播及暂停/STOP/负 callback/停止态断言保持。没有外部预期长度时，合法边界结束
+无法被当作截断错误。VFR、SEI/有效 PPS 变化、slice 参数引用及其他损坏模式仍未验收。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
@@ -102,6 +112,7 @@ VFR、SEI/PPS 变化和损坏 payload 不在这组合同内。
 FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六条裸流采用相同 pin
 规则，只转换已有固定 MP4，不改旧记录。`--extend-annexb-sequence` 对八条 timing/拼接
 夹具采用相同 pin 规则，离线按固定字节变换生成，不调用编码器、不改原文件。
+`--extend-annexb-damage` 对九条损坏/完整边界控制输入采用同一规则；派生不重新编码。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -129,7 +140,10 @@ Annex-B 的独立桌面校验：`python scripts/test_media_annexb_fixtures.py --
 必须显式指定固定生成器；只读、单线程、Windows 低优先级，检查原六条和无 timing/重复
 SPS 输入的全部有效像素、尺寸/帧序/隔行属性、NAL 类型及 demux packet PTS/DTS 均未知；
 trace_headers 独立确认 timing 字段已移除，六条 SPS 变化输入各可解出前后三帧并含不同 SPS。
-变化输入只检查帧属性，不把桌面动态重配置当作产品支持。CLI 自动生成的呈现时间戳
+变化输入只检查帧属性，不把桌面动态重配置当作产品支持。损坏组由桌面严格 decoder
+（bitstream/buffer/explode、xerror）独立确认八条损坏输入非零退出，两帧控制正常解码；
+桌面非零退出不规定 WM6 的 probe/pump 分类或错误前已输出帧数，也不是穷尽损坏检测。
+CLI 自动生成的呈现时间戳
 不能替代 DLL 的未知 PTS 合同，桌面全像素检查也不能替代 WM6 取样/重播/拒绝设备门。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。

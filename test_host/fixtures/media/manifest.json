@@ -1400,6 +1400,60 @@
       "fixture_transform": "pinned Annex-B SPS timing removal/concatenation v1",
       "bytes": 2574,
       "sha256": "9ef25c78ef5ab6a02c6e3c01ba5b1a4804dae0049af10d42a63467c83290dc6b"
+    },
+    {
+      "file": "annexb-bad-sps.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 915,
+      "sha256": "597620b7ee460c69bc6dad689d46eda64421985c792ac267f9de0f5f0bb7ecd6"
+    },
+    {
+      "file": "annexb-bad-pps.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 932,
+      "sha256": "d1690246935918f13a267891ed0d8bc323ceeeb39c822fe613c7b48a5d8ebb28"
+    },
+    {
+      "file": "annexb-missing-pps.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 930,
+      "sha256": "28dcbe948b6815361a5a728a88b76aaba1158e2a50a85194ed945f5084374f3d"
+    },
+    {
+      "file": "annexb-orphan-pps.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 911,
+      "sha256": "b1b09f2e38f6f0a3e8c721583a552af2ed42d31822fcd39ca00c474775763428"
+    },
+    {
+      "file": "annexb-late-bad-sps.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 942,
+      "sha256": "64d56ff4430b488e537f1c9534ee123437497fcc1efd92af5db48155cea9a880"
+    },
+    {
+      "file": "annexb-late-bad-pps.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 940,
+      "sha256": "bb736f4f26ec61caded68a14544e26be19902ef29c94d1c763722fb813dddbbb"
+    },
+    {
+      "file": "annexb-cut-idr.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 676,
+      "sha256": "49b3217a0be9bf523e7214471f33cb495657877835d91547c62aff152b0a253d"
+    },
+    {
+      "file": "annexb-cut-p.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 932,
+      "sha256": "8527502a40aad079e57b655fef1d6c0d750d64023aa8e5e579a74df7b083b1be"
+    },
+    {
+      "file": "annexb-two-frames.h264",
+      "fixture_transform": "pinned Annex-B parameter/payload damage v1",
+      "bytes": 924,
+      "sha256": "bb821f7b225112ca7de4527d87a58ad203ded3bf57a9edd4d44c6e1f671596b6"
     }
   ]
 }

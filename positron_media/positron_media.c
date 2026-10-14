@@ -23,6 +23,7 @@ typedef struct pm_session_impl {
     int backend;
     int paused;
     int stopped;
+    int decode_failed;
     int eof_sent;
     int source_seekable;
     unsigned char *input;
@@ -982,7 +983,7 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
     if (session == NULL || budget_us < 0) {
         return PMEDIA_ERROR_ARGUMENT;
     }
-    if (session->stopped) {
+    if (session->stopped || session->decode_failed) {
         return PMEDIA_ERROR_STATE;
     }
     if (session->paused) {
@@ -1027,6 +1028,9 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
                 pm_emit(session, PMEDIA_EVENT_EOF, 0);
             }
         } else if (ff_result < 0) {
+            if (ff_result == PMEDIA_ERROR_FORMAT && session->info.container == PMEDIA_CONTAINER_RAW &&
+                session->info.video_codec == PMEDIA_CODEC_H264)
+                session->decode_failed = 1;
             pm_set_error(session, ff_result, "FFmpeg software pump failed");
         }
         return ff_result;
@@ -1060,7 +1064,7 @@ PMEDIA_API int pm_pause(pm_session opaque_session)
     int result;
     session = (pm_session_impl *)opaque_session;
     if (session == NULL) return PMEDIA_ERROR_ARGUMENT;
-    if (session->stopped) return PMEDIA_ERROR_STATE;
+    if (session->stopped || session->decode_failed) return PMEDIA_ERROR_STATE;
     if (session->waveout_active && session->waveout != NULL) {
         result = pmedia_waveout_pause(session->waveout);
         if (result != PMEDIA_OK) return result;
@@ -1075,7 +1079,7 @@ PMEDIA_API int pm_resume(pm_session opaque_session)
     int result;
     session = (pm_session_impl *)opaque_session;
     if (session == NULL) return PMEDIA_ERROR_ARGUMENT;
-    if (session->stopped) return PMEDIA_ERROR_STATE;
+    if (session->stopped || session->decode_failed) return PMEDIA_ERROR_STATE;
     if (session->waveout_active && session->waveout != NULL) {
         result = pmedia_waveout_resume(session->waveout);
         if (result != PMEDIA_OK) return result;
@@ -1108,7 +1112,7 @@ PMEDIA_API int pm_seek(pm_session opaque_session, pm_position position_us)
 
     session = (pm_session_impl *)opaque_session;
     if (session == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
-    if (session->stopped) return PMEDIA_ERROR_STATE;
+    if (session->stopped || session->decode_failed) return PMEDIA_ERROR_STATE;
 #ifdef PMEDIA_HAS_FFMPEG
     if (session->ffmpeg_active && session->ffmpeg != NULL) {
         result = pmedia_ffmpeg_seek((pmedia_ffmpeg *)session->ffmpeg, position_us);
