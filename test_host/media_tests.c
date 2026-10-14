@@ -1495,7 +1495,11 @@ BOOL test1349_media_annexb_contract(void (*progress)(const char *))
         L"annexb-change-high422.h264", L"annexb-change-interlaced.h264", L"annexb-change-oversize.h264",
         L"annexb-bad-sps.h264", L"annexb-bad-pps.h264", L"annexb-missing-pps.h264",
         L"annexb-orphan-pps.h264", L"annexb-late-bad-sps.h264", L"annexb-late-bad-pps.h264",
-        L"annexb-cut-idr.h264", L"annexb-cut-p.h264", L"annexb-two-frames.h264" };
+        L"annexb-cut-idr.h264", L"annexb-cut-p.h264", L"annexb-two-frames.h264",
+        L"annexb-repeat-pps.h264", L"annexb-change-pps.h264", L"annexb-pps-id1.h264",
+        L"annexb-dangling-pps.h264", L"annexb-late-dangling-pps.h264", L"annexb-pps-missing-sps.h264",
+        L"annexb-sps-4096.h264", L"annexb-sps-4097.h264", L"annexb-pps-4096.h264",
+        L"annexb-pps-4097.h264", L"annexb-late-pps-4097.h264", L"annexb-slice-before-pps.h264" };
     media_fixture_source input;
     media_compressed_sink sink;
     pm_source_callbacks source;
@@ -1517,7 +1521,7 @@ BOOL test1349_media_annexb_contract(void (*progress)(const char *))
 
     data = NULL;
     session = NULL;
-    for (test = 0; test < 23; test++) {
+    for (test = 0; test < 35; test++) {
         memset(&sink, 0, sizeof(sink));
         _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail), "AnnexB case=%d", test);
         if (progress != NULL) progress(g_media_compressed_detail);
@@ -1532,8 +1536,10 @@ BOOL test1349_media_annexb_contract(void (*progress)(const char *))
         memset(&probe, 0xa5, sizeof(probe));
         probe.size = sizeof(probe);
         unchanged = probe;
-        if (test >= 4 && test < 20) {
-            expected = test >= 14 ? PMEDIA_ERROR_FORMAT :
+        if ((test >= 4 && test < 20) || test == 24 || test >= 26) {
+            expected = test == 24 ? PMEDIA_ERROR_UNSUPPORTED :
+                test == 30 || test == 32 || test == 33 ? PMEDIA_ERROR_LIMIT :
+                test >= 14 ? PMEDIA_ERROR_FORMAT :
                 test == 7 || test == 13 ? PMEDIA_ERROR_LIMIT : PMEDIA_ERROR_UNSUPPORTED;
             options.max_video_width = options.max_video_height = 4096;
             actual = pm_probe(&source, &probe);

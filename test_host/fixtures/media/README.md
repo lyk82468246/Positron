@@ -101,7 +101,21 @@ FORMAT，分别零帧/前两帧、无正常 EOF、错误回调/事件各一次�
 STATE 且不再回调、close 成功。打开后 source 禁止重读。`annexb-two-frames.h264`
 则在最后一个 P NAL 起始码之前结束，是合法两帧控制：正常 EOF，三 session 各三遍
 缓存重播及暂停/STOP/负 callback/停止态断言保持。没有外部预期长度时，合法边界结束
-无法被当作截断错误。VFR、SEI/有效 PPS 变化、slice 参数引用及其他损坏模式仍未验收。
+无法被当作截断错误。
+
+参数/引用组仍只变换 pinned Baseline：`repeat-pps` 在原 PPS 后重复同一 NAL；
+`change-pps` 拼接第二段三帧，只翻转 PPS 的 constrained_intra_pred_flag（NAL bit 36）。
+桌面六帧可解码，但 DLL 对不同有效 PPS 返回 UNSUPPORTED、无输出，不承诺动态重配置。
+`pps-id1` 将 PPS ID 和各 slice 引用从 0 改为 1（ue 字段由 1 改为 010，重建尾部对齐与
+防竞争字节）；三个帧仍有效，和 `repeat-pps` 一样保护三 session 各三遍缓存重播及生命周期。
+`dangling-pps` 只改 slice 引用，`late-dangling-pps` 在有效三帧后拼接该片段；
+`pps-missing-sps` 只把 PPS 的 SPS 引用改为 1；`slice-before-pps` 将 PPS 移到首个 IDR
+之后。这四条返回 FORMAT、probe 不变、open 无 session/输出。
+`sps-4096/4097`、`pps-4096/4097` 在有效三帧后拼接带越界 SPS ID=32/PPS ID=256
+的容量 NAL；`late-pps-4097` 则只追加越界 PPS。NAL 头仍正常，PPS 引用已有 SPS 0，
+用于进入固定 raw probe 后的预算检查。4096 字节返回 FORMAT，4097 字节返回 LIMIT，
+均在输出前拒绝；这些是容量优先级负控制，不证明最大尺寸合法参数集可以解码。
+VFR、SEI、其他编码工具与损坏模式仍未验收。
 
 验证固定输入：`python scripts/media_fixtures.py`。
 只有有意更新整个夹具 pin 时运行 `python scripts/media_fixtures.py --generate --ffmpeg PATH`；
@@ -113,6 +127,7 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 规则，只转换已有固定 MP4，不改旧记录。`--extend-annexb-sequence` 对八条 timing/拼接
 夹具采用相同 pin 规则，离线按固定字节变换生成，不调用编码器、不改原文件。
 `--extend-annexb-damage` 对九条损坏/完整边界控制输入采用同一规则；派生不重新编码。
+`--extend-annexb-parameters` 对 PPS/引用/容量组采用同一规则，不改已有 pin。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -143,6 +158,9 @@ trace_headers 独立确认 timing 字段已移除，六条 SPS 变化输入各�
 变化输入只检查帧属性，不把桌面动态重配置当作产品支持。损坏组由桌面严格 decoder
 （bitstream/buffer/explode、xerror）独立确认八条损坏输入非零退出，两帧控制正常解码；
 桌面非零退出不规定 WM6 的 probe/pump 分类或错误前已输出帧数，也不是穷尽损坏检测。
+参数组检查重复 PPS/ID1 的三帧与有效 PPS 变化的六帧全部像素，trace_headers 核对 ID/flag；
+缺失参数引用由严格 decoder 拒绝，容量负控制独立检查精确 NAL 字节数与越界 ID/SPS 引用，
+前向 PPS 控制独立检查 NAL 顺序。桌面能力不替代 DLL 的保守拒绝与生命周期门。
 CLI 自动生成的呈现时间戳
 不能替代 DLL 的未知 PTS 合同，桌面全像素检查也不能替代 WM6 取样/重播/拒绝设备门。
 

@@ -1454,6 +1454,78 @@
       "fixture_transform": "pinned Annex-B parameter/payload damage v1",
       "bytes": 924,
       "sha256": "bb821f7b225112ca7de4527d87a58ad203ded3bf57a9edd4d44c6e1f671596b6"
+    },
+    {
+      "file": "annexb-repeat-pps.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 943,
+      "sha256": "a531f3643828118382e6814ad98c4e6b61039b30f01eb1c61ce9626a9efb2eee"
+    },
+    {
+      "file": "annexb-change-pps.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 1870,
+      "sha256": "b25090c4064cc9d364f4542263340afaff613b0eef4ffecd24b6e1a80dc636d4"
+    },
+    {
+      "file": "annexb-pps-id1.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 938,
+      "sha256": "f6d666fe73349c87132b5698a3a58d869d12bd8723e3eddeb380684b11e3a72f"
+    },
+    {
+      "file": "annexb-dangling-pps.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 937,
+      "sha256": "a273e04fa4b582031aaae8279ce7c5f99bbc573eba225a36a8de52176197d99b"
+    },
+    {
+      "file": "annexb-late-dangling-pps.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 1872,
+      "sha256": "9495bb6edf8791b31c59e563d2bd0c83d32196697eda32234c85ade437c6053b"
+    },
+    {
+      "file": "annexb-pps-missing-sps.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 936,
+      "sha256": "e07068c9b00180542fac71394b7c46b925fbac050e49e3576e10dd3209e39a27"
+    },
+    {
+      "file": "annexb-sps-4096.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 5942,
+      "sha256": "9c2add84482b32892c60647eba9b28bdc272a534abcd7340077be862774d6cf5"
+    },
+    {
+      "file": "annexb-sps-4097.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 5943,
+      "sha256": "1b8bd477014e0b8b2e6c3accad8defb5b890df83a58d0000de6c51c3116a75ef"
+    },
+    {
+      "file": "annexb-pps-4096.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 5961,
+      "sha256": "a475c857d00324b89f29b7c06bac9d06bd392fc102b0fc132739b10146a77724"
+    },
+    {
+      "file": "annexb-pps-4097.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 5962,
+      "sha256": "f3988086f06b59773fd33b53aa1c159a2f82616142c9cc71c920ef50c703da9c"
+    },
+    {
+      "file": "annexb-late-pps-4097.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 5035,
+      "sha256": "b9f8fd7a800e3cf8f16c1f2b1087cb7f51a6c69f5a88538d6d52fc384d26d2be"
+    },
+    {
+      "file": "annexb-slice-before-pps.h264",
+      "fixture_transform": "pinned Annex-B PPS/reference/budget v1",
+      "bytes": 935,
+      "sha256": "64d0a76a8320b4b80f930130e4333904231751d7e7b013846af3256375c4e21f"
     }
   ]
 }

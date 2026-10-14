@@ -28,6 +28,11 @@
 #include "libavutil/log.h"
 #include "libavcodec/h264_parse.h"
 #include "libavcodec/h2645_parse.h"
+/* WM6 CRT headers omit these; the existing private runtime supplies them. */
+extern int64_t llrint(double value);
+extern void abort(void);
+#include "libavutil/internal.h"
+#include "libavcodec/golomb.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/samplefmt.h"
 
@@ -384,7 +389,7 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
 }
 
 static int pm_ff_validate_raw_pps(const unsigned char *sps, int sps_bytes,
-                                  const unsigned char *pps, int pps_bytes)
+                                  const unsigned char *pps, int pps_bytes, int *out_id)
 {
     H264ParamSets *sets;
     H2645Packet packet;
@@ -428,7 +433,15 @@ static int pm_ff_validate_raw_pps(const unsigned char *sps, int sps_bytes,
             goto done;
         }
     }
-    if (found) result = PMEDIA_OK;
+    if (found) {
+        for (i = 0; i < MAX_PPS_COUNT; i++) {
+            if (sets->pps_list[i] != NULL) {
+                *out_id = i;
+                result = PMEDIA_OK;
+                break;
+            }
+        }
+    }
 done:
     ff_h2645_packet_uninit(&packet);
     if (sets != NULL) ff_h264_ps_uninit(sets);
@@ -438,17 +451,54 @@ done:
     return result;
 }
 
+static int pm_ff_validate_raw_slice(const unsigned char *data, int bytes, int pps_id)
+{
+    H2645NAL nal;
+    unsigned char prefix[64 + AV_INPUT_BUFFER_PADDING_SIZE];
+    unsigned int slice_type;
+    unsigned int reference;
+    int result;
+
+    /* Only the first three ue fields are needed for parameter-set identity.
+     * Copy a bounded escaped prefix and use upstream RBSP/Golomb primitives;
+     * do not parse macroblocks or allocate another full compressed frame. */
+    if (pps_id < 0 || bytes < 2 || (data[0] & 128)) return PMEDIA_ERROR_FORMAT;
+    if (bytes > 64) bytes = 64;
+    memset(prefix, 0, sizeof(prefix));
+    memcpy(prefix, data, bytes);
+    memset(&nal, 0, sizeof(nal));
+    result = ff_h2645_extract_rbsp(prefix, bytes, &nal, 1);
+    if (result < 0) {
+        av_free(nal.rbsp_buffer);
+        return result == AVERROR(ENOMEM) ? PMEDIA_ERROR_MEMORY : PMEDIA_ERROR_FORMAT;
+    }
+    result = init_get_bits(&nal.gb, nal.data, nal.size * 8);
+    if (result >= 0) {
+        skip_bits(&nal.gb, 8);
+        get_ue_golomb_long(&nal.gb); /* first_mb_in_slice */
+        slice_type = get_ue_golomb_long(&nal.gb);
+        reference = get_ue_golomb_long(&nal.gb);
+        result = get_bits_left(&nal.gb) < 0 || slice_type > 9 || reference != (unsigned int)pps_id ?
+            PMEDIA_ERROR_FORMAT : PMEDIA_OK;
+    } else result = PMEDIA_ERROR_FORMAT;
+    av_free(nal.rbsp_buffer);
+    return result;
+}
+
 static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
 {
     AVCodecParameters parameters;
     const unsigned char *first;
+    const unsigned char *first_pps;
     unsigned char *padded;
     int first_bytes;
+    int first_pps_bytes;
     int start;
     int end;
     int bytes;
     int result;
-    int found_pps;
+    int pps_id;
+    int next_id;
     pm_position duration;
 
     /* Inspect the owned bounded input before stream-info decoding. A raw stream
@@ -457,7 +507,9 @@ static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
      * safe. This prevents stale framerate and delayed-frame metadata on changes. */
     first = NULL;
     first_bytes = 0;
-    found_pps = 0;
+    first_pps = NULL;
+    first_pps_bytes = 0;
+    pps_id = -1;
     for (start = 0; start + 3 < context->input_bytes; start++) {
         if (context->input[start] != 0 || context->input[start + 1] != 0 ||
             context->input[start + 2] != 1) continue;
@@ -492,12 +544,21 @@ static int pm_ff_validate_raw_h264(pmedia_ffmpeg *context)
             first_bytes = bytes;
             context->raw_h264_duration_us = duration;
         } else if (bytes > 0 && (context->input[start] & 31) == 8) {
-            result = pm_ff_validate_raw_pps(first, first_bytes, context->input + start, bytes);
+            if (first_pps != NULL && bytes == first_pps_bytes &&
+                memcmp(first_pps, context->input + start, bytes) == 0) continue;
+            result = pm_ff_validate_raw_pps(first, first_bytes, context->input + start, bytes, &next_id);
             if (result != PMEDIA_OK) return result;
-            found_pps = 1;
+            if (first_pps != NULL) return PMEDIA_ERROR_UNSUPPORTED;
+            first_pps = context->input + start;
+            first_pps_bytes = bytes;
+            pps_id = next_id;
+        } else if (bytes > 0 && ((context->input[start] & 31) == 1 ||
+                                (context->input[start] & 31) == 5)) {
+            result = pm_ff_validate_raw_slice(context->input + start, bytes, pps_id);
+            if (result != PMEDIA_OK) return result;
         }
     }
-    return first != NULL && found_pps ? PMEDIA_OK : PMEDIA_ERROR_FORMAT;
+    return first != NULL && first_pps != NULL ? PMEDIA_OK : PMEDIA_ERROR_FORMAT;
 }
 
 static int pm_ff_vol_read(GetBitContext *bits, int count)
@@ -841,7 +902,7 @@ static int pm_ff_open_internal(const unsigned char *input,
         result = pm_ff_validate_raw_h264(context);
         if (result != PMEDIA_OK) {
             pm_ff_error(error_text, error_text_bytes,
-                        "raw H.264 requires valid SPS/PPS and an unchanged supported SPS");
+                        "raw H.264 requires unchanged valid SPS/PPS and defined slice references");
             pm_ff_cleanup(context);
             return result;
         }

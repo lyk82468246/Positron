@@ -360,12 +360,17 @@ pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 v
 （2×num_units_in_tick/time_scale，换算为微秒）；缺失有效 timing 时为零，不采用裸流
 demux 的默认 25 fps，也不沿用 decoder 的旧帧率。这不是 VFR 或 SEI picture timing 的真实时间轴。
 没有 PTS 起点的裸流保持 pts_us=-1，不设置 PTS_INFERRED，不能仅凭时长虚构起点。
-当前裸流只接受一个不变的 SPS NAL；忽略起始码长度和尾随零后，字节相同的重复 SPS
-可以接受。DLL 在 stream-info 解码前扫描已缓存输入，单 SPS/PPS NAL 最多 4096 字节；
-缺少可解析 SPS/PPS、PPS 引用未出现的 SPS 或参数解析越过有效位边界返回 FORMAT，超过尺寸/预算返回 LIMIT，profile/布局不支持或不同 SPS
-返回 UNSUPPORTED。即使新 SPS 单独可解码，改变 timing、尺寸或 SPS ID 也不支持。
+当前裸流只接受一个不变的 SPS 和一个不变的 PPS；忽略起始码长度和尾随零后，字节相同
+的重复参数集可以接受，不把 PPS ID 固定为零。DLL 在 stream-info 解码前扫描缓存，
+单 SPS/PPS NAL 最多 4096 字节；在已识别裸流内，超过此预算返回 LIMIT。
+缺少可解析参数集、PPS 引用未出现的 SPS 或解析越过有效位边界返回 FORMAT。
+普通/IDR slice 只预读最多 64 字节 escaped NAL 前缀，以固定 FFmpeg RBSP/Golomb 原语
+检查头三个 ue 字段；引用尚未定义或不同的 PPS 返回 FORMAT，不等待后面的参数集补救。
+profile/布局不支持或出现不同的有效 SPS/PPS 返回 UNSUPPORTED；即使新参数集单独
+可解码，改变 timing、尺寸、ID 或 PPS 内容也不支持。此策略也排除多个有效 PPS，
+不是完整 slice/熵解码或任意损坏验证。
 失败 probe 不改输出，open 不留下 session 或视频回调；此策略只针对 Annex-B，不宣称
-MP4/TS/FLV 的参数变化也已提前检查。有效 PPS 变化、slice 的参数集引用和 SEI 仍未充分验收。
+MP4/TS/FLV 的参数变化也已提前检查。SEI、其他 slice 编码工具与损坏模式仍未充分验收。
 
 probe 成功不表示整个压缩 payload 完整：裸流 decoder 启用严格错误检测，发现解码错误或
 带损坏/错误隐藏标记的帧时，pump 返回 FORMAT，不交付该帧、不发送正常 EOF。
@@ -565,7 +570,12 @@ UNSUPPORTED，超 VGA 返回 LIMIT；截断头返回 FORMAT，失败 probe 不�
 验证 pump FORMAT：分别零帧和保留前两帧，无正常 EOF、错误回调/事件各一次，后续
 pump/resume/seek 返回 STATE，不再输出，close 成功。按完整 NAL 边界结束的两帧控制输入
 正常 EOF，且通过三 session 各三遍缓存重播及原生命周期断言。
-VFR/SEI timing、有效 PPS 变化/slice 引用、其他损坏模式和重建分配失败仍待门。
+相同 PPS 重复与 PPS/slice ID=1 的三帧输入也通过三 session 各三遍重播和生命周期断言。
+只翻转 constrained_intra_pred_flag 的有效 PPS 变化返回 UNSUPPORTED；缺失 PPS/SPS 引用、
+有效前缀后的缺失 PPS 引用和首 slice 早于 PPS 返回 FORMAT，均在打开前拒绝且无输出。
+有效前缀后的越界 ID 参数集，4096-byte 返回 FORMAT、4097-byte 返回 LIMIT，包含末尾
+追加超限 PPS；这只验证负控制和预算优先级，不证明合法最大尺寸参数可解码。
+VFR/SEI timing、其他 slice 工具/损坏模式、合法极限参数和重建分配失败仍待门。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

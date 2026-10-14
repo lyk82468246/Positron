@@ -28,6 +28,9 @@ def main():
         ("oversize", 656, 480, "yuv420p", "IPP", "PPP"),
         ("no-timing", 320, 240, "yuv420p", "IPP", "PPP"),
         ("repeat-sps", 320, 240, "yuv420p", "IPPIPP", "PPPPPP"),
+        ("repeat-pps", 320, 240, "yuv420p", "IPP", "PPP"),
+        ("pps-id1", 320, 240, "yuv420p", "IPP", "PPP"),
+        ("change-pps", 320, 240, "yuv420p", "IPPIPP", "PPPPPP"),
     ]:
         name = "annexb-" + stem + ".h264"
         raw, log = decode(opts.ffmpeg, name, ["-debug_ts", "-map", "0:v:0", "-vf", "showinfo",
@@ -81,7 +84,7 @@ def main():
         sps = [unit.rstrip(b"\x00") for unit in units if unit and unit[0] & 31 == 7]
         require(len(sps) == 2 and sps[0] != sps[1], name + ": distinct SPS")
         print("ORACLE", name, "six decoded frames; different SPS; WM6 must reject before output")
-    for stem in media_fixtures.ANNEXB_DAMAGE:
+    for stem in media_fixtures.ANNEXB_DAMAGE + ["dangling-pps", "late-dangling-pps", "pps-missing-sps"]:
         name = "annexb-" + stem + ".h264"
         flags = (subprocess.BELOW_NORMAL_PRIORITY_CLASS | subprocess.CREATE_NO_WINDOW) if os.name == "nt" else 0
         result = subprocess.run([opts.ffmpeg, "-hide_banner", "-nostdin", "-xerror",
@@ -97,6 +100,33 @@ def main():
         else:
             require(result.returncode != 0, name + ": strict desktop decoder must detect damage")
         print("ORACLE", name, "clean two-frame EOF" if stem == "two-frames" else "strict decode rejected")
+    for stem in ["repeat-pps", "change-pps", "pps-id1"]:
+        _, log = decode(opts.ffmpeg, "annexb-" + stem + ".h264",
+                        ["-c:v", "copy", "-bsf:v", "trace_headers", "-f", "null", "pipe:1"])
+        values = [line for line in log.splitlines() if "pic_parameter_set_id" in line]
+        require(values and all("= " + str(int(stem == "pps-id1")) in line for line in values),
+                stem + ": PPS/slice identity")
+        if stem == "change-pps":
+            flags = [line for line in log.splitlines() if "constrained_intra_pred_flag" in line]
+            require(any("= 0" in line for line in flags) and any("= 1" in line for line in flags),
+                    "Valid PPS change must modify constrained_intra_pred_flag")
+    for stem in ["sps-4096", "sps-4097", "pps-4096", "pps-4097", "late-pps-4097"]:
+        units = re.split(b"\x00\x00\x00?\x01", (media_fixtures.DEST / ("annexb-" + stem + ".h264")).read_bytes())[1:]
+        damaged = [u for u in units if len(u) >= 4096 and u[0] & 31 in (7, 8)]
+        require(len(damaged) == 1 and len(damaged[0]) == (4096 if stem.endswith("4096") else 4097),
+                stem + ": exact NAL byte budget, no trailing zero normalization")
+        bits = "".join(f"{b:08b}" for b in damaged[0])
+        offset = 32 if stem.startswith("sps") else 8
+        zeros = bits.index("1", offset) - offset
+        end = offset + zeros * 2 + 1
+        identity = int(bits[offset + zeros:end], 2) - 1
+        require(identity == (32 if stem.startswith("sps") else 256), stem + ": invalid identity")
+        if not stem.startswith("sps"):
+            require(bits[end] == "1", stem + ": references the existing SPS 0")
+    units = re.split(b"\x00\x00\x00?\x01", (media_fixtures.DEST / "annexb-slice-before-pps.h264").read_bytes())[1:]
+    kinds = [u[0] & 31 for u in units if u]
+    require(kinds.index(5) < kinds.index(8), "PPS occurs after the first IDR slice")
+    print("Parameter budget/order oracle PASS; invalid-ID capacity inputs do not prove valid maximum-size parameters.")
     print("Annex-B oracle PASS; CLI synthesized frame PTS do not define the DLL contract.")
 
 
