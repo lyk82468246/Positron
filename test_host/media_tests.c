@@ -3367,6 +3367,182 @@ fail:
     return FALSE;
 }
 
+BOOL test1356_media_av_timeline_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"baseline-aac.mp4", L"mixed-clock-video-late.mp4",
+        L"mixed-clock-audio-late.mp4", L"mixed-clock-shifted.mp4" };
+    static const int video_start[] = { 0, 400000, 0, 600000 };
+    static const int audio_start[] = { 0, 0, 400000, 600000 };
+    media_fixture_source input;
+    media_av_sink sink;
+    media_av_reference *reference;
+    media_av_reference *control;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *data;
+    pm_position origin;
+    pm_position pts;
+    pm_position previous;
+    pm_position base;
+    pm_position maximum;
+    int bytes;
+    int test;
+    int seekable;
+    int pass;
+    int i;
+    int result;
+    int offers;
+    int first_audio;
+    int paused;
+    int audio_tail;
+    int video_tail;
+    char phase[192];
+
+    reference = (media_av_reference *)calloc(1, sizeof(*reference));
+    control = (media_av_reference *)calloc(1, sizeof(*control));
+    session = NULL;
+    data = NULL;
+    memset(&sink, 0, sizeof(sink));
+    if (reference == NULL || control == NULL) goto fail;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    media_contract_init(&input, &sink.events, &source, &output, &options);
+    output.video = media_av_video;
+    output.audio = media_av_audio;
+    output.error = media_compressed_error;
+    for (test = 0; test < 4; test++) {
+        _snprintf(phase, sizeof(phase), "mixed timeline case=%d decode-only source PTS, priming and full bytes", test);
+        g_media_compressed_error = "mixed timeline default source/PCM reference";
+        if (progress != NULL) progress(phase);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        input.data = data;
+        input.bytes = bytes;
+        input.position = input.read_mode = 0;
+        input.read_chunk = 7;
+        source.seek = media_fixture_seek;
+        source.tell = media_fixture_tell;
+        options.flags = 0;
+        memset(&sink, 0, sizeof(sink));
+        memset(reference, 0, sizeof(*reference));
+        sink.reference = test ? reference : control;
+        sink.capture = 1;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+        input.read_mode = 2;
+        result = PMEDIA_OK;
+        for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+        if (result != PMEDIA_EOF || sink.videos != 3 || sink.audios != 29 ||
+            sink.bytes != 118784 || sink.events.errors || sink.events.error_callbacks ||
+            sink.events.eof_events != 1 || pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        if (!test) {
+            free(data);
+            data = NULL;
+            continue;
+        }
+        _snprintf(phase, sizeof(phase), "mixed timeline observed source case=%d video=%d..%d audio=%d..%d samples=%d",
+                  test, (int)reference->video[0].pts_us, (int)reference->video[2].pts_us,
+                  (int)reference->audio[0].pts_us, (int)reference->audio[28].pts_us, sink.audios * 1024);
+        if (progress != NULL) progress(phase);
+        if (memcmp(reference->pcm, control->pcm, (size_t)control->bytes)) goto fail;
+        for (i = 0; i < 3; i++) {
+            if (reference->video[i].pts_us != video_start[test] + (pm_position)i * 200000 ||
+                reference->video[i].duration_us != control->video[i].duration_us ||
+                reference->video[i].flags != control->video[i].flags ||
+                reference->video_hash[i] != control->video_hash[i] ||
+                reference->video[i].width != 320 || reference->video[i].height != 240) goto fail;
+        }
+        for (i = 0; i < 29; i++) {
+            if (reference->audio[i].pts_us != audio_start[test] +
+                ((pm_position)i * 1024 * 1000000 + 24000) / 48000 ||
+                reference->audio[i].duration_us != control->audio[i].duration_us) goto fail;
+        }
+        origin = video_start[test] < audio_start[test] ? video_start[test] : audio_start[test];
+        first_audio = audio_start[test] <= video_start[test];
+        for (seekable = 0; seekable < 2; seekable++) {
+            _snprintf(phase, sizeof(phase), "mixed timeline case=%d seekable=%d pending-head rewind then both EOF directions", test, seekable);
+            g_media_compressed_error = "mixed timeline source-clock/pending rewind";
+            if (progress != NULL) progress(phase);
+            input.position = input.read_mode = 0;
+            source.seek = seekable ? media_fixture_seek : NULL;
+            source.tell = seekable ? media_fixture_tell : NULL;
+            options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+            memset(&sink, 0, sizeof(sink));
+            sink.reference = reference;
+            if (first_audio) sink.audio_result = PMEDIA_WOULD_BLOCK;
+            else sink.video_result = PMEDIA_WOULD_BLOCK;
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != bytes) goto fail;
+            input.read_mode = 2;
+            if (media_av_pump(session, &sink, 7000000) != PMEDIA_WOULD_BLOCK ||
+                sink.offers != 1 || sink.audios || sink.videos || sink.last_audio != first_audio ||
+                pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK ||
+                pm_pump(session, -1, 0) != PMEDIA_OK || sink.offers != 1 || pm_resume(session) != PMEDIA_OK) goto fail;
+            for (pass = 0; pass < 2; pass++) {
+                if (pass && (pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK ||
+                    pm_pump(session, -1, 0) != PMEDIA_OK || pm_resume(session) != PMEDIA_OK)) goto fail;
+                memset(&sink, 0, sizeof(sink));
+                sink.reference = reference;
+                base = pass ? maximum - 2000000 : 5000000;
+                previous = origin;
+                paused = audio_tail = video_tail = 0;
+                g_media_compressed_error = "mixed timeline deadlines/content/pause/tail";
+                for (i = 0; i < 32; i++) {
+                    pts = sink.audios < reference->audios && (sink.videos == reference->videos ||
+                          reference->audio[sink.audios].pts_us <= reference->video[sink.videos].pts_us) ?
+                          reference->audio[sink.audios].pts_us : reference->video[sink.videos].pts_us;
+                    offers = sink.offers;
+                    if (!pass && !paused && i > 0 && pts > previous) {
+                        if (pm_pause(session) != PMEDIA_OK || pm_pump(session, maximum, 0) != PMEDIA_OK ||
+                            sink.offers != offers || pm_resume(session) != PMEDIA_OK) goto fail;
+                        base += 9000000;
+                        if (media_av_pump(session, &sink, base + previous - origin) != PMEDIA_WOULD_BLOCK ||
+                            sink.offers != offers) goto fail;
+                        paused = 1;
+                    }
+                    if (pts > previous && (media_av_pump(session, &sink, base + pts - origin - 1) != PMEDIA_WOULD_BLOCK ||
+                        sink.offers != offers)) goto fail;
+                    if (media_av_pump(session, &sink, base + pts - origin) != PMEDIA_OK ||
+                        sink.offers != offers + 1 || sink.events.errors || sink.events.eof_events ||
+                        (!i && sink.last_audio != first_audio) || pm_seek(session, 1) != PMEDIA_ERROR_NOT_SEEKABLE ||
+                        pm_resume(session) != PMEDIA_OK) goto fail;
+                    if (sink.audios == 29 && sink.videos < 3) video_tail = 1;
+                    if (sink.videos == 3 && sink.audios < 29) audio_tail = 1;
+                    previous = pts;
+                }
+                if (sink.audios != 29 || sink.videos != 3 || sink.bytes != reference->bytes ||
+                    video_tail != (test == 1) || audio_tail != (test != 1) ||
+                    sink.last_audio != (test != 1) || media_av_pump(session, &sink, maximum) != PMEDIA_EOF ||
+                    sink.events.eof_events != 1 || sink.events.errors || sink.events.error_callbacks ||
+                    pm_pump(session, maximum, 0) != PMEDIA_EOF || sink.events.eof_events != 1) goto fail;
+                _snprintf(phase, sizeof(phase), "mixed timeline case=%d seekable=%d pass=%d 3/29 bytes identical; first=%s tail=%s EOF once",
+                          test, seekable, pass, first_audio ? "audio" : "video", video_tail ? "video" : "audio");
+                if (progress != NULL) progress(phase);
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK || sink.events.stopped_events != 1 ||
+                pm_pump(session, maximum, 0) != PMEDIA_ERROR_STATE || pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        free(data);
+        data = NULL;
+    }
+    free(control);
+    free(reference);
+    if (progress != NULL) progress("mixed relative/common source origins and both EOF tails passed");
+    return TRUE;
+fail:
+    _snprintf(phase, sizeof(phase), "mixed timeline failure: video=%d audio=%d offers=%d errors=%d callbacks=%d: %s",
+              sink.videos, sink.audios, sink.offers, sink.events.errors, sink.events.error_callbacks,
+              session == NULL ? "no session" : pm_last_error(session));
+    phase[sizeof(phase) - 1] = '\0';
+    if (progress != NULL) progress(phase);
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    if (control != NULL) free(control);
+    if (reference != NULL) free(reference);
+    return FALSE;
+}
+
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)
 {
     media_fixture_source input;

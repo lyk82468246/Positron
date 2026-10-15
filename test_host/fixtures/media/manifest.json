@@ -1726,6 +1726,33 @@
       "fixture_transform": "pinned baseline MP4 first AVC sample filler NAL, stsz/stco/mdat v1",
       "bytes": 269258,
       "sha256": "d17be1949e146272f1c562ea8b93191a2a9ee21ab3dd032bd508c629cb75746a"
+    },
+    {
+      "file": "mixed-clock-video-late.mp4",
+      "fixture_transform": "pinned MP4 v0 empty edits, sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_delay_ms": 400,
+      "audio_delay_ms": 0,
+      "bytes": 7120,
+      "sha256": "358cd0bcc7d4d4e7d54412ca332933c4b0002b03811825b2c53d1012fa277c13"
+    },
+    {
+      "file": "mixed-clock-audio-late.mp4",
+      "fixture_transform": "pinned MP4 v0 empty edits, sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_delay_ms": 0,
+      "audio_delay_ms": 400,
+      "bytes": 7120,
+      "sha256": "1353fe58c9a377d4472ed3151ff34b922ce6451e93419fc36e0b433362a87a9a"
+    },
+    {
+      "file": "mixed-clock-shifted.mp4",
+      "fixture_transform": "pinned MP4 v0 empty edits, sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_delay_ms": 600,
+      "audio_delay_ms": 600,
+      "bytes": 7132,
+      "sha256": "a5a57ee0f11095fd90936306ea175655f7123406732b9659298c72c5e5438ec9"
     }
   ]
 }
