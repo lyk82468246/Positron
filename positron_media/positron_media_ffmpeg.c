@@ -66,8 +66,16 @@ struct pmedia_ffmpeg {
     unsigned char *audio_buffer;
     int audio_buffer_bytes;
     int opened_format;
+    int open_flags;
     int schedule_video;
     int schedule_audio;
+    int schedule_av;
+    int mixed_audio;
+    pmedia_ffmpeg *av_audio;
+    int av_video_done;
+    int av_audio_done;
+    int mixed_pts_valid;
+    pm_position mixed_last_pts;
     int audio_pending;
     pm_position audio_samples;
     int audio_rate;
@@ -823,6 +831,7 @@ static int pm_ff_open_decoder(AVFormatContext *format,
 static void pm_ff_cleanup(pmedia_ffmpeg *context)
 {
     if (context == NULL) return;
+    if (context->av_audio != NULL) pm_ff_cleanup(context->av_audio);
     if (context->video_codec != NULL) avcodec_free_context(&context->video_codec);
     if (context->audio_codec != NULL) avcodec_free_context(&context->audio_codec);
     if (context->frame != NULL) av_frame_free(&context->frame);
@@ -847,7 +856,7 @@ static int pm_ff_open_internal(const unsigned char *input,
                                const pm_output_callbacks *output,
                                int max_video_width,
                                int max_video_height,
-                               int schedule_video,
+                               int open_flags,
                                pmedia_ffmpeg **out_context,
                                pm_stream_info *out_info,
                                pm_capabilities *out_capabilities,
@@ -871,7 +880,8 @@ static int pm_ff_open_internal(const unsigned char *input,
     context->input_bytes = input_bytes;
     context->max_video_width = max_video_width;
     context->max_video_height = max_video_height;
-    context->schedule_video = schedule_video;
+    context->open_flags = open_flags;
+    context->schedule_video = (open_flags & PMEDIA_OPEN_SCHEDULE_VIDEO) != 0;
     context->video_stream = -1;
     context->audio_stream = -1;
     if (output != NULL) {
@@ -910,7 +920,7 @@ static int pm_ff_open_internal(const unsigned char *input,
     /* Clock mode must not let demux compute_pkt_fields manufacture a zero
      * origin or repair explicit DTS/PTS.  Keep decode-only compatibility;
      * output-level inference may continue only an already known timeline. */
-    if (schedule_video) context->format->flags |= AVFMT_FLAG_NOFILLIN;
+    if (open_flags) context->format->flags |= AVFMT_FLAG_NOFILLIN;
     result = avformat_open_input(&context->format, NULL, NULL, NULL);
     if (result < 0 || context->format == NULL) {
         pm_ff_error_code(error_text, error_text_bytes,
@@ -973,7 +983,7 @@ int pmedia_ffmpeg_open(const unsigned char *input,
                        const pm_output_callbacks *output,
                        int max_video_width,
                        int max_video_height,
-                       int schedule_video,
+                       int open_flags,
                        pmedia_ffmpeg **out_context,
                        pm_stream_info *out_info,
                        pm_capabilities *out_capabilities,
@@ -983,7 +993,7 @@ int pmedia_ffmpeg_open(const unsigned char *input,
     if (out_context != NULL) *out_context = NULL;
     return pm_ff_open_internal(input, input_bytes, output,
                                max_video_width, max_video_height,
-                               schedule_video,
+                               open_flags,
                                out_context, out_info, out_capabilities,
                                error_text, error_text_bytes);
 }
@@ -1035,6 +1045,59 @@ int pmedia_ffmpeg_schedule_audio(pmedia_ffmpeg *context)
           (strcmp(name, "mp3") == 0 && context->audio_codec->codec_id == AV_CODEC_ID_MP3)))
         return PMEDIA_ERROR_UNSUPPORTED;
     context->schedule_audio = 1;
+    return PMEDIA_OK;
+}
+
+static int pm_ff_capture_mixed_audio(void *opaque, const pm_audio_block *block)
+{
+    pmedia_ffmpeg *context;
+    context = (pmedia_ffmpeg *)opaque;
+    if (context->audio_pending) return PMEDIA_ERROR_STATE;
+    context->pending_audio = *block;
+    context->audio_pending = 1;
+    return PMEDIA_OK;
+}
+
+int pmedia_ffmpeg_schedule_av(pmedia_ffmpeg *context)
+{
+    pmedia_ffmpeg *audio;
+    pm_stream_info info;
+    pm_capabilities capabilities;
+    pm_output_callbacks output;
+    int result;
+
+    if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
+    if (context->format->nb_streams != 2 ||
+        pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4 ||
+        context->video_codec == NULL || context->audio_codec == NULL ||
+        context->video_codec->codec_id != AV_CODEC_ID_H264 ||
+        context->audio_codec->codec_id != AV_CODEC_ID_AAC ||
+        context->output.video == NULL || context->output.audio == NULL ||
+        context->av_audio != NULL) return PMEDIA_ERROR_UNSUPPORTED;
+    memset(&output, 0, sizeof(output));
+    output.size = sizeof(output);
+    output.context = context;
+    output.audio = pm_ff_capture_mixed_audio;
+    memset(&info, 0, sizeof(info));
+    memset(&capabilities, 0, sizeof(capabilities));
+    audio = NULL;
+    /* Independent read cursors share immutable owned input. No interleave
+     * packet queue or duplicate source cache is needed. Commit only after
+     * both cursors/decoders have been prepared successfully. */
+    result = pm_ff_open_internal(context->input, context->input_bytes, &output,
+                                 context->max_video_width, context->max_video_height,
+                                 PMEDIA_OPEN_SCHEDULE_AV, &audio, &info,
+                                 &capabilities, NULL, 0);
+    if (result != PMEDIA_OK) return result;
+    avcodec_free_context(&context->audio_codec);
+    context->audio_stream = -1;
+    context->audio_drained = 1;
+    avcodec_free_context(&audio->video_codec);
+    audio->video_stream = -1;
+    audio->video_drained = 1;
+    audio->mixed_audio = 1;
+    context->av_audio = audio;
+    context->schedule_av = 1;
     return PMEDIA_OK;
 }
 
@@ -1201,7 +1264,7 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
         frame_time.num = stream->avg_frame_rate.den;
         frame_time.den = stream->avg_frame_rate.num;
         frame.duration_us = pm_ff_timestamp(1, frame_time);
-    } else if (context->schedule_video && context->video_codec->codec_id == AV_CODEC_ID_H264 &&
+    } else if ((context->schedule_video || context->schedule_av) && context->video_codec->codec_id == AV_CODEC_ID_H264 &&
                context->video_codec->framerate.num > 0 && context->video_codec->framerate.den > 0) {
         /* NOFILLIN also removes computed packet duration.  For container AVC,
          * the decoder's SPS timing gives a nominal interval, not a PTS origin
@@ -1227,6 +1290,17 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     if (context->frame->format == AV_PIX_FMT_YUVJ420P ||
         context->frame->color_range == AVCOL_RANGE_JPEG) {
         frame.flags |= PMEDIA_FRAME_FULL_RANGE;
+    }
+    if (context->schedule_av) {
+        if (frame.pts_us < 0 || (context->mixed_pts_valid && frame.pts_us < context->mixed_last_pts)) {
+            context->clock_error = "mixed video requires nonnegative nondecreasing presentation timestamps";
+            return PMEDIA_ERROR_FORMAT;
+        }
+        context->mixed_pts_valid = 1;
+        context->mixed_last_pts = frame.pts_us;
+        context->pending_video = frame;
+        context->video_pending = 1;
+        return PMEDIA_OK;
     }
     if (context->schedule_video) {
         context->pending_video = frame;
@@ -1285,7 +1359,22 @@ static int pm_ff_emit_audio(pmedia_ffmpeg *context)
     stream = context->format->streams[context->audio_stream];
     block.pts_us = pm_ff_timestamp(av_frame_get_best_effort_timestamp(context->frame),
                                    stream->time_base);
-    if (block.pts_us < 0) block.pts_us = 0;
+    if (context->mixed_audio) {
+        if (block.pts_us < 0 || (context->mixed_pts_valid && block.pts_us < context->mixed_last_pts)) {
+            context->clock_error = "mixed audio requires nonnegative nondecreasing presentation timestamps";
+            return PMEDIA_ERROR_FORMAT;
+        }
+        if (block.sample_rate <= 0 ||
+            (context->audio_rate && (context->audio_rate != block.sample_rate ||
+                                    context->audio_channels != block.channels))) {
+            context->clock_error = "mixed audio sample format changed";
+            return PMEDIA_ERROR_FORMAT;
+        }
+        context->audio_rate = block.sample_rate;
+        context->audio_channels = block.channels;
+        context->mixed_pts_valid = 1;
+        context->mixed_last_pts = block.pts_us;
+    } else if (block.pts_us < 0) block.pts_us = 0;
     block.duration_us = block.sample_rate > 0 ?
         ((pm_position)block.samples * 1000000) / block.sample_rate : 0;
     if (context->schedule_audio) {
@@ -1353,7 +1442,7 @@ static int pm_ff_send_flush(pmedia_ffmpeg *context,
     if (result < 0 && result != AVERROR_EOF && result != AVERROR(EAGAIN)) {
         return PMEDIA_ERROR_FORMAT;
     }
-    *sent = 1;
+    if (!(context->open_flags & PMEDIA_OPEN_SCHEDULE_AV) || result != AVERROR(EAGAIN)) *sent = 1;
     return PMEDIA_OK;
 }
 
@@ -1362,7 +1451,7 @@ const char *pmedia_ffmpeg_clock_error(pmedia_ffmpeg *context)
     return context == NULL ? NULL : context->clock_error;
 }
 
-int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
+static int pm_ff_decode_pump(pmedia_ffmpeg *context,
                        pm_position clock_us,
                        int budget_us)
 {
@@ -1378,8 +1467,8 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
     context->pump_clock_us = clock_us;
     /* Keep the decoded AVFrame alive while waiting: do not receive/unref,
      * demux or decode another packet.  Metadata is prepared exactly once. */
-    if (context->video_pending) return pm_ff_deliver_video(context);
-    if (context->audio_pending) return pm_ff_deliver_audio(context);
+    if (context->video_pending && !context->schedule_av) return pm_ff_deliver_video(context);
+    if (context->audio_pending && !context->schedule_av) return pm_ff_deliver_audio(context);
     work_limit = budget_us <= 0 ? 1 : budget_us / 1000;
     if (work_limit < 1) work_limit = 1;
     if (work_limit > 64) work_limit = 64;
@@ -1421,6 +1510,12 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
             context->input_eof = 1;
             continue;
         }
+        if ((context->open_flags & PMEDIA_OPEN_SCHEDULE_AV) &&
+            packet.size > PMEDIA_SCHEDULE_AV_PACKET_BYTES) {
+            av_packet_unref(&packet);
+            context->clock_error = "mixed compressed packet exceeds 256 KiB";
+            return PMEDIA_ERROR_LIMIT;
+        }
         codec = NULL;
         if (packet.stream_index == context->video_stream) {
             codec = context->video_codec;
@@ -1429,6 +1524,13 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
         }
         if (codec != NULL) {
             result = avcodec_send_packet(codec, &packet);
+            /* Receive was drained to EAGAIN immediately before send. The
+             * send/receive contract forbids both sides returning EAGAIN.
+             * Do not silently discard an unaccepted packet in this mode. */
+            if (result == AVERROR(EAGAIN) && (context->open_flags & PMEDIA_OPEN_SCHEDULE_AV)) {
+                av_packet_unref(&packet);
+                return PMEDIA_ERROR_STATE;
+            }
             if (result < 0 && result != AVERROR(EAGAIN)) {
                 av_packet_unref(&packet);
                 return PMEDIA_ERROR_FORMAT;
@@ -1437,6 +1539,61 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
         av_packet_unref(&packet);
     }
     return PMEDIA_OK;
+}
+
+static int pm_ff_pump_av(pmedia_ffmpeg *context, pm_position clock_us, int budget_us)
+{
+    int result;
+    int audio_first;
+    pm_position pts;
+
+    if (!context->video_pending && !context->av_video_done) {
+        result = pm_ff_decode_pump(context, clock_us, budget_us / 2);
+        if (result < 0) return result;
+        if (result == PMEDIA_EOF) context->av_video_done = 1;
+    }
+    if (!context->audio_pending && !context->av_audio_done) {
+        result = pm_ff_decode_pump(context->av_audio, clock_us, budget_us / 2);
+        if (result < 0) {
+            context->clock_error = context->av_audio->clock_error;
+            return result;
+        }
+        if (result == PMEDIA_EOF) context->av_audio_done = 1;
+    }
+    /* Need both stream frontiers before selecting a globally ordered head.
+     * Decoding cannot replace either borrowed pending output buffer. */
+    if ((!context->video_pending && !context->av_video_done) ||
+        (!context->audio_pending && !context->av_audio_done)) return PMEDIA_OK;
+    if (!context->clock_anchored) {
+        if (!context->video_pending || !context->audio_pending) {
+            context->clock_error = "mixed scheduling requires initial audio and video frames";
+            return PMEDIA_ERROR_FORMAT;
+        }
+        context->pts_anchor_us = context->pending_video.pts_us < context->pending_audio.pts_us ?
+                                 context->pending_video.pts_us : context->pending_audio.pts_us;
+        context->clock_anchor_us = clock_us;
+        context->clock_anchored = 1;
+    }
+    if (!context->video_pending && !context->audio_pending) return PMEDIA_EOF;
+    audio_first = context->audio_pending && (!context->video_pending ||
+                   context->pending_audio.pts_us <= context->pending_video.pts_us);
+    pts = audio_first ? context->pending_audio.pts_us : context->pending_video.pts_us;
+    if (pts - context->pts_anchor_us > clock_us - context->clock_anchor_us)
+        return PMEDIA_WOULD_BLOCK;
+    result = audio_first ? context->output.audio(context->output.context, &context->pending_audio) :
+                          context->output.video(context->output.context, &context->pending_video);
+    if (result == PMEDIA_WOULD_BLOCK) return result;
+    if (result < 0) return PMEDIA_ERROR_CALLBACK;
+    if (audio_first) context->audio_pending = 0;
+    else context->video_pending = 0;
+    return result == PMEDIA_CALLBACK_STOP ? PMEDIA_CALLBACK_STOP : PMEDIA_OK;
+}
+
+int pmedia_ffmpeg_pump(pmedia_ffmpeg *context, pm_position clock_us, int budget_us)
+{
+    if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
+    return context->schedule_av ? pm_ff_pump_av(context, clock_us, budget_us) :
+                                 pm_ff_decode_pump(context, clock_us, budget_us);
 }
 
 static int pm_ff_restart_cached(pmedia_ffmpeg *context)
@@ -1459,11 +1616,12 @@ static int pm_ff_restart_cached(pmedia_ffmpeg *context)
     capabilities.size = sizeof(capabilities);
     result = pm_ff_open_internal(context->input, context->input_bytes,
                                  &context->output, context->max_video_width,
-                                 context->max_video_height, context->schedule_video, &replacement,
+                                 context->max_video_height, context->open_flags, &replacement,
                                  &info, &capabilities, NULL, 0);
     if (result != PMEDIA_OK) return result;
-    if (context->schedule_audio) {
-        result = pmedia_ffmpeg_schedule_audio(replacement);
+    if (context->schedule_audio || context->schedule_av) {
+        result = context->schedule_av ? pmedia_ffmpeg_schedule_av(replacement) :
+                                       pmedia_ffmpeg_schedule_audio(replacement);
         if (result != PMEDIA_OK) {
             pm_ff_cleanup(replacement);
             return result;
@@ -1475,6 +1633,8 @@ static int pm_ff_restart_cached(pmedia_ffmpeg *context)
     /* Custom AVIO callbacks must follow the stable live context address. */
     context->io->opaque = context;
     replacement->io->opaque = replacement;
+    if (context->av_audio != NULL) context->av_audio->output.context = context;
+    if (replacement->av_audio != NULL) replacement->av_audio->output.context = replacement;
     pm_ff_cleanup(replacement);
     return PMEDIA_OK;
 }
@@ -1484,7 +1644,7 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     AVCodecContext *replacement_audio;
     int result;
     if (context == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
-    if (context->schedule_video || context->schedule_audio) {
+    if (context->schedule_video || context->schedule_audio || context->schedule_av) {
         if (position_us != 0) return PMEDIA_ERROR_NOT_SEEKABLE;
         return pm_ff_restart_cached(context);
     }

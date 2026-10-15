@@ -8,6 +8,11 @@
 
 - `baseline-aac.mp4`：320×240、5 fps、三帧 Constrained Baseline/AVCC，AAC-LC 双声道 48 kHz。
 - `main-vga.mp4`：640×480、5 fps、三帧 Main，包含 B 帧和 decoder drain。
+- `mixed-main-aac.mp4`：复制 `main-vga.mp4` 的视频和 `baseline-aac.mp4` 的音频到同一
+  MP4，不重编码；视频源 PTS 0/200000/400000 µs，AAC 实际输出仍为 29×1024 stereo samples。
+  `mixed-packet-limit.mp4` 在固定 Baseline MP4 的首个 AVC sample 前插入合法 filler NAL，
+  同步调整 stsz/stco/mdat，不改 slice/AAC；首包 263027 bytes，超过 256 KiB。
+  桌面可正常解出三帧与 29 块音频，负样本不是靠损坏解码触发拒绝。
 - `aac-lc.aac`：ADTS AAC-LC 单声道 48 kHz；`aac-main.aac` 用于拒绝非 LC profile。
   MP4 的 AAC priming 包 PTS 为 -1024 sample；设备输出从 PTS 零起为 29 块、每声道
   29696 sample。ADTS 为 30 块、每声道 30720 sample。TEST1332 各完整解码三次，
@@ -139,6 +144,15 @@ TEST1352 复用 `mpeg4-simple.mp4`、`main-vga.mp4`、`h263-cif.avi` 和
 这是公共 DLL 的到期回调合同，不是宿主自建调度器；无实际睡眠，不证明实时帧率、
 音视频同步、总内存或重建分配失败。
 
+TEST1355 用 Baseline/AAC 与 Main/B 帧/AAC 比较默认解码和混合源时钟模式：每帧所有有效
+I420 字节参与校验值、全部 PCM 字节逐个比较，源 PTS/时长/flags、两路到期合并顺序与
+同值音频优先均保护。两种 source seekability、7-byte 短读、打开后禁读源、每 pump
+最多一次回调、提前 1 µs、负/回退/同值/极大时钟、背压同块重试/阻止另一流、两路 STOP、
+暂停间隔、待帧/PCM 的缓存 seek 零与停止、视频先 EOF 的音频尾部、一次性 EOF/错误和
+关闭查询均有断言。有效超大首包要求 LIMIT、零输出及失败终态；组合 flags、缺 callback、
+AUTO、WAV/纯流/AVI 拒绝也覆盖。非零相对起点、音频先 EOF、异常时间轴/格式变化、
+内存故障与真机同步仍待独立门；设备 PCM 参考不取自桌面浮点 decoder。
+
 时间戳控制组 `flv-clock-{base,unknown,late-unknown,backward,negative,gap,duplicate}.flv`
 从固定 `flv-h264-aac.flv` 删除音频/script tag 并设置 video-only 标志，保留所有 AVC
 配置和三个 I/P/P payload，只变换视频包的 FLV DTS/有符号 CTS。每条 1052 字节，旧 pin 不变。
@@ -171,6 +185,8 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 `--extend-annexb-parameters` 对 PPS/引用/容量组采用同一规则，不改已有 pin。
 `--extend-flv-clock` 对七条时间戳控制采用相同规则，只做固定字节变换，不重编码。
 `--extend-audio-change` 保留旧 pin，生成两条 LC 纯音并拼接六条完整片段控制，不修改旧媒体。
+`--extend-mixed` 只增加 Main/AAC remux；`--extend-mixed-limit` 只增加首包 filler 负控制，
+均保留旧 pin，不在构建时执行。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -216,6 +232,11 @@ AAC 格式变化的独立校验：`python scripts/test_media_audio_change_fixtur
 只读、同一 pinned 工具、单线程低优先级；逐个验证 ADTS 帧边界/LC/采样率/声道和独立解码
 后的帧形状、精确拼接关系。它不把桌面 PCM 当作 ARMV4I 字节参考，也不证明 DLL 应支持
 动态时钟切换；FORMAT 分类、错误前 PCM 和生命周期必须通过设备门。
+
+混合流的独立校验：`python scripts/test_media_av_fixtures.py --ffmpeg PATH`。
+同一 pinned 工具、只读、单线程低优先级，检查三条输入的所有有效 I420 像素、I/P/B 顺序、
+视频 PTS、实际 AAC sample PTS/裁剪/块数与不变 PCM，以及首包容量正负控制。
+它不证明 WM6 调度、输出设备同步或性能。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，

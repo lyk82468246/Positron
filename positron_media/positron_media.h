@@ -22,7 +22,7 @@ extern "C" {
 #define PMEDIA_API __declspec(dllimport)
 #endif
 
-#define PMEDIA_ABI_VERSION 0x00010002UL
+#define PMEDIA_ABI_VERSION 0x00010003UL
 #define PMEDIA_STRUCT_VERSION 1UL
 #define PMEDIA_MAX_PLANES 3
 
@@ -37,6 +37,13 @@ typedef void *pm_session;
  * Audio callback WOULD_BLOCK retains the identical block; STOP consumes it.
  * One block (at most 8192 samples/channel, 32768 bytes), no late dropping. */
 #define PMEDIA_OPEN_SCHEDULE_AUDIO 2UL
+/* SOFT MP4/MOV, exactly H.264 + AAC-LC; both output callbacks required.
+ * All schedule flags are mutually exclusive. Source PTS, one pending frame
+ * and one PCM block, at most one callback per pump, audio first on ties.
+ * Either callback WOULD_BLOCK retains the head; STOP consumes then pauses.
+ * Compressed packet guard is after demux, not an FFmpeg allocation ceiling. */
+#define PMEDIA_OPEN_SCHEDULE_AV 4UL
+#define PMEDIA_SCHEDULE_AV_PACKET_BYTES 262144
 
 enum {
     PMEDIA_OK = 0,

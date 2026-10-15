@@ -248,54 +248,25 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
-**状态：WAV PCM/IMA/I/O 与短小 H.264/AAC/MJPEG/MP3、TS/MPEG-2/MP2、PS/MPEG-1/MP2、AMR-NB/WB、MPEG-4 Part 2 和 AVI H.263 解码、拒绝守卫及 EOF 重播已有 Debug/Release 设备证据；
-可选有序单视频与 WAV/ADTS/MP3 纯音频样本时钟交付已有双配置合同，其他压缩格式、DirectShow source filter、其他音频/混合流调度与完整设备性能门仍待完成。**
-`positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
-运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
-Debug/Release 链接，并由 custom memory AVIO 驱动有界的 H.264/AAC/MP3/AMR、常见
-MPEG/AVI/MP4/TS/FLV/WAV/裸流解码接线，但编译集合不等于设备解码验收。WAV 的输入失败、
-实际样本/时间戳、EOF/seek 重播、软解暂停/错误、停止态和独立 session 释放已有定向设备门；
-AUTO PCM8 实际走 WaveOut 并保持 S16LE 输出。AVI/MJPEG + MP3、mono MP3 与 TS/PS MPEG
-与 AMR-NB/WB、WAV IMA 的初始解码合同已完成，不再作为待实现候选。IMA 的逐字节 PCM、
-fact 裁剪、块内/边界 seek 与容量/损坏拒绝已有固定夹具。MPEG-4 Part 2 的 MP4 Simple/
-ASP VGA 与 AVI Simple + MP3 已完成实际 I420/PCM、时间戳、生命周期与隔行/超限拒绝门，
-不再作为待接入候选。AAC 零点重播已从 DLL 缓存重建 demux/decoder，MP4 stereo 与
-ADTS mono 的三遍 PCM 逐字节断言通过；不再作为待修复候选。H.263 CIF 与 H.263+ VGA
-无音频 AVI 已完成像素/时间戳、生命周期、seek 零与超限/截断头拒绝门，不再作为初始
-待接入候选。FLV 的 H.264 Baseline/AAC-LC 与 Main VGA/B 帧短媒体、seek 零 PCM
-逐字节比较及 FLV1/超限拒绝门已完成，不再作为初始待接入候选。H.264 Annex-B 的
-Baseline/Main 输出、未知 PTS、SPS 名义时长、缓存零点重播与 profile/布局/尺寸拒绝已验收。
-缺失 SPS timing 的零时长、相同 SPS 重复与不同 SPS 的输出前拒绝也已验收；裸流不承诺
-动态重配置。固定损坏/缺失参数集的输出前拒绝、两条截断 slice 的 pump FORMAT/终态与
-完整 NAL 边界的正常 EOF 控制已验收，不再列为初始候选。单一 PPS/相同重复、非零 PPS ID、
-有效 PPS 变化拒绝、定义后引用与参数预算负控制也已验收；多个/变化的有效参数集明确不支持。
-初始单视频 host-clock 合同已退出待实现候选：ABI 1.1 可选位保留默认解码-only；
-MP4/MOV、AVI、FLV 单视频流保留一帧并按时回调，pause/STOP、缓存零点重播、
-负/回退宿主时钟、极大时钟与不丢迟到帧的双配置断言已通过。不扩展混合流或非零 seek。
-固定 FLV 的未知/负起点、回退 PTS 终态与已知起点后推导、重复/向前间隔已退出初始
-候选；调度在 demux 前禁用隐式补零，默认兼容路径保留。证据边界见能力矩阵/媒体夹具。
-纯音频初始交付退出待实现候选：ABI 1.2 显式 SOFT，仅 WAV PCM 和单音频 ADTS/MP3，
-一块 PCM 按消费样本累计 PTS、整块背压/STOP、暂停/零点重播与默认 PCM 全字节比较已有门。
-固定 ADTS 的 48↔44.1 kHz、单↔双声道变化拒绝退出初始取证：默认模式全段解码，
-时钟模式保留完整首段 PCM 后 FORMAT/一次性终态，不支持动态切换；MP3/其他配置仍未验收。
-下一纵切先取舍混合流时钟合同：复用 baseline-aac.mp4 的包交错、priming 与实际输出，
-明确公共时间轴、视频/PCM 槽和包缓存的固定预算、背压、单方 EOF、暂停/seek 零与失败状态，
-再决定 additive 开关。最小合成时钟 fixture 须同时保护两路内容、到期顺序和容量拒绝；
-不在 test_host 另建同步器，不因两项单流模式通过而宣称混合流或设备音频时钟已支持。
-其他容器异常、缺 timing/未知时长时不推导、推导溢出、PTS-only 回退而 DTS 仍单调、
-完整 VFR/SEI 仍需独立 fixture，不把固定 FLV 变换扩大为任意时间轴支持。
-不能把 pump budget 当作可抢占 decoder 的硬墙钟上限，其他损坏模式不由固定夹具代替。
-非零 AAC seek 保真和重建分配失败仍待专门门。
-不把短小夹具扩大为全部格式或实时播放保证。
-之后再取舍其他音频格式/容器与混合流调度的固定帧/PCM 预算、同步与迟到丢帧，以及不会破坏不可 seek
-输入的 DirectShow callback source filter/native 视频生命周期。默认 pump 仍忽略 clock_us，预算不是严格墙钟上限；
-桌面 DirectShow 格式表不能替代设备 filter 探测。
+**状态：有界解码、单流时钟、固定 ADTS 变化拒绝与初始 MP4 H.264/AAC 混合调度已退出
+待开发范围，已验收边界见 [能力矩阵](../docs/CAPABILITIES.md)。**
+不把已完成的 codec 接入和生命周期门重新列为开发任务；编译集合、短媒体合同和真机性能
+是三个不同层次。默认解码路径保持，源时钟调度不等于实际输出设备同步。
+
+下一纵切先补混合时间轴证据：不同的音视频起点、音频先 EOF 的视频尾部、已知负/未知/
+单路回退 PTS，以及固定有效格式变化输入。复用既有帧/PCM 参考，不在 test_host 建同步器，
+不通过重写 PTS、丢块或放宽守卫让样本通过；保留共同起点、全局回调顺序、两路背压、
+缓存零点重建和一次性失败合同。只有这些边界和资源测量清楚后，才考虑其他 codec/容器组合。
+
+之后取舍实际音频队列/设备时钟、迟到策略和 DirectShow callback source filter/native
+视频生命周期，须先确定固定资源预算及不可 seek 输入的无损回退；桌面格式表不作 codec
+保证。默认 pump 忽略 clock，budget 不可抢占 decoder/callback，不是硬墙钟上限。
 
 - **Owner：** `positron_media.dll` 拥有 codec/container/session/timestamp/borrowed-buffer 语义；
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** MP3/其他 AAC 配置变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
+- **剩余 fixture：** MP3/其他 AAC 配置变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；混合负时间轴/相对起点/音频先 EOF、有效最大包和超过预算包的其他位置；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
   其他容器参数变化拒绝、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；其他输入缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。

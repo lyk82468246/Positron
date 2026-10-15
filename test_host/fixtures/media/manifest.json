@@ -1695,6 +1695,37 @@
       ],
       "bytes": 16094,
       "sha256": "d4445be38aef153230227ba787ab1243b9f8f1c7f02531e8a2c7388ff091adcf"
+    },
+    {
+      "file": "mixed-main-aac.mp4",
+      "arguments": [
+        "-i",
+        "C:\\Users\\Joe\\Documents\\C#\\Positron\\test_host\\fixtures\\media\\main-vga.mp4",
+        "-i",
+        "C:\\Users\\Joe\\Documents\\C#\\Positron\\test_host\\fixtures\\media\\baseline-aac.mp4",
+        "-map",
+        "0:v:0",
+        "-map",
+        "1:a:0",
+        "-c",
+        "copy",
+        "-fflags",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-movflags",
+        "+faststart",
+        "-y",
+        "mixed-main-aac.mp4"
+      ],
+      "bytes": 7070,
+      "sha256": "8dd6d6d0a3d57ca132dee66101aac4e6fcd00693a3d0f7b8e93c11ba918ba7be"
+    },
+    {
+      "file": "mixed-packet-limit.mp4",
+      "fixture_transform": "pinned baseline MP4 first AVC sample filler NAL, stsz/stco/mdat v1",
+      "bytes": 269258,
+      "sha256": "d17be1949e146272f1c562ea8b93191a2a9ee21ab3dd032bd508c629cb75746a"
     }
   ]
 }

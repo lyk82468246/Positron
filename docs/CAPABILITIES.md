@@ -198,14 +198,15 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | H.264 Annex-B 有界解码 | Constrained Baseline 320×240、Main VGA/B 帧无音频；`pm_probe/open/pump/seek` | 短裸流合同已验收 | PTS=-1、不设 PTS_INFERRED；名义时长取不变 SPS 的两 tick 间隔，缺失 timing 为零；输出前扫描缓存，单 SPS/PPS NAL ≤4096 bytes，固定解析器检查有效位消费；仅接受一个不变 SPS/PPS 及相同重复，不同有效参数集返回 UNSUPPORTED；普通/IDR slice 预读最多 64-byte 前缀，必须引用已定义的同一 PPS，不硬编码 ID0；严格解码错误/损坏帧返回 FORMAT，不交付该帧/正常 EOF，后续 pump/pause/resume/seek 为 STATE，前面有效帧不撤回；缓存零点重建，正值 seek NOT_SEEKABLE 且不改状态 | TEST1349 双配置门覆盖像素/stride/KEY/未知 PTS/名义或零时长、SPS/PPS 重复、ID1、三 session 三遍重播及生命周期；profile/布局/尺寸/不同参数集/固定损坏/缺失引用/定义晚于引用均在打开前拒绝、probe 不变；有效前缀后 4096-byte 越界 ID 为 FORMAT，4097-byte 为 LIMIT（非合法最大参数承诺）；截断 slice 分别零/两帧后 FORMAT 与终态关闭，完整边界两帧正常 EOF/重播。VFR/SEI、其他 slice 工具/损坏模式、合法极限参数、重建故障与峰值内存仍待门 |
 | 可选单视频 host-clock 调度 | ABI 1.1；`PMEDIA_OPEN_SCHEDULE_VIDEO` + 显式 SOFT + video callback；MP4/MOV、AVI、FLV 恰好一个视频 stream | 短视频到期回调及固定 FLV 时间戳守卫已验收 | 默认 flags=0 忽略 clock 并保留旧 demux 补时；调度在 demux 前 NOFILLIN，缓存重建保持；首帧非负 PTS 对齐交付时钟，一帧 pending/提前 WOULD_BLOCK，每 pump 最多一帧且不丢迟到帧；负/回退宿主 clock ARGUMENT 不推进，pause/STOP 后首个 resume pump 排除暂停间隔；仅缓存 seek 零，正值 NOT_SEEKABLE 不改状态；无非负帧 PTS/呈现回退 FORMAT，错误终态一次；已有起点后的输出层推导带 INFERRED，重复/向前间隔保留；AVC 可从 decoder SPS timing 取得名义时长，非 VFR/起点 | TEST1352 双配置门保护原 MP4/AVI/FLV 像素/源 PTS、deadline、暂停/重播/关闭、INT64_MAX 与非法输入；七条 Baseline FLV 控制各用可 seek/不可 seek 源及三个调度 session，默认控制三帧；未知/负起点零帧、回退保留一帧后具体时钟错误，推导标记、重复/间隔、EOF 与不重读 source 均验证。PTS-only 回退但 DTS 单调、其他容器、无 timing/未知时长/推导溢出、完整 VFR/SEI、总内存/重建故障仍待门；非音视频同步/实时证明 |
 | 可选纯音频样本时钟调度 | ABI 1.2；`PMEDIA_OPEN_SCHEDULE_AUDIO` + 显式 SOFT + audio callback；与视频开关互斥，仅 WAV PCM、单音频 ADTS AAC-LC/MP3 | 已实现但有界 | 首块样本 PTS=0，之后按已消费样本总数换算，不恢复源 PTS/间隔；decoder 裁剪后计时，无裁剪信息不猜 padding；一块 pending，≤8192 samples/声道、32768 bytes，WAV ≤2048 samples/声道；每 pump 至多一次回调，提前或背压 WOULD_BLOCK 保留同块，STOP 消费后暂停；沿单调活动 clock/暂停规则，仅缓存 seek 零；负 callback/解码错误终态一次；不包含 WaveOut/设备播放时钟或音视频同步 | TEST1353 比较 WAV PCM8 mono/PCM16 stereo、ADTS mono 与 gapless MP3 的默认完整 PCM、可 seek/不可 seek 的到期/重播全部字节和样本时轴；截止前 1 µs、负/回退/极大 clock、暂停保留、背压重复、STOP、EOF/错误一次性、缓存及非法/不支持输入均有断言。TEST1354 验证固定 ADTS 48↔44.1 kHz/单↔双声道变化：完整首段 PCM 保真、变化块交付前 FORMAT、一次性失败终态，默认解码仍输出全部片段；MP3/其他采样配置变化、极限块、重建故障/峰值内存与实际音频队列仍待门 |
+| 可选混合源时钟调度 | ABI 1.3；`PMEDIA_OPEN_SCHEDULE_AV` + SOFT + 两个 output callback；MP4/MOV 恰好 H.264/AAC-LC 两流 | 已实现但有界 | 共同首 PTS 对齐活动宿主 clock，源 PTS 不重写；两路各一个待输出槽，按 PTS 合并、同值音频优先，每 pump 至多一次 callback；任一路背压保留并阻止后续输出，STOP 消费后暂停；两个内存 demux 游标共享输入，无产品包队列；解复用后单包 >256 KiB LIMIT，并非 FFmpeg 分配前或总内存上限；缓存 seek 零重建，错误终态一次；无设备播放时钟纠偏 | TEST1355 双配置 WM6 门对 Baseline 320×240/Main VGA B 帧 + AAC 比较全帧有效字节校验值/全部 PCM 字节、源 PTS/到期顺序/视频先 EOF、两路背压/STOP、暂停/待块清理、缓存与终态；有效 filler 首包超限零输出 LIMIT。非零相对起点、音频先 EOF、混合异常 PTS/格式变化、合法极限包、故障/总内存及真机同步仍待门 |
 
 Media 首版的目标边界是 decoder/playback only；不包含编码、DRM、字幕、直播协议、长期工作线程、
 AV1、HEVC/H.265、VP9、H.264 10-bit/4:2:2/4:4:4 或高于 640×480 的软件视频。DirectShow
 当前只做 graph 可创建性探测，原生播放只落实设备接受的 WAV PCM WaveOut；其他
 `PMEDIA_BACKEND_NATIVE` 输入仍 fail closed。桌面格式表不能替代设备运行时 filter/codec 探测。
 FFmpeg archive 是离线固定构建输入，不在正式工程中联网下载。
-`pm_pump` 默认忽略 `clock_us`，可选单视频/纯音频模式例外；`budget_us` 只是处理量提示，不是严格
-墙钟预算。其他音频格式/容器和混合流时钟调度、迟到丢帧和音视频同步尚未实现。纯音频开关的
+`pm_pump` 默认忽略 `clock_us`，可选调度模式例外；`budget_us` 只是处理量提示，不是严格
+墙钟预算。所列范围之外的音频/混合格式调度、迟到丢帧和实际设备音频时钟同步尚未实现。纯音频开关的
 样本 PTS 不等于源时间戳；EOF 不证明应用音频队列已播完。短小 H.264/AAC/MJPEG/MP3/TS/PS MPEG/AMR/MPEG-4 Part 2/H.263 夹具的解码与 EOF 后 seek
 合同不代表其他已编译格式、复杂画面或实时播放已经验收；夹具来源与固定哈希见
 [媒体夹具](../test_host/fixtures/media/README.md)。

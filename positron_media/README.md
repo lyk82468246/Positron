@@ -18,7 +18,8 @@ DirectShow、ACM、WaveOut、FFmpeg 的类型和生命周期都不暴露到公�
 - pm_pump(clock_us, budget_us) 由宿主反复调用，驱动解码、输出回调和 WaveOut 队列。
 - 默认仍是解码-only；显式启用 `PMEDIA_OPEN_SCHEDULE_VIDEO` 后，可对单视频流按宿主
   时钟交付到期帧；`PMEDIA_OPEN_SCHEDULE_AUDIO` 则对选定纯音频按样本时钟交付 PCM。
-  两者互斥，都不包含音视频同步或迟到丢帧。
+  `PMEDIA_OPEN_SCHEDULE_AV` 对选定 MP4/MOV 混合流按共同源 PTS 交付。三个开关互斥，
+  都不包含实际设备音频时钟纠偏或迟到丢帧。
 - 输入会在打开期间复制到 DLL 自己的内存，当前总上限为 16 MiB。软解因此不要求源可 seek，
   但打开期间遇到 PMEDIA_WOULD_BLOCK 会直接失败，不会在 DLL 内等待或稍后重试。
 
@@ -58,8 +59,8 @@ PMEDIA_BACKEND_NATIVE 路径现在只落实 WAV PCM WaveOut，不能把桌面 Di
   关闭前应先停止应用自己的泵循环，并确保没有并发回调。
 - 音频和视频回调都应尽快返回。需要排队时使用应用自己的有界 ring buffer；回调中不要
   执行网络、磁盘等待或无界分配。
-- pm_open_options.flags 默认置零；可选位是互斥的 `PMEDIA_OPEN_SCHEDULE_VIDEO` 和
-  `PMEDIA_OPEN_SCHEDULE_AUDIO`，同时设置或未知位返回 ARGUMENT。
+- pm_open_options.flags 默认置零；`PMEDIA_OPEN_SCHEDULE_VIDEO`、
+  `PMEDIA_OPEN_SCHEDULE_AUDIO`、`PMEDIA_OPEN_SCHEDULE_AV` 三选一，组合或未知位返回 ARGUMENT。
   native_window 仍须为 NULL，没有 native 视频窗口接线合同。
 
 ## 标准调用顺序
@@ -75,8 +76,8 @@ PMEDIA_BACKEND_NATIVE 路径现在只落实 WAV PCM WaveOut，不能把桌面 Di
 5. 成功打开后用 pm_get_stream_info()、pm_get_capabilities() 和 pm_get_backend()
    记录实际选择的路径。
 6. 在应用自己的消息循环或定时器中反复调用 pm_pump()。默认解码-only 忽略 clock_us；
-   显式视频或纯音频调度使用非负单调微秒值，规则见下节。budget_us 只控制每次处理量，不是严格
-   墙钟时间上限，不能据此认为 DLL 已实现音视频同步或实时播放。
+   显式调度使用非负单调微秒值，规则见下节。budget_us 只控制每次处理量，不是严格
+   墙钟时间上限，也不是实际输出设备的同步或实时播放保证。
 7. 用户暂停/恢复/停止/跳转时调用相应的 pm_pause()、pm_resume()、pm_stop()、
    pm_seek()。
 8. 播放结束或应用退出时调用 pm_close()；发生错误时也必须释放已经成功打开的 session。
@@ -389,8 +390,8 @@ audio callback 返回 WOULD_BLOCK 表示没有接收该块：pump 返回 WOULD_B
 pump 再交付完全相同的 bytes/样本/PTS，消费位置不变。应用必须在返回前决定整块接收或拒绝，
 不能已排入设备队列再返回 WOULD_BLOCK，否则会重复播放。OK 和其他兼容的非负返回值消费
 整块；STOP 消费整块并暂停，恢复后不重放。负值返回 CALLBACK 并进入一次性失败态；后续
-pump/pause/resume/seek 返回 STATE，stop/close 仍可清理。这个背压解释只适用于新音频开关，
-默认音频和视频 callback 不会因返回 WOULD_BLOCK 而保留或重试。
+pump/pause/resume/seek 返回 STATE，stop/close 仍可清理。纯音频和下节混合模式提供背压；
+默认音频和单视频模式 callback 不会因返回 WOULD_BLOCK 而保留或重试。
 
 宿主 clock 的非负/单调、同值允许、负预算拒绝、暂停中不累计时间与真正 resume 后首个 pump
 排除暂停间隔的规则与视频模式相同；背压本身不暂停活动时钟。时钟大幅前进时每 pump 交付
@@ -402,6 +403,58 @@ pump/pause/resume/seek 返回 STATE，stop/close 仍可清理。这个背压解�
 SOFT 不会调用 WaveOut，应用仍须复制 PCM 并提供设备输出。EOF 表示所有 PCM 块已被回调
 接收，不表示最后一块已经在扬声器播完；应用应自行等待自己的队列排空。设备音频时钟、
 underrun、音视频同步与真机性能不属于本合同。
+
+## 可选的混合音视频源时钟调度
+
+要求 ABI 1.3，公开结构布局和导出函数不变。沿用前面的 source/output 接线，在打开前设置：
+
+~~~c
+if ((pm_abi_version() >> 16) != 1UL || pm_abi_version() < 0x00010003UL)
+    return PMEDIA_ERROR_UNSUPPORTED;
+options.backend = PMEDIA_BACKEND_SOFT;
+options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+output.size = sizeof(output);
+output.video = media_video;
+output.audio = media_audio;
+~~~
+
+这不是 VIDEO|AUDIO 的组合。必须提供两个 callback；缺失、AUTO/NATIVE/NONE、短 output
+table 或组合/未知 flags 在读取 source 前返回 ARGUMENT。输入限定 MP4/MOV 恰好两个流：
+H.264 Baseline（含 Constrained Baseline）/Main 和 AAC-LC。视频仍限渐进 8-bit I420/VGA，
+音频最多双声道 S16LE；纯视频、纯音频、WAV、AVI/FLV/TS/PS 及其他 codec 组合不适用。
+probe 只报告解码能力，不是此模式可用性证明。
+
+两路各得到第一个有效输出后，以其中较早的 PTS 对齐该次活动 pump 的 clock。后续保留
+callback 的源 PTS，以相对共同起点的差值判断到期，不按帧号或累计音频 samples 重写。
+MP4 priming/edit-list 裁剪由 decoder/demux 处理，按实际输出块计；不同于纯音频开关的样本零点。
+这里的源 PTS 指 decoder 的 best-effort 呈现时间，不是原始包字段逐字保真；不把
+未置 INFERRED 当作原始 PTS 存在的证明，DTS/PTS 选择和异常仍需专用门。
+每次 pump 最多一次音频或视频回调，较小 PTS 优先，同值音频优先；需补齐两路下一输出
+或确认该路 EOF 后才继续选择。尚在解码可返回 OK 且无回调，未到期返回 WOULD_BLOCK。
+任一路先 EOF 时继续另一有效路；两路完全交付后才发正常 EOF。不支持只有一路产生实际帧的输入。
+
+视频无可靠非负起点或单路呈现 PTS 回退返回 FORMAT；视频已有起点后的条件推导和
+INFERRED 标志保留，demux 隐式字段补全禁用。音频未知/负 PTS 不补零，采样率/声道在
+首次输出后变化同样 FORMAT。错误前已接受输出不撤回；decoder/布局/容量/负 callback
+错误均报告一次并进入失败态，后续 pump/pause/resume/seek 为 STATE，stop/close 仍可清理。
+
+任一 callback 返回 WOULD_BLOCK 均表示未接收整帧/整块，DLL 保留相同内容/元数据重试，
+并阻止后续两路输出；应用不能已经排队再返回拒收。OK 消费，STOP 消费后暂停，负值为
+CALLBACK 终态。活动时钟、负预算、暂停/真正 resume 排除间隔、幂等 resume 的规则沿用
+单流模式。仅缓存 seek 零：事务式重建两路游标/decoder、丢弃所有待块、重置共同基点，
+暂停状态保持，不重读宿主 source；正值 NOT_SEEKABLE 且不改状态。
+
+DLL 共享一份最多 16 MiB 的输入缓存，使用两个独立内存 AVIO/demux 游标，各只驱动一路
+decoder，不为包交错建立产品队列。最多保留一帧 VGA I420 和一块 PCM（≤8192 samples/
+声道、32768 bytes）；单个解复用后的压缩包超过 `PMEDIA_SCHEDULE_AV_PACKET_BYTES`
+（256 KiB）返回 LIMIT。此检查在 FFmpeg 分配包之后，不是分配前上限；demux 探测缓存、
+参考/重排帧、stride padding 和 codec 工作区不计入上述待输出容量，不能称为总内存上限。
+零点重建短暂同时持有新旧两组上下文，分配失败回滚、峰值和耗时仍需故障/设备测量。
+budget 只是双路处理量提示，不能抢占一个 decoder 或 callback。
+
+应用仍须在 callback 内复制数据、绘制和提供有界音频队列；SOFT 不调用 WaveOut。
+共同 PTS 到期交付不是声卡播放位置同步，EOF 也不等于扬声器已播完。非零音视频相对起点、
+音频先 EOF、异常容器时间轴和格式变化的混合专用夹具仍待门，不外推为完整播放器验收。
 
 ## Source 回调合同
 
@@ -531,7 +584,7 @@ MPEG-4 Part 2 在可读取的 extradata 中检查每个 VOL 的有界头前缀�
 - 返回 PMEDIA_CALLBACK_STOP：请求停止当前输出并暂停 session；应用稍后可调用
   pm_resume()。
 - 返回负值：当前 pump 返回 PMEDIA_ERROR_CALLBACK，并通过 error/event callback 报告。
-- 仅纯音频样本时钟模式：返回 PMEDIA_WOULD_BLOCK 拒绝整块并保留重试；其他模式不提供该背压语义。
+- 纯音频样本时钟或混合模式：返回 PMEDIA_WOULD_BLOCK 拒绝整块/帧并保留重试；默认和单视频模式不提供该背压语义。
 
 ### pump 和状态
 
@@ -540,7 +593,7 @@ pm_pump() 的常见结果如下：
 | 返回值 | 应用处理 |
 | --- | --- |
 | PMEDIA_OK | 已完成一小段工作，或 session 当前暂停；稍后继续调用 |
-| PMEDIA_WOULD_BLOCK | WaveOut 尚未完成、调度帧/PCM 未到期，或纯音频回调拒收整块；稍后继续调用 |
+| PMEDIA_WOULD_BLOCK | WaveOut 尚未完成、调度输出未到期，或支持背压的回调拒收；稍后继续调用 |
 | PMEDIA_EOF | 所有可输出流已经耗尽；通常关闭 session |
 | PMEDIA_ERROR_* | 停止泵循环，读取 pm_last_error()，然后释放 session |
 | PMEDIA_CALLBACK_STOP | 兼容路径可能直接返回；按暂停处理并在需要时 resume |
@@ -564,8 +617,8 @@ demux 和音视频 decoder，保留初始 priming 并清除音频历史，不再
 耗时及分配失败注入仍待测量。
 便携 WAV IMA 路径例外：已验证按 sample 定位的块内/块边界非零 seek，首个输出 PTS 对应
 定位后的 sample；到达或超过 duration（包括极大正值）直接定位 EOF，不从块头重播。
-budget_us 必须非负；零使用内部默认处理量。默认解码-only 忽略 clock_us；可选单视频/纯音频调度
-的时钟、暂停和零点 seek 例外见上节，迟到丢帧和音视频同步仍未实现。EOF 事件对当前播放区间只发
+budget_us 必须非负；零使用内部默认处理量。默认解码-only 忽略 clock_us；可选调度
+的时钟、暂停和零点 seek 例外见上节，迟到丢帧和实际设备时钟同步仍未实现。EOF 事件对当前播放区间只发
 一次；成功 seek 后开始新的区间。原生 callback STOP 的块重放语义尚未有设备断言，不应据此
 承诺与软解完全相同的消费位置。
 
@@ -729,6 +782,14 @@ TEST1354 补充固定 ADTS 格式变化：先解码 48 kHz mono、44.1 kHz mono 
 无变化块回调/正常 EOF，后续 pump/pause/resume/seek 为 STATE，错误回调/事件各一次。
 暂停中 seek 零丢弃待块、完整不变控制重播、停止后查询和重复 stop/关闭均有断言。
 这只证明首段字节保真和固定变化拒绝，不宣称变化后音质、任意 AAC/MP3 重配置或总内存已验收。
+
+混合模式通过 TEST1355 双配置 WM6 门：MP4 Baseline 320×240/Main VGA B 帧与 AAC-LC
+stereo/48 kHz，各三视频帧、29×1024 PCM samples/声道。与默认解码比较每帧所有有效
+I420 字节的校验值、所有 PCM 字节及 PTS/时长/flags；提前 1 µs、两路合并/同值优先、
+背压重试、STOP/暂停、待帧/PCM 的缓存 seek 零和 stop、极大时钟、视频先 EOF 的音频尾部
+及一次性终态均覆盖，可 seek/不可 seek source 打开后禁止重读。有效 filler 首包超过
+256 KiB 返回 LIMIT、零输出；不支持的格式/开关组合拒绝。此证据不覆盖上文列出的其余
+混合时间轴、故障和实际设备同步边界。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
