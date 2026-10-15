@@ -2766,6 +2766,251 @@ fail:
     return FALSE;
 }
 
+typedef struct media_audio_change_sink {
+    media_fixture_output events;
+    unsigned char *reference;
+    int capture;
+    int scheduled;
+    int first;
+    int second;
+    int third;
+    int reference_offset;
+    int nonzero_samples;
+    int distinct_samples;
+} media_audio_change_sink;
+
+static const int g_media_audio_change_rates[] = { 48000, 44100, 48000 };
+static const int g_media_audio_change_channels[] = { 1, 1, 2 };
+static const int g_media_audio_change_blocks[] = { 30, 27, 30 };
+
+static int media_audio_change_output(void *context, const pm_audio_block *block)
+{
+    media_audio_change_sink *sink;
+    int index;
+    int format;
+    int first_blocks;
+    int i;
+    sink = (media_audio_change_sink *)context;
+    index = sink->events.blocks;
+    first_blocks = g_media_audio_change_blocks[sink->first];
+    format = sink->first;
+    if (index >= first_blocks) {
+        if (sink->scheduled && sink->second != sink->first) goto invalid;
+        format = sink->second;
+        if (format < 0) goto invalid;
+        if (index >= first_blocks + g_media_audio_change_blocks[format]) format = sink->third;
+        if (format < 0) goto invalid;
+    }
+    if (block == NULL || block->size != sizeof(*block) || block->data == NULL ||
+        block->samples != 1024 || block->sample_rate != g_media_audio_change_rates[format] ||
+        block->channels != g_media_audio_change_channels[format] ||
+        block->bytes != 2048 * block->channels ||
+        block->duration_us != (pm_position)1024 * 1000000 / block->sample_rate ||
+        (sink->scheduled && block->pts_us !=
+         (pm_position)sink->events.samples * 1000000 / g_media_audio_change_rates[sink->first])) goto invalid;
+    if (index < first_blocks) {
+        if (sink->reference_offset + block->bytes > first_blocks * 2048 * block->channels) goto invalid;
+        if (sink->capture) memcpy(sink->reference + sink->reference_offset, block->data, (size_t)block->bytes);
+        else if (memcmp(sink->reference + sink->reference_offset, block->data, (size_t)block->bytes)) goto invalid;
+        sink->reference_offset += block->bytes;
+    }
+    for (i = 0; i < block->samples; i++) {
+        int offset;
+        offset = i * block->channels * 2;
+        if (block->data[offset] || block->data[offset + 1]) sink->nonzero_samples++;
+        if (block->channels == 2 &&
+            (block->data[offset] != block->data[offset + 2] ||
+             block->data[offset + 1] != block->data[offset + 3])) sink->distinct_samples++;
+    }
+    sink->events.blocks++;
+    sink->events.samples += block->samples;
+    return PMEDIA_OK;
+invalid:
+    sink->events.errors++;
+    return PMEDIA_ERROR_CALLBACK;
+}
+
+static int media_audio_change_pump(pm_session session, media_audio_change_sink *sink,
+                                   pm_position clock, int target)
+{
+    int i;
+    int result;
+    for (i = 0; i < 1024; i++) {
+        result = pm_pump(session, clock, 2000);
+        if (result != PMEDIA_OK || (target > 0 && sink->events.blocks >= target)) return result;
+    }
+    return PMEDIA_ERROR_STATE;
+}
+
+static void media_audio_change_reset(media_audio_change_sink *sink)
+{
+    memset(&sink->events, 0, sizeof(sink->events));
+    sink->reference_offset = 0;
+    sink->nonzero_samples = 0;
+    sink->distinct_samples = 0;
+}
+
+BOOL test1354_media_audio_change_contract(void (*progress)(const char *))
+{
+    static const WCHAR *controls[] = { L"aac-lc.aac", L"aac-lc-44100.aac", L"aac-lc-stereo.aac" };
+    static const WCHAR *names[] = {
+        L"aac-clock-repeat.aac", L"aac-clock-rate-down.aac", L"aac-clock-rate-up.aac",
+        L"aac-clock-stereo.aac", L"aac-clock-mono.aac", L"aac-clock-rate-return.aac"
+    };
+    static const int segments[6][3] = { {0,0,-1}, {0,1,-1}, {1,0,-1}, {0,2,-1}, {2,0,-1}, {0,1,0} };
+    media_fixture_source input;
+    media_audio_change_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_stream_info info;
+    pm_session session;
+    unsigned char *data;
+    unsigned char *reference[3];
+    pm_position maximum;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int i;
+    int blocks;
+    int result;
+    char phase[192];
+
+    session = NULL;
+    data = NULL;
+    memset(reference, 0, sizeof(reference));
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    for (test = 0; test < 3; test++) {
+        _snprintf(phase, sizeof(phase), "audio change standalone PCM reference=%d", test);
+        g_media_compressed_error = "audio change standalone reference";
+        if (progress != NULL) progress(phase);
+        reference[test] = (unsigned char *)malloc((size_t)(g_media_audio_change_blocks[test] *
+                          g_media_audio_change_channels[test] * 2048));
+        data = media_compressed_load(controls[test], &bytes);
+        if (reference[test] == NULL || data == NULL) goto fail;
+        media_contract_init(&input, &sink.events, &source, &output, &options);
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = reference[test];
+        sink.capture = 1;
+        sink.first = test;
+        sink.second = -1;
+        sink.third = -1;
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 7;
+        output.audio = media_audio_change_output;
+        output.error = media_compressed_error;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+        result = media_audio_change_pump(session, &sink, -1, 0);
+        if (result != PMEDIA_EOF || sink.events.errors || sink.events.error_callbacks ||
+            sink.events.blocks != g_media_audio_change_blocks[test] || sink.events.eof_events != 1 ||
+            sink.nonzero_samples < 20000 || (test == 2 && sink.distinct_samples < 20000) ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        free(data);
+        data = NULL;
+    }
+    for (test = 0; test < 6; test++) {
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        media_contract_init(&input, &sink.events, &source, &output, &options);
+        memset(&sink, 0, sizeof(sink));
+        sink.first = segments[test][0];
+        sink.second = segments[test][1];
+        sink.third = segments[test][2];
+        sink.reference = reference[sink.first];
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 7;
+        output.audio = media_audio_change_output;
+        output.error = media_compressed_error;
+        blocks = g_media_audio_change_blocks[sink.first] + g_media_audio_change_blocks[sink.second];
+        if (sink.third >= 0) blocks += g_media_audio_change_blocks[sink.third];
+        for (iteration = 0; iteration < 2; iteration++) {
+            input.position = 0;
+            input.read_mode = 0;
+            source.seek = iteration ? media_fixture_seek : NULL;
+            source.tell = iteration ? media_fixture_tell : NULL;
+            options.flags = 0;
+            sink.scheduled = 0;
+            media_audio_change_reset(&sink);
+            _snprintf(phase, sizeof(phase), "audio change case=%d seekable=%d decode-only keeps all %d blocks", test, iteration, blocks);
+            g_media_compressed_error = "audio format change decode-only control";
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            input.read_mode = 2;
+            for (pass = 0; pass < 2; pass++) {
+                if (pass) {
+                    if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                    media_audio_change_reset(&sink);
+                }
+                result = media_audio_change_pump(session, &sink, -1, 0);
+                if (result != PMEDIA_EOF || sink.events.blocks != blocks ||
+                    sink.events.samples != blocks * 1024 || sink.events.errors ||
+                    sink.events.error_callbacks || sink.events.eof_events != 1) goto fail;
+            }
+            if (pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            input.position = 0;
+            input.read_mode = 0;
+            options.flags = PMEDIA_OPEN_SCHEDULE_AUDIO;
+            sink.scheduled = 1;
+            media_audio_change_reset(&sink);
+            _snprintf(phase, sizeof(phase), "audio change case=%d seekable=%d scheduled boundary, prefix PCM and terminal state", test, iteration);
+            g_media_compressed_error = "scheduled audio format boundary";
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            input.read_mode = 2;
+            if (media_audio_change_pump(session, &sink, 0, 1) != PMEDIA_OK || sink.events.blocks != 1 ||
+                media_audio_change_pump(session, &sink, 0, 0) != PMEDIA_WOULD_BLOCK || sink.events.blocks != 1 ||
+                pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK ||
+                pm_pump(session, -1, 0) != PMEDIA_OK || sink.events.blocks != 1 ||
+                pm_resume(session) != PMEDIA_OK) goto fail;
+            media_audio_change_reset(&sink);
+            if (media_audio_change_pump(session, &sink, 0, 1) != PMEDIA_OK) goto fail;
+            result = media_audio_change_pump(session, &sink, maximum, 0);
+            _snprintf(phase, sizeof(phase), "audio change observed case=%d rc=%d blocks=%d samples=%d errors=%d error_callbacks=%d",
+                      test, result, sink.events.blocks, sink.events.samples, sink.events.errors, sink.events.error_callbacks);
+            if (progress != NULL) progress(phase);
+            if (test == 0) {
+                if (result != PMEDIA_EOF || sink.events.blocks != blocks || sink.events.errors ||
+                    sink.events.error_callbacks || sink.events.eof_events != 1 || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                media_audio_change_reset(&sink);
+                if (media_audio_change_pump(session, &sink, 0, 1) != PMEDIA_OK ||
+                    media_audio_change_pump(session, &sink, maximum, 0) != PMEDIA_EOF ||
+                    sink.events.blocks != blocks || sink.events.eof_events != 1 || sink.events.errors) goto fail;
+            } else {
+                if (result != PMEDIA_ERROR_FORMAT || sink.events.blocks != g_media_audio_change_blocks[sink.first] ||
+                    sink.events.samples != g_media_audio_change_blocks[sink.first] * 1024 ||
+                    sink.events.errors || sink.events.eof_events || sink.events.error_callbacks != 1 ||
+                    sink.events.error_events != 1 || sink.events.last_error != PMEDIA_ERROR_FORMAT ||
+                    strcmp(pm_last_error(session), "scheduled audio sample format changed") != 0 ||
+                    pm_pump(session, maximum, 0) != PMEDIA_ERROR_STATE ||
+                    pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                    pm_seek(session, 0) != PMEDIA_ERROR_STATE || sink.events.error_callbacks != 1) goto fail;
+            }
+            if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+                sink.events.stopped_events != 1) goto fail;
+            memset(&info, 0, sizeof(info));
+            info.size = sizeof(info);
+            if (pm_get_stream_info(session, &info) != PMEDIA_OK || !info.has_audio || info.has_video ||
+                pm_get_backend(session) != PMEDIA_BACKEND_SOFT || pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+        free(data);
+        data = NULL;
+    }
+    for (i = 0; i < 3; i++) free(reference[i]);
+    if (progress != NULL) progress("scheduled audio format-change boundary passed; decode-only unchanged");
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    for (i = 0; i < 3; i++) if (reference[i] != NULL) free(reference[i]);
+    return FALSE;
+}
+
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)
 {
     media_fixture_source input;

@@ -276,9 +276,12 @@ MP4/MOV、AVI、FLV 单视频流保留一帧并按时回调，pause/STOP、缓�
 候选；调度在 demux 前禁用隐式补零，默认兼容路径保留。证据边界见能力矩阵/媒体夹具。
 纯音频初始交付退出待实现候选：ABI 1.2 显式 SOFT，仅 WAV PCM 和单音频 ADTS/MP3，
 一块 PCM 按消费样本累计 PTS、整块背压/STOP、暂停/零点重播与默认 PCM 全字节比较已有门。
-下一纵切先取证采样格式变化拒绝：复用固定 ADTS，以帧级配置变化区分 open 探测与 pump
-运行时守卫，验证已交付前缀、FORMAT/不支持分类、错误一次性、STATE 与 stop/close；
-不伪造源 PTS、不放宽错误终态，也不把正常重播当成变化/分配失败验收。
+固定 ADTS 的 48↔44.1 kHz、单↔双声道变化拒绝退出初始取证：默认模式全段解码，
+时钟模式保留完整首段 PCM 后 FORMAT/一次性终态，不支持动态切换；MP3/其他配置仍未验收。
+下一纵切先取舍混合流时钟合同：复用 baseline-aac.mp4 的包交错、priming 与实际输出，
+明确公共时间轴、视频/PCM 槽和包缓存的固定预算、背压、单方 EOF、暂停/seek 零与失败状态，
+再决定 additive 开关。最小合成时钟 fixture 须同时保护两路内容、到期顺序和容量拒绝；
+不在 test_host 另建同步器，不因两项单流模式通过而宣称混合流或设备音频时钟已支持。
 其他容器异常、缺 timing/未知时长时不推导、推导溢出、PTS-only 回退而 DTS 仍单调、
 完整 VFR/SEI 仍需独立 fixture，不把固定 FLV 变换扩大为任意时间轴支持。
 不能把 pump budget 当作可抢占 decoder 的硬墙钟上限，其他损坏模式不由固定夹具代替。
@@ -292,7 +295,7 @@ MP4/MOV、AVI、FLV 单视频流保留一帧并按时回调，pause/STOP、缓�
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** 纯音频格式变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
+- **剩余 fixture：** MP3/其他 AAC 配置变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
   其他容器参数变化拒绝、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；其他输入缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。

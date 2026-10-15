@@ -1,6 +1,6 @@
 # 压缩媒体断言夹具
 
-本目录只用于 `test_host`。纯红画面与 440/880 Hz 纯音由
+本目录只用于 `test_host`。纯红画面与程序生成的纯音由
 [`scripts/media_fixtures.py`](../../../scripts/media_fixtures.py) 离线生成，无下载的第三方媒体内容。
 生成内容按 CC0-1.0 提供，不授予 AVC/AAC 专利许可；FFmpeg/x264 工具许可证不被重新标记。
 工具版本、可执行文件哈希、每条生成参数、文件长度与 SHA-256 固定在 `manifest.json`。
@@ -14,6 +14,18 @@
   在 EOF 后暂停并 seek 到零两次，后两次全部 S16LE 字节与首次输出一致；同时保护
   PTS/时长、样本数和 EOF，不以相同幅度或校验值代替逐字节断言。打开后 source 被设为
   I/O 错误，重播不得再次读取宿主。非零 AAC seek 不在此合同内。
+- `aac-lc-44100.aac` 是单声道 44.1 kHz LC、27 块；`aac-lc-stereo.aac` 是 48 kHz LC、
+  30 块，左右声道分别为 440/660 Hz、幅度 0.08/0.06。各块 1024 samples/声道；
+  与原 `aac-lc.aac` 一起作为格式变化的完整片段参考，不裁剪 ADTS 编码 padding。
+  `aac-clock-{repeat,rate-down,rate-up,stereo,mono,rate-return}.aac` 只按完整片段拼接：
+  分别是 48k mono 重复、48k→44.1k、44.1k→48k、mono→stereo、stereo→mono 和
+  48k→44.1k→48k；不篡改 ADTS header 或 AAC payload。独立桌面校验检查每帧 LC/
+  sample rate/声道/1024 samples，帧数分别为 60/57/57/60/60/87，证明不是损坏输入。
+  TEST1354 以三个单独片段的设备 PCM 为首段逐字节参考：默认模式输出所有片段并缓存重播；
+  时钟模式对变化组保留完整首段后 FORMAT，变化块不进入 callback，后续恢复原参数也不继续。
+  参数不变的重复控制正常 EOF；暂停中丢弃待块/seek 零、两种 seekability、禁止重读源、
+  一次性错误/STATE、stop/close 与停止后查询也有断言。不证明任意 AAC 动态重配置、
+  MP3 变化或超出转换预算的布局拒绝；变化后 PCM 只检查块形状，不与独立新 decoder 作字节等同。
 - `high.mp4`、`high422.mp4`、`interlaced.mp4`、`oversize.mp4`：拒绝 profile、像素布局、隔行和 656×480 超限。
 - `mjpeg-mp3.avi`：320×240、5 fps、三帧全范围 MJPEG 4:2:0，MP3 双声道 48 kHz。
   固定 AVI 含一个空视频槽，实际帧 PTS 为 0/400000/600000 µs，每帧 duration 为 200000 µs；
@@ -158,6 +170,7 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 `--extend-annexb-damage` 对九条损坏/完整边界控制输入采用同一规则；派生不重新编码。
 `--extend-annexb-parameters` 对 PPS/引用/容量组采用同一规则，不改已有 pin。
 `--extend-flv-clock` 对七条时间戳控制采用相同规则，只做固定字节变换，不重编码。
+`--extend-audio-change` 保留旧 pin，生成两条 LC 纯音并拼接六条完整片段控制，不修改旧媒体。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -198,6 +211,11 @@ trace_headers 独立确认 timing 字段已移除，六条 SPS 变化输入各�
 前向 PPS 控制独立检查 NAL 顺序。桌面能力不替代 DLL 的保守拒绝与生命周期门。
 CLI 自动生成的呈现时间戳
 不能替代 DLL 的未知 PTS 合同，桌面全像素检查也不能替代 WM6 取样/重播/拒绝设备门。
+
+AAC 格式变化的独立校验：`python scripts/test_media_audio_change_fixtures.py --ffmpeg PATH`。
+只读、同一 pinned 工具、单线程低优先级；逐个验证 ADTS 帧边界/LC/采样率/声道和独立解码
+后的帧形状、精确拼接关系。它不把桌面 PCM 当作 ARMV4I 字节参考，也不证明 DLL 应支持
+动态时钟切换；FORMAT 分类、错误前 PCM 和生命周期必须通过设备门。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，

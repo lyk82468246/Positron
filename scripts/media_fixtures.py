@@ -203,6 +203,32 @@ def annexb_records(exe):
 
 FLV_CLOCK = ["base", "unknown", "late-unknown", "backward", "negative", "gap", "duplicate"]
 
+AUDIO_CHANGE = ["repeat", "rate-down", "rate-up", "stereo", "mono", "rate-return"]
+
+
+def audio_change_records(exe):
+    records = []
+    for name, signal, rate, channels in [
+        ("aac-lc-44100.aac", "sine=frequency=440:sample_rate=44100:duration=0.6", 44100, 1),
+        ("aac-lc-stereo.aac", "aevalsrc=0.08*sin(2*PI*440*t)|0.06*sin(2*PI*660*t):s=48000:d=0.6", 48000, 2),
+    ]:
+        args = ["-f", "lavfi", "-i", signal, "-c:a", "aac", "-profile:a", "aac_low",
+                "-ar", str(rate), "-ac", str(channels), "-b:a", "64k", "-threads", "1",
+                "-fflags", "+bitexact", "-flags:a", "+bitexact", "-map_metadata", "-1",
+                "-f", "adts", "-y", str(DEST / name)]
+        run(exe, args)
+        records.append({"file": name, "arguments": args[:-1] + [name]})
+    sources = [(DEST / name).read_bytes() for name in
+               ["aac-lc.aac", "aac-lc-44100.aac", "aac-lc-stereo.aac"]]
+    pieces = [(0, 0), (0, 1), (1, 0), (0, 2), (2, 0), (0, 1, 0)]
+    for stem, segments in zip(AUDIO_CHANGE, pieces):
+        name = "aac-clock-" + stem + ".aac"
+        (DEST / name).write_bytes(b"".join(sources[i] for i in segments))
+        records.append({"file": name, "fixture_transform": "whole pinned ADTS segment concatenation v1",
+                        "segments": [["aac-lc.aac", "aac-lc-44100.aac", "aac-lc-stereo.aac"][i]
+                                     for i in segments]})
+    return records
+
 
 def flv_clock_records(exe):
     # Fixture-only: preserve the pinned Baseline AVCC/video payloads, removing
@@ -431,6 +457,8 @@ def extend(exe, group):
         "flv": ({"flv-h264-aac.flv", "flv-main-vga.flv", "flv-oversize.flv",
                  "flv1-unsupported.flv"}, flv_records),
         "flv-clock": ({"flv-clock-" + stem + ".flv" for stem in FLV_CLOCK}, flv_clock_records),
+        "audio-change": ({"aac-lc-44100.aac", "aac-lc-stereo.aac"} |
+                         {"aac-clock-" + stem + ".aac" for stem in AUDIO_CHANGE}, audio_change_records),
         "annexb": ({"annexb-" + stem + ".h264" for stem in
                     ["baseline-aac", "main-vga", "high", "high422", "interlaced", "oversize"]}, annexb_records),
         "annexb-sequence": ({"annexb-no-timing.h264", "annexb-repeat-sps.h264", "annexb-change-no-timing.h264"} |
@@ -480,7 +508,7 @@ def generate(exe):
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
               ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) +
-              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe))
+              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe) + audio_change_records(exe))
 
 
 def check():
@@ -504,17 +532,18 @@ if __name__ == "__main__":
     action.add_argument("--extend-h263", action="store_true")
     action.add_argument("--extend-flv", action="store_true")
     action.add_argument("--extend-flv-clock", action="store_true")
+    action.add_argument("--extend-audio-change", action="store_true")
     action.add_argument("--extend-annexb", action="store_true")
     action.add_argument("--extend-annexb-sequence", action="store_true")
     action.add_argument("--extend-annexb-damage", action="store_true")
     action.add_argument("--extend-annexb-parameters", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
-            extend(opts.ffmpeg, "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+            extend(opts.ffmpeg, "audio-change" if opts.extend_audio_change else "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

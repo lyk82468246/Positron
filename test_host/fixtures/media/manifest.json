@@ -1568,6 +1568,133 @@
       "fixture_transform": "pinned Baseline FLV video-only timestamp controls v1",
       "bytes": 1052,
       "sha256": "d2faaf1b1c6f429c2a3c0447d23cd379fc0c111020aed8441a555619543f8538"
+    },
+    {
+      "file": "aac-lc-44100.aac",
+      "arguments": [
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:sample_rate=44100:duration=0.6",
+        "-c:a",
+        "aac",
+        "-profile:a",
+        "aac_low",
+        "-ar",
+        "44100",
+        "-ac",
+        "1",
+        "-b:a",
+        "64k",
+        "-threads",
+        "1",
+        "-fflags",
+        "+bitexact",
+        "-flags:a",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-f",
+        "adts",
+        "-y",
+        "aac-lc-44100.aac"
+      ],
+      "bytes": 5374,
+      "sha256": "f86bdf3cb6ab27b7e556bec26d0f427004dc1d35f6f32d7b3fde6333c73f7006"
+    },
+    {
+      "file": "aac-lc-stereo.aac",
+      "arguments": [
+        "-f",
+        "lavfi",
+        "-i",
+        "aevalsrc=0.08*sin(2*PI*440*t)|0.06*sin(2*PI*660*t):s=48000:d=0.6",
+        "-c:a",
+        "aac",
+        "-profile:a",
+        "aac_low",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-b:a",
+        "64k",
+        "-threads",
+        "1",
+        "-fflags",
+        "+bitexact",
+        "-flags:a",
+        "+bitexact",
+        "-map_metadata",
+        "-1",
+        "-f",
+        "adts",
+        "-y",
+        "aac-lc-stereo.aac"
+      ],
+      "bytes": 4981,
+      "sha256": "555fe3f48cb3903d920804af19d0edbc4c8b28413a9eab2078fe9df53c737581"
+    },
+    {
+      "file": "aac-clock-repeat.aac",
+      "fixture_transform": "whole pinned ADTS segment concatenation v1",
+      "segments": [
+        "aac-lc.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 10720,
+      "sha256": "b725776984a44173af15e8a62d28e745689f78cfdac655043a9e3ce975172fac"
+    },
+    {
+      "file": "aac-clock-rate-down.aac",
+      "fixture_transform": "whole pinned ADTS segment concatenation v1",
+      "segments": [
+        "aac-lc.aac",
+        "aac-lc-44100.aac"
+      ],
+      "bytes": 10734,
+      "sha256": "5073947c839bffacd81c19adfe5c024be36a1a96e0aafcdf19e754090612544b"
+    },
+    {
+      "file": "aac-clock-rate-up.aac",
+      "fixture_transform": "whole pinned ADTS segment concatenation v1",
+      "segments": [
+        "aac-lc-44100.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 10734,
+      "sha256": "3bf458684340fa1ff25b9dcc0037327e8f1cfed50d1a5b9502855d3a62f40757"
+    },
+    {
+      "file": "aac-clock-stereo.aac",
+      "fixture_transform": "whole pinned ADTS segment concatenation v1",
+      "segments": [
+        "aac-lc.aac",
+        "aac-lc-stereo.aac"
+      ],
+      "bytes": 10341,
+      "sha256": "a3aebcc1251f8c212dd2adee59d127ee5e953991c172d1277eed5008fc473a48"
+    },
+    {
+      "file": "aac-clock-mono.aac",
+      "fixture_transform": "whole pinned ADTS segment concatenation v1",
+      "segments": [
+        "aac-lc-stereo.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 10341,
+      "sha256": "67c2b28f315daf3560843e86491e1affb6ad8159588ec2283b38d4acc6c7ecdf"
+    },
+    {
+      "file": "aac-clock-rate-return.aac",
+      "fixture_transform": "whole pinned ADTS segment concatenation v1",
+      "segments": [
+        "aac-lc.aac",
+        "aac-lc-44100.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 16094,
+      "sha256": "d4445be38aef153230227ba787ab1243b9f8f1c7f02531e8a2c7388ff091adcf"
     }
   ]
 }
