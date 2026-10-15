@@ -18,6 +18,10 @@
   保留原 media_time（包括 AAC priming 裁剪）、全部压缩 mdat 内容和除 stco 外的 sample
   tables，更新 box 大小、movie/track duration 与文件偏移；不重编码、不 remux。
   各仍输出三帧和 29×1024 stereo samples，分别提供音频先结束、视频先结束和共同非零起点控制。
+- `mixed-pts-{negative,backward,gap,duplicate,fallback}.mp4` 在固定 Baseline MP4 视频轨
+  插入 signed v1 CTTS，将该轨 edts 改名为 free，避免 edit-list 丢弃负 PTS 帧；更新父 box
+  大小、movie/track duration 和 stco，保留全部 mdat、原 sample tables 与 AAC edit-list。
+  这只是时间元数据控制，不重编码、不声称异常时间轴是合法的连续播放输入。
 - `aac-lc.aac`：ADTS AAC-LC 单声道 48 kHz；`aac-main.aac` 用于拒绝非 LC profile。
   MP4 的 AAC priming 包 PTS 为 -1024 sample；设备输出从 PTS 零起为 29 块、每声道
   29696 sample。ADTS 为 30 块、每声道 30720 sample。TEST1332 各完整解码三次，
@@ -160,8 +164,26 @@ AUTO、WAV/纯流/AVI 拒绝也覆盖；设备 PCM 参考不取自桌面浮点 d
 TEST1356 使用三条 mixed-clock 控制，先验证默认解码的精确源 PTS、视频内容与原 Baseline
 PCM 的全部字节相同，再比较混合调度两遍输出。两种 source seekability、7-byte 短读、
 禁读源的待输出/EOF 后缓存重播、提前 1 µs/到期/极大时钟、暂停排除间隔、首回调与同值
-音频优先、两种 EOF 尾部顺序及 EOF 一次性均有断言。异常时间轴/格式变化、其他 edit-list
+音频优先、两种 EOF 尾部顺序及 EOF 一次性均有断言。其他 edit-list
 形状、内存故障与真机同步仍待独立门，不把这三个短输入当成任意 MP4 时间轴的一致性证明。
+
+TEST1357 对 mixed-pts 先验证默认完整三帧/29 块、视频内容校验值与原 Baseline 全部 PCM
+相同，再检查混合调度。固定视频 timebase 为 1/10240，三个 CTTS entry 各含一个 sample：
+
+| 控制 | CTTS ticks | WM6 默认 best-effort PTS（ms） | 混合调度 |
+| --- | --- | --- | --- |
+| negative | -1024/-1024/-1024 | -100/100/300 | 零视频/音频输出后 FORMAT |
+| backward | 4096/0/0 | 400/200/400 | 保留首帧及前 19 块 PCM 后 FORMAT |
+| gap | 0/4096/4096 | 0/600/800 | 按差值等待，不补帧或改写 PTS |
+| duplicate | 2048/0/0 | 200/200/400 | 同值允许，每 pump 最多一次回调 |
+| fallback | 0/-3072/0 | 0/200/400 | 包 PTS 回退，但 best-effort 选择 DTS，正常 EOF |
+
+负控制匹配具体时钟错误、错误回调/事件各一次、无正常 EOF、后续 STATE、重复 stop 和一次 close；
+可 seek/不可 seek 源各重复创建两次。接受组各两遍输出保护截止前 1 µs、极大时钟、
+全局顺序/音频优先、全部 PCM/视频内容与 EOF 后暂停中缓存 seek 零；打开后禁读 source。
+fallback 不设 PTS_INFERRED，不能把这个标志当作原始包 PTS 保真证明；选择逻辑可对照
+[FFmpeg 3.4 decode.c](https://ffmpeg.org/doxygen/3.4/decode_8c_source.html)。
+未知 PTS、音频侧负值/回退、动态格式变化和其他时间轴形状仍未验收。
 
 时间戳控制组 `flv-clock-{base,unknown,late-unknown,backward,negative,gap,duplicate}.flv`
 从固定 `flv-h264-aac.flv` 删除音频/script tag 并设置 video-only 标志，保留所有 AVC
@@ -196,7 +218,8 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 `--extend-flv-clock` 对七条时间戳控制采用相同规则，只做固定字节变换，不重编码。
 `--extend-audio-change` 保留旧 pin，生成两条 LC 纯音并拼接六条完整片段控制，不修改旧媒体。
 `--extend-mixed` 只增加 Main/AAC remux；`--extend-mixed-limit` 只增加首包 filler 负控制，
-`--extend-mixed-clock` 只增加上述三条固定 empty-edit 控制；均保留旧 pin，不在构建时执行。
+`--extend-mixed-clock` 只增加三条固定 empty-edit 控制，`--extend-mixed-pts` 只增加五条
+CTTS 控制；均保留旧 pin，不在构建时执行。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -253,6 +276,12 @@ AAC 格式变化的独立校验：`python scripts/test_media_audio_change_fixtur
 保持关系，以 `-copyts` 保留源时间戳，验证三帧全部有效 I420 字节、29 块全部 PCM 字节
 与原输入相同及精确音视频起点。桌面 PCM 只在同一工具内比较；WM6 仍须通过 TEST1356，
 不能用桌面结果替代 DLL 调度、AAC 裁剪或生命周期断言。
+
+混合视频 PTS 的独立校验：`python scripts/test_media_av_pts_fixtures.py --ffmpeg PATH`。
+同一 pinned 工具、只读、单线程低优先级，独立检查精确 signed CTTS、40-byte box 增量、
+chunk 偏移、原 edit 内容、codec/sample tables 和全部 mdat 不变；完整解码的有效 I420
+和 PCM 字节与原输入相同。桌面 CLI 会修整异常时间戳，例如 backward 的三帧可显示为
+400/400/400 ms，因此其 PTS 不作为 WM6 守卫或 best-effort 的参考，必须另过 TEST1357。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，

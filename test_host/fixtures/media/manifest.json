@@ -1753,6 +1753,71 @@
       "audio_delay_ms": 600,
       "bytes": 7132,
       "sha256": "a5a57ee0f11095fd90936306ea175655f7123406732b9659298c72c5e5438ec9"
+    },
+    {
+      "file": "mixed-pts-negative.mp4",
+      "fixture_transform": "pinned MP4 video edts to free, ctts v1; sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_ctts_ticks": [
+        -1024,
+        -1024,
+        -1024
+      ],
+      "video_timescale": 10240,
+      "bytes": 7148,
+      "sha256": "454094771b152a6a6ac2eb2c5d820f6da876e96afee29f8cef76d6214f4285db"
+    },
+    {
+      "file": "mixed-pts-backward.mp4",
+      "fixture_transform": "pinned MP4 video edts to free, ctts v1; sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_ctts_ticks": [
+        4096,
+        0,
+        0
+      ],
+      "video_timescale": 10240,
+      "bytes": 7148,
+      "sha256": "59a700d4e5c9ad614a0c828a293e383d18831e6bbcc612ed1abd427aa19ca142"
+    },
+    {
+      "file": "mixed-pts-gap.mp4",
+      "fixture_transform": "pinned MP4 video edts to free, ctts v1; sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_ctts_ticks": [
+        0,
+        4096,
+        4096
+      ],
+      "video_timescale": 10240,
+      "bytes": 7148,
+      "sha256": "d383b5850c1ac6072697955a3bb7b842d1e1fc3ba002a91108b11149469ac59a"
+    },
+    {
+      "file": "mixed-pts-duplicate.mp4",
+      "fixture_transform": "pinned MP4 video edts to free, ctts v1; sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_ctts_ticks": [
+        2048,
+        0,
+        0
+      ],
+      "video_timescale": 10240,
+      "bytes": 7148,
+      "sha256": "726323999fe8bbbe8e360f8ddc1f02795060c0443d41e4084b7ee81238ce03f1"
+    },
+    {
+      "file": "mixed-pts-fallback.mp4",
+      "fixture_transform": "pinned MP4 video edts to free, ctts v1; sizes/duration/stco v1",
+      "source": "baseline-aac.mp4",
+      "video_ctts_ticks": [
+        0,
+        -3072,
+        0
+      ],
+      "video_timescale": 10240,
+      "bytes": 7148,
+      "sha256": "ad5070a2787616ecee78a62c546ea8f29a789f0132e8eb1fee23d228569a63d6"
     }
   ]
 }

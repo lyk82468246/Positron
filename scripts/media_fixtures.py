@@ -584,6 +584,83 @@ def mixed_clock_records(exe):
     return records
 
 
+MIXED_PTS = {"negative": (-1024, -1024, -1024), "backward": (4096, 0, 0),
+             "gap": (0, 4096, 4096), "duplicate": (2048, 0, 0),
+             "fallback": (0, -3072, 0)}
+
+
+def mixed_pts_records(exe):
+    # Fixed Baseline-only timing controls, not a general MP4 editor. Disable
+    # only the video's edit list so negative presentation is not discarded.
+    original = (DEST / "baseline-aac.mp4").read_bytes()
+    records = []
+    for stem, ctts in MIXED_PTS.items():
+        data = bytearray(original)
+
+        def u32(position):
+            return int.from_bytes(data[position:position + 4], "big")
+
+        def put(position, value):
+            data[position:position + 4] = value.to_bytes(4, "big")
+
+        def boxes(start, end):
+            while start < end:
+                size = u32(start)
+                assert size >= 8 and start + size <= end
+                yield start, size, bytes(data[start + 4:start + 8])
+                start += size
+            assert start == end
+
+        def child(box, kind):
+            return next(b for b in boxes(box[0] + 8, box[0] + box[1]) if b[2] == kind)
+
+        top = list(boxes(0, len(data)))
+        moov = next(b for b in top if b[2] == b"moov")
+        mdat = next(b for b in top if b[2] == b"mdat")
+        assert moov[0] < mdat[0]
+        offsets = []
+        video = None
+        for track in boxes(moov[0] + 8, moov[0] + moov[1]):
+            if track[2] != b"trak":
+                continue
+            mdia = child(track, b"mdia")
+            stbl = child(child(mdia, b"minf"), b"stbl")
+            stco = child(stbl, b"stco")
+            offsets += [stco[0] + 16 + index * 4 for index in range(u32(stco[0] + 12))]
+            hdlr = child(mdia, b"hdlr")
+            if bytes(data[hdlr[0] + 16:hdlr[0] + 20]) == b"vide":
+                assert video is None
+                mdhd = child(mdia, b"mdhd")
+                assert data[mdhd[0] + 8] == 0 and u32(mdhd[0] + 20) == 10240
+                minf = child(mdia, b"minf")
+                assert not any(b[2] == b"ctts" for b in boxes(stbl[0] + 8, stbl[0] + stbl[1]))
+                edts = child(track, b"edts")
+                data[edts[0] + 4:edts[0] + 8] = b"free"
+                video = track, mdia, minf, stbl
+                tkhd = child(track, b"tkhd")
+                duration = max(600, max(index * 200 + value * 1000 // 10240
+                                        for index, value in enumerate(ctts)) + 200)
+                put(tkhd[0] + 28, duration)
+        assert video is not None
+        mvhd = child(moov, b"mvhd")
+        put(mvhd[0] + 24, duration)
+        payload = (40).to_bytes(4, "big") + b"ctts\x01\x00\x00\x00" + (3).to_bytes(4, "big")
+        for value in ctts:
+            payload += (1).to_bytes(4, "big") + value.to_bytes(4, "big", signed=True)
+        for box in (moov,) + video:
+            put(box[0], box[1] + len(payload))
+        for position in offsets:
+            assert u32(position) >= mdat[0] + 8
+            put(position, u32(position) + len(payload))
+        position = video[-1][0] + video[-1][1]
+        data[position:position] = payload
+        name = "mixed-pts-" + stem + ".mp4"
+        (DEST / name).write_bytes(data)
+        records.append({"file": name, "fixture_transform": "pinned MP4 video edts to free, ctts v1; sizes/duration/stco v1",
+                        "source": "baseline-aac.mp4", "video_ctts_ticks": list(ctts), "video_timescale": 10240})
+    return records
+
+
 def extend(exe, group):
     check()
     pin = json.loads(PIN.read_text(encoding="utf-8"))
@@ -593,6 +670,7 @@ def extend(exe, group):
         "mixed": ({"mixed-main-aac.mp4"}, mixed_records),
         "mixed-limit": ({"mixed-packet-limit.mp4"}, mixed_limit_records),
         "mixed-clock": ({"mixed-clock-" + stem + ".mp4" for stem in MIXED_CLOCK}, mixed_clock_records),
+        "mixed-pts": ({"mixed-pts-" + stem + ".mp4" for stem in MIXED_PTS}, mixed_pts_records),
         "mpeg": ({"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"}, mpeg_records),
         "amr": ({"amr-nb.amr", "amr-wb.amr"}, amr_records),
         "ima": ({"ima-mono.wav", "ima-stereo.wav", "ima-mono.pcm", "ima-stereo.pcm"}, ima_records),
@@ -654,7 +732,7 @@ def generate(exe):
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
               ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) +
-              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe) + audio_change_records(exe) + mixed_records(exe) + mixed_limit_records(exe) + mixed_clock_records(exe))
+              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe) + audio_change_records(exe) + mixed_records(exe) + mixed_limit_records(exe) + mixed_clock_records(exe) + mixed_pts_records(exe))
 
 
 def check():
@@ -682,17 +760,18 @@ if __name__ == "__main__":
     action.add_argument("--extend-mixed", action="store_true")
     action.add_argument("--extend-mixed-limit", action="store_true")
     action.add_argument("--extend-mixed-clock", action="store_true")
+    action.add_argument("--extend-mixed-pts", action="store_true")
     action.add_argument("--extend-annexb", action="store_true")
     action.add_argument("--extend-annexb-sequence", action="store_true")
     action.add_argument("--extend-annexb-damage", action="store_true")
     action.add_argument("--extend-annexb-parameters", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_mixed_pts or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
-            extend(opts.ffmpeg, "mixed-clock" if opts.extend_mixed_clock else "mixed-limit" if opts.extend_mixed_limit else "mixed" if opts.extend_mixed else "audio-change" if opts.extend_audio_change else "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_mixed_pts or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+            extend(opts.ffmpeg, "mixed-pts" if opts.extend_mixed_pts else "mixed-clock" if opts.extend_mixed_clock else "mixed-limit" if opts.extend_mixed_limit else "mixed" if opts.extend_mixed else "audio-change" if opts.extend_audio_change else "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

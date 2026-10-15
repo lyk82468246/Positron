@@ -77,6 +77,7 @@ extern BOOL test1353_media_audio_clock_contract(void (*progress)(const char *));
 extern BOOL test1354_media_audio_change_contract(void (*progress)(const char *));
 extern BOOL test1355_media_av_clock_contract(void (*progress)(const char *));
 extern BOOL test1356_media_av_timeline_contract(void (*progress)(const char *));
+extern BOOL test1357_media_av_pts_contract(void (*progress)(const char *));
 extern BOOL test1313_core_image_pending_retry_contract(void);
 extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
@@ -1168,7 +1169,24 @@ static BOOL test1356_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1356
+static void test1357_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Media1357 phase", phase);
+}
+
+static BOOL test1357_media_contract_guarded(void)
+{
+    BOOL ok;
+    ok = FALSE;
+    __try {
+        ok = test1357_media_av_pts_contract(test1357_log_progress);
+    } __except(media_log_exception(GetExceptionInformation())) {
+        ok = FALSE;
+    }
+    return ok;
+}
+
+#define TEST_MAX_NUMBER 1357
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118282,6 +118300,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1353_media_contract_guarded();
             if (ok) { show_info(L"TEST 1353 OK", "Media pure-audio PCM deadlines, backpressure, pause and cached rewind passed."); }
             else { show_error(L"TEST 1353 FAIL", test1332_media_last_error()); }
+            break;
+        case 1357:
+            ok = test1357_media_contract_guarded();
+            if (ok) { show_info(L"TEST 1357 OK", "Media mixed video PTS guards, prefix fidelity, gaps/duplicates and best-effort fallback passed."); }
+            else { show_error(L"TEST 1357 FAIL", test1332_media_last_error()); }
             break;
         case 1356:
             ok = test1356_media_contract_guarded();

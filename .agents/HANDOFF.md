@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮补齐 Media 混合源时钟的固定非零起点/双向 EOF 尾部双配置证据，ABI 1.3、DLL、EXE 和下载 schema 均不改。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮补齐 Media 混合视频负/回退 PTS 守卫及重复/间隔/DTS 回退控制的双配置证据，ABI 1.3、DLL、EXE 和下载 schema 均不改。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -295,37 +295,38 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 
 ABI 1.3 的 SCHEDULE_AV、原默认/单流合同和产品二进制保持，调用与排除边界见
 [Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)。
-当前 88 个固定输入：旧 85 条记录完全不变，新增三条 Baseline/AAC empty-edit 控制，
+当前 93 个固定输入：旧 88 条记录完全不变，新增五条 Baseline/AAC 视频 CTTS 控制，
 只修改时间 metadata/文件偏移，保留所有压缩字节和 AAC priming 裁剪。固定工具/来源及
 只读 oracle 见 [媒体夹具](../test_host/fixtures/media/README.md)。
 
-TEST1355 保护 Baseline/Main B 帧与 AAC 的两路合并、同值音频优先、背压/STOP、源 PTS、
-完整内容、暂停/重播/终态和有效首包超 256 KiB 的零输出 LIMIT。TEST1356 补充视频/音频
-起点 400/0、0/400、600/600 ms：默认输出仍为三帧、29×1024 samples/声道，全部 PCM
-与原 Baseline 相同；调度两遍匹配默认视频内容校验值/所有 PCM/PTS/时长，验证两种 EOF
-尾部、两种 seekability、7-byte 短读、禁读源的待块/EOF 后缓存重播、暂停排除间隔、
-deadline 前 1 µs、极大时钟和 EOF 一次性。没有产品调度器移入宿主。
+TEST1355/1356 的既有混合交付、非零起点/双向 EOF 及容量合同保持。TEST1357 验证默认
+三帧/29×1024 samples、全部 PCM/视频内容与原 Baseline 相同；负起点零输出 FORMAT，
+实际 400/200/400 ms 回退保留首帧及 19 块 PCM 后 FORMAT，错误回调/事件各一次，
+无正常 EOF、后续 STATE。重复/间隔和包 PTS 回退但 best-effort 选择单调 DTS 的控制正常
+完成，逐回调比较默认内容/PTS/时长/flags。两种 seekability、短读、禁读源、两遍到期/
+极大时钟/EOF 后缓存重播和关闭通过；未置 INFERRED 不证明原包 PTS 保真。
 
-本轮最终 Debug tmp/device-runs/20261015-205302-media-av-timeline-debug-accepted/ 与 Release
-tmp/device-runs/20261015-205535-media-av-timeline-release-accepted/ 均选择
-1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352,1353,1354,1355,1356,999：17/17、
+本轮最终 Debug tmp/device-runs/20261015-211201-media-av-pts-debug-accepted/ 与 Release
+tmp/device-runs/20261015-211508-media-av-pts-release-accepted/ 均选择
+1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352,1353,1354,1355,1356,1357,999：18/18、
 唯一 PASS、零 ERROR/FAIL、完整日志/Core 路径/crash PASS，无新增 dump。两配置断言正文
-完全一致，旧 16 项正文与前基线相同；当前设备为 480×640、192 DPI DeviceEmulator。
-SD 112 文件、双空间预检和新 guest holders=0 unavailable=0 均通过，完整回收后清理
+完全一致，旧 17 项正文与前基线相同；当前设备为 480×640、192 DPI DeviceEmulator。
+SD 117 文件、双空间预检和新 guest holders=0 unavailable=0 均通过，完整回收后清理
 本轮目录，保留 28 个旧不完整目录。未强杀、重置、改 WMDC、启动普通 EXE 或覆盖用户 DB；
-RAPI 不暴露 guest 退出码。先行 1356,999 Debug 诊断门亦为 2/2 PASS。
+RAPI 不暴露 guest 退出码。先行 1357,999 Debug anchor 门亦为 2/2 PASS。
 
 媒体 DLL SHA256 与前基线和本轮 stage 均一致：Debug
 5963d2ed0c4528fd75054cae48ba04fe7b284e1497b2f4fd2e7ef30777086b70，Release
 f4292cf625a2f5697b6a0eb53acbd0935033261aa1c302c45639564114031906。
 FFmpeg archive 未重建，SHA256 为 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
-旧 tmp/device-runs/20261015-151244-media-av-clock-debug-verified/ 的 480 秒超时仍是失败，
-后置门缺失不能靠日志含 PASS 追认；使用正式默认 1200 秒重跑的前基线及本轮门已通过。
+tmp/device-runs/20261015-211001-media-av-pts-debug-diagnostic/ 因 fixture 首轮用最大 clock
+锚定、后续无法到期而 FAIL；修正为零点锚定后再推进，原前缀/FORMAT 断言未放宽，
+失败日志保留。本轮 anchor 门一次 RAPI 传输重开/1 KiB 有界重试恢复，未改系统或产品。
 
-C89、仓库审计、88 输入 pin、新旧混合解码 oracle、设备门配置单测及正式双配置构建通过。
-ROADMAP/限制/架构已复核：固定起点/双向 EOF 退出待办，下一步先混合异常 PTS/格式变化，
-再取舍其他组合、重建故障/峰值和实际设备同步；不把输出槽当总内存上限。只增加 fixture、
-消费者断言、校验脚本及中文文档，公共 ABI/DLL/上游/默认配置均未改，tmp 不入 Git。
+C89、仓库审计、93 输入 pin、CTTS/旧起点只读 oracle、设备门配置单测及正式双配置构建通过。
+ROADMAP/限制/架构已复核：下一步为有效混合格式变化拒绝，未知 PTS/音频侧异常、
+其他组合、故障/峰值和设备同步仍未验收。只改 fixture、消费者断言、校验脚本和中文文档；
+ABI/DLL/上游/默认配置未改，tmp 不入 Git。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -497,7 +498,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
 已复核限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；下一能力需另行取舍。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-本轮只补齐媒体混合起点/双向 EOF 证据、相邻回归和中文文档，未启动普通应用版本；
+本轮只补齐媒体混合视频 PTS 证据、相邻回归和中文文档，未启动普通应用版本；
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
@@ -506,7 +507,7 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-Media 固定非零起点/双向 EOF 门已结束，下一纵切先验证混合异常 PTS/格式变化；其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
+Media 固定视频负/回退、重复/间隔与 DTS 选择门已结束，下一纵切先验证有效混合格式变化的拒绝；未知 PTS/音频侧异常、其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 仍待专门门，不把应用正常重开或进程终止恢复写成断电恢复。新增设备门须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。
