@@ -249,7 +249,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
 **状态：WAV PCM/IMA/I/O 与短小 H.264/AAC/MJPEG/MP3、TS/MPEG-2/MP2、PS/MPEG-1/MP2、AMR-NB/WB、MPEG-4 Part 2 和 AVI H.263 解码、拒绝守卫及 EOF 重播已有 Debug/Release 设备证据；
-可选有序单视频时钟调度已有初始双配置合同，其他压缩格式、DirectShow source filter、音频/混合流调度与完整设备性能门仍待完成。**
+可选有序单视频与 WAV/ADTS/MP3 纯音频样本时钟交付已有双配置合同，其他压缩格式、DirectShow source filter、其他音频/混合流调度与完整设备性能门仍待完成。**
 `positron_media.dll` 已形成稳定的 source/output callback、opaque session、host-driven pump、
 运行时 graph 探测和设备 WaveOut 尝试边界；FFmpeg 3.4.14 的固定 ARMV4I archive 已通过正式
 Debug/Release 链接，并由 custom memory AVIO 驱动有界的 H.264/AAC/MP3/AMR、常见
@@ -271,17 +271,20 @@ Baseline/Main 输出、未知 PTS、SPS 名义时长、缓存零点重播与 pro
 有效 PPS 变化拒绝、定义后引用与参数预算负控制也已验收；多个/变化的有效参数集明确不支持。
 初始单视频 host-clock 合同已退出待实现候选：ABI 1.1 可选位保留默认解码-only；
 MP4/MOV、AVI、FLV 单视频流保留一帧并按时回调，pause/STOP、缓存零点重播、
-负/回退宿主时钟、极大时钟与不丢迟到帧的双配置断言已通过。不扩展音频/混合流或非零 seek。
+负/回退宿主时钟、极大时钟与不丢迟到帧的双配置断言已通过。不扩展混合流或非零 seek。
 固定 FLV 的未知/负起点、回退 PTS 终态与已知起点后推导、重复/向前间隔已退出初始
 候选；调度在 demux 前禁用隐式补零，默认兼容路径保留。证据边界见能力矩阵/媒体夹具。
-下一纵切先取舍纯音频 host-clock PCM 交付合同：复用已验收的 WAV/ADTS/MP3 输入，
-明确单块 PCM 上限、priming/未知起点、暂停/零点重播与回调背压，不一次合并混合流同步。
+纯音频初始交付退出待实现候选：ABI 1.2 显式 SOFT，仅 WAV PCM 和单音频 ADTS/MP3，
+一块 PCM 按消费样本累计 PTS、整块背压/STOP、暂停/零点重播与默认 PCM 全字节比较已有门。
+下一纵切先取证采样格式变化拒绝：复用固定 ADTS，以帧级配置变化区分 open 探测与 pump
+运行时守卫，验证已交付前缀、FORMAT/不支持分类、错误一次性、STATE 与 stop/close；
+不伪造源 PTS、不放宽错误终态，也不把正常重播当成变化/分配失败验收。
 其他容器异常、缺 timing/未知时长时不推导、推导溢出、PTS-only 回退而 DTS 仍单调、
 完整 VFR/SEI 仍需独立 fixture，不把固定 FLV 变换扩大为任意时间轴支持。
 不能把 pump budget 当作可抢占 decoder 的硬墙钟上限，其他损坏模式不由固定夹具代替。
 非零 AAC seek 保真和重建分配失败仍待专门门。
 不把短小夹具扩大为全部格式或实时播放保证。
-之后再取舍音频/混合流调度的固定帧/PCM 预算、同步与迟到丢帧，以及不会破坏不可 seek
+之后再取舍其他音频格式/容器与混合流调度的固定帧/PCM 预算、同步与迟到丢帧，以及不会破坏不可 seek
 输入的 DirectShow callback source filter/native 视频生命周期。默认 pump 仍忽略 clock_us，预算不是严格墙钟上限；
 桌面 DirectShow 格式表不能替代设备 filter 探测。
 
@@ -289,7 +292,7 @@ MP4/MOV、AVI、FLV 单视频流保留一帧并按时回调，pause/STOP、缓�
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** 非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
+- **剩余 fixture：** 纯音频格式变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
   其他容器参数变化拒绝、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；其他输入缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。

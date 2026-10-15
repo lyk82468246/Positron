@@ -67,6 +67,12 @@ struct pmedia_ffmpeg {
     int audio_buffer_bytes;
     int opened_format;
     int schedule_video;
+    int schedule_audio;
+    int audio_pending;
+    pm_position audio_samples;
+    int audio_rate;
+    int audio_channels;
+    pm_audio_block pending_audio;
     int video_pending;
     int clock_anchored;
     pm_position clock_anchor_us;
@@ -1018,6 +1024,20 @@ int pmedia_ffmpeg_schedule_video(pmedia_ffmpeg *context)
     return PMEDIA_OK;
 }
 
+int pmedia_ffmpeg_schedule_audio(pmedia_ffmpeg *context)
+{
+    const char *name;
+    if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
+    name = context->format->iformat->name;
+    if (context->format->nb_streams != 1 || context->video_codec != NULL ||
+        context->audio_codec == NULL || context->output.audio == NULL ||
+        !((strcmp(name, "aac") == 0 && context->audio_codec->codec_id == AV_CODEC_ID_AAC) ||
+          (strcmp(name, "mp3") == 0 && context->audio_codec->codec_id == AV_CODEC_ID_MP3)))
+        return PMEDIA_ERROR_UNSUPPORTED;
+    context->schedule_audio = 1;
+    return PMEDIA_OK;
+}
+
 static int pm_ff_clip_sample(int sample)
 {
     if (sample < -32768) return -32768;
@@ -1220,6 +1240,25 @@ static int pm_ff_emit_video(pmedia_ffmpeg *context)
     return PMEDIA_OK;
 }
 
+static int pm_ff_deliver_audio(pmedia_ffmpeg *context)
+{
+    int result;
+    pm_audio_block *block;
+    block = &context->pending_audio;
+    if (!context->clock_anchored) {
+        context->clock_anchor_us = context->pump_clock_us;
+        context->clock_anchored = 1;
+    }
+    if (block->pts_us > context->pump_clock_us - context->clock_anchor_us)
+        return PMEDIA_WOULD_BLOCK;
+    result = context->output.audio(context->output.context, block);
+    if (result == PMEDIA_WOULD_BLOCK) return PMEDIA_WOULD_BLOCK;
+    if (result < 0) return PMEDIA_ERROR_CALLBACK;
+    context->audio_samples += block->samples;
+    context->audio_pending = 0;
+    return result == PMEDIA_CALLBACK_STOP ? PMEDIA_CALLBACK_STOP : PMEDIA_OK;
+}
+
 static int pm_ff_emit_audio(pmedia_ffmpeg *context)
 {
     AVStream *stream;
@@ -1249,6 +1288,26 @@ static int pm_ff_emit_audio(pmedia_ffmpeg *context)
     if (block.pts_us < 0) block.pts_us = 0;
     block.duration_us = block.sample_rate > 0 ?
         ((pm_position)block.samples * 1000000) / block.sample_rate : 0;
+    if (context->schedule_audio) {
+        /* Raw audio has a sample timeline, not a container presentation clock.
+         * Use decoder output AFTER priming/gapless trimming; never pad/drop
+         * samples to follow a synthesized demux timestamp. */
+        if (block.sample_rate <= 0 ||
+            (context->audio_rate && (context->audio_rate != block.sample_rate ||
+                                     context->audio_channels != block.channels))) {
+            context->clock_error = "scheduled audio sample format changed";
+            return PMEDIA_ERROR_FORMAT;
+        }
+        if (context->audio_samples > ((((pm_position)0x7fffffff << 32) |
+                                      0xffffffffUL) / 1000000) - block.samples)
+            return PMEDIA_ERROR_LIMIT;
+        context->audio_rate = block.sample_rate;
+        context->audio_channels = block.channels;
+        block.pts_us = context->audio_samples * 1000000 / block.sample_rate;
+        context->pending_audio = block;
+        context->audio_pending = 1;
+        return pm_ff_deliver_audio(context);
+    }
     if (context->output.audio == NULL) return PMEDIA_OK;
     callback_result = context->output.audio(context->output.context, &block);
     if (callback_result < 0) return PMEDIA_ERROR_CALLBACK;
@@ -1320,6 +1379,7 @@ int pmedia_ffmpeg_pump(pmedia_ffmpeg *context,
     /* Keep the decoded AVFrame alive while waiting: do not receive/unref,
      * demux or decode another packet.  Metadata is prepared exactly once. */
     if (context->video_pending) return pm_ff_deliver_video(context);
+    if (context->audio_pending) return pm_ff_deliver_audio(context);
     work_limit = budget_us <= 0 ? 1 : budget_us / 1000;
     if (work_limit < 1) work_limit = 1;
     if (work_limit > 64) work_limit = 64;
@@ -1402,6 +1462,13 @@ static int pm_ff_restart_cached(pmedia_ffmpeg *context)
                                  context->max_video_height, context->schedule_video, &replacement,
                                  &info, &capabilities, NULL, 0);
     if (result != PMEDIA_OK) return result;
+    if (context->schedule_audio) {
+        result = pmedia_ffmpeg_schedule_audio(replacement);
+        if (result != PMEDIA_OK) {
+            pm_ff_cleanup(replacement);
+            return result;
+        }
+    }
     previous = *context;
     *context = *replacement;
     *replacement = previous;
@@ -1417,7 +1484,7 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     AVCodecContext *replacement_audio;
     int result;
     if (context == NULL || position_us < 0) return PMEDIA_ERROR_ARGUMENT;
-    if (context->schedule_video) {
+    if (context->schedule_video || context->schedule_audio) {
         if (position_us != 0) return PMEDIA_ERROR_NOT_SEEKABLE;
         return pm_ff_restart_cached(context);
     }

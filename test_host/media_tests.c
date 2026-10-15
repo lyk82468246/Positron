@@ -1613,7 +1613,7 @@ BOOL test1352_media_clock_contract(void (*progress)(const char *))
     g_media_compressed_error = "scheduled video unsupported input and option guards";
     if (progress != NULL) progress(g_media_compressed_error);
     media_compressed_init(&input, &sink, &source, &output, &options);
-    options.flags = 2;
+    options.flags = 4;
     if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT ||
         input.position || session != NULL) goto fail;
     options.flags = PMEDIA_OPEN_SCHEDULE_VIDEO;
@@ -2473,6 +2473,297 @@ static void media_ima_put32(unsigned char *data, unsigned long value)
     data[1] = (unsigned char)(value >> 8);
     data[2] = (unsigned char)(value >> 16);
     data[3] = (unsigned char)(value >> 24);
+}
+
+typedef struct media_audio_clock_sink {
+    media_fixture_output events;
+    unsigned char *reference;
+    int reference_bytes;
+    int reference_samples[64];
+    int reference_blocks;
+    int offset;
+    int compare;
+    int scheduled;
+    int rate;
+    int channels;
+    int response;
+    int offers;
+} media_audio_clock_sink;
+
+static int media_audio_clock_output(void *context, const pm_audio_block *block)
+{
+    media_audio_clock_sink *sink;
+    int index;
+    sink = (media_audio_clock_sink *)context;
+    index = sink->events.blocks;
+    sink->offers++;
+    if (block == NULL || block->data == NULL || block->size != sizeof(*block) ||
+        block->sample_rate != sink->rate || block->channels != sink->channels ||
+        block->samples < 1 || block->samples > 8192 || block->bytes > 32768 ||
+        block->bytes != block->samples * sink->channels * 2 || index >= 64 ||
+        block->duration_us != (pm_position)block->samples * 1000000 / sink->rate ||
+        (sink->scheduled && block->pts_us != (pm_position)sink->events.samples * 1000000 / sink->rate) ||
+        block->bytes > 122880 - sink->offset) goto invalid;
+    if (sink->compare) {
+        if (index >= sink->reference_blocks || sink->reference_samples[index] != block->samples ||
+            block->bytes > sink->reference_bytes - sink->offset ||
+            memcmp(block->data, sink->reference + sink->offset, (size_t)block->bytes)) goto invalid;
+    } else {
+        memcpy(sink->reference + sink->offset, block->data, (size_t)block->bytes);
+        sink->reference_samples[index] = block->samples;
+    }
+    if (sink->scheduled && sink->response == PMEDIA_WOULD_BLOCK) return PMEDIA_WOULD_BLOCK;
+    if (sink->response < 0) return sink->response;
+    sink->offset += block->bytes;
+    sink->events.samples += block->samples;
+    sink->events.blocks++;
+    return sink->response;
+invalid:
+    sink->events.errors++;
+    return PMEDIA_ERROR_CALLBACK;
+}
+
+static BOOL media_audio_clock_expect(pm_session session, media_audio_clock_sink *sink,
+                                    pm_position clock, int blocks, int expected)
+{
+    int attempt;
+    int result;
+    int previous_offers;
+    int previous_blocks;
+    result = PMEDIA_OK;
+    for (attempt = 0; attempt < 128; attempt++) {
+        previous_offers = sink->offers;
+        previous_blocks = sink->events.blocks;
+        result = pm_pump(session, clock, 2000);
+        if (sink->offers - previous_offers > 1 ||
+            sink->events.blocks - previous_blocks > 1) return FALSE;
+        if (result != PMEDIA_OK ||
+            (expected == PMEDIA_OK && sink->events.blocks >= blocks)) break;
+    }
+    if (result == expected && sink->events.blocks == blocks && !sink->events.errors) return TRUE;
+    _snprintf(g_media_compressed_detail, sizeof(g_media_compressed_detail),
+              "audio clock=%I64d rc=%d expected=%d blocks=%d expected=%d errors=%d",
+              clock, result, expected, sink->events.blocks, blocks, sink->events.errors);
+    g_media_compressed_detail[sizeof(g_media_compressed_detail) - 1] = '\0';
+    g_media_compressed_error = g_media_compressed_detail;
+    return FALSE;
+}
+
+BOOL test1353_media_audio_clock_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { NULL, L"aac-lc.aac", L"mp3-mono.mp3", NULL };
+    static const WCHAR *rejected[] = {
+        L"baseline-aac.mp4", L"mjpeg-mp3.avi", L"amr-nb.amr", L"ima-mono.wav", L"aac-main.aac"
+    };
+    media_fixture_source input;
+    media_audio_clock_sink sink;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *data;
+    unsigned char *reference;
+    pm_position maximum;
+    pm_position deadline;
+    int bytes;
+    int test;
+    int iteration;
+    int pass;
+    int i;
+    int blocks;
+    int samples;
+    int offers;
+    int result;
+    char phase[160];
+
+    session = NULL;
+    data = NULL;
+    reference = (unsigned char *)malloc(122880);
+    if (reference == NULL) return FALSE;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    for (test = 0; test < 4; test++) {
+        if (names[test] != NULL) data = media_compressed_load(names[test], &bytes);
+        else {
+            bytes = 44 + 5000 * (test == 0 ? 4 : 1);
+            data = (unsigned char *)malloc((size_t)bytes);
+            if (data != NULL) {
+                memcpy(data, g_media_fixture_wav, 44);
+                media_ima_put32(data + 4, bytes - 8);
+                media_ima_put16(data + 22, test == 0 ? 2 : 1);
+                media_ima_put32(data + 24, test == 0 ? 44100 : 8000);
+                media_ima_put32(data + 28, test == 0 ? 176400 : 8000);
+                media_ima_put16(data + 32, test == 0 ? 4 : 1);
+                media_ima_put16(data + 34, test == 0 ? 16 : 8);
+                media_ima_put32(data + 40, bytes - 44);
+                for (i = 44; i < bytes; i++) data[i] = (unsigned char)(i * 37 + i / 7);
+            }
+        }
+        g_media_compressed_error = "audio clock fixture load";
+        if (data == NULL) goto fail;
+        media_contract_init(&input, &sink.events, &source, &output, &options);
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = reference;
+        sink.rate = test == 1 ? 48000 : (test == 3 ? 8000 : 44100);
+        sink.channels = test == 0 ? 2 : 1;
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 7;
+        output.context = &sink;
+        output.audio = media_audio_clock_output;
+        _snprintf(phase, sizeof(phase), "audio case=%d decode-only PCM reference", test);
+        g_media_compressed_error = "audio decode-only reference";
+        if (progress != NULL) progress(phase);
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+        result = PMEDIA_OK;
+        for (i = 0; i < 512 && result == PMEDIA_OK; i++) result = pm_pump(session, -1, 2000);
+        if (result != PMEDIA_EOF || sink.events.errors || sink.events.error_callbacks ||
+            sink.events.samples != (test == 1 ? 30720 : (test == 2 ? 26460 : 5000)) ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        blocks = sink.events.blocks;
+        samples = sink.events.samples;
+        sink.reference_blocks = blocks;
+        sink.reference_bytes = sink.offset;
+        sink.compare = 1;
+        sink.scheduled = 1;
+        options.flags = PMEDIA_OPEN_SCHEDULE_AUDIO;
+        for (iteration = 0; iteration < 2; iteration++) {
+            input.position = 0;
+            input.read_mode = 0;
+            source.seek = iteration ? media_fixture_seek : NULL;
+            source.tell = iteration ? media_fixture_tell : NULL;
+            memset(&sink.events, 0, sizeof(sink.events));
+            sink.offset = 0;
+            sink.response = 0;
+            _snprintf(phase, sizeof(phase), "audio case=%d seekable=%d exact deadlines, full PCM and rewind", test, iteration);
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            /* After open every replay must consume the DLL-owned cache. */
+            input.read_mode = 2;
+            for (pass = 0; pass < 2; pass++) {
+                if (pass && pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                memset(&sink.events, 0, sizeof(sink.events));
+                sink.offset = 0;
+                if (pm_pump(session, 0, -1) != PMEDIA_ERROR_ARGUMENT) goto fail;
+                if (!media_audio_clock_expect(session, &sink, -1, 0, PMEDIA_ERROR_ARGUMENT) ||
+                    !media_audio_clock_expect(session, &sink, 1000000, 1, PMEDIA_OK)) goto fail;
+                for (i = 1; i < blocks; i++) {
+                    deadline = 1000000 + (pm_position)sink.events.samples * 1000000 / sink.rate;
+                    if (!media_audio_clock_expect(session, &sink, deadline - 1, i, PMEDIA_WOULD_BLOCK) ||
+                        !media_audio_clock_expect(session, &sink, deadline - 1, i, PMEDIA_WOULD_BLOCK) ||
+                        !media_audio_clock_expect(session, &sink, 999999, i, PMEDIA_ERROR_ARGUMENT) ||
+                        pm_seek(session, 1) != PMEDIA_ERROR_NOT_SEEKABLE ||
+                        !media_audio_clock_expect(session, &sink, deadline, i + 1, PMEDIA_OK)) goto fail;
+                }
+                result = PMEDIA_OK;
+                for (i = 0; i < 128 && result == PMEDIA_OK; i++) result = pm_pump(session, maximum, 2000);
+                if (result != PMEDIA_EOF || pm_pump(session, maximum, 0) != PMEDIA_EOF ||
+                    sink.events.eof_events != 1 || sink.events.samples != samples ||
+                    sink.offset != sink.reference_bytes || sink.events.error_callbacks) goto fail;
+            }
+            if (progress != NULL) progress("audio pause, identical backpressure retry, STOP consumes, cached rewind");
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            memset(&sink.events, 0, sizeof(sink.events));
+            sink.offset = 0;
+            sink.response = PMEDIA_WOULD_BLOCK;
+            if (!media_audio_clock_expect(session, &sink, 0, 0, PMEDIA_WOULD_BLOCK)) goto fail;
+            offers = sink.offers;
+            if (!media_audio_clock_expect(session, &sink, 0, 0, PMEDIA_WOULD_BLOCK) || sink.offers != offers + 1 ||
+                pm_pause(session) != PMEDIA_OK || pm_pump(session, -1, 0) != PMEDIA_OK ||
+                sink.offers != offers + 1 || pm_seek(session, 0) != PMEDIA_OK ||
+                pm_pump(session, 0, 0) != PMEDIA_OK || sink.offers != offers + 1 ||
+                pm_resume(session) != PMEDIA_OK) goto fail;
+            sink.response = PMEDIA_CALLBACK_STOP;
+            if (!media_audio_clock_expect(session, &sink, 9000000, 1, PMEDIA_OK) ||
+                pm_pump(session, maximum, 0) != PMEDIA_OK || sink.events.blocks != 1 ||
+                pm_resume(session) != PMEDIA_OK) goto fail;
+            sink.response = PMEDIA_OK;
+            deadline = (pm_position)sink.events.samples * 1000000 / sink.rate;
+            if (!media_audio_clock_expect(session, &sink, 19000000, 1, PMEDIA_WOULD_BLOCK) ||
+                pm_resume(session) != PMEDIA_OK ||
+                !media_audio_clock_expect(session, &sink, 19000000 + deadline - 1, 1, PMEDIA_WOULD_BLOCK) ||
+                !media_audio_clock_expect(session, &sink, 19000000 + deadline, 2, PMEDIA_OK)) goto fail;
+            if (progress != NULL) progress("audio retained nonzero block pause and identical backpressure");
+            if (!media_audio_clock_expect(session, &sink, 19000000 + deadline, 2, PMEDIA_WOULD_BLOCK) ||
+                pm_pause(session) != PMEDIA_OK) goto fail;
+            offers = sink.offers;
+            if (pm_pump(session, maximum, -1) != PMEDIA_ERROR_ARGUMENT ||
+                pm_pump(session, maximum, 0) != PMEDIA_OK || sink.offers != offers ||
+                pm_resume(session) != PMEDIA_OK ||
+                !media_audio_clock_expect(session, &sink, 29000000 + deadline, 2, PMEDIA_WOULD_BLOCK)) goto fail;
+            deadline = 29000000 + (pm_position)sink.events.samples * 1000000 / sink.rate;
+            sink.response = PMEDIA_WOULD_BLOCK;
+            if (!media_audio_clock_expect(session, &sink, deadline - 1, 2, PMEDIA_WOULD_BLOCK) ||
+                sink.offers != offers ||
+                !media_audio_clock_expect(session, &sink, deadline, 2, PMEDIA_WOULD_BLOCK) ||
+                !media_audio_clock_expect(session, &sink, deadline, 2, PMEDIA_WOULD_BLOCK) ||
+                sink.offers != offers + 2) goto fail;
+            sink.response = PMEDIA_OK;
+            if (!media_audio_clock_expect(session, &sink, deadline, 3, PMEDIA_OK)) goto fail;
+            /* Pending second/third block is discarded on zero rewind; near
+             * INT64_MAX clocks must use differences, never deadline addition. */
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            memset(&sink.events, 0, sizeof(sink.events));
+            sink.offset = 0;
+            if (!media_audio_clock_expect(session, &sink, maximum - 1000000, 1, PMEDIA_OK)) goto fail;
+            for (i = 1; i < blocks; i++)
+                if (!media_audio_clock_expect(session, &sink, maximum, i + 1, PMEDIA_OK)) goto fail;
+            if (sink.offset != sink.reference_bytes || pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            memset(&sink.events, 0, sizeof(sink.events));
+            sink.offset = 0;
+            sink.response = -1;
+            if (!media_audio_clock_expect(session, &sink, 0, 0, PMEDIA_ERROR_CALLBACK) ||
+                sink.events.error_callbacks != 1 || sink.events.error_events != 1 ||
+                sink.events.last_error != PMEDIA_ERROR_CALLBACK ||
+                pm_pump(session, 0, 0) != PMEDIA_ERROR_STATE || pm_pause(session) != PMEDIA_ERROR_STATE ||
+                pm_resume(session) != PMEDIA_ERROR_STATE || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+                pm_close(session) != PMEDIA_OK || sink.events.error_callbacks != 1 ||
+                sink.events.stopped_events != 1) goto fail;
+            session = NULL;
+        }
+        free(data);
+        data = NULL;
+    }
+    if (progress != NULL) progress("audio option/source guards and unsupported stream boundary");
+    media_contract_init(&input, &sink.events, &source, &output, &options);
+    options.flags = PMEDIA_OPEN_SCHEDULE_AUDIO;
+    output.audio = NULL;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT || input.position) goto fail;
+    output.audio = media_audio_clock_output;
+    options.flags = PMEDIA_OPEN_SCHEDULE_AUDIO | PMEDIA_OPEN_SCHEDULE_VIDEO;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT || input.position) goto fail;
+    options.flags = PMEDIA_OPEN_SCHEDULE_AUDIO;
+    for (i = 0; i < 3; i++) {
+        options.backend = i;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_ARGUMENT || input.position) goto fail;
+    }
+    options.backend = PMEDIA_BACKEND_SOFT;
+    input.read_mode = 1;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_WOULD_BLOCK || session != NULL) goto fail;
+    input.read_mode = 2;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_IO || session != NULL) goto fail;
+    for (test = 0; test < 5; test++) {
+        data = media_compressed_load(rejected[test], &bytes);
+        if (data == NULL) goto fail;
+        input.data = data;
+        input.bytes = bytes;
+        input.position = 0;
+        input.read_mode = 0;
+        memset(&sink.events, 0, sizeof(sink.events));
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_ERROR_UNSUPPORTED || session != NULL ||
+            sink.events.blocks || sink.events.error_callbacks != 1 || sink.events.error_events != 1) goto fail;
+        free(data);
+        data = NULL;
+    }
+    free(reference);
+    if (progress != NULL) progress("pure-audio sample-clock PCM contract passed");
+    return TRUE;
+fail:
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    free(reference);
+    return FALSE;
 }
 
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)

@@ -22,7 +22,7 @@ extern "C" {
 #define PMEDIA_API __declspec(dllimport)
 #endif
 
-#define PMEDIA_ABI_VERSION 0x00010001UL
+#define PMEDIA_ABI_VERSION 0x00010002UL
 #define PMEDIA_STRUCT_VERSION 1UL
 #define PMEDIA_MAX_PLANES 3
 
@@ -32,6 +32,11 @@ typedef void *pm_session;
 /* Opt-in, SOFT single-video MP4/MOV, AVI or FLV only.  Zero preserves
  * decode-only behavior.  See README for clocks, pause and rewind rules. */
 #define PMEDIA_OPEN_SCHEDULE_VIDEO 1UL
+/* SOFT pure WAV/PCM, ADTS/AAC-LC or MP3. Mutually exclusive with VIDEO.
+ * PTS is cumulative delivered PCM samples from zero, not source timestamps.
+ * Audio callback WOULD_BLOCK retains the identical block; STOP consumes it.
+ * One block (at most 8192 samples/channel, 32768 bytes), no late dropping. */
+#define PMEDIA_OPEN_SCHEDULE_AUDIO 2UL
 
 enum {
     PMEDIA_OK = 0,
