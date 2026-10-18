@@ -1818,6 +1818,62 @@
       "video_timescale": 10240,
       "bytes": 7148,
       "sha256": "ad5070a2787616ecee78a62c546ea8f29a789f0132e8eb1fee23d228569a63d6"
+    },
+    {
+      "file": "mixed-config-repeat.mp4",
+      "fixture_transform": "fixed MP4 AAC stsd/stsc transitions v1",
+      "source": "mixed-clock-video-late.mp4",
+      "aac_sources": [
+        "aac-lc.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 17718,
+      "sha256": "2d57510b67f227531b934450c0ebd7e8e49d8a731165c04239722aeb83fdba74"
+    },
+    {
+      "file": "mixed-config-stereo.mp4",
+      "fixture_transform": "fixed MP4 AAC stsd/stsc transitions v1",
+      "source": "mixed-clock-video-late.mp4",
+      "aac_sources": [
+        "aac-lc.aac",
+        "aac-lc-stereo.aac"
+      ],
+      "bytes": 17339,
+      "sha256": "285cd48f21c29300977071324160d381ede542e48f9e465c77a8b2852d71da9a"
+    },
+    {
+      "file": "mixed-config-mono.mp4",
+      "fixture_transform": "fixed MP4 AAC stsd/stsc transitions v1",
+      "source": "mixed-clock-video-late.mp4",
+      "aac_sources": [
+        "aac-lc-stereo.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 17339,
+      "sha256": "37a76a3f49c4e4c13dab4d9aeb852c8ca6e7601c078e259d55d7c552ece46a7e"
+    },
+    {
+      "file": "mixed-config-return.mp4",
+      "fixture_transform": "fixed MP4 AAC stsd/stsc transitions v1",
+      "source": "mixed-clock-video-late.mp4",
+      "aac_sources": [
+        "aac-lc.aac",
+        "aac-lc-stereo.aac",
+        "aac-lc.aac"
+      ],
+      "bytes": 22816,
+      "sha256": "5965f2c466a4b9a8f90d93a9b82063ea1266f9f43b66ea8858a3e55c503ff5e1"
+    },
+    {
+      "file": "mixed-config-rate-down.mp4",
+      "fixture_transform": "fixed MP4 AAC stsd/stsc transitions v1",
+      "source": "mixed-clock-video-late.mp4",
+      "aac_sources": [
+        "aac-lc.aac",
+        "aac-lc-44100.aac"
+      ],
+      "bytes": 17737,
+      "sha256": "12acd5f594cf1de8225113131b7d6bb58fdd4c38c08c722d00eb7d26a58d9475"
     }
   ]
 }

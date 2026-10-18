@@ -3711,6 +3711,190 @@ fail:
     return FALSE;
 }
 
+typedef struct media_config_sink {
+    media_av_sink av;
+    int channels;
+    int limit;
+} media_config_sink;
+
+static int media_config_audio(void *opaque, const pm_audio_block *block)
+{
+    media_config_sink *config;
+    media_av_sink *sink;
+    media_av_reference *ref;
+    config = (media_config_sink *)opaque;
+    sink = &config->av;
+    ref = sink->reference;
+    sink->offers++;
+    sink->last_audio = 1;
+    if (block == NULL || block->size != sizeof(*block) || block->data == NULL ||
+        block->sample_rate != 48000 || block->channels != config->channels || block->samples != 1024 ||
+        block->bytes != config->channels * 2048 || sink->audios >= config->limit ||
+        sink->bytes + block->bytes > sizeof(ref->pcm)) goto invalid;
+    if (sink->capture) {
+        ref->audio[sink->audios] = *block;
+        memcpy(ref->pcm + sink->bytes, block->data, (size_t)block->bytes);
+    } else if (sink->audios >= ref->audios ||
+               block->pts_us != ref->audio[sink->audios].pts_us ||
+               block->duration_us != ref->audio[sink->audios].duration_us ||
+               memcmp(ref->pcm + sink->bytes, block->data, (size_t)block->bytes) ||
+               (sink->videos < ref->videos && ref->video[sink->videos].pts_us < block->pts_us)) goto invalid;
+    if (sink->audio_result == PMEDIA_WOULD_BLOCK) return PMEDIA_WOULD_BLOCK;
+    sink->audios++;
+    sink->bytes += block->bytes;
+    if (sink->capture) { ref->audios = sink->audios; ref->bytes = sink->bytes; }
+    return PMEDIA_OK;
+invalid:
+    sink->events.errors++;
+    return -1;
+}
+
+BOOL test1358_media_av_config_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"aac-lc.aac", L"aac-lc-stereo.aac", L"mixed-config-repeat.mp4",
+        L"mixed-config-rate-down.mp4", L"mixed-config-mono.mp4", L"mixed-config-return.mp4", L"mixed-config-stereo.mp4" };
+    media_fixture_source input;
+    media_config_sink sink;
+    media_av_reference *refs[3];
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *data;
+    pm_position maximum;
+    pm_position base;
+    pm_position pts;
+    pm_position previous;
+    int bytes;
+    int test;
+    int seekable;
+    int pass;
+    int i;
+    int result;
+    int offers;
+    char phase[192];
+
+    for (i = 0; i < 3; i++) refs[i] = (media_av_reference *)calloc(1, sizeof(*refs[i]));
+    memset(&sink, 0, sizeof(sink));
+    session = NULL;
+    data = NULL;
+    if (refs[0] == NULL || refs[1] == NULL || refs[2] == NULL) goto fail;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    media_contract_init(&input, &sink.av.events, &source, &output, &options);
+    output.video = media_av_video;
+    output.audio = media_config_audio;
+    output.error = media_compressed_error;
+    for (test = 0; test < 7; test++) {
+        _snprintf(phase, sizeof(phase), "mixed config case=%d references and sample-description transitions", test);
+        g_media_compressed_error = "mixed config reference/transition";
+        if (progress != NULL) progress(phase);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        input.data = data;
+        input.bytes = bytes;
+        input.read_chunk = 7;
+        if (test < 3) {
+            input.position = input.read_mode = 0;
+            source.seek = media_fixture_seek;
+            source.tell = media_fixture_tell;
+            options.flags = 0;
+            memset(&sink, 0, sizeof(sink));
+            sink.av.reference = refs[test];
+            sink.av.capture = 1;
+            sink.channels = test == 1 ? 2 : 1;
+            sink.limit = test == 2 ? 60 : 30;
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            input.read_mode = 2;
+            result = PMEDIA_OK;
+            for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+            if (result != PMEDIA_EOF || sink.av.audios != sink.limit || sink.av.videos != (test == 2 ? 3 : 0) ||
+                sink.av.events.eof_events != 1 || sink.av.events.errors || sink.av.events.error_callbacks ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+            if (test < 2) { free(data); data = NULL; continue; }
+            if (memcmp(refs[2]->pcm, refs[0]->pcm, (size_t)refs[0]->bytes)) goto fail;
+            for (i = 0; i < 3; i++) {
+                if (refs[2]->video[i].pts_us != 400000 + (pm_position)i * 200000) goto fail;
+            }
+            for (i = 0; i < 2; i++) {
+                memcpy(refs[i]->video, refs[2]->video, sizeof(refs[i]->video));
+                memcpy(refs[i]->video_hash, refs[2]->video_hash, sizeof(refs[i]->video_hash));
+                refs[i]->videos = 3;
+            }
+        }
+        for (seekable = 0; seekable < 2; seekable++) {
+            for (pass = 0; pass < 2; pass++) {
+                memset(&sink, 0, sizeof(sink));
+                sink.av.reference = refs[test == 2 ? 2 : test == 4 ? 1 : 0];
+                sink.channels = test == 4 ? 2 : 1;
+                sink.limit = test == 2 ? 60 : 30;
+                if (test != 2 || !pass) {
+                    input.position = input.read_mode = 0;
+                    source.seek = seekable ? media_fixture_seek : NULL;
+                    source.tell = seekable ? media_fixture_tell : NULL;
+                    options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+                    if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != bytes) goto fail;
+                    input.read_mode = 2;
+                }
+                base = pass ? maximum - 2000000 : 5000000;
+                if (test == 2) {
+                    previous = 0;
+                    for (i = 0; i < 63; i++) {
+                        pts = sink.av.audios < 60 && (sink.av.videos == 3 ||
+                              refs[2]->audio[sink.av.audios].pts_us <= refs[2]->video[sink.av.videos].pts_us) ?
+                              refs[2]->audio[sink.av.audios].pts_us : refs[2]->video[sink.av.videos].pts_us;
+                        offers = sink.av.offers;
+                        if (pts > previous && (media_av_pump(session, &sink.av, base + pts - 1) != PMEDIA_WOULD_BLOCK ||
+                            sink.av.offers != offers)) goto fail;
+                        if (media_av_pump(session, &sink.av, base + pts) != PMEDIA_OK ||
+                            sink.av.offers != offers + 1 || sink.av.events.errors || sink.av.events.eof_events) goto fail;
+                        previous = pts;
+                    }
+                    if (media_av_pump(session, &sink.av, maximum) != PMEDIA_EOF || sink.av.events.eof_events != 1 ||
+                        sink.av.events.error_callbacks || sink.av.bytes != refs[2]->bytes) goto fail;
+                    if (!pass) {
+                        if (pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK ||
+                            pm_pump(session, -1, 0) != PMEDIA_OK || pm_resume(session) != PMEDIA_OK) goto fail;
+                        continue;
+                    }
+                } else {
+                    result = media_av_pump(session, &sink.av, 0);
+                    for (i = 0; i < 100 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink.av, maximum);
+                    _snprintf(phase, sizeof(phase), "mixed config observed case=%d seekable=%d pass=%d rc=%d video=%d audio=%d errors=%d detail=%s",
+                              test, seekable, pass, result, sink.av.videos, sink.av.audios, sink.av.events.errors, pm_last_error(session));
+                    phase[sizeof(phase) - 1] = '\0';
+                    if (progress != NULL) progress(phase);
+                    if (result != PMEDIA_ERROR_FORMAT || sink.av.videos != 2 || sink.av.audios != 30 || sink.av.events.errors ||
+                        sink.av.bytes != refs[test == 4 ? 1 : 0]->bytes || sink.av.events.eof_events ||
+                        sink.av.events.error_callbacks != 1 || sink.av.events.error_events != 1 ||
+                        strcmp(pm_last_error(session), "mixed audio codec configuration changed") ||
+                        pm_pump(session, maximum, 0) != PMEDIA_ERROR_STATE || pm_pause(session) != PMEDIA_ERROR_STATE ||
+                        pm_resume(session) != PMEDIA_ERROR_STATE || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+                        sink.av.events.error_callbacks != 1 || sink.av.events.error_events != 1) goto fail;
+                }
+                if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK || sink.av.events.stopped_events != 1 ||
+                    pm_close(session) != PMEDIA_OK) goto fail;
+                session = NULL;
+            }
+        }
+        free(data);
+        data = NULL;
+    }
+    for (i = 0; i < 3; i++) free(refs[i]);
+    if (progress != NULL) progress("mixed identical descriptions accepted; changed AAC config rejected before decode/callback with exact prefix");
+    return TRUE;
+fail:
+    _snprintf(phase, sizeof(phase), "mixed config failure: video=%d audio=%d bytes=%d errors=%d: %s",
+              sink.av.videos, sink.av.audios, sink.av.bytes, sink.av.events.errors,
+              session == NULL ? "no session" : pm_last_error(session));
+    phase[sizeof(phase) - 1] = '\0';
+    if (progress != NULL) progress(phase);
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    for (i = 0; i < 3; i++) if (refs[i] != NULL) free(refs[i]);
+    return FALSE;
+}
+
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)
 {
     media_fixture_source input;

@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮补齐 Media 混合视频负/回退 PTS 守卫及重复/间隔/DTS 回退控制的双配置证据，ABI 1.3、DLL、EXE 和下载 schema 均不改。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮修复 Media 混合 AAC 配置变化的解码前拒绝，双配置设备门已通过；ABI 1.3、EXE 和下载 schema 不改。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -291,42 +291,44 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 `2026-10-02 23:25:27`；完整包哈希已匹配，故不是旧 EXE 混包。后续须单独修正生成头的正式
 工程依赖，再验证增量构建时间与 Release 排除；本导航纵切不把该版本显示写成已修复。
 
-### Media 混合源时钟及解码合同已验收
+### Media 混合源时钟及 AAC 配置守卫已验收
 
-ABI 1.3 的 SCHEDULE_AV、原默认/单流合同和产品二进制保持，调用与排除边界见
+ABI 1.3、原默认/单流合同保持；混合模式增加包配置守卫，调用与排除边界见
 [Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)。
-当前 93 个固定输入：旧 88 条记录完全不变，新增五条 Baseline/AAC 视频 CTTS 控制，
-只修改时间 metadata/文件偏移，保留所有压缩字节和 AAC priming 裁剪。固定工具/来源及
+当前 98 个固定输入：旧 93 条记录不变，新增五条有效 MP4 AAC stsd/stsc 切换控制，
+压缩 AU 复制固定 ADTS，视频不重编码；与原 MP4 不同，这组保留完整 ADTS padding。
+固定工具/来源及
 只读 oracle 见 [媒体夹具](../test_host/fixtures/media/README.md)。
 
-TEST1355/1356 的既有混合交付、非零起点/双向 EOF 及容量合同保持。TEST1357 验证默认
-三帧/29×1024 samples、全部 PCM/视频内容与原 Baseline 相同；负起点零输出 FORMAT，
-实际 400/200/400 ms 回退保留首帧及 19 块 PCM 后 FORMAT，错误回调/事件各一次，
-无正常 EOF、后续 STATE。重复/间隔和包 PTS 回退但 best-effort 选择单调 DTS 的控制正常
-完成，逐回调比较默认内容/PTS/时长/flags。两种 seekability、短读、禁读源、两遍到期/
-极大时钟/EOF 后缓存重播和关闭通过；未置 INFERRED 不证明原包 PTS 保真。
+TEST1355–1357 的混合交付、起点/双向 EOF、PTS 与容量合同保持。TEST1358 的相同描述
+控制默认三帧/60 块 mono，混合两遍到期/缓存 seek 零正常 EOF；48→44.1 kHz、mono↔stereo
+及 mono→stereo→mono 均保留两视频/首段 30 块后 FORMAT，首段全部 PCM 与独立设备
+ADTS 解码相同，变化块不回调。两种 seekability 各两次、7-byte 短读/禁读源、错误一次性/
+STATE/重复 stop/close 保护。只比较 NEW_EXTRADATA 字节，不实现语义等价或动态重配置。
 
-本轮最终 Debug tmp/device-runs/20261015-211201-media-av-pts-debug-accepted/ 与 Release
-tmp/device-runs/20261015-211508-media-av-pts-release-accepted/ 均选择
-1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352,1353,1354,1355,1356,1357,999：18/18、
-唯一 PASS、零 ERROR/FAIL、完整日志/Core 路径/crash PASS，无新增 dump。两配置断言正文
-完全一致，旧 17 项正文与前基线相同；当前设备为 480×640、192 DPI DeviceEmulator。
-SD 117 文件、双空间预检和新 guest holders=0 unavailable=0 均通过，完整回收后清理
-本轮目录，保留 28 个旧不完整目录。未强杀、重置、改 WMDC、启动普通 EXE 或覆盖用户 DB；
-RAPI 不暴露 guest 退出码。先行 1357,999 Debug anchor 门亦为 2/2 PASS。
+Debug tmp/device-runs/20261018-092037-media-config-debug-accepted/ 与 Release
+tmp/device-runs/20261018-092416-media-config-release-accepted/ 均选择
+1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352,1353,1354,1355,1356,1357,1358,999：19/19，
+唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash PASS，无新增 dump；两配置正文相同，旧 18 项与前基线一致。
+当前为 240×320、96 DPI DeviceEmulator，SD 122 文件；双空间预检和新 guest holders=0
+unavailable=0 通过。内置 object-store 仅余 2406400 bytes，不能沿用旧 13 MiB 结论。
+双配置完整回收后清理本轮目录，保留 28 个旧不完整目录；未强杀、重置、改 WMDC、启动普通
+EXE 或覆盖用户 DB，RAPI 不暴露 guest 退出码。先行 1358,999 Debug 门 2/2 PASS。
 
-媒体 DLL SHA256 与前基线和本轮 stage 均一致：Debug
-5963d2ed0c4528fd75054cae48ba04fe7b284e1497b2f4fd2e7ef30777086b70，Release
-f4292cf625a2f5697b6a0eb53acbd0935033261aa1c302c45639564114031906。
+媒体 DLL SHA256 与本轮 stage 一致：Debug
+236abcab8ae37c52a15699be5247c771f1b655998c8047c03f9364bb9f182e1f，Release
+fc30e2045f513e8f2279279412d172d0ec2dced9238c482cc945edc5c229c0b3。
 FFmpeg archive 未重建，SHA256 为 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
-tmp/device-runs/20261015-211001-media-av-pts-debug-diagnostic/ 因 fixture 首轮用最大 clock
-锚定、后续无法到期而 FAIL；修正为零点锚定后再推进，原前缀/FORMAT 断言未放宽，
-失败日志保留。本轮 anchor 门一次 RAPI 传输重开/1 KiB 有界重试恢复，未改系统或产品。
 
-C89、仓库审计、93 输入 pin、CTTS/旧起点只读 oracle、设备门配置单测及正式双配置构建通过。
-ROADMAP/限制/架构已复核：下一步为有效混合格式变化拒绝，未知 PTS/音频侧异常、
-其他组合、故障/峰值和设备同步仍未验收。只改 fixture、消费者断言、校验脚本和中文文档；
-ABI/DLL/上游/默认配置未改，tmp 不入 Git。
+失败对照均留在 tmp/device-runs/20261018-*：091223 的 fixture 偏移错误不作产品证据；
+091347 证明旧声道输出守卫已有效。091553 的有效 rate-down 在首段后进入 callback，
+返回 CALLBACK 而非 FORMAT，才是缺口证据。091707 的首版侧配置检查仍失败：3.4 默认
+将 side data 合并进 payload。最终只在 SCHEDULE_AV 设置 KEEP_SIDE_DATA，再于选中音频
+send 前比较配置；未改上游或放宽断言。失败门均完整回收、crash PASS 后清理本轮设备目录。
+
+C89、审计、98 输入 pin、新配置/旧 CTTS/起点 oracle、设备门单测和正式双配置构建通过。
+ROADMAP/限制/架构已复核；下一步对有效混合视频参数变化取证。
+未知 PTS/音频侧异常、其他 AAC 配置、故障/峰值和设备同步仍未验收；tmp 不入 Git。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -498,7 +500,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
 已复核限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；下一能力需另行取舍。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-本轮只补齐媒体混合视频 PTS 证据、相邻回归和中文文档，未启动普通应用版本；
+本轮只修复媒体混合 AAC 配置守卫并补充相邻回归和中文文档，未启动普通应用版本；
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
@@ -507,7 +509,7 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-Media 固定视频负/回退、重复/间隔与 DTS 选择门已结束，下一纵切先验证有效混合格式变化的拒绝；未知 PTS/音频侧异常、其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
+Media 固定混合 AAC 配置守卫门已完成，下一纵切对有效混合视频参数变化取证；未知 PTS/音频侧异常、其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 仍待专门门，不把应用正常重开或进程终止恢复写成断电恢复。新增设备门须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。

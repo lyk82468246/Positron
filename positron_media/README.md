@@ -436,7 +436,11 @@ best-effort 可能选择仍单调的 DTS 并正常完成，不保证拒绝所有
 
 视频无可靠非负起点或单路呈现 PTS 回退返回 FORMAT；视频已有起点后的条件推导和
 INFERRED 标志保留，demux 隐式字段补全禁用。音频未知/负 PTS 不补零，采样率/声道在
-首次输出后变化同样 FORMAT。错误前已接受输出不撤回；decoder/布局/容量/负 callback
+首次输出后变化同样 FORMAT。混合模式还在送入音频 decoder 前比较 MP4 包的
+NEW_EXTRADATA 与打开时配置：字节相同的重复描述允许，不同配置返回 FORMAT，变化段
+不进入音频 callback，后面恢复原配置也不恢复 session。此比较是保守的字节比较，不解析
+配置的语义等价性，也不实现动态重配置；默认解码及两个单流模式不增加此检查。
+错误前已接受输出不撤回；decoder/布局/容量/负 callback
 错误均报告一次并进入失败态，后续 pump/pause/resume/seek 为 STATE，stop/close 仍可清理。
 
 任一 callback 返回 WOULD_BLOCK 均表示未接收整帧/整块，DLL 保留相同内容/元数据重试，
@@ -458,7 +462,8 @@ budget 只是双路处理量提示，不能抢占一个 decoder 或 callback。
 输入已验证视频延后 400 ms、音频延后 400 ms 和两路共同从 600 ms 开始：共同起点只用于
 到期换算，callback 仍保留源 PTS；任一路先结束都不截断另一流。固定视频 CTTS 控制也已
 验证负起点/实际呈现回退的 FORMAT 拒绝，以及重复 PTS/向前间隔的按时交付；前面已接受
-的输出不撤回。未知 PTS、音频侧时间轴异常、其他 edit-list 形状和混合格式变化仍待独立门，
+的输出不撤回。未知 PTS、音频侧时间轴异常、其他 edit-list 形状、视频参数变化和其他 AAC
+配置变化形状仍待独立门，
 不外推为完整播放器验收。
 
 ## Source 回调合同
@@ -803,8 +808,16 @@ TEST1357 用五条仅修改视频时间元数据的 MP4 验证默认三帧和 29
 FORMAT，错误回调/事件各一次，无正常 EOF，后续 pump/pause/resume/seek 为 STATE。
 接受组保护重复/向前间隔、截止前 1 µs、极大时钟、全局顺序和 EOF 后缓存重播；
 包 PTS 回退但 best-effort 选择单调 DTS 的控制正常完成且不设 INFERRED。
-两种 source seekability、7-byte 短读和打开后禁读源保持。此证据不覆盖上文列出的其余
-混合时间轴、格式变化、故障和实际设备同步边界。
+两种 source seekability、7-byte 短读和打开后禁读源保持。
+
+TEST1358 对固定 MP4 AAC sample-description 切换作独立断言：相同配置重复的控制在默认
+模式完整解出三帧/60 块 mono PCM，混合模式两遍到期输出与缓存 seek 零重播一致。
+48→44.1 kHz、mono→stereo、stereo→mono 及 mono→stereo→mono 控制均在两帧/首段
+30 块后 FORMAT，首段全部 PCM 字节匹配同一设备单独解码的 ADTS 参考，变化段无回调。
+错误回调/事件各一次、无正常 EOF、后续 STATE、重复 stop 和 close，以及可 seek/不可
+seek source、7-byte 短读和打开后禁读源均保护。此组保留完整 ADTS 编码 padding，不套用
+原 MP4 的 29 块 priming 裁剪预期；不承诺默认模式正确处理任意配置变化。
+其余混合时间轴、视频/其他 AAC 配置变化、故障和实际设备同步边界仍待独立门。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

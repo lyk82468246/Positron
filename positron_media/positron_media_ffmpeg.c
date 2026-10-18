@@ -921,6 +921,10 @@ static int pm_ff_open_internal(const unsigned char *input,
      * origin or repair explicit DTS/PTS.  Keep decode-only compatibility;
      * output-level inference may continue only an already known timeline. */
     if (open_flags) context->format->flags |= AVFMT_FLAG_NOFILLIN;
+    /* FFmpeg 3.4 otherwise merges packet side data into the payload until
+     * the decoder splits it. Mixed mode must inspect changes before send. */
+    if (open_flags & PMEDIA_OPEN_SCHEDULE_AV)
+        context->format->flags |= AVFMT_FLAG_KEEP_SIDE_DATA;
     result = avformat_open_input(&context->format, NULL, NULL, NULL);
     if (result < 0 || context->format == NULL) {
         pm_ff_error_code(error_text, error_text_bytes,
@@ -1462,6 +1466,8 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
     int work_limit;
     AVPacket packet;
     AVCodecContext *codec;
+    uint8_t *new_config;
+    int new_config_bytes;
 
     if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
     context->pump_clock_us = clock_us;
@@ -1523,6 +1529,20 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
             codec = context->audio_codec;
         }
         if (codec != NULL) {
+            /* The pinned AAC decoder ignores NEW_EXTRADATA. Reject changed
+             * MOV sample descriptions before decoding under stale config;
+             * byte-identical repetitions are harmless. Legacy stays intact. */
+            if (context->mixed_audio) {
+                new_config = av_packet_get_side_data(&packet, AV_PKT_DATA_NEW_EXTRADATA,
+                                                     &new_config_bytes);
+                if (new_config != NULL && (new_config_bytes != codec->extradata_size ||
+                    new_config_bytes < 0 || codec->extradata == NULL ||
+                    memcmp(new_config, codec->extradata, (size_t)new_config_bytes) != 0)) {
+                    av_packet_unref(&packet);
+                    context->clock_error = "mixed audio codec configuration changed";
+                    return PMEDIA_ERROR_FORMAT;
+                }
+            }
             result = avcodec_send_packet(codec, &packet);
             /* Receive was drained to EAGAIN immediately before send. The
              * send/receive contract forbids both sides returning EAGAIN.

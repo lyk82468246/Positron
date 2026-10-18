@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import media_mixed_config_fixtures
 
 ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "test_host" / "fixtures" / "media"
@@ -671,6 +672,8 @@ def extend(exe, group):
         "mixed-limit": ({"mixed-packet-limit.mp4"}, mixed_limit_records),
         "mixed-clock": ({"mixed-clock-" + stem + ".mp4" for stem in MIXED_CLOCK}, mixed_clock_records),
         "mixed-pts": ({"mixed-pts-" + stem + ".mp4" for stem in MIXED_PTS}, mixed_pts_records),
+        "mixed-config": ({"mixed-config-" + stem + ".mp4" for stem in media_mixed_config_fixtures.CASES},
+                         lambda unused: media_mixed_config_fixtures.records(DEST)),
         "mpeg": ({"mpeg2-mp2.ts", "mpeg1-mp2.mpg", "mpeg2-interlaced.ts", "mpeg2-oversize.ts"}, mpeg_records),
         "amr": ({"amr-nb.amr", "amr-wb.amr"}, amr_records),
         "ima": ({"ima-mono.wav", "ima-stereo.wav", "ima-mono.pcm", "ima-stereo.pcm"}, ima_records),
@@ -732,7 +735,7 @@ def generate(exe):
         records.append({"file": name, "arguments": args[:-1] + [name]})
     write_pin(exe, records + extra_records(exe) + mpeg_records(exe) + amr_records(exe) +
               ima_records(exe) + mpeg4_records(exe) + h263_records(exe) + flv_records(exe) +
-              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe) + audio_change_records(exe) + mixed_records(exe) + mixed_limit_records(exe) + mixed_clock_records(exe) + mixed_pts_records(exe))
+              annexb_records(exe) + annexb_sequence_records(exe) + annexb_damage_records(exe) + annexb_parameter_records(exe) + flv_clock_records(exe) + audio_change_records(exe) + mixed_records(exe) + mixed_limit_records(exe) + mixed_clock_records(exe) + mixed_pts_records(exe) + media_mixed_config_fixtures.records(DEST))
 
 
 def check():
@@ -761,17 +764,18 @@ if __name__ == "__main__":
     action.add_argument("--extend-mixed-limit", action="store_true")
     action.add_argument("--extend-mixed-clock", action="store_true")
     action.add_argument("--extend-mixed-pts", action="store_true")
+    action.add_argument("--extend-mixed-config", action="store_true")
     action.add_argument("--extend-annexb", action="store_true")
     action.add_argument("--extend-annexb-sequence", action="store_true")
     action.add_argument("--extend-annexb-damage", action="store_true")
     action.add_argument("--extend-annexb-parameters", action="store_true")
     parser.add_argument("--ffmpeg")
     opts = parser.parse_args()
-    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_mixed_pts or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+    if opts.generate or opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_mixed_pts or opts.extend_mixed_config or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
         if not opts.ffmpeg:
             parser.error("Generation/extension requires an explicit --ffmpeg path")
-        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_mixed_pts or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
-            extend(opts.ffmpeg, "mixed-pts" if opts.extend_mixed_pts else "mixed-clock" if opts.extend_mixed_clock else "mixed-limit" if opts.extend_mixed_limit else "mixed" if opts.extend_mixed else "audio-change" if opts.extend_audio_change else "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
+        if opts.extend or opts.extend_mpeg or opts.extend_amr or opts.extend_ima or opts.extend_mpeg4 or opts.extend_h263 or opts.extend_flv or opts.extend_flv_clock or opts.extend_audio_change or opts.extend_mixed or opts.extend_mixed_limit or opts.extend_mixed_clock or opts.extend_mixed_pts or opts.extend_mixed_config or opts.extend_annexb or opts.extend_annexb_sequence or opts.extend_annexb_damage or opts.extend_annexb_parameters:
+            extend(opts.ffmpeg, "mixed-config" if opts.extend_mixed_config else "mixed-pts" if opts.extend_mixed_pts else "mixed-clock" if opts.extend_mixed_clock else "mixed-limit" if opts.extend_mixed_limit else "mixed" if opts.extend_mixed else "audio-change" if opts.extend_audio_change else "flv-clock" if opts.extend_flv_clock else "annexb-parameters" if opts.extend_annexb_parameters else "annexb-damage" if opts.extend_annexb_damage else "annexb-sequence" if opts.extend_annexb_sequence else "annexb" if opts.extend_annexb else "flv" if opts.extend_flv else "h263" if opts.extend_h263 else "mpeg4" if opts.extend_mpeg4 else "ima" if opts.extend_ima else "amr" if opts.extend_amr else
                    "mpeg" if opts.extend_mpeg else "mjpeg")
         else:
             generate(opts.ffmpeg)

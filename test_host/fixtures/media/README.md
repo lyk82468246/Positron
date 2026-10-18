@@ -28,6 +28,15 @@
   在 EOF 后暂停并 seek 到零两次，后两次全部 S16LE 字节与首次输出一致；同时保护
   PTS/时长、样本数和 EOF，不以相同幅度或校验值代替逐字节断言。打开后 source 被设为
   I/O 错误，重播不得再次读取宿主。非零 AAC seek 不在此合同内。
+- `mixed-config-{repeat,stereo,mono,return,rate-down}.mp4` 复用
+  `mixed-clock-video-late.mp4` 的完整视频轨，源 PTS 为 400/600/800 ms；音频从零开始，
+  分别是 48k mono 重复、mono→stereo、stereo→mono、mono→stereo→mono 和 48k→44.1k
+  mono。AAC access unit 直接复制三个固定 ADTS 输入，只去掉每帧 7-byte header，
+  不重编码；分别为 60/60/60/90/57 块，每块 1024 samples/声道。新 stsd/stsc 在完整
+  片段边界切换 sample description；repeat 的两个描述字节完全相同。
+  保留原 mdat 作为前缀（含不再引用的旧 AAC），末尾追加新 AAC；只重建音频表、时长及
+  chunk 偏移，音频原 edts 改为 free，不裁剪 ADTS padding。rate-down 的音频 timebase
+  为 1/7056000，两段 sample delta 为 150528/163840 ticks，避免采样率变化引入舍入回退。
 - `aac-lc-44100.aac` 是单声道 44.1 kHz LC、27 块；`aac-lc-stereo.aac` 是 48 kHz LC、
   30 块，左右声道分别为 440/660 Hz、幅度 0.08/0.06。各块 1024 samples/声道；
   与原 `aac-lc.aac` 一起作为格式变化的完整片段参考，不裁剪 ADTS 编码 padding。
@@ -183,7 +192,15 @@ TEST1357 对 mixed-pts 先验证默认完整三帧/29 块、视频内容校验�
 全局顺序/音频优先、全部 PCM/视频内容与 EOF 后暂停中缓存 seek 零；打开后禁读 source。
 fallback 不设 PTS_INFERRED，不能把这个标志当作原始包 PTS 保真证明；选择逻辑可对照
 [FFmpeg 3.4 decode.c](https://ffmpeg.org/doxygen/3.4/decode_8c_source.html)。
-未知 PTS、音频侧负值/回退、动态格式变化和其他时间轴形状仍未验收。
+未知 PTS、音频侧负值/回退、视频参数变化和其他时间轴形状仍未验收。
+
+TEST1358 独立解码 48k mono/stereo ADTS 作为设备首段 PCM 字节参考；repeat 默认解码的
+三帧/60 块和混合两遍到期输出、EOF 后暂停中缓存 seek 零一致。四条配置变化控制必须
+保留两帧及首段 30 块后返回 FORMAT，变化块不得进入 callback，后面配置恢复也不能继续；
+错误文字为 `mixed audio codec configuration changed`，错误回调/事件各一次，无正常 EOF，
+后续 pump/pause/resume/seek 为 STATE，重复 stop 和一次 close 安全。两种 seekability
+各重复两次，7-byte 短读、打开后禁读 source；所有首段 PCM 字节与独立设备参考一致。
+这不要求不同配置片段在默认模式下正确重配置，也不证明任意 ASC/视频参数变化已验收。
 
 时间戳控制组 `flv-clock-{base,unknown,late-unknown,backward,negative,gap,duplicate}.flv`
 从固定 `flv-h264-aac.flv` 删除音频/script tag 并设置 video-only 标志，保留所有 AVC
@@ -219,7 +236,9 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 `--extend-audio-change` 保留旧 pin，生成两条 LC 纯音并拼接六条完整片段控制，不修改旧媒体。
 `--extend-mixed` 只增加 Main/AAC remux；`--extend-mixed-limit` 只增加首包 filler 负控制，
 `--extend-mixed-clock` 只增加三条固定 empty-edit 控制，`--extend-mixed-pts` 只增加五条
-CTTS 控制；均保留旧 pin，不在构建时执行。
+CTTS 控制；`--extend-mixed-config` 通过
+[`scripts/media_mixed_config_fixtures.py`](../../../scripts/media_mixed_config_fixtures.py)
+只增加五条固定 AAC 描述切换输入；均保留旧 pin，不在构建时执行。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -282,6 +301,14 @@ AAC 格式变化的独立校验：`python scripts/test_media_audio_change_fixtur
 chunk 偏移、原 edit 内容、codec/sample tables 和全部 mdat 不变；完整解码的有效 I420
 和 PCM 字节与原输入相同。桌面 CLI 会修整异常时间戳，例如 backward 的三帧可显示为
 400/400/400 ms，因此其 PTS 不作为 WM6 守卫或 best-effort 的参考，必须另过 TEST1357。
+
+混合 AAC 配置的独立校验：`python scripts/test_media_mixed_config_fixtures.py --ffmpeg PATH`。
+同一 pinned 工具、只读、单线程低优先级；独立检查 ASC/声道/采样率、stsd/stsc 切换、精确
+时基、sample 长度和实际 chunk 引用，原 mdat 前缀与新增 raw AAC payload 全部不变，三帧
+I420 全字节与模板相同，桌面 decoder 确认每个完整片段的输出采样率/声道/样本数。
+它不以桌面 PCM 代替 ARM 字节参考，也不证明产品动态重配置；FORMAT/前缀/生命周期依赖
+TEST1358。固定 3.4 的 AAC 对 NEW_EXTRADATA 的处理被禁用，混合模式必须在 decoder 前
+检查，不能仅依赖输出块格式；见 [AAC 源码](https://ffmpeg.org/doxygen/3.4/aacdec__template_8c_source.html)。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，
