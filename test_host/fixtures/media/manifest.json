@@ -1874,6 +1874,54 @@
       ],
       "bytes": 17737,
       "sha256": "12acd5f594cf1de8225113131b7d6bb58fdd4c38c08c722d00eb7d26a58d9475"
+    },
+    {
+      "file": "mixed-video-repeat.mp4",
+      "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "baseline-aac.mp4",
+      "bytes": 9047,
+      "sha256": "88fc01a57ec9cb2a773f8a1bb23975212a67fa9c2eeacb6647a9078e732d016a"
+    },
+    {
+      "file": "mixed-video-vga.mp4",
+      "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "main-vga.mp4",
+      "bytes": 8993,
+      "sha256": "cb039007e303f84362c9955371d937082093e53cc1a2561c269049ff9c564767"
+    },
+    {
+      "file": "mixed-video-oversize.mp4",
+      "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "oversize.mp4",
+      "bytes": 9751,
+      "sha256": "038acc68b4f28c9773ac563f627f97630eb4c17ae7620c2f628035c353106e71"
+    },
+    {
+      "file": "mixed-video-high.mp4",
+      "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "high.mp4",
+      "bytes": 8939,
+      "sha256": "21972ab7c6525f58073c0d505ce366c316c36525d63ca83bbbcd0a34bb531309"
+    },
+    {
+      "file": "mixed-video-high422.mp4",
+      "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "high422.mp4",
+      "bytes": 8939,
+      "sha256": "176cc317bb610ff6be72540ca2f6b2319eb51c0eb3103b62faf765e06a674bbc"
+    },
+    {
+      "file": "mixed-video-interlaced.mp4",
+      "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "interlaced.mp4",
+      "bytes": 8970,
+      "sha256": "387e784261b641c65b1a9ea0952307bf0abdf7e064516f8378d8caaf1f471a53"
     }
   ]
 }

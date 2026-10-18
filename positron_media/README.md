@@ -462,7 +462,7 @@ budget 只是双路处理量提示，不能抢占一个 decoder 或 callback。
 输入已验证视频延后 400 ms、音频延后 400 ms 和两路共同从 600 ms 开始：共同起点只用于
 到期换算，callback 仍保留源 PTS；任一路先结束都不截断另一流。固定视频 CTTS 控制也已
 验证负起点/实际呈现回退的 FORMAT 拒绝，以及重复 PTS/向前间隔的按时交付；前面已接受
-的输出不撤回。未知 PTS、音频侧时间轴异常、其他 edit-list 形状、视频参数变化和其他 AAC
+的输出不撤回。未知 PTS、音频侧时间轴异常、其他 edit-list 形状、其他视频参数变化和其他 AAC
 配置变化形状仍待独立门，
 不外推为完整播放器验收。
 
@@ -533,7 +533,8 @@ duration 为 20000 µs，输出仍为 S16LE，不在 DLL 内重采样。所有�
 ### 视频
 
 pm_video_frame.format 当前为 PMEDIA_PIXEL_I420。三个 plane 分别是 Y、U、V，具体
-行距必须使用 stride[0..2]，不能假设每行紧密排列。视频帧为 8-bit、4:2:0、渐进式；
+行距必须使用 stride[0..2]，不能假设每行紧密排列。每次回调都应重新读取 width/height/
+stride，不能按 pm_get_stream_info() 的打开快照固定画布或复制长度。视频帧为 8-bit、4:2:0、渐进式；
 pts_us 是微秒时间戳，PMEDIA_FRAME_KEY 表示关键帧。帧数据仅在 video callback
 返回前有效。duration_us 优先采用 packet duration；缺失时可由容器平均帧率换算，
 两者均未知时为零，应用不能把未知时长解释为固定帧率。
@@ -582,6 +583,17 @@ transfer metadata，不能把该标记当成完整色彩管理。应用应按位
 PMEDIA_ERROR_LIMIT；H.264 只接受 Baseline（含 Constrained Baseline）/Main，所有 High
 profile、非 8-bit/4:2:0 和隔行视频均不支持。可读取的 SPS 在打开前检查，实际帧输出前
 再次检查，避免只相信容器 metadata。
+
+MP4/MOV 的 AVCC 包中出现完整带内 SPS 时，DLL 在把包送给产品 decoder 前复用同一 SPS
+解析器检查 profile、逐行标志、像素布局和应用/VGA 上限，不能只依赖旧 decoder 的帧标志。
+同一 session 不冻结所有视频参数：固定 AVC3 的相同 SPS 重复、320×240 Constrained
+Baseline→640×480 Main/B 帧仍可输出，源 PTS 与每帧尺寸保持；这与裸 Annex-B 的不变参数
+策略不同。检查到不支持的 SPS 返回 UNSUPPORTED，超尺寸返回 LIMIT；这类新 SPS 验证
+错误即使在默认模式也锁存失败态，后续 pump/pause/resume/seek 返回 STATE，仍可 stop/close
+清理，不再跳过坏包继续解码。其他默认解码错误不能据此推定具有相同锁存策略。
+探测可能在 open 就拒绝，也可能在 pump 预解码时失败；不承诺先交付所有合法排队前缀或
+等到变化帧的显示时刻才报错，已经交付的内容不撤回。此守卫不替代 decoder 的完整损坏检查，
+也不覆盖任意 sample-description、PPS、NAL 长度变化或其他容器参数切换。
 
 MPEG-4 Part 2 在可读取的 extradata 中检查每个 VOL 的有界头前缀，拒绝非矩形、非 4:2:0、
 隔行或超过应用/VGA 尺寸上限的声明；不把 FFmpeg 的未知 field_order 当作渐进式证明。
@@ -817,7 +829,16 @@ TEST1358 对固定 MP4 AAC sample-description 切换作独立断言：相同配�
 错误回调/事件各一次、无正常 EOF、后续 STATE、重复 stop 和 close，以及可 seek/不可
 seek source、7-byte 短读和打开后禁读源均保护。此组保留完整 ADTS 编码 padding，不套用
 原 MP4 的 29 块 priming 裁剪预期；不承诺默认模式正确处理任意配置变化。
-其余混合时间轴、视频/其他 AAC 配置变化、故障和实际设备同步边界仍待独立门。
+其余混合时间轴、其他视频/AAC 配置变化、故障和实际设备同步边界仍待独立门。
+
+TEST1359 使用固定 AVC3 带内参数切换验证默认和混合模式：重复 SPS 与 Baseline→Main VGA
+各输出六帧/29 块，源视频 PTS 为 400..1400 ms、每帧 200 ms；调度逐帧核对全部有效 I420
+字节的校验值、尺寸/flags/PTS/时长及所有 PCM 字节。两种 seekability、7-byte 短读、打开后
+禁读源、到期前 1 µs、近 INT64_MAX、变化帧背压/暂停/恢复及 EOF 后缓存 seek 零两遍均检查。
+默认模式对超 VGA、High、4:2:2、隔行和较小应用尺寸上限均保留前三帧/29 块后拒绝，变化段
+不回调；新 SPS 验证错误只报告一次并锁存 STATE。混合模式的超限/High/4:2:2 在 open 零输出
+拒绝；隔行输入在 pump 返回 UNSUPPORTED，严格前缀为一帧/19 块，源内容完全匹配。
+这是双路预解码前沿的结果，不把错误前缀帧数外推到其他文件或声卡同步。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I

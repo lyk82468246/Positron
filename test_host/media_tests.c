@@ -3895,6 +3895,191 @@ fail:
     return FALSE;
 }
 
+BOOL test1359_media_video_change_contract(void (*progress)(const char *))
+{
+    static const WCHAR *names[] = { L"mixed-video-repeat.mp4", L"mixed-video-vga.mp4",
+        L"mixed-video-oversize.mp4", L"mixed-video-high.mp4", L"mixed-video-high422.mp4",
+        L"mixed-video-interlaced.mp4", L"mixed-video-vga.mp4" };
+    media_fixture_source input;
+    media_av_sink sink;
+    media_av_reference *refs[3];
+    media_av_reference *reference;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *data;
+    pm_position maximum;
+    pm_position base;
+    pm_position pts;
+    pm_position previous;
+    int test;
+    int seekable;
+    int pass;
+    int i;
+    int bytes;
+    int result;
+    int expected;
+    int offers;
+    char phase[192];
+
+    for (i = 0; i < 3; i++) refs[i] = (media_av_reference *)calloc(1, sizeof(*refs[i]));
+    memset(&sink, 0, sizeof(sink));
+    session = NULL;
+    data = NULL;
+    if (refs[0] == NULL || refs[1] == NULL || refs[2] == NULL) goto fail;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    media_contract_init(&input, &sink.events, &source, &output, &options);
+    output.video = media_av_video;
+    output.audio = media_av_audio;
+    output.error = media_compressed_error;
+    for (test = 0; test < 7; test++) {
+        _snprintf(phase, sizeof(phase), "video change case=%d default reference/output guard", test);
+        g_media_compressed_error = "mixed video change reference/guard";
+        if (progress != NULL) progress(phase);
+        data = media_compressed_load(names[test], &bytes);
+        if (data == NULL) goto fail;
+        input.data = data;
+        input.bytes = bytes;
+        input.position = input.read_mode = 0;
+        input.read_chunk = 7;
+        source.seek = media_fixture_seek;
+        source.tell = media_fixture_tell;
+        options.flags = 0;
+        options.max_video_width = test == 6 ? 320 : 640;
+        reference = refs[test < 2 ? test : 2];
+        memset(reference, 0, sizeof(*reference));
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = reference;
+        sink.capture = 1;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != bytes) goto fail;
+        input.read_mode = 2;
+        result = PMEDIA_OK;
+        for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+        expected = test < 2 ? PMEDIA_EOF : (test == 2 || test == 6 ? PMEDIA_ERROR_LIMIT : PMEDIA_ERROR_UNSUPPORTED);
+        _snprintf(phase, sizeof(phase), "video change default case=%d rc=%d video=%d audio=%d errors=%d",
+                  test, result, sink.videos, sink.audios, sink.events.errors);
+        if (progress != NULL) progress(phase);
+        if (result != expected || sink.videos != (test < 2 ? 6 : 3) || sink.audios != 29 || sink.events.errors ||
+            sink.events.eof_events != (test < 2 ? 1 : 0) || sink.events.error_callbacks != (test < 2 ? 0 : 1) ||
+            sink.events.error_events != (test < 2 ? 0 : 1)) goto fail;
+        if (test >= 2 && strcmp(pm_last_error(session), "MP4 in-band H.264 SPS validation failed")) goto fail;
+        for (i = 0; i < reference->videos; i++) {
+            if (reference->video[i].pts_us != 400000 + (pm_position)i * 200000 ||
+                reference->video[i].duration_us != 200000 || reference->video[i].height != (test == 1 && i >= 3 ? 480 : 240) ||
+                reference->video[i].width != (test == 1 && i >= 3 ? 640 : 320) ||
+                reference->video[i].flags != (i == 0 || i == 3 ? PMEDIA_FRAME_KEY : 0)) goto fail;
+            if (test >= 2 && reference->video_hash[i] != refs[0]->video_hash[i]) goto fail;
+        }
+        if (test && (reference->bytes != refs[0]->bytes || memcmp(reference->pcm, refs[0]->pcm, (size_t)reference->bytes))) goto fail;
+        if (test) for (i = 0; i < 29; i++) {
+            if (reference->audio[i].pts_us != refs[0]->audio[i].pts_us ||
+                reference->audio[i].duration_us != refs[0]->audio[i].duration_us) goto fail;
+        }
+        /* This explicit SPS validation failure is terminal in default mode
+         * too; that does not generalize the policy of other legacy errors. */
+        if (test >= 2 && (pm_pump(session, 0, 0) != PMEDIA_ERROR_STATE || pm_pause(session) != PMEDIA_ERROR_STATE ||
+            pm_resume(session) != PMEDIA_ERROR_STATE || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+            sink.events.error_callbacks != 1 || sink.events.error_events != 1 || pm_stop(session) != PMEDIA_OK ||
+            pm_stop(session) != PMEDIA_OK || sink.events.stopped_events != 1)) goto fail;
+        if (pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+        for (seekable = 0; seekable < 2; seekable++) {
+            for (pass = 0; pass < 2; pass++) {
+                memset(&sink, 0, sizeof(sink));
+                sink.reference = reference;
+                if (test >= 2 || !pass) {
+                    input.position = input.read_mode = 0;
+                    source.seek = seekable ? media_fixture_seek : NULL;
+                    source.tell = seekable ? media_fixture_tell : NULL;
+                    options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+                    result = pm_open(&source, &options, &output, &session);
+                    if (test >= 2 && test != 5) {
+                        /* NOFILLIN stream analysis reaches the changed header
+                         * in these short files: require exact open rejection,
+                         * not an open-or-pump alternative that could hide drift. */
+                        _snprintf(phase, sizeof(phase), "video change scheduled open case=%d seekable=%d pass=%d rc=%d video=%d audio=%d",
+                                  test, seekable, pass, result, sink.videos, sink.audios);
+                        if (progress != NULL) progress(phase);
+                        if (result != expected || session != NULL || input.position != bytes || sink.videos || sink.audios ||
+                            sink.events.errors || sink.events.eof_events || sink.events.error_callbacks != 1 ||
+                            sink.events.error_events != 1) goto fail;
+                        continue;
+                    }
+                    if (result != PMEDIA_OK || input.position != bytes) goto fail;
+                    input.read_mode = 2;
+                }
+                base = pass ? maximum - 2000000 : 5000000;
+                if (test < 2) {
+                    previous = 0;
+                    for (i = 0; i < 35; i++) {
+                        pts = sink.audios < 29 && (sink.videos == 6 ||
+                              reference->audio[sink.audios].pts_us <= reference->video[sink.videos].pts_us) ?
+                              reference->audio[sink.audios].pts_us : reference->video[sink.videos].pts_us;
+                        offers = sink.offers;
+                        if (pts > previous && (media_av_pump(session, &sink, base + pts - 1) != PMEDIA_WOULD_BLOCK ||
+                            sink.offers != offers)) goto fail;
+                        if (sink.videos == 3 && pts == reference->video[3].pts_us) {
+                            sink.video_result = PMEDIA_WOULD_BLOCK;
+                            if (media_av_pump(session, &sink, base + pts) != PMEDIA_WOULD_BLOCK ||
+                                sink.offers != offers + 1 || sink.videos != 3 || pm_pause(session) != PMEDIA_OK ||
+                                pm_pump(session, -1, 0) != PMEDIA_OK || pm_resume(session) != PMEDIA_OK) goto fail;
+                            offers++;
+                            sink.video_result = PMEDIA_OK;
+                        }
+                        if (media_av_pump(session, &sink, base + pts) != PMEDIA_OK || sink.offers != offers + 1 ||
+                            sink.events.errors || sink.events.eof_events) goto fail;
+                        previous = pts;
+                    }
+                    if (media_av_pump(session, &sink, maximum) != PMEDIA_EOF ||
+                        media_av_pump(session, &sink, maximum) != PMEDIA_EOF || sink.events.eof_events != 1 ||
+                        sink.events.error_callbacks || sink.bytes != reference->bytes) goto fail;
+                    if (!pass) {
+                        if (pm_pause(session) != PMEDIA_OK || pm_seek(session, 0) != PMEDIA_OK ||
+                            pm_pump(session, -1, 0) != PMEDIA_OK || pm_resume(session) != PMEDIA_OK) goto fail;
+                        continue;
+                    }
+                } else {
+                    /* The fixed interlaced input opens successfully: require
+                     * the first changed SPS to fail before any changed frame. */
+                    result = media_av_pump(session, &sink, 0);
+                    for (i = 0; i < 100 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink, maximum);
+                    _snprintf(phase, sizeof(phase), "video change scheduled SPS case=%d seekable=%d pass=%d rc=%d video=%d audio=%d errors=%d",
+                              test, seekable, pass, result, sink.videos, sink.audios, sink.events.errors);
+                    if (progress != NULL) progress(phase);
+                    /* Stream analysis exposes B-frame delay. Decoding ahead
+                     * reaches the bad SPS before the two queued prefix frames
+                     * can be received; no attempt to flush after fatal error. */
+                    if (result != PMEDIA_ERROR_UNSUPPORTED || sink.videos != 1 || sink.audios != 19 || sink.events.errors ||
+                        sink.bytes != 19 * 4096 || sink.events.eof_events || sink.events.error_callbacks != 1 ||
+                        sink.events.error_events != 1 || pm_pump(session, maximum, 0) != PMEDIA_ERROR_STATE ||
+                        pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
+                        pm_seek(session, 0) != PMEDIA_ERROR_STATE || sink.events.error_callbacks != 1 ||
+                        sink.events.error_events != 1 ||
+                        strcmp(pm_last_error(session), "MP4 in-band H.264 SPS validation failed")) goto fail;
+                }
+                if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK || sink.events.stopped_events != 1 ||
+                    pm_close(session) != PMEDIA_OK) goto fail;
+                session = NULL;
+            }
+        }
+        free(data);
+        data = NULL;
+    }
+    for (i = 0; i < 3; i++) free(refs[i]);
+    if (progress != NULL) progress("mixed in-band repeat/VGA accepted, out-of-bound parameters rejected with exact prefix and lifecycle");
+    return TRUE;
+fail:
+    _snprintf(phase, sizeof(phase), "video change failure: video=%d audio=%d bytes=%d errors=%d: %s",
+              sink.videos, sink.audios, sink.bytes, sink.events.errors, session == NULL ? "no session" : pm_last_error(session));
+    phase[sizeof(phase) - 1] = '\0';
+    if (progress != NULL) progress(phase);
+    if (session != NULL) pm_close(session);
+    if (data != NULL) free(data);
+    for (i = 0; i < 3; i++) if (refs[i] != NULL) free(refs[i]);
+    return FALSE;
+}
+
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)
 {
     media_fixture_source input;

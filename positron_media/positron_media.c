@@ -1152,11 +1152,15 @@ PMEDIA_API int pm_pump(pm_session opaque_session, pm_position clock_us, int budg
                 pm_emit(session, PMEDIA_EVENT_EOF, 0);
             }
         } else if (ff_result < 0) {
-            if (session->schedule_video || session->schedule_audio || session->schedule_av) session->decode_failed = 1;
+            ff_message = pmedia_ffmpeg_clock_error((pmedia_ffmpeg *)session->ffmpeg);
+            /* Explicit backend validation failures are terminal even outside
+             * clock mode: a rejected SPS packet must never be skipped/retried
+             * under stale decoder state. Other legacy error policy stays. */
+            if (session->schedule_video || session->schedule_audio || session->schedule_av || ff_message != NULL)
+                session->decode_failed = 1;
             if (ff_result == PMEDIA_ERROR_FORMAT && session->info.container == PMEDIA_CONTAINER_RAW &&
                 session->info.video_codec == PMEDIA_CODEC_H264)
                 session->decode_failed = 1;
-            ff_message = pmedia_ffmpeg_clock_error((pmedia_ffmpeg *)session->ffmpeg);
             pm_set_error(session, ff_result, ff_message == NULL ? "FFmpeg software pump failed" : ff_message);
         }
         return ff_result;

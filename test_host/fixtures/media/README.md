@@ -49,6 +49,16 @@
   参数不变的重复控制正常 EOF；暂停中丢弃待块/seek 零、两种 seekability、禁止重读源、
   一次性错误/STATE、stop/close 与停止后查询也有断言。不证明任意 AAC 动态重配置、
   MP3 变化或超出转换预算的布局拒绝；变化后 PCM 只检查块形状，不与独立新 decoder 作字节等同。
+- `mixed-video-{repeat,vga,oversize,high,high422,interlaced}.mp4` 保留完整 Baseline MP4
+  mdat 前缀和 AAC 表/priming，只在末尾复制两个三帧片段的视频 sample。第二片段首包前插入
+  该源 avcC 中的 SPS/PPS，不改 slice；sample entry 改为 AVC3，区别于仅使用外带配置的 AVC1，
+  见 [W3C 的带内/外带参数说明](https://www.w3.org/TR/mse-byte-stream-format-isobmff/)。
+  这不是 MSE、分段直播或完整 ISO BMFF 一致性承诺。第二源分别为原 Baseline、Main VGA、
+  656×480、High、High 4:2:2、隔行 MP4，全部来自已有 pin，不编码新画面。
+  重建视频 sample/chunk/key 表、CTTS、edit-list、时长及文件偏移；保留源 B 帧重排，六帧
+  呈现 PTS 为 400/600/800/1000/1200/1400 ms，duration 各 200 ms。AAC 仍为原 29 块，
+  不套用 ADTS 完整 padding 规则。隔行源从首个新 IDR 就是隔行，不允许旧 decoder 的迟滞
+  帧标志把它当作逐行控制。
 - `high.mp4`、`high422.mp4`、`interlaced.mp4`、`oversize.mp4`：拒绝 profile、像素布局、隔行和 656×480 超限。
 - `mjpeg-mp3.avi`：320×240、5 fps、三帧全范围 MJPEG 4:2:0，MP3 双声道 48 kHz。
   固定 AVI 含一个空视频槽，实际帧 PTS 为 0/400000/600000 µs，每帧 duration 为 200000 µs；
@@ -192,7 +202,7 @@ TEST1357 对 mixed-pts 先验证默认完整三帧/29 块、视频内容校验�
 全局顺序/音频优先、全部 PCM/视频内容与 EOF 后暂停中缓存 seek 零；打开后禁读 source。
 fallback 不设 PTS_INFERRED，不能把这个标志当作原始包 PTS 保真证明；选择逻辑可对照
 [FFmpeg 3.4 decode.c](https://ffmpeg.org/doxygen/3.4/decode_8c_source.html)。
-未知 PTS、音频侧负值/回退、视频参数变化和其他时间轴形状仍未验收。
+未知 PTS、音频侧负值/回退、其他视频参数变化和其他时间轴形状仍未验收。
 
 TEST1358 独立解码 48k mono/stereo ADTS 作为设备首段 PCM 字节参考；repeat 默认解码的
 三帧/60 块和混合两遍到期输出、EOF 后暂停中缓存 seek 零一致。四条配置变化控制必须
@@ -201,6 +211,17 @@ TEST1358 独立解码 48k mono/stereo ADTS 作为设备首段 PCM 字节参考�
 后续 pump/pause/resume/seek 为 STATE，重复 stop 和一次 close 安全。两种 seekability
 各重复两次，7-byte 短读、打开后禁读 source；所有首段 PCM 字节与独立设备参考一致。
 这不要求不同配置片段在默认模式下正确重配置，也不证明任意 ASC/视频参数变化已验收。
+
+TEST1359 对重复/VGA 变化控制先保存默认六帧/29 块参考，再逐个比较两遍混合调度：视频所有
+有效字节的校验值、尺寸/stride 合法性/flags/PTS/时长、全部 PCM 字节，提前 1 µs、近极大
+时钟、首个变化帧背压及暂停/恢复、EOF 一次性和缓存 seek 零均保护。可 seek/不可 seek
+source、7-byte 短读、打开后禁读源保持。默认负控制要求超限 LIMIT、其他不支持参数
+UNSUPPORTED，前三帧及 29 块内容/时间戳不变，无变化段 callback，具体 SPS 错误文字、
+错误回调/事件各一次、后续 STATE 和 stop/close 保护；较小应用宽度 320 也必须拒绝 VGA。
+混合负控制在 open 拒绝超限/High/4:2:2，session 为 NULL、零输出/一次错误；隔行控制必须
+open 成功后在 pump 返回 UNSUPPORTED，前缀仅一帧/19 块、无正常 EOF、后续 STATE。
+双路需要补齐下一呈现前沿，不能为了凑足前三帧在致命 SPS 后继续 flush；不以接受第四帧
+掩盖旧 decoder 的隔行标志漏报。此门不证明任意参数重配置、损坏或峰值内存。
 
 时间戳控制组 `flv-clock-{base,unknown,late-unknown,backward,negative,gap,duplicate}.flv`
 从固定 `flv-h264-aac.flv` 删除音频/script tag 并设置 video-only 标志，保留所有 AVC
@@ -238,7 +259,9 @@ FLV1 编码器只用于桌面生成，不进入产品。`--extend-annexb` 对六
 `--extend-mixed-clock` 只增加三条固定 empty-edit 控制，`--extend-mixed-pts` 只增加五条
 CTTS 控制；`--extend-mixed-config` 通过
 [`scripts/media_mixed_config_fixtures.py`](../../../scripts/media_mixed_config_fixtures.py)
-只增加五条固定 AAC 描述切换输入；均保留旧 pin，不在构建时执行。
+只增加五条固定 AAC 描述切换输入；`--extend-video-change` 通过
+[`scripts/media_video_change_fixtures.py`](../../../scripts/media_video_change_fixtures.py)
+只增加六条 AVC3 带内 SPS/PPS 变化控制；均保留旧 pin，不在构建时执行。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -309,6 +332,13 @@ I420 全字节与模板相同，桌面 decoder 确认每个完整片段的输出
 它不以桌面 PCM 代替 ARM 字节参考，也不证明产品动态重配置；FORMAT/前缀/生命周期依赖
 TEST1358。固定 3.4 的 AAC 对 NEW_EXTRADATA 的处理被禁用，混合模式必须在 decoder 前
 检查，不能仅依赖输出块格式；见 [AAC 源码](https://ffmpeg.org/doxygen/3.4/aacdec__template_8c_source.html)。
+
+混合视频参数的独立校验：`python scripts/test_media_video_change_fixtures.py --ffmpeg PATH`。
+只读、同一 pinned 工具、单线程低优先级，检查完整原 mdat 前缀、实际引用的全部视频/AAC
+sample 字节、AVC3 标签、原 AAC 表与所有 PCM 字节保持；独立解码六帧，逐个比较与两个
+源片段的布局、尺寸、逐行/隔行、关键帧/帧类型和 plane checksums，核对呈现 PTS。
+桌面帧 checksum 不是 ARM 逐字节参考，也不能替代设备错误分类/回调前缀；产品必须另过
+TEST1359。容量、分配失败、其他 NAL 长度、stsd 切换及其他容器仍需独立门。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，

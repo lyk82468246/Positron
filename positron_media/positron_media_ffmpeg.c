@@ -411,6 +411,48 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
     return result;
 }
 
+static int pm_ff_validate_mp4_sps(pmedia_ffmpeg *context, AVCodecContext *codec, const AVPacket *packet)
+{
+    AVCodecParameters parameters;
+    unsigned char *padded;
+    uint32_t bytes;
+    int length_bytes;
+    int offset;
+    int i;
+    int result;
+
+    if (codec->codec_id != AV_CODEC_ID_H264 ||
+        pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4 ||
+        codec->extradata_size < 5 || codec->extradata == NULL || codec->extradata[0] != 1) return PMEDIA_OK;
+    length_bytes = (codec->extradata[4] & 3) + 1;
+    offset = 0;
+    while (offset <= packet->size - length_bytes) {
+        bytes = 0;
+        for (i = 0; i < length_bytes; i++) bytes = (bytes << 8) | packet->data[offset++];
+        /* Leave invalid framing (and legacy merged side-data trailers) to the
+         * decoder. This guard validates complete in-band SPS, not all damage. */
+        if (bytes == 0 || bytes > (uint32_t)(packet->size - offset)) break;
+        if ((packet->data[offset] & 31) == 7) {
+            if (bytes > INT_MAX - 3 - AV_INPUT_BUFFER_PADDING_SIZE) return PMEDIA_ERROR_LIMIT;
+            padded = (unsigned char *)av_mallocz((int)bytes + 3 + AV_INPUT_BUFFER_PADDING_SIZE);
+            if (padded == NULL) return PMEDIA_ERROR_MEMORY;
+            padded[2] = 1;
+            memcpy(padded + 3, packet->data + offset, (size_t)bytes);
+            memset(&parameters, 0, sizeof(parameters));
+            parameters.codec_id = AV_CODEC_ID_H264;
+            parameters.extradata = padded;
+            parameters.extradata_size = (int)bytes + 3;
+            /* Reuse the pinned SPS parser/subset guard. Frame flags alone can
+             * miss the first interlaced picture after a parameter change. */
+            result = pm_ff_validate_h264(context, &parameters, NULL);
+            av_free(padded);
+            if (result != PMEDIA_OK) return result;
+        }
+        offset += (int)bytes;
+    }
+    return PMEDIA_OK;
+}
+
 static int pm_ff_validate_raw_pps(const unsigned char *sps, int sps_bytes,
                                   const unsigned char *pps, int pps_bytes, int *out_id)
 {
@@ -1529,6 +1571,12 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
             codec = context->audio_codec;
         }
         if (codec != NULL) {
+            result = pm_ff_validate_mp4_sps(context, codec, &packet);
+            if (result != PMEDIA_OK) {
+                context->clock_error = "MP4 in-band H.264 SPS validation failed";
+                av_packet_unref(&packet);
+                return result;
+            }
             /* The pinned AAC decoder ignores NEW_EXTRADATA. Reject changed
              * MOV sample descriptions before decoding under stale config;
              * byte-identical repetitions are harmless. Legacy stays intact. */

@@ -248,13 +248,16 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
-**状态：有界解码、单流时钟、固定 ADTS 变化拒绝及 MP4 H.264/AAC 混合调度的固定起点/双向 EOF 尾部、视频 PTS 守卫和固定 AAC 描述变化拒绝已退出
+**状态：有界解码、单流时钟、固定 ADTS 变化拒绝及 MP4 H.264/AAC 混合调度的固定起点/双向 EOF 尾部、视频 PTS 守卫、固定 AAC 描述变化拒绝和 AVC3 带内 SPS 守卫子集已退出
 待开发范围，已验收边界见 [能力矩阵](../docs/CAPABILITIES.md)。**
 不把已完成的 codec 接入和生命周期门重新列为开发任务；编译集合、短媒体合同和真机性能
-是三个不同层次。默认解码路径保持，源时钟调度不等于实际输出设备同步。
+是三个不同层次。默认合法解码保持，新 SPS 验证失败也锁存终态；源时钟调度不等于实际输出设备同步。
 
-下一纵切先对有效混合视频参数变化取证，明确现有 profile/布局/尺寸守卫与不变参数合同的
-区别，再决定是否补充拒绝策略；不默认宣称任意动态格式变化已被拒绝。固定 AAC 描述的
+下一纵切先对 MP4 视频 sample-description/NEW_EXTRADATA 的新 avcC 切换取证，复用固定
+片段并明确与带内 SPS 的区别；不因包内守卫已完成就假定外带配置也有相同拒绝时机。
+固定 AVC3 的相同参数重复、Baseline→Main VGA/B 帧及超限/profile/隔行变化子集不再作为
+待办；其他 PPS、NAL 长度、切回旧参数、坏 framing、分配失败仍须独立门。合法视频参数
+不一概冻结，不恢复只靠 AVFrame 隔行标志的路径。固定 AAC 描述的
 字节相同重复、48→44.1 kHz、mono↔stereo 及恢复原配置控制不再作为待办；其他 ASC/
 采样率切换形状仍需独立门。固定视频负起点/实际呈现回退、重复/向前间隔和 best-effort
 选择 DTS 的控制也已完成；未知 PTS、音频侧负值/回退、其他
@@ -271,7 +274,7 @@ edit-list 和 Main/B 帧偏移仍须独立取证，不能把原包 PTS 异常等
   宿主只拥有 source I/O、pump 时钟/预算、窗口和设备调度；`test_host` 只提供 fixture/断言。
 - **边界：** 16 MiB 输入上限、视频最多 640×480、无编码/网络/线程/DRM/字幕，AV1/HEVC/VP9
   永不进入首版软解；native 与 soft 每 session 只选一个 backend。
-- **剩余 fixture：** MP3/其他 AAC 配置变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；混合未知 PTS/音频侧异常、视频参数变化及其他 AAC 描述形状、其他 edit-list、有效最大包和超过预算包的其他位置；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
+- **剩余 fixture：** MP3/其他 AAC 配置变化拒绝、极限 PCM 块与更多采样率/压缩双声道；非零 AAC seek 的 priming/PCM 保真，零点重建分配失败回滚与瞬时内存；混合未知 PTS/音频侧异常、其他视频参数变化及 AAC 描述形状、其他 edit-list、有效最大包和超过预算包的其他位置；FLV 内 MP3、损坏 tag/payload 及其他组合；H.263 其他容器/裸流、复杂编码工具与音视频组合；MPEG-4 Part 2 Qpel/GMC、坏 VOL 可选字段及码流内参数变化；IMA 其他采样率/容器布局（WAV 部分块明确不支持）；AMR 其他码率、DTX/丢失帧与 3GP；H.264 Annex-B VFR/SEI、其他 slice 工具/损坏模式与合法最大参数集；
   其他容器参数变化拒绝、非零 FFmpeg seek、输入容量边界；native
   codec 存在/缺失与 AUTO fallback；其他输入缺失起始 PTS/时长、显式时间轴跳变与推导溢出仍需独立断言；
   全范围色阶标记之外的完整色彩 metadata/转换尚未公开。
