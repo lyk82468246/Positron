@@ -60,6 +60,7 @@ struct pmedia_ffmpeg {
     int audio_flush_sent;
     int video_drained;
     int audio_drained;
+    int mp4_nal_length;
     pm_position video_next_pts_us;
     int video_next_pts_valid;
     pm_position raw_h264_duration_us;
@@ -411,6 +412,31 @@ static int pm_ff_validate_h264(pmedia_ffmpeg *context,
     return result;
 }
 
+static int pm_ff_validate_mp4_config(pmedia_ffmpeg *context, AVCodecContext *codec, const AVPacket *packet)
+{
+    AVCodecParameters parameters;
+    const unsigned char *config;
+    pm_position duration;
+    int bytes;
+    int result;
+
+    if (codec->codec_id != AV_CODEC_ID_H264 ||
+        pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4) return PMEDIA_OK;
+    config = av_packet_get_side_data(packet, AV_PKT_DATA_NEW_EXTRADATA, &bytes);
+    if (config == NULL) return PMEDIA_OK;
+    if (bytes < 7 || config[0] != 1) return PMEDIA_ERROR_FORMAT;
+    memset(&parameters, 0, sizeof(parameters));
+    parameters.codec_id = AV_CODEC_ID_H264;
+    parameters.extradata = (unsigned char *)config;
+    parameters.extradata_size = bytes;
+    /* Validate the new avcC before the pinned decoder updates its parameter
+     * sets. Do not freeze valid video changes or trust lagging frame flags. */
+    result = pm_ff_validate_h264(context, &parameters, &duration);
+    if (result != PMEDIA_OK) return result;
+    context->mp4_nal_length = (config[4] & 3) + 1;
+    return PMEDIA_OK;
+}
+
 static int pm_ff_validate_mp4_sps(pmedia_ffmpeg *context, AVCodecContext *codec, const AVPacket *packet)
 {
     AVCodecParameters parameters;
@@ -424,13 +450,14 @@ static int pm_ff_validate_mp4_sps(pmedia_ffmpeg *context, AVCodecContext *codec,
     if (codec->codec_id != AV_CODEC_ID_H264 ||
         pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4 ||
         codec->extradata_size < 5 || codec->extradata == NULL || codec->extradata[0] != 1) return PMEDIA_OK;
-    length_bytes = (codec->extradata[4] & 3) + 1;
+    length_bytes = context->mp4_nal_length;
+    if (!length_bytes) length_bytes = (codec->extradata[4] & 3) + 1;
     offset = 0;
     while (offset <= packet->size - length_bytes) {
         bytes = 0;
         for (i = 0; i < length_bytes; i++) bytes = (bytes << 8) | packet->data[offset++];
-        /* Leave invalid framing (and legacy merged side-data trailers) to the
-         * decoder. This guard validates complete in-band SPS, not all damage. */
+        /* Leave invalid framing to the decoder. This guard validates complete
+         * in-band SPS, not all damage. */
         if (bytes == 0 || bytes > (uint32_t)(packet->size - offset)) break;
         if ((packet->data[offset] & 31) == 7) {
             if (bytes > INT_MAX - 3 - AV_INPUT_BUFFER_PADDING_SIZE) return PMEDIA_ERROR_LIMIT;
@@ -975,6 +1002,11 @@ static int pm_ff_open_internal(const unsigned char *input,
         return PMEDIA_ERROR_FORMAT;
     }
     context->opened_format = 1;
+    /* Preserve MOV NEW_EXTRADATA before stream analysis can queue packets.
+     * Default mode otherwise hides it in merged payload trailers until send;
+     * validating only decoded frames can leak the first interlaced picture. */
+    if (pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4)
+        context->format->flags |= AVFMT_FLAG_KEEP_SIDE_DATA;
     if (strcmp(context->format->iformat->name, "h264") == 0) {
         result = pm_ff_validate_raw_h264(context);
         if (result != PMEDIA_OK) {
@@ -1571,6 +1603,12 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
             codec = context->audio_codec;
         }
         if (codec != NULL) {
+            result = pm_ff_validate_mp4_config(context, codec, &packet);
+            if (result != PMEDIA_OK) {
+                context->clock_error = "MP4 H.264 avcC change validation failed";
+                av_packet_unref(&packet);
+                return result;
+            }
             result = pm_ff_validate_mp4_sps(context, codec, &packet);
             if (result != PMEDIA_OK) {
                 context->clock_error = "MP4 in-band H.264 SPS validation failed";

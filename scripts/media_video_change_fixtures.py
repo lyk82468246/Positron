@@ -1,4 +1,4 @@
-"""Fixed AVC3 in-band parameter changes; no general muxer or product code."""
+"""Fixed AVC3 in-band or AVC1 external changes; no general muxer/product code."""
 CASES = {"repeat": "baseline-aac.mp4", "vga": "main-vga.mp4",
          "oversize": "oversize.mp4", "high": "high.mp4",
          "high422": "high422.mp4", "interlaced": "interlaced.mp4"}
@@ -79,7 +79,7 @@ def video(data):
     return samples, shifts, b"".join(headers), tables[b"stsd"]
 
 
-def records(destination):
+def records(destination, external=False):
     original = (destination / "baseline-aac.mp4").read_bytes()
     top = list(boxes(original, 0, len(original)))
     mdat = next(b for b in top if b[2] == b"mdat")
@@ -89,8 +89,9 @@ def records(destination):
     first, first_shifts, unused, stsd = video(original)
     result = []
     for stem, source in CASES.items():
-        second, second_shifts, headers, unused = video((destination / source).read_bytes())
-        second[0] = headers + second[0]
+        second, second_shifts, headers, second_stsd = video((destination / source).read_bytes())
+        if not external:
+            second[0] = headers + second[0]
         samples = first + second
         replacements = {}
 
@@ -107,7 +108,11 @@ def records(destination):
                                                                      1200, 4096, 65536))))
         description = bytearray(stsd)
         assert description[12:16] == b"avc1"
-        description[12:16] = b"avc3"
+        if external:
+            description[4:8] = words((2,))
+            description += second_stsd[8:]
+        else:
+            description[12:16] = b"avc3"
 
         def table(start):
             offsets = []
@@ -117,7 +122,8 @@ def records(destination):
             return atom(b"stbl", atom(b"stsd", bytes(description)) +
                         atom(b"stts", words((0, 1, 6, 2048))) +
                         atom(b"ctts", words((0, 6)) + b"".join(words((1, v)) for v in first_shifts + second_shifts)) +
-                        atom(b"stsc", words((0, 1, 1, 1, 1))) + atom(b"stss", words((0, 2, 1, 4))) +
+                        atom(b"stsc", words((0, 2, 1, 1, 1, 4, 1, 2) if external else
+                                            (0, 1, 1, 1, 1))) + atom(b"stss", words((0, 2, 1, 4))) +
                         atom(b"stsz", words((0, 0, 6)) + words([len(s) for s in samples])) +
                         atom(b"stco", words((0, 6)) + words(offsets)))
 
@@ -137,8 +143,9 @@ def records(destination):
             words([u32(old_offsets, i) + growth for i in range(8, len(old_offsets), 4)]))
         payload = original[mdat[0] + 8:mdat[0] + mdat[1]] + b"".join(samples)
         data = b"".join(atom(b"mdat", payload) if b[2] == b"mdat" else rebuild(b) for b in top)
-        name = "mixed-video-" + stem + ".mp4"
+        name = ("mixed-avcc-" if external else "mixed-video-") + stem + ".mp4"
         (destination / name).write_bytes(data)
-        result.append({"file": name, "fixture_transform": "fixed AVC3 in-band SPS/PPS transition v1",
+        transform = "fixed AVC1 stsd/stsc external avcC transition v1" if external else "fixed AVC3 in-band SPS/PPS transition v1"
+        result.append({"file": name, "fixture_transform": transform,
                        "source": "baseline-aac.mp4", "video_source": source})
     return result

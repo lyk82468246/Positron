@@ -584,16 +584,17 @@ PMEDIA_ERROR_LIMIT；H.264 只接受 Baseline（含 Constrained Baseline）/Main
 profile、非 8-bit/4:2:0 和隔行视频均不支持。可读取的 SPS 在打开前检查，实际帧输出前
 再次检查，避免只相信容器 metadata。
 
-MP4/MOV 的 AVCC 包中出现完整带内 SPS 时，DLL 在把包送给产品 decoder 前复用同一 SPS
-解析器检查 profile、逐行标志、像素布局和应用/VGA 上限，不能只依赖旧 decoder 的帧标志。
-同一 session 不冻结所有视频参数：固定 AVC3 的相同 SPS 重复、320×240 Constrained
+MP4/MOV 的 AVCC 包中出现完整带内 SPS，或 sample-description 切换通过 NEW_EXTRADATA
+提供新 avcC 时，DLL 在把包送给产品 decoder 前复用同一 SPS 解析器检查 profile、逐行标志、
+像素布局和应用/VGA 上限，不能只依赖旧 decoder 的帧标志。带内参数与外带配置分别检查。
+同一 session 不冻结所有视频参数：固定 AVC3 带内及 AVC1 外带配置的相同参数重复、320×240 Constrained
 Baseline→640×480 Main/B 帧仍可输出，源 PTS 与每帧尺寸保持；这与裸 Annex-B 的不变参数
-策略不同。检查到不支持的 SPS 返回 UNSUPPORTED，超尺寸返回 LIMIT；这类新 SPS 验证
+策略不同。检查到不支持的 SPS 返回 UNSUPPORTED，超尺寸返回 LIMIT；这类带内 SPS 或新 avcC 验证
 错误即使在默认模式也锁存失败态，后续 pump/pause/resume/seek 返回 STATE，仍可 stop/close
 清理，不再跳过坏包继续解码。其他默认解码错误不能据此推定具有相同锁存策略。
 探测可能在 open 就拒绝，也可能在 pump 预解码时失败；不承诺先交付所有合法排队前缀或
 等到变化帧的显示时刻才报错，已经交付的内容不撤回。此守卫不替代 decoder 的完整损坏检查，
-也不覆盖任意 sample-description、PPS、NAL 长度变化或其他容器参数切换。
+也不证明任意 sample-description 组合、PPS、NAL 长度变化或其他容器参数切换已验收。
 
 MPEG-4 Part 2 在可读取的 extradata 中检查每个 VOL 的有界头前缀，拒绝非矩形、非 4:2:0、
 隔行或超过应用/VGA 尺寸上限的声明；不把 FFmpeg 的未知 field_order 当作渐进式证明。
@@ -831,12 +832,13 @@ seek source、7-byte 短读和打开后禁读源均保护。此组保留完整 A
 原 MP4 的 29 块 priming 裁剪预期；不承诺默认模式正确处理任意配置变化。
 其余混合时间轴、其他视频/AAC 配置变化、故障和实际设备同步边界仍待独立门。
 
-TEST1359 使用固定 AVC3 带内参数切换验证默认和混合模式：重复 SPS 与 Baseline→Main VGA
+TEST1359/1360 分别使用固定 AVC3 带内参数和 AVC1 sample-description/外带 avcC 切换，
+验证默认和混合模式；外带组不往 sample 内插入 SPS/PPS。重复参数与 Baseline→Main VGA
 各输出六帧/29 块，源视频 PTS 为 400..1400 ms、每帧 200 ms；调度逐帧核对全部有效 I420
 字节的校验值、尺寸/flags/PTS/时长及所有 PCM 字节。两种 seekability、7-byte 短读、打开后
 禁读源、到期前 1 µs、近 INT64_MAX、变化帧背压/暂停/恢复及 EOF 后缓存 seek 零两遍均检查。
 默认模式对超 VGA、High、4:2:2、隔行和较小应用尺寸上限均保留前三帧/29 块后拒绝，变化段
-不回调；新 SPS 验证错误只报告一次并锁存 STATE。混合模式的超限/High/4:2:2 在 open 零输出
+不回调；具体参数验证错误只报告一次并锁存 STATE。混合模式的超限/High/4:2:2 在 open 零输出
 拒绝；隔行输入在 pump 返回 UNSUPPORTED，严格前缀为一帧/19 块，源内容完全匹配。
 这是双路预解码前沿的结果，不把错误前缀帧数外推到其他文件或声卡同步。
 

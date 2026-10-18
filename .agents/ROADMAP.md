@@ -248,15 +248,15 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
-**状态：有界解码、单流时钟、固定 ADTS 变化拒绝及 MP4 H.264/AAC 混合调度的固定起点/双向 EOF 尾部、视频 PTS 守卫、固定 AAC 描述变化拒绝和 AVC3 带内 SPS 守卫子集已退出
+**状态：有界解码、单流时钟、固定 ADTS 变化拒绝及 MP4 H.264/AAC 混合调度的固定起点/双向 EOF 尾部、视频 PTS 守卫、固定 AAC 描述变化拒绝和带内 SPS/外带 avcC 守卫子集已退出
 待开发范围，已验收边界见 [能力矩阵](../docs/CAPABILITIES.md)。**
 不把已完成的 codec 接入和生命周期门重新列为开发任务；编译集合、短媒体合同和真机性能
 是三个不同层次。默认合法解码保持，新 SPS 验证失败也锁存终态；源时钟调度不等于实际输出设备同步。
 
-下一纵切先对 MP4 视频 sample-description/NEW_EXTRADATA 的新 avcC 切换取证，复用固定
-片段并明确与带内 SPS 的区别；不因包内守卫已完成就假定外带配置也有相同拒绝时机。
-固定 AVC3 的相同参数重复、Baseline→Main VGA/B 帧及超限/profile/隔行变化子集不再作为
-待办；其他 PPS、NAL 长度、切回旧参数、坏 framing、分配失败仍须独立门。合法视频参数
+下一纵切先取证 MP4 avcC 的 NAL 长度字段切换与后续带内守卫的组合：只变换固定 sample
+的长度前缀，保留 NAL payload，并独立验证新 framing；不能因四字节组通过而外推其他长度。
+固定 AVC3 带内和 AVC1 外带描述的相同参数重复、Baseline→Main VGA/B 帧及超限/profile/隔行变化子集不再作为
+待办；其他 PPS、切回旧参数、坏 framing、分配失败仍须独立门。合法视频参数
 不一概冻结，不恢复只靠 AVFrame 隔行标志的路径。固定 AAC 描述的
 字节相同重复、48→44.1 kHz、mono↔stereo 及恢复原配置控制不再作为待办；其他 ASC/
 采样率切换形状仍需独立门。固定视频负起点/实际呈现回退、重复/向前间隔和 best-effort

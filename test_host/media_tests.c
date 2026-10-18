@@ -3895,11 +3895,16 @@ fail:
     return FALSE;
 }
 
-BOOL test1359_media_video_change_contract(void (*progress)(const char *))
+static BOOL media_video_change_contract(int external, void (*progress)(const char *))
 {
-    static const WCHAR *names[] = { L"mixed-video-repeat.mp4", L"mixed-video-vga.mp4",
+    static const WCHAR *inband[] = { L"mixed-video-repeat.mp4", L"mixed-video-vga.mp4",
         L"mixed-video-oversize.mp4", L"mixed-video-high.mp4", L"mixed-video-high422.mp4",
         L"mixed-video-interlaced.mp4", L"mixed-video-vga.mp4" };
+    static const WCHAR *outband[] = { L"mixed-avcc-repeat.mp4", L"mixed-avcc-vga.mp4",
+        L"mixed-avcc-oversize.mp4", L"mixed-avcc-high.mp4", L"mixed-avcc-high422.mp4",
+        L"mixed-avcc-interlaced.mp4", L"mixed-avcc-vga.mp4" };
+    const WCHAR *const *names;
+    const char *guard_message;
     media_fixture_source input;
     media_av_sink sink;
     media_av_reference *refs[3];
@@ -3923,6 +3928,8 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
     int offers;
     char phase[192];
 
+    names = external ? outband : inband;
+    guard_message = external ? "MP4 H.264 avcC change validation failed" : "MP4 in-band H.264 SPS validation failed";
     for (i = 0; i < 3; i++) refs[i] = (media_av_reference *)calloc(1, sizeof(*refs[i]));
     memset(&sink, 0, sizeof(sink));
     session = NULL;
@@ -3963,7 +3970,7 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
         if (result != expected || sink.videos != (test < 2 ? 6 : 3) || sink.audios != 29 || sink.events.errors ||
             sink.events.eof_events != (test < 2 ? 1 : 0) || sink.events.error_callbacks != (test < 2 ? 0 : 1) ||
             sink.events.error_events != (test < 2 ? 0 : 1)) goto fail;
-        if (test >= 2 && strcmp(pm_last_error(session), "MP4 in-band H.264 SPS validation failed")) goto fail;
+        if (test >= 2 && strcmp(pm_last_error(session), guard_message)) goto fail;
         for (i = 0; i < reference->videos; i++) {
             if (reference->video[i].pts_us != 400000 + (pm_position)i * 200000 ||
                 reference->video[i].duration_us != 200000 || reference->video[i].height != (test == 1 && i >= 3 ? 480 : 240) ||
@@ -3976,7 +3983,7 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
             if (reference->audio[i].pts_us != refs[0]->audio[i].pts_us ||
                 reference->audio[i].duration_us != refs[0]->audio[i].duration_us) goto fail;
         }
-        /* This explicit SPS validation failure is terminal in default mode
+        /* This explicit parameter validation failure is terminal in default mode
          * too; that does not generalize the policy of other legacy errors. */
         if (test >= 2 && (pm_pump(session, 0, 0) != PMEDIA_ERROR_STATE || pm_pause(session) != PMEDIA_ERROR_STATE ||
             pm_resume(session) != PMEDIA_ERROR_STATE || pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
@@ -4041,11 +4048,11 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
                     }
                 } else {
                     /* The fixed interlaced input opens successfully: require
-                     * the first changed SPS to fail before any changed frame. */
+                     * the new parameters to fail before any changed frame. */
                     result = media_av_pump(session, &sink, 0);
                     for (i = 0; i < 100 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink, maximum);
-                    _snprintf(phase, sizeof(phase), "video change scheduled SPS case=%d seekable=%d pass=%d rc=%d video=%d audio=%d errors=%d",
-                              test, seekable, pass, result, sink.videos, sink.audios, sink.events.errors);
+                    _snprintf(phase, sizeof(phase), "video change scheduled %s case=%d seekable=%d pass=%d rc=%d video=%d audio=%d errors=%d",
+                              external ? "avcC" : "SPS", test, seekable, pass, result, sink.videos, sink.audios, sink.events.errors);
                     if (progress != NULL) progress(phase);
                     /* Stream analysis exposes B-frame delay. Decoding ahead
                      * reaches the bad SPS before the two queued prefix frames
@@ -4056,7 +4063,7 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
                         pm_pause(session) != PMEDIA_ERROR_STATE || pm_resume(session) != PMEDIA_ERROR_STATE ||
                         pm_seek(session, 0) != PMEDIA_ERROR_STATE || sink.events.error_callbacks != 1 ||
                         sink.events.error_events != 1 ||
-                        strcmp(pm_last_error(session), "MP4 in-band H.264 SPS validation failed")) goto fail;
+                        strcmp(pm_last_error(session), guard_message)) goto fail;
                 }
                 if (pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK || sink.events.stopped_events != 1 ||
                     pm_close(session) != PMEDIA_OK) goto fail;
@@ -4067,7 +4074,8 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
         data = NULL;
     }
     for (i = 0; i < 3; i++) free(refs[i]);
-    if (progress != NULL) progress("mixed in-band repeat/VGA accepted, out-of-bound parameters rejected with exact prefix and lifecycle");
+    if (progress != NULL) progress(external ? "mixed external avcC repeat/VGA accepted, out-of-bound descriptions rejected with exact prefix and lifecycle" :
+        "mixed in-band repeat/VGA accepted, out-of-bound parameters rejected with exact prefix and lifecycle");
     return TRUE;
 fail:
     _snprintf(phase, sizeof(phase), "video change failure: video=%d audio=%d bytes=%d errors=%d: %s",
@@ -4078,6 +4086,16 @@ fail:
     if (data != NULL) free(data);
     for (i = 0; i < 3; i++) if (refs[i] != NULL) free(refs[i]);
     return FALSE;
+}
+
+BOOL test1359_media_video_change_contract(void (*progress)(const char *))
+{
+    return media_video_change_contract(0, progress);
+}
+
+BOOL test1360_media_video_config_contract(void (*progress)(const char *))
+{
+    return media_video_change_contract(1, progress);
 }
 
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)

@@ -1922,6 +1922,54 @@
       "video_source": "interlaced.mp4",
       "bytes": 8970,
       "sha256": "387e784261b641c65b1a9ea0952307bf0abdf7e064516f8378d8caaf1f471a53"
+    },
+    {
+      "file": "mixed-avcc-repeat.mp4",
+      "fixture_transform": "fixed AVC1 stsd/stsc external avcC transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "baseline-aac.mp4",
+      "bytes": 9192,
+      "sha256": "2a2635ac054db72439eb1320a49605c7eef5df0c4d4b2fd93854aafad41775d8"
+    },
+    {
+      "file": "mixed-avcc-vga.mp4",
+      "fixture_transform": "fixed AVC1 stsd/stsc external avcC transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "main-vga.mp4",
+      "bytes": 9138,
+      "sha256": "a725d76f289725b5f1fe39d4a64213e07ae9e9bad12d16291409d99924d8ae3e"
+    },
+    {
+      "file": "mixed-avcc-oversize.mp4",
+      "fixture_transform": "fixed AVC1 stsd/stsc external avcC transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "oversize.mp4",
+      "bytes": 9896,
+      "sha256": "2bdd5b8a779a9fe9a3bed53bbc6040b27261363877f9f3bc22d8855f0e268f69"
+    },
+    {
+      "file": "mixed-avcc-high.mp4",
+      "fixture_transform": "fixed AVC1 stsd/stsc external avcC transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "high.mp4",
+      "bytes": 9088,
+      "sha256": "396a9a6b14b73b74049650feb44d838c7b34f4dbed86745fd56ade9303814f97"
+    },
+    {
+      "file": "mixed-avcc-high422.mp4",
+      "fixture_transform": "fixed AVC1 stsd/stsc external avcC transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "high422.mp4",
+      "bytes": 9088,
+      "sha256": "209bf02cd8fc336acf1eaa8567c318fced01bab0d66d03794725753f10448f09"
+    },
+    {
+      "file": "mixed-avcc-interlaced.mp4",
+      "fixture_transform": "fixed AVC1 stsd/stsc external avcC transition v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "interlaced.mp4",
+      "bytes": 9115,
+      "sha256": "fc1bdfce65f0c29b98fbc1a03c979dd54ac29a2a183552f17737f38aba4d2917"
     }
   ]
 }

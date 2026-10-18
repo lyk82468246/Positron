@@ -1,4 +1,4 @@
-"""Read-only fixed AVC3 transition oracle; not a WM6 lifecycle reference."""
+"""Read-only fixed AVC3/AVC1 transition oracle; not a WM6 lifecycle reference."""
 import argparse
 from decimal import Decimal
 import hashlib
@@ -59,6 +59,7 @@ def output(exe, name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ffmpeg", type=Path, required=True)
+    parser.add_argument("--external", action="store_true", help="Check AVC1 stsd transitions instead of in-band SPS")
     args = parser.parse_args()
     media_fixtures.check()
     pin = json.loads(media_fixtures.PIN.read_text(encoding="utf-8"))
@@ -84,15 +85,23 @@ def main():
                     visit(b[0] + 8, b[0] + b[1])
         visit(moov[0], moov[0] + moov[1])
         second = samples(source_data, source_tables)
-        second[0] = parameter_sets(source_tables) + second[0]
-        name = "mixed-video-" + stem + ".mp4"
+        if not args.external:
+            second[0] = parameter_sets(source_tables) + second[0]
+        name = ("mixed-avcc-" if args.external else "mixed-video-") + stem + ".mp4"
         data = (media_fixtures.DEST / name).read_bytes()
         unused, payload, tracks = inspect(data)
         require(payload == prefix + b"".join(first + second), "Original mdat and all AVC slices unchanged")
         require(samples(data, tracks[b"vide"]) == first + second, "Every AVC chunk points to exact source bytes")
         expected_stsd = bytearray(base_tracks[b"vide"][b"stsd"])
-        expected_stsd[12:16] = b"avc3"
-        require(tracks[b"vide"][b"stsd"] == bytes(expected_stsd), "Only AVC3 tag changes; initial avcC intact")
+        if args.external:
+            expected_stsd[4:8] = (2).to_bytes(4, "big")
+            expected_stsd += source_tables[b"stsd"][8:]
+            require(tracks[b"vide"][b"stsc"] == bytes.fromhex(
+                "0000000000000002000000010000000100000001000000040000000100000002"),
+                "Exactly two stsc runs; new sample entry begins at fourth sample")
+        else:
+            expected_stsd[12:16] = b"avc3"
+        require(tracks[b"vide"][b"stsd"] == bytes(expected_stsd), "Exact original source descriptions/avcC")
         require(tracks[b"vide"][b"stts"] == bytes.fromhex("00000000000000010000000600000800") and
                 tracks[b"vide"][b"stss"] == bytes.fromhex("00000000000000020000000100000004"),
                 "Six 2048-tick samples with both source IDRs marked")
