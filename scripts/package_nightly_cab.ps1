@@ -274,8 +274,16 @@ if (Test-Path -LiteralPath $expand) {
     }
 }
 
-$commit = (& git -C $root rev-parse HEAD).Trim()
-$dirty = (& git -C $root status --porcelain).Trim()
+$commitLines = @(& git -C $root rev-parse HEAD)
+if ($LASTEXITCODE -ne 0 -or $commitLines.Count -eq 0) {
+    Fail "无法读取当前 Git commit：$root"
+}
+$commit = ($commitLines -join "").Trim()
+$dirtyLines = @(& git -C $root status --porcelain)
+if ($LASTEXITCODE -ne 0) {
+    Fail "无法读取工作区状态：$root"
+}
+$dirty = ($dirtyLines -join [Environment]::NewLine).Trim()
 if ([string]::IsNullOrEmpty($dirty)) {
     $state = "clean"
 }
