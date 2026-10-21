@@ -3,10 +3,15 @@
 param(
     [Parameter(Mandatory=$true)][string] $RemoteRoot,
     [Parameter(Mandatory=$true)][string] $LocalRunRoot,
-    [ValidateSet('positron://newtab', 'positron://system')]
+    [ValidateSet('positron://newtab', 'positron://system', 'positron://history')]
     [string] $StartupUrl = 'positron://newtab',
     [switch] $NormalStartup,
-    [switch] $VisitNavigation
+    [switch] $VisitNavigation,
+    [string] $FixtureDatabase = '',
+    [switch] $ReuseFixture,
+    [switch] $ManualFixtureReview,
+    [ValidatePattern('^app-history(?:-[a-z0-9]+)*$')]
+    [string] $AttemptName = 'app-history'
 )
 $ErrorActionPreference = 'Stop'
 function Get-Sha256([string] $path)
@@ -27,6 +32,20 @@ if ($RemoteRoot -notmatch '^\\Storage Card\\Temp\\Positron-device-gate\\[A-Za-z0
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot $LocalRunRoot))
 $stageRoot = Join-Path $runRoot 'stage'
+$fixture = $null
+if ($ReuseFixture -and !$FixtureDatabase) { throw 'Reuse requires an exact fixture manifest.' }
+if ($ManualFixtureReview -and !$FixtureDatabase) { throw 'Manual review requires an isolated fixture.' }
+if ($FixtureDatabase) {
+    $FixtureDatabase = [IO.Path]::GetFullPath($FixtureDatabase)
+    if ($NormalStartup -or $VisitNavigation -or $StartupUrl -ne 'positron://history' -or
+            $FixtureDatabase -ne (Join-Path $runRoot 'history-fixture\history-fixture.db')) {
+        throw 'Require an isolated run-local history fixture and explicit history startup.'
+    }
+    $fixture = Get-Content ([IO.Path]::ChangeExtension($FixtureDatabase, '.json')) -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($fixture.total -ne 80 -or (Get-Sha256 $FixtureDatabase) -ne $fixture.database_sha256) {
+        throw 'History fixture count or hash mismatch.'
+    }
+}
 $auditPath = Join-Path $runRoot 'module-audit-result.txt'
 $audit = Get-Content -LiteralPath $auditPath -Raw -Encoding UTF8
 if ($audit -notmatch '(?m)^status=PASS\s*$' -or
@@ -38,7 +57,8 @@ $gate = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'device_gate.ps1') -Ra
 $source = [regex]::Match($gate, "(?s)\`$rapiSource = @'\r?\n(.*?)\r?\n'@")
 if (!$source.Success) { throw 'RAPI helper not found.' }
 Add-Type -TypeDefinition $source.Groups[1].Value -Language CSharp
-$evidenceRoot = Join-Path $runRoot 'app-history'
+$evidenceRoot = Join-Path $runRoot $AttemptName
+if (Test-Path $evidenceRoot) { throw 'Never overwrite an earlier acceptance attempt.' }
 $roundtripRoot = Join-Path $evidenceRoot 'roundtrip'
 New-Item -ItemType Directory -Path $roundtripRoot -Force | Out-Null
 $connected = $false
@@ -82,6 +102,18 @@ try {
             throw ('Mixed deployment: ' + $file.Name)
         }
     }
+    if ($null -ne $fixture) {
+        # Copy uses a unique temporary file followed by CeMoveFile, which
+        # refuses an existing destination. Never delete/replace a user DB.
+        if (!$ReuseFixture) {
+            [PositronDeviceRapi]::CopyFileToDevice($FixtureDatabase, ($RemoteRoot + '\positron.db'))
+        }
+        $copied = Join-Path $evidenceRoot 'fixture-roundtrip.db'
+        if (![PositronDeviceRapi]::TryCopyFileFromDevice(($RemoteRoot + '\positron.db'), $copied) -or
+                (Get-Sha256 $copied) -ne $fixture.database_sha256) {
+            throw 'History fixture roundtrip mismatch.'
+        }
+    }
     $remoteLog = '\Temp\positron-debug.log'
     $localLog = Join-Path $evidenceRoot 'positron-debug.log'
     [PositronDeviceRapi]::DeleteFileIfExists($remoteLog)
@@ -89,6 +121,7 @@ try {
         throw 'NormalStartup uses no command-line URL; require default newtab settings.'
     }
     $arguments = if ($NormalStartup) { $null } else { '--selftest-ui --url ' + $StartupUrl }
+    if ($ManualFixtureReview) { $arguments = '--url positron://history' }
     if ($VisitNavigation) {
         if ($NormalStartup -or $StartupUrl -ne 'positron://newtab') {
             throw 'VisitNavigation uses the full UI suite and its fixed HTTPS target.'
@@ -101,7 +134,7 @@ try {
         'positron://history'
     } elseif ($StartupUrl -eq 'positron://system') {
         'positron://about#system'
-    } else { 'positron://newtab' }
+    } else { $StartupUrl }
     $expectedHistory = if ($VisitNavigation) { 2 } else { 1 }
     $deadline = (Get-Date).AddSeconds($(if ($VisitNavigation) { 180 } else { 90 }))
     $complete = $false
@@ -112,7 +145,7 @@ try {
             if ($NormalStartup -and $text -match 'selftest|https://example\.com/') {
                 throw 'Normal startup ran a UI fixture.'
             }
-            $suiteComplete = $NormalStartup -or (
+            $suiteComplete = $NormalStartup -or $ManualFixtureReview -or (
                     $text -match 'history selftest OK' -and
                     $text -match 'fragment-pending selftest OK' -and
                     $text -match 'script-scheduling selftest OK' -and
@@ -129,6 +162,10 @@ try {
                     $text -match 'settings-result request=\d+ op=3 result=0' -and
                     $text -match 'settings-result request=\d+ op=4 result=0' -and
                     $text -match 'internal-page commit url=positron://history kind=5 history=2 focus=13')
+            if ($null -ne $fixture) {
+                $visitComplete = $text -match 'settings-result request=\d+ op=4 result=0' -and
+                    $text -match 'internal-page commit url=positron://history kind=5 history=1 focus=44'
+            }
             if ($VisitNavigation -and $visitComplete) {
                 $layouts = [regex]::Matches($text,
                     'relayout pass=\d+ network=0 .*size=(\d+)x\d+ extent=(\d+)x\d+')
@@ -156,7 +193,19 @@ try {
             throw ('New crash dump: ' + $entry.Key)
         }
     }
-    Write-Host ('APP HISTORY PASS binary_roundtrip=10/10 crash_check=PASS pid={0}' -f $appPid)
+    if ($ManualFixtureReview) {
+        Write-Host ('APP HISTORY MANUAL READY pid={0}; full UI selftests NOT RUN, not an acceptance PASS' -f $appPid)
+    } else {
+        Write-Host ('APP HISTORY PASS binary_roundtrip=10/10 crash_check=PASS pid={0}' -f $appPid)
+    }
+    if ($null -ne $fixture) {
+        [IO.File]::WriteAllLines((Join-Path $evidenceRoot 'fixture-result.txt'), @(
+            $(if ($ManualFixtureReview) { 'status=READY' } else { 'status=PASS' }),
+            'fixture_rows=80', 'fixture_roundtrip=exact', 'binary_roundtrip=10/10',
+            $(if ($ManualFixtureReview) { 'ui_selftests=NOT_RUN' } else { 'ui_selftests=PASS' }),
+            'loaded_page=16_with_older',
+            ('pid=' + $appPid), 'crash_check=PASS', 'manual_review=pending'))
+    }
     Write-Host ('Deployment remains at ' + $committedUrl + ': ' + $RemoteRoot)
 } finally {
     if ($connected) { [PositronDeviceRapi]::Disconnect() }

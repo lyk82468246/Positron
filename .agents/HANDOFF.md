@@ -36,9 +36,6 @@ auto height 未获自然高度。Core 的 inline-block/block 路径现使用 com
 DeviceEmulator。SD 匹配 stage、双空间及新 guest 零引用通过，回收后清理当前包，无强杀、
 重连或删库。C89/审计与串行两配置 build 通过；App/Media 未提交代码未纳入提交。
 
-旧 Core 对照亦复现 TEST1101 的整数 CSS 往返误差和 TEST1107 的失效布局点击；
-夹具改为 CSS 单位精确比较，并在合成动作间处理本窗口有界重排，原事件断言不变。
-Release 初门 CAB 抢读链接产物，正式重试恢复；失败日志保留，未修改系统或构建工程。
 
 ### Core 选择性长文本断行的设备边界
 
@@ -62,10 +59,17 @@ count=0）；完整日志无 dump，根因未定，不直接归因为缺字体�
 `tmp/device-runs/20261021-195333-app-downloads-name-review/` 五进程PASS：中文/ASCII/字面SQL与通配符、
 查询复制/过滤游标/超限及队列、原生回车/键盘链接/旧结果隔离/编辑选区保留/显示全部；旧单删与下载门保留。
 双语44焦点/断行与字段门通过，固定48容量不变；Debug/Release/CAB、C89、离线17项与Release夹具排除通过。
-最新用户闭库为 `tmp/device-runs/20261021-history-search-user-data/`，不得恢复旧库复活已删记录。
-先行195050门亦通过；最终包补历史操作键盘来源，仍限当前可信文档，不放行地址栏或网页命令。
-同包manual-review PASS：10/10哈希、最新用户DB精确恢复、前台/crash通过，PID4133264926停在历史页。
-仅替换已核验的自建UI测试库，未删用户文件；原生触摸/SIP、中文搜索与筛选后删除待人工。
+最新用户闭库为 `tmp/device-runs/20261021-history-fixture-user-data/`，原远端用户库未修改，不得恢复旧库复活已删记录。
+历史操作键盘来源仍限当前可信文档。
+旧manual-review PASS的PID4133264926已由用户退出。当前隔离测试包为
+`tmp/device-runs/20261021-202335-app-history-fixture/`，对应SD同名目录；设备普通启动PID1455633922，
+前台可见，op4成功、历史页focus44，首批16条及下一页入口已加载。独立库含80条，alpha40、中文17、
+重复URL3及特殊字符/长文本，生成器与验收清单见[历史验收](../docs/APP_HISTORY_ACCEPTANCE.md)。
+原用户目录/备份不混入测试记录。主机夹具4项通过；EXE/九DLL回读10/10，二进制未修改。
+两次完整UI自检仍FAIL：app-history及app-history-retry日志在读取DB前报scroll-paint
+window=2 dpi=96 move=0 pixel=0,0 actual=2701493 expected=16777215；根因未定，未放宽断言。
+普通启动检查误等newtab而超时，日志已证实history加载，脚本已修正预期URL；不重启当前应用，
+不追认为完整门PASS。原生触摸/SIP、分页/中文搜索及筛选后删除待人工，窗口像素失败须独立取证。
 
 截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分别取证。Core 提供选择性紧急断行，
 EXE 不改写文字或隐藏横轴；[请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md) 已落实。
@@ -127,19 +131,12 @@ New tab、刷新和关闭；右菜单不重复后退/前进/刷新。前进只�
 关闭先协作取消并等待 worker，slot 排空后释放；最后一页关闭先创建 newtab，应用退出关闭全部。
 页面 teardown 先于 native/session 释放，关闭期间拒绝 queued timer。未改 DLL/ABI 或增加 IPC。
 
-截图 `tmp/QQ20261004-094635.png` 的旧页 EDIT 透出像素源于全局 context 覆盖。
-现按父 HWND 查找 owner；固定槽位覆盖 count 提交前的初始化消息，销毁子控件后注销 owner。
-不靠重建页面或额外 repaint 绕过；诊断/夹具仅进 Debug。
+旧页EDIT透出源于全局context覆盖，现按父HWND找owner并保护初始化/销毁顺序；证据见Git。
 
-先行多标签 Debug 包为 `tmp/device-runs/20261004-175348-app-tab-menu/`，49 文件、两次 guest
-holders=0 unavailable=0、EXE/九 DLL SHA256 10/10、全部 required 自检及 crash_check PASS。
-其 PID 已退出，不作为当前人工入口。
-tab-menu 自检 OK、tabs phase=8：验证左右菜单归属与顺序、重复重建无残项、后退出现/前进
-隐藏、跨标签条件隔离、刷新不增加 history、分支导航清除前进项。保留双 controls 页切回及
-关闭另一页后的实际 EDIT 编辑、SELECT 数量、toggle 和九次 native paint，以及原状态隔离、
-容量、beforeunload、worker/timer/stale/失败/关闭断言。菜单触摸和切回绘制须人工复测；
-网络、旋转/SIP、内存压力及多页退出仍待人工，不以夹具替代。
-先行 native-edit 启动超时不追认通过，旧 PID 已退出；探针沿 Core 几何检查真实 WM_PAINT。
+先行多标签包 `tmp/device-runs/20261004-175348-app-tab-menu/` 的完整自检、哈希/引用/crash门通过，
+旧PID已退出。覆盖菜单顺序/条件前进、跨标签状态、刷新/分支history、切回原生控件编辑及绘制、
+容量/beforeunload/worker/timer/stale/失败/关闭；详见Git。真实菜单、网络、旋转/SIP、内存压力
+及多页退出仍待人工；先行native-edit超时不追认通过。
 
 相邻 Debug 门 `tmp/device-runs/20261004-093134-app-tabs-adjacent/` 为
 `136,407,1080-1083,1134,1327,1336,1338,999` 的 11/11 PASS，完整日志、唯一 TESTBENCH PASS、
@@ -501,7 +498,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
 下载重下/历史单删已获人工通过，历史搜索已通过自动门；下一步人工复核关键词、清空及筛选后删除/跨标签。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-本轮只接入EXE历史搜索；Media外带avcC证据保持，未改公共DLL/打包工程。
+本轮只补隔离历史测试数据和检查脚本，已复核路线图；完整UI窗口像素失败独立待取证，不提升基线。
+Media外带avcC证据保持，未改EXE产品代码、公共DLL或打包工程。
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
