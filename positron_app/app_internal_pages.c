@@ -1005,6 +1005,7 @@ static void app_internal_visits(AppHtmlWriter *writer,
     AppUrlSchemeKind scheme;
     char resolved[APP_VISITS_URL_MAX];
     char link_id[32];
+    char action[128];
     int clickable;
     int count;
     int shown;
@@ -1044,6 +1045,13 @@ static void app_internal_visits(AppHtmlWriter *writer,
             link_id[sizeof(link_id) - 1] = '\0';
             app_internal_record_header(writer, link_id, clickable ? record->url : NULL,
                     record->title, record->url, record->visited_utc, chinese);
+            _snprintf(action, sizeof(action) - 1,
+                    "<p><a id=\"visit-delete-%d\" href=\"#app-visits-delete-%I64d\">",
+                    i, record->id);
+            action[sizeof(action) - 1] = 0;
+            app_html_append(writer, action);
+            app_html_append(writer, chinese ? "\345\210\240\351\231\244\350\256\260\345\275\225" : "Delete record");
+            app_html_append(writer, "</a></p>");
             app_html_append(writer, "</div>");
         }
         if (visits->count == 0) {
@@ -1176,6 +1184,11 @@ int AppInternalPages_FocusIds(HANDLE document,
         if (PCore_FocusTargetInfoById(document, candidate, &info) == 0 &&
                 info.kind == PCORE_FOCUS_TARGET_LINK)
             strcpy(ids[count++], candidate);
+        _snprintf(candidate, sizeof(candidate) - 1, "visit-delete-%d", history_index);
+        candidate[sizeof(candidate) - 1] = 0;
+        if (count < APP_INTERNAL_FOCUS_MAX &&
+                PCore_FocusTargetInfoById(document, candidate, &info) == 0 &&
+                info.kind == PCORE_FOCUS_TARGET_LINK) strcpy(ids[count++], candidate);
     }
     for (history_index = PBROWSER_HISTORY_MAX - 1;
             history_index >= 0 && count < APP_INTERNAL_FOCUS_MAX;
@@ -1671,12 +1684,12 @@ int AppInternalPages_DebugCheck(const char *css)
     document = PCore_ParseHTML(html, length);
     if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
             PCore_LayoutDocument(document, 240, 268) != 0 ||
-            AppInternalPages_FocusIds(document, focus_ids) != 26 ||
+            AppInternalPages_FocusIds(document, focus_ids) != 42 ||
             strcmp(focus_ids[0], "visit-0") != 0) goto done;
     if (app_internal_wrap_debug_check(document, stylesheet, "visit-0",
             visits->entries[0].url, visits->entries[0].title) != 0) goto done;
     AppDebug_Log("positron history-wrap selftest OK dpi=96,128,192 widths=240,480,240 text=exact href=exact\r\n");
-    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=26 utc=1\r\n");
+    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=42 utc=1\r\n");
     PCore_FreeDocument(document);
     document = NULL;
     AppI18n_FreePage(html);

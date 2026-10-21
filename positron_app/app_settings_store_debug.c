@@ -281,6 +281,7 @@ int AppSettingsStore_DebugCheck(void)
     AppSettingsResult before;
     AppSettingsValues values;
     AppSettingsValues normalized;
+    __int64 delete_id;
     AppSettingsDebugThread *probe;
     HANDLE foreign;
     DWORD length;
@@ -428,6 +429,34 @@ int AppSettingsStore_DebugCheck(void)
             result.visits->has_more || result.visits->entries[0].visited_utc !=
             1700000000) goto done;
     AppSettingsResult_Release(&result);
+    request = 777;
+    if (AppSettingsStore_DeleteVisit(store, 0, 71, 92, &request) != APP_SETTINGS_INVALID ||
+            request != 777 || AppSettingsStore_DeleteVisit(store, -1, 71, 92, &request) !=
+            APP_SETTINGS_INVALID || request != 777) goto done;
+    if (AppSettingsStore_ReadVisits(store, 0, 71, 92, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK || result.visits == NULL ||
+            result.visits->count != 16) goto done;
+    delete_id = result.visits->entries[0].id;
+    AppSettingsResult_Release(&result);
+    for (index = 0; index < 2; ++index) {
+        if (AppSettingsStore_DeleteVisit(store, delete_id, 71, 92, &request) != APP_SETTINGS_OK ||
+                app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+                result.result != APP_SETTINGS_OK || result.operation != APP_VISITS_DELETE ||
+                result.tab_id != 71 || result.generation != 92 ||
+                !result.state_valid || result.state.transaction_active) goto done;
+    }
+    if (app_settings_debug_close(&store) != APP_SETTINGS_OK ||
+            AppSettingsStore_Create(module_path, database_path, &store) != APP_SETTINGS_OK ||
+            !app_settings_debug_ready(store, APP_SETTINGS_START_WELCOME) ||
+            AppSettingsStore_ReadVisits(store, 0, 71, 92, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK || result.visits == NULL ||
+            result.visits->count != 16 || result.visits->has_more ||
+            result.visits->entries[0].id == delete_id ||
+            result.visits->entries[0].visited_utc != 1700000015) goto done;
+    AppSettingsResult_Release(&result);
+    AppDebug_Log("positron visit-delete-storage selftest OK single=1 missing=idempotent invalid=rejected reopen=exact\r\n");
     if (AppSettingsStore_ClearVisits(store, 71, 92, &request) != APP_SETTINGS_OK ||
             app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
             result.result != APP_SETTINGS_OK ||

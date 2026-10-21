@@ -94,6 +94,9 @@ try {
                 $body=Get-Content $log -Raw -Encoding UTF8
                 if ($body -match 'downloads-fixture FAIL|settings-fixture FAIL|selftest FAILED') { throw ('Fixture failed: '+$mode) }
                 if (([regex]::Matches($body,$pattern)).Count -eq 1 -and $body -match ('debug-session pid='+$appPid+'\b')) {
+                    if ($mode -eq 'storage' -and $body -notmatch 'visit-delete-storage selftest OK single=1 missing=idempotent invalid=rejected reopen=exact') {
+                        throw 'Missing persistent single-visit deletion regression.'
+                    }
                     if ($mode -eq 'create' -and ($body -notmatch 'download-prepare selftest OK stage=5' -or
                             $body -notmatch 'download-match selftest OK changed=refused received=0 published=0')) {
                         throw 'Missing application preflight or final-header regression.'
@@ -107,6 +110,9 @@ try {
                     if ($mode -eq 'ui' -and ($body -notmatch 'download-record-ui selftest OK retry=fresh_probe cancel=no_task delete=committed history=single' -or
                             $body -notmatch 'download-record-focus selftest OK terminal_rows=16 actions=32 total=46')) {
                         throw 'Missing record actions or full-page focus regression.'
+                    }
+                    if ($mode -eq 'ui' -and $body -notmatch 'visit-delete-ui selftest OK cancel=retained pointer=committed history=single') {
+                        throw 'Missing visit deletion through the real pointer route.'
                     }
                     if ($mode -eq 'ui' -and ([regex]::Matches($body,
                             '(?m)^positron pid='+$appPid+' tick=\d+ positron record-fields selftest OK dpi-index=3 width-index=3 field=8\r?$')).Count -ne 1) {
@@ -129,7 +135,7 @@ try {
         if (!$complete) { throw ('Missing completion: '+$mode) }
         # The fixture has returned only after normal HTTP/thread/DB drainage.
         Wait-DownloadExit $mode $appPid
-        if ($mode -in @('create','reopen')) {
+        if ($mode -in @('create','reopen','ui')) {
             if (![PositronDeviceRapi]::TryCopyFileFromDevice(($remote+'\positron.db'),(Join-Path $evidence ($mode+'.db')))) { throw 'Missing closed database.' }
         }
         $checks.Add($mode+'=PASS pid='+$appPid)

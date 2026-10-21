@@ -57,6 +57,12 @@ count=0）；完整日志无 dump，根因未定，不直接归因为缺字体�
 持久 GET 记录最多 500 条/每页 16 条，读取按 tab/请求/generation 隔离，确认清除全局失效
 缓存。存储、真实导航与固定右菜单已获设备/用户验收；历史操作只在页内，不删用户文件。
 稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)。
+逐条删除复用共享worker/参数绑定SQL，COMMIT后全标签失效，不影响同URL的其他记录或导航栈。
+`tmp/device-runs/20261021-193706-app-downloads-name-review/` 五进程PASS，存储验证正ID/缺失幂等/
+非法拒绝/闭库重开；UI经滚动WM点按验证取消保留、确认提交与history单条。双语页面42焦点及原断行门通过，
+固定48容量不变；真实确认框与跨标签视觉待人工。Debug/Release/CAB、C89、离线16项SQL/源码门通过。
+同包manual-review-final PASS：10/10哈希/用户DB精确恢复/前台/crash通过，PID1454845918停在历史页。
+首次恢复因UI自增序号变化被拒，完整schema/业务表只读对照相同后才按精确备份哈希恢复；失败证据保留。
 
 截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分别取证。Core 提供选择性紧急断行，
 EXE 不改写文字或隐藏横轴；[请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md) 已落实。
@@ -98,25 +104,16 @@ NULL默认后缀，应用不限制/自动补全后缀，无bin猜测；系统Nam
 重下复用原URL但重新Probe/选新路径，旧记录/文件不变；COMMIT后全局失效缓存，不依赖发起页存活。
 仅EXE/私有store接线，不改DLL/ABI/v4表；固定48焦点容纳16行32动作和14页面链接。
 
-当前诊断包 `tmp/device-runs/20261021-192758-app-downloads-name-review/` 五进程PASS：
-create/reopen/storage/services/ui、2MiB中文文件SHA256、偏好/历史保留、正常退出零引用、哈希/crash通过。
-UI现滚动后经WM点按触发重下，保留新预检/重复拒绝/保存取消无任务、单删ACK重读、活动/非法ID保护、
-文件保留、46焦点和多DPI断言；Debug确认/保存替身不等于人工GUI。两配置/CAB/C89/Release诊断排除通过。
-先行包及失败证据见Git；Toolhelp等待仍须完整holders=0 unavailable=0，固定48焦点/20秒交互预算不变。
+先行重下/单删五进程门及失败证据见Git；本轮相邻门保留新预检/取消无任务、活动/非法ID保护、
+文件保留、46焦点和多DPI断言。Debug确认/保存替身不等于GUI；Toolhelp仍须完整零引用，容量/预算不变。
 
 用户已验证单端点HTTPS图片保存。系统Name隐藏后缀证据在
 `tmp/device-runs/20261013-140646-app-downloads-native-probe/native-picker/native.log`；
 完整file.arbitrarysuffix显示file，所有文件/NULL filter均隐藏。OFN_PROPERTY探针整体FAIL。
 用户暂缓替代，不恢复默认类型/自动补后缀/CE不支持hook，临时探针已撤回。
-用户确认单条删除成功，但报告重新下载点按无反应，根因未定，不能宣称已修复。
-最新闭库在 `tmp/device-runs/20261021-download-retry-user-data/`，仅剩真实记录16；不能恢复旧库复活已删记录。
-旧人工日志只能确认删除提交。三组诊断均通过；真实记录复制在
-`tmp/device-runs/20261021-192233-app-downloads-retry-real-probe/` 返回HTTP200并进入保存续接，
-Debug取消无任务，不是人工验收；用户专用探针已撤回。
-保留正式UI夹具的滚动点按覆盖，并补Debug抬起tap/pan、链接命中及命令/同步/Probe日志；
-Release排除，不改变生产重下语义，不据此归因于输入同步或DLL。
-同包manual-review PASS：10/10二进制哈希、最新用户DB精确复制、可见前台/crash通过；
-PID3603669138停在downloads待真实点按。自建测试库已核对备份后替换，不删用户下载文件。
+用户已确认删除与重新下载均通过，PID3603669138正常退出；不再作为未解阻塞。
+最新闭库/日志在 `tmp/device-runs/20261021-visit-delete-user-data/`；手动重下日志已进入Probe，
+不能恢复旧库复活已删记录。Debug点按/分段日志保留，Release排除；用户专用探针已撤回。
 旧输入/构建/源码模式失败保留于Git，不追认为通过；触摸/SIP/旋转/文件故障门保持。
 
 ### EXE 多标签自动门通过，人工入口已更新
@@ -500,7 +497,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
 保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
 已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
-唯一应用下一步是定位手动重新下载无反应，解决后才推进历史搜索/逐条删除。
+下载重下已获人工通过，历史单删通过自动门；下一应用候选为有界历史搜索，先完成人工单删确认/取消。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 本轮只接入EXE下载记录操作；Media外带avcC证据保持，未改公共DLL/打包工程。
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。

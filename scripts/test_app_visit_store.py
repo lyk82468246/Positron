@@ -37,6 +37,7 @@ ADD = c_string("g_visits_add_sql")
 PRUNE = c_string("g_visits_prune_sql")
 READ = c_string("g_visits_read_sql")
 CLEAR = c_string("g_visits_clear_sql")
+DELETE = c_string("g_visits_delete_sql")
 
 
 def apply_migration_model(db, current, target, script):
@@ -197,6 +198,26 @@ class VisitSqlTests(unittest.TestCase):
             self.db.execute(CLEAR)
         self.assertEqual(len(self.db.execute(READ, (0,)).fetchall()), 3)
 
+    def test_single_delete_bound_id_rollback_and_idempotence(self):
+        for index in range(3):
+            add_visit(self.db, "https://example.com/same", "title", index)
+        self.db.execute(DELETE, (2,))
+        self.db.rollback()
+        self.assertEqual([r[0] for r in self.db.execute(READ, (0,))], [3, 2, 1])
+        with self.db:
+            self.db.execute(DELETE, ("2 OR 1=1",))
+        self.assertEqual(len(self.db.execute(READ, (0,)).fetchall()), 3)
+        with self.db:
+            self.db.execute(DELETE, (2,))
+            self.db.execute(DELETE, (2,))
+        self.assertEqual([r[0] for r in self.db.execute(READ, (0,))], [3, 1])
+        self.assertEqual(self.db.execute(SETTINGS_READ).fetchone(), (1, "positron://newtab"))
+        self.db.executescript("CREATE TRIGGER fail_delete BEFORE DELETE ON app_visits "
+                             "BEGIN SELECT RAISE(ABORT,'delete failure'); END;")
+        with self.assertRaises(sqlite3.IntegrityError), self.db:
+            self.db.execute(DELETE, (3,))
+        self.assertEqual([r[0] for r in self.db.execute(READ, (0,))], [3, 1])
+
     def test_migration_failure_rolls_back_new_tables(self):
         with closing(sqlite3.connect(":memory:")) as db:
             with self.assertRaises(sqlite3.IntegrityError):
@@ -257,7 +278,9 @@ class SourceContractTests(unittest.TestCase):
 
     def test_single_public_migration_target_no_private_metadata(self):
         self.assertEqual(SOURCE.count("api->migration(db,"), 1)
-        self.assertIn("api->migration(db, 2, script)", SOURCE)
+        # The SQL model above isolates the original v2 visit schema; the
+        # production worker now migrates all shared application tables to v4.
+        self.assertIn("api->migration(db, 4, script)", SOURCE)
         self.assertNotRegex(SOURCE, r'"[^"\n]*__(?:pdb|sqlite)')
         self.assertNotIn("sqlite3_", SOURCE)
         self.assertIn('TEXT("PDb_BindInt64")', SOURCE)

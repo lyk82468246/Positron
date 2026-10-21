@@ -195,6 +195,7 @@ static DWORD g_settings_bootstrap_started;
 static unsigned long g_settings_page_sequence;
 static int g_visits_enabled;
 static int g_visits_redrawing;
+static int g_visits_confirm_open;
 #ifdef _DEBUG
 static int g_settings_live_mode;
 static int g_settings_live_phase;
@@ -203,6 +204,8 @@ static DWORD g_settings_live_started;
 static AppLanguage g_settings_live_initial_language;
 static int g_downloads_ui_mode;
 static int g_downloads_ui_phase;
+static __int64 g_visits_ui_delete_id;
+static int g_visits_ui_count;
 static DWORD g_downloads_ui_started;
 static char g_downloads_ui_url[96];
 static int g_downloads_ui_ticks;
@@ -3414,7 +3417,7 @@ static void app_visits_request(__int64 before_id, int clear)
 
 static void app_visits_redraw(HWND hwnd)
 {
-    if (g_tabs_closing || g_tab->closing ||
+    if (g_visits_confirm_open || g_tabs_closing || g_tab->closing ||
             g_page_kind != APP_I18N_PAGE_HISTORY || g_navigation_request != NULL)
         return;
     g_tab->visits_redraw_pending = 0;
@@ -3429,10 +3432,10 @@ static void app_visits_result(HWND hwnd, AppSettingsResult *result)
     int slot;
 
     if (result->operation != APP_VISITS_LOAD &&
-            result->operation != APP_VISITS_CLEAR) return;
+            result->operation != APP_VISITS_CLEAR && result->operation != APP_VISITS_DELETE) return;
     /* A committed clear survives the requesting page/tab. Invalidate every
      * cached read, including completions already queued before the clear. */
-    if (result->operation == APP_VISITS_CLEAR &&
+    if ((result->operation == APP_VISITS_CLEAR || result->operation == APP_VISITS_DELETE) &&
             result->result == APP_SETTINGS_OK && !g_tabs_closing) {
         for (slot = 0; slot < APP_TAB_MAX; ++slot) {
             if (!g_tabs[slot].used || g_tabs[slot].closing) continue;
@@ -3462,7 +3465,8 @@ static void app_visits_result(HWND hwnd, AppSettingsResult *result)
             owner->visits_request_id != result->request_id ||
             owner->visits_generation != result->generation) return;
     owner->visits_request_id = 0;
-    if (result->result == APP_SETTINGS_OK && result->operation == APP_VISITS_CLEAR) {
+    if (result->result == APP_SETTINGS_OK &&
+            (result->operation == APP_VISITS_CLEAR || result->operation == APP_VISITS_DELETE)) {
         free(owner->visits);
         owner->visits = NULL;
         owner->visits_status = 2;
@@ -3477,6 +3481,60 @@ static void app_visits_result(HWND hwnd, AppSettingsResult *result)
     } else owner->visits_status = 3;
     owner->visits_redraw_pending = 1;
     if (owner == g_tab) app_visits_redraw(hwnd);
+}
+
+/* Only a literal action from the current trusted list can select a row.
+ * Recheck page identity after the modal confirmation; never retain a row pointer. */
+static int app_visits_delete_command(HWND hwnd, const char *url)
+{
+    char action[64];
+    __int64 id;
+    HANDLE document;
+    unsigned long tab_id;
+    unsigned long generation;
+    int i;
+    int chosen;
+    int rc;
+
+    if (strncmp(url, "#app-visits-delete-", 19)) return 0;
+    if (g_visits_confirm_open || g_tabs_closing || g_tab->closing ||
+            !g_visits_enabled || g_page_kind != APP_I18N_PAGE_HISTORY ||
+            g_navigation_request != NULL || g_tab->visits_request_id ||
+            g_tab->visits_redraw_pending || g_tab->visits_status != 2 ||
+            g_tab->visits == NULL) return 1;
+    id = 0;
+    for (i = 0; i < g_tab->visits->count && i < APP_VISITS_PAGE_MAX; ++i) {
+        _snprintf(action, sizeof(action) - 1, "#app-visits-delete-%I64d",
+                g_tab->visits->entries[i].id);
+        action[sizeof(action) - 1] = 0;
+        if (!strcmp(url, action)) { id = g_tab->visits->entries[i].id; break; }
+    }
+    if (id <= 0 || g_tab->visits_generation == ~0UL) return 1;
+    document = g_document;
+    tab_id = g_app.tab_id;
+    generation = g_tab->visits_generation;
+    g_visits_confirm_open = 1;
+#ifdef _DEBUG
+    if (g_downloads_ui_mode && g_downloads_ui_phase == 10) chosen = IDNO;
+    else if (g_downloads_ui_mode && g_downloads_ui_phase == 11) chosen = IDYES;
+    else
+#endif
+    chosen = MessageBoxW(hwnd, AppI18n_CurrentLanguage() == APP_LANGUAGE_ZH_CN ?
+            L"\x5220\x9664\x8fd9\x6761\x8bbf\x95ee\x8bb0\x5f55\xff1f" :
+            L"Delete this visit record?", L"Positron", MB_YESNO | MB_ICONQUESTION);
+    g_visits_confirm_open = 0;
+    if (chosen != IDYES || g_tabs_closing || g_app.tab_id != tab_id ||
+            g_document != document || g_page_kind != APP_I18N_PAGE_HISTORY ||
+            g_navigation_request != NULL || g_tab->visits_request_id ||
+            g_tab->visits_generation != generation) return 1;
+    ++g_tab->visits_generation;
+    rc = AppSettingsStore_DeleteVisit(g_settings_store, id, tab_id,
+            g_tab->visits_generation, &g_tab->visits_request_id);
+    if (rc != APP_SETTINGS_OK) {
+        g_tab->visits_status = 3;
+        g_tab->visits_redraw_pending = 1;
+    }
+    return 1;
 }
 
 static void app_visits_record(void)
@@ -4281,6 +4339,43 @@ static void app_downloads_ui_check(HWND hwnd)
     memset(&format, 0, sizeof(format));
     memset(&font_metrics, 0, sizeof(font_metrics));
     if (GetTickCount() - g_downloads_ui_started > 20000UL) goto failed;
+    if (g_downloads_ui_phase >= 10 && g_downloads_ui_phase <= 12) {
+        check = 30;
+        if (g_page_kind != APP_I18N_PAGE_HISTORY || g_tab->visits_request_id ||
+                g_tab->visits_redraw_pending || g_tab->visits_status != 2) return;
+        if (g_script != NULL || PBrowser_HistoryCount(g_history) != 1 ||
+                g_tab->visits == NULL) goto failed;
+        if (g_downloads_ui_phase == 12) {
+            int index;
+            for (index = 0; index < g_tab->visits->count; ++index)
+                if (g_tab->visits->entries[index].id == g_visits_ui_delete_id) goto failed;
+            if (g_visits_ui_count < APP_VISITS_PAGE_MAX &&
+                    g_tab->visits->count != g_visits_ui_count - 1) goto failed;
+            AppDebug_Log("visit-delete-ui selftest OK cancel=retained pointer=committed history=single\r\n");
+            AppDebug_Log("downloads-ui selftest OK input=font authority=document history=single\r\n");
+            g_downloads_ui_phase = 99;
+            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            return;
+        }
+        if (!g_tab->visits->count) goto failed;
+        g_visits_ui_count = g_tab->visits->count;
+        g_visits_ui_delete_id = g_tab->visits->entries[0].id;
+        if (PCore_LinkInfoById(g_document, "visit-delete-0", &link_x, &link_y,
+                &link_w, &link_h, link_url, sizeof(link_url)) != 0) goto failed;
+        app_scroll_by(g_page_window, -g_scroll_x, link_y - g_scroll_y - g_page_height / 2);
+        link_x += link_w / 2 - g_scroll_x;
+        link_y += link_h / 2 - g_scroll_y;
+        if (link_x < 0 || link_x >= g_page_width || link_y < 0 || link_y >= g_page_height) goto failed;
+        SendMessage(g_page_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(link_x, link_y));
+        SendMessage(g_page_window, WM_LBUTTONUP, 0, MAKELPARAM(link_x, link_y));
+        if (g_tab->visits_request_id || g_tab->visits->count != g_visits_ui_count) goto failed;
+        g_downloads_ui_phase = 11;
+        SendMessage(g_page_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(link_x, link_y));
+        SendMessage(g_page_window, WM_LBUTTONUP, 0, MAKELPARAM(link_x, link_y));
+        if (!g_tab->visits_request_id) goto failed;
+        g_downloads_ui_phase = 12;
+        return;
+    }
     if (g_downloads_ui_phase == 1 &&
             AppDownloadPrepare_State(g_tab->download_prepare) == APP_PREPARE_CHECKING) {
         ++g_downloads_ui_ticks;
@@ -4326,9 +4421,14 @@ static void app_downloads_ui_check(HWND hwnd)
         if (g_tab->downloads == NULL || g_tab->downloads->count != 0 ||
                 AppDownloads_Snapshot(g_downloads, g_download_preview) != 0) goto failed;
         AppDebug_Log("download-record-ui selftest OK retry=fresh_probe cancel=no_task delete=committed history=single\r\n");
-        AppDebug_Log("downloads-ui selftest OK input=font authority=document history=single\r\n");
-        g_downloads_ui_phase = 99;
-        PostMessage(hwnd, WM_CLOSE, 0, 0);
+        {
+            unsigned long request;
+            if (AppSettingsStore_AddVisit(g_settings_store, "https://example.com/visit-delete-ui",
+                    "Isolated delete fixture", 1700000000, &request) != APP_SETTINGS_OK) goto failed;
+        }
+        g_downloads_ui_phase = 10;
+        if (!app_load_page_from(hwnd, "positron://history", APP_HISTORY_REPLACE, -1,
+                APP_NAV_SOURCE_MENU)) goto failed;
         return;
     }
     if (g_downloads_ui_phase == 3) {
@@ -6046,6 +6146,7 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         UINT command;
 
         command = 0;
+        if (app_visits_delete_command(hwnd, url)) return 1;
         if (strcmp(url, "#app-visits-latest") == 0)
             command = APP_CMD_VISITS_LATEST;
         else if (strcmp(url, "#app-visits-older") == 0)

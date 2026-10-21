@@ -425,7 +425,7 @@
 - EXE 同文档/滚动恢复/identity 自动门已通过；真实 HTTP Back/Forward/刷新、焦点/旋转
   待人工。百分号片段无公共 decoder，保持位置；HTTP 初始片段保留尚未接入。
   不在 EXE 复制 decoder/redirect 规则。
-- 访问记录限 GET、500 条/页 16 条，无 POST/state-only/搜索/逐条删除/栈恢复，失败不回滚。
+- 访问记录限 GET、500 条/页 16 条，无 POST/state-only/搜索/栈恢复；单删确认/跨标签待人工。
   设置 URL <1024 bytes，语言重启、JS 只影响新候选；读取超时两秒用系统语言/newtab/JS
   关闭，迟到不重定向。待验收项见 [设计](../positron_app/APPLICATION_DATA_PLAN.md)。
 - Browser history 只保存有界 page-level 双轴位置，宿主负责 clamp/DPI；manual 跳过自动恢复，

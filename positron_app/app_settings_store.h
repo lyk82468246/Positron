@@ -67,7 +67,8 @@ enum {
     APP_DOWNLOADS_WRITE = 6,
     APP_DOWNLOADS_LOAD = 7,
     APP_DOWNLOADS_CLEAR = 8,
-    APP_DOWNLOADS_DELETE = 9
+    APP_DOWNLOADS_DELETE = 9,
+    APP_VISITS_DELETE = 10
 };
 
 /* Pure-data result, copied to the UI owner. No DB/statement/page handles.
@@ -135,6 +136,11 @@ int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
         unsigned long *out_request_id);
 int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
         unsigned long generation, unsigned long *out_request_id);
+/* Delete one stable positive ID. Missing IDs are idempotent no-ops.
+ * Does not affect Browser navigation stacks or other application tables. */
+int AppSettingsStore_DeleteVisit(AppSettingsStore *store, __int64 id,
+        unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id);
 /* id=0 inserts a queued record and returns its generated ID after COMMIT.
  * Updates preserve immutable URL/path/time. All data is copied on admission.
  * Recovery marks unfinished records INTERRUPTED, never touches their files. */

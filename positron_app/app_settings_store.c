@@ -112,6 +112,7 @@ static const char g_visits_read_sql[] =
     "SELECT id,visited_utc,url,title FROM app_visits "
     "WHERE (?1=0 OR id<?1) ORDER BY id DESC LIMIT 17";
 static const char g_visits_clear_sql[] = "DELETE FROM app_visits";
+static const char g_visits_delete_sql[] = "DELETE FROM app_visits WHERE id=?1";
 
 static const char g_downloads_schema[] =
     "CREATE TABLE app_downloads(id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -609,6 +610,12 @@ static void app_visits_write(AppSettingsDbApi *api, PDbHandle db,
         app_settings_finish_statement(api, db, statement, result);
         if (result->result == APP_SETTINGS_OK)
             app_visits_execute(api, db, g_visits_prune_sql, result);
+    } else if (job->operation == APP_VISITS_DELETE) {
+        rc = api->prepare(db, g_visits_delete_sql, &statement);
+        if (rc == PDB_OK) rc = api->bind_int(statement, 1, job->before_id);
+        if (rc == PDB_OK) rc = api->step(statement);
+        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, statement, result);
     } else app_visits_execute(api, db, g_visits_clear_sql, result);
     if (result->result == APP_SETTINGS_OK) {
         rc = api->commit(db);
@@ -938,7 +945,8 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
         } else {
             if (job->operation == APP_SETTINGS_SAVE)
                 app_settings_save(&api, db, job, &result);
-            else if (job->operation == APP_VISITS_ADD || job->operation == APP_VISITS_CLEAR)
+            else if (job->operation == APP_VISITS_ADD || job->operation == APP_VISITS_CLEAR ||
+                    job->operation == APP_VISITS_DELETE)
                 app_visits_write(&api, db, job, &result);
             else if (job->operation == APP_VISITS_LOAD)
                 app_visits_read(&api, db, job, &result);
@@ -1108,6 +1116,14 @@ int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
 {
     return app_settings_enqueue(store, APP_VISITS_CLEAR, APP_SETTINGS_START_NEWTAB,
             tab_id, generation, NULL, NULL, 0, 0, NULL, NULL, out_request_id);
+}
+
+int AppSettingsStore_DeleteVisit(AppSettingsStore *store, __int64 id,
+        unsigned long tab_id, unsigned long generation, unsigned long *out_request_id)
+{
+    if (id <= 0) return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_VISITS_DELETE, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, NULL, 0, id, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_WriteDownload(AppSettingsStore *store,
