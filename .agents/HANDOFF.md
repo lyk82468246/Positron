@@ -98,24 +98,25 @@ NULL默认后缀，应用不限制/自动补全后缀，无bin猜测；系统Nam
 重下复用原URL但重新Probe/选新路径，旧记录/文件不变；COMMIT后全局失效缓存，不依赖发起页存活。
 仅EXE/私有store接线，不改DLL/ABI/v4表；固定48焦点容纳16行32动作和14页面链接。
 
-`tmp/device-runs/20261021-184539-app-downloads-name-review/app-downloads/` 五进程PASS：
-create/reopen/storage/services/ui、2MiB中文文件精确SHA256、共享偏好/历史保留、正常退出至零引用、
-10/10哈希/crash通过。新增终态单删/活动保护/非法ID拒绝/重复删除、实际文件保留、重下新预检/
-重复拒绝/保存取消无任务、删除ACK后重读与history单条，以及46焦点和原多DPI字段门。
-确认/保存框仅显式Debug夹具替代，不是人工GUI；实际跨标签/触摸/旋转仍待门。
-正式串行Debug/Release/CAB/C89/审计/Release诊断排除通过；门使用真实Python而非WindowsApps占位符。
-同包manual-review PASS：10/10哈希、原用户DB精确复制、前台页面/crash通过，PID920248790留在downloads。
-自建测试DB核对/备份后换回用户库，不覆盖未知库、不删用户文件；未再次编译导致混包。
-先行183036漏计七个目录链接；183551的Toolhelp不完整/不可用、错误日志路径与UI夹具启动超时均
-保留为FAIL。固定48容量不变；20秒交互门排除独立启动语料检查，外层总启动门保持；退出审计
-限时重试仍须完整holders=0 unavailable=0。Release CAB抢读失败日志保留，正式重试通过。
+当前诊断包 `tmp/device-runs/20261021-192758-app-downloads-name-review/` 五进程PASS：
+create/reopen/storage/services/ui、2MiB中文文件SHA256、偏好/历史保留、正常退出零引用、哈希/crash通过。
+UI现滚动后经WM点按触发重下，保留新预检/重复拒绝/保存取消无任务、单删ACK重读、活动/非法ID保护、
+文件保留、46焦点和多DPI断言；Debug确认/保存替身不等于人工GUI。两配置/CAB/C89/Release诊断排除通过。
+先行包及失败证据见Git；Toolhelp等待仍须完整holders=0 unavailable=0，固定48焦点/20秒交互预算不变。
 
-用户已验证单端点HTTPS图片保存。旧截图Name无后缀，取消默认类型亦未修复；真实控件证据
-`tmp/device-runs/20261013-140646-app-downloads-native-probe/native-picker/native.log` 中，
-完整file.arbitrarysuffix在Shell框Name为file，所有文件/NULL filter均隐藏，README原样。
-OFN_PROPERTY未取框、探针整体FAIL，不能当GUI通过；先行timer/同进程探针无数据亦保留。
+用户已验证单端点HTTPS图片保存。系统Name隐藏后缀证据在
+`tmp/device-runs/20261013-140646-app-downloads-native-probe/native-picker/native.log`；
+完整file.arbitrarysuffix显示file，所有文件/NULL filter均隐藏。OFN_PROPERTY探针整体FAIL。
 用户暂缓替代，不恢复默认类型/自动补后缀/CE不支持hook，临时探针已撤回。
-本轮用户闭库/日志在 `tmp/device-runs/20261021-download-records-user-data/`；不删DB/下载文件。
+用户确认单条删除成功，但报告重新下载点按无反应，根因未定，不能宣称已修复。
+最新闭库在 `tmp/device-runs/20261021-download-retry-user-data/`，仅剩真实记录16；不能恢复旧库复活已删记录。
+旧人工日志只能确认删除提交。三组诊断均通过；真实记录复制在
+`tmp/device-runs/20261021-192233-app-downloads-retry-real-probe/` 返回HTTP200并进入保存续接，
+Debug取消无任务，不是人工验收；用户专用探针已撤回。
+保留正式UI夹具的滚动点按覆盖，并补Debug抬起tap/pan、链接命中及命令/同步/Probe日志；
+Release排除，不改变生产重下语义，不据此归因于输入同步或DLL。
+同包manual-review PASS：10/10二进制哈希、最新用户DB精确复制、可见前台/crash通过；
+PID3603669138停在downloads待真实点按。自建测试库已核对备份后替换，不删用户下载文件。
 旧输入/构建/源码模式失败保留于Git，不追认为通过；触摸/SIP/旋转/文件故障门保持。
 
 ### EXE 多标签自动门通过，人工入口已更新
@@ -498,7 +499,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
 保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
-已复核限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；下一应用候选为历史搜索/逐条删除。
+已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
+唯一应用下一步是定位手动重新下载无反应，解决后才推进历史搜索/逐条删除。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 本轮只接入EXE下载记录操作；Media外带avcC证据保持，未改公共DLL/打包工程。
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。

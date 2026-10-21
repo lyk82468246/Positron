@@ -3944,6 +3944,22 @@ static void app_downloads_result(const AppSettingsResult *result)
 
 /* Match only a terminal record in the current typed snapshot. Never interpret
  * a client supplied SQL ID/index, filesystem path or URL command as authority. */
+#ifdef _DEBUG
+static void app_downloads_record_debug(const char *stage, __int64 id, int result)
+{
+    char message[256];
+    _snprintf(message, sizeof(message) - 1,
+            "download-record stage=%s id=%I64d result=%d scroll=%d,%d prepare=%d pending=%d redraw=%d\r\n",
+            stage, id, result, g_scroll_x, g_scroll_y,
+            AppDownloadPrepare_State(g_tab->download_prepare),
+            g_tab->download_save_pending, g_tab->downloads_redraw_pending);
+    message[sizeof(message) - 1] = 0;
+    AppDebug_Log(message);
+}
+#define APP_DOWNLOAD_RECORD_LOG(stage, id, result) app_downloads_record_debug(stage, id, result)
+#else
+#define APP_DOWNLOAD_RECORD_LOG(stage, id, result) ((void) 0)
+#endif
 static int app_downloads_record_command(HWND hwnd, const char *url)
 {
     const AppDownloadRecord *record;
@@ -3961,6 +3977,7 @@ static int app_downloads_record_command(HWND hwnd, const char *url)
 
     remove = !strncmp(url, "#app-download-delete-", 21);
     if (!remove && strncmp(url, "#app-download-retry-", 20)) return 0;
+    APP_DOWNLOAD_RECORD_LOG("dispatch", 0, 0);
     if (g_download_picker_open || g_tab->download_save_pending ||
             AppDownloadPrepare_State(g_tab->download_prepare) == APP_PREPARE_CHECKING ||
             g_tab->downloads_status != 2 || g_tab->downloads == NULL ||
@@ -3981,14 +3998,19 @@ static int app_downloads_record_command(HWND hwnd, const char *url)
                 (AppUrlRouter_ClassifyScheme(record->url) != APP_URL_SCHEME_HTTP &&
                 AppUrlRouter_ClassifyScheme(record->url) != APP_URL_SCHEME_HTTPS)) return 1;
         strcpy(source, record->url);
-        if (PCore_NodeSetValueById(g_document, "download-url", source) != 0 ||
-                AppControls_ReconcileAfterFormReset(g_controls, g_document,
-                g_script, g_scroll_x, g_scroll_y) != 0) return 1;
+        rc = PCore_NodeSetValueById(g_document, "download-url", source);
+        APP_DOWNLOAD_RECORD_LOG("set-url", id, rc);
+        if (rc != 0) return 1;
+        rc = AppControls_ReconcileAfterFormReset(g_controls, g_document,
+                g_script, g_scroll_x, g_scroll_y);
+        APP_DOWNLOAD_RECORD_LOG("sync-input", id, rc);
+        if (rc != 0) return 1;
         g_tab->download_save_pending = 0;
         AppDownloadPrepare_Cancel(g_tab->download_prepare);
         AppDownloadPrepare_ChangeUrl(g_tab->download_prepare, source);
         app_copy_text(g_tab->download_url, sizeof(g_tab->download_url), source);
         rc = AppDownloadPrepare_Begin(g_tab->download_prepare);
+        APP_DOWNLOAD_RECORD_LOG("probe-begin", id, rc);
         if (rc == 0) {
             g_tab->download_save_generation = AppDownloadPrepare_Generation(g_tab->download_prepare);
             g_tab->download_save_pending = 1;
@@ -4247,6 +4269,11 @@ static void app_downloads_ui_check(HWND hwnd)
     int bytes;
     int ok;
     int check;
+    int link_x;
+    int link_y;
+    int link_w;
+    int link_h;
+    char link_url[64];
 
     if (!g_downloads_ui_mode || g_downloads_ui_phase == 99) return;
     check = 0;
@@ -4264,6 +4291,23 @@ static void app_downloads_ui_check(HWND hwnd)
     if (g_page_kind != APP_I18N_PAGE_DOWNLOADS || g_tab->downloads_status != 2 ||
             g_tab->downloads_request_id || g_tab->downloads_redraw_pending) return;
     if (g_script != NULL || PBrowser_HistoryCount(g_history) != 1) goto failed;
+    if (g_downloads_ui_phase == 8) {
+        check = 20;
+        if (PCore_LinkInfoById(g_document, "download-retry-0", &link_x, &link_y,
+                &link_w, &link_h, link_url, sizeof(link_url)) != 0 ||
+                strcmp(link_url, "#app-download-retry-88")) goto failed;
+        app_scroll_by(g_page_window, -g_scroll_x, link_y - g_scroll_y - g_page_height / 2);
+        link_x += link_w / 2 - g_scroll_x;
+        link_y += link_h / 2 - g_scroll_y;
+        if (link_x < 0 || link_x >= g_page_width || link_y < 0 || link_y >= g_page_height) goto failed;
+        SendMessage(g_page_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(link_x, link_y));
+        SendMessage(g_page_window, WM_LBUTTONUP, 0, MAKELPARAM(link_x, link_y));
+        check = 21;
+        if (AppDownloadPrepare_State(g_tab->download_prepare) != APP_PREPARE_CHECKING ||
+                g_tab->download_save_pending != 1) goto failed;
+        g_downloads_ui_phase = 5;
+        return;
+    }
     if (g_downloads_ui_phase == 5) {
         if (g_downloads_ui_pickers < 4) return;
         if (g_downloads_ui_pickers != 4 || g_tab->download_save_pending ||
@@ -4303,16 +4347,11 @@ static void app_downloads_ui_check(HWND hwnd)
         g_tab->downloads->entries[0].id = 88;
         g_tab->downloads->entries[0].state = APP_DOWNLOAD_FAILED;
         strcpy(g_tab->downloads->entries[0].url, g_downloads_ui_url);
-        g_downloads_ui_phase = 5;
+        g_downloads_ui_phase = 8;
         (void) app_load_page_from(hwnd, "#app-download-retry-89", APP_HISTORY_NEW, -1,
                 APP_NAV_SOURCE_DOCUMENT);
         if (g_tab->download_save_pending) goto failed;
-        (void) app_load_page_from(hwnd, "#app-download-retry-88", APP_HISTORY_NEW, -1,
-                APP_NAV_SOURCE_DOCUMENT);
-        if (AppDownloadPrepare_State(g_tab->download_prepare) != APP_PREPARE_CHECKING ||
-                g_tab->download_save_pending != 1) goto failed;
-        (void) app_load_page_from(hwnd, "#app-download-retry-88", APP_HISTORY_NEW, -1,
-                APP_NAV_SOURCE_DOCUMENT);
+        g_tab->downloads_redraw_pending = 1;
         return;
     }
     if (g_downloads_ui_phase == 0) {
@@ -7461,6 +7500,16 @@ static void app_page_click(HWND hwnd, int x, int y)
             document_x, document_y, href, sizeof(href),
             link_target, sizeof(link_target), link_rel,
             sizeof(link_rel)) == 0;
+#ifdef _DEBUG
+    if (g_page_kind == APP_I18N_PAGE_DOWNLOADS) {
+        char diagnostic[256];
+        _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                "download-pointer hit=%d doc=%d,%d href=%.160s\r\n",
+                link_found, document_x, document_y, href);
+        diagnostic[sizeof(diagnostic) - 1] = 0;
+        AppDebug_Log(diagnostic);
+    }
+#endif
     if (link_found && g_script != NULL) {
         navigated = 0;
         (void) AppScript_DispatchAnchorClick(g_script, document_x,
@@ -7999,6 +8048,17 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
                     y >= client.top && y < client.bottom;
             tap_x = g_page_pointer.down.x;
             tap_y = g_page_pointer.down.y;
+#ifdef _DEBUG
+            if (g_page_kind == APP_I18N_PAGE_DOWNLOADS) {
+                char diagnostic[192];
+                _snprintf(diagnostic, sizeof(diagnostic) - 1,
+                        "download-pointer up=%d,%d down=%d,%d tap=%d dragging=%d scroll=%d,%d\r\n",
+                        x, y, tap_x, tap_y, tap, g_page_pointer.dragging,
+                        g_scroll_x, g_scroll_y);
+                diagnostic[sizeof(diagnostic) - 1] = 0;
+                AppDebug_Log(diagnostic);
+            }
+#endif
             app_page_pointer_cancel(hwnd);
             if (tap) app_page_click(hwnd, tap_x, tap_y);
             return 0;
