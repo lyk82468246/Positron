@@ -7,7 +7,7 @@
 #include "app_download_prepare.h"
 
 #define APP_INTERNAL_HTML_MAX 131072U
-#define APP_INTERNAL_FOCUS_MAX 32
+#define APP_INTERNAL_FOCUS_MAX 48
 #define APP_INTERNAL_URL_MAX 1024
 #define APP_URL_NEWTAB "positron://newtab"
 

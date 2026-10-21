@@ -66,7 +66,8 @@ enum {
     APP_VISITS_CLEAR = 5,
     APP_DOWNLOADS_WRITE = 6,
     APP_DOWNLOADS_LOAD = 7,
-    APP_DOWNLOADS_CLEAR = 8
+    APP_DOWNLOADS_CLEAR = 8,
+    APP_DOWNLOADS_DELETE = 9
 };
 
 /* Pure-data result, copied to the UI owner. No DB/statement/page handles.
@@ -144,6 +145,11 @@ int AppSettingsStore_ReadDownloads(AppSettingsStore *store, __int64 before_id,
         unsigned long *out_request_id);
 /* Only terminal records. Never deletes downloaded or temporary files. */
 int AppSettingsStore_ClearDownloads(AppSettingsStore *store,
+        unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id);
+/* Stable positive ID; terminal rows only. Missing/active IDs are no-ops.
+ * COMMIT acknowledgement and routing match Clear. Never touches files. */
+int AppSettingsStore_DeleteDownload(AppSettingsStore *store, __int64 id,
         unsigned long tab_id, unsigned long generation,
         unsigned long *out_request_id);
 /* Poll transfers the heap snapshot (successful visits LOAD only). Release

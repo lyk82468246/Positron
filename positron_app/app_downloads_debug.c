@@ -434,6 +434,14 @@ static int dtest_list(const WCHAR *dll)
                 result.result != APP_SETTINGS_OK || result.download == NULL) goto done;
         *record = *result.download;
         AppSettingsResult_Release(&result);
+        if (i == 0) {
+            /* Active rows cannot be removed, even with a direct store call. */
+            if (AppSettingsStore_DeleteDownload(store, record->id, 77, 88, &request) != APP_SETTINGS_OK ||
+                    !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK ||
+                    result.operation != APP_DOWNLOADS_DELETE || result.tab_id != 77 || result.generation != 88)
+                goto done;
+            AppSettingsResult_Release(&result);
+        }
         record->state = APP_DOWNLOAD_FAILED;
         if (AppSettingsStore_WriteDownload(store, record, &request) != APP_SETTINGS_OK ||
                 !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK) goto done;
@@ -447,6 +455,22 @@ static int dtest_list(const WCHAR *dll)
     if (AppSettingsStore_ReadDownloads(store, before, 1, 1, &request) != APP_SETTINGS_OK ||
             !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK ||
             result.downloads == NULL || result.downloads->count != 4 || result.downloads->has_more) goto done;
+    AppSettingsResult_Release(&result);
+    request = 12345;
+    if (AppSettingsStore_DeleteDownload(store, 0, 1, 1, &request) != APP_SETTINGS_INVALID || request != 12345 ||
+            AppSettingsStore_DeleteDownload(store, -1, 1, 1, &request) != APP_SETTINGS_INVALID || request != 12345)
+        goto done;
+    if (AppSettingsStore_DeleteDownload(store, record->id, 1, 1, &request) != APP_SETTINGS_OK ||
+            !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK) goto done;
+    AppSettingsResult_Release(&result);
+    /* Repeated/missing ID is an idempotent no-op, never a whole-list clear. */
+    if (AppSettingsStore_DeleteDownload(store, record->id, 1, 1, &request) != APP_SETTINGS_OK ||
+            !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK) goto done;
+    AppSettingsResult_Release(&result);
+    if (AppSettingsStore_ReadDownloads(store, 0, 1, 1, &request) != APP_SETTINGS_OK ||
+            !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK ||
+            result.downloads == NULL || result.downloads->count != 16 || !result.downloads->has_more ||
+            result.downloads->entries[0].id == record->id) goto done;
     AppSettingsResult_Release(&result);
     if (AppSettingsStore_ClearDownloads(store, 1, 1, &request) != APP_SETTINGS_OK ||
             !dtest_result(store, NULL, request, &result) || result.result != APP_SETTINGS_OK) goto done;
@@ -470,7 +494,10 @@ done:
                 GetTickCount() - start < 15000UL) Sleep(5);
         if (store != NULL) ok = 0;
     }
-    if (ok) AppDebug_Log("downloads-list selftest OK pagination=16/4 settings=retained visits=retained\r\n");
+    if (ok) {
+        AppDebug_Log("download-delete selftest OK terminal=single active=retained missing=idempotent invalid=rejected\r\n");
+        AppDebug_Log("downloads-list selftest OK pagination=16/4 settings=retained visits=retained\r\n");
+    }
     return ok;
 }
 
@@ -541,11 +568,21 @@ int AppDownloads_DebugRun(int reopen)
                 !dtest_result(store, downloads, request, &result) ||
                 result.result != APP_SETTINGS_OK || result.downloads == NULL) goto done;
         memset(counts, 0, sizeof(counts));
-        for (i = 0; i < result.downloads->count; ++i) counts[result.downloads->entries[i].state]++;
+        for (i = 0; i < result.downloads->count; ++i) {
+            counts[result.downloads->entries[i].state]++;
+            if (result.downloads->entries[i].state == APP_DOWNLOAD_COMPLETE)
+                *record = result.downloads->entries[i];
+        }
         if (counts[3] != 1 || counts[4] != 4 || counts[5] != 3 || counts[6] != 1) goto done;
         AppSettingsResult_Release(&result);
         wcscpy(path, executable); wcscat(path, L"race.bin");
         if (!dtest_file(path, 1)) goto done;
+        if (AppSettingsStore_DeleteDownload(store, record->id, 1, 1, &request) != APP_SETTINGS_OK ||
+                !dtest_result(store, downloads, request, &result) || result.result != APP_SETTINGS_OK) goto done;
+        AppSettingsResult_Release(&result);
+        wcscpy(path, executable); wcscat(path, L"large-\x4e2d\x6587.bin");
+        if (!dtest_file(path, 0)) goto done;
+        AppDebug_Log("download-delete-file selftest OK record=removed file=retained\r\n");
         if (AppSettingsStore_ClearDownloads(store, 1, 1, &request) != APP_SETTINGS_OK ||
                 !dtest_result(store, downloads, request, &result) || result.result != APP_SETTINGS_OK) goto done;
         AppSettingsResult_Release(&result);

@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，先解析再确认保存；本轮补齐 MP4 视频外带 avcC 送包前守卫，双配置设备门通过；ABI 1.3、EXE 和下载 schema 不改。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已消费 HTTP 预检/建议名/最终头复核，本轮接入下载记录重下/单删，公共DLL/ABI及v4表不改；Media外带avcC双配置证据保持。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -17,7 +17,7 @@ WinWorld operating-systems 图片尺寸修复已通过双配置自动门及用�
 分支 main；Core 自然高度及应用输入框字体/内边距修正已获用户“基本正常”确认。
 HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件策略与 v4 应用表属于 EXE。Media 独立验证见下方。
 
-内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、32 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
+内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、48 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
 
@@ -94,30 +94,29 @@ CabWiz 正式重试边界见 Git/本地日志。两配置/C89/审计/诊断排�
 NULL默认后缀，应用不限制/自动补全后缀，无bin猜测；系统Name实际隐藏后缀，修正暂缓。
 其余代际、取消、失败、退出、额度/v4/journal/不覆盖合同见应用数据设计，不改DLL或存储。
 
-`tmp/device-runs/20261013-112055-app-downloads-name-final/` 五进程门PASS：预检/续接、代际/取消、
-404/最终头变化零正文、2MiB中文文件精确SHA256、共享数据保留与多DPI字段几何。
-正常退出/零引用、EXE/九DLL哈希10/10/crash、正式两配置/CAB/C89/审计/Release排除通过。
-picker替代只测PNG/ZIP/README初始化参数并模拟取消，不是GUI门；前一隐式包完整UI门未重跑。
+已结束行新增重新下载/确认单条删除，稳定ID匹配当前快照；DB绑定ID并保护活动行，缺失ID幂等。
+重下复用原URL但重新Probe/选新路径，旧记录/文件不变；COMMIT后全局失效缓存，不依赖发起页存活。
+仅EXE/私有store接线，不改DLL/ABI/v4表；固定48焦点容纳16行32动作和14页面链接。
 
-用户HTTPS图片记录16为ai-radar-logo-20260815.png，200/44370字节/完成/错误0/op6ACK。
-截图 `tmp/QQ20261013-111412.png` Name无后缀；普通包
-`tmp/device-runs/20261013-112634-app-downloads-name-review/` 移除默认类型后仍人工失败，
-初始化参数门不能追认为修复；其哈希/原DB复制/启动/crash仍有效，PID920248358已退出。
+`tmp/device-runs/20261021-184539-app-downloads-name-review/app-downloads/` 五进程PASS：
+create/reopen/storage/services/ui、2MiB中文文件精确SHA256、共享偏好/历史保留、正常退出至零引用、
+10/10哈希/crash通过。新增终态单删/活动保护/非法ID拒绝/重复删除、实际文件保留、重下新预检/
+重复拒绝/保存取消无任务、删除ACK后重读与history单条，以及46焦点和原多DPI字段门。
+确认/保存框仅显式Debug夹具替代，不是人工GUI；实际跨标签/触摸/旋转仍待门。
+正式串行Debug/Release/CAB/C89/审计/Release诊断排除通过；门使用真实Python而非WindowsApps占位符。
+同包manual-review PASS：10/10哈希、原用户DB精确复制、前台页面/crash通过，PID920248790留在downloads。
+自建测试DB核对/备份后换回用户库，不覆盖未知库、不删用户文件；未再次编译导致混包。
+先行183036漏计七个目录链接；183551的Toolhelp不完整/不可用、错误日志路径与UI夹具启动超时均
+保留为FAIL。固定48容量不变；20秒交互门排除独立启动语料检查，外层总启动门保持；退出审计
+限时重试仍须完整holders=0 unavailable=0。Release CAB抢读失败日志保留，正式重试通过。
 
-真实控件证据 `tmp/device-runs/20261013-140646-app-downloads-native-probe/native-picker/native.log`：
-传入file.arbitrarysuffix，Name EDIT(id16212)实际为file；所有文件与NULL filter两种均隐藏后缀，
-NULL filter的Type为.arbitrarysuffix，README原样；Shell PID392442446承载，不是EXE线程。
-OFN_PROPERTY未取得框，整体探针FAIL；普通框实际文字仍为直接证据，不是参数/裁剪。
-先行timer/同进程探针无数据由用户取消，最终限定夹具唯一标题正常取消；失败包/日志保留。
-
-用户选择“先记录问题，暂不替换”，完整名显示/自由修改后缀与EXE原生控件替代方案挂起；
-不恢复默认类型、自动补后缀或CE不支持的hook。临时探针源码已全部撤回，正式Debug恢复
-正常构建，未部署新的普通版本。本轮无生产代码/DLL/ABI/schema改动。
-最终闭库/诊断在 `tmp/device-runs/20261013-download-native-final-closed/`，DB与门前SHA256一致；
-审计holders=0 unavailable=0，用户DB/文件未删。
-触摸/SIP/旋转/故障门保持。
-旧字体格式区12<14、过早退出审计、CAB抢读及四项 host 源码模式失败仍由 Git/本地证据保留，
-不追认为通过；输入 natural line-height/EM_GETRECT 检查保持，不加固定高度或偏移。
+用户已验证单端点HTTPS图片保存。旧截图Name无后缀，取消默认类型亦未修复；真实控件证据
+`tmp/device-runs/20261013-140646-app-downloads-native-probe/native-picker/native.log` 中，
+完整file.arbitrarysuffix在Shell框Name为file，所有文件/NULL filter均隐藏，README原样。
+OFN_PROPERTY未取框、探针整体FAIL，不能当GUI通过；先行timer/同进程探针无数据亦保留。
+用户暂缓替代，不恢复默认类型/自动补后缀/CE不支持hook，临时探针已撤回。
+本轮用户闭库/日志在 `tmp/device-runs/20261021-download-records-user-data/`；不删DB/下载文件。
+旧输入/构建/源码模式失败保留于Git，不追认为通过；触摸/SIP/旋转/文件故障门保持。
 
 ### EXE 多标签自动门通过，人工入口已更新
 
@@ -499,9 +498,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
 保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
-已复核限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；下一能力需另行取舍。
+已复核限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；下一应用候选为历史搜索/逐条删除。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-本轮只补齐媒体 MP4 外带 avcC 守卫、相邻回归和中文文档，未启动普通应用版本；
+本轮只接入EXE下载记录操作；Media外带avcC证据保持，未改公共DLL/打包工程。
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与

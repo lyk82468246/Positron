@@ -978,7 +978,21 @@ static void app_internal_downloads(AppHtmlWriter *writer,
                 else app_html_escape(writer, chinese ? " | \344\270\215\345\217\257\347\224\250" : " | Unavailable");
             }
         }
-        app_html_append(writer, "</div></div>");
+        app_html_append(writer, "</div>");
+        if (record->state >= APP_DOWNLOAD_COMPLETE) {
+            _snprintf(detail, sizeof(detail) - 1,
+                    "<p><a id=\"download-retry-%d\" href=\"#app-download-retry-%I64d\">", i, record->id);
+            detail[sizeof(detail) - 1] = 0;
+            app_html_append(writer, detail);
+            app_html_escape(writer, chinese ? "\351\207\215\346\226\260\344\270\213\350\275\275" : "Download again");
+            _snprintf(detail, sizeof(detail) - 1,
+                    "</a> | <a id=\"download-delete-%d\" href=\"#app-download-delete-%I64d\">", i, record->id);
+            detail[sizeof(detail) - 1] = 0;
+            app_html_append(writer, detail);
+            app_html_escape(writer, chinese ? "\345\210\240\351\231\244\350\256\260\345\275\225" : "Delete record");
+            app_html_append(writer, "</a></p>");
+        }
+        app_html_append(writer, "</div>");
     }
 }
 
@@ -1144,6 +1158,17 @@ int AppInternalPages_FocusIds(HANDLE document,
     int count;
 
     count = 0;
+    /* Sixteen rows have two actions plus seven commands and seven directory links (46).
+     * Keep a fixed 48-entry budget shared with the EXE host. */
+    for (history_index = 0; history_index < APP_DOWNLOAD_PAGE_MAX; ++history_index) {
+        for (i = 0; i < 2 && count < APP_INTERNAL_FOCUS_MAX; ++i) {
+            _snprintf(candidate, sizeof(candidate) - 1,
+                    i == 0 ? "download-retry-%d" : "download-delete-%d", history_index);
+            candidate[sizeof(candidate) - 1] = 0;
+            if (PCore_FocusTargetInfoById(document, candidate, &info) == 0 &&
+                    info.kind == PCORE_FOCUS_TARGET_LINK) strcpy(ids[count++], candidate);
+        }
+    }
     for (history_index = 0; history_index < APP_VISITS_PAGE_MAX &&
             count < APP_INTERNAL_FOCUS_MAX; history_index++) {
         _snprintf(candidate, sizeof(candidate) - 1, "visit-%d", history_index);
@@ -1386,6 +1411,7 @@ static int app_internal_records_debug_check(HANDLE stylesheet)
     int result;
     char text[APP_DOWNLOAD_URL_MAX];
     char message[160];
+    char focus_ids[APP_INTERNAL_FOCUS_MAX][128];
 
     result = 1;
     document = NULL;
@@ -1454,6 +1480,24 @@ static int app_internal_records_debug_check(HANDLE stylesheet)
                 goto done;
         }
     }
+    /* Full page: every action remains keyboard reachable, including row 16. */
+    PCore_FreeDocument(document);
+    document = NULL;
+    AppI18n_FreePage(html);
+    html = NULL;
+    for (stage = 2; stage < APP_DOWNLOAD_PAGE_MAX; ++stage)
+        downloads->entries[stage] = downloads->entries[0];
+    for (stage = 0; stage < APP_DOWNLOAD_PAGE_MAX; ++stage) downloads->entries[stage].id = stage + 1;
+    downloads->count = APP_DOWNLOAD_PAGE_MAX;
+    downloads->has_more = 1;
+    PCore_SetDeviceViewport(240, 268, 96);
+    if (AppInternalPages_Build(APP_I18N_PAGE_DOWNLOADS, &data, &html, &length) != 0) goto done;
+    document = PCore_ParseHTML(html, length);
+    if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
+            PCore_LayoutDocument(document, 240, 268) != 0 ||
+            AppInternalPages_FocusIds(document, focus_ids) != 46 ||
+            strcmp(focus_ids[31], "download-delete-15")) goto done;
+    AppDebug_Log("download-record-focus selftest OK terminal_rows=16 actions=32 total=46\r\n");
     result = 0;
 done:
     if (result != 0 && document != NULL) {

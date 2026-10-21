@@ -29,6 +29,14 @@ function Wait-DownloadExit([string]$mode,[uint32]$appPid) {
             [void](Invoke-RemoteModuleAudit ($remote+'\positron_process_cleanup.exe') $auditLog $localLog 10)
             return
         } catch {
+            # Toolhelp can lose a process while it is exiting. This attempt is
+            # not evidence of an empty set: clear the fixed log and retry a fresh helper, and still
+            # allow continuation only after a complete holders=0 unavailable=0.
+            if ($_.Exception.Message -match 'did not produce a complete summary' -or
+                    $_.Exception.Message -match 'module_audit holders=0 unavailable=1') {
+                Start-Sleep -Milliseconds 200
+                continue
+            }
             if ($_.Exception.Message -notmatch 'did not confirm an empty holder set') { throw }
             $body=Get-Content $localLog -Raw -Encoding UTF8
             $summary=[regex]::Match($body,'(?m)^module_audit holders=(\d+) unavailable=0\r?$')
@@ -90,6 +98,16 @@ try {
                             $body -notmatch 'download-match selftest OK changed=refused received=0 published=0')) {
                         throw 'Missing application preflight or final-header regression.'
                     }
+                    if ($mode -eq 'create' -and $body -notmatch 'download-delete selftest OK terminal=single active=retained missing=idempotent invalid=rejected') {
+                        throw 'Missing terminal-only single-record deletion regression.'
+                    }
+                    if ($mode -eq 'reopen' -and $body -notmatch 'download-delete-file selftest OK record=removed file=retained') {
+                        throw 'Missing file preservation after record deletion.'
+                    }
+                    if ($mode -eq 'ui' -and ($body -notmatch 'download-record-ui selftest OK retry=fresh_probe cancel=no_task delete=committed history=single' -or
+                            $body -notmatch 'download-record-focus selftest OK terminal_rows=16 actions=32 total=46')) {
+                        throw 'Missing record actions or full-page focus regression.'
+                    }
                     if ($mode -eq 'ui' -and ([regex]::Matches($body,
                             '(?m)^positron pid='+$appPid+' tick=\d+ positron record-fields selftest OK dpi-index=3 width-index=3 field=8\r?$')).Count -ne 1) {
                         throw 'Missing download record geometry regression.'
@@ -121,7 +139,11 @@ try {
     $name='large-'+[char]0x4e2d+[char]0x6587+'.bin'
     $download=Join-Path $evidence $name
     if (![PositronDeviceRapi]::TryCopyFileFromDevice(($remote+'\'+$name),$download) -or (Get-Item $download).Length -ne 2097152) { throw 'Missing preserved large download.' }
-    $expected=(& python -c "import hashlib; print(hashlib.sha256(b'D' * 2097152).hexdigest())").Trim()
+    # Avoid WindowsApps execution aliases; the audit host must be a real runtime.
+    $pythonCommand=Get-Command python.exe -All -ErrorAction SilentlyContinue | Where-Object {$_.Source -notmatch '\\WindowsApps\\'} | Select-Object -First 1
+    if ($null -eq $pythonCommand) { throw 'Require an installed Python runtime, not a WindowsApps alias.' }
+    $expected=(& $pythonCommand.Source -c "import hashlib; print(hashlib.sha256(b'D' * 2097152).hexdigest())").Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Download hash reference generation failed.' }
     if ((Get-FileHash $download).Hash -ne $expected) { throw 'Downloaded byte hash mismatch.' }
     $checks.Add('large_file=2097152 exact_sha256_preserved_after_clear')
     if ($LeaveOpen) {

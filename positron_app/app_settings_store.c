@@ -729,13 +729,21 @@ static void app_downloads_read(AppSettingsDbApi *api, PDbHandle db,
 }
 
 static void app_downloads_clear(AppSettingsDbApi *api, PDbHandle db,
-        AppSettingsResult *result)
+        const AppSettingsJob *job, AppSettingsResult *result)
 {
+    PDbStmtHandle statement;
     int rc;
 
+    statement = NULL;
     rc = api->begin(db);
     if (rc != PDB_OK) app_settings_db_failure(api, db, rc, result);
-    if (result->result == APP_SETTINGS_OK)
+    if (result->result == APP_SETTINGS_OK && job->operation == APP_DOWNLOADS_DELETE) {
+        rc = api->prepare(db, "DELETE FROM app_downloads WHERE id=?1 AND state>=3", &statement);
+        if (rc == PDB_OK) rc = api->bind_int(statement, 1, job->before_id);
+        if (rc == PDB_OK) rc = api->step(statement);
+        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_finish_statement(api, db, statement, result);
+    } else if (result->result == APP_SETTINGS_OK)
         app_visits_execute(api, db, "DELETE FROM app_downloads WHERE state>=3", result);
     if (result->result == APP_SETTINGS_OK) {
         rc = api->commit(db);
@@ -938,8 +946,8 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
                 app_downloads_write(&api, db, job, &result);
             else if (job->operation == APP_DOWNLOADS_LOAD)
                 app_downloads_read(&api, db, job, &result);
-            else if (job->operation == APP_DOWNLOADS_CLEAR)
-                app_downloads_clear(&api, db, &result);
+            else if (job->operation == APP_DOWNLOADS_CLEAR || job->operation == APP_DOWNLOADS_DELETE)
+                app_downloads_clear(&api, db, job, &result);
             else app_settings_read(&api, db, &result);
             app_settings_cleanup_transaction(&api, db, &result);
             if (result.result != APP_SETTINGS_OK) {
@@ -1131,6 +1139,14 @@ int AppSettingsStore_ClearDownloads(AppSettingsStore *store,
 {
     return app_settings_enqueue(store, APP_DOWNLOADS_CLEAR, APP_SETTINGS_START_NEWTAB,
             tab_id, generation, NULL, NULL, 0, 0, NULL, NULL, out_request_id);
+}
+
+int AppSettingsStore_DeleteDownload(AppSettingsStore *store, __int64 id,
+        unsigned long tab_id, unsigned long generation, unsigned long *out_request_id)
+{
+    if (id <= 0) return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_DOWNLOADS_DELETE, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, NULL, 0, id, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out)
