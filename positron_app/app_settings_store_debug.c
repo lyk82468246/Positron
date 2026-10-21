@@ -282,6 +282,7 @@ int AppSettingsStore_DebugCheck(void)
     AppSettingsValues values;
     AppSettingsValues normalized;
     __int64 delete_id;
+    char query[APP_VISITS_QUERY_MAX + 1];
     AppSettingsDebugThread *probe;
     HANDLE foreign;
     DWORD length;
@@ -385,6 +386,8 @@ int AppSettingsStore_DebugCheck(void)
     AppSettingsValues_Default(&values);
     if (AppSettingsStore_SaveValues(store, &values, 7, 9, &request) !=
             APP_SETTINGS_QUEUE_FULL || request != 777) goto done;
+    if (AppSettingsStore_SearchVisits(store, "example", 0, 7, 9, &request) !=
+            APP_SETTINGS_QUEUE_FULL || request != 777) goto done;
     for (index = 0; index < APP_SETTINGS_QUEUE_MAX; ++index) {
         if (app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
                 result.request_id != requests[index] || result.tab_id != 7 ||
@@ -429,7 +432,31 @@ int AppSettingsStore_DebugCheck(void)
             result.visits->has_more || result.visits->entries[0].visited_utc !=
             1700000000) goto done;
     AppSettingsResult_Release(&result);
+    strcpy(query, "EXAMPLE.COM");
+    if (AppSettingsStore_SearchVisits(store, query, 0, 71, 92, &request) != APP_SETTINGS_OK) goto done;
+    query[0] = 0; /* Admission must copy, not borrow, the query. */
+    if (app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK || result.operation != APP_VISITS_SEARCH ||
+            result.visits == NULL || result.visits->count != 16 || !result.visits->has_more ||
+            result.tab_id != 71 || result.generation != 92) goto done;
+    delete_id = result.visits->entries[15].id;
+    AppSettingsResult_Release(&result);
+    if (AppSettingsStore_SearchVisits(store, "\344\270\255", delete_id, 71, 93, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK || result.visits == NULL ||
+            result.visits->count != 1 || result.visits->has_more) goto done;
+    AppSettingsResult_Release(&result);
+    if (AppSettingsStore_SearchVisits(store, "%_' OR 1=1 --", 0, 71, 94, &request) != APP_SETTINGS_OK ||
+            app_settings_debug_next(store, &result) != APP_SETTINGS_OK ||
+            result.result != APP_SETTINGS_OK || result.visits == NULL || result.visits->count != 0) goto done;
+    AppSettingsResult_Release(&result);
+    memset(query, 'q', sizeof(query));
+    query[sizeof(query) - 1] = 0;
     request = 777;
+    if (AppSettingsStore_SearchVisits(store, query, 0, 71, 95, &request) != APP_SETTINGS_INVALID ||
+            request != 777 || AppSettingsStore_SearchVisits(store, "\300\200", 0, 71, 95,
+            &request) != APP_SETTINGS_INVALID || request != 777) goto done;
+    AppDebug_Log("positron visit-search-storage selftest OK literal=1 utf8=1 copied=1 cursor=1 budget=128 queue=bounded\r\n");
     if (AppSettingsStore_DeleteVisit(store, 0, 71, 92, &request) != APP_SETTINGS_INVALID ||
             request != 777 || AppSettingsStore_DeleteVisit(store, -1, 71, 92, &request) !=
             APP_SETTINGS_INVALID || request != 777) goto done;

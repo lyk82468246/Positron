@@ -97,6 +97,9 @@ try {
                     if ($mode -eq 'storage' -and $body -notmatch 'visit-delete-storage selftest OK single=1 missing=idempotent invalid=rejected reopen=exact') {
                         throw 'Missing persistent single-visit deletion regression.'
                     }
+                    if ($mode -eq 'storage' -and $body -notmatch 'visit-search-storage selftest OK literal=1 utf8=1 copied=1 cursor=1 budget=128 queue=bounded') {
+                        throw 'Missing literal bounded history search regression.'
+                    }
                     if ($mode -eq 'create' -and ($body -notmatch 'download-prepare selftest OK stage=5' -or
                             $body -notmatch 'download-match selftest OK changed=refused received=0 published=0')) {
                         throw 'Missing application preflight or final-header regression.'
@@ -113,6 +116,9 @@ try {
                     }
                     if ($mode -eq 'ui' -and $body -notmatch 'visit-delete-ui selftest OK cancel=retained pointer=committed history=single') {
                         throw 'Missing visit deletion through the real pointer route.'
+                    }
+                    if ($mode -eq 'ui' -and $body -notmatch 'visit-search-ui selftest OK enter=1 stale=isolated draft=selection_kept reset=all budget=rejected history=single') {
+                        throw 'Missing native-input history search regression.'
                     }
                     if ($mode -eq 'ui' -and ([regex]::Matches($body,
                             '(?m)^positron pid='+$appPid+' tick=\d+ positron record-fields selftest OK dpi-index=3 width-index=3 field=8\r?$')).Count -ne 1) {

@@ -44,6 +44,9 @@ typedef struct AppInternalPageData {
     const AppVisitSnapshot *visits;
     /* 0: legacy session fixture; 1: loading; 2: loaded; 3: unavailable. */
     int visits_status;
+    const char *visits_query;
+    const char *visits_input;
+    int visits_search_error;
     const AppDownloadSnapshot *downloads;
     int downloads_status;
     const char *download_url;

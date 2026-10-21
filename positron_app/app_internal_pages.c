@@ -1012,6 +1012,23 @@ static void app_internal_visits(AppHtmlWriter *writer,
     int i;
 
     visits = data->visits;
+    app_html_append(writer, chinese ? "<p>\346\220\234\347\264\242\346\240\207\351\242\230\346\210\226\347\275\221\345\235\200</p>" : "<p>Search title or URL</p>");
+    app_html_append(writer, "<p><input id=\"visits-query\" maxlength=\"128\" size=\"18\" "
+            "style=\"font-size:inherit;line-height:normal;padding:2px 0.3em;width:100%;box-sizing:border-box\" value=\"");
+    app_html_escape(writer, data->visits_input);
+    app_html_append(writer, "\"></p><p><a id=\"visits-search\" href=\"#app-visits-search\">");
+    app_html_append(writer, chinese ? "\346\220\234\347\264\242" : "Search");
+    app_html_append(writer, "</a></p><p><a id=\"visits-reset\" href=\"#app-visits-reset\">");
+    app_html_append(writer, chinese ? "\346\230\276\347\244\272\345\205\250\351\203\250" : "Show all");
+    app_html_append(writer, "</a></p>");
+    if (data->visits_search_error) app_html_append(writer, chinese ?
+            "<p>\346\220\234\347\264\242\345\244\261\350\264\245\343\200\202\350\257\267\344\275\277\347\224\250\344\270\215\350\266\205\350\277\207128\344\270\252UTF-8\345\255\227\350\212\202\347\232\204\346\226\207\345\255\227\345\271\266\351\207\215\350\257\225\343\200\202</p>" :
+            "<p>Search could not start. Use at most 128 UTF-8 bytes and retry.</p>");
+    if (data->visits_query != NULL && data->visits_query[0]) {
+        app_html_append(writer, chinese ? "<p class=\"history-entry\">\345\275\223\345\211\215\346\220\234\347\264\242\357\274\232" : "<p class=\"history-entry\">Current search: ");
+        app_html_escape(writer, data->visits_query);
+        app_html_append(writer, "</p>");
+    }
     app_html_append(writer, chinese ?
             "<p><a id=\"visits-latest\" href=\"#app-visits-latest\">\351\207\215\346\226\260\345\212\240\350\275\275\346\234\200\346\226\260\350\256\260\345\275\225</a></p><p><a id=\"visits-clear\" href=\"#app-visits-clear\">\346\270\205\351\231\244\350\256\277\351\227\256\345\216\206\345\217\262</a></p>" :
             "<p><a id=\"visits-latest\" href=\"#app-visits-latest\">Reload newest</a></p><p><a id=\"visits-clear\" href=\"#app-visits-clear\">Clear visit history</a></p>");
@@ -1154,7 +1171,7 @@ int AppInternalPages_FocusIds(HANDLE document,
     static const char *navigation_ids[] = {
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
         "nav-downloads", "nav-settings", "nav-welcome", "nav-controls",
-        "visits-latest", "visits-older", "visits-clear",
+        "visits-latest", "visits-older", "visits-clear", "visits-search", "visits-reset",
         "download-start", "download-probe-cancel",
         "download-cancel-0", "download-cancel-1",
         "downloads-latest", "downloads-older", "downloads-clear"
@@ -1684,12 +1701,12 @@ int AppInternalPages_DebugCheck(const char *css)
     document = PCore_ParseHTML(html, length);
     if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
             PCore_LayoutDocument(document, 240, 268) != 0 ||
-            AppInternalPages_FocusIds(document, focus_ids) != 42 ||
+            AppInternalPages_FocusIds(document, focus_ids) != 44 ||
             strcmp(focus_ids[0], "visit-0") != 0) goto done;
     if (app_internal_wrap_debug_check(document, stylesheet, "visit-0",
             visits->entries[0].url, visits->entries[0].title) != 0) goto done;
     AppDebug_Log("positron history-wrap selftest OK dpi=96,128,192 widths=240,480,240 text=exact href=exact\r\n");
-    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=42 utc=1\r\n");
+    AppDebug_Log("positron visits-page selftest OK escaped=1 focus=44 utc=1\r\n");
     PCore_FreeDocument(document);
     document = NULL;
     AppI18n_FreePage(html);

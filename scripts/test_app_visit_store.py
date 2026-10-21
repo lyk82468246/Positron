@@ -38,6 +38,7 @@ PRUNE = c_string("g_visits_prune_sql")
 READ = c_string("g_visits_read_sql")
 CLEAR = c_string("g_visits_clear_sql")
 DELETE = c_string("g_visits_delete_sql")
+SEARCH = c_string("g_visits_search_sql")
 
 
 def apply_migration_model(db, current, target, script):
@@ -211,6 +212,7 @@ class VisitSqlTests(unittest.TestCase):
             self.db.execute(DELETE, (2,))
             self.db.execute(DELETE, (2,))
         self.assertEqual([r[0] for r in self.db.execute(READ, (0,))], [3, 1])
+
         self.assertEqual(self.db.execute(SETTINGS_READ).fetchone(), (1, "positron://newtab"))
         self.db.executescript("CREATE TRIGGER fail_delete BEFORE DELETE ON app_visits "
                              "BEGIN SELECT RAISE(ABORT,'delete failure'); END;")
@@ -218,6 +220,17 @@ class VisitSqlTests(unittest.TestCase):
             self.db.execute(DELETE, (3,))
         self.assertEqual([r[0] for r in self.db.execute(READ, (0,))], [3, 1])
 
+    def test_search_literal_unicode_case_and_filtered_cursor(self):
+        for index in range(33):
+            add_visit(self.db, "https://example.com/" + str(index),
+                      "中文 Alpha%_" if index % 2 == 0 else "Other", index)
+        self.assertEqual(len(self.db.execute(SEARCH, (0, "ALPHA")).fetchall()), 17)
+        rows = self.db.execute(SEARCH, (0, "中文")).fetchall()
+        self.assertEqual([r[0] for r in rows], list(range(33, 0, -2)))
+        self.assertEqual([r[0] for r in self.db.execute(SEARCH, (rows[15][0], "%_"))], [1])
+        self.assertEqual(self.db.execute(SEARCH, (0, "' OR 1=1 --")).fetchall(), [])
+        self.assertEqual(self.db.execute(SEARCH, (0, "")).fetchall(),
+                         self.db.execute(READ, (0,)).fetchall())
     def test_migration_failure_rolls_back_new_tables(self):
         with closing(sqlite3.connect(":memory:")) as db:
             with self.assertRaises(sqlite3.IntegrityError):

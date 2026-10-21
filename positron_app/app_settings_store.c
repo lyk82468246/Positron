@@ -113,6 +113,11 @@ static const char g_visits_read_sql[] =
     "WHERE (?1=0 OR id<?1) ORDER BY id DESC LIMIT 17";
 static const char g_visits_clear_sql[] = "DELETE FROM app_visits";
 static const char g_visits_delete_sql[] = "DELETE FROM app_visits WHERE id=?1";
+static const char g_visits_search_sql[] =
+    "SELECT id,visited_utc,url,title FROM app_visits "
+    "WHERE (?1=0 OR id<?1) AND "
+    "(instr(lower(url),lower(?2))>0 OR instr(lower(title),lower(?2))>0) "
+    "ORDER BY id DESC LIMIT 17";
 
 static const char g_downloads_schema[] =
     "CREATE TABLE app_downloads(id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -539,8 +544,11 @@ static void app_visits_read(AppSettingsDbApi *api, PDbHandle db,
     }
     statement = NULL;
     previous = job->before_id;
-    rc = api->prepare(db, g_visits_read_sql, &statement);
+    rc = api->prepare(db, job->operation == APP_VISITS_SEARCH ?
+            g_visits_search_sql : g_visits_read_sql, &statement);
     if (rc == PDB_OK) rc = api->bind_int(statement, 1, job->before_id);
+    if (rc == PDB_OK && job->operation == APP_VISITS_SEARCH)
+        rc = api->bind_text(statement, 2, job->title, (int) strlen(job->title));
     if (rc == PDB_OK) rc = api->step(statement);
     while (rc == PDB_STEP_ROW) {
         id = api->column_int(statement, 0);
@@ -948,7 +956,7 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
             else if (job->operation == APP_VISITS_ADD || job->operation == APP_VISITS_CLEAR ||
                     job->operation == APP_VISITS_DELETE)
                 app_visits_write(&api, db, job, &result);
-            else if (job->operation == APP_VISITS_LOAD)
+            else if (job->operation == APP_VISITS_LOAD || job->operation == APP_VISITS_SEARCH)
                 app_visits_read(&api, db, job, &result);
             else if (job->operation == APP_DOWNLOADS_WRITE)
                 app_downloads_write(&api, db, job, &result);
@@ -1109,6 +1117,16 @@ int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
     if (before_id < 0) return APP_SETTINGS_INVALID;
     return app_settings_enqueue(store, APP_VISITS_LOAD, APP_SETTINGS_START_NEWTAB,
             tab_id, generation, NULL, NULL, 0, before_id, NULL, NULL, out_request_id);
+}
+
+int AppSettingsStore_SearchVisits(AppSettingsStore *store, const char *query,
+        __int64 before_id, unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id)
+{
+    if (before_id < 0 || !app_visits_input(query, APP_VISITS_QUERY_MAX, 0))
+        return APP_SETTINGS_INVALID;
+    return app_settings_enqueue(store, APP_VISITS_SEARCH, APP_SETTINGS_START_NEWTAB,
+            tab_id, generation, NULL, query, 0, before_id, NULL, NULL, out_request_id);
 }
 
 int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,

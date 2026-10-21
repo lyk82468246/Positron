@@ -11,6 +11,8 @@
 #define APP_VISITS_PAGE_MAX 16
 #define APP_VISITS_URL_MAX 2048
 #define APP_VISITS_TITLE_MAX 256
+#define APP_VISITS_QUERY_MAX 129
+#define APP_VISITS_INPUT_MAX 513
 
 typedef enum AppSettingsLanguage {
     APP_SETTINGS_LANGUAGE_SYSTEM = 0,
@@ -68,7 +70,8 @@ enum {
     APP_DOWNLOADS_LOAD = 7,
     APP_DOWNLOADS_CLEAR = 8,
     APP_DOWNLOADS_DELETE = 9,
-    APP_VISITS_DELETE = 10
+    APP_VISITS_DELETE = 10,
+    APP_VISITS_SEARCH = 11
 };
 
 /* Pure-data result, copied to the UI owner. No DB/statement/page handles.
@@ -133,6 +136,12 @@ int AppSettingsStore_AddVisit(AppSettingsStore *store, const char *url,
  * a seventeenth row. tab/generation are echoed only, as with Submit. */
 int AppSettingsStore_ReadVisits(AppSettingsStore *store, __int64 before_id,
         unsigned long tab_id, unsigned long generation,
+        unsigned long *out_request_id);
+/* Literal substring of title/URL, ASCII case-insensitive; other UTF-8 exact.
+ * At most 128 UTF-8 bytes; no SQL/LIKE wildcards. Empty query matches all.
+ * Copied before admission; same cursor, queue and ownership as ReadVisits. */
+int AppSettingsStore_SearchVisits(AppSettingsStore *store, const char *query,
+        __int64 before_id, unsigned long tab_id, unsigned long generation,
         unsigned long *out_request_id);
 int AppSettingsStore_ClearVisits(AppSettingsStore *store, unsigned long tab_id,
         unsigned long generation, unsigned long *out_request_id);

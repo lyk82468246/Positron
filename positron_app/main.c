@@ -206,6 +206,7 @@ static int g_downloads_ui_mode;
 static int g_downloads_ui_phase;
 static __int64 g_visits_ui_delete_id;
 static int g_visits_ui_count;
+static HANDLE g_visits_ui_document;
 static DWORD g_downloads_ui_started;
 static char g_downloads_ui_url[96];
 static int g_downloads_ui_ticks;
@@ -223,7 +224,7 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
 static void app_page_paint_buffer_release(void);
 static int app_load_form_request(HWND hwnd, const AppFormRequest *request);
 static void app_update_history_buttons(void);
-static void app_visits_request(__int64 before_id, int clear);
+static int app_visits_request(__int64 before_id, int clear);
 static void app_visits_redraw(HWND hwnd);
 static void app_visits_record(void);
 static void app_visits_result(HWND hwnd, AppSettingsResult *result);
@@ -1264,6 +1265,9 @@ static void app_controls_changed(void *pw)
     }
     if (host->page_kind == APP_I18N_PAGE_DOWNLOADS)
         app_download_prepare_sync(1);
+    if (host->page_kind == APP_I18N_PAGE_HISTORY)
+        (void) PCore_NodeValueById(host->document, "visits-query", g_tab->visits_input,
+                sizeof(g_tab->visits_input), NULL);
     if (app_relayout() != 0) {
         app_set_status(APP_TEXT_STATUS_LAYOUT);
         return;
@@ -2808,6 +2812,10 @@ static int app_activate_focus(HWND hwnd)
         return 0;
     }
     target = (g_window != NULL) ? g_window : GetParent(hwnd);
+    /* These are trusted document controls, not address-bar submissions.
+     * Keep keyboard activation under the same source checks as a tap. */
+    if (g_page_kind == APP_I18N_PAGE_HISTORY && !strncmp(href, "#app-visits-", 12))
+        return app_load_page_from(target, href, APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT);
     return (int) SendMessage(target, APP_WM_ADDRESS_GO, g_app.tab_id,
             (LPARAM) href);
 }
@@ -2962,6 +2970,9 @@ static int app_build_page(const char *url, HANDLE *out_document,
         if (!g_visits_redrawing) app_visits_request(0, 0);
         data.visits = g_tab->visits;
         data.visits_status = g_tab->visits_status;
+        data.visits_query = g_tab->visits_query;
+        data.visits_input = g_tab->visits_input;
+        data.visits_search_error = g_tab->visits_search_error;
     }
     if (page_kind == APP_I18N_PAGE_DOWNLOADS) {
         if (g_tab->download_prepare == NULL)
@@ -3391,35 +3402,48 @@ static int app_load_local_page(HWND hwnd, const char *url, int history_mode,
 /* App visit data never substitutes for Browser's navigation stack. These
  * jobs carry copied data only; page results are leased to a stable tab and
  * a non-reused local generation, not merely to positron://history. */
-static void app_visits_request(__int64 before_id, int clear)
+static int app_visits_request(__int64 before_id, int clear)
 {
     unsigned long request_id;
     int rc;
 
-    if (g_tabs_closing || g_tab->closing) return;
+    if (g_tabs_closing || g_tab->closing) return APP_SETTINGS_CLOSING;
     if (g_tab->visits_generation == 0xffffffffUL) {
         g_tab->visits_status = 3;
-        return;
+        return APP_SETTINGS_INVALID;
+    }
+    request_id = 0;
+    rc = clear ? AppSettingsStore_ClearVisits(g_settings_store, g_app.tab_id,
+            g_tab->visits_generation + 1, &request_id) :
+            (g_tab->visits_query[0] ? AppSettingsStore_SearchVisits(g_settings_store,
+            g_tab->visits_query, before_id, g_app.tab_id,
+            g_tab->visits_generation + 1, &request_id) :
+            AppSettingsStore_ReadVisits(g_settings_store, before_id,
+            g_app.tab_id, g_tab->visits_generation + 1, &request_id));
+    if (rc != APP_SETTINGS_OK) {
+        g_tab->visits_search_error = 1;
+        if (g_tab->visits == NULL) g_tab->visits_status = 3;
+        return rc;
     }
     ++g_tab->visits_generation;
     g_tab->visits_request_id = 0;
     g_tab->visits_redraw_pending = 0;
     g_tab->visits_reload_pending = 0;
     g_tab->visits_before_id = before_id;
-    request_id = 0;
-    rc = clear ? AppSettingsStore_ClearVisits(g_settings_store, g_app.tab_id,
-            g_tab->visits_generation, &request_id) :
-            AppSettingsStore_ReadVisits(g_settings_store, before_id,
-            g_app.tab_id, g_tab->visits_generation, &request_id);
-    g_tab->visits_status = rc == APP_SETTINGS_OK ? 1 : 3;
-    if (rc == APP_SETTINGS_OK) g_tab->visits_request_id = request_id;
+    g_tab->visits_status = 1;
+    g_tab->visits_request_id = request_id;
+    return APP_SETTINGS_OK;
 }
 
 static void app_visits_redraw(HWND hwnd)
 {
     if (g_visits_confirm_open || g_tabs_closing || g_tab->closing ||
-            g_page_kind != APP_I18N_PAGE_HISTORY || g_navigation_request != NULL)
+            g_page_kind != APP_I18N_PAGE_HISTORY || g_navigation_request != NULL ||
+            GetParent(GetFocus()) == g_page_window || g_page_pointer.active)
         return;
+    if (g_document != NULL)
+        (void) PCore_NodeValueById(g_document, "visits-query", g_tab->visits_input,
+                sizeof(g_tab->visits_input), NULL);
     g_tab->visits_redraw_pending = 0;
     g_visits_redrawing = 1;
     (void) app_load_local_page(hwnd, "positron://history", APP_HISTORY_REFRESH, -1);
@@ -3431,7 +3455,7 @@ static void app_visits_result(HWND hwnd, AppSettingsResult *result)
     AppTab *owner;
     int slot;
 
-    if (result->operation != APP_VISITS_LOAD &&
+    if (result->operation != APP_VISITS_LOAD && result->operation != APP_VISITS_SEARCH &&
             result->operation != APP_VISITS_CLEAR && result->operation != APP_VISITS_DELETE) return;
     /* A committed clear survives the requesting page/tab. Invalidate every
      * cached read, including completions already queued before the clear. */
@@ -3485,6 +3509,36 @@ static void app_visits_result(HWND hwnd, AppSettingsResult *result)
 
 /* Only a literal action from the current trusted list can select a row.
  * Recheck page identity after the modal confirmation; never retain a row pointer. */
+static int app_visits_search_command(HWND hwnd, const char *url)
+{
+    char previous[APP_VISITS_QUERY_MAX];
+    int reset;
+
+    reset = !strcmp(url, "#app-visits-reset");
+    if (!reset && strcmp(url, "#app-visits-search")) return 0;
+    if (g_visits_confirm_open || g_tabs_closing || g_tab->closing ||
+            !g_visits_enabled || g_navigation_request != NULL) return 1;
+    if (reset) {
+        if (PCore_NodeSetValueById(g_document, "visits-query", "") != 0 ||
+                AppControls_ReconcileAfterFormReset(g_controls, g_document,
+                g_script, g_scroll_x, g_scroll_y) != 0) return 1;
+    }
+    if (PCore_NodeValueById(g_document, "visits-query", g_tab->visits_input,
+            sizeof(g_tab->visits_input), NULL) != 0) return 1;
+    g_tab->visits_search_error = 0;
+    if (strlen(g_tab->visits_input) >= APP_VISITS_QUERY_MAX) {
+        g_tab->visits_search_error = 1;
+    } else {
+        strcpy(previous, g_tab->visits_query);
+        strcpy(g_tab->visits_query, g_tab->visits_input);
+        if (app_visits_request(0, 0) != APP_SETTINGS_OK)
+            strcpy(g_tab->visits_query, previous);
+    }
+    g_tab->visits_redraw_pending = 1;
+    SetFocus(g_page_window);
+    return 1;
+}
+
 static int app_visits_delete_command(HWND hwnd, const char *url)
 {
     char action[64];
@@ -4339,6 +4393,75 @@ static void app_downloads_ui_check(HWND hwnd)
     memset(&format, 0, sizeof(format));
     memset(&font_metrics, 0, sizeof(font_metrics));
     if (GetTickCount() - g_downloads_ui_started > 20000UL) goto failed;
+    if (g_downloads_ui_phase >= 13 && g_downloads_ui_phase <= 16) {
+        check = 40 + g_downloads_ui_phase;
+        if (g_tab->visits_request_id || g_tab->visits_status != 2) return;
+        if (g_page_kind != APP_I18N_PAGE_HISTORY || g_script != NULL ||
+                PBrowser_HistoryCount(g_history) != 1 || g_tab->visits == NULL) goto failed;
+        edit = GetWindow(g_page_window, GW_CHILD);
+        while (edit != NULL && (!GetClassNameW(edit, name, 32) || lstrcmpiW(name, L"EDIT")))
+            edit = GetWindow(edit, GW_HWNDNEXT);
+        if (edit == NULL) goto failed;
+        if (g_downloads_ui_phase == 13) {
+            DWORD start;
+            DWORD end;
+            WCHAR draft[32];
+            start = end = 0;
+            GetWindowTextW(edit, draft, 32);
+            SendMessage(edit, EM_GETSEL, (WPARAM) &start, (LPARAM) &end);
+            if (g_tab->visits->count != 0 || g_document != g_visits_ui_document ||
+                    !g_tab->visits_redraw_pending || lstrcmpW(draft, L"draft-kept") ||
+                    start != 2 || end != 4) goto failed;
+            SetFocus(g_page_window);
+            g_downloads_ui_phase = 14;
+            return;
+        }
+        if (g_tab->visits_redraw_pending) return;
+        if (g_downloads_ui_phase == 14) {
+            int index;
+            SetFocus(edit);
+            SetWindowTextW(edit, L"missing-first");
+            for (index = 0; index < g_focus_count; ++index)
+                if (!strcmp(g_focus_ids[index], "visits-search")) break;
+            if (index == g_focus_count || !app_focus_set(g_page_window, index) ||
+                    !app_activate_focus(g_page_window)) goto failed;
+            SetFocus(edit);
+            SetWindowTextW(edit, L"EXAMPLE");
+            SendMessage(edit, WM_KEYDOWN, VK_RETURN, 0);
+            if (strcmp(g_tab->visits_query, "EXAMPLE") || !g_tab->visits_request_id) goto failed;
+            g_downloads_ui_phase = 15;
+            return;
+        }
+        if (g_downloads_ui_phase == 15) {
+            WCHAR oversized[51];
+            int index;
+            if (g_tab->visits->count == 0 || strcmp(g_tab->visits_query, "EXAMPLE")) goto failed;
+            for (index = 0; index < 50; ++index) oversized[index] = 0x4e2d;
+            oversized[50] = 0;
+            SetFocus(edit);
+            SetWindowTextW(edit, oversized);
+            SendMessage(edit, WM_KEYDOWN, VK_RETURN, 0);
+            if (!g_tab->visits_search_error || g_tab->visits_request_id ||
+                    strcmp(g_tab->visits_query, "EXAMPLE")) goto failed;
+            if (PCore_LinkInfoById(g_document, "visits-reset", &link_x, &link_y,
+                    &link_w, &link_h, link_url, sizeof(link_url)) != 0) goto failed;
+            app_scroll_by(g_page_window, -g_scroll_x, link_y - g_scroll_y - g_page_height / 2);
+            link_x += link_w / 2 - g_scroll_x;
+            link_y += link_h / 2 - g_scroll_y;
+            SendMessage(g_page_window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(link_x, link_y));
+            SendMessage(g_page_window, WM_LBUTTONUP, 0, MAKELPARAM(link_x, link_y));
+            if (!g_tab->visits_request_id) goto failed;
+            g_downloads_ui_phase = 16;
+            return;
+        }
+        if (g_tab->visits_query[0] || g_tab->visits_input[0] || g_tab->visits_search_error ||
+                !g_tab->visits->count) goto failed;
+        AppDebug_Log("visit-search-ui selftest OK enter=1 stale=isolated draft=selection_kept reset=all budget=rejected history=single\r\n");
+        AppDebug_Log("downloads-ui selftest OK input=font authority=document history=single\r\n");
+        g_downloads_ui_phase = 99;
+        PostMessage(hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
     if (g_downloads_ui_phase >= 10 && g_downloads_ui_phase <= 12) {
         check = 30;
         if (g_page_kind != APP_I18N_PAGE_HISTORY || g_tab->visits_request_id ||
@@ -4352,9 +4475,19 @@ static void app_downloads_ui_check(HWND hwnd)
             if (g_visits_ui_count < APP_VISITS_PAGE_MAX &&
                     g_tab->visits->count != g_visits_ui_count - 1) goto failed;
             AppDebug_Log("visit-delete-ui selftest OK cancel=retained pointer=committed history=single\r\n");
-            AppDebug_Log("downloads-ui selftest OK input=font authority=document history=single\r\n");
-            g_downloads_ui_phase = 99;
-            PostMessage(hwnd, WM_CLOSE, 0, 0);
+            edit = GetWindow(g_page_window, GW_CHILD);
+            while (edit != NULL && (!GetClassNameW(edit, name, 32) || lstrcmpiW(name, L"EDIT")))
+                edit = GetWindow(edit, GW_HWNDNEXT);
+            if (edit == NULL) goto failed;
+            SetFocus(edit);
+            SetWindowTextW(edit, L"no-match-%_' --");
+            SendMessage(edit, WM_KEYDOWN, VK_RETURN, 0);
+            if (!g_tab->visits_request_id) goto failed;
+            SetFocus(edit);
+            SetWindowTextW(edit, L"draft-kept");
+            SendMessage(edit, EM_SETSEL, 2, 4);
+            g_visits_ui_document = g_document;
+            g_downloads_ui_phase = 13;
             return;
         }
         if (!g_tab->visits->count) goto failed;
@@ -6146,6 +6279,7 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         UINT command;
 
         command = 0;
+        if (app_visits_search_command(hwnd, url)) return 1;
         if (app_visits_delete_command(hwnd, url)) return 1;
         if (strcmp(url, "#app-visits-latest") == 0)
             command = APP_CMD_VISITS_LATEST;
@@ -6900,6 +7034,12 @@ static void app_handle_form_enter(void *pw, unsigned int text_index)
     int event_y;
 
     if (pw != &g_app || g_document == NULL) {
+        return;
+    }
+    /* Trusted history markup owns exactly one text input. This is an app
+     * search command, not a synthetic form submission or page navigation. */
+    if (g_page_kind == APP_I18N_PAGE_HISTORY && text_index == 0) {
+        (void) app_visits_search_command(g_window, "#app-visits-search");
         return;
     }
     memset(&submission, 0, sizeof(submission));
