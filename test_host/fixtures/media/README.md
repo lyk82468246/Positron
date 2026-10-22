@@ -63,6 +63,10 @@
   但保留两个原始 AVC1 sample entry/avcC，通过 stsc 在第四个 sample 切换描述；所有引用的
   视频 sample 均与源逐字节相同，不插入带内 SPS/PPS。原 mdat 前缀、AAC 表/priming 和
   全部音频 payload 保持。repeat 的两个描述完全相同，其他描述直接取自相应固定源。
+- `mixed-nal-{repeat,vga,oversize,high,high422,interlaced}.mp4` 采用两个 AVC3 描述，初始
+  avcC 为四字节长度，第四个 sample 切到两字节。两个描述的 SPS/PPS 均保持原 Baseline，
+  只改长度字段；第二段首包携带实际源 SPS/PPS，每个 NAL 内容不变，只重写其长度前缀。
+  时间轴、AAC 与上述参数变化组相同，不让坏外带参数提前拒绝替代新长度下的包内检查。
 - `high.mp4`、`high422.mp4`、`interlaced.mp4`、`oversize.mp4`：拒绝 profile、像素布局、隔行和 656×480 超限。
 - `mjpeg-mp3.avi`：320×240、5 fps、三帧全范围 MJPEG 4:2:0，MP3 双声道 48 kHz。
   固定 AVI 含一个空视频槽，实际帧 PTS 为 0/400000/600000 µs，每帧 duration 为 200000 µs；
@@ -228,6 +232,10 @@ open 成功后在 pump 返回 UNSUPPORTED，前缀仅一帧/19 块、无正常 E
 双路需要补齐下一呈现前沿，不能为了凑足前三帧在致命参数错误后继续 flush；不以接受第四帧
 掩盖旧 decoder 的隔行标志漏报。此门不证明任意参数重配置、损坏或峰值内存。
 
+TEST1361 使用 mixed-nal 组复用同一严格消费端合同：合法重复/VGA 控制正常六帧/29 块，
+默认负控制三帧/29 块后必须匹配带内 SPS 错误；混合超限/profile 在 open 拒绝，隔行在
+pump 保留一帧/19 块后拒绝。背压/暂停、EOF 重建和 once-only/STATE 不变，不能只比较错误码。
+
 时间戳控制组 `flv-clock-{base,unknown,late-unknown,backward,negative,gap,duplicate}.flv`
 从固定 `flv-h264-aac.flv` 删除音频/script tag 并设置 video-only 标志，保留所有 AVC
 配置和三个 I/P/P payload，只变换视频包的 FLV DTS/有符号 CTS。每条 1052 字节，旧 pin 不变。
@@ -267,7 +275,8 @@ CTTS 控制；`--extend-mixed-config` 通过
 只增加五条固定 AAC 描述切换输入；`--extend-video-change` 通过
 [`scripts/media_video_change_fixtures.py`](../../../scripts/media_video_change_fixtures.py)
 只增加六条 AVC3 带内 SPS/PPS 变化控制；`--extend-video-config` 使用同一固定变换器，
-只增加六条 AVC1 外带描述切换控制。均保留旧 pin，不在构建时执行。
+只增加六条 AVC1 外带描述切换控制；`--extend-video-nal` 只增加六条四至两字节长度与
+包内 SPS 组合控制。均保留旧 pin，不在构建时执行。
 扩展操作不能同时选择。AMR 编码器的采样率/单声道边界见
 [FFmpeg codec 文档](https://ffmpeg.org/ffmpeg-codecs.html#libopencore_002damrnb-1)。
 WAV IMA 块/声道布局与 `fact` 定义见微软原始
@@ -346,7 +355,10 @@ sample 字节、AVC3 标签、原 AAC 表与所有 PCM 字节保持；独立解�
 桌面帧 checksum 不是 ARM 逐字节参考，也不能替代设备错误分类/回调前缀；产品必须另过
 TEST1359。加 `--external` 则独立检查 AVC1 外带组：两个原始完整 stsd entry、精确 stsc
 切换点、没有新增带内参数的 sample 字节、源帧属性/校验值/PTS 和不变 AAC/PCM；设备合同
-另由 TEST1360 验证。容量、分配失败、其他 NAL 长度/PPS/描述组合及其他容器仍需独立门。
+另由 TEST1360 验证。`--nal-switch` 检查 mixed-nal 组：独立按 4/2 字节逐个拆分 NAL 并
+比较所有 payload，确认两个 avcC 仅长度位不同，实际 chunk/mdat、六帧属性/PTS 和音频不变；
+产品拒绝来源及生命周期另由 TEST1361 验证。容量、分配失败、反向/一字节长度、其他 PPS/
+描述组合及其他容器仍需独立门。
 
 AAC 的独立桌面对照：`python scripts/test_media_aac_seek_evidence.py --ffmpeg PATH`。
 PATH 必须匹配 manifest 的工具 SHA-256；脚本只读、单线程，Windows 下使用低优先级，

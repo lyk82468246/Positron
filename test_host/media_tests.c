@@ -3903,6 +3903,9 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
     static const WCHAR *outband[] = { L"mixed-avcc-repeat.mp4", L"mixed-avcc-vga.mp4",
         L"mixed-avcc-oversize.mp4", L"mixed-avcc-high.mp4", L"mixed-avcc-high422.mp4",
         L"mixed-avcc-interlaced.mp4", L"mixed-avcc-vga.mp4" };
+    static const WCHAR *short_nal[] = { L"mixed-nal-repeat.mp4", L"mixed-nal-vga.mp4",
+        L"mixed-nal-oversize.mp4", L"mixed-nal-high.mp4", L"mixed-nal-high422.mp4",
+        L"mixed-nal-interlaced.mp4", L"mixed-nal-vga.mp4" };
     const WCHAR *const *names;
     const char *guard_message;
     media_fixture_source input;
@@ -3928,8 +3931,8 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
     int offers;
     char phase[192];
 
-    names = external ? outband : inband;
-    guard_message = external ? "MP4 H.264 avcC change validation failed" : "MP4 in-band H.264 SPS validation failed";
+    names = external == 2 ? short_nal : external ? outband : inband;
+    guard_message = external == 1 ? "MP4 H.264 avcC change validation failed" : "MP4 in-band H.264 SPS validation failed";
     for (i = 0; i < 3; i++) refs[i] = (media_av_reference *)calloc(1, sizeof(*refs[i]));
     memset(&sink, 0, sizeof(sink));
     session = NULL;
@@ -4052,7 +4055,7 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
                     result = media_av_pump(session, &sink, 0);
                     for (i = 0; i < 100 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink, maximum);
                     _snprintf(phase, sizeof(phase), "video change scheduled %s case=%d seekable=%d pass=%d rc=%d video=%d audio=%d errors=%d",
-                              external ? "avcC" : "SPS", test, seekable, pass, result, sink.videos, sink.audios, sink.events.errors);
+                              external == 1 ? "avcC" : "SPS", test, seekable, pass, result, sink.videos, sink.audios, sink.events.errors);
                     if (progress != NULL) progress(phase);
                     /* Stream analysis exposes B-frame delay. Decoding ahead
                      * reaches the bad SPS before the two queued prefix frames
@@ -4074,7 +4077,8 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
         data = NULL;
     }
     for (i = 0; i < 3; i++) free(refs[i]);
-    if (progress != NULL) progress(external ? "mixed external avcC repeat/VGA accepted, out-of-bound descriptions rejected with exact prefix and lifecycle" :
+    if (progress != NULL) progress(external == 2 ? "mixed four-to-two byte NAL framing accepted; in-band SPS guards, bytes and lifecycle preserved" :
+        external ? "mixed external avcC repeat/VGA accepted, out-of-bound descriptions rejected with exact prefix and lifecycle" :
         "mixed in-band repeat/VGA accepted, out-of-bound parameters rejected with exact prefix and lifecycle");
     return TRUE;
 fail:
@@ -4096,6 +4100,11 @@ BOOL test1359_media_video_change_contract(void (*progress)(const char *))
 BOOL test1360_media_video_config_contract(void (*progress)(const char *))
 {
     return media_video_change_contract(1, progress);
+}
+
+BOOL test1361_media_video_nal_contract(void (*progress)(const char *))
+{
+    return media_video_change_contract(2, progress);
 }
 
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)

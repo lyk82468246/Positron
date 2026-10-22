@@ -1970,6 +1970,54 @@
       "video_source": "interlaced.mp4",
       "bytes": 9115,
       "sha256": "fc1bdfce65f0c29b98fbc1a03c979dd54ac29a2a183552f17737f38aba4d2917"
+    },
+    {
+      "file": "mixed-nal-repeat.mp4",
+      "fixture_transform": "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "baseline-aac.mp4",
+      "bytes": 9217,
+      "sha256": "43e29cbb19b977651b92d59bcddb99e7c33ba8dfbcff14ad2f0f565a850fc0af"
+    },
+    {
+      "file": "mixed-nal-vga.mp4",
+      "fixture_transform": "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "main-vga.mp4",
+      "bytes": 9163,
+      "sha256": "769a1019534011fff2784eac0ce32eda890a12d54593c885f8e268b64fa89150"
+    },
+    {
+      "file": "mixed-nal-oversize.mp4",
+      "fixture_transform": "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "oversize.mp4",
+      "bytes": 9921,
+      "sha256": "114ec1899f3d00a567719c6c4188a96d0d168e4b087816ffab9718ae84d916ff"
+    },
+    {
+      "file": "mixed-nal-high.mp4",
+      "fixture_transform": "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "high.mp4",
+      "bytes": 9109,
+      "sha256": "bab63b41a9dd94060c6a6c569ebe42cb88be42cca4ea8633099d77daf8a35f76"
+    },
+    {
+      "file": "mixed-nal-high422.mp4",
+      "fixture_transform": "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "high422.mp4",
+      "bytes": 9109,
+      "sha256": "0955d8448a13c399a6469c73ea885cdb6f91f31463d42c4fd1027ba2be4b7bc1"
+    },
+    {
+      "file": "mixed-nal-interlaced.mp4",
+      "fixture_transform": "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "interlaced.mp4",
+      "bytes": 9134,
+      "sha256": "513081c2524e8ecf8e3189efeef9bd3ffdc739bdb1d04f54c1e910a3e11ed60c"
     }
   ]
 }

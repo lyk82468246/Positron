@@ -1,4 +1,4 @@
-"""Fixed AVC3 in-band or AVC1 external changes; no general muxer/product code."""
+"""Fixed AVC parameter/framing changes; no general muxer or product code."""
 CASES = {"repeat": "baseline-aac.mp4", "vga": "main-vga.mp4",
          "oversize": "oversize.mp4", "high": "high.mp4",
          "high422": "high422.mp4", "interlaced": "interlaced.mp4"}
@@ -79,7 +79,22 @@ def video(data):
     return samples, shifts, b"".join(headers), tables[b"stsd"]
 
 
-def records(destination, external=False):
+def short_lengths(sample):
+    """Fixed four-to-two byte framing; retain every complete NAL payload."""
+    result = bytearray()
+    position = 0
+    while position < len(sample):
+        size = u32(sample, position)
+        position += 4
+        assert 0 < size < 65536 and position + size <= len(sample)
+        result += size.to_bytes(2, "big") + sample[position:position + size]
+        position += size
+    assert position == len(sample)
+    return bytes(result)
+
+
+def records(destination, external=False, nal_switch=False):
+    external = external or nal_switch
     original = (destination / "baseline-aac.mp4").read_bytes()
     top = list(boxes(original, 0, len(original)))
     mdat = next(b for b in top if b[2] == b"mdat")
@@ -90,8 +105,10 @@ def records(destination, external=False):
     result = []
     for stem, source in CASES.items():
         second, second_shifts, headers, second_stsd = video((destination / source).read_bytes())
-        if not external:
+        if not external or nal_switch:
             second[0] = headers + second[0]
+        if nal_switch:
+            second = [short_lengths(sample) for sample in second]
         samples = first + second
         replacements = {}
 
@@ -108,7 +125,14 @@ def records(destination, external=False):
                                                                      1200, 4096, 65536))))
         description = bytearray(stsd)
         assert description[12:16] == b"avc1"
-        if external:
+        if nal_switch:
+            description[12:16] = b"avc3"
+            second_entry = bytearray(description[8:])
+            avcc = next(b for b in boxes(second_entry, 86, len(second_entry)) if b[2] == b"avcC")
+            second_entry[avcc[0] + 12] = 0xfd
+            description[4:8] = words((2,))
+            description += second_entry
+        elif external:
             description[4:8] = words((2,))
             description += second_stsd[8:]
         else:
@@ -143,9 +167,10 @@ def records(destination, external=False):
             words([u32(old_offsets, i) + growth for i in range(8, len(old_offsets), 4)]))
         payload = original[mdat[0] + 8:mdat[0] + mdat[1]] + b"".join(samples)
         data = b"".join(atom(b"mdat", payload) if b[2] == b"mdat" else rebuild(b) for b in top)
-        name = ("mixed-avcc-" if external else "mixed-video-") + stem + ".mp4"
+        name = ("mixed-nal-" if nal_switch else "mixed-avcc-" if external else "mixed-video-") + stem + ".mp4"
         (destination / name).write_bytes(data)
-        transform = "fixed AVC1 stsd/stsc external avcC transition v1" if external else "fixed AVC3 in-band SPS/PPS transition v1"
+        transform = ("fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1" if nal_switch else
+                     "fixed AVC1 stsd/stsc external avcC transition v1" if external else "fixed AVC3 in-band SPS/PPS transition v1")
         result.append({"file": name, "fixture_transform": transform,
                        "source": "baseline-aac.mp4", "video_source": source})
     return result

@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入历史搜索与记录操作，公共DLL/ABI及v4表不改；Media外带avcC双配置证据保持。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入历史搜索与记录操作，公共DLL/ABI及v4表不改；Media NAL 长度组合取证见下方。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -287,45 +287,43 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 `2026-10-02 23:25:27`；完整包哈希已匹配，故不是旧 EXE 混包。后续须单独修正生成头的正式
 工程依赖，再验证增量构建时间与 Release 排除；本导航纵切不把该版本显示写成已修复。
 
-### Media 外带 avcC 守卫已验收
+### Media NAL 长度切换组合已验收
 
-ABI 1.3、既有混合/单流合同保持；调用与范围见 [Media README](../positron_media/README.md)、
-[能力矩阵](../docs/CAPABILITIES.md)。110 个固定输入，旧 104 条记录不变；新增六条 AVC1
-仅外带描述切换，压缩视频/AAC 不变、不重编码。来源/独立只读 oracle 见
-[媒体夹具](../test_host/fixtures/media/README.md)。
+ABI 1.3、产品 DLL/上游/archive 与既有合同不变；本轮只补测试和证据。调用与范围见
+[Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)。116 个固定输入，
+旧 110 条记录不变；新增六条 AVC3 四至两字节 NAL 长度切换，两个 avcC 均保留初始合法
+Baseline SPS/PPS，实际变化只在新包内。所有 NAL payload、AAC 和时间轴保持，不重编码；
+来源/独立只读 oracle 见 [媒体夹具](../test_host/fixtures/media/README.md)。
 
-选中 MP4 视频的 NEW_EXTRADATA avcC 在 send 前复用原 SPS 解析器，拒绝隔行/profile/
-布局/超限声明，区别于已有包内 SPS 扫描。MP4 在 stream analysis 前 KEEP_SIDE_DATA，
-避免默认合并掩盖配置；包内扫描使用当前有效的 NAL 长度。新参数验证错误在默认模式也
-锁存 STATE、错误仅一次；不泛化其他旧默认错误。合法参数不冻结，Annex-B 策略保持。
+既有 DLL 在 send 前验证 NEW_EXTRADATA 并更新 NAL 长度，再检查包内 SPS；
+不以外带拒绝掩盖漏检，不冻结合法参数；新验证错误锁存 STATE，Annex-B 不变。
 
-TEST1360 外带与 TEST1359 带内控制共用严格断言：重复/Baseline→Main VGA 各六帧/29 块，
-内容/PTS/背压/暂停/缓存重播及两种 seekability 保持，7-byte 短读且禁读源。
-默认负控制严格三帧/29 块后具体 SPS/avcC 错误；混合
-超限/High/4:2:2 在 open 零输出拒绝，隔行在 pump 保留一帧/19 块后拒绝并锁存 STATE。
-这是预解码前沿，不承诺排空合法队列或任意参数重配置。
+TEST1361 与 TEST1359/1360 共用原严格断言：合法重复/Baseline→Main VGA 六帧/29 块，
+内容/PTS/截止/背压/暂停/缓存重播及两种 seekability 保持，7-byte 短读且 open 后禁读源。
+默认负控制严格三帧/29 块后具体包内 SPS 错误；混合超限/High/4:2:2 在 open 零输出
+拒绝，隔行在 pump 一帧/19 块后拒绝；一次错误/STATE/stop/close 不变，不扩大输出前沿。
 
-Debug tmp/device-runs/20261018-150256-media-avcc-debug-final/ 与 Release
-tmp/device-runs/20261018-150820-media-avcc-release-final/ 均为
-1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352–1360,999：21/21，
-唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash PASS，无新增 dump；两配置正文相同，旧 20 项与前基线一致。
-当前为 240×320、96 DPI DeviceEmulator，SD 134 文件；双空间和新 guest holders=0
-unavailable=0 通过。内置 object-store 仅余 2406400 bytes。两配置回收后清理当前目录，
-保留 29 个日志不完整目录；无强杀/重置/WMDC 改动、普通 EXE 或用户 DB 改动，RAPI 无 guest 退出码。
+Debug tmp/device-runs/20261022-093040-media-nal-debug-final/ 与 Release
+tmp/device-runs/20261022-093832-media-nal-release-final/ 均为
+1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352–1361,999 的 22/22 PASS；
+唯一 PASS、零 ERROR/FAIL，双配置正文一致，旧 20 项媒体及完成标记与上一基线相同。
+定向 Debug tmp/device-runs/20261022-092756-media-nal-debug-probe/ 为 1359–1361,999 的 4/4。
+当前 320×320、128 DPI DeviceEmulator；SD 140 文件，
+双空间及新 guest holders=0 unavailable=0 通过，object-store 可用 9469952 bytes。
+两配置完整日志/Core/crash PASS，无新增 dump，回收后清理当前目录；42 个旧不完整目录保留。
+无强杀/重置/WMDC 改动、普通 EXE 或用户 DB 改动，RAPI 无 guest 退出码。
 
 媒体 DLL/stage SHA256 一致：Debug 0b7349322bacfcfb36f3860f90ff453ef6ba8b42c352f01de48a148641452cec，
 Release bce903444627d63316f082471aa4119ee547d24e0654b1b1a711d78d21df7c9b。
 上游与 archive 未改/重建，archive SHA256 为 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
 
-失败对照 tmp/device-runs/20261018-145840-media-avcc-debug-probe/：旧 DLL 超限返回通用
-decoder 错误，未进入新配置验证合同；完整回收/无新 dump，非全部控制通过。
-150002-media-avcc-debug-guard 为定向 3/3，随后最终宽门覆盖诊断文字更新。
-150142-media-avcc-debug-accepted 在引用审计未取得完整摘要时停止，未启动 test_host；
-保留远端目录，不强杀/重置。原带内 SPS 的四帧漏报、C99 头失败与前缀假设撤回边界见 Git。
+旧预检 tmp/device-runs/20261021-232409-media-nal-preflight/ 因裸 test_host 持有 DLL 停止，
+本次零引用已解除；失败包保留。旧 avcC/SPS 失败及前缀假设撤回见 Git。
 
-C89/审计、110 pin、带内/外带及旧配置/时间轴 oracle、设备门单测和两配置构建通过。ROADMAP/限制/架构
-已复核；下一步取证 NAL 长度字段切换与带内守卫组合。其他参数、音频 PTS、故障/峰值
-和设备同步仍未验收；tmp 不入 Git。
+C89/审计、116 pin、三组参数 oracle、设备门单测和两配置构建通过。系统 python 别名不可执行，
+本轮使用 C:\Program Files\Python312\python.exe，未改 OS 配置。ROADMAP/限制/架构已复核；
+下一步取证有效参数切回初始配置。反向/一字节长度、坏 framing、音频 PTS、故障/峰值和
+DirectShow/设备同步仍待门；tmp 不入 Git。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -498,8 +496,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
 下载重下/历史单删已获人工通过，历史搜索已通过自动门；下一步人工复核关键词、清空及筛选后删除/跨标签。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-本轮只补隔离历史测试数据和检查脚本，已复核路线图；完整UI窗口像素失败独立待取证，不提升基线。
-Media外带avcC证据保持，未改EXE产品代码、公共DLL或打包工程。
+隔离历史数据和完整UI窗口像素失败保持独立待验收；已复核路线图，本轮仅补Media NAL组合回归/中文文档，
+未改EXE产品代码、公共DLL/ABI或打包工程。
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与
@@ -508,7 +506,7 @@ EXE 的地址编辑不提交时 B 继续加载、fragment 不打断 B、外链 C
 标题、输入/IME、native 拖选、跟手滚动、旋转/语言、About/CAB 与 Debug 时间仍按各自人工门
 或独立候选验收；系统营销版本识别继续暂缓。不要沿用已清理的旧包或 PID。
 
-Media 外带 avcC 守卫已完成，下一纵切取证 NAL 长度字段切换/带内守卫组合。未知 PTS/音频侧异常、其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
+Media 下一纵切取证有效视频参数切回初始配置；其他 NAL 长度/坏 framing 仍待门。未知 PTS/音频侧异常、其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
 DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
 仍待专门门，不把应用正常重开或进程终止恢复写成断电恢复。新增设备门须协调串行构建、重新审计 guest DLL 引用；破坏性
 恢复需另行授权，日志回收前不清理，删除失败不写成已清空。
