@@ -6,11 +6,14 @@
 #include <string.h>
 #include <wchar.h>
 #include "positron_runtime.h"
+#include "positron_db.h"
 
 static const char fixture_manifest[] = "{\"manifestVersion\":1,\"id\":\"Org.Demo_App.Notes\",\"name\":\"Notes\","
     "\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
 static const char* directory_error = "Runtime directory fixture failed";
+static char directory_diagnostic[1024];
 const char* test1365_runtime_directory_last_error(void) { return directory_error; }
+const char* test1367_runtime_migrations_last_error(void) { return directory_error; }
 typedef struct DirectoryFixture {
     WCHAR root[MAX_PATH];
     WCHAR outer[MAX_PATH];
@@ -30,6 +33,7 @@ typedef struct DirectoryFixture {
     int fail_lock;
     int reentry;
     int reentry_ok;
+    int fail_at;
 } DirectoryFixture;
 static int directory_fixture_init(DirectoryFixture* f, DWORD pid)
 {
@@ -111,11 +115,20 @@ static int directory_fixture_read(void* user, void* root, const char* key, unsig
         f->reentry_ok = PRuntime_DirectoryGetInfo(f->instance, &info) == PRUNTIME_STATE &&
             PRuntime_DirectoryResolveReference(f->instance, NULL, 0, NULL, 0, &reference) == PRUNTIME_STATE &&
             PRuntime_DirectoryClose(&alias) == PRUNTIME_STATE && alias == f->instance;
+        {
+            PRuntimeMigrationPlanOptions options;
+            PRuntimeMigrationPlanHandle plan;
+            memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+            options.granted_permissions = PRUNTIME_PERMISSION_SQL; plan = NULL;
+            f->reentry_ok = f->reentry_ok && PRuntime_DirectoryPrepareMigrations(f->instance, &options, &plan) == PRUNTIME_STATE && !plan;
+        }
     }
     /* Known fixture key -> native file. Runtime already validated it; this
      * provider additionally confines opens to the four files it created. */
     if (strcmp(key, "manifest.json") && strcmp(key, "index.html") &&
-            strcmp(key, "\xe5\x9b\xbe.svg") && strcmp(key, "empty")) return PRUNTIME_IO;
+            strcmp(key, "\xe5\x9b\xbe.svg") && strcmp(key, "empty") &&
+            !(strlen(key) == 7 && key[0] == 'm' && key[1] >= '0' && key[1] <= '1' &&
+            key[2] >= '0' && key[2] <= '9' && !strcmp(key + 3, ".sql"))) return PRUNTIME_IO;
     if (!MultiByteToWideChar(CP_UTF8, 0, key, -1, relative, 256)) return PRUNTIME_IO;
     for (i = 0; relative[i]; i++) if (relative[i] == '/') relative[i] = '\\';
     if (wcslen(f->root) + wcslen(relative) + 2 > MAX_PATH) return PRUNTIME_LIMIT;
@@ -130,7 +143,7 @@ static int directory_fixture_read(void* user, void* root, const char* key, unsig
     if (!ok || received != bytes) { free(memory); return PRUNTIME_IO; }
     out->data = memory; out->bytes = f->oversized ? limit + 1 : bytes; out->token = memory;
     f->allocations++;
-    return f->fail_read ? PRUNTIME_IO : PRUNTIME_OK;
+    return f->fail_read || f->fail_at == f->reads ? PRUNTIME_IO : PRUNTIME_OK;
 }
 static void directory_fixture_release(void* user, void* root, PRuntimeBorrowedBytes* out)
 {
@@ -148,12 +161,14 @@ static void directory_fixture_provider(DirectoryFixture* f, PRuntimeDirectoryPro
 static void directory_fixture_cleanup(DirectoryFixture* f, int owned_root, int owned_outer)
 {
     WCHAR path[MAX_PATH];
-    /* Only the four known files inside a directory created by this fixture. */
+    unsigned int i;
+    /* Only known files inside a directory created by this fixture. */
     if (owned_root) {
         wsprintfW(path, L"%s\\manifest.json", f->root); DeleteFileW(path);
         wsprintfW(path, L"%s\\index.html", f->root); DeleteFileW(path);
         wsprintfW(path, L"%s\\\x56fe.svg", f->root); DeleteFileW(path);
         wsprintfW(path, L"%s\\empty", f->root); DeleteFileW(path);
+        for (i = 1; i <= 16; i++) { wsprintfW(path, L"%s\\m%02u.sql", f->root, i); DeleteFileW(path); }
         RemoveDirectoryW(f->root);
     }
     if (owned_outer) RemoveDirectoryW(f->outer);
@@ -232,6 +247,13 @@ BOOL test1365_runtime_directory_contract(void)
     RUNTIME_VERIFY(directory_fixture_init(&other, GetCurrentProcessId() ^ 0x40000000UL), "second root identity");
     owned_other_outer = CreateDirectoryW(other.outer, NULL) != 0;
     if (owned_other_outer) owned_other_root = CreateDirectoryW(other.root, NULL) != 0;
+    if (!owned_other_root) {
+        DWORD error;
+        error = GetLastError();
+        sprintf(directory_diagnostic, "second private root: outer=%d root=%d error=%lu equal=%d first=%.400s second=%.400s", owned_other_outer,
+            owned_other_root, error, !wcscmp(f.outer, other.outer), f.canonical, other.canonical);
+        directory_error = directory_diagnostic; goto done;
+    }
     RUNTIME_VERIFY(owned_other_root && directory_fixture_write(&other, L"manifest.json", fixture_manifest, sizeof(fixture_manifest) - 1) &&
         directory_fixture_write(&other, L"index.html", "other", 5), "same-ID distinct-root fixtures");
     directory_fixture_provider(&other, &other_provider);
@@ -303,4 +325,162 @@ done:
     directory_fixture_cleanup(&f, owned_root, owned_outer);
     directory_fixture_cleanup(&other, owned_other_root, owned_other_outer);
     return ok;
+}
+
+static DWORD WINAPI migrations_wrong_thread(void* user)
+{
+    PRuntimeMigrationPlanHandle alias;
+    PRuntimeMigrationPlanInfo info;
+    PRuntimeMigrationSource source;
+    alias = (PRuntimeMigrationPlanHandle)user;
+    info.size = sizeof(info); info.version = 1; source.size = sizeof(source); source.version = 1;
+    return PRuntime_MigrationPlanGetInfo(alias, &info) == PRUNTIME_STATE &&
+        PRuntime_MigrationPlanGetSource(alias, 0, &source) == PRUNTIME_STATE &&
+        PRuntime_MigrationPlanClose(&alias) == PRUNTIME_STATE && alias == (PRuntimeMigrationPlanHandle)user ? 0 : 3;
+}
+BOOL test1367_runtime_migrations_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"org.demo.notes\",\"name\":\"Notes\","
+        "\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],"
+        "\"migrations\":[{\"version\":1,\"file\":\"m01.sql\"},{\"version\":2,\"file\":\"m02.sql\"}]}";
+    static const char sql1[] = "CREATE TABLE notes(body TEXT);\r\n";
+    static const char sql2[] = "\tINSERT INTO notes VALUES('\xe4\xb8\xad\xe6\x96\x87');\n";
+    static const char* const bad[] = { "", "A\0B", "\xef\xbb\xbfSELECT 1", "\xc0\xaf", "\x01", "\xc2\x80" };
+    static const unsigned int bad_bytes[] = { 0, 3, 11, 2, 1, 2 };
+    DirectoryFixture f;
+    PRuntimeDirectoryProvider provider;
+    PRuntimeMigrationPlanOptions options;
+    PRuntimeMigrationPlanHandle plan;
+    PRuntimeMigrationPlanInfo info;
+    PRuntimeMigrationPlanInfo before;
+    PRuntimeMigrationSource source;
+    PRuntimeMigrationSource prior;
+    PDbHandle db;
+    PDbStmtHandle stmt;
+    PDbRestrictedOptions db_options;
+    PDbMigrationReport report;
+    WCHAR name[32];
+    char catalog[2048];
+    char item[96];
+    char* big;
+    HANDLE thread;
+    DWORD code;
+    unsigned int i;
+    int reads;
+    int version;
+    int owned_outer;
+    int owned_root;
+    BOOL ok;
+    plan = NULL; db = NULL; stmt = NULL; big = NULL; thread = NULL; ok = FALSE;
+    owned_outer = owned_root = 0;
+    if (!directory_fixture_init(&f, GetCurrentProcessId() ^ 0x20000000UL)) return FALSE;
+    directory_fixture_provider(&f, &provider);
+    owned_outer = CreateDirectoryW(f.outer, NULL) != 0;
+    if (owned_outer) owned_root = CreateDirectoryW(f.root, NULL) != 0;
+    RUNTIME_VERIFY(owned_root && directory_fixture_write(&f, L"manifest.json", manifest, sizeof(manifest) - 1) &&
+        directory_fixture_write(&f, L"m01.sql", sql1, sizeof(sql1) - 1) &&
+        directory_fixture_write(&f, L"m02.sql", sql2, sizeof(sql2) - 1), "migration native fixtures");
+    RUNTIME_VERIFY(PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0,
+        "migration bound root");
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    reads = f.reads;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_DENIED && !plan && reads == f.reads,
+        "declaration alone does not authorize source reads");
+    options.granted_permissions = 2;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_UNSUPPORTED && !plan && reads == f.reads,
+        "unknown native grant fails before I/O");
+    options.granted_permissions = PRUNTIME_PERMISSION_SQL; options.current_schema_version = 3;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_SCHEMA && !plan && reads == f.reads,
+        "future schema cannot downgrade");
+    options.current_schema_version = 0; options.version = 2;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_ARGUMENT && !plan && reads == f.reads,
+        "versioned options before I/O"); options.version = 1;
+    f.reentry = 1;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == 0 && plan && f.reentry_ok && f.reads == reads + 2,
+        "all pending files, no callback reentry"); f.reentry = 0;
+    info.size = sizeof(info); info.version = 1;
+    source.size = sizeof(source); source.version = 1;
+    RUNTIME_VERIFY(PRuntime_MigrationPlanGetInfo(plan, &info) == 0 && info.previous_version == 0 && info.target_version == 2 &&
+        info.file_count == 2 && info.total_bytes == sizeof(sql1) + sizeof(sql2) - 2 && !strcmp(info.id, "org.demo.notes"), "copied plan info");
+    thread = CreateThread(NULL, 0, migrations_wrong_thread, plan, 0, NULL);
+    RUNTIME_VERIFY(thread && WaitForSingleObject(thread, 10000) == WAIT_OBJECT_0 && GetExitCodeThread(thread, &code) && !code,
+        "plan owner-thread guard"); CloseHandle(thread); thread = NULL;
+    RUNTIME_VERIFY(PRuntime_DirectoryClose(&f.instance) == 0, "plan independent of directory lifetime");
+    RUNTIME_VERIFY(PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) == PDB_OK, "private DB integration fixture");
+    memset(&db_options, 0, sizeof(db_options)); db_options.size = sizeof(db_options); db_options.version = 1; db_options.vm_budget = 1000000;
+    memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = 1;
+    for (i = 0; i < 2; i++) {
+        RUNTIME_VERIFY(PRuntime_MigrationPlanGetSource(plan, i, &source) == 0 && source.schema_version == i + 1 &&
+            source.sql_bytes == (i ? sizeof(sql2) : sizeof(sql1)) - 1 && !memcmp(source.sql, i ? sql2 : sql1, source.sql_bytes),
+            "exact immutable UTF-8 SQL order and length after root close");
+        RUNTIME_VERIFY(PDb_ApplyMigrationRestricted(db, i, i + 1, source.sql, source.sql_bytes, &db_options, &report) == PDB_OK,
+            "public source to public restricted DB primitive");
+    }
+    RUNTIME_VERIFY(PDb_GetMigrationVersion(db, &version) == 0 && version == 2 &&
+        PDb_Prepare(db, "SELECT body FROM notes", &stmt) == 0 && PDb_Step(stmt) == PDB_STEP_ROW &&
+        !strcmp(PDb_ColumnText(stmt, 0), "\xe4\xb8\xad\xe6\x96\x87"), "migration integration typed text and strict version");
+    PDb_Finalize(stmt); stmt = NULL; PDb_Close(db); db = NULL;
+    prior = source; before = info;
+    RUNTIME_VERIFY(PRuntime_MigrationPlanGetSource(plan, 2, &source) == PRUNTIME_ARGUMENT && !memcmp(&source, &prior, sizeof(source)),
+        "source index failure unchanged"); info.version = 2; before = info;
+    RUNTIME_VERIFY(PRuntime_MigrationPlanGetInfo(plan, &info) == PRUNTIME_ARGUMENT && !memcmp(&info, &before, sizeof(info)),
+        "info version failure unchanged"); info.version = 1;
+    RUNTIME_VERIFY(PRuntime_MigrationPlanClose(&plan) == 0 && !plan && PRuntime_MigrationPlanClose(&plan) == 0, "plan release idempotent");
+    RUNTIME_VERIFY(PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0, "reopen for suffix");
+    options.current_schema_version = 1;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == 0 &&
+        PRuntime_MigrationPlanGetInfo(plan, &info) == 0 && info.file_count == 1 && info.previous_version == 1 &&
+        PRuntime_MigrationPlanGetSource(plan, 0, &source) == 0 && source.schema_version == 2, "only pending catalog suffix");
+    PRuntime_MigrationPlanClose(&plan); reads = f.reads; options.current_schema_version = 2;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == 0 &&
+        PRuntime_MigrationPlanGetInfo(plan, &info) == 0 && !info.file_count && reads == f.reads, "up-to-date zero read plan");
+    PRuntime_MigrationPlanClose(&plan); options.current_schema_version = 0;
+    for (i = 0; i < 2; i++) {
+        f.fail_at = i ? f.reads + 2 : 0; f.oversized = i == 0; plan = (PRuntimeMigrationPlanHandle)1;
+        RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == (i ? PRUNTIME_IO : PRUNTIME_LIMIT) &&
+            plan == (PRuntimeMigrationPlanHandle)1 && f.allocations == f.releases, "partial/oversized acquisition unwinds without plan"); plan = NULL;
+    }
+    f.fail_at = f.oversized = 0; PRuntime_DirectoryClose(&f.instance);
+    for (i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        RUNTIME_VERIFY(directory_fixture_write(&f, L"m02.sql", bad[i], bad_bytes[i]) &&
+            PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0,
+            "malformed source fixture"); plan = (PRuntimeMigrationPlanHandle)1;
+        RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_INVALID &&
+            plan == (PRuntimeMigrationPlanHandle)1 && f.allocations == f.releases, "bad later source exposes no partial plan"); plan = NULL;
+        PRuntime_DirectoryClose(&f.instance);
+    }
+    big = (char*)malloc(PRUNTIME_MIGRATION_SQL_BYTES + 1); RUNTIME_VERIFY(big, "bounded fixture allocation");
+    memset(big, ' ', PRUNTIME_MIGRATION_SQL_BYTES + 1);
+    RUNTIME_VERIFY(directory_fixture_write(&f, L"m02.sql", big, PRUNTIME_MIGRATION_SQL_BYTES + 1) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0,
+        "oversized native SQL fixture");
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_LIMIT && !plan, "real file upper limit");
+    PRuntime_DirectoryClose(&f.instance);
+    strcpy(catalog, "{\"manifestVersion\":1,\"id\":\"org.demo.notes\",\"name\":\"Notes\",\"version\":1,"
+        "\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],\"migrations\":[");
+    for (i = 1; i <= 16; i++) {
+        sprintf(item, "%s{\"version\":%u,\"file\":\"m%02u.sql\"}", i == 1 ? "" : ",", i, i); strcat(catalog, item);
+        wsprintfW(name, L"m%02u.sql", i);
+        RUNTIME_VERIFY(directory_fixture_write(&f, name, big, PRUNTIME_MIGRATION_SQL_BYTES), "maximum file fixture");
+    }
+    strcat(catalog, "]}");
+    RUNTIME_VERIFY(directory_fixture_write(&f, L"manifest.json", catalog, (DWORD)strlen(catalog)) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0, "maximum catalog fixture");
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == 0 &&
+        PRuntime_MigrationPlanGetInfo(plan, &info) == 0 && info.file_count == 16 && info.total_bytes == PRUNTIME_MIGRATION_TOTAL_BYTES,
+        "exact 16 file / 512 KiB snapshot budget");
+    PRuntime_MigrationPlanClose(&plan); PRuntime_DirectoryClose(&f.instance);
+    RUNTIME_VERIFY(directory_fixture_write(&f, L"manifest.json", fixture_manifest, sizeof(fixture_manifest) - 1) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0, "undeclared SQL fixture");
+    reads = f.reads;
+    RUNTIME_VERIFY(PRuntime_DirectoryPrepareMigrations(f.instance, &options, &plan) == PRUNTIME_DENIED && !plan && reads == f.reads,
+        "native grant cannot invent missing declaration");
+    RUNTIME_VERIFY(f.allocations == f.releases, "all acquired migration bytes released"); ok = TRUE;
+done:
+    if (thread) { WaitForSingleObject(thread, 10000); CloseHandle(thread); }
+    if (stmt) PDb_Finalize(stmt);
+    if (db) PDb_Close(db);
+    if (plan != (PRuntimeMigrationPlanHandle)1) PRuntime_MigrationPlanClose(&plan);
+    PRuntime_DirectoryClose(&f.instance); free(big);
+    directory_fixture_cleanup(&f, owned_root, owned_outer); return ok;
 }

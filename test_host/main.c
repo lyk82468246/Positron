@@ -119,6 +119,8 @@ extern const char* test1365_runtime_directory_last_error(void);
 extern int test1365_runtime_directory_command(const WCHAR* command, int* result);
 extern BOOL test1366_db_migration_contract(void);
 extern const char* test1366_db_migration_last_error(void);
+extern BOOL test1367_runtime_migrations_contract(void);
+extern const char* test1367_runtime_migrations_last_error(void);
 extern const char* test1363_db_restricted_last_error(void);
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
@@ -1285,7 +1287,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1366
+#define TEST_MAX_NUMBER 1367
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118344,6 +118346,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1366_db_migration_contract();
             if (ok) { show_info(L"TEST 1366 OK", "Restricted migration admission, version checks and atomic rollback passed."); }
             else { show_error(L"TEST 1366 FAIL", test1366_db_migration_last_error()); }
+            break;
+        case 1367:
+            ok = test1367_runtime_migrations_contract();
+            if (ok) { show_info(L"TEST 1367 OK", "Runtime manifest migration sources, grants and immutable bounded plans passed."); }
+            else { show_error(L"TEST 1367 FAIL", test1367_runtime_migrations_last_error()); }
             break;
         case 1322:
             ok = test1322_browser_application_script_profile();

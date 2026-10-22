@@ -52,7 +52,7 @@ PRUNTIME_API int PRuntime_NormalizeId(const char* id, unsigned int bytes,
     return PRUNTIME_OK;
 }
 /* Validate public UTF-8 text boundaries, not JSON grammar. */
-static int runtime_text(const char* text, unsigned int bytes)
+static int runtime_text_mode(const char* text, unsigned int bytes, int sql)
 {
     unsigned int i;
     unsigned int extra;
@@ -62,7 +62,10 @@ static int runtime_text(const char* text, unsigned int bytes)
     if (text == NULL || bytes == 0) return 0;
     for (i = 0; i < bytes; i++) {
         c = (unsigned char)text[i];
-        if (c < 32 || c == 127) return 0;
+        if (c < 32 || c == 127) {
+            if (sql && (c == 9 || c == 10 || c == 13)) continue;
+            return 0;
+        }
         if (c < 128) continue;
         if (c >= 194 && c <= 223) { extra = 1; code = c & 31; minimum = 128; }
         else if (c >= 224 && c <= 239) { extra = 2; code = c & 15; minimum = 2048; }
@@ -77,6 +80,8 @@ static int runtime_text(const char* text, unsigned int bytes)
     }
     return 1;
 }
+static int runtime_text(const char* text, unsigned int bytes)
+{ return runtime_text_mode(text, bytes, 0); }
 PRUNTIME_API int PRuntime_ValidateResourcePath(const char* path, unsigned int bytes)
 {
     unsigned int i;
@@ -613,4 +618,92 @@ PRUNTIME_API int PRuntime_DirectoryClose(PRuntimeDirectoryHandle* directory)
     if (rc != PRUNTIME_OK) return rc;
     (*directory)->active = 1; runtime_directory_dispose(*directory); *directory = NULL;
     return PRUNTIME_OK;
+}
+
+struct PRuntimeMigrationPlan {
+    PRuntimeMigrationPlanInfo info;
+    PRuntimeMigrationSource sources[PRUNTIME_MAX_MIGRATIONS];
+    DWORD owner;
+};
+static void runtime_plan_dispose(PRuntimeMigrationPlanHandle plan)
+{
+    unsigned int i;
+    for (i = 0; i < PRUNTIME_MAX_MIGRATIONS; i++) free((void*)plan->sources[i].sql);
+    free(plan);
+}
+PRUNTIME_API int PRuntime_DirectoryPrepareMigrations(PRuntimeDirectoryHandle directory,
+        const PRuntimeMigrationPlanOptions* options, PRuntimeMigrationPlanHandle* output)
+{
+    PRuntimeMigrationPlanHandle plan;
+    PRuntimeMigrationSource* source;
+    PRuntimeMigrationInfo* migration;
+    PRuntimeBorrowedBytes borrowed;
+    unsigned int i;
+    int rc;
+    rc = runtime_directory_ready(directory);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION)
+        return PRUNTIME_ARGUMENT;
+    if (options->granted_permissions & ~PRUNTIME_PERMISSION_SQL) return PRUNTIME_UNSUPPORTED;
+    if (!(options->granted_permissions & directory->manifest->info.requested_permissions & PRUNTIME_PERMISSION_SQL))
+        return PRUNTIME_DENIED;
+    if (options->current_schema_version > directory->manifest->info.migration_count) return PRUNTIME_SCHEMA;
+    plan = (PRuntimeMigrationPlanHandle)calloc(1, sizeof(*plan));
+    if (!plan) return PRUNTIME_MEMORY;
+    plan->owner = GetCurrentThreadId(); plan->info.size = sizeof(plan->info); plan->info.version = PRUNTIME_VERSION;
+    strcpy(plan->info.id, directory->manifest->info.id);
+    plan->info.previous_version = options->current_schema_version;
+    plan->info.target_version = directory->manifest->info.migration_count;
+    directory->active = 1;
+    for (i = (unsigned int)options->current_schema_version; i < directory->manifest->info.migration_count; i++) {
+        migration = &directory->manifest->migrations[i];
+        memset(&borrowed, 0, sizeof(borrowed));
+        rc = runtime_provider_result(directory->provider.read(directory->provider.user_data, directory->root.root,
+                migration->file, PRUNTIME_MIGRATION_SQL_BYTES, &borrowed), 0);
+        if (rc == PRUNTIME_OK) {
+            if (borrowed.bytes > PRUNTIME_MIGRATION_SQL_BYTES ||
+                    borrowed.bytes > PRUNTIME_MIGRATION_TOTAL_BYTES - plan->info.total_bytes) rc = PRUNTIME_LIMIT;
+            else if (!borrowed.token || (borrowed.bytes && !borrowed.data)) rc = PRUNTIME_IO;
+            else if (!runtime_text_mode((const char*)borrowed.data, borrowed.bytes, 1) ||
+                    (borrowed.bytes >= 3 && !memcmp(borrowed.data, "\xef\xbb\xbf", 3))) rc = PRUNTIME_INVALID;
+            else {
+                source = &plan->sources[plan->info.file_count];
+                source->sql = (const char*)malloc(borrowed.bytes);
+                if (!source->sql) rc = PRUNTIME_MEMORY;
+                else {
+                    memcpy((void*)source->sql, borrowed.data, borrowed.bytes);
+                    source->size = sizeof(*source); source->version = PRUNTIME_VERSION;
+                    source->schema_version = migration->schema_version; strcpy(source->file, migration->file);
+                    source->sql_bytes = borrowed.bytes;
+                    plan->info.file_count++; plan->info.total_bytes += borrowed.bytes;
+                }
+            }
+        }
+        if (borrowed.token) directory->provider.release_bytes(directory->provider.user_data, directory->root.root, &borrowed);
+        if (rc != PRUNTIME_OK) break;
+    }
+    directory->active = 0;
+    if (rc != PRUNTIME_OK) { runtime_plan_dispose(plan); return rc; }
+    *output = plan; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_MigrationPlanGetInfo(PRuntimeMigrationPlanHandle plan, PRuntimeMigrationPlanInfo* info)
+{
+    if (!plan || !info || info->size != sizeof(*info) || info->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    if (plan->owner != GetCurrentThreadId()) return PRUNTIME_STATE;
+    *info = plan->info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_MigrationPlanGetSource(PRuntimeMigrationPlanHandle plan,
+        unsigned int index, PRuntimeMigrationSource* source)
+{
+    if (!plan || !source || source->size != sizeof(*source) || source->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    if (plan->owner != GetCurrentThreadId()) return PRUNTIME_STATE;
+    if (index >= plan->info.file_count) return PRUNTIME_ARGUMENT;
+    *source = plan->sources[index]; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_MigrationPlanClose(PRuntimeMigrationPlanHandle* plan)
+{
+    if (!plan) return PRUNTIME_ARGUMENT;
+    if (!*plan) return PRUNTIME_OK;
+    if ((*plan)->owner != GetCurrentThreadId()) return PRUNTIME_STATE;
+    runtime_plan_dispose(*plan); *plan = NULL; return PRUNTIME_OK;
 }

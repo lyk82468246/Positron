@@ -21,18 +21,26 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 开发目录实例与只读资源合同已验收
+### Runtime 开发目录与迁移来源快照已验收
 
-Runtime 仍只链接 JSON 公共 import library；调用与 provider 边界见
-[Runtime README](../positron_runtime/README.md)。开发目录 Open 保有可信 provider 规范根、
-读取根 manifest 准入并取开发根/ID 独占 lease；解析后复制有界资源，错误保留输出并展开释放。
-原生规范化/包含性必须由真实平台 provider 证明，不能复制路径或做前缀判断；fixture 只处理
-私有已知根，不是通用适配器。锁 bucket 碰撞仅拒绝并发，不作数据身份。未实现安装身份、
-数据映射、迁移准入/SQL 授权与 Core/Browser app 组合，PXI 未取证，不改 EXE/CAB。
+Runtime 仍只链接 JSON。目录/provider 的规范化、包含性、lease 与读取/释放合同统一见
+[Runtime README](../positron_runtime/README.md)，不在交接重复；fixture 仅处理私有已知根，
+不是通用 WM 适配器。安装身份、数据映射、迁移执行/SQL 服务与 Core/Browser app 组合仍未实现；
+锁 bucket 不能作数据身份，PXI 未取证，不改 EXE/CAB。
 
-当前双配置复验统一见下方 DB 门，包含 Runtime TEST1364/1365；首次目录门及旧 JSON
-相邻门证据归 Git。TEST1365 保护私有中文根/文件、二进制/空文件、同 ID 不同根隔离、
-provider alias 与真实子进程重复拒绝、owner/reentry、失败展开/输出不变及重复释放。
+新 PrepareMigrations 要求声明与显式原生 SQL 决策；从绑定根按顺序复制 pending catalog，
+每文件 32 KiB、最多 16 文件/512 KiB，后续文件失败不发布计划；未来版本拒绝，空计划无读取。
+独立 owner-thread 快照不是 DB 身份/授权，SQL 准入仍归 DB；TEST1367 验证 UTF-8/边界、
+callback 重入/关闭拒绝、失败不变性及来源至公共 DB 原语组合，不表示 Runtime 已执行迁移。
+
+Debug `tmp/device-runs/20261022-232343-runtime-source-debug-final/`、Release
+`tmp/device-runs/20261022-232632-runtime-source-release-final/` 各 `1321,1363-1367,999` 7/7 PASS，
+唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash、双空间与新 guest 零引用通过，无新增 dump。
+145 文件 SD 包回收后清理，45 个旧不完整目录保留；C89/审计与串行正式两配置构建通过。
+未改 WMDC、EXE/用户 DB，无强杀或 nightly。TEST1365 原目录/跨进程与 DB 相邻断言保持。
+先行 `20261022-232005-runtime-migration-sources-debug`、`20261022-232134-runtime-source-probe`
+均在旧 TEST1365 第二私有根创建前失败，后者 error=183，未进入 TEST1367；仅补有界路径诊断后
+定向及最终门通过，未放宽断言/删除已有目录，根因未定。失败完整日志保留，不追认通过。
 先行 `tmp/device-runs/20261022-200937-runtime-directory-debug-probe/` 在 helper 无完整摘要前停止，
 未运行测试、远端包保留，不追认为 PASS；新候选审计恢复，未确定旧失败原因。旧元数据证据见 Git。
 
@@ -392,27 +400,18 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 前置，调用/允许的 schema 子集、预算、借用、错误及回滚合同见
 [DB README](../positron_db/README.md)。新迁移在 BEGIN IMMEDIATE 后比较严格版本，
 SQL authorizer 保护私有表与连接策略；每文件的 DDL/DML/version 原子提交，失败不发布 report。
-旧 local-full/sync/migration 不变。Runtime 身份/映射、manifest 迁移文件来源和 SQL JSON/
-授权仍未接入；不能把新原语或旧完整 migration 当作网页 SQL 授权。
+旧 local-full/sync/migration 不变。Runtime 已有上方来源快照；身份/映射、迁移执行和 SQL JSON/
+授权仍未接入，不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
 
-Debug `tmp/device-runs/20261022-223737-db-migration-debug-final/`、Release
-`tmp/device-runs/20261022-224032-db-migration-release-final/` 各 `1321,1363-1366,999` 6/6 PASS，
-唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash、双空间与新 guest 零引用通过，无新增 dump；
-145 文件 SD 匹配包回收后清理，45 个旧不完整目录保留。TEST1366 覆盖建表/UNIQUE/索引/DML、
-私有表/非支持 DDL/列结果拒绝、严格 TEXT 版本/符号/溢出/长值/NUL/BLOB、版本不匹配、
-DDL/DML/COMMIT 失败与预算/取消无残留表、reentry/close 和 report 不变；旧 DB/Runtime 断言保持。
-C89/审计、正式两配置构建通过；Debug 三次 devenv 访问冲突有 Application 1000 及独立 host
-失败日志，正式第四次和最终构建成功，不追认失败；未杀进程、改工具链/WMDC/EXE/用户 DB。
+当前双配置复验见 Runtime 门，TEST1366 继续保护建表/索引/DML、私有对象/非支持 SQL 拒绝、
+严格版本类型/长度/内容、DDL/DML/COMMIT 回滚、预算/取消/reentry 与输出不变性。
+首次 DB 门及三次 devenv 访问冲突/正式恢复证据归 Git 和本地日志，不追认失败或改变工具链。
 
-旧 TEST1321 原断言继续保护 local/sync、迁移、sticky 错误/真实事务状态及内存 FULL。
-稳定规则归 DB README，旧合同门与 WinCE 锁映射失败对照归 Git/本地日志；no-WAL/no-mmap
-不变，I/O、rollback 本身失败与物理断电仍无本轮证据。
-
-独立文件门的双配置/两种存储、中文路径与 typed 数据、三进程冷重开、跨进程读写/写写锁，
-以及受控终止写进程后的 hot-journal 恢复证据统一见 [DB 文件验收清单](DB_FILE_ACCEPTANCE.md)。
-它们不等于真实断电。文件 FULL 仅内置部分通过，映射 SD 截断不支持并返回
-SQLITE_IOERR_TRUNCATE，整体仍 FAIL；用户已挂起，不重跑或要求换设备。I/O、迁移提交
-故障/版本拒绝与 HTTPS worker 仍待专门门；不改 EXE/CAB 或推断数据安全，旧清理失败保留。
+TEST1321 的 local/sync、sticky 错误/事务状态及内存 FULL 仍通过；不改变 no-WAL/no-mmap。
+文件冷重开、双存储跨进程锁与受控终止后的 journal 恢复，及 FULL/I/O/故障未验收边界统一见
+[DB 文件验收清单](DB_FILE_ACCEPTANCE.md)，不在此重复每进程证据；正常回滚不等于 VFS 故障或
+物理断电恢复。映射 SD 的 SQLITE_IOERR_TRUNCATE 仍使文件 FULL 整体 FAIL，用户已挂起，
+不重跑或要求换设备；迁移文件故障/HTTPS worker 仍待专门门，旧清理失败不追认为成功。
 
 ### HTTP 下载预检与旧流式合同已验收
 
@@ -496,8 +495,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
 系统ZIP无可用接口则挂起PXI。ROADMAP/能力矩阵已复核：DB 受限请求、受限迁移/严格版本
-原语，以及可信 provider 上的开发目录实例/独占/只读资源合同均已完成。唯一下一步由 Runtime
-接入 manifest 迁移来源/权限与开发/安装隔离存储映射，再接 SQL JSON/授权及 Core/Browser；
+原语、可信 provider 上的开发目录/只读资源及 manifest 迁移来源快照均已完成。唯一下一步由 Runtime
+接入开发/安装隔离存储映射和迁移执行，再接 SQL JSON/授权及 Core/Browser；
 EXE 的通用 WM provider 和目录示例仍等完整合同，不凭 manifest、URL 或目录句柄私造服务授权。
 ZIP 未取证，不改 EXE/CAB/用户 DB，不重开像素、FULL/断电与保存框暂缓门。
 构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。

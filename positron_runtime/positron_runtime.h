@@ -19,6 +19,10 @@ extern "C" {
 #define PRUNTIME_IO -6
 #define PRUNTIME_BUSY -7
 #define PRUNTIME_STATE -8
+#define PRUNTIME_DENIED -9
+#define PRUNTIME_SCHEMA -10
+#define PRUNTIME_MIGRATION_SQL_BYTES 32768U
+#define PRUNTIME_MIGRATION_TOTAL_BYTES (16U * PRUNTIME_MIGRATION_SQL_BYTES)
 #define PRUNTIME_ROOT_BYTES 1023
 #define PRUNTIME_RESOURCE_BYTES (8U * 1024U * 1024U)
 #define PRUNTIME_MANIFEST_BYTES 8192
@@ -34,6 +38,31 @@ typedef struct PRuntimeManifest PRuntimeManifest;
 typedef PRuntimeManifest* PRuntimeManifestHandle;
 typedef struct PRuntimeDirectory PRuntimeDirectory;
 typedef PRuntimeDirectory* PRuntimeDirectoryHandle;
+typedef struct PRuntimeMigrationPlan PRuntimeMigrationPlan;
+typedef PRuntimeMigrationPlan* PRuntimeMigrationPlanHandle;
+typedef struct PRuntimeMigrationPlanOptions {
+    unsigned int size;
+    unsigned int version;
+    unsigned long granted_permissions; /* explicit trusted native decision */
+    unsigned long current_schema_version; /* strict DB read, NOT author input */
+} PRuntimeMigrationPlanOptions;
+typedef struct PRuntimeMigrationPlanInfo {
+    unsigned int size;
+    unsigned int version;
+    char id[64];
+    unsigned long previous_version;
+    unsigned long target_version;
+    unsigned int file_count;
+    unsigned int total_bytes;
+} PRuntimeMigrationPlanInfo;
+typedef struct PRuntimeMigrationSource {
+    unsigned int size;
+    unsigned int version;
+    unsigned long schema_version;
+    char file[256];
+    const char* sql; /* immutable borrowed plan bytes, not a NUL-terminated API */
+    unsigned int sql_bytes;
+} PRuntimeMigrationSource;
 /* Native provider results: zero-initialized by Runtime. A returned non-NULL
  * root/lease/bytes token is released even when its callback reports failure.
  * canonical is the filesystem's stable UTF-8 directory identity, not an alias
@@ -185,6 +214,31 @@ PRUNTIME_API int PRuntime_DirectoryReadResource(PRuntimeDirectoryHandle director
 /* Releases manifest then lock then root, clears slot. NULL value idempotent;
  * STATE leaves slot and live instance intact. Freed aliases remain invalid. */
 PRUNTIME_API int PRuntime_DirectoryClose(PRuntimeDirectoryHandle* directory);
+/* Prepare all pending manifest migrations from the retained directory root.
+ * Requires declaration AND explicit native SQL grant, no unknown grant bits.
+ * Never derive that decision/version from JS, URL or a manifest declaration.
+ * Current strict DB version must be <= catalog length; no downgrade/skip.
+ * Reads only catalog entries current+1..target, in order, <=32 KiB each and
+ * <=512 KiB total. Nonempty UTF-8 without BOM/NUL/control bytes except TAB/CR/LF.
+ * SQL syntax/authorizer/budget admission remains DB's responsibility; this
+ * snapshot is NOT an executable capability, data identity or DB binding.
+ * All files copied before publishing the handle. Failure unwinds bytes/plan
+ * and preserves output; callbacks run with directory reentry/Close blocked.
+ * No SQL/writes/worker/pump. Provider immutable-root contract still applies.
+ * Caller must later compare expected version under DB's migration write lock.
+ * No-pending is a valid zero-file plan, with no resource reads.
+ * Plan independent of directory lifetime, one creating thread; copied requests
+ * only may cross workers, never either live handle. No callback after return. */
+PRUNTIME_API int PRuntime_DirectoryPrepareMigrations(PRuntimeDirectoryHandle directory,
+        const PRuntimeMigrationPlanOptions* options, PRuntimeMigrationPlanHandle* output);
+/* Exact size/version, outputs unchanged on error. Source borrowed until plan
+ * Close; do not mutate/free or use after Close. Index is pending-file index,
+ * not schema version. Close clears owned slot; repeated NULL value is safe. */
+PRUNTIME_API int PRuntime_MigrationPlanGetInfo(PRuntimeMigrationPlanHandle plan,
+        PRuntimeMigrationPlanInfo* info);
+PRUNTIME_API int PRuntime_MigrationPlanGetSource(PRuntimeMigrationPlanHandle plan,
+        unsigned int index, PRuntimeMigrationSource* source);
+PRUNTIME_API int PRuntime_MigrationPlanClose(PRuntimeMigrationPlanHandle* plan);
 #ifdef __cplusplus
 }
 #endif

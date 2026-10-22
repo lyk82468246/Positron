@@ -6,8 +6,10 @@ manifest metadata, canonical application IDs, decoded package-relative paths and
 lexical `app://` references.
 Development-directory instances bind a trusted platform provider, admit that
 root's manifest, hold an exclusive launch lease and read bounded resources.
+An opt-in migration plan copies the declared pending SQL files after an explicit
+native permission decision; it does not execute them or select a database.
 This does **not yet run directory applications in the browser**: the general WM
-provider/EXE integration, installed identities, data mapping, migrations, SQL
+provider/EXE integration, installed identities, data mapping, migration execution, SQL
 services, Core/Browser app resource wiring and PXI remain separate prerequisites.
 
 ## Link and deploy
@@ -201,6 +203,73 @@ if (html != NULL) {
 }
 ```
 
+## Preparing declared migration sources
+
+`PRuntime_DirectoryPrepareMigrations` admits an immutable source plan from a live
+development-directory instance. Supply exact v1 `PRuntimeMigrationPlanOptions`:
+`granted_permissions` is a trusted native confirmation decision, not an author
+field; `current_schema_version` must come from the strict DB version reader on
+the correctly isolated application database, not JS or the manifest. The SQL bit
+must be both granted and declared. Missing either returns DENIED; unknown grant
+bits return UNSUPPORTED, before reading any SQL file. A stored version beyond
+the manifest catalog returns SCHEMA, never a downgrade or an automatic reset.
+
+Only catalog entries from `current_schema_version + 1` through the target are
+read, in order, using their already-validated decoded keys and the retained
+provider root. There is no caller-supplied SQL path or URL resolver fallback.
+Each file is nonempty UTF-8, at most 32768 bytes, without BOM, NUL or controls
+other than TAB/CR/LF. Up to sixteen files occupy at most 512 KiB of copied SQL
+plus fixed metadata; temporary provider bytes are released per file. Whitespace
+or syntactically invalid SQL can pass this text admission: the DB authorizer,
+parser and work budget remain authoritative for executable SQL. This operation
+neither executes nor partially applies any migration.
+
+The handle is published only after every pending source was read and copied.
+Missing, oversized, malformed or failed later files release all earlier copies
+and preserve the caller's output slot. An up-to-date schema produces a valid
+zero-file plan without resource reads. Provider callbacks cannot reenter or
+close the directory; the existing physical-containment, immutable-resource and
+no-hard-I/O-deadline contracts still apply.
+
+Query exact v1 `PRuntimeMigrationPlanInfo` for normalized ID, previous/target
+versions and counts. `PRuntime_MigrationPlanGetSource` uses a zero-based pending
+index, returning the catalog version, file key and borrowed immutable SQL plus
+explicit byte length. SQL is **not NUL terminated**. Source pointers last until
+`PRuntime_MigrationPlanClose`, which clears the owned slot and permits repeated
+NULL values. All plan calls use the creating thread. The plan owns no directory
+or provider references and remains readable after the directory closes; this
+is copied source data, **not a live authority, lease or database identity**.
+
+```c
+PRuntimeMigrationPlanHandle plan;
+PRuntimeMigrationPlanOptions options;
+PRuntimeMigrationSource source;
+plan = NULL;
+memset(&options, 0, sizeof(options)); /* include <string.h> */
+options.size = sizeof(options);
+options.version = PRUNTIME_VERSION;
+options.granted_permissions = trusted_sql_confirmation;
+options.current_schema_version = strict_db_version;
+rc = PRuntime_DirectoryPrepareMigrations(instance, &options, &plan);
+if (rc == PRUNTIME_OK) {
+    source.size = sizeof(source);
+    source.version = PRUNTIME_VERSION;
+    /* For each pending index, get source and use its explicit sql_bytes.
+     * A later Runtime storage owner must bind the right DB and apply via
+     * PDb_ApplyMigrationRestricted(expected, expected+1), rechecking version
+     * under DB's write lock. Do not use legacy full-SQL migration for JS. */
+    PRuntime_MigrationPlanClose(&plan);
+}
+```
+
+Runtime still links only JSON. Consumers combining this source contract with DB
+must separately link its public import library and deploy the matching formal
+DB DLL; Runtime does not accept an arbitrary DB handle or authenticate its
+mapping. Installed identities, isolated storage, execution/cancellation across
+the whole catalog, SQL JSON services and Browser lifetime authorization remain
+unimplemented. Individual DB migration transactions do not make a multi-file
+catalog atomic, and neither layer claims physical power-loss durability.
+
 ## C lifecycle and failure contract
 
 ```c
@@ -234,6 +303,9 @@ snapshot. No failed metadata call creates a partial handle or performs I/O.
 Directory calls add IO for provider/unavailable-resource errors, BUSY for an
 existing lease and STATE for wrong-thread/active-instance operations; they may
 perform balanced provider acquisition and release before returning failure.
+Migration preparation adds DENIED for a missing declaration/native decision and
+SCHEMA for a newer stored version than the admitted catalog; these fail before
+SQL reads and do not change stored data or authorize a service.
 
 Ordinary pages, forged `app://` strings, or possession of this metadata handle
 have no service authority. Development instances bind the provider's canonical
@@ -250,7 +322,10 @@ normalization, encoded traversal/authority/capacity rejection, suffix separation
 failed-output canaries and repeated parse/query/resolve/close. The directory
 fixture adds known private Unicode roots, native binary/empty reads, same-ID
 root isolation, same-root provider aliases, a second-process duplicate attempt,
-owner/reentry, partial acquisition failure and repeated teardown. It does not
-prove a generic filesystem canonicalizer, installed data isolation, SQL
+owner/reentry, partial acquisition failure and repeated teardown. The migration
+fixture checks exact source order/bytes, missing
+grants, version rejection, later-file failure, malformed/oversized input,
+16-file/512-KiB limits, owner-thread teardown and public DB primitive composition.
+Neither fixture proves a generic filesystem canonicalizer, installed data isolation, SQL
 authorization, PXI/ZIP or complete browser UI integration. Device evidence belongs
 to the current handoff, not this stable document.
