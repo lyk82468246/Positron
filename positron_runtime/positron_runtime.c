@@ -225,3 +225,238 @@ PRUNTIME_API int PRuntime_ManifestClose(PRuntimeManifestHandle* manifest)
     if (manifest == NULL) return PRUNTIME_ARGUMENT;
     free(*manifest); *manifest = NULL; return PRUNTIME_OK;
 }
+
+typedef struct RuntimeUrlParts {
+    const char* path;
+    unsigned int path_bytes;
+    const char* query;
+    unsigned int query_bytes;
+    const char* fragment;
+    unsigned int fragment_bytes;
+    unsigned int flags;
+    int absolute;
+} RuntimeUrlParts;
+static int runtime_hex(unsigned char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+static int runtime_unreserved(unsigned char c)
+{ return runtime_letter(c) || (c >= '0' && c <= '9') || strchr("-._~", c) != NULL; }
+static int runtime_url_parts(const char* text, unsigned int bytes, const char* id,
+        int require_absolute, RuntimeUrlParts* parts)
+{
+    unsigned int i;
+    unsigned int start;
+    unsigned int end;
+    char authority[64];
+    int rc;
+    memset(parts, 0, sizeof(*parts));
+    if (bytes > PRUNTIME_URL_BYTES) return PRUNTIME_LIMIT;
+    if (bytes && !runtime_text(text, bytes)) return PRUNTIME_INVALID;
+    /* URI whitespace/backslashes are never implicit native path aliases. */
+    for (i = 0; i < bytes; i++) if (text[i] == '\\' || text[i] == ' ') return PRUNTIME_INVALID;
+    start = 0;
+    for (i = 0; i < bytes && text[i] != '/' && text[i] != '?' && text[i] != '#'; i++) {
+        if (text[i] == ':') {
+            if (i != 3 || (text[0] != 'a' && text[0] != 'A') ||
+                    (text[1] != 'p' && text[1] != 'P') || (text[2] != 'p' && text[2] != 'P'))
+                return PRUNTIME_UNSUPPORTED;
+            if (bytes < 6 || text[4] != '/' || text[5] != '/') return PRUNTIME_INVALID;
+            start = 6; parts->absolute = 1; break;
+        }
+    }
+    if (!parts->absolute && bytes >= 2 && text[0] == '/' && text[1] == '/') {
+        start = 2; parts->absolute = 1;
+    }
+    if (require_absolute && (!parts->absolute || start != 6)) return PRUNTIME_INVALID;
+    if (parts->absolute) {
+        end = start;
+        while (end < bytes && text[end] != '/' && text[end] != '?' && text[end] != '#') end++;
+        rc = PRuntime_NormalizeId(text + start, end - start, authority, sizeof(authority));
+        if (rc != PRUNTIME_OK) return rc == PRUNTIME_LIMIT ? rc : PRUNTIME_INVALID;
+        if (strcmp(authority, id)) return PRUNTIME_INVALID;
+        start = end;
+    }
+    end = start;
+    while (end < bytes && text[end] != '?' && text[end] != '#') end++;
+    parts->path = text + start; parts->path_bytes = end - start;
+    if (end < bytes && text[end] == '?') {
+        start = ++end;
+        while (end < bytes && text[end] != '#') end++;
+        parts->query = text + start; parts->query_bytes = end - start;
+        parts->flags |= PRUNTIME_URL_QUERY;
+    }
+    if (end < bytes) {
+        parts->fragment = text + end + 1; parts->fragment_bytes = bytes - end - 1;
+        parts->flags |= PRUNTIME_URL_FRAGMENT;
+    }
+    return PRUNTIME_OK;
+}
+/* Decode once, rejecting encoded path syntax rather than accepting aliases. */
+static int runtime_decode(const char* source, unsigned int bytes, char* output,
+        unsigned int capacity, int path)
+{
+    unsigned int i;
+    unsigned int used;
+    int high;
+    int low;
+    unsigned char c;
+    used = 0;
+    for (i = 0; i < bytes; i++) {
+        c = (unsigned char)source[i];
+        if (c == '%') {
+            if (i + 2 >= bytes || (high = runtime_hex(source[i + 1])) < 0 ||
+                    (low = runtime_hex(source[i + 2])) < 0) return PRUNTIME_INVALID;
+            c = (unsigned char)((high << 4) | low); i += 2;
+            if (path && strchr("/.\\:%?#*\"<>|", c) != NULL) return PRUNTIME_INVALID;
+        }
+        if (c == 0 || c < 32 || c == 127 || c == '\\') return PRUNTIME_INVALID;
+        if (used + 1 >= capacity) return PRUNTIME_LIMIT;
+        output[used++] = (char)c;
+    }
+    output[used] = '\0';
+    if (used && !runtime_text(output, used)) return PRUNTIME_INVALID;
+    return PRUNTIME_OK;
+}
+static int runtime_escape(const char* source, char* output, unsigned int capacity, int path)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    unsigned int used;
+    unsigned char c;
+    used = 0;
+    while ((c = (unsigned char)*source++) != 0) {
+        if (runtime_unreserved(c) || (path && c == '/')) {
+            if (used + 1 >= capacity) return PRUNTIME_LIMIT;
+            output[used++] = (char)c;
+        } else {
+            if (used + 3 >= capacity) return PRUNTIME_LIMIT;
+            output[used++] = '%'; output[used++] = digits[c >> 4]; output[used++] = digits[c & 15];
+        }
+    }
+    output[used] = '\0'; return PRUNTIME_OK;
+}
+/* Preserve URI reserved delimiters and escaped octets: %26 is not '&'. */
+static int runtime_suffix(const char* source, unsigned int bytes, char* output)
+{
+    static const char digits[] = "0123456789ABCDEF";
+    char decoded[1024];
+    unsigned int i;
+    unsigned int used;
+    unsigned char c;
+    int value;
+    int rc;
+    rc = runtime_decode(source, bytes, decoded, sizeof(decoded), 0);
+    if (rc != PRUNTIME_OK) return rc;
+    used = 0;
+    for (i = 0; i < bytes; i++) {
+        c = (unsigned char)source[i];
+        if (c == '%') {
+            if (used + 3 > PRUNTIME_SUFFIX_BYTES) return PRUNTIME_LIMIT;
+            value = (runtime_hex(source[i + 1]) << 4) | runtime_hex(source[i + 2]);
+            output[used++] = '%'; output[used++] = digits[value >> 4]; output[used++] = digits[value & 15]; i += 2;
+        } else if (runtime_unreserved(c) || strchr("!$&'()*+,;=:@/?", c) != NULL) {
+            if (used == PRUNTIME_SUFFIX_BYTES) return PRUNTIME_LIMIT;
+            output[used++] = (char)c;
+        } else {
+            if (used + 3 > PRUNTIME_SUFFIX_BYTES) return PRUNTIME_LIMIT;
+            output[used++] = '%'; output[used++] = digits[c >> 4]; output[used++] = digits[c & 15];
+        }
+    }
+    output[used] = '\0'; return PRUNTIME_OK;
+}
+static int runtime_resolve_path(const char* base, const RuntimeUrlParts* parts,
+        const char* entry, char* output)
+{
+    char decoded[1024];
+    char combined[1280];
+    unsigned int used;
+    unsigned int start;
+    unsigned int end;
+    unsigned int count;
+    const char* slash;
+    int rc;
+    rc = runtime_decode(parts->path, parts->path_bytes, decoded, sizeof(decoded), 1);
+    if (rc != PRUNTIME_OK) return rc;
+    if (parts->absolute || decoded[0] == '/') {
+        if (decoded[0] == '/' && decoded[1] == '/') return PRUNTIME_INVALID;
+        strcpy(combined, decoded[0] == '/' ? decoded + 1 : decoded);
+        if (!combined[0]) strcpy(combined, entry);
+    } else if (!decoded[0]) strcpy(combined, base);
+    else {
+        slash = strrchr(base, '/'); used = slash ? (unsigned int)(slash - base + 1) : 0;
+        memcpy(combined, base, used); strcpy(combined + used, decoded);
+    }
+    used = 0; start = 0;
+    for (end = 0; ; end++) {
+        if (combined[end] != '/' && combined[end] != 0) continue;
+        count = end - start;
+        if (count == 0) return PRUNTIME_INVALID;
+        if (count == 1 && combined[start] == '.') {
+            if (!combined[end]) return PRUNTIME_INVALID;
+        } else if (count == 2 && combined[start] == '.' && combined[start + 1] == '.') {
+            if (!used || !combined[end]) return PRUNTIME_INVALID;
+            while (used && output[used - 1] != '/') used--;
+            if (used) used--;
+        } else {
+            if (used + (used ? 1 : 0) + count > PRUNTIME_PATH_BYTES) return PRUNTIME_LIMIT;
+            if (used) output[used++] = '/';
+            memcpy(output + used, combined + start, count); used += count;
+        }
+        if (!combined[end]) break;
+        start = end + 1;
+    }
+    output[used] = '\0';
+    return PRuntime_ValidateResourcePath(output, used);
+}
+PRUNTIME_API int PRuntime_ManifestResolveReference(PRuntimeManifestHandle manifest,
+        const char* base, unsigned int base_bytes, const char* reference,
+        unsigned int reference_bytes, PRuntimeResourceReference* output)
+{
+    RuntimeUrlParts prior;
+    RuntimeUrlParts next;
+    PRuntimeResourceReference result;
+    char base_path[256];
+    char escaped[768];
+    char suffix[256];
+    unsigned int needed;
+    int rc;
+    if (!manifest || !output || output->size != sizeof(*output) || output->version != PRUNTIME_VERSION ||
+            (!base && base_bytes) || (!reference && reference_bytes)) return PRUNTIME_ARGUMENT;
+    memset(&prior, 0, sizeof(prior)); strcpy(base_path, manifest->info.entry);
+    if (base) {
+        rc = runtime_url_parts(base, base_bytes, manifest->info.id, 1, &prior);
+        if (rc != PRUNTIME_OK) return rc;
+        rc = runtime_resolve_path(manifest->info.entry, &prior, manifest->info.entry, base_path);
+        if (rc != PRUNTIME_OK) return rc;
+        rc = runtime_suffix(prior.query, prior.query_bytes, suffix);
+        if (rc != PRUNTIME_OK) return rc;
+        rc = runtime_suffix(prior.fragment, prior.fragment_bytes, suffix);
+        if (rc != PRUNTIME_OK) return rc;
+    }
+    rc = runtime_url_parts(reference ? reference : "", reference_bytes, manifest->info.id, 0, &next);
+    if (rc != PRUNTIME_OK) return rc;
+    memset(&result, 0, sizeof(result)); result.size = sizeof(result); result.version = PRUNTIME_VERSION;
+    rc = runtime_resolve_path(base_path, &next, manifest->info.entry, result.path);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!next.absolute && !next.path_bytes && !(next.flags & PRUNTIME_URL_QUERY) && (prior.flags & PRUNTIME_URL_QUERY)) {
+        next.query = prior.query; next.query_bytes = prior.query_bytes; next.flags |= PRUNTIME_URL_QUERY;
+    }
+    result.flags = next.flags;
+    rc = runtime_suffix(next.query, next.query_bytes, result.query);
+    if (rc != PRUNTIME_OK) return rc;
+    rc = runtime_suffix(next.fragment, next.fragment_bytes, result.fragment);
+    if (rc != PRUNTIME_OK) return rc;
+    rc = runtime_escape(result.path, escaped, sizeof(escaped), 1);
+    if (rc != PRUNTIME_OK) return rc;
+    needed = 6 + (unsigned int)strlen(manifest->info.id) + 1 + (unsigned int)strlen(escaped) +
+        (result.flags & PRUNTIME_URL_QUERY ? 1 + (unsigned int)strlen(result.query) : 0) +
+        (result.flags & PRUNTIME_URL_FRAGMENT ? 1 + (unsigned int)strlen(result.fragment) : 0);
+    if (needed > PRUNTIME_URL_BYTES) return PRUNTIME_LIMIT;
+    strcpy(result.url, "app://"); strcat(result.url, manifest->info.id); strcat(result.url, "/"); strcat(result.url, escaped);
+    if (result.flags & PRUNTIME_URL_QUERY) { strcat(result.url, "?"); strcat(result.url, result.query); }
+    if (result.flags & PRUNTIME_URL_FRAGMENT) { strcat(result.url, "#"); strcat(result.url, result.fragment); }
+    *output = result; return PRUNTIME_OK;
+}

@@ -2,9 +2,10 @@
 
 Runtime is the public owner of the resource-application contract described in
 [the approved plan](../docs/RUNTIME_PLAN.md). The implemented foundation admits
-manifest metadata, canonical application IDs and decoded package-relative paths.
+manifest metadata, canonical application IDs, decoded package-relative paths and
+lexical `app://` references.
 It does **not yet run directory applications**: directory binding, exclusive
-instances, `app://` resolution, platform resource reads, SQL services and PXI
+instances, platform resource reads, SQL services and PXI
 installation are not implemented by this foundation.
 
 ## Link and deploy
@@ -67,7 +68,50 @@ This is a lexical package key, not a file-opening or containment guarantee.
 Do not percent-decode it or treat it as an absolute path. Physical directory
 identity, alias/case resolution, containment and access remain prerequisites for
 the later directory-instance contract. URL references including query/fragment
-must wait for the `app://` resolver, not be fed directly to this path validator.
+use the resolver below, not this path validator.
+
+## Lexical app references
+
+`PRuntime_ManifestResolveReference` takes a manifest, an optional absolute same-ID
+base URL, an explicit-length reference and an exact size/version
+`PRuntimeResourceReference` output. With no base it starts at the manifest entry.
+An empty reference is valid. This pure operation never opens a resource, binds a
+directory, creates an instance lock or grants service authority.
+
+Relative paths, root paths, dot segments within the package, query-only,
+fragment-only, same-ID `app://` and network-path references are supported. `/`
+and an authority with no path map to the manifest entry; other directory-only
+references have no implicit index-file lookup. A base must explicitly use `app://`,
+not a relative or network-path spelling. Authorities normalize through the ID
+contract, including underscores; different IDs are rejected. External schemes
+return UNSUPPORTED and are not sent to HTTP or the filesystem by this DLL.
+
+Input URLs and canonical output are each at most 1023 bytes. The returned `path`
+is a once-decoded UTF-8 package key under the existing 255-byte/16-segment budget.
+Raw controls, spaces and backslashes, malformed escapes, encoded path separators,
+dot bytes, percent and native-path syntax fail closed. Raw `.`/`..` segments
+normalize without escaping the package root. Percent-encoded UTF-8 and interior
+spaces in filenames are accepted; neither the host nor a later callback may
+decode the returned key again. These lexical rules still do not prove physical
+containment or exclude filesystem aliases.
+
+`url` is a canonical escaped navigation URL. `query` and `fragment` omit their
+delimiters and are each limited to 255 escaped bytes; flags distinguish absent
+from present-but-empty suffixes. Reserved query delimiters remain distinct from
+escaped octets (`&` is not `%26`); hex escapes normalize to uppercase. Fragment-only
+or empty references inherit the base query, never its fragment; a new path drops
+the old query. Neither suffix belongs in a file-open key. Every failure preserves
+the complete output; repeated resolution does not mutate manifest state.
+
+```c
+PRuntimeResourceReference resource;
+resource.size = sizeof(resource);
+resource.version = PRUNTIME_VERSION;
+rc = PRuntime_ManifestResolveReference(manifest, NULL, 0,
+    "assets/main.js", 14, &resource);
+/* resource.path is a lexical key only. Do not open it without a separately
+ * verified trusted instance and the forthcoming resource-read contract. */
+```
 
 ## C lifecycle and failure contract
 
@@ -110,7 +154,8 @@ for that contract rather than invent private grants or URL routing rules.
 ## Validation boundary
 
 The offline test host exercises canonical IDs, paths, strict JSON, manifest
-field/version/permission/migration rejection, copied snapshots, failed-output
-canaries and repeated parse/query/close. Device evidence belongs to the current
+field/version/permission/migration rejection, copied snapshots, app reference
+normalization, encoded traversal/authority/capacity rejection, suffix separation,
+failed-output canaries and repeated parse/query/resolve/close. Device evidence belongs to the current
 handoff, not this stable document. These tests do not prove directory I/O,
-app resources, SQL authorization, PXI/ZIP or complete browser UI integration.
+physical app resource reads, SQL authorization, PXI/ZIP or complete browser UI integration.

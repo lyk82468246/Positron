@@ -21,6 +21,10 @@ extern "C" {
 #define PRUNTIME_PATH_BYTES 255
 #define PRUNTIME_MAX_MIGRATIONS 16
 #define PRUNTIME_PERMISSION_SQL 1UL
+#define PRUNTIME_URL_BYTES 1023
+#define PRUNTIME_SUFFIX_BYTES 255
+#define PRUNTIME_URL_QUERY 1U
+#define PRUNTIME_URL_FRAGMENT 2U
 typedef struct PRuntimeManifest PRuntimeManifest;
 typedef PRuntimeManifest* PRuntimeManifestHandle;
 typedef struct PRuntimeManifestInfo {
@@ -39,6 +43,15 @@ typedef struct PRuntimeMigrationInfo {
     unsigned long schema_version;
     char file[256];
 } PRuntimeMigrationInfo;
+typedef struct PRuntimeResourceReference {
+    unsigned int size;
+    unsigned int version;
+    unsigned int flags; /* QUERY/FRAGMENT distinguish absent from empty */
+    char url[1024]; /* canonical navigation URL; includes query/fragment */
+    char path[256]; /* decoded package key, never decode again */
+    char query[256]; /* escaped UTF-8, without '?' */
+    char fragment[256]; /* escaped UTF-8, without '#' */
+} PRuntimeResourceReference;
 /* Pure explicit-length ASCII ID canonicalization; >=2 letter-led segments,
  * then letters/digits/underscore, <=63 bytes. Output unchanged on error. */
 PRUNTIME_API int PRuntime_NormalizeId(const char* id, unsigned int bytes,
@@ -60,7 +73,8 @@ PRUNTIME_API int PRuntime_ValidateResourcePath(const char* path, unsigned int by
  * JSON DLL; no partial output, callback, filesystem/network/thread or SQL.
  * Handle proves valid METADATA ONLY, not trust, directory identity, exclusive
  * instance lock, permissions or permission to expose services. Installed/dev
- * binding, app URL resolution, SQL services and PXI remain separate contracts.
+ * binding, SQL services and PXI remain separate contracts. The lexical app URL
+ * resolver below likewise confers no identity, trust or resource-read grant.
  * Borrowed input only during Create; snapshots copy, queries leave output
  * unchanged on error. Call on one owner thread; freed aliases are invalid. */
 PRUNTIME_API int PRuntime_ManifestCreate(const char* json, unsigned int bytes,
@@ -69,6 +83,23 @@ PRUNTIME_API int PRuntime_ManifestGetInfo(PRuntimeManifestHandle manifest,
         PRuntimeManifestInfo* info);
 PRUNTIME_API int PRuntime_ManifestGetMigration(PRuntimeManifestHandle manifest,
         unsigned int index, PRuntimeMigrationInfo* info);
+/* Pure lexical resolver, NOT identity, permission or physical containment.
+ * Explicit-length reference/base <=1023 bytes, no embedded NUL/controls.
+ * NULL base with zero bytes uses manifest entry. Non-NULL base must be an
+ * absolute same-ID app URL. Empty reference is valid (NULL only with zero
+ * bytes). Relative/root/query/fragment references supported; root maps entry,
+ * other directory-only paths rejected. Dot segments cannot escape root.
+ * Encoded separators, percent, dot bytes and native path characters fail
+ * closed; UTF-8 is decoded exactly once into the <=255-byte/16-segment key.
+ * External schemes return UNSUPPORTED; cross-ID/invalid authority INVALID.
+ * Query/fragment each <=255 escaped bytes; never part of a file-open key.
+ * Output exact size/version, unchanged on error. No I/O, grant or callback.
+ * Host must bind a trusted physical instance before opening returned keys;
+ * never use an app URL or this metadata handle as authorization. */
+PRUNTIME_API int PRuntime_ManifestResolveReference(PRuntimeManifestHandle manifest,
+        const char* base, unsigned int base_bytes,
+        const char* reference, unsigned int reference_bytes,
+        PRuntimeResourceReference* output);
 /* Clears owned slot; repeated NULL value is safe; NULL slot is ARGUMENT. */
 PRUNTIME_API int PRuntime_ManifestClose(PRuntimeManifestHandle* manifest);
 #ifdef __cplusplus

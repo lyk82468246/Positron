@@ -21,6 +21,20 @@ static int runtime_reject(const char* input, int expected)
     if (rc == PRUNTIME_OK) { PRuntime_ManifestClose(&handle); return 0; }
     return rc == expected && handle == (PRuntimeManifestHandle)1;
 }
+static int runtime_reference_case(PRuntimeManifestHandle handle, const char* base,
+        const char* reference, int expected, const char* url, const char* path)
+{
+    PRuntimeResourceReference result;
+    PRuntimeResourceReference before;
+    int rc;
+    memset(&result, 0x5a, sizeof(result)); result.size = sizeof(result); result.version = PRUNTIME_VERSION;
+    before = result;
+    rc = PRuntime_ManifestResolveReference(handle, base, base ? (unsigned int)strlen(base) : 0,
+            reference, reference ? (unsigned int)strlen(reference) : 0, &result);
+    if (rc != expected) return 0;
+    if (rc != PRUNTIME_OK) return !memcmp(&before, &result, sizeof(result));
+    return !strcmp(result.url, url) && !strcmp(result.path, path);
+}
 #define CHECK(test, why) do { if (!(test)) { runtime_error = why; goto done; } } while (0)
 BOOL test1364_runtime_manifest_contract(void)
 {
@@ -32,10 +46,16 @@ BOOL test1364_runtime_manifest_contract(void)
     static const char* const bad_json[] = { "{}tail", "{\"x\":1,\"x\":2}",
         "{\"x\":1,\"\\u0078\":2}", "\"\\u0000\"", "{\"\\u0000\":1}",
         "{\"x\":1e999}", "\"line\nfeed\"", "01", "[-01]", "\v{}", "\"\xc0\xaf\"" };
+    static const char* const bad_references[] = { "../../escape", "%2e%2e/a", "a/%2F/b", "a/%5c/b",
+        "a/%252e/b", "a/%00", "a/%7f", "a/%c0%af", "a/%80", "a/%", "a/%gg", "a//b", "a/",
+        "a/.", "a/..", "a/b.", "a/b%20", "a\\b", "a b", "app://com.other/a", "app://user@com.example.notes/a",
+        "app://com.example.notes:80/a", "app://[::1]/a", "app:/a", "///a", "?a=%00", "#%c2%80", "a?x=%zz" };
     PRuntimeManifestHandle handle;
     PRuntimeManifestInfo info;
     PRuntimeManifestInfo before;
     PRuntimeMigrationInfo migration;
+    PRuntimeResourceReference resolved;
+    PRuntimeResourceReference preserved;
     PJsonParseLimits limits;
     HANDLE root;
     char input[4096];
@@ -89,6 +109,71 @@ BOOL test1364_runtime_manifest_contract(void)
         CHECK(PRuntime_ManifestClose(&handle) == PRUNTIME_OK && handle == NULL &&
                 PRuntime_ManifestClose(&handle) == PRUNTIME_OK, "repeated owned-slot close");
     }
+    bytes = runtime_fixture(input, "Com.Example.Notes", "1", "pages/index.html", "[]", "[]");
+    CHECK(PRuntime_ManifestCreate(input, bytes, &handle) == PRUNTIME_OK, "resolver manifest");
+    CHECK(runtime_reference_case(handle, NULL, NULL, PRUNTIME_OK,
+        "app://com.example.notes/pages/index.html", "pages/index.html"), "entry default");
+    CHECK(runtime_reference_case(handle, NULL, "../assets/main.js?x=1&y=%26#section", PRUNTIME_OK,
+        "app://com.example.notes/assets/main.js?x=1&y=%26#section", "assets/main.js"), "relative path and reserved suffix");
+    CHECK(runtime_reference_case(handle, NULL, "/", PRUNTIME_OK,
+        "app://com.example.notes/pages/index.html", "pages/index.html"), "root entry");
+    CHECK(runtime_reference_case(handle, NULL, "APP://COM.EXAMPLE.NOTES/a/../b.svg", PRUNTIME_OK,
+        "app://com.example.notes/b.svg", "b.svg"), "authority case and dot normalization");
+    CHECK(runtime_reference_case(handle, NULL, "//com.example.notes/p.png", PRUNTIME_OK,
+        "app://com.example.notes/p.png", "p.png"), "same-ID network path");
+    CHECK(runtime_reference_case(handle, "app://com.example.notes/css/main.css?old=1#old", "../img/p.svg", PRUNTIME_OK,
+        "app://com.example.notes/img/p.svg", "img/p.svg"), "CSS import/resource base");
+    CHECK(runtime_reference_case(handle, "app://com.example.notes/p?a=1#old", "#new", PRUNTIME_OK,
+        "app://com.example.notes/p?a=1#new", "p"), "fragment inherits query only");
+    CHECK(runtime_reference_case(handle, "app://com.example.notes/p?a=1#old", "?", PRUNTIME_OK,
+        "app://com.example.notes/p?", "p"), "empty query drops prior fragment");
+    CHECK(runtime_reference_case(handle, NULL, "../img/%e4%b8%ad%20name.svg", PRUNTIME_OK,
+        "app://com.example.notes/img/%E4%B8%AD%20name.svg", "img/\xe4\xb8\xad name.svg"), "single UTF-8 decode");
+    CHECK(runtime_reference_case(handle, NULL, "../img/\xe4\xb8\xad.svg", PRUNTIME_OK,
+        "app://com.example.notes/img/%E4%B8%AD.svg", "img/\xe4\xb8\xad.svg"), "raw Unicode canonical URI");
+    for (i = 0; i < sizeof(bad_references) / sizeof(bad_references[0]); i++) {
+        CHECK(runtime_reference_case(handle, NULL, bad_references[i], PRUNTIME_INVALID, NULL, NULL), bad_references[i]);
+    }
+    CHECK(runtime_reference_case(handle, NULL, "https://example.com/a", PRUNTIME_UNSUPPORTED, NULL, NULL), "no network capability");
+    CHECK(runtime_reference_case(handle, NULL, "file:/a", PRUNTIME_UNSUPPORTED, NULL, NULL), "no native scheme");
+    CHECK(runtime_reference_case(handle, "pages/index.html", "a", PRUNTIME_INVALID, NULL, NULL), "absolute base required");
+    CHECK(runtime_reference_case(handle, "app://com.other/p", "a", PRUNTIME_INVALID, NULL, NULL), "cross-ID base");
+    CHECK(runtime_reference_case(handle, "app://com.example.notes/p?%zz", "a", PRUNTIME_INVALID, NULL, NULL), "validate unused base suffix");
+    resolved.size = sizeof(resolved); resolved.version = PRUNTIME_VERSION;
+    CHECK(PRuntime_ManifestResolveReference(handle, NULL, 0, "?#", 2, &resolved) == PRUNTIME_OK &&
+        resolved.flags == (PRUNTIME_URL_QUERY | PRUNTIME_URL_FRAGMENT) && !resolved.query[0] && !resolved.fragment[0], "empty suffix presence");
+    resolved.version = 9; preserved = resolved;
+    CHECK(PRuntime_ManifestResolveReference(handle, NULL, 0, NULL, 0, &resolved) == PRUNTIME_ARGUMENT &&
+        !memcmp(&preserved, &resolved, sizeof(resolved)), "resolver version canary");
+    resolved.version = 1; preserved = resolved;
+    CHECK(PRuntime_ManifestResolveReference(handle, NULL, 1, NULL, 0, &resolved) == PRUNTIME_ARGUMENT &&
+        !memcmp(&preserved, &resolved, sizeof(resolved)), "pointer length canary");
+    CHECK(PRuntime_ManifestResolveReference(handle, NULL, 0, "a\0b", 3, &resolved) == PRUNTIME_INVALID &&
+        !memcmp(&preserved, &resolved, sizeof(resolved)), "embedded NUL");
+    memset(input, 'a', 1024); input[1024] = 0;
+    CHECK(runtime_reference_case(handle, NULL, input, PRUNTIME_LIMIT, NULL, NULL), "reference bytes budget");
+    memset(input, 'a', 256); input[256] = 0;
+    CHECK(runtime_reference_case(handle, NULL, input, PRUNTIME_LIMIT, NULL, NULL), "decoded path budget");
+    input[0] = '?'; memset(input + 1, 'q', 256); input[257] = 0;
+    CHECK(runtime_reference_case(handle, NULL, input, PRUNTIME_LIMIT, NULL, NULL), "query budget");
+    input[256] = 0;
+    CHECK(PRuntime_ManifestResolveReference(handle, NULL, 0, input, 256, &resolved) == PRUNTIME_OK && strlen(resolved.query) == 255,
+        "255-byte query");
+    CHECK(runtime_reference_case(handle, NULL, "/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a", PRUNTIME_OK,
+        "app://com.example.notes/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a", "a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a"), "16 URL segments");
+    CHECK(runtime_reference_case(handle, NULL, "/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a/a", PRUNTIME_LIMIT, NULL, NULL), "URL depth budget");
+    input[0] = '/';
+    for (i = 0; i < 84; i++) memcpy(input + 1 + 3 * i, "\xe4\xb8\xad", 3);
+    input[253] = '?'; memset(input + 254, 'q', 255); input[509] = 0;
+    CHECK(runtime_reference_case(handle, NULL, input, PRUNTIME_LIMIT, NULL, NULL), "escaped total URL budget");
+    input[253] = 0;
+    CHECK(PRuntime_ManifestResolveReference(handle, NULL, 0, input, 253, &resolved) == PRUNTIME_OK && strlen(resolved.path) == 252,
+        "bounded Unicode expansion");
+    for (i = 0; i < 20; i++) {
+        CHECK(runtime_reference_case(handle, NULL, "./next.html", PRUNTIME_OK,
+            "app://com.example.notes/pages/next.html", "pages/next.html"), "repeat resolution without state changes");
+    }
+    PRuntime_ManifestClose(&handle);
     runtime_fixture(input, "com.notes", "1.5", "index.html", "[]", "[]");
     CHECK(runtime_reject(input, PRUNTIME_INVALID), "fractional version");
     runtime_fixture(input, "", "1", "index.html", "[]", "[]");
