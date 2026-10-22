@@ -121,6 +121,10 @@ extern BOOL test1366_db_migration_contract(void);
 extern const char* test1366_db_migration_last_error(void);
 extern BOOL test1367_runtime_migrations_contract(void);
 extern const char* test1367_runtime_migrations_last_error(void);
+extern BOOL test1368_runtime_storage_contract(void);
+extern const char* test1368_runtime_storage_last_error(void);
+extern BOOL test1369_runtime_sql_contract(void);
+extern const char* test1369_runtime_sql_last_error(void);
 extern const char* test1363_db_restricted_last_error(void);
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
@@ -1287,7 +1291,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1367
+#define TEST_MAX_NUMBER 1369
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118351,6 +118355,16 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1367_runtime_migrations_contract();
             if (ok) { show_info(L"TEST 1367 OK", "Runtime manifest migration sources, grants and immutable bounded plans passed."); }
             else { show_error(L"TEST 1367 FAIL", test1367_runtime_migrations_last_error()); }
+            break;
+        case 1368:
+            ok = test1368_runtime_storage_contract();
+            if (ok) { show_info(L"TEST 1368 OK", "Runtime isolated development storage, identity guards and migrations passed."); }
+            else { show_error(L"TEST 1368 FAIL", test1368_runtime_storage_last_error()); }
+            break;
+        case 1369:
+            ok = test1369_runtime_sql_contract();
+            if (ok) { show_info(L"TEST 1369 OK", "Runtime bounded typed SQL JSON and commit-before-result contract passed."); }
+            else { show_error(L"TEST 1369 FAIL", test1369_runtime_sql_last_error()); }
             break;
         case 1322:
             ok = test1322_browser_application_script_profile();

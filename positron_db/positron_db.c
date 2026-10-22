@@ -4445,6 +4445,58 @@ static int pdb_api_PDb_GetMigrationVersion(PDbHandle db, int* output)
     if (db->mode != PDB_OPEN_LOCAL_FULL_SQL || db->restricted || db->statements || pdb_transaction_active(db)) return PDB_STATE;
     return pdb_migration_version(db, output);
 }
+static int pdb_api_PDb_BindLocalIdentity(PDbHandle db, const char* identity, int bytes)
+{
+    sqlite3_stmt* stmt;
+    const unsigned char* stored;
+    int count;
+    int native;
+    int rc;
+    int missing;
+    if (!db || !identity || bytes < 1) return PDB_INVALID_ARGUMENT;
+    if (bytes > PDB_LOCAL_IDENTITY_BYTES) return PDB_LIMIT;
+    if (memchr(identity, 0, bytes) || !pdb_restricted_utf8(identity, bytes)) return PDB_INVALID_ARGUMENT;
+    if (db->mode != PDB_OPEN_LOCAL_FULL_SQL || db->restricted || db->statements || pdb_transaction_active(db)) return PDB_STATE;
+    rc = pdb_consume_cancel(db); if (rc != PDB_OK) return rc;
+    stmt = NULL; missing = 0;
+    rc = pdb_exec_internal(db, "BEGIN IMMEDIATE");
+    if (rc == PDB_OK) rc = pdb_prepare_internal(db, "SELECT value FROM __pdb_meta WHERE key='local_identity'", &stmt);
+    if (rc == PDB_OK) {
+        native = pdb_step_internal(db, stmt);
+        if (native == SQLITE_DONE) missing = 1;
+        else if (native != SQLITE_ROW) rc = pdb_set_sqlite_error(db, native);
+        else {
+            if (sqlite3_column_type(stmt, 0) != SQLITE_TEXT) rc = PDB_SCHEMA_MISMATCH;
+            stored = sqlite3_column_text(stmt, 0); count = sqlite3_column_bytes(stmt, 0);
+            if (!stored || count != bytes || memcmp(stored, identity, bytes)) rc = PDB_SCHEMA_MISMATCH;
+        }
+    }
+    if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+    if (rc == PDB_OK && missing) {
+        rc = pdb_prepare_internal(db, "SELECT 1 FROM sqlite_master WHERE name!='__pdb_meta' "
+            "AND NOT(type='index' AND tbl_name='__pdb_meta') UNION ALL "
+            "SELECT 1 FROM __pdb_meta WHERE key!='mode' LIMIT 1", &stmt);
+        if (rc == PDB_OK) {
+            native = pdb_step_internal(db, stmt);
+            if (native == SQLITE_ROW) rc = PDB_SCHEMA_MISMATCH;
+            else if (native != SQLITE_DONE) rc = pdb_set_sqlite_error(db, native);
+        }
+        if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        if (rc == PDB_OK) {
+            rc = pdb_prepare_internal(db, "INSERT INTO __pdb_meta(key,value) VALUES('local_identity',?1)", &stmt);
+            if (rc == PDB_OK) {
+                native = sqlite3_bind_text(stmt, 1, identity, bytes, SQLITE_TRANSIENT);
+                if (native == SQLITE_OK) native = pdb_step_internal(db, stmt);
+                if (native != SQLITE_DONE) rc = pdb_set_sqlite_error(db, native);
+            }
+            if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        }
+    }
+    if (rc == PDB_SCHEMA_MISMATCH) pdb_set_error(db, "Local database identity mismatch or unclaimed nonempty database");
+    if (rc == PDB_OK) rc = pdb_exec_internal(db, "COMMIT");
+    if (rc != PDB_OK) pdb_abort_transaction(db, rc);
+    return rc;
+}
 static int pdb_api_PDb_ApplyMigrationRestricted(PDbHandle db, int expected, int target,
         const char* input, int bytes, const PDbRestrictedOptions* options, PDbMigrationReport* report)
 {
@@ -4529,6 +4581,7 @@ PDB_STATUS_WRAPPER(PDb_ExecuteRestricted,
         const PDbRestrictedOptions* options, PDbRestrictedReport* report),
         (db, statements, statement_count, options, report), db)
 PDB_STATUS_WRAPPER(PDb_GetMigrationVersion, (PDbHandle db, int* version), (db, version), db)
+PDB_STATUS_WRAPPER(PDb_BindLocalIdentity, (PDbHandle db, const char* identity, int bytes), (db, identity, bytes), db)
 PDB_STATUS_WRAPPER(PDb_ApplyMigrationRestricted,
         (PDbHandle db, int expected, int target, const char* sql, int bytes,
         const PDbRestrictedOptions* options, PDbMigrationReport* report),

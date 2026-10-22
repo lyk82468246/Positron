@@ -66,6 +66,36 @@ static int json_utf8(const char* text, unsigned int bytes)
     }
     return 1;
 }
+PJSON_API int PJson_EncodeScalar(const PJsonScalar* scalar, char* buffer,
+        unsigned int capacity, unsigned int* written)
+{
+    cJSON* value;
+    char* text;
+    char* encoded;
+    unsigned int bytes;
+    if (!scalar || !written || scalar->size != sizeof(*scalar) || scalar->version != PJSON_ENCODE_VERSION ||
+            (!buffer && capacity)) return PJSON_ENCODE_ARGUMENT;
+    value = NULL;
+    if (scalar->type == PJSON_TYPE_NULL) value = cJSON_CreateNull();
+    else if (scalar->type == PJSON_TYPE_FALSE || scalar->type == PJSON_TYPE_TRUE) value = cJSON_CreateBool(scalar->type == PJSON_TYPE_TRUE);
+    else if (scalar->type == PJSON_TYPE_NUMBER) {
+        if (!(scalar->number <= DBL_MAX) || !(scalar->number >= -DBL_MAX)) return PJSON_ENCODE_INVALID;
+        value = cJSON_CreateNumber(scalar->number);
+    } else if (scalar->type == PJSON_TYPE_STRING) {
+        if (scalar->text_bytes > PJSON_SCALAR_TEXT_BYTES) return PJSON_ENCODE_LIMIT;
+        if ((!scalar->text && scalar->text_bytes) || !json_utf8(scalar->text, scalar->text_bytes)) return PJSON_ENCODE_INVALID;
+        text = (char*)malloc(scalar->text_bytes + 1); if (!text) return PJSON_ENCODE_MEMORY;
+        if (scalar->text_bytes) memcpy(text, scalar->text, scalar->text_bytes);
+        text[scalar->text_bytes] = 0; value = cJSON_CreateString(text); free(text);
+    } else return PJSON_ENCODE_ARGUMENT;
+    if (!value) return PJSON_ENCODE_MEMORY;
+    encoded = cJSON_PrintUnformatted(value); cJSON_Delete(value);
+    if (!encoded) return PJSON_ENCODE_MEMORY;
+    bytes = (unsigned int)strlen(encoded);
+    if (buffer && capacity <= bytes) { cJSON_free(encoded); return PJSON_ENCODE_LIMIT; }
+    if (buffer) memcpy(buffer, encoded, bytes + 1);
+    *written = bytes; cJSON_free(encoded); return PJSON_ENCODE_OK;
+}
 static int json_tree_valid(const cJSON* item)
 {
     const cJSON* child;

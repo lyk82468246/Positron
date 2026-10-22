@@ -21,6 +21,12 @@ extern "C" {
 #define PRUNTIME_STATE -8
 #define PRUNTIME_DENIED -9
 #define PRUNTIME_SCHEMA -10
+#define PRUNTIME_DATABASE -11
+#define PRUNTIME_CANCELLED -12
+#define PRUNTIME_STORAGE_KEY_BYTES 127
+#define PRUNTIME_SERVICE_JSON_BYTES 4096U
+#define PRUNTIME_STORAGE_READY 1
+#define PRUNTIME_STORAGE_FAILED 2
 #define PRUNTIME_MIGRATION_SQL_BYTES 32768U
 #define PRUNTIME_MIGRATION_TOTAL_BYTES (16U * PRUNTIME_MIGRATION_SQL_BYTES)
 #define PRUNTIME_ROOT_BYTES 1023
@@ -40,6 +46,54 @@ typedef struct PRuntimeDirectory PRuntimeDirectory;
 typedef PRuntimeDirectory* PRuntimeDirectoryHandle;
 typedef struct PRuntimeMigrationPlan PRuntimeMigrationPlan;
 typedef PRuntimeMigrationPlan* PRuntimeMigrationPlanHandle;
+typedef struct PRuntimeStorage PRuntimeStorage;
+typedef PRuntimeStorage* PRuntimeStorageHandle;
+typedef struct PRuntimeStorageLocation {
+    void* token;
+    unsigned int path_bytes;
+    char path[1024]; /* absolute native UTF-8 database filename */
+} PRuntimeStorageLocation;
+typedef struct PRuntimeStorageProvider {
+    unsigned int size;
+    unsigned int version;
+    void* user_data;
+    /* Anchor exactly to the native EXE-adjacent data directory. Runtime owns
+     * relative key; provider only creates/retains native directories and proves
+     * physical containment. No fallback, browser DB alias, deletion or overwrite.
+     * Token retained through DB close. Release even a failed partial acquisition.
+     * Never use the supplied short bucket as full identity: DB verifies a full
+     * private stamp before migration. Keep volume/path stable until close. */
+    int (*open_location)(void* user, const char* key, PRuntimeStorageLocation* location);
+    void (*close_location)(void* user, void* token);
+} PRuntimeStorageProvider;
+typedef struct PRuntimeStorageOptions {
+    unsigned int size;
+    unsigned int version;
+    unsigned long granted_permissions; /* trusted native SQL confirmation */
+    unsigned int vm_budget; /* 100..1000000, multiples of 100, per file/request */
+    int (*cancelled)(void* user); /* synchronous borrowed atomic flag only */
+    void* user_data;
+} PRuntimeStorageOptions;
+typedef struct PRuntimeStorageInfo {
+    unsigned int size;
+    unsigned int version;
+    char id[64];
+    char key[128]; /* native-only mapping hint, NOT authorization or URL */
+    unsigned long schema_version;
+    int state;
+} PRuntimeStorageInfo;
+typedef struct PRuntimeStorageError {
+    unsigned int size;
+    unsigned int version;
+    int result;
+    int db_result;
+    int db_category;
+    int sqlite_code;
+    int sqlite_extended_code;
+    int cleanup_result;
+    unsigned long failed_schema_version;
+    char message[256]; /* copied native diagnostic, never expose blindly to JS */
+} PRuntimeStorageError;
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;
@@ -239,6 +293,52 @@ PRUNTIME_API int PRuntime_MigrationPlanGetInfo(PRuntimeMigrationPlanHandle plan,
 PRUNTIME_API int PRuntime_MigrationPlanGetSource(PRuntimeMigrationPlanHandle plan,
         unsigned int index, PRuntimeMigrationSource* source);
 PRUNTIME_API int PRuntime_MigrationPlanClose(PRuntimeMigrationPlanHandle* plan);
+/* Development storage only; installed identity is NOT inferred from same ID.
+ * Native decision + manifest SQL declaration required before platform I/O.
+ * Native provider anchored to EXE/data opens Runtime's v1/dev bucket. Full
+ * framed canonical-root/normalized-ID private DB stamp rejects collisions or
+ * wrong files; unclaimed nonempty DB is never adopted. Identity binding may
+ * create mode/stamp metadata but never deletes data after failure.
+ * Strict version -> all pending sources admitted -> restricted DB migrations
+ * in catalog order. Each file is atomic, NOT the whole catalog: on failure
+ * stop before author code; retry may resume committed versions, no downgrade.
+ * One owner worker for directory/storage/DB; live handles never cross threads.
+ * Directory retained by child: DirectoryClose returns STATE until child closes.
+ * Callbacks guarded against reentry/Close, no message pump or internal worker.
+ * All copied callback code/user targets live through StorageClose. Cancel only
+ * reads host atomic state, cannot undo COMMIT or interrupt blocking native I/O.
+ * Output slot unchanged on failure. Optional exact v1 error copied on success/
+ * failure after valid arguments; invalid error header changes no outputs. */
+PRUNTIME_API int PRuntime_DevelopmentStorageOpen(PRuntimeDirectoryHandle directory,
+        const PRuntimeStorageOptions* options, const PRuntimeStorageProvider* provider,
+        PRuntimeStorageHandle* output, PRuntimeStorageError* error);
+PRUNTIME_API int PRuntime_StorageGetInfo(PRuntimeStorageHandle storage, PRuntimeStorageInfo* info);
+/* Sticky copied last failure, success does not erase it. */
+PRUNTIME_API int PRuntime_StorageGetError(PRuntimeStorageHandle storage, PRuntimeStorageError* error);
+/* Synchronous worker primitive, NOT a Browser service registration or UI call.
+ * v1 strict JSON <=4096 bytes/depth8/tokens768. query/execute: exactly
+ * {version:1,method:"query"|"execute",sql:UTF8,params:[typed...]}; transaction:
+ * {version:1,method:"transaction",statements:[{kind:"query"|"execute",sql,params}]}.
+ * Params exactly {type:"null"}, or {type:"text"|"real"|"int64",value:...}.
+ * int64 value is canonical decimal STRING; real finite JSON number; text string.
+ * No BLOB/NUL, caller path, DDL, private table or caller transaction control.
+ * DB owns SQL authorizer/8x2048 SQL/16 bind/column/total rows/1m shared work.
+ * Typed row JSON encoded privately BEFORE COMMIT with 128-byte report reserve;
+ * overflow/invalid text/alloc/SQL/cancel failure rolls back and preserves output.
+ * Capacity >=4097 required before executing; no side-effecting size probe.
+ * Success copies <=4096 JSON bytes + NUL; written excludes NUL. Buffers/count
+ * disjoint from request/storage and each other. No allocation after COMMIT.
+ * Returns {version,statementCount,rowCount,changes:{type:"int64",value:STRING},
+ * rows:[{statement:zeroBasedIndex,values:[typed...]}]}. No column-name guessing.
+ * Closed/active/wrong thread STATE. Native callbacks cannot reenter/close.
+ * A DB failure leaving a transaction active latches storage FAILED until close;
+ * no automatic retry/delete. Host queues copied inputs/results; no callbacks
+ * publish rows, and no late UI/session/generation result is replayed as SQL. */
+PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
+        const char* request, unsigned int request_bytes, char* output,
+        unsigned int capacity, unsigned int* written);
+/* DB closed before releasing native location; parent remains live. */
+PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage);
 #ifdef __cplusplus
 }
 #endif

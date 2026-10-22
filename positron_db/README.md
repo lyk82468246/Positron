@@ -217,6 +217,32 @@ not a hard wall-clock/VFS deadline; internal fixed-size metadata/transaction
 bookkeeping is separate. Deploy the matching DB DLL/import library/header and
 its existing JSON dependency; old ABI and local/sync behavior remain unchanged.
 
+## Opt-in persistent local identity
+
+`PDb_BindLocalIdentity(db, identity, bytes)` protects a trusted native storage
+owner against mistakenly adopting another database. Identity is explicit-length
+UTF-8, 1–2048 bytes without NUL. Only an idle local-full connection with no
+statements/outer transaction is accepted. BEGIN IMMEDIATE serializes comparison
+and initial binding; an existing private TEXT identity must match every byte.
+Different identities, BLOB/corrupt stamps or unclaimed nonempty databases return
+SCHEMA_MISMATCH and are not rebound, deleted or silently reset.
+
+First binding requires a pristine file containing only the DB mode metadata
+table and its index, with no other metadata keys or schema objects. Existing
+browser/application data cannot become a new Runtime namespace by presenting
+an unused application ID. The stamp lives in protected `__pdb_meta`, inaccessible
+to restricted SQL/migrations; trusted native local-full APIs are unchanged.
+This is an exact identity check, not publisher verification, a file-access
+sandbox, or a proof against malicious native code/database tampering.
+
+Runtime frames development kind, normalized ID and full provider-canonical root
+into this identity. Its finite directory bucket only locates a candidate file;
+the full stamp must match before executing migrations. A collision fails closed
+instead of sharing data. Filesystem containment, native exclusive lease and
+correct EXE-adjacent storage anchoring remain Runtime/provider responsibilities.
+Failed calls preserve original sticky/rollback diagnostics; no power-loss
+durability guarantee is inferred from logical rollback tests.
+
 ## Local and sync modes
 
 The DLL has two modes:

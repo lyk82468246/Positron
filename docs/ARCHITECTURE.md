@@ -48,8 +48,10 @@ native控件；协议地址本身不赋予权限。`positron_runtime.dll`验证 
 和包内路径，并词法解析同 ID 的 app 引用，分离导航 URL、包内 key 与 query/fragment。
 开发目录实例通过可信平台 provider 保有规范根、根 manifest、独占 lease 和有界只读资源；
 Runtime 拥有准入/身份组合/预算/释放顺序，宿主必须提供真实目录规范化、物理包含性与原生锁/读取。
-这不是通用 WM 文件适配器、安装身份或 SQL 授权。安装、数据映射、受控存储和页面组合仍为
-后续目标；EXE只负责平台窗口、worker与I/O接线，其余九DLL的所有权不变。
+开发存储由 Runtime 生成独立映射，经 DB 私有完整身份核对后运行 manifest 迁移与受限 typed SQL JSON；
+短存储 bucket 不能替代完整身份，错误映射/非空未认领库不得被采用。JSON DLL 拥有通用标量编码，
+结果容量在 DB 提交前验证。这不是通用 WM 适配器、安装身份或 Browser 授权；异步页面服务与
+资源组合仍须独立合同，EXE只负责平台窗口、worker与I/O接线，其余九DLL的所有权不变。
 JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 manifest 句柄不代表
 可信发布者、运行实例或服务权限。完整分工、ID、系统ZIP前置门及阶段见
 [运行时计划](RUNTIME_PLAN.md)；首版不建立恶意代码沙箱或开放任意文件/网络/原生执行。

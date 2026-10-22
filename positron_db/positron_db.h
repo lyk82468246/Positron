@@ -289,6 +289,18 @@ PDB_API int PDb_ExecuteRestricted(PDbHandle db,
 
 #define PDB_MIGRATION_VERSION 1
 #define PDB_MIGRATION_MAX_STATEMENTS 64
+#define PDB_LOCAL_IDENTITY_BYTES 2048
+/* Additive trusted-native local storage identity guard. Local-full/idle only;
+ * explicit nonempty UTF-8 <=2048 bytes, no NUL. BEGIN IMMEDIATE serializes an
+ * exact private TEXT identity comparison. A missing identity can be installed
+ * only in a pristine DB (only its mode metadata table/index, no other keys or
+ * schema objects). Existing different/corrupt identity or unclaimed nonempty
+ * DB => SCHEMA_MISMATCH, never rebind/adopt/delete it. No success output;
+ * rollback preserves sticky diagnostics. Restricted authors cannot read or
+ * alter this __pdb_meta key. Identity provenance, filesystem isolation and
+ * lease remain Runtime/provider responsibilities, not publisher verification.
+ * Does not change old open/full-SQL APIs or constrain trusted native SQL. */
+PDB_API int PDb_BindLocalIdentity(PDbHandle db, const char* identity, int bytes);
 typedef struct PDbMigrationReport {
     unsigned int size;
     unsigned int version;

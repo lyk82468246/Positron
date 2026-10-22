@@ -121,6 +121,32 @@ PJSON_API char* PJson_Serialize(HANDLE hObj);
 /* Free a string returned by PJson_Serialize. NULL-safe. */
 PJSON_API void PJson_FreeString(char* str);
 
+#define PJSON_ENCODE_VERSION 1
+#define PJSON_ENCODE_OK 0
+#define PJSON_ENCODE_ARGUMENT -1
+#define PJSON_ENCODE_LIMIT -2
+#define PJSON_ENCODE_INVALID -3
+#define PJSON_ENCODE_MEMORY -4
+#define PJSON_SCALAR_TEXT_BYTES 4096U
+typedef struct PJsonScalar {
+    unsigned int size;
+    unsigned int version;
+    int type; /* NULL, FALSE, TRUE, NUMBER or STRING from PJSON_TYPE_* */
+    double number;
+    const char* text;
+    unsigned int text_bytes;
+} PJsonScalar;
+/* Bounded additive scalar encoder owned by JSON, no global allocator hooks.
+ * Text explicit valid UTF-8 <=4096 bytes, no NUL; empty text may be NULL.
+ * Numbers finite. cJSON owns escaping/number formatting; int64 callers use a
+ * decimal STRING, never convert to double. Output always NUL terminated;
+ * written excludes NUL. NULL buffer/capacity=0 is a successful size probe.
+ * Capacity failure preserves buffer/written; other failures likewise.
+ * Worst string size <=24578 bytes plus NUL, transient allocations bounded by
+ * input/escaped size. No persistent handle or callback; old APIs unchanged. */
+PJSON_API int PJson_EncodeScalar(const PJsonScalar* scalar, char* buffer,
+        unsigned int capacity, unsigned int* written);
+
 #ifdef __cplusplus
 }
 #endif

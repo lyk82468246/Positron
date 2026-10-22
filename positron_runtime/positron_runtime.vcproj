@@ -42,7 +42,7 @@
 				Name="VCCLCompilerTool"
 				ExecutionBucket="7"
 				Optimization="0"
-				AdditionalIncludeDirectories=".;..\positron_json;..\compat"
+				AdditionalIncludeDirectories=".;..\positron_json;..\positron_db;..\compat"
 				PreprocessorDefinitions="_DEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;DEBUG;_WINDOWS;_USRDLL;POSITRON_RUNTIME_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				MinimalRebuild="true"
 				RuntimeLibrary="1"
@@ -65,8 +65,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-                AdditionalDependencies="positron_json.lib"
-                AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName)"
+                AdditionalDependencies="positron_json.lib positron_db.lib"
+                AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName);..\positron_db\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_runtime.dll"
 				LinkIncremental="2"
@@ -134,7 +134,7 @@
 				ExecutionBucket="7"
 				Optimization="2"
 				FavorSizeOrSpeed="2"
-				AdditionalIncludeDirectories=".;..\positron_json;..\compat"
+				AdditionalIncludeDirectories=".;..\positron_json;..\positron_db;..\compat"
 				PreprocessorDefinitions="NDEBUG;_WIN32_WCE=$(CEVER);UNDER_CE;$(PLATFORMDEFINES);WINCE;_WINDOWS;_USRDLL;POSITRON_RUNTIME_EXPORTS;$(ARCHFAM);$(_ARCHFAM_);_UNICODE;UNICODE;_CRT_SECURE_NO_WARNINGS"
 				RuntimeLibrary="0"
 				UsePrecompiledHeader="0"
@@ -156,8 +156,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-                AdditionalDependencies="positron_json.lib"
-                AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName)"
+                AdditionalDependencies="positron_json.lib positron_db.lib"
+                AdditionalLibraryDirectories="..\positron_json\bin\$(ConfigurationName);..\positron_db\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron_runtime.dll"
 				LinkIncremental="1"

@@ -3,6 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "positron_runtime", "positron_runtime\positron_runtime.vcproj", "{71B371E0-8F3B-4D06-A0C2-9E5425BCA701}"
 	ProjectSection(ProjectDependencies) = postProject
+		{B4C6D8E0-1234-4A56-9B78-0CDEF1234567} = {B4C6D8E0-1234-4A56-9B78-0CDEF1234567}
 		{7AAAC227-9102-4214-A088-1D4A3D261D53} = {7AAAC227-9102-4214-A088-1D4A3D261D53}
 	EndProjectSection
 EndProject

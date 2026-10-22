@@ -53,6 +53,19 @@ PJson_Free(root);
 schema、版本取舍和权限声明不属于 JSON DLL，Runtime 消费者合同见
 [Runtime README](../positron_runtime/README.md)。
 
+## 有界标量编码
+
+`PJson_EncodeScalar` 为服务协议提供通用标量编码，不要求消费者复制 JSON 转义器。
+初始化 `PJsonScalar.size/version`，类型选择 NULL、FALSE、TRUE、NUMBER 或 STRING。
+数字必须有限；字符串使用显式 UTF-8 长度，最多 4096 字节，不接受 NUL，空字符串可使用 NULL/0。
+字符转义和有限实数格式由固定 cJSON 实现；int64 应先保留为十进制字符串，而不是转成 double。
+
+`buffer=NULL, capacity=0` 是无副作用的成功 size probe，`written` 返回不含 NUL 的长度。
+实际输出须有额外一个 NUL 字节；容量不足、格式非法、分配失败均保留 buffer 和 written。
+最坏字符串结果为 24578 字节加 NUL；输入拷贝、cJSON 节点与编码缓冲的暂存受此预算约束，
+没有遗留句柄或 callback。错误区分 ARGUMENT、LIMIT、INVALID 和 MEMORY；旧解析/序列化 ABI 不变。
+Runtime typed SQL 结果使用这一入口，在事务提交前完成字符串/实数编码与结果容量判定。
+
 ## 构建与验证
 
 使用根解决方案构建，不要把 `cJSON` 源码重新编译进应用。公共头中的生命周期规则是 ABI 的一部分；改动后运行 `python scripts\audit_repo.py` 和正式 ARMV4I 构建。

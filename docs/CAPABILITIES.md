@@ -142,6 +142,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 解析和释放 JSON 树 | `PJson_Parse`、`PJson_Free` | 已实现 | 非法/空输入返回空 handle；调用方必须释放成功树 | JSON 组件回归和正式构建；复杂输入仍受移植库资源约束 |
 | 基础 object/array/string/int 读取 | `PJson_Get*` | 已实现 | 失效 handle、缺失键和越界索引按头文件约定返回安全值；不返回借用指针之外的所有权 | 现有 JSON 调用方和脚本桥；布尔/浮点/类型与 object 遍历保持 additive ABI |
 | 有界序列化和字符串释放 | `PJson_Serialize`、`PJson_FreeString` | 已实现 | 分配失败返回空；字符串由 JSON DLL 分配并由对应入口释放 | 现有 JSON 合同；新增 size-probe 需保持旧序列化 ABI 不变 |
+| 有界标量编码 | `PJson_EncodeScalar` | 已实现 | v1/null/bool/有限实数/显式 UTF-8 字符串，文本 ≤4096 bytes、无 NUL；size probe 不含 NUL，失败保留输出；cJSON 拥有转义/数字格式 | TEST1369 的标量/容量/精度与 Runtime 结果提交前编码双配置门；不是通用 schema/builder |
 | schema、流式 parser、异步 DOM 映射 | 当前没有公共入口 | 暂缓 | 不引入无界 parser 状态或跨线程借用树 | 需要明确消费者、固定 token/深度预算和可回滚 fixture |
 
 `PJson_ParseEx` 提供请求级 size/version 严格准入：显式 UTF-8 长度、最多 65536 bytes/
@@ -156,7 +157,8 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | app 引用词法解析 | `PRuntime_ManifestResolveReference` | 已实现但不授予访问权 | 输入/输出 URL 各 1023 bytes，包内 key 255 bytes/16 段，query/fragment 各 255 escaped bytes；同 ID、单次解码、根内 dot 归一化，编码路径语法/跨 ID/控制字符拒绝，错误不改输出 | TEST1364 的相对资源、CSS base、后缀、UTF-8、编码逃逸/容量和重复调用及双配置设备门；不是物理目录绑定或资源 I/O |
 | 开发目录实例、独占与只读资源 | `PRuntime_DevelopmentDirectoryOpen`、`PRuntime_DirectoryGetInfo/ResolveReference/ReadResource/Close` | 已实现但依赖可信平台 provider | 规范根 UTF-8 ≤1023 bytes，读取根 manifest 准入；按开发根/ID 取原生独占 lease，复制读取 ≤8 MiB/次，调用者可更小；owner-thread/重入守卫，错误不改输出且回收临时 bytes/lease/root；锁 bucket 不作为数据身份 | TEST1365 双配置门覆盖私有中文目录/文件、二进制/空文件、同 ID 根隔离、alias/真实子进程重复拒绝、失败展开及重复释放；通用 WM 规范化/包含性适配器仍由宿主实现，未开放 SQL 或安装身份 |
 | manifest 迁移来源快照 | `PRuntime_DirectoryPrepareMigrations`、`PRuntime_MigrationPlanGetInfo/GetSource/Close` | 已实现但仅来源准入 | 声明与显式原生 SQL 决策同时存在；严格 DB 版本不超过 catalog；按顺序复制 pending 文件，每项 32 KiB、最多 16 项/512 KiB，UTF-8/BOM/NUL/控制字符准入；任何失败不发布半成品，owner-thread 释放 | TEST1367 双配置门保护来源/顺序、权限/未来版本、后续文件失败、容量、生命周期及公共 DB 组合；快照不是 DB 身份或执行授权，SQL 语法/authorizer 属于 DB |
-| 安装身份、数据映射与授权/SQL 服务 | 已批准运行时计划；尚无可用公共入口 | 有界待扩展 | 必须隔离开发/安装数据并绑定 session，普通网页/URL/manifest/目录句柄不自动获服务权限 | 下一纵切实现隔离 DB 映射、迁移执行、JSON/生命周期，再补 Core/Browser app 资源组合与宿主适配；不能由 EXE 补私有产品规则 |
+| 开发存储、迁移执行与 typed SQL JSON | `PRuntime_DevelopmentStorageOpen`、`PRuntime_StorageGetInfo/GetError/ExecuteJson/Close` | 已实现但仅同步 worker 原语 | 显式 SQL 确认、原生 data 根；完整开发根/ID stamp 拒绝碰撞/错误库；所有来源准入后逐文件原子迁移；请求/结果 JSON 4096 bytes，DB 固定预算，编码超限提交前回滚、失败不改输出 | TEST1368/1369 双配置门覆盖双根隔离/重开、身份拒绝、迁移失败/恢复、typed 精度、批/预算/取消/编码回滚；普通网页/URL 无权限，异步 session 撤销/队列与 Core/Browser 组合仍待接入 |
+| 安装身份与页面服务生命周期 | 已批准运行时计划；尚无完整公共入口 | 有界待扩展 | 安装空间不得复用开发数据；页面必须显式绑定/revoke，不能由快照或 URL 自动获权 | 下一纵切完成有界异步 SQL 队列与 app 页面组合；PXI 安装受下行系统 ZIP 门约束 |
 | PXI 安装与更新 | 系统 ZIP 能力尚未完成取证 | 有界待扩展 | 禁止自写/引入 ZIP fallback，不可用则只挂起安装，目录应用可独立推进 | 目标 ROM 的 ZIP 完成/错误/取消、Unicode/路径冲突/规模/清理门通过后再实现 |
 
 ## DB：`positron_db.dll`
@@ -167,6 +169,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
+| 持久本地身份精确绑定 | `PDb_BindLocalIdentity` | 已实现但需可信 native 调用 | local-full/空闲，身份 UTF-8 ≤2048 bytes；写锁内首次绑定仅限 pristine DB，已有 TEXT stamp 必须逐字节相等，错误库/损坏 stamp 拒绝，不删除/重新认领 | TEST1368 双配置门保护重复绑定、开发/安装 stamp 区别、非空未认领库与 BLOB 拒绝；物理 containment/发布者证明不是 DB 职责 |
 | 本地 SQLite 打开、typed bind/column、事务、取消和错误 | `PDb_OpenUtf8`、`PDb_Prepare`、`PDb_Bind*`、`PDb_Column*`、`PDb_Begin/Commit/Rollback/Cancel` | 已实现但有界 | 固定 SQLite 3.53.4；VS2008/WM6 ARMV4I；SQL ≤32 KiB、body ≤1 MiB；DB/statement handle 不跨线程，DLL 不创建线程 | TEST1321 覆盖 UTF-8 文本、SQL/bind 超限、类型读取、事务/取消/错误；正式工程已接入；断电、真实设备文件锁和峰值内存仍需设备门 |
 | 本地完整 SQL 与原子 migration | `PDb_Exec`、`PDb_ApplyMigration` | 已实现但有界 | 完整 SQL 模式允许 SQLite 本地语法；同步模式禁止直接 DDL、ATTACH/DETACH、PRAGMA、扩展和事务 SQL，schema 只能由 migration 原子推进版本 | TEST1321 覆盖本地/同步创建、版本/事务状态、失败回滚、模式隔离和同步限制；journal 恢复仍需设备 fixture |
 | 显式受限迁移与严格 schema 版本 | `PDb_GetMigrationVersion`、`PDb_ApplyMigrationRestricted` | 已实现但仅 DB 原语 | 空闲 local-full；版本在 BEGIN IMMEDIATE 内比较，target=expected+1；UTF-8 SQL ≤32 KiB/64 条，共享工作预算/取消；v1 限 main 建表/索引与普通 DML，保护私有元数据；DDL/数据/version 一起 COMMIT，失败不发布 report | TEST1366 双配置门覆盖合法/非法 schema、类型/长值/NUL/版本拒绝、预算/执行中取消/重入、DDL/DML 与延迟约束 COMMIT 回滚；Runtime 仍须证明身份/权限、隔离映射和 manifest 文件来源，不开放旧完整 migration 或 JS DDL |

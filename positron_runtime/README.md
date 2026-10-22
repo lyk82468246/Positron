@@ -8,14 +8,16 @@ Development-directory instances bind a trusted platform provider, admit that
 root's manifest, hold an exclusive launch lease and read bounded resources.
 An opt-in migration plan copies the declared pending SQL files after an explicit
 native permission decision; it does not execute them or select a database.
+Development storage now binds an exact private DB identity, runs admitted
+migrations and executes bounded typed SQL JSON on its owner worker.
 This does **not yet run directory applications in the browser**: the general WM
-provider/EXE integration, installed identities, data mapping, migration execution, SQL
-services, Core/Browser app resource wiring and PXI remain separate prerequisites.
+provider/EXE integration, installed identities, asynchronous session authorization,
+Core/Browser app resource wiring and PXI remain separate prerequisites.
 
 ## Link and deploy
 
 Include `positron_runtime.h`, link `positron_runtime.lib`, and deploy
-`positron_runtime.dll` with the matching `positron_json.dll` from one formal
+`positron_runtime.dll` with the matching `positron_json.dll` and `positron_db.dll` from one formal
 Debug or Release stage. Build through the root solution, never compile Runtime
 or cJSON implementation sources into a consumer. The DLL performs no file,
 network, window, SQL or worker operations during metadata admission.
@@ -255,20 +257,105 @@ if (rc == PRUNTIME_OK) {
     source.size = sizeof(source);
     source.version = PRUNTIME_VERSION;
     /* For each pending index, get source and use its explicit sql_bytes.
-     * A later Runtime storage owner must bind the right DB and apply via
+     * The Runtime storage owner below binds the right DB and applies via
      * PDb_ApplyMigrationRestricted(expected, expected+1), rechecking version
      * under DB's write lock. Do not use legacy full-SQL migration for JS. */
     PRuntime_MigrationPlanClose(&plan);
 }
 ```
 
-Runtime still links only JSON. Consumers combining this source contract with DB
-must separately link its public import library and deploy the matching formal
-DB DLL; Runtime does not accept an arbitrary DB handle or authenticate its
-mapping. Installed identities, isolated storage, execution/cancellation across
-the whole catalog, SQL JSON services and Browser lifetime authorization remain
-unimplemented. Individual DB migration transactions do not make a multi-file
-catalog atomic, and neither layer claims physical power-loss durability.
+This source-only API still accepts no arbitrary DB handle. Use the development
+storage contract below for identity binding and execution. Individual DB migration
+transactions do not make a multi-file catalog atomic, and neither layer claims
+physical power-loss durability.
+
+## Isolated development storage and migrations
+
+`PRuntime_DevelopmentStorageOpen` takes a live directory, explicit native SQL
+confirmation, per-file/request work budget (100–1000000, multiples of 100),
+optional cooperative cancel callback and a copied native storage provider.
+Missing declaration/confirmation fails before native I/O. The provider anchors
+to the real EXE-adjacent `data` directory and opens Runtime's relative key below
+that root, proving native containment and retaining the volume/path through
+close. It must not alias the browser DB, choose another root on failure, delete
+files, or use author-supplied database paths.
+
+Runtime owns a `v1/dev/<16-lowercase-hex-bucket>/app.db` mapping. This finite,
+noncryptographic bucket is only a location hint, separate from the launch lock.
+Before migrations, `PDb_BindLocalIdentity` atomically compares a full framed
+development-kind/normalized-ID/canonical-root TEXT identity in private DB
+metadata. A collision or wrong mapped file returns SCHEMA; an unclaimed nonempty
+DB is never adopted. Thus equal IDs in different roots remain separate, and a
+development application cannot claim an installed identity. Installed open/update
+is not implemented; the installed namespace must never alias `v1/dev`.
+
+The owner reads strict schema version, copies every pending manifest source,
+then applies each with `PDb_ApplyMigrationRestricted` in order. Invalid/missing
+later source stops before any migration SQL; initial mode/identity metadata may
+already exist. Each file's DDL/DML/version commits together. A later SQL failure
+keeps earlier committed versions and blocks author startup; normal retry resumes
+only the pending suffix, not a replay of earlier files. Future/corrupt versions
+never trigger downgrade, reset or deletion. Cancellation cannot undo a COMMIT or
+preempt native I/O, and the catalog is not one atomic transaction.
+
+Directory, storage and DB live on one creating worker. A storage child retains
+its parent: directory Close returns STATE until storage Close. There is one
+storage child per directory; native callbacks cannot reenter/close an active
+instance. Storage Close releases DB before the provider location, then permits
+parent release. Callback code/user targets must remain live throughout. No DLL
+worker or window message pump is created, and no raw DB handle is exposed.
+
+`PRuntime_StorageGetInfo` copies ID, native-only key, schema version and state.
+READY is required for SQL. A request failure leaving an active DB transaction
+latches FAILED until close, with no implicit recovery/delete. Optional v1 open
+error and `PRuntime_StorageGetError` copy structured Runtime/DB/category/native/
+cleanup diagnostics; successful operations preserve a previous failure. Invalid
+query headers/owner guards do not replace that diagnostic. Native messages may
+contain private details: do not forward them blindly to author JS.
+
+## Typed worker SQL JSON
+
+`PRuntime_StorageExecuteJson` is a synchronous worker primitive, not a Browser
+service registration or permission inferred from URL. Version 1 requests are
+strict UTF-8 JSON, at most 4096 bytes, eight container levels and 768 tokens;
+unknown/duplicate fields, unknown methods/types and future versions fail closed.
+
+```json
+{"version":1,"method":"query","sql":"SELECT id,body FROM notes WHERE id>? LIMIT 16","params":[{"type":"int64","value":"9007199254740993"}]}
+```
+
+`execute` has the same four keys. A transaction instead has exactly `version`,
+`method:"transaction"` and a nonempty `statements` array, with up to eight objects
+having exactly `kind:"query"|"execute"`, `sql` and `params`. Each parameter is
+`{"type":"null"}` or `{"type":"text"|"real"|"int64","value":...}`.
+int64 is canonical decimal string across the full signed 64-bit range; signs
+other than minus, leading zeros, negative zero, numbers or overflow are rejected.
+`real` is a finite JSON number and `text` a UTF-8 string. No BLOB or embedded NUL.
+
+DB retains SQL authority and its budgets: SQL 2048 bytes per statement, sixteen
+binds/columns/total rows, safe functions, main query/DML only, no private metadata,
+DDL or caller transaction/connection controls. The shared request work budget
+does not reset between batch statements. Query results exceeding sixteen rows
+fail rather than truncate; callers should use bound cursor/LIMIT pagination.
+
+Success returns `version`, `statementCount`, `rowCount`, typed decimal `changes`,
+and `rows:[{"statement":0,"values":[typed values...]}]`. The statement index is
+zero-based within the request. Values mirror input type/value tags; column
+names are not guessed. JSON owns scalar escaping/finite-number encoding, so
+quote/newline/Unicode round-trip without int64 conversion to JS Number.
+
+The caller must provide at least 4097 output bytes **before execution**. There
+is no side-effecting size probe. Runtime buffers encoded rows before DB COMMIT,
+reserving 128 bytes for a fixed report; overflow, unsupported NUL/BLOB, encoding
+allocation failure, SQL error or cancellation rolls back the whole request.
+Only after COMMIT does it append the allocation-free report and copy at most
+4096 bytes plus NUL; `written` excludes NUL. All failed outputs stay unchanged.
+The fixed report reserve may conservatively reject a near-limit row payload.
+
+The host must schedule copied requests/results, never call this on UI or move
+live storage/Core/Browser/JS handles to another thread. Asynchronous pending
+budget, page generation revocation and Browser service registration are separate
+integration contracts; this worker entry alone does not make a web page trusted.
 
 ## C lifecycle and failure contract
 
@@ -306,11 +393,14 @@ perform balanced provider acquisition and release before returning failure.
 Migration preparation adds DENIED for a missing declaration/native decision and
 SCHEMA for a newer stored version than the admitted catalog; these fail before
 SQL reads and do not change stored data or authorize a service.
+Storage adds DATABASE for DB/authorizer/constraint failures and CANCELLED for a
+cooperative cancellation. Inspect structured diagnostics rather than parsing
+English error messages or deleting a failed database.
 
 Ordinary pages, forged `app://` strings, or possession of this metadata handle
 have no service authority. Development instances bind the provider's canonical
-root and logical ID, not installed storage. Future storage/session contracts must
-isolate development/installed data and authorize each session lifecycle. There is no
+root and logical ID, not installed storage. Session integration must still
+authorize each lifecycle and keep installed namespaces separate. There is no
 malicious-code sandbox or verified publisher claim. EXE integration must wait
 for that contract rather than invent private grants or URL routing rules.
 
@@ -326,6 +416,9 @@ owner/reentry, partial acquisition failure and repeated teardown. The migration
 fixture checks exact source order/bytes, missing
 grants, version rejection, later-file failure, malformed/oversized input,
 16-file/512-KiB limits, owner-thread teardown and public DB primitive composition.
-Neither fixture proves a generic filesystem canonicalizer, installed data isolation, SQL
+Storage fixtures additionally prove native private DB reopen, exact identity
+mismatch rejection, per-file migration failure/resume, all-source admission
+before DDL, typed SQL/batch rollback, encoded overflow, cancellation and budget
+guards. None proves a generic filesystem canonicalizer, installed launch, Browser
 authorization, PXI/ZIP or complete browser UI integration. Device evidence belongs
 to the current handoff, not this stable document.

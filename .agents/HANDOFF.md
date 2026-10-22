@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用及可信平台 provider 上的开发目录实例、独占和只读资源合同，JSON 提供严格有界解析；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；通用 WM provider、授权存储与完整目录应用仍未接入。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；通用 WM provider、页面服务与完整目录应用仍未接入。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -21,28 +21,27 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 开发目录与迁移来源快照已验收
+### Runtime 开发存储与 typed SQL JSON 已验收
 
-Runtime 仍只链接 JSON。目录/provider 的规范化、包含性、lease 与读取/释放合同统一见
-[Runtime README](../positron_runtime/README.md)，不在交接重复；fixture 仅处理私有已知根，
-不是通用 WM 适配器。安装身份、数据映射、迁移执行/SQL 服务与 Core/Browser app 组合仍未实现；
-锁 bucket 不能作数据身份，PXI 未取证，不改 EXE/CAB。
+Runtime 只链接 JSON/DB 公共库；目录与 data provider、身份/迁移、typed SQL 及预算/释放合同见
+[Runtime README](../positron_runtime/README.md)。fixture 仅处理私有已知根，不是通用 WM 适配器。
+安装身份、异步页面服务与 Core/Browser app 组合仍待完成；PXI 未取证，不改 EXE/CAB。
 
-新 PrepareMigrations 要求声明与显式原生 SQL 决策；从绑定根按顺序复制 pending catalog，
-每文件 32 KiB、最多 16 文件/512 KiB，后续文件失败不发布计划；未来版本拒绝，空计划无读取。
-独立 owner-thread 快照不是 DB 身份/授权，SQL 准入仍归 DB；TEST1367 验证 UTF-8/边界、
-callback 重入/关闭拒绝、失败不变性及来源至公共 DB 原语组合，不表示 Runtime 已执行迁移。
+存储 bucket 仅定位，DB 私有完整开发根/ID stamp 拒绝碰撞/错误文件与非空未认领库；
+来源全部准入后逐文件迁移，失败不运行作者代码，正常重试仅恢复 pending 后缀。
+同步 worker 请求/结果 JSON 保持 4096 bytes，int64 字符串无精度损失；结果编码在 COMMIT 前，
+超限/取消/批失败回滚，DB 仍拥有 SQL authorizer；JSON 新标量编码不改变旧 ABI。
 
-Debug `tmp/device-runs/20261022-232343-runtime-source-debug-final/`、Release
-`tmp/device-runs/20261022-232632-runtime-source-release-final/` 各 `1321,1363-1367,999` 7/7 PASS，
+Debug `tmp/device-runs/20261022-235321-runtime-store-sql-debug-final/`、Release
+`tmp/device-runs/20261022-235657-runtime-store-sql-release-accepted/` 各 `1321,1363-1369,999` 9/9 PASS，
 唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash、双空间与新 guest 零引用通过，无新增 dump。
 145 文件 SD 包回收后清理，45 个旧不完整目录保留；C89/审计与串行正式两配置构建通过。
-未改 WMDC、EXE/用户 DB，无强杀或 nightly。TEST1365 原目录/跨进程与 DB 相邻断言保持。
-先行 `20261022-232005-runtime-migration-sources-debug`、`20261022-232134-runtime-source-probe`
-均在旧 TEST1365 第二私有根创建前失败，后者 error=183，未进入 TEST1367；仅补有界路径诊断后
-定向及最终门通过，未放宽断言/删除已有目录，根因未定。失败完整日志保留，不追认通过。
-先行 `tmp/device-runs/20261022-200937-runtime-directory-debug-probe/` 在 helper 无完整摘要前停止，
-未运行测试、远端包保留，不追认为 PASS；新候选审计恢复，未确定旧失败原因。旧元数据证据见 Git。
+未改 WMDC、EXE/用户 DB，无强杀或 nightly。TEST1368/1369 覆盖隔离/重开、迁移失败/恢复、
+typed JSON 精度、批/编码/预算/取消回滚及 owner/reentry；旧 DB/Runtime 断言保持。
+Debug 一次、Release 四次正式构建提前退出，事件日志确认 msenv 访问冲突；原日志保留，
+正式重试通过，不追认失败或改变工具链设置。
+`09545034` 中 TEST1365 第二私有根 error=183、helper 无完整摘要的旧证据及路径仍由 Git/
+本地日志保留；后续恢复但根因未定，未放宽断言、追认旧失败或删除其遗留包。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -400,8 +399,8 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 前置，调用/允许的 schema 子集、预算、借用、错误及回滚合同见
 [DB README](../positron_db/README.md)。新迁移在 BEGIN IMMEDIATE 后比较严格版本，
 SQL authorizer 保护私有表与连接策略；每文件的 DDL/DML/version 原子提交，失败不发布 report。
-旧 local-full/sync/migration 不变。Runtime 已有上方来源快照；身份/映射、迁移执行和 SQL JSON/
-授权仍未接入，不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
+旧 local-full/sync/migration 不变。Runtime 已有上方开发存储与 SQL JSON，
+但页面授权/异步撤销仍待合同；不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
 
 当前双配置复验见 Runtime 门，TEST1366 继续保护建表/索引/DML、私有对象/非支持 SQL 拒绝、
 严格版本类型/长度/内容、DDL/DML/COMMIT 回滚、预算/取消/reentry 与输出不变性。
@@ -495,8 +494,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
 系统ZIP无可用接口则挂起PXI。ROADMAP/能力矩阵已复核：DB 受限请求、受限迁移/严格版本
-原语、可信 provider 上的开发目录/只读资源及 manifest 迁移来源快照均已完成。唯一下一步由 Runtime
-接入开发/安装隔离存储映射和迁移执行，再接 SQL JSON/授权及 Core/Browser；
+原语、可信 provider 上的开发目录/只读资源、迁移来源/执行与开发 SQL JSON 均已完成。
+唯一下一步由 Runtime 接入八项异步队列/页面撤销，再验证 Core/Browser app 组合与系统 ZIP；
 EXE 的通用 WM provider 和目录示例仍等完整合同，不凭 manifest、URL 或目录句柄私造服务授权。
 ZIP 未取证，不改 EXE/CAB/用户 DB，不重开像素、FULL/断电与保存框暂缓门。
 构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。

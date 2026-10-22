@@ -7,6 +7,7 @@
 #include <wchar.h>
 #include "positron_runtime.h"
 #include "positron_db.h"
+#include "positron_json.h"
 
 static const char fixture_manifest[] = "{\"manifestVersion\":1,\"id\":\"Org.Demo_App.Notes\",\"name\":\"Notes\","
     "\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
@@ -14,6 +15,8 @@ static const char* directory_error = "Runtime directory fixture failed";
 static char directory_diagnostic[1024];
 const char* test1365_runtime_directory_last_error(void) { return directory_error; }
 const char* test1367_runtime_migrations_last_error(void) { return directory_error; }
+const char* test1368_runtime_storage_last_error(void) { return directory_error; }
+const char* test1369_runtime_sql_last_error(void) { return directory_error; }
 typedef struct DirectoryFixture {
     WCHAR root[MAX_PATH];
     WCHAR outer[MAX_PATH];
@@ -483,4 +486,356 @@ done:
     if (plan != (PRuntimeMigrationPlanHandle)1) PRuntime_MigrationPlanClose(&plan);
     PRuntime_DirectoryClose(&f.instance); free(big);
     directory_fixture_cleanup(&f, owned_root, owned_outer); return ok;
+}
+
+typedef struct StorageFixture {
+    DirectoryFixture* directory;
+    PRuntimeDirectoryHandle reentry_target;
+    WCHAR data[MAX_PATH];
+    WCHAR path[MAX_PATH];
+    WCHAR override_path[MAX_PATH];
+    char keys[8][128];
+    unsigned int count;
+    int opens;
+    int closes;
+    int fail;
+    int reentry_ok;
+    volatile LONG cancelled;
+    PRuntimeStorageHandle live;
+    int cancel_reentry_ok;
+} StorageFixture;
+static int storage_fixture_open(void* user, const char* key, PRuntimeStorageLocation* out)
+{
+    StorageFixture* f;
+    PRuntimeDirectoryHandle alias;
+    WCHAR part[17];
+    WCHAR path[MAX_PATH];
+    unsigned int i;
+    int known;
+    f = (StorageFixture*)user;
+    if (strlen(key) != 30 || memcmp(key, "v1/dev/", 7) || strcmp(key + 23, "/app.db")) return PRUNTIME_IO;
+    for (i = 0; i < 16; i++) {
+        if (!strchr("0123456789abcdef", key[7 + i])) return PRUNTIME_IO;
+        part[i] = key[7 + i];
+    }
+    part[16] = 0;
+    wsprintfW(f->data, L"%s\\data", f->directory->outer); CreateDirectoryW(f->data, NULL);
+    wsprintfW(path, L"%s\\v1", f->data); CreateDirectoryW(path, NULL);
+    wsprintfW(path, L"%s\\v1\\dev", f->data); CreateDirectoryW(path, NULL);
+    wsprintfW(path, L"%s\\v1\\dev\\%s", f->data, part); CreateDirectoryW(path, NULL);
+    wsprintfW(f->path, L"%s\\app.db", path);
+    known = 0;
+    for (i = 0; i < f->count; i++) if (!strcmp(key, f->keys[i])) known = 1;
+    if (!known) {
+        if (f->count == 8) return PRUNTIME_LIMIT;
+        strcpy(f->keys[f->count++], key);
+    }
+    out->token = f; f->opens++;
+    out->path_bytes = (unsigned int)WideCharToMultiByte(CP_UTF8, 0, f->override_path[0] ? f->override_path : f->path,
+        -1, out->path, sizeof(out->path), NULL, NULL);
+    if (!out->path_bytes) return PRUNTIME_IO;
+    out->path_bytes--;
+    alias = f->reentry_target;
+    f->reentry_ok = PRuntime_DirectoryClose(&alias) == PRUNTIME_STATE && alias == f->reentry_target;
+    return f->fail ? PRUNTIME_IO : PRUNTIME_OK;
+}
+static void storage_fixture_close(void* user, void* token)
+{ StorageFixture* f; f = (StorageFixture*)user; if (token == f) f->closes++; }
+static int storage_fixture_cancel(void* user)
+{
+    StorageFixture* f;
+    PRuntimeStorageHandle alias;
+    PRuntimeStorageInfo info;
+    f = (StorageFixture*)user;
+    if (f->live) {
+        alias = f->live; info.size = sizeof(info); info.version = 1;
+        f->cancel_reentry_ok = PRuntime_StorageGetInfo(f->live, &info) == PRUNTIME_STATE &&
+            PRuntime_StorageClose(&alias) == PRUNTIME_STATE && alias == f->live;
+    }
+    return InterlockedCompareExchange((LONG*)&f->cancelled, 0, 0) != 0;
+}
+static void storage_fixture_cleanup(StorageFixture* f)
+{
+    WCHAR part[17];
+    WCHAR path[MAX_PATH];
+    unsigned int i;
+    unsigned int j;
+    for (i = 0; i < f->count; i++) {
+        for (j = 0; j < 16; j++) part[j] = f->keys[i][7 + j]; part[16] = 0;
+        wsprintfW(path, L"%s\\v1\\dev\\%s\\app.db-journal", f->data, part); DeleteFileW(path);
+        wsprintfW(path, L"%s\\v1\\dev\\%s\\app.db", f->data, part); DeleteFileW(path);
+        wsprintfW(path, L"%s\\v1\\dev\\%s", f->data, part); RemoveDirectoryW(path);
+    }
+    if (f->count) {
+        wsprintfW(path, L"%s\\v1\\dev", f->data); RemoveDirectoryW(path);
+        wsprintfW(path, L"%s\\v1", f->data); RemoveDirectoryW(path); RemoveDirectoryW(f->data);
+    }
+}
+static DWORD WINAPI storage_wrong_thread(void* user)
+{
+    PRuntimeStorageHandle alias;
+    PRuntimeStorageInfo info;
+    PRuntimeStorageError error;
+    alias = (PRuntimeStorageHandle)user; info.size = sizeof(info); info.version = 1; error.size = sizeof(error); error.version = 1;
+    return PRuntime_StorageGetInfo(alias, &info) == PRUNTIME_STATE && PRuntime_StorageGetError(alias, &error) == PRUNTIME_STATE &&
+        PRuntime_StorageClose(&alias) == PRUNTIME_STATE && alias == (PRuntimeStorageHandle)user ? 0 : 3;
+}
+BOOL test1368_runtime_storage_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"org.demo.storage\",\"name\":\"Storage\","
+        "\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],"
+        "\"migrations\":[{\"version\":1,\"file\":\"m01.sql\"},{\"version\":2,\"file\":\"m02.sql\"}]}";
+    static const char sql1[] = "CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT);INSERT INTO notes VALUES(1,'first');";
+    static const char sql2[] = "INSERT INTO notes VALUES(2,'second');";
+    DirectoryFixture f;
+    DirectoryFixture other;
+    StorageFixture sf;
+    PRuntimeDirectoryProvider provider;
+    PRuntimeDirectoryProvider provider2;
+    PRuntimeStorageProvider sp;
+    PRuntimeStorageOptions options;
+    PRuntimeStorageHandle storage;
+    PRuntimeStorageHandle second;
+    PRuntimeStorageInfo info;
+    PRuntimeStorageInfo before;
+    PRuntimeStorageError error;
+    PRuntimeDirectoryHandle alias;
+    PDbHandle db;
+    PDbStmtHandle stmt;
+    WCHAR first_path[MAX_PATH];
+    char first_key[128];
+    char path[1024];
+    HANDLE thread;
+    DWORD code;
+    int outer;
+    int root;
+    int outer2;
+    int root2;
+    int version;
+    int reads;
+    BOOL ok;
+    storage = second = NULL; db = NULL; stmt = NULL; thread = NULL; ok = FALSE;
+    outer = root = outer2 = root2 = 0; memset(&sf, 0, sizeof(sf)); memset(&other, 0, sizeof(other));
+    if (!directory_fixture_init(&f, GetCurrentProcessId() ^ 0x10000000UL)) return FALSE;
+    sf.directory = &f; directory_fixture_provider(&f, &provider);
+    outer = CreateDirectoryW(f.outer, NULL) != 0; if (outer) root = CreateDirectoryW(f.root, NULL) != 0;
+    RUNTIME_VERIFY(root && directory_fixture_write(&f, L"manifest.json", manifest, sizeof(manifest) - 1) &&
+        directory_fixture_write(&f, L"m01.sql", sql1, sizeof(sql1) - 1) && directory_fixture_write(&f, L"m02.sql", sql2, sizeof(sql2) - 1), "storage private files");
+    RUNTIME_VERIFY(PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0, "storage directory open");
+    sf.reentry_target = f.instance;
+    memset(&sp, 0, sizeof(sp)); sp.size = sizeof(sp); sp.version = 1; sp.user_data = &sf;
+    sp.open_location = storage_fixture_open; sp.close_location = storage_fixture_close;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1; options.vm_budget = 1000000;
+    options.cancelled = storage_fixture_cancel; options.user_data = &sf;
+    error.size = sizeof(error); error.version = 1;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == PRUNTIME_DENIED && !storage && !sf.opens,
+        "storage explicit native grant before I/O"); options.granted_permissions = PRUNTIME_PERMISSION_SQL;
+    sf.cancelled = 1;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == PRUNTIME_CANCELLED && !storage && !sf.opens,
+        "storage pre-cancel before I/O"); sf.cancelled = 0; sf.fail = 1;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == PRUNTIME_IO && !storage && sf.opens == sf.closes,
+        "storage partial native acquisition release"); sf.fail = 0;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == 0 && storage && sf.reentry_ok,
+        "Runtime identity stamp, source admission and both migrations");
+    info.size = sizeof(info); info.version = 1;
+    RUNTIME_VERIFY(PRuntime_StorageGetInfo(storage, &info) == 0 && info.schema_version == 2 && !strcmp(info.id, "org.demo.storage") &&
+        !strncmp(info.key, "v1/dev/", 7), "storage copied ready info");
+    strcpy(first_key, info.key); wcscpy(first_path, sf.path); alias = f.instance;
+    RUNTIME_VERIFY(PRuntime_DirectoryClose(&alias) == PRUNTIME_STATE && alias == f.instance &&
+        PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &second, &error) == PRUNTIME_STATE && !second, "parent retention and one storage child");
+    thread = CreateThread(NULL, 0, storage_wrong_thread, storage, 0, NULL);
+    RUNTIME_VERIFY(thread && WaitForSingleObject(thread, 10000) == WAIT_OBJECT_0 && GetExitCodeThread(thread, &code) && !code,
+        "storage owner thread guard"); CloseHandle(thread); thread = NULL;
+    before = info; info.version = 2; before = info;
+    RUNTIME_VERIFY(PRuntime_StorageGetInfo(storage, &info) == PRUNTIME_ARGUMENT && !memcmp(&info, &before, sizeof(info)), "storage info canary"); info.version = 1;
+    RUNTIME_VERIFY(PRuntime_StorageClose(&storage) == 0 && !storage && PRuntime_StorageClose(&storage) == 0 && sf.opens == sf.closes, "storage ordered close");
+    reads = f.reads;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == 0 && f.reads == reads &&
+        PRuntime_StorageGetInfo(storage, &info) == 0 && info.schema_version == 2 && !strcmp(first_key, info.key), "cold DB reopen, no repeated migration reads");
+    PRuntime_StorageClose(&storage);
+    RUNTIME_VERIFY(WideCharToMultiByte(CP_UTF8, 0, first_path, -1, path, sizeof(path), NULL, NULL) &&
+        PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 && PDb_GetMigrationVersion(db, &version) == 0 && version == 2 &&
+        PDb_Prepare(db, "SELECT count(*) FROM notes", &stmt) == 0 && PDb_Step(stmt) == PDB_STEP_ROW && PDb_ColumnInt64(stmt, 0) == 2,
+        "real file migrations persisted once"); PDb_Finalize(stmt); stmt = NULL; PDb_Close(db); db = NULL;
+    RUNTIME_VERIFY(directory_fixture_init(&other, GetCurrentProcessId() ^ 0x30000000UL), "second development identity");
+    directory_fixture_provider(&other, &provider2); outer2 = CreateDirectoryW(other.outer, NULL) != 0;
+    if (outer2) root2 = CreateDirectoryW(other.root, NULL) != 0;
+    RUNTIME_VERIFY(root2 && directory_fixture_write(&other, L"manifest.json", manifest, sizeof(manifest) - 1) &&
+        directory_fixture_write(&other, L"m01.sql", sql1, sizeof(sql1) - 1) && directory_fixture_write(&other, L"m02.sql", sql2, sizeof(sql2) - 1) &&
+        PRuntime_DevelopmentDirectoryOpen(other.canonical, (unsigned int)strlen(other.canonical), &provider2, &other.instance) == 0,
+        "same ID second physical root");
+    sf.reentry_target = other.instance;
+    wcscpy(sf.override_path, first_path); reads = other.reads; second = (PRuntimeStorageHandle)1;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(other.instance, &options, &sp, &second, &error) == PRUNTIME_SCHEMA &&
+        second == (PRuntimeStorageHandle)1 && error.db_result == PDB_SCHEMA_MISMATCH && reads == other.reads,
+        "wrong mapped database/full identity collision refuses before SQL"); second = NULL; sf.override_path[0] = 0;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(other.instance, &options, &sp, &second, &error) == 0 &&
+        PRuntime_StorageGetInfo(second, &info) == 0 && strcmp(first_key, info.key), "same ID different roots have distinct data");
+    PRuntime_StorageClose(&second); PRuntime_DirectoryClose(&other.instance);
+    RUNTIME_VERIFY(sf.opens == sf.closes && f.allocations == f.releases && other.allocations == other.releases, "all storage providers balanced");
+    RUNTIME_VERIFY(PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 &&
+        PDb_BindLocalIdentity(db, "development:one", 15) == 0 && PDb_BindLocalIdentity(db, "development:one", 15) == 0 &&
+        PDb_BindLocalIdentity(db, "installed:one", 13) == PDB_SCHEMA_MISMATCH && PDb_BindLocalIdentity(db, "development:two", 15) == PDB_SCHEMA_MISMATCH,
+        "DB exact repeated binding and dev/installed isolation");
+    RUNTIME_VERIFY(PDb_BindLocalIdentity(db, "A\0B", 3) == PDB_INVALID_ARGUMENT && PDb_BindLocalIdentity(db, "x", 2049) == PDB_LIMIT &&
+        PDb_Begin(db) == 0 && PDb_BindLocalIdentity(db, "x", 1) == PDB_STATE && PDb_Rollback(db) == 0,
+        "DB binding argument/transaction guards"); PDb_Close(db); db = NULL;
+    RUNTIME_VERIFY(PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 && PDb_Exec(db, "CREATE TABLE browser_data(x)") == 0 &&
+        PDb_BindLocalIdentity(db, "development:one", 15) == PDB_SCHEMA_MISMATCH,
+        "unclaimed nonempty browser/application DB cannot be adopted"); PDb_Close(db); db = NULL;
+    RUNTIME_VERIFY(PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 &&
+        PDb_Exec(db, "INSERT INTO __pdb_meta VALUES('local_identity',x'78')") == 0 &&
+        PDb_BindLocalIdentity(db, "x", 1) == PDB_SCHEMA_MISMATCH, "corrupt BLOB identity never converted to valid TEXT");
+    PDb_Close(db); db = NULL;
+    PRuntime_DirectoryClose(&f.instance);
+    RUNTIME_VERIFY(DeleteFileW(first_path) && directory_fixture_write(&f, L"m02.sql", "INSERT INTO notes VALUES(1,'bad');", 34) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0,
+        "private fresh DB/later SQL constraint fixture"); sf.reentry_target = f.instance;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == PRUNTIME_DATABASE && !storage &&
+        error.failed_schema_version == 2 && error.db_category == PDB_ERROR_CATEGORY_CONSTRAINT, "second migration fails without author-ready storage");
+    RUNTIME_VERIFY(PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 && PDb_GetMigrationVersion(db, &version) == 0 && version == 1 &&
+        PDb_Prepare(db, "SELECT count(*) FROM notes", &stmt) == 0 && PDb_Step(stmt) == PDB_STEP_ROW && PDb_ColumnInt64(stmt, 0) == 1,
+        "per-file atomicity preserves committed first migration and rolls back second");
+    PDb_Finalize(stmt); stmt = NULL; PDb_Close(db); db = NULL; PRuntime_DirectoryClose(&f.instance);
+    RUNTIME_VERIFY(directory_fixture_write(&f, L"m01.sql", "DROP TABLE notes;", 17) &&
+        directory_fixture_write(&f, L"m02.sql", sql2, sizeof(sql2) - 1) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0, "resume source fixture");
+    sf.reentry_target = f.instance;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == 0 &&
+        PRuntime_StorageGetInfo(storage, &info) == 0 && info.schema_version == 2, "resume only pending migration, no first-file replay");
+    PRuntime_StorageClose(&storage); PRuntime_DirectoryClose(&f.instance);
+    RUNTIME_VERIFY(DeleteFileW(first_path) && directory_fixture_write(&f, L"m01.sql", sql1, sizeof(sql1) - 1) &&
+        directory_fixture_write(&f, L"m02.sql", "\xc0", 1) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0,
+        "invalid later file before migration writes"); sf.reentry_target = f.instance;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == PRUNTIME_INVALID && !storage &&
+        PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 && PDb_GetMigrationVersion(db, &version) == 0 && !version &&
+        PDb_Prepare(db, "SELECT * FROM notes", &stmt) != 0, "all sources admitted before first DDL, metadata only on failure");
+    PDb_Close(db); db = NULL;
+    ok = TRUE;
+done:
+    if (thread) { WaitForSingleObject(thread, 10000); CloseHandle(thread); }
+    if (stmt) PDb_Finalize(stmt); if (db) PDb_Close(db);
+    if (second != (PRuntimeStorageHandle)1) PRuntime_StorageClose(&second);
+    PRuntime_StorageClose(&storage); PRuntime_DirectoryClose(&f.instance); PRuntime_DirectoryClose(&other.instance);
+    storage_fixture_cleanup(&sf); directory_fixture_cleanup(&other, root2, outer2); directory_fixture_cleanup(&f, root, outer); return ok;
+}
+
+static int sql_fixture_call(PRuntimeStorageHandle storage, const char* request, char* output, unsigned int* written, int expected)
+{
+    int rc;
+    memset(output, 'z', 4097); *written = 91;
+    rc = PRuntime_StorageExecuteJson(storage, request, (unsigned int)strlen(request), output, 4097, written);
+    return rc == expected && (rc == PRUNTIME_OK || (*written == 91 && output[0] == 'z' && output[4096] == 'z'));
+}
+BOOL test1369_runtime_sql_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"org.demo.sql\",\"name\":\"SQL\",\"version\":1,"
+        "\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],"
+        "\"migrations\":[{\"version\":1,\"file\":\"m01.sql\"}]}";
+    static const char schema[] = "CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT);INSERT INTO notes VALUES(1,'base');";
+    static const char* const denied[] = {
+        "{\"version\":1,\"method\":\"execute\",\"sql\":\"DROP TABLE notes\",\"params\":[]}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT * FROM __pdb_meta\",\"params\":[]}",
+        "{\"version\":1,\"method\":\"execute\",\"sql\":\"ATTACH ':memory:' AS other\",\"params\":[]}",
+        "{\"version\":1,\"method\":\"execute\",\"sql\":\"BEGIN\",\"params\":[]}",
+        "{\"version\":1,\"method\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(2,'x') RETURNING id\",\"params\":[]}"
+    };
+    static const char* const invalid[] = {
+        "{}", "{\"version\":1,\"version\":1}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT 1\",\"params\":[],\"path\":\"browser.db\"}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?\",\"params\":[{\"type\":\"int64\",\"value\":9007199254740993}]}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?\",\"params\":[{\"type\":\"int64\",\"value\":\"9223372036854775808\"}]}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?\",\"params\":[{\"type\":\"int64\",\"value\":\"01\"}]}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?\",\"params\":[{\"type\":\"int64\",\"value\":\"-0\"}]}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?\",\"params\":[{\"type\":\"null\",\"value\":null}]}",
+        "{\"version\":1,\"method\":\"transaction\",\"statements\":[]}",
+        "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT 1\",\"params\":[{\"type\":\"text\",\"value\":\"a\\u0000b\"}]}"
+    };
+    DirectoryFixture f;
+    StorageFixture sf;
+    PRuntimeDirectoryProvider provider;
+    PRuntimeStorageProvider sp;
+    PRuntimeStorageOptions options;
+    PRuntimeStorageHandle storage;
+    PRuntimeStorageError error;
+    PJsonScalar scalar;
+    HANDLE json;
+    HANDLE rows;
+    HANDLE values;
+    unsigned int written;
+    unsigned int i;
+    char output[4097];
+    char request[4097];
+    char encoded[128];
+    int outer;
+    int root;
+    BOOL ok;
+    storage = NULL; json = NULL; outer = root = 0; ok = FALSE; memset(&sf, 0, sizeof(sf));
+    if (!directory_fixture_init(&f, GetCurrentProcessId() ^ 0x08000000UL)) return FALSE;
+    sf.directory = &f; directory_fixture_provider(&f, &provider);
+    outer = CreateDirectoryW(f.outer, NULL) != 0; if (outer) root = CreateDirectoryW(f.root, NULL) != 0;
+    RUNTIME_VERIFY(root && directory_fixture_write(&f, L"manifest.json", manifest, sizeof(manifest) - 1) &&
+        directory_fixture_write(&f, L"m01.sql", schema, sizeof(schema) - 1) &&
+        PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0, "SQL protocol private root");
+    sf.reentry_target = f.instance;
+    memset(&sp, 0, sizeof(sp)); sp.size = sizeof(sp); sp.version = 1; sp.user_data = &sf; sp.open_location = storage_fixture_open; sp.close_location = storage_fixture_close;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1; options.granted_permissions = 1;
+    options.vm_budget = 1000000; options.cancelled = storage_fixture_cancel; options.user_data = &sf;
+    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, NULL) == 0, "SQL ready storage"); sf.live = storage;
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?,?,?,?,? FROM notes WHERE id=1\",\"params\":["
+        "{\"type\":\"int64\",\"value\":\"9223372036854775807\"},{\"type\":\"int64\",\"value\":\"-9223372036854775808\"},"
+        "{\"type\":\"real\",\"value\":1.25},{\"type\":\"null\"},{\"type\":\"text\",\"value\":\"\xe4\xb8\xad\\n\\\"\\\\\"}]}", output, &written, 0) &&
+        sf.cancel_reentry_ok, "typed int64 limits, real/null/UTF8/control escaping and callback guard");
+    json = PJson_Parse(output); rows = PJson_GetObject(json, "rows"); values = PJson_GetObject(PJson_GetArrayItem(rows, 0), "values");
+    RUNTIME_VERIFY(json && PJson_GetInt(json, "rowCount") == 1 && PJson_GetArraySize(values) == 5 &&
+        !strcmp(PJson_GetString(PJson_GetArrayItem(values, 0), "value"), "9223372036854775807") &&
+        !strcmp(PJson_GetString(PJson_GetArrayItem(values, 1), "value"), "-9223372036854775808") &&
+        !strcmp(PJson_GetString(PJson_GetArrayItem(values, 4), "value"), "\xe4\xb8\xad\n\"\\"), "complete typed JSON round trip");
+    PJson_Free(json); json = NULL;
+    for (i = 0; i < sizeof(denied) / sizeof(denied[0]); i++) RUNTIME_VERIFY(sql_fixture_call(storage, denied[i], output, &written, PRUNTIME_DATABASE), "SQL authority rejects without output");
+    for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) RUNTIME_VERIFY(sql_fixture_call(storage, invalid[i], output, &written, PRUNTIME_INVALID), "strict request/typed value admission");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":2,\"method\":\"query\",\"sql\":\"SELECT 1\",\"params\":[]}", output, &written, PRUNTIME_UNSUPPORTED), "future request version");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"transaction\",\"statements\":["
+        "{\"kind\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(2,'provisional')\",\"params\":[]},"
+        "{\"kind\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(1,'duplicate')\",\"params\":[]}]}", output, &written, PRUNTIME_DATABASE), "batch constraint rolls back provisional writes");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"transaction\",\"statements\":["
+        "{\"kind\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(2,'provisional')\",\"params\":[]},"
+        "{\"kind\":\"query\",\"sql\":\"SELECT replace(hex(zeroblob(1000)),'0',char(10)) FROM notes\",\"params\":[]}]}", output, &written, PRUNTIME_DATABASE),
+        "unavailable function rejects whole batch");
+    /* Escaped result >4096 despite <4096 raw UTF-8 text, after provisional write. */
+    strcpy(request, "{\"version\":1,\"method\":\"transaction\",\"statements\":[{\"kind\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(2,'provisional')\",\"params\":[]},"
+        "{\"kind\":\"query\",\"sql\":\"WITH RECURSIVE t(n,s) AS (VALUES(1,char(1)) UNION ALL SELECT n+1,s||char(1) FROM t WHERE n<800) SELECT s FROM t WHERE n=800\",\"params\":[]}]}");
+    RUNTIME_VERIFY(sql_fixture_call(storage, request, output, &written, PRUNTIME_LIMIT), "encoded JSON overflow before commit rolls back batch");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"query\",\"sql\":\"WITH RECURSIVE t(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM t WHERE n<17) SELECT n FROM t\",\"params\":[]}",
+        output, &written, PRUNTIME_LIMIT), "17th row fails instead of truncating result");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"query\",\"sql\":\"WITH RECURSIVE t(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM t) SELECT sum(n) FROM t\",\"params\":[]}",
+        output, &written, PRUNTIME_LIMIT), "shared VM budget stops long SQL");
+    error.size = sizeof(error); error.version = 1;
+    RUNTIME_VERIFY(PRuntime_StorageGetError(storage, &error) == 0 && error.result == PRUNTIME_LIMIT, "sticky protocol result error");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT count(*) FROM notes\",\"params\":[]}", output, &written, 0) &&
+        strstr(output, "\"value\":\"1\"") && PRuntime_StorageGetError(storage, &error) == 0 && error.result == PRUNTIME_LIMIT, "rollback count and success preserves prior error");
+    sf.cancelled = 1;
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"execute\",\"sql\":\"DELETE FROM notes\",\"params\":[]}", output, &written, PRUNTIME_CANCELLED), "request cooperative cancellation preserves data"); sf.cancelled = 0;
+    strcpy(request, "{\"version\":1,\"method\":\"execute\",\"sql\":\"DELETE FROM notes\",\"params\":[]}");
+    memset(output, 'z', sizeof(output)); written = 91;
+    RUNTIME_VERIFY(PRuntime_StorageExecuteJson(storage, request, (unsigned int)strlen(request), output, 4096, &written) == PRUNTIME_LIMIT &&
+        written == 91 && output[0] == 'z', "small output fails before any write, no size-probe execution");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT char(0) FROM notes\",\"params\":[]}", output, &written, PRUNTIME_UNSUPPORTED), "embedded NUL result cannot truncate JSON");
+    RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"transaction\",\"statements\":["
+        "{\"kind\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(2,'committed')\",\"params\":[]},"
+        "{\"kind\":\"query\",\"sql\":\"SELECT body FROM notes ORDER BY id\",\"params\":[]}]}", output, &written, 0) &&
+        strstr(output, "committed") && strstr(output, "\"statement\":1"), "batch success only after commit, query statement indices");
+    memset(&scalar, 0, sizeof(scalar)); scalar.size = sizeof(scalar); scalar.version = 1; scalar.type = PJSON_TYPE_STRING;
+    scalar.text = "a\n\"\\"; scalar.text_bytes = 4;
+    RUNTIME_VERIFY(PJson_EncodeScalar(&scalar, NULL, 0, &written) == 0 && written == 9 &&
+        PJson_EncodeScalar(&scalar, encoded, sizeof(encoded), &written) == 0 && !strcmp(encoded, "\"a\\n\\\"\\\\\""), "JSON public scalar encode/probe");
+    memset(encoded, 'z', sizeof(encoded)); written = 91;
+    RUNTIME_VERIFY(PJson_EncodeScalar(&scalar, encoded, 2, &written) == PJSON_ENCODE_LIMIT && written == 91 && encoded[0] == 'z', "JSON scalar capacity canary");
+    scalar.text = "A\0B"; scalar.text_bytes = 3;
+    RUNTIME_VERIFY(PJson_EncodeScalar(&scalar, encoded, sizeof(encoded), &written) == PJSON_ENCODE_INVALID && written == 91, "JSON scalar NUL fails closed");
+    ok = TRUE;
+done:
+    PJson_Free(json); sf.live = NULL; PRuntime_StorageClose(&storage); PRuntime_DirectoryClose(&f.instance);
+    storage_fixture_cleanup(&sf); directory_fixture_cleanup(&f, root, outer); return ok;
 }

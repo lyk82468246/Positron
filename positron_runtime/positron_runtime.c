@@ -1,8 +1,10 @@
 #include <windows.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include "positron_runtime.h"
 #include "positron_json.h"
+#include "positron_db.h"
 
 struct PRuntimeManifest {
     PRuntimeManifestInfo info;
@@ -473,6 +475,7 @@ struct PRuntimeDirectory {
     void* lease;
     DWORD owner;
     int active;
+    unsigned int storage_count;
 };
 static int runtime_provider_result(int rc, int lock)
 {
@@ -616,6 +619,7 @@ PRUNTIME_API int PRuntime_DirectoryClose(PRuntimeDirectoryHandle* directory)
     if (!*directory) return PRUNTIME_OK;
     rc = runtime_directory_ready(*directory);
     if (rc != PRUNTIME_OK) return rc;
+    if ((*directory)->storage_count) return PRUNTIME_STATE;
     (*directory)->active = 1; runtime_directory_dispose(*directory); *directory = NULL;
     return PRUNTIME_OK;
 }
@@ -706,4 +710,397 @@ PRUNTIME_API int PRuntime_MigrationPlanClose(PRuntimeMigrationPlanHandle* plan)
     if (!*plan) return PRUNTIME_OK;
     if ((*plan)->owner != GetCurrentThreadId()) return PRUNTIME_STATE;
     runtime_plan_dispose(*plan); *plan = NULL; return PRUNTIME_OK;
+}
+
+struct PRuntimeStorage {
+    PRuntimeDirectoryHandle directory;
+    PRuntimeStorageProvider provider;
+    PRuntimeStorageOptions options;
+    PRuntimeStorageLocation location;
+    PRuntimeStorageInfo info;
+    PRuntimeStorageError error;
+    PDbHandle db;
+    DWORD owner;
+    int active;
+};
+static void runtime_storage_error_init(PRuntimeStorageError* error, int result)
+{
+    memset(error, 0, sizeof(*error)); error->size = sizeof(*error); error->version = PRUNTIME_VERSION;
+    error->result = result;
+}
+static int runtime_storage_db_error(PRuntimeStorageHandle storage, int result, unsigned long schema)
+{
+    PDbErrorInfo error;
+    int rc;
+    error.size = sizeof(error); error.version = PDB_ERROR_INFO_VERSION;
+    rc = PRUNTIME_DATABASE;
+    if (result == PDB_NOMEM) rc = PRUNTIME_MEMORY;
+    else if (result == PDB_LIMIT) rc = PRUNTIME_LIMIT;
+    else if (result == PDB_BUSY) rc = PRUNTIME_BUSY;
+    else if (result == PDB_SCHEMA_MISMATCH) rc = PRUNTIME_SCHEMA;
+    runtime_storage_error_init(&storage->error, rc);
+    storage->error.db_result = result; storage->error.failed_schema_version = schema;
+    if (storage->db && PDb_GetErrorInfo(storage->db, &error) == PDB_OK) {
+        storage->error.db_category = error.category; storage->error.sqlite_code = error.sqlite_code;
+        storage->error.sqlite_extended_code = error.sqlite_extended_code;
+        storage->error.cleanup_result = error.cleanup_result;
+        memcpy(storage->error.message, error.message, sizeof(storage->error.message));
+        if (error.category == PDB_ERROR_CATEGORY_CANCELLED) storage->error.result = rc = PRUNTIME_CANCELLED;
+    }
+    return rc;
+}
+static int runtime_storage_cancel(PRuntimeStorageHandle storage)
+{
+    if (storage->options.cancelled && storage->options.cancelled(storage->options.user_data)) {
+        runtime_storage_error_init(&storage->error, PRUNTIME_CANCELLED); return PRUNTIME_CANCELLED;
+    }
+    return PRUNTIME_OK;
+}
+static void runtime_storage_dispose(PRuntimeStorageHandle storage)
+{
+    if (storage->db) PDb_Close(storage->db);
+    if (storage->location.token) storage->provider.close_location(storage->provider.user_data, storage->location.token);
+    free(storage);
+}
+/* A short finite bucket selects a location only. The framed full identity is
+ * persisted and compared under a DB write lock; collision MUST fail closed.
+ * Deliberately separate from the launch-lease name/hash and installed namespace. */
+static void runtime_storage_identity(PRuntimeDirectoryHandle directory, char* identity, char* key)
+{
+    static const char digits[] = "0123456789abcdef";
+    unsigned long a;
+    unsigned long b;
+    unsigned long value;
+    unsigned int i;
+    int part;
+    const unsigned char* p;
+    strcpy(identity, "Positron.storage.v1:development:"); strcat(identity, directory->manifest->info.id);
+    strcat(identity, ":"); strcat(identity, directory->root.canonical);
+    a = 5381UL; b = 2166136261UL;
+    for (p = (const unsigned char*)identity; *p; p++) { a = a * 33UL ^ *p; b = (b ^ *p) * 16777619UL; }
+    strcpy(key, "v1/dev/");
+    for (part = 0; part < 2; part++) {
+        value = part ? b : a;
+        for (i = 0; i < 8; i++) key[7 + part * 8 + i] = digits[(value >> (28 - 4 * i)) & 15];
+    }
+    strcpy(key + 23, "/app.db");
+}
+static int runtime_storage_ready(PRuntimeStorageHandle storage)
+{
+    if (!storage) return PRUNTIME_ARGUMENT;
+    if (storage->owner != GetCurrentThreadId() || storage->active || storage->directory->active) return PRUNTIME_STATE;
+    return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_DevelopmentStorageOpen(PRuntimeDirectoryHandle directory,
+        const PRuntimeStorageOptions* options, const PRuntimeStorageProvider* provider,
+        PRuntimeStorageHandle* output, PRuntimeStorageError* error)
+{
+    PRuntimeStorageHandle storage;
+    PRuntimeMigrationPlanHandle plan;
+    PRuntimeMigrationPlanOptions plan_options;
+    PDbRestrictedOptions db_options;
+    PDbMigrationReport report;
+    PDbErrorInfo open_error;
+    char identity[1200];
+    unsigned int i;
+    int version;
+    int db_rc;
+    int rc;
+    rc = runtime_directory_ready(directory);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!options || !provider || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
+            options->vm_budget < 100 || options->vm_budget > 1000000 || options->vm_budget % 100 ||
+            provider->size != sizeof(*provider) || provider->version != PRUNTIME_VERSION ||
+            !provider->open_location || !provider->close_location ||
+            (error && (error->size != sizeof(*error) || error->version != PRUNTIME_VERSION))) return PRUNTIME_ARGUMENT;
+    if (directory->storage_count) return PRUNTIME_STATE;
+    if (error) runtime_storage_error_init(error, PRUNTIME_OK);
+    if (options->granted_permissions & ~PRUNTIME_PERMISSION_SQL) rc = PRUNTIME_UNSUPPORTED;
+    else if (!(options->granted_permissions & directory->manifest->info.requested_permissions & PRUNTIME_PERMISSION_SQL)) rc = PRUNTIME_DENIED;
+    if (rc != PRUNTIME_OK) { if (error) error->result = rc; return rc; }
+    storage = (PRuntimeStorageHandle)calloc(1, sizeof(*storage)); if (!storage) { if (error) error->result = PRUNTIME_MEMORY; return PRUNTIME_MEMORY; }
+    storage->directory = directory; storage->provider = *provider; storage->options = *options;
+    storage->owner = GetCurrentThreadId(); storage->active = directory->active = 1;
+    storage->info.size = sizeof(storage->info); storage->info.version = PRUNTIME_VERSION;
+    strcpy(storage->info.id, directory->manifest->info.id); runtime_storage_error_init(&storage->error, PRUNTIME_OK);
+    runtime_storage_identity(directory, identity, storage->info.key); plan = NULL;
+    rc = runtime_storage_cancel(storage);
+    if (rc == PRUNTIME_OK) rc = runtime_provider_result(storage->provider.open_location(storage->provider.user_data,
+            storage->info.key, &storage->location), 0);
+    if (rc == PRUNTIME_OK && (!storage->location.token || !storage->location.path_bytes ||
+            storage->location.path_bytes > PRUNTIME_ROOT_BYTES || storage->location.path[0] != '\\' ||
+            !runtime_text(storage->location.path, storage->location.path_bytes) || storage->location.path[storage->location.path_bytes])) rc = PRUNTIME_IO;
+    if (rc == PRUNTIME_OK) rc = runtime_storage_cancel(storage);
+    if (rc == PRUNTIME_OK) {
+        open_error.size = sizeof(open_error); open_error.version = PDB_ERROR_INFO_VERSION;
+        db_rc = PDb_OpenUtf8Ex(storage->location.path, PDB_OPEN_LOCAL_FULL_SQL, &storage->db, &open_error);
+        if (db_rc != PDB_OK) {
+            rc = runtime_storage_db_error(storage, db_rc, 0);
+            storage->error.db_category = open_error.category; storage->error.sqlite_code = open_error.sqlite_code;
+            storage->error.sqlite_extended_code = open_error.sqlite_extended_code; storage->error.cleanup_result = open_error.cleanup_result;
+            memcpy(storage->error.message, open_error.message, sizeof(storage->error.message));
+        }
+    }
+    if (rc == PRUNTIME_OK) {
+        db_rc = PDb_BindLocalIdentity(storage->db, identity, (int)strlen(identity));
+        if (db_rc != PDB_OK) rc = runtime_storage_db_error(storage, db_rc, 0);
+    }
+    if (rc == PRUNTIME_OK) {
+        db_rc = PDb_GetMigrationVersion(storage->db, &version);
+        if (db_rc != PDB_OK) rc = runtime_storage_db_error(storage, db_rc, 0);
+    }
+    if (rc == PRUNTIME_OK) {
+        plan_options.size = sizeof(plan_options); plan_options.version = PRUNTIME_VERSION;
+        plan_options.granted_permissions = storage->options.granted_permissions;
+        plan_options.current_schema_version = version;
+        directory->active = 0;
+        rc = PRuntime_DirectoryPrepareMigrations(directory, &plan_options, &plan);
+        directory->active = 1;
+    }
+    memset(&db_options, 0, sizeof(db_options)); db_options.size = sizeof(db_options); db_options.version = PDB_RESTRICTED_VERSION;
+    db_options.vm_budget = storage->options.vm_budget; db_options.cancelled = storage->options.cancelled; db_options.user_data = storage->options.user_data;
+    memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = PDB_MIGRATION_VERSION;
+    for (i = 0; rc == PRUNTIME_OK && i < plan->info.file_count; i++) {
+        db_rc = PDb_ApplyMigrationRestricted(storage->db, (int)plan->sources[i].schema_version - 1,
+                (int)plan->sources[i].schema_version, plan->sources[i].sql, plan->sources[i].sql_bytes, &db_options, &report);
+        if (db_rc != PDB_OK) rc = runtime_storage_db_error(storage, db_rc, plan->sources[i].schema_version);
+    }
+    if (rc == PRUNTIME_OK) rc = runtime_storage_cancel(storage);
+    if (rc == PRUNTIME_OK) {
+        storage->info.schema_version = plan->info.target_version;
+        storage->info.state = PRUNTIME_STORAGE_READY;
+        directory->storage_count++; storage->active = 0; *output = storage;
+    } else if (storage->error.result == PRUNTIME_OK) runtime_storage_error_init(&storage->error, rc);
+    PRuntime_MigrationPlanClose(&plan);
+    if (error) *error = storage->error;
+    if (rc != PRUNTIME_OK) runtime_storage_dispose(storage);
+    directory->active = 0; return rc;
+}
+PRUNTIME_API int PRuntime_StorageGetInfo(PRuntimeStorageHandle storage, PRuntimeStorageInfo* info)
+{
+    int rc;
+    rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    *info = storage->info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_StorageGetError(PRuntimeStorageHandle storage, PRuntimeStorageError* error)
+{
+    int rc;
+    rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+    if (!error || error->size != sizeof(*error) || error->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    *error = storage->error; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage)
+{
+    PRuntimeDirectoryHandle directory;
+    int rc;
+    if (!storage) return PRUNTIME_ARGUMENT;
+    if (!*storage) return PRUNTIME_OK;
+    rc = runtime_storage_ready(*storage); if (rc != PRUNTIME_OK) return rc;
+    directory = (*storage)->directory; directory->active = (*storage)->active = 1;
+    runtime_storage_dispose(*storage); *storage = NULL;
+    directory->storage_count--; directory->active = 0; return PRUNTIME_OK;
+}
+
+typedef struct RuntimeSqlWork {
+    PRuntimeStorageHandle storage;
+    PDbRestrictedStatement statements[8];
+    PDbRestrictedValue params[8][16];
+    char rows[4097];
+    char scalar[4097];
+    unsigned int used;
+    unsigned int row_count;
+    int result;
+} RuntimeSqlWork;
+static int runtime_sql_i64(const char* text, __int64* output)
+{
+    const unsigned char* p;
+    unsigned __int64 value;
+    unsigned __int64 limit;
+    unsigned int digits;
+    int negative;
+    if (!text || !*text) return 0;
+    p = (const unsigned char*)text; negative = *p == '-'; if (negative) p++;
+    if (!*p || (*p == '0' && (p[1] || negative))) return 0;
+    value = 0; digits = 0;
+    limit = ((unsigned __int64)1 << 63) - (negative ? 0 : 1);
+    while (*p) {
+        if (*p < '0' || *p > '9' || ++digits > 19 || value > (limit - (*p - '0')) / 10) return 0;
+        value = value * 10 + *p++ - '0';
+    }
+    *output = negative ? -(__int64)(value - 1) - 1 : (__int64)value; return 1;
+}
+static int runtime_sql_statement(HANDLE item, const char* method, PDbRestrictedStatement* statement,
+        PDbRestrictedValue* params)
+{
+    static const char* const statement_keys[] = { "kind", "sql", "params" };
+    static const char* const null_keys[] = { "type" };
+    static const char* const value_keys[] = { "type", "value" };
+    const char* kind;
+    const char* type;
+    HANDLE array;
+    HANDLE value;
+    int i;
+    if (!method && !runtime_keys(item, statement_keys, 3)) return PRUNTIME_INVALID;
+    kind = method ? method : PJson_GetString(item, "kind");
+    if (!kind) return PRUNTIME_INVALID;
+    if (!strcmp(kind, "query")) statement->kind = PDB_RESTRICTED_QUERY;
+    else if (!strcmp(kind, "execute")) statement->kind = PDB_RESTRICTED_EXECUTE;
+    else return PRUNTIME_UNSUPPORTED;
+    statement->sql = PJson_GetString(item, "sql"); if (!statement->sql || !*statement->sql) return PRUNTIME_INVALID;
+    statement->sql_bytes = (int)strlen(statement->sql); if (statement->sql_bytes > 2048) return PRUNTIME_LIMIT;
+    array = PJson_GetObject(item, "params"); if (PJson_GetType(array) != PJSON_TYPE_ARRAY) return PRUNTIME_INVALID;
+    statement->param_count = PJson_GetArraySize(array); if (statement->param_count > 16) return PRUNTIME_LIMIT;
+    statement->params = params;
+    for (i = 0; i < statement->param_count; i++) {
+        value = PJson_GetArrayItem(array, i); type = PJson_GetString(value, "type"); if (!type) return PRUNTIME_INVALID;
+        if (!strcmp(type, "null")) {
+            if (!runtime_keys(value, null_keys, 1)) return PRUNTIME_INVALID;
+            params[i].type = PDB_VALUE_NULL;
+        } else {
+            if (!runtime_keys(value, value_keys, 2)) return PRUNTIME_INVALID;
+            if (!strcmp(type, "int64")) {
+                params[i].type = PDB_VALUE_INTEGER;
+                if (!runtime_sql_i64(PJson_GetString(value, "value"), &params[i].integer)) return PRUNTIME_INVALID;
+            } else if (!strcmp(type, "real")) {
+                params[i].type = PDB_VALUE_REAL;
+                if (!PJson_GetDouble(value, "value", &params[i].real)) return PRUNTIME_INVALID;
+            } else if (!strcmp(type, "text")) {
+                params[i].type = PDB_VALUE_TEXT; params[i].text = PJson_GetString(value, "value");
+                if (!params[i].text) return PRUNTIME_INVALID;
+                params[i].text_bytes = (int)strlen(params[i].text);
+            } else return PRUNTIME_UNSUPPORTED;
+        }
+    }
+    return PRUNTIME_OK;
+}
+static void runtime_sql_put(RuntimeSqlWork* work, const char* text, unsigned int bytes)
+{
+    if (work->result != PRUNTIME_OK) return;
+    if (bytes > PRUNTIME_SERVICE_JSON_BYTES - 128 - work->used) { work->result = PRUNTIME_LIMIT; return; }
+    memcpy(work->rows + work->used, text, bytes); work->used += bytes; work->rows[work->used] = 0;
+}
+static void runtime_sql_literal(RuntimeSqlWork* work, const char* text)
+{ runtime_sql_put(work, text, (unsigned int)strlen(text)); }
+static void runtime_sql_encode(RuntimeSqlWork* work, PJsonScalar* scalar)
+{
+    unsigned int bytes;
+    int rc;
+    if (work->result != PRUNTIME_OK) return;
+    rc = PJson_EncodeScalar(scalar, work->scalar, sizeof(work->scalar), &bytes);
+    if (rc == PJSON_ENCODE_OK) runtime_sql_put(work, work->scalar, bytes);
+    else if (rc == PJSON_ENCODE_LIMIT) work->result = PRUNTIME_LIMIT;
+    else if (rc == PJSON_ENCODE_MEMORY) work->result = PRUNTIME_MEMORY;
+    else work->result = PRUNTIME_UNSUPPORTED;
+}
+static int runtime_sql_row(void* user, int index, const PDbRestrictedValue* values, int columns)
+{
+    RuntimeSqlWork* work;
+    PJsonScalar scalar;
+    char decimal[32];
+    int i;
+    work = (RuntimeSqlWork*)user;
+    if (work->row_count++) runtime_sql_literal(work, ",");
+    sprintf(decimal, "%d", index); runtime_sql_literal(work, "{\"statement\":"); runtime_sql_literal(work, decimal);
+    runtime_sql_literal(work, ",\"values\":[");
+    memset(&scalar, 0, sizeof(scalar)); scalar.size = sizeof(scalar); scalar.version = PJSON_ENCODE_VERSION;
+    for (i = 0; i < columns; i++) {
+        if (i) runtime_sql_literal(work, ",");
+        if (values[i].type == PDB_VALUE_NULL) runtime_sql_literal(work, "{\"type\":\"null\"}");
+        else {
+            if (values[i].type == PDB_VALUE_INTEGER) {
+                runtime_sql_literal(work, "{\"type\":\"int64\",\"value\":");
+                sprintf(decimal, "%I64d", values[i].integer);
+                scalar.type = PJSON_TYPE_STRING; scalar.text = decimal; scalar.text_bytes = (unsigned int)strlen(decimal);
+            } else if (values[i].type == PDB_VALUE_REAL) {
+                runtime_sql_literal(work, "{\"type\":\"real\",\"value\":"); scalar.type = PJSON_TYPE_NUMBER; scalar.number = values[i].real;
+            } else {
+                runtime_sql_literal(work, "{\"type\":\"text\",\"value\":"); scalar.type = PJSON_TYPE_STRING;
+                scalar.text = values[i].text; scalar.text_bytes = values[i].text_bytes;
+            }
+            runtime_sql_encode(work, &scalar); runtime_sql_literal(work, "}");
+        }
+    }
+    runtime_sql_literal(work, "]}"); return work->result == PRUNTIME_OK ? PDB_OK : work->result == PRUNTIME_LIMIT ? PDB_LIMIT : PDB_STATE;
+}
+static int runtime_sql_cancel(void* user)
+{
+    RuntimeSqlWork* work;
+    work = (RuntimeSqlWork*)user;
+    return work->storage->options.cancelled && work->storage->options.cancelled(work->storage->options.user_data);
+}
+PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
+        const char* request, unsigned int bytes, char* output, unsigned int capacity, unsigned int* written)
+{
+    static const char* const single_keys[] = { "version", "method", "sql", "params" };
+    static const char* const batch_keys[] = { "version", "method", "statements" };
+    RuntimeSqlWork* work;
+    PJsonParseLimits limits;
+    PDbRestrictedOptions options;
+    PDbRestrictedReport report;
+    PDbConnectionState state;
+    HANDLE root;
+    HANDLE statements;
+    const char* method;
+    char header[128];
+    unsigned long version;
+    unsigned int length;
+    int count;
+    int i;
+    int native;
+    int rc;
+    rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+    if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
+    if (!request || !bytes || !output || !written) { runtime_storage_error_init(&storage->error, PRUNTIME_ARGUMENT); return PRUNTIME_ARGUMENT; }
+    if (bytes > PRUNTIME_SERVICE_JSON_BYTES || capacity < PRUNTIME_SERVICE_JSON_BYTES + 1) {
+        runtime_storage_error_init(&storage->error, PRUNTIME_LIMIT); return PRUNTIME_LIMIT;
+    }
+    work = (RuntimeSqlWork*)calloc(1, sizeof(*work));
+    if (!work) { runtime_storage_error_init(&storage->error, PRUNTIME_MEMORY); return PRUNTIME_MEMORY; }
+    work->storage = storage; root = NULL;
+    limits.size = sizeof(limits); limits.version = PJSON_PARSE_VERSION; limits.max_bytes = 4096; limits.max_depth = 8; limits.max_tokens = 768;
+    rc = PJson_ParseEx(request, bytes, &limits, &root);
+    rc = rc == PJSON_PARSE_OK ? PRUNTIME_OK : rc == PJSON_PARSE_LIMIT ? PRUNTIME_LIMIT : PRUNTIME_INVALID;
+    count = 0;
+    if (rc == PRUNTIME_OK && !runtime_integer(root, "version", &version)) rc = PRUNTIME_INVALID;
+    if (rc == PRUNTIME_OK && version != 1) rc = PRUNTIME_UNSUPPORTED;
+    method = rc == PRUNTIME_OK ? PJson_GetString(root, "method") : NULL;
+    if (rc == PRUNTIME_OK && !method) rc = PRUNTIME_INVALID;
+    if (rc == PRUNTIME_OK && !strcmp(method, "transaction")) {
+        statements = PJson_GetObject(root, "statements");
+        if (!runtime_keys(root, batch_keys, 3) || PJson_GetType(statements) != PJSON_TYPE_ARRAY) rc = PRUNTIME_INVALID;
+        else {
+            count = PJson_GetArraySize(statements);
+            if (!count) rc = PRUNTIME_INVALID;
+            else if (count > 8) rc = PRUNTIME_LIMIT;
+            for (i = 0; rc == PRUNTIME_OK && i < count; i++) rc = runtime_sql_statement(PJson_GetArrayItem(statements, i), NULL, &work->statements[i], work->params[i]);
+        }
+    } else if (rc == PRUNTIME_OK) {
+        count = 1;
+        if (!runtime_keys(root, single_keys, 4)) rc = PRUNTIME_INVALID;
+        else rc = runtime_sql_statement(root, method, work->statements, work->params[0]);
+    }
+    if (rc == PRUNTIME_OK) {
+        storage->active = storage->directory->active = 1;
+        memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = PDB_RESTRICTED_VERSION;
+        options.vm_budget = storage->options.vm_budget; options.cancelled = runtime_sql_cancel; options.row = runtime_sql_row; options.user_data = work;
+        memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = PDB_RESTRICTED_VERSION;
+        native = PDb_ExecuteRestricted(storage->db, work->statements, count, &options, &report);
+        if (native != PDB_OK) {
+            rc = runtime_storage_db_error(storage, native, 0);
+            if (work->result != PRUNTIME_OK) storage->error.result = rc = work->result;
+            state.size = sizeof(state); state.version = PDB_CONNECTION_STATE_VERSION;
+            if (PDb_GetConnectionState(storage->db, &state) != PDB_OK || state.transaction_active) storage->info.state = PRUNTIME_STORAGE_FAILED;
+        } else {
+            /* Counts <=8/16 and signed int64 changes: this fixed report fits
+             * within the 128-byte allowance reserved before DB COMMIT. */
+            sprintf(header, "{\"version\":1,\"statementCount\":%d,\"rowCount\":%d,\"changes\":{\"type\":\"int64\",\"value\":\"%I64d\"},\"rows\":[",
+                report.statement_count, report.row_count, report.changes);
+            length = (unsigned int)strlen(header);
+            memcpy(output, header, length); memcpy(output + length, work->rows, work->used); length += work->used;
+            memcpy(output + length, "]}", 3); *written = length + 2;
+        }
+        storage->active = storage->directory->active = 0;
+    } else runtime_storage_error_init(&storage->error, rc);
+    PJson_Free(root); free(work); return rc;
 }
