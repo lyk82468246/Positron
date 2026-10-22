@@ -39,6 +39,15 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
 command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继续只承担回归 fixture、平台接线和断言，
 不得作为应用 UI 或公共浏览器语义的所有者。
 
+## 纯资源应用运行时方向
+
+第三方应用的目标交付物是manifest、HTML/JS/CSS及资源，由同一`positron.exe`加载，
+不要求应用作者提供原生二进制。资源页使用`app://`，复用浏览器原窗口、标签、软键和
+native控件；协议地址本身不赋予权限。拟新增的`positron_runtime.dll`拥有包、应用身份、
+资源规则和受控存储服务，EXE仍只负责平台窗口、worker与I/O接线；现有九DLL的产品所有权不变。
+这是批准的目标边界，不是新增DLL已实现的声明。完整分工、ID、系统ZIP前置门及阶段见
+[运行时计划](RUNTIME_PLAN.md)；首版不建立恶意代码沙箱或开放任意文件/网络/原生执行。
+
 ## 公共 DLL
 
 ### `positron_tls.dll`
