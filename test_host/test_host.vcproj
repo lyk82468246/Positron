@@ -214,6 +214,7 @@
 			<File RelativePath=".\db_tests.c"></File>
 			<File RelativePath=".\db_restricted_tests.c"></File>
 			<File RelativePath=".\runtime_manifest_tests.c"></File>
+			<File RelativePath=".\runtime_directory_tests.c"></File>
 			<File RelativePath=".\script_performance_tests.c"></File>
 			<File RelativePath=".\browser_bootstrap_tests.c"></File>
 			<File RelativePath=".\image_dimension_tests.c"></File>

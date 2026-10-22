@@ -22,7 +22,7 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
     ├─ positron_tls.dll       TLS 会话与证书/握手状态
     ├─ positron_json.dll      有界 JSON 解析与生成
     ├─ positron_db.dll        SQLite 本地数据库、迁移与行级同步状态
-    ├─ positron_runtime.dll   资源应用元数据准入与 app 引用词法解析
+    ├─ positron_runtime.dll   资源应用元数据、app 引用与开发目录实例合同
     ├─ positron_http.dll      HTTP 消息、header、body 与 transport 边界
     ├─ positron_image.dll     有界图像解码/元数据接口
     ├─ positron_media.dll     WM6 原生媒体探测与有界软解/播放接口
@@ -45,9 +45,11 @@ command bar、菜单、输入路由和离线页面策略。`test_host.exe` 继�
 第三方应用的目标交付物是manifest、HTML/JS/CSS及资源，由同一`positron.exe`加载，
 不要求应用作者提供原生二进制。资源页使用`app://`，复用浏览器原窗口、标签、软键和
 native控件；协议地址本身不赋予权限。`positron_runtime.dll`验证 manifest、规范 ID
-和包内路径，并词法解析同 ID 的 app 引用，分离导航 URL、包内 key 与 query/fragment；
-不读文件、不建立身份或授权。包、目录实例、物理资源读取和受控存储服务仍为
-后续 Runtime 目标，EXE只负责平台窗口、worker与I/O接线；其余九DLL的所有权不变。
+和包内路径，并词法解析同 ID 的 app 引用，分离导航 URL、包内 key 与 query/fragment。
+开发目录实例通过可信平台 provider 保有规范根、根 manifest、独占 lease 和有界只读资源；
+Runtime 拥有准入/身份组合/预算/释放顺序，宿主必须提供真实目录规范化、物理包含性与原生锁/读取。
+这不是通用 WM 文件适配器、安装身份或 SQL 授权。安装、数据映射、受控存储和页面组合仍为
+后续目标；EXE只负责平台窗口、worker与I/O接线，其余九DLL的所有权不变。
 JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 manifest 句柄不代表
 可信发布者、运行实例或服务权限。完整分工、ID、系统ZIP前置门及阶段见
 [运行时计划](RUNTIME_PLAN.md)；首版不建立恶意代码沙箱或开放任意文件/网络/原生执行。

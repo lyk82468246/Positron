@@ -154,7 +154,8 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | --- | --- | --- | --- | --- |
 | manifest、规范 ID 与包内路径准入 | `PRuntime_ManifestCreate/GetInfo/GetMigration/Close`、`PRuntime_NormalizeId`、`PRuntime_ValidateResourcePath` | 已实现但仅元数据 | UTF-8 manifest 8192 bytes/8 层/256 词元，ID 63 ASCII bytes，name 127/path 255 bytes，16 个连续 migration；只复制声明，不创建身份/权限/文件，失败不改输出 | TEST1364 的合法/非法/容量、严格 JSON、版本/权限/迁移、快照与重复释放及双配置设备门；合同见 [Runtime README](../positron_runtime/README.md) |
 | app 引用词法解析 | `PRuntime_ManifestResolveReference` | 已实现但不授予访问权 | 输入/输出 URL 各 1023 bytes，包内 key 255 bytes/16 段，query/fragment 各 255 escaped bytes；同 ID、单次解码、根内 dot 归一化，编码路径语法/跨 ID/控制字符拒绝，错误不改输出 | TEST1364 的相对资源、CSS base、后缀、UTF-8、编码逃逸/容量和重复调用及双配置设备门；不是物理目录绑定或资源 I/O |
-| 目录实例、物理资源与授权/SQL 服务 | 已批准运行时计划；尚无可用公共入口 | 有界待扩展 | 必须绑定规范目录/安装身份、隔离数据/锁与 session，普通网页/URL/manifest 句柄不获权 | 下一纵切实现目录实例及资源读取，之后接受限 DB/JSON/生命周期，不能由 EXE 补私有产品规则 |
+| 开发目录实例、独占与只读资源 | `PRuntime_DevelopmentDirectoryOpen`、`PRuntime_DirectoryGetInfo/ResolveReference/ReadResource/Close` | 已实现但依赖可信平台 provider | 规范根 UTF-8 ≤1023 bytes，读取根 manifest 准入；按开发根/ID 取原生独占 lease，复制读取 ≤8 MiB/次，调用者可更小；owner-thread/重入守卫，错误不改输出且回收临时 bytes/lease/root；锁 bucket 不作为数据身份 | TEST1365 双配置门覆盖私有中文目录/文件、二进制/空文件、同 ID 根隔离、alias/真实子进程重复拒绝、失败展开及重复释放；通用 WM 规范化/包含性适配器仍由宿主实现，未开放 SQL 或安装身份 |
+| 安装身份、数据映射与授权/SQL 服务 | 已批准运行时计划；尚无可用公共入口 | 有界待扩展 | 必须隔离开发/安装数据并绑定 session，普通网页/URL/manifest/目录句柄不自动获服务权限 | 下一纵切实现受控迁移准入、隔离 DB/JSON/生命周期，再补 Core/Browser app 资源组合与宿主适配；不能由 EXE 补私有产品规则 |
 | PXI 安装与更新 | 系统 ZIP 能力尚未完成取证 | 有界待扩展 | 禁止自写/引入 ZIP fallback，不可用则只挂起安装，目录应用可独立推进 | 目标 ROM 的 ZIP 完成/错误/取消、Unicode/路径冲突/规模/清理门通过后再实现 |
 
 ## DB：`positron_db.dll`

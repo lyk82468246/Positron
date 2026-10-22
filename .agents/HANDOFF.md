@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备 manifest/规范 ID/包内路径准入及 app 引用词法解析，JSON 提供严格有界解析；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；目录实例与完整应用运行仍未实现。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用及可信平台 provider 上的开发目录实例、独占和只读资源合同，JSON 提供严格有界解析；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；通用 WM provider、授权存储与完整目录应用仍未接入。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -21,23 +21,24 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 元数据与 app 引用词法解析已验收
+### Runtime 开发目录实例与只读资源合同已验收
 
-正式新 Runtime 工程仅链接 JSON 公共 import library；manifest/ID/路径合同见
-[Runtime README](../positron_runtime/README.md)，元数据句柄和解析结果不授予身份/权限。
-ManifestResolveReference 分离 canonical app URL、单次解码包内 key 与 query/fragment，
-拒绝跨 ID、编码路径语法、根外 traversal、控制字符及容量越界。目录绑定/独占、
-资源 I/O、迁移准入与 SQL/session 服务均待实现，PXI 未取证，不改 EXE/CAB。
-stage/开发 ZIP/模块 helper 已纳入第十 DLL，边界审计增加 Runtime/DB 命名空间，不放宽门。
+Runtime 仍只链接 JSON 公共 import library；调用与 provider 边界见
+[Runtime README](../positron_runtime/README.md)。开发目录 Open 保有可信 provider 规范根、
+读取根 manifest 准入并取开发根/ID 独占 lease；解析后复制有界资源，错误保留输出并展开释放。
+原生规范化/包含性必须由真实平台 provider 证明，不能复制路径或做前缀判断；fixture 只处理
+私有已知根，不是通用适配器。锁 bucket 碰撞仅拒绝并发，不作数据身份。未实现安装身份、
+数据映射、迁移准入/SQL 授权与 Core/Browser app 组合，PXI 未取证，不改 EXE/CAB。
 
-Debug `tmp/device-runs/20261022-194727-runtime-reference-debug-final/`、Release
-`tmp/device-runs/20261022-194824-runtime-reference-release-final/` 各 `2,1321,1363,1364,999`
-5/5 PASS，唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash 通过，无新增 dump。145 文件 SD
+Debug `tmp/device-runs/20261022-201205-runtime-directory-debug-final/`、Release
+`tmp/device-runs/20261022-201421-runtime-directory-release-final/` 各 `2,1321,1363-1365,999`
+6/6 PASS，唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash 通过，无新增 dump。145 文件 SD
 包、双空间与新 guest holders=0 unavailable=0 通过，完整回收后清理本轮包，旧不完整目录
-保留。TEST1364 保留元数据/严格 JSON 原断言，增加相对 JS/CSS base/图片 key、空后缀、
-Unicode/单次解码、目录逃逸/跨 ID/容量与重复解析；旧 JSON 与 DB 断言保持。
+保留。TEST1365 覆盖私有中文根/文件、二进制/空文件、同 ID 不同根隔离、provider alias 与
+真实子进程重复拒绝、owner/reentry、失败展开/输出不变及重复释放；旧 JSON/DB/Runtime 断言保持。
 C89/审计及正式两配置构建通过；无强杀、WMDC/用户 DB/EXE 修改或 nightly 发布。
-旧元数据门、ZIP 收集验证及 devenv 失败/正式重试证据留于 Git/本地日志，不冒充本轮运行。
+先行 `tmp/device-runs/20261022-200937-runtime-directory-debug-probe/` 在 helper 无完整摘要前停止，
+未运行测试、远端包保留，不追认为 PASS；新候选审计恢复，未确定旧失败原因。旧元数据证据见 Git。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -395,10 +396,10 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 work budget、只读原子标志取消、typed provisional rows 和 owned transaction。COMMIT 后才
 发布 report；超限/取消/约束/提交失败不发布结果，按原诊断合同尝试 rollback。预算、函数
 allowlist、借用/重入、错误分类和示例以 [DB README](../positron_db/README.md#opt-in-restricted-requests)
-为准。Runtime 运行身份、迁移准入、SQL JSON/授权服务和 app 资源仍未实现，不把本接口
+为准。Runtime 的安装/存储身份、迁移准入与 SQL JSON/授权服务仍未实现，不把本接口
 视为网页 SQL 授权或完整沙箱；旧 local-full/sync/迁移及取消行为不变。
 
-当前复验已纳入上方 Runtime 双配置 5/5 门。TEST1363 原样覆盖 SQL/view/trigger 授权、
+当前复验已纳入上方 Runtime 双配置 6/6 门。TEST1363 原样覆盖 SQL/view/trigger 授权、
 typed 中文/int64、容量/输出不变性、共享预算、执行中取消、回调 reentry/close、COMMIT/
 批失败 rollback 与恢复；旧 DB 断言保持。首次独立门与 VACUUM/缺失函数分类失败对照归
 Git/本地日志，不把早期失败追认为通过，也不修改用户 DB 或重开 FULL。
@@ -495,9 +496,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
 系统ZIP无可用接口则挂起PXI。本轮已复核并更新 ROADMAP：受限 DB 请求退出待实现队列；
-本轮已复核 ROADMAP/能力矩阵：Runtime 元数据准入、app 引用词法解析及 JSON 严格解析
-退出待实现队列。唯一下一步为目录实例绑定/独占及物理资源读取合同，再接迁移、SQL JSON/
-授权及 Core/Browser；EXE 等完整合同后才接目录示例，不凭有效 manifest 私造授权。
+本轮已复核 ROADMAP/能力矩阵：可信 provider 上的开发目录实例/独占/只读资源合同退出待实现队列。
+唯一下一步为受控迁移准入与开发/安装隔离存储映射，再接 SQL JSON/授权及 Core/Browser；
+EXE 的通用 WM provider 和目录示例仍等完整合同，不凭 manifest、URL 或目录句柄私造服务授权。
 ZIP 未取证，不改 EXE/CAB/用户 DB，不重开像素、FULL/断电与保存框暂缓门。
 构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。
 

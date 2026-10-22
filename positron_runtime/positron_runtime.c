@@ -460,3 +460,157 @@ PRUNTIME_API int PRuntime_ManifestResolveReference(PRuntimeManifestHandle manife
     if (result.flags & PRUNTIME_URL_FRAGMENT) { strcat(result.url, "#"); strcat(result.url, result.fragment); }
     *output = result; return PRUNTIME_OK;
 }
+
+struct PRuntimeDirectory {
+    PRuntimeDirectoryProvider provider;
+    PRuntimeDirectoryRoot root;
+    PRuntimeManifestHandle manifest;
+    void* lease;
+    DWORD owner;
+    int active;
+};
+static int runtime_provider_result(int rc, int lock)
+{
+    if (rc == PRUNTIME_OK || rc == PRUNTIME_IO || rc == PRUNTIME_LIMIT ||
+            rc == PRUNTIME_UNSUPPORTED || rc == PRUNTIME_MEMORY || (lock && rc == PRUNTIME_BUSY)) return rc;
+    return PRUNTIME_IO;
+}
+static void runtime_directory_dispose(PRuntimeDirectoryHandle directory)
+{
+    PRuntime_ManifestClose(&directory->manifest);
+    if (directory->lease) directory->provider.release_lock(directory->provider.user_data, directory->lease);
+    if (directory->root.root) directory->provider.close_root(directory->provider.user_data, directory->root.root);
+    free(directory);
+}
+/* Lock buckets are deliberately not persistent data identities. A collision
+ * only excludes a simultaneous launch; it never combines data/permissions.
+ * Hash framed, NUL-free canonical root and normalized ID, not caller aliases. */
+static void runtime_directory_lock_name(const char* root, const char* id, char* name)
+{
+    static const char digits[] = "0123456789abcdef";
+    unsigned long a;
+    unsigned long b;
+    unsigned long value;
+    unsigned char c;
+    unsigned int i;
+    int part;
+    const char* text;
+    a = 2166136261UL; b = 2246822519UL;
+    for (part = 0; part < 2; part++) {
+        text = part ? id : root;
+        do {
+            c = (unsigned char)*text++;
+            a = (a ^ c) * 16777619UL;
+            b = (b ^ c) * 3266489917UL;
+        } while (c);
+    }
+    strcpy(name, "Positron.Dev.v1.");
+    for (part = 0; part < 2; part++) {
+        value = part ? b : a;
+        for (i = 0; i < 8; i++) name[16 + part * 8 + i] = digits[(value >> (28 - 4 * i)) & 15];
+    }
+    name[32] = 0;
+}
+static int runtime_directory_ready(PRuntimeDirectoryHandle directory)
+{
+    if (!directory) return PRUNTIME_ARGUMENT;
+    if (directory->owner != GetCurrentThreadId() || directory->active) return PRUNTIME_STATE;
+    return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_DevelopmentDirectoryOpen(const char* path, unsigned int bytes,
+        const PRuntimeDirectoryProvider* provider, PRuntimeDirectoryHandle* output)
+{
+    PRuntimeDirectoryHandle directory;
+    PRuntimeBorrowedBytes borrowed;
+    char lock_name[33];
+    int rc;
+    if (!path || !bytes || !output || !provider || provider->size != sizeof(*provider) ||
+            provider->version != PRUNTIME_VERSION || !provider->open_root || !provider->close_root ||
+            !provider->acquire_lock || !provider->release_lock || !provider->read || !provider->release_bytes)
+        return PRUNTIME_ARGUMENT;
+    if (bytes > PRUNTIME_ROOT_BYTES) return PRUNTIME_LIMIT;
+    if (!runtime_text(path, bytes)) return PRUNTIME_INVALID;
+    directory = (PRuntimeDirectoryHandle)calloc(1, sizeof(*directory));
+    if (!directory) return PRUNTIME_MEMORY;
+    directory->provider = *provider; provider = &directory->provider;
+    directory->owner = GetCurrentThreadId(); directory->active = 1;
+    rc = runtime_provider_result(provider->open_root(provider->user_data, path, bytes, &directory->root), 0);
+    if (rc != PRUNTIME_OK) goto failed;
+    if (!directory->root.root || !directory->root.canonical_bytes || directory->root.canonical_bytes > PRUNTIME_ROOT_BYTES ||
+            !runtime_text(directory->root.canonical, directory->root.canonical_bytes) ||
+            directory->root.canonical[directory->root.canonical_bytes] != 0) { rc = PRUNTIME_IO; goto failed; }
+    memset(&borrowed, 0, sizeof(borrowed));
+    rc = runtime_provider_result(provider->read(provider->user_data, directory->root.root,
+            "manifest.json", PRUNTIME_MANIFEST_BYTES, &borrowed), 0);
+    if (rc == PRUNTIME_OK) {
+        if (borrowed.bytes > PRUNTIME_MANIFEST_BYTES) rc = PRUNTIME_LIMIT;
+        else if (!borrowed.data || !borrowed.bytes || !borrowed.token) rc = PRUNTIME_IO;
+        else rc = PRuntime_ManifestCreate((const char*)borrowed.data, borrowed.bytes, &directory->manifest);
+    }
+    if (borrowed.token) provider->release_bytes(provider->user_data, directory->root.root, &borrowed);
+    if (rc != PRUNTIME_OK) goto failed;
+    runtime_directory_lock_name(directory->root.canonical, directory->manifest->info.id, lock_name);
+    rc = runtime_provider_result(provider->acquire_lock(provider->user_data, lock_name, &directory->lease), 1);
+    if (rc != PRUNTIME_OK) goto failed;
+    if (!directory->lease) { rc = PRUNTIME_IO; goto failed; }
+    directory->active = 0; *output = directory; return PRUNTIME_OK;
+failed:
+    runtime_directory_dispose(directory); return rc;
+}
+PRUNTIME_API int PRuntime_DirectoryGetInfo(PRuntimeDirectoryHandle directory, PRuntimeManifestInfo* info)
+{
+    int rc;
+    rc = runtime_directory_ready(directory);
+    if (rc != PRUNTIME_OK) return rc;
+    return PRuntime_ManifestGetInfo(directory->manifest, info);
+}
+PRUNTIME_API int PRuntime_DirectoryResolveReference(PRuntimeDirectoryHandle directory,
+        const char* base, unsigned int base_bytes, const char* reference,
+        unsigned int reference_bytes, PRuntimeResourceReference* output)
+{
+    int rc;
+    rc = runtime_directory_ready(directory);
+    if (rc != PRUNTIME_OK) return rc;
+    return PRuntime_ManifestResolveReference(directory->manifest, base, base_bytes, reference, reference_bytes, output);
+}
+PRUNTIME_API int PRuntime_DirectoryReadResource(PRuntimeDirectoryHandle directory,
+        const char* base, unsigned int base_bytes, const char* reference,
+        unsigned int reference_bytes, void* buffer, unsigned int capacity,
+        unsigned int* written, PRuntimeResourceReference* resolved)
+{
+    PRuntimeResourceReference next;
+    PRuntimeBorrowedBytes borrowed;
+    unsigned int count;
+    int rc;
+    rc = runtime_directory_ready(directory);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!buffer || !written || !resolved || resolved->size != sizeof(*resolved) ||
+            resolved->version != PRUNTIME_VERSION || !capacity) return PRUNTIME_ARGUMENT;
+    if (capacity > PRUNTIME_RESOURCE_BYTES) return PRUNTIME_LIMIT;
+    next.size = sizeof(next); next.version = PRUNTIME_VERSION;
+    rc = PRuntime_ManifestResolveReference(directory->manifest, base, base_bytes, reference, reference_bytes, &next);
+    if (rc != PRUNTIME_OK) return rc;
+    directory->active = 1; memset(&borrowed, 0, sizeof(borrowed));
+    rc = runtime_provider_result(directory->provider.read(directory->provider.user_data, directory->root.root,
+            next.path, capacity, &borrowed), 0);
+    count = borrowed.bytes;
+    if (rc == PRUNTIME_OK) {
+        if (count > capacity) rc = PRUNTIME_LIMIT;
+        else if (!borrowed.token || (count && !borrowed.data)) rc = PRUNTIME_IO;
+        else if (count) memcpy(buffer, borrowed.data, count);
+    }
+    if (borrowed.token) directory->provider.release_bytes(directory->provider.user_data, directory->root.root, &borrowed);
+    directory->active = 0;
+    if (rc == PRUNTIME_OK) { *written = count; *resolved = next; }
+    return rc;
+}
+PRUNTIME_API int PRuntime_DirectoryClose(PRuntimeDirectoryHandle* directory)
+{
+    int rc;
+    if (!directory) return PRUNTIME_ARGUMENT;
+    if (!*directory) return PRUNTIME_OK;
+    rc = runtime_directory_ready(*directory);
+    if (rc != PRUNTIME_OK) return rc;
+    (*directory)->active = 1; runtime_directory_dispose(*directory); *directory = NULL;
+    return PRUNTIME_OK;
+}

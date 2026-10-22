@@ -16,6 +16,11 @@ extern "C" {
 #define PRUNTIME_LIMIT -3
 #define PRUNTIME_UNSUPPORTED -4
 #define PRUNTIME_MEMORY -5
+#define PRUNTIME_IO -6
+#define PRUNTIME_BUSY -7
+#define PRUNTIME_STATE -8
+#define PRUNTIME_ROOT_BYTES 1023
+#define PRUNTIME_RESOURCE_BYTES (8U * 1024U * 1024U)
 #define PRUNTIME_MANIFEST_BYTES 8192
 #define PRUNTIME_ID_BYTES 63
 #define PRUNTIME_PATH_BYTES 255
@@ -27,6 +32,47 @@ extern "C" {
 #define PRUNTIME_URL_FRAGMENT 2U
 typedef struct PRuntimeManifest PRuntimeManifest;
 typedef PRuntimeManifest* PRuntimeManifestHandle;
+typedef struct PRuntimeDirectory PRuntimeDirectory;
+typedef PRuntimeDirectory* PRuntimeDirectoryHandle;
+/* Native provider results: zero-initialized by Runtime. A returned non-NULL
+ * root/lease/bytes token is released even when its callback reports failure.
+ * canonical is the filesystem's stable UTF-8 directory identity, not an alias
+ * or user spelling. Provider must resolve case/aliases against the real FS,
+ * reject unprovable containment/links, and anchor reads to the retained root.
+ * The provider is trusted native code, never author JS. */
+typedef struct PRuntimeDirectoryRoot {
+    void* root;
+    unsigned int canonical_bytes;
+    char canonical[1024];
+} PRuntimeDirectoryRoot;
+typedef struct PRuntimeBorrowedBytes {
+    const void* data;
+    unsigned int bytes;
+    void* token;
+} PRuntimeBorrowedBytes;
+typedef struct PRuntimeDirectoryProvider {
+    unsigned int size;
+    unsigned int version;
+    void* user_data;
+    int (*open_root)(void* user, const char* directory, unsigned int bytes,
+            PRuntimeDirectoryRoot* root);
+    void (*close_root)(void* user, void* root);
+    /* Native atomic cross-process exclusive lease on exactly this opaque
+     * ASCII name; do not decorate with PID, wait, or treat existing as success.
+     * An existing live name returns BUSY. Keep lease until release_lock.
+     * Runtime's finite noncryptographic lock bucket can collide: collisions
+     * reject concurrent admission, NEVER identify data or grant authority. */
+    int (*acquire_lock)(void* user, const char* name, void** lease);
+    void (*release_lock)(void* user, void* lease);
+    /* Complete synchronous immutable read, <=limit; no partial success.
+     * Key is decoded UTF-8 relative to retained root, never URI/device path.
+     * Enforce physical containment and stable resources for this root lifetime;
+     * no additional decoding, network, fallback directory or background access.
+     * Return IO for unavailable/denied/missing, LIMIT for oversized input. */
+    int (*read)(void* user, void* root, const char* key, unsigned int limit,
+            PRuntimeBorrowedBytes* bytes);
+    void (*release_bytes)(void* user, void* root, PRuntimeBorrowedBytes* bytes);
+} PRuntimeDirectoryProvider;
 typedef struct PRuntimeManifestInfo {
     unsigned int size;
     unsigned int version;
@@ -102,6 +148,43 @@ PRUNTIME_API int PRuntime_ManifestResolveReference(PRuntimeManifestHandle manife
         PRuntimeResourceReference* output);
 /* Clears owned slot; repeated NULL value is safe; NULL slot is ARGUMENT. */
 PRUNTIME_API int PRuntime_ManifestClose(PRuntimeManifestHandle* manifest);
+/* Explicit trusted development launch ONLY, not installed identity or grant.
+ * Copies provider table, opens canonical root, reads/admit root manifest.json,
+ * takes per-(development, canonical root, normalized ID) exclusive lease.
+ * Output unchanged on failure; all acquired bytes/lease/root unwound. No SQL,
+ * writes, worker, window pump, storage key or Browser service authorization.
+ * Paths/canonical identity <=1023 valid UTF-8 bytes without controls/NUL.
+ * Host must prove physical canonicalization/containment; absent callbacks fail
+ * before I/O. Callback code/user live until Close; original table may be
+ * discarded after Open. One creating thread, synchronous
+ * non-reentrant callbacks; operations on a live instance return STATE from its
+ * callback or another thread. Open creates a new owner-bound instance; it must
+ * not be recursively invoked by its provider. No API is a cross-thread cancel;
+ * host schedules around calls.
+ * Provider failure codes allowed: IO, LIMIT, UNSUPPORTED, MEMORY; lock also BUSY.
+ * Other statuses/malformed provider results become IO. Release callbacks must
+ * complete, cannot fail/reenter, and may not throw across the C ABI. */
+PRUNTIME_API int PRuntime_DevelopmentDirectoryOpen(const char* directory,
+        unsigned int directory_bytes, const PRuntimeDirectoryProvider* provider,
+        PRuntimeDirectoryHandle* output);
+PRUNTIME_API int PRuntime_DirectoryGetInfo(PRuntimeDirectoryHandle directory,
+        PRuntimeManifestInfo* info);
+PRUNTIME_API int PRuntime_DirectoryResolveReference(PRuntimeDirectoryHandle directory,
+        const char* base, unsigned int base_bytes, const char* reference,
+        unsigned int reference_bytes, PRuntimeResourceReference* output);
+/* Read through resolver and retained root. Capacity 1..8 MiB is also the read
+ * limit (not a size probe); consumers retain any stricter Core/Browser budget.
+ * buffer, written and exact size/version reference output must be non-NULL and
+ * non-overlapping, disjoint from provider bytes. Copies binary bytes, no NUL
+ * append. All three unchanged on failure, empty resources allowed. Returned
+ * borrowed bytes released before return; no allocation survives the call. */
+PRUNTIME_API int PRuntime_DirectoryReadResource(PRuntimeDirectoryHandle directory,
+        const char* base, unsigned int base_bytes, const char* reference,
+        unsigned int reference_bytes, void* buffer, unsigned int capacity,
+        unsigned int* written, PRuntimeResourceReference* resolved);
+/* Releases manifest then lock then root, clears slot. NULL value idempotent;
+ * STATE leaves slot and live instance intact. Freed aliases remain invalid. */
+PRUNTIME_API int PRuntime_DirectoryClose(PRuntimeDirectoryHandle* directory);
 #ifdef __cplusplus
 }
 #endif
