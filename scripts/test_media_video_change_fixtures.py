@@ -76,7 +76,10 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--external", action="store_true", help="Check AVC1 stsd transitions instead of in-band SPS")
     mode.add_argument("--nal-switch", action="store_true", help="Check four-to-two byte lengths and in-band parameters")
+    parser.add_argument("--returning", action="store_true", help="Check three segments returning to original parameters")
     args = parser.parse_args()
+    if args.returning and args.nal_switch:
+        parser.error("Return controls retain four-byte NAL lengths")
     media_fixtures.check()
     pin = json.loads(media_fixtures.PIN.read_text(encoding="utf-8"))
     require(hashlib.sha256(args.ffmpeg.read_bytes()).hexdigest() == pin["generator_sha256"], "Pinned tool")
@@ -88,6 +91,8 @@ def main():
     cases = {"repeat": "baseline-aac.mp4", "vga": "main-vga.mp4", "oversize": "oversize.mp4",
              "high": "high.mp4", "high422": "high422.mp4", "interlaced": "interlaced.mp4"}
     for stem, source in cases.items():
+        if args.returning and stem not in ("repeat", "vga"):
+            continue
         source_data = (media_fixtures.DEST / source).read_bytes()
         # The source-only inputs have no audio; inspect that one track directly.
         source_tables = None
@@ -103,7 +108,15 @@ def main():
         second = samples(source_data, source_tables)
         if not args.external:
             second[0] = parameter_sets(source_tables) + second[0]
-        name = ("mixed-nal-" if args.nal_switch else "mixed-avcc-" if args.external else "mixed-video-") + stem + ".mp4"
+        expected_samples = first + second
+        if args.returning:
+            third = list(first)
+            if not args.external:
+                third[0] = parameter_sets(base_tracks[b"vide"]) + third[0]
+            expected_samples += third
+        count = len(expected_samples)
+        name = (("mixed-return-avcc-" if args.external else "mixed-return-inband-") if args.returning else
+                "mixed-nal-" if args.nal_switch else "mixed-avcc-" if args.external else "mixed-video-") + stem + ".mp4"
         data = (media_fixtures.DEST / name).read_bytes()
         unused, payload, tracks = inspect(data)
         actual = samples(data, tracks[b"vide"])
@@ -121,8 +134,8 @@ def main():
                     [nal_units(s, 4) for s in second], "Only length prefixes change; all SPS/PPS/slice NAL bytes identical")
             require(payload == prefix + b"".join(actual), "Exact original mdat prefix and all referenced video samples")
         else:
-            require(payload == prefix + b"".join(first + second), "Original mdat and all AVC slices unchanged")
-            require(actual == first + second, "Every AVC chunk points to exact source bytes")
+            require(payload == prefix + b"".join(expected_samples), "Original mdat and all AVC slices unchanged")
+            require(actual == expected_samples, "Every AVC chunk points to exact source bytes")
         expected_stsd = bytearray(base_tracks[b"vide"][b"stsd"])
         if args.nal_switch:
             expected_stsd[12:16] = b"avc3"
@@ -138,23 +151,30 @@ def main():
             expected_stsd[12:16] = b"avc3"
         if args.external or args.nal_switch:
             require(tracks[b"vide"][b"stsc"] == bytes.fromhex(
+                "0000000000000003000000010000000100000001000000040000000100000002000000070000000100000001" if args.returning else
                 "0000000000000002000000010000000100000001000000040000000100000002"),
-                "Exactly two stsc runs; new sample entry begins at fourth sample")
+                "Exact sample-description transitions, including original entry reuse on return")
+        else:
+            require(tracks[b"vide"][b"stsc"] == bytes.fromhex("0000000000000001000000010000000100000001"),
+                    "One in-band sample description")
         require(tracks[b"vide"][b"stsd"] == bytes(expected_stsd), "Exact original source descriptions/avcC")
-        require(tracks[b"vide"][b"stts"] == bytes.fromhex("00000000000000010000000600000800") and
-                tracks[b"vide"][b"stss"] == bytes.fromhex("00000000000000020000000100000004"),
-                "Six 2048-tick samples with both source IDRs marked")
+        require(tracks[b"vide"][b"stts"] == bytes.fromhex("0000000000000001") + count.to_bytes(4, "big") + bytes.fromhex("00000800") and
+                tracks[b"vide"][b"stss"] == bytes.fromhex("0000000000000003000000010000000400000007" if args.returning else
+                                                          "00000000000000020000000100000004"),
+                "Exact 2048-tick sample count with every segment IDR marked")
         old_audio = {k: v for k, v in base_tracks[b"soun"].items() if k != b"stco"}
         new_audio = {k: v for k, v in tracks[b"soun"].items() if k != b"stco"}
         require(old_audio == new_audio and samples(data, tracks[b"soun"]) == samples(base, base_tracks[b"soun"]), "AAC tables/payload unchanged")
         frames = output(args.ffmpeg, name)
         expected = first_frames + output(args.ffmpeg, source)
-        require(len(frames) == 6 and [f[1:] for f in frames] == [f[1:] for f in expected],
-                "Six valid decoded frames: exact layout, field, type and plane checksums")
-        require([Decimal(f[0]) * 1000 for f in frames] == [400 + i * 200 for i in range(6)], "Exact source video timeline")
+        if args.returning:
+            expected += first_frames
+        require(len(frames) == count and [f[1:] for f in frames] == [f[1:] for f in expected],
+                "Every decoded frame: exact layout, field, type and plane checksums")
+        require([Decimal(f[0]) * 1000 for f in frames] == [400 + i * 200 for i in range(count)], "Exact source video timeline")
         pcm = decode(args.ffmpeg, name, ["-map", "0:a:0", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1"])[0]
         require(pcm == base_pcm and len(pcm) == 29 * 1024 * 4, "Unchanged 29 AAC blocks including priming trim")
-        print(f"ORACLE {name}: six source frames/plane checksums, unchanged AAC and exact PTS")
+        print(f"ORACLE {name}: {count} source frames/plane checksums, unchanged AAC and exact PTS")
     print("Video change oracle PASS; device output guards/scheduling require WM6 gates.")
 
 

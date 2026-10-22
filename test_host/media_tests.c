@@ -3019,8 +3019,8 @@ fail:
 /* Consumer-only reference capture. The DLL owns scheduling; these fixtures
  * compare every visible video byte and every PCM byte with decode-only. */
 typedef struct media_av_reference {
-    pm_video_frame video[8];
-    unsigned long video_hash[8];
+    pm_video_frame video[9];
+    unsigned long video_hash[9];
     pm_audio_block audio[64];
     unsigned char pcm[131072];
     int videos;
@@ -3074,7 +3074,8 @@ static int media_av_video(void *opaque, const pm_video_frame *frame)
         frame->width <= 0 || frame->height <= 0 || frame->width > 640 || frame->height > 480 ||
         frame->plane[0] == NULL || frame->plane[1] == NULL || frame->plane[2] == NULL ||
         frame->stride[0] < frame->width || frame->stride[1] < (frame->width + 1) / 2 ||
-        frame->stride[2] < (frame->width + 1) / 2 || sink->videos >= 8) goto invalid;
+        frame->stride[2] < (frame->width + 1) / 2 ||
+        sink->videos >= (int)(sizeof(ref->video) / sizeof(ref->video[0]))) goto invalid;
     hash = media_av_video_hash(frame);
     if (sink->capture) {
         ref->video[sink->videos] = *frame;
@@ -3906,6 +3907,8 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
     static const WCHAR *short_nal[] = { L"mixed-nal-repeat.mp4", L"mixed-nal-vga.mp4",
         L"mixed-nal-oversize.mp4", L"mixed-nal-high.mp4", L"mixed-nal-high422.mp4",
         L"mixed-nal-interlaced.mp4", L"mixed-nal-vga.mp4" };
+    static const WCHAR *return_inband[] = { L"mixed-return-inband-repeat.mp4", L"mixed-return-inband-vga.mp4" };
+    static const WCHAR *return_avcc[] = { L"mixed-return-avcc-repeat.mp4", L"mixed-return-avcc-vga.mp4" };
     const WCHAR *const *names;
     const char *guard_message;
     media_fixture_source input;
@@ -3929,9 +3932,14 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
     int result;
     int expected;
     int offers;
+    int frame_count;
+    int returning;
     char phase[192];
 
-    names = external == 2 ? short_nal : external ? outband : inband;
+    returning = external >= 3;
+    frame_count = returning ? 9 : 6;
+    names = external == 4 ? return_avcc : external == 3 ? return_inband :
+            external == 2 ? short_nal : external ? outband : inband;
     guard_message = external == 1 ? "MP4 H.264 avcC change validation failed" : "MP4 in-band H.264 SPS validation failed";
     for (i = 0; i < 3; i++) refs[i] = (media_av_reference *)calloc(1, sizeof(*refs[i]));
     memset(&sink, 0, sizeof(sink));
@@ -3943,7 +3951,7 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
     output.video = media_av_video;
     output.audio = media_av_audio;
     output.error = media_compressed_error;
-    for (test = 0; test < 7; test++) {
+    for (test = 0; test < (returning ? 2 : 7); test++) {
         _snprintf(phase, sizeof(phase), "video change case=%d default reference/output guard", test);
         g_media_compressed_error = "mixed video change reference/guard";
         if (progress != NULL) progress(phase);
@@ -3970,16 +3978,17 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
         _snprintf(phase, sizeof(phase), "video change default case=%d rc=%d video=%d audio=%d errors=%d",
                   test, result, sink.videos, sink.audios, sink.events.errors);
         if (progress != NULL) progress(phase);
-        if (result != expected || sink.videos != (test < 2 ? 6 : 3) || sink.audios != 29 || sink.events.errors ||
+        if (result != expected || sink.videos != (test < 2 ? frame_count : 3) || sink.audios != 29 || sink.events.errors ||
             sink.events.eof_events != (test < 2 ? 1 : 0) || sink.events.error_callbacks != (test < 2 ? 0 : 1) ||
             sink.events.error_events != (test < 2 ? 0 : 1)) goto fail;
         if (test >= 2 && strcmp(pm_last_error(session), guard_message)) goto fail;
         for (i = 0; i < reference->videos; i++) {
             if (reference->video[i].pts_us != 400000 + (pm_position)i * 200000 ||
-                reference->video[i].duration_us != 200000 || reference->video[i].height != (test == 1 && i >= 3 ? 480 : 240) ||
-                reference->video[i].width != (test == 1 && i >= 3 ? 640 : 320) ||
-                reference->video[i].flags != (i == 0 || i == 3 ? PMEDIA_FRAME_KEY : 0)) goto fail;
+                reference->video[i].duration_us != 200000 || reference->video[i].height != (test == 1 && i >= 3 && i < 6 ? 480 : 240) ||
+                reference->video[i].width != (test == 1 && i >= 3 && i < 6 ? 640 : 320) ||
+                reference->video[i].flags != (i % 3 == 0 ? PMEDIA_FRAME_KEY : 0)) goto fail;
             if (test >= 2 && reference->video_hash[i] != refs[0]->video_hash[i]) goto fail;
+            if (returning && i >= 6 && reference->video_hash[i] != refs[0]->video_hash[i - 6]) goto fail;
         }
         if (test && (reference->bytes != refs[0]->bytes || memcmp(reference->pcm, refs[0]->pcm, (size_t)reference->bytes))) goto fail;
         if (test) for (i = 0; i < 29; i++) {
@@ -4019,20 +4028,21 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
                     if (result != PMEDIA_OK || input.position != bytes) goto fail;
                     input.read_mode = 2;
                 }
-                base = pass ? maximum - 2000000 : 5000000;
+                base = pass ? maximum - (returning ? 3000000 : 2000000) : 5000000;
                 if (test < 2) {
                     previous = 0;
-                    for (i = 0; i < 35; i++) {
-                        pts = sink.audios < 29 && (sink.videos == 6 ||
+                    for (i = 0; i < 29 + frame_count; i++) {
+                        pts = sink.audios < 29 && (sink.videos == frame_count ||
                               reference->audio[sink.audios].pts_us <= reference->video[sink.videos].pts_us) ?
                               reference->audio[sink.audios].pts_us : reference->video[sink.videos].pts_us;
                         offers = sink.offers;
                         if (pts > previous && (media_av_pump(session, &sink, base + pts - 1) != PMEDIA_WOULD_BLOCK ||
                             sink.offers != offers)) goto fail;
-                        if (sink.videos == 3 && pts == reference->video[3].pts_us) {
+                        if ((sink.videos == 3 || (returning && sink.videos == 6)) &&
+                            pts == reference->video[sink.videos].pts_us) {
                             sink.video_result = PMEDIA_WOULD_BLOCK;
                             if (media_av_pump(session, &sink, base + pts) != PMEDIA_WOULD_BLOCK ||
-                                sink.offers != offers + 1 || sink.videos != 3 || pm_pause(session) != PMEDIA_OK ||
+                                sink.offers != offers + 1 || sink.videos != (pts == reference->video[3].pts_us ? 3 : 6) || pm_pause(session) != PMEDIA_OK ||
                                 pm_pump(session, -1, 0) != PMEDIA_OK || pm_resume(session) != PMEDIA_OK) goto fail;
                             offers++;
                             sink.video_result = PMEDIA_OK;
@@ -4077,7 +4087,8 @@ static BOOL media_video_change_contract(int external, void (*progress)(const cha
         data = NULL;
     }
     for (i = 0; i < 3; i++) free(refs[i]);
-    if (progress != NULL) progress(external == 2 ? "mixed four-to-two byte NAL framing accepted; in-band SPS guards, bytes and lifecycle preserved" :
+    if (progress != NULL) progress(returning ? "mixed original video parameters restored; nine frames, exact bytes, deadlines and replay preserved" :
+        external == 2 ? "mixed four-to-two byte NAL framing accepted; in-band SPS guards, bytes and lifecycle preserved" :
         external ? "mixed external avcC repeat/VGA accepted, out-of-bound descriptions rejected with exact prefix and lifecycle" :
         "mixed in-band repeat/VGA accepted, out-of-bound parameters rejected with exact prefix and lifecycle");
     return TRUE;
@@ -4105,6 +4116,14 @@ BOOL test1360_media_video_config_contract(void (*progress)(const char *))
 BOOL test1361_media_video_nal_contract(void (*progress)(const char *))
 {
     return media_video_change_contract(2, progress);
+}
+
+BOOL test1362_media_video_return_contract(void (*progress)(const char *))
+{
+    if (progress != NULL) progress("AVC3 in-band parameter return");
+    if (!media_video_change_contract(3, progress)) return FALSE;
+    if (progress != NULL) progress("AVC1 external description 1-2-1 return");
+    return media_video_change_contract(4, progress);
 }
 
 static BOOL media_ima_reject(const unsigned char *data, int bytes, int expected)

@@ -93,7 +93,8 @@ def short_lengths(sample):
     return bytes(result)
 
 
-def records(destination, external=False, nal_switch=False):
+def records(destination, external=False, nal_switch=False, returning=False):
+    assert not (nal_switch and returning)
     external = external or nal_switch
     original = (destination / "baseline-aac.mp4").read_bytes()
     top = list(boxes(original, 0, len(original)))
@@ -101,15 +102,25 @@ def records(destination, external=False, nal_switch=False):
     moov, vtrack, mdia, stbl, child = track(original, b"vide")
     unused, unused2, unused3, audio_stbl, audio_child = track(original, b"soun")
     audio_stco = audio_child(audio_stbl, b"stco")
-    first, first_shifts, unused, stsd = video(original)
+    first, first_shifts, first_headers, stsd = video(original)
     result = []
     for stem, source in CASES.items():
+        if returning and stem not in ("repeat", "vga"):
+            continue
         second, second_shifts, headers, second_stsd = video((destination / source).read_bytes())
         if not external or nal_switch:
             second[0] = headers + second[0]
         if nal_switch:
             second = [short_lengths(sample) for sample in second]
         samples = first + second
+        shifts = first_shifts + second_shifts
+        if returning:
+            third = list(first)
+            if not external:
+                third[0] = first_headers + third[0]
+            samples += third
+            shifts += first_shifts
+        count = len(samples)
         replacements = {}
 
         def header(box, offset, value):
@@ -117,12 +128,12 @@ def records(destination, external=False, nal_switch=False):
             data[offset:offset + 4] = value.to_bytes(4, "big")
             replacements[box[0]] = bytes(data)
 
-        header(child(mdia, b"mdhd"), 24, 12288)
-        header(child(vtrack, b"tkhd"), 28, 1600)
-        header(child(moov, b"mvhd"), 24, 1600)
+        header(child(mdia, b"mdhd"), 24, count * 2048)
+        header(child(vtrack, b"tkhd"), 28, 400 + count * 200)
+        header(child(moov, b"mvhd"), 24, 400 + count * 200)
         edts = child(vtrack, b"edts")
         replacements[edts[0]] = atom(b"edts", atom(b"elst", words((0, 2, 400, 0xffffffff, 65536,
-                                                                     1200, 4096, 65536))))
+                                                                     count * 200, 4096, 65536))))
         description = bytearray(stsd)
         assert description[12:16] == b"avc1"
         if nal_switch:
@@ -144,12 +155,14 @@ def records(destination, external=False, nal_switch=False):
                 offsets.append(start)
                 start += len(sample)
             return atom(b"stbl", atom(b"stsd", bytes(description)) +
-                        atom(b"stts", words((0, 1, 6, 2048))) +
-                        atom(b"ctts", words((0, 6)) + b"".join(words((1, v)) for v in first_shifts + second_shifts)) +
-                        atom(b"stsc", words((0, 2, 1, 1, 1, 4, 1, 2) if external else
-                                            (0, 1, 1, 1, 1))) + atom(b"stss", words((0, 2, 1, 4))) +
-                        atom(b"stsz", words((0, 0, 6)) + words([len(s) for s in samples])) +
-                        atom(b"stco", words((0, 6)) + words(offsets)))
+                        atom(b"stts", words((0, 1, count, 2048))) +
+                        atom(b"ctts", words((0, count)) + b"".join(words((1, v)) for v in shifts)) +
+                        atom(b"stsc", words((0, 3, 1, 1, 1, 4, 1, 2, 7, 1, 1) if external and returning else
+                                            (0, 2, 1, 1, 1, 4, 1, 2) if external else
+                                            (0, 1, 1, 1, 1))) +
+                        atom(b"stss", words((0, 3, 1, 4, 7) if returning else (0, 2, 1, 4))) +
+                        atom(b"stsz", words((0, 0, count)) + words([len(s) for s in samples])) +
+                        atom(b"stco", words((0, count)) + words(offsets)))
 
         def rebuild(box):
             start, size, kind = box
@@ -167,9 +180,11 @@ def records(destination, external=False, nal_switch=False):
             words([u32(old_offsets, i) + growth for i in range(8, len(old_offsets), 4)]))
         payload = original[mdat[0] + 8:mdat[0] + mdat[1]] + b"".join(samples)
         data = b"".join(atom(b"mdat", payload) if b[2] == b"mdat" else rebuild(b) for b in top)
-        name = ("mixed-nal-" if nal_switch else "mixed-avcc-" if external else "mixed-video-") + stem + ".mp4"
+        name = (("mixed-return-avcc-" if external else "mixed-return-inband-") if returning else
+                "mixed-nal-" if nal_switch else "mixed-avcc-" if external else "mixed-video-") + stem + ".mp4"
         (destination / name).write_bytes(data)
-        transform = ("fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1" if nal_switch else
+        transform = (("fixed AVC1 description 1-2-1 return v1" if external else "fixed AVC3 in-band parameter return v1") if returning else
+                     "fixed AVC3 avcC four-to-two-byte lengths plus in-band SPS/PPS v1" if nal_switch else
                      "fixed AVC1 stsd/stsc external avcC transition v1" if external else "fixed AVC3 in-band SPS/PPS transition v1")
         result.append({"file": name, "fixture_transform": transform,
                        "source": "baseline-aac.mp4", "video_source": source})

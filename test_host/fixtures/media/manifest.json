@@ -2018,6 +2018,38 @@
       "video_source": "interlaced.mp4",
       "bytes": 9134,
       "sha256": "513081c2524e8ecf8e3189efeef9bd3ffdc739bdb1d04f54c1e910a3e11ed60c"
+    },
+    {
+      "file": "mixed-return-inband-repeat.mp4",
+      "fixture_transform": "fixed AVC3 in-band parameter return v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "baseline-aac.mp4",
+      "bytes": 10035,
+      "sha256": "35368d617f10163686c8c0a0c6622394758541505a57380425aec0a0d17c2a41"
+    },
+    {
+      "file": "mixed-return-inband-vga.mp4",
+      "fixture_transform": "fixed AVC3 in-band parameter return v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "main-vga.mp4",
+      "bytes": 9981,
+      "sha256": "d2e29a83a829ec746391d9a1b8e2ad8660837a8ec10876ca4999ae3a6702e2ae"
+    },
+    {
+      "file": "mixed-return-avcc-repeat.mp4",
+      "fixture_transform": "fixed AVC1 description 1-2-1 return v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "baseline-aac.mp4",
+      "bytes": 10155,
+      "sha256": "bca587b86f45c510c1a944176328ff5e6f1ebfc721cd177037450ac9a61c6829"
+    },
+    {
+      "file": "mixed-return-avcc-vga.mp4",
+      "fixture_transform": "fixed AVC1 description 1-2-1 return v1",
+      "source": "baseline-aac.mp4",
+      "video_source": "main-vga.mp4",
+      "bytes": 10101,
+      "sha256": "e6209da4e75091bfc7ccc3a8408b80dec8ef3c0e86e368491526a989eb1e65ae"
     }
   ]
 }

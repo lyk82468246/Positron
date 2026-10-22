@@ -588,7 +588,7 @@ MP4/MOV 的 AVCC 包中出现完整带内 SPS，或 sample-description 切换通
 提供新 avcC 时，DLL 在把包送给产品 decoder 前复用同一 SPS 解析器检查 profile、逐行标志、
 像素布局和应用/VGA 上限，不能只依赖旧 decoder 的帧标志。带内参数与外带配置分别检查。
 同一 session 不冻结所有视频参数：固定 AVC3 带内及 AVC1 外带配置的相同参数重复、320×240 Constrained
-Baseline→640×480 Main/B 帧仍可输出，源 PTS 与每帧尺寸保持；这与裸 Annex-B 的不变参数
+Baseline→640×480 Main/B 帧及完整片段后恢复原 Baseline 仍可输出，源 PTS 与每帧尺寸保持；这与裸 Annex-B 的不变参数
 策略不同。检查到不支持的 SPS 返回 UNSUPPORTED，超尺寸返回 LIMIT；这类带内 SPS 或新 avcC 验证
 错误即使在默认模式也锁存失败态，后续 pump/pause/resume/seek 返回 STATE，仍可 stop/close
 清理，不再跳过坏包继续解码。其他默认解码错误不能据此推定具有相同锁存策略。
@@ -849,6 +849,13 @@ TEST1361 对四至两字节 NAL 前缀切换复用上述默认/混合严格断�
 保持初始合法 Baseline，实际参数变化只在首个新包内，防止外带配置拒绝掩盖带内扫描缺口。
 合法输出内容/时间轴、具体 SPS 拒绝来源、两种 seekability、背压/暂停/缓存重播与失败态保持。
 该门补充既有实现的证据，不新增 ABI，也不承诺所有 NAL framing 或动态重配置。
+
+TEST1362 分别检查 AVC3 包内 SPS/PPS 恢复及 AVC1 sample-description 1→2→1：
+Baseline→Main VGA/B 帧→Baseline 和三段重复控制均为九帧/29 块，视频 PTS 为
+400..2000 ms。恢复后三帧的尺寸/flags/有效 I420 字节校验值匹配初始 Baseline，
+PCM 全字节保持；混合模式逐项匹配默认参考，两个切换点均检查背压、暂停/恢复。
+两种 seekability、短读/禁读源、提前 1 µs、近极大时钟、EOF 一次性和缓存重播保持。
+本门不修改产品实现或 ABI，不覆盖其他恢复形状、损坏或内存故障。
 
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
