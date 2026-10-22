@@ -23,6 +23,9 @@ extern "C" {
 #define PRUNTIME_SCHEMA -10
 #define PRUNTIME_DATABASE -11
 #define PRUNTIME_CANCELLED -12
+#define PRUNTIME_NOT_FOUND -13
+#define PRUNTIME_SERVICE_MAX_PENDING 8U
+#define PRUNTIME_SERVICE_MAX_QUEUES 4U
 #define PRUNTIME_STORAGE_KEY_BYTES 127
 #define PRUNTIME_SERVICE_JSON_BYTES 4096U
 #define PRUNTIME_STORAGE_READY 1
@@ -48,6 +51,45 @@ typedef struct PRuntimeMigrationPlan PRuntimeMigrationPlan;
 typedef PRuntimeMigrationPlan* PRuntimeMigrationPlanHandle;
 typedef struct PRuntimeStorage PRuntimeStorage;
 typedef PRuntimeStorage* PRuntimeStorageHandle;
+typedef struct PRuntimeServiceQueue PRuntimeServiceQueue;
+typedef PRuntimeServiceQueue* PRuntimeServiceQueueHandle;
+typedef struct PRuntimeServiceQueueOptions {
+    unsigned int size;
+    unsigned int version;
+    unsigned long tab_id;
+    unsigned long page_generation;
+    unsigned long delivery_thread_id;
+} PRuntimeServiceQueueOptions;
+typedef struct PRuntimeServiceRequest {
+    unsigned int size;
+    unsigned int version;
+    unsigned long tab_id;
+    unsigned long page_generation;
+    unsigned long bridge_id;
+    unsigned long request_id;
+    const char* method; /* exactly "storage.sql"; borrowed during Submit */
+    const char* json;
+    unsigned int json_bytes;
+} PRuntimeServiceRequest;
+typedef struct PRuntimeServiceResult {
+    unsigned int size;
+    unsigned int version;
+    unsigned long tab_id;
+    unsigned long page_generation;
+    unsigned long bridge_id;
+    unsigned long request_id;
+    int result;
+    unsigned int json_bytes;
+    char json[4097]; /* copied sanitized failure or committed success */
+} PRuntimeServiceResult;
+typedef struct PRuntimeServiceQueueInfo {
+    unsigned int size;
+    unsigned int version;
+    unsigned int waiting;
+    unsigned int running;
+    unsigned int completed;
+    int revoked;
+} PRuntimeServiceQueueInfo;
 typedef struct PRuntimeStorageLocation {
     void* token;
     unsigned int path_bytes;
@@ -339,6 +381,46 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
         unsigned int capacity, unsigned int* written);
 /* DB closed before releasing native location; parent remains live. */
 PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage);
+/* Explicit native page grant: create only after trusted storage is READY and
+ * on its worker. <=4 independent queues per storage (old/candidate sessions).
+ * Duplicate (tab,generation) is STATE, not a second grant. Nonzero tags/exact UI
+ * delivery thread; no URL-based grant. Retains storage until queue Close.
+ * Queue is a documented cross-thread COPY channel, unlike directory/storage
+ * and all live Core/Browser/JS handles. No DLL thread, pump, callback or I/O
+ * in Submit/Take/Revoke. Native critical section protects <=8 copied slots,
+ * each <=4096 request + <=4096 result bytes, fixed ~70 KiB per queue/~280 KiB
+ * total. Worker serializes all queue processing; host owns wake/order policy.
+ * Browser owns registration/pump/JS. Host installs only storage.sql, copies
+ * Browser request fields into Submit, wakes worker, and completes/pumps on UI.
+ * First accepted bridge_id binds this queue; accepted request_id strictly
+ * increases, so completion/cancel/revoke can never replay an accepted token. */
+PRUNTIME_API int PRuntime_ServiceQueueCreate(PRuntimeStorageHandle storage,
+        const PRuntimeServiceQueueOptions* options, PRuntimeServiceQueueHandle* output);
+/* UI delivery thread only; validates tags/method/budget and copies, no parse or
+ * SQL. <=8 waiting+running+unclaimed results. Failure changes no queue/output.
+ * ProcessOne worker-only, one FIFO SQL request, no UI/session pointer. It
+ * returns OK even for a SQL failure stored as a result, NOT_FOUND if no job;
+ * processed unchanged on API failure. A result is published only after return
+ * from DB. Revoke racing COMMIT may discard a committed result, NEVER undo or
+ * retry it. Only cooperative DB cancellation, no VFS/host preemption.
+ * Direct StorageExecuteJson is STATE while a queue owns that storage. */
+PRUNTIME_API int PRuntime_ServiceQueueSubmit(PRuntimeServiceQueueHandle queue, const PRuntimeServiceRequest* request);
+PRUNTIME_API int PRuntime_ServiceQueueProcessOne(PRuntimeServiceQueueHandle queue, unsigned int* processed);
+/* UI only, consumes once and copies complete result. Native result code and
+ * sanitized JSON error contain no SQL/path/message. Empty => NOT_FOUND, outputs
+ * unchanged. Check tab/generation before touching Browser; stale result only
+ * dropped, never reexecuted. QueueResult is not a live Browser token/handle. */
+PRUNTIME_API int PRuntime_ServiceQueueTakeResult(PRuntimeServiceQueueHandle queue, PRuntimeServiceResult* result);
+/* UI-only per Browser waiting-token cancel; running requests marked cancel,
+ * others removed. Unknown token NOT_FOUND. Revoke callable on worker or UI,
+ * permanent/idempotent: drops waiting/results, cancels running, no JS callback.
+ * Browser Revoke/PageTeardown plus QueueRevoke precede session destruction.
+ * Close worker-only, requires revoked/idle; stop all UI access before Close,
+ * then join worker before releasing parent/DLL. No TerminateThread. */
+PRUNTIME_API int PRuntime_ServiceQueueCancel(PRuntimeServiceQueueHandle queue, unsigned long bridge_id, unsigned long request_id);
+PRUNTIME_API int PRuntime_ServiceQueueRevoke(PRuntimeServiceQueueHandle queue);
+PRUNTIME_API int PRuntime_ServiceQueueGetInfo(PRuntimeServiceQueueHandle queue, PRuntimeServiceQueueInfo* info);
+PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue);
 #ifdef __cplusplus
 }
 #endif

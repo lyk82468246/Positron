@@ -722,6 +722,10 @@ struct PRuntimeStorage {
     PDbHandle db;
     DWORD owner;
     int active;
+    unsigned int queue_count;
+    PRuntimeServiceQueueHandle queues[PRUNTIME_SERVICE_MAX_QUEUES];
+    int queue_processing;
+    volatile LONG* operation_cancel;
 };
 static void runtime_storage_error_init(PRuntimeStorageError* error, int result)
 {
@@ -897,6 +901,7 @@ PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage)
     if (!storage) return PRUNTIME_ARGUMENT;
     if (!*storage) return PRUNTIME_OK;
     rc = runtime_storage_ready(*storage); if (rc != PRUNTIME_OK) return rc;
+    if ((*storage)->queue_count) return PRUNTIME_STATE;
     directory = (*storage)->directory; directory->active = (*storage)->active = 1;
     runtime_storage_dispose(*storage); *storage = NULL;
     directory->storage_count--; directory->active = 0; return PRUNTIME_OK;
@@ -1027,7 +1032,8 @@ static int runtime_sql_cancel(void* user)
 {
     RuntimeSqlWork* work;
     work = (RuntimeSqlWork*)user;
-    return work->storage->options.cancelled && work->storage->options.cancelled(work->storage->options.user_data);
+    return (work->storage->operation_cancel && InterlockedCompareExchange((LONG*)work->storage->operation_cancel, 0, 0)) ||
+        (work->storage->options.cancelled && work->storage->options.cancelled(work->storage->options.user_data));
 }
 PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
         const char* request, unsigned int bytes, char* output, unsigned int capacity, unsigned int* written)
@@ -1050,6 +1056,7 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
     int native;
     int rc;
     rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+    if (storage->queue_count && !storage->queue_processing) return PRUNTIME_STATE;
     if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
     if (!request || !bytes || !output || !written) { runtime_storage_error_init(&storage->error, PRUNTIME_ARGUMENT); return PRUNTIME_ARGUMENT; }
     if (bytes > PRUNTIME_SERVICE_JSON_BYTES || capacity < PRUNTIME_SERVICE_JSON_BYTES + 1) {
@@ -1103,4 +1110,184 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
         storage->active = storage->directory->active = 0;
     } else runtime_storage_error_init(&storage->error, rc);
     PJson_Free(root); free(work); return rc;
+}
+
+typedef struct RuntimeServiceJob {
+    int state; /* 0 free, 1 waiting, 2 running, 3 result */
+    volatile LONG cancelled;
+    unsigned int request_bytes;
+    char request[4097];
+    PRuntimeServiceResult result;
+} RuntimeServiceJob;
+struct PRuntimeServiceQueue {
+    PRuntimeStorageHandle storage;
+    PRuntimeServiceQueueOptions options;
+    CRITICAL_SECTION lock;
+    RuntimeServiceJob jobs[8];
+    unsigned long bridge_id;
+    unsigned long last_request_id;
+    DWORD owner;
+    int revoked;
+    int processing;
+};
+static int runtime_queue_thread(PRuntimeServiceQueueHandle queue, int delivery)
+{
+    if (!queue) return PRUNTIME_ARGUMENT;
+    return GetCurrentThreadId() == (delivery ? queue->options.delivery_thread_id : queue->owner) ? PRUNTIME_OK : PRUNTIME_STATE;
+}
+static int runtime_queue_either_thread(PRuntimeServiceQueueHandle queue)
+{
+    if (!queue) return PRUNTIME_ARGUMENT;
+    return GetCurrentThreadId() == queue->owner || GetCurrentThreadId() == queue->options.delivery_thread_id ? PRUNTIME_OK : PRUNTIME_STATE;
+}
+PRUNTIME_API int PRuntime_ServiceQueueCreate(PRuntimeStorageHandle storage,
+        const PRuntimeServiceQueueOptions* options, PRuntimeServiceQueueHandle* output)
+{
+    PRuntimeServiceQueueHandle queue;
+    unsigned int i;
+    int rc;
+    rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+    if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
+            !options->tab_id || !options->page_generation || !options->delivery_thread_id) return PRUNTIME_ARGUMENT;
+    if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
+    for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; i++) if (storage->queues[i] &&
+            storage->queues[i]->options.tab_id == options->tab_id &&
+            storage->queues[i]->options.page_generation == options->page_generation) return PRUNTIME_STATE;
+    if (storage->queue_count >= PRUNTIME_SERVICE_MAX_QUEUES) return PRUNTIME_LIMIT;
+    queue = (PRuntimeServiceQueueHandle)calloc(1, sizeof(*queue)); if (!queue) return PRUNTIME_MEMORY;
+    queue->storage = storage; queue->options = *options; queue->owner = GetCurrentThreadId();
+    InitializeCriticalSection(&queue->lock); storage->queue_count++;
+    for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; i++) if (!storage->queues[i]) { storage->queues[i] = queue; break; }
+    *output = queue; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ServiceQueueSubmit(PRuntimeServiceQueueHandle queue, const PRuntimeServiceRequest* request)
+{
+    RuntimeServiceJob* job;
+    unsigned int i;
+    int rc;
+    rc = runtime_queue_thread(queue, 1); if (rc != PRUNTIME_OK) return rc;
+    if (!request || request->size != sizeof(*request) || request->version != PRUNTIME_VERSION ||
+            !request->bridge_id || !request->request_id || !request->method || !request->json || !request->json_bytes) return PRUNTIME_ARGUMENT;
+    if (request->json_bytes > PRUNTIME_SERVICE_JSON_BYTES) return PRUNTIME_LIMIT;
+    if (strcmp(request->method, "storage.sql")) return PRUNTIME_DENIED;
+    if (request->tab_id != queue->options.tab_id || request->page_generation != queue->options.page_generation) return PRUNTIME_STATE;
+    if (memchr(request->json, 0, request->json_bytes)) return PRUNTIME_INVALID;
+    EnterCriticalSection(&queue->lock); job = NULL;
+    if (queue->revoked || (queue->bridge_id && queue->bridge_id != request->bridge_id) || request->request_id <= queue->last_request_id) rc = PRUNTIME_STATE;
+    else {
+        for (i = 0; i < 8; i++) if (!queue->jobs[i].state) { job = &queue->jobs[i]; break; }
+        if (!job) rc = PRUNTIME_LIMIT;
+        else {
+            memset(job, 0, sizeof(*job)); job->state = 1;
+            job->request_bytes = request->json_bytes; memcpy(job->request, request->json, request->json_bytes);
+            job->result.size = sizeof(job->result); job->result.version = PRUNTIME_VERSION;
+            job->result.tab_id = request->tab_id; job->result.page_generation = request->page_generation;
+            job->result.bridge_id = request->bridge_id; job->result.request_id = request->request_id;
+            queue->bridge_id = request->bridge_id; queue->last_request_id = request->request_id;
+        }
+    }
+    LeaveCriticalSection(&queue->lock); return rc;
+}
+PRUNTIME_API int PRuntime_ServiceQueueProcessOne(PRuntimeServiceQueueHandle queue, unsigned int* processed)
+{
+    RuntimeServiceJob* job;
+    PRuntimeStorageError error;
+    unsigned int i;
+    int rc;
+    rc = runtime_queue_thread(queue, 0); if (rc != PRUNTIME_OK) return rc;
+    if (!processed) return PRUNTIME_ARGUMENT;
+    if (runtime_storage_ready(queue->storage) != PRUNTIME_OK) return PRUNTIME_STATE;
+    EnterCriticalSection(&queue->lock); job = NULL;
+    if (queue->revoked || queue->processing) rc = PRUNTIME_STATE;
+    else {
+        for (i = 0; i < 8; i++) if (queue->jobs[i].state == 1 && (!job || queue->jobs[i].result.request_id < job->result.request_id)) job = &queue->jobs[i];
+        if (!job) rc = PRUNTIME_NOT_FOUND;
+        else { queue->processing = 1; job->state = 2; }
+    }
+    LeaveCriticalSection(&queue->lock); if (rc != PRUNTIME_OK) return rc;
+    queue->storage->operation_cancel = &job->cancelled; queue->storage->queue_processing = 1;
+    job->result.result = PRuntime_StorageExecuteJson(queue->storage, job->request, job->request_bytes,
+        job->result.json, sizeof(job->result.json), &job->result.json_bytes);
+    queue->storage->queue_processing = 0; queue->storage->operation_cancel = NULL;
+    if (job->result.result != PRUNTIME_OK) {
+        error.size = sizeof(error); error.version = PRUNTIME_VERSION;
+        if (PRuntime_StorageGetError(queue->storage, &error) != PRUNTIME_OK) memset(&error, 0, sizeof(error));
+        sprintf(job->result.json, "{\"version\":1,\"error\":{\"code\":%d,\"dbResult\":%d,\"category\":%d}}",
+            job->result.result, error.db_result, error.db_category);
+        job->result.json_bytes = (unsigned int)strlen(job->result.json);
+    }
+    EnterCriticalSection(&queue->lock);
+    job->state = queue->revoked || InterlockedCompareExchange((LONG*)&job->cancelled, 0, 0) ? 0 : 3;
+    queue->processing = 0; LeaveCriticalSection(&queue->lock); *processed = 1; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ServiceQueueTakeResult(PRuntimeServiceQueueHandle queue, PRuntimeServiceResult* result)
+{
+    RuntimeServiceJob* job;
+    unsigned int i;
+    int rc;
+    rc = runtime_queue_thread(queue, 1); if (rc != PRUNTIME_OK) return rc;
+    if (!result || result->size != sizeof(*result) || result->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    EnterCriticalSection(&queue->lock); job = NULL;
+    if (queue->revoked) rc = PRUNTIME_STATE;
+    else {
+        for (i = 0; i < 8; i++) if (queue->jobs[i].state == 3 && (!job || queue->jobs[i].result.request_id < job->result.request_id)) job = &queue->jobs[i];
+        if (!job) rc = PRUNTIME_NOT_FOUND;
+        else { *result = job->result; job->state = 0; }
+    }
+    LeaveCriticalSection(&queue->lock); return rc;
+}
+PRUNTIME_API int PRuntime_ServiceQueueCancel(PRuntimeServiceQueueHandle queue, unsigned long bridge, unsigned long request)
+{
+    unsigned int i;
+    int rc;
+    rc = runtime_queue_thread(queue, 1); if (rc != PRUNTIME_OK) return rc;
+    if (!bridge || !request) return PRUNTIME_ARGUMENT;
+    rc = PRUNTIME_NOT_FOUND; EnterCriticalSection(&queue->lock);
+    for (i = 0; i < 8; i++) if (queue->jobs[i].state && queue->jobs[i].result.bridge_id == bridge && queue->jobs[i].result.request_id == request) {
+        if (queue->jobs[i].state == 2) InterlockedExchange((LONG*)&queue->jobs[i].cancelled, 1);
+        else queue->jobs[i].state = 0;
+        rc = PRUNTIME_OK; break;
+    }
+    LeaveCriticalSection(&queue->lock); return rc;
+}
+PRUNTIME_API int PRuntime_ServiceQueueRevoke(PRuntimeServiceQueueHandle queue)
+{
+    unsigned int i;
+    int rc;
+    rc = runtime_queue_either_thread(queue); if (rc != PRUNTIME_OK) return rc;
+    EnterCriticalSection(&queue->lock); queue->revoked = 1;
+    for (i = 0; i < 8; i++) {
+        if (queue->jobs[i].state == 2) InterlockedExchange((LONG*)&queue->jobs[i].cancelled, 1);
+        else queue->jobs[i].state = 0;
+    }
+    LeaveCriticalSection(&queue->lock); return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ServiceQueueGetInfo(PRuntimeServiceQueueHandle queue, PRuntimeServiceQueueInfo* info)
+{
+    PRuntimeServiceQueueInfo next;
+    unsigned int i;
+    int rc;
+    rc = runtime_queue_either_thread(queue); if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    memset(&next, 0, sizeof(next)); next.size = sizeof(next); next.version = PRUNTIME_VERSION;
+    EnterCriticalSection(&queue->lock); next.revoked = queue->revoked;
+    for (i = 0; i < 8; i++) {
+        if (queue->jobs[i].state == 1) next.waiting++;
+        else if (queue->jobs[i].state == 2) next.running++;
+        else if (queue->jobs[i].state == 3) next.completed++;
+    }
+    LeaveCriticalSection(&queue->lock); *info = next; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue)
+{
+    unsigned int i;
+    int rc;
+    if (!queue) return PRUNTIME_ARGUMENT;
+    if (!*queue) return PRUNTIME_OK;
+    rc = runtime_queue_thread(*queue, 0); if (rc != PRUNTIME_OK) return rc;
+    EnterCriticalSection(&(*queue)->lock);
+    if (!(*queue)->revoked || (*queue)->processing) { LeaveCriticalSection(&(*queue)->lock); return PRUNTIME_STATE; }
+    LeaveCriticalSection(&(*queue)->lock); DeleteCriticalSection(&(*queue)->lock);
+    for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; i++) if ((*queue)->storage->queues[i] == *queue) { (*queue)->storage->queues[i] = NULL; break; }
+    (*queue)->storage->queue_count--; free(*queue); *queue = NULL; return PRUNTIME_OK;
 }

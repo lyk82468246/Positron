@@ -8,6 +8,8 @@
 #include "positron_runtime.h"
 #include "positron_db.h"
 #include "positron_json.h"
+#include "positron_browser.h"
+#include "positron_script.h"
 
 static const char fixture_manifest[] = "{\"manifestVersion\":1,\"id\":\"Org.Demo_App.Notes\",\"name\":\"Notes\","
     "\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
@@ -17,6 +19,7 @@ const char* test1365_runtime_directory_last_error(void) { return directory_error
 const char* test1367_runtime_migrations_last_error(void) { return directory_error; }
 const char* test1368_runtime_storage_last_error(void) { return directory_error; }
 const char* test1369_runtime_sql_last_error(void) { return directory_error; }
+const char* test1370_runtime_queue_last_error(void) { return directory_error; }
 typedef struct DirectoryFixture {
     WCHAR root[MAX_PATH];
     WCHAR outer[MAX_PATH];
@@ -56,12 +59,28 @@ static int directory_fixture_write(DirectoryFixture* f, const WCHAR* name, const
     WCHAR path[MAX_PATH];
     HANDLE file;
     DWORD written;
+    char* copy;
     BOOL ok;
+    /* This ROM rejected one image-backed constant buffer in WriteFile but
+     * accepted an identical private copy. Always use bounded writable storage,
+     * not an error-triggered retry; retain exact byte-count assertions. */
+    if (count > 32769 || (!bytes && count)) return 0;
+    copy = (char*)malloc(count ? count : 1);
+    if (!copy) { strcpy(directory_diagnostic, "private file write buffer allocation failed"); return 0; }
+    if (count) memcpy(copy, bytes, count);
     wsprintfW(path, L"%s\\%s", f->root, name);
     file = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (file == INVALID_HANDLE_VALUE) return 0;
-    written = 0; ok = WriteFile(file, bytes, count, &written, NULL);
-    CloseHandle(file); return ok && written == count;
+    if (file == INVALID_HANDLE_VALUE) {
+        sprintf(directory_diagnostic, "private file open: error=%lu root=%.800s", GetLastError(), f->canonical);
+        free(copy);
+        return 0;
+    }
+    written = 0; ok = WriteFile(file, copy, count, &written, NULL);
+    if (!ok || written != count) {
+        sprintf(directory_diagnostic, "private file write: ok=%d error=%lu requested=%lu written=%lu root=%.500s",
+            ok, GetLastError(), count, written, f->canonical);
+    }
+    free(copy); CloseHandle(file); return ok && written == count;
 }
 static int directory_fixture_open(void* user, const char* path, unsigned int bytes, PRuntimeDirectoryRoot* root)
 {
@@ -503,6 +522,10 @@ typedef struct StorageFixture {
     volatile LONG cancelled;
     PRuntimeStorageHandle live;
     int cancel_reentry_ok;
+    HANDLE inside;
+    HANDLE resume;
+    int hold;
+    int polls;
 } StorageFixture;
 static int storage_fixture_open(void* user, const char* key, PRuntimeStorageLocation* out)
 {
@@ -547,6 +570,11 @@ static int storage_fixture_cancel(void* user)
     PRuntimeStorageHandle alias;
     PRuntimeStorageInfo info;
     f = (StorageFixture*)user;
+    /* Test-only bounded rendezvous, not a product callback/scheduler policy. */
+    if (f->hold && ++f->polls == 8) {
+        SetEvent(f->inside);
+        if (WaitForSingleObject(f->resume, 5000) != WAIT_OBJECT_0) InterlockedExchange((LONG*)&f->cancelled, 1);
+    }
     if (f->live) {
         alias = f->live; info.size = sizeof(info); info.version = 1;
         f->cancel_reentry_ok = PRuntime_StorageGetInfo(f->live, &info) == PRUNTIME_STATE &&
@@ -838,4 +866,268 @@ BOOL test1369_runtime_sql_contract(void)
 done:
     PJson_Free(json); sf.live = NULL; PRuntime_StorageClose(&storage); PRuntime_DirectoryClose(&f.instance);
     storage_fixture_cleanup(&sf); directory_fixture_cleanup(&f, root, outer); return ok;
+}
+
+typedef struct QueueFixture {
+    DirectoryFixture directory;
+    StorageFixture native;
+    PRuntimeServiceQueueHandle queue;
+    PRuntimeServiceQueueOptions queue_options;
+    PRuntimeStorageHandle storage;
+    HANDLE ready;
+    HANDLE work;
+    HANDLE done;
+    HANDLE thread;
+    HANDLE session;
+    volatile LONG action;
+    int result;
+    unsigned int processed;
+    PBrowserServiceToken last_token;
+    int accepted;
+    int refused;
+    int cancelled;
+} QueueFixture;
+static DWORD WINAPI queue_fixture_worker(void* user)
+{
+    QueueFixture* f;
+    PRuntimeDirectoryProvider directory_provider;
+    PRuntimeStorageProvider provider;
+    PRuntimeStorageOptions options;
+    PRuntimeStorageHandle alias;
+    PRuntimeServiceQueueHandle extra[4];
+    PRuntimeServiceQueueOptions extra_options;
+    char buffer[4097];
+    unsigned int written;
+    LONG action;
+    unsigned int i;
+    f = (QueueFixture*)user;
+    directory_fixture_provider(&f->directory, &directory_provider);
+    f->result = PRuntime_DevelopmentDirectoryOpen(f->directory.canonical, (unsigned int)strlen(f->directory.canonical), &directory_provider, &f->directory.instance);
+    if (f->result == 0) {
+        f->native.reentry_target = f->directory.instance;
+        memset(&provider, 0, sizeof(provider)); provider.size = sizeof(provider); provider.version = 1;
+        provider.user_data = &f->native; provider.open_location = storage_fixture_open; provider.close_location = storage_fixture_close;
+        memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+        options.granted_permissions = 1; options.vm_budget = 1000000;
+        options.cancelled = storage_fixture_cancel; options.user_data = &f->native;
+        f->result = PRuntime_DevelopmentStorageOpen(f->directory.instance, &options, &provider, &f->storage, NULL);
+    }
+    if (f->result == 0) f->result = PRuntime_ServiceQueueCreate(f->storage, &f->queue_options, &f->queue);
+    f->native.live = f->storage; SetEvent(f->ready);
+    if (f->result != 0) goto done;
+    for (;;) {
+        if (WaitForSingleObject(f->work, 30000) != WAIT_OBJECT_0) { f->result = PRUNTIME_STATE; break; }
+        action = InterlockedExchange((LONG*)&f->action, 0);
+        if (action == 3) break;
+        if (action == 1) f->result = PRuntime_ServiceQueueProcessOne(f->queue, &f->processed);
+        else if (action == 2) {
+            f->result = PRuntime_ServiceQueueClose(&f->queue);
+            if (f->result == 0) f->result = PRuntime_ServiceQueueCreate(f->storage, &f->queue_options, &f->queue);
+        } else if (action == 4) {
+            alias = f->storage;
+            f->result = PRuntime_StorageClose(&alias) == PRUNTIME_STATE && alias == f->storage &&
+                PRuntime_StorageExecuteJson(f->storage, "{}", 2, buffer, sizeof(buffer), &written) == PRUNTIME_STATE ? 0 : PRUNTIME_STATE;
+        } else if (action == 5) {
+            memset(extra, 0, sizeof(extra)); extra_options = f->queue_options; f->result = 0;
+            if (PRuntime_ServiceQueueCreate(f->storage, &extra_options, &extra[3]) != PRUNTIME_STATE || extra[3]) f->result = PRUNTIME_STATE;
+            for (i = 0; i < 3 && !f->result; i++) {
+                extra_options.page_generation++;
+                f->result = PRuntime_ServiceQueueCreate(f->storage, &extra_options, &extra[i]);
+            }
+            extra_options.page_generation++;
+            if (!f->result && PRuntime_ServiceQueueCreate(f->storage, &extra_options, &extra[3]) != PRUNTIME_LIMIT) f->result = PRUNTIME_STATE;
+            for (i = 0; i < 4; i++) if (extra[i]) { PRuntime_ServiceQueueRevoke(extra[i]); PRuntime_ServiceQueueClose(&extra[i]); }
+        } else f->result = PRUNTIME_ARGUMENT;
+        SetEvent(f->done);
+    }
+done:
+    f->native.live = NULL;
+    if (f->queue) { PRuntime_ServiceQueueRevoke(f->queue); PRuntime_ServiceQueueClose(&f->queue); }
+    PRuntime_StorageClose(&f->storage); PRuntime_DirectoryClose(&f->directory.instance); SetEvent(f->done); return 0;
+}
+static int queue_fixture_action(QueueFixture* f, LONG action)
+{
+    ResetEvent(f->done); InterlockedExchange((LONG*)&f->action, action); SetEvent(f->work);
+    return WaitForSingleObject(f->done, 10000) == WAIT_OBJECT_0;
+}
+static int queue_fixture_submit(void* user, const PBrowserServiceRequest* input)
+{
+    QueueFixture* f;
+    PRuntimeServiceRequest request;
+    int rc;
+    f = (QueueFixture*)user;
+    memset(&request, 0, sizeof(request)); request.size = sizeof(request); request.version = 1;
+    request.tab_id = input->tab_id; request.page_generation = input->page_generation;
+    request.bridge_id = input->token.bridge_id; request.request_id = input->token.request_id;
+    request.method = input->method; request.json = input->params_json; request.json_bytes = input->params_bytes;
+    rc = PRuntime_ServiceQueueSubmit(f->queue, &request);
+    if (rc == 0) { f->accepted++; f->last_token = input->token; } else f->refused++;
+    return rc;
+}
+static void queue_fixture_cancel(void* user, const PBrowserServiceToken* token)
+{
+    QueueFixture* f;
+    f = (QueueFixture*)user; f->cancelled++;
+    PRuntime_ServiceQueueCancel(f->queue, token->bridge_id, token->request_id);
+}
+static int queue_fixture_js(QueueFixture* f, const char* source)
+{
+    const char* result;
+    if (PBrowser_ScriptSessionEvaluate(f->session, source, -1) != PSCRIPT_OK) return 0;
+    result = PBrowser_ScriptSessionGetResult(f->session); return result && !strcmp(result, "true");
+}
+static void queue_fixture_request(QueueFixture* f, PRuntimeServiceRequest* request, const char* json, unsigned long id)
+{
+    memset(request, 0, sizeof(*request)); request->size = sizeof(*request); request->version = 1;
+    request->tab_id = f->queue_options.tab_id; request->page_generation = f->queue_options.page_generation;
+    request->bridge_id = 71; request->request_id = id; request->method = "storage.sql";
+    request->json = json; request->json_bytes = (unsigned int)strlen(json);
+}
+BOOL test1370_runtime_queue_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"org.demo.queue\",\"name\":\"Queue\",\"version\":1,"
+        "\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],"
+        "\"migrations\":[{\"version\":1,\"file\":\"m01.sql\"}]}";
+    static const char schema[] = "CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT);INSERT INTO notes VALUES(1,'base');";
+    static const char query[] = "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT count(*) FROM notes\",\"params\":[]}";
+    static const char* methods[] = { "storage.sql" };
+    QueueFixture* f;
+    PRuntimeServiceRequest request;
+    PRuntimeServiceResult* result;
+    PRuntimeServiceResult* before;
+    PRuntimeServiceQueueInfo info;
+    PRuntimeServiceQueueHandle alias;
+    PBrowserServiceOptions options;
+    unsigned long delivered;
+    unsigned int i;
+    unsigned int processed;
+    int root;
+    int outer;
+    BOOL ok;
+    f = (QueueFixture*)calloc(1, sizeof(*f)); result = (PRuntimeServiceResult*)malloc(sizeof(*result)); before = (PRuntimeServiceResult*)malloc(sizeof(*before));
+    if (!f || !result || !before) { free(f); free(result); free(before); return FALSE; }
+    outer = root = 0; ok = FALSE;
+    RUNTIME_VERIFY(directory_fixture_init(&f->directory, GetCurrentProcessId() ^ 0x04000000UL), "queue private root identity");
+    f->native.directory = &f->directory;
+    outer = CreateDirectoryW(f->directory.outer, NULL) != 0; if (outer) root = CreateDirectoryW(f->directory.root, NULL) != 0;
+    if (!root) {
+        sprintf(directory_diagnostic, "queue root: outer=%d root=%d error=%lu path=%.800s", outer, root, GetLastError(), f->directory.canonical);
+        directory_error = directory_diagnostic; goto done;
+    }
+    if (!directory_fixture_write(&f->directory, L"manifest.json", manifest, sizeof(manifest) - 1) ||
+            !directory_fixture_write(&f->directory, L"m01.sql", schema, sizeof(schema) - 1)) {
+        directory_error = directory_diagnostic; goto done;
+    }
+    f->ready = CreateEvent(NULL, TRUE, FALSE, NULL); f->done = CreateEvent(NULL, TRUE, FALSE, NULL); f->work = CreateEvent(NULL, FALSE, FALSE, NULL);
+    f->native.inside = CreateEvent(NULL, TRUE, FALSE, NULL); f->native.resume = CreateEvent(NULL, TRUE, FALSE, NULL);
+    RUNTIME_VERIFY(f->ready && f->done && f->work && f->native.inside && f->native.resume, "queue native worker events");
+    f->queue_options.size = sizeof(f->queue_options); f->queue_options.version = 1; f->queue_options.tab_id = 5;
+    f->queue_options.page_generation = 17; f->queue_options.delivery_thread_id = GetCurrentThreadId();
+    f->thread = CreateThread(NULL, 0, queue_fixture_worker, f, 0, NULL);
+    RUNTIME_VERIFY(f->thread && WaitForSingleObject(f->ready, 10000) == WAIT_OBJECT_0 && f->result == 0 && f->queue,
+        "worker-owned directory/storage/queue creation");
+    processed = 91; alias = f->queue;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueProcessOne(f->queue, &processed) == PRUNTIME_STATE && processed == 91 &&
+        PRuntime_ServiceQueueClose(&alias) == PRUNTIME_STATE && alias == f->queue && queue_fixture_action(f, 4) && f->result == 0,
+        "UI cannot process/close worker queue; storage retained, direct SQL bypass refused");
+    RUNTIME_VERIFY(queue_fixture_action(f, 5) && f->result == 0, "four independent old/candidate queues, fifth fails closed");
+    queue_fixture_request(f, &request, query, 1); request.page_generation++;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == PRUNTIME_STATE, "stale page cannot enter queue"); request.page_generation--;
+    request.method = "storage.file";
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == PRUNTIME_DENIED, "service allowlist before copy");
+    f->session = PBrowser_ScriptSessionCreate(1000); RUNTIME_VERIFY(f->session, "UI Browser service consumer");
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    options.tab_id = 5; options.page_generation = 17; options.method_count = 1; options.methods = methods;
+    options.submit = queue_fixture_submit; options.cancel = queue_fixture_cancel; options.pw = f;
+    RUNTIME_VERIFY(PBrowser_ScriptSessionRegisterServices(f->session, &options) == PBROWSER_OK && queue_fixture_js(f,
+        "var replies=[],p={version:1,method:'execute',sql:\"INSERT INTO notes VALUES(2,'copied')\",params:[]};"
+        "PositronServices.request('storage.sql',p,function(ok,v){replies.push([ok,v]);});p.sql='DROP TABLE notes';replies.length===0"),
+        "Browser submit copies only, no synchronous result or source alias");
+    RUNTIME_VERIFY(queue_fixture_action(f, 1) && f->result == 0 && f->processed == 1, "worker processes accepted SQL once");
+    memset(result, 'z', sizeof(*result)); result->size = sizeof(*result); result->version = 1;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && result->result == 0 && result->tab_id == 5 && result->page_generation == 17 &&
+        result->bridge_id == f->last_token.bridge_id && result->request_id == f->last_token.request_id &&
+        PBrowser_ScriptSessionCompleteService(f->session, &f->last_token, 1, result->json, result->json_bytes) == PBROWSER_OK &&
+        queue_fixture_js(f, "replies.length===0"), "copied committed result, Complete does not call JS");
+    RUNTIME_VERIFY(PBrowser_ScriptSessionPumpServices(f->session, 1, &delivered) == PBROWSER_OK && delivered == 1 &&
+        queue_fixture_js(f, "replies.length===1&&replies[0][0]&&replies[0][1].changes.value==='1'"), "UI owner pump delivers typed result once");
+    *before = *result;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueTakeResult(f->queue, result) == PRUNTIME_NOT_FOUND && !memcmp(result, before, sizeof(*result)), "result consume-once canary");
+    request.method = "storage.sql"; request.bridge_id = f->last_token.bridge_id; request.request_id = f->last_token.request_id;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == PRUNTIME_STATE, "consumed token replay refused");
+    RUNTIME_VERIFY(queue_fixture_js(f, "var refused=false;for(var i=0;i<8;i++)PositronServices.request('storage.sql',"
+        "{version:1,method:'query',sql:'SELECT id FROM notes ORDER BY id',params:[]},function(ok,v){replies.push([ok,v]);});"
+        "try{PositronServices.request('storage.sql',{version:1,method:'query',sql:'SELECT id FROM notes',params:[]},function(){});}catch(e){refused=true;}refused"),
+        "Runtime eight pending limit below Browser sixteen");
+    info.size = sizeof(info); info.version = 1;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueGetInfo(f->queue, &info) == 0 && info.waiting == 8 && !info.running && !info.completed, "fixed queue accounting");
+    for (i = 0; i < 8; i++) RUNTIME_VERIFY(queue_fixture_action(f, 1) && f->result == 0, "FIFO worker requests");
+    RUNTIME_VERIFY(PRuntime_ServiceQueueGetInfo(f->queue, &info) == 0 && info.completed == 8 && queue_fixture_js(f, "replies.length===1"), "unclaimed results still use pending budget");
+    for (i = 0; i < 8; i++) {
+        PBrowserServiceToken token;
+        RUNTIME_VERIFY(PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && result->result == 0, "result copy");
+        token.bridge_id = result->bridge_id; token.request_id = result->request_id;
+        RUNTIME_VERIFY(PBrowser_ScriptSessionCompleteService(f->session, &token, 1, result->json, result->json_bytes) == PBROWSER_OK, "marshal only on UI");
+    }
+    RUNTIME_VERIFY(PBrowser_ScriptSessionPumpServices(f->session, 8, &delivered) == PBROWSER_OK && delivered == 8 &&
+        queue_fixture_js(f, "replies.length===9&&replies[8][1].rowCount===2"), "all eight callbacks in owner pump");
+    RUNTIME_VERIFY(queue_fixture_js(f, "PositronServices.request('storage.sql',{version:1,method:'execute',sql:'DELETE FROM notes',params:[]},function(){replies.push('late');});true") &&
+        PBrowser_ScriptSessionRevokeServices(f->session) == PBROWSER_OK && f->cancelled == 1 &&
+        PRuntime_ServiceQueueRevoke(f->queue) == 0 && PRuntime_ServiceQueueRevoke(f->queue) == 0 &&
+        queue_fixture_action(f, 1) && f->result == PRUNTIME_STATE, "Browser revoke cancels queued mutation without executing");
+    PBrowser_ScriptSessionDestroy(f->session); f->session = NULL;
+    f->queue_options.page_generation = 18; RUNTIME_VERIFY(queue_fixture_action(f, 2) && f->result == 0, "new page gets fresh queue, old grant never reenabled");
+    queue_fixture_request(f, &request, "{\"version\":1,\"method\":\"transaction\",\"statements\":["
+        "{\"kind\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(7,'provisional')\",\"params\":[]},"
+        "{\"kind\":\"query\",\"sql\":\"WITH RECURSIVE t(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM t) SELECT sum(n) FROM t\",\"params\":[]}]}", 1);
+    f->native.hold = 1; f->native.polls = 0;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0, "in-flight race request");
+    ResetEvent(f->done); InterlockedExchange((LONG*)&f->action, 1); SetEvent(f->work);
+    RUNTIME_VERIFY(WaitForSingleObject(f->native.inside, 5000) == WAIT_OBJECT_0 &&
+        PRuntime_ServiceQueueGetInfo(f->queue, &info) == 0 && info.running == 1 && PRuntime_ServiceQueueRevoke(f->queue) == 0,
+        "UI revoke while native DB call is in flight");
+    SetEvent(f->native.resume);
+    RUNTIME_VERIFY(WaitForSingleObject(f->done, 10000) == WAIT_OBJECT_0 && f->result == 0 &&
+        PRuntime_ServiceQueueGetInfo(f->queue, &info) == 0 && info.revoked && !info.running && !info.completed,
+        "cancelled call returns before queue teardown, result dropped"); f->native.hold = 0;
+    *before = *result;
+    RUNTIME_VERIFY(PRuntime_ServiceQueueTakeResult(f->queue, result) == PRUNTIME_STATE && !memcmp(result, before, sizeof(*result)), "revoked page cannot take late result");
+    f->queue_options.page_generation = 19; RUNTIME_VERIFY(queue_fixture_action(f, 2) && f->result == 0, "post-cancel ready storage retained");
+    queue_fixture_request(f, &request, query, 1);
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0 && queue_fixture_action(f, 1) && f->result == 0 &&
+        PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && result->result == 0 && strstr(result->json, "\"value\":\"2\""),
+        "queued delete not run and in-flight provisional insert rolled back");
+    queue_fixture_request(f, &request, "{\"version\":1,\"method\":\"execute\",\"sql\":\"INSERT INTO notes VALUES(3,'committed')\",\"params\":[]}", 2);
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0 && queue_fixture_action(f, 1) && f->result == 0 &&
+        PRuntime_ServiceQueueRevoke(f->queue) == 0, "revoke after commit drops result, never reexecutes write");
+    f->queue_options.page_generation = 20; RUNTIME_VERIFY(queue_fixture_action(f, 2) && f->result == 0, "post-commit generation");
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == PRUNTIME_STATE, "old committed request generation cannot replay");
+    queue_fixture_request(f, &request, query, 1);
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0 && queue_fixture_action(f, 1) && f->result == 0 &&
+        PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && strstr(result->json, "\"value\":\"3\""), "committed write preserved exactly once");
+    queue_fixture_request(f, &request, "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT * FROM __pdb_meta\",\"params\":[]}", 2);
+    RUNTIME_VERIFY(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0 && queue_fixture_action(f, 1) && f->result == 0 &&
+        PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && result->result == PRUNTIME_DATABASE && strstr(result->json, "\"error\"") &&
+        !strstr(result->json, "__pdb") && !strstr(result->json, "Storage"), "sanitized failure has no SQL or physical path");
+    RUNTIME_VERIFY(PRuntime_ServiceQueueRevoke(f->queue) == 0 && queue_fixture_action(f, 3) &&
+        WaitForSingleObject(f->thread, 10000) == WAIT_OBJECT_0 && !f->queue && !f->storage && !f->directory.instance &&
+        f->native.opens == f->native.closes && f->directory.allocations == f->directory.releases, "worker shutdown releases queue then DB then root");
+    ok = TRUE;
+done:
+    if (f->native.resume) SetEvent(f->native.resume);
+    if (f->session) { PBrowser_ScriptSessionRevokeServices(f->session); PBrowser_ScriptSessionDestroy(f->session); }
+    if (f->thread) {
+        if (WaitForSingleObject(f->thread, 0) != WAIT_OBJECT_0) {
+            queue_fixture_action(f, 3);
+            if (WaitForSingleObject(f->thread, 10000) != WAIT_OBJECT_0) {
+                directory_error = "queue worker did not exit; native state preserved until test process ends";
+                free(before); free(result); return FALSE;
+            }
+        }
+        CloseHandle(f->thread);
+    }
+    if (f->ready) CloseHandle(f->ready); if (f->done) CloseHandle(f->done); if (f->work) CloseHandle(f->work);
+    if (f->native.inside) CloseHandle(f->native.inside); if (f->native.resume) CloseHandle(f->native.resume);
+    storage_fixture_cleanup(&f->native); directory_fixture_cleanup(&f->directory, root, outer);
+    free(before); free(result); free(f); return ok;
 }

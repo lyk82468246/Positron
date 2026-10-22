@@ -12,7 +12,9 @@ Development storage now binds an exact private DB identity, runs admitted
 migrations and executes bounded typed SQL JSON on its owner worker.
 This does **not yet run directory applications in the browser**: the general WM
 provider/EXE integration, installed identities, asynchronous session authorization,
-Core/Browser app resource wiring and PXI remain separate prerequisites.
+Core/Browser app resource wiring and PXI remain separate prerequisites. The native
+SQL service queue below now supplies bounded cross-thread delivery and revocation;
+it is not EXE integration or permission inferred from an address.
 
 ## Link and deploy
 
@@ -353,9 +355,50 @@ Only after COMMIT does it append the allocation-free report and copy at most
 The fixed report reserve may conservatively reject a near-limit row payload.
 
 The host must schedule copied requests/results, never call this on UI or move
-live storage/Core/Browser/JS handles to another thread. Asynchronous pending
-budget, page generation revocation and Browser service registration are separate
-integration contracts; this worker entry alone does not make a web page trusted.
+live storage/Core/Browser/JS handles to another thread. Use the explicit queue
+below for asynchronous delivery; this worker entry alone does not make a web page trusted.
+
+## Bounded page SQL service queue
+
+Create `PRuntime_ServiceQueueCreate` on the storage owner worker, after migrations
+and native confirmation succeed. Exact v1 options bind nonzero tab/page generation
+and UI delivery thread. At most four independent queues share one storage, allowing
+an old page and candidates to coexist; duplicate tab/generation is STATE. Each
+queue retains storage until close. Its fixed allocation is approximately 70 KiB
+(280 KiB for four), with eight slots including waiting, running and unclaimed results.
+
+This queue is an explicit cross-thread **copy channel**, not permission to move
+directory/storage, Core, Browser or JS handles. On UI, register only `storage.sql`
+through Browser's controlled service bridge after bootstrap completes and before
+author code. Copy request tags/method/JSON into `PRuntime_ServiceQueueSubmit`, then
+wake the worker. Submit checks tags and the 4096-byte copy budget, but performs no
+JSON parsing, SQL, native I/O or callback. The first accepted bridge ID binds the
+queue; accepted request IDs must strictly increase, including after consumption
+or cancellation, so a previously accepted token cannot replay a write.
+
+The worker calls `PRuntime_ServiceQueueProcessOne` for one FIFO request. SQL failure
+is a completed result, not failure of this processing API. UI calls
+`PRuntime_ServiceQueueTakeResult`, verifies live tab/generation, then uses Browser
+Complete and Pump on the owning UI thread. Results are consumed exactly once;
+empty returns NOT_FOUND without modifying output. Errors contain only numeric
+Runtime/DB/category fields, never private SQL, paths or diagnostic messages.
+The host owns wakeups, fairness and Browser callback scheduling; the DLL creates
+no thread, timer or message pump. Direct StorageExecuteJson is STATE while any
+queue owns that storage, preventing an alternate path around queue ownership.
+
+Browser cancel callbacks call QueueCancel on UI. Before destroying a session,
+revoke Browser services and permanently revoke its Runtime queue: waiting/results
+are dropped and running SQL receives cooperative cancellation. A cancel/revoke
+racing COMMIT may discard an already committed result; **never reexecute SQL to
+recover that result**. VFS/provider calls are not preempted. Keep the old page's
+queue valid until actual replacement, rather than revoking it when a candidate
+starts. Candidate queues have independent tags and no access to the old session.
+
+Stop UI access before worker-only QueueClose, which requires revoked and idle.
+Close all queues before storage, storage before directory; join the worker before
+freeing its state or unloading DLLs. GetInfo is a copied snapshot callable only
+from the worker or specified delivery thread. As with other native handles,
+freed aliases are invalid; the queue does not make a stale Browser pointer safe.
 
 ## C lifecycle and failure contract
 
@@ -419,6 +462,8 @@ grants, version rejection, later-file failure, malformed/oversized input,
 Storage fixtures additionally prove native private DB reopen, exact identity
 mismatch rejection, per-file migration failure/resume, all-source admission
 before DDL, typed SQL/batch rollback, encoded overflow, cancellation and budget
-guards. None proves a generic filesystem canonicalizer, installed launch, Browser
-authorization, PXI/ZIP or complete browser UI integration. Device evidence belongs
+guards. A real UI/worker fixture composes the Browser bridge with eight-slot
+backpressure, four page contexts, duplicate/replay rejection, running cancellation,
+rollback and post-COMMIT stale-result disposal. None proves a generic filesystem
+canonicalizer, installed launch, EXE authorization, PXI/ZIP or complete browser UI integration. Device evidence belongs
 to the current handoff, not this stable document.

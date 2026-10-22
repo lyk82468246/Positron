@@ -21,27 +21,29 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 开发存储与 typed SQL JSON 已验收
+### Runtime 开发存储、typed SQL 与异步队列已验收
 
 Runtime 只链接 JSON/DB 公共库；目录与 data provider、身份/迁移、typed SQL 及预算/释放合同见
 [Runtime README](../positron_runtime/README.md)。fixture 仅处理私有已知根，不是通用 WM 适配器。
-安装身份、异步页面服务与 Core/Browser app 组合仍待完成；PXI 未取证，不改 EXE/CAB。
+原生异步页面队列已完成；安装身份、EXE 页面授权与 Core/Browser app 组合仍待完成；PXI 未取证，不改 EXE/CAB。
 
-存储 bucket 仅定位，DB 私有完整开发根/ID stamp 拒绝碰撞/错误文件与非空未认领库；
-来源全部准入后逐文件迁移，失败不运行作者代码，正常重试仅恢复 pending 后缀。
-同步 worker 请求/结果 JSON 保持 4096 bytes，int64 字符串无精度损失；结果编码在 COMMIT 前，
-超限/取消/批失败回滚，DB 仍拥有 SQL authorizer；JSON 新标量编码不改变旧 ABI。
+开发根/ID 完整身份、迁移 pending 后缀、COMMIT 前有界 typed JSON 编码仍由 Runtime/DB
+拥有；详细预算、失败不变性和 native provider 责任以组件 README 为准，旧 ABI 不变。
 
-Debug `tmp/device-runs/20261022-235321-runtime-store-sql-debug-final/`、Release
-`tmp/device-runs/20261022-235657-runtime-store-sql-release-accepted/` 各 `1321,1363-1369,999` 9/9 PASS，
+队列最多四个独立页面，每页八项；UI 只复制提交/取结果，worker 拥有 DB。重复页面/请求拒绝，
+撤销丢弃迟到结果，COMMIT 后绝不重跑写入；关闭顺序和 Browser 组合见 Runtime README。
+Debug `tmp/device-runs/20261023-002445-queue-sessions-debug-accepted/`、Release
+`tmp/device-runs/20261023-002553-queue-sessions-release-final/` 各 `1341,1363-1370,999` 10/10 PASS，
 唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash、双空间与新 guest 零引用通过，无新增 dump。
 145 文件 SD 包回收后清理，45 个旧不完整目录保留；C89/审计与串行正式两配置构建通过。
 未改 WMDC、EXE/用户 DB，无强杀或 nightly。TEST1368/1369 覆盖隔离/重开、迁移失败/恢复、
-typed JSON 精度、批/编码/预算/取消回滚及 owner/reentry；旧 DB/Runtime 断言保持。
-Debug 一次、Release 四次正式构建提前退出，事件日志确认 msenv 访问冲突；原日志保留，
-正式重试通过，不追认失败或改变工具链设置。
-`09545034` 中 TEST1365 第二私有根 error=183、helper 无完整摘要的旧证据及路径仍由 Git/
-本地日志保留；后续恢复但根因未定，未放宽断言、追认旧失败或删除其遗留包。
+typed JSON 精度、批/编码/预算/取消回滚及 owner/reentry；TEST1370 增加真实 UI/worker、Browser
+交付、四队列/八槽、replay、运行中取消回滚与提交后撤销，旧 DB/Runtime 断言保持。
+队列探针实测同一 189 字节 fixture 的映像常量 WriteFile 失败而私有堆副本成功；现 helper
+总是有界复制后写并校验完整字节，不改产品 I/O 或断言，不推断通用 CE 原因。旧失败包保留。
+四队列首轮 worker 初始化失败未定位，后续最终 Debug/Release 同合同通过，不追认旧失败。
+旧 TEST1365 error=183 与 helper 缺摘要根因未定；VS/msenv 访问冲突由正式重试恢复。
+失败证据见 Git/本地日志，未放宽断言、改变工具链或删除不完整遗留包。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -400,7 +402,7 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 [DB README](../positron_db/README.md)。新迁移在 BEGIN IMMEDIATE 后比较严格版本，
 SQL authorizer 保护私有表与连接策略；每文件的 DDL/DML/version 原子提交，失败不发布 report。
 旧 local-full/sync/migration 不变。Runtime 已有上方开发存储与 SQL JSON，
-但页面授权/异步撤销仍待合同；不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
+原生异步撤销合同见上方，EXE 页面授权仍待接线；不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
 
 当前双配置复验见 Runtime 门，TEST1366 继续保护建表/索引/DML、私有对象/非支持 SQL 拒绝、
 严格版本类型/长度/内容、DDL/DML/COMMIT 回滚、预算/取消/reentry 与输出不变性。
@@ -437,7 +439,7 @@ Browser 拥有默认关闭的受控服务桥接，Script 只提供 native JSON �
 可信身份由宿主授权，不按 URL/scheme 推断。容量、owner-thread 交付和撤销合同见
 [Browser README](../positron_browser/README.md#受控异步应用服务)，不表示 EXE 已接线。
 
-桥接双配置基线仍为 Git 保留的包含 TEST1341 的旧 HTTP 相邻门；本轮未重跑 TEST1341。Release 较宽回归
+本轮 TEST1341 双配置相邻门见上方 Runtime 证据。Release 较宽回归
 `tmp/device-runs/20261004-222549-browser-services-final-release/` 为 10/10 PASS。
 完整日志、唯一 PASS、零 ERROR/FAIL、Core/crash、SD 双空间/无 holder 均通过并清理本轮目录。
 隔离、失败不变性、线程/撤销及 finalizer 守卫保留，不以服务桥接代替业务接线。
@@ -495,7 +497,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
 系统ZIP无可用接口则挂起PXI。ROADMAP/能力矩阵已复核：DB 受限请求、受限迁移/严格版本
 原语、可信 provider 上的开发目录/只读资源、迁移来源/执行与开发 SQL JSON 均已完成。
-唯一下一步由 Runtime 接入八项异步队列/页面撤销，再验证 Core/Browser app 组合与系统 ZIP；
+异步队列/页面撤销已完成。唯一下一步验证 Core/Browser app 组合与系统 ZIP；
 EXE 的通用 WM provider 和目录示例仍等完整合同，不凭 manifest、URL 或目录句柄私造服务授权。
 ZIP 未取证，不改 EXE/CAB/用户 DB，不重开像素、FULL/断电与保存框暂缓门。
 构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。
