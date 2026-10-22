@@ -212,6 +212,7 @@
 			<File RelativePath=".\text_wrap_tests.c"></File>
 			<File RelativePath=".\text_input_height_tests.c"></File>
 			<File RelativePath=".\db_tests.c"></File>
+			<File RelativePath=".\db_restricted_tests.c"></File>
 			<File RelativePath=".\script_performance_tests.c"></File>
 			<File RelativePath=".\browser_bootstrap_tests.c"></File>
 			<File RelativePath=".\image_dimension_tests.c"></File>

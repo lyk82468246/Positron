@@ -34,6 +34,14 @@ typedef struct PDbTableInfo {
     int column_types[PDB_SYNC_MAX_COLUMNS];
 } PDbTableInfo;
 
+typedef struct PDbRestrictedWork {
+    const PDbRestrictedOptions* options;
+    unsigned long remaining;
+    int reason;
+    int authorized;
+    int denied;
+} PDbRestrictedWork;
+
 struct PDb {
     sqlite3* sqlite;
     int mode;
@@ -41,6 +49,8 @@ struct PDb {
     int migration;
     int applying;
     int cancelled;
+    PDbRestrictedWork* restricted;
+    int restricted_callback;
     PDbErrorInfo error_info;
     unsigned int error_serial;
     unsigned int operation_serial;
@@ -823,6 +833,52 @@ static int pdb_meta_get_int(PDbHandle db, const char* key, int default_value)
     return value;
 }
 
+static int pdb_restricted_function(const char* name)
+{
+    static const char* const allowed[] = {
+        "abs", "avg", "char", "coalesce", "count", "date", "datetime",
+        "format", "glob", "hex", "ifnull", "iif", "instr", "julianday",
+        "length", "like", "likelihood", "likely", "lower", "ltrim", "max",
+        "min", "nullif", "printf", "quote", "replace", "round", "rtrim",
+        "sign", "strftime", "substr", "substring", "sum", "time", "total",
+        "trim", "typeof", "unicode", "unixepoch", "unlikely", "upper",
+        "changes", "last_insert_rowid"
+    };
+    unsigned int i;
+    if (name == NULL) return 0;
+    for (i = 0; i < sizeof(allowed) / sizeof(allowed[0]); i++) {
+        if (_stricmp(name, allowed[i]) == 0) return 1;
+    }
+    return 0;
+}
+
+static int pdb_restricted_authorizer(PDbHandle db, int action,
+        const char* arg1, const char* arg2, const char* database)
+{
+    int allowed;
+    allowed = 0;
+    if (database == NULL || _stricmp(database, "main") == 0) {
+        switch (action) {
+        case SQLITE_SELECT:
+        case SQLITE_RECURSIVE:
+            allowed = 1; db->restricted->authorized = 1; break;
+        case SQLITE_READ:
+        case SQLITE_INSERT:
+        case SQLITE_UPDATE:
+        case SQLITE_DELETE:
+            allowed = arg1 != NULL && _strnicmp(arg1, "__pdb_", 6) != 0 &&
+                    _strnicmp(arg1, "sqlite_", 7) != 0;
+            if (allowed) db->restricted->authorized = 1;
+            break;
+        case SQLITE_FUNCTION:
+            allowed = pdb_restricted_function(arg2); break;
+        default: break;
+        }
+    }
+    if (!allowed) db->restricted->denied = 1;
+    return allowed ? SQLITE_OK : SQLITE_DENY;
+}
+
 static int pdb_authorizer(void* context, int action,
         const char* arg1, const char* arg2, const char* database,
         const char* trigger)
@@ -834,6 +890,9 @@ static int pdb_authorizer(void* context, int action,
     db = (PDbHandle)context;
     if (db == NULL) {
         return SQLITE_OK;
+    }
+    if (db->restricted != NULL && !db->internal) {
+        return pdb_restricted_authorizer(db, action, arg1, arg2, database);
     }
     /* A migration owns its transaction in both modes. Never let a script
      * commit/attach/change connection policy before later script failure. */
@@ -914,6 +973,20 @@ static int pdb_progress(void* context)
     PDbHandle db;
 
     db = (PDbHandle)context;
+    if (db != NULL && db->restricted != NULL && !db->internal) {
+        PDbRestrictedWork* work;
+        int cancelled;
+        work = db->restricted;
+        cancelled = 0;
+        if (work->options->cancelled != NULL) {
+            db->restricted_callback = 1;
+            cancelled = work->options->cancelled(work->options->user_data);
+            db->restricted_callback = 0;
+        }
+        if (cancelled || db->cancelled) { work->reason = PDB_STATE; return 1; }
+        if (work->remaining <= 100) { work->reason = PDB_LIMIT; return 1; }
+        work->remaining -= 100;
+    }
     return db != NULL && db->cancelled ? 1 : 0;
 }
 
@@ -2073,7 +2146,7 @@ PDB_API void PDb_Close(PDbHandle db)
 {
     PDbStmtHandle statement;
 
-    if (db == NULL) {
+    if (db == NULL || db->restricted != NULL) {
         return;
     }
     while (db->statements != NULL) {
@@ -4088,16 +4161,217 @@ resolve_cleanup:
     return rc;
 }
 
+static int pdb_restricted_utf8(const char* text, int bytes)
+{
+    int i;
+    int extra;
+    unsigned long code;
+    unsigned long minimum;
+    unsigned char c;
+    if (bytes < 0 || (text == NULL && bytes != 0)) return 0;
+    for (i = 0; i < bytes; i++) {
+        c = (unsigned char)text[i];
+        if (c < 128) continue;
+        if (c >= 194 && c <= 223) { extra = 1; code = c & 31; minimum = 128; }
+        else if (c >= 224 && c <= 239) { extra = 2; code = c & 15; minimum = 2048; }
+        else if (c >= 240 && c <= 244) { extra = 3; code = c & 7; minimum = 65536; }
+        else return 0;
+        while (extra-- > 0) {
+            if (++i >= bytes || ((unsigned char)text[i] & 192) != 128) return 0;
+            code = (code << 6) | ((unsigned char)text[i] & 63);
+        }
+        if (code < minimum || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return 0;
+    }
+    return 1;
+}
+
+static int pdb_restricted_cancelled(PDbHandle db)
+{
+    int cancelled;
+    cancelled = db->cancelled;
+    if (db->restricted->options->cancelled != NULL) {
+        db->restricted_callback = 1;
+        cancelled |= db->restricted->options->cancelled(db->restricted->options->user_data);
+        db->restricted_callback = 0;
+    }
+    if (cancelled) {
+        db->restricted->reason = PDB_STATE;
+        pdb_set_error(db, "Restricted request cancelled");
+        db->error_info.category = PDB_ERROR_CATEGORY_CANCELLED;
+        db->cancelled = 0;
+        return PDB_STATE;
+    }
+    return PDB_OK;
+}
+
+static int pdb_api_PDb_ExecuteRestricted(PDbHandle db,
+        const PDbRestrictedStatement* statements, int statement_count,
+        const PDbRestrictedOptions* options, PDbRestrictedReport* report)
+{
+    PDbRestrictedWork work;
+    PDbRestrictedReport next;
+    PDbRestrictedValue values[PDB_RESTRICTED_MAX_COLUMNS];
+    const PDbRestrictedStatement* input;
+    const PDbRestrictedValue* value;
+    sqlite3_stmt* stmt;
+    const char* tail;
+    char sql[PDB_RESTRICTED_SQL_BYTES + 1];
+    __int64 before_changes;
+    int i;
+    int j;
+    int columns;
+    int text_bytes;
+    int native;
+    int rc;
+    int callback_rc;
+    if (db == NULL || options == NULL || report == NULL || statements == NULL ||
+            options->size != sizeof(*options) || options->version != PDB_RESTRICTED_VERSION ||
+            report->size != sizeof(*report) || report->version != PDB_RESTRICTED_VERSION ||
+            options->vm_budget < 100 || options->vm_budget > PDB_RESTRICTED_VM_MAX ||
+            options->vm_budget % 100 != 0 || statement_count < 1 ||
+            statement_count > PDB_RESTRICTED_MAX_STATEMENTS) return PDB_INVALID_ARGUMENT;
+    if (db->mode != PDB_OPEN_LOCAL_FULL_SQL || db->restricted != NULL ||
+            db->statements != NULL || pdb_transaction_active(db)) return PDB_STATE;
+    /* Validate the complete borrowed batch before opening a transaction. */
+    for (i = 0; i < statement_count; i++) {
+        input = &statements[i];
+        if (input->sql == NULL || input->sql_bytes < 1 || input->param_count < 0 ||
+                (input->param_count != 0 && input->params == NULL) ||
+                (input->kind != PDB_RESTRICTED_QUERY && input->kind != PDB_RESTRICTED_EXECUTE)) return PDB_INVALID_ARGUMENT;
+        if (input->sql_bytes > PDB_RESTRICTED_SQL_BYTES ||
+                input->param_count > PDB_RESTRICTED_MAX_PARAMS) return PDB_LIMIT;
+        if (memchr(input->sql, 0, input->sql_bytes) != NULL ||
+                !pdb_restricted_utf8(input->sql, input->sql_bytes)) return PDB_INVALID_ARGUMENT;
+        for (j = 0; j < input->param_count; j++) {
+            value = &input->params[j];
+            if (value->type == PDB_VALUE_BLOB) return PDB_NOT_SUPPORTED;
+            if (value->type < PDB_VALUE_NULL || value->type > PDB_VALUE_TEXT) return PDB_INVALID_ARGUMENT;
+            if (value->type == PDB_VALUE_REAL &&
+                    (!(value->real <= DBL_MAX) || !(value->real >= -DBL_MAX))) return PDB_NOT_SUPPORTED;
+            if (value->type == PDB_VALUE_TEXT) {
+                if (value->text_bytes > PDB_RESTRICTED_TEXT_BYTES) return PDB_LIMIT;
+                if (!pdb_restricted_utf8(value->text, value->text_bytes)) return PDB_INVALID_ARGUMENT;
+            }
+        }
+    }
+    rc = pdb_consume_cancel(db);
+    if (rc != PDB_OK) return rc;
+    memset(&work, 0, sizeof(work)); work.options = options; work.remaining = options->vm_budget;
+    memset(&next, 0, sizeof(next)); next.size = sizeof(next); next.version = PDB_RESTRICTED_VERSION;
+    stmt = NULL; text_bytes = 0;
+    db->restricted = &work;
+    sqlite3_progress_handler(db->sqlite, 100, pdb_progress, db);
+    rc = pdb_restricted_cancelled(db);
+    if (rc == PDB_OK) rc = pdb_exec_internal(db, "BEGIN");
+    before_changes = sqlite3_total_changes64(db->sqlite);
+    for (i = 0; rc == PDB_OK && i < statement_count; i++) {
+        input = &statements[i];
+        rc = pdb_restricted_cancelled(db);
+        if (rc != PDB_OK) break;
+        /* Reserve a partial checkpoint per statement; otherwise short VMs
+         * could reset SQLite's counter and evade a shared batch budget. */
+        if (work.remaining < 100) { work.reason = PDB_LIMIT; rc = PDB_LIMIT; break; }
+        work.remaining -= 100;
+        work.authorized = work.denied = 0;
+        memcpy(sql, input->sql, input->sql_bytes); sql[input->sql_bytes] = '\0';
+        native = sqlite3_prepare_v2(db->sqlite, sql, input->sql_bytes + 1, &stmt, &tail);
+        if (native != SQLITE_OK) {
+            rc = pdb_set_sqlite_error(db, native);
+            /* Reject unpreparable SQL without interpreting English messages.
+             * Preserve native SQL diagnostics, unlike authorizer denials. */
+            if ((native & 255) == SQLITE_ERROR) rc = PDB_SQL_REJECTED;
+            break;
+        }
+        while (*tail == ' ' || *tail == '\t' || *tail == '\r' || *tail == '\n') tail++;
+        if (stmt == NULL || !work.authorized || *tail != '\0' || sqlite3_bind_parameter_count(stmt) != input->param_count) {
+            rc = PDB_SQL_REJECTED; break;
+        }
+        columns = sqlite3_column_count(stmt);
+        if (columns > PDB_RESTRICTED_MAX_COLUMNS) { rc = PDB_LIMIT; break; }
+        if ((input->kind == PDB_RESTRICTED_QUERY && !sqlite3_stmt_readonly(stmt)) ||
+                (input->kind == PDB_RESTRICTED_EXECUTE && columns != 0)) { rc = PDB_SQL_REJECTED; break; }
+        for (j = 0; rc == PDB_OK && j < input->param_count; j++) {
+            value = &input->params[j];
+            if (value->type == PDB_VALUE_NULL) native = sqlite3_bind_null(stmt, j + 1);
+            else if (value->type == PDB_VALUE_INTEGER) native = sqlite3_bind_int64(stmt, j + 1, value->integer);
+            else if (value->type == PDB_VALUE_REAL) native = sqlite3_bind_double(stmt, j + 1, value->real);
+            else native = sqlite3_bind_text(stmt, j + 1, value->text == NULL ? "" : value->text,
+                    value->text_bytes, SQLITE_TRANSIENT);
+            if (native != SQLITE_OK) rc = pdb_set_sqlite_error(db, native);
+        }
+        while (rc == PDB_OK) {
+            rc = pdb_restricted_cancelled(db);
+            if (rc != PDB_OK) break;
+            native = sqlite3_step(stmt);
+            if (native == SQLITE_DONE) break;
+            if (native != SQLITE_ROW) { rc = pdb_set_sqlite_error(db, native); break; }
+            if (++next.row_count > PDB_RESTRICTED_MAX_ROWS || options->row == NULL) { rc = PDB_LIMIT; break; }
+            memset(values, 0, sizeof(values));
+            for (j = 0; j < columns; j++) {
+                values[j].type = sqlite3_column_type(stmt, j);
+                if (values[j].type == SQLITE_NULL) values[j].type = PDB_VALUE_NULL;
+                else if (values[j].type == SQLITE_INTEGER) {
+                    values[j].type = PDB_VALUE_INTEGER; values[j].integer = sqlite3_column_int64(stmt, j);
+                } else if (values[j].type == SQLITE_FLOAT) {
+                    values[j].type = PDB_VALUE_REAL; values[j].real = sqlite3_column_double(stmt, j);
+                    if (!(values[j].real <= DBL_MAX) || !(values[j].real >= -DBL_MAX)) rc = PDB_NOT_SUPPORTED;
+                } else if (values[j].type == SQLITE_TEXT) {
+                    values[j].type = PDB_VALUE_TEXT;
+                    values[j].text = (const char*)sqlite3_column_text(stmt, j);
+                    values[j].text_bytes = sqlite3_column_bytes(stmt, j);
+                    if (values[j].text == NULL) rc = PDB_NOMEM;
+                    else if (!pdb_restricted_utf8(values[j].text, values[j].text_bytes)) rc = PDB_NOT_SUPPORTED;
+                    else if (values[j].text_bytes > PDB_RESTRICTED_TEXT_BYTES - text_bytes) rc = PDB_LIMIT;
+                    else text_bytes += values[j].text_bytes;
+                } else rc = PDB_NOT_SUPPORTED;
+            }
+            if (rc != PDB_OK) break;
+            db->restricted_callback = 1;
+            callback_rc = options->row(options->user_data, i, values, columns);
+            db->restricted_callback = 0;
+            if (callback_rc != PDB_OK) rc = callback_rc == PDB_LIMIT ? PDB_LIMIT : PDB_STATE;
+        }
+        native = sqlite3_finalize(stmt); stmt = NULL;
+        if (rc == PDB_OK && native != SQLITE_OK) rc = pdb_set_sqlite_error(db, native);
+        if (rc == PDB_OK) next.statement_count++;
+    }
+    if (stmt != NULL) sqlite3_finalize(stmt);
+    if (work.denied) {
+        rc = PDB_SQL_REJECTED;
+        db->error_info.category = PDB_ERROR_CATEGORY_AUTHORIZATION;
+    }
+    if (work.reason != PDB_OK) {
+        rc = work.reason;
+        pdb_set_error(db, rc == PDB_LIMIT ? "Restricted VM work budget exhausted" : "Restricted request cancelled");
+        db->error_info.category = rc == PDB_LIMIT ? PDB_ERROR_CATEGORY_LIMIT : PDB_ERROR_CATEGORY_CANCELLED;
+    }
+    if (rc == PDB_OK) rc = pdb_restricted_cancelled(db);
+    if (rc == PDB_OK) rc = pdb_exec_internal(db, "COMMIT");
+    if (rc == PDB_OK) {
+        next.changes = sqlite3_total_changes64(db->sqlite) - before_changes;
+        *report = next;
+    } else pdb_abort_transaction(db, rc);
+    db->restricted = NULL;
+    sqlite3_progress_handler(db->sqlite, 1000, pdb_progress, db);
+    return rc;
+}
+
 /* One boundary for every status-returning operation; success preserves the
  * sticky failure, including through nested calls and statement cleanup. */
 #define PDB_STATUS_WRAPPER(name, parameters, arguments, owner) \
 PDB_API int name parameters { \
     PDbHandle owner_db = (owner); \
     int result; \
+    if (owner_db != NULL && owner_db->restricted_callback) return PDB_STATE; \
     pdb_operation_begin(owner_db); \
     result = pdb_api_##name arguments; \
     return pdb_operation_end(owner_db, result); \
 }
+
+PDB_STATUS_WRAPPER(PDb_ExecuteRestricted,
+        (PDbHandle db, const PDbRestrictedStatement* statements, int statement_count,
+        const PDbRestrictedOptions* options, PDbRestrictedReport* report),
+        (db, statements, statement_count, options, report), db)
 
 PDB_STATUS_WRAPPER(PDb_Prepare,
         (PDbHandle db, const char* sql,

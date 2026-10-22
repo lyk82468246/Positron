@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。EXE 已接入历史搜索与记录操作，公共DLL/ABI及v4表不改；Media 参数恢复证据见下方。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。资源运行时首批已在 DB 新增受限请求，旧 ABI/消费者及应用 v4 表不变；Runtime DLL 尚未创建，不能声称目录应用可运行。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -371,34 +371,29 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 保留在 `scripts/test_device_gate_audit.ps1`。旧 PID、安装时间与失败实验只代表原包，详见 Git
 上一版交接；CAB 安装版本和 Debug 增量时间依赖仍是独立未决门。
 
-### DB 本地/同步与结构化错误合同已验收
+### DB 受限请求、本地/同步与结构化错误合同
 
-`test_host/db_tests.c` 的 TEST1321 保留本地 SQL/typed 数据/取消/预算/migration 和同步
-authorizer、单列主键、typed JSON/Base64、outbox/分页、accepted/pull/cursor、服务器权威
-冲突/retry-local/模式隔离回归。失败响应不部分修改行、outbox 或 cursor；正常文件重开
-覆盖同步状态持久化，不等于 journal/断电恢复。
+`PDb_ExecuteRestricted` 是资源运行时的首个独立前置：默认关闭的请求级 authorizer、共享
+work budget、只读原子标志取消、typed provisional rows 和 owned transaction。COMMIT 后才
+发布 report；超限/取消/约束/提交失败不发布结果，按原诊断合同尝试 rollback。预算、函数
+allowlist、借用/重入、错误分类和示例以 [DB README](../positron_db/README.md#opt-in-restricted-requests)
+为准。Runtime 身份/manifest、迁移准入、JSON/授权服务和 app 资源仍未实现，不把本接口
+视为网页 SQL 授权或完整沙箱；旧 local-full/sync/迁移及取消行为不变。
 
-公共 DLL 的 size/version `PDb_OpenUtf8Ex`、`PDb_GetErrorInfo`、`PDb_ClearError` 和
-`PDb_GetConnectionState` 已验收，旧返回码保持。调用者拥有 sticky 错误快照，实际事务
-状态来自 SQLite autocommit；失败 COMMIT 不声称回滚，owned migration 尝试 rollback
-并保留根错误。详细字段、所有权和重试边界见 [DB README](../positron_db/README.md)。
+最终 Debug `tmp/device-runs/20261022-155641-runtime-db-restricted-debug-accepted/` 与 Release
+`tmp/device-runs/20261022-155800-runtime-db-restricted-release-accepted/` 各 `1321,1363,999` 3/3 PASS。
+新门覆盖私有表/危险 SQL/view/trigger 拒绝、typed 中文/int64、精确行/批容量、超限/错误输出
+不变性、共享 VM 预算、执行中取消、回调 reentry/close、提交失败/批失败 rollback 及恢复可用；
+旧 DB 门原断言保留。正式双配置、C89/审计通过；320×320/128 DPI、SD 144 文件、双空间与
+新 guest holders=0 unavailable=0、完整日志/Core/crash 均通过，无新增 dump。回收后清理当前包，
+44 个旧不完整目录保留；未改用户 DB、EXE 或 WMDC，无强杀。首轮 VACUUM 与缺失函数分类
+失败日志保留，未放宽断言；修正只在新入口，原模式继续回归。
 
-错误 fixture 覆盖 ABI/canary/UTF-8、sticky/Clear、CANTOPEN/NOTADB、FK COMMIT 重试、
-RETURNING COMMIT BUSY、原生事务、READONLY 与内存页 FULL；两模式 migration 覆盖
-脚本/提交失败回滚、重试及 metadata 错误拒绝。内存 FULL 不证明文件配额或卷不足，
-I/O 和 rollback 本身失败仍待专用故障门，未填满 SD/object store。
-
-结构化错误合同的 Debug 门
-`tmp/device-runs/20261004-190523-db-error-contract-utf8-debug/` 与 Release 门
-`tmp/device-runs/20261004-190703-db-error-contract-utf8-release/` 已通过正式 SD 包哈希、
-`1321,999`、新 guest 无引用审计及无新增 crash 门。Debug 包已清理，Release 清理失败
-保留残留；没有重置设备。该合同不改 EXE、应用表、HTTP worker 或 SQLite 上游。
-
-错误测试的失败包 `tmp/device-runs/20261004-185732-db-error-contract-new-device-debug/`
-与 `tmp/device-runs/20261004-185844-db-error-transaction-diagnostic/` 保留：建表准备期 FULL
-仍 active，改为 INSERT 执行期 FULL 后保持自动回滚断言通过。首次文件打开的 NULL 异常
-已由恢复 WinCE VFS 的 CreateFileMappingW 匿名锁映射修复；no-WAL/no-mmap 不变。
-旧设备 SD 不可读、字体/.part 删除失败证据保留，不追认为 PASS。
+旧 TEST1321 在本轮原样重跑，继续保护 local/sync 的 typed 数据、迁移、取消、同步 outbox/
+冲突/失败原子性，以及结构化 sticky 错误、canary/UTF-8、真实事务状态、FK COMMIT 重试、
+READONLY/内存 FULL 和 owned migration 回滚。稳定调用与错误规则归 DB README；旧独立
+合同门、FULL 准备/执行期及 WinCE 匿名锁映射失败对照归 Git/本地日志。no-WAL/no-mmap
+不变，旧清理失败不改写为成功。I/O、rollback 本身失败与物理断电仍无本轮证据。
 
 独立文件 probe 已通过 Debug/Release 正式工程与 SD 部署门：二进制在 SD，文件分别在
 SD 映射卷和内置 object-store；中文 UTF-8 路径/TEXT、typed BLOB、commit/rollback、正常
@@ -499,9 +494,11 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 下载重下/历史单删/80条历史搜索已获人工通过；完整SIP/旋转/OEM不外推。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
-系统ZIP无可用接口则挂起PXI。下一步由主线与DLL交付Runtime/DB/资源授权前置，EXE不代做；
-本会话先落库推送并投递，释放编译/设备窗口，收到公共合同与证据后才接目录示例。
-本轮仅文档、已复核ROADMAP/限制，未改代码/ABI/打包，不新建设备基线；旧像素失败仍保留。
+系统ZIP无可用接口则挂起PXI。本轮已复核并更新 ROADMAP：受限 DB 请求退出待实现队列；
+唯一下一步仍在主线与DLL：固化 Runtime 的 manifest/规范 ID/目录实例与 app 资源合同，
+再接迁移准入、SQL JSON/服务授权和 Core/Browser 资源；EXE 等完整合同后才接目录示例。
+本批只交付 DB 原语，未创建第十个 DLL 或取证 ZIP，不改 EXE/CAB/用户 DB，不重开像素、
+FULL/断电与保存框暂缓门。构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自

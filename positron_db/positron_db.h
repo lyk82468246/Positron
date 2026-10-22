@@ -83,6 +83,16 @@ typedef struct PDbSyncColumn {
 
 #define PDB_ERROR_INFO_VERSION 1
 #define PDB_CONNECTION_STATE_VERSION 1
+#define PDB_RESTRICTED_VERSION 1
+#define PDB_RESTRICTED_SQL_BYTES 2048
+#define PDB_RESTRICTED_MAX_PARAMS 16
+#define PDB_RESTRICTED_MAX_STATEMENTS 8
+#define PDB_RESTRICTED_MAX_ROWS 16
+#define PDB_RESTRICTED_MAX_COLUMNS 16
+#define PDB_RESTRICTED_TEXT_BYTES 4096
+#define PDB_RESTRICTED_VM_MAX 1000000UL
+#define PDB_RESTRICTED_QUERY 1
+#define PDB_RESTRICTED_EXECUTE 2
 #define PDB_ERROR_MESSAGE_BYTES 256
 
 enum {
@@ -209,6 +219,73 @@ PDB_API int PDb_CopyLastError(PDbHandle db, char* buffer, int capacity);
  * one transaction and the stored schema version advances only on commit. */
 PDB_API int PDb_ApplyMigration(PDbHandle db, int version,
         const char* sql_script);
+
+/* Opt-in, owner-thread-only restricted local SQL, never implicit on old APIs.
+ * Requires local-full, no transaction/outstanding statements. One owned
+ * transaction per call; success only after COMMIT, failure attempts ROLLBACK
+ * with the existing sticky/cleanup diagnostic contract. Caller outputs stay
+ * unchanged on failure; provisional row callbacks MUST be buffered privately
+ * and discarded on any non-OK return. No JS/UI publication before success.
+ * Authorizer permits only main-database SELECT/ordinary DML and a documented
+ * safe function allowlist, including inside views/triggers; no DDL, temp,
+ * PRAGMA, ATTACH, host transactions, extension or private __pdb_/sqlite_ data.
+ * Trusted schema migrations remain separate host operations, never SQL input
+ * from the unprivileged request. This is not a malicious-code/VFS sandbox.
+ * All inputs are borrowed synchronously. SQL is explicit-length UTF-8 with
+ * no embedded NUL, one statement plus whitespace; binds by SQLite index,
+ * exact parameter count. Text is length-delimited UTF-8; BLOB/nonfinite real
+ * unsupported. QUERY must be readonly; EXECUTE must not return columns.
+ * <=8 statements, SQL <=2048 bytes each, <=16 params/columns, <=16 total rows;
+ * <=4096 total result text bytes. No truncation. Runtime separately bounds
+ * request/result JSON to 4096 bytes and encodes int64 as decimal, not double.
+ * VM budget shared across the batch, 100..1000000 in multiples of 100.
+ * SQLite progress checkpoints are conservative work accounting, not a hard
+ * wall-clock/memory/VFS interruption guarantee. Cancellation is checked before
+ * work, at checkpoints/row boundaries and before commit. Cancel callback only
+ * reads host atomic state; it and row callbacks must not reenter/close/cleanup
+ * DB, pump messages, block or expose provisional data. No cross-thread handle
+ * calls. Limit -> PDB_LIMIT, cancellation -> PDB_STATE/CANCELLED category.
+ * Unpreparable SQL returns SQL_REJECTED with its native SQL diagnostic;
+ * actual authorizer denials have AUTHORIZATION category. No message parsing.
+ * No callbacks after return. Old PDb_Cancel behavior unchanged. */
+typedef struct PDbRestrictedValue {
+    int type; /* NULL/INTEGER/REAL/TEXT from PDB_VALUE_*. */
+    __int64 integer;
+    double real;
+    const char* text;
+    int text_bytes;
+} PDbRestrictedValue;
+typedef struct PDbRestrictedStatement {
+    const char* sql;
+    int sql_bytes;
+    int kind;
+    const PDbRestrictedValue* params;
+    int param_count;
+} PDbRestrictedStatement;
+typedef int (*PDbRestrictedCancelFn)(void* user_data);
+/* Return PDB_OK to accept a provisional row, PDB_LIMIT for result overflow,
+ * any other nonzero value aborts as PDB_STATE. Values/text are borrowed only
+ * until callback return. statement_index is zero-based. */
+typedef int (*PDbRestrictedRowFn)(void* user_data, int statement_index,
+        const PDbRestrictedValue* values, int column_count);
+typedef struct PDbRestrictedOptions {
+    unsigned int size;
+    unsigned int version;
+    unsigned long vm_budget;
+    PDbRestrictedCancelFn cancelled;
+    PDbRestrictedRowFn row;
+    void* user_data;
+} PDbRestrictedOptions;
+typedef struct PDbRestrictedReport {
+    unsigned int size;
+    unsigned int version;
+    int statement_count;
+    int row_count;
+    __int64 changes; /* committed total changes, including triggers. */
+} PDbRestrictedReport;
+PDB_API int PDb_ExecuteRestricted(PDbHandle db,
+        const PDbRestrictedStatement* statements, int statement_count,
+        const PDbRestrictedOptions* options, PDbRestrictedReport* report);
 
 /* Configure the durable identity and schema contract used by sync requests.
  * schema_version must equal the latest applied migration version. */

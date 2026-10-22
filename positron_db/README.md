@@ -55,6 +55,98 @@ from successful rollback. An I/O/corruption category does not authorize deleting
 the database or guarantee that it is safe to retry. Real storage faults and
 power-loss recovery need separate device validation.
 
+## Opt-in restricted requests
+
+`PDb_ExecuteRestricted()` is the DB prerequisite for the resource-application
+runtime in [the approved plan](../docs/RUNTIME_PLAN.md). It is not an implicit
+restriction on existing local-full consumers, nor permission to expose a
+browser database to a page. Runtime must select an isolated application DB,
+validate its identity/permissions and provide the asynchronous service layer.
+Those Runtime and EXE integrations are separate work.
+
+The caller supplies v1 size/version options and report, an array of up to eight
+explicit-length statements, typed positional parameters and optional callbacks.
+Use the DB only on its owner worker. The connection must be local-full, idle,
+without outstanding statements or an enclosing transaction. The call owns one
+transaction and publishes the report only after COMMIT. Errors leave the report
+unchanged and attempt rollback using the sticky error/cleanup contract above.
+
+The authorizer is active during both compilation and execution, including view
+and trigger access. It permits main-database SELECT and ordinary INSERT/UPDATE/
+DELETE, not DDL, temporary/attached databases, PRAGMA, extension loading, host
+transaction/savepoint control or `__pdb_`/`sqlite_` objects (ASCII case-insensitive).
+A statement must actually receive query/DML authorization; maintenance operations
+such as VACUUM cannot bypass that test. Unpreparable SQL also returns
+`PDB_SQL_REJECTED`, with its original SQL diagnostic; actual authorizer denials
+use AUTHORIZATION. There is no keyword filtering or error-message interpretation.
+
+Allowed functions are abs/avg/char/coalesce/count/date/datetime/format/glob/hex/
+ifnull/iif/instr/julianday/length/like/likelihood/likely/lower/ltrim/max/min/nullif/
+printf/quote/replace/round/rtrim/sign/strftime/substr/substring/sum/time/total/trim/
+typeof/unicode/unixepoch/unlikely/upper/changes/last_insert_rowid. Schema comes
+from separate trusted migration calls, never an author-supplied service request;
+this contract does not authenticate a manifest or establish a malicious-code
+sandbox. Unknown/unavailable functions fail rather than extending the allowlist.
+
+Limits are 2048 UTF-8 SQL bytes per statement, 16 exact-index binds, 16 columns,
+16 total result rows and 4096 aggregate result-text bytes. QUERY must be readonly;
+EXECUTE must not return columns, so DML RETURNING is rejected. NULL, int64,
+finite real and length-delimited UTF-8 text are supported; BLOB/nonfinite results
+are unsupported. A bound text value is limited to 4096 bytes. SQL cannot contain
+embedded NUL or extra statements; trailing whitespace is allowed. Nothing is
+silently truncated. Runtime must separately enforce its 4096-byte request/result
+JSON limit, preserve int64 as typed decimal strings and reject JSON overflow.
+
+The shared work budget is 100–1000000 in multiples of 100. Each statement reserves
+100 units for a partial checkpoint; further SQLite progress checkpoints charge
+100 units. This is conservative work accounting, not exact profiler instruction
+counts or a hard wall-clock/VFS/memory bound. SQLite may also call progress during
+compilation. Budget exhaustion is `PDB_LIMIT`; cancellation is
+`PDB_STATE` with CANCELLED category. The borrowed cancel callback only reads a
+host atomic flag; the UI never calls a DB handle across threads. Cancellation
+is checked before work, at checkpoints/row boundaries and before COMMIT; it
+cannot undo a transaction already committed or preempt a blocking VFS operation.
+The old owner-thread `PDb_Cancel()` contract remains unchanged.
+
+```c
+PDbRestrictedOptions options;
+PDbRestrictedReport report;
+PDbRestrictedStatement query;
+int rc;
+
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PDB_RESTRICTED_VERSION;
+options.vm_budget = PDB_RESTRICTED_VM_MAX;
+options.cancelled = read_atomic_cancel; /* no DB calls or UI pumping */
+options.row = buffer_provisional_row;  /* copy values; return LIMIT if full */
+options.user_data = request;
+memset(&report, 0, sizeof(report));
+report.size = sizeof(report);
+report.version = PDB_RESTRICTED_VERSION;
+memset(&query, 0, sizeof(query));
+query.sql = "SELECT id, body FROM notes ORDER BY id LIMIT 16";
+query.sql_bytes = (int)strlen(query.sql);
+query.kind = PDB_RESTRICTED_QUERY;
+rc = PDb_ExecuteRestricted(db, &query, 1, &options, &report);
+/* Only rc == PDB_OK permits publishing buffered results after identity and
+   generation checks. Otherwise discard them and inspect PDb_GetErrorInfo(). */
+```
+
+Rows are synchronous, borrowed and **provisional**: a later constraint, overflow,
+cancel or COMMIT failure invalidates all of them. The callback must copy to its
+private bounded buffer, not send JS/UI messages or perform external effects;
+return `PDB_LIMIT` for result overflow, another nonzero value for state rejection.
+Missing row callback rejects any nonempty result. Same-DB status reentry refuses
+STATE and callback Close cannot free the active request. Do not retain pointers,
+block, pump messages or invoke cleanup from either callback. No callback survives
+return. The report counts committed statements/rows and total changes including
+triggers; it is not a filesystem durability or retry guarantee.
+
+Deploy the matching DB DLL and public header/import library from one formal
+configuration; its existing JSON DLL dependency is unchanged. Legacy local,
+sync, migration, error and transaction APIs keep their ABI and behavior.
+
 ## Local and sync modes
 
 The DLL has two modes:

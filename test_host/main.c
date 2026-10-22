@@ -111,6 +111,8 @@ extern BOOL test1351_http_probe_verified_https(void);
 extern const char *test1350_http_probe_last_error(void);
 extern const char *test1329_core_bootstrap_hamburger_last_error(void);
 extern BOOL test1321_db_contract(void (*progress)(const char*));
+extern BOOL test1363_db_restricted_contract(void);
+extern const char* test1363_db_restricted_last_error(void);
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
 extern BOOL test1345_core_text_wrap_contract(void);
@@ -1276,7 +1278,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1362
+#define TEST_MAX_NUMBER 1363
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118315,6 +118317,11 @@ static int run_configured_tests(const unsigned char *selected,
                 show_error(L"TEST 1321 FAIL",
                         "positron_db local/sync contract failed.");
             }
+            break;
+        case 1363:
+            ok = test1363_db_restricted_contract();
+            if (ok) { show_info(L"TEST 1363 OK", "Restricted SQL authorizer, shared budget and rollback passed."); }
+            else { show_error(L"TEST 1363 FAIL", test1363_db_restricted_last_error()); }
             break;
         case 1322:
             ok = test1322_browser_application_script_profile();

@@ -242,7 +242,11 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 使用`app://`并复用现有浏览器UI；新增Runtime、DB受限执行、Core/Browser资源与授权合同
 由主线与DLL会话负责，EXE会话只接平台、SDK及示例。完整合同见
 [运行时计划](../docs/RUNTIME_PLAN.md)，不在本节复制字段/预算。
-下一步完成版本化公共接口与设备证据，再接入目录笔记示例；PXI只用经验证的系统ZIP能力，
+DB 普通受限请求已具备版本化原语与双配置设备证据，合同见
+[DB README](../positron_db/README.md#opt-in-restricted-requests)，不再作为待实现入口。
+下一步固化 Runtime manifest/规范 ID/目录实例及 app 资源合同，再实现迁移准入、隔离 DB
+映射与受控 JSON 服务，补足 Core/Browser 接线后才交给 EXE 目录笔记示例；不把受限 SQL
+原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。PXI只用经验证的系统ZIP能力，
 无合格接口则只挂起安装，不引第三方解压库或私有fallback。普通网页不因URL获权，
 不开放浏览器数据库；保留旧ABI、用户数据和暂停的故障门，构建/设备必须独占串行。
 
