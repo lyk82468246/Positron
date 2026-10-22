@@ -11,8 +11,8 @@ native permission decision; it does not execute them or select a database.
 Development storage now binds an exact private DB identity, runs admitted
 migrations and executes bounded typed SQL JSON on its owner worker.
 This does **not yet run directory applications in the browser**: the general WM
-provider/EXE integration, installed identities, asynchronous session authorization,
-Core/Browser app resource wiring and PXI remain separate prerequisites. The native
+provider/EXE integration, installed identities and EXE session authorization remain
+separate requirements. Core/Browser already expose the resource composition below. The native
 SQL service queue below now supplies bounded cross-thread delivery and revocation;
 it is not EXE integration or permission inferred from an address.
 
@@ -400,6 +400,65 @@ freeing its state or unloading DLLs. GetInfo is a copied snapshot callable only
 from the worker or specified delivery thread. As with other native handles,
 freed aliases are invalid; the queue does not make a stale Browser pointer safe.
 
+## Composing a directory page with Core and Browser
+
+No new Core/Browser ABI is required for the bounded resource path. Resolve app
+references with Runtime, not HTTP's network-hostname parser: IDs may contain
+underscores. Keep canonical navigation URL (including query/fragment) separate from
+the decoded native resource key. Pass the committed entry URL as document base to
+`PCore_StyleDocumentEx2` and `PCore_FetchScriptResourcesEx`; the resolver callback
+delegates to Runtime, so relative CSS, nested `@import`, CSS image URLs and external
+scripts retain the correct base. Read resources through the bound directory, not
+by concatenating a URL to a native root. Core owns discovered script/image caches,
+style, DOM mutation, layout and Image-backed paint.
+
+The synchronous offline fixture creates its directory on the Core test thread to
+prove composition, **not** as a UI I/O architecture recommendation. In the EXE,
+keep directory/storage and native reads on their worker. Send copied verified
+manifest bytes to UI and create a separate immutable metadata handle there for
+`PRuntime_ManifestResolveReference`; it is a resolver snapshot, never a service
+grant or a directory handle moved across threads. Worker results carry copied
+bytes and explicit identity/tab/generation. UI Core fetch callbacks consult the
+Browser resource transaction's completed bytes; on a miss schedule bounded worker
+I/O through the existing candidate pipeline. For pending images use Core's Ex
+PENDING result, not the legacy terminal-failure return. Do not evaluate scripts,
+access Core or deliver Browser results on that worker.
+
+Required stylesheet/import failure must block the candidate via
+`PBrowser_NavigationCommitGetInfo`; optional images/scripts retain their existing
+fallback rules. Keep the old DOM/history and service queue until actual successful
+replacement. After resource discovery, configure a fresh Browser session's Core
+callbacks/document URL, finish its bounded bootstrap, explicitly register only
+the granted service methods, and then execute author scripts in document order.
+Normal app addresses do not install `PositronServices`. Core text mutation still
+requires restyle/layout before paint; repeated layout/paint reuses retained SVG.
+Browser history can retain canonical app URL and fragment without treating that
+string as a filesystem path or SQL identity.
+
+The host must implement and test physical root canonicalization/containment,
+native leases/data location, permission confirmation, resource scheduling and
+normal worker shutdown. The fixture's exact private-file allowlist is not that
+general WM provider. Respect Core/Browser limits below Runtime's 8 MiB read ceiling;
+this integration does not enlarge script heap/source/timeout or permit remote
+application assets. Handle an explicit HTTP(S) navigation as ordinary browsing
+and revoke the departing page's app services; do not add a network SQL service.
+
+## PXI availability
+
+The approved installer requires a verified **system ZIP** provider. The current
+device's read-only inventory did not find ZIP-named Windows components or the
+queried ZIP/CompressedFolder/Shell automation registrations. This does not prove
+all ROMs lack ZIP, or that an unrelated OEM component could never supply it. No
+provider with bounded extraction, reliable completion/error/cancellation,
+Unicode containment, conflict and cleanup guarantees has been verified here.
+
+PXI installation, installed identity/open/update and file association are therefore
+not implemented. Directory applications do not depend on them. Neither desktop
+Shell declarations nor CAB decompression are a ZIP fallback; do not silently add
+a private parser, third-party decoder or alternate package format. Resume only
+with a concrete system provider and the approved installer evidence, or a new
+user-approved change of scope.
+
 ## C lifecycle and failure contract
 
 ```c
@@ -464,6 +523,9 @@ mismatch rejection, per-file migration failure/resume, all-source admission
 before DDL, typed SQL/batch rollback, encoded overflow, cancellation and budget
 guards. A real UI/worker fixture composes the Browser bridge with eight-slot
 backpressure, four page contexts, duplicate/replay rejection, running cancellation,
-rollback and post-COMMIT stale-result disposal. None proves a generic filesystem
+rollback and post-COMMIT stale-result disposal. The app-resource fixture drives
+real relative CSS/imports, external JS/Core text mutation, image/background
+discovery, SVG pixels/cache, resource commit/history and no URL-derived services.
+The read-only ZIP inventory is not an extraction test. None proves a generic filesystem
 canonicalizer, installed launch, EXE authorization, PXI/ZIP or complete browser UI integration. Device evidence belongs
 to the current handoff, not this stable document.

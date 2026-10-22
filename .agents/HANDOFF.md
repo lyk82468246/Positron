@@ -21,29 +21,30 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 开发存储、typed SQL 与异步队列已验收
+### Runtime 公共合同与目录资源组合；存储间歇失败未关闭
 
 Runtime 只链接 JSON/DB 公共库；目录与 data provider、身份/迁移、typed SQL 及预算/释放合同见
 [Runtime README](../positron_runtime/README.md)。fixture 仅处理私有已知根，不是通用 WM 适配器。
-原生异步页面队列已完成；安装身份、EXE 页面授权与 Core/Browser app 组合仍待完成；PXI 未取证，不改 EXE/CAB。
+原生队列及 Core/Browser app 资源组合已有自动证据，不需新增 Core/Browser ABI；EXE provider、
+页面授权/worker/SDK/示例未接线。当前 ROM 未发现 ZIP 命名文件或所查六个 Shell 注册入口，
+未取得合格系统 ZIP provider；PXI/安装身份/关联暂缓，不外推所有 ROM，不引解压 fallback。
 
-开发根/ID 完整身份、迁移 pending 后缀、COMMIT 前有界 typed JSON 编码仍由 Runtime/DB
-拥有；详细预算、失败不变性和 native provider 责任以组件 README 为准，旧 ABI 不变。
+队列双配置基线与证据由 a4d7b23b 保留；迁移、typed JSON、隔离、八槽/四页面及线程/撤销
+合同见组件文档，不在交接复制；资源 URL 不授权，迟到写入结果绝不重跑 SQL。
 
-队列最多四个独立页面，每页八项；UI 只复制提交/取结果，worker 拥有 DB。重复页面/请求拒绝，
-撤销丢弃迟到结果，COMMIT 后绝不重跑写入；关闭顺序和 Browser 组合见 Runtime README。
-Debug `tmp/device-runs/20261023-002445-queue-sessions-debug-accepted/`、Release
-`tmp/device-runs/20261023-002553-queue-sessions-release-final/` 各 `1341,1363-1370,999` 10/10 PASS，
-唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash、双空间与新 guest 零引用通过，无新增 dump。
-145 文件 SD 包回收后清理，45 个旧不完整目录保留；C89/审计与串行正式两配置构建通过。
-未改 WMDC、EXE/用户 DB，无强杀或 nightly。TEST1368/1369 覆盖隔离/重开、迁移失败/恢复、
-typed JSON 精度、批/编码/预算/取消回滚及 owner/reentry；TEST1370 增加真实 UI/worker、Browser
-交付、四队列/八槽、replay、运行中取消回滚与提交后撤销，旧 DB/Runtime 断言保持。
-队列探针实测同一 189 字节 fixture 的映像常量 WriteFile 失败而私有堆副本成功；现 helper
-总是有界复制后写并校验完整字节，不改产品 I/O 或断言，不推断通用 CE 原因。旧失败包保留。
-四队列首轮 worker 初始化失败未定位，后续最终 Debug/Release 同合同通过，不追认旧失败。
-旧 TEST1365 error=183 与 helper 缺摘要根因未定；VS/msenv 访问冲突由正式重试恢复。
-失败证据见 Git/本地日志，未放宽断言、改变工具链或删除不完整遗留包。
+最新 Debug `tmp/device-runs/20261023-075334-runtime-parent-path-probe/` 为 `1368-1372,999` 6/6；
+Release `tmp/device-runs/20261023-075627-runtime-page-release-accepted/` 为 `1371,1372,999` 3/3。
+TEST1371 资源组合、真实 JS 地址/无授权及绘制断言范围见能力矩阵；TEST1372 仅只读清单。
+两配置正式构建、C89/审计及所列门完整日志/唯一 PASS/零 ERROR、Core/crash/双空间/零引用
+通过，无 dump；145 文件 SD 包回收后清理，45 个旧不完整目录保留；未改 EXE/用户 DB/WMDC。
+
+相邻存储门不能写成全部通过：旧 Debug/Release 各 13 项曾通过，但后续仍间歇失败。
+`20261023-075450-runtime-directory-release-closeout` 的 TEST1369 在 schema=1 返回
+Runtime=-11/DB=-1/category=12/SQLite=14（CANTOPEN），dataAttr=16/fileAttr=0。
+`20261023-005130-runtime-native-parent-diagnostic` 的 mkdir 返回183，随后属性仍不可取得；
+已有 TEST1368 粗断言和 TEST1370 初始化失败也保留。
+fixture 现验证各级目录并保留路径/结构化诊断与原断言；尚未归属 provider、VFS 或映射卷，
+不能归因缺空间或宣称修复。旧 WriteFile 差异见 Git，helper 固定有界复制，不作失败后重试。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -494,13 +495,10 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
 下载重下/历史单删/80条历史搜索已获人工通过；完整SIP/旋转/OEM不外推。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
-系统ZIP无可用接口则挂起PXI。ROADMAP/能力矩阵已复核：DB 受限请求、受限迁移/严格版本
-原语、可信 provider 上的开发目录/只读资源、迁移来源/执行与开发 SQL JSON 均已完成。
-异步队列/页面撤销已完成。唯一下一步验证 Core/Browser app 组合与系统 ZIP；
-EXE 的通用 WM provider 和目录示例仍等完整合同，不凭 manifest、URL 或目录句柄私造服务授权。
-ZIP 未取证，不改 EXE/CAB/用户 DB，不重开像素、FULL/断电与保存框暂缓门。
-构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。
+ROADMAP 已复核：目录公共合同/资源组合退出待实现队列，PXI 暂缓；当前失败见 Runtime 节。
+按最新用户指示，本轮后停止且未触发应用会话，构建/设备窗口释放。唯一恢复步骤是建立正常
+SD 目录/数据库打开的原生 I/O 与 DB 最小对照，定位183/CANTOPEN，不继续重跑宽门；之后再
+投递 EXE provider/授权/worker/SDK/目录示例。不重开 FULL/断电或保存框暂缓门，不改用户 DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自

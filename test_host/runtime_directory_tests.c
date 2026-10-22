@@ -10,6 +10,7 @@
 #include "positron_json.h"
 #include "positron_browser.h"
 #include "positron_script.h"
+#include "positron_core.h"
 
 static const char fixture_manifest[] = "{\"manifestVersion\":1,\"id\":\"Org.Demo_App.Notes\",\"name\":\"Notes\","
     "\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
@@ -20,6 +21,115 @@ const char* test1367_runtime_migrations_last_error(void) { return directory_erro
 const char* test1368_runtime_storage_last_error(void) { return directory_error; }
 const char* test1369_runtime_sql_last_error(void) { return directory_error; }
 const char* test1370_runtime_queue_last_error(void) { return directory_error; }
+const char* test1371_runtime_page_last_error(void) { return directory_error; }
+static char runtime_zip_report[4096];
+const char* test1372_runtime_zip_report(void) { return runtime_zip_report; }
+BOOL test1372_runtime_zip_probe(void)
+{
+    static const WCHAR* keys[] = { L".zip", L"CompressedFolder\\CLSID", L"CompressedFolder\\shell\\open\\command",
+        L"zipfile\\shell\\open\\command", L"CLSID\\{E88DCCE0-B7B3-11D1-A9F0-00AA0060FA31}\\InProcServer32",
+        L"CLSID\\{13709620-C279-11CE-A49E-444553540000}\\InProcServer32" };
+    WIN32_FIND_DATAW data;
+    HANDLE find;
+    HKEY key;
+    WCHAR value[256];
+    char utf8[768];
+    char line[900];
+    DWORD size;
+    DWORD type;
+    DWORD error;
+    unsigned int i;
+    unsigned int count;
+    LONG rc;
+    strcpy(runtime_zip_report, "Read-only ROM ZIP inventory (not installer acceptance):");
+    count = 0; SetLastError(0); find = FindFirstFileW(L"\\Windows\\*zip*", &data); error = GetLastError();
+    if (find != INVALID_HANDLE_VALUE) {
+        do {
+            if (++count > 32) { FindClose(find); directory_error = "ROM ZIP inventory exceeded 32 entries"; return FALSE; }
+            if (!WideCharToMultiByte(CP_UTF8, 0, data.cFileName, -1, utf8, sizeof(utf8), NULL, NULL)) { FindClose(find); return FALSE; }
+            sprintf(line, "\nfile=%s bytes=%lu attributes=%lu", utf8, data.nFileSizeLow, data.dwFileAttributes);
+            if (strlen(runtime_zip_report) + strlen(line) >= sizeof(runtime_zip_report)) { FindClose(find); return FALSE; }
+            strcat(runtime_zip_report, line);
+        } while (FindNextFileW(find, &data));
+        error = GetLastError(); FindClose(find);
+        if (error != ERROR_NO_MORE_FILES) { directory_error = "ROM ZIP enumeration incomplete"; return FALSE; }
+    } else if (error != ERROR_FILE_NOT_FOUND && error != ERROR_NO_MORE_FILES) {
+        sprintf(runtime_zip_report, "ROM ZIP enumeration unavailable native=%lu", error); return FALSE;
+    }
+    if (!count) strcat(runtime_zip_report, "\nWindows ZIP-named files=0");
+    for (i = 0; i < sizeof(keys)/sizeof(keys[0]); i++) {
+        key = NULL; rc = RegOpenKeyExW(HKEY_CLASSES_ROOT, keys[i], 0, KEY_READ, &key);
+        sprintf(line, "\nassociation[%u] open=%ld", i, rc);
+        if (strlen(runtime_zip_report) + strlen(line) >= sizeof(runtime_zip_report)) { if (key) RegCloseKey(key); return FALSE; }
+        strcat(runtime_zip_report, line);
+        if (rc == ERROR_SUCCESS) {
+            memset(value, 0, sizeof(value)); size = sizeof(value); type = 0;
+            rc = RegQueryValueExW(key, NULL, NULL, &type, (BYTE*)value, &size); RegCloseKey(key);
+            if (rc == ERROR_SUCCESS && (type == REG_SZ || type == REG_EXPAND_SZ) && size <= sizeof(value) &&
+                    size >= sizeof(WCHAR) && value[size/sizeof(WCHAR)-1] == 0 &&
+                    WideCharToMultiByte(CP_UTF8, 0, value, -1, utf8, sizeof(utf8), NULL, NULL)) {
+                sprintf(line, " value=%s", utf8);
+            } else sprintf(line, " query=%ld type=%lu bytes=%lu", rc, type, size);
+            if (strlen(runtime_zip_report) + strlen(line) >= sizeof(runtime_zip_report)) return FALSE;
+            strcat(runtime_zip_report, line);
+        }
+    }
+    if (strlen(runtime_zip_report) + 100 >= sizeof(runtime_zip_report)) return FALSE;
+    strcat(runtime_zip_report, "\nNo extraction/launch/registry write. Shell association alone is not a bounded ZIP API.");
+    return TRUE;
+}
+typedef struct RuntimePageFixture {
+    PRuntimeDirectoryHandle directory;
+    HANDLE resources;
+    HANDLE doc;
+    unsigned int role;
+    int copied;
+    int released;
+} RuntimePageFixture;
+static int runtime_page_resolve(void* pw, const char* base, const char* ref, char* output, int capacity)
+{
+    RuntimePageFixture* f;
+    PRuntimeResourceReference r;
+    int rc;
+    f = (RuntimePageFixture*)pw; r.size = sizeof(r); r.version = 1;
+    rc = PRuntime_DirectoryResolveReference(f->directory, base, base ? (unsigned int)strlen(base) : 0,
+        ref, ref ? (unsigned int)strlen(ref) : 0, &r);
+    if (rc || capacity <= (int)strlen(r.url)) return 1;
+    strcpy(output, r.url); return 0;
+}
+static int runtime_page_fetch(void* pw, const char* url, char** data, int* len)
+{
+    RuntimePageFixture* f;
+    PRuntimeResourceReference r;
+    unsigned int bytes;
+    char* copy;
+    int index;
+    int rc;
+    f = (RuntimePageFixture*)pw; index = -1;
+    if (PBrowser_NavigationResourceRegister(f->resources, url,
+            f->role == PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET, f->role, &index)) return 1;
+    copy = (char*)malloc(4097); if (!copy) return 1;
+    if (!PBrowser_NavigationResourceCopyData(f->resources, index, copy, 4097, len)) {
+        *data = copy; f->copied++; return 0;
+    }
+    if (PBrowser_NavigationResourceBeginAttempt(f->resources, index)) { free(copy); return 1; }
+    r.size = sizeof(r); r.version = 1; bytes = 0;
+    rc = PRuntime_DirectoryReadResource(f->directory, NULL, 0, url, (unsigned int)strlen(url), copy, 4096, &bytes, &r);
+    if (!rc) rc = PBrowser_NavigationResourceSetData(f->resources, index, copy, (int)bytes);
+    if (rc) {
+        PBrowser_NavigationResourceFail(f->resources, index, PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
+        free(copy); return 1;
+    }
+    copy[bytes] = 0; *data = copy; *len = (int)bytes; f->copied++; return 0;
+}
+static void runtime_page_free(void* pw, char* data)
+{ RuntimePageFixture* f; f = (RuntimePageFixture*)pw; free(data); f->released++; }
+static int runtime_page_has(void* pw, const char* id)
+{ return PCore_NodeExistsById(((RuntimePageFixture*)pw)->doc, id); }
+static int runtime_page_text(void* pw, const char* id, char* text, int capacity, int* bytes)
+{ return PCore_NodeTextContentById(((RuntimePageFixture*)pw)->doc, id, text, capacity, bytes); }
+static int runtime_page_set(void* pw, const char* id, const char* text)
+{ return PCore_NodeSetTextContentById(((RuntimePageFixture*)pw)->doc, id, text) == 0 ? 1 : -1; }
 typedef struct DirectoryFixture {
     WCHAR root[MAX_PATH];
     WCHAR outer[MAX_PATH];
@@ -149,6 +259,8 @@ static int directory_fixture_read(void* user, void* root, const char* key, unsig
      * provider additionally confines opens to the four files it created. */
     if (strcmp(key, "manifest.json") && strcmp(key, "index.html") &&
             strcmp(key, "\xe5\x9b\xbe.svg") && strcmp(key, "empty") &&
+            strcmp(key, "pages/index.html") && strcmp(key, "assets/main.css") &&
+            strcmp(key, "assets/theme.css") && strcmp(key, "assets/main.js") && strcmp(key, "assets/icon.svg") &&
             !(strlen(key) == 7 && key[0] == 'm' && key[1] >= '0' && key[1] <= '1' &&
             key[2] >= '0' && key[2] <= '9' && !strcmp(key + 3, ".sql"))) return PRUNTIME_IO;
     if (!MultiByteToWideChar(CP_UTF8, 0, key, -1, relative, 256)) return PRUNTIME_IO;
@@ -527,6 +639,23 @@ typedef struct StorageFixture {
     int hold;
     int polls;
 } StorageFixture;
+static int storage_fixture_directory(const WCHAR* path)
+{
+    DWORD attributes;
+    DWORD error;
+    DWORD attribute_error;
+    char text[800];
+    attributes = GetFileAttributesW(path);
+    if (attributes != 0xffffffffUL) return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    SetLastError(0);
+    if (CreateDirectoryW(path, NULL)) return 1;
+    error = GetLastError();
+    attributes = GetFileAttributesW(path); attribute_error = GetLastError();
+    if (!WideCharToMultiByte(CP_UTF8, 0, path, -1, text, sizeof(text), NULL, NULL)) strcpy(text, "<conversion failed>");
+    sprintf(directory_diagnostic, "storage native mkdir failed error=%lu after=%lu attrError=%lu chars=%u path=%.800s",
+        error, attributes, attribute_error, (unsigned int)wcslen(path), text);
+    return 0;
+}
 static int storage_fixture_open(void* user, const char* key, PRuntimeStorageLocation* out)
 {
     StorageFixture* f;
@@ -542,10 +671,10 @@ static int storage_fixture_open(void* user, const char* key, PRuntimeStorageLoca
         part[i] = key[7 + i];
     }
     part[16] = 0;
-    wsprintfW(f->data, L"%s\\data", f->directory->outer); CreateDirectoryW(f->data, NULL);
-    wsprintfW(path, L"%s\\v1", f->data); CreateDirectoryW(path, NULL);
-    wsprintfW(path, L"%s\\v1\\dev", f->data); CreateDirectoryW(path, NULL);
-    wsprintfW(path, L"%s\\v1\\dev\\%s", f->data, part); CreateDirectoryW(path, NULL);
+    wsprintfW(f->data, L"%s\\data", f->directory->outer); if (!storage_fixture_directory(f->data)) return PRUNTIME_IO;
+    wsprintfW(path, L"%s\\v1", f->data); if (!storage_fixture_directory(path)) return PRUNTIME_IO;
+    wsprintfW(path, L"%s\\v1\\dev", f->data); if (!storage_fixture_directory(path)) return PRUNTIME_IO;
+    wsprintfW(path, L"%s\\v1\\dev\\%s", f->data, part); if (!storage_fixture_directory(path)) return PRUNTIME_IO;
     wsprintfW(f->path, L"%s\\app.db", path);
     known = 0;
     for (i = 0; i < f->count; i++) if (!strcmp(key, f->keys[i])) known = 1;
@@ -640,6 +769,7 @@ BOOL test1368_runtime_storage_contract(void)
     int outer2;
     int root2;
     int version;
+    int admission_rc;
     int reads;
     BOOL ok;
     storage = second = NULL; db = NULL; stmt = NULL; thread = NULL; ok = FALSE;
@@ -736,9 +866,15 @@ BOOL test1368_runtime_storage_contract(void)
         directory_fixture_write(&f, L"m02.sql", "\xc0", 1) &&
         PRuntime_DevelopmentDirectoryOpen(f.canonical, (unsigned int)strlen(f.canonical), &provider, &f.instance) == 0,
         "invalid later file before migration writes"); sf.reentry_target = f.instance;
-    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error) == PRUNTIME_INVALID && !storage &&
-        PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) == 0 && PDb_GetMigrationVersion(db, &version) == 0 && !version &&
-        PDb_Prepare(db, "SELECT * FROM notes", &stmt) != 0, "all sources admitted before first DDL, metadata only on failure");
+    admission_rc = PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error);
+    sprintf(directory_diagnostic, "invalid source admission rc=%d storage=%d db=%d category=%d failedSchema=%u",
+        admission_rc, storage != NULL, error.db_result, error.db_category, error.failed_schema_version);
+    RUNTIME_VERIFY(admission_rc == PRUNTIME_INVALID && !storage, directory_diagnostic);
+    RUNTIME_VERIFY(PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) == 0, "invalid source DB metadata reopen");
+    version = -1; admission_rc = PDb_GetMigrationVersion(db, &version);
+    sprintf(directory_diagnostic, "invalid source schema stays zero rc=%d version=%d", admission_rc, version);
+    RUNTIME_VERIFY(admission_rc == 0 && !version, directory_diagnostic);
+    RUNTIME_VERIFY(PDb_Prepare(db, "SELECT * FROM notes", &stmt) != 0, "invalid later source must prevent first notes DDL");
     PDb_Close(db); db = NULL;
     ok = TRUE;
 done:
@@ -796,6 +932,7 @@ BOOL test1369_runtime_sql_contract(void)
     char output[4097];
     char request[4097];
     char encoded[128];
+    int open_result;
     int outer;
     int root;
     BOOL ok;
@@ -810,7 +947,12 @@ BOOL test1369_runtime_sql_contract(void)
     memset(&sp, 0, sizeof(sp)); sp.size = sizeof(sp); sp.version = 1; sp.user_data = &sf; sp.open_location = storage_fixture_open; sp.close_location = storage_fixture_close;
     memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1; options.granted_permissions = 1;
     options.vm_budget = 1000000; options.cancelled = storage_fixture_cancel; options.user_data = &sf;
-    RUNTIME_VERIFY(PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, NULL) == 0, "SQL ready storage"); sf.live = storage;
+    error.size = sizeof(error); error.version = 1;
+    open_result = PRuntime_DevelopmentStorageOpen(f.instance, &options, &sp, &storage, &error);
+    if (open_result != PRUNTIME_IO) sprintf(directory_diagnostic, "SQL ready storage rc=%d db=%d category=%d sqlite=%d/%d schema=%lu dataAttr=%lu fileAttr=%lu message=%.250s",
+        open_result, error.db_result, error.db_category, error.sqlite_code, error.sqlite_extended_code, error.failed_schema_version,
+        GetFileAttributesW(sf.data), GetFileAttributesW(sf.path), error.message);
+    RUNTIME_VERIFY(open_result == 0, directory_diagnostic); sf.live = storage;
     RUNTIME_VERIFY(sql_fixture_call(storage, "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT ?,?,?,?,? FROM notes WHERE id=1\",\"params\":["
         "{\"type\":\"int64\",\"value\":\"9223372036854775807\"},{\"type\":\"int64\",\"value\":\"-9223372036854775808\"},"
         "{\"type\":\"real\",\"value\":1.25},{\"type\":\"null\"},{\"type\":\"text\",\"value\":\"\xe4\xb8\xad\\n\\\"\\\\\"}]}", output, &written, 0) &&
@@ -893,6 +1035,7 @@ static DWORD WINAPI queue_fixture_worker(void* user)
     PRuntimeDirectoryProvider directory_provider;
     PRuntimeStorageProvider provider;
     PRuntimeStorageOptions options;
+    PRuntimeStorageError error;
     PRuntimeStorageHandle alias;
     PRuntimeServiceQueueHandle extra[4];
     PRuntimeServiceQueueOptions extra_options;
@@ -910,7 +1053,10 @@ static DWORD WINAPI queue_fixture_worker(void* user)
         memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
         options.granted_permissions = 1; options.vm_budget = 1000000;
         options.cancelled = storage_fixture_cancel; options.user_data = &f->native;
-        f->result = PRuntime_DevelopmentStorageOpen(f->directory.instance, &options, &provider, &f->storage, NULL);
+        error.size = sizeof(error); error.version = 1;
+        f->result = PRuntime_DevelopmentStorageOpen(f->directory.instance, &options, &provider, &f->storage, &error);
+        if (f->result) sprintf(directory_diagnostic, "queue storage rc=%d db=%d category=%d sqlite=%d/%d schema=%lu message=%.250s",
+            f->result, error.db_result, error.db_category, error.sqlite_code, error.sqlite_extended_code, error.failed_schema_version, error.message);
     }
     if (f->result == 0) f->result = PRuntime_ServiceQueueCreate(f->storage, &f->queue_options, &f->queue);
     f->native.live = f->storage; SetEvent(f->ready);
@@ -1001,6 +1147,9 @@ BOOL test1370_runtime_queue_contract(void)
     unsigned long delivered;
     unsigned int i;
     unsigned int processed;
+    DWORD outer_before;
+    DWORD root_before;
+    DWORD create_error;
     int root;
     int outer;
     BOOL ok;
@@ -1009,9 +1158,12 @@ BOOL test1370_runtime_queue_contract(void)
     outer = root = 0; ok = FALSE;
     RUNTIME_VERIFY(directory_fixture_init(&f->directory, GetCurrentProcessId() ^ 0x04000000UL), "queue private root identity");
     f->native.directory = &f->directory;
-    outer = CreateDirectoryW(f->directory.outer, NULL) != 0; if (outer) root = CreateDirectoryW(f->directory.root, NULL) != 0;
+    outer_before = GetFileAttributesW(f->directory.outer); root_before = GetFileAttributesW(f->directory.root);
+    SetLastError(0); outer = CreateDirectoryW(f->directory.outer, NULL) != 0; create_error = GetLastError();
+    if (outer) { SetLastError(0); root = CreateDirectoryW(f->directory.root, NULL) != 0; create_error = GetLastError(); }
     if (!root) {
-        sprintf(directory_diagnostic, "queue root: outer=%d root=%d error=%lu path=%.800s", outer, root, GetLastError(), f->directory.canonical);
+        sprintf(directory_diagnostic, "queue root: outer=%d root=%d error=%lu before=%lu/%lu after=%lu/%lu path=%.700s",
+            outer, root, create_error, outer_before, root_before, GetFileAttributesW(f->directory.outer), GetFileAttributesW(f->directory.root), f->directory.canonical);
         directory_error = directory_diagnostic; goto done;
     }
     if (!directory_fixture_write(&f->directory, L"manifest.json", manifest, sizeof(manifest) - 1) ||
@@ -1024,8 +1176,8 @@ BOOL test1370_runtime_queue_contract(void)
     f->queue_options.size = sizeof(f->queue_options); f->queue_options.version = 1; f->queue_options.tab_id = 5;
     f->queue_options.page_generation = 17; f->queue_options.delivery_thread_id = GetCurrentThreadId();
     f->thread = CreateThread(NULL, 0, queue_fixture_worker, f, 0, NULL);
-    RUNTIME_VERIFY(f->thread && WaitForSingleObject(f->ready, 10000) == WAIT_OBJECT_0 && f->result == 0 && f->queue,
-        "worker-owned directory/storage/queue creation");
+    RUNTIME_VERIFY(f->thread && WaitForSingleObject(f->ready, 10000) == WAIT_OBJECT_0, "queue worker startup rendezvous");
+    if (f->result || !f->queue) { directory_error = directory_diagnostic; goto done; }
     processed = 91; alias = f->queue;
     RUNTIME_VERIFY(PRuntime_ServiceQueueProcessOne(f->queue, &processed) == PRUNTIME_STATE && processed == 91 &&
         PRuntime_ServiceQueueClose(&alias) == PRUNTIME_STATE && alias == f->queue && queue_fixture_action(f, 4) && f->result == 0,
@@ -1130,4 +1282,163 @@ done:
     if (f->native.inside) CloseHandle(f->native.inside); if (f->native.resume) CloseHandle(f->native.resume);
     storage_fixture_cleanup(&f->native); directory_fixture_cleanup(&f->directory, root, outer);
     free(before); free(result); free(f); return ok;
+}
+
+BOOL test1371_runtime_page_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"org.demo_app.notes\",\"name\":\"Notes\",\"version\":1,"
+        "\"runtimeApiVersion\":1,\"entry\":\"pages/index.html\",\"permissions\":[],\"migrations\":[]}";
+    static const char html[] = "<!doctype html><html><head><link rel=stylesheet href='../assets/main.css?q=sheet#f'>"
+        "<script src='../assets/main.js?x=1#author'></script></head><body><img src='../assets/icon.svg' width=20 height=20>"
+        "<div id=tile></div><p id=result>initial</p></body></html>";
+    static const char css[] = "@import url('theme.css?theme=1');body{margin:4px}p{color:#008000}";
+    static const char theme[] = "#tile{display:block;width:20px;height:20px;background-image:url('icon.svg?background=1');background-size:20px 20px}";
+    static const char script[] = "document.getElementById('result').textContent='app-loaded';";
+    static const char svg[] = "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><rect width='20' height='20' fill='#336699'/></svg>";
+    static const WCHAR* files[] = { L"pages\\index.html", L"assets\\main.css", L"assets\\theme.css", L"assets\\main.js", L"assets\\icon.svg" };
+    DirectoryFixture* native;
+    RuntimePageFixture f;
+    PRuntimeDirectoryProvider provider;
+    PRuntimeResourceReference entry;
+    PCoreScriptResourceInfo script_info;
+    PCoreImageDecodeStats stats;
+    PCoreImageDecodeStats again;
+    PBrowserScriptDomReadCallbacks read;
+    PBrowserScriptDomWriteCallbacks write;
+    PBrowserScriptBootstrapOptions options;
+    PBrowserScriptBootstrapInfo state;
+    PBrowserNavigationCommitInfo commit;
+    HANDLE session;
+    HANDLE history;
+    HANDLE failed;
+    HANDLE candidate;
+    HDC screen;
+    HDC dc;
+    HBITMAP bitmap;
+    HGDIOBJ old;
+    BITMAPINFO bi;
+    void* pixels;
+    const char* source;
+    char bytes[4097];
+    char url[1024];
+    WCHAR path[MAX_PATH];
+    unsigned int count;
+    unsigned int i;
+    unsigned long color;
+    int found;
+    int fetched;
+    int x;
+    int y;
+    int w;
+    int h;
+    int n;
+    int reads;
+    int root;
+    int outer;
+    int core;
+    int index;
+    BOOL ok;
+    native = (DirectoryFixture*)calloc(1, sizeof(*native));
+    if (!native) return FALSE;
+    memset(&f, 0, sizeof(f)); session = NULL; history = NULL; failed = NULL; candidate = NULL;
+    screen = NULL; dc = NULL; bitmap = NULL; old = NULL; root = 0; outer = 0; core = 0; ok = FALSE;
+#define PAGE_CHECK(test, message) do { if (!(test)) { directory_error = message; goto page_done; } } while (0)
+    PAGE_CHECK(directory_fixture_init(native, GetCurrentProcessId() + 137100), "app resource private root identity");
+    outer = CreateDirectoryW(native->outer, NULL); PAGE_CHECK(outer, "app resource private outer create");
+    root = CreateDirectoryW(native->root, NULL); PAGE_CHECK(root, "app resource private root create");
+    wsprintfW(path, L"%s\\pages", native->root); PAGE_CHECK(CreateDirectoryW(path, NULL), "app pages directory");
+    wsprintfW(path, L"%s\\assets", native->root); PAGE_CHECK(CreateDirectoryW(path, NULL), "app assets directory");
+    PAGE_CHECK(directory_fixture_write(native, L"manifest.json", manifest, sizeof(manifest)-1) &&
+        directory_fixture_write(native, files[0], html, sizeof(html)-1) &&
+        directory_fixture_write(native, files[1], css, sizeof(css)-1) &&
+        directory_fixture_write(native, files[2], theme, sizeof(theme)-1) &&
+        directory_fixture_write(native, files[3], script, sizeof(script)-1) &&
+        directory_fixture_write(native, files[4], svg, sizeof(svg)-1), "app native resource files");
+    directory_fixture_provider(native, &provider);
+    PAGE_CHECK(!PRuntime_DevelopmentDirectoryOpen(native->canonical, (unsigned int)strlen(native->canonical), &provider, &f.directory), "app bound directory");
+    entry.size = sizeof(entry); entry.version = 1;
+    PAGE_CHECK(!PRuntime_DirectoryReadResource(f.directory, NULL, 0, "?start=1#top", 12, bytes, 4096, &count, &entry), "app entry resource read");
+    PAGE_CHECK(count == sizeof(html)-1 && !memcmp(bytes, html, count) && !strcmp(entry.path, "pages/index.html"), "app entry suffix not native path");
+    core = PCore_Init() == 0; PAGE_CHECK(core, "app Core init");
+    f.doc = PCore_ParseHTML(bytes, count); f.resources = PBrowser_NavigationResourceCreate(); history = PBrowser_HistoryCreate();
+    PAGE_CHECK(f.doc && f.resources && history, "app public Core Browser handles");
+    PCore_SetDeviceViewport(200, 160, 96);
+    f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET;
+    PAGE_CHECK(!PCore_StyleDocumentEx2(f.doc, NULL, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f), "app linked and imported CSS");
+    PAGE_CHECK(!PCore_NodeComputedColor(f.doc, "p", &color) && color == 0xff008000UL, "app external computed style");
+    f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
+    PAGE_CHECK(!PCore_FetchScriptResourcesEx(f.doc, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) && found == 1 && fetched == 1, "app script discovery");
+    PAGE_CHECK(!PCore_GetScriptResource(f.doc, 0, &script_info, url, sizeof(url), &source) && script_info.data_bytes == sizeof(script)-1 && !memcmp(source, script, sizeof(script)-1), "app retained exact script");
+    session = PBrowser_ScriptSessionCreateEx(5000, PBROWSER_SCRIPT_APPLICATION_MEMORY_LIMIT_BYTES);
+    PAGE_CHECK(session, "app script session");
+    memset(&read, 0, sizeof(read)); read.size = sizeof(read); read.pw = &f; read.has_element = runtime_page_has; read.get_text = runtime_page_text;
+    memset(&write, 0, sizeof(write)); write.size = sizeof(write); write.pw = &f; write.set_text = runtime_page_set;
+    PAGE_CHECK(!PBrowser_ScriptSessionRegisterDomReadCallbacks(session, &read) && !PBrowser_ScriptSessionRegisterDomWriteCallbacks(session, &write) &&
+        !PBrowser_ScriptSessionSetGlobalString(session, "__pcoreDocumentUrl", entry.url), "app DOM platform adapters");
+    options.size = sizeof(options); options.version = 1; options.generation = 1;
+    PAGE_CHECK(!PBrowser_ScriptSessionBootstrapBegin(session, &options), "app bootstrap begin");
+    for (i = 0; i < 40; i++) {
+        memset(&state, 0, sizeof(state)); state.size = sizeof(state); state.version = 1;
+        PAGE_CHECK(!PBrowser_ScriptSessionBootstrapStep(session, 1, &state), "app bootstrap step");
+        if (state.state == PBROWSER_BOOTSTRAP_COMPLETE) break;
+    }
+    PAGE_CHECK(state.state == PBROWSER_BOOTSTRAP_COMPLETE, "app bootstrap complete");
+    PAGE_CHECK(!PBrowser_ScriptSessionEvaluate(session, source, script_info.data_bytes) &&
+        !PCore_NodeTextContentById(f.doc, "result", bytes, sizeof(bytes), &n) && !strcmp(bytes, "app-loaded"), "app author script changes Core DOM");
+    PAGE_CHECK(!PBrowser_ScriptSessionEvaluate(session,
+        "typeof PositronServices==='undefined'&&location.protocol==='app:'&&location.hostname==='org.demo_app.notes'", -1) &&
+        PBrowser_ScriptSessionGetResult(session) && !strcmp(PBrowser_ScriptSessionGetResult(session), "true"),
+        "app location identity visible, URL alone grants no services");
+    f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET;
+    PAGE_CHECK(!PCore_StyleDocumentEx2(f.doc, NULL, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f), "app mutation restyle");
+    f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE;
+    PAGE_CHECK(!PCore_FetchImageResources(f.doc, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) && found >= 2 && found == fetched, "app image and CSS background resources");
+    PAGE_CHECK(!PCore_LayoutDocument(f.doc, 200, 160) && !PCore_NodeBox(f.doc, "img", &x, &y, &w, &h) && w == 20 && h == 20, "app SVG layout");
+    screen = GetDC(NULL); dc = CreateCompatibleDC(screen); memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); bi.bmiHeader.biWidth = 200; bi.bmiHeader.biHeight = -160;
+    bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    bitmap = CreateDIBSection(screen, &bi, DIB_RGB_COLORS, &pixels, NULL, 0);
+    PAGE_CHECK(dc && bitmap, "app native paint surface"); old = SelectObject(dc, bitmap); PatBlt(dc, 0, 0, 200, 160, WHITENESS);
+    PCore_PaintDocument(f.doc, dc, 0, 0);
+    PAGE_CHECK(GetPixel(dc, x + 10, y + 10) == RGB(51,102,153), "app SVG actual painted center");
+    PAGE_CHECK(!PCore_GetImageDecodeStats(f.doc, &stats) && stats.svg_creates >= 1, "app image parse diagnostic");
+    PAGE_CHECK(!PCore_LayoutDocument(f.doc, 200, 160), "app cached relayout"); PCore_PaintDocument(f.doc, dc, 0, 0);
+    PAGE_CHECK(!PCore_GetImageDecodeStats(f.doc, &again) && again.svg_creates == stats.svg_creates, "app repeated paint uses retained SVG");
+    PAGE_CHECK(PBrowser_NavigationResourceCommitGate(f.resources) == PBROWSER_NAVIGATION_GATE_READY &&
+        !PBrowser_HistoryCommitNavigation(history, entry.url, PBROWSER_HISTORY_METHOD_GET, PBROWSER_HISTORY_TARGET_NEW) &&
+        !strcmp(PBrowser_HistoryCurrentUrl(history), entry.url), "app resource gate and history preserve app suffix");
+    reads = native->reads;
+    PAGE_CHECK(PRuntime_DirectoryReadResource(f.directory, NULL, 0, "app://org.other.notes/index.html", 32, bytes, 4096, &count, &entry) != 0 &&
+        PRuntime_DirectoryReadResource(f.directory, NULL, 0, "%2e%2e/secret", 13, bytes, 4096, &count, &entry) != 0 &&
+        native->reads == reads, "app authority/traversal rejected before native read");
+    failed = PBrowser_NavigationResourceCreate(); candidate = PBrowser_NavigationCandidateCreate(2);
+    PAGE_CHECK(failed && candidate && !PBrowser_NavigationResourceRegister(failed, "app://org.demo_app.notes/assets/missing.css", 1,
+        PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET, &index) && !PBrowser_NavigationResourceBeginAttempt(failed, index) &&
+        !PBrowser_NavigationResourceFail(failed, index, PBROWSER_NAVIGATION_FAILURE_TRANSPORT) &&
+        PBrowser_NavigationResourceCommitGate(failed) != PBROWSER_NAVIGATION_GATE_READY && PBrowser_HistoryCount(history) == 1 &&
+        !PCore_NodeTextContentById(f.doc, "result", bytes, sizeof(bytes), &n) && !strcmp(bytes, "app-loaded"), "app failed required candidate keeps old page/history");
+    memset(&commit, 0, sizeof(commit)); commit.size = sizeof(commit);
+    PAGE_CHECK(!PBrowser_NavigationCommitGetInfo(candidate, failed, 2, &commit) &&
+        !commit.can_commit && commit.decision == PBROWSER_NAVIGATION_COMMIT_REQUIRED_FAILED, "app Browser rejects failed candidate commit");
+    PAGE_CHECK(f.copied == f.released, "app Core callback ownership balanced");
+    ok = TRUE;
+page_done:
+    if (old) SelectObject(dc, old); if (bitmap) DeleteObject(bitmap); if (dc) DeleteDC(dc); if (screen) ReleaseDC(NULL, screen);
+    if (session) PBrowser_ScriptSessionDestroy(session); if (candidate) PBrowser_NavigationCandidateDestroy(candidate);
+    if (failed) PBrowser_NavigationResourceDestroy(failed); if (history) PBrowser_HistoryDestroy(history);
+    if (f.resources) PBrowser_NavigationResourceDestroy(f.resources); if (f.doc) PCore_FreeDocument(f.doc);
+    if (core) {
+        screen = GetDC(NULL); n = screen ? GetDeviceCaps(screen, LOGPIXELSX) : 96;
+        if (screen) ReleaseDC(NULL, screen);
+        PCore_SetDeviceViewport(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), n > 0 ? n : 96);
+        PCore_Shutdown();
+    }
+    PRuntime_DirectoryClose(&f.directory);
+    if (root) {
+        for (i = 0; i < 5; i++) { wsprintfW(path, L"%s\\%s", native->root, files[i]); DeleteFileW(path); }
+        wsprintfW(path, L"%s\\pages", native->root); RemoveDirectoryW(path);
+        wsprintfW(path, L"%s\\assets", native->root); RemoveDirectoryW(path);
+    }
+    directory_fixture_cleanup(native, root, outer); free(native); return ok;
+#undef PAGE_CHECK
 }

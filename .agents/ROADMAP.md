@@ -239,7 +239,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：用户已批准，先交付公共DLL前置，不先改EXE。** 第三方仅提供资源与manifest，
+**状态：目录应用公共合同已具备；当前 SD 存储门间歇失败待定位，PXI 暂缓。** 第三方仅提供资源与manifest，
 使用`app://`并复用现有浏览器UI；Runtime后续能力、DB受限集成、Core/Browser资源与授权合同
 由主线与DLL会话负责，EXE会话只接平台、SDK及示例。完整合同见
 [运行时计划](../docs/RUNTIME_PLAN.md)，不在本节复制字段/预算。
@@ -250,9 +250,13 @@ Runtime 元数据准入、app 引用及可信平台 provider 上的开发目录�
 通用 WM 目录规范化/包含性适配器仍须宿主接入，元数据/URL/目录句柄不自动授予 SQL 或安装数据身份。
 开发存储的精确身份绑定、逐文件迁移及同步 typed SQL JSON 已退出待开发范围，预算/调用见 Runtime README。
 八项有界异步服务队列/撤销及四个独立页面上下文已有双配置设备合同，退出待实现范围。
-下一步验证 Core/Browser app 资源组合与系统 ZIP 后交给 EXE 目录笔记示例；不把受限 SQL
-原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。PXI只用经验证的系统ZIP能力，
-无合格接口则只挂起安装，不引第三方解压库或私有fallback。普通网页不因URL获权，
+Core/Browser 现有公开 callback 已能组合相对 CSS/@import、脚本、SVG/layout/paint 与 app history，
+不需要新增 ABI。当前恢复步骤先为正常目录创建/数据库打开建立最小原生 I/O 与 DB 对照，
+定位 mkdir183/SQLite CANTOPEN，区分 provider、VFS 与映射卷；不能只靠重跑或扩大预算。
+这不是重开挂起的 FULL/断电门。之后交给 EXE 接通通用 WM provider、原窗口候选、worker/授权及目录笔记示例；
+不把受限 SQL 原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。
+当前 ROM 的只读 ZIP 清单未取得合格系统 provider；PXI/安装身份/关联暂缓，只有取得实际系统接口及
+完成/错误/取消、Unicode/包含性/规模/清理证据后恢复，不引第三方解压库或私有 fallback。普通网页不因 URL 获权，
 不开放浏览器数据库；保留旧ABI、用户数据和暂停的故障门，构建/设备必须独占串行。
 
 #### Script. 编译热点与单次长调用
