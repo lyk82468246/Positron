@@ -1,10 +1,12 @@
 /* Only fixtures/platform callbacks/assertions; execution lives in DB DLL. */
 #include <windows.h>
 #include <string.h>
+#include <stdio.h>
 #include "positron_db.h"
 
 static const char* restricted_error = "Restricted DB fixture failed";
 const char* test1363_db_restricted_last_error(void) { return restricted_error; }
+const char* test1366_db_migration_last_error(void) { return restricted_error; }
 typedef struct RestrictedFixture {
     PDbHandle db;
     volatile LONG cancelled;
@@ -236,4 +238,150 @@ done:
     if (old_stmt != NULL) PDb_Finalize(old_stmt);
     PDb_Close(sync); PDb_Close(db);
     return ok;
+}
+
+typedef struct MigrationCancellation {
+    PDbHandle db;
+    int polls;
+    int reentry_ok;
+} MigrationCancellation;
+static int migration_cancel_checkpoint(void* data)
+{
+    MigrationCancellation* f;
+    int version;
+    f = (MigrationCancellation*)data; f->polls++;
+    version = -91;
+    if (PDb_GetMigrationVersion(f->db, &version) != PDB_STATE || version != -91 ||
+            PDb_Exec(f->db, "DELETE FROM notes") != PDB_STATE) f->reentry_ok = 0;
+    PDb_Close(f->db); /* active migration must remain alive */
+    return f->polls >= 8;
+}
+static int migration_run(PDbHandle db, int expected, int target, const char* sql,
+        PDbRestrictedOptions* options, PDbMigrationReport* report, int wanted)
+{
+    PDbMigrationReport before;
+    PDbConnectionState state;
+    int rc;
+    before = *report;
+    rc = PDb_ApplyMigrationRestricted(db, expected, target, sql, (int)strlen(sql), options, report);
+    if (rc != wanted || (rc != PDB_OK && memcmp(&before, report, sizeof(before)))) return 0;
+    state.size = sizeof(state); state.version = 1;
+    return PDb_GetConnectionState(db, &state) == PDB_OK && !state.transaction_active && !state.statement_count;
+}
+BOOL test1366_db_migration_contract(void)
+{
+    static const char* const denied[] = {
+        "UPDATE __pdb_meta SET value='900'", "DELETE FROM __PDB_META",
+        "CREATE TABLE __PDB_secret(x)", "CREATE INDEX __PDB_idx ON notes(body)",
+        "CREATE INDEX steal ON __pdb_meta(value)", "SELECT * FROM __pdb_meta",
+        "INSERT INTO sqlite_master(type,name) VALUES('table','stolen')",
+        "CREATE TABLE leak AS SELECT rowid FROM sqlite_master", "SELECT rowid FROM sqlite_master",
+        "CREATE TABLE copy AS SELECT 1", "SELECT 1", "INSERT INTO notes VALUES(98,'x') RETURNING id",
+        "CREATE TEMP TABLE t(x)", "ATTACH ':memory:' AS extra", "DETACH main", "PRAGMA user_version=1",
+        "PRAGMA writable_schema=1", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT x", "RELEASE x",
+        "ALTER TABLE notes ADD COLUMN bad", "DROP TABLE notes", "CREATE VIEW v AS SELECT * FROM notes",
+        "CREATE TRIGGER t AFTER INSERT ON notes BEGIN DELETE FROM notes; END",
+        "VACUUM", "REINDEX", "ANALYZE", "SELECT load_extension('x')",
+        "CREATE TABLE fk(x REFERENCES __pdb_meta(key));INSERT INTO fk VALUES('schema_version')"
+    };
+    static const char* const corrupt[] = { "''", "'-1'", "'+1'", "'01'", "'2147483648'", "'1garbage'",
+        "x'32'", "x'310032'", "'1234567890123456789012345678901234567890'" };
+    PDbHandle db;
+    PDbHandle other;
+    PDbStmtHandle stmt;
+    PDbRestrictedOptions options;
+    PDbMigrationReport report;
+    PDbMigrationReport before;
+    PDbErrorInfo error;
+    RestrictedFixture f;
+    MigrationCancellation cancelling;
+    char sql[4096];
+    unsigned int i;
+    int version;
+    BOOL ok;
+    db = other = NULL; stmt = NULL; ok = FALSE;
+    memset(&f, 0, sizeof(f)); memset(&options, 0, sizeof(options)); memset(&report, 0, sizeof(report));
+    options.size = sizeof(options); options.version = 1; options.vm_budget = PDB_RESTRICTED_VM_MAX;
+    options.cancelled = restricted_cancel; options.user_data = &f;
+    report.size = sizeof(report); report.version = 1;
+    REQUIRE(PDb_OpenUtf8(":memory:", PDB_OPEN_LOCAL_FULL_SQL, &db) == PDB_OK, "migration local connection");
+    f.db = db; version = -91;
+    REQUIRE(PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 0, "missing schema version is zero");
+    REQUIRE(migration_run(db, 0, 1, "/* schema */CREATE TABLE notes(id INTEGER PRIMARY KEY,body TEXT UNIQUE);"
+        "CREATE TABLE tags(name TEXT PRIMARY KEY);CREATE INDEX notes_id ON notes(id);INSERT INTO notes VALUES(1,'first'); -- end\n",
+        &options, &report, PDB_OK) && report.statement_count == 4 && report.previous_version == 0 && report.current_version == 1,
+        "CREATE TABLE/UNIQUE/TEXT primary/index/DML atomically admitted");
+    REQUIRE(migration_run(db, 1, 2, "INSERT INTO notes SELECT 2,'second';CREATE UNIQUE INDEX tags_name ON tags(name)",
+        &options, &report, PDB_OK) && report.statement_count == 2, "next manifest version with ordinary DML subquery");
+    for (i = 0; i < sizeof(denied) / sizeof(denied[0]); i++) {
+        _snprintf(sql, sizeof(sql), "INSERT INTO notes VALUES(99,'provisional');%s", denied[i]);
+        REQUIRE(migration_run(db, 2, 3, sql, &options, &report, PDB_SQL_REJECTED) && restricted_count(db) == 2 &&
+            PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 2, denied[i]);
+    }
+    REQUIRE(migration_run(db, 0, 1, "CREATE TABLE replay(x)", &options, &report, PDB_SCHEMA_MISMATCH), "old version rejected");
+    REQUIRE(migration_run(db, 3, 4, "CREATE TABLE future(x)", &options, &report, PDB_SCHEMA_MISMATCH), "future expected rejected");
+    REQUIRE(migration_run(db, 2, 4, "CREATE TABLE gap(x)", &options, &report, PDB_INVALID_ARGUMENT), "version gap rejected");
+    REQUIRE(migration_run(db, 2, 3, " -- only comment\n /* empty */", &options, &report, PDB_SQL_REJECTED), "empty migration not applied");
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE rolled(x);INSERT INTO notes VALUES(1,'duplicate')", &options, &report, PDB_ERROR) &&
+        PDb_Prepare(db, "SELECT * FROM rolled", &stmt) != PDB_OK && !stmt && restricted_count(db) == 2, "DDL and DML rollback together");
+    REQUIRE(PDb_Exec(db, "CREATE TABLE parent(x PRIMARY KEY);CREATE TABLE child(x REFERENCES parent(x) DEFERRABLE INITIALLY DEFERRED)") == PDB_OK,
+        "trusted constraint fixture");
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE provisional(x);INSERT INTO child VALUES(1)", &options, &report, PDB_ERROR), "COMMIT failure rollback");
+    error.size = sizeof(error); error.version = 1;
+    REQUIRE(PDb_GetErrorInfo(db, &error) == PDB_OK && error.category == PDB_ERROR_CATEGORY_CONSTRAINT &&
+        error.cleanup_attempted && error.cleanup_result == PDB_OK && PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 2,
+        "commit error preserves schema and cleanup diagnostic");
+    options.vm_budget = 2000;
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE budget(x);WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) INSERT INTO budget SELECT x FROM n",
+        &options, &report, PDB_LIMIT) && PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 2, "shared VM budget rolls schema back");
+    REQUIRE(PDb_Prepare(db, "SELECT * FROM budget", &stmt) != PDB_OK && !stmt, "budget failure leaves no table");
+    options.vm_budget = PDB_RESTRICTED_VM_MAX; f.cancelled = 1;
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE cancelled(x)", &options, &report, PDB_STATE), "pre-cancel no mutation"); f.cancelled = 0;
+    memset(&cancelling, 0, sizeof(cancelling)); cancelling.db = db; cancelling.reentry_ok = 1;
+    options.cancelled = migration_cancel_checkpoint; options.user_data = &cancelling;
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE cancel_vm(x);WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n) INSERT INTO cancel_vm SELECT x FROM n",
+        &options, &report, PDB_STATE) && cancelling.polls >= 8 && cancelling.reentry_ok &&
+        PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 2, "running cancellation/reentry/close guards and rollback");
+    REQUIRE(PDb_Prepare(db, "SELECT * FROM cancel_vm", &stmt) != PDB_OK && !stmt, "cancel leaves no provisional schema");
+    options.cancelled = restricted_cancel; options.user_data = &f;
+    strcpy(sql, "");
+    for (i = 0; i < 65; i++) strcat(sql, "UPDATE notes SET body=body WHERE id=1;");
+    REQUIRE(migration_run(db, 2, 3, sql, &options, &report, PDB_LIMIT) && PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 2,
+        "statement count overflow rolls back");
+    options.row = restricted_row;
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE nope(x)", &options, &report, PDB_INVALID_ARGUMENT), "no author result callback"); options.row = NULL;
+    options.version = 2;
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE nope(x)", &options, &report, PDB_INVALID_ARGUMENT), "options version guard"); options.version = 1;
+    report.version = 2;
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE nope(x)", &options, &report, PDB_INVALID_ARGUMENT), "report version canary"); report.version = 1;
+    before = report;
+    REQUIRE(PDb_ApplyMigrationRestricted(db, 2, 3, "a\0b", 3, &options, &report) == PDB_INVALID_ARGUMENT &&
+        !memcmp(&before, &report, sizeof(report)), "embedded SQL NUL canary");
+    REQUIRE(PDb_ApplyMigrationRestricted(db, 2, 3, "\xc0\xaf", 2, &options, &report) == PDB_INVALID_ARGUMENT &&
+        !memcmp(&before, &report, sizeof(report)), "invalid SQL UTF-8 before transaction");
+    REQUIRE(PDb_ApplyMigrationRestricted(db, 2, 3, "x", PDB_SQL_MAX_BYTES + 1, &options, &report) == PDB_LIMIT,
+        "SQL budget before read");
+    REQUIRE(PDb_Prepare(db, "SELECT 1", &stmt) == PDB_OK && PDb_GetMigrationVersion(db, &version) == PDB_STATE &&
+        PDb_ApplyMigrationRestricted(db, 2, 3, "CREATE TABLE nope(x)", 20, &options, &report) == PDB_STATE, "outstanding statement guard");
+    PDb_Finalize(stmt); stmt = NULL;
+    REQUIRE(PDb_Begin(db) == PDB_OK && PDb_GetMigrationVersion(db, &version) == PDB_STATE && PDb_Rollback(db) == PDB_OK, "outer transaction untouched");
+    REQUIRE(PDb_Exec(db, "UPDATE __pdb_meta SET value=NULL WHERE key='schema_version'") != PDB_OK &&
+        PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 2, "metadata NOT NULL constraint preserved");
+    for (i = 0; i < sizeof(corrupt) / sizeof(corrupt[0]); i++) {
+        _snprintf(sql, sizeof(sql), "UPDATE __pdb_meta SET value=%s WHERE key='schema_version'", corrupt[i]);
+        REQUIRE(PDb_Exec(db, sql) == PDB_OK, "corrupt metadata fixture"); version = 91;
+        REQUIRE(PDb_GetMigrationVersion(db, &version) == PDB_SCHEMA_MISMATCH && version == 91 &&
+            migration_run(db, 2, 3, "CREATE TABLE nope(x)", &options, &report, PDB_SCHEMA_MISMATCH), corrupt[i]);
+    }
+    REQUIRE(PDb_Exec(db, "UPDATE __pdb_meta SET value='2' WHERE key='schema_version'") == PDB_OK, "restore metadata");
+    REQUIRE(migration_run(db, 2, 3, "CREATE TABLE final_schema(x)", &options, &report, PDB_OK) &&
+        PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 3, "usable after failures");
+    REQUIRE(PDb_OpenUtf8(":memory:", PDB_OPEN_SYNC, &other) == PDB_OK && PDb_GetMigrationVersion(other, &version) == PDB_STATE &&
+        PDb_ApplyMigrationRestricted(other, 0, 1, "CREATE TABLE nope(x)", 20, &options, &report) == PDB_STATE, "sync remains separate");
+    REQUIRE(PDb_ApplyMigration(db, 4, "CREATE TABLE legacy_still_works(x)") == PDB_OK &&
+        PDb_GetMigrationVersion(db, &version) == PDB_OK && version == 4, "legacy migration ABI and behavior unchanged");
+    ok = TRUE;
+done:
+    if (stmt) PDb_Finalize(stmt);
+    PDb_Close(other); PDb_Close(db); return ok;
 }

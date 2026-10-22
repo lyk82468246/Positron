@@ -287,6 +287,41 @@ PDB_API int PDb_ExecuteRestricted(PDbHandle db,
         const PDbRestrictedStatement* statements, int statement_count,
         const PDbRestrictedOptions* options, PDbRestrictedReport* report);
 
+#define PDB_MIGRATION_VERSION 1
+#define PDB_MIGRATION_MAX_STATEMENTS 64
+typedef struct PDbMigrationReport {
+    unsigned int size;
+    unsigned int version;
+    int previous_version;
+    int current_version;
+    int statement_count;
+} PDbMigrationReport;
+/* Additive opt-in prerequisite for Runtime manifest migrations. These APIs
+ * do NOT authenticate an application, map storage or expose a JS service.
+ * Local-full, idle/no statements/no outer transaction, same owner worker.
+ * Strict stored version: missing=0; otherwise canonical decimal 0..INT_MAX,
+ * no truncation/NUL/sign/leading zero. Getter output unchanged on failure. */
+PDB_API int PDb_GetMigrationVersion(PDbHandle db, int* version);
+/* One manifest file, explicit UTF-8 <=PDB_SQL_MAX_BYTES, <=64 nonempty SQL
+ * statements; no binds, returned columns, or empty/comment-only migration.
+ * expected>=0, target==expected+1. BEGIN IMMEDIATE protects the version check;
+ * mismatched/future/corrupt version fails closed, no automatic downgrade.
+ * v1 schema subset: main CREATE TABLE (not AS SELECT), CREATE INDEX including
+ * ordinary UNIQUE constraints, plus ordinary INSERT/UPDATE/DELETE and their
+ * subqueries. No ALTER/DROP/view/trigger/vtable/temp/ATTACH/PRAGMA/transaction/
+ * extension or private __pdb_/sqlite_ object access. SQLite authorizer owns
+ * admission, not keyword matching. Engine catalog maintenance is allowed only
+ * for admitted CREATE operations; never author catalog DML or catalog queries.
+ * Same function allowlist/work budget/cancel/reentry as ExecuteRestricted.
+ * options.row must be NULL; options size/version and vm_budget are required.
+ * COMMIT includes private schema version update, then publishes report;
+ * any failure preserves report and attempts rollback with sticky diagnostics.
+ * No callbacks survive return, no cross-thread cancel/handle or hard VFS bound.
+ * Old ApplyMigration remains unchanged and is NOT a replacement for this guard. */
+PDB_API int PDb_ApplyMigrationRestricted(PDbHandle db, int expected_version,
+        int target_version, const char* sql, int sql_bytes,
+        const PDbRestrictedOptions* options, PDbMigrationReport* report);
+
 /* Configure the durable identity and schema contract used by sync requests.
  * schema_version must equal the latest applied migration version. */
 PDB_API int PDb_SyncConfigure(PDbHandle db, const char* client_id,

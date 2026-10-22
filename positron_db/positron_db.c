@@ -40,6 +40,10 @@ typedef struct PDbRestrictedWork {
     int reason;
     int authorized;
     int denied;
+    int migration;
+    int ddl;
+    int catalog;
+    int selected;
 } PDbRestrictedWork;
 
 struct PDb {
@@ -879,6 +883,54 @@ static int pdb_restricted_authorizer(PDbHandle db, int action,
     return allowed ? SQLITE_OK : SQLITE_DENY;
 }
 
+static int pdb_migration_user_name(const char* name)
+{
+    return name != NULL && _strnicmp(name, "__pdb_", 6) != 0 && _strnicmp(name, "sqlite_", 7) != 0;
+}
+static int pdb_migration_authorizer(PDbHandle db, int action,
+        const char* arg1, const char* arg2, const char* database)
+{
+    PDbRestrictedWork* work;
+    int allowed;
+    int catalog;
+    work = db->restricted; allowed = 0;
+    catalog = arg1 && (!_stricmp(arg1, "sqlite_master") || !_stricmp(arg1, "sqlite_schema"));
+    if (database == NULL || !_stricmp(database, "main")) {
+        switch (action) {
+        case SQLITE_CREATE_TABLE:
+            allowed = pdb_migration_user_name(arg1);
+            if (allowed) { work->ddl = 1; work->authorized = 1; }
+            break;
+        case SQLITE_CREATE_INDEX:
+            allowed = pdb_migration_user_name(arg2) && (pdb_migration_user_name(arg1) ||
+                (work->ddl == 1 && arg1 && !_strnicmp(arg1, "sqlite_autoindex_", 17)));
+            if (allowed) { if (!work->ddl) work->ddl = 2; work->authorized = 1; }
+            break;
+        case SQLITE_REINDEX:
+            allowed = work->ddl && pdb_migration_user_name(arg1); break;
+        case SQLITE_SELECT:
+        case SQLITE_RECURSIVE:
+            work->selected = 1; allowed = 1; work->authorized = 1; break;
+        case SQLITE_READ:
+            if (catalog) { allowed = arg2 && !_stricmp(arg2, "ROWID"); work->catalog = 1; }
+            else allowed = pdb_migration_user_name(arg1);
+            if (allowed && !catalog) work->authorized = 1;
+            break;
+        case SQLITE_INSERT:
+        case SQLITE_UPDATE:
+        case SQLITE_DELETE:
+            allowed = catalog || pdb_migration_user_name(arg1);
+            if (catalog) work->catalog = 1;
+            else if (allowed) work->authorized = 1;
+            break;
+        case SQLITE_FUNCTION: allowed = pdb_restricted_function(arg2); break;
+        default: break;
+        }
+    }
+    if (!allowed) work->denied = 1;
+    return allowed ? SQLITE_OK : SQLITE_DENY;
+}
+
 static int pdb_authorizer(void* context, int action,
         const char* arg1, const char* arg2, const char* database,
         const char* trigger)
@@ -892,6 +944,7 @@ static int pdb_authorizer(void* context, int action,
         return SQLITE_OK;
     }
     if (db->restricted != NULL && !db->internal) {
+        if (db->restricted->migration) return pdb_migration_authorizer(db, action, arg1, arg2, database);
         return pdb_restricted_authorizer(db, action, arg1, arg2, database);
     }
     /* A migration owns its transaction in both modes. Never let a script
@@ -4356,6 +4409,109 @@ static int pdb_api_PDb_ExecuteRestricted(PDbHandle db,
     return rc;
 }
 
+/* Strict metadata read for resource migrations: legacy helper intentionally
+ * copies into a small C string and cannot establish this stronger contract. */
+static int pdb_migration_version(PDbHandle db, int* output)
+{
+    sqlite3_stmt* stmt;
+    const unsigned char* text;
+    int bytes;
+    int value;
+    int i;
+    int native;
+    int rc;
+    stmt = NULL; value = 0;
+    rc = pdb_prepare_internal(db, "SELECT value FROM __pdb_meta WHERE key='schema_version'", &stmt);
+    if (rc != PDB_OK) return rc;
+    native = pdb_step_internal(db, stmt);
+    if (native == SQLITE_ROW) {
+        if (sqlite3_column_type(stmt, 0) != SQLITE_TEXT) rc = PDB_SCHEMA_MISMATCH;
+        text = sqlite3_column_text(stmt, 0); bytes = sqlite3_column_bytes(stmt, 0);
+        if (!text || bytes < 1 || bytes > 10 ||
+                (bytes > 1 && text[0] == '0')) rc = PDB_SCHEMA_MISMATCH;
+        for (i = 0; rc == PDB_OK && i < bytes; i++) {
+            if (text[i] < '0' || text[i] > '9' || value > (2147483647 - (text[i] - '0')) / 10) rc = PDB_SCHEMA_MISMATCH;
+            else value = value * 10 + text[i] - '0';
+        }
+    } else if (native != SQLITE_DONE) rc = pdb_set_sqlite_error(db, native);
+    sqlite3_finalize(stmt);
+    if (rc == PDB_SCHEMA_MISMATCH) pdb_set_error(db, "Invalid stored migration version");
+    if (rc == PDB_OK) *output = value;
+    return rc;
+}
+static int pdb_api_PDb_GetMigrationVersion(PDbHandle db, int* output)
+{
+    if (!db || !output) return PDB_INVALID_ARGUMENT;
+    if (db->mode != PDB_OPEN_LOCAL_FULL_SQL || db->restricted || db->statements || pdb_transaction_active(db)) return PDB_STATE;
+    return pdb_migration_version(db, output);
+}
+static int pdb_api_PDb_ApplyMigrationRestricted(PDbHandle db, int expected, int target,
+        const char* input, int bytes, const PDbRestrictedOptions* options, PDbMigrationReport* report)
+{
+    PDbRestrictedWork work;
+    PDbMigrationReport next;
+    sqlite3_stmt* stmt;
+    char* sql;
+    const char* cursor;
+    const char* tail;
+    int current;
+    int native;
+    int rc;
+    if (!db || !input || !options || !report || expected < 0 || target < 1 || target - 1 != expected || bytes < 1 ||
+            options->size != sizeof(*options) || options->version != PDB_RESTRICTED_VERSION || options->row ||
+            options->vm_budget < 100 || options->vm_budget > PDB_RESTRICTED_VM_MAX || options->vm_budget % 100 ||
+            report->size != sizeof(*report) || report->version != PDB_MIGRATION_VERSION) return PDB_INVALID_ARGUMENT;
+    if (bytes > PDB_SQL_MAX_BYTES) return PDB_LIMIT;
+    if (memchr(input, 0, bytes) || !pdb_restricted_utf8(input, bytes)) return PDB_INVALID_ARGUMENT;
+    if (db->mode != PDB_OPEN_LOCAL_FULL_SQL || db->restricted || db->statements || pdb_transaction_active(db)) return PDB_STATE;
+    rc = pdb_consume_cancel(db); if (rc != PDB_OK) return rc;
+    sql = (char*)malloc(bytes + 1); if (!sql) return PDB_NOMEM;
+    memcpy(sql, input, bytes); sql[bytes] = 0; cursor = sql; stmt = NULL;
+    memset(&work, 0, sizeof(work)); work.options = options; work.remaining = options->vm_budget; work.migration = 1;
+    memset(&next, 0, sizeof(next)); next.size = sizeof(next); next.version = PDB_MIGRATION_VERSION;
+    db->restricted = &work; sqlite3_progress_handler(db->sqlite, 100, pdb_progress, db);
+    rc = pdb_restricted_cancelled(db);
+    if (rc == PDB_OK) rc = pdb_exec_internal(db, "BEGIN IMMEDIATE");
+    if (rc == PDB_OK) rc = pdb_migration_version(db, &current);
+    if (rc == PDB_OK && current != expected) { pdb_set_error(db, "Migration version does not match expected"); rc = PDB_SCHEMA_MISMATCH; }
+    while (rc == PDB_OK && *cursor) {
+        rc = pdb_restricted_cancelled(db); if (rc != PDB_OK) break;
+        if (work.remaining < 100) { work.reason = PDB_LIMIT; rc = PDB_LIMIT; break; }
+        work.remaining -= 100; work.authorized = work.denied = work.ddl = work.catalog = work.selected = 0;
+        native = sqlite3_prepare_v2(db->sqlite, cursor, -1, &stmt, &tail);
+        if (native != SQLITE_OK) {
+            rc = pdb_set_sqlite_error(db, native);
+            if ((native & 255) == SQLITE_ERROR) rc = PDB_SQL_REJECTED;
+            break;
+        }
+        if (tail <= cursor) { rc = PDB_SQL_REJECTED; break; }
+        cursor = tail;
+        if (!stmt) continue;
+        if (++next.statement_count > PDB_MIGRATION_MAX_STATEMENTS) { rc = PDB_LIMIT; break; }
+        if (!work.authorized || (work.catalog && (!work.ddl || work.selected)) ||
+                sqlite3_column_count(stmt) || sqlite3_bind_parameter_count(stmt)) { rc = PDB_SQL_REJECTED; break; }
+        native = sqlite3_step(stmt);
+        if (native != SQLITE_DONE) rc = native == SQLITE_ROW ? PDB_SQL_REJECTED : pdb_set_sqlite_error(db, native);
+        native = sqlite3_finalize(stmt); stmt = NULL;
+        if (rc == PDB_OK && native != SQLITE_OK) rc = pdb_set_sqlite_error(db, native);
+    }
+    if (stmt) sqlite3_finalize(stmt);
+    if (work.denied) { rc = PDB_SQL_REJECTED; db->error_info.category = PDB_ERROR_CATEGORY_AUTHORIZATION; }
+    if (work.reason != PDB_OK) {
+        rc = work.reason; pdb_set_error(db, rc == PDB_LIMIT ? "Restricted migration budget exhausted" : "Restricted migration cancelled");
+        db->error_info.category = rc == PDB_LIMIT ? PDB_ERROR_CATEGORY_LIMIT : PDB_ERROR_CATEGORY_CANCELLED;
+    }
+    if (rc == PDB_OK && !next.statement_count) rc = PDB_SQL_REJECTED;
+    if (rc == PDB_OK) rc = pdb_restricted_cancelled(db);
+    if (rc == PDB_OK) rc = pdb_meta_set_int(db, "schema_version", target);
+    if (rc == PDB_OK) rc = pdb_restricted_cancelled(db);
+    if (rc == PDB_OK) rc = pdb_exec_internal(db, "COMMIT");
+    if (rc == PDB_OK) { next.previous_version = expected; next.current_version = target; *report = next; }
+    else pdb_abort_transaction(db, rc);
+    db->restricted = NULL; sqlite3_progress_handler(db->sqlite, 1000, pdb_progress, db);
+    free(sql); return rc;
+}
+
 /* One boundary for every status-returning operation; success preserves the
  * sticky failure, including through nested calls and statement cleanup. */
 #define PDB_STATUS_WRAPPER(name, parameters, arguments, owner) \
@@ -4372,6 +4528,11 @@ PDB_STATUS_WRAPPER(PDb_ExecuteRestricted,
         (PDbHandle db, const PDbRestrictedStatement* statements, int statement_count,
         const PDbRestrictedOptions* options, PDbRestrictedReport* report),
         (db, statements, statement_count, options, report), db)
+PDB_STATUS_WRAPPER(PDb_GetMigrationVersion, (PDbHandle db, int* version), (db, version), db)
+PDB_STATUS_WRAPPER(PDb_ApplyMigrationRestricted,
+        (PDbHandle db, int expected, int target, const char* sql, int bytes,
+        const PDbRestrictedOptions* options, PDbMigrationReport* report),
+        (db, expected, target, sql, bytes, options, report), db)
 
 PDB_STATUS_WRAPPER(PDb_Prepare,
         (PDbHandle db, const char* sql,

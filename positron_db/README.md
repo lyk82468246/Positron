@@ -147,6 +147,76 @@ Deploy the matching DB DLL and public header/import library from one formal
 configuration; its existing JSON DLL dependency is unchanged. Legacy local,
 sync, migration, error and transaction APIs keep their ABI and behavior.
 
+## Opt-in manifest migration primitive
+
+`PDb_GetMigrationVersion()` and `PDb_ApplyMigrationRestricted()` are separate
+DB prerequisites for Runtime-managed manifest migrations. They do not select
+an application database, authenticate an identity, read migration files or grant
+a Browser/JS service. Runtime must still bind the isolated storage identity,
+check permissions and load only its admitted manifest catalog. Do not substitute
+the older local-full `PDb_ApplyMigration()` for this boundary.
+
+The getter accepts only an idle local-full connection. A missing schema version
+is zero; an existing value must be TEXT containing canonical decimal 0–2147483647.
+Signs, leading zeros, embedded NUL, BLOB, overflow and overlong values return
+SCHEMA_MISMATCH without changing the output. No truncated C-string read is used.
+
+The migration API takes one explicit-length UTF-8 file (1–32768 bytes), expected
+and target versions, v1 `PDbRestrictedOptions` with `row=NULL`, and a v1
+`PDbMigrationReport`. Target must equal expected+1. It obtains BEGIN IMMEDIATE
+before comparing the stored version, so a version changed by another writer
+cannot be silently overwritten. A stale/future/corrupt stored version fails
+closed; the caller must stop rather than downgrade, delete the database or
+replay a failed write automatically.
+
+The v1 schema subset is main-database CREATE TABLE without AS SELECT, CREATE
+INDEX (including ordinary UNIQUE constraints), and ordinary INSERT/UPDATE/DELETE
+with allowed subqueries. SQLite authorizer events admit the operation, not SQL
+keyword matching. Engine catalog maintenance is accepted only for admitted
+CREATE statements; author catalog DML/query and `__pdb_`/`sqlite_` access are
+rejected. ALTER/DROP, views, triggers, virtual/temporary tables, PRAGMA,
+attachments, host transaction/savepoint control, maintenance, extension loading,
+binds and result-producing SQL are not part of this profile. Unpreparable or
+unadmitted SQL returns SQL_REJECTED. Existing trusted schema is also checked
+when accessed, including trigger/foreign-key effects. Broader migration DDL
+requires a separately tested authorization extension, not a local-full fallback.
+
+At most 64 nonempty statements execute per file; an empty/comment-only migration
+is rejected. The safe function allowlist and shared work/cancel/reentry contract
+are the same as restricted requests above, with a 100-unit reserve per prepare.
+SQL is copied to bounded owned heap, not a large WM6 stack buffer. Migration SQL
+and the private version update commit atomically, then the report is published.
+Constraint, budget, cancellation, metadata or COMMIT failure preserves the report
+and attempts rollback with the existing structured cleanup diagnostics. This is
+one-file atomicity, not an all-catalog transaction or a physical durability proof.
+
+```c
+PDbRestrictedOptions options;
+PDbMigrationReport report;
+int rc;
+
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PDB_RESTRICTED_VERSION;
+options.vm_budget = PDB_RESTRICTED_VM_MAX;
+options.cancelled = read_atomic_cancel;
+options.user_data = request;
+report.size = sizeof(report);
+report.version = PDB_MIGRATION_VERSION;
+/* Migration bytes already loaded from an authorized Runtime manifest file. */
+rc = PDb_ApplyMigrationRestricted(db, 0, 1, migration_bytes,
+    migration_length, &options, &report);
+/* Only OK permits proceeding to the next migration/author initialization. */
+```
+
+The connection must have no enclosing transaction or outstanding statements and
+remain on its owner worker. Callback Close cannot free the active migration;
+same-DB status reentry returns STATE, no callback survives return, and no window
+pump or cross-thread handle call is permitted. Budgets cover author SQL work,
+not a hard wall-clock/VFS deadline; internal fixed-size metadata/transaction
+bookkeeping is separate. Deploy the matching DB DLL/import library/header and
+its existing JSON dependency; old ABI and local/sync behavior remain unchanged.
+
 ## Local and sync modes
 
 The DLL has two modes:
