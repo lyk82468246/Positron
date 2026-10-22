@@ -105,10 +105,10 @@ PRODUCT_IMPLEMENTATION_RE = re.compile(
     r"(?m)^[ \t]*(?!(?:if|for|while|switch|return|sizeof)\b)"
     r"(?:static\s+)?(?:const\s+|volatile\s+|unsigned\s+|signed\s+|"
     r"long\s+|short\s+|struct\s+|enum\s+|[A-Za-z_]\w*\s+|\*+)+"
-    r"P(?:Tls|Json|Http|Image|Script|Core|Browser)_[A-Za-z0-9_]+\s*\(")
+    r"P(?:Tls|Json|Http|Image|Script|Core|Browser|Db|Runtime)_[A-Za-z0-9_]+\s*\(")
 PRODUCT_SOURCE_INCLUDE_RE = re.compile(
     r"(?m)^\s*#\s*include\s*[\"<][^\" >]*positron_"
-    r"(?:tls|json|http|image|script|core|browser)[^\" >]*\.c[\">]")
+    r"(?:tls|json|http|image|script|core|browser|db|media|runtime)[^\" >]*\.c[\">]")
 
 
 def audit_test_host_boundary(errors):

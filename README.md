@@ -21,6 +21,8 @@ Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础�
 | `positron_tls.dll` | TLS 客户端、双向认证 peer 与 listener | `PTls_Init`、`PTls_ConnectVerified`、`PTls_ServerListen` |
 | `positron_json.dll` | cJSON 的 opaque-handle 包装 | `PJson_Parse`、读取函数、`PJson_Free` |
 | `positron_db.dll` | SQLite 本地数据库、migration、outbox 和 REST 行级同步状态 | `PDb_OpenUtf8`、`PDb_ApplyMigration`、`PDb_SyncBuildRequest`、`PDb_SyncApplyResponse` |
+| `positron_runtime.dll` | 资源应用 manifest、规范 ID 与包内路径准入；完整运行/授权尚未提供 | `PRuntime_ManifestCreate`、`PRuntime_NormalizeId`；见[调用与边界](positron_runtime/README.md) |
+| `positron_media.dll` | 有界媒体解码与宿主时钟调度 | `pm_probe`、`pm_open`、`pm_pump`、`pm_close` |
 | `positron_http.dll` | 基于 TLS 的 HTTP/1.1 GET/POST 与 URL reference 解析 | `PHttp_Init`、`PHttp_GetEx`、`PHttp_PostEx` |
 | `positron_image.dll` | 位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
 | `positron_script.dll` | 有预算的独立 JavaScript context、JSON bridge 与模块加载 | `PScript_CreateEx`、`PScript_Evaluate`、`PScript_Destroy` |

@@ -2,7 +2,7 @@
 
 本文件只描述尚未完成的目标、候选能力和选择规则。当前产品事实见
 [HANDOFF.md](HANDOFF.md)，仍存在的边界见 [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)，
-稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，九个公共 DLL
+稳定的架构与公共 DLL 所有权见 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，十个公共 DLL
 的能力状态见 [docs/CAPABILITIES.md](../docs/CAPABILITIES.md)。已经
 完成的批次不在这里建立时间线；具体实现由 Git 保存，只有会影响未来取舍的失败实验才进入
 [FAILED_EXPERIMENTS.md](FAILED_EXPERIMENTS.md) 或 docs/history/。
@@ -45,6 +45,7 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
   positron_media.dll 和 positron_script.dll 提供可独立消费的基础设施；
 - positron_core.dll 提供无窗口依赖的 HTML/CSS/DOM/layout/paint 与表单基础；
 - positron_browser.dll 提供 Browser session、history、资源事务和脚本到 Core 的协调；
+- positron_runtime.dll 逐步形成 manifest/目录实例、app 资源与隔离服务合同，不将元数据准入当作运行授权；
 - 应用宿主只负责 WM 窗口、消息循环、native 控件、网络/线程调度、设备输入和产品策略；
 - 所有公开边界都具有稳定 C ABI、UTF-8、opaque handle、明确所有权和真实设备证据，并能
   在 VS2008 / WM6 ARMV4I / C89 约束下长期维护。
@@ -56,7 +57,7 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 
 ### 1. 形成全顶层 DLL 的主干能力覆盖
 
-TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的主干能力状态。公开入口可以
+TLS、JSON、DB、Runtime、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的主干能力状态。公开入口可以
 分阶段实现，但每个入口必须先确定 owner、固定预算、所有权、错误分类和失败不变性；未实现入口
 只能以稳定的 unsupported 结果 fail closed，不能用假成功填补矩阵。
 
@@ -88,7 +89,7 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
 
 当前短期目标是完成“主干能力覆盖”，而不是按测试编号继续堆叠孤立功能：
 
-1. 维护 `docs/CAPABILITIES.md`，为九个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
+1. 维护 `docs/CAPABILITIES.md`，为十个顶层 DLL 标注已实现、有界待扩展、宿主职责和暂缓，
    并为每项能力写明入口、预算、失败边界、fixture、设备/人工门和提升条件。
 2. 审计公开头文件和导出入口，发现缺失的主干类别时只提出有 owner、有预算、有错误分类的
    `Ex`/size-version 边界；本阶段不声明完整现代 Web API，也不改变旧 ABI。
@@ -178,7 +179,7 @@ TLS、JSON、HTTP、Image、Media、Script、Core 和 Browser 都要有明确的
 6. 每个被提升的能力必须先有离线成功/失败不变性/容量/stale/cancel fixture，再运行 C89、正式
    ARMV4I 构建、仓库审计和相称的设备门；`test_host` 只增加接线、fixture 和断言。
 
-短期完成标准是：九个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
+短期完成标准是：十个 DLL 的主干状态没有空白项；公开或计划入口都有 owner、预算和失败语义；
 独立应用阶段 A（包括英语/简体中文/回退英语语言矩阵）有设备证据，阶段 B 网络候选有明确
 owner/预算/回滚和最小 fixture；路线图能指出下一条实现纵切，而不是只写“继续寻找”。
 
@@ -239,12 +240,13 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 #### Runtime. 纯资源应用与隔离存储
 
 **状态：用户已批准，先交付公共DLL前置，不先改EXE。** 第三方仅提供资源与manifest，
-使用`app://`并复用现有浏览器UI；新增Runtime、DB受限执行、Core/Browser资源与授权合同
+使用`app://`并复用现有浏览器UI；Runtime后续能力、DB受限集成、Core/Browser资源与授权合同
 由主线与DLL会话负责，EXE会话只接平台、SDK及示例。完整合同见
 [运行时计划](../docs/RUNTIME_PLAN.md)，不在本节复制字段/预算。
 DB 普通受限请求已具备版本化原语与双配置设备证据，合同见
 [DB README](../positron_db/README.md#opt-in-restricted-requests)，不再作为待实现入口。
-下一步固化 Runtime manifest/规范 ID/目录实例及 app 资源合同，再实现迁移准入、隔离 DB
+Runtime manifest/规范 ID/包内路径元数据准入与 JSON 严格解析已有公共合同和设备门，
+退出待实现队列；元数据不是运行身份或授权。下一步实现目录实例及 app 资源合同，再实现迁移准入、隔离 DB
 映射与受控 JSON 服务，补足 Core/Browser 接线后才交给 EXE 目录笔记示例；不把受限 SQL
 原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。PXI只用经验证的系统ZIP能力，
 无合格接口则只挂起安装，不引第三方解压库或私有fallback。普通网页不因URL获权，

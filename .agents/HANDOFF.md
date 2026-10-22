@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供九个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。产品语义属于 DLL，test_host 只拥有 fixture、平台接线和断言。资源运行时首批已在 DB 新增受限请求，旧 ABI/消费者及应用 v4 表不变；Runtime DLL 尚未创建，不能声称目录应用可运行。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备 manifest/规范 ID/包内路径准入，JSON 提供严格有界解析；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；目录实例与完整应用运行仍未实现。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -20,6 +20,22 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、48 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
+
+### Runtime 元数据准入与严格 JSON 已验收
+
+正式新 Runtime 工程仅链接 JSON 公共 import library；manifest/ID/路径合同见
+[Runtime README](../positron_runtime/README.md)，元数据句柄不授予身份/权限。目录绑定、
+app 引用解析、资源 I/O、迁移准入与 SQL/session 服务均待实现，PXI 未取证，不改 EXE/CAB。
+stage/开发 ZIP/模块 helper 已纳入第十 DLL，边界审计增加 Runtime/DB 命名空间，不放宽门。
+
+Debug `tmp/device-runs/20261022-180723-runtime-manifest-debug-contract/`、Release
+`tmp/device-runs/20261022-180854-runtime-manifest-release-contract/` 各 `2,1321,1363,1364,999`
+5/5 PASS，唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash 通过，无新增 dump。145 文件 SD
+包、双空间与新 guest holders=0 unavailable=0 通过，完整回收后清理本轮包，旧不完整目录
+保留。TEST1364 覆盖 ID/路径/JSON 容量、版本/权限/迁移拒绝、复制快照/错误不变性与重复
+释放；旧 JSON 与 DB 原断言保留。C89/审计、串行正式两配置及七项模块审计合成门通过；
+本地开发 ZIP 验证 145 项含 Runtime，未上传。devenv 访问冲突有 Windows Application 1000
+与独立 host 失败日志，正式重试恢复，不追认为通过；未杀进程、改 WMDC 或绕过工程。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -363,7 +379,7 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 
 ### 设备门 DLL 引用审计
 
-设备门以无产品 DLL 依赖的 guest helper/Toolhelp 枚举九个 DLL，仅
+设备门以无产品 DLL 依赖的 guest helper/Toolhelp 枚举十个 DLL，仅
 `holders=0 unavailable=0` 允许继续；快照不可用仍 fail closed，空/部分日志有界等待。
 `TH32CS_SNAPNOHEAPS` 避免枚举 heap；只读审计不强杀，正常退出后须重新获取快照。
 本轮有效证据见上方 Core 双配置门，旧 device=126/零日志不能追认为测试通过。
@@ -377,41 +393,23 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 work budget、只读原子标志取消、typed provisional rows 和 owned transaction。COMMIT 后才
 发布 report；超限/取消/约束/提交失败不发布结果，按原诊断合同尝试 rollback。预算、函数
 allowlist、借用/重入、错误分类和示例以 [DB README](../positron_db/README.md#opt-in-restricted-requests)
-为准。Runtime 身份/manifest、迁移准入、JSON/授权服务和 app 资源仍未实现，不把本接口
+为准。Runtime 运行身份、迁移准入、SQL JSON/授权服务和 app 资源仍未实现，不把本接口
 视为网页 SQL 授权或完整沙箱；旧 local-full/sync/迁移及取消行为不变。
 
-最终 Debug `tmp/device-runs/20261022-155641-runtime-db-restricted-debug-accepted/` 与 Release
-`tmp/device-runs/20261022-155800-runtime-db-restricted-release-accepted/` 各 `1321,1363,999` 3/3 PASS。
-新门覆盖私有表/危险 SQL/view/trigger 拒绝、typed 中文/int64、精确行/批容量、超限/错误输出
-不变性、共享 VM 预算、执行中取消、回调 reentry/close、提交失败/批失败 rollback 及恢复可用；
-旧 DB 门原断言保留。正式双配置、C89/审计通过；320×320/128 DPI、SD 144 文件、双空间与
-新 guest holders=0 unavailable=0、完整日志/Core/crash 均通过，无新增 dump。回收后清理当前包，
-44 个旧不完整目录保留；未改用户 DB、EXE 或 WMDC，无强杀。首轮 VACUUM 与缺失函数分类
-失败日志保留，未放宽断言；修正只在新入口，原模式继续回归。
+当前复验已纳入上方 Runtime 双配置 5/5 门。TEST1363 原样覆盖 SQL/view/trigger 授权、
+typed 中文/int64、容量/输出不变性、共享预算、执行中取消、回调 reentry/close、COMMIT/
+批失败 rollback 与恢复；旧 DB 断言保持。首次独立门与 VACUUM/缺失函数分类失败对照归
+Git/本地日志，不把早期失败追认为通过，也不修改用户 DB 或重开 FULL。
 
-旧 TEST1321 在本轮原样重跑，继续保护 local/sync 的 typed 数据、迁移、取消、同步 outbox/
-冲突/失败原子性，以及结构化 sticky 错误、canary/UTF-8、真实事务状态、FK COMMIT 重试、
-READONLY/内存 FULL 和 owned migration 回滚。稳定调用与错误规则归 DB README；旧独立
-合同门、FULL 准备/执行期及 WinCE 匿名锁映射失败对照归 Git/本地日志。no-WAL/no-mmap
-不变，旧清理失败不改写为成功。I/O、rollback 本身失败与物理断电仍无本轮证据。
+旧 TEST1321 原断言继续保护 local/sync、迁移、sticky 错误/真实事务状态及内存 FULL。
+稳定规则归 DB README，旧合同门与 WinCE 锁映射失败对照归 Git/本地日志；no-WAL/no-mmap
+不变，I/O、rollback 本身失败与物理断电仍无本轮证据。
 
-独立文件 probe 已通过 Debug/Release 正式工程与 SD 部署门：二进制在 SD，文件分别在
-SD 映射卷和内置 object-store；中文 UTF-8 路径/TEXT、typed BLOB、commit/rollback、正常
-重开及 A→B→C 三个独立进程冷重开验证通过，并覆盖 migration 脚本失败的文件原子性。
-两配置 `1321,999` 相邻回归通过。完整包哈希、前后九 DLL 无引用审计、无新 crash 和证据
-回收均通过，验收夹具/包已清理；失败包仍保留。证据和六项门状态集中在
-[DB 文件验收清单](DB_FILE_ACCEPTANCE.md)，不等于物理断电或全部文件可靠性验收。
-跨进程读写/写写六进程门已通过双配置、两种存储：COMMIT BUSY 保留 active/write，
-BEGIN BUSY 不开启事务，旧/新可见性、释放后重试和冷重开通过。相邻回归及身份/引用/
-空间/crash 门通过，证据与用户授权旧包归档清理边界统一见上述清单，失败不追认为成功。
-受控终止自建写进程后的 hot journal 门已通过双配置、两种存储：恢复前保留实际 spill/
-journal，新进程恢复精确数据/schema/integrity，继续提交后冷复核；细节见上述清单。
-文件页配额 FULL 候选已正式双配置构建并从 SD 运行：内置存储四进程通过，当前映射 SD
-卷原生截断返回不支持，FULL 后复核返回 SQLITE_IOERR_TRUNCATE，整体门仍 FAIL。
-用户明确挂起 FULL 门，不再安排设备更换或重跑；证据、原断言与恢复条件见上述清单。
-ROADMAP 已复核并移入暂缓队列，未提升候选；I/O、迁移提交故障/版本拒绝与 HTTPS
-worker 仍待完成；本批不改变 EXE/CAB 既有交付与授权，不宣称真机断电通过。
-本轮相邻回归及最终九 DLL 无引用审计通过，串行窗口释放；下一使用者须重新审计。
+独立文件门的双配置/两种存储、中文路径与 typed 数据、三进程冷重开、跨进程读写/写写锁，
+以及受控终止写进程后的 hot-journal 恢复证据统一见 [DB 文件验收清单](DB_FILE_ACCEPTANCE.md)。
+它们不等于真实断电。文件 FULL 仅内置部分通过，映射 SD 截断不支持并返回
+SQLITE_IOERR_TRUNCATE，整体仍 FAIL；用户已挂起，不重跑或要求换设备。I/O、迁移提交
+故障/版本拒绝与 HTTPS worker 仍待专门门；不改 EXE/CAB 或推断数据安全，旧清理失败保留。
 
 ### HTTP 下载预检与旧流式合同已验收
 
@@ -495,10 +493,11 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 用户已批准[纯资源运行时计划](../docs/RUNTIME_PLAN.md)：app协议、包名式ID、同一浏览器UI，
 系统ZIP无可用接口则挂起PXI。本轮已复核并更新 ROADMAP：受限 DB 请求退出待实现队列；
-唯一下一步仍在主线与DLL：固化 Runtime 的 manifest/规范 ID/目录实例与 app 资源合同，
-再接迁移准入、SQL JSON/服务授权和 Core/Browser 资源；EXE 等完整合同后才接目录示例。
-本批只交付 DB 原语，未创建第十个 DLL 或取证 ZIP，不改 EXE/CAB/用户 DB，不重开像素、
-FULL/断电与保存框暂缓门。构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。
+本轮已复核 ROADMAP/能力矩阵：Runtime manifest/规范 ID/包内路径准入及 JSON 严格解析
+退出待实现队列。唯一下一步为目录实例绑定/独占与 app 资源解析合同，再接迁移、SQL JSON/
+授权及 Core/Browser；EXE 等完整合同后才接目录示例，不凭有效 manifest 私造授权。
+ZIP 未取证，不改 EXE/CAB/用户 DB，不重开像素、FULL/断电与保存框暂缓门。
+构建/设备窗口已释放，下轮仍需重审引用/空间，不能沿用旧快照。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自

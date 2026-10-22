@@ -9,6 +9,9 @@
  */
 
 #include <windows.h>
+#include <float.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "cjson/cJSON.h"
 #include "positron_json.h"
@@ -38,6 +41,100 @@ PJSON_API HANDLE PJson_Parse(const char* json_string)
     }
     root = cJSON_Parse(json_string);
     return (HANDLE)root;
+}
+
+static int json_utf8(const char* text, unsigned int bytes)
+{
+    unsigned int i;
+    unsigned int n;
+    unsigned long code;
+    unsigned long minimum;
+    unsigned char c;
+    for (i = 0; i < bytes; i++) {
+        c = (unsigned char)text[i];
+        if (c == 0) return 0;
+        if (c < 128) continue;
+        if (c >= 194 && c <= 223) { n = 1; code = c & 31; minimum = 128; }
+        else if (c >= 224 && c <= 239) { n = 2; code = c & 15; minimum = 2048; }
+        else if (c >= 240 && c <= 244) { n = 3; code = c & 7; minimum = 65536; }
+        else return 0;
+        while (n-- > 0) {
+            if (++i >= bytes || ((unsigned char)text[i] & 192) != 128) return 0;
+            code = (code << 6) | ((unsigned char)text[i] & 63);
+        }
+        if (code < minimum || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return 0;
+    }
+    return 1;
+}
+static int json_tree_valid(const cJSON* item)
+{
+    const cJSON* child;
+    const cJSON* other;
+    if (cJSON_IsNumber(item) && (!(item->valuedouble <= DBL_MAX) ||
+            !(item->valuedouble >= -DBL_MAX))) return 0;
+    for (child = item->child; child != NULL; child = child->next) {
+        if (cJSON_IsObject(item)) {
+            for (other = item->child; other != child; other = other->next) {
+                if (strcmp(child->string, other->string) == 0) return 0;
+            }
+        }
+        if (!json_tree_valid(child)) return 0;
+    }
+    return 1;
+}
+PJSON_API int PJson_ParseEx(const char* json, unsigned int bytes,
+        const PJsonParseLimits* limits, HANDLE* outRoot)
+{
+    unsigned int i;
+    unsigned int depth;
+    unsigned int tokens;
+    int string;
+    int atom;
+    unsigned char c;
+    char* copy;
+    cJSON* root;
+    if (json == NULL || outRoot == NULL || limits == NULL || bytes == 0 ||
+            limits->size != sizeof(*limits) || limits->version != PJSON_PARSE_VERSION ||
+            limits->max_bytes < 1 || limits->max_bytes > 65536 || limits->max_depth < 1 ||
+            limits->max_depth > 16 || limits->max_tokens < 1 || limits->max_tokens > 1024) return PJSON_PARSE_ARGUMENT;
+    if (bytes > limits->max_bytes) return PJSON_PARSE_LIMIT;
+    if (!json_utf8(json, bytes) || (bytes >= 3 && !memcmp(json, "\xef\xbb\xbf", 3))) return PJSON_PARSE_INVALID;
+    depth = tokens = 0; string = atom = 0;
+    for (i = 0; i < bytes; i++) {
+        c = (unsigned char)json[i];
+        if (c < 32 && (string || (c != '\t' && c != '\r' && c != '\n'))) return PJSON_PARSE_INVALID;
+        if (string) {
+            if (c == '\\') {
+                if (++i >= bytes) return PJSON_PARSE_INVALID;
+                if (json[i] == 'u' && i + 4 < bytes && !memcmp(json + i + 1, "0000", 4)) return PJSON_PARSE_INVALID;
+            } else if (c == '"') string = 0;
+            continue;
+        }
+        if (c == '0' && i + 1 < bytes && json[i + 1] >= '0' && json[i + 1] <= '9' &&
+                (i == 0 || json[i - 1] == '-' || strchr("[{: ,\t\r\n", json[i - 1]) != NULL)) return PJSON_PARSE_INVALID;
+        if (c == '"') { string = 1; atom = 0; tokens++; }
+        else if (c == '{' || c == '[') { depth++; tokens++; atom = 0; }
+        else if (c == '}' || c == ']') { if (depth == 0) return PJSON_PARSE_INVALID; depth--; atom = 0; }
+        else if (c == ',' || c == ':' || c == ' ' || c == '\t' || c == '\r' || c == '\n') atom = 0;
+        else if (!atom) { atom = 1; tokens++; }
+        if (depth > limits->max_depth || tokens > limits->max_tokens) return PJSON_PARSE_LIMIT;
+    }
+    if (depth != 0 || string) return PJSON_PARSE_INVALID;
+    copy = (char*)malloc(bytes + 1);
+    if (copy == NULL) return PJSON_PARSE_INVALID;
+    memcpy(copy, json, bytes); copy[bytes] = '\0';
+    root = cJSON_ParseWithLengthOpts(copy, bytes + 1, NULL, 1);
+    free(copy);
+    if (root == NULL) return PJSON_PARSE_INVALID;
+    if (!json_tree_valid(root)) { cJSON_Delete(root); return PJSON_PARSE_INVALID; }
+    *outRoot = (HANDLE)root;
+    return PJSON_PARSE_OK;
+}
+PJSON_API const char* PJson_GetStringValue(HANDLE value)
+{
+    cJSON* item;
+    item = (cJSON*)value;
+    return cJSON_IsString(item) ? item->valuestring : NULL;
 }
 
 PJSON_API void PJson_Free(HANDLE hObj)

@@ -1,6 +1,6 @@
 # 公共能力覆盖矩阵
 
-本文件描述 Positron 九个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
+本文件描述 Positron 十个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
 应用开发者和维护者的稳定说明，不记录 next 编号、提交时间、设备运行目录或逐测试流水。
 精确函数签名、结构体大小和错误码仍以对应的公开头文件为准。
 
@@ -143,6 +143,18 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 基础 object/array/string/int 读取 | `PJson_Get*` | 已实现 | 失效 handle、缺失键和越界索引按头文件约定返回安全值；不返回借用指针之外的所有权 | 现有 JSON 调用方和脚本桥；布尔/浮点/类型与 object 遍历保持 additive ABI |
 | 有界序列化和字符串释放 | `PJson_Serialize`、`PJson_FreeString` | 已实现 | 分配失败返回空；字符串由 JSON DLL 分配并由对应入口释放 | 现有 JSON 合同；新增 size-probe 需保持旧序列化 ABI 不变 |
 | schema、流式 parser、异步 DOM 映射 | 当前没有公共入口 | 暂缓 | 不引入无界 parser 状态或跨线程借用树 | 需要明确消费者、固定 token/深度预算和可回滚 fixture |
+
+`PJson_ParseEx` 提供请求级 size/version 严格准入：显式 UTF-8 长度、最多 65536 bytes/
+16 容器层/1024 词元（含键和容器），调用方可降低；拒绝尾随内容、重复键、NUL、非法 UTF-8
+及非有限数字，失败不改输出。旧 Parse 不变；TEST1364 保护新旧路径，schema 仍由消费者拥有。
+
+## Runtime：`positron_runtime.dll`
+
+| 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
+| --- | --- | --- | --- | --- |
+| manifest、规范 ID 与包内路径准入 | `PRuntime_ManifestCreate/GetInfo/GetMigration/Close`、`PRuntime_NormalizeId`、`PRuntime_ValidateResourcePath` | 已实现但仅元数据 | UTF-8 manifest 8192 bytes/8 层/256 词元，ID 63 ASCII bytes，name 127/path 255 bytes，16 个连续 migration；只复制声明，不创建身份/权限/文件，失败不改输出 | TEST1364 的合法/非法/容量、严格 JSON、版本/权限/迁移、快照与重复释放及双配置设备门；合同见 [Runtime README](../positron_runtime/README.md) |
+| 目录实例、app URL、资源与授权/SQL 服务 | 已批准运行时计划；尚无可用公共入口 | 有界待扩展 | 必须绑定规范目录/安装身份、隔离数据/锁与 session，普通网页/URL/manifest 句柄不获权 | 下一纵切实现目录实例及 app 资源，之后接受限 DB/JSON/生命周期，不能由 EXE 补私有产品规则 |
+| PXI 安装与更新 | 系统 ZIP 能力尚未完成取证 | 有界待扩展 | 禁止自写/引入 ZIP fallback，不可用则只挂起安装，目录应用可独立推进 | 目标 ROM 的 ZIP 完成/错误/取消、Unicode/路径冲突/规模/清理门通过后再实现 |
 
 ## DB：`positron_db.dll`
 

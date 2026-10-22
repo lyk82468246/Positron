@@ -335,6 +335,7 @@ if ($LASTEXITCODE -ne 0) {
 $required = @(
     "positron_tls.dll",
     "positron_json.dll",
+    "positron_runtime.dll",
     "positron_media.dll",
     "positron_db.dll",
     "positron_http.dll",

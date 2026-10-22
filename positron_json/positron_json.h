@@ -45,6 +45,31 @@ enum {
 /* Parse a UTF-8 JSON string. Returns NULL on parse error. */
 PJSON_API HANDLE PJson_Parse(const char* json_string);
 
+#define PJSON_PARSE_VERSION 1
+#define PJSON_PARSE_OK 0
+#define PJSON_PARSE_ARGUMENT -1
+#define PJSON_PARSE_LIMIT -2
+#define PJSON_PARSE_INVALID -3
+typedef struct PJsonParseLimits {
+    unsigned int size;
+    unsigned int version;
+    unsigned int max_bytes;  /* 1..65536 */
+    unsigned int max_depth;  /* 1..16 container levels */
+    unsigned int max_tokens; /* 1..1024; includes object keys/containers */
+} PJsonParseLimits;
+/* Strict additive admission: explicit UTF-8 length, no BOM/NUL, trailing
+ * material, duplicate keys, nonfinite numbers or decoded NUL strings/keys.
+ * Preflight bounds containers/tokens before cJSON allocation; cJSON still
+ * owns grammar/escape parsing. INVALID includes parser allocation failure
+ * (cJSON does not distinguish it here); never change global allocator hooks.
+ * No callbacks or public global error slot. Outputs unchanged on failure; successful
+ * root is caller-owned and freed by PJson_Free. Old Parse is unchanged. */
+PJSON_API int PJson_ParseEx(const char* json, unsigned int bytes,
+        const PJsonParseLimits* limits, HANDLE* outRoot);
+/* Borrowed scalar string, or NULL for non-string; lifetime follows root.
+ * ParseEx excludes embedded NUL; legacy Parse retains legacy C-string limits. */
+PJSON_API const char* PJson_GetStringValue(HANDLE value);
+
 /* Free a top-level handle obtained from PJson_Parse. NULL-safe. */
 PJSON_API void PJson_Free(HANDLE hObj);
 

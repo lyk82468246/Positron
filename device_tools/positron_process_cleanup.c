@@ -18,6 +18,7 @@ static HANDLE g_log = INVALID_HANDLE_VALUE;
 static const WCHAR *g_positron_modules[] = {
     L"positron_tls.dll",
     L"positron_json.dll",
+    L"positron_runtime.dll",
     L"positron_media.dll",
     L"positron_http.dll",
     L"positron_core.dll",

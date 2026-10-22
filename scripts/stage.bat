@@ -24,6 +24,7 @@ if not exist "%STAGE%" mkdir "%STAGE%"
 echo Staging %CFG% artifacts to %STAGE% ...
 copy /Y "%ROOT%\positron_tls\bin\%CFG%\positron_tls.dll"   "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_json\bin\%CFG%\positron_json.dll" "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\positron_runtime\bin\%CFG%\positron_runtime.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_media\bin\%CFG%\positron_media.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_http\bin\%CFG%\positron_http.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_core\bin\%CFG%\positron_core.dll" "%STAGE%\" || goto :fail
