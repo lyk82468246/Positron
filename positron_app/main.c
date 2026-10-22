@@ -157,6 +157,7 @@ static char g_file_picker_pending_id[PBROWSER_SCRIPT_DIALOG_ID_MAX];
 #ifdef _DEBUG
 static unsigned long g_page_layout_count;
 static int g_scroll_paint_probe;
+static unsigned long g_scroll_debug_paints;
 /* Non-NULL only inside the independent startup fixture. It parks a real
  * worker without HTTP so interleavings are deterministic and offline. */
 static HANDLE g_navigation_debug_worker_gate;
@@ -6357,6 +6358,7 @@ static int app_history_debug_eval(const char *source)
 static LRESULT CALLBACK app_history_debug_window_proc(HWND hwnd, UINT message,
         WPARAM wparam, LPARAM lparam)
 {
+    if (message == WM_PAINT) ++g_scroll_debug_paints;
     /* Use production command/submission dispatch, but not WM_CREATE's Shell
      * fullscreen setup in this independent hidden viewport. */
     if (message == WM_NULL) {
@@ -6742,7 +6744,7 @@ done:
 
 /* Exercise the real EXE adapters with an independent page/history and a
  * hidden native viewport. No network, live history or Release fixture. */
-static int app_history_debug_check(void)
+static int app_history_debug_check(int scroll_only)
 {
     static const char html[] =
             "<html><body style='margin:0'><a id='panlink' href='#chapter' "
@@ -6810,6 +6812,10 @@ static int app_history_debug_check(void)
     app_copy_text(g_current_url, sizeof(g_current_url),
             "https://example.com/");
     app_history_bind_page();
+    if (scroll_only) {
+        result = app_scroll_paint_debug_check();
+        goto done;
+    }
     memset(&callbacks, 0, sizeof(callbacks));
     callbacks.size = sizeof(callbacks);
     callbacks.pw = &g_app;
@@ -6913,8 +6919,9 @@ done:
     free(saved);
     PCore_SetDeviceViewport(g_page_width > 0 ? g_page_width : 1,
             g_page_height > 0 ? g_page_height : 1, g_dpi);
-    AppDebug_Log(result == 0 ? "positron history selftest OK\r\n" :
-            "positron history selftest FAILED\r\n");
+    if (!scroll_only)
+        AppDebug_Log(result == 0 ? "positron history selftest OK\r\n" :
+                "positron history selftest FAILED\r\n");
     return result;
 }
 #endif
@@ -7813,6 +7820,11 @@ static int app_scroll_paint_debug_check(void)
     int window_probe;
     int was_visible;
     int result;
+    POINT sample;
+    HWND sample_window;
+    RECT clip;
+    int clip_kind;
+    unsigned long paints_before;
     char message[160];
 
     screen = NULL;
@@ -7836,6 +7848,9 @@ static int app_scroll_paint_debug_check(void)
     window_probe = 0;
     actual = CLR_INVALID;
     expected = CLR_INVALID;
+    paints_before = g_scroll_debug_paints;
+    clip_kind = ERROR;
+    SetRectEmpty(&clip);
     was_visible = IsWindowVisible(g_page_window);
     if (!GetClientRect(g_page_window, &client) ||
             client.right != 120 || client.bottom != 80) goto done;
@@ -7917,10 +7932,12 @@ static int app_scroll_paint_debug_check(void)
                 ++move) {
             g_scroll_x = 40;
             g_scroll_y = MulDiv(chapter_y, dpi, 96) - 30;
+            paints_before = g_scroll_debug_paints;
             InvalidateRect(g_page_window, NULL, FALSE);
             UpdateWindow(g_page_window);
             window_probe = 2;
             window_dc = GetDC(g_page_window);
+            if (window_dc != NULL) clip_kind = GetClipBox(window_dc, &clip);
             if (window_dc == NULL || !BitBlt(retained, 0, 0, 120, 80,
                     window_dc, 0, 0, SRCCOPY)) goto done;
             ReleaseDC(g_page_window, window_dc);
@@ -7962,6 +7979,23 @@ static int app_scroll_paint_debug_check(void)
     }
     result = 0;
 done:
+    /* Capture the failing scene before hiding/restoring the fixture. */
+    if (result != 0) {
+        sample.x = x;
+        sample.y = y;
+        (void) ClientToScreen(g_page_window, &sample);
+        sample_window = WindowFromPoint(sample);
+        _snprintf(message, sizeof(message) - 1,
+                "positron scroll-paint scene visible=%d foreground=%d hit=%d "
+                "paints=%lu clip=%d rect=%ld,%ld,%ld,%ld screen=%ld,%ld\r\n",
+                IsWindowVisible(g_page_window),
+                GetForegroundWindow() == g_page_window,
+                sample_window == g_page_window,
+                g_scroll_debug_paints - paints_before, clip_kind,
+                clip.left, clip.top, clip.right, clip.bottom, sample.x, sample.y);
+        message[sizeof(message) - 1] = '\0';
+        AppDebug_Log(message);
+    }
     g_scroll_x = saved_x;
     g_scroll_paint_probe = 0;
     g_scroll_y = saved_y;
@@ -9703,6 +9737,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
 #ifdef _DEBUG
     startup_ui_selftest = 0;
+    if (command_line != NULL &&
+            wcscmp(command_line, L"--selftest-scroll-paint") == 0) {
+        startup_ui_selftest = 2;
+        command_line = L"";
+    }
     if (command_line != NULL && !wcscmp(command_line, L"--selftest-downloads-ui")) {
         g_downloads_ui_mode = 1;
         g_downloads_ui_started = GetTickCount();
@@ -9793,6 +9832,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     AppHostContext_SetCoreInitialized(&g_app, 1);
 #ifdef _DEBUG
+    if (startup_ui_selftest == 2) {
+        result = app_history_debug_check(1);
+        AppHostContext_Shutdown(&g_app);
+        AppDebug_EndSession();
+        return result;
+    }
     if (g_downloads_ui_mode && AppInternalPages_DebugCheck(g_app_css) != 0) {
         AppHostContext_Shutdown(&g_app);
         return 1;
@@ -9814,7 +9859,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         return 1;
     }
 #ifdef _DEBUG
-    if (startup_ui_selftest && app_history_debug_check() != 0) {
+    if (startup_ui_selftest && app_history_debug_check(0) != 0) {
         AppHostContext_Shutdown(&g_app);
         return 1;
     }

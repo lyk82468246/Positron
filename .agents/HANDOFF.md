@@ -54,33 +54,34 @@ count=0）；完整日志无 dump，根因未定，不直接归因为缺字体�
 持久 GET 记录最多 500 条/每页 16 条，读取按 tab/请求/generation 隔离，确认清除全局失效
 缓存。存储、真实导航与固定右菜单已获设备/用户验收；历史操作只在页内，不删用户文件。
 稳定策略见 [应用数据设计](../positron_app/APPLICATION_DATA_PLAN.md)。
-用户已确认单删通过，PID1454845918正常退出；绑定ID/COMMIT后全标签失效保持，不影响导航栈。
+单删已人工通过；绑定ID/COMMIT后全标签失效保持，不影响导航栈。
 历史搜索消费原DB接口，文字匹配/预算/分页/输入与应用查询分离合同见应用数据设计，不改schema。
 `tmp/device-runs/20261021-195333-app-downloads-name-review/` 五进程PASS：中文/ASCII/字面SQL与通配符、
 查询复制/过滤游标/超限及队列、原生回车/键盘链接/旧结果隔离/编辑选区保留/显示全部；旧单删与下载门保留。
 双语44焦点/断行与字段门通过，固定48容量不变；Debug/Release/CAB、C89、离线17项与Release夹具排除通过。
 最新用户闭库为 `tmp/device-runs/20261021-history-fixture-user-data/`，原远端用户库未修改，不得恢复旧库复活已删记录。
 历史操作键盘来源仍限当前可信文档。
-旧manual-review PASS的PID4133264926已由用户退出。当前隔离测试包为
-`tmp/device-runs/20261021-202335-app-history-fixture/`，对应SD同名目录；设备普通启动PID1455633922，
-前台可见，op4成功、历史页focus44，首批16条及下一页入口已加载。独立库含80条，alpha40、中文17、
-重复URL3及特殊字符/长文本，生成器与验收清单见[历史验收](../docs/APP_HISTORY_ACCEPTANCE.md)。
-原用户目录/备份不混入测试记录。主机夹具4项通过；EXE/九DLL回读10/10，二进制未修改。
-两次完整UI自检仍FAIL：app-history及app-history-retry日志在读取DB前报scroll-paint
-window=2 dpi=96 move=0 pixel=0,0 actual=2701493 expected=16777215；根因未定，未放宽断言。
-普通启动检查误等newtab而超时，日志已证实history加载，脚本已修正预期URL；不重启当前应用，
-不追认为完整门PASS。原生触摸/SIP、分页/中文搜索及筛选后删除待人工，窗口像素失败须独立取证。
+用户已确认隔离80条历史夹具测试通过并退出；范围/预期见[历史验收](../docs/APP_HISTORY_ACCEPTANCE.md)，
+不外推全部SIP/旋转/OEM。闭库/零引用证据在 `tmp/device-runs/20261022-history-fixture-accepted/`；
+库仍为80条。全局日志却来自旧settings包，不作为本次操作日志；原用户库/备份未覆盖。
 
-截图 `tmp/QQ20261006-232231.png` 的超宽与花屏分别取证。Core 提供选择性紧急断行，
-EXE 不改写文字或隐藏横轴；[请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md) 已落实。
-实际窗口复现 CE 双轴 ScrollWindowEx 返回 ERROR；改为单轴顺序移动，任一失败完整
-失效视口，仅补绘而不增加 layout。位图原点假设无对照支持，已撤回；空页不替代长 URL 门。
+旧完整UI的两次scroll-paint失败保留：window2/dpi96/move0/pixel0,0为2701493而非16777215。
+当前未改产品的基线 `tmp/device-runs/20261022-143952-app-scroll-probe-baseline/` 已通过像素段，
+但完整门超90秒，用户正常退出；不追认为全套PASS。旧普通启动误等newtab的脚本错误已修正。
+诊断包 `tmp/device-runs/20261022-144342-app-scroll-scene/` 只改Debug夹具：失败在隐藏前记录
+visible/foreground/命中/WM_PAINT次数/DC clip，独立 `--selftest-scroll-paint` 不联网、不读DB。
+app-history-scroll-two/three均PASS：96/192 DPI、九组精确像素、10/10哈希、退出零引用、无新dump。
+当前设备320×320/128 DPI；旧间歇像素失败未复现、根因未定，未改正式绘制或放宽断言。
+首个定向门抢在清理前取快照而FAIL，现仍在原30秒内等待退出；旧失败不抹除。无应用留运行。
+正式Debug/Release及C89通过，Release无新诊断；CAB首轮抢读失败的日志保留，正式重试通过。
 
-`tmp/device-runs/20261006-235934-app-scroll-axis-final/` 的实际窗口/96、192 DPI 像素、
-IANA→历史与 crash 门 PASS，用户确认双轴/斜向拖动无花屏；断行与固定菜单后续复测通过，
-不外推全部页面/OEM。详细先行包与已退出 PID 见 Git；失败探针与 rebuild 链接失败保留。
-访问存储五进程正常退出等待后零引用，不强杀；500 条裁剪为离线 SQL 证据，不等于断电门。
-FULL/I/O/断电暂缓不重开，新设备门须重新审计引用。
+Core选择性断行已落实[请求](../positron_app/CORE_TEXT_WRAP_REQUEST.md)，EXE不改写文字/隐藏横轴。
+旧CE双轴ScrollWindowEx报ERROR，已改单轴顺序移动、失败全视口补绘，不增加layout；
+无证据的位图原点假设已撤回，旧截图/失败细节见Git。
+
+旧 `tmp/device-runs/20261006-235934-app-scroll-axis-final/` 像素/IANA历史/crash门及用户双轴/斜向
+拖动无花屏通过，断行/固定菜单复测通过，不外推全部OEM。旧失败见Git。
+500条裁剪仅离线SQL证据；FULL/I/O/断电暂缓不重开，新设备门重审引用。
 
 ### EXE 完整设置与启动策略
 
@@ -495,10 +496,10 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
 保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
 已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
-下载重下/历史单删已获人工通过，历史搜索已通过自动门；下一步人工复核关键词、清空及筛选后删除/跨标签。
+下载重下/历史单删/80条历史搜索已获人工通过；完整SIP/旋转/OEM不外推。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-隔离历史数据和完整UI窗口像素失败保持独立待验收；已复核路线图，本轮仅补Media参数恢复回归/中文文档，
-未改EXE产品代码、公共DLL/ABI或打包工程。
+已复核路线图：本轮只补EXE Debug像素诊断与独立门；当前两次定向PASS不关闭旧间歇失败。
+下次像素失败先查scene日志，不因历史人工通过归因为DLL；公共DLL/ABI和打包工程未改。
 没有强杀或重置，下次构建部署须重审引用，不覆盖用户数据库。
 
 原路线保持：DLL 的脚本编译复用先测产物体积、峰值内存和冷/重复成本，再审查预算与

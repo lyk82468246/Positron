@@ -10,6 +10,7 @@ param(
     [string] $FixtureDatabase = '',
     [switch] $ReuseFixture,
     [switch] $ManualFixtureReview,
+    [switch] $ScrollPaintOnly,
     [ValidatePattern('^app-history(?:-[a-z0-9]+)*$')]
     [string] $AttemptName = 'app-history'
 )
@@ -33,6 +34,10 @@ $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot $LocalRunRoot))
 $stageRoot = Join-Path $runRoot 'stage'
 $fixture = $null
+if ($ScrollPaintOnly -and ($FixtureDatabase -or $NormalStartup -or $VisitNavigation -or
+        $ManualFixtureReview -or $StartupUrl -ne 'positron://newtab')) {
+    throw 'Scroll-only runs an isolated, non-navigating Debug fixture.'
+}
 if ($ReuseFixture -and !$FixtureDatabase) { throw 'Reuse requires an exact fixture manifest.' }
 if ($ManualFixtureReview -and !$FixtureDatabase) { throw 'Manual review requires an isolated fixture.' }
 if ($FixtureDatabase) {
@@ -122,6 +127,7 @@ try {
     }
     $arguments = if ($NormalStartup) { $null } else { '--selftest-ui --url ' + $StartupUrl }
     if ($ManualFixtureReview) { $arguments = '--url positron://history' }
+    if ($ScrollPaintOnly) { $arguments = '--selftest-scroll-paint' }
     if ($VisitNavigation) {
         if ($NormalStartup -or $StartupUrl -ne 'positron://newtab') {
             throw 'VisitNavigation uses the full UI suite and its fixed HTTPS target.'
@@ -142,6 +148,15 @@ try {
         if ([PositronDeviceRapi]::TryCopyFileFromDevice($remoteLog, $localLog)) {
             $text = Get-Content -LiteralPath $localLog -Raw -Encoding UTF8
             if ($text -match 'selftest FAILED') { throw 'EXE startup selftest failed.' }
+            if ($ScrollPaintOnly) {
+                if ($text -match ('debug-session pid={0}\b' -f $appPid) -and
+                        $text -match 'scroll-paint selftest OK dpi=96,192 moves=9 pixels=exact') {
+                    $complete = $true
+                    break
+                }
+                Start-Sleep -Milliseconds 150
+                continue
+            }
             if ($NormalStartup -and $text -match 'selftest|https://example\.com/') {
                 throw 'Normal startup ran a UI fixture.'
             }
@@ -192,6 +207,46 @@ try {
         if (!$before.ContainsKey($entry.Key) -or $before[$entry.Key] -ne $entry.Value) {
             throw ('New crash dump: ' + $entry.Key)
         }
+    }
+    if ($ScrollPaintOnly) {
+        # A terminal log alone is insufficient: require normal fixture exit.
+        [PositronDeviceRapi]::DeleteFileIfExists($remoteAudit)
+        [void][PositronDeviceRapi]::LaunchProcess(
+            ($RemoteRoot + '\positron_process_cleanup.exe'), $null, '--audit-modules')
+        $exitAudit = Join-Path $evidenceRoot 'exit-module-audit.log'
+        $deadline = (Get-Date).AddSeconds(30)
+        $exited = $false
+        do {
+            if ([PositronDeviceRapi]::TryCopyFileFromDevice($remoteAudit, $exitAudit)) {
+                $exitText = Get-Content $exitAudit -Raw -Encoding UTF8
+                if ($exitText -match '(?m)^module_audit holders=0 unavailable=0\s*$') {
+                    $exited = $true
+                    break
+                }
+                if ($exitText -match 'module_audit holders=') {
+                    # The pixel marker precedes normal Core/font teardown.
+                    # Refresh snapshots within the same fixed exit deadline.
+                    Start-Sleep -Milliseconds 300
+                    [PositronDeviceRapi]::DeleteFileIfExists($remoteAudit)
+                    [void][PositronDeviceRapi]::LaunchProcess(
+                        ($RemoteRoot + '\positron_process_cleanup.exe'), $null, '--audit-modules')
+                }
+            }
+            Start-Sleep -Milliseconds 150
+        } while ((Get-Date) -lt $deadline)
+        if (!$exited) { throw 'Scroll fixture exit audit timed out.' }
+        $after = [PositronDeviceRapi]::SnapshotCrashDumps()
+        foreach ($entry in $after.GetEnumerator()) {
+            if (!$before.ContainsKey($entry.Key) -or $before[$entry.Key] -ne $entry.Value) {
+                throw ('New crash dump after scroll teardown: ' + $entry.Key)
+            }
+        }
+        [IO.File]::WriteAllLines((Join-Path $evidenceRoot 'scroll-result.txt'), @(
+            'status=PASS', 'dpi=96,192', 'moves=9', 'pixels=exact',
+            'binary_roundtrip=10/10', 'exit_audit=holders=0 unavailable=0',
+            'crash_check=PASS', ('pid=' + $appPid), 'full_ui_selftests=NOT_RUN'))
+        Write-Host ('APP SCROLL PASS dpi=96,192 moves=9 pixels=exact binary_roundtrip=10/10 exit_audit=zero crash_check=PASS pid={0}' -f $appPid)
+        return
     }
     if ($ManualFixtureReview) {
         Write-Host ('APP HISTORY MANUAL READY pid={0}; full UI selftests NOT RUN, not an acceptance PASS' -f $appPid)
