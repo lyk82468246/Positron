@@ -131,6 +131,9 @@ extern BOOL test1371_runtime_page_contract(void);
 extern const char* test1371_runtime_page_last_error(void);
 extern BOOL test1372_runtime_zip_probe(void);
 extern const char* test1372_runtime_zip_report(void);
+extern BOOL test1373_runtime_io_contract(void);
+extern const char* test1373_runtime_io_last_error(void);
+extern const char* test1373_runtime_io_report(void);
 extern const char* test1363_db_restricted_last_error(void);
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
@@ -1297,7 +1300,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1372
+#define TEST_MAX_NUMBER 1373
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118386,6 +118389,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1372_runtime_zip_probe();
             if (ok) { show_info(L"TEST 1372 OK", test1372_runtime_zip_report()); }
             else { show_error(L"TEST 1372 FAIL", test1372_runtime_zip_report()); }
+            break;
+        case 1373:
+            ok = test1373_runtime_io_contract();
+            if (ok) { show_info(L"TEST 1373 OK", test1373_runtime_io_report()); }
+            else { show_error(L"TEST 1373 FAIL", test1373_runtime_io_last_error()); }
             break;
         case 1322:
             ok = test1322_browser_application_script_profile();

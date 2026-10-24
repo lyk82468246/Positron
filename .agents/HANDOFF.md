@@ -29,22 +29,25 @@ Runtime 只链接 JSON/DB 公共库；目录与 data provider、身份/迁移、
 页面授权/worker/SDK/示例未接线。当前 ROM 未发现 ZIP 命名文件或所查六个 Shell 注册入口，
 未取得合格系统 ZIP provider；PXI/安装身份/关联暂缓，不外推所有 ROM，不引解压 fallback。
 
-队列双配置基线与证据由 a4d7b23b 保留；迁移、typed JSON、隔离、八槽/四页面及线程/撤销
-合同见组件文档，不在交接复制；资源 URL 不授权，迟到写入结果绝不重跑 SQL。
+当前目标为 240×320、96 DPI、OS 5.2.318 DeviceEmulator，不沿用旧 ROM 通过结论。
+Debug `tmp/device-runs/20261024-152041-db-native-diagnostics-debug-final2/` 与 Release
+`tmp/device-runs/20261024-152405-db-native-diagnostics-release-paths-full/` 的
+`1321,1363,1366,1368-1373,999` 均为 10/10。TEST1373 对照 UI/worker 原生文件循环、
+DB 迁移/重开及双线程 64 次失败打开，验证诊断隔离；不是故障注入、FULL 或断电门。
+DB 只增强既有错误文本：线程/调用作用域捕获实际 VFS 操作、原生错误和路径，不改 ABI、
+返回码、回滚或重试策略。合同见 DB README；TEST1371/1372 原有边界不变。
+最终路径诊断的 Debug 定向门 `20261024-152517-db-native-scope-final` 为 2/2。
 
-最新 Debug `tmp/device-runs/20261023-075334-runtime-parent-path-probe/` 为 `1368-1372,999` 6/6；
-Release `tmp/device-runs/20261023-075627-runtime-page-release-accepted/` 为 `1371,1372,999` 3/3。
-TEST1371 资源组合、真实 JS 地址/无授权及绘制断言范围见能力矩阵；TEST1372 仅只读清单。
-两配置正式构建、C89/审计及所列门完整日志/唯一 PASS/零 ERROR、Core/crash/双空间/零引用
-通过，无 dump；145 文件 SD 包回收后清理，45 个旧不完整目录保留；未改 EXE/用户 DB/WMDC。
-
-相邻存储门不能写成全部通过：旧 Debug/Release 各 13 项曾通过，但后续仍间歇失败。
-`20261023-075450-runtime-directory-release-closeout` 的 TEST1369 在 schema=1 返回
-Runtime=-11/DB=-1/category=12/SQLite=14（CANTOPEN），dataAttr=16/fileAttr=0。
-`20261023-005130-runtime-native-parent-diagnostic` 的 mkdir 返回183，随后属性仍不可取得；
-已有 TEST1368 粗断言和 TEST1370 初始化失败也保留。
-fixture 现验证各级目录并保留路径/结构化诊断与原断言；尚未归属 provider、VFS 或映射卷，
-不能归因缺空间或宣称修复。旧 WriteFile 差异见 Git，helper 固定有界复制，不作失败后重试。
+存储故障仍未关闭：`20261024-145452-runtime-storage-io-release` 的 TEST1370 在
+schema=1 返回 Runtime=-11/DB=-1/category=12/SQLite=14。
+`20261024-152138-db-native-diagnostics-release-final` 的前八项通过，但 TEST1373
+直接 CreateDirectoryW 返回183、随后属性不可取得；该路径不经过 DB/Runtime。
+同源独立 Release 对照 `20261024-152324-db-native-diagnostics-release-paths/` 2/2，
+不能抵消组合失败。旧 mkdir183/CANTOPEN 证据见 424a8d40，未归属 provider、VFS 或映射卷。
+正式两配置构建、C89/审计有效；所列设备门完整回收、双空间/零引用/crash 检查通过，无新 dump。
+两个既有 dump 属于九月旧脚本宿主；145 文件 SD 包回收后清理，四个旧不完整目录保留。
+不归因缺空间、不要求重连、不改 EXE/用户 DB/WMDC；旧 WriteFile 差异与有界复制见 Git，
+无失败后重试。下一步保留失败路径与父目录属性，区分组合顺序、路径和原生卷行为。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -477,10 +480,8 @@ EXE 使用 generation 绑定的 16 ms 系统 timer；pending 禁止普通入口�
 
 先行完整 Debug 包 `tmp/device-runs/20261003-233918-app-script-steps-viewport/` 共 49 文件；双空间预检及两次模块审计 holders=0 unavailable=0。全部 required 自检 OK；script-scheduling 覆盖真实 timer/窗口消息、pending 拒绝、cancel/close、stale、旧页/history、作者顺序/异常后 DOM、视口变化与输入选区保留。EXE/九 DLL SHA256 10/10、crash_check=PASS。该包不是当前人工入口；正式 Debug/Release/CAB、C89 与 Release 诊断排除通过。用户已反馈 running-script 阻塞基本解决，单次长调用不可抢占的 DLL 边界不变。
 
-EXE 调度的早期 phase=4 失败是 fixture 使用未接线 document.title setter，改用既有
-textContent/Core 终态后通过；VS2008 失败日志保留在 `tmp/app-script-build-failures/`。
-Core CSS cache/resolver 基线与失败 context 接线边界以 Git 和脚本阻塞审查为准；不恢复旧
-callback 接法，也不把自动 guest 毫秒代替用户墙钟或写成整站性能保证。
+早期调度 fixture 修订与构建失败经过保留于 Git 和脚本阻塞审查，不再作为当前候选；
+Core CSS resolver 的既有接线保持。自动 guest 毫秒不代替用户墙钟或整站性能保证。
 
 ## 有效边界与设备纪律
 
@@ -490,14 +491,12 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-已复核 ROADMAP/限制：HTTP 预检/建议名/最终头复核及 EXE 接线均退出待开发队列；
-保存框Name完整显示/自由修改后缀已证实失败，并按用户决定挂起替换方案；不再自动推进该门。
-已复核ROADMAP/限制：文件安全/不覆盖/额度保持，不以初始化参数自检代替GUI；
-下载重下/历史单删/80条历史搜索已获人工通过；完整SIP/旋转/OEM不外推。
+ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验收保持；保存框后缀方案
+按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核：目录公共合同/资源组合退出待实现队列，PXI 暂缓；当前失败见 Runtime 节。
-按最新用户指示，本轮后停止且未触发应用会话，构建/设备窗口释放。唯一恢复步骤是建立正常
-SD 目录/数据库打开的原生 I/O 与 DB 最小对照，定位183/CANTOPEN，不继续重跑宽门；之后再
+原生/DB 最小对照及调用级诊断已建立；尚未触发应用会话。唯一下一步是在实际失败中取得
+确切路径、父目录属性和 VFS 原生操作，定位183/CANTOPEN，不以独立通过覆盖组合失败；之后再
 投递 EXE provider/授权/worker/SDK/目录示例。不重开 FULL/断电或保存框暂缓门，不改用户 DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。

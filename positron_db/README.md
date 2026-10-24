@@ -31,6 +31,16 @@ SQLite codes. Insufficient size or an unknown version leaves the output
 unchanged; a larger buffer is accepted without touching its extension bytes.
 The snapshot owns its message and requires no allocation or free operation.
 
+On WM6, native CANTOPEN/I/O failures may include the SQLite VFS operation,
+original Win32 error and path in that existing message. Capture is bounded to
+255 UTF-8 bytes and scoped to the calling thread and public operation; it does
+not log SQL or bindings. If private TLS/log capture is unavailable, the ordinary
+SQLite message remains. Treat this text as diagnostic evidence, not a stable
+machine-readable format or retry policy. It may contain private paths: do not
+forward it unfiltered to page scripts. Error codes, transaction behavior and
+resource ownership are unchanged; capture performs no extra filesystem operation,
+retry or deletion.
+
 Errors are sticky: successful calls, column sentinel getters and diagnostic
 queries preserve the last failure. A failing status operation with a live owner
 replaces it, including parameter errors; `PDb_ClearError()` explicitly resets

@@ -82,11 +82,60 @@ static int pdb_drain_dirty(PDbHandle db);
 static int pdb_delete_dirty(PDbHandle db, const char* table_name,
         const char* row_key);
 
+/* Private, synchronous native-error enrichment. SQLite's VFS log already
+ * contains the failed operation, original Win32 code and UTF-8 path. Capture
+ * only those messages for the current calling thread/API scope, never SQL,
+ * user callbacks, I/O or a process-wide consumer observer. Failure to allocate
+ * a TLS slot leaves the previous generic error behavior intact. */
+typedef struct PDbNativeLog {
+    PDbHandle db;
+    void* previous;
+    int installed;
+    int code;
+    char message[256];
+} PDbNativeLog;
+/* WM6 SDK omits the desktop sentinel name; TlsAlloc follows Win32 semantics. */
+#define PDB_NATIVE_TLS_INVALID ((DWORD)0xffffffffUL)
+static DWORD pdb_native_log_tls = PDB_NATIVE_TLS_INVALID;
+static void pdb_native_log(void* unused, int code, const char* message)
+{
+    PDbNativeLog* current;
+    DWORD saved;
+    unsigned int length;
+    (void)unused;
+    if (pdb_native_log_tls == PDB_NATIVE_TLS_INVALID || !message ||
+            ((code & 255) != SQLITE_CANTOPEN && (code & 255) != SQLITE_IOERR) ||
+            strncmp(message, "os_win.c:", 9)) return;
+    saved = GetLastError(); current = (PDbNativeLog*)TlsGetValue(pdb_native_log_tls);
+    if (current) {
+        length = 0;
+        while (length < sizeof(current->message)-1 && message[length]) length++;
+        if (message[length]) while (length && ((unsigned char)message[length] & 0xc0) == 0x80) length--;
+        memcpy(current->message, message, length); current->message[length] = 0; current->code = code;
+    }
+    SetLastError(saved);
+}
+static void pdb_native_log_begin(PDbNativeLog* scope, PDbHandle db)
+{
+    DWORD saved;
+    memset(scope, 0, sizeof(*scope)); scope->db = db;
+    if (pdb_native_log_tls == PDB_NATIVE_TLS_INVALID) return;
+    saved = GetLastError(); scope->previous = TlsGetValue(pdb_native_log_tls);
+    scope->installed = TlsSetValue(pdb_native_log_tls, scope) != 0; SetLastError(saved);
+}
+static void pdb_native_log_end(PDbNativeLog* scope)
+{
+    DWORD saved;
+    if (!scope->installed) return;
+    saved = GetLastError(); TlsSetValue(pdb_native_log_tls, scope->previous); SetLastError(saved);
+}
+
 static int pdb_initialize_wince_vfs(void)
 {
 #if defined(_WIN32_WCE)
     sqlite3_vfs* vfs;
     sqlite3_mutex* mutex;
+    DWORD slot;
     int rc;
 
     rc = sqlite3_initialize();
@@ -104,6 +153,15 @@ static int pdb_initialize_wince_vfs(void)
     }
     sqlite3_mutex_enter(mutex);
     rc = SQLITE_OK;
+    if (pdb_native_log_tls == PDB_NATIVE_TLS_INVALID) {
+        slot = TlsAlloc();
+        if (slot != PDB_NATIVE_TLS_INVALID) {
+            /* This pinned SQLite explicitly allows CONFIG_LOG after init.
+             * The engine is private to this DLL; install once under master. */
+            if (sqlite3_config(SQLITE_CONFIG_LOG, pdb_native_log, NULL) == SQLITE_OK) pdb_native_log_tls = slot;
+            else TlsFree(slot);
+        }
+    }
     /* The pinned Win32 syscall table omits this entry when both WAL and
      * database mmap are disabled.  WinCE still needs an anonymous mapping
      * for its shared file-lock state; it is not a database mmap or WAL. */
@@ -244,6 +302,8 @@ static int pdb_consume_cancel(PDbHandle db)
 static int pdb_set_sqlite_error(PDbHandle db, int sqlite_rc)
 {
     const char* message;
+    PDbNativeLog* native;
+    DWORD saved;
     int primary;
     int extended;
     int category;
@@ -261,7 +321,9 @@ static int pdb_set_sqlite_error(PDbHandle db, int sqlite_rc)
         } else {
             message = sqlite3_errmsg(db->sqlite);
         }
-        pdb_set_error(db, message);
+        saved = GetLastError(); native = pdb_native_log_tls == PDB_NATIVE_TLS_INVALID ? NULL : (PDbNativeLog*)TlsGetValue(pdb_native_log_tls);
+        if (native && native->db == db && (native->code & 255) == primary && native->message[0]) message = native->message;
+        pdb_set_error(db, message); SetLastError(saved);
     }
     switch (primary) {
     case SQLITE_BUSY:
@@ -2057,6 +2119,7 @@ PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
         PDbErrorInfo* outError)
 {
     PDbHandle db;
+    PDbNativeLog native_scope;
     int flags;
     int rc;
 
@@ -2096,6 +2159,7 @@ PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
     memset(db, 0, sizeof(*db));
     db->mode = mode;
     pdb_init_error(&db->error_info, PDB_OK, "");
+    pdb_native_log_begin(&native_scope, db);
     flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
     rc = sqlite3_open_v2(path, &db->sqlite, flags, NULL);
     if (rc != SQLITE_OK) {
@@ -2109,7 +2173,7 @@ PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
         if (outError != NULL) {
             *outError = db->error_info;
         }
-        PDb_Close(db);
+        PDb_Close(db); pdb_native_log_end(&native_scope);
         return rc;
     }
     sqlite3_busy_timeout(db->sqlite, 1000);
@@ -2137,12 +2201,13 @@ PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
         if (outError != NULL) {
             *outError = db->error_info;
         }
-        PDb_Close(db);
+        PDb_Close(db); pdb_native_log_end(&native_scope);
         return rc;
     }
     *outDb = db;
     /* Internal metadata probes must not leave a spurious open diagnostic. */
     pdb_init_error(&db->error_info, PDB_OK, "");
+    pdb_native_log_end(&native_scope);
     return PDB_OK;
 }
 
@@ -4569,11 +4634,15 @@ static int pdb_api_PDb_ApplyMigrationRestricted(PDbHandle db, int expected, int 
 #define PDB_STATUS_WRAPPER(name, parameters, arguments, owner) \
 PDB_API int name parameters { \
     PDbHandle owner_db = (owner); \
+    PDbNativeLog native_scope; \
     int result; \
     if (owner_db != NULL && owner_db->restricted_callback) return PDB_STATE; \
+    pdb_native_log_begin(&native_scope, owner_db); \
     pdb_operation_begin(owner_db); \
     result = pdb_api_##name arguments; \
-    return pdb_operation_end(owner_db, result); \
+    result = pdb_operation_end(owner_db, result); \
+    pdb_native_log_end(&native_scope); \
+    return result; \
 }
 
 PDB_STATUS_WRAPPER(PDb_ExecuteRestricted,
@@ -4696,7 +4765,9 @@ PDB_STATUS_WRAPPER(PDb_SyncResolveConflict,
 BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID reserved)
 {
     (void)hModule;
-    (void)reason;
-    (void)reserved;
+    if (reason == DLL_PROCESS_DETACH && pdb_native_log_tls != PDB_NATIVE_TLS_INVALID) {
+        if (!reserved) TlsFree(pdb_native_log_tls);
+        pdb_native_log_tls = PDB_NATIVE_TLS_INVALID;
+    }
     return TRUE;
 }

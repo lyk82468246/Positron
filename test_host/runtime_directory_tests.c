@@ -22,6 +22,8 @@ const char* test1368_runtime_storage_last_error(void) { return directory_error; 
 const char* test1369_runtime_sql_last_error(void) { return directory_error; }
 const char* test1370_runtime_queue_last_error(void) { return directory_error; }
 const char* test1371_runtime_page_last_error(void) { return directory_error; }
+const char* test1373_runtime_io_last_error(void) { return directory_error; }
+const char* test1373_runtime_io_report(void) { return directory_diagnostic; }
 static char runtime_zip_report[4096];
 const char* test1372_runtime_zip_report(void) { return runtime_zip_report; }
 BOOL test1372_runtime_zip_probe(void)
@@ -1441,4 +1443,236 @@ page_done:
     }
     directory_fixture_cleanup(native, root, outer); free(native); return ok;
 #undef PAGE_CHECK
+}
+
+/* Diagnostic fixture: native operations precede any DB open. No Runtime,
+ * Browser, Core or filesystem fallback is involved in this comparison. */
+typedef struct RuntimeIoFixture {
+    DirectoryFixture directory;
+    WCHAR parent[MAX_PATH];
+    WCHAR file[MAX_PATH];
+    WCHAR journal[MAX_PATH];
+    char utf8[1024];
+    char data[32];
+    char readback[32];
+    PDbHandle db;
+    HANDLE native;
+    unsigned int iteration;
+    int db_result;
+    int worker;
+    PDbErrorInfo open_error;
+} RuntimeIoFixture;
+static int runtime_io_check(RuntimeIoFixture* f, int success, const char* phase)
+{
+    DWORD error;
+    PDbErrorInfo db_error;
+    MEMORYSTATUS memory;
+    if (success) return 1;
+    error = GetLastError(); memset(&db_error, 0, sizeof(db_error));
+    db_error.size = sizeof(db_error); db_error.version = PDB_ERROR_INFO_VERSION;
+    if (f->db) PDb_GetErrorInfo(f->db, &db_error); else db_error = f->open_error;
+    memset(&memory, 0, sizeof(memory)); memory.dwLength = sizeof(memory); GlobalMemoryStatus(&memory);
+    WideCharToMultiByte(CP_UTF8, 0, f->file, -1, f->utf8, sizeof(f->utf8), NULL, NULL);
+    sprintf(directory_diagnostic, "native/DB phase=%s worker=%d iteration=%u native=%lu db=%d sqlite=%d/%d parent=%lu file=%lu journal=%lu ram=%lu path=%.450s message=%.100s",
+        phase, f->worker, f->iteration, error, f->db_result, db_error.sqlite_code, db_error.sqlite_extended_code,
+        GetFileAttributesW(f->parent), GetFileAttributesW(f->file), GetFileAttributesW(f->journal), memory.dwAvailPhys,
+        f->utf8, db_error.message);
+    directory_error = directory_diagnostic; return 0;
+}
+static BOOL runtime_io_run(int worker)
+{
+    static const char migration[] = "CREATE TABLE notes(id INTEGER);INSERT INTO notes VALUES(7);";
+    RuntimeIoFixture* f;
+    PDbRestrictedOptions options;
+    PDbMigrationReport report;
+    PDbStmtHandle stmt;
+    OSVERSIONINFO os;
+    MEMORYSTATUS memory;
+    WCHAR path[MAX_PATH];
+    DWORD count;
+    DWORD access;
+    DWORD sharing;
+    DWORD flags;
+    int outer;
+    int data;
+    int v1;
+    int dev;
+    int bucket;
+    int version;
+    BOOL ok;
+    f = (RuntimeIoFixture*)calloc(1, sizeof(*f)); if (!f) return FALSE;
+    f->worker = worker; f->open_error.size = sizeof(f->open_error); f->open_error.version = PDB_ERROR_INFO_VERSION;
+    outer = data = v1 = dev = bucket = 0; stmt = NULL; ok = FALSE; f->native = INVALID_HANDLE_VALUE;
+#define IO_CHECK(test, phase) do { if (!runtime_io_check(f, (test), phase)) goto io_done; } while (0)
+    IO_CHECK(directory_fixture_init(&f->directory, GetCurrentProcessId() ^ (worker ? 0x02000000UL : 0x01000000UL)), "identity");
+    wcscpy(f->parent, f->directory.outer); wcscpy(f->file, f->parent);
+    outer = CreateDirectoryW(f->parent, NULL); IO_CHECK(outer, "exclusive-root-create");
+    wsprintfW(f->parent, L"%s\\data", f->directory.outer); data = CreateDirectoryW(f->parent, NULL); IO_CHECK(data, "data-create");
+    wsprintfW(f->parent, L"%s\\data\\v1", f->directory.outer); v1 = CreateDirectoryW(f->parent, NULL); IO_CHECK(v1, "v1-create");
+    wsprintfW(f->parent, L"%s\\data\\v1\\dev", f->directory.outer); dev = CreateDirectoryW(f->parent, NULL); IO_CHECK(dev, "dev-create");
+    wsprintfW(f->parent, L"%s\\data\\v1\\dev\\0123456789abcdef", f->directory.outer);
+    bucket = CreateDirectoryW(f->parent, NULL); IO_CHECK(bucket, "bucket-create");
+    wsprintfW(f->file, L"%s\\app.db", f->parent); wsprintfW(f->journal, L"%s-journal", f->file);
+    wsprintfW(path, L"%s\\missing-%s\\app.db", f->parent, worker ? L"worker" : L"ui");
+    IO_CHECK(WideCharToMultiByte(CP_UTF8, 0, path, -1, f->utf8, sizeof(f->utf8), NULL, NULL), "missing-path-UTF8");
+    f->db_result = PDb_OpenUtf8Ex(f->utf8, PDB_OPEN_LOCAL_FULL_SQL, &f->db, &f->open_error);
+    IO_CHECK(f->db_result == PDB_ERROR && !f->db && (f->open_error.sqlite_code & 255) == 14 &&
+        !strncmp(f->open_error.message, "os_win.c:", 9) && strstr(f->open_error.message, worker ? "missing-worker" : "missing-ui"),
+        "native-open-error-scope");
+    memset(f->data, 'N', sizeof(f->data));
+    for (f->iteration = 0; f->iteration < 16; f->iteration++) {
+        f->data[0] = (char)f->iteration;
+        access = f->iteration < 8 ? GENERIC_WRITE : GENERIC_READ | GENERIC_WRITE;
+        sharing = f->iteration < 8 ? 0 : FILE_SHARE_READ | FILE_SHARE_WRITE;
+        flags = f->iteration < 8 ? FILE_ATTRIBUTE_NORMAL : FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS;
+        f->native = CreateFileW(f->journal, access, sharing, NULL, CREATE_NEW, flags, NULL);
+        IO_CHECK(f->native != INVALID_HANDLE_VALUE, "native-journal-create-new"); count = 0;
+        IO_CHECK(WriteFile(f->native, f->data, sizeof(f->data), &count, NULL) && count == sizeof(f->data), "native-journal-write");
+        if (f->iteration >= 8) IO_CHECK(FlushFileBuffers(f->native), "native-journal-flush");
+        IO_CHECK(CloseHandle(f->native), "native-journal-close"); f->native = INVALID_HANDLE_VALUE;
+        f->native = CreateFileW(f->journal, f->iteration < 8 ? GENERIC_READ : access,
+            f->iteration < 8 ? FILE_SHARE_READ : sharing, NULL, OPEN_EXISTING, flags, NULL);
+        IO_CHECK(f->native != INVALID_HANDLE_VALUE, "native-journal-reopen"); count = 0;
+        IO_CHECK(ReadFile(f->native, f->readback, sizeof(f->readback), &count, NULL) && count == sizeof(f->readback) &&
+            !memcmp(f->data, f->readback, sizeof(f->data)), "native-journal-read-bytes");
+        IO_CHECK(CloseHandle(f->native), "native-journal-read-close"); f->native = INVALID_HANDLE_VALUE;
+        IO_CHECK(DeleteFileW(f->journal), "native-journal-delete");
+        IO_CHECK(GetFileAttributesW(f->journal) == 0xffffffffUL, "native-journal-absent");
+        IO_CHECK(RemoveDirectoryW(f->parent), "native-bucket-remove"); bucket = 0;
+        bucket = CreateDirectoryW(f->parent, NULL); IO_CHECK(bucket, "native-bucket-recreate");
+    }
+    IO_CHECK(WideCharToMultiByte(CP_UTF8, 0, f->file, -1, f->utf8, sizeof(f->utf8), NULL, NULL), "DB-path-UTF8");
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = PDB_RESTRICTED_VERSION; options.vm_budget = 1000000;
+    for (f->iteration = 0; f->iteration < 8; f->iteration++) {
+        f->db_result = PDb_OpenUtf8Ex(f->utf8, PDB_OPEN_LOCAL_FULL_SQL, &f->db, &f->open_error); IO_CHECK(!f->db_result, "DB-open");
+        IO_CHECK(!f->open_error.message[0] && !f->open_error.sqlite_code, "successful-open-clears-error-output");
+        IO_CHECK(PDb_Exec(f->db, "not valid SQL") == PDB_ERROR && !PDb_GetErrorInfo(f->db, &f->open_error) &&
+            f->open_error.sqlite_code == 1 && strncmp(f->open_error.message, "os_win.c:", 9), "no-stale-native-log-on-SQL-error");
+        f->db_result = PDb_BindLocalIdentity(f->db, "native-io-fixture", 17); IO_CHECK(!f->db_result, "DB-bind-identity");
+        memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = PDB_MIGRATION_VERSION;
+        f->db_result = PDb_ApplyMigrationRestricted(f->db, 0, 1, migration, sizeof(migration)-1, &options, &report);
+        IO_CHECK(!f->db_result, "DB-restricted-migration");
+        PDb_Close(f->db); f->db = NULL;
+        f->db_result = PDb_OpenUtf8Ex(f->utf8, PDB_OPEN_LOCAL_FULL_SQL, &f->db, &f->open_error); IO_CHECK(!f->db_result, "DB-reopen");
+        IO_CHECK(!PDb_GetMigrationVersion(f->db, &version) && version == 1 && !PDb_Prepare(f->db, "SELECT id FROM notes", &stmt) &&
+            PDb_Step(stmt) == PDB_STEP_ROW && PDb_ColumnInt64(stmt, 0) == 7, "DB-reopen-content");
+        PDb_Finalize(stmt); stmt = NULL;
+        PDb_Close(f->db); f->db = NULL;
+        IO_CHECK(DeleteFileW(f->file), "DB-delete-closed-file");
+        IO_CHECK(GetFileAttributesW(f->journal) == 0xffffffffUL, "DB-journal-absent");
+    }
+    memset(&os, 0, sizeof(os)); os.dwOSVersionInfoSize = sizeof(os);
+    IO_CHECK(GetVersionEx(&os), "OS-baseline");
+    memset(&memory, 0, sizeof(memory)); memory.dwLength = sizeof(memory); GlobalMemoryStatus(&memory);
+    sprintf(directory_diagnostic, "UI+worker each native cycles=16 (exclusive/plain and shared/random-access/flush), DB migration/reopen cycles=8; OS=%lu.%lu.%lu platform=%lu freeRAM=%lu. Current target only; no injected I/O, FULL or power-loss acceptance.",
+        os.dwMajorVersion, os.dwMinorVersion, os.dwBuildNumber, os.dwPlatformId, memory.dwAvailPhys);
+    ok = TRUE;
+io_done:
+    if (f->native != INVALID_HANDLE_VALUE) CloseHandle(f->native);
+    if (stmt) PDb_Finalize(stmt); if (f->db) PDb_Close(f->db);
+    if (bucket) { DeleteFileW(f->file); DeleteFileW(f->journal); RemoveDirectoryW(f->parent); }
+    if (dev) { wsprintfW(path, L"%s\\data\\v1\\dev", f->directory.outer); RemoveDirectoryW(path); }
+    if (v1) { wsprintfW(path, L"%s\\data\\v1", f->directory.outer); RemoveDirectoryW(path); }
+    if (data) { wsprintfW(path, L"%s\\data", f->directory.outer); RemoveDirectoryW(path); }
+    if (outer) RemoveDirectoryW(f->directory.outer);
+    free(f); return ok;
+#undef IO_CHECK
+}
+static DWORD WINAPI runtime_io_worker(void* unused)
+{ (void)unused; return runtime_io_run(1) ? 0 : 1; }
+typedef struct RuntimeIoErrorPeer {
+    HANDLE start;
+    char path[1024];
+    char token[24];
+    char error[256];
+    unsigned int iteration;
+    int rc;
+} RuntimeIoErrorPeer;
+static DWORD WINAPI runtime_io_error_peer(void* user)
+{
+    RuntimeIoErrorPeer* p;
+    PDbErrorInfo error;
+    PDbHandle db;
+    int valid;
+    p = (RuntimeIoErrorPeer*)user;
+    if (WaitForSingleObject(p->start, 10000) != WAIT_OBJECT_0) return 1;
+    for (p->iteration = 0; p->iteration < 32; p->iteration++) {
+        db = NULL; error.size = sizeof(error); error.version = PDB_ERROR_INFO_VERSION;
+        p->rc = PDb_OpenUtf8Ex(p->path, PDB_OPEN_LOCAL_FULL_SQL, &db, &error);
+        valid = p->rc == PDB_ERROR && !db && (error.sqlite_code & 255) == 14 &&
+            !strncmp(error.message, "os_win.c:", 9) && strstr(error.message, p->token) != NULL;
+        if (db) PDb_Close(db);
+        if (!valid) { strcpy(p->error, error.message); return 1; }
+    }
+    return 0;
+}
+static BOOL runtime_io_parallel_errors(void)
+{
+    RuntimeIoErrorPeer* peers;
+    HANDLE threads[2];
+    HANDLE start;
+    WCHAR module[MAX_PATH];
+    WCHAR root[MAX_PATH];
+    WCHAR path[MAX_PATH];
+    WCHAR* slash;
+    DWORD code;
+    DWORD error;
+    DWORD module_chars;
+    char root_utf8[780];
+    unsigned int i;
+    int pending;
+    int owned_root;
+    BOOL ok;
+    peers = (RuntimeIoErrorPeer*)calloc(2, sizeof(*peers)); if (!peers) return FALSE;
+    memset(threads, 0, sizeof(threads)); start = NULL; ok = FALSE; pending = 0; owned_root = 0;
+    module_chars = GetModuleFileNameW(NULL, module, MAX_PATH);
+    if (!module_chars || module_chars > MAX_PATH-70) goto peer_done;
+    slash = wcsrchr(module, L'\\'); if (!slash) goto peer_done; *slash = 0;
+    wsprintfW(root, L"%s\\error-scope-%lu", module, GetCurrentProcessId());
+    SetLastError(0); owned_root = CreateDirectoryW(root, NULL); error = GetLastError();
+    if (!owned_root) {
+        root_utf8[0] = 0;
+        WideCharToMultiByte(CP_UTF8, 0, root, -1, root_utf8, sizeof(root_utf8), NULL, NULL);
+        sprintf(directory_diagnostic, "parallel error-scope exclusive root creation failed native=%lu attributes=%lu chars=%u parentAttributes=%lu path=%.780s", error, GetFileAttributesW(root), (unsigned int)wcslen(root), GetFileAttributesW(module), root_utf8);
+        directory_error = directory_diagnostic; goto peer_done;
+    }
+    start = CreateEvent(NULL, TRUE, FALSE, NULL); if (!start) goto peer_done;
+    for (i = 0; i < 2; i++) {
+        peers[i].start = start; sprintf(peers[i].token, "owner-%u", i+1);
+        wsprintfW(path, L"%s\\owner-%u\\app.db", root, i+1);
+        if (!WideCharToMultiByte(CP_UTF8, 0, path, -1, peers[i].path, sizeof(peers[i].path), NULL, NULL)) goto peer_done;
+        threads[i] = CreateThread(NULL, 0, runtime_io_error_peer, &peers[i], 0, NULL);
+        if (!threads[i]) goto peer_done;
+    }
+    ok = TRUE;
+peer_done:
+    if (start) SetEvent(start);
+    for (i = 0; i < 2; i++) if (threads[i]) {
+        if (WaitForSingleObject(threads[i], 30000) != WAIT_OBJECT_0) { pending = 1; ok = FALSE; }
+        else if (!GetExitCodeThread(threads[i], &code) || code) {
+            sprintf(directory_diagnostic, "parallel DB error scope owner=%u iteration=%u rc=%d message=%.250s", i+1, peers[i].iteration, peers[i].rc, peers[i].error);
+            directory_error = directory_diagnostic; ok = FALSE;
+        }
+        CloseHandle(threads[i]);
+    }
+    if (pending) { directory_error = "parallel DB error workers did not exit; state retained until process ends"; return FALSE; }
+    if (start) CloseHandle(start);
+    if (owned_root && !RemoveDirectoryW(root) && ok) { directory_error = "parallel error-scope root cleanup failed"; ok = FALSE; }
+    free(peers); return ok;
+}
+BOOL test1373_runtime_io_contract(void)
+{
+    HANDLE thread;
+    DWORD result;
+    BOOL ok;
+    if (!runtime_io_run(0)) return FALSE;
+    thread = CreateThread(NULL, 0, runtime_io_worker, NULL, 0, NULL);
+    if (!thread) { directory_error = "native/DB comparison worker creation failed"; return FALSE; }
+    ok = WaitForSingleObject(thread, 30000) == WAIT_OBJECT_0 && GetExitCodeThread(thread, &result) && !result;
+    if (!ok && WaitForSingleObject(thread, 0) != WAIT_OBJECT_0)
+        directory_error = "native/DB worker did not exit; its native state remains owned until process ends";
+    CloseHandle(thread);
+    if (ok) ok = runtime_io_parallel_errors();
+    if (ok) strcat(directory_diagnostic, " Parallel failed opens=64, per-operation/thread error copies isolated.");
+    return ok;
 }

@@ -251,8 +251,10 @@ Runtime 元数据准入、app 引用及可信平台 provider 上的开发目录�
 开发存储的精确身份绑定、逐文件迁移及同步 typed SQL JSON 已退出待开发范围，预算/调用见 Runtime README。
 八项有界异步服务队列/撤销及四个独立页面上下文已有双配置设备合同，退出待实现范围。
 Core/Browser 现有公开 callback 已能组合相对 CSS/@import、脚本、SVG/layout/paint 与 app history，
-不需要新增 ABI。当前恢复步骤先为正常目录创建/数据库打开建立最小原生 I/O 与 DB 对照，
-定位 mkdir183/SQLite CANTOPEN，区分 provider、VFS 与映射卷；不能只靠重跑或扩大预算。
+不需要新增 ABI。UI/worker 原生 I/O 与 DB 最小对照已具备；DB 现可按线程/调用保留实际
+VFS 操作、原生错误和路径，既有错误 ABI 不变。正常对照通过仍不能关闭实际 Runtime
+间歇 CANTOPEN。下一步在真实存储失败时取得该原生诊断，定位 provider、VFS 或映射卷，
+再做有证据的最小修正；不能只靠重跑、错误文本猜测或扩大预算。
 这不是重开挂起的 FULL/断电门。之后交给 EXE 接通通用 WM provider、原窗口候选、worker/授权及目录笔记示例；
 不把受限 SQL 原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。
 当前 ROM 的只读 ZIP 清单未取得合格系统 provider；PXI/安装身份/关联暂缓，只有取得实际系统接口及
