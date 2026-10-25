@@ -119,7 +119,10 @@ static HANDLE g_runtime_debug_document;
 static AppScriptContext *g_runtime_debug_script;
 static int g_runtime_debug_history;
 static int g_runtime_debug_fallbacks;
+static int g_runtime_debug_empty_resources;
+static const char *g_runtime_sql_seed;
 static void app_runtime_debug_tick(HWND hwnd);
+static void app_runtime_sql_debug_tick(HWND hwnd);
 #endif
 static UINT g_script_timer_sequence = APP_NAV_SCRIPT_TIMER_BASE;
 #define g_app (g_tab->host)
@@ -1709,9 +1712,10 @@ static int app_parse_startup_arguments(LPWSTR command_line,
             break;
         }
 #ifdef _DEBUG
-        if (app_command_ascii_equal(argument, "--selftest-runtime-app")) {
+        if (app_command_ascii_equal(argument, "--selftest-runtime-app") ||
+                app_command_ascii_equal(argument, "--selftest-runtime-sql")) {
             if (g_runtime_debug_mode) return 1;
-            g_runtime_debug_mode = 1;
+            g_runtime_debug_mode = app_command_ascii_equal(argument, "--selftest-runtime-sql") ? 2 : 1;
             wcscpy(argument, L"--app-dir");
         }
 #endif
@@ -5212,6 +5216,9 @@ static int app_navigation_cancel_active(void)
     }
     (void) PBrowser_NavigationCandidateRequestCancel(request->candidate);
     (void) PBrowser_NavigationCandidateRetire(request->candidate);
+    /* Retired resource workers may outlive this UI dispatch. Revoke the
+     * candidate bridge now; its committed predecessor remains usable. */
+    AppScript_RevokeRuntime(request->script_candidate);
     if (request->worker_thread == NULL) {
         /* A UI-stepped candidate has no outstanding worker completion.
          * Cancel its private bootstrap at idle and destroy immediately. */
@@ -5238,6 +5245,7 @@ static void app_navigation_cancel_all(void)
                 g_navigation_request->candidate);
         (void) PBrowser_NavigationCandidateRetire(
                 g_navigation_request->candidate);
+        AppScript_RevokeRuntime(g_navigation_request->script_candidate);
         g_navigation_request->retired_next = g_retired_navigation;
         g_retired_navigation = g_navigation_request;
         g_navigation_request = NULL;
@@ -5248,6 +5256,7 @@ static void app_navigation_cancel_all(void)
         (void) PBrowser_NavigationCandidateRequestCancel(
                 request->candidate);
         (void) PBrowser_NavigationCandidateRetire(request->candidate);
+        AppScript_RevokeRuntime(request->script_candidate);
         if (request->worker_thread == NULL) {
             if (previous == NULL) g_retired_navigation = next;
             else previous->retired_next = next;
@@ -5336,9 +5345,9 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
             (void) PBrowser_NavigationResourceCancelAll(request->resource_transaction);
             return 1;
         }
-        if (rc == PRUNTIME_OK && bytes > 0 &&
+        if (rc == PRUNTIME_OK &&
                 AppResources_SetEffectiveUrl(request, index, resolved.url) == 0 &&
-                PBrowser_NavigationResourceSetData(request->resource_transaction,
+                PBrowser_NavigationResourceSetDataEx(request->resource_transaction,
                 index, data, (int) bytes) == PBROWSER_OK) {
             request->worker_status_code = 0; /* No fabricated HTTP response. */
             free(data);
@@ -5723,7 +5732,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                     PBROWSER_NAVIGATION_RESOURCE_OPTIONAL;
             request->resource_role_mask =
                     PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
-            result = PCore_FetchScriptResourcesEx(request->document_candidate,
+            result = PCore_FetchScriptResourcesEx2(request->document_candidate,
                     request->url, AppResources_Resolve, AppResources_Fetch,
                     AppResources_Free, request, NULL, NULL);
             request->resource_policy =
@@ -5746,7 +5755,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
 #ifdef _DEBUG
             app_navigation_debug_log_script_count(request, script_count);
 #endif
-            if (script_count > 0 || (g_startup_script_armed &&
+            if (script_count > 0 || AppRuntimeApp_RequiresSql(request->runtime_app) || (g_startup_script_armed &&
                     request->generation == g_startup_script_generation &&
                     request->owner_tab_id == g_startup_script_tab_id)) {
                 app_navigation_loading_phase(request, APP_LOADING_SCRIPT_EXECUTE);
@@ -5818,6 +5827,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                         g_page_width, g_page_height, g_dpi,
                         &script_callbacks, request->generation);
                 if (request->script_candidate != NULL) {
+                    if (AppScript_BindRuntime(request->script_candidate,
+                            request->runtime_app, request->owner_tab_id, request->generation)) return -1;
                     request->commit_stage = APP_NAV_COMMIT_SCRIPT_INIT;
                     return app_navigation_schedule_script(request) == 0 ? 0 : -1;
 #ifdef _DEBUG
@@ -5827,6 +5838,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
 #endif
                 }
             }
+            if (AppRuntimeApp_RequiresSql(request->runtime_app)) return -1;
             request->commit_stage = APP_NAV_COMMIT_STYLE;
             continue;
         }
@@ -5854,6 +5866,7 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                  * Browser resource commit still follow the original gate. */
                 AppScript_Destroy(request->script_candidate);
                 request->script_candidate = NULL;
+                if (AppRuntimeApp_RequiresSql(request->runtime_app)) return -1;
                 request->commit_stage = APP_NAV_COMMIT_STYLE;
                 continue;
             }
@@ -6077,11 +6090,22 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         if (g_runtime_debug_mode && request->runtime_app != NULL &&
                 g_runtime_debug_phase == 0) {
             PBrowserNavigationResourceStats stats;
+            AppNavigationResource *resource;
+            PBrowserNavigationResourceInfo info;
 
             memset(&stats, 0, sizeof(stats));
             stats.size = sizeof(stats);
             if (PBrowser_NavigationResourceGetStats(request->resource_transaction,
                     &stats) == PBROWSER_OK) g_runtime_debug_fallbacks = stats.resources_failed;
+            g_runtime_debug_empty_resources = 0;
+            for (resource = request->resources; resource != NULL; resource = resource->next) {
+                memset(&info, 0, sizeof(info));
+                info.size = sizeof(info);
+                if (PBrowser_NavigationResourceGet(request->resource_transaction,
+                        resource->index, &info) == PBROWSER_OK &&
+                        info.state == PBROWSER_NAVIGATION_RESOURCE_READY && info.data_bytes == 0)
+                    ++g_runtime_debug_empty_resources;
+            }
         }
 #endif
         if (request->method == PCORE_FORM_METHOD_GET) app_visits_record();
@@ -6417,6 +6441,7 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     if (url == NULL || url[0] == '\0') return 0;
     if (AppUrlRouter_ClassifyScheme(url) == APP_URL_SCHEME_APP &&
             (g_app.tab_id != g_runtime_tab_id ||
+            (AppRuntimeApp_RequiresSql(g_runtime_app) && !AppRuntimeApp_SqlReady(g_runtime_app)) ||
             ((source == APP_NAV_SOURCE_DOCUMENT || source == APP_NAV_SOURCE_SCRIPT ||
             source == APP_NAV_SOURCE_FORM || source == APP_NAV_SOURCE_REDIRECT) &&
             AppUrlRouter_ClassifyScheme(g_current_url) != APP_URL_SCHEME_APP)))
@@ -8815,8 +8840,13 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         if (wparam == APP_RUNTIME_TIMER_ID) {
             if (g_tabs_closing) app_tabs_finish_close();
             else if (!g_runtime_tab_id &&
-                    AppRuntimeApp_TryDestroy(&g_runtime_app) == 0)
+                    AppRuntimeApp_TryDestroy(&g_runtime_app) == 0) {
+#ifdef _DEBUG
+                if (g_runtime_debug_mode == 2 && g_runtime_debug_phase == 5)
+                    app_runtime_sql_debug_tick(hwnd);
+#endif
                 KillTimer(hwnd, APP_RUNTIME_TIMER_ID);
+            }
 #ifdef _DEBUG
             else if (g_runtime_debug_mode) app_runtime_debug_tick(hwnd);
 #endif
@@ -9099,6 +9129,9 @@ static void app_tabs_finish_close(void)
                     g_tabs[i].host.retired_navigation != NULL ||
                     g_tabs[i].download_prepare != NULL)) return;
         }
+        /* No session may retain a queue alias while its worker is closing. */
+        for (i = 0; i < APP_TAB_MAX; ++i)
+            AppScript_RevokeRuntime(g_tabs[i].host.script);
         AppRuntimeApp_RequestClose(g_runtime_app);
         if (AppRuntimeApp_TryDestroy(&g_runtime_app) != 0) return;
         DestroyWindow(g_window);
@@ -9358,8 +9391,12 @@ static void app_tabs_close_all(HWND hwnd)
     g_tabs_closing = 1;
     if (g_runtime_app != NULL) SetTimer(hwnd, APP_RUNTIME_TIMER_ID, 100, NULL);
     g_settings_bootstrapping = 0;
-    for (i = 0; i < APP_TAB_MAX; ++i)
+    for (i = 0; i < APP_TAB_MAX; ++i) {
         AppScript_RevokeSettings(g_tabs[i].host.script);
+        AppScript_RevokeRuntime(g_tabs[i].host.script);
+        if (g_tabs[i].host.navigation_request != NULL)
+            AppScript_RevokeRuntime(g_tabs[i].host.navigation_request->script_candidate);
+    }
     AppDownloads_RequestClose(g_downloads);
     if (g_downloads == NULL && g_settings_store != NULL)
         (void) AppSettingsStore_RequestClose(g_settings_store);
@@ -9942,7 +9979,8 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
     }
     if (!MultiByteToWideChar(CP_UTF8, 0, info.name, -1, name, 128) ||
             !MultiByteToWideChar(CP_UTF8, 0, info.id, -1, id, 64) ||
-            !AppI18n_LoadString(APP_TEXT_RUNTIME_CONFIRM, format, 512)) {
+            !AppI18n_LoadString(info.requested_permissions ? APP_TEXT_RUNTIME_SQL_CONFIRM :
+            APP_TEXT_RUNTIME_CONFIRM, format, 512)) {
         AppRuntimeApp_RequestClose(g_runtime_app);
         return 0;
     }
@@ -9954,20 +9992,28 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         WCHAR *slash;
         char expected[1024];
         DWORD length;
-        static const WCHAR prefix[] =
-                L"\\Storage Card\\Temp\\Positron-device-gate\\app-runtime-page-";
+        const WCHAR *prefix;
 
+        prefix = g_runtime_debug_mode == 2 ?
+                L"\\Storage Card\\Temp\\Positron-device-gate\\app-runtime-sql-" :
+                L"\\Storage Card\\Temp\\Positron-device-gate\\app-runtime-page-";
         length = GetModuleFileNameW(NULL, executable, MAX_PATH);
         if (!length || length >= MAX_PATH ||
                 wcsncmp(executable, prefix, wcslen(prefix))) return -2;
         slash = wcsrchr(executable, L'\\');
         if (slash == NULL) return -2;
         *slash = 0;
-        if (wcslen(executable) + 9 >= MAX_PATH) return -2;
-        wcscat(executable, L"\\fixture");
+        if (wcslen(executable) + 16 >= MAX_PATH) return -2;
+        wcscat(executable, g_runtime_debug_mode == 2 ? L"\\fixture-one" : L"\\fixture");
         if (!WideCharToMultiByte(CP_UTF8, 0, executable, -1, expected,
-                sizeof(expected), NULL, NULL) || strcmp(expected, g_startup_app_directory))
-            return -2;
+                sizeof(expected), NULL, NULL)) return -2;
+        g_runtime_sql_seed = "one";
+        if (strcmp(expected, g_startup_app_directory)) {
+            if (g_runtime_debug_mode != 2) return -2;
+            strcpy(expected + strlen(expected) - 3, "two");
+            if (strcmp(expected, g_startup_app_directory)) return -2;
+            g_runtime_sql_seed = "two";
+        }
         if (app_runtime_debug_arguments()) return -2;
         decision = IDYES;
         g_runtime_debug_started = GetTickCount();
@@ -9978,6 +10024,27 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         AppRuntimeApp_RequestClose(g_runtime_app);
         return 0;
     }
+    if (info.requested_permissions) {
+        if (AppRuntimeApp_GrantSql(g_runtime_app)) return -2;
+        while (AppRuntimeApp_State(g_runtime_app) == APP_RUNTIME_STORAGE_OPENING) {
+            rc = GetMessage(&event, NULL, 0, 0);
+            if (rc <= 0) return -1;
+            app_dispatch_ui_message(&event);
+        }
+        if (g_tabs_closing) {
+            while (GetMessage(&event, NULL, 0, 0) > 0) app_dispatch_ui_message(&event);
+            return -1;
+        }
+        if (g_app.tab_id != tab_id || g_document != NULL || g_navigation_request != NULL) {
+            AppRuntimeApp_RequestClose(g_runtime_app);
+            return 2;
+        }
+        if (!AppRuntimeApp_SqlReady(g_runtime_app)) {
+            app_show_error(APP_TEXT_RUNTIME_FAILED);
+            AppRuntimeApp_RequestClose(g_runtime_app);
+            return 0;
+        }
+    }
     g_runtime_tab_id = g_app.tab_id;
     /* Retain a low-frequency close poll even if browser storage is unavailable. */
     SetTimer(hwnd, APP_RUNTIME_TIMER_ID, 1000, NULL);
@@ -9985,6 +10052,92 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
 }
 
 #ifdef _DEBUG
+static int app_runtime_debug_evaluate(const char *source)
+{
+    return AppScript_Evaluate(g_script, source, (int) strlen(source));
+}
+
+static void app_runtime_sql_debug_tick(HWND hwnd)
+{
+    char text[192];
+    char expected[96];
+    char log[256];
+    int i;
+
+    if (g_runtime_debug_phase == 5) {
+        if (g_runtime_app != NULL) return;
+        _snprintf(log, sizeof(log) - 1, "runtime-sql PASS seed=%s rows=32 typed=exact "
+                "queue=bounded rollback=old-page revoke=isolated owner=closed\r\n", g_runtime_sql_seed);
+        log[sizeof(log) - 1] = 0;
+        AppDebug_Log(log);
+        g_runtime_debug_phase = 6;
+        PostMessage(hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
+    if (!g_runtime_tab_id || g_tabs_closing || g_runtime_debug_phase == 99) return;
+    if (GetTickCount() - g_runtime_debug_started > 120000UL) goto failed;
+    if (g_navigation_request != NULL) return;
+    _snprintf(expected, sizeof(expected) - 1, "runtime-sql-ready seed=%s rows=32", g_runtime_sql_seed);
+    expected[sizeof(expected) - 1] = 0;
+    if (g_runtime_debug_phase == 0 || g_runtime_debug_phase == 4) {
+        if (g_script == NULL || PCore_NodeTextContentById(g_document,
+                "status", text, sizeof(text), NULL)) goto failed;
+        if (!strncmp(text, "runtime-sql-failed", 18)) goto failed;
+        if (strcmp(text, expected)) return;
+        if (g_runtime_debug_phase == 4) {
+            if (PBrowser_HistoryCount(g_history) != g_runtime_debug_history + 2 ||
+                    app_runtime_debug_evaluate("Positron.db.query('SELECT count(*) FROM notes',[],function(){});"))
+                goto failed;
+            app_tabs_close();
+            if (g_runtime_tab_id || AppRuntimeApp_SqlReady(g_runtime_app)) goto failed;
+            g_runtime_debug_phase = 5;
+            return;
+        }
+        g_runtime_debug_document = g_document;
+        g_runtime_debug_script = g_script;
+        g_runtime_debug_history = PBrowser_HistoryCount(g_history);
+        g_runtime_debug_phase = 1;
+        if (!app_load_page_from(hwnd, "app://org.positron.sql_demo/broken.html",
+                APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT)) goto failed;
+        return;
+    }
+    if (g_runtime_debug_phase == 1) {
+        if (g_document != g_runtime_debug_document || g_script != g_runtime_debug_script ||
+                PBrowser_HistoryCount(g_history) != g_runtime_debug_history ||
+                app_runtime_debug_evaluate("Positron.db.query('SELECT count(*) FROM notes',[],function(ok,v){"
+                "document.getElementById('probe').textContent=ok&&v.rows[0].values[0].value==='32'?'old-page-alive':'failed';});"))
+            goto failed;
+        g_runtime_debug_phase = 2;
+        return;
+    }
+    if (g_runtime_debug_phase == 2) {
+        if (PCore_NodeTextContentById(g_document, "probe", text, sizeof(text), NULL)) goto failed;
+        if (!strcmp(text, "failed")) goto failed;
+        if (strcmp(text, "old-page-alive")) return;
+        for (i = 0; i < 8; ++i)
+            if (app_runtime_debug_evaluate("Positron.db.query('SELECT count(*) FROM notes',[],function(){"
+                    "document.getElementById('probe').textContent='late';});")) goto failed;
+        if (!app_load_page_from(hwnd, APP_URL_NEWTAB, APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto failed;
+        g_runtime_debug_phase = 3;
+        return;
+    }
+    if (g_runtime_debug_phase == 3) {
+        if (strcmp(g_current_url, APP_URL_NEWTAB) || g_script != NULL) goto failed;
+        if (!app_load_page_from(hwnd, "app://org.positron.sql_demo/index.html",
+                APP_HISTORY_NEW, -1, APP_NAV_SOURCE_ADDRESS)) goto failed;
+        g_runtime_debug_phase = 4;
+        return;
+    }
+    return;
+failed:
+    _snprintf(log, sizeof(log) - 1, "runtime-sql FAIL phase=%d url=%s\r\n",
+            g_runtime_debug_phase, g_current_url);
+    log[sizeof(log) - 1] = 0;
+    AppDebug_Log(log);
+    g_runtime_debug_phase = 99;
+    PostMessage(hwnd, WM_CLOSE, 0, 0);
+}
+
 /* Explicit isolated fixture only. Uses production dispatch, not copied DLL
  * logic; author bytes live in the directory and no native services are granted. */
 static void app_runtime_debug_tick(HWND hwnd)
@@ -9995,12 +10148,14 @@ static void app_runtime_debug_tick(HWND hwnd)
     PCoreImageDecodeStats images;
     PCoreImageDecodeStats again;
 
+    if (g_runtime_debug_mode == 2) { app_runtime_sql_debug_tick(hwnd); return; }
     if (!g_runtime_tab_id || g_tabs_closing) return;
     if (GetTickCount() - g_runtime_debug_started > 120000UL) goto failed;
     if (g_navigation_request != NULL) return;
     if (g_runtime_debug_phase == 0) {
         if (strcmp(g_current_url, "app://org.positron.dir_demo/pages/index.html") ||
                 g_runtime_debug_fallbacks < 2 ||
+                g_runtime_debug_empty_resources != 3 ||
                 g_script == NULL || PCore_NodeTextContentById(g_document,
                 "status", text, sizeof(text), NULL) ||
                 strcmp(text, "directory-script-ready")) goto failed;
@@ -10062,7 +10217,7 @@ static void app_runtime_debug_tick(HWND hwnd)
             goto failed;
         AppDebug_Log("runtime-page PASS owner=worker assets=local scripts=ordered "
                 "css=import svg=retained rollback=old-page newtab=denied services=none "
-                "optional=fallback stale=isolated owner_close=released\r\n");
+                "optional=fallback stale=isolated owner_close=released empty=3\r\n");
         g_runtime_debug_phase = 4;
         PostMessage(hwnd, WM_CLOSE, 0, 0);
         return;

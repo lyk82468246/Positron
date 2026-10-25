@@ -61,6 +61,8 @@ struct AppScriptContext {
     unsigned long settings_tab_id;
     unsigned long settings_generation;
     int settings_phase;
+    AppRuntimeServices runtime_services;
+    int runtime_bound;
 };
 
 #ifdef _DEBUG
@@ -2053,7 +2055,9 @@ int AppScript_InitializeStep(AppScriptContext *context,
 #endif
 
     if (context == NULL || context->session == NULL ||
-            generation != context->bootstrap_generation) return -1;
+            !generation || generation != context->bootstrap_generation) return -1;
+    if (!context->bootstrap_pending) return context->runtime_bound ?
+            AppRuntimeServices_Prepare(&context->runtime_services, context->session) : 1;
     memset(&info, 0, sizeof(info));
     info.size = sizeof(info);
     info.version = PBROWSER_SCRIPT_BOOTSTRAP_VERSION;
@@ -2074,7 +2078,8 @@ int AppScript_InitializeStep(AppScriptContext *context,
     if (result != PSCRIPT_OK) return -1;
     if (info.state == PBROWSER_BOOTSTRAP_COMPLETE) {
         context->bootstrap_pending = 0;
-        return 1;
+        return context->runtime_bound ?
+                AppRuntimeServices_Prepare(&context->runtime_services, context->session) : 1;
     }
     return info.state == PBROWSER_BOOTSTRAP_PENDING ? 0 : -1;
 }
@@ -2358,6 +2363,7 @@ void AppScript_Destroy(AppScriptContext *context)
         return;
     }
     AppScript_RevokeSettings(context);
+    AppScript_RevokeRuntime(context);
     if (context->bootstrap_pending && context->session != NULL) {
         (void) PBrowser_ScriptSessionBootstrapCancel(context->session,
                 context->bootstrap_generation);
@@ -2413,6 +2419,7 @@ int AppScript_PageTeardown(AppScriptContext *context)
         return 0;
     }
     AppScript_RevokeSettings(context);
+    AppScript_RevokeRuntime(context);
     if (context->bootstrap_pending) return 0;
     return PBrowser_ScriptSessionDispatchPageTeardown(context->session) ==
             PSCRIPT_OK ? 0 : 1;
@@ -2424,6 +2431,10 @@ int AppScript_RunTaskCheckpoint(AppScriptContext *context,
     if (context == NULL || context->session == NULL ||
             context->bootstrap_pending || context->settings_phase < 0) {
         return 0;
+    }
+    if (context->runtime_bound && AppRuntimeServices_Pump(&context->runtime_services)) {
+        AppScript_RevokeRuntime(context);
+        return 1;
     }
     return PBrowser_ScriptSessionRunTaskCheckpoint(context->session, now_ms,
             now_ms, now_ms + 1UL, 8UL, PBROWSER_SCRIPT_PUMP_ALL) ==
@@ -2440,6 +2451,25 @@ void AppScript_BindSettings(AppScriptContext *context, AppSettingsStore *store,
     context->settings_tab_id = tab_id;
     context->settings_generation = generation;
     context->settings_phase = 1;
+}
+
+int AppScript_BindRuntime(AppScriptContext *context, AppRuntimeApp *app,
+        unsigned long tab_id, unsigned long generation)
+{
+    if (!AppRuntimeApp_RequiresSql(app)) return 0;
+    if (!AppRuntimeApp_SqlReady(app)) return 1;
+    if (context == NULL || !context->bootstrap_pending || context->runtime_bound ||
+            generation != context->bootstrap_generation) return 1;
+    if (AppRuntimeServices_Begin(&context->runtime_services, app, tab_id, generation)) return 1;
+    context->runtime_bound = 1;
+    return 0;
+}
+
+void AppScript_RevokeRuntime(AppScriptContext *context)
+{
+    if (context == NULL || !context->runtime_bound) return;
+    context->runtime_bound = 0;
+    AppRuntimeServices_Revoke(&context->runtime_services);
 }
 
 void AppScript_RevokeSettings(AppScriptContext *context)

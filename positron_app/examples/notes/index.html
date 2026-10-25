@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><head><title>Positron Notes</title><link rel="stylesheet" href="notes.css"></head><body>
+<h1>Notes</h1><p>A resource-only application. Notes stay in this application's own database.</p>
+<p><label for="search">Search title or text</label></p><p><input id="search" type="text" size="18" maxlength="64"> <button id="search-button" type="button">Search</button></p>
+<p id="status">Opening...</p><div id="rows"></div>
+<p><button id="previous" type="button">Previous</button> <button id="next" type="button">Next</button></p>
+<h2 id="editor-heading">New note</h2><p><label for="title">Title</label></p><p><input id="title" type="text" size="18" maxlength="40"></p>
+<p><label for="body">Text</label></p><p><textarea id="body" cols="22" rows="4" maxlength="512"></textarea></p>
+<p><button id="save" type="button">Save</button> <button id="new" type="button">New</button> <button id="delete" type="button" disabled>Delete selected</button></p>
+<script src="notes.js"></script></body></html>

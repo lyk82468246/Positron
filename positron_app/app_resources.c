@@ -233,17 +233,17 @@ int AppResources_Fetch(void *pw, const char *url,
     resource = app_resources_find_index(request, index);
     if (resource == NULL || AppResources_GetInfo(request, resource, &info) != 0 ||
             info.state != PBROWSER_NAVIGATION_RESOURCE_READY ||
-            info.data_bytes <= 0) {
+            info.data_bytes < 0) {
         return 1;
     }
-    data = (char *) malloc((size_t) info.data_bytes);
+    data = (char *) malloc(info.data_bytes ? (size_t) info.data_bytes : 1U);
     if (data == NULL) {
         return 1;
     }
     copied = 0;
     if (PBrowser_NavigationResourceCopyData(
             request->resource_transaction, resource->index, data,
-            info.data_bytes, &copied) != PBROWSER_OK ||
+            info.data_bytes ? info.data_bytes : 1, &copied) != PBROWSER_OK ||
             copied != info.data_bytes) {
         free(data);
         return 1;
@@ -261,6 +261,11 @@ int AppResources_FetchImage(void *pw, const char *url,
     PBrowserNavigationResourceInfo info;
 
     if (AppResources_Fetch(pw, url, out_data, out_len) == 0) {
+        if (*out_len == 0) {
+            free(*out_data);
+            *out_data = NULL;
+            return PCORE_IMAGE_FETCH_TERMINAL_FAIL;
+        }
         return PCORE_IMAGE_FETCH_READY;
     }
     request = (AppNavigationRequest *) pw;

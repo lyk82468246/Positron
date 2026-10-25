@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE WM provider 与只读目录页面已接入，SQL 页面队列、SDK 与完整笔记应用仍未完成。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes 原生操作仍待人工验收。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -21,31 +21,33 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 只读目录页面；SQL SDK 未接入
+### Runtime 目录资源与 SQL SDK 已通过自动门
 
 公共合同见 [Runtime README](../positron_runtime/README.md)，宿主入口/线程/授权见
-[Runtime 宿主](../positron_app/RUNTIME_HOST.md)。`--app-dir` 仅接 permissions:[]，原生确认默认否；
-storage.sql 在迁移/作者执行前拒绝。owner worker 持有目录，UI 仅持不可变 metadata；
-原标签显式绑定实例，其他标签/网页不按 app URL 获权。复用原 candidate/Core/Script 路径，
-无已验收 SQL 队列/服务/SDK；EXE 会话另在并行编写接线，不纳入 DLL 提交。
-[空资源请求](../positron_app/RUNTIME_EMPTY_RESOURCE_REQUEST.md)的 Browser/Core 合同已有双配置门，
-旧入口兼容；新入口的长度、复制、缓存、所有权和部署合同以组件 README 为准。
-TEST1374 覆盖直接接口与真实零长目录资源组合，细项见源码。EXE 仍须迁移新入口/READY/0，
-不把 DLL 门写成应用已接通；部署匹配 Core/Browser。
+[Runtime 宿主](../positron_app/RUNTIME_HOST.md)。EXE 已接显式 SQL 原生确认、
+worker-owned storage/逐页队列、嵌入 SDK 与纯资源 Notes 示例。owner worker 持有目录/DB，
+UI 仅持 metadata 和复制队列别名；
+原标签显式绑定实例，其他标签/网页不按 app URL 获权。取消候选立即撤销服务，
+不等待资源 worker 结束；保留已提交旧页服务。最新修正已通过正式 Debug/Release 构建。
+EXE 已消费 Browser/Core 空资源新入口；旧入口兼容和所有权见
+[空资源合同](../positron_app/RUNTIME_EMPTY_RESOURCE_REQUEST.md)。
+`tmp/device-runs/20261025-200428-app-runtime-page/` 在当前 Unitech 连接通过完整页面门：
+三个真实空资源、空脚本有序执行、旧页回滚、取消/stale、owner 关闭，11/11 回读哈希、
+正常退出零引用及 crash PASS；无用户库修改。不能沿用旧模拟器的 DPI/OS 信息。
+SQL 完整包 `20261025-203756-app-runtime-sql` 的 `app-runtime-sql-final/result.txt` 为最终证据：
+匹配取消撤销修正的正式 stage EXE，十 DLL 不变；11/11 回读哈希、四进程、每根 32 条、
+同 ID 两目录隔离/重开、typed int64/中文/引号、回滚/预算、队列/离页撤销/关闭及 crash PASS，
+正常退出零引用，无用户库修改。中间门证据独立保留，首次沙箱 RAPI 0x80070005 未启动应用。
+首次覆盖传输因 CeMoveFile 不替换已有目标而 device=5；零引用后仅替换隔离 EXE 并复验。
+正式 Debug/Release 增量构建、C89/审计、SDK 9 项与 Notes mock 8 项通过；Release 排除诊断。
+VS 崩溃、Debug rebuild 依赖顺序和沙箱 C1902 的失败日志保留在 tmp/runtime-sql-*，
+正常宿主串行 build/stage 恢复；不把失败 rebuild 写为通过。
 
-Debug `tmp/device-runs/20261025-145800-empty-resource-debug-probes/` 与 Release
-`tmp/device-runs/20261025-145914-empty-resource-release/`：43/45/77/111/1118/1371/1374/999
-各 8/8；完整日志、唯一 PASS、零 ERROR/FAIL、Core/双空间/零引用/crash PASS，无新 dump。
-最终探针零新增槽门 `20261025-150041-empty-final-debug`、`20261025-150125-empty-final-release`
-各 3/3，无新 dump。145 文件 SD 包回收后清理，16 个旧不完整目录保留；320×240/96 DPI。
-正式两配置构建/C89 已通过；应用并行源未纳入提交。首轮旧 TEST77/111 resolver 错接导致
-崩溃、TEST1118 额外 native 探针超槽均已修正夹具，预算/原断言保持；失败包/完整转储/PDB
-及构建恢复见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)，不跳过失败。
+公共空资源 c76887c1 的双配置门通过；旧 resolver 崩溃/探针超槽的修正、
+失败包与转储统一见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)，原预算/断言不变。
 
-EXE 只读非空目录的既有基线由 35c329b7 保存：
-`tmp/device-runs/20261025-142136-app-runtime-page/` 的页面组合、失败保留、隔离/owner
-关闭、11/11 哈希及相邻窗口像素门 PASS。该门无用户库变更；原生确认、双语、触摸/旋转、
-跨文档片段、完整 UI 与 Release 应用门仍未验收，不由本批 DLL 门替代。
+Notes 源码与 mock 不代替原生 CRUD/输入/触摸/SIP/旋转；确认 Yes/No、双语、跨文档片段、
+完整 UI 与 Release 应用门仍未验收。最终设备自检已正常退出，不留运行应用。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -409,7 +411,7 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 [DB README](../positron_db/README.md)。新迁移在 BEGIN IMMEDIATE 后比较严格版本，
 SQL authorizer 保护私有表与连接策略；每文件的 DDL/DML/version 原子提交，失败不发布 report。
 旧 local-full/sync/migration 不变。Runtime 已有上方开发存储与 SQL JSON，
-原生异步撤销合同见上方，EXE 页面授权仍待接线；不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
+原生异步撤销合同及 EXE 逐页授权接线见上方；不能把快照、新原语或旧完整 migration 当作网页 SQL 授权。
 
 当前双配置复验见 Runtime 门，TEST1366 继续保护建表/索引/DML、私有对象/非支持 SQL 拒绝、
 严格版本类型/长度/内容、DDL/DML/COMMIT 回滚、预算/取消/reentry 与输出不变性。
@@ -498,9 +500,9 @@ ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验�
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-空资源路线图已复核，公共合同退出待实现；唯一下一步交 EXE 迁移新入口并运行空 CSS/JS
-应用门，构建/设备窗口交回应用会话独占。SQL 逐页队列/显式grant/SDK
-及笔记仍是独立后续纵切。不把目录句柄交UI或按URL授权，不开挂起门、不改用户DB。
+空资源与 SQL SDK 四进程最终门已通过并退出待实现；唯一下一步验收纯资源 Notes 的
+原生 CRUD/搜索/分页、输入/SIP/旋转与确认拒绝。构建/设备独占窗口已结束，
+其他会话使用前重新协调。不把目录句柄交UI或按URL授权，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自

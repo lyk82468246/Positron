@@ -97,6 +97,9 @@
 	<Files>
 		<File RelativePath=".\app_runtime_app.c" />
 		<File RelativePath=".\app_runtime_app.h" />
+		<File RelativePath=".\app_runtime_services.c" />
+		<File RelativePath=".\app_runtime_services.h" />
+		<File RelativePath=".\resources\positron-sdk-v1.js" />
 		<File RelativePath=".\app_runtime_platform.c" />
 		<File RelativePath=".\app_runtime_platform.h" />
 		<File RelativePath=".\app_runtime_platform_debug.c" />

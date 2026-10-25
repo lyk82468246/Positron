@@ -1,12 +1,12 @@
-# Runtime 的 WM 平台与目录页面宿主
+# Runtime 的 WM 平台与目录应用宿主
 
 本文只说明 EXE 私有 `app_runtime_platform.c/.h`、`app_runtime_app.c/.h` 的平台接线与边界；应用身份、manifest、
 资源引用、迁移、SQL 和页面服务合同由公共
 [Runtime](../positron_runtime/README.md)拥有。目录应用的整体设计见
 [运行时计划](../docs/RUNTIME_PLAN.md)，实际进度和设备证据见
-[HANDOFF](../.agents/HANDOFF.md)。当前只读目录页面不等于 SQL SDK 或完整笔记应用。
+[HANDOFF](../.agents/HANDOFF.md)，不能用本文的调用说明代替设备验收。
 
-## 只读目录页面入口
+## 目录应用入口
 
 ```text
 positron.exe --app-dir "\Storage Card\Apps\Example"
@@ -14,8 +14,8 @@ positron.exe --app-dir "\Storage Card\Apps\Example"
 
 目录必须独立放置根 `manifest.json` 及资源；路径支持引号和 Unicode，不使用工作目录。
 该入口与位置 URL、`--url`、`--eval`、`--click` 互斥。原有无参数/URL 启动不变。
-当前资源纵切只接受 `permissions:[]`；声明 `storage.sql` 的应用在迁移和作者代码前拒绝，
-不会忽略所需能力后继续执行。页面 SQL 队列、SDK 和笔记示例仍待后续接线。
+`permissions:[]` 只运行资源页；声明 `storage.sql` 时，确认框另外说明独立 SQL 库及迁移。
+用户拒绝不打开存储或执行迁移，不忽略所需能力后继续执行作者代码。
 
 UI 调用私有 `AppRuntimeApp_Start` 创建独立 owner worker；它打开目录实例，从根引用
 `/manifest.json` 复制已准入字节。UI 用这份字节创建自己的不可变 metadata resolver，
@@ -28,21 +28,58 @@ UI 调用私有 `AppRuntimeApp_Start` 创建独立 owner worker；它打开目�
 统一走 Runtime 的同 ID 解析；HTTP(S) 仍走原网络路径，应用远端资源不转交 HTTP。
 用户在原标签显式切换 HTTP(S)/内部页可以普通浏览，外部网页脚本或链接不能反向进入应用；
 其他标签和未显式启动的进程不能仅凭 `app://` 获得实例。跨 ID、逃逸和不支持引用拒绝。
-当前页面没有 Browser 原生服务或 SQL/文件访问授权，不是安全沙箱。
+无 SQL grant 的页面不安装原生服务或 SDK；有 grant 的页面只安装 `storage.sql`，仍不是安全沙箱。
 
 页面继续使用原 Browser candidate/resource transaction、Core stylesheet/import/image cache、
 ScriptSession、history 和控件。目录应用 JS 在可信确认后显式启用，不改变网页 JS 偏好，
 也不扩大 heap/source/执行预算。必需 CSS 失败保留旧页；可选脚本/图片失败沿既有 fallback。
 query/fragment 只保留为 URL，不拼入物理文件名；嵌套 entry 不改变根 manifest 位置。
-当前 Browser 资源入口仍要求非空内容：空的必需 CSS 保守拒绝候选，可选空脚本回退，
-不伪造字节。公共合同缺口见[空资源请求](RUNTIME_EMPTY_RESOURCE_REQUEST.md)，完成后另行接入；
-本批也不新增跨文档初始片段定位或百分号片段解码。
+目录资源使用 Browser `SetDataEx`，READY/0 按状态而非正长度处理。Core fetch 取得至少一字节
+存储空间但正文长度仍为零；CSS/import 缓存和 ScriptResourcesEx2 接受空内容，脚本按明确长度
+零执行为 no-op，不补空格/NUL。空图片终态 fallback，空 HTML 主文档仍不接入；原 HTTP 正长度
+策略不变。合同背景见[空资源请求](RUNTIME_EMPTY_RESOURCE_REQUEST.md)。不新增跨文档初始片段定位或百分号解码。
 
 导航 worker 向 owner 发送单项有界复制读取请求，串行等待结果；只有 owner 调用目录 API，
 UI fetch callback 只读取资源事务已完成的字节。style/layout/paint 与脚本保持 UI owner，
 resize 重用已缓存资源及 UI 的纯 metadata resolver，不做文件 I/O。原标签关闭后撤销实例
 入口，导航/退休 worker 收敛后关闭目录 owner，UI 非阻塞确认退出再释放状态；不强杀线程。
 原窗口、地址栏、软键、native 控件与滚动条不因目录页面换成第二套 UI。
+
+## SQL 授权、页面队列与 SDK
+
+确认 SQL 后，UI 只发出 grant 并处理正常窗口消息；owner worker 通过
+`PRuntime_DevelopmentStorageOpen` 打开 EXE 旁隔离存储并运行声明迁移。失败不启动作者代码、
+不删库、不切换目录、不重放 SQL。live storage/DB 不离开 worker，取消回调只读取原子关闭状态。
+
+每个候选有独立 tab/generation 绑定；worker 创建 Runtime 队列，UI 在 bootstrap COMPLETE
+之后、作者脚本之前仅注册 `storage.sql`，再执行 EXE 内嵌的 `positron-sdk-v1.js`。
+队列准备期间返回消息循环，不在 submit callback 等 DB。SQL 必需能力初始化失败保留旧页，
+不会降级成无服务页面；普通 HTTP(S)/内部页/新标签不因 URL 获权。
+
+SDK 提供 `Positron.apiVersion === 1`，以及：
+
+```javascript
+Positron.db.query('SELECT body FROM notes WHERE id=?',
+    [{type: 'int64', value: '9007199254740993'}], function (ok, result) {
+        // result 使用 Runtime typed rows 或 sanitized error，不转 int64 为 Number。
+    });
+Positron.db.execute(sql, typedParams, callback);
+Positron.db.transaction([{kind: 'execute', sql: sql, params: typedParams}], callback);
+```
+
+callback 为 `(ok, result)`，不要求 Promise；同步参数/容量/队列拒绝抛错，不自动重试。
+SDK 只映射固定方法，不解析 SQL、不选择数据库或身份。Runtime/DB 拥有 JSON、authorizer、
+事务、预算及结果；请求/结果 4096 字节、八个未完成请求、每请求百万 VM 指令等限制不扩大。
+
+owner 使用 event 唤醒，每轮处理各队列一项；有进展再自唤醒，空闲不轮询。
+UI 的原脚本 timer 每次取一份结果，核对 tab/generation/token 后 Complete/Pump，才执行 callback；
+每个 context 固定一份约 4 KiB 复制缓冲，不在空闲 tick 分配。最多四份 Runtime 页面队列，
+约 70 KiB/份，旧页保持到实际替换。候选启动本身不撤销旧页；离页/失败销毁/关闭先撤销
+Browser 桥和 Runtime 队列，停止 UI 访问后由 worker 关闭队列，再关闭 storage/directory。
+取消与 COMMIT 竞争可能丢弃已提交结果，不能通过重放 SQL 恢复；普通页面失败不撤销已提交 SQL。
+
+[Notes 示例](examples/notes/README.md)只包含作者资源，复用普通页面与 native 控件。
+SDK 是内嵌资源，不需要额外 staging 语言或 JS 文件；示例须单独复制，不自动安装或扫描磁盘。
 
 ## 目录页面自动门
 
@@ -54,7 +91,14 @@ resize 重用已缓存资源及 UI 的纯 metadata resolver，不做文件 I/O�
 测试通过生产参数解析器验证八项 Unicode/引号/重复/互斥参数；真实页面验证嵌套 entry、
 inline/external 顺序、相对 CSS/import、SVG cache、可选失败、必需失败保留旧页、query/fragment、
 新标签拒绝、取消/退休迟到隔离和 owner 关闭。EXE/十 DLL 哈希、正常退出零引用及 crash 检查
-仍必需。它不代替原生确认的人工 Yes/No、中英文、实际触摸、旋转或 DPI，也不证明 SQL SDK。
+仍必需；另外验证三个真实零字节资源 READY/0，以及空外部脚本确为 available/no-op。
+它不代替原生确认的人工 Yes/No、中英文、实际触摸、旋转或 DPI，也不证明 SQL SDK。
+
+SQL 另用正式 `app-runtime-sql` Debug 完整包与 `scripts/app_runtime_sql_gate.ps1`：
+原生 `--selftest-runtime-sql` 只接受其精确 `fixture-one/two` 根，Release 排除诊断。
+两根同 ID 目录各两个独立进程，每根 32 条记录，验证重开/数据隔离、typed int64/中文/引号、
+16 行分页、事务回滚、超限/DDL 拒绝、八项队列、旧页失败后服务仍有效、离页撤销/返回新队列、
+有请求时关闭 owner 和正常退出零引用。该门不修改用户库，也不代替 Notes 真正触摸/编辑验收。
 
 ## 调用与所有权
 

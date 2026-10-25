@@ -8,9 +8,9 @@ Core fetch/缓存消费者也须区分“已经取得空内容”与“不可用
 真实目录应用可以包含空 CSS、空 `@import` 或空 classic JS；它们不应成为必需资源失败，
 也不应因始终 pending 而卡住候选。
 
-EXE 当前沿既有非空资源路径：必需空 CSS 会拒绝候选并保留旧页，可选空脚本回退。
+该缺口已由公共 Browser/Core 的 opt-in 空资源接口补齐，EXE 目录分支已接入。
+实际目录页面门已验证空 CSS、空 import 和空 classic JS；当前设备证据见交接文档。
 不填入空格、注释、NUL 或假 HTTP 正文绕过，不在宿主另造资源 ready/commit 语义。
-此缺口由“主线与DLL”会话拥有；EXE 只在公共合同完成后接入。
 
 ## 所有权与兼容
 
@@ -40,10 +40,11 @@ EXE 当前沿既有非空资源路径：必需空 CSS 会拒绝候选并保留�
    只提供 fixture/平台接线/断言，不编译 DLL 产品源文件。更新公共头文件/组件文档，
    给 EXE 明确的 SetData/Copy/fetch 调用及失败/所有权说明。
 
-## EXE 后续接入点
+## EXE 消费合同
 
-公共合同完成后修改 `app_navigation_fetch_resource` 的 Runtime 分支，以及
-`AppResources_Fetch` 对 READY/长度/分配的处理；仍使用同一 candidate/resource transaction，
-不额外构建空资源状态机。将空 CSS/JS 加入现有目录页面设备门，并重新验证旧页回滚、可选
-失败、取消/退休、owner 关闭和普通 HTTP(S) 路径。SQL 队列/SDK 是另一个未完成纵切，
-不与本资源合同混为同一产品能力。
+目录分支使用 `PBrowser_NavigationResourceSetDataEx`，旧 SetData 的正长度合同不变。
+`AppResources_Fetch` 先检查 READY，零长度时分配至少一字节并 CopyData，返回明确长度零。
+Core 使用 `PCore_FetchScriptResourcesEx2` 缓存空脚本，Evaluate 传零而非 strlen 或 -1。
+空图片终态 fallback；空 HTML 主文档和原 HTTP 正长度路径未扩张。
+同一 candidate/resource transaction 继续负责回滚、取消、退休和 owner 关闭。
+SQL 队列/SDK 为独立能力，其接线见 [RUNTIME_HOST](RUNTIME_HOST.md)。

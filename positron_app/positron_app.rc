@@ -7,6 +7,8 @@
 
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
+IDR_APP_RUNTIME_SDK RCDATA "resources/positron-sdk-v1.js"
+
 IDR_APP_MENUBAR_EN RCDATA
 BEGIN
     IDR_APP_MENU_EN,
@@ -101,8 +103,9 @@ BEGIN
     IDS_APP_VISITS_CLEAR_EN "Clear visit history"
     IDS_ERROR_VISITS_CLEAR_CONFIRM_EN "Clear all saved visit records? This only clears visit history; settings, the session navigation stack and downloaded files are kept."
     IDS_RUNTIME_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nRun this development directory with JavaScript enabled? Publisher not verified. Only run applications you trust. Application assets stay local; no native services are granted."
+    IDS_RUNTIME_SQL_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nRun this development directory with JavaScript and its own SQL database? Declared migrations may change its saved data. Publisher not verified. Only run applications you trust. No browser data or arbitrary files are granted."
     IDS_RUNTIME_FAILED_EN "The development application could not be opened. Its files were kept."
-    IDS_RUNTIME_SQL_UNAVAILABLE_EN "This application requires SQL services. Page service queues and the SDK are not connected yet; no author code was run."
+    IDS_RUNTIME_SQL_UNAVAILABLE_EN "SQL access could not be authorized. No author code was run."
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
@@ -210,8 +213,9 @@ BEGIN
     IDS_APP_VISITS_CLEAR_ZH "清除访问历史"
     IDS_ERROR_VISITS_CLEAR_CONFIRM_ZH "清除全部已保存的访问记录？仅清除访问历史，设置、会话导航栈和已下载文件均保留。"
     IDS_RUNTIME_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n启用 JavaScript 运行此开发目录？发布者未验证，请只运行信任的应用。应用资源仅限本地，不授予原生服务。"
+    IDS_RUNTIME_SQL_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n启用 JavaScript 和应用独立的 SQL 数据库运行此目录？声明的迁移可能修改其已保存数据。发布者未验证，请只运行信任的应用。不授予浏览器数据或任意文件权限。"
     IDS_RUNTIME_FAILED_ZH "无法打开开发目录应用，原有文件已保留。"
-    IDS_RUNTIME_SQL_UNAVAILABLE_ZH "此应用需要 SQL 服务。页面服务队列与 SDK 尚未接入，未运行作者代码。"
+    IDS_RUNTIME_SQL_UNAVAILABLE_ZH "无法授权 SQL 访问，未运行作者代码。"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"

@@ -51,7 +51,7 @@
 
 ## 纯资源应用 Runtime
 
-- 目录页面仅 permissions:[]；SQL 队列/SDK/笔记未验收，空 CSS/JS 的 DLL 合同已具备但 EXE 尚未消费，见
+- Notes 原生 CRUD/输入/SIP/旋转和授权确认仍待人工验收；SQL SDK 自动门不能替代作者 UI，见
   [宿主](../positron_app/RUNTIME_HOST.md)。旧 mkdir183/CANTOPEN 未关闭，系统 ZIP/PXI 暂缓。
 
 ## HTML、CSS 与布局

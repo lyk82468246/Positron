@@ -13,7 +13,8 @@ $resource = Join-Path $output 'positron_app.res'
 if (!(Test-Path -LiteralPath $resource)) { exit 0 }
 $stamp = (Get-Item -LiteralPath $resource).LastWriteTimeUtc
 $inputs = @((Join-Path $PSScriptRoot 'positron_app.rc'),
-    (Join-Path $PSScriptRoot 'resource.h'))
+    (Join-Path $PSScriptRoot 'resource.h'),
+    (Join-Path $PSScriptRoot 'resources\positron-sdk-v1.js'))
 foreach ($language in @('en-US', 'zh-CN')) {
     foreach ($page in @('welcome', 'controls', 'about', 'newtab', 'history', 'downloads', 'settings')) {
         $inputs += Join-Path $PSScriptRoot ('resources\' + $language + '\' + $page + '.html')

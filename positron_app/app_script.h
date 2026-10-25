@@ -16,6 +16,7 @@
 #include "positron_browser.h"
 #include "app_forms.h"
 #include "app_settings_services.h"
+#include "app_runtime_services.h"
 
 #define APP_SCRIPT_URL_MAX       PBROWSER_HISTORY_URL_MAX
 #define APP_SCRIPT_STATE_MAX     PBROWSER_HISTORY_STATE_MAX
@@ -133,6 +134,9 @@ int AppScript_SettingsStep(AppScriptContext *context);
 void AppScript_SettingsResult(AppScriptContext *context,
         const AppSettingsResult *result);
 void AppScript_RevokeSettings(AppScriptContext *context);
+int AppScript_BindRuntime(AppScriptContext *context, AppRuntimeApp *app,
+        unsigned long tab_id, unsigned long generation);
+void AppScript_RevokeRuntime(AppScriptContext *context);
 void AppScript_Destroy(AppScriptContext *context);
 
 int AppScript_BeforeUnload(AppScriptContext *context, int *out_prevented);

@@ -1,0 +1,5 @@
+body { margin: 8px; font-size: 14px; background: #fff; color: #222; }
+h1 { font-size: 1.3em; } h2 { font-size: 1.1em; }
+p { margin: 0.5em 0; overflow-wrap: break-word; }
+input, textarea { font-size: inherit; line-height: 1; padding: 2px 0.3em; }
+button { font-size: inherit; } #rows p { padding: 3px 0; border-bottom: 1px solid #ccc; }

@@ -82,7 +82,8 @@ try {
             if ($body -match 'runtime-page FAIL|runtime-arguments FAIL|selftest FAILED') { throw 'EXE directory page failed.' }
             if ($body -match ('debug-session pid='+$appPid+'\b') -and
                     $body -match 'runtime-arguments PASS checks=8' -and
-                    $body -match ('positron pid='+$appPid+' tick=\d+ runtime-page PASS owner=worker assets=local scripts=ordered css=import svg=retained rollback=old-page newtab=denied services=none optional=fallback stale=isolated owner_close=released')) {
+                    $body -match ('positron pid='+$appPid+' tick=\d+ runtime-page PASS owner=worker assets=local scripts=ordered css=import svg=retained rollback=old-page newtab=denied services=none optional=fallback stale=isolated owner_close=released empty=3') -and
+                    $body -match 'kind=2 url=app://org\.positron\.dir_demo/assets/empty\.js available=1 .*data_bytes=0 .*outcome=executed result=0') {
                 $pass=$true; break
             }
         }
@@ -96,8 +97,8 @@ try {
     }
     [IO.File]::WriteAllLines((Join-Path $evidence 'result.txt'),@('status=PASS',
         'binary_roundtrip=11/11','resources=real-exe-candidate','normal_exit=zero_holders',
-        'crash_check=PASS','sql_sdk=NOT_CONNECTED','user_data=untouched'))
-    Write-Host 'APP RUNTIME PAGE PASS binary_roundtrip=11/11 owner=worker normal_exit=zero sql_sdk=NOT_CONNECTED'
+        'crash_check=PASS','sql_services=NOT_GRANTED','empty_resources=3','user_data=untouched'))
+    Write-Host 'APP RUNTIME PAGE PASS binary_roundtrip=11/11 owner=worker normal_exit=zero empty_resources=3'
 } finally {
     if ($connected) { [PositronDeviceRapi]::Disconnect() }
 }
