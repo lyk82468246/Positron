@@ -78,6 +78,7 @@ AppUrlSchemeKind AppUrlRouter_ClassifyScheme(const char *url)
     if (app_url_ascii_prefix_equal(url, "https:")) {
         return APP_URL_SCHEME_HTTPS;
     }
+    if (app_url_ascii_prefix_equal(url, "app:")) return APP_URL_SCHEME_APP;
     return APP_URL_SCHEME_OTHER;
 }
 
@@ -91,7 +92,8 @@ int AppUrlRouter_ResolveNetworkReference(const char *base_url,
         return 1;
     }
     reference_scheme = AppUrlRouter_ClassifyScheme(reference);
-    if (reference_scheme == APP_URL_SCHEME_POSITRON ||
+    if (reference_scheme == APP_URL_SCHEME_APP ||
+            reference_scheme == APP_URL_SCHEME_POSITRON ||
             reference_scheme == APP_URL_SCHEME_OTHER) {
         return 1;
     }
@@ -102,7 +104,8 @@ int AppUrlRouter_ResolveNetworkReference(const char *base_url,
                 out_capacity);
     }
     base_scheme = AppUrlRouter_ClassifyScheme(base_url);
-    if (base_scheme == APP_URL_SCHEME_POSITRON ||
+    if (base_scheme == APP_URL_SCHEME_APP ||
+            base_scheme == APP_URL_SCHEME_POSITRON ||
             base_scheme == APP_URL_SCHEME_OTHER) {
         return 1;
     }

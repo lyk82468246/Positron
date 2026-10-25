@@ -24,6 +24,7 @@
 
 #include "app_debug.h"
 #include "app_runtime_platform.h"
+#include "app_runtime_app.h"
 #include "app_settings_store.h"
 #include "app_downloads.h"
 #include "app_settings_services.h"
@@ -81,6 +82,7 @@
 #define APP_SCRIPT_TIMER_ID     7
 #define APP_LOADING_TIMER_ID    8
 #define APP_SETTINGS_TIMER_ID   9
+#define APP_RUNTIME_TIMER_ID    10
 #define APP_NAV_SCRIPT_TIMER_BASE 0x10000UL
 #define APP_NAV_SCRIPT_INTERVAL_MS 16U
 #define APP_COMMAND_ARG_MAX     16384
@@ -106,6 +108,19 @@ static int g_tab_order[APP_TAB_MAX];
 static int g_tab_count;
 static int g_tabs_enabled;
 static int g_tabs_closing;
+static AppRuntimeApp *g_runtime_app;
+static unsigned long g_runtime_tab_id;
+static char g_startup_app_directory[1024];
+#ifdef _DEBUG
+static int g_runtime_debug_mode;
+static int g_runtime_debug_phase;
+static DWORD g_runtime_debug_started;
+static HANDLE g_runtime_debug_document;
+static AppScriptContext *g_runtime_debug_script;
+static int g_runtime_debug_history;
+static int g_runtime_debug_fallbacks;
+static void app_runtime_debug_tick(HWND hwnd);
+#endif
 static UINT g_script_timer_sequence = APP_NAV_SCRIPT_TIMER_BASE;
 #define g_app (g_tab->host)
 #define g_controls (g_tab->controls)
@@ -1675,6 +1690,7 @@ static int app_parse_startup_arguments(LPWSTR command_line,
         return 1;
     }
     out_reference[0] = '\0';
+    g_startup_app_directory[0] = '\0';
     out_script[0] = '\0';
     out_click_selector[0] = '\0';
     *out_has_reference = 0;
@@ -1691,6 +1707,24 @@ static int app_parse_startup_arguments(LPWSTR command_line,
         }
         if (result == 0) {
             break;
+        }
+#ifdef _DEBUG
+        if (app_command_ascii_equal(argument, "--selftest-runtime-app")) {
+            if (g_runtime_debug_mode) return 1;
+            g_runtime_debug_mode = 1;
+            wcscpy(argument, L"--app-dir");
+        }
+#endif
+        value_result = app_command_copy_value(argument, "--app-dir", value,
+                sizeof(value) / sizeof(value[0]));
+        if (value_result != 0 || app_command_ascii_equal(argument, "--app-dir")) {
+            if (value_result < 0 || g_startup_app_directory[0]) return 1;
+            if (value_result == 0 && app_command_line_next_arg(&cursor, value,
+                    sizeof(value) / sizeof(value[0])) != 1) return 1;
+            if (app_wide_buffer_to_utf8(value, lstrlenW(value),
+                    g_startup_app_directory, sizeof(g_startup_app_directory)) != 0 ||
+                    !g_startup_app_directory[0]) return 1;
+            continue;
         }
         value_result = app_command_copy_value(argument, "--url", value,
                 sizeof(value) / sizeof(value[0]));
@@ -1802,6 +1836,7 @@ static int app_parse_startup_arguments(LPWSTR command_line,
     }
     *out_has_reference = has_reference;
     *out_has_script = has_script;
+    if (g_startup_app_directory[0] && (has_reference || has_script)) return 1;
     return 0;
 }
 
@@ -2868,6 +2903,14 @@ static int app_canonicalize_url(const char *base_url, const char *reference,
         return 1;
     }
     reference_scheme = AppUrlRouter_ClassifyScheme(reference);
+    if (reference_scheme == APP_URL_SCHEME_APP ||
+            (reference_scheme == APP_URL_SCHEME_RELATIVE &&
+            AppUrlRouter_ClassifyScheme(base_url) == APP_URL_SCHEME_APP)) {
+        if (g_app.tab_id != g_runtime_tab_id) return 1;
+        return AppRuntimeApp_Resolve(g_runtime_app,
+                reference_scheme == APP_URL_SCHEME_APP ? NULL : base_url, reference,
+                output, output_capacity);
+    }
     if (reference_scheme == APP_URL_SCHEME_POSITRON) {
         if (AppInternalPages_Resolve(reference, APP_NAV_SOURCE_DOCUMENT,
                 &route) != 0) return 1;
@@ -3007,6 +3050,17 @@ static int app_build_page(const char *url, HANDLE *out_document,
     return 0;
 }
 
+static int app_document_resolve(void *pw, const char *base,
+        const char *reference, char *url, int capacity)
+{
+    (void) pw;
+    if (AppUrlRouter_ClassifyScheme(base) == APP_URL_SCHEME_APP) {
+        if (g_app.tab_id != g_runtime_tab_id) return 1;
+        return AppRuntimeApp_Resolve(g_runtime_app, base, reference, url, capacity);
+    }
+    return AppResources_Resolve(NULL, base, reference, url, capacity);
+}
+
 static int app_relayout(void)
 {
     int pass;
@@ -3036,7 +3090,7 @@ static int app_relayout(void)
         if (g_page_kind == 0) {
             if (g_current_url[0] == '\0' ||
                     PCore_StyleDocumentEx2(g_document, NULL, g_current_url,
-                    AppResources_Resolve, NULL, NULL, NULL) != 0) {
+                    app_document_resolve, NULL, NULL, NULL) != 0) {
                 return 1;
             }
 #ifdef _DEBUG
@@ -5260,6 +5314,44 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
             info.attempted) {
         return 0;
     }
+    if (request->runtime_app != NULL) {
+        PRuntimeResourceReference resolved;
+        unsigned int bytes;
+        char *data;
+        int rc;
+        int failure;
+
+        if (app_navigation_is_cancelled(request)) return 1;
+        if (PBrowser_NavigationResourceBeginAttempt(request->resource_transaction,
+                index) != PBROWSER_OK) return 1;
+        data = (char *) malloc(PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX);
+        resolved.size = sizeof(resolved);
+        resolved.version = PRUNTIME_VERSION;
+        bytes = 0;
+        rc = data == NULL ? PRUNTIME_MEMORY : AppRuntimeApp_Read(request->runtime_app,
+                request->url, reference, data, PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX,
+                &bytes, &resolved);
+        if (app_navigation_is_cancelled(request)) {
+            free(data);
+            (void) PBrowser_NavigationResourceCancelAll(request->resource_transaction);
+            return 1;
+        }
+        if (rc == PRUNTIME_OK && bytes > 0 &&
+                AppResources_SetEffectiveUrl(request, index, resolved.url) == 0 &&
+                PBrowser_NavigationResourceSetData(request->resource_transaction,
+                index, data, (int) bytes) == PBROWSER_OK) {
+            request->worker_status_code = 0; /* No fabricated HTTP response. */
+            free(data);
+            return 0;
+        }
+        failure = rc == PRUNTIME_LIMIT ? PBROWSER_NAVIGATION_FAILURE_BUDGET :
+                (rc == PRUNTIME_MEMORY ? PBROWSER_NAVIGATION_FAILURE_MEMORY :
+                PBROWSER_NAVIGATION_FAILURE_RESOLVE);
+        request->worker_failure_class = failure;
+        (void) app_navigation_resource_fail(request, index, failure);
+        free(data);
+        return 0;
+    }
     /* PCore_FetchImageResources reports the selected image source directly;
      * unlike script/style discovery it has no resolver callback parameter.
      * TEST13 resolves that source against the document's effective URL before
@@ -5981,6 +6073,17 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         /* First paint is synchronous, without pumping navigation messages.
          * Caption completion follows this draw, not just HTTP completion. */
         UpdateWindow(g_page_window);
+#ifdef _DEBUG
+        if (g_runtime_debug_mode && request->runtime_app != NULL &&
+                g_runtime_debug_phase == 0) {
+            PBrowserNavigationResourceStats stats;
+
+            memset(&stats, 0, sizeof(stats));
+            stats.size = sizeof(stats);
+            if (PBrowser_NavigationResourceGetStats(request->resource_transaction,
+                    &stats) == PBROWSER_OK) g_runtime_debug_fallbacks = stats.resources_failed;
+        }
+#endif
         if (request->method == PCORE_FORM_METHOD_GET) app_visits_record();
         return 1;
     }
@@ -6048,7 +6151,8 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     LONG generation;
     int index;
 
-    if (!g_http_initialized || url == NULL || url[0] == '\0' ||
+    if (url == NULL || url[0] == '\0' ||
+            (!g_http_initialized && AppUrlRouter_ClassifyScheme(url) != APP_URL_SCHEME_APP) ||
             (method != PCORE_FORM_METHOD_GET && method !=
             PCORE_FORM_METHOD_POST && method != PCORE_FORM_METHOD_MULTIPART) ||
             body_bytes < 0 || body_bytes > APP_FORMS_BODY_MAX_BYTES ||
@@ -6081,6 +6185,16 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     request->hwnd = hwnd;
     request->owner_tab_id = g_app.tab_id;
     request->transport_available = g_http_initialized;
+    if (AppUrlRouter_ClassifyScheme(url) == APP_URL_SCHEME_APP) {
+        if (g_app.tab_id != g_runtime_tab_id || method != PCORE_FORM_METHOD_GET ||
+                AppRuntimeApp_Resolve(g_runtime_app, NULL, url, canonical,
+                sizeof(canonical)) != 0) {
+            free(request);
+            return 0;
+        }
+        request->runtime_app = g_runtime_app;
+        request->transport_available = 1;
+    }
     request->method = method;
     request->history_mode = history_mode;
     request->history_target = history_target;
@@ -6099,7 +6213,7 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
     }
     app_copy_text(request->content_type,
             sizeof(request->content_type), content_type);
-    if (AppUrlRouter_ResolveNetworkReference(NULL, url, canonical,
+    if (request->runtime_app == NULL && AppUrlRouter_ResolveNetworkReference(NULL, url, canonical,
             sizeof(canonical)) != 0) {
 #ifdef _DEBUG
         app_navigation_debug_log_url("reject", url, "network-url-router");
@@ -6130,7 +6244,8 @@ static int app_navigation_start(HWND hwnd, const char *url, int method,
         generation = InterlockedIncrement(&g_navigation_generation);
     }
     request->generation = (unsigned long) generation;
-    request->javascript_enabled = g_settings_values.javascript_enabled;
+    request->javascript_enabled = request->runtime_app != NULL ? 1 :
+            g_settings_values.javascript_enabled;
     request->candidate = PBrowser_NavigationCandidateCreate(
             request->generation);
     if (request->candidate == NULL) {
@@ -6300,6 +6415,12 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         return 1;
     }
     if (url == NULL || url[0] == '\0') return 0;
+    if (AppUrlRouter_ClassifyScheme(url) == APP_URL_SCHEME_APP &&
+            (g_app.tab_id != g_runtime_tab_id ||
+            ((source == APP_NAV_SOURCE_DOCUMENT || source == APP_NAV_SOURCE_SCRIPT ||
+            source == APP_NAV_SOURCE_FORM || source == APP_NAV_SOURCE_REDIRECT) &&
+            AppUrlRouter_ClassifyScheme(g_current_url) != APP_URL_SCHEME_APP)))
+        return 0;
     if (history_mode == APP_HISTORY_TARGET) {
         same_document = app_history_traverse(hwnd, history_target);
         if (same_document != 0) return same_document > 0;
@@ -8691,6 +8812,16 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         }
         return 0;
     case WM_TIMER:
+        if (wparam == APP_RUNTIME_TIMER_ID) {
+            if (g_tabs_closing) app_tabs_finish_close();
+            else if (!g_runtime_tab_id &&
+                    AppRuntimeApp_TryDestroy(&g_runtime_app) == 0)
+                KillTimer(hwnd, APP_RUNTIME_TIMER_ID);
+#ifdef _DEBUG
+            else if (g_runtime_debug_mode) app_runtime_debug_tick(hwnd);
+#endif
+            return 0;
+        }
         if (wparam == APP_SETTINGS_TIMER_ID) {
             app_settings_tick(hwnd);
             return 0;
@@ -8763,6 +8894,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
          * host context is the single owner of the remaining page, history,
          * command bar and DLL shutdown sequence. */
         KillTimer(hwnd, APP_SCRIPT_TIMER_ID);
+        KillTimer(hwnd, APP_RUNTIME_TIMER_ID);
         KillTimer(hwnd, APP_LOADING_TIMER_ID);
         g_script_refresh_pending = 0;
         g_script_refresh_form_reset = 0;
@@ -8947,6 +9079,10 @@ static void app_tab_release(AppTab *tab)
     g_history = NULL;
     if (g_page_window != NULL) DestroyWindow(g_page_window);
     g_page_window = NULL;
+    if (tab->host.tab_id == g_runtime_tab_id) {
+        g_runtime_tab_id = 0;
+        AppRuntimeApp_RequestClose(g_runtime_app);
+    }
     g_tab = saved;
 }
 
@@ -8963,6 +9099,8 @@ static void app_tabs_finish_close(void)
                     g_tabs[i].host.retired_navigation != NULL ||
                     g_tabs[i].download_prepare != NULL)) return;
         }
+        AppRuntimeApp_RequestClose(g_runtime_app);
+        if (AppRuntimeApp_TryDestroy(&g_runtime_app) != 0) return;
         DestroyWindow(g_window);
         return;
     }
@@ -9218,6 +9356,7 @@ static void app_tabs_close_all(HWND hwnd)
 
     saved = g_tab;
     g_tabs_closing = 1;
+    if (g_runtime_app != NULL) SetTimer(hwnd, APP_RUNTIME_TIMER_ID, 100, NULL);
     g_settings_bootstrapping = 0;
     for (i = 0; i < APP_TAB_MAX; ++i)
         AppScript_RevokeSettings(g_tabs[i].host.script);
@@ -9704,6 +9843,7 @@ static void app_show_startup_usage(void)
     MessageBoxW(NULL,
             L"Usage: positron.exe [URL]\n"
             L"       positron.exe --url URL --click \"CSS selector\"\n"
+            L"       positron.exe --app-dir \"directory\"\n"
             L"       positron.exe --url URL --eval \"JavaScript\"",
             L"Positron", MB_OK | MB_ICONERROR);
 }
@@ -9718,6 +9858,228 @@ static void app_abort_startup(HWND hwnd)
     while (GetMessage(&message, NULL, 0, 0) > 0)
         app_dispatch_ui_message(&message);
 }
+
+#ifdef _DEBUG
+static int app_runtime_debug_arguments(void)
+{
+    static const WCHAR *invalid[] = {
+        L"--app-dir", L"--app-dir \"\"", L"--app-dir a --app-dir b",
+        L"--app-dir a --url https://example.com/",
+        L"--url https://example.com/ --app-dir a",
+        L"--app-dir a --eval \"1+1\"", L"--app-dir \"unterminated"
+    };
+    struct Probe { char url[1024]; char script[8193]; char selector[513]; } *probe;
+    char saved[1024];
+    char expected[1024];
+    int a;
+    int b;
+    int c;
+    unsigned int i;
+    int result;
+
+    strcpy(saved, g_startup_app_directory);
+    probe = (struct Probe *) malloc(sizeof(*probe));
+    if (probe == NULL) return 1;
+    result = 1;
+    for (i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        if (!app_parse_startup_arguments((LPWSTR) invalid[i], probe->url,
+                sizeof(probe->url), &a, probe->script, sizeof(probe->script), &b,
+                probe->selector, sizeof(probe->selector), &c)) goto done;
+    }
+    if (app_parse_startup_arguments(L"--app-dir \"\\Storage Card\\\x76ee\x5f55 test\"",
+            probe->url, sizeof(probe->url), &a, probe->script, sizeof(probe->script), &b,
+            probe->selector, sizeof(probe->selector), &c) || a || b || c ||
+            !WideCharToMultiByte(CP_UTF8, 0, L"\\Storage Card\\\x76ee\x5f55 test", -1,
+            expected, sizeof(expected), NULL, NULL) || strcmp(expected, g_startup_app_directory))
+        goto done;
+    result = 0;
+done:
+    strcpy(g_startup_app_directory, saved);
+    free(probe);
+    AppDebug_Log(result ? "runtime-arguments FAIL\r\n" : "runtime-arguments PASS checks=8\r\n");
+    return result;
+}
+#endif
+
+/* Ordinary UI pump while a dedicated owner opens the retained directory.
+ * This is outside all DLL/callback stacks, like settings bootstrap above. */
+static int app_start_runtime(HWND hwnd, char *url, int capacity)
+{
+    PRuntimeManifestInfo info;
+    WCHAR name[128];
+    WCHAR id[64];
+    WCHAR format[512];
+    WCHAR message[1024];
+    MSG event;
+    int rc;
+    int decision;
+    unsigned long tab_id;
+
+    tab_id = g_app.tab_id;
+    if (!SetTimer(hwnd, APP_RUNTIME_TIMER_ID, 100, NULL)) return 0;
+    g_runtime_app = AppRuntimeApp_Start(g_startup_app_directory);
+    app_set_status(APP_TEXT_STATUS_LOADING);
+    while (AppRuntimeApp_State(g_runtime_app) == APP_RUNTIME_OPENING) {
+        rc = GetMessage(&event, NULL, 0, 0);
+        if (rc <= 0) return -1;
+        app_dispatch_ui_message(&event);
+    }
+    if (g_tabs_closing) {
+        while (GetMessage(&event, NULL, 0, 0) > 0) app_dispatch_ui_message(&event);
+        return -1;
+    }
+    /* Opening a menu/URL during startup must not be overwritten later. */
+    if (g_app.tab_id != tab_id || g_document != NULL || g_navigation_request != NULL) {
+        AppRuntimeApp_RequestClose(g_runtime_app);
+        return 2;
+    }
+    rc = AppRuntimeApp_Accept(g_runtime_app, &info, url, (unsigned int) capacity);
+    if (rc != PRUNTIME_OK) {
+        app_show_error(AppRuntimeApp_Result(g_runtime_app) == PRUNTIME_DENIED ?
+                APP_TEXT_RUNTIME_SQL_UNAVAILABLE : APP_TEXT_RUNTIME_FAILED);
+        AppRuntimeApp_RequestClose(g_runtime_app);
+        return 0;
+    }
+    if (!MultiByteToWideChar(CP_UTF8, 0, info.name, -1, name, 128) ||
+            !MultiByteToWideChar(CP_UTF8, 0, info.id, -1, id, 64) ||
+            !AppI18n_LoadString(APP_TEXT_RUNTIME_CONFIRM, format, 512)) {
+        AppRuntimeApp_RequestClose(g_runtime_app);
+        return 0;
+    }
+    _snwprintf(message, 1023, format, name, id, info.app_version);
+    message[1023] = L'\0';
+#ifdef _DEBUG
+    if (g_runtime_debug_mode) {
+        WCHAR executable[MAX_PATH];
+        WCHAR *slash;
+        char expected[1024];
+        DWORD length;
+        static const WCHAR prefix[] =
+                L"\\Storage Card\\Temp\\Positron-device-gate\\app-runtime-page-";
+
+        length = GetModuleFileNameW(NULL, executable, MAX_PATH);
+        if (!length || length >= MAX_PATH ||
+                wcsncmp(executable, prefix, wcslen(prefix))) return -2;
+        slash = wcsrchr(executable, L'\\');
+        if (slash == NULL) return -2;
+        *slash = 0;
+        if (wcslen(executable) + 9 >= MAX_PATH) return -2;
+        wcscat(executable, L"\\fixture");
+        if (!WideCharToMultiByte(CP_UTF8, 0, executable, -1, expected,
+                sizeof(expected), NULL, NULL) || strcmp(expected, g_startup_app_directory))
+            return -2;
+        if (app_runtime_debug_arguments()) return -2;
+        decision = IDYES;
+        g_runtime_debug_started = GetTickCount();
+    } else
+#endif
+    decision = MessageBoxW(hwnd, message, L"Positron", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+    if (decision != IDYES) {
+        AppRuntimeApp_RequestClose(g_runtime_app);
+        return 0;
+    }
+    g_runtime_tab_id = g_app.tab_id;
+    /* Retain a low-frequency close poll even if browser storage is unavailable. */
+    SetTimer(hwnd, APP_RUNTIME_TIMER_ID, 1000, NULL);
+    return 1;
+}
+
+#ifdef _DEBUG
+/* Explicit isolated fixture only. Uses production dispatch, not copied DLL
+ * logic; author bytes live in the directory and no native services are granted. */
+static void app_runtime_debug_tick(HWND hwnd)
+{
+    char text[128];
+    char resolved[1024];
+    unsigned long color;
+    PCoreImageDecodeStats images;
+    PCoreImageDecodeStats again;
+
+    if (!g_runtime_tab_id || g_tabs_closing) return;
+    if (GetTickCount() - g_runtime_debug_started > 120000UL) goto failed;
+    if (g_navigation_request != NULL) return;
+    if (g_runtime_debug_phase == 0) {
+        if (strcmp(g_current_url, "app://org.positron.dir_demo/pages/index.html") ||
+                g_runtime_debug_fallbacks < 2 ||
+                g_script == NULL || PCore_NodeTextContentById(g_document,
+                "status", text, sizeof(text), NULL) ||
+                strcmp(text, "directory-script-ready")) goto failed;
+        if (PCore_NodeComputedColor(g_document, "p", &color) || color != 0xff008000UL ||
+                PCore_GetImageDecodeStats(g_document, &images) || !images.svg_creates ||
+                app_relayout() || PCore_GetImageDecodeStats(g_document, &again) ||
+                images.svg_creates != again.svg_creates) goto failed;
+        if (!AppRuntimeApp_Resolve(g_runtime_app, g_current_url,
+                "https://127.0.0.1:1/asset.js", resolved, sizeof(resolved)) ||
+                !AppRuntimeApp_Resolve(g_runtime_app, g_current_url,
+                "app://org.other.app/index.html", resolved, sizeof(resolved)) ||
+                !AppRuntimeApp_Resolve(g_runtime_app, g_current_url,
+                "../../escape", resolved, sizeof(resolved))) goto failed;
+        g_runtime_debug_document = g_document;
+        g_runtime_debug_script = g_script;
+        g_runtime_debug_history = PBrowser_HistoryCount(g_history);
+        g_runtime_debug_phase = 1;
+        if (!app_load_page_from(hwnd, "app://org.positron.dir_demo/broken.html",
+                APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT)) goto failed;
+        return;
+    }
+    if (g_runtime_debug_phase == 1) {
+        if (g_document != g_runtime_debug_document || g_script != g_runtime_debug_script ||
+                PBrowser_HistoryCount(g_history) != g_runtime_debug_history ||
+                strcmp(g_current_url, "app://org.positron.dir_demo/pages/index.html")) goto failed;
+        g_runtime_debug_phase = 2;
+        if (!app_load_page_from(hwnd, "../next.html?mode=demo#section",
+                APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT)) goto failed;
+        return;
+    }
+    if (g_runtime_debug_phase == 2) {
+        if (strcmp(g_current_url, "app://org.positron.dir_demo/next.html?mode=demo#section") ||
+                PBrowser_HistoryCount(g_history) != g_runtime_debug_history + 1 ||
+                PCore_NodeTextContentById(g_document, "status", text, sizeof(text), NULL) ||
+                strcmp(text, "next-script-ready")) goto failed;
+        g_runtime_debug_document = g_document;
+        if (!app_tabs_new() || app_load_page_from(hwnd,
+                "app://org.positron.dir_demo/pages/index.html", APP_HISTORY_NEW, -1,
+                APP_NAV_SOURCE_ADDRESS) || !app_tabs_select(0) ||
+                g_document != g_runtime_debug_document) goto failed;
+        g_runtime_debug_history = PBrowser_HistoryCount(g_history);
+        g_runtime_debug_phase = 3;
+        if (!app_load_page_from(hwnd, "app://org.positron.dir_demo/broken.html",
+                APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT) ||
+                !app_load_page_from(hwnd, "app://org.positron.dir_demo/pages/index.html",
+                APP_HISTORY_NEW, -1, APP_NAV_SOURCE_DOCUMENT)) goto failed;
+        return;
+    }
+    if (g_runtime_debug_phase == 3) {
+        if (g_retired_navigation != NULL) return;
+        if (strcmp(g_current_url, "app://org.positron.dir_demo/pages/index.html") ||
+                g_document == g_runtime_debug_document || g_script == NULL ||
+                PBrowser_HistoryCount(g_history) != g_runtime_debug_history + 1 ||
+                PCore_NodeTextContentById(g_document, "status", text, sizeof(text), NULL) ||
+                strcmp(text, "directory-script-ready")) goto failed;
+        app_tabs_close();
+        if (g_runtime_tab_id || !AppRuntimeApp_Resolve(g_runtime_app, NULL,
+                "app://org.positron.dir_demo/pages/index.html", resolved, sizeof(resolved)))
+            goto failed;
+        AppDebug_Log("runtime-page PASS owner=worker assets=local scripts=ordered "
+                "css=import svg=retained rollback=old-page newtab=denied services=none "
+                "optional=fallback stale=isolated owner_close=released\r\n");
+        g_runtime_debug_phase = 4;
+        PostMessage(hwnd, WM_CLOSE, 0, 0);
+        return;
+    }
+    return;
+failed:
+    {
+        char log[192];
+        _snprintf(log, sizeof(log) - 1,
+                "runtime-page FAIL phase=%d url=%s\r\n", g_runtime_debug_phase, g_current_url);
+        log[sizeof(log) - 1] = 0;
+        AppDebug_Log(log);
+    }
+    g_runtime_debug_phase = 99;
+    PostMessage(hwnd, WM_CLOSE, 0, 0);
+}
+#endif
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         LPWSTR command_line, int show_command)
@@ -9984,8 +10346,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
 #endif
     app_copy_text(initial_url, sizeof(initial_url),
-            startup_has_reference ? APP_URL_NEWTAB : g_settings_values.startup_url);
-    startup_invalid = !startup_has_reference &&
+            (startup_has_reference || g_startup_app_directory[0]) ? APP_URL_NEWTAB :
+            g_settings_values.startup_url);
+    startup_invalid = !startup_has_reference && !g_startup_app_directory[0] &&
             strlen(g_settings_values.startup_url) >= sizeof(initial_url);
     if (startup_has_reference &&
             app_normalize_address(g_startup_reference, initial_url,
@@ -10006,6 +10369,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
             app_page_kind(initial_url) != 0) {
         startup_invalid = 1;
     }
+    if (g_startup_app_directory[0]) {
+        result = app_start_runtime(hwnd, initial_url, sizeof(initial_url));
+        if (result == -2) {
+            app_abort_startup(hwnd);
+            return 1;
+        }
+        if (result < 0) return 0;
+        if (result == 2) goto startup_ready;
+        if (result == 0) app_copy_text(initial_url, sizeof(initial_url), APP_URL_NEWTAB);
+    }
     result = app_load_page_from(hwnd, initial_url,
             APP_HISTORY_NEW, -1, APP_NAV_SOURCE_STARTUP) ? 0 : 1;
     if (result != 0) {
@@ -10024,6 +10397,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         g_startup_script_generation = (unsigned long) g_navigation_generation;
         g_startup_script_tab_id = g_app.tab_id;
     }
+startup_ready:
     UpdateWindow(hwnd);
     if (GetForegroundWindow() == hwnd)
         SetFocus(g_page_window != NULL ? g_page_window : hwnd);

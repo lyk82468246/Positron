@@ -95,6 +95,8 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_runtime_app.c" />
+		<File RelativePath=".\app_runtime_app.h" />
 		<File RelativePath=".\app_runtime_platform.c" />
 		<File RelativePath=".\app_runtime_platform.h" />
 		<File RelativePath=".\app_runtime_platform_debug.c" />

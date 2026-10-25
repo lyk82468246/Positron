@@ -34,8 +34,21 @@ class StartupWindowTests(unittest.TestCase):
         self.assertIn('startup_ui_selftest = 0;', STARTUP)
         self.assertIn('L"--selftest-ui "', STARTUP)
         self.assertIn('command_line += 13;', STARTUP)
-        self.assertIn('if (startup_ui_selftest && app_tabs_debug_check()', STARTUP)
-        self.assertIn('if (startup_ui_selftest && app_history_debug_check()', STARTUP)
+        # The suite now temporarily overrides/restores policy inside its
+        # explicit Debug block. Verify containment, not obsolete spelling.
+        guard = STARTUP.index('if (startup_ui_selftest) {')
+        depth = 1
+        end = guard + len('if (startup_ui_selftest) {')
+        while depth:
+            depth += (STARTUP[end] == '{') - (STARTUP[end] == '}')
+            end += 1
+        block = STARTUP[guard:end]
+        self.assertIn('check = app_tabs_debug_check();', block)
+        self.assertIn('if (check != 0)', block)
+        self.assertGreater(STARTUP.rfind('#ifdef _DEBUG', 0, guard),
+                           STARTUP.rfind('#endif', 0, guard))
+        self.assertEqual(STARTUP.count('app_tabs_debug_check()'), 1)
+        self.assertIn('if (startup_ui_selftest && app_history_debug_check(0) != 0)', STARTUP)
         self.assertIn('if (startup_ui_selftest && (AppAddressBar_DebugCheck', STARTUP)
         gate = (ROOT / 'scripts/app_history_gate.ps1').read_text(encoding='utf-8')
         self.assertIn("'--selftest-ui --url '", gate)

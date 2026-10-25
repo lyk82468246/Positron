@@ -51,8 +51,8 @@
 
 ## 纯资源应用 Runtime
 
-- 目录入口/授权 worker/SDK/示例未接入；上限与未验收边界见 [宿主](../positron_app/RUNTIME_HOST.md)。
-  旧 ROM mkdir183/CANTOPEN 未关闭；系统 ZIP 未具备，PXI 暂缓，无解压 fallback。
+- 目录页面仅 permissions:[]；SQL 队列/SDK/笔记未接，空 CSS/JS 受 Browser 合同限制，见
+  [宿主](../positron_app/RUNTIME_HOST.md)。旧 mkdir183/CANTOPEN 未关闭，系统 ZIP/PXI 暂缓。
 
 ## HTML、CSS 与布局
 

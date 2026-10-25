@@ -8,6 +8,7 @@
 
 #include "app_resources.h"
 #include "app_url_router.h"
+#include "app_runtime_app.h"
 #include "positron_core.h"
 
 static void app_resources_copy_text(char *target, int capacity,
@@ -292,6 +293,9 @@ int AppResources_Resolve(void *pw, const char *base_url,
     }
     request = (AppNavigationRequest *) pw;
     effective_base = base_url;
+    if (request != NULL && request->runtime_app != NULL)
+        return AppRuntimeApp_Resolve(request->runtime_app, base_url,
+                reference, out_url, out_capacity);
     if (request != NULL && base_url != NULL) {
         for (resource = request->resources; resource != NULL;
                 resource = resource->next) {

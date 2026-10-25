@@ -16,7 +16,8 @@ typedef enum AppUrlSchemeKind {
     APP_URL_SCHEME_POSITRON,
     APP_URL_SCHEME_HTTP,
     APP_URL_SCHEME_HTTPS,
-    APP_URL_SCHEME_OTHER
+    APP_URL_SCHEME_OTHER,
+    APP_URL_SCHEME_APP
 } AppUrlSchemeKind;
 
 AppUrlSchemeKind AppUrlRouter_ClassifyScheme(const char *url);

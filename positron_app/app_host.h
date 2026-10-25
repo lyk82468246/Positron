@@ -24,8 +24,11 @@
 typedef struct AppNavigationRequest AppNavigationRequest;
 typedef struct AppNavigationResource AppNavigationResource;
 typedef struct AppScriptContext AppScriptContext;
+struct AppRuntimeApp;
 
 struct AppNavigationRequest {
+    /* Borrowed process owner, retained until every navigation worker joins. */
+    struct AppRuntimeApp *runtime_app;
     HWND hwnd;
     HANDLE candidate;
     HANDLE worker_thread;

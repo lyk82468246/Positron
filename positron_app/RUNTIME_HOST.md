@@ -1,10 +1,60 @@
-# Runtime 的 WM 平台适配器
+# Runtime 的 WM 平台与目录页面宿主
 
-本文只说明 EXE 私有 `app_runtime_platform.c/.h` 的平台调用与边界；应用身份、manifest、
+本文只说明 EXE 私有 `app_runtime_platform.c/.h`、`app_runtime_app.c/.h` 的平台接线与边界；应用身份、manifest、
 资源引用、迁移、SQL 和页面服务合同由公共
 [Runtime](../positron_runtime/README.md)拥有。目录应用的整体设计见
 [运行时计划](../docs/RUNTIME_PLAN.md)，实际进度和设备证据见
-[HANDOFF](../.agents/HANDOFF.md)。平台自检不表示 `--app-dir`、JS SDK 或笔记应用已经接通。
+[HANDOFF](../.agents/HANDOFF.md)。当前只读目录页面不等于 SQL SDK 或完整笔记应用。
+
+## 只读目录页面入口
+
+```text
+positron.exe --app-dir "\Storage Card\Apps\Example"
+```
+
+目录必须独立放置根 `manifest.json` 及资源；路径支持引号和 Unicode，不使用工作目录。
+该入口与位置 URL、`--url`、`--eval`、`--click` 互斥。原有无参数/URL 启动不变。
+当前资源纵切只接受 `permissions:[]`；声明 `storage.sql` 的应用在迁移和作者代码前拒绝，
+不会忽略所需能力后继续执行。页面 SQL 队列、SDK 和笔记示例仍待后续接线。
+
+UI 调用私有 `AppRuntimeApp_Start` 创建独立 owner worker；它打开目录实例，从根引用
+`/manifest.json` 复制已准入字节。UI 用这份字节创建自己的不可变 metadata resolver，
+不接收 live 目录 handle。UI 显示名称、规范 ID、版本、未验证发布者及启用 JavaScript 的
+确认，默认选择否；用户同意后才在原窗口首标签加载入口。缺失/非法/所需能力未接通时不
+运行作者代码、不执行迁移、不删除文件；取消后仍可普通浏览。打开期间 UI 正常处理消息，
+不在 DLL/callback 内泵消息；用户已导航或换标签则不迟到覆盖该操作。
+
+确认只绑定该原始标签和存活实例，不按 URL 授权新标签或普通网页。目录页面的资源引用
+统一走 Runtime 的同 ID 解析；HTTP(S) 仍走原网络路径，应用远端资源不转交 HTTP。
+用户在原标签显式切换 HTTP(S)/内部页可以普通浏览，外部网页脚本或链接不能反向进入应用；
+其他标签和未显式启动的进程不能仅凭 `app://` 获得实例。跨 ID、逃逸和不支持引用拒绝。
+当前页面没有 Browser 原生服务或 SQL/文件访问授权，不是安全沙箱。
+
+页面继续使用原 Browser candidate/resource transaction、Core stylesheet/import/image cache、
+ScriptSession、history 和控件。目录应用 JS 在可信确认后显式启用，不改变网页 JS 偏好，
+也不扩大 heap/source/执行预算。必需 CSS 失败保留旧页；可选脚本/图片失败沿既有 fallback。
+query/fragment 只保留为 URL，不拼入物理文件名；嵌套 entry 不改变根 manifest 位置。
+当前 Browser 资源入口仍要求非空内容：空的必需 CSS 保守拒绝候选，可选空脚本回退，
+不伪造字节。公共合同缺口见[空资源请求](RUNTIME_EMPTY_RESOURCE_REQUEST.md)，完成后另行接入；
+本批也不新增跨文档初始片段定位或百分号片段解码。
+
+导航 worker 向 owner 发送单项有界复制读取请求，串行等待结果；只有 owner 调用目录 API，
+UI fetch callback 只读取资源事务已完成的字节。style/layout/paint 与脚本保持 UI owner，
+resize 重用已缓存资源及 UI 的纯 metadata resolver，不做文件 I/O。原标签关闭后撤销实例
+入口，导航/退休 worker 收敛后关闭目录 owner，UI 非阻塞确认退出再释放状态；不强杀线程。
+原窗口、地址栏、软键、native 控件与滚动条不因目录页面换成第二套 UI。
+
+## 目录页面自动门
+
+用正式 `device_gate.ps1` 的 `app-runtime-page` Debug 完整包运行
+`scripts/app_runtime_page_gate.ps1 -RunRoot <本轮正式目录>`（32 位 PowerShell）。
+显式 Debug `--selftest-runtime-app` 只接受该专用部署中的 `fixture` 根，跳过确认仅供隔离
+自检；Release 没有此入口。夹具不进入普通 staging 或 CAB。
+
+测试通过生产参数解析器验证八项 Unicode/引号/重复/互斥参数；真实页面验证嵌套 entry、
+inline/external 顺序、相对 CSS/import、SVG cache、可选失败、必需失败保留旧页、query/fragment、
+新标签拒绝、取消/退休迟到隔离和 owner 关闭。EXE/十 DLL 哈希、正常退出零引用及 crash 检查
+仍必需。它不代替原生确认的人工 Yes/No、中英文、实际触摸、旋转或 DPI，也不证明 SQL SDK。
 
 ## 调用与所有权
 
