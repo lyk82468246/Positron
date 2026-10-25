@@ -1245,7 +1245,7 @@ PBROWSER_API int PBrowser_NavigationResourceCopyData(HANDLE hTransaction,
         return PBROWSER_ERROR_RANGE;
     }
     if (entry->state != PBROWSER_NAVIGATION_RESOURCE_READY ||
-            entry->data == NULL || entry->data_len <= 0) {
+            entry->data == NULL || entry->data_len < 0) {
         *out_len = 0;
         return PBROWSER_ERROR_STATE;
     }
@@ -1263,13 +1263,23 @@ PBROWSER_API int PBrowser_NavigationResourceCopyData(HANDLE hTransaction,
 PBROWSER_API int PBrowser_NavigationResourceSetData(HANDLE hTransaction,
         int index, const char *data, int data_len)
 {
+    if (data == NULL || data_len <= 0) {
+        return PBROWSER_ERROR_ARGUMENT;
+    }
+    return PBrowser_NavigationResourceSetDataEx(hTransaction, index,
+            data, data_len);
+}
+
+PBROWSER_API int PBrowser_NavigationResourceSetDataEx(HANDLE hTransaction,
+        int index, const char *data, int data_len)
+{
     p_browser_navigation_transaction *transaction;
     p_browser_navigation_resource *entry;
     char *copy;
 
     transaction = p_navigation_transaction(hTransaction);
     entry = p_navigation_resource_at(transaction, index);
-    if (entry == NULL || data == NULL || data_len <= 0) {
+    if (entry == NULL || data_len < 0 || (data == NULL && data_len != 0)) {
         return PBROWSER_ERROR_ARGUMENT;
     }
     if (entry->state == PBROWSER_NAVIGATION_RESOURCE_FAILED ||
@@ -1288,13 +1298,17 @@ PBROWSER_API int PBrowser_NavigationResourceSetData(HANDLE hTransaction,
                 PBROWSER_NAVIGATION_FAILURE_BUDGET);
         return PBROWSER_ERROR_LIMIT;
     }
-    copy = (char *) malloc((size_t) data_len);
+    copy = (char *) malloc(data_len ? (size_t) data_len : 1);
     if (copy == NULL) {
         p_navigation_resource_fail_entry(transaction, entry,
                 PBROWSER_NAVIGATION_FAILURE_MEMORY);
         return PBROWSER_ERROR_MEMORY;
     }
-    memcpy(copy, data, (size_t) data_len);
+    if (data_len) {
+        memcpy(copy, data, (size_t) data_len);
+    } else {
+        copy[0] = '\0'; /* storage sentinel, not a resource byte */
+    }
     entry->data = copy;
     entry->data_len = data_len;
     entry->attempted = 1;

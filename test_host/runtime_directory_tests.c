@@ -24,6 +24,7 @@ const char* test1370_runtime_queue_last_error(void) { return directory_error; }
 const char* test1371_runtime_page_last_error(void) { return directory_error; }
 const char* test1373_runtime_io_last_error(void) { return directory_error; }
 const char* test1373_runtime_io_report(void) { return directory_diagnostic; }
+const char* test1374_runtime_empty_last_error(void) { return directory_error; }
 static char runtime_zip_report[4096];
 const char* test1372_runtime_zip_report(void) { return runtime_zip_report; }
 BOOL test1372_runtime_zip_probe(void)
@@ -87,6 +88,7 @@ typedef struct RuntimePageFixture {
     unsigned int role;
     int copied;
     int released;
+    int poison_empty;
 } RuntimePageFixture;
 static int runtime_page_resolve(void* pw, const char* base, const char* ref, char* output, int capacity)
 {
@@ -112,17 +114,19 @@ static int runtime_page_fetch(void* pw, const char* url, char** data, int* len)
             f->role == PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET, f->role, &index)) return 1;
     copy = (char*)malloc(4097); if (!copy) return 1;
     if (!PBrowser_NavigationResourceCopyData(f->resources, index, copy, 4097, len)) {
+        if (f->poison_empty && !*len) copy[0] = 'X';
         *data = copy; f->copied++; return 0;
     }
     if (PBrowser_NavigationResourceBeginAttempt(f->resources, index)) { free(copy); return 1; }
     r.size = sizeof(r); r.version = 1; bytes = 0;
     rc = PRuntime_DirectoryReadResource(f->directory, NULL, 0, url, (unsigned int)strlen(url), copy, 4096, &bytes, &r);
-    if (!rc) rc = PBrowser_NavigationResourceSetData(f->resources, index, copy, (int)bytes);
+    if (!rc) rc = PBrowser_NavigationResourceSetDataEx(f->resources, index, copy, (int)bytes);
     if (rc) {
         PBrowser_NavigationResourceFail(f->resources, index, PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
         free(copy); return 1;
     }
-    copy[bytes] = 0; *data = copy; *len = (int)bytes; f->copied++; return 0;
+    copy[bytes] = f->poison_empty && !bytes ? 'X' : 0;
+    *data = copy; *len = (int)bytes; f->copied++; return 0;
 }
 static void runtime_page_free(void* pw, char* data)
 { RuntimePageFixture* f; f = (RuntimePageFixture*)pw; free(data); f->released++; }
@@ -263,6 +267,8 @@ static int directory_fixture_read(void* user, void* root, const char* key, unsig
             strcmp(key, "\xe5\x9b\xbe.svg") && strcmp(key, "empty") &&
             strcmp(key, "pages/index.html") && strcmp(key, "assets/main.css") &&
             strcmp(key, "assets/theme.css") && strcmp(key, "assets/main.js") && strcmp(key, "assets/icon.svg") &&
+            strcmp(key, "assets/empty.css") && strcmp(key, "assets/empty.js") &&
+            strcmp(key, "assets/last.js") && strcmp(key, "assets/empty.img") &&
             !(strlen(key) == 7 && key[0] == 'm' && key[1] >= '0' && key[1] <= '1' &&
             key[2] >= '0' && key[2] <= '9' && !strcmp(key + 3, ".sql"))) return PRUNTIME_IO;
     if (!MultiByteToWideChar(CP_UTF8, 0, key, -1, relative, 256)) return PRUNTIME_IO;
@@ -1675,4 +1681,250 @@ BOOL test1373_runtime_io_contract(void)
     if (ok) ok = runtime_io_parallel_errors();
     if (ok) strcat(directory_diagnostic, " Parallel failed opens=64, per-operation/thread error copies isolated.");
     return ok;
+}
+
+/* Empty resources are fixture bytes and public API assertions, never a host
+ * replacement for Browser readiness or Core cache/parse semantics. */
+static BOOL runtime_empty_api(void)
+{
+    HANDLE resources;
+    HANDLE candidate;
+    PBrowserNavigationResourceInfo info;
+    PBrowserNavigationResourceStats stats;
+    PBrowserNavigationCommitInfo commit;
+    char name[80];
+    char copy[4];
+    char* full;
+    int index;
+    int other;
+    int written;
+    int i;
+    BOOL ok;
+    resources = PBrowser_NavigationResourceCreate(); candidate = NULL;
+    full = NULL; ok = FALSE;
+#define EMPTY_API(test, message) do { if (!(test)) { directory_error = message; goto empty_api_done; } } while (0)
+    EMPTY_API(resources && !PBrowser_NavigationResourceRegister(resources, "app://org.demo_app.notes/empty.css", 1, 1, &index), "empty API register");
+    EMPTY_API(PBrowser_NavigationResourceCommitGate(resources) == PBROWSER_NAVIGATION_GATE_PENDING &&
+        !PBrowser_NavigationResourceBeginAttempt(resources, index), "empty begins pending");
+    EMPTY_API(PBrowser_NavigationResourceSetData(resources, index, "", 0) == PBROWSER_ERROR_ARGUMENT &&
+        PBrowser_NavigationResourceSetDataEx(NULL, index, NULL, 0) == PBROWSER_ERROR_ARGUMENT &&
+        PBrowser_NavigationResourceSetDataEx(resources, -1, NULL, 0) == PBROWSER_ERROR_ARGUMENT &&
+        PBrowser_NavigationResourceSetDataEx(resources, index, NULL, 1) == PBROWSER_ERROR_ARGUMENT &&
+        PBrowser_NavigationResourceSetDataEx(resources, index, "", -1) == PBROWSER_ERROR_ARGUMENT &&
+        PBrowser_NavigationResourceCommitGate(resources) == PBROWSER_NAVIGATION_GATE_PENDING, "empty opt-in argument/legacy guards preserve pending");
+    memset(copy, 'Q', sizeof(copy)); written = 79;
+    EMPTY_API(PBrowser_NavigationResourceCopyData(resources, -1, copy, sizeof(copy), &written) == PBROWSER_ERROR_RANGE &&
+        written == 79 && copy[0] == 'Q', "invalid copy preserves output");
+    EMPTY_API(!PBrowser_NavigationResourceSetDataEx(resources, index, NULL, 0) &&
+        !PBrowser_NavigationResourceSetDataEx(resources, index, "replacement", 11), "empty first terminal success wins");
+    info.size = sizeof(info);
+    EMPTY_API(!PBrowser_NavigationResourceGet(resources, index, &info) && info.state == PBROWSER_NAVIGATION_RESOURCE_READY &&
+        info.data_bytes == 0 && info.attempt_count == 1 && info.failure_class == 0, "READY zero distinct from pending/failed");
+    written = 79;
+    EMPTY_API(PBrowser_NavigationResourceCopyData(resources, index, copy, -1, &written) == PBROWSER_ERROR_ARGUMENT && written == 79 &&
+        !PBrowser_NavigationResourceCopyData(resources, index, copy, 1, &written) && !written && copy[0] == 'Q' && copy[1] == 'Q' &&
+        !PBrowser_NavigationResourceCopyData(resources, index, NULL, 0, &written) && !written &&
+        !PBrowser_NavigationResourceCopyData(resources, index, copy, 0, &written) && copy[0] == 'Q', "empty copy probes report zero without a payload terminator");
+    stats.size = sizeof(stats);
+    EMPTY_API(!PBrowser_NavigationResourceGetStats(resources, &stats) && stats.resource_count == 1 && stats.resources_ready == 1 &&
+        stats.resources_fetched == 1 && !stats.resource_bytes && !stats.resources_pending && stats.resource_commit_gate == PBROWSER_NAVIGATION_GATE_READY,
+        "empty counts fetched once and costs one slot, zero bytes");
+    candidate = PBrowser_NavigationCandidateCreate(17); commit.size = sizeof(commit);
+    EMPTY_API(candidate && !PBrowser_NavigationCommitGetInfo(candidate, resources, 17, &commit) && commit.can_commit &&
+        !PBrowser_NavigationCommitGetInfo(candidate, resources, 18, &commit) && !commit.can_commit &&
+        commit.decision == PBROWSER_NAVIGATION_COMMIT_CANDIDATE_STALE &&
+        !PBrowser_NavigationCandidateRequestCancel(candidate) &&
+        !PBrowser_NavigationCommitGetInfo(candidate, resources, 17, &commit) && !commit.can_commit, "empty readiness cannot bypass stale/cancel guards");
+    full = (char*)malloc(PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX); EMPTY_API(full, "empty byte-budget control allocation");
+    memset(full, 'B', PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX);
+    EMPTY_API(!PBrowser_NavigationResourceRegister(resources, "app://org.demo_app.notes/full", 0, 0, &other) &&
+        !PBrowser_NavigationResourceSetDataEx(resources, other, full, PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX), "unchanged aggregate byte limit");
+    free(full); full = NULL;
+    EMPTY_API(!PBrowser_NavigationResourceRegister(resources, "app://org.demo_app.notes/another-empty", 0, 0, &other) &&
+        !PBrowser_NavigationResourceSetDataEx(resources, other, "ignored", 0), "zero bytes admitted at exact byte budget");
+    EMPTY_API(!PBrowser_NavigationResourceRegister(resources, "app://org.demo_app.notes/over", 0, 0, &other) &&
+        PBrowser_NavigationResourceSetDataEx(resources, other, "X", 1) == PBROWSER_ERROR_LIMIT &&
+        PBrowser_NavigationResourceSetDataEx(resources, other, NULL, 0) == PBROWSER_ERROR_STATE, "byte failure cannot be revived as empty");
+    EMPTY_API(!PBrowser_NavigationResourceRegister(resources, "app://org.demo_app.notes/cancel", 0, 0, &other) &&
+        !PBrowser_NavigationResourceCancel(resources, other) &&
+        PBrowser_NavigationResourceSetDataEx(resources, other, NULL, 0) == PBROWSER_ERROR_STATE, "cancel cannot be revived as empty");
+    for (i = 5; i < PBROWSER_NAVIGATION_RESOURCE_MAX; i++) {
+        sprintf(name, "app://org.demo_app.notes/empty-%d", i);
+        EMPTY_API(!PBrowser_NavigationResourceRegister(resources, name, 0, 0, &other) &&
+            !PBrowser_NavigationResourceSetDataEx(resources, other, NULL, 0), "empty records respect fixed slots");
+    }
+    other = 91;
+    EMPTY_API(PBrowser_NavigationResourceRegister(resources, "app://org.demo_app.notes/overflow", 0, 0, &other) == PBROWSER_ERROR_LIMIT &&
+        other == 91, "empty record slot overflow leaves index unchanged");
+    stats.size = sizeof(stats);
+    EMPTY_API(!PBrowser_NavigationResourceGetStats(resources, &stats) && stats.resource_count == PBROWSER_NAVIGATION_RESOURCE_MAX &&
+        stats.resource_bytes == PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX && stats.resources_failed == 1 && stats.resources_cancelled == 1,
+        "empty records neither erase errors nor enlarge budgets");
+    ok = TRUE;
+empty_api_done:
+    free(full); if (candidate) PBrowser_NavigationCandidateDestroy(candidate);
+    if (resources) PBrowser_NavigationResourceDestroy(resources);
+    return ok;
+#undef EMPTY_API
+}
+
+BOOL test1374_runtime_empty_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"org.demo_app.notes\",\"name\":\"Notes\",\"version\":1,"
+        "\"runtimeApiVersion\":1,\"entry\":\"pages/index.html\",\"permissions\":[],\"migrations\":[]}";
+    static const char html[] = "<!doctype html><html><head><link rel=stylesheet href='../assets/empty.css'>"
+        "<link rel=stylesheet href='../assets/main.css'><script src='../assets/main.js'></script>"
+        "<script src='../assets/empty.js'></script><script src='../assets/last.js'></script></head>"
+        "<body><p id=result>old-content</p><img src='../assets/empty.img' alt=empty></body></html>";
+    static const char css[] = "@import url('theme.css');p{color:#008000;display:block;width:83px;height:19px}";
+    static const char theme[] = "@import url('empty.css?import=1');";
+    static const char first[] = "var emptyOrder='first';";
+    static const char last[] = "emptyOrder+='last';";
+    static const char missing[] = "<html><head><link rel=stylesheet href='../assets/missing.css'>"
+        "<script src='../assets/missing.js'></script></head><body>failed candidate</body></html>";
+    static const WCHAR* files[] = { L"pages\\index.html", L"assets\\main.css", L"assets\\theme.css",
+        L"assets\\main.js", L"assets\\empty.css", L"assets\\empty.js", L"assets\\last.js", L"assets\\empty.img" };
+    DirectoryFixture* native;
+    RuntimePageFixture f;
+    RuntimePageFixture bad;
+    PRuntimeDirectoryProvider provider;
+    PRuntimeResourceReference entry;
+    PCoreScriptInfo script;
+    PCoreScriptResourceInfo cached;
+    PBrowserNavigationResourceInfo resource;
+    PBrowserNavigationResourceStats stats;
+    PBrowserNavigationCommitInfo commit;
+    HANDLE candidate;
+    HANDLE failure;
+    HANDLE history;
+    HANDLE session;
+    WCHAR path[MAX_PATH];
+    char bytes[4097];
+    char url[2048];
+    const char* source;
+    unsigned int count;
+    unsigned int i;
+    unsigned long color;
+    int root;
+    int outer;
+    int core;
+    int reads;
+    int found;
+    int fetched;
+    int index;
+    int copied;
+    int x;
+    int y;
+    int w;
+    int h;
+    BOOL ok;
+    if (!runtime_empty_api()) return FALSE;
+    native = (DirectoryFixture*)calloc(1, sizeof(*native)); if (!native) return FALSE;
+    memset(&f, 0, sizeof(f)); memset(&bad, 0, sizeof(bad)); f.poison_empty = 1;
+    candidate = failure = history = session = NULL;
+    root = outer = core = 0; ok = FALSE;
+#define EMPTY_PAGE(test, message) do { if (!(test)) { directory_error = message; goto empty_page_done; } } while (0)
+    EMPTY_PAGE(directory_fixture_init(native, GetCurrentProcessId() ^ 0x00100000UL), "empty directory identity");
+    outer = CreateDirectoryW(native->outer, NULL); EMPTY_PAGE(outer, "empty native outer");
+    root = CreateDirectoryW(native->root, NULL); EMPTY_PAGE(root, "empty native root");
+    wsprintfW(path, L"%s\\pages", native->root); EMPTY_PAGE(CreateDirectoryW(path, NULL), "empty pages directory");
+    wsprintfW(path, L"%s\\assets", native->root); EMPTY_PAGE(CreateDirectoryW(path, NULL), "empty assets directory");
+    EMPTY_PAGE(directory_fixture_write(native, L"manifest.json", manifest, sizeof(manifest)-1) &&
+        directory_fixture_write(native, files[0], html, sizeof(html)-1) && directory_fixture_write(native, files[1], css, sizeof(css)-1) &&
+        directory_fixture_write(native, files[2], theme, sizeof(theme)-1) && directory_fixture_write(native, files[3], first, sizeof(first)-1) &&
+        directory_fixture_write(native, files[4], NULL, 0) && directory_fixture_write(native, files[5], NULL, 0) &&
+        directory_fixture_write(native, files[6], last, sizeof(last)-1) && directory_fixture_write(native, files[7], NULL, 0), "empty native files have exact length zero");
+    directory_fixture_provider(native, &provider);
+    EMPTY_PAGE(!PRuntime_DevelopmentDirectoryOpen(native->canonical, strlen(native->canonical), &provider, &f.directory), "empty admitted directory");
+    entry.size = sizeof(entry); entry.version = 1;
+    EMPTY_PAGE(!PRuntime_DirectoryReadResource(f.directory, NULL, 0, NULL, 0, bytes, 4096, &count, &entry), "empty fixture HTML read");
+    core = PCore_Init() == 0; EMPTY_PAGE(core, "empty Core init");
+    f.doc = PCore_ParseHTML(bytes, count); f.resources = PBrowser_NavigationResourceCreate();
+    candidate = PBrowser_NavigationCandidateCreate(23); history = PBrowser_HistoryCreate();
+    EMPTY_PAGE(f.doc && f.resources && candidate && history, "empty public handles");
+    PCore_SetDeviceViewport(200, 160, 96); f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET;
+    EMPTY_PAGE(!PCore_StyleDocumentEx2(f.doc, NULL, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f) &&
+        !PCore_NodeComputedColor(f.doc, "p", &color) && color == 0xff008000UL, "empty linked and nested CSS preserve real author rules");
+    reads = native->reads; copied = f.copied;
+    EMPTY_PAGE(!PCore_StyleDocumentEx2(f.doc, NULL, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f) &&
+        native->reads == reads && f.copied == copied, "empty CSS retained, no repeated fetch callbacks/provider reads");
+    EMPTY_PAGE(!PBrowser_NavigationResourceFind(f.resources, "app://org.demo_app.notes/assets/empty.css", &index), "empty CSS URL retained");
+    resource.size = sizeof(resource);
+    EMPTY_PAGE(!PBrowser_NavigationResourceGet(f.resources, index, &resource) && resource.state == PBROWSER_NAVIGATION_RESOURCE_READY &&
+        !resource.data_bytes && resource.attempt_count == 1, "Runtime zero CSS reaches Browser READY exactly once");
+    f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
+    EMPTY_PAGE(!PCore_FetchScriptResourcesEx(f.doc, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) &&
+        found == 3 && fetched == 2 && PCore_GetScriptResourceCount(f.doc) == 2, "legacy script fetch still excludes empty bodies");
+    EMPTY_PAGE(!PCore_FetchScriptResourcesEx2(f.doc, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) &&
+        found == 3 && fetched == 3 && PCore_GetScriptResourceCount(f.doc) == 3, "opt-in script fetch retains zero bytes");
+    reads = native->reads;
+    EMPTY_PAGE(!PCore_FetchScriptResourcesEx2(f.doc, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) &&
+        fetched == 3 && native->reads == reads, "empty script cache does not retry");
+    EMPTY_PAGE(!PCore_FetchScriptResourcesEx(f.doc, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) &&
+        fetched == 2 && native->reads == reads, "legacy count stays positive-only after opt-in cache");
+    session = PBrowser_ScriptSessionCreate(5000); EMPTY_PAGE(session, "empty script session");
+    EMPTY_PAGE(PCore_GetScriptCount(f.doc) == 3, "ordered classic sequence includes external empty reference");
+    for (i = 0; i < 3; i++) {
+        EMPTY_PAGE(!PCore_GetScript(f.doc, i, entry.url, runtime_page_resolve, &f, &script, NULL, 0, url, sizeof(url), NULL, 0, &source) &&
+            script.kind == 2 && script.available && source, "external script availability is not length truthiness");
+        EMPTY_PAGE((i != 1 || script.data_bytes == 0) && !PBrowser_ScriptSessionEvaluate(session, source, script.data_bytes), "empty script evaluates no-op in DOM order");
+    }
+    EMPTY_PAGE(!PBrowser_ScriptSessionEvaluate(session, "emptyOrder==='firstlast'", -1) &&
+        !strcmp(PBrowser_ScriptSessionGetResult(session), "true"), "empty script preserves author execution order");
+    EMPTY_PAGE(!PCore_GetScriptResource(f.doc, 2, &cached, url, sizeof(url), &source) && cached.available && cached.data_bytes == 0 && source,
+        "empty cached resource getter reports available borrowed zero bytes");
+    f.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_IMAGE;
+    EMPTY_PAGE(!PCore_FetchImageResourcesEx(f.doc, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) && found == 1 && !fetched,
+        "empty image transport success is not image decode success");
+    reads = native->reads;
+    EMPTY_PAGE(!PCore_FetchImageResourcesEx(f.doc, runtime_page_fetch, runtime_page_free, &f, &found, &fetched) && !fetched && native->reads == reads,
+        "empty image terminal fallback does not retry");
+    EMPTY_PAGE(!PCore_LayoutDocument(f.doc, 200, 160) && !PCore_NodeBox(f.doc, "p", &x, &y, &w, &h) && w == 83 && h == 19,
+        "empty CSS imports allow real layout");
+    commit.size = sizeof(commit);
+    EMPTY_PAGE(!PBrowser_NavigationCommitGetInfo(candidate, f.resources, 23, &commit) && commit.can_commit &&
+        !PBrowser_HistoryCommitNavigation(history, entry.url, PBROWSER_HISTORY_METHOD_GET, PBROWSER_HISTORY_TARGET_NEW) &&
+        !PBrowser_NavigationCandidateMarkCommitted(candidate, 23) && PBrowser_HistoryCount(history) == 1,
+        "empty required bytes permit one candidate/history commit");
+    failure = PBrowser_NavigationResourceCreate(); EMPTY_PAGE(failure, "missing candidate resources");
+    bad.directory = f.directory; bad.resources = failure; bad.doc = PCore_ParseHTML(missing, sizeof(missing)-1);
+    EMPTY_PAGE(bad.doc, "missing resources candidate DOM"); bad.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_SCRIPT;
+    EMPTY_PAGE(!PCore_FetchScriptResourcesEx2(bad.doc, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &bad, &found, &fetched) &&
+        found == 1 && !fetched && PBrowser_NavigationResourceCommitGate(failure) == PBROWSER_NAVIGATION_GATE_READY,
+        "actual optional missing script remains fallback");
+    bad.role = PBROWSER_NAVIGATION_RESOURCE_ROLE_STYLESHEET;
+    EMPTY_PAGE(!PCore_StyleDocumentEx2(bad.doc, NULL, entry.url, runtime_page_resolve, runtime_page_fetch, runtime_page_free, &bad) &&
+        PBrowser_NavigationResourceCommitGate(failure) == PBROWSER_NAVIGATION_GATE_REQUIRED_FAILED &&
+        PBrowser_HistoryCount(history) == 1 && !PCore_NodeTextContentById(f.doc, "result", bytes, sizeof(bytes), &index) &&
+        !strcmp(bytes, "old-content"), "required missing CSS preserves old DOM/history");
+    stats.size = sizeof(stats);
+    EMPTY_PAGE(!PBrowser_NavigationResourceGetStats(f.resources, &stats) && !stats.resources_pending && !stats.resources_failed &&
+        stats.resource_bytes == sizeof(css)-1 + sizeof(theme)-1 + sizeof(first)-1 + sizeof(last)-1, "actual resource bytes exclude all empty storage sentinels");
+    reads = native->reads;
+    EMPTY_PAGE(PRuntime_DirectoryReadResource(f.directory, NULL, 0, "https://example.com/empty.css", 29, bytes, 4096, &count, &entry) != 0 &&
+        native->reads == reads && f.copied == f.released && native->allocations == native->releases,
+        "no HTTP fallback and all callback buffers released");
+    ok = TRUE;
+empty_page_done:
+    if (session) PBrowser_ScriptSessionDestroy(session);
+    if (bad.doc) PCore_FreeDocument(bad.doc);
+    if (failure) PBrowser_NavigationResourceDestroy(failure);
+    if (candidate) PBrowser_NavigationCandidateDestroy(candidate);
+    if (history) PBrowser_HistoryDestroy(history);
+    if (f.doc) PCore_FreeDocument(f.doc);
+    if (f.resources) PBrowser_NavigationResourceDestroy(f.resources);
+    if (core) {
+        HDC screen; int dpi;
+        screen = GetDC(NULL); dpi = screen ? GetDeviceCaps(screen, LOGPIXELSX) : 96;
+        if (screen) ReleaseDC(NULL, screen);
+        PCore_SetDeviceViewport(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), dpi > 0 ? dpi : 96); PCore_Shutdown();
+    }
+    if (f.directory) PRuntime_DirectoryClose(&f.directory);
+    if (root) {
+        for (i = 0; i < sizeof(files)/sizeof(files[0]); i++) { wsprintfW(path, L"%s\\%s", native->root, files[i]); DeleteFileW(path); }
+        wsprintfW(path, L"%s\\pages", native->root); RemoveDirectoryW(path);
+        wsprintfW(path, L"%s\\assets", native->root); RemoveDirectoryW(path);
+    }
+    directory_fixture_cleanup(native, root, outer); free(native); return ok;
+#undef EMPTY_PAGE
 }

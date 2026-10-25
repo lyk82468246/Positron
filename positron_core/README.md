@@ -36,6 +36,26 @@ WM6 宿主有设备缩放时，应在首次 style/layout 前用实际物理客�
 
 ## 解析、样式与资源
 
+资源 callback 的成功由返回值和显式长度共同表示。CSS callback 可返回 `0`、非 NULL
+buffer 和 `out_len=0`：空 `<link>`/`@import` 是有效空样式表，按原数量预算缓存；不会补入
+空格、注释或正文 NUL。buffer 至少有一字节存储，但 Core 不读取其内容，复制/解析后仍由
+`freefn` 释放一次。负长度、NULL buffer 或非零返回值仍不可用；缺失 import 的既有空表
+fallback 不等于 Browser 的 required 资源取得成功，宿主仍须检查 Browser commit gate。
+
+外部脚本选择追加的 `PCore_FetchScriptResourcesEx2(document, document_url, resolve,
+fetch, freefn, pw, &found, &fetched)`，它接受同样的非 NULL/0 成功，缓存并计为 fetched。
+旧 `FetchScriptResources[Ex]` 继续仅计非空正文，包括随后查询同一份 Ex2 cache 时。
+`GetScriptResource` 和 DOM 顺序的 `GetScript` 对已取得的空脚本返回 `available=1`、
+`data_bytes=0` 与 document-owned 非 NULL 借用指针；宿主按这个显式长度执行 classic
+script 即无副作用，不把零解释为未取得或改传 `strlen`。缓存枚举按发现顺序，混用旧/新
+fetch 后执行顺序仍应使用 `GetScript`，不按资源缓存下标猜 DOM 顺序。
+
+缓存中的空结果与非空结果同样占槽、去重和随 document 释放，字节预算只计实际 bytes；
+脚本 MIME/type、调度、异常策略和权限仍由原有调用边界负责。空图片仍在现有 image
+校验/解码层成为终态 fallback，不是有效图像。主文档 HTML parser 的既有 NULL 拒绝和
+`len=0` 使用 strlen 的约定不变，本批不增加显式零长度主文档入口。使用新入口需匹配正式
+Core/Browser DLL、头文件和 import library。
+
 外部 CSS 原始字节按文档缓存：最多 32 项，每项 256 KiB、总计 512 KiB。完整解析且不含
 `@import` 的顶层样式表还可复用其 libcss 解析结果，累计保留量以 `css_stylesheet_size()` 报告
 值计，最多 1 MiB；它随 document 一起释放。缓存要求 URL、原始 bytes 和 resolver 身份一致，

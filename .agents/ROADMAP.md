@@ -239,7 +239,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：只读目录页面已接入，空资源公共合同及 SQL 页面 SDK 待完成；PXI 暂缓。** 第三方仅提供资源与manifest，
+**状态：只读目录页面已接入，空资源 EXE 接线及 SQL 页面 SDK 待完成；PXI 暂缓。** 第三方仅提供资源与manifest，
 使用`app://`并复用现有浏览器UI；Runtime后续能力、DB受限集成、Core/Browser资源与授权合同
 由主线与DLL会话负责，EXE会话只接平台、SDK及示例。完整合同见
 [运行时计划](../docs/RUNTIME_PLAN.md)，不在本节复制字段/预算。
@@ -248,9 +248,9 @@ DB 受限请求/迁移/严格版本读取已退出待实现范围，见
 元数据/app 引用、目录只读资源、开发存储/迁移/SQL JSON、异步队列/撤销已有公共合同，
 退出待开发范围；WM provider 与只读页面亦已接通，预算见[宿主](../positron_app/RUNTIME_HOST.md)。
 元数据/URL/目录句柄不自动授予 SQL 或安装身份，不把准入当执行授权；证据统一见 HANDOFF。
-Core/Browser 现有 callback 已组合非空 CSS/@import、脚本、SVG/layout/paint 与 app history；
-空资源 READY/长度零的合同缺口由 Browser/Core 拥有，见[请求](../positron_app/RUNTIME_EMPTY_RESOURCE_REQUEST.md)。
-先补公共合同和直接/组合设备门，再接 EXE 空 CSS/JS；不填假字节、不在宿主重造终态。
+Core/Browser 空资源 READY/长度零及 CSS/import/script 缓存合同已退出待实现，调用与旧入口
+兼容边界见组件 README。下一步 EXE 消费新增提交/脚本入口，按 READY 而非长度判断可用性，
+用真实空 CSS/JS 加入应用门，保护必需失败旧页保留与取消/stale；不填假字节、不在宿主重造终态。
 UI/worker 原生 I/O 与 DB 最小对照已具备；DB 现可按线程/调用保留实际
 VFS 操作、原生错误和路径，既有错误 ABI 不变。当前替换设备的公共合同和 EXE 平台门通过，
 用户已授权 EXE 继续；旧设备间歇 CANTOPEN/mkdir183 仍待实际失败的调用级取证，不因换设备关闭。

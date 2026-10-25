@@ -256,6 +256,19 @@ PBROWSER_API int PBrowser_NavigationResourceCopyData(HANDLE hTransaction,
         int index, char *out_data, int out_capacity, int *out_len);
 PBROWSER_API int PBrowser_NavigationResourceSetData(HANDLE hTransaction,
         int index, const char *data, int data_len);
+/* Additive empty-body contract. Legacy SetData still requires non-NULL data
+ * and positive length. Ex accepts length 0 with NULL or non-NULL data; positive
+ * length requires non-NULL data. Bytes are copied synchronously. An empty body
+ * is READY, occupies one slot and adds zero bytes; it is not a failed fetch or
+ * proof of valid image/HTML/script content. Existing terminal/retry/budget rules
+ * apply. Repeated valid SetData[Ex] on READY succeeds without replacing bytes.
+ * CopyData accepts READY/0, writes out_len=0, touches no output bytes, and allows
+ * NULL/0 size probes (also valid for nonempty bodies). It does not append NUL.
+ * CopyData keeps its legacy errors: pending/failed/cancelled writes out_len=0;
+ * insufficient positive capacity reports required length without copying.
+ * Failed/cancelled entries cannot be revived. Destroy releases retained data. */
+PBROWSER_API int PBrowser_NavigationResourceSetDataEx(HANDLE hTransaction,
+        int index, const char *data, int data_len);
 PBROWSER_API int PBrowser_NavigationResourceBeginAttempt(HANDLE hTransaction,
         int index);
 PBROWSER_API int PBrowser_NavigationResourceShouldRetry(HANDLE hTransaction,

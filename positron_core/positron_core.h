@@ -106,7 +106,13 @@ PCORE_API int PCore_StyleDocument(HANDLE hDoc, HANDLE hSheet);
  * 0 and sets *out_data
  * (raw bytes owned by the embedder) + *out_len; the engine consumes or copies
  * them before calling `freefn` to release the embedder buffer. `fetch` returns
- * non-zero to skip the resource. `pw` is passed through opaquely. */
+ * non-zero to skip the resource. CSS and FetchScriptResourcesEx2 accept an
+ * empty success: return 0, non-NULL *out_data (at least one owned storage byte)
+ * and *out_len=0. No payload byte is read or invented; freefn still releases
+ * that buffer exactly once. Negative lengths/NULL data are unavailable. CSS
+ * retains empty sheets in its existing bounded cache, including @import.
+ * Legacy script discovery and image decoding still require nonempty data.
+ * `pw` is passed through opaquely. */
 typedef int  (*PCoreFetchFn)(void *pw, const char *url,
                              char **out_data, int *out_len);
 typedef void (*PCoreFreeFn)(void *pw, char *data);
@@ -200,6 +206,19 @@ PCORE_API int PCore_FetchScriptResources(HANDLE hDoc, PCoreFetchFn fetch,
 PCORE_API int PCore_FetchScriptResourcesEx(HANDLE hDoc,
         const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw,
+        int *out_found, int *out_fetched);
+
+/* Opt-in empty external scripts; same resolver, ownership, limits and order
+ * as Ex. Successful non-NULL/0 callbacks are cached and counted as fetched.
+ * GetScriptResource and GetScript report available=1/data_bytes=0 and a
+ * document-borrowed non-NULL pointer until document destruction. An empty
+ * classic script is a no-op, not a fetch failure. Do not replace its explicit
+ * zero length with strlen. Legacy fetch calls still count only nonempty
+ * scripts, including when inspecting a cache previously populated by Ex2.
+ * This API does not execute scripts, classify MIME/type or grant services. */
+PCORE_API int PCore_FetchScriptResourcesEx2(HANDLE hDoc,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
         int *out_found, int *out_fetched);
 
 typedef struct PCoreScriptResourceInfo {

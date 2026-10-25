@@ -84,6 +84,25 @@ contenteditable 只支持单元素、纯文本、UTF-16 selection offset 和有�
 
 宿主为每个请求创建 candidate handle，并用 generation 隔离过时 worker 消息。Browser 持有 resource URL 去重、attempt/终态、required/optional gate 和清理前快照；宿主拥有 DNS/TCP/TLS/HTTP、worker、重试时机、response、页面 swap 和旧页保留策略。提交前调用 commit snapshot，释放前调用 cleanup snapshot，不能在宿主另建分类表。
 
+### 已取得的零字节资源
+
+`PBrowser_NavigationResourceSetDataEx(transaction, index, data, length)` 是支持空正文的
+追加入口；旧 `SetData` 仍要求非 NULL、正长度。Ex 接受 `NULL/0` 或非 NULL/0，正长度仍需
+有效 buffer。它同步复制正文，成功后宿主可释放输入；内部最小存储不计作正文。READY/0
+占一个原有资源槽、增加一次 fetched，但增加零 bytes，不是 pending、失败或解码成功。
+原 64 项、2 MiB、重试和 required/optional gate 不变，失败/取消记录不能复活；READY 的
+重复有效提交幂等，不覆盖第一次内容。过时/取消的 candidate 仍不能提交页面。
+
+`CopyData` 对 READY/0 返回成功并写 `out_len=0`，不改动输出 buffer，也不追加 NUL；
+NULL/0 可以探测长度。非空资源仍先探测并按真实长度分配；Core callback 如需空 buffer，
+分配 `length ? length : 1`，保持实际长度零，不能将该存储字节算入 payload。
+旧 CopyData 错误语义保留：pending/failed/cancelled 返回 STATE 并写长度零；容量不足返回
+LIMIT 和所需长度、不复制正文；非法索引/参数不改输出。不要仅按长度判断资源状态。
+
+目录应用须同时使用匹配的 Core 空 CSS/`PCore_FetchScriptResourcesEx2` 合同，见
+[Core 资源说明](../positron_core/README.md#解析样式与资源)。旧宿主无需迁移；新消费者须部署
+同一正式配置的 Browser/Core DLL 与 import library/header，不能只替换 EXE 或单个旧 DLL。
+
 ## 受控异步应用服务
 
 可信内置/打包页面可以由宿主显式注册 `PBrowser_ScriptSessionRegisterServices()`。这不是根据

@@ -134,6 +134,8 @@ extern const char* test1372_runtime_zip_report(void);
 extern BOOL test1373_runtime_io_contract(void);
 extern const char* test1373_runtime_io_last_error(void);
 extern const char* test1373_runtime_io_report(void);
+extern BOOL test1374_runtime_empty_contract(void);
+extern const char* test1374_runtime_empty_last_error(void);
 extern const char* test1363_db_restricted_last_error(void);
 extern BOOL test1330_core_fragment_dpi_contract(void);
 extern const char *test1330_core_fragment_dpi_last_error(void);
@@ -1300,7 +1302,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1373
+#define TEST_MAX_NUMBER 1374
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -7414,6 +7416,10 @@ struct pcore_browser_script_event_binding {
 };
 
 struct pcore_browser_script_bridge {
+    /* Optional fixture observation after the public Core mutation succeeds.
+     * No additional script native slot or product state is introduced. */
+    void (*text_probe)(void *pw, const char *id, const char *text);
+    void *text_probe_pw;
     HANDLE document;
     /* Product-owned browser session; runtime is borrowed only for old tests. */
     HANDLE session;
@@ -16339,6 +16345,9 @@ static int pcore_browser_script_dom_set_text(void *pw, const char *id,
     }
     result = PCore_NodeSetTextContentById(bridge->document, id, text);
     if (result == 0) {
+        if (bridge->text_probe != NULL) {
+            bridge->text_probe(bridge->text_probe_pw, id, text);
+        }
         if (bridge->document == g_render_doc && bridge->hwnd != NULL) {
             pcore_request_interaction_restyle(bridge->hwnd);
         }
@@ -19091,6 +19100,8 @@ static int pcore_browser_execute_scripts_with_history(HANDLE document,
     } else {
         bridge = &bridge_storage;
     }
+    bridge->text_probe = NULL;
+    bridge->text_probe_pw = NULL;
     bridge->document = document;
     bridge->session = session;
     bridge->runtime = runtime;
@@ -33494,41 +33505,33 @@ typedef struct test1118_lifecycle_probe {
     char lifecycle_trace[96];
 } test1118_lifecycle_probe;
 
-static int test1118_lifecycle_mark(void *pw, const char *args_json,
-        int args_len, char *out_json, int out_capacity, int *out_len)
+static void test1118_lifecycle_mark(void *pw, const char *id,
+        const char *text)
 {
     test1118_lifecycle_probe *probe;
-    char args[96];
     const char *lifecycle_label;
     int trace_length;
-    int length;
 
     probe = (test1118_lifecycle_probe *) pw;
-    if (probe == NULL || args_json == NULL || args_len < 0 ||
-            out_json == NULL || out_len == NULL || out_capacity <= 4) {
-        return 1;
+    if (probe == NULL || id == NULL || text == NULL ||
+            strcmp(id, "lifecycle-probe") != 0) {
+        return;
     }
-    length = args_len;
-    if (length >= (int) sizeof(args)) {
-        length = (int) sizeof(args) - 1;
-    }
-    memcpy(args, args_json, (size_t) length);
-    args[length] = '\0';
     lifecycle_label = NULL;
-    if (strstr(args, "visibility") != NULL) {
+    if (strcmp(text, "visibility") == 0) {
         probe->visibility++;
         lifecycle_label = "visibility";
-    } else if (strstr(args, "pagehide") != NULL) {
+    } else if (strcmp(text, "pagehide") == 0) {
         probe->pagehide++;
         lifecycle_label = "pagehide";
-    } else if (strstr(args, "unload") != NULL) {
+    } else if (strcmp(text, "unload") == 0) {
         probe->unload++;
         lifecycle_label = "unload";
-    } else if (strstr(args, "microtask") != NULL) {
+    } else if (strcmp(text, "microtask") == 0) {
         probe->microtask++;
-    } else if (strstr(args, "message") != NULL) {
+    } else if (strcmp(text, "message") == 0) {
         probe->message++;
-    } else if (strstr(args, "timer") != NULL) {
+    } else if (strcmp(text, "timer") == 0) {
         probe->timer++;
     }
     if (lifecycle_label != NULL) {
@@ -33544,9 +33547,6 @@ static int test1118_lifecycle_mark(void *pw, const char *args_json,
                     lifecycle_label);
         }
     }
-    memcpy(out_json, "true", 5);
-    *out_len = 4;
-    return 0;
 }
 
 static int test1118_seed_navigation_resource(
@@ -33624,7 +33624,7 @@ static BOOL test1118_browser_offline_candidate_lifecycle(void)
         "<!doctype html><html><head><script>"
         "window.oldTrace='';"
         "function oldMark(v){window.oldTrace+=(window.oldTrace===''?'':'|')+v;"
-         "__test1118Mark(v);}"
+         "document.getElementById('lifecycle-probe').textContent=v;}"
         "document.addEventListener('visibilitychange',function(){"
         "oldMark('visibility');});"
         "addEventListener('pagehide',function(){oldMark('pagehide');});"
@@ -33633,7 +33633,8 @@ static BOOL test1118_browser_offline_candidate_lifecycle(void)
         "setTimeout(function(){oldMark('timer');},0);"
         "queueMicrotask(function(){oldMark('microtask');});"
         "postMessage('queued','*');"
-        "</script></head><body><p id='result'>old</p></body></html>";
+        "</script></head><body><p id='result'>old</p>"
+        "<p id='lifecycle-probe' style='display:none'></p></body></html>";
     static const char OLD_CSS[] =
         "body{display:block;width:220px;height:80px;color:#111;}"
         "#result{display:block;width:140px;height:24px;}";
@@ -33812,14 +33813,15 @@ static BOOL test1118_browser_offline_candidate_lifecycle(void)
         candidate_session = old_bridge->session;
         old_runtime = NULL;
         old_bridge = NULL;
-        marker_rc = PBrowser_ScriptSessionRegisterJsonFunction(
-                candidate_session, "__test1118Mark",
-                test1118_lifecycle_mark, &probe);
         native_count = PBrowser_ScriptSessionNativeFunctionCount(
                 candidate_session);
+        g_browser_script_session.bridge->text_probe = test1118_lifecycle_mark;
+        g_browser_script_session.bridge->text_probe_pw = &probe;
+        marker_rc = PBrowser_ScriptSessionNativeFunctionCount(candidate_session) ==
+                native_count ? PSCRIPT_OK : PSCRIPT_ERROR_NATIVE_LIMIT;
         if (marker_rc != PSCRIPT_OK) {
             _snprintf(error, sizeof(error) - 1,
-                    "lifecycle probe registration rc=%d native=%lu error=%s",
+                    "lifecycle probe binding changed native slots rc=%d native=%lu error=%s",
                     marker_rc, native_count,
                     PBrowser_ScriptSessionGetError(candidate_session));
             error[sizeof(error) - 1] = '\0';
@@ -62065,8 +62067,9 @@ static int test45_cache_only_fetch(void *pw, const char *url,
     return 1;
 }
 
-/* Fixture pw is css_import_test_ctx, not a production navigation request. */
-static int test45_import_resolve(void *pw, const char *base,
+/* Offline fixture pw may be CSS/script counters, never cast it to the
+ * production navigation request used by wm_combine_url. HTTP owns resolution. */
+static int test_host_fixture_resolve(void *pw, const char *base,
         const char *reference, char *out, int capacity)
 {
     (void) pw;
@@ -62103,7 +62106,7 @@ static BOOL test45_css_import_tree(void)
     p_color = 0;
     span_color = 0;
     first_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
-            test45_import_resolve, test45_import_fetch, test45_import_free,
+            test_host_fixture_resolve, test45_import_fetch, test45_import_free,
             &first) == 0 &&
             PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
             PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
@@ -62117,7 +62120,7 @@ static BOOL test45_css_import_tree(void)
     p_color = 0;
     span_color = 0;
     second_ok = PCore_StyleDocumentEx2(document, NULL, DOCUMENT_URL,
-            test45_import_resolve, test45_cache_only_fetch, NULL, &second) == 0 &&
+            test_host_fixture_resolve, test45_cache_only_fetch, NULL, &second) == 0 &&
             PCore_NodeComputedColor(document, "h1", &h1_color) == 0 &&
             PCore_NodeComputedColor(document, "p", &p_color) == 0 &&
             PCore_NodeComputedColor(document, "span", &span_color) == 0 &&
@@ -67573,7 +67576,7 @@ static BOOL test77_script_resources(void)
     if (hDoc != NULL) {
         first_rc = PCore_FetchScriptResourcesEx(hDoc,
                     "https://example.com/dir/page.html",
-                    wm_combine_url, test77_script_fetch,
+                    test_host_fixture_resolve, test77_script_fetch,
                     test77_script_free, &ctx, &found, &fetched);
     }
     if (hDoc == NULL || first_rc != 0 || found != 4 || fetched != 4 ||
@@ -67593,7 +67596,7 @@ static BOOL test77_script_resources(void)
         return FALSE;
     }
     if (PCore_FetchScriptResourcesEx(hDoc,
-            "https://example.com/dir/page.html", wm_combine_url,
+            "https://example.com/dir/page.html", test_host_fixture_resolve,
             NULL, NULL, NULL, &found_again, &fetched_again) != 0 ||
             found_again != 4 || fetched_again != 4 ||
             ctx.calls != 3 || ctx.frees != 3) {
@@ -70076,7 +70079,7 @@ static BOOL test111_browser_external_order(void)
     document = PCore_ParseHTML(HTML, sizeof(HTML) - 1);
     count = (document != NULL) ? PCore_GetScriptCount(document) : -1;
     if (document == NULL || count != 5 ||
-            PCore_FetchScriptResourcesEx(document, URL, wm_combine_url,
+            PCore_FetchScriptResourcesEx(document, URL, test_host_fixture_resolve,
             test111_script_fetch, test111_script_free, &ctx, &found,
             &fetched) != 0 || found != 2 || fetched != 1 ||
             ctx.calls != 2 || ctx.frees != 1) {
@@ -70088,7 +70091,7 @@ static BOOL test111_browser_external_order(void)
         return FALSE;
     }
     data = NULL;
-    if (PCore_GetScript(document, 1, URL, wm_combine_url, &ctx, &info,
+    if (PCore_GetScript(document, 1, URL, test_host_fixture_resolve, &ctx, &info,
             NULL, 0, NULL, 0, type, sizeof(type), &data) != 0 ||
             info.kind != 2 || !info.available || data == NULL ||
             info.data_bytes != 17 ||
@@ -70101,7 +70104,7 @@ static BOOL test111_browser_external_order(void)
     }
     executed = -1;
     ignored = -1;
-    if (pcore_browser_execute_scripts(document, 1, 1, URL, wm_combine_url,
+    if (pcore_browser_execute_scripts(document, 1, 1, URL, test_host_fixture_resolve,
             &ctx, &executed, &ignored, error, sizeof(error), NULL, NULL) != 0 ||
             executed != 3 || ignored != 2 ||
             PCore_NodeTextContentById(document, "result", text,
@@ -118394,6 +118397,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1373_runtime_io_contract();
             if (ok) { show_info(L"TEST 1373 OK", test1373_runtime_io_report()); }
             else { show_error(L"TEST 1373 FAIL", test1373_runtime_io_last_error()); }
+            break;
+        case 1374:
+            ok = test1374_runtime_empty_contract();
+            if (ok) { show_info(L"TEST 1374 OK", "Empty Browser bodies and Runtime/Core CSS/import/script composition passed."); }
+            else { show_error(L"TEST 1374 FAIL", test1374_runtime_empty_last_error()); }
             break;
         case 1322:
             ok = test1322_browser_application_script_profile();

@@ -2147,7 +2147,7 @@ static int pcore_stylesheet_cache_store(pcore_stylesheet_cache *cache,
     pcore_stylesheet_resource *entry;
     size_t url_len;
 
-    if (cache == NULL || url == NULL || data == NULL || len <= 0 ||
+    if (cache == NULL || url == NULL || data == NULL || len < 0 ||
             cache->count >= PCORE_STYLESHEET_CACHE_MAX ||
             len > PCORE_STYLESHEET_CACHE_ENTRY_MAX ||
             cache->bytes > PCORE_STYLESHEET_CACHE_BYTES_MAX - len) {
@@ -2167,7 +2167,7 @@ static int pcore_stylesheet_cache_store(pcore_stylesheet_cache *cache,
     entry->parsed_pw = NULL;
     url_len = strlen(url);
     entry->url = (char *) malloc(url_len + 1);
-    entry->data = (char *) malloc((size_t) len);
+    entry->data = (char *) malloc(len ? (size_t) len : 1);
     if (entry->url == NULL || entry->data == NULL) {
         free(entry->url);
         free(entry->data);
@@ -2175,7 +2175,8 @@ static int pcore_stylesheet_cache_store(pcore_stylesheet_cache *cache,
         return 1;
     }
     memcpy(entry->url, url, url_len + 1);
-    memcpy(entry->data, data, (size_t) len);
+    if (len) memcpy(entry->data, data, (size_t) len);
+    else entry->data[0] = '\0';
     entry->len = len;
     entry->next = cache->head;
     cache->head = entry;
@@ -2252,7 +2253,7 @@ static int pcore_get_stylesheet_bytes(pcore_collect_ctx *cc, const char *url,
     data = NULL;
     len = 0;
     if (cc->fetch(cc->pw, url, &data, &len) != 0 || data == NULL ||
-            len <= 0) {
+            len < 0) {
         if (data != NULL && cc->freefn != NULL) {
             cc->freefn(cc->pw, data);
         }
@@ -2285,7 +2286,7 @@ static css_stylesheet *pcore_record_css_sheet(pcore_collect_ctx *cc,
     size_t parsed_size;
     int slot;
 
-    if (*cc->n >= cc->max || data == NULL || len <= 0) {
+    if (*cc->n >= cc->max || data == NULL || len < 0) {
         return NULL;
     }
     entry = cache_allowed ?
@@ -2303,7 +2304,9 @@ static css_stylesheet *pcore_record_css_sheet(pcore_collect_ctx *cc,
         *done = CSS_OK;
         return entry->parsed;
     }
-    sheet = pcore_parse_css_internal(data, (unsigned int) len, url,
+    /* The parser's legacy zero-length shorthand uses strlen. Do not inspect
+     * any callback byte when the explicitly fetched length is zero. */
+    sheet = pcore_parse_css_internal(len ? data : "", (unsigned int) len, url,
             cc->resolve, cc->pw, done);
     if (sheet != NULL) {
         slot = (*cc->n)++;
@@ -2336,11 +2339,11 @@ static css_stylesheet *pcore_record_css_sheet(pcore_collect_ctx *cc,
 static css_stylesheet *pcore_empty_import(pcore_collect_ctx *cc,
         const char *url)
 {
-    static const char empty_css[] = " ";
+    static const char empty_css[] = "";
     css_error done = CSS_INVALID;
     css_stylesheet *sheet;
 
-    sheet = pcore_record_css_sheet(cc, empty_css, 1, url, &done, 0);
+    sheet = pcore_record_css_sheet(cc, empty_css, 0, url, &done, 0);
     return (done == CSS_OK) ? sheet : NULL;
 }
 
@@ -3286,7 +3289,7 @@ static int pcore_script_cache_store(pcore_script_cache *cache,
     pcore_script_resource *entry;
     size_t url_len;
 
-    if (cache == NULL || url == NULL || data == NULL || len <= 0 ||
+    if (cache == NULL || url == NULL || data == NULL || len < 0 ||
             cache->count >= PCORE_SCRIPT_CACHE_MAX ||
             len > PCORE_SCRIPT_CACHE_ENTRY_MAX ||
             cache->bytes > PCORE_SCRIPT_CACHE_BYTES_MAX - len) {
@@ -3302,7 +3305,7 @@ static int pcore_script_cache_store(pcore_script_cache *cache,
     entry->len = 0;
     url_len = strlen(url);
     entry->url = (char *) malloc(url_len + 1);
-    entry->data = (char *) malloc((size_t) len);
+    entry->data = (char *) malloc(len ? (size_t) len : 1);
     if (entry->url == NULL || entry->data == NULL) {
         free(entry->url);
         free(entry->data);
@@ -3310,7 +3313,8 @@ static int pcore_script_cache_store(pcore_script_cache *cache,
         return 1;
     }
     memcpy(entry->url, url, url_len + 1);
-    memcpy(entry->data, data, (size_t) len);
+    if (len) memcpy(entry->data, data, (size_t) len);
+    else entry->data[0] = '\0';
     entry->len = len;
     if (cache->tail != NULL) {
         cache->tail->next = entry;
@@ -4130,6 +4134,7 @@ typedef struct pcore_script_fetch_ctx {
     pcore_script_cache *cache;
     int found;
     int fetched;
+    int allow_empty;
     dom_string *script_name;
     dom_string *src_name;
 } pcore_script_fetch_ctx;
@@ -4169,14 +4174,14 @@ static void pcore_fetch_script_url(pcore_script_fetch_ctx *sc,
     }
     cached = pcore_script_cache_find(sc->cache, resolved);
     if (cached != NULL) {
-        sc->fetched++;
+        if (cached->len > 0 || sc->allow_empty) sc->fetched++;
         return;
     }
     data = NULL;
     len = 0;
     if (sc->fetch != NULL &&
             sc->fetch(sc->pw, resolved, &data, &len) == 0 &&
-            data != NULL && len > 0) {
+            data != NULL && (len > 0 || (len == 0 && sc->allow_empty))) {
         if (pcore_script_cache_store(sc->cache, resolved, data, len) == 0) {
             sc->fetched++;
         }
@@ -4240,6 +4245,11 @@ static void pcore_fetch_scripts_walk(pcore_script_fetch_ctx *sc,
     }
 }
 
+static int pcore_fetch_script_resources(HANDLE hDoc,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
+        int *out_found, int *out_fetched, int allow_empty);
+
 PCORE_API int PCore_FetchScriptResources(HANDLE hDoc, PCoreFetchFn fetch,
         PCoreFreeFn freefn, void *pw_fetch, int *out_found, int *out_fetched)
 {
@@ -4251,6 +4261,24 @@ PCORE_API int PCore_FetchScriptResourcesEx(HANDLE hDoc,
         const char *document_url, PCoreResolveUrlFn resolve,
         PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
         int *out_found, int *out_fetched)
+{
+    return pcore_fetch_script_resources(hDoc, document_url, resolve, fetch,
+            freefn, pw_fetch, out_found, out_fetched, 0);
+}
+
+PCORE_API int PCore_FetchScriptResourcesEx2(HANDLE hDoc,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
+        int *out_found, int *out_fetched)
+{
+    return pcore_fetch_script_resources(hDoc, document_url, resolve, fetch,
+            freefn, pw_fetch, out_found, out_fetched, 1);
+}
+
+static int pcore_fetch_script_resources(HANDLE hDoc,
+        const char *document_url, PCoreResolveUrlFn resolve,
+        PCoreFetchFn fetch, PCoreFreeFn freefn, void *pw_fetch,
+        int *out_found, int *out_fetched, int allow_empty)
 {
     dom_document *doc;
     dom_node *root;
@@ -4274,6 +4302,7 @@ PCORE_API int PCore_FetchScriptResourcesEx(HANDLE hDoc,
     sc.resolve = resolve;
     sc.pw = pw_fetch;
     sc.document_url = document_url;
+    sc.allow_empty = allow_empty;
     sc.cache = pcore_script_cache_get(doc, 1);
     sc.script_name = NULL;
     sc.src_name = NULL;
@@ -4355,7 +4384,7 @@ PCORE_API int PCore_GetScriptResource(HANDLE hDoc, unsigned int index,
         url[copy_len] = '\0';
     }
     if (out_info != NULL) {
-        out_info->available = (entry->data != NULL && entry->len > 0);
+        out_info->available = (entry->data != NULL && entry->len >= 0);
         out_info->url_bytes = (int) url_len;
         out_info->data_bytes = entry->len;
     }
@@ -4927,7 +4956,7 @@ PCORE_API int PCore_GetScript(HANDLE hDoc, unsigned int index,
     if (out_info != NULL) {
         out_info->kind = scan.kind;
         out_info->available = (entry != NULL && entry->data != NULL &&
-                entry->len > 0);
+                entry->len >= 0);
         out_info->source_bytes = source_bytes;
         out_info->url_bytes = url_bytes;
         out_info->type_bytes = type_bytes;

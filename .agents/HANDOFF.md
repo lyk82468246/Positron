@@ -27,23 +27,25 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 [Runtime 宿主](../positron_app/RUNTIME_HOST.md)。`--app-dir` 仅接 permissions:[]，原生确认默认否；
 storage.sql 在迁移/作者执行前拒绝。owner worker 持有目录，UI 仅持不可变 metadata；
 原标签显式绑定实例，其他标签/网页不按 app URL 获权。复用原 candidate/Core/Script 路径，
-无 SQL 队列/服务/SDK。空 CSS/JS 尚受 Browser 正长度合同限制，
-[请求](../positron_app/RUNTIME_EMPTY_RESOURCE_REQUEST.md)交主线与DLL，不伪造字节。
+无已验收 SQL 队列/服务/SDK；EXE 会话另在并行编写接线，不纳入 DLL 提交。
+[空资源请求](../positron_app/RUNTIME_EMPTY_RESOURCE_REQUEST.md)的 Browser/Core 合同已有双配置门，
+旧入口兼容；新入口的长度、复制、缓存、所有权和部署合同以组件 README 为准。
+TEST1374 覆盖直接接口与真实零长目录资源组合，细项见源码。EXE 仍须迁移新入口/READY/0，
+不把 DLL 门写成应用已接通；部署匹配 Core/Browser。
 
-最终 Debug 完整包 `tmp/device-runs/20261025-142136-app-runtime-page/`：
-`app-runtime-page/result.txt` PASS；真实嵌套 entry、八项参数、顺序脚本、CSS/import、SVG 缓存、
-可选失败、必需 CSS 失败保留旧页、相对 query/fragment URL、新标签拒绝、stale 隔离和 owner
-关闭均通过。11/11 EXE/DLL 哈希、正常退出零引用、crash PASS，无新dump；未读改用户库。
-`app-history-runtime-page-pixels/scroll-result.txt` 为 96/192 DPI、九组窗口像素 PASS，非完整 UI。
-目标为 OS5.2.21234 DeviceEmulator；页面门观察 96 DPI、320×168 client。
-测试均正常退出，无应用留运行，编译器/设备门已让出。原生确认 Yes/No、双语、触摸/旋转、
-跨文档片段定位未验收，未跑完整 UI 或 Release 设备门。
+Debug `tmp/device-runs/20261025-145800-empty-resource-debug-probes/` 与 Release
+`tmp/device-runs/20261025-145914-empty-resource-release/`：43/45/77/111/1118/1371/1374/999
+各 8/8；完整日志、唯一 PASS、零 ERROR/FAIL、Core/双空间/零引用/crash PASS，无新 dump。
+最终探针零新增槽门 `20261025-150041-empty-final-debug`、`20261025-150125-empty-final-release`
+各 3/3，无新 dump。145 文件 SD 包回收后清理，16 个旧不完整目录保留；320×240/96 DPI。
+正式两配置构建/C89 已通过；应用并行源未纳入提交。首轮旧 TEST77/111 resolver 错接导致
+崩溃、TEST1118 额外 native 探针超槽均已修正夹具，预算/原断言保持；失败包/完整转储/PDB
+及构建恢复见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)，不跳过失败。
 
-正式 Debug/Release/CAB、C89、启动/设置/滚动离线检查通过，Release 排除新诊断。
-原启动源码断言已与 HEAD 既有 guarded call 对照后更新，未改产品迎合测试。
-`20261025-140632-app-runtime-page` helper 无日志门失败仍保留；回读/旧helper/无dump只排除部分
-假设，不归因产品。VS prebuild/header 崩溃日志 `tmp/runtime-page-debug-*-failed.log` 保留，
-确认无残留后正式重试通过，不换工具链、不强杀。
+EXE 只读非空目录的既有基线由 35c329b7 保存：
+`tmp/device-runs/20261025-142136-app-runtime-page/` 的页面组合、失败保留、隔离/owner
+关闭、11/11 哈希及相邻窗口像素门 PASS。该门无用户库变更；原生确认、双语、触摸/旋转、
+跨文档片段、完整 UI 与 Release 应用门仍未验收，不由本批 DLL 门替代。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -496,7 +498,8 @@ ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验�
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-唯一下一步为主线与DLL补空资源合同，再接 EXE 空 CSS/JS 自动门；SQL 逐页队列/显式grant/SDK
+空资源路线图已复核，公共合同退出待实现；唯一下一步交 EXE 迁移新入口并运行空 CSS/JS
+应用门，构建/设备窗口交回应用会话独占。SQL 逐页队列/显式grant/SDK
 及笔记仍是独立后续纵切。不把目录句柄交UI或按URL授权，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
