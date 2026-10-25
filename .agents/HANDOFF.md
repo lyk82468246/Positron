@@ -26,26 +26,27 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 Runtime 只链接 JSON/DB 公共库；目录与 data provider、身份/迁移、typed SQL 及预算/释放合同见
 [Runtime README](../positron_runtime/README.md)。fixture 仅处理私有已知根，不是通用 WM 适配器。
 原生队列及 Core/Browser app 资源组合已有自动证据，不需新增 Core/Browser ABI；EXE provider、
-页面授权/worker/SDK/示例未接线。当前 ROM 未发现 ZIP 命名文件或所查六个 Shell 注册入口，
-未取得合格系统 ZIP provider；PXI/安装身份/关联暂缓，不外推所有 ROM，不引解压 fallback。
+页面授权/worker/SDK/示例未接线。新 ROM 发现 ZipView.exe 和 zipfile→zipview.exe %1
+关联，但 Shell opener 不是有界 ZIP API，仍未取得合格系统 ZIP provider；PXI/安装身份/
+关联暂缓，不引解压 fallback。
 
-当前目标为 240×320、96 DPI、OS 5.2.318 DeviceEmulator，不沿用旧 ROM 通过结论。
-Debug `tmp/device-runs/20261024-152041-db-native-diagnostics-debug-final2/` 与 Release
-`tmp/device-runs/20261024-152405-db-native-diagnostics-release-paths-full/` 的
+用户更换后的当前目标为 240×320、96 DPI、OS 5.2.21234 DeviceEmulator。
+同源 Debug `tmp/device-runs/20261025-130645-storage-new-device-debug/` 与 Release
+`tmp/device-runs/20261025-130807-storage-new-device-release/` 的
 `1321,1363,1366,1368-1373,999` 均为 10/10。TEST1373 对照 UI/worker 原生文件循环、
 DB 迁移/重开及双线程 64 次失败打开，验证诊断隔离；不是故障注入、FULL 或断电门。
 DB 只增强既有错误文本：线程/调用作用域捕获实际 VFS 操作、原生错误和路径，不改 ABI、
 返回码、回滚或重试策略。合同见 DB README；TEST1371/1372 原有边界不变。
-最终路径诊断的 Debug 定向门 `20261024-152517-db-native-scope-final` 为 2/2。
 
-存储故障仍未关闭：`20261024-145452-runtime-storage-io-release` 的 TEST1370 在
+旧设备故障在新目标本次未复现，不等于根因已修复：OS 5.2.318 上
+`20261024-145452-runtime-storage-io-release` 的 TEST1370 在
 schema=1 返回 Runtime=-11/DB=-1/category=12/SQLite=14。
 `20261024-152138-db-native-diagnostics-release-final` 的前八项通过，但 TEST1373
 直接 CreateDirectoryW 返回183、随后属性不可取得；该路径不经过 DB/Runtime。
-同源独立 Release 对照 `20261024-152324-db-native-diagnostics-release-paths/` 2/2，
-不能抵消组合失败。旧 mkdir183/CANTOPEN 证据见 424a8d40，未归属 provider、VFS 或映射卷。
+旧独立通过不能抵消组合失败；旧 mkdir183/CANTOPEN 证据见 ede836ab/424a8d40，
+未归属 provider、VFS 或映射卷，保留调用级诊断与原断言。
 正式两配置构建、C89/审计有效；所列设备门完整回收、双空间/零引用/crash 检查通过，无新 dump。
-两个既有 dump 属于九月旧脚本宿主；145 文件 SD 包回收后清理，四个旧不完整目录保留。
+新设备运行前及运行后均无 dump；145 文件 SD 包回收后清理，四个旧不完整目录保留。
 不归因缺空间、不要求重连、不改 EXE/用户 DB/WMDC；旧 WriteFile 差异与有界复制见 Git，
 无失败后重试。下一步保留失败路径与父目录属性，区分组合顺序、路径和原生卷行为。
 
@@ -494,7 +495,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验收保持；保存框后缀方案
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-ROADMAP 已复核：目录公共合同/资源组合退出待实现队列，PXI 暂缓；当前失败见 Runtime 节。
+ROADMAP 已复核：本次换设备复测未改产品，候选取舍不变；旧存储失败未关闭，PXI 暂缓。
 原生/DB 最小对照及调用级诊断已建立；尚未触发应用会话。唯一下一步是在实际失败中取得
 确切路径、父目录属性和 VFS 原生操作，定位183/CANTOPEN，不以独立通过覆盖组合失败；之后再
 投递 EXE provider/授权/worker/SDK/目录示例。不重开 FULL/断电或保存框暂缓门，不改用户 DB。
