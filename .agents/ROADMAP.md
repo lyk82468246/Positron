@@ -239,23 +239,25 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：目录应用公共合同已具备；当前 SD 存储门间歇失败待定位，PXI 暂缓。** 第三方仅提供资源与manifest，
+**状态：目录应用公共合同及 EXE 平台 provider 已具备，页面接线待完成；PXI 暂缓。** 第三方仅提供资源与manifest，
 使用`app://`并复用现有浏览器UI；Runtime后续能力、DB受限集成、Core/Browser资源与授权合同
 由主线与DLL会话负责，EXE会话只接平台、SDK及示例。完整合同见
 [运行时计划](../docs/RUNTIME_PLAN.md)，不在本节复制字段/预算。
-DB 普通受限请求及受限迁移/严格版本读取已具备版本化原语与双配置设备证据，合同见
-[DB README](../positron_db/README.md#opt-in-restricted-requests)，不再作为待实现入口。
+DB 受限请求/迁移/严格版本读取已退出待实现范围，见
+[DB 合同](../positron_db/README.md#opt-in-restricted-requests)。
 Runtime 元数据准入、app 引用及可信平台 provider 上的开发目录实例/独占/只读资源合同已有公共设备门，
 退出待实现队列；迁移来源快照合同的验收以 HANDOFF 为准，不把文件准入等同执行授权。
-通用 WM 目录规范化/包含性适配器仍须宿主接入，元数据/URL/目录句柄不自动授予 SQL 或安装数据身份。
+WM 真实目录/保留读取/原生 lease/data location 已有 EXE 定向门，调用及较严格的宿主预算见
+[Runtime 宿主](../positron_app/RUNTIME_HOST.md)；元数据/URL/目录句柄不自动授予 SQL 或安装数据身份。
 开发存储的精确身份绑定、逐文件迁移及同步 typed SQL JSON 已退出待开发范围，预算/调用见 Runtime README。
 八项有界异步服务队列/撤销及四个独立页面上下文已有双配置设备合同，退出待实现范围。
 Core/Browser 现有公开 callback 已能组合相对 CSS/@import、脚本、SVG/layout/paint 与 app history，
 不需要新增 ABI。UI/worker 原生 I/O 与 DB 最小对照已具备；DB 现可按线程/调用保留实际
-VFS 操作、原生错误和路径，既有错误 ABI 不变。正常对照通过仍不能关闭实际 Runtime
-间歇 CANTOPEN。下一步在真实存储失败时取得该原生诊断，定位 provider、VFS 或映射卷，
-再做有证据的最小修正；不能只靠重跑、错误文本猜测或扩大预算。
-这不是重开挂起的 FULL/断电门。之后交给 EXE 接通通用 WM provider、原窗口候选、worker/授权及目录笔记示例；
+VFS 操作、原生错误和路径，既有错误 ABI 不变。当前替换设备的公共合同和 EXE 平台门通过，
+用户已授权 EXE 继续；旧设备间歇 CANTOPEN/mkdir183 仍待实际失败的调用级取证，不因换设备关闭。
+下一纵切接通 `--app-dir` 可信确认、常驻 owner worker、原窗口候选/资源、逐页面队列与显式授权、
+JS SDK 及目录笔记示例，验证正常重启、两应用数据隔离和离页/关闭/迟到结果；
+不把平台自检当作作者 UI 通过，不移交 live handle 到 UI，也不重开挂起的 FULL/断电门；
 不把受限 SQL 原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。
 当前 ROM 的只读 ZIP 清单未取得合格系统 provider；PXI/安装身份/关联暂缓，只有取得实际系统接口及
 完成/错误/取消、Unicode/包含性/规模/清理证据后恢复，不引第三方解压库或私有 fallback。普通网页不因 URL 获权，

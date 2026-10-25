@@ -23,6 +23,7 @@
 #include <wchar.h>
 
 #include "app_debug.h"
+#include "app_runtime_platform.h"
 #include "app_settings_store.h"
 #include "app_downloads.h"
 #include "app_settings_services.h"
@@ -9737,6 +9738,22 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
 #ifdef _DEBUG
     startup_ui_selftest = 0;
+    if (command_line != NULL &&
+            wcsncmp(command_line, L"--selftest-runtime-platform \"", 29) == 0) {
+        WCHAR directory[MAX_PATH];
+        unsigned int length;
+
+        command_line += 29;
+        length = (unsigned int) wcslen(command_line);
+        if (length < 2 || length >= MAX_PATH || command_line[length - 1] != L'\"')
+            return 2;
+        memcpy(directory, command_line, (length - 1) * sizeof(WCHAR));
+        directory[length - 1] = L'\0';
+        AppDebug_BeginSession();
+        result = AppRuntimePlatform_DebugCheck(directory);
+        AppDebug_EndSession();
+        return result;
+    }
     if (command_line != NULL &&
             wcscmp(command_line, L"--selftest-scroll-paint") == 0) {
         startup_ui_selftest = 2;

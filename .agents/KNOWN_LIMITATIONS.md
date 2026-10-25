@@ -42,15 +42,17 @@
 
 ## DB
 
-- SQLite 3.53.4、rollback journal；数据库约 16 MiB、body 约 1 MiB。文件
-  配额 FULL/I/O/COMMIT/rollback 故障、迁移提交故障/未来或损坏版本
-  拒绝、峰值内存、真机断电/强制重启恢复未验收。正常冷重开不证明这些边界。
-- 宿主 DB worker、实际 HTTPS 错误/分页及生产设备基线未完成；独立 REST fixture 不是生产
-  服务。离线合同见 [HANDOFF](HANDOFF.md)；中文文件、三个独立进程冷重开、六进程
-  读写/写写锁及五进程受控终止 hot-journal 恢复的 Debug/Release SD 映射/内置存储证据，
-  以及剩余文件门见 [验收清单](DB_FILE_ACCEPTANCE.md)。进程终止恢复不等于真实断电保证。
-- v1 只接受单列 INTEGER/TEXT 主键；不支持复合主键、自动 merge、多主、远程 SQL、WAL、
-  SQLCipher、扩展或 DLL 内网络线程。Token 不入库，DB handle 不跨线程。
+- 文件 FULL/I/O/COMMIT/rollback 故障、迁移提交故障/未来或损坏版本拒绝、峰值内存、
+  真机断电/强制重启恢复未验收；正常冷重开不证明这些边界。容量与连接约束见下方 DB 合同。
+- 同步 worker/真实 HTTPS 错误/分页及生产基线未完成；REST fixture 不是生产服务。
+  中文文件、冷重开、跨进程锁、受控终止恢复及剩余门见
+  [文件验收](DB_FILE_ACCEPTANCE.md)，不等于断电保证。
+- 同步主键、连接/线程及 Token 限制见 [DB](../positron_db/README.md)，不承诺通用远程 SQL。
+
+## 纯资源应用 Runtime
+
+- 目录入口/授权 worker/SDK/示例未接入；上限与未验收边界见 [宿主](../positron_app/RUNTIME_HOST.md)。
+  旧 ROM mkdir183/CANTOPEN 未关闭；系统 ZIP 未具备，PXI 暂缓，无解压 fallback。
 
 ## HTML、CSS 与布局
 

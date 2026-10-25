@@ -95,7 +95,7 @@ try {
     if (!$auditComplete) { throw 'Current device module audit timed out.' }
     $files = @(Get-ChildItem -LiteralPath $stageRoot -File |
         Where-Object { $_.Name -eq 'positron.exe' -or $_.Extension -eq '.dll' })
-    if ($files.Count -ne 10) { throw 'Expected EXE and nine DLLs in the formal stage.' }
+    if ($files.Count -ne 11) { throw 'Expected EXE and ten DLLs in the formal stage.' }
     foreach ($file in $files) {
         $local = Join-Path $roundtripRoot $file.Name
         if (![PositronDeviceRapi]::TryCopyFileFromDevice(
@@ -121,6 +121,8 @@ try {
     }
     $remoteLog = '\Temp\positron-debug.log'
     $localLog = Join-Path $evidenceRoot 'positron-debug.log'
+    [void][PositronDeviceRapi]::TryCopyFileFromDevice($remoteLog,
+            (Join-Path $evidenceRoot 'previous-debug.log'))
     [PositronDeviceRapi]::DeleteFileIfExists($remoteLog)
     if ($NormalStartup -and $StartupUrl -ne 'positron://newtab') {
         throw 'NormalStartup uses no command-line URL; require default newtab settings.'
@@ -243,20 +245,20 @@ try {
         }
         [IO.File]::WriteAllLines((Join-Path $evidenceRoot 'scroll-result.txt'), @(
             'status=PASS', 'dpi=96,192', 'moves=9', 'pixels=exact',
-            'binary_roundtrip=10/10', 'exit_audit=holders=0 unavailable=0',
+            'binary_roundtrip=11/11', 'exit_audit=holders=0 unavailable=0',
             'crash_check=PASS', ('pid=' + $appPid), 'full_ui_selftests=NOT_RUN'))
-        Write-Host ('APP SCROLL PASS dpi=96,192 moves=9 pixels=exact binary_roundtrip=10/10 exit_audit=zero crash_check=PASS pid={0}' -f $appPid)
+        Write-Host ('APP SCROLL PASS dpi=96,192 moves=9 pixels=exact binary_roundtrip=11/11 exit_audit=zero crash_check=PASS pid={0}' -f $appPid)
         return
     }
     if ($ManualFixtureReview) {
         Write-Host ('APP HISTORY MANUAL READY pid={0}; full UI selftests NOT RUN, not an acceptance PASS' -f $appPid)
     } else {
-        Write-Host ('APP HISTORY PASS binary_roundtrip=10/10 crash_check=PASS pid={0}' -f $appPid)
+        Write-Host ('APP HISTORY PASS binary_roundtrip=11/11 crash_check=PASS pid={0}' -f $appPid)
     }
     if ($null -ne $fixture) {
         [IO.File]::WriteAllLines((Join-Path $evidenceRoot 'fixture-result.txt'), @(
             $(if ($ManualFixtureReview) { 'status=READY' } else { 'status=PASS' }),
-            'fixture_rows=80', 'fixture_roundtrip=exact', 'binary_roundtrip=10/10',
+            'fixture_rows=80', 'fixture_roundtrip=exact', 'binary_roundtrip=11/11',
             $(if ($ManualFixtureReview) { 'ui_selftests=NOT_RUN' } else { 'ui_selftests=PASS' }),
             'loaded_page=16_with_older',
             ('pid=' + $appPid), 'crash_check=PASS', 'manual_review=pending'))

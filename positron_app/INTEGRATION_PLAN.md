@@ -27,6 +27,7 @@ Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内�
 - `AppSettingsServices`：可信设置页的最小业务方法、worker 请求与 Browser token 对应；桥接、脚本队列及撤销仍由公共 Browser 接口负责。
 - `AppDownloads`：应用级有界队列、HTTP stream/取消、用户文件确认、临时文件/发布及持久终态；不拥有 HTTP framing 或网页自动下载语义。
 - `AppDownloadPrepare`：每标签的输入代际/预检副本与 WM6 名称策略；单活动 worker 消费 HTTP Probe，先解析再允许保存，不拥有 URL/header 命名语义。
+- `AppRuntimePlatform`：向公共 Runtime 提供 WM 真实目录、保留文件读取、独占锁及同目录 data location；不解析 manifest/SQL，不负责页面授权。调用与平台预算见 [Runtime 宿主适配器](RUNTIME_HOST.md)，目录应用的后续接线遵循 [运行时计划](../docs/RUNTIME_PLAN.md)。
 
 页面 callback 的 `pw` 指向对应页面上下文。网络 worker 只负责 transport 和消息投递，存储
 worker 只拥有自己的 DB/statement，不读取页面；Core、
@@ -375,7 +376,7 @@ Debug 私有自检使用独立 Browser history 验证路由来源、别名、16 
 同文档导航的 Debug 私有启动自检使用独立文档/history 和隐藏 native viewport，直接调用 EXE
 适配器验证会话保留、popstate/hashchange、双轴恢复、manual、空/缺失/legacy 锚点及 document
 identity 隔离。`scripts/app_history_gate.bat` 消费正式 module-audit 门保留的完整 Debug 包，
-重新检查 guest DLL holder、回读 EXE/九个 DLL 的 SHA256、启动自检并检查新增 crash dump；
+重新检查 guest DLL holder、回读 EXE/十个 DLL 的 SHA256、启动自检并检查新增 crash dump；
 不构建、选择设备或强杀进程。它不替代真实 HTTP 跨页恢复、地址栏回车、native 焦点、旋转/DPI
 和人工滚动验收，测试夹具及诊断不编入 Release。
 多标签 Debug 自检使用生产菜单、页面子窗口和独立 history，覆盖四页容量、输入/选区/

@@ -1,0 +1,1 @@
+{"manifestVersion":1,"id":"com.positron.platform_probe","name":"Platform probe","version":1,"runtimeApiVersion":1,"entry":"index.html","permissions":["storage.sql"],"migrations":[{"version":1,"file":"schema/1.sql"}]}

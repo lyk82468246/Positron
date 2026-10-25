@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；通用 WM provider、页面服务与完整目录应用仍未接入。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE WM provider 已建立，正常目录入口、页面队列、SDK 与完整目录应用仍未接入。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -21,34 +21,37 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Runtime 公共合同与目录资源组合；存储间歇失败未关闭
+### Runtime 平台基础接线；完整目录应用未完成
 
-Runtime 只链接 JSON/DB 公共库；目录与 data provider、身份/迁移、typed SQL 及预算/释放合同见
-[Runtime README](../positron_runtime/README.md)。fixture 仅处理私有已知根，不是通用 WM 适配器。
-原生队列及 Core/Browser app 资源组合已有自动证据，不需新增 Core/Browser ABI；EXE provider、
-页面授权/worker/SDK/示例未接线。新 ROM 发现 ZipView.exe 和 zipfile→zipview.exe %1
-关联，但 Shell opener 不是有界 ZIP API，仍未取得合格系统 ZIP provider；PXI/安装身份/
-关联暂缓，不引解压 fallback。
+公共合同见 [Runtime README](../positron_runtime/README.md)，现有Core/Browser无需新ABI。
+EXE页面/SDK/示例未接线；ZipView/Shell关联不是合格ZIP provider，PXI暂缓。
 
 用户更换后的当前目标为 240×320、96 DPI、OS 5.2.21234 DeviceEmulator。
 同源 Debug `tmp/device-runs/20261025-130645-storage-new-device-debug/` 与 Release
 `tmp/device-runs/20261025-130807-storage-new-device-release/` 的
-`1321,1363,1366,1368-1373,999` 均为 10/10。TEST1373 对照 UI/worker 原生文件循环、
-DB 迁移/重开及双线程 64 次失败打开，验证诊断隔离；不是故障注入、FULL 或断电门。
-DB 只增强既有错误文本：线程/调用作用域捕获实际 VFS 操作、原生错误和路径，不改 ABI、
-返回码、回滚或重试策略。合同见 DB README；TEST1371/1372 原有边界不变。
+`1321,1363,1366,1368-1373,999` 均为 10/10，完整日志/双空间/零引用/crash 门通过，无 dump，
+145文件包已回收清理，旧不完整目录保留；DB只补调用级VFS诊断，不改ABI/回滚/重试。
 
-旧设备故障在新目标本次未复现，不等于根因已修复：OS 5.2.318 上
-`20261024-145452-runtime-storage-io-release` 的 TEST1370 在
-schema=1 返回 Runtime=-11/DB=-1/category=12/SQLite=14。
-`20261024-152138-db-native-diagnostics-release-final` 的前八项通过，但 TEST1373
-直接 CreateDirectoryW 返回183、随后属性不可取得；该路径不经过 DB/Runtime。
-旧独立通过不能抵消组合失败；旧 mkdir183/CANTOPEN 证据见 ede836ab/424a8d40，
-未归属 provider、VFS 或映射卷，保留调用级诊断与原断言。
-正式两配置构建、C89/审计有效；所列设备门完整回收、双空间/零引用/crash 检查通过，无新 dump。
-新设备运行前及运行后均无 dump；145 文件 SD 包回收后清理，四个旧不完整目录保留。
-不归因缺空间、不要求重连、不改 EXE/用户 DB/WMDC；旧 WriteFile 差异与有界复制见 Git，
-无失败后重试。下一步保留失败路径与父目录属性，区分组合顺序、路径和原生卷行为。
+旧设备 CE5.2.318 的失败未关闭：`20261024-145452-runtime-storage-io-release` TEST1370
+schema=1 为 Runtime=-11/DB=-1/category12/SQLite14；
+`20261024-152138-db-native-diagnostics-release-final` TEST1373 直接 mkdir183 后属性不可得，
+未经过 DB/Runtime。原证据见 ede836ab/424a8d40，未归属 provider/VFS/映射卷；新目标通过不
+抵消组合失败。不删库、重试 SQL 或改 WMDC；复现时保留实际操作/路径/父属性，不归因缺空间。
+
+EXE provider 调用、预算和未验收边界见 [Runtime 宿主](../positron_app/RUNTIME_HOST.md)。
+普通启动不执行探针，Release 排除诊断；`--app-dir` 未开放。最终 Debug 完整包为
+`tmp/device-runs/20261025-133718-app-runtime-platform/`，平台门在同名证据子目录通过：
+两根目录四个独立进程，每进程两次关闭重开，中文资源/只读 pin/BUSY/逃逸/授权/SQL 限制；
+`app-runtime-platform-unicode` 再验两份中文根及中文文件，四进程 PASS。
+EXE/十 DLL 回读11/11、正常退出零引用、无新dump；BUSY仅同进程验证。
+相邻 `app-history-runtime-adjacent` 为 96/192 DPI、九组窗口像素/正常退出 PASS，不是完整 UI 门。
+`app-history-runtime-normal` 普通启动/前台/默认页/哈希/crash PASS，PID594469686留newtab；
+未跑完整UI或Release设备门。
+
+失败证据保留于 `20261025-131847` 至 `132923-app-runtime-platform`；缺 DB 的属性/error=0误判
+已改精确枚举，旧故障不关闭。终态早于detach，门只等精确PID正常退出，离线八项保护拒绝边界。
+两配置 build/CAB、C89 通过；VS崩溃日志在 `tmp/app-runtime-platform-build-failures/`，
+确认无残留后正式重试通过，不换工具链。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -495,10 +498,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验收保持；保存框后缀方案
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-ROADMAP 已复核：本次换设备复测未改产品，候选取舍不变；旧存储失败未关闭，PXI 暂缓。
-原生/DB 最小对照及调用级诊断已建立；尚未触发应用会话。唯一下一步是在实际失败中取得
-确切路径、父目录属性和 VFS 原生操作，定位183/CANTOPEN，不以独立通过覆盖组合失败；之后再
-投递 EXE provider/授权/worker/SDK/目录示例。不重开 FULL/断电或保存框暂缓门，不改用户 DB。
+ROADMAP 已复核；用户已授权目录应用继续，旧183/CANTOPEN独立待取证，PXI暂缓。
+唯一下一步为 `--app-dir` 可信确认、owner worker、原候选/资源、逐页队列/显式grant/SDK及笔记验收。
+不把目录句柄交UI或按URL授权；接口不足交DLL，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自
