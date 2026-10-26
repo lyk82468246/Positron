@@ -62,7 +62,20 @@
         function answer(ok, value) {
             if (!ok || value.rows[0].values[0].value !== '32') { fail('queue-result'); return; }
             replies++;
-            if (replies === 8 && refused === 1) status.textContent = 'runtime-sql-ready seed=' + seed + ' rows=32';
+            if (replies === 8 && refused === 1) {
+                /* Render inside the real asynchronous SQL callback, like Notes.
+                 * A wrapper-only mock cannot detect an unregistered DOM adapter. */
+                try {
+                    document.getElementById('rows').innerHTML =
+                        '<p><button type="button" id="sql-edit">Edit</button>' +
+                        '<span id="sql-title">&lt;中文\'p&gt;</span></p>';
+                    if (document.getElementById('sql-edit').textContent !== 'Edit' ||
+                            document.getElementById('sql-title').textContent !== "<中文'p>") {
+                        fail('rendered-list'); return;
+                    }
+                } catch (error) { fail('rendered-list-exception'); return; }
+                status.textContent = 'runtime-sql-ready seed=' + seed + ' rows=32';
+            }
         }
         for (i = 0; i < 9; i++) {
             try { db.query('SELECT count(*) FROM notes', [], answer); }

@@ -81,6 +81,11 @@ Browser 桥和 Runtime 队列，停止 UI 访问后由 worker 关闭队列，再
 [Notes 示例](examples/notes/README.md)只包含作者资源，复用普通页面与 native 控件。
 SDK 是内嵌资源，不需要额外 staging 语言或 JS 文件；示例须单独复制，不自动安装或扫描磁盘。
 
+ScriptSession 使用公开 DOM write Ex8 表：innerHTML 及其前置 Text/CharacterData 写入
+均薄接对应 Core 原语，成功后请求既有延迟重排；Browser 负责 wrapper 失效与重建。
+SQL callback 内生成列表也走同一路径，不在 EXE 解析 HTML 或替作者维护 DOM。
+服务结果/回调失败的原生阶段、返回码和 Browser 错误只写 Debug 日志，Release 不包含诊断。
+
 ## 目录页面自动门
 
 用正式 `device_gate.ps1` 的 `app-runtime-page` Debug 完整包运行
@@ -98,7 +103,10 @@ SQL 另用正式 `app-runtime-sql` Debug 完整包与 `scripts/app_runtime_sql_g
 原生 `--selftest-runtime-sql` 只接受其精确 `fixture-one/two` 根，Release 排除诊断。
 两根同 ID 目录各两个独立进程，每根 32 条记录，验证重开/数据隔离、typed int64/中文/引号、
 16 行分页、事务回滚、超限/DDL 拒绝、八项队列、旧页失败后服务仍有效、离页撤销/返回新队列、
-有请求时关闭 owner 和正常退出零引用。该门不修改用户库，也不代替 Notes 真正触摸/编辑验收。
+有请求时关闭 owner 和正常退出零引用；真实 SQL callback 还生成带按钮和转义文本的 HTML 列表。
+默认两根四进程不变；显式 `-Roots one` 或 `two` 可单独取证，结果标注所选根、两进程及
+`same_id_roots=NOT_RUN`，不能替代失败的双目录隔离门。每次使用新 EvidenceName，保留旧失败。
+该门不修改用户库，也不代替 Notes 真正触摸/编辑验收。
 
 ## 调用与所有权
 

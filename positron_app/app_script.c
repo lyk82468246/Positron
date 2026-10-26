@@ -550,6 +550,100 @@ static int app_script_set_text(void *pw, const char *id, const char *text)
     return app_script_mutation_result(context, result);
 }
 
+/* Browser owns wrapper reconciliation; Core owns each atomic mutation.
+ * The host only maps its result and posts the existing deferred relayout. */
+static int app_script_extended_write_result(AppScriptContext *context, int result)
+{
+    return result == 3 ? 0 : app_script_mutation_result(context, result);
+}
+
+static int app_script_set_child_text(void *pw, const char *id,
+        unsigned int index, const char *text)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL || text == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeSetTextChildById(context->document, id, index, text));
+}
+
+static int app_script_set_character_data(void *pw, const char *id,
+        unsigned int index, unsigned int type, const char *text)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL || text == NULL) return -1;
+    if (type != 4 && type != 8) return 0;
+    return app_script_extended_write_result(context,
+            PCore_NodeSetCharacterDataChildById(context->document, id, index, text));
+}
+
+static int app_script_split_text(void *pw, const char *id,
+        unsigned int index, unsigned int offset)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeSplitTextChildById(context->document, id, index, offset));
+}
+
+static int app_script_replace_whole_text(void *pw, const char *id,
+        unsigned int index, const char *text)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL || text == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeReplaceWholeTextChildById(context->document, id, index, text));
+}
+
+static int app_script_normalize_text(void *pw, const char *id)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeNormalizeById(context->document, id));
+}
+
+static int app_script_insert_text(void *pw, const char *id,
+        unsigned int index, const char *text)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL || text == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeInsertTextChildById(context->document, id, index, text));
+}
+
+static int app_script_insert_text_list(void *pw, const char *id,
+        unsigned int index, const char *const *texts, unsigned int count)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL || texts == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeInsertTextChildListById(context->document, id, index, texts, count));
+}
+
+static int app_script_set_inner_html(void *pw, const char *id, const char *html)
+{
+    AppScriptContext *context;
+
+    context = (AppScriptContext *) pw;
+    if (context == NULL || context->document == NULL || id == NULL || html == NULL) return -1;
+    return app_script_extended_write_result(context,
+            PCore_NodeSetInnerHTMLById(context->document, id, html));
+}
+
 static int app_script_get_value(void *pw, const char *id, char *out_value,
         int out_capacity, int *out_len)
 {
@@ -1650,7 +1744,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
 {
     PBrowserScriptDomReadCallbacksEx dom_read;
     PBrowserScriptDomRelationCallbacks relation;
-    PBrowserScriptDomWriteCallbacks write;
+    PBrowserScriptDomWriteCallbacksEx8 write;
     PBrowserScriptContentEditableCallbacks content_editable;
     PBrowserScriptContentEditableSelectionCallbacks content_selection;
     PBrowserScriptDocumentWriteCallbacks document_write;
@@ -1697,6 +1791,14 @@ static int app_script_register_callbacks(AppScriptContext *context)
     write.size = sizeof(write);
     write.pw = context;
     write.set_text = app_script_set_text;
+    write.set_child_text = app_script_set_child_text;
+    write.set_character_data_child = app_script_set_character_data;
+    write.split_text_child = app_script_split_text;
+    write.replace_whole_text_child = app_script_replace_whole_text;
+    write.normalize_child_text = app_script_normalize_text;
+    write.insert_text_child = app_script_insert_text;
+    write.insert_text_child_list = app_script_insert_text_list;
+    write.set_inner_html = app_script_set_inner_html;
     memset(&content_editable, 0, sizeof(content_editable));
     content_editable.size = sizeof(content_editable);
     content_editable.pw = context;
@@ -1851,7 +1953,7 @@ static int app_script_register_callbacks(AppScriptContext *context)
             &dom_read) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterDomRelationCallbacks(
             context->session, &relation) != PSCRIPT_OK ||
-            PBrowser_ScriptSessionRegisterDomWriteCallbacks(context->session,
+            PBrowser_ScriptSessionRegisterDomWriteCallbacksEx8(context->session,
             &write) != PSCRIPT_OK ||
             PBrowser_ScriptSessionRegisterContentEditableCallbacks(
             context->session, &content_editable) != PSCRIPT_OK ||

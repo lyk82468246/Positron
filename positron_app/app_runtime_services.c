@@ -1,8 +1,30 @@
 #include <string.h>
 #include "app_runtime_services.h"
 #include "resource.h"
+#ifdef _DEBUG
+#include <stdio.h>
+#include "app_debug.h"
+#endif
 
 static const char *const app_runtime_methods[] = { "storage.sql" };
+
+#ifdef _DEBUG
+static void app_runtime_services_debug(AppRuntimeServices *services,
+        const char *phase, int result)
+{
+    char message[768];
+    const char *error;
+
+    error = services->session == NULL ? NULL :
+            PBrowser_ScriptSessionGetError(services->session);
+    _snprintf(message, sizeof(message) - 1,
+            "runtime-service phase=%s tab=%lu gen=%lu result=%d error=%s\r\n",
+            phase, services->tab_id, services->generation, result,
+            error == NULL ? "" : error);
+    message[sizeof(message) - 1] = 0;
+    AppDebug_Log(message);
+}
+#endif
 
 static int app_runtime_submit(void *parameter, const PBrowserServiceRequest *source)
 {
@@ -107,9 +129,18 @@ int AppRuntimeServices_Pump(AppRuntimeServices *services)
                     result->json_bytes) != PBROWSER_OK) rc = PRUNTIME_STATE;
         }
     }
-    if (rc != PRUNTIME_OK && rc != PRUNTIME_NOT_FOUND) return 1;
+    if (rc != PRUNTIME_OK && rc != PRUNTIME_NOT_FOUND) {
+#ifdef _DEBUG
+        app_runtime_services_debug(services, "result", rc);
+#endif
+        return 1;
+    }
     delivered = 0;
-    return PBrowser_ScriptSessionPumpServices(services->session, 1, &delivered) == PBROWSER_OK ? 0 : 1;
+    rc = PBrowser_ScriptSessionPumpServices(services->session, 1, &delivered);
+#ifdef _DEBUG
+    if (rc != PBROWSER_OK) app_runtime_services_debug(services, "callback", rc);
+#endif
+    return rc == PBROWSER_OK ? 0 : 1;
 }
 
 void AppRuntimeServices_Revoke(AppRuntimeServices *services)

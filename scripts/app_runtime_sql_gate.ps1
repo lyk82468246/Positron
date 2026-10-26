@@ -1,8 +1,11 @@
 # Actual EXE/SDK/worker/Runtime/DB integration; no build or forced termination.
 param([Parameter(Mandatory=$true)][string]$RunRoot,
     [ValidatePattern('^app-runtime-sql(?:-[a-z0-9-]+)?$')]
-    [string]$EvidenceName='app-runtime-sql')
+    [string]$EvidenceName='app-runtime-sql',
+    [ValidateSet('one','two')][string[]]$Roots=@('one','two'))
 $ErrorActionPreference='Stop'
+if ($Roots.Count -lt 1 -or $Roots.Count -gt 2 -or
+        ($Roots | Select-Object -Unique).Count -ne $Roots.Count) { throw 'Select one or two distinct roots.' }
 if ([Environment]::Is64BitProcess) { throw 'Use 32-bit Windows PowerShell.' }
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $run=[IO.Path]::GetFullPath($RunRoot)
@@ -58,7 +61,7 @@ try {
         }
     }
     $fixture=Join-Path $repo 'positron_app\fixtures\runtime-sql'
-    foreach ($label in @('one','two')) {
+    foreach ($label in $Roots) {
         $root=$remote+'\fixture-'+$label
         [PositronDeviceRapi]::EnsureDirectory($root)
         [PositronDeviceRapi]::EnsureDirectory($root+'\schema')
@@ -105,11 +108,13 @@ try {
     foreach ($item in $after.GetEnumerator()) {
         if (!$before.ContainsKey($item.Key) -or $before[$item.Key] -ne $item.Value) { throw 'New crash dump.' }
     }
+    $isolation=if ($Roots.Count -eq 2) { 'isolated' } else { 'NOT_RUN' }
     [IO.File]::WriteAllLines((Join-Path $evidence 'result.txt'),@('status=PASS',
-        'binary_roundtrip=11/11','processes=4','rows_per_root=32','same_id_roots=isolated',
+        'binary_roundtrip=11/11',('processes='+($Roots.Count*2)),('selected_roots='+($Roots -join ',')),
+        'rows_per_root=32',('same_id_roots='+$isolation),
         'reopen=persistent','sdk=real-author-page','normal_exit=zero_holders',
         'crash_check=PASS','user_data=untouched','manual_ui=NOT_RUN'))
-    Write-Host 'APP RUNTIME SQL PASS processes=4 roots=isolated reopen=persistent normal_exit=zero'
+    Write-Host ('APP RUNTIME SQL PASS processes='+($Roots.Count*2)+' roots='+($Roots -join ',')+' isolation='+$isolation+' reopen=persistent normal_exit=zero')
 } finally {
     if ($connected) { [PositronDeviceRapi]::Disconnect() }
 }

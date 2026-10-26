@@ -23,31 +23,30 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ### Runtime 目录资源与 SQL SDK 已通过自动门
 
-公共合同见 [Runtime README](../positron_runtime/README.md)，宿主入口/线程/授权见
-[Runtime 宿主](../positron_app/RUNTIME_HOST.md)。EXE 已接显式 SQL 原生确认、
-worker-owned storage/逐页队列、嵌入 SDK 与纯资源 Notes 示例。owner worker 持有目录/DB，
-UI 仅持 metadata 和复制队列别名；
-原标签显式绑定实例，其他标签/网页不按 app URL 获权。取消候选立即撤销服务，
-不等待资源 worker 结束；保留已提交旧页服务。最新修正已通过正式 Debug/Release 构建。
-EXE 已消费 Browser/Core 空资源新入口；旧入口兼容和所有权见
-[空资源合同](../positron_app/RUNTIME_EMPTY_RESOURCE_REQUEST.md)。
-`tmp/device-runs/20261025-200428-app-runtime-page/` 在当前 Unitech 连接通过完整页面门：
-三个真实空资源、空脚本有序执行、旧页回滚、取消/stale、owner 关闭，11/11 回读哈希、
-正常退出零引用及 crash PASS；无用户库修改。不能沿用旧模拟器的 DPI/OS 信息。
-SQL 完整包 `20261025-203756-app-runtime-sql` 的 `app-runtime-sql-final/result.txt` 为最终证据：
-匹配取消撤销修正的正式 stage EXE，十 DLL 不变；11/11 回读哈希、四进程、每根 32 条、
-同 ID 两目录隔离/重开、typed int64/中文/引号、回滚/预算、队列/离页撤销/关闭及 crash PASS，
-正常退出零引用，无用户库修改。中间门证据独立保留，首次沙箱 RAPI 0x80070005 未启动应用。
-首次覆盖传输因 CeMoveFile 不替换已有目标而 device=5；零引用后仅替换隔离 EXE 并复验。
-正式 Debug/Release 增量构建、C89/审计、SDK 9 项与 Notes mock 8 项通过；Release 排除诊断。
-VS 崩溃、Debug rebuild 依赖顺序和沙箱 C1902 的失败日志保留在 tmp/runtime-sql-*，
-正常宿主串行 build/stage 恢复；不把失败 rebuild 写为通过。
+公共合同见 [Runtime README](../positron_runtime/README.md)，平台/授权/队列/SDK 与 DOM 写入见
+[Runtime 宿主](../positron_app/RUNTIME_HOST.md)。原标签绑定实例，不按 URL 授权；
+取消候选立即撤销服务，保留旧页服务，产品语义仍由 DLL 拥有。
+`tmp/device-runs/20261025-200428-app-runtime-page/`（Unitech）的空 CSS/import/JS、
+回滚/隔离/关闭、11/11 哈希与正常退出/crash PASS；其 OS/DPI 不外推新设备。
+Notes 卡在 Working/Save 禁用的根因是 EXE 仅注册 legacy DOM write，SQL callback 的
+innerHTML 抛错；`tmp/notes-save-callback-error.log` 为 PID1443242578 的确切错误。
+已薄接公开 Ex8 与其前置 Core 写入原语，沿原 mutation 通知重排，无 DLL/ABI 改动。
+服务失败阶段/Browser 错误仅 Debug 记录；用户已确认原目录修复版可以保存。
+当前设备是 Microsoft DeviceEmulator VGA，不沿用 Unitech 的 OS/DPI。正式包证据为
+`tmp/device-runs/20261026-150410-app-runtime-sql/app-runtime-sql-render-one/result.txt`：
+11/11 哈希、单目录两进程、32 条、真实 SQL callback 生成带按钮/转义文本的列表、重开、
+typed/回滚/预算/撤销/关闭及 crash PASS，正常退出零引用；isolation=NOT_RUN。
+同包默认双目录门仍 FAIL：two-1 在 SQL grant 的存储准备阶段报开发应用无法打开，
+180 秒超时；原日志 app-runtime-sql/two-1.log 保留。主线只读审查要求先消费现有 StorageError。
+不能把两轮 PASS 追认为四轮隔离通过，也不能据此关闭旧 CANTOPEN；旧四进程证据归 0991b729。
+Debug/Release/C89/审计/Notes mock 通过，Release 无新诊断；中断后重试日志见
+tmp/notes-save-release-interrupted.log。
 
-公共空资源 c76887c1 的双配置门通过；旧 resolver 崩溃/探针超槽的修正、
-失败包与转储统一见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)，原预算/断言不变。
+公共空资源旧失败与恢复统一见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
 
-Notes 源码与 mock 不代替原生 CRUD/输入/触摸/SIP/旋转；确认 Yes/No、双语、跨文档片段、
-完整 UI 与 Release 应用门仍未验收。最终设备自检已正常退出，不留运行应用。
+Notes 人工入口仍为存储卡 Positron Notes.lnk，指向 app-notes-manual-20261026-082656；
+原数据库/作者资源未改，只更新匹配修复 EXE，用户正在运行。诊断/失败实例按用户授权精确清理，
+不计正常退出。其余 CRUD/搜索/分页、SIP/旋转/拒绝、双语和 Release 应用门仍待验收。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -500,9 +499,9 @@ ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验�
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-空资源与 SQL SDK 四进程最终门已通过并退出待实现；唯一下一步验收纯资源 Notes 的
-原生 CRUD/搜索/分页、输入/SIP/旋转与确认拒绝。构建/设备独占窗口已结束，
-其他会话使用前重新协调。不把目录句柄交UI或按URL授权，不开挂起门、不改用户DB。
+ROADMAP 已复核：Notes 保存阻塞已修复并人工通过；唯一下一步取跨目录启动失败的结构化
+存储错误，由主线/DLL 审查后再定 owner；其余 Notes 交互继续人工验收。当前 Notes 正运行，
+构建/设备使用前重新协调。不把目录句柄交UI或按URL授权，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自
