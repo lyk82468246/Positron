@@ -1,6 +1,29 @@
 #include <stdlib.h>
 #include <string.h>
 #include "app_runtime_app.h"
+#ifdef _DEBUG
+#include <stdio.h>
+#include "app_debug.h"
+
+#define APP_RUNTIME_STORAGE_ERROR_UNSET (-32767)
+
+static void app_runtime_storage_debug(int result,
+        const PRuntimeStorageError *error)
+{
+    char message[768];
+
+    _snprintf(message, sizeof(message) - 1,
+            "runtime-storage phase=open-end worker=%lu rc=%d error_result=%d "
+            "db_result=%d db_category=%d sqlite_code=%d sqlite_extended_code=%d "
+            "failed_schema_version=%lu cleanup_result=%d message=%.255s\r\n",
+            (unsigned long) GetCurrentThreadId(), result, error->result,
+            error->db_result, error->db_category, error->sqlite_code,
+            error->sqlite_extended_code, error->failed_schema_version,
+            error->cleanup_result, error->message);
+    message[sizeof(message) - 1] = '\0';
+    AppDebug_Log(message);
+}
+#endif
 
 struct AppRuntimePage {
     AppRuntimeApp *app;
@@ -106,6 +129,9 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
     PRuntimeStorageProvider storage_provider;
     PRuntimeStorageOptions storage_options;
     PRuntimeResourceReference resolved;
+#ifdef _DEBUG
+    PRuntimeStorageError storage_error;
+#endif
     int rc;
 
     app = (AppRuntimeApp *) parameter;
@@ -151,8 +177,21 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
             storage_options.cancelled = app_runtime_app_cancelled;
             storage_options.user_data = app;
             AppRuntimePlatform_StorageProvider(&platform, &storage_provider);
+#ifdef _DEBUG
+            /* Optional native snapshot is copied before failure cleanup.
+             * Keep an observable sentinel for early exits that leave it alone. */
+            memset(&storage_error, 0, sizeof(storage_error));
+            storage_error.size = sizeof(storage_error);
+            storage_error.version = PRUNTIME_VERSION;
+            storage_error.result = APP_RUNTIME_STORAGE_ERROR_UNSET;
+            AppDebug_Log("runtime-storage phase=open-begin\r\n");
+            rc = PRuntime_DevelopmentStorageOpen(directory, &storage_options,
+                    &storage_provider, &storage, &storage_error);
+            app_runtime_storage_debug(rc, &storage_error);
+#else
             rc = PRuntime_DevelopmentStorageOpen(directory, &storage_options,
                     &storage_provider, &storage, NULL);
+#endif
             app->result = rc;
             InterlockedExchange(&app->state, rc == PRUNTIME_OK ?
                     APP_RUNTIME_READY : APP_RUNTIME_FAILED);

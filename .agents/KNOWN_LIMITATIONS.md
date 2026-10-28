@@ -52,7 +52,7 @@
 ## 纯资源应用 Runtime
 
 - Notes 保存已人工通过；其余 CRUD/搜索/分页、SIP/旋转/拒绝待验收，见[宿主](../positron_app/RUNTIME_HOST.md)。
-- 跨目录启动失败待存储错误取证，单目录门不证明隔离；旧 mkdir183/CANTOPEN 未关闭，ZIP/PXI 暂缓。
+- 启动诊断已接，原 two 本轮未复现，根因未知，待非零快照；单根不证明隔离，旧 mkdir183/CANTOPEN 未关闭，ZIP/PXI 暂缓。
 
 ## HTML、CSS 与布局
 

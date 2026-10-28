@@ -147,6 +147,20 @@ callback table。`AppRuntimePlatform` 必须活到全部回调结束；Runtime �
 原生路径和诊断只写入 Debug 日志，不交给作者 JS；浏览器的 `positron.db` 不参与此映射。
 正常重开不证明文件 FULL、I/O 故障、真实断电恢复或旧 ROM 的间歇存储故障已经解决。
 
+Debug owner worker 为 `PRuntime_DevelopmentStorageOpen` 初始化完整 v1 错误快照，
+`result=-32767` 表示尚未被 API 写入；记录 open-begin，返回后立即记录实际 rc、Runtime/DB
+分类、SQLite 主/扩展码、失败迁移版本、cleanup 结果及最多 255 字节 message，再发布原状态。
+不能由清理后的 GetLastError 猜测 DB 错误，也不能把未写快照的零字段当作成功。
+Release 不含这些诊断。仅显式 Debug SQL 自检在存储启动失败时记录 FAIL 并走正常 WM_CLOSE，
+普通启动仍显示原本地化错误框；两者都不启动作者代码或自动重试存储。
+
+[app_runtime_storage_probe.ps1](../scripts/app_runtime_storage_probe.ps1) 用 32 位 PowerShell 接受原正式 SQL `-RunRoot`、
+正式 Debug `-DiagnosticStage` 和新的 `-EvidenceName runtime-storage-...`，只复测原 `fixture-two`。
+工具先检查双空间/零引用、原 EXE 与十 DLL 哈希及夹具，再冷备份 data 树（深度 5、总条目 256）。
+诊断 EXE 另名放在原父目录，保留原镜像与存储位置；结束后正常退出审计、冷备份与 crash 检查。
+结果区分 PAGE_PASS 和 CAPTURED_FAILURE，二者均不代表跨目录隔离通过；原失败证据不覆盖，
+不删除/替换数据库、不改身份或卷、不强制结束用户应用。
+
 ## 显式 Debug 平台门
 
 通过正式 `scripts/device_gate.ps1 -Candidate app-runtime-platform -Configuration Debug

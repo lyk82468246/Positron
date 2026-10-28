@@ -10040,6 +10040,16 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
             return 2;
         }
         if (!AppRuntimeApp_SqlReady(g_runtime_app)) {
+#ifdef _DEBUG
+            if (g_runtime_debug_mode == 2) {
+                /* Preserve the worker's error snapshot, then use normal
+                 * teardown instead of leaving automation in a modal box. */
+                AppDebug_Log("runtime-sql FAIL stage=storage-open\r\n");
+                AppRuntimeApp_RequestClose(g_runtime_app);
+                PostMessage(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            }
+#endif
             app_show_error(APP_TEXT_RUNTIME_FAILED);
             AppRuntimeApp_RequestClose(g_runtime_app);
             return 0;

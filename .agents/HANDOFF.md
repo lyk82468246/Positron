@@ -28,25 +28,22 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 取消候选立即撤销服务，保留旧页服务，产品语义仍由 DLL 拥有。
 `tmp/device-runs/20261025-200428-app-runtime-page/`（Unitech）的空 CSS/import/JS、
 回滚/隔离/关闭、11/11 哈希与正常退出/crash PASS；其 OS/DPI 不外推新设备。
-Notes 卡在 Working/Save 禁用的根因是 EXE 仅注册 legacy DOM write，SQL callback 的
-innerHTML 抛错；`tmp/notes-save-callback-error.log` 为 PID1443242578 的确切错误。
-已薄接公开 Ex8 与其前置 Core 写入原语，沿原 mutation 通知重排，无 DLL/ABI 改动。
-服务失败阶段/Browser 错误仅 Debug 记录；用户已确认原目录修复版可以保存。
-当前设备是 Microsoft DeviceEmulator VGA，不沿用 Unitech 的 OS/DPI。正式包证据为
+Notes Working/Save 禁用已由 0448cd28 补齐 Ex8 DOM write，原目录保存人工通过；
+无 DLL/ABI 改动，线程/语义及 Debug 错误日志合同见宿主文档。既有单根证据为
 `tmp/device-runs/20261026-150410-app-runtime-sql/app-runtime-sql-render-one/result.txt`：
 11/11 哈希、单目录两进程、32 条、真实 SQL callback 生成带按钮/转义文本的列表、重开、
 typed/回滚/预算/撤销/关闭及 crash PASS，正常退出零引用；isolation=NOT_RUN。
-同包默认双目录门仍 FAIL：two-1 在 SQL grant 的存储准备阶段报开发应用无法打开，
-180 秒超时；原日志 app-runtime-sql/two-1.log 保留。主线只读审查要求先消费现有 StorageError。
-不能把两轮 PASS 追认为四轮隔离通过，也不能据此关闭旧 CANTOPEN；旧四进程证据归 0991b729。
-Debug/Release/C89/审计/Notes mock 通过，Release 无新诊断；中断后重试日志见
-tmp/notes-save-release-interrupted.log。
+旧双目录 two-1 启动 FAIL 保留；本轮已接 Debug StorageError，原 two 两进程 PAGE_PASS，
+rc/error_result 与 DB/SQLite/schema/cleanup 全 0，哈希/冷备份/正常退出/crash 通过。
+原 EXE、身份与存储位置不变；本轮未复现，根因未知，不能追认旧失败或隔离 PASS。
+逐阶段、PID、证据定位与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。
+当前 viewport=240×248，不沿用旧设备状态；Debug/Release/C89/审计通过，Release 无新诊断。
 
 公共空资源旧失败与恢复统一见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
 
 Notes 人工入口仍为存储卡 Positron Notes.lnk，指向 app-notes-manual-20261026-082656；
-原数据库/作者资源未改，只更新匹配修复 EXE，用户正在运行。诊断/失败实例按用户授权精确清理，
-不计正常退出。其余 CRUD/搜索/分页、SIP/旋转/拒绝、双语和 Release 应用门仍待验收。
+Notes 数据库/作者资源本轮未动；开始及两轮结束均零占用，没有关闭用户应用。
+其余 CRUD/搜索/分页、SIP/旋转/拒绝、双语和 Release 应用门仍待验收。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -499,9 +496,9 @@ ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验�
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-ROADMAP 已复核：Notes 保存阻塞已修复并人工通过；唯一下一步取跨目录启动失败的结构化
-存储错误，由主线/DLL 审查后再定 owner；其余 Notes 交互继续人工验收。当前 Notes 正运行，
-构建/设备使用前重新协调。不把目录句柄交UI或按URL授权，不开挂起门、不改用户DB。
+ROADMAP 已复核：存储快照诊断已接，原 two 本轮未复现失败；唯一下一步在再次失败时用
+已保留探针取非零快照，再由主线审查 owner，不盲改 DLL/存储策略。其余 Notes 交互待人工。
+当前无进程占用，窗口交回主线，使用前重新核对。不按URL授权，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自
