@@ -239,29 +239,23 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：目录资源/SDK 已接线，Notes 自动门通过、交互待验收；旧启动故障未复现，PXI 暂缓。** 第三方仅提供资源与manifest，
-使用`app://`并复用现有浏览器UI；Runtime后续能力、DB受限集成、Core/Browser资源与授权合同
-由主线与DLL会话负责，EXE会话只接平台、SDK及示例。完整合同见
-[运行时计划](../docs/RUNTIME_PLAN.md)，不在本节复制字段/预算。
-DB 受限请求/迁移/严格版本读取已退出待实现范围，见
-[DB 合同](../positron_db/README.md#opt-in-restricted-requests)。
-元数据/app 引用、目录只读资源、开发存储/迁移/SQL JSON、异步队列/撤销已有公共合同，
-退出待开发范围；WM provider 与只读页面亦已接通，预算见[宿主](../positron_app/RUNTIME_HOST.md)。
-元数据/URL/目录句柄不自动授予 SQL 或安装身份，不把准入当执行授权；证据统一见 HANDOFF。
-Core/Browser 空资源 READY/长度零及 CSS/import/script 缓存合同已退出待实现，调用与旧入口
-兼容边界见组件 README。EXE 已完成真实空 CSS/import/JS 页面门，不再列为待接入；
-继续保护必需失败旧页保留与取消/stale，不填假字节、不在宿主重造终态。
-UI/worker 原生 I/O 与 DB 最小对照已具备；DB 现可按线程/调用保留实际
-VFS 操作、原生错误和路径，既有错误 ABI 不变。既有公共合同和 EXE 平台门不外推新设备；
-用户已授权 EXE 继续；旧设备间歇 CANTOPEN/mkdir183 仍待实际失败的调用级取证，不因换设备关闭。
-已接通的只读目录入口/可信确认/owner worker/原候选资源不再列为待开发；
-Notes CRUD/搜索/分页/重开与双目录隔离已过自动门；触摸、SIP/旋转/拒绝和 Release 待验收。
-旧启动根因仍未知；再现时取非零快照判 owner，不追认旧失败通过。
-不把自动夹具当作原生确认/作者 UI 人工通过，不移交 live handle 到 UI，不重开 FULL/断电门；
-不把受限 SQL 原语等同于实例授权或把旧 local-full/migration 直接开放给作者请求。
-当前 ROM 的只读 ZIP 清单未取得合格系统 provider；PXI/安装身份/关联暂缓，只有取得实际系统接口及
-完成/错误/取消、Unicode/包含性/规模/清理证据后恢复，不引第三方解压库或私有 fallback。普通网页不因 URL 获权，
-不开放浏览器数据库；保留旧ABI、用户数据和暂停的故障门，构建/设备必须独占串行。
+**状态：目录/SDK/Notes 自动门及 Debug 交互基本通过；已安装授权待合同，PXI 仍待系统 ZIP。**
+第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
+[运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
+已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
+
+先由主线与DLL定义已安装身份、revision/内容验证及批准能力快照；EXE 随后接主库安装登记与
+风险 UI。PXI 安装/更新按声明能力确认，记录有效后正常启动免提示；手动目录每次新启动仍确认。
+URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
+安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
+
+Notes 剩余宿主双语及 Release 普通启动验收。旧启动/CANTOPEN/mkdir183 根因仍未知，
+再次失败时取非零快照及 VFS 原始返回再判 owner，不用新设备或新门关闭旧失败，不重开 FULL/断电门。
+受限 SQL 仍服从[DB 合同](../positron_db/README.md#opt-in-restricted-requests)，live handle 不交 UI。
+
+当前 ROM 未取得合格系统 ZIP provider，实际 PXI 解包/安装/关联仍暂缓；需系统接口及完成/错误/
+取消、Unicode/包含性/规模/清理证据后恢复，不引第三方库或私有 fallback。安装身份合同可先行设计，
+不把它写成 PXI 已可安装。普通网页不因 URL 获权；构建与设备门仍须协调串行。
 
 #### Script. 编译热点与单次长调用
 

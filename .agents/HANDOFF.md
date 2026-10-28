@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes 原生操作仍待人工验收。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -43,8 +43,9 @@ rc/error_result 与 DB/SQLite/schema/cleanup 全 0，哈希/冷备份/正常退�
 
 Notes 真实页面 CRUD/搜索/四页/重开及双目录隔离已通过四进程门，11/11 哈希、正常退出及 crash PASS；
 证据与夹具失败边界见[页面验收](../docs/history/NOTES_UI_ACCEPTANCE.md)。原用户库/快捷方式未动。
-存储卡 Positron Notes Check.lnk 指向新包 notes-one，恢复原 HTML，保留26条；普通授权框待首屏人工复核。
-触摸、SIP/旋转/拒绝、宿主双语和 Release 应用门待验收，不以自动触发按钮替代。
+Positron Notes Check.lnk 指向新包 notes-one；首屏/分页/输入/保存/重开/删除/SIP/旋转/拒绝人工基本通过。
+宿主双语和 Release 普通启动待验收。PXI 安装时按声明能力确认，主库登记后正常启动免提示；
+开发目录仍每次提示。仅设计已批准，先补 Runtime 已安装身份/批准快照合同，再接 EXE；不改 v4 表。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -497,9 +498,9 @@ ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验�
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-ROADMAP 已复核：Notes 页面/双目录四进程门通过；唯一下一步逐项人工验收首屏、输入、旋转和拒绝。
-原启动故障未复现，再现时取非零快照判 owner，不盲改 DLL。当前 Notes 普通授权框待用户确认，
-设备继续用于交互验收；不按URL授权，不开挂起门、不改用户DB。
+ROADMAP 已复核：Notes Debug 交互人工基本通过；下一步由主线补已安装身份/授权合同，EXE 后接主库登记。
+Release/双语待验收；旧启动故障再现时取非零快照。Notes 最后由用户重开，构建前重新核对占用；
+不按URL授权，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自

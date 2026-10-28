@@ -51,7 +51,7 @@
 
 ## 纯资源应用 Runtime
 
-- Notes CRUD/搜索/分页/重开及双目录自动门通过；触摸、SIP/旋转/拒绝、Release 待验收，见[宿主](../positron_app/RUNTIME_HOST.md)。
+- Notes 自动门/Debug交互基本通过；双语/Release待验收，安装授权登记待DLL合同，见[宿主](../positron_app/RUNTIME_HOST.md)。
 - 旧启动故障未复现，根因未知，待非零快照；新门不关闭旧 mkdir183/CANTOPEN，ZIP/PXI 暂缓。
 
 ## HTML、CSS 与布局
