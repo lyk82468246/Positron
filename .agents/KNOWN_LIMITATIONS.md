@@ -51,8 +51,8 @@
 
 ## 纯资源应用 Runtime
 
-- Notes 保存已人工通过；其余 CRUD/搜索/分页、SIP/旋转/拒绝待验收，见[宿主](../positron_app/RUNTIME_HOST.md)。
-- 启动诊断已接，原 two 本轮未复现，根因未知，待非零快照；单根不证明隔离，旧 mkdir183/CANTOPEN 未关闭，ZIP/PXI 暂缓。
+- Notes CRUD/搜索/分页/重开及双目录自动门通过；触摸、SIP/旋转/拒绝、Release 待验收，见[宿主](../positron_app/RUNTIME_HOST.md)。
+- 旧启动故障未复现，根因未知，待非零快照；新门不关闭旧 mkdir183/CANTOPEN，ZIP/PXI 暂缓。
 
 ## HTML、CSS 与布局
 

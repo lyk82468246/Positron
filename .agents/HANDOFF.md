@@ -37,13 +37,14 @@ typed/回滚/预算/撤销/关闭及 crash PASS，正常退出零引用；isolat
 rc/error_result 与 DB/SQLite/schema/cleanup 全 0，哈希/冷备份/正常退出/crash 通过。
 原 EXE、身份与存储位置不变；本轮未复现，根因未知，不能追认旧失败或隔离 PASS。
 逐阶段、PID、证据定位与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。
-当前 viewport=240×248，不沿用旧设备状态；Debug/Release/C89/审计通过，Release 无新诊断。
+该次取证 viewport=240×248，仅对该次有效；Debug/Release/C89/审计通过，Release 无新诊断。
 
 公共空资源旧失败与恢复统一见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
 
-Notes 人工入口仍为存储卡 Positron Notes.lnk，指向 app-notes-manual-20261026-082656；
-Notes 数据库/作者资源本轮未动；开始及两轮结束均零占用，没有关闭用户应用。
-其余 CRUD/搜索/分页、SIP/旋转/拒绝、双语和 Release 应用门仍待验收。
+Notes 真实页面 CRUD/搜索/四页/重开及双目录隔离已通过四进程门，11/11 哈希、正常退出及 crash PASS；
+证据与夹具失败边界见[页面验收](../docs/history/NOTES_UI_ACCEPTANCE.md)。原用户库/快捷方式未动。
+存储卡 Positron Notes Check.lnk 指向新包 notes-one，恢复原 HTML，保留26条；普通授权框待首屏人工复核。
+触摸、SIP/旋转/拒绝、宿主双语和 Release 应用门待验收，不以自动触发按钮替代。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -496,9 +497,9 @@ ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验�
 按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
 设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
 ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-ROADMAP 已复核：存储快照诊断已接，原 two 本轮未复现失败；唯一下一步在再次失败时用
-已保留探针取非零快照，再由主线审查 owner，不盲改 DLL/存储策略。其余 Notes 交互待人工。
-当前无进程占用，窗口交回主线，使用前重新核对。不按URL授权，不开挂起门、不改用户DB。
+ROADMAP 已复核：Notes 页面/双目录四进程门通过；唯一下一步逐项人工验收首屏、输入、旋转和拒绝。
+原启动故障未复现，再现时取非零快照判 owner，不盲改 DLL。当前 Notes 普通授权框待用户确认，
+设备继续用于交互验收；不按URL授权，不开挂起门、不改用户DB。
 
 脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
 EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自

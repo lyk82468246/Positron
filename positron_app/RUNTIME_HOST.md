@@ -108,6 +108,21 @@ SQL 另用正式 `app-runtime-sql` Debug 完整包与 `scripts/app_runtime_sql_g
 `same_id_roots=NOT_RUN`，不能替代失败的双目录隔离门。每次使用新 EvidenceName，保留旧失败。
 该门不修改用户库，也不代替 Notes 真正触摸/编辑验收。
 
+真实 Notes 另用同类正式 Debug 完整包与 `scripts/app_runtime_notes_gate.ps1 -RunRoot <正式目录>`。
+`--selftest-runtime-notes` 仅接受该包中精确的 `notes-one/two` 根，Release 排除入口和断言。
+脚本要求全新根，将原 Notes 资源复制到独立目录，仅为测试 HTML 追加驱动脚本；
+不修改示例源码或已有用户数据。夹具通过原按钮事件驱动增删改查、标题/正文搜索、
+四页及 Previous，种入 25 条并保留 26 条记录；两根同 ID 按 one/two/one/two 正常退出重开，
+同时核对各自内容和另一根数据不可见，配合 11/11 哈希、双空间、零引用和 crash 门。
+这是一组新的 Notes 集成证据，不追认旧 SQL 启动失败已修复。
+结束后恢复原始示例 HTML，测试脚本不再被引用；`-OpenManual` 普通启动第一根供
+[集中人工验收](examples/notes/README.md#集中人工验收)，仍需用户确认权限。脚本触发事件
+不证明真实触摸、SIP、旋转或 Release 普通启动已通过。
+该自检另写一份不足 448 字节的原生终态文件 `\Temp\positron-notes-result.log`，
+脚本清除已保留的旧文件并严格匹配新 PID，正常退出后再收取原 Debug 日志。
+通用日志仍保持 128 KiB 上限，不以大量控件事件挤掉终态或扩大日志预算；
+所有进程退出后等待系统 dump writer，再核对 crash 清单。
+
 ## 调用与所有权
 
 在拥有目录实例和存储的 worker 上调用 `AppRuntimePlatform_Init`，再通过
@@ -151,7 +166,7 @@ Debug owner worker 为 `PRuntime_DevelopmentStorageOpen` 初始化完整 v1 错�
 `result=-32767` 表示尚未被 API 写入；记录 open-begin，返回后立即记录实际 rc、Runtime/DB
 分类、SQLite 主/扩展码、失败迁移版本、cleanup 结果及最多 255 字节 message，再发布原状态。
 不能由清理后的 GetLastError 猜测 DB 错误，也不能把未写快照的零字段当作成功。
-Release 不含这些诊断。仅显式 Debug SQL 自检在存储启动失败时记录 FAIL 并走正常 WM_CLOSE，
+Release 不含这些诊断。仅显式 Debug SQL/Notes 自检在存储启动失败时记录 FAIL 并走正常 WM_CLOSE，
 普通启动仍显示原本地化错误框；两者都不启动作者代码或自动重试存储。
 
 [app_runtime_storage_probe.ps1](../scripts/app_runtime_storage_probe.ps1) 用 32 位 PowerShell 接受原正式 SQL `-RunRoot`、

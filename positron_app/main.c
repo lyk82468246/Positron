@@ -122,6 +122,7 @@ static int g_runtime_debug_fallbacks;
 static int g_runtime_debug_empty_resources;
 static const char *g_runtime_sql_seed;
 static void app_runtime_debug_tick(HWND hwnd);
+static void app_runtime_notes_debug_result(const char *message);
 static void app_runtime_sql_debug_tick(HWND hwnd);
 #endif
 static UINT g_script_timer_sequence = APP_NAV_SCRIPT_TIMER_BASE;
@@ -1713,9 +1714,11 @@ static int app_parse_startup_arguments(LPWSTR command_line,
         }
 #ifdef _DEBUG
         if (app_command_ascii_equal(argument, "--selftest-runtime-app") ||
-                app_command_ascii_equal(argument, "--selftest-runtime-sql")) {
+                app_command_ascii_equal(argument, "--selftest-runtime-sql") ||
+                app_command_ascii_equal(argument, "--selftest-runtime-notes")) {
             if (g_runtime_debug_mode) return 1;
-            g_runtime_debug_mode = app_command_ascii_equal(argument, "--selftest-runtime-sql") ? 2 : 1;
+            g_runtime_debug_mode = app_command_ascii_equal(argument, "--selftest-runtime-notes") ? 3 :
+                    (app_command_ascii_equal(argument, "--selftest-runtime-sql") ? 2 : 1);
             wcscpy(argument, L"--app-dir");
         }
 #endif
@@ -9994,7 +9997,7 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         DWORD length;
         const WCHAR *prefix;
 
-        prefix = g_runtime_debug_mode == 2 ?
+        prefix = g_runtime_debug_mode >= 2 ?
                 L"\\Storage Card\\Temp\\Positron-device-gate\\app-runtime-sql-" :
                 L"\\Storage Card\\Temp\\Positron-device-gate\\app-runtime-page-";
         length = GetModuleFileNameW(NULL, executable, MAX_PATH);
@@ -10004,12 +10007,13 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         if (slash == NULL) return -2;
         *slash = 0;
         if (wcslen(executable) + 16 >= MAX_PATH) return -2;
-        wcscat(executable, g_runtime_debug_mode == 2 ? L"\\fixture-one" : L"\\fixture");
+        wcscat(executable, g_runtime_debug_mode == 3 ? L"\\notes-one" :
+                (g_runtime_debug_mode == 2 ? L"\\fixture-one" : L"\\fixture"));
         if (!WideCharToMultiByte(CP_UTF8, 0, executable, -1, expected,
                 sizeof(expected), NULL, NULL)) return -2;
         g_runtime_sql_seed = "one";
         if (strcmp(expected, g_startup_app_directory)) {
-            if (g_runtime_debug_mode != 2) return -2;
+            if (g_runtime_debug_mode < 2) return -2;
             strcpy(expected + strlen(expected) - 3, "two");
             if (strcmp(expected, g_startup_app_directory)) return -2;
             g_runtime_sql_seed = "two";
@@ -10041,10 +10045,12 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         }
         if (!AppRuntimeApp_SqlReady(g_runtime_app)) {
 #ifdef _DEBUG
-            if (g_runtime_debug_mode == 2) {
+            if (g_runtime_debug_mode >= 2) {
                 /* Preserve the worker's error snapshot, then use normal
                  * teardown instead of leaving automation in a modal box. */
-                AppDebug_Log("runtime-sql FAIL stage=storage-open\r\n");
+                if (g_runtime_debug_mode == 3)
+                    app_runtime_notes_debug_result("runtime-notes FAIL stage=storage-open\r\n");
+                else AppDebug_Log("runtime-sql FAIL stage=storage-open\r\n");
                 AppRuntimeApp_RequestClose(g_runtime_app);
                 PostMessage(hwnd, WM_CLOSE, 0, 0);
                 return 0;
@@ -10065,6 +10071,76 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
 static int app_runtime_debug_evaluate(const char *source)
 {
     return AppScript_Evaluate(g_script, source, (int) strlen(source));
+}
+
+/* The general Debug log is bounded and a CRUD fixture can fill it before
+ * finishing. Keep one small native terminal proof without raising its cap. */
+static void app_runtime_notes_debug_result(const char *message)
+{
+    HANDLE file;
+    char line[448];
+    DWORD written;
+    DWORD bytes;
+
+    AppDebug_Log(message);
+    _snprintf(line, sizeof(line) - 1, "positron pid=%lu tick=%lu %s",
+            (unsigned long) GetCurrentProcessId(),
+            (unsigned long) GetTickCount(), message);
+    line[sizeof(line) - 1] = 0;
+    bytes = (DWORD) strlen(line);
+    file = CreateFileW(L"\\Temp\\positron-notes-result.log", GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file != INVALID_HANDLE_VALUE) {
+        written = 0;
+        if (!WriteFile(file, line, bytes, &written, NULL) || written != bytes) {
+            CloseHandle(file);
+            DeleteFileW(L"\\Temp\\positron-notes-result.log");
+            return;
+        }
+        CloseHandle(file);
+    }
+}
+
+/* Test-only driver of the unmodified Notes UI. Business operations and SQL
+ * assertions live in isolated author fixtures, never in this dispatcher. */
+static void app_runtime_notes_debug_tick(HWND hwnd)
+{
+    char text[192];
+    char expected[96];
+    char log[320];
+
+    text[0] = 0;
+    if (!g_runtime_tab_id || g_tabs_closing || g_runtime_debug_phase == 99) return;
+    if (GetTickCount() - g_runtime_debug_started > 120000UL) {
+        if (g_document != NULL) (void) PCore_NodeTextContentById(g_document,
+                "acceptance-status", text, sizeof(text), NULL);
+        goto failed;
+    }
+    if (g_navigation_request != NULL) return;
+    if (g_script == NULL || strcmp(g_current_url, "app://org.positron.notes/index.html") ||
+            app_runtime_debug_evaluate("window.notesAcceptanceTick();") ||
+            PCore_NodeTextContentById(g_document, "acceptance-status", text,
+                    sizeof(text), NULL)) goto failed;
+    if (!strncmp(text, "notes-failed", 12)) goto failed;
+    _snprintf(expected, sizeof(expected) - 1,
+            "notes-ready seed=%s rows=26", g_runtime_sql_seed);
+    expected[sizeof(expected) - 1] = 0;
+    if (strcmp(text, expected)) return;
+    _snprintf(log, sizeof(log) - 1,
+            "runtime-notes PASS seed=%s rows=26 ui=notes\r\n",
+            g_runtime_sql_seed);
+    log[sizeof(log) - 1] = 0;
+    app_runtime_notes_debug_result(log);
+    g_runtime_debug_phase = 99;
+    PostMessage(hwnd, WM_CLOSE, 0, 0);
+    return;
+failed:
+    _snprintf(log, sizeof(log) - 1, "runtime-notes FAIL detail=%.191s\r\n", text);
+    log[sizeof(log) - 1] = 0;
+    app_runtime_notes_debug_result(log);
+    g_runtime_debug_phase = 99;
+    PostMessage(hwnd, WM_CLOSE, 0, 0);
 }
 
 static void app_runtime_sql_debug_tick(HWND hwnd)
@@ -10159,6 +10235,7 @@ static void app_runtime_debug_tick(HWND hwnd)
     PCoreImageDecodeStats again;
 
     if (g_runtime_debug_mode == 2) { app_runtime_sql_debug_tick(hwnd); return; }
+    if (g_runtime_debug_mode == 3) { app_runtime_notes_debug_tick(hwnd); return; }
     if (!g_runtime_tab_id || g_tabs_closing) return;
     if (GetTickCount() - g_runtime_debug_started > 120000UL) goto failed;
     if (g_navigation_request != NULL) return;
