@@ -1,6 +1,6 @@
 # WM6 系统 ZIP 取证与 WM6.5 参考
 
-本文保存 2026-10-29 对本机 SDK 的离线检查，不代表当前设备具备该组件，也不是 PXI 安装验收。
+本文保存 2026-10-29 对本机 SDK 的离线检查和当前已连接设备的只读取证，不是 PXI 安装验收。
 当前安装规则见 [Runtime 计划](../RUNTIME_PLAN.md#pxi-系统-zip-前置门)。
 
 ## 结论与证据层级
@@ -138,15 +138,29 @@ ROM default.hv 的离线字符串还包含 `.zip`、`zipfile` 和 `zipview.exe %
 
 ## 当前设备与剩余验证
 
-此前设备端只尝试已有 RAPI helper 的只读会话：沙箱内返回 0x80070005，提权后初始化等待
-30 秒超时。未取得本轮设备 registry/module 证据，不能归因为 WMDC GUI 损坏。
-未连接/选择/重置设备、写注册表、部署、启动解压器或结束用户应用。继续依赖用户手动连接。
-用户随后明确选择先完成离线分析；本轮 WM6 取证未重试设备。
+此前 RAPI 初始化曾遇到权限错误和超时；用户手动连接后，本次提权只读查询已经成功。
+设备报告 CE 5.2.318、platform 3，AKU 为 `.0.0.0`。这些字段不能单独证明 ROM 身份或
+所有系统功能；用户尚需确认它是否就是此前观察到 Explorer 可解压 ZIP 的同一设备和 ROM。
 
-连接可用后，先读 `.zip` 的真实关联，再读取对应组件及 `mcf.dll`/Shell 注册，不能直接用
-SDK 镜像替换设备系统文件。若实际 WM6 ROM 提供额外归档组件，先核验其版本和可用范围，
-不能把 OEM/后续版本特性标为通用 WM6 基线。然后在隔离原生 fixture 中验证 ABI、只读枚举、
-逐项受控输出与释放，最后才测试指定目录、Unicode、损坏/超限、取消和完成检测。
+当前设备的 HKCR `.zip`、zipfile、CompressedFolder 及所查 Shell automation/ZIP folder
+CLSID 均在打开键时返回 2。对照 `.cab → cabfile`、`wceload.exe "%1" /nodelete` 和
+`.txt → txtfile`、`pword.exe %1` 正常，因此不是整次注册表查询失败。
+`\Windows\mcf.dll`、ZipView.exe、ia_zip.exe 和 zipfldr.dll 的文件属性查询也返回文件不存在。
+这些结果只适用于当前目标及已查询路径，不能否定其他 ROM、其他名称的组件或用户此前的观察。
+
+Explorer、FBROWSER、CEShell、Shell32、AYGShell 和 zlib 等组件存在；其中 ROM 模块不能
+通过当前 RAPI 文件复制路径回读，不能把复制失败写成组件不存在。可成功回读的 office.dll
+SHA256 为 `092318dbdbe50c80bdc6f4410284cb589c42b4a4b1a96ae9a12a3abcb8d413c0`，
+与四个 WM6 SDK 镜像中的该文件一致；这只确认一个文件相同，不证明整个 ROM 相同。
+
+本次设备证据在 `tmp/wm6-zip-device-20261029-143952/`：`os-version.txt`、
+`registry.json`、`windows-components.json`、`rom-copy-results.json` 和成功回读的 Office 文件。
+全过程没有连接/选择/重置设备、设备写入、部署、启动程序或结束进程，也没有执行解压。
+
+下一步先确认此前实际解压的设备和 ROM；若是当前目标，则沿用户实际操作所启动的程序继续
+定位，而不是假定处理程序必然名为 ZipView。找到提供者后，再在隔离原生 fixture 中验证
+ABI、只读枚举、逐项受控输出与释放，最后测试指定目录、Unicode、损坏/超限、取消和完成检测。
+不能直接用 SDK 镜像替换设备系统文件，也不能把 OEM/后续版本特性标为通用 WM6 基线。
 若恢复不到可靠的对象生命周期，保留为有实现但未合格的系统接口，不猜签名上线。
 
 本地证据在 `tmp/zip-shell-review-20261029/`：`sdk-imgfs-inventory.json`、
