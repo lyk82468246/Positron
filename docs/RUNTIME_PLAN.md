@@ -133,6 +133,8 @@ PXI 是标准 ZIP 容器，根目录含同一 manifest，不增加 CRX 签名头
 
 主线与DLL会话先确认系统组件、接口、支持格式、完成通知、错误获取及清理合同。本地 SDK
 的 Shell 自动化接口声明不等于 ROM 已提供 ZIP provider；桌面 CAB 解包 API 不是 ZIP 能力。
+已从本机 WM6.5 SDK 镜像确认 ZipView 调用 Mcf.DLL 的归档接口，见[系统 ZIP 取证](history/WM6_SYSTEM_ZIP_REVIEW.md)；
+尚缺实际设备及完整调用合同，不能把旧文件名扫描未命中写成整个系统没有解压接口。
 须证明 Unicode 文件名、输出目录约束、取消/失败清理、不覆盖、路径逃逸拒绝及解包规模上限。
 
 若系统 ZIP 能力不存在，或不能满足约束及可靠完成检测，停止 PXI 设备安装并反馈；目录应用
