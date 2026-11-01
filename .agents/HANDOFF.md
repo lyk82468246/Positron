@@ -502,7 +502,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮复核 ROADMAP，只读安装核验退出待办。唯一下一步为[首次安装存储与登记恢复设计](../docs/RUNTIME_PLAN.md#只读核验之后的纵切)：明确独立数据身份、迁移失败及两库提交点的重开状态，再实现安装存储；不先接EXE/UI或更新。PXI隔离输出独立待办。
+本轮复核 ROADMAP，[首次安装恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)已定稿，尚未实现。唯一下一步为 Runtime 登记状态/CAS结果/恢复决策及故障fixture，再接安装存储；不先接EXE/UI或更新。PXI隔离输出独立待办。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
