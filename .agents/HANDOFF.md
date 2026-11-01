@@ -21,12 +21,13 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 
 ## 候选与验证证据
 
-### Archive ZIP reader 已验收
+### Archive ZIP 读写已验收
 
 独立 `positron_archive.dll` 固定 miniz 3.1.2；[公共合同](../positron_archive/README.md)不依赖 Runtime/系统 ZIP。
-正式 Debug/Release 与 TEST1374/1375/999 各 3/3 PASS，Archive 加载路径、完整日志、空间/零 holder/crash 通过；
-[验收与失败证据](../docs/history/ARCHIVE_READER_ACCEPTANCE.md)保留夹具规范化和构建失败边界。
-stage/nightly 测试包及模块审计已扩展；writer/PXI/HTTP 压缩未实现，EXE 无新依赖。
+正式双配置与 TEST1375/1376/999 各 3/3 PASS，Archive 路径、完整日志、空间/零 holder/crash 通过；
+设备 ZIP 回拉后的 Python 解包与桌面 7-Zip 校验通过。证据分别见
+[reader](../docs/history/ARCHIVE_READER_ACCEPTANCE.md)及[writer](../docs/history/ARCHIVE_WRITER_ACCEPTANCE.md)。
+writer 同步添加条目、块间取消，Finish 后由宿主提交；未实现 PXI/HTTP 压缩，EXE 无新依赖。
 
 ### Runtime 目录资源与 SQL SDK 已通过自动门
 
@@ -501,9 +502,9 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核并更新 ROADMAP：Archive reader 双配置守卫门已通过；唯一
-下一步为同 DLL 的有界 ZIP writer（STORE/DEFLATE），具体实现指导见路线图 Archive 候选。
-已安装身份/批准快照和 PXI 物理输出/提交仍独立待办，不再以缺少系统 ZIP 阻塞归档实现。
+本轮复核 ROADMAP，Archive 读写退出待办。唯一下一步为 Runtime 的已安装资源清单、内容身份
+与批准快照只读核验，按[运行时计划](../docs/RUNTIME_PLAN.md#第一条可验证纵切)实施，
+不先接安装 UI、主库迁移或作者执行。PXI 隔离输出/提交仍独立待办，不再依赖系统 ZIP。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

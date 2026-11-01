@@ -3267,7 +3267,7 @@ static int mz_stat64(const char *path, struct __stat64 *buffer)
                                         mz_uint level_and_flags, mz_uint64 uncomp_size, mz_uint32 uncomp_crc32, MZ_TIME_T *last_modified,
                                         const char *user_extra_data, mz_uint user_extra_data_len, const char *user_extra_data_central, mz_uint user_extra_data_central_len)
     {
-        mz_uint16 method = 0, dos_time = 0, dos_date = 0;
+        mz_uint16 method = 0, dos_time = 0, dos_date = 33;
         mz_uint level, ext_attributes = 0, num_alignment_padding_bytes;
         mz_uint64 local_dir_header_ofs = pZip->m_archive_size, cur_archive_file_ofs = pZip->m_archive_size, comp_size = 0;
         size_t archive_name_size;
@@ -3554,7 +3554,7 @@ static int mz_stat64(const char *path, struct __stat64 *buffer)
     {
         mz_uint16 gen_flags;
         mz_uint uncomp_crc32 = MZ_CRC32_INIT, level, num_alignment_padding_bytes;
-        mz_uint16 method = 0, dos_time = 0, dos_date = 0, ext_attributes = 0;
+        mz_uint16 method = 0, dos_time = 0, dos_date = 33, ext_attributes = 0;
         mz_uint64 local_dir_header_ofs, cur_archive_file_ofs = pZip->m_archive_size, uncomp_size = 0, comp_size = 0;
         size_t archive_name_size;
         mz_uint8 local_dir_header[MZ_ZIP_LOCAL_DIR_HEADER_SIZE];

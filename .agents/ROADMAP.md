@@ -42,7 +42,7 @@ compatibility corpus、自动测试和设备证据核对候选。路线图中的
 让 Windows Mobile 6 / Windows CE 应用能够按需组合一组稳定、资源有界、可部署的公共 DLL：
 
 - positron_tls.dll、positron_json.dll、positron_db.dll、positron_http.dll、positron_image.dll、
-  positron_media.dll 和 positron_script.dll 提供可独立消费的基础设施；
+  positron_media.dll、positron_archive.dll 和 positron_script.dll 提供可独立消费的基础设施；
 - positron_core.dll 提供无窗口依赖的 HTML/CSS/DOM/layout/paint 与表单基础；
 - positron_browser.dll 提供 Browser session、history、资源事务和脚本到 Core 的协调；
 - positron_runtime.dll 逐步形成 manifest/目录实例、app 资源与隔离服务合同，不将元数据准入当作运行授权；
@@ -239,7 +239,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：目录/SDK/Notes 自动门及 Debug 交互基本通过；已安装授权待合同，Archive reader 已通过自动门，PXI 仍待归档输出与安装合同。**
+**状态：目录/SDK/Notes 自动门及 Debug 交互基本通过；已安装授权待合同，Archive 读写已通过自动门，PXI 仍待归档输出与安装合同。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
@@ -255,17 +255,7 @@ Notes 剩余宿主双语及 Release 普通启动验收。旧启动/CANTOPEN/mkdi
 
 用户已授权独立 Archive DLL，不再依赖系统 ZIP provider；实际 PXI 安装/关联仍未完成。
 Archive 管格式/CRC/预算，Runtime 管 manifest/身份/批准，EXE 管物理 I/O/隔离目录/提交，
-不把归档 reader 通过写成 PXI 已可安装。普通网页不因 URL 获权；构建与设备门保持串行。
-
-#### Archive. 独立 ZIP 创建与压缩
-
-**状态：准备取舍，reader 最终双配置门已通过。** 用户明确要求其他 WM6 应用可独立
-压缩/解压，owner 为 `positron_archive.dll`，内部 miniz，不依赖 Runtime 或系统 ZIP。
-下一条纵切是 STORE/DEFLATE 新归档 writer：版本化 source/sink、顺序输出、显式完成与取消、
-容量/CRC/工作内存预算和失败临时输出丢弃。复用 reader 路径准入，不原地追加/修改归档，
-不开放 ZIP64、加密、多卷、符号链接或 HTTP Content-Encoding。
-先证明 PC 工具互操作、中文/空项、短写/源错误、取消/重复关闭、配额失败以及双配置 ARMV4I 门。
-PXI 平台输出与安装恢复随后独立接线；HTTP 压缩只预留内部引擎复用，不在本轮实施。
+不把归档读写通过写成 PXI 已可安装。普通网页不因 URL 获权；构建与设备门保持串行。
 
 #### Script. 编译热点与单次长调用
 

@@ -22,7 +22,7 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
     ├─ positron_tls.dll       TLS 会话与证书/握手状态
     ├─ positron_json.dll      有界 JSON 解析与生成
     ├─ positron_db.dll        SQLite 本地数据库、迁移与行级同步状态
-    ├─ positron_archive.dll   独立 ZIP 目录准入、校验与有界分块读取
+    ├─ positron_archive.dll   独立 ZIP 准入、校验、分块读取与新归档创建
     ├─ positron_runtime.dll   资源应用元数据、app 引用与开发目录实例合同
     ├─ positron_http.dll      HTTP 消息、header、body 与 transport 边界
     ├─ positron_image.dll     有界图像解码/元数据接口
@@ -74,11 +74,12 @@ JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 
 
 ### `positron_archive.dll`
 
-提供与 Runtime 无关的 ZIP 容器准入、枚举及 STORE/DEFLATE 分块读取，miniz 静态编入，
-不暴露第三方类型。Archive 拥有格式、CRC、路径冲突与内存/解压预算；宿主提供不可变随机
-读取，拥有实际输出、物理包含性、临时文件和提交/清理。Read bytes 在 DONE 前是暂定内容，
-失败不承诺回滚宿主文件。PXI manifest/批准/安装事务仍属于 Runtime/EXE，HTTP 编码仍属于
-HTTP；不因引入 Archive 自动增加 gzip、ZIP writer 或安装能力。调用见
+提供与 Runtime 无关的 ZIP 容器准入、枚举、STORE/DEFLATE 读取及顺序 writer，miniz 静态编入，
+不暴露第三方类型。Archive 拥有格式、CRC、路径冲突及内存/输入/输出预算；宿主提供不可变
+读取与顺序 sink，拥有物理包含性、临时文件和提交/清理。Read 在 DONE 前、writer 在 Finish
+成功前均只有暂定输出；失败不回滚宿主文件。writer 的块间取消不等于可抢占的条目求值，
+宿主 worker 独占句柄，DLL 不泵消息或自建线程。PXI manifest/批准/安装仍属于 Runtime/EXE，
+HTTP Content-Encoding 属于 HTTP；归档能力不自动增加 gzip 或安装能力。调用见
 [Archive README](../positron_archive/README.md)。
 
 ### `positron_db.dll`

@@ -338,3 +338,189 @@ void PArchive_Close(PArchiveReader r)
     pa_free(r, r->ranges);
     r->magic = 0; free(r);
 }
+
+#define PA_WRITER_MAGIC 0x50415731U
+struct PArchiveWriterTag {
+    struct PArchiveReaderTag common; /* quota allocator and path index */
+    PArchiveSink sink;
+    unsigned int state, count, total, offset, entries_capacity;
+    int error;
+};
+static int pa_writer_stop(PArchiveWriter w, int error)
+{
+    if (!w->error) w->error = error;
+    w->state = w->error == PARCHIVE_CANCELLED ?
+            PARCHIVE_WRITER_CANCELLED : PARCHIVE_WRITER_FAILED;
+    return w->error;
+}
+static int pa_writer_cancelled(PArchiveWriter w)
+{
+    if (w->error) return 1;
+    if (w->sink.cancelled && w->sink.cancelled(w->sink.user_data)) {
+        pa_writer_stop(w, PARCHIVE_CANCELLED); return 1;
+    }
+    return 0;
+}
+static size_t pa_writer_write(void* opaque, mz_uint64 offset,
+        const void* buffer, size_t bytes)
+{
+    PArchiveWriter w = (PArchiveWriter)opaque;
+    size_t done = 0;
+    unsigned int chunk;
+    if (offset != w->offset || bytes > w->sink.max_archive_bytes - w->offset) {
+        pa_writer_stop(w, PARCHIVE_LIMIT); return 0;
+    }
+    while (done < bytes) {
+        if (pa_writer_cancelled(w)) return done;
+        chunk = (unsigned int)(bytes - done);
+        if (chunk > PARCHIVE_CHUNK_BYTES) chunk = PARCHIVE_CHUNK_BYTES;
+        if (w->sink.write(w->sink.user_data, w->offset,
+                (const unsigned char*)buffer + done, chunk) != chunk) {
+            pa_writer_stop(w, PARCHIVE_IO); return done;
+        }
+        done += chunk; w->offset += chunk;
+    }
+    return bytes;
+}
+static size_t pa_writer_read(void* opaque, mz_uint64 offset,
+        void* buffer, size_t bytes)
+{
+    PArchiveWriter w = (PArchiveWriter)opaque;
+    PArchiveSource* source = &w->common.source;
+    size_t done = 0;
+    unsigned int chunk;
+    if (offset > source->archive_bytes) {
+        pa_writer_stop(w, PARCHIVE_IO); return 0;
+    }
+    if (bytes > source->archive_bytes - offset) bytes = (size_t)(source->archive_bytes - offset);
+    while (done < bytes) {
+        if (pa_writer_cancelled(w)) return 0;
+        chunk = (unsigned int)(bytes - done);
+        if (chunk > PARCHIVE_CHUNK_BYTES) chunk = PARCHIVE_CHUNK_BYTES;
+        if (source->read_at(source->user_data, (unsigned int)(offset + done),
+                (unsigned char*)buffer + done, chunk) != chunk) {
+            pa_writer_stop(w, PARCHIVE_IO); return 0;
+        }
+        done += chunk;
+    }
+    return bytes;
+}
+int PArchive_WriterCreate(const PArchiveSink* sink,
+        const PArchiveLimits* limits, PArchiveWriter* output)
+{
+    PArchiveWriter w;
+    PArchiveReader r;
+    PArchiveLimits defaults = {sizeof(PArchiveLimits), PARCHIVE_VERSION,
+            1024, 16 * PA_MIB, 64 * PA_MIB, PA_MIB};
+    int error;
+    if (!sink || !output || sink->size != sizeof(*sink) ||
+            sink->version != PARCHIVE_VERSION || !sink->write ||
+            !sink->max_archive_bytes || sink->max_archive_bytes > 32 * PA_MIB)
+        return PARCHIVE_ARGUMENT;
+    if (!limits) limits = &defaults;
+    if (limits->size != sizeof(*limits) || limits->version != PARCHIVE_VERSION ||
+            !limits->max_entries || limits->max_entries > 1024 ||
+            !limits->max_entry_bytes || limits->max_entry_bytes > 16 * PA_MIB ||
+            !limits->max_total_bytes || limits->max_total_bytes > 64 * PA_MIB ||
+            limits->max_memory_bytes < 65536 || limits->max_memory_bytes > PA_MIB)
+        return PARCHIVE_ARGUMENT;
+    w = (PArchiveWriter)calloc(1, sizeof(*w));
+    if (!w) return PARCHIVE_MEMORY;
+    r = &w->common;
+    r->magic = PA_WRITER_MAGIC; r->used = sizeof(*w);
+    r->budget = limits->max_memory_bytes; r->limits = *limits;
+    w->sink = *sink; w->state = PARCHIVE_WRITER_OPEN;
+    r->zip.m_pAlloc = pa_alloc; r->zip.m_pFree = pa_free;
+    r->zip.m_pRealloc = pa_realloc; r->zip.m_pAlloc_opaque = r;
+    r->zip.m_pWrite = pa_writer_write; r->zip.m_pIO_opaque = w;
+    if (!mz_zip_writer_init(&r->zip, 0)) {
+        error = pa_error(r); PArchive_WriterClose(w); return error;
+    }
+    *output = w; return PARCHIVE_OK;
+}
+int PArchive_WriterAdd(PArchiveWriter w, const char* path,
+        unsigned int compression, const PArchiveSource* source)
+{
+    PArchiveReader r;
+    PArchiveEntry entry;
+    PArchiveEntry* grown;
+    unsigned int n = 0, i, bytes = source ? source->archive_bytes : 0, capacity;
+    int success;
+    if (!w || w->common.magic != PA_WRITER_MAGIC || !path ||
+            compression > PARCHIVE_COMPRESSION_FAST) return PARCHIVE_ARGUMENT;
+    r = &w->common;
+    if (r->busy || w->state != PARCHIVE_WRITER_OPEN) return PARCHIVE_STATE;
+    if (source && (source->size != sizeof(*source) ||
+            source->version != PARCHIVE_VERSION || (bytes && !source->read_at))) return PARCHIVE_ARGUMENT;
+    while (n <= PARCHIVE_PATH_BYTES && path[n]) ++n;
+    if (!pa_path(path, n, 2048)) return PARCHIVE_PATH;
+    memset(&entry, 0, sizeof(entry)); memcpy(entry.path, path, n + 1);
+    entry.is_directory = path[n - 1] == '/';
+    if (entry.is_directory && (bytes || compression)) return PARCHIVE_ARGUMENT;
+    if (w->count >= r->limits.max_entries || bytes > r->limits.max_entry_bytes ||
+            bytes > r->limits.max_total_bytes - w->total) return PARCHIVE_LIMIT;
+    for (i = 0; i < w->count; ++i) if (pa_collision(&entry, &r->entries[i])) return PARCHIVE_PATH;
+    if (w->count == w->entries_capacity) {
+        capacity = w->entries_capacity ? w->entries_capacity * 2 : 8;
+        if (capacity > r->limits.max_entries) capacity = r->limits.max_entries;
+        r->memory_error = 0;
+        grown = (PArchiveEntry*)pa_realloc(r, r->entries, capacity, sizeof(entry));
+        if (!grown) return pa_error(r);
+        r->entries = grown; w->entries_capacity = capacity;
+    }
+    r->busy = 1; r->io_error = r->memory_error = 0;
+    if (source) r->source = *source;
+    else memset(&r->source, 0, sizeof(r->source));
+    if (pa_writer_cancelled(w)) { r->busy = 0; return w->error; }
+    success = mz_zip_writer_add_read_buf_callback(&r->zip, entry.path,
+            pa_writer_read, w, bytes, NULL, NULL, 0, compression,
+            NULL, 0, NULL, 0);
+    memset(&r->source, 0, sizeof(r->source));
+    if (!success || w->error) {
+        pa_writer_stop(w, w->error ? w->error : pa_error(r));
+        r->busy = 0; return w->error;
+    }
+    r->entries[w->count++] = entry; w->total += bytes;
+    r->busy = 0; return PARCHIVE_OK;
+}
+int PArchive_WriterFinish(PArchiveWriter w)
+{
+    int success;
+    if (!w || w->common.magic != PA_WRITER_MAGIC) return PARCHIVE_ARGUMENT;
+    if (w->common.busy || w->state != PARCHIVE_WRITER_OPEN) return PARCHIVE_STATE;
+    w->common.busy = 1;
+    if (pa_writer_cancelled(w)) { w->common.busy = 0; return w->error; }
+    success = mz_zip_writer_finalize_archive(&w->common.zip);
+    if (!success || w->error) {
+        pa_writer_stop(w, w->error ? w->error : pa_error(&w->common));
+        w->common.busy = 0; return w->error;
+    }
+    w->state = PARCHIVE_WRITER_COMPLETE; w->common.busy = 0;
+    return PARCHIVE_DONE;
+}
+int PArchive_WriterGetInfo(PArchiveWriter w, PArchiveWriterInfo* output)
+{
+    PArchiveWriterInfo info;
+    if (!w || w->common.magic != PA_WRITER_MAGIC || !output ||
+            output->size != sizeof(*output) || output->version != PARCHIVE_VERSION) return PARCHIVE_ARGUMENT;
+    if (w->common.busy) return PARCHIVE_STATE;
+    memset(&info, 0, sizeof(info)); info.size = sizeof(info); info.version = PARCHIVE_VERSION;
+    info.state = w->state; info.entry_count = w->count;
+    info.input_bytes = w->total; info.output_bytes = w->offset; info.error = w->error;
+    *output = info; return PARCHIVE_OK;
+}
+int PArchive_WriterAbort(PArchiveWriter w)
+{
+    if (!w || w->common.magic != PA_WRITER_MAGIC) return PARCHIVE_ARGUMENT;
+    if (w->common.busy) return PARCHIVE_STATE;
+    if (w->state == PARCHIVE_WRITER_CANCELLED) return PARCHIVE_OK;
+    if (w->state != PARCHIVE_WRITER_OPEN) return PARCHIVE_STATE;
+    pa_writer_stop(w, PARCHIVE_CANCELLED); return PARCHIVE_OK;
+}
+void PArchive_WriterClose(PArchiveWriter w)
+{
+    if (!w || w->common.magic != PA_WRITER_MAGIC || w->common.busy) return;
+    if (w->common.zip.m_pState) mz_zip_writer_end(&w->common.zip);
+    pa_free(&w->common, w->common.entries);
+    w->common.magic = 0; free(w);
+}

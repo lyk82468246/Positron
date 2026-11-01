@@ -154,7 +154,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
 | ZIP 准入、目录与分块读取 | `PArchive_Open/Count/Entry/Begin/Read/Abort/Close` | 已实现但有界 | 单卷 STORE/DEFLATE，32 MiB 输入、1024 项、单项 16 MiB/合计 64 MiB、240-byte UTF-8 路径/16 层、工作集 ≤1 MiB；CRC/长度完成前输出暂定，格式/预算/路径失败不发布 reader；不直接访问文件系统 | 离线公共 ABI fixture、正式双配置及定向设备门；精确调用和错误见 [Archive README](../positron_archive/README.md) |
-| ZIP 创建/压缩 | 计划为独立 writer 合同，暂无公开入口 | 有界待扩展 | 只创建 STORE/DEFLATE 新归档；顺序输出、独立预算与取消，失败丢弃临时输出 | 完成 reader 后独立实现 PC 工具互操作、写入失败/取消与双配置设备回归 |
+| ZIP 创建/压缩 | `PArchive_WriterCreate/Add/Finish/GetInfo/Abort/Close` | 已实现但有界 | STORE/level-1 FAST（微小输入可 STORE），UTF-8/目录/空项、顺序 ≤16 KiB callback；32 MiB 输出、1024 项、单项 16 MiB/总输入 64 MiB、共享工作集 ≤1 MiB；错误/取消锁定终态，Finish 成功后宿主另行提交；同步条目无可恢复 yield | TEST1376 的 DLL roundtrip、源/短写/Finish 失败、取消/预算/重入及双配置设备门；设备生成 ZIP 回拉，由 Python zipfile 独立验证内容/CRC/方法/时间；不包含物理安装事务 |
 | PXI 安装、物理目录与 HTTP 编码 | Runtime/宿主与 HTTP 各自所有 | 宿主/其他 DLL 职责 | CRC 不是签名；Archive 不授予权限或安装身份，不解码 HTTP Content-Encoding | PXI 临时输出/提交需独立合同；HTTP 压缩无当前实现计划 |
 
 ## Runtime：`positron_runtime.dll`

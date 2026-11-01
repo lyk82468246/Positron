@@ -51,7 +51,7 @@
 
 ## Archive
 
-ZIP 仅 STORE/DEFLATE 读取；创建、PXI、HTTP gzip 待实现，宿主负责物理输出与提交/清理。
+ZIP 仅有界 STORE/DEFLATE 读写；PXI/HTTP gzip 未接线，物理输出与提交/清理由宿主负责。
 
 ## 纯资源应用 Runtime
 

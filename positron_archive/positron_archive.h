@@ -1,4 +1,4 @@
-/* Positron bounded ZIP reader. Stable C ABI; no filesystem or Runtime dependency. */
+/* Positron bounded ZIP reader/writer. Stable C ABI; no filesystem or Runtime dependency. */
 #ifndef POSITRON_ARCHIVE_H
 #define POSITRON_ARCHIVE_H
 #include <windows.h>
@@ -77,6 +77,67 @@ PARCHIVE_API int PArchive_Read(PArchiveReader reader, void* buffer,
         unsigned int capacity, unsigned int* written);
 PARCHIVE_API int PArchive_Abort(PArchiveReader reader);
 PARCHIVE_API void PArchive_Close(PArchiveReader reader); /* NULL-safe */
+
+/* Additive writer family; reader ABI and limits are unchanged. */
+#define PARCHIVE_CANCELLED -10
+#define PARCHIVE_COMPRESSION_STORE 0U
+#define PARCHIVE_COMPRESSION_FAST 1U /* bounded miniz level 1; tiny entries may STORE */
+#define PARCHIVE_WRITER_OPEN 1U
+#define PARCHIVE_WRITER_COMPLETE 2U
+#define PARCHIVE_WRITER_FAILED 3U
+#define PARCHIVE_WRITER_CANCELLED 4U
+typedef struct PArchiveWriterTag* PArchiveWriter;
+/* Sequential sink: every call offset equals bytes previously acknowledged.
+ * Return exactly bytes, otherwise the whole archive fails (no retry/seek).
+ * Callback block <=16 KiB, borrowed only during callback. */
+typedef unsigned int (*PArchiveWriteFn)(void* user_data, unsigned int offset,
+        const void* buffer, unsigned int bytes);
+/* Nonzero requests cancellation, checked between I/O blocks and at Finish.
+ * May read a host-owned atomic flag; must not reenter or destroy the writer. */
+typedef int (*PArchiveCancelFn)(void* user_data);
+typedef struct PArchiveSink {
+    unsigned int size, version;
+    unsigned int max_archive_bytes; /* 1..32 MiB, includes headers/directory */
+    PArchiveWriteFn write;
+    PArchiveCancelFn cancelled;     /* optional */
+    void* user_data;
+} PArchiveSink;
+typedef struct PArchiveWriterInfo {
+    unsigned int size, version;
+    unsigned int state;
+    unsigned int entry_count, input_bytes; /* completed successful Add calls */
+    unsigned int output_bytes; /* fully acknowledged sink blocks, including partial archive */
+    int error; /* first terminal error; zero while open/complete */
+} PArchiveWriterInfo;
+/* Create copies sink/limits, invokes no callbacks, preserves output on failure.
+ * Same limits as reader: entry/total are uncompressed input budgets. All heap,
+ * compressor and directory/index memory share max_memory_bytes. */
+PARCHIVE_API int PArchive_WriterCreate(const PArchiveSink* sink,
+        const PArchiveLimits* limits, PArchiveWriter* out_writer);
+/* Synchronously add ONE complete entry; no resumable yield or message pump.
+ * UTF-8 path uses the reader's admission/collision rules. NULL source means
+ * zero bytes; otherwise source size/version and archive_bytes denote this
+ * entry, read_at is exact-read and borrowed ONLY until Add returns. Directory
+ * paths end '/', require zero input and STORE. FAST may STORE inputs <=3 bytes.
+ * Parameter/path/input-limit rejection invokes no callbacks and leaves writer
+ * usable. Once upstream work begins ANY failure is terminal: discard whole
+ * sink, including preceding entries. Source bytes must remain immutable.
+ * Use a worker to avoid blocking UI; native I/O/compression CPU calls are not
+ * preempted. Distinct handles may be independently owned, no same-handle
+ * concurrency/reentry. A successful Add is NOT a finished archive. */
+PARCHIVE_API int PArchive_WriterAdd(PArchiveWriter writer, const char* path,
+        unsigned int compression, const PArchiveSource* source);
+/* Finish writes central directory/EOCD, returns DONE only after all writes
+ * acknowledged. Host still must flush/close/commit its temporary sink; DLL
+ * does not own filesystem atomicity. Repeat Finish or Add after terminal state
+ * returns STATE with no callbacks. Close NEVER implicitly finalizes. */
+PARCHIVE_API int PArchive_WriterFinish(PArchiveWriter writer);
+PARCHIVE_API int PArchive_WriterGetInfo(PArchiveWriter writer,
+        PArchiveWriterInfo* out_info);
+/* Idle cancellation; idempotent once cancelled, no callbacks or output cleanup.
+ * Cross-thread cancellation uses sink.cancelled reading an atomic host flag. */
+PARCHIVE_API int PArchive_WriterAbort(PArchiveWriter writer);
+PARCHIVE_API void PArchive_WriterClose(PArchiveWriter writer); /* NULL-safe */
 #ifdef __cplusplus
 }
 #endif

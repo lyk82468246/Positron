@@ -1213,6 +1213,7 @@ $spaceReclaimRecheck = "not_run"
 $currentCleanup = "not_attempted"
 $completeLogRetrieved = $false
 $crashCheck = 'not_run'
+$archiveWriterCheck = 'NOT_REQUESTED'
 $newCrashDumps = @()
 
 try {
@@ -1800,6 +1801,28 @@ try {
                 "marker from {0} to {1} while it was being received.") -f
                 $completionMarker, $finalMarker
     }
+    # TEST1376 produces a ZIP in this isolated deployment. Pull it BEFORE
+    # cleanup and require independent PC decoding, not just DLL roundtrip.
+    if ($expectedTests.Contains('1376')) {
+        $archiveWriterCheck = 'FAIL'
+        try {
+            $archiveZip = Join-Path $runRoot 'archive-writer-check.zip'
+            if ($finalLogText -notmatch '(?m)^\[INFO\] TEST 1376 OK\s*$') {
+                throw 'TEST1376 did not complete successfully.'
+            }
+            if (![PositronDeviceRapi]::TryCopyFileFromDevice(
+                    ($remoteRoot + '\archive-writer-check.zip'), $archiveZip)) {
+                throw 'Could not retrieve the device ZIP artifact.'
+            }
+            $verification = & python (Join-Path $repoRoot 'scripts\verify_archive_writer.py') $archiveZip 2>&1
+            $verifyExit = $LASTEXITCODE
+            $verification | Set-Content -LiteralPath (Join-Path $runRoot 'archive-writer-interop.txt') -Encoding UTF8
+            if ($verifyExit -ne 0) { throw "Independent ZIP verification exited $verifyExit." }
+            $archiveWriterCheck = 'PASS'
+        } catch {
+            Write-Stage ('Archive writer interoperability failed: ' + $_.Exception.Message)
+        }
+    }
     # PASS is a log marker, not proof of a crash-free run. Allow the OS dump
     # writer to finish before comparing the inventory and cleaning binaries.
     Start-Sleep -Seconds 3
@@ -1824,6 +1847,9 @@ try {
     if ($crashCheck -ne 'PASS') {
         $currentCleanup = 'preserved_crash_evidence'
         Write-Stage "preserving deployment: crash_check=$crashCheck"
+    } elseif ($archiveWriterCheck -eq 'FAIL') {
+        $currentCleanup = "preserved_archive_interop_failure"
+        Write-Stage "preserving deployment: Archive artifact verification failed"
     } elseif ($PreserveDeployment) {
         $currentCleanup = "preserved_for_diagnosis";
         Write-Stage "preserving current deployment for diagnosis: $remoteRoot"
@@ -1920,6 +1946,7 @@ if ($expectedTests.Contains("13")) {
     }
 }
 
+$checkLines += "archive_writer_interop=$archiveWriterCheck"
 $checkLines += "metrics_ok=$metricOk"
 $checkLines += "core_module_check=$coreModuleCheck"
 $checkLines += "core_module_path=$coreModulePath"
@@ -2001,7 +2028,7 @@ $checkLines += "new_crash_dump_count=$($newCrashDumps.Count)"
 $checkLines += "new_crash_dumps=$($newCrashDumps -join '|')"
 
 $storageGateOk = $storageCheck -match "^PASS"
-$passed = $storageGateOk -and $coreModuleCheck -eq 'PASS' -and
+$passed = ($archiveWriterCheck -ne 'FAIL') -and $storageGateOk -and $coreModuleCheck -eq 'PASS' -and
         $moduleAuditCheck -eq 'PASS' -and
         (($forceTerminationCheck -eq 'PASS' -and
           $forceCleanupCheck -eq 'PASS') -or
