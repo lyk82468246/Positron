@@ -168,7 +168,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 开发存储、迁移执行与 typed SQL JSON | `PRuntime_DevelopmentStorageOpen`、`PRuntime_StorageGetInfo/GetError/ExecuteJson/Close` | 已实现但仅 owner worker 原语 | 显式 SQL 确认、原生 data 根；完整开发根/ID stamp 拒绝碰撞/错误库；所有来源准入后逐文件原子迁移；请求/结果 JSON 4096 bytes，DB 固定预算，编码超限提交前回滚、失败不改输出 | TEST1368/1369 双配置门覆盖双根隔离/重开、身份拒绝、迁移失败/恢复、typed 精度、批/预算/取消/编码回滚；普通网页/URL 无权限，EXE 页面授权仍须显式接线 |
 | 有界页面 SQL 队列 | `PRuntime_ServiceQueueCreate/Submit/ProcessOne/TakeResult/Cancel/Revoke/GetInfo/Close` | 已实现但需 native 授权与宿主调度 | 每 storage 最多四队列，每页八槽、约 70 KiB；UI 复制、worker SQL、owner UI 交付；绑定 tab/generation/bridge 和单调请求号；撤销永久、关闭等待空闲；提交后迟到结果仅丢弃，绝不重跑 SQL | TEST1370 双配置门组合真实线程和 Browser 服务，覆盖容量、重复/replay、运行中取消回滚、提交后撤销及 teardown；不是跨线程使用 DOM/JS 或恶意代码沙箱 |
 | app 页面资源组合 | Runtime resolver/read + Core base-aware CSS/script/image + Browser resource/history/session | 已实现但需宿主接线 | 同 ID/根内资源；读取和各资源遵守较严格预算，required CSS 失败阻止候选提交；URL 不授权服务 | TEST1371 双配置离线目录组合覆盖 CSS/@import、脚本 DOM mutation、SVG 像素/cache、history、app location 与无自动授权；EXE 原窗口/worker/输入仍待门，不把 DLL 夹具当应用验收 |
-| 安装身份 | 已批准运行时计划；无安装 opener | 暂缓 | 安装空间不得复用开发数据，不能从同 ID 开发实例推断安装权 | 已安装合同与 Archive/PXI 输出门成立后接入安装/更新及持久身份，目录应用可独立交付 |
+| 首次安装资源只读核验 | `PRuntime_PrepareRevision/OpenInstalled`、`RevisionStep/GetInfo/GetFile/BuildApproval/Cancel/Close`、`InstalledReadFile` | 已实现但需可信 native provider | revision 1；1024 文件、8 MiB/项、总 32 MiB、512 KiB DLL 工作集；Step ≤64 KiB 或16项；SHA-256 精确清单/显式批准/登记 generation 比较，未知算法拒绝，失败不写登记或授权 | TEST1377 的独立 hashlib 参考、设备原生 SHA-256、篡改/增删改名/撤销/租约/容量/取消/线程/释放及双配置设备门；[合同与调用](../positron_runtime/INSTALLED.md)，安装存储、发布/恢复与 EXE 尚未接入 |
 | PXI 安装与更新 | 已授权独立 Archive DLL；实际安装尚未接入 | 有界待扩展 | 不依赖 WM6.5 系统组件；Archive 校验不等于物理目录包含性、批准或安装提交 | 先完成归档和隔离输出，再验证安装身份、取消/失败清理、不覆盖及更新恢复 |
 
 ## DB：`positron_db.dll`

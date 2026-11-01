@@ -177,10 +177,11 @@ EXE 只负责中英文风险说明与用户决定，能力识别、已安装身�
 修改其他应用关联或全局压缩设置。卸载只移除仍归 Positron 所有的关联，保留应用数据。
 目录模式不依赖 PXI/系统关联完成；安装、更新的原子发布规则不能宣称物理断电已验收。
 
-### 已安装公共合同提案
+### 已安装合同与后续实施
 
-本节是接口设计审查，尚未增加公共声明、安装命令或持久表。批准后的实现应先完成下面的
-只读核验纵切，再提供实际安装和更新；不能把测试侧准备的目录称为已通过 PXI 安装。
+首次安装的只读核验已经实现，精确导出、摘要编码、调用与 provider 合同见
+[Runtime 安装核验](../positron_runtime/INSTALLED.md)。本节继续规定安装/更新的目标边界；
+尚无安装命令或持久表，不能把测试侧登记与目录称为已通过 PXI 安装。
 
 #### 身份、内容与批准分别表示
 
@@ -218,15 +219,16 @@ UNSUPPORTED，不假定所有 WM6 ROM 都提供，不为本阶段自行引入摘
 仅检查时间/大小不足以证明内容不变。校验期间及后续资源使用必须保持同一不可变 root；
 provider 无法证明时拒绝，不能校验一个文件后重新打开另一个可变文件供作者代码使用。
 
-#### 建议的接口与生命周期
+#### 接口与生命周期
 
-下列名称是待实现评审的职责名，尚不是可链接的导出；不改旧 Development*、ManifestInfo、
-DirectoryProvider 或 StorageOptions 的布局，也不在未实现时预先发布假成功入口。
+PrepareRevision、OpenInstalled 和 Revision* 只读入口已可链接；InstalledStorageOpen 仍是
+后续职责名，没有预先声明假成功入口。旧 Development*、ManifestInfo、DirectoryProvider
+及 StorageOptions 布局不变。当前 v1 限首次安装 revision 1，更新版本尚未开放。
 
 | 接口职责 | 输入与输出 | 权限边界 |
 |---|---|---|
 | PrepareRevision / Step / GetInfo / Close | 可信原生 root provider；产生 owner-bound 的有界候选及复制的内容/能力信息 | 只读核验，不写登记、不打开私有库、不执行作者代码 |
-| BuildApproval | 已完成候选、预期旧记录/首次安装标识、显式用户批准 | 返回仅供原生登记的快照；未 COMMIT 前无运行权限 |
+| RevisionBuildApproval | 已完成 prepare 候选、原生首次安装标识、显式用户批准 | 返回仅供原生登记的快照；未 COMMIT 前无运行权限 |
 | OpenInstalled / Step / Close | 可信登记 provider 取得的当前有效记录、对应不可变资源 root | 重新验证精确内容/能力/API/generation 后才发布独立 installed handle |
 | InstalledStorageOpen | 已验证 installed handle 及既有受限存储预算/provider | 使用 installed 独立数据身份；不接受 development handle 或裸快照替代 |
 
@@ -236,15 +238,15 @@ DB handle。由 Runtime 比较实际资源和记录，不由 EXE 仅凭 ID 命�
 在发布 installed handle 前必须再次核对登记 generation，并保持运行/更新互斥租约；
 卸载/更新先停止旧实例和撤销页服务，不能让已撤销登记继续产生新服务队列。
 
-准备和打开状态建议为 INITIALIZING/PENDING/COMPLETE/FAILED/CANCELLED：只有 COMPLETE
+准备和打开状态为 INITIALIZING/PENDING/COMPLETE/FAILED/CANCELLED：只有 COMPLETE
 才允许取得可用实例；失败保留原输出，终态不复活。所有操作与 callback 只在创建 worker
 线程同步执行，不泵窗口、不重入、不创建内部线程。Close 幂等清空拥有的槽；子资源未释放或
 调用活跃时返回 STATE。宿主只在 Step 返回后让步和取消，不能释放仍在执行的 callback。
 
 预算沿用 1024 文件、16 层、单文件 8 MiB、总资源 32 MiB、manifest 8192 字节，并继续遵守
-Core/Browser 更严格的单资源限制。新核验工作集建议上限 512 KiB，流式读取 scratch 64 KiB；
+Core/Browser 更严格的单资源限制。新核验 DLL 工作集上限 512 KiB（不含原生 provider/CSP），流式读取 scratch 64 KiB；
 每 Step 最多处理 64 KiB 内容或 16 个目录项，分别计数，禁止一次复制整个资源包。
-这是字节/项预算，不是对原生 I/O 的硬墙钟保证；实现前须验证完整清单及状态均能装入预算。
+这是字节/项预算，不是对原生 I/O 的硬墙钟保证；编译期检查完整 job 与 JSON/临时余量在预算内。
 超限 LIMIT，未知能力/API/digest UNSUPPORTED，未批准或撤销 DENIED，内容/记录不匹配
 INVALID，错误线程/阶段 STATE，租约冲突 BUSY，原生读取失败 IO，显式取消 CANCELLED。
 失败不能注册服务、发布半初始化句柄、修改已有批准或偷偷改用开发目录身份。
@@ -278,18 +280,16 @@ INVALID，错误线程/阶段 STATE，租约冲突 BUSY，原生读取失败 IO�
 应用数据不删。清理失败不恢复授权；失败/缺失/撤销的登记均不能通过重新填一条 ID 白名单恢复。
 以上是受控中断与正常重开的恢复设计，不代表磁盘/卡硬件断电原子性已验收。
 
-#### 第一条可验证纵切
+#### 只读核验之后的纵切
 
-唯一建议是先做“原生资源清单 → 内容身份 → 批准快照 → 已安装只读实例核验”。使用原生
-fixture provider 准备两份同 ID 资源及可信登记，覆盖完整批准后的重开、改字节但保持文件大小、
-增加/删除/改名、相同 ID 不同 installation ID、开发目录冒用、撤销/缺失/旧 generation、
-未知能力/API、容量、取消、reentry、失败清理及重复 Close。空 CSS/JS 与现有资源能力继续有效。
+原生资源清单、SHA-256 内容身份、显式批准快照和已提交首次安装的只读核验已通过离线及
+匹配 ARMV4I 双配置门；范围与证据见[验收记录](history/RUNTIME_REVISION_ACCEPTANCE.md)。
+它不执行作者代码，不开放 installed SQL，不迁移 EXE 主库，也不取消开发目录提示。
 
-首批不接 InstalledStorageOpen、不迁移应用主库、不改变普通启动提示、不执行作者代码；
-fixture 中的登记提交/中断只能证明核验与 fail-closed，不能证明真实主库或 PXI 安装事务。
-只有这条链路完成离线与匹配 ARMV4I 设备回归后，才定稿导出/头文件及调用示例并交 EXE；
-实现过程中候选 API 不得被应用当成已发布能力。随后分别补安装存储/恢复协议、实际主库消费。
-Archive 到隔离输出及安装提交的前置门仍独立阻塞 PXI 和普通用户安装入口，不能因原生 fixture 通过而取消。
+下一步先定稿首次安装存储与登记恢复状态机：安装身份独立数据 stamp、迁移失败不可启动、
+应用库与登记库两个提交点的中断/重开处理，以及结果不明时的精确读回。该设计成立后再追加
+InstalledStorageOpen 和登记消费者。更新仍保持关闭；不能复制开发目录逐文件迁移并声称
+安装更新失败能还原全部数据。Archive 到隔离输出及安装提交也仍需独立门。
 
 ## SQL 服务与 JS SDK
 

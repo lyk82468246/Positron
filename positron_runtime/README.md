@@ -10,11 +10,15 @@ An opt-in migration plan copies the declared pending SQL files after an explicit
 native permission decision; it does not execute them or select a database.
 Development storage now binds an exact private DB identity, runs admitted
 migrations and executes bounded typed SQL JSON on its owner worker.
-This does **not yet run directory applications in the browser**: the general WM
-provider/EXE integration, installed identities and EXE session authorization remain
-separate requirements. Core/Browser already expose the resource composition below. The native
-SQL service queue below now supplies bounded cross-thread delivery and revocation;
-it is not EXE integration or permission inferred from an address.
+The native SQL service queue supplies bounded cross-thread delivery and
+revocation; Core/Browser expose the resource composition below. The independent
+EXE integrates these development contracts as described in
+[the Runtime host guide](../positron_app/RUNTIME_HOST.md). Other consumers must
+provide their own trusted platform adapter and explicit session authorization.
+
+First-install identity/content verification is available through the separate
+read-only contract below. Installed storage, registration recovery and installed
+EXE launch remain separate requirements; an address never grants permission.
 
 ## Link and deploy
 
@@ -288,7 +292,7 @@ Before migrations, `PDb_BindLocalIdentity` atomically compares a full framed
 development-kind/normalized-ID/canonical-root TEXT identity in private DB
 metadata. A collision or wrong mapped file returns SCHEMA; an unclaimed nonempty
 DB is never adopted. Thus equal IDs in different roots remain separate, and a
-development application cannot claim an installed identity. Installed open/update
+development application cannot claim an installed identity. Installed SQL storage/update
 is not implemented; the installed namespace must never alias `v1/dev`.
 
 The owner reads strict schema version, copies every pending manifest source,
@@ -443,21 +447,34 @@ this integration does not enlarge script heap/source/timeout or permit remote
 application assets. Handle an explicit HTTP(S) navigation as ordinary browsing
 and revoke the departing page's app services; do not add a network SQL service.
 
+## Installed revision verification
+
+`PRuntime_PrepareRevision` and `PRuntime_OpenInstalled` begin owner-thread jobs
+for bounded resource inventory, SHA-256 content identity and first-install
+registration comparison. Drive `PRuntime_RevisionStep` until DONE, then query
+the complete catalog. `PRuntime_RevisionBuildApproval` requires explicit native
+confirmation; its copied snapshot is not a committed grant. Installed-only
+`PRuntime_InstalledReadFile` refreshes registration and reads through the retained
+immutable root. Old development APIs do not acquire installed authority.
+
+Provider requirements, exact digest framing, limits, lifecycle, errors and a
+consumer example are in [the installed contract](INSTALLED.md). V1 admits
+revision 1 only; installed SQL, update/recovery and actual EXE registration remain
+unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
+
 ## PXI availability
 
-The approved installer requires a verified **system ZIP** provider. The current
-device's read-only inventory did not find ZIP-named Windows components or the
-queried ZIP/CompressedFolder/Shell automation registrations. This does not prove
-all ROMs lack ZIP, or that an unrelated OEM component could never supply it. No
-provider with bounded extraction, reliable completion/error/cancellation,
-Unicode containment, conflict and cleanup guarantees has been verified here.
+The approved archive direction uses the independent
+[Archive DLL](../positron_archive/README.md), whose bounded ZIP reader/writer
+does not require a system ZIP provider. A read-only ROM inventory cannot establish
+the availability or absence of ZIP on every WM6 device.
 
-PXI installation, installed identity/open/update and file association are therefore
-not implemented. Directory applications do not depend on them. Neither desktop
-Shell declarations nor CAB decompression are a ZIP fallback; do not silently add
-a private parser, third-party decoder or alternate package format. Resume only
-with a concrete system provider and the approved installer evidence, or a new
-user-approved change of scope.
+PXI still needs a separate isolated-output, physical containment, completion,
+cleanup and registration COMMIT/recovery contract. Archive reads are tentative
+until CRC/length completion, and verification data alone does not publish an
+installation. File association, installation UI and installed application launch
+remain unimplemented; directory applications do not depend on them. Neither CAB
+decompression nor a shell ZIP association substitutes for the required contract.
 
 ## C lifecycle and failure contract
 
@@ -526,6 +543,8 @@ backpressure, four page contexts, duplicate/replay rejection, running cancellati
 rollback and post-COMMIT stale-result disposal. The app-resource fixture drives
 real relative CSS/imports, external JS/Core text mutation, image/background
 discovery, SVG pixels/cache, resource commit/history and no URL-derived services.
-The read-only ZIP inventory is not an extraction test. None proves a generic filesystem
-canonicalizer, installed launch, EXE authorization, PXI/ZIP or complete browser UI integration. Device evidence belongs
+The installed revision fixture adds independently framed SHA-256 identity and
+fail-closed native registration checks; its precise scope is in the installed
+contract. None proves a generic filesystem canonicalizer, installed launch, EXE
+authorization, PXI installation or complete browser UI integration. Device evidence belongs
 to the current handoff, not this stable document.

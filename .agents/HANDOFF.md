@@ -53,7 +53,7 @@ Notes 真实页面 CRUD/搜索/四页/重开及双目录隔离已通过四进程
 证据与夹具失败边界见[页面验收](../docs/history/NOTES_UI_ACCEPTANCE.md)。原用户库/快捷方式未动。
 Positron Notes Check.lnk 指向新包 notes-one；首屏/分页/输入/保存/重开/删除/SIP/旋转/拒绝人工基本通过。
 宿主双语和 Release 普通启动待验收。PXI 安装时按声明能力确认，主库登记后正常启动免提示；
-开发目录仍每次提示。仅设计已批准，先补 Runtime 已安装身份/批准快照合同，再接 EXE；不改 v4 表。
+开发目录仍每次提示。首次安装只读核验已通过双配置定向门，合同、精确选择及日志/清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅 revision 1；安装SQL、登记COMMIT及EXE未接入，v4表不变。
 
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
@@ -502,9 +502,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮复核 ROADMAP，Archive 读写退出待办。唯一下一步为 Runtime 的已安装资源清单、内容身份
-与批准快照只读核验，按[运行时计划](../docs/RUNTIME_PLAN.md#第一条可验证纵切)实施，
-不先接安装 UI、主库迁移或作者执行。PXI 隔离输出/提交仍独立待办，不再依赖系统 ZIP。
+本轮复核 ROADMAP，只读安装核验退出待办。唯一下一步为[首次安装存储与登记恢复设计](../docs/RUNTIME_PLAN.md#只读核验之后的纵切)：明确独立数据身份、迁移失败及两库提交点的重开状态，再实现安装存储；不先接EXE/UI或更新。PXI隔离输出独立待办。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

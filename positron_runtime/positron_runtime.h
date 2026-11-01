@@ -53,6 +53,69 @@ typedef struct PRuntimeStorage PRuntimeStorage;
 typedef PRuntimeStorage* PRuntimeStorageHandle;
 typedef struct PRuntimeServiceQueue PRuntimeServiceQueue;
 typedef PRuntimeServiceQueue* PRuntimeServiceQueueHandle;
+
+/* Read-only revision/installed verification; separate handle family, NOT a
+ * DevelopmentDirectory, storage grant, installer or author-code session. */
+#define PRUNTIME_REVISION_INITIALIZING 1U
+#define PRUNTIME_REVISION_PENDING 2U
+#define PRUNTIME_REVISION_COMPLETE 3U
+#define PRUNTIME_REVISION_FAILED 4U
+#define PRUNTIME_REVISION_CANCELLED 5U
+#define PRUNTIME_REVISION_DONE 1
+#define PRUNTIME_DIGEST_SHA256 1U
+#define PRUNTIME_REVISION_MAX_FILES 1024U
+#define PRUNTIME_REVISION_TOTAL_BYTES (32U * 1024U * 1024U)
+#define PRUNTIME_REVISION_STEP_BYTES 65536U
+typedef struct PRuntimeRevision* PRuntimeRevisionHandle;
+typedef struct PRuntimeRevisionFile {
+    unsigned int size, version;
+    unsigned int file_bytes;
+    char path[256]; /* decoded relative UTF-8 regular file; no directory entries */
+    unsigned char sha256[32]; /* enumeration ignores this; GetFile copies computed digest */
+} PRuntimeRevisionFile;
+typedef struct PRuntimeApprovalSnapshot {
+    unsigned int size, version;
+    char id[64];
+    char installation_id[33]; /* native nonzero 128-bit ID, exactly 32 lowercase hex */
+    unsigned int revision; /* v1 first-install admission supports 1 only */
+    unsigned int app_version, runtime_api_version, digest_algorithm;
+    unsigned char content_id[32];
+    unsigned long requested_permissions, approved_permissions;
+    unsigned int approval_policy; /* 1: complete explicit native confirmation */
+} PRuntimeApprovalSnapshot;
+typedef struct PRuntimeInstalledRecord {
+    unsigned int size, version;
+    unsigned int generation; /* 1..2147483647; host COMMIT generation */
+    unsigned int active; /* exactly 1, otherwise DENIED */
+    char directory[1024]; /* native canonical revision root, not stable data identity */
+    PRuntimeApprovalSnapshot approval;
+} PRuntimeInstalledRecord;
+typedef struct PRuntimeApprovalOptions {
+    unsigned int size, version;
+    char installation_id[33];
+    unsigned int revision; /* exactly 1; no update approval in this contract */
+    unsigned int confirmed; /* exactly 1; permission-free author code still needs confirmation */
+} PRuntimeApprovalOptions;
+typedef struct PRuntimeRevisionOptions {
+    unsigned int size, version;
+    int (*cancelled)(void* user); /* borrowed atomic flag; owner-thread callback */
+    void* user_data;
+} PRuntimeRevisionOptions;
+typedef struct PRuntimeRevisionInfo {
+    unsigned int size, version;
+    unsigned int state;
+    int error;
+    unsigned int installed; /* kind, not authority; COMPLETE required */
+    unsigned int file_count, total_bytes, verified_bytes, verified_files;
+    char canonical_root[1024]; /* complete only, native-only */
+    char id[64], entry[256];
+    unsigned int app_version;
+    unsigned long requested_permissions;
+    char installation_id[33]; /* complete installed-kind only */
+    unsigned int revision, registry_generation;
+    unsigned long approved_permissions; /* copied registration, not SQL service grant */
+    unsigned char content_id[32]; /* complete only */
+} PRuntimeRevisionInfo;
 typedef struct PRuntimeServiceQueueOptions {
     unsigned int size;
     unsigned int version;
@@ -198,6 +261,87 @@ typedef struct PRuntimeDirectoryProvider {
             PRuntimeBorrowedBytes* bytes);
     void (*release_bytes)(void* user, void* root, PRuntimeBorrowedBytes* bytes);
 } PRuntimeDirectoryProvider;
+typedef struct PRuntimeRevisionProvider {
+    unsigned int size, version;
+    unsigned int digest_algorithm; /* SHA256 only; unsupported rejected before callbacks */
+    void* user_data;
+    /* Atomically retain a canonical IMMUTABLE root and native coordination
+     * lease. Enumerate ALL regular files, reject links/aliases/unprovable
+     * containment. No files may change/appear/disappear until close_root.
+     * Return UNSUPPORTED if these guarantees cannot be supplied. Partial
+     * root token is closed even on failure; no generic WM adapter implied. */
+    int (*open_root)(void*, const char*, unsigned int, PRuntimeDirectoryRoot*);
+    void (*close_root)(void*, void*);
+    /* Flat complete enumeration, index from 0; NOT_FOUND is the sole end
+     * marker. Exact file size/path; Runtime sorts/validates and computes hash. */
+    int (*enumerate_file)(void*, void*, unsigned int, PRuntimeRevisionFile*);
+    /* Read <=requested into borrowed buffer, written may be zero at EOF.
+     * Runtime requires exact content bytes and probes EOF after declared size.
+     * No URI decoding, fallback roots, network or background access. */
+    int (*read_at)(void*, void*, const char*, unsigned int, void*,
+            unsigned int, unsigned int*);
+    /* SHA256 incremental context, one at a time. All partial non-NULL tokens
+     * close even on failure. Return UNSUPPORTED for absent native algorithm;
+     * never substitute a weaker hash or return fabricated success. Native
+     * provider/CSP memory is host-owned, outside DLL buffer budget. */
+    int (*hash_begin)(void*, void**);
+    int (*hash_update)(void*, void*, const void*, unsigned int);
+    int (*hash_finish)(void*, void*, unsigned char[32]);
+    void (*hash_close)(void*, void*);
+} PRuntimeRevisionProvider;
+typedef struct PRuntimeInstalledProvider {
+    unsigned int size, version;
+    void* user_data;
+    /* Read committed native registration and hold exclusive per-installation
+     * coordination lease through close; duplicate launch returns BUSY.
+     * Not an author-provided snapshot. Prevent updates/uninstall while
+     * held; Runtime also refreshes before COMPLETE and each installed read.
+     * NOT_FOUND is denied. Any partial lease is closed on operation Close. */
+    int (*open)(void*, const char*, PRuntimeInstalledRecord*, void**);
+    int (*refresh)(void*, void*, PRuntimeInstalledRecord*);
+    void (*close)(void*, void*);
+} PRuntimeInstalledProvider;
+/* Begin copies tables/options, no callbacks; output untouched on failure.
+ * Step opens/enumerates/hashes the root; <=16 enum/framing entries OR <=64 KiB
+ * read per call, no whole-resource buffering. Internal job+JSON reserve <=512
+ * KiB (provider/CSP allocations excluded). Single owner thread, no reentry,
+ * message pump or worker. Returns OK while pending, DONE once complete,
+ * negative terminal error otherwise. Completed/failed jobs never restart.
+ * Callback code/user targets survive until Close; root/registry leases stay
+ * held even in terminal state until Close. Only COMPLETE exposes content.
+ * Paths <=255 bytes/16 levels, <=1024 files, <=8 MiB/file, <=32 MiB total,
+ * manifest <=8192 bytes. Required entry/migration files must exist in catalog.
+ * Root manifest raw bytes and empty files participate. No SQL or writes. */
+PRUNTIME_API int PRuntime_PrepareRevision(const char* directory, unsigned int bytes,
+        const PRuntimeRevisionProvider* provider, const PRuntimeRevisionOptions* options,
+        PRuntimeRevisionHandle* output);
+/* Requests exact native installation ID + expected committed generation.
+ * Registry supplies the canonical root; no development handle/raw approval
+ * overload. v1 revision=1 only; updates/storage/author execution not provided. */
+PRUNTIME_API int PRuntime_OpenInstalled(const char* installation_id, unsigned int bytes,
+        unsigned int expected_generation, const PRuntimeInstalledProvider* registry,
+        const PRuntimeRevisionProvider* provider, const PRuntimeRevisionOptions* options,
+        PRuntimeRevisionHandle* output);
+PRUNTIME_API int PRuntime_RevisionStep(PRuntimeRevisionHandle revision);
+PRUNTIME_API int PRuntime_RevisionGetInfo(PRuntimeRevisionHandle revision, PRuntimeRevisionInfo* info);
+PRUNTIME_API int PRuntime_RevisionGetFile(PRuntimeRevisionHandle revision,
+        unsigned int index, PRuntimeRevisionFile* file);
+/* Complete prepare-kind only; creates copied native registration data, NOT
+ * a committed grant. Explicit whole-capability confirmation, first-install
+ * revision=1; all outputs unchanged on failure. No callbacks or persistence. */
+PRUNTIME_API int PRuntime_RevisionBuildApproval(PRuntimeRevisionHandle revision,
+        const PRuntimeApprovalOptions* options, PRuntimeApprovalSnapshot* output);
+/* Complete installed-kind only; stable catalog index/offset, <=64 KiB copied
+ * read through retained root after registry refresh. Temporary buffer protects
+ * buffer/written on failure. No directory/SQL/service identity conversion. */
+PRUNTIME_API int PRuntime_InstalledReadFile(PRuntimeRevisionHandle revision,
+        unsigned int index, unsigned int offset, void* buffer,
+        unsigned int capacity, unsigned int* written);
+PRUNTIME_API int PRuntime_RevisionCancel(PRuntimeRevisionHandle revision);
+/* Clears owned slot; repeated NULL value safe. STATE preserves active/wrong
+ * thread job. Hash -> manifest -> root -> registry lease release, no callbacks
+ * after Close, aliases invalid. */
+PRUNTIME_API int PRuntime_RevisionClose(PRuntimeRevisionHandle* revision);
 typedef struct PRuntimeManifestInfo {
     unsigned int size;
     unsigned int version;

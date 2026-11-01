@@ -51,7 +51,7 @@ native控件；协议地址本身不赋予权限。`positron_runtime.dll`验证 
 Runtime 拥有准入/身份组合/预算/释放顺序，宿主必须提供真实目录规范化、物理包含性与原生锁/读取。
 开发存储由 Runtime 生成独立映射，经 DB 私有完整身份核对后运行 manifest 迁移与受限 typed SQL JSON；
 短存储 bucket 不能替代完整身份，错误映射/非空未认领库不得被采用。JSON DLL 拥有通用标量编码，
-结果容量在 DB 提交前验证。这不是通用 WM 适配器、安装身份或 Browser 授权；异步页面服务与
+结果容量在 DB 提交前验证。这不是通用 WM 适配器或 Browser 授权；异步页面服务与
 资源组合仍须独立合同，EXE只负责平台窗口、worker与I/O接线，其他公共 DLL 的所有权不变。
 JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 manifest 句柄不代表
 可信发布者、运行实例或服务权限。完整分工、ID、归档前置门及阶段见
@@ -61,6 +61,12 @@ JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 
 版本/内容与能力匹配。有效 PXI 安装在安装/更新时确认风险，正常启动不重复提示；
 未安装开发目录每次新启动仍确认，不因同 ID 或 `app://` 继承安装授权。风险依据 manifest
 声明能力，不扫描 JS 猜权限；具体规则见运行时计划。现有开发目录合同不等同于已安装接口。
+
+Runtime 的[只读安装核验](../positron_runtime/INSTALLED.md)拥有完整清单、SHA-256 framing、
+显式批准快照及已提交记录的 generation/资源比较。可信原生 provider 保有不可变物理根、
+完整枚举、SHA-256 backend 和独占安装租约；无算法或不能证明包含性时拒绝。完成核验才允许
+installed-kind 的有界读取，快照本身不授予服务。当前仅 revision 1，不包含安装发布、主库
+COMMIT、安装 SQL 或更新恢复，也不改变开发目录警告。
 
 ## 公共 DLL
 

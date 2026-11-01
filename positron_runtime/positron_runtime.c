@@ -1291,3 +1291,415 @@ PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue)
     for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; i++) if ((*queue)->storage->queues[i] == *queue) { (*queue)->storage->queues[i] = NULL; break; }
     (*queue)->storage->queue_count--; free(*queue); *queue = NULL; return PRUNTIME_OK;
 }
+
+/* Installed revision verification is implemented below; no filesystem/SQL policy here. */
+#define RREV_MAGIC 0x52525631UL
+struct PRuntimeRevision {
+    DWORD magic, owner;
+    int active;
+    unsigned int state, installed, phase, index, offset, frame_index;
+    unsigned int count, total, verified_bytes, verified_files;
+    unsigned int expected_generation;
+    int error;
+    char directory[1024], installation_id[33];
+    PRuntimeRevisionProvider provider;
+    PRuntimeInstalledProvider registry;
+    PRuntimeRevisionOptions options;
+    PRuntimeDirectoryRoot root;
+    PRuntimeInstalledRecord record;
+    void* registration_lease;
+    void* digest;
+    PRuntimeManifestHandle manifest;
+    unsigned char content_id[32];
+    PRuntimeRevisionFile files[PRUNTIME_REVISION_MAX_FILES];
+    unsigned char scratch[PRUNTIME_REVISION_STEP_BYTES];
+    char manifest_bytes[PRUNTIME_MANIFEST_BYTES];
+};
+/* Reserve a further 64 KiB for strict manifest/JSON parsing and call stack.
+ * Native provider/CSP buffers are outside Runtime's allocation ownership. */
+typedef char runtime_revision_budget_check[(sizeof(struct PRuntimeRevision) +
+        65536U <= 512U * 1024U) ? 1 : -1];
+static int rv_ready(PRuntimeRevisionHandle r)
+{
+    if (!r || r->magic != RREV_MAGIC) return PRUNTIME_ARGUMENT;
+    return r->active || r->owner != GetCurrentThreadId() ? PRUNTIME_STATE : PRUNTIME_OK;
+}
+static unsigned int rv_length(const char* text, unsigned int capacity)
+{
+    unsigned int n = 0;
+    while (n < capacity && text[n]) ++n;
+    return n;
+}
+static int rv_id(const char* id, unsigned int bytes)
+{
+    unsigned int i, nonzero = 0;
+    if (!id || bytes != 32) return 0;
+    for (i = 0; i < bytes; ++i) {
+        if (!((id[i] >= '0' && id[i] <= '9') || (id[i] >= 'a' && id[i] <= 'f'))) return 0;
+        if (id[i] != '0') nonzero = 1;
+    }
+    return (int)nonzero;
+}
+static int rv_provider_rc(int rc)
+{
+    if (rc == PRUNTIME_OK || rc == PRUNTIME_IO || rc == PRUNTIME_LIMIT ||
+            rc == PRUNTIME_MEMORY || rc == PRUNTIME_UNSUPPORTED || rc == PRUNTIME_BUSY) return rc;
+    return PRUNTIME_IO;
+}
+static void rv_hash_close(PRuntimeRevisionHandle r)
+{
+    if (r->digest) r->provider.hash_close(r->provider.user_data, r->digest);
+    r->digest = NULL;
+}
+static int rv_fail(PRuntimeRevisionHandle r, int rc)
+{
+    rv_hash_close(r);
+    r->error = rc;
+    r->state = rc == PRUNTIME_CANCELLED ? PRUNTIME_REVISION_CANCELLED : PRUNTIME_REVISION_FAILED;
+    return rc;
+}
+static int rv_snapshot_valid(const PRuntimeApprovalSnapshot* s)
+{
+    char canonical[64];
+    unsigned int n;
+    if (s->size != sizeof(*s) || s->version != PRUNTIME_VERSION) return PRUNTIME_INVALID;
+    n = rv_length(s->id, sizeof(s->id));
+    if (PRuntime_NormalizeId(s->id, n, canonical, sizeof(canonical)) != PRUNTIME_OK ||
+            strcmp(canonical, s->id) || rv_length(s->installation_id, 33) != 32 ||
+            !rv_id(s->installation_id, 32) || !s->app_version || s->app_version > 2147483647U)
+        return PRUNTIME_INVALID;
+    if (s->revision != 1 || s->runtime_api_version != 1 || s->digest_algorithm != PRUNTIME_DIGEST_SHA256 ||
+            s->approval_policy != 1 ||
+            ((s->requested_permissions | s->approved_permissions) & ~PRUNTIME_PERMISSION_SQL)) return PRUNTIME_UNSUPPORTED;
+    if (s->approved_permissions != s->requested_permissions) return PRUNTIME_DENIED;
+    return PRUNTIME_OK;
+}
+static int rv_record_valid(PRuntimeRevisionHandle r, const PRuntimeInstalledRecord* record)
+{
+    unsigned int n;
+    int rc;
+    if (record->size != sizeof(*record) || record->version != PRUNTIME_VERSION) return PRUNTIME_INVALID;
+    if (record->active != 1) return PRUNTIME_DENIED;
+    if (!record->generation || record->generation != r->expected_generation) return PRUNTIME_INVALID;
+    rc = rv_snapshot_valid(&record->approval);
+    if (rc != PRUNTIME_OK) return rc;
+    if (strcmp(record->approval.installation_id, r->installation_id)) return PRUNTIME_INVALID;
+    n = rv_length(record->directory, sizeof(record->directory));
+    if (!n || n > PRUNTIME_ROOT_BYTES || !runtime_text(record->directory, n)) return PRUNTIME_INVALID;
+    return PRUNTIME_OK;
+}
+static int rv_same_approval(const PRuntimeApprovalSnapshot* a, const PRuntimeApprovalSnapshot* b)
+{
+    return !strcmp(a->id, b->id) && !strcmp(a->installation_id, b->installation_id) &&
+            a->revision == b->revision && a->app_version == b->app_version &&
+            a->runtime_api_version == b->runtime_api_version && a->digest_algorithm == b->digest_algorithm &&
+            a->approval_policy == b->approval_policy &&
+            a->requested_permissions == b->requested_permissions && a->approved_permissions == b->approved_permissions &&
+            !memcmp(a->content_id, b->content_id, 32);
+}
+static int rv_refresh(PRuntimeRevisionHandle r)
+{
+    PRuntimeInstalledRecord current;
+    int rc;
+    memset(&current, 0, sizeof(current)); current.size = sizeof(current); current.version = PRUNTIME_VERSION;
+    rc = r->registry.refresh(r->registry.user_data, r->registration_lease, &current);
+    if (rc == PRUNTIME_NOT_FOUND || rc == PRUNTIME_DENIED) return PRUNTIME_DENIED;
+    rc = rv_provider_rc(rc);
+    if (rc != PRUNTIME_OK) return rc;
+    rc = rv_record_valid(r, &current);
+    if (rc != PRUNTIME_OK) return rc;
+    if (strcmp(current.directory, r->record.directory) ||
+            !rv_same_approval(&current.approval, &r->record.approval)) return PRUNTIME_INVALID;
+    return PRUNTIME_OK;
+}
+static int rv_provider_valid(const PRuntimeRevisionProvider* p)
+{
+    if (!p || p->size != sizeof(*p) || p->version != PRUNTIME_VERSION ||
+            !p->open_root || !p->close_root || !p->enumerate_file || !p->read_at ||
+            !p->hash_begin || !p->hash_update || !p->hash_finish || !p->hash_close) return PRUNTIME_ARGUMENT;
+    return p->digest_algorithm == PRUNTIME_DIGEST_SHA256 ? PRUNTIME_OK : PRUNTIME_UNSUPPORTED;
+}
+static int rv_begin(const PRuntimeRevisionProvider* provider,
+        const PRuntimeRevisionOptions* options, PRuntimeRevisionHandle* output)
+{
+    PRuntimeRevisionHandle r;
+    int rc = rv_provider_valid(provider);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!output || (options && (options->size != sizeof(*options) ||
+            options->version != PRUNTIME_VERSION))) return PRUNTIME_ARGUMENT;
+    r = (PRuntimeRevisionHandle)calloc(1, sizeof(*r));
+    if (!r) return PRUNTIME_MEMORY;
+    r->magic = RREV_MAGIC; r->owner = GetCurrentThreadId(); r->provider = *provider;
+    if (options) r->options = *options;
+    r->state = PRUNTIME_REVISION_INITIALIZING;
+    *output = r; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_PrepareRevision(const char* directory, unsigned int bytes,
+        const PRuntimeRevisionProvider* provider, const PRuntimeRevisionOptions* options,
+        PRuntimeRevisionHandle* output)
+{
+    PRuntimeRevisionHandle r;
+    int rc;
+    if (!directory || !bytes || !output) return PRUNTIME_ARGUMENT;
+    if (bytes > PRUNTIME_ROOT_BYTES) return PRUNTIME_LIMIT;
+    if (!runtime_text(directory, bytes)) return PRUNTIME_INVALID;
+    rc = rv_begin(provider, options, &r);
+    if (rc != PRUNTIME_OK) return rc;
+    memcpy(r->directory, directory, bytes); *output = r; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_OpenInstalled(const char* id, unsigned int bytes, unsigned int generation,
+        const PRuntimeInstalledProvider* registry, const PRuntimeRevisionProvider* provider,
+        const PRuntimeRevisionOptions* options, PRuntimeRevisionHandle* output)
+{
+    PRuntimeRevisionHandle r;
+    int rc;
+    if (!output || !rv_id(id, bytes) || !generation || generation > 2147483647U ||
+            !registry || registry->size != sizeof(*registry) || registry->version != PRUNTIME_VERSION ||
+            !registry->open || !registry->refresh || !registry->close) return PRUNTIME_ARGUMENT;
+    rc = rv_begin(provider, options, &r);
+    if (rc != PRUNTIME_OK) return rc;
+    memcpy(r->installation_id, id, 32); r->expected_generation = generation;
+    r->registry = *registry; r->installed = 1;
+    *output = r; return PRUNTIME_OK;
+}
+static int rv_conflict(const char* a, const char* b)
+{
+    WCHAR wa[256], wb[256];
+    int an = MultiByteToWideChar(CP_UTF8, 0, a, -1, wa, 256) - 1;
+    int bn = MultiByteToWideChar(CP_UTF8, 0, b, -1, wb, 256) - 1;
+    int n = an < bn ? an : bn;
+    int comparison;
+    if (an < 1 || bn < 1) return 1;
+    comparison = CompareStringW(LOCALE_SYSTEM_DEFAULT, NORM_IGNORECASE, wa, n, wb, n);
+    if (!comparison) return 1;
+    return comparison == CSTR_EQUAL && (an == bn || (n == an && wb[n] == '/') || (n == bn && wa[n] == '/'));
+}
+static int __cdecl rv_file_compare(const void* a, const void* b)
+{ return strcmp(((const PRuntimeRevisionFile*)a)->path, ((const PRuntimeRevisionFile*)b)->path); }
+static void rv_u32(unsigned char* p, unsigned int n)
+{ p[0] = (unsigned char)n; p[1] = (unsigned char)(n >> 8); p[2] = (unsigned char)(n >> 16); p[3] = (unsigned char)(n >> 24); }
+static int rv_hash_begin(PRuntimeRevisionHandle r)
+{ return rv_provider_rc(r->provider.hash_begin(r->provider.user_data, &r->digest)); }
+static int rv_hash_update(PRuntimeRevisionHandle r, const void* bytes, unsigned int n)
+{ return rv_provider_rc(r->provider.hash_update(r->provider.user_data, r->digest, bytes, n)); }
+static int rv_has_file(PRuntimeRevisionHandle r, const char* path)
+{
+    unsigned int i;
+    for (i = 0; i < r->count; ++i) if (!strcmp(r->files[i].path, path)) return 1;
+    return 0;
+}
+static int rv_step(PRuntimeRevisionHandle r)
+{
+    static const unsigned char domain[] = "Positron.ResourceSet.v1";
+    PRuntimeRevisionFile file;
+    PRuntimeRevisionFile* current;
+    unsigned int i, n, got;
+    unsigned char frame[4 + 255 + 4 + 32];
+    int rc;
+    if (r->options.cancelled && r->options.cancelled(r->options.user_data)) return PRUNTIME_CANCELLED;
+    if (!r->phase) {
+        if (r->installed) {
+            r->record.size = sizeof(r->record); r->record.version = PRUNTIME_VERSION;
+            rc = r->registry.open(r->registry.user_data, r->installation_id,
+                    &r->record, &r->registration_lease);
+            if (rc == PRUNTIME_NOT_FOUND || rc == PRUNTIME_DENIED) return PRUNTIME_DENIED;
+            rc = rv_provider_rc(rc);
+            if (rc != PRUNTIME_OK) return rc;
+            if (!r->registration_lease) return PRUNTIME_IO;
+            rc = rv_record_valid(r, &r->record);
+            if (rc != PRUNTIME_OK) return rc;
+            strcpy(r->directory, r->record.directory);
+        }
+        rc = rv_provider_rc(r->provider.open_root(r->provider.user_data,
+                r->directory, (unsigned int)strlen(r->directory), &r->root));
+        if (rc != PRUNTIME_OK) return rc;
+        if (!r->root.root || !r->root.canonical_bytes || r->root.canonical_bytes > PRUNTIME_ROOT_BYTES ||
+                !runtime_text(r->root.canonical, r->root.canonical_bytes) ||
+                r->root.canonical[r->root.canonical_bytes]) return PRUNTIME_IO;
+        if (r->installed && strcmp(r->root.canonical, r->record.directory)) return PRUNTIME_INVALID;
+        r->phase = 1; r->state = PRUNTIME_REVISION_PENDING; return PRUNTIME_OK;
+    }
+    if (r->phase == 1) {
+        for (i = 0; i < 16; ++i) {
+            memset(&file, 0, sizeof(file)); file.size = sizeof(file); file.version = PRUNTIME_VERSION;
+            rc = r->provider.enumerate_file(r->provider.user_data, r->root.root, r->count, &file);
+            if (rc == PRUNTIME_NOT_FOUND) {
+                if (!rv_has_file(r, "manifest.json")) return PRUNTIME_INVALID;
+                qsort(r->files, r->count, sizeof(file), rv_file_compare);
+                r->phase = 2; return PRUNTIME_OK;
+            }
+            rc = rv_provider_rc(rc); if (rc != PRUNTIME_OK) return rc;
+            if (r->count == PRUNTIME_REVISION_MAX_FILES) return PRUNTIME_LIMIT;
+            if (file.size != sizeof(file) || file.version != PRUNTIME_VERSION) return PRUNTIME_IO;
+            n = rv_length(file.path, sizeof(file.path));
+            rc = PRuntime_ValidateResourcePath(file.path, n); if (rc != PRUNTIME_OK) return rc;
+            if (file.file_bytes > PRUNTIME_RESOURCE_BYTES ||
+                    file.file_bytes > PRUNTIME_REVISION_TOTAL_BYTES - r->total ||
+                    (!strcmp(file.path, "manifest.json") && file.file_bytes > PRUNTIME_MANIFEST_BYTES)) return PRUNTIME_LIMIT;
+            if (!strcmp(file.path, "manifest.json") && !file.file_bytes) return PRUNTIME_INVALID;
+            {
+                unsigned int j;
+                for (j = 0; j < r->count; ++j) if (rv_conflict(file.path, r->files[j].path)) return PRUNTIME_INVALID;
+            }
+            memset(file.sha256, 0, 32); r->files[r->count++] = file; r->total += file.file_bytes;
+        }
+        return PRUNTIME_OK;
+    }
+    if (r->phase == 2) {
+        current = &r->files[r->index];
+        if (!r->digest) {
+            rc = rv_hash_begin(r); if (rc != PRUNTIME_OK) return rc;
+            if (!r->digest) return PRUNTIME_IO;
+        }
+        n = current->file_bytes - r->offset;
+        if (n > PRUNTIME_REVISION_STEP_BYTES) n = PRUNTIME_REVISION_STEP_BYTES;
+        got = 0;
+        rc = rv_provider_rc(r->provider.read_at(r->provider.user_data, r->root.root,
+                current->path, r->offset, r->scratch, n ? n : 1, &got));
+        if (rc != PRUNTIME_OK) return rc;
+        if (got != n) return n ? PRUNTIME_IO : PRUNTIME_INVALID;
+        if (n) {
+            rc = rv_hash_update(r, r->scratch, n); if (rc != PRUNTIME_OK) return rc;
+            if (!strcmp(current->path, "manifest.json")) memcpy(r->manifest_bytes + r->offset, r->scratch, n);
+            r->offset += n; r->verified_bytes += n; return PRUNTIME_OK;
+        }
+        rc = rv_provider_rc(r->provider.hash_finish(r->provider.user_data, r->digest, current->sha256));
+        rv_hash_close(r); if (rc != PRUNTIME_OK) return rc;
+        if (!strcmp(current->path, "manifest.json")) {
+            rc = PRuntime_ManifestCreate(r->manifest_bytes, current->file_bytes, &r->manifest);
+            if (rc != PRUNTIME_OK) return rc;
+        }
+        ++r->verified_files; ++r->index; r->offset = 0;
+        if (r->index == r->count) r->phase = 3;
+        return PRUNTIME_OK;
+    }
+    if (r->phase == 3) {
+        if (!r->manifest || !rv_has_file(r, r->manifest->info.entry)) return PRUNTIME_INVALID;
+        for (i = 0; i < r->manifest->info.migration_count; ++i)
+            if (!rv_has_file(r, r->manifest->migrations[i].file)) return PRUNTIME_INVALID;
+        rc = rv_hash_begin(r); if (rc != PRUNTIME_OK) return rc;
+        if (!r->digest) return PRUNTIME_IO;
+        rc = rv_hash_update(r, domain, sizeof(domain)); if (rc != PRUNTIME_OK) return rc;
+        rv_u32(frame, r->count); rc = rv_hash_update(r, frame, 4); if (rc != PRUNTIME_OK) return rc;
+        r->phase = 4; return PRUNTIME_OK;
+    }
+    for (i = 0; i < 16 && r->frame_index < r->count; ++i) {
+        current = &r->files[r->frame_index++]; n = (unsigned int)strlen(current->path);
+        rv_u32(frame, n); memcpy(frame + 4, current->path, n);
+        rv_u32(frame + 4 + n, current->file_bytes); memcpy(frame + 8 + n, current->sha256, 32);
+        rc = rv_hash_update(r, frame, n + 40); if (rc != PRUNTIME_OK) return rc;
+    }
+    if (r->frame_index != r->count) return PRUNTIME_OK;
+    rc = rv_provider_rc(r->provider.hash_finish(r->provider.user_data, r->digest, r->content_id));
+    rv_hash_close(r); if (rc != PRUNTIME_OK) return rc;
+    if (r->installed) {
+        rc = rv_refresh(r); if (rc != PRUNTIME_OK) return rc;
+        if (strcmp(r->manifest->info.id, r->record.approval.id) ||
+                r->manifest->info.app_version != r->record.approval.app_version ||
+                r->manifest->info.requested_permissions != r->record.approval.requested_permissions ||
+                memcmp(r->content_id, r->record.approval.content_id, 32)) return PRUNTIME_INVALID;
+    }
+    r->state = PRUNTIME_REVISION_COMPLETE; return PRUNTIME_REVISION_DONE;
+}
+PRUNTIME_API int PRuntime_RevisionStep(PRuntimeRevisionHandle r)
+{
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (r->state != PRUNTIME_REVISION_INITIALIZING && r->state != PRUNTIME_REVISION_PENDING) return PRUNTIME_STATE;
+    r->active = 1; rc = rv_step(r);
+    if (rc < 0) rv_fail(r, rc);
+    r->active = 0; return rc;
+}
+PRUNTIME_API int PRuntime_RevisionGetInfo(PRuntimeRevisionHandle r, PRuntimeRevisionInfo* output)
+{
+    PRuntimeRevisionInfo info;
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!output || output->size != sizeof(*output) || output->version != PRUNTIME_VERSION) return PRUNTIME_ARGUMENT;
+    memset(&info, 0, sizeof(info)); info.size = sizeof(info); info.version = PRUNTIME_VERSION;
+    info.state = r->state; info.error = r->error; info.installed = r->installed;
+    info.file_count = r->count; info.total_bytes = r->total;
+    info.verified_bytes = r->verified_bytes; info.verified_files = r->verified_files;
+    if (r->state == PRUNTIME_REVISION_COMPLETE) {
+        strcpy(info.canonical_root, r->root.canonical); strcpy(info.id, r->manifest->info.id);
+        strcpy(info.entry, r->manifest->info.entry); info.app_version = r->manifest->info.app_version;
+        info.requested_permissions = r->manifest->info.requested_permissions;
+        memcpy(info.content_id, r->content_id, 32);
+        if (r->installed) {
+            strcpy(info.installation_id, r->record.approval.installation_id);
+            info.revision = r->record.approval.revision; info.registry_generation = r->record.generation;
+            info.approved_permissions = r->record.approval.approved_permissions;
+        }
+    }
+    *output = info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_RevisionGetFile(PRuntimeRevisionHandle r, unsigned int index, PRuntimeRevisionFile* file)
+{
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (r->state != PRUNTIME_REVISION_COMPLETE) return PRUNTIME_STATE;
+    if (!file || file->size != sizeof(*file) || file->version != PRUNTIME_VERSION || index >= r->count) return PRUNTIME_ARGUMENT;
+    *file = r->files[index]; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_RevisionBuildApproval(PRuntimeRevisionHandle r,
+        const PRuntimeApprovalOptions* options, PRuntimeApprovalSnapshot* output)
+{
+    PRuntimeApprovalSnapshot snapshot;
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed) return PRUNTIME_STATE;
+    if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
+            output->size != sizeof(*output) || output->version != PRUNTIME_VERSION ||
+            rv_length(options->installation_id, 33) != 32 || !rv_id(options->installation_id, 32)) return PRUNTIME_ARGUMENT;
+    if (options->revision != 1) return PRUNTIME_UNSUPPORTED;
+    if (options->confirmed != 1) return PRUNTIME_DENIED;
+    memset(&snapshot, 0, sizeof(snapshot)); snapshot.size = sizeof(snapshot); snapshot.version = PRUNTIME_VERSION;
+    strcpy(snapshot.id, r->manifest->info.id); strcpy(snapshot.installation_id, options->installation_id);
+    snapshot.revision = 1; snapshot.app_version = r->manifest->info.app_version;
+    snapshot.runtime_api_version = 1; snapshot.digest_algorithm = PRUNTIME_DIGEST_SHA256;
+    memcpy(snapshot.content_id, r->content_id, 32); snapshot.approval_policy = 1;
+    snapshot.requested_permissions = snapshot.approved_permissions = r->manifest->info.requested_permissions;
+    *output = snapshot; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstalledReadFile(PRuntimeRevisionHandle r, unsigned int index,
+        unsigned int offset, void* buffer, unsigned int capacity, unsigned int* written)
+{
+    unsigned int n, got = 0;
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!r->installed) return PRUNTIME_DENIED;
+    if (r->state != PRUNTIME_REVISION_COMPLETE) return PRUNTIME_STATE;
+    if (!buffer || !written || !capacity || capacity > PRUNTIME_REVISION_STEP_BYTES || index >= r->count ||
+            offset > r->files[index].file_bytes) return PRUNTIME_ARGUMENT;
+    r->active = 1;
+    rc = r->options.cancelled && r->options.cancelled(r->options.user_data) ? PRUNTIME_CANCELLED : rv_refresh(r);
+    n = r->files[index].file_bytes - offset; if (n > capacity) n = capacity;
+    if (rc == PRUNTIME_OK && n) {
+        rc = rv_provider_rc(r->provider.read_at(r->provider.user_data, r->root.root,
+                r->files[index].path, offset, r->scratch, n, &got));
+        if (rc == PRUNTIME_OK && got != n) rc = PRUNTIME_IO;
+    }
+    if (rc == PRUNTIME_OK) { if (n) memcpy(buffer, r->scratch, n); *written = n; }
+    else rv_fail(r, rc);
+    r->active = 0; return rc;
+}
+PRUNTIME_API int PRuntime_RevisionCancel(PRuntimeRevisionHandle r)
+{
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (r->state == PRUNTIME_REVISION_CANCELLED) return PRUNTIME_OK;
+    if (r->state == PRUNTIME_REVISION_FAILED) return PRUNTIME_STATE;
+    r->active = 1; rv_fail(r, PRUNTIME_CANCELLED); r->active = 0; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_RevisionClose(PRuntimeRevisionHandle* slot)
+{
+    PRuntimeRevisionHandle r;
+    int rc;
+    if (!slot) return PRUNTIME_ARGUMENT;
+    r = *slot; if (!r) return PRUNTIME_OK;
+    rc = rv_ready(r); if (rc != PRUNTIME_OK) return rc;
+    r->active = 1; rv_hash_close(r); PRuntime_ManifestClose(&r->manifest);
+    if (r->root.root) r->provider.close_root(r->provider.user_data, r->root.root);
+    if (r->registration_lease) r->registry.close(r->registry.user_data, r->registration_lease);
+    r->magic = 0; free(r); *slot = NULL; return PRUNTIME_OK;
+}

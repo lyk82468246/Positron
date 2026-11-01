@@ -22,7 +22,7 @@ Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础�
 | `positron_json.dll` | cJSON 的 opaque-handle 包装 | `PJson_Parse`、读取函数、`PJson_Free` |
 | `positron_db.dll` | SQLite 本地数据库、migration、outbox 和 REST 行级同步状态 | `PDb_OpenUtf8`、`PDb_ApplyMigration`、`PDb_SyncBuildRequest`、`PDb_SyncApplyResponse` |
 | `positron_archive.dll` | 有界 ZIP 枚举、校验、STORE/DEFLATE 解压及新归档创建 | `PArchive_Open/Read`、`PArchive_WriterCreate/Add/Finish`；见[调用与边界](positron_archive/README.md) |
-| `positron_runtime.dll` | 资源应用 manifest、规范 ID 与包内路径准入；完整运行/授权尚未提供 | `PRuntime_ManifestCreate`、`PRuntime_NormalizeId`；见[调用与边界](positron_runtime/README.md) |
+| `positron_runtime.dll` | 资源应用元数据、开发目录/隔离 SQL，以及首次安装资源的只读身份核验 | `PRuntime_ManifestCreate`、`PRuntime_PrepareRevision/OpenInstalled`；见[调用与边界](positron_runtime/README.md) |
 | `positron_media.dll` | 有界媒体解码与宿主时钟调度 | `pm_probe`、`pm_open`、`pm_pump`、`pm_close` |
 | `positron_http.dll` | 基于 TLS 的 HTTP/1.1 GET/POST 与 URL reference 解析 | `PHttp_Init`、`PHttp_GetEx`、`PHttp_PostEx` |
 | `positron_image.dll` | 位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
