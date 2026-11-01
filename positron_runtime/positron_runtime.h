@@ -24,6 +24,7 @@ extern "C" {
 #define PRUNTIME_DATABASE -11
 #define PRUNTIME_CANCELLED -12
 #define PRUNTIME_NOT_FOUND -13
+#define PRUNTIME_UNRESOLVED -14
 #define PRUNTIME_SERVICE_MAX_PENDING 8U
 #define PRUNTIME_SERVICE_MAX_QUEUES 4U
 #define PRUNTIME_STORAGE_KEY_BYTES 127
@@ -177,6 +178,65 @@ PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle r
         const PRuntimeRegistrationTransition* transition,
         const PRuntimeRegistrationProvider* provider,
         PRuntimeRegistrationDecision* output);
+#define PRUNTIME_INTENT_NEW 1U
+#define PRUNTIME_INTENT_RESUME 2U
+#define PRUNTIME_INTENT_RETRY_FAILED 3U
+#define PRUNTIME_INTENT_INITIALIZING 1U
+#define PRUNTIME_INTENT_PENDING 2U
+#define PRUNTIME_INTENT_PREPARED 3U
+#define PRUNTIME_INTENT_FAILED 4U
+#define PRUNTIME_INTENT_CANCELLED 5U
+#define PRUNTIME_INTENT_UNRESOLVED 6U
+#define PRUNTIME_INTENT_DONE 1
+typedef struct PRuntimeInstallIntent* PRuntimeInstallIntentHandle;
+typedef struct PRuntimeInstallIntentOptions {
+    unsigned int size, version, mode;
+    PRuntimeApprovalOptions approval; /* explicit native confirmation, revision 1 */
+} PRuntimeInstallIntentOptions;
+typedef struct PRuntimeInstallIntentProvider {
+    unsigned int size, version;
+    void* user_data;
+    /* Same nonblocking namespace/installation lease and fresh-read contract as
+     * RegistrationProvider, held through IntentClose. */
+    int (*acquire)(void*, const char*, const char*, void**);
+    int (*read)(void*, void*, PRuntimeRegistrationRecord*);
+    /* Atomic exact CAS; NULL expected means absent + logical ID unoccupied.
+     * Always set outcome even on error: CONFIRMED, NOT_COMMITTED or UNKNOWN.
+     * No active transaction/background operation survives return. Native
+     * provider persists fields, not struct padding, and enforces app-ID
+     * uniqueness. Runtime supplies PREPARING/CANCELLED only, never READY. */
+    int (*compare_exchange)(void*, void*, const PRuntimeRegistrationRecord*,
+            const PRuntimeRegistrationRecord*, unsigned int* outcome);
+    void (*close)(void*, void*);
+} PRuntimeInstallIntentProvider;
+typedef struct PRuntimeInstallIntentInfo {
+    unsigned int size, version, state;
+    int error, provider_result; /* UNRESOLVED retains underlying read/CAS error */
+    unsigned int commit_outcome, record_known, record_exists;
+    PRuntimeRegistrationRecord record; /* native-only, zero unless known/present */
+} PRuntimeInstallIntentInfo;
+/* Complete prepare-kind + explicit confirmation; one child, no callbacks at
+ * Begin. Copies options/provider, retains parent/root. Parent Cancel/Close,
+ * approval building and standalone reconciliation return STATE until child
+ * closes. GetInfo/GetFile remain available outside active callbacks.
+ * Step performs at most one acquire/read/CAS callback; confirmed/unknown writes
+ * are always read back, never automatically replayed. PREPARED is an inactive
+ * durable intent, NOT installed identity, DB readiness or permission to run.
+ * RESUME requires exact PREPARING; RETRY_FAILED exact FAILED + generation+1.
+ * Unreadable post-CAS result becomes UNRESOLVED, never not-found/safe-to-retry.
+ * No SQL, resources writes, author execution, worker, pump or hard I/O deadline.
+ * Owner-thread, no reentry; provider code/user lives through Close. */
+PRUNTIME_API int PRuntime_InstallIntentBegin(PRuntimeRevisionHandle revision,
+        const PRuntimeInstallIntentOptions* options,
+        const PRuntimeInstallIntentProvider* provider, PRuntimeInstallIntentHandle* output);
+PRUNTIME_API int PRuntime_InstallIntentStep(PRuntimeInstallIntentHandle intent);
+PRUNTIME_API int PRuntime_InstallIntentGetInfo(PRuntimeInstallIntentHandle intent, PRuntimeInstallIntentInfo* info);
+/* Marks a request, no I/O. Step must resolve any in-flight write then, if an
+ * exact PREPARING exists, CAS CANCELLED and read back. Cannot undo COMMIT.
+ * Cancel before new/retry CAS leaves registration untouched. Close does NOT
+ * imply cancel or delete; pending/unknown durable records remain for recovery. */
+PRUNTIME_API int PRuntime_InstallIntentCancel(PRuntimeInstallIntentHandle intent);
+PRUNTIME_API int PRuntime_InstallIntentClose(PRuntimeInstallIntentHandle* intent);
 typedef struct PRuntimeServiceQueueOptions {
     unsigned int size;
     unsigned int version;

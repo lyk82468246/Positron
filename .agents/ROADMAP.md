@@ -244,7 +244,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-登记转换/提交结果读回退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)实现 PREPARING 意图协调器：保有prepare父job，原生CAS后精确读回，失败/取消不留伪成功；随后接安装准备存储、READY只开已有库及队列。登记SQL/主库表仍属EXE，恢复分类不得留在宿主。revision>1关闭，手动目录继续每次确认。
+登记读回与PREPARING意图协调退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)实现独立安装准备存储：活的PREPARED意图、完整installed stamp/key、全部来源准入、逐文件迁移及非幂等后缀恢复；之后再接READY只开已有库、最终提交及队列。登记SQL/主库表仍属EXE，恢复分类不得留在宿主。revision>1关闭，手动目录继续每次确认。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 

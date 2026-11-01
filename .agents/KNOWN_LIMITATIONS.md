@@ -55,7 +55,7 @@ ZIP 仅有界 STORE/DEFLATE 读写；PXI/HTTP gzip 未接线，物理输出与�
 
 ## 纯资源应用 Runtime
 
-- Notes双语/Release待验收；只读安装核验已有，安装SQL/登记恢复/EXE未实现。
+- Notes双语/Release待验收；安装意图已有，安装SQL/READY登记/EXE未实现。
 - 旧 mkdir183/CANTOPEN 未关闭，等非零快照再定位；PXI 安装待完成。
 
 ## HTML、CSS 与布局

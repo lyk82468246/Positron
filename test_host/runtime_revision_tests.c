@@ -511,3 +511,196 @@ BOOL test1378_runtime_registration_contract(void)
 failed:
     revision_dispose(&f, &job); return FALSE;
 }
+
+typedef struct IntentFixture {
+    RegistrationFixture registry;
+    PRuntimeInstallIntentHandle job;
+    unsigned int writes, calls, commit, outcome, read_failure;
+    int write_result;
+} IntentFixture;
+static void intent_guard(IntentFixture* f)
+{
+    PRuntimeInstallIntentInfo info;
+    PRuntimeInstallIntentHandle alias;
+    ++f->calls;
+    if (!f->job) return;
+    info.size = sizeof(info); info.version = 1; alias = f->job;
+    if (PRuntime_InstallIntentGetInfo(f->job, &info) != PRUNTIME_STATE ||
+            PRuntime_InstallIntentCancel(f->job) != PRUNTIME_STATE ||
+            PRuntime_InstallIntentClose(&alias) != PRUNTIME_STATE || alias != f->job)
+        ++f->registry.revision->bad_guard;
+}
+static int intent_acquire(void* user, const char* id, const char* installation, void** lease)
+{
+    IntentFixture* f = (IntentFixture*)user;
+    intent_guard(f); return registration_acquire(&f->registry, id, installation, lease);
+}
+static int intent_read(void* user, void* lease, PRuntimeRegistrationRecord* record)
+{
+    IntentFixture* f = (IntentFixture*)user;
+    intent_guard(f);
+    if (f->writes && f->read_failure) return PRUNTIME_IO;
+    return registration_read(&f->registry, lease, record);
+}
+static int intent_cas(void* user, void* lease, const PRuntimeRegistrationRecord* previous,
+        const PRuntimeRegistrationRecord* proposed, unsigned int* outcome)
+{
+    IntentFixture* f = (IntentFixture*)user;
+    intent_guard(f); revision_guard(f->registry.revision); ++f->writes;
+    if (lease != &f->registry || f->registry.leases != 1 ||
+            (previous && (f->registry.read_result != PRUNTIME_OK || memcmp(previous, &f->registry.record, sizeof(*previous)))) ||
+            (!previous && f->registry.read_result != PRUNTIME_NOT_FOUND)) {
+        *outcome = PRUNTIME_COMMIT_NOT_COMMITTED; return PRUNTIME_BUSY;
+    }
+    if (f->commit) { f->registry.record = *proposed; f->registry.read_result = PRUNTIME_OK; }
+    *outcome = f->outcome; return f->write_result;
+}
+static void intent_close(void* user, void* lease)
+{
+    IntentFixture* f = (IntentFixture*)user;
+    intent_guard(f); registration_close(&f->registry, lease);
+}
+typedef struct IntentThread { PRuntimeInstallIntentHandle job; int rc; } IntentThread;
+static DWORD WINAPI intent_other_thread(void* user)
+{
+    IntentThread* t = (IntentThread*)user;
+    PRuntimeInstallIntentHandle alias = t->job;
+    t->rc = PRuntime_InstallIntentStep(t->job) == PRUNTIME_STATE &&
+        PRuntime_InstallIntentCancel(t->job) == PRUNTIME_STATE &&
+        PRuntime_InstallIntentClose(&alias) == PRUNTIME_STATE && alias == t->job;
+    return 0;
+}
+BOOL test1379_runtime_intent_contract(void)
+{
+    RevisionFixture f;
+    IntentFixture native;
+    PRuntimeRevisionProvider p;
+    PRuntimeInstalledProvider registry;
+    PRuntimeRevisionOptions options;
+    PRuntimeRevisionHandle job = NULL, alias;
+    PRuntimeInstallIntentHandle intent = NULL, other;
+    PRuntimeInstallIntentOptions open;
+    PRuntimeInstallIntentProvider provider;
+    PRuntimeInstallIntentInfo info;
+    PRuntimeApprovalSnapshot snapshot;
+    IntentThread thread_data;
+    HANDLE thread;
+    unsigned int mode, steps, old_calls;
+    int rc = 0, expected;
+    revision_error[0] = 0;
+    revision_fixture(&f, NULL); revision_tables(&f, &p, &registry, &options);
+    RCHECK(PRuntime_PrepareRevision("\\revision-root", 14, &p, &options, &job) == PRUNTIME_OK);
+    rc = revision_run(&f, job); RCHECK(rc == PRUNTIME_REVISION_DONE);
+    memset(&open, 0, sizeof(open)); open.size = sizeof(open); open.version = 1;
+    open.mode = PRUNTIME_INTENT_NEW; open.approval.size = sizeof(open.approval); open.approval.version = 1;
+    open.approval.confirmed = 1; open.approval.revision = 1;
+    strcpy(open.approval.installation_id, "00112233445566778899aabbccddeeff");
+    snapshot.size = sizeof(snapshot); snapshot.version = 1;
+    RCHECK(PRuntime_RevisionBuildApproval(job, &open.approval, &snapshot) == PRUNTIME_OK);
+    memset(&provider, 0, sizeof(provider)); provider.size = sizeof(provider); provider.version = 1;
+    provider.user_data = &native; provider.acquire = intent_acquire; provider.read = intent_read;
+    provider.compare_exchange = intent_cas; provider.close = intent_close;
+    memset(&native, 0, sizeof(native)); native.registry.revision = &f;
+    open.approval.confirmed = 0; intent = (PRuntimeInstallIntentHandle)1;
+    RCHECK(PRuntime_InstallIntentBegin(job, &open, &provider, &intent) == PRUNTIME_DENIED &&
+            intent == (PRuntimeInstallIntentHandle)1 && !native.calls);
+    intent = NULL; open.approval.confirmed = 1;
+    for (mode = 0; mode < 21; ++mode) {
+        memset(&native, 0, sizeof(native)); native.registry.revision = &f;
+        native.registry.read_result = PRUNTIME_NOT_FOUND;
+        native.commit = 1; native.outcome = PRUNTIME_COMMIT_CONFIRMED;
+        open.mode = PRUNTIME_INTENT_NEW; expected = PRUNTIME_INTENT_DONE;
+        native.registry.record.size = sizeof(native.registry.record); native.registry.record.version = 1;
+        native.registry.record.approval = snapshot; native.registry.record.generation = 7;
+        native.registry.record.state = PRUNTIME_REG_PREPARING;
+        strcpy(native.registry.record.directory, "\\revision-root");
+        switch (mode) {
+        case 0: break;
+        case 1: native.outcome = PRUNTIME_COMMIT_UNKNOWN; native.write_result = PRUNTIME_IO; break;
+        case 2: native.commit = 0; native.outcome = PRUNTIME_COMMIT_NOT_COMMITTED;
+            native.write_result = PRUNTIME_IO; expected = PRUNTIME_IO; break;
+        case 3: native.outcome = PRUNTIME_COMMIT_UNKNOWN; native.read_failure = 1;
+            expected = PRUNTIME_UNRESOLVED; break;
+        case 4: native.registry.read_result = PRUNTIME_OK; expected = PRUNTIME_DENIED; break;
+        case 5: native.registry.acquire_result = PRUNTIME_BUSY; expected = PRUNTIME_BUSY; break;
+        case 6: native.registry.acquire_result = PRUNTIME_IO; native.registry.partial = 1; expected = PRUNTIME_IO; break;
+        case 7: native.registry.read_result = PRUNTIME_IO; expected = PRUNTIME_IO; break;
+        case 8: open.mode = PRUNTIME_INTENT_RESUME; native.registry.read_result = PRUNTIME_OK; break;
+        case 9: open.mode = PRUNTIME_INTENT_RETRY_FAILED; native.registry.read_result = PRUNTIME_OK;
+            native.registry.record.state = PRUNTIME_REG_FAILED; break;
+        case 10: open.mode = PRUNTIME_INTENT_RESUME; expected = PRUNTIME_DENIED; break;
+        case 11: open.mode = PRUNTIME_INTENT_RESUME; native.registry.read_result = PRUNTIME_OK;
+            native.registry.record.state = PRUNTIME_REG_READY; expected = PRUNTIME_DENIED; break;
+        case 12: open.mode = PRUNTIME_INTENT_RESUME; native.registry.read_result = PRUNTIME_OK;
+            native.registry.record.approval.content_id[0] ^= 1; expected = PRUNTIME_INVALID; break;
+        case 13: open.mode = PRUNTIME_INTENT_RETRY_FAILED; native.registry.read_result = PRUNTIME_OK;
+            native.registry.record.state = PRUNTIME_REG_FAILED; native.registry.record.generation = 2147483647U;
+            expected = PRUNTIME_LIMIT; break;
+        case 14: expected = PRUNTIME_CANCELLED; break; /* cancel before I/O */
+        case 15: expected = PRUNTIME_CANCELLED; break; /* cancel after CAS */
+        case 16: expected = PRUNTIME_CANCELLED; break; /* cancel prepared intent */
+        case 17: native.outcome = PRUNTIME_COMMIT_NOT_COMMITTED; expected = PRUNTIME_INVALID; break;
+        case 18: native.commit = 0; native.outcome = PRUNTIME_COMMIT_UNKNOWN;
+            native.write_result = PRUNTIME_IO; expected = PRUNTIME_IO; break;
+        case 19: open.mode = PRUNTIME_INTENT_RESUME; native.registry.read_result = PRUNTIME_OK;
+            expected = PRUNTIME_CANCELLED; break;
+        default: native.outcome = 0; break; /* malformed outcome -> UNKNOWN, exact read still authoritative */
+        }
+        old_calls = native.calls;
+        RCHECK(PRuntime_InstallIntentBegin(job, &open, &provider, &intent) == PRUNTIME_OK && native.calls == old_calls);
+        native.job = intent;
+        alias = job; other = NULL;
+        RCHECK(PRuntime_RevisionCancel(job) == PRUNTIME_STATE && PRuntime_RevisionClose(&alias) == PRUNTIME_STATE && alias == job);
+        RCHECK(PRuntime_InstallIntentBegin(job, &open, &provider, &other) == PRUNTIME_STATE && !other);
+        RCHECK(PRuntime_RevisionBuildApproval(job, NULL, NULL) == PRUNTIME_STATE &&
+                PRuntime_RevisionReconcileRegistration(job, NULL, NULL, NULL) == PRUNTIME_STATE);
+        if (!mode) {
+            thread_data.job = intent; thread_data.rc = 0;
+            thread = CreateThread(NULL, 0, intent_other_thread, &thread_data, 0, NULL);
+            RCHECK(thread != NULL);
+            RCHECK(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); CloseHandle(thread);
+            RCHECK(thread_data.rc);
+        }
+        if (mode == 14 || mode == 19) RCHECK(PRuntime_InstallIntentCancel(intent) == PRUNTIME_OK);
+        rc = PRUNTIME_OK;
+        for (steps = 0; steps < 20 && rc == PRUNTIME_OK; ++steps) {
+            old_calls = native.calls;
+            rc = PRuntime_InstallIntentStep(intent);
+            RCHECK(native.calls - old_calls <= 1);
+            if (mode == 15 && native.writes == 1) RCHECK(PRuntime_InstallIntentCancel(intent) == PRUNTIME_OK);
+        }
+        if (mode == 16 && rc == PRUNTIME_INTENT_DONE) {
+            RCHECK(PRuntime_InstallIntentCancel(intent) == PRUNTIME_OK);
+            do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+        }
+        RCHECK(rc == expected);
+        info.size = sizeof(info); info.version = 1;
+        RCHECK(PRuntime_InstallIntentGetInfo(intent, &info) == PRUNTIME_OK);
+        if (rc == PRUNTIME_INTENT_DONE) RCHECK(info.state == PRUNTIME_INTENT_PREPARED && info.record_known &&
+                info.record_exists && info.record.state == PRUNTIME_REG_PREPARING);
+        if (rc == PRUNTIME_UNRESOLVED) RCHECK(info.state == PRUNTIME_INTENT_UNRESOLVED && !info.record_known && info.provider_result == PRUNTIME_IO);
+        if (mode == 14) RCHECK(!native.writes && !native.calls);
+        if (mode == 15 || mode == 16 || mode == 19) RCHECK(info.state == PRUNTIME_INTENT_CANCELLED &&
+                info.record.state == PRUNTIME_REG_CANCELLED && native.writes == (mode == 19 ? 1U : 2U));
+        RCHECK(PRuntime_InstallIntentStep(intent) == PRUNTIME_STATE);
+        RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK && !intent);
+        native.job = NULL;
+        RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK && !native.registry.leases && !f.bad_guard);
+        if (mode == 3) {
+            /* Unknown result survives close; explicit resume reads exact intent
+             * without replaying the first committed write. */
+            native.read_failure = 0; open.mode = PRUNTIME_INTENT_RESUME;
+            RCHECK(PRuntime_InstallIntentBegin(job, &open, &provider, &intent) == PRUNTIME_OK);
+            native.job = intent;
+            do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+            RCHECK(rc == PRUNTIME_INTENT_DONE && native.writes == 1);
+            RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK && !native.registry.leases);
+            native.job = NULL;
+        }
+    }
+    revision_dispose(&f, &job); RCHECK(!f.roots && !f.hashes && !f.bad_guard);
+    return TRUE;
+failed:
+    if (intent) PRuntime_InstallIntentClose(&intent);
+    revision_dispose(&f, &job); return FALSE;
+}

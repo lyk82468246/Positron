@@ -1,6 +1,6 @@
 # 首次安装存储与登记恢复合同
 
-本文件定义安装/存储的实施合同，**尚未实现完整安装协调器与安装存储**。已可调用的是 [Runtime 只读核验及登记读回判断](../positron_runtime/INSTALLED.md)；读回入口不写登记或授予启动权。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
+本文件定义安装/存储的实施合同，**尚未实现完整安装协调器与安装存储**。已可调用的是 [Runtime核验、登记读回和PREPARING意图协调](../positron_runtime/INSTALLED.md)；协调器通过原生CAS写不可启动意图，尚无安装存储或READY提交。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
 
 ## 为什么需要独立安装意图
 
@@ -83,7 +83,7 @@ READY 是唯一有效安装指针，没有第二个竞争的 `active` 文件。�
 
 ## 拟实现的 ABI 和所有权
 
-以下名称是职责草案，**不添加到头文件或导出表**，实现时保持 additive size/version 与 opaque handle。
+完整安装/存储名称仍是职责草案；已实现的意图入口为InstallIntentBegin/Step/GetInfo/Cancel/Close，仅负责PREPARING/CANCELLED，不是下面的完整安装器。其余未实现名称不添加到头文件或导出表，后续保持additive size/version与opaque handle。
 
 | 职责 | 输入与所有权 | 边界 |
 | --- | --- | --- |
@@ -96,13 +96,13 @@ Native provider 提供原子登记读取/CAS 和规范物理位置，不决定�
 
 租约顺序固定为 app-ID 协调→installation-ID 协调→不可变资源 root→数据位置/DB；不等待其他活动安装，冲突返回 BUSY。prepare 已持有 root 时只能尝试非阻塞协调租约，失败立即返回，不构成反向等待。启动/修复/撤销均使用相同 installation-ID 协调身份。安装完成后先释放协调 job，再走普通启动；若需要保留租约，须另做原子转移接口，不能重复获取而绕过 BUSY。
 
-父子关系必须显式保有：存在安装 job 时父 revision Cancel/Close 返回 STATE；存在 installed storage 或队列时父 revision Cancel/Close 同样拒绝。子项先关闭，释放顺序为队列→DB→数据位置→子 job→资源 root→登记租约。活动调用不可释放；跨线程只有既有明确复制队列路径可用。不自建 worker、不 DispatchMessage、不跨线程共享 live DB/Core/Script 句柄。
+父子关系必须显式保有：存在安装 job 时父 revision Cancel/Close 返回 STATE；存在 installed storage 或队列时父 revision Cancel/Close 同样拒绝。子项先关闭。当前意图子job先释放其登记租约再解除父保有，随后调用者才可关闭父资源root；未来持有存储时必须先关闭队列、DB与数据位置，再关闭其安装/资源父项。活动调用不可释放；跨线程只有既有明确复制队列路径可用。不自建 worker、不 DispatchMessage、不跨线程共享 live DB/Core/Script 句柄。
 
 SQL 继续使用 100..1000000、100 倍数的每文件/请求 VM budget，最多16个来源、每项32768 bytes/合计512 KiB；不因安装扩大现有 DB/SQL/JSON 配额。准备来源不复制整个资源包。安装协调仅持有一个迁移来源计划、一个 DB 与固定元数据；实现前编译期核对新增工作集，不能把只读 revision 的512 KiB与迁移512 KiB相加后仍称总512 KiB。组合预算应单独公开，最坏 Runtime-owned 同时工作集上限定为1280 KiB（DB/native provider内部内存另计）。
 
 ## 实施顺序与验收门
 
-登记状态、完整转换比较及版本化 native 读回 provider 已由 `PRuntime_RevisionReconcileRegistration` 提供；它只观察，不代替 CAS 或数据验证。下一批实现首次安装 PREPARING 意图协调器：由活的 prepare job/显式决定开启，原生 CAS 后精确读回，显式保有父 revision，失败/取消收敛租约与结果不明状态。不得提前写 READY，或将原始快照用作安装实例。所有转换与恢复分类属于 DLL，test_host 只准备事实、故障与断言，EXE 表和存储导出仍不修改。
+登记读回及PREPARING意图协调已实现，精确入口/状态/预算见组件合同；前者只观察，后者通过可信原生provider执行一次CAS并读回，支持显式恢复与取消，不写READY。测试模拟原生登记，不证明EXE持久表。后续存储只接受活的PREPARED意图，不接受裸批准快照或开发句柄。所有转换与恢复分类仍属DLL，test_host只准备事实、故障与断言。
 
 第二批实现安装准备存储：独立 stamp/key、完整来源准入、逐文件提交及后缀恢复，在真实 PDb 文件上验证。第三批先补 DB 不写入的既有身份比较，再实现 READY require-existing 的 InstalledStorageOpen 与队列保有关系。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
 

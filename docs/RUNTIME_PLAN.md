@@ -286,7 +286,7 @@ INVALID，错误线程/阶段 STATE，租约冲突 BUSY，原生读取失败 IO�
 匹配 ARMV4I 双配置门；范围与证据见[验收记录](history/RUNTIME_REVISION_ACCEPTANCE.md)。
 它不执行作者代码，不开放 installed SQL，不迁移 EXE 主库，也不取消开发目录提示。
 
-首次安装采用[存储与登记恢复合同](RUNTIME_INSTALL_RECOVERY.md)：先提交不可启动意图，再准备独立安装数据库，最后提交 READY；结果不明必须精确读回。登记转换与CAS结果读回分类已由 Runtime 提供，但写入协调器尚未实现。下一批先接 PREPARING 意图协调与精确读回，再接安装准备存储、READY require-existing opener和EXE消费者。更新仍关闭，Archive隔离输出仍需独立门。
+首次安装采用[存储与登记恢复合同](RUNTIME_INSTALL_RECOVERY.md)：先提交不可启动意图，再准备独立安装数据库，最后提交 READY；结果不明必须精确读回。登记转换/读回及PREPARING意图协调已由Runtime提供；原生provider负责持久CAS，完整EXE登记仍未接入。下一批接独立安装准备存储和迁移后缀恢复，再接READY require-existing opener及最终登记/EXE消费者。更新仍关闭，Archive隔离输出仍需独立门。
 
 ## SQL 服务与 JS SDK
 

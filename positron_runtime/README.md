@@ -17,7 +17,7 @@ EXE integrates these development contracts as described in
 provide their own trusted platform adapter and explicit session authorization.
 
 First-install identity/content verification is available through the separate
-read-only contract below. Installed storage, registration recovery and installed
+read-only contract below. Installed storage, final READY registration and installed
 EXE launch remain separate requirements; an address never grants permission.
 
 ## Link and deploy
@@ -459,7 +459,9 @@ immutable root. Old development APIs do not acquire installed authority.
 `PRuntime_RevisionReconcileRegistration` separately classifies fresh native
 registration readback against a validated transition, including lost commit
 responses and READY winning cancellation; it writes nothing and grants no
-launch/storage authority.
+launch/storage authority. `PRuntime_InstallIntentBegin/Step/GetInfo/Cancel/Close`
+coordinate inactive PREPARING registration through a trusted native CAS provider,
+including exact readback and explicit resume; they never write READY or open SQL.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). V1 admits

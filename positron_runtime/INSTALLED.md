@@ -1,6 +1,6 @@
-# Read-only installed revision verification
+# Revision verification and native installation intents
 
-This is an additive native contract in `positron_runtime.h`. It prepares an immutable resource inventory, builds explicitly confirmed registration data, and verifies an already committed first-install record before read-only resource access. It does not install files, persist registration, open installed SQL storage, authorize Browser services or execute author code. Existing development-directory/storage APIs and layouts are unchanged.
+These additive native contracts in `positron_runtime.h` verify immutable resources and committed first-install records, and coordinate inactive installation intents through a trusted native registry provider. They do not extract/publish files, open installed SQL storage, write READY registration, authorize Browser services or execute author code. Existing development-directory/storage APIs and layouts are unchanged.
 
 ## Ownership and trust
 
@@ -70,7 +70,7 @@ Create, Step, query, read, cancel and Close use one creating thread. Callbacks a
 | One installed read | Capacity 1–65536 bytes |
 | DLL workset | Job plus JSON/temporary reserve ≤512 KiB; provider/CSP memory excluded |
 
-These are processing and allocation limits, not a native-I/O wall-clock deadline. Core/Browser may impose lower resource limits. ARGUMENT rejects malformed API headers/indices/options, LIMIT rejects capacity, INVALID rejects resource/record mismatch or invalid manifest/path, UNSUPPORTED rejects future revisions/API/capabilities/digest, DENIED rejects missing/revoked/unapproved registration, STATE rejects owner/reentry/lifecycle misuse, BUSY rejects a held lease, IO reports provider failures and MEMORY reports allocation failure. Cancellation returns CANCELLED. Begin/query/approval failures preserve caller outputs; no failure writes registration, starts services or falls back to development identity.
+These are processing and allocation limits, not a native-I/O wall-clock deadline. Core/Browser may impose lower resource limits. ARGUMENT rejects malformed API headers/indices/options, LIMIT rejects capacity, INVALID rejects resource/record mismatch or invalid manifest/path, UNSUPPORTED rejects future revisions/API/capabilities/digest, DENIED rejects missing/revoked/unapproved registration, STATE rejects owner/reentry/lifecycle misuse, BUSY rejects a held lease, IO reports provider failures and MEMORY reports allocation failure. Cancellation returns CANCELLED. Revision and readback operations never write registration or start services. The intent coordinator below may have committed native registration before an error; its state must be inspected instead of assuming rollback.
 
 ## Reconciling native registration readback
 
@@ -98,10 +98,48 @@ rc = PRuntime_RevisionReconcileRegistration(prepared_revision,
 
 There is no allocation, filesystem/SQL operation, CAS or background callback in this call. Runtime uses fixed local record copies (under 8 KiB); native provider memory/I/O is outside that processing bound. The creating-thread and active-callback guards cover acquire/read/close. Native callback targets are borrowed only until return; the caller still owns the retained revision/root. Production registration persistence and the installation coordinator are not supplied by this observation primitive.
 
+## Coordinating an inactive installation intent
+
+`PRuntime_InstallIntentBegin` accepts a live COMPLETE prepare-kind revision, exact v1 options and a copied `PRuntimeInstallIntentProvider`. `approval` uses the existing explicit native confirmation contract. Begin allocates one fixed job (compile-time ≤8 KiB), performs no callback and retains its parent. At most one intent owns a revision. While retained, parent Cancel/Close, approval building, standalone reconciliation and a second intent return STATE. Idle parent info/catalog queries remain available. During callbacks both child and parent reject reentry.
+
+| Mode | Admission |
+| --- | --- |
+| NEW | Registration must be genuinely absent under the namespace/installation lease; CAS proposes PREPARING generation 1 |
+| RESUME | Exact approved resource/root/schema and PREPARING registration required; reads it without replaying CAS |
+| RETRY_FAILED | Exact FAILED registration and renewed native confirmation; CAS proposes PREPARING at generation+1, overflow rejected |
+
+The native provider supplies nonblocking coordination, fresh committed read, atomic exact compare-exchange and release. A NULL expected record means both installation ID and logical app ID must be unoccupied; uniqueness is checked atomically by the provider. CAS always reports CONFIRMED/NOT_COMMITTED/UNKNOWN, even on an error, and leaves no active transaction or background write. Runtime compares explicit fields; native persistence must not serialize C struct padding. The fixture provider is not an EXE SQL implementation.
+
+Each Step performs at most one acquire, read or CAS callback. It returns OK while pending, DONE when a PREPARING record is verified, or a negative terminal result. Every attempted CAS is followed by fresh readback, including error/unknown outcomes. Exact committed readback can prove the write despite a lost response. An unchanged previous record fails without automatically repeating CAS. An inaccessible post-CAS read returns **UNRESOLVED (-14)** and preserves the underlying provider result; it is never treated as absence. Conflicting/malformed records fail closed. Leases remain held in every terminal state until Close.
+
+Intent states are INITIALIZING, PENDING, PREPARED, FAILED, CANCELLED and UNRESOLVED. PREPARED means only that an **inactive** durable installation intent exists. GetInfo copies state/error/provider result, the most recent CAS outcome and known committed record; `record_known=0` explicitly means the record is unresolved. A known record is native metadata, not an installed handle, storage grant or safe-to-delete indication. No path in this coordinator writes READY.
+
+Cancel marks a request without I/O. Before a NEW/retry CAS it cancels locally, preserving any old registration. After an attempted write it first resolves that write; if exact PREPARING exists, subsequent steps CAS CANCELLED at generation+1 and read back. RESUME cancellation also reads and validates its existing intent before changing it. A cancellation request on PREPARED schedules this same path; callers must continue Step until terminal. An observed READY winning cancellation is retained as known metadata and blocks with STATE, without rewriting or cleaning it. Cancellation cannot undo a COMMIT or preempt native I/O.
+
+```c
+PRuntimeInstallIntentHandle intent = NULL;
+PRuntimeInstallIntentInfo info;
+rc = PRuntime_InstallIntentBegin(prepared_revision, &intent_options,
+    &native_registry_provider, &intent);
+if (rc == PRUNTIME_OK) {
+    do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+    info.size = sizeof(info);
+    info.version = PRUNTIME_VERSION;
+    PRuntime_InstallIntentGetInfo(intent, &info);
+    /* PREPARED is NOT installation completion. UNRESOLVED requires later
+     * explicit recovery; never replay the write based on a lost response. */
+    PRuntime_InstallIntentClose(&intent);
+}
+```
+
+All calls use the parent's creating thread; provider targets live through Close, and no callback survives return. Close may abandon a pending/unknown job but performs no implicit cancellation, deletion or CAS. It releases the coordination lease before detaching the parent; the caller may then close the parent/root. Reopen with explicit RESUME after revalidating the same resources to inspect a committed PREPARING intent. Close clears the owned slot and accepts repeated NULL values; active/wrong-thread Close preserves it. Installed data preparation and final registration remain separate prerequisites.
+
 ## Validation and remaining work
 
 The regression uses independently generated Python hashlib digests and device CryptoAPI SHA-256, with an `abc` known-answer check. It covers empty/binary/Unicode resources, enumeration order and root/installation-ID independence, exact reads, approval, duplicate leases, tamper/rename/add/remove, revocation/generation/API/capability failures, path/size/count limits, cancellation, thread/reentry and partial-token teardown. Device evidence is recorded in [the acceptance record](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md).
 
 Registration regression covers lost responses, definite-outcome contradictions, previous/proposed readback, READY winning cancellation, failure retry confirmation, tombstone rejection, capacity/version/identity conflicts, unreadable/absent records, partial leases and repeated reconciliation. It models native committed state; it does not prove real registry COMMIT or database preparation.
 
-Actual PXI isolation/extraction, the write coordinator, installed SQL identity/storage, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration; only its readback primitive is currently available. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these verification APIs are available.
+Intent regression additionally checks one-callback steps, exactly-once CAS attempts, lost-response success, unknown readback/close/resume without replay, confirmation, duplicate children, real wrong-thread calls, parent/child callback guards, partial leases and cancellation before/after CAS or preparation. These in-memory registry fixtures do not prove EXE database persistence.
+
+Actual PXI isolation/extraction, installed SQL identity/storage, final READY coordination, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.

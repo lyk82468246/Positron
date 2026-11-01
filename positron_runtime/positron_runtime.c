@@ -1297,6 +1297,7 @@ PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue)
 struct PRuntimeRevision {
     DWORD magic, owner;
     int active;
+    unsigned int intent_children;
     unsigned int state, installed, phase, index, offset, frame_index;
     unsigned int count, total, verified_bytes, verified_files;
     unsigned int expected_generation;
@@ -1647,7 +1648,7 @@ PRUNTIME_API int PRuntime_RevisionBuildApproval(PRuntimeRevisionHandle r,
     PRuntimeApprovalSnapshot snapshot;
     int rc = rv_ready(r);
     if (rc != PRUNTIME_OK) return rc;
-    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed) return PRUNTIME_STATE;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children) return PRUNTIME_STATE;
     if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
             output->size != sizeof(*output) || output->version != PRUNTIME_VERSION ||
             rv_length(options->installation_id, 33) != 32 || !rv_id(options->installation_id, 32)) return PRUNTIME_ARGUMENT;
@@ -1687,6 +1688,7 @@ PRUNTIME_API int PRuntime_RevisionCancel(PRuntimeRevisionHandle r)
 {
     int rc = rv_ready(r);
     if (rc != PRUNTIME_OK) return rc;
+    if (r->intent_children) return PRUNTIME_STATE;
     if (r->state == PRUNTIME_REVISION_CANCELLED) return PRUNTIME_OK;
     if (r->state == PRUNTIME_REVISION_FAILED) return PRUNTIME_STATE;
     r->active = 1; rv_fail(r, PRUNTIME_CANCELLED); r->active = 0; return PRUNTIME_OK;
@@ -1698,6 +1700,7 @@ PRUNTIME_API int PRuntime_RevisionClose(PRuntimeRevisionHandle* slot)
     if (!slot) return PRUNTIME_ARGUMENT;
     r = *slot; if (!r) return PRUNTIME_OK;
     rc = rv_ready(r); if (rc != PRUNTIME_OK) return rc;
+    if (r->intent_children) return PRUNTIME_STATE;
     r->active = 1; rv_hash_close(r); PRuntime_ManifestClose(&r->manifest);
     if (r->root.root) r->provider.close_root(r->provider.user_data, r->root.root);
     if (r->registration_lease) r->registry.close(r->registry.user_data, r->registration_lease);
@@ -1729,19 +1732,37 @@ static int rv_same_registration(const PRuntimeRegistrationRecord* a,
             a->target_schema == b->target_schema && !strcmp(a->directory, b->directory) &&
             rv_same_approval(&a->approval, &b->approval);
 }
+static int rv_registration_decide(const PRuntimeRegistrationTransition* t,
+        const PRuntimeRegistrationRecord* current, int found, PRuntimeRegistrationDecision* decision)
+{
+    PRuntimeRegistrationRecord ready;
+    if (found && rv_same_registration(current, &t->proposed) &&
+            t->commit_outcome != PRUNTIME_COMMIT_NOT_COMMITTED) decision->match = PRUNTIME_REG_MATCH_PROPOSED;
+    else if (((!found && !t->previous_exists) || (found && t->previous_exists &&
+            rv_same_registration(current, &t->previous))) &&
+            t->commit_outcome != PRUNTIME_COMMIT_CONFIRMED) decision->match = PRUNTIME_REG_MATCH_PREVIOUS;
+    else if (found && t->previous_exists && t->previous.state == PRUNTIME_REG_PREPARING &&
+            t->proposed.state == PRUNTIME_REG_CANCELLED && t->commit_outcome == PRUNTIME_COMMIT_UNKNOWN) {
+        ready = t->proposed; ready.state = PRUNTIME_REG_READY;
+        if (rv_same_registration(current, &ready)) decision->match = PRUNTIME_REG_READY_WON_CANCEL;
+        else return PRUNTIME_INVALID;
+    } else return !found ? PRUNTIME_DENIED : PRUNTIME_INVALID;
+    if (found) { decision->observed_state = current->state; decision->observed_generation = current->generation; }
+    return PRUNTIME_OK;
+}
 PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle r,
         const PRuntimeRegistrationTransition* t, const PRuntimeRegistrationProvider* p,
         PRuntimeRegistrationDecision* output)
 {
     PRuntimeRegistrationTransition transition;
     PRuntimeRegistrationProvider provider;
-    PRuntimeRegistrationRecord current, ready;
+    PRuntimeRegistrationRecord current;
     PRuntimeRegistrationDecision decision;
     void* lease = NULL;
     int rc = rv_ready(r);
     int found;
     if (rc != PRUNTIME_OK) return rc;
-    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed) return PRUNTIME_STATE;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children) return PRUNTIME_STATE;
     if (!t || !p || !output || t->size != sizeof(*t) || t->version != PRUNTIME_VERSION ||
             p->size != sizeof(*p) || p->version != PRUNTIME_VERSION ||
             !p->acquire || !p->read || !p->close || output->size != sizeof(*output) ||
@@ -1775,25 +1796,181 @@ PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle r
         if (!found) rc = PRUNTIME_OK;
         else rc = rv_provider_rc(rc);
         if (rc == PRUNTIME_OK && found) rc = rv_registration_valid(r, &current);
-        if (rc == PRUNTIME_OK) {
-            if (found && rv_same_registration(&current, &t->proposed) &&
-                    t->commit_outcome != PRUNTIME_COMMIT_NOT_COMMITTED) decision.match = PRUNTIME_REG_MATCH_PROPOSED;
-            else if (((!found && !t->previous_exists) || (found && t->previous_exists &&
-                    rv_same_registration(&current, &t->previous))) &&
-                    t->commit_outcome != PRUNTIME_COMMIT_CONFIRMED) decision.match = PRUNTIME_REG_MATCH_PREVIOUS;
-            else if (found && t->previous_exists && t->previous.state == PRUNTIME_REG_PREPARING &&
-                    t->proposed.state == PRUNTIME_REG_CANCELLED && t->commit_outcome == PRUNTIME_COMMIT_UNKNOWN) {
-                ready = t->proposed; ready.state = PRUNTIME_REG_READY;
-                if (rv_same_registration(&current, &ready)) decision.match = PRUNTIME_REG_READY_WON_CANCEL;
-                else rc = PRUNTIME_INVALID;
-            } else rc = !found ? PRUNTIME_DENIED : PRUNTIME_INVALID;
-            if (rc == PRUNTIME_OK && found) {
-                decision.observed_state = current.state; decision.observed_generation = current.generation;
-            }
-        }
+        if (rc == PRUNTIME_OK) rc = rv_registration_decide(t, &current, found, &decision);
     }
     if (lease) p->close(p->user_data, lease);
     r->active = 0;
     if (rc == PRUNTIME_OK) *output = decision;
     return rc;
+}
+
+#define RINT_MAGIC 0x52494e31UL
+struct PRuntimeInstallIntent {
+    DWORD magic;
+    PRuntimeRevisionHandle parent;
+    PRuntimeInstallIntentProvider provider;
+    PRuntimeInstallIntentOptions options;
+    PRuntimeRegistrationTransition transition;
+    PRuntimeInstallIntentInfo info;
+    void* lease;
+    unsigned int phase, cancelled;
+    int active, cas_result;
+};
+typedef char runtime_intent_budget_check[(sizeof(struct PRuntimeInstallIntent) <= 8192U) ? 1 : -1];
+static int ri_ready(PRuntimeInstallIntentHandle job)
+{
+    if (!job || job->magic != RINT_MAGIC) return PRUNTIME_ARGUMENT;
+    if (job->active) return PRUNTIME_STATE;
+    return rv_ready(job->parent);
+}
+static int ri_fail(PRuntimeInstallIntentHandle job, int rc, int unresolved)
+{
+    job->info.error = unresolved ? PRUNTIME_UNRESOLVED : rc;
+    job->info.state = unresolved ? PRUNTIME_INTENT_UNRESOLVED : PRUNTIME_INTENT_FAILED;
+    return job->info.error;
+}
+static void ri_observed(PRuntimeInstallIntentHandle job, const PRuntimeRegistrationRecord* record, int found)
+{
+    job->info.record_known = 1; job->info.record_exists = found ? 1 : 0;
+    memset(&job->info.record, 0, sizeof(job->info.record));
+    if (found) job->info.record = *record;
+}
+PRUNTIME_API int PRuntime_InstallIntentBegin(PRuntimeRevisionHandle r,
+        const PRuntimeInstallIntentOptions* options, const PRuntimeInstallIntentProvider* provider,
+        PRuntimeInstallIntentHandle* output)
+{
+    PRuntimeInstallIntentHandle job;
+    PRuntimeApprovalSnapshot approval;
+    int rc = rv_ready(r);
+    if (rc != PRUNTIME_OK) return rc;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children) return PRUNTIME_STATE;
+    if (!options || !provider || !output || options->size != sizeof(*options) || options->version != 1 ||
+            options->mode < PRUNTIME_INTENT_NEW || options->mode > PRUNTIME_INTENT_RETRY_FAILED ||
+            provider->size != sizeof(*provider) || provider->version != 1 || !provider->acquire ||
+            !provider->read || !provider->compare_exchange || !provider->close) return PRUNTIME_ARGUMENT;
+    approval.size = sizeof(approval); approval.version = 1;
+    rc = PRuntime_RevisionBuildApproval(r, &options->approval, &approval);
+    if (rc != PRUNTIME_OK) return rc;
+    job = (PRuntimeInstallIntentHandle)calloc(1, sizeof(*job)); if (!job) return PRUNTIME_MEMORY;
+    job->magic = RINT_MAGIC; job->parent = r; job->provider = *provider; job->options = *options;
+    job->info.size = sizeof(job->info); job->info.version = 1; job->info.state = PRUNTIME_INTENT_INITIALIZING;
+    job->transition.size = sizeof(job->transition); job->transition.version = 1; job->transition.confirmed = 1;
+    job->transition.proposed.size = sizeof(PRuntimeRegistrationRecord); job->transition.proposed.version = 1;
+    job->transition.proposed.state = PRUNTIME_REG_PREPARING; job->transition.proposed.generation = 1;
+    job->transition.proposed.target_schema = r->manifest->info.migration_count;
+    job->transition.proposed.approval = approval;
+    strcpy(job->transition.proposed.directory, r->root.canonical);
+    ++r->intent_children; *output = job; return PRUNTIME_OK;
+}
+static int ri_cancel_transition(PRuntimeInstallIntentHandle job)
+{
+    if (job->info.record.generation == 2147483647U) return ri_fail(job, PRUNTIME_LIMIT, 0);
+    job->transition.previous_exists = 1; job->transition.previous = job->info.record;
+    job->transition.proposed = job->info.record;
+    job->transition.proposed.state = PRUNTIME_REG_CANCELLED; ++job->transition.proposed.generation;
+    job->phase = 4; job->info.state = PRUNTIME_INTENT_PENDING; return PRUNTIME_OK;
+}
+static int ri_step(PRuntimeInstallIntentHandle job)
+{
+    PRuntimeRegistrationRecord current;
+    PRuntimeRegistrationDecision decision;
+    unsigned int outcome;
+    int found, rc;
+    if (job->cancelled && job->phase < 3 && job->options.mode != PRUNTIME_INTENT_RESUME) {
+        job->info.state = PRUNTIME_INTENT_CANCELLED; job->info.error = PRUNTIME_CANCELLED; return PRUNTIME_CANCELLED;
+    }
+    if (!job->phase) {
+        rc = rv_provider_rc(job->provider.acquire(job->provider.user_data,
+                job->transition.proposed.approval.id, job->transition.proposed.approval.installation_id, &job->lease));
+        job->info.provider_result = rc;
+        if (rc != PRUNTIME_OK || !job->lease) return ri_fail(job, rc != PRUNTIME_OK ? rc : PRUNTIME_IO, 0);
+        job->phase = 1; job->info.state = PRUNTIME_INTENT_PENDING; return PRUNTIME_OK;
+    }
+    if (job->phase == 2 || job->phase == 4) {
+        outcome = PRUNTIME_COMMIT_UNKNOWN;
+        rc = rv_provider_rc(job->provider.compare_exchange(job->provider.user_data, job->lease,
+                job->transition.previous_exists ? &job->transition.previous : NULL,
+                &job->transition.proposed, &outcome));
+        if (outcome < PRUNTIME_COMMIT_CONFIRMED || outcome > PRUNTIME_COMMIT_UNKNOWN) {
+            outcome = PRUNTIME_COMMIT_UNKNOWN; rc = PRUNTIME_IO;
+        }
+        job->cas_result = rc; job->info.provider_result = rc;
+        job->transition.commit_outcome = job->info.commit_outcome = outcome;
+        job->info.record_known = job->info.record_exists = 0; memset(&job->info.record, 0, sizeof(job->info.record));
+        ++job->phase; return PRUNTIME_OK;
+    }
+    memset(&current, 0, sizeof(current)); current.size = sizeof(current); current.version = 1;
+    rc = job->provider.read(job->provider.user_data, job->lease, &current); found = rc != PRUNTIME_NOT_FOUND;
+    if (!found) rc = PRUNTIME_OK; else rc = rv_provider_rc(rc);
+    if (rc != PRUNTIME_OK) {
+        job->info.provider_result = rc; return ri_fail(job, rc, job->phase != 1);
+    }
+    if (found) {
+        rc = rv_registration_valid(job->parent, &current);
+        if (rc == PRUNTIME_OK && !rv_same_approval(&current.approval, &job->transition.proposed.approval)) rc = PRUNTIME_INVALID;
+        if (rc != PRUNTIME_OK) return ri_fail(job, rc, 0);
+    }
+    ri_observed(job, &current, found);
+    if (job->phase == 1) {
+        if (job->options.mode == PRUNTIME_INTENT_NEW) {
+            if (found) return ri_fail(job, PRUNTIME_DENIED, 0);
+        } else {
+            if (!found) return ri_fail(job, PRUNTIME_DENIED, 0);
+            if (job->options.mode == PRUNTIME_INTENT_RESUME) {
+                if (current.state != PRUNTIME_REG_PREPARING) return ri_fail(job, PRUNTIME_DENIED, 0);
+                if (job->cancelled) return ri_cancel_transition(job);
+                job->info.state = PRUNTIME_INTENT_PREPARED; return PRUNTIME_INTENT_DONE;
+            }
+            if (current.state != PRUNTIME_REG_FAILED) return ri_fail(job, PRUNTIME_DENIED, 0);
+            if (current.generation == 2147483647U) return ri_fail(job, PRUNTIME_LIMIT, 0);
+            job->transition.previous_exists = 1; job->transition.previous = current;
+            job->transition.proposed.generation = current.generation + 1;
+        }
+        job->phase = 2; return PRUNTIME_OK;
+    }
+    memset(&decision, 0, sizeof(decision));
+    rc = rv_registration_decide(&job->transition, &current, found, &decision);
+    if (rc != PRUNTIME_OK) return ri_fail(job, rc, 0);
+    if (decision.match == PRUNTIME_REG_READY_WON_CANCEL) return ri_fail(job, PRUNTIME_STATE, 0);
+    if (decision.match != PRUNTIME_REG_MATCH_PROPOSED)
+        return ri_fail(job, job->cas_result != PRUNTIME_OK ? job->cas_result : PRUNTIME_IO, 0);
+    if (job->phase == 5) {
+        job->info.state = PRUNTIME_INTENT_CANCELLED; job->info.error = PRUNTIME_CANCELLED; return PRUNTIME_CANCELLED;
+    }
+    if (job->cancelled) return ri_cancel_transition(job);
+    job->info.state = PRUNTIME_INTENT_PREPARED; return PRUNTIME_INTENT_DONE;
+}
+PRUNTIME_API int PRuntime_InstallIntentStep(PRuntimeInstallIntentHandle job)
+{
+    int rc = ri_ready(job);
+    if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_INTENT_INITIALIZING && job->info.state != PRUNTIME_INTENT_PENDING) return PRUNTIME_STATE;
+    job->active = job->parent->active = 1; rc = ri_step(job);
+    job->parent->active = job->active = 0; return rc;
+}
+PRUNTIME_API int PRuntime_InstallIntentGetInfo(PRuntimeInstallIntentHandle job, PRuntimeInstallIntentInfo* info)
+{
+    int rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != 1) return PRUNTIME_ARGUMENT;
+    *info = job->info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallIntentCancel(PRuntimeInstallIntentHandle job)
+{
+    int rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state == PRUNTIME_INTENT_CANCELLED) return PRUNTIME_OK;
+    if (job->info.state == PRUNTIME_INTENT_FAILED || job->info.state == PRUNTIME_INTENT_UNRESOLVED) return PRUNTIME_STATE;
+    job->cancelled = 1;
+    return job->info.state == PRUNTIME_INTENT_PREPARED ? ri_cancel_transition(job) : PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallIntentClose(PRuntimeInstallIntentHandle* slot)
+{
+    PRuntimeInstallIntentHandle job;
+    int rc;
+    if (!slot) return PRUNTIME_ARGUMENT;
+    job = *slot; if (!job) return PRUNTIME_OK;
+    rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
+    job->active = job->parent->active = 1;
+    if (job->lease) job->provider.close(job->provider.user_data, job->lease);
+    --job->parent->intent_children; job->parent->active = 0; job->magic = 0;
+    free(job); *slot = NULL; return PRUNTIME_OK;
 }

@@ -37,7 +37,7 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 旧two-1启动FAIL未关闭。新Debug双进程PAGE_PASS且Runtime/DB错误均0、哈希/冷备份/正常退出通过，但未复现旧因；不能追认旧失败。原EXE身份/存储位置、具体PID与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。旧CE5.2.318的mkdir183/CANTOPEN仍未知，新设备公共合同通过不抵消旧失败；再次失败先取非零调用/VFS快照，不删库或重试SQL，不重开FULL/断电门。
 
-首次安装只读核验及登记转换/提交结果读回已通过双配置定向门；精确选择、故障覆盖、完整日志/空间/引用/crash与清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅revision 1，读回判断不写登记、不授予启动权；安装SQL、写入协调器及EXE未接入，v4表不变。开发目录仍每次确认。Archive读写取代系统ZIP依赖，PXI隔离输出/提交仍需独立门。
+首次安装只读核验及登记转换/提交结果读回已通过双配置定向门；精确选择、故障覆盖、完整日志/空间/引用/crash与清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅revision 1；意图协调只经原生provider写PREPARING/CANCELLED，未知结果不重放。安装SQL/READY/EXE未接入，不授予启动权，v4表不变。开发目录仍每次确认。Archive读写取代系统ZIP依赖，PXI隔离输出/提交仍需独立门。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -481,7 +481,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮复核 ROADMAP，登记转换/提交结果读回已通过双配置1377/1378/999门，见[证据](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。唯一下一步为[PREPARING意图协调器](../docs/RUNTIME_INSTALL_RECOVERY.md)，再接安装存储；不先接EXE/UI或更新。PXI隔离输出独立待办。
+本轮复核ROADMAP，PREPARING意图协调退出待办；双配置1377–1379/999门见[证据](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。唯一下一步为[安装准备存储](../docs/RUNTIME_INSTALL_RECOVERY.md)：独立身份、来源准入及迁移后缀恢复，不先接READY/EXE/UI或更新。PXI隔离输出独立待办。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
