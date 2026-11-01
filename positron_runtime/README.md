@@ -456,6 +456,10 @@ the complete catalog. `PRuntime_RevisionBuildApproval` requires explicit native
 confirmation; its copied snapshot is not a committed grant. Installed-only
 `PRuntime_InstalledReadFile` refreshes registration and reads through the retained
 immutable root. Old development APIs do not acquire installed authority.
+`PRuntime_RevisionReconcileRegistration` separately classifies fresh native
+registration readback against a validated transition, including lost commit
+responses and READY winning cancellation; it writes nothing and grants no
+launch/storage authority.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). V1 admits

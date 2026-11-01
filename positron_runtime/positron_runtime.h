@@ -116,6 +116,67 @@ typedef struct PRuntimeRevisionInfo {
     unsigned long approved_permissions; /* copied registration, not SQL service grant */
     unsigned char content_id[32]; /* complete only */
 } PRuntimeRevisionInfo;
+/* Native registration reconciliation only; no persistence, storage or grant. */
+#define PRUNTIME_REG_PREPARING 1U
+#define PRUNTIME_REG_READY 2U
+#define PRUNTIME_REG_FAILED 3U
+#define PRUNTIME_REG_CANCELLED 4U
+#define PRUNTIME_REG_REVOKED 5U
+#define PRUNTIME_COMMIT_CONFIRMED 1U
+#define PRUNTIME_COMMIT_NOT_COMMITTED 2U
+#define PRUNTIME_COMMIT_UNKNOWN 3U
+#define PRUNTIME_REG_MATCH_PROPOSED 1U
+#define PRUNTIME_REG_MATCH_PREVIOUS 2U
+#define PRUNTIME_REG_READY_WON_CANCEL 3U
+typedef struct PRuntimeRegistrationRecord {
+    unsigned int size, version;
+    unsigned int state, generation, target_schema;
+    char directory[1024];
+    PRuntimeApprovalSnapshot approval;
+} PRuntimeRegistrationRecord;
+typedef struct PRuntimeRegistrationTransition {
+    unsigned int size, version;
+    unsigned int commit_outcome; /* exact native CAS result, not retry policy */
+    unsigned int previous_exists; /* exactly 0 or 1 */
+    unsigned int confirmed; /* 1 required for new intent / FAILED retry */
+    PRuntimeRegistrationRecord previous; /* ignored if absent */
+    PRuntimeRegistrationRecord proposed;
+} PRuntimeRegistrationTransition;
+typedef struct PRuntimeRegistrationProvider {
+    unsigned int size, version;
+    void* user_data;
+    /* Nonblocking native app-ID then installation-ID exclusive coordination.
+     * Compatible with installed launch leases; BUSY on conflict. Retain no
+     * transaction or background write across return, including failure.
+     * Reconciliation closes every non-NULL partial lease before returning. */
+    int (*acquire)(void*, const char*, const char*, void**);
+    /* Fresh committed read under lease. NOT_FOUND means genuinely absent;
+     * inaccessible/unknown is IO, never NOT_FOUND. No author-supplied record. */
+    int (*read)(void*, void*, PRuntimeRegistrationRecord*);
+    void (*close)(void*, void*);
+} PRuntimeRegistrationProvider;
+typedef struct PRuntimeRegistrationDecision {
+    unsigned int size, version;
+    unsigned int match; /* MATCH_*; metadata observation, NEVER launch authority */
+    unsigned int observed_state, observed_generation; /* zero if absent */
+} PRuntimeRegistrationDecision;
+/* Complete prepare-kind only. Validate the exact first-install transition
+ * against retained manifest/root, acquire native coordination, then read once.
+ * Supports absent->PREPARING(gen1), PREPARING->READY/FAILED/CANCELLED and
+ * explicitly confirmed FAILED->PREPARING (generation+1, no overflow).
+ * COMMIT_UNKNOWN may match old or proposed; a claimed confirmed/not-committed
+ * outcome inconsistent with readback fails INVALID. READY at the proposed
+ * generation may win an UNKNOWN cancellation. Any other record is INVALID.
+ * Missing source is DENIED; unavailable read remains an error, not absence.
+ * OK only publishes a copied observation, never permission to retry/write,
+ * start author code, claim DB readiness or bypass OpenInstalled.
+ * No CAS, SQL, files, worker, pump or allocation. Owner thread/no reentry;
+ * callback targets borrowed until return. All errors preserve output and
+ * leave the revision unchanged; root remains retained by its caller. */
+PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle revision,
+        const PRuntimeRegistrationTransition* transition,
+        const PRuntimeRegistrationProvider* provider,
+        PRuntimeRegistrationDecision* output);
 typedef struct PRuntimeServiceQueueOptions {
     unsigned int size;
     unsigned int version;

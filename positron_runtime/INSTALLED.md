@@ -72,8 +72,36 @@ Create, Step, query, read, cancel and Close use one creating thread. Callbacks a
 
 These are processing and allocation limits, not a native-I/O wall-clock deadline. Core/Browser may impose lower resource limits. ARGUMENT rejects malformed API headers/indices/options, LIMIT rejects capacity, INVALID rejects resource/record mismatch or invalid manifest/path, UNSUPPORTED rejects future revisions/API/capabilities/digest, DENIED rejects missing/revoked/unapproved registration, STATE rejects owner/reentry/lifecycle misuse, BUSY rejects a held lease, IO reports provider failures and MEMORY reports allocation failure. Cancellation returns CANCELLED. Begin/query/approval failures preserve caller outputs; no failure writes registration, starts services or falls back to development identity.
 
+## Reconciling native registration readback
+
+`PRuntime_RevisionReconcileRegistration` compares one native transition with a fresh committed read, using a COMPLETE prepare-kind job. Its independent size/version 1 record includes state, generation, target schema, canonical root and approval. It does not alter `PRuntimeInstalledRecord` or reinterpret its `active` field. Pass native transition metadata and a `PRuntimeRegistrationProvider` that acquires nonblocking app/installation coordination, reads once, then closes; even partial leases are closed before return. Call it after the original native transaction has settled, without already holding the same exclusive lease.
+
+The DLL validates manifest/content/root/schema equality and first-install transition rules before calling the provider. It permits absent→PREPARING at generation 1; PREPARING→READY/FAILED/CANCELLED; and explicitly confirmed FAILED→PREPARING. Later transitions increment generation by exactly one, without overflow or changing approval. New intent and FAILED retry require `confirmed=1`. READY/CANCELLED/REVOKED cannot be revived through this interface.
+
+| Readback result | Meaning |
+| --- | --- |
+| `MATCH_PROPOSED` | Exact proposed record observed; compatible with confirmed or unknown commit outcome |
+| `MATCH_PREVIOUS` | Exact previous record, or genuine absence for a new intent; compatible with not-committed or unknown outcome |
+| `READY_WON_CANCEL` | An unknown PREPARING→CANCELLED attempt instead observes exact READY at the proposed generation; do not cancel or clean it as incomplete |
+
+These are copied **metadata observations**, not permission to retry CAS, claim storage readiness or start an application. READY still requires ordinary installed resource/storage verification. An outcome inconsistent with readback, changed identity/generation/content or an unrelated record fails INVALID. Missing previously existing registration is DENIED. Inaccessible registration must be IO, never NOT_FOUND; an unreadable result remains unresolved and blocks progress. Provider errors and all other failures preserve output and the revision. Repeated reconciliation does not write, replay SQL, advance generation or retire the candidate.
+
+```c
+PRuntimeRegistrationDecision decision;
+decision.size = sizeof(decision);
+decision.version = PRUNTIME_VERSION;
+rc = PRuntime_RevisionReconcileRegistration(prepared_revision,
+    &native_transition, &committed_read_provider, &decision);
+/* Only examine decision on OK. Install coordination must separately enforce
+ * data preparation, explicit retry policy and the final startup gate. */
+```
+
+There is no allocation, filesystem/SQL operation, CAS or background callback in this call. Runtime uses fixed local record copies (under 8 KiB); native provider memory/I/O is outside that processing bound. The creating-thread and active-callback guards cover acquire/read/close. Native callback targets are borrowed only until return; the caller still owns the retained revision/root. Production registration persistence and the installation coordinator are not supplied by this observation primitive.
+
 ## Validation and remaining work
 
 The regression uses independently generated Python hashlib digests and device CryptoAPI SHA-256, with an `abc` known-answer check. It covers empty/binary/Unicode resources, enumeration order and root/installation-ID independence, exact reads, approval, duplicate leases, tamper/rename/add/remove, revocation/generation/API/capability failures, path/size/count limits, cancellation, thread/reentry and partial-token teardown. Device evidence is recorded in [the acceptance record](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md).
 
-Actual PXI isolation/extraction, registration COMMIT/recovery, installed SQL identity/storage, update/uninstall and EXE permission/launch integration remain separate work. The next implementation follows the [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md): inactive durable intent, independent data preparation, then READY registration. That design is not an available API. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because this verification API is available.
+Registration regression covers lost responses, definite-outcome contradictions, previous/proposed readback, READY winning cancellation, failure retry confirmation, tombstone rejection, capacity/version/identity conflicts, unreadable/absent records, partial leases and repeated reconciliation. It models native committed state; it does not prove real registry COMMIT or database preparation.
+
+Actual PXI isolation/extraction, the write coordinator, installed SQL identity/storage, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration; only its readback primitive is currently available. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these verification APIs are available.

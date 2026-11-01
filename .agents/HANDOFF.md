@@ -29,36 +29,15 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 [reader](../docs/history/ARCHIVE_READER_ACCEPTANCE.md)及[writer](../docs/history/ARCHIVE_WRITER_ACCEPTANCE.md)。
 writer 同步添加条目、块间取消，Finish 后由宿主提交；未实现 PXI/HTTP 压缩，EXE 无新依赖。
 
-### Runtime 目录资源与 SQL SDK 已通过自动门
+### Runtime 当前验收与安装边界
 
-公共合同见 [Runtime README](../positron_runtime/README.md)，平台/授权/队列/SDK 与 DOM 写入见
-[Runtime 宿主](../positron_app/RUNTIME_HOST.md)。原标签绑定实例，不按 URL 授权；
-取消候选立即撤销服务，保留旧页服务，产品语义仍由 DLL 拥有。
-`tmp/device-runs/20261025-200428-app-runtime-page/`（Unitech）的空 CSS/import/JS、
-回滚/隔离/关闭、11/11 哈希与正常退出/crash PASS；其 OS/DPI 不外推新设备。
-Notes Working/Save 禁用已由 0448cd28 补齐 Ex8 DOM write，原目录保存人工通过；
-无 DLL/ABI 改动，线程/语义及 Debug 错误日志合同见宿主文档。既有单根证据为
-`tmp/device-runs/20261026-150410-app-runtime-sql/app-runtime-sql-render-one/result.txt`：
-11/11 哈希、单目录两进程、32 条、真实 SQL callback 生成带按钮/转义文本的列表、重开、
-typed/回滚/预算/撤销/关闭及 crash PASS，正常退出零引用；isolation=NOT_RUN。
-旧双目录 two-1 启动 FAIL 保留；本轮已接 Debug StorageError，原 two 两进程 PAGE_PASS，
-rc/error_result 与 DB/SQLite/schema/cleanup 全 0，哈希/冷备份/正常退出/crash 通过。
-原 EXE、身份与存储位置不变；本轮未复现，根因未知，不能追认旧失败或隔离 PASS。
-逐阶段、PID、证据定位与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。
-该次取证 viewport=240×248，仅对该次有效；Debug/Release/C89/审计通过，Release 无新诊断。
+开发目录、资源/SQL队列与SDK合同见[Runtime README](../positron_runtime/README.md)，EXE平台与逐页授权见[Runtime宿主](../positron_app/RUNTIME_HOST.md)。实例按原标签绑定，不按URL授权；候选取消撤销其服务，旧页保留。空CSS/import/JS、回滚/隔离/关闭已有设备门，OS/DPI仅对原运行有效；旧空资源失败与修复见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
 
-公共空资源旧失败与恢复统一见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
+Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门；完整哈希、正常退出/crash及夹具边界见[页面验收](../docs/history/NOTES_UI_ACCEPTANCE.md)。Ex8 DOM write已补齐保存状态，原用户库/快捷方式未动。Positron Notes Check.lnk指向notes-one，首屏/分页/输入/保存/重开/删除/SIP/旋转/拒绝人工基本通过，双语和Release普通启动仍待验收。
 
-Notes 真实页面 CRUD/搜索/四页/重开及双目录隔离已通过四进程门，11/11 哈希、正常退出及 crash PASS；
-证据与夹具失败边界见[页面验收](../docs/history/NOTES_UI_ACCEPTANCE.md)。原用户库/快捷方式未动。
-Positron Notes Check.lnk 指向新包 notes-one；首屏/分页/输入/保存/重开/删除/SIP/旋转/拒绝人工基本通过。
-宿主双语和 Release 普通启动待验收。PXI 安装时按声明能力确认，主库登记后正常启动免提示；
-开发目录仍每次提示。首次安装只读核验已通过双配置定向门，合同、精确选择及日志/清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅 revision 1；安装SQL、登记COMMIT及EXE未接入，v4表不变。
+旧two-1启动FAIL未关闭。新Debug双进程PAGE_PASS且Runtime/DB错误均0、哈希/冷备份/正常退出通过，但未复现旧因；不能追认旧失败。原EXE身份/存储位置、具体PID与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。旧CE5.2.318的mkdir183/CANTOPEN仍未知，新设备公共合同通过不抵消旧失败；再次失败先取非零调用/VFS快照，不删库或重试SQL，不重开FULL/断电门。
 
-先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
-旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
-新设备通过不抵消失败。不删库、重试 SQL、改 WMDC 或重开 FULL/断电门。
-已授权 Archive 取代系统 ZIP 依赖，PXI 实际安装仍未接通；正常重开不证明真实存储故障恢复。
+首次安装只读核验及登记转换/提交结果读回已通过双配置定向门；精确选择、故障覆盖、完整日志/空间/引用/crash与清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅revision 1，读回判断不写登记、不授予启动权；安装SQL、写入协调器及EXE未接入，v4表不变。开发目录仍每次确认。Archive读写取代系统ZIP依赖，PXI隔离输出/提交仍需独立门。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -502,7 +481,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮复核 ROADMAP，[首次安装恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)已定稿，尚未实现。唯一下一步为 Runtime 登记状态/CAS结果/恢复决策及故障fixture，再接安装存储；不先接EXE/UI或更新。PXI隔离输出独立待办。
+本轮复核 ROADMAP，登记转换/提交结果读回已通过双配置1377/1378/999门，见[证据](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。唯一下一步为[PREPARING意图协调器](../docs/RUNTIME_INSTALL_RECOVERY.md)，再接安装存储；不先接EXE/UI或更新。PXI隔离输出独立待办。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

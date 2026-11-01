@@ -1703,3 +1703,97 @@ PRUNTIME_API int PRuntime_RevisionClose(PRuntimeRevisionHandle* slot)
     if (r->registration_lease) r->registry.close(r->registry.user_data, r->registration_lease);
     r->magic = 0; free(r); *slot = NULL; return PRUNTIME_OK;
 }
+
+static int rv_registration_valid(PRuntimeRevisionHandle r, const PRuntimeRegistrationRecord* record)
+{
+    unsigned int n;
+    int rc;
+    if (record->size != sizeof(*record) || record->version != PRUNTIME_VERSION ||
+            record->state < PRUNTIME_REG_PREPARING || record->state > PRUNTIME_REG_REVOKED ||
+            !record->generation || record->generation > 2147483647U) return PRUNTIME_INVALID;
+    rc = rv_snapshot_valid(&record->approval); if (rc != PRUNTIME_OK) return rc;
+    n = rv_length(record->directory, sizeof(record->directory));
+    if (!n || n > PRUNTIME_ROOT_BYTES || !runtime_text(record->directory, n) ||
+            strcmp(record->directory, r->root.canonical) ||
+            record->target_schema != r->manifest->info.migration_count ||
+            strcmp(record->approval.id, r->manifest->info.id) ||
+            record->approval.app_version != r->manifest->info.app_version ||
+            record->approval.requested_permissions != r->manifest->info.requested_permissions ||
+            memcmp(record->approval.content_id, r->content_id, 32)) return PRUNTIME_INVALID;
+    return PRUNTIME_OK;
+}
+static int rv_same_registration(const PRuntimeRegistrationRecord* a,
+        const PRuntimeRegistrationRecord* b)
+{
+    return a->state == b->state && a->generation == b->generation &&
+            a->target_schema == b->target_schema && !strcmp(a->directory, b->directory) &&
+            rv_same_approval(&a->approval, &b->approval);
+}
+PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle r,
+        const PRuntimeRegistrationTransition* t, const PRuntimeRegistrationProvider* p,
+        PRuntimeRegistrationDecision* output)
+{
+    PRuntimeRegistrationTransition transition;
+    PRuntimeRegistrationProvider provider;
+    PRuntimeRegistrationRecord current, ready;
+    PRuntimeRegistrationDecision decision;
+    void* lease = NULL;
+    int rc = rv_ready(r);
+    int found;
+    if (rc != PRUNTIME_OK) return rc;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed) return PRUNTIME_STATE;
+    if (!t || !p || !output || t->size != sizeof(*t) || t->version != PRUNTIME_VERSION ||
+            p->size != sizeof(*p) || p->version != PRUNTIME_VERSION ||
+            !p->acquire || !p->read || !p->close || output->size != sizeof(*output) ||
+            output->version != PRUNTIME_VERSION || t->previous_exists > 1 || t->confirmed > 1 ||
+            t->commit_outcome < PRUNTIME_COMMIT_CONFIRMED ||
+            t->commit_outcome > PRUNTIME_COMMIT_UNKNOWN) return PRUNTIME_ARGUMENT;
+    transition = *t; provider = *p; t = &transition; p = &provider;
+    rc = rv_registration_valid(r, &t->proposed); if (rc != PRUNTIME_OK) return rc;
+    if (!t->previous_exists) {
+        if (t->proposed.state != PRUNTIME_REG_PREPARING || t->proposed.generation != 1) return PRUNTIME_INVALID;
+        if (!t->confirmed) return PRUNTIME_DENIED;
+    } else {
+        rc = rv_registration_valid(r, &t->previous); if (rc != PRUNTIME_OK) return rc;
+        if (t->previous.generation == 2147483647U) return PRUNTIME_LIMIT;
+        if (t->proposed.generation != t->previous.generation + 1 ||
+                !rv_same_approval(&t->proposed.approval, &t->previous.approval)) return PRUNTIME_INVALID;
+        if (t->previous.state == PRUNTIME_REG_FAILED && t->proposed.state == PRUNTIME_REG_PREPARING) {
+            if (!t->confirmed) return PRUNTIME_DENIED;
+        } else if (t->previous.state != PRUNTIME_REG_PREPARING ||
+                (t->proposed.state != PRUNTIME_REG_READY && t->proposed.state != PRUNTIME_REG_FAILED &&
+                 t->proposed.state != PRUNTIME_REG_CANCELLED)) return PRUNTIME_DENIED;
+    }
+    memset(&decision, 0, sizeof(decision)); decision.size = sizeof(decision); decision.version = PRUNTIME_VERSION;
+    memset(&current, 0, sizeof(current)); current.size = sizeof(current); current.version = PRUNTIME_VERSION;
+    r->active = 1;
+    rc = rv_provider_rc(p->acquire(p->user_data, t->proposed.approval.id,
+            t->proposed.approval.installation_id, &lease));
+    if (rc == PRUNTIME_OK && !lease) rc = PRUNTIME_IO;
+    if (rc == PRUNTIME_OK) {
+        rc = p->read(p->user_data, lease, &current); found = rc != PRUNTIME_NOT_FOUND;
+        if (!found) rc = PRUNTIME_OK;
+        else rc = rv_provider_rc(rc);
+        if (rc == PRUNTIME_OK && found) rc = rv_registration_valid(r, &current);
+        if (rc == PRUNTIME_OK) {
+            if (found && rv_same_registration(&current, &t->proposed) &&
+                    t->commit_outcome != PRUNTIME_COMMIT_NOT_COMMITTED) decision.match = PRUNTIME_REG_MATCH_PROPOSED;
+            else if (((!found && !t->previous_exists) || (found && t->previous_exists &&
+                    rv_same_registration(&current, &t->previous))) &&
+                    t->commit_outcome != PRUNTIME_COMMIT_CONFIRMED) decision.match = PRUNTIME_REG_MATCH_PREVIOUS;
+            else if (found && t->previous_exists && t->previous.state == PRUNTIME_REG_PREPARING &&
+                    t->proposed.state == PRUNTIME_REG_CANCELLED && t->commit_outcome == PRUNTIME_COMMIT_UNKNOWN) {
+                ready = t->proposed; ready.state = PRUNTIME_REG_READY;
+                if (rv_same_registration(&current, &ready)) decision.match = PRUNTIME_REG_READY_WON_CANCEL;
+                else rc = PRUNTIME_INVALID;
+            } else rc = !found ? PRUNTIME_DENIED : PRUNTIME_INVALID;
+            if (rc == PRUNTIME_OK && found) {
+                decision.observed_state = current.state; decision.observed_generation = current.generation;
+            }
+        }
+    }
+    if (lease) p->close(p->user_data, lease);
+    r->active = 0;
+    if (rc == PRUNTIME_OK) *output = decision;
+    return rc;
+}

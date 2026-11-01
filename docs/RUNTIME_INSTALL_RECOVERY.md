@@ -1,6 +1,6 @@
 # 首次安装存储与登记恢复合同
 
-本文件定义下一阶段的实施合同，**尚未实现这些安装/存储入口**。已经可调用的是 [Runtime 只读核验](../positron_runtime/INSTALLED.md)；其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
+本文件定义安装/存储的实施合同，**尚未实现完整安装协调器与安装存储**。已可调用的是 [Runtime 只读核验及登记读回判断](../positron_runtime/INSTALLED.md)；读回入口不写登记或授予启动权。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
 
 ## 为什么需要独立安装意图
 
@@ -102,7 +102,7 @@ SQL 继续使用 100..1000000、100 倍数的每文件/请求 VM budget，最多
 
 ## 实施顺序与验收门
 
-第一批实现 Runtime 的登记状态/比较/恢复 decision 原语及版本化 native provider 合同，复用已核验 revision 与完整快照。用可信 fixture 模拟 committed/not-committed/unknown，包括新事务读回与不可读；不修改 EXE 表，也不增加未实现的存储导出。所有恢复决策属于 DLL，test_host 只准备事实、故障与断言。
+登记状态、完整转换比较及版本化 native 读回 provider 已由 `PRuntime_RevisionReconcileRegistration` 提供；它只观察，不代替 CAS 或数据验证。下一批实现首次安装 PREPARING 意图协调器：由活的 prepare job/显式决定开启，原生 CAS 后精确读回，显式保有父 revision，失败/取消收敛租约与结果不明状态。不得提前写 READY，或将原始快照用作安装实例。所有转换与恢复分类属于 DLL，test_host 只准备事实、故障与断言，EXE 表和存储导出仍不修改。
 
 第二批实现安装准备存储：独立 stamp/key、完整来源准入、逐文件提交及后缀恢复，在真实 PDb 文件上验证。第三批先补 DB 不写入的既有身份比较，再实现 READY require-existing 的 InstalledStorageOpen 与队列保有关系。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
 

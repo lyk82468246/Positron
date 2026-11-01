@@ -382,3 +382,132 @@ failed:
     revision_dispose(&f, &job); return FALSE;
 }
 const char* test1377_runtime_revision_error(void) { return revision_error; }
+
+typedef struct RegistrationFixture {
+    RevisionFixture* revision;
+    PRuntimeRegistrationRecord record;
+    int acquire_result, read_result;
+    unsigned int leases, acquired, reads, closes, partial;
+} RegistrationFixture;
+static int registration_acquire(void* user, const char* id, const char* installation, void** lease)
+{
+    RegistrationFixture* f = (RegistrationFixture*)user;
+    revision_guard(f->revision); ++f->acquired;
+    if (strcmp(id, "com.example.installed") || strcmp(installation, "00112233445566778899aabbccddeeff"))
+        return PRUNTIME_IO;
+    if (f->acquire_result == PRUNTIME_OK || f->partial) { *lease = f; ++f->leases; }
+    return f->acquire_result;
+}
+static int registration_read(void* user, void* lease, PRuntimeRegistrationRecord* output)
+{
+    RegistrationFixture* f = (RegistrationFixture*)user;
+    revision_guard(f->revision); ++f->reads;
+    if (lease != f || f->leases != 1) return PRUNTIME_IO;
+    *output = f->record; return f->read_result;
+}
+static void registration_close(void* user, void* lease)
+{
+    RegistrationFixture* f = (RegistrationFixture*)user;
+    revision_guard(f->revision); ++f->closes;
+    if (lease != f || f->leases != 1) ++f->revision->bad_guard;
+    else --f->leases;
+}
+BOOL test1378_runtime_registration_contract(void)
+{
+    RevisionFixture f;
+    RegistrationFixture native;
+    PRuntimeRevisionProvider p;
+    PRuntimeInstalledProvider registry;
+    PRuntimeRevisionOptions options;
+    PRuntimeRevisionHandle job = NULL;
+    PRuntimeApprovalOptions approval;
+    PRuntimeApprovalSnapshot snapshot;
+    PRuntimeRegistrationProvider provider;
+    PRuntimeRegistrationTransition t;
+    PRuntimeRegistrationDecision decision, canary;
+    PRuntimeRevisionInfo info;
+    unsigned int mode, expected_match;
+    int rc = 0, expected_rc;
+    revision_error[0] = 0;
+    revision_fixture(&f, NULL); revision_tables(&f, &p, &registry, &options);
+    RCHECK(PRuntime_PrepareRevision("\\revision-root", 14, &p, &options, &job) == PRUNTIME_OK);
+    rc = revision_run(&f, job); RCHECK(rc == PRUNTIME_REVISION_DONE);
+    memset(&approval, 0, sizeof(approval)); approval.size = sizeof(approval); approval.version = 1;
+    approval.revision = 1; approval.confirmed = 1;
+    strcpy(approval.installation_id, "00112233445566778899aabbccddeeff");
+    snapshot.size = sizeof(snapshot); snapshot.version = 1;
+    RCHECK(PRuntime_RevisionBuildApproval(job, &approval, &snapshot) == PRUNTIME_OK);
+    memset(&provider, 0, sizeof(provider)); provider.size = sizeof(provider); provider.version = 1;
+    provider.user_data = &native; provider.acquire = registration_acquire;
+    provider.read = registration_read; provider.close = registration_close;
+    for (mode = 0; mode < 29; ++mode) {
+        memset(&native, 0, sizeof(native)); native.revision = &f;
+        memset(&t, 0, sizeof(t)); t.size = sizeof(t); t.version = 1;
+        t.commit_outcome = PRUNTIME_COMMIT_UNKNOWN; t.previous_exists = 1;
+        t.previous.size = sizeof(t.previous); t.previous.version = 1;
+        t.previous.state = PRUNTIME_REG_PREPARING; t.previous.generation = 7;
+        t.previous.approval = snapshot; strcpy(t.previous.directory, "\\revision-root");
+        t.proposed = t.previous; t.proposed.state = PRUNTIME_REG_READY; t.proposed.generation = 8;
+        native.record = t.proposed; expected_rc = PRUNTIME_OK; expected_match = PRUNTIME_REG_MATCH_PROPOSED;
+        switch (mode) {
+        case 0: break; /* committed response lost */
+        case 1: t.commit_outcome = PRUNTIME_COMMIT_CONFIRMED; break;
+        case 2: t.commit_outcome = PRUNTIME_COMMIT_NOT_COMMITTED; expected_rc = PRUNTIME_INVALID; break;
+        case 3: native.record = t.previous; expected_match = PRUNTIME_REG_MATCH_PREVIOUS; break;
+        case 4: native.record = t.previous; t.commit_outcome = PRUNTIME_COMMIT_NOT_COMMITTED;
+            expected_match = PRUNTIME_REG_MATCH_PREVIOUS; break;
+        case 5: native.record = t.previous; t.commit_outcome = PRUNTIME_COMMIT_CONFIRMED;
+            expected_rc = PRUNTIME_INVALID; break;
+        case 6: native.read_result = PRUNTIME_NOT_FOUND; expected_rc = PRUNTIME_DENIED; break;
+        case 7: native.read_result = PRUNTIME_IO; expected_rc = PRUNTIME_IO; break;
+        case 8: native.acquire_result = PRUNTIME_IO; native.partial = 1; expected_rc = PRUNTIME_IO; break;
+        case 9: native.acquire_result = PRUNTIME_BUSY; expected_rc = PRUNTIME_BUSY; break;
+        case 10: native.record.generation = 9; expected_rc = PRUNTIME_INVALID; break;
+        case 11: native.record.approval.installation_id[0] = '1'; expected_rc = PRUNTIME_INVALID; break;
+        case 12: t.proposed.state = PRUNTIME_REG_CANCELLED; expected_match = PRUNTIME_REG_READY_WON_CANCEL; break;
+        case 13: t.proposed.state = PRUNTIME_REG_CANCELLED; native.record = t.proposed; break;
+        case 14: t.previous.state = PRUNTIME_REG_FAILED; t.proposed.state = PRUNTIME_REG_PREPARING;
+            t.confirmed = 1; native.record = t.proposed; break;
+        case 15: t.previous.state = PRUNTIME_REG_FAILED; t.proposed.state = PRUNTIME_REG_PREPARING;
+            expected_rc = PRUNTIME_DENIED; break;
+        case 16: t.previous_exists = 0; t.proposed.state = PRUNTIME_REG_PREPARING;
+            t.proposed.generation = 1; t.confirmed = 1; native.read_result = PRUNTIME_NOT_FOUND;
+            expected_match = PRUNTIME_REG_MATCH_PREVIOUS; break;
+        case 17: t.previous_exists = 0; t.proposed.state = PRUNTIME_REG_PREPARING;
+            t.proposed.generation = 1; t.confirmed = 1; native.record = t.proposed; break;
+        case 18: t.previous_exists = 0; t.proposed.state = PRUNTIME_REG_PREPARING;
+            t.proposed.generation = 1; expected_rc = PRUNTIME_DENIED; break;
+        case 19: t.previous.state = PRUNTIME_REG_READY; t.proposed.state = PRUNTIME_REG_CANCELLED;
+            expected_rc = PRUNTIME_DENIED; break;
+        case 20: t.previous.generation = 2147483647U; expected_rc = PRUNTIME_LIMIT; break;
+        case 21: t.proposed.target_schema = 1; expected_rc = PRUNTIME_INVALID; break;
+        case 22: strcpy(native.record.directory, "\\other-root"); expected_rc = PRUNTIME_INVALID; break;
+        case 23: native.record.approval.approved_permissions |= 2; expected_rc = PRUNTIME_UNSUPPORTED; break;
+        case 24: native.record.version = 2; expected_rc = PRUNTIME_INVALID; break;
+        case 25: t.previous.state = PRUNTIME_REG_REVOKED; expected_rc = PRUNTIME_DENIED; break;
+        case 26: t.previous.state = PRUNTIME_REG_CANCELLED; expected_rc = PRUNTIME_DENIED; break;
+        case 27: t.proposed.state = PRUNTIME_REG_FAILED; native.record = t.proposed; break;
+        default: t.commit_outcome = 0; expected_rc = PRUNTIME_ARGUMENT; break;
+        }
+        memset(&decision, 0xa5, sizeof(decision)); decision.size = sizeof(decision); decision.version = 1;
+        canary = decision;
+        rc = PRuntime_RevisionReconcileRegistration(job, &t, &provider, &decision);
+        RCHECK(rc == expected_rc);
+        if (rc == PRUNTIME_OK) {
+            RCHECK(decision.match == expected_match);
+            /* Repeat readback must neither advance generation nor replay CAS. */
+            rc = PRuntime_RevisionReconcileRegistration(job, &t, &provider, &decision);
+            RCHECK(rc == PRUNTIME_OK && decision.match == expected_match);
+        } else RCHECK(!memcmp(&decision, &canary, sizeof(decision)));
+        RCHECK(!native.leases && native.closes == native.acquired -
+                ((native.acquire_result != PRUNTIME_OK && !native.partial) ? native.acquired : 0));
+        RCHECK(!f.bad_guard && !f.bad_budget);
+        info.size = sizeof(info); info.version = 1;
+        RCHECK(PRuntime_RevisionGetInfo(job, &info) == PRUNTIME_OK && info.state == PRUNTIME_REVISION_COMPLETE &&
+                !memcmp(info.content_id, snapshot.content_id, 32));
+    }
+    revision_dispose(&f, &job); RCHECK(!f.roots && !f.hashes && !f.bad_guard);
+    return TRUE;
+failed:
+    revision_dispose(&f, &job); return FALSE;
+}
