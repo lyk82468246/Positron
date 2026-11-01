@@ -138,6 +138,7 @@ extern BOOL test1377_runtime_revision_contract(void);
 extern const char* test1377_runtime_revision_error(void);
 extern BOOL test1378_runtime_registration_contract(void);
 extern BOOL test1379_runtime_intent_contract(void);
+extern BOOL test1380_runtime_install_data_contract(void);
 extern BOOL test1376_archive_writer_contract(void);
 extern const char* test1376_archive_writer_error(void);
 extern BOOL test1375_archive_contract(void);
@@ -1310,7 +1311,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1379
+#define TEST_MAX_NUMBER 1380
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118405,6 +118406,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1373_runtime_io_contract();
             if (ok) { show_info(L"TEST 1373 OK", test1373_runtime_io_report()); }
             else { show_error(L"TEST 1373 FAIL", test1373_runtime_io_last_error()); }
+            break;
+        case 1380:
+            ok = test1380_runtime_install_data_contract();
+            if (ok) { show_info(L"TEST 1380 OK", "Installed data identity, complete source admission, migration suffix recovery and failure recording passed."); }
+            else { show_error(L"TEST 1380 FAIL", test1377_runtime_revision_error()); }
             break;
         case 1379:
             ok = test1379_runtime_intent_contract();

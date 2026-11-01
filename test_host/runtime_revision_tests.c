@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 #include "../positron_runtime/positron_runtime.h"
+#include "../positron_db/positron_db.h"
 #include "runtime_revision_fixture.h"
 
 typedef struct RevisionFixture {
@@ -515,7 +517,7 @@ failed:
 typedef struct IntentFixture {
     RegistrationFixture registry;
     PRuntimeInstallIntentHandle job;
-    unsigned int writes, calls, commit, outcome, read_failure;
+    unsigned int writes, calls, commit, outcome, read_failure, fail_next_read;
     int write_result;
 } IntentFixture;
 static void intent_guard(IntentFixture* f)
@@ -539,6 +541,7 @@ static int intent_read(void* user, void* lease, PRuntimeRegistrationRecord* reco
 {
     IntentFixture* f = (IntentFixture*)user;
     intent_guard(f);
+    if (f->fail_next_read) { f->fail_next_read = 0; return PRUNTIME_IO; }
     if (f->writes && f->read_failure) return PRUNTIME_IO;
     return registration_read(&f->registry, lease, record);
 }
@@ -703,4 +706,239 @@ BOOL test1379_runtime_intent_contract(void)
 failed:
     if (intent) PRuntime_InstallIntentClose(&intent);
     revision_dispose(&f, &job); return FALSE;
+}
+
+typedef struct InstallDataFixture {
+    IntentFixture* registry;
+    PRuntimeInstallDataHandle data;
+    WCHAR path[MAX_PATH];
+    char utf8[1024];
+    unsigned int opens, closes, leases, bad_guard, partial;
+    int location_error;
+} InstallDataFixture;
+static void install_data_guard(InstallDataFixture* f)
+{
+    PRuntimeInstallDataInfo info;
+    PRuntimeInstallDataHandle alias;
+    intent_guard(f->registry); revision_guard(f->registry->registry.revision);
+    if (!f->data) return;
+    info.size = sizeof(info); info.version = 1; alias = f->data;
+    if (PRuntime_InstallDataGetInfo(f->data, &info) != PRUNTIME_STATE ||
+            PRuntime_InstallDataCancel(f->data) != PRUNTIME_STATE ||
+            PRuntime_InstallDataClose(&alias) != PRUNTIME_STATE || alias != f->data) ++f->bad_guard;
+}
+static int install_data_location(void* user, const char* key, PRuntimeStorageLocation* output)
+{
+    InstallDataFixture* f = (InstallDataFixture*)user;
+    install_data_guard(f); ++f->opens;
+    if (strcmp(key, "v1/installed/00112233445566778899aabbccddeeff/app.db")) return PRUNTIME_IO;
+    if (!f->location_error || f->partial) {
+        output->token = f; ++f->leases; strcpy(output->path, f->utf8);
+        output->path_bytes = (unsigned int)strlen(f->utf8);
+    }
+    return f->location_error;
+}
+static void install_data_location_close(void* user, void* token)
+{
+    InstallDataFixture* f = (InstallDataFixture*)user;
+    install_data_guard(f); ++f->closes;
+    if (token != f || f->leases != 1) ++f->bad_guard;
+    else --f->leases;
+}
+static int install_data_db_inspect(const char* path, unsigned int expected_rows, int expected_schema)
+{
+    PDbHandle db = NULL;
+    PDbStmtHandle stmt = NULL;
+    int count = 0, version = -1, ok = 0;
+    if (PDb_OpenUtf8(path, PDB_OPEN_LOCAL_FULL_SQL, &db) != PDB_OK) return 0;
+    if (PDb_GetMigrationVersion(db, &version) != PDB_OK || version != expected_schema) goto done;
+    if (PDb_Prepare(db, "SELECT count(*) FROM sqlite_master WHERE name='journal'", &stmt) != PDB_OK ||
+            PDb_Step(stmt) != PDB_STEP_ROW) goto done;
+    count = (int)PDb_ColumnInt64(stmt, 0); PDb_Finalize(stmt); stmt = NULL;
+    if (count) {
+        if (PDb_Prepare(db, "SELECT count(*) FROM journal", &stmt) != PDB_OK || PDb_Step(stmt) != PDB_STEP_ROW) goto done;
+        count = (int)PDb_ColumnInt64(stmt, 0);
+    }
+    ok = count == (int)expected_rows;
+done:
+    if (stmt) PDb_Finalize(stmt);
+    PDb_Close(db); return ok;
+}
+typedef struct DataThread { PRuntimeInstallDataHandle data; int ok; } DataThread;
+static DWORD WINAPI data_other_thread(void* user)
+{
+    DataThread* t = (DataThread*)user;
+    PRuntimeInstallDataHandle alias = t->data;
+    t->ok = PRuntime_InstallDataStep(t->data) == PRUNTIME_STATE &&
+        PRuntime_InstallDataCancel(t->data) == PRUNTIME_STATE &&
+        PRuntime_InstallDataClose(&alias) == PRUNTIME_STATE && alias == t->data;
+    return 0;
+}
+BOOL test1380_runtime_install_data_contract(void)
+{
+    static const char manifest[] = "{\"manifestVersion\":1,\"id\":\"com.example.installed\",\"name\":\"Data\",\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],\"migrations\":[{\"version\":1,\"file\":\"one.sql\"},{\"version\":2,\"file\":\"two.sql\"}]}";
+    static const char no_sql[] = "{\"manifestVersion\":1,\"id\":\"com.example.installed\",\"name\":\"Data\",\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
+    static const char sql1[] = "CREATE TABLE journal(n INTEGER);INSERT INTO journal VALUES(1);";
+    static const char sql2[] = "INSERT INTO journal VALUES(2);";
+    static const char sql_bad[] = "INSERT INTO missing_table VALUES(2);";
+    RevisionFixture f;
+    IntentFixture native;
+    InstallDataFixture platform;
+    PRuntimeRevisionProvider resource;
+    PRuntimeInstalledProvider registry;
+    PRuntimeRevisionOptions revision_options;
+    PRuntimeRevisionHandle job = NULL;
+    PRuntimeInstallIntentHandle intent = NULL, intent_alias;
+    PRuntimeInstallIntentProvider intent_provider;
+    PRuntimeInstallIntentOptions intent_options;
+    PRuntimeStorageProvider location;
+    PRuntimeInstallDataOptions data_options;
+    PRuntimeInstallDataInfo info;
+    PRuntimeInstallDataHandle data = NULL, other;
+    PRuntimeInstallIntentInfo intent_info;
+    WCHAR module[MAX_PATH], root[MAX_PATH], *slash;
+    char identity[160];
+    PDbHandle fixture_db = NULL;
+    DataThread thread_data;
+    HANDLE thread;
+    unsigned int mode, steps, injected, expected_rows;
+    int rc = 0, expected, expected_schema, owned_root = 0;
+    memset(&platform, 0, sizeof(platform));
+    revision_error[0] = 0;
+    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH - 55);
+    slash = wcsrchr(module, L'\\'); RCHECK(slash != NULL); *slash = 0;
+    wsprintfW(root, L"%s\\installed-data-%lu", module, GetCurrentProcessId());
+    owned_root = CreateDirectoryW(root, NULL) != 0; RCHECK(owned_root);
+    memset(&intent_provider, 0, sizeof(intent_provider)); intent_provider.size = sizeof(intent_provider); intent_provider.version = 1;
+    intent_provider.user_data = &native; intent_provider.acquire = intent_acquire; intent_provider.read = intent_read;
+    intent_provider.compare_exchange = intent_cas; intent_provider.close = intent_close;
+    memset(&intent_options, 0, sizeof(intent_options)); intent_options.size = sizeof(intent_options); intent_options.version = 1;
+    intent_options.approval.size = sizeof(intent_options.approval); intent_options.approval.version = 1;
+    intent_options.approval.confirmed = 1; intent_options.approval.revision = 1;
+    strcpy(intent_options.approval.installation_id, "00112233445566778899aabbccddeeff");
+    memset(&location, 0, sizeof(location)); location.size = sizeof(location); location.version = 1;
+    location.user_data = &platform; location.open_location = install_data_location; location.close_location = install_data_location_close;
+    memset(&data_options, 0, sizeof(data_options)); data_options.size = sizeof(data_options); data_options.version = 1;
+    data_options.vm_budget = 1000000;
+    strcpy(identity, "Positron.storage.v1:installed:com.example.installed:00112233445566778899aabbccddeeff");
+    for (mode = 0; mode < 17; ++mode) {
+        revision_fixture(&f, NULL); revision_tables(&f, &resource, &registry, &revision_options);
+        memset(&native, 0, sizeof(native)); native.registry.revision = &f;
+        native.registry.read_result = PRUNTIME_NOT_FOUND; native.commit = 1; native.outcome = PRUNTIME_COMMIT_CONFIRMED;
+        memset(&platform, 0, sizeof(platform)); platform.registry = &native;
+        wsprintfW(platform.path, L"%s\\case-%u.db", root, mode);
+        RCHECK(WideCharToMultiByte(CP_UTF8, 0, platform.path, -1, platform.utf8, sizeof(platform.utf8), NULL, NULL));
+        expected = PRUNTIME_INSTALL_DATA_DONE; expected_rows = 2; expected_schema = 2; injected = 0;
+        if (mode == 1 || mode == 15) {
+            f.data[0] = (const unsigned char*)(mode == 1 ? (const char*)revision_sources[0] : no_sql);
+            f.actual[0] = f.declared[0] = (unsigned int)strlen((const char*)f.data[0]);
+            expected_rows = 0; expected_schema = 0;
+        } else {
+            f.data[0] = (const unsigned char*)manifest; f.actual[0] = f.declared[0] = sizeof(manifest)-1;
+            f.count = 7; strcpy(f.paths[5], "one.sql"); strcpy(f.paths[6], "two.sql");
+            f.data[5] = (const unsigned char*)sql1; f.actual[5] = f.declared[5] = sizeof(sql1)-1;
+            f.data[6] = (const unsigned char*)sql2; f.actual[6] = f.declared[6] = sizeof(sql2)-1;
+        }
+        if (mode == 2) { f.data[6] = (const unsigned char*)"\xff"; f.actual[6] = f.declared[6] = 1;
+            expected = PRUNTIME_INVALID; expected_rows = 0; expected_schema = 0; }
+        if (mode == 3 || mode == 13 || mode == 16) { f.data[6] = (const unsigned char*)sql_bad; f.actual[6] = f.declared[6] = sizeof(sql_bad)-1;
+            expected = PRUNTIME_DATABASE; expected_rows = 1; expected_schema = 1; }
+        if (mode == 5 || mode == 6 || mode == 7) {
+            RCHECK(PDb_OpenUtf8(platform.utf8, PDB_OPEN_LOCAL_FULL_SQL, &fixture_db) == PDB_OK);
+            if (mode == 5) RCHECK(PDb_BindLocalIdentity(fixture_db, "Positron.storage.v1:development:other", 35) == PDB_OK);
+            if (mode == 6) RCHECK(PDb_Exec(fixture_db, "CREATE TABLE unclaimed(n INTEGER)") == PDB_OK);
+            if (mode == 7) {
+                RCHECK(PDb_BindLocalIdentity(fixture_db, identity, (int)strlen(identity)) == PDB_OK);
+                RCHECK(PDb_ApplyMigration(fixture_db, 3, sql1) == PDB_OK);
+            }
+            PDb_Close(fixture_db); fixture_db = NULL;
+            expected = PRUNTIME_SCHEMA; expected_rows = mode == 7 ? 1 : 0; expected_schema = mode == 7 ? 3 : 0;
+        }
+        if (mode == 8 || mode == 9) { platform.location_error = PRUNTIME_IO; platform.partial = mode == 9; expected = PRUNTIME_IO; }
+        if (mode == 10 || mode == 11) { expected = PRUNTIME_CANCELLED; expected_rows = mode == 11 ? 1 : 0; expected_schema = mode == 11 ? 1 : 0; }
+        if (mode == 12) { expected = PRUNTIME_IO; expected_rows = 0; expected_schema = 0; }
+        if (mode == 14) expected = PRUNTIME_INVALID;
+        RCHECK(PRuntime_PrepareRevision("\\revision-root", 14, &resource, &revision_options, &job) == PRUNTIME_OK);
+        rc = revision_run(&f, job); RCHECK(rc == PRUNTIME_REVISION_DONE);
+        intent_options.mode = PRUNTIME_INTENT_NEW;
+        RCHECK(PRuntime_InstallIntentBegin(job, &intent_options, &intent_provider, &intent) == PRUNTIME_OK);
+        native.job = intent;
+        do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+        RCHECK(rc == PRUNTIME_INTENT_DONE);
+        if (mode == 15) {
+            RCHECK(PRuntime_InstallDataBegin(intent, &data_options, &location, &data) == PRUNTIME_DENIED && !data && !platform.opens);
+        } else {
+            if (mode == 14) ++native.registry.record.generation;
+            RCHECK(PRuntime_InstallDataBegin(intent, &data_options, &location, &data) == PRUNTIME_OK);
+            platform.data = data; intent_alias = intent; other = NULL;
+            RCHECK(PRuntime_InstallIntentClose(&intent_alias) == PRUNTIME_STATE && intent_alias == intent &&
+                    PRuntime_InstallIntentCancel(intent) == PRUNTIME_STATE);
+            RCHECK(PRuntime_InstallDataBegin(intent, &data_options, &location, &other) == PRUNTIME_STATE && !other);
+            if (!mode) {
+                thread_data.data = data; thread_data.ok = 0;
+                thread = CreateThread(NULL, 0, data_other_thread, &thread_data, 0, NULL);
+                RCHECK(thread != NULL && WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0);
+                CloseHandle(thread); RCHECK(thread_data.ok);
+            }
+            if (mode == 10) RCHECK(PRuntime_InstallDataCancel(data) == PRUNTIME_OK);
+            if (mode == 12) f.fail_read = 1;
+            rc = PRUNTIME_OK;
+            for (steps = 0; steps < 80 && rc == PRUNTIME_OK; ++steps) {
+                rc = PRuntime_InstallDataStep(data);
+                info.size = sizeof(info); info.version = 1;
+                RCHECK(PRuntime_InstallDataGetInfo(data, &info) == PRUNTIME_OK);
+                if (!injected && info.current_schema == 1 && (mode == 4 || mode == 11)) {
+                    if (mode == 4) native.fail_next_read = 1;
+                    else RCHECK(PRuntime_InstallDataCancel(data) == PRUNTIME_OK);
+                    injected = 1;
+                }
+                if (mode == 13 && info.error.result != PRUNTIME_OK) native.read_failure = 1;
+                if (mode == 16 && info.error.result != PRUNTIME_OK) {
+                    native.commit = 0; native.outcome = PRUNTIME_COMMIT_NOT_COMMITTED; native.write_result = PRUNTIME_BUSY;
+                }
+            }
+            RCHECK(rc == (mode == 4 ? PRUNTIME_IO : expected));
+            if (mode == 13) RCHECK(info.error.result == PRUNTIME_DATABASE && info.error.failed_schema_version == 2 &&
+                    info.registration_result == PRUNTIME_UNRESOLVED);
+            if (mode == 16) RCHECK(info.error.result == PRUNTIME_DATABASE && info.error.failed_schema_version == 2 &&
+                    info.registration_result == PRUNTIME_BUSY && native.registry.record.state == PRUNTIME_REG_PREPARING);
+            RCHECK(PRuntime_InstallDataClose(&data) == PRUNTIME_OK && !data);
+            platform.data = NULL;
+            RCHECK(!platform.leases && !platform.bad_guard && !f.bad_guard && !f.hashes &&
+                    platform.closes == (platform.opens && (!platform.location_error || platform.partial) ? 1U : 0U));
+            RCHECK(PRuntime_InstallDataClose(&data) == PRUNTIME_OK);
+            if (mode == 4) {
+                RCHECK(native.registry.record.state == PRUNTIME_REG_FAILED);
+                RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK); native.job = NULL;
+                intent_options.mode = PRUNTIME_INTENT_RETRY_FAILED;
+                RCHECK(PRuntime_InstallIntentBegin(job, &intent_options, &intent_provider, &intent) == PRUNTIME_OK); native.job = intent;
+                do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+                RCHECK(rc == PRUNTIME_INTENT_DONE);
+                RCHECK(PRuntime_InstallDataBegin(intent, &data_options, &location, &data) == PRUNTIME_OK); platform.data = data;
+                do { rc = PRuntime_InstallDataStep(data); } while (rc == PRUNTIME_OK);
+                info.size = sizeof(info); info.version = 1;
+                RCHECK(rc == PRUNTIME_INSTALL_DATA_DONE && PRuntime_InstallDataGetInfo(data, &info) == PRUNTIME_OK &&
+                        info.previous_schema == 1 && info.current_schema == 2 && info.applied_files == 1);
+                RCHECK(PRuntime_InstallDataClose(&data) == PRUNTIME_OK); platform.data = NULL;
+            }
+            if (mode != 8 && mode != 9 && mode != 10 && mode != 14)
+                RCHECK(install_data_db_inspect(platform.utf8, expected_rows, expected_schema));
+            else RCHECK(GetFileAttributesW(platform.path) == 0xffffffffUL);
+            intent_info.size = sizeof(intent_info); intent_info.version = 1;
+            RCHECK(PRuntime_InstallIntentGetInfo(intent, &intent_info) == PRUNTIME_OK &&
+                    native.registry.record.state != PRUNTIME_REG_READY);
+        }
+        RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK); native.job = NULL;
+        revision_dispose(&f, &job); RCHECK(!f.roots && !native.registry.leases);
+        if (GetFileAttributesW(platform.path) != 0xffffffffUL) RCHECK(DeleteFileW(platform.path));
+    }
+    RCHECK(RemoveDirectoryW(root)); return TRUE;
+failed:
+    if (fixture_db) PDb_Close(fixture_db);
+    if (data) PRuntime_InstallDataClose(&data);
+    platform.data = NULL;
+    if (intent) PRuntime_InstallIntentClose(&intent);
+    revision_dispose(&f, &job);
+    /* Failed fixture files intentionally remain in the isolated deployment. */
+    (void)owned_root; return FALSE;
 }

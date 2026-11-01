@@ -17,7 +17,7 @@ EXE integrates these development contracts as described in
 provide their own trusted platform adapter and explicit session authorization.
 
 First-install identity/content verification is available through the separate
-read-only contract below. Installed storage, final READY registration and installed
+read-only contract below. READY SQL services, final READY registration and installed
 EXE launch remain separate requirements; an address never grants permission.
 
 ## Link and deploy
@@ -462,6 +462,10 @@ responses and READY winning cancellation; it writes nothing and grants no
 launch/storage authority. `PRuntime_InstallIntentBegin/Step/GetInfo/Cancel/Close`
 coordinate inactive PREPARING registration through a trusted native CAS provider,
 including exact readback and explicit resume; they never write READY or open SQL.
+`PRuntime_InstallDataBegin/Step/GetInfo/Cancel/Close` separately prepare a private
+identity-bound DB from a live PREPARED intent, admit all remaining SQL sources,
+apply only the uncommitted suffix and record failure/cancellation. They expose
+no author SQL handle or startup grant.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). V1 admits

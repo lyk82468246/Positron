@@ -732,7 +732,7 @@ static void runtime_storage_error_init(PRuntimeStorageError* error, int result)
     memset(error, 0, sizeof(*error)); error->size = sizeof(*error); error->version = PRUNTIME_VERSION;
     error->result = result;
 }
-static int runtime_storage_db_error(PRuntimeStorageHandle storage, int result, unsigned long schema)
+static int runtime_db_error(PDbHandle db, PRuntimeStorageError* target, int result, unsigned long schema)
 {
     PDbErrorInfo error;
     int rc;
@@ -742,17 +742,19 @@ static int runtime_storage_db_error(PRuntimeStorageHandle storage, int result, u
     else if (result == PDB_LIMIT) rc = PRUNTIME_LIMIT;
     else if (result == PDB_BUSY) rc = PRUNTIME_BUSY;
     else if (result == PDB_SCHEMA_MISMATCH) rc = PRUNTIME_SCHEMA;
-    runtime_storage_error_init(&storage->error, rc);
-    storage->error.db_result = result; storage->error.failed_schema_version = schema;
-    if (storage->db && PDb_GetErrorInfo(storage->db, &error) == PDB_OK) {
-        storage->error.db_category = error.category; storage->error.sqlite_code = error.sqlite_code;
-        storage->error.sqlite_extended_code = error.sqlite_extended_code;
-        storage->error.cleanup_result = error.cleanup_result;
-        memcpy(storage->error.message, error.message, sizeof(storage->error.message));
-        if (error.category == PDB_ERROR_CATEGORY_CANCELLED) storage->error.result = rc = PRUNTIME_CANCELLED;
+    runtime_storage_error_init(target, rc);
+    target->db_result = result; target->failed_schema_version = schema;
+    if (db && PDb_GetErrorInfo(db, &error) == PDB_OK) {
+        target->db_category = error.category; target->sqlite_code = error.sqlite_code;
+        target->sqlite_extended_code = error.sqlite_extended_code;
+        target->cleanup_result = error.cleanup_result;
+        memcpy(target->message, error.message, sizeof(target->message));
+        if (error.category == PDB_ERROR_CATEGORY_CANCELLED) target->result = rc = PRUNTIME_CANCELLED;
     }
     return rc;
 }
+static int runtime_storage_db_error(PRuntimeStorageHandle storage, int result, unsigned long schema)
+{ return runtime_db_error(storage->db, &storage->error, result, schema); }
 static int runtime_storage_cancel(PRuntimeStorageHandle storage)
 {
     if (storage->options.cancelled && storage->options.cancelled(storage->options.user_data)) {
@@ -1815,6 +1817,7 @@ struct PRuntimeInstallIntent {
     void* lease;
     unsigned int phase, cancelled;
     int active, cas_result;
+    unsigned int data_children;
 };
 typedef char runtime_intent_budget_check[(sizeof(struct PRuntimeInstallIntent) <= 8192U) ? 1 : -1];
 static int ri_ready(PRuntimeInstallIntentHandle job)
@@ -1957,6 +1960,7 @@ PRUNTIME_API int PRuntime_InstallIntentGetInfo(PRuntimeInstallIntentHandle job, 
 PRUNTIME_API int PRuntime_InstallIntentCancel(PRuntimeInstallIntentHandle job)
 {
     int rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->data_children) return PRUNTIME_STATE;
     if (job->info.state == PRUNTIME_INTENT_CANCELLED) return PRUNTIME_OK;
     if (job->info.state == PRUNTIME_INTENT_FAILED || job->info.state == PRUNTIME_INTENT_UNRESOLVED) return PRUNTIME_STATE;
     job->cancelled = 1;
@@ -1969,8 +1973,248 @@ PRUNTIME_API int PRuntime_InstallIntentClose(PRuntimeInstallIntentHandle* slot)
     if (!slot) return PRUNTIME_ARGUMENT;
     job = *slot; if (!job) return PRUNTIME_OK;
     rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->data_children) return PRUNTIME_STATE;
     job->active = job->parent->active = 1;
     if (job->lease) job->provider.close(job->provider.user_data, job->lease);
     --job->parent->intent_children; job->parent->active = 0; job->magic = 0;
     free(job); *slot = NULL; return PRUNTIME_OK;
+}
+
+#define RIDATA_MAGIC 0x52494431UL
+struct PRuntimeInstallData {
+    DWORD magic;
+    PRuntimeInstallIntentHandle intent;
+    PRuntimeStorageProvider provider;
+    PRuntimeStorageLocation location;
+    PRuntimeInstallDataOptions options;
+    PRuntimeInstallDataInfo info;
+    PRuntimeMigrationPlanHandle plan;
+    PDbHandle db;
+    unsigned int phase, source_index, apply_index, cancelled;
+    int active;
+};
+typedef char runtime_install_data_budget_check[(sizeof(struct PRuntimeRevision) +
+    sizeof(struct PRuntimeInstallIntent) + sizeof(struct PRuntimeInstallData) +
+    sizeof(struct PRuntimeMigrationPlan) + PRUNTIME_MIGRATION_TOTAL_BYTES + 131072U <= 1280U * 1024U) ? 1 : -1];
+static int rd_ready(PRuntimeInstallDataHandle data)
+{
+    if (!data || data->magic != RIDATA_MAGIC) return PRUNTIME_ARGUMENT;
+    return data->active ? PRUNTIME_STATE : ri_ready(data->intent);
+}
+static int rd_refresh(PRuntimeInstallDataHandle data)
+{
+    PRuntimeInstallIntentHandle intent = data->intent;
+    PRuntimeRegistrationRecord current;
+    int rc;
+    memset(&current, 0, sizeof(current)); current.size = sizeof(current); current.version = 1;
+    rc = intent->provider.read(intent->provider.user_data, intent->lease, &current);
+    if (rc == PRUNTIME_NOT_FOUND) return PRUNTIME_DENIED;
+    rc = rv_provider_rc(rc); if (rc != PRUNTIME_OK) return rc;
+    rc = rv_registration_valid(intent->parent, &current);
+    if (rc != PRUNTIME_OK) return rc;
+    return rv_same_registration(&current, &intent->info.record) ? PRUNTIME_OK : PRUNTIME_INVALID;
+}
+PRUNTIME_API int PRuntime_InstallDataBegin(PRuntimeInstallIntentHandle intent,
+        const PRuntimeInstallDataOptions* options, const PRuntimeStorageProvider* provider,
+        PRuntimeInstallDataHandle* output)
+{
+    PRuntimeInstallDataHandle data;
+    int rc = ri_ready(intent);
+    if (rc != PRUNTIME_OK) return rc;
+    if (intent->info.state != PRUNTIME_INTENT_PREPARED || intent->data_children) return PRUNTIME_STATE;
+    if (!options || !provider || !output || options->size != sizeof(*options) || options->version != 1 ||
+            options->vm_budget < 100 || options->vm_budget > 1000000 || options->vm_budget % 100 ||
+            provider->size != sizeof(*provider) || provider->version != 1 ||
+            !provider->open_location || !provider->close_location) return PRUNTIME_ARGUMENT;
+    if (!(intent->info.record.approval.approved_permissions & PRUNTIME_PERMISSION_SQL)) return PRUNTIME_DENIED;
+    if (intent->info.record.generation == 2147483647U) return PRUNTIME_LIMIT;
+    data = (PRuntimeInstallDataHandle)calloc(1, sizeof(*data)); if (!data) return PRUNTIME_MEMORY;
+    data->magic = RIDATA_MAGIC; data->intent = intent; data->provider = *provider; data->options = *options;
+    data->info.size = sizeof(data->info); data->info.version = 1; data->info.state = PRUNTIME_INSTALL_DATA_INITIALIZING;
+    data->info.target_schema = intent->info.record.target_schema;
+    runtime_storage_error_init(&data->info.error, PRUNTIME_OK);
+    strcpy(data->info.key, "v1/installed/"); strcat(data->info.key, intent->info.record.approval.installation_id);
+    strcat(data->info.key, "/app.db");
+    ++intent->data_children; *output = data; return PRUNTIME_OK;
+}
+static int rd_db(PRuntimeInstallDataHandle data, int rc, unsigned int schema)
+{ return rc == PDB_OK ? PRUNTIME_OK : runtime_db_error(data->db, &data->info.error, rc, schema); }
+static int rd_abort(PRuntimeInstallDataHandle data, int rc)
+{
+    PRuntimeInstallIntentHandle intent = data->intent;
+    if (data->info.error.result == PRUNTIME_OK) runtime_storage_error_init(&data->info.error, rc);
+    intent->transition.previous_exists = 1; intent->transition.previous = intent->info.record;
+    intent->transition.proposed = intent->info.record;
+    intent->transition.proposed.state = rc == PRUNTIME_CANCELLED ? PRUNTIME_REG_CANCELLED : PRUNTIME_REG_FAILED;
+    ++intent->transition.proposed.generation;
+    data->phase = 90; return PRUNTIME_OK;
+}
+static int rd_record_failure(PRuntimeInstallDataHandle data)
+{
+    PRuntimeInstallIntentHandle intent = data->intent;
+    PRuntimeRegistrationRecord current;
+    PRuntimeRegistrationDecision decision;
+    unsigned int outcome = PRUNTIME_COMMIT_UNKNOWN;
+    int found, rc;
+    if (data->phase == 90) {
+        rc = rv_provider_rc(intent->provider.compare_exchange(intent->provider.user_data, intent->lease,
+                &intent->transition.previous, &intent->transition.proposed, &outcome));
+        if (outcome < PRUNTIME_COMMIT_CONFIRMED || outcome > PRUNTIME_COMMIT_UNKNOWN) {
+            outcome = PRUNTIME_COMMIT_UNKNOWN; rc = PRUNTIME_IO;
+        }
+        intent->transition.commit_outcome = intent->info.commit_outcome = data->info.registration_outcome = outcome;
+        data->info.registration_result = intent->info.provider_result = rc;
+        intent->info.record_known = intent->info.record_exists = 0;
+        memset(&intent->info.record, 0, sizeof(intent->info.record));
+        ++data->phase; return PRUNTIME_OK;
+    }
+    memset(&current, 0, sizeof(current)); current.size = sizeof(current); current.version = 1;
+    rc = intent->provider.read(intent->provider.user_data, intent->lease, &current); found = rc != PRUNTIME_NOT_FOUND;
+    if (!found) rc = PRUNTIME_OK; else rc = rv_provider_rc(rc);
+    if (rc != PRUNTIME_OK) {
+        data->info.registration_result = PRUNTIME_UNRESOLVED;
+        intent->info.provider_result = rc; intent->info.error = PRUNTIME_UNRESOLVED;
+        intent->info.state = PRUNTIME_INTENT_UNRESOLVED;
+    } else {
+        if (found) rc = rv_registration_valid(intent->parent, &current);
+        if (rc == PRUNTIME_OK) {
+            ri_observed(intent, &current, found); memset(&decision, 0, sizeof(decision));
+            rc = rv_registration_decide(&intent->transition, &current, found, &decision);
+            if (rc == PRUNTIME_OK && decision.match != PRUNTIME_REG_MATCH_PROPOSED)
+                rc = decision.match == PRUNTIME_REG_READY_WON_CANCEL ? PRUNTIME_STATE :
+                    (data->info.registration_result != PRUNTIME_OK ? data->info.registration_result : PRUNTIME_IO);
+        }
+        data->info.registration_result = rc;
+        intent->info.state = data->info.error.result == PRUNTIME_CANCELLED && rc == PRUNTIME_OK ?
+                PRUNTIME_INTENT_CANCELLED : PRUNTIME_INTENT_FAILED;
+        intent->info.error = data->info.error.result;
+    }
+    data->info.state = data->info.error.result == PRUNTIME_CANCELLED ? PRUNTIME_INSTALL_DATA_CANCELLED : PRUNTIME_INSTALL_DATA_FAILED;
+    return data->info.error.result;
+}
+static int rd_step(PRuntimeInstallDataHandle data)
+{
+    PRuntimeRevisionHandle r = data->intent->parent;
+    PRuntimeMigrationSource* source;
+    PRuntimeMigrationInfo* migration;
+    PRuntimeRevisionFile* file = NULL;
+    PDbRestrictedOptions db_options;
+    PDbMigrationReport report;
+    PDbErrorInfo open_error;
+    char identity[160];
+    unsigned int i, got;
+    int version, rc = PRUNTIME_OK;
+    if (data->phase >= 90) return rd_record_failure(data);
+    if (data->cancelled || (data->options.cancelled && data->options.cancelled(data->options.user_data)))
+        return rd_abort(data, PRUNTIME_CANCELLED);
+    switch (data->phase) {
+    case 0: rc = rd_refresh(data); break;
+    case 1:
+        rc = rv_provider_rc(data->provider.open_location(data->provider.user_data, data->info.key, &data->location));
+        if (rc == PRUNTIME_OK && (!data->location.token || !data->location.path_bytes ||
+                data->location.path_bytes > PRUNTIME_ROOT_BYTES || data->location.path[0] != '\\' ||
+                !runtime_text(data->location.path, data->location.path_bytes) || data->location.path[data->location.path_bytes])) rc = PRUNTIME_IO;
+        break;
+    case 2:
+        open_error.size = sizeof(open_error); open_error.version = PDB_ERROR_INFO_VERSION;
+        rc = rd_db(data, PDb_OpenUtf8Ex(data->location.path, PDB_OPEN_LOCAL_FULL_SQL, &data->db, &open_error), 0);
+        if (rc != PRUNTIME_OK) {
+            data->info.error.db_category = open_error.category; data->info.error.sqlite_code = open_error.sqlite_code;
+            data->info.error.sqlite_extended_code = open_error.sqlite_extended_code;
+            data->info.error.cleanup_result = open_error.cleanup_result;
+            memcpy(data->info.error.message, open_error.message, sizeof(open_error.message));
+        }
+        break;
+    case 3:
+        strcpy(identity, "Positron.storage.v1:installed:"); strcat(identity, data->intent->info.record.approval.id);
+        strcat(identity, ":"); strcat(identity, data->intent->info.record.approval.installation_id);
+        rc = rd_db(data, PDb_BindLocalIdentity(data->db, identity, (int)strlen(identity)), 0); break;
+    case 4:
+        rc = rd_db(data, PDb_GetMigrationVersion(data->db, &version), 0);
+        if (rc == PRUNTIME_OK) {
+            if ((unsigned int)version > data->info.target_schema) rc = PRUNTIME_SCHEMA;
+            else {
+                data->info.previous_schema = data->info.current_schema = (unsigned int)version;
+                data->source_index = (unsigned int)version;
+                data->plan = (PRuntimeMigrationPlanHandle)calloc(1, sizeof(*data->plan));
+                if (!data->plan) rc = PRUNTIME_MEMORY;
+            }
+        }
+        break;
+    case 5:
+        if (data->source_index == data->info.target_schema) { data->phase = 6; return PRUNTIME_OK; }
+        migration = &r->manifest->migrations[data->source_index];
+        for (i = 0; i < r->count; ++i) if (!strcmp(r->files[i].path, migration->file)) { file = &r->files[i]; break; }
+        if (!file || !file->file_bytes) return rd_abort(data, PRUNTIME_INVALID);
+        if (file->file_bytes > PRUNTIME_MIGRATION_SQL_BYTES) return rd_abort(data, PRUNTIME_LIMIT);
+        source = &data->plan->sources[data->plan->info.file_count];
+        source->sql = (const char*)malloc(file->file_bytes); if (!source->sql) return rd_abort(data, PRUNTIME_MEMORY);
+        source->sql_bytes = file->file_bytes; ++data->plan->info.file_count;
+        got = 0; rc = rv_provider_rc(r->provider.read_at(r->provider.user_data, r->root.root,
+                file->path, 0, (void*)source->sql, file->file_bytes, &got));
+        if (rc == PRUNTIME_OK && got != file->file_bytes) rc = PRUNTIME_IO;
+        if (rc == PRUNTIME_OK && (!runtime_text_mode(source->sql, got, 1) ||
+                (got >= 3 && !memcmp(source->sql, "\xef\xbb\xbf", 3)))) rc = PRUNTIME_INVALID;
+        if (rc == PRUNTIME_OK) { source->schema_version = migration->schema_version; ++data->source_index; }
+        return rc == PRUNTIME_OK ? PRUNTIME_OK : rd_abort(data, rc);
+    case 6: rc = rd_refresh(data); break;
+    case 7:
+        if (data->apply_index == data->plan->info.file_count) { data->phase = 8; return PRUNTIME_OK; }
+        source = &data->plan->sources[data->apply_index];
+        memset(&db_options, 0, sizeof(db_options)); db_options.size = sizeof(db_options); db_options.version = PDB_RESTRICTED_VERSION;
+        db_options.vm_budget = data->options.vm_budget; db_options.cancelled = data->options.cancelled;
+        db_options.user_data = data->options.user_data;
+        memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = PDB_MIGRATION_VERSION;
+        rc = rd_db(data, PDb_ApplyMigrationRestricted(data->db, (int)source->schema_version - 1,
+                (int)source->schema_version, source->sql, source->sql_bytes, &db_options, &report), source->schema_version);
+        if (rc == PRUNTIME_OK) {
+            ++data->apply_index; ++data->info.applied_files; data->info.current_schema = source->schema_version;
+            data->phase = 6; return PRUNTIME_OK;
+        }
+        break;
+    case 8:
+        rc = rd_db(data, PDb_GetMigrationVersion(data->db, &version), 0);
+        if (rc == PRUNTIME_OK && (unsigned int)version != data->info.target_schema) rc = PRUNTIME_SCHEMA;
+        break;
+    default:
+        rc = rd_refresh(data);
+        if (rc == PRUNTIME_OK) { data->info.state = PRUNTIME_INSTALL_DATA_PREPARED; return PRUNTIME_INSTALL_DATA_DONE; }
+        break;
+    }
+    if (rc != PRUNTIME_OK) return rd_abort(data, rc);
+    ++data->phase; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallDataStep(PRuntimeInstallDataHandle data)
+{
+    int rc = rd_ready(data); if (rc != PRUNTIME_OK) return rc;
+    if (data->info.state != PRUNTIME_INSTALL_DATA_INITIALIZING && data->info.state != PRUNTIME_INSTALL_DATA_PENDING) return PRUNTIME_STATE;
+    data->active = data->intent->active = data->intent->parent->active = 1;
+    data->info.state = PRUNTIME_INSTALL_DATA_PENDING; rc = rd_step(data);
+    data->active = data->intent->active = data->intent->parent->active = 0; return rc;
+}
+PRUNTIME_API int PRuntime_InstallDataGetInfo(PRuntimeInstallDataHandle data, PRuntimeInstallDataInfo* info)
+{
+    int rc = rd_ready(data); if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != 1) return PRUNTIME_ARGUMENT;
+    *info = data->info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallDataCancel(PRuntimeInstallDataHandle data)
+{
+    int rc = rd_ready(data); if (rc != PRUNTIME_OK) return rc;
+    if (data->info.state != PRUNTIME_INSTALL_DATA_INITIALIZING && data->info.state != PRUNTIME_INSTALL_DATA_PENDING) return PRUNTIME_STATE;
+    data->cancelled = 1; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallDataClose(PRuntimeInstallDataHandle* slot)
+{
+    PRuntimeInstallDataHandle data;
+    int rc;
+    if (!slot) return PRUNTIME_ARGUMENT;
+    data = *slot; if (!data) return PRUNTIME_OK;
+    rc = rd_ready(data); if (rc != PRUNTIME_OK) return rc;
+    data->active = data->intent->active = data->intent->parent->active = 1;
+    if (data->db) PDb_Close(data->db);
+    if (data->location.token) data->provider.close_location(data->provider.user_data, data->location.token);
+    if (data->plan) runtime_plan_dispose(data->plan);
+    --data->intent->data_children; data->intent->active = data->intent->parent->active = 0;
+    data->magic = 0; free(data); *slot = NULL; return PRUNTIME_OK;
 }

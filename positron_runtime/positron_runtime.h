@@ -204,7 +204,8 @@ typedef struct PRuntimeInstallIntentProvider {
      * Always set outcome even on error: CONFIRMED, NOT_COMMITTED or UNKNOWN.
      * No active transaction/background operation survives return. Native
      * provider persists fields, not struct padding, and enforces app-ID
-     * uniqueness. Runtime supplies PREPARING/CANCELLED only, never READY. */
+     * uniqueness. Runtime supplies PREPARING/CANCELLED and data-preparation
+     * FAILED records, never READY. */
     int (*compare_exchange)(void*, void*, const PRuntimeRegistrationRecord*,
             const PRuntimeRegistrationRecord*, unsigned int* outcome);
     void (*close)(void*, void*);
@@ -320,6 +321,52 @@ typedef struct PRuntimeStorageError {
     unsigned long failed_schema_version;
     char message[256]; /* copied native diagnostic, never expose blindly to JS */
 } PRuntimeStorageError;
+typedef struct PRuntimeInstallData* PRuntimeInstallDataHandle;
+#define PRUNTIME_INSTALL_DATA_INITIALIZING 1U
+#define PRUNTIME_INSTALL_DATA_PENDING 2U
+#define PRUNTIME_INSTALL_DATA_PREPARED 3U
+#define PRUNTIME_INSTALL_DATA_FAILED 4U
+#define PRUNTIME_INSTALL_DATA_CANCELLED 5U
+#define PRUNTIME_INSTALL_DATA_DONE 1
+typedef struct PRuntimeInstallDataOptions {
+    unsigned int size, version, vm_budget; /* 100..1000000, multiples of 100, per migration */
+    int (*cancelled)(void*);
+    void* user_data;
+} PRuntimeInstallDataOptions;
+typedef struct PRuntimeInstallDataInfo {
+    unsigned int size, version, state;
+    unsigned int previous_schema, current_schema, target_schema, applied_files;
+    char key[128]; /* v1/installed/<native installation ID>/app.db; native only */
+    PRuntimeStorageError error; /* primary failure, including committed prefix */
+    int registration_result; /* independent failure/cancel recording outcome */
+    unsigned int registration_outcome;
+} PRuntimeInstallDataInfo;
+/* PREPARED live intent + approved storage.sql only. One data child; copies
+ * tables/options, no callbacks at Begin. Retains intent/root/coordination.
+ * Parent intent Cancel/Close return STATE until data Close. No raw snapshot,
+ * development handle, raw DB, SQL service, READY transition or author code.
+ * Step refreshes exact PREPARING registration, maps full installed identity,
+ * opens/binds a private DB and reads strict version. Copies ALL remaining
+ * sources before any migration; <=16*32768 bytes, nonempty UTF-8/no BOM/NUL.
+ * Applies one PDb restricted migration per step, each separately committed;
+ * exact version resumes suffix only. Future/corrupt/mismatched DB fails closed.
+ * Refresh before each migration and final completion. Owner-thread/no reentry,
+ * no pump/worker; native I/O/SQL operation is not a wall-clock yield.
+ * Failure/cancel attempts exact FAILED/CANCELLED registration CAS then readback;
+ * primary error survives secondary error/unknown. No automatic write replay,
+ * data deletion, rollback of prior commits or fallback location. Provider/CSP/
+ * DB memory excluded; Runtime combined parent/intent/data reserve <=1280 KiB.
+ * READY require-existing opener remains a separate unimplemented contract. */
+PRUNTIME_API int PRuntime_InstallDataBegin(PRuntimeInstallIntentHandle intent,
+        const PRuntimeInstallDataOptions* options, const PRuntimeStorageProvider* provider,
+        PRuntimeInstallDataHandle* output);
+PRUNTIME_API int PRuntime_InstallDataStep(PRuntimeInstallDataHandle data);
+PRUNTIME_API int PRuntime_InstallDataGetInfo(PRuntimeInstallDataHandle data, PRuntimeInstallDataInfo* info);
+/* Request only; Step records cancellation when possible. Cannot undo a COMMIT.
+ * Close does not cancel/register/delete. DB then location, parent detach;
+ * safe repeated NULL slot, active/wrong-thread Close preserves the handle. */
+PRUNTIME_API int PRuntime_InstallDataCancel(PRuntimeInstallDataHandle data);
+PRUNTIME_API int PRuntime_InstallDataClose(PRuntimeInstallDataHandle* data);
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;

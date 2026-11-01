@@ -171,6 +171,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 首次安装资源只读核验 | `PRuntime_PrepareRevision/OpenInstalled`、`RevisionStep/GetInfo/GetFile/BuildApproval/Cancel/Close`、`InstalledReadFile` | 已实现但需可信 native provider | revision 1；1024 文件、8 MiB/项、总 32 MiB、512 KiB DLL 工作集；Step ≤64 KiB 或16项；SHA-256 精确清单/显式批准/登记 generation 比较，未知算法拒绝，失败不写登记或授权 | TEST1377 的独立 hashlib 参考、设备原生 SHA-256、篡改/增删改名/撤销/租约/容量/取消/线程/释放及双配置设备门；[合同与调用](../positron_runtime/INSTALLED.md)，安装存储、发布/恢复与 EXE 尚未接入 |
 | 登记转换与提交结果读回 | `PRuntime_RevisionReconcileRegistration` | 已实现但仅 native 观察 | COMPLETE prepare候选、精确v1转换/完整批准与资源/schema比较；一次租约/读回，无分配或写入；generation递增且不回绕；结果不明、缺失/不可读/冲突拒绝，失败输出不变，不授予启动权 | TEST1378覆盖响应丢失、旧/新记录、READY赢取消、重试确认、墓碑/容量/身份/版本、partial lease、重入与重复读回；[调用合同](../positron_runtime/INSTALLED.md)，实际CAS/存储/EXE尚未接入 |
 | 不可启动安装意图协调 | `PRuntime_InstallIntentBegin/Step/GetInfo/Cancel/Close` | 已实现但需可信native登记provider | 单prepare子job≤8KiB；每Step≤1原生callback；NEW/RESUME/FAILED重试、精确CAS/读回及取消；父保有、未知结果UNRESOLVED不重放；只写PREPARING/CANCELLED，无READY/SQL/启动权 | TEST1379的提交响应丢失、明确失败/未知读回与关闭后恢复、部分租约、取消/重复子项/线程/重入及双配置设备门；真实EXE登记与数据准备仍待接入 |
+| 安装数据准备与迁移后缀恢复 | `PRuntime_InstallDataBegin/Step/GetInfo/Cancel/Close` | 已实现但无运行期SQL服务 | 活PREPARED意图/SQL批准、独立完整stamp/key；所有pending来源先准入，16×32KiB；逐文件受限迁移/严格版本；组合Runtime工作集≤1280KiB；错误不删除/重放前缀，原DB错误与FAILED/CANCELLED登记错误分离；不写READY | TEST1380真实PDb的零/双迁移、非幂等后缀、坏来源/错误身份/非空库/未来版本、原生位置/登记故障、取消/线程/保有与双配置门；READY opener及EXE仍待接入 |
 | PXI 安装与更新 | 已授权独立 Archive DLL；实际安装尚未接入 | 有界待扩展 | 不依赖 WM6.5 系统组件；Archive 校验不等于物理目录包含性、批准或安装提交 | 先完成归档和隔离输出，再验证安装身份、取消/失败清理、不覆盖及更新恢复 |
 
 ## DB：`positron_db.dll`

@@ -1,6 +1,6 @@
 # Revision verification and native installation intents
 
-These additive native contracts in `positron_runtime.h` verify immutable resources and committed first-install records, and coordinate inactive installation intents through a trusted native registry provider. They do not extract/publish files, open installed SQL storage, write READY registration, authorize Browser services or execute author code. Existing development-directory/storage APIs and layouts are unchanged.
+These additive native contracts in `positron_runtime.h` verify immutable resources, coordinate inactive installation intents and prepare identity-bound installation databases. They do not extract/publish files, open READY application SQL services, write READY registration, authorize Browser services or execute author code. Existing development-directory/storage APIs and layouts are unchanged.
 
 ## Ownership and trust
 
@@ -132,7 +132,38 @@ if (rc == PRUNTIME_OK) {
 }
 ```
 
-All calls use the parent's creating thread; provider targets live through Close, and no callback survives return. Close may abandon a pending/unknown job but performs no implicit cancellation, deletion or CAS. It releases the coordination lease before detaching the parent; the caller may then close the parent/root. Reopen with explicit RESUME after revalidating the same resources to inspect a committed PREPARING intent. Close clears the owned slot and accepts repeated NULL values; active/wrong-thread Close preserves it. Installed data preparation and final registration remain separate prerequisites.
+All calls use the parent's creating thread; provider targets live through Close, and no callback survives return. Close may abandon a pending/unknown job but performs no implicit cancellation, deletion or CAS. It releases the coordination lease before detaching the parent; the caller may then close the parent/root. Reopen with explicit RESUME after revalidating the same resources to inspect a committed PREPARING intent. Close clears the owned slot and accepts repeated NULL values; active/wrong-thread Close preserves it. An attached data-preparation child blocks intent Cancel/Close until that child closes. Final READY registration remains separate.
+
+## Preparing the installation database
+
+`PRuntime_InstallDataBegin/Step/GetInfo/Cancel/Close` prepare SQL data from one live PREPARED intent. Begin copies exact v1 options/provider, checks the approved SQL bit and VM budget, and retains the intent without callbacks. A second child returns STATE. No-SQL applications return DENIED before any data-location call; a complete installer should skip data preparation for them. The handle exposes no raw DB, author SQL execution or service queue. PREPARED data still has an inactive PREPARING registration.
+
+Runtime generates `v1/installed/<installation-id>/app.db` beneath the trusted native data provider. The exact DB TEXT stamp is `Positron.storage.v1:installed:<canonical-app-id>:<installation-id>`. Root/content/revision/generation do not select data identity, and no development bucket is reused. `PDb_BindLocalIdentity` admits only a pristine unclaimed DB or an exact existing stamp; wrong identity/nonempty unclaimed data fail without reassignment, fallback or deletion. Binding may already have committed before a later failure.
+
+Step refreshes the exact PREPARING record before location/DB preparation, before each migration and before completion. It opens/binds the DB, reads strict stored schema, and copies **all remaining** migration files from the retained immutable root before executing any of them. Sources are nonempty UTF-8, without BOM/NUL/unsupported controls, at most 32768 bytes each and sixteen files/512 KiB total. Lexically valid but invalid SQL can still fail during DB execution; source admission is not an SQL dry-run. Unknown/future/corrupt schema fails, with no downgrade.
+
+Each migration runs through `PDb_ApplyMigrationRestricted(expected, expected+1)` and commits independently. A later failure retains the committed prefix. After explicit FAILED→PREPARING retry, the strict schema determines the pending suffix; previously committed SQL is never replayed. A zero-migration SQL application binds its own DB at schema 0. Successful completion rechecks target schema and registration, retaining DB/location and parent leases until Close.
+
+On failure/cancellation, subsequent steps attempt an exact FAILED/CANCELLED CAS and fresh readback. The primary `PRuntimeStorageError` remains intact; `registration_result` and `registration_outcome` separately report secondary error or UNRESOLVED. The intent is retired to failed/cancelled/unresolved rather than left usable in memory. No failed recording is automatically replayed, and no committed migration is rolled back to make a failed install look pristine. The provider must support these failure states as well as PREPARING. An unreadable result requires explicit recovery after close; it never authorizes startup.
+
+States are INITIALIZING, PENDING, PREPARED, FAILED and CANCELLED. Step returns OK while work or failure recording remains pending, DONE only for prepared data, otherwise the primary terminal error. GetInfo includes previous/current/target schema, applied-file count, native-only key and independent DB/registry diagnostics. Native messages may contain SQL/paths: do not blindly forward them to author JS. Cancellation is a request; continue Step to terminal. It cannot preempt native I/O or undo an already committed file.
+
+```c
+PRuntimeInstallDataHandle data = NULL;
+PRuntimeInstallDataInfo info;
+rc = PRuntime_InstallDataBegin(prepared_intent, &data_options,
+    &trusted_data_provider, &data);
+if (rc == PRUNTIME_OK) {
+    do { rc = PRuntime_InstallDataStep(data); } while (rc == PRUNTIME_OK);
+    info.size = sizeof(info);
+    info.version = PRUNTIME_VERSION;
+    PRuntime_InstallDataGetInfo(data, &info);
+    /* DONE means data prepared, not installation complete or service grant. */
+    PRuntime_InstallDataClose(&data);
+}
+```
+
+All operations use the creating worker; callbacks guard data, intent and revision against reentry/close. A Step performs one complete DB operation or native resource/registry operation, plus the optional cancellation predicate; one migration is not a resumable SQL continuation or wall-clock bound. The combined Runtime-owned parent/intent/data/source workset plus fixed reserve is compile-time limited to 1280 KiB, excluding DB/CSP/native provider allocations. Existing DB quota, authorizer and 100..1000000 VM work budget per file remain unchanged. Close frees DB, location and copied sources, then detaches from the intent; it does not register, cancel or delete durable data. Close a pending job only if prepared to recover its partial committed prefix explicitly. After data is PREPARED, its Cancel returns STATE; to cancel installation instead, close the data child and drive the intent's cancellation path, retaining the prepared database.
 
 ## Validation and remaining work
 
@@ -142,4 +173,6 @@ Registration regression covers lost responses, definite-outcome contradictions, 
 
 Intent regression additionally checks one-callback steps, exactly-once CAS attempts, lost-response success, unknown readback/close/resume without replay, confirmation, duplicate children, real wrong-thread calls, parent/child callback guards, partial leases and cancellation before/after CAS or preparation. These in-memory registry fixtures do not prove EXE database persistence.
 
-Actual PXI isolation/extraction, installed SQL identity/storage, final READY coordination, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.
+Installation-data regression uses real private PDb files for full identity binding, zero/two migrations, all-source admission, wrong/unclaimed/future DB rejection, partial location failure, cancellation and exact prefix/suffix recovery. An independent post-close query counts rows/schema; a registry recording failure cannot overwrite the original DB error. The registry fixture still models committed native records rather than EXE SQL persistence.
+
+Actual PXI isolation/extraction, READY require-existing SQL/storage services, final READY coordination, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.
