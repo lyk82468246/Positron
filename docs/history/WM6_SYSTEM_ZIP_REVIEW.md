@@ -1,7 +1,7 @@
 # WM6 系统 ZIP 取证与 WM6.5 参考
 
 本文保存 2026-10-29 对本机 SDK 的离线检查和当前已连接设备的只读取证，不是 PXI 安装验收。
-当前安装规则见 [Runtime 计划](../RUNTIME_PLAN.md#pxi-系统-zip-前置门)。
+当前安装规则见 [Runtime 计划](../RUNTIME_PLAN.md#pxi-归档前置门)。
 
 ## 结论与证据层级
 

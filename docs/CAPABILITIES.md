@@ -1,6 +1,6 @@
 # 公共能力覆盖矩阵
 
-本文件描述 Positron 十个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
+本文件描述 Positron 十一个顶层公共 DLL 的主干能力、当前边界和进入实现的条件。它是面向
 应用开发者和维护者的稳定说明，不记录 next 编号、提交时间、设备运行目录或逐测试流水。
 精确函数签名、结构体大小和错误码仍以对应的公开头文件为准。
 
@@ -149,6 +149,14 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 16 容器层/1024 词元（含键和容器），调用方可降低；拒绝尾随内容、重复键、NUL、非法 UTF-8
 及非有限数字，失败不改输出。旧 Parse 不变；TEST1364 保护新旧路径，schema 仍由消费者拥有。
 
+## Archive：`positron_archive.dll`
+
+| 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
+| --- | --- | --- | --- | --- |
+| ZIP 准入、目录与分块读取 | `PArchive_Open/Count/Entry/Begin/Read/Abort/Close` | 已实现但有界 | 单卷 STORE/DEFLATE，32 MiB 输入、1024 项、单项 16 MiB/合计 64 MiB、240-byte UTF-8 路径/16 层、工作集 ≤1 MiB；CRC/长度完成前输出暂定，格式/预算/路径失败不发布 reader；不直接访问文件系统 | 离线公共 ABI fixture、正式双配置及定向设备门；精确调用和错误见 [Archive README](../positron_archive/README.md) |
+| ZIP 创建/压缩 | 计划为独立 writer 合同，暂无公开入口 | 有界待扩展 | 只创建 STORE/DEFLATE 新归档；顺序输出、独立预算与取消，失败丢弃临时输出 | 完成 reader 后独立实现 PC 工具互操作、写入失败/取消与双配置设备回归 |
+| PXI 安装、物理目录与 HTTP 编码 | Runtime/宿主与 HTTP 各自所有 | 宿主/其他 DLL 职责 | CRC 不是签名；Archive 不授予权限或安装身份，不解码 HTTP Content-Encoding | PXI 临时输出/提交需独立合同；HTTP 压缩无当前实现计划 |
+
 ## Runtime：`positron_runtime.dll`
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
@@ -160,8 +168,8 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 开发存储、迁移执行与 typed SQL JSON | `PRuntime_DevelopmentStorageOpen`、`PRuntime_StorageGetInfo/GetError/ExecuteJson/Close` | 已实现但仅 owner worker 原语 | 显式 SQL 确认、原生 data 根；完整开发根/ID stamp 拒绝碰撞/错误库；所有来源准入后逐文件原子迁移；请求/结果 JSON 4096 bytes，DB 固定预算，编码超限提交前回滚、失败不改输出 | TEST1368/1369 双配置门覆盖双根隔离/重开、身份拒绝、迁移失败/恢复、typed 精度、批/预算/取消/编码回滚；普通网页/URL 无权限，EXE 页面授权仍须显式接线 |
 | 有界页面 SQL 队列 | `PRuntime_ServiceQueueCreate/Submit/ProcessOne/TakeResult/Cancel/Revoke/GetInfo/Close` | 已实现但需 native 授权与宿主调度 | 每 storage 最多四队列，每页八槽、约 70 KiB；UI 复制、worker SQL、owner UI 交付；绑定 tab/generation/bridge 和单调请求号；撤销永久、关闭等待空闲；提交后迟到结果仅丢弃，绝不重跑 SQL | TEST1370 双配置门组合真实线程和 Browser 服务，覆盖容量、重复/replay、运行中取消回滚、提交后撤销及 teardown；不是跨线程使用 DOM/JS 或恶意代码沙箱 |
 | app 页面资源组合 | Runtime resolver/read + Core base-aware CSS/script/image + Browser resource/history/session | 已实现但需宿主接线 | 同 ID/根内资源；读取和各资源遵守较严格预算，required CSS 失败阻止候选提交；URL 不授权服务 | TEST1371 双配置离线目录组合覆盖 CSS/@import、脚本 DOM mutation、SVG 像素/cache、history、app location 与无自动授权；EXE 原窗口/worker/输入仍待门，不把 DLL 夹具当应用验收 |
-| 安装身份 | 已批准运行时计划；无安装 opener | 暂缓 | 安装空间不得复用开发数据，不能从同 ID 开发实例推断安装权 | 系统 ZIP 门成立后独立设计安装/更新及持久身份，目录应用可独立交付 |
-| PXI 安装与更新 | 当前目标 ROM 无已验证系统 ZIP provider | 暂缓 | 禁止自写/引入 ZIP fallback；系统组件名或 Shell 声明不证明可安全解包 | 只读 ROM 清单未发现 ZIP 命名组件或已查六个 Shell 注册入口；不外推所有 ROM。取得实际 provider 和完成/错误/取消、Unicode/路径冲突/规模/清理证据后恢复 |
+| 安装身份 | 已批准运行时计划；无安装 opener | 暂缓 | 安装空间不得复用开发数据，不能从同 ID 开发实例推断安装权 | 已安装合同与 Archive/PXI 输出门成立后接入安装/更新及持久身份，目录应用可独立交付 |
+| PXI 安装与更新 | 已授权独立 Archive DLL；实际安装尚未接入 | 有界待扩展 | 不依赖 WM6.5 系统组件；Archive 校验不等于物理目录包含性、批准或安装提交 | 先完成归档和隔离输出，再验证安装身份、取消/失败清理、不覆盖及更新恢复 |
 
 ## DB：`positron_db.dll`
 

@@ -49,10 +49,14 @@
   [文件验收](DB_FILE_ACCEPTANCE.md)，不等于断电保证。
 - 同步主键、连接/线程及 Token 限制见 [DB](../positron_db/README.md)，不承诺通用远程 SQL。
 
+## Archive
+
+ZIP 仅 STORE/DEFLATE 读取；创建、PXI、HTTP gzip 待实现，宿主负责物理输出与提交/清理。
+
 ## 纯资源应用 Runtime
 
-- Notes 自动门/Debug交互基本通过；双语/Release待验收，安装授权登记待DLL合同，见[宿主](../positron_app/RUNTIME_HOST.md)。
-- 旧启动故障未复现，根因未知，待非零快照；新门不关闭旧 mkdir183/CANTOPEN，ZIP/PXI 暂缓。
+- Notes 双语/Release、安装授权待验收。
+- 旧 mkdir183/CANTOPEN 未关闭，等非零快照再定位；PXI 安装待完成。
 
 ## HTML、CSS 与布局
 

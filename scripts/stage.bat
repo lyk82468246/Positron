@@ -24,6 +24,7 @@ if not exist "%STAGE%" mkdir "%STAGE%"
 echo Staging %CFG% artifacts to %STAGE% ...
 copy /Y "%ROOT%\positron_tls\bin\%CFG%\positron_tls.dll"   "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_json\bin\%CFG%\positron_json.dll" "%STAGE%\" || goto :fail
+copy /Y "%ROOT%\positron_archive\bin\%CFG%\positron_archive.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_runtime\bin\%CFG%\positron_runtime.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_media\bin\%CFG%\positron_media.dll" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\positron_http\bin\%CFG%\positron_http.dll" "%STAGE%\" || goto :fail
@@ -37,6 +38,8 @@ copy /Y "%ROOT%\test_host\bin\%CFG%\test_host.exe"         "%STAGE%\" || goto :f
 copy /Y "%ROOT%\device_tools\bin\%CFG%\positron_process_cleanup.exe" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\device_tools\db_file_probe\bin\%CFG%\positron_db_file_probe.exe" "%STAGE%\" || goto :fail
 copy /Y "%ROOT%\test_host\test_host.ini"                   "%STAGE%\" || goto :fail
+if not exist "%STAGE%\licenses" mkdir "%STAGE%\licenses"
+copy /Y "%ROOT%\third_party\miniz\LICENSE" "%STAGE%\licenses\miniz-LICENSE.txt" || goto :fail
 if not exist "%STAGE%\fonts" mkdir "%STAGE%\fonts"
 copy /Y "%ROOT%\assets\fonts\PositronSymbolsBasic.ttf" "%STAGE%\fonts\" || goto :fail
 copy /Y "%ROOT%\assets\fonts\PositronSymbols.ttf" "%STAGE%\fonts\" || goto :fail

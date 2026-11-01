@@ -134,6 +134,8 @@ extern const char* test1372_runtime_zip_report(void);
 extern BOOL test1373_runtime_io_contract(void);
 extern const char* test1373_runtime_io_last_error(void);
 extern const char* test1373_runtime_io_report(void);
+extern BOOL test1375_archive_contract(void);
+extern const char* test1375_archive_error(void);
 extern BOOL test1374_runtime_empty_contract(void);
 extern const char* test1374_runtime_empty_last_error(void);
 extern const char* test1363_db_restricted_last_error(void);
@@ -1302,7 +1304,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1374
+#define TEST_MAX_NUMBER 1375
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118397,6 +118399,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1373_runtime_io_contract();
             if (ok) { show_info(L"TEST 1373 OK", test1373_runtime_io_report()); }
             else { show_error(L"TEST 1373 FAIL", test1373_runtime_io_last_error()); }
+            break;
+        case 1375:
+            ok = test1375_archive_contract();
+            if (ok) { show_info(L"TEST 1375 OK", "Bounded independent ZIP reader, CRC, paths, budgets and lifecycle passed."); }
+            else { show_error(L"TEST 1375 FAIL", test1375_archive_error()); }
             break;
         case 1374:
             ok = test1374_runtime_empty_contract();

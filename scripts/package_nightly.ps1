@@ -93,6 +93,7 @@ function Get-ArtifactSpecs([string] $Config)
     return @(
         @{ Relative = ("positron_tls\bin\{0}\positron_tls.dll" -f $Config); Archive = "positron_tls.dll" },
         @{ Relative = ("positron_json\bin\{0}\positron_json.dll" -f $Config); Archive = "positron_json.dll" },
+        @{ Relative = ("positron_archive\bin\{0}\positron_archive.dll" -f $Config); Archive = "positron_archive.dll" },
         @{ Relative = ("positron_runtime\bin\{0}\positron_runtime.dll" -f $Config); Archive = "positron_runtime.dll" },
         @{ Relative = ("positron_db\bin\{0}\positron_db.dll" -f $Config); Archive = "positron_db.dll" },
         @{ Relative = ("positron_media\bin\{0}\positron_media.dll" -f $Config); Archive = "positron_media.dll" },
@@ -234,6 +235,7 @@ if ($Configuration -eq "Auto") {
 $artifactSpecs = Get-ArtifactSpecs $packageConfiguration
 
 $assetSpecs = @(
+    @{ Relative = "third_party\miniz\LICENSE"; Archive = "licenses\miniz-LICENSE.txt" },
     @{ Relative = "assets\fonts\PositronSymbolsBasic.ttf"; Archive = "fonts\PositronSymbolsBasic.ttf" },
     @{ Relative = "assets\fonts\PositronSymbols.ttf"; Archive = "fonts\PositronSymbols.ttf" },
     @{ Relative = "assets\fonts\PositronEmoji.ttf"; Archive = "fonts\PositronEmoji.ttf" },

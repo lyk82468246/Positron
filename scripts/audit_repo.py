@@ -28,6 +28,8 @@ REQUIRED = (
     "netsurf-all-3.11/netsurf/COPYING",
     "third_party/libjpeg-turbo/LICENSE.md",
     "third_party/sqlite/UPSTREAM.md",
+    "third_party/miniz/LICENSE",
+    "third_party/miniz/UPSTREAM.md",
     "third_party/noto-symbols/OFL.txt",
     "third_party/noto-symbols2/OFL.txt",
     "third_party/noto-emoji/OFL.txt",
@@ -45,6 +47,8 @@ EXPECTED_VERSIONS = (
 )
 
 EXPECTED_TEXT_MARKERS = (
+    ("third_party/miniz/UPSTREAM.md",
+     ("# miniz 3.1.2", "77d0dce8627735138c51770d1799a1ef48f2117d")),
     ("third_party/sqlite/UPSTREAM.md",
      ("# SQLite 3.53.4",
       "sqlite-amalgamation-3530400.zip",
@@ -105,10 +109,10 @@ PRODUCT_IMPLEMENTATION_RE = re.compile(
     r"(?m)^[ \t]*(?!(?:if|for|while|switch|return|sizeof)\b)"
     r"(?:static\s+)?(?:const\s+|volatile\s+|unsigned\s+|signed\s+|"
     r"long\s+|short\s+|struct\s+|enum\s+|[A-Za-z_]\w*\s+|\*+)+"
-    r"P(?:Tls|Json|Http|Image|Script|Core|Browser|Db|Runtime)_[A-Za-z0-9_]+\s*\(")
+    r"P(?:Tls|Json|Http|Image|Script|Core|Browser|Db|Runtime|Archive)_[A-Za-z0-9_]+\s*\(")
 PRODUCT_SOURCE_INCLUDE_RE = re.compile(
     r"(?m)^\s*#\s*include\s*[\"<][^\" >]*positron_"
-    r"(?:tls|json|http|image|script|core|browser|db|media|runtime)[^\" >]*\.c[\">]")
+    r"(?:tls|json|http|image|script|core|browser|db|media|runtime|archive)[^\" >]*\.c[\">]")
 
 
 def audit_test_host_boundary(errors):

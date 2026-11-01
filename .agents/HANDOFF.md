@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十一个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -20,6 +20,13 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 内部注册表区分 newtab/about/history/downloads/settings、version/system 别名、quit 命令及原 welcome/controls。内部页使用双语嵌入资源、Core 渲染、48 项有界焦点目录，不请求外部资源；只有可信 settings 创建最小服务 ScriptSession。启动/主页读取完整偏好，新标签仍为 newtab。history 展示持久 GET 访问记录与独立的 Browser 导航栈文本；动态 HTML 上限 128 KiB。quit 仅允许地址栏直接提交，沿既有 WM_CLOSE 关闭流程。设计与后端进入条件见 [接线计划](../positron_app/INTEGRATION_PLAN.md)。
 
 ## 候选与验证证据
+
+### Archive ZIP reader 已验收
+
+独立 `positron_archive.dll` 固定 miniz 3.1.2；[公共合同](../positron_archive/README.md)不依赖 Runtime/系统 ZIP。
+正式 Debug/Release 与 TEST1374/1375/999 各 3/3 PASS，Archive 加载路径、完整日志、空间/零 holder/crash 通过；
+[验收与失败证据](../docs/history/ARCHIVE_READER_ACCEPTANCE.md)保留夹具规范化和构建失败边界。
+stage/nightly 测试包及模块审计已扩展；writer/PXI/HTTP 压缩未实现，EXE 无新依赖。
 
 ### Runtime 目录资源与 SQL SDK 已通过自动门
 
@@ -50,7 +57,7 @@ Positron Notes Check.lnk 指向新包 notes-one；首屏/分页/输入/保存/�
 先行 WM provider/中文/存储门见 6568d8ad；替换设备公共合同双配置 10/10 见 d915e382。
 旧 CE5.2.318 的 mkdir183/CANTOPEN 未关闭，原调用级证据见 ede836ab/424a8d40；
 新设备通过不抵消失败。不删库、重试 SQL、改 WMDC 或重开 FULL/断电门。
-ZIP 未取得系统 provider，PXI 暂缓；正常重开不证明真实存储故障恢复。
+已授权 Archive 取代系统 ZIP 依赖，PXI 实际安装仍未接通；正常重开不证明真实存储故障恢复。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -494,19 +501,10 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-ROADMAP/限制已复核：HTTP 预检与 EXE 接线、下载和历史既有验收保持；保存框后缀方案
-按用户决定挂起，不以参数自检替代 GUI 或自动重开。具体证据与边界见各主题，避免在此重复。
-设置/SIP/旋转、菜单/多标签、Core 断行设备差异和脚本性能待办保持；WinWorld 图片视觉已关闭。
-ROADMAP 已复核并移除已接通的只读目录入口/owner/资源纵切；旧183/CANTOPEN独立待取证，PXI暂缓。
-ROADMAP 已复核：Notes Debug 交互人工基本通过；下一步由主线补已安装身份/授权合同，EXE 后接主库登记。
-Release/双语待验收；旧启动故障再现时取非零快照。Notes 最后由用户重开，构建前重新核对占用；
-不按URL授权，不开挂起门、不改用户DB。
+本轮已复核并更新 ROADMAP：Archive reader 双配置守卫门已通过；唯一
+下一步为同 DLL 的有界 ZIP writer（STORE/DEFLATE），具体实现指导见路线图 Archive 候选。
+已安装身份/批准快照和 PXI 物理输出/提交仍独立待办，不再以缺少系统 ZIP 阻塞归档实现。
 
-脚本编译复用仍须先测体积/内存/冷重复成本；单次长调用、默认预算及失败策略未解决。
-EXE的并行导航/回滚、标题、输入/IME、拖选/滚动、旋转/语言、About/CAB与Debug时间仍按各自
-人工门验收；系统营销版本继续暂缓，不沿用已清理的包/PID。
-
-Media 下一纵切取证 MP4 坏 NAL 长度/截断 sample；其他长度切换/参数恢复形状仍待门。未知 PTS/音频侧异常、其他 edit-list/Main B 帧偏移仍待取证，不得把源时钟交付写成声卡同步。其他格式调度、MP3/其他 AAC 配置变化、极限块、非零 AAC、故障与 DirectShow 仍待门；
-DB 跨进程锁与受控异常退出 journal 恢复已通过；文件 FULL 按用户决定挂起，I/O、迁移故障、HTTPS worker
-仍待专门门，不把应用正常重开或进程终止恢复写成断电恢复。新增设备门须协调串行构建、重新审计 guest DLL 引用；破坏性
-恢复需另行授权，日志回收前不清理，删除失败不写成已清空。
+其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
+时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
+本批设备已自动完成正常退出；新部署仍重新检查双空间与模块引用，不按旧 PID 推断占用。

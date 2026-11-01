@@ -1,6 +1,6 @@
 # Positron 架构与公共边界
 
-Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、数据库、HTTP、图像、媒体、脚本、文档模型、渲染、浏览器会话和资源应用元数据 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。十个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
+Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TLS、JSON、数据库、HTTP、图像、媒体、脚本、文档模型、渲染、浏览器会话和资源应用元数据 DLL。公共接口统一使用稳定的 C ABI、UTF-8、opaque handle 和明确的内存所有权；宿主不能通过复制产品语义来绕过这些边界。十一个顶层 DLL 的主干能力状态和提升条件集中在 [`CAPABILITIES.md`](CAPABILITIES.md)，本文件只规定稳定的职责和数据流。
 
 ## 设计目标
 
@@ -22,6 +22,7 @@ Positron 面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I，提供可组合的 TL
     ├─ positron_tls.dll       TLS 会话与证书/握手状态
     ├─ positron_json.dll      有界 JSON 解析与生成
     ├─ positron_db.dll        SQLite 本地数据库、迁移与行级同步状态
+    ├─ positron_archive.dll   独立 ZIP 目录准入、校验与有界分块读取
     ├─ positron_runtime.dll   资源应用元数据、app 引用与开发目录实例合同
     ├─ positron_http.dll      HTTP 消息、header、body 与 transport 边界
     ├─ positron_image.dll     有界图像解码/元数据接口
@@ -51,9 +52,9 @@ Runtime 拥有准入/身份组合/预算/释放顺序，宿主必须提供真实
 开发存储由 Runtime 生成独立映射，经 DB 私有完整身份核对后运行 manifest 迁移与受限 typed SQL JSON；
 短存储 bucket 不能替代完整身份，错误映射/非空未认领库不得被采用。JSON DLL 拥有通用标量编码，
 结果容量在 DB 提交前验证。这不是通用 WM 适配器、安装身份或 Browser 授权；异步页面服务与
-资源组合仍须独立合同，EXE只负责平台窗口、worker与I/O接线，其余九DLL的所有权不变。
+资源组合仍须独立合同，EXE只负责平台窗口、worker与I/O接线，其他公共 DLL 的所有权不变。
 JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 manifest 句柄不代表
-可信发布者、运行实例或服务权限。完整分工、ID、系统ZIP前置门及阶段见
+可信发布者、运行实例或服务权限。完整分工、ID、归档前置门及阶段见
 [运行时计划](RUNTIME_PLAN.md)；首版不建立恶意代码沙箱或开放任意文件/网络/原生执行。
 
 已批准的安装阶段由 EXE 主库保存原生安装记录和批准能力，Runtime 核验已安装身份、
@@ -70,6 +71,15 @@ JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 
 ### `positron_json.dll`
 
 提供有界 JSON token/value 解析和生成。输入长度、嵌套深度、字符串和数字预算在入口处检查；库不负责网络、文件、线程或业务 schema。输出 buffer 的所有权和 size-probe 规则以 `positron_json.h` 为准。
+
+### `positron_archive.dll`
+
+提供与 Runtime 无关的 ZIP 容器准入、枚举及 STORE/DEFLATE 分块读取，miniz 静态编入，
+不暴露第三方类型。Archive 拥有格式、CRC、路径冲突与内存/解压预算；宿主提供不可变随机
+读取，拥有实际输出、物理包含性、临时文件和提交/清理。Read bytes 在 DONE 前是暂定内容，
+失败不承诺回滚宿主文件。PXI manifest/批准/安装事务仍属于 Runtime/EXE，HTTP 编码仍属于
+HTTP；不因引入 Archive 自动增加 gzip、ZIP writer 或安装能力。调用见
+[Archive README](../positron_archive/README.md)。
 
 ### `positron_db.dll`
 
