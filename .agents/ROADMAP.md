@@ -239,12 +239,12 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：目录/SDK/Notes及首次安装只读核验已退出待开发；安装存储/恢复合同已定稿待实现，PXI仍待隔离输出与安装提交。**
+**状态：目录/SDK/Notes开发基线与安装数据准备已形成；READY运行/最终登记和PXI仍待实现。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-安装数据准备/后缀恢复退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)补DB只开已有文件、无元数据初始化/身份认领的核验入口，覆盖缺失/空/错误stamp/未来或损坏版本与失败不变性；之后接READY存储、最终登记及队列。旧OpenUtf8的CREATE与BindLocalIdentity首次认领不能代替此门。登记SQL/主库表仍属EXE，恢复分类不得留在宿主。revision>1关闭，手动目录继续每次确认。
+安装数据准备及只读既有库核验退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)补DB已核验可写既有句柄：不CREATE/初始化/认领，消除只读探针到使用的替换窗口，覆盖并发/失败不变性；之后接READY存储、最终登记及队列。旧OpenUtf8不能作为探针后的替代打开。登记SQL/主库表仍属EXE，恢复分类不得留在宿主。revision>1关闭，手动目录继续每次确认。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 

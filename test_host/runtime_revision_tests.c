@@ -942,3 +942,93 @@ failed:
     /* Failed fixture files intentionally remain in the isolated deployment. */
     (void)owned_root; return FALSE;
 }
+
+static unsigned char* existing_file_bytes(const WCHAR* path, DWORD* size)
+{
+    HANDLE file;
+    unsigned char* bytes;
+    DWORD got;
+    file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (file == INVALID_HANDLE_VALUE) return NULL;
+    *size = GetFileSize(file, NULL);
+    if (*size > 1024U * 1024U) { CloseHandle(file); return NULL; }
+    bytes = (unsigned char*)malloc(*size ? *size : 1);
+    if (!bytes || !ReadFile(file, bytes, *size, &got, NULL) || got != *size) {
+        free(bytes); bytes = NULL;
+    }
+    CloseHandle(file); return bytes;
+}
+BOOL test1381_db_existing_verification(void)
+{
+    static const char identity[] = "existing.local.identity";
+    WCHAR module[MAX_PATH], root[MAX_PATH], path[MAX_PATH], journal[MAX_PATH], *slash;
+    char utf8[1024];
+    PDbHandle db = NULL;
+    PDbExistingLocalOptions options;
+    PDbErrorInfo error, canary;
+    unsigned char *before = NULL, *after = NULL;
+    DWORD before_size, after_size, written;
+    HANDLE file;
+    unsigned int mode, repeat;
+    int rc = 0, expected, owned_root = 0;
+    revision_error[0] = 0;
+    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH - 55);
+    slash = wcsrchr(module, L'\\'); RCHECK(slash != NULL); *slash = 0;
+    wsprintfW(root, L"%s\\existing-db-%lu", module, GetCurrentProcessId());
+    owned_root = CreateDirectoryW(root, NULL) != 0; RCHECK(owned_root);
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    options.identity = identity; options.identity_bytes = sizeof(identity)-1;
+    for (mode = 0; mode < 17; ++mode) {
+        wsprintfW(path, L"%s\\case-%u.db", root, mode); wsprintfW(journal, L"%s-journal", path);
+        RCHECK(WideCharToMultiByte(CP_UTF8, 0, path, -1, utf8, sizeof(utf8), NULL, NULL));
+        options.expected_schema = mode == 3 ? 1 : 0;
+        expected = mode == 0 || mode == 14 ? PDB_ERROR :
+                (mode == 2 || mode == 3 || mode == 16 ? PDB_OK : PDB_SCHEMA_MISMATCH);
+        if (mode == 1 || mode == 14) {
+            file = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, 0, NULL);
+            RCHECK(file != INVALID_HANDLE_VALUE);
+            if (mode == 14) RCHECK(WriteFile(file, "not SQLite", 10, &written, NULL) && written == 10);
+            CloseHandle(file);
+        } else if (mode) {
+            RCHECK(PDb_OpenUtf8(utf8, PDB_OPEN_LOCAL_FULL_SQL, &db) == PDB_OK);
+            if (mode != 5 && mode != 6) RCHECK(PDb_BindLocalIdentity(db,
+                    mode == 4 ? "wrong" : identity, mode == 4 ? 5 : sizeof(identity)-1) == PDB_OK);
+            if (mode == 3 || mode == 7 || mode == 8) RCHECK(PDb_ApplyMigration(db, 1, "CREATE TABLE sample(n INTEGER)") == PDB_OK);
+            if (mode == 6) RCHECK(PDb_Exec(db, "CREATE TABLE unclaimed(n INTEGER)") == PDB_OK);
+            if (mode == 8) RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value='bad' WHERE key='schema_version'") == PDB_OK);
+            if (mode == 9) RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value=X'6578697374696e67' WHERE key='local_identity'") == PDB_OK);
+            if (mode == 10) RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value=CAST(X'6578697374696e672e6c6f63616c2e6964656e746974790058' AS TEXT) WHERE key='local_identity'") == PDB_OK);
+            if (mode == 11) RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value=X'31' WHERE key='mode'") == PDB_OK);
+            if (mode == 12) RCHECK(PDb_Exec(db, "DROP TABLE __pdb_meta;CREATE VIEW __pdb_meta AS SELECT 'mode' AS key,'1' AS value") == PDB_OK);
+            if (mode == 13) RCHECK(PDb_Exec(db, "DROP TABLE __pdb_meta;CREATE TABLE __pdb_meta(key TEXT,value TEXT)") == PDB_OK);
+            if (mode == 15) RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value='01' WHERE key='mode'") == PDB_OK);
+            PDb_Close(db); db = NULL;
+        }
+        if (mode) { before = existing_file_bytes(path, &before_size); RCHECK(before != NULL); }
+        if (mode == 16) RCHECK(SetFileAttributesW(path, FILE_ATTRIBUTE_READONLY));
+        for (repeat = 0; repeat < 2; ++repeat) {
+            error.size = sizeof(error); error.version = PDB_ERROR_INFO_VERSION;
+            rc = PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &error);
+            RCHECK(rc == expected && error.result == expected);
+        }
+        RCHECK(GetFileAttributesW(journal) == 0xffffffffUL);
+        if (mode) {
+            after = existing_file_bytes(path, &after_size);
+            RCHECK(after != NULL && before_size == after_size && !memcmp(before, after, before_size));
+            free(before); before = NULL; free(after); after = NULL;
+            if (mode == 16) RCHECK(SetFileAttributesW(path, FILE_ATTRIBUTE_NORMAL));
+            RCHECK(DeleteFileW(path));
+        } else RCHECK(GetFileAttributesW(path) == 0xffffffffUL);
+    }
+    memset(&error, 0xa5, sizeof(error)); error.size = sizeof(error); error.version = 99; canary = error;
+    RCHECK(PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &error) == PDB_INVALID_ARGUMENT &&
+            !memcmp(&error, &canary, sizeof(error)));
+    RCHECK(PDb_VerifyExistingLocalUtf8(":memory:", 8, &options, NULL) == PDB_INVALID_ARGUMENT);
+    RCHECK(PDb_VerifyExistingLocalUtf8(utf8, 1024, &options, NULL) == PDB_INVALID_ARGUMENT);
+    options.version = 2;
+    RCHECK(PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, NULL) == PDB_INVALID_ARGUMENT);
+    RCHECK(RemoveDirectoryW(root)); return TRUE;
+failed:
+    if (db) PDb_Close(db);
+    free(before); free(after); (void)owned_root; return FALSE;
+}

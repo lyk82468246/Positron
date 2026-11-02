@@ -4562,6 +4562,122 @@ static int pdb_api_PDb_BindLocalIdentity(PDbHandle db, const char* identity, int
     if (rc != PDB_OK) pdb_abort_transaction(db, rc);
     return rc;
 }
+static int pdb_existing_progress(void* user)
+{
+    int* remaining = (int*)user;
+    *remaining -= 100; return *remaining <= 0;
+}
+static int pdb_existing_text(PDbHandle db, const char* key, const char* expected, int bytes)
+{
+    sqlite3_stmt* stmt = NULL;
+    const unsigned char* text;
+    int native, rc;
+    rc = pdb_prepare_internal(db, "SELECT value FROM __pdb_meta WHERE key=?1", &stmt);
+    if (rc != PDB_OK) return rc;
+    native = sqlite3_bind_text(stmt, 1, key, -1, SQLITE_STATIC);
+    if (native != SQLITE_OK) rc = pdb_set_sqlite_error(db, native);
+    else {
+        native = pdb_step_internal(db, stmt);
+        if (native != SQLITE_ROW) rc = native == SQLITE_DONE ? PDB_SCHEMA_MISMATCH : pdb_set_sqlite_error(db, native);
+        else {
+            /* Inspect storage class before any text coercion. A BLOB with the
+             * same bytes must not become an acceptable identity or mode. */
+            text = sqlite3_column_type(stmt, 0) == SQLITE_TEXT ? sqlite3_column_text(stmt, 0) : NULL;
+            if (!text || sqlite3_column_bytes(stmt, 0) != bytes || memcmp(text, expected, bytes)) rc = PDB_SCHEMA_MISMATCH;
+            else {
+                native = pdb_step_internal(db, stmt);
+                if (native != SQLITE_DONE) rc = native == SQLITE_ROW ? PDB_SCHEMA_MISMATCH : pdb_set_sqlite_error(db, native);
+            }
+        }
+    }
+    sqlite3_finalize(stmt); return rc;
+}
+PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
+        const PDbExistingLocalOptions* options, PDbErrorInfo* output)
+{
+    PDbHandle db = NULL;
+    PDbNativeLog scope;
+    sqlite3_stmt* stmt = NULL;
+    char filename[1024];
+    const unsigned char* text;
+    int rc, native, version, remaining = 100000, begun = 0, i;
+    if (output && (output->size < sizeof(*output) || output->version != PDB_ERROR_INFO_VERSION)) return PDB_INVALID_ARGUMENT;
+    if (!path || bytes < 1 || bytes > 1023 || path[0] != '\\' || memchr(path, 0, bytes) ||
+            !pdb_restricted_utf8(path, bytes) || !options || options->size != sizeof(*options) || options->version != 1 ||
+            !options->identity || options->identity_bytes < 1 || options->identity_bytes > PDB_LOCAL_IDENTITY_BYTES ||
+            memchr(options->identity, 0, options->identity_bytes) ||
+            !pdb_restricted_utf8(options->identity, options->identity_bytes) || options->expected_schema < 0) {
+        if (output) pdb_init_error(output, PDB_INVALID_ARGUMENT, "Invalid existing local database verification arguments");
+        return PDB_INVALID_ARGUMENT;
+    }
+    memcpy(filename, path, bytes); filename[bytes] = 0;
+    rc = pdb_initialize_wince_vfs();
+    if (rc != PDB_OK) { if (output) pdb_init_error(output, rc, "SQLite VFS initialization failed"); return rc; }
+    db = (PDbHandle)calloc(1, sizeof(*db));
+    if (!db) { if (output) pdb_init_error(output, PDB_NOMEM, "Database allocation failed"); return PDB_NOMEM; }
+    db->mode = PDB_OPEN_LOCAL_FULL_SQL; pdb_init_error(&db->error_info, PDB_OK, ""); pdb_native_log_begin(&scope, db);
+    native = sqlite3_open_v2(filename, &db->sqlite, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, NULL);
+    if (native != SQLITE_OK) {
+        if (db->sqlite) rc = pdb_set_sqlite_error(db, native);
+        else { rc = native == SQLITE_NOMEM ? PDB_NOMEM : PDB_ERROR; pdb_set_error(db, "Existing database open failed"); }
+    } else {
+        sqlite3_busy_timeout(db->sqlite, 1000);
+        sqlite3_limit(db->sqlite, SQLITE_LIMIT_LENGTH, PDB_SYNC_MAX_BODY_BYTES);
+        sqlite3_limit(db->sqlite, SQLITE_LIMIT_SQL_LENGTH, PDB_SQL_MAX_BYTES);
+        sqlite3_limit(db->sqlite, SQLITE_LIMIT_EXPR_DEPTH, 100);
+        sqlite3_progress_handler(db->sqlite, 100, pdb_existing_progress, &remaining);
+        rc = pdb_exec_internal(db, "PRAGMA query_only=ON;PRAGMA trusted_schema=OFF;PRAGMA temp_store=MEMORY;PRAGMA cache_size=-256;BEGIN");
+        if (rc == PDB_OK) begun = 1;
+        if (rc == PDB_OK) rc = pdb_prepare_internal(db,
+                "SELECT type,rootpage FROM sqlite_master WHERE name='__pdb_meta'", &stmt);
+        if (rc == PDB_OK) {
+            native = pdb_step_internal(db, stmt);
+            if (native != SQLITE_ROW) rc = native == SQLITE_DONE ? PDB_SCHEMA_MISMATCH : pdb_set_sqlite_error(db, native);
+            else {
+                text = sqlite3_column_text(stmt, 0);
+                if (!text || strcmp((const char*)text, "table") || sqlite3_column_int(stmt, 1) < 1) rc = PDB_SCHEMA_MISMATCH;
+                else if (pdb_step_internal(db, stmt) != SQLITE_DONE) rc = PDB_SCHEMA_MISMATCH;
+            }
+        }
+        if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        if (rc == PDB_OK) rc = pdb_prepare_internal(db, "PRAGMA table_info('__pdb_meta')", &stmt);
+        for (i = 0; rc == PDB_OK && i < 2; ++i) {
+            native = pdb_step_internal(db, stmt);
+            if (native != SQLITE_ROW) { rc = native == SQLITE_DONE ? PDB_SCHEMA_MISMATCH : pdb_set_sqlite_error(db, native); break; }
+            text = sqlite3_column_text(stmt, 1);
+            if (!text || strcmp((const char*)text, i ? "value" : "key")) { rc = PDB_SCHEMA_MISMATCH; break; }
+            text = sqlite3_column_text(stmt, 2);
+            if (!text || strcmp((const char*)text, "TEXT") || sqlite3_column_int(stmt, 5) != (i ? 0 : 1) ||
+                    (i && !sqlite3_column_int(stmt, 3))) rc = PDB_SCHEMA_MISMATCH;
+        }
+        if (rc == PDB_OK && pdb_step_internal(db, stmt) != SQLITE_DONE) rc = PDB_SCHEMA_MISMATCH;
+        if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        if (rc == PDB_OK) rc = pdb_existing_text(db, "mode", "1", 1);
+        if (rc == PDB_OK) rc = pdb_existing_text(db, "local_identity", options->identity, options->identity_bytes);
+        if (rc == PDB_OK) rc = pdb_migration_version(db, &version);
+        if (rc == PDB_OK && version != options->expected_schema) rc = PDB_SCHEMA_MISMATCH;
+        if (rc == PDB_OK) rc = pdb_prepare_internal(db, "SELECT page_count*page_size FROM pragma_page_count(),pragma_page_size()", &stmt);
+        if (rc == PDB_OK) {
+            native = pdb_step_internal(db, stmt);
+            if (native != SQLITE_ROW) rc = pdb_set_sqlite_error(db, native);
+            else if (sqlite3_column_int64(stmt, 0) > 16 * 1024 * 1024) rc = PDB_LIMIT;
+        }
+        if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        if (rc == PDB_OK) rc = pdb_exec_internal(db, "COMMIT");
+    }
+    if (remaining <= 0) {
+        rc = PDB_LIMIT; pdb_set_error(db, "Existing database inspection budget exhausted");
+        db->error_info.category = PDB_ERROR_CATEGORY_LIMIT;
+    }
+    if (db->sqlite) sqlite3_progress_handler(db->sqlite, 0, NULL, NULL);
+    if (rc == PDB_SCHEMA_MISMATCH) pdb_set_error(db, "Existing local database metadata, identity or schema mismatch");
+    if (rc != PDB_OK) {
+        if (begun) pdb_abort_transaction(db, rc);
+        pdb_finish_error(db, rc);
+    } else pdb_init_error(&db->error_info, PDB_OK, "");
+    if (output) *output = db->error_info;
+    PDb_Close(db); pdb_native_log_end(&scope); return rc;
+}
 static int pdb_api_PDb_ApplyMigrationRestricted(PDbHandle db, int expected, int target,
         const char* input, int bytes, const PDbRestrictedOptions* options, PDbMigrationReport* report)
 {

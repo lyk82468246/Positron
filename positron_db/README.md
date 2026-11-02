@@ -253,6 +253,36 @@ correct EXE-adjacent storage anchoring remain Runtime/provider responsibilities.
 Failed calls preserve original sticky/rollback diagnostics; no power-loss
 durability guarantee is inferred from logical rollback tests.
 
+## Verifying an existing local database without writes
+
+`PDb_VerifyExistingLocalUtf8()` is a callback-free native inspection entry. It opens an existing rooted WM path with SQLite READONLY and no CREATE, checks the existing local metadata in one read transaction, closes it, and returns only a result/optional `PDbErrorInfo`. It never calls metadata initialization or initial identity binding and returns no DB handle, SQL service or application authority. The old Open/Bind APIs keep their behavior.
+
+Use exact v1 `PDbExistingLocalOptions`: an explicit-length UTF-8 identity (1–2048 bytes, no NUL) and exact expected schema, including zero. The path has an explicit length of 1–1023 UTF-8 bytes, starts with a native backslash and has no NUL. Relative paths, URI and `:memory:` spellings are rejected before I/O. Native filesystem containment, volume/path retention and installation coordination remain the caller/provider's responsibility.
+
+The verifier requires a real `__pdb_meta` table with the generated key/value TEXT structure, not a view or an unkeyed substitute. Mode must be canonical TEXT `1`, and identity must be stored as TEXT matching every supplied byte; coercible BLOBs, embedded NUL, missing mode/identity and duplicate results are rejected. Schema uses the existing strict decimal reader (absent is zero); different, future relative to the expected value, or malformed versions fail rather than migrate or downgrade.
+
+```c
+PDbExistingLocalOptions options;
+PDbErrorInfo error;
+options.size = sizeof(options);
+options.version = 1;
+options.identity = native_identity;
+options.identity_bytes = native_identity_bytes;
+options.expected_schema = verified_manifest_target;
+error.size = sizeof(error);
+error.version = PDB_ERROR_INFO_VERSION;
+rc = PDb_VerifyExistingLocalUtf8(native_path, native_path_bytes,
+    &options, &error);
+/* OK is an observation of this completed read snapshot. It is not a live
+ * handle, native lease or permission to execute application code. */
+```
+
+Missing/inaccessible paths return an open/I/O error without creating them. Empty/foreign databases and wrong metadata/identity/schema return SCHEMA_MISMATCH; corrupt SQLite input may return an engine error. Invalid arguments/headers return INVALID_ARGUMENT. An invalid error-output header is untouched, and valid larger error buffers retain their extension bytes. Repeated inspection performs no repair, journal-mode change, migration, side-effecting size probe or identity claim. A hot journal requiring writes must fail; the verifier does not recover it through a writable fallback.
+
+Inspection limits SQLite logical page bytes to 16 MiB, result lengths to the existing DB limit, SQL length/depth to existing fixed limits, and VM progress to a fixed 100000-unit inspection budget. Logical pages do not measure physical trailing bytes; a native provider must separately enforce any physical-file quota. Cache/temp preferences are connection-local/in-memory. These are not a bound on native I/O time or all SQLite allocations. Budget exhaustion is LIMIT, not cancellation; progress interruption is disabled before transaction cleanup. Hot-journal failure, exhausted inspection budget and extreme schema resources need their own fault corpus; ordinary success does not prove storage durability.
+
+The fixture inspects missing/empty/valid/readonly files, missing/wrong/BLOB/NUL identities, wrong mode/schema, malformed metadata structures and non-SQLite bytes. It compares all file bytes before/after and checks that no journal is created; it does not use a subsequent mutating Open to claim that inspection was read-only. Keep the native coordination lease across a real consumer's later use. Since this API closes its connection, replacement or a new writer after return can invalidate its observation. **Do not call the old CREATE-capable opener after a successful probe and treat that as a verified existing-handle contract.** A writable existing-handle admission path and Runtime READY storage remain separate work.
+
 ## Local and sync modes
 
 The DLL has two modes:

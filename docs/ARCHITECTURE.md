@@ -95,7 +95,7 @@ row state、outbox、tombstone 和 conflict 表拥有离线双向同步状态。
 INTEGER 或 UTF-8 TEXT 主键，行值使用显式 NULL/整数/实数/文本/BLOB 类型标签，绝不向服务器
 发送 SQL。
 
-DB DLL 不保存 URL、Bearer Token，也不创建网络线程。宿主的 DB worker 在拥有 DB handle
+DB的`PDb_VerifyExistingLocalUtf8`以私有只读快照核验既有文件的真实元数据、完整身份与精确schema，不创建/认领或返回句柄；它不替代持续保有的原生租约或可写既有句柄准入。DB DLL 不保存 URL、Bearer Token，也不创建网络线程。宿主的 DB worker 在拥有 DB handle
 的线程中调用 `PDb_SyncBuildRequest()`，复用 `positron_http.dll` 发送 HTTPS + Bearer
 请求，再把成功响应交给 `PDb_SyncApplyResponse()`；非 2xx、超限、schema 不匹配或解析失败
 不得推进 outbox、cursor 或本地行。DB handle 不跨线程共享，DLL 内部不创建线程；数据库

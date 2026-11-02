@@ -182,6 +182,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 
 | 主干能力 | 当前入口/边界 | 状态 | 预算与失败边界 | 证据与提升条件 |
 | --- | --- | --- | --- | --- |
+| 既有local库只读核验 | `PDb_VerifyExistingLocalUtf8` | 已实现但仅快照观察 | READONLY/no CREATE，无初始化/认领；v1精确身份/schema，路径≤1023/身份≤2048 UTF-8 bytes，逻辑页≤16MiB、固定VM预算；真实元数据表/类型检查，同一读事务后关闭，无句柄/运行权 | TEST1381的缺失/空/正常/只读库、BLOB/NUL/版本/模式/伪表/损坏文件、重复核验及字节/journal不变性；双配置门。持续可写既有句柄/READY消费仍待实现 |
 | 持久本地身份精确绑定 | `PDb_BindLocalIdentity` | 已实现但需可信 native 调用 | local-full/空闲，身份 UTF-8 ≤2048 bytes；写锁内首次绑定仅限 pristine DB，已有 TEXT stamp 必须逐字节相等，错误库/损坏 stamp 拒绝，不删除/重新认领 | TEST1368 双配置门保护重复绑定、开发/安装 stamp 区别、非空未认领库与 BLOB 拒绝；物理 containment/发布者证明不是 DB 职责 |
 | 本地 SQLite 打开、typed bind/column、事务、取消和错误 | `PDb_OpenUtf8`、`PDb_Prepare`、`PDb_Bind*`、`PDb_Column*`、`PDb_Begin/Commit/Rollback/Cancel` | 已实现但有界 | 固定 SQLite 3.53.4；VS2008/WM6 ARMV4I；SQL ≤32 KiB、body ≤1 MiB；DB/statement handle 不跨线程，DLL 不创建线程 | TEST1321 覆盖 UTF-8 文本、SQL/bind 超限、类型读取、事务/取消/错误；正式工程已接入；断电、真实设备文件锁和峰值内存仍需设备门 |
 | 本地完整 SQL 与原子 migration | `PDb_Exec`、`PDb_ApplyMigration` | 已实现但有界 | 完整 SQL 模式允许 SQLite 本地语法；同步模式禁止直接 DDL、ATTACH/DETACH、PRAGMA、扩展和事务 SQL，schema 只能由 migration 原子推进版本 | TEST1321 覆盖本地/同步创建、版本/事务状态、失败回滚、模式隔离和同步限制；journal 恢复仍需设备 fixture |

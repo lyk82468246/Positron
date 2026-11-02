@@ -24,7 +24,7 @@ Runtime 生成 native-only 相对 key：`v1/installed/<installation-id>/app.db`�
 
 DB 的完整 TEXT stamp 固定为 `Positron.storage.v1:installed:<canonical-app-id>:<installation-id>`，不含 NUL。ID 的现有语法不含冒号，字段无歧义。通过 `PDb_BindLocalIdentity` 在写锁内绑定/比较；不是有限 bucket 或 URL。revision、app version、根路径、content ID 与 generation 不进入稳定数据身份。错误 stamp、非空未认领库、未来/损坏 schema 均拒绝，不删库或重绑。
 
-绑定只用于 PREPARING 的数据准备。READY 普通启动需要纯比较且禁止首次认领：现有 `PDb_BindLocalIdentity` 会为 pristine DB 写入缺失 stamp，不能直接拿它作为 require-existing 核验。实现 installed opener 前，应由DB追加只检查既有TEXT身份及只开已有文件、不初始化元数据的兼容入口；现有OpenUtf8使用CREATE并初始化元数据，也不能冒充此门。stamp缺失失败，不能因文件存在且为空就补写。原生位置 provider 还须保有已有文件，避免检查存在后被替换；SQL 身份比较不能替代文件包含性。
+绑定只用于 PREPARING 的数据准备。READY 普通启动需要纯比较且禁止首次认领：现有 `PDb_BindLocalIdentity` 会为 pristine DB 写入缺失 stamp，不能直接拿它作为 require-existing 核验。实现 installed opener 前，DB已提供VerifyExistingLocalUtf8的只读文件/身份/schema快照核验；它关闭连接，不是可写运行句柄。仍须追加只开既有文件、锁内精确准入并保有句柄的入口；旧OpenUtf8使用CREATE/元数据初始化，不能在探针后用它冒充既有库准入。stamp缺失失败，不能因文件存在且为空就补写。原生位置 provider 还须保有已有文件，避免检查存在后被替换；SQL 身份比较不能替代文件包含性。
 
 没有 `storage.sql` 的安装不创建数据库，也不产生 SQL 服务。无迁移但声明 SQL 的安装仍绑定独立库，目标 schema 为 0。首版不恢复同 ID 墓碑中的旧数据；未来恢复或更新必须另有确认与数据协议。
 
@@ -104,7 +104,7 @@ SQL 继续使用 100..1000000、100 倍数的每文件/请求 VM budget，最多
 
 登记读回及PREPARING意图协调已实现，精确入口/状态/预算见组件合同；前者只观察，后者通过可信原生provider执行一次CAS并读回，支持显式恢复与取消，不写READY。测试模拟原生登记，不证明EXE持久表。后续存储只接受活的PREPARED意图，不接受裸批准快照或开发句柄。所有转换与恢复分类仍属DLL，test_host只准备事实、故障与断言。
 
-安装准备数据已有独立stamp/key、完整pending来源准入、逐文件提交及后缀恢复合同，回归使用真实PDb文件；无READY或作者SQL服务。唯一下一步先补DB只开已有文件、禁止初始化/认领的身份核验入口，再实现READY require-existing的InstalledStorageOpen与队列保有关系，最后接最终READY提交。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
+安装准备数据已有独立stamp/key、完整pending来源准入、逐文件提交及后缀恢复合同，回归使用真实PDb文件；无READY或作者SQL服务。只读快照核验也已提供。唯一下一步为DB可写既有句柄准入：无CREATE/初始化/认领，在原生协调下防止探针到使用的替换窗口，并保持失败不变性；再接READY InstalledStorageOpen、队列和最终READY提交。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
 
 每个功能批次均须 C89、审计、串行正式 Debug/Release 和匹配 ARMV4I 定向设备门。至少覆盖无SQL/零migration/多migration、两安装与开发数据隔离、错误stamp/非空库/未来版本、每个提交点前后中断、提交成功但响应丢失、读回失败、CAS竞争、取消与最终提交交错、资源变化/撤销、关闭/重入/错误线程及重复恢复。迁移回归使用非幂等插入计数证明前缀没有重放，不能只检查 schema 数字。
 

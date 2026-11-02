@@ -301,6 +301,26 @@ PDB_API int PDb_ExecuteRestricted(PDbHandle db,
  * lease remain Runtime/provider responsibilities, not publisher verification.
  * Does not change old open/full-SQL APIs or constrain trusted native SQL. */
 PDB_API int PDb_BindLocalIdentity(PDbHandle db, const char* identity, int bytes);
+typedef struct PDbExistingLocalOptions {
+    unsigned int size, version;
+    const char* identity; /* borrowed UTF-8, no NUL, 1..2048 bytes */
+    int identity_bytes;
+    int expected_schema; /* exact canonical version, including zero */
+} PDbExistingLocalOptions;
+/* Native read-only admission, not an opener/service grant. Explicit rooted
+ * WM path, 1..1023 UTF-8 bytes, no NUL/URI/:memory:. Open READONLY (never CREATE),
+ * validate real metadata table/local mode, exact TEXT identity and strict
+ * schema in one read transaction, then close. No metadata initialization,
+ * first identity claim, repair, PRAGMA journal change, retry or raw handle.
+ * Logical SQLite pages <=16 MiB (not physical trailing-file bytes); fixed
+ * 100000 VM-step inspection budget, not VFS time.
+ * Missing/inaccessible file is an open error; wrong/missing metadata, identity
+ * or schema is SCHEMA_MISMATCH. Hot-journal recovery requiring writes fails.
+ * Optional existing ErrorInfo ABI; callback-free/synchronous on caller worker.
+ * Caller retains native containment/coordination: OK is a point-in-time
+ * observation, not protection against replacement after return. Old ABI unchanged. */
+PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int path_bytes,
+        const PDbExistingLocalOptions* options, PDbErrorInfo* error);
 typedef struct PDbMigrationReport {
     unsigned int size;
     unsigned int version;
