@@ -4,6 +4,8 @@ import io
 import json
 from pathlib import Path
 import zipfile
+import tempfile
+from package_app import build
 
 
 def package(items):
@@ -50,7 +52,19 @@ def generate(output, repo):
         corpus[name] = package([('index.html', valid[0][1], 0), ('manifest.json', manifest(app_id, (sql,)), 8),
                                 ('schema/1.sql', sql.encode(), 8)])
     for name, body in corpus.items():
-        (output / (name + '.pxi')).write_bytes(body)
+        if name == 'valid':
+            with tempfile.TemporaryDirectory(dir=output.parent) as directory:
+                source = Path(directory)
+                for key, data, _ in valid:
+                    path = source / key
+                    if key.endswith('/'):
+                        path.mkdir(parents=True, exist_ok=True)
+                    else:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(data)
+                build(source, output / 'valid.pxi')
+        else:
+            (output / (name + '.pxi')).write_bytes(body)
     # Actual author resources, a separate identity from the user's old Notes.
     notes = repo / 'positron_app/examples/notes'
     items = []

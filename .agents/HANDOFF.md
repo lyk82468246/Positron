@@ -31,7 +31,7 @@ writer 同步添加条目、块间取消，Finish 后由宿主提交；未实现
 
 ### Runtime 当前验收与安装边界
 
-CAB候选补Archive/Runtime：Release/版本化CAB及EXE/十DLL字节校验通过。tmp/cab-runtime-versioned中Wceload PID3065120078安装后两次无目标文件，设备门未过、未发布，不改安全策略。ROADMAP已复核，系统关联前先完成CAB设备门。
+CAB补Archive/Runtime，构建及载荷校验通过。tmp/cab-runtime-versioned中Wceload PID3065120078安装后两次无目标文件，设备门未过、未发布，不改安全策略。ROADMAP已复核，系统关联前先完成CAB设备门。
 
 
 开发目录、资源/SQL队列与SDK合同见[Runtime README](../positron_runtime/README.md)，EXE平台与逐页授权见[Runtime宿主](../positron_app/RUNTIME_HOST.md)。实例按原标签绑定，不按URL授权；候选取消撤销其服务，旧页保留。空CSS/import/JS、回滚/隔离/关闭已有设备门，OS/DPI仅对原运行有效；旧空资源失败与修复见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
@@ -42,7 +42,7 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 冻结目录首次安装主库v5、精确CAS、原生确认/恢复及独立installed启动已接入，自动及Debug确认/拒绝/保存/免提示重开人工门通过；证据见[EXE安装验收](../docs/history/APP_RUNTIME_INSTALL_ACCEPTANCE.md)。恢复UI、双语/Release仍待人工。
 
-PXI已接--install，Archive完整CRC输出后复用首次安装链；128条目/4MiB/256对象，可能写意图前保留目录，确认前仅清本次可验证对象。无DLL/ABI/schema或系统关联改动。最终tmp/device-runs/20261106-222650-app-pxi原生phase10、参数14项、两进程installed SQL页、12/12哈希、三个资源摘要/ZIP字节、相邻设置及退出/crash全部PASS；Debug/Release/CAB、C89/审计通过，普通PXI中文包路径已由后续日志证明确认后READY提交、独立open-installed及Notes脚本无错误；新进程3820850954免提示重开/脚本及绘制通过；保存与拒绝人工门待做。用户授权当前设备清理后，94个旧测试文件完整归档，原Notes未迁入。证据/夹具失败见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
+PXI已接--install，Archive完整CRC输出后复用首次安装链；128条目/4MiB/256对象，可能写意图前保留目录，确认前仅清本次可验证对象。无DLL/ABI/schema或系统关联改动。最终tmp/device-runs/20261106-222650-app-pxi原生phase10、参数14项、两进程installed SQL页、12/12哈希、三个资源摘要/ZIP字节、相邻设置及退出/crash全部PASS；Debug/Release/CAB、C89/审计通过，普通PXI中文包路径已由后续日志证明确认后READY提交、独立open-installed及Notes脚本无错误；新进程3820850954免提示重开/脚本及绘制通过；保存与拒绝人工门待做。用户授权当前设备清理后，94个旧测试文件完整归档，原Notes未迁入。作者打包工具七项及010021完整设备门通过，旧包恢复见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
 
 ### Core 单行文本输入框自动高度已验收
 

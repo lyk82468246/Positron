@@ -33,6 +33,19 @@ SQL页面两个进程均验证32行typed结果、队列/回滚、失败旧页保
 普通--app在新进程PID3820850954免提示重开，按新PID核对作者script-summary errors=0、页面排版/绘制完成；证据在同包notes-installed-reopen。此前零holder后冷备份主库integrity_check为ok，Notes记录READY/generation2/schema1。该证据不证明笔记内容保存、原生触摸或正常退出；普通拒绝及Notes保存仍需独立验收。
 恢复确认UI、双语、Release普通启动、其他OEM/存储与挂起的FULL/断电保持原边界。
 
+## 作者打包工具消费门
+
+`scripts/package_app.py`通过标准库生成固定顺序/时间戳的PXI，正常valid夹具改为消费该工具，
+危险/损坏包仍独立构造。七项离线测试覆盖精确资源/中文/空文件、可重复输出、已有目标不覆盖、
+目录内输出拒绝、manifest缺失及128文件/4MiB精确与超限；不代替Runtime语义准入。
+新包`tmp/device-runs/20261107-010021-app-pxi`原生phase10、两进程installed页面、设置存储、
+12/12哈希、3/3资源摘要/ZIP字节、正常退出零引用及crash检查全部PASS。
+
+首次部署`20261107-005928`在空间门停止，未降低18MiB需求或删除数据库。
+旧`222650`完整二进制核对原stage归档后精确移除，新门结束同样归档新包二进制，
+再从归档恢复旧包并逐项回读；记录分别位于各包archived-before/after-author-gate与
+restored-after-author-gate。所有主库、应用库和已安装资源留在原路径，不迁移用户笔记。
+
 ## 构建与连接失败
 
 首两次Debug以及一次补充自检构建在VS2008预生成阶段退出，Application事件确认

@@ -28,6 +28,20 @@ int64 必须是十进制字符串，不转为 Number。完整结果与预算见[
 完整流程见[Runtime宿主](../../RUNTIME_HOST.md#首次安装与普通installed启动)，系统文件关联尚未接通。
 原生安装确认、拒绝与重开需分别人工验收，不以Debug自动批准代替。
 
+## 在电脑上生成 PXI
+
+在仓库根目录运行：
+
+```powershell
+python scripts/package_app.py positron_app/examples/notes tmp/notes.pxi
+```
+
+输出目录须已存在，输出必须放在资源目录外；已有文件不会覆盖。工具使用Python标准库生成
+固定顺序/时间戳的ZIP，包含目录中的全部普通文件，包括未引用文件和空文件，拒绝链接/reparse项。
+请使用静止的作者目录；本工具不是面对并发恶意写入的快照服务。最多128文件/4MiB资源，
+归档最多16MiB；设备实际路径及单资源预算可能更严。它不验证manifest语义或授予权限，
+最终准入由设备Archive/Runtime负责。安装命令仍为`positron.exe --install "<包.pxi>"`。
+
 ## 集中人工验收
 
 自动准备流程见[宿主自动门](../../RUNTIME_HOST.md#目录页面自动门)。验收包使用独立目录，
