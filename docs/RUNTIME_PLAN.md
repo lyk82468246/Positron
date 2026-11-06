@@ -185,7 +185,7 @@ EXE首次安装通过公开InstallIntent、InstallData和InstallCommit接入主�
 
 首次安装的只读核验已经实现，精确导出、摘要编码、调用与 provider 合同见
 [Runtime 安装核验](../positron_runtime/INSTALLED.md)。本节继续规定安装/更新的目标边界；
-EXE使用主库v5安装表与冻结目录入口消费这些合同，不能称为已通过PXI安装。
+EXE以主库v5安装表、冻结目录与PXI入口消费这些合同；首装与PXI自动证据见交接，系统关联及更新仍独立。
 
 #### 身份、内容与批准分别表示
 
@@ -290,7 +290,7 @@ INVALID，错误线程/阶段 STATE，租约冲突 BUSY，原生读取失败 IO�
 匹配 ARMV4I 双配置门；范围与证据见[验收记录](history/RUNTIME_REVISION_ACCEPTANCE.md)。
 它不执行作者代码，不开放 installed SQL，不迁移 EXE 主库，也不取消开发目录提示。
 
-首次安装采用[存储与登记恢复合同](RUNTIME_INSTALL_RECOVERY.md)：先提交不可启动意图，再准备独立安装数据库，最后提交READY；结果不明必须精确读回。Runtime拥有转换/读回、后缀迁移及最终提交，EXE以主库owner提供持久CAS与原生确认/恢复。成功后关闭准备链，单独OpenInstalled并require-existing打开私有库，再显式授权Browser；不使用旧CREATE打开或开发句柄cast。PREPARING/FAILED需要用户明确恢复，READY普通重开不弹风险框；未知结果不能自动重放。平台调用和更严格的快照预算见[Runtime宿主](../positron_app/RUNTIME_HOST.md#首次安装与普通installed启动)。更新仍关闭，Archive隔离输出仍需独立门。
+首次安装采用[存储与登记恢复合同](RUNTIME_INSTALL_RECOVERY.md)：先提交不可启动意图，再准备独立安装数据库，最后提交READY；结果不明必须精确读回。Runtime拥有转换/读回、后缀迁移及最终提交，EXE以主库owner提供持久CAS与原生确认/恢复。成功后关闭准备链，单独OpenInstalled并require-existing打开私有库，再显式授权Browser；不使用旧CREATE打开或开发句柄cast。PREPARING/FAILED需要用户明确恢复，READY普通重开不弹风险框；未知结果不能自动重放。平台调用和更严格的快照预算见[Runtime宿主](../positron_app/RUNTIME_HOST.md#首次安装与普通installed启动)。PXI输出已有独立消费者门，未完成的人工矩阵归交接；更新仍关闭，后续设计见[更新计划](RUNTIME_UPDATE_PLAN.md)。
 
 ## SQL 服务与 JS SDK
 
@@ -349,7 +349,8 @@ tab、generation、token 后交付。离页先撤销服务，迟到结果丢弃�
 | 公共 DLL 前置 | 主线与DLL完成受限 DB、Runtime、app 资源合同及Archive 归档合同；版本化头文件、示例调用、预算/失败/生命周期和设备门可供宿主消费 |
 | 目录应用 | EXE接入原窗口/页面/标签/服务桥及worker；纯资源笔记覆盖新增、编辑、删除、文字搜索、分页、正常重启恢复，两个应用数据隔离 |
 | 冻结目录首次安装 | 主库结构化登记、原生确认/恢复、独立installed重开、require-existing私有库与页面队列；结果不明不重放、错误数据不重建 |
-| PXI安装与关联 | 先补已安装身份/批准能力合同；Archive/PXI 输出与校验门通过后接入风险确认、主库登记、免提示启动、更新和关联；失败保持旧安装/数据，目录模式独立可用 |
+| PXI安装与关联 | 完整输出后沿首次安装链确认、登记及免提示启动；系统关联独立验收，目录模式仍可用 |
+| 已安装应用更新 | 按[更新计划](RUNTIME_UPDATE_PLAN.md)先补Runtime公共合同，再接EXE；资源更新与后续数据迁移分别完成，不放宽旧v1入口 |
 | 内置页面复用评估 | 示例通过后先评估settings，再独立评估history/downloads，不在首批同时迁移 |
 
 每阶段独立提交、推送及串行正式 Debug/Release 构建；C 改动先运行
