@@ -292,8 +292,8 @@ class SourceContractTests(unittest.TestCase):
     def test_single_public_migration_target_no_private_metadata(self):
         self.assertEqual(SOURCE.count("api->migration(db,"), 1)
         # The SQL model above isolates the original v2 visit schema; the
-        # production worker now migrates all shared application tables to v4.
-        self.assertIn("api->migration(db, 4, script)", SOURCE)
+        # production worker now includes the v5 installed-app registry.
+        self.assertIn("api->migration(db, 5, script)", SOURCE)
         self.assertNotRegex(SOURCE, r'"[^"\n]*__(?:pdb|sqlite)')
         self.assertNotIn("sqlite3_", SOURCE)
         self.assertIn('TEXT("PDb_BindInt64")', SOURCE)
@@ -307,7 +307,7 @@ class SourceContractTests(unittest.TestCase):
         self.assertIn("store->outstanding == APP_SETTINGS_QUEUE_MAX", SOURCE)
         self.assertEqual(SOURCE.count("store->outstanding++;"), 1)
         self.assertEqual(SOURCE.count("store->outstanding--;"), 1)
-        self.assertIn("stop = store->closing && !found;", SOURCE)
+        self.assertIn("stop = store->closing && !found && store->install_state==0;", SOURCE)
 
 
 if __name__ == "__main__":

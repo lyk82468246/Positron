@@ -95,10 +95,10 @@ class SettingsSqlTests(unittest.TestCase):
 
 
 class CandidateBoundaryTests(unittest.TestCase):
-    def test_no_static_db_link_or_deployment_dependency(self):
+    def test_dynamic_db_binding_and_complete_deployment(self):
         project = (ROOT / "positron_app/positron_app.vcproj").read_text(encoding="utf-8")
         self.assertNotIn("positron_db.lib", project)
-        self.assertNotIn("positron_db.dll|", project)
+        self.assertEqual(project.count("positron_db.dll|"), 2)
         self.assertIn('RelativePath=".\\app_settings_store.c"', project)
 
     def test_isolated_debug_entry_precedes_runtime(self):
@@ -118,8 +118,10 @@ class CandidateBoundaryTests(unittest.TestCase):
         self.assertIn('L"positron.db"', main)
         self.assertIn("GetModuleFileNameW(NULL", main)
         self.assertIn("APP_SETTINGS_TIMER_ID", main)
-        self.assertLess(winmain.index("app_tabs_debug_check()"),
+        self.assertLess(winmain.index("AppSettingsStore_DebugCheck()"),
                         winmain.index("app_settings_start(hwnd)"))
+        self.assertLess(winmain.index("app_settings_start(hwnd)"),
+                        winmain.index("app_tabs_debug_check()"))
 
     def test_runtime_drains_before_window_destroy(self):
         main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
@@ -133,20 +135,29 @@ class CandidateBoundaryTests(unittest.TestCase):
         self.assertLess(timer.index("app_settings_tick(hwnd)"),
                         timer.index("if (g_tabs_closing) return 0;"))
 
-    def test_async_startup_does_not_replace_new_user_navigation(self):
+    def test_settings_resolve_before_first_navigation(self):
         main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
-        tick = main[main.index("static void app_settings_tick(HWND hwnd)"):]
-        for guard in ("g_settings_nav_serial == g_settings_startup_serial",
-                      "g_app.tab_id == g_settings_startup_tab",
-                      "!AppAddressBar_IsEditing(g_address_bar)",
-                      "g_navigation_request == NULL", "APP_HISTORY_REPLACE"):
-            self.assertIn(guard, tick)
+        winmain = main[main.index("int WINAPI WinMain("):]
+        self.assertLess(winmain.index("app_settings_start(hwnd)"),
+                        winmain.index("while (g_settings_bootstrapping)"))
+        self.assertLess(winmain.index("while (g_settings_bootstrapping)"),
+                        winmain.index("app_create_controls(hwnd)"))
+        self.assertLess(winmain.index("app_create_controls(hwnd)"),
+                        winmain.index("app_load_page_from(hwnd, initial_url,"))
+        self.assertEqual(winmain.count("app_load_page_from(hwnd, initial_url,"), 1)
+        begin = main.index("static void app_settings_tick(HWND hwnd)")
+        end = main.index("\nstatic ", begin + 1)
+        tick = main[begin:end]
+        self.assertNotIn("app_load_page", tick)
+        self.assertNotIn("app_load_local_page", tick)
+        self.assertIn("g_settings_values = result.values;", tick)
+        self.assertIn("if (result.request_id == 1) g_settings_bootstrapping = 0;", tick)
 
     def test_initial_settings_refresh_uses_stable_url(self):
         main = (ROOT / "positron_app/main.c").read_text(encoding="utf-8")
         winmain = main[main.index("int WINAPI WinMain("):]
-        self.assertIn("app_load_local_page(hwnd, initial_url,", winmain)
-        self.assertNotIn("app_load_local_page(hwnd, g_current_url,", winmain)
+        self.assertIn("app_load_page_from(hwnd, initial_url,", winmain)
+        self.assertNotIn("app_load_page_from(hwnd, g_current_url,", winmain)
 
     def test_worker_uses_public_db_contract_not_private_sqlite(self):
         self.assertNotIn("sqlite3_", SOURCE)
@@ -160,9 +171,10 @@ class CandidateBoundaryTests(unittest.TestCase):
 
     def test_fixture_drains_full_queue_before_healthy_read(self):
         fixture = (ROOT / "positron_app/app_settings_store_debug.c").read_text(encoding="utf-8")
+        fixture = fixture[fixture.index("int AppSettingsStore_DebugCheck(void)"):]
         quota = fixture.index("!= APP_SETTINGS_QUEUE_FULL")
         drain = fixture.index("result.request_id != requests[index]", quota)
-        healthy_read = fixture.index("APP_SETTINGS_START_NEWTAB, 8, 10, &request)")
+        healthy_read = fixture.index("APP_SETTINGS_START_NEWTAB, 8, 10, &request)", drain)
         self.assertLess(quota, drain)
         self.assertLess(drain, healthy_read)
         self.assertLess(healthy_read, fixture.index("phase = 4;"))
