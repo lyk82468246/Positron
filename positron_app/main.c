@@ -111,6 +111,7 @@ static int g_tabs_closing;
 static AppRuntimeApp *g_runtime_app;
 static unsigned long g_runtime_tab_id;
 static char g_startup_app_directory[1024];
+static int g_startup_runtime_kind;
 #ifdef _DEBUG
 static int g_runtime_debug_mode;
 static int g_runtime_debug_phase;
@@ -1680,6 +1681,7 @@ static int app_parse_startup_arguments(LPWSTR command_line,
     static WCHAR argument[APP_COMMAND_ARG_MAX];
     static WCHAR value[APP_COMMAND_ARG_MAX];
     static char selector[APP_STARTUP_SELECTOR_MAX_BYTES + 1];
+    static char canonical_app[64];
     const WCHAR *cursor;
     int result;
     int value_result;
@@ -1695,6 +1697,7 @@ static int app_parse_startup_arguments(LPWSTR command_line,
     }
     out_reference[0] = '\0';
     g_startup_app_directory[0] = '\0';
+    g_startup_runtime_kind=APP_RUNTIME_DEVELOPMENT;
     out_script[0] = '\0';
     out_click_selector[0] = '\0';
     *out_has_reference = 0;
@@ -1713,6 +1716,10 @@ static int app_parse_startup_arguments(LPWSTR command_line,
             break;
         }
 #ifdef _DEBUG
+        if(app_command_ascii_equal(argument,"--selftest-runtime-installed")) {
+            if(g_runtime_debug_mode) return 1;
+            g_runtime_debug_mode=4; wcscpy(argument,L"--app");
+        }
         if (app_command_ascii_equal(argument, "--selftest-runtime-app") ||
                 app_command_ascii_equal(argument, "--selftest-runtime-sql") ||
                 app_command_ascii_equal(argument, "--selftest-runtime-notes")) {
@@ -1722,6 +1729,24 @@ static int app_parse_startup_arguments(LPWSTR command_line,
             wcscpy(argument, L"--app-dir");
         }
 #endif
+        value_result=app_command_copy_value(argument,"--install-dir",value,sizeof(value)/sizeof(value[0]));
+        if(value_result || app_command_ascii_equal(argument,"--install-dir")) {
+            if(value_result<0 || g_startup_app_directory[0]) return 1;
+            if(!value_result && app_command_line_next_arg(&cursor,value,sizeof(value)/sizeof(value[0]))!=1) return 1;
+            if(app_wide_buffer_to_utf8(value,lstrlenW(value),g_startup_app_directory,sizeof(g_startup_app_directory)) ||
+                    !g_startup_app_directory[0]) return 1;
+            g_startup_runtime_kind=APP_RUNTIME_INSTALL_DIRECTORY; continue;
+        }
+        value_result=app_command_copy_value(argument,"--app",value,sizeof(value)/sizeof(value[0]));
+        if(value_result || app_command_ascii_equal(argument,"--app")) {
+            if(value_result<0 || g_startup_app_directory[0]) return 1;
+            if(!value_result && app_command_line_next_arg(&cursor,value,sizeof(value)/sizeof(value[0]))!=1) return 1;
+            if(app_wide_buffer_to_utf8(value,lstrlenW(value),g_startup_app_directory,sizeof(g_startup_app_directory)) ||
+                    PRuntime_NormalizeId(g_startup_app_directory,(unsigned int)strlen(g_startup_app_directory),
+                    canonical_app,sizeof(canonical_app))!=PRUNTIME_OK) return 1;
+            strcpy(g_startup_app_directory,canonical_app);
+            g_startup_runtime_kind=APP_RUNTIME_INSTALLED; continue;
+        }
         value_result = app_command_copy_value(argument, "--app-dir", value,
                 sizeof(value) / sizeof(value[0]));
         if (value_result != 0 || app_command_ascii_equal(argument, "--app-dir")) {
@@ -4838,6 +4863,15 @@ static void app_settings_tick(HWND hwnd)
         AppSettingsResult_Release(&result);
     }
     if (g_tabs_closing) {
+        /* Runtime's synchronous registration providers still need the main
+         * DB owner during cancellation/close. Revoke UI aliases and join it
+         * before draining and destroying that database service. */
+        for (i=0;i<APP_TAB_MAX;++i) {
+            if (g_tabs[i].host.navigation_request || g_tabs[i].host.retired_navigation) return;
+            AppScript_RevokeRuntime(g_tabs[i].host.script);
+        }
+        AppRuntimeApp_RequestClose(g_runtime_app);
+        if (AppRuntimeApp_TryDestroy(&g_runtime_app)!=0) return;
         for (i = 0; i < APP_TAB_MAX; ++i)
             if (AppDownloadPrepare_TryDestroy(&g_tabs[i].download_prepare) != 0) return;
         AppDownloads_Tick(g_downloads);
@@ -8845,7 +8879,7 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
             else if (!g_runtime_tab_id &&
                     AppRuntimeApp_TryDestroy(&g_runtime_app) == 0) {
 #ifdef _DEBUG
-                if (g_runtime_debug_mode == 2 && g_runtime_debug_phase == 5)
+                if ((g_runtime_debug_mode == 2 || g_runtime_debug_mode == 4) && g_runtime_debug_phase == 5)
                     app_runtime_sql_debug_tick(hwnd);
 #endif
                 KillTimer(hwnd, APP_RUNTIME_TIMER_ID);
@@ -9884,6 +9918,8 @@ static void app_show_startup_usage(void)
             L"Usage: positron.exe [URL]\n"
             L"       positron.exe --url URL --click \"CSS selector\"\n"
             L"       positron.exe --app-dir \"directory\"\n"
+            L"       positron.exe --install-dir \"verified directory\"\n"
+            L"       positron.exe --app application.id\n"
             L"       positron.exe --url URL --eval \"JavaScript\"",
             L"Positron", MB_OK | MB_ICONERROR);
 }
@@ -9953,11 +9989,13 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
     MSG event;
     int rc;
     int decision;
+    int action;
+    AppTextId confirmation;
     unsigned long tab_id;
 
     tab_id = g_app.tab_id;
     if (!SetTimer(hwnd, APP_RUNTIME_TIMER_ID, 100, NULL)) return 0;
-    g_runtime_app = AppRuntimeApp_Start(g_startup_app_directory);
+    g_runtime_app = AppRuntimeApp_StartKind(g_startup_runtime_kind,g_startup_app_directory,g_settings_store);
     app_set_status(APP_TEXT_STATUS_LOADING);
     while (AppRuntimeApp_State(g_runtime_app) == APP_RUNTIME_OPENING) {
         rc = GetMessage(&event, NULL, 0, 0);
@@ -9975,20 +10013,39 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
     }
     rc = AppRuntimeApp_Accept(g_runtime_app, &info, url, (unsigned int) capacity);
     if (rc != PRUNTIME_OK) {
-        app_show_error(AppRuntimeApp_Result(g_runtime_app) == PRUNTIME_DENIED ?
-                APP_TEXT_RUNTIME_SQL_UNAVAILABLE : APP_TEXT_RUNTIME_FAILED);
+        app_show_error(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT ? APP_TEXT_INSTALL_FAILED :
+                (AppRuntimeApp_Result(g_runtime_app) == PRUNTIME_DENIED ?
+                APP_TEXT_RUNTIME_SQL_UNAVAILABLE : APP_TEXT_RUNTIME_FAILED));
         AppRuntimeApp_RequestClose(g_runtime_app);
         return 0;
     }
+    action=AppRuntimeApp_InstallationAction(g_runtime_app);
+    confirmation=info.requested_permissions ? APP_TEXT_RUNTIME_SQL_CONFIRM : APP_TEXT_RUNTIME_CONFIRM;
+    if(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT) {
+        if(action==PRUNTIME_INTENT_NEW) confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_CONFIRM : APP_TEXT_INSTALL_CONFIRM;
+        else confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_RECOVER : APP_TEXT_INSTALL_RECOVER;
+    }
+#ifdef _DEBUG
+    if(g_runtime_debug_mode==4) {
+        WCHAR executable[MAX_PATH];
+        const WCHAR *prefix;
+        prefix=L"\\Temp\\Positron-device-gate\\app-runtime-install-";
+        if(!GetModuleFileNameW(NULL,executable,MAX_PATH) || wcsncmp(executable,prefix,wcslen(prefix)) ||
+                g_startup_runtime_kind!=APP_RUNTIME_INSTALLED || action ||
+                strcmp(info.id,"org.positron.sql_demo")) return -2;
+        g_runtime_sql_seed="one"; g_runtime_debug_started=GetTickCount();
+    }
+#endif
     if (!MultiByteToWideChar(CP_UTF8, 0, info.name, -1, name, 128) ||
             !MultiByteToWideChar(CP_UTF8, 0, info.id, -1, id, 64) ||
-            !AppI18n_LoadString(info.requested_permissions ? APP_TEXT_RUNTIME_SQL_CONFIRM :
-            APP_TEXT_RUNTIME_CONFIRM, format, 512)) {
+            !AppI18n_LoadString(confirmation, format, 512)) {
         AppRuntimeApp_RequestClose(g_runtime_app);
         return 0;
     }
     _snwprintf(message, 1023, format, name, id, info.app_version);
     message[1023] = L'\0';
+    if(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT && !action) decision=IDYES;
+    else
 #ifdef _DEBUG
     if (g_runtime_debug_mode) {
         WCHAR executable[MAX_PATH];
@@ -10028,8 +10085,11 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         AppRuntimeApp_RequestClose(g_runtime_app);
         return 0;
     }
-    if (info.requested_permissions) {
-        if (AppRuntimeApp_GrantSql(g_runtime_app)) return -2;
+    if ((g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT && action) ||
+            (g_startup_runtime_kind==APP_RUNTIME_DEVELOPMENT && info.requested_permissions)) {
+        if(g_startup_runtime_kind==APP_RUNTIME_DEVELOPMENT) {
+            if (AppRuntimeApp_GrantSql(g_runtime_app)) return -2;
+        } else if(AppRuntimeApp_ApproveInstallation(g_runtime_app)) return -2;
         while (AppRuntimeApp_State(g_runtime_app) == APP_RUNTIME_STORAGE_OPENING) {
             rc = GetMessage(&event, NULL, 0, 0);
             if (rc <= 0) return -1;
@@ -10043,7 +10103,7 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
             AppRuntimeApp_RequestClose(g_runtime_app);
             return 2;
         }
-        if (!AppRuntimeApp_SqlReady(g_runtime_app)) {
+        if (AppRuntimeApp_State(g_runtime_app)!=APP_RUNTIME_READY) {
 #ifdef _DEBUG
             if (g_runtime_debug_mode >= 2) {
                 /* Preserve the worker's error snapshot, then use normal
@@ -10056,7 +10116,7 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
                 return 0;
             }
 #endif
-            app_show_error(APP_TEXT_RUNTIME_FAILED);
+            app_show_error(g_startup_runtime_kind==APP_RUNTIME_DEVELOPMENT ? APP_TEXT_RUNTIME_FAILED : APP_TEXT_INSTALL_FAILED);
             AppRuntimeApp_RequestClose(g_runtime_app);
             return 0;
         }
@@ -10234,7 +10294,7 @@ static void app_runtime_debug_tick(HWND hwnd)
     PCoreImageDecodeStats images;
     PCoreImageDecodeStats again;
 
-    if (g_runtime_debug_mode == 2) { app_runtime_sql_debug_tick(hwnd); return; }
+    if (g_runtime_debug_mode == 2 || g_runtime_debug_mode == 4) { app_runtime_sql_debug_tick(hwnd); return; }
     if (g_runtime_debug_mode == 3) { app_runtime_notes_debug_tick(hwnd); return; }
     if (!g_runtime_tab_id || g_tabs_closing) return;
     if (GetTickCount() - g_runtime_debug_started > 120000UL) goto failed;
@@ -10342,6 +10402,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
 #ifdef _DEBUG
     startup_ui_selftest = 0;
+    if(command_line && !wcscmp(command_line,L"--selftest-installation-native")) {
+        AppDebug_BeginSession(); result=AppRuntimeInstall_DebugRun(); AppDebug_EndSession(); return result;
+    }
     if (command_line != NULL &&
             wcsncmp(command_line, L"--selftest-runtime-platform \"", 29) == 0) {
         WCHAR directory[MAX_PATH];

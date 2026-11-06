@@ -56,6 +56,9 @@ struct AppSettingsStore {
     int job_count;
     int result_head;
     int result_count;
+    HANDLE install_done;
+    int install_state; /* 0 idle, 1 admitted, 2 settled awaiting caller copy */
+    AppInstallCall install_job;
     AppSettingsJob jobs[APP_SETTINGS_QUEUE_MAX];
     /* Worker scratch stays on the heap alongside the bounded queue. */
     AppSettingsJob active_job;
@@ -457,15 +460,18 @@ static int app_settings_table_exists(AppSettingsDbApi *api, PDbHandle db,
 static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         AppSettingsResult *result)
 {
-    char script[sizeof(g_settings_schema) + sizeof(g_visits_schema) +
-            sizeof(g_preferences_schema) + sizeof(g_downloads_schema)];
+    char script[4096];
     int exists;
     int visits_exist;
     int preferences_exist;
     int downloads_exist;
+    int installs_exist;
     int rc;
 
     exists = app_settings_table_exists(api, db, g_settings_exists_sql, result);
+    if (result->result != APP_SETTINGS_OK) return;
+    installs_exist = app_settings_table_exists(api, db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_installs'", result);
     if (result->result != APP_SETTINGS_OK) return;
     downloads_exist = app_settings_table_exists(api, db,
             g_downloads_exists_sql, result);
@@ -476,7 +482,8 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
             g_preferences_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
     if ((visits_exist && !exists) || (preferences_exist && (!exists || !visits_exist)) ||
-            (downloads_exist && (!exists || !visits_exist || !preferences_exist))) {
+            (downloads_exist && (!exists || !visits_exist || !preferences_exist)) ||
+            (installs_exist && (!exists || !visits_exist || !preferences_exist || !downloads_exist))) {
         result->result = APP_SETTINGS_BAD_DATA;
         return;
     }
@@ -491,10 +498,20 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
     if (!visits_exist) strcat(script, g_visits_schema);
     if (!preferences_exist) strcat(script, g_preferences_schema);
     if (!downloads_exist) strcat(script, g_downloads_schema);
-    rc = api->migration(db, 4, script);
+    if (!installs_exist) {
+        if (strlen(script)+strlen(AppInstallStore_Schema())>=sizeof(script)) {
+            result->result=APP_SETTINGS_BAD_DATA; return;
+        }
+        strcat(script,AppInstallStore_Schema());
+    }
+    rc = api->migration(db, 5, script);
     if (rc != PDB_OK) {
         app_settings_db_failure(api, db, rc, result);
         return;
+    }
+    if (!app_settings_table_exists(api, db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_installs'",result)) {
+        result->result=APP_SETTINGS_BAD_DATA; return;
     }
     app_settings_read(api, db, result);
     if (result->result == APP_SETTINGS_OK) {
@@ -921,13 +938,29 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
     app_settings_publish(store, &result);
     for (;;) {
         EnterCriticalSection(&store->lock);
+        if (store->install_state == 1) {
+            LeaveCriticalSection(&store->lock);
+            if (healthy) AppInstallStore_Process(module,db,&store->install_job);
+            else { store->install_job.result=PRUNTIME_IO;
+                store->install_job.outcome=PRUNTIME_COMMIT_NOT_COMMITTED; }
+            if (store->install_job.unsafe) {
+                healthy=0; failure.result=APP_SETTINGS_DB_FAILED;
+                failure.db_result=PDB_STATE; failure.error=store->install_job.error;
+                api.close(db); db=NULL;
+            }
+            EnterCriticalSection(&store->lock);
+            store->install_state=2;
+            SetEvent(store->install_done);
+            LeaveCriticalSection(&store->lock);
+            continue;
+        }
         found = store->job_count != 0;
         if (found) {
             *job = store->jobs[store->job_head];
             store->job_head = (store->job_head + 1) % APP_SETTINGS_QUEUE_MAX;
             store->job_count--;
         }
-        stop = store->closing && !found;
+        stop = store->closing && !found && store->install_state==0;
         if (!found && !stop) ResetEvent(store->wake);
         LeaveCriticalSection(&store->lock);
         if (stop) break;
@@ -1013,7 +1046,10 @@ int AppSettingsStore_Create(const WCHAR *dll_path, const char *database_path,
     memcpy(store->database_path, database_path, path_length + 1U);
     InitializeCriticalSection(&store->lock);
     store->wake = CreateEvent(NULL, TRUE, FALSE, NULL);
-    if (store->wake == NULL) {
+    store->install_done = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (store->wake == NULL || store->install_done == NULL) {
+        if (store->wake) CloseHandle(store->wake);
+        if (store->install_done) CloseHandle(store->install_done);
         DeleteCriticalSection(&store->lock);
         free(store);
         return APP_SETTINGS_PLATFORM_FAILED;
@@ -1021,6 +1057,7 @@ int AppSettingsStore_Create(const WCHAR *dll_path, const char *database_path,
     store->worker = CreateThread(NULL, 0, app_settings_worker, store, 0, NULL);
     if (store->worker == NULL) {
         CloseHandle(store->wake);
+        CloseHandle(store->install_done);
         DeleteCriticalSection(&store->lock);
         free(store);
         return APP_SETTINGS_PLATFORM_FAILED;
@@ -1231,8 +1268,32 @@ int AppSettingsStore_TryDestroy(AppSettingsStore **store_pointer)
         AppSettingsResult_Release(&store->results[index]);
     CloseHandle(store->worker);
     CloseHandle(store->wake);
+    CloseHandle(store->install_done);
     DeleteCriticalSection(&store->lock);
     free(store);
     *store_pointer = NULL;
     return APP_SETTINGS_OK;
+}
+
+int AppSettingsStore_InstallCall(AppSettingsStore *store, AppInstallCall *call)
+{
+    int result;
+    if (!store || !call || GetCurrentThreadId()==store->owner_thread ||
+            call->operation<APP_INSTALL_READ_ID || call->operation>APP_INSTALL_CAS ||
+            !memchr(call->key,0,sizeof(call->key))) return PRUNTIME_ARGUMENT;
+    EnterCriticalSection(&store->lock);
+    if (store->closing || store->install_state) {
+        LeaveCriticalSection(&store->lock); return PRUNTIME_BUSY;
+    }
+    store->install_job=*call;
+    store->install_state=1;
+    SetEvent(store->wake);
+    LeaveCriticalSection(&store->lock);
+    /* Valid store-owned event, retained until its owner has joined Runtime. */
+    (void)WaitForSingleObject(store->install_done,INFINITE);
+    EnterCriticalSection(&store->lock);
+    *call=store->install_job; result=call->result;
+    store->install_state=0; SetEvent(store->wake);
+    LeaveCriticalSection(&store->lock);
+    return result;
 }

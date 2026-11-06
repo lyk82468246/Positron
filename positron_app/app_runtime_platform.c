@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <wincrypt.h>
 #include "app_runtime_platform.h"
 #include "app_debug.h"
 
@@ -22,10 +23,14 @@ typedef struct AppRuntimeRoot {
     WCHAR path[MAX_PATH];
     AppRuntimeFile *files;
     unsigned int count;
+    HANDLE lease;
+    unsigned char *snapshot[APP_RUNTIME_FILES];
 } AppRuntimeRoot;
 
 typedef struct AppRuntimeLocation {
     HANDLE anchor;
+    HANDLE database;
+    HANDLE lease;
     WCHAR root[MAX_PATH];
 } AppRuntimeLocation;
 
@@ -248,10 +253,15 @@ static void app_runtime_root_close(void *user, void *token)
     AppRuntimeRoot *root;
     unsigned int i;
 
-    (void) user;
     root = (AppRuntimeRoot *) token;
     if (root == NULL) return;
-    for (i = 0; i < root->count; ++i) CloseHandle(root->files[i].file);
+    for (i = 0; i < root->count; ++i) {
+        CloseHandle(root->files[i].file);
+        free(root->snapshot[i]);
+    }
+    if(root->lease) CloseHandle(root->lease);
+    if(user && ((AppRuntimePlatform *)user)->revision_root==root)
+        ((AppRuntimePlatform *)user)->revision_root=NULL;
     free(root->files);
     free(root);
 }
@@ -478,7 +488,9 @@ static void app_runtime_location_close(void *user, void *token)
     (void) user;
     location = (AppRuntimeLocation *) token;
     if (location == NULL) return;
-    CloseHandle(location->anchor);
+    if(location->database) CloseHandle(location->database);
+    if(location->lease) CloseHandle(location->lease);
+    if(location->anchor && location->anchor!=INVALID_HANDLE_VALUE) CloseHandle(location->anchor);
     free(location);
 }
 
@@ -490,6 +502,7 @@ int AppRuntimePlatform_Init(AppRuntimePlatform *platform)
     DWORD count;
 
     if (platform == NULL) return PRUNTIME_ARGUMENT;
+    memset(platform,0,sizeof(*platform));
     count = GetModuleFileNameW(NULL, executable, MAX_PATH);
     if (!count || count >= MAX_PATH) return PRUNTIME_IO;
     separator = wcsrchr(executable, L'\\');
@@ -526,4 +539,213 @@ void AppRuntimePlatform_StorageProvider(AppRuntimePlatform *platform,
     provider->user_data = platform;
     provider->open_location = app_runtime_location_open;
     provider->close_location = app_runtime_location_close;
+}
+
+typedef struct AppRevisionHash {
+    HCRYPTPROV provider;
+    HCRYPTHASH hash;
+} AppRevisionHash;
+static void revision_hash_close(void *user,void *token)
+{
+    AppRevisionHash *h;
+    (void)user; h=(AppRevisionHash *)token;
+    if(!h) return;
+    if(h->hash) CryptDestroyHash(h->hash);
+    if(h->provider) CryptReleaseContext(h->provider,0);
+    free(h);
+}
+static int revision_hash_begin(void *user,void **out)
+{
+    AppRevisionHash *h;
+    unsigned int i;
+    (void)user;
+    h=(AppRevisionHash *)calloc(1,sizeof(*h));
+    if(!h) return PRUNTIME_MEMORY;
+    for(i=0;i<2;++i) {
+        if(CryptAcquireContext(&h->provider,NULL,NULL,i ? 24 : PROV_RSA_FULL,CRYPT_VERIFYCONTEXT) &&
+                CryptCreateHash(h->provider,CALG_SHA_256,0,0,&h->hash)) { *out=h; return PRUNTIME_OK; }
+        if(h->provider) CryptReleaseContext(h->provider,0);
+        h->provider=0;
+    }
+    revision_hash_close(NULL,h); return PRUNTIME_UNSUPPORTED;
+}
+static int revision_hash_update(void *user,void *token,const void *data,unsigned int bytes)
+{
+    (void)user;
+    return CryptHashData(((AppRevisionHash *)token)->hash,(const BYTE *)data,bytes,0) ? PRUNTIME_OK : PRUNTIME_IO;
+}
+static int revision_hash_finish(void *user,void *token,unsigned char out[32])
+{
+    DWORD bytes;
+    (void)user; bytes=32;
+    return CryptGetHashParam(((AppRevisionHash *)token)->hash,HP_HASHVAL,out,&bytes,0) && bytes==32 ? PRUNTIME_OK : PRUNTIME_IO;
+}
+static int revision_path_lease(const WCHAR *path,const WCHAR *prefix,HANDLE *out)
+{
+    void *hash;
+    unsigned char digest[32];
+    char utf8[1024];
+    WCHAR name[128];
+    const WCHAR *hex;
+    unsigned int i,n;
+    int bytes,rc;
+    DWORD error;
+    HANDLE lease;
+    hash=NULL; hex=L"0123456789abcdef";
+    bytes=WideCharToMultiByte(CP_UTF8,0,path,-1,utf8,sizeof(utf8),NULL,NULL);
+    if(bytes<2) return PRUNTIME_IO;
+    rc=revision_hash_begin(NULL,&hash);
+    if(rc==PRUNTIME_OK) rc=revision_hash_update(NULL,hash,utf8,(unsigned int)bytes-1);
+    if(rc==PRUNTIME_OK) rc=revision_hash_finish(NULL,hash,digest);
+    revision_hash_close(NULL,hash);
+    if(rc!=PRUNTIME_OK) return rc;
+    lstrcpyW(name,prefix); n=(unsigned int)wcslen(name);
+    for(i=0;i<32;++i) { name[n+i*2]=hex[digest[i]>>4]; name[n+i*2+1]=hex[digest[i]&15]; }
+    name[n+64]=0;
+    SetLastError(0); lease=CreateMutexW(NULL,FALSE,name); error=GetLastError();
+    if(!lease) return PRUNTIME_IO;
+    if(error==ERROR_ALREADY_EXISTS) { CloseHandle(lease); return PRUNTIME_BUSY; }
+    *out=lease; return PRUNTIME_OK;
+}
+static int revision_capture(void *user,const char *directory,unsigned int bytes,PRuntimeDirectoryRoot *out)
+{
+    AppRuntimePlatform *platform;
+    AppRuntimeRoot *root,*check;
+    PRuntimeDirectoryRoot captured,again;
+    WCHAR input[MAX_PATH],canonical[MAX_PATH];
+    HANDLE lease;
+    unsigned int i,j,total;
+    DWORD count;
+    int rc;
+    platform=(AppRuntimePlatform *)user; lease=NULL;
+    if(platform->revision_root) return PRUNTIME_STATE;
+    rc=app_runtime_wide(directory,bytes,input,MAX_PATH);
+    if(rc==PRUNTIME_OK) rc=app_runtime_canonical(input,canonical,1);
+    if(rc==PRUNTIME_OK) rc=revision_path_lease(canonical,L"Positron.Resource.",&lease);
+    if(rc!=PRUNTIME_OK) return rc;
+    memset(&captured,0,sizeof(captured)); memset(&again,0,sizeof(again));
+    rc=app_runtime_root_open(user,directory,bytes,&captured);
+    if(rc!=PRUNTIME_OK) { CloseHandle(lease); return rc; }
+    root=(AppRuntimeRoot *)captured.root; root->lease=lease; total=0;
+    for(i=0;i<root->count && rc==PRUNTIME_OK;++i) {
+        AppRuntimeFile *file;
+        file=&root->files[i]; count=file->info.nFileSizeLow;
+        if(file->info.nFileSizeHigh || count>4U*1024U*1024U-total) { rc=PRUNTIME_LIMIT; break; }
+        total+=count;
+        root->snapshot[i]=(unsigned char *)malloc(count ? count : 1);
+        if(!root->snapshot[i]) { rc=PRUNTIME_MEMORY; break; }
+        if(!app_runtime_file_unchanged(file) || SetFilePointer(file->file,0,NULL,FILE_BEGIN)==INVALID_SET_FILE_POINTER ||
+                !ReadFile(file->file,root->snapshot[i],count,&count,NULL) || count!=file->info.nFileSizeLow ||
+                !app_runtime_file_unchanged(file)) rc=PRUNTIME_IO;
+    }
+#ifdef _DEBUG
+    if(rc==PRUNTIME_OK && platform->capture_hook) platform->capture_hook(platform->capture_user);
+#endif
+    /* Observe a second COMPLETE enumeration while original files stay pinned.
+     * This detects observed changes, not an atomic snapshot of hostile I/O. */
+    if(rc==PRUNTIME_OK) rc=app_runtime_root_open(user,directory,bytes,&again);
+    check=(AppRuntimeRoot *)again.root;
+    if(rc==PRUNTIME_OK && check->count!=root->count) rc=PRUNTIME_IO;
+    if(rc==PRUNTIME_OK) for(i=0;i<root->count;++i) {
+        for(j=0;j<check->count;++j) if(!wcscmp(root->files[i].path,check->files[j].path)) break;
+        if(j==check->count || !app_runtime_file_unchanged(&root->files[i]) ||
+                check->files[j].info.dwOID!=root->files[i].info.dwOID ||
+                check->files[j].info.nFileIndexLow!=root->files[i].info.nFileIndexLow ||
+                check->files[j].info.nFileIndexHigh!=root->files[i].info.nFileIndexHigh ||
+                check->files[j].info.dwVolumeSerialNumber!=root->files[i].info.dwVolumeSerialNumber ||
+                check->files[j].info.nFileSizeLow!=root->files[i].info.nFileSizeLow) { rc=PRUNTIME_IO; break; }
+    }
+    app_runtime_root_close(user,again.root);
+    if(rc!=PRUNTIME_OK) { app_runtime_root_close(user,root); return rc; }
+    platform->revision_root=root; *out=captured; return PRUNTIME_OK;
+}
+static int revision_enumerate(void *user,void *token,unsigned int index,PRuntimeRevisionFile *out)
+{
+    AppRuntimeRoot *root;
+    const WCHAR *relative;
+    unsigned int i;
+    (void)user; root=(AppRuntimeRoot *)token;
+    if(index>=root->count) return PRUNTIME_NOT_FOUND;
+    relative=root->files[index].path+wcslen(root->path)+1;
+    if(!WideCharToMultiByte(CP_UTF8,0,relative,-1,out->path,sizeof(out->path),NULL,NULL)) return PRUNTIME_LIMIT;
+    for(i=0;out->path[i];++i) if(out->path[i]=='\\') out->path[i]='/';
+    out->file_bytes=root->files[index].info.nFileSizeLow;
+    return PRUNTIME_OK;
+}
+static int revision_read_at(void *user,void *token,const char *path,unsigned int offset,
+        void *buffer,unsigned int capacity,unsigned int *written)
+{
+    AppRuntimeRoot *root;
+    PRuntimeRevisionFile file;
+    unsigned int i,n;
+    root=(AppRuntimeRoot *)token;
+    for(i=0;i<root->count;++i) {
+        if(revision_enumerate(user,token,i,&file)!=PRUNTIME_OK) return PRUNTIME_IO;
+        if(!strcmp(file.path,path)) break;
+    }
+    if(i==root->count || offset>file.file_bytes) return PRUNTIME_IO;
+    n=file.file_bytes-offset; if(n>capacity) n=capacity;
+    if(n) memcpy(buffer,root->snapshot[i]+offset,n);
+    *written=n; return PRUNTIME_OK;
+}
+void AppRuntimePlatform_RevisionProvider(AppRuntimePlatform *p,PRuntimeRevisionProvider *out)
+{
+    memset(out,0,sizeof(*out)); out->size=sizeof(*out); out->version=1;
+    out->user_data=p; out->digest_algorithm=PRUNTIME_DIGEST_SHA256;
+    out->open_root=revision_capture; out->close_root=app_runtime_root_close;
+    out->enumerate_file=revision_enumerate; out->read_at=revision_read_at;
+    out->hash_begin=revision_hash_begin; out->hash_update=revision_hash_update;
+    out->hash_finish=revision_hash_finish; out->hash_close=revision_hash_close;
+}
+int AppRuntimePlatform_CopyManifest(AppRuntimePlatform *p,void *buffer,unsigned int capacity,unsigned int *bytes)
+{
+    AppRuntimeRoot *root;
+    PRuntimeRevisionFile file;
+    unsigned int i;
+    root=(AppRuntimeRoot *)p->revision_root;
+    if(!root) return PRUNTIME_STATE;
+    for(i=0;i<root->count;++i) {
+        if(revision_enumerate(p,root,i,&file)!=PRUNTIME_OK) return PRUNTIME_IO;
+        if(!strcmp(file.path,"manifest.json")) {
+            if(file.file_bytes>capacity) return PRUNTIME_LIMIT;
+            return revision_read_at(p,root,file.path,0,buffer,capacity,bytes);
+        }
+    }
+    return PRUNTIME_IO;
+}
+static int installed_location(void *user,const char *key,PRuntimeStorageLocation *out)
+{
+    AppRuntimePlatform *p;
+    AppRuntimeLocation *location;
+    WCHAR relative[MAX_PATH],path[MAX_PATH],canonical[MAX_PATH],anchor[MAX_PATH];
+    int n,rc;
+    unsigned int i;
+    p=(AppRuntimePlatform *)user;
+    if(PRuntime_ValidateResourcePath(key,(unsigned int)strlen(key))!=PRUNTIME_OK ||
+            app_runtime_wide(key,(unsigned int)strlen(key),relative,MAX_PATH)!=PRUNTIME_OK) return PRUNTIME_INVALID;
+    if(wcslen(p->data_root)+wcslen(relative)+2>=MAX_PATH) return PRUNTIME_LIMIT;
+    lstrcpyW(path,p->data_root); lstrcatW(path,L"\\"); lstrcatW(path,relative);
+    for(i=0;path[i];++i) if(path[i]=='/') path[i]='\\';
+    rc=app_runtime_canonical(path,canonical,0);
+    if(rc!=PRUNTIME_OK) return rc;
+    location=(AppRuntimeLocation *)calloc(1,sizeof(*location));
+    if(!location) return PRUNTIME_MEMORY;
+    rc=revision_path_lease(canonical,L"Positron.Data.",&location->lease);
+    if(rc!=PRUNTIME_OK) { free(location); return rc; }
+    lstrcpyW(anchor,p->data_root); lstrcatW(anchor,L"\\.positron-runtime-data");
+    location->anchor=CreateFileW(anchor,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_HIDDEN,NULL);
+    location->database=CreateFileW(canonical,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
+    if(location->anchor==INVALID_HANDLE_VALUE || location->database==INVALID_HANDLE_VALUE) {
+        if(location->anchor==INVALID_HANDLE_VALUE) location->anchor=NULL;
+        if(location->database==INVALID_HANDLE_VALUE) location->database=NULL;
+        app_runtime_location_close(user,location); return PRUNTIME_IO;
+    }
+    n=WideCharToMultiByte(CP_UTF8,0,canonical,-1,out->path,sizeof(out->path),NULL,NULL);
+    if(n<2) { app_runtime_location_close(user,location); return PRUNTIME_LIMIT; }
+    out->path_bytes=(unsigned int)n-1; out->token=location; return PRUNTIME_OK;
+}
+void AppRuntimePlatform_ExistingStorageProvider(AppRuntimePlatform *p,PRuntimeInstalledStorageProvider *out)
+{
+    memset(out,0,sizeof(*out)); out->size=sizeof(*out); out->version=1; out->user_data=p;
+    out->open_existing_location=installed_location; out->close_location=app_runtime_location_close;
 }

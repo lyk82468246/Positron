@@ -5,6 +5,7 @@
 #include <windows.h>
 #include "../positron_db/positron_db.h"
 #include "app_download_record.h"
+#include "app_install_store.h"
 
 #define APP_SETTINGS_QUEUE_MAX 8
 #define APP_SETTINGS_PATH_MAX 1024
@@ -179,6 +180,10 @@ int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out);
  * results, frees their snapshots, releases the service and sets *store=NULL. */
 int AppSettingsStore_RequestClose(AppSettingsStore *store);
 int AppSettingsStore_TryDestroy(AppSettingsStore **store);
+/* Runtime worker only, synchronous copied RPC to the SAME database owner.
+ * Caller waits off UI. No provider transaction/background write survives it.
+ * Runtime must finish before this store is closed/destroyed. */
+int AppSettingsStore_InstallCall(AppSettingsStore *store, AppInstallCall *call);
 
 #ifdef _DEBUG
 int AppSettingsStore_DebugCheck(void);

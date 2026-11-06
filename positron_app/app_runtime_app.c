@@ -44,6 +44,9 @@ struct AppRuntimeApp {
     LONG grant_requested;
     LONG state;
     int result;
+    int kind;
+    int installation_action;
+    AppSettingsStore *store;
     char directory[1024];
     /* Published once before state OPEN, immutable thereafter. */
     char manifest[PRUNTIME_MANIFEST_BYTES];
@@ -128,6 +131,7 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
     PRuntimeStorageHandle storage;
     PRuntimeStorageProvider storage_provider;
     PRuntimeStorageOptions storage_options;
+    AppRuntimeInstall *installed;
     PRuntimeResourceReference resolved;
 #ifdef _DEBUG
     PRuntimeStorageError storage_error;
@@ -137,27 +141,39 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
     app = (AppRuntimeApp *) parameter;
     directory = NULL;
     storage = NULL;
+    installed = NULL;
     rc = AppRuntimePlatform_Init(&platform);
-    if (rc == PRUNTIME_OK) {
+    if (rc == PRUNTIME_OK && app->kind!=APP_RUNTIME_DEVELOPMENT) {
+        rc=AppRuntimeInstall_Open(&platform,app->store,app->kind,app->directory,
+                app_runtime_app_cancelled,app,&installed);
+        if(rc==PRUNTIME_OK) {
+            rc=AppRuntimeInstall_CopyMetadata(installed,&app->info,app->manifest,
+                    sizeof(app->manifest),&app->manifest_bytes);
+            app->installation_action=AppRuntimeInstall_Action(installed);
+            if(!app->installation_action) storage=AppRuntimeInstall_TakeStorage(installed);
+        }
+    } else if (rc == PRUNTIME_OK) {
         AppRuntimePlatform_DirectoryProvider(&platform, &provider);
         rc = PRuntime_DevelopmentDirectoryOpen(app->directory,
                 (unsigned int) strlen(app->directory), &provider, &directory);
+        app->info.size = sizeof(app->info);
+        app->info.version = PRUNTIME_VERSION;
+        if (rc == PRUNTIME_OK) rc = PRuntime_DirectoryGetInfo(directory, &app->info);
+        resolved.size = sizeof(resolved);
+        resolved.version = PRUNTIME_VERSION;
+        if (rc == PRUNTIME_OK) rc = PRuntime_DirectoryReadResource(directory,
+                NULL, 0, "/manifest.json", 14, app->manifest,
+                sizeof(app->manifest), &app->manifest_bytes, &resolved);
     }
-    app->info.size = sizeof(app->info);
-    app->info.version = PRUNTIME_VERSION;
-    if (rc == PRUNTIME_OK) rc = PRuntime_DirectoryGetInfo(directory, &app->info);
-    resolved.size = sizeof(resolved);
-    resolved.version = PRUNTIME_VERSION;
-    if (rc == PRUNTIME_OK) rc = PRuntime_DirectoryReadResource(directory,
-            NULL, 0, "/manifest.json", 14, app->manifest,
-            sizeof(app->manifest), &app->manifest_bytes, &resolved);
     app->result = rc;
     if (rc != PRUNTIME_OK) {
         if (directory != NULL) (void) PRuntime_DirectoryClose(&directory);
+        (void)PRuntime_StorageClose(&storage);
+        AppRuntimeInstall_Close(&installed);
         InterlockedExchange(&app->state, APP_RUNTIME_FAILED);
         return 0;
     }
-    InterlockedExchange(&app->state, APP_RUNTIME_OPEN);
+    InterlockedExchange(&app->state,installed && !app->installation_action ? APP_RUNTIME_READY : APP_RUNTIME_OPEN);
     for (;;) {
         /* ProcessOne self-wakes after progress: coalesced submissions drain
          * without an idle timer, while each pass also services resource I/O. */
@@ -169,6 +185,12 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
             break;
         }
         if (InterlockedExchange(&app->grant_requested, 0)) {
+            if(installed) {
+                rc=AppRuntimeInstall_Confirm(installed);
+                if(rc==PRUNTIME_OK) { storage=AppRuntimeInstall_TakeStorage(installed); app->installation_action=0; }
+                app->result=rc;
+                InterlockedExchange(&app->state,rc==PRUNTIME_OK ? APP_RUNTIME_READY : APP_RUNTIME_FAILED);
+            } else {
             memset(&storage_options, 0, sizeof(storage_options));
             storage_options.size = sizeof(storage_options);
             storage_options.version = PRUNTIME_VERSION;
@@ -195,13 +217,17 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
             app->result = rc;
             InterlockedExchange(&app->state, rc == PRUNTIME_OK ?
                     APP_RUNTIME_READY : APP_RUNTIME_FAILED);
+            }
         }
         /* Producer holds serial until complete. Events publish both the
          * command copy and result; no live directory handle leaves here. */
         if (InterlockedExchange(&app->reading, 0)) {
             app->resolved.size = sizeof(app->resolved);
             app->resolved.version = PRUNTIME_VERSION;
-            app->read_result = PRuntime_DirectoryReadResource(directory,
+            if(installed) app->read_result=AppRuntimeInstall_Read(installed,
+                    app->base[0] ? app->base : NULL,app->reference,app->buffer,
+                    app->capacity,&app->bytes,&app->resolved);
+            else app->read_result = PRuntime_DirectoryReadResource(directory,
                     app->base[0] ? app->base : NULL,
                     (unsigned int) strlen(app->base), app->reference,
                     (unsigned int) strlen(app->reference), app->buffer,
@@ -212,10 +238,16 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
     }
     (void) PRuntime_StorageClose(&storage);
     (void) PRuntime_DirectoryClose(&directory);
+    AppRuntimeInstall_Close(&installed);
     return 0;
 }
 
 AppRuntimeApp *AppRuntimeApp_Start(const char *directory)
+{
+    return AppRuntimeApp_StartKind(APP_RUNTIME_DEVELOPMENT,directory,NULL);
+}
+
+AppRuntimeApp *AppRuntimeApp_StartKind(int kind,const char *directory,AppSettingsStore *store)
 {
     AppRuntimeApp *app;
 
@@ -224,6 +256,7 @@ AppRuntimeApp *AppRuntimeApp_Start(const char *directory)
     app = (AppRuntimeApp *) calloc(1, sizeof(*app));
     if (app == NULL) return NULL;
     app->ui_thread = GetCurrentThreadId();
+    app->kind=kind; app->store=store;
     strcpy(app->directory, directory);
     InitializeCriticalSection(&app->serial);
     app->wake = CreateEvent(NULL, FALSE, FALSE, NULL);
@@ -264,9 +297,22 @@ int AppRuntimeApp_GrantSql(AppRuntimeApp *app)
     return 0;
 }
 
+int AppRuntimeApp_InstallationAction(AppRuntimeApp *app)
+{
+    return app ? app->installation_action : 0;
+}
+int AppRuntimeApp_ApproveInstallation(AppRuntimeApp *app)
+{
+    if(!app || app->ui_thread!=GetCurrentThreadId() || !app->accepted ||
+            app->stopping || app->kind==APP_RUNTIME_DEVELOPMENT ||
+            AppRuntimeApp_State(app)!=APP_RUNTIME_OPEN || !app->installation_action) return 1;
+    InterlockedExchange(&app->state,APP_RUNTIME_STORAGE_OPENING);
+    InterlockedExchange(&app->grant_requested,1); SetEvent(app->wake); return 0;
+}
+
 int AppRuntimeApp_SqlReady(AppRuntimeApp *app)
 {
-    return app != NULL && !app_runtime_app_cancelled(app) &&
+    return app != NULL && app->accepted && (app->info.requested_permissions & PRUNTIME_PERMISSION_SQL) && !app_runtime_app_cancelled(app) &&
             AppRuntimeApp_State(app) == APP_RUNTIME_READY;
 }
 
@@ -283,7 +329,7 @@ int AppRuntimeApp_Accept(AppRuntimeApp *app, PRuntimeManifestInfo *info,
     int rc;
 
     if (app == NULL || app->ui_thread != GetCurrentThreadId() ||
-            AppRuntimeApp_State(app) != APP_RUNTIME_OPEN ||
+            (AppRuntimeApp_State(app) != APP_RUNTIME_OPEN && AppRuntimeApp_State(app) != APP_RUNTIME_READY) ||
             info == NULL || entry == NULL || !capacity || app->stopping)
         return PRUNTIME_STATE;
     if (app->resolver == NULL) {
@@ -385,10 +431,15 @@ AppRuntimePage *AppRuntimeApp_BeginPage(AppRuntimeApp *app,
 int AppRuntimePage_Ready(AppRuntimePage *page)
 {
     LONG state;
+    PRuntimeServiceQueueInfo info;
 
     if (page == NULL || GetCurrentThreadId() != page->app->ui_thread ||
             page->released || app_runtime_app_cancelled(page->app)) return -1;
     state = InterlockedCompareExchange(&page->state, 0, 0);
+    if(state==2) {
+        info.size=sizeof(info); info.version=1;
+        if(PRuntime_ServiceQueueGetInfo(page->queue,&info)!=PRUNTIME_OK || info.revoked) return -1;
+    }
     return state == 1 ? 0 : (state == 2 ? 1 : -1);
 }
 

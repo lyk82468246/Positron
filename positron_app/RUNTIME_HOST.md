@@ -1,6 +1,6 @@
 # Runtime 的 WM 平台与目录应用宿主
 
-本文只说明 EXE 私有 `app_runtime_platform.c/.h`、`app_runtime_app.c/.h` 的平台接线与边界；应用身份、manifest、
+本文说明EXE私有平台、Runtime owner、安装调度与主库登记适配器的接线；应用身份、manifest、
 资源引用、迁移、SQL 和页面服务合同由公共
 [Runtime](../positron_runtime/README.md)拥有。目录应用的整体设计见
 [运行时计划](../docs/RUNTIME_PLAN.md)，实际进度和设备证据见
@@ -44,6 +44,40 @@ UI fetch callback 只读取资源事务已完成的字节。style/layout/paint �
 resize 重用已缓存资源及 UI 的纯 metadata resolver，不做文件 I/O。原标签关闭后撤销实例
 入口，导航/退休 worker 收敛后关闭目录 owner，UI 非阻塞确认退出再释放状态；不强杀线程。
 原窗口、地址栏、软键、native 控件与滚动条不因目录页面换成第二套 UI。
+
+## 首次安装与普通installed启动
+
+```text
+positron.exe --install-dir "\Temp\FrozenExample"
+positron.exe --app org.example.app
+```
+
+两入口与开发目录/URL/脚本启动互斥，ID由公共Runtime规范化。`--install-dir`仅消费已经准备好的
+本地资源目录，不解压PXI、不复制到apps目录、不接系统关联或更新；调用者须保持目录稳定。
+owner通过PrepareRevision核验完整资源，UI显示双语名称、ID、版本、代码执行与未验证发布者风险，
+仅声明SQL时附加独立数据库风险，默认拒绝。确认后worker顺序调用InstallIntent、可选InstallData、
+InstallCommit；只有已核对READY才关闭commit→data→intent→prepare，然后单独OpenInstalled，
+再次核验真实目录，SQL应用使用InstalledStorageOpen，不执行CREATE、首次绑定或迁移。
+作者代码和Browser队列只在这一独立启动成功后获得显式授权。
+
+主库schema v5的结构化登记、单worker持久CAS与关闭顺序见[应用数据设计](APPLICATION_DATA_PLAN.md#安装登记与持久授权)。
+原生provider先取得逻辑ID、再取得安装ID的独占named mutex；资源root和存储location另保留租约。
+随机安装身份由CryptoAPI生成，不来自作者ID或URL。Runtime负责所有转换、精确读回与提交分类，
+宿主不把合法字段、数据准备完成或CAS返回成功单独当作执行权。
+
+普通`--app`只从主库查已提交登记。READY重新核验成功后免风险提示，开发目录仍每次确认。
+PREPARING/FAILED转入显式恢复确认，由Runtime核对同一资源/批准并只执行尚未提交的迁移后缀；
+取消/撤销、资源改变、库缺失/身份错误和不可读登记拒绝启动，不转换成开发身份或创建空替代库。
+提交结果不明由InstallCommit做精确读回；仍不可读则保留恢复状态、显示失败并停止，不能自动重放。
+退出取消与READY竞争的判定仍归Runtime。首版不提供重装/卸载、revision>1或数据回退。
+
+安装资源provider在发布token前将全部普通文件复制为可信原生不可变视图，包括未引用文件、空文件、
+根manifest和迁移。捕获期间保留源文件无写/删除分享句柄，前后核对身份/大小/时间，并再次完整枚举；
+观察到变化就整次失败。发布后enumerate/read_at只访问固定目录与复制字节，未知key拒绝，
+不补扫磁盘或回退可变文件。每次OpenInstalled重新捕获实际目录，新增/替换会使摘要不匹配。
+这是协调原生流程下的可信快照，不是针对任意恶意写入的原子磁盘冻结或代码沙箱。
+EXE上限128文件/16层/4MiB，原生快照内存另计，不包含在Runtime自身工作集上限内；
+单资源仍服从Core/Browser更严预算。SHA-256使用系统CSP，算法不可用就拒绝，不降级摘要。
 
 ## SQL 授权、页面队列与 SDK
 
@@ -131,7 +165,8 @@ callback table。`AppRuntimePlatform` 必须活到全部回调结束；Runtime �
 借用字节、存储 location、目录 root 和独占 lease，EXE 不接管 Runtime handle 的语义。
 先关闭页面队列和存储，再关闭目录实例；不能把这些 handle 交给 UI 或另一个 worker。
 
-适配器不解析 manifest、不维护应用 ID 白名单，不拼 SQL，不重新计算开发身份或 storage key。
+平台适配器不解析manifest、不拼SQL、不重新计算开发身份或storage key。独立安装store只持久化
+Runtime给出的结构化登记，并不从ID命中推断批准；开发目录不写安装白名单。
 不在普通启动时扫描磁盘、授予权限或运行测试；Release 不提供诊断命令。
 
 ## 目录与读取
@@ -175,6 +210,22 @@ Release 不含这些诊断。仅显式 Debug SQL/Notes 自检在存储启动失�
 诊断 EXE 另名放在原父目录，保留原镜像与存储位置；结束后正常退出审计、冷备份与 crash 检查。
 结果区分 PAGE_PASS 和 CAPTURED_FAILURE，二者均不代表跨目录隔离通过；原失败证据不覆盖，
 不删除/替换数据库、不改身份或卷、不强制结束用户应用。
+
+## 首次安装自动门
+
+以正式`device_gate.ps1 -Candidate app-runtime-install -Configuration Debug -ModuleAuditOnly
+-PreserveDeployment -RemoteBase '\Temp\Positron-device-gate'`创建匹配包，再用32位PowerShell运行
+`scripts/app_runtime_install_gate.ps1 -RunRoot <正式目录>`。每次使用新包，失败证据不覆盖。
+固定Debug原生入口仅接受该内部Temp测试根，Release排除入口、注入、断言及诊断。
+
+门使用真实主库worker、Runtime和私有应用库，覆盖无SQL/schema0、首次安装/正常重开、丢失提交响应、
+不可读读回、预算失败后缀恢复、取消、完整字段CAS拒绝、重复租约、缺库不CREATE、错误身份不改文件、
+已发布视图拒绝新key、重开内容不符、捕获变化与128文件/4MiB边界。随后两个独立进程启动真实
+installed页面，验证SDK typed rows、队列、事务回滚、失败旧页、离页撤销和关闭owner。
+闭库复制主库后，`scripts/test_app_install_registry_evidence.py --run-root <正式目录>`独立核对
+八条结构化记录、恢复generation及全部初始资源SHA-256；不用Runtime自己的成功日志作唯一依据。
+包哈希12/12、零holder、双空间和新增dump检查仍必需。该门不代替原生确认/取消、双语、触摸、
+SIP、旋转、Release普通启动或PXI验收，也不证明FULL/断电或外置卷故障已解决。
 
 ## 显式 Debug 平台门
 

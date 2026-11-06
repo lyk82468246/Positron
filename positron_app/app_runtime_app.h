@@ -2,6 +2,7 @@
 #ifndef POSITRON_APP_RUNTIME_APP_H
 #define POSITRON_APP_RUNTIME_APP_H
 #include "app_runtime_platform.h"
+#include "app_runtime_install.h"
 typedef struct AppRuntimeApp AppRuntimeApp;
 typedef struct AppRuntimePage AppRuntimePage;
 #define APP_RUNTIME_OPENING 0
@@ -11,6 +12,9 @@ typedef struct AppRuntimePage AppRuntimePage;
 #define APP_RUNTIME_READY 4
 
 AppRuntimeApp *AppRuntimeApp_Start(const char *directory);
+AppRuntimeApp *AppRuntimeApp_StartKind(int kind,const char *target,AppSettingsStore *store);
+int AppRuntimeApp_InstallationAction(AppRuntimeApp *app);
+int AppRuntimeApp_ApproveInstallation(AppRuntimeApp *app);
 int AppRuntimeApp_State(AppRuntimeApp *app);
 int AppRuntimeApp_Result(AppRuntimeApp *app);
 /* UI only, after explicit native confirmation; no DB call on this thread. */

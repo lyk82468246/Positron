@@ -28,6 +28,7 @@ Positron DLL 的真实 WM6 应用宿主。范围固定为 HTTP/HTTPS、EXE 内�
 - `AppDownloads`：应用级有界队列、HTTP stream/取消、用户文件确认、临时文件/发布及持久终态；不拥有 HTTP framing 或网页自动下载语义。
 - `AppDownloadPrepare`：每标签的输入代际/预检副本与 WM6 名称策略；单活动 worker 消费 HTTP Probe，先解析再允许保存，不拥有 URL/header 命名语义。
 - `AppRuntimePlatform`：向公共 Runtime 提供 WM 真实目录、保留文件读取、独占锁及同目录 data location；不解析 manifest/SQL，不负责页面授权。调用与平台预算见 [Runtime 宿主适配器](RUNTIME_HOST.md)，目录应用的后续接线遵循 [运行时计划](../docs/RUNTIME_PLAN.md)。
+- `AppRuntimeInstall` / `AppRuntimeRegistry` / `AppInstallStore`：首次安装与普通installed启动的worker调度、原生协调与主库结构化持久CAS；转换、提交结果分类、身份/资源核验和存储语义仍由Runtime/DB拥有。调用和恢复见[Runtime宿主](RUNTIME_HOST.md#首次安装与普通installed启动)。
 
 页面 callback 的 `pw` 指向对应页面上下文。网络 worker 只负责 transport 和消息投递，存储
 worker 只拥有自己的 DB/statement，不读取页面；Core、
@@ -285,7 +286,7 @@ DB DLL 优先从同部署目录加载；该文件不存在时选择 CAB 的固�
 执行，仍消费原 CSS/图片事务。已接受候选及现存 session 不因保存而改变，可信设置代码不受此开关影响。
 
 设置接受 HTTP(S) 或 newtab、welcome、controls，不执行 quit、不储存任意 SQL 或恢复标签。
-共享 schema v4 保留 `app_preferences`、旧 `app_settings` 主页行和访问表，并加入下载表；应用拥有版本、
+共享schema v5保留设置、访问及v4下载表，新增独立安装登记表；应用拥有版本、
 约束和绑定参数；迁移只消费 `PDb_ApplyMigration`，不读取 DLL 私有 metadata。不存在表时
 执行共享迁移，已有设置先验证版本/值，再用公开迁移接口检查版本；异常、缺行和未来版本均拒绝，
 不以默认值覆盖坏数据或重建数据库。

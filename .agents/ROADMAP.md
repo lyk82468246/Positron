@@ -239,12 +239,12 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：目录/SDK/Notes开发基线、安装数据准备、READY存储与页面队列已形成；最终登记和PXI仍待实现。**
+**状态：公共首次安装合同已形成，EXE持久登记/普通installed启动自动门通过，原生UI待人工验收；PXI仍待实现。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-最终READY协调退出待办。唯一下一步为EXE首次安装消费者纵切：先以已冻结且核验的目录接真实主库持久登记provider、明确确认/恢复UI和普通installed启动，复用InstallIntent→InstallData→InstallCommit及OpenInstalled/InstalledStorageOpen，不在宿主复制CAS分类或转换旧开发身份。验收须覆盖正常关闭重开免重复安装提示、未知提交读回/取消、错误数据拒绝与不重放迁移，保留开发目录每次确认；登记SQL/主库迁移属于EXE。PXI隔离输出另接Archive，不把ZIP枚举等同安装；revision>1及更新仍关闭。当前仿真器外置映射卷出现SQLite CANTOPEN/native2，内置Temp有独立门；不得以换位置冒充卷故障修复或在已绑定数据后自动回退。
+EXE候选已接主库v5结构化登记、同worker原子CAS、明确确认/恢复与独立installed启动；最终自动门已过；原生确认/拒绝、普通重开免提示仍待人工门，之后退出待开发。继续保护丢失提交结果读回、未知结果不重放、迁移后缀恢复、错误数据不CREATE及开发目录每次确认。PXI隔离输出另接Archive，须独立验证完整输出、CRC/预算、失败/取消清理、不覆盖及原生安装确认；不把ZIP枚举等同安装。revision>1、更新/卸载仍关闭，需先有持久恢复合同。外置映射卷CANTOPEN/native2仍待取证，不移动已绑定数据或以内置门冒充卷故障修复。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 

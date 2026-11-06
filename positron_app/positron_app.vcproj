@@ -95,6 +95,13 @@
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_install_store.c" />
+		<File RelativePath=".\app_install_store.h" />
+		<File RelativePath=".\app_runtime_registry.c" />
+		<File RelativePath=".\app_runtime_registry.h" />
+		<File RelativePath=".\app_runtime_install.c" />
+		<File RelativePath=".\app_runtime_install.h" />
+		<File RelativePath=".\app_runtime_install_debug.c" />
 		<File RelativePath=".\app_runtime_app.c" />
 		<File RelativePath=".\app_runtime_app.h" />
 		<File RelativePath=".\app_runtime_services.c" />

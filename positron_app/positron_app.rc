@@ -106,6 +106,11 @@ BEGIN
     IDS_RUNTIME_SQL_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nRun this development directory with JavaScript and its own SQL database? Declared migrations may change its saved data. Publisher not verified. Only run applications you trust. No browser data or arbitrary files are granted."
     IDS_RUNTIME_FAILED_EN "The development application could not be opened. Its files were kept."
     IDS_RUNTIME_SQL_UNAVAILABLE_EN "SQL access could not be authorized. No author code was run."
+    IDS_INSTALL_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nInstall this application? Publisher not verified. Its JavaScript code will run. Only install applications you trust. No native services are requested. After installation, normal starts will not ask again."
+    IDS_INSTALL_SQL_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nInstall this application? Publisher not verified. Its JavaScript code may read and change its own saved database. It cannot access browser data or arbitrary files. Only install applications you trust. After installation, normal starts will not ask again."
+    IDS_INSTALL_RECOVER_EN "%s\nID: %s\nVersion: %lu\n\nComplete this unfinished installation? Existing application data will be kept. Publisher not verified. Its JavaScript code will run once installation succeeds. No native services are requested."
+    IDS_INSTALL_SQL_RECOVER_EN "%s\nID: %s\nVersion: %lu\n\nComplete this unfinished installation? Existing application data will be kept. Publisher not verified. Its JavaScript code may read and change its own saved database after successful installation. Browser data and arbitrary files are not granted."
+    IDS_INSTALL_FAILED_EN "The application installation or startup could not be completed. Files and saved data were kept. Reopen the application to check its installation state."
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
@@ -216,6 +221,11 @@ BEGIN
     IDS_RUNTIME_SQL_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n启用 JavaScript 和应用独立的 SQL 数据库运行此目录？声明的迁移可能修改其已保存数据。发布者未验证，请只运行信任的应用。不授予浏览器数据或任意文件权限。"
     IDS_RUNTIME_FAILED_ZH "无法打开开发目录应用，原有文件已保留。"
     IDS_RUNTIME_SQL_UNAVAILABLE_ZH "无法授权 SQL 访问，未运行作者代码。"
+    IDS_INSTALL_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n安装此应用？发布者未验证，应用将执行 JavaScript 代码。请只安装信任的应用。本应用不请求原生服务。安装成功后正常启动不再询问。"
+    IDS_INSTALL_SQL_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n安装此应用？发布者未验证，应用的 JavaScript 代码可以读取和修改其独立保存的数据库，不授予浏览器数据或任意文件权限。请只安装信任的应用。安装成功后正常启动不再询问。"
+    IDS_INSTALL_RECOVER_ZH "%s\nID: %s\n版本：%lu\n\n继续完成上次未完成的安装？保留现有应用数据。发布者未验证，安装成功后应用将执行 JavaScript 代码。本应用不请求原生服务。"
+    IDS_INSTALL_SQL_RECOVER_ZH "%s\nID: %s\n版本：%lu\n\n继续完成上次未完成的安装？保留现有应用数据。发布者未验证，安装成功后应用的 JavaScript 代码可以读取和修改其独立数据库，不授予浏览器数据或任意文件权限。"
+    IDS_INSTALL_FAILED_ZH "无法完成应用安装或启动。原有文件和保存的数据已保留。请重新打开应用检查安装状态。"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"

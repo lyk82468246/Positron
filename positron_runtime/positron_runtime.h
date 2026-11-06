@@ -486,9 +486,17 @@ typedef struct PRuntimeRevisionProvider {
     unsigned int size, version;
     unsigned int digest_algorithm; /* SHA256 only; unsupported rejected before callbacks */
     void* user_data;
-    /* Atomically retain a canonical IMMUTABLE root and native coordination
-     * lease. Enumerate ALL regular files, reject links/aliases/unprovable
-     * containment. No files may change/appear/disappear until close_root.
+    /* Retain a canonical source root, native coordination and a COMPLETE
+     * IMMUTABLE resource view through close_root: a protected physical view
+     * or a trusted native snapshot of ALL regular files and exact bytes.
+     * Manifest/migrations/reads use only this same view; no snapshot-miss
+     * physical read or later catalog expansion. Reject links/aliases and
+     * unprovable containment/incomplete capture. Capturing a native snapshot
+     * must fail on observed changes; it is NOT an atomic filesystem snapshot
+     * or protection against malicious uncoordinated writers. Canonical names
+     * the physical source, content_id binds the view; every installed reopen
+     * captures/verifies anew. Physical additions after snapshot publication
+     * cannot change this view, but may cause the next startup to be refused.
      * Return UNSUPPORTED if these guarantees cannot be supplied. Partial
      * root token is closed even on failure; no generic WM adapter implied. */
     int (*open_root)(void*, const char*, unsigned int, PRuntimeDirectoryRoot*);

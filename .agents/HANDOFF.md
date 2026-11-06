@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十一个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧 ABI/消费者及应用 v4 表不变；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十一个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧ABI/消费者及应用v1–v4表保留，EXE共享schema升为v5；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -37,7 +37,7 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 旧two-1启动FAIL未关闭。新Debug双进程PAGE_PASS且Runtime/DB错误均0、哈希/冷备份/正常退出通过，但未复现旧因；不能追认旧失败。原EXE身份/存储位置、具体PID与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。旧CE5.2.318的mkdir183/CANTOPEN仍未知，新设备公共合同通过不抵消旧失败；再次失败先取非零调用/VFS快照，不删库或重试SQL，不重开FULL/断电门。
 
-首次安装只读核验及登记转换/提交结果读回已通过双配置定向门；精确选择、故障覆盖、完整日志/空间/引用/crash与清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅revision 1；意图/数据准备经原生provider写PREPARING/CANCELLED/FAILED，独立PDb迁移保留已提交前缀，次级登记错误不覆盖DB错误。READY原生存储/队列及最终InstallCommit已有独立合同，活意图/数据保有、单次CAS/精确读回与READY赢取消均属Runtime；EXE持久登记/UI/installed启动仍未接入，v4表不变。开发目录仍每次确认。Archive读写取代系统ZIP依赖，PXI隔离输出/提交仍需独立门。
+Runtime首次安装合同已由EXE候选消费：主库v5结构化app_installs、同DB worker精确CAS、原生确认/恢复、--install-dir及--app。资源为完整可信原生快照，128文件/4MiB上限另计宿主内存；成功关闭准备链后单独OpenInstalled/require-existing存储，再授权Browser。不改变公共ABI；开发目录仍每次确认，PXI/更新未接入。最终包tmp/device-runs/20261106-201232-app-runtime-install的原生phase10、两进程installed页面、12/12哈希、八条冷读摘要、相邻设置存储/服务及退出/crash通过；正式Debug/Release/CAB、C89/审计通过。清洁rebuild依赖顺序失败未算PASS；人工确认/拒绝与Release普通启动未验收。失败夹具、空间与构建证据见[EXE安装验收](../docs/history/APP_RUNTIME_INSTALL_ACCEPTANCE.md)。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -481,7 +481,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核ROADMAP与限制，最终READY协调退出待办；Debug/Release在内置Temp各六项PASS、55个导出及旧50签名/36结构不变，完整证据与外置卷失败见[最终提交验收](../docs/history/RUNTIME_FINAL_COMMIT_ACCEPTANCE.md)。当前外置映射卷有SQLite CANTOPEN/native2；内置通过不是其修复，也不能回填早期未捕获的失败根因。旧DB Release INSERT仍未归因，不自动重放SQL/删库。唯一下一步交EXE接真实持久登记provider、确认/恢复与正常installed启动，消费新合同；本会话不在宿主复制产品语义。PXI输出与更新另行处理。
+本轮已复核ROADMAP与限制；最终EXE自动门通过；唯一下一步为原生风险确认/拒绝、恢复UI与普通免提示启动人工复核，再交回主线。此前公共DLL双配置合同见[最终提交验收](../docs/history/RUNTIME_FINAL_COMMIT_ACCEPTANCE.md)。外置映射卷SQLite CANTOPEN/native2及旧DB Release INSERT仍未归因，不自动重放SQL/删库或移动绑定数据；内置Temp门不证明卷故障修复。PXI输出与更新另行处理。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
