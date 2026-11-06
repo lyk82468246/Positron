@@ -46,6 +46,23 @@ SQL页面两个进程均验证32行typed结果、队列/回滚、失败旧页保
 再从归档恢复旧包并逐项回读；记录分别位于各包archived-before/after-author-gate与
 restored-after-author-gate。所有主库、应用库和已安装资源留在原路径，不迁移用户笔记。
 
+## CAB 文件关联候选
+
+CAB工程候选增加HKCR的.pxi→Positron.PXI及shell/open/command，实际解包XML命令为
+`"%InstallDir%\positron.exe" --install "%1"`，类型string、translation=install。
+`tmp/cab-pxi-association-r2`正式VS2008构建、版本化打包和EXE/十DLL载荷校验通过；
+候选打包门另核对关联目标、完整命令、类型及安装目录翻译，缺失或引号/参数改变拒绝。
+首轮INF未正确转义内层引号与字面百分号，CabWiz报unsupported DirID 0；
+VDD保留双层引号及%%1，经CabWiz后XML精确还原，不手改生成INF。
+独立helper保有Wceload句柄的第二次证据位于tmp/cab-exit-probe-r2：PID2529959694已退出，exit_code=2147500037（0x80004005/E_FAIL）。该通用错误不能归因为签名或策略；无UI安装失败未解除，点击尚未验证，不写成正式基线。空间不足的首次probe未启动安装器；完成门的新包stage资源核对归档后释放，未清数据库/已安装资源。
+
+关联候选已从默认CAB工程/打包门撤回，完整补丁保存为tmp/pxi-association-candidate.patch，
+git apply --check通过；正式设备验收前不自动恢复。独立工具--probe-cab完成Debug/Release构建，
+最终缺包拒绝、2/2二进制回读和零模块引用审计通过，证据在tmp/cab-probe-refusal-gate。
+工具不进入产品CAB，也不修改设备安全策略；缺包或日志创建失败不启动安装器，未知开关不进入清理。
+撤回时一度将Git规范LF写回VDD，已恢复ASCII/CRLF并保留加载失败日志；随后VS自身两次崩溃由
+Application事件证实，原正式配置串行重试成功，失败不算构建通过。
+
 ## 构建与连接失败
 
 首两次Debug以及一次补充自检构建在VS2008预生成阶段退出，Application事件确认

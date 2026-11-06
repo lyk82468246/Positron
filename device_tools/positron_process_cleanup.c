@@ -282,6 +282,52 @@ static int terminate_window_target(DWORD current_pid, int *targets,
     return 1;
 }
 
+/* Explicit diagnostic only: install-probe.cab must be staged beside this
+ * independent helper. Never change security policy or terminate the loader. */
+static int probe_cab_installer(void)
+{
+    WCHAR path[MAX_PATH];
+    WCHAR command[MAX_PATH + 80];
+    PROCESS_INFORMATION info;
+    DWORD wait_result;
+    DWORD exit_code;
+    char line[256];
+
+    if (log_path(path, L"install-probe.cab") != 0 ||
+            GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) {
+        write_text("cab_probe phase=input result=missing\r\n");
+        return 1;
+    }
+    wsprintfW(command, L"/noaskdest /noui /silent /delete 0 \"%s\"", path);
+    memset(&info, 0, sizeof(info));
+    if (!CreateProcessW(L"\\Windows\\wceload.exe", command,
+            NULL, NULL, FALSE, 0, NULL, NULL, NULL, &info)) {
+        _snprintf(line, sizeof(line) - 1,
+                "cab_probe phase=create error=%lu\r\n", (unsigned long)GetLastError());
+        line[sizeof(line) - 1] = '\0'; write_text(line);
+        return 1;
+    }
+    _snprintf(line, sizeof(line) - 1, "cab_probe phase=started pid=%lu\r\n",
+            (unsigned long)info.dwProcessId);
+    line[sizeof(line) - 1] = '\0'; write_text(line);
+    FlushFileBuffers(g_log);
+    wait_result = WaitForSingleObject(info.hProcess, 30000);
+    exit_code = 0;
+    if (wait_result == WAIT_OBJECT_0 && GetExitCodeProcess(info.hProcess, &exit_code)) {
+        _snprintf(line, sizeof(line) - 1,
+                "cab_probe phase=exited pid=%lu exit_code=%lu\r\n",
+                (unsigned long)info.dwProcessId, (unsigned long)exit_code);
+    } else {
+        _snprintf(line, sizeof(line) - 1,
+                "cab_probe phase=unresolved pid=%lu wait=%lu error=%lu\r\n",
+                (unsigned long)info.dwProcessId, (unsigned long)wait_result,
+                (unsigned long)GetLastError());
+    }
+    line[sizeof(line) - 1] = '\0'; write_text(line);
+    CloseHandle(info.hThread); CloseHandle(info.hProcess);
+    return 0; /* Only observation completed; not proof of installation. */
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
         LPWSTR lpCmdLine, int nCmdShow)
 {
@@ -297,6 +343,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     char line[256];
     int audit_mode;
     int audit_result;
+    int cab_mode;
 
     (void) hInstance;
     (void) hPrev;
@@ -304,10 +351,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrev,
     g_log = INVALID_HANDLE_VALUE;
     audit_mode = lpCmdLine != NULL &&
             lstrcmpiW(lpCmdLine, L"--audit-modules") == 0;
-    if (log_path(path, audit_mode ? L"module-audit.log" :
+    cab_mode = lpCmdLine != NULL && lstrcmpiW(lpCmdLine, L"--probe-cab") == 0;
+    if (lpCmdLine != NULL && lpCmdLine[0] != 0 && !audit_mode && !cab_mode) return 2;
+    if (log_path(path, cab_mode ? L"cab-probe.log" : audit_mode ? L"module-audit.log" :
             L"process-cleanup.log") == 0) {
         g_log = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, NULL,
                 CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    }
+    if (cab_mode) {
+        if (g_log == INVALID_HANDLE_VALUE) return 1;
+        audit_result = probe_cab_installer();
+        if (g_log != INVALID_HANDLE_VALUE) {
+            FlushFileBuffers(g_log); CloseHandle(g_log);
+        }
+        return audit_result;
     }
     if (audit_mode) {
         write_text("Positron module audit v1\r\n");

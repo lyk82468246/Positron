@@ -31,7 +31,7 @@ writer 同步添加条目、块间取消，Finish 后由宿主提交；未实现
 
 ### Runtime 当前验收与安装边界
 
-CAB补Archive/Runtime，构建及载荷校验通过。tmp/cab-runtime-versioned中Wceload PID3065120078安装后两次无目标文件，设备门未过、未发布，不改安全策略。ROADMAP已复核，系统关联前先完成CAB设备门。
+CAB关联未入默认路径，补丁在tmp/pxi-association-candidate.patch；Wceload退出E_FAIL，安装/点击未过。独立--probe-cab双配置构建/缺包拒绝设备门过；不改安全策略。ROADMAP复核不变，详见PXI取证。
 
 
 开发目录、资源/SQL队列与SDK合同见[Runtime README](../positron_runtime/README.md)，EXE平台与逐页授权见[Runtime宿主](../positron_app/RUNTIME_HOST.md)。实例按原标签绑定，不按URL授权；候选取消撤销其服务，旧页保留。空CSS/import/JS、回滚/隔离/关闭已有设备门，OS/DPI仅对原运行有效；旧空资源失败与修复见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
