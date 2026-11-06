@@ -66,6 +66,7 @@ function Assert-InfFile([string]$infPath, [string]$version, [string]$buildDate) 
 
     foreach ($name in @(
         "positron_tls\.dll", "positron_json\.dll", "positron_db\.dll", "positron_http\.dll",
+        "positron_archive\.dll", "positron_runtime\.dll",
         "positron_core\.dll", "positron_image\.dll", "positron_script\.dll",
         "positron_browser\.dll", "PositronSymbolsBasic\.ttf",
         "PositronSymbols\.ttf", "PositronEmoji\.ttf", "LICENSE",
@@ -90,6 +91,43 @@ function Assert-InfFile([string]$infPath, [string]$version, [string]$buildDate) 
         }
     }
     return $text
+}
+
+function Assert-CabPayload([string]$cab, [string]$evidenceRoot) {
+    # Keep extracted evidence; never reuse a previous extraction directory.
+    $directory = Join-Path $evidenceRoot ("payload-" + [Guid]::NewGuid().ToString("N"))
+    [void][IO.Directory]::CreateDirectory($directory)
+    $expand = Join-Path $env:SystemRoot "System32\expand.exe"
+    & $expand '-F:*' $cab $directory | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "CAB payload extraction failed" }
+    [xml]$setup = [IO.File]::ReadAllText((Join-Path $directory '_setup.xml'))
+    $files = @{}
+    foreach ($folder in $setup.SelectNodes('/wap-provisioningdoc/characteristic[@type="FileOperation"]/characteristic')) {
+        foreach ($file in $folder.SelectNodes('characteristic[characteristic[@type="Extract"]]')) {
+            $name = $file.GetAttribute('type')
+            $source = $file.SelectSingleNode('characteristic[@type="Extract"]/parm[@name="Source"]').GetAttribute('value')
+            if ($files.ContainsKey($name) -or [IO.Path]::GetFileName($source) -ne $source) {
+                Fail "Duplicate or invalid CAB payload: $name"
+            }
+            $files[$name] = @($folder.GetAttribute('type'), (Join-Path $directory $source))
+        }
+    }
+    if ($files.Count -ne 19) { Fail "Expected exactly 19 CAB payload files" }
+    $expected = @{'positron.exe' = @('%InstallDir%', 'positron_app\bin\Release\positron.exe')}
+    foreach ($component in @('archive','runtime','browser','core','db','http','image','json','script','tls')) {
+        $name = 'positron_' + $component
+        $expected[$name + '.dll'] = @('%CE2%', ($name + '\bin\Release\' + $name + '.dll'))
+    }
+    foreach ($name in $expected.Keys) {
+        if (!$files.ContainsKey($name) -or $files[$name][0] -cne $expected[$name][0]) {
+            Fail "CAB missing or misplaced runtime binary: $name"
+        }
+        $inputPath = Join-Path $root $expected[$name][1]
+        if ((Get-Sha256Hex $inputPath) -cne (Get-Sha256Hex $files[$name][1])) {
+            Fail "CAB payload does not match Release output: $name"
+        }
+    }
+    Write-Host "CAB payload verified: EXE and 10 DLLs match Release outputs."
 }
 
 function Get-Sha256Hex([string]$path) {
@@ -132,6 +170,8 @@ function Assert-CabInputs {
         (Join-Path $root "positron_tls\bin\Release\positron_tls.dll"),
         (Join-Path $root "positron_json\bin\Release\positron_json.dll"),
         (Join-Path $root "positron_db\bin\Release\positron_db.dll"),
+        (Join-Path $root "positron_archive\bin\Release\positron_archive.dll"),
+        (Join-Path $root "positron_runtime\bin\Release\positron_runtime.dll"),
         (Join-Path $root "positron_http\bin\Release\positron_http.dll"),
         (Join-Path $root "positron_core\bin\Release\positron_core.dll"),
         (Join-Path $root "positron_image\bin\Release\positron_image.dll"),
@@ -273,6 +313,8 @@ if (Test-Path -LiteralPath $expand) {
         }
     }
 }
+
+Assert-CabPayload $generatedCab $output
 
 $commitLines = @(& git -C $root rev-parse HEAD)
 if ($LASTEXITCODE -ne 0 -or $commitLines.Count -eq 0) {
