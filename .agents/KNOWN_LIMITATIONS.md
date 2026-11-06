@@ -52,7 +52,7 @@ ZIP 仅有界 STORE/DEFLATE 读写；PXI/HTTP gzip 未接线，物理输出与�
 
 ## 纯资源应用 Runtime
 
-- 首次安装限revision1；PXI/更新/卸载未接入。确认UI、免提示重开、双语/Release待验收；开发目录仍确认，主库限制并发。
+- 首次安装限revision1；PXI/更新/卸载未接入。恢复UI、双语/Release待验收；开发目录仍确认，主库限制并发。
 
 ## HTML、CSS 与布局
 

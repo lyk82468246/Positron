@@ -239,16 +239,16 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：公共首次安装合同已形成，EXE持久登记/普通installed启动自动门通过，原生UI待人工验收；PXI仍待实现。**
+**状态：目录/SDK与冻结目录首次安装已形成；PXI隔离输出与安装关联待实现。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-EXE候选已接主库v5结构化登记、同worker原子CAS、明确确认/恢复与独立installed启动；最终自动门已过；原生确认/拒绝、普通重开免提示仍待人工门，之后退出待开发。继续保护丢失提交结果读回、未知结果不重放、迁移后缀恢复、错误数据不CREATE及开发目录每次确认。PXI隔离输出另接Archive，须独立验证完整输出、CRC/预算、失败/取消清理、不覆盖及原生安装确认；不把ZIP枚举等同安装。revision>1、更新/卸载仍关闭，需先有持久恢复合同。外置映射卷CANTOPEN/native2仍待取证，不移动已绑定数据或以内置门冒充卷故障修复。
+冻结目录首次安装退出待开发；保留丢失提交结果读回、未知不重放、后缀恢复、错误数据不CREATE和开发目录每次确认回归。下一纵切先复核现有Archive/Runtime合同能否覆盖PXI可信隔离输出、物理包含性、完整CRC/预算、不覆盖和取消/失败清理，再接首次安装确认与关联；公共缺口先交DLL，不把ZIP枚举等同安装。revision>1、更新/卸载仍关闭，需先有持久恢复合同。外置映射卷CANTOPEN/native2仍待取证，不移动已绑定数据或以内置门冒充卷故障修复。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 
-Notes 剩余宿主双语及 Release 普通启动验收。旧启动/CANTOPEN/mkdir183 根因仍未知，
+恢复状态原生确认UI、Notes双语及Release普通启动仍为人工backlog。旧启动/CANTOPEN/mkdir183 根因仍未知，
 再次失败时取非零快照及 VFS 原始返回再判 owner，不用新设备或新门关闭旧失败，不重开 FULL/断电门。
 受限 SQL 仍服从[DB 合同](../positron_db/README.md#opt-in-restricted-requests)，live handle 不交 UI。
 

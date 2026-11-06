@@ -31,7 +31,24 @@ generation2，未知响应项仍为READY generation2，未重放CAS。独立检�
 PRUNTIME_LIMIT，避免其他SQL错误冒充预算失败；原生phase10、两进程页面、12/12哈希、八条冷读摘要、
 退出零引用和crash门均再次通过。相邻设置存储/服务门另在同包自动运行，验证旧schema升级、
 完整偏好/回滚、未来schema6拒绝和服务隔离；结果保存在app-runtime-install-adjacent。
-原生确认/拒绝、免提示重开、双语和Release普通启动仍需人工验收。
+原生确认/拒绝、保存及免提示重开的人工结果见下节；双语和Release普通启动仍待验收。
+
+## Notes 首次安装人工验收
+
+用户在最终Debug包的原生安装风险框先选择“否”。原PID376866126日志确认返回newtab且无Notes页面提交，
+用户菜单正常退出后模块审计为零引用；冷读主库没有Notes登记，原八条登记逐字段完全未变。
+证据在同包manual-installation的declined-final-debug.log、declined-exit-modules.log、declined-cold.db及declined-result.txt。
+
+重新打开同一冻结目录，用户选择“是”、保存一条笔记并正常退出。PID4129644506的日志确认
+InstallCommit完成后单独OpenInstalled成功；冷读主库新增唯一Notes READY记录，generation2、schema1，
+完整资源摘要匹配原始示例，其余八条登记不变。私有库完整性检查通过且有一条已保存笔记，未打印笔记内容。
+accepted-final-debug.log、accepted-cold.db、notes-accepted-cold.db及accepted-result.json保留了这一证据，
+退出审计仍为零引用，未强杀或重建数据。
+
+随后以普通`--app org.positron.notes`入口重开，PID1452334954的日志确认实际app页面提交，
+没有再次进入安装/确认/提交流程。用户明确确认未弹权限框且刚保存的笔记仍在列表中。
+本轮关闭这条Debug首次安装确认/拒绝、持久保存与普通重开人工门；当前实例留给用户，不自动退出。
+未覆盖恢复状态的原生确认UI、双语、Release普通启动、PXI或所有OEM/存储故障。
 
 ## 构建与离线检查
 
@@ -59,4 +76,4 @@ CREATE TABLE AS SELECT，造成SQL_REJECTED。修为独立CREATE与INSERT SELECT
 外置映射卷CANTOPEN/native2、旧设备mkdir183及早期SQL启动失败未归因，内置通过不能关闭它们。
 不重开用户挂起的FULL/断电门。完整可信原生快照不宣称任意恶意写入的原子冻结或安全沙箱；
 宿主快照最多128文件/4MiB，另计内存。主库原有单owner策略仍限制同部署并发启动。
-PXI、更新/卸载及原生确认UI不由上述Debug门冒充通过。
+PXI、更新/卸载、恢复确认UI及Release普通启动不由上述Debug门冒充通过。
