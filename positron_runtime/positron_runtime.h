@@ -187,6 +187,7 @@ PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle r
 #define PRUNTIME_INTENT_FAILED 4U
 #define PRUNTIME_INTENT_CANCELLED 5U
 #define PRUNTIME_INTENT_UNRESOLVED 6U
+#define PRUNTIME_INTENT_FINALIZED 7U
 #define PRUNTIME_INTENT_DONE 1
 typedef struct PRuntimeInstallIntent* PRuntimeInstallIntentHandle;
 typedef struct PRuntimeInstallIntentOptions {
@@ -205,7 +206,7 @@ typedef struct PRuntimeInstallIntentProvider {
      * No active transaction/background operation survives return. Native
      * provider persists fields, not struct padding, and enforces app-ID
      * uniqueness. Runtime supplies PREPARING/CANCELLED and data-preparation
-     * FAILED records, never READY. */
+     * FAILED records; InstallCommit supplies READY or CANCELLED. */
     int (*compare_exchange)(void*, void*, const PRuntimeRegistrationRecord*,
             const PRuntimeRegistrationRecord*, unsigned int* outcome);
     void (*close)(void*, void*);
@@ -367,7 +368,7 @@ typedef struct PRuntimeInstallDataInfo {
  * primary error survives secondary error/unknown. No automatic write replay,
  * data deletion, rollback of prior commits or fallback location. Provider/CSP/
  * DB memory excluded; Runtime combined parent/intent/data reserve <=1280 KiB.
- * READY require-existing opener remains a separate unimplemented contract. */
+ * READY startup uses the separate InstalledStorageOpen contract. */
 PRUNTIME_API int PRuntime_InstallDataBegin(PRuntimeInstallIntentHandle intent,
         const PRuntimeInstallDataOptions* options, const PRuntimeStorageProvider* provider,
         PRuntimeInstallDataHandle* output);
@@ -378,6 +379,47 @@ PRUNTIME_API int PRuntime_InstallDataGetInfo(PRuntimeInstallDataHandle data, PRu
  * safe repeated NULL slot, active/wrong-thread Close preserves the handle. */
 PRUNTIME_API int PRuntime_InstallDataCancel(PRuntimeInstallDataHandle data);
 PRUNTIME_API int PRuntime_InstallDataClose(PRuntimeInstallDataHandle* data);
+/* Final first-install commit; no author execution or storage/service grant. */
+typedef struct PRuntimeInstallCommit* PRuntimeInstallCommitHandle;
+#define PRUNTIME_INSTALL_COMMIT_PENDING 1U
+#define PRUNTIME_INSTALL_COMMIT_COMPLETE 2U
+#define PRUNTIME_INSTALL_COMMIT_FAILED 3U
+#define PRUNTIME_INSTALL_COMMIT_CANCELLED 4U
+#define PRUNTIME_INSTALL_COMMIT_UNRESOLVED 5U
+#define PRUNTIME_INSTALL_COMMIT_DONE 1
+typedef struct PRuntimeInstallCommitInfo {
+    unsigned int size, version, state;
+    int error, provider_result;
+    unsigned int commit_outcome;
+    PRuntimeStorageError data_error; /* DB verification diagnostics, native only */
+    PRuntimeRegistrationRecord record; /* exact committed result only on COMPLETE/CANCELLED */
+} PRuntimeInstallCommitInfo;
+/* Live PREPARED intent, plus its live PREPARED data child iff SQL approved.
+ * No callbacks at Begin; output unchanged on failure. Retains intent, resource
+ * root, coordination lease, DB/location until CommitClose. Parent Close/Cancel
+ * and DataClose return STATE. Copies no authority from caller snapshots.
+ * Step: exact PREPARING read, retained DB idle/exact schema check, fresh exact
+ * read, at most ONE CAS, exact committed readback. No create/bind/migration,
+ * repair or automatic CAS retry. Provider's immutable-root/location and
+ * exclusive coordination obligations continue throughout; no cross-DB atomicity.
+ * Cancellation before CAS proposes CANCELLED instead; after CAS only readback,
+ * confirmed READY wins. Unknown/unreadable result is UNRESOLVED. Closing after
+ * CAS without readback also retires intent as UNRESOLVED, never permits replay.
+ * COMPLETE finalizes intent (FINALIZED); close child->data->intent->revision,
+ * then normal OpenInstalled/InstalledStorageOpen performs startup validation.
+ * Failure preserves data/PREPARING for explicit recovery; no implicit FAILED
+ * write, deletion, author SQL or execution. Lease remains held on failure.
+ * One owner thread, no callback reentry, worker or message pump; each Step has
+ * at most one provider callback or bounded DB check, not a hard wall-time bound.
+ * Combined Runtime-owned reserve <=1280 KiB; DB/provider memory excluded.
+ * Info exact size/version; error leaves output intact. Close NULL idempotent. */
+PRUNTIME_API int PRuntime_InstallCommitBegin(PRuntimeInstallIntentHandle intent,
+        PRuntimeInstallDataHandle data, PRuntimeInstallCommitHandle* output);
+PRUNTIME_API int PRuntime_InstallCommitStep(PRuntimeInstallCommitHandle commit);
+PRUNTIME_API int PRuntime_InstallCommitGetInfo(PRuntimeInstallCommitHandle commit, PRuntimeInstallCommitInfo* info);
+PRUNTIME_API int PRuntime_InstallCommitCancel(PRuntimeInstallCommitHandle commit);
+PRUNTIME_API int PRuntime_InstallCommitClose(PRuntimeInstallCommitHandle* commit);
+
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;

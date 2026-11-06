@@ -1966,7 +1966,7 @@ struct PRuntimeInstallIntent {
     void* lease;
     unsigned int phase, cancelled;
     int active, cas_result;
-    unsigned int data_children;
+    unsigned int data_children, commit_children;
 };
 typedef char runtime_intent_budget_check[(sizeof(struct PRuntimeInstallIntent) <= 8192U) ? 1 : -1];
 static int ri_ready(PRuntimeInstallIntentHandle job)
@@ -2109,9 +2109,10 @@ PRUNTIME_API int PRuntime_InstallIntentGetInfo(PRuntimeInstallIntentHandle job, 
 PRUNTIME_API int PRuntime_InstallIntentCancel(PRuntimeInstallIntentHandle job)
 {
     int rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
-    if (job->data_children) return PRUNTIME_STATE;
+    if (job->data_children || job->commit_children) return PRUNTIME_STATE;
     if (job->info.state == PRUNTIME_INTENT_CANCELLED) return PRUNTIME_OK;
-    if (job->info.state == PRUNTIME_INTENT_FAILED || job->info.state == PRUNTIME_INTENT_UNRESOLVED) return PRUNTIME_STATE;
+    if (job->info.state == PRUNTIME_INTENT_FAILED || job->info.state == PRUNTIME_INTENT_UNRESOLVED ||
+            job->info.state == PRUNTIME_INTENT_FINALIZED) return PRUNTIME_STATE;
     job->cancelled = 1;
     return job->info.state == PRUNTIME_INTENT_PREPARED ? ri_cancel_transition(job) : PRUNTIME_OK;
 }
@@ -2122,7 +2123,7 @@ PRUNTIME_API int PRuntime_InstallIntentClose(PRuntimeInstallIntentHandle* slot)
     if (!slot) return PRUNTIME_ARGUMENT;
     job = *slot; if (!job) return PRUNTIME_OK;
     rc = ri_ready(job); if (rc != PRUNTIME_OK) return rc;
-    if (job->data_children) return PRUNTIME_STATE;
+    if (job->data_children || job->commit_children) return PRUNTIME_STATE;
     job->active = job->parent->active = 1;
     if (job->lease) job->provider.close(job->provider.user_data, job->lease);
     --job->parent->intent_children; job->parent->active = 0; job->magic = 0;
@@ -2139,7 +2140,7 @@ struct PRuntimeInstallData {
     PRuntimeInstallDataInfo info;
     PRuntimeMigrationPlanHandle plan;
     PDbHandle db;
-    unsigned int phase, source_index, apply_index, cancelled;
+    unsigned int phase, source_index, apply_index, cancelled, commit_children;
     int active;
 };
 typedef char runtime_install_data_budget_check[(sizeof(struct PRuntimeRevision) +
@@ -2170,7 +2171,7 @@ PRUNTIME_API int PRuntime_InstallDataBegin(PRuntimeInstallIntentHandle intent,
     PRuntimeInstallDataHandle data;
     int rc = ri_ready(intent);
     if (rc != PRUNTIME_OK) return rc;
-    if (intent->info.state != PRUNTIME_INTENT_PREPARED || intent->data_children) return PRUNTIME_STATE;
+    if (intent->info.state != PRUNTIME_INTENT_PREPARED || intent->data_children || intent->commit_children) return PRUNTIME_STATE;
     if (!options || !provider || !output || options->size != sizeof(*options) || options->version != 1 ||
             options->vm_budget < 100 || options->vm_budget > 1000000 || options->vm_budget % 100 ||
             provider->size != sizeof(*provider) || provider->version != 1 ||
@@ -2360,10 +2361,169 @@ PRUNTIME_API int PRuntime_InstallDataClose(PRuntimeInstallDataHandle* slot)
     if (!slot) return PRUNTIME_ARGUMENT;
     data = *slot; if (!data) return PRUNTIME_OK;
     rc = rd_ready(data); if (rc != PRUNTIME_OK) return rc;
+    if (data->commit_children) return PRUNTIME_STATE;
     data->active = data->intent->active = data->intent->parent->active = 1;
     if (data->db) PDb_Close(data->db);
     if (data->location.token) data->provider.close_location(data->provider.user_data, data->location.token);
     if (data->plan) runtime_plan_dispose(data->plan);
     --data->intent->data_children; data->intent->active = data->intent->parent->active = 0;
     data->magic = 0; free(data); *slot = NULL; return PRUNTIME_OK;
+}
+
+
+#define RICOMMIT_MAGIC 0x52494331UL
+struct PRuntimeInstallCommit {
+    DWORD magic;
+    PRuntimeInstallIntentHandle intent;
+    PRuntimeInstallDataHandle data;
+    PRuntimeRegistrationTransition transition;
+    PRuntimeInstallCommitInfo info;
+    unsigned int phase, cancelled;
+    int active, cas_result;
+};
+typedef char runtime_install_commit_budget_check[(sizeof(struct PRuntimeRevision) +
+    sizeof(struct PRuntimeInstallIntent) + sizeof(struct PRuntimeInstallData) +
+    sizeof(struct PRuntimeInstallCommit) + sizeof(struct PRuntimeMigrationPlan) +
+    PRUNTIME_MIGRATION_TOTAL_BYTES + 131072U <= 1280U * 1024U) ? 1 : -1];
+static int rc_ready(PRuntimeInstallCommitHandle job)
+{
+    if (!job || job->magic != RICOMMIT_MAGIC) return PRUNTIME_ARGUMENT;
+    return job->active ? PRUNTIME_STATE : ri_ready(job->intent);
+}
+static int rc_fail(PRuntimeInstallCommitHandle job, int error, int unresolved)
+{
+    job->info.error = unresolved ? PRUNTIME_UNRESOLVED : error;
+    job->info.state = unresolved ? PRUNTIME_INSTALL_COMMIT_UNRESOLVED : PRUNTIME_INSTALL_COMMIT_FAILED;
+    ri_fail(job->intent, error, unresolved);
+    return job->info.error;
+}
+PRUNTIME_API int PRuntime_InstallCommitBegin(PRuntimeInstallIntentHandle intent,
+        PRuntimeInstallDataHandle data, PRuntimeInstallCommitHandle* output)
+{
+    PRuntimeInstallCommitHandle job;
+    int rc = ri_ready(intent);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!output) return PRUNTIME_ARGUMENT;
+    if (intent->info.state != PRUNTIME_INTENT_PREPARED || intent->commit_children ||
+            !intent->info.record_known || !intent->info.record_exists ||
+            intent->info.record.state != PRUNTIME_REG_PREPARING) return PRUNTIME_STATE;
+    if (intent->info.record.approval.approved_permissions & PRUNTIME_PERMISSION_SQL) {
+        rc = rd_ready(data); if (rc != PRUNTIME_OK) return rc;
+        if (data->intent != intent || data->info.state != PRUNTIME_INSTALL_DATA_PREPARED ||
+                !data->db || !data->location.token || data->commit_children ||
+                data->info.current_schema != intent->info.record.target_schema) return PRUNTIME_STATE;
+    } else if (data || intent->data_children) return PRUNTIME_ARGUMENT;
+    if (intent->info.record.generation == 2147483647U) return PRUNTIME_LIMIT;
+    job = (PRuntimeInstallCommitHandle)calloc(1, sizeof(*job)); if (!job) return PRUNTIME_MEMORY;
+    job->magic = RICOMMIT_MAGIC; job->intent = intent; job->data = data;
+    job->transition.size = sizeof(job->transition); job->transition.version = 1;
+    job->transition.previous_exists = 1; job->transition.previous = intent->info.record;
+    job->transition.proposed = intent->info.record; job->transition.proposed.state = PRUNTIME_REG_READY;
+    ++job->transition.proposed.generation;
+    job->info.size = sizeof(job->info); job->info.version = 1;
+    job->info.state = PRUNTIME_INSTALL_COMMIT_PENDING;
+    runtime_storage_error_init(&job->info.data_error, PRUNTIME_OK);
+    ++intent->commit_children; if (data) ++data->commit_children;
+    *output = job; return PRUNTIME_OK;
+}
+static int rc_step(PRuntimeInstallCommitHandle job)
+{
+    PRuntimeInstallIntentHandle intent = job->intent;
+    PRuntimeRegistrationRecord current;
+    PRuntimeRegistrationDecision decision;
+    PDbConnectionState db_state;
+    int version, found, rc;
+    unsigned int outcome;
+    if (job->phase == 1 && job->data) {
+        memset(&db_state, 0, sizeof(db_state)); db_state.size = sizeof(db_state); db_state.version = PDB_CONNECTION_STATE_VERSION;
+        rc = PDb_GetConnectionState(job->data->db, &db_state);
+        if (rc != PDB_OK || db_state.transaction_active || db_state.statement_count)
+            return rc_fail(job, runtime_db_error(job->data->db, &job->info.data_error, rc != PDB_OK ? rc : PDB_STATE, 0), 0);
+        rc = PDb_GetMigrationVersion(job->data->db, &version);
+        if (rc != PDB_OK) return rc_fail(job, runtime_db_error(job->data->db, &job->info.data_error, rc, 0), 0);
+        if ((unsigned int)version != job->transition.previous.target_schema) return rc_fail(job, PRUNTIME_SCHEMA, 0);
+        ++job->phase; return PRUNTIME_OK;
+    }
+    if (job->phase == 1) { ++job->phase; return PRUNTIME_OK; }
+    if (job->phase == 3) {
+        if ((intent->parent->options.cancelled && intent->parent->options.cancelled(intent->parent->options.user_data)) ||
+                (job->data && job->data->options.cancelled && job->data->options.cancelled(job->data->options.user_data)))
+            job->cancelled = 1;
+        if (job->cancelled) job->transition.proposed.state = PRUNTIME_REG_CANCELLED;
+        outcome = PRUNTIME_COMMIT_UNKNOWN;
+        rc = rv_provider_rc(intent->provider.compare_exchange(intent->provider.user_data, intent->lease,
+                &job->transition.previous, &job->transition.proposed, &outcome));
+        if (outcome < PRUNTIME_COMMIT_CONFIRMED || outcome > PRUNTIME_COMMIT_UNKNOWN) {
+            outcome = PRUNTIME_COMMIT_UNKNOWN; rc = PRUNTIME_IO;
+        }
+        job->cas_result = job->info.provider_result = intent->info.provider_result = rc;
+        job->transition.commit_outcome = job->info.commit_outcome = intent->info.commit_outcome = outcome;
+        intent->info.record_known = intent->info.record_exists = 0;
+        memset(&intent->info.record, 0, sizeof(intent->info.record));
+        ++job->phase; return PRUNTIME_OK;
+    }
+    memset(&current, 0, sizeof(current)); current.size = sizeof(current); current.version = 1;
+    rc = intent->provider.read(intent->provider.user_data, intent->lease, &current);
+    found = rc != PRUNTIME_NOT_FOUND;
+    if (!found) rc = PRUNTIME_OK; else rc = rv_provider_rc(rc);
+    job->info.provider_result = rc;
+    if (rc != PRUNTIME_OK) return rc_fail(job, rc, job->phase == 4);
+    if (found) rc = rv_registration_valid(intent->parent, &current);
+    if (rc != PRUNTIME_OK) return rc_fail(job, rc, 0);
+    ri_observed(intent, &current, found);
+    if (job->phase < 3) {
+        if (!found || !rv_same_registration(&current, &job->transition.previous))
+            return rc_fail(job, PRUNTIME_INVALID, 0);
+        ++job->phase; return PRUNTIME_OK;
+    }
+    memset(&decision, 0, sizeof(decision));
+    rc = rv_registration_decide(&job->transition, &current, found, &decision);
+    if (rc != PRUNTIME_OK) return rc_fail(job, rc, 0);
+    if (decision.match == PRUNTIME_REG_MATCH_PREVIOUS)
+        return rc_fail(job, job->cas_result != PRUNTIME_OK ? job->cas_result : PRUNTIME_IO, 0);
+    job->info.record = current;
+    if (current.state == PRUNTIME_REG_READY) {
+        job->info.state = PRUNTIME_INSTALL_COMMIT_COMPLETE;
+        intent->info.state = PRUNTIME_INTENT_FINALIZED;
+        return PRUNTIME_INSTALL_COMMIT_DONE;
+    }
+    job->info.state = PRUNTIME_INSTALL_COMMIT_CANCELLED; job->info.error = PRUNTIME_CANCELLED;
+    intent->info.state = PRUNTIME_INTENT_CANCELLED; intent->info.error = PRUNTIME_CANCELLED;
+    return PRUNTIME_CANCELLED;
+}
+PRUNTIME_API int PRuntime_InstallCommitStep(PRuntimeInstallCommitHandle job)
+{
+    int rc = rc_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_INSTALL_COMMIT_PENDING) return PRUNTIME_STATE;
+    job->active = job->intent->active = job->intent->parent->active = 1;
+    if (job->data) job->data->active = 1;
+    rc = rc_step(job);
+    if (job->data) job->data->active = 0;
+    job->intent->parent->active = job->intent->active = job->active = 0;
+    return rc;
+}
+PRUNTIME_API int PRuntime_InstallCommitGetInfo(PRuntimeInstallCommitHandle job, PRuntimeInstallCommitInfo* info)
+{
+    int rc = rc_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != 1) return PRUNTIME_ARGUMENT;
+    *info = job->info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallCommitCancel(PRuntimeInstallCommitHandle job)
+{
+    int rc = rc_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_INSTALL_COMMIT_PENDING) return PRUNTIME_STATE;
+    job->cancelled = 1; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_InstallCommitClose(PRuntimeInstallCommitHandle* slot)
+{
+    PRuntimeInstallCommitHandle job;
+    int rc;
+    if (!slot) return PRUNTIME_ARGUMENT;
+    job = *slot; if (!job) return PRUNTIME_OK;
+    rc = rc_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->phase == 4 && job->info.state == PRUNTIME_INSTALL_COMMIT_PENDING)
+        ri_fail(job->intent, PRUNTIME_UNRESOLVED, 1);
+    if (job->data) --job->data->commit_children;
+    --job->intent->commit_children;
+    job->magic = 0; free(job); *slot = NULL; return PRUNTIME_OK;
 }

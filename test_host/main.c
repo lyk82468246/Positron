@@ -143,6 +143,7 @@ extern BOOL test1381_db_existing_verification(void);
 extern BOOL test1382_db_existing_writable(void);
 extern BOOL test1383_runtime_ready_storage(void);
 extern BOOL test1384_runtime_installed_queue(void);
+extern BOOL test1385_runtime_install_commit(void);
 extern BOOL test1376_archive_writer_contract(void);
 extern const char* test1376_archive_writer_error(void);
 extern BOOL test1375_archive_contract(void);
@@ -1315,7 +1316,7 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1384
+#define TEST_MAX_NUMBER 1385
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118410,6 +118411,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1373_runtime_io_contract();
             if (ok) { show_info(L"TEST 1373 OK", test1373_runtime_io_report()); }
             else { show_error(L"TEST 1373 FAIL", test1373_runtime_io_last_error()); }
+            break;
+        case 1385:
+            ok = test1385_runtime_install_commit();
+            if (ok) { show_info(L"TEST 1385 OK", "Final READY CAS/readback, cancellation, retained data and unknown-outcome guards passed."); }
+            else { show_error(L"TEST 1385 FAIL", test1377_runtime_revision_error()); }
             break;
         case 1384:
             ok = test1384_runtime_installed_queue();

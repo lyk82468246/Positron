@@ -18,8 +18,9 @@ provide their own trusted platform adapter and explicit session authorization.
 
 First-install identity/content verification is available through the separate
 installed contract below. Native READY storage reuses the bounded SQL/JSON path;
-installed page queues use the same Browser copy bridge. Final READY registration
-and EXE installed launch remain separate requirements. An address never grants permission.
+installed page queues use the same Browser copy bridge. A separate retained
+InstallCommit job confirms final READY registration; EXE installed launch remains
+a separate integration requirement. An address never grants permission.
 
 ## Link and deploy
 
@@ -472,15 +473,19 @@ including exact readback and explicit resume; they never write READY or open SQL
 `PRuntime_InstallDataBegin/Step/GetInfo/Cancel/Close` separately prepare a private
 identity-bound DB from a live PREPARED intent, admit all remaining SQL sources,
 apply only the uncommitted suffix and record failure/cancellation. They expose
-no author SQL handle or startup grant.
+no author SQL handle or startup grant. `PRuntime_InstallCommitBegin/Step/GetInfo/Cancel/Close`
+then retain the prepared intent/data, recheck registration and exact schema,
+attempt one final CAS and read back READY. Unknown writes are not replayed;
+READY wins a cancellation race. See the [commit example](INSTALLED.md#committing-the-prepared-installation)
+for lifecycle, error and explicit recovery rules.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). V1 admits
 revision 1 only. `PRuntime_InstalledStorageOpen` retains that verified parent and
 an existing native DB location, refreshes READY registration and reuses typed
 SQL/JSON without CREATE, claim or migration. Installed page queues reuse the same
-bounded Browser copy channel with registration retirement; update/recovery and
-actual EXE registration remain unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
+bounded Browser copy channel with registration retirement; installed updates and
+actual EXE registration/recovery UI remain unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
 
 ## PXI availability
 

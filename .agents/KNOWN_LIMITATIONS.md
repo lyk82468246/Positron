@@ -42,10 +42,9 @@
 
 ## DB
 
-- 文件FULL、I/O、提交/回滚故障、峰值内存及真机断电仍未验收；正常重开不证明可靠性。
-- 中文文件、冷重开、跨进程锁与受控终止恢复的证据和剩余门见[文件验收](DB_FILE_ACCEPTANCE.md)，不等于断电保证。
-- 同步worker与真实HTTPS生产门未完成；REST fixture不是生产服务。
-- 主键、预算、线程和Token边界见[DB合同](../positron_db/README.md)，不承诺通用远程SQL。
+- 文件FULL、I/O、提交/回滚故障、峰值内存与真机断电未验收；FULL按用户决定挂起。解除条件和已验证恢复见[文件验收](DB_FILE_ACCEPTANCE.md)，正常重开不证明故障可靠性。
+- 旧mkdir183/CANTOPEN未关闭；当前仿真器外置映射卷另有SQLite14/native2，内置Temp通过不能关闭卷故障；[诊断与对照](../docs/history/RUNTIME_FINAL_COMMIT_ACCEPTANCE.md)。不自动重试SQL、改绑或删库。
+- 同步worker与真实HTTPS生产门未完成；REST fixture不等于生产服务。
 
 ## Archive
 
@@ -53,8 +52,7 @@ ZIP 仅有界 STORE/DEFLATE 读写；PXI/HTTP gzip 未接线，物理输出与�
 
 ## 纯资源应用 Runtime
 
-- Notes双语/Release未验收；READY最终登记及EXE安装接线未实现。
-- 旧 mkdir183/CANTOPEN 未关闭，等非零快照再定位；PXI 安装待完成。
+- Notes双语/Release未验收；EXE持久登记/UI、installed启动和PXI安装未接入。
 
 ## HTML、CSS 与布局
 

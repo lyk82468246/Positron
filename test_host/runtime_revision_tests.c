@@ -30,7 +30,7 @@ typedef struct RevisionHash {
     HCRYPTPROV provider;
     HCRYPTHASH hash;
 } RevisionHash;
-static char revision_error[200];
+static char revision_error[1024];
 static void revision_guard(RevisionFixture* f)
 {
     PRuntimeRevisionInfo info;
@@ -532,6 +532,7 @@ failed:
 typedef struct IntentFixture {
     RegistrationFixture registry;
     PRuntimeInstallIntentHandle job;
+    PRuntimeInstallCommitHandle commit_job;
     unsigned int writes, calls, commit, outcome, read_failure, fail_next_read;
     int write_result;
 } IntentFixture;
@@ -540,6 +541,16 @@ static void intent_guard(IntentFixture* f)
     PRuntimeInstallIntentInfo info;
     PRuntimeInstallIntentHandle alias;
     ++f->calls;
+    if (f->commit_job) {
+        PRuntimeInstallCommitInfo ci;
+        PRuntimeInstallCommitHandle ca = f->commit_job;
+        ci.size = sizeof(ci); ci.version = 1;
+        if (PRuntime_InstallCommitGetInfo(ca, &ci) != PRUNTIME_STATE ||
+                PRuntime_InstallCommitStep(ca) != PRUNTIME_STATE ||
+                PRuntime_InstallCommitCancel(ca) != PRUNTIME_STATE ||
+                PRuntime_InstallCommitClose(&ca) != PRUNTIME_STATE || ca != f->commit_job)
+            ++f->registry.revision->bad_guard;
+    }
     if (!f->job) return;
     info.size = sizeof(info); info.version = 1; alias = f->job;
     if (PRuntime_InstallIntentGetInfo(f->job, &info) != PRUNTIME_STATE ||
@@ -814,10 +825,12 @@ BOOL test1380_runtime_install_data_contract(void)
     WCHAR module[MAX_PATH], root[MAX_PATH], *slash;
     char identity[160];
     PDbHandle fixture_db = NULL;
+    PDbErrorInfo direct_error;
     DataThread thread_data;
     HANDLE thread;
     unsigned int mode, steps, injected, expected_rows;
     int rc = 0, expected, expected_schema, owned_root = 0;
+    memset(&info, 0, sizeof(info));
     memset(&platform, 0, sizeof(platform));
     revision_error[0] = 0;
     RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH - 55);
@@ -859,7 +872,14 @@ BOOL test1380_runtime_install_data_contract(void)
         if (mode == 3 || mode == 13 || mode == 16) { f.data[6] = (const unsigned char*)sql_bad; f.actual[6] = f.declared[6] = sizeof(sql_bad)-1;
             expected = PRUNTIME_DATABASE; expected_rows = 1; expected_schema = 1; }
         if (mode == 5 || mode == 6 || mode == 7) {
-            RCHECK(PDb_OpenUtf8(platform.utf8, PDB_OPEN_LOCAL_FULL_SQL, &fixture_db) == PDB_OK);
+            memset(&direct_error, 0, sizeof(direct_error)); direct_error.size = sizeof(direct_error); direct_error.version = PDB_ERROR_INFO_VERSION;
+            rc = PDb_OpenUtf8Ex(platform.utf8, PDB_OPEN_LOCAL_FULL_SQL, &fixture_db, &direct_error);
+            if (rc != PDB_OK) {
+                _snprintf(revision_error, sizeof(revision_error)-1,
+                    "Fixture Open failed mode=%u db=%d sqlite=%d/%d msg=%.240s", mode, rc,
+                    direct_error.sqlite_code, direct_error.sqlite_extended_code, direct_error.message);
+                revision_error[sizeof(revision_error)-1] = 0; goto failed;
+            }
             if (mode == 5) RCHECK(PDb_BindLocalIdentity(fixture_db, "Positron.storage.v1:development:other", 35) == PDB_OK);
             if (mode == 6) RCHECK(PDb_Exec(fixture_db, "CREATE TABLE unclaimed(n INTEGER)") == PDB_OK);
             if (mode == 7) {
@@ -949,6 +969,14 @@ BOOL test1380_runtime_install_data_contract(void)
     }
     RCHECK(RemoveDirectoryW(root)); return TRUE;
 failed:
+    {
+        unsigned int used = (unsigned int)strlen(revision_error);
+        _snprintf(revision_error + used, sizeof(revision_error) - used - 1,
+            " mode=%u primary=%d schema=%lu db=%d sqlite=%d/%d msg=%.240s", mode,
+            info.error.result, info.error.failed_schema_version, info.error.db_result,
+            info.error.sqlite_code, info.error.sqlite_extended_code, info.error.message);
+        revision_error[sizeof(revision_error)-1] = 0;
+    }
     if (fixture_db) PDb_Close(fixture_db);
     if (data) PRuntime_InstallDataClose(&data);
     platform.data = NULL;
@@ -1271,7 +1299,7 @@ BOOL test1383_runtime_ready_storage(void)
         }
         rc = PRuntime_InstalledStorageOpen(job, &options, &provider, &other, &error);
         if (rc != expected) {
-            sprintf(revision_error, "READY mode=%u rc=%d expected=%d DB=%d sqlite=%d %.70s", mode, rc, expected,
+            sprintf(revision_error, "READY mode=%u rc=%d expected=%d DB=%d sqlite=%d %.240s", mode, rc, expected,
                     error.db_result, error.sqlite_extended_code, error.message); goto failed;
         }
         if (rc == PRUNTIME_OK) {
@@ -1582,4 +1610,213 @@ failed:
         free(f);
     }
     free(result); free(canary); return FALSE;
+}
+
+
+typedef struct CommitThread { PRuntimeInstallCommitHandle job; int ok; } CommitThread;
+static DWORD WINAPI commit_other_thread(void* user)
+{
+    CommitThread* t = (CommitThread*)user;
+    PRuntimeInstallCommitHandle alias = t->job;
+    PRuntimeInstallCommitInfo info;
+    info.size = sizeof(info); info.version = 1;
+    t->ok = PRuntime_InstallCommitStep(t->job) == PRUNTIME_STATE &&
+        PRuntime_InstallCommitGetInfo(t->job, &info) == PRUNTIME_STATE &&
+        PRuntime_InstallCommitCancel(t->job) == PRUNTIME_STATE &&
+        PRuntime_InstallCommitClose(&alias) == PRUNTIME_STATE && alias == t->job;
+    return 0;
+}
+BOOL test1385_runtime_install_commit(void)
+{
+    static const char no_sql[] = "{\"manifestVersion\":1,\"id\":\"com.example.installed\",\"name\":\"Commit\",\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
+    static const char migrated[] = "{\"manifestVersion\":1,\"id\":\"com.example.installed\",\"name\":\"Commit\",\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[\"storage.sql\"],\"migrations\":[{\"version\":1,\"file\":\"one.sql\"}]}";
+    static const char sql[] = "CREATE TABLE journal(n INTEGER);INSERT INTO journal VALUES(1);";
+    RevisionFixture f;
+    IntentFixture native;
+    InstallDataFixture platform;
+    PRuntimeRevisionProvider resource;
+    PRuntimeInstalledProvider unused;
+    PRuntimeRevisionOptions revision_options;
+    PRuntimeRevisionHandle revision = NULL;
+    PRuntimeInstallIntentHandle intent = NULL, ia;
+    PRuntimeInstallIntentProvider provider;
+    PRuntimeInstallIntentOptions options;
+    PRuntimeStorageProvider location;
+    PRuntimeInstallDataOptions data_options;
+    PRuntimeInstallDataHandle data = NULL, da;
+    PRuntimeInstallCommitHandle job = NULL, alias;
+    PRuntimeInstallCommitInfo info, sentinel;
+    PRuntimeInstallIntentInfo ii;
+    CommitThread t;
+    HANDLE thread;
+    PDbHandle changed_db = NULL;
+    WCHAR module[MAX_PATH], root[MAX_PATH], *slash;
+    unsigned int mode, step, writes, calls;
+    int rc = 0, expected, owned = 0;
+    memset(&platform, 0, sizeof(platform)); revision_error[0] = 0;
+    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH - 55);
+    slash = wcsrchr(module, L'\\'); RCHECK(slash != NULL); *slash = 0;
+    wsprintfW(root, L"%s\\install-commit-%lu", module, GetCurrentProcessId());
+    owned = CreateDirectoryW(root, NULL) != 0; RCHECK(owned);
+    memset(&provider, 0, sizeof(provider)); provider.size = sizeof(provider); provider.version = 1;
+    provider.user_data = &native; provider.acquire = intent_acquire; provider.read = intent_read;
+    provider.compare_exchange = intent_cas; provider.close = intent_close;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    options.mode = PRUNTIME_INTENT_NEW; options.approval.size = sizeof(options.approval); options.approval.version = 1;
+    options.approval.confirmed = 1; options.approval.revision = 1;
+    strcpy(options.approval.installation_id, "00112233445566778899aabbccddeeff");
+    memset(&location, 0, sizeof(location)); location.size = sizeof(location); location.version = 1;
+    location.user_data = &platform; location.open_location = install_data_location; location.close_location = install_data_location_close;
+    memset(&data_options, 0, sizeof(data_options)); data_options.size = sizeof(data_options); data_options.version = 1;
+    data_options.vm_budget = 100000;
+    for (mode = 0; mode < 20; ++mode) {
+        expected = PRUNTIME_INSTALL_COMMIT_DONE;
+        revision_fixture(&f, NULL); revision_tables(&f, &resource, &unused, &revision_options);
+        memset(&native, 0, sizeof(native)); native.registry.revision = &f;
+        native.registry.read_result = PRUNTIME_NOT_FOUND; native.commit = 1; native.outcome = PRUNTIME_COMMIT_CONFIRMED;
+        memset(&platform, 0, sizeof(platform)); platform.registry = &native;
+        wsprintfW(platform.path, L"%s\\case-%u.db", root, mode);
+        RCHECK(WideCharToMultiByte(CP_UTF8, 0, platform.path, -1, platform.utf8, sizeof(platform.utf8), NULL, NULL));
+        if (mode == 1) { f.data[0] = (const unsigned char*)no_sql; f.actual[0] = f.declared[0] = sizeof(no_sql)-1; }
+        if (mode == 2) {
+            f.data[0] = (const unsigned char*)migrated; f.actual[0] = f.declared[0] = sizeof(migrated)-1;
+            f.count = 6; strcpy(f.paths[5], "one.sql"); f.data[5] = (const unsigned char*)sql;
+            f.actual[5] = f.declared[5] = sizeof(sql)-1;
+        }
+        RCHECK(PRuntime_PrepareRevision("\\revision-root", 14, &resource, &revision_options, &revision) == PRUNTIME_OK);
+        RCHECK(revision_run(&f, revision) == PRUNTIME_REVISION_DONE);
+        RCHECK(PRuntime_InstallIntentBegin(revision, &options, &provider, &intent) == PRUNTIME_OK); native.job = intent;
+        do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+        RCHECK(rc == PRUNTIME_INTENT_DONE);
+        if (mode != 1) {
+            alias = (PRuntimeInstallCommitHandle)&native;
+            RCHECK(PRuntime_InstallCommitBegin(intent, NULL, &alias) == PRUNTIME_ARGUMENT && alias == (PRuntimeInstallCommitHandle)&native);
+            RCHECK(PRuntime_InstallDataBegin(intent, &data_options, &location, &data) == PRUNTIME_OK); platform.data = data;
+            if (mode == 17) {
+                RCHECK(PRuntime_InstallCommitBegin(intent, data, &alias) == PRUNTIME_STATE && alias == (PRuntimeInstallCommitHandle)&native);
+            }
+            do { rc = PRuntime_InstallDataStep(data); } while (rc == PRUNTIME_OK);
+            RCHECK(rc == PRUNTIME_INSTALL_DATA_DONE);
+        }
+        if (mode == 16) {
+            /* Public resume proves overflow refusal without private handle edits. */
+            if (data) { RCHECK(PRuntime_InstallDataClose(&data) == PRUNTIME_OK); platform.data = NULL; }
+            RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK); native.job = NULL;
+            native.registry.record.generation = 2147483647U; options.mode = PRUNTIME_INTENT_RESUME;
+            RCHECK(PRuntime_InstallIntentBegin(revision, &options, &provider, &intent) == PRUNTIME_OK); native.job = intent;
+            do { rc = PRuntime_InstallIntentStep(intent); } while (rc == PRUNTIME_OK);
+            RCHECK(rc == PRUNTIME_INTENT_DONE);
+            /* SQL data admission itself refuses generation overflow. */
+            RCHECK(PRuntime_InstallDataBegin(intent, &data_options, &location, &data) == PRUNTIME_LIMIT);
+            options.mode = PRUNTIME_INTENT_NEW;
+            goto case_done;
+        }
+        RCHECK(PRuntime_InstallCommitBegin(intent, data, &job) == PRUNTIME_OK); native.commit_job = job;
+        alias = NULL; RCHECK(PRuntime_InstallCommitBegin(intent, data, &alias) == PRUNTIME_STATE && !alias);
+        ia = intent; da = data;
+        RCHECK(PRuntime_InstallIntentClose(&ia) == PRUNTIME_STATE && ia == intent);
+        RCHECK(PRuntime_InstallIntentCancel(intent) == PRUNTIME_STATE);
+        if (data) RCHECK(PRuntime_InstallDataClose(&da) == PRUNTIME_STATE && da == data);
+        if (!mode) {
+            t.job = job; t.ok = 0; thread = CreateThread(NULL, 0, commit_other_thread, &t, 0, NULL);
+            RCHECK(thread && WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); CloseHandle(thread); RCHECK(t.ok);
+        }
+        memset(&info, 0x55, sizeof(info)); info.size = sizeof(info); info.version = 2; sentinel = info;
+        RCHECK(PRuntime_InstallCommitGetInfo(job, &info) == PRUNTIME_ARGUMENT && !memcmp(&info, &sentinel, sizeof(info)));
+        info.version = 1; expected = PRUNTIME_INSTALL_COMMIT_DONE;
+        writes = native.writes;
+        if (mode == 19) {
+            RCHECK(PDb_OpenUtf8(platform.utf8, PDB_OPEN_LOCAL_FULL_SQL, &changed_db) == PDB_OK);
+            RCHECK(PDb_ApplyMigration(changed_db, 1, "CREATE TABLE changed(n INTEGER)") == PDB_OK);
+            PDb_Close(changed_db); changed_db = NULL; expected = PRUNTIME_SCHEMA;
+        }
+        if (mode == 3) { native.outcome = PRUNTIME_COMMIT_UNKNOWN; native.write_result = PRUNTIME_IO; }
+        if (mode == 4) { native.commit = 0; native.outcome = PRUNTIME_COMMIT_UNKNOWN; native.write_result = PRUNTIME_IO; expected = PRUNTIME_IO; }
+        if (mode == 14) native.outcome = PRUNTIME_COMMIT_UNKNOWN;
+        if (mode == 6 || mode == 14) { RCHECK(PRuntime_InstallCommitCancel(job) == PRUNTIME_OK); expected = PRUNTIME_CANCELLED; }
+        if (mode == 10) { native.commit = 0; expected = PRUNTIME_INVALID; }
+        if (mode == 11) { native.outcome = PRUNTIME_COMMIT_NOT_COMMITTED; expected = PRUNTIME_INVALID; }
+        if (mode == 15) { native.fail_next_read = 1; expected = PRUNTIME_IO; }
+        if (mode == 18) { f.cancel = 1; expected = PRUNTIME_CANCELLED; }
+        rc = PRUNTIME_OK;
+        for (step = 0; step < 12 && rc == PRUNTIME_OK; ++step) {
+            calls = native.calls; rc = PRuntime_InstallCommitStep(job);
+            RCHECK(native.calls - calls <= 1);
+            if (step == 1 && mode == 8) { ++native.registry.record.generation; expected = PRUNTIME_INVALID; }
+            if (step == 2 && mode == 9) { ++native.registry.record.generation; expected = PRUNTIME_INVALID; }
+            if (step == 3) {
+                if (mode == 5) { native.fail_next_read = 1; expected = PRUNTIME_UNRESOLVED; }
+                if (mode == 7) RCHECK(PRuntime_InstallCommitCancel(job) == PRUNTIME_OK);
+                if (mode == 13) { native.registry.record.approval.content_id[0] ^= 1; expected = PRUNTIME_INVALID; }
+                if (mode == 14) {
+                    native.registry.record.state = PRUNTIME_REG_READY;
+                    /* Simulate a rival READY winning unknown CANCELLED CAS. */
+                    expected = PRUNTIME_INSTALL_COMMIT_DONE;
+                }
+                if (mode == 12) break;
+            }
+        }
+        RCHECK(PRuntime_InstallCommitGetInfo(job, &info) == PRUNTIME_OK);
+        if (mode == 12) {
+            RCHECK(info.state == PRUNTIME_INSTALL_COMMIT_PENDING && native.writes == writes + 1);
+        } else {
+            RCHECK(rc == expected);
+            RCHECK(native.writes == writes + ((mode == 8 || mode == 15 || mode == 19) ? 0U : 1U));
+            if (rc == PRUNTIME_INSTALL_COMMIT_DONE) RCHECK(info.state == PRUNTIME_INSTALL_COMMIT_COMPLETE &&
+                    info.record.state == PRUNTIME_REG_READY && info.record.generation == 2);
+            if (mode == 5) RCHECK(info.state == PRUNTIME_INSTALL_COMMIT_UNRESOLVED);
+            RCHECK(PRuntime_InstallCommitStep(job) == PRUNTIME_STATE);
+        }
+        RCHECK(PRuntime_InstallCommitClose(&job) == PRUNTIME_OK); native.commit_job = NULL;
+        RCHECK(PRuntime_InstallCommitClose(&job) == PRUNTIME_OK);
+        ii.size = sizeof(ii); ii.version = 1; RCHECK(PRuntime_InstallIntentGetInfo(intent, &ii) == PRUNTIME_OK);
+        if (mode == 12 || mode == 5) RCHECK(ii.state == PRUNTIME_INTENT_UNRESOLVED);
+        if (expected == PRUNTIME_INSTALL_COMMIT_DONE && mode != 12)
+            RCHECK(ii.state == PRUNTIME_INTENT_FINALIZED && PRuntime_InstallIntentCancel(intent) == PRUNTIME_STATE);
+case_done:
+        if (data) { RCHECK(PRuntime_InstallDataClose(&data) == PRUNTIME_OK); platform.data = NULL; }
+        RCHECK(!platform.leases && !platform.bad_guard && !f.bad_guard);
+        RCHECK(PRuntime_InstallIntentClose(&intent) == PRUNTIME_OK); native.job = NULL;
+        revision_dispose(&f, &revision); RCHECK(!f.roots && !native.registry.leases);
+        if (mode != 1) {
+            RCHECK(install_data_db_inspect(platform.utf8, mode == 2 ? 1U : 0U, (mode == 2 || mode == 19) ? 1 : 0));
+            RCHECK(DeleteFileW(platform.path));
+        } else RCHECK(!platform.opens && GetFileAttributesW(platform.path) == 0xffffffffUL);
+    }
+    RCHECK(RemoveDirectoryW(root)); return TRUE;
+failed:
+    {
+        unsigned int used = (unsigned int)strlen(revision_error);
+        _snprintf(revision_error + used, sizeof(revision_error) - used - 1,
+            " mode=%u expected=%d", mode, expected);
+        revision_error[sizeof(revision_error)-1] = 0;
+    }
+    if (job) {
+        unsigned int used;
+        info.size = sizeof(info); info.version = 1;
+        PRuntime_InstallCommitGetInfo(job, &info); used = (unsigned int)strlen(revision_error);
+        _snprintf(revision_error + used, sizeof(revision_error) - used - 1,
+            " commitDB=%d native=%d/%d %.240s", info.data_error.db_result,
+            info.data_error.sqlite_code, info.data_error.sqlite_extended_code, info.data_error.message);
+        revision_error[sizeof(revision_error)-1] = 0;
+    }
+    if (data) {
+        PRuntimeInstallDataInfo di;
+        unsigned int used = (unsigned int)strlen(revision_error);
+        di.size = sizeof(di); di.version = 1;
+        if (PRuntime_InstallDataGetInfo(data, &di) == PRUNTIME_OK) {
+            _snprintf(revision_error + used, sizeof(revision_error) - used - 1,
+                " db=%d sqlite=%d/%d %.240s", di.error.db_result,
+                di.error.sqlite_code, di.error.sqlite_extended_code, di.error.message);
+            revision_error[sizeof(revision_error)-1] = 0;
+        }
+    }
+    if (changed_db) PDb_Close(changed_db);
+    if (job) PRuntime_InstallCommitClose(&job); native.commit_job = NULL;
+    if (data) PRuntime_InstallDataClose(&data); platform.data = NULL;
+    if (intent) PRuntime_InstallIntentClose(&intent);
+    if (revision) revision_dispose(&f, &revision);
+    /* Preserve failed fixture DB for diagnostics. */
+    (void)owned;
+    return FALSE;
 }

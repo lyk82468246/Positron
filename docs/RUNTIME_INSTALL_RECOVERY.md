@@ -1,6 +1,6 @@
 # 首次安装存储与登记恢复合同
 
-本文件定义安装/存储的实施合同，**尚未实现READY最终登记与EXE安装接线**。已可调用的是 [Runtime核验、登记读回和PREPARING意图协调](../positron_runtime/INSTALLED.md)；协调器通过原生CAS写不可启动意图，InstallData已提供独立数据库准备/迁移与失败登记，已有独立READY原生存储准入与同步受限SQL，安装队列已有登记刷新与显式Browser桥接合同，尚无READY提交或EXE安装接线。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
+本文件定义安装/存储的实施合同，**公共DLL最终提交已提供，EXE安装接线尚未实现**。已可调用的是 [Runtime核验、登记读回和PREPARING意图协调](../positron_runtime/INSTALLED.md)；协调器通过原生CAS写不可启动意图，InstallData已提供独立数据库准备/迁移与失败登记，已有独立READY原生存储准入与同步受限SQL，安装队列已有登记刷新与显式Browser桥接合同，已有独立InstallCommit保有数据/资源/协调租约执行最终CAS与精确读回，尚无EXE安装接线。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
 
 ## 为什么需要独立安装意图
 
@@ -83,7 +83,7 @@ READY 是唯一有效安装指针，没有第二个竞争的 `active` 文件。�
 
 ## 拟实现的 ABI 和所有权
 
-完整安装/存储名称仍是职责草案；已实现InstallIntent*的不可启动意图及InstallData*的数据准备/失败登记，不是下面的完整安装器。其余未实现名称不添加到头文件或导出表，后续保持additive size/version与opaque handle。
+完整安装/存储名称仍是职责草案；已实现InstallIntent*的不可启动意图、InstallData*的数据准备/失败登记及InstallCommit*的最终提交；仍不是下面含实际EXE登记/发布的完整安装器。其余未实现名称不添加到头文件或导出表，后续保持additive size/version与opaque handle。
 
 | 职责 | 输入与所有权 | 边界 |
 | --- | --- | --- |
@@ -102,9 +102,9 @@ SQL 继续使用 100..1000000、100 倍数的每文件/请求 VM budget，最多
 
 ## 实施顺序与验收门
 
-登记读回及PREPARING意图协调已实现，精确入口/状态/预算见组件合同；前者只观察，后者通过可信原生provider执行一次CAS并读回，支持显式恢复与取消，不写READY。测试模拟原生登记，不证明EXE持久表。后续存储只接受活的PREPARED意图，不接受裸批准快照或开发句柄。所有转换与恢复分类仍属DLL，test_host只准备事实、故障与断言。
+登记读回及PREPARING意图协调已实现，精确入口/状态/预算见组件合同；前者只观察，后者通过可信原生provider执行一次CAS并读回，支持显式恢复与取消，该意图入口不写READY，最终提交另走InstallCommit。测试模拟原生登记，不证明EXE持久表。后续存储只接受活的PREPARED意图，不接受裸批准快照或开发句柄。所有转换与恢复分类仍属DLL，test_host只准备事实、故障与断言。
 
-安装准备数据已有独立stamp/key、完整pending来源准入、逐文件提交及后缀恢复合同，回归使用真实PDb文件；无READY或作者SQL服务。DB的只读快照和可写既有句柄准入均有独立合同。Runtime已接READY InstalledStorageOpen，保有installed父项/位置租约，刷新READY记录并经既有句柄准入复用受限SQL/JSON及撤销/关闭；安装队列已复用有界复制及显式Browser授权，区分页面取消与实例退休；唯一下一步为最终READY提交协调。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
+安装准备数据已有独立stamp/key、完整pending来源准入、逐文件提交及后缀恢复合同，回归使用真实PDb文件；无READY或作者SQL服务。DB的只读快照和可写既有句柄准入均有独立合同。Runtime已接READY InstalledStorageOpen，保有installed父项/位置租约，刷新READY记录并经既有句柄准入复用受限SQL/JSON及撤销/关闭；安装队列已复用有界复制及显式Browser授权，区分页面取消与实例退休；最终READY提交由独立InstallCommit子job接受活意图/相符数据，复查登记及空闲DB精确schema，一次CAS后读回；取消不撤回READY，结果不明不重放。提交前核验失败保留PREPARING与数据供显式恢复，不隐式写FAILED。下一步由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
 
 每个功能批次均须 C89、审计、串行正式 Debug/Release 和匹配 ARMV4I 定向设备门。至少覆盖无SQL/零migration/多migration、两安装与开发数据隔离、错误stamp/非空库/未来版本、每个提交点前后中断、提交成功但响应丢失、读回失败、CAS竞争、取消与最终提交交错、资源变化/撤销、关闭/重入/错误线程及重复恢复。迁移回归使用非幂等插入计数证明前缀没有重放，不能只检查 schema 数字。
 
