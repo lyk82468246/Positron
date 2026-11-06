@@ -56,6 +56,13 @@ CAB工程候选增加HKCR的.pxi→Positron.PXI及shell/open/command，实际解
 VDD保留双层引号及%%1，经CabWiz后XML精确还原，不手改生成INF。
 独立helper保有Wceload句柄的第二次证据位于tmp/cab-exit-probe-r2：PID2529959694已退出，exit_code=2147500037（0x80004005/E_FAIL）。该通用错误不能归因为签名或策略；无UI安装失败未解除，点击尚未验证，不写成正式基线。空间不足的首次probe未启动安装器；完成门的新包stage资源核对归档后释放，未清数据库/已安装资源。
 
+只读RAPI查询保留在tmp/cab-policy-read.json：策略00001005=16、00001006=1、0000101a=1、00001001=1；
+Software/Apps下的Positron安装登记与Software/Positron均不存在。未写注册表，不从E_FAIL单独归因安全策略。
+通过原正式工程临时生成独立产品名、仅一个LICENSE文件的1436字节CAB，工程原字节finally恢复。
+tmp/cab-small-probe记录Wceload PID2746960358同样退出E_FAIL，目标许可证未出现；
+这说明失败不要求大体积DLL或关联配置，不等于已定位ROM根因。默认完整版本化CAB随后重新生成，
+EXE/十DLL载荷再次匹配，产物在tmp/cab-default-restored-after-control；控制包未发布。
+
 关联候选已从默认CAB工程/打包门撤回，完整补丁保存为tmp/pxi-association-candidate.patch，
 git apply --check通过；正式设备验收前不自动恢复。独立工具--probe-cab完成Debug/Release构建，
 最终缺包拒绝、2/2二进制回读和零模块引用审计通过，证据在tmp/cab-probe-refusal-gate。

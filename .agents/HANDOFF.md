@@ -31,7 +31,7 @@ writer 同步添加条目、块间取消，Finish 后由宿主提交；未实现
 
 ### Runtime 当前验收与安装边界
 
-CAB关联未入默认路径，补丁在tmp/pxi-association-candidate.patch；Wceload退出E_FAIL，安装/点击未过。独立--probe-cab双配置构建/缺包拒绝设备门过；不改安全策略。ROADMAP复核不变，详见PXI取证。
+CAB关联补丁未启用，见tmp/pxi-association-candidate.patch。微型CAB亦E_FAIL，安装未过，不改安全策略；--probe-cab双配置门过。ROADMAP复核不变，详见PXI取证。
 
 
 开发目录、资源/SQL队列与SDK合同见[Runtime README](../positron_runtime/README.md)，EXE平台与逐页授权见[Runtime宿主](../positron_app/RUNTIME_HOST.md)。实例按原标签绑定，不按URL授权；候选取消撤销其服务，旧页保留。空CSS/import/JS、回滚/隔离/关闭已有设备门，OS/DPI仅对原运行有效；旧空资源失败与修复见[取证](../docs/history/EMPTY_RESOURCE_REVIEW.md)。
@@ -486,7 +486,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核ROADMAP与限制；普通PXI确认后的成功日志已固化，未冒认保存/重开。PXI自动门已过，唯一下一步为当前匹配包的普通PXI拒绝、Notes保存人工门（新进程免提示重开已有日志），再考虑系统关联。公共合同足够，无需新增DLL接口；更新/卸载另行。外置卷native2及旧DB错误不关闭，不重开FULL/断电门。
+本轮已复核ROADMAP与限制；普通PXI确认后的成功日志已固化，未冒认保存/重开。PXI自动门已过，唯一下一步为当前匹配包的普通PXI拒绝、Notes保存人工门（新进程免提示重开已有日志），再考虑系统关联。首次安装公共合同足够；更新合同已交主线审查，卸载另行。外置卷native2及旧DB错误不关闭，不重开FULL/断电门。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
