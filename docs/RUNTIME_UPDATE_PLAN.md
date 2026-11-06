@@ -91,6 +91,21 @@ Step仅在安全边界让步，不泵消息、不自建线程，不把单次原�
 
 ## 最小直接消费者与验收
 
+使用纯资源夹具生成器准备独立目录和PXI：
+
+```powershell
+python scripts/generate_app_update_fixtures.py --output tmp/update-fixtures
+python scripts/test_app_update_fixtures.py
+```
+
+输出目录须全新；工具只复制作者Notes资源，不修改示例、登记或用户库。固定测试ID为
+`org.positron.updatenotes`，提供old、同schema resources-v2以及schema增加、历史迁移改字节、
+SQL权限移除、版本未增加/零版本、其他ID、未来API和入口缺失候选。页面用
+`update-fixture-version`标记资源版本，原作者JS保持不变。
+`facts.json`只保存manifest字段、完整文件长度/SHA-256与相对路径，不计算Runtime content ID、
+不执行SQL或编码更新状态。离线测试证明ZIP/目录字节、候选差异及可重复性；具体拒绝阶段、
+返回码和current/pending转换必须由公共DLL设备门判定。
+
 Notes revision1保存精确中文/引号记录；创建独立candidate，app version增加、同schema/权限与迁移历史，
 更新后新进程显示v2资源并保留原记录，再冷重开免重复安装提示。更新确认与普通启动分别验收。
 
