@@ -281,7 +281,31 @@ Missing/inaccessible paths return an open/I/O error without creating them. Empty
 
 Inspection limits SQLite logical page bytes to 16 MiB, result lengths to the existing DB limit, SQL length/depth to existing fixed limits, and VM progress to a fixed 100000-unit inspection budget. Logical pages do not measure physical trailing bytes; a native provider must separately enforce any physical-file quota. Cache/temp preferences are connection-local/in-memory. These are not a bound on native I/O time or all SQLite allocations. Budget exhaustion is LIMIT, not cancellation; progress interruption is disabled before transaction cleanup. Hot-journal failure, exhausted inspection budget and extreme schema resources need their own fault corpus; ordinary success does not prove storage durability.
 
-The fixture inspects missing/empty/valid/readonly files, missing/wrong/BLOB/NUL identities, wrong mode/schema, malformed metadata structures and non-SQLite bytes. It compares all file bytes before/after and checks that no journal is created; it does not use a subsequent mutating Open to claim that inspection was read-only. Keep the native coordination lease across a real consumer's later use. Since this API closes its connection, replacement or a new writer after return can invalidate its observation. **Do not call the old CREATE-capable opener after a successful probe and treat that as a verified existing-handle contract.** A writable existing-handle admission path and Runtime READY storage remain separate work.
+The fixture inspects missing/empty/valid/readonly files, missing/wrong/BLOB/NUL identities, wrong mode/schema, malformed metadata structures and non-SQLite bytes. It compares all file bytes before/after and checks that no journal is created; it does not use a subsequent mutating Open to claim that inspection was read-only. Keep the native coordination lease across a real consumer's later use. Since this API closes its connection, replacement or a new writer after return can invalidate its observation. **Do not call the old CREATE-capable opener after a successful probe and treat that as a verified existing-handle contract.** Use the existing-only writable admission below when a retained SQL handle is required; Runtime READY storage remains separate work.
+
+## Opening a verified existing local database
+
+`PDb_OpenExistingLocalUtf8(path, path_bytes, &options, &db, &error)` takes the same v1 options and optional error-output contract as the verifier. It returns an idle local-full handle only after checking the actual writable connection. It never uses CREATE, metadata initialization, first identity claiming or migrations. A missing file stays missing; an empty/unclaimed file is rejected. Existing Open/Bind APIs and ABI are unchanged.
+
+Admission first holds a private READONLY snapshot, rejecting a hot journal that would require writable recovery. While that read lock remains held, a second connection opens READWRITE without CREATE, rejects SQLite's read-only fallback, acquires BEGIN IMMEDIATE and independently checks the same metadata, complete identity and exact schema. Other SQLite writers cannot commit through the retained read snapshot during this sequence; a competing write reservation returns BUSY. The writable transaction commits without data changes before publishing the handle, and the private snapshot closes. No lock or half-initialized handle escapes on failure.
+
+The caller must hold native physical containment/anti-replacement and installation coordination throughout admission **and the returned handle's lifetime**. SQLite identity checks do not prove a trusted physical path and do not stop privileged native tampering. Once admission returns, SQLite is idle rather than retaining a write reservation; correct provider coordination remains essential. A successful old probe cannot be substituted for either connection's checks.
+
+The connection requires existing DELETE journal mode; it rejects other modes rather than changing them. It uses synchronous FULL, foreign keys, in-memory temporary storage, trusted_schema OFF and the existing authorizer/length/depth/variable/VM limits. Logical page quota is 16 MiB, calculated from the existing page size rather than assuming 4096 bytes. Admission has at most two connections, each with its own 100000-unit inspection budget and 256-KiB cache preference; SQLite/native allocations and I/O latency are not covered by a total-memory or wall-clock guarantee. No callback, implicit retry, deletion or repair is added.
+
+```c
+PDbHandle db = NULL;
+/* Initialize options/error as above; retain the native location lease. */
+rc = PDb_OpenExistingLocalUtf8(native_path, native_path_bytes,
+    &options, &db, &error);
+if (rc == PDB_OK) {
+    /* On this worker, use existing restricted APIs after Runtime authorizes it. */
+    PDb_Close(db);
+}
+/* Release the native location/coordination leases only after Close. */
+```
+
+An OS-readonly file returns an error rather than a successful read-only handle. Unsupported journal mode returns NOT_SUPPORTED; identity/schema failures remain SCHEMA_MISMATCH, lock contention BUSY, inspection exhaustion LIMIT. A valid error header and other failure clears the handle output to NULL; an invalid error header leaves all outputs untouched. Trusted native full-SQL APIs can still modify metadata, so this is startup admission, not a perpetual authority or security sandbox. Runtime installed service/final-registration integration must separately retain the parent/provider leases and enforce READY.
 
 ## Local and sync modes
 

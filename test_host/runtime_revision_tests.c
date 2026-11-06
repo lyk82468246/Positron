@@ -958,7 +958,7 @@ static unsigned char* existing_file_bytes(const WCHAR* path, DWORD* size)
     }
     CloseHandle(file); return bytes;
 }
-BOOL test1381_db_existing_verification(void)
+static BOOL existing_db_cases(int writable)
 {
     static const char identity[] = "existing.local.identity";
     WCHAR module[MAX_PATH], root[MAX_PATH], path[MAX_PATH], journal[MAX_PATH], *slash;
@@ -984,6 +984,7 @@ BOOL test1381_db_existing_verification(void)
         options.expected_schema = mode == 3 ? 1 : 0;
         expected = mode == 0 || mode == 14 ? PDB_ERROR :
                 (mode == 2 || mode == 3 || mode == 16 ? PDB_OK : PDB_SCHEMA_MISMATCH);
+        if (writable && mode == 16) expected = PDB_ERROR;
         if (mode == 1 || mode == 14) {
             file = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_NEW, 0, NULL);
             RCHECK(file != INVALID_HANDLE_VALUE);
@@ -1008,7 +1009,12 @@ BOOL test1381_db_existing_verification(void)
         if (mode == 16) RCHECK(SetFileAttributesW(path, FILE_ATTRIBUTE_READONLY));
         for (repeat = 0; repeat < 2; ++repeat) {
             error.size = sizeof(error); error.version = PDB_ERROR_INFO_VERSION;
-            rc = PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &error);
+            rc = writable ? PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &db, &error) :
+                    PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &error);
+            if (writable) {
+                RCHECK((rc == PDB_OK) == (db != NULL));
+                if (db) { PDb_Close(db); db = NULL; }
+            }
             RCHECK(rc == expected && error.result == expected);
         }
         RCHECK(GetFileAttributesW(journal) == 0xffffffffUL);
@@ -1031,4 +1037,80 @@ BOOL test1381_db_existing_verification(void)
 failed:
     if (db) PDb_Close(db);
     free(before); free(after); (void)owned_root; return FALSE;
+}
+
+BOOL test1381_db_existing_verification(void)
+{
+    return existing_db_cases(0);
+}
+BOOL test1382_db_existing_writable(void)
+{
+    WCHAR module[MAX_PATH], path[MAX_PATH], *slash;
+    char utf8[1024];
+    PDbHandle db = NULL, admitted = NULL;
+    PDbStmtHandle query = NULL;
+    PDbExistingLocalOptions options;
+    PDbConnectionState state;
+    PDbErrorInfo error, canary;
+    PDbRestrictedOptions restricted;
+    PDbRestrictedReport report;
+    PDbRestrictedStatement statement;
+    int rc = 0;
+    RCHECK(existing_db_cases(1));
+    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH - 50);
+    slash = wcsrchr(module, L'\\'); RCHECK(slash != NULL); *slash = 0;
+    wsprintfW(path, L"%s\\writable-existing-%lu.db", module, GetCurrentProcessId());
+    RCHECK(GetFileAttributesW(path) == 0xffffffffUL);
+    RCHECK(WideCharToMultiByte(CP_UTF8, 0, path, -1, utf8, sizeof(utf8), NULL, NULL));
+    options.size = sizeof(options); options.version = 1;
+    options.identity = "writable.identity"; options.identity_bytes = 17; options.expected_schema = 1;
+    RCHECK(PDb_OpenUtf8(utf8, PDB_OPEN_LOCAL_FULL_SQL, &db) == PDB_OK);
+    RCHECK(PDb_BindLocalIdentity(db, options.identity, options.identity_bytes) == PDB_OK);
+    RCHECK(PDb_ApplyMigration(db, 1, "CREATE TABLE sample(n INTEGER)") == PDB_OK);
+    RCHECK(PDb_Exec(db, "BEGIN IMMEDIATE") == PDB_OK);
+    error.size = sizeof(error); error.version = PDB_ERROR_INFO_VERSION;
+    rc = PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &admitted, &error);
+    RCHECK(rc == PDB_BUSY && !admitted && error.result == PDB_BUSY);
+    RCHECK(PDb_Rollback(db) == PDB_OK);
+    /* A change committed after an earlier probe must be checked on the actual
+     * connection, never inherited from that probe's result. */
+    RCHECK(PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, NULL) == PDB_OK);
+    RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value='other' WHERE key='local_identity'") == PDB_OK);
+    RCHECK(PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &admitted, NULL) == PDB_SCHEMA_MISMATCH && !admitted);
+    RCHECK(PDb_Exec(db, "UPDATE __pdb_meta SET value='writable.identity' WHERE key='local_identity'") == PDB_OK);
+    PDb_Close(db); db = NULL;
+    RCHECK(PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &admitted, &error) == PDB_OK && admitted);
+    state.size = sizeof(state); state.version = PDB_CONNECTION_STATE_VERSION;
+    RCHECK(PDb_GetConnectionState(admitted, &state) == PDB_OK && !state.transaction_active && !state.statement_count);
+    memset(&restricted, 0, sizeof(restricted)); restricted.size = sizeof(restricted); restricted.version = PDB_RESTRICTED_VERSION;
+    restricted.vm_budget = PDB_RESTRICTED_VM_MAX;
+    memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = PDB_RESTRICTED_VERSION;
+    memset(&statement, 0, sizeof(statement)); statement.sql = "INSERT INTO sample VALUES(42)";
+    statement.sql_bytes = (int)strlen(statement.sql); statement.kind = PDB_RESTRICTED_EXECUTE;
+    rc = PDb_ExecuteRestricted(admitted, &statement, 1, &restricted, &report);
+    if (rc != PDB_OK || report.changes != 1) {
+        error.size = sizeof(error); error.version = PDB_ERROR_INFO_VERSION;
+        PDb_GetErrorInfo(admitted, &error);
+        sprintf(revision_error, "Existing write rc=%d changes=%d sqlite=%d category=%d: %.100s",
+                rc, (int)report.changes, error.sqlite_extended_code, error.category, error.message);
+        goto failed;
+    }
+    PDb_Close(admitted); admitted = NULL;
+    RCHECK(PDb_VerifyExistingLocalUtf8(utf8, (int)strlen(utf8), &options, NULL) == PDB_OK);
+    RCHECK(PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &admitted, NULL) == PDB_OK);
+    RCHECK(PDb_Prepare(admitted, "SELECT n FROM sample", &query) == PDB_OK);
+    RCHECK(PDb_Step(query) == PDB_STEP_ROW && PDb_ColumnInt64(query, 0) == 42);
+    RCHECK(PDb_Step(query) == PDB_STEP_DONE);
+    PDb_Finalize(query); query = NULL;
+    PDb_Close(admitted); admitted = NULL;
+    memset(&error, 0xa5, sizeof(error)); error.size = sizeof(error); error.version = 99; canary = error;
+    RCHECK(PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, &admitted, &error) == PDB_INVALID_ARGUMENT &&
+            !admitted && !memcmp(&error, &canary, sizeof(error)));
+    RCHECK(PDb_OpenExistingLocalUtf8(utf8, (int)strlen(utf8), &options, NULL, NULL) == PDB_INVALID_ARGUMENT);
+    RCHECK(DeleteFileW(path)); return TRUE;
+failed:
+    if (query) PDb_Finalize(query);
+    if (db) PDb_Close(db);
+    if (admitted) PDb_Close(admitted);
+    return FALSE;
 }

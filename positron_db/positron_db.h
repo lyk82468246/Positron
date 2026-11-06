@@ -321,6 +321,21 @@ typedef struct PDbExistingLocalOptions {
  * observation, not protection against replacement after return. Old ABI unchanged. */
 PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int path_bytes,
         const PDbExistingLocalOptions* options, PDbErrorInfo* error);
+/* Existing-only writable local handle. Same v1 inputs/inspection budget as
+ * Verify, but retains a read snapshot while a no-CREATE READWRITE connection
+ * acquires BEGIN IMMEDIATE and rechecks its own identity/schema. Rejects
+ * read-only fallback and non-DELETE journal mode. No metadata writes, initial
+ * claim, migration or recovery fallback. Success publishes an idle local-full
+ * handle owned by this worker; Close normally. Failure publishes NULL (invalid
+ * error header leaves outputs unchanged). Admission alone grants no service.
+ * Caller MUST retain native physical containment/anti-replacement and exclusive
+ * installation coordination for the entire handle lifetime. Trusted native SQL
+ * can still alter metadata; this is admission, not an ongoing security sandbox.
+ * Uses two bounded connections during admission; logical 16 MiB quota persists
+ * on returned connection. No callback, retry or hard native-I/O deadline. */
+PDB_API int PDb_OpenExistingLocalUtf8(const char* path, int path_bytes,
+        const PDbExistingLocalOptions* options, PDbHandle* db, PDbErrorInfo* error);
+
 typedef struct PDbMigrationReport {
     unsigned int size;
     unsigned int version;

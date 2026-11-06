@@ -244,7 +244,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-安装数据准备及只读既有库核验退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)补DB已核验可写既有句柄：不CREATE/初始化/认领，消除只读探针到使用的替换窗口，覆盖并发/失败不变性；之后接READY存储、最终登记及队列。旧OpenUtf8不能作为探针后的替代打开。登记SQL/主库表仍属EXE，恢复分类不得留在宿主。revision>1关闭，手动目录继续每次确认。
+安装数据准备和DB既有库准入退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)接Runtime READY存储：只接受已完成的installed-kind父项及SQL批准，保有原生位置/防替换租约，刷新精确READY记录，调用可写既有准入并复用受限SQL/JSON。失败不发布存储/服务，父项在存储活跃时不能关闭；覆盖撤销/stale、错误身份/schema、重复关闭及旧开发路径隔离。之后接服务队列和最终READY提交，不用旧CREATE打开或开发句柄cast替代。登记SQL/主库表仍属EXE，恢复分类不得留在宿主。revision>1关闭，手动目录继续每次确认。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 

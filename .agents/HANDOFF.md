@@ -481,7 +481,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮复核ROADMAP，只读既有库核验退出待办；双配置门/字节不变性见[DB证据](../docs/history/DB_EXISTING_ADMISSION_ACCEPTANCE.md)。唯一下一步为[已核验可写既有句柄](../docs/RUNTIME_INSTALL_RECOVERY.md)，不以探针后旧CREATE打开代替；再接READY存储/登记。不先接EXE/UI、更新或PXI输出。
+本轮复核ROADMAP与限制，可写既有DB准入退出待办；最终定向门、相邻回归、冷重开/字节不变性及保留的超时见[DB证据](../docs/history/DB_EXISTING_ADMISSION_ACCEPTANCE.md)。唯一下一步为[Runtime READY存储](../docs/RUNTIME_INSTALL_RECOVERY.md)：保有installed父项/位置租约、刷新READY、调用可写既有准入并复用受限SQL/JSON，覆盖撤销/关闭与失败不发布。最终登记/队列随后接入；不先接EXE/UI、更新或PXI输出。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

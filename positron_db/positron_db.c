@@ -4592,8 +4592,9 @@ static int pdb_existing_text(PDbHandle db, const char* key, const char* expected
     }
     sqlite3_finalize(stmt); return rc;
 }
-PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
-        const PDbExistingLocalOptions* options, PDbErrorInfo* output)
+static int pdb_open_existing(const char* path, int bytes,
+        const PDbExistingLocalOptions* options, int writable, int retain_read,
+        PDbHandle* retained, PDbErrorInfo* output)
 {
     PDbHandle db = NULL;
     PDbNativeLog scope;
@@ -4616,7 +4617,8 @@ PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
     db = (PDbHandle)calloc(1, sizeof(*db));
     if (!db) { if (output) pdb_init_error(output, PDB_NOMEM, "Database allocation failed"); return PDB_NOMEM; }
     db->mode = PDB_OPEN_LOCAL_FULL_SQL; pdb_init_error(&db->error_info, PDB_OK, ""); pdb_native_log_begin(&scope, db);
-    native = sqlite3_open_v2(filename, &db->sqlite, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, NULL);
+    native = sqlite3_open_v2(filename, &db->sqlite,
+            (writable ? SQLITE_OPEN_READWRITE : SQLITE_OPEN_READONLY) | SQLITE_OPEN_FULLMUTEX, NULL);
     if (native != SQLITE_OK) {
         if (db->sqlite) rc = pdb_set_sqlite_error(db, native);
         else { rc = native == SQLITE_NOMEM ? PDB_NOMEM : PDB_ERROR; pdb_set_error(db, "Existing database open failed"); }
@@ -4626,7 +4628,12 @@ PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
         sqlite3_limit(db->sqlite, SQLITE_LIMIT_SQL_LENGTH, PDB_SQL_MAX_BYTES);
         sqlite3_limit(db->sqlite, SQLITE_LIMIT_EXPR_DEPTH, 100);
         sqlite3_progress_handler(db->sqlite, 100, pdb_existing_progress, &remaining);
-        rc = pdb_exec_internal(db, "PRAGMA query_only=ON;PRAGMA trusted_schema=OFF;PRAGMA temp_store=MEMORY;PRAGMA cache_size=-256;BEGIN");
+        sqlite3_limit(db->sqlite, SQLITE_LIMIT_VARIABLE_NUMBER, 128);
+        sqlite3_limit(db->sqlite, SQLITE_LIMIT_VDBE_OP, 100000);
+        rc = writable && sqlite3_db_readonly(db->sqlite, "main") != 0 ? pdb_set_sqlite_error(db, SQLITE_READONLY) : PDB_OK;
+        if (rc == PDB_OK) rc = pdb_exec_internal(db, writable ?
+                "PRAGMA trusted_schema=OFF;PRAGMA temp_store=MEMORY;PRAGMA cache_size=-256;PRAGMA synchronous=FULL;PRAGMA foreign_keys=ON;BEGIN IMMEDIATE" :
+                "PRAGMA query_only=ON;PRAGMA trusted_schema=OFF;PRAGMA temp_store=MEMORY;PRAGMA cache_size=-256;BEGIN");
         if (rc == PDB_OK) begun = 1;
         if (rc == PDB_OK) rc = pdb_prepare_internal(db,
                 "SELECT type,rootpage FROM sqlite_master WHERE name='__pdb_meta'", &stmt);
@@ -4663,7 +4670,29 @@ PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
             else if (sqlite3_column_int64(stmt, 0) > 16 * 1024 * 1024) rc = PDB_LIMIT;
         }
         if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
-        if (rc == PDB_OK) rc = pdb_exec_internal(db, "COMMIT");
+        /* Never change journal mode during admission. Reject unsupported
+         * persistent modes instead of repairing caller-owned data. */
+        if (rc == PDB_OK && writable) rc = pdb_prepare_internal(db, "PRAGMA journal_mode", &stmt);
+        if (rc == PDB_OK && writable) {
+            native = pdb_step_internal(db, stmt);
+            text = native == SQLITE_ROW ? sqlite3_column_text(stmt, 0) : NULL;
+            if (!text || strcmp((const char*)text, "delete")) rc = PDB_NOT_SUPPORTED;
+        }
+        if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        if (rc == PDB_OK && writable) rc = pdb_prepare_internal(db, "PRAGMA page_size", &stmt);
+        if (rc == PDB_OK && writable) {
+            native = pdb_step_internal(db, stmt);
+            i = native == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : 0;
+            if (i < 512 || i > 65536) rc = PDB_SCHEMA_MISMATCH;
+            else {
+                char quota[64];
+                sprintf(quota, "PRAGMA max_page_count=%d", 16 * 1024 * 1024 / i);
+                sqlite3_finalize(stmt); stmt = NULL;
+                rc = pdb_exec_internal(db, quota);
+            }
+        }
+        if (stmt) { sqlite3_finalize(stmt); stmt = NULL; }
+        if (rc == PDB_OK && !retain_read) rc = pdb_exec_internal(db, "COMMIT");
     }
     if (remaining <= 0) {
         rc = PDB_LIMIT; pdb_set_error(db, "Existing database inspection budget exhausted");
@@ -4676,7 +4705,39 @@ PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
         pdb_finish_error(db, rc);
     } else pdb_init_error(&db->error_info, PDB_OK, "");
     if (output) *output = db->error_info;
-    PDb_Close(db); pdb_native_log_end(&scope); return rc;
+    if (rc == PDB_OK && retained) {
+        if (writable) {
+            sqlite3_set_authorizer(db->sqlite, pdb_authorizer, db);
+            sqlite3_progress_handler(db->sqlite, 1000, pdb_progress, db);
+        }
+        *retained = db;
+    } else PDb_Close(db);
+    pdb_native_log_end(&scope); return rc;
+}
+PDB_API int PDb_VerifyExistingLocalUtf8(const char* path, int bytes,
+        const PDbExistingLocalOptions* options, PDbErrorInfo* output)
+{
+    return pdb_open_existing(path, bytes, options, 0, 0, NULL, output);
+}
+PDB_API int PDb_OpenExistingLocalUtf8(const char* path, int bytes,
+        const PDbExistingLocalOptions* options, PDbHandle* result, PDbErrorInfo* output)
+{
+    PDbHandle snapshot = NULL;
+    int rc;
+    if (output && (output->size < sizeof(*output) || output->version != PDB_ERROR_INFO_VERSION)) return PDB_INVALID_ARGUMENT;
+    if (result) *result = NULL;
+    if (!result) {
+        if (output) pdb_init_error(output, PDB_INVALID_ARGUMENT, "Missing existing database handle output");
+        return PDB_INVALID_ARGUMENT;
+    }
+    /* Keep the read lock until the actual writable connection has acquired
+     * its reservation, revalidated itself and completed admission. A hot
+     * journal cannot be silently repaired by the writable second open.
+     * Physical path containment/replacement remains the provider's lease. */
+    rc = pdb_open_existing(path, bytes, options, 0, 1, &snapshot, output);
+    if (rc == PDB_OK) rc = pdb_open_existing(path, bytes, options, 1, 0, result, output);
+    if (snapshot) PDb_Close(snapshot);
+    return rc;
 }
 static int pdb_api_PDb_ApplyMigrationRestricted(PDbHandle db, int expected, int target,
         const char* input, int bytes, const PDbRestrictedOptions* options, PDbMigrationReport* report)
