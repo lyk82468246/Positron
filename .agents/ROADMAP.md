@@ -239,12 +239,12 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：目录/SDK/Notes开发基线、安装数据准备与原生READY存储已形成；安装队列/最终登记和PXI仍待实现。**
+**状态：目录/SDK/Notes开发基线、安装数据准备、READY存储与页面队列已形成；最终登记和PXI仍待实现。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-原生READY存储已退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)接安装存储队列/Browser授权：复用既有有界复制队列，保持tab/generation/token与owner隔离，在执行SQL前刷新登记；撤销/取消收敛等待项与活动事务，提交后stale结果丢弃但不重放。明确队列→存储→revision关闭及父保有，覆盖真实UI/worker、容量、错误线程、重入、关闭和旧开发队列相邻门。当前安装QueueCreate仍UNSUPPORTED，不能直接移除守卫当作完整接线。之后接最终READY提交与EXE，不用旧CREATE打开或开发句柄cast替代。登记SQL/主库表仍属EXE。revision>1关闭，手动目录继续每次确认。
+READY存储与安装队列退出待办。唯一下一步按[恢复合同](../docs/RUNTIME_INSTALL_RECOVERY.md)补最终PREPARING→READY协调：只接受活的已核验意图及相符的数据准备结果，保有资源/数据/登记租约，刷新完整身份/批准与精确schema，至多一次CAS并读回；未知结果不重放。覆盖无SQL/schema0/已迁移数据、CAS竞争、丢响应/读回失败、取消与READY交错及父子关闭，不因最终提交重跑迁移或开放准备句柄给作者。之后才接EXE登记/UI和PXI隔离输出。登记SQL/主库表仍属EXE，revision>1关闭，手动目录继续每次确认。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 

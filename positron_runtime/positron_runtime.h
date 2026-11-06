@@ -690,8 +690,8 @@ PRUNTIME_API int PRuntime_StorageGetError(PRuntimeStorageHandle storage, PRuntim
  * Success retains parent/root/registry/location until StorageClose. Parent
  * Cancel/Close is STATE while attached. Single owner worker, callback reentry
  * rejected; no pump/background thread. Existing StorageInfo/Error/Close and
- * restricted ExecuteJson contracts apply, with unchanged budgets. QueueCreate
- * currently returns UNSUPPORTED for installed storage. Failure preserves handle
+ * restricted ExecuteJson/ServiceQueue contracts apply, with unchanged budgets.
+ * Failure preserves handle
  * output, copies optional StorageError, closes partial DB/location; never repair,
  * retry, claim or grant Browser services. Native diagnostics are not author text. */
 PRUNTIME_API int PRuntime_InstalledStorageOpen(PRuntimeRevisionHandle revision,
@@ -722,7 +722,14 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
         unsigned int capacity, unsigned int* written);
 /* DB closed before releasing native location; parent remains live. */
 PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage);
-/* Explicit native page grant: create only after trusted storage is READY and
+/* Explicit native page grant: installed QueueCreate refreshes READY before
+ * publishing; ProcessOne rechecks through StorageExecuteJson. Worker-observed
+ * installed retirement revokes all sibling queues, drops waiting/results and
+ * cancels running SQL. UI sees GetInfo.revoked, must RevokeServices on its
+ * Browser owner before teardown; Runtime never calls a UI/session handle.
+ * Page/request Cancel/Revoke alone does NOT retire the installed instance.
+ * Refresh is not cross-DB atomicity; native coordination remains essential.
+ * Create only after trusted storage is READY and
  * on its worker. <=4 independent queues per storage (old/candidate sessions).
  * Duplicate (tab,generation) is STATE, not a second grant. Nonzero tags/exact UI
  * delivery thread; no URL-based grant. Retains storage until queue Close.

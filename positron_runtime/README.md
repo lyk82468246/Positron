@@ -18,8 +18,8 @@ provide their own trusted platform adapter and explicit session authorization.
 
 First-install identity/content verification is available through the separate
 installed contract below. Native READY storage reuses the bounded SQL/JSON path;
-installed queues/Browser grants, final READY registration and EXE launch remain
-separate requirements. An address never grants permission.
+installed page queues use the same Browser copy bridge. Final READY registration
+and EXE installed launch remain separate requirements. An address never grants permission.
 
 ## Link and deploy
 
@@ -366,8 +366,8 @@ below for asynchronous delivery; this worker entry alone does not make a web pag
 
 ## Bounded page SQL service queue
 
-For development storage, create `PRuntime_ServiceQueueCreate` on the owner worker, after migrations
-and native confirmation succeed. Exact v1 options bind nonzero tab/page generation
+Create `PRuntime_ServiceQueueCreate` on the owner worker after development
+preparation/confirmation or verified READY installed-storage admission succeeds. Exact v1 options bind nonzero tab/page generation
 and UI delivery thread. At most four independent queues share one storage, allowing
 an old page and candidates to coexist; duplicate tab/generation is STATE. Each
 queue retains storage until close. Its fixed allocation is approximately 70 KiB
@@ -399,6 +399,11 @@ racing COMMIT may discard an already committed result; **never reexecute SQL to
 recover that result**. VFS/provider calls are not preempted. Keep the old page's
 queue valid until actual replacement, rather than revoking it when a candidate
 starts. Candidate queues have independent tags and no access to the old session.
+
+For installed storage, QueueCreate and each SQL execution refresh READY registration.
+Observed instance retirement revokes all sibling queues; UI must then revoke
+Browser services on its owner. Page/request cancellation stays local. Exact
+installed lease/notification rules are in [the installed queue contract](INSTALLED.md#binding-installed-page-queues-to-browser).
 
 Stop UI access before worker-only QueueClose, which requires revoked and idle.
 Close all queues before storage, storage before directory; join the worker before
@@ -473,8 +478,9 @@ Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). V1 admits
 revision 1 only. `PRuntime_InstalledStorageOpen` retains that verified parent and
 an existing native DB location, refreshes READY registration and reuses typed
-SQL/JSON without CREATE, claim or migration. Installed queue creation is explicitly
-UNSUPPORTED; update/recovery and actual EXE registration remain unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
+SQL/JSON without CREATE, claim or migration. Installed page queues reuse the same
+bounded Browser copy channel with registration retirement; update/recovery and
+actual EXE registration remain unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
 
 ## PXI availability
 

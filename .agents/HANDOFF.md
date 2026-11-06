@@ -37,7 +37,7 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 旧two-1启动FAIL未关闭。新Debug双进程PAGE_PASS且Runtime/DB错误均0、哈希/冷备份/正常退出通过，但未复现旧因；不能追认旧失败。原EXE身份/存储位置、具体PID与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。旧CE5.2.318的mkdir183/CANTOPEN仍未知，新设备公共合同通过不抵消旧失败；再次失败先取非零调用/VFS快照，不删库或重试SQL，不重开FULL/断电门。
 
-首次安装只读核验及登记转换/提交结果读回已通过双配置定向门；精确选择、故障覆盖、完整日志/空间/引用/crash与清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅revision 1；意图/数据准备经原生provider写PREPARING/CANCELLED/FAILED，独立PDb迁移保留已提交前缀，次级登记错误不覆盖DB错误。READY原生存储已有独立准入；安装队列/最终登记/EXE未接入，数据准备不授予启动权，v4表不变。开发目录仍每次确认。Archive读写取代系统ZIP依赖，PXI隔离输出/提交仍需独立门。
+首次安装只读核验及登记转换/提交结果读回已通过双配置定向门；精确选择、故障覆盖、完整日志/空间/引用/crash与清理证据见[安装核验](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md)。仅revision 1；意图/数据准备经原生provider写PREPARING/CANCELLED/FAILED，独立PDb迁移保留已提交前缀，次级登记错误不覆盖DB错误。READY原生存储与安装队列已有独立准入；最终登记/EXE未接入，数据准备不授予启动权，v4表不变。开发目录仍每次确认。Archive读写取代系统ZIP依赖，PXI隔离输出/提交仍需独立门。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -481,7 +481,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮复核ROADMAP与限制，原生READY存储退出待办；Debug六项/Release九项、schema0/1/撤销与字节不变性及构建失败边界见[安装存储验收](../docs/history/RUNTIME_READY_STORAGE_ACCEPTANCE.md)。唯一下一步为安装存储队列/Browser授权，复用有界复制、登记刷新、撤销/stale与队列→存储→父项关闭。最终READY登记、EXE/UI、更新和PXI仍分批处理。旧DB Release INSERT断言失败仍未归因，当前相邻通过不关闭其根因，不自动重放SQL或删库。
+本轮复核ROADMAP与限制，安装队列/Browser复制桥退出待办；最终Debug/Release各五项、局部取消与实例退休、精确行数及保留的构建失败见[安装队列验收](../docs/history/RUNTIME_INSTALLED_QUEUE_ACCEPTANCE.md)。唯一下一步为最终PREPARING→READY协调：保有已核验资源/数据与登记租约、精确CAS/读回、未知结果不重放，覆盖无SQL及取消交错。EXE/UI、更新和PXI仍独立处理。旧DB Release INSERT失败未归因，当前相邻通过不关闭其根因，不自动重放SQL或删库。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

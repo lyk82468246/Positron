@@ -726,6 +726,7 @@ struct PRuntimeStorage {
     unsigned int queue_count;
     PRuntimeServiceQueueHandle queues[PRUNTIME_SERVICE_MAX_QUEUES];
     int queue_processing;
+    int instance_cancelled;
     volatile LONG* operation_cancel;
 };
 static int runtime_storage_parent_busy(PRuntimeStorageHandle storage);
@@ -1045,10 +1046,16 @@ static int runtime_sql_row(void* user, int index, const PDbRestrictedValue* valu
 }
 static int runtime_sql_cancel(void* user)
 {
-    RuntimeSqlWork* work;
-    work = (RuntimeSqlWork*)user;
-    return runtime_storage_parent_cancelled(work->storage) || (work->storage->operation_cancel && InterlockedCompareExchange((LONG*)work->storage->operation_cancel, 0, 0)) ||
-        (work->storage->options.cancelled && work->storage->options.cancelled(work->storage->options.user_data));
+    RuntimeSqlWork* work = (RuntimeSqlWork*)user;
+    PRuntimeStorageHandle storage = work->storage;
+    if (runtime_storage_parent_cancelled(storage)) {
+        storage->instance_cancelled = 1; return 1;
+    }
+    if (storage->operation_cancel && InterlockedCompareExchange((LONG*)storage->operation_cancel, 0, 0)) return 1;
+    if (storage->options.cancelled && storage->options.cancelled(storage->options.user_data)) {
+        storage->instance_cancelled = 1; return 1;
+    }
+    return 0;
 }
 PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
         const char* request, unsigned int bytes, char* output, unsigned int capacity, unsigned int* written)
@@ -1104,6 +1111,7 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
     }
     if (rc == PRUNTIME_OK) {
         storage->active = 1; runtime_storage_parent_active(storage, 1);
+        storage->instance_cancelled = 0;
         rc = runtime_storage_refresh(storage);
         memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = PDB_RESTRICTED_VERSION;
         options.vm_budget = storage->options.vm_budget; options.cancelled = runtime_sql_cancel; options.row = runtime_sql_row; options.user_data = work;
@@ -1114,7 +1122,7 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
             rc = runtime_storage_db_error(storage, native, 0);
             if (work->result != PRUNTIME_OK) storage->error.result = rc = work->result;
             state.size = sizeof(state); state.version = PDB_CONNECTION_STATE_VERSION;
-            if (PDb_GetConnectionState(storage->db, &state) != PDB_OK || state.transaction_active) storage->info.state = PRUNTIME_STORAGE_FAILED;
+            if (PDb_GetConnectionState(storage->db, &state) != PDB_OK || state.transaction_active) runtime_storage_retire(storage, rc);
         } else {
             /* Counts <=8/16 and signed int64 changes: this fixed report fits
              * within the 128-byte allowance reserved before DB COMMIT. */
@@ -1124,7 +1132,7 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
             memcpy(output, header, length); memcpy(output + length, work->rows, work->used); length += work->used;
             memcpy(output + length, "]}", 3); *written = length + 2;
         }
-        if (storage->revision && rc == PRUNTIME_CANCELLED) runtime_storage_retire(storage, rc);
+        if (storage->revision && rc == PRUNTIME_CANCELLED && storage->instance_cancelled) runtime_storage_retire(storage, rc);
         runtime_storage_parent_active(storage, 0); storage->active = 0;
     } else runtime_storage_error_init(&storage->error, rc);
     PJson_Free(root); free(work); return rc;
@@ -1168,11 +1176,20 @@ PRUNTIME_API int PRuntime_ServiceQueueCreate(PRuntimeStorageHandle storage,
     if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
             !options->tab_id || !options->page_generation || !options->delivery_thread_id) return PRUNTIME_ARGUMENT;
     if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
-    if (storage->revision) return PRUNTIME_UNSUPPORTED;
     for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; i++) if (storage->queues[i] &&
             storage->queues[i]->options.tab_id == options->tab_id &&
             storage->queues[i]->options.page_generation == options->page_generation) return PRUNTIME_STATE;
     if (storage->queue_count >= PRUNTIME_SERVICE_MAX_QUEUES) return PRUNTIME_LIMIT;
+    if (storage->revision) {
+        storage->active = 1; runtime_storage_parent_active(storage, 1);
+        rc = runtime_storage_refresh(storage);
+        if (rc == PRUNTIME_OK) {
+            rc = runtime_storage_cancel(storage);
+            if (rc != PRUNTIME_OK) runtime_storage_retire(storage, rc);
+        }
+        runtime_storage_parent_active(storage, 0); storage->active = 0;
+        if (rc != PRUNTIME_OK) return rc;
+    }
     queue = (PRuntimeServiceQueueHandle)calloc(1, sizeof(*queue)); if (!queue) return PRUNTIME_MEMORY;
     queue->storage = storage; queue->options = *options; queue->owner = GetCurrentThreadId();
     InitializeCriticalSection(&queue->lock); storage->queue_count++;
@@ -1304,6 +1321,7 @@ PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue)
     if (!queue) return PRUNTIME_ARGUMENT;
     if (!*queue) return PRUNTIME_OK;
     rc = runtime_queue_thread(*queue, 0); if (rc != PRUNTIME_OK) return rc;
+    if (runtime_storage_ready((*queue)->storage) != PRUNTIME_OK) return PRUNTIME_STATE;
     EnterCriticalSection(&(*queue)->lock);
     if (!(*queue)->revoked || (*queue)->processing) { LeaveCriticalSection(&(*queue)->lock); return PRUNTIME_STATE; }
     LeaveCriticalSection(&(*queue)->lock); DeleteCriticalSection(&(*queue)->lock);
@@ -1340,7 +1358,8 @@ struct PRuntimeRevision {
 typedef char runtime_revision_budget_check[(sizeof(struct PRuntimeRevision) +
         65536U <= 512U * 1024U) ? 1 : -1];
 typedef char runtime_installed_storage_budget_check[(sizeof(struct PRuntimeRevision) +
-        sizeof(struct PRuntimeStorage) + sizeof(RuntimeSqlWork) + 65536U <= 1280U * 1024U) ? 1 : -1];
+        sizeof(struct PRuntimeStorage) + sizeof(RuntimeSqlWork) +
+        PRUNTIME_SERVICE_MAX_QUEUES * sizeof(struct PRuntimeServiceQueue) + 65536U <= 1280U * 1024U) ? 1 : -1];
 static int rv_ready(PRuntimeRevisionHandle r)
 {
     if (!r || r->magic != RREV_MAGIC) return PRUNTIME_ARGUMENT;
@@ -1455,6 +1474,9 @@ static int runtime_storage_parent_cancelled(PRuntimeStorageHandle storage)
 }
 static void runtime_storage_retire(PRuntimeStorageHandle storage, int result)
 {
+    unsigned int i;
+    if (storage->revision) for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; ++i)
+        if (storage->queues[i]) PRuntime_ServiceQueueRevoke(storage->queues[i]);
     storage->info.state = PRUNTIME_STORAGE_FAILED;
     if (storage->revision) rv_fail(storage->revision, result);
 }

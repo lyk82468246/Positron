@@ -6,6 +6,8 @@
 #include <wchar.h>
 #include "../positron_runtime/positron_runtime.h"
 #include "../positron_db/positron_db.h"
+#include "../positron_browser/positron_browser.h"
+#include "../positron_script/positron_script.h"
 #include "runtime_revision_fixture.h"
 
 typedef struct RevisionFixture {
@@ -21,6 +23,7 @@ typedef struct RevisionFixture {
     unsigned int bad_root;
     PRuntimeRevisionHandle job;
     PRuntimeStorageHandle storage;
+    PRuntimeServiceQueueHandle guarded_queue;
     PRuntimeInstalledRecord record;
 } RevisionFixture;
 typedef struct RevisionHash {
@@ -39,6 +42,10 @@ static void revision_guard(RevisionFixture* f)
         storage_info.size = sizeof(storage_info); storage_info.version = 1;
         if (PRuntime_StorageGetInfo(f->storage, &storage_info) != PRUNTIME_STATE ||
                 PRuntime_StorageClose(&storage_alias) != PRUNTIME_STATE || storage_alias != f->storage) ++f->bad_guard;
+    }
+    if (f->guarded_queue) {
+        PRuntimeServiceQueueHandle queue_alias = f->guarded_queue;
+        if (PRuntime_ServiceQueueClose(&queue_alias) != PRUNTIME_STATE || queue_alias != f->guarded_queue) ++f->bad_guard;
     }
     if (!f->job) return;
     info.size = sizeof(info); info.version = 1; alias = f->job;
@@ -1276,7 +1283,8 @@ BOOL test1383_runtime_ready_storage(void)
             RCHECK(WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); CloseHandle(thread); RCHECK(thread_data.ok);
             memset(&queue_options, 0, sizeof(queue_options)); queue_options.size = sizeof(queue_options); queue_options.version = 1;
             queue_options.tab_id = queue_options.page_generation = 1; queue_options.delivery_thread_id = GetCurrentThreadId();
-            RCHECK(PRuntime_ServiceQueueCreate(storage, &queue_options, &queue) == PRUNTIME_UNSUPPORTED && !queue);
+            RCHECK(PRuntime_ServiceQueueCreate(storage, &queue_options, &queue) == PRUNTIME_OK && queue);
+            RCHECK(PRuntime_ServiceQueueRevoke(queue) == PRUNTIME_OK && PRuntime_ServiceQueueClose(&queue) == PRUNTIME_OK && !queue);
             if (mode == 9) f.record.active = 0;
             if (mode == 11) ++f.record.generation;
             if (mode == 12) f.cancel = 1;
@@ -1313,4 +1321,265 @@ failed:
     if (storage) PRuntime_StorageClose(&storage);
     f.storage = NULL;
     revision_dispose(&f, &job); free(before); free(after); free(output); return FALSE;
+}
+
+typedef struct InstalledQueueFixture {
+    RevisionFixture revision;
+    ReadyStorageFixture location;
+    PRuntimeRevisionHandle parent;
+    PRuntimeStorageHandle storage;
+    PRuntimeServiceQueueHandle queue, side;
+    PRuntimeServiceQueueOptions options;
+    HANDLE ready, work, done, inside, resume, thread, session;
+    volatile LONG action, pause, instance_cancel;
+    int result, stored_rows;
+    unsigned int processed, accepted, cancelled;
+    PBrowserServiceToken token;
+} InstalledQueueFixture;
+static int installed_queue_cancelled(void* user)
+{
+    InstalledQueueFixture* f = (InstalledQueueFixture*)user;
+    if (InterlockedExchange((LONG*)&f->pause, 0)) {
+        SetEvent(f->inside);
+        if (WaitForSingleObject(f->resume, 10000) != WAIT_OBJECT_0) return 1;
+    }
+    return InterlockedCompareExchange((LONG*)&f->instance_cancel, 0, 0) != 0;
+}
+static DWORD WINAPI installed_queue_worker(void* user)
+{
+    static const char identity[] = "Positron.storage.v1:installed:com.example.installed:00112233445566778899aabbccddeeff";
+    InstalledQueueFixture* f = (InstalledQueueFixture*)user;
+    PRuntimeRevisionProvider resources;
+    PRuntimeInstalledProvider registry;
+    PRuntimeRevisionOptions revision_options;
+    PRuntimeApprovalOptions approval;
+    PRuntimeApprovalSnapshot snapshot;
+    PRuntimeInstalledStorageProvider provider;
+    PRuntimeStorageOptions options;
+    PRuntimeStorageError error;
+    PRuntimeStorageInfo info;
+    PRuntimeStorageHandle storage_alias;
+    PRuntimeRevisionHandle parent_alias;
+    PRuntimeServiceQueueHandle extra[3];
+    PRuntimeServiceQueueOptions queue_options;
+    PDbExistingLocalOptions db_options;
+    PDbHandle db = NULL;
+    PDbStmtHandle stmt = NULL;
+    unsigned int i;
+    LONG action;
+    int rc = 0;
+#define IQWORK(expr) do { if (!(expr)) { f->result = rc ? rc : PRUNTIME_STATE; goto finish; } } while (0)
+    memset(extra, 0, sizeof(extra));
+    revision_fixture(&f->revision, NULL); revision_tables(&f->revision, &resources, &registry, &revision_options);
+    rc = PRuntime_PrepareRevision("\\revision-root", 14, &resources, &revision_options, &f->parent); IQWORK(rc == 0);
+    rc = revision_run(&f->revision, f->parent); IQWORK(rc == PRUNTIME_REVISION_DONE); rc = 0;
+    memset(&approval, 0, sizeof(approval)); approval.size = sizeof(approval); approval.version = 1;
+    approval.revision = approval.confirmed = 1; strcpy(approval.installation_id, "00112233445566778899aabbccddeeff");
+    snapshot.size = sizeof(snapshot); snapshot.version = 1;
+    rc = PRuntime_RevisionBuildApproval(f->parent, &approval, &snapshot); IQWORK(rc == 0);
+    revision_dispose(&f->revision, &f->parent);
+    rc = PDb_OpenUtf8(f->location.utf8, PDB_OPEN_LOCAL_FULL_SQL, &db); IQWORK(rc == 0);
+    rc = PDb_BindLocalIdentity(db, identity, sizeof(identity)-1); IQWORK(rc == 0);
+    rc = PDb_Exec(db, "CREATE TABLE sample(n INTEGER)"); IQWORK(rc == 0);
+    PDb_Close(db); db = NULL;
+    revision_fixture(&f->revision, &snapshot); revision_tables(&f->revision, &resources, &registry, &revision_options);
+    f->location.revision = &f->revision;
+    rc = PRuntime_OpenInstalled(snapshot.installation_id, 32, 7, &registry, &resources, &revision_options, &f->parent); IQWORK(rc == 0);
+    rc = revision_run(&f->revision, f->parent); IQWORK(rc == PRUNTIME_REVISION_DONE); rc = 0;
+    memset(&provider, 0, sizeof(provider)); provider.size = sizeof(provider); provider.version = 1;
+    provider.user_data = &f->location; provider.open_existing_location = ready_storage_location; provider.close_location = ready_storage_close;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    options.granted_permissions = 1; options.vm_budget = 1000000; options.cancelled = installed_queue_cancelled; options.user_data = f;
+    error.size = sizeof(error); error.version = 1;
+    rc = PRuntime_InstalledStorageOpen(f->parent, &options, &provider, &f->storage, &error); IQWORK(rc == 0);
+    f->revision.storage = f->storage;
+    rc = PRuntime_ServiceQueueCreate(f->storage, &f->options, &f->queue); IQWORK(rc == 0);
+    f->revision.guarded_queue = f->queue;
+    queue_options = f->options; ++queue_options.page_generation;
+    rc = PRuntime_ServiceQueueCreate(f->storage, &queue_options, &f->side); IQWORK(rc == 0);
+    memset(extra, 0, sizeof(extra));
+    IQWORK(PRuntime_ServiceQueueCreate(f->storage, &f->options, &extra[2]) == PRUNTIME_STATE && !extra[2]);
+    for (i = 0; i < 2; ++i) { ++queue_options.page_generation;
+        rc = PRuntime_ServiceQueueCreate(f->storage, &queue_options, &extra[i]); IQWORK(rc == 0); }
+    ++queue_options.page_generation;
+    IQWORK(PRuntime_ServiceQueueCreate(f->storage, &queue_options, &extra[2]) == PRUNTIME_LIMIT && !extra[2]);
+    for (i = 0; i < 2; ++i) { PRuntime_ServiceQueueRevoke(extra[i]); IQWORK(PRuntime_ServiceQueueClose(&extra[i]) == 0); }
+    storage_alias = f->storage; parent_alias = f->parent;
+    IQWORK(PRuntime_StorageClose(&storage_alias) == PRUNTIME_STATE && storage_alias == f->storage &&
+            PRuntime_RevisionClose(&parent_alias) == PRUNTIME_STATE && parent_alias == f->parent);
+    SetEvent(f->ready);
+    for (;;) {
+        IQWORK(WaitForSingleObject(f->work, 30000) == WAIT_OBJECT_0);
+        action = InterlockedExchange((LONG*)&f->action, 0); if (action == 9) break;
+        if (action == 2) f->revision.record.active = 0;
+        if (action == 4) InterlockedExchange((LONG*)&f->instance_cancel, 1);
+        if (action == 1 || action == 2 || action == 4 || action == 5)
+            f->result = PRuntime_ServiceQueueProcessOne(action == 5 ? f->side : f->queue, &f->processed);
+        else if (action == 3 || action == 7) {
+            if (action == 3) ++f->revision.record.generation;
+            else InterlockedExchange((LONG*)&f->instance_cancel, 1);
+            extra[0] = NULL;
+            f->result = PRuntime_ServiceQueueCreate(f->storage, &queue_options, &extra[0]);
+            if (extra[0]) { PRuntime_ServiceQueueRevoke(extra[0]); PRuntime_ServiceQueueClose(&extra[0]); f->result = PRUNTIME_STATE; }
+        } else if (action == 6) {
+            info.size = sizeof(info); info.version = 1;
+            f->result = PRuntime_StorageGetInfo(f->storage, &info);
+            if (!f->result && info.state != PRUNTIME_STORAGE_READY) f->result = PRUNTIME_STATE;
+        } else f->result = PRUNTIME_ARGUMENT;
+        SetEvent(f->done);
+    }
+finish:
+    f->revision.guarded_queue = NULL;
+    SetEvent(f->ready);
+    for (i = 0; i < 3; ++i) if (extra[i]) { PRuntime_ServiceQueueRevoke(extra[i]); PRuntime_ServiceQueueClose(&extra[i]); }
+    if (f->queue) { PRuntime_ServiceQueueRevoke(f->queue); PRuntime_ServiceQueueClose(&f->queue); }
+    if (f->side) { PRuntime_ServiceQueueRevoke(f->side); PRuntime_ServiceQueueClose(&f->side); }
+    PRuntime_StorageClose(&f->storage); f->revision.storage = NULL;
+    if (db) { PDb_Close(db); db = NULL; }
+    db_options.size = sizeof(db_options); db_options.version = 1; db_options.identity = identity;
+    db_options.identity_bytes = sizeof(identity)-1; db_options.expected_schema = 0;
+    if (PDb_OpenExistingLocalUtf8(f->location.utf8, (int)strlen(f->location.utf8), &db_options, &db, NULL) == 0 &&
+            PDb_Prepare(db, "SELECT count(*) FROM sample", &stmt) == 0 && PDb_Step(stmt) == PDB_STEP_ROW)
+        f->stored_rows = (int)PDb_ColumnInt64(stmt, 0);
+    if (stmt) PDb_Finalize(stmt); if (db) PDb_Close(db);
+    revision_dispose(&f->revision, &f->parent); SetEvent(f->done); return 0;
+#undef IQWORK
+}
+static int installed_queue_action(InstalledQueueFixture* f, LONG action)
+{
+    ResetEvent(f->done); InterlockedExchange((LONG*)&f->action, action); SetEvent(f->work);
+    return WaitForSingleObject(f->done, 30000) == WAIT_OBJECT_0;
+}
+static int installed_queue_submit(void* user, const PBrowserServiceRequest* input)
+{
+    InstalledQueueFixture* f = (InstalledQueueFixture*)user;
+    PRuntimeServiceRequest request;
+    int rc;
+    memset(&request, 0, sizeof(request)); request.size = sizeof(request); request.version = 1;
+    request.tab_id = input->tab_id; request.page_generation = input->page_generation;
+    request.bridge_id = input->token.bridge_id; request.request_id = input->token.request_id;
+    request.method = input->method; request.json = input->params_json; request.json_bytes = input->params_bytes;
+    rc = PRuntime_ServiceQueueSubmit(f->queue, &request);
+    if (!rc) { ++f->accepted; f->token = input->token; } return rc;
+}
+static void installed_queue_cancel(void* user, const PBrowserServiceToken* token)
+{
+    InstalledQueueFixture* f = (InstalledQueueFixture*)user; ++f->cancelled;
+    PRuntime_ServiceQueueCancel(f->queue, token->bridge_id, token->request_id);
+}
+static int installed_queue_js(InstalledQueueFixture* f, const char* source)
+{
+    const char* result;
+    if (PBrowser_ScriptSessionEvaluate(f->session, source, -1) != PSCRIPT_OK) return 0;
+    result = PBrowser_ScriptSessionGetResult(f->session); return result && !strcmp(result, "true");
+}
+BOOL test1384_runtime_installed_queue(void)
+{
+    static const char* methods[] = { "storage.sql" };
+    static const char query[] = "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT count(*) FROM sample\",\"params\":[]}";
+    static const char insert[] = "{\"version\":1,\"method\":\"execute\",\"sql\":\"INSERT INTO sample VALUES(43)\",\"params\":[]}";
+    InstalledQueueFixture* f = NULL;
+    PRuntimeServiceRequest request;
+    PRuntimeServiceResult *result = NULL, *canary = NULL;
+    PRuntimeServiceQueueInfo info;
+    PBrowserServiceOptions options;
+    WCHAR module[MAX_PATH], *slash;
+    unsigned int mode, delivered;
+    unsigned long pumped;
+    int rc = 0;
+    result = (PRuntimeServiceResult*)malloc(sizeof(*result)); canary = (PRuntimeServiceResult*)malloc(sizeof(*canary));
+    RCHECK(result && canary);
+    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH-70);
+    slash = wcsrchr(module, L'\\'); RCHECK(slash); *slash = 0;
+    for (mode = 0; mode < 6; ++mode) {
+        f = (InstalledQueueFixture*)calloc(1, sizeof(*f)); RCHECK(f); f->stored_rows = -1;
+        wsprintfW(f->location.path, L"%s\\installed-queue-%lu-%u.db", module, GetCurrentProcessId(), mode);
+        RCHECK(GetFileAttributesW(f->location.path) == 0xffffffffUL);
+        RCHECK(WideCharToMultiByte(CP_UTF8, 0, f->location.path, -1, f->location.utf8, sizeof(f->location.utf8), NULL, NULL));
+        f->options.size = sizeof(f->options); f->options.version = 1; f->options.tab_id = 91;
+        f->options.page_generation = 3; f->options.delivery_thread_id = GetCurrentThreadId();
+        f->ready = CreateEvent(NULL, TRUE, FALSE, NULL); f->done = CreateEvent(NULL, TRUE, FALSE, NULL);
+        f->work = CreateEvent(NULL, FALSE, FALSE, NULL); f->inside = CreateEvent(NULL, TRUE, FALSE, NULL); f->resume = CreateEvent(NULL, TRUE, FALSE, NULL);
+        RCHECK(f->ready && f->done && f->work && f->inside && f->resume);
+        f->thread = CreateThread(NULL, 0, installed_queue_worker, f, 0, NULL);
+        RCHECK(f->thread && WaitForSingleObject(f->ready, 30000) == WAIT_OBJECT_0 && !f->result && f->queue && f->side);
+        delivered = 55;
+        RCHECK(PRuntime_ServiceQueueProcessOne(f->queue, &delivered) == PRUNTIME_STATE && delivered == 55);
+        f->session = PBrowser_ScriptSessionCreate(1000); RCHECK(f->session);
+        memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+        options.tab_id = 91; options.page_generation = 3; options.methods = methods; options.method_count = 1;
+        options.submit = installed_queue_submit; options.cancel = installed_queue_cancel; options.pw = f;
+        RCHECK(PBrowser_ScriptSessionRegisterServices(f->session, &options) == PBROWSER_OK);
+        RCHECK(installed_queue_js(f, "var replies=[],p={version:1,method:'execute',sql:'INSERT INTO sample VALUES(42)',params:[]};PositronServices.request('storage.sql',p,function(ok,v){replies.push([ok,v]);});p.sql='DROP TABLE sample';replies.length===0"));
+        RCHECK(installed_queue_action(f, 1) && !f->result && f->processed == 1);
+        result->size = sizeof(*result); result->version = 1;
+        RCHECK(PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && !result->result &&
+                result->bridge_id == f->token.bridge_id && result->request_id == f->token.request_id);
+        RCHECK(PBrowser_ScriptSessionCompleteService(f->session, &f->token, 1, result->json, result->json_bytes) == PBROWSER_OK);
+        RCHECK(installed_queue_js(f, "replies.length===0") && PBrowser_ScriptSessionPumpServices(f->session, 1, &pumped) == PBROWSER_OK && pumped == 1 &&
+                installed_queue_js(f, "replies.length===1&&replies[0][0]&&replies[0][1].changes.value==='1'"));
+        *canary = *result;
+        RCHECK(PRuntime_ServiceQueueTakeResult(f->queue, result) == PRUNTIME_NOT_FOUND && !memcmp(result, canary, sizeof(*result)));
+        memset(&request, 0, sizeof(request)); request.size = sizeof(request); request.version = 1;
+        request.tab_id = 91; request.page_generation = 3; request.bridge_id = f->token.bridge_id;
+        request.request_id = f->token.request_id; request.method = "storage.sql"; request.json = insert; request.json_bytes = sizeof(insert)-1;
+        RCHECK(PRuntime_ServiceQueueSubmit(f->queue, &request) == PRUNTIME_STATE);
+        if (mode == 0) {
+            ++request.request_id;
+            RCHECK(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0);
+            InterlockedExchange((LONG*)&f->pause, 1); ResetEvent(f->done); InterlockedExchange((LONG*)&f->action, 1); SetEvent(f->work);
+            RCHECK(WaitForSingleObject(f->inside, 10000) == WAIT_OBJECT_0 && PRuntime_ServiceQueueCancel(f->queue, request.bridge_id, request.request_id) == 0);
+            SetEvent(f->resume); RCHECK(WaitForSingleObject(f->done, 30000) == WAIT_OBJECT_0 && !f->result);
+            RCHECK(installed_queue_action(f, 6) && !f->result);
+            ++request.request_id; request.json = query; request.json_bytes = sizeof(query)-1;
+            RCHECK(PRuntime_ServiceQueueSubmit(f->queue, &request) == 0 && installed_queue_action(f, 1) && !f->result);
+            RCHECK(PRuntime_ServiceQueueTakeResult(f->queue, result) == 0 && !result->result && strstr(result->json, "\"value\":\"1\""));
+        } else {
+            RCHECK(installed_queue_js(f, "PositronServices.request('storage.sql',{version:1,method:'execute',sql:'INSERT INTO sample VALUES(43)',params:[]},function(){replies.push('late');});true"));
+            request.page_generation = 4; request.bridge_id = 71; request.request_id = 1;
+            RCHECK(PRuntime_ServiceQueueSubmit(f->side, &request) == 0);
+            if (mode == 2 || mode == 4) RCHECK(installed_queue_action(f, 1) && !f->result);
+            if (mode == 2) RCHECK(installed_queue_action(f, 3) && f->result == PRUNTIME_INVALID);
+            if (mode == 1) RCHECK(installed_queue_action(f, 2) && !f->result);
+            if (mode == 3) RCHECK(installed_queue_action(f, 4) && !f->result);
+            if (mode == 5) RCHECK(installed_queue_action(f, 7) && f->result == PRUNTIME_CANCELLED);
+            if (mode == 4) {
+                RCHECK(PBrowser_ScriptSessionRevokeServices(f->session) == PBROWSER_OK && PRuntime_ServiceQueueRevoke(f->queue) == 0);
+                RCHECK(installed_queue_action(f, 6) && !f->result);
+                RCHECK(installed_queue_action(f, 5) && !f->result);
+                RCHECK(PRuntime_ServiceQueueTakeResult(f->side, result) == 0 && !result->result);
+            } else {
+                info.size = sizeof(info); info.version = 1;
+                RCHECK(PRuntime_ServiceQueueGetInfo(f->queue, &info) == 0 && info.revoked && !info.waiting && !info.running && !info.completed);
+                RCHECK(PRuntime_ServiceQueueGetInfo(f->side, &info) == 0 && info.revoked && !info.waiting && !info.completed);
+                *canary = *result;
+                RCHECK(PRuntime_ServiceQueueTakeResult(f->queue, result) == PRUNTIME_STATE && !memcmp(result, canary, sizeof(*result)));
+                RCHECK(PBrowser_ScriptSessionRevokeServices(f->session) == PBROWSER_OK && f->cancelled == 1);
+            }
+            RCHECK(PBrowser_ScriptSessionCompleteService(f->session, &f->token, 1, "{}", 2) != PBROWSER_OK && installed_queue_js(f, "replies.length===1"));
+        }
+        PBrowser_ScriptSessionRevokeServices(f->session); PBrowser_ScriptSessionDestroy(f->session); f->session = NULL;
+        RCHECK(installed_queue_action(f, 9) && WaitForSingleObject(f->thread, 30000) == WAIT_OBJECT_0);
+        RCHECK(f->stored_rows == (mode == 2 || mode == 4 ? (mode == 4 ? 3 : 2) : 1) && !f->storage && !f->parent && !f->queue && !f->side &&
+                !f->revision.bad_guard && !f->location.leases && f->location.opens == f->location.closes);
+        RCHECK(DeleteFileW(f->location.path));
+        CloseHandle(f->thread); CloseHandle(f->ready); CloseHandle(f->done); CloseHandle(f->work); CloseHandle(f->inside); CloseHandle(f->resume);
+        free(f); f = NULL;
+    }
+    free(result); free(canary); return TRUE;
+failed:
+    if (f) {
+        if (f->resume) SetEvent(f->resume);
+        if (f->session) { PBrowser_ScriptSessionRevokeServices(f->session); PBrowser_ScriptSessionDestroy(f->session); }
+        if (f->thread && WaitForSingleObject(f->thread, 0) != WAIT_OBJECT_0) {
+            if (f->queue) PRuntime_ServiceQueueRevoke(f->queue);
+            InterlockedExchange((LONG*)&f->instance_cancel, 1); installed_queue_action(f, 9);
+            /* Preserve native state on timeout; never free a running worker. */
+            if (WaitForSingleObject(f->thread, 30000) != WAIT_OBJECT_0) { free(result); free(canary); return FALSE; }
+        }
+        if (f->thread) CloseHandle(f->thread); if (f->ready) CloseHandle(f->ready); if (f->done) CloseHandle(f->done);
+        if (f->work) CloseHandle(f->work); if (f->inside) CloseHandle(f->inside); if (f->resume) CloseHandle(f->resume);
+        free(f);
+    }
+    free(result); free(canary); return FALSE;
 }

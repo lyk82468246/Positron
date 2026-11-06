@@ -65,7 +65,7 @@ JSON 严格语法/预算由 JSON DLL 承担，Runtime 不复制 parser；有效 
 Runtime 的[只读安装核验](../positron_runtime/INSTALLED.md)拥有完整清单、SHA-256 framing、
 显式批准快照及已提交记录的 generation/资源比较。可信原生 provider 保有不可变物理根、
 完整枚举、SHA-256 backend 和独占安装租约；无算法或不能证明包含性时拒绝。完成核验才允许
-installed-kind 的有界读取，快照本身不授予服务。Runtime另以独立子job协调不可启动PREPARING意图的原生CAS/读回与取消，保有父资源，未知结果不重放。安装数据子job再绑定独立installed stamp/key，准入全部pending来源后按文件提交迁移，失败不重放前缀并独立记录登记错误。仅revision 1。READY原生存储保有installed父项/位置租约，刷新登记后经DB既有准入复用受限SQL/JSON，无创建/认领/迁移；安装队列/Browser授权、最终登记、真实EXE主库与发布/更新仍未接入，不改变开发目录警告。
+installed-kind 的有界读取，快照本身不授予服务。Runtime另以独立子job协调不可启动PREPARING意图的原生CAS/读回与取消，保有父资源，未知结果不重放。安装数据子job再绑定独立installed stamp/key，准入全部pending来源后按文件提交迁移，失败不重放前缀并独立记录登记错误。仅revision 1。READY原生存储保有installed父项/位置租约，刷新登记后经DB既有准入复用受限SQL/JSON，无创建/认领/迁移；安装队列复用有界复制与显式Browser授权，实例退休撤销全部队列而页面取消保持局部；最终登记、真实EXE主库与发布/更新仍未接入，不改变开发目录警告。
 
 ## 公共 DLL
 
