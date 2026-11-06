@@ -42,7 +42,7 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 冻结目录首次安装主库v5、精确CAS、原生确认/恢复及独立installed启动已接入，自动及Debug确认/拒绝/保存/免提示重开人工门通过；证据见[EXE安装验收](../docs/history/APP_RUNTIME_INSTALL_ACCEPTANCE.md)。恢复UI、双语/Release仍待人工。
 
-PXI已接--install，Archive完整CRC输出后复用首次安装链；128条目/4MiB/256对象，可能写意图前保留目录，确认前仅清本次可验证对象。无DLL/ABI/schema或系统关联改动。最终tmp/device-runs/20261106-222650-app-pxi原生phase10、参数14项、两进程installed SQL页、12/12哈希、三个资源摘要/ZIP字节、相邻设置及退出/crash全部PASS；Debug/Release/CAB、C89/审计通过，普通PXI中文包路径已由后续日志证明确认后READY提交、独立open-installed及Notes脚本无错误；保存/退出重开与拒绝人工门仍待做。用户授权当前设备清理后，94个旧测试文件完整归档，原Notes未迁入。证据/夹具失败见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
+PXI已接--install，Archive完整CRC输出后复用首次安装链；128条目/4MiB/256对象，可能写意图前保留目录，确认前仅清本次可验证对象。无DLL/ABI/schema或系统关联改动。最终tmp/device-runs/20261106-222650-app-pxi原生phase10、参数14项、两进程installed SQL页、12/12哈希、三个资源摘要/ZIP字节、相邻设置及退出/crash全部PASS；Debug/Release/CAB、C89/审计通过，普通PXI中文包路径已由后续日志证明确认后READY提交、独立open-installed及Notes脚本无错误；新进程3820850954免提示重开/脚本及绘制通过；保存与拒绝人工门待做。用户授权当前设备清理后，94个旧测试文件完整归档，原Notes未迁入。证据/夹具失败见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -486,7 +486,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核ROADMAP与限制；普通PXI确认后的成功日志已固化，未冒认保存/重开。PXI自动门已过，唯一下一步为当前匹配包的普通PXI风险确认/拒绝、Notes保存与免提示重开人工门，再考虑系统关联。公共合同足够，无需新增DLL接口；更新/卸载另行。外置卷native2及旧DB错误不关闭，不重开FULL/断电门。
+本轮已复核ROADMAP与限制；普通PXI确认后的成功日志已固化，未冒认保存/重开。PXI自动门已过，唯一下一步为当前匹配包的普通PXI拒绝、Notes保存人工门（新进程免提示重开已有日志），再考虑系统关联。公共合同足够，无需新增DLL接口；更新/卸载另行。外置卷native2及旧DB错误不关闭，不重开FULL/断电门。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
