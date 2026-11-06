@@ -221,8 +221,8 @@ provider 无法证明时拒绝，不能校验一个文件后重新打开另一�
 
 #### 接口与生命周期
 
-PrepareRevision、OpenInstalled 和 Revision* 只读入口已可链接；InstalledStorageOpen 仍是
-后续职责名，没有预先声明假成功入口。旧 Development*、ManifestInfo、DirectoryProvider
+PrepareRevision、OpenInstalled 和 Revision* 只读入口，以及 InstalledStorageOpen 的
+require-existing 存储入口已可链接；后者复用既有受限SQL/JSON，安装队列仍明确拒绝。旧 Development*、ManifestInfo、DirectoryProvider
 及 StorageOptions 布局不变。当前 v1 限首次安装 revision 1，更新版本尚未开放。
 
 | 接口职责 | 输入与输出 | 权限边界 |
@@ -286,7 +286,7 @@ INVALID，错误线程/阶段 STATE，租约冲突 BUSY，原生读取失败 IO�
 匹配 ARMV4I 双配置门；范围与证据见[验收记录](history/RUNTIME_REVISION_ACCEPTANCE.md)。
 它不执行作者代码，不开放 installed SQL，不迁移 EXE 主库，也不取消开发目录提示。
 
-首次安装采用[存储与登记恢复合同](RUNTIME_INSTALL_RECOVERY.md)：先提交不可启动意图，再准备独立安装数据库，最后提交 READY；结果不明必须精确读回。登记转换/读回及PREPARING意图协调已由Runtime提供；原生provider负责持久CAS，完整EXE登记仍未接入。安装数据准备/迁移后缀恢复也已提供。DB只读既有文件核验已提供；下一批补不CREATE的已核验可写句柄，不能把探针后旧CREATE打开当准入，然后接READY opener、最终登记与EXE消费者。更新仍关闭，Archive隔离输出仍需独立门。
+首次安装采用[存储与登记恢复合同](RUNTIME_INSTALL_RECOVERY.md)：先提交不可启动意图，再准备独立安装数据库，最后提交 READY；结果不明必须精确读回。登记转换/读回及PREPARING意图协调已由Runtime提供；原生provider负责持久CAS，完整EXE登记仍未接入。安装数据准备/迁移后缀恢复也已提供。DB既有文件核验与不CREATE的可写准入均已提供；Runtime已通过installed父项/位置租约和READY刷新组合原生存储，不能用旧CREATE打开或开发句柄cast替代。下一条纵切为安装队列/Browser授权，然后接最终登记与EXE消费者。更新仍关闭，Archive隔离输出仍需独立门。
 
 ## SQL 服务与 JS SDK
 

@@ -17,15 +17,17 @@ EXE integrates these development contracts as described in
 provide their own trusted platform adapter and explicit session authorization.
 
 First-install identity/content verification is available through the separate
-read-only contract below. READY SQL services, final READY registration and installed
-EXE launch remain separate requirements; an address never grants permission.
+installed contract below. Native READY storage reuses the bounded SQL/JSON path;
+installed queues/Browser grants, final READY registration and EXE launch remain
+separate requirements. An address never grants permission.
 
 ## Link and deploy
 
 Include `positron_runtime.h`, link `positron_runtime.lib`, and deploy
 `positron_runtime.dll` with the matching `positron_json.dll` and `positron_db.dll` from one formal
 Debug or Release stage. Build through the root solution, never compile Runtime
-or cJSON implementation sources into a consumer. The DLL performs no file,
+or cJSON implementation sources into a consumer. The current Runtime imports
+`PDb_OpenExistingLocalUtf8`; an older DB DLL lacking that export cannot satisfy it. The DLL performs no file,
 network, window, SQL or worker operations during metadata admission.
 
 ## Manifest v1
@@ -292,8 +294,8 @@ Before migrations, `PDb_BindLocalIdentity` atomically compares a full framed
 development-kind/normalized-ID/canonical-root TEXT identity in private DB
 metadata. A collision or wrong mapped file returns SCHEMA; an unclaimed nonempty
 DB is never adopted. Thus equal IDs in different roots remain separate, and a
-development application cannot claim an installed identity. Installed SQL storage/update
-is not implemented; the installed namespace must never alias `v1/dev`.
+development application cannot claim an installed identity. Installed storage uses its [separate READY contract](INSTALLED.md#opening-ready-installed-storage);
+updates remain unimplemented, and its namespace must never alias `v1/dev`.
 
 The owner reads strict schema version, copies every pending manifest source,
 then applies each with `PDb_ApplyMigrationRestricted` in order. Invalid/missing
@@ -364,7 +366,7 @@ below for asynchronous delivery; this worker entry alone does not make a web pag
 
 ## Bounded page SQL service queue
 
-Create `PRuntime_ServiceQueueCreate` on the storage owner worker, after migrations
+For development storage, create `PRuntime_ServiceQueueCreate` on the owner worker, after migrations
 and native confirmation succeed. Exact v1 options bind nonzero tab/page generation
 and UI delivery thread. At most four independent queues share one storage, allowing
 an old page and candidates to coexist; duplicate tab/generation is STATE. Each
@@ -469,8 +471,10 @@ no author SQL handle or startup grant.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). V1 admits
-revision 1 only; installed SQL, update/recovery and actual EXE registration remain
-unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
+revision 1 only. `PRuntime_InstalledStorageOpen` retains that verified parent and
+an existing native DB location, refreshes READY registration and reuses typed
+SQL/JSON without CREATE, claim or migration. Installed queue creation is explicitly
+UNSUPPORTED; update/recovery and actual EXE registration remain unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
 
 ## PXI availability
 

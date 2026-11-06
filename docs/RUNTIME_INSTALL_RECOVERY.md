@@ -1,6 +1,6 @@
 # 首次安装存储与登记恢复合同
 
-本文件定义安装/存储的实施合同，**尚未实现READY最终登记与运行期安装存储服务**。已可调用的是 [Runtime核验、登记读回和PREPARING意图协调](../positron_runtime/INSTALLED.md)；协调器通过原生CAS写不可启动意图，InstallData已提供独立数据库准备/迁移与失败登记，尚无READY提交或作者SQL服务。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
+本文件定义安装/存储的实施合同，**尚未实现READY最终登记与安装队列/Browser服务接线**。已可调用的是 [Runtime核验、登记读回和PREPARING意图协调](../positron_runtime/INSTALLED.md)；协调器通过原生CAS写不可启动意图，InstallData已提供独立数据库准备/迁移与失败登记，已有独立READY原生存储准入与同步受限SQL，尚无READY提交或网页队列授权。其 revision 1、旧 ABI 和开发目录行为保持不变。本阶段只处理首次安装、受控中断与正常重开，不提供更新、数据降级、自动恢复旧安装数据或物理断电保证。
 
 ## 为什么需要独立安装意图
 
@@ -96,7 +96,7 @@ Native provider 提供原子登记读取/CAS 和规范物理位置，不决定�
 
 租约顺序固定为 app-ID 协调→installation-ID 协调→不可变资源 root→数据位置/DB；不等待其他活动安装，冲突返回 BUSY。prepare 已持有 root 时只能尝试非阻塞协调租约，失败立即返回，不构成反向等待。启动/修复/撤销均使用相同 installation-ID 协调身份。安装完成后先释放协调 job，再走普通启动；若需要保留租约，须另做原子转移接口，不能重复获取而绕过 BUSY。
 
-父子关系必须显式保有：存在安装 job 时父 revision Cancel/Close 返回 STATE；存在 installed storage 或队列时父 revision Cancel/Close 同样拒绝。子项先关闭。当前意图子job先释放其登记租约再解除父保有，随后调用者才可关闭父资源root；未来持有存储时必须先关闭队列、DB与数据位置，再关闭其安装/资源父项。活动调用不可释放；跨线程只有既有明确复制队列路径可用。不自建 worker、不 DispatchMessage、不跨线程共享 live DB/Core/Script 句柄。
+父子关系必须显式保有：存在安装 job 时父 revision Cancel/Close 返回 STATE；存在 installed storage 或队列时父 revision Cancel/Close 同样拒绝。子项先关闭。当前意图子job先释放其登记租约再解除父保有，随后调用者才可关闭父资源root；READY存储必须先关闭DB与数据位置，再解除资源/登记父项保有；安装队列仍未接入。活动调用不可释放；跨线程只有既有明确复制队列路径可用。不自建 worker、不 DispatchMessage、不跨线程共享 live DB/Core/Script 句柄。
 
 SQL 继续使用 100..1000000、100 倍数的每文件/请求 VM budget，最多16个来源、每项32768 bytes/合计512 KiB；不因安装扩大现有 DB/SQL/JSON 配额。准备来源不复制整个资源包。安装协调仅持有一个迁移来源计划、一个 DB 与固定元数据；实现前编译期核对新增工作集，不能把只读 revision 的512 KiB与迁移512 KiB相加后仍称总512 KiB。组合预算应单独公开，最坏 Runtime-owned 同时工作集上限定为1280 KiB（DB/native provider内部内存另计）。
 
@@ -104,7 +104,7 @@ SQL 继续使用 100..1000000、100 倍数的每文件/请求 VM budget，最多
 
 登记读回及PREPARING意图协调已实现，精确入口/状态/预算见组件合同；前者只观察，后者通过可信原生provider执行一次CAS并读回，支持显式恢复与取消，不写READY。测试模拟原生登记，不证明EXE持久表。后续存储只接受活的PREPARED意图，不接受裸批准快照或开发句柄。所有转换与恢复分类仍属DLL，test_host只准备事实、故障与断言。
 
-安装准备数据已有独立stamp/key、完整pending来源准入、逐文件提交及后缀恢复合同，回归使用真实PDb文件；无READY或作者SQL服务。DB的只读快照和可写既有句柄准入均有独立合同。下一步由Runtime接READY InstalledStorageOpen：保有installed父项/位置租约，刷新READY记录，调用既有句柄准入，并复用受限SQL/JSON及撤销/关闭合同；队列和最终READY提交再分别接入。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
+安装准备数据已有独立stamp/key、完整pending来源准入、逐文件提交及后缀恢复合同，回归使用真实PDb文件；无READY或作者SQL服务。DB的只读快照和可写既有句柄准入均有独立合同。Runtime已接READY InstalledStorageOpen，保有installed父项/位置租约，刷新READY记录并经既有句柄准入复用受限SQL/JSON及撤销/关闭；安装队列/Browser服务和最终READY提交仍须分别接入。最后才由 EXE 接实际主库迁移、确认 UI、Archive 隔离输出、安装入口和启动服务，分别取得消费者证据。
 
 每个功能批次均须 C89、审计、串行正式 Debug/Release 和匹配 ARMV4I 定向设备门。至少覆盖无SQL/零migration/多migration、两安装与开发数据隔离、错误stamp/非空库/未来版本、每个提交点前后中断、提交成功但响应丢失、读回失败、CAS竞争、取消与最终提交交错、资源变化/撤销、关闭/重入/错误线程及重复恢复。迁移回归使用非幂等插入计数证明前缀没有重放，不能只检查 schema 数字。
 

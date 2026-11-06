@@ -293,6 +293,17 @@ typedef struct PRuntimeStorageProvider {
     int (*open_location)(void* user, const char* key, PRuntimeStorageLocation* location);
     void (*close_location)(void* user, void* token);
 } PRuntimeStorageProvider;
+/* READY startup only: no directory/file creation, deletion, fallback or
+ * overwrite. Retain an existing contained physical path/volume and exclusive
+ * native location lease until DB close. Partial tokens are always released.
+ * Registry coordination is retained by the installed parent revision. */
+typedef struct PRuntimeInstalledStorageProvider {
+    unsigned int size, version;
+    void* user_data;
+    int (*open_existing_location)(void* user, const char* key, PRuntimeStorageLocation* location);
+    void (*close_location)(void* user, void* token);
+} PRuntimeInstalledStorageProvider;
+
 typedef struct PRuntimeStorageOptions {
     unsigned int size;
     unsigned int version;
@@ -669,6 +680,24 @@ PRUNTIME_API int PRuntime_DevelopmentStorageOpen(PRuntimeDirectoryHandle directo
 PRUNTIME_API int PRuntime_StorageGetInfo(PRuntimeStorageHandle storage, PRuntimeStorageInfo* info);
 /* Sticky copied last failure, success does not erase it. */
 PRUNTIME_API int PRuntime_StorageGetError(PRuntimeStorageHandle storage, PRuntimeStorageError* error);
+/* Native synchronous READY storage. COMPLETE installed-kind revision and
+ * approved SQL required; copied v1 options/provider. No CREATE, Bind, migration
+ * or READY write. Exact installed identity/schema checked on the retained DB
+ * connection. Refresh registration before/after opening and before each SQL
+ * request; changed/revoked registration retires storage and parent, publishes
+ * no SQL/output. Provider honors the parent's exclusive installation lease:
+ * refresh is not an atomic transaction with another registry database.
+ * Success retains parent/root/registry/location until StorageClose. Parent
+ * Cancel/Close is STATE while attached. Single owner worker, callback reentry
+ * rejected; no pump/background thread. Existing StorageInfo/Error/Close and
+ * restricted ExecuteJson contracts apply, with unchanged budgets. QueueCreate
+ * currently returns UNSUPPORTED for installed storage. Failure preserves handle
+ * output, copies optional StorageError, closes partial DB/location; never repair,
+ * retry, claim or grant Browser services. Native diagnostics are not author text. */
+PRUNTIME_API int PRuntime_InstalledStorageOpen(PRuntimeRevisionHandle revision,
+        const PRuntimeStorageOptions* options, const PRuntimeInstalledStorageProvider* provider,
+        PRuntimeStorageHandle* output, PRuntimeStorageError* error);
+
 /* Synchronous worker primitive, NOT a Browser service registration or UI call.
  * v1 strict JSON <=4096 bytes/depth8/tokens768. query/execute: exactly
  * {version:1,method:"query"|"execute",sql:UTF8,params:[typed...]}; transaction:

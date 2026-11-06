@@ -714,6 +714,7 @@ PRUNTIME_API int PRuntime_MigrationPlanClose(PRuntimeMigrationPlanHandle* plan)
 
 struct PRuntimeStorage {
     PRuntimeDirectoryHandle directory;
+    PRuntimeRevisionHandle revision;
     PRuntimeStorageProvider provider;
     PRuntimeStorageOptions options;
     PRuntimeStorageLocation location;
@@ -727,6 +728,12 @@ struct PRuntimeStorage {
     int queue_processing;
     volatile LONG* operation_cancel;
 };
+static int runtime_storage_parent_busy(PRuntimeStorageHandle storage);
+static void runtime_storage_parent_active(PRuntimeStorageHandle storage, int active);
+static void runtime_storage_parent_detach(PRuntimeStorageHandle storage);
+static int runtime_storage_refresh(PRuntimeStorageHandle storage);
+static int runtime_storage_parent_cancelled(PRuntimeStorageHandle storage);
+static void runtime_storage_retire(PRuntimeStorageHandle storage, int result);
 static void runtime_storage_error_init(PRuntimeStorageError* error, int result)
 {
     memset(error, 0, sizeof(*error)); error->size = sizeof(*error); error->version = PRUNTIME_VERSION;
@@ -794,7 +801,7 @@ static void runtime_storage_identity(PRuntimeDirectoryHandle directory, char* id
 static int runtime_storage_ready(PRuntimeStorageHandle storage)
 {
     if (!storage) return PRUNTIME_ARGUMENT;
-    if (storage->owner != GetCurrentThreadId() || storage->active || storage->directory->active) return PRUNTIME_STATE;
+    if (storage->owner != GetCurrentThreadId() || storage->active || runtime_storage_parent_busy(storage)) return PRUNTIME_STATE;
     return PRUNTIME_OK;
 }
 PRUNTIME_API int PRuntime_DevelopmentStorageOpen(PRuntimeDirectoryHandle directory,
@@ -898,15 +905,21 @@ PRUNTIME_API int PRuntime_StorageGetError(PRuntimeStorageHandle storage, PRuntim
 }
 PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage)
 {
-    PRuntimeDirectoryHandle directory;
+    PRuntimeStorageHandle current;
     int rc;
     if (!storage) return PRUNTIME_ARGUMENT;
     if (!*storage) return PRUNTIME_OK;
-    rc = runtime_storage_ready(*storage); if (rc != PRUNTIME_OK) return rc;
-    if ((*storage)->queue_count) return PRUNTIME_STATE;
-    directory = (*storage)->directory; directory->active = (*storage)->active = 1;
-    runtime_storage_dispose(*storage); *storage = NULL;
-    directory->storage_count--; directory->active = 0; return PRUNTIME_OK;
+    current = *storage;
+    rc = runtime_storage_ready(current); if (rc != PRUNTIME_OK) return rc;
+    if (current->queue_count) return PRUNTIME_STATE;
+    runtime_storage_parent_active(current, 1); current->active = 1;
+    if (current->db) { PDb_Close(current->db); current->db = NULL; }
+    if (current->location.token) {
+        current->provider.close_location(current->provider.user_data, current->location.token);
+        current->location.token = NULL;
+    }
+    runtime_storage_parent_detach(current);
+    free(current); *storage = NULL; return PRUNTIME_OK;
 }
 
 typedef struct RuntimeSqlWork {
@@ -1034,7 +1047,7 @@ static int runtime_sql_cancel(void* user)
 {
     RuntimeSqlWork* work;
     work = (RuntimeSqlWork*)user;
-    return (work->storage->operation_cancel && InterlockedCompareExchange((LONG*)work->storage->operation_cancel, 0, 0)) ||
+    return runtime_storage_parent_cancelled(work->storage) || (work->storage->operation_cancel && InterlockedCompareExchange((LONG*)work->storage->operation_cancel, 0, 0)) ||
         (work->storage->options.cancelled && work->storage->options.cancelled(work->storage->options.user_data));
 }
 PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
@@ -1090,12 +1103,14 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
         else rc = runtime_sql_statement(root, method, work->statements, work->params[0]);
     }
     if (rc == PRUNTIME_OK) {
-        storage->active = storage->directory->active = 1;
+        storage->active = 1; runtime_storage_parent_active(storage, 1);
+        rc = runtime_storage_refresh(storage);
         memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = PDB_RESTRICTED_VERSION;
         options.vm_budget = storage->options.vm_budget; options.cancelled = runtime_sql_cancel; options.row = runtime_sql_row; options.user_data = work;
         memset(&report, 0, sizeof(report)); report.size = sizeof(report); report.version = PDB_RESTRICTED_VERSION;
-        native = PDb_ExecuteRestricted(storage->db, work->statements, count, &options, &report);
-        if (native != PDB_OK) {
+        native = rc == PRUNTIME_OK ? PDb_ExecuteRestricted(storage->db, work->statements, count, &options, &report) : PDB_STATE;
+        if (rc != PRUNTIME_OK) { /* Registration failure occurs before any SQL. */ }
+        else if (native != PDB_OK) {
             rc = runtime_storage_db_error(storage, native, 0);
             if (work->result != PRUNTIME_OK) storage->error.result = rc = work->result;
             state.size = sizeof(state); state.version = PDB_CONNECTION_STATE_VERSION;
@@ -1109,7 +1124,8 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
             memcpy(output, header, length); memcpy(output + length, work->rows, work->used); length += work->used;
             memcpy(output + length, "]}", 3); *written = length + 2;
         }
-        storage->active = storage->directory->active = 0;
+        if (storage->revision && rc == PRUNTIME_CANCELLED) runtime_storage_retire(storage, rc);
+        runtime_storage_parent_active(storage, 0); storage->active = 0;
     } else runtime_storage_error_init(&storage->error, rc);
     PJson_Free(root); free(work); return rc;
 }
@@ -1152,6 +1168,7 @@ PRUNTIME_API int PRuntime_ServiceQueueCreate(PRuntimeStorageHandle storage,
     if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
             !options->tab_id || !options->page_generation || !options->delivery_thread_id) return PRUNTIME_ARGUMENT;
     if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
+    if (storage->revision) return PRUNTIME_UNSUPPORTED;
     for (i = 0; i < PRUNTIME_SERVICE_MAX_QUEUES; i++) if (storage->queues[i] &&
             storage->queues[i]->options.tab_id == options->tab_id &&
             storage->queues[i]->options.page_generation == options->page_generation) return PRUNTIME_STATE;
@@ -1299,7 +1316,7 @@ PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue)
 struct PRuntimeRevision {
     DWORD magic, owner;
     int active;
-    unsigned int intent_children;
+    unsigned int intent_children, storage_children;
     unsigned int state, installed, phase, index, offset, frame_index;
     unsigned int count, total, verified_bytes, verified_files;
     unsigned int expected_generation;
@@ -1322,6 +1339,8 @@ struct PRuntimeRevision {
  * Native provider/CSP buffers are outside Runtime's allocation ownership. */
 typedef char runtime_revision_budget_check[(sizeof(struct PRuntimeRevision) +
         65536U <= 512U * 1024U) ? 1 : -1];
+typedef char runtime_installed_storage_budget_check[(sizeof(struct PRuntimeRevision) +
+        sizeof(struct PRuntimeStorage) + sizeof(RuntimeSqlWork) + 65536U <= 1280U * 1024U) ? 1 : -1];
 static int rv_ready(PRuntimeRevisionHandle r)
 {
     if (!r || r->magic != RREV_MAGIC) return PRUNTIME_ARGUMENT;
@@ -1413,6 +1432,114 @@ static int rv_refresh(PRuntimeRevisionHandle r)
     if (rc != PRUNTIME_OK) return rc;
     if (strcmp(current.directory, r->record.directory) ||
             !rv_same_approval(&current.approval, &r->record.approval)) return PRUNTIME_INVALID;
+    return PRUNTIME_OK;
+}
+static int runtime_storage_parent_busy(PRuntimeStorageHandle storage)
+{
+    return storage->revision ? storage->revision->active : storage->directory->active;
+}
+static void runtime_storage_parent_active(PRuntimeStorageHandle storage, int active)
+{
+    if (storage->revision) storage->revision->active = active;
+    else storage->directory->active = active;
+}
+static void runtime_storage_parent_detach(PRuntimeStorageHandle storage)
+{
+    if (storage->revision) { --storage->revision->storage_children; storage->revision->active = 0; }
+    else { --storage->directory->storage_count; storage->directory->active = 0; }
+}
+static int runtime_storage_parent_cancelled(PRuntimeStorageHandle storage)
+{
+    PRuntimeRevisionHandle r = storage->revision;
+    return r && r->options.cancelled && r->options.cancelled(r->options.user_data);
+}
+static void runtime_storage_retire(PRuntimeStorageHandle storage, int result)
+{
+    storage->info.state = PRUNTIME_STORAGE_FAILED;
+    if (storage->revision) rv_fail(storage->revision, result);
+}
+static int runtime_storage_refresh(PRuntimeStorageHandle storage)
+{
+    PRuntimeRevisionHandle r = storage->revision;
+    int rc;
+    if (!r) return PRUNTIME_OK;
+    rc = r->state == PRUNTIME_REVISION_COMPLETE ? PRUNTIME_OK : PRUNTIME_STATE;
+    if (rc == PRUNTIME_OK) rc = runtime_storage_parent_cancelled(storage) ? PRUNTIME_CANCELLED : rv_refresh(r);
+    if (rc != PRUNTIME_OK) {
+        runtime_storage_error_init(&storage->error, rc); runtime_storage_retire(storage, rc);
+    }
+    return rc;
+}
+PRUNTIME_API int PRuntime_InstalledStorageOpen(PRuntimeRevisionHandle r,
+        const PRuntimeStorageOptions* options, const PRuntimeInstalledStorageProvider* provider,
+        PRuntimeStorageHandle* output, PRuntimeStorageError* error)
+{
+    PRuntimeStorageHandle storage;
+    PDbExistingLocalOptions db_options;
+    PDbErrorInfo db_error;
+    char identity[160];
+    int rc = rv_ready(r), native;
+    if (rc != PRUNTIME_OK) return rc;
+    if (!options || !provider || !output || options->size != sizeof(*options) || options->version != 1 ||
+            options->vm_budget < 100 || options->vm_budget > 1000000 || options->vm_budget % 100 ||
+            provider->size != sizeof(*provider) || provider->version != 1 ||
+            !provider->open_existing_location || !provider->close_location ||
+            (error && (error->size != sizeof(*error) || error->version != 1))) return PRUNTIME_ARGUMENT;
+    if (!r->installed) rc = PRUNTIME_DENIED;
+    else if (r->state != PRUNTIME_REVISION_COMPLETE || r->storage_children || r->intent_children) rc = PRUNTIME_STATE;
+    else if (options->granted_permissions & ~PRUNTIME_PERMISSION_SQL) rc = PRUNTIME_UNSUPPORTED;
+    else if (!(options->granted_permissions & r->record.approval.approved_permissions & PRUNTIME_PERMISSION_SQL)) rc = PRUNTIME_DENIED;
+    if (rc != PRUNTIME_OK) { if (error) runtime_storage_error_init(error, rc); return rc; }
+    storage = (PRuntimeStorageHandle)calloc(1, sizeof(*storage));
+    if (!storage) { if (error) runtime_storage_error_init(error, PRUNTIME_MEMORY); return PRUNTIME_MEMORY; }
+    storage->revision = r; storage->owner = GetCurrentThreadId(); storage->options = *options;
+    storage->provider.user_data = provider->user_data;
+    storage->provider.open_location = provider->open_existing_location;
+    storage->provider.close_location = provider->close_location;
+    storage->info.size = sizeof(storage->info); storage->info.version = 1;
+    strcpy(storage->info.id, r->manifest->info.id);
+    sprintf(storage->info.key, "v1/installed/%s/app.db", r->installation_id);
+    sprintf(identity, "Positron.storage.v1:installed:%s:%s", r->manifest->info.id, r->installation_id);
+    runtime_storage_error_init(&storage->error, PRUNTIME_OK);
+    r->active = storage->active = 1;
+    rc = runtime_storage_refresh(storage);
+    if (rc == PRUNTIME_OK) rc = runtime_storage_cancel(storage);
+    if (rc == PRUNTIME_OK) rc = rv_provider_rc(provider->open_existing_location(provider->user_data,
+            storage->info.key, &storage->location));
+    if (rc == PRUNTIME_OK && (!storage->location.token || !storage->location.path_bytes ||
+            storage->location.path_bytes > PRUNTIME_ROOT_BYTES || storage->location.path[0] != '\\' ||
+            !runtime_text(storage->location.path, storage->location.path_bytes) ||
+            storage->location.path[storage->location.path_bytes])) rc = PRUNTIME_IO;
+    if (rc == PRUNTIME_OK) rc = runtime_storage_cancel(storage);
+    if (rc == PRUNTIME_OK) rc = runtime_storage_refresh(storage);
+    if (rc == PRUNTIME_OK) {
+        db_options.size = sizeof(db_options); db_options.version = 1;
+        db_options.identity = identity; db_options.identity_bytes = (int)strlen(identity);
+        db_options.expected_schema = (int)r->manifest->info.migration_count;
+        db_error.size = sizeof(db_error); db_error.version = PDB_ERROR_INFO_VERSION;
+        native = PDb_OpenExistingLocalUtf8(storage->location.path, storage->location.path_bytes,
+                &db_options, &storage->db, &db_error);
+        if (native != PDB_OK) {
+            rc = runtime_storage_db_error(storage, native, db_options.expected_schema);
+            storage->error.db_category = db_error.category; storage->error.sqlite_code = db_error.sqlite_code;
+            storage->error.sqlite_extended_code = db_error.sqlite_extended_code;
+            storage->error.cleanup_result = db_error.cleanup_result;
+            memcpy(storage->error.message, db_error.message, sizeof(storage->error.message));
+        }
+    }
+    if (rc == PRUNTIME_OK) rc = runtime_storage_refresh(storage);
+    if (rc == PRUNTIME_OK) rc = runtime_storage_cancel(storage);
+    if (rc == PRUNTIME_OK) {
+        storage->info.schema_version = r->manifest->info.migration_count;
+        storage->info.state = PRUNTIME_STORAGE_READY; ++r->storage_children;
+        storage->active = r->active = 0; *output = storage;
+    } else {
+        if (storage->error.result == PRUNTIME_OK) runtime_storage_error_init(&storage->error, rc);
+        if (error) *error = storage->error;
+        runtime_storage_dispose(storage); r->active = 0;
+        return rc;
+    }
+    if (error) *error = storage->error;
     return PRUNTIME_OK;
 }
 static int rv_provider_valid(const PRuntimeRevisionProvider* p)
@@ -1690,7 +1817,7 @@ PRUNTIME_API int PRuntime_RevisionCancel(PRuntimeRevisionHandle r)
 {
     int rc = rv_ready(r);
     if (rc != PRUNTIME_OK) return rc;
-    if (r->intent_children) return PRUNTIME_STATE;
+    if (r->intent_children || r->storage_children) return PRUNTIME_STATE;
     if (r->state == PRUNTIME_REVISION_CANCELLED) return PRUNTIME_OK;
     if (r->state == PRUNTIME_REVISION_FAILED) return PRUNTIME_STATE;
     r->active = 1; rv_fail(r, PRUNTIME_CANCELLED); r->active = 0; return PRUNTIME_OK;
@@ -1702,7 +1829,7 @@ PRUNTIME_API int PRuntime_RevisionClose(PRuntimeRevisionHandle* slot)
     if (!slot) return PRUNTIME_ARGUMENT;
     r = *slot; if (!r) return PRUNTIME_OK;
     rc = rv_ready(r); if (rc != PRUNTIME_OK) return rc;
-    if (r->intent_children) return PRUNTIME_STATE;
+    if (r->intent_children || r->storage_children) return PRUNTIME_STATE;
     r->active = 1; rv_hash_close(r); PRuntime_ManifestClose(&r->manifest);
     if (r->root.root) r->provider.close_root(r->provider.user_data, r->root.root);
     if (r->registration_lease) r->registry.close(r->registry.user_data, r->registration_lease);

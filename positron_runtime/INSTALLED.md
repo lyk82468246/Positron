@@ -1,6 +1,6 @@
 # Revision verification and native installation intents
 
-These additive native contracts in `positron_runtime.h` verify immutable resources, coordinate inactive installation intents and prepare identity-bound installation databases. They do not extract/publish files, open READY application SQL services, write READY registration, authorize Browser services or execute author code. Existing development-directory/storage APIs and layouts are unchanged.
+These additive native contracts in `positron_runtime.h` verify immutable resources, coordinate inactive installation intents and prepare identity-bound installation databases and open native READY storage. They do not extract/publish files, write READY registration, authorize Browser services or execute author code. Existing development-directory/storage APIs and layouts are unchanged.
 
 ## Ownership and trust
 
@@ -165,6 +165,38 @@ if (rc == PRUNTIME_OK) {
 
 All operations use the creating worker; callbacks guard data, intent and revision against reentry/close. A Step performs one complete DB operation or native resource/registry operation, plus the optional cancellation predicate; one migration is not a resumable SQL continuation or wall-clock bound. The combined Runtime-owned parent/intent/data/source workset plus fixed reserve is compile-time limited to 1280 KiB, excluding DB/CSP/native provider allocations. Existing DB quota, authorizer and 100..1000000 VM work budget per file remain unchanged. Close frees DB, location and copied sources, then detaches from the intent; it does not register, cancel or delete durable data. Close a pending job only if prepared to recover its partial committed prefix explicitly. After data is PREPARED, its Cancel returns STATE; to cancel installation instead, close the data child and drive the intent's cancellation path, retaining the prepared database.
 
+## Opening READY installed storage
+
+`PRuntime_InstalledStorageOpen` accepts only a live COMPLETE installed-kind revision, approved `storage.sql`, v1 `PRuntimeStorageOptions` and a separate v1 `PRuntimeInstalledStorageProvider`. A prepare/development handle or copied approval is not a substitute. Granted bits are a native use mask within the committed approval, not a renewed installation confirmation. They cannot exceed the existing SQL option; no SQL grant means DENIED before any data-location callback. Only one storage child may attach to a revision.
+
+The provider's `open_existing_location` receives the installed key and returns a borrowed-location token and explicit UTF-8 native path. It must retain an already existing contained physical file/volume with an exclusive location lease: **no creation, deletion, overwrite or browser/development fallback**. It is deliberately a different callback table from the development/preparation provider. Partial tokens are closed even when acquisition fails. The installed parent already retains the exclusive installation coordination, immutable root and registry lease; the native adapter must honor that coordination for update/revocation.
+
+Runtime refreshes the exact READY record before location acquisition, before DB admission, after admission and before every valid SQL request. It uses `PDb_OpenExistingLocalUtf8` with the full installed identity and exact manifest migration count. There is no CREATE, identity binding, migration, repair or retry path. A missing/readonly DB, wrong/missing identity, unclaimed data or future/corrupt schema publishes no storage handle and leaves existing file bytes unchanged on the ordinary rejection corpus. Native/SQLite I/O failures retain their separate diagnostics; no physical fault/durability guarantee is implied.
+
+```c
+PRuntimeStorageHandle storage = NULL;
+PRuntimeStorageOptions options;
+PRuntimeStorageError error;
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PRUNTIME_VERSION;
+options.granted_permissions = PRUNTIME_PERMISSION_SQL;
+options.vm_budget = 1000000;
+error.size = sizeof(error);
+error.version = PRUNTIME_VERSION;
+rc = PRuntime_InstalledStorageOpen(verified_installed_revision, &options,
+    &existing_location_provider, &storage, &error);
+if (rc == PRUNTIME_OK) {
+    /* Same worker: existing StorageExecuteJson/GetInfo/GetError contracts. */
+    PRuntime_StorageClose(&storage);
+}
+/* Only after storage closes may RevisionClose release root/registry leases. */
+```
+
+The returned opaque Storage uses the existing typed SQL/JSON encoder and budgets; it is not cast to a development directory and exposes no raw DB. Query/result limits, provisional rows, COMMIT-before-output and rollback behavior remain the [existing storage contract](README.md). A changed/inactive/unreadable registration retires storage and parent before executing SQL; output bytes/count are unchanged. Cancellation is cooperative, never preempts provider I/O or a committed request, and installed cancellation retires the instance rather than restoring authority. The native lease makes registry refresh meaningful; it is not a cross-database atomic transaction.
+
+Info/error remain queryable on the creating worker after retirement. Close releases DB, location, then the parent hold. Parent Cancel/Close and duplicate storage opening return STATE while a child remains attached; wrong-thread and callback reentry cannot close active objects. Callback code/user targets live through Close; invalid/failure handle output is preserved, and a valid optional error output receives the failure. Invalid API/error headers leave outputs untouched. The combined revision/storage/SQL-work plus reserve is compile-time bounded by 1280 KiB, excluding DB/CSP/provider allocations; existing SQL VM/JSON quotas are unchanged. `PRuntime_ServiceQueueCreate` explicitly returns UNSUPPORTED for installed storage in this stage, with no queue published. Browser grant/queue and final READY COMMIT remain separate work.
+
 ## Validation and remaining work
 
 The regression uses independently generated Python hashlib digests and device CryptoAPI SHA-256, with an `abc` known-answer check. It covers empty/binary/Unicode resources, enumeration order and root/installation-ID independence, exact reads, approval, duplicate leases, tamper/rename/add/remove, revocation/generation/API/capability failures, path/size/count limits, cancellation, thread/reentry and partial-token teardown. Device evidence is recorded in [the acceptance record](../docs/history/RUNTIME_REVISION_ACCEPTANCE.md).
@@ -175,4 +207,4 @@ Intent regression additionally checks one-callback steps, exactly-once CAS attem
 
 Installation-data regression uses real private PDb files for full identity binding, zero/two migrations, all-source admission, wrong/unclaimed/future DB rejection, partial location failure, cancellation and exact prefix/suffix recovery. An independent post-close query counts rows/schema; a registry recording failure cannot overwrite the original DB error. The registry fixture still models committed native records rather than EXE SQL persistence.
 
-DB now supplies [read-only existing-file verification](../positron_db/README.md#verifying-an-existing-local-database-without-writes), returning an observation without a handle. It cannot authorize a later CREATE-capable open. DB also supplies [writable existing-handle admission](../positron_db/README.md#opening-a-verified-existing-local-database), with a retained read snapshot, no-CREATE writable recheck and caller-held native location/coordination leases. Runtime must still compose that handle with its installed parent and READY refresh/lifecycle. PXI isolation/extraction, READY SQL/storage services, final READY coordination, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.
+DB now supplies [read-only existing-file verification](../positron_db/README.md#verifying-an-existing-local-database-without-writes), returning an observation without a handle. It cannot authorize a later CREATE-capable open. DB also supplies [writable existing-handle admission](../positron_db/README.md#opening-a-verified-existing-local-database), with a retained read snapshot, no-CREATE writable recheck and caller-held native location/coordination leases. Runtime composes that handle through InstalledStorageOpen above. PXI isolation/extraction, installed service queues/Browser grants, final READY coordination, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.
