@@ -28,7 +28,9 @@ C89四项和Runtime服务六项通过，PowerShell门语法检查通过。Python
 SQL页面两个进程均验证32行typed结果、队列/回滚、失败旧页保留、离页撤销和关闭owner。
 原始SQL PXI已由隔离夹具删除，普通installed页面仍正常重开；未知提交结果项READY且未重放。
 
-原生风险确认/拒绝、普通重开免提示、Notes保存及包路径Unicode仍需人工门。
+普通入口的后续日志已收取为同包manual-pxi/observed-install.log：PID2745176246从中文文件名笔记安装.pxi进入confirmation-required，随后commit-terminal为READY（state=2/outcome=1），open-installed返回0，Notes作者脚本executed且errors=0。这证明普通确认链与Unicode包路径实际成功，不证明触摸观感、笔记保存或退出后免提示重开。
+
+普通拒绝、重开免提示和Notes保存仍需独立验收。
 恢复确认UI、双语、Release普通启动、其他OEM/存储与挂起的FULL/断电保持原边界。
 
 ## 构建与连接失败
