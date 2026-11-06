@@ -24,7 +24,8 @@ int64 必须是十进制字符串，不转为 Number。完整结果与预算见[
 用`positron.exe --install-dir "<已冻结Notes目录>"`显式确认首次安装，再通过
 `positron.exe --app org.positron.notes`普通重开；成功核验有效登记后不重复显示风险框。
 安装数据身份与上面的开发目录数据分离，不自动迁移已有笔记。目录内容改变会拒绝普通installed启动，
-不能用同ID跳过核验。PXI安装入口尚未接通；完整流程见[Runtime宿主](../../RUNTIME_HOST.md#首次安装与普通installed启动)。
+不能用同ID跳过核验。资源制成PXI后也可使用`--install "<包.pxi>"`，完整输出验证后进入同一安装确认；
+完整流程见[Runtime宿主](../../RUNTIME_HOST.md#首次安装与普通installed启动)，系统文件关联尚未接通。
 原生安装确认、拒绝与重开需分别人工验收，不以Debug自动批准代替。
 
 ## 集中人工验收

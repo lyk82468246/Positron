@@ -137,6 +137,11 @@ static int app_runtime_canonical(const WCHAR *input, WCHAR *output,
     return PRUNTIME_OK;
 }
 
+int AppRuntimePlatform_CanonicalPath(const WCHAR *path,WCHAR *canonical,int directory)
+{
+    return app_runtime_canonical(path,canonical,directory);
+}
+
 static int app_runtime_file_unchanged(AppRuntimeFile *file)
 {
     BY_HANDLE_FILE_INFORMATION now;

@@ -37,7 +37,9 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 旧two-1启动FAIL未关闭。新Debug双进程PAGE_PASS且Runtime/DB错误均0、哈希/冷备份/正常退出通过，但未复现旧因；不能追认旧失败。原EXE身份/存储位置、具体PID与数据变化见[启动取证](../docs/history/RUNTIME_STORAGE_STARTUP_REVIEW.md)。旧CE5.2.318的mkdir183/CANTOPEN仍未知，新设备公共合同通过不抵消旧失败；再次失败先取非零调用/VFS快照，不删库或重试SQL，不重开FULL/断电门。
 
-Runtime首次安装合同已由EXE消费：主库v5结构化app_installs、同DB worker精确CAS、原生确认/恢复、--install-dir及--app。资源为完整可信原生快照，128文件/4MiB上限另计宿主内存；成功关闭准备链后单独OpenInstalled/require-existing存储，再授权Browser。不改变公共ABI；开发目录仍每次确认，PXI/更新未接入。最终包tmp/device-runs/20261106-201232-app-runtime-install的原生phase10、两进程installed页面、12/12哈希、八条冷读摘要、相邻设置存储/服务及退出/crash通过；正式Debug/Release/CAB、C89/审计通过。清洁rebuild依赖顺序失败未算PASS；用户已通过Debug安装拒绝/确认、保存及普通重开免提示/笔记保留人工门；拒绝后登记未变，确认后唯一READY且私有库有保存记录。恢复确认UI、双语/Release普通启动待验收。失败夹具、空间与构建证据见[EXE安装验收](../docs/history/APP_RUNTIME_INSTALL_ACCEPTANCE.md)。
+冻结目录首次安装主库v5、精确CAS、原生确认/恢复及独立installed启动已接入，自动及Debug确认/拒绝/保存/免提示重开人工门通过；证据见[EXE安装验收](../docs/history/APP_RUNTIME_INSTALL_ACCEPTANCE.md)。恢复UI、双语/Release仍待人工。
+
+PXI已接--install，Archive完整CRC输出后复用首次安装链；128条目/4MiB/256对象，可能写意图前保留目录，确认前仅清本次可验证对象。无DLL/ABI/schema或系统关联改动。最终tmp/device-runs/20261106-222650-app-pxi原生phase10、参数14项、两进程installed SQL页、12/12哈希、三个资源摘要/ZIP字节、相邻设置及退出/crash全部PASS；Debug/Release/CAB、C89/审计通过，普通PXI安装人工门待做。用户授权当前设备清理后，94个旧测试文件完整归档，原Notes未迁入。证据/夹具失败见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -481,8 +483,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核ROADMAP与限制，首次安装自动及Debug确认/拒绝/免提示重开人工门通过，退出待开发；唯一下一步交回主线评估PXI隔离输出与首装入口，公共缺口先由DLL负责。恢复确认UI、双语/Release列入人工backlog。此前公共DLL双配置合同见[最终提交验收](../docs/history/RUNTIME_FINAL_COMMIT_ACCEPTANCE.md)。外置映射卷SQLite CANTOPEN/native2及旧DB Release INSERT仍未归因，不自动重放SQL/删库或移动绑定数据；内置Temp门不证明卷故障修复。PXI输出与更新另行处理。
+本轮已复核ROADMAP与限制；PXI自动门已过，唯一下一步为当前匹配包的普通PXI风险确认/拒绝、Notes保存与免提示重开人工门，再考虑系统关联。公共合同足够，无需新增DLL接口；更新/卸载另行。外置卷native2及旧DB错误不关闭，不重开FULL/断电门。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
-设备留在最终包的普通installed Notes，PID1452334954；用户已确认笔记保留，不自动关闭。新部署仍重查双空间与模块引用。
+当前连接为用户指定的新验收目标，原Notes包不存在，未自动恢复旧库。PXI设备门均正常退出至零引用；新部署仍重查空间与引用。

@@ -25,6 +25,7 @@
 #include "app_debug.h"
 #include "app_runtime_platform.h"
 #include "app_runtime_app.h"
+#include "app_pxi.h"
 #include "app_settings_store.h"
 #include "app_downloads.h"
 #include "app_settings_services.h"
@@ -1729,6 +1730,14 @@ static int app_parse_startup_arguments(LPWSTR command_line,
             wcscpy(argument, L"--app-dir");
         }
 #endif
+        value_result=app_command_copy_value(argument,"--install",value,sizeof(value)/sizeof(value[0]));
+        if(value_result || app_command_ascii_equal(argument,"--install")) {
+            if(value_result<0 || g_startup_app_directory[0]) return 1;
+            if(!value_result && app_command_line_next_arg(&cursor,value,sizeof(value)/sizeof(value[0]))!=1) return 1;
+            if(app_wide_buffer_to_utf8(value,lstrlenW(value),g_startup_app_directory,sizeof(g_startup_app_directory)) ||
+                    !g_startup_app_directory[0]) return 1;
+            g_startup_runtime_kind=APP_RUNTIME_INSTALL_PXI; continue;
+        }
         value_result=app_command_copy_value(argument,"--install-dir",value,sizeof(value)/sizeof(value[0]));
         if(value_result || app_command_ascii_equal(argument,"--install-dir")) {
             if(value_result<0 || g_startup_app_directory[0]) return 1;
@@ -9919,6 +9928,7 @@ static void app_show_startup_usage(void)
             L"       positron.exe --url URL --click \"CSS selector\"\n"
             L"       positron.exe --app-dir \"directory\"\n"
             L"       positron.exe --install-dir \"verified directory\"\n"
+            L"       positron.exe --install \"file.pxi\"\n"
             L"       positron.exe --app application.id\n"
             L"       positron.exe --url URL --eval \"JavaScript\"",
             L"Positron", MB_OK | MB_ICONERROR);
@@ -9975,6 +9985,38 @@ done:
     AppDebug_Log(result ? "runtime-arguments FAIL\r\n" : "runtime-arguments PASS checks=8\r\n");
     return result;
 }
+
+static int app_pxi_debug_arguments(void)
+{
+    static const WCHAR *invalid[] = {
+        L"--install", L"--install=", L"--install \"\"",
+        L"--install a --install b", L"--install a --app-dir b",
+        L"--app-dir b --install a", L"--install a --app org.example.app",
+        L"--app org.example.app --install a", L"--install a --url https://example.com/",
+        L"--url https://example.com/ --install a", L"--install a --eval 1",
+        L"--install a --click button", L"--install \"unterminated"
+    };
+    struct Probe { char url[1024],script[8193],selector[513]; } *probe;
+    char saved[1024],expected[1024];
+    int kind,a,b,c,rc;
+    unsigned int n;
+    strcpy(saved,g_startup_app_directory); kind=g_startup_runtime_kind;
+    probe=(struct Probe *)malloc(sizeof(*probe)); if(!probe) return 1;
+    rc=1;
+    for(n=0;n<sizeof(invalid)/sizeof(invalid[0]);++n)
+        if(!app_parse_startup_arguments((LPWSTR)invalid[n],probe->url,sizeof(probe->url),&a,
+            probe->script,sizeof(probe->script),&b,probe->selector,sizeof(probe->selector),&c)) goto done;
+    if(app_parse_startup_arguments(L"--install \"\\Storage Card\\\x5305 test.pxi\"",probe->url,sizeof(probe->url),&a,
+        probe->script,sizeof(probe->script),&b,probe->selector,sizeof(probe->selector),&c) || a || b || c ||
+        g_startup_runtime_kind!=APP_RUNTIME_INSTALL_PXI ||
+        !WideCharToMultiByte(CP_UTF8,0,L"\\Storage Card\\\x5305 test.pxi",-1,expected,sizeof(expected),NULL,NULL) ||
+        strcmp(expected,g_startup_app_directory)) goto done;
+    rc=0;
+done:
+    strcpy(g_startup_app_directory,saved); g_startup_runtime_kind=kind; free(probe);
+    AppDebug_Log(rc ? "pxi-arguments FAIL\r\n" : "pxi-arguments PASS checks=14\r\n");
+    return rc;
+}
 #endif
 
 /* Ordinary UI pump while a dedicated owner opens the retained directory.
@@ -10030,7 +10072,9 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         WCHAR executable[MAX_PATH];
         const WCHAR *prefix;
         prefix=L"\\Temp\\Positron-device-gate\\app-runtime-install-";
-        if(!GetModuleFileNameW(NULL,executable,MAX_PATH) || wcsncmp(executable,prefix,wcslen(prefix)) ||
+        if(!GetModuleFileNameW(NULL,executable,MAX_PATH) ||
+                (wcsncmp(executable,prefix,wcslen(prefix)) &&
+                 wcsncmp(executable,L"\\Temp\\Positron-device-gate\\app-pxi-",wcslen(L"\\Temp\\Positron-device-gate\\app-pxi-"))) ||
                 g_startup_runtime_kind!=APP_RUNTIME_INSTALLED || action ||
                 strcmp(info.id,"org.positron.sql_demo")) return -2;
         g_runtime_sql_seed="one"; g_runtime_debug_started=GetTickCount();
@@ -10402,6 +10446,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     (void) previous;
 #ifdef _DEBUG
     startup_ui_selftest = 0;
+    if(command_line && !wcscmp(command_line,L"--selftest-pxi-native")) {
+        AppDebug_BeginSession(); result=app_pxi_debug_arguments();
+        if(!result) result=AppPxi_DebugRun(); AppDebug_EndSession(); return result;
+    }
     if(command_line && !wcscmp(command_line,L"--selftest-installation-native")) {
         AppDebug_BeginSession(); result=AppRuntimeInstall_DebugRun(); AppDebug_EndSession(); return result;
     }

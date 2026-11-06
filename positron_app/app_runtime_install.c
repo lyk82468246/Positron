@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include "app_runtime_install.h"
 #include "app_debug.h"
+#include "app_pxi.h"
 
 struct AppRuntimeInstall {
+    AppPxi *pxi;
     AppRuntimePlatform *platform;
     AppRuntimeRegistry registry;
     PRuntimeRevisionProvider resources;
@@ -98,7 +100,8 @@ int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
     PRuntimeRevisionOptions options;
     const char *directory;
     int rc,found;
-    if(!store || (kind!=APP_RUNTIME_INSTALL_DIRECTORY && kind!=APP_RUNTIME_INSTALLED)) return PRUNTIME_ARGUMENT;
+    if(!store || (kind!=APP_RUNTIME_INSTALL_DIRECTORY && kind!=APP_RUNTIME_INSTALLED &&
+            kind!=APP_RUNTIME_INSTALL_PXI)) return PRUNTIME_ARGUMENT;
     i=(AppRuntimeInstall *)calloc(1,sizeof(*i));
     if(!i) return PRUNTIME_MEMORY;
     i->platform=platform; i->cancelled=cancelled; i->cancel_user=user; i->budget=1000000;
@@ -108,6 +111,11 @@ int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
     memset(&options,0,sizeof(options)); options.size=sizeof(options); options.version=1;
     options.cancelled=cancelled; options.user_data=user;
     directory=target;
+    if(kind==APP_RUNTIME_INSTALL_PXI) {
+        rc=AppPxi_Extract(target,cancelled,user,&i->pxi);
+        if(rc!=PRUNTIME_OK) goto failed;
+        directory=AppPxi_Directory(i->pxi);
+    }
     found=PRUNTIME_NOT_FOUND;
     if(kind==APP_RUNTIME_INSTALLED) {
         found=AppRuntimeRegistry_FindApp(&i->registry,target,&i->registration);
@@ -124,7 +132,7 @@ int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
     if(rc==PRUNTIME_OK) rc=install_revision_complete(i);
     if(rc==PRUNTIME_OK) rc=install_metadata(i);
     if(rc!=PRUNTIME_OK) goto failed;
-    if(kind==APP_RUNTIME_INSTALL_DIRECTORY)
+    if(kind!=APP_RUNTIME_INSTALLED)
         found=AppRuntimeRegistry_FindApp(&i->registry,i->info.id,&i->registration);
     if(found==PRUNTIME_NOT_FOUND) {
         i->action=PRUNTIME_INTENT_NEW;
@@ -172,6 +180,9 @@ int AppRuntimeInstall_Confirm(AppRuntimeInstall *i)
     options.approval.confirmed=1; options.approval.revision=1;
     strcpy(options.approval.installation_id,i->registration.approval.installation_id);
     AppRuntimeRegistry_IntentProvider(&i->registry,&registry);
+    /* From here a persistent intent MAY reference this output, even when a
+     * callback reply is lost. Never delete it based on a host error guess. */
+    AppPxi_Retain(i->pxi);
     rc=PRuntime_InstallIntentBegin(i->revision,&options,&registry,&i->intent);
     if(rc!=PRUNTIME_OK) return rc;
     do {
@@ -269,6 +280,7 @@ void AppRuntimeInstall_Close(AppRuntimeInstall **slot)
     (void)PRuntime_StorageClose(&i->storage);
     install_close_preparation(i);
     (void)PRuntime_ManifestClose(&i->manifest);
+    (void)AppPxi_Close(&i->pxi);
     free(i); *slot=NULL;
 }
 #ifdef _DEBUG

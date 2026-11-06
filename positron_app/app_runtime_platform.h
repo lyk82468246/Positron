@@ -23,6 +23,8 @@ void AppRuntimePlatform_ExistingStorageProvider(AppRuntimePlatform *platform,
         PRuntimeInstalledStorageProvider *provider);
 int AppRuntimePlatform_CopyManifest(AppRuntimePlatform *platform, void *buffer,
         unsigned int capacity, unsigned int *bytes);
+/* Private WM filesystem walker, also used by PXI output. Existing path only. */
+int AppRuntimePlatform_CanonicalPath(const WCHAR *path,WCHAR *canonical,int directory);
 #ifdef _DEBUG
 int AppRuntimePlatform_DebugCheck(const WCHAR *directory);
 #endif

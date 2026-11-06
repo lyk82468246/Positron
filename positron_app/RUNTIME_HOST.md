@@ -79,6 +79,40 @@ PREPARING/FAILED转入显式恢复确认，由Runtime核对同一资源/批准�
 EXE上限128文件/16层/4MiB，原生快照内存另计，不包含在Runtime自身工作集上限内；
 单资源仍服从Core/Browser更严预算。SHA-256使用系统CSP，算法不可用就拒绝，不降级摘要。
 
+## PXI 输出与首次安装接线
+
+```text
+positron.exe --install "\Storage Card\Example.pxi"
+```
+
+该入口与开发目录、冻结目录、installed及URL/脚本参数互斥，不把地址栏或网页链接当成原生安装入口。
+EXE私有AppPxi在同一Runtime owner上消费公开Archive reader；ZIP格式、危险路径/冲突、解压和CRC
+由Archive拥有，不复制解析器。源归档保留无写/删除分享的只读句柄，读取前后核对实际身份/大小/时间。
+它不改变HTTP下载默认动作，不注册系统`.pxi`关联；关联、更新和卸载另行接入。
+
+输出位于实际EXE旁`apps\pxi-<随机名>`，新目录不覆盖已有目标，不用manifest ID拼物理路径。
+目录逐级走原生规范化/真实条目核对，文件使用CREATE_NEW；已存在或不能验证身份的对象拒绝。
+按最多16KiB的块写入，每项必须读到DONE、长度精确、Flush/关闭并保留只读pin。
+所有条目（包括未引用/空文件）完成后才调用既有PrepareRevision，先完整核验再显示原生风险确认。
+安装登记仍是主库的唯一活动指针，不因文件已经解出而执行作者代码。
+
+首个宿主消费者限制为输入16MiB、128个ZIP条目（目录也计数）、单项/总输出4MiB，最多256个
+创建的文件系统对象（含隐含父目录及根），另受16层及MAX_PATH约束。它比Runtime/Archive未来上限更严。
+原生输出记录和块缓冲固定在heap，不使用整个归档/正文buffer；资源快照内存仍另计。
+取消只在原生块/条目边界协作处理，不在DLL调用栈泵消息或跨线程释放reader。
+
+进入可能写入安装意图的Runtime调用前，EXE先标记资源需保留；包括结果未知或安装失败，不能按宿主
+猜测删掉可能被PREPARING/FAILED/READY引用的目录。确认前关闭/拒绝或解包失败，逆序清理仅本次创建且
+身份仍匹配的对象；不递归扫删，不清用户库。未知文件、替换、无法证明身份或清理失败保留现场并写Debug诊断。
+退出后普通installed启动只读登记指向的资源，不需要原始PXI继续存在。孤立目录回收尚未实现。
+
+`scripts/app_pxi_gate.ps1 -RunRoot <正式app-pxi目录> -Python <解释器>`用于独立内置Temp完整包，
+要求包哈希12/12、空间预检、原生phase10、两个真实installed页面进程、相邻设置存储及退出/crash门。
+Debug专用原生夹具覆盖CRC/穿越/冲突、取消、只清自己文件、精确/超限、无效manifest、确认前清理、
+成功保留、包删除后重开、未知提交结果和失败数据准备；Release排除夹具及注入。
+闭库资源由`verify_app_pxi_output.py`与Python zipfile逐字节比较，独立核对主库内容摘要及终态。
+这些门的实际完成状态以HANDOFF为准；未运行的设备门或原生确认不因源码/构建通过而视为验收。
+
 ## SQL 授权、页面队列与 SDK
 
 确认 SQL 后，UI 只发出 grant 并处理正常窗口消息；owner worker 通过

@@ -30,8 +30,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_runtime.lib positron_core.lib positron_browser.lib positron_http.lib positron_script.lib positron_json.lib aygshell.lib commctrl.lib ws2.lib"
-				AdditionalLibraryDirectories="..\positron_runtime\bin\$(ConfigurationName);..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_script\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_archive.lib positron_runtime.lib positron_core.lib positron_browser.lib positron_http.lib positron_script.lib positron_json.lib aygshell.lib commctrl.lib ws2.lib"
+				AdditionalLibraryDirectories="..\positron_archive\bin\$(ConfigurationName);..\positron_runtime\bin\$(ConfigurationName);..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_script\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron.exe" LinkIncremental="2"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
@@ -47,7 +47,7 @@
 			<DeploymentTool ForceDirty="-1"
 				RemoteDirectory="\Program Files\Positron"
 				RegisterOutput="0"
-				AdditionalFiles="positron_runtime.dll|..\positron_runtime\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_db.dll|..\positron_db\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_core.dll|..\positron_core\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_browser.dll|..\positron_browser\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_script.dll|..\positron_script\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_image.dll|..\positron_image\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\Positron|0" />
+				AdditionalFiles="positron_archive.dll|..\positron_archive\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_runtime.dll|..\positron_runtime\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_db.dll|..\positron_db\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_core.dll|..\positron_core\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_browser.dll|..\positron_browser\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_script.dll|..\positron_script\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_image.dll|..\positron_image\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\Positron|0" />
 			<DebuggerTool />
 		</Configuration>
 		<Configuration Name="Release|Windows Mobile 6 Professional SDK (ARMV4I)"
@@ -71,8 +71,8 @@
 				Culture="2052" AdditionalIncludeDirectories="$(IntDir)" />
 			<Tool Name="VCPreLinkEventTool" />
 			<Tool Name="VCLinkerTool"
-				AdditionalDependencies="positron_runtime.lib positron_core.lib positron_browser.lib positron_http.lib positron_json.lib aygshell.lib commctrl.lib"
-				AdditionalLibraryDirectories="..\positron_runtime\bin\$(ConfigurationName);..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName)"
+				AdditionalDependencies="positron_archive.lib positron_runtime.lib positron_core.lib positron_browser.lib positron_http.lib positron_json.lib aygshell.lib commctrl.lib"
+				AdditionalLibraryDirectories="..\positron_archive\bin\$(ConfigurationName);..\positron_runtime\bin\$(ConfigurationName);..\positron_core\bin\$(ConfigurationName);..\positron_browser\bin\$(ConfigurationName);..\positron_http\bin\$(ConfigurationName);..\positron_json\bin\$(ConfigurationName)"
 				AdditionalOptions=" /subsystem:windowsce,5.02"
 				OutputFile="$(OutDir)\positron.exe" LinkIncremental="1"
 				DelayLoadDLLs="$(NOINHERIT)" GenerateDebugInformation="true"
@@ -89,12 +89,15 @@
 			<DeploymentTool ForceDirty="-1"
 				RemoteDirectory="\Program Files\Positron"
 				RegisterOutput="0"
-				AdditionalFiles="positron_runtime.dll|..\positron_runtime\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_db.dll|..\positron_db\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_core.dll|..\positron_core\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_browser.dll|..\positron_browser\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_script.dll|..\positron_script\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_image.dll|..\positron_image\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\Positron|0" />
+				AdditionalFiles="positron_archive.dll|..\positron_archive\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_runtime.dll|..\positron_runtime\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_db.dll|..\positron_db\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_core.dll|..\positron_core\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_browser.dll|..\positron_browser\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_json.dll|..\positron_json\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_script.dll|..\positron_script\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_image.dll|..\positron_image\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_tls.dll|..\positron_tls\bin\$(ConfigurationName)|\Program Files\Positron|0;positron_http.dll|..\positron_http\bin\$(ConfigurationName)|\Program Files\Positron|0" />
 			<DebuggerTool />
 		</Configuration>
 	</Configurations>
 	<References />
 	<Files>
+		<File RelativePath=".\app_pxi.c" />
+		<File RelativePath=".\app_pxi.h" />
+		<File RelativePath=".\app_pxi_debug.c" />
 		<File RelativePath=".\app_install_store.c" />
 		<File RelativePath=".\app_install_store.h" />
 		<File RelativePath=".\app_runtime_registry.c" />
