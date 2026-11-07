@@ -1,6 +1,6 @@
 # 已安装资源应用的更新计划
 
-本文记录公共合同审查后的分阶段方案，尚无可调用的更新 ABI；不表示更新已实现或通过设备门。
+本文记录公共合同审查后的分阶段方案。版本化installed读取和只读更新资格已有收尾候选；current/pending发布、未知结果恢复及EXE更新仍未实现，不表示完整更新已通过设备门。
 首次安装继续使用[现有恢复合同](RUNTIME_INSTALL_RECOVERY.md)，整体方向见[运行时计划](RUNTIME_PLAN.md)。
 Runtime拥有更新资格、批准、状态转换、读回分类及生命周期；EXE拥有主库表、原生租约、文件I/O、
 风险确认和worker。公共DLL工作交主线与DLL会话，接口不足时EXE停止对应接线。
@@ -8,8 +8,7 @@ Runtime拥有更新资格、批准、状态转换、读回分类及生命周期�
 ## 当前合同为什么不够
 
 现有[公共头](../positron_runtime/positron_runtime.h)和[安装合同](../positron_runtime/INSTALLED.md)
-只允许首次安装revision 1。批准、登记核验、refresh与普通opener均有此限制；登记读回要求完整
-旧/新approval一致，首装Intent和Commit只协调一个PREPARING记录。不能只把EXE中的revision改成2。
+原有首装/批准/opener路径只允许revision 1。候选OpenInstalledEx显式核验期望revision，ResourceUpdate资格保有活current/candidate及既有存储，但二者都不发布更新。原登记读回仍要求完整旧/新approval一致，首装Intent和Commit只协调单一PREPARING记录；不能只把EXE中的revision改成2。
 
 主库当前[app_installs](../positron_app/app_install_store.c)每个installation ID一行、app ID唯一，
 不能同时表达旧current与独立pending。InstallData在稳定安装身份的原数据库逐文件提交迁移，
@@ -21,6 +20,7 @@ Runtime拥有更新资格、批准、状态转换、读回分类及生命周期�
 | 阶段 | 交付及进入下一阶段的条件 |
 |---|---|
 | 合同与夹具 | 固化current/pending、租约、恢复分类、版本化opener及预算；不新增占位导出 |
+| 读取与资格前置 | 显式revision opener及只读资格已有收尾候选；接受活父项、相同历史/schema/能力，固定保有与组合预算；候选验证不等于发布 |
 | 公共资源更新 | Runtime新增版本化资格/批准、update job、登记provider、读回/恢复和普通启动全链；不执行迁移，DLL双配置设备门通过 |
 | EXE资源更新 | 主库迁移与原子provider、独立资源根、明确确认、owner调度；Notes实际更新及失败旧页/旧数据保留门通过 |
 | 数据迁移更新 | 先新增DB一致性复制与Runtime数据generation合同，再在副本迁移，最终描述符原子切换资源和数据 |
@@ -66,16 +66,14 @@ candidate完整资源/批准/root/schema以及pending自身generation/状态，�
 
 正式更新前正常退出旧实例、撤销Browser服务并收敛/关闭队列和SQL；冲突返回BUSY，不强杀。
 旧installed实例已持独占installation租约，新job不能再acquire同一租约然后伪造成功。
-公共合同必须选择显式借用/转移，或由新job统一拥有租约及内部旧版本验证生命周期；
-不能提前释放租约后继续信任旧快照。old/candidate父项、cancel/close、owner/reentry及stale页面整体规定。
+只读资格候选采用显式借用：保有current父项及其已经取得的登记租约，不再次acquire，SQL时同时保有存储/位置；两父项关闭/取消及存储执行/新队列在子项关闭前拒绝。后续发布job必须消费活资格并在同一协调下刷新current/pending；复制Info没有授权能力，不能提前释放租约后信任旧快照。parent退休后资格不得完成，终态仍须可查询和关闭。
 
 旧v1入口继续只接受revision 1；通过新增Ex/新handle/版本化provider开放更新及rev2普通启动，
 包括refresh、storage和queue组合，不给旧API伪造revision1。所有调用保持创建worker所有权，
 Step仅在安全边界让步，不泵消息、不自建线程，不把单次原生I/O/SQL当作可抢占操作。
 
 保留单视图现有预算及EXE的128条目/4MiB输出上限；同一更新只允许一个job和pending。
-实现前以两个revision、元数据和reserve做编译期组合证明，Runtime-owned以1280KiB为目标，
-未证明前不宣称满足。两份原生4MiB快照可能同时保有8MiB，须另行测量完整host峰值及OOM展开。
+当前资格候选已对两个实际revision、存储、资格元数据和128KiB reserve做编译期组合证明，Runtime-owned≤1280KiB。后续加入pending/provider及发布状态机仍须重新证明，不能沿用前置结论。两份原生4MiB快照可能同时保有8MiB，完整host峰值及OOM展开仍须独立测量。
 不能借单job预算掩盖组合开销，不扩大资源/SQL/JS既有配额。
 
 ## 数据迁移的后续前置

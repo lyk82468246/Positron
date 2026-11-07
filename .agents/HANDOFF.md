@@ -27,9 +27,11 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 正式双配置与 TEST1375/1376/999 各 3/3 PASS，Archive 路径、完整日志、空间/零 holder/crash 通过；
 设备 ZIP 回拉后的 Python 解包与桌面 7-Zip 校验通过。证据分别见
 [reader](../docs/history/ARCHIVE_READER_ACCEPTANCE.md)及[writer](../docs/history/ARCHIVE_WRITER_ACCEPTANCE.md)。
-writer 同步添加条目、块间取消，Finish 后由宿主提交；未实现 PXI/HTTP 压缩，EXE 无新依赖。
+writer 同步添加条目、块间取消，Finish 后由宿主提交；PXI 首装已消费 Archive，HTTP gzip 未接线。
 
 ### Runtime 当前验收与安装边界
+
+本阶段停止扩展。版本化读取/只读更新资格为候选：父实例退休修正后的 Debug 六项设备门通过；Release 三次正式构建均为 VS2008 msenv.dll 崩溃，未部署，不提升基线。旧 55 函数/37 结构保持。源码、失败与恢复证据见[阶段收尾](../docs/history/RUNTIME_RESOURCE_UPDATE_CLOSEOUT.md)；current/pending、更新恢复及 EXE 更新未实现。
 
 CAB关联默认关闭，原生安装E_FAIL；对照与补丁见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
 
@@ -42,7 +44,7 @@ Notes真实CRUD、搜索、四页、重开及双目录隔离已有四进程门�
 
 冻结目录首次安装主库v5、精确CAS、原生确认/恢复及独立installed启动已接入，自动及Debug确认/拒绝/保存/免提示重开人工门通过；证据见[EXE安装验收](../docs/history/APP_RUNTIME_INSTALL_ACCEPTANCE.md)。恢复UI、双语/Release仍待人工。
 
-PXI已接--install，Archive完整CRC输出后复用首次安装链；128条目/4MiB/256对象，可能写意图前保留目录，确认前仅清本次可验证对象。无DLL/ABI/schema或系统关联改动。最终tmp/device-runs/20261106-222650-app-pxi原生phase10、参数14项、两进程installed SQL页、12/12哈希、三个资源摘要/ZIP字节、相邻设置及退出/crash全部PASS；Debug/Release/CAB、C89/审计通过，普通PXI中文包路径已由后续日志证明确认后READY提交、独立open-installed及Notes脚本无错误；新进程3820850954免提示重开/脚本及绘制通过；保存与拒绝人工门待做。用户授权当前设备清理后，94个旧测试文件完整归档，原Notes未迁入。作者打包工具七项及010021完整设备门通过，旧包恢复见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
+PXI 已接 --install，Archive 完整 CRC 输出后复用首装链；128 条目/4MiB/256 对象，确认前仅清本次可验证对象，意图后保留引用资源。自动门、普通中文包确认/READY/独立启动、免提示重开和作者打包设备门已通过，保存/拒绝及 Release 人工边界见[PXI 取证](../docs/history/APP_PXI_ACCEPTANCE.md)。原设备 Notes 未迁入；当前设备原包已在本轮收尾恢复，不覆盖用户数据。
 
 ### Core 单行文本输入框自动高度已验收
 
@@ -486,8 +488,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核ROADMAP与限制；普通PXI确认后的成功日志已固化，未冒认保存/重开。PXI自动门已过，唯一下一步为当前匹配包的普通PXI拒绝、Notes保存人工门（新进程免提示重开已有日志），再考虑系统关联。首装合同足够；更新缺口及阶段见[计划](../docs/RUNTIME_UPDATE_PLAN.md)，DLL先行。外置卷native2及旧DB错误不关闭，不重开FULL/断电门。
+本轮已复核 ROADMAP 与限制，阶段按用户要求收尾，不自动启动下一批。若恢复开发，唯一前置是解决正式 Release 构建环境崩溃并完成当前候选的同源码六项设备门；通过后才考虑 Runtime current/pending 发布与恢复合同，EXE 等待 DLL。首装人工 backlog、外置卷 native2 和旧 DB 错误保留，不重开 FULL/断电门。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
-当前连接为用户指定的新验收目标，原Notes包不存在，未自动恢复旧库。PXI设备门均正常退出至零引用；新部署仍重查空间与引用。
+当前连接为用户指定的新验收目标；旧设备 Notes 未迁入。收尾已恢复本设备 PXI 验收前的 Notes 完整二进制包，逐文件 SHA256 一致，数据库、apps/data 及资源未修改；未自动启动作者应用。原恢复证据及路径见阶段收尾。新部署仍重查空间与引用。

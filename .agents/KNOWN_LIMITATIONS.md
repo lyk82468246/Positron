@@ -48,11 +48,11 @@
 
 ## Archive
 
-ZIP 仅有界 STORE/DEFLATE 读写；PXI/HTTP gzip 未接线，物理输出与提交/清理由宿主负责。
+ZIP 仅有界 STORE/DEFLATE；PXI 首装已接线，HTTP gzip 未接线。
 
 ## 纯资源应用 Runtime
 
-- 首次安装限revision1；PXI普通安装待人工，关联/更新/卸载未接入。恢复UI、双语/Release待验收；开发目录仍确认，主库限制并发。
+- 首装限 revision1；更新发布/恢复/卸载及关联未实现。版本化读取/资格仅 Debug 验证，Release 构建崩溃；完整限制见 HANDOFF。
 
 ## HTML、CSS 与布局
 

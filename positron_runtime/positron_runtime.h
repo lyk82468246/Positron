@@ -420,6 +420,53 @@ PRUNTIME_API int PRuntime_InstallCommitGetInfo(PRuntimeInstallCommitHandle commi
 PRUNTIME_API int PRuntime_InstallCommitCancel(PRuntimeInstallCommitHandle commit);
 PRUNTIME_API int PRuntime_InstallCommitClose(PRuntimeInstallCommitHandle* commit);
 
+/* Read-only, native resource-update qualification; NOT a registry write. */
+typedef struct PRuntimeResourceUpdate* PRuntimeResourceUpdateHandle;
+#define PRUNTIME_UPDATE_PENDING 1U
+#define PRUNTIME_UPDATE_COMPLETE 2U
+#define PRUNTIME_UPDATE_FAILED 3U
+#define PRUNTIME_UPDATE_CANCELLED 4U
+#define PRUNTIME_UPDATE_DONE 1
+typedef struct PRuntimeResourceUpdateOptions {
+    unsigned int size, version, confirmed; /* v1, explicit native update confirmation */
+} PRuntimeResourceUpdateOptions;
+typedef struct PRuntimeResourceUpdateInfo {
+    unsigned int size, version, state;
+    int error;
+    PRuntimeStorageError data_error;
+    PRuntimeInstalledRecord current;
+    PRuntimeApprovalSnapshot candidate; /* complete only, copied native metadata, not bearer authority */
+    char candidate_root[1024];
+    unsigned int target_schema;
+} PRuntimeResourceUpdateInfo;
+/* Live COMPLETE installed current + separate COMPLETE prepare-kind candidate;
+ * one creating worker, SQL current requires its READY storage with no queues.
+ * Same canonical ID, increasing app_version, current revision+1, unchanged
+ * permissions/schema and exact migration version/path/hash history. Changes
+ * to capabilities/schema/history UNSUPPORTED; identity/root/version mismatch
+ * INVALID; overflow LIMIT. No callback at Prepare, failure preserves output.
+ * Retains BOTH parents and borrows the current parent's existing exclusive
+ * registry lease, never reacquires it. Retains SQL DB/location if supplied.
+ * Parent Cancel/Close, storage Close/SQL/QueueCreate are STATE until child closes.
+ * Step refreshes current, checks retained idle DB/exact schema, refreshes again.
+ * No DB creation/bind/migration/writes, CAS, pending/current publication, author
+ * execution or Browser grant. COMPLETE proves qualification ONLY; copied info
+ * cannot publish an update. Future publication must consume the live qualifier
+ * under this same retained coordination, not trust a detached snapshot.
+ * One registration operation or bounded DB check/Step plus cancel predicates;
+ * owner/reentry guards, no worker/pump/hard deadline. Failed/cancelled child
+ * leaves old data/registration untouched, still held until Close. Info exact
+ * v1, verified metadata zero until COMPLETE. Close NULL value idempotent.
+ * Two revisions+storage+qualifier+128KiB reserve <=1280KiB Runtime-owned;
+ * provider snapshot/CSP/SQLite allocations excluded and separately bounded. */
+PRUNTIME_API int PRuntime_ResourceUpdatePrepare(PRuntimeRevisionHandle current,
+        PRuntimeRevisionHandle candidate, PRuntimeStorageHandle current_storage,
+        const PRuntimeResourceUpdateOptions* options, PRuntimeResourceUpdateHandle* output);
+PRUNTIME_API int PRuntime_ResourceUpdateStep(PRuntimeResourceUpdateHandle update);
+PRUNTIME_API int PRuntime_ResourceUpdateGetInfo(PRuntimeResourceUpdateHandle update, PRuntimeResourceUpdateInfo* info);
+PRUNTIME_API int PRuntime_ResourceUpdateCancel(PRuntimeResourceUpdateHandle update);
+PRUNTIME_API int PRuntime_ResourceUpdateClose(PRuntimeResourceUpdateHandle* update);
+
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;
@@ -551,6 +598,16 @@ PRUNTIME_API int PRuntime_OpenInstalled(const char* installation_id, unsigned in
         unsigned int expected_generation, const PRuntimeInstalledProvider* registry,
         const PRuntimeRevisionProvider* provider, const PRuntimeRevisionOptions* options,
         PRuntimeRevisionHandle* output);
+/* Explicit revision-aware opener. Same size/version-1 provider/options and
+ * owned handle family; expected_revision is 1..2147483647 and must match the
+ * committed trusted record exactly. V1 OpenInstalled still only accepts 1.
+ * Shared Step/read/refresh, InstalledStorageOpen and page queues use the
+ * explicit handle policy; no record is rewritten to pretend revision 1.
+ * No update publication or authority from caller-supplied approval. */
+PRUNTIME_API int PRuntime_OpenInstalledEx(const char* installation_id, unsigned int bytes,
+        unsigned int expected_generation, unsigned int expected_revision,
+        const PRuntimeInstalledProvider* registry, const PRuntimeRevisionProvider* resources,
+        const PRuntimeRevisionOptions* options, PRuntimeRevisionHandle* output);
 PRUNTIME_API int PRuntime_RevisionStep(PRuntimeRevisionHandle revision);
 PRUNTIME_API int PRuntime_RevisionGetInfo(PRuntimeRevisionHandle revision, PRuntimeRevisionInfo* info);
 PRUNTIME_API int PRuntime_RevisionGetFile(PRuntimeRevisionHandle revision,

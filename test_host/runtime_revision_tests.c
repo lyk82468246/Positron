@@ -24,6 +24,7 @@ typedef struct RevisionFixture {
     PRuntimeRevisionHandle job;
     PRuntimeStorageHandle storage;
     PRuntimeServiceQueueHandle guarded_queue;
+    PRuntimeResourceUpdateHandle update;
     PRuntimeInstalledRecord record;
 } RevisionFixture;
 typedef struct RevisionHash {
@@ -46,6 +47,15 @@ static void revision_guard(RevisionFixture* f)
     if (f->guarded_queue) {
         PRuntimeServiceQueueHandle queue_alias = f->guarded_queue;
         if (PRuntime_ServiceQueueClose(&queue_alias) != PRUNTIME_STATE || queue_alias != f->guarded_queue) ++f->bad_guard;
+    }
+    if (f->update) {
+        PRuntimeResourceUpdateInfo ui;
+        PRuntimeResourceUpdateHandle ua = f->update;
+        ui.size = sizeof(ui); ui.version = 1;
+        if (PRuntime_ResourceUpdateGetInfo(ua, &ui) != PRUNTIME_STATE ||
+                PRuntime_ResourceUpdateStep(ua) != PRUNTIME_STATE ||
+                PRuntime_ResourceUpdateCancel(ua) != PRUNTIME_STATE ||
+                PRuntime_ResourceUpdateClose(&ua) != PRUNTIME_STATE || ua != f->update) ++f->bad_guard;
     }
     if (!f->job) return;
     info.size = sizeof(info); info.version = 1; alias = f->job;
@@ -1818,5 +1828,250 @@ failed:
     if (revision) revision_dispose(&f, &revision);
     /* Preserve failed fixture DB for diagnostics. */
     (void)owned;
+    return FALSE;
+}
+
+
+typedef struct UpdateThread { PRuntimeResourceUpdateHandle job; int ok; } UpdateThread;
+static DWORD WINAPI update_other_thread(void* user)
+{
+    UpdateThread* t = (UpdateThread*)user;
+    PRuntimeResourceUpdateHandle alias = t->job;
+    PRuntimeResourceUpdateInfo info;
+    info.size = sizeof(info); info.version = 1;
+    t->ok = PRuntime_ResourceUpdateStep(t->job) == PRUNTIME_STATE &&
+        PRuntime_ResourceUpdateGetInfo(t->job, &info) == PRUNTIME_STATE &&
+        PRuntime_ResourceUpdateCancel(t->job) == PRUNTIME_STATE &&
+        PRuntime_ResourceUpdateClose(&alias) == PRUNTIME_STATE && alias == t->job;
+    return 0;
+}
+BOOL test1386_runtime_resource_update(void)
+{
+    static const char identity[] = "Positron.storage.v1:installed:com.example.installed:00112233445566778899aabbccddeeff";
+    static const char query[] = "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT n FROM sample\",\"params\":[]}";
+    static const char no_sql[] = "{\"manifestVersion\":1,\"id\":\"com.example.installed\",\"name\":\"Update\",\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
+    RevisionFixture f, g;
+    ReadyStorageFixture platform;
+    PRuntimeRevisionProvider resources, candidate_resources;
+    PRuntimeInstalledProvider registry, unused;
+    PRuntimeRevisionOptions options, candidate_options;
+    PRuntimeApprovalOptions approval;
+    PRuntimeApprovalSnapshot snapshot;
+    PRuntimeRevisionHandle current = NULL, candidate = NULL, alias;
+    PRuntimeRevisionInfo candidate_info;
+    PRuntimeStorageHandle storage = NULL, storage_alias;
+    PRuntimeInstalledStorageProvider location;
+    PRuntimeStorageOptions storage_options;
+    PRuntimeResourceUpdateOptions update_options;
+    PRuntimeResourceUpdateHandle update = NULL, other;
+    PRuntimeInstallIntentHandle blocked_intent = NULL;
+    PRuntimeResourceUpdateInfo info, sentinel;
+    PRuntimeServiceQueueHandle queue = NULL;
+    PRuntimeServiceQueueOptions qo;
+    PRuntimeServiceRequest request;
+    PRuntimeServiceResult result;
+    PDbHandle db = NULL;
+    PDbErrorInfo db_error;
+    WCHAR module[MAX_PATH], path[MAX_PATH], *slash;
+    char utf8[1024], manifest[1024], output[4097];
+    unsigned char body[16], *before = NULL, *after = NULL;
+    DWORD before_size, after_size;
+    unsigned int mode = 0, written, processed, step;
+    HANDLE thread;
+    UpdateThread thread_data;
+    int rc = 0, expected = 0;
+    memset(&f, 0, sizeof(f)); memset(&g, 0, sizeof(g)); memset(&platform, 0, sizeof(platform));
+    revision_error[0] = 0;
+    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH-55);
+    slash = wcsrchr(module, L'\\'); RCHECK(slash); *slash = 0;
+    memset(&approval, 0, sizeof(approval)); approval.size = sizeof(approval); approval.version = 1;
+    approval.revision = approval.confirmed = 1; strcpy(approval.installation_id, "00112233445566778899aabbccddeeff");
+    memset(&storage_options, 0, sizeof(storage_options)); storage_options.size = sizeof(storage_options); storage_options.version = 1;
+    storage_options.granted_permissions = PRUNTIME_PERMISSION_SQL; storage_options.vm_budget = 100000;
+    memset(&location, 0, sizeof(location)); location.size = sizeof(location); location.version = 1;
+    location.user_data = &platform; location.open_existing_location = ready_storage_location; location.close_location = ready_storage_close;
+    memset(&update_options, 0, sizeof(update_options)); update_options.size = sizeof(update_options); update_options.version = 1;
+    update_options.confirmed = 1;
+    memset(&qo, 0, sizeof(qo)); qo.size = sizeof(qo); qo.version = 1; qo.tab_id = 41; qo.page_generation = 9;
+    qo.delivery_thread_id = GetCurrentThreadId();
+    for (mode = 0; mode < 18; ++mode) {
+        revision_fixture(&f, NULL); if (mode != 1) ready_storage_migrated_fixture(&f);
+        else { f.data[0] = (const unsigned char*)no_sql; f.actual[0] = f.declared[0] = sizeof(no_sql)-1; }
+        revision_tables(&f, &resources, &registry, &options);
+        RCHECK(PRuntime_PrepareRevision("\\revision-root", 14, &resources, &options, &current) == PRUNTIME_OK);
+        RCHECK(revision_run(&f, current) == PRUNTIME_REVISION_DONE);
+        snapshot.size = sizeof(snapshot); snapshot.version = 1;
+        RCHECK(PRuntime_RevisionBuildApproval(current, &approval, &snapshot) == PRUNTIME_OK);
+        revision_dispose(&f, &current);
+        f.record.approval = snapshot;
+        if (mode == 12) f.record.approval.revision = 2147483647U;
+        if (mode == 13) f.record.approval.revision = 2;
+        RCHECK(PRuntime_OpenInstalledEx(approval.installation_id, 32, f.record.generation,
+                f.record.approval.revision, &registry, &resources, &options, &current) == PRUNTIME_OK);
+        RCHECK(revision_run(&f, current) == PRUNTIME_REVISION_DONE);
+        revision_fixture(&g, NULL); if (mode != 1 && mode != 4) ready_storage_migrated_fixture(&g);
+        _snprintf(manifest, sizeof(manifest)-1,
+            "{\"manifestVersion\":1,\"id\":\"%s\",\"name\":\"Update\",\"version\":%u,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":%s,\"migrations\":%s}",
+            mode == 6 ? "com.example.foreign" : "com.example.installed", mode == 5 ? 1U : 2U,
+            mode == 1 || mode == 4 ? "[]" : "[\"storage.sql\"]",
+            mode == 1 || mode == 4 ? "[]" : "[{\"version\":1,\"file\":\"one.sql\"}]");
+        manifest[sizeof(manifest)-1] = 0; g.data[0] = (const unsigned char*)manifest;
+        g.actual[0] = g.declared[0] = (unsigned int)strlen(manifest);
+        if (mode == 2) { g.data[5] = (const unsigned char*)"-- modified history\nCREATE TABLE sample(n INTEGER)";
+            g.actual[5] = g.declared[5] = (unsigned int)strlen((const char*)g.data[5]); }
+        if (mode == 3) {
+            /* Valid different history path is unsupported even with same schema. */
+            strcpy(g.paths[5], "two.sql");
+            { char* at = strstr(manifest, "one.sql"); RCHECK(at); memcpy(at, "two.sql", 7); }
+        }
+        revision_tables(&g, &candidate_resources, &unused, &candidate_options);
+        RCHECK(PRuntime_PrepareRevision(mode == 7 ? "\\revision-root" : "\\candidate-root", mode == 7 ? 14 : 15,
+                &candidate_resources, &candidate_options, &candidate) == PRUNTIME_OK);
+        RCHECK(revision_run(&g, candidate) == PRUNTIME_REVISION_DONE);
+        memset(&platform, 0, sizeof(platform)); platform.revision = &f;
+        wsprintfW(path, L"%s\\update-%lu-%u.db", module, GetCurrentProcessId(), mode); wcscpy(platform.path, path);
+        RCHECK(WideCharToMultiByte(CP_UTF8, 0, path, -1, utf8, sizeof(utf8), NULL, NULL)); strcpy(platform.utf8, utf8);
+        if (mode != 1) {
+            memset(&db_error, 0, sizeof(db_error)); db_error.size = sizeof(db_error); db_error.version = PDB_ERROR_INFO_VERSION;
+            rc = PDb_OpenUtf8Ex(utf8, PDB_OPEN_LOCAL_FULL_SQL, &db, &db_error); RCHECK(rc == PDB_OK);
+            RCHECK(PDb_BindLocalIdentity(db, identity, (int)strlen(identity)) == PDB_OK);
+            RCHECK(PDb_ApplyMigration(db, 1, "CREATE TABLE sample(n INTEGER);INSERT INTO sample VALUES(42)") == PDB_OK);
+            PDb_Close(db); db = NULL;
+            RCHECK(PRuntime_InstalledStorageOpen(current, &storage_options, &location, &storage, NULL) == PRUNTIME_OK);
+            f.storage = storage;
+            before = existing_file_bytes(path, &before_size); RCHECK(before);
+        }
+        expected = PRUNTIME_OK;
+        if (mode == 2 || mode == 3 || mode == 4) expected = PRUNTIME_UNSUPPORTED;
+        if (mode == 5 || mode == 6 || mode == 7) expected = PRUNTIME_INVALID;
+        if (mode == 8) { update_options.confirmed = 0; expected = PRUNTIME_DENIED; }
+        if (mode == 12) expected = PRUNTIME_LIMIT;
+        if (mode == 14) expected = PRUNTIME_ARGUMENT;
+        if (mode == 16) {
+            RCHECK(PRuntime_ServiceQueueCreate(storage, &qo, &queue) == PRUNTIME_OK); expected = PRUNTIME_STATE;
+        }
+        other = (PRuntimeResourceUpdateHandle)&f;
+        rc = PRuntime_ResourceUpdatePrepare(current, candidate, mode == 14 ? NULL : storage, &update_options, &other);
+        update_options.confirmed = 1;
+        RCHECK(rc == expected);
+        if (rc != PRUNTIME_OK) RCHECK(other == (PRuntimeResourceUpdateHandle)&f);
+        else {
+            update = other; f.update = g.update = update;
+            alias = current; RCHECK(PRuntime_RevisionClose(&alias) == PRUNTIME_STATE && alias == current);
+            alias = candidate; RCHECK(PRuntime_RevisionClose(&alias) == PRUNTIME_STATE && alias == candidate);
+            RCHECK(PRuntime_RevisionCancel(current) == PRUNTIME_STATE && PRuntime_RevisionCancel(candidate) == PRUNTIME_STATE);
+            if (storage) {
+                storage_alias = storage;
+                RCHECK(PRuntime_StorageClose(&storage_alias) == PRUNTIME_STATE && storage_alias == storage);
+                RCHECK(PRuntime_StorageExecuteJson(storage, query, sizeof(query)-1, output, sizeof(output), &written) == PRUNTIME_STATE);
+                RCHECK(PRuntime_ServiceQueueCreate(storage, &qo, &queue) == PRUNTIME_STATE && !queue);
+            }
+            memset(&info, 0xa5, sizeof(info)); info.size = sizeof(info); info.version = 2; sentinel = info;
+            RCHECK(PRuntime_ResourceUpdateGetInfo(update, &info) == PRUNTIME_ARGUMENT && !memcmp(&info, &sentinel, sizeof(info)));
+            info.version = 1; RCHECK(PRuntime_ResourceUpdateGetInfo(update, &info) == PRUNTIME_OK && !info.candidate.revision);
+            other = NULL;
+            RCHECK(PRuntime_ResourceUpdatePrepare(current, candidate, storage, &update_options, &other) == PRUNTIME_STATE && !other);
+            if (!mode) {
+                thread_data.job = update; thread_data.ok = 0;
+                thread = CreateThread(NULL, 0, update_other_thread, &thread_data, 0, NULL);
+                RCHECK(thread && WaitForSingleObject(thread, 5000) == WAIT_OBJECT_0); CloseHandle(thread); RCHECK(thread_data.ok);
+            }
+            expected = PRUNTIME_UPDATE_DONE;
+            if (mode == 9) { RCHECK(PRuntime_ResourceUpdateCancel(update) == PRUNTIME_OK); expected = PRUNTIME_CANCELLED; }
+            if (mode == 10) { f.record.active = 0; expected = PRUNTIME_DENIED; }
+            if (mode == 11) expected = PRUNTIME_INVALID;
+            for (step = 0, rc = PRUNTIME_OK; step < 5 && rc == PRUNTIME_OK; ++step) {
+                rc = PRuntime_ResourceUpdateStep(update);
+                if (mode == 11 && !step) ++f.record.generation;
+                if (mode == 17 && !step && rc == PRUNTIME_OK) {
+                    PRuntimeRevisionFile file;
+                    unsigned int at;
+                    /* Retire the live installed parent through its public read
+                     * API at an idle Step boundary. Registry remains unchanged. */
+                    for (at = 0; at < f.count; ++at) {
+                        file.size = sizeof(file); file.version = 1;
+                        RCHECK(PRuntime_RevisionGetFile(current, at, &file) == PRUNTIME_OK);
+                        if (file.file_bytes) break;
+                    }
+                    RCHECK(at < f.count);
+                    f.fail_read = 1; written = 123;
+                    RCHECK(PRuntime_InstalledReadFile(current, at, 0, body, sizeof(body), &written) == PRUNTIME_IO && written == 123);
+                    f.fail_read = 0; expected = PRUNTIME_STATE;
+                }
+            }
+            RCHECK(rc == expected);
+            info.size = sizeof(info); info.version = 1;
+            RCHECK(PRuntime_ResourceUpdateGetInfo(update, &info) == PRUNTIME_OK);
+            candidate_info.size = sizeof(candidate_info); candidate_info.version = 1;
+            RCHECK(PRuntime_RevisionGetInfo(candidate, &candidate_info) == PRUNTIME_OK);
+            if (rc == PRUNTIME_UPDATE_DONE) RCHECK(!memcmp(info.candidate.content_id, candidate_info.content_id, 32) && info.candidate.revision == f.record.approval.revision + 1 &&
+                    info.candidate.app_version == 2 &&
+                    info.target_schema == (mode == 1 ? 0U : 1U));
+            else RCHECK(!info.candidate.revision && !info.current.generation);
+            RCHECK(PRuntime_ResourceUpdateStep(update) == PRUNTIME_STATE);
+            if (storage) {
+                storage_alias = storage;
+                RCHECK(PRuntime_StorageClose(&storage_alias) == PRUNTIME_STATE && storage_alias == storage);
+            }
+            {
+                unsigned int callbacks = g.calls;
+                RCHECK(PRuntime_RevisionBuildApproval(candidate, &approval, &snapshot) == PRUNTIME_STATE);
+                RCHECK(PRuntime_RevisionReconcileRegistration(candidate, NULL, NULL, NULL) == PRUNTIME_STATE);
+                RCHECK(PRuntime_InstallIntentBegin(candidate, NULL, NULL, &blocked_intent) == PRUNTIME_STATE && !blocked_intent);
+                RCHECK(g.calls == callbacks);
+            }
+            RCHECK(PRuntime_ResourceUpdateClose(&update) == PRUNTIME_OK); f.update = g.update = NULL;
+            RCHECK(PRuntime_ResourceUpdateClose(&update) == PRUNTIME_OK);
+            if (!mode) {
+                /* Native fixture supplies a committed rev2 record solely to
+                 * test the new reader. This is NOT an update implementation. */
+                if (storage) { RCHECK(PRuntime_StorageClose(&storage) == PRUNTIME_OK); f.storage = NULL; }
+                revision_dispose(&f, &current); revision_dispose(&g, &candidate);
+                f = g; f.record = info.current; f.record.approval = info.candidate; strcpy(f.record.directory, "\\candidate-root");
+                revision_tables(&f, &resources, &registry, &options);
+                RCHECK(PRuntime_OpenInstalled(approval.installation_id, 32, f.record.generation, &registry, &resources, &options, &current) == PRUNTIME_OK);
+                RCHECK(revision_run(&f, current) == PRUNTIME_UNSUPPORTED); revision_dispose(&f, &current);
+                RCHECK(PRuntime_OpenInstalledEx(approval.installation_id, 32, f.record.generation, 3, &registry, &resources, &options, &current) == PRUNTIME_OK);
+                RCHECK(revision_run(&f, current) == PRUNTIME_INVALID); revision_dispose(&f, &current);
+                RCHECK(PRuntime_OpenInstalledEx(approval.installation_id, 32, f.record.generation, 2, &registry, &resources, &options, &current) == PRUNTIME_OK);
+                RCHECK(revision_run(&f, current) == PRUNTIME_REVISION_DONE);
+                RCHECK(PRuntime_InstalledReadFile(current, 0, 0, body, sizeof(body), &written) == PRUNTIME_OK);
+                RCHECK(PRuntime_InstalledStorageOpen(current, &storage_options, &location, &storage, NULL) == PRUNTIME_OK); f.storage = storage;
+                RCHECK(PRuntime_ServiceQueueCreate(storage, &qo, &queue) == PRUNTIME_OK);
+                memset(&request, 0, sizeof(request)); request.size = sizeof(request); request.version = 1;
+                request.tab_id = qo.tab_id; request.page_generation = qo.page_generation;
+                request.bridge_id = 1; request.request_id = 1; request.method = "storage.sql";
+                request.json_bytes = sizeof(query)-1; request.json = query;
+                RCHECK(PRuntime_ServiceQueueSubmit(queue, &request) == PRUNTIME_OK);
+                RCHECK(PRuntime_ServiceQueueProcessOne(queue, &processed) == PRUNTIME_OK && processed == 1);
+                result.size = sizeof(result); result.version = 1;
+                RCHECK(PRuntime_ServiceQueueTakeResult(queue, &result) == PRUNTIME_OK && result.result == PRUNTIME_OK && strstr(result.json, "42"));
+            }
+        }
+        if (queue) { RCHECK(PRuntime_ServiceQueueRevoke(queue) == PRUNTIME_OK); RCHECK(PRuntime_ServiceQueueClose(&queue) == PRUNTIME_OK); }
+        if (storage) { RCHECK(PRuntime_StorageClose(&storage) == PRUNTIME_OK); f.storage = NULL; }
+        if (current) revision_dispose(&f, &current);
+        if (candidate) revision_dispose(&g, &candidate);
+        RCHECK(!f.bad_guard && !g.bad_guard && !f.roots && !g.roots && !f.leases && !platform.leases);
+        if (mode != 1) {
+            after = existing_file_bytes(path, &after_size); RCHECK(after && before_size == after_size && !memcmp(before, after, before_size));
+            free(before); before = NULL; free(after); after = NULL;
+            RCHECK(DeleteFileW(path));
+        }
+    }
+    return TRUE;
+failed:
+    {
+        unsigned int used = (unsigned int)strlen(revision_error);
+        _snprintf(revision_error+used, sizeof(revision_error)-used-1, " mode=%u expected=%d", mode, expected);
+        revision_error[sizeof(revision_error)-1] = 0;
+    }
+    if (update) PRuntime_ResourceUpdateClose(&update); f.update = g.update = NULL;
+    if (queue) { PRuntime_ServiceQueueRevoke(queue); PRuntime_ServiceQueueClose(&queue); }
+    if (storage) PRuntime_StorageClose(&storage); f.storage = NULL;
+    if (db) PDb_Close(db);
+    free(before); free(after);
+    if (current) revision_dispose(&f, &current);
+    if (candidate) revision_dispose(&g, &candidate);
     return FALSE;
 }

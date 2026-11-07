@@ -723,7 +723,7 @@ struct PRuntimeStorage {
     PDbHandle db;
     DWORD owner;
     int active;
-    unsigned int queue_count;
+    unsigned int queue_count, update_children;
     PRuntimeServiceQueueHandle queues[PRUNTIME_SERVICE_MAX_QUEUES];
     int queue_processing;
     int instance_cancelled;
@@ -912,7 +912,7 @@ PRUNTIME_API int PRuntime_StorageClose(PRuntimeStorageHandle* storage)
     if (!*storage) return PRUNTIME_OK;
     current = *storage;
     rc = runtime_storage_ready(current); if (rc != PRUNTIME_OK) return rc;
-    if (current->queue_count) return PRUNTIME_STATE;
+    if (current->queue_count || current->update_children) return PRUNTIME_STATE;
     runtime_storage_parent_active(current, 1); current->active = 1;
     if (current->db) { PDb_Close(current->db); current->db = NULL; }
     if (current->location.token) {
@@ -1078,7 +1078,7 @@ PRUNTIME_API int PRuntime_StorageExecuteJson(PRuntimeStorageHandle storage,
     int native;
     int rc;
     rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
-    if (storage->queue_count && !storage->queue_processing) return PRUNTIME_STATE;
+    if (storage->update_children || (storage->queue_count && !storage->queue_processing)) return PRUNTIME_STATE;
     if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
     if (!request || !bytes || !output || !written) { runtime_storage_error_init(&storage->error, PRUNTIME_ARGUMENT); return PRUNTIME_ARGUMENT; }
     if (bytes > PRUNTIME_SERVICE_JSON_BYTES || capacity < PRUNTIME_SERVICE_JSON_BYTES + 1) {
@@ -1173,6 +1173,7 @@ PRUNTIME_API int PRuntime_ServiceQueueCreate(PRuntimeStorageHandle storage,
     unsigned int i;
     int rc;
     rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+    if (storage->update_children) return PRUNTIME_STATE;
     if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
             !options->tab_id || !options->page_generation || !options->delivery_thread_id) return PRUNTIME_ARGUMENT;
     if (storage->info.state != PRUNTIME_STORAGE_READY) return PRUNTIME_STATE;
@@ -1334,10 +1335,10 @@ PRUNTIME_API int PRuntime_ServiceQueueClose(PRuntimeServiceQueueHandle* queue)
 struct PRuntimeRevision {
     DWORD magic, owner;
     int active;
-    unsigned int intent_children, storage_children;
+    unsigned int intent_children, storage_children, update_children;
     unsigned int state, installed, phase, index, offset, frame_index;
     unsigned int count, total, verified_bytes, verified_files;
-    unsigned int expected_generation;
+    unsigned int expected_generation, expected_revision;
     int error;
     char directory[1024], installation_id[33];
     PRuntimeRevisionProvider provider;
@@ -1399,7 +1400,7 @@ static int rv_fail(PRuntimeRevisionHandle r, int rc)
     r->state = rc == PRUNTIME_CANCELLED ? PRUNTIME_REVISION_CANCELLED : PRUNTIME_REVISION_FAILED;
     return rc;
 }
-static int rv_snapshot_valid(const PRuntimeApprovalSnapshot* s)
+static int rv_snapshot_valid_ex(const PRuntimeApprovalSnapshot* s, int extended)
 {
     char canonical[64];
     unsigned int n;
@@ -1409,12 +1410,14 @@ static int rv_snapshot_valid(const PRuntimeApprovalSnapshot* s)
             strcmp(canonical, s->id) || rv_length(s->installation_id, 33) != 32 ||
             !rv_id(s->installation_id, 32) || !s->app_version || s->app_version > 2147483647U)
         return PRUNTIME_INVALID;
-    if (s->revision != 1 || s->runtime_api_version != 1 || s->digest_algorithm != PRUNTIME_DIGEST_SHA256 ||
+    if ((!extended && s->revision != 1) || !s->revision || s->revision > 2147483647U || s->runtime_api_version != 1 || s->digest_algorithm != PRUNTIME_DIGEST_SHA256 ||
             s->approval_policy != 1 ||
             ((s->requested_permissions | s->approved_permissions) & ~PRUNTIME_PERMISSION_SQL)) return PRUNTIME_UNSUPPORTED;
     if (s->approved_permissions != s->requested_permissions) return PRUNTIME_DENIED;
     return PRUNTIME_OK;
 }
+static int rv_snapshot_valid(const PRuntimeApprovalSnapshot* s)
+{ return rv_snapshot_valid_ex(s, 0); }
 static int rv_record_valid(PRuntimeRevisionHandle r, const PRuntimeInstalledRecord* record)
 {
     unsigned int n;
@@ -1422,8 +1425,9 @@ static int rv_record_valid(PRuntimeRevisionHandle r, const PRuntimeInstalledReco
     if (record->size != sizeof(*record) || record->version != PRUNTIME_VERSION) return PRUNTIME_INVALID;
     if (record->active != 1) return PRUNTIME_DENIED;
     if (!record->generation || record->generation != r->expected_generation) return PRUNTIME_INVALID;
-    rc = rv_snapshot_valid(&record->approval);
+    rc = rv_snapshot_valid_ex(&record->approval, r->expected_revision > 1);
     if (rc != PRUNTIME_OK) return rc;
+    if (record->approval.revision != r->expected_revision) return PRUNTIME_INVALID;
     if (strcmp(record->approval.installation_id, r->installation_id)) return PRUNTIME_INVALID;
     n = rv_length(record->directory, sizeof(record->directory));
     if (!n || n > PRUNTIME_ROOT_BYTES || !runtime_text(record->directory, n)) return PRUNTIME_INVALID;
@@ -1508,7 +1512,7 @@ PRUNTIME_API int PRuntime_InstalledStorageOpen(PRuntimeRevisionHandle r,
             !provider->open_existing_location || !provider->close_location ||
             (error && (error->size != sizeof(*error) || error->version != 1))) return PRUNTIME_ARGUMENT;
     if (!r->installed) rc = PRUNTIME_DENIED;
-    else if (r->state != PRUNTIME_REVISION_COMPLETE || r->storage_children || r->intent_children) rc = PRUNTIME_STATE;
+    else if (r->state != PRUNTIME_REVISION_COMPLETE || r->storage_children || r->intent_children || r->update_children) rc = PRUNTIME_STATE;
     else if (options->granted_permissions & ~PRUNTIME_PERMISSION_SQL) rc = PRUNTIME_UNSUPPORTED;
     else if (!(options->granted_permissions & r->record.approval.approved_permissions & PRUNTIME_PERMISSION_SQL)) rc = PRUNTIME_DENIED;
     if (rc != PRUNTIME_OK) { if (error) runtime_storage_error_init(error, rc); return rc; }
@@ -1599,21 +1603,31 @@ PRUNTIME_API int PRuntime_PrepareRevision(const char* directory, unsigned int by
     if (rc != PRUNTIME_OK) return rc;
     memcpy(r->directory, directory, bytes); *output = r; return PRUNTIME_OK;
 }
-PRUNTIME_API int PRuntime_OpenInstalled(const char* id, unsigned int bytes, unsigned int generation,
+static int rv_open_installed(const char* id, unsigned int bytes, unsigned int generation, unsigned int revision,
         const PRuntimeInstalledProvider* registry, const PRuntimeRevisionProvider* provider,
         const PRuntimeRevisionOptions* options, PRuntimeRevisionHandle* output)
 {
     PRuntimeRevisionHandle r;
     int rc;
     if (!output || !rv_id(id, bytes) || !generation || generation > 2147483647U ||
+            !revision || revision > 2147483647U ||
             !registry || registry->size != sizeof(*registry) || registry->version != PRUNTIME_VERSION ||
             !registry->open || !registry->refresh || !registry->close) return PRUNTIME_ARGUMENT;
     rc = rv_begin(provider, options, &r);
     if (rc != PRUNTIME_OK) return rc;
-    memcpy(r->installation_id, id, 32); r->expected_generation = generation;
+    memcpy(r->installation_id, id, 32); r->expected_generation = generation; r->expected_revision = revision;
     r->registry = *registry; r->installed = 1;
     *output = r; return PRUNTIME_OK;
 }
+PRUNTIME_API int PRuntime_OpenInstalled(const char* id, unsigned int bytes, unsigned int generation,
+        const PRuntimeInstalledProvider* registry, const PRuntimeRevisionProvider* provider,
+        const PRuntimeRevisionOptions* options, PRuntimeRevisionHandle* output)
+{ return rv_open_installed(id, bytes, generation, 1, registry, provider, options, output); }
+PRUNTIME_API int PRuntime_OpenInstalledEx(const char* id, unsigned int bytes, unsigned int generation,
+        unsigned int revision, const PRuntimeInstalledProvider* registry,
+        const PRuntimeRevisionProvider* provider, const PRuntimeRevisionOptions* options,
+        PRuntimeRevisionHandle* output)
+{ return rv_open_installed(id, bytes, generation, revision, registry, provider, options, output); }
 static int rv_conflict(const char* a, const char* b)
 {
     WCHAR wa[256], wb[256];
@@ -1799,7 +1813,7 @@ PRUNTIME_API int PRuntime_RevisionBuildApproval(PRuntimeRevisionHandle r,
     PRuntimeApprovalSnapshot snapshot;
     int rc = rv_ready(r);
     if (rc != PRUNTIME_OK) return rc;
-    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children) return PRUNTIME_STATE;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children || r->update_children) return PRUNTIME_STATE;
     if (!options || !output || options->size != sizeof(*options) || options->version != PRUNTIME_VERSION ||
             output->size != sizeof(*output) || output->version != PRUNTIME_VERSION ||
             rv_length(options->installation_id, 33) != 32 || !rv_id(options->installation_id, 32)) return PRUNTIME_ARGUMENT;
@@ -1839,7 +1853,7 @@ PRUNTIME_API int PRuntime_RevisionCancel(PRuntimeRevisionHandle r)
 {
     int rc = rv_ready(r);
     if (rc != PRUNTIME_OK) return rc;
-    if (r->intent_children || r->storage_children) return PRUNTIME_STATE;
+    if (r->intent_children || r->storage_children || r->update_children) return PRUNTIME_STATE;
     if (r->state == PRUNTIME_REVISION_CANCELLED) return PRUNTIME_OK;
     if (r->state == PRUNTIME_REVISION_FAILED) return PRUNTIME_STATE;
     r->active = 1; rv_fail(r, PRUNTIME_CANCELLED); r->active = 0; return PRUNTIME_OK;
@@ -1851,7 +1865,7 @@ PRUNTIME_API int PRuntime_RevisionClose(PRuntimeRevisionHandle* slot)
     if (!slot) return PRUNTIME_ARGUMENT;
     r = *slot; if (!r) return PRUNTIME_OK;
     rc = rv_ready(r); if (rc != PRUNTIME_OK) return rc;
-    if (r->intent_children || r->storage_children) return PRUNTIME_STATE;
+    if (r->intent_children || r->storage_children || r->update_children) return PRUNTIME_STATE;
     r->active = 1; rv_hash_close(r); PRuntime_ManifestClose(&r->manifest);
     if (r->root.root) r->provider.close_root(r->provider.user_data, r->root.root);
     if (r->registration_lease) r->registry.close(r->registry.user_data, r->registration_lease);
@@ -1913,7 +1927,7 @@ PRUNTIME_API int PRuntime_RevisionReconcileRegistration(PRuntimeRevisionHandle r
     int rc = rv_ready(r);
     int found;
     if (rc != PRUNTIME_OK) return rc;
-    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children) return PRUNTIME_STATE;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children || r->update_children) return PRUNTIME_STATE;
     if (!t || !p || !output || t->size != sizeof(*t) || t->version != PRUNTIME_VERSION ||
             p->size != sizeof(*p) || p->version != PRUNTIME_VERSION ||
             !p->acquire || !p->read || !p->close || output->size != sizeof(*output) ||
@@ -1995,7 +2009,7 @@ PRUNTIME_API int PRuntime_InstallIntentBegin(PRuntimeRevisionHandle r,
     PRuntimeApprovalSnapshot approval;
     int rc = rv_ready(r);
     if (rc != PRUNTIME_OK) return rc;
-    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children) return PRUNTIME_STATE;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || r->installed || r->intent_children || r->update_children) return PRUNTIME_STATE;
     if (!options || !provider || !output || options->size != sizeof(*options) || options->version != 1 ||
             options->mode < PRUNTIME_INTENT_NEW || options->mode > PRUNTIME_INTENT_RETRY_FAILED ||
             provider->size != sizeof(*provider) || provider->version != 1 || !provider->acquire ||
@@ -2525,5 +2539,155 @@ PRUNTIME_API int PRuntime_InstallCommitClose(PRuntimeInstallCommitHandle* slot)
         ri_fail(job->intent, PRUNTIME_UNRESOLVED, 1);
     if (job->data) --job->data->commit_children;
     --job->intent->commit_children;
+    job->magic = 0; free(job); *slot = NULL; return PRUNTIME_OK;
+}
+
+
+#define RUPDATE_MAGIC 0x52555031UL
+struct PRuntimeResourceUpdate {
+    DWORD magic;
+    PRuntimeRevisionHandle current, candidate;
+    PRuntimeStorageHandle storage;
+    PRuntimeApprovalSnapshot proposed;
+    PRuntimeResourceUpdateInfo info;
+    unsigned int phase, cancelled;
+    int active;
+};
+/* Two complete catalog jobs, retained storage, qualification and fixed stack /
+ * JSON reserve. No SQL result work, queue or migration source plan is live. */
+typedef char runtime_resource_update_budget_check[(2U * sizeof(struct PRuntimeRevision) +
+    sizeof(struct PRuntimeStorage) + sizeof(struct PRuntimeResourceUpdate) +
+    131072U <= 1280U * 1024U) ? 1 : -1];
+static int ru_ready(PRuntimeResourceUpdateHandle job)
+{
+    int rc;
+    if (!job || job->magic != RUPDATE_MAGIC) return PRUNTIME_ARGUMENT;
+    if (job->active) return PRUNTIME_STATE;
+    rc = rv_ready(job->current); if (rc != PRUNTIME_OK) return rc;
+    return rv_ready(job->candidate);
+}
+static PRuntimeRevisionFile* ru_file(PRuntimeRevisionHandle r, const char* path)
+{
+    unsigned int i;
+    for (i = 0; i < r->count; ++i) if (!strcmp(r->files[i].path, path)) return &r->files[i];
+    return NULL;
+}
+static int ru_history(PRuntimeRevisionHandle current, PRuntimeRevisionHandle candidate)
+{
+    PRuntimeMigrationInfo* a;
+    PRuntimeMigrationInfo* b;
+    PRuntimeRevisionFile* af;
+    PRuntimeRevisionFile* bf;
+    unsigned int i;
+    if (current->manifest->info.requested_permissions != candidate->manifest->info.requested_permissions ||
+            current->manifest->info.migration_count != candidate->manifest->info.migration_count) return PRUNTIME_UNSUPPORTED;
+    for (i = 0; i < current->manifest->info.migration_count; ++i) {
+        a = &current->manifest->migrations[i]; b = &candidate->manifest->migrations[i];
+        if (a->schema_version != b->schema_version || strcmp(a->file, b->file)) return PRUNTIME_UNSUPPORTED;
+        af = ru_file(current, a->file); bf = ru_file(candidate, b->file);
+        if (!af || !bf) return PRUNTIME_INVALID;
+        if (af->file_bytes != bf->file_bytes || memcmp(af->sha256, bf->sha256, 32)) return PRUNTIME_UNSUPPORTED;
+    }
+    return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ResourceUpdatePrepare(PRuntimeRevisionHandle current,
+        PRuntimeRevisionHandle candidate, PRuntimeStorageHandle storage,
+        const PRuntimeResourceUpdateOptions* options, PRuntimeResourceUpdateHandle* output)
+{
+    PRuntimeResourceUpdateHandle job;
+    int rc = rv_ready(current);
+    if (rc != PRUNTIME_OK) return rc;
+    rc = rv_ready(candidate); if (rc != PRUNTIME_OK) return rc;
+    if (!options || !output || options->size != sizeof(*options) || options->version != 1) return PRUNTIME_ARGUMENT;
+    if (!current->installed || candidate->installed) return PRUNTIME_DENIED;
+    if (current == candidate || current->state != PRUNTIME_REVISION_COMPLETE || candidate->state != PRUNTIME_REVISION_COMPLETE ||
+            current->update_children || candidate->update_children || current->intent_children || candidate->intent_children ||
+            candidate->storage_children) return PRUNTIME_STATE;
+    if (!current->registration_lease || strcmp(current->manifest->info.id, candidate->manifest->info.id) ||
+            !strcmp(current->root.canonical, candidate->root.canonical)) return PRUNTIME_INVALID;
+    if (current->record.approval.revision == 2147483647U || current->record.generation == 2147483647U) return PRUNTIME_LIMIT;
+    if (candidate->manifest->info.app_version <= current->record.approval.app_version) return PRUNTIME_INVALID;
+    rc = ru_history(current, candidate); if (rc != PRUNTIME_OK) return rc;
+    if (current->record.approval.approved_permissions & PRUNTIME_PERMISSION_SQL) {
+        rc = runtime_storage_ready(storage); if (rc != PRUNTIME_OK) return rc;
+        if (storage->revision != current) return PRUNTIME_DENIED;
+        if (storage->info.state != PRUNTIME_STORAGE_READY || storage->queue_count || storage->update_children ||
+                current->storage_children != 1) return PRUNTIME_STATE;
+    } else if (storage || current->storage_children) return PRUNTIME_ARGUMENT;
+    if (options->confirmed != 1) return PRUNTIME_DENIED;
+    job = (PRuntimeResourceUpdateHandle)calloc(1, sizeof(*job)); if (!job) return PRUNTIME_MEMORY;
+    job->magic = RUPDATE_MAGIC; job->current = current; job->candidate = candidate; job->storage = storage;
+    job->proposed = current->record.approval; ++job->proposed.revision;
+    job->proposed.app_version = candidate->manifest->info.app_version;
+    memcpy(job->proposed.content_id, candidate->content_id, 32);
+    job->info.size = sizeof(job->info); job->info.version = 1; job->info.state = PRUNTIME_UPDATE_PENDING;
+    runtime_storage_error_init(&job->info.data_error, PRUNTIME_OK);
+    ++current->update_children; ++candidate->update_children;
+    if (storage) ++storage->update_children;
+    *output = job; return PRUNTIME_OK;
+}
+static int ru_step(PRuntimeResourceUpdateHandle job)
+{
+    PDbConnectionState state;
+    PRuntimeRevisionHandle r = job->current;
+    int version, rc;
+    if (r->state != PRUNTIME_REVISION_COMPLETE || job->candidate->state != PRUNTIME_REVISION_COMPLETE ||
+            (job->storage && job->storage->info.state != PRUNTIME_STORAGE_READY)) return PRUNTIME_STATE;
+    if (job->cancelled || (r->options.cancelled && r->options.cancelled(r->options.user_data)) ||
+            (job->candidate->options.cancelled && job->candidate->options.cancelled(job->candidate->options.user_data)) ||
+            (job->storage && job->storage->options.cancelled && job->storage->options.cancelled(job->storage->options.user_data)))
+        return PRUNTIME_CANCELLED;
+    if (job->phase == 1) {
+        if (job->storage) {
+            memset(&state, 0, sizeof(state)); state.size = sizeof(state); state.version = PDB_CONNECTION_STATE_VERSION;
+            rc = PDb_GetConnectionState(job->storage->db, &state);
+            if (rc != PDB_OK || state.transaction_active || state.statement_count) return PRUNTIME_STATE;
+            rc = PDb_GetMigrationVersion(job->storage->db, &version);
+            if (rc != PDB_OK) return runtime_db_error(job->storage->db, &job->info.data_error, rc, 0);
+            if ((unsigned int)version != r->manifest->info.migration_count) return PRUNTIME_SCHEMA;
+        }
+        ++job->phase; return PRUNTIME_OK;
+    }
+    rc = rv_refresh(r); if (rc != PRUNTIME_OK) return rc;
+    if (!job->phase) { ++job->phase; return PRUNTIME_OK; }
+    job->info.current = r->record;
+    job->info.candidate = job->proposed;
+    strcpy(job->info.candidate_root, job->candidate->root.canonical);
+    job->info.target_schema = r->manifest->info.migration_count;
+    job->info.state = PRUNTIME_UPDATE_COMPLETE; return PRUNTIME_UPDATE_DONE;
+}
+PRUNTIME_API int PRuntime_ResourceUpdateStep(PRuntimeResourceUpdateHandle job)
+{
+    int rc = ru_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_UPDATE_PENDING) return PRUNTIME_STATE;
+    job->active = job->current->active = job->candidate->active = 1;
+    if (job->storage) job->storage->active = 1;
+    rc = ru_step(job);
+    if (rc < 0) { job->info.error = rc; job->info.state = rc == PRUNTIME_CANCELLED ? PRUNTIME_UPDATE_CANCELLED : PRUNTIME_UPDATE_FAILED; }
+    if (job->storage) job->storage->active = 0;
+    job->current->active = job->candidate->active = job->active = 0;
+    return rc;
+}
+PRUNTIME_API int PRuntime_ResourceUpdateGetInfo(PRuntimeResourceUpdateHandle job, PRuntimeResourceUpdateInfo* info)
+{
+    int rc = ru_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != 1) return PRUNTIME_ARGUMENT;
+    *info = job->info; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ResourceUpdateCancel(PRuntimeResourceUpdateHandle job)
+{
+    int rc = ru_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_UPDATE_PENDING) return PRUNTIME_STATE;
+    job->cancelled = 1; return PRUNTIME_OK;
+}
+PRUNTIME_API int PRuntime_ResourceUpdateClose(PRuntimeResourceUpdateHandle* slot)
+{
+    PRuntimeResourceUpdateHandle job;
+    int rc;
+    if (!slot) return PRUNTIME_ARGUMENT;
+    job = *slot; if (!job) return PRUNTIME_OK;
+    rc = ru_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->storage) --job->storage->update_children;
+    --job->current->update_children; --job->candidate->update_children;
     job->magic = 0; free(job); *slot = NULL; return PRUNTIME_OK;
 }

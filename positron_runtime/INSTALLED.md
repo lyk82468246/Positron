@@ -1,6 +1,6 @@
-# Revision verification and native installation intents
+# Native installed application contracts
 
-These native contracts in `positron_runtime.h` cover immutable revision verification, inactive installation intents, identity-bound database preparation and READY storage with page SQL queues. Final READY registration is coordinated by a retained native commit job; file publication and EXE installation remain separate work; Browser registration and author execution require explicit host scheduling. Existing development-directory/storage APIs and layouts are unchanged.
+These native contracts in `positron_runtime.h` cover immutable revision verification, inactive installation intents, identity-bound database preparation and READY storage with page SQL queues. Final READY registration is coordinated by a retained native commit job; the EXE supplies its persistent registry, publication and UI adapter. Browser registration and author execution require explicit host scheduling. Existing development-directory/storage APIs and layouts are unchanged. The revision-aware reader and resource-update qualifier below are candidate additions pending closing validation; update publication is not implemented.
 
 ## Ownership and trust
 
@@ -24,7 +24,7 @@ Each file receives SHA-256 over its exact bytes. The resource-set SHA-256 input 
 
 An EOF probe rejects undeclared suffix bytes; short data fails. Content identity excludes native root, installation ID and registration generation. Renames, additions, removals and same-size byte changes invalidate the recorded content. SHA-256 identifies resources; it does not authenticate a publisher.
 
-The native installer supplies a nonzero opaque 128-bit installation ID encoded as exactly 32 lowercase hex characters. It is separate from the normalized logical app ID and from content identity. V1 only admits **first-install revision 1**; later revisions return UNSUPPORTED. App version remains the manifest's positive integer. Requested and approved capability sets must match exactly, with API/digest/approval-policy version 1 and no unknown bits. Even a zero-capability candidate needs explicit confirmation.
+The native installer supplies a nonzero opaque 128-bit installation ID encoded as exactly 32 lowercase hex characters. It is separate from the normalized logical app ID and from content identity. The original opener and first-install approval/coordination APIs admit **revision 1**; later revisions return UNSUPPORTED through those paths. The explicit revision-aware reader below has a separate opt-in contract. App version remains the manifest's positive integer. Requested and approved capability sets must match exactly, with API/digest/approval-policy version 1 and no unknown bits. Even a zero-capability candidate needs explicit confirmation.
 
 Approval snapshots are copied native registration data, not bearer authority. Persist fields in a deterministic schema, never raw C struct bytes/padding. `RevisionBuildApproval` performs no COMMIT and does not turn a prepare handle into an installed handle.
 
@@ -55,6 +55,8 @@ if (rc == PRUNTIME_OK) {
     PRuntime_RevisionClose(&job);
 }
 ```
+
+`PRuntime_OpenInstalledEx` additionally takes `expected_revision` in 1..2147483647. The trusted committed record must match that exact revision and generation; it is not a caller-created grant. A revision mismatch fails before publishing a verified instance. The original `OpenInstalled` still rejects revision >1. Both readers use the same opaque family and existing Step/info/file/read/Close operations. Refresh and InstalledStorageOpen follow the policy of the explicitly created handle, so the storage/queue path does not relabel a revision-2 record as revision 1. A readable higher revision is not evidence that an update publisher exists.
 
 States are INITIALIZING, PENDING, COMPLETE, FAILED and CANCELLED. Step returns OK while pending, DONE on completion, otherwise a terminal negative result. It cannot restart a terminal job. Pending/failed info exposes progress but zeroes verified identity/content metadata. `GetFile` requires COMPLETE. `InstalledReadFile` additionally requires installed-kind; prepare jobs return DENIED. Successful reads copy at most the remaining bytes (zero at EOF), never append NUL, and refresh registration first. Buffer/count stay unchanged on failure; I/O, changed registration or cancellation retires the job.
 
@@ -224,7 +226,7 @@ if (rc == PRUNTIME_OK) {
 
 The returned opaque Storage uses the existing typed SQL/JSON encoder and budgets; it is not cast to a development directory and exposes no raw DB. Query/result limits, provisional rows, COMMIT-before-output and rollback behavior remain the [existing storage contract](README.md). A changed/inactive/unreadable registration retires storage and parent before executing SQL; output bytes/count are unchanged. Cancellation is cooperative and never preempts provider I/O or undoes a committed request. Instance cancellation retires storage and all its queues; a page/request cancellation remains local and does not revoke a healthy installation. The native lease makes registry refresh meaningful; it is not a cross-database atomic transaction.
 
-Info/error remain queryable on the creating worker after retirement. Close releases DB, location, then the parent hold. Parent Cancel/Close and duplicate storage opening return STATE while a child remains attached; wrong-thread and callback reentry cannot close active objects. Callback code/user targets live through Close; invalid/failure handle output is preserved, and a valid optional error output receives the failure. Invalid API/error headers leave outputs untouched. The combined revision/storage/SQL-work, four queues and fixed reserve are compile-time bounded by 1280 KiB, excluding DB/CSP/provider allocations; existing SQL VM/JSON quotas are unchanged. The queue contract below applies without changing existing ABI or starting a worker inside the DLL. Final READY COMMIT uses the separate retained installation job below.
+Info/error remain queryable on the creating worker after retirement. Close releases DB, location, then the parent hold. Parent Cancel/Close and duplicate storage opening return STATE while a child remains attached; wrong-thread and callback reentry cannot close active objects. Callback code/user targets live through Close; invalid/failure handle output is preserved, and a valid optional error output receives the failure. Invalid API/error headers leave outputs untouched. The combined revision/storage/SQL-work, four queues and fixed reserve are compile-time bounded by 1280 KiB, excluding DB/CSP/provider allocations; existing SQL VM/JSON quotas are unchanged. The queue contract below applies without changing existing ABI or starting a worker inside the DLL. Final READY COMMIT uses the separate retained installation job above.
 
 ## Binding installed page queues to Browser
 
@@ -238,6 +240,44 @@ Page QueueRevoke and individual QueueCancel alone do not retire storage or sibli
 
 Shutdown is a handshake: revoke Browser services and its queue, stop all UI access, let running processing return, then close each revoked/idle queue on the worker, followed by StorageClose and RevisionClose. QueueClose refuses active storage/parent callbacks, including callbacks that try to close a non-running sibling queue. Keep all callback targets and queue pointers alive until UI has acknowledged that it will no longer submit/cancel/take. A processed committed write may have its result dropped by page revocation; that is an unknown-to-the-page outcome, never permission to retry it automatically.
 
+## Qualifying a resource-only update
+
+**Candidate contract:** closing validation is pending. `PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` only qualify an update; they do not publish it. Prepare requires a live COMPLETE installed current, a distinct COMPLETE prepare-kind candidate and exact v1 options with an explicit native update confirmation. SQL requires that current's READY installed storage with all page queues closed; no-SQL passes NULL. A detached approval or development storage cannot replace these live inputs.
+
+The canonical app ID must match, the canonical resource roots must differ, and candidate app version must increase. Runtime derives the proposed installation ID from current and revision as current+1; revision/generation exhaustion returns LIMIT. Requested/approved permissions, SQL presence and target schema remain unchanged. Every historical migration must retain its version, path, file length and SHA-256 digest. Capability/schema/history changes return UNSUPPORTED; wrong ID/root or non-increasing version INVALID; missing SQL storage ARGUMENT. Other API/digest/policy restrictions remain those of manifest and installed-record admission.
+
+Prepare invokes no callback and preserves the output on failure. One qualifier retains both revision parents, the current parent's **existing** exclusive registry lease, and the SQL DB/location when supplied. It borrows that lease through the retained parent, without reacquiring or releasing it. Parent Cancel/Close, candidate approval building/reconciliation/first-install coordination, and storage Close/SQL/new QueueCreate return STATE until qualifier Close, including after COMPLETE, FAILED or CANCELLED. Closing the qualifier does not close its parents or database.
+
+Step compares fresh current registration, verifies an idle retained DB and exact schema when SQL is present, then compares current registration again. Parent retirement or unusable storage prevents completion even if registration itself is unchanged. Each Step performs one registration operation or a bounded DB check, plus optional native cancellation predicates. There is no data creation/binding/migration/write, CAS, pending record, current switch, author execution or Browser grant. Failed/cancelled work leaves registration and data unchanged, while retaining its handles for orderly cleanup. A cancellation cannot preempt native I/O.
+
+States are PENDING, COMPLETE, FAILED and CANCELLED; Step returns OK while pending, UPDATE_DONE only on successful qualification, otherwise a terminal negative result. GetInfo requires exact v1 size/version and copies state/error/native DB diagnostics. Current/candidate/root/schema metadata remains zero until COMPLETE. Copied metadata is not bearer authority or permission for EXE to write app_installs; a future publisher must consume the live qualification under its retained coordination and revalidate it. Do not forward native diagnostics blindly to author JS.
+
+```c
+PRuntimeResourceUpdateHandle qualification = NULL;
+PRuntimeResourceUpdateOptions options;
+PRuntimeResourceUpdateInfo info;
+memset(&options, 0, sizeof(options));
+options.size = sizeof(options);
+options.version = PRUNTIME_VERSION;
+options.confirmed = explicit_native_update_confirmation;
+rc = PRuntime_ResourceUpdatePrepare(verified_current, verified_candidate,
+    current_storage_or_null, &options, &qualification);
+if (rc == PRUNTIME_OK) {
+    do { rc = PRuntime_ResourceUpdateStep(qualification); }
+    while (rc == PRUNTIME_OK);
+    info.size = sizeof(info);
+    info.version = PRUNTIME_VERSION;
+    PRuntime_ResourceUpdateGetInfo(qualification, &info);
+    /* UPDATE_DONE is qualification, NOT a published or running update. */
+    PRuntime_ResourceUpdateClose(&qualification);
+}
+/* Then close storage and both revision parents. */
+```
+
+All calls stay on the creating worker; active callbacks and other threads cannot reenter, query or destroy the job. There is no DLL worker or message pump. Two actual revision structs, retained storage, qualifier and a 128-KiB reserve have a compile-time combined bound of 1280 KiB of Runtime-owned memory. SQLite/CSP/provider allocations are separate. Two host snapshots limited to 4 MiB each may still require 8 MiB together; small-fixture success does not prove that peak or OOM behavior on target hardware. Existing per-resource, SQL and script limits are unchanged.
+
+Current/pending persistence, update publication CAS, unknown-result reconciliation/recovery, capability/schema changes and EXE update integration remain planned in the [update contract](../docs/RUNTIME_UPDATE_PLAN.md). Do not overwrite current resources or repurpose first-install Intent/Commit to implement them in the host.
+
 ## Validation and remaining work
 
 Final-commit regression uses the exact native CAS fixture with real prepared DB files: no SQL, schema 0, a non-idempotent migration, schema alteration after preparation, contradictory outcomes, lost responses, inaccessible readback, competing generations, cancellation before/after CAS, READY winning cancellation, pending close, owner/reentry and parent/data retention. Persistent EXE registry transactions remain a separate integration gate. Evidence and unresolved adjacent failures are kept in the [final-commit acceptance record](../docs/history/RUNTIME_FINAL_COMMIT_ACCEPTANCE.md).
@@ -250,4 +290,4 @@ Intent regression additionally checks one-callback steps, exactly-once CAS attem
 
 Installation-data regression uses real private PDb files for full identity binding, zero/two migrations, all-source admission, wrong/unclaimed/future DB rejection, partial location failure, cancellation and exact prefix/suffix recovery. An independent post-close query counts rows/schema; a registry recording failure cannot overwrite the original DB error. The registry fixture still models committed native records rather than EXE SQL persistence.
 
-DB now supplies [read-only existing-file verification](../positron_db/README.md#verifying-an-existing-local-database-without-writes), returning an observation without a handle. It cannot authorize a later CREATE-capable open. DB also supplies [writable existing-handle admission](../positron_db/README.md#opening-a-verified-existing-local-database), with a retained read snapshot, no-CREATE writable recheck and caller-held native location/coordination leases. Runtime composes that handle through InstalledStorageOpen above. Installed queues compose with the existing Browser bridge as above. PXI isolation/extraction, update/uninstall and EXE permission/launch integration remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.
+DB now supplies [read-only existing-file verification](../positron_db/README.md#verifying-an-existing-local-database-without-writes), returning an observation without a handle. It cannot authorize a later CREATE-capable open. DB also supplies [writable existing-handle admission](../positron_db/README.md#opening-a-verified-existing-local-database), with a retained read snapshot, no-CREATE writable recheck and caller-held native location/coordination leases. Runtime composes that handle through InstalledStorageOpen above. Installed queues compose with the existing Browser bridge as above. EXE first-install/PXI adapters have their [own host contract](../positron_app/RUNTIME_HOST.md). Update publication/recovery and uninstall remain separate work. The [first-install recovery contract](../docs/RUNTIME_INSTALL_RECOVERY.md) requires inactive durable intent, independent data preparation, then READY registration. Development per-file migrations cannot promise rollback of an installed update across two databases. No application should suppress its existing development warning merely because these native APIs are available.

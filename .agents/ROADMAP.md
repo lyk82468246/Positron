@@ -244,7 +244,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-冻结目录首次安装已退出待开发；保留丢失提交结果读回、未知不重放、后缀恢复、错误数据不CREATE和开发目录每次确认回归。PXI已消费现有Archive/Runtime合同，原生输出/清理、CRC/预算、保留引用资源及真实installed页面自动门通过；作者打包工具及正常包设备消费已通过；下一步普通拒绝、Notes保存及Release人工门。系统关联另接CAB，公共缺口先交DLL，不把ZIP枚举等同安装。revision>1与卸载仍关闭；按[更新计划](../docs/RUNTIME_UPDATE_PLAN.md)先由Runtime提供版本化资格、current/pending协调与完整opener，EXE再接线；数据迁移另需一致副本合同。外置映射卷CANTOPEN/native2仍待取证，不移动已绑定数据或以内置门冒充卷故障修复。
+冻结目录首次安装已退出待开发；保留丢失提交结果读回、未知不重放、后缀恢复、错误数据不CREATE和开发目录每次确认回归。PXI已消费现有Archive/Runtime合同，原生输出/清理、CRC/预算、保留引用资源及真实installed页面自动门通过；作者打包工具及正常包设备消费已通过；下一步普通拒绝、Notes保存及Release人工门。系统关联另接CAB，公共缺口先交DLL，不把ZIP枚举等同安装。版本化 installed opener 与只读资格已有 Debug 设备证据，但 Release 被正式 VS2008 构建崩溃阻断；先完成同源码 Release 定向验收，不自动进入下一批。其后按[更新计划](../docs/RUNTIME_UPDATE_PLAN.md)由 Runtime 提供 current/pending 发布与恢复，再接入 EXE；真实 revision 更新与卸载仍关闭，数据迁移另需一致副本合同。外置映射卷CANTOPEN/native2仍待取证，不移动已绑定数据或以内置门冒充卷故障修复。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 
@@ -252,9 +252,9 @@ URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，
 再次失败时取非零快照及 VFS 原始返回再判 owner，不用新设备或新门关闭旧失败，不重开 FULL/断电门。
 受限 SQL 仍服从[DB 合同](../positron_db/README.md#opt-in-restricted-requests)，live handle 不交 UI。
 
-用户已授权独立 Archive DLL，不再依赖系统 ZIP provider；实际 PXI 安装/关联仍未完成。
+用户已授权独立 Archive DLL，不再依赖系统 ZIP provider；实际 PXI 首次安装已接入，系统关联仍未完成。
 Archive 管格式/CRC/预算，Runtime 管 manifest/身份/批准，EXE 管物理 I/O/隔离目录/提交，
-不把归档读写通过写成 PXI 已可安装。普通网页不因 URL 获权；构建与设备门保持串行。
+PXI 首装结论依据独立安装门，不把归档读写通过扩大为更新/卸载已实现。普通网页不因 URL 获权；构建与设备门保持串行。
 
 #### Script. 编译热点与单次长调用
 

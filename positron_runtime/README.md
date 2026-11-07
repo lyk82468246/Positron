@@ -19,8 +19,8 @@ provide their own trusted platform adapter and explicit session authorization.
 First-install identity/content verification is available through the separate
 installed contract below. Native READY storage reuses the bounded SQL/JSON path;
 installed page queues use the same Browser copy bridge. A separate retained
-InstallCommit job confirms final READY registration; EXE installed launch remains
-a separate integration requirement. An address never grants permission.
+InstallCommit job confirms final READY registration; the EXE supplies its
+persistent registry, confirmation/recovery UI and installed launch adapter. An address never grants permission.
 
 ## Link and deploy
 
@@ -296,7 +296,7 @@ development-kind/normalized-ID/canonical-root TEXT identity in private DB
 metadata. A collision or wrong mapped file returns SCHEMA; an unclaimed nonempty
 DB is never adopted. Thus equal IDs in different roots remain separate, and a
 development application cannot claim an installed identity. Installed storage uses its [separate READY contract](INSTALLED.md#opening-ready-installed-storage);
-updates remain unimplemented, and its namespace must never alias `v1/dev`.
+update publication remains unimplemented, and its namespace must never alias `v1/dev`.
 
 The owner reads strict schema version, copies every pending manifest source,
 then applies each with `PDb_ApplyMigrationRestricted` in order. Invalid/missing
@@ -480,12 +480,18 @@ READY wins a cancellation race. See the [commit example](INSTALLED.md#committing
 for lifecycle, error and explicit recovery rules.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
-consumer example are in [the installed contract](INSTALLED.md). V1 admits
-revision 1 only. `PRuntime_InstalledStorageOpen` retains that verified parent and
+consumer example are in [the installed contract](INSTALLED.md). The original opener and
+first-install APIs admit revision 1 only. Candidate `PRuntime_OpenInstalledEx`
+adds an explicit expected-revision check through the same verified handle family;
+it does not publish an update. `PRuntime_InstalledStorageOpen` retains that verified parent and
 an existing native DB location, refreshes READY registration and reuses typed
 SQL/JSON without CREATE, claim or migration. Installed page queues reuse the same
-bounded Browser copy channel with registration retirement; installed updates and
-actual EXE registration/recovery UI remain unimplemented. Native SHA-256 availability is probed, not assumed for every ROM.
+bounded Browser copy channel with registration retirement. Candidate
+`PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` retains verified current,
+candidate and existing storage to qualify unchanged permissions/schema/migration
+history without writes. Closing validation is pending; see [qualification ownership](INSTALLED.md#qualifying-a-resource-only-update).
+Current/pending publication and update recovery are not implemented. EXE first-install
+registry/UI behavior is described separately in the Runtime host guide. Native SHA-256 availability is probed, not assumed for every ROM.
 
 ## PXI availability
 
@@ -494,12 +500,12 @@ The approved archive direction uses the independent
 does not require a system ZIP provider. A read-only ROM inventory cannot establish
 the availability or absence of ZIP on every WM6 device.
 
-PXI still needs a separate isolated-output, physical containment, completion,
-cleanup and registration COMMIT/recovery contract. Archive reads are tentative
-until CRC/length completion, and verification data alone does not publish an
-installation. File association, installation UI and installed application launch
-remain unimplemented; directory applications do not depend on them. Neither CAB
-decompression nor a shell ZIP association substitutes for the required contract.
+PXI isolated output, containment, cleanup and first-install registration are
+composed by the [EXE adapter](../positron_app/RUNTIME_HOST.md), separately from
+Archive CRC/length admission. Verification data alone does not publish an
+installation. System association and installed updates/uninstall remain outside
+this Runtime contract. Neither CAB decompression nor a shell ZIP association
+substitutes for the native confirmation and registration protocol.
 
 ## C lifecycle and failure contract
 
