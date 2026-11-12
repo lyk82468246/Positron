@@ -467,6 +467,63 @@ PRUNTIME_API int PRuntime_ResourceUpdateGetInfo(PRuntimeResourceUpdateHandle upd
 PRUNTIME_API int PRuntime_ResourceUpdateCancel(PRuntimeResourceUpdateHandle update);
 PRUNTIME_API int PRuntime_ResourceUpdateClose(PRuntimeResourceUpdateHandle* update);
 
+/* Durable resource-only update. A terminal attempt may be replaced by a
+ * different attempt ID. Keep attempt IDs unique for the installation. */
+#define PRUNTIME_UPDATE_PREPARING 1U
+#define PRUNTIME_UPDATE_PUBLISHED 2U
+#define PRUNTIME_UPDATE_ABANDONED 3U
+typedef struct PRuntimeUpdateRegistration {
+    unsigned int size, version;
+    PRuntimeRegistrationRecord current;
+    unsigned int attempt_state, attempt_generation; /* zero if absent */
+    char attempt_id[33]; /* native nonzero lowercase hex ID */
+    PRuntimeRegistrationRecord base, candidate;
+} PRuntimeUpdateRegistration;
+typedef struct PRuntimeUpdateProvider {
+    unsigned int size, version;
+    void* user_data;
+    /* The token is borrowed from the installed provider. Use the same
+     * native coordination and return fresh committed fields. */
+    int (*read)(void*, void*, PRuntimeUpdateRegistration*);
+    /* Compare all meaningful fields and persist both rows atomically.
+     * No transaction or background write survives return. */
+    int (*compare_exchange)(void*, void*, const PRuntimeUpdateRegistration*,
+            const PRuntimeUpdateRegistration*, unsigned int*);
+} PRuntimeUpdateProvider;
+typedef struct PRuntimeUpdatePublishOptions {
+    unsigned int size, version, resume; /* 0 new, 1 explicit recovery of exact PREPARING */
+    char attempt_id[33];
+} PRuntimeUpdatePublishOptions;
+typedef struct PRuntimeUpdatePublishInfo {
+    unsigned int size, version, state; /* UPDATE_PENDING/COMPLETE/FAILED/CANCELLED */
+    int error, provider_result;
+    unsigned int commit_outcome, record_known;
+    PRuntimeUpdateRegistration record;
+} PRuntimeUpdatePublishInfo;
+typedef struct PRuntimeUpdatePublish* PRuntimeUpdatePublishHandle;
+/* Retains a COMPLETE qualification. One logical CAS per transition, always
+ * read back. Cancel before the final CAS keeps current and marks ABANDONED.
+ * After final CAS cancellation cannot undo the observed result. UNRESOLVED
+ * requires a new trusted read under coordination, never automatic replay.
+ * Close performs no write. Close publisher, qualification, storage, revisions.
+ * Successful or ambiguous final switch retires the old installed handle.
+ * All calls owner-thread only; callbacks must not reenter or release inputs. */
+PRUNTIME_API int PRuntime_UpdatePublishBegin(PRuntimeResourceUpdateHandle qualification,
+        const PRuntimeUpdatePublishOptions* options, const PRuntimeUpdateProvider* provider,
+        PRuntimeUpdatePublishHandle* output);
+PRUNTIME_API int PRuntime_UpdatePublishStep(PRuntimeUpdatePublishHandle publish);
+PRUNTIME_API int PRuntime_UpdatePublishGetInfo(PRuntimeUpdatePublishHandle publish,
+        PRuntimeUpdatePublishInfo* info);
+PRUNTIME_API int PRuntime_UpdatePublishCancel(PRuntimeUpdatePublishHandle publish);
+PRUNTIME_API int PRuntime_UpdatePublishClose(PRuntimeUpdatePublishHandle* publish);
+
+/* Observe a named durable attempt after independently reopening and verifying
+ * current. No write or replay. Exact v1 output unchanged on failure.
+ * PREPARING may be resumed only with a fresh live qualification. */
+PRUNTIME_API int PRuntime_UpdateObserve(PRuntimeRevisionHandle current,
+        const char* attempt_id, unsigned int bytes, const PRuntimeUpdateProvider* provider,
+        PRuntimeUpdateRegistration* output);
+
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;

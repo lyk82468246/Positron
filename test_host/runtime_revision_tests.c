@@ -1845,12 +1845,102 @@ static DWORD WINAPI update_other_thread(void* user)
         PRuntime_ResourceUpdateClose(&alias) == PRUNTIME_STATE && alias == t->job;
     return 0;
 }
+typedef struct UpdateRegistryFixture {
+    PRuntimeUpdateRegistration pair;
+    RevisionFixture* revision;
+    unsigned int writes, fail_read;
+} UpdateRegistryFixture;
+
+static int update_read(void* user, void* lease, PRuntimeUpdateRegistration* pair)
+{
+    UpdateRegistryFixture* f = (UpdateRegistryFixture*)user;
+    revision_guard(f->revision);
+    if (lease != f->revision || f->fail_read) return PRUNTIME_IO;
+    *pair = f->pair;
+    return PRUNTIME_OK;
+}
+
+static int update_cas(void* user, void* lease, const PRuntimeUpdateRegistration* before,
+        const PRuntimeUpdateRegistration* after, unsigned int* outcome)
+{
+    UpdateRegistryFixture* f = (UpdateRegistryFixture*)user;
+    revision_guard(f->revision);
+    if (lease != f->revision || memcmp(&f->pair, before, sizeof(*before))) {
+        *outcome = PRUNTIME_COMMIT_NOT_COMMITTED;
+        return PRUNTIME_BUSY;
+    }
+    f->pair = *after; ++f->writes;
+    f->revision->record.generation = after->current.generation;
+    f->revision->record.approval = after->current.approval;
+    strcpy(f->revision->record.directory, after->current.directory);
+    /* Commit succeeds but the transport response is lost. */
+    *outcome = PRUNTIME_COMMIT_UNKNOWN;
+    return PRUNTIME_IO;
+}
+
+static int update_publish_fixture(PRuntimeResourceUpdateHandle q,
+        const PRuntimeResourceUpdateInfo* qualification, RevisionFixture* f,
+        UpdateRegistryFixture* fixture, PRuntimeUpdateProvider* provider)
+{
+    PRuntimeUpdatePublishOptions options;
+    PRuntimeUpdatePublishHandle job = NULL;
+    PRuntimeResourceUpdateHandle alias;
+    unsigned int step;
+    int rc, ok = 0;
+    memset(fixture, 0, sizeof(*fixture));
+    fixture->revision = f;
+    fixture->pair.size = sizeof(fixture->pair); fixture->pair.version = 1;
+    fixture->pair.current.size = sizeof(fixture->pair.current); fixture->pair.current.version = 1;
+    fixture->pair.current.state = PRUNTIME_REG_READY;
+    fixture->pair.current.generation = qualification->current.generation;
+    fixture->pair.current.target_schema = qualification->target_schema;
+    fixture->pair.current.approval = qualification->current.approval;
+    strcpy(fixture->pair.current.directory, qualification->current.directory);
+    memset(provider, 0, sizeof(*provider)); provider->size = sizeof(*provider); provider->version = 1;
+    provider->user_data = fixture; provider->read = update_read; provider->compare_exchange = update_cas;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    strcpy(options.attempt_id, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    if (PRuntime_UpdatePublishBegin(q, &options, provider, &job) != PRUNTIME_OK) goto done;
+    alias = q;
+    if (PRuntime_ResourceUpdateClose(&alias) != PRUNTIME_STATE || alias != q) goto done;
+    for (step = 0; step < 2; ++step) if (PRuntime_UpdatePublishStep(job) != PRUNTIME_OK) goto done;
+    fixture->fail_read = 1;
+    if (PRuntime_UpdatePublishStep(job) != PRUNTIME_UNRESOLVED) goto done;
+    fixture->fail_read = 0;
+    if (fixture->writes != 1 || fixture->pair.attempt_state != PRUNTIME_UPDATE_PREPARING ||
+            fixture->pair.current.generation != qualification->current.generation) goto done;
+    if (PRuntime_UpdatePublishClose(&job) != PRUNTIME_OK) goto done;
+    options.resume = 1;
+    if (PRuntime_UpdatePublishBegin(q, &options, provider, &job) != PRUNTIME_OK ||
+            PRuntime_UpdatePublishCancel(job) != PRUNTIME_OK) goto done;
+    for (step = 0, rc = PRUNTIME_OK; step < 10 && rc == PRUNTIME_OK; ++step) rc = PRuntime_UpdatePublishStep(job);
+    if (rc != PRUNTIME_CANCELLED || fixture->writes != 2 ||
+            fixture->pair.attempt_state != PRUNTIME_UPDATE_ABANDONED) goto done;
+    if (PRuntime_UpdatePublishClose(&job) != PRUNTIME_OK) goto done;
+    options.resume = 0; strcpy(options.attempt_id, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+    if (PRuntime_UpdatePublishBegin(q, &options, provider, &job) != PRUNTIME_OK) goto done;
+    for (step = 0, rc = PRUNTIME_OK; step < 12 && rc == PRUNTIME_OK; ++step) {
+        rc = PRuntime_UpdatePublishStep(job);
+        if (fixture->writes == 4 && rc == PRUNTIME_OK &&
+                PRuntime_UpdatePublishCancel(job) != PRUNTIME_OK) goto done;
+    }
+    ok = rc == PRUNTIME_UPDATE_DONE && fixture->writes == 4 &&
+        fixture->pair.attempt_state == PRUNTIME_UPDATE_PUBLISHED &&
+        fixture->pair.current.generation == qualification->current.generation + 1;
+done:
+    PRuntime_UpdatePublishClose(&job);
+    return ok;
+}
+
 BOOL test1386_runtime_resource_update(void)
 {
     static const char identity[] = "Positron.storage.v1:installed:com.example.installed:00112233445566778899aabbccddeeff";
     static const char query[] = "{\"version\":1,\"method\":\"query\",\"sql\":\"SELECT n FROM sample\",\"params\":[]}";
     static const char no_sql[] = "{\"manifestVersion\":1,\"id\":\"com.example.installed\",\"name\":\"Update\",\"version\":1,\"runtimeApiVersion\":1,\"entry\":\"index.html\",\"permissions\":[],\"migrations\":[]}";
     RevisionFixture f, g;
+    UpdateRegistryFixture* update_registry = NULL;
+    PRuntimeUpdateProvider update_provider;
+    PRuntimeUpdateRegistration* observed = NULL;
     ReadyStorageFixture platform;
     PRuntimeRevisionProvider resources, candidate_resources;
     PRuntimeInstalledProvider registry, unused;
@@ -2020,14 +2110,19 @@ BOOL test1386_runtime_resource_update(void)
                 RCHECK(PRuntime_InstallIntentBegin(candidate, NULL, NULL, &blocked_intent) == PRUNTIME_STATE && !blocked_intent);
                 RCHECK(g.calls == callbacks);
             }
+            if (!mode) {
+                update_registry = (UpdateRegistryFixture*)calloc(1, sizeof(*update_registry));
+                observed = (PRuntimeUpdateRegistration*)calloc(1, sizeof(*observed));
+                RCHECK(update_registry && observed);
+                RCHECK(update_publish_fixture(update, &info, &f, update_registry, &update_provider));
+            }
             RCHECK(PRuntime_ResourceUpdateClose(&update) == PRUNTIME_OK); f.update = g.update = NULL;
             RCHECK(PRuntime_ResourceUpdateClose(&update) == PRUNTIME_OK);
             if (!mode) {
-                /* Native fixture supplies a committed rev2 record solely to
-                 * test the new reader. This is NOT an update implementation. */
+                /* Reopen the record actually committed by Runtime. */
                 if (storage) { RCHECK(PRuntime_StorageClose(&storage) == PRUNTIME_OK); f.storage = NULL; }
                 revision_dispose(&f, &current); revision_dispose(&g, &candidate);
-                f = g; f.record = info.current; f.record.approval = info.candidate; strcpy(f.record.directory, "\\candidate-root");
+                f = g; f.record = info.current; f.record.approval = update_registry->pair.current.approval; f.record.generation = update_registry->pair.current.generation; strcpy(f.record.directory, "\\candidate-root");
                 revision_tables(&f, &resources, &registry, &options);
                 RCHECK(PRuntime_OpenInstalled(approval.installation_id, 32, f.record.generation, &registry, &resources, &options, &current) == PRUNTIME_OK);
                 RCHECK(revision_run(&f, current) == PRUNTIME_UNSUPPORTED); revision_dispose(&f, &current);
@@ -2035,6 +2130,10 @@ BOOL test1386_runtime_resource_update(void)
                 RCHECK(revision_run(&f, current) == PRUNTIME_INVALID); revision_dispose(&f, &current);
                 RCHECK(PRuntime_OpenInstalledEx(approval.installation_id, 32, f.record.generation, 2, &registry, &resources, &options, &current) == PRUNTIME_OK);
                 RCHECK(revision_run(&f, current) == PRUNTIME_REVISION_DONE);
+                observed->size = sizeof(*observed); observed->version = 1;
+                RCHECK(PRuntime_UpdateObserve(current, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 32,
+                        &update_provider, observed) == PRUNTIME_OK &&
+                        observed->attempt_state == PRUNTIME_UPDATE_PUBLISHED);
                 RCHECK(PRuntime_InstalledReadFile(current, 0, 0, body, sizeof(body), &written) == PRUNTIME_OK);
                 RCHECK(PRuntime_InstalledStorageOpen(current, &storage_options, &location, &storage, NULL) == PRUNTIME_OK); f.storage = storage;
                 RCHECK(PRuntime_ServiceQueueCreate(storage, &qo, &queue) == PRUNTIME_OK);
@@ -2059,6 +2158,7 @@ BOOL test1386_runtime_resource_update(void)
             RCHECK(DeleteFileW(path));
         }
     }
+    free(observed); free(update_registry);
     return TRUE;
 failed:
     {
@@ -2073,5 +2173,6 @@ failed:
     free(before); free(after);
     if (current) revision_dispose(&f, &current);
     if (candidate) revision_dispose(&g, &candidate);
+    free(observed); free(update_registry);
     return FALSE;
 }

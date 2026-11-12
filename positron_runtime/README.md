@@ -296,7 +296,7 @@ development-kind/normalized-ID/canonical-root TEXT identity in private DB
 metadata. A collision or wrong mapped file returns SCHEMA; an unclaimed nonempty
 DB is never adopted. Thus equal IDs in different roots remain separate, and a
 development application cannot claim an installed identity. Installed storage uses its [separate READY contract](INSTALLED.md#opening-ready-installed-storage);
-update publication remains unimplemented, and its namespace must never alias `v1/dev`.
+its namespace must never alias `v1/dev`.
 
 The owner reads strict schema version, copies every pending manifest source,
 then applies each with `PDb_ApplyMigrationRestricted` in order. Invalid/missing
@@ -490,8 +490,10 @@ bounded Browser copy channel with registration retirement.
 `PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` retains verified current,
 candidate and existing storage to qualify unchanged permissions/schema/migration
 history without writes. See [qualification ownership](INSTALLED.md#qualifying-a-resource-only-update).
-Current/pending publication and update recovery are not implemented. EXE first-install
-registry/UI behavior is described separately in the Runtime host guide. Native SHA-256 availability is probed, not assumed for every ROM.
+`PRuntime_UpdatePublish*` and `PRuntime_UpdateObserve` provide the
+[native publication and recovery contract](INSTALLED.md#publishing-a-resource-only-update)
+for unchanged permissions and schema. EXE still needs its persistent update adapter
+and entry point. First-install registry/UI behavior is in the Runtime host guide. Native SHA-256 availability is probed, not assumed for every ROM.
 
 ## PXI availability
 

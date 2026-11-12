@@ -1,11 +1,11 @@
 # 已安装资源应用的更新计划
 
-本文记录公共合同审查后的分阶段方案。版本化installed读取和只读更新资格已通过双配置定向门；current/pending发布、未知结果恢复及EXE更新仍未实现，不表示完整更新已通过设备门。
+本文记录公共合同审查后的分阶段方案。Runtime的版本化读取、只读资格和资源更新发布/恢复已通过双配置定向门。EXE需接入真实登记与更新入口。
 首次安装继续使用[现有恢复合同](RUNTIME_INSTALL_RECOVERY.md)，整体方向见[运行时计划](RUNTIME_PLAN.md)。
 Runtime拥有更新资格、批准、状态转换、读回分类及生命周期；EXE拥有主库表、原生租约、文件I/O、
 风险确认和worker。公共DLL工作交主线与DLL会话，接口不足时EXE停止对应接线。
 
-## 当前合同为什么不够
+## 首装与更新接口的分工
 
 现有[公共头](../positron_runtime/positron_runtime.h)和[安装合同](../positron_runtime/INSTALLED.md)
 原有首装/批准/opener路径只允许revision 1。OpenInstalledEx显式核验期望revision，ResourceUpdate资格保有活current/candidate及既有存储，但二者都不发布更新。原登记读回仍要求完整旧/新approval一致，首装Intent和Commit只协调单一PREPARING记录；不能只把EXE中的revision改成2。
@@ -46,7 +46,7 @@ permissions、SQL存在与否及目标schema相同，已提交migration前缀的
 新版本provider必须fresh-read current与pending，并提供精确expected/proposed原子持久化操作。
 EXE保留旧表/行语义，新增显式pending结构：唯一尝试ID、base current完整指纹/generation、
 candidate完整资源/批准/root/schema以及pending自身generation/状态，每installation至多一项pending。
-具体布局待公共provider合同固化；此计划不直接修改主库schema。
+公共布局及调用见[发布合同](../positron_runtime/INSTALLED.md#publishing-a-resource-only-update)。主库schema仍由EXE迁移。
 
 准备期间current仍为旧READY。最终在同一个主库事务中完成current替换与pending终态，
 不另建active文件。Runtime决定状态转换；EXE仅逐字段比较/持久化，返回前事务收敛，没有后台写入。
@@ -66,14 +66,14 @@ candidate完整资源/批准/root/schema以及pending自身generation/状态，�
 
 正式更新前正常退出旧实例、撤销Browser服务并收敛/关闭队列和SQL；冲突返回BUSY，不强杀。
 旧installed实例已持独占installation租约，新job不能再acquire同一租约然后伪造成功。
-只读资格采用显式借用：保有current父项及其已经取得的登记租约，不再次acquire，SQL时同时保有存储/位置；两父项关闭/取消及存储执行/新队列在子项关闭前拒绝。后续发布job必须消费活资格并在同一协调下刷新current/pending；复制Info没有授权能力，不能提前释放租约后信任旧快照。parent退休后资格不得完成，终态仍须可查询和关闭。
+只读资格采用显式借用：保有current父项及其已经取得的登记租约，不再次acquire，SQL时同时保有存储/位置；两父项关闭/取消及存储执行/新队列在子项关闭前拒绝。发布job消费活资格并在同一协调下刷新current/pending；复制Info没有授权能力，不能提前释放租约后信任旧快照。parent退休后资格不得完成，终态仍须可查询和关闭。
 
 旧v1入口继续只接受revision 1；通过新增Ex/新handle/版本化provider开放更新及rev2普通启动，
 包括refresh、storage和queue组合，不给旧API伪造revision1。所有调用保持创建worker所有权，
 Step仅在安全边界让步，不泵消息、不自建线程，不把单次原生I/O/SQL当作可抢占操作。
 
 保留单视图现有预算及EXE的128条目/4MiB输出上限；同一更新只允许一个job和pending。
-当前资格已对两个实际revision、存储、资格元数据和128KiB reserve做编译期组合证明，Runtime-owned≤1280KiB。后续加入pending/provider及发布状态机仍须重新证明，不能沿用前置结论。两份原生4MiB快照可能同时保有8MiB，完整host峰值及OOM展开仍须独立测量。
+当前资格已对两个实际revision、存储、资格元数据和128KiB reserve做编译期组合证明，Runtime-owned≤1280KiB。发布状态机加入后，编译期组合断言仍限定为1280KiB。两份原生4MiB快照可能同时保有8MiB，完整host峰值及OOM展开仍须独立测量。
 不能借单job预算掩盖组合开销，不扩大资源/SQL/JS既有配额。
 
 ## 数据迁移的后续前置

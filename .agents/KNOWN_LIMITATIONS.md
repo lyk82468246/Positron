@@ -52,7 +52,7 @@ ZIP 仅有界 STORE/DEFLATE；PXI 首装已接线，HTTP gzip 未接线。
 
 ## 纯资源应用 Runtime
 
-- 首装限 revision1；更新发布/恢复/卸载及关联未实现。完整限制见 HANDOFF。
+- 首装限 revision1。Runtime 支持纯资源发布与恢复，EXE 持久接线、卸载及关联待完成。详见 HANDOFF。
 
 ## HTML、CSS 与布局
 

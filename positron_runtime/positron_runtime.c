@@ -2550,7 +2550,7 @@ struct PRuntimeResourceUpdate {
     PRuntimeStorageHandle storage;
     PRuntimeApprovalSnapshot proposed;
     PRuntimeResourceUpdateInfo info;
-    unsigned int phase, cancelled;
+    unsigned int phase, cancelled, publisher;
     int active;
 };
 /* Two complete catalog jobs, retained storage, qualification and fixed stack /
@@ -2687,7 +2687,265 @@ PRUNTIME_API int PRuntime_ResourceUpdateClose(PRuntimeResourceUpdateHandle* slot
     if (!slot) return PRUNTIME_ARGUMENT;
     job = *slot; if (!job) return PRUNTIME_OK;
     rc = ru_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->publisher) return PRUNTIME_STATE;
     if (job->storage) --job->storage->update_children;
     --job->current->update_children; --job->candidate->update_children;
     job->magic = 0; free(job); *slot = NULL; return PRUNTIME_OK;
+}
+
+#define RUPUBLISH_MAGIC 0x52555032UL
+enum { UP_READ, UP_PREPARE, UP_CHECK_PREPARE, UP_VERIFY, UP_SWITCH, UP_CHECK_SWITCH };
+struct PRuntimeUpdatePublish {
+    DWORD magic;
+    PRuntimeResourceUpdateHandle qualification;
+    PRuntimeUpdateProvider provider;
+    PRuntimeUpdatePublishOptions options;
+    PRuntimeUpdateRegistration before, after;
+    PRuntimeUpdatePublishInfo info;
+    unsigned int phase, cancelled;
+};
+
+typedef char runtime_update_publish_budget_check[(2U * sizeof(struct PRuntimeRevision) +
+    sizeof(struct PRuntimeStorage) + sizeof(struct PRuntimeResourceUpdate) +
+    sizeof(struct PRuntimeUpdatePublish) + 131072U <= 1280U * 1024U) ? 1 : -1];
+
+static int up_record_valid(const PRuntimeRegistrationRecord* record)
+{
+    unsigned int bytes = rv_length(record->directory, sizeof(record->directory));
+    return record->size == sizeof(*record) && record->version == 1 &&
+        record->state == PRUNTIME_REG_READY && record->generation &&
+        record->generation <= 2147483647U && record->target_schema <= 16 &&
+        bytes && bytes < sizeof(record->directory) && runtime_text(record->directory, bytes) &&
+        rv_snapshot_valid_ex(&record->approval, 1) == PRUNTIME_OK;
+}
+
+static int up_pair_valid(const PRuntimeUpdateRegistration* pair)
+{
+    if (pair->size != sizeof(*pair) || pair->version != 1 || !up_record_valid(&pair->current)) return 0;
+    if (!pair->attempt_state) return !pair->attempt_generation;
+    if (pair->attempt_state > PRUNTIME_UPDATE_ABANDONED ||
+            pair->attempt_generation != (pair->attempt_state == PRUNTIME_UPDATE_PREPARING ? 1U : 2U) ||
+            pair->attempt_id[32] || !rv_id(pair->attempt_id, 32) ||
+            !up_record_valid(&pair->base) || !up_record_valid(&pair->candidate)) return 0;
+    return pair->base.generation < 2147483647U && pair->base.approval.revision < 2147483647U &&
+        pair->candidate.generation == pair->base.generation + 1 &&
+        pair->candidate.approval.revision == pair->base.approval.revision + 1 &&
+        pair->candidate.approval.app_version > pair->base.approval.app_version &&
+        pair->candidate.target_schema == pair->base.target_schema &&
+        pair->candidate.approval.approved_permissions == pair->base.approval.approved_permissions &&
+        !strcmp(pair->base.approval.id, pair->candidate.approval.id) &&
+        !strcmp(pair->base.approval.installation_id, pair->candidate.approval.installation_id) &&
+        strcmp(pair->base.directory, pair->candidate.directory) &&
+        rv_same_registration(&pair->current, pair->attempt_state == PRUNTIME_UPDATE_PUBLISHED ?
+            &pair->candidate : &pair->base);
+}
+
+static int up_same_pair(const PRuntimeUpdateRegistration* a, const PRuntimeUpdateRegistration* b)
+{
+    return rv_same_registration(&a->current, &b->current) &&
+        a->attempt_state == b->attempt_state && a->attempt_generation == b->attempt_generation &&
+        (!a->attempt_state || (!strcmp(a->attempt_id, b->attempt_id) &&
+            rv_same_registration(&a->base, &b->base) &&
+            rv_same_registration(&a->candidate, &b->candidate)));
+}
+
+static int up_ready(PRuntimeUpdatePublishHandle job)
+{
+    return job && job->magic == RUPUBLISH_MAGIC ? ru_ready(job->qualification) : PRUNTIME_ARGUMENT;
+}
+
+PRUNTIME_API int PRuntime_UpdatePublishBegin(PRuntimeResourceUpdateHandle q,
+        const PRuntimeUpdatePublishOptions* options, const PRuntimeUpdateProvider* provider,
+        PRuntimeUpdatePublishHandle* output)
+{
+    PRuntimeUpdatePublishHandle job;
+    PRuntimeRegistrationRecord* base;
+    int rc = ru_ready(q);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!options || !provider || !output || options->size != sizeof(*options) ||
+            options->version != 1 || options->resume > 1 || options->attempt_id[32] ||
+            !rv_id(options->attempt_id, 32) || provider->size != sizeof(*provider) ||
+            provider->version != 1 || !provider->read || !provider->compare_exchange) return PRUNTIME_ARGUMENT;
+    if (q->publisher || q->info.state != PRUNTIME_UPDATE_COMPLETE ||
+            q->current->state != PRUNTIME_REVISION_COMPLETE) return PRUNTIME_STATE;
+    job = (PRuntimeUpdatePublishHandle)calloc(1, sizeof(*job));
+    if (!job) return PRUNTIME_MEMORY;
+    job->magic = RUPUBLISH_MAGIC; job->qualification = q;
+    job->provider = *provider; job->options = *options;
+    job->info.size = sizeof(job->info); job->info.version = 1; job->info.state = PRUNTIME_UPDATE_PENDING;
+    job->after.size = sizeof(job->after); job->after.version = 1;
+    job->after.attempt_state = PRUNTIME_UPDATE_PREPARING; job->after.attempt_generation = 1;
+    strcpy(job->after.attempt_id, options->attempt_id);
+    base = &job->after.base;
+    base->size = sizeof(*base); base->version = 1; base->state = PRUNTIME_REG_READY;
+    base->generation = q->info.current.generation; base->target_schema = q->info.target_schema;
+    base->approval = q->info.current.approval; strcpy(base->directory, q->info.current.directory);
+    job->after.current = *base;
+    job->after.candidate = *base;
+    ++job->after.candidate.generation;
+    job->after.candidate.approval = q->proposed;
+    strcpy(job->after.candidate.directory, q->info.candidate_root);
+    q->publisher = 1; *output = job; return PRUNTIME_OK;
+}
+
+static void up_retire(PRuntimeResourceUpdateHandle q, int rc)
+{
+    if (q->storage) runtime_storage_retire(q->storage, rc);
+    else rv_fail(q->current, rc);
+}
+
+static int up_read(PRuntimeUpdatePublishHandle job)
+{
+    PRuntimeUpdateRegistration* record = &job->info.record;
+    int rc;
+    job->info.record_known = 0;
+    memset(record, 0, sizeof(*record)); record->size = sizeof(*record); record->version = 1;
+    rc = rv_provider_rc(job->provider.read(job->provider.user_data,
+            job->qualification->current->registration_lease, record));
+    job->info.provider_result = rc;
+    if (rc != PRUNTIME_OK || !up_pair_valid(record)) {
+        memset(record, 0, sizeof(*record));
+        return rc == PRUNTIME_OK ? PRUNTIME_INVALID : rc;
+    }
+    job->info.record_known = 1; return PRUNTIME_OK;
+}
+
+static int up_cas(PRuntimeUpdatePublishHandle job)
+{
+    unsigned int outcome = PRUNTIME_COMMIT_UNKNOWN;
+    job->info.provider_result = rv_provider_rc(job->provider.compare_exchange(job->provider.user_data,
+            job->qualification->current->registration_lease, &job->before, &job->after, &outcome));
+    job->info.commit_outcome = outcome >= PRUNTIME_COMMIT_CONFIRMED && outcome <= PRUNTIME_COMMIT_UNKNOWN ?
+        outcome : PRUNTIME_COMMIT_UNKNOWN;
+    job->info.record_known = 0; memset(&job->info.record, 0, sizeof(job->info.record));
+    ++job->phase; return PRUNTIME_OK;
+}
+
+static int up_step(PRuntimeUpdatePublishHandle job)
+{
+    PRuntimeResourceUpdateHandle q = job->qualification;
+    int rc;
+    if (job->phase == UP_PREPARE || job->phase == UP_SWITCH) {
+        if (q->current->state != PRUNTIME_REVISION_COMPLETE ||
+                q->candidate->state != PRUNTIME_REVISION_COMPLETE ||
+                (q->storage && q->storage->info.state != PRUNTIME_STORAGE_READY)) return PRUNTIME_STATE;
+        if (job->phase == UP_PREPARE && job->cancelled) return PRUNTIME_CANCELLED;
+        if (job->phase == UP_SWITCH && job->cancelled) {
+            job->after.current = job->before.current;
+            job->after.attempt_state = PRUNTIME_UPDATE_ABANDONED;
+        }
+        return up_cas(job);
+    }
+    if (job->phase == UP_VERIFY) {
+        /* Run all three qualification checks again before attempting the switch. */
+        rc = ru_step(q);
+        if (rc == PRUNTIME_CANCELLED) job->cancelled = 1;
+        else if (rc < 0) return rc;
+        if (rc == PRUNTIME_OK) return rc;
+        job->before = job->after;
+        job->after.attempt_state = job->cancelled ? PRUNTIME_UPDATE_ABANDONED : PRUNTIME_UPDATE_PUBLISHED;
+        job->after.attempt_generation = 2;
+        if (!job->cancelled) job->after.current = job->after.candidate;
+        job->phase = UP_SWITCH; return PRUNTIME_OK;
+    }
+    rc = up_read(job);
+    if (job->phase == UP_READ) {
+        if (rc != PRUNTIME_OK) return rc;
+        if (!rv_same_registration(&job->info.record.current, &job->after.base)) return PRUNTIME_INVALID;
+        if (job->options.resume) {
+            if (!up_same_pair(&job->info.record, &job->after)) return PRUNTIME_INVALID;
+            q->phase = 0; job->phase = UP_VERIFY; return PRUNTIME_OK;
+        }
+        if (job->info.record.attempt_state == PRUNTIME_UPDATE_PREPARING) return PRUNTIME_BUSY;
+        if (job->info.record.attempt_state && !strcmp(job->info.record.attempt_id, job->options.attempt_id))
+            return PRUNTIME_INVALID;
+        job->before = job->info.record;
+        job->phase = UP_PREPARE; return PRUNTIME_OK;
+    }
+    if (rc != PRUNTIME_OK) return PRUNTIME_UNRESOLVED;
+    if (up_same_pair(&job->info.record, &job->before) &&
+            job->info.commit_outcome != PRUNTIME_COMMIT_CONFIRMED) return PRUNTIME_IO;
+    if (!up_same_pair(&job->info.record, &job->after) ||
+            job->info.commit_outcome == PRUNTIME_COMMIT_NOT_COMMITTED) return PRUNTIME_UNRESOLVED;
+    if (job->phase == UP_CHECK_PREPARE) {
+        q->phase = 0; job->phase = UP_VERIFY; return PRUNTIME_OK;
+    }
+    if (job->after.attempt_state == PRUNTIME_UPDATE_ABANDONED) return PRUNTIME_CANCELLED;
+    return PRUNTIME_UPDATE_DONE;
+}
+
+PRUNTIME_API int PRuntime_UpdatePublishStep(PRuntimeUpdatePublishHandle job)
+{
+    PRuntimeResourceUpdateHandle q;
+    int rc = up_ready(job);
+    if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_UPDATE_PENDING) return PRUNTIME_STATE;
+    q = job->qualification;
+    q->active = q->current->active = q->candidate->active = 1;
+    if (q->storage) q->storage->active = 1;
+    rc = up_step(job);
+    if (rc != PRUNTIME_OK) {
+        job->info.state = rc == PRUNTIME_UPDATE_DONE ? PRUNTIME_UPDATE_COMPLETE :
+            rc == PRUNTIME_CANCELLED ? PRUNTIME_UPDATE_CANCELLED : PRUNTIME_UPDATE_FAILED;
+        job->info.error = rc < 0 ? rc : PRUNTIME_OK;
+        if (job->phase == UP_CHECK_SWITCH && (rc == PRUNTIME_UPDATE_DONE || rc == PRUNTIME_UNRESOLVED))
+            up_retire(q, PRUNTIME_STATE);
+    }
+    if (q->storage) q->storage->active = 0;
+    q->active = q->current->active = q->candidate->active = 0;
+    return rc;
+}
+
+PRUNTIME_API int PRuntime_UpdatePublishGetInfo(PRuntimeUpdatePublishHandle job, PRuntimeUpdatePublishInfo* info)
+{
+    int rc = up_ready(job);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!info || info->size != sizeof(*info) || info->version != 1) return PRUNTIME_ARGUMENT;
+    *info = job->info; return PRUNTIME_OK;
+}
+
+PRUNTIME_API int PRuntime_UpdatePublishCancel(PRuntimeUpdatePublishHandle job)
+{
+    int rc = up_ready(job);
+    if (rc != PRUNTIME_OK) return rc;
+    if (job->info.state != PRUNTIME_UPDATE_PENDING) return PRUNTIME_STATE;
+    job->cancelled = 1; return PRUNTIME_OK;
+}
+
+PRUNTIME_API int PRuntime_UpdatePublishClose(PRuntimeUpdatePublishHandle* slot)
+{
+    PRuntimeUpdatePublishHandle job;
+    int rc;
+    if (!slot) return PRUNTIME_ARGUMENT;
+    job = *slot; if (!job) return PRUNTIME_OK;
+    rc = up_ready(job); if (rc != PRUNTIME_OK) return rc;
+    if (job->phase == UP_CHECK_SWITCH && job->info.state == PRUNTIME_UPDATE_PENDING)
+        up_retire(job->qualification, PRUNTIME_STATE);
+    job->qualification->publisher = 0;
+    job->magic = 0; free(job); *slot = NULL; return PRUNTIME_OK;
+}
+
+PRUNTIME_API int PRuntime_UpdateObserve(PRuntimeRevisionHandle current,
+        const char* attempt_id, unsigned int bytes, const PRuntimeUpdateProvider* provider,
+        PRuntimeUpdateRegistration* output)
+{
+    PRuntimeUpdateRegistration record;
+    int rc = rv_ready(current);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!provider || !output || !rv_id(attempt_id, bytes) ||
+            provider->size != sizeof(*provider) || provider->version != 1 || !provider->read ||
+            output->size != sizeof(*output) || output->version != 1) return PRUNTIME_ARGUMENT;
+    if (!current->installed || current->state != PRUNTIME_REVISION_COMPLETE ||
+            current->update_children || current->storage_children) return PRUNTIME_STATE;
+    memset(&record, 0, sizeof(record)); record.size = sizeof(record); record.version = 1;
+    current->active = 1;
+    rc = rv_provider_rc(provider->read(provider->user_data, current->registration_lease, &record));
+    current->active = 0;
+    if (rc != PRUNTIME_OK) return rc;
+    if (!up_pair_valid(&record) || record.current.generation != current->record.generation ||
+            record.current.target_schema != current->manifest->info.migration_count ||
+            strcmp(record.current.directory, current->record.directory) ||
+            !rv_same_approval(&record.current.approval, &current->record.approval)) return PRUNTIME_INVALID;
+    if (!record.attempt_state || memcmp(record.attempt_id, attempt_id, 32)) return PRUNTIME_NOT_FOUND;
+    *output = record; return PRUNTIME_OK;
 }
