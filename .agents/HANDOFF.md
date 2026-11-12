@@ -31,7 +31,7 @@ writer 同步添加条目、块间取消，Finish 后由宿主提交；PXI 首�
 
 ### Runtime 当前验收与安装边界
 
-Runtime 版本化读取、资格检查及资源发布与恢复均通过双配置设备门，证据见[资格验收](../docs/history/RUNTIME_RESOURCE_UPDATE_CLOSEOUT.md)与[发布验收](../docs/history/RUNTIME_RESOURCE_UPDATE_PUBLICATION_ACCEPTANCE.md)。EXE 持久登记和真实 Notes 更新待验证。
+Runtime 版本化读取、资格检查及资源发布与恢复均通过双配置设备门，证据见[资格验收](../docs/history/RUNTIME_RESOURCE_UPDATE_CLOSEOUT.md)与[发布验收](../docs/history/RUNTIME_RESOURCE_UPDATE_PUBLICATION_ACCEPTANCE.md)。EXE schema v6 事务登记、Notes 资源更新与同次恢复通过 Debug 两进程门，原笔记保留。双配置构建通过。证据见[更新验收](../docs/history/APP_PXI_UPDATE_ACCEPTANCE.md)。
 
 CAB关联默认关闭，原生安装E_FAIL；对照与补丁见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
 
@@ -488,7 +488,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核 ROADMAP 与限制，Runtime 发布与恢复退出待验收。唯一下一步是 EXE 接入持久事务登记与普通更新入口，并在设备门验证真实 Notes 更新及数据保留。首装人工 backlog、外置卷 native2 和旧 DB 错误保留，不重开 FULL/断电门。
+已复核 ROADMAP 与限制。唯一下一步是普通 PXI 更新确认/拒绝、Notes 页面交互与 Release 设备启动复核。schema/权限更新、卸载、旧卷故障与 FULL/断电仍按原边界。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

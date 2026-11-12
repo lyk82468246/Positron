@@ -43,13 +43,18 @@ PXI 安装记录属于主应用数据，随设置、访问和下载共用 `posit
 schema v5 新增独立 `app_installs` 表，保留 v1–v4 的设置、访问与下载表。结构化列保存规范
 ID、随机非零128位安装身份、state/generation、目标schema、规范资源目录、revision、应用/API版本、
 摘要算法与64位hex内容摘要、请求/批准能力及确认策略版本。不持久化C结构padding、指针或句柄；
-不从开发目录/短bucket猜安装身份。安装身份和规范ID分别唯一；首版只支持revision 1，
-已有墓碑也不自动重新认领，更新/卸载另行实现。应用私有库保持独立的installed数据身份。
+不从开发目录/短bucket猜安装身份。安装身份和规范ID分别唯一。首次安装使用 revision 1，
+应用私有库保持独立且稳定的 installed 数据身份。
+
+schema v6 新增 `app_update_attempts` 和 `app_update_revisions`。每个安装身份保留一条尝试记录
+及两份结构化快照，分别记录更新前登记与候选登记。更新 CAS 在同一事务中读取并逐字段比较
+current、尝试 ID/状态/generation 和两份快照，然后写入完整结果。已提交登记继续由
+`app_installs` 提供。Runtime 负责更新转换、提交结果读回与恢复，应用表仅保存结果。
 
 EXE私有 `AppInstallStore` 只执行字段相等比较、唯一性和generation递增检查，以及原子CAS；
 可接受状态转换、结果分类与读回由Runtime决定。CAS在同一公开PDb事务内读旧值、逐字段比较、
 写新值并COMMIT，任何错误不自动重放。读回使用新的已提交查询，不用内存缓存冒充持久登记。
-Runtime owner通过单个固定复制槽同步请求现有主库worker，只有该worker持有主DB；等待不在UI线程，
+Runtime owner通过单个有界槽同步请求现有主库worker，只有该worker持有主DB。更新快照由同步调用方保有至返回；等待不在UI线程，
 不占用或扩大网页的八项服务队列。回调返回前语句/事务必须收敛，无法收敛则关闭故障连接；
 退出先撤销页面队列并join Runtime，再关闭主库worker，避免provider访问已释放的store。
 
@@ -61,7 +66,8 @@ Runtime owner通过单个固定复制槽同步请求现有主库worker，只有�
 
 `--install-dir`消费已核验冻结目录，`--install`先完整校验PXI输出，两者均显式确认后进入同一登记链；
 `--app`只消费已提交登记。调用与恢复流程见[Runtime宿主](RUNTIME_HOST.md#首次安装与普通installed启动)，
-系统关联和更新仍另行接入。
+同 ID 较新 PXI 的资源更新与恢复见[宿主接线](RUNTIME_HOST.md#pxi-资源更新)。
+系统关联和卸载另行接入。
 
 ## 第一纵切：持久访问历史
 

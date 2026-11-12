@@ -466,6 +466,8 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
     int preferences_exist;
     int downloads_exist;
     int installs_exist;
+    int attempts_exist;
+    int revisions_exist;
     int rc;
 
     exists = app_settings_table_exists(api, db, g_settings_exists_sql, result);
@@ -473,6 +475,15 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
     installs_exist = app_settings_table_exists(api, db,
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_installs'", result);
     if (result->result != APP_SETTINGS_OK) return;
+    attempts_exist = app_settings_table_exists(api, db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_attempts'", result);
+    if (result->result != APP_SETTINGS_OK) return;
+    revisions_exist = app_settings_table_exists(api, db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_revisions'", result);
+    if (result->result != APP_SETTINGS_OK) return;
+    if (attempts_exist != revisions_exist || (attempts_exist && !installs_exist)) {
+        result->result=APP_SETTINGS_BAD_DATA; return;
+    }
     downloads_exist = app_settings_table_exists(api, db,
             g_downloads_exists_sql, result);
     if (result->result != APP_SETTINGS_OK) return;
@@ -504,13 +515,25 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         }
         strcat(script,AppInstallStore_Schema());
     }
-    rc = api->migration(db, 5, script);
+    if (!attempts_exist) {
+        if (strlen(script)+strlen(AppInstallStore_UpdateSchema())>=sizeof(script)) {
+            result->result=APP_SETTINGS_BAD_DATA; return;
+        }
+        strcat(script,AppInstallStore_UpdateSchema());
+    }
+    rc = api->migration(db, 6, script);
     if (rc != PDB_OK) {
         app_settings_db_failure(api, db, rc, result);
         return;
     }
     if (!app_settings_table_exists(api, db,
             "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_installs'",result)) {
+        result->result=APP_SETTINGS_BAD_DATA; return;
+    }
+    if (!app_settings_table_exists(api, db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_attempts'",result) ||
+        !app_settings_table_exists(api, db,
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_revisions'",result)) {
         result->result=APP_SETTINGS_BAD_DATA; return;
     }
     app_settings_read(api, db, result);
@@ -1279,7 +1302,9 @@ int AppSettingsStore_InstallCall(AppSettingsStore *store, AppInstallCall *call)
 {
     int result;
     if (!store || !call || GetCurrentThreadId()==store->owner_thread ||
-            call->operation<APP_INSTALL_READ_ID || call->operation>APP_INSTALL_CAS ||
+            call->operation<APP_INSTALL_READ_ID || call->operation>APP_UPDATE_CAS ||
+            (call->operation>=APP_UPDATE_READ && !call->update_record) ||
+            (call->operation==APP_UPDATE_CAS && (!call->update_expected || !call->update_proposed)) ||
             !memchr(call->key,0,sizeof(call->key))) return PRUNTIME_ARGUMENT;
     EnterCriticalSection(&store->lock);
     if (store->closing || store->install_state) {

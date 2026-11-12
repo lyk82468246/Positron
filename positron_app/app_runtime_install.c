@@ -8,10 +8,14 @@
 struct AppRuntimeInstall {
     AppPxi *pxi;
     AppRuntimePlatform *platform;
+    AppRuntimePlatform current_platform;
     AppRuntimeRegistry registry;
     PRuntimeRevisionProvider resources;
     PRuntimeInstalledProvider installed_provider;
     PRuntimeRevisionHandle revision;
+    PRuntimeRevisionHandle current;
+    PRuntimeResourceUpdateHandle qualification;
+    PRuntimeUpdatePublishHandle publish;
     PRuntimeInstallIntentHandle intent;
     PRuntimeInstallDataHandle data;
     PRuntimeInstallCommitHandle commit;
@@ -23,6 +27,8 @@ struct AppRuntimeInstall {
     PRuntimeInstallIntentInfo intent_info;
     PRuntimeInstallDataInfo data_info;
     PRuntimeInstallCommitInfo commit_info;
+    PRuntimeUpdateRegistration pending;
+    PRuntimeUpdatePublishInfo publish_info;
     PRuntimeStorageError error;
     char manifest_bytes[PRUNTIME_MANIFEST_BYTES];
     unsigned int manifest_length;
@@ -69,7 +75,8 @@ static int install_metadata(AppRuntimeInstall *i)
     if(rc==PRUNTIME_OK) rc=PRuntime_ManifestGetInfo(i->manifest,&i->info);
     return rc;
 }
-static int install_open_ready(AppRuntimeInstall *i)
+static int install_open_revision(AppRuntimeInstall *i,AppRuntimePlatform *platform,
+        const PRuntimeRevisionProvider *resources,PRuntimeRevisionHandle *revision)
 {
     PRuntimeRevisionOptions options;
     PRuntimeStorageOptions storage_options;
@@ -77,18 +84,31 @@ static int install_open_ready(AppRuntimeInstall *i)
     int rc;
     memset(&options,0,sizeof(options)); options.size=sizeof(options); options.version=1;
     options.cancelled=i->cancelled; options.user_data=i->cancel_user;
-    rc=PRuntime_OpenInstalled(i->registration.approval.installation_id,32,
-        i->registration.generation,&i->installed_provider,&i->resources,&options,&i->revision);
-    if(rc==PRUNTIME_OK) rc=install_revision_complete(i);
+    rc=PRuntime_OpenInstalledEx(i->registration.approval.installation_id,32,
+        i->registration.generation,i->registration.approval.revision,
+        &i->installed_provider,resources,&options,revision);
     if(rc!=PRUNTIME_OK) return rc;
+    do { rc=PRuntime_RevisionStep(*revision); } while(rc==PRUNTIME_OK);
+    if(rc!=PRUNTIME_REVISION_DONE) return rc;
+    rc=PRUNTIME_OK;
     if(i->registration.approval.approved_permissions & PRUNTIME_PERMISSION_SQL) {
         memset(&storage_options,0,sizeof(storage_options)); storage_options.size=sizeof(storage_options);
         storage_options.version=1; storage_options.granted_permissions=PRUNTIME_PERMISSION_SQL;
         storage_options.vm_budget=1000000; storage_options.cancelled=i->cancelled;
         storage_options.user_data=i->cancel_user;
-        AppRuntimePlatform_ExistingStorageProvider(i->platform,&existing);
+        AppRuntimePlatform_ExistingStorageProvider(platform,&existing);
         memset(&i->error,0,sizeof(i->error)); i->error.size=sizeof(i->error); i->error.version=1;
-        rc=PRuntime_InstalledStorageOpen(i->revision,&storage_options,&existing,&i->storage,&i->error);
+        rc=PRuntime_InstalledStorageOpen(*revision,&storage_options,&existing,&i->storage,&i->error);
+    }
+    return rc;
+}
+static int install_open_ready(AppRuntimeInstall *i)
+{
+    int rc;
+    rc=install_open_revision(i,i->platform,&i->resources,&i->revision);
+    if(rc==PRUNTIME_OK) {
+        i->revision_info.size=sizeof(i->revision_info); i->revision_info.version=1;
+        rc=PRuntime_RevisionGetInfo(i->revision,&i->revision_info);
     }
     if(rc==PRUNTIME_OK) i->action=0;
     install_debug(i,"open-installed",rc); return rc;
@@ -139,6 +159,26 @@ int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
         rc=AppRuntimeRegistry_NewId(i->registration.approval.installation_id);
         if(rc!=PRUNTIME_OK) goto failed;
     } else if(found!=PRUNTIME_OK) { rc=found; goto failed; }
+    else if(kind==APP_RUNTIME_INSTALL_PXI && i->registration.state==PRUNTIME_REG_READY &&
+            i->info.app_version>i->registration.approval.app_version) {
+        rc=AppRuntimeRegistry_FindUpdate(&i->registry,i->registration.approval.installation_id,&i->pending);
+        if(rc!=PRUNTIME_OK) goto failed;
+        if(i->pending.attempt_state==PRUNTIME_UPDATE_PREPARING) {
+            if(memcmp(i->revision_info.content_id,i->pending.candidate.approval.content_id,32)) {
+                rc=PRUNTIME_BUSY; goto failed;
+            }
+            rc=PRuntime_RevisionClose(&i->revision);
+            if(rc!=PRUNTIME_OK) goto failed;
+            (void)AppPxi_Close(&i->pxi);
+            directory=i->pending.candidate.directory;
+            rc=PRuntime_PrepareRevision(directory,(unsigned int)strlen(directory),&i->resources,&options,&i->revision);
+            if(rc==PRUNTIME_OK) rc=install_revision_complete(i);
+            if(rc==PRUNTIME_OK && memcmp(i->revision_info.content_id,i->pending.candidate.approval.content_id,32))
+                rc=PRUNTIME_INVALID;
+            if(rc!=PRUNTIME_OK) goto failed;
+        }
+        i->action=APP_RUNTIME_UPDATE_CONFIRM;
+    }
     else {
         /* Selecting a recovery UI is policy, not transition admission. The
          * retained intent independently validates root/content/approval. */
@@ -153,6 +193,10 @@ failed:
     install_debug(i,"open-failed",rc); AppRuntimeInstall_Close(&i); return rc;
 }
 int AppRuntimeInstall_Action(AppRuntimeInstall *i) { return i->action; }
+unsigned long AppRuntimeInstall_CurrentVersion(AppRuntimeInstall *i)
+{
+    return i->registration.approval.app_version;
+}
 int AppRuntimeInstall_CopyMetadata(AppRuntimeInstall *i,PRuntimeManifestInfo *info,
         char *manifest,unsigned int capacity,unsigned int *bytes)
 {
@@ -167,6 +211,64 @@ static void install_close_preparation(AppRuntimeInstall *i)
     (void)PRuntime_InstallIntentClose(&i->intent);
     (void)PRuntime_RevisionClose(&i->revision);
 }
+static void install_close_update(AppRuntimeInstall *i)
+{
+    (void)PRuntime_UpdatePublishClose(&i->publish);
+    (void)PRuntime_ResourceUpdateClose(&i->qualification);
+    if(i->current) {
+        (void)PRuntime_StorageClose(&i->storage);
+        (void)PRuntime_RevisionClose(&i->current);
+    }
+}
+static int install_confirm_update(AppRuntimeInstall *i)
+{
+    PRuntimeRevisionProvider resources;
+    PRuntimeResourceUpdateOptions qualification;
+    PRuntimeUpdatePublishOptions publish;
+    PRuntimeUpdateProvider provider;
+    int rc;
+    rc=AppRuntimePlatform_Init(&i->current_platform);
+    if(rc!=PRUNTIME_OK) return rc;
+    AppRuntimePlatform_RevisionProvider(&i->current_platform,&resources);
+    rc=install_open_revision(i,&i->current_platform,&resources,&i->current);
+    if(rc!=PRUNTIME_OK) goto done;
+    memset(&qualification,0,sizeof(qualification));
+    qualification.size=sizeof(qualification); qualification.version=1; qualification.confirmed=1;
+    rc=PRuntime_ResourceUpdatePrepare(i->current,i->revision,i->storage,&qualification,&i->qualification);
+    if(rc!=PRUNTIME_OK) goto done;
+    do {
+        if(install_cancelled(i)) (void)PRuntime_ResourceUpdateCancel(i->qualification);
+        rc=PRuntime_ResourceUpdateStep(i->qualification);
+    } while(rc==PRUNTIME_OK);
+    if(rc!=PRUNTIME_UPDATE_DONE) goto done;
+    memset(&publish,0,sizeof(publish)); publish.size=sizeof(publish); publish.version=1;
+    publish.resume=i->pending.attempt_state==PRUNTIME_UPDATE_PREPARING;
+    if(publish.resume) strcpy(publish.attempt_id,i->pending.attempt_id);
+    else {
+        rc=AppRuntimeRegistry_NewId(publish.attempt_id);
+        if(rc!=PRUNTIME_OK) goto done;
+    }
+    AppRuntimeRegistry_UpdateProvider(&i->registry,&provider);
+    rc=PRuntime_UpdatePublishBegin(i->qualification,&publish,&provider,&i->publish);
+    if(rc!=PRUNTIME_OK) goto done;
+    /* A lost reply can leave the durable attempt referring to this directory. */
+    AppPxi_Retain(i->pxi);
+    do {
+        if(install_cancelled(i)) (void)PRuntime_UpdatePublishCancel(i->publish);
+        rc=PRuntime_UpdatePublishStep(i->publish);
+    } while(rc==PRUNTIME_OK);
+    i->publish_info.size=sizeof(i->publish_info); i->publish_info.version=1;
+    if(rc==PRUNTIME_UPDATE_DONE) {
+        rc=PRuntime_UpdatePublishGetInfo(i->publish,&i->publish_info);
+        if(rc==PRUNTIME_OK) i->registration=i->publish_info.record.current;
+    }
+done:
+    install_close_update(i);
+    if(rc!=PRUNTIME_OK) { install_debug(i,"update-failed",rc); return rc; }
+    rc=PRuntime_RevisionClose(&i->revision);
+    if(rc==PRUNTIME_OK) rc=install_open_ready(i);
+    return rc;
+}
 int AppRuntimeInstall_Confirm(AppRuntimeInstall *i)
 {
     PRuntimeInstallIntentOptions options;
@@ -175,6 +277,7 @@ int AppRuntimeInstall_Confirm(AppRuntimeInstall *i)
     PRuntimeStorageProvider storage_provider;
     int rc;
     if(!i->action) return PRUNTIME_STATE;
+    if(i->action==APP_RUNTIME_UPDATE_CONFIRM) return install_confirm_update(i);
     memset(&options,0,sizeof(options)); options.size=sizeof(options); options.version=1; options.mode=i->action;
     options.approval.size=sizeof(options.approval); options.approval.version=1;
     options.approval.confirmed=1; options.approval.revision=1;
@@ -277,6 +380,7 @@ void AppRuntimeInstall_Close(AppRuntimeInstall **slot)
     AppRuntimeInstall *i;
     if(!slot || !*slot) return;
     i=*slot;
+    install_close_update(i);
     (void)PRuntime_StorageClose(&i->storage);
     install_close_preparation(i);
     (void)PRuntime_ManifestClose(&i->manifest);

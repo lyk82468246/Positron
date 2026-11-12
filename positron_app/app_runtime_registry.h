@@ -17,5 +17,9 @@ void AppRuntimeRegistry_IntentProvider(AppRuntimeRegistry *registry,
         PRuntimeInstallIntentProvider *provider);
 void AppRuntimeRegistry_InstalledProvider(AppRuntimeRegistry *registry,
         PRuntimeInstalledProvider *provider);
+int AppRuntimeRegistry_FindUpdate(AppRuntimeRegistry *registry,
+        const char *installation, PRuntimeUpdateRegistration *record);
+void AppRuntimeRegistry_UpdateProvider(AppRuntimeRegistry *registry,
+        PRuntimeUpdateProvider *provider);
 int AppRuntimeRegistry_NewId(char output[33]);
 #endif

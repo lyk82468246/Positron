@@ -10064,7 +10064,8 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
     action=AppRuntimeApp_InstallationAction(g_runtime_app);
     confirmation=info.requested_permissions ? APP_TEXT_RUNTIME_SQL_CONFIRM : APP_TEXT_RUNTIME_CONFIRM;
     if(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT) {
-        if(action==PRUNTIME_INTENT_NEW) confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_CONFIRM : APP_TEXT_INSTALL_CONFIRM;
+        if(action==APP_RUNTIME_UPDATE_CONFIRM) confirmation=info.requested_permissions ? APP_TEXT_UPDATE_SQL_CONFIRM : APP_TEXT_UPDATE_CONFIRM;
+        else if(action==PRUNTIME_INTENT_NEW) confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_CONFIRM : APP_TEXT_INSTALL_CONFIRM;
         else confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_RECOVER : APP_TEXT_INSTALL_RECOVER;
     }
 #ifdef _DEBUG
@@ -10086,7 +10087,8 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
         AppRuntimeApp_RequestClose(g_runtime_app);
         return 0;
     }
-    _snwprintf(message, 1023, format, name, id, info.app_version);
+    _snwprintf(message, 1023, format, name, id, info.app_version,
+            AppRuntimeApp_CurrentVersion(g_runtime_app));
     message[1023] = L'\0';
     if(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT && !action) decision=IDYES;
     else
@@ -10448,7 +10450,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     startup_ui_selftest = 0;
     if(command_line && !wcscmp(command_line,L"--selftest-pxi-native")) {
         AppDebug_BeginSession(); result=app_pxi_debug_arguments();
-        if(!result) result=AppPxi_DebugRun(); AppDebug_EndSession(); return result;
+        if(!result) result=AppPxi_DebugRun(0); AppDebug_EndSession(); return result;
+    }
+    if(command_line && (!wcscmp(command_line,L"--selftest-pxi-update-prepare") ||
+            !wcscmp(command_line,L"--selftest-pxi-update-resume"))) {
+        AppDebug_BeginSession();
+        result=AppPxi_DebugRun(!wcscmp(command_line,L"--selftest-pxi-update-prepare") ? 1 : 2);
+        AppDebug_EndSession(); return result;
     }
     if(command_line && !wcscmp(command_line,L"--selftest-installation-native")) {
         AppDebug_BeginSession(); result=AppRuntimeInstall_DebugRun(); AppDebug_EndSession(); return result;

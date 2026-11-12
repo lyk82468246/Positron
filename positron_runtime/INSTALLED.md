@@ -290,7 +290,7 @@ Use exact v1 `PRuntimeUpdatePublishInfo` to inspect the outcome and latest valid
 
 For recovery, read current from the trusted registry and independently verify it with OpenInstalledEx. Call `PRuntime_UpdateObserve` for the expected attempt ID before opening storage or granting services. It compares the pair with that live current and returns exact PREPARING, PUBLISHED or ABANDONED metadata. A missing attempt ID returns NOT_FOUND. Unreadable or conflicting metadata requires explicit resolution before starting author code. A matching PREPARING attempt may be resumed with `resume=1` and a live qualification of the same current and candidate. Resume freshly reads and checks both rows, skips the PREPARING CAS and revalidates prerequisites. A confirmed PUBLISHED result uses the independently reopened revision, then the ordinary existing-storage and explicit Browser service path. Retain resources referenced by current or an unresolved attempt.
 
-This is the DLL contract for a native host. EXE still needs its current/pending storage adapter, update entry point and consumer acceptance. Schema or permission changes require separate contracts.
+For the EXE's persistent adapter and PXI entry point, see the [Runtime host guide](../positron_app/RUNTIME_HOST.md#pxi-资源更新). Schema or permission changes require separate contracts.
 
 ## Validation and remaining work
 

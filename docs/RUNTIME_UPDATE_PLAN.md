@@ -1,6 +1,6 @@
 # 已安装资源应用的更新计划
 
-本文记录公共合同审查后的分阶段方案。Runtime的版本化读取、只读资格和资源更新发布/恢复已通过双配置定向门。EXE需接入真实登记与更新入口。
+本文记录已安装应用更新的分阶段方案。Runtime 发布与恢复已通过双配置设备门。EXE 通过 PXI 入口接入持久登记与资源更新，Notes 两进程证据见[应用更新验收](history/APP_PXI_UPDATE_ACCEPTANCE.md)。
 首次安装继续使用[现有恢复合同](RUNTIME_INSTALL_RECOVERY.md)，整体方向见[运行时计划](RUNTIME_PLAN.md)。
 Runtime拥有更新资格、批准、状态转换、读回分类及生命周期；EXE拥有主库表、原生租约、文件I/O、
 风险确认和worker。公共DLL工作交主线与DLL会话，接口不足时EXE停止对应接线。
@@ -10,8 +10,8 @@ Runtime拥有更新资格、批准、状态转换、读回分类及生命周期�
 现有[公共头](../positron_runtime/positron_runtime.h)和[安装合同](../positron_runtime/INSTALLED.md)
 原有首装/批准/opener路径只允许revision 1。OpenInstalledEx显式核验期望revision，ResourceUpdate资格保有活current/candidate及既有存储，但二者都不发布更新。原登记读回仍要求完整旧/新approval一致，首装Intent和Commit只协调单一PREPARING记录；不能只把EXE中的revision改成2。
 
-主库当前[app_installs](../positron_app/app_install_store.c)每个installation ID一行、app ID唯一，
-不能同时表达旧current与独立pending。InstallData在稳定安装身份的原数据库逐文件提交迁移，
+主库 [app_installs](../positron_app/app_install_store.c) 每个 installation ID 一行、app ID 唯一。
+schema v6 增加独立尝试表及登记快照，原表继续保存 current。InstallData 在稳定安装身份的原数据库逐文件提交迁移，
 而普通InstalledStorageOpen要求精确schema；原地迁移失败后，旧READY也可能无法启动。
 因此禁止同ID覆盖文件、把旧READY改PREPARING，或以新installation ID伪装更新并继承旧数据。
 
@@ -111,5 +111,5 @@ Notes revision1保存精确中文/引号记录；创建独立candidate，app ver
 pending持久化后中断、切换未提交/已提交响应丢失/不可读/竞争generation、旧实例未退出/租约冲突、
 关闭/重入/stale、unknown不重放及成功切换不被取消反转。用独立冷库/资源字节证据核对，不能只看日志。
 
-DLL先通过旧rev1与新增版本化rev2入口的双配置设备门，宿主仅提供事实、故障和断言；
-EXE之后接真实CLI/UI/两进程重开。新增ABI、预算和生命周期逐项验证，文档不等于已实现。
+DLL 双配置门覆盖旧 revision 1 与新增版本化入口。EXE 两进程门消费真实 Notes PXI、注入登记回调失败并核对冷库。
+普通命令行的原生确认、实际页面交互和 Release 设备启动另验。

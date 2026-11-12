@@ -14,6 +14,7 @@ typedef struct AppRuntimePage AppRuntimePage;
 AppRuntimeApp *AppRuntimeApp_Start(const char *directory);
 AppRuntimeApp *AppRuntimeApp_StartKind(int kind,const char *target,AppSettingsStore *store);
 int AppRuntimeApp_InstallationAction(AppRuntimeApp *app);
+unsigned long AppRuntimeApp_CurrentVersion(AppRuntimeApp *app);
 int AppRuntimeApp_ApproveInstallation(AppRuntimeApp *app);
 int AppRuntimeApp_State(AppRuntimeApp *app);
 int AppRuntimeApp_Result(AppRuntimeApp *app);

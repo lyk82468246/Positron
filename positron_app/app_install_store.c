@@ -42,7 +42,29 @@ static const char install_update[] =
     "directory=?6,revision=?7,app_version=?8,api_version=?9,digest=?10,content_id=?11,"
     "requested=?12,approved=?13,approval_policy=?14 WHERE installation_id=?1";
 
+static const char update_schema[] =
+    "CREATE TABLE app_update_attempts(installation_id TEXT PRIMARY KEY NOT NULL,"
+    "attempt_id TEXT NOT NULL,state INTEGER NOT NULL,generation INTEGER NOT NULL);"
+    "CREATE TABLE app_update_revisions(installation_id TEXT NOT NULL,app_id TEXT NOT NULL,"
+    "state INTEGER NOT NULL,generation INTEGER NOT NULL,target_schema INTEGER NOT NULL,"
+    "directory TEXT NOT NULL,revision INTEGER NOT NULL,app_version INTEGER NOT NULL,"
+    "api_version INTEGER NOT NULL,digest INTEGER NOT NULL,content_id TEXT NOT NULL,"
+    "requested INTEGER NOT NULL,approved INTEGER NOT NULL,approval_policy INTEGER NOT NULL,"
+    "role INTEGER NOT NULL,PRIMARY KEY(installation_id,role));";
+#define UPDATE_FIELDS "SELECT installation_id,app_id,state,generation,target_schema,directory,revision," \
+    "app_version,api_version,digest,content_id,requested,approved,approval_policy " \
+    "FROM app_update_revisions WHERE installation_id=?1 AND role="
+static const char update_select_base[] = UPDATE_FIELDS "1";
+static const char update_select_candidate[] = UPDATE_FIELDS "2";
+#undef UPDATE_FIELDS
+#define UPDATE_VALUES "INSERT OR REPLACE INTO app_update_revisions VALUES(" \
+    "?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,"
+static const char update_write_base[] = UPDATE_VALUES "1)";
+static const char update_write_candidate[] = UPDATE_VALUES "2)";
+#undef UPDATE_VALUES
+
 const char *AppInstallStore_Schema(void) { return install_schema; }
+const char *AppInstallStore_UpdateSchema(void) { return update_schema; }
 
 /* Compare explicit persisted fields, never padding. This is storage CAS
  * equality; permitted transitions/approval/readback classification stay DLL. */
@@ -103,7 +125,7 @@ static int install_number(InstallDb *a, PDbStmtHandle s, int col, unsigned int *
     if (n < 0 || n > 2147483647) return 0;
     *out = (unsigned int)n; return 1;
 }
-static int install_read(InstallDb *a, PDbHandle db, int by_app,
+static int install_read(InstallDb *a, PDbHandle db, const char *query,
         const char *key, PRuntimeRegistrationRecord *r)
 {
     PDbStmtHandle s;
@@ -117,7 +139,7 @@ static int install_read(InstallDb *a, PDbHandle db, int by_app,
     s = NULL; p = &r->approval; requested=0; approved=0;
     memset(r,0,sizeof(*r)); r->size=sizeof(*r); r->version=1;
     p->size=sizeof(*p); p->version=1;
-    rc=a->prepare(db,by_app ? install_select_app : install_select_id,&s);
+    rc=a->prepare(db,query,&s);
     if (rc==PDB_OK) rc=a->text(s,1,key,(int)strlen(key));
     if (rc==PDB_OK) rc=a->step(s);
     if (rc==PDB_STEP_DONE) return a->finalize(s)==PDB_OK ? PRUNTIME_NOT_FOUND : PRUNTIME_IO;
@@ -142,7 +164,7 @@ static int install_read(InstallDb *a, PDbHandle db, int by_app,
     rc=s ? a->finalize(s) : PDB_ERROR;
     return ok && done==PDB_STEP_DONE && rc==PDB_OK ? PRUNTIME_OK : PRUNTIME_IO;
 }
-static int install_write(InstallDb *a,PDbHandle db,int insert,const PRuntimeRegistrationRecord *r)
+static int install_write(InstallDb *a,PDbHandle db,const char *query,const PRuntimeRegistrationRecord *r)
 {
     PDbStmtHandle s;
     const PRuntimeApprovalSnapshot *p;
@@ -153,7 +175,7 @@ static int install_write(InstallDb *a,PDbHandle db,int insert,const PRuntimeRegi
     p=&r->approval; digits="0123456789abcdef";
     for(i=0;i<32;++i) { hex[i*2]=digits[p->content_id[i]>>4]; hex[i*2+1]=digits[p->content_id[i]&15]; }
     hex[64]=0; s=NULL;
-    rc=a->prepare(db,insert ? install_insert : install_update,&s);
+    rc=a->prepare(db,query,&s);
 #define BINDTEXT(n,v) if(rc==PDB_OK) rc=a->text(s,n,v,(int)strlen(v))
 #define BINDINT(n,v) if(rc==PDB_OK) rc=a->integer(s,n,(__int64)(v))
     BINDTEXT(1,p->installation_id); BINDTEXT(2,p->id); BINDINT(3,r->state);
@@ -166,6 +188,61 @@ static int install_write(InstallDb *a,PDbHandle db,int insert,const PRuntimeRegi
     if(rc==PDB_OK) rc=a->step(s);
     finish=s ? a->finalize(s) : PDB_OK;
     return rc==PDB_STEP_DONE && finish==PDB_OK ? PDB_OK : (rc==PDB_STEP_DONE ? finish : rc);
+}
+
+static int update_read(InstallDb *a,PDbHandle db,const char *key,PRuntimeUpdateRegistration *r)
+{
+    PDbStmtHandle s;
+    int rc,finish;
+    memset(r,0,sizeof(*r)); r->size=sizeof(*r); r->version=1;
+    rc=install_read(a,db,install_select_id,key,&r->current);
+    if(rc!=PRUNTIME_OK) return rc;
+    s=NULL;
+    rc=a->prepare(db,"SELECT attempt_id,state,generation FROM app_update_attempts WHERE installation_id=?1",&s);
+    if(rc==PDB_OK) rc=a->text(s,1,key,(int)strlen(key));
+    if(rc==PDB_OK) rc=a->step(s);
+    if(rc==PDB_STEP_ROW) {
+        if(install_string(a,s,0,r->attempt_id,sizeof(r->attempt_id)) &&
+                install_number(a,s,1,&r->attempt_state) && r->attempt_state &&
+                install_number(a,s,2,&r->attempt_generation)) rc=a->step(s);
+        else rc=PDB_ERROR;
+    }
+    finish=s ? a->finalize(s) : PDB_OK;
+    if(rc!=PDB_STEP_DONE || finish!=PDB_OK) return PRUNTIME_IO;
+    if(!r->attempt_state) return PRUNTIME_OK;
+    if(install_read(a,db,update_select_base,key,&r->base)!=PRUNTIME_OK ||
+            install_read(a,db,update_select_candidate,key,&r->candidate)!=PRUNTIME_OK) return PRUNTIME_IO;
+    return PRUNTIME_OK;
+}
+
+static int update_equal(const PRuntimeUpdateRegistration *a,const PRuntimeUpdateRegistration *b)
+{
+    return AppInstallStore_RecordEqual(&a->current,&b->current) &&
+        a->attempt_state==b->attempt_state && a->attempt_generation==b->attempt_generation &&
+        !strcmp(a->attempt_id,b->attempt_id) && (!a->attempt_state ||
+        (AppInstallStore_RecordEqual(&a->base,&b->base) &&
+         AppInstallStore_RecordEqual(&a->candidate,&b->candidate)));
+}
+
+static int update_write(InstallDb *a,PDbHandle db,const PRuntimeUpdateRegistration *r)
+{
+    PDbStmtHandle s;
+    const char *key;
+    int rc,finish;
+    key=r->current.approval.installation_id;
+    rc=install_write(a,db,install_update,&r->current);
+    if(rc==PDB_OK) rc=install_write(a,db,update_write_base,&r->base);
+    if(rc==PDB_OK) rc=install_write(a,db,update_write_candidate,&r->candidate);
+    if(rc!=PDB_OK) return rc;
+    s=NULL;
+    rc=a->prepare(db,"INSERT OR REPLACE INTO app_update_attempts VALUES(?1,?2,?3,?4)",&s);
+    if(rc==PDB_OK) rc=a->text(s,1,key,(int)strlen(key));
+    if(rc==PDB_OK) rc=a->text(s,2,r->attempt_id,(int)strlen(r->attempt_id));
+    if(rc==PDB_OK) rc=a->integer(s,3,r->attempt_state);
+    if(rc==PDB_OK) rc=a->integer(s,4,r->attempt_generation);
+    if(rc==PDB_OK) rc=a->step(s);
+    finish=s ? a->finalize(s) : PDB_OK;
+    return rc==PDB_STEP_DONE ? finish : rc;
 }
 
 void AppInstallStore_Process(HMODULE module,PDbHandle db,AppInstallCall *c)
@@ -181,14 +258,24 @@ void AppInstallStore_Process(HMODULE module,PDbHandle db,AppInstallCall *c)
     state.size=sizeof(state); state.version=PDB_CONNECTION_STATE_VERSION;
     if(a.state(db,&state)!=PDB_OK || state.transaction_active || state.statement_count) { c->unsafe=1; return; }
     if(a.clear(db)!=PDB_OK) return;
-    if(c->operation!=APP_INSTALL_CAS) {
-        c->result=install_read(&a,db,c->operation==APP_INSTALL_READ_APP,c->key,&c->record);
+    if(c->operation==APP_INSTALL_READ_ID || c->operation==APP_INSTALL_READ_APP) {
+        c->result=install_read(&a,db,c->operation==APP_INSTALL_READ_APP ? install_select_app : install_select_id,c->key,&c->record);
         goto settled;
     }
     old=&c->record;
     rc=a.begin(db);
     if(rc!=PDB_OK) goto error;
-    found=install_read(&a,db,0,c->proposed.approval.installation_id,old);
+    if(c->operation==APP_UPDATE_READ || c->operation==APP_UPDATE_CAS) {
+        c->result=update_read(&a,db,c->key,c->update_record);
+        if(c->operation==APP_UPDATE_READ || c->result!=PRUNTIME_OK) goto rollback;
+        if(!update_equal(c->update_record,c->update_expected)) {
+            c->result=PRUNTIME_INVALID; goto rollback;
+        }
+        rc=update_write(&a,db,c->update_proposed);
+        if(rc!=PDB_OK) goto error;
+        goto commit;
+    }
+    found=install_read(&a,db,install_select_id,c->proposed.approval.installation_id,old);
     if(c->previous_exists) {
         if(found!=PRUNTIME_OK || !AppInstallStore_RecordEqual(old,&c->previous) ||
                 c->previous.generation>=2147483647U || c->proposed.generation!=c->previous.generation+1) {
@@ -196,13 +283,14 @@ void AppInstallStore_Process(HMODULE module,PDbHandle db,AppInstallCall *c)
         }
     } else {
         if(found!=PRUNTIME_NOT_FOUND) { c->result=found==PRUNTIME_IO ? PRUNTIME_IO : PRUNTIME_BUSY; goto rollback; }
-        found=install_read(&a,db,1,c->proposed.approval.id,old);
+        found=install_read(&a,db,install_select_app,c->proposed.approval.id,old);
         if(found!=PRUNTIME_NOT_FOUND || c->proposed.generation!=1) {
             c->result=found==PRUNTIME_IO ? PRUNTIME_IO : PRUNTIME_BUSY; goto rollback;
         }
     }
-    rc=install_write(&a,db,!c->previous_exists,&c->proposed);
+    rc=install_write(&a,db,c->previous_exists ? install_update : install_insert,&c->proposed);
     if(rc!=PDB_OK) goto error;
+commit:
     c->outcome=PRUNTIME_COMMIT_UNKNOWN;
     rc=a.commit(db);
     if(rc!=PDB_OK) goto error;
@@ -215,7 +303,10 @@ error:
     (void)a.error(db,&c->error); c->result=PRUNTIME_IO;
 rollback:
     if(a.state(db,&state)==PDB_OK && state.transaction_active) c->cleanup_result=a.rollback(db);
+    if(c->cleanup_result!=PDB_OK) c->result=PRUNTIME_IO;
 settled:
     if(c->result==PRUNTIME_IO && !c->error.result) (void)a.error(db,&c->error);
-    if(a.state(db,&state)!=PDB_OK || state.transaction_active || state.statement_count) c->unsafe=1;
+    if(a.state(db,&state)!=PDB_OK || state.transaction_active || state.statement_count) {
+        c->unsafe=1; c->result=PRUNTIME_IO;
+    }
 }

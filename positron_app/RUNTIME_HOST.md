@@ -60,7 +60,7 @@ InstallCommit；只有已核对READY才关闭commit→data→intent→prepare，
 再次核验真实目录，SQL应用使用InstalledStorageOpen，不执行CREATE、首次绑定或迁移。
 作者代码和Browser队列只在这一独立启动成功后获得显式授权。
 
-主库schema v5的结构化登记、单worker持久CAS与关闭顺序见[应用数据设计](APPLICATION_DATA_PLAN.md#安装登记与持久授权)。
+主库的结构化登记、单worker持久CAS与关闭顺序见[应用数据设计](APPLICATION_DATA_PLAN.md#安装登记与持久授权)。
 原生provider先取得逻辑ID、再取得安装ID的独占named mutex；资源root和存储location另保留租约。
 随机安装身份由CryptoAPI生成，不来自作者ID或URL。Runtime负责所有转换、精确读回与提交分类，
 宿主不把合法字段、数据准备完成或CAS返回成功单独当作执行权。
@@ -69,7 +69,7 @@ InstallCommit；只有已核对READY才关闭commit→data→intent→prepare，
 PREPARING/FAILED转入显式恢复确认，由Runtime核对同一资源/批准并只执行尚未提交的迁移后缀；
 取消/撤销、资源改变、库缺失/身份错误和不可读登记拒绝启动，不转换成开发身份或创建空替代库。
 提交结果不明由InstallCommit做精确读回；仍不可读则保留恢复状态、显示失败并停止，不能自动重放。
-退出取消与READY竞争的判定仍归Runtime。首版不提供重装/卸载、revision>1或数据回退。
+退出取消与READY竞争的判定仍归Runtime。普通启动用 OpenInstalledEx 核验已提交 revision 和 generation。
 
 安装资源provider在发布token前将全部普通文件复制为可信原生不可变视图，包括未引用文件、空文件、
 根manifest和迁移。捕获期间保留源文件无写/删除分享句柄，前后核对身份/大小/时间，并再次完整枚举；
@@ -88,7 +88,7 @@ positron.exe --install "\Storage Card\Example.pxi"
 该入口与开发目录、冻结目录、installed及URL/脚本参数互斥，不把地址栏或网页链接当成原生安装入口。
 EXE私有AppPxi在同一Runtime owner上消费公开Archive reader；ZIP格式、危险路径/冲突、解压和CRC
 由Archive拥有，不复制解析器。源归档保留无写/删除分享的只读句柄，读取前后核对实际身份/大小/时间。
-它不改变HTTP下载默认动作，不注册系统`.pxi`关联；关联、更新和卸载另行接入。
+系统 `.pxi` 关联和卸载另行接入。
 
 输出位于实际EXE旁`apps\pxi-<随机名>`，新目录不覆盖已有目标，不用manifest ID拼物理路径。
 目录逐级走原生规范化/真实条目核对，文件使用CREATE_NEW；已存在或不能验证身份的对象拒绝。
@@ -105,6 +105,21 @@ EXE私有AppPxi在同一Runtime owner上消费公开Archive reader；ZIP格式�
 猜测删掉可能被PREPARING/FAILED/READY引用的目录。确认前关闭/拒绝或解包失败，逆序清理仅本次创建且
 身份仍匹配的对象；不递归扫删，不清用户库。未知文件、替换、无法证明身份或清理失败保留现场并写Debug诊断。
 退出后普通installed启动只读登记指向的资源，不需要原始PXI继续存在。孤立目录回收尚未实现。
+
+### PXI 资源更新
+
+同一已安装 ID 的较新 PXI 走资源更新确认，显示已安装版本、新版本、未验证发布者和已声明能力的风险。
+先退出旧实例，避免租约冲突。确认后 owner 同时保有候选快照、核验后的已安装快照和现有 SQL 存储，
+由 Runtime 资格与发布 API 判断是否可以切换。资源更新要求能力、schema 和迁移历史一致。
+提交后释放旧句柄与候选句柄，按新登记重新核验资源和原数据库，再启动页面并授权服务。
+
+中断后重新提交同一个 PXI。EXE 将包内容摘要与 PREPARING 记录比对，重新打开记录中的候选目录，
+并交给 Runtime 核验和恢复同一尝试。最终响应丢失由 Runtime 读回，普通 `--app` 从已提交登记
+重新核验。已被 current 或 pending 引用的目录保留供启动或恢复。
+
+隔离 Debug 包用 [更新设备门](../scripts/app_pxi_update_gate.ps1)验证真实 Notes 资源与既有数据库。
+两个冷进程覆盖 PREPARING 写入后读回不可用、同一尝试恢复、最终提交响应丢失和重开后读取原笔记。
+原生确认界面的触摸和视觉验收独立于该门。
 
 `scripts/app_pxi_gate.ps1 -RunRoot <正式app-pxi目录> -Python <解释器>`用于独立内置Temp完整包，
 要求包哈希12/12、空间预检、原生phase10、两个真实installed页面进程、相邻设置存储及退出/crash门。

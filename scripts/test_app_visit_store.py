@@ -293,7 +293,7 @@ class SourceContractTests(unittest.TestCase):
         self.assertEqual(SOURCE.count("api->migration(db,"), 1)
         # The SQL model above isolates the original v2 visit schema; the
         # production worker now includes the v5 installed-app registry.
-        self.assertIn("api->migration(db, 5, script)", SOURCE)
+        self.assertIn("api->migration(db, 6, script)", SOURCE)
         self.assertNotRegex(SOURCE, r'"[^"\n]*__(?:pdb|sqlite)')
         self.assertNotIn("sqlite3_", SOURCE)
         self.assertIn('TEXT("PDb_BindInt64")', SOURCE)

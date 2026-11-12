@@ -15,7 +15,7 @@ void AppPxi_Retain(AppPxi *pxi);
  * Unprovable/replaced output is preserved and reported as IO. */
 int AppPxi_Close(AppPxi **pxi);
 #ifdef _DEBUG
-int AppPxi_DebugRun(void);
+int AppPxi_DebugRun(int update_mode);
 /* Explicit fixture only, one shot after new output root and before extraction. */
 void AppPxi_DebugHook(void (*hook)(const char *,void *),void *user);
 #endif

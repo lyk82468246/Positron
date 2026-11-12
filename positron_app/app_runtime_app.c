@@ -46,6 +46,7 @@ struct AppRuntimeApp {
     int result;
     int kind;
     int installation_action;
+    unsigned long current_version;
     AppSettingsStore *store;
     char directory[1024];
     /* Published once before state OPEN, immutable thereafter. */
@@ -150,6 +151,7 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
             rc=AppRuntimeInstall_CopyMetadata(installed,&app->info,app->manifest,
                     sizeof(app->manifest),&app->manifest_bytes);
             app->installation_action=AppRuntimeInstall_Action(installed);
+            app->current_version=AppRuntimeInstall_CurrentVersion(installed);
             if(!app->installation_action) storage=AppRuntimeInstall_TakeStorage(installed);
         }
     } else if (rc == PRUNTIME_OK) {
@@ -300,6 +302,10 @@ int AppRuntimeApp_GrantSql(AppRuntimeApp *app)
 int AppRuntimeApp_InstallationAction(AppRuntimeApp *app)
 {
     return app ? app->installation_action : 0;
+}
+unsigned long AppRuntimeApp_CurrentVersion(AppRuntimeApp *app)
+{
+    return app ? app->current_version : 0;
 }
 int AppRuntimeApp_ApproveInstallation(AppRuntimeApp *app)
 {

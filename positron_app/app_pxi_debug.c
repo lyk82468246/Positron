@@ -9,7 +9,7 @@ typedef struct PxiTest {
     char root[1024],collision[1024];
     AppSettingsStore *store;
     LONG cancel;
-    int result,phase,hook_ok;
+    int result,phase,hook_ok,update_mode;
 } PxiTest;
 static int test_cancel(void *user) { return (int)InterlockedCompareExchange(&((PxiTest *)user)->cancel,0,0); }
 static int test_roots(PxiTest *t)
@@ -61,6 +61,65 @@ static int test_open(PxiTest *t,const char *target,int kind,AppRuntimePlatform *
     else strcpy(path,target);
     return AppRuntimeInstall_Open(p,t->store,kind,path,test_cancel,t,i);
 }
+static int test_note(AppRuntimeInstall *install,int insert)
+{
+    static const char write[]="{\"version\":1,\"method\":\"execute\","
+        "\"sql\":\"INSERT INTO notes(title,body) VALUES(?,?)\",\"params\":["
+        "{\"type\":\"text\",\"value\":\"\xe7\xac\x94\xe8\xae\xb0'\"},"
+        "{\"type\":\"text\",\"value\":\"keep me\"}]}";
+    static const char read[]="{\"version\":1,\"method\":\"query\","
+        "\"sql\":\"SELECT title,body FROM notes ORDER BY id\",\"params\":[]}";
+    PRuntimeStorageHandle storage;
+    const char *request;
+    char output[PRUNTIME_SERVICE_JSON_BYTES+1];
+    unsigned int bytes;
+    int rc,closed;
+    storage=AppRuntimeInstall_TakeStorage(install);
+    if(!storage) return PRUNTIME_STATE;
+    request=insert ? write : read;
+    rc=PRuntime_StorageExecuteJson(storage,request,(unsigned int)strlen(request),output,sizeof(output),&bytes);
+    closed=PRuntime_StorageClose(&storage);
+    if(rc!=PRUNTIME_OK) return rc;
+    if(!insert && (!strstr(output,"\"value\":\"\xe7\xac\x94\xe8\xae\xb0'\"") ||
+            !strstr(output,"\"value\":\"keep me\""))) return PRUNTIME_INVALID;
+    return closed;
+}
+static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrationRecord *record)
+{
+    AppRuntimePlatform platform;
+    AppRuntimeInstall *install;
+    PRuntimeUpdateRegistration *pair;
+    int rc;
+    install=NULL;
+    pair=(PRuntimeUpdateRegistration *)malloc(sizeof(*pair));
+    if(!pair) return 1;
+    rc=1; t->phase=1;
+    if(t->update_mode==1) {
+        if(test_open(t,"old.pxi",APP_RUNTIME_INSTALL_PXI,&platform,&install)!=PRUNTIME_OK ||
+                AppRuntimeInstall_Confirm(install)!=PRUNTIME_OK || test_note(install,1)!=PRUNTIME_OK) goto done;
+        AppRuntimeInstall_Close(&install);
+    }
+    if(AppRuntimeRegistry_FindApp(registry,"org.positron.updatenotes",record)!=PRUNTIME_OK ||
+            record->approval.revision!=1 || record->state!=PRUNTIME_REG_READY) goto done;
+    t->phase=2;
+    if(test_open(t,"resources-v2.pxi",APP_RUNTIME_INSTALL_PXI,&platform,&install)!=PRUNTIME_OK ||
+            AppRuntimeInstall_Action(install)!=APP_RUNTIME_UPDATE_CONFIRM) goto done;
+    AppRuntimeInstall_DebugOptions(install,t->update_mode==1 ? 2 : 3,1000000,0);
+    if(AppRuntimeInstall_Confirm(install)!=(t->update_mode==1 ? PRUNTIME_UNRESOLVED : PRUNTIME_OK)) goto done;
+    AppRuntimeInstall_Close(&install);
+    t->phase=3;
+    if(AppRuntimeRegistry_FindUpdate(registry,record->approval.installation_id,pair)!=PRUNTIME_OK ||
+            pair->attempt_state!=(t->update_mode==1 ? PRUNTIME_UPDATE_PREPARING : PRUNTIME_UPDATE_PUBLISHED) ||
+            !AppInstallStore_RecordEqual(record,&pair->base) ||
+            (t->update_mode==1 ? !AppInstallStore_RecordEqual(record,&pair->current) :
+                !AppInstallStore_RecordEqual(&pair->candidate,&pair->current))) goto done;
+    if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
+            AppRuntimeInstall_Action(install) || test_note(install,0)!=PRUNTIME_OK) goto done;
+    t->phase=4; rc=0;
+done:
+    AppRuntimeInstall_Close(&install);
+    free(pair); return rc;
+}
 static DWORD WINAPI test_worker(void *user)
 {
     PxiTest *t;
@@ -76,6 +135,7 @@ static DWORD WINAPI test_worker(void *user)
     record=(PRuntimeRegistrationRecord *)calloc(1,sizeof(*record));
     if(!registry || !record) goto done;
     AppRuntimeRegistry_Init(registry,t->store); t->phase=1;
+    if(t->update_mode) { t->result=test_update(t,registry,record); goto done; }
     if(test_roots(t)!=0 || test_extract(t,"valid.pxi",PRUNTIME_OK) || test_roots(t)!=0) goto done;
     t->phase=2;
     if(test_extract(t,"crc.pxi",PRUNTIME_INVALID) || test_roots(t)!=0 ||
@@ -142,7 +202,7 @@ done:
     AppPxi_DebugHook(NULL,NULL); AppRuntimeInstall_Close(&install);
     free(record); free(registry); return 0;
 }
-int AppPxi_DebugRun(void)
+int AppPxi_DebugRun(int update_mode)
 {
     PxiTest *t;
     AppSettingsResult result;
@@ -152,7 +212,9 @@ int AppPxi_DebugRun(void)
     char database[1024],line[192];
     int rc;
     t=(PxiTest *)calloc(1,sizeof(*t)); if(!t) return 1;
-    t->result=1; prefix=L"\\Temp\\Positron-device-gate\\app-pxi-";
+    t->result=1; t->update_mode=update_mode;
+    prefix=update_mode ? L"\\Temp\\Positron-device-gate\\app-pxi-update-" :
+        L"\\Temp\\Positron-device-gate\\app-pxi-";
     if(!GetModuleFileNameW(NULL,exe,MAX_PATH) || wcsncmp(exe,prefix,wcslen(prefix))) { free(t); return 1; }
     slash=wcsrchr(exe,L'\\'); if(!slash) { free(t); return 1; } *slash=0;
     wcscpy(dll,exe); wcscat(dll,L"\\positron_db.dll");
@@ -167,7 +229,10 @@ int AppPxi_DebugRun(void)
     if(worker) { WaitForSingleObject(worker,INFINITE); CloseHandle(worker); }
     AppSettingsStore_RequestClose(t->store);
     while(AppSettingsStore_TryDestroy(&t->store)==APP_SETTINGS_PENDING) Sleep(10);
-    _snprintf(line,sizeof(line)-1,"pxi-native %s phase=%d crc=complete cleanup=owned retention=conservative\r\n",t->result ? "FAIL" : "PASS",t->phase);
+    if(update_mode)
+        _snprintf(line,sizeof(line)-1,"pxi-update %s mode=%d phase=%d\r\n",t->result ? "FAIL" : "PASS",update_mode,t->phase);
+    else
+        _snprintf(line,sizeof(line)-1,"pxi-native %s phase=%d crc=complete cleanup=owned retention=conservative\r\n",t->result ? "FAIL" : "PASS",t->phase);
     line[sizeof(line)-1]=0; AppDebug_Log(line); rc=t->result; free(t); return rc;
 }
 #endif

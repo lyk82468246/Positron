@@ -7,6 +7,8 @@
 #define APP_INSTALL_READ_ID 1
 #define APP_INSTALL_READ_APP 2
 #define APP_INSTALL_CAS 3
+#define APP_UPDATE_READ 4
+#define APP_UPDATE_CAS 5
 typedef struct AppInstallCall {
     int operation;
     char key[64];
@@ -14,6 +16,9 @@ typedef struct AppInstallCall {
     PRuntimeRegistrationRecord previous;
     PRuntimeRegistrationRecord proposed;
     PRuntimeRegistrationRecord record;
+    PRuntimeUpdateRegistration *update_record;
+    const PRuntimeUpdateRegistration *update_expected;
+    const PRuntimeUpdateRegistration *update_proposed;
     int result;
     unsigned int outcome;
     PDbErrorInfo error;
@@ -24,6 +29,7 @@ typedef struct AppInstallCall {
 #endif
 } AppInstallCall;
 const char *AppInstallStore_Schema(void);
+const char *AppInstallStore_UpdateSchema(void);
 /* Settings DB owner only. Settles every statement/transaction before return. */
 void AppInstallStore_Process(HMODULE module, PDbHandle db, AppInstallCall *call);
 int AppInstallStore_RecordEqual(const PRuntimeRegistrationRecord *a,

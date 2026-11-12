@@ -110,6 +110,8 @@ BEGIN
     IDS_INSTALL_SQL_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nInstall this application? Publisher not verified. Its JavaScript code may read and change its own saved database. It cannot access browser data or arbitrary files. Only install applications you trust. After installation, normal starts will not ask again."
     IDS_INSTALL_RECOVER_EN "%s\nID: %s\nVersion: %lu\n\nComplete this unfinished installation? Existing application data will be kept. Publisher not verified. Its JavaScript code will run once installation succeeds. No native services are requested."
     IDS_INSTALL_SQL_RECOVER_EN "%s\nID: %s\nVersion: %lu\n\nComplete this unfinished installation? Existing application data will be kept. Publisher not verified. Its JavaScript code may read and change its own saved database after successful installation. Browser data and arbitrary files are not granted."
+    IDS_UPDATE_CONFIRM_EN "%s\nID: %s\nNew version: %lu (installed: %lu)\n\nUpdate this application? Publisher not verified. The new JavaScript code will run after the update. Only update from sources you trust."
+    IDS_UPDATE_SQL_CONFIRM_EN "%s\nID: %s\nNew version: %lu (installed: %lu)\n\nUpdate this application? Publisher not verified. The new JavaScript code can read and change this application's existing database. Only update from sources you trust."
     IDS_INSTALL_FAILED_EN "The application installation or startup could not be completed. Files and saved data were kept. Reopen the application to check its installation state."
 END
 
@@ -225,6 +227,8 @@ BEGIN
     IDS_INSTALL_SQL_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n安装此应用？发布者未验证，应用的 JavaScript 代码可以读取和修改其独立保存的数据库，不授予浏览器数据或任意文件权限。请只安装信任的应用。安装成功后正常启动不再询问。"
     IDS_INSTALL_RECOVER_ZH "%s\nID: %s\n版本：%lu\n\n继续完成上次未完成的安装？保留现有应用数据。发布者未验证，安装成功后应用将执行 JavaScript 代码。本应用不请求原生服务。"
     IDS_INSTALL_SQL_RECOVER_ZH "%s\nID: %s\n版本：%lu\n\n继续完成上次未完成的安装？保留现有应用数据。发布者未验证，安装成功后应用的 JavaScript 代码可以读取和修改其独立数据库，不授予浏览器数据或任意文件权限。"
+    IDS_UPDATE_CONFIRM_ZH "%s\nID: %s\n新版本：%lu（已安装：%lu）\n\n更新此应用？发布者未验证。更新后将执行新的 JavaScript 代码。请仅使用可信来源的更新。"
+    IDS_UPDATE_SQL_CONFIRM_ZH "%s\nID: %s\n新版本：%lu（已安装：%lu）\n\n更新此应用？发布者未验证。新的 JavaScript 代码可读取和修改此应用的现有数据库。请仅使用可信来源的更新。"
     IDS_INSTALL_FAILED_ZH "无法完成应用安装或启动。原有文件和保存的数据已保留。请重新打开应用检查安装状态。"
 END
 

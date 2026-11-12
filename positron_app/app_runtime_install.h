@@ -6,12 +6,14 @@
 #define APP_RUNTIME_INSTALL_DIRECTORY 1
 #define APP_RUNTIME_INSTALLED 2
 #define APP_RUNTIME_INSTALL_PXI 3
+#define APP_RUNTIME_UPDATE_CONFIRM 100
 typedef struct AppRuntimeInstall AppRuntimeInstall;
 /* Worker-only scheduler; never transfers a live Runtime/DB handle to UI. */
 int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
         int kind,const char *target,int (*cancelled)(void *),void *user,
         AppRuntimeInstall **output);
-int AppRuntimeInstall_Action(AppRuntimeInstall *install); /* 0 ready; otherwise INTENT_* */
+int AppRuntimeInstall_Action(AppRuntimeInstall *install); /* 0 ready; otherwise confirmation action */
+unsigned long AppRuntimeInstall_CurrentVersion(AppRuntimeInstall *install);
 int AppRuntimeInstall_CopyMetadata(AppRuntimeInstall *install,PRuntimeManifestInfo *info,
         char *manifest,unsigned int capacity,unsigned int *bytes);
 int AppRuntimeInstall_Confirm(AppRuntimeInstall *install);

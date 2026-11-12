@@ -146,6 +146,72 @@ void AppRuntimeRegistry_InstalledProvider(AppRuntimeRegistry *r,PRuntimeInstalle
     memset(p,0,sizeof(*p)); p->size=sizeof(*p); p->version=1; p->user_data=r;
     p->open=registry_open; p->refresh=registry_active; p->close=registry_close;
 }
+int AppRuntimeRegistry_FindUpdate(AppRuntimeRegistry *r,const char *id,PRuntimeUpdateRegistration *out)
+{
+    PRuntimeUpdateRegistration *record;
+    int rc;
+    if(!id || strlen(id)!=32) return PRUNTIME_INVALID;
+    record=(PRuntimeUpdateRegistration *)malloc(sizeof(*record));
+    if(!record) return PRUNTIME_MEMORY;
+    memset(&r->call,0,sizeof(r->call)); r->call.operation=APP_UPDATE_READ;
+    strcpy(r->call.key,id); r->call.update_record=record;
+    rc=AppSettingsStore_InstallCall(r->store,&r->call);
+    if(rc==PRUNTIME_OK) *out=*record;
+    free(record);
+    return rc;
+}
+static int registry_update_read(void *user,void *token,PRuntimeUpdateRegistration *record)
+{
+    AppRuntimeRegistry *r;
+    AppRegistrationLease *lease;
+    r=(AppRuntimeRegistry *)user;
+    lease=(AppRegistrationLease *)token;
+    if(!lease || !lease->app || !lease->installation) return PRUNTIME_STATE;
+#ifdef _DEBUG
+    if(r->fail_reads) { --r->fail_reads; return PRUNTIME_IO; }
+#endif
+    return AppRuntimeRegistry_FindUpdate(r,lease->installation_id,record);
+}
+static int registry_update_cas(void *user,void *token,const PRuntimeUpdateRegistration *old,
+        const PRuntimeUpdateRegistration *next,unsigned int *outcome)
+{
+    AppRuntimeRegistry *r;
+    AppRegistrationLease *lease;
+    PRuntimeUpdateRegistration *record;
+    int rc;
+    *outcome=PRUNTIME_COMMIT_NOT_COMMITTED;
+    r=(AppRuntimeRegistry *)user; lease=(AppRegistrationLease *)token;
+    if(!lease || !lease->app || !lease->installation ||
+            strcmp(next->current.approval.id,lease->id) ||
+            strcmp(next->current.approval.installation_id,lease->installation_id) ||
+            strcmp(next->base.approval.installation_id,lease->installation_id) ||
+            strcmp(next->candidate.approval.installation_id,lease->installation_id)) return PRUNTIME_INVALID;
+    record=(PRuntimeUpdateRegistration *)malloc(sizeof(*record));
+    if(!record) return PRUNTIME_MEMORY;
+    memset(&r->call,0,sizeof(r->call)); r->call.operation=APP_UPDATE_CAS;
+    strcpy(r->call.key,lease->installation_id);
+    r->call.update_record=record; r->call.update_expected=old; r->call.update_proposed=next;
+    r->call.outcome=*outcome;
+#ifdef _DEBUG
+    if((r->fault==2 && next->attempt_state==PRUNTIME_UPDATE_PREPARING) ||
+            (r->fault==3 && next->attempt_state==PRUNTIME_UPDATE_PUBLISHED)) r->call.fault=1;
+#endif
+    rc=AppSettingsStore_InstallCall(r->store,&r->call);
+    *outcome=r->call.outcome;
+#ifdef _DEBUG
+    if(r->call.fault && *outcome==PRUNTIME_COMMIT_UNKNOWN) {
+        if(r->fault==2) r->fail_reads=1;
+        r->fault=0;
+    }
+#endif
+    free(record);
+    return rc;
+}
+void AppRuntimeRegistry_UpdateProvider(AppRuntimeRegistry *r,PRuntimeUpdateProvider *p)
+{
+    memset(p,0,sizeof(*p)); p->size=sizeof(*p); p->version=1; p->user_data=r;
+    p->read=registry_update_read; p->compare_exchange=registry_update_cas;
+}
 int AppRuntimeRegistry_NewId(char output[33])
 {
     HCRYPTPROV provider;
