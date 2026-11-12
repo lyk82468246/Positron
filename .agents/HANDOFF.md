@@ -31,7 +31,7 @@ writer 同步添加条目、块间取消，Finish 后由宿主提交；PXI 首�
 
 ### Runtime 当前验收与安装边界
 
-本阶段停止扩展。版本化读取/只读更新资格为候选：父实例退休修正后的 Debug 六项设备门通过；Release 三次正式构建均为 VS2008 msenv.dll 崩溃，未部署，不提升基线。旧 55 函数/37 结构保持。源码、失败与恢复证据见[阶段收尾](../docs/history/RUNTIME_RESOURCE_UPDATE_CLOSEOUT.md)；current/pending、更新恢复及 EXE 更新未实现。
+版本化读取与只读更新资格已通过同源码 Debug/Release 六项设备门。Release 首次补验遇到 CAB 与 EXE 链接顺序问题，串行重跑成功。设备上的原 Notes 二进制已按 SHA256 核对恢复。旧 55 函数/37 结构保持。源码、失败与恢复证据见[阶段收尾](../docs/history/RUNTIME_RESOURCE_UPDATE_CLOSEOUT.md)；current/pending、更新恢复及 EXE 更新未实现。
 
 CAB关联默认关闭，原生安装E_FAIL；对照与补丁见[PXI取证](../docs/history/APP_PXI_ACCEPTANCE.md)。
 
@@ -488,7 +488,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-本轮已复核 ROADMAP 与限制，阶段按用户要求收尾，不自动启动下一批。若恢复开发，唯一前置是解决正式 Release 构建环境崩溃并完成当前候选的同源码六项设备门；通过后才考虑 Runtime current/pending 发布与恢复合同，EXE 等待 DLL。首装人工 backlog、外置卷 native2 和旧 DB 错误保留，不重开 FULL/断电门。
+本轮已复核 ROADMAP 与限制，版本化读取和只读资格退出待验收。下一步由 Runtime 实现 current/pending 发布与恢复合同，随后由 EXE 接入。首装人工 backlog、外置卷 native2 和旧 DB 错误保留，不重开 FULL/断电门。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。

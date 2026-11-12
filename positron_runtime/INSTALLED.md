@@ -1,6 +1,6 @@
 # Native installed application contracts
 
-These native contracts in `positron_runtime.h` cover immutable revision verification, inactive installation intents, identity-bound database preparation and READY storage with page SQL queues. Final READY registration is coordinated by a retained native commit job; the EXE supplies its persistent registry, publication and UI adapter. Browser registration and author execution require explicit host scheduling. Existing development-directory/storage APIs and layouts are unchanged. The revision-aware reader and resource-update qualifier below are candidate additions pending closing validation; update publication is not implemented.
+These native contracts in `positron_runtime.h` cover immutable revision verification, inactive installation intents, identity-bound database preparation and READY storage with page SQL queues. Final READY registration is coordinated by a retained native commit job; the EXE supplies its persistent registry, publication and UI adapter. Browser registration and author execution require explicit host scheduling. Existing development-directory/storage APIs and layouts are unchanged. The revision-aware reader and resource-update qualifier support read-only verification. Update publication remains planned.
 
 ## Ownership and trust
 
@@ -242,7 +242,7 @@ Shutdown is a handshake: revoke Browser services and its queue, stop all UI acce
 
 ## Qualifying a resource-only update
 
-**Candidate contract:** closing validation is pending. `PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` only qualify an update; they do not publish it. Prepare requires a live COMPLETE installed current, a distinct COMPLETE prepare-kind candidate and exact v1 options with an explicit native update confirmation. SQL requires that current's READY installed storage with all page queues closed; no-SQL passes NULL. A detached approval or development storage cannot replace these live inputs.
+`PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` only qualify an update; they do not publish it. Prepare requires a live COMPLETE installed current, a distinct COMPLETE prepare-kind candidate and exact v1 options with an explicit native update confirmation. SQL requires that current's READY installed storage with all page queues closed; no-SQL passes NULL. A detached approval or development storage cannot replace these live inputs.
 
 The canonical app ID must match, the canonical resource roots must differ, and candidate app version must increase. Runtime derives the proposed installation ID from current and revision as current+1; revision/generation exhaustion returns LIMIT. Requested/approved permissions, SQL presence and target schema remain unchanged. Every historical migration must retain its version, path, file length and SHA-256 digest. Capability/schema/history changes return UNSUPPORTED; wrong ID/root or non-increasing version INVALID; missing SQL storage ARGUMENT. Other API/digest/policy restrictions remain those of manifest and installed-record admission.
 

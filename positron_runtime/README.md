@@ -481,15 +481,15 @@ for lifecycle, error and explicit recovery rules.
 
 Provider requirements, exact digest framing, limits, lifecycle, errors and a
 consumer example are in [the installed contract](INSTALLED.md). The original opener and
-first-install APIs admit revision 1 only. Candidate `PRuntime_OpenInstalledEx`
+first-install APIs admit revision 1 only. `PRuntime_OpenInstalledEx`
 adds an explicit expected-revision check through the same verified handle family;
 it does not publish an update. `PRuntime_InstalledStorageOpen` retains that verified parent and
 an existing native DB location, refreshes READY registration and reuses typed
 SQL/JSON without CREATE, claim or migration. Installed page queues reuse the same
-bounded Browser copy channel with registration retirement. Candidate
+bounded Browser copy channel with registration retirement.
 `PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` retains verified current,
 candidate and existing storage to qualify unchanged permissions/schema/migration
-history without writes. Closing validation is pending; see [qualification ownership](INSTALLED.md#qualifying-a-resource-only-update).
+history without writes. See [qualification ownership](INSTALLED.md#qualifying-a-resource-only-update).
 Current/pending publication and update recovery are not implemented. EXE first-install
 registry/UI behavior is described separately in the Runtime host guide. Native SHA-256 availability is probed, not assumed for every ROM.
 

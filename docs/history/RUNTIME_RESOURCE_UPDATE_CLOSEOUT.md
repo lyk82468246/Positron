@@ -23,3 +23,7 @@
 原本设备 Notes 位于 `\Temp\Positron-device-gate\app-pxi-20261106-222650`。为释放内部空间，仅在零 holder 和归档哈希核对后移走已知 exe/dll；数据库、apps/data 和资源保留。最终从本地该门的 `archived-before-final-closeout` 恢复完整原二进制包，`restored-final-closeout/result.txt` 为 PASS，所有文件回读 SHA256 一致。未自动启动作者应用，未恢复或覆盖任何旧数据库。
 
 该候选保存为未完成双配置验收的工作，不宣称可升级应用。恢复开发时先解决正式 Release 构建崩溃并完成同源码六项门；随后由 Runtime 负责 current/pending、原子发布、未知结果恢复，EXE 再接线。能力/schema 变化、数据副本迁移与卸载另行立项。此收尾不自动启动任何后续批次。
+
+## Release 补验
+
+2026-11-12 使用同一源码 39e5e166 恢复验收。首次正式构建中 CAB 在 EXE 链接完成前启动，找不到 positron.exe。保留构建日志后串行重跑通过。内置空间初次不足，归档并核对原 Notes 二进制后释放其部署副本。Release 门 `tmp/device-runs/20261112-202315-runtime-update-qualification-release-accepted` 六项全部通过，唯一 TESTBENCH PASS，零 ERROR/FAIL，完整日志回收后清理测试目录，crash_check PASS 且无新增 dump。原 Notes 二进制从归档恢复并回读核对 SHA256，数据库与资源保留原位。双配置验收范围为版本化读取与只读更新资格。更新发布和恢复仍待实现。
