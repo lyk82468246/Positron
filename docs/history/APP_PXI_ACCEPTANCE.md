@@ -70,6 +70,10 @@ git apply --check通过；正式设备验收前不自动恢复。独立工具--p
 撤回时一度将Git规范LF写回VDD，已恢复ASCII/CRLF并保留加载失败日志；随后VS自身两次崩溃由
 Application事件证实，原正式配置串行重试成功，失败不算构建通过。
 
+## 交互式 CAB 关联验收
+
+最小 CAB 通过交互安装。完整 Release CAB 在内置空间不足时失败，腾出空间后安装成功。用户从文件管理器点开带中文和空格的 PXI，完成首装、拒绝更新及接受更新。冷登记为 revision 2、generation 3，尝试为 PUBLISHED。系统卸载后，RAPI 确认 HKCR .pxi、打开命令及程序文件均不存在。完成的隔离测试目录和日志已删除，原 Notes 部署已恢复。正式 CAB 的解包文件与验收候选逐文件哈希一致。
+
 ## 构建与连接失败
 
 首两次Debug以及一次补充自检构建在VS2008预生成阶段退出，Application事件确认

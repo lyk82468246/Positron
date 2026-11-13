@@ -180,6 +180,36 @@
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
         }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_PXI_EXTENSION"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_PXI_CLASS"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_PXI_SHELL"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_PXI_OPEN"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_POSITRON_PXI_COMMAND"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
     }
     "Configurations"
     {
@@ -778,6 +808,79 @@
             {
                 "Keys"
                 {
+"{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_PXI_EXTENSION"
+{
+"Name" = "8:.pxi"
+"Condition" = "8:"
+"Keys"
+{
+}
+"Values"
+{
+"{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_PXI_EXTENSION_DEFAULT"
+{
+"Name" = "8:"
+"Value" = "8:Positron.PXI"
+"ValueType" = "3:1"
+}
+}
+}
+"{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_PXI_CLASS"
+{
+"Name" = "8:Positron.PXI"
+"Condition" = "8:"
+"Keys"
+{
+"{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_PXI_SHELL"
+{
+"Name" = "8:shell"
+"Condition" = "8:"
+"Keys"
+{
+"{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_PXI_OPEN"
+{
+"Name" = "8:open"
+"Condition" = "8:"
+"Keys"
+{
+"{B1EBC968-6B66-4532-A885-748B79AF4477}:_POSITRON_PXI_COMMAND"
+{
+"Name" = "8:command"
+"Condition" = "8:"
+"Keys"
+{
+}
+"Values"
+{
+"{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_PXI_COMMAND_DEFAULT"
+{
+"Name" = "8:"
+"Value" = "8:\"\"%InstallDir%\\positron.exe\"\" --install \"\"%%1\"\""
+"ValueType" = "3:1"
+}
+}
+}
+}
+"Values"
+{
+}
+}
+}
+"Values"
+{
+}
+}
+}
+"Values"
+{
+"{C3684F64-58E2-4092-8E3C-D7483080DE5A}:_POSITRON_PXI_CLASS_DEFAULT"
+{
+"Name" = "8:"
+"Value" = "8:Positron Application Installer"
+"ValueType" = "3:1"
+}
+}
+}
                 }
             }
             "HKU"

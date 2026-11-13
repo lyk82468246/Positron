@@ -88,7 +88,7 @@ positron.exe --install "\Storage Card\Example.pxi"
 该入口与开发目录、冻结目录、installed及URL/脚本参数互斥，不把地址栏或网页链接当成原生安装入口。
 EXE私有AppPxi在同一Runtime owner上消费公开Archive reader；ZIP格式、危险路径/冲突、解压和CRC
 由Archive拥有，不复制解析器。源归档保留无写/删除分享的只读句柄，读取前后核对实际身份/大小/时间。
-系统 `.pxi` 关联和卸载另行接入。
+CAB 安装将 `.pxi` 关联到 `--install`。文件管理器传入带引号的完整包路径，复用现有确认。系统移除 CAB 时撤销关联。
 
 输出位于实际EXE旁`apps\pxi-<随机名>`，新目录不覆盖已有目标，不用manifest ID拼物理路径。
 目录逐级走原生规范化/真实条目核对，文件使用CREATE_NEW；已存在或不能验证身份的对象拒绝。

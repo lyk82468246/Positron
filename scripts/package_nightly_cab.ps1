@@ -101,6 +101,13 @@ function Assert-CabPayload([string]$cab, [string]$evidenceRoot) {
     & $expand '-F:*' $cab $directory | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "CAB payload extraction failed" }
     [xml]$setup = [IO.File]::ReadAllText((Join-Path $directory '_setup.xml'))
+    $extension = $setup.SelectSingleNode('/wap-provisioningdoc/characteristic[@type="Registry"]/characteristic[@type="HKCR\.pxi"]/parm[@name=""]')
+    $command = $setup.SelectSingleNode('/wap-provisioningdoc/characteristic[@type="Registry"]/characteristic[@type="HKCR\Positron.PXI\shell\open\command"]/parm[@name=""]')
+    if ($null -eq $extension -or $extension.GetAttribute('value') -cne 'Positron.PXI' -or
+        $null -eq $command -or $command.GetAttribute('value') -cne '"%InstallDir%\positron.exe" --install "%1"' -or
+        $command.GetAttribute('translation') -cne 'install' -or $command.GetAttribute('datatype') -cne 'string') {
+        Fail "CAB PXI association command or install-directory translation mismatch"
+    }
     $files = @{}
     foreach ($folder in $setup.SelectNodes('/wap-provisioningdoc/characteristic[@type="FileOperation"]/characteristic')) {
         foreach ($file in $folder.SelectNodes('characteristic[characteristic[@type="Extract"]]')) {
