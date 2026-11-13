@@ -112,4 +112,4 @@ pending持久化后中断、切换未提交/已提交响应丢失/不可读/竞�
 关闭/重入/stale、unknown不重放及成功切换不被取消反转。用独立冷库/资源字节证据核对，不能只看日志。
 
 DLL 双配置门覆盖旧 revision 1 与新增版本化入口。EXE 两进程门消费真实 Notes PXI、注入登记回调失败并核对冷库。
-普通命令行的原生确认、实际页面交互和 Release 设备启动另验。
+Release 普通确认、笔记编辑与冷重开见[应用更新验收](history/APP_PXI_UPDATE_ACCEPTANCE.md)。

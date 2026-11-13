@@ -178,7 +178,7 @@ SIP/IME 不因该接线而宣称完成。地址栏 EDIT 也属于同一顶层窗
 | 显式revision安装读取 | `PRuntime_OpenInstalledEx`及共享Revision/InstalledStorageOpen/ServiceQueue链 | 已实现但仅核验 | 显式期望revision 1..2147483647与generation均精确匹配可信登记；旧OpenInstalled仍只接受1；不伪造旧记录、无发布写入，单revision原预算不变 | TEST1386覆盖rev2读取/存储/队列及旧入口拒绝；Debug/Release 定向门通过，更新发布另有前置 |
 | 只读资源更新资格 | `PRuntime_ResourceUpdatePrepare/Step/GetInfo/Cancel/Close` | 已实现但仅核验 | 活installed/独立prepare候选、SQL需当前READY存储且无队列；相同权限/schema及迁移版本/路径/摘要，版本递增；保有两父项/既有租约/DB位置，阻止关闭/SQL/首装冲突；双revision+存储+job+128KiB reserve≤1280KiB，host快照另计；无CAS/服务grant | TEST1386覆盖准入、拒绝、取消/撤销、线程/重入、终态保有、DB字节不变性；父项退休不得报完成；发布另走活资格与登记provider，EXE不能用复制Info自行发布 |
 | 同权限及schema的资源更新发布与恢复 | `PRuntime_UpdatePublishBegin/Step/GetInfo/Cancel/Close`、`PRuntime_UpdateObserve` | 已实现，需可信登记provider | 保有活资格与原租约，精确比较current和attempt两行并原子持久化；每次CAS读回，未知不自动重放；1280KiB组合Runtime预算 | TEST1386覆盖PREPARING读回失败、显式恢复、取消、切换响应丢失与新revision重开及原库查询；EXE 已接入持久事务登记与 PXI 更新入口 |
-| PXI 安装与更新 | Archive/Runtime公共合同，由EXE接原生输出、首次安装与资源更新 | 有界待扩展 | 不依赖WM6.5 ZIP；Archive CRC不等于物理包含性、批准或登记提交；EXE有更严格128条目/4MiB预算 | 首装组合及剩余人工边界见[宿主合同](../positron_app/RUNTIME_HOST.md)；资源更新与恢复已过 Notes Debug 自动门，普通确认和 Release 设备待验，系统关联与卸载待接入 |
+| PXI 安装与更新 | Archive/Runtime公共合同，由EXE接原生输出、首次安装与资源更新 | 有界待扩展 | 不依赖WM6.5 ZIP；Archive CRC不等于物理包含性、批准或登记提交；EXE有更严格128条目/4MiB预算 | 首装组合及剩余人工边界见[宿主合同](../positron_app/RUNTIME_HOST.md)；资源更新与恢复已过 Notes Debug 自动门，Notes Release 普通确认及冷重开通过，系统关联与卸载待接入 |
 
 ## DB：`positron_db.dll`
 
