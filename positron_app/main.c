@@ -110,6 +110,9 @@ static int g_tab_count;
 static int g_tabs_enabled;
 static int g_tabs_closing;
 static AppRuntimeApp *g_runtime_app;
+static unsigned long g_apps_open_tab;
+static HANDLE g_apps_open_document;
+static int g_apps_redrawing;
 static unsigned long g_runtime_tab_id;
 static char g_startup_app_directory[1024];
 static int g_startup_runtime_kind;
@@ -262,6 +265,7 @@ static void app_download_save_post(void);
 static void app_tabs_update_menu(void);
 static int app_tabs_select(int slot);
 static int app_tabs_new(void);
+static void app_show_error(AppTextId message);
 static void app_tabs_close(void);
 static void app_tabs_handle_done(HWND hwnd, AppNavigationRequest *request,
         unsigned long tab_id);
@@ -3052,6 +3056,17 @@ static int app_build_page(const char *url, HANDLE *out_document,
     data.dpi = g_dpi;
     data.viewport_width = g_page_width;
     data.viewport_height = g_page_height;
+    if (page_kind == APP_I18N_PAGE_APPS) {
+        if (!g_apps_redrawing) {
+            g_tab->installed_loaded=0;
+            g_tab->installed_request=0;
+            if (g_settings_store && SetTimer(g_window,APP_SETTINGS_TIMER_ID,50,NULL))
+                (void)AppSettingsStore_ListInstalled(g_settings_store,g_app.tab_id,
+                        &g_tab->installed_request);
+        }
+        data.installed=g_tab->installed_loaded ? &g_tab->installed : NULL;
+        data.installed_loading=g_tab->installed_request!=0;
+    }
     if (page_kind == APP_I18N_PAGE_HISTORY && g_visits_enabled) {
         if (!g_visits_redrawing) app_visits_request(0, 0);
         data.visits = g_tab->visits;
@@ -4844,6 +4859,23 @@ static void app_settings_tick(HWND hwnd)
         if (result.request_id == 1) g_settings_bootstrapping = 0;
         app_visits_result(hwnd, &result);
         app_downloads_result(&result);
+        if (result.operation==APP_INSTALLED_LIST) {
+            for (i=0;i<APP_TAB_MAX;++i) {
+                AppTab *tab;
+                tab=&g_tabs[i];
+                if (!tab->used || tab->closing || tab->host.tab_id!=result.tab_id ||
+                        tab->installed_request!=result.request_id) continue;
+                tab->installed_request=0;
+                tab->installed_loaded=result.result==APP_SETTINGS_OK;
+                if (tab->installed_loaded) tab->installed=result.installed;
+                if (tab==g_tab && g_page_kind==APP_I18N_PAGE_APPS && !g_tabs_closing) {
+                    g_apps_redrawing=1;
+                    (void)app_load_local_page(hwnd,"positron://apps",APP_HISTORY_REFRESH,-1);
+                    g_apps_redrawing=0;
+                }
+                break;
+            }
+        }
 #ifdef _DEBUG
         if (g_settings_live_mode && result.operation == APP_SETTINGS_SAVE &&
                 result.result == APP_SETTINGS_OK)
@@ -6459,6 +6491,26 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     AppInternalRoute route;
     int same_document;
 
+    if (source==APP_NAV_SOURCE_DOCUMENT && g_page_kind==APP_I18N_PAGE_APPS &&
+            url && !strncmp(url,"#app-open-",10)) {
+        int i;
+        if (!g_tab->installed_loaded || g_tabs_closing || g_navigation_request) return 0;
+        if (g_runtime_app) {
+            app_set_status(APP_TEXT_STATUS_TAB_FAILED);
+            return 0;
+        }
+        for (i=0;i<g_tab->installed.count;++i) {
+            if (strcmp(url+10,g_tab->installed.rows[i].id)) continue;
+            if (!SetTimer(g_window,APP_RUNTIME_TIMER_ID,100,NULL)) return 0;
+            g_runtime_app=AppRuntimeApp_StartKind(APP_RUNTIME_INSTALLED,
+                    g_tab->installed.rows[i].id,g_settings_store);
+            if (!g_runtime_app) { KillTimer(g_window,APP_RUNTIME_TIMER_ID); return 0; }
+            g_apps_open_tab=g_app.tab_id;
+            g_apps_open_document=g_document;
+            return 1;
+        }
+        return 0;
+    }
     /* Application-owned history controls, never a command from a network
      * page, startup argument or replayed navigation. Do not change history. */
     if (source == APP_NAV_SOURCE_DOCUMENT &&
@@ -8884,6 +8936,30 @@ static LRESULT CALLBACK app_window_proc(HWND hwnd, UINT message,
         return 0;
     case WM_TIMER:
         if (wparam == APP_RUNTIME_TIMER_ID) {
+            if (g_apps_open_tab) {
+                int state;
+                int rc;
+                PRuntimeManifestInfo info;
+                char url[APP_URL_MAX];
+                state=AppRuntimeApp_State(g_runtime_app);
+                if (g_tabs_closing || g_apps_open_tab!=g_app.tab_id ||
+                        g_apps_open_document!=g_document || g_navigation_request) {
+                    AppRuntimeApp_RequestClose(g_runtime_app);
+                    g_apps_open_tab=0;
+                } else if (state!=APP_RUNTIME_OPENING) {
+                    g_apps_open_tab=0;
+                    rc=state==APP_RUNTIME_READY && !AppRuntimeApp_InstallationAction(g_runtime_app) ?
+                        AppRuntimeApp_Accept(g_runtime_app,&info,url,sizeof(url)) : PRUNTIME_STATE;
+                    if (rc==PRUNTIME_OK) {
+                        g_runtime_tab_id=g_app.tab_id;
+                        if (app_load_page_from(hwnd,url,APP_HISTORY_NEW,-1,APP_NAV_SOURCE_MENU)) return 0;
+                        g_runtime_tab_id=0;
+                    }
+                    AppRuntimeApp_RequestClose(g_runtime_app);
+                    app_show_error(APP_TEXT_INSTALL_FAILED);
+                }
+                if (g_apps_open_tab) return 0;
+            }
             if (g_tabs_closing) app_tabs_finish_close();
             else if (!g_runtime_tab_id &&
                     AppRuntimeApp_TryDestroy(&g_runtime_app) == 0) {
@@ -9318,6 +9394,8 @@ static int app_tabs_select(int slot)
         app_downloads_request(g_tab->downloads_before_id, 0);
         g_tab->downloads_redraw_pending = 1;
     }
+    if (g_page_kind == APP_I18N_PAGE_APPS && request == NULL)
+        (void)app_load_local_page(g_window,"positron://apps",APP_HISTORY_REFRESH,-1);
     if (g_tab->visits_redraw_pending) app_visits_redraw(g_window);
     if (request != NULL) {
         SetTimer(g_window, APP_LOADING_TIMER_ID, APP_LOADING_INTERVAL_MS, NULL);

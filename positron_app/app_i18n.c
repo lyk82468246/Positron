@@ -256,6 +256,9 @@ static UINT app_page_resource(int page_kind, AppLanguage language)
     } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
         english_id = IDR_APP_SETTINGS_EN;
         chinese_id = IDR_APP_SETTINGS_ZH;
+    } else if (page_kind == APP_I18N_PAGE_APPS) {
+        english_id = IDR_APP_APPS_EN;
+        chinese_id = IDR_APP_APPS_ZH;
     }
     if (english_id == 0 || chinese_id == 0) {
         return 0;

@@ -52,6 +52,8 @@ typedef struct AppInternalPageData {
     const char *download_url;
     const char *download_message;
     const AppDownloadPrepare *download_prepare;
+    const AppInstalledList *installed;
+    int installed_loading;
 } AppInternalPageData;
 
 /* 0: recognized/allowed. 1: not a valid or permitted internal address.

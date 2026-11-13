@@ -123,6 +123,7 @@ IDR_APP_NEWTAB_EN RCDATA "resources/en-US/newtab.html"
 IDR_APP_HISTORY_EN RCDATA "resources/en-US/history.html"
 IDR_APP_DOWNLOADS_EN RCDATA "resources/en-US/downloads.html"
 IDR_APP_SETTINGS_EN RCDATA "resources/en-US/settings.html"
+IDR_APP_APPS_EN RCDATA "resources/en-US/apps.html"
 
 LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 
@@ -239,3 +240,4 @@ IDR_APP_NEWTAB_ZH RCDATA "resources/zh-CN/newtab.html"
 IDR_APP_HISTORY_ZH RCDATA "resources/zh-CN/history.html"
 IDR_APP_DOWNLOADS_ZH RCDATA "resources/zh-CN/downloads.html"
 IDR_APP_SETTINGS_ZH RCDATA "resources/zh-CN/settings.html"
+IDR_APP_APPS_ZH RCDATA "resources/zh-CN/apps.html"

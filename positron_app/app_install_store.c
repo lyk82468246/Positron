@@ -125,6 +125,34 @@ static int install_number(InstallDb *a, PDbStmtHandle s, int col, unsigned int *
     if (n < 0 || n > 2147483647) return 0;
     *out = (unsigned int)n; return 1;
 }
+int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list)
+{
+    InstallDb a;
+    PDbStmtHandle statement;
+    char normalized[64];
+    int rc,finish,index;
+    memset(list,0,sizeof(*list));
+    if(!install_api(module,&a)) return PRUNTIME_IO;
+    statement=NULL;
+    rc=a.prepare(db,"SELECT app_id,app_version FROM app_installs WHERE state=?1 ORDER BY app_id LIMIT 17",&statement);
+    if(rc==PDB_OK) rc=a.integer(statement,1,PRUNTIME_REG_READY);
+    if(rc==PDB_OK) rc=a.step(statement);
+    while(rc==PDB_STEP_ROW && list->count<APP_INSTALLED_LIST_MAX) {
+        index=list->count;
+        if(!install_string(&a,statement,0,list->rows[index].id,sizeof(list->rows[index].id)) ||
+                PRuntime_NormalizeId(list->rows[index].id,(unsigned int)strlen(list->rows[index].id),
+                    normalized,sizeof(normalized))!=PRUNTIME_OK ||
+                strcmp(normalized,list->rows[index].id) ||
+                !install_number(&a,statement,1,&list->rows[index].version)) {
+            rc=PDB_ERROR; break;
+        }
+        ++list->count;
+        rc=a.step(statement);
+    }
+    if(rc==PDB_STEP_ROW) { list->more=1; rc=a.step(statement); }
+    finish=statement ? a.finalize(statement) : PDB_OK;
+    return rc==PDB_STEP_DONE && finish==PDB_OK ? PRUNTIME_OK : PRUNTIME_IO;
+}
 static int install_read(InstallDb *a, PDbHandle db, const char *query,
         const char *key, PRuntimeRegistrationRecord *r)
 {

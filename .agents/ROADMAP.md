@@ -239,7 +239,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：首次安装、纯资源更新与 CAB 文件关联已验收。**
+**状态：首次安装、资源更新、CAB 关联与已安装应用页已验收。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。

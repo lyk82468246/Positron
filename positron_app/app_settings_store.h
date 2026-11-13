@@ -72,7 +72,8 @@ enum {
     APP_DOWNLOADS_CLEAR = 8,
     APP_DOWNLOADS_DELETE = 9,
     APP_VISITS_DELETE = 10,
-    APP_VISITS_SEARCH = 11
+    APP_VISITS_SEARCH = 11,
+    APP_INSTALLED_LIST = 12
 };
 
 /* Pure-data result, copied to the UI owner. No DB/statement/page handles.
@@ -83,6 +84,7 @@ enum {
  * recipients itself. error is the root DB failure, state is AFTER cleanup;
  * rollback_result is separate and never overwrites the original error. */
 typedef struct AppSettingsResult {
+    AppInstalledList installed;
     unsigned long request_id;
     unsigned long tab_id;
     unsigned long generation;
@@ -174,6 +176,8 @@ int AppSettingsStore_DeleteDownload(AppSettingsStore *store, __int64 id,
 void AppSettingsResult_Release(AppSettingsResult *result);
 /* One nonblocking FIFO result per poll. PENDING leaves output unchanged. */
 int AppSettingsStore_Poll(AppSettingsStore *store, AppSettingsResult *out);
+int AppSettingsStore_ListInstalled(AppSettingsStore *store,unsigned long tab_id,
+        unsigned long *request);
 /* Stop admission and drain accepted jobs. No UI wait, TerminateThread or
  * cross-thread PDb_Cancel. Poll can continue during drain. TryDestroy returns
  * PENDING until the worker has closed the DB/DLL, then discards unpolled

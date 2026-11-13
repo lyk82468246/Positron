@@ -1020,7 +1020,10 @@ static DWORD WINAPI app_settings_worker(LPVOID argument)
                 app_downloads_read(&api, db, job, &result);
             else if (job->operation == APP_DOWNLOADS_CLEAR || job->operation == APP_DOWNLOADS_DELETE)
                 app_downloads_clear(&api, db, job, &result);
-            else app_settings_read(&api, db, &result);
+            else if (job->operation == APP_INSTALLED_LIST) {
+                if (AppInstallStore_List(module,db,&result.installed)!=PRUNTIME_OK)
+                    result.result=APP_SETTINGS_BAD_DATA;
+            } else app_settings_read(&api, db, &result);
             app_settings_cleanup_transaction(&api, db, &result);
             if (result.result != APP_SETTINGS_OK) {
                 AppSettingsResult_Release(&result);
@@ -1296,6 +1299,13 @@ int AppSettingsStore_TryDestroy(AppSettingsStore **store_pointer)
     free(store);
     *store_pointer = NULL;
     return APP_SETTINGS_OK;
+}
+
+int AppSettingsStore_ListInstalled(AppSettingsStore *store,unsigned long tab_id,
+        unsigned long *request)
+{
+    return app_settings_enqueue(store,APP_INSTALLED_LIST,APP_SETTINGS_START_NEWTAB,
+            tab_id,0,NULL,NULL,0,0,NULL,NULL,request);
 }
 
 int AppSettingsStore_InstallCall(AppSettingsStore *store, AppInstallCall *call)

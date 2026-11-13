@@ -488,7 +488,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-已复核 ROADMAP 与限制。Release 普通更新确认/拒绝、Notes 编辑与冷重开通过。PXI 文件关联已验收。schema/权限更新、卸载、旧卷故障与 FULL/断电仍按原边界。
+已复核 ROADMAP 与限制。Release 普通更新确认/拒绝、Notes 编辑与冷重开通过。PXI 文件关联及已安装应用页已验收。卸载待设计。schema/权限更新、卸载、旧卷故障与 FULL/断电仍按原边界。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语人工门保持原边界；不重开挂起的 FULL/断电门。

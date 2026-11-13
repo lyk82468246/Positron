@@ -32,6 +32,7 @@ static const AppInternalRegistration app_internal_registry[] = {
     { "history", APP_I18N_PAGE_HISTORY, APP_INTERNAL_PAGE, NULL },
     { "downloads", APP_I18N_PAGE_DOWNLOADS, APP_INTERNAL_PAGE, NULL },
     { "settings", APP_I18N_PAGE_SETTINGS, APP_INTERNAL_PAGE, NULL },
+    { "apps", APP_I18N_PAGE_APPS, APP_INTERNAL_PAGE, NULL },
     { "version", APP_I18N_PAGE_ABOUT, APP_INTERNAL_ALIAS,
         "positron://about#version" },
     { "system", APP_I18N_PAGE_ABOUT, APP_INTERNAL_ALIAS,
@@ -1143,6 +1144,32 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
         else app_internal_visits(&writer, data, chinese);
     } else if (page_kind == APP_I18N_PAGE_DOWNLOADS) {
         app_internal_downloads(&writer, data, chinese);
+    } else if (page_kind == APP_I18N_PAGE_APPS) {
+        int i;
+        char version[32];
+        if (!data->installed)
+            app_html_append(&writer, data->installed_loading ?
+                    (chinese ? "<p>正在读取…</p>" : "<p>Loading…</p>") :
+                    (chinese ? "<p>无法读取安装记录。</p>" : "<p>Installed applications are unavailable.</p>"));
+        else if (!data->installed->count)
+            app_html_append(&writer, chinese ? "<p>尚未安装应用。</p>" : "<p>No installed applications.</p>");
+        else {
+            for (i=0;i<data->installed->count;++i) {
+                app_html_append(&writer,"<p class=\"history-entry\"><a id=\"");
+                sprintf(version,"installed-%d",i);
+                app_html_append(&writer,version);
+                app_html_append(&writer,"\" href=\"#app-open-");
+                app_html_escape(&writer,data->installed->rows[i].id);
+                app_html_append(&writer,"\">");
+                app_html_append(&writer,chinese ? "打开 " : "Open ");
+                app_html_escape(&writer,data->installed->rows[i].id);
+                sprintf(version," v%u",data->installed->rows[i].version);
+                app_html_append(&writer,version);
+                app_html_append(&writer,"</a></p>");
+            }
+            if (data->installed->more)
+                app_html_append(&writer,chinese ? "<p>仅显示前 16 项。</p>" : "<p>Showing the first 16 applications.</p>");
+        }
     } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
         app_html_row(&writer, chinese ? "\347\225\214\351\235\242\350\257\255\350\250\200" : "UI language",
                 chinese ? "\347\256\200\344\275\223\344\270\255\346\226\207 (zh-CN)" : "English (en-US)");
@@ -1170,7 +1197,7 @@ int AppInternalPages_FocusIds(HANDLE document,
 {
     static const char *navigation_ids[] = {
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
-        "nav-downloads", "nav-settings", "nav-welcome", "nav-controls",
+        "nav-downloads", "nav-settings", "nav-welcome", "nav-controls", "nav-apps",
         "visits-latest", "visits-older", "visits-clear", "visits-search", "visits-reset",
         "download-start", "download-probe-cancel",
         "download-cancel-0", "download-cancel-1",
@@ -1183,6 +1210,11 @@ int AppInternalPages_FocusIds(HANDLE document,
     int count;
 
     count = 0;
+    for (history_index=0;history_index<APP_INSTALLED_LIST_MAX;++history_index) {
+        sprintf(candidate,"installed-%d",history_index);
+        if (PCore_FocusTargetInfoById(document,candidate,&info)==0 &&
+                info.kind==PCORE_FOCUS_TARGET_LINK) strcpy(ids[count++],candidate);
+    }
     /* Sixteen rows have two actions plus seven commands and seven directory links (46).
      * Keep a fixed 48-entry budget shared with the EXE host. */
     for (history_index = 0; history_index < APP_DOWNLOAD_PAGE_MAX; ++history_index) {
@@ -1236,7 +1268,7 @@ static int app_internal_check_translations(void)
         IDR_APP_NEWTAB_EN, IDR_APP_NEWTAB_ZH,
         IDR_APP_HISTORY_EN, IDR_APP_HISTORY_ZH,
         IDR_APP_DOWNLOADS_EN, IDR_APP_DOWNLOADS_ZH,
-        IDR_APP_SETTINGS_EN, IDR_APP_SETTINGS_ZH
+        IDR_APP_SETTINGS_EN, IDR_APP_SETTINGS_ZH, IDR_APP_APPS_EN, IDR_APP_APPS_ZH
     };
     HRSRC resource;
     HGLOBAL loaded;
@@ -1619,7 +1651,7 @@ int AppInternalPages_DebugCheck(const char *css)
     stylesheet = PCore_ParseCSS(css, 0, "https://positron.invalid/app.css");
     if (stylesheet == NULL) goto done;
     if (app_internal_records_debug_check(stylesheet) != 0) goto done;
-    for (page = APP_I18N_PAGE_WELCOME; page <= APP_I18N_PAGE_SETTINGS;
+    for (page = APP_I18N_PAGE_WELCOME; page <= APP_I18N_PAGE_APPS;
             page++) {
         if (AppInternalPages_Build(page, &data, &html, &length) != 0 ||
                 length == 0 || length >= APP_INTERNAL_HTML_MAX ||

@@ -13,6 +13,9 @@
 typedef struct AppControlsContext AppControlsContext;
 
 typedef struct AppTab {
+    AppInstalledList installed;
+    unsigned long installed_request;
+    int installed_loaded;
     AppHostContext host;
     AppControlsContext *controls;
     int used;

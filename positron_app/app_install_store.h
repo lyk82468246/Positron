@@ -9,6 +9,15 @@
 #define APP_INSTALL_CAS 3
 #define APP_UPDATE_READ 4
 #define APP_UPDATE_CAS 5
+#define APP_INSTALLED_LIST_MAX 16
+typedef struct AppInstalledList {
+    int count, more;
+    struct {
+        char id[64];
+        unsigned int version;
+    } rows[APP_INSTALLED_LIST_MAX];
+} AppInstalledList;
+int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list);
 typedef struct AppInstallCall {
     int operation;
     char key[64];

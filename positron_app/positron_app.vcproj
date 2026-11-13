@@ -165,11 +165,13 @@
 		<File RelativePath=".\resources\en-US\history.html" />
 		<File RelativePath=".\resources\en-US\downloads.html" />
 		<File RelativePath=".\resources\en-US\settings.html" />
+		<File RelativePath=".\resources\en-US\apps.html" />
 		<File RelativePath=".\resources\zh-CN\about.html" />
 		<File RelativePath=".\resources\zh-CN\newtab.html" />
 		<File RelativePath=".\resources\zh-CN\history.html" />
 		<File RelativePath=".\resources\zh-CN\downloads.html" />
 		<File RelativePath=".\resources\zh-CN\settings.html" />
+		<File RelativePath=".\resources\zh-CN\apps.html" />
 		<File RelativePath=".\README.md" />
 	</Files>
 	<Globals />

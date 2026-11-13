@@ -10,6 +10,7 @@
 #define APP_I18N_PAGE_HISTORY 5
 #define APP_I18N_PAGE_DOWNLOADS 6
 #define APP_I18N_PAGE_SETTINGS 7
+#define APP_I18N_PAGE_APPS 8
 
 typedef enum AppLanguage {
     APP_LANGUAGE_EN_US = 0,
