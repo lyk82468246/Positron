@@ -178,7 +178,7 @@ SQL callback 内生成列表也走同一路径，不在 EXE 解析 HTML 或替�
 
 测试通过生产参数解析器验证八项 Unicode/引号/重复/互斥参数；真实页面验证嵌套 entry、
 inline/external 顺序、相对 CSS/import、SVG cache、可选失败、必需失败保留旧页、query/fragment、
-新标签拒绝、取消/退休迟到隔离和 owner 关闭。EXE/十 DLL 哈希、正常退出零引用及 crash 检查
+新标签拒绝、取消/退休迟到隔离和 owner 关闭。EXE 和十一个 DLL 的哈希、正常退出零引用及 crash 检查
 仍必需；另外验证三个真实零字节资源 READY/0，以及空外部脚本确为 available/no-op。
 它不代替原生确认的人工 Yes/No、中英文、实际触摸、旋转或 DPI，也不证明 SQL SDK。
 
@@ -255,7 +255,7 @@ Release 不含这些诊断。仅显式 Debug SQL/Notes 自检在存储启动失�
 
 [app_runtime_storage_probe.ps1](../scripts/app_runtime_storage_probe.ps1) 用 32 位 PowerShell 接受原正式 SQL `-RunRoot`、
 正式 Debug `-DiagnosticStage` 和新的 `-EvidenceName runtime-storage-...`，只复测原 `fixture-two`。
-工具先检查双空间/零引用、原 EXE 与十 DLL 哈希及夹具，再冷备份 data 树（深度 5、总条目 256）。
+工具先检查双空间/零引用、原 EXE 与十一个 DLL 哈希及夹具，再冷备份 data 树（深度 5、总条目 256）。
 诊断 EXE 另名放在原父目录，保留原镜像与存储位置；结束后正常退出审计、冷备份与 crash 检查。
 结果区分 PAGE_PASS 和 CAPTURED_FAILURE，二者均不代表跨目录隔离通过；原失败证据不覆盖，
 不删除/替换数据库、不改身份或卷、不强制结束用户应用。

@@ -93,9 +93,8 @@ try {
         Start-Sleep -Milliseconds 150
     } while ((Get-Date) -lt $deadline)
     if (!$auditComplete) { throw 'Current device module audit timed out.' }
-    $files = @(Get-ChildItem -LiteralPath $stageRoot -File |
-        Where-Object { $_.Name -eq 'positron.exe' -or $_.Extension -eq '.dll' })
-    if ($files.Count -ne 11) { throw 'Expected EXE and ten DLLs in the formal stage.' }
+    . (Join-Path $PSScriptRoot 'app_stage_binaries.ps1')
+    $files = @(Get-PositronAppStageBinaries -StageRoot $stageRoot)
     foreach ($file in $files) {
         $local = Join-Path $roundtripRoot $file.Name
         if (![PositronDeviceRapi]::TryCopyFileFromDevice(

@@ -18,7 +18,7 @@ python scripts/prepare_app_history_fixture.py --base "<closed-fixture.db>" --out
 
 用 32 位 Windows PowerShell 运行 `scripts/app_history_gate.ps1`，传入该包的 `-RemoteRoot`、
 `-LocalRunRoot`、`-StartupUrl positron://history` 及上述完整 `-FixtureDatabase` 路径。
-门验证 EXE/九 DLL 和数据库回读哈希，运行原有 UI 自检，等待真实历史页加载出 16 条及较早入口，
+门验证 EXE、完整 stage 的十一个 DLL 和数据库回读哈希，运行原有 UI 自检，等待真实历史页加载出 16 条及较早入口，
 保留应用供人工操作。数据库只以拒绝覆盖的远端移动发布；目录已有数据库时停止，不删除它。
 生成器也拒绝覆盖既有输出或接受带 journal/WAL/SHM 的输入。
 

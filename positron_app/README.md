@@ -150,7 +150,7 @@ scripts\build.bat Debug rebuild
 scripts\stage.bat Debug C:\WMShare\Positron-app
 ```
 
-stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应的九个公共 DLL 和
+stage 目录中运行 `positron.exe`。同目录必须保留本次构建对应的十一个公共 DLL 和
 `fonts\`；不要把 `test_host.ini` 当作应用配置，也不要从不同 stage 目录混用 DLL。
 
 ### 启动参数与无人值守验收
@@ -233,7 +233,7 @@ HTTPS 保持链/hostname 校验。未知总量显示字节数而非虚构百分�
 完整 Debug 包经正式 `device_gate.bat -ModuleAuditOnly -PreserveDeployment` 部署后，使用
 32 位 Windows PowerShell 运行 `scripts/app_settings_gate.ps1 -RunRoot <绝对验收目录>
 -ConfirmedExclusiveWindow`。目录须是本次 `tmp/device-runs/<时间>-app-settings-<名称>`；
-脚本先核对当前 EXE/九 DLL 与 stage、设备回读的 SHA256，串行启动两组夹具，验证精确 PID/
+脚本先核对当前 EXE 和十一个 DLL 与 stage、设备回读的 SHA256，串行启动两组夹具，验证精确 PID/
 终态、关闭后的无 DLL 引用与无新增 crash，并保留包与证据。不构建、选择设备或强杀进程。
 文件故障门按用户决定暂缓，不将正常重启或内存 fixture 当作断电恢复。
 线程、预算和后续可信前端边界见 [后端设计](INTEGRATION_PLAN.md#后端进入条件)。

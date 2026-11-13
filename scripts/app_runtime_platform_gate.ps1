@@ -67,9 +67,8 @@ try {
     $before=[PositronDeviceRapi]::SnapshotCrashDumps()
     [void][PositronDeviceRapi]::TryCopyFileFromDevice('\Temp\positron-debug.log',
         (Join-Path $evidence 'previous-debug.log'))
-    $bins=@(Get-ChildItem (Join-Path $run 'stage') -File | Where-Object {
-        $_.Name -eq 'positron.exe' -or $_.Extension -eq '.dll' })
-    if ($bins.Count -ne 11) { throw 'Expected EXE plus ten matching DLLs.' }
+    . (Join-Path $PSScriptRoot 'app_stage_binaries.ps1')
+    $bins = @(Get-PositronAppStageBinaries -StageRoot (Join-Path $run 'stage'))
     foreach ($bin in $bins) {
         $copy=Join-Path $evidence $bin.Name
         if (![PositronDeviceRapi]::TryCopyFileFromDevice($remote+'\'+$bin.Name,$copy) -or

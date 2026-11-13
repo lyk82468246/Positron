@@ -88,8 +88,8 @@ try {
     if (![Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exe)).Contains('runtime-storage phase=open-end')) { throw 'Require the formal Debug storage diagnostic EXE.' }
     if (!$space.Available -or $space.FreeBytes -lt ((Get-Item $exe).Length+1048576) -or
             !$internal.Available -or $internal.FreeBytes -lt 65536) { throw 'Storage preflight failed.' }
-    $bins=@(Get-ChildItem (Join-Path $run 'stage') -File | Where-Object { $_.Name -eq 'positron.exe' -or $_.Extension -eq '.dll' })
-    if ($bins.Count -ne 11) { throw 'Expected original EXE plus ten DLLs.' }
+    . (Join-Path $PSScriptRoot 'app_stage_binaries.ps1')
+    $bins = @(Get-PositronAppStageBinaries -StageRoot (Join-Path $run 'stage'))
     foreach ($bin in $bins) {
         Write-Host ('Verifying original '+$bin.Name)
         $back=Join-Path $evidence $bin.Name

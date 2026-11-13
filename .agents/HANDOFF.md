@@ -4,7 +4,7 @@
 
 ## 使命与当前目标
 
-Positron 为 WM6 / CE 5.2 ARMV4I 提供十一个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧ABI/消费者及应用v1–v4表保留，EXE共享schema升为v5；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
+Positron 为 WM6 / CE 5.2 ARMV4I 提供十一个资源有界、稳定 C ABI 的公共 DLL 及独立消费者 positron.exe。Runtime 已具备元数据/app 引用、开发目录/只读资源及受限开发存储，JSON 提供严格解析/有界标量编码；产品语义属于 DLL，test_host 只拥有 fixture/接线/断言。旧ABI/消费者及应用v1–v4表保留，EXE 主库 v5 引入安装表，v6 引入更新登记；EXE 目录空资源、SQL 页面队列与 SDK 已通过自动门，Notes Debug 交互人工基本通过。
 
 Media 的 WAV PCM8/16 与 IMA、短小 H.264/AAC/MJPEG/MP3、TS/PS MPEG/MP2 与 AMR-NB/WB、MPEG-4 Part 2、AVI H.263、FLV H.264/AAC 和 H.264 Annex-B 解码/守卫合同已有双配置设备证据；单流时钟、固定 ADTS 变化拒绝与有界 MP4 混合源时钟保持，实际设备音频时钟同步仍未实现。Fragment CSS 坐标和 DB 契约验收继续有效。既有 EXE 人工门仍为 About 章节位置、Debug 构建时间和 Release CAB 安装版本，分别验收，不改变打包版本规则。
 
@@ -491,5 +491,5 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 已复核 ROADMAP 与限制。Release 普通更新确认/拒绝、Notes 编辑与冷重开通过。PXI 文件关联已验收。schema/权限更新、卸载、旧卷故障与 FULL/断电仍按原边界。
 
 其余设置/SIP/旋转、About/CAB/Debug 时间、Core 断行设备差异、脚本长调用与编译性能、Media
-时间轴/坏 NAL、DB I/O/恢复及 Notes 双语/Release 人工门保持原边界；不重开挂起的 FULL/断电门。
+时间轴/坏 NAL、DB I/O/恢复及 Notes 双语人工门保持原边界；不重开挂起的 FULL/断电门。
 当前连接为用户指定的新验收目标；旧设备 Notes 未迁入。收尾已恢复本设备 PXI 验收前的 Notes 完整二进制包，逐文件 SHA256 一致，数据库、apps/data 及资源未修改；未自动启动作者应用。原恢复证据及路径见阶段收尾。新部署仍重查空间与引用。

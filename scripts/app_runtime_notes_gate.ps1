@@ -65,8 +65,8 @@ try {
     @($space,$internal) | ConvertTo-Json | Set-Content (Join-Path $evidence 'space.json') -Encoding UTF8
     if (!$space.Available -or $space.FreeBytes -lt 1048576 -or
             !$internal.Available -or $internal.FreeBytes -lt 65536) { throw 'Storage preflight failed.' }
-    $bins=@(Get-ChildItem (Join-Path $run 'stage') -File | Where-Object { $_.Name -eq 'positron.exe' -or $_.Extension -eq '.dll' })
-    if ($bins.Count -ne 11) { throw 'Expected EXE and ten DLLs.' }
+    . (Join-Path $PSScriptRoot 'app_stage_binaries.ps1')
+    $bins = @(Get-PositronAppStageBinaries -StageRoot (Join-Path $run 'stage'))
     foreach ($bin in $bins) {
         $back=Join-Path $evidence $bin.Name
         if (![PositronDeviceRapi]::TryCopyFileFromDevice($remote+'\'+$bin.Name,$back) -or

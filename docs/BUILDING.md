@@ -62,6 +62,8 @@ Debug|Windows Mobile 6 Professional SDK (ARMV4I)
 ```text
 positron_tls.dll
 positron_json.dll
+positron_archive.dll
+positron_runtime.dll
 positron_db.dll
 positron_media.dll
 positron_http.dll
@@ -92,10 +94,10 @@ scripts\stage.bat Debug C:\WMShare\Positron-candidate
 
 `stage.bat` 会先调用同配置的增量构建。只有构建成功后才复制：
 
-- 九个产品 DLL；
+- 上述十一个公共 DLL；
 - `positron.exe` 独立浏览器应用；
 - `test_host.exe` 回归宿主；
-- `test_host.ini`；
+- `test_host.ini` 及设备门辅助程序；
 - `fonts\` 下的 Positron symbol/emoji fallback 字体及许可证。
 
 这条“先构建、后整体复制”的规则用于避免新 EXE 与旧 DLL 混包。不要从多个 candidate 目录手工拼出一个包。
@@ -159,7 +161,7 @@ Release 包仍需通过与风险相称的设备测试。成功编译不代表网
 scripts\package_nightly.bat
 ```
 
-默认自动比较两套完整产物，选择所有十一个运行时文件中“最旧的那个”仍然最新的一套；因此通常会选中最近一次完整的 Debug 构建（`build.bat`/`stage.bat` 默认就是 Debug），如果最近一次完整构建是 Release 则会选 Release。也可以显式固定配置。测试清单从当前 `test_host/main.c` 的 `run_configured_tests` dispatch 动态生成；明确标记为 `manual-only` 的测试会从默认 `auto=1` 清单排除，新增并接入 dispatch 的自动测试会自动进入下一次包。脚本不复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和 SHA-256 清单，创建不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
+默认自动比较两套完整产物，选择两个 EXE 和十一个公共 DLL中“最旧的那个”仍然最新的一套；因此通常会选中最近一次完整的 Debug 构建（`build.bat`/`stage.bat` 默认就是 Debug），如果最近一次完整构建是 Release 则会选 Release。也可以显式固定配置。测试清单从当前 `test_host/main.c` 的 `run_configured_tests` dispatch 动态生成；明确标记为 `manual-only` 的测试会从默认 `auto=1` 清单排除，新增并接入 dispatch 的自动测试会自动进入下一次包。脚本不复制 tracked smoke INI 中的缩减选择。随后脚本补入字体、许可证、说明和 SHA-256 清单，创建不压缩的 `tmp\nightly\positron-nightly.zip`。可选参数：
 
 ```bat
 scripts\package_nightly.bat -Configuration Debug
@@ -174,7 +176,7 @@ scripts\package_nightly.bat -Repository owner/repo
 
 标准安装包由 VS2008 Smart Device CAB 项目产生，项目文件是 `positron_cab\positron_cab.vddproj`。只构建 `Release|Windows Mobile 6 Professional SDK (ARMV4I)`；不要构建 Debug CAB，也不要把 CAB 内容混入现有 ZIP 流程。
 
-主线 CAB 现在包含 `positron_db.dll`；绿色版 nightly ZIP/stage 继续保留该 DLL。CAB 的输入校验会同时核对它的 Release 输出。
+产品 CAB 装入十个公共 DLL，排除 `positron_media.dll`。完整 stage 和 nightly ZIP 均保留 Media。
 
 Release 配置的全解决方案构建包含 `positron_cab`；Debug 配置不生成 CAB。解决方案中的项目依赖按实际链接输入维护，顺序是基础静态库、公共 DLL、应用/测试宿主，最后是 CAB。这样 CAB 只能在它需要的 Release EXE/DLL 完成后启动。
 

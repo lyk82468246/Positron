@@ -2,7 +2,7 @@
 
 这条发布通道生成 Windows Mobile 6 Professional / ARMV4I 的标准 Smart Device CAB。它与现有的 nightly ZIP 独立：使用滚动 `nightly-cab` tag/release，不修改 `nightly`，也不上传 ZIP。
 
-这是主线安装发布，包含 `positron_db.dll`、`positron_archive.dll` 和 `positron_runtime.dll`；绿色版 nightly ZIP/stage 发布链路也继续保留该 DLL。
+产品 CAB 包含十个公共 DLL，包含 DB、Archive 和 Runtime，排除 Media。完整 stage 与 nightly ZIP 包含十一个公共 DLL。
 
 ## 构建入口
 
@@ -83,7 +83,7 @@ DLL 放在 `\Windows` 是本方案的明确选择，但 Windows CE 可能对不�
 
 ## 注册表与快捷方式
 
-CAB 只写 `HKLM\Software\Positron`，值均为 `REG_SZ`：
+CAB 在 `HKLM\Software\Positron` 写入以下 `REG_SZ` 元数据：
 
 | 值名 | 内容 |
 |---|---|
@@ -92,7 +92,7 @@ CAB 只写 `HKLM\Software\Positron`，值均为 `REG_SZ`：
 | `Channel` | `nightly-cab` |
 | `InstallDir` | `\Program Files\Positron` |
 
-`Version` 和 `BuildDate` 是 Positron 自定义元数据，不是 Windows CE 官方 OS 版本字段。快捷方式由 CAB 项目的 Programs Folder 生成，不手写 `.lnk` 文件内容；不写 `Run`、`Startup`、服务、文件关联或 `HKCR`。
+`Version` 和 `BuildDate` 是 Positron 自定义元数据，不是 Windows CE 官方 OS 版本字段。快捷方式由 CAB 项目的 Programs Folder 生成，不手写 `.lnk` 文件内容；CAB 还将 `HKCR\.pxi` 关联到 `Positron.PXI`。打开命令将文件路径传给 `positron.exe --install`，进入安装或更新确认。CAB 不注册 `Run`、`Startup` 或服务。
 
 ## 设备验收
 

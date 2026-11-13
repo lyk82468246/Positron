@@ -9,6 +9,8 @@
 ```text
 positron_tls.dll
 positron_json.dll
+positron_archive.dll
+positron_runtime.dll
 positron_db.dll
 positron_media.dll
 positron_http.dll

@@ -65,8 +65,8 @@ try {
     . ([scriptblock]::Create($fn.Extent.Text))
     [PositronDeviceRapi]::Connect(); $connected=$true
     $before=[PositronDeviceRapi]::SnapshotCrashDumps()
-    $files=@(Get-ChildItem (Join-Path $run 'stage') -File | Where-Object {$_.Name -eq 'positron.exe' -or $_.Extension -eq '.dll'})
-    if ($files.Count -ne 10) { throw 'Require EXE and nine DLLs.' }
+    . (Join-Path $PSScriptRoot 'app_stage_binaries.ps1')
+    $files = @(Get-PositronAppStageBinaries -StageRoot (Join-Path $run 'stage'))
     foreach($file in $files) {
         $local=Join-Path $evidence $file.Name
         if (![PositronDeviceRapi]::TryCopyFileFromDevice(($remote+'\'+$file.Name),$local) -or (Get-FileHash $local).Hash -ne (Get-FileHash $file.FullName).Hash) { throw ('Mixed package: '+$file.Name) }

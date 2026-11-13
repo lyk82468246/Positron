@@ -239,16 +239,16 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Runtime. 纯资源应用与隔离存储
 
-**状态：冻结目录首次安装已形成；PXI输出自动门通过，普通中文包确认/启动已有日志证据，保存/原生操作待验收，CAB 关联已验收。**
+**状态：首次安装、纯资源更新与 CAB 文件关联已验收。**
 第三方只提供资源/manifest，使用 `app://` 和原浏览器 UI。稳定规则与分工见
 [运行时计划](../docs/RUNTIME_PLAN.md)，现有预算见[宿主](../positron_app/RUNTIME_HOST.md)，证据归 HANDOFF。
 已接通的资源、受限 SQL、SDK、owner 和空资源不再列为待开发；继续保护旧页保留、取消/stale 与旧 ABI。
 
-冻结目录首次安装已退出待开发；保留丢失提交结果读回、未知不重放、后缀恢复、错误数据不CREATE和开发目录每次确认回归。PXI已消费现有Archive/Runtime合同，原生输出/清理、CRC/预算、保留引用资源及真实installed页面自动门通过；作者打包工具及正常包设备消费已通过；下一步普通拒绝、Notes保存及Release人工门。版本化 installed opener 与只读资格已通过双配置定向门。Runtime 的 current/pending 发布与恢复已通过双配置定向门。EXE 持久登记与 Notes 更新恢复已通过 Debug 自动门。Notes Release 普通更新确认/拒绝、编辑和冷重开通过。卸载仍关闭，数据迁移另需一致副本合同。外置映射卷CANTOPEN/native2仍待取证，不移动已绑定数据或以内置门冒充卷故障修复。
+保留提交结果读回、未知不重放、后缀恢复、错误数据不 CREATE 和开发目录确认回归。下一阶段的数据迁移需要一致副本合同；权限变化和应用卸载需要独立设计。外置映射卷 CANTOPEN/native2 继续取证，保留已绑定数据。
 URL/ID/开发句柄不替代安装证明，不把授权表开放给作者 SQL，不先以 ID 命中绕过警告。
 安装失败不留有效登记，更新失败保留旧版本/数据，开发与安装数据身份仍分离。
 
-恢复状态原生确认UI、Notes双语及Release普通启动仍为人工backlog。旧启动/CANTOPEN/mkdir183 根因仍未知，
+恢复状态原生确认 UI 与 Notes 双语仍为人工 backlog。旧启动/CANTOPEN/mkdir183 根因仍未知，
 再次失败时取非零快照及 VFS 原始返回再判 owner，不用新设备或新门关闭旧失败，不重开 FULL/断电门。
 受限 SQL 仍服从[DB 合同](../positron_db/README.md#opt-in-restricted-requests)，live handle 不交 UI。
 
