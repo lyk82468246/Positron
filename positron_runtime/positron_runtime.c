@@ -2949,3 +2949,101 @@ PRUNTIME_API int PRuntime_UpdateObserve(PRuntimeRevisionHandle current,
     if (!record.attempt_state || memcmp(record.attempt_id, attempt_id, 32)) return PRUNTIME_NOT_FOUND;
     *output = record; return PRUNTIME_OK;
 }
+
+typedef struct RuntimeRevocation {
+    PRuntimeUpdateRegistration before, after, observed;
+} RuntimeRevocation;
+
+static int revoke_read(const PRuntimeUpdateProvider* provider, void* lease,
+        PRuntimeUpdateRegistration* record)
+{
+    memset(record, 0, sizeof(*record));
+    record->size = sizeof(*record);
+    record->version = 1;
+    return rv_provider_rc(provider->read(provider->user_data, lease, record));
+}
+
+static int revoke_matches(PRuntimeUpdateRegistration* record,
+        const PRuntimeRegistrationRecord* expected)
+{
+    unsigned int state = record->current.state;
+    unsigned int generation = record->current.generation;
+    int valid;
+    if (state == PRUNTIME_REG_REVOKED && generation == expected->generation + 1U) {
+        record->current.state = PRUNTIME_REG_READY;
+        record->current.generation = expected->generation;
+    } else if (state != PRUNTIME_REG_READY) return 0;
+    valid = up_pair_valid(record) && rv_same_registration(&record->current, expected);
+    record->current.state = state;
+    record->current.generation = generation;
+    return valid;
+}
+
+static int revoke_run(const PRuntimeRegistrationRecord* expected,
+        const PRuntimeRevokeOptions* options, const PRuntimeRegistrationProvider* coordination,
+        const PRuntimeUpdateProvider* provider)
+{
+    RuntimeRevocation* job;
+    void* lease = NULL;
+    unsigned int outcome = PRUNTIME_COMMIT_UNKNOWN;
+    int rc;
+    if (!expected || !up_record_valid(expected) || expected->generation == 2147483647U ||
+            !coordination || coordination->size != sizeof(*coordination) ||
+            coordination->version != 1 || !coordination->acquire || !coordination->close ||
+            !provider || provider->size != sizeof(*provider) || provider->version != 1 ||
+            !provider->read || (options && !provider->compare_exchange)) return PRUNTIME_ARGUMENT;
+    job = (RuntimeRevocation*)calloc(1, sizeof(*job));
+    if (!job) return PRUNTIME_MEMORY;
+    rc = rv_provider_rc(coordination->acquire(coordination->user_data,
+            expected->approval.id, expected->approval.installation_id, &lease));
+    if (rc != PRUNTIME_OK) goto done;
+    if (!lease) { rc = PRUNTIME_IO; goto done; }
+    rc = revoke_read(provider, lease, &job->before);
+    if (rc != PRUNTIME_OK || !revoke_matches(&job->before, expected)) {
+        rc = options ? (rc == PRUNTIME_OK ? PRUNTIME_INVALID : rc) : PRUNTIME_UNRESOLVED;
+        goto done;
+    }
+    if (job->before.attempt_state == PRUNTIME_UPDATE_PREPARING) {
+        rc = options ? PRUNTIME_BUSY : PRUNTIME_UNRESOLVED;
+        goto done;
+    }
+    if (!options) {
+        rc = job->before.current.state == PRUNTIME_REG_REVOKED ? PRUNTIME_OK : PRUNTIME_STATE;
+        goto done;
+    }
+    if (job->before.current.state != PRUNTIME_REG_READY) { rc = PRUNTIME_STATE; goto done; }
+    if (options->cancelled && options->cancelled(options->user_data)) {
+        rc = PRUNTIME_CANCELLED;
+        goto done;
+    }
+    job->after = job->before;
+    job->after.current.state = PRUNTIME_REG_REVOKED;
+    ++job->after.current.generation;
+    provider->compare_exchange(provider->user_data, lease, &job->before, &job->after, &outcome);
+    rc = revoke_read(provider, lease, &job->observed);
+    if (rc != PRUNTIME_OK || !revoke_matches(&job->observed, expected)) rc = PRUNTIME_UNRESOLVED;
+    else if (up_same_pair(&job->observed, &job->after) && outcome != PRUNTIME_COMMIT_NOT_COMMITTED)
+        rc = PRUNTIME_OK;
+    else if (up_same_pair(&job->observed, &job->before) && outcome != PRUNTIME_COMMIT_CONFIRMED)
+        rc = PRUNTIME_IO;
+    else rc = PRUNTIME_UNRESOLVED;
+done:
+    if (lease) coordination->close(coordination->user_data, lease);
+    free(job);
+    return rc;
+}
+
+PRUNTIME_API int PRuntime_InstalledRevoke(const PRuntimeRegistrationRecord* expected,
+        const PRuntimeRevokeOptions* options, const PRuntimeRegistrationProvider* coordination,
+        const PRuntimeUpdateProvider* provider)
+{
+    if (!options || options->size != sizeof(*options) || options->version != 1 ||
+            options->confirmed != 1) return PRUNTIME_ARGUMENT;
+    return revoke_run(expected, options, coordination, provider);
+}
+
+PRUNTIME_API int PRuntime_InstalledObserveRevocation(const PRuntimeRegistrationRecord* expected,
+        const PRuntimeRegistrationProvider* coordination, const PRuntimeUpdateProvider* provider)
+{
+    return revoke_run(expected, NULL, coordination, provider);
+}

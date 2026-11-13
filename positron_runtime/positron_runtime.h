@@ -524,6 +524,27 @@ PRUNTIME_API int PRuntime_UpdateObserve(PRuntimeRevisionHandle current,
         const char* attempt_id, unsigned int bytes, const PRuntimeUpdateProvider* provider,
         PRuntimeUpdateRegistration* output);
 
+/* Native removal under the same exclusive coordination as installed open
+ * and publication. expected is the full trusted READY record shown for
+ * confirmation. Cancellation is sampled after the fresh preflight read and
+ * before CAS. REVOKED retains the current snapshot and terminal attempt.
+ * OK means exact tombstone observed; IO means exact previous pair observed
+ * with no confirmed write; UNRESOLVED requires observation, never replay.
+ * Observe is read-only: OK means exact tombstone, STATE exact READY,
+ * UNRESOLVED means neither can be established after obtaining the lease.
+ * Both functions are synchronous; callbacks must not reenter. Neither
+ * accesses the resource tree, opens a database, or grants launch authority. */
+typedef struct PRuntimeRevokeOptions {
+    unsigned int size, version, confirmed;
+    int (*cancelled)(void*);
+    void* user_data;
+} PRuntimeRevokeOptions;
+PRUNTIME_API int PRuntime_InstalledRevoke(const PRuntimeRegistrationRecord* expected,
+        const PRuntimeRevokeOptions* options, const PRuntimeRegistrationProvider* coordination,
+        const PRuntimeUpdateProvider* provider);
+PRUNTIME_API int PRuntime_InstalledObserveRevocation(const PRuntimeRegistrationRecord* expected,
+        const PRuntimeRegistrationProvider* coordination, const PRuntimeUpdateProvider* provider);
+
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;

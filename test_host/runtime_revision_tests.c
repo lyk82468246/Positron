@@ -1521,17 +1521,14 @@ BOOL test1384_runtime_installed_queue(void)
     PRuntimeServiceResult *result = NULL, *canary = NULL;
     PRuntimeServiceQueueInfo info;
     PBrowserServiceOptions options;
-    WCHAR module[MAX_PATH], *slash;
     unsigned int mode, delivered;
     unsigned long pumped;
     int rc = 0;
     result = (PRuntimeServiceResult*)malloc(sizeof(*result)); canary = (PRuntimeServiceResult*)malloc(sizeof(*canary));
     RCHECK(result && canary);
-    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH-70);
-    slash = wcsrchr(module, L'\\'); RCHECK(slash); *slash = 0;
     for (mode = 0; mode < 6; ++mode) {
         f = (InstalledQueueFixture*)calloc(1, sizeof(*f)); RCHECK(f); f->stored_rows = -1;
-        wsprintfW(f->location.path, L"%s\\installed-queue-%lu-%u.db", module, GetCurrentProcessId(), mode);
+        wsprintfW(f->location.path, L"\\Temp\\Positron-installed-queue-%lu-%u.db", GetCurrentProcessId(), mode);
         RCHECK(GetFileAttributesW(f->location.path) == 0xffffffffUL);
         RCHECK(WideCharToMultiByte(CP_UTF8, 0, f->location.path, -1, f->location.utf8, sizeof(f->location.utf8), NULL, NULL));
         f->options.size = sizeof(f->options); f->options.version = 1; f->options.tab_id = 91;
@@ -1660,13 +1657,12 @@ BOOL test1385_runtime_install_commit(void)
     CommitThread t;
     HANDLE thread;
     PDbHandle changed_db = NULL;
-    WCHAR module[MAX_PATH], root[MAX_PATH], *slash;
+    WCHAR root[MAX_PATH];
     unsigned int mode, step, writes, calls;
     int rc = 0, expected, owned = 0;
     memset(&platform, 0, sizeof(platform)); revision_error[0] = 0;
-    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH - 55);
-    slash = wcsrchr(module, L'\\'); RCHECK(slash != NULL); *slash = 0;
-    wsprintfW(root, L"%s\\install-commit-%lu", module, GetCurrentProcessId());
+    /* The emulator's shared card cannot reliably create SQLite journals. */
+    wsprintfW(root, L"\\Temp\\Positron-install-commit-%lu", GetCurrentProcessId());
     owned = CreateDirectoryW(root, NULL) != 0; RCHECK(owned);
     memset(&provider, 0, sizeof(provider)); provider.size = sizeof(provider); provider.version = 1;
     provider.user_data = &native; provider.acquire = intent_acquire; provider.read = intent_read;
@@ -1848,7 +1844,7 @@ static DWORD WINAPI update_other_thread(void* user)
 typedef struct UpdateRegistryFixture {
     PRuntimeUpdateRegistration pair;
     RevisionFixture* revision;
-    unsigned int writes, fail_read;
+    unsigned int writes, fail_read, lose_readback, refuse_write;
 } UpdateRegistryFixture;
 
 static int update_read(void* user, void* lease, PRuntimeUpdateRegistration* pair)
@@ -1869,13 +1865,67 @@ static int update_cas(void* user, void* lease, const PRuntimeUpdateRegistration*
         *outcome = PRUNTIME_COMMIT_NOT_COMMITTED;
         return PRUNTIME_BUSY;
     }
+    if (f->refuse_write) {
+        *outcome = PRUNTIME_COMMIT_NOT_COMMITTED;
+        return PRUNTIME_IO;
+    }
     f->pair = *after; ++f->writes;
+    if (f->lose_readback) f->fail_read = 1;
+    f->revision->record.active = after->current.state == PRUNTIME_REG_READY;
     f->revision->record.generation = after->current.generation;
     f->revision->record.approval = after->current.approval;
     strcpy(f->revision->record.directory, after->current.directory);
     /* Commit succeeds but the transport response is lost. */
     *outcome = PRUNTIME_COMMIT_UNKNOWN;
     return PRUNTIME_IO;
+}
+
+static int revoke_acquire(void* user, const char* id, const char* installation, void** lease)
+{
+    RevisionFixture* f = (RevisionFixture*)user;
+    if (strcmp(f->record.approval.id, id) ||
+            strcmp(f->record.approval.installation_id, installation)) return PRUNTIME_INVALID;
+    if (f->leases) return PRUNTIME_BUSY;
+    ++f->leases; *lease = f; return PRUNTIME_OK;
+}
+
+static int revoke_cancelled(void* user)
+{
+    return *(const int*)user;
+}
+
+static int revoke_fixture(UpdateRegistryFixture* fixture, const PRuntimeUpdateProvider* provider,
+        int busy)
+{
+    PRuntimeRegistrationRecord ready = fixture->pair.current;
+    PRuntimeRegistrationProvider coordination;
+    PRuntimeRevokeOptions options;
+    unsigned int writes = fixture->writes;
+    int cancel = 1;
+    memset(&coordination, 0, sizeof(coordination)); coordination.size = sizeof(coordination);
+    coordination.version = 1; coordination.user_data = fixture->revision;
+    coordination.acquire = revoke_acquire; coordination.close = revision_registry_close;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    options.confirmed = 1; options.cancelled = revoke_cancelled; options.user_data = &cancel;
+    if (busy) return PRuntime_InstalledRevoke(&ready, &options, &coordination, provider) ==
+        PRUNTIME_BUSY && fixture->writes == writes;
+    if (PRuntime_InstalledRevoke(&ready, &options, &coordination, provider) != PRUNTIME_CANCELLED ||
+            fixture->writes != writes) return 0;
+    cancel = 0;
+    fixture->refuse_write = 1;
+    if (PRuntime_InstalledRevoke(&ready, &options, &coordination, provider) != PRUNTIME_IO ||
+            fixture->writes != writes ||
+            PRuntime_InstalledObserveRevocation(&ready, &coordination, provider) != PRUNTIME_STATE)
+        return 0;
+    fixture->refuse_write = 0;
+    fixture->lose_readback = ready.approval.revision == 2;
+    if (PRuntime_InstalledRevoke(&ready, &options, &coordination, provider) !=
+            (fixture->lose_readback ? PRUNTIME_UNRESOLVED : PRUNTIME_OK) ||
+            fixture->writes != writes + 1) return 0;
+    fixture->lose_readback = fixture->fail_read = 0;
+    return PRuntime_InstalledObserveRevocation(&ready, &coordination, provider) == PRUNTIME_OK &&
+        PRuntime_InstalledRevoke(&ready, &options, &coordination, provider) == PRUNTIME_STATE &&
+        fixture->writes == writes + 1 && !fixture->revision->leases;
 }
 
 static int update_publish_fixture(PRuntimeResourceUpdateHandle q,
@@ -1962,7 +2012,7 @@ BOOL test1386_runtime_resource_update(void)
     PRuntimeServiceResult result;
     PDbHandle db = NULL;
     PDbErrorInfo db_error;
-    WCHAR module[MAX_PATH], path[MAX_PATH], *slash;
+    WCHAR path[MAX_PATH];
     char utf8[1024], manifest[1024], output[4097];
     unsigned char body[16], *before = NULL, *after = NULL;
     DWORD before_size, after_size;
@@ -1972,8 +2022,7 @@ BOOL test1386_runtime_resource_update(void)
     int rc = 0, expected = 0;
     memset(&f, 0, sizeof(f)); memset(&g, 0, sizeof(g)); memset(&platform, 0, sizeof(platform));
     revision_error[0] = 0;
-    RCHECK(GetModuleFileNameW(NULL, module, MAX_PATH) && wcslen(module) < MAX_PATH-55);
-    slash = wcsrchr(module, L'\\'); RCHECK(slash); *slash = 0;
+
     memset(&approval, 0, sizeof(approval)); approval.size = sizeof(approval); approval.version = 1;
     approval.revision = approval.confirmed = 1; strcpy(approval.installation_id, "00112233445566778899aabbccddeeff");
     memset(&storage_options, 0, sizeof(storage_options)); storage_options.size = sizeof(storage_options); storage_options.version = 1;
@@ -2019,7 +2068,7 @@ BOOL test1386_runtime_resource_update(void)
                 &candidate_resources, &candidate_options, &candidate) == PRUNTIME_OK);
         RCHECK(revision_run(&g, candidate) == PRUNTIME_REVISION_DONE);
         memset(&platform, 0, sizeof(platform)); platform.revision = &f;
-        wsprintfW(path, L"%s\\update-%lu-%u.db", module, GetCurrentProcessId(), mode); wcscpy(platform.path, path);
+        wsprintfW(path, L"\\Temp\\Positron-update-%lu-%u.db", GetCurrentProcessId(), mode); wcscpy(platform.path, path);
         RCHECK(WideCharToMultiByte(CP_UTF8, 0, path, -1, utf8, sizeof(utf8), NULL, NULL)); strcpy(platform.utf8, utf8);
         if (mode != 1) {
             memset(&db_error, 0, sizeof(db_error)); db_error.size = sizeof(db_error); db_error.version = PDB_ERROR_INFO_VERSION;
@@ -2134,6 +2183,8 @@ BOOL test1386_runtime_resource_update(void)
                 RCHECK(PRuntime_UpdateObserve(current, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 32,
                         &update_provider, observed) == PRUNTIME_OK &&
                         observed->attempt_state == PRUNTIME_UPDATE_PUBLISHED);
+                update_registry->revision = &f;
+                RCHECK(revoke_fixture(update_registry, &update_provider, 1));
                 RCHECK(PRuntime_InstalledReadFile(current, 0, 0, body, sizeof(body), &written) == PRUNTIME_OK);
                 RCHECK(PRuntime_InstalledStorageOpen(current, &storage_options, &location, &storage, NULL) == PRUNTIME_OK); f.storage = storage;
                 RCHECK(PRuntime_ServiceQueueCreate(storage, &qo, &queue) == PRUNTIME_OK);
@@ -2151,6 +2202,24 @@ BOOL test1386_runtime_resource_update(void)
         if (storage) { RCHECK(PRuntime_StorageClose(&storage) == PRUNTIME_OK); f.storage = NULL; }
         if (current) revision_dispose(&f, &current);
         if (candidate) revision_dispose(&g, &candidate);
+        if (!mode) {
+            RCHECK(revoke_fixture(update_registry, &update_provider, 0));
+            RCHECK(PRuntime_OpenInstalledEx(approval.installation_id, 32, f.record.generation,
+                    2, &registry, &resources, &options, &current) == PRUNTIME_OK);
+            RCHECK(revision_run(&f, current) == PRUNTIME_DENIED);
+            revision_dispose(&f, &current);
+            update_registry->pair.current = update_registry->pair.base;
+            update_registry->pair.attempt_state = PRUNTIME_UPDATE_PREPARING;
+            update_registry->pair.attempt_generation = 1;
+            f.record.approval = update_registry->pair.current.approval;
+            RCHECK(revoke_fixture(update_registry, &update_provider, 1));
+            update_registry->pair.attempt_state = update_registry->pair.attempt_generation = 0;
+            RCHECK(revoke_fixture(update_registry, &update_provider, 0));
+            RCHECK(PRuntime_OpenInstalled(approval.installation_id, 32, f.record.generation,
+                    &registry, &resources, &options, &current) == PRUNTIME_OK);
+            RCHECK(revision_run(&f, current) == PRUNTIME_DENIED);
+            revision_dispose(&f, &current);
+        }
         RCHECK(!f.bad_guard && !g.bad_guard && !f.roots && !g.roots && !f.leases && !platform.leases);
         if (mode != 1) {
             after = existing_file_bytes(path, &after_size); RCHECK(after && before_size == after_size && !memcmp(before, after, before_size));
