@@ -12,9 +12,11 @@
 #define APP_INSTALLED_LIST_MAX 16
 typedef struct AppInstalledList {
     int count, more;
-    struct {
+    struct AppInstalledRow {
         char id[64];
+        char installation_id[33];
         unsigned int version;
+        unsigned int revision, generation;
     } rows[APP_INSTALLED_LIST_MAX];
 } AppInstalledList;
 int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list);

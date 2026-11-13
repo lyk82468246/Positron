@@ -81,6 +81,7 @@ try {
     }
     Run-Update 'prepare' 1
     Run-Update 'resume' 2
+    Run-Update 'revoke' 3
     Start-Sleep -Seconds 3
     $after=[PositronDeviceRapi]::SnapshotCrashDumps()
     foreach($item in $after.GetEnumerator()){

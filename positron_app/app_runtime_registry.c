@@ -184,8 +184,9 @@ static int registry_update_cas(void *user,void *token,const PRuntimeUpdateRegist
     if(!lease || !lease->app || !lease->installation ||
             strcmp(next->current.approval.id,lease->id) ||
             strcmp(next->current.approval.installation_id,lease->installation_id) ||
-            strcmp(next->base.approval.installation_id,lease->installation_id) ||
-            strcmp(next->candidate.approval.installation_id,lease->installation_id)) return PRUNTIME_INVALID;
+            (next->attempt_state &&
+             (strcmp(next->base.approval.installation_id,lease->installation_id) ||
+              strcmp(next->candidate.approval.installation_id,lease->installation_id)))) return PRUNTIME_INVALID;
     record=(PRuntimeUpdateRegistration *)malloc(sizeof(*record));
     if(!record) return PRUNTIME_MEMORY;
     memset(&r->call,0,sizeof(r->call)); r->call.operation=APP_UPDATE_CAS;
@@ -194,13 +195,14 @@ static int registry_update_cas(void *user,void *token,const PRuntimeUpdateRegist
     r->call.outcome=*outcome;
 #ifdef _DEBUG
     if((r->fault==2 && next->attempt_state==PRUNTIME_UPDATE_PREPARING) ||
-            (r->fault==3 && next->attempt_state==PRUNTIME_UPDATE_PUBLISHED)) r->call.fault=1;
+            (r->fault==3 && next->attempt_state==PRUNTIME_UPDATE_PUBLISHED) ||
+            (r->fault==4 && next->current.state==PRUNTIME_REG_REVOKED)) r->call.fault=1;
 #endif
     rc=AppSettingsStore_InstallCall(r->store,&r->call);
     *outcome=r->call.outcome;
 #ifdef _DEBUG
     if(r->call.fault && *outcome==PRUNTIME_COMMIT_UNKNOWN) {
-        if(r->fault==2) r->fail_reads=1;
+        if(r->fault==2 || r->fault==4) r->fail_reads=1;
         r->fault=0;
     }
 #endif
@@ -211,6 +213,28 @@ void AppRuntimeRegistry_UpdateProvider(AppRuntimeRegistry *r,PRuntimeUpdateProvi
 {
     memset(p,0,sizeof(*p)); p->size=sizeof(*p); p->version=1; p->user_data=r;
     p->read=registry_update_read; p->compare_exchange=registry_update_cas;
+}
+int AppRuntimeRegistry_Revoke(AppRuntimeRegistry *r,const PRuntimeRegistrationRecord *expected,
+        int (*cancelled)(void *),void *user)
+{
+    PRuntimeRegistrationProvider coordination;
+    PRuntimeUpdateProvider provider;
+    PRuntimeRevokeOptions options;
+    int rc;
+    memset(&coordination,0,sizeof(coordination));
+    coordination.size=sizeof(coordination); coordination.version=1; coordination.user_data=r;
+    coordination.acquire=registry_acquire; coordination.read=registry_read; coordination.close=registry_close;
+    AppRuntimeRegistry_UpdateProvider(r,&provider);
+    memset(&options,0,sizeof(options));
+    options.size=sizeof(options); options.version=1; options.confirmed=1;
+    options.cancelled=cancelled; options.user_data=user;
+    rc=PRuntime_InstalledRevoke(expected,&options,&coordination,&provider);
+    if(rc==PRUNTIME_UNRESOLVED) {
+        rc=PRuntime_InstalledObserveRevocation(expected,&coordination,&provider);
+        if(rc==PRUNTIME_STATE) return PRUNTIME_IO;
+        if(rc!=PRUNTIME_OK) return PRUNTIME_UNRESOLVED;
+    }
+    return rc;
 }
 int AppRuntimeRegistry_NewId(char output[33])
 {

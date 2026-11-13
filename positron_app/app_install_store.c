@@ -134,7 +134,7 @@ int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list)
     memset(list,0,sizeof(*list));
     if(!install_api(module,&a)) return PRUNTIME_IO;
     statement=NULL;
-    rc=a.prepare(db,"SELECT app_id,app_version FROM app_installs WHERE state=?1 ORDER BY app_id LIMIT 17",&statement);
+    rc=a.prepare(db,"SELECT app_id,app_version,installation_id,revision,generation FROM app_installs WHERE state=?1 ORDER BY app_id LIMIT 17",&statement);
     if(rc==PDB_OK) rc=a.integer(statement,1,PRUNTIME_REG_READY);
     if(rc==PDB_OK) rc=a.step(statement);
     while(rc==PDB_STEP_ROW && list->count<APP_INSTALLED_LIST_MAX) {
@@ -143,7 +143,10 @@ int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list)
                 PRuntime_NormalizeId(list->rows[index].id,(unsigned int)strlen(list->rows[index].id),
                     normalized,sizeof(normalized))!=PRUNTIME_OK ||
                 strcmp(normalized,list->rows[index].id) ||
-                !install_number(&a,statement,1,&list->rows[index].version)) {
+                !install_number(&a,statement,1,&list->rows[index].version) ||
+                !install_string(&a,statement,2,list->rows[index].installation_id,sizeof(list->rows[index].installation_id)) ||
+                !install_number(&a,statement,3,&list->rows[index].revision) ||
+                !install_number(&a,statement,4,&list->rows[index].generation)) {
             rc=PDB_ERROR; break;
         }
         ++list->count;
@@ -259,6 +262,8 @@ static int update_write(InstallDb *a,PDbHandle db,const PRuntimeUpdateRegistrati
     int rc,finish;
     key=r->current.approval.installation_id;
     rc=install_write(a,db,install_update,&r->current);
+    /* Revocation of an installation with no update history preserves absence. */
+    if(!r->attempt_state) return rc;
     if(rc==PDB_OK) rc=install_write(a,db,update_write_base,&r->base);
     if(rc==PDB_OK) rc=install_write(a,db,update_write_candidate,&r->candidate);
     if(rc!=PDB_OK) return rc;

@@ -1165,7 +1165,12 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
                 app_html_escape(&writer,data->installed->rows[i].id);
                 sprintf(version," v%u",data->installed->rows[i].version);
                 app_html_append(&writer,version);
-                app_html_append(&writer,"</a></p>");
+                app_html_append(&writer,"</a> <a id=\"");
+                sprintf(version,"uninstall-%d",i);
+                app_html_append(&writer,version);
+                app_html_append(&writer,"\" href=\"#app-uninstall-");
+                app_html_escape(&writer,data->installed->rows[i].id);
+                app_html_append(&writer,chinese ? "\">卸载</a></p>" : "\">Uninstall</a></p>");
             }
             if (data->installed->more)
                 app_html_append(&writer,chinese ? "<p>仅显示前 16 项。</p>" : "<p>Showing the first 16 applications.</p>");
@@ -1212,6 +1217,9 @@ int AppInternalPages_FocusIds(HANDLE document,
     count = 0;
     for (history_index=0;history_index<APP_INSTALLED_LIST_MAX;++history_index) {
         sprintf(candidate,"installed-%d",history_index);
+        if (PCore_FocusTargetInfoById(document,candidate,&info)==0 &&
+                info.kind==PCORE_FOCUS_TARGET_LINK) strcpy(ids[count++],candidate);
+        sprintf(candidate,"uninstall-%d",history_index);
         if (PCore_FocusTargetInfoById(document,candidate,&info)==0 &&
                 info.kind==PCORE_FOCUS_TARGET_LINK) strcpy(ids[count++],candidate);
     }

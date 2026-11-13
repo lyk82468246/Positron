@@ -140,6 +140,7 @@ int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
     if(kind==APP_RUNTIME_INSTALLED) {
         found=AppRuntimeRegistry_FindApp(&i->registry,target,&i->registration);
         if(found!=PRUNTIME_OK) { rc=found; goto failed; }
+        if(i->registration.state==PRUNTIME_REG_REVOKED) { rc=PRUNTIME_DENIED; goto failed; }
         if(i->registration.state==PRUNTIME_REG_READY) {
             rc=install_open_ready(i);
             if(rc==PRUNTIME_OK) rc=install_metadata(i);

@@ -94,6 +94,21 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
     pair=(PRuntimeUpdateRegistration *)malloc(sizeof(*pair));
     if(!pair) return 1;
     rc=1; t->phase=1;
+    if(t->update_mode==3) {
+        if(AppRuntimeRegistry_FindApp(registry,"org.positron.updatenotes",record)!=PRUNTIME_OK ||
+                record->approval.revision!=2 || record->state!=PRUNTIME_REG_READY) goto done;
+        if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
+                AppRuntimeRegistry_Revoke(registry,record,NULL,NULL)!=PRUNTIME_BUSY) goto done;
+        AppRuntimeInstall_Close(&install);
+        registry->fault=4;
+        if(AppRuntimeRegistry_Revoke(registry,record,NULL,NULL)!=PRUNTIME_OK) goto done;
+        if(AppRuntimeRegistry_FindUpdate(registry,record->approval.installation_id,pair)!=PRUNTIME_OK ||
+                pair->current.state!=PRUNTIME_REG_REVOKED ||
+                pair->current.generation!=record->generation+1 ||
+                pair->attempt_state!=PRUNTIME_UPDATE_PUBLISHED ||
+                test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_DENIED) goto done;
+        t->phase=4; rc=0; goto done;
+    }
     if(t->update_mode==1) {
         if(test_open(t,"old.pxi",APP_RUNTIME_INSTALL_PXI,&platform,&install)!=PRUNTIME_OK ||
                 AppRuntimeInstall_Confirm(install)!=PRUNTIME_OK || test_note(install,1)!=PRUNTIME_OK) goto done;
@@ -113,6 +128,7 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
             !AppInstallStore_RecordEqual(record,&pair->base) ||
             (t->update_mode==1 ? !AppInstallStore_RecordEqual(record,&pair->current) :
                 !AppInstallStore_RecordEqual(&pair->candidate,&pair->current))) goto done;
+    if(t->update_mode==1 && AppRuntimeRegistry_Revoke(registry,record,NULL,NULL)!=PRUNTIME_BUSY) goto done;
     if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
             AppRuntimeInstall_Action(install) || test_note(install,0)!=PRUNTIME_OK) goto done;
     t->phase=4; rc=0;

@@ -113,6 +113,12 @@ static AppRuntimeApp *g_runtime_app;
 static unsigned long g_apps_open_tab;
 static HANDLE g_apps_open_document;
 static int g_apps_redrawing;
+static struct AppUninstallJob {
+    HANDLE thread;
+    AppSettingsStore *store;
+    struct AppInstalledRow row;
+    int result;
+} g_uninstall;
 static unsigned long g_runtime_tab_id;
 static char g_startup_app_directory[1024];
 static int g_startup_runtime_kind;
@@ -266,6 +272,28 @@ static void app_tabs_update_menu(void);
 static int app_tabs_select(int slot);
 static int app_tabs_new(void);
 static void app_show_error(AppTextId message);
+static DWORD WINAPI app_uninstall_worker(void *parameter)
+{
+    struct AppUninstallJob *job;
+    AppRuntimeRegistry *registry;
+    PRuntimeRegistrationRecord expected;
+    job=(struct AppUninstallJob *)parameter;
+    registry=(AppRuntimeRegistry *)calloc(1,sizeof(*registry));
+    if(!registry) { job->result=PRUNTIME_MEMORY; return 0; }
+    AppRuntimeRegistry_Init(registry,job->store);
+    job->result=AppRuntimeRegistry_FindApp(registry,job->row.id,&expected);
+    if(job->result==PRUNTIME_OK) {
+        if(expected.state!=PRUNTIME_REG_READY ||
+                strcmp(expected.approval.installation_id,job->row.installation_id) ||
+                expected.approval.revision!=job->row.revision ||
+                expected.generation!=job->row.generation ||
+                expected.approval.app_version!=job->row.version)
+            job->result=PRUNTIME_STATE;
+        else job->result=AppRuntimeRegistry_Revoke(registry,&expected,NULL,NULL);
+    }
+    free(registry);
+    return 0;
+}
 static void app_tabs_close(void);
 static void app_tabs_handle_done(HWND hwnd, AppNavigationRequest *request,
         unsigned long tab_id);
@@ -4841,6 +4869,18 @@ static void app_settings_tick(HWND hwnd)
 
     app_download_prepare_tick();
     if (g_settings_store == NULL) return;
+    if (g_uninstall.thread && WaitForSingleObject(g_uninstall.thread,0)==WAIT_OBJECT_0) {
+        CloseHandle(g_uninstall.thread);
+        g_uninstall.thread=NULL;
+        if (!g_tabs_closing) {
+            if (g_page_kind==APP_I18N_PAGE_APPS && !g_navigation_request)
+                (void)app_load_local_page(hwnd,"positron://apps",APP_HISTORY_REFRESH,-1);
+            if (g_uninstall.result!=PRUNTIME_OK)
+                app_show_error(g_uninstall.result==PRUNTIME_BUSY ? APP_TEXT_UNINSTALL_BUSY :
+                        g_uninstall.result==PRUNTIME_UNRESOLVED ? APP_TEXT_UNINSTALL_UNKNOWN :
+                        APP_TEXT_UNINSTALL_FAILED);
+        }
+    }
     AppDownloads_Tick(g_downloads);
     bootstrapping = g_settings_bootstrapping;
     for (count = 0; count < APP_SETTINGS_QUEUE_MAX; ++count) {
@@ -4904,6 +4944,7 @@ static void app_settings_tick(HWND hwnd)
         AppSettingsResult_Release(&result);
     }
     if (g_tabs_closing) {
+        if (g_uninstall.thread) return;
         /* Runtime's synchronous registration providers still need the main
          * DB owner during cancellation/close. Revoke UI aliases and join it
          * before draining and destroying that database service. */
@@ -6491,6 +6532,35 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     AppInternalRoute route;
     int same_document;
 
+    if (source==APP_NAV_SOURCE_DOCUMENT && g_page_kind==APP_I18N_PAGE_APPS &&
+            url && !strncmp(url,"#app-uninstall-",15)) {
+        struct AppInstalledRow row;
+        WCHAR name[64],format[256],message[384];
+        HANDLE document;
+        unsigned long tab_id;
+        int i;
+        if (g_uninstall.thread || !g_tab->installed_loaded || g_tabs_closing ||
+                g_navigation_request || !g_settings_store) return 0;
+        for (i=0;i<g_tab->installed.count;++i)
+            if (!strcmp(url+15,g_tab->installed.rows[i].id)) break;
+        if (i==g_tab->installed.count) return 0;
+        row=g_tab->installed.rows[i];
+        document=g_document; tab_id=g_app.tab_id;
+        if (!MultiByteToWideChar(CP_UTF8,0,row.id,-1,name,64) ||
+                !AppI18n_LoadString(APP_TEXT_UNINSTALL_CONFIRM,format,256)) return 0;
+        _snwprintf(message,383,format,name,row.version);
+        message[383]=0;
+        if (MessageBoxW(g_window,message,L"Positron",MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)!=IDYES)
+            return 1;
+        if (g_uninstall.thread || g_tabs_closing || tab_id!=g_app.tab_id ||
+                document!=g_document || g_navigation_request || !g_settings_store) return 0;
+        if (!SetTimer(g_window,APP_SETTINGS_TIMER_ID,50,NULL)) return 0;
+        g_uninstall.row=row;
+        g_uninstall.store=g_settings_store;
+        g_uninstall.thread=CreateThread(NULL,0,app_uninstall_worker,&g_uninstall,0,NULL);
+        if (!g_uninstall.thread) { app_show_error(APP_TEXT_UNINSTALL_FAILED); return 0; }
+        return 1;
+    }
     if (source==APP_NAV_SOURCE_DOCUMENT && g_page_kind==APP_I18N_PAGE_APPS &&
             url && !strncmp(url,"#app-open-",10)) {
         int i;
@@ -10531,9 +10601,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
         if(!result) result=AppPxi_DebugRun(0); AppDebug_EndSession(); return result;
     }
     if(command_line && (!wcscmp(command_line,L"--selftest-pxi-update-prepare") ||
-            !wcscmp(command_line,L"--selftest-pxi-update-resume"))) {
+            !wcscmp(command_line,L"--selftest-pxi-update-resume") ||
+            !wcscmp(command_line,L"--selftest-pxi-update-revoke"))) {
         AppDebug_BeginSession();
-        result=AppPxi_DebugRun(!wcscmp(command_line,L"--selftest-pxi-update-prepare") ? 1 : 2);
+        result=AppPxi_DebugRun(!wcscmp(command_line,L"--selftest-pxi-update-prepare") ? 1 :
+                !wcscmp(command_line,L"--selftest-pxi-update-resume") ? 2 : 3);
         AppDebug_EndSession(); return result;
     }
     if(command_line && !wcscmp(command_line,L"--selftest-installation-native")) {

@@ -52,7 +52,7 @@ ZIP 仅有界 STORE/DEFLATE；PXI 首装已接线，HTTP gzip 未接线。
 
 ## 纯资源应用 Runtime
 
-- 首装限 revision1。资源更新要求 schema 与批准权限保持不变。schema/权限更新、EXE 卸载接线及资源回收待完成。
+- 首装限 revision1。资源更新要求 schema 与批准权限保持不变。schema/权限更新、重装恢复与资源回收待完成。
 
 ## HTML、CSS 与布局
 

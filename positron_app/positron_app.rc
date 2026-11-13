@@ -113,6 +113,10 @@ BEGIN
     IDS_UPDATE_CONFIRM_EN "%s\nID: %s\nNew version: %lu (installed: %lu)\n\nUpdate this application? Publisher not verified. The new JavaScript code will run after the update. Only update from sources you trust."
     IDS_UPDATE_SQL_CONFIRM_EN "%s\nID: %s\nNew version: %lu (installed: %lu)\n\nUpdate this application? Publisher not verified. The new JavaScript code can read and change this application's existing database. Only update from sources you trust."
     IDS_INSTALL_FAILED_EN "The application installation or startup could not be completed. Files and saved data were kept. Reopen the application to check its installation state."
+    IDS_UNINSTALL_CONFIRM_EN "Uninstall %s v%u? It will no longer open from Positron. Saved data and resource files will be kept."
+    IDS_UNINSTALL_BUSY_EN "Close the application or finish its pending update before uninstalling."
+    IDS_UNINSTALL_UNKNOWN_EN "The uninstall result could not be confirmed. Refresh the list to check the installed state."
+    IDS_UNINSTALL_FAILED_EN "Positron could not uninstall this application."
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
@@ -231,6 +235,10 @@ BEGIN
     IDS_UPDATE_CONFIRM_ZH "%s\nID: %s\n新版本：%lu（已安装：%lu）\n\n更新此应用？发布者未验证。更新后将执行新的 JavaScript 代码。请仅使用可信来源的更新。"
     IDS_UPDATE_SQL_CONFIRM_ZH "%s\nID: %s\n新版本：%lu（已安装：%lu）\n\n更新此应用？发布者未验证。新的 JavaScript 代码可读取和修改此应用的现有数据库。请仅使用可信来源的更新。"
     IDS_INSTALL_FAILED_ZH "无法完成应用安装或启动。原有文件和保存的数据已保留。请重新打开应用检查安装状态。"
+    IDS_UNINSTALL_CONFIRM_ZH "卸载 %s v%u？应用将无法从 Positron 启动。已保存的数据和资源文件会保留。"
+    IDS_UNINSTALL_BUSY_ZH "请先关闭该应用或完成待处理的更新，再卸载。"
+    IDS_UNINSTALL_UNKNOWN_ZH "无法确认卸载结果。请刷新列表查看安装状态。"
+    IDS_UNINSTALL_FAILED_ZH "Positron 无法卸载该应用。"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"
