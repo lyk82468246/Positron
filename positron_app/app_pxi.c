@@ -297,6 +297,142 @@ int AppPxi_RecordOwnership(AppPxi *p)
     return rc;
 }
 
+static int pxi_ledger_number(char **cursor,DWORD *value)
+{
+    DWORD number,digit;
+    char *p;
+    p=*cursor; number=0;
+    if(*p<'0' || *p>'9') return 0;
+    while(*p>='0' && *p<='9') {
+        digit=(DWORD)(*p++-'0');
+        if(number>(0xffffffffUL-digit)/10) return 0;
+        number=number*10+digit;
+    }
+    if(*p!='\t') return 0;
+    *value=number; *cursor=p+1; return 1;
+}
+
+static int pxi_ledger_entry(const WCHAR *root,char *line,int first,unsigned long *total,PxiObject *item)
+{
+    WCHAR path[MAX_PATH],canonical[MAX_PATH];
+    WIN32_FIND_DATAW observed;
+    DWORD fields[6];
+    unsigned int i;
+    size_t length;
+    length=wcslen(root);
+    for(i=0;i<6;++i) if(!pxi_ledger_number(&line,&fields[i])) return PRUNTIME_INVALID;
+    if(first ? *line!=0 : (*line!='\\' || !line[1])) return PRUNTIME_INVALID;
+    if(strpbrk(line,"\t\r") || fields[0]==0 || fields[2]) return PRUNTIME_INVALID;
+    wcscpy(path,root);
+    if(!MultiByteToWideChar(CP_UTF8,0,line,-1,path+length,MAX_PATH-length))
+        return PRUNTIME_INVALID;
+    if(AppRuntimePlatform_CanonicalPath(path,canonical,(fields[1]&FILE_ATTRIBUTE_DIRECTORY)!=0)!=PRUNTIME_OK ||
+            wcscmp(path,canonical) || pxi_observe(path,&observed)!=PRUNTIME_OK ||
+            observed.dwOID!=fields[0] || observed.dwFileAttributes!=fields[1] ||
+            observed.nFileSizeHigh!=fields[2] || observed.nFileSizeLow!=fields[3] ||
+            observed.ftLastWriteTime.dwHighDateTime!=fields[4] ||
+            observed.ftLastWriteTime.dwLowDateTime!=fields[5]) return PRUNTIME_IO;
+    if(!(fields[1]&FILE_ATTRIBUTE_DIRECTORY)) {
+        if(fields[3]>PXI_BYTES-*total) return PRUNTIME_LIMIT;
+        *total+=fields[3];
+    }
+    wcscpy(item->path,path);
+    item->attributes=fields[1];
+    return PRUNTIME_OK;
+}
+
+static int pxi_ledger_tree(PxiObject *items,unsigned int count)
+{
+    WIN32_FIND_DATAW data;
+    WCHAR path[MAX_PATH];
+    HANDLE find;
+    unsigned int i,j,seen;
+    size_t length;
+    DWORD error;
+    seen=1;
+    for(i=0;i<count;++i) {
+        if(!(items[i].attributes&FILE_ATTRIBUTE_DIRECTORY)) continue;
+        length=wcslen(items[i].path);
+        if(length+3>MAX_PATH) return PRUNTIME_LIMIT;
+        wcscpy(path,items[i].path); wcscat(path,L"\\*");
+        find=FindFirstFileW(path,&data);
+        if(find==INVALID_HANDLE_VALUE) {
+            if(GetLastError()==ERROR_FILE_NOT_FOUND) continue;
+            return PRUNTIME_IO;
+        }
+        do {
+            if(!wcscmp(data.cFileName,L".") || !wcscmp(data.cFileName,L"..")) continue;
+            if(length+wcslen(data.cFileName)+2>MAX_PATH) {
+                FindClose(find); return PRUNTIME_LIMIT;
+            }
+            wcscpy(path+length+1,data.cFileName);
+            for(j=i+1;j<count;++j) if(!wcscmp(path,items[j].path)) break;
+            if(j==count || ++seen>count) {
+                FindClose(find); return PRUNTIME_INVALID;
+            }
+        } while(FindNextFileW(find,&data));
+        error=GetLastError();
+        FindClose(find);
+        if(error!=ERROR_NO_MORE_FILES) return PRUNTIME_IO;
+    }
+    return seen==count ? PRUNTIME_OK : PRUNTIME_INVALID;
+}
+
+int AppPxi_CheckOwnership(const WCHAR *root,unsigned long *bytes)
+{
+    static const char header[]="PXI-OWNERSHIP 1 ";
+    WCHAR sidecar[MAX_PATH],canonical[MAX_PATH];
+    HANDLE file;
+    char *buffer,*cursor,*end;
+    PxiObject *items;
+    DWORD size,read,count;
+    unsigned int i;
+    unsigned long total;
+    int rc;
+    if(!root || !bytes || wcslen(root)+11>=MAX_PATH) return PRUNTIME_ARGUMENT;
+    if(AppRuntimePlatform_CanonicalPath(root,canonical,1)!=PRUNTIME_OK || wcscmp(root,canonical))
+        return PRUNTIME_INVALID;
+    wcscpy(sidecar,root); wcscat(sidecar,L".ownership");
+    if(AppRuntimePlatform_CanonicalPath(sidecar,canonical,0)!=PRUNTIME_OK || wcscmp(sidecar,canonical))
+        return PRUNTIME_INVALID;
+    file=CreateFileW(sidecar,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
+    if(file==INVALID_HANDLE_VALUE) return PRUNTIME_IO;
+    size=GetFileSize(file,NULL);
+    if(size<sizeof(header) || size>PXI_OBJECTS*(MAX_PATH*3+128U)) {
+        CloseHandle(file); return PRUNTIME_LIMIT;
+    }
+    buffer=(char *)malloc(size+1);
+    if(!buffer) { CloseHandle(file); return PRUNTIME_MEMORY; }
+    rc=PRUNTIME_INVALID;
+    items=NULL;
+    if(!ReadFile(file,buffer,size,&read,NULL) || read!=size) { rc=PRUNTIME_IO; goto done; }
+    if(memchr(buffer,0,size) || memcmp(buffer,header,sizeof(header)-1)) goto done;
+    buffer[size]=0;
+    cursor=buffer+sizeof(header)-1;
+    end=strchr(cursor,'\n');
+    if(!end) goto done;
+    *end='\t';
+    if(!pxi_ledger_number(&cursor,&count) || cursor!=end+1 || count<1 || count>PXI_OBJECTS) goto done;
+    items=(PxiObject *)calloc(count,sizeof(*items));
+    if(!items) { rc=PRUNTIME_MEMORY; goto done; }
+    total=0;
+    for(i=0;i<count;++i) {
+        end=strchr(cursor,'\n');
+        if(!end) { rc=PRUNTIME_INVALID; goto done; }
+        *end=0;
+        rc=pxi_ledger_entry(root,cursor,i==0,&total,&items[i]);
+        if(rc!=PRUNTIME_OK) goto done;
+        cursor=end+1;
+    }
+    rc=*cursor ? PRUNTIME_INVALID : pxi_ledger_tree(items,count);
+    if(rc==PRUNTIME_OK) *bytes=total;
+done:
+    free(items);
+    free(buffer);
+    CloseHandle(file);
+    return rc;
+}
+
 int AppPxi_Close(AppPxi **slot)
 {
     AppPxi *p;

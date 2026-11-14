@@ -12,6 +12,8 @@ const char *AppPxi_Directory(AppPxi *pxi);
  * retain the resource directory for recovery. No orphan collector here. */
 void AppPxi_Retain(AppPxi *pxi);
 int AppPxi_RecordOwnership(AppPxi *pxi);
+/* Read-only physical preflight. A successful result does not authorize deletion. */
+int AppPxi_CheckOwnership(const WCHAR *root,unsigned long *bytes);
 /* Release pins; pre-intent cleanup in reverse creation order, no recursion.
  * Unprovable/replaced output is preserved and reported as IO. */
 int AppPxi_Close(AppPxi **pxi);

@@ -488,7 +488,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)通过。PXI 清单与引用门通过，后者见 tmp/device-runs/20261114-093208-app-pxi-update。
+路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)通过。PXI 目录预检通过，见 tmp/device-runs/20261114-093844-app-pxi-update。
 
 其他人工门及设备差异见路线图。Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语人工门保持原边界；不重开挂起的 FULL/断电门。

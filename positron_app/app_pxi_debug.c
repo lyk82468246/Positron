@@ -159,6 +159,12 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
     registry->call.operation=APP_INSTALL_CHECK_REFERENCES;
     registry->call.resource_root=pair->candidate.directory;
     if(AppSettingsStore_InstallCall(t->store,&registry->call)!=PRUNTIME_BUSY) goto done;
+    {
+        WCHAR root[MAX_PATH];
+        unsigned long bytes;
+        if(!MultiByteToWideChar(CP_UTF8,0,pair->candidate.directory,-1,root,MAX_PATH) ||
+                AppPxi_CheckOwnership(root,&bytes)!=PRUNTIME_OK || !bytes) goto done;
+    }
     if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
             AppRuntimeInstall_Action(install) || test_note(install,0)!=PRUNTIME_OK) goto done;
     t->phase=4; rc=0;
