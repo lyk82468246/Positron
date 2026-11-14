@@ -252,6 +252,8 @@ static int install_confirm_update(AppRuntimeInstall *i)
         if(rc!=PRUNTIME_OK) goto done;
     }
     AppRuntimeRegistry_UpdateProvider(&i->registry,&provider);
+    rc=AppPxi_RecordOwnership(i->pxi);
+    if(rc!=PRUNTIME_OK) goto done;
     rc=PRuntime_UpdatePublishBegin(i->qualification,&publish,&provider,&i->publish);
     if(rc!=PRUNTIME_OK) goto done;
     /* A lost reply can leave the durable attempt referring to this directory. */
@@ -277,6 +279,8 @@ static int install_confirm_restore(AppRuntimeInstall *i)
     PRuntimeInstalledStorageProvider storage;
     int rc;
     AppRuntimePlatform_ExistingStorageProvider(i->platform,&storage);
+    rc=AppPxi_RecordOwnership(i->pxi);
+    if(rc!=PRUNTIME_OK) return rc;
     rc=AppRuntimeRegistry_Restore(&i->registry,i->revision,&i->registration,
             i->revision_info.canonical_root,&storage,i->cancelled,i->cancel_user);
     if(rc==PRUNTIME_OK || rc==PRUNTIME_UNRESOLVED) AppPxi_Retain(i->pxi);
@@ -301,6 +305,8 @@ int AppRuntimeInstall_Confirm(AppRuntimeInstall *i)
     options.approval.confirmed=1; options.approval.revision=1;
     strcpy(options.approval.installation_id,i->registration.approval.installation_id);
     AppRuntimeRegistry_IntentProvider(&i->registry,&registry);
+    rc=AppPxi_RecordOwnership(i->pxi);
+    if(rc!=PRUNTIME_OK) return rc;
     /* From here a persistent intent MAY reference this output, even when a
      * callback reply is lost. Never delete it based on a host error guess. */
     AppPxi_Retain(i->pxi);

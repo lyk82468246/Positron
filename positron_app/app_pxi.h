@@ -11,6 +11,7 @@ const char *AppPxi_Directory(AppPxi *pxi);
 /* Call BEFORE a registration callback could write. Even an unknown result must
  * retain the resource directory for recovery. No orphan collector here. */
 void AppPxi_Retain(AppPxi *pxi);
+int AppPxi_RecordOwnership(AppPxi *pxi);
 /* Release pins; pre-intent cleanup in reverse creation order, no recursion.
  * Unprovable/replaced output is preserved and reported as IO. */
 int AppPxi_Close(AppPxi **pxi);

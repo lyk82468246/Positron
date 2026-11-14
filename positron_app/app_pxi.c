@@ -22,6 +22,7 @@ struct AppPxi {
     PxiObject objects[PXI_OBJECTS];
     unsigned int count;
     int retained;
+    int ownership_written;
     int (*cancelled)(void *);
     void *user;
     char directory[1024];
@@ -251,6 +252,51 @@ done:
 }
 const char *AppPxi_Directory(AppPxi *p) { return p->directory; }
 void AppPxi_Retain(AppPxi *p) { if(p) p->retained=1; }
+
+/* Store outside the package so the Runtime digest covers author files only.
+ * An incomplete write cannot authorize reclamation. The reader must require
+ * the declared record count, exact EOF and a fresh full identity check. */
+int AppPxi_RecordOwnership(AppPxi *p)
+{
+    WCHAR path[MAX_PATH],temporary[MAX_PATH];
+    WIN32_FIND_DATAW data;
+    HANDLE file;
+    DWORD written;
+    unsigned int n;
+    int length,rc;
+    char relative[MAX_PATH*3];
+    char line[MAX_PATH*3+128];
+    if(!p || p->ownership_written) return PRUNTIME_OK;
+    if(!p->count || wcslen(p->objects[0].path)+15>=MAX_PATH) return PRUNTIME_LIMIT;
+    wcscpy(path,p->objects[0].path); wcscat(path,L".ownership");
+    wcscpy(temporary,path); wcscat(temporary,L".tmp");
+    file=CreateFileW(temporary,GENERIC_WRITE,0,NULL,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,NULL);
+    if(file==INVALID_HANDLE_VALUE) return PRUNTIME_IO;
+    length=sprintf(line,"PXI-OWNERSHIP 1 %u\n",p->count);
+    rc=WriteFile(file,line,length,&written,NULL) && written==(DWORD)length ? PRUNTIME_OK : PRUNTIME_IO;
+    for(n=0;rc==PRUNTIME_OK && n<p->count;++n) {
+        PxiObject *item;
+        item=&p->objects[n];
+        if(pxi_observe(item->path,&data)!=PRUNTIME_OK || !item->oid ||
+                item->oid!=data.dwOID || item->attributes!=data.dwFileAttributes ||
+                !WideCharToMultiByte(CP_UTF8,0,item->path+wcslen(p->objects[0].path),-1,
+                    relative,sizeof(relative),NULL,NULL) ||
+                strpbrk(relative,"\r\n\t")) { rc=PRUNTIME_IO; break; }
+        length=sprintf(line,"%lu\t%lu\t%lu\t%lu\t%lu\t%lu\t%s\n",
+                (unsigned long)data.dwOID,(unsigned long)data.dwFileAttributes,
+                (unsigned long)data.nFileSizeHigh,(unsigned long)data.nFileSizeLow,
+                (unsigned long)data.ftLastWriteTime.dwHighDateTime,
+                (unsigned long)data.ftLastWriteTime.dwLowDateTime,relative);
+        if(!WriteFile(file,line,length,&written,NULL) || written!=(DWORD)length) rc=PRUNTIME_IO;
+    }
+    if(rc==PRUNTIME_OK && !FlushFileBuffers(file)) rc=PRUNTIME_IO;
+    if(!CloseHandle(file)) rc=PRUNTIME_IO;
+    if(rc==PRUNTIME_OK && !MoveFileW(temporary,path)) rc=PRUNTIME_IO;
+    if(rc==PRUNTIME_OK) p->ownership_written=1;
+    /* A failed write leaves only a temporary file, never a published ledger. */
+    return rc;
+}
+
 int AppPxi_Close(AppPxi **slot)
 {
     AppPxi *p;
