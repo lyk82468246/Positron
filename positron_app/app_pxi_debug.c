@@ -129,6 +129,10 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
                 pair->current.generation!=record->generation+1 ||
                 pair->attempt_state!=PRUNTIME_UPDATE_PUBLISHED ||
                 test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_DENIED) goto done;
+        memset(&registry->call,0,sizeof(registry->call));
+        registry->call.operation=APP_INSTALL_CHECK_REFERENCES;
+        registry->call.resource_root=pair->current.directory;
+        if(AppSettingsStore_InstallCall(t->store,&registry->call)!=PRUNTIME_OK) goto done;
         t->phase=4; rc=0; goto done;
     }
     if(t->update_mode==1) {
@@ -151,6 +155,10 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
             (t->update_mode==1 ? !AppInstallStore_RecordEqual(record,&pair->current) :
                 !AppInstallStore_RecordEqual(&pair->candidate,&pair->current))) goto done;
     if(t->update_mode==1 && AppRuntimeRegistry_Revoke(registry,record,NULL,NULL)!=PRUNTIME_BUSY) goto done;
+    memset(&registry->call,0,sizeof(registry->call));
+    registry->call.operation=APP_INSTALL_CHECK_REFERENCES;
+    registry->call.resource_root=pair->candidate.directory;
+    if(AppSettingsStore_InstallCall(t->store,&registry->call)!=PRUNTIME_BUSY) goto done;
     if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
             AppRuntimeInstall_Action(install) || test_note(install,0)!=PRUNTIME_OK) goto done;
     t->phase=4; rc=0;

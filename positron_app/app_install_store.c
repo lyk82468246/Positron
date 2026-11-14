@@ -125,6 +125,56 @@ static int install_number(InstallDb *a, PDbStmtHandle s, int col, unsigned int *
     if (n < 0 || n > 2147483647) return 0;
     *out = (unsigned int)n; return 1;
 }
+
+static int install_resource_overlap(const WCHAR *a,const WCHAR *b)
+{
+    size_t x,y;
+    x=wcslen(a); y=wcslen(b);
+    if(x>y) return install_resource_overlap(b,a);
+    return !_wcsnicmp(a,b,x) && (x==y || a[x-1]==L'\\' || b[x]==L'\\');
+}
+
+int AppInstallStore_CheckResourceReferences(HMODULE module,PDbHandle db,const char *root)
+{
+    static const char sql[] =
+        "SELECT directory FROM app_installs WHERE state<>?1 "
+        "UNION ALL SELECT r.directory FROM app_update_revisions r "
+        "LEFT JOIN app_update_attempts a ON a.installation_id=r.installation_id "
+        "WHERE a.state IS NULL OR a.state NOT IN (?2,?3) LIMIT 1025";
+    InstallDb api;
+    PDbStmtHandle statement;
+    char directory[1024];
+    WCHAR candidate[MAX_PATH],reference[MAX_PATH];
+    int rc,result,finish,count;
+    if(!root || root[0]!='\\' || !root[1]) return PRUNTIME_ARGUMENT;
+    if(!MultiByteToWideChar(CP_UTF8,0,root,-1,candidate,MAX_PATH)) return PRUNTIME_INVALID;
+    if(!install_api(module,&api)) return PRUNTIME_IO;
+    statement=NULL;
+    result=PRUNTIME_OK;
+    count=0;
+    rc=api.prepare(db,sql,&statement);
+    if(rc==PDB_OK) rc=api.integer(statement,1,PRUNTIME_REG_REVOKED);
+    if(rc==PDB_OK) rc=api.integer(statement,2,PRUNTIME_UPDATE_PUBLISHED);
+    if(rc==PDB_OK) rc=api.integer(statement,3,PRUNTIME_UPDATE_ABANDONED);
+    if(rc==PDB_OK) rc=api.step(statement);
+    while(rc==PDB_STEP_ROW) {
+        if(++count>1024) { result=PRUNTIME_LIMIT; break; }
+        if(!install_string(&api,statement,0,directory,sizeof(directory)) ||
+                directory[0]!='\\' || strchr(directory,'/') ||
+                !MultiByteToWideChar(CP_UTF8,0,directory,-1,reference,MAX_PATH)) {
+            result=PRUNTIME_IO;
+            break;
+        }
+        if(install_resource_overlap(candidate,reference)) {
+            result=PRUNTIME_BUSY;
+            break;
+        }
+        rc=api.step(statement);
+    }
+    finish=statement ? api.finalize(statement) : PDB_OK;
+    if(finish!=PDB_OK || (result==PRUNTIME_OK && rc!=PDB_STEP_DONE)) return PRUNTIME_IO;
+    return result;
+}
 int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list)
 {
     InstallDb a;
@@ -309,6 +359,10 @@ void AppInstallStore_Process(HMODULE module,PDbHandle db,AppInstallCall *c)
     state.size=sizeof(state); state.version=PDB_CONNECTION_STATE_VERSION;
     if(a.state(db,&state)!=PDB_OK || state.transaction_active || state.statement_count) { c->unsafe=1; return; }
     if(a.clear(db)!=PDB_OK) return;
+    if(c->operation==APP_INSTALL_CHECK_REFERENCES) {
+        c->result=AppInstallStore_CheckResourceReferences(module,db,c->resource_root);
+        goto settled;
+    }
     if(c->operation==APP_INSTALL_READ_ID || c->operation==APP_INSTALL_READ_APP) {
         c->result=install_read(&a,db,c->operation==APP_INSTALL_READ_APP ? install_select_app : install_select_id,c->key,&c->record);
         goto settled;

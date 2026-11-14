@@ -9,6 +9,7 @@
 #define APP_INSTALL_CAS 3
 #define APP_UPDATE_READ 4
 #define APP_UPDATE_CAS 5
+#define APP_INSTALL_CHECK_REFERENCES 6
 #define APP_INSTALLED_LIST_MAX 16
 typedef struct AppInstalledList {
     int count, more;
@@ -20,9 +21,13 @@ typedef struct AppInstalledList {
     } rows[APP_INSTALLED_LIST_MAX];
 } AppInstalledList;
 int AppInstallStore_List(HMODULE module,PDbHandle db,AppInstalledList *list);
+/* DB-owner read only. BUSY means a live root overlaps the candidate.
+ * This result is only a snapshot and does not authorize file deletion. */
+int AppInstallStore_CheckResourceReferences(HMODULE module,PDbHandle db,const char *root);
 typedef struct AppInstallCall {
     int operation;
     char key[64];
+    const char *resource_root; /* borrowed until synchronous RPC returns */
     int previous_exists;
     PRuntimeRegistrationRecord previous;
     PRuntimeRegistrationRecord proposed;

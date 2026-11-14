@@ -1312,8 +1312,9 @@ int AppSettingsStore_InstallCall(AppSettingsStore *store, AppInstallCall *call)
 {
     int result;
     if (!store || !call || GetCurrentThreadId()==store->owner_thread ||
-            call->operation<APP_INSTALL_READ_ID || call->operation>APP_UPDATE_CAS ||
-            (call->operation>=APP_UPDATE_READ && !call->update_record) ||
+            call->operation<APP_INSTALL_READ_ID || call->operation>APP_INSTALL_CHECK_REFERENCES ||
+            (call->operation==APP_INSTALL_CHECK_REFERENCES && !call->resource_root) ||
+            ((call->operation==APP_UPDATE_READ || call->operation==APP_UPDATE_CAS) && !call->update_record) ||
             (call->operation==APP_UPDATE_CAS && (!call->update_expected || !call->update_proposed)) ||
             !memchr(call->key,0,sizeof(call->key))) return PRUNTIME_ARGUMENT;
     EnterCriticalSection(&store->lock);
