@@ -7,6 +7,7 @@
 #define APP_RUNTIME_INSTALLED 2
 #define APP_RUNTIME_INSTALL_PXI 3
 #define APP_RUNTIME_UPDATE_CONFIRM 100
+#define APP_RUNTIME_RESTORE_CONFIRM 101
 typedef struct AppRuntimeInstall AppRuntimeInstall;
 /* Worker-only scheduler; never transfers a live Runtime/DB handle to UI. */
 int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,

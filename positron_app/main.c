@@ -122,6 +122,7 @@ static struct AppUninstallJob {
 static unsigned long g_runtime_tab_id;
 static char g_startup_app_directory[1024];
 static int g_startup_runtime_kind;
+static int g_startup_approve_pxi;
 #ifdef _DEBUG
 static int g_runtime_debug_mode;
 static int g_runtime_debug_phase;
@@ -1731,6 +1732,7 @@ static int app_parse_startup_arguments(LPWSTR command_line,
     out_reference[0] = '\0';
     g_startup_app_directory[0] = '\0';
     g_startup_runtime_kind=APP_RUNTIME_DEVELOPMENT;
+    g_startup_approve_pxi=0;
     out_script[0] = '\0';
     out_click_selector[0] = '\0';
     *out_has_reference = 0;
@@ -1762,6 +1764,11 @@ static int app_parse_startup_arguments(LPWSTR command_line,
             wcscpy(argument, L"--app-dir");
         }
 #endif
+        if (app_command_ascii_equal(argument,"--approve-pxi")) {
+            if (g_startup_approve_pxi) return 1;
+            g_startup_approve_pxi=1;
+            continue;
+        }
         value_result=app_command_copy_value(argument,"--install",value,sizeof(value)/sizeof(value[0]));
         if(value_result || app_command_ascii_equal(argument,"--install")) {
             if(value_result<0 || g_startup_app_directory[0]) return 1;
@@ -1910,6 +1917,7 @@ static int app_parse_startup_arguments(LPWSTR command_line,
     *out_has_reference = has_reference;
     *out_has_script = has_script;
     if (g_startup_app_directory[0] && (has_reference || has_script)) return 1;
+    if (g_startup_approve_pxi && g_startup_runtime_kind!=APP_RUNTIME_INSTALL_PXI) return 1;
     return 0;
 }
 
@@ -10076,7 +10084,7 @@ static void app_show_startup_usage(void)
             L"       positron.exe --url URL --click \"CSS selector\"\n"
             L"       positron.exe --app-dir \"directory\"\n"
             L"       positron.exe --install-dir \"verified directory\"\n"
-            L"       positron.exe --install \"file.pxi\"\n"
+            L"       positron.exe --install \"file.pxi\" [--approve-pxi]\n"
             L"       positron.exe --app application.id\n"
             L"       positron.exe --url URL --eval \"JavaScript\"",
             L"Positron", MB_OK | MB_ICONERROR);
@@ -10142,13 +10150,17 @@ static int app_pxi_debug_arguments(void)
         L"--app-dir b --install a", L"--install a --app org.example.app",
         L"--app org.example.app --install a", L"--install a --url https://example.com/",
         L"--url https://example.com/ --install a", L"--install a --eval 1",
-        L"--install a --click button", L"--install \"unterminated"
+        L"--install a --click button", L"--install \"unterminated",
+        L"--approve-pxi", L"--app org.example.app --approve-pxi",
+        L"--install-dir a --approve-pxi", L"--app-dir a --approve-pxi",
+        L"--install a --approve-pxi=1", L"--install a --approve-pxi --approve-pxi"
     };
     struct Probe { char url[1024],script[8193],selector[513]; } *probe;
     char saved[1024],expected[1024];
-    int kind,a,b,c,rc;
+    int kind,approval,a,b,c,rc;
     unsigned int n;
     strcpy(saved,g_startup_app_directory); kind=g_startup_runtime_kind;
+    approval=g_startup_approve_pxi;
     probe=(struct Probe *)malloc(sizeof(*probe)); if(!probe) return 1;
     rc=1;
     for(n=0;n<sizeof(invalid)/sizeof(invalid[0]);++n)
@@ -10156,13 +10168,18 @@ static int app_pxi_debug_arguments(void)
             probe->script,sizeof(probe->script),&b,probe->selector,sizeof(probe->selector),&c)) goto done;
     if(app_parse_startup_arguments(L"--install \"\\Storage Card\\\x5305 test.pxi\"",probe->url,sizeof(probe->url),&a,
         probe->script,sizeof(probe->script),&b,probe->selector,sizeof(probe->selector),&c) || a || b || c ||
-        g_startup_runtime_kind!=APP_RUNTIME_INSTALL_PXI ||
+        g_startup_runtime_kind!=APP_RUNTIME_INSTALL_PXI || g_startup_approve_pxi ||
         !WideCharToMultiByte(CP_UTF8,0,L"\\Storage Card\\\x5305 test.pxi",-1,expected,sizeof(expected),NULL,NULL) ||
         strcmp(expected,g_startup_app_directory)) goto done;
+    if(app_parse_startup_arguments(L"--approve-pxi --install \"a b.pxi\"",probe->url,sizeof(probe->url),&a,
+        probe->script,sizeof(probe->script),&b,probe->selector,sizeof(probe->selector),&c) || a || b || c ||
+        g_startup_runtime_kind!=APP_RUNTIME_INSTALL_PXI || !g_startup_approve_pxi ||
+        strcmp(g_startup_app_directory,"a b.pxi")) goto done;
     rc=0;
 done:
     strcpy(g_startup_app_directory,saved); g_startup_runtime_kind=kind; free(probe);
-    AppDebug_Log(rc ? "pxi-arguments FAIL\r\n" : "pxi-arguments PASS checks=14\r\n");
+    g_startup_approve_pxi=approval;
+    AppDebug_Log(rc ? "pxi-arguments FAIL\r\n" : "pxi-arguments PASS checks=21\r\n");
     return rc;
 }
 #endif
@@ -10213,6 +10230,7 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
     confirmation=info.requested_permissions ? APP_TEXT_RUNTIME_SQL_CONFIRM : APP_TEXT_RUNTIME_CONFIRM;
     if(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT) {
         if(action==APP_RUNTIME_UPDATE_CONFIRM) confirmation=info.requested_permissions ? APP_TEXT_UPDATE_SQL_CONFIRM : APP_TEXT_UPDATE_CONFIRM;
+        else if(action==APP_RUNTIME_RESTORE_CONFIRM) confirmation=APP_TEXT_RESTORE_CONFIRM;
         else if(action==PRUNTIME_INTENT_NEW) confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_CONFIRM : APP_TEXT_INSTALL_CONFIRM;
         else confirmation=info.requested_permissions ? APP_TEXT_INSTALL_SQL_RECOVER : APP_TEXT_INSTALL_RECOVER;
     }
@@ -10239,6 +10257,7 @@ static int app_start_runtime(HWND hwnd, char *url, int capacity)
             AppRuntimeApp_CurrentVersion(g_runtime_app));
     message[1023] = L'\0';
     if(g_startup_runtime_kind!=APP_RUNTIME_DEVELOPMENT && !action) decision=IDYES;
+    else if(g_startup_runtime_kind==APP_RUNTIME_INSTALL_PXI && g_startup_approve_pxi) decision=IDYES;
     else
 #ifdef _DEBUG
     if (g_runtime_debug_mode) {
@@ -10602,10 +10621,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     }
     if(command_line && (!wcscmp(command_line,L"--selftest-pxi-update-prepare") ||
             !wcscmp(command_line,L"--selftest-pxi-update-resume") ||
-            !wcscmp(command_line,L"--selftest-pxi-update-revoke"))) {
+            !wcscmp(command_line,L"--selftest-pxi-update-revoke") ||
+            !wcscmp(command_line,L"--selftest-pxi-update-restore"))) {
         AppDebug_BeginSession();
         result=AppPxi_DebugRun(!wcscmp(command_line,L"--selftest-pxi-update-prepare") ? 1 :
-                !wcscmp(command_line,L"--selftest-pxi-update-resume") ? 2 : 3);
+                !wcscmp(command_line,L"--selftest-pxi-update-resume") ? 2 :
+                !wcscmp(command_line,L"--selftest-pxi-update-revoke") ? 3 : 4);
         AppDebug_EndSession(); return result;
     }
     if(command_line && !wcscmp(command_line,L"--selftest-installation-native")) {

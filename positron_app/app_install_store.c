@@ -255,15 +255,33 @@ static int update_equal(const PRuntimeUpdateRegistration *a,const PRuntimeUpdate
          AppInstallStore_RecordEqual(&a->candidate,&b->candidate)));
 }
 
-static int update_write(InstallDb *a,PDbHandle db,const PRuntimeUpdateRegistration *r)
+static int update_delete(InstallDb *a,PDbHandle db,const char *sql,const char *key)
+{
+    PDbStmtHandle s;
+    int rc,finish;
+    s=NULL;
+    rc=a->prepare(db,sql,&s);
+    if(rc==PDB_OK) rc=a->text(s,1,key,(int)strlen(key));
+    if(rc==PDB_OK) rc=a->step(s);
+    finish=s ? a->finalize(s) : PDB_OK;
+    return rc==PDB_STEP_DONE ? finish : rc;
+}
+
+static int update_write(InstallDb *a,PDbHandle db,const PRuntimeUpdateRegistration *r,
+        unsigned int previous_attempt)
 {
     PDbStmtHandle s;
     const char *key;
     int rc,finish;
     key=r->current.approval.installation_id;
     rc=install_write(a,db,install_update,&r->current);
-    /* Revocation of an installation with no update history preserves absence. */
-    if(!r->attempt_state) return rc;
+    if(!r->attempt_state) {
+        if(rc==PDB_OK && previous_attempt)
+            rc=update_delete(a,db,"DELETE FROM app_update_attempts WHERE installation_id=?1",key);
+        if(rc==PDB_OK && previous_attempt)
+            rc=update_delete(a,db,"DELETE FROM app_update_revisions WHERE installation_id=?1",key);
+        return rc;
+    }
     if(rc==PDB_OK) rc=install_write(a,db,update_write_base,&r->base);
     if(rc==PDB_OK) rc=install_write(a,db,update_write_candidate,&r->candidate);
     if(rc!=PDB_OK) return rc;
@@ -304,7 +322,7 @@ void AppInstallStore_Process(HMODULE module,PDbHandle db,AppInstallCall *c)
         if(!update_equal(c->update_record,c->update_expected)) {
             c->result=PRUNTIME_INVALID; goto rollback;
         }
-        rc=update_write(&a,db,c->update_proposed);
+        rc=update_write(&a,db,c->update_proposed,c->update_expected->attempt_state);
         if(rc!=PDB_OK) goto error;
         goto commit;
     }

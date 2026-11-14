@@ -488,7 +488,7 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-已复核路线图。[撤销](../docs/history/RUNTIME_REVOCATION_ACCEPTANCE.md)、[EXE 卸载](../docs/history/APP_PXI_REVOCATION_ACCEPTANCE.md)及 [Runtime 恢复](../docs/history/RUNTIME_RESTORATION_ACCEPTANCE.md)均已验收。下一步验收 EXE Notes 原包恢复。
+路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)通过，含 Runtime 双配置及 EXE 设备证据。
 
 其他人工门及设备差异见路线图。Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语人工门保持原边界；不重开挂起的 FULL/断电门。

@@ -160,6 +160,8 @@ int AppRuntimeInstall_Open(AppRuntimePlatform *platform,AppSettingsStore *store,
         rc=AppRuntimeRegistry_NewId(i->registration.approval.installation_id);
         if(rc!=PRUNTIME_OK) goto failed;
     } else if(found!=PRUNTIME_OK) { rc=found; goto failed; }
+    else if(kind==APP_RUNTIME_INSTALL_PXI && i->registration.state==PRUNTIME_REG_REVOKED)
+        i->action=APP_RUNTIME_RESTORE_CONFIRM;
     else if(kind==APP_RUNTIME_INSTALL_PXI && i->registration.state==PRUNTIME_REG_READY &&
             i->info.app_version>i->registration.approval.app_version) {
         rc=AppRuntimeRegistry_FindUpdate(&i->registry,i->registration.approval.installation_id,&i->pending);
@@ -270,6 +272,20 @@ done:
     if(rc==PRUNTIME_OK) rc=install_open_ready(i);
     return rc;
 }
+static int install_confirm_restore(AppRuntimeInstall *i)
+{
+    PRuntimeInstalledStorageProvider storage;
+    int rc;
+    AppRuntimePlatform_ExistingStorageProvider(i->platform,&storage);
+    rc=AppRuntimeRegistry_Restore(&i->registry,i->revision,&i->registration,
+            i->revision_info.canonical_root,&storage,i->cancelled,i->cancel_user);
+    if(rc==PRUNTIME_OK || rc==PRUNTIME_UNRESOLVED) AppPxi_Retain(i->pxi);
+    if(rc!=PRUNTIME_OK) return rc;
+    ++i->registration.generation;
+    rc=PRuntime_RevisionClose(&i->revision);
+    if(rc==PRUNTIME_OK) rc=install_open_ready(i);
+    return rc;
+}
 int AppRuntimeInstall_Confirm(AppRuntimeInstall *i)
 {
     PRuntimeInstallIntentOptions options;
@@ -279,6 +295,7 @@ int AppRuntimeInstall_Confirm(AppRuntimeInstall *i)
     int rc;
     if(!i->action) return PRUNTIME_STATE;
     if(i->action==APP_RUNTIME_UPDATE_CONFIRM) return install_confirm_update(i);
+    if(i->action==APP_RUNTIME_RESTORE_CONFIRM) return install_confirm_restore(i);
     memset(&options,0,sizeof(options)); options.size=sizeof(options); options.version=1; options.mode=i->action;
     options.approval.size=sizeof(options.approval); options.approval.version=1;
     options.approval.confirmed=1; options.approval.revision=1;

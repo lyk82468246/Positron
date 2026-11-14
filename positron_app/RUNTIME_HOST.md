@@ -82,10 +82,12 @@ EXE上限128文件/16层/4MiB，原生快照内存另计，不包含在Runtime�
 ## PXI 输出与首次安装接线
 
 ```text
-positron.exe --install "\Storage Card\Example.pxi"
+positron.exe --install "\Storage Card\Example.pxi" [--approve-pxi]
 ```
 
 该入口与开发目录、冻结目录、installed及URL/脚本参数互斥，不把地址栏或网页链接当成原生安装入口。
+`--approve-pxi` 仅接受一次且必须与 `--install` 同用。它明确批准这一次 PXI 操作，仍执行完整包校验、
+登记核验及 Runtime 准入。文件管理器关联仍只传 `--install`，会显示确认框。
 EXE私有AppPxi在同一Runtime owner上消费公开Archive reader；ZIP格式、危险路径/冲突、解压和CRC
 由Archive拥有，不复制解析器。源归档保留无写/删除分享的只读句柄，读取前后核对实际身份/大小/时间。
 CAB 安装将 `.pxi` 关联到 `--install`。文件管理器传入带引号的完整包路径，复用现有确认。系统移除 CAB 时撤销关联。
@@ -115,6 +117,8 @@ CAB 安装将 `.pxi` 关联到 `--install`。文件管理器传入带引号的�
 ### PXI 资源更新
 
 同一已安装 ID 的较新 PXI 走资源更新确认，显示已安装版本、新版本、未验证发布者和已声明能力的风险。
+卸载后重新提交原包时，恢复确认会说明代码将重新获得原数据的访问权限。Runtime 核对撤销登记、
+完整内容摘要和原私有数据库身份。恢复沿用安装身份和 revision，重新核验成功后启动。
 先退出旧实例，避免租约冲突。确认后 owner 同时保有候选快照、核验后的已安装快照和现有 SQL 存储，
 由 Runtime 资格与发布 API 判断是否可以切换。资源更新要求能力、schema 和迁移历史一致。
 提交后释放旧句柄与候选句柄，按新登记重新核验资源和原数据库，再启动页面并授权服务。

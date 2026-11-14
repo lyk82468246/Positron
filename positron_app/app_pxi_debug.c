@@ -94,6 +94,28 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
     pair=(PRuntimeUpdateRegistration *)malloc(sizeof(*pair));
     if(!pair) return 1;
     rc=1; t->phase=1;
+    if(t->update_mode==4) {
+        if(AppRuntimeRegistry_FindApp(registry,"org.positron.updatenotes",record)!=PRUNTIME_OK ||
+                record->approval.revision!=2 || record->state!=PRUNTIME_REG_REVOKED) goto done;
+        if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_DENIED) goto done;
+        if(test_open(t,"old.pxi",APP_RUNTIME_INSTALL_PXI,&platform,&install)!=PRUNTIME_OK ||
+                AppRuntimeInstall_Confirm(install)!=PRUNTIME_INVALID) goto done;
+        AppRuntimeInstall_Close(&install);
+        t->phase=2;
+        if(test_open(t,"resources-v2.pxi",APP_RUNTIME_INSTALL_PXI,&platform,&install)!=PRUNTIME_OK ||
+                AppRuntimeInstall_Action(install)!=APP_RUNTIME_RESTORE_CONFIRM ||
+                AppRuntimeInstall_Confirm(install)!=PRUNTIME_OK || test_note(install,0)!=PRUNTIME_OK) goto done;
+        AppRuntimeInstall_Close(&install);
+        t->phase=3;
+        if(AppRuntimeRegistry_FindUpdate(registry,record->approval.installation_id,pair)!=PRUNTIME_OK ||
+                pair->current.state!=PRUNTIME_REG_READY ||
+                pair->current.generation!=record->generation+1 ||
+                pair->current.approval.revision!=record->approval.revision ||
+                pair->attempt_state) goto done;
+        if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
+                test_note(install,0)!=PRUNTIME_OK) goto done;
+        t->phase=4; rc=0; goto done;
+    }
     if(t->update_mode==3) {
         if(AppRuntimeRegistry_FindApp(registry,"org.positron.updatenotes",record)!=PRUNTIME_OK ||
                 record->approval.revision!=2 || record->state!=PRUNTIME_REG_READY) goto done;

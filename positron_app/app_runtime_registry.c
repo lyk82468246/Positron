@@ -214,6 +214,17 @@ void AppRuntimeRegistry_UpdateProvider(AppRuntimeRegistry *r,PRuntimeUpdateProvi
     memset(p,0,sizeof(*p)); p->size=sizeof(*p); p->version=1; p->user_data=r;
     p->read=registry_update_read; p->compare_exchange=registry_update_cas;
 }
+static void registry_recovery_options(AppRuntimeRegistry *r,PRuntimeRegistrationProvider *coordination,
+        PRuntimeUpdateProvider *provider,PRuntimeRevokeOptions *options,int (*cancelled)(void *),void *user)
+{
+    memset(coordination,0,sizeof(*coordination));
+    coordination->size=sizeof(*coordination); coordination->version=1; coordination->user_data=r;
+    coordination->acquire=registry_acquire; coordination->read=registry_read; coordination->close=registry_close;
+    AppRuntimeRegistry_UpdateProvider(r,provider);
+    memset(options,0,sizeof(*options));
+    options->size=sizeof(*options); options->version=1; options->confirmed=1;
+    options->cancelled=cancelled; options->user_data=user;
+}
 int AppRuntimeRegistry_Revoke(AppRuntimeRegistry *r,const PRuntimeRegistrationRecord *expected,
         int (*cancelled)(void *),void *user)
 {
@@ -221,16 +232,27 @@ int AppRuntimeRegistry_Revoke(AppRuntimeRegistry *r,const PRuntimeRegistrationRe
     PRuntimeUpdateProvider provider;
     PRuntimeRevokeOptions options;
     int rc;
-    memset(&coordination,0,sizeof(coordination));
-    coordination.size=sizeof(coordination); coordination.version=1; coordination.user_data=r;
-    coordination.acquire=registry_acquire; coordination.read=registry_read; coordination.close=registry_close;
-    AppRuntimeRegistry_UpdateProvider(r,&provider);
-    memset(&options,0,sizeof(options));
-    options.size=sizeof(options); options.version=1; options.confirmed=1;
-    options.cancelled=cancelled; options.user_data=user;
+    registry_recovery_options(r,&coordination,&provider,&options,cancelled,user);
     rc=PRuntime_InstalledRevoke(expected,&options,&coordination,&provider);
     if(rc==PRUNTIME_UNRESOLVED) {
         rc=PRuntime_InstalledObserveRevocation(expected,&coordination,&provider);
+        if(rc==PRUNTIME_STATE) return PRUNTIME_IO;
+        if(rc!=PRUNTIME_OK) return PRUNTIME_UNRESOLVED;
+    }
+    return rc;
+}
+int AppRuntimeRegistry_Restore(AppRuntimeRegistry *r,PRuntimeRevisionHandle prepared,
+        const PRuntimeRegistrationRecord *expected,const char *root,
+        const PRuntimeInstalledStorageProvider *storage,int (*cancelled)(void *),void *user)
+{
+    PRuntimeRegistrationProvider coordination;
+    PRuntimeUpdateProvider provider;
+    PRuntimeRevokeOptions options;
+    int rc;
+    registry_recovery_options(r,&coordination,&provider,&options,cancelled,user);
+    rc=PRuntime_InstalledRestore(prepared,expected,&options,&coordination,&provider,storage);
+    if(rc==PRUNTIME_UNRESOLVED) {
+        rc=PRuntime_InstalledObserveRestoration(expected,root,(unsigned int)strlen(root),&coordination,&provider);
         if(rc==PRUNTIME_STATE) return PRUNTIME_IO;
         if(rc!=PRUNTIME_OK) return PRUNTIME_UNRESOLVED;
     }

@@ -24,4 +24,7 @@ void AppRuntimeRegistry_UpdateProvider(AppRuntimeRegistry *registry,
 int AppRuntimeRegistry_NewId(char output[33]);
 int AppRuntimeRegistry_Revoke(AppRuntimeRegistry *registry,
         const PRuntimeRegistrationRecord *expected,int (*cancelled)(void *),void *user);
+int AppRuntimeRegistry_Restore(AppRuntimeRegistry *registry,PRuntimeRevisionHandle prepared,
+        const PRuntimeRegistrationRecord *expected,const char *root,
+        const PRuntimeInstalledStorageProvider *storage,int (*cancelled)(void *),void *user);
 #endif
