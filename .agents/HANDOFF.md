@@ -488,8 +488,8 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。Runtime 撤销见[设备门](../docs/history/RUNTIME_REVOCATION_ACCEPTANCE.md)。EXE 卸载保留数据，见[应用门](../docs/history/APP_PXI_REVOCATION_ACCEPTANCE.md)。
+已复核路线图。[撤销](../docs/history/RUNTIME_REVOCATION_ACCEPTANCE.md)、[EXE 卸载](../docs/history/APP_PXI_REVOCATION_ACCEPTANCE.md)及 [Runtime 恢复](../docs/history/RUNTIME_RESTORATION_ACCEPTANCE.md)均已验收。下一步验收 EXE Notes 原包恢复。
 
 其他人工门及设备差异见路线图。Media
 时间轴/坏 NAL、DB I/O/恢复及 Notes 双语人工门保持原边界；不重开挂起的 FULL/断电门。
-当前连接为用户指定的新验收目标；旧设备 Notes 未迁入。收尾已恢复本设备 PXI 验收前的 Notes 完整二进制包，逐文件 SHA256 一致，数据库、apps/data 及资源未修改；未自动启动作者应用。原恢复证据及路径见阶段收尾。新部署仍重查空间与引用。
+原 Notes 已按验收记录恢复。新部署按设备纪律重查空间和引用。

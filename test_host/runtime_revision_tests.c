@@ -1928,6 +1928,29 @@ static int revoke_fixture(UpdateRegistryFixture* fixture, const PRuntimeUpdatePr
         fixture->writes == writes + 1 && !fixture->revision->leases;
 }
 
+static int restore_fixture(PRuntimeRevisionHandle prepared, UpdateRegistryFixture* fixture,
+        const PRuntimeUpdateProvider* provider, const PRuntimeInstalledStorageProvider* storage)
+{
+    PRuntimeRegistrationRecord tombstone = fixture->pair.current;
+    PRuntimeRegistrationProvider coordination;
+    PRuntimeRevokeOptions options;
+    unsigned int writes = fixture->writes;
+    int rc;
+    memset(&coordination, 0, sizeof(coordination)); coordination.size = sizeof(coordination);
+    coordination.version = 1; coordination.user_data = fixture->revision;
+    coordination.acquire = revoke_acquire; coordination.close = revision_registry_close;
+    memset(&options, 0, sizeof(options)); options.size = sizeof(options); options.version = 1;
+    options.confirmed = 1;
+    fixture->lose_readback = 1;
+    rc = PRuntime_InstalledRestore(prepared, &tombstone, &options, &coordination, provider, storage);
+    fixture->lose_readback = fixture->fail_read = 0;
+    return rc == PRUNTIME_UNRESOLVED && fixture->writes == writes + 1 &&
+        PRuntime_InstalledObserveRestoration(&tombstone, "\\candidate-root", 15,
+                &coordination, provider) == PRUNTIME_OK &&
+        PRuntime_InstalledRestore(prepared, &tombstone, &options, &coordination, provider, storage)
+                == PRUNTIME_INVALID && fixture->writes == writes + 1;
+}
+
 static int update_publish_fixture(PRuntimeResourceUpdateHandle q,
         const PRuntimeResourceUpdateInfo* qualification, RevisionFixture* f,
         UpdateRegistryFixture* fixture, PRuntimeUpdateProvider* provider)
@@ -2208,6 +2231,16 @@ BOOL test1386_runtime_resource_update(void)
                     2, &registry, &resources, &options, &current) == PRUNTIME_OK);
             RCHECK(revision_run(&f, current) == PRUNTIME_DENIED);
             revision_dispose(&f, &current);
+            RCHECK(PRuntime_PrepareRevision("\\candidate-root", 15, &candidate_resources,
+                    &candidate_options, &candidate) == PRUNTIME_OK);
+            RCHECK(revision_run(&g, candidate) == PRUNTIME_REVISION_DONE);
+            RCHECK(restore_fixture(candidate, update_registry, &update_provider, &location));
+            revision_dispose(&g, &candidate);
+            RCHECK(PRuntime_OpenInstalledEx(approval.installation_id, 32, f.record.generation,
+                    2, &registry, &resources, &options, &current) == PRUNTIME_OK);
+            RCHECK(revision_run(&f, current) == PRUNTIME_REVISION_DONE);
+            revision_dispose(&f, &current);
+            update_registry->pair = *observed;
             update_registry->pair.current = update_registry->pair.base;
             update_registry->pair.attempt_state = PRUNTIME_UPDATE_PREPARING;
             update_registry->pair.attempt_generation = 1;

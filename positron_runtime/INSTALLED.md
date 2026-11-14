@@ -300,6 +300,12 @@ The provider atomically changes current to REVOKED with generation incremented a
 
 Revocation never touches the private database or resource files. Hosts must leave directories in place unless a separate cleanup operation proves ownership and absence of live or recovery references.
 
+## Restoring the same installed package
+
+Prepare an immutable revision root with the normal complete resource scan. Pass it and the trusted REVOKED record to `PRuntime_InstalledRestore` following explicit native confirmation. The content digest, manifest identity, version, requested permissions and schema must match the tombstone. Runtime keeps its approved permissions and installation identity. For SQL-enabled installations it verifies the existing private database read-only under the original location lease.
+
+One atomic CAS under the installation lease publishes READY at the next generation and clears the terminal update attempt. Keep the proposed root if the outcome is unknown. Use `PRuntime_InstalledObserveRestoration` with the original tombstone and exact proposed canonical root to distinguish READY from the unchanged tombstone. Open the restored revision independently through normal installed admission before starting services.
+
 ## Validation and remaining work
 
 Final-commit regression uses the exact native CAS fixture with real prepared DB files: no SQL, schema 0, a non-idempotent migration, schema alteration after preparation, contradictory outcomes, lost responses, inaccessible readback, competing generations, cancellation before/after CAS, READY winning cancellation, pending close, owner/reentry and parent/data retention. Persistent EXE registry transactions remain a separate integration gate. Evidence and unresolved adjacent failures are kept in the [final-commit acceptance record](../docs/history/RUNTIME_FINAL_COMMIT_ACCEPTANCE.md).

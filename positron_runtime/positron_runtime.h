@@ -545,6 +545,23 @@ PRUNTIME_API int PRuntime_InstalledRevoke(const PRuntimeRegistrationRecord* expe
 PRUNTIME_API int PRuntime_InstalledObserveRevocation(const PRuntimeRegistrationRecord* expected,
         const PRuntimeRegistrationProvider* coordination, const PRuntimeUpdateProvider* provider);
 
+/* Explicit same-package recovery. A complete prepared (non-installed)
+ * revision must own the immutable native root to publish. expected is the
+ * trusted REVOKED snapshot. The original database, when authorized, is
+ * checked READONLY under its native location lease through CAS/readback.
+ * Clears the old terminal attempt atomically. No author execution, DB
+ * creation, binding, repair or migration. Callback rules as for revoke.
+ * After UNRESOLVED, observe using the exact proposed canonical directory
+ * from RevisionGetInfo. OK = exact READY; STATE = exact tombstone.
+ * Never replay an ambiguous CAS. */
+PRUNTIME_API int PRuntime_InstalledRestore(PRuntimeRevisionHandle prepared,
+        const PRuntimeRegistrationRecord* expected, const PRuntimeRevokeOptions* options,
+        const PRuntimeRegistrationProvider* coordination, const PRuntimeUpdateProvider* provider,
+        const PRuntimeInstalledStorageProvider* storage);
+PRUNTIME_API int PRuntime_InstalledObserveRestoration(const PRuntimeRegistrationRecord* expected,
+        const char* directory, unsigned int bytes, const PRuntimeRegistrationProvider* coordination,
+        const PRuntimeUpdateProvider* provider);
+
 typedef struct PRuntimeMigrationPlanOptions {
     unsigned int size;
     unsigned int version;

@@ -3047,3 +3047,132 @@ PRUNTIME_API int PRuntime_InstalledObserveRevocation(const PRuntimeRegistrationR
 {
     return revoke_run(expected, NULL, coordination, provider);
 }
+
+static int restore_check_storage(const PRuntimeRegistrationRecord* expected,
+        const PRuntimeInstalledStorageProvider* storage, PRuntimeStorageLocation* location)
+{
+    PDbExistingLocalOptions options;
+    char identity[160], key[64];
+    int rc;
+    if (!(expected->approval.approved_permissions & PRUNTIME_PERMISSION_SQL)) return PRUNTIME_OK;
+    sprintf(key, "v1/installed/%s/app.db", expected->approval.installation_id);
+    rc = rv_provider_rc(storage->open_existing_location(storage->user_data, key, location));
+    if (rc != PRUNTIME_OK) return rc;
+    if (!location->token || !location->path_bytes || location->path_bytes > PRUNTIME_ROOT_BYTES ||
+            location->path[0] != '\\' || location->path[location->path_bytes] ||
+            !runtime_text(location->path, location->path_bytes)) return PRUNTIME_INVALID;
+    sprintf(identity, "Positron.storage.v1:installed:%s:%s",
+            expected->approval.id, expected->approval.installation_id);
+    options.size = sizeof(options); options.version = 1; options.identity = identity;
+    options.identity_bytes = (int)strlen(identity); options.expected_schema = expected->target_schema;
+    rc = PDb_VerifyExistingLocalUtf8(location->path, location->path_bytes, &options, NULL);
+    if (rc == PDB_OK) return PRUNTIME_OK;
+    return rc == PDB_SCHEMA_MISMATCH ? PRUNTIME_SCHEMA : PRUNTIME_IO;
+}
+
+static int restore_tombstone(PRuntimeUpdateRegistration* pair,
+        const PRuntimeRegistrationRecord* expected)
+{
+    PRuntimeRegistrationRecord ready = *expected;
+    ready.state = PRUNTIME_REG_READY; --ready.generation;
+    return pair->current.state == PRUNTIME_REG_REVOKED && revoke_matches(pair, &ready) &&
+        pair->attempt_state != PRUNTIME_UPDATE_PREPARING;
+}
+
+static int restore_run(PRuntimeRevisionHandle prepared, const PRuntimeRegistrationRecord* expected,
+        const char* directory, const PRuntimeRevokeOptions* options,
+        const PRuntimeRegistrationProvider* coordination, const PRuntimeUpdateProvider* provider,
+        const PRuntimeInstalledStorageProvider* storage)
+{
+    RuntimeRevocation* job;
+    PRuntimeRegistrationRecord ready = *expected;
+    PRuntimeStorageLocation location;
+    void* lease = NULL;
+    unsigned int outcome = PRUNTIME_COMMIT_UNKNOWN;
+    int rc;
+    ready.state = PRUNTIME_REG_READY;
+    if (expected->state != PRUNTIME_REG_REVOKED || expected->generation < 2 ||
+            expected->generation >= 2147483647U || !up_record_valid(&ready) ||
+            !coordination || coordination->size != sizeof(*coordination) ||
+            coordination->version != 1 || !coordination->acquire || !coordination->close ||
+            !provider || provider->size != sizeof(*provider) || provider->version != 1 ||
+            !provider->read || (options && !provider->compare_exchange)) return PRUNTIME_ARGUMENT;
+    job = (RuntimeRevocation*)calloc(1, sizeof(*job));
+    if (!job) return PRUNTIME_MEMORY;
+    memset(&location, 0, sizeof(location));
+    if (prepared) prepared->active = 1;
+    rc = rv_provider_rc(coordination->acquire(coordination->user_data,
+            ready.approval.id, ready.approval.installation_id, &lease));
+    if (rc != PRUNTIME_OK) goto done;
+    if (!lease) { rc = PRUNTIME_IO; goto done; }
+    job->after.size = sizeof(job->after); job->after.version = 1;
+    job->after.current = ready;
+    ++job->after.current.generation;
+    strcpy(job->after.current.directory, directory);
+    rc = revoke_read(provider, lease, &job->before);
+    if (!options) {
+        if (rc != PRUNTIME_OK) rc = PRUNTIME_UNRESOLVED;
+        else if (up_pair_valid(&job->before) && up_same_pair(&job->before, &job->after)) rc = PRUNTIME_OK;
+        else rc = restore_tombstone(&job->before, expected) ? PRUNTIME_STATE : PRUNTIME_UNRESOLVED;
+        goto done;
+    }
+    if (rc != PRUNTIME_OK) goto done;
+    if (!restore_tombstone(&job->before, expected)) { rc = PRUNTIME_INVALID; goto done; }
+    rc = restore_check_storage(expected, storage, &location);
+    if (rc != PRUNTIME_OK) goto done;
+    if ((options->cancelled && options->cancelled(options->user_data)) ||
+            (prepared->options.cancelled && prepared->options.cancelled(prepared->options.user_data))) {
+        rc = PRUNTIME_CANCELLED;
+        goto done;
+    }
+    provider->compare_exchange(provider->user_data, lease, &job->before, &job->after, &outcome);
+    rc = revoke_read(provider, lease, &job->observed);
+    if (rc != PRUNTIME_OK) rc = PRUNTIME_UNRESOLVED;
+    else if (up_pair_valid(&job->observed) && up_same_pair(&job->observed, &job->after) &&
+            outcome != PRUNTIME_COMMIT_NOT_COMMITTED) rc = PRUNTIME_OK;
+    else if (restore_tombstone(&job->observed, expected) && up_same_pair(&job->observed, &job->before) &&
+            outcome != PRUNTIME_COMMIT_CONFIRMED) rc = PRUNTIME_IO;
+    else rc = PRUNTIME_UNRESOLVED;
+done:
+    if (location.token) storage->close_location(storage->user_data, location.token);
+    if (lease) coordination->close(coordination->user_data, lease);
+    if (prepared) prepared->active = 0;
+    free(job);
+    return rc;
+}
+
+PRUNTIME_API int PRuntime_InstalledRestore(PRuntimeRevisionHandle prepared,
+        const PRuntimeRegistrationRecord* expected, const PRuntimeRevokeOptions* options,
+        const PRuntimeRegistrationProvider* coordination, const PRuntimeUpdateProvider* provider,
+        const PRuntimeInstalledStorageProvider* storage)
+{
+    int rc = rv_ready(prepared);
+    if (rc != PRUNTIME_OK) return rc;
+    if (!expected || !options || options->size != sizeof(*options) || options->version != 1 ||
+            options->confirmed != 1 ||
+            ((expected->approval.approved_permissions & PRUNTIME_PERMISSION_SQL) &&
+             (!storage || storage->size != sizeof(*storage) || storage->version != 1 ||
+              !storage->open_existing_location || !storage->close_location))) return PRUNTIME_ARGUMENT;
+    if (prepared->installed || prepared->state != PRUNTIME_REVISION_COMPLETE ||
+            prepared->intent_children || prepared->storage_children ||
+            prepared->update_children) return PRUNTIME_STATE;
+    if (rv_snapshot_valid_ex(&expected->approval, 1) != PRUNTIME_OK ||
+            expected->target_schema != prepared->manifest->info.migration_count ||
+            strcmp(expected->approval.id, prepared->manifest->info.id) ||
+            expected->approval.app_version != prepared->manifest->info.app_version ||
+            expected->approval.requested_permissions != prepared->manifest->info.requested_permissions ||
+            memcmp(expected->approval.content_id, prepared->content_id, 32)) return PRUNTIME_INVALID;
+    return restore_run(prepared, expected, prepared->root.canonical, options,
+            coordination, provider, storage);
+}
+
+PRUNTIME_API int PRuntime_InstalledObserveRestoration(const PRuntimeRegistrationRecord* expected,
+        const char* directory, unsigned int bytes, const PRuntimeRegistrationProvider* coordination,
+        const PRuntimeUpdateProvider* provider)
+{
+    char path[1024];
+    if (!expected || !directory || !bytes || bytes > PRUNTIME_ROOT_BYTES ||
+            !runtime_text(directory, bytes)) return PRUNTIME_ARGUMENT;
+    memcpy(path, directory, bytes); path[bytes] = 0;
+    return restore_run(NULL, expected, path, NULL, coordination, provider, NULL);
+}
