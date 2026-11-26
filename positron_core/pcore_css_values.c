@@ -588,6 +588,36 @@ char *pcore_css_compat_values(const char *css, unsigned int len,
     if (css == NULL || out_len == NULL) {
         return NULL;
     }
+    if (len < 5U || memchr(css, '(', len) == NULL) {
+        return NULL;
+    }
+    {
+        unsigned int scan;
+        int has_fn = 0;
+
+        for (scan = 0; scan + 3U < len; scan++) {
+            char ch = css[scan];
+            if ((ch == 'c' || ch == 'C') &&
+                    (css[scan + 1U] == 'a' || css[scan + 1U] == 'A') &&
+                    (css[scan + 2U] == 'l' || css[scan + 2U] == 'L') &&
+                    (css[scan + 3U] == 'c' || css[scan + 3U] == 'C')) {
+                has_fn = 1;
+                break;
+            }
+            if (scan + 4U < len &&
+                    (ch == 'o' || ch == 'O') &&
+                    (css[scan + 1U] == 'k' || css[scan + 1U] == 'K') &&
+                    (css[scan + 2U] == 'l' || css[scan + 2U] == 'L') &&
+                    (css[scan + 3U] == 'c' || css[scan + 3U] == 'C') &&
+                    (css[scan + 4U] == 'h' || css[scan + 4U] == 'H')) {
+                has_fn = 1;
+                break;
+            }
+        }
+        if (!has_fn) {
+            return NULL;
+        }
+    }
     limit = (unsigned long) len * 2UL + 4096UL;
     if (limit > 0x7ffffffeUL) {
         return NULL;

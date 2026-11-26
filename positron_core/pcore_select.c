@@ -2292,7 +2292,8 @@ static css_stylesheet *pcore_record_css_sheet(pcore_collect_ctx *cc,
     entry = cache_allowed ?
             pcore_stylesheet_cache_find(cc->cache, url) : NULL;
     if (entry != NULL && (entry->len != len ||
-            memcmp(entry->data, data, (size_t) len) != 0)) {
+            (entry->data != data &&
+            memcmp(entry->data, data, (size_t) len) != 0))) {
         entry = NULL;
     }
     if (entry != NULL && entry->parsed != NULL &&
@@ -5021,6 +5022,12 @@ static dom_element *pcore_element_by_id(dom_document *doc,
 
     if (doc == NULL || element_id == NULL || element_id[0] == '\0') {
         return NULL;
+    }
+    if (element_id[0] == '_' && element_id[1] == '_') {
+        element = pcore_document_structural_element(doc, element_id);
+        if (element != NULL) {
+            return element;
+        }
     }
     id = NULL;
     element = NULL;

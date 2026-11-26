@@ -251,6 +251,9 @@ static char *pcore_css_compat_ranges(const char *css, unsigned int len,
     if (len > 0x7fffffffU / 2U) {
         return NULL;
     }
+    if (memchr(css, '<', len) == NULL && memchr(css, '>', len) == NULL) {
+        return NULL;
+    }
     out = (char *) malloc((size_t) len * 2U + 1U);
     if (out == NULL) {
         return NULL;
@@ -1001,13 +1004,17 @@ static css_stylesheet *pcore_parse_css_mode(const char *css, unsigned int len,
     }
     parse_css = css;
     parse_len = len;
-    compat_css = pcore_css_compat_ranges(css, len, &parse_len);
-    if (compat_css != NULL) {
-        parse_css = compat_css;
-    }
-    vars_css = pcore_css_compat_root_vars(parse_css, parse_len, &parse_len);
-    if (vars_css != NULL) {
-        parse_css = vars_css;
+    compat_css = NULL;
+    vars_css = NULL;
+    if (!inline_style) {
+        compat_css = pcore_css_compat_ranges(css, len, &parse_len);
+        if (compat_css != NULL) {
+            parse_css = compat_css;
+        }
+        vars_css = pcore_css_compat_root_vars(parse_css, parse_len, &parse_len);
+        if (vars_css != NULL) {
+            parse_css = vars_css;
+        }
     }
     values_css = pcore_css_compat_values(parse_css, parse_len, &parse_len);
     if (values_css != NULL) {
