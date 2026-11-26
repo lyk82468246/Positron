@@ -2140,9 +2140,9 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(!isFinite(nx)){nx=0;}if(!isFinite(ny)){ny=0;}"
         "pElementScrollRequest(this,this.scrollLeft+nx,this.scrollTop+ny);};"
         "Object.defineProperty(g,'__pcoreElementScrollApplied',{value:function(id,x,y){"
-        "var owner;if(!g.document||typeof g.document.getElementById!=='function'){return;}"
+        "var owner;if(!g.document||typeof g.document.getElementById!=='function'){return false;}"
         "owner=g.document.getElementById(String(id||''));if(owner){"
-        "pElementScrollApply(owner,x,y,true);}},writable:false,configurable:false});"
+        "pElementScrollApply(owner,x,y,true);}return true;},writable:false,configurable:false});"
         "function pRectViewport(id,index){var x;var y;var w;var h;var sx;var sy;"
         "x=pRectNumber(id,28,index);y=pRectNumber(id,29,index);"
         "w=pRectNumber(id,30,index);h=pRectNumber(id,31,index);"
@@ -5196,7 +5196,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "enumerable:true});Object.defineProperty(g,'pageYOffset',{get:function(){"
         "return pscrollY;},enumerable:true});"
         "Object.defineProperty(g,'__pcoreScrollApplied',{value:function(x,y){"
-        "psetScrollApplied(x,y);},writable:false,configurable:false});"
+        "psetScrollApplied(x,y);return true;},writable:false,configurable:false});"
         "Object.defineProperty(g,'__pcoreFocusAppliedScroll',{value:function(x,y){"
         "psetScrollApplied(x,y);},writable:false,configurable:false});"
         "Object.defineProperty(g,'__pcoreViewportResize',{value:function(w,h,d){"
@@ -18822,8 +18822,9 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
         return PSCRIPT_ERROR_ARGUMENT;
     }
     args[length] = '\0';
-    return PScript_CallGlobalJson(session->runtime, "__pcoreScrollApplied", -1,
-            args, length);
+    length = PScript_CallGlobalJson(session->runtime, "__pcoreScrollApplied",
+            -1, args, length);
+    return length == PSCRIPT_ERROR_GLOBAL ? PSCRIPT_OK : length;
 }
 
 PBROWSER_API int PBrowser_ScriptSessionNotifyElementScroll(HANDLE hSession,
@@ -18854,8 +18855,9 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyElementScroll(HANDLE hSession,
                 scroll_x, scroll_y);
         if (length >= 0 && length < (int) sizeof(args) - 1) {
             args[length] = '\0';
-            return PScript_CallGlobalJson(session->runtime,
+            rc = PScript_CallGlobalJson(session->runtime,
                     "__pcoreElementScrollApplied", -1, args, length);
+            return rc == PSCRIPT_ERROR_GLOBAL ? PSCRIPT_OK : rc;
         }
     }
     rc = PScript_SetGlobalString(session->runtime, "__pcoreElementScrollId",
