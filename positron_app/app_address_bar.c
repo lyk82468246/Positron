@@ -28,6 +28,10 @@ struct AppAddressBar {
     HBITMAP buffer_original;
     int buffer_width;
     int buffer_height;
+    int last_drawn_valid;
+    int last_drawn_loading;
+    int last_drawn_offset;
+    int last_drawn_fill;
 };
 
 static int app_address_fill(int width, DWORD elapsed)
@@ -123,6 +127,7 @@ static void app_address_timer(AppAddressBar *bar)
 static void app_address_changed(AppAddressBar *bar)
 {
     bar->started = GetTickCount();
+    bar->last_drawn_valid = 0;
     app_address_measure(bar);
     app_address_timer(bar);
     InvalidateRect(bar->view, NULL, FALSE);
@@ -137,6 +142,7 @@ static void app_address_draw(AppAddressBar *bar, HDC dc, const RECT *rect)
     int padding;
     int y;
     int offset;
+    int fill_px;
     int saved;
     DWORD elapsed;
 
@@ -149,6 +155,12 @@ static void app_address_draw(AppAddressBar *bar, HDC dc, const RECT *rect)
     elapsed = GetTickCount() - bar->started;
     offset = bar->loading ? 0 : app_address_offset(
             bar->text_width - (clip.right - clip.left), bar->dpi, elapsed);
+    fill_px = bar->loading ? app_address_fill(
+            rect->right - rect->left, elapsed) : 0;
+    bar->last_drawn_valid = 1;
+    bar->last_drawn_loading = bar->loading;
+    bar->last_drawn_offset = offset;
+    bar->last_drawn_fill = fill_px;
     y = (rect->bottom - rect->top - bar->text_height) / 2 + rect->top;
     FillRect(dc, rect, GetSysColorBrush(COLOR_WINDOW));
     old_font = (HFONT) SelectObject(dc, bar->font);
@@ -158,8 +170,7 @@ static void app_address_draw(AppAddressBar *bar, HDC dc, const RECT *rect)
             text, (UINT) wcslen(text), NULL);
     if (bar->loading) {
         filled = *rect;
-        filled.right = rect->left + app_address_fill(
-                rect->right - rect->left, elapsed);
+        filled.right = rect->left + fill_px;
         if (filled.right > filled.left) {
             saved = SaveDC(dc);
             if (saved != 0) {
@@ -236,7 +247,28 @@ static LRESULT CALLBACK app_address_view_proc(HWND hwnd, UINT message,
     case WM_ERASEBKGND: return 1;
     case WM_TIMER:
         if (wparam == APP_ADDRESS_ANIMATION_TIMER && !bar->editing &&
-                IsWindowVisible(hwnd)) InvalidateRect(hwnd, NULL, FALSE);
+                IsWindowVisible(hwnd)) {
+            int padding;
+            int offset;
+            int fill_px;
+            DWORD elapsed;
+
+            GetClientRect(hwnd, &rect);
+            padding = MulDiv(2, bar->dpi, 96);
+            if (padding < 1) padding = 1;
+            elapsed = GetTickCount() - bar->started;
+            offset = bar->loading ? 0 : app_address_offset(
+                    bar->text_width - ((rect.right - rect.left) - padding * 2),
+                    bar->dpi, elapsed);
+            fill_px = bar->loading ? app_address_fill(
+                    rect.right - rect.left, elapsed) : 0;
+            if (!bar->last_drawn_valid ||
+                    bar->last_drawn_loading != bar->loading ||
+                    bar->last_drawn_offset != offset ||
+                    bar->last_drawn_fill != fill_px) {
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+        }
         return 0;
     case WM_LBUTTONDOWN: SetCapture(hwnd); return 0;
     case WM_LBUTTONUP:
@@ -305,6 +337,7 @@ void AppAddressBar_Move(AppAddressBar *bar, int width, int height, int dpi)
 {
     if (bar == NULL) return;
     bar->dpi = dpi > 0 ? dpi : 96;
+    bar->last_drawn_valid = 0;
     MoveWindow(bar->edit, 0, 0, width, height, TRUE);
     MoveWindow(bar->view, 0, 0, width, height, TRUE);
     app_address_changed(bar);

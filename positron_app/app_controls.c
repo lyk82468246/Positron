@@ -3760,12 +3760,16 @@ static void app_controls_reposition(AppControlsContext *context,
                 height = app_controls_select_window_height(&select_info);
             }
         }
-        MoveWindow(context->items[i].hwnd, x, y, width, height, TRUE);
         if (x + width <= client.left || x >= client.right ||
                 y + visible_height <= client.top || y >= client.bottom) {
-            ShowWindow(context->items[i].hwnd, SW_HIDE);
+            if (IsWindowVisible(context->items[i].hwnd)) {
+                ShowWindow(context->items[i].hwnd, SW_HIDE);
+            }
         } else {
-            ShowWindow(context->items[i].hwnd, SW_SHOW);
+            MoveWindow(context->items[i].hwnd, x, y, width, height, TRUE);
+            if (!IsWindowVisible(context->items[i].hwnd)) {
+                ShowWindow(context->items[i].hwnd, SW_SHOW);
+            }
         }
     }
 }

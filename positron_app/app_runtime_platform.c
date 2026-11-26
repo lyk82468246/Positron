@@ -567,7 +567,7 @@ static int revision_hash_begin(void *user,void **out)
     h=(AppRevisionHash *)calloc(1,sizeof(*h));
     if(!h) return PRUNTIME_MEMORY;
     for(i=0;i<2;++i) {
-        if(CryptAcquireContext(&h->provider,NULL,NULL,i ? 24 : PROV_RSA_FULL,CRYPT_VERIFYCONTEXT) &&
+        if(CryptAcquireContext(&h->provider,NULL,NULL,i ? PROV_RSA_FULL : 24,CRYPT_VERIFYCONTEXT) &&
                 CryptCreateHash(h->provider,CALG_SHA_256,0,0,&h->hash)) { *out=h; return PRUNTIME_OK; }
         if(h->provider) CryptReleaseContext(h->provider,0);
         h->provider=0;

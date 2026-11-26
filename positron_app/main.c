@@ -1328,8 +1328,6 @@ static void app_controls_changed(void *pw)
         app_set_status(APP_TEXT_STATUS_LAYOUT);
         return;
     }
-    AppControls_Reposition(g_controls, host->document, host->scroll_x,
-            host->scroll_y);
     InvalidateRect(host->page_window, NULL, TRUE);
 }
 
@@ -6059,8 +6057,8 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
                     PBROWSER_NAVIGATION_RESOURCE_ROLE_NONE;
             if (app_navigation_pending_count(request) > 0) {
                 request->worker_stage = APP_NAV_WORK_RESOURCES;
-                request->worker_resume_stage = APP_NAV_COMMIT_STYLE;
-                request->commit_stage = APP_NAV_COMMIT_STYLE;
+                request->worker_resume_stage = APP_NAV_COMMIT_IMAGES;
+                request->commit_stage = APP_NAV_COMMIT_IMAGES;
                 if (app_navigation_start_worker(request) != 0) {
                     return -1;
                 }
@@ -6146,8 +6144,26 @@ static int app_navigation_advance(HWND hwnd, AppNavigationRequest *request)
         }
         app_set_focus_ids(g_page_kind);
         app_set_address(g_current_url);
-        if (app_relayout() != 0) {
-            app_set_status(APP_TEXT_STATUS_LAYOUT);
+        {
+            int old_w;
+            int old_h;
+
+            old_w = g_page_width;
+            old_h = g_page_height;
+            g_document_width = PCore_DocumentWidth(g_document);
+            g_document_height = PCore_DocumentHeight(g_document);
+            if (g_document_width < g_page_width) {
+                g_document_width = g_page_width;
+            }
+            if (g_document_height < g_page_height) {
+                g_document_height = g_page_height;
+            }
+            app_clamp_scroll();
+            (void) app_update_scrollbars(g_page_window);
+            if ((old_w != g_page_width || old_h != g_page_height) &&
+                    app_relayout() != 0) {
+                app_set_status(APP_TEXT_STATUS_LAYOUT);
+            }
         }
         if (g_controls != NULL) {
             (void) AppControls_Rebuild(g_controls, g_document, g_script,
@@ -8516,10 +8532,6 @@ static LRESULT CALLBACK app_page_window_proc(HWND hwnd, UINT message,
             }
             if (g_scrollbar_settle_depth > 0) {
                 return 0;
-            }
-            if (g_controls != NULL && g_document != NULL) {
-                AppControls_Reposition(g_controls, g_document, g_scroll_x,
-                        g_scroll_y);
             }
             if (g_script != NULL) {
                 (void) AppScript_NotifyResize(g_script, g_page_width,

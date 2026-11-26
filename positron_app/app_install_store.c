@@ -86,8 +86,16 @@ int AppInstallStore_RecordEqual(const PRuntimeRegistrationRecord *a,
         x->approval_policy == y->approval_policy;
 }
 
+static HMODULE g_install_api_module = NULL;
+static InstallDb g_install_api_cache;
+
 static int install_api(HMODULE module, InstallDb *a)
 {
+    if (module == NULL || a == NULL) return 0;
+    if (module == g_install_api_module) {
+        *a = g_install_api_cache;
+        return 1;
+    }
 #define GET(field,name,type) a->field = (type)GetProcAddress(module,TEXT(name)); if (!a->field) return 0
     GET(prepare,"PDb_Prepare",int (*)(PDbHandle,const char *,PDbStmtHandle *));
     GET(text,"PDb_BindText",int (*)(PDbStmtHandle,int,const char *,int));
@@ -105,6 +113,8 @@ static int install_api(HMODULE module, InstallDb *a)
     GET(state,"PDb_GetConnectionState",int (*)(PDbHandle,PDbConnectionState *));
     GET(clear,"PDb_ClearError",int (*)(PDbHandle));
 #undef GET
+    g_install_api_cache = *a;
+    g_install_api_module = module;
     return 1;
 }
 static int install_string(InstallDb *a, PDbStmtHandle s, int column,
