@@ -151,11 +151,35 @@ static int pa_path(const char* name, unsigned int n, unsigned int flags)
     }
     return 1;
 }
+static int pa_is_ascii(const char* s)
+{
+    while (*s) {
+        if ((unsigned char)*s >= 128) return 0;
+        ++s;
+    }
+    return 1;
+}
+static int pa_ascii_collision(const PArchiveEntry* a, const PArchiveEntry* b)
+{
+    size_t an = strlen(a->path), bn = strlen(b->path), common, i;
+    if (a->is_directory && an) --an;
+    if (b->is_directory && bn) --bn;
+    if (an < 1 || bn < 1) return 1;
+    common = an < bn ? an : bn;
+    for (i = 0; i < common; ++i) {
+        if (pa_lower((unsigned char)a->path[i]) != pa_lower((unsigned char)b->path[i])) return 0;
+    }
+    if (an == bn) return 1;
+    if (common == an && b->path[common] == '/' && !a->is_directory) return 1;
+    if (common == bn && a->path[common] == '/' && !b->is_directory) return 1;
+    return 0;
+}
 static int pa_collision(const PArchiveEntry* a, const PArchiveEntry* b)
 {
     unsigned int i = 0;
     WCHAR aw[PARCHIVE_PATH_BYTES + 1], bw[PARCHIVE_PATH_BYTES + 1];
     int an, bn, common, comparison;
+    if (pa_is_ascii(a->path) && pa_is_ascii(b->path)) return pa_ascii_collision(a, b);
     an = MultiByteToWideChar(CP_UTF8, 0, a->path, -1, aw, PARCHIVE_PATH_BYTES + 1) - 1;
     bn = MultiByteToWideChar(CP_UTF8, 0, b->path, -1, bw, PARCHIVE_PATH_BYTES + 1) - 1;
     if (an < 1 || bn < 1) return 1;
@@ -172,9 +196,81 @@ static int pa_collision(const PArchiveEntry* a, const PArchiveEntry* b)
     if (common == bn && aw[i] == '/' && !b->is_directory) return 1;
     return 0;
 }
+static int pa_ascii_entry_cmp(const void* lhs, const void* rhs)
+{
+    const PArchiveEntry* a = *(const PArchiveEntry* const*)lhs;
+    const PArchiveEntry* b = *(const PArchiveEntry* const*)rhs;
+    const char* ap = a->path;
+    const char* bp = b->path;
+    size_t an = strlen(ap), bn = strlen(bp), ai = 0, bi = 0;
+    if (a->is_directory && an) --an;
+    if (b->is_directory && bn) --bn;
+    while (ai < an && bi < bn) {
+        unsigned char ca = pa_lower((unsigned char)ap[ai]);
+        unsigned char cb = pa_lower((unsigned char)bp[bi]);
+        int a_sep = (ca == '/');
+        int b_sep = (cb == '/');
+        if (a_sep != b_sep) return a_sep ? -1 : 1;
+        if (ca != cb) return ca < cb ? -1 : 1;
+        ++ai;
+        ++bi;
+    }
+    if (ai < an) return 1;
+    if (bi < bn) return -1;
+    return 0;
+}
+static int pa_check_collisions(const PArchiveEntry* entries, unsigned int count)
+{
+    const PArchiveEntry* ascii_sorted[1024];
+    unsigned int non_ascii[1024];
+    unsigned int ascii_count = 0, non_ascii_count = 0, i, j;
+    if (count < 2) return 0;
+    for (i = 0; i < count; ++i) {
+        if (pa_is_ascii(entries[i].path)) ascii_sorted[ascii_count++] = &entries[i];
+        else non_ascii[non_ascii_count++] = i;
+    }
+    if (ascii_count > 1) {
+        qsort((void*)ascii_sorted, ascii_count, sizeof(ascii_sorted[0]), pa_ascii_entry_cmp);
+        for (i = 1; i < ascii_count; ++i) {
+            if (pa_ascii_collision(ascii_sorted[i - 1], ascii_sorted[i])) return 1;
+        }
+    }
+    for (i = 0; i < non_ascii_count; ++i) {
+        unsigned int idx = non_ascii[i];
+        for (j = 0; j < count; ++j) {
+            if (j == idx) continue;
+            if (j < idx && !pa_is_ascii(entries[j].path)) continue;
+            if (pa_collision(&entries[idx], &entries[j])) return 1;
+        }
+    }
+    return 0;
+}
+static int pa_range_cmp(const void* lhs, const void* rhs)
+{
+    const PaRange* a = (const PaRange*)lhs;
+    const PaRange* b = (const PaRange*)rhs;
+    if (a->start < b->start) return -1;
+    if (a->start > b->start) return 1;
+    if (a->end < b->end) return -1;
+    if (a->end > b->end) return 1;
+    return 0;
+}
+static int pa_check_range_overlaps(PaRange* ranges, unsigned int count)
+{
+    unsigned int i;
+    mz_uint64 max_end;
+    if (count < 2) return 0;
+    qsort(ranges, count, sizeof(ranges[0]), pa_range_cmp);
+    max_end = ranges[0].end;
+    for (i = 1; i < count; ++i) {
+        if (ranges[i].start < max_end) return 1;
+        if (ranges[i].end > max_end) max_end = ranges[i].end;
+    }
+    return 0;
+}
 static int pa_admit(PArchiveReader r)
 {
-    unsigned int i, j, n, total = 0, count = r->zip.m_total_files;
+    unsigned int i, n, total = 0, count = r->zip.m_total_files;
     unsigned char header[46], local[30];
     mz_zip_archive_file_stat stat;
     PArchiveEntry* e;
@@ -214,7 +310,6 @@ static int pa_admit(PArchiveReader r)
         if (e->is_directory != (unsigned int)stat.m_is_directory) return PARCHIVE_INVALID;
         if (e->is_directory && (e->uncompressed_bytes || e->compressed_bytes)) return PARCHIVE_INVALID;
         if (!e->method && e->compressed_bytes != e->uncompressed_bytes) return PARCHIVE_INVALID;
-        for (j = 0; j < i; ++j) if (pa_collision(e, &r->entries[j])) return PARCHIVE_PATH;
         if (pa_read(r, stat.m_local_header_ofs, local, sizeof(local)) != sizeof(local)) return pa_error(r);
         if (pa32(local) != 0x04034b50 || pa16(local + 6) != stat.m_bit_flag ||
                 pa16(local + 8) != stat.m_method || pa16(local + 26) != n) return PARCHIVE_INVALID;
@@ -227,8 +322,6 @@ static int pa_admit(PArchiveReader r)
             end += pa32(descriptor) == 0x08074b50 ? 16 : 12;
             if (end > r->zip.m_central_directory_file_ofs) return PARCHIVE_INVALID;
         }
-        for (j = 0; j < i; ++j) if (stat.m_local_header_ofs < r->ranges[j].end &&
-                end > r->ranges[j].start) return PARCHIVE_INVALID;
         r->ranges[i].start = stat.m_local_header_ofs; r->ranges[i].end = end;
         {
             char name[PARCHIVE_PATH_BYTES];
@@ -238,6 +331,8 @@ static int pa_admit(PArchiveReader r)
         if (!(stat.m_bit_flag & 8) && (pa32(local + 14) != stat.m_crc32 ||
                 pa32(local + 18) != stat.m_comp_size || pa32(local + 22) != stat.m_uncomp_size)) return PARCHIVE_INVALID;
     }
+    if (pa_check_collisions(r->entries, count)) return PARCHIVE_PATH;
+    if (pa_check_range_overlaps(r->ranges, count)) return PARCHIVE_INVALID;
     return PARCHIVE_OK;
 }
 int PArchive_Open(const PArchiveSource* source, const PArchiveLimits* limits, PArchiveReader* output)
