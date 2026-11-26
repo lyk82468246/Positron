@@ -1748,6 +1748,7 @@ static nserror gdi_font_split(const struct plot_font_style *fstyle,
             }
             return NSERROR_OK;
         } else {
+            int orig_wl = wl;
             int need_len = wl;
             for (i = fit; i < wl; i++) {
                 if (wbuf[i] == L' ') {
@@ -1763,6 +1764,19 @@ static nserror gdi_font_split(const struct plot_font_style *fstyle,
                     free(byteofs);
                 }
                 return NSERROR_OK;
+            }
+            if (need_len < orig_wl && dx[need_len - 1] <= x) {
+                /* Defensive fallback if GDI lpnFit underestimated width. */
+                if (!pcore_measure_wide_limit(fstyle, wbuf, orig_wl, dx, NULL,
+                        0, &measured)) {
+                    if (heap_buf) {
+                        free(wbuf);
+                        free(dx);
+                        free(byteofs);
+                    }
+                    return NSERROR_OK;
+                }
+                need_len = orig_wl;
             }
             wl = need_len;
             fit = 0;
