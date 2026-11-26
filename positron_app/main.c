@@ -5451,20 +5451,20 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     if (request->runtime_app != NULL) {
         PRuntimeResourceReference resolved;
         unsigned int bytes;
-        char *data;
+        void *data;
         int rc;
         int failure;
 
         if (app_navigation_is_cancelled(request)) return 1;
         if (PBrowser_NavigationResourceBeginAttempt(request->resource_transaction,
                 index) != PBROWSER_OK) return 1;
-        data = (char *) malloc(PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX);
+        data = NULL;
         resolved.size = sizeof(resolved);
         resolved.version = PRUNTIME_VERSION;
         bytes = 0;
-        rc = data == NULL ? PRUNTIME_MEMORY : AppRuntimeApp_Read(request->runtime_app,
-                request->url, reference, data, PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX,
-                &bytes, &resolved);
+        rc = AppRuntimeApp_ReadAlloc(request->runtime_app,
+                request->url, reference, PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX,
+                &data, &bytes, &resolved);
         if (app_navigation_is_cancelled(request)) {
             free(data);
             (void) PBrowser_NavigationResourceCancelAll(request->resource_transaction);
@@ -5473,7 +5473,7 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
         if (rc == PRUNTIME_OK &&
                 AppResources_SetEffectiveUrl(request, index, resolved.url) == 0 &&
                 PBrowser_NavigationResourceSetDataEx(request->resource_transaction,
-                index, data, (int) bytes) == PBROWSER_OK) {
+                index, (const char *) data, (int) bytes) == PBROWSER_OK) {
             request->worker_status_code = 0; /* No fabricated HTTP response. */
             free(data);
             return 0;

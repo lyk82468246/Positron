@@ -431,36 +431,61 @@ static void app_settings_read(AppSettingsDbApi *api, PDbHandle db,
     app_settings_finish_statement(api, db, statement, result);
 }
 
-static int app_settings_table_exists(AppSettingsDbApi *api, PDbHandle db,
-        const char *sql, AppSettingsResult *result)
+static unsigned int app_settings_probe_tables(AppSettingsDbApi *api, PDbHandle db,
+        AppSettingsResult *result)
 {
+    static const char sql[] =
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ("
+        "'app_settings','app_visits','app_preferences','app_downloads',"
+        "'app_installs','app_update_attempts','app_update_revisions')";
     PDbStmtHandle statement;
-    int exists;
+    unsigned int mask;
     int rc;
 
     statement = NULL;
-    exists = 0;
+    mask = 0;
     rc = api->prepare(db, sql, &statement);
-    if (rc == PDB_OK) rc = api->step(statement);
-    if (rc != PDB_STEP_ROW) {
-        app_settings_db_failure(api, db, rc, result);
-    } else if (api->column_type(statement, 0) != PDB_VALUE_INTEGER ||
-            api->column_int(statement, 0) < 0 ||
-            api->column_int(statement, 0) > 1) {
-        result->result = APP_SETTINGS_BAD_DATA;
+    if (rc == PDB_OK) {
+        for (;;) {
+            const char *name;
+            int bytes;
+
+            rc = api->step(statement);
+            if (rc == PDB_STEP_DONE) break;
+            if (rc != PDB_STEP_ROW) {
+                app_settings_db_failure(api, db, rc, result);
+                break;
+            }
+            if (api->column_type(statement, 0) != PDB_VALUE_TEXT) {
+                result->result = APP_SETTINGS_BAD_DATA;
+                break;
+            }
+            name = api->column_text(statement, 0);
+            bytes = api->column_bytes(statement, 0);
+            if (name == NULL || bytes < 1) {
+                result->result = APP_SETTINGS_BAD_DATA;
+                break;
+            }
+            if (bytes == 12 && !memcmp(name, "app_settings", 12)) mask |= 1U;
+            else if (bytes == 10 && !memcmp(name, "app_visits", 10)) mask |= 2U;
+            else if (bytes == 15 && !memcmp(name, "app_preferences", 15)) mask |= 4U;
+            else if (bytes == 13 && !memcmp(name, "app_downloads", 13)) mask |= 8U;
+            else if (bytes == 12 && !memcmp(name, "app_installs", 12)) mask |= 16U;
+            else if (bytes == 19 && !memcmp(name, "app_update_attempts", 19)) mask |= 32U;
+            else if (bytes == 20 && !memcmp(name, "app_update_revisions", 20)) mask |= 64U;
+        }
     } else {
-        exists = (int) api->column_int(statement, 0);
-        rc = api->step(statement);
-        if (rc != PDB_STEP_DONE) app_settings_db_failure(api, db, rc, result);
+        app_settings_db_failure(api, db, rc, result);
     }
     app_settings_finish_statement(api, db, statement, result);
-    return exists;
+    return mask;
 }
 
 static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         AppSettingsResult *result)
 {
     char script[4096];
+    unsigned int tables;
     int exists;
     int visits_exist;
     int preferences_exist;
@@ -470,28 +495,22 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
     int revisions_exist;
     int rc;
 
-    exists = app_settings_table_exists(api, db, g_settings_exists_sql, result);
+    (void) g_settings_exists_sql;
+    (void) g_preferences_exists_sql;
+    (void) g_visits_exists_sql;
+    (void) g_downloads_exists_sql;
+    tables = app_settings_probe_tables(api, db, result);
     if (result->result != APP_SETTINGS_OK) return;
-    installs_exist = app_settings_table_exists(api, db,
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_installs'", result);
-    if (result->result != APP_SETTINGS_OK) return;
-    attempts_exist = app_settings_table_exists(api, db,
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_attempts'", result);
-    if (result->result != APP_SETTINGS_OK) return;
-    revisions_exist = app_settings_table_exists(api, db,
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_revisions'", result);
-    if (result->result != APP_SETTINGS_OK) return;
+    exists = (tables & 1U) != 0;
+    visits_exist = (tables & 2U) != 0;
+    preferences_exist = (tables & 4U) != 0;
+    downloads_exist = (tables & 8U) != 0;
+    installs_exist = (tables & 16U) != 0;
+    attempts_exist = (tables & 32U) != 0;
+    revisions_exist = (tables & 64U) != 0;
     if (attempts_exist != revisions_exist || (attempts_exist && !installs_exist)) {
         result->result=APP_SETTINGS_BAD_DATA; return;
     }
-    downloads_exist = app_settings_table_exists(api, db,
-            g_downloads_exists_sql, result);
-    if (result->result != APP_SETTINGS_OK) return;
-    visits_exist = app_settings_table_exists(api, db, g_visits_exists_sql, result);
-    if (result->result != APP_SETTINGS_OK) return;
-    preferences_exist = app_settings_table_exists(api, db,
-            g_preferences_exists_sql, result);
-    if (result->result != APP_SETTINGS_OK) return;
     if ((visits_exist && !exists) || (preferences_exist && (!exists || !visits_exist)) ||
             (downloads_exist && (!exists || !visits_exist || !preferences_exist)) ||
             (installs_exist && (!exists || !visits_exist || !preferences_exist || !downloads_exist))) {
@@ -526,15 +545,11 @@ static void app_settings_initialize(AppSettingsDbApi *api, PDbHandle db,
         app_settings_db_failure(api, db, rc, result);
         return;
     }
-    if (!app_settings_table_exists(api, db,
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_installs'",result)) {
-        result->result=APP_SETTINGS_BAD_DATA; return;
-    }
-    if (!app_settings_table_exists(api, db,
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_attempts'",result) ||
-        !app_settings_table_exists(api, db,
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_update_revisions'",result)) {
-        result->result=APP_SETTINGS_BAD_DATA; return;
+    tables = app_settings_probe_tables(api, db, result);
+    if (result->result != APP_SETTINGS_OK) return;
+    if ((tables & (16U | 32U | 64U)) != (16U | 32U | 64U)) {
+        result->result = APP_SETTINGS_BAD_DATA;
+        return;
     }
     app_settings_read(api, db, result);
     if (result->result == APP_SETTINGS_OK) {

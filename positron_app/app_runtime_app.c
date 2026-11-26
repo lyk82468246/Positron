@@ -60,6 +60,8 @@ struct AppRuntimeApp {
     char base[1024];
     char reference[1024];
     void *buffer;
+    void *alloc_buffer;
+    int read_alloc;
     unsigned int capacity;
     unsigned int bytes;
     PRuntimeResourceReference resolved;
@@ -226,7 +228,51 @@ static DWORD WINAPI app_runtime_app_worker(void *parameter)
         if (InterlockedExchange(&app->reading, 0)) {
             app->resolved.size = sizeof(app->resolved);
             app->resolved.version = PRUNTIME_VERSION;
-            if(installed) app->read_result=AppRuntimeInstall_Read(installed,
+            app->alloc_buffer = NULL;
+            if (app->read_alloc) {
+                if (installed) {
+                    app->read_result = AppRuntimeInstall_ReadAlloc(installed,
+                            app->base[0] ? app->base : NULL, app->reference,
+                            app->capacity, &app->alloc_buffer, &app->bytes,
+                            &app->resolved);
+                } else {
+                    unsigned int probe_cap;
+                    void *buf;
+
+                    probe_cap = app->capacity > 65536U ? 65536U : app->capacity;
+                    buf = malloc(probe_cap ? probe_cap : 1);
+                    if (buf == NULL) {
+                        app->read_result = PRUNTIME_MEMORY;
+                    } else {
+                        app->read_result = PRuntime_DirectoryReadResource(directory,
+                                app->base[0] ? app->base : NULL,
+                                (unsigned int) strlen(app->base), app->reference,
+                                (unsigned int) strlen(app->reference), buf,
+                                probe_cap, &app->bytes, &app->resolved);
+                        if (app->read_result == PRUNTIME_LIMIT &&
+                                probe_cap < app->capacity) {
+                            free(buf);
+                            buf = malloc(app->capacity);
+                            if (buf == NULL) {
+                                app->read_result = PRUNTIME_MEMORY;
+                            } else {
+                                app->resolved.size = sizeof(app->resolved);
+                                app->resolved.version = PRUNTIME_VERSION;
+                                app->read_result = PRuntime_DirectoryReadResource(directory,
+                                        app->base[0] ? app->base : NULL,
+                                        (unsigned int) strlen(app->base), app->reference,
+                                        (unsigned int) strlen(app->reference), buf,
+                                        app->capacity, &app->bytes, &app->resolved);
+                            }
+                        }
+                        if (app->read_result == PRUNTIME_OK) {
+                            app->alloc_buffer = buf;
+                        } else {
+                            free(buf);
+                        }
+                    }
+                }
+            } else if(installed) app->read_result=AppRuntimeInstall_Read(installed,
                     app->base[0] ? app->base : NULL,app->reference,app->buffer,
                     app->capacity,&app->bytes,&app->resolved);
             else app->read_result = PRuntime_DirectoryReadResource(directory,
@@ -393,6 +439,8 @@ int AppRuntimeApp_Read(AppRuntimeApp *app, const char *base,
     strcpy(app->base, base ? base : "");
     strcpy(app->reference, reference);
     app->buffer = buffer;
+    app->alloc_buffer = NULL;
+    app->read_alloc = 0;
     app->capacity = capacity;
     InterlockedExchange(&app->reading, 1);
     SetEvent(app->wake);
@@ -403,6 +451,48 @@ int AppRuntimeApp_Read(AppRuntimeApp *app, const char *base,
         *resolved = app->resolved;
     }
     app->buffer = NULL;
+    LeaveCriticalSection(&app->serial);
+    return rc;
+}
+
+int AppRuntimeApp_ReadAlloc(AppRuntimeApp *app, const char *base,
+        const char *reference, unsigned int max_bytes, void **out_buffer,
+        unsigned int *bytes, PRuntimeResourceReference *resolved)
+{
+    int rc;
+
+    if (out_buffer != NULL) *out_buffer = NULL;
+    if (app == NULL || GetCurrentThreadId() == app->ui_thread || reference == NULL ||
+            strlen(reference) >= sizeof(app->reference) ||
+            (base != NULL && strlen(base) >= sizeof(app->base)) ||
+            out_buffer == NULL || bytes == NULL || resolved == NULL ||
+            resolved->size != sizeof(*resolved) || resolved->version != PRUNTIME_VERSION ||
+            !max_bytes || max_bytes > PRUNTIME_RESOURCE_BYTES) return PRUNTIME_ARGUMENT;
+    EnterCriticalSection(&app->serial);
+    if (app->stopping || (AppRuntimeApp_State(app) != APP_RUNTIME_OPEN &&
+            AppRuntimeApp_State(app) != APP_RUNTIME_READY)) {
+        LeaveCriticalSection(&app->serial);
+        return PRUNTIME_CANCELLED;
+    }
+    strcpy(app->base, base ? base : "");
+    strcpy(app->reference, reference);
+    app->buffer = NULL;
+    app->alloc_buffer = NULL;
+    app->read_alloc = 1;
+    app->capacity = max_bytes;
+    InterlockedExchange(&app->reading, 1);
+    SetEvent(app->wake);
+    WaitForSingleObject(app->complete, INFINITE);
+    rc = app->read_result;
+    if (rc == PRUNTIME_OK) {
+        *out_buffer = app->alloc_buffer;
+        *bytes = app->bytes;
+        *resolved = app->resolved;
+    } else {
+        free(app->alloc_buffer);
+    }
+    app->alloc_buffer = NULL;
+    app->read_alloc = 0;
     LeaveCriticalSection(&app->serial);
     return rc;
 }

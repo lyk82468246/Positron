@@ -110,33 +110,39 @@ int AppRuntimeServices_Pump(AppRuntimeServices *services)
     PRuntimeServiceResult *result;
     PBrowserServiceToken token;
     unsigned long delivered;
+    unsigned int drained;
     int rc;
 
     if (!services->registered) return 0;
     /* One bounded heap-owned copy per context, no allocation in idle ticks. */
     result = &services->result;
-    result->size = sizeof(*result);
-    result->version = PRUNTIME_VERSION;
-    rc = AppRuntimePage_Take(services->page, result);
-    if (rc == PRUNTIME_OK) {
-        if (result->tab_id != services->tab_id ||
-                result->page_generation != services->generation) rc = PRUNTIME_STATE;
-        else {
-            token.bridge_id = result->bridge_id;
-            token.request_id = result->request_id;
-            if (PBrowser_ScriptSessionCompleteService(services->session, &token,
-                    result->result == PRUNTIME_OK, result->json,
-                    result->json_bytes) != PBROWSER_OK) rc = PRUNTIME_STATE;
+    for (drained = 0; drained < 4; ++drained) {
+        if (!services->registered) return 0;
+        result->size = sizeof(*result);
+        result->version = PRUNTIME_VERSION;
+        rc = AppRuntimePage_Take(services->page, result);
+        if (rc == PRUNTIME_NOT_FOUND) break;
+        if (rc == PRUNTIME_OK) {
+            if (result->tab_id != services->tab_id ||
+                    result->page_generation != services->generation) rc = PRUNTIME_STATE;
+            else {
+                token.bridge_id = result->bridge_id;
+                token.request_id = result->request_id;
+                if (PBrowser_ScriptSessionCompleteService(services->session, &token,
+                        result->result == PRUNTIME_OK, result->json,
+                        result->json_bytes) != PBROWSER_OK) rc = PRUNTIME_STATE;
+            }
+        }
+        if (rc != PRUNTIME_OK) {
+#ifdef _DEBUG
+            app_runtime_services_debug(services, "result", rc);
+#endif
+            return 1;
         }
     }
-    if (rc != PRUNTIME_OK && rc != PRUNTIME_NOT_FOUND) {
-#ifdef _DEBUG
-        app_runtime_services_debug(services, "result", rc);
-#endif
-        return 1;
-    }
+    if (!services->registered) return 0;
     delivered = 0;
-    rc = PBrowser_ScriptSessionPumpServices(services->session, 1, &delivered);
+    rc = PBrowser_ScriptSessionPumpServices(services->session, 4, &delivered);
 #ifdef _DEBUG
     if (rc != PBROWSER_OK) app_runtime_services_debug(services, "callback", rc);
 #endif

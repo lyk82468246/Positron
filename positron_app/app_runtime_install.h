@@ -21,6 +21,8 @@ int AppRuntimeInstall_Confirm(AppRuntimeInstall *install);
 PRuntimeStorageHandle AppRuntimeInstall_TakeStorage(AppRuntimeInstall *install);
 int AppRuntimeInstall_Read(AppRuntimeInstall *install,const char *base,const char *reference,
         void *buffer,unsigned int capacity,unsigned int *bytes,PRuntimeResourceReference *resolved);
+int AppRuntimeInstall_ReadAlloc(AppRuntimeInstall *install,const char *base,const char *reference,
+        unsigned int max_bytes,void **out_buffer,unsigned int *bytes,PRuntimeResourceReference *resolved);
 void AppRuntimeInstall_Close(AppRuntimeInstall **install);
 #ifdef _DEBUG
 void AppRuntimeInstall_DebugOptions(AppRuntimeInstall *install,int fault,unsigned int budget,int cancel_after_first);

@@ -363,14 +363,16 @@ PRuntimeStorageHandle AppRuntimeInstall_TakeStorage(AppRuntimeInstall *i)
     PRuntimeStorageHandle storage;
     storage=i->storage; i->storage=NULL; return storage;
 }
-int AppRuntimeInstall_Read(AppRuntimeInstall *i,const char *base,const char *reference,
-        void *buffer,unsigned int capacity,unsigned int *bytes,PRuntimeResourceReference *resolved)
+int AppRuntimeInstall_ReadAlloc(AppRuntimeInstall *i,const char *base,const char *reference,
+        unsigned int max_bytes,void **out_buffer,unsigned int *bytes,PRuntimeResourceReference *resolved)
 {
     PRuntimeResourceReference ref;
     PRuntimeRevisionFile file;
     unsigned char *copy;
     unsigned int index,n,offset,got;
     int rc;
+    if(!out_buffer) return PRUNTIME_ARGUMENT;
+    *out_buffer=NULL;
     ref.size=sizeof(ref); ref.version=1;
     rc=PRuntime_ManifestResolveReference(i->manifest,base,base ? (unsigned int)strlen(base) : 0,
         reference,(unsigned int)strlen(reference),&ref);
@@ -382,7 +384,7 @@ int AppRuntimeInstall_Read(AppRuntimeInstall *i,const char *base,const char *ref
         if(!strcmp(file.path,ref.path)) break;
     }
     if(index==i->revision_info.file_count) return PRUNTIME_NOT_FOUND;
-    if(file.file_bytes>capacity) return PRUNTIME_LIMIT;
+    if(file.file_bytes>max_bytes) return PRUNTIME_LIMIT;
     copy=(unsigned char *)malloc(file.file_bytes ? file.file_bytes : 1);
     if(!copy) return PRUNTIME_MEMORY;
     offset=0;
@@ -394,10 +396,26 @@ int AppRuntimeInstall_Read(AppRuntimeInstall *i,const char *base,const char *ref
         offset+=got;
     } while(offset<file.file_bytes);
     if(rc==PRUNTIME_OK && offset==file.file_bytes) {
-        if(offset) memcpy(buffer,copy,offset);
-        *bytes=offset; *resolved=ref;
-    } else if(rc==PRUNTIME_OK) rc=PRUNTIME_IO;
+        *out_buffer=copy; *bytes=offset; *resolved=ref;
+        return PRUNTIME_OK;
+    }
+    if(rc==PRUNTIME_OK) rc=PRUNTIME_IO;
     free(copy); return rc;
+}
+int AppRuntimeInstall_Read(AppRuntimeInstall *i,const char *base,const char *reference,
+        void *buffer,unsigned int capacity,unsigned int *bytes,PRuntimeResourceReference *resolved)
+{
+    void *copy;
+    unsigned int length;
+    int rc;
+    copy=NULL; length=0;
+    rc=AppRuntimeInstall_ReadAlloc(i,base,reference,capacity,&copy,&length,resolved);
+    if(rc==PRUNTIME_OK) {
+        if(length) memcpy(buffer,copy,length);
+        *bytes=length;
+        free(copy);
+    }
+    return rc;
 }
 void AppRuntimeInstall_Close(AppRuntimeInstall **slot)
 {

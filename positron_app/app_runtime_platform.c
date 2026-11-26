@@ -21,10 +21,13 @@ typedef struct AppRuntimeFile {
 
 typedef struct AppRuntimeRoot {
     WCHAR path[MAX_PATH];
+    unsigned int path_len;
     AppRuntimeFile *files;
     unsigned int count;
     HANDLE lease;
     unsigned char *snapshot[APP_RUNTIME_FILES];
+    char (*rel_utf8)[256];
+    unsigned int last_read_index;
 } AppRuntimeRoot;
 
 typedef struct AppRuntimeLocation {
@@ -256,6 +259,7 @@ static int app_runtime_scan(AppRuntimeRoot *root, const WCHAR *directory,
 static void app_runtime_root_close(void *user, void *token)
 {
     AppRuntimeRoot *root;
+    AppRuntimePlatform *platform;
     unsigned int i;
 
     root = (AppRuntimeRoot *) token;
@@ -265,8 +269,15 @@ static void app_runtime_root_close(void *user, void *token)
         free(root->snapshot[i]);
     }
     if(root->lease) CloseHandle(root->lease);
-    if(user && ((AppRuntimePlatform *)user)->revision_root==root)
-        ((AppRuntimePlatform *)user)->revision_root=NULL;
+    if(user && ((AppRuntimePlatform *)user)->revision_root==root) {
+        platform = (AppRuntimePlatform *)user;
+        platform->revision_root = NULL;
+        if (platform->hash_provider) {
+            CryptReleaseContext(platform->hash_provider, 0);
+            platform->hash_provider = 0;
+        }
+    }
+    free(root->rel_utf8);
     free(root->files);
     free(root);
 }
@@ -549,6 +560,7 @@ void AppRuntimePlatform_StorageProvider(AppRuntimePlatform *platform,
 typedef struct AppRevisionHash {
     HCRYPTPROV provider;
     HCRYPTHASH hash;
+    int owned_provider;
 } AppRevisionHash;
 static void revision_hash_close(void *user,void *token)
 {
@@ -556,19 +568,50 @@ static void revision_hash_close(void *user,void *token)
     (void)user; h=(AppRevisionHash *)token;
     if(!h) return;
     if(h->hash) CryptDestroyHash(h->hash);
-    if(h->provider) CryptReleaseContext(h->provider,0);
+    if(h->provider && h->owned_provider) CryptReleaseContext(h->provider,0);
     free(h);
 }
 static int revision_hash_begin(void *user,void **out)
 {
+    AppRuntimePlatform *platform;
     AppRevisionHash *h;
+    HCRYPTPROV prov;
     unsigned int i;
-    (void)user;
+    platform=(AppRuntimePlatform *)user;
     h=(AppRevisionHash *)calloc(1,sizeof(*h));
     if(!h) return PRUNTIME_MEMORY;
+    if(platform && platform->revision_root) {
+        if(platform->hash_provider) {
+            if(CryptCreateHash(platform->hash_provider,CALG_SHA_256,0,0,&h->hash)) {
+                h->provider=platform->hash_provider;
+                h->owned_provider=0;
+                *out=h;
+                return PRUNTIME_OK;
+            }
+        } else {
+            for(i=0;i<2;++i) {
+                prov=0;
+                if(CryptAcquireContext(&prov,NULL,NULL,i ? PROV_RSA_FULL : 24,CRYPT_VERIFYCONTEXT) &&
+                        CryptCreateHash(prov,CALG_SHA_256,0,0,&h->hash)) {
+                    platform->hash_provider=prov;
+                    h->provider=prov;
+                    h->owned_provider=0;
+                    *out=h;
+                    return PRUNTIME_OK;
+                }
+                if(prov) CryptReleaseContext(prov,0);
+            }
+            revision_hash_close(NULL,h);
+            return PRUNTIME_UNSUPPORTED;
+        }
+    }
     for(i=0;i<2;++i) {
         if(CryptAcquireContext(&h->provider,NULL,NULL,i ? PROV_RSA_FULL : 24,CRYPT_VERIFYCONTEXT) &&
-                CryptCreateHash(h->provider,CALG_SHA_256,0,0,&h->hash)) { *out=h; return PRUNTIME_OK; }
+                CryptCreateHash(h->provider,CALG_SHA_256,0,0,&h->hash)) {
+            h->owned_provider=1;
+            *out=h;
+            return PRUNTIME_OK;
+        }
         if(h->provider) CryptReleaseContext(h->provider,0);
         h->provider=0;
     }
@@ -662,6 +705,22 @@ static int revision_capture(void *user,const char *directory,unsigned int bytes,
     }
     app_runtime_root_close(user,again.root);
     if(rc!=PRUNTIME_OK) { app_runtime_root_close(user,root); return rc; }
+    root->path_len=(unsigned int)wcslen(root->path);
+    if(root->count) {
+        root->rel_utf8=(char (*)[256])calloc(root->count,sizeof(*root->rel_utf8));
+        if(!root->rel_utf8) { app_runtime_root_close(user,root); return PRUNTIME_MEMORY; }
+        for(i=0;i<root->count;++i) {
+            const WCHAR *relative;
+            unsigned int k;
+            relative=root->files[i].path+root->path_len+1;
+            if(!WideCharToMultiByte(CP_UTF8,0,relative,-1,root->rel_utf8[i],
+                    sizeof(root->rel_utf8[i]),NULL,NULL)) {
+                app_runtime_root_close(user,root); return PRUNTIME_LIMIT;
+            }
+            for(k=0;root->rel_utf8[i][k];++k)
+                if(root->rel_utf8[i][k]=='\\') root->rel_utf8[i][k]='/';
+        }
+    }
     platform->revision_root=root; *out=captured; return PRUNTIME_OK;
 }
 static int revision_enumerate(void *user,void *token,unsigned int index,PRuntimeRevisionFile *out)
@@ -671,9 +730,13 @@ static int revision_enumerate(void *user,void *token,unsigned int index,PRuntime
     unsigned int i;
     (void)user; root=(AppRuntimeRoot *)token;
     if(index>=root->count) return PRUNTIME_NOT_FOUND;
-    relative=root->files[index].path+wcslen(root->path)+1;
-    if(!WideCharToMultiByte(CP_UTF8,0,relative,-1,out->path,sizeof(out->path),NULL,NULL)) return PRUNTIME_LIMIT;
-    for(i=0;out->path[i];++i) if(out->path[i]=='\\') out->path[i]='/';
+    if(root->rel_utf8) {
+        strcpy(out->path,root->rel_utf8[index]);
+    } else {
+        relative=root->files[index].path+wcslen(root->path)+1;
+        if(!WideCharToMultiByte(CP_UTF8,0,relative,-1,out->path,sizeof(out->path),NULL,NULL)) return PRUNTIME_LIMIT;
+        for(i=0;out->path[i];++i) if(out->path[i]=='\\') out->path[i]='/';
+    }
     out->file_bytes=root->files[index].info.nFileSizeLow;
     return PRUNTIME_OK;
 }
@@ -682,14 +745,27 @@ static int revision_read_at(void *user,void *token,const char *path,unsigned int
 {
     AppRuntimeRoot *root;
     PRuntimeRevisionFile file;
-    unsigned int i,n;
+    unsigned int i,n,file_bytes;
     root=(AppRuntimeRoot *)token;
-    for(i=0;i<root->count;++i) {
-        if(revision_enumerate(user,token,i,&file)!=PRUNTIME_OK) return PRUNTIME_IO;
-        if(!strcmp(file.path,path)) break;
+    if(root->rel_utf8) {
+        if(root->last_read_index<root->count && !strcmp(root->rel_utf8[root->last_read_index],path)) {
+            i=root->last_read_index;
+        } else {
+            for(i=0;i<root->count;++i) if(!strcmp(root->rel_utf8[i],path)) break;
+        }
+        if(i==root->count) return PRUNTIME_IO;
+        root->last_read_index=i;
+        file_bytes=root->files[i].info.nFileSizeLow;
+    } else {
+        for(i=0;i<root->count;++i) {
+            if(revision_enumerate(user,token,i,&file)!=PRUNTIME_OK) return PRUNTIME_IO;
+            if(!strcmp(file.path,path)) break;
+        }
+        if(i==root->count) return PRUNTIME_IO;
+        file_bytes=file.file_bytes;
     }
-    if(i==root->count || offset>file.file_bytes) return PRUNTIME_IO;
-    n=file.file_bytes-offset; if(n>capacity) n=capacity;
+    if(offset>file_bytes) return PRUNTIME_IO;
+    n=file_bytes-offset; if(n>capacity) n=capacity;
     if(n) memcpy(buffer,root->snapshot[i]+offset,n);
     *written=n; return PRUNTIME_OK;
 }
@@ -706,9 +782,21 @@ int AppRuntimePlatform_CopyManifest(AppRuntimePlatform *p,void *buffer,unsigned 
 {
     AppRuntimeRoot *root;
     PRuntimeRevisionFile file;
-    unsigned int i;
+    unsigned int i,file_bytes;
     root=(AppRuntimeRoot *)p->revision_root;
     if(!root) return PRUNTIME_STATE;
+    if(root->rel_utf8) {
+        for(i=0;i<root->count;++i) {
+            if(!strcmp(root->rel_utf8[i],"manifest.json")) {
+                file_bytes=root->files[i].info.nFileSizeLow;
+                if(file_bytes>capacity) return PRUNTIME_LIMIT;
+                if(file_bytes) memcpy(buffer,root->snapshot[i],file_bytes);
+                *bytes=file_bytes;
+                return PRUNTIME_OK;
+            }
+        }
+        return PRUNTIME_IO;
+    }
     for(i=0;i<root->count;++i) {
         if(revision_enumerate(p,root,i,&file)!=PRUNTIME_OK) return PRUNTIME_IO;
         if(!strcmp(file.path,"manifest.json")) {

@@ -31,6 +31,9 @@ int AppRuntimeApp_Resolve(AppRuntimeApp *app, const char *base,
 int AppRuntimeApp_Read(AppRuntimeApp *app, const char *base,
         const char *reference, void *buffer, unsigned int capacity,
         unsigned int *bytes, PRuntimeResourceReference *resolved);
+int AppRuntimeApp_ReadAlloc(AppRuntimeApp *app, const char *base,
+        const char *reference, unsigned int max_bytes, void **out_buffer,
+        unsigned int *bytes, PRuntimeResourceReference *resolved);
 /* UI creates a page binding; worker creates/closes its public copy channel.
  * Ready: 0 pending, 1 ready, -1 failed. Release ends ALL UI access first. */
 AppRuntimePage *AppRuntimeApp_BeginPage(AppRuntimeApp *app,
