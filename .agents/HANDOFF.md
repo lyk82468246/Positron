@@ -488,8 +488,6 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)通过。PXI 目录预检通过，见 tmp/device-runs/20261114-093844-app-pxi-update。
+路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 目录预检（tmp/device-runs/20261114-093844-app-pxi-update）通过，原 Notes 已恢复。
 
-其他人工门及设备差异见路线图。Media
-时间轴/坏 NAL、DB I/O/恢复及 Notes 双语人工门保持原边界；不重开挂起的 FULL/断电门。
-原 Notes 已按验收记录恢复。新部署按设备纪律重查空间和引用。
+性能只读审计与[性能计划](../docs/PERFORMANCE_PLAN.md)已落盘；零 ABI 性能候选（Image/Core/Browser/Script/App/HTTP/Media）仅通过 C89、审计及双配置构建，**未过设备门**，连接设备后先跑对应定向门，不写成正式基线。其余人工门与挂起边界不变，新部署重查空间/引用。
