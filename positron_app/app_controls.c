@@ -127,6 +127,11 @@ struct AppControlsItem {
     int y;
     int width;
     int height;
+    int placed_valid;
+    int placed_x;
+    int placed_y;
+    int placed_width;
+    int placed_height;
     char contenteditable_id[APP_CONTROLS_ID_CAP];
 };
 
@@ -3715,6 +3720,14 @@ static void app_controls_reposition(AppControlsContext *context,
     int width;
     int height;
     int visible_height;
+    unsigned char pending_move[APP_CONTROLS_MAX];
+    unsigned char pending_show[APP_CONTROLS_MAX];
+    int target_x[APP_CONTROLS_MAX];
+    int target_y[APP_CONTROLS_MAX];
+    int target_w[APP_CONTROLS_MAX];
+    int target_h[APP_CONTROLS_MAX];
+    unsigned int move_count = 0;
+    unsigned int show_count = 0;
 
     if (context == NULL || document == NULL || context->parent == NULL) {
         return;
@@ -3737,37 +3750,101 @@ static void app_controls_reposition(AppControlsContext *context,
         }
     }
     for (i = 0; i < context->count; i++) {
-        if (sync_state && context->items[i].kind ==
-                APP_CONTROLS_KIND_SELECT) {
-            app_controls_sync_select(context, &context->items[i]);
-        } else if (sync_state && context->items[i].kind ==
-                APP_CONTROLS_KIND_TOGGLE) {
-            app_controls_sync_toggle(context, &context->items[i]);
+        AppControlsItem *item = &context->items[i];
+
+        pending_move[i] = 0;
+        pending_show[i] = 0;
+        if (sync_state && item->kind == APP_CONTROLS_KIND_SELECT) {
+            app_controls_sync_select(context, item);
+        } else if (sync_state && item->kind == APP_CONTROLS_KIND_TOGGLE) {
+            app_controls_sync_toggle(context, item);
         }
-        if (context->items[i].hwnd == NULL ||
-                !app_controls_item_geometry(context, &context->items[i],
+        if (item->hwnd == NULL ||
+                !app_controls_item_geometry(context, item,
                 &x, &y, &width, &height)) {
             continue;
         }
         visible_height = height;
         x -= scroll_x;
         y -= scroll_y;
-        if (context->items[i].kind == APP_CONTROLS_KIND_SELECT &&
-                !context->items[i].multiple) {
+        if (item->kind == APP_CONTROLS_KIND_SELECT && !item->multiple) {
             memset(&select_info, 0, sizeof(select_info));
-            if (PCore_SelectInfo(document, context->items[i].select_index,
+            if (PCore_SelectInfo(document, item->select_index,
                     &select_info) == 0) {
                 height = app_controls_select_window_height(&select_info);
             }
         }
         if (x + width <= client.left || x >= client.right ||
                 y + visible_height <= client.top || y >= client.bottom) {
-            if (IsWindowVisible(context->items[i].hwnd)) {
-                ShowWindow(context->items[i].hwnd, SW_HIDE);
+            if (IsWindowVisible(item->hwnd)) {
+                ShowWindow(item->hwnd, SW_HIDE);
             }
         } else {
-            MoveWindow(context->items[i].hwnd, x, y, width, height, TRUE);
-            if (!IsWindowVisible(context->items[i].hwnd)) {
+            if (!item->placed_valid || item->placed_x != x ||
+                    item->placed_y != y || item->placed_width != width ||
+                    item->placed_height != height) {
+                pending_move[i] = 1;
+                target_x[i] = x;
+                target_y[i] = y;
+                target_w[i] = width;
+                target_h[i] = height;
+                move_count++;
+            }
+            if (!IsWindowVisible(item->hwnd)) {
+                pending_show[i] = 1;
+                show_count++;
+            }
+        }
+    }
+    if (move_count == 1) {
+        for (i = 0; i < context->count; i++) {
+            if (pending_move[i]) {
+                AppControlsItem *item = &context->items[i];
+                MoveWindow(item->hwnd, target_x[i], target_y[i],
+                        target_w[i], target_h[i], TRUE);
+                item->placed_valid = 1;
+                item->placed_x = target_x[i];
+                item->placed_y = target_y[i];
+                item->placed_width = target_w[i];
+                item->placed_height = target_h[i];
+                break;
+            }
+        }
+    } else if (move_count > 1) {
+        HDWP hdwp = BeginDeferWindowPos((int) move_count);
+        int deferred_ok = (hdwp != NULL);
+
+        for (i = 0; i < context->count && deferred_ok; i++) {
+            if (pending_move[i]) {
+                hdwp = DeferWindowPos(hdwp, context->items[i].hwnd, NULL,
+                        target_x[i], target_y[i], target_w[i], target_h[i],
+                        SWP_NOZORDER | SWP_NOACTIVATE);
+                if (hdwp == NULL) {
+                    deferred_ok = 0;
+                }
+            }
+        }
+        if (deferred_ok && !EndDeferWindowPos(hdwp)) {
+            deferred_ok = 0;
+        }
+        for (i = 0; i < context->count; i++) {
+            if (pending_move[i]) {
+                AppControlsItem *item = &context->items[i];
+                if (!deferred_ok) {
+                    MoveWindow(item->hwnd, target_x[i], target_y[i],
+                            target_w[i], target_h[i], TRUE);
+                }
+                item->placed_valid = 1;
+                item->placed_x = target_x[i];
+                item->placed_y = target_y[i];
+                item->placed_width = target_w[i];
+                item->placed_height = target_h[i];
+            }
+        }
+    }
+    if (show_count > 0) {
+        for (i = 0; i < context->count; i++) {
+            if (pending_show[i]) {
                 ShowWindow(context->items[i].hwnd, SW_SHOW);
             }
         }
