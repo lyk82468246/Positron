@@ -237,6 +237,10 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 ### 准备取舍
 
+#### Performance. 全栈性能改进纵切
+
+**状态：只读审计与分阶段路线图已就绪，待按基线逐段取舍。** 完整分阶段计划（Phase 0 基线测量 → Phase 1–6 按宿主调度、渲染排版、DOM/Selector 桥接、编译热点、Runtime/DB/Archive I/O 与网络/媒体递进）、所有者、预算护栏及验收门见 [性能改进路线图](../docs/PERFORMANCE_PLAN.md)，源码取证见 [性能堵点审计](../docs/history/PERFORMANCE_BOTTLENECK_AUDIT.md)。
+
 #### Runtime. 纯资源应用与隔离存储
 
 **状态：首次安装、资源更新、CAB 关联与已安装应用页已验收。**

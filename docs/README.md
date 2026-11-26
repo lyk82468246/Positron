@@ -17,6 +17,7 @@
 | 核对依赖来源和许可证 | [THIRD_PARTY.md](../THIRD_PARTY.md) |
 | 接管当前开发任务 | [`.agents/README.md`](../.agents/README.md) |
 | 查阅旧阶段或已发生的调试事故 | [`history/README.md`](history/README.md) |
+| 查看全栈性能改进分阶段路线图 | [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) |
 
 每个公共 DLL 的子目录 README 说明如何由其他项目链接和调用它。精确 API 仍以同目录公开头文件为准；README 不复制完整声明，避免文档和 ABI 漂移。
 
