@@ -73,6 +73,7 @@ PCORE_API void PCore_Shutdown(void)
     g_core_init_refs--;
     if (g_core_init_refs == 0) {
         pcore_image_shared_shutdown();
+        pcore_select_shutdown();
     }
     pcore_font_shutdown();
 }

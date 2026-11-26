@@ -181,6 +181,7 @@ int pcore_image_resource_retained_store(struct dom_document *doc,
 int pcore_image_selected_source(struct dom_node *image, char *out_url,
         int url_capacity, int *out_bytes);
 void pcore_image_shared_shutdown(void);
+void pcore_select_shutdown(void);
 
 /* Build a NetSurf box tree (struct box) from the styled document element
  * `root`, allocating under talloc context `ctx`. Returns the root box, or NULL.

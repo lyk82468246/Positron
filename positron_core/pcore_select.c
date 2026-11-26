@@ -58,6 +58,69 @@ typedef struct pcore_select_pw {
  * descendants are selected because their bloom filters borrow parent data. */
 static dom_string *pcore_libcss_node_data_key = NULL;
 
+/* Cached UA default stylesheet and constant DOM attribute/tag strings reused
+ * across style passes; released in pcore_select_shutdown(). */
+static HANDLE g_pcore_ua_sheet = NULL;
+static dom_string *g_pcore_str_width = NULL;
+static dom_string *g_pcore_str_height = NULL;
+static dom_string *g_pcore_str_href = NULL;
+static dom_string *g_pcore_str_style = NULL;
+static dom_string *g_pcore_str_style_interned = NULL;
+static dom_string *g_pcore_str_link = NULL;
+static dom_string *g_pcore_str_rel = NULL;
+static dom_string *g_pcore_str_media = NULL;
+static dom_string *g_pcore_str_disabled = NULL;
+
+static int pcore_ensure_select_strings(void)
+{
+    if (g_pcore_str_width == NULL &&
+            dom_string_create_interned((const uint8_t *) "width", 5,
+                    &g_pcore_str_width) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_height == NULL &&
+            dom_string_create_interned((const uint8_t *) "height", 6,
+                    &g_pcore_str_height) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_href == NULL &&
+            dom_string_create_interned((const uint8_t *) "href", 4,
+                    &g_pcore_str_href) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_style == NULL &&
+            dom_string_create((const uint8_t *) "style", 5,
+                    &g_pcore_str_style) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_style_interned == NULL &&
+            dom_string_create_interned((const uint8_t *) "style", 5,
+                    &g_pcore_str_style_interned) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_link == NULL &&
+            dom_string_create((const uint8_t *) "link", 4,
+                    &g_pcore_str_link) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_rel == NULL &&
+            dom_string_create((const uint8_t *) "rel", 3,
+                    &g_pcore_str_rel) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_media == NULL &&
+            dom_string_create((const uint8_t *) "media", 5,
+                    &g_pcore_str_media) != DOM_NO_ERR) {
+        return 1;
+    }
+    if (g_pcore_str_disabled == NULL &&
+            dom_string_create((const uint8_t *) "disabled", 8,
+                    &g_pcore_str_disabled) != DOM_NO_ERR) {
+        return 1;
+    }
+    return 0;
+}
+
 /* A device viewport is converted to CSS pixels before selection/layout, while
  * layout_document still receives the original device-pixel extent. The flag
  * is consumed by the next PCore_LayoutDocument call. Legacy PCore_SetViewport
@@ -1165,9 +1228,9 @@ static css_error node_is_empty(void *pw, void *node, bool *match)
 static bool pcore_node_name_is(dom_node *node, const char *want)
 {
     dom_string *name;
-    dom_string *want_name;
     dom_node_type type;
     dom_exception err;
+    size_t want_len;
     bool match;
 
     err = dom_node_get_node_type(node, &type);
@@ -1179,47 +1242,44 @@ static bool pcore_node_name_is(dom_node *node, const char *want)
     if (err != DOM_NO_ERR || name == NULL) {
         return false;
     }
-    err = dom_string_create_interned((const uint8_t *) want, strlen(want),
-            &want_name);
-    if (err != DOM_NO_ERR) {
-        dom_string_unref(name);
-        return false;
-    }
-    match = dom_string_caseless_isequal(name, want_name);
-    dom_string_unref(want_name);
+    want_len = strlen(want);
+    match = (dom_string_byte_length(name) == want_len &&
+            strncasecmp(dom_string_data(name), want, want_len) == 0);
     dom_string_unref(name);
     return match;
-}
-
-static bool pcore_node_has_attr_cstr(dom_node *node, const char *attr_name)
-{
-    dom_string *name;
-    dom_exception err;
-    bool has_attr;
-
-    err = dom_string_create_interned((const uint8_t *) attr_name,
-            strlen(attr_name), &name);
-    if (err != DOM_NO_ERR) {
-        return false;
-    }
-    has_attr = false;
-    err = dom_element_has_attribute(node, name, &has_attr);
-    dom_string_unref(name);
-    return (err == DOM_NO_ERR && has_attr);
 }
 
 static css_error node_is_link(void *pw, void *node, bool *match)
 {
     dom_node *n = (dom_node *) node;
+    dom_node_type type;
+    dom_string *name;
+    const char *data;
+    size_t len;
+    bool has_attr = false;
 
     (void) pw;
     *match = false;
-    if (!pcore_node_has_attr_cstr(n, "href")) {
+    if (pcore_ensure_select_strings() != 0) {
         return CSS_OK;
     }
-    *match = pcore_node_name_is(n, "a") ||
-            pcore_node_name_is(n, "area") ||
-            pcore_node_name_is(n, "link");
+    if (dom_element_has_attribute(n, g_pcore_str_href, &has_attr) != DOM_NO_ERR ||
+            !has_attr) {
+        return CSS_OK;
+    }
+    if (dom_node_get_node_type(n, &type) != DOM_NO_ERR ||
+            type != DOM_ELEMENT_NODE) {
+        return CSS_OK;
+    }
+    if (dom_node_get_node_name(n, &name) != DOM_NO_ERR || name == NULL) {
+        return CSS_OK;
+    }
+    data = dom_string_data(name);
+    len = dom_string_byte_length(name);
+    *match = (len == 1 && (data[0] == 'a' || data[0] == 'A')) ||
+            (len == 4 && (strncasecmp(data, "area", 4) == 0 ||
+                    strncasecmp(data, "link", 4) == 0));
+    dom_string_unref(name);
     return CSS_OK;
 }
 static css_error node_is_visited(void *pw, void *node, bool *match)
@@ -1421,9 +1481,8 @@ static int pcore_image_dimension(dom_string *attr, css_hint_length *length)
 static css_error node_presentational_hint(void *pw, void *node,
         uint32_t *nhints, css_hint **hints)
 {
-    static const char *ATTRIBUTES[2] = { "width", "height" };
     pcore_select_pw *state;
-    dom_string *name;
+    dom_string *attr_names[2];
     dom_string *attr;
     dom_exception err;
     css_hint *hint;
@@ -1435,15 +1494,16 @@ static css_error node_presentational_hint(void *pw, void *node,
     if (state == NULL || !pcore_node_name_is((dom_node *) node, "img")) {
         return CSS_OK;
     }
+    if (pcore_ensure_select_strings() != 0) {
+        return CSS_NOMEM;
+    }
+    attr_names[0] = g_pcore_str_width;
+    attr_names[1] = g_pcore_str_height;
     memset(state->image_hints, 0, sizeof(state->image_hints));
     for (index = 0; index < 2; index++) {
-        name = attr = NULL;
-        if (dom_string_create_interned((const uint8_t *) ATTRIBUTES[index],
-                strlen(ATTRIBUTES[index]), &name) != DOM_NO_ERR) {
-            return CSS_NOMEM;
-        }
-        err = dom_element_get_attribute((dom_element *) node, name, &attr);
-        dom_string_unref(name);
+        attr = NULL;
+        err = dom_element_get_attribute((dom_element *) node,
+                attr_names[index], &attr);
         if (err != DOM_NO_ERR) {
             if (attr != NULL) { dom_string_unref(attr); }
             return err == DOM_NO_MEM_ERR ? CSS_NOMEM : CSS_INVALID;
@@ -1586,10 +1646,16 @@ static int pcore_clear_libcss_node_data_subtree(dom_node *node)
 {
     void *data = NULL;
     void *detached = NULL;
+    dom_node_type type;
     dom_node *child;
 
     if (node == NULL || pcore_ensure_libcss_node_data_key() != 0) {
         return 1;
+    }
+    if (dom_node_get_node_type(node, &type) == DOM_NO_ERR &&
+            type != DOM_ELEMENT_NODE && type != DOM_DOCUMENT_NODE &&
+            type != DOM_DOCUMENT_FRAGMENT_NODE) {
+        return 0;
     }
     if (dom_node_get_user_data(node, pcore_libcss_node_data_key,
             &data) != DOM_NO_ERR) {
@@ -1820,6 +1886,59 @@ static const char PCORE_UA_CSS[] =
     "h1 { font-size: 2em; }\n"
     "h2 { font-size: 1.5em; }\n"
     "h3 { font-size: 1.17em; }\n";
+
+static HANDLE pcore_get_ua_sheet(void)
+{
+    if (g_pcore_ua_sheet == NULL) {
+        g_pcore_ua_sheet = PCore_ParseCSS(PCORE_UA_CSS, 0,
+                "positron:ua-default.css");
+    }
+    return g_pcore_ua_sheet;
+}
+
+void pcore_select_shutdown(void)
+{
+    if (g_pcore_ua_sheet != NULL) {
+        PCore_FreeStylesheet(g_pcore_ua_sheet);
+        g_pcore_ua_sheet = NULL;
+    }
+    if (g_pcore_str_width != NULL) {
+        dom_string_unref(g_pcore_str_width);
+        g_pcore_str_width = NULL;
+    }
+    if (g_pcore_str_height != NULL) {
+        dom_string_unref(g_pcore_str_height);
+        g_pcore_str_height = NULL;
+    }
+    if (g_pcore_str_href != NULL) {
+        dom_string_unref(g_pcore_str_href);
+        g_pcore_str_href = NULL;
+    }
+    if (g_pcore_str_style != NULL) {
+        dom_string_unref(g_pcore_str_style);
+        g_pcore_str_style = NULL;
+    }
+    if (g_pcore_str_style_interned != NULL) {
+        dom_string_unref(g_pcore_str_style_interned);
+        g_pcore_str_style_interned = NULL;
+    }
+    if (g_pcore_str_link != NULL) {
+        dom_string_unref(g_pcore_str_link);
+        g_pcore_str_link = NULL;
+    }
+    if (g_pcore_str_rel != NULL) {
+        dom_string_unref(g_pcore_str_rel);
+        g_pcore_str_rel = NULL;
+    }
+    if (g_pcore_str_media != NULL) {
+        dom_string_unref(g_pcore_str_media);
+        g_pcore_str_media = NULL;
+    }
+    if (g_pcore_str_disabled != NULL) {
+        dom_string_unref(g_pcore_str_disabled);
+        g_pcore_str_disabled = NULL;
+    }
+}
 
 /* libdom user-data key under which each element's css_computed_style hangs. */
 static dom_string *pcore_style_key = NULL;
@@ -2665,8 +2784,8 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
         goto cleanup;
     }
 
-    /* UA default sheet, parsed via the existing CSS entry point. */
-    hUA = PCore_ParseCSS(PCORE_UA_CSS, 0, "positron:ua-default.css");
+    /* UA default sheet, parsed once and reused across style passes. */
+    hUA = pcore_get_ua_sheet();
     if (hUA == NULL) {
         goto cleanup;
     }
@@ -2688,6 +2807,9 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     }
 
     /* Apply the page's own inline <style> and external <link> sheets. */
+    if (pcore_ensure_select_strings() != 0) {
+        goto cleanup;
+    }
     cc.ctx = ctx;
     cc.sheets = page_sheets;
     cc.borrowed = page_sheets_borrowed;
@@ -2699,19 +2821,15 @@ PCORE_API int PCore_StyleDocumentEx2(HANDLE hDoc, HANDLE hSheet,
     cc.pw = pw_fetch;
     cc.document_url = document_url;
     cc.cache = pcore_stylesheet_cache_get(doc, 1);
-    dom_string_create((const uint8_t *) "style", 5, &cc.style_name);
-    dom_string_create((const uint8_t *) "link", 4, &cc.link_name);
-    dom_string_create((const uint8_t *) "rel", 3, &cc.rel_name);
-    dom_string_create((const uint8_t *) "href", 4, &cc.href_name);
-    dom_string_create((const uint8_t *) "media", 5, &cc.media_name);
-    dom_string_create((const uint8_t *) "disabled", 8, &cc.disabled_name);
-    dom_string_create_interned((const uint8_t *) "style", 5,
-            &inline_style_name);
+    cc.style_name = g_pcore_str_style;
+    cc.link_name = g_pcore_str_link;
+    cc.rel_name = g_pcore_str_rel;
+    cc.href_name = g_pcore_str_href;
+    cc.media_name = g_pcore_str_media;
+    cc.disabled_name = g_pcore_str_disabled;
+    inline_style_name = g_pcore_str_style_interned;
     cc.scratch = (pcore_collect_scratch *) malloc(sizeof(*cc.scratch));
-    if (cc.style_name == NULL || cc.link_name == NULL ||
-            cc.rel_name == NULL || cc.href_name == NULL ||
-            cc.media_name == NULL || cc.disabled_name == NULL ||
-            inline_style_name == NULL || cc.scratch == NULL) {
+    if (cc.scratch == NULL) {
         goto cleanup;
     }
     pcore_collect_resources(&cc, root);
@@ -2757,17 +2875,7 @@ cleanup:
             PCore_FreeStylesheet(page_sheets[i]);
         }
     }
-    if (hUA != NULL) {
-        PCore_FreeStylesheet(hUA);
-    }
-    if (cc.style_name != NULL) { dom_string_unref(cc.style_name); }
-    if (cc.link_name != NULL)  { dom_string_unref(cc.link_name); }
-    if (cc.rel_name != NULL)   { dom_string_unref(cc.rel_name); }
-    if (cc.href_name != NULL)  { dom_string_unref(cc.href_name); }
-    if (cc.media_name != NULL) { dom_string_unref(cc.media_name); }
-    if (cc.disabled_name != NULL) { dom_string_unref(cc.disabled_name); }
     free(cc.scratch);
-    if (inline_style_name != NULL) { dom_string_unref(inline_style_name); }
     if (pw.universal != NULL) {
         lwc_string_unref(pw.universal);
     }
