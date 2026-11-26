@@ -2192,6 +2192,7 @@ PDB_API int PDb_OpenUtf8Ex(const char* path, int mode, PDbHandle* outDb,
             "PRAGMA synchronous=FULL;"
             "PRAGMA foreign_keys=ON;"
             "PRAGMA temp_store=MEMORY;"
+            "PRAGMA cache_size=-512;"
             "PRAGMA max_page_count=4096;");
     if (rc == PDB_OK) {
         rc = pdb_open_metadata(db);
