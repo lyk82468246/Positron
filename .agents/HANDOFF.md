@@ -490,4 +490,4 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 目录预检（tmp/device-runs/20261114-093844-app-pxi-update）通过，原 Notes 已恢复。
 
-零 ABI 性能批（8 模块）已过 240×320 真机门：Release 79/79（20261126-211924）、Debug 41/41（20261126-214553）及 EXE 滚动像素（20261126-214932）PASS，0 dump；真机 Release bootstrap 4.0–5.7 s（94% 编译），1134/Debug645 仍受既有单段编译超时限制，EXE 完整交互及人工门仍待。
+零 ABI 性能批与 Phase 4 字节码缓存已过 240×320 真机门：Release 79/79 与 34/34（20261126-221559，bootstrap 4.0–5.7→0.8–1.4s，1134/1338 PASS）、Debug 41/41+29/29 及 EXE 滚动门全 PASS，0 dump；Debug 冷编大脚本与 EXE 人工门仍待。
