@@ -271,10 +271,11 @@ static int pa_check_range_overlaps(PaRange* ranges, unsigned int count)
 static int pa_admit(PArchiveReader r)
 {
     unsigned int i, n, total = 0, count = r->zip.m_total_files;
-    unsigned char header[46], local[30];
+    unsigned char cd_buf[46 + PARCHIVE_PATH_BYTES];
+    unsigned char local_buf[30 + PARCHIVE_PATH_BYTES];
     mz_zip_archive_file_stat stat;
     PArchiveEntry* e;
-    mz_uint64 end;
+    mz_uint64 cd_ofs, cd_avail, end;
     if (mz_zip_is_zip64(&r->zip)) return PARCHIVE_UNSUPPORTED;
     if (count > r->limits.max_entries) return PARCHIVE_LIMIT;
     r->entries = (PArchiveEntry*)pa_alloc(r, count, sizeof(*e));
@@ -293,14 +294,18 @@ static int pa_admit(PArchiveReader r)
                 stat.m_uncomp_size > r->limits.max_total_bytes - total) return PARCHIVE_LIMIT;
         if (stat.m_comp_size > r->source.archive_bytes) return PARCHIVE_INVALID;
         total += (unsigned int)stat.m_uncomp_size;
-        if (pa_read(r, r->zip.m_central_directory_file_ofs + stat.m_central_dir_ofs,
-                header, sizeof(header)) != sizeof(header)) return pa_error(r);
-        if (pa16(header + 34)) return PARCHIVE_UNSUPPORTED;
-        n = pa16(header + 28);
+        cd_ofs = r->zip.m_central_directory_file_ofs + stat.m_central_dir_ofs;
+        if (cd_ofs > r->source.archive_bytes ||
+                r->source.archive_bytes - cd_ofs < 46) return PARCHIVE_IO;
+        cd_avail = r->source.archive_bytes - cd_ofs;
+        if (cd_avail > sizeof(cd_buf)) cd_avail = sizeof(cd_buf);
+        if (pa_read(r, cd_ofs, cd_buf, (size_t)cd_avail) != (size_t)cd_avail) return pa_error(r);
+        if (pa16(cd_buf + 34)) return PARCHIVE_UNSUPPORTED;
+        n = pa16(cd_buf + 28);
         if (!n || n > PARCHIVE_PATH_BYTES) return PARCHIVE_PATH;
+        if (46 + n > cd_avail) return PARCHIVE_IO;
         e = &r->entries[i]; memset(e, 0, sizeof(*e));
-        if (pa_read(r, r->zip.m_central_directory_file_ofs + stat.m_central_dir_ofs + 46,
-                e->path, n) != n) return pa_error(r);
+        memcpy(e->path, cd_buf + 46, n);
         if (!pa_path(e->path, n, stat.m_bit_flag)) return PARCHIVE_PATH;
         e->size = sizeof(*e); e->version = PARCHIVE_VERSION;
         e->compressed_bytes = (unsigned int)stat.m_comp_size;
@@ -310,10 +315,12 @@ static int pa_admit(PArchiveReader r)
         if (e->is_directory != (unsigned int)stat.m_is_directory) return PARCHIVE_INVALID;
         if (e->is_directory && (e->uncompressed_bytes || e->compressed_bytes)) return PARCHIVE_INVALID;
         if (!e->method && e->compressed_bytes != e->uncompressed_bytes) return PARCHIVE_INVALID;
-        if (pa_read(r, stat.m_local_header_ofs, local, sizeof(local)) != sizeof(local)) return pa_error(r);
-        if (pa32(local) != 0x04034b50 || pa16(local + 6) != stat.m_bit_flag ||
-                pa16(local + 8) != stat.m_method || pa16(local + 26) != n) return PARCHIVE_INVALID;
-        end = stat.m_local_header_ofs + 30 + n + pa16(local + 28) + stat.m_comp_size;
+        if (stat.m_local_header_ofs > r->zip.m_central_directory_file_ofs ||
+                30 + n > r->zip.m_central_directory_file_ofs - stat.m_local_header_ofs) return PARCHIVE_INVALID;
+        if (pa_read(r, stat.m_local_header_ofs, local_buf, 30 + n) != 30 + n) return pa_error(r);
+        if (pa32(local_buf) != 0x04034b50 || pa16(local_buf + 6) != stat.m_bit_flag ||
+                pa16(local_buf + 8) != stat.m_method || pa16(local_buf + 26) != n) return PARCHIVE_INVALID;
+        end = stat.m_local_header_ofs + 30 + n + pa16(local_buf + 28) + stat.m_comp_size;
         if (end > r->zip.m_central_directory_file_ofs) return PARCHIVE_INVALID;
         if (!mz_zip_validate_file(&r->zip, i, MZ_ZIP_FLAG_VALIDATE_HEADERS_ONLY)) return pa_error(r);
         if (stat.m_bit_flag & 8) {
@@ -323,13 +330,9 @@ static int pa_admit(PArchiveReader r)
             if (end > r->zip.m_central_directory_file_ofs) return PARCHIVE_INVALID;
         }
         r->ranges[i].start = stat.m_local_header_ofs; r->ranges[i].end = end;
-        {
-            char name[PARCHIVE_PATH_BYTES];
-            if (pa_read(r, stat.m_local_header_ofs + 30, name, n) != n) return pa_error(r);
-            if (memcmp(name, e->path, n)) return PARCHIVE_INVALID;
-        }
-        if (!(stat.m_bit_flag & 8) && (pa32(local + 14) != stat.m_crc32 ||
-                pa32(local + 18) != stat.m_comp_size || pa32(local + 22) != stat.m_uncomp_size)) return PARCHIVE_INVALID;
+        if (memcmp(local_buf + 30, e->path, n)) return PARCHIVE_INVALID;
+        if (!(stat.m_bit_flag & 8) && (pa32(local_buf + 14) != stat.m_crc32 ||
+                pa32(local_buf + 18) != stat.m_comp_size || pa32(local_buf + 22) != stat.m_uncomp_size)) return PARCHIVE_INVALID;
     }
     if (pa_check_collisions(r->entries, count)) return PARCHIVE_PATH;
     if (pa_check_range_overlaps(r->ranges, count)) return PARCHIVE_INVALID;
