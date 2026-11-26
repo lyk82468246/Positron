@@ -65,6 +65,274 @@ static unsigned long pscript_elapsed(DWORD start)
     return (unsigned long) (GetTickCount() - start);
 }
 
+/* Bounded, process-private trusted bytecode cache. Only bytecode produced by
+ * this DLL's own Duktape compiler in the same process is ever stored or
+ * loaded; no external bytecode input is exposed through the public ABI.
+ * Each context still loads into its own isolated heap and global environment. */
+#define PSCRIPT_BC_MIN_SOURCE_BYTES 1024UL
+#define PSCRIPT_BC_MAX_ENTRIES      48
+#define PSCRIPT_BC_MAX_ENTRY_BYTES  (384UL * 1024UL)
+#define PSCRIPT_BC_MAX_TOTAL_BYTES  (1536UL * 1024UL)
+#define PSCRIPT_BC_EDGE_BYTES       16
+
+typedef struct pscript_bc_entry {
+    int in_use;
+    int refs;
+    unsigned long last_used;
+    size_t source_len;
+    unsigned long hash[4];
+    unsigned char head[PSCRIPT_BC_EDGE_BYTES];
+    unsigned char tail[PSCRIPT_BC_EDGE_BYTES];
+    unsigned char *bytecode;
+    size_t bytecode_len;
+} pscript_bc_entry;
+
+typedef struct pscript_bc_load_args {
+    const unsigned char *bytecode;
+    size_t bytecode_len;
+} pscript_bc_load_args;
+
+typedef struct pscript_bc_dump_args {
+    unsigned char *bytecode;
+    size_t bytecode_len;
+} pscript_bc_dump_args;
+
+static CRITICAL_SECTION g_bc_lock;
+static int g_bc_lock_ready = 0;
+static pscript_bc_entry g_bc_entries[PSCRIPT_BC_MAX_ENTRIES];
+static size_t g_bc_total_bytes = 0;
+static unsigned long g_bc_clock = 0;
+
+static void pscript_bc_hash(const char *source, size_t len,
+        unsigned long out_hash[4])
+{
+    unsigned long h0 = 2166136261UL;
+    unsigned long h1 = 5381UL;
+    unsigned long h2 = 0x9e3779b9UL;
+    unsigned long h3 = 0x85ebca6bUL;
+    const unsigned char *p = (const unsigned char *) source;
+    size_t i;
+
+    for (i = 0; i < len; i++) {
+        unsigned long b = (unsigned long) p[i];
+        h0 = (h0 ^ b) * 16777619UL;
+        h1 = ((h1 << 5) + h1) ^ b;
+        h2 = (h2 * 65599UL) + b;
+        h3 = ((h3 << 7) | (h3 >> 25)) ^ (b * 2654435761UL);
+    }
+    out_hash[0] = h0 ^ (unsigned long) len;
+    out_hash[1] = h1 ^ ((unsigned long) len * 2654435761UL);
+    out_hash[2] = h2;
+    out_hash[3] = h3;
+}
+
+static int pscript_bc_match(const pscript_bc_entry *entry,
+        const char *source, size_t len, const unsigned long hash[4])
+{
+    if (!entry->in_use || entry->source_len != len ||
+            entry->hash[0] != hash[0] || entry->hash[1] != hash[1] ||
+            entry->hash[2] != hash[2] || entry->hash[3] != hash[3]) {
+        return 0;
+    }
+    if (memcmp(entry->head, source, PSCRIPT_BC_EDGE_BYTES) != 0 ||
+            memcmp(entry->tail, source + len - PSCRIPT_BC_EDGE_BYTES,
+                    PSCRIPT_BC_EDGE_BYTES) != 0) {
+        return 0;
+    }
+    return 1;
+}
+
+static pscript_bc_entry *pscript_bc_acquire(const char *source, size_t len,
+        const unsigned long hash[4])
+{
+    int i;
+    pscript_bc_entry *found = NULL;
+
+    if (!g_bc_lock_ready) {
+        return NULL;
+    }
+    EnterCriticalSection(&g_bc_lock);
+    for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
+        if (pscript_bc_match(&g_bc_entries[i], source, len, hash)) {
+            g_bc_entries[i].refs++;
+            g_bc_entries[i].last_used = ++g_bc_clock;
+            found = &g_bc_entries[i];
+            break;
+        }
+    }
+    LeaveCriticalSection(&g_bc_lock);
+    return found;
+}
+
+static void pscript_bc_release(pscript_bc_entry *entry)
+{
+    if (entry == NULL || !g_bc_lock_ready) {
+        return;
+    }
+    EnterCriticalSection(&g_bc_lock);
+    if (entry->refs > 0) {
+        entry->refs--;
+    }
+    LeaveCriticalSection(&g_bc_lock);
+}
+
+static void pscript_bc_store(const char *source, size_t len,
+        const unsigned long hash[4], unsigned char *bytecode,
+        size_t bytecode_len)
+{
+    int i;
+    int free_slot;
+
+    if (bytecode == NULL) {
+        return;
+    }
+    if (!g_bc_lock_ready || bytecode_len == 0 ||
+            bytecode_len > PSCRIPT_BC_MAX_ENTRY_BYTES ||
+            bytecode_len > PSCRIPT_BC_MAX_TOTAL_BYTES) {
+        free(bytecode);
+        return;
+    }
+    EnterCriticalSection(&g_bc_lock);
+    for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
+        if (pscript_bc_match(&g_bc_entries[i], source, len, hash)) {
+            g_bc_entries[i].last_used = ++g_bc_clock;
+            LeaveCriticalSection(&g_bc_lock);
+            free(bytecode);
+            return;
+        }
+    }
+    while (g_bc_total_bytes + bytecode_len > PSCRIPT_BC_MAX_TOTAL_BYTES) {
+        int victim = -1;
+        unsigned long oldest = 0;
+
+        for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
+            if (g_bc_entries[i].in_use && g_bc_entries[i].refs == 0) {
+                if (victim < 0 || g_bc_entries[i].last_used < oldest) {
+                    victim = i;
+                    oldest = g_bc_entries[i].last_used;
+                }
+            }
+        }
+        if (victim < 0) {
+            LeaveCriticalSection(&g_bc_lock);
+            free(bytecode);
+            return;
+        }
+        free(g_bc_entries[victim].bytecode);
+        g_bc_total_bytes -= g_bc_entries[victim].bytecode_len;
+        memset(&g_bc_entries[victim], 0, sizeof(g_bc_entries[victim]));
+    }
+    free_slot = -1;
+    for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
+        if (!g_bc_entries[i].in_use) {
+            free_slot = i;
+            break;
+        }
+    }
+    if (free_slot < 0) {
+        unsigned long oldest = 0;
+        for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
+            if (g_bc_entries[i].in_use && g_bc_entries[i].refs == 0) {
+                if (free_slot < 0 || g_bc_entries[i].last_used < oldest) {
+                    free_slot = i;
+                    oldest = g_bc_entries[i].last_used;
+                }
+            }
+        }
+        if (free_slot < 0) {
+            LeaveCriticalSection(&g_bc_lock);
+            free(bytecode);
+            return;
+        }
+        free(g_bc_entries[free_slot].bytecode);
+        g_bc_total_bytes -= g_bc_entries[free_slot].bytecode_len;
+        memset(&g_bc_entries[free_slot], 0, sizeof(g_bc_entries[free_slot]));
+    }
+    g_bc_entries[free_slot].in_use = 1;
+    g_bc_entries[free_slot].refs = 0;
+    g_bc_entries[free_slot].last_used = ++g_bc_clock;
+    g_bc_entries[free_slot].source_len = len;
+    g_bc_entries[free_slot].hash[0] = hash[0];
+    g_bc_entries[free_slot].hash[1] = hash[1];
+    g_bc_entries[free_slot].hash[2] = hash[2];
+    g_bc_entries[free_slot].hash[3] = hash[3];
+    memcpy(g_bc_entries[free_slot].head, source, PSCRIPT_BC_EDGE_BYTES);
+    memcpy(g_bc_entries[free_slot].tail,
+            source + len - PSCRIPT_BC_EDGE_BYTES, PSCRIPT_BC_EDGE_BYTES);
+    g_bc_entries[free_slot].bytecode = bytecode;
+    g_bc_entries[free_slot].bytecode_len = bytecode_len;
+    g_bc_total_bytes += bytecode_len;
+    LeaveCriticalSection(&g_bc_lock);
+}
+
+static void pscript_bc_shutdown(void)
+{
+    int i;
+
+    if (!g_bc_lock_ready) {
+        return;
+    }
+    EnterCriticalSection(&g_bc_lock);
+    for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
+        if (g_bc_entries[i].in_use && g_bc_entries[i].bytecode != NULL) {
+            free(g_bc_entries[i].bytecode);
+        }
+        memset(&g_bc_entries[i], 0, sizeof(g_bc_entries[i]));
+    }
+    g_bc_total_bytes = 0;
+    g_bc_clock = 0;
+    LeaveCriticalSection(&g_bc_lock);
+    DeleteCriticalSection(&g_bc_lock);
+    g_bc_lock_ready = 0;
+}
+
+static duk_ret_t pscript_load_bc_safe(duk_context *duk, void *udata)
+{
+    pscript_bc_load_args *args = (pscript_bc_load_args *) udata;
+
+    duk_push_external_buffer(duk);
+    duk_config_buffer(duk, -1, (void *) args->bytecode,
+            (duk_size_t) args->bytecode_len);
+    duk_load_function(duk);
+    return 1;
+}
+
+static duk_ret_t pscript_dump_bc_safe(duk_context *duk, void *udata)
+{
+    pscript_bc_dump_args *args = (pscript_bc_dump_args *) udata;
+    void *ptr;
+    duk_size_t sz;
+
+    duk_dump_function(duk);
+    ptr = duk_get_buffer(duk, -1, &sz);
+    if (ptr != NULL && sz > 0 && sz <= PSCRIPT_BC_MAX_ENTRY_BYTES) {
+        args->bytecode = (unsigned char *) malloc((size_t) sz);
+        if (args->bytecode != NULL) {
+            memcpy(args->bytecode, ptr, (size_t) sz);
+            args->bytecode_len = (size_t) sz;
+        }
+    }
+    return 0;
+}
+
+BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
+{
+    (void) hModule;
+    (void) lpReserved;
+    if (reason == DLL_PROCESS_ATTACH) {
+        if (!g_bc_lock_ready) {
+            memset(g_bc_entries, 0, sizeof(g_bc_entries));
+            g_bc_total_bytes = 0;
+            g_bc_clock = 0;
+            InitializeCriticalSection(&g_bc_lock);
+            g_bc_lock_ready = 1;
+        }
+    } else if (reason == DLL_PROCESS_DETACH) {
+        pscript_bc_shutdown();
+    }
+    return TRUE;
+}
+
 static void pscript_performance_evaluated(pscript_context *ctx,
         DWORD start, unsigned long native_calls,
         unsigned long native_ms, unsigned long callback_ms,
@@ -833,7 +1101,83 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
                 native_ms, callback_ms, 0, 0, PSCRIPT_ERROR_FATAL);
         return PSCRIPT_ERROR_FATAL;
     }
-    if (ctx->performance.enabled) {
+    if (g_bc_lock_ready && length >= PSCRIPT_BC_MIN_SOURCE_BYTES) {
+        unsigned long bc_hash[4];
+        pscript_bc_entry *bc_entry;
+
+        pscript_bc_hash(source, length, bc_hash);
+        bc_entry = pscript_bc_acquire(source, length, bc_hash);
+        if (bc_entry != NULL) {
+            pscript_bc_load_args load_args;
+
+            load_args.bytecode = bc_entry->bytecode;
+            load_args.bytecode_len = bc_entry->bytecode_len;
+            phase_start = ctx->performance.enabled ? GetTickCount() : 0;
+            rc = duk_safe_call(ctx->duk, pscript_load_bc_safe, &load_args,
+                    0, 1);
+            if (ctx->performance.enabled) {
+                compile_ms = pscript_elapsed(phase_start);
+            }
+            pscript_bc_release(bc_entry);
+            if (rc == 0 && ctx->budget_ms != 0 && dukky_check_timeout(ctx)) {
+                rc = 1;
+            }
+            if (rc == 0) {
+                phase_start = ctx->performance.enabled ? GetTickCount() : 0;
+                duk_push_global_object(ctx->duk);
+                rc = duk_pcall_method(ctx->duk, 0);
+                if (ctx->performance.enabled) {
+                    execute_ms = pscript_elapsed(phase_start);
+                }
+            }
+        } else {
+            phase_start = ctx->performance.enabled ? GetTickCount() : 0;
+            rc = duk_pcompile_lstring(ctx->duk, DUK_COMPILE_EVAL,
+                    source, (duk_size_t) length);
+            if (ctx->performance.enabled) {
+                compile_ms = pscript_elapsed(phase_start);
+            }
+            if (rc == 0) {
+                if (ctx->memory_limit > ctx->memory_used &&
+                        (ctx->memory_limit - ctx->memory_used) >=
+                        (unsigned long) length + 131072UL &&
+                        (ctx->budget_ms == 0 ||
+                        (LONG) (ctx->deadline - GetTickCount()) >= 200L)) {
+                    pscript_bc_dump_args dump_args;
+                    int saved_memory_limited;
+                    int dump_rc;
+
+                    dump_args.bytecode = NULL;
+                    dump_args.bytecode_len = 0;
+                    saved_memory_limited = ctx->memory_limited;
+                    duk_dup_top(ctx->duk);
+                    dump_rc = duk_safe_call(ctx->duk, pscript_dump_bc_safe,
+                            &dump_args, 1, 0);
+                    if (dump_rc != 0) {
+                        ctx->memory_limited = saved_memory_limited;
+                        if (dump_args.bytecode != NULL) {
+                            free(dump_args.bytecode);
+                            dump_args.bytecode = NULL;
+                        }
+                    } else if (dump_args.bytecode != NULL) {
+                        pscript_bc_store(source, length, bc_hash,
+                                dump_args.bytecode, dump_args.bytecode_len);
+                    }
+                }
+                if (ctx->budget_ms != 0 && dukky_check_timeout(ctx)) {
+                    rc = 1;
+                }
+                if (rc == 0) {
+                    phase_start = ctx->performance.enabled ? GetTickCount() : 0;
+                    duk_push_global_object(ctx->duk);
+                    rc = duk_pcall_method(ctx->duk, 0);
+                    if (ctx->performance.enabled) {
+                        execute_ms = pscript_elapsed(phase_start);
+                    }
+                }
+            }
+        }
+    } else if (ctx->performance.enabled) {
         /* Exactly mirror duk_eval_raw, including its explicit global this.
          * Default callers retain the original peval path unchanged. */
         phase_start = GetTickCount();
