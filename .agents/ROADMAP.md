@@ -239,7 +239,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Performance. 全栈性能改进纵切
 
-**状态：审计、计划及首批零 ABI 优化已过双配置构建，待连接设备过定向门。** 分阶段计划（Phase 0–6）、所有者与验收门见 [性能改进路线图](../docs/PERFORMANCE_PLAN.md)，源码取证见 [性能堵点审计](../docs/history/PERFORMANCE_BOTTLENECK_AUDIT.md)。
+**状态：第 1–3 批零 ABI 优化已过真机 Release 79/79、Debug 41/41 及 EXE 滚动门，下一步推进 Phase 4 字节码缓存实测。** 计划见 [性能改进路线图](../docs/PERFORMANCE_PLAN.md)，取证见 [性能堵点审计](../docs/history/PERFORMANCE_BOTTLENECK_AUDIT.md)。
 
 #### Runtime. 纯资源应用与隔离存储
 
