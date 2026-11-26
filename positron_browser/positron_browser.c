@@ -5404,10 +5404,10 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function pdocumentCollection(a){if(typeof g.__pcoreDecorateCollection13==='function'){"
         "return g.__pcoreDecorateCollection13(a,'HTMLCollection',true);}return a;}"
         "pdocument.getElementsByTagName=function(name){var a=[];var e=this.documentElement;"
-        "var d;var i;var s=String(name).toLowerCase();if(s===''){return pdocumentCollection(a);}"
+        "var d;var items;var i;var s=String(name).toLowerCase();if(s===''){return pdocumentCollection(a);}"
         "if(e!==null&&(s==='*'||e.localName===s)){a.push(e);}"
         "if(e!==null&&typeof e.getElementsByTagName==='function'){d=e.getElementsByTagName(name);"
-        "for(i=0;i<d.length;i++){a.push(d[i]);}}return pdocumentCollection(a);};"
+        "items=d&&d.__items9?d.__items9:d;for(i=0;i<items.length;i++){a.push(items[i]);}}return pdocumentCollection(a);};"
         "pdocument.getElementsByClassName=function(names){var a=[];var e=this.documentElement;"
         "var d;var i;var s=String(names).replace(/^\\s+|\\s+$/g,'');var p;var q;"
         "if(e!==null&&s!==''){p=s.split(/\\s+/);q='.';for(i=0;i<p.length;i++){"
@@ -6353,7 +6353,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "Object.defineProperty(PElement.prototype,'index',{get:function(){"
         "return this.localName==='option'?optionIndex9(this):undefined;},"
         "enumerable:true,configurable:true});"
-        "function tag9(owner){var value=relation9(owner,7,0);return typeof value==='string'?value:'';}"
+        "function tag9(owner){var value;if(!owner){return '';}if(typeof owner.__tag9==='string'&&owner.__tag9!==''){return owner.__tag9;}"
+        "value=relation9(owner,7,0);if(typeof value==='string'&&value!==''){owner.__tag9=value;return value;}return '';}"
         "Object.defineProperty(PElement.prototype,'tagName',{get:function(){return tag9(this).toUpperCase();},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'nodeName',{get:function(){return tag9(this).toUpperCase();},enumerable:true});"
         "Object.defineProperty(PElement.prototype,'localName',{get:function(){return tag9(this).toLowerCase();},enumerable:true});"
@@ -6930,7 +6931,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(current!==''){part=trim9(current);if(part===''){return null;}parts.push(part);if(parts.length>64){return null;}}"
         "if(bracket!==0||paren!==0||quote!==''){return null;}"
         "if(parts.length===0||parts.length!==ops.length+1){return null;}return {parts:parts,ops:ops};}"
-        "function matchSelector9(owner,selector,scope){var parsed=selectorParse9(selector);var n=owner;var i;var op;var found;var depth;"
+        "function matchParsedOne9(owner,parsed,scope){var n=owner;var i;var op;var found;var depth;"
         "if(parsed===null||!n||!matchSimple9(n,parsed.parts[parsed.parts.length-1],0,scope)){return false;}"
         "for(i=parsed.parts.length-2;i>=0;i--){op=parsed.ops[i];if(op==='>'){n=n.parentElement;"
         "if(!n||!matchSimple9(n,parsed.parts[i],0,scope)){return false;}}else if(op==='+'){n=n.previousElementSibling;"
@@ -6938,13 +6939,15 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "while(n!==null&&depth<64){if(matchSimple9(n,parsed.parts[i],0,scope)){found=true;break;}n=n.previousElementSibling;depth++;}"
         "if(!found){return false;}}else{n=n.parentElement;found=false;depth=0;while(n!==null&&depth<64){"
         "if(matchSimple9(n,parsed.parts[i],0,scope)){found=true;break;}n=n.parentElement;depth++;}if(!found){return false;}}}return true;}"
-        "function match9(owner,selector,scope){var s=String(selector);var start=0;var bracket=0;var paren=0;var quote='';var i;var c;var part;var matched=false;"
+        "function parseSelectorList9(selector){var s=String(selector);var start=0;var bracket=0;var paren=0;var quote='';var i;var c;var part;var list=[];var parsed;"
         "for(i=0;i<s.length;i++){c=s.charAt(i);if(quote!==''){if(c===quote){quote='';}continue;}if(bracket>0){"
         "if(c==='\\\"'||c==='\\''){quote=c;}else if(c===']'){bracket--;}continue;}if(c==='['){bracket=1;continue;}"
         "if(paren>0){if(c==='\\\"'||c==='\\''){quote=c;}else if(c==='['){bracket=1;}else if(c==='('){paren++;}else if(c===')'){paren--;}continue;}"
         "if(c==='('){paren=1;continue;}"
-        "if(c===','){part=trim9(s.substring(start,i));if(part===''){return false;}if(matchSelector9(owner,part,scope)){matched=true;}start=i+1;}}"
-        "part=trim9(s.substring(start));return part!==''&&(matched||matchSelector9(owner,part,scope));}"
+        "if(c===','){part=trim9(s.substring(start,i));if(part===''){return null;}parsed=selectorParse9(part);if(parsed!==null){list.push(parsed);}start=i+1;}}"
+        "part=trim9(s.substring(start));if(part===''){return null;}parsed=selectorParse9(part);if(parsed!==null){list.push(parsed);}return list;}"
+        "function matchParsed9(owner,list,scope){var i;if(list===null){return false;}for(i=0;i<list.length;i++){if(matchParsedOne9(owner,list[i],scope)){return true;}}return false;}"
+        "function match9(owner,selector,scope){return matchParsed9(owner,parseSelectorList9(selector),scope);}"
         "function selectorHasScope9(selector){var s=String(selector);var bracket=0;var paren=0;var i;var c;var before;var after;"
         "for(i=0;i<s.length;i++){c=s.charAt(i);if(bracket>0){if(c===']'){bracket--;}continue;}"
         "if(paren>0){if(c==='('){paren++;}else if(c===')'){paren--;}continue;}"
@@ -6953,11 +6956,12 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "after=i+6<s.length?s.charAt(i+6):'';if((before===''||!/[A-Za-z0-9_-]/.test(before))&&"
         "(after===''||!/[A-Za-z0-9_-]/.test(after))){return true;}}}return false;}"
         "PElement.prototype.matches=function(selector){return match9(this,selector,this);};"
-        "PElement.prototype.closest=function(selector){var n=this;var i=0;while(n&&i<64){if(match9(n,selector,this)){return n;}n=n.parentElement;i++;}return null;};"
-        "function query9(owner,selector,all,named){var out=[];var stack=[];var kids;var i;var n;var includeOwner;"
-        "includeOwner=selectorHasScope9(selector);if(includeOwner&&match9(owner,selector,owner)){if(!all){return owner;}out.push(owner);}"
+        "PElement.prototype.closest=function(selector){var n=this;var i=0;var plist=parseSelectorList9(selector);if(plist===null){return null;}while(n&&i<64){if(matchParsed9(n,plist,this)){return n;}n=n.parentElement;i++;}return null;};"
+        "function query9(owner,selector,all,named){var out=[];var stack=[];var kids;var i;var n;var includeOwner;var plist=parseSelectorList9(selector);"
+        "if(plist===null||plist.length===0){return all?list9(out,named===true):null;}"
+        "includeOwner=selectorHasScope9(selector);if(includeOwner&&matchParsed9(owner,plist,owner)){if(!all){return owner;}out.push(owner);}"
         "kids=children9(owner);for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}"
-        "while(stack.length){n=stack.pop();if(match9(n,selector,owner)){if(!all){return n;}out.push(n);}"
+        "while(stack.length){n=stack.pop();if(matchParsed9(n,plist,owner)){if(!all){return n;}out.push(n);}"
         "kids=children9(n);for(i=kids.length-1;i>=0;i--){stack.push(kids[i]);}}"
         "return all?list9(out,named===true):null;}"
         "function liveTagItems9(owner,tag,out){var stack=[];var kids;var i;var n;var visited=0;"
@@ -7027,7 +7031,7 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "return all?list9(out,false):null;}"
         "g.__pcoreFragmentQuery16=fragmentQuery9;"
         "function docQuery9(selector,all){var s=trim9(selector);var root=doc.documentElement;var out=[];"
-        "var rest;var i;var scoped;var transient;"
+        "var rest;var i;var scoped;var transient;var fastId;"
         "if(root===null){return all?list9(out,false):null;}"
         "if(s===''){return all?list9(out,false):null;}"
         "if(s.toLowerCase()===':root'){if(all){out.push(root);return list9(out,false);}return root;}"
@@ -7035,6 +7039,8 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "if(transient&&transient.nodeType===1&&typeof transient.__id==='string'&&"
         "transient.__id.indexOf('__positron_native_button_')===0&&"
         "match9(transient,s,doc)){if(!all){return transient;}out.push(transient);}"
+        "if(!all&&s.charAt(0)==='#'&&s.length>1&&/^[A-Za-z0-9_-]+$/.test(s.substring(1))){"
+        "return doc.getElementById(s.substring(1));}"
         "scoped=selectorHasScope9(s);if(match9(root,s,root)){if(!all){return root;}if(!scoped){out.push(root);}}"
         "if(!all){return query9(root,s,false,false);}"
         "rest=query9(root,s,true,false);if(rest!==null){for(i=0;i<rest.length;i++){out.push(rest[i]);}}"
@@ -9445,6 +9451,7 @@ static HANDLE p_browser_script_args_object(const char *args_json,
 {
     HANDLE root;
     HANDLE object;
+    char stack_copy[512];
     char *copy;
 
     if (out_object == NULL) {
@@ -9454,14 +9461,20 @@ static HANDLE p_browser_script_args_object(const char *args_json,
     if (args_json == NULL || args_len < 0) {
         return NULL;
     }
-    copy = (char *) malloc((size_t) args_len + 1);
-    if (copy == NULL) {
-        return NULL;
+    if (args_len < (int) sizeof(stack_copy)) {
+        copy = stack_copy;
+    } else {
+        copy = (char *) malloc((size_t) args_len + 1);
+        if (copy == NULL) {
+            return NULL;
+        }
     }
     memcpy(copy, args_json, (size_t) args_len);
     copy[args_len] = '\0';
     root = PJson_Parse(copy);
-    free(copy);
+    if (copy != stack_copy) {
+        free(copy);
+    }
     if (root == NULL || PJson_GetArraySize(root) != 1) {
         PJson_Free(root);
         return NULL;
@@ -11178,31 +11191,24 @@ static int p_browser_script_dom_set_checked(void *pw,
             out_capacity, out_len);
 }
 
-static int p_browser_script_form_get_string(
+static int p_browser_script_form_get_string_obj(
         PBrowserScriptGetValueFn callback, void *callback_pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
 {
-    HANDLE root;
-    HANDLE object;
     const char *id;
     char *value;
     int allocated_len;
     int value_len;
     int result;
 
-    object = NULL;
-    root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     value = NULL;
     value_len = 0;
-    if (root == NULL || id == NULL || callback == NULL) {
-        PJson_Free(root);
+    if (id == NULL || callback == NULL) {
         return 1;
     }
     if (callback(callback_pw, id, NULL, 0, &value_len) != 0 ||
             value_len < 0 || value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
-        PJson_Free(root);
         return 1;
     }
     allocated_len = value_len;
@@ -11212,15 +11218,54 @@ static int p_browser_script_form_get_string(
             value_len > allocated_len ||
             value_len > PBROWSER_SCRIPT_TEXT_MAX_BYTES) {
         free(value);
-        PJson_Free(root);
         return 1;
     }
     value[value_len] = '\0';
     result = p_browser_script_write_string(value, out_json,
             out_capacity, out_len);
     free(value);
+    return result;
+}
+
+static int p_browser_script_form_get_string(
+        PBrowserScriptGetValueFn callback, void *callback_pw,
+        const char *args_json, int args_len, char *out_json,
+        int out_capacity, int *out_len)
+{
+    HANDLE root;
+    HANDLE object;
+    int result;
+
+    object = NULL;
+    root = p_browser_script_args_object(args_json, args_len, &object);
+    if (root == NULL) {
+        return 1;
+    }
+    result = p_browser_script_form_get_string_obj(callback, callback_pw,
+            object, out_json, out_capacity, out_len);
     PJson_Free(root);
     return result;
+}
+
+static int p_browser_script_form_set_string_obj(
+        PBrowserScriptSetValueFn callback, void *callback_pw,
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
+{
+    const char *id;
+    const char *value;
+    int changed;
+
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
+    if (id == NULL || value == NULL || callback == NULL) {
+        return 1;
+    }
+    changed = callback(callback_pw, id, value);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
 }
 
 static int p_browser_script_form_set_string(
@@ -11230,24 +11275,33 @@ static int p_browser_script_form_set_string(
 {
     HANDLE root;
     HANDLE object;
-    const char *id;
-    const char *value;
-    int changed;
+    int result;
 
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    value = (object != NULL) ? PJson_GetString(object, "value") : NULL;
-    if (root == NULL || id == NULL || value == NULL || callback == NULL) {
-        PJson_Free(root);
+    if (root == NULL) {
         return 1;
     }
-    changed = callback(callback_pw, id, value);
+    result = p_browser_script_form_set_string_obj(callback, callback_pw,
+            object, out_json, out_capacity, out_len);
     PJson_Free(root);
-    if (changed < 0) {
+    return result;
+}
+
+static int p_browser_script_form_get_bool_obj(
+        PBrowserScriptGetCheckedFn callback, void *callback_pw,
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
+{
+    const char *id;
+    int checked;
+
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = 0;
+    if (id == NULL || callback == NULL ||
+            callback(callback_pw, id, &checked) != 0) {
         return 1;
     }
-    return p_browser_script_write_bool(changed > 0, out_json,
+    return p_browser_script_write_bool(checked != 0, out_json,
             out_capacity, out_len);
 }
 
@@ -11258,21 +11312,37 @@ static int p_browser_script_form_get_bool(
 {
     HANDLE root;
     HANDLE object;
-    const char *id;
-    int checked;
     int result;
 
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    checked = 0;
-    result = root != NULL && id != NULL && callback != NULL &&
-            callback(callback_pw, id, &checked) == 0;
-    PJson_Free(root);
-    if (!result) {
+    if (root == NULL) {
         return 1;
     }
-    return p_browser_script_write_bool(checked != 0, out_json,
+    result = p_browser_script_form_get_bool_obj(callback, callback_pw,
+            object, out_json, out_capacity, out_len);
+    PJson_Free(root);
+    return result;
+}
+
+static int p_browser_script_form_set_bool_obj(
+        PBrowserScriptSetCheckedFn callback, void *callback_pw,
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
+{
+    const char *id;
+    int checked;
+    int changed;
+
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
+    if (id == NULL || callback == NULL) {
+        return 1;
+    }
+    changed = callback(callback_pw, id, checked ? 1 : 0);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
             out_capacity, out_len);
 }
 
@@ -11283,101 +11353,71 @@ static int p_browser_script_form_set_bool(
 {
     HANDLE root;
     HANDLE object;
-    const char *id;
-    int checked;
-    int changed;
-
-    object = NULL;
-    root = p_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    checked = (object != NULL) ? PJson_GetInt(object, "checked") : 0;
-    if (root == NULL || id == NULL || callback == NULL) {
-        PJson_Free(root);
-        return 1;
-    }
-    changed = callback(callback_pw, id, checked ? 1 : 0);
-    PJson_Free(root);
-    if (changed < 0) {
-        return 1;
-    }
-    return p_browser_script_write_bool(changed > 0, out_json,
-            out_capacity, out_len);
-}
-
-static int p_browser_script_option_set_bool(
-        PBrowserScriptSetOptionSelectedFn callback, void *callback_pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
-{
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int selected;
-    int changed;
-
-    object = NULL;
-    root = p_browser_script_args_object(args_json, args_len, &object);
-    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
-    selected = (object != NULL) ? PJson_GetInt(object, "selected") : 0;
-    if (root == NULL || id == NULL || callback == NULL) {
-        PJson_Free(root);
-        return 1;
-    }
-    changed = callback(callback_pw, id, selected ? 1 : 0);
-    PJson_Free(root);
-    if (changed < 0) {
-        return 1;
-    }
-    return p_browser_script_write_bool(changed > 0, out_json,
-            out_capacity, out_len);
-}
-
-static int p_browser_script_form_get_int(
-        PBrowserScriptGetSelectedIndexFn callback, void *callback_pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
-{
-    HANDLE root;
-    HANDLE object;
-    const char *id;
-    int index;
     int result;
 
     object = NULL;
     root = p_browser_script_args_object(args_json, args_len, &object);
+    if (root == NULL) {
+        return 1;
+    }
+    result = p_browser_script_form_set_bool_obj(callback, callback_pw,
+            object, out_json, out_capacity, out_len);
+    PJson_Free(root);
+    return result;
+}
+
+static int p_browser_script_option_set_bool_obj(
+        PBrowserScriptSetOptionSelectedFn callback, void *callback_pw,
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
+{
+    const char *id;
+    int selected;
+    int changed;
+
+    id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
+    selected = (object != NULL) ? PJson_GetInt(object, "selected") : 0;
+    if (id == NULL || callback == NULL) {
+        return 1;
+    }
+    changed = callback(callback_pw, id, selected ? 1 : 0);
+    if (changed < 0) {
+        return 1;
+    }
+    return p_browser_script_write_bool(changed > 0, out_json,
+            out_capacity, out_len);
+}
+
+static int p_browser_script_form_get_int_obj(
+        PBrowserScriptGetSelectedIndexFn callback, void *callback_pw,
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
+{
+    const char *id;
+    int index;
+
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     index = -1;
-    result = root != NULL && id != NULL && callback != NULL &&
-            callback(callback_pw, id, &index) == 0;
-    PJson_Free(root);
-    if (!result) {
+    if (id == NULL || callback == NULL ||
+            callback(callback_pw, id, &index) != 0) {
         return 1;
     }
     return p_browser_script_write_int(index, out_json, out_capacity,
             out_len);
 }
 
-static int p_browser_script_form_set_int(
+static int p_browser_script_form_set_int_obj(
         PBrowserScriptSetSelectedIndexFn callback, void *callback_pw,
-        const char *args_json, int args_len, char *out_json,
-        int out_capacity, int *out_len)
+        HANDLE object, char *out_json, int out_capacity, int *out_len)
 {
-    HANDLE root;
-    HANDLE object;
     const char *id;
     int index;
     int changed;
 
-    object = NULL;
-    root = p_browser_script_args_object(args_json, args_len, &object);
     id = (object != NULL) ? PJson_GetString(object, "id") : NULL;
     index = (object != NULL) ? PJson_GetInt(object, "index") : -2;
-    if (root == NULL || id == NULL || callback == NULL) {
-        PJson_Free(root);
+    if (id == NULL || callback == NULL) {
         return 1;
     }
     changed = callback(callback_pw, id, index);
-    PJson_Free(root);
     if (changed < 0) {
         return 1;
     }
@@ -11737,74 +11777,84 @@ static int p_browser_script_form_property(void *pw,
         return result;
     }
     if (strcmp(op, "getDefaultValue") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_get_string(
+        int result = p_browser_script_form_get_string_obj(
                 binding->callbacks.get_default_value, binding->callbacks.pw,
-                args_json, args_len, out_json, out_capacity, out_len);
+                object, out_json, out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (strcmp(op, "setDefaultValue") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_set_string(
+        int result = p_browser_script_form_set_string_obj(
                 binding->callbacks.set_default_value, binding->callbacks.pw,
-                args_json, args_len, out_json, out_capacity, out_len);
+                object, out_json, out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (strcmp(op, "getDefaultChecked") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_get_bool(
+        int result = p_browser_script_form_get_bool_obj(
                 binding->callbacks.get_default_checked,
-                binding->callbacks.pw, args_json, args_len, out_json,
+                binding->callbacks.pw, object, out_json,
                 out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (strcmp(op, "setDefaultChecked") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_set_bool(
+        int result = p_browser_script_form_set_bool_obj(
                 binding->callbacks.set_default_checked,
-                binding->callbacks.pw, args_json, args_len, out_json,
+                binding->callbacks.pw, object, out_json,
                 out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (strcmp(op, "getSelectedIndex") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_get_int(
+        int result = p_browser_script_form_get_int_obj(
                 binding->callbacks.get_selected_index, binding->callbacks.pw,
-                args_json, args_len, out_json, out_capacity, out_len);
+                object, out_json, out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (strcmp(op, "setSelectedIndex") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_set_int(
+        int result = p_browser_script_form_set_int_obj(
                 binding->callbacks.set_selected_index, binding->callbacks.pw,
-                args_json, args_len, out_json, out_capacity, out_len);
+                object, out_json, out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (session != NULL && session->option != NULL &&
             strcmp(op, "getSelected") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_get_bool(
+        int result = p_browser_script_form_get_bool_obj(
                 session->option->callbacks.get_selected,
-                session->option->callbacks.pw, args_json, args_len,
-                out_json, out_capacity, out_len);
+                session->option->callbacks.pw, object, out_json,
+                out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (session != NULL && session->option != NULL &&
             strcmp(op, "setSelected") == 0) {
-        PJson_Free(root);
-        return p_browser_script_option_set_bool(
+        int result = p_browser_script_option_set_bool_obj(
                 session->option->callbacks.set_selected,
-                session->option->callbacks.pw, args_json, args_len,
-                out_json, out_capacity, out_len);
+                session->option->callbacks.pw, object, out_json,
+                out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (session != NULL && session->option != NULL &&
             strcmp(op, "getDefaultSelected") == 0) {
-        PJson_Free(root);
-        return p_browser_script_form_get_bool(
+        int result = p_browser_script_form_get_bool_obj(
                 session->option->callbacks.get_default_selected,
-                session->option->callbacks.pw, args_json, args_len,
-                out_json, out_capacity, out_len);
+                session->option->callbacks.pw, object, out_json,
+                out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     if (session != NULL && session->option != NULL &&
             strcmp(op, "setDefaultSelected") == 0) {
-        PJson_Free(root);
-        return p_browser_script_option_set_bool(
+        int result = p_browser_script_option_set_bool_obj(
                 session->option->callbacks.set_default_selected,
-                session->option->callbacks.pw, args_json, args_len,
-                out_json, out_capacity, out_len);
+                session->option->callbacks.pw, object, out_json,
+                out_capacity, out_len);
+        PJson_Free(root);
+        return result;
     }
     PJson_Free(root);
     return 1;

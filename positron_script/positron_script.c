@@ -252,7 +252,13 @@ static duk_ret_t pscript_native_dispatch(duk_context *duk)
         return duk_error(duk, DUK_ERR_ERROR,
                 "native callback context is invalid");
     }
-    native_index = pscript_native_find(ctx, native_name);
+    native_index = (int) duk_get_current_magic(duk);
+    if (native_index < 0 ||
+            native_index >= (int) PSCRIPT_MAX_NATIVE_FUNCTIONS ||
+            !ctx->native_functions[native_index].active ||
+            strcmp(ctx->native_functions[native_index].name, native_name) != 0) {
+        native_index = pscript_native_find(ctx, native_name);
+    }
     if (native_index < 0) {
         return duk_error(duk, DUK_ERR_ERROR,
                 "native callback is not registered");
@@ -1405,6 +1411,7 @@ static int pscript_register_json_function(HANDLE hScript,
         return PSCRIPT_ERROR_NATIVE;
     }
     duk_push_c_function(duk, pscript_native_dispatch, DUK_VARARGS);
+    duk_set_magic(duk, -1, (duk_int_t) native_index);
     duk_push_string(duk, global_name);
     duk_put_prop_string(duk, -2, PSCRIPT_NATIVE_NAME_PROP);
     duk_put_global_string(duk, global_name);
