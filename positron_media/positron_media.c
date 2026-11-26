@@ -701,13 +701,7 @@ static int pm_output_pcm(pm_session_impl *session, int frames)
     frame_bytes = channels * (bits / 8);
     if (session->format_tag == 1) {
         if (bits == 16) {
-            for (i = 0; i < frames; i++) {
-                for (channel = 0; channel < channels; channel++) {
-                    const unsigned char *source;
-                    source = input + i * frame_bytes + channel * 2;
-                    samples[i * channels + channel] = (short)pm_le16(source);
-                }
-            }
+            memcpy(samples, input, (size_t)(frames * frame_bytes));
         } else {
             for (i = 0; i < frames; i++) {
                 for (channel = 0; channel < channels; channel++) {

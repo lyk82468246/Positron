@@ -1224,38 +1224,77 @@ static int pm_ff_convert_audio(pmedia_ffmpeg *context, int *out_bytes)
         context->audio_buffer_bytes = bytes;
     }
     destination = (short *)context->audio_buffer;
-    for (i = 0; i < samples; i++) {
-        for (channel = 0; channel < channels; channel++) {
-            sample = 0;
-            if (format == AV_SAMPLE_FMT_S16) {
-                packed = context->frame->data[0];
-                sample = ((const short *)packed)[i * channels + channel];
-            } else if (format == AV_SAMPLE_FMT_S16P) {
+    switch (format) {
+    case AV_SAMPLE_FMT_S16:
+        memcpy(destination, context->frame->data[0], (size_t)bytes);
+        break;
+    case AV_SAMPLE_FMT_S16P:
+        if (channels == 1) {
+            memcpy(destination, context->frame->extended_data[0], (size_t)bytes);
+        } else {
+            const short *p0 = (const short *)context->frame->extended_data[0];
+            const short *p1 = (const short *)context->frame->extended_data[1];
+            for (i = 0; i < samples; i++) {
+                destination[i * 2] = p0[i];
+                destination[i * 2 + 1] = p1[i];
+            }
+        }
+        break;
+    case AV_SAMPLE_FMT_FLT:
+        float_plane = (float *)context->frame->data[0];
+        for (i = 0; i < samples * channels; i++) {
+            destination[i] = (short)pm_ff_float_sample(float_plane[i]);
+        }
+        break;
+    case AV_SAMPLE_FMT_FLTP:
+        if (channels == 1) {
+            float_plane = (float *)context->frame->extended_data[0];
+            for (i = 0; i < samples; i++) {
+                destination[i] = (short)pm_ff_float_sample(float_plane[i]);
+            }
+        } else {
+            const float *f0 = (const float *)context->frame->extended_data[0];
+            const float *f1 = (const float *)context->frame->extended_data[1];
+            for (i = 0; i < samples; i++) {
+                destination[i * 2] = (short)pm_ff_float_sample(f0[i]);
+                destination[i * 2 + 1] = (short)pm_ff_float_sample(f1[i]);
+            }
+        }
+        break;
+    case AV_SAMPLE_FMT_U8:
+        packed = context->frame->data[0];
+        for (i = 0; i < samples * channels; i++) {
+            destination[i] = (short)(((int)packed[i] - 128) * 256);
+        }
+        break;
+    case AV_SAMPLE_FMT_U8P:
+        for (i = 0; i < samples; i++) {
+            for (channel = 0; channel < channels; channel++) {
                 plane = context->frame->extended_data[channel];
-                sample = ((const short *)plane)[i];
-            } else if (format == AV_SAMPLE_FMT_FLT) {
-                float_plane = (float *)context->frame->data[0];
-                sample = pm_ff_float_sample(float_plane[i * channels + channel]);
-            } else if (format == AV_SAMPLE_FMT_FLTP) {
-                float_plane = (float *)context->frame->extended_data[channel];
-                sample = pm_ff_float_sample(float_plane[i]);
-            } else if (format == AV_SAMPLE_FMT_U8) {
-                packed = context->frame->data[0];
-                sample = ((int)packed[i * channels + channel] - 128) * 256;
-            } else if (format == AV_SAMPLE_FMT_U8P) {
-                plane = context->frame->extended_data[channel];
-                sample = ((int)plane[i] - 128) * 256;
-            } else if (format == AV_SAMPLE_FMT_S32) {
-                long_plane = (int32_t *)context->frame->data[0];
-                sample = (int)(long_plane[i * channels + channel] >> 16);
-            } else if (format == AV_SAMPLE_FMT_S32P) {
+                destination[i * channels + channel] =
+                    (short)(((int)plane[i] - 128) * 256);
+            }
+        }
+        break;
+    case AV_SAMPLE_FMT_S32:
+        long_plane = (int32_t *)context->frame->data[0];
+        for (i = 0; i < samples * channels; i++) {
+            sample = (int)(long_plane[i] >> 16);
+            destination[i] = (short)pm_ff_clip_sample(sample);
+        }
+        break;
+    case AV_SAMPLE_FMT_S32P:
+        for (i = 0; i < samples; i++) {
+            for (channel = 0; channel < channels; channel++) {
                 long_plane = (int32_t *)context->frame->extended_data[channel];
                 sample = (int)(long_plane[i] >> 16);
-            } else {
-                return PMEDIA_ERROR_UNSUPPORTED;
+                destination[i * channels + channel] =
+                    (short)pm_ff_clip_sample(sample);
             }
-            destination[i * channels + channel] = (short)pm_ff_clip_sample(sample);
         }
+        break;
+    default:
+        return PMEDIA_ERROR_UNSUPPORTED;
     }
     *out_bytes = bytes;
     return PMEDIA_OK;

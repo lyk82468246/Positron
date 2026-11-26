@@ -303,6 +303,30 @@ static int bb_init(bytebuf* b)
     return 0;
 }
 
+static int bb_reserve(bytebuf* b, size_t needed)
+{
+    size_t newcap;
+    char*  tmp;
+
+    if (b->data == NULL) {
+        return -1;
+    }
+    if (needed + 1 <= b->cap) {
+        return 0;
+    }
+    if (needed + 1 > MAX_RESP_BODY + 65536) {
+        return -1;
+    }
+    newcap = needed + 1;
+    tmp = (char*)HeapReAlloc(GetProcessHeap(), 0, b->data, newcap);
+    if (tmp == NULL) {
+        return -1;
+    }
+    b->data = tmp;
+    b->cap = newcap;
+    return 0;
+}
+
 static int bb_append(bytebuf* b, const char* src, size_t n)
 {
     size_t newcap;
@@ -642,18 +666,20 @@ static BOOL is_chunked(const char* headers, size_t hlen)
  * AFTER the terminator (i.e. start of body), or -1 on error. */
 static int read_until_headers(HANDLE conn, bytebuf* buf)
 {
-    char tmp[1024];
+    char tmp[4096];
     int  n;
     size_t i;
+    size_t scan_start = 0;
 
     while (1) {
         if (buf->len >= 4) {
-            for (i = 0; i + 3 < buf->len; i++) {
+            for (i = scan_start; i + 3 < buf->len; i++) {
                 if (buf->data[i] == '\r' && buf->data[i + 1] == '\n'
                     && buf->data[i + 2] == '\r' && buf->data[i + 3] == '\n') {
                     return (int)(i + 4);
                 }
             }
+            scan_start = buf->len - 3;
         }
         if (buf->len > 32768) {
             return -1;   /* header block unreasonably large */
@@ -681,7 +707,7 @@ static int decode_chunked(HANDLE conn,
 {
     bytebuf raw;
     size_t  pos;
-    char    tmp[2048];
+    char    tmp[4096];
     int     n;
     int     append_result;
     size_t  chunk_size;
@@ -1882,6 +1908,9 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                 phttp_observer_note_failure(&observer, "BODY_LIMIT");
                 goto done;
             }
+            if (cl > 0) {
+                (void)bb_reserve(&bodybuf, (size_t)cl);
+            }
             phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
                                 0, cl, 0);
             report_progress(progress, user_data, 0, cl);
@@ -1906,7 +1935,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                         (int)bodybuf.len, cl);
             }
             if (cl >= 0) {
-                char tmp[2048];
+                char tmp[4096];
                 int  remaining;
                 int  got;
                 int  want;
@@ -1944,7 +1973,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                             (int)bodybuf.len, cl);
                 }
             } else {
-                char tmp[2048];
+                char tmp[4096];
                 int  got;
 
                 while (1) {
