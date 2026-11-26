@@ -1,16 +1,19 @@
-# Positron
+# Positron — 面向 Windows Mobile / WinCE 的现代 Web 基础设施与轻量浏览器运行时
 
-Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础设施与轻量网页运行时。它把 TLS、JSON、SQLite 数据库、HTTP、图像、脚本、HTML/CSS/DOM/layout 和浏览器会话能力封装为可由旧式 Win32/WinCE 应用调用的 DLL，同时保持 VS2008、C89 和设备资源约束。
+[English](README.en.md) | **简体中文**
 
-项目的目标不是复刻现代桌面浏览器，而是在 WM6 上提供一组可组合、可测试、边界清楚的公共能力。`test_host.exe` 是这些 DLL 的回归宿主和示例消费者，不是产品 API 的所有者。
+Windows Mobile 6 / 6.5（Windows CE 5.2，ARMV4I）自带的 IE Mobile 与系统网络栈早已过时，而受限于 VS2008、C89 与低内存环境，直接移植 Chromium / Blink / Gecko 等现代桌面内核并不现实。**Positron** 选择了一条面向老设备的务实路线：在 VS2008 SP1、C89 与显式资源预算约束下，将 **Mbed TLS**、**NetSurf**（HTML/CSS/DOM/layout）、**Duktape**（JavaScript）、**SQLite**、**cJSON**、**miniz**、**libjpeg-turbo**、**NanoSVG/libsvgtiny** 与 **FFmpeg** 等组件移植并封装为 11 个稳定 C ABI 的公共 DLL，为 Win32/WinCE 应用补齐现代 HTTPS/TLS、HTTP/1.1、JSON、本地数据库、归档、图像/SVG、媒体软解、嵌入式脚本和网页渲染能力，同时提供独立浏览器与纯资源 `app://` 应用运行时（`positron.exe`）。
+
+项目的目标不是复刻现代桌面浏览器，而是在 Windows Mobile / WinCE 上提供一组可组合、可测试、边界清楚的公共基础能力与受限网页运行时。`test_host.exe` 是这些 DLL 的回归宿主和示例消费者，不是产品 API 的所有者。
 
 ## 当前定位
 
-- 目标平台：Windows Mobile 6 Professional / Windows CE 5.2，ARMV4I。
-- 工具链：Visual Studio 2008 SP1 与 Windows Mobile 6 Professional SDK。
-- 公共接口：稳定 C ABI、UTF-8 字符串、opaque handle、显式内存所有权。
-- 运行方式：各 DLL 可独立使用，也可由宿主组合成受限的网页浏览体验。
-- 成熟度：持续开发中的兼容层；已经有真实设备回归，但不能视为现代 Web 平台或通用安全浏览器。
+- 目标平台：Windows Mobile 6 / 6.5 Professional（Windows CE 5.2 / WinCE），ARMV4I。
+- 工具链：Visual Studio 2008 SP1 与 Windows Mobile 6 Professional SDK（C89 兼容）。
+- 核心移植栈：Mbed TLS（TLS/HTTPS）、NetSurf（HTML/CSS/DOM/layout）、Duktape（JavaScript）、SQLite、cJSON、miniz（ZIP）、libjpeg-turbo + libsvgtiny/NanoSVG、FFmpeg（有界媒体软解）。
+- 公共接口：稳定 C ABI、UTF-8 字符串、opaque handle、显式内存所有权与固定资源预算。
+- 运行方式：各 DLL 可供旧式 WinCE/WM 应用独立调用，也可由 `positron.exe` 或自定义宿主组合成受限的网页浏览与资源应用体验。
+- 成熟度：持续开发中的兼容层与基础设施；已经有真实设备与模拟器回归，但不能视为现代桌面 Web 平台或通用安全浏览器。
 
 浏览器 JavaScript 默认关闭。独立 `positron_script.dll` 与浏览器脚本绑定共用同一套 Duktape 引擎；前者是通用嵌入式脚本服务，后者是由 `positron_browser.dll` 和宿主共同提供的受限 Web 组合，不是第二个 JavaScript 引擎。
 
@@ -18,16 +21,16 @@ Positron 是面向 Windows Mobile 6 / Windows CE 5.2 ARMV4I 的模块化基础�
 
 | DLL | 用途 | 典型调用入口 |
 |---|---|---|
-| `positron_tls.dll` | TLS 客户端、双向认证 peer 与 listener | `PTls_Init`、`PTls_ConnectVerified`、`PTls_ServerListen` |
-| `positron_json.dll` | cJSON 的 opaque-handle 包装 | `PJson_Parse`、读取函数、`PJson_Free` |
-| `positron_db.dll` | SQLite 本地数据库、migration、outbox 和 REST 行级同步状态 | `PDb_OpenUtf8`、`PDb_ApplyMigration`、`PDb_SyncBuildRequest`、`PDb_SyncApplyResponse` |
-| `positron_archive.dll` | 有界 ZIP 枚举、校验、STORE/DEFLATE 解压及新归档创建 | `PArchive_Open/Read`、`PArchive_WriterCreate/Add/Finish`；见[调用与边界](positron_archive/README.md) |
-| `positron_runtime.dll` | 资源应用元数据、开发目录/隔离 SQL，以及首次安装资源的只读身份核验 | `PRuntime_ManifestCreate`、`PRuntime_PrepareRevision/OpenInstalled`；见[调用与边界](positron_runtime/README.md) |
-| `positron_media.dll` | 有界媒体解码与宿主时钟调度 | `pm_probe`、`pm_open`、`pm_pump`、`pm_close` |
-| `positron_http.dll` | 基于 TLS 的 HTTP/1.1 GET/POST 与 URL reference 解析 | `PHttp_Init`、`PHttp_GetEx`、`PHttp_PostEx` |
-| `positron_image.dll` | 位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
-| `positron_script.dll` | 有预算的独立 JavaScript context、JSON bridge 与模块加载 | `PScript_CreateEx`、`PScript_Evaluate`、`PScript_Destroy` |
-| `positron_core.dll` | HTML/CSS/DOM、样式、layout、绘制、表单和交互模型 | `PCore_Init`、`PCore_ParseHTML`、`PCore_LayoutDocument`、`PCore_DocumentWidth/Height`、paint API |
+| `positron_tls.dll` | 基于 Mbed TLS 的 TLS 客户端、双向认证 peer 与 listener | `PTls_Init`、`PTls_ConnectVerified`、`PTls_ServerListen` |
+| `positron_json.dll` | 基于 cJSON 的有界 JSON opaque-handle 包装 | `PJson_Parse`、读取函数、`PJson_Free` |
+| `positron_db.dll` | 基于 SQLite 的本地数据库、migration、outbox 和 REST 行级同步状态 | `PDb_OpenUtf8`、`PDb_ApplyMigration`、`PDb_SyncBuildRequest`、`PDb_SyncApplyResponse` |
+| `positron_archive.dll` | 基于 miniz 的有界 ZIP 枚举、校验、STORE/DEFLATE 解压及新归档创建 | `PArchive_Open/Read`、`PArchive_WriterCreate/Add/Finish`；见[调用与边界](positron_archive/README.md) |
+| `positron_runtime.dll` | 资源应用（`app://`）元数据、开发目录/隔离 SQL，以及首次安装资源的只读身份核验 | `PRuntime_ManifestCreate`、`PRuntime_PrepareRevision/OpenInstalled`；见[调用与边界](positron_runtime/README.md) |
+| `positron_media.dll` | 基于 FFmpeg 软解与设备探测的有界媒体解码与宿主时钟调度 | `pm_probe`、`pm_open`、`pm_pump`、`pm_close` |
+| `positron_http.dll` | 基于 TLS 的 HTTP/1.1 GET/POST、流式下载预检与 URL reference 解析 | `PHttp_Init`、`PHttp_GetEx`、`PHttp_PostEx` |
+| `positron_image.dll` | 基于 libjpeg-turbo、libsvgtiny/NanoSVG 与系统编码的位图/SVG 解码、绘制与编码 | `PImage_CreateBitmapFromMemory`、`PImage_DrawBitmap` |
+| `positron_script.dll` | 基于 Duktape 的有预算独立 JavaScript context、JSON bridge 与模块加载 | `PScript_CreateEx`、`PScript_Evaluate`、`PScript_Destroy` |
+| `positron_core.dll` | 基于 NetSurf 支持库的 HTML/CSS/DOM、样式、layout、绘制、表单和交互模型 | `PCore_Init`、`PCore_ParseHTML`、`PCore_LayoutDocument`、`PCore_DocumentWidth/Height`、paint API |
 | `positron_browser.dll` | history/session 与每项 viewport snapshot、脚本 bootstrap/scroll/resize、自动/手动 scroll restoration、动态 `matchMedia()`/`visualViewport`、有限布局几何同步、DOM/Event、候选导航生命周期与结果摘要、资源/候选提交及清理快照、平台回调协调 | `PBrowser_HistoryCreate`、`PBrowser_HistoryEntryScroll`、`PBrowser_HistorySetEntryScroll`、`PBrowser_ScriptSessionCreate`、`PBrowser_ScriptSessionNotifyScroll`、`PBrowser_ScriptSessionNotifyResize`、`PBrowser_ScriptSessionGetScrollRestoration`、脚本 `Element.getBoundingClientRect()`、`PBrowser_NavigationCandidateCreate`、`PBrowser_NavigationCandidateGetResult`、`PBrowser_NavigationCommitGetInfo`、`PBrowser_NavigationCleanupGetInfo` |
 
 精确签名、错误码和所有权以各项目的公开头文件为准。调用示例和边界说明见对应子目录的 README；整体所有权与数据流见[架构文档](docs/ARCHITECTURE.md)。
