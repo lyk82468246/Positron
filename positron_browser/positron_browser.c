@@ -5804,6 +5804,13 @@ static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART1[] =
         "function File(parts,name,options){Blob.call(this,parts,options);this.name=String(name||'');this.lastModified=Number(options&&options.lastModified);"
         "if(!isFinite(this.lastModified)){this.lastModified=0;}}File.prototype=Object.create(Blob.prototype);File.prototype.constructor=File;"
         "Object.defineProperty(g,'Blob',{value:Blob,writable:false,configurable:false});Object.defineProperty(g,'File',{value:File,writable:false,configurable:false});"
+        "g.__pcoreRunCheckpoint=function(nowMs,frameMs,idleMs,msgLimit,mask){"
+        "var ran=0;var last=0;"
+        "if(mask&1){g.__pcoreRunTimers(nowMs);last=g.__pcoreRunMicrotasks();ran=1;}"
+        "if(mask&2){g.__pcoreRunAnimationFrames(frameMs);last=g.__pcoreRunMicrotasks();ran=1;}"
+        "if(mask&4){g.__pcoreRunMessages(msgLimit);last=g.__pcoreRunMicrotasks();ran=1;}"
+        "if(mask&8){g.__pcoreRunIdleCallbacks(idleMs);last=g.__pcoreRunMicrotasks();ran=1;}"
+        "if(!ran){last=g.__pcoreRunMicrotasks();}return last;};"
         "})(this);";
 
     static const char P_BROWSER_SCRIPT_BOOTSTRAP_PART4[] =
@@ -13048,65 +13055,23 @@ PBROWSER_API int PBrowser_ScriptSessionRunTaskCheckpoint(HANDLE hSession,
         unsigned long phase_mask)
 {
     p_browser_script_session *session;
-    int ran_phase;
-    int rc;
+    char args[128];
+    int length;
 
     session = p_script_session(hSession);
     if (!p_script_session_valid(session) ||
             (phase_mask & ~PBROWSER_SCRIPT_PUMP_ALL) != 0) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
-    ran_phase = 0;
-    if ((phase_mask & PBROWSER_SCRIPT_PUMP_TIMERS) != 0) {
-        rc = PBrowser_ScriptSessionRunTimers(hSession, now_ms);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-        ran_phase = 1;
-        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
+    length = _snprintf(args, sizeof(args) - 1, "[%lu,%lu,%lu,%lu,%lu]",
+            now_ms, frame_timestamp_ms, idle_deadline_ms, message_limit,
+            phase_mask);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
     }
-    if ((phase_mask & PBROWSER_SCRIPT_PUMP_ANIMATION_FRAMES) != 0) {
-        rc = PBrowser_ScriptSessionRunAnimationFrames(hSession,
-                frame_timestamp_ms);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-        ran_phase = 1;
-        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-    }
-    if ((phase_mask & PBROWSER_SCRIPT_PUMP_MESSAGES) != 0) {
-        rc = PBrowser_ScriptSessionRunMessages(hSession, message_limit);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-        ran_phase = 1;
-        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-    }
-    if ((phase_mask & PBROWSER_SCRIPT_PUMP_IDLE_CALLBACKS) != 0) {
-        rc = PBrowser_ScriptSessionRunIdleCallbacks(hSession,
-                idle_deadline_ms);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-        ran_phase = 1;
-        rc = PBrowser_ScriptSessionRunMicrotasks(hSession);
-        if (rc != PSCRIPT_OK) {
-            return rc;
-        }
-    }
-    if (!ran_phase) {
-        return PBrowser_ScriptSessionRunMicrotasks(hSession);
-    }
-    return PSCRIPT_OK;
+    args[length] = '\0';
+    return PBrowser_ScriptSessionCallGlobalJson(hSession,
+            "__pcoreRunCheckpoint", args);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionRegisterDomReadCallbacks(
@@ -18842,7 +18807,8 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
         int scroll_x, int scroll_y)
 {
     p_browser_script_session *session;
-    int rc;
+    char args[64];
+    int length;
 
     if (scroll_x < 0 || scroll_y < 0) {
         return PSCRIPT_ERROR_ARGUMENT;
@@ -18851,28 +18817,23 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyScroll(HANDLE hSession,
     if (!p_script_session_valid(session)) {
         return PSCRIPT_ERROR_ARGUMENT;
     }
-    rc = PScript_SetGlobalNumber(session->runtime, "__pcoreScrollX", -1,
-            (double) scroll_x);
-    if (rc != PSCRIPT_OK) {
-        return rc;
+    length = _snprintf(args, sizeof(args) - 1, "[%d,%d]", scroll_x, scroll_y);
+    if (length < 0 || length >= (int) sizeof(args) - 1) {
+        return PSCRIPT_ERROR_ARGUMENT;
     }
-    rc = PScript_SetGlobalNumber(session->runtime, "__pcoreScrollY", -1,
-            (double) scroll_y);
-    if (rc == PSCRIPT_OK) {
-        rc = PScript_Evaluate(session->runtime,
-                "if(typeof __pcoreScrollApplied==='function')"
-                "{__pcoreScrollApplied(__pcoreScrollX,__pcoreScrollY);};",
-                -1);
-    }
-    (void) PScript_Evaluate(session->runtime,
-            "delete this.__pcoreScrollX;delete this.__pcoreScrollY;", -1);
-    return rc;
+    args[length] = '\0';
+    return PScript_CallGlobalJson(session->runtime, "__pcoreScrollApplied", -1,
+            args, length);
 }
 
 PBROWSER_API int PBrowser_ScriptSessionNotifyElementScroll(HANDLE hSession,
         const char *element_id, int scroll_x, int scroll_y)
 {
     p_browser_script_session *session;
+    char id_json[2048];
+    char args[2112];
+    int escaped;
+    int length;
     int rc;
 
     if (element_id == NULL || element_id[0] == '\0' || scroll_x < 0 ||
@@ -18882,6 +18843,20 @@ PBROWSER_API int PBrowser_ScriptSessionNotifyElementScroll(HANDLE hSession,
     session = p_script_session(hSession);
     if (!p_script_session_valid(session)) {
         return PSCRIPT_ERROR_ARGUMENT;
+    }
+    id_json[0] = '"';
+    escaped = p_browser_script_json_escape(element_id, id_json + 1,
+            (int) sizeof(id_json) - 3);
+    if (escaped >= 0 && escaped + 2 < (int) sizeof(id_json)) {
+        id_json[escaped + 1] = '"';
+        id_json[escaped + 2] = '\0';
+        length = _snprintf(args, sizeof(args) - 1, "[%s,%d,%d]", id_json,
+                scroll_x, scroll_y);
+        if (length >= 0 && length < (int) sizeof(args) - 1) {
+            args[length] = '\0';
+            return PScript_CallGlobalJson(session->runtime,
+                    "__pcoreElementScrollApplied", -1, args, length);
+        }
     }
     rc = PScript_SetGlobalString(session->runtime, "__pcoreElementScrollId",
             -1, element_id, -1);
