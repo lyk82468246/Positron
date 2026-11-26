@@ -50,6 +50,11 @@ static WCHAR g_symbols_path[MAX_PATH];
 static WCHAR g_emoji_path[MAX_PATH];
 
 static void pcore_font_cache_reset(void);
+static HFONT pcore_font_for_metrics(HDC dc, const plot_font_style_t *fstyle,
+        int font_kind, int *cached_out, int **ascent_out,
+        int **has_ascent_out);
+static HBRUSH pcore_brush_for(COLORREF col, int *cached_out);
+static HPEN pcore_pen_for(int width, COLORREF col, int *cached_out);
 
 static int pcore_font_path(HMODULE module, const WCHAR *filename,
         WCHAR *out, int capacity)
@@ -187,6 +192,11 @@ static int pcore_range_contains(const pcore_font_range *ranges,
 
 static int pcore_font_kind_for_codepoint(unsigned long codepoint)
 {
+    /* All three bundled coverage tables start at or above U+200D. Fast-path
+     * ASCII/Latin/BMP text below U+200D to avoid 3 binary searches per char. */
+    if (codepoint < 0x200dUL) {
+        return PCORE_FONT_BASE;
+    }
     /* Symbols 2 keeps the accepted list-marker forms. The basic Symbols
      * face fills only its genuine cmap gaps, notably U+2190..U+2193. */
     if (g_symbols_loaded && codepoint <= 0xffffUL &&
@@ -291,15 +301,31 @@ static int pcore_gdi_wide_normalize(WCHAR *text, int length)
 
 void pcore_plot_context_begin(pcore_plot_ctx *ctx, HDC hdc)
 {
+    POINT viewport_org;
+    POINT window_org;
+
     if (ctx == NULL) {
         return;
     }
     ctx->hdc = hdc;
     ctx->base_save = 0;
     ctx->base_active = 0;
+    ctx->origin_x = 0;
+    ctx->origin_y = 0;
+    ctx->has_clip = 0;
+    ctx->clip_x0 = 0;
+    ctx->clip_y0 = 0;
+    ctx->clip_x1 = 0;
+    ctx->clip_y1 = 0;
+    ctx->clip_rgn = NULL;
     if (hdc != NULL) {
         ctx->base_save = SaveDC(hdc);
         ctx->base_active = (ctx->base_save != 0) ? 1 : 0;
+        if (GetViewportOrgEx(hdc, &viewport_org) &&
+                GetWindowOrgEx(hdc, &window_org)) {
+            ctx->origin_x = viewport_org.x - window_org.x;
+            ctx->origin_y = viewport_org.y - window_org.y;
+        }
     }
 }
 
@@ -311,47 +337,45 @@ void pcore_plot_context_end(pcore_plot_ctx *ctx)
     if (ctx->base_active) {
         RestoreDC(ctx->hdc, ctx->base_save);
     }
+    if (ctx->clip_rgn != NULL) {
+        DeleteObject(ctx->clip_rgn);
+        ctx->clip_rgn = NULL;
+    }
     ctx->base_save = 0;
     ctx->base_active = 0;
+    ctx->has_clip = 0;
 }
 
-static void pcore_select_device_clip(HDC hdc, const struct rect *clip)
+static void pcore_select_device_clip(pcore_plot_ctx *p,
+        const struct rect *clip)
 {
-    POINT viewport_org;
-    POINT window_org;
-    HRGN plot_rgn;
-    int offset_x;
-    int offset_y;
+    int left;
+    int top;
+    int right;
+    int bottom;
 
-    if (hdc == NULL || clip == NULL) {
+    if (p == NULL || p->hdc == NULL || clip == NULL) {
         return;
     }
-    /* SelectClipRgn uses device coordinates on WM6.  The plot callbacks use
-     * the same logical page coordinates as GDI drawing calls, so account for
-     * the current MM_TEXT origin explicitly instead of letting a region be
-     * offset a second time (or not at all) by the CE GDI implementation. */
-    offset_x = 0;
-    offset_y = 0;
-    if (GetViewportOrgEx(hdc, &viewport_org) &&
-            GetWindowOrgEx(hdc, &window_org)) {
-        offset_x = viewport_org.x - window_org.x;
-        offset_y = viewport_org.y - window_org.y;
-    }
+    left = p->origin_x + clip->x0;
+    top = p->origin_y + clip->y0;
+    right = p->origin_x + clip->x1;
+    bottom = p->origin_y + clip->y1;
 
-    plot_rgn = CreateRectRgn(offset_x + clip->x0,
-            offset_y + clip->y0, offset_x + clip->x1,
-            offset_y + clip->y1);
-    if (plot_rgn == NULL) {
+    if (p->clip_rgn == NULL) {
+        p->clip_rgn = CreateRectRgn(left, top, right, bottom);
+        if (p->clip_rgn == NULL) {
+            return;
+        }
+    } else if (!SetRectRgn(p->clip_rgn, left, top, right, bottom)) {
         return;
     }
 
-    /* The root redraw clip is already limited to the page viewport. Replacing
-     * the host region with this absolute device-space clip avoids the CE GDI
-     * implementations that report a stale/logical GetClipBox after a
-     * viewport-origin change. The outer update region is still restored by
-     * the next plot callback and by pcore_plot_context_end. */
-    SelectClipRgn(hdc, plot_rgn);
-    DeleteObject(plot_rgn);
+    /* SelectClipRgn replaces the DC's application clip region in device
+     * coordinates, so reusing one HRGN avoids per-clip RestoreDC/SaveDC and
+     * CreateRectRgn/DeleteObject churn. pcore_plot_context_end restores the
+     * host clip via RestoreDC(base_save). */
+    SelectClipRgn(p->hdc, p->clip_rgn);
 }
 
 /* NetSurf `colour` is XBGR (red in the low byte) - identical byte order to a
@@ -369,7 +393,8 @@ static COLORREF ns_to_colorref(colour c)
 static void stroke_line(HDC hdc, int x0, int y0, int x1, int y1,
         int w, COLORREF col, plot_operation_type_t st)
 {
-    HPEN pen = CreatePen(PS_SOLID, (w < 1) ? 1 : w, col);
+    int pen_cached = 0;
+    HPEN pen = pcore_pen_for((w < 1) ? 1 : w, col, &pen_cached);
     HPEN old;
 
     if (pen == NULL) {
@@ -390,6 +415,28 @@ static void stroke_line(HDC hdc, int x0, int y0, int x1, int y1,
         if (len <= 0) {
             MoveToEx(hdc, x0, y0, NULL);
             LineTo(hdc, x1, y1);
+        } else if (dy == 0) {
+            int dir = (dx > 0) ? 1 : -1;
+            while (t < len) {
+                int e = t + on;
+                if (e > len) {
+                    e = len;
+                }
+                MoveToEx(hdc, x0 + dir * t, y0, NULL);
+                LineTo(hdc, x0 + dir * e, y0);
+                t = e + on;
+            }
+        } else if (dx == 0) {
+            int dir = (dy > 0) ? 1 : -1;
+            while (t < len) {
+                int e = t + on;
+                if (e > len) {
+                    e = len;
+                }
+                MoveToEx(hdc, x0, y0 + dir * t, NULL);
+                LineTo(hdc, x0, y0 + dir * e);
+                t = e + on;
+            }
         } else {
             while (t < len) {
                 int e = t + on;
@@ -415,7 +462,9 @@ static void stroke_line(HDC hdc, int x0, int y0, int x1, int y1,
     }
 
     SelectObject(hdc, old);
-    DeleteObject(pen);
+    if (!pen_cached) {
+        DeleteObject(pen);
+    }
 }
 
 /* Build an HFONT from a NetSurf plot_font_style_t, scaled to the DC's DPI.
@@ -501,25 +550,20 @@ static nserror plot_clip(const struct redraw_context *ctx,
         const struct rect *clip)
 {
     pcore_plot_ctx *p = (pcore_plot_ctx *) ctx->priv;
-    int next_save;
 
     if (p == NULL || p->hdc == NULL || clip == NULL) {
         return NSERROR_INVALID;
     }
-    if (p->base_active) {
-        /* plot_clip receives an absolute redraw clip. Restore the page/update
-         * state before applying it so sibling boxes do not intersect with the
-         * previous sibling's clip. Re-save that state for the next callback. */
-        if (!RestoreDC(p->hdc, p->base_save)) {
-            p->base_active = 0;
-            p->base_save = 0;
-        } else {
-            next_save = SaveDC(p->hdc);
-            p->base_save = next_save;
-            p->base_active = (next_save != 0) ? 1 : 0;
-        }
+    if (p->has_clip && p->clip_x0 == clip->x0 && p->clip_y0 == clip->y0 &&
+            p->clip_x1 == clip->x1 && p->clip_y1 == clip->y1) {
+        return NSERROR_OK;
     }
-    pcore_select_device_clip(p->hdc, clip);
+    pcore_select_device_clip(p, clip);
+    p->has_clip = 1;
+    p->clip_x0 = clip->x0;
+    p->clip_y0 = clip->y0;
+    p->clip_x1 = clip->x1;
+    p->clip_y1 = clip->y1;
     return NSERROR_OK;
 }
 
@@ -530,14 +574,18 @@ static nserror plot_rectangle(const struct redraw_context *ctx,
     RECT rc;
 
     if (style->fill_type != PLOT_OP_TYPE_NONE) {
-        HBRUSH br = CreateSolidBrush(ns_to_colorref(style->fill_colour));
+        int br_cached = 0;
+        HBRUSH br = pcore_brush_for(ns_to_colorref(style->fill_colour),
+                &br_cached);
         if (br != NULL) {
             rc.left = r->x0;
             rc.top = r->y0;
             rc.right = r->x1;
             rc.bottom = r->y1;
             FillRect(p->hdc, &rc, br);   /* excludes right/bottom: NS grid */
-            DeleteObject(br);
+            if (!br_cached) {
+                DeleteObject(br);
+            }
         }
     }
     if (style->stroke_type != PLOT_OP_TYPE_NONE) {
@@ -547,7 +595,8 @@ static nserror plot_rectangle(const struct redraw_context *ctx,
             w = 1;
         }
         if (style->stroke_type == PLOT_OP_TYPE_SOLID) {
-            HPEN pen = CreatePen(PS_SOLID, w, col);
+            int pen_cached = 0;
+            HPEN pen = pcore_pen_for(w, col, &pen_cached);
             if (pen != NULL) {
                 HPEN oldpen = (HPEN) SelectObject(p->hdc, pen);
                 HBRUSH oldbr = (HBRUSH) SelectObject(p->hdc,
@@ -555,7 +604,9 @@ static nserror plot_rectangle(const struct redraw_context *ctx,
                 Rectangle(p->hdc, r->x0, r->y0, r->x1, r->y1);
                 SelectObject(p->hdc, oldbr);
                 SelectObject(p->hdc, oldpen);
-                DeleteObject(pen);
+                if (!pen_cached) {
+                    DeleteObject(pen);
+                }
             }
         } else {
             /* Dotted/dashed: stroke the four edges by hand. */
@@ -610,6 +661,9 @@ static nserror plot_text(const struct redraw_context *ctx,
         int kind;
         int end;
         HFONT f;
+        int font_cached;
+        int *cached_ascent;
+        int *has_ascent;
         HFONT old;
         TEXTMETRICW tm;
         SIZE size;
@@ -626,7 +680,11 @@ static nserror plot_text(const struct redraw_context *ctx,
             }
             end += next_units;
         }
-        f = pcore_plot_font(p->hdc, fstyle, kind);
+        font_cached = 0;
+        cached_ascent = NULL;
+        has_ascent = NULL;
+        f = pcore_font_for_metrics(p->hdc, fstyle, kind, &font_cached,
+                &cached_ascent, &has_ascent);
         if (f == NULL) {
             start = end;
             continue;
@@ -634,17 +692,25 @@ static nserror plot_text(const struct redraw_context *ctx,
         old = (HFONT) SelectObject(p->hdc, f);
         /* NetSurf passes a baseline; each fallback run has its own ascent. */
         top = y;
-        if (GetTextMetricsW(p->hdc, &tm)) {
+        if (has_ascent != NULL && *has_ascent) {
+            top = y - *cached_ascent;
+        } else if (GetTextMetricsW(p->hdc, &tm)) {
             top = y - tm.tmAscent;
+            if (cached_ascent != NULL && has_ascent != NULL) {
+                *cached_ascent = tm.tmAscent;
+                *has_ascent = 1;
+            }
         }
         ExtTextOutW(p->hdc, draw_x, top, 0, NULL,
                 wbuf + start, end - start, NULL);
-        if (GetTextExtentPoint32W(p->hdc, wbuf + start,
+        if (end < wl && GetTextExtentPoint32W(p->hdc, wbuf + start,
                 end - start, &size)) {
             draw_x += size.cx;
         }
         SelectObject(p->hdc, old);
-        DeleteObject(f);
+        if (!font_cached) {
+            DeleteObject(f);
+        }
         start = end;
     }
     return NSERROR_OK;
@@ -659,21 +725,25 @@ static nserror plot_disc(const struct redraw_context *ctx,
     HPEN pen;
     HPEN oldpen;
     int filled = (style->fill_type != PLOT_OP_TYPE_NONE);
+    int br_cached = 0;
+    int pen_cached = 0;
 
-    br = filled ? CreateSolidBrush(ns_to_colorref(style->fill_colour))
+    br = filled ? pcore_brush_for(ns_to_colorref(style->fill_colour),
+                    &br_cached)
                 : (HBRUSH) GetStockObject(HOLLOW_BRUSH);
-    pen = CreatePen(PS_SOLID, 1, ns_to_colorref(
+    pen = pcore_pen_for(1, ns_to_colorref(
             (style->stroke_type != PLOT_OP_TYPE_NONE)
-                    ? style->stroke_colour : style->fill_colour));
+                    ? style->stroke_colour : style->fill_colour),
+            &pen_cached);
     oldbr = (HBRUSH) SelectObject(p->hdc, br);
     oldpen = (HPEN) SelectObject(p->hdc, pen);
     Ellipse(p->hdc, x - radius, y - radius, x + radius, y + radius);
     SelectObject(p->hdc, oldpen);
     SelectObject(p->hdc, oldbr);
-    if (pen != NULL) {
+    if (!pen_cached && pen != NULL) {
         DeleteObject(pen);
     }
-    if (filled && br != NULL) {
+    if (filled && !br_cached && br != NULL) {
         DeleteObject(br);
     }
     return NSERROR_OK;
@@ -698,6 +768,7 @@ static nserror plot_polygon(const struct redraw_context *ctx,
     HBRUSH br;
     HBRUSH oldbr;
     HPEN oldpen;
+    int br_cached = 0;
 
     if (n < 2 || n > 64) {
         return NSERROR_OK;
@@ -706,14 +777,14 @@ static nserror plot_polygon(const struct redraw_context *ctx,
         pts[i].x = poly[i * 2];
         pts[i].y = poly[i * 2 + 1];
     }
-    br = CreateSolidBrush(ns_to_colorref(style->fill_colour));
+    br = pcore_brush_for(ns_to_colorref(style->fill_colour), &br_cached);
     oldbr = (HBRUSH) SelectObject(p->hdc,
             (br != NULL) ? br : (HBRUSH) GetStockObject(HOLLOW_BRUSH));
     oldpen = (HPEN) SelectObject(p->hdc, (HPEN) GetStockObject(NULL_PEN));
     Polygon(p->hdc, pts, (int) n);
     SelectObject(p->hdc, oldpen);
     SelectObject(p->hdc, oldbr);
-    if (br != NULL) {
+    if (!br_cached && br != NULL) {
         DeleteObject(br);
     }
     return NSERROR_OK;
@@ -877,17 +948,149 @@ const struct plotter_table pcore_gdi_plotters = {
 
 /* Lazily-created screen-compatible DC for measurement (process lifetime). */
 static HDC g_measure_dc = NULL;
+static HFONT g_measure_dc_orig_font = NULL;
+static HFONT g_measure_dc_cur_font = NULL;
 
 static HDC pcore_measure_dc(void)
 {
     if (g_measure_dc == NULL) {
         g_measure_dc = CreateCompatibleDC(NULL);
+        g_measure_dc_orig_font = NULL;
+        g_measure_dc_cur_font = NULL;
     }
     return g_measure_dc;
 }
 
-/* Small font cache shared by the measurement table (the hot path during
- * layout). Keyed on DPI, resolved px size, weight, italic and family. */
+/* Bounded solid brush and pen caches (16 entries each, round-robin eviction)
+ * to avoid per-primitive GWES handle creation during redraw. */
+#define PCORE_GDI_OBJ_CACHE_MAX 16
+
+typedef struct pcore_brush_entry {
+    COLORREF col;
+    HBRUSH   brush;
+} pcore_brush_entry;
+
+typedef struct pcore_pen_entry {
+    int      width;
+    COLORREF col;
+    HPEN     pen;
+} pcore_pen_entry;
+
+static pcore_brush_entry g_bc[PCORE_GDI_OBJ_CACHE_MAX];
+static int g_bc_n = 0;
+static int g_bc_next = 0;
+
+static pcore_pen_entry g_pc[PCORE_GDI_OBJ_CACHE_MAX];
+static int g_pc_n = 0;
+static int g_pc_next = 0;
+
+static HBRUSH pcore_brush_for(COLORREF col, int *cached_out)
+{
+    int i;
+    HBRUSH br;
+
+    if (cached_out != NULL) {
+        *cached_out = 0;
+    }
+    for (i = 0; i < g_bc_n; i++) {
+        if (g_bc[i].col == col && g_bc[i].brush != NULL) {
+            if (cached_out != NULL) {
+                *cached_out = 1;
+            }
+            return g_bc[i].brush;
+        }
+    }
+    br = CreateSolidBrush(col);
+    if (br == NULL) {
+        return NULL;
+    }
+    if (g_bc_n < PCORE_GDI_OBJ_CACHE_MAX) {
+        g_bc[g_bc_n].col = col;
+        g_bc[g_bc_n].brush = br;
+        g_bc_n++;
+    } else {
+        if (g_bc[g_bc_next].brush != NULL) {
+            DeleteObject(g_bc[g_bc_next].brush);
+        }
+        g_bc[g_bc_next].col = col;
+        g_bc[g_bc_next].brush = br;
+        g_bc_next = (g_bc_next + 1) % PCORE_GDI_OBJ_CACHE_MAX;
+    }
+    if (cached_out != NULL) {
+        *cached_out = 1;
+    }
+    return br;
+}
+
+static HPEN pcore_pen_for(int width, COLORREF col, int *cached_out)
+{
+    int i;
+    HPEN pen;
+
+    if (cached_out != NULL) {
+        *cached_out = 0;
+    }
+    if (width < 1) {
+        width = 1;
+    }
+    for (i = 0; i < g_pc_n; i++) {
+        if (g_pc[i].width == width && g_pc[i].col == col &&
+                g_pc[i].pen != NULL) {
+            if (cached_out != NULL) {
+                *cached_out = 1;
+            }
+            return g_pc[i].pen;
+        }
+    }
+    pen = CreatePen(PS_SOLID, width, col);
+    if (pen == NULL) {
+        return NULL;
+    }
+    if (g_pc_n < PCORE_GDI_OBJ_CACHE_MAX) {
+        g_pc[g_pc_n].width = width;
+        g_pc[g_pc_n].col = col;
+        g_pc[g_pc_n].pen = pen;
+        g_pc_n++;
+    } else {
+        if (g_pc[g_pc_next].pen != NULL) {
+            DeleteObject(g_pc[g_pc_next].pen);
+        }
+        g_pc[g_pc_next].width = width;
+        g_pc[g_pc_next].col = col;
+        g_pc[g_pc_next].pen = pen;
+        g_pc_next = (g_pc_next + 1) % PCORE_GDI_OBJ_CACHE_MAX;
+    }
+    if (cached_out != NULL) {
+        *cached_out = 1;
+    }
+    return pen;
+}
+
+static void pcore_gdi_obj_cache_clear(void)
+{
+    int i;
+
+    for (i = 0; i < g_bc_n; i++) {
+        if (g_bc[i].brush != NULL) {
+            DeleteObject(g_bc[i].brush);
+        }
+    }
+    memset(g_bc, 0, sizeof(g_bc));
+    g_bc_n = 0;
+    g_bc_next = 0;
+
+    for (i = 0; i < g_pc_n; i++) {
+        if (g_pc[i].pen != NULL) {
+            DeleteObject(g_pc[i].pen);
+        }
+    }
+    memset(g_pc, 0, sizeof(g_pc));
+    g_pc_n = 0;
+    g_pc_next = 0;
+}
+
+/* Small font cache shared by both layout measurement and plot_text.
+ * Keyed on DPI, resolved px size, weight, italic, family and fallback kind. */
 typedef struct pcore_fc2 {
     int   dpi;
     int   px;
@@ -896,6 +1099,8 @@ typedef struct pcore_fc2 {
     int   family;
     int   font_kind;
     HFONT font;
+    int   ascent;
+    int   has_ascent;
 } pcore_fc2;
 
 static pcore_fc2 g_fc[72];
@@ -906,6 +1111,11 @@ static void pcore_font_cache_clear(void)
 {
     int i;
 
+    if (g_measure_dc != NULL && g_measure_dc_orig_font != NULL) {
+        SelectObject(g_measure_dc, g_measure_dc_orig_font);
+        g_measure_dc_orig_font = NULL;
+        g_measure_dc_cur_font = NULL;
+    }
     for (i = 0; i < g_fc_n; i++) {
         if (g_fc[i].font != NULL) {
             DeleteObject(g_fc[i].font);
@@ -919,10 +1129,13 @@ static void pcore_font_cache_clear(void)
 static void pcore_font_cache_reset(void)
 {
     pcore_font_cache_clear();
+    pcore_gdi_obj_cache_clear();
     if (g_measure_dc != NULL) {
         DeleteDC(g_measure_dc);
         g_measure_dc = NULL;
     }
+    g_measure_dc_orig_font = NULL;
+    g_measure_dc_cur_font = NULL;
 }
 
 static int pcore_font_px(HDC dc, const plot_font_style_t *fstyle)
@@ -946,8 +1159,9 @@ static int pcore_font_px(HDC dc, const plot_font_style_t *fstyle)
     return (px < 1) ? 1 : px;
 }
 
-static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
-        int font_kind, int *cached_out)
+static HFONT pcore_font_for_metrics(HDC dc, const plot_font_style_t *fstyle,
+        int font_kind, int *cached_out, int **ascent_out,
+        int **has_ascent_out)
 {
     int dpi = pcore_get_device_dpi();
     int px = pcore_font_px(dc, fstyle);
@@ -960,14 +1174,20 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
     if (cached_out != NULL) {
         *cached_out = 0;
     }
+    if (ascent_out != NULL) {
+        *ascent_out = NULL;
+    }
+    if (has_ascent_out != NULL) {
+        *has_ascent_out = NULL;
+    }
 
+    if (dpi <= 0) {
+        dpi = (dc != NULL) ? GetDeviceCaps(dc, LOGPIXELSY) : 96;
+    }
     if (dpi <= 0) {
         dpi = 96;
     }
     if (g_font_cache_dpi != 0 && g_font_cache_dpi != dpi) {
-        /* A rotation or host DPI change must not retain measurement fonts
-         * from the previous device scale. Keep the DC itself alive, because
-         * this function is called with it already selected by the caller. */
         pcore_font_cache_clear();
     }
     g_font_cache_dpi = dpi;
@@ -979,6 +1199,12 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
                 g_fc[i].font_kind == font_kind) {
             if (cached_out != NULL) {
                 *cached_out = 1;
+            }
+            if (ascent_out != NULL) {
+                *ascent_out = &g_fc[i].ascent;
+            }
+            if (has_ascent_out != NULL) {
+                *has_ascent_out = &g_fc[i].has_ascent;
             }
             return g_fc[i].font;
         }
@@ -992,22 +1218,32 @@ static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
         g_fc[g_fc_n].family = family;
         g_fc[g_fc_n].font_kind = font_kind;
         g_fc[g_fc_n].font = f;
+        g_fc[g_fc_n].ascent = 0;
+        g_fc[g_fc_n].has_ascent = 0;
+        if (ascent_out != NULL) {
+            *ascent_out = &g_fc[g_fc_n].ascent;
+        }
+        if (has_ascent_out != NULL) {
+            *has_ascent_out = &g_fc[g_fc_n].has_ascent;
+        }
         g_fc_n++;
         if (cached_out != NULL) {
             *cached_out = 1;
         }
     }
-    /* The bounded cache is intentional.  Once it is full, ownership of the
-     * newly-created font remains with the caller so it can be released after
-     * the measurement run; otherwise every new style would leak a GDI handle
-     * until the process shuts down. */
     return f;
 }
 
-/* Measure the same font runs plot_text draws. If cumulative is non-NULL it
- * receives the cumulative width after every UTF-16 unit. */
-static int pcore_measure_wide(const plot_font_style_t *fstyle,
-        const WCHAR *text, int length, int *cumulative, int *width)
+static HFONT pcore_font_for(HDC dc, const plot_font_style_t *fstyle,
+        int font_kind, int *cached_out)
+{
+    return pcore_font_for_metrics(dc, fstyle, font_kind, cached_out,
+            NULL, NULL);
+}
+
+static int pcore_measure_wide_limit(const plot_font_style_t *fstyle,
+        const WCHAR *text, int length, int *cumulative, int *width,
+        int max_extent, int *measured_out)
 {
     HDC dc;
     int start;
@@ -1016,6 +1252,9 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
     dc = pcore_measure_dc();
     if (width != NULL) {
         *width = 0;
+    }
+    if (measured_out != NULL) {
+        *measured_out = 0;
     }
     if (dc == NULL || text == NULL || length <= 0) {
         return 0;
@@ -1031,6 +1270,9 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
         HFONT old;
         SIZE size;
 
+        if (cumulative != NULL && max_extent > 0 && total > max_extent) {
+            break;
+        }
         kind = pcore_font_kind_at(text, length, start, &units);
         end = start + units;
         while (end < length) {
@@ -1046,47 +1288,91 @@ static int pcore_measure_wide(const plot_font_style_t *fstyle,
         if (font == NULL) {
             return 0;
         }
-        old = (HFONT) SelectObject(dc, font);
-        if (old == NULL) {
-            if (!font_cached) {
-                DeleteObject(font);
+        old = NULL;
+        if (font_cached) {
+            if (g_measure_dc_cur_font != font) {
+                old = (HFONT) SelectObject(dc, font);
+                if (old == NULL) {
+                    return 0;
+                }
+                if (g_measure_dc_orig_font == NULL) {
+                    g_measure_dc_orig_font = old;
+                }
+                g_measure_dc_cur_font = font;
             }
-            return 0;
+        } else {
+            old = (HFONT) SelectObject(dc, font);
+            if (old == NULL) {
+                DeleteObject(font);
+                return 0;
+            }
         }
         if (cumulative != NULL) {
-            int dummy;
+            int fit_chars;
             int i;
-            dummy = 0;
+            int run_limit;
+            fit_chars = 0;
+            run_limit = (max_extent > 0) ? (max_extent - total) : 0x7fffffff;
+            if (run_limit < 0) {
+                run_limit = 0;
+            }
             if (!GetTextExtentExPointW(dc, text + start, end - start,
-                    0x7fffffff, &dummy, cumulative + start, &size)) {
-                SelectObject(dc, old);
+                    run_limit, &fit_chars, cumulative + start, &size)) {
                 if (!font_cached) {
+                    SelectObject(dc, old);
                     DeleteObject(font);
                 }
                 return 0;
+            }
+            if (max_extent > 0 && fit_chars < end - start) {
+                for (i = start; i < start + fit_chars; i++) {
+                    cumulative[i] += total;
+                }
+                if (!font_cached) {
+                    SelectObject(dc, old);
+                    DeleteObject(font);
+                }
+                if (measured_out != NULL) {
+                    *measured_out = start + fit_chars;
+                }
+                if (width != NULL) {
+                    *width = (fit_chars > 0) ?
+                            cumulative[start + fit_chars - 1] : total;
+                }
+                return 1;
             }
             for (i = start; i < end; i++) {
                 cumulative[i] += total;
             }
         } else if (!GetTextExtentPoint32W(dc, text + start,
                 end - start, &size)) {
-            SelectObject(dc, old);
             if (!font_cached) {
+                SelectObject(dc, old);
                 DeleteObject(font);
             }
             return 0;
         }
         total += size.cx;
-        SelectObject(dc, old);
         if (!font_cached) {
+            SelectObject(dc, old);
             DeleteObject(font);
         }
         start = end;
+    }
+    if (measured_out != NULL) {
+        *measured_out = start;
     }
     if (width != NULL) {
         *width = total;
     }
     return 1;
+}
+
+static int pcore_measure_wide(const plot_font_style_t *fstyle,
+        const WCHAR *text, int length, int *cumulative, int *width)
+{
+    return pcore_measure_wide_limit(fstyle, text, length, cumulative, width,
+            0, NULL);
 }
 
 /* Decode UTF-8 [0,len) into wbuf (UTF-16) and byteofs[] (the UTF-8 byte offset
@@ -1163,10 +1449,13 @@ static int pcore_utf8_map(const char *s, int len, WCHAR *wbuf,
     return n;
 }
 
+#define PCORE_MEASURE_STACK_CAP 128
+
 static nserror gdi_font_width(const struct plot_font_style *fstyle,
         const char *string, size_t length, int *width)
 {
     HDC dc = pcore_measure_dc();
+    WCHAR wstack[PCORE_MEASURE_STACK_CAP];
     WCHAR *wbuf;
     int wl;
 
@@ -1174,9 +1463,13 @@ static nserror gdi_font_width(const struct plot_font_style *fstyle,
     if (length == 0 || dc == NULL) {
         return NSERROR_OK;
     }
-    wbuf = (WCHAR *) malloc(sizeof(WCHAR) * length);
-    if (wbuf == NULL) {
-        return NSERROR_NOMEM;
+    if (length <= PCORE_MEASURE_STACK_CAP) {
+        wbuf = wstack;
+    } else {
+        wbuf = (WCHAR *) malloc(sizeof(WCHAR) * length);
+        if (wbuf == NULL) {
+            return NSERROR_NOMEM;
+        }
     }
     wl = MultiByteToWideChar(CP_UTF8, 0, string, (int) length,
             wbuf, (int) length);
@@ -1184,7 +1477,9 @@ static nserror gdi_font_width(const struct plot_font_style *fstyle,
         wl = pcore_gdi_wide_normalize(wbuf, wl);
         pcore_measure_wide(fstyle, wbuf, wl, NULL, width);
     }
-    free(wbuf);
+    if (wbuf != wstack) {
+        free(wbuf);
+    }
     return NSERROR_OK;
 }
 
@@ -1363,28 +1658,120 @@ static nserror gdi_font_split(const struct plot_font_style *fstyle,
         const char *string, size_t length, int x,
         size_t *char_offset, int *actual_x)
 {
+    WCHAR wstack[PCORE_MEASURE_STACK_CAP];
+    int dxstack[PCORE_MEASURE_STACK_CAP];
+    int ofsstack[PCORE_MEASURE_STACK_CAP + 1];
     WCHAR *wbuf;
     int *dx;
     int *byteofs;
+    int heap_buf;
     int wl;
+    int measured;
     int fit;
     int i;
     int sp;
+    int limit_x;
+    HDC dc;
 
     *char_offset = length;
     *actual_x = 0;
     if (length == 0) {
         return NSERROR_OK;
     }
-    wl = pcore_measure(fstyle, string, (int) length, &wbuf, &dx, &byteofs);
-    if (wl < 0) {
+    dc = pcore_measure_dc();
+    if (dc == NULL) {
+        return NSERROR_OK;
+    }
+    heap_buf = 0;
+    if (length <= PCORE_MEASURE_STACK_CAP) {
+        wbuf = wstack;
+        dx = dxstack;
+        byteofs = ofsstack;
+    } else {
+        wbuf = (WCHAR *) malloc(sizeof(WCHAR) * length);
+        dx = (int *) malloc(sizeof(int) * length);
+        byteofs = (int *) malloc(sizeof(int) * (length + 1));
+        if (wbuf == NULL || dx == NULL || byteofs == NULL) {
+            free(wbuf);
+            free(dx);
+            free(byteofs);
+            return NSERROR_OK;
+        }
+        heap_buf = 1;
+    }
+    wl = pcore_utf8_map(string, (int) length, wbuf, byteofs, (int) length);
+    if (wl <= 0) {
+        if (heap_buf) {
+            free(wbuf);
+            free(dx);
+            free(byteofs);
+        }
+        return NSERROR_OK;
+    }
+
+    measured = 0;
+    limit_x = (x > 0 && wl > 64 && x < 0x7ffffff0) ? (x + 4) : 0;
+    if (!pcore_measure_wide_limit(fstyle, wbuf, wl, dx, NULL, limit_x,
+            &measured)) {
+        if (heap_buf) {
+            free(wbuf);
+            free(dx);
+            free(byteofs);
+        }
         return NSERROR_OK;
     }
 
     fit = 0;
-    while (fit < wl && dx[fit] <= x) {
+    while (fit < measured && dx[fit] <= x) {
         fit++;
     }
+    if (measured < wl) {
+        int fast_sp = -1;
+        if (fit < measured && wbuf[fit] != L' ') {
+            for (i = fit - 1; i >= 0; i--) {
+                if (wbuf[i] == L' ') {
+                    fast_sp = i;
+                    break;
+                }
+            }
+        }
+        if (fast_sp >= 0) {
+            *char_offset = (size_t) byteofs[fast_sp + 1];
+            *actual_x = dx[fast_sp];
+            if (*char_offset == 0) {
+                *char_offset = length;
+            }
+            if (heap_buf) {
+                free(wbuf);
+                free(dx);
+                free(byteofs);
+            }
+            return NSERROR_OK;
+        } else {
+            int need_len = wl;
+            for (i = fit; i < wl; i++) {
+                if (wbuf[i] == L' ') {
+                    need_len = i + 1;
+                    break;
+                }
+            }
+            if (!pcore_measure_wide_limit(fstyle, wbuf, need_len, dx, NULL,
+                    0, &measured)) {
+                if (heap_buf) {
+                    free(wbuf);
+                    free(dx);
+                    free(byteofs);
+                }
+                return NSERROR_OK;
+            }
+            wl = need_len;
+            fit = 0;
+            while (fit < wl && dx[fit] <= x) {
+                fit++;
+            }
+        }
+    }
+
     if (fit >= wl) {
         /* Whole string fits: no split. */
         *char_offset = length;
@@ -1434,7 +1821,11 @@ static nserror gdi_font_split(const struct plot_font_style *fstyle,
     if (*char_offset == 0) {
         *char_offset = length;   /* contract: never return 0 */
     }
-    free(wbuf); free(dx); free(byteofs);
+    if (heap_buf) {
+        free(wbuf);
+        free(dx);
+        free(byteofs);
+    }
     return NSERROR_OK;
 }
 

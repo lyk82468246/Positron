@@ -21,6 +21,14 @@ typedef struct pcore_plot_ctx {
     HDC hdc;
     int base_save;
     int base_active;
+    int origin_x;
+    int origin_y;
+    int has_clip;
+    int clip_x0;
+    int clip_y0;
+    int clip_x1;
+    int clip_y1;
+    HRGN clip_rgn;
 } pcore_plot_ctx;
 
 void pcore_plot_context_begin(pcore_plot_ctx *ctx, HDC hdc);

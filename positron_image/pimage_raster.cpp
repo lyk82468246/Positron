@@ -33,6 +33,7 @@ static float pimage_acosf(float value) { return (float) acos((double) value); }
 #include "pimage_raster.h"
 
 #define PIMAGE_RASTER_MAX_PIXELS 1048576
+#define PIMAGE_RASTER_CACHE_MAX_BYTES 524288
 
 #define PIMAGE_ITEM_PATHS 1
 #define PIMAGE_ITEM_TEXT 2
@@ -41,6 +42,10 @@ typedef struct pimage_raster_item {
     int type;
     NSVGshape *shapes;
     const struct svgtiny_shape *text_shape;
+    HBITMAP cached_bitmap;
+    int cached_width;
+    int cached_height;
+    size_t cached_bytes;
     struct pimage_raster_item *next;
 } pimage_raster_item;
 
@@ -49,6 +54,7 @@ typedef struct pimage_raster_image {
     float height;
     NSVGrasterizer *rasterizer;
     pimage_raster_item *items;
+    size_t cached_bytes_total;
 } pimage_raster_image;
 
 typedef struct pimage_path_builder {
@@ -207,6 +213,10 @@ static void pimage_free_items(pimage_raster_item *item)
 
     while (item != NULL) {
         next = item->next;
+        if (item->cached_bitmap != NULL) {
+            DeleteObject(item->cached_bitmap);
+            item->cached_bitmap = NULL;
+        }
         pimage_free_shapes(item->shapes);
         free(item);
         item = next;
@@ -510,7 +520,7 @@ static int pimage_make_raster_size(const pimage_raster_image *image,
 }
 
 static int pimage_draw_path_batch(pimage_raster_image *image,
-        const pimage_raster_item *item, HDC hdc, int x, int y,
+        pimage_raster_item *item, HDC hdc, int x, int y,
         int width, int height, int raster_width, int raster_height,
         float scale)
 {
@@ -524,57 +534,102 @@ static int pimage_draw_path_batch(pimage_raster_image *image,
     HBITMAP bitmap;
     HBITMAP old_bitmap;
     HDC memory_dc;
+    size_t bytes;
     int stride;
     int row;
     int column;
     int alpha;
+    int from_cache;
     int ok;
 
-    memset(&nsvg_image, 0, sizeof(nsvg_image));
-    nsvg_image.width = image->width;
-    nsvg_image.height = image->height;
-    nsvg_image.shapes = item->shapes;
     stride = raster_width * 4;
-    rgba = (unsigned char *) malloc((size_t) stride * raster_height);
-    if (rgba == NULL) {
-        return 0;
-    }
-    nsvgRasterize(image->rasterizer, &nsvg_image, 0.0f, 0.0f, scale,
-            rgba, raster_width, raster_height, stride);
+    bytes = (size_t) stride * (size_t) raster_height;
+    from_cache = 0;
+    bitmap = NULL;
 
-    memset(&bitmap_info, 0, sizeof(bitmap_info));
-    bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bitmap_info.bmiHeader.biWidth = raster_width;
-    bitmap_info.bmiHeader.biHeight = raster_height;
-    bitmap_info.bmiHeader.biPlanes = 1;
-    bitmap_info.bmiHeader.biBitCount = 32;
-    bitmap_info.bmiHeader.biCompression = BI_RGB;
-    dib_bits = NULL;
-    bitmap = CreateDIBSection(hdc, &bitmap_info, DIB_RGB_COLORS,
-            (void **) &dib_bits, NULL, 0);
-    if (bitmap == NULL || dib_bits == NULL) {
-        free(rgba);
-        if (bitmap != NULL) { DeleteObject(bitmap); }
-        return 0;
-    }
-    for (row = 0; row < raster_height; row++) {
-        source = rgba + row * stride;
-        target = dib_bits + (raster_height - 1 - row) * stride;
-        for (column = 0; column < raster_width; column++) {
-            alpha = source[3];
-            target[0] = (unsigned char) ((source[2] * alpha + 127) / 255);
-            target[1] = (unsigned char) ((source[1] * alpha + 127) / 255);
-            target[2] = (unsigned char) ((source[0] * alpha + 127) / 255);
-            target[3] = (unsigned char) alpha;
-            source += 4;
-            target += 4;
+    if (item->cached_bitmap != NULL &&
+            item->cached_width == raster_width &&
+            item->cached_height == raster_height) {
+        bitmap = item->cached_bitmap;
+        from_cache = 1;
+    } else {
+        if (item->cached_bitmap != NULL) {
+            DeleteObject(item->cached_bitmap);
+            item->cached_bitmap = NULL;
+            if (image->cached_bytes_total >= item->cached_bytes) {
+                image->cached_bytes_total -= item->cached_bytes;
+            } else {
+                image->cached_bytes_total = 0;
+            }
+            item->cached_width = 0;
+            item->cached_height = 0;
+            item->cached_bytes = 0;
         }
+
+        memset(&nsvg_image, 0, sizeof(nsvg_image));
+        nsvg_image.width = image->width;
+        nsvg_image.height = image->height;
+        nsvg_image.shapes = item->shapes;
+        rgba = (unsigned char *) malloc(bytes);
+        if (rgba == NULL) {
+            return 0;
+        }
+        nsvgRasterize(image->rasterizer, &nsvg_image, 0.0f, 0.0f, scale,
+                rgba, raster_width, raster_height, stride);
+
+        memset(&bitmap_info, 0, sizeof(bitmap_info));
+        bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bitmap_info.bmiHeader.biWidth = raster_width;
+        bitmap_info.bmiHeader.biHeight = raster_height;
+        bitmap_info.bmiHeader.biPlanes = 1;
+        bitmap_info.bmiHeader.biBitCount = 32;
+        bitmap_info.bmiHeader.biCompression = BI_RGB;
+        dib_bits = NULL;
+        bitmap = CreateDIBSection(hdc, &bitmap_info, DIB_RGB_COLORS,
+                (void **) &dib_bits, NULL, 0);
+        if (bitmap == NULL || dib_bits == NULL) {
+            free(rgba);
+            if (bitmap != NULL) { DeleteObject(bitmap); }
+            return 0;
+        }
+        /* Exact division-free premultiply: ((c * a + 128) + ((c * a + 128) >> 8)) >> 8
+         * is bit-for-bit identical to (c * a + 127) / 255 for all 0..255 inputs. */
+        for (row = 0; row < raster_height; row++) {
+            source = rgba + row * stride;
+            target = dib_bits + (raster_height - 1 - row) * stride;
+            for (column = 0; column < raster_width; column++) {
+                alpha = source[3];
+                if (alpha == 0) {
+                    target[0] = 0;
+                    target[1] = 0;
+                    target[2] = 0;
+                    target[3] = 0;
+                } else if (alpha == 255) {
+                    target[0] = source[2];
+                    target[1] = source[1];
+                    target[2] = source[0];
+                    target[3] = 255;
+                } else {
+                    int tb = source[2] * alpha + 128;
+                    int tg = source[1] * alpha + 128;
+                    int tr = source[0] * alpha + 128;
+                    target[0] = (unsigned char) ((tb + (tb >> 8)) >> 8);
+                    target[1] = (unsigned char) ((tg + (tg >> 8)) >> 8);
+                    target[2] = (unsigned char) ((tr + (tr >> 8)) >> 8);
+                    target[3] = (unsigned char) alpha;
+                }
+                source += 4;
+                target += 4;
+            }
+        }
+        free(rgba);
     }
-    free(rgba);
 
     memory_dc = CreateCompatibleDC(hdc);
     if (memory_dc == NULL) {
-        DeleteObject(bitmap);
+        if (!from_cache) {
+            DeleteObject(bitmap);
+        }
         return 0;
     }
     old_bitmap = (HBITMAP) SelectObject(memory_dc, bitmap);
@@ -586,7 +641,19 @@ static int pimage_draw_path_batch(pimage_raster_image *image,
             0, 0, raster_width, raster_height, blend) ? 1 : 0;
     SelectObject(memory_dc, old_bitmap);
     DeleteDC(memory_dc);
-    DeleteObject(bitmap);
+    if (!from_cache) {
+        if (ok && bytes <= PIMAGE_RASTER_CACHE_MAX_BYTES &&
+                image->cached_bytes_total + bytes <=
+                PIMAGE_RASTER_CACHE_MAX_BYTES) {
+            item->cached_bitmap = bitmap;
+            item->cached_width = raster_width;
+            item->cached_height = raster_height;
+            item->cached_bytes = bytes;
+            image->cached_bytes_total += bytes;
+        } else {
+            DeleteObject(bitmap);
+        }
+    }
     return ok;
 }
 
