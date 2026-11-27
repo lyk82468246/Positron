@@ -307,13 +307,13 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 
 Debug 增量时间头由 `build.bat` 调 `write_build_time.ps1 -IfDirty` 刷新（`.vcproj` 保 `-IfMissing`），连编同步重编 `app_version.obj`、空增量零重编、Release 排除；`app_internal_pages.c`/`app_settings_store_debug.c` 自检修复过 `app_settings_gate`（20261127-142519）与 `app_downloads_gate`（20261127-142914）。
 
-### Media 视频参数恢复与 MP4 坏 NAL/截断 sample 边界已验收
+### Media 视频参数恢复与 MP4 音视频截断/坏样本/PTS 边界已验收
 
 ABI 1.3、上游/archive 与既有合同不变。调用与范围见 [Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)；夹具来源见 [媒体夹具](../test_host/fixtures/media/README.md)。
 
-MP4 H.264 现检查 AVCC NAL 长度 framing（零/越界/残留不足前缀字节/短于前缀的 sample）、`AV_PKT_FLAG_CORRUPT` 与越过 `input_bytes` 的未读视频 sample（避免误报 EOF），启用 `AV_EF_BITSTREAM|AV_EF_BUFFER|AV_EF_EXPLODE` 与损坏帧拒绝，并在默认/调度模式锁存 `PMEDIA_ERROR_STATE`。TEST1362 继续保护 AVC3/AVC1 九帧恢复；TEST1387 覆盖 `baseline-aac.mp4` 尾置完整控制、十组坏 NAL/截断/首帧失败样本及 `main-vga.mp4` B 帧截断/坏长度（默认、`SCHEDULE_AV` 与 `SCHEDULE_VIDEO`），核对分类、有效前缀与终态。
+MP4 H.264 与 AAC 现均启用 `AV_EF_BITSTREAM|AV_EF_BUFFER|AV_EF_EXPLODE`、损坏帧拒绝、`AV_PKT_FLAG_CORRUPT`/空包与越过 `input_bytes` 的未读 sample 核验（避免把截断误报为 EOF），H.264 另查 AVCC NAL 长度 framing，且 `PMEDIA_OPEN_SCHEDULE_AV` 双游标对各自未用流设 `AVDISCARD_ALL` 避免跨流提早触发尾部截断，默认/调度均锁存 `PMEDIA_ERROR_STATE`。TEST1362 保护九帧恢复；TEST1387 覆盖视频坏 NAL/截断/B 帧控制；TEST1389 覆盖音频零 CTTS 控制、6 组音频截断/损坏 AAC 帧与音频负/回退 PTS。
 
-Debug `tmp/device-runs/20261127-154309-media-mp4-nal-debug/` 与 Release `tmp/device-runs/20261127-154900-media-mp4-nal-release/` 均为 24/24 PASS（1312,1331–1335,1337,1344,1347–1349,1352–1362,1387,999）：唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash PASS、holders=0 unavailable=0、0 新增 dump、回收后已删当前远端目录。首轮 Debug `20261127-153610` 检出截断早于 sample 偏移时默认/调度文案分歧，已在 DLL 内统一归类后全过。C89/审计与串行 Debug/Release+CAB 0 错误通过；其他恢复/音频截断/故障/峰值和 DirectShow 同步仍待门，tmp 不入 Git。
+Debug `tmp/device-runs/20261127-203735-media-mp4-audio-debug/` 与 Release `tmp/device-runs/20261127-204434-media-mp4-audio-release/` 均为 25/25 PASS（1312,1331–1335,1337,1344,1347–1349,1352–1362,1387,1389,999）：唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash PASS、holders=0 unavailable=0、0 新增 dump、回收后已删当前远端目录。首轮 `20261127-202109` 检出 `schedule_av` 未设 `AVDISCARD_ALL` 的跨流截断干扰，修复后双配置全过。C89/审计与串行 Debug/Release+CAB 0 错误通过；其他恢复/故障/峰值和 DirectShow 同步仍待门，tmp 不入 Git。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -430,6 +430,6 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。本轮三项纵切全部验收并推送：1) Debug 增量时间头与 EXE 自检修复（TEST1345 双配置 2/2、`app_settings`/`app_downloads` 通过）；2) PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS）；3) Media MP4 坏 NAL 长度与截断 sample 边界（双配置 24/24 PASS，含 TEST1387）；4) Script 进程内精确匹配可信字节码缓存加固与冷热实测（Release 12/12、Debug 10/10 PASS，含 TEST1388）。下一步按 [ROADMAP](ROADMAP.md) 推进 DB 宿主同步 worker、剩余 Media 格式边界或真实站点兼容/人工 backlog。
+路线图已复核。本轮三项纵切全部验收并推送：1) Debug 增量时间头与 EXE 自检修复（TEST1345 双配置 2/2、`app_settings`/`app_downloads` 通过）；2) PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS）；3) Media MP4 音视频坏 NAL/截断/损坏帧与音频负/回退 PTS 边界（双配置 25/25 PASS，含 TEST1387/1389，并补齐 `schedule_av` `AVDISCARD_ALL`）；4) Script 进程内精确匹配可信字节码缓存加固与冷热实测（Release 12/12、Debug 10/10 PASS，含 TEST1388）。下一步按 [ROADMAP](ROADMAP.md) 推进 DB 宿主同步 worker、剩余 Media 格式边界或真实站点兼容/人工 backlog。
 
 全栈性能（Waves 1–3、P4–6 与方案 A：HTTP gzip/Keep-Alive + App 3并发抓取，已修 CE 栈帧/TLS并发锁/WaitForSingleObject）过双配置真机门与实机浏览：Rel 21/21+10/10、Dbg 10/10、用户实测无FC且提速，0 dump。
