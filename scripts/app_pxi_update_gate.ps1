@@ -45,12 +45,14 @@ function Run-Update([string]$tag,[int]$mode){
             if($log -match ('debug-session pid='+$appPid+'\b') -and
                     $log -match ('pxi-update (PASS|FAIL) mode='+$mode+' phase=(\d+)')){
                 $passed=$Matches[1] -eq 'PASS' -and $Matches[2] -eq '4'
+                Start-Sleep -Milliseconds 1500
                 Wait-NormalExit $tag $appPid
                 if(!$passed){throw ('Notes update fixture failed: '+$tag)}
                 Assert-NoHolders $tag
                 if(![PositronDeviceRapi]::TryCopyFileFromDevice($remote+'\positron.db',(Join-Path $evidence ($tag+'.db')))){
                     throw 'Missing cold registration evidence.'
                 }
+                Write-Host ('PXI UPDATE PASS '+$tag+' pid='+$appPid)
                 return
             }
         }
@@ -83,11 +85,14 @@ try {
     Run-Update 'resume' 2
     Run-Update 'revoke' 3
     Run-Update 'restore' 4
+    Run-Update 'reclaim' 5
+    Run-Update 'reclaim-resume' 6
     Start-Sleep -Seconds 3
     $after=[PositronDeviceRapi]::SnapshotCrashDumps()
     foreach($item in $after.GetEnumerator()){
         if(!$before.ContainsKey($item.Key) -or $before[$item.Key] -ne $item.Value){throw 'New crash dump.'}
     }
     [IO.File]::WriteAllLines((Join-Path $evidence 'result.txt'),@('status=PASS','binary_roundtrip=12/12',
-        'normal_exit=zero_holders','crash_check=PASS','native_confirmation=fixture','notes_data=retained'))
+        'normal_exit=zero_holders','crash_check=PASS','native_confirmation=fixture','notes_data=retained',
+        'reclaim=verified'))
 } finally { [PositronDeviceRapi]::Disconnect() }

@@ -655,6 +655,12 @@ static int revision_path_lease(const WCHAR *path,const WCHAR *prefix,HANDLE *out
     if(error==ERROR_ALREADY_EXISTS) { CloseHandle(lease); return PRUNTIME_BUSY; }
     *out=lease; return PRUNTIME_OK;
 }
+int AppRuntimePlatform_AcquireResourceLease(const WCHAR *canonical_root,HANDLE *out_lease)
+{
+    if(!canonical_root || !canonical_root[0] || !out_lease) return PRUNTIME_ARGUMENT;
+    *out_lease=NULL;
+    return revision_path_lease(canonical_root,L"Positron.Resource.",out_lease);
+}
 static int revision_capture(void *user,const char *directory,unsigned int bytes,PRuntimeDirectoryRoot *out)
 {
     AppRuntimePlatform *platform;

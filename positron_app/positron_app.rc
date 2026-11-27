@@ -118,6 +118,12 @@ BEGIN
     IDS_UNINSTALL_UNKNOWN_EN "The uninstall result could not be confirmed. Refresh the list to check the installed state."
     IDS_UNINSTALL_FAILED_EN "Positron could not uninstall this application."
     IDS_RESTORE_CONFIRM_EN "%s\nID: %s\nVersion: %lu\n\nRestore this application and give its code access to its previously saved data? Only proceed if you trust this package."
+    IDS_RECLAIM_CONFIRM_EN "Remove unused application resource folders? Installed applications and saved application data are kept."
+    IDS_RECLAIM_DONE_EN "Removed %u unused resource folder(s) (%lu KB)."
+    IDS_RECLAIM_NONE_EN "No unused application resource folders to remove."
+    IDS_RECLAIM_PARTIAL_EN "Removed %u folder(s); kept %u unverified or busy folder(s)."
+    IDS_RECLAIM_BUSY_EN "Cannot reclaim resources while another application operation is active."
+    IDS_RECLAIM_FAILED_EN "Positron could not reclaim unused application resources."
 END
 
 /* UTF-8 templates are embedded; dynamic sections are filled by the EXE. */
@@ -241,6 +247,12 @@ BEGIN
     IDS_UNINSTALL_UNKNOWN_ZH "无法确认卸载结果。请刷新列表查看安装状态。"
     IDS_UNINSTALL_FAILED_ZH "Positron 无法卸载该应用。"
     IDS_RESTORE_CONFIRM_ZH "%s\nID: %s\n版本：%lu\n\n恢复此应用，并允许其代码访问以前保存的数据？请仅在信任此包时继续。"
+    IDS_RECLAIM_CONFIRM_ZH "清理未使用的应用资源目录？已安装应用和保存的应用数据会保留。"
+    IDS_RECLAIM_DONE_ZH "已清理 %u 个未使用的资源目录（%lu KB）。"
+    IDS_RECLAIM_NONE_ZH "没有可清理的未使用应用资源目录。"
+    IDS_RECLAIM_PARTIAL_ZH "已清理 %u 个目录，保留 %u 个未验证或占用中的目录。"
+    IDS_RECLAIM_BUSY_ZH "当前有其他应用操作正在进行，无法清理资源。"
+    IDS_RECLAIM_FAILED_ZH "Positron 无法清理未使用的应用资源。"
 END
 
 IDR_APP_WELCOME_ZH RCDATA "resources/zh-CN/welcome.html"

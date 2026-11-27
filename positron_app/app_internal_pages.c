@@ -1175,6 +1175,11 @@ int AppInternalPages_Build(int page_kind, const AppInternalPageData *data,
             if (data->installed->more)
                 app_html_append(&writer,chinese ? "<p>仅显示前 16 项。</p>" : "<p>Showing the first 16 applications.</p>");
         }
+        if (data->installed) {
+            app_html_append(&writer, chinese ?
+                    "<p><a id=\"apps-reclaim\" href=\"#app-reclaim\">\346\270\205\347\220\206\346\234\252\344\275\277\347\224\250\347\232\204\345\272\224\347\224\250\350\265\204\346\272\220</a></p>" :
+                    "<p><a id=\"apps-reclaim\" href=\"#app-reclaim\">Reclaim unused resources</a></p>");
+        }
     } else if (page_kind == APP_I18N_PAGE_SETTINGS) {
         app_html_row(&writer, chinese ? "\347\225\214\351\235\242\350\257\255\350\250\200" : "UI language",
                 chinese ? "\347\256\200\344\275\223\344\270\255\346\226\207 (zh-CN)" : "English (en-US)");
@@ -1203,6 +1208,7 @@ int AppInternalPages_FocusIds(HANDLE document,
     static const char *navigation_ids[] = {
         "nav-version", "nav-system", "nav-newtab", "nav-about", "nav-history",
         "nav-downloads", "nav-settings", "nav-welcome", "nav-controls", "nav-apps",
+        "apps-reclaim",
         "visits-latest", "visits-older", "visits-clear", "visits-search", "visits-reset",
         "download-start", "download-probe-cancel",
         "download-cancel-0", "download-cancel-1",
@@ -1687,16 +1693,18 @@ int AppInternalPages_DebugCheck(const char *css)
         if (AppInternalPages_Build(APP_I18N_PAGE_APPS, &data, &html,
                 &length) != 0 ||
                 strstr(html, "id=\"installed-0\"") == NULL ||
-                strstr(html, "id=\"uninstall-0\"") == NULL) goto done;
+                strstr(html, "id=\"uninstall-0\"") == NULL ||
+                strstr(html, "id=\"apps-reclaim\"") == NULL) goto done;
         document = PCore_ParseHTML(html, length);
         AppI18n_FreePage(html);
         html = NULL;
         data.installed = NULL;
         if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
                 PCore_LayoutDocument(document, 240, 268) != 0 ||
-                AppInternalPages_FocusIds(document, focus_ids) != 2 ||
+                AppInternalPages_FocusIds(document, focus_ids) != 3 ||
                 strcmp(focus_ids[0], "installed-0") != 0 ||
-                strcmp(focus_ids[1], "uninstall-0") != 0) goto done;
+                strcmp(focus_ids[1], "uninstall-0") != 0 ||
+                strcmp(focus_ids[2], "apps-reclaim") != 0) goto done;
         PCore_FreeDocument(document);
         document = NULL;
     }

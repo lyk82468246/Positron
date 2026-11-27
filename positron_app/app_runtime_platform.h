@@ -27,6 +27,8 @@ int AppRuntimePlatform_CopyManifest(AppRuntimePlatform *platform, void *buffer,
         unsigned int capacity, unsigned int *bytes);
 /* Private WM filesystem walker, also used by PXI output. Existing path only. */
 int AppRuntimePlatform_CanonicalPath(const WCHAR *path,WCHAR *canonical,int directory);
+/* Acquire exclusive cross-process resource-root lease compatible with revision capture. */
+int AppRuntimePlatform_AcquireResourceLease(const WCHAR *canonical_root,HANDLE *out_lease);
 #ifdef _DEBUG
 int AppRuntimePlatform_DebugCheck(const WCHAR *directory);
 #endif

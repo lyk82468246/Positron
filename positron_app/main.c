@@ -119,6 +119,13 @@ static struct AppUninstallJob {
     struct AppInstalledRow row;
     int result;
 } g_uninstall;
+static struct AppReclaimJob {
+    HANDLE thread;
+    AppSettingsStore *store;
+    LONG cancel;
+    int result;
+    AppPxiReclaimSummary summary;
+} g_reclaim;
 static unsigned long g_runtime_tab_id;
 static char g_startup_app_directory[1024];
 static int g_startup_runtime_kind;
@@ -293,6 +300,17 @@ static DWORD WINAPI app_uninstall_worker(void *parameter)
         else job->result=AppRuntimeRegistry_Revoke(registry,&expected,NULL,NULL);
     }
     free(registry);
+    return 0;
+}
+static int app_reclaim_cancelled(void *user)
+{
+    return (int) InterlockedCompareExchange(&((struct AppReclaimJob *) user)->cancel, 0, 0);
+}
+static DWORD WINAPI app_reclaim_worker(void *parameter)
+{
+    struct AppReclaimJob *job;
+    job = (struct AppReclaimJob *) parameter;
+    job->result = AppPxi_ReclaimUnused(job->store, app_reclaim_cancelled, job, &job->summary);
     return 0;
 }
 static void app_tabs_close(void);
@@ -4887,6 +4905,39 @@ static void app_settings_tick(HWND hwnd)
                         APP_TEXT_UNINSTALL_FAILED);
         }
     }
+    if (g_reclaim.thread && WaitForSingleObject(g_reclaim.thread,0)==WAIT_OBJECT_0) {
+        CloseHandle(g_reclaim.thread);
+        g_reclaim.thread=NULL;
+        if (!g_tabs_closing) {
+            WCHAR format[256],message[320];
+            if (g_page_kind==APP_I18N_PAGE_APPS && !g_navigation_request)
+                (void)app_load_local_page(hwnd,"positron://apps",APP_HISTORY_REFRESH,-1);
+            if (g_reclaim.result==PRUNTIME_BUSY) {
+                app_show_error(APP_TEXT_RECLAIM_BUSY);
+            } else if (g_reclaim.result!=PRUNTIME_OK && g_reclaim.result!=PRUNTIME_CANCELLED) {
+                app_show_error(APP_TEXT_RECLAIM_FAILED);
+            } else if (g_reclaim.result==PRUNTIME_OK) {
+                if (g_reclaim.summary.skipped>0) {
+                    if (AppI18n_LoadString(APP_TEXT_RECLAIM_PARTIAL,format,256)) {
+                        _snwprintf(message,319,format,g_reclaim.summary.reclaimed,
+                                g_reclaim.summary.skipped);
+                        message[319]=0;
+                        MessageBoxW(g_window,message,L"Positron",MB_OK|MB_ICONINFORMATION);
+                    }
+                } else if (g_reclaim.summary.reclaimed>0) {
+                    if (AppI18n_LoadString(APP_TEXT_RECLAIM_DONE,format,256)) {
+                        unsigned long kb;
+                        kb=(g_reclaim.summary.reclaimed_bytes+1023UL)/1024UL;
+                        _snwprintf(message,319,format,g_reclaim.summary.reclaimed,kb);
+                        message[319]=0;
+                        MessageBoxW(g_window,message,L"Positron",MB_OK|MB_ICONINFORMATION);
+                    }
+                } else if (AppI18n_LoadString(APP_TEXT_RECLAIM_NONE,message,320)) {
+                    MessageBoxW(g_window,message,L"Positron",MB_OK|MB_ICONINFORMATION);
+                }
+            }
+        }
+    }
     AppDownloads_Tick(g_downloads);
     bootstrapping = g_settings_bootstrapping;
     for (count = 0; count < APP_SETTINGS_QUEUE_MAX; ++count) {
@@ -4950,6 +5001,7 @@ static void app_settings_tick(HWND hwnd)
         AppSettingsResult_Release(&result);
     }
     if (g_tabs_closing) {
+        if (g_reclaim.thread) { InterlockedExchange(&g_reclaim.cancel, 1); return; }
         if (g_uninstall.thread) return;
         /* Runtime's synchronous registration providers still need the main
          * DB owner during cancellation/close. Revoke UI aliases and join it
@@ -6787,13 +6839,34 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
     int same_document;
 
     if (source==APP_NAV_SOURCE_DOCUMENT && g_page_kind==APP_I18N_PAGE_APPS &&
+            url && !strcmp(url,"#app-reclaim")) {
+        WCHAR message[256];
+        HANDLE document;
+        unsigned long tab_id;
+        if (g_uninstall.thread || g_reclaim.thread || !g_tab->installed_loaded ||
+                g_tabs_closing || g_navigation_request || !g_settings_store) return 0;
+        document=g_document; tab_id=g_app.tab_id;
+        if (!AppI18n_LoadString(APP_TEXT_RECLAIM_CONFIRM,message,256)) return 0;
+        if (MessageBoxW(g_window,message,L"Positron",MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2)!=IDYES)
+            return 1;
+        if (g_uninstall.thread || g_reclaim.thread || g_tabs_closing ||
+                tab_id!=g_app.tab_id || document!=g_document ||
+                g_navigation_request || !g_settings_store) return 0;
+        if (!SetTimer(g_window,APP_SETTINGS_TIMER_ID,50,NULL)) return 0;
+        memset(&g_reclaim,0,sizeof(g_reclaim));
+        g_reclaim.store=g_settings_store;
+        g_reclaim.thread=CreateThread(NULL,0,app_reclaim_worker,&g_reclaim,0,NULL);
+        if (!g_reclaim.thread) { app_show_error(APP_TEXT_RECLAIM_FAILED); return 0; }
+        return 1;
+    }
+    if (source==APP_NAV_SOURCE_DOCUMENT && g_page_kind==APP_I18N_PAGE_APPS &&
             url && !strncmp(url,"#app-uninstall-",15)) {
         struct AppInstalledRow row;
         WCHAR name[64],format[256],message[384];
         HANDLE document;
         unsigned long tab_id;
         int i;
-        if (g_uninstall.thread || !g_tab->installed_loaded || g_tabs_closing ||
+        if (g_uninstall.thread || g_reclaim.thread || !g_tab->installed_loaded || g_tabs_closing ||
                 g_navigation_request || !g_settings_store) return 0;
         for (i=0;i<g_tab->installed.count;++i)
             if (!strcmp(url+15,g_tab->installed.rows[i].id)) break;
@@ -6806,7 +6879,7 @@ static int app_load_page_from(HWND hwnd, const char *url, int history_mode,
         message[383]=0;
         if (MessageBoxW(g_window,message,L"Positron",MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2)!=IDYES)
             return 1;
-        if (g_uninstall.thread || g_tabs_closing || tab_id!=g_app.tab_id ||
+        if (g_uninstall.thread || g_reclaim.thread || g_tabs_closing || tab_id!=g_app.tab_id ||
                 document!=g_document || g_navigation_request || !g_settings_store) return 0;
         if (!SetTimer(g_window,APP_SETTINGS_TIMER_ID,50,NULL)) return 0;
         g_uninstall.row=row;
@@ -10864,11 +10937,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous,
     if(command_line && (!wcscmp(command_line,L"--selftest-pxi-update-prepare") ||
             !wcscmp(command_line,L"--selftest-pxi-update-resume") ||
             !wcscmp(command_line,L"--selftest-pxi-update-revoke") ||
-            !wcscmp(command_line,L"--selftest-pxi-update-restore"))) {
+            !wcscmp(command_line,L"--selftest-pxi-update-restore") ||
+            !wcscmp(command_line,L"--selftest-pxi-update-reclaim") ||
+            !wcscmp(command_line,L"--selftest-pxi-update-reclaim-resume"))) {
         AppDebug_BeginSession();
         result=AppPxi_DebugRun(!wcscmp(command_line,L"--selftest-pxi-update-prepare") ? 1 :
                 !wcscmp(command_line,L"--selftest-pxi-update-resume") ? 2 :
-                !wcscmp(command_line,L"--selftest-pxi-update-revoke") ? 3 : 4);
+                !wcscmp(command_line,L"--selftest-pxi-update-revoke") ? 3 :
+                !wcscmp(command_line,L"--selftest-pxi-update-restore") ? 4 :
+                !wcscmp(command_line,L"--selftest-pxi-update-reclaim") ? 5 : 6);
         AppDebug_EndSession(); return result;
     }
     if(command_line && !wcscmp(command_line,L"--selftest-installation-native")) {

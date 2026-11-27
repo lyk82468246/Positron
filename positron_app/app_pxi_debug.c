@@ -84,19 +84,130 @@ static int test_note(AppRuntimeInstall *install,int insert)
             !strstr(output,"\"value\":\"keep me\""))) return PRUNTIME_INVALID;
     return closed;
 }
+static int test_path_exists(const WCHAR *path)
+{
+    WIN32_FIND_DATAW data;
+    HANDLE find;
+    find=FindFirstFileW(path,&data);
+    if(find==INVALID_HANDLE_VALUE) return 0;
+    FindClose(find);
+    return 1;
+}
+static int test_extract_retained(PxiTest *t,const char *name,int record_ownership,WCHAR *out_root)
+{
+    AppPxi *p;
+    char path[1024];
+    int rc;
+    strcpy(path,t->root); strcat(path,"\\"); strcat(path,name);
+    p=NULL;
+    rc=AppPxi_Extract(path,test_cancel,t,&p);
+    if(rc!=PRUNTIME_OK) { (void)AppPxi_Close(&p); return rc; }
+    if(!MultiByteToWideChar(CP_UTF8,0,AppPxi_Directory(p),-1,out_root,MAX_PATH)) {
+        (void)AppPxi_Close(&p); return PRUNTIME_LIMIT;
+    }
+    if(record_ownership) rc=AppPxi_RecordOwnership(p);
+    if(rc==PRUNTIME_OK) AppPxi_Retain(p);
+    if(AppPxi_Close(&p)!=PRUNTIME_OK && rc==PRUNTIME_OK) rc=PRUNTIME_IO;
+    return rc;
+}
+static int test_write_file(const WCHAR *path,DWORD disposition,const char *body)
+{
+    HANDLE file;
+    DWORD bytes,length;
+    length=(DWORD)strlen(body);
+    file=CreateFileW(path,GENERIC_WRITE,0,NULL,disposition,FILE_ATTRIBUTE_NORMAL,NULL);
+    if(file==INVALID_HANDLE_VALUE) return 0;
+    bytes=0;
+    if(!WriteFile(file,body,length,&bytes,NULL) || bytes!=length || !FlushFileBuffers(file)) {
+        CloseHandle(file); return 0;
+    }
+    CloseHandle(file);
+    return 1;
+}
 static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrationRecord *record)
 {
     AppRuntimePlatform platform;
     AppRuntimeInstall *install;
     PRuntimeUpdateRegistration *pair;
+    AppPxiReclaimSummary summary;
+    WCHAR root_a[MAX_PATH],root_b[MAX_PATH],probe[MAX_PATH];
+    HANDLE lease,lock_file;
+    unsigned long bytes;
     int rc;
-    install=NULL;
+    install=NULL; lease=NULL; lock_file=INVALID_HANDLE_VALUE;
     pair=(PRuntimeUpdateRegistration *)malloc(sizeof(*pair));
     if(!pair) return 1;
     rc=1; t->phase=1;
+    if(t->update_mode==6) {
+        /* Cold restart after Mode 5's interrupted deletion: resume and complete it. */
+        if(test_roots(t)!=5) goto done;
+        if(AppPxi_ReclaimUnused(t->store,NULL,NULL,&summary)!=PRUNTIME_OK ||
+                summary.scanned!=5 || summary.reclaimed!=1 ||
+                summary.referenced!=1 || summary.skipped!=3) goto done;
+        t->phase=2;
+        if(test_roots(t)!=4) goto done;
+        t->phase=3;
+        if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
+                test_note(install,0)!=PRUNTIME_OK) goto done;
+        t->phase=4; rc=0; goto done;
+    }
+    if(t->update_mode==5) {
+        if(AppRuntimeRegistry_FindApp(registry,"org.positron.updatenotes",record)!=PRUNTIME_OK ||
+                record->state!=PRUNTIME_REG_READY) goto done;
+        if(!MultiByteToWideChar(CP_UTF8,0,record->directory,-1,root_a,MAX_PATH)) goto done;
+        /* Live READY root and sub-root overlap must be refused as BUSY. */
+        if(AppPxi_ReclaimRoot(t->store,root_a,&bytes)!=PRUNTIME_BUSY) goto done;
+        memset(&registry->call,0,sizeof(registry->call));
+        registry->call.operation=APP_INSTALL_CHECK_REFERENCES;
+        {
+            char sub[1024];
+            strcpy(sub,record->directory); strcat(sub,"\\schema");
+            registry->call.resource_root=sub;
+            if(AppSettingsStore_InstallCall(t->store,&registry->call)!=PRUNTIME_BUSY) goto done;
+        }
+        /* Case A: legacy root without .ownership sidecar must be preserved. */
+        if(test_extract_retained(t,"old.pxi",0,root_a)!=PRUNTIME_OK ||
+                AppPxi_ReclaimRoot(t->store,root_a,&bytes)!=PRUNTIME_INVALID ||
+                !test_path_exists(root_a)) goto done;
+        t->phase=2;
+        /* Case B: extra foreign file inside root must be refused with 0 deletions. */
+        if(test_extract_retained(t,"old.pxi",1,root_a)!=PRUNTIME_OK) goto done;
+        wcscpy(probe,root_a); wcscat(probe,L"\\extra.txt");
+        if(!test_write_file(probe,CREATE_NEW,"foreign") ||
+                AppPxi_ReclaimRoot(t->store,root_a,&bytes)!=PRUNTIME_INVALID ||
+                !test_path_exists(probe)) goto done;
+        /* Case C: modified file inside root must be refused with 0 deletions. */
+        if(test_extract_retained(t,"old.pxi",1,root_a)!=PRUNTIME_OK) goto done;
+        wcscpy(probe,root_a); wcscat(probe,L"\\index.html");
+        if(!test_write_file(probe,TRUNCATE_EXISTING,"tampered-html") ||
+                AppPxi_ReclaimRoot(t->store,root_a,&bytes)!=PRUNTIME_IO ||
+                !test_path_exists(probe)) goto done;
+        t->phase=3;
+        /* Case E: lock early file (index.html) to interrupt deletion mid-way,
+         * verify .reclaim persists, verify tampering during interrupted state is
+         * refused, then release handle so Mode 6 resumes after cold restart. */
+        if(test_extract_retained(t,"old.pxi",1,root_b)!=PRUNTIME_OK) goto done;
+        wcscpy(probe,root_b); wcscat(probe,L"\\index.html");
+        lock_file=CreateFileW(probe,GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
+        if(lock_file==INVALID_HANDLE_VALUE) goto done;
+        if(AppPxi_ReclaimRoot(t->store,root_b,&bytes)!=PRUNTIME_IO) goto done;
+        if(!test_path_exists(probe)) goto done;
+        wcscpy(probe,root_b); wcscat(probe,L".reclaim");
+        if(!test_path_exists(probe)) goto done;
+        wcscpy(probe,root_b); wcscat(probe,L".ownership");
+        if(!test_path_exists(probe)) goto done;
+        wcscpy(probe,root_b); wcscat(probe,L"\\intruder.txt");
+        if(!test_write_file(probe,CREATE_NEW,"intruder") ||
+                AppPxi_ReclaimRoot(t->store,root_b,&bytes)!=PRUNTIME_INVALID ||
+                !DeleteFileW(probe)) goto done;
+        CloseHandle(lock_file); lock_file=INVALID_HANDLE_VALUE;
+        if(test_roots(t)!=5) goto done;
+        t->phase=4; rc=0; goto done;
+    }
     if(t->update_mode==4) {
         if(AppRuntimeRegistry_FindApp(registry,"org.positron.updatenotes",record)!=PRUNTIME_OK ||
                 record->approval.revision!=2 || record->state!=PRUNTIME_REG_REVOKED) goto done;
+        if(test_roots(t)!=0) goto done;
         if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_DENIED) goto done;
         if(test_open(t,"old.pxi",APP_RUNTIME_INSTALL_PXI,&platform,&install)!=PRUNTIME_OK ||
                 AppRuntimeInstall_Confirm(install)!=PRUNTIME_INVALID) goto done;
@@ -133,6 +244,16 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
         registry->call.operation=APP_INSTALL_CHECK_REFERENCES;
         registry->call.resource_root=pair->current.directory;
         if(AppSettingsStore_InstallCall(t->store,&registry->call)!=PRUNTIME_OK) goto done;
+        /* Reclaim the revoked v2 root; user SQLite data must survive for Mode 4 restore. */
+        if(AppPxi_ReclaimUnused(t->store,NULL,NULL,&summary)!=PRUNTIME_OK ||
+                summary.scanned!=1 || summary.reclaimed!=1 ||
+                summary.referenced!=0 || summary.skipped!=0 ||
+                !summary.reclaimed_bytes || test_roots(t)!=0) goto done;
+        if(!MultiByteToWideChar(CP_UTF8,0,pair->current.directory,-1,root_a,MAX_PATH)) goto done;
+        wcscpy(probe,root_a); wcscat(probe,L".ownership");
+        if(test_path_exists(probe)) goto done;
+        wcscpy(probe,root_a); wcscat(probe,L".reclaim");
+        if(test_path_exists(probe)) goto done;
         t->phase=4; rc=0; goto done;
     }
     if(t->update_mode==1) {
@@ -159,16 +280,33 @@ static int test_update(PxiTest *t,AppRuntimeRegistry *registry,PRuntimeRegistrat
     registry->call.operation=APP_INSTALL_CHECK_REFERENCES;
     registry->call.resource_root=pair->candidate.directory;
     if(AppSettingsStore_InstallCall(t->store,&registry->call)!=PRUNTIME_BUSY) goto done;
-    {
-        WCHAR root[MAX_PATH];
-        unsigned long bytes;
-        if(!MultiByteToWideChar(CP_UTF8,0,pair->candidate.directory,-1,root,MAX_PATH) ||
-                AppPxi_CheckOwnership(root,&bytes)!=PRUNTIME_OK || !bytes) goto done;
+    if(!MultiByteToWideChar(CP_UTF8,0,pair->base.directory,-1,root_a,MAX_PATH) ||
+            !MultiByteToWideChar(CP_UTF8,0,pair->candidate.directory,-1,root_b,MAX_PATH) ||
+            AppPxi_CheckOwnership(root_b,&bytes)!=PRUNTIME_OK || !bytes) goto done;
+    if(t->update_mode==1) {
+        /* Pending PREPARING update references both base (v1) and candidate (v2). */
+        if(AppPxi_ReclaimRoot(t->store,root_a,&bytes)!=PRUNTIME_BUSY ||
+                AppPxi_ReclaimRoot(t->store,root_b,&bytes)!=PRUNTIME_BUSY ||
+                test_roots(t)!=2) goto done;
+    } else {
+        /* Update PUBLISHED: v2 is BUSY, v1 respects active resource lease, then reclaims cleanly. */
+        if(AppPxi_ReclaimRoot(t->store,root_b,&bytes)!=PRUNTIME_BUSY) goto done;
+        if(AppRuntimePlatform_AcquireResourceLease(root_a,&lease)!=PRUNTIME_OK ||
+                AppPxi_ReclaimRoot(t->store,root_a,&bytes)!=PRUNTIME_BUSY) goto done;
+        CloseHandle(lease); lease=NULL;
+        if(AppPxi_ReclaimUnused(t->store,NULL,NULL,&summary)!=PRUNTIME_OK ||
+                summary.scanned!=2 || summary.reclaimed!=1 ||
+                summary.referenced!=1 || summary.skipped!=0 ||
+                !summary.reclaimed_bytes || test_roots(t)!=1) goto done;
+        wcscpy(probe,root_a); wcscat(probe,L".ownership");
+        if(test_path_exists(probe)) goto done;
     }
     if(test_open(t,"org.positron.updatenotes",APP_RUNTIME_INSTALLED,&platform,&install)!=PRUNTIME_OK ||
             AppRuntimeInstall_Action(install) || test_note(install,0)!=PRUNTIME_OK) goto done;
     t->phase=4; rc=0;
 done:
+    if(lock_file!=INVALID_HANDLE_VALUE) CloseHandle(lock_file);
+    if(lease) CloseHandle(lease);
     AppRuntimeInstall_Close(&install);
     free(pair); return rc;
 }
