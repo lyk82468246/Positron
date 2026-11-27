@@ -5634,14 +5634,32 @@ typedef struct AppSubresourceBatch {
     LONG abort_flag;
 } AppSubresourceBatch;
 
+typedef struct AppSubresourceUrls {
+    char resolved_url[PHTTP_URL_MAX];
+    char final_url[PHTTP_URL_MAX];
+} AppSubresourceUrls;
+
+/* Windows CE 5.2 commits thread stacks one 4 KiB page at a time and VS2008
+ * ARM does not emit __chkstk probes.  Commit 24 KiB in 2 KiB steps on fresh
+ * worker threads so no downstream HTTP/TLS frame can skip the guard page. */
+static void app_worker_probe_stack_step(int remaining_steps)
+{
+    volatile unsigned char probe[2048];
+
+    probe[0] = (unsigned char) remaining_steps;
+    probe[sizeof(probe) - 1] = probe[0];
+    if (remaining_steps > 1) {
+        app_worker_probe_stack_step(remaining_steps - 1);
+    }
+}
+
 static int app_navigation_fetch_subresource_concurrent(
         AppSubresourceBatch *batch)
 {
     AppNavigationRequest *request;
     AppNavigationResource *resource;
+    AppSubresourceUrls *urls;
     PHttpResponse *response;
-    char resolved_url[PHTTP_URL_MAX];
-    char final_url[PHTTP_URL_MAX];
     int index;
     int retry;
     int transport_failure;
@@ -5650,14 +5668,20 @@ static int app_navigation_fetch_subresource_concurrent(
         return 1;
     }
     request = batch->request;
+    urls = (AppSubresourceUrls *) malloc(sizeof(*urls));
+    if (urls == NULL) {
+        return 1;
+    }
 
     for (;;) {
         if (InterlockedCompareExchange(&batch->abort_flag, 0, 0) != 0) {
+            free(urls);
             return 1;
         }
         EnterCriticalSection(&batch->lock);
         if (InterlockedCompareExchange(&batch->abort_flag, 0, 0) != 0) {
             LeaveCriticalSection(&batch->lock);
+            free(urls);
             return 1;
         }
         if (app_navigation_is_cancelled(request)) {
@@ -5665,16 +5689,18 @@ static int app_navigation_fetch_subresource_concurrent(
             (void) PBrowser_NavigationResourceCancelAll(
                     request->resource_transaction);
             LeaveCriticalSection(&batch->lock);
+            free(urls);
             return 1;
         }
         if (AppResources_FindPending(request, &resource) != 0) {
             LeaveCriticalSection(&batch->lock);
+            free(urls);
             return 0;
         }
         index = resource->index;
-        resolved_url[0] = '\0';
+        urls->resolved_url[0] = '\0';
         if (AppResources_Resolve(request, request->url, resource->url,
-                resolved_url, sizeof(resolved_url)) != 0) {
+                urls->resolved_url, sizeof(urls->resolved_url)) != 0) {
             request->worker_failure_class = PBROWSER_NAVIGATION_FAILURE_RESOLVE;
             (void) app_navigation_resource_fail(request, index,
                     PBROWSER_NAVIGATION_FAILURE_RESOLVE);
@@ -5692,7 +5718,8 @@ static int app_navigation_fetch_subresource_concurrent(
 
         response = NULL;
         for (;;) {
-            response = PHttp_GetUrlEx2(resolved_url, NULL, NULL, NULL, NULL);
+            response = PHttp_GetUrlEx2(urls->resolved_url, NULL, NULL, NULL,
+                    NULL);
 
             EnterCriticalSection(&batch->lock);
             if (InterlockedCompareExchange(&batch->abort_flag, 0, 0) != 0 ||
@@ -5702,6 +5729,7 @@ static int app_navigation_fetch_subresource_concurrent(
                         request->resource_transaction);
                 LeaveCriticalSection(&batch->lock);
                 PHttp_FreeResponse(response);
+                free(urls);
                 return 1;
             }
             transport_failure = response == NULL || response->status_code == 0 ||
@@ -5732,20 +5760,20 @@ static int app_navigation_fetch_subresource_concurrent(
                     response->body_len > 0 &&
                     response->body_len <= (int)
                     PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX) {
-                final_url[0] = '\0';
-                if (PHttp_ResponseGetFinalUrl(response, final_url,
-                        sizeof(final_url)) != 0) {
+                urls->final_url[0] = '\0';
+                if (PHttp_ResponseGetFinalUrl(response, urls->final_url,
+                        sizeof(urls->final_url)) != 0) {
                     request->worker_failure_class =
                             PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
                     (void) app_navigation_resource_fail(request, index,
                             PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
-                } else if (strlen(final_url) >= APP_HOST_URL_MAX) {
+                } else if (strlen(urls->final_url) >= APP_HOST_URL_MAX) {
                     request->worker_failure_class =
                             PBROWSER_NAVIGATION_FAILURE_BUDGET;
                     (void) app_navigation_resource_fail(request, index,
                             PBROWSER_NAVIGATION_FAILURE_BUDGET);
                 } else if (AppResources_SetEffectiveUrl(request, index,
-                        final_url) != 0) {
+                        urls->final_url) != 0) {
                     request->worker_failure_class =
                             PBROWSER_NAVIGATION_FAILURE_MEMORY;
                     (void) app_navigation_resource_fail(request, index,
@@ -5787,6 +5815,7 @@ static DWORD WINAPI app_navigation_subresource_helper(LPVOID parameter)
 {
     AppSubresourceBatch *batch;
 
+    app_worker_probe_stack_step(12);
     batch = (AppSubresourceBatch *) parameter;
     if (batch != NULL) {
         (void) app_navigation_fetch_subresource_concurrent(batch);
@@ -5800,6 +5829,7 @@ static DWORD WINAPI app_navigation_worker(LPVOID parameter)
     AppNavigationResource *resource;
     PBrowserNavigationResourceInfo info;
 
+    app_worker_probe_stack_step(12);
     request = (AppNavigationRequest *) parameter;
     if (request == NULL) {
         return 0;
@@ -5839,12 +5869,9 @@ static DWORD WINAPI app_navigation_worker(LPVOID parameter)
             }
         }
         (void) app_navigation_fetch_subresource_concurrent(&batch);
-        if (helper_count > 0) {
-            WaitForMultipleObjects((DWORD) helper_count, helpers, TRUE,
-                    INFINITE);
-            for (i = 0; i < helper_count; i++) {
-                CloseHandle(helpers[i]);
-            }
+        for (i = 0; i < helper_count; i++) {
+            WaitForSingleObject(helpers[i], INFINITE);
+            CloseHandle(helpers[i]);
         }
         DeleteCriticalSection(&batch.lock);
         if (batch.abort_flag != 0) {
