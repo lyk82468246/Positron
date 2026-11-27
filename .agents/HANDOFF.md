@@ -414,34 +414,13 @@ profile2 jQuery 超时仍为 FAIL（4649 ms、rc=-4）；隔离
 不覆盖该失败。未改预算；单次编译成本仍待处理。其他已定位 fixture/正式构建失败由 Git
 保留；服务合同不承诺任意 UI 响应。
 
-### 脚本同步阻塞与保留的交互基线
+### 脚本同步阻塞、内部可信字节码缓存与保留的交互基线
 
-有界初始化的状态、线程、冻结/取消/销毁合同见 Browser README。TEST1338 用实际阶段
-验证每个空闲边界、非法/stale/跨线程与 callback 重入、timeout/heap 终态和旧页保留；
-完整路径保留原版 jQuery/Bootstrap 的 Core/native-button 布局断言。作者脚本、GC 和任务
-没有 continuation，Debug 默认预算问题没有因接口分步而消失。
+有界初始化（Begin/Step/Cancel）与 EXE 16 ms 分批调度保持。`positron_script.dll` 的进程内可信字节码缓存现升级为 ABI 版本 + 全源码逐字节精确 `memcmp` 匹配（48 项 / 单项 384 KiB / 源码+字节码合计 1536 KiB 硬上限，零新增公开 ABI），补充非内存/非超时加载失败时的源码编译回退与可选 dump 失败时 `memory_limited`/`timed_out` 状态恢复，详见 [Script README](../positron_script/README.md#进程内可信字节码缓存)。
 
-既有初始化基线见 Debug
-`tmp/device-runs/20261003-225011-browser-bootstrap-restored-debug-final/`（6/6）及 Release
-`tmp/device-runs/20261003-224128-browser-bootstrap-step-release/`（11/11）。完整日志、
-唯一 PASS、零 ERROR/FAIL、crash/空间/holder 门及正式双配置通过；Release 清理失败保留。
-旧门不冒充本轮重跑，先行探针与耗时明细由 Git 和脚本阻塞审查保存。
+新增 TEST1388 验证单字节差异零误命中、跨 session 全局/闭包/native 回调隔离、紧堆回退与 OOM 不污染缓存、>48 项 LRU 淘汰及冷热对比：Release `tmp/device-runs/20261127-195540-script-bc-release/`（80–82,86,203,1174,1175,1327,1336,1338,1388,999）12/12 PASS，21.8 KiB 脚本冷/热 317→73 ms（编译 299→48 ms），31 阶段 Browser bootstrap 冷/热 3034→528 ms、最大单步 422→81 ms；Debug `tmp/device-runs/20261127-200044-script-bc-debug-1388/`（不含 203/1338）10/10 PASS，同项脚本 856→186 ms（编译 796→108 ms），bootstrap 9331→1326 ms、最大单步 1279→242 ms。双配置完整日志/Core/crash PASS、holders=0 unavailable=0、0 新增 dump、回收后已删当前远端目录。
 
-分步门只证明安全调用边界，不保证真实 UI 响应或总耗时改善。Debug 最大 Step 1262 ms、
-Release 339 ms；作者 jQuery 单次调用曾为 3130/1003 ms。TEST203 的 Debug 默认预算失败
-在 `tmp/device-runs/20261003-224553-browser-bootstrap-sync-control/` 的旧同步序列
-对照仍复现；这不是完整旧 DLL 二进制对照，临时代码已撤回。保持原断言，后续处理编译热点。
-
-函数计时与失败对照见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。DLL
-诊断默认关闭，无 I/O/消息泵；EXE Debug 测量 Step/作者调用，Release 排除诊断/fixture。
-旧 ABI、预算、程序顺序及 timeout 不变；真实硬件的单调用停顿仍待验证。
-
-EXE 使用 generation 绑定的 16 ms 系统 timer；pending 禁止普通入口，取消/关闭在空闲边界停止调度并释放无 worker 的候选，旧页保留到提交。作者按顺序分批执行，普通异常继续，预算/fatal 关闭脚本能力；视口变化在初始化完成后同步。稳定调用及 GC 策略见 [接线计划](../positron_app/INTEGRATION_PLAN.md#阶段-2browser-scriptsession)。
-
-先行完整 Debug 包 `tmp/device-runs/20261003-233918-app-script-steps-viewport/` 共 49 文件；双空间预检及两次模块审计 holders=0 unavailable=0。全部 required 自检 OK；script-scheduling 覆盖真实 timer/窗口消息、pending 拒绝、cancel/close、stale、旧页/history、作者顺序/异常后 DOM、视口变化与输入选区保留。EXE/九 DLL SHA256 10/10、crash_check=PASS。该包不是当前人工入口；正式 Debug/Release/CAB、C89 与 Release 诊断排除通过。用户已反馈 running-script 阻塞基本解决，单次长调用不可抢占的 DLL 边界不变。
-
-早期调度 fixture 修订与构建失败经过保留于 Git 和脚本阻塞审查，不再作为当前候选；
-Core CSS resolver 的既有接线保持。自动 guest 毫秒不代替用户墙钟或整站性能保证。
+冷启动边界诚实保留：Debug `20261127-195701-script-bc-debug` 复现 TEST203 1s 默认预算首步超时（1221 ms，rc=-4）；Debug `20261127-195758-script-bc-debug-pass` 中 TEST1338 分步协议通过、62.6 KiB Bootstrap JS 命中缓存降至 142 ms，仅 89.5 KiB 冷 jQuery 复现既有 profile2 4s 超时（4087 ms，rc=-4）。历史测量与对照见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
 
 ## 有效边界与设备纪律
 
@@ -451,6 +430,6 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。本轮三项纵切全部验收并推送：1) Debug 增量时间头与 EXE 自检修复（TEST1345 双配置 2/2、`app_settings`/`app_downloads` 通过）；2) PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS）；3) Media MP4 坏 NAL 长度与截断 sample 边界（双配置 24/24 PASS，含 TEST1387）。下一步按 [ROADMAP](ROADMAP.md) 从 Script 编译热点测量、DB 宿主同步 worker 或真实站点兼容/人工 backlog 中择一推进。
+路线图已复核。本轮三项纵切全部验收并推送：1) Debug 增量时间头与 EXE 自检修复（TEST1345 双配置 2/2、`app_settings`/`app_downloads` 通过）；2) PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS）；3) Media MP4 坏 NAL 长度与截断 sample 边界（双配置 24/24 PASS，含 TEST1387）；4) Script 进程内精确匹配可信字节码缓存加固与冷热实测（Release 12/12、Debug 10/10 PASS，含 TEST1388）。下一步按 [ROADMAP](ROADMAP.md) 推进 DB 宿主同步 worker、剩余 Media 格式边界或真实站点兼容/人工 backlog。
 
 全栈性能（Waves 1–3、P4–6 与方案 A：HTTP gzip/Keep-Alive + App 3并发抓取，已修 CE 栈帧/TLS并发锁/WaitForSingleObject）过双配置真机门与实机浏览：Rel 21/21+10/10、Dbg 10/10、用户实测无FC且提速，0 dump。

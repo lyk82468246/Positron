@@ -262,13 +262,11 @@ PXI 首装结论依据独立安装门，不把归档读写通过扩大为更新/
 
 #### Script. 编译热点与单次长调用
 
-**状态：有界初始化合同已通过双配置设备门，EXE 候选分批调度已接入；编译热点仍待预算测量与方案审查。** Begin/Step/Cancel 的产品实现退出待开发范围，真实加载响应仍单独验收。Debug 默认预算同步初始化超时在旧执行序列对照也复现，不因 Release 通过而关闭该边界。WinWorld 与原版脚本计时仍证明单个作者脚本不可返回宿主的停顿主要来自编译/解析；当前 DOM callback 不支持先改 Core 的结论，测量与对照见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
+**状态：有界初始化（Begin/Step/Cancel）、EXE 分批调度与进程内精确匹配可信字节码缓存（48 项 / 1.5 MiB 硬上限，零新 ABI）均已通过双配置设备门；冷启动大脚本单次编译仍为剩余取舍项。** 实机 `TEST 1388` 复测显示热命中使 31 阶段 Browser bootstrap 耗时在 Release 从 3034→528 ms（最大单步 422→81 ms）、Debug 从 9331→1326 ms（最大单步 1279→242 ms）；Debug 冷启动 `TEST 203`（首步 1221 ms）与 profile2 冷 jQuery（4087 ms）仍诚实保留，不放宽预算。测量基线见 [脚本阻塞审查](../docs/history/SCRIPT_BLOCKING_REVIEW.md)。
 
-- **Owner：** Browser 拥有初始化阶段、session 可用性和任务顺序；Script 拥有求值、编译、GC、timeout 和固定 heap；EXE 只拥有 WM 调度与调用策略，不在 DLL 内运行消息泵。
-- **唯一下一步：** 先测 Browser-owned 产品编译产物大小、峰值内存、冷/重复初始化成本，再取舍是否建立固定预算的内部编译结果复用；本轮不直接新增缓存 ABI 或承诺冷启动作者脚本已可让步。
-- **最小 fixture：** 精确源码/引擎配置匹配、独立 session globals/callback、预算与分配失败回退、取消/stale/重复释放，并保留已验收的初始化守卫及原版 jQuery/Bootstrap 最终 DOM/布局。比较总耗时和最大完整调用，不能只统计内部段。
-- **后续取舍：** 冷启动独立 compiler context 需要单独 ABI/线程/所有权设计，task checkpoint 分步也须先证明 drain 原子顺序。不公开任意 bytecode 输入，不移动 live session/Core 到 worker，不把 timeout 后重跑当 continuation。
-- **门：** C89、审计、串行正式 Debug/Release、ARMV4I 定向设备门与消费者真实加载响应对照；仅脚本之间让步不算解决单个调用阻塞，不能提高预算、删兼容行为或放宽断言。
+- **Owner：** Browser 拥有初始化阶段、session 可用性和任务顺序；Script 拥有求值、编译、内部可信字节码缓存、GC、timeout 和固定 heap；EXE 只拥有 WM 调度与调用策略，不在 DLL 内运行消息泵。
+- **后续取舍：** 若真实站点冷启动首次加载大脚本仍阻塞体验，再另行设计“独立 compiler context”的线程/所有权/预算 ABI 合同或 task checkpoint 原子 drain；不公开任意外部 bytecode 输入，不移动 live session/Core 到 worker，不把 timeout 后重跑当 continuation。
+- **门：** C89、审计、串行正式 Debug/Release、ARMV4I 定向设备门（含 `TEST 1336`/`1338`/`1388`）与消费者真实加载响应对照；不能提高预算、删兼容行为或放宽断言。
 
 #### Media. ARMV4I FFmpeg 软解子集与 WM6 原生 source filter
 
