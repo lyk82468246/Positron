@@ -1181,10 +1181,10 @@ static int phttp_gunzip_bounded(const unsigned char* src, size_t src_len,
 
 /* Read until "\r\n\r\n" sequence found in buf. Returns index of byte
  * AFTER the terminator (i.e. start of body), or -1 on error. */
-static int read_until_headers(HANDLE conn, bytebuf* buf)
+static int read_until_headers(HANDLE conn, bytebuf* buf,
+                              char* tmp, int tmp_cap)
 {
-    char tmp[4096];
-    int  n;
+    int    n;
     size_t i;
     size_t scan_start = 0;
 
@@ -1201,7 +1201,7 @@ static int read_until_headers(HANDLE conn, bytebuf* buf)
         if (buf->len > 32768) {
             return -1;   /* header block unreasonably large */
         }
-        n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+        n = PTls_Read(conn, tmp, tmp_cap);
         if (n <= 0) {
             return -1;
         }
@@ -1221,11 +1221,11 @@ static int decode_chunked(HANDLE conn,
                           PHttpProgressCallback progress,
                           void* user_data,
                           phttp_observer_state* observer,
-                          int* out_clean_eof)
+                          int* out_clean_eof,
+                          char* tmp, int tmp_cap)
 {
     bytebuf raw;
     size_t  pos;
-    char    tmp[8192];
     int     n;
     int     append_result;
     size_t  chunk_size;
@@ -1259,7 +1259,7 @@ static int decode_chunked(HANDLE conn,
             }
         }
         if (nl == NULL) {
-            n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+            n = PTls_Read(conn, tmp, tmp_cap);
             if (n < 0) {
                 bb_free(&raw);
                 return PHTTP_BODY_READ_ERROR;
@@ -1315,7 +1315,7 @@ static int decode_chunked(HANDLE conn,
                 size_t trailer_read = 0;
                 for (;;) {
                     while (raw.len - pos < 2 && trailer_read < 4096) {
-                        n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                        n = PTls_Read(conn, tmp, tmp_cap);
                         if (n <= 0) {
                             break;
                         }
@@ -1350,7 +1350,7 @@ static int decode_chunked(HANDLE conn,
                     if (trailer_read >= 4096) {
                         break;
                     }
-                    n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                    n = PTls_Read(conn, tmp, tmp_cap);
                     if (n <= 0) {
                         break;
                     }
@@ -1373,7 +1373,7 @@ static int decode_chunked(HANDLE conn,
 
         /* ensure we have chunk_size + 2 (trailing \r\n) bytes past pos */
         while (raw.len - pos < chunk_size + 2) {
-            n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+            n = PTls_Read(conn, tmp, tmp_cap);
             if (n < 0) {
                 bb_free(&raw);
                 return PHTTP_BODY_READ_ERROR;
@@ -2228,6 +2228,15 @@ wdone:
 
 /* ---- worker ------------------------------------------------------ */
 
+typedef struct phttp_req_scratch {
+    char cur_url[2048];
+    char cur_host[256];
+    char cur_path[1024];
+    char location[1024];
+    char next_url[2048];
+    char read_tmp[8192];
+} phttp_req_scratch;
+
 static PHttpResponse* http_request_url(const char* method, const char* url,
                                        const char** headers,
                                        const char* body, int body_len,
@@ -2237,11 +2246,11 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
 {
     PHttpResponse* resp;
     phttp_observer_state observer;
+    phttp_req_scratch* scratch;
     HANDLE         conn;
     char*          request;
     bytebuf        recvbuf;
     bytebuf        bodybuf;
-    char           cur_url[2048];
     int            body_start;
     int            req_len;
     int            wrote;
@@ -2249,6 +2258,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
     int            redirects;
     int            follow;
 
+    scratch = NULL;
     conn = NULL;
     request = NULL;
     recvbuf.data = NULL;
@@ -2285,14 +2295,25 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
     if (body != NULL && body_len < 0) {
         body_len = (int)strlen(body);
     }
-    if (phttp_resolve_url_text(NULL, url, cur_url, sizeof(cur_url)) != 0) {
+    scratch = (phttp_req_scratch*)HeapAlloc(GetProcessHeap(), 0,
+            sizeof(phttp_req_scratch));
+    if (scratch == NULL) {
+        resp_set_error(resp, "OOM request scratch");
+        phttp_observer_note_failure(&observer, "MEMORY");
+        phttp_observer_terminal(&observer, 1, resp->error_msg);
+        return resp;
+    }
+    if (phttp_resolve_url_text(NULL, url, scratch->cur_url,
+            sizeof(scratch->cur_url)) != 0) {
+        HeapFree(GetProcessHeap(), 0, scratch);
         resp_set_error(resp, "invalid HTTP(S) URL");
         phttp_observer_note_failure(&observer, "INVALID_URL");
         phttp_observer_terminal(&observer, 1, resp->error_msg);
         return resp;
     }
-    resp_set_final_url(resp, cur_url);
+    resp_set_final_url(resp, scratch->cur_url);
     if (bb_init(&bodybuf) != 0) {
+        HeapFree(GetProcessHeap(), 0, scratch);
         resp_set_error(resp, "OOM body buffer");
         phttp_observer_note_failure(&observer, "MEMORY");
         phttp_observer_terminal(&observer, 1, resp->error_msg);
@@ -2300,10 +2321,6 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
     }
 
     for (;;) {
-        char        cur_host[256];
-        char        cur_path[1024];
-        char        location[1024];
-        char        next_url[2048];
         const char* loc;
         size_t      loclen;
         int         cur_port;
@@ -2312,20 +2329,20 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
         PTlsConnectObserver tls_observer;
         const PTlsConnectObserver* tls_observer_ptr;
 
-        cur_host[0] = '\0';
-        cur_path[0] = '\0';
-        location[0] = '\0';
-        next_url[0] = '\0';
+        scratch->cur_host[0] = '\0';
+        scratch->cur_path[0] = '\0';
+        scratch->location[0] = '\0';
+        scratch->next_url[0] = '\0';
         loc = NULL;
         loclen = 0;
-        if (phttp_parse_resolved_url(cur_url, cur_host, sizeof(cur_host),
-                cur_path, sizeof(cur_path), &cur_port, &cur_scheme) != 0) {
+        if (phttp_parse_resolved_url(scratch->cur_url, scratch->cur_host, sizeof(scratch->cur_host),
+                scratch->cur_path, sizeof(scratch->cur_path), &cur_port, &cur_scheme) != 0) {
             resp_set_error(resp, "invalid resolved URL");
             phttp_observer_note_failure(&observer, "INVALID_URL");
             goto done;
         }
-        resp_set_final_url(resp, cur_url);
-        phttp_observer_set_target(&observer, cur_scheme, cur_host, cur_port,
+        resp_set_final_url(resp, scratch->cur_url);
+        phttp_observer_set_target(&observer, cur_scheme, scratch->cur_host, cur_port,
                                   redirects);
         tls_observer_ptr = NULL;
         if (observer.callback != NULL) {
@@ -2338,27 +2355,27 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
         }
 
         if (cur_scheme == PHTTP_SCHEME_HTTP) {
-            if (wininet_fetch(method, cur_host, cur_port, cur_path,
-                    headers, body, body_len, &status, location,
-                    sizeof(location), &bodybuf, resp, progress,
+            if (wininet_fetch(method, scratch->cur_host, cur_port, scratch->cur_path,
+                    headers, body, body_len, &status, scratch->location,
+                    sizeof(scratch->location), &bodybuf, resp, progress,
                     user_data, &observer) != 0) {
                 goto done;
             }
             resp->status_code = status;
             observer.status_code = status;
             if (follow && is_redirect_code(status) &&
-                    redirects < MAX_REDIRECTS && location[0] != '\0' &&
-                    resolve_redirect_url(location, strlen(location), cur_url,
-                    next_url, sizeof(next_url))) {
+                    redirects < MAX_REDIRECTS && scratch->location[0] != '\0' &&
+                    resolve_redirect_url(scratch->location, strlen(scratch->location), scratch->cur_url,
+                    scratch->next_url, sizeof(scratch->next_url))) {
                 phttp_observer_emit(&observer, PHTTP_PHASE_REDIRECTING,
                                     -1, -1, 0);
-                if (!phttp_redirect_allowed(cur_scheme, next_url)) {
+                if (!phttp_redirect_allowed(cur_scheme, scratch->next_url)) {
                     resp_set_error(resp, "HTTPS redirect to HTTP rejected");
                     phttp_observer_note_failure(&observer, "REDIRECT_POLICY");
                     break;
                 }
                 redirects++;
-                cstrcpy(cur_url, sizeof(cur_url), next_url);
+                cstrcpy(scratch->cur_url, sizeof(scratch->cur_url), scratch->next_url);
                 bb_free(&bodybuf);
                 if (bb_init(&bodybuf) != 0) {
                     resp_set_error(resp, "OOM body buffer");
@@ -2387,7 +2404,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             chunk_clean_eof = 0;
             resp_gzip = FALSE;
 
-            request = build_request(method, cur_host, cur_path, headers,
+            request = build_request(method, scratch->cur_host, scratch->cur_path, headers,
                                     body, body_len);
             if (request == NULL) {
                 resp_set_error(resp, "OOM building request");
@@ -2399,22 +2416,22 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
             for (attempt = 0; attempt < 2; attempt++) {
                 from_pool = 0;
                 if (attempt == 0 && can_take_pool) {
-                    conn = phttp_pool_take(cur_host, cur_port, g_insecure);
+                    conn = phttp_pool_take(scratch->cur_host, cur_port, g_insecure);
                     if (conn != NULL) {
                         from_pool = 1;
                     }
                 }
                 if (conn == NULL) {
-                    conn = g_insecure ? PTls_ConnectEx(cur_host, cur_port,
+                    conn = g_insecure ? PTls_ConnectEx(scratch->cur_host, cur_port,
                                                         tls_observer_ptr)
-                                      : PTls_ConnectVerifiedEx(cur_host,
+                                      : PTls_ConnectVerifiedEx(scratch->cur_host,
                                                         cur_port,
                                                         tls_observer_ptr);
                 }
                 if (conn == NULL) {
                     char eb[320];
                     _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
-                              cur_host, cur_port, redirects, PTls_LastError());
+                              scratch->cur_host, cur_port, redirects, PTls_LastError());
                     eb[sizeof(eb) - 1] = '\0';
                     resp_set_error(resp, eb);
                     phttp_observer_note_failure(&observer, "TLS_CONNECT");
@@ -2442,7 +2459,8 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                 }
                 phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
                                     -1, -1, 0);
-                body_start = read_until_headers(conn, &recvbuf);
+                body_start = read_until_headers(conn, &recvbuf,
+                        scratch->read_tmp, 4096);
                 if (body_start <= 0) {
                     if (from_pool && recvbuf.len == 0) {
                         bb_free(&recvbuf);
@@ -2470,17 +2488,17 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                 loc = find_header(recvbuf.data, (size_t)body_start,
                                   "Location", &loclen);
                 if (loc != NULL && loclen > 0 &&
-                        resolve_redirect_url(loc, loclen, cur_url, next_url,
-                        sizeof(next_url))) {
+                        resolve_redirect_url(loc, loclen, scratch->cur_url, scratch->next_url,
+                        sizeof(scratch->next_url))) {
                     phttp_observer_emit(&observer, PHTTP_PHASE_REDIRECTING,
                                         -1, -1, 0);
-                    if (!phttp_redirect_allowed(cur_scheme, next_url)) {
+                    if (!phttp_redirect_allowed(cur_scheme, scratch->next_url)) {
                         resp_set_error(resp, "HTTPS redirect to HTTP rejected");
                         phttp_observer_note_failure(&observer, "REDIRECT_POLICY");
                         break;
                     }
                     redirects++;
-                    cstrcpy(cur_url, sizeof(cur_url), next_url);
+                    cstrcpy(scratch->cur_url, sizeof(scratch->cur_url), scratch->next_url);
                     HeapFree(GetProcessHeap(), 0, request);
                     request = NULL;
                     bb_free(&recvbuf);
@@ -2513,7 +2531,8 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                         resp_gzip ? NULL : progress,
                         resp_gzip ? NULL : user_data,
                         resp_gzip ? NULL : &observer,
-                        can_keep_alive ? &chunk_clean_eof : NULL);
+                        can_keep_alive ? &chunk_clean_eof : NULL,
+                        scratch->read_tmp, (int)sizeof(scratch->read_tmp));
                 if (chunk_result != PHTTP_BODY_OK) {
                     resp_set_body_result(resp, chunk_result);
                     phttp_observer_note_failure(&observer,
@@ -2596,10 +2615,9 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                             bodybuf.len += (size_t)got;
                             bodybuf.data[bodybuf.len] = '\0';
                         } else {
-                            char tmp[8192];
-                            want = remaining < (int)sizeof(tmp)
-                                   ? remaining : (int)sizeof(tmp);
-                            got = PTls_Read(conn, tmp, want);
+                            want = remaining < (int)sizeof(scratch->read_tmp)
+                                   ? remaining : (int)sizeof(scratch->read_tmp);
+                            got = PTls_Read(conn, scratch->read_tmp, want);
                             if (got < 0) {
                                 resp_set_body_result(resp,
                                         PHTTP_BODY_READ_ERROR);
@@ -2614,8 +2632,8 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                                         "HTTP_BODY");
                                 goto done;
                             }
-                            append_result = phttp_body_append(&bodybuf, tmp,
-                                    (size_t)got);
+                            append_result = phttp_body_append(&bodybuf,
+                                    scratch->read_tmp, (size_t)got);
                             if (append_result != PHTTP_BODY_OK) {
                                 resp_set_body_result(resp, append_result);
                                 phttp_observer_note_failure(&observer,
@@ -2634,12 +2652,12 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                         }
                     }
                 } else {
-                    char tmp[8192];
                     int  got;
 
                     can_keep_alive = 0;
                     while (1) {
-                        got = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                        got = PTls_Read(conn, scratch->read_tmp,
+                                (int)sizeof(scratch->read_tmp));
                         if (got < 0) {
                             resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
                             phttp_observer_note_failure(&observer, "HTTP_BODY");
@@ -2648,8 +2666,8 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                         if (got == 0) {
                             break;
                         }
-                        append_result = phttp_body_append(&bodybuf, tmp,
-                                (size_t)got);
+                        append_result = phttp_body_append(&bodybuf,
+                                scratch->read_tmp, (size_t)got);
                         if (append_result != PHTTP_BODY_OK) {
                             resp_set_body_result(resp, append_result);
                             phttp_observer_note_failure(&observer,
@@ -2701,7 +2719,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
 
             if (conn != NULL && can_keep_alive &&
                     resp->status_code > 0 && resp->error_msg[0] == '\0') {
-                phttp_pool_put(cur_host, cur_port, g_insecure, conn);
+                phttp_pool_put(scratch->cur_host, cur_port, g_insecure, conn);
                 conn = NULL;
             }
         }
@@ -2728,6 +2746,9 @@ done:
     }
     if (conn != NULL) {
         PTls_Close(conn);
+    }
+    if (scratch != NULL) {
+        HeapFree(GetProcessHeap(), 0, scratch);
     }
     return resp;
 }
