@@ -29,7 +29,7 @@
 - insecure 连接入口仍为兼容/诊断而保留，调用方若误用会失去证书与 hostname 认证。
 - peer TLS pin 的空值只适合受控 discovery/TOFU，不代表已认证对端。
 - identity 文件由消费者负责持久化、访问控制、备份和轮换，DLL 不提供系统密钥库。
-- HTTP 只覆盖有界 HTTP/1.1，不提供 HTTP/2/3、连接池、完整缓存、cookie jar 或浏览器代理；Browser `document.cookie` 仅为 session 的有界内存状态。
+- HTTP 完整正文 HTTPS 含 6 槽 30s Keep-Alive 与 1 MiB gzip，不提供 HTTP/2/3、缓存、cookie jar 或代理；Browser `document.cookie` 仅为有界内存状态。
 - URL reference resolver 是保守的 HTTP(S) 子集，不是完整 WHATWG URL 实现；userinfo、IPv6、非 HTTP(S) scheme 和异常 authority 会 fail closed。
 - 真实网络测试仍受设备时钟、DNS、TLS、代理和外部站点变化影响，离线契约不能替代网络哨兵。
 - 流式 GET 仅直连 IPv4 TCP/TLS、identity Content-Encoding 和有界 ASCII/UTF-8 headers；
@@ -48,7 +48,7 @@
 
 ## Archive
 
-ZIP 仅有界 STORE/DEFLATE；PXI 首装已接线，HTTP gzip 未接线。
+ZIP 仅有界 STORE/DEFLATE；PXI 首装与 HTTP 完整正文 gzip 已接线。
 
 ## 纯资源应用 Runtime
 

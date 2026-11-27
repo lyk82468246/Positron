@@ -239,7 +239,7 @@ Browser 的旧 ABI/1.5 MiB 默认和应用 3 MiB 上限保持不变。菜单作�
 
 #### Performance. 全栈性能改进纵切
 
-**状态：Waves 1–3 与 Phase 4–6（字节码缓存、DB/Archive/Runtime/App 去冗余、TLS DNS/会话复用、HTTP 零拷贝、Media 双缓冲）均过双配置真机门；可选后续为 gzip/Keep-Alive/并行抓取与真机人工门。** 计划见 [性能改进路线图](../docs/PERFORMANCE_PLAN.md)，取证见 [性能堵点审计](../docs/history/PERFORMANCE_BOTTLENECK_AUDIT.md)。
+**状态：Waves 1–3、Phase 4–6 与方案 A（HTTP 1 MiB 有界 gzip、6 槽 30s 同源 Keep-Alive 连接池、App 3 线程受控并发子资源抓取）均过双配置真机门，余项为真机人工体感门。** 计划见 [性能改进路线图](../docs/PERFORMANCE_PLAN.md)，取证见 [性能堵点审计](../docs/history/PERFORMANCE_BOTTLENECK_AUDIT.md)。
 
 #### Runtime. 纯资源应用与隔离存储
 

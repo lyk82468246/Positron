@@ -27,7 +27,7 @@ HTTP 预检/命名/匹配属于 HTTP DLL；下载任务、用户确认、文件�
 正式双配置与 TEST1375/1376/999 各 3/3 PASS，Archive 路径、完整日志、空间/零 holder/crash 通过；
 设备 ZIP 回拉后的 Python 解包与桌面 7-Zip 校验通过。证据分别见
 [reader](../docs/history/ARCHIVE_READER_ACCEPTANCE.md)及[writer](../docs/history/ARCHIVE_WRITER_ACCEPTANCE.md)。
-writer 同步添加条目、块间取消，Finish 后由宿主提交；PXI 首装已消费 Archive，HTTP gzip 未接线。
+writer 同步添加条目、块间取消，Finish 后由宿主提交；PXI 消费 Archive，HTTP 已接 gzip。
 
 ### Runtime 当前验收与安装边界
 
@@ -490,4 +490,4 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 目录预检（tmp/device-runs/20261114-093844-app-pxi-update）通过，原 Notes 已恢复。
 
-性能全期（Waves 1–3、Phase 4–6）双配置真机门全过：P4 Rel 34/34（bootstrap 0.8–1.4s）、P5 Rel 22/22+Notes、P6 TLS/HTTP/Media Rel 31/31（20261127-103934）与 Dbg 12/12（20261127-110151）全 PASS，0 dump；余项为可选 gzip/Keep-Alive/并发抓取与人工门。
+全栈性能（Waves 1–3、P4–6 与方案 A：HTTP 1MiB gzip/6槽 Keep-Alive + App 3并发抓取）双配置真机过：P4 Rel 34/34、P6 Rel 31/31、方案 A Rel 21/21（20261127-121347，iana.org net=167ms/续跳46ms）与 Dbg 10/10+App PASS，0 dump；余人工体感门。
