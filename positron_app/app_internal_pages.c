@@ -1672,7 +1672,31 @@ int AppInternalPages_DebugCheck(const char *css)
         if (page > APP_I18N_PAGE_CONTROLS &&
                 (PCore_StyleDocument(document, stylesheet) != 0 ||
                 PCore_LayoutDocument(document, 240, 268) != 0 ||
-                AppInternalPages_FocusIds(document, focus_ids) < 7)) goto done;
+                (page != APP_I18N_PAGE_APPS &&
+                AppInternalPages_FocusIds(document, focus_ids) < 7))) goto done;
+        PCore_FreeDocument(document);
+        document = NULL;
+    }
+    {
+        AppInstalledList installed_fixture;
+        memset(&installed_fixture, 0, sizeof(installed_fixture));
+        installed_fixture.count = 1;
+        strcpy(installed_fixture.rows[0].id, "com.example.demo");
+        installed_fixture.rows[0].version = 1;
+        data.installed = &installed_fixture;
+        if (AppInternalPages_Build(APP_I18N_PAGE_APPS, &data, &html,
+                &length) != 0 ||
+                strstr(html, "id=\"installed-0\"") == NULL ||
+                strstr(html, "id=\"uninstall-0\"") == NULL) goto done;
+        document = PCore_ParseHTML(html, length);
+        AppI18n_FreePage(html);
+        html = NULL;
+        data.installed = NULL;
+        if (document == NULL || PCore_StyleDocument(document, stylesheet) != 0 ||
+                PCore_LayoutDocument(document, 240, 268) != 0 ||
+                AppInternalPages_FocusIds(document, focus_ids) != 2 ||
+                strcmp(focus_ids[0], "installed-0") != 0 ||
+                strcmp(focus_ids[1], "uninstall-0") != 0) goto done;
         PCore_FreeDocument(document);
         document = NULL;
     }
