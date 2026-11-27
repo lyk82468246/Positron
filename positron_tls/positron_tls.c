@@ -64,6 +64,10 @@ static CRITICAL_SECTION  g_state_lock;
 static BOOL              g_state_lock_inited = FALSE;
 static CRITICAL_SECTION  g_identity_lock;
 static BOOL              g_identity_lock_inited = FALSE;
+static CRITICAL_SECTION  g_rng_lock;
+static BOOL              g_rng_lock_inited = FALSE;
+static CRITICAL_SECTION  g_dns_resolve_lock;
+static BOOL              g_dns_resolve_lock_inited = FALSE;
 static char              g_last_error[256];
 
 /* CryptoAPI random provider, held for the lifetime of the process so we
@@ -669,14 +673,21 @@ static int hwpoll_jitter(unsigned char* output, size_t len, size_t* olen)
 int mbedtls_hardware_poll(void* data, unsigned char* output,
                           size_t len, size_t* olen)
 {
+    BOOL ok = FALSE;
     (void)data;
 
-    if (g_crypt_prov != 0) {
-        if (CryptGenRandom(g_crypt_prov, (DWORD)len, (BYTE*)output)) {
-            *olen = len;
-            return 0;
+    if (g_rng_lock_inited) {
+        EnterCriticalSection(&g_rng_lock);
+        if (g_crypt_prov != 0) {
+            ok = CryptGenRandom(g_crypt_prov, (DWORD)len, (BYTE*)output);
         }
-        /* CryptGenRandom failed unexpectedly; fall through to jitter. */
+        LeaveCriticalSection(&g_rng_lock);
+    } else if (g_crypt_prov != 0) {
+        ok = CryptGenRandom(g_crypt_prov, (DWORD)len, (BYTE*)output);
+    }
+    if (ok) {
+        *olen = len;
+        return 0;
     }
     return hwpoll_jitter(output, len, olen);
 }
@@ -755,12 +766,22 @@ static SOCKET ptls_tcp_connect(const char* host, int port,
     if (is_literal) {
         cached_addr = inet_addr(host);
     } else if (!ptls_dns_cache_lookup(host, &cached_addr)) {
+        int resolved = 0;
+        if (g_dns_resolve_lock_inited) {
+            EnterCriticalSection(&g_dns_resolve_lock);
+        }
         he = gethostbyname(host);
-        if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
+        if (he != NULL && he->h_addr_list != NULL && he->h_addr_list[0] != NULL) {
+            memcpy(&cached_addr, he->h_addr_list[0], 4);
+            resolved = 1;
+        }
+        if (g_dns_resolve_lock_inited) {
+            LeaveCriticalSection(&g_dns_resolve_lock);
+        }
+        if (!resolved) {
             ptls_set_error_wsa("gethostbyname failed");
             return INVALID_SOCKET;
         }
-        memcpy(&cached_addr, he->h_addr_list[0], 4);
         ptls_dns_cache_store(host, cached_addr);
     }
 
@@ -826,12 +847,22 @@ static SOCKET ptls_tcp_connect_timed(const char* host, int port,
     if (ptls_is_ipv4_literal(host)) {
         cached_addr = inet_addr(host);
     } else if (!ptls_dns_cache_lookup(host, &cached_addr)) {
+        int resolved = 0;
+        if (g_dns_resolve_lock_inited) {
+            EnterCriticalSection(&g_dns_resolve_lock);
+        }
         he = gethostbyname(host);
-        if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
+        if (he != NULL && he->h_addr_list != NULL && he->h_addr_list[0] != NULL) {
+            memcpy(&cached_addr, he->h_addr_list[0], 4);
+            resolved = 1;
+        }
+        if (g_dns_resolve_lock_inited) {
+            LeaveCriticalSection(&g_dns_resolve_lock);
+        }
+        if (!resolved) {
             ptls_set_error_wsa("gethostbyname failed");
             return INVALID_SOCKET;
         }
-        memcpy(&cached_addr, he->h_addr_list[0], 4);
         ptls_dns_cache_store(host, cached_addr);
     }
     remaining = ptls_remaining_ms(started, timeout_ms);
@@ -991,9 +1022,15 @@ PTLS_API void PTls_Cleanup(void)
         mbedtls_x509_crt_free(&g_cacert);
         g_cacert_inited = FALSE;
     }
+    if (g_rng_lock_inited) {
+        EnterCriticalSection(&g_rng_lock);
+    }
     if (g_crypt_prov != 0) {
         CryptReleaseContext(g_crypt_prov, 0);
         g_crypt_prov = 0;
+    }
+    if (g_rng_lock_inited) {
+        LeaveCriticalSection(&g_rng_lock);
     }
     WSACleanup();
     g_initialized = FALSE;
@@ -2740,6 +2777,10 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
             g_state_lock_inited = TRUE;
             InitializeCriticalSection(&g_identity_lock);
             g_identity_lock_inited = TRUE;
+            InitializeCriticalSection(&g_rng_lock);
+            g_rng_lock_inited = TRUE;
+            InitializeCriticalSection(&g_dns_resolve_lock);
+            g_dns_resolve_lock_inited = TRUE;
             g_last_error[0]   = '\0';
             break;
         case DLL_PROCESS_DETACH:
@@ -2764,6 +2805,14 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
             if (g_identity_lock_inited) {
                 DeleteCriticalSection(&g_identity_lock);
                 g_identity_lock_inited = FALSE;
+            }
+            if (g_rng_lock_inited) {
+                DeleteCriticalSection(&g_rng_lock);
+                g_rng_lock_inited = FALSE;
+            }
+            if (g_dns_resolve_lock_inited) {
+                DeleteCriticalSection(&g_dns_resolve_lock);
+                g_dns_resolve_lock_inited = FALSE;
             }
             if (g_state_lock_inited) {
                 DeleteCriticalSection(&g_state_lock);
