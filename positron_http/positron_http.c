@@ -383,20 +383,27 @@ static int phttp_chunk_append(bytebuf* raw, size_t* consumed,
     if (*consumed > raw->len) {
         return PHTTP_BODY_READ_ERROR;
     }
-    if (*consumed > 0) {
-        remaining = raw->len - *consumed;
-        if (remaining > 0) {
-            memmove(raw->data, raw->data + *consumed, remaining);
-        }
-        raw->len = remaining;
-        if (raw->data != NULL) {
-            raw->data[raw->len] = '\0';
-        }
-        *consumed = 0;
-    }
+    remaining = raw->len - *consumed;
     if (n > (size_t)PHTTP_CHUNK_BUFFER_MAX ||
-            raw->len > (size_t)PHTTP_CHUNK_BUFFER_MAX - n) {
+            remaining > (size_t)PHTTP_CHUNK_BUFFER_MAX - n) {
         return PHTTP_BODY_TOO_LARGE;
+    }
+    if (*consumed > 0) {
+        if (remaining == 0) {
+            raw->len = 0;
+            if (raw->data != NULL) {
+                raw->data[0] = '\0';
+            }
+            *consumed = 0;
+        } else if (raw->len + n + 1 > raw->cap ||
+                raw->len + n > (size_t)PHTTP_CHUNK_BUFFER_MAX) {
+            memmove(raw->data, raw->data + *consumed, remaining);
+            raw->len = remaining;
+            if (raw->data != NULL) {
+                raw->data[raw->len] = '\0';
+            }
+            *consumed = 0;
+        }
     }
     if (bb_append(raw, src, n) != 0) {
         return PHTTP_BODY_NO_MEMORY;
@@ -707,7 +714,7 @@ static int decode_chunked(HANDLE conn,
 {
     bytebuf raw;
     size_t  pos;
-    char    tmp[4096];
+    char    tmp[8192];
     int     n;
     int     append_result;
     size_t  chunk_size;
@@ -1935,35 +1942,53 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                         (int)bodybuf.len, cl);
             }
             if (cl >= 0) {
-                char tmp[4096];
                 int  remaining;
                 int  got;
                 int  want;
 
                 remaining = cl - (int)bodybuf.len;
                 while (remaining > 0) {
-                    want = remaining < (int)sizeof(tmp)
-                           ? remaining : (int)sizeof(tmp);
-                    got = PTls_Read(conn, tmp, want);
-                    if (got < 0) {
-                        resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
-                        phttp_observer_note_failure(&observer, "HTTP_BODY");
-                        goto done;
-                    }
-                    if (got == 0) {
-                        resp_set_error(resp, "response body truncated");
-                        resp->status_code = 0;
-                        phttp_observer_note_failure(&observer, "HTTP_BODY");
-                        goto done;
-                    }
-                    append_result = phttp_body_append(&bodybuf, tmp,
-                            (size_t)got);
-                    if (append_result != PHTTP_BODY_OK) {
-                        resp_set_body_result(resp, append_result);
-                        phttp_observer_note_failure(&observer,
-                                append_result == PHTTP_BODY_TOO_LARGE ?
-                                "BODY_LIMIT" : "MEMORY");
-                        goto done;
+                    if (bodybuf.cap >= bodybuf.len + (size_t)remaining + 1) {
+                        want = remaining < 16384 ? remaining : 16384;
+                        got = PTls_Read(conn, bodybuf.data + bodybuf.len, want);
+                        if (got < 0) {
+                            resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
+                            phttp_observer_note_failure(&observer, "HTTP_BODY");
+                            goto done;
+                        }
+                        if (got == 0) {
+                            resp_set_error(resp, "response body truncated");
+                            resp->status_code = 0;
+                            phttp_observer_note_failure(&observer, "HTTP_BODY");
+                            goto done;
+                        }
+                        bodybuf.len += (size_t)got;
+                        bodybuf.data[bodybuf.len] = '\0';
+                    } else {
+                        char tmp[8192];
+                        want = remaining < (int)sizeof(tmp)
+                               ? remaining : (int)sizeof(tmp);
+                        got = PTls_Read(conn, tmp, want);
+                        if (got < 0) {
+                            resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
+                            phttp_observer_note_failure(&observer, "HTTP_BODY");
+                            goto done;
+                        }
+                        if (got == 0) {
+                            resp_set_error(resp, "response body truncated");
+                            resp->status_code = 0;
+                            phttp_observer_note_failure(&observer, "HTTP_BODY");
+                            goto done;
+                        }
+                        append_result = phttp_body_append(&bodybuf, tmp,
+                                (size_t)got);
+                        if (append_result != PHTTP_BODY_OK) {
+                            resp_set_body_result(resp, append_result);
+                            phttp_observer_note_failure(&observer,
+                                    append_result == PHTTP_BODY_TOO_LARGE ?
+                                    "BODY_LIMIT" : "MEMORY");
+                            goto done;
+                        }
                     }
                     remaining -= got;
                     phttp_observer_emit(&observer,
@@ -1973,7 +1998,7 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                             (int)bodybuf.len, cl);
                 }
             } else {
-                char tmp[4096];
+                char tmp[8192];
                 int  got;
 
                 while (1) {
