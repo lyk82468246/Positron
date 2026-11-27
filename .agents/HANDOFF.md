@@ -305,7 +305,7 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 不能追认为通过。本轮 ROADMAP 已移除完成的导航候选并保留 URL/人工边界；Media/DB 状态不覆盖。
 真实地址栏 Enter、HTTP 跨页/刷新恢复、native 输入状态、焦点与旋转仍待人工复核。
 
-Debug 增量时间头依赖已修正：`scripts/build.bat` 在 VS 判定前按脏状态调 `write_build_time.ps1 -IfDirty`（`.vcproj` 保 `-IfMissing`），连编两次同步重编 `app_version.obj`、空增量零重编、Release 排除；`app_internal_pages.c`（apps 焦点）与 `app_settings_store_debug.c`（v7 future）自检修复过 5 进程 `app_settings_gate`（20261127-142519）与 `app_downloads_gate`（20261127-142914，`internal-pages OK phase=4` + `build=2026-11-27 14:23:46`）。
+Debug 增量时间头由 `build.bat` 调 `write_build_time.ps1 -IfDirty` 刷新（`.vcproj` 保 `-IfMissing`），连编同步重编 `app_version.obj`、空增量零重编、Release 排除；`app_internal_pages.c`/`app_settings_store_debug.c` 自检修复过 `app_settings_gate`（20261127-142519）与 `app_downloads_gate`（20261127-142914）。
 
 ### Media 视频参数恢复已验收
 
@@ -388,7 +388,7 @@ rebuild PASS。VS/msenv 异常日志保留，不使用 SafeMode 或绕过工程�
 本轮有效证据见上方 Core 双配置门，旧 device=126/零日志不能追认为测试通过。
 稳定排障见 [TROUBLESHOOTING](../docs/TROUBLESHOOTING.md)，审计等待函数的七项合成回归
 保留在 `scripts/test_device_gate_audit.ps1`。旧 PID、安装时间与失败实验只代表原包，详见 Git
-上一版交接；CAB 安装版本和 Debug 增量时间依赖仍是独立未决门。
+上一版交接；CAB 安装版本仍为独立未决门。
 
 ### DB 受限请求与受限迁移前置合同
 
@@ -482,6 +482,6 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 目录预检（tmp/device-runs/20261114-093844-app-pxi-update）通过，原 Notes 已恢复。
+路线图已复核。[原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS，12/12 哈希/零 holder/0 dump，双配置+CAB 0 警告）验收通过；下一步取证 Media MP4 坏 NAL 长度/截断 sample。
 
 全栈性能（Waves 1–3、P4–6 与方案 A：HTTP gzip/Keep-Alive + App 3并发抓取，已修 CE 栈帧/TLS并发锁/WaitForSingleObject）过双配置真机门与实机浏览：Rel 21/21+10/10、Dbg 10/10、用户实测无FC且提速，0 dump。

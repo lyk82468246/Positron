@@ -52,7 +52,7 @@ ZIP 仅有界 STORE/DEFLATE；PXI 首装与 HTTP 完整正文 gzip 已接线。
 
 ## 纯资源应用 Runtime
 
-- 首装限 revision1。资源更新要求 schema 与批准权限保持不变。schema/权限更新、EXE 重装验收和安全回收待完成。
+- 首装限 revision1；更新限同 schema/权限。安全回收仅删无引用且 `.ownership` 完整的 `apps\pxi-*`，旧无清单目录保留。
 
 ## HTML、CSS 与布局
 
@@ -473,7 +473,7 @@ ZIP 仅有界 STORE/DEFLATE；PXI 首装与 HTTP 完整正文 gzip 已接线。
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
-- Debug 增量时间头依赖已通过 `build.bat` + `write_build_time.ps1 -IfDirty` 修正并验收；Release 仍只读 CAB 安装注册表。
+- Debug 构建时间由 `build.bat` 增量刷新；Release 仍读 CAB 安装注册表。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
 - SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建的 OEM popup、触摸、
   复杂嵌套 label 和其他层级组合仍需人工观察。
