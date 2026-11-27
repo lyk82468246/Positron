@@ -307,44 +307,13 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 
 Debug 增量时间头由 `build.bat` 调 `write_build_time.ps1 -IfDirty` 刷新（`.vcproj` 保 `-IfMissing`），连编同步重编 `app_version.obj`、空增量零重编、Release 排除；`app_internal_pages.c`/`app_settings_store_debug.c` 自检修复过 `app_settings_gate`（20261127-142519）与 `app_downloads_gate`（20261127-142914）。
 
-### Media 视频参数恢复已验收
+### Media 视频参数恢复与 MP4 坏 NAL/截断 sample 边界已验收
 
-ABI 1.3、产品 DLL/上游/archive 与既有合同不变；本轮只补测试和证据。调用与范围见
-[Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)。120 个固定输入，
-旧 116 条记录不变；新增四条完整 Baseline→Main VGA/B 帧→Baseline 与三段重复控制，
-分别使用 AVC3 包内 SPS/PPS 和 AVC1 原描述 1→2→1。压缩内容/AAC 不变、不重编码；
-九帧 PTS 为 400..2000 ms、各 200 ms，AAC 仍 29 块。独立只读 oracle 与来源见
-[媒体夹具](../test_host/fixtures/media/README.md)。
+ABI 1.3、上游/archive 与既有合同不变。调用与范围见 [Media README](../positron_media/README.md)、[能力矩阵](../docs/CAPABILITIES.md)；夹具来源见 [媒体夹具](../test_host/fixtures/media/README.md)。
 
-TEST1362 复用原消费端合同：默认九帧/29 块、恢复后三帧尺寸/flags/有效字节校验值
-匹配初始 Baseline，所有 PCM 与重复控制相同；混合调度逐个比较内容/时间戳、两个切换点
-背压/暂停、截止前 1 µs、近极大时钟、两种 seekability、7-byte 短读、禁读源及缓存重播。
-参考区由八帧改为九帧以容纳新输入；原六帧/负控制前缀数量、产品容量与 ABI 不改。
+MP4 H.264 现检查 AVCC NAL 长度 framing（零/越界/残留不足前缀字节/短于前缀的 sample）、`AV_PKT_FLAG_CORRUPT` 与越过 `input_bytes` 的未读视频 sample（避免误报 EOF），启用 `AV_EF_BITSTREAM|AV_EF_BUFFER|AV_EF_EXPLODE` 与损坏帧拒绝，并在默认/调度模式锁存 `PMEDIA_ERROR_STATE`。TEST1362 继续保护 AVC3/AVC1 九帧恢复；TEST1387 覆盖 `baseline-aac.mp4` 尾置完整控制、十组坏 NAL/截断/首帧失败样本及 `main-vga.mp4` B 帧截断/坏长度（默认、`SCHEDULE_AV` 与 `SCHEDULE_VIDEO`），核对分类、有效前缀与终态。
 
-带内/外带/NAL 长度守卫基线保持；既有新参数验证错误锁存 STATE，Annex-B 不变。
-
-Debug tmp/device-runs/20261022-095919-media-return-debug-final/ 与 Release
-tmp/device-runs/20261022-100732-media-return-release-final/ 均为
-1312,1331,1332,1333,1334,1335,1337,1344,1347,1348,1349,1352–1362,999 的 23/23 PASS；
-唯一 PASS、零 ERROR/FAIL，双配置正文相同，旧 21 项媒体及完成标记与 86f0ec35 基线相同。
-两配置完整日志/Core/crash PASS，无新增 dump。
-当前 320×320、128 DPI DeviceEmulator；SD 144 文件，双空间和新 guest 零引用审计通过。
-两配置日志回收后清理当前目录，42 个旧不完整目录保留；object-store 可用 9469952 bytes。
-无强杀/重置/WMDC 改动、普通 EXE 或用户 DB 改动；RAPI 无 guest 退出码。
-
-媒体 DLL/stage SHA256 一致：Debug 0b7349322bacfcfb36f3860f90ff453ef6ba8b42c352f01de48a148641452cec，
-Release bce903444627d63316f082471aa4119ee547d24e0654b1b1a711d78d21df7c9b。
-上游与 archive 未改/重建，archive SHA256 为 df47e94961e86380e10d301918cbfd4c4db8364af595ab8931cf7474d9d498ee。
-
-失败包 tmp/device-runs/20261022-095239-media-return-debug-probe/：TEST1359–1361 通过，
-TEST1362 首个重复控制在第九帧被旧八帧参考区拒收，rc=-10、8 帧/29 块/errors=1；
-完整日志/Core/crash PASS、无新 dump，不是产品参数恢复结论。修正仅在宿主参考容量，
-不减少九帧预期。中断的 Release 构建无完成结果；确认无遗留构建进程后正式重试已成功。
-
-C89/审计、120 pin、旧三组及两组恢复 oracle 和正式双配置构建通过。python 别名不可执行，
-使用 C:\Program Files\Python312\python.exe，未改 OS 配置。ROADMAP/限制/架构已复核；
-下一步取证 MP4 坏 NAL 长度/截断 sample。其他恢复形状、音频 PTS、故障/峰值和 DirectShow/
-设备同步仍待门；tmp 不入 Git。
+Debug `tmp/device-runs/20261127-154309-media-mp4-nal-debug/` 与 Release `tmp/device-runs/20261127-154900-media-mp4-nal-release/` 均为 24/24 PASS（1312,1331–1335,1337,1344,1347–1349,1352–1362,1387,999）：唯一 PASS、零 ERROR/FAIL、完整日志/Core/crash PASS、holders=0 unavailable=0、0 新增 dump、回收后已删当前远端目录。首轮 Debug `20261127-153610` 检出截断早于 sample 偏移时默认/调度文案分歧，已在 DLL 内统一归类后全过。C89/审计与串行 Debug/Release+CAB 0 错误通过；其他恢复/音频截断/故障/峰值和 DirectShow 同步仍待门，tmp 不入 Git。
 
 ### Core Fragment DPI 已验收与应用人工门
 
@@ -482,6 +451,6 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 ## 路线图复核与唯一下一步
 
-路线图已复核。[原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS，12/12 哈希/零 holder/0 dump，双配置+CAB 0 警告）验收通过；下一步取证 Media MP4 坏 NAL 长度/截断 sample。
+路线图已复核。本轮三项纵切全部验收并推送：1) Debug 增量时间头与 EXE 自检修复（TEST1345 双配置 2/2、`app_settings`/`app_downloads` 通过）；2) PXI 安全回收（租约、逆序逐项删除、`.reclaim` 续删与 `positron://apps` 入口，`20261127-150337-app-pxi-update` 6/6 PASS）；3) Media MP4 坏 NAL 长度与截断 sample 边界（双配置 24/24 PASS，含 TEST1387）。下一步按 [ROADMAP](ROADMAP.md) 从 Script 编译热点测量、DB 宿主同步 worker 或真实站点兼容/人工 backlog 中择一推进。
 
 全栈性能（Waves 1–3、P4–6 与方案 A：HTTP gzip/Keep-Alive + App 3并发抓取，已修 CE 栈帧/TLS并发锁/WaitForSingleObject）过双配置真机门与实机浏览：Rel 21/21+10/10、Dbg 10/10、用户实测无FC且提速，0 dump。
