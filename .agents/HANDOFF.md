@@ -490,4 +490,4 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 目录预检（tmp/device-runs/20261114-093844-app-pxi-update）通过，原 Notes 已恢复。
 
-全栈性能（Waves 1–3、P4–6 与方案 A：HTTP 1MiB gzip/6槽 Keep-Alive + App 3并发抓取）双配置真机过：P4 Rel 34/34、P6 Rel 31/31、方案 A Rel 21/21（20261127-121347，iana.org net=167ms/续跳46ms）与 Dbg 10/10+App PASS，0 dump；余人工体感门。
+全栈性能（Waves 1–3、P4–6 与方案 A：HTTP gzip/Keep-Alive + App 3并发抓取，已修 CE 栈帧/TLS并发锁/WaitForSingleObject）过双配置真机门与实机浏览：Rel 21/21+10/10、Dbg 10/10、用户实测无FC且提速，0 dump。
