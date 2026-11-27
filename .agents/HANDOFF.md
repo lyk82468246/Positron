@@ -490,4 +490,4 @@ WMDC 连接由用户手动完成，只使用当前唯一目标；新部署不覆
 
 路线图已复核。[Notes 原包恢复](../docs/history/APP_PXI_RESTORATION_ACCEPTANCE.md)与 PXI 目录预检（tmp/device-runs/20261114-093844-app-pxi-update）通过，原 Notes 已恢复。
 
-性能批与 Phase 4/5 真机门全过：P4 Rel 34/34（221559，bootstrap 0.8–1.4s）、Dbg 29/29；P5 Rel 17/17+5/5（230418/230847）、Dbg 7/7（232034）与 Notes（232738）全 PASS，0 dump；下推 Phase 6。
+性能全期（Waves 1–3、Phase 4–6）双配置真机门全过：P4 Rel 34/34（bootstrap 0.8–1.4s）、P5 Rel 22/22+Notes、P6 TLS/HTTP/Media Rel 31/31（20261127-103934）与 Dbg 12/12（20261127-110151）全 PASS，0 dump；余项为可选 gzip/Keep-Alive/并发抓取与人工门。
