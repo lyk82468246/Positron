@@ -5626,6 +5626,174 @@ static int app_navigation_fetch_resource(AppNavigationRequest *request,
     }
 }
 
+#define APP_NAV_SUBRESOURCE_WORKERS 3
+
+typedef struct AppSubresourceBatch {
+    AppNavigationRequest *request;
+    CRITICAL_SECTION lock;
+    LONG abort_flag;
+} AppSubresourceBatch;
+
+static int app_navigation_fetch_subresource_concurrent(
+        AppSubresourceBatch *batch)
+{
+    AppNavigationRequest *request;
+    AppNavigationResource *resource;
+    PHttpResponse *response;
+    char resolved_url[PHTTP_URL_MAX];
+    char final_url[PHTTP_URL_MAX];
+    int index;
+    int retry;
+    int transport_failure;
+
+    if (batch == NULL || batch->request == NULL) {
+        return 1;
+    }
+    request = batch->request;
+
+    for (;;) {
+        if (InterlockedCompareExchange(&batch->abort_flag, 0, 0) != 0) {
+            return 1;
+        }
+        EnterCriticalSection(&batch->lock);
+        if (InterlockedCompareExchange(&batch->abort_flag, 0, 0) != 0) {
+            LeaveCriticalSection(&batch->lock);
+            return 1;
+        }
+        if (app_navigation_is_cancelled(request)) {
+            InterlockedExchange(&batch->abort_flag, 1);
+            (void) PBrowser_NavigationResourceCancelAll(
+                    request->resource_transaction);
+            LeaveCriticalSection(&batch->lock);
+            return 1;
+        }
+        if (AppResources_FindPending(request, &resource) != 0) {
+            LeaveCriticalSection(&batch->lock);
+            return 0;
+        }
+        index = resource->index;
+        resolved_url[0] = '\0';
+        if (AppResources_Resolve(request, request->url, resource->url,
+                resolved_url, sizeof(resolved_url)) != 0) {
+            request->worker_failure_class = PBROWSER_NAVIGATION_FAILURE_RESOLVE;
+            (void) app_navigation_resource_fail(request, index,
+                    PBROWSER_NAVIGATION_FAILURE_RESOLVE);
+            LeaveCriticalSection(&batch->lock);
+            continue;
+        }
+        if (PBrowser_NavigationResourceBeginAttempt(
+                request->resource_transaction, index) != PBROWSER_OK) {
+            (void) app_navigation_resource_fail(request, index,
+                    PBROWSER_NAVIGATION_FAILURE_MEMORY);
+            LeaveCriticalSection(&batch->lock);
+            continue;
+        }
+        LeaveCriticalSection(&batch->lock);
+
+        response = NULL;
+        for (;;) {
+            response = PHttp_GetUrlEx2(resolved_url, NULL, NULL, NULL, NULL);
+
+            EnterCriticalSection(&batch->lock);
+            if (InterlockedCompareExchange(&batch->abort_flag, 0, 0) != 0 ||
+                    app_navigation_is_cancelled(request)) {
+                InterlockedExchange(&batch->abort_flag, 1);
+                (void) PBrowser_NavigationResourceCancelAll(
+                        request->resource_transaction);
+                LeaveCriticalSection(&batch->lock);
+                PHttp_FreeResponse(response);
+                return 1;
+            }
+            transport_failure = response == NULL || response->status_code == 0 ||
+                    (response != NULL && response->error_msg[0] != '\0');
+            retry = 0;
+            if (transport_failure &&
+                    PBrowser_NavigationResourceShouldRetry(
+                    request->resource_transaction, index, 1,
+                    &retry) == PBROWSER_OK && retry) {
+                if (PBrowser_NavigationResourceBeginAttempt(
+                        request->resource_transaction, index) == PBROWSER_OK) {
+                    LeaveCriticalSection(&batch->lock);
+                    PHttp_FreeResponse(response);
+                    response = NULL;
+                    continue;
+                }
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_MEMORY;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_MEMORY);
+                LeaveCriticalSection(&batch->lock);
+                PHttp_FreeResponse(response);
+                response = NULL;
+                break;
+            }
+            if (response != NULL && response->status_code >= 200 &&
+                    response->status_code < 300 && response->body != NULL &&
+                    response->body_len > 0 &&
+                    response->body_len <= (int)
+                    PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX) {
+                final_url[0] = '\0';
+                if (PHttp_ResponseGetFinalUrl(response, final_url,
+                        sizeof(final_url)) != 0) {
+                    request->worker_failure_class =
+                            PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
+                    (void) app_navigation_resource_fail(request, index,
+                            PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
+                } else if (strlen(final_url) >= APP_HOST_URL_MAX) {
+                    request->worker_failure_class =
+                            PBROWSER_NAVIGATION_FAILURE_BUDGET;
+                    (void) app_navigation_resource_fail(request, index,
+                            PBROWSER_NAVIGATION_FAILURE_BUDGET);
+                } else if (AppResources_SetEffectiveUrl(request, index,
+                        final_url) != 0) {
+                    request->worker_failure_class =
+                            PBROWSER_NAVIGATION_FAILURE_MEMORY;
+                    (void) app_navigation_resource_fail(request, index,
+                            PBROWSER_NAVIGATION_FAILURE_MEMORY);
+                } else if (PBrowser_NavigationResourceSetData(
+                        request->resource_transaction, index, response->body,
+                        response->body_len) != PBROWSER_OK) {
+                    request->worker_failure_class =
+                            PBROWSER_NAVIGATION_FAILURE_MEMORY;
+                    (void) app_navigation_resource_fail(request, index,
+                            PBROWSER_NAVIGATION_FAILURE_MEMORY);
+                }
+            } else if (transport_failure) {
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_TRANSPORT;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_TRANSPORT);
+            } else if (response != NULL && response->body_len >
+                    (int) PBROWSER_NAVIGATION_RESOURCE_BYTES_MAX) {
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_BUDGET;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_BUDGET);
+            } else {
+                request->worker_failure_class =
+                        PBROWSER_NAVIGATION_FAILURE_HTTP;
+                (void) app_navigation_resource_fail(request, index,
+                        PBROWSER_NAVIGATION_FAILURE_HTTP);
+            }
+            LeaveCriticalSection(&batch->lock);
+            PHttp_FreeResponse(response);
+            response = NULL;
+            break;
+        }
+    }
+}
+
+static DWORD WINAPI app_navigation_subresource_helper(LPVOID parameter)
+{
+    AppSubresourceBatch *batch;
+
+    batch = (AppSubresourceBatch *) parameter;
+    if (batch != NULL) {
+        (void) app_navigation_fetch_subresource_concurrent(batch);
+    }
+    return 0;
+}
+
 static DWORD WINAPI app_navigation_worker(LPVOID parameter)
 {
     AppNavigationRequest *request;
@@ -5645,6 +5813,41 @@ static DWORD WINAPI app_navigation_worker(LPVOID parameter)
     if (request->worker_stage == APP_NAV_WORK_DOCUMENT) {
         if (app_navigation_fetch_resource(request, request->resource_index,
                 request->url) != 0) {
+            goto done;
+        }
+    } else if (request->runtime_app == NULL &&
+            AppResources_PendingCount(request) > 1) {
+        AppSubresourceBatch batch;
+        HANDLE helpers[APP_NAV_SUBRESOURCE_WORKERS - 1];
+        int helper_target;
+        int helper_count;
+        int i;
+
+        batch.request = request;
+        batch.abort_flag = 0;
+        InitializeCriticalSection(&batch.lock);
+        helper_target = AppResources_PendingCount(request) - 1;
+        if (helper_target > APP_NAV_SUBRESOURCE_WORKERS - 1) {
+            helper_target = APP_NAV_SUBRESOURCE_WORKERS - 1;
+        }
+        helper_count = 0;
+        for (i = 0; i < helper_target; i++) {
+            HANDLE h = CreateThread(NULL, 0, app_navigation_subresource_helper,
+                    &batch, 0, NULL);
+            if (h != NULL) {
+                helpers[helper_count++] = h;
+            }
+        }
+        (void) app_navigation_fetch_subresource_concurrent(&batch);
+        if (helper_count > 0) {
+            WaitForMultipleObjects((DWORD) helper_count, helpers, TRUE,
+                    INFINITE);
+            for (i = 0; i < helper_count; i++) {
+                CloseHandle(helpers[i]);
+            }
+        }
+        DeleteCriticalSection(&batch.lock);
+        if (batch.abort_flag != 0) {
             goto done;
         }
     } else {
