@@ -5149,3 +5149,399 @@ fail:
     if (ref != NULL) free(ref);
     return FALSE;
 }
+
+static BOOL media_mp4_find_track_tables(const unsigned char *buf, int bytes,
+                                        const char hdlr_tag[4],
+                                        int *out_trak, int *out_mdia,
+                                        int *out_minf, int *out_stbl,
+                                        int *out_stsz, int *out_stco)
+{
+    int moov_off, moov_sz;
+    int pos, moov_end;
+    unsigned long size;
+    int mdia_off, mdia_sz;
+    int hdlr_off, hdlr_sz;
+    int minf_off, minf_sz;
+    int stbl_off, stbl_sz;
+    int stsz_off, stsz_sz;
+    int stco_off, stco_sz;
+
+    if (!media_mp4_find_box(buf, 0, bytes, "moov", &moov_off, &moov_sz)) return FALSE;
+    pos = moov_off + 8;
+    moov_end = moov_off + moov_sz;
+    while (pos + 8 <= moov_end) {
+        size = media_mp4_be32(buf + pos);
+        if (size < 8 || size > (unsigned long)(moov_end - pos)) return FALSE;
+        if (memcmp(buf + pos + 4, "trak", 4) == 0) {
+            if (media_mp4_find_box(buf, pos + 8, pos + (int)size, "mdia", &mdia_off, &mdia_sz) &&
+                media_mp4_find_box(buf, mdia_off + 8, mdia_off + mdia_sz, "hdlr", &hdlr_off, &hdlr_sz) &&
+                hdlr_sz >= 20 && memcmp(buf + hdlr_off + 16, hdlr_tag, 4) == 0 &&
+                media_mp4_find_box(buf, mdia_off + 8, mdia_off + mdia_sz, "minf", &minf_off, &minf_sz) &&
+                media_mp4_find_box(buf, minf_off + 8, minf_off + minf_sz, "stbl", &stbl_off, &stbl_sz) &&
+                media_mp4_find_box(buf, stbl_off + 8, stbl_off + stbl_sz, "stsz", &stsz_off, &stsz_sz) &&
+                media_mp4_find_box(buf, stbl_off + 8, stbl_off + stbl_sz, "stco", &stco_off, &stco_sz)) {
+                if (out_trak != NULL) *out_trak = pos;
+                if (out_mdia != NULL) *out_mdia = mdia_off;
+                if (out_minf != NULL) *out_minf = minf_off;
+                if (out_stbl != NULL) *out_stbl = stbl_off;
+                if (out_stsz != NULL) *out_stsz = stsz_off;
+                if (out_stco != NULL) *out_stco = stco_off;
+                return TRUE;
+            }
+        }
+        pos += (int)size;
+    }
+    return FALSE;
+}
+
+static BOOL media_mp4_insert_audio_ctts(const unsigned char *base, int base_bytes,
+                                        const int *counts, const int *offsets, int entry_count,
+                                        unsigned char *out, int out_cap, int *out_bytes)
+{
+    int moov_off, moov_sz;
+    int v_trak, v_mdia, v_minf, v_stbl, v_stsz, v_stco;
+    int a_trak, a_mdia, a_minf, a_stbl, a_stsz, a_stco;
+    int stbl_sz, insert_at, ctts_sz;
+    int v_cnt, a_cnt, i;
+    int stco_pos;
+
+    if (!media_mp4_find_box(base, 0, base_bytes, "moov", &moov_off, &moov_sz)) return FALSE;
+    if (!media_mp4_find_track_tables(base, base_bytes, "vide",
+            &v_trak, &v_mdia, &v_minf, &v_stbl, &v_stsz, &v_stco)) return FALSE;
+    if (!media_mp4_find_track_tables(base, base_bytes, "soun",
+            &a_trak, &a_mdia, &a_minf, &a_stbl, &a_stsz, &a_stco)) return FALSE;
+    stbl_sz = (int)media_mp4_be32(base + a_stbl);
+    insert_at = a_stbl + stbl_sz;
+    ctts_sz = 16 + entry_count * 8;
+    if (base_bytes + ctts_sz > out_cap || insert_at > base_bytes) return FALSE;
+
+    memcpy(out, base, (size_t)insert_at);
+    media_mp4_put32(out + insert_at, (unsigned long)ctts_sz);
+    memcpy(out + insert_at + 4, "ctts", 4);
+    media_mp4_put32(out + insert_at + 8, 0x01000000UL); /* version=1 signed offsets */
+    media_mp4_put32(out + insert_at + 12, (unsigned long)entry_count);
+    for (i = 0; i < entry_count; i++) {
+        media_mp4_put32(out + insert_at + 16 + i * 8, (unsigned long)counts[i]);
+        media_mp4_put32(out + insert_at + 20 + i * 8, (unsigned long)offsets[i]);
+    }
+    memcpy(out + insert_at + ctts_sz, base + insert_at, (size_t)(base_bytes - insert_at));
+
+    /* Bump enclosing box sizes by ctts_sz. */
+    media_mp4_put32(out + moov_off, media_mp4_be32(out + moov_off) + (unsigned long)ctts_sz);
+    media_mp4_put32(out + a_trak, media_mp4_be32(out + a_trak) + (unsigned long)ctts_sz);
+    media_mp4_put32(out + a_mdia, media_mp4_be32(out + a_mdia) + (unsigned long)ctts_sz);
+    media_mp4_put32(out + a_minf, media_mp4_be32(out + a_minf) + (unsigned long)ctts_sz);
+    media_mp4_put32(out + a_stbl, media_mp4_be32(out + a_stbl) + (unsigned long)ctts_sz);
+
+    /* Bump all chunk offsets in both video and audio stco boxes by ctts_sz. */
+    stco_pos = v_stco >= insert_at ? v_stco + ctts_sz : v_stco;
+    v_cnt = (int)media_mp4_be32(out + stco_pos + 12);
+    for (i = 0; i < v_cnt; i++) {
+        media_mp4_put32(out + stco_pos + 16 + i * 4,
+                media_mp4_be32(out + stco_pos + 16 + i * 4) + (unsigned long)ctts_sz);
+    }
+    stco_pos = a_stco >= insert_at ? a_stco + ctts_sz : a_stco;
+    a_cnt = (int)media_mp4_be32(out + stco_pos + 12);
+    for (i = 0; i < a_cnt; i++) {
+        media_mp4_put32(out + stco_pos + 16 + i * 4,
+                media_mp4_be32(out + stco_pos + 16 + i * 4) + (unsigned long)ctts_sz);
+    }
+    *out_bytes = base_bytes + ctts_sz;
+    return TRUE;
+}
+
+BOOL test1389_media_mp4_audio_boundary_contract(void (*progress)(const char *))
+{
+    static const char *trunc_names[6] = {
+        "audio-mdat-mid-sample28",
+        "audio-mdat-at-sample28",
+        "audio-mdat-at-sample29",
+        "audio-mdat-before-chunk3",
+        "audio-truncated-frame-sample28",
+        "audio-truncated-frame-sample1"
+    };
+    static const char *trunc_errors[6] = {
+        "MP4 AAC sample is truncated or corrupt",
+        "MP4 AAC sample is truncated",
+        "MP4 AAC sample is truncated",
+        "MP4 AAC sample is truncated",
+        "MP4 AAC sample decoding failed",
+        "MP4 AAC sample decoding failed"
+    };
+    static const int ctts_zero_cnt[1] = { 30 };
+    static const int ctts_zero_off[1] = { 0 };
+    static const int ctts_neg_cnt[1] = { 30 };
+    static const int ctts_neg_off[1] = { -4096 };
+    static const int ctts_back_cnt[2] = { 1, 29 };
+    static const int ctts_back_off[2] = { 4096, 0 };
+    media_fixture_source input;
+    media_av_sink sink;
+    media_av_reference *ref;
+    media_av_reference *got;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *base_data;
+    unsigned char *work;
+    int base_bytes;
+    int work_bytes;
+    int a_stsz, a_stco;
+    int chunk3_off, s28_off, s29_off;
+    pm_position maximum, clock_base, pts, previous;
+    int test, mode, seekable, pass, i, result, offers;
+    int exp_v, exp_a;
+    char phase[224];
+
+    session = NULL;
+    base_data = NULL;
+    work = NULL;
+    ref = (media_av_reference *)calloc(1, sizeof(*ref));
+    got = (media_av_reference *)calloc(1, sizeof(*got));
+    memset(&sink, 0, sizeof(sink));
+    if (ref == NULL || got == NULL) goto fail;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    media_contract_init(&input, &sink.events, &source, &output, &options);
+    output.video = media_av_video;
+    output.audio = media_av_audio;
+    output.error = media_compressed_error;
+
+    g_media_compressed_error = "load baseline-aac.mp4 audio tables and reference";
+    if (progress != NULL) progress(g_media_compressed_error);
+    base_data = media_compressed_load(L"baseline-aac.mp4", &base_bytes);
+    if (base_data == NULL ||
+        !media_mp4_find_track_tables(base_data, base_bytes, "soun",
+                NULL, NULL, NULL, NULL, &a_stsz, &a_stco)) goto fail;
+    if (media_mp4_be32(base_data + a_stsz + 16) != 30 ||
+        media_mp4_be32(base_data + a_stco + 12) != 4) goto fail;
+    chunk3_off = (int)media_mp4_be32(base_data + a_stco + 28);
+    s28_off = chunk3_off;
+    for (i = 20; i < 28; i++) s28_off += (int)media_mp4_be32(base_data + a_stsz + 20 + i * 4);
+    s29_off = s28_off + (int)media_mp4_be32(base_data + a_stsz + 20 + 28 * 4);
+    if (s29_off + (int)media_mp4_be32(base_data + a_stsz + 20 + 29 * 4) != base_bytes) goto fail;
+
+    work = (unsigned char *)malloc((size_t)(base_bytes + 128));
+    if (work == NULL) goto fail;
+
+    input.data = base_data;
+    input.bytes = base_bytes;
+    input.position = input.read_mode = 0;
+    input.read_chunk = 7;
+    source.seek = media_fixture_seek;
+    source.tell = media_fixture_tell;
+    options.flags = 0;
+    sink.reference = ref;
+    sink.capture = 1;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != base_bytes) goto fail;
+    result = PMEDIA_OK;
+    for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+    if (result != PMEDIA_EOF || ref->videos != 3 || ref->audios != 29 ||
+        sink.events.errors || sink.events.eof_events != 1 || pm_close(session) != PMEDIA_OK) goto fail;
+    session = NULL;
+
+    /* 1. Valid zero-offset audio CTTS control (default + scheduled + cached rewind). */
+    g_media_compressed_error = "audio zero-CTTS valid complete control";
+    if (progress != NULL) progress(g_media_compressed_error);
+    if (!media_mp4_insert_audio_ctts(base_data, base_bytes, ctts_zero_cnt, ctts_zero_off, 1,
+            work, base_bytes + 128, &work_bytes)) goto fail;
+    for (seekable = 0; seekable < 2; seekable++) {
+        input.data = work;
+        input.bytes = work_bytes;
+        input.position = input.read_mode = 0;
+        source.seek = seekable ? media_fixture_seek : NULL;
+        source.tell = seekable ? media_fixture_tell : NULL;
+        options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = ref;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != work_bytes) goto fail;
+        input.read_mode = 2;
+        for (pass = 0; pass < 2; pass++) {
+            if (pass) {
+                if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                memset(&sink, 0, sizeof(sink));
+                sink.reference = ref;
+            }
+            clock_base = pass ? maximum - 2000000 : 5000000;
+            previous = 0;
+            for (i = 0; i < 32; i++) {
+                pts = sink.audios < 29 && (sink.videos == 3 ||
+                      ref->audio[sink.audios].pts_us <= ref->video[sink.videos].pts_us) ?
+                      ref->audio[sink.audios].pts_us : ref->video[sink.videos].pts_us;
+                offers = sink.offers;
+                if (pts > previous && (media_av_pump(session, &sink, clock_base + pts - 1) != PMEDIA_WOULD_BLOCK ||
+                    sink.offers != offers)) goto fail;
+                if (media_av_pump(session, &sink, clock_base + pts) != PMEDIA_OK ||
+                    sink.offers != offers + 1 || sink.events.errors || sink.events.eof_events) goto fail;
+                previous = pts;
+            }
+            if (media_av_pump(session, &sink, maximum) != PMEDIA_EOF ||
+                media_av_pump(session, &sink, maximum) != PMEDIA_EOF ||
+                sink.events.eof_events != 1 || sink.events.error_callbacks ||
+                sink.videos != 3 || sink.audios != 29 || sink.bytes != ref->bytes) goto fail;
+        }
+        if (pm_stop(session) != PMEDIA_OK || pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+    }
+
+    /* 2. Six audio-side truncation & corrupt-sample boundary cases. */
+    for (test = 0; test < 6; test++) {
+        memcpy(work, base_data, (size_t)base_bytes);
+        work_bytes = base_bytes;
+        if (test == 0) {
+            work_bytes = s28_off + 64;
+        } else if (test == 1) {
+            work_bytes = s28_off;
+        } else if (test == 2) {
+            work_bytes = s29_off;
+        } else if (test == 3) {
+            media_mp4_put32(work + a_stco + 28, (unsigned long)(base_bytes + 4));
+        } else if (test == 4) {
+            media_mp4_put32(work + a_stsz + 20 + 28 * 4, 4);
+        } else if (test == 5) {
+            media_mp4_put32(work + a_stsz + 20 + 1 * 4, 3);
+        }
+        for (mode = 0; mode < 3; mode++) {
+            seekable = mode == 1 ? 0 : 1;
+            input.data = work;
+            input.bytes = work_bytes;
+            input.position = input.read_mode = 0;
+            input.read_chunk = 7;
+            source.seek = seekable ? media_fixture_seek : NULL;
+            source.tell = seekable ? media_fixture_tell : NULL;
+            options.flags = mode == 0 ? 0 : PMEDIA_OPEN_SCHEDULE_AV;
+            memset(got, 0, sizeof(*got));
+            memset(&sink, 0, sizeof(sink));
+            sink.reference = mode == 0 ? got : ref;
+            sink.capture = mode == 0 ? 1 : 0;
+            _snprintf(phase, sizeof(phase), "mp4 audio case=%d(%s) mode=%d", test, trunc_names[test], mode);
+            g_media_compressed_error = trunc_names[test];
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != work_bytes) goto fail;
+            input.read_mode = 2;
+            result = PMEDIA_OK;
+            if (mode == 0) {
+                for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+            } else {
+                result = media_av_pump(session, &sink, 0);
+                for (i = 0; i < 200 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink, maximum);
+            }
+            if (test == 0 || test == 1 || test == 4) {
+                exp_v = 3; exp_a = 27;
+            } else if (test == 2) {
+                exp_v = 3; exp_a = 28;
+            } else if (test == 3) {
+                exp_v = mode == 0 ? 3 : 2; exp_a = 19;
+            } else {
+                exp_v = mode == 0 ? 1 : 0; exp_a = 0;
+            }
+            _snprintf(phase, sizeof(phase), "observed audio=%s mode=%d rc=%d v=%d a=%d err=%s",
+                      trunc_names[test], mode, result, sink.videos, sink.audios, pm_last_error(session));
+            phase[sizeof(phase) - 1] = '\0';
+            if (progress != NULL) progress(phase);
+            if (result != PMEDIA_ERROR_FORMAT ||
+                !media_mp4_verify_terminal(session, &sink, trunc_errors[test], maximum)) goto fail;
+            if (mode == 0) {
+                if (!media_mp4_verify_prefix(got, ref, exp_v, exp_a, exp_a)) goto fail;
+            } else {
+                if (sink.videos != exp_v || sink.audios != exp_a || sink.bytes != exp_a * 4096) goto fail;
+            }
+            if (pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+    }
+
+    /* 3. Audio-side negative and backward PTS in mixed scheduled mode. Clear
+     * the audio track's edts box (rename to free) so MOV edit-list trimming
+     * does not discard negative-PTS samples before the decoder sees them. */
+    for (test = 0; test < 2; test++) {
+        int a_trak, edts_off, edts_sz;
+        unsigned long trak_sz;
+
+        if (test == 0) {
+            if (!media_mp4_insert_audio_ctts(base_data, base_bytes, ctts_neg_cnt, ctts_neg_off, 1,
+                    work, base_bytes + 128, &work_bytes)) goto fail;
+        } else {
+            if (!media_mp4_insert_audio_ctts(base_data, base_bytes, ctts_back_cnt, ctts_back_off, 2,
+                    work, base_bytes + 128, &work_bytes)) goto fail;
+        }
+        if (!media_mp4_find_track_tables(work, work_bytes, "soun",
+                &a_trak, NULL, NULL, NULL, NULL, NULL)) goto fail;
+        trak_sz = media_mp4_be32(work + a_trak);
+        if (media_mp4_find_box(work, a_trak + 8, a_trak + (int)trak_sz, "edts",
+                &edts_off, &edts_sz)) {
+            memcpy(work + edts_off + 4, "free", 4);
+        }
+        /* Default decode-only control: unchanged 3 video + all 30 untrimmed AAC blocks. */
+        g_media_compressed_error = test == 0 ? "audio-pts-negative default control" : "audio-pts-backward default control";
+        if (progress != NULL) progress(g_media_compressed_error);
+        input.data = work;
+        input.bytes = work_bytes;
+        input.position = input.read_mode = 0;
+        source.seek = media_fixture_seek;
+        source.tell = media_fixture_tell;
+        options.flags = 0;
+        memset(got, 0, sizeof(*got));
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = got;
+        sink.capture = 1;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+        result = PMEDIA_OK;
+        for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+        if (result != PMEDIA_EOF || got->videos != 3 || got->audios != 30 ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+
+        for (seekable = 0; seekable < 2; seekable++) {
+            input.position = input.read_mode = 0;
+            source.seek = seekable ? media_fixture_seek : NULL;
+            source.tell = seekable ? media_fixture_tell : NULL;
+            options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+            memset(got, 0, sizeof(*got));
+            memset(&sink, 0, sizeof(sink));
+            sink.reference = got;
+            sink.capture = 1;
+            _snprintf(phase, sizeof(phase), "mp4 audio pts=%s seekable=%d",
+                      test == 0 ? "negative" : "backward", seekable);
+            g_media_compressed_error = test == 0 ? "audio-pts-negative" : "audio-pts-backward";
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            input.read_mode = 2;
+            result = media_av_pump(session, &sink, 0);
+            for (i = 0; i < 200 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink, maximum);
+            exp_v = test == 0 ? 0 : 1;
+            exp_a = test == 0 ? 0 : 1;
+            _snprintf(phase, sizeof(phase), "observed audio-pts=%s seekable=%d rc=%d v=%d a=%d err=%s",
+                      test == 0 ? "negative" : "backward", seekable, result,
+                      sink.videos, sink.audios, pm_last_error(session));
+            phase[sizeof(phase) - 1] = '\0';
+            if (progress != NULL) progress(phase);
+            if (result != PMEDIA_ERROR_FORMAT ||
+                !media_mp4_verify_terminal(session, &sink,
+                        "mixed audio requires nonnegative nondecreasing presentation timestamps",
+                        maximum) ||
+                got->videos != exp_v || got->audios != exp_a ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+    }
+
+    free(work);
+    free(base_data);
+    free(got);
+    free(ref);
+    g_media_compressed_error = "MP4 audio truncation, corrupt AAC and audio PTS boundary contract passed";
+    if (progress != NULL) progress(g_media_compressed_error);
+    return TRUE;
+
+fail:
+    _snprintf(phase, sizeof(phase), "mp4 audio boundary failure: video=%d audio=%d err=%s",
+              sink.videos, sink.audios, session == NULL ? "no session" : pm_last_error(session));
+    phase[sizeof(phase) - 1] = '\0';
+    if (progress != NULL) progress(phase);
+    if (session != NULL) pm_close(session);
+    if (work != NULL) free(work);
+    if (base_data != NULL) free(base_data);
+    if (got != NULL) free(got);
+    if (ref != NULL) free(ref);
+    return FALSE;
+}

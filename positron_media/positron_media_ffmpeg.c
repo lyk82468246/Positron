@@ -62,6 +62,7 @@ struct pmedia_ffmpeg {
     int audio_drained;
     int mp4_nal_length;
     int video_packets_read;
+    int audio_packets_read;
     int nonzero_seeked;
     pm_position video_next_pts_us;
     int video_next_pts_valid;
@@ -908,8 +909,10 @@ static int pm_ff_open_decoder(AVFormatContext *format,
         return PMEDIA_ERROR_FORMAT;
     }
     codec->thread_count = 1;
-    if (codec->codec_id == AV_CODEC_ID_H264 &&
-        (strcmp(format->iformat->name, "h264") == 0 ||
+    if ((codec->codec_id == AV_CODEC_ID_H264 &&
+         (strcmp(format->iformat->name, "h264") == 0 ||
+          pm_ff_container(format->iformat->name) == PMEDIA_CONTAINER_MP4)) ||
+        (codec->codec_id == AV_CODEC_ID_AAC &&
          pm_ff_container(format->iformat->name) == PMEDIA_CONTAINER_MP4))
         codec->err_recognition = AV_EF_BITSTREAM | AV_EF_BUFFER | AV_EF_EXPLODE;
     result = avcodec_open2(codec, decoder, NULL);
@@ -1194,9 +1197,13 @@ int pmedia_ffmpeg_schedule_av(pmedia_ffmpeg *context)
                                  &capabilities, NULL, 0);
     if (result != PMEDIA_OK) return result;
     avcodec_free_context(&context->audio_codec);
+    if (context->audio_stream >= 0)
+        context->format->streams[context->audio_stream]->discard = AVDISCARD_ALL;
     context->audio_stream = -1;
     context->audio_drained = 1;
     avcodec_free_context(&audio->video_codec);
+    if (audio->video_stream >= 0)
+        audio->format->streams[audio->video_stream]->discard = AVDISCARD_ALL;
     audio->video_stream = -1;
     audio->video_drained = 1;
     audio->mixed_audio = 1;
@@ -1566,19 +1573,27 @@ static int pm_ff_receive(pmedia_ffmpeg *context,
 {
     int result;
     int is_mp4_h264;
+    int is_mp4_aac;
 
     *out_emitted = 0;
     *out_drained = 0;
     if (codec == NULL) return PMEDIA_OK;
     is_mp4_h264 = is_video && codec->codec_id == AV_CODEC_ID_H264 &&
                   pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4;
+    is_mp4_aac = !is_video && codec->codec_id == AV_CODEC_ID_AAC &&
+                 pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4;
     av_frame_unref(context->frame);
     result = avcodec_receive_frame(codec, context->frame);
     if (result == 0) {
-        if (is_video && (strcmp(context->format->iformat->name, "h264") == 0 || is_mp4_h264) &&
-            (context->frame->decode_error_flags || (context->frame->flags & AV_FRAME_FLAG_CORRUPT))) {
-            if (is_mp4_h264) context->clock_error = "MP4 H.264 sample decoding failed";
-            return PMEDIA_ERROR_FORMAT;
+        if ((context->frame->decode_error_flags || (context->frame->flags & AV_FRAME_FLAG_CORRUPT))) {
+            if (is_video && (strcmp(context->format->iformat->name, "h264") == 0 || is_mp4_h264)) {
+                if (is_mp4_h264) context->clock_error = "MP4 H.264 sample decoding failed";
+                return PMEDIA_ERROR_FORMAT;
+            }
+            if (is_mp4_aac) {
+                context->clock_error = "MP4 AAC sample decoding failed";
+                return PMEDIA_ERROR_FORMAT;
+            }
         }
         *out_emitted = 1;
         return is_video ? pm_ff_emit_video(context) : pm_ff_emit_audio(context);
@@ -1589,6 +1604,7 @@ static int pm_ff_receive(pmedia_ffmpeg *context,
     }
     if (result == AVERROR(EAGAIN)) return PMEDIA_OK;
     if (is_mp4_h264) context->clock_error = "MP4 H.264 sample decoding failed";
+    else if (is_mp4_aac) context->clock_error = "MP4 AAC sample decoding failed";
     return PMEDIA_ERROR_FORMAT;
 }
 
@@ -1600,9 +1616,12 @@ static int pm_ff_send_flush(pmedia_ffmpeg *context,
     if (codec == NULL || *sent) return PMEDIA_OK;
     result = avcodec_send_packet(codec, NULL);
     if (result < 0 && result != AVERROR_EOF && result != AVERROR(EAGAIN)) {
-        if (codec == context->video_codec && codec->codec_id == AV_CODEC_ID_H264 &&
-            pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4) {
-            context->clock_error = "MP4 H.264 sample decoding failed";
+        if (pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4) {
+            if (codec == context->video_codec && codec->codec_id == AV_CODEC_ID_H264) {
+                context->clock_error = "MP4 H.264 sample decoding failed";
+            } else if (codec == context->audio_codec && codec->codec_id == AV_CODEC_ID_AAC) {
+                context->clock_error = "MP4 AAC sample decoding failed";
+            }
         }
         return PMEDIA_ERROR_FORMAT;
     }
@@ -1630,6 +1649,26 @@ static int pm_ff_mp4_video_sample_truncated(const pmedia_ffmpeg *context)
         return 0;
     }
     entry = &vstream->index_entries[context->video_packets_read];
+    return entry->size > 0 &&
+           (entry->pos < 0 || entry->pos > (int64_t)context->input_bytes ||
+            entry->size > (int64_t)context->input_bytes - entry->pos);
+}
+
+static int pm_ff_mp4_audio_sample_truncated(const pmedia_ffmpeg *context)
+{
+    AVStream *astream;
+    const AVIndexEntry *entry;
+
+    if (context == NULL || context->nonzero_seeked || context->audio_stream < 0 ||
+        context->audio_codec == NULL || context->audio_codec->codec_id != AV_CODEC_ID_AAC ||
+        pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4) {
+        return 0;
+    }
+    astream = context->format->streams[context->audio_stream];
+    if (astream == NULL || context->audio_packets_read >= astream->nb_index_entries) {
+        return 0;
+    }
+    entry = &astream->index_entries[context->audio_packets_read];
     return entry->size > 0 &&
            (entry->pos < 0 || entry->pos > (int64_t)context->input_bytes ||
             entry->size > (int64_t)context->input_bytes - entry->pos);
@@ -1696,6 +1735,10 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
                 context->clock_error = "MP4 H.264 sample is truncated";
                 return PMEDIA_ERROR_FORMAT;
             }
+            if (pm_ff_mp4_audio_sample_truncated(context)) {
+                context->clock_error = "MP4 AAC sample is truncated";
+                return PMEDIA_ERROR_FORMAT;
+            }
             if (result != AVERROR_EOF) {
                 if (pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4)
                     context->clock_error = "MP4 sample read failed or truncated";
@@ -1716,8 +1759,16 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
             context->video_packets_read++;
         } else if (packet.stream_index == context->audio_stream) {
             codec = context->audio_codec;
+            context->audio_packets_read++;
         }
         if (codec != NULL) {
+            if (codec == context->audio_codec && codec->codec_id == AV_CODEC_ID_AAC &&
+                pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4 &&
+                ((packet.flags & AV_PKT_FLAG_CORRUPT) || packet.data == NULL || packet.size <= 0)) {
+                context->clock_error = "MP4 AAC sample is truncated or corrupt";
+                av_packet_unref(&packet);
+                return PMEDIA_ERROR_FORMAT;
+            }
             result = pm_ff_validate_mp4_config(context, codec, &packet);
             if (result != PMEDIA_OK) {
                 context->clock_error = "MP4 H.264 avcC change validation failed";
@@ -1754,9 +1805,12 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
                 return PMEDIA_ERROR_STATE;
             }
             if (result < 0 && result != AVERROR(EAGAIN)) {
-                if (codec == context->video_codec && codec->codec_id == AV_CODEC_ID_H264 &&
-                    pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4) {
-                    context->clock_error = "MP4 H.264 sample decoding failed";
+                if (pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4) {
+                    if (codec == context->video_codec && codec->codec_id == AV_CODEC_ID_H264) {
+                        context->clock_error = "MP4 H.264 sample decoding failed";
+                    } else if (codec == context->audio_codec && codec->codec_id == AV_CODEC_ID_AAC) {
+                        context->clock_error = "MP4 AAC sample decoding failed";
+                    }
                 }
                 av_packet_unref(&packet);
                 return PMEDIA_ERROR_FORMAT;
@@ -1914,6 +1968,7 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     context->video_drained = 0;
     context->audio_drained = 0;
     context->video_packets_read = 0;
+    context->audio_packets_read = 0;
     context->nonzero_seeked = (position_us != 0);
     context->video_next_pts_valid = 0;
     return PMEDIA_OK;
