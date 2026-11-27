@@ -293,7 +293,7 @@ UTF-8 的固定容量快照。`status_code` 在响应头解析前为 `-1`，`rec
 自己的 `user_data`，不会串线。未能从 WinInet 分辨 DNS/TCP 的地方会明确合并，不通过延迟或错误字符串
 推测阶段，也不暴露请求头、body 或敏感数据。
 
-默认校验证书链和主机名。`PHttp_SetInsecure(TRUE)` 会对后续 HTTPS 请求关闭验证，只适合自签名诊断，不能作为生产默认值。当前连接采用短连接，响应体有设备侧上限；具体限制以 `positron_http.h` 为准。显式 `http://` 请求不经过 TLS，也不会因为端口不是 80 而被错误送入 TLS。
+默认校验证书链和主机名。`PHttp_SetInsecure(TRUE)` 会对后续 HTTPS 请求关闭验证，只适合自签名诊断，不能作为生产默认值。完整正文 HTTPS 请求支持有界 RFC 1952 `gzip` 解压（1 MiB 解压上限）与 6 槽 30s 同源 Keep-Alive 连接池（带 observer 时仍按鲜连接触发阶段事件，流式与 Probe 请求保持 `identity` 短连接）；具体限制以 `positron_http.h` 为准。显式 `http://` 请求不经过 TLS，也不会因为端口不是 80 而被错误送入 TLS。
 
 ## 构建与验证
 

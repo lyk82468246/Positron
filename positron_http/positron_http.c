@@ -16,6 +16,7 @@
 
 #include "positron_tls.h"
 #include "positron_http.h"
+#include "miniz_tinfl.h"
 
 #define MAX_RESP_BODY    (1 * 1024 * 1024)   /* 1 MB cap */
 #define INITIAL_BUFCAP   8192
@@ -26,9 +27,26 @@
 #define PHTTP_BODY_TOO_LARGE  -2
 #define PHTTP_BODY_NO_MEMORY  -3
 #define PHTTP_CHUNK_BUFFER_MAX (MAX_RESP_BODY + 4096)
+#define PHTTP_POOL_SLOTS       6
+#define PHTTP_POOL_IDLE_TTL_MS 30000UL
 
 static BOOL g_initialized = FALSE;
 static BOOL g_insecure    = FALSE;   /* default: verify chain + hostname */
+
+typedef struct phttp_pool_entry {
+    int    used;
+    char   host[256];
+    int    port;
+    BOOL   insecure;
+    HANDLE conn;
+    DWORD  stored_tick;
+    DWORD  lru_stamp;
+} phttp_pool_entry;
+
+static CRITICAL_SECTION g_pool_lock;
+static BOOL             g_pool_lock_ready = FALSE;
+static phttp_pool_entry g_pool[PHTTP_POOL_SLOTS];
+static DWORD            g_pool_lru_counter = 0;
 
 typedef struct phttp_observer_state {
     PHttpObserverCallback callback;
@@ -212,14 +230,202 @@ static void report_progress(PHttpProgressCallback progress, void* user_data,
 }
 
 /* ------------------------------------------------------------------- */
+/* Bounded same-origin HTTPS Keep-Alive pool                            */
+/* ------------------------------------------------------------------- */
+
+static int phttp_pool_host_equal(const char* a, const char* b)
+{
+    size_t i;
+    for (i = 0; a[i] != '\0' && b[i] != '\0'; i++) {
+        int ca = (unsigned char)a[i];
+        int cb = (unsigned char)b[i];
+        if (ca >= 'A' && ca <= 'Z') ca += 32;
+        if (cb >= 'A' && cb <= 'Z') cb += 32;
+        if (ca != cb) {
+            return 0;
+        }
+    }
+    return a[i] == '\0' && b[i] == '\0';
+}
+
+static void phttp_pool_clear_all(void)
+{
+    HANDLE to_close[PHTTP_POOL_SLOTS];
+    int    close_count;
+    int    i;
+
+    if (!g_pool_lock_ready) {
+        return;
+    }
+    close_count = 0;
+    EnterCriticalSection(&g_pool_lock);
+    for (i = 0; i < PHTTP_POOL_SLOTS; i++) {
+        if (g_pool[i].used && g_pool[i].conn != NULL) {
+            to_close[close_count++] = g_pool[i].conn;
+        }
+        g_pool[i].used = 0;
+        g_pool[i].conn = NULL;
+        g_pool[i].host[0] = '\0';
+    }
+    LeaveCriticalSection(&g_pool_lock);
+    for (i = 0; i < close_count; i++) {
+        PTls_Close(to_close[i]);
+    }
+}
+
+static HANDLE phttp_pool_take(const char* host, int port, BOOL insecure)
+{
+    HANDLE to_close[PHTTP_POOL_SLOTS];
+    int    close_count;
+    HANDLE result;
+    DWORD  now;
+    DWORD  best_lru;
+    int    best_index;
+    int    i;
+
+    if (!g_pool_lock_ready || host == NULL || host[0] == '\0') {
+        return NULL;
+    }
+    close_count = 0;
+    result = NULL;
+    best_index = -1;
+    best_lru = 0;
+    now = GetTickCount();
+
+    EnterCriticalSection(&g_pool_lock);
+    for (i = 0; i < PHTTP_POOL_SLOTS; i++) {
+        if (!g_pool[i].used) {
+            continue;
+        }
+        if ((DWORD)(now - g_pool[i].stored_tick) >= PHTTP_POOL_IDLE_TTL_MS) {
+            if (g_pool[i].conn != NULL) {
+                to_close[close_count++] = g_pool[i].conn;
+            }
+            g_pool[i].used = 0;
+            g_pool[i].conn = NULL;
+            g_pool[i].host[0] = '\0';
+            continue;
+        }
+        if (g_pool[i].port == port && g_pool[i].insecure == insecure &&
+                phttp_pool_host_equal(g_pool[i].host, host)) {
+            if (best_index < 0 ||
+                    (DWORD)(g_pool[i].lru_stamp - best_lru) < 0x80000000UL) {
+                best_index = i;
+                best_lru = g_pool[i].lru_stamp;
+            }
+        }
+    }
+    if (best_index >= 0) {
+        result = g_pool[best_index].conn;
+        g_pool[best_index].used = 0;
+        g_pool[best_index].conn = NULL;
+        g_pool[best_index].host[0] = '\0';
+    }
+    LeaveCriticalSection(&g_pool_lock);
+
+    for (i = 0; i < close_count; i++) {
+        PTls_Close(to_close[i]);
+    }
+    return result;
+}
+
+static void phttp_pool_put(const char* host, int port, BOOL insecure,
+                           HANDLE conn)
+{
+    HANDLE to_close[PHTTP_POOL_SLOTS];
+    int    close_count;
+    DWORD  now;
+    size_t host_len;
+    int    slot;
+    int    oldest_slot;
+    DWORD  oldest_lru;
+    int    i;
+
+    if (conn == NULL) {
+        return;
+    }
+    if (!g_initialized || !g_pool_lock_ready || host == NULL ||
+            host[0] == '\0') {
+        PTls_Close(conn);
+        return;
+    }
+    host_len = strlen(host);
+    if (host_len >= sizeof(g_pool[0].host)) {
+        PTls_Close(conn);
+        return;
+    }
+
+    close_count = 0;
+    slot = -1;
+    oldest_slot = 0;
+    oldest_lru = 0;
+    now = GetTickCount();
+
+    EnterCriticalSection(&g_pool_lock);
+    for (i = 0; i < PHTTP_POOL_SLOTS; i++) {
+        if (g_pool[i].used &&
+                (DWORD)(now - g_pool[i].stored_tick) >= PHTTP_POOL_IDLE_TTL_MS) {
+            if (g_pool[i].conn != NULL) {
+                to_close[close_count++] = g_pool[i].conn;
+            }
+            g_pool[i].used = 0;
+            g_pool[i].conn = NULL;
+            g_pool[i].host[0] = '\0';
+        }
+        if (!g_pool[i].used) {
+            if (slot < 0) {
+                slot = i;
+            }
+        } else if (slot < 0) {
+            if (oldest_lru == 0 ||
+                    (DWORD)(oldest_lru - g_pool[i].lru_stamp) < 0x80000000UL) {
+                oldest_slot = i;
+                oldest_lru = g_pool[i].lru_stamp;
+            }
+        }
+    }
+    if (slot < 0) {
+        slot = oldest_slot;
+        if (g_pool[slot].used && g_pool[slot].conn != NULL) {
+            to_close[close_count++] = g_pool[slot].conn;
+        }
+    }
+    g_pool[slot].used = 1;
+    memcpy(g_pool[slot].host, host, host_len + 1);
+    g_pool[slot].port = port;
+    g_pool[slot].insecure = insecure;
+    g_pool[slot].conn = conn;
+    g_pool[slot].stored_tick = now;
+    g_pool[slot].lru_stamp = ++g_pool_lru_counter;
+    LeaveCriticalSection(&g_pool_lock);
+
+    for (i = 0; i < close_count; i++) {
+        PTls_Close(to_close[i]);
+    }
+}
+
+/* ------------------------------------------------------------------- */
 /* DllMain                                                              */
 /* ------------------------------------------------------------------- */
 
 BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
 {
     (void)hModule;
-    (void)lpReserved;
-    (void)reason;
+    if (reason == DLL_PROCESS_ATTACH) {
+        if (!g_pool_lock_ready) {
+            InitializeCriticalSection(&g_pool_lock);
+            memset(g_pool, 0, sizeof(g_pool));
+            g_pool_lock_ready = TRUE;
+        }
+    } else if (reason == DLL_PROCESS_DETACH) {
+        if (g_pool_lock_ready) {
+            if (lpReserved == NULL) {
+                phttp_pool_clear_all();
+            }
+            DeleteCriticalSection(&g_pool_lock);
+            g_pool_lock_ready = FALSE;
+        }
+    }
     return TRUE;
 }
 
@@ -242,6 +448,7 @@ PHTTP_API BOOL PHttp_Init(void)
 PHTTP_API void PHttp_Cleanup(void)
 {
     if (g_initialized) {
+        phttp_pool_clear_all();
         PTls_Cleanup();
         g_initialized = FALSE;
     }
@@ -250,7 +457,11 @@ PHTTP_API void PHttp_Cleanup(void)
 PHTTP_API BOOL PHttp_SetInsecure(BOOL insecure)
 {
     BOOL prev = g_insecure;
-    g_insecure = insecure ? TRUE : FALSE;
+    BOOL next = insecure ? TRUE : FALSE;
+    if (next != prev) {
+        phttp_pool_clear_all();
+    }
+    g_insecure = next;
     return prev;
 }
 
@@ -339,7 +550,11 @@ static int bb_append(bytebuf* b, const char* src, size_t n)
         while (newcap < b->len + n + 1) {
             newcap *= 2;
             if (newcap > MAX_RESP_BODY + 65536) {
-                return -1;
+                newcap = MAX_RESP_BODY + 65536;
+                if (newcap < b->len + n + 1) {
+                    return -1;
+                }
+                break;
             }
         }
         tmp = (char*)HeapReAlloc(GetProcessHeap(), 0, b->data, newcap);
@@ -489,6 +704,26 @@ static void resp_set_body_result(PHttpResponse* response, int result)
 
 /* ---- request building -------------------------------------------- */
 
+static BOOL phttp_headers_have(const char** headers, const char* name)
+{
+    size_t name_len;
+    int    i;
+
+    if (headers == NULL || name == NULL) {
+        return FALSE;
+    }
+    name_len = strlen(name);
+    for (i = 0; headers[i] != NULL; i++) {
+        size_t len = strlen(headers[i]);
+        if (len > name_len &&
+                ci_memcmp(headers[i], name, name_len) == 0 &&
+                headers[i][name_len] == ':') {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 static char* build_request(const char* method, const char* host,
                            const char* path, const char** headers,
                            const char* body, int body_len)
@@ -513,10 +748,16 @@ static char* build_request(const char* method, const char* host,
     if (bb_append(&b, host, strlen(host)) != 0) goto fail;
     if (bb_append(&b, "\r\n", 2) != 0) goto fail;
 
-    /* fixed headers */
-    if (bb_append(&b, "Connection: close\r\n", 19) != 0) goto fail;
-    if (bb_append(&b, "User-Agent: Positron/0.2 (WinCE)\r\n", 34) != 0) goto fail;
-    if (bb_append(&b, "Accept-Encoding: identity\r\n", 27) != 0) goto fail;
+    /* default headers (unless caller explicitly supplied them) */
+    if (!phttp_headers_have(headers, "Connection")) {
+        if (bb_append(&b, "Connection: keep-alive\r\n", 24) != 0) goto fail;
+    }
+    if (!phttp_headers_have(headers, "User-Agent")) {
+        if (bb_append(&b, "User-Agent: Positron/0.2 (WinCE)\r\n", 34) != 0) goto fail;
+    }
+    if (!phttp_headers_have(headers, "Accept-Encoding")) {
+        if (bb_append(&b, "Accept-Encoding: gzip, identity\r\n", 33) != 0) goto fail;
+    }
 
     /* user-supplied headers */
     if (headers != NULL) {
@@ -667,6 +908,275 @@ static BOOL is_chunked(const char* headers, size_t hlen)
     return FALSE;
 }
 
+static BOOL phttp_header_has_token(const char* value, size_t vlen,
+                                   const char* token)
+{
+    size_t tlen;
+    size_t i;
+
+    if (value == NULL || token == NULL) {
+        return FALSE;
+    }
+    tlen = strlen(token);
+    if (tlen == 0) {
+        return FALSE;
+    }
+    i = 0;
+    while (i < vlen) {
+        size_t start;
+        size_t end;
+        while (i < vlen && (value[i] == ' ' || value[i] == '\t' ||
+                value[i] == ',')) {
+            i++;
+        }
+        start = i;
+        while (i < vlen && value[i] != ',') {
+            i++;
+        }
+        end = i;
+        while (end > start && (value[end - 1] == ' ' ||
+                value[end - 1] == '\t')) {
+            end--;
+        }
+        if (end - start == tlen && ci_memcmp(value + start, token, tlen) == 0) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static BOOL phttp_is_gzip_encoding(const char* headers, size_t hlen)
+{
+    const char* v;
+    size_t      vlen;
+
+    v = find_header(headers, hlen, "Content-Encoding", &vlen);
+    if (v == NULL || vlen == 0) {
+        return FALSE;
+    }
+    while (vlen > 0 && (v[vlen - 1] == ' ' || v[vlen - 1] == '\t')) {
+        vlen--;
+    }
+    if ((vlen == 4 && ci_memcmp(v, "gzip", 4) == 0) ||
+            (vlen == 6 && ci_memcmp(v, "x-gzip", 6) == 0)) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static BOOL phttp_connection_wants_close(const char* headers, size_t hlen)
+{
+    const char* v;
+    size_t      vlen;
+    BOOL        is_http10;
+
+    is_http10 = (hlen >= 8 && ci_memcmp(headers, "HTTP/1.0", 8) == 0) ?
+                TRUE : FALSE;
+    v = find_header(headers, hlen, "Connection", &vlen);
+    if (v != NULL && phttp_header_has_token(v, vlen, "close")) {
+        return TRUE;
+    }
+    if (is_http10) {
+        if (v == NULL || !phttp_header_has_token(v, vlen, "keep-alive")) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+/* ---- bounded RFC 1952 gzip decompression ------------------------- */
+
+static unsigned long phttp_crc32_update(unsigned long crc,
+                                        const unsigned char* data, size_t len)
+{
+    static const unsigned long k_nibble[16] = {
+        0x00000000UL, 0x1DB71064UL, 0x3B6E20C8UL, 0x26D930ACUL,
+        0x76DC4190UL, 0x6B6B51F4UL, 0x4DB26158UL, 0x5005713CUL,
+        0xEDB88320UL, 0xF00F9344UL, 0xD6D6A3E8UL, 0xCB61B38CUL,
+        0x9B64C2B0UL, 0x86D3D2D4UL, 0xA00AE278UL, 0xBDBDF21CUL
+    };
+    size_t i;
+
+    crc = ~crc;
+    for (i = 0; i < len; i++) {
+        crc ^= (unsigned long)data[i];
+        crc = (crc >> 4) ^ k_nibble[crc & 0x0FUL];
+        crc = (crc >> 4) ^ k_nibble[crc & 0x0FUL];
+    }
+    return ~crc;
+}
+
+static unsigned long phttp_read_le32(const unsigned char* p)
+{
+    return (unsigned long)p[0]
+         | ((unsigned long)p[1] << 8)
+         | ((unsigned long)p[2] << 16)
+         | ((unsigned long)p[3] << 24);
+}
+
+static int phttp_gunzip_bounded(const unsigned char* src, size_t src_len,
+                                bytebuf* out, size_t max_out)
+{
+    tinfl_decompressor* decomp;
+    unsigned char*      dict;
+    size_t              in_pos;
+    size_t              total_out;
+    int                 rc;
+
+    if (src == NULL || out == NULL || src_len < 18) {
+        return PHTTP_BODY_READ_ERROR;
+    }
+
+    /* Hint initial allocation using trailing ISIZE when within cap. */
+    {
+        unsigned long hint = phttp_read_le32(src + src_len - 4);
+        if (hint > 0 && hint <= (unsigned long)max_out) {
+            (void)bb_reserve(out, (size_t)hint);
+        }
+    }
+
+    decomp = (tinfl_decompressor*)HeapAlloc(GetProcessHeap(), 0,
+                                            sizeof(tinfl_decompressor));
+    dict = (unsigned char*)HeapAlloc(GetProcessHeap(), 0, TINFL_LZ_DICT_SIZE);
+    if (decomp == NULL || dict == NULL) {
+        if (decomp != NULL) HeapFree(GetProcessHeap(), 0, decomp);
+        if (dict != NULL) HeapFree(GetProcessHeap(), 0, dict);
+        return PHTTP_BODY_NO_MEMORY;
+    }
+
+    in_pos = 0;
+    total_out = 0;
+    rc = PHTTP_BODY_OK;
+
+    while (in_pos < src_len) {
+        unsigned char flg;
+        size_t        dict_ofs;
+        size_t        member_out;
+        unsigned long crc;
+        unsigned long expected_crc;
+        unsigned long expected_isize;
+
+        if (src_len - in_pos < 18) {
+            rc = PHTTP_BODY_READ_ERROR;
+            break;
+        }
+        if (src[in_pos] != 0x1F || src[in_pos + 1] != 0x8B ||
+                src[in_pos + 2] != 8) {
+            rc = PHTTP_BODY_READ_ERROR;
+            break;
+        }
+        flg = src[in_pos + 3];
+        if ((flg & 0xE0) != 0) {
+            rc = PHTTP_BODY_READ_ERROR;
+            break;
+        }
+        in_pos += 10;
+
+        if ((flg & 0x04) != 0) {
+            unsigned int xlen;
+            if (src_len - in_pos < 10) {
+                rc = PHTTP_BODY_READ_ERROR;
+                break;
+            }
+            xlen = (unsigned int)src[in_pos] |
+                   ((unsigned int)src[in_pos + 1] << 8);
+            in_pos += 2;
+            if (src_len - in_pos < (size_t)xlen + 8) {
+                rc = PHTTP_BODY_READ_ERROR;
+                break;
+            }
+            in_pos += (size_t)xlen;
+        }
+        if ((flg & 0x08) != 0) {
+            while (in_pos < src_len - 8 && src[in_pos] != 0) {
+                in_pos++;
+            }
+            if (in_pos >= src_len - 8) {
+                rc = PHTTP_BODY_READ_ERROR;
+                break;
+            }
+            in_pos++;
+        }
+        if ((flg & 0x10) != 0) {
+            while (in_pos < src_len - 8 && src[in_pos] != 0) {
+                in_pos++;
+            }
+            if (in_pos >= src_len - 8) {
+                rc = PHTTP_BODY_READ_ERROR;
+                break;
+            }
+            in_pos++;
+        }
+        if ((flg & 0x02) != 0) {
+            if (src_len - in_pos < 10) {
+                rc = PHTTP_BODY_READ_ERROR;
+                break;
+            }
+            in_pos += 2;
+        }
+
+        tinfl_init(decomp);
+        dict_ofs = 0;
+        member_out = 0;
+        crc = 0;
+
+        for (;;) {
+            size_t       in_bytes;
+            size_t       out_bytes;
+            tinfl_status status;
+
+            in_bytes = src_len - in_pos;
+            out_bytes = TINFL_LZ_DICT_SIZE - dict_ofs;
+            status = tinfl_decompress(decomp, src + in_pos, &in_bytes,
+                                      dict, dict + dict_ofs, &out_bytes, 0);
+            in_pos += in_bytes;
+            if (out_bytes > 0) {
+                int append_rc;
+                if (out_bytes > max_out || total_out > max_out - out_bytes) {
+                    rc = PHTTP_BODY_TOO_LARGE;
+                    break;
+                }
+                append_rc = phttp_body_append(out,
+                        (const char*)(dict + dict_ofs), out_bytes);
+                if (append_rc != PHTTP_BODY_OK) {
+                    rc = append_rc;
+                    break;
+                }
+                crc = phttp_crc32_update(crc, dict + dict_ofs, out_bytes);
+                member_out += out_bytes;
+                total_out += out_bytes;
+                dict_ofs = (dict_ofs + out_bytes) & (TINFL_LZ_DICT_SIZE - 1);
+            }
+            if (status == TINFL_STATUS_DONE) {
+                break;
+            }
+            if (status != TINFL_STATUS_HAS_MORE_OUTPUT) {
+                rc = PHTTP_BODY_READ_ERROR;
+                break;
+            }
+        }
+        if (rc != PHTTP_BODY_OK) {
+            break;
+        }
+        if (src_len - in_pos < 8) {
+            rc = PHTTP_BODY_READ_ERROR;
+            break;
+        }
+        expected_crc = phttp_read_le32(src + in_pos);
+        expected_isize = phttp_read_le32(src + in_pos + 4);
+        in_pos += 8;
+        if (crc != expected_crc ||
+                (unsigned long)(member_out & 0xFFFFFFFFUL) != expected_isize) {
+            rc = PHTTP_BODY_READ_ERROR;
+            break;
+        }
+    }
+
+    HeapFree(GetProcessHeap(), 0, dict);
+    HeapFree(GetProcessHeap(), 0, decomp);
+    return rc;
+}
+
 /* ---- read helpers ------------------------------------------------ */
 
 /* Read until "\r\n\r\n" sequence found in buf. Returns index of byte
@@ -710,7 +1220,8 @@ static int decode_chunked(HANDLE conn,
                           bytebuf* out_body,
                           PHttpProgressCallback progress,
                           void* user_data,
-                          phttp_observer_state* observer)
+                          phttp_observer_state* observer,
+                          int* out_clean_eof)
 {
     bytebuf raw;
     size_t  pos;
@@ -722,6 +1233,9 @@ static int decode_chunked(HANDLE conn,
     size_t  i;
     char    sizebuf[24];
 
+    if (out_clean_eof != NULL) {
+        *out_clean_eof = 0;
+    }
     if (bb_init(&raw) != 0) {
         return PHTTP_BODY_NO_MEMORY;
     }
@@ -795,7 +1309,59 @@ static int decode_chunked(HANDLE conn,
         pos = (size_t)(nl - raw.data) + 2;
 
         if (chunk_size == 0) {
-            /* terminating chunk; we are done */
+            /* Consume terminating trailer section so keep-alive sockets stay
+             * cleanly aligned on the next response boundary. */
+            if (out_clean_eof != NULL) {
+                size_t trailer_read = 0;
+                for (;;) {
+                    while (raw.len - pos < 2 && trailer_read < 4096) {
+                        n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                        if (n <= 0) {
+                            break;
+                        }
+                        trailer_read += (size_t)n;
+                        append_result = phttp_chunk_append(&raw, &pos, tmp,
+                                (size_t)n);
+                        if (append_result != PHTTP_BODY_OK) {
+                            break;
+                        }
+                    }
+                    if (raw.len - pos < 2) {
+                        break;
+                    }
+                    if (raw.data[pos] == '\r' && raw.data[pos + 1] == '\n') {
+                        pos += 2;
+                        if (pos == raw.len) {
+                            *out_clean_eof = 1;
+                        }
+                        break;
+                    }
+                    nl = NULL;
+                    for (i = pos; i + 1 < raw.len; i++) {
+                        if (raw.data[i] == '\r' && raw.data[i + 1] == '\n') {
+                            nl = raw.data + i;
+                            break;
+                        }
+                    }
+                    if (nl != NULL) {
+                        pos = (size_t)(nl - raw.data) + 2;
+                        continue;
+                    }
+                    if (trailer_read >= 4096) {
+                        break;
+                    }
+                    n = PTls_Read(conn, tmp, (int)sizeof(tmp));
+                    if (n <= 0) {
+                        break;
+                    }
+                    trailer_read += (size_t)n;
+                    append_result = phttp_chunk_append(&raw, &pos, tmp,
+                            (size_t)n);
+                    if (append_result != PHTTP_BODY_OK) {
+                        break;
+                    }
+                }
+            }
             bb_free(&raw);
             return 0;
         }
@@ -1805,180 +2371,282 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
         }
 
         /* ---- TLS https:// via mbedTLS ---- */
-        request = build_request(method, cur_host, cur_path, headers,
-                                body, body_len);
-        if (request == NULL) {
-            resp_set_error(resp, "OOM building request");
-            phttp_observer_note_failure(&observer, "MEMORY");
-            goto done;
-        }
-        conn = g_insecure ? PTls_ConnectEx(cur_host, cur_port,
-                                            tls_observer_ptr)
-                          : PTls_ConnectVerifiedEx(cur_host, cur_port,
-                                                    tls_observer_ptr);
-        if (conn == NULL) {
-            char eb[320];
-            _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
-                      cur_host, cur_port, redirects, PTls_LastError());
-            eb[sizeof(eb) - 1] = '\0';
-            resp_set_error(resp, eb);
-            phttp_observer_note_failure(&observer, "TLS_CONNECT");
-            goto done;
-        }
-        phttp_observer_emit(&observer, PHTTP_PHASE_SENDING_REQUEST,
-                            -1, -1, 0);
-        req_len = (int)strlen(request);
-        wrote = PTls_Write(conn, request, req_len);
-        if (wrote != req_len) {
-            resp_set_error(resp, "PTls_Write incomplete");
-            phttp_observer_note_failure(&observer, "HTTP_WRITE");
-            goto done;
-        }
-        phttp_observer_emit(&observer, PHTTP_PHASE_WAITING_RESPONSE,
-                            -1, -1, 0);
-        if (bb_init(&recvbuf) != 0) {
-            resp_set_error(resp, "OOM recv buffer");
-            phttp_observer_note_failure(&observer, "MEMORY");
-            goto done;
-        }
-        phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
-                            -1, -1, 0);
-        body_start = read_until_headers(conn, &recvbuf);
-        if (body_start <= 0) {
-            resp_set_error(resp, "header block read failed");
-            phttp_observer_note_failure(&observer, "HTTP_HEADERS");
-            goto done;
-        }
-        status = parse_status(recvbuf.data, (size_t)body_start);
-        resp->status_code = status;
-        observer.status_code = status;
-        phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
-                            -1, -1, 0);
+        {
+            int  attempt;
+            int  can_take_pool;
+            int  from_pool;
+            int  can_keep_alive;
+            int  chunk_clean_eof;
+            BOOL resp_gzip;
+            BOOL caller_set_conn;
 
-        /* Follow a 3xx Location (GET only) before reading the body. */
-        if (follow && is_redirect_code(status) &&
-                redirects < MAX_REDIRECTS) {
-            loc = find_header(recvbuf.data, (size_t)body_start,
-                              "Location", &loclen);
-            if (loc != NULL && loclen > 0 &&
-                    resolve_redirect_url(loc, loclen, cur_url, next_url,
-                    sizeof(next_url))) {
-                phttp_observer_emit(&observer, PHTTP_PHASE_REDIRECTING,
-                                    -1, -1, 0);
-                if (!phttp_redirect_allowed(cur_scheme, next_url)) {
-                    resp_set_error(resp, "HTTPS redirect to HTTP rejected");
-                    phttp_observer_note_failure(&observer, "REDIRECT_POLICY");
-                    break;
-                }
-                redirects++;
-                cstrcpy(cur_url, sizeof(cur_url), next_url);
-                HeapFree(GetProcessHeap(), 0, request);
-                request = NULL;
-                bb_free(&recvbuf);
-                recvbuf.data = NULL;
-                PTls_Close(conn);
-                conn = NULL;
-                continue;
-            }
-            /* No usable Location: return the 3xx response as-is. */
-        }
+            caller_set_conn = phttp_headers_have(headers, "Connection");
+            can_take_pool = (follow && observer.callback == NULL &&
+                    !caller_set_conn) ? 1 : 0;
+            can_keep_alive = 0;
+            chunk_clean_eof = 0;
+            resp_gzip = FALSE;
 
-        /* Final TLS response: read the body into bodybuf. */
-        if (is_chunked(recvbuf.data, (size_t)body_start)) {
-            const char* prefix;
-            int prefix_len;
-            int chunk_result;
-
-            prefix = recvbuf.data + body_start;
-            prefix_len = (int)recvbuf.len - body_start;
-            phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
-                                0, -1, 0);
-            report_progress(progress, user_data, 0, -1);
-            chunk_result = decode_chunked(conn, prefix, prefix_len,
-                    &bodybuf, progress, user_data, &observer);
-            if (chunk_result != PHTTP_BODY_OK) {
-                resp_set_body_result(resp, chunk_result);
-                phttp_observer_note_failure(&observer,
-                        chunk_result == PHTTP_BODY_TOO_LARGE ?
-                        "BODY_LIMIT" :
-                        chunk_result == PHTTP_BODY_NO_MEMORY ?
-                        "MEMORY" : "HTTP_BODY");
+            request = build_request(method, cur_host, cur_path, headers,
+                                    body, body_len);
+            if (request == NULL) {
+                resp_set_error(resp, "OOM building request");
+                phttp_observer_note_failure(&observer, "MEMORY");
                 goto done;
             }
-        } else {
-            size_t prefix_len;
-            int append_result;
+            req_len = (int)strlen(request);
 
-            cl = parse_content_length(recvbuf.data, (size_t)body_start);
-            if (cl > MAX_RESP_BODY) {
-                resp_set_body_result(resp, PHTTP_BODY_TOO_LARGE);
-                phttp_observer_note_failure(&observer, "BODY_LIMIT");
-                goto done;
-            }
-            if (cl > 0) {
-                (void)bb_reserve(&bodybuf, (size_t)cl);
-            }
-            phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
-                                0, cl, 0);
-            report_progress(progress, user_data, 0, cl);
-            prefix_len = 0;
-            if (recvbuf.len > (size_t)body_start) {
-                prefix_len = recvbuf.len - (size_t)body_start;
-                if (cl >= 0 && prefix_len > (size_t)cl) {
-                    prefix_len = (size_t)cl;
+            for (attempt = 0; attempt < 2; attempt++) {
+                from_pool = 0;
+                if (attempt == 0 && can_take_pool) {
+                    conn = phttp_pool_take(cur_host, cur_port, g_insecure);
+                    if (conn != NULL) {
+                        from_pool = 1;
+                    }
                 }
-                append_result = phttp_body_append(&bodybuf,
-                        recvbuf.data + body_start, prefix_len);
-                if (append_result != PHTTP_BODY_OK) {
-                    resp_set_body_result(resp, append_result);
-                    phttp_observer_note_failure(&observer,
-                            append_result == PHTTP_BODY_TOO_LARGE ?
-                            "BODY_LIMIT" : "MEMORY");
+                if (conn == NULL) {
+                    conn = g_insecure ? PTls_ConnectEx(cur_host, cur_port,
+                                                        tls_observer_ptr)
+                                      : PTls_ConnectVerifiedEx(cur_host,
+                                                        cur_port,
+                                                        tls_observer_ptr);
+                }
+                if (conn == NULL) {
+                    char eb[320];
+                    _snprintf(eb, sizeof(eb) - 1, "%s:%d (hop %d): %s",
+                              cur_host, cur_port, redirects, PTls_LastError());
+                    eb[sizeof(eb) - 1] = '\0';
+                    resp_set_error(resp, eb);
+                    phttp_observer_note_failure(&observer, "TLS_CONNECT");
                     goto done;
                 }
-                phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
-                                    (int)bodybuf.len, cl, 0);
-                report_progress(progress, user_data,
-                        (int)bodybuf.len, cl);
+                phttp_observer_emit(&observer, PHTTP_PHASE_SENDING_REQUEST,
+                                    -1, -1, 0);
+                wrote = PTls_Write(conn, request, req_len);
+                if (wrote != req_len) {
+                    if (from_pool) {
+                        PTls_Close(conn);
+                        conn = NULL;
+                        continue;
+                    }
+                    resp_set_error(resp, "PTls_Write incomplete");
+                    phttp_observer_note_failure(&observer, "HTTP_WRITE");
+                    goto done;
+                }
+                phttp_observer_emit(&observer, PHTTP_PHASE_WAITING_RESPONSE,
+                                    -1, -1, 0);
+                if (bb_init(&recvbuf) != 0) {
+                    resp_set_error(resp, "OOM recv buffer");
+                    phttp_observer_note_failure(&observer, "MEMORY");
+                    goto done;
+                }
+                phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
+                                    -1, -1, 0);
+                body_start = read_until_headers(conn, &recvbuf);
+                if (body_start <= 0) {
+                    if (from_pool && recvbuf.len == 0) {
+                        bb_free(&recvbuf);
+                        recvbuf.data = NULL;
+                        PTls_Close(conn);
+                        conn = NULL;
+                        continue;
+                    }
+                    resp_set_error(resp, "header block read failed");
+                    phttp_observer_note_failure(&observer, "HTTP_HEADERS");
+                    goto done;
+                }
+                break;
             }
-            if (cl >= 0) {
-                int  remaining;
-                int  got;
-                int  want;
 
-                remaining = cl - (int)bodybuf.len;
-                while (remaining > 0) {
-                    if (bodybuf.cap >= bodybuf.len + (size_t)remaining + 1) {
-                        want = remaining < 16384 ? remaining : 16384;
-                        got = PTls_Read(conn, bodybuf.data + bodybuf.len, want);
+            status = parse_status(recvbuf.data, (size_t)body_start);
+            resp->status_code = status;
+            observer.status_code = status;
+            phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_HEADERS,
+                                -1, -1, 0);
+
+            /* Follow a 3xx Location (GET only) before reading the body. */
+            if (follow && is_redirect_code(status) &&
+                    redirects < MAX_REDIRECTS) {
+                loc = find_header(recvbuf.data, (size_t)body_start,
+                                  "Location", &loclen);
+                if (loc != NULL && loclen > 0 &&
+                        resolve_redirect_url(loc, loclen, cur_url, next_url,
+                        sizeof(next_url))) {
+                    phttp_observer_emit(&observer, PHTTP_PHASE_REDIRECTING,
+                                        -1, -1, 0);
+                    if (!phttp_redirect_allowed(cur_scheme, next_url)) {
+                        resp_set_error(resp, "HTTPS redirect to HTTP rejected");
+                        phttp_observer_note_failure(&observer, "REDIRECT_POLICY");
+                        break;
+                    }
+                    redirects++;
+                    cstrcpy(cur_url, sizeof(cur_url), next_url);
+                    HeapFree(GetProcessHeap(), 0, request);
+                    request = NULL;
+                    bb_free(&recvbuf);
+                    recvbuf.data = NULL;
+                    PTls_Close(conn);
+                    conn = NULL;
+                    continue;
+                }
+                /* No usable Location: return the 3xx response as-is. */
+            }
+
+            resp_gzip = phttp_is_gzip_encoding(recvbuf.data, (size_t)body_start);
+            can_keep_alive = (!caller_set_conn &&
+                    !phttp_connection_wants_close(recvbuf.data,
+                            (size_t)body_start)) ? 1 : 0;
+
+            /* Final TLS response: read the body into bodybuf. */
+            if (is_chunked(recvbuf.data, (size_t)body_start)) {
+                const char* prefix;
+                int prefix_len;
+                int chunk_result;
+
+                prefix = recvbuf.data + body_start;
+                prefix_len = (int)recvbuf.len - body_start;
+                phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
+                                    0, -1, 0);
+                report_progress(progress, user_data, 0, -1);
+                chunk_result = decode_chunked(conn, prefix, prefix_len,
+                        &bodybuf,
+                        resp_gzip ? NULL : progress,
+                        resp_gzip ? NULL : user_data,
+                        resp_gzip ? NULL : &observer,
+                        can_keep_alive ? &chunk_clean_eof : NULL);
+                if (chunk_result != PHTTP_BODY_OK) {
+                    resp_set_body_result(resp, chunk_result);
+                    phttp_observer_note_failure(&observer,
+                            chunk_result == PHTTP_BODY_TOO_LARGE ?
+                            "BODY_LIMIT" :
+                            chunk_result == PHTTP_BODY_NO_MEMORY ?
+                            "MEMORY" : "HTTP_BODY");
+                    goto done;
+                }
+                if (!chunk_clean_eof) {
+                    can_keep_alive = 0;
+                }
+            } else {
+                size_t prefix_len;
+                int append_result;
+                int progress_total;
+
+                cl = parse_content_length(recvbuf.data, (size_t)body_start);
+                if (cl > MAX_RESP_BODY) {
+                    resp_set_body_result(resp, PHTTP_BODY_TOO_LARGE);
+                    phttp_observer_note_failure(&observer, "BODY_LIMIT");
+                    goto done;
+                }
+                if (cl > 0) {
+                    (void)bb_reserve(&bodybuf, (size_t)cl);
+                }
+                progress_total = resp_gzip ? -1 : cl;
+                phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
+                                    0, progress_total, 0);
+                report_progress(progress, user_data, 0, progress_total);
+                prefix_len = 0;
+                if (recvbuf.len > (size_t)body_start) {
+                    prefix_len = recvbuf.len - (size_t)body_start;
+                    if (cl >= 0 && prefix_len > (size_t)cl) {
+                        can_keep_alive = 0;
+                        prefix_len = (size_t)cl;
+                    }
+                    append_result = phttp_body_append(&bodybuf,
+                            recvbuf.data + body_start, prefix_len);
+                    if (append_result != PHTTP_BODY_OK) {
+                        resp_set_body_result(resp, append_result);
+                        phttp_observer_note_failure(&observer,
+                                append_result == PHTTP_BODY_TOO_LARGE ?
+                                "BODY_LIMIT" : "MEMORY");
+                        goto done;
+                    }
+                    if (!resp_gzip) {
+                        phttp_observer_emit(&observer,
+                                            PHTTP_PHASE_RECEIVING_BODY,
+                                            (int)bodybuf.len, cl, 0);
+                        report_progress(progress, user_data,
+                                (int)bodybuf.len, cl);
+                    }
+                }
+                if (cl >= 0) {
+                    int  remaining;
+                    int  got;
+                    int  want;
+
+                    remaining = cl - (int)bodybuf.len;
+                    while (remaining > 0) {
+                        if (bodybuf.cap >= bodybuf.len + (size_t)remaining + 1) {
+                            want = remaining < 16384 ? remaining : 16384;
+                            got = PTls_Read(conn, bodybuf.data + bodybuf.len,
+                                    want);
+                            if (got < 0) {
+                                resp_set_body_result(resp,
+                                        PHTTP_BODY_READ_ERROR);
+                                phttp_observer_note_failure(&observer,
+                                        "HTTP_BODY");
+                                goto done;
+                            }
+                            if (got == 0) {
+                                resp_set_error(resp, "response body truncated");
+                                resp->status_code = 0;
+                                phttp_observer_note_failure(&observer,
+                                        "HTTP_BODY");
+                                goto done;
+                            }
+                            bodybuf.len += (size_t)got;
+                            bodybuf.data[bodybuf.len] = '\0';
+                        } else {
+                            char tmp[8192];
+                            want = remaining < (int)sizeof(tmp)
+                                   ? remaining : (int)sizeof(tmp);
+                            got = PTls_Read(conn, tmp, want);
+                            if (got < 0) {
+                                resp_set_body_result(resp,
+                                        PHTTP_BODY_READ_ERROR);
+                                phttp_observer_note_failure(&observer,
+                                        "HTTP_BODY");
+                                goto done;
+                            }
+                            if (got == 0) {
+                                resp_set_error(resp, "response body truncated");
+                                resp->status_code = 0;
+                                phttp_observer_note_failure(&observer,
+                                        "HTTP_BODY");
+                                goto done;
+                            }
+                            append_result = phttp_body_append(&bodybuf, tmp,
+                                    (size_t)got);
+                            if (append_result != PHTTP_BODY_OK) {
+                                resp_set_body_result(resp, append_result);
+                                phttp_observer_note_failure(&observer,
+                                        append_result == PHTTP_BODY_TOO_LARGE ?
+                                        "BODY_LIMIT" : "MEMORY");
+                                goto done;
+                            }
+                        }
+                        remaining -= got;
+                        if (!resp_gzip) {
+                            phttp_observer_emit(&observer,
+                                                PHTTP_PHASE_RECEIVING_BODY,
+                                                (int)bodybuf.len, cl, 0);
+                            report_progress(progress, user_data,
+                                    (int)bodybuf.len, cl);
+                        }
+                    }
+                } else {
+                    char tmp[8192];
+                    int  got;
+
+                    can_keep_alive = 0;
+                    while (1) {
+                        got = PTls_Read(conn, tmp, (int)sizeof(tmp));
                         if (got < 0) {
                             resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
                             phttp_observer_note_failure(&observer, "HTTP_BODY");
                             goto done;
                         }
                         if (got == 0) {
-                            resp_set_error(resp, "response body truncated");
-                            resp->status_code = 0;
-                            phttp_observer_note_failure(&observer, "HTTP_BODY");
-                            goto done;
-                        }
-                        bodybuf.len += (size_t)got;
-                        bodybuf.data[bodybuf.len] = '\0';
-                    } else {
-                        char tmp[8192];
-                        want = remaining < (int)sizeof(tmp)
-                               ? remaining : (int)sizeof(tmp);
-                        got = PTls_Read(conn, tmp, want);
-                        if (got < 0) {
-                            resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
-                            phttp_observer_note_failure(&observer, "HTTP_BODY");
-                            goto done;
-                        }
-                        if (got == 0) {
-                            resp_set_error(resp, "response body truncated");
-                            resp->status_code = 0;
-                            phttp_observer_note_failure(&observer, "HTTP_BODY");
-                            goto done;
+                            break;
                         }
                         append_result = phttp_body_append(&bodybuf, tmp,
                                 (size_t)got);
@@ -1989,43 +2657,52 @@ static PHttpResponse* http_request_url(const char* method, const char* url,
                                     "BODY_LIMIT" : "MEMORY");
                             goto done;
                         }
+                        if (!resp_gzip) {
+                            phttp_observer_emit(&observer,
+                                                PHTTP_PHASE_RECEIVING_BODY,
+                                                (int)bodybuf.len, -1, 0);
+                            report_progress(progress, user_data,
+                                    (int)bodybuf.len, -1);
+                        }
                     }
-                    remaining -= got;
-                    phttp_observer_emit(&observer,
-                                        PHTTP_PHASE_RECEIVING_BODY,
-                                        (int)bodybuf.len, cl, 0);
-                    report_progress(progress, user_data,
-                            (int)bodybuf.len, cl);
                 }
-            } else {
-                char tmp[8192];
-                int  got;
+            }
 
-                while (1) {
-                    got = PTls_Read(conn, tmp, (int)sizeof(tmp));
-                    if (got < 0) {
-                        resp_set_body_result(resp, PHTTP_BODY_READ_ERROR);
-                        phttp_observer_note_failure(&observer, "HTTP_BODY");
+            if (resp_gzip) {
+                if (bodybuf.len > 0) {
+                    bytebuf decoded;
+                    int     gunzip_rc;
+
+                    if (bb_init(&decoded) != 0) {
+                        resp_set_body_result(resp, PHTTP_BODY_NO_MEMORY);
+                        phttp_observer_note_failure(&observer, "MEMORY");
                         goto done;
                     }
-                    if (got == 0) {
-                        break;
-                    }
-                    append_result = phttp_body_append(&bodybuf, tmp,
-                            (size_t)got);
-                    if (append_result != PHTTP_BODY_OK) {
-                        resp_set_body_result(resp, append_result);
+                    gunzip_rc = phttp_gunzip_bounded(
+                            (const unsigned char*)bodybuf.data,
+                            bodybuf.len, &decoded, MAX_RESP_BODY);
+                    if (gunzip_rc != PHTTP_BODY_OK) {
+                        bb_free(&decoded);
+                        resp_set_body_result(resp, gunzip_rc);
                         phttp_observer_note_failure(&observer,
-                                append_result == PHTTP_BODY_TOO_LARGE ?
-                                "BODY_LIMIT" : "MEMORY");
+                                gunzip_rc == PHTTP_BODY_TOO_LARGE ?
+                                "BODY_LIMIT" :
+                                gunzip_rc == PHTTP_BODY_NO_MEMORY ?
+                                "MEMORY" : "HTTP_BODY");
                         goto done;
                     }
-                    phttp_observer_emit(&observer,
-                                        PHTTP_PHASE_RECEIVING_BODY,
-                                        (int)bodybuf.len, -1, 0);
-                    report_progress(progress, user_data,
-                            (int)bodybuf.len, -1);
+                    bb_free(&bodybuf);
+                    bodybuf = decoded;
                 }
+                phttp_observer_emit(&observer, PHTTP_PHASE_RECEIVING_BODY,
+                                    (int)bodybuf.len, -1, 0);
+                report_progress(progress, user_data, (int)bodybuf.len, -1);
+            }
+
+            if (conn != NULL && can_keep_alive &&
+                    resp->status_code > 0 && resp->error_msg[0] == '\0') {
+                phttp_pool_put(cur_host, cur_port, g_insecure, conn);
+                conn = NULL;
             }
         }
         break;   /* final TLS response complete */
