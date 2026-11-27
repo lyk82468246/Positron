@@ -68,21 +68,21 @@ static unsigned long pscript_elapsed(DWORD start)
 /* Bounded, process-private trusted bytecode cache. Only bytecode produced by
  * this DLL's own Duktape compiler in the same process is ever stored or
  * loaded; no external bytecode input is exposed through the public ABI.
+ * Cache hits verify the process ABI version and exact UTF-8 source bytes.
  * Each context still loads into its own isolated heap and global environment. */
 #define PSCRIPT_BC_MIN_SOURCE_BYTES 1024UL
 #define PSCRIPT_BC_MAX_ENTRIES      48
 #define PSCRIPT_BC_MAX_ENTRY_BYTES  (384UL * 1024UL)
 #define PSCRIPT_BC_MAX_TOTAL_BYTES  (1536UL * 1024UL)
-#define PSCRIPT_BC_EDGE_BYTES       16
 
 typedef struct pscript_bc_entry {
     int in_use;
     int refs;
     unsigned long last_used;
+    unsigned long abi_version;
     size_t source_len;
     unsigned long hash[4];
-    unsigned char head[PSCRIPT_BC_EDGE_BYTES];
-    unsigned char tail[PSCRIPT_BC_EDGE_BYTES];
+    char *source;
     unsigned char *bytecode;
     size_t bytecode_len;
 } pscript_bc_entry;
@@ -129,17 +129,13 @@ static void pscript_bc_hash(const char *source, size_t len,
 static int pscript_bc_match(const pscript_bc_entry *entry,
         const char *source, size_t len, const unsigned long hash[4])
 {
-    if (!entry->in_use || entry->source_len != len ||
+    if (!entry->in_use || entry->abi_version != PSCRIPT_ABI_VERSION ||
+            entry->source_len != len || entry->source == NULL ||
             entry->hash[0] != hash[0] || entry->hash[1] != hash[1] ||
             entry->hash[2] != hash[2] || entry->hash[3] != hash[3]) {
         return 0;
     }
-    if (memcmp(entry->head, source, PSCRIPT_BC_EDGE_BYTES) != 0 ||
-            memcmp(entry->tail, source + len - PSCRIPT_BC_EDGE_BYTES,
-                    PSCRIPT_BC_EDGE_BYTES) != 0) {
-        return 0;
-    }
-    return 1;
+    return memcmp(entry->source, source, len) == 0 ? 1 : 0;
 }
 
 static pscript_bc_entry *pscript_bc_acquire(const char *source, size_t len,
@@ -182,26 +178,40 @@ static void pscript_bc_store(const char *source, size_t len,
 {
     int i;
     int free_slot;
+    size_t entry_bytes;
+    char *source_copy;
 
     if (bytecode == NULL) {
         return;
     }
-    if (!g_bc_lock_ready || bytecode_len == 0 ||
-            bytecode_len > PSCRIPT_BC_MAX_ENTRY_BYTES ||
-            bytecode_len > PSCRIPT_BC_MAX_TOTAL_BYTES) {
+    if (!g_bc_lock_ready || source == NULL || len == 0 || bytecode_len == 0 ||
+            len > PSCRIPT_BC_MAX_ENTRY_BYTES ||
+            bytecode_len > PSCRIPT_BC_MAX_ENTRY_BYTES - len) {
         free(bytecode);
         return;
     }
+    entry_bytes = len + bytecode_len;
+    if (entry_bytes > PSCRIPT_BC_MAX_TOTAL_BYTES) {
+        free(bytecode);
+        return;
+    }
+    source_copy = (char *) malloc(len);
+    if (source_copy == NULL) {
+        free(bytecode);
+        return;
+    }
+    memcpy(source_copy, source, len);
     EnterCriticalSection(&g_bc_lock);
     for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
         if (pscript_bc_match(&g_bc_entries[i], source, len, hash)) {
             g_bc_entries[i].last_used = ++g_bc_clock;
             LeaveCriticalSection(&g_bc_lock);
+            free(source_copy);
             free(bytecode);
             return;
         }
     }
-    while (g_bc_total_bytes + bytecode_len > PSCRIPT_BC_MAX_TOTAL_BYTES) {
+    while (entry_bytes > PSCRIPT_BC_MAX_TOTAL_BYTES - g_bc_total_bytes) {
         int victim = -1;
         unsigned long oldest = 0;
 
@@ -215,11 +225,14 @@ static void pscript_bc_store(const char *source, size_t len,
         }
         if (victim < 0) {
             LeaveCriticalSection(&g_bc_lock);
+            free(source_copy);
             free(bytecode);
             return;
         }
+        free(g_bc_entries[victim].source);
         free(g_bc_entries[victim].bytecode);
-        g_bc_total_bytes -= g_bc_entries[victim].bytecode_len;
+        g_bc_total_bytes -= (g_bc_entries[victim].source_len +
+                g_bc_entries[victim].bytecode_len);
         memset(&g_bc_entries[victim], 0, sizeof(g_bc_entries[victim]));
     }
     free_slot = -1;
@@ -241,27 +254,29 @@ static void pscript_bc_store(const char *source, size_t len,
         }
         if (free_slot < 0) {
             LeaveCriticalSection(&g_bc_lock);
+            free(source_copy);
             free(bytecode);
             return;
         }
+        free(g_bc_entries[free_slot].source);
         free(g_bc_entries[free_slot].bytecode);
-        g_bc_total_bytes -= g_bc_entries[free_slot].bytecode_len;
+        g_bc_total_bytes -= (g_bc_entries[free_slot].source_len +
+                g_bc_entries[free_slot].bytecode_len);
         memset(&g_bc_entries[free_slot], 0, sizeof(g_bc_entries[free_slot]));
     }
     g_bc_entries[free_slot].in_use = 1;
     g_bc_entries[free_slot].refs = 0;
     g_bc_entries[free_slot].last_used = ++g_bc_clock;
+    g_bc_entries[free_slot].abi_version = PSCRIPT_ABI_VERSION;
     g_bc_entries[free_slot].source_len = len;
     g_bc_entries[free_slot].hash[0] = hash[0];
     g_bc_entries[free_slot].hash[1] = hash[1];
     g_bc_entries[free_slot].hash[2] = hash[2];
     g_bc_entries[free_slot].hash[3] = hash[3];
-    memcpy(g_bc_entries[free_slot].head, source, PSCRIPT_BC_EDGE_BYTES);
-    memcpy(g_bc_entries[free_slot].tail,
-            source + len - PSCRIPT_BC_EDGE_BYTES, PSCRIPT_BC_EDGE_BYTES);
+    g_bc_entries[free_slot].source = source_copy;
     g_bc_entries[free_slot].bytecode = bytecode;
     g_bc_entries[free_slot].bytecode_len = bytecode_len;
-    g_bc_total_bytes += bytecode_len;
+    g_bc_total_bytes += entry_bytes;
     LeaveCriticalSection(&g_bc_lock);
 }
 
@@ -274,8 +289,13 @@ static void pscript_bc_shutdown(void)
     }
     EnterCriticalSection(&g_bc_lock);
     for (i = 0; i < PSCRIPT_BC_MAX_ENTRIES; i++) {
-        if (g_bc_entries[i].in_use && g_bc_entries[i].bytecode != NULL) {
-            free(g_bc_entries[i].bytecode);
+        if (g_bc_entries[i].in_use) {
+            if (g_bc_entries[i].source != NULL) {
+                free(g_bc_entries[i].source);
+            }
+            if (g_bc_entries[i].bytecode != NULL) {
+                free(g_bc_entries[i].bytecode);
+            }
         }
         memset(&g_bc_entries[i], 0, sizeof(g_bc_entries[i]));
     }
@@ -1115,10 +1135,17 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
             phase_start = ctx->performance.enabled ? GetTickCount() : 0;
             rc = duk_safe_call(ctx->duk, pscript_load_bc_safe, &load_args,
                     0, 1);
+            pscript_bc_release(bc_entry);
+            /* Fall back to normal source compilation if bytecode load fails
+             * for any non-memory, non-timeout reason. */
+            if (rc != 0 && !ctx->memory_limited && !ctx->timed_out) {
+                duk_set_top(ctx->duk, 0);
+                rc = duk_pcompile_lstring(ctx->duk, DUK_COMPILE_EVAL,
+                        source, (duk_size_t) length);
+            }
             if (ctx->performance.enabled) {
                 compile_ms = pscript_elapsed(phase_start);
             }
-            pscript_bc_release(bc_entry);
             if (rc == 0 && ctx->budget_ms != 0 && dukky_check_timeout(ctx)) {
                 rc = 1;
             }
@@ -1145,16 +1172,19 @@ PSCRIPT_API int PScript_Evaluate(HANDLE hScript, const char *source,
                         (LONG) (ctx->deadline - GetTickCount()) >= 200L)) {
                     pscript_bc_dump_args dump_args;
                     int saved_memory_limited;
+                    int saved_timed_out;
                     int dump_rc;
 
                     dump_args.bytecode = NULL;
                     dump_args.bytecode_len = 0;
                     saved_memory_limited = ctx->memory_limited;
+                    saved_timed_out = ctx->timed_out;
                     duk_dup_top(ctx->duk);
                     dump_rc = duk_safe_call(ctx->duk, pscript_dump_bc_safe,
                             &dump_args, 1, 0);
                     if (dump_rc != 0) {
                         ctx->memory_limited = saved_memory_limited;
+                        ctx->timed_out = saved_timed_out;
                         if (dump_args.bytecode != NULL) {
                             free(dump_args.bytecode);
                             dump_args.bytecode = NULL;

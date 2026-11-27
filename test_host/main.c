@@ -99,6 +99,8 @@ extern BOOL test1319_image_rgba_round_stroke(void);
 extern const char *test1319_image_rgba_round_stroke_last_error(void);
 extern BOOL test1329_core_bootstrap_hamburger(void);
 extern BOOL test1336_script_performance_contract(void);
+extern BOOL test1388_script_bytecode_cache_contract(
+        void (*progress)(const char *), char *error, int error_capacity);
 extern BOOL test1338_browser_bootstrap_contract(char *error, int error_capacity);
 extern BOOL test1340_core_image_dimension_contract(void);
 extern const char *test1340_core_image_dimension_last_error(void);
@@ -1335,7 +1337,29 @@ static BOOL test1387_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1387
+static void test1388_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Script1388 phase", phase);
+}
+
+static BOOL test1388_script_bytecode_cache_guarded(void)
+{
+    char err1388[256];
+    BOOL ok;
+
+    err1388[0] = '\0';
+    ok = test1388_script_bytecode_cache_contract(test1388_log_progress,
+            err1388, (int) sizeof(err1388));
+    if (ok) {
+        show_info(L"TEST 1388 OK",
+                "Script trusted bytecode cache exact match, isolation, fallback, eviction and telemetry passed.");
+    } else {
+        show_error(L"TEST 1388 FAIL", err1388);
+    }
+    return ok;
+}
+
+#define TEST_MAX_NUMBER 1388
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118580,6 +118604,9 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1387_media_contract_guarded();
             if (ok) { show_info(L"TEST 1387 OK", "Media MP4 bad NAL length and truncated sample boundary contract passed."); }
             else { show_error(L"TEST 1387 FAIL", test1332_media_last_error()); }
+            break;
+        case 1388:
+            ok = test1388_script_bytecode_cache_guarded();
             break;
         case 1361:
             ok = test1361_media_contract_guarded();
