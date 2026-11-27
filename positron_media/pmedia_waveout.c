@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define PMEDIA_WAVEOUT_FRAMES 2048
+#define PMEDIA_WAVEOUT_BUFFERS 2
 
 struct pmedia_waveout {
     const unsigned char *input;
@@ -19,11 +20,12 @@ struct pmedia_waveout {
     int cursor;
     int paused;
     int stopped;
-    int prepared;
-    int pending;
+    int prepared[PMEDIA_WAVEOUT_BUFFERS];
+    int pending[PMEDIA_WAVEOUT_BUFFERS];
+    int next_slot;
     HWAVEOUT device;
-    WAVEHDR header;
-    unsigned char *buffer;
+    WAVEHDR headers[PMEDIA_WAVEOUT_BUFFERS];
+    unsigned char *buffers[PMEDIA_WAVEOUT_BUFFERS];
     unsigned char *callback_buffer;
     int buffer_bytes;
     pm_output_callbacks output;
@@ -46,42 +48,47 @@ static void pm_waveout_error(char *error_text,
 static int pm_waveout_reset(pmedia_waveout *context)
 {
     MMRESULT result;
+    int slot;
 
     if (context == NULL || context->device == NULL) {
         return PMEDIA_ERROR_ARGUMENT;
     }
     result = waveOutReset(context->device);
     if (result != MMSYSERR_NOERROR) return PMEDIA_ERROR_NATIVE;
-    if (context->prepared) {
-        result = waveOutUnprepareHeader(context->device,
-                                        &context->header,
-                                        sizeof(context->header));
-        if (result != MMSYSERR_NOERROR) return PMEDIA_ERROR_NATIVE;
-        context->prepared = 0;
+    for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+        if (context->prepared[slot]) {
+            result = waveOutUnprepareHeader(context->device,
+                                            &context->headers[slot],
+                                            sizeof(context->headers[slot]));
+            if (result != MMSYSERR_NOERROR) return PMEDIA_ERROR_NATIVE;
+            context->prepared[slot] = 0;
+        }
+        context->pending[slot] = 0;
+        memset(&context->headers[slot], 0, sizeof(context->headers[slot]));
     }
-    context->pending = 0;
-    memset(&context->header, 0, sizeof(context->header));
+    context->next_slot = 0;
     return PMEDIA_OK;
 }
 
-static int pm_waveout_collect(pmedia_waveout *context)
+static int pm_waveout_collect_any(pmedia_waveout *context)
 {
     MMRESULT result;
+    int slot;
 
     if (context == NULL || context->device == NULL) {
         return PMEDIA_ERROR_ARGUMENT;
     }
-    if (!context->pending) return PMEDIA_OK;
-    if ((context->header.dwFlags & WHDR_DONE) == 0) {
-        return PMEDIA_WOULD_BLOCK;
+    for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+        if (!context->pending[slot]) continue;
+        if ((context->headers[slot].dwFlags & WHDR_DONE) == 0) continue;
+        result = waveOutUnprepareHeader(context->device,
+                                        &context->headers[slot],
+                                        sizeof(context->headers[slot]));
+        if (result != MMSYSERR_NOERROR) return PMEDIA_ERROR_NATIVE;
+        context->prepared[slot] = 0;
+        context->pending[slot] = 0;
+        memset(&context->headers[slot], 0, sizeof(context->headers[slot]));
     }
-    result = waveOutUnprepareHeader(context->device,
-                                    &context->header,
-                                    sizeof(context->header));
-    if (result != MMSYSERR_NOERROR) return PMEDIA_ERROR_NATIVE;
-    context->prepared = 0;
-    context->pending = 0;
-    memset(&context->header, 0, sizeof(context->header));
     return PMEDIA_OK;
 }
 
@@ -101,6 +108,7 @@ int pmedia_waveout_open(const unsigned char *input,
     pmedia_waveout *context;
     WAVEFORMATEX format;
     MMRESULT result;
+    int slot;
 
     if (out_context != NULL) *out_context = NULL;
     if (input == NULL || input_bytes <= 0 || out_context == NULL ||
@@ -127,19 +135,25 @@ int pmedia_waveout_open(const unsigned char *input,
     context->block_align = channels * (bits_per_sample / 8);
     context->total_frames = total_frames;
     context->buffer_bytes = PMEDIA_WAVEOUT_FRAMES * context->block_align;
-    context->buffer = (unsigned char *)malloc((size_t)context->buffer_bytes);
-    if (context->buffer == NULL) {
-        pm_waveout_error(error_text, error_text_bytes,
-                         "WaveOut buffer allocation failed");
-        free(context);
-        return PMEDIA_ERROR_MEMORY;
+    for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+        context->buffers[slot] = (unsigned char *)malloc((size_t)context->buffer_bytes);
+        if (context->buffers[slot] == NULL) {
+            int j;
+            pm_waveout_error(error_text, error_text_bytes,
+                             "WaveOut buffer allocation failed");
+            for (j = 0; j < slot; j++) free(context->buffers[j]);
+            free(context);
+            return PMEDIA_ERROR_MEMORY;
+        }
     }
     if (output != NULL) memcpy(&context->output, output, sizeof(*output));
     if (bits_per_sample == 8 && context->output.audio != NULL) {
         context->callback_buffer = (unsigned char *)malloc(
             (size_t)(PMEDIA_WAVEOUT_FRAMES * channels * 2));
         if (context->callback_buffer == NULL) {
-            free(context->buffer);
+            for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+                free(context->buffers[slot]);
+            }
             free(context);
             return PMEDIA_ERROR_MEMORY;
         }
@@ -161,7 +175,9 @@ int pmedia_waveout_open(const unsigned char *input,
         pm_waveout_error(error_text, error_text_bytes,
                          "WaveOut device rejected the PCM format");
         if (context->callback_buffer != NULL) free(context->callback_buffer);
-        free(context->buffer);
+        for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+            free(context->buffers[slot]);
+        }
         free(context);
         return PMEDIA_ERROR_NATIVE;
     }
@@ -171,19 +187,25 @@ int pmedia_waveout_open(const unsigned char *input,
 
 void pmedia_waveout_close(pmedia_waveout *context)
 {
+    int slot;
+
     if (context == NULL) return;
     if (context->device != NULL) {
         waveOutReset(context->device);
-        if (context->prepared) {
-            waveOutUnprepareHeader(context->device,
-                                   &context->header,
-                                   sizeof(context->header));
-            context->prepared = 0;
+        for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+            if (context->prepared[slot]) {
+                waveOutUnprepareHeader(context->device,
+                                       &context->headers[slot],
+                                       sizeof(context->headers[slot]));
+                context->prepared[slot] = 0;
+            }
         }
         waveOutClose(context->device);
         context->device = NULL;
     }
-    if (context->buffer != NULL) free(context->buffer);
+    for (slot = 0; slot < PMEDIA_WAVEOUT_BUFFERS; slot++) {
+        if (context->buffers[slot] != NULL) free(context->buffers[slot]);
+    }
     if (context->callback_buffer != NULL) free(context->callback_buffer);
     free(context);
 }
@@ -193,6 +215,9 @@ int pmedia_waveout_pump(pmedia_waveout *context, int max_frames)
     int result;
     int frames;
     int bytes;
+    int slot;
+    int i;
+    int any_pending;
     pm_audio_block block;
     int callback_result;
     MMRESULT wave_result;
@@ -200,9 +225,27 @@ int pmedia_waveout_pump(pmedia_waveout *context, int max_frames)
     if (context == NULL) return PMEDIA_ERROR_ARGUMENT;
     if (context->stopped) return PMEDIA_ERROR_STATE;
     if (context->paused) return PMEDIA_OK;
-    result = pm_waveout_collect(context);
+    result = pm_waveout_collect_any(context);
     if (result != PMEDIA_OK) return result;
-    if (context->cursor >= context->total_frames) return PMEDIA_EOF;
+    if (context->cursor >= context->total_frames) {
+        any_pending = 0;
+        for (i = 0; i < PMEDIA_WAVEOUT_BUFFERS; i++) {
+            if (context->pending[i]) {
+                any_pending = 1;
+                break;
+            }
+        }
+        return any_pending ? PMEDIA_WOULD_BLOCK : PMEDIA_EOF;
+    }
+    slot = -1;
+    for (i = 0; i < PMEDIA_WAVEOUT_BUFFERS; i++) {
+        int candidate = (context->next_slot + i) % PMEDIA_WAVEOUT_BUFFERS;
+        if (!context->pending[candidate]) {
+            slot = candidate;
+            break;
+        }
+    }
+    if (slot < 0) return PMEDIA_WOULD_BLOCK;
     frames = context->total_frames - context->cursor;
     if (frames > PMEDIA_WAVEOUT_FRAMES) frames = PMEDIA_WAVEOUT_FRAMES;
     if (max_frames > 0 && frames > max_frames) frames = max_frames;
@@ -213,13 +256,13 @@ int pmedia_waveout_pump(pmedia_waveout *context, int max_frames)
         context->cursor * context->block_align > context->data_bytes - bytes) {
         return PMEDIA_ERROR_FORMAT;
     }
-    memcpy(context->buffer,
+    memcpy(context->buffers[slot],
            context->input + context->data_offset +
                context->cursor * context->block_align,
            (size_t)bytes);
     memset(&block, 0, sizeof(block));
     block.size = sizeof(block);
-    block.data = context->buffer;
+    block.data = context->buffers[slot];
     block.bytes = bytes;
     block.samples = frames;
     block.sample_rate = context->sample_rate;
@@ -230,11 +273,10 @@ int pmedia_waveout_pump(pmedia_waveout *context, int max_frames)
                         context->sample_rate;
     if (context->output.audio != NULL) {
         if (context->bits_per_sample == 8) {
-            int i;
             short *samples;
             samples = (short *)context->callback_buffer;
             for (i = 0; i < frames * context->channels; i++) {
-                samples[i] = (short)(((int)context->buffer[i] - 128) * 256);
+                samples[i] = (short)(((int)context->buffers[slot][i] - 128) * 256);
             }
             block.data = context->callback_buffer;
             block.bytes = frames * context->channels * 2;
@@ -246,26 +288,27 @@ int pmedia_waveout_pump(pmedia_waveout *context, int max_frames)
             return PMEDIA_CALLBACK_STOP;
         }
     }
-    memset(&context->header, 0, sizeof(context->header));
-    context->header.lpData = (LPSTR)context->buffer;
-    context->header.dwBufferLength = (DWORD)bytes;
+    memset(&context->headers[slot], 0, sizeof(context->headers[slot]));
+    context->headers[slot].lpData = (LPSTR)context->buffers[slot];
+    context->headers[slot].dwBufferLength = (DWORD)bytes;
     wave_result = waveOutPrepareHeader(context->device,
-                                       &context->header,
-                                       sizeof(context->header));
+                                       &context->headers[slot],
+                                       sizeof(context->headers[slot]));
     if (wave_result != MMSYSERR_NOERROR) return PMEDIA_ERROR_NATIVE;
-    context->prepared = 1;
+    context->prepared[slot] = 1;
     wave_result = waveOutWrite(context->device,
-                               &context->header,
-                               sizeof(context->header));
+                               &context->headers[slot],
+                               sizeof(context->headers[slot]));
     if (wave_result != MMSYSERR_NOERROR) {
         waveOutUnprepareHeader(context->device,
-                               &context->header,
-                               sizeof(context->header));
-        context->prepared = 0;
-        memset(&context->header, 0, sizeof(context->header));
+                               &context->headers[slot],
+                               sizeof(context->headers[slot]));
+        context->prepared[slot] = 0;
+        memset(&context->headers[slot], 0, sizeof(context->headers[slot]));
         return PMEDIA_ERROR_NATIVE;
     }
-    context->pending = 1;
+    context->pending[slot] = 1;
+    context->next_slot = (slot + 1) % PMEDIA_WAVEOUT_BUFFERS;
     context->cursor += frames;
     return PMEDIA_OK;
 }

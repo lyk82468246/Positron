@@ -1199,7 +1199,6 @@ static int pm_ff_convert_audio(pmedia_ffmpeg *context, int *out_bytes)
     int samples;
     int channels;
     int i;
-    int channel;
     int sample;
     int bytes;
     const unsigned char *packed;
@@ -1268,11 +1267,17 @@ static int pm_ff_convert_audio(pmedia_ffmpeg *context, int *out_bytes)
         }
         break;
     case AV_SAMPLE_FMT_U8P:
-        for (i = 0; i < samples; i++) {
-            for (channel = 0; channel < channels; channel++) {
-                plane = context->frame->extended_data[channel];
-                destination[i * channels + channel] =
-                    (short)(((int)plane[i] - 128) * 256);
+        if (channels == 1) {
+            plane = context->frame->extended_data[0];
+            for (i = 0; i < samples; i++) {
+                destination[i] = (short)(((int)plane[i] - 128) * 256);
+            }
+        } else {
+            const unsigned char *u0 = context->frame->extended_data[0];
+            const unsigned char *u1 = context->frame->extended_data[1];
+            for (i = 0; i < samples; i++) {
+                destination[i * 2] = (short)(((int)u0[i] - 128) * 256);
+                destination[i * 2 + 1] = (short)(((int)u1[i] - 128) * 256);
             }
         }
         break;
@@ -1284,12 +1289,18 @@ static int pm_ff_convert_audio(pmedia_ffmpeg *context, int *out_bytes)
         }
         break;
     case AV_SAMPLE_FMT_S32P:
-        for (i = 0; i < samples; i++) {
-            for (channel = 0; channel < channels; channel++) {
-                long_plane = (int32_t *)context->frame->extended_data[channel];
+        if (channels == 1) {
+            long_plane = (int32_t *)context->frame->extended_data[0];
+            for (i = 0; i < samples; i++) {
                 sample = (int)(long_plane[i] >> 16);
-                destination[i * channels + channel] =
-                    (short)pm_ff_clip_sample(sample);
+                destination[i] = (short)pm_ff_clip_sample(sample);
+            }
+        } else {
+            const int32_t *l0 = (const int32_t *)context->frame->extended_data[0];
+            const int32_t *l1 = (const int32_t *)context->frame->extended_data[1];
+            for (i = 0; i < samples; i++) {
+                destination[i * 2] = (short)pm_ff_clip_sample((int)(l0[i] >> 16));
+                destination[i * 2 + 1] = (short)pm_ff_clip_sample((int)(l1[i] >> 16));
             }
         }
         break;
