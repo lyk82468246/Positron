@@ -28,6 +28,14 @@ if /I not "%ACTION%"=="Clean" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\positron_app\prepare_resources.ps1" -OutputDirectory "%ROOT%\positron_app\bin\%CFG%"
     if errorlevel 1 exit /b 1
 )
+if /I "%CFG%"=="Debug" if /I "%ACTION%"=="Build" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\positron_app\write_build_time.ps1" -OutputDirectory "%ROOT%\positron_app\bin\%CFG%" -IfDirty
+    if errorlevel 1 exit /b 1
+)
+if /I "%CFG%"=="Debug" if /I "%ACTION%"=="Rebuild" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\positron_app\write_build_time.ps1" -OutputDirectory "%ROOT%\positron_app\bin\%CFG%"
+    if errorlevel 1 exit /b 1
+)
 
 if exist "%LOG%" del /Q "%LOG%"
 echo VS2008: "%DEVENV%"

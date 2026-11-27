@@ -14,7 +14,7 @@
 			IntermediateDirectory="bin\$(ConfigurationName)"
 			ConfigurationType="1" CharacterSet="1">
 			<Tool Name="VCPreBuildEventTool"
-				CommandLine="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)write_build_time.ps1&quot; -OutputDirectory &quot;$(ProjectDir)bin\$(ConfigurationName)&quot;" />
+				CommandLine="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)write_build_time.ps1&quot; -OutputDirectory &quot;$(ProjectDir)bin\$(ConfigurationName)&quot; -IfMissing" />
 			<Tool Name="VCCustomBuildTool" />
 			<Tool Name="VCXMLDataGeneratorTool" />
 			<Tool Name="VCWebServiceProxyGeneratorTool" />
