@@ -121,6 +121,277 @@ typedef struct PTlsListener {
 #define PTLS_KEY_PEM_CAPACITY 4096
 #define PTLS_MIN_TIMEOUT_MS 1
 
+/* Bounded in-process DNS & TLS 1.2 session caches (protected by g_state_lock).
+ * Cleared on PTls_Cleanup and DLL_PROCESS_DETACH; session cache also clears
+ * on PTls_AddRootCA so trust-store updates take effect immediately. */
+#define PTLS_DNS_CACHE_SLOTS 32
+#define PTLS_DNS_CACHE_TTL_MS 60000UL
+#define PTLS_SESSION_CACHE_SLOTS 16
+#define PTLS_SESSION_CACHE_TTL_MS 300000UL
+
+typedef struct ptls_dns_cache_entry {
+    int           used;
+    char          host[256];
+    unsigned long addr;
+    DWORD         stored_tick;
+    DWORD         lru_stamp;
+} ptls_dns_cache_entry;
+
+typedef struct ptls_session_cache_entry {
+    int                 used;
+    char                host[256];
+    int                 port;
+    int                 verify_mode;
+    DWORD               stored_tick;
+    DWORD               lru_stamp;
+    mbedtls_ssl_session session;
+} ptls_session_cache_entry;
+
+static ptls_dns_cache_entry     g_dns_cache[PTLS_DNS_CACHE_SLOTS];
+static DWORD                    g_dns_lru_clock = 0;
+static ptls_session_cache_entry g_session_cache[PTLS_SESSION_CACHE_SLOTS];
+static DWORD                    g_session_lru_clock = 0;
+
+static void ptls_lower_copy(char* dst, size_t cap, const char* src)
+{
+    size_t i;
+    if (cap == 0) {
+        return;
+    }
+    for (i = 0; i + 1 < cap && src[i] != '\0'; i++) {
+        char ch = src[i];
+        if (ch >= 'A' && ch <= 'Z') {
+            ch = (char)(ch - 'A' + 'a');
+        }
+        dst[i] = ch;
+    }
+    dst[i] = '\0';
+}
+
+static void ptls_dns_cache_clear_locked(void)
+{
+    memset(g_dns_cache, 0, sizeof(g_dns_cache));
+    g_dns_lru_clock = 0;
+}
+
+static int ptls_dns_cache_lookup(const char* host, unsigned long* out_addr)
+{
+    char key[256];
+    DWORD now;
+    int i;
+    int found;
+
+    if (!g_state_lock_inited || host == NULL || host[0] == '\0' ||
+            strlen(host) >= sizeof(key) || out_addr == NULL) {
+        return 0;
+    }
+    ptls_lower_copy(key, sizeof(key), host);
+    now = GetTickCount();
+    found = 0;
+    EnterCriticalSection(&g_state_lock);
+    for (i = 0; i < PTLS_DNS_CACHE_SLOTS; i++) {
+        if (g_dns_cache[i].used && strcmp(g_dns_cache[i].host, key) == 0) {
+            if ((DWORD)(now - g_dns_cache[i].stored_tick) < PTLS_DNS_CACHE_TTL_MS) {
+                *out_addr = g_dns_cache[i].addr;
+                g_dns_cache[i].lru_stamp = ++g_dns_lru_clock;
+                found = 1;
+            } else {
+                g_dns_cache[i].used = 0;
+            }
+            break;
+        }
+    }
+    LeaveCriticalSection(&g_state_lock);
+    return found;
+}
+
+static void ptls_dns_cache_store(const char* host, unsigned long addr)
+{
+    char key[256];
+    DWORD now;
+    int i;
+    int victim;
+
+    if (!g_state_lock_inited || host == NULL || host[0] == '\0' ||
+            strlen(host) >= sizeof(key)) {
+        return;
+    }
+    ptls_lower_copy(key, sizeof(key), host);
+    now = GetTickCount();
+    EnterCriticalSection(&g_state_lock);
+    victim = -1;
+    for (i = 0; i < PTLS_DNS_CACHE_SLOTS; i++) {
+        if (g_dns_cache[i].used && strcmp(g_dns_cache[i].host, key) == 0) {
+            victim = i;
+            break;
+        }
+        if (!g_dns_cache[i].used && victim < 0) {
+            victim = i;
+        }
+    }
+    if (victim < 0) {
+        victim = 0;
+        for (i = 1; i < PTLS_DNS_CACHE_SLOTS; i++) {
+            if (g_dns_cache[i].lru_stamp < g_dns_cache[victim].lru_stamp) {
+                victim = i;
+            }
+        }
+    }
+    g_dns_cache[victim].used = 1;
+    ptls_lower_copy(g_dns_cache[victim].host, sizeof(g_dns_cache[victim].host), key);
+    g_dns_cache[victim].addr = addr;
+    g_dns_cache[victim].stored_tick = now;
+    g_dns_cache[victim].lru_stamp = ++g_dns_lru_clock;
+    LeaveCriticalSection(&g_state_lock);
+}
+
+static void ptls_session_cache_clear_locked(void)
+{
+    int i;
+    for (i = 0; i < PTLS_SESSION_CACHE_SLOTS; i++) {
+        if (g_session_cache[i].used) {
+            mbedtls_ssl_session_free(&g_session_cache[i].session);
+            g_session_cache[i].used = 0;
+        }
+    }
+    g_session_lru_clock = 0;
+}
+
+static int ptls_session_cache_apply(mbedtls_ssl_context* ssl,
+                                    const char* host, int port,
+                                    int verify_mode)
+{
+    char key[256];
+    DWORD now;
+    int i;
+    int applied;
+
+    if (!g_state_lock_inited || ssl == NULL || host == NULL ||
+            host[0] == '\0' || strlen(host) >= sizeof(key)) {
+        return 0;
+    }
+    ptls_lower_copy(key, sizeof(key), host);
+    now = GetTickCount();
+    applied = 0;
+    EnterCriticalSection(&g_state_lock);
+    for (i = 0; i < PTLS_SESSION_CACHE_SLOTS; i++) {
+        if (g_session_cache[i].used &&
+                g_session_cache[i].port == port &&
+                g_session_cache[i].verify_mode == verify_mode &&
+                strcmp(g_session_cache[i].host, key) == 0) {
+            if ((DWORD)(now - g_session_cache[i].stored_tick) < PTLS_SESSION_CACHE_TTL_MS) {
+                if (mbedtls_ssl_set_session(ssl, &g_session_cache[i].session) == 0) {
+                    g_session_cache[i].lru_stamp = ++g_session_lru_clock;
+                    applied = 1;
+                }
+            } else {
+                mbedtls_ssl_session_free(&g_session_cache[i].session);
+                g_session_cache[i].used = 0;
+            }
+            break;
+        }
+    }
+    LeaveCriticalSection(&g_state_lock);
+    return applied;
+}
+
+static void ptls_session_cache_evict(const char* host, int port,
+                                     int verify_mode)
+{
+    char key[256];
+    int i;
+
+    if (!g_state_lock_inited || host == NULL || host[0] == '\0' ||
+            strlen(host) >= sizeof(key)) {
+        return;
+    }
+    ptls_lower_copy(key, sizeof(key), host);
+    EnterCriticalSection(&g_state_lock);
+    for (i = 0; i < PTLS_SESSION_CACHE_SLOTS; i++) {
+        if (g_session_cache[i].used &&
+                g_session_cache[i].port == port &&
+                g_session_cache[i].verify_mode == verify_mode &&
+                strcmp(g_session_cache[i].host, key) == 0) {
+            mbedtls_ssl_session_free(&g_session_cache[i].session);
+            g_session_cache[i].used = 0;
+            break;
+        }
+    }
+    LeaveCriticalSection(&g_state_lock);
+}
+
+static void ptls_session_cache_store(const mbedtls_ssl_context* ssl,
+                                     const char* host, int port,
+                                     int verify_mode)
+{
+    char key[256];
+    mbedtls_ssl_session fresh;
+    DWORD now;
+    int i;
+    int victim;
+    int has_ticket;
+
+    if (!g_state_lock_inited || ssl == NULL || host == NULL ||
+            host[0] == '\0' || strlen(host) >= sizeof(key)) {
+        return;
+    }
+    if (verify_mode == MBEDTLS_SSL_VERIFY_REQUIRED &&
+            mbedtls_ssl_get_verify_result(ssl) != 0) {
+        return;
+    }
+    mbedtls_ssl_session_init(&fresh);
+    if (mbedtls_ssl_get_session(ssl, &fresh) != 0) {
+        mbedtls_ssl_session_free(&fresh);
+        return;
+    }
+    has_ticket = 0;
+#if defined(MBEDTLS_SSL_SESSION_TICKETS)
+    if (fresh.ticket != NULL && fresh.ticket_len > 0) {
+        has_ticket = 1;
+    }
+#endif
+    if (fresh.id_len == 0 && !has_ticket) {
+        mbedtls_ssl_session_free(&fresh);
+        return;
+    }
+    ptls_lower_copy(key, sizeof(key), host);
+    now = GetTickCount();
+    EnterCriticalSection(&g_state_lock);
+    victim = -1;
+    for (i = 0; i < PTLS_SESSION_CACHE_SLOTS; i++) {
+        if (g_session_cache[i].used &&
+                g_session_cache[i].port == port &&
+                g_session_cache[i].verify_mode == verify_mode &&
+                strcmp(g_session_cache[i].host, key) == 0) {
+            victim = i;
+            break;
+        }
+        if (!g_session_cache[i].used && victim < 0) {
+            victim = i;
+        }
+    }
+    if (victim < 0) {
+        victim = 0;
+        for (i = 1; i < PTLS_SESSION_CACHE_SLOTS; i++) {
+            if (g_session_cache[i].lru_stamp < g_session_cache[victim].lru_stamp) {
+                victim = i;
+            }
+        }
+    }
+    if (g_session_cache[victim].used) {
+        mbedtls_ssl_session_free(&g_session_cache[victim].session);
+    }
+    g_session_cache[victim].session = fresh;
+    g_session_cache[victim].used = 1;
+    ptls_lower_copy(g_session_cache[victim].host,
+                    sizeof(g_session_cache[victim].host), key);
+    g_session_cache[victim].port = port;
+    g_session_cache[victim].verify_mode = verify_mode;
+    g_session_cache[victim].stored_tick = now;
+    g_session_cache[victim].lru_stamp = ++g_session_lru_clock;
+    LeaveCriticalSection(&g_state_lock);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Error helpers                                                           */
 /*                                                                         */
@@ -472,16 +743,25 @@ static SOCKET ptls_tcp_connect(const char* host, int port,
 {
     struct hostent*    he;
     struct sockaddr_in sa;
+    unsigned long      cached_addr;
     SOCKET             s;
+    int                is_literal;
 
-    if (!ptls_is_ipv4_literal(host)) {
+    is_literal = ptls_is_ipv4_literal(host);
+    if (!is_literal) {
         ptls_observer_emit(observer, PTLS_CONNECT_PHASE_RESOLVING_NAME,
                            host, port);
     }
-    he = gethostbyname(host);
-    if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
-        ptls_set_error_wsa("gethostbyname failed");
-        return INVALID_SOCKET;
+    if (is_literal) {
+        cached_addr = inet_addr(host);
+    } else if (!ptls_dns_cache_lookup(host, &cached_addr)) {
+        he = gethostbyname(host);
+        if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
+            ptls_set_error_wsa("gethostbyname failed");
+            return INVALID_SOCKET;
+        }
+        memcpy(&cached_addr, he->h_addr_list[0], 4);
+        ptls_dns_cache_store(host, cached_addr);
     }
 
     ptls_observer_emit(observer, PTLS_CONNECT_PHASE_CONNECTING,
@@ -495,7 +775,7 @@ static SOCKET ptls_tcp_connect(const char* host, int port,
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
     sa.sin_port   = htons((u_short)port);
-    memcpy(&sa.sin_addr, he->h_addr_list[0], 4);
+    sa.sin_addr.s_addr = cached_addr;
 
     if (connect(s, (struct sockaddr*)&sa, sizeof(sa)) == SOCKET_ERROR) {
         ptls_set_error_wsa("connect() failed");
@@ -533,6 +813,7 @@ static SOCKET ptls_tcp_connect_timed(const char* host, int port,
 {
     struct hostent* he;
     struct sockaddr_in sa;
+    unsigned long cached_addr;
     SOCKET s;
     int rc;
     int remaining;
@@ -542,10 +823,16 @@ static SOCKET ptls_tcp_connect_timed(const char* host, int port,
     int socket_error;
     int socket_error_len;
 
-    he = gethostbyname(host);
-    if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
-        ptls_set_error_wsa("gethostbyname failed");
-        return INVALID_SOCKET;
+    if (ptls_is_ipv4_literal(host)) {
+        cached_addr = inet_addr(host);
+    } else if (!ptls_dns_cache_lookup(host, &cached_addr)) {
+        he = gethostbyname(host);
+        if (he == NULL || he->h_addr_list == NULL || he->h_addr_list[0] == NULL) {
+            ptls_set_error_wsa("gethostbyname failed");
+            return INVALID_SOCKET;
+        }
+        memcpy(&cached_addr, he->h_addr_list[0], 4);
+        ptls_dns_cache_store(host, cached_addr);
     }
     remaining = ptls_remaining_ms(started, timeout_ms);
     if (remaining <= 0) {
@@ -566,7 +853,7 @@ static SOCKET ptls_tcp_connect_timed(const char* host, int port,
     memset(&sa, 0, sizeof(sa));
     sa.sin_family = AF_INET;
     sa.sin_port = htons((u_short)port);
-    memcpy(&sa.sin_addr, he->h_addr_list[0], 4);
+    sa.sin_addr.s_addr = cached_addr;
     rc = connect(s, (struct sockaddr*)&sa, sizeof(sa));
     if (rc == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK &&
         WSAGetLastError() != WSAEINPROGRESS) {
@@ -698,6 +985,8 @@ PTLS_API void PTls_Cleanup(void)
         LeaveCriticalSection(&g_state_lock);
         return;
     }
+    ptls_session_cache_clear_locked();
+    ptls_dns_cache_clear_locked();
     if (g_cacert_inited) {
         mbedtls_x509_crt_free(&g_cacert);
         g_cacert_inited = FALSE;
@@ -743,6 +1032,7 @@ PTLS_API BOOL PTls_AddRootCA(const char* pem)
         LeaveCriticalSection(&g_state_lock);
         return FALSE;
     }
+    ptls_session_cache_clear_locked();
     LeaveCriticalSection(&g_state_lock);
     return TRUE;
 }
@@ -1429,9 +1719,16 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
     /* Drive the handshake to completion (blocking socket). */
     ptls_observer_emit(&observer_state, PTLS_CONNECT_PHASE_TLS_HANDSHAKE,
                        host, port);
-    while ((rc = mbedtls_ssl_handshake(&c->ssl)) != 0) {
-        if (rc != MBEDTLS_ERR_SSL_WANT_READ &&
-            rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
+    {
+        int used_cached_session;
+        used_cached_session = ptls_session_cache_apply(&c->ssl, host, port,
+                                                       verify_mode);
+        while ((rc = mbedtls_ssl_handshake(&c->ssl)) != 0) {
+            if (rc != MBEDTLS_ERR_SSL_WANT_READ &&
+                rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                if (used_cached_session) {
+                    ptls_session_cache_evict(host, port, verify_mode);
+                }
             /* If the failure was specifically certificate verification,
              * render the verify flags into a human-readable message so
              * callers learn whether it was expiry / hostname / chain. */
@@ -1461,6 +1758,8 @@ static PTlsConn* tls_connect_internal(const char* host, int port,
             ptls_set_error_bio("ssl_handshake", rc, c->bio_msg);
             goto fail;
         }
+        }
+        ptls_session_cache_store(&c->ssl, host, port, verify_mode);
     }
 
     return c;
@@ -2218,6 +2517,9 @@ static int ptls_control_resolve(PTlsConn* conn, const char* host,
         *address = inet_addr(host);
         return PTLS_TRANSPORT_OK;
     }
+    if (ptls_dns_cache_lookup(host, address)) {
+        return PTLS_TRANSPORT_OK;
+    }
     if (InterlockedIncrement(&ptls_dns_jobs) > 4) {
         InterlockedDecrement(&ptls_dns_jobs);
         return PTLS_TRANSPORT_LIMIT;
@@ -2247,6 +2549,9 @@ static int ptls_control_resolve(PTlsConn* conn, const char* host,
         if (result == WAIT_OBJECT_0) {
             error = job->error;
             *address = job->address;
+            if (error == PTLS_TRANSPORT_OK) {
+                ptls_dns_cache_store(host, job->address);
+            }
         } else {
             error = result == WAIT_TIMEOUT ? PTLS_TRANSPORT_TIMEOUT :
                     result == WAIT_OBJECT_0 + 1 ? PTLS_TRANSPORT_CANCELLED : PTLS_TRANSPORT_IO;
@@ -2349,16 +2654,28 @@ PTLS_API HANDLE PTls_TransportOpenEx(const char* host, int port,
                 mbedtls_ssl_set_hostname(&conn->ssl, host) != 0) { goto failed; }
         mbedtls_ssl_set_bio(&conn->ssl, conn, ptls_bio_send, ptls_bio_recv, NULL);
         ptls_observer_emit(&notification, PTLS_CONNECT_PHASE_TLS_HANDSHAKE, host, port);
-        for (;;) {
-            error = ptls_control_check(conn);
-            if (error != PTLS_TRANSPORT_OK) { goto failed; }
-            rc = mbedtls_ssl_handshake(&conn->ssl);
-            if (rc == 0) { break; }
-            if (rc != MBEDTLS_ERR_SSL_WANT_READ && rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
-                error = PTLS_TRANSPORT_TLS; goto failed;
+        {
+            int verify_mode;
+            int used_cached_session;
+            verify_mode = options->verify_peer ?
+                    MBEDTLS_SSL_VERIFY_REQUIRED : MBEDTLS_SSL_VERIFY_NONE;
+            used_cached_session = ptls_session_cache_apply(&conn->ssl, host,
+                                                           port, verify_mode);
+            for (;;) {
+                error = ptls_control_check(conn);
+                if (error != PTLS_TRANSPORT_OK) { goto failed; }
+                rc = mbedtls_ssl_handshake(&conn->ssl);
+                if (rc == 0) { break; }
+                if (rc != MBEDTLS_ERR_SSL_WANT_READ && rc != MBEDTLS_ERR_SSL_WANT_WRITE) {
+                    if (used_cached_session) {
+                        ptls_session_cache_evict(host, port, verify_mode);
+                    }
+                    error = PTLS_TRANSPORT_TLS; goto failed;
+                }
+                error = ptls_control_wait(conn, rc == MBEDTLS_ERR_SSL_WANT_WRITE);
+                if (error != PTLS_TRANSPORT_OK) { goto failed; }
             }
-            error = ptls_control_wait(conn, rc == MBEDTLS_ERR_SSL_WANT_WRITE);
-            if (error != PTLS_TRANSPORT_OK) { goto failed; }
+            ptls_session_cache_store(&conn->ssl, host, port, verify_mode);
         }
     }
     error = ptls_control_check(conn);
@@ -2426,6 +2743,8 @@ BOOL WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID lpReserved)
             g_last_error[0]   = '\0';
             break;
         case DLL_PROCESS_DETACH:
+            ptls_session_cache_clear_locked();
+            ptls_dns_cache_clear_locked();
             if (g_initialized) {
                 if (g_cacert_inited) {
                     mbedtls_x509_crt_free(&g_cacert);

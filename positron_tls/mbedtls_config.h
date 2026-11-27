@@ -114,6 +114,7 @@ extern time_t positron_time(time_t* t);
 #define MBEDTLS_SSL_SRV_C
 #define MBEDTLS_SSL_PROTO_TLS1_2
 #define MBEDTLS_SSL_SERVER_NAME_INDICATION   /* SNI required by Cloudflare/Google */
+#define MBEDTLS_SSL_SESSION_TICKETS          /* RFC 5077 client session resumption */
 
 /* ---- Key exchanges ----------------------------------------------------- */
 #define MBEDTLS_KEY_EXCHANGE_RSA_ENABLED
