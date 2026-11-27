@@ -68,11 +68,7 @@ DeviceEmulator。SD 匹配 stage、双空间及新 guest 零引用通过，回�
 192 DPI 双配置 11/11 证据保留于 7596ddf1 与本地日志，不扩大为全部 ROM/字体保证；
 EXE 历史页人工结果见下方。
 
-当前 128 DPI 设备 TEST1345 的中文/非 BMP 文本在合成 96 DPI 布局返回零 fragment。
-含修正的 `tmp/device-runs/20261007-210628-core-height-debug-accepted/` 与撤回修正的
-独立 `tmp/device-runs/20261007-211003-core-height-wrap-baseline/` 同样失败（text=60、
-count=0）；完整日志无 dump，根因未定，不直接归因为缺字体。本批未改断行产品/断言，
-此失败不在最终 23 项高度门中，独立待取证；按 ROADMAP 定位解析/样式/布局与字体。
+旧 128 DPI 仿真器 TEST1345 曾返零 fragment（见旧日志，不外推该 ROM）；当前 96 DPI 设备双配置 2/2 PASS（20261127-141353/142442）。
 
 ### EXE 访问历史与滚动像素修正通过
 
@@ -309,9 +305,7 @@ box，最终按 TEST1083 改为 block 并预查 geometry，原滚动断言、卸
 不能追认为通过。本轮 ROADMAP 已移除完成的导航候选并保留 URL/人工边界；Media/DB 状态不覆盖。
 真实地址栏 Enter、HTTP 跨页/刷新恢复、native 输入状态、焦点与旋转仍待人工复核。
 
-另发现 Debug 增量构建的时间头已更新到 00:26:35，但 app_version.obj 未重编，运行仍显示
-`2026-10-02 23:25:27`；完整包哈希已匹配，故不是旧 EXE 混包。后续须单独修正生成头的正式
-工程依赖，再验证增量构建时间与 Release 排除；本导航纵切不把该版本显示写成已修复。
+Debug 增量时间头依赖已修正：`scripts/build.bat` 在 VS 判定前按脏状态调 `write_build_time.ps1 -IfDirty`（`.vcproj` 保 `-IfMissing`），连编两次同步重编 `app_version.obj`、空增量零重编、Release 排除；`app_internal_pages.c`（apps 焦点）与 `app_settings_store_debug.c`（v7 future）自检修复过 5 进程 `app_settings_gate`（20261127-142519）与 `app_downloads_gate`（20261127-142914，`internal-pages OK phase=4` + `build=2026-11-27 14:23:46`）。
 
 ### Media 视频参数恢复已验收
 

@@ -473,8 +473,7 @@ ZIP 仅有界 STORE/DEFLATE；PXI 首装与 HTTP 完整正文 gzip 已接线。
 - synthetic `WM_CHAR`/key/composition/mouse 测试只证明 WM EDIT/SELECT 事务、有限选区/剪贴板
   同步及 fail-closed 边界；WinCE `SendMessage` 不更新键盘状态表，不能替代 OEM 键盘。真实
   键盘、SELECT popup、IME、SIP 和跨应用剪贴板仍需人工验收。
-- Debug 时间头可能更新而 app_version.obj 未重编，需修正工程依赖并验收连续增量构建；
-  Release 仍读 CAB 安装注册表。
+- Debug 增量时间头依赖已通过 `build.bat` + `write_build_time.ps1 -IfDirty` 修正并验收；Release 仍只读 CAB 安装注册表。
 - TEST263/1310 验收；权限、取消、返回、路径随 ROM/OEM 变化。
 - SELECT popup 和滚动可见性仍受窗口层级与 DPI 影响；动态 option 重建的 OEM popup、触摸、
   复杂嵌套 label 和其他层级组合仍需人工观察。

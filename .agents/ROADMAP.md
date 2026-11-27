@@ -481,9 +481,7 @@ default action 已另列为阶段 4 纵切。不得把剩余原生交互一次�
 URL owner 提供完整接口，不在 EXE 复制 decoder。真实网络 Back/Forward/刷新、native
 焦点、旋转/DPI 继续进入人工 backlog；已通过自动门的同文档适配器不再作为待实现候选。
 
-**EXE 构建身份依赖：** Debug 增量编译发现生成时间头变化但版本对象未重编，需在正式
-工程中补齐生成顺序/依赖，以两次连续增量编译和设备回读显示验证；Release 仍只读 CAB
-安装注册表，不借此改变打包版本或公共 DLL ABI。
+**EXE 构建身份依赖：** 已验收退出待开发队列；`scripts/build.bat` 在 VS 增量判定前调用 `write_build_time.ps1 -IfDirty`（`.vcproj` 保留 `-IfMissing`），连续两次增量编译与设备 `app-version` 自检回读通过，Release 保持排除。
 
 **状态：源码纵切已接入，设备门按用户决定暂缓。** Core/Browser 已提供有界校验、successful-control
 snapshot、可取消 submit 顺序、method/enctype 结果和 multipart encoder；`positron.exe` 的 native
