@@ -83,6 +83,7 @@ extern BOOL test1359_media_video_change_contract(void (*progress)(const char *))
 extern BOOL test1360_media_video_config_contract(void (*progress)(const char *));
 extern BOOL test1361_media_video_nal_contract(void (*progress)(const char *));
 extern BOOL test1362_media_video_return_contract(void (*progress)(const char *));
+extern BOOL test1387_media_mp4_nal_truncation_contract(void (*progress)(const char *));
 extern BOOL test1313_core_image_pending_retry_contract(void);
 extern BOOL test1314_iana_svg_direct_render(void);
 extern const char *test1314_iana_svg_last_error(void);
@@ -1317,7 +1318,24 @@ static BOOL test1362_media_contract_guarded(void)
     return ok;
 }
 
-#define TEST_MAX_NUMBER 1386
+static void test1387_log_progress(const char *phase)
+{
+    testbench_log_message("INFO", L"Media1387 phase", phase);
+}
+
+static BOOL test1387_media_contract_guarded(void)
+{
+    BOOL ok;
+    ok = FALSE;
+    __try {
+        ok = test1387_media_mp4_nal_truncation_contract(test1387_log_progress);
+    } __except(media_log_exception(GetExceptionInformation())) {
+        ok = FALSE;
+    }
+    return ok;
+}
+
+#define TEST_MAX_NUMBER 1387
 #define TEST_COMPLETION_BEEP_NUMBER 999
 
 /* The Browser native-EDIT transaction stores input data in a bounded
@@ -118557,6 +118575,11 @@ static int run_configured_tests(const unsigned char *selected,
             ok = test1362_media_contract_guarded();
             if (ok) { show_info(L"TEST 1362 OK", "Media original video parameters restored, exact content and replay passed."); }
             else { show_error(L"TEST 1362 FAIL", test1332_media_last_error()); }
+            break;
+        case 1387:
+            ok = test1387_media_contract_guarded();
+            if (ok) { show_info(L"TEST 1387 OK", "Media MP4 bad NAL length and truncated sample boundary contract passed."); }
+            else { show_error(L"TEST 1387 FAIL", test1332_media_last_error()); }
             break;
         case 1361:
             ok = test1361_media_contract_guarded();

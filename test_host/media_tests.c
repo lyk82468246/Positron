@@ -4675,3 +4675,477 @@ fail:
     if (data != NULL) free(data);
     return FALSE;
 }
+
+static unsigned long media_mp4_be32(const unsigned char *p)
+{
+    return ((unsigned long)p[0] << 24) | ((unsigned long)p[1] << 16) |
+           ((unsigned long)p[2] << 8) | (unsigned long)p[3];
+}
+
+static void media_mp4_put32(unsigned char *p, unsigned long value)
+{
+    p[0] = (unsigned char)((value >> 24) & 0xff);
+    p[1] = (unsigned char)((value >> 16) & 0xff);
+    p[2] = (unsigned char)((value >> 8) & 0xff);
+    p[3] = (unsigned char)(value & 0xff);
+}
+
+static BOOL media_mp4_find_box(const unsigned char *buf, int start, int end,
+                               const char tag[4], int *out_off, int *out_size)
+{
+    int pos;
+    unsigned long size;
+
+    pos = start;
+    while (pos + 8 <= end) {
+        size = media_mp4_be32(buf + pos);
+        if (size < 8 || size > (unsigned long)(end - pos)) return FALSE;
+        if (memcmp(buf + pos + 4, tag, 4) == 0) {
+            *out_off = pos;
+            *out_size = (int)size;
+            return TRUE;
+        }
+        pos += (int)size;
+    }
+    return FALSE;
+}
+
+static BOOL media_mp4_find_video_tables(const unsigned char *buf, int bytes,
+                                        int *out_stsz, int *out_stco,
+                                        int *out_mdat, int *out_mdat_size)
+{
+    int moov_off, moov_sz;
+    int pos, moov_end;
+    unsigned long size;
+    int mdia_off, mdia_sz;
+    int hdlr_off, hdlr_sz;
+    int minf_off, minf_sz;
+    int stbl_off, stbl_sz;
+    int stsz_off, stsz_sz;
+    int stco_off, stco_sz;
+
+    if (!media_mp4_find_box(buf, 0, bytes, "moov", &moov_off, &moov_sz)) return FALSE;
+    if (!media_mp4_find_box(buf, 0, bytes, "mdat", out_mdat, out_mdat_size)) return FALSE;
+    pos = moov_off + 8;
+    moov_end = moov_off + moov_sz;
+    while (pos + 8 <= moov_end) {
+        size = media_mp4_be32(buf + pos);
+        if (size < 8 || size > (unsigned long)(moov_end - pos)) return FALSE;
+        if (memcmp(buf + pos + 4, "trak", 4) == 0) {
+            if (media_mp4_find_box(buf, pos + 8, pos + (int)size, "mdia", &mdia_off, &mdia_sz) &&
+                media_mp4_find_box(buf, mdia_off + 8, mdia_off + mdia_sz, "hdlr", &hdlr_off, &hdlr_sz) &&
+                hdlr_sz >= 20 && memcmp(buf + hdlr_off + 16, "vide", 4) == 0 &&
+                media_mp4_find_box(buf, mdia_off + 8, mdia_off + mdia_sz, "minf", &minf_off, &minf_sz) &&
+                media_mp4_find_box(buf, minf_off + 8, minf_off + minf_sz, "stbl", &stbl_off, &stbl_sz) &&
+                media_mp4_find_box(buf, stbl_off + 8, stbl_off + stbl_sz, "stsz", &stsz_off, &stsz_sz) &&
+                media_mp4_find_box(buf, stbl_off + 8, stbl_off + stbl_sz, "stco", &stco_off, &stco_sz)) {
+                *out_stsz = stsz_off;
+                *out_stco = stco_off;
+                return TRUE;
+            }
+        }
+        pos += (int)size;
+    }
+    return FALSE;
+}
+
+static BOOL media_mp4_verify_prefix(const media_av_reference *got,
+                                    const media_av_reference *ref,
+                                    int expected_videos,
+                                    int expected_audios_min,
+                                    int expected_audios_max)
+{
+    int i;
+
+    if (got->videos != expected_videos) return FALSE;
+    if (got->audios < expected_audios_min || got->audios > expected_audios_max) return FALSE;
+    for (i = 0; i < expected_videos; i++) {
+        if (got->video[i].width != ref->video[i].width ||
+            got->video[i].height != ref->video[i].height ||
+            got->video[i].pts_us != ref->video[i].pts_us ||
+            got->video[i].duration_us != ref->video[i].duration_us ||
+            got->video[i].flags != ref->video[i].flags ||
+            got->video_hash[i] != ref->video_hash[i]) return FALSE;
+    }
+    for (i = 0; i < got->audios; i++) {
+        if (got->audio[i].pts_us != ref->audio[i].pts_us ||
+            got->audio[i].duration_us != ref->audio[i].duration_us) return FALSE;
+    }
+    if (got->bytes > ref->bytes) return FALSE;
+    if (got->bytes > 0 && memcmp(got->pcm, ref->pcm, (size_t)got->bytes) != 0) return FALSE;
+    return TRUE;
+}
+
+static BOOL media_mp4_verify_terminal(pm_session session, const media_av_sink *sink,
+                                      const char *expected_error, pm_position maximum)
+{
+    if (sink->events.errors || sink->events.eof_events ||
+        sink->events.error_callbacks != 1 || sink->events.error_events != 1 ||
+        sink->events.last_error != PMEDIA_ERROR_FORMAT ||
+        strcmp(pm_last_error(session), expected_error) != 0 ||
+        pm_pump(session, maximum, 0) != PMEDIA_ERROR_STATE ||
+        pm_pause(session) != PMEDIA_ERROR_STATE ||
+        pm_resume(session) != PMEDIA_ERROR_STATE ||
+        pm_seek(session, 0) != PMEDIA_ERROR_STATE ||
+        sink->events.error_callbacks != 1 || sink->events.error_events != 1 ||
+        pm_stop(session) != PMEDIA_OK || pm_stop(session) != PMEDIA_OK ||
+        sink->events.stopped_events != 1) return FALSE;
+    return TRUE;
+}
+
+BOOL test1387_media_mp4_nal_truncation_contract(void (*progress)(const char *))
+{
+    static const char *case_names[10] = {
+        "zero-nal-length", "overlong-nal-length", "trailing-partial-length",
+        "short-sample-lt-prefix", "truncated-slice-in-valid-nal",
+        "truncated-mdat-mid-sample", "truncated-mdat-at-sample-boundary",
+        "truncated-mdat-before-sample", "first-sample-zero-nal-length",
+        "first-sample-overlong-nal-length"
+    };
+    static const char *case_errors[10] = {
+        "MP4 H.264 NAL length framing is invalid",
+        "MP4 H.264 NAL length framing is invalid",
+        "MP4 H.264 NAL length framing is invalid",
+        "MP4 H.264 NAL length framing is invalid",
+        "MP4 H.264 sample decoding failed",
+        "MP4 H.264 sample is truncated or corrupt",
+        "MP4 H.264 sample is truncated",
+        "MP4 H.264 sample is truncated",
+        "MP4 H.264 NAL length framing is invalid",
+        "MP4 H.264 NAL length framing is invalid"
+    };
+    static const char *vga_names[3] = {
+        "vga-truncated-at-sample2", "vga-truncated-mid-sample2", "vga-zero-nal-sample2"
+    };
+    static const char *vga_errors[3] = {
+        "MP4 H.264 sample is truncated",
+        "MP4 H.264 sample is truncated or corrupt",
+        "MP4 H.264 NAL length framing is invalid"
+    };
+    media_fixture_source input;
+    media_av_sink sink;
+    media_av_reference *ref;
+    media_av_reference *got;
+    media_av_reference *vga_ref;
+    pm_source_callbacks source;
+    pm_output_callbacks output;
+    pm_open_options options;
+    pm_session session;
+    unsigned char *base_data;
+    unsigned char *relocated;
+    unsigned char *work;
+    unsigned char *vga_data;
+    int base_bytes;
+    int relocated_bytes;
+    int work_bytes;
+    int vga_bytes;
+    int stsz_off, stco_off, mdat_off, mdat_sz;
+    int vga_stsz, vga_stco, vga_mdat, vga_mdat_sz;
+    int s0_off, s0_sz, s2_off, s2_sz;
+    int vga_s0_sz, vga_s1_sz, vga_s2_off, vga_s2_sz;
+    pm_position maximum, clock_base, pts, previous;
+    int test, mode, seekable, pass, i, result, offers;
+    int expected_videos, min_audios, max_audios;
+    char phase[224];
+
+    session = NULL;
+    base_data = NULL;
+    relocated = NULL;
+    work = NULL;
+    vga_data = NULL;
+    ref = (media_av_reference *)calloc(1, sizeof(*ref));
+    got = (media_av_reference *)calloc(1, sizeof(*got));
+    vga_ref = (media_av_reference *)calloc(1, sizeof(*vga_ref));
+    memset(&sink, 0, sizeof(sink));
+    if (ref == NULL || got == NULL || vga_ref == NULL) goto fail;
+    maximum = (((pm_position)0x7fffffff) << 32) | (pm_position)0xffffffffUL;
+    media_contract_init(&input, &sink.events, &source, &output, &options);
+    output.video = media_av_video;
+    output.audio = media_av_audio;
+    output.error = media_compressed_error;
+
+    g_media_compressed_error = "load baseline-aac.mp4 and capture reference";
+    if (progress != NULL) progress(g_media_compressed_error);
+    base_data = media_compressed_load(L"baseline-aac.mp4", &base_bytes);
+    if (base_data == NULL ||
+        !media_mp4_find_video_tables(base_data, base_bytes, &stsz_off, &stco_off, &mdat_off, &mdat_sz)) goto fail;
+    if (media_mp4_be32(base_data + stsz_off + 16) != 3 ||
+        media_mp4_be32(base_data + stco_off + 12) != 3) goto fail;
+    s0_sz = (int)media_mp4_be32(base_data + stsz_off + 20);
+    s2_sz = (int)media_mp4_be32(base_data + stsz_off + 28);
+    s0_off = (int)media_mp4_be32(base_data + stco_off + 16);
+    s2_off = (int)media_mp4_be32(base_data + stco_off + 24);
+    if (s0_sz < 16 || s2_sz < 11 || s0_off + s0_sz > base_bytes || s2_off + s2_sz > base_bytes) goto fail;
+
+    input.data = base_data;
+    input.bytes = base_bytes;
+    input.position = input.read_mode = 0;
+    input.read_chunk = 7;
+    source.seek = media_fixture_seek;
+    source.tell = media_fixture_tell;
+    options.flags = 0;
+    sink.reference = ref;
+    sink.capture = 1;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != base_bytes) goto fail;
+    result = PMEDIA_OK;
+    for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+    if (result != PMEDIA_EOF || ref->videos != 3 || ref->audios != 29 ||
+        sink.events.errors || sink.events.eof_events != 1 || pm_close(session) != PMEDIA_OK) goto fail;
+    session = NULL;
+
+    /* Relocate video sample[2] to the end of mdat so complete control and tail
+     * truncation keep all 30 audio samples completely intact. */
+    relocated_bytes = base_bytes + s2_sz;
+    relocated = (unsigned char *)malloc((size_t)(relocated_bytes + 16));
+    work = (unsigned char *)malloc((size_t)(relocated_bytes + 16));
+    if (relocated == NULL || work == NULL) goto fail;
+    memcpy(relocated, base_data, (size_t)base_bytes);
+    memcpy(relocated + base_bytes, base_data + s2_off, (size_t)s2_sz);
+    media_mp4_put32(relocated + mdat_off, (unsigned long)(mdat_sz + s2_sz));
+    media_mp4_put32(relocated + stco_off + 24, (unsigned long)base_bytes);
+
+    g_media_compressed_error = "complete relocated MP4 boundary control (default + scheduled + rewind)";
+    if (progress != NULL) progress(g_media_compressed_error);
+    input.data = relocated;
+    input.bytes = relocated_bytes;
+    input.position = input.read_mode = 0;
+    options.flags = 0;
+    memset(got, 0, sizeof(*got));
+    memset(&sink, 0, sizeof(sink));
+    sink.reference = got;
+    sink.capture = 1;
+    if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != relocated_bytes) goto fail;
+    input.read_mode = 2;
+    for (pass = 0; pass < 2; pass++) {
+        if (pass) {
+            if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+            memset(got, 0, sizeof(*got));
+            memset(&sink, 0, sizeof(sink));
+            sink.reference = got;
+            sink.capture = 1;
+        }
+        result = PMEDIA_OK;
+        for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+        if (result != PMEDIA_EOF || pm_pump(session, 0, 0) != PMEDIA_EOF ||
+            sink.events.eof_events != 1 || sink.events.error_callbacks ||
+            !media_mp4_verify_prefix(got, ref, 3, 29, 29)) goto fail;
+    }
+    if (pm_close(session) != PMEDIA_OK) goto fail;
+    session = NULL;
+
+    for (seekable = 0; seekable < 2; seekable++) {
+        input.position = input.read_mode = 0;
+        source.seek = seekable ? media_fixture_seek : NULL;
+        source.tell = seekable ? media_fixture_tell : NULL;
+        options.flags = PMEDIA_OPEN_SCHEDULE_AV;
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = ref;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != relocated_bytes) goto fail;
+        input.read_mode = 2;
+        for (pass = 0; pass < 2; pass++) {
+            if (pass) {
+                if (pm_seek(session, 0) != PMEDIA_OK) goto fail;
+                memset(&sink, 0, sizeof(sink));
+                sink.reference = ref;
+            }
+            clock_base = pass ? maximum - 2000000 : 5000000;
+            previous = 0;
+            for (i = 0; i < 32; i++) {
+                pts = sink.audios < 29 && (sink.videos == 3 ||
+                      ref->audio[sink.audios].pts_us <= ref->video[sink.videos].pts_us) ?
+                      ref->audio[sink.audios].pts_us : ref->video[sink.videos].pts_us;
+                offers = sink.offers;
+                if (pts > previous && (media_av_pump(session, &sink, clock_base + pts - 1) != PMEDIA_WOULD_BLOCK ||
+                    sink.offers != offers)) goto fail;
+                if (media_av_pump(session, &sink, clock_base + pts) != PMEDIA_OK ||
+                    sink.offers != offers + 1 || sink.events.errors || sink.events.eof_events) goto fail;
+                previous = pts;
+            }
+            if (media_av_pump(session, &sink, maximum) != PMEDIA_EOF ||
+                media_av_pump(session, &sink, maximum) != PMEDIA_EOF ||
+                sink.events.eof_events != 1 || sink.events.error_callbacks ||
+                sink.videos != 3 || sink.audios != 29 || sink.bytes != ref->bytes) goto fail;
+        }
+        if (pm_stop(session) != PMEDIA_OK || pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+    }
+
+    for (test = 0; test < 10; test++) {
+        if (test < 5 || test >= 8) {
+            memcpy(work, base_data, (size_t)base_bytes);
+            work_bytes = base_bytes;
+        } else {
+            memcpy(work, relocated, (size_t)relocated_bytes);
+            work_bytes = relocated_bytes;
+        }
+        if (test == 0) {
+            media_mp4_put32(work + s2_off, 0);
+        } else if (test == 1) {
+            media_mp4_put32(work + s2_off, (unsigned long)(s2_sz - 4 + 1));
+        } else if (test == 2) {
+            media_mp4_put32(work + s2_off, (unsigned long)(s2_sz - 4 - 2));
+        } else if (test == 3) {
+            media_mp4_put32(work + stsz_off + 28, 2);
+        } else if (test == 4) {
+            media_mp4_put32(work + stsz_off + 28, 7);
+            media_mp4_put32(work + s2_off, 3);
+        } else if (test == 5) {
+            work_bytes = base_bytes + 7;
+        } else if (test == 6) {
+            work_bytes = base_bytes;
+        } else if (test == 7) {
+            media_mp4_put32(work + mdat_off, (unsigned long)(mdat_sz + 4 + s2_sz));
+            media_mp4_put32(work + stco_off + 24, (unsigned long)(base_bytes + 4));
+            work_bytes = base_bytes;
+        } else if (test == 8) {
+            media_mp4_put32(work + s0_off, 0);
+        } else if (test == 9) {
+            media_mp4_put32(work + s0_off, (unsigned long)(s0_sz - 4 + 1));
+        }
+        expected_videos = test >= 8 ? 0 : 2;
+        for (mode = 0; mode < 3; mode++) {
+            seekable = mode == 1 ? 0 : 1;
+            input.data = work;
+            input.bytes = work_bytes;
+            input.position = input.read_mode = 0;
+            input.read_chunk = 7;
+            source.seek = seekable ? media_fixture_seek : NULL;
+            source.tell = seekable ? media_fixture_tell : NULL;
+            options.flags = mode == 0 ? 0 : PMEDIA_OPEN_SCHEDULE_AV;
+            memset(got, 0, sizeof(*got));
+            memset(&sink, 0, sizeof(sink));
+            sink.reference = mode == 0 ? got : ref;
+            sink.capture = mode == 0 ? 1 : 0;
+            _snprintf(phase, sizeof(phase), "mp4 boundary case=%d(%s) mode=%d", test, case_names[test], mode);
+            g_media_compressed_error = case_names[test];
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK || input.position != work_bytes) goto fail;
+            input.read_mode = 2;
+            result = PMEDIA_OK;
+            if (mode == 0) {
+                for (i = 0; i < 3000 && result == PMEDIA_OK; i++) result = pm_pump(session, 0, 2000);
+                min_audios = test >= 8 ? 0 : (test >= 5 && test <= 7 ? 29 : 18);
+                max_audios = test >= 8 ? 1 : 29;
+            } else {
+                result = media_av_pump(session, &sink, 0);
+                for (i = 0; i < 200 && result == PMEDIA_OK; i++) result = media_av_pump(session, &sink, maximum);
+                min_audios = test >= 8 ? 0 : 10;
+                max_audios = test >= 8 ? 0 : 10;
+            }
+            _snprintf(phase, sizeof(phase), "observed case=%s mode=%d rc=%d v=%d a=%d err=%s",
+                      case_names[test], mode, result, sink.videos, sink.audios, pm_last_error(session));
+            phase[sizeof(phase) - 1] = '\0';
+            if (progress != NULL) progress(phase);
+            if (result != PMEDIA_ERROR_FORMAT ||
+                !media_mp4_verify_terminal(session, &sink, case_errors[test], maximum)) goto fail;
+            if (mode == 0) {
+                if (!media_mp4_verify_prefix(got, ref, expected_videos, min_audios, max_audios)) goto fail;
+            } else {
+                if (sink.videos != expected_videos || sink.audios < min_audios || sink.audios > max_audios ||
+                    sink.bytes != sink.audios * 4096) goto fail;
+            }
+            if (pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+    }
+
+    /* Video-only B-frame MP4 (main-vga.mp4): valid complete control vs tail
+     * truncation and zero NAL length in default and scheduled-video modes. */
+    g_media_compressed_error = "main-vga.mp4 complete control and truncation boundaries";
+    if (progress != NULL) progress(g_media_compressed_error);
+    vga_data = media_compressed_load(L"main-vga.mp4", &vga_bytes);
+    if (vga_data == NULL ||
+        !media_mp4_find_video_tables(vga_data, vga_bytes, &vga_stsz, &vga_stco, &vga_mdat, &vga_mdat_sz)) goto fail;
+    vga_s0_sz = (int)media_mp4_be32(vga_data + vga_stsz + 20);
+    vga_s1_sz = (int)media_mp4_be32(vga_data + vga_stsz + 24);
+    vga_s2_sz = (int)media_mp4_be32(vga_data + vga_stsz + 28);
+    vga_s2_off = (int)media_mp4_be32(vga_data + vga_stco + 16) + vga_s0_sz + vga_s1_sz;
+    if (vga_s2_off + vga_s2_sz != vga_bytes || vga_s2_sz < 12) goto fail;
+
+    output.audio = NULL;
+    for (mode = 0; mode < 2; mode++) {
+        input.data = vga_data;
+        input.bytes = vga_bytes;
+        input.position = input.read_mode = 0;
+        source.seek = media_fixture_seek;
+        source.tell = media_fixture_tell;
+        options.flags = mode == 0 ? 0 : PMEDIA_OPEN_SCHEDULE_VIDEO;
+        memset(mode == 0 ? vga_ref : got, 0, sizeof(*got));
+        memset(&sink, 0, sizeof(sink));
+        sink.reference = mode == 0 ? vga_ref : got;
+        sink.capture = 1;
+        if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+        input.read_mode = 2;
+        result = PMEDIA_OK;
+        for (i = 0; i < 1000 && (result == PMEDIA_OK || result == PMEDIA_WOULD_BLOCK); i++) {
+            result = pm_pump(session, mode == 0 ? 0 : (pm_position)i * 200000, 2000);
+        }
+        if (result != PMEDIA_EOF || sink.videos != 3 || sink.events.eof_events != 1 ||
+            sink.events.error_callbacks || (mode == 1 && !media_mp4_verify_prefix(got, vga_ref, 3, 0, 0)) ||
+            pm_close(session) != PMEDIA_OK) goto fail;
+        session = NULL;
+    }
+
+    for (test = 0; test < 3; test++) {
+        memcpy(work, vga_data, (size_t)vga_bytes);
+        work_bytes = test == 0 ? vga_s2_off : (test == 1 ? vga_s2_off + 8 : vga_bytes);
+        if (test == 2) media_mp4_put32(work + vga_s2_off, 0);
+        for (mode = 0; mode < 2; mode++) {
+            input.data = work;
+            input.bytes = work_bytes;
+            input.position = input.read_mode = 0;
+            source.seek = mode == 0 ? media_fixture_seek : NULL;
+            source.tell = mode == 0 ? media_fixture_tell : NULL;
+            options.flags = mode == 0 ? 0 : PMEDIA_OPEN_SCHEDULE_VIDEO;
+            memset(got, 0, sizeof(*got));
+            memset(&sink, 0, sizeof(sink));
+            sink.reference = got;
+            sink.capture = 1;
+            _snprintf(phase, sizeof(phase), "vga boundary case=%s mode=%d", vga_names[test], mode);
+            g_media_compressed_error = vga_names[test];
+            if (progress != NULL) progress(phase);
+            if (pm_open(&source, &options, &output, &session) != PMEDIA_OK) goto fail;
+            input.read_mode = 2;
+            result = PMEDIA_OK;
+            for (i = 0; i < 1000 && (result == PMEDIA_OK || result == PMEDIA_WOULD_BLOCK); i++) {
+                result = pm_pump(session, mode == 0 ? 0 : (pm_position)i * 200000, 2000);
+            }
+            _snprintf(phase, sizeof(phase), "observed vga=%s mode=%d rc=%d v=%d err=%s",
+                      vga_names[test], mode, result, sink.videos, pm_last_error(session));
+            phase[sizeof(phase) - 1] = '\0';
+            if (progress != NULL) progress(phase);
+            if (result != PMEDIA_ERROR_FORMAT ||
+                !media_mp4_verify_terminal(session, &sink, vga_errors[test], maximum) ||
+                got->videos > 1 ||
+                !media_mp4_verify_prefix(got, vga_ref, got->videos, 0, 0) ||
+                pm_close(session) != PMEDIA_OK) goto fail;
+            session = NULL;
+        }
+    }
+
+    free(vga_data);
+    free(work);
+    free(relocated);
+    free(base_data);
+    free(vga_ref);
+    free(got);
+    free(ref);
+    g_media_compressed_error = "MP4 bad NAL length and truncated sample boundary contract passed";
+    if (progress != NULL) progress(g_media_compressed_error);
+    return TRUE;
+
+fail:
+    _snprintf(phase, sizeof(phase), "mp4 nal/truncation failure: video=%d audio=%d err=%s",
+              sink.videos, sink.audios, session == NULL ? "no session" : pm_last_error(session));
+    phase[sizeof(phase) - 1] = '\0';
+    if (progress != NULL) progress(phase);
+    if (session != NULL) pm_close(session);
+    if (vga_data != NULL) free(vga_data);
+    if (work != NULL) free(work);
+    if (relocated != NULL) free(relocated);
+    if (base_data != NULL) free(base_data);
+    if (vga_ref != NULL) free(vga_ref);
+    if (got != NULL) free(got);
+    if (ref != NULL) free(ref);
+    return FALSE;
+}

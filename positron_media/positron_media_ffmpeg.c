@@ -61,6 +61,8 @@ struct pmedia_ffmpeg {
     int video_drained;
     int audio_drained;
     int mp4_nal_length;
+    int video_packets_read;
+    int nonzero_seeked;
     pm_position video_next_pts_us;
     int video_next_pts_valid;
     pm_position raw_h264_duration_us;
@@ -450,19 +452,38 @@ static int pm_ff_validate_mp4_sps(pmedia_ffmpeg *context, AVCodecContext *codec,
     if (codec->codec_id != AV_CODEC_ID_H264 ||
         pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4 ||
         codec->extradata_size < 5 || codec->extradata == NULL || codec->extradata[0] != 1) return PMEDIA_OK;
+    if (packet->flags & AV_PKT_FLAG_CORRUPT) {
+        context->clock_error = "MP4 H.264 sample is truncated or corrupt";
+        return PMEDIA_ERROR_FORMAT;
+    }
     length_bytes = context->mp4_nal_length;
     if (!length_bytes) length_bytes = (codec->extradata[4] & 3) + 1;
+    if (packet->data == NULL || packet->size < length_bytes) {
+        context->clock_error = "MP4 H.264 NAL length framing is invalid";
+        return PMEDIA_ERROR_FORMAT;
+    }
     offset = 0;
-    while (offset <= packet->size - length_bytes) {
+    while (offset < packet->size) {
+        if (packet->size - offset < length_bytes) {
+            context->clock_error = "MP4 H.264 NAL length framing is invalid";
+            return PMEDIA_ERROR_FORMAT;
+        }
         bytes = 0;
         for (i = 0; i < length_bytes; i++) bytes = (bytes << 8) | packet->data[offset++];
-        /* Leave invalid framing to the decoder. This guard validates complete
-         * in-band SPS, not all damage. */
-        if (bytes == 0 || bytes > (uint32_t)(packet->size - offset)) break;
+        if (bytes == 0 || bytes > (uint32_t)(packet->size - offset)) {
+            context->clock_error = "MP4 H.264 NAL length framing is invalid";
+            return PMEDIA_ERROR_FORMAT;
+        }
         if ((packet->data[offset] & 31) == 7) {
-            if (bytes > INT_MAX - 3 - AV_INPUT_BUFFER_PADDING_SIZE) return PMEDIA_ERROR_LIMIT;
+            if (bytes > INT_MAX - 3 - AV_INPUT_BUFFER_PADDING_SIZE) {
+                context->clock_error = "MP4 in-band H.264 SPS validation failed";
+                return PMEDIA_ERROR_LIMIT;
+            }
             padded = (unsigned char *)av_mallocz((int)bytes + 3 + AV_INPUT_BUFFER_PADDING_SIZE);
-            if (padded == NULL) return PMEDIA_ERROR_MEMORY;
+            if (padded == NULL) {
+                context->clock_error = "MP4 in-band H.264 SPS validation failed";
+                return PMEDIA_ERROR_MEMORY;
+            }
             padded[2] = 1;
             memcpy(padded + 3, packet->data + offset, (size_t)bytes);
             memset(&parameters, 0, sizeof(parameters));
@@ -473,7 +494,10 @@ static int pm_ff_validate_mp4_sps(pmedia_ffmpeg *context, AVCodecContext *codec,
              * miss the first interlaced picture after a parameter change. */
             result = pm_ff_validate_h264(context, &parameters, NULL);
             av_free(padded);
-            if (result != PMEDIA_OK) return result;
+            if (result != PMEDIA_OK) {
+                context->clock_error = "MP4 in-band H.264 SPS validation failed";
+                return result;
+            }
         }
         offset += (int)bytes;
     }
@@ -884,7 +908,9 @@ static int pm_ff_open_decoder(AVFormatContext *format,
         return PMEDIA_ERROR_FORMAT;
     }
     codec->thread_count = 1;
-    if (codec->codec_id == AV_CODEC_ID_H264 && strcmp(format->iformat->name, "h264") == 0)
+    if (codec->codec_id == AV_CODEC_ID_H264 &&
+        (strcmp(format->iformat->name, "h264") == 0 ||
+         pm_ff_container(format->iformat->name) == PMEDIA_CONTAINER_MP4))
         codec->err_recognition = AV_EF_BITSTREAM | AV_EF_BUFFER | AV_EF_EXPLODE;
     result = avcodec_open2(codec, decoder, NULL);
     if (result < 0) {
@@ -1539,16 +1565,21 @@ static int pm_ff_receive(pmedia_ffmpeg *context,
                          int *out_drained)
 {
     int result;
+    int is_mp4_h264;
 
     *out_emitted = 0;
     *out_drained = 0;
     if (codec == NULL) return PMEDIA_OK;
+    is_mp4_h264 = is_video && codec->codec_id == AV_CODEC_ID_H264 &&
+                  pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4;
     av_frame_unref(context->frame);
     result = avcodec_receive_frame(codec, context->frame);
     if (result == 0) {
-        if (is_video && strcmp(context->format->iformat->name, "h264") == 0 &&
-            (context->frame->decode_error_flags || (context->frame->flags & AV_FRAME_FLAG_CORRUPT)))
+        if (is_video && (strcmp(context->format->iformat->name, "h264") == 0 || is_mp4_h264) &&
+            (context->frame->decode_error_flags || (context->frame->flags & AV_FRAME_FLAG_CORRUPT))) {
+            if (is_mp4_h264) context->clock_error = "MP4 H.264 sample decoding failed";
             return PMEDIA_ERROR_FORMAT;
+        }
         *out_emitted = 1;
         return is_video ? pm_ff_emit_video(context) : pm_ff_emit_audio(context);
     }
@@ -1557,6 +1588,7 @@ static int pm_ff_receive(pmedia_ffmpeg *context,
         return PMEDIA_OK;
     }
     if (result == AVERROR(EAGAIN)) return PMEDIA_OK;
+    if (is_mp4_h264) context->clock_error = "MP4 H.264 sample decoding failed";
     return PMEDIA_ERROR_FORMAT;
 }
 
@@ -1568,6 +1600,10 @@ static int pm_ff_send_flush(pmedia_ffmpeg *context,
     if (codec == NULL || *sent) return PMEDIA_OK;
     result = avcodec_send_packet(codec, NULL);
     if (result < 0 && result != AVERROR_EOF && result != AVERROR(EAGAIN)) {
+        if (codec == context->video_codec && codec->codec_id == AV_CODEC_ID_H264 &&
+            pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4) {
+            context->clock_error = "MP4 H.264 sample decoding failed";
+        }
         return PMEDIA_ERROR_FORMAT;
     }
     if (!(context->open_flags & PMEDIA_OPEN_SCHEDULE_AV) || result != AVERROR(EAGAIN)) *sent = 1;
@@ -1577,6 +1613,26 @@ static int pm_ff_send_flush(pmedia_ffmpeg *context,
 const char *pmedia_ffmpeg_clock_error(pmedia_ffmpeg *context)
 {
     return context == NULL ? NULL : context->clock_error;
+}
+
+static int pm_ff_mp4_video_sample_truncated(const pmedia_ffmpeg *context)
+{
+    AVStream *vstream;
+    const AVIndexEntry *entry;
+
+    if (context == NULL || context->nonzero_seeked || context->video_stream < 0 ||
+        context->video_codec == NULL || context->video_codec->codec_id != AV_CODEC_ID_H264 ||
+        pm_ff_container(context->format->iformat->name) != PMEDIA_CONTAINER_MP4) {
+        return 0;
+    }
+    vstream = context->format->streams[context->video_stream];
+    if (vstream == NULL || context->video_packets_read >= vstream->nb_index_entries) {
+        return 0;
+    }
+    entry = &vstream->index_entries[context->video_packets_read];
+    return entry->size > 0 &&
+           (entry->pos < 0 || entry->pos > (int64_t)context->input_bytes ||
+            entry->size > (int64_t)context->input_bytes - entry->pos);
 }
 
 static int pm_ff_decode_pump(pmedia_ffmpeg *context,
@@ -1636,7 +1692,15 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
         result = av_read_frame(context->format, &packet);
         if (result < 0) {
             av_packet_unref(&packet);
-            if (result != AVERROR_EOF) return PMEDIA_ERROR_FORMAT;
+            if (pm_ff_mp4_video_sample_truncated(context)) {
+                context->clock_error = "MP4 H.264 sample is truncated";
+                return PMEDIA_ERROR_FORMAT;
+            }
+            if (result != AVERROR_EOF) {
+                if (pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4)
+                    context->clock_error = "MP4 sample read failed or truncated";
+                return PMEDIA_ERROR_FORMAT;
+            }
             context->input_eof = 1;
             continue;
         }
@@ -1649,6 +1713,7 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
         codec = NULL;
         if (packet.stream_index == context->video_stream) {
             codec = context->video_codec;
+            context->video_packets_read++;
         } else if (packet.stream_index == context->audio_stream) {
             codec = context->audio_codec;
         }
@@ -1661,7 +1726,8 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
             }
             result = pm_ff_validate_mp4_sps(context, codec, &packet);
             if (result != PMEDIA_OK) {
-                context->clock_error = "MP4 in-band H.264 SPS validation failed";
+                if (context->clock_error == NULL)
+                    context->clock_error = "MP4 in-band H.264 SPS validation failed";
                 av_packet_unref(&packet);
                 return result;
             }
@@ -1688,6 +1754,10 @@ static int pm_ff_decode_pump(pmedia_ffmpeg *context,
                 return PMEDIA_ERROR_STATE;
             }
             if (result < 0 && result != AVERROR(EAGAIN)) {
+                if (codec == context->video_codec && codec->codec_id == AV_CODEC_ID_H264 &&
+                    pm_ff_container(context->format->iformat->name) == PMEDIA_CONTAINER_MP4) {
+                    context->clock_error = "MP4 H.264 sample decoding failed";
+                }
                 av_packet_unref(&packet);
                 return PMEDIA_ERROR_FORMAT;
             }
@@ -1843,6 +1913,8 @@ int pmedia_ffmpeg_seek(pmedia_ffmpeg *context, pm_position position_us)
     context->audio_flush_sent = 0;
     context->video_drained = 0;
     context->audio_drained = 0;
+    context->video_packets_read = 0;
+    context->nonzero_seeked = (position_us != 0);
     context->video_next_pts_valid = 0;
     return PMEDIA_OK;
 }

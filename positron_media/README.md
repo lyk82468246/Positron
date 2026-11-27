@@ -593,10 +593,15 @@ Baseline→640×480 Main/B 帧及完整片段后恢复原 Baseline 仍可输出�
 错误即使在默认模式也锁存失败态，后续 pump/pause/resume/seek 返回 STATE，仍可 stop/close
 清理，不再跳过坏包继续解码。其他默认解码错误不能据此推定具有相同锁存策略。
 探测可能在 open 就拒绝，也可能在 pump 预解码时失败；不承诺先交付所有合法排队前缀或
-等到变化帧的显示时刻才报错，已经交付的内容不撤回。此守卫不替代 decoder 的完整损坏检查，
-固定 AVC3 已验证通过新 avcC 从四字节切至两字节 NAL 长度，再由包内 SPS 更新参数：合法
+等到变化帧的显示时刻才报错，已经交付的内容不撤回。MP4 H.264 现同时在送入 decoder 前
+检查 AVCC NAL 长度 framing（拒绝零长度、越界长度、尾部不足 `length_bytes` 的残留字节和
+短于 `length_bytes` 的 sample）及 `AV_PKT_FLAG_CORRUPT` 截断包，并在 MOV demux 返回
+EOF/读失败时核对未读视频 index 条目是否越过 `input_bytes`，避免把截断在 sample 边界处
+的 MP4 误报为正常 EOF；MP4 H.264 decoder 同样启用严格错误检测并拒绝带损坏标记的输出帧，
+上述错误在默认与调度模式均报告一次 `PMEDIA_ERROR_FORMAT` 并锁存 `PMEDIA_ERROR_STATE`，
+不跳过坏包继续解码。固定 AVC3 已验证通过新 avcC 从四字节切至两字节 NAL 长度，再由包内 SPS 更新参数：合法
 重复/Baseline→Main VGA 可输出，超限或不支持的带内 SPS 仍在变化帧回调前拒绝，不能沿用
-初始四字节长度而跳过检查。此证据不覆盖反向/一字节长度、任意描述组合、PPS、坏 framing
+初始四字节长度而跳过检查。此证据不覆盖反向/一字节长度、任意描述组合、PPS、音频侧截断
 或其他容器参数切换。
 
 MPEG-4 Part 2 在可读取的 extradata 中检查每个 VOL 的有界头前缀，拒绝非矩形、非 4:2:0、
@@ -857,7 +862,16 @@ PCM 全字节保持；混合模式逐项匹配默认参考，两个切换点均�
 两种 seekability、短读/禁读源、提前 1 µs、近极大时钟、EOF 一次性和缓存重播保持。
 本门不修改产品实现或 ABI，不覆盖其他恢复形状、损坏或内存故障。
 
+TEST1387 验证 MP4 H.264 坏 NAL 长度与截断 sample 边界：从固定 `baseline-aac.mp4` 构造
+合法尾置控制（默认与 `PMEDIA_OPEN_SCHEDULE_AV` 完整输出三帧/29 块并过缓存零点重播）
+与十组失败样本（末尾 sample 的零 NAL 长度、越界 NAL 长度、尾部残留不足 4 字节、短于
+长度前缀的 sample、合法长度包裹的截断 P-slice、物理截断 `mdat` 处于 sample 中部/恰好
+在 sample 起始偏移/早于 sample 偏移，以及首帧 IDR 零/越界 NAL 长度），外加 `main-vga.mp4`
+B 帧单视频的完整控制与三组截断/坏 NAL 长度边界（默认与 `PMEDIA_OPEN_SCHEDULE_VIDEO`）。
+全部异常均以 `PMEDIA_ERROR_FORMAT` 及对应错误分类失败，精确保留有效前缀、零损坏帧/零 EOF、
+错误回调/事件各一次并锁存 `PMEDIA_ERROR_STATE`，不通过跳过坏包或重写 PTS 继续播放。
+
 夹具来源与哈希见 [媒体夹具](../test_host/fixtures/media/README.md)。这些是短小媒体的
 解码合同，不是实时播放、复杂画面质量、帧率、underrun、内存泄漏证明或真实 ARMV4I
-设备验收；其他已编译容器/codec、截断压缩 payload、非零 FFmpeg 压缩 seek 与原生完整生命周期
+设备验收；其他已编译容器/codec、音频侧截断、非零 FFmpeg 压缩 seek 与原生完整生命周期
 仍待专用 fixture。
